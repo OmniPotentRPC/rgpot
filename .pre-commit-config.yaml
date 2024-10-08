@@ -26,3 +26,10 @@ repos:
     #   language: system
     #   types_or: [c++, c]
     #   args: ["--filter=-whitespace/comments,-runtime/references,-whitespace/indent,-runtime/int,-build/c++11"]
+    - id: meson-format
+      name: meson format
+      entry: meson
+      language: system
+      types: [meson]
+      files: \.build$
+      args: ["format", "-i"]
