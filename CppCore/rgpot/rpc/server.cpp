@@ -13,39 +13,31 @@ public:
   kj::Promise<void> calculate(CalculateContext context) override {
     // Extract params directly from Cap'n Proto
     // (zero-copy) is a suggestion, not now
-    auto atomMatrixReader = context.getParams().getPositions();
-    auto atomTypesReader = context.getParams().getAtomTypes();
-    auto boxMatrixReader = context.getParams().getBoxMatrix();
+    auto fip = context.getParams().getFip();
 
     // Get number of atoms (rows in positions)
-    const auto numAtoms = atomMatrixReader.getPositions().size();
+    const auto numAtoms = fip.getNatm();
 
-    // Use positions directly from Cap'n Proto (zero-copy)
-    auto positionsReader = atomMatrixReader.getPositions();
-
-    // Access atom types directly from Cap'n Proto (zero-copy)
-    auto atomTypes = atomTypesReader.getAtomTypes();
-
-    // Access box matrix directly (zero-copy)
-    auto boxMatrix = boxMatrixReader.getBox();
-
-    // Prepare input in the format expected by CuH2Pot
+    // Read directly
+    // Read position data from Cap'n Proto and copy to std::vector
     rgpot::types::AtomMatrix nativePositions(numAtoms, 3);
+    auto posReader = fip.getPos();
+    for (size_t i = 0; i < numAtoms * 3; ++i) {
+      nativePositions.data()[i] = posReader[i];
+    }
+
+    // Read atom numbers
+    auto atmnrsReader = fip.getAtmnrs();
+    std::vector<int> nativeAtomTypes(numAtoms);
     for (size_t i = 0; i < numAtoms; ++i) {
-      nativePositions(i, 0) = positionsReader[i].getX();
-      nativePositions(i, 1) = positionsReader[i].getY();
-      nativePositions(i, 2) = positionsReader[i].getZ();
+      nativeAtomTypes[i] = atmnrsReader[i];
     }
 
-    std::vector<int> nativeAtomTypes(atomTypes.size());
-    for (size_t i = 0; i < atomTypes.size(); ++i) {
-      nativeAtomTypes[i] = atomTypes[i];
-    }
-
+    // Read box matrix
+    auto boxReader = fip.getBox();
     std::array<std::array<double, 3>, 3> nativeBoxMatrix;
     for (size_t i = 0; i < 3; ++i) {
-      nativeBoxMatrix[i] = {boxMatrix[i].getX(), boxMatrix[i].getY(),
-                            boxMatrix[i].getZ()};
+      nativeBoxMatrix[i] = {boxReader[i], boxReader[i + 1], boxReader[i + 2]};
     }
 
     // Call CuH2Pot with the AtomMatrix and other parameters
@@ -55,19 +47,14 @@ public:
 
     // Set up the result in Cap'n Proto
     auto result = context.getResults();
-    PotentialResult::Builder pres =
-        ::capnp::MallocMessageBuilder().initRoot<PotentialResult>();
+    auto pres = result.initResult();
     pres.setEnergy(energy);
 
-    // Initialize the forces field in the result
-    auto forcesList = pres.initForces(numAtoms);
-    for (size_t i = 0; i < numAtoms; ++i) {
-      auto force = forcesList[i];
-      force.setX(forces(i, 0));
-      force.setY(forces(i, 1));
-      force.setZ(forces(i, 2));
+    // Initialize and set forces
+    auto forcesList = pres.initForces(numAtoms * 3);
+    for (size_t i = 0; i < numAtoms * 3; ++i) {
+      forcesList.set(i, forces.data()[i]);
     }
-    result.setResult(pres);
 
     return kj::READY_NOW;
   }

@@ -7,6 +7,7 @@ import numpy as np
 
 import Potentials_capnp
 
+
 def parse_args():
     parser = argparse.ArgumentParser(
         usage="Connects to the Calculator server at the given address and does some RPCs"
@@ -18,51 +19,58 @@ def parse_args():
 
 async def main(connection):
     client = capnp.TwoPartyClient(connection)
-
     calculator = client.bootstrap().cast_as(Potentials_capnp.CuH2Pot)
+
     print("Connection made ", end="")
-    # Create a request to call the calculate method
+
+    # Create the atomic positions, atom types, and box matrix
     positions = [
-        {'x': 0.63940268750835, 'y': 0.90484742551374, 'z': 6.97516498544584},  # Cu
-        {'x': 3.19652040936288, 'y': 0.90417430354811, 'z': 6.97547796369474},  # Cu
-        {'x': 8.98363230369760, 'y': 9.94703496017833, 'z': 7.83556854923689},  # H
-        {'x': 7.64080177576300, 'y': 9.94703114803832, 'z': 7.83556986121272},  # H
+        0.63940268750835,
+        0.90484742551374,
+        6.97516498544584,  # Cu
+        3.19652040936288,
+        0.90417430354811,
+        6.97547796369474,  # Cu
+        8.98363230369760,
+        9.94703496017833,
+        7.83556854923689,  # H
+        7.64080177576300,
+        9.94703114803832,
+        7.83556986121272,  # H
     ]
 
     atom_types = [29, 29, 1, 1]  # Atomic types for Cu and H
-    box_matrix = [
-        {'x': 15.0, 'y': 0.0, 'z': 0.0},
-        {'x': 0.0, 'y': 20.0, 'z': 0.0},
-        {'x': 0.0, 'y': 0.0, 'z': 30.0}
-    ]
-    # Prepare AtomMatrixRPC
-    pos = Potentials_capnp.AtomMatrixRPC.new_message()
-    pos_positions = pos.init('positions', len(positions))
-    for idx, item in enumerate(positions):
-        pos_positions[idx].x = item["x"]
-        pos_positions[idx].y = item["y"]
-        pos_positions[idx].z = item["z"]
 
-    # Prepare the request for AtomTypes
-    atom_types_msg = Potentials_capnp.AtomTypes.new_message()
-    atom_types_list = atom_types_msg.init('atomTypes', len(atom_types))
+    box_matrix = [15.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 30.0]
+
+    # Create the ForceInput message
+    force_input = Potentials_capnp.ForceInput.new_message()
+    force_input.natm = len(atom_types)  # Number of atoms
+
+    # Set positions
+    pos_list = force_input.init("pos", len(positions))
+    for idx, pos in enumerate(positions):
+        pos_list[idx] = pos
+
+    # Set atom types
+    atom_list = force_input.init("atmnrs", len(atom_types))
     for idx, atom in enumerate(atom_types):
-        atom_types_list[idx] = atom
+        atom_list[idx] = atom
 
-    # Prepare the request for BoxMatrix
-    box_matrix_msg = Potentials_capnp.BoxMatrix.new_message()
-    box_matrix_list = box_matrix_msg.init('box', len(box_matrix))
-    for idx, box in enumerate(box_matrix):
-        box_matrix_list[idx].x = box["x"]
-        box_matrix_list[idx].y = box["y"]
-        box_matrix_list[idx].z = box["z"]
+    # Set the box matrix
+    box_list = force_input.init("box", len(box_matrix))
+    for idx, val in enumerate(box_matrix):
+        box_list[idx] = val
 
-    # Call the CuH2Pot.calculate method
-    response = calculator.calculate(pos, atom_types_msg, box_matrix_msg)
+    # Call the CuH2Pot.calculate method with ForceInput
+    response = calculator.calculate(force_input)
 
-    # Extract the result from the response
-    result = (await response)
-    print(result.to_dict())
+    # Await and print the result
+    result = await response
+    result_dict = result.to_dict()
+    print("Energy:", result_dict["result"]["energy"])
+    print("Forces:", result_dict["result"]["forces"])
+
 
 async def cmd_main(host):
     host, port = host.split(":")
