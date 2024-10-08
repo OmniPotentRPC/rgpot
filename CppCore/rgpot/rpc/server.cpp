@@ -52,10 +52,9 @@ public:
 
     // Set up the result in Cap'n Proto
     auto result = context.getResults();
-    ::capnp::MallocMessageBuilder message;
-    PotentialResult::Builder pres = message.initRoot<PotentialResult>();
+    PotentialResult::Builder pres =
+        ::capnp::MallocMessageBuilder().initRoot<PotentialResult>();
     pres.setEnergy(energy);
-    pres.initForces(numAtoms);
 
     // Initialize the forces field in the result
     auto forcesList = pres.initForces(numAtoms);
