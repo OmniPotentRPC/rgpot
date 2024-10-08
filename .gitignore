@@ -4,6 +4,7 @@ build
 *.tmp
 subprojects/*
 !subprojects/*.wrap
+*.capnp.*
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
