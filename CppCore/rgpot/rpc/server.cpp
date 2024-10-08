@@ -57,8 +57,10 @@ public:
     pres.setEnergy(energy);
     pres.initForces(numAtoms);
 
-    for (int i = 0; i < forces.rows(); ++i) {
-      auto force = ::capnp::MallocMessageBuilder().initRoot<ForceVector>();
+    // Initialize the forces field in the result
+    auto forcesList = pres.initForces(numAtoms);
+    for (size_t i = 0; i < numAtoms; ++i) {
+      auto force = forcesList[i];
       force.setX(forces(i, 0));
       force.setY(forces(i, 1));
       force.setZ(forces(i, 2));
