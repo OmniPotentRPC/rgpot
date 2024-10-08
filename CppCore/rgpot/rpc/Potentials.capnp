@@ -6,7 +6,7 @@ struct Position {
   z @2 :Float64;
 }
 
-struct AtomMatrix {
+struct AtomMatrixRPC {
   positions @0 :List(Position);
 }
 
@@ -36,6 +36,6 @@ struct ForceVector {
 }
 
 interface CuH2Pot {
-  calculate @0 (positions :AtomMatrix, atomTypes :AtomTypes, boxMatrix :BoxMatrix)
+  calculate @0 (positions :AtomMatrixRPC, atomTypes :AtomTypes, boxMatrix :BoxMatrix)
     -> (result :PotentialResult);
 }
