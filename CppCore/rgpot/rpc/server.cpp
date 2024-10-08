@@ -1,15 +1,18 @@
-#include "Potentials.capnp.h" // Cap'n Proto schema header
-#include "rgpot/CuH2/CuH2Pot.hpp"
-#include "rgpot/types/AtomMatrix.hpp"
+// MIT License
+// Copyright 2023--present Rohit Goswami <HaoZeke>
+#include "Potentials.capnp.h"
 #include <capnp/ez-rpc.h>
 #include <capnp/message.h>
-#include <iostream>
+
+#include "rgpot/CuH2/CuH2Pot.hpp"
+#include "rgpot/types/AtomMatrix.hpp"
 
 // Fully define CuH2PotImpl before use
 class CuH2PotImpl final : public CuH2Pot::Server {
 public:
   kj::Promise<void> calculate(CalculateContext context) override {
     // Extract params directly from Cap'n Proto
+    // (zero-copy) is a suggestion, not now
     auto atomMatrixReader = context.getParams().getPositions();
     auto atomTypesReader = context.getParams().getAtomTypes();
     auto boxMatrixReader = context.getParams().getBoxMatrix();
