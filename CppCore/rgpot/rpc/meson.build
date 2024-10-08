@@ -12,3 +12,9 @@ ptlrpc = library('ptlrpc',
                  cpp_args: _args,
                  include_directories: _incdirs,
                  install : true)
+server = executable('potserv', [ 'server.cpp', gen_rpc ],
+                   link_with: [ptlrpc, _linkto],
+                 dependencies: _deps + capnp_rpc_dep,
+                 cpp_args: _args,
+                 include_directories: _incdirs,
+                 install : true)
