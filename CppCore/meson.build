@@ -30,6 +30,11 @@ potlib = library(
     install: true,
 )
 
+# ------------------------ Server
+if get_option('with_rpc')
+    subdir('rgpot/rpc')
+endif
+
 # ------------------------ Examples
 
 if get_option('with_examples')
