@@ -31,5 +31,5 @@ repos:
       entry: meson
       language: system
       types: [meson]
-      files: \.build$
+      files: meson\.build$
       args: ["format", "-i"]
