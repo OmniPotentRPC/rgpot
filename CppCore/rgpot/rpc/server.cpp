@@ -37,7 +37,7 @@ public:
     auto boxReader = fip.getBox();
     std::array<std::array<double, 3>, 3> nativeBoxMatrix;
     for (size_t i = 0; i < 3; ++i) {
-      nativeBoxMatrix[i] = {boxReader[i], boxReader[i + 1], boxReader[i + 2]};
+      nativeBoxMatrix[i] = {boxReader[i*3], boxReader[i*3+1], boxReader[i*3+2]};
     }
 
     // Call CuH2Pot with the AtomMatrix and other parameters
