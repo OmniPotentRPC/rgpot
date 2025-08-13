@@ -1,19 +1,28 @@
+# Find dependencies and tools
 capnp_rpc_dep = dependency('capnp-rpc')
-_mbproot = meson.project_build_root()
-capnpc_ = find_program('capnpc')
+capnpc = find_program('capnpc')
+
+output_dir = meson.current_source_dir() / 'gen'
+
 gen_rpc = custom_target(
     'gen_rpc',
-    input: ['Potentials.capnp'],
+    input: 'Potentials.capnp',
     output: ['Potentials.capnp.c++', 'Potentials.capnp.h'],
-    # TODO(rg): Can this be cleaner?
     command: [
-        capnpc_,
-        f'-oc++:@_mbproot@/CppCore/rgpot/rpc',
-        '@INPUT@',
-        '--verbose',
-        '--src-prefix=../CppCore/rgpot/rpc',
+        'sh',
+        '-c',
+        'mkdir -p @0@ && @1@ -o c++:@0@ --src-prefix=@2@ @3@'.format(
+            output_dir,
+            capnpc.path(),
+            meson.current_source_dir(),
+            '@INPUT@',
+        ),
     ],
 )
+
+gen_inc = include_directories('gen')
+_incdirs += gen_inc
+
 ptlrpc = library(
     'ptlrpc',
     gen_rpc,
