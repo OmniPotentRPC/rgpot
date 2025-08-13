@@ -18,7 +18,7 @@ def parse_args():
 
 async def main(connection):
     client = capnp.TwoPartyClient(connection)
-    calculator = client.bootstrap().cast_as(Potentials_capnp.CuH2Pot)
+    calculator = client.bootstrap().cast_as(Potentials_capnp.Potential)
 
     print("Connection made ", end="")
 

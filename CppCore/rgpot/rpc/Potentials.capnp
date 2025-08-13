@@ -15,7 +15,7 @@ struct PotentialResult {
   forces @1: List(Float64);
 }
 
-interface CuH2Pot {
+interface Potential {
   calculate @0 (fip :ForceInput)
     -> (result :PotentialResult);
 }

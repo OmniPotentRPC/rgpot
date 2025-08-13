@@ -4,18 +4,24 @@
 #include <capnp/message.h>
 
 #include "rgpot/CuH2/CuH2Pot.hpp"
+#include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 #include "rgpot/types/adapters/capnp/capnp_adapter.hpp"
 
-// Fully define CuH2PotImpl before use
-class CuH2PotImpl final : public CuH2Pot::Server {
+class GenericPotImpl final : public Potential::Server {
+private:
+  std::unique_ptr<rgpot::Potential> m_potential;
+
 public:
+  // The constructor takes ownership of a potential object
+  GenericPotImpl(std::unique_ptr<rgpot::Potential> pot)
+      : m_potential(std::move(pot)) {}
+
   kj::Promise<void> calculate(CalculateContext context) override {
     // --- Use the adapter to convert FROM Cap'n Proto ---
     auto fip = context.getParams().getFip();
     const auto numAtoms = fip.getNatm();
 
-    // Use the adapter functions for cleaner conversion
     rgpot::types::AtomMatrix nativePositions =
         rgpot::types::adapt::capnp::convertPositionsFromCapnp(fip.getPos(),
                                                               numAtoms);
@@ -25,17 +31,16 @@ public:
     std::array<std::array<double, 3>, 3> nativeBoxMatrix =
         rgpot::types::adapt::capnp::convertBoxMatrixFromCapnp(fip.getBox());
 
-    // --- Call the core library code ---
-    auto cuh2pot = rgpot::CuH2Pot();
+    // --- Call the potential via the polymorphic interface ---
+    // This is the key change: no hardcoded type!
     auto [energy, forces] =
-        cuh2pot(nativePositions, nativeAtomTypes, nativeBoxMatrix);
+        (*m_potential)(nativePositions, nativeAtomTypes, nativeBoxMatrix);
 
     // --- Use the adapter to populate TO Cap'n Proto ---
     auto result = context.getResults();
     auto pres = result.initResult();
     pres.setEnergy(energy);
 
-    // Initialize and use the adapter to populate forces
     auto forcesList = pres.initForces(numAtoms * 3);
     rgpot::types::adapt::capnp::populateForcesToCapnp(forcesList, forces);
 
@@ -43,25 +48,45 @@ public:
   }
 };
 
-// Main server setup
+// Main server setup now acts as a factory
 int main(int argc, char *argv[]) {
-  // Set up the Cap'n Proto RPC server on a specific address and port
-  // Parse port from command line arguments, default to 12345
-  int port = 12345;
-  if (argc > 1) {
-    try {
-      port = std::stoi(argv[1]);
-    } catch (const std::exception &e) {
-      std::cerr << "Invalid port argument, using default port 12345."
-                << std::endl;
-    }
+  if (argc < 3) {
+    std::cerr << "Usage: " << argv[0] << " <port> <PotentialType>" << std::endl;
+    std::cerr << "  Available PotentialTypes: CuH2"
+              << std::endl; // Add more as you implement them
+    return 1;
   }
 
-  // Set up the Cap'n Proto RPC server on a specific address and port
-  capnp::EzRpcServer server(kj::heap<CuH2PotImpl>(), "localhost", port);
+  int port = 12345;
+  try {
+    port = std::stoi(argv[1]);
+  } catch (const std::exception &e) {
+    std::cerr << "Invalid port argument '" << argv[1]
+              << "'. Using default 12345." << std::endl;
+  }
+
+  std::string pot_type = argv[2];
+  std::unique_ptr<rgpot::Potential> potential_to_use;
+
+  if (pot_type == "CuH2") {
+    std::cout << "Loading CuH2 potential..." << std::endl;
+    potential_to_use = std::make_unique<rgpot::CuH2Pot>();
+  } else if (pot_type == "LJ") {
+    std::cout << "Loading LJ potential..." << std::endl;
+    potential_to_use = std::make_unique<rgpot::LJPot>();
+  } else {
+    std::cerr << "Error: Unknown potential type '" << pot_type << "'"
+              << std::endl;
+    return 1;
+  }
+
+  capnp::EzRpcServer server(
+      kj::heap<GenericPotImpl>(std::move(potential_to_use)), "localhost", port);
 
   // Keep the server running indefinitely
   auto &waitScope = server.getWaitScope();
+  std::cout << "Server running on port " << port << " with " << pot_type
+            << " potential." << std::endl;
   kj::NEVER_DONE.wait(waitScope);
 
   return 0;
