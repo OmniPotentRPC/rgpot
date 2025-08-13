@@ -2,9 +2,8 @@
 
 import argparse
 import asyncio
-import capnp
-import numpy as np
 
+import capnp
 import Potentials_capnp
 
 
