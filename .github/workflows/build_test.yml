@@ -11,12 +11,12 @@ jobs:
   buildmamba:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: "recursive"
           fetch-depth: 0
       - name: Install environment
-        uses: prefix-dev/setup-pixi@v0.8.0
+        uses: prefix-dev/setup-pixi@v0.8.1
         with:
           pixi-version: 'v0.32.0'
           cache: true
