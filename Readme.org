@@ -1,8 +1,8 @@
 * About
 This is a set of standard potentials in C++ or Fortran. The goal is to provide
 minimal, binding friendly interfaces for ease of usage from Python or even R.
-The core library is header-only, though adapt functions are provided for interfacing
-to ~Eigen~ and ~xtensor~.
+The core library is header-only, though adapter functions are provided for
+interfacing to ~Eigen~ and ~xtensor~.
 
 This was originally designed for interfacing easily to potentials implemented [[http://theory.cm.utexas.edu/eon/][in
 eOn]], but has grown to be more flexible.
