@@ -63,10 +63,20 @@ public:
 
 // Main server setup
 int main(int argc, char *argv[]) {
-  CuH2PotImpl cuh2potImpl;
+  // Set up the Cap'n Proto RPC server on a specific address and port
+  // Parse port from command line arguments, default to 12345
+  int port = 12345;
+  if (argc > 1) {
+    try {
+      port = std::stoi(argv[1]);
+    } catch (const std::exception &e) {
+      std::cerr << "Invalid port argument, using default port 12345."
+                << std::endl;
+    }
+  }
 
   // Set up the Cap'n Proto RPC server on a specific address and port
-  capnp::EzRpcServer server(kj::heap<CuH2PotImpl>(), "localhost", 12345);
+  capnp::EzRpcServer server(kj::heap<CuH2PotImpl>(), "localhost", port);
 
   // Keep the server running indefinitely
   auto &waitScope = server.getWaitScope();
