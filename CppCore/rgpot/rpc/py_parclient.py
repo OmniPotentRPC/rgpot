@@ -19,15 +19,18 @@
 #        localhost:12346 \
 #        localhost:12347
 
+#!/usr/bin/env python3
+
 import argparse
 import asyncio
 import time
 
 import capnp
+import matplotlib.pyplot as plt
+import numpy as np
+import Potentials_capnp
 from ase.build import bulk, molecule
 from ase.calculators.lj import LennardJones
-
-import Potentials_capnp
 
 
 def parse_args():
@@ -39,6 +42,13 @@ def parse_args():
         "hosts",
         nargs="+",
         help="List of server addresses in HOST:PORT format (e.g., localhost:12345 localhost:12346)",
+    )
+    parser.add_argument(
+        "--sleep-ms",
+        type=int,
+        default=0,
+        help="Milliseconds to sleep in the local ASE calculation to simulate a heavy workload. "
+        "Set this to match the sleep duration in your C++ server for a fair comparison.",
     )
     return parser.parse_args()
 
@@ -86,9 +96,42 @@ async def run_single_calculation(host, port, atoms_obj, structure_name):
         return None
 
 
-async def main(hosts):
+def create_timing_plot(results_data):
+    """Generates a plot comparing the per-task execution times."""
+    labels = list(results_data.keys())
+    local_times = [r["local_time_ms"] for r in results_data.values()]
+    rpc_times = [r["rpc_time_ms"] for r in results_data.values()]
+
+    x = np.arange(len(labels))
+    width = 0.35
+
+    fig, ax = plt.subplots(figsize=(14, 8))
+    rects1 = ax.bar(
+        x - width / 2,
+        local_times,
+        width,
+        label=f"Local ASE Call (+{args.sleep_ms}ms sleep)",
+    )
+    rects2 = ax.bar(
+        x + width / 2, rpc_times, width, label="C++ RPC Call (includes network)"
+    )
+
+    ax.set_ylabel("Time (milliseconds)", fontsize=12)
+    ax.set_title("Per-Task Performance: Local ASE vs. C++ RPC", fontsize=14)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=45, ha="right")
+    ax.legend()
+    ax.grid(True, axis="y", linestyle="--", alpha=0.6)
+
+    fig.tight_layout()
+    plt.savefig("per_task_timing_comparison.png")
+    print("\nSaved detailed timing comparison plot to 'per_task_timing_comparison.png'")
+
+
+async def main(hosts, sleep_ms):
     """Main coroutine to orchestrate sequential and parallel calculations."""
     server_addresses = [host.split(":") for host in hosts]
+    results_data = {}
 
     # 1. Create a workload using ASE
     print("--- Creating ASE structures for workload ---")
@@ -102,8 +145,6 @@ async def main(hosts):
         "NaCl_crystal": bulk("NaCl", "rocksalt", a=5.64),
         "C6H6_benzene": molecule("C6H6"),
     }
-
-    # Molecules created with ase.build.molecule() have a zero cell by default.
     print("--- Ensuring all structures have a valid cell ---")
     for name, atoms in structures.items():
         atoms.set_cell([90, 90, 90])
@@ -111,25 +152,42 @@ async def main(hosts):
 
     print(f"Generated {len(structures)} structures to calculate.\n")
 
-    # 2. Run calculations sequentially for baseline timing and correctness check
+    # 2. Run sequentially for detailed timing and correctness check
     print(
-        f"--- Running {len(structures)} calculations sequentially on {hosts[0]} for comparison ---"
+        f"--- Running {len(structures)} calculations sequentially on {hosts[0]} for detailed timing ---"
     )
     ase_lj_calc = LennardJones()
-    start_time_seq = time.monotonic()
+    total_sequential_rpc_time = 0
     for name, atoms in structures.items():
         print(f"\nProcessing {name}...")
         atoms.calc = ase_lj_calc
+
+        # Time the local ASE call including the simulated workload
+        t0 = time.monotonic()
         ref_energy = atoms.get_potential_energy()
-        print(f"  Reference ASE LJ Energy: {ref_energy:.4f}")
+        t1 = time.monotonic()
+        local_time = t1 - t0
 
+        # Time the remote RPC call
         host, port = server_addresses[0]
-        await run_single_calculation(host, int(port), atoms, name)
-    end_time_seq = time.monotonic()
-    total_time_seq = end_time_seq - start_time_seq
-    print(f"\nSequential execution took: {total_time_seq:.4f} seconds\n")
+        t2 = time.monotonic()
+        rpc_result = await run_single_calculation(host, int(port), atoms, name)
+        t3 = time.monotonic()
+        rpc_time = t3 - t2
+        total_sequential_rpc_time += rpc_time
 
-    # 3. Run calculations in parallel
+        print(f"  Local ASE call took: {local_time * 1000:.2f} ms")
+        print(f"  Remote RPC call took: {rpc_time * 1000:.2f} ms")
+
+        results_data[name] = {
+            "local_time_ms": local_time * 1000,
+            "rpc_time_ms": rpc_time * 1000,
+        }
+    print(
+        f"\nTotal sequential RPC execution took: {total_sequential_rpc_time:.4f} seconds\n"
+    )
+
+    # 3. Run calculations in parallel for speed-up measurement
     print(
         f"--- Running {len(structures)} calculations in parallel across {len(hosts)} servers ---"
     )
@@ -139,29 +197,26 @@ async def main(hosts):
         host, port = server_addresses[i % len(server_addresses)]
         task = asyncio.create_task(run_single_calculation(host, int(port), atoms, name))
         tasks.append(task)
-
     await asyncio.gather(*tasks)
     end_time_para = time.monotonic()
     total_time_para = end_time_para - start_time_para
     print(f"\nParallel execution took: {total_time_para:.4f} seconds\n")
 
-    # 4. Show the results
+    # 4. Show the results and create plots
     print("--- Summary ---")
-    print(f"Sequential time: {total_time_seq:.4f} s")
-    print(f"Parallel time:   {total_time_para:.4f} s")
+    print(f"Total Sequential RPC time: {total_sequential_rpc_time:.4f} s")
+    print(f"Parallel time:             {total_time_para:.4f} s")
     if total_time_para > 0:
-        speedup = total_time_seq / total_time_para
-        print(f"Speed-up:        {speedup:.2f}x")
+        speedup = total_sequential_rpc_time / total_time_para
+        print(f"Speed-up:                  {speedup:.2f}x")
+
+    create_timing_plot(results_data)
 
 
 if __name__ == "__main__":
     args = parse_args()
     try:
-        # This pattern correctly starts the event loop.
-        # 1. We call main() which returns a coroutine object.
-        # 2. We pass that single coroutine object to capnp.run().
-        # 3. We pass the result of that to asyncio.run().
-        main_coro = main(args.hosts)
+        main_coro = main(args.hosts, args.sleep_ms)
         asyncio.run(capnp.run(main_coro))
     except KeyboardInterrupt:
         print("\nClient stopped by user.")
