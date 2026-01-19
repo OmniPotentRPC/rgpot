@@ -17,6 +17,8 @@ using AtomVector = std::vector<double>;
 // A row major matrix class
 class AtomMatrix {
 public:
+  // Default constructor for type_caster in pybind11
+  AtomMatrix() : m_rows(0), m_cols(0) {}
   // Constructor to allow list initialization
   AtomMatrix(std::initializer_list<std::initializer_list<double>> list)
       : m_rows(list.size()), m_cols((list.begin())->size()),
