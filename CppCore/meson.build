@@ -1,6 +1,6 @@
 _deps += dependency('rocksdb')
 # Wrap installed
-_deps += subproject('xxhash').get_variable('xxhash_dep')
+_deps += subproject('xxhash', default_options: ['cli=false']).get_variable('xxhash_dep')
 
 pot_core = static_library(
     'pot_core',
