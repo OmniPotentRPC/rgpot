@@ -4,6 +4,7 @@
 // clang-format off
 #include <utility>
 #include <vector>
+#include<stdexcept>
 // clang-format on
 
 #define XXH_INLINE_ALL
@@ -28,7 +29,9 @@ public:
   operator()(const AtomMatrix &positions, const std::vector<int> &atmtypes,
              const std::array<std::array<double, 3>, 3> &box) = 0;
 
-  virtual void set_cache(rgpot::cache::PotentialCache *c) = 0;
+  virtual void set_cache(rgpot::cache::PotentialCache * /*c*/) {
+    throw std::runtime_error("PotentialBase::set_cache called directly");
+  }
   [[nodiscard]] PotType get_type() const { return m_type; }
 
 protected:
