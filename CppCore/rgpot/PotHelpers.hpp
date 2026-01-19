@@ -1,8 +1,8 @@
 #pragma once
 // MIT License
 // Copyright 2023--present Rohit Goswami <HaoZeke>
-#include <cstddef>
 #include "ForceStructs.hpp"
+#include <cstddef>
 
 namespace rgpot {
 
