@@ -18,9 +18,9 @@
 using rgpot::types::AtomMatrix;
 
 namespace rgpot {
+
 class PotentialBase {
 public:
-  // Constructor takes potential type
   explicit PotentialBase(PotType inp_type) : m_type(inp_type) {}
   virtual ~PotentialBase() = default;
 
@@ -35,7 +35,6 @@ protected:
   PotType m_type;
 };
 
-// CRTP Implementation
 template <typename Derived>
 class Potential : public PotentialBase, public registry<Derived> {
 public:
@@ -43,7 +42,6 @@ public:
 
   void set_cache(rgpot::cache::PotentialCache *c) override { _cache = c; }
 
-  // This is the "Public" interface you liked!
   std::pair<double, AtomMatrix>
   operator()(const AtomMatrix &positions, const std::vector<int> &atmtypes,
              const std::array<std::array<double, 3>, 3> &box) override {
@@ -65,7 +63,7 @@ public:
                   .box = flatBox};
     ForceOut fo{.F = forces.data(), .energy = energy, .variance = variance};
 
-    // --- XXHASH SETUP ---
+    // Hashing
     size_t hash_val = 0;
     hash_val ^= XXH3_64bits(fi.pos, fi.nAtoms * 3 * sizeof(double));
     hash_val ^= XXH3_64bits(fi.atmnrs, fi.nAtoms * sizeof(int));
@@ -75,7 +73,7 @@ public:
 
     rgpot::cache::KeyHash key(hash_val);
 
-    // Check Cache
+    // Cache Read
     if (_cache) {
       auto hit = _cache->find(key);
       if (hit) {
@@ -84,11 +82,11 @@ public:
       }
     }
 
-    // Compute (Calls your implementation)
+    // Computation
     static_cast<Derived *>(this)->forceImpl(fi, &fo);
     registry<Derived>::incrementForceCalls();
 
-    // Update Cache
+    // Cache Write
     if (_cache) {
       _cache->add_serialized(key, fo.energy, forces);
     }
@@ -96,7 +94,7 @@ public:
     return {fo.energy, forces};
   }
 
-  // Implement this in derived classes
+  // Virtual to allow Python override if strictly necessary
   virtual void forceImpl(const ForceInput &in, ForceOut *out) const = 0;
 
 private:

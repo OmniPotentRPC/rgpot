@@ -1,6 +1,6 @@
 #pragma once
 // MIT License
-// Copyright 2026--present Rohit Goswami <HaoZeke>
+// Copyright 2023--present Rohit Goswami <HaoZeke>
 
 #include "rgpot/types/AtomMatrix.hpp"
 #include <optional>
@@ -17,10 +17,20 @@ struct KeyHash {
 
 class PotentialCache {
 private:
-  rocksdb::DB *potCache = nullptr;
+  rocksdb::DB *db_ = nullptr;
+  bool own_db_ = false;
 
 public:
-  void set_cache(rocksdb::DB *);
+  // Constructor opens the DB at the given path
+  explicit PotentialCache(const std::string &db_path,
+                          bool create_if_missing = true);
+  // Default constructor (no cache)
+  PotentialCache() = default;
+  ~PotentialCache();
+
+  // Helper for manual pointer setting (legacy/testing)
+  void set_db(rocksdb::DB *db);
+
   void deserialize_hit(const std::string &, double &,
                        rgpot::types::AtomMatrix &);
   void add_serialized(const KeyHash &, double,

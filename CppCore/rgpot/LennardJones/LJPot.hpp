@@ -10,7 +10,7 @@
 using rgpot::types::AtomMatrix;
 
 namespace rgpot {
-class LJPot final : public Potential<LJPot> {
+class LJPot : public Potential<LJPot> {
 public:
   // Constructor initializes potential type and atom properties
   LJPot() : Potential(PotType::LJ), u0{1.0}, cuttOffR{15.0}, psi{1.0} {}

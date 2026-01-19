@@ -14,7 +14,7 @@ extern "C" void c_force_eam(int *natms, int ndim, double *box, double *R,
                             double *F, double *U);
 
 namespace rgpot {
-class CuH2Pot final : public Potential<CuH2Pot> {
+class CuH2Pot : public Potential<CuH2Pot> {
 public:
   // Constructor initializes potential type and atom properties
   CuH2Pot() : Potential(PotType::CuH2) {}

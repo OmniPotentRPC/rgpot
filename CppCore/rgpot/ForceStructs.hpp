@@ -1,6 +1,6 @@
 #pragma once
 // MIT License
-// Copyright 2026--present Rohit Goswami <HaoZeke>
+// Copyright 2023--present Rohit Goswami <HaoZeke>
 #include <cstddef>
 
 namespace rgpot {

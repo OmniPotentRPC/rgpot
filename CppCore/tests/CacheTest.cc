@@ -1,5 +1,5 @@
 // MIT License
-// Copyright 2026--present Rohit Goswami <HaoZeke>
+// Copyright 2023--present Rohit Goswami <HaoZeke>
 #include <catch2/catch_all.hpp>
 #include <chrono>
 #include <random>
@@ -41,7 +41,7 @@ TEST_CASE("Potential caching with rgpot", "[Potential]") {
   // Initialize Potential and Cache Wrapper
   auto pot = std::make_shared<rgpot::LJPot>();
   auto pcache = rgpot::cache::PotentialCache();
-  pcache.set_cache(db.get());
+  pcache.set_db(db.get());
   pot->set_cache(&pcache);
 
   // Initial cache miss
