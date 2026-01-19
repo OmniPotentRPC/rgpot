@@ -69,6 +69,7 @@ if get_option('with_tests')
     test_array = [  #
         ['CuH2test', 'cuh2_test', 'CuH2PotTest.cc', ''],
         ['CacheTest', 'cache_test', 'CacheTest.cc', ''],
+        ['InvarianceTest', 'invariance_test', 'InvarianceTest.cc', ''],
         # ['CuH2 Utils Test', 'cuh2_util_test', 'cuh2UtilsTest.cc', ''],
     ]
     foreach test : test_array

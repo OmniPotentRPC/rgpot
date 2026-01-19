@@ -1,4 +1,4 @@
-[project]
+[workspace]
 authors = ["Rohit Goswami <rog32@hi.is>"]
 channels = ["conda-forge"]
 description = "Cpp core for potential energy surface functionality."
