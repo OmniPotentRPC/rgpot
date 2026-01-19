@@ -18,7 +18,7 @@ jobs:
       - name: Install environment
         uses: prefix-dev/setup-pixi@v0.8.0
         with:
-          pixi-version: 'v0.32.0'
+          pixi-version: 'v0.62.1'
           cache: true
           cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
       - name: Build and Test
