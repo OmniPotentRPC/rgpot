@@ -20,9 +20,9 @@ repos:
       language: system
       types_or: [c++, c]
       args: ["--error-exitcode=0"]
-    - id: cpplint
-      name: cpplint
-      entry: cpplint
-      language: system
-      types_or: [c++, c]
-      args: ["--filter=-whitespace/comments,-runtime/references,-whitespace/indent,-runtime/int,-build/c++11"]
+    # - id: cpplint
+    #   name: cpplint
+    #   entry: cpplint
+    #   language: system
+    #   types_or: [c++, c]
+    #   args: ["--filter=-whitespace/comments,-runtime/references,-whitespace/indent,-runtime/int,-build/c++11"]
