@@ -14,14 +14,11 @@ extern "C" void c_force_eam(int *natms, int ndim, double *box, double *R,
                             double *F, double *U);
 
 namespace rgpot {
-class CuH2Pot : public Potential {
+class CuH2Pot final : public Potential<CuH2Pot> {
 public:
   // Constructor initializes potential type and atom properties
   CuH2Pot() : Potential(PotType::CuH2) {}
-
-  std::pair<double, AtomMatrix>
-  operator()(const AtomMatrix &positions, const std::vector<int> &atmtypes,
-             const std::array<std::array<double, 3>, 3> &box) const override;
+  void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
 private:
   // Variables

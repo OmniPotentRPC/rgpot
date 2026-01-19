@@ -11,28 +11,12 @@ using rgpot::types::AtomMatrix;
 
 namespace rgpot {
 
-std::pair<double, AtomMatrix>
-LJPot::operator()(const AtomMatrix &positions, const std::vector<int> &atmtypes,
-                  const std::array<std::array<double, 3>, 3> &box) const {
-  double energy{std::numeric_limits<double>::infinity()};
-  auto nAtoms{positions.rows()};
-  AtomMatrix forces = AtomMatrix::Zero(nAtoms, 3);
-  double flatBox[9];
-  for (size_t i = 0; i < 3; ++i) {
-    for (size_t j = 0; j < 3; ++j) {
-      flatBox[i * 3 + j] = box[i][j];
-    }
-  }
-  this->force(nAtoms, positions.data(), atmtypes.data(), forces.data(), &energy,
-              flatBox);
-  return std::make_pair(energy, forces);
-}
-
-// pointer to number of atoms, pointer to array of positions
-// pointer to array of forces, pointer to internal energy
-// address to super-cell size
-void LJPot::force(long N, const double *R, const int *atomicNrs, double *F,
-                  double *U, const double *box) const {
+void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  long N = in.nAtoms;
+  const double *R = in.pos;
+  const double *box = in.box;
+  double *F = out->F;
+  double *U = &out->energy;
   // This is adapted, untouched from EON's BSD 3 clause implementation
   // Original source:
   // https://github.com/TheochemUI/EONgit/blob/stable/client/potentials/LJ/LJ.cpp

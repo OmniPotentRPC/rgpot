@@ -6,26 +6,101 @@
 #include <vector>
 // clang-format on
 
+#define XXH_INLINE_ALL
+#include <xxhash.h>
+
+#include "rgpot/ForceStructs.hpp"
+#include "rgpot/PotHelpers.hpp"
+#include "rgpot/PotentialCache.hpp"
 #include "rgpot/pot_types.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
 using rgpot::types::AtomMatrix;
 
 namespace rgpot {
-class Potential {
+class PotentialBase {
 public:
   // Constructor takes potential type
-  explicit Potential(PotType inp_type) : m_type(inp_type) {}
+  explicit PotentialBase(PotType inp_type) : m_type(inp_type) {}
+  virtual ~PotentialBase() = default;
 
-  // Operator() to calculate energy and forces for the given coordinates and
-  // atom types
   virtual std::pair<double, AtomMatrix>
   operator()(const AtomMatrix &positions, const std::vector<int> &atmtypes,
-             const std::array<std::array<double, 3>, 3> &box) const = 0;
+             const std::array<std::array<double, 3>, 3> &box) = 0;
 
-  virtual ~Potential() = default;
+  virtual void set_cache(rgpot::cache::PotentialCache *c) = 0;
+  [[nodiscard]] PotType get_type() const { return m_type; }
 
-private:
+protected:
   PotType m_type;
 };
+
+// CRTP Implementation
+template <typename Derived>
+class Potential : public PotentialBase, public registry<Derived> {
+public:
+  using PotentialBase::PotentialBase;
+
+  void set_cache(rgpot::cache::PotentialCache *c) override { _cache = c; }
+
+  // This is the "Public" interface you liked!
+  std::pair<double, AtomMatrix>
+  operator()(const AtomMatrix &positions, const std::vector<int> &atmtypes,
+             const std::array<std::array<double, 3>, 3> &box) override {
+    size_t nAtoms = positions.rows();
+    AtomMatrix forces = AtomMatrix::Zero(nAtoms, 3);
+    double energy = 0.0;
+    double variance = 0.0;
+
+    double flatBox[9];
+    for (size_t i = 0; i < 3; ++i) {
+      for (size_t j = 0; j < 3; ++j) {
+        flatBox[i * 3 + j] = box[i][j];
+      }
+    }
+
+    ForceInput fi{.nAtoms = nAtoms,
+                  .pos = positions.data(),
+                  .atmnrs = atmtypes.data(),
+                  .box = flatBox};
+    ForceOut fo{.F = forces.data(), .energy = energy, .variance = variance};
+
+    // --- XXHASH SETUP ---
+    size_t hash_val = 0;
+    hash_val ^= XXH3_64bits(fi.pos, fi.nAtoms * 3 * sizeof(double));
+    hash_val ^= XXH3_64bits(fi.atmnrs, fi.nAtoms * sizeof(int));
+    hash_val ^= XXH3_64bits(fi.box, 9 * sizeof(double));
+    size_t type_val = static_cast<size_t>(m_type);
+    hash_val ^= XXH3_64bits(&type_val, sizeof(size_t));
+
+    rgpot::cache::KeyHash key(hash_val);
+
+    // Check Cache
+    if (_cache) {
+      auto hit = _cache->find(key);
+      if (hit) {
+        _cache->deserialize_hit(*hit, fo.energy, forces);
+        return {fo.energy, forces};
+      }
+    }
+
+    // Compute (Calls your implementation)
+    static_cast<Derived *>(this)->forceImpl(fi, &fo);
+    registry<Derived>::incrementForceCalls();
+
+    // Update Cache
+    if (_cache) {
+      _cache->add_serialized(key, fo.energy, forces);
+    }
+
+    return {fo.energy, forces};
+  }
+
+  // Implement this in derived classes
+  virtual void forceImpl(const ForceInput &in, ForceOut *out) const = 0;
+
+private:
+  rgpot::cache::PotentialCache *_cache = nullptr;
+};
+
 } // namespace rgpot
