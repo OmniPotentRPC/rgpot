@@ -35,6 +35,7 @@ jobs:
         shell: pixi run bash -e {0}
         run: |
           meson setup bbdir -Dwith_tests=True -Dwith_rpc=True
+          meson compile -C bbdir
           meson test -C bbdir --print-errorlogs
           uv pip install numpy pycapnp
           uv run python tests/rpc_integ.py --server-bin bbdir/CppCore/rgpot/rpc/potserv

@@ -30,7 +30,7 @@ if(NOT xxHash_FOUND)
         GIT_TAG v0.8.3
     )
     FetchContent_MakeAvailable(xxHash)
-    
+
     # Ensure the namespaced target exists for consistency
     if(TARGET xxhash AND NOT TARGET xxHash::xxhash)
         add_library(xxHash::xxhash ALIAS xxhash)
@@ -39,8 +39,8 @@ if(NOT xxHash_FOUND)
 endif()
 
 # 3. Fortcuh2 (Required - User defined)
-# We assume this is available via find_package (if installed) 
-# or FetchContent (if subproject). 
+# We assume this is available via find_package (if installed)
+# or FetchContent (if subproject).
 find_package(fortcuh2 QUIET)
 if(NOT fortcuh2_FOUND)
     message(STATUS "fortcuh2 not found, attempting to fetch...")
@@ -84,7 +84,7 @@ target_include_directories(pot PUBLIC
 )
 
 # --- Linking ---
-target_link_libraries(pot PUBLIC 
+target_link_libraries(pot PUBLIC
     RocksDB::rocksdb
     xxhash
     fortcuh2

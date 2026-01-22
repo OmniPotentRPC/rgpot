@@ -4,10 +4,10 @@
 
 #include <vector>
 
-#include <capnp/list.h>
-#include <capnp/message.h>
 #include "rgpot/rpc/Potentials.capnp.h"
 #include "rgpot/types/AtomMatrix.hpp"
+#include <capnp/list.h>
+#include <capnp/message.h>
 
 namespace rgpot {
 namespace types {

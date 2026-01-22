@@ -2,17 +2,18 @@
 capnp_rpc_dep = dependency('capnp-rpc')
 capnpc = find_program('capnpc')
 
- gen_rpc = custom_target(
-     'gen_rpc',
-     input: 'Potentials.capnp',
-     output: ['Potentials.capnp.c++', 'Potentials.capnp.h'],
-     command: [
+gen_rpc = custom_target(
+    'gen_rpc',
+    input: 'Potentials.capnp',
+    output: ['Potentials.capnp.c++', 'Potentials.capnp.h'],
+    command: [
         capnpc,
-        '-o', 'c++:@OUTDIR@',
+        '-o',
+        'c++:@OUTDIR@',
         '--src-prefix=' + meson.current_source_dir(),
-        '@INPUT@'
-     ],
- )
+        '@INPUT@',
+    ],
+)
 # Use the target object itself for includes to ensure proper dependency tracking
 _incdirs += include_directories('.')
 
