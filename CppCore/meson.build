@@ -1,6 +1,8 @@
 _deps += dependency('rocksdb')
 # Wrap installed
-_deps += subproject('xxhash', default_options: ['cli=false']).get_variable('xxhash_dep')
+_deps += subproject('xxhash', default_options: ['cli=false']).get_variable(
+    'xxhash_dep',
+)
 
 pot_core = static_library(
     'pot_core',
@@ -75,8 +77,12 @@ if get_option('with_tests')
         ['CuH2test', 'cuh2_test', 'CuH2PotTest.cc', ''],
         ['CacheTest', 'cache_test', 'CacheTest.cc', ''],
         ['InvarianceTest', 'invariance_test', 'InvarianceTest.cc', ''],
-        # ['CuH2 Utils Test', 'cuh2_util_test', 'cuh2UtilsTest.cc', ''],
+            # ['CuH2 Utils Test', 'cuh2_util_test', 'cuh2UtilsTest.cc', ''],
     ]
+    if get_option('with_rpc')
+        test_deps += dependency('capnp-rpc')
+        test_array += [['RPCTest', 'test_rpc', 'CapnpAdapterTest.cc', '']]
+    endif
     foreach test : test_array
         test(
             test.get(0),

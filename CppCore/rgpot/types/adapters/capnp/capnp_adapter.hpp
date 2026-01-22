@@ -6,7 +6,7 @@
 
 #include <capnp/list.h>
 #include <capnp/message.h>
-#include "rgpot/rpc/gen/Potentials.capnp.h"
+#include "rgpot/rpc/Potentials.capnp.h"
 #include "rgpot/types/AtomMatrix.hpp"
 
 namespace rgpot {
@@ -16,7 +16,6 @@ namespace capnp {
 
 // --- Functions to convert from Cap'n Proto Readers to Native Types ---
 
-// Converts a Cap'n Proto List<Float64> representing positions to an AtomMatrix.
 inline AtomMatrix
 convertPositionsFromCapnp(const ::capnp::List<double>::Reader &capnpPos,
                           size_t numAtoms) {
@@ -40,7 +39,6 @@ inline std::array<std::array<double, 3>, 3>
 convertBoxMatrixFromCapnp(const ::capnp::List<double>::Reader &capnpBox) {
   std::array<std::array<double, 3>, 3> nativeBoxMatrix;
   for (size_t i = 0; i < 3; ++i) {
-    // Correctly read the flattened 3x3 matrix row by row.
     nativeBoxMatrix[i] = {capnpBox[i * 3], capnpBox[i * 3 + 1],
                           capnpBox[i * 3 + 2]};
   }
@@ -49,24 +47,20 @@ convertBoxMatrixFromCapnp(const ::capnp::List<double>::Reader &capnpBox) {
 
 // --- Functions to convert from Native Types to Cap'n Proto Builders ---
 
-// Populates a Cap'n Proto List<Float64> builder with data from an AtomMatrix.
 inline void populatePositionsToCapnp(::capnp::List<double>::Builder &capnpPos,
                                      const AtomMatrix &positions) {
-  for (int i = 0; i < positions.rows() * positions.cols(); ++i) {
+  for (size_t i = 0; i < positions.rows() * positions.cols(); ++i) {
     capnpPos.set(i, positions.data()[i]);
   }
 }
 
-// Populates a Cap'n Proto List<Float64> builder with forces from an AtomMatrix.
 inline void populateForcesToCapnp(::capnp::List<double>::Builder &capnpForces,
                                   const AtomMatrix &forces) {
-  for (int i = 0; i < forces.rows() * forces.cols(); ++i) {
+  for (size_t i = 0; i < forces.rows() * forces.cols(); ++i) {
     capnpForces.set(i, forces.data()[i]);
   }
 }
 
-// Populates a Cap'n Proto List<Int32> builder with data from a
-// std::vector<int>.
 inline void populateAtomNumbersToCapnp(::capnp::List<int>::Builder &capnpAtmnrs,
                                        const std::vector<int> &atomNumbers) {
   for (size_t i = 0; i < atomNumbers.size(); ++i) {
@@ -74,7 +68,6 @@ inline void populateAtomNumbersToCapnp(::capnp::List<int>::Builder &capnpAtmnrs,
   }
 }
 
-// Populates a Cap'n Proto List<Float64> builder with data from a 3x3 matrix.
 inline void populateBoxMatrixToCapnp(
     ::capnp::List<double>::Builder &capnpBox,
     const std::array<std::array<double, 3>, 3> &boxMatrix) {
