@@ -11,7 +11,14 @@ Setting up and running tests:
 #+begin_src bash
 pixi shell
 meson setup bbdir -Dwith_tests=True --buildtype="debug"
-mseon test -C bbdir
+meson test -C bbdir
+#+end_src
+
+~cmake~ works as well.
+#+begin_src bash
+cmake -B build -DPOTLIB_BUILD_TESTS=ON -DPOTLIB_BUILD_EXAMPLES=ON
+cmake --build build
+ctest --test-dir build
 #+end_src
 
 *** Developing locally
