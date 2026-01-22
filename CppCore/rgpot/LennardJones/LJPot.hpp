@@ -10,14 +10,12 @@
 using rgpot::types::AtomMatrix;
 
 namespace rgpot {
-class LJPot : public Potential {
+class LJPot : public Potential<LJPot> {
 public:
   // Constructor initializes potential type and atom properties
   LJPot() : Potential(PotType::LJ), u0{1.0}, cuttOffR{15.0}, psi{1.0} {}
 
-  std::pair<double, AtomMatrix>
-  operator()(const AtomMatrix &positions, const std::vector<int> &atmtypes,
-             const std::array<std::array<double, 3>, 3> &box) const override;
+  void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
 private:
   // Variables
@@ -25,8 +23,5 @@ private:
   double cuttOffR;
   double psi;
   double cuttOffU;
-  // EON compatible function
-  void force(long N, const double *R, const int *atomicNrs, double *F,
-             double *U, const double *box) const;
 };
 } // namespace rgpot

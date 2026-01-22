@@ -1,4 +1,4 @@
-[project]
+[workspace]
 authors = ["Rohit Goswami <rog32@hi.is>"]
 channels = ["conda-forge"]
 description = "Cpp core for potential energy surface functionality."
@@ -24,3 +24,5 @@ cpplint = ">=1.6.0,<2"
 pipx = ">=1.7.1,<2"
 fortran-compiler = ">=1.8.0,<2"
 clang-format = ">=19.1.0,<20"
+rocksdb = ">=10.9.1,<11"
+xxhash = ">=0.8.3,<0.9"

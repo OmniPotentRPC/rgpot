@@ -1,3 +1,17 @@
+_deps += dependency('rocksdb')
+# Wrap installed
+_deps += subproject('xxhash', default_options: ['cli=false']).get_variable('xxhash_dep')
+
+pot_core = static_library(
+    'pot_core',
+    sources: [files('rgpot/PotHelpers.cc', 'rgpot/PotentialCache.cc')],
+    dependencies: _deps,
+    include_directories: _incdirs,
+    install: false,
+)
+
+_deps += declare_dependency(link_with: pot_core)
+
 # Implemented potentials
 subdir('rgpot/LennardJones')  # 'lennard_jones'
 subdir('rgpot/CuH2')  # 'cuh2'
@@ -54,6 +68,8 @@ if get_option('with_tests')
     test_args += ['-DPOTTEST']
     test_array = [  #
         ['CuH2test', 'cuh2_test', 'CuH2PotTest.cc', ''],
+        ['CacheTest', 'cache_test', 'CacheTest.cc', ''],
+        ['InvarianceTest', 'invariance_test', 'InvarianceTest.cc', ''],
         # ['CuH2 Utils Test', 'cuh2_util_test', 'cuh2UtilsTest.cc', ''],
     ]
     foreach test : test_array

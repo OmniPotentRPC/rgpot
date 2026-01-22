@@ -14,10 +14,11 @@ namespace rgpot {
 namespace types {
 using AtomVector = std::vector<double>;
 
-// TODO(rg): Perhaps merge this with SimpleMatrix from atomDists
 // A row major matrix class
 class AtomMatrix {
 public:
+  // Default constructor for type_caster in pybind11
+  AtomMatrix() : m_rows(0), m_cols(0) {}
   // Constructor to allow list initialization
   AtomMatrix(std::initializer_list<std::initializer_list<double>> list)
       : m_rows(list.size()), m_cols((list.begin())->size()),
@@ -49,6 +50,9 @@ public:
 
   size_t rows() const { return m_rows; }
   size_t cols() const { return m_cols; }
+
+  // ADDED: Needed for serialization in PotentialCache
+  size_t size() const { return m_rows * m_cols; }
 
   double *data() { return m_data.data(); }
   const double *data() const { return m_data.data(); }
