@@ -18,11 +18,23 @@ jobs:
       - name: Install environment
         uses: prefix-dev/setup-pixi@v0.8.1
         with:
-          pixi-version: 'v0.62.1'
+          pixi-version: "v0.62.1"
           cache: true
           cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
       - name: Build and Test
         shell: pixi run bash -e {0}
         run: |
-          meson setup bbdir -Dwith_tests=True
-          meson test -C bbdir
+          meson setup bbdir -Dwith_tests=True -Dwith_rpc=True
+          meson test -C bbdir --print-errorlogs
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          activate-environment: true
+      - name: RPC Integration
+        shell: pixi run bash -e {0}
+        run: |
+          meson setup bbdir -Dwith_tests=True -Dwith_rpc=True
+          meson test -C bbdir --print-errorlogs
+          uv pip install numpy pycapnp
+          uv run python tests/rpc_integ.py --server-bin bbdir/CppCore/rgpot/rpc/potserv
