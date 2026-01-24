@@ -184,17 +184,19 @@ if(POTLIB_BUILD_TESTS)
   if(POTLIB_WITH_RPC)
     add_pot_test(CapnpAdapterTest CppCore/tests/CapnpAdapterTest.cc)
   endif()
+
+  # Integration test
+  if(POTLIB_WITH_RPC)
+    add_executable(potserv CppCore/rgpot/rpc/server.cpp)
+    target_link_libraries(potserv PRIVATE pot::pot ptlrpc CapnProto::capnp-rpc)
+  endif()
+
 endif()
 
 # --- Examples ---
 if(POTLIB_BUILD_EXAMPLES)
   add_executable(call_cuh2 CppCore/examples/call_cuh2.cc)
   target_link_libraries(call_cuh2 PRIVATE pot::pot fmt)
-
-  if(POTLIB_WITH_RPC)
-    add_executable(potserv CppCore/rgpot/rpc/server.cpp)
-    target_link_libraries(potserv PRIVATE pot::pot ptlrpc CapnProto::capnp-rpc)
-  endif()
 
   if(POTLIB_WITH_EIGEN)
     add_executable(eigen_call_ljpot CppCore/examples/eigen_call_ljpot.cc)
