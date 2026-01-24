@@ -83,7 +83,7 @@ add_library(pot
 if(POTLIB_WITH_RPC)
     set(CAPNP_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/CppCore")
     file(MAKE_DIRECTORY "${CAPNP_OUTPUT_DIR}/rgpot/rpc")
-    
+
     capnp_generate_cpp(CAPNP_SOURCES CAPNP_HEADERS
       CppCore/rgpot/rpc/Potentials.capnp)
     add_library(ptlrpc SHARED ${CAPNP_SOURCES})

@@ -27,9 +27,9 @@ ptlrpc = library(
 )
 
 ptlrpc_dep = declare_dependency(
-  link_with: ptlrpc,
-  sources: gen_rpc,
-  include_directories: _incdirs,
+    link_with: ptlrpc,
+    sources: gen_rpc,
+    include_directories: _incdirs,
 )
 
 server = executable(
