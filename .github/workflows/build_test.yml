@@ -31,7 +31,7 @@ jobs:
         with:
           enable-cache: true
           activate-environment: true
-      - name: RPC Integration
+      - name: RPC integration
         shell: pixi run bash -e {0}
         run: |
           meson setup bbdir -Dwith_tests=True -Dwith_rpc=True
@@ -39,3 +39,15 @@ jobs:
           meson test -C bbdir --print-errorlogs
           uv pip install numpy pycapnp
           uv run python tests/rpc_integ.py --server-bin bbdir/CppCore/rgpot/rpc/potserv
+      - name: CMake integration
+        shell: pixi run bash -e {0}
+        run: |
+          cmake -S . -B build \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DPOTLIB_BUILD_TESTS=True \
+                -DPOTLIB_BUILD_EXAMPLES=True \
+                -DPOTLIB_WITH_RPC=True \ 
+          cmake --build build -j
+          ctest --test-dir build
+          uv pip install numpy pycapnp
+          uv run python tests/rpc_integ.py --server-bin build/potserv
