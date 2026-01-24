@@ -130,8 +130,13 @@ endif()
 # --- Installation & Export ---
 include(GNUInstallDirs)
 
+set(INSTALL_TARGETS pot)
+if(POTLIB_WITH_RPC)
+  list(APPEND INSTALL_TARGETS ptlrpc)
+endif()
+
 install(
-  TARGETS pot
+  TARGETS ${INSTALL_TARGETS}
   EXPORT potTargets
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
