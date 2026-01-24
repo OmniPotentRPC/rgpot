@@ -23,6 +23,7 @@ void rotate_z(rgpot::types::AtomMatrix &pos, double angle_rad) {
 }
 
 TEST_CASE("Invariance and Caching Behavior", "[Invariance]") {
+#ifdef POT_HAS_CACHE
   //  Setup Cache
   std::string db_path = "/tmp/rgpot_test_invariance";
   rocksdb::Options opts;
@@ -86,4 +87,7 @@ TEST_CASE("Invariance and Caching Behavior", "[Invariance]") {
     // Currently expects a miss (2 calls total)
     CHECK(calls_after_rot == 2);
   }
+#else
+  SKIP("Caching disabled; skipping invariance cache checks");
+#endif
 }

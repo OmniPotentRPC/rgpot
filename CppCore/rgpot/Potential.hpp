@@ -7,12 +7,14 @@
 #include<stdexcept>
 // clang-format on
 
+#ifdef POT_HAS_CACHE
 #define XXH_INLINE_ALL
+#include "rgpot/PotentialCache.hpp"
 #include <xxhash.h>
+#endif
 
 #include "rgpot/ForceStructs.hpp"
 #include "rgpot/PotHelpers.hpp"
-#include "rgpot/PotentialCache.hpp"
 #include "rgpot/pot_types.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
@@ -29,9 +31,11 @@ public:
   operator()(const AtomMatrix &positions, const std::vector<int> &atmtypes,
              const std::array<std::array<double, 3>, 3> &box) = 0;
 
+#ifdef POT_HAS_CACHE
   virtual void set_cache(rgpot::cache::PotentialCache * /*c*/) {
     throw std::runtime_error("PotentialBase::set_cache called directly");
   }
+#endif
   [[nodiscard]] PotType get_type() const { return m_type; }
 
 protected:
@@ -43,7 +47,9 @@ class Potential : public PotentialBase, public registry<Derived> {
 public:
   using PotentialBase::PotentialBase;
 
+#ifdef POT_HAS_CACHE
   void set_cache(rgpot::cache::PotentialCache *c) override { _cache = c; }
+#endif
 
   std::pair<double, AtomMatrix>
   operator()(const AtomMatrix &positions, const std::vector<int> &atmtypes,
@@ -66,6 +72,7 @@ public:
                   .box = flatBox};
     ForceOut fo{.F = forces.data(), .energy = energy, .variance = variance};
 
+#ifdef POT_HAS_CACHE
     // Hashing
     size_t hash_val = 0;
     hash_val ^= XXH3_64bits(fi.pos, fi.nAtoms * 3 * sizeof(double));
@@ -93,6 +100,11 @@ public:
     if (_cache) {
       _cache->add_serialized(key, fo.energy, forces);
     }
+#else
+    // Fallback when caching is disabled
+    static_cast<Derived *>(this)->forceImpl(fi, &fo);
+    registry<Derived>::incrementForceCalls();
+#endif
 
     return {fo.energy, forces};
   }
@@ -101,7 +113,9 @@ public:
   virtual void forceImpl(const ForceInput &in, ForceOut *out) const = 0;
 
 private:
+#ifdef POT_HAS_CACHE
   rgpot::cache::PotentialCache *_cache = nullptr;
+#endif
 };
 
 } // namespace rgpot

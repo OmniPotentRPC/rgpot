@@ -11,6 +11,7 @@ project(
 option(POTLIB_WITH_XTENSOR "Build with xtensor support" OFF)
 option(POTLIB_WITH_EIGEN "Build with Eigen3 support" OFF)
 option(POTLIB_PURE_LIB "Build as a pure library (no fmt dependency)" ON)
+option(POTLIB_WITH_CACHE "Build with RocksDB caching support" OFF)
 option(POTLIB_WITH_RPC "Build with Cap'n Proto RPC support" OFF)
 option(POTLIB_BUILD_TESTS "Build tests" OFF)
 option(POTLIB_BUILD_EXAMPLES "Build examples" OFF)
@@ -20,30 +21,31 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # --- Dependencies ---
 include(FetchContent)
-find_package(RocksDB REQUIRED)
 
-find_package(xxHash CONFIG QUIET)
-if(NOT xxHash_FOUND)
-  message(STATUS "xxHash not found via find_package, fetching from source...")
-  FetchContent_Declare(
-    xxHash
-    GIT_REPOSITORY https://github.com/Cyan4973/xxHash.git
-    GIT_TAG v0.8.3)
-  FetchContent_MakeAvailable(xxHash)
+if(POTLIB_WITH_CACHE)
+  find_package(RocksDB REQUIRED)
+  find_package(xxHash CONFIG QUIET)
 
-  # Ensure the namespaced target exists for consistency
-  if(TARGET xxhash AND NOT TARGET xxHash::xxhash)
-    add_library(xxHash::xxhash ALIAS xxhash)
-    message(STATUS "Created alias xxHash::xxhash -> xxhash")
+  if(NOT xxHash_FOUND)
+    message(STATUS "xxHash not found via find_package, fetching from source...")
+    FetchContent_Declare(
+      xxHash
+      GIT_REPOSITORY https://github.com/Cyan4973/xxHash.git
+      GIT_TAG v0.8.3)
+    FetchContent_MakeAvailable(xxHash)
+
+    # Ensure the namespaced target exists for consistency
+    if(TARGET xxhash AND NOT TARGET xxHash::xxhash)
+      add_library(xxHash::xxhash ALIAS xxhash)
+      message(STATUS "Created alias xxHash::xxhash -> xxhash")
+    endif()
   endif()
 endif()
 
-# 1. Fortcuh2 (Required - User defined) We assume this is available via
-#   find_package (if installed) or FetchContent (if subproject).
+# 1. Fortcuh2 (Required - User defined)
 find_package(fortcuh2 QUIET)
 if(NOT fortcuh2_FOUND)
   message(STATUS "fortcuh2 not found, attempting to fetch...")
-  # Update the GIT_REPOSITORY to the actual location of your fortran project
   FetchContent_Declare(
     fortcuh2
     GIT_REPOSITORY https://github.com/theochemui/fortran_cuh2_src.git
@@ -69,11 +71,15 @@ if(POTLIB_WITH_RPC)
 endif()
 
 # --- Library Definition ---
-add_library(
-  pot
-  CppCore/rgpot/PotHelpers.cc CppCore/rgpot/PotentialCache.cc
-  CppCore/rgpot/LennardJones/LJPot.cc CppCore/rgpot/CuH2/CuH2Pot.cc
-  CppCore/rgpot/CuH2/cuh2Utils.cc)
+add_library(pot CppCore/rgpot/PotHelpers.cc CppCore/rgpot/LennardJones/LJPot.cc
+                CppCore/rgpot/CuH2/CuH2Pot.cc CppCore/rgpot/CuH2/cuh2Utils.cc)
+
+# Handle Cache (Sources & Linking)
+if(POTLIB_WITH_CACHE)
+  target_sources(pot PRIVATE CppCore/rgpot/PotentialCache.cc)
+  target_link_libraries(pot PUBLIC RocksDB::rocksdb xxhash)
+  target_compile_definitions(pot PUBLIC POT_HAS_CACHE)
+endif()
 
 if(POTLIB_WITH_RPC)
   set(CAPNP_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/CppCore")
@@ -96,7 +102,7 @@ target_include_directories(
              $<INSTALL_INTERFACE:include>)
 
 # --- Linking ---
-target_link_libraries(pot PUBLIC RocksDB::rocksdb xxhash fortcuh2)
+target_link_libraries(pot PUBLIC fortcuh2)
 
 if(NOT POTLIB_PURE_LIB)
   target_link_libraries(pot PUBLIC fmt)
@@ -114,13 +120,12 @@ endif()
 
 if(APPLE)
   target_compile_definitions(pot PUBLIC OSX)
-  # Meson adds -faligned-allocation for clang on mac
   if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
     target_compile_options(pot PRIVATE -faligned-allocation)
   endif()
 endif()
 
-# --- Compiler Warnings (Matching Meson) ---
+# --- Compiler Warnings ---
 if(MSVC)
   target_compile_options(pot PRIVATE /W4)
 else()
@@ -168,8 +173,14 @@ if(POTLIB_BUILD_TESTS)
   endfunction()
 
   add_pot_test(CuH2Test CppCore/tests/CuH2PotTest.cc)
-  add_pot_test(CacheTest CppCore/tests/CacheTest.cc)
-  add_pot_test(InvarianceTest CppCore/tests/InvarianceTest.cc)
+
+  if(POTLIB_WITH_CACHE)
+    # These tests include headers that require RocksDB, so they must stay
+    # guarded
+    add_pot_test(InvarianceTest CppCore/tests/InvarianceTest.cc)
+    add_pot_test(CacheTest CppCore/tests/CacheTest.cc)
+  endif()
+
   if(POTLIB_WITH_RPC)
     add_pot_test(CapnpAdapterTest CppCore/tests/CapnpAdapterTest.cc)
   endif()
@@ -177,7 +188,6 @@ endif()
 
 # --- Examples ---
 if(POTLIB_BUILD_EXAMPLES)
-  # 1. Standard Call
   add_executable(call_cuh2 CppCore/examples/call_cuh2.cc)
   target_link_libraries(call_cuh2 PRIVATE pot::pot fmt)
 
@@ -186,7 +196,6 @@ if(POTLIB_BUILD_EXAMPLES)
     target_link_libraries(potserv PRIVATE pot::pot ptlrpc CapnProto::capnp-rpc)
   endif()
 
-  # 1. Eigen Examples
   if(POTLIB_WITH_EIGEN)
     add_executable(eigen_call_ljpot CppCore/examples/eigen_call_ljpot.cc)
     target_link_libraries(eigen_call_ljpot PRIVATE pot::pot fmt Eigen3::Eigen)
@@ -195,7 +204,6 @@ if(POTLIB_BUILD_EXAMPLES)
     target_link_libraries(eigen_call_cuh2 PRIVATE pot::pot fmt Eigen3::Eigen)
   endif()
 
-  # 1. Xtensor Examples
   if(POTLIB_WITH_XTENSOR)
     add_executable(xt_call_cuh2 CppCore/examples/xt_call_cuh2.cc)
     target_link_libraries(xt_call_cuh2 PRIVATE pot::pot fmt xtensor
