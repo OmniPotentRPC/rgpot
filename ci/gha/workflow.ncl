@@ -45,9 +45,9 @@ let build_steps = [
     %{meson_conf}
     meson compile -C bbdir
     meson test -C bbdir --print-errorlogs
-  "% & { 
+  "% & {
     name = "Build & Test (Meson)",
-    "if" = "${{ matrix.sys == 'meson' }}" 
+    "if" = "${{ matrix.sys == 'meson' }}"
   },
 
   # 2. CMake Build & Test
@@ -55,9 +55,9 @@ let build_steps = [
     %{cmake_conf}
     cmake --build build -j
     ctest --test-dir build --output-on-failure
-  "% & { 
+  "% & {
     name = "Build & Test (CMake)",
-    "if" = "${{ matrix.sys == 'cmake' }}" 
+    "if" = "${{ matrix.sys == 'cmake' }}"
   }
 ]
 in
@@ -67,7 +67,7 @@ let integration_step = [
   run_script m%"
     uv pip install numpy pycapnp
     uv run python tests/rpc_integ.py --server-bin %{get_server_bin}
-  "% & { 
+  "% & {
     name = "RPC Integration Test",
     "if" = "${{ matrix.rpc == 'true' }}"
   }
@@ -100,11 +100,11 @@ in
         }
       },
       steps = [
-        { 
-          uses = "actions/checkout@v4", 
-          with = { submodules = "recursive", fetch-depth = 0 } 
+        {
+          uses = "actions/checkout@v4",
+          with = { submodules = "recursive", fetch-depth = 0 }
         },
-        { 
+        {
           uses = "prefix-dev/setup-pixi@v0.8.1",
           with = { pixi-version = "v0.62.1", cache = true }
         },
@@ -112,9 +112,9 @@ in
           uses = "astral-sh/setup-uv@v7",
           with = { enable-cache = true, activate-environment = true }
         },
-        
+
         # Inject the Build Steps
-      ] @ build_steps 
+      ] @ build_steps
         # Inject the Integration Test (conditional on RPC)
         @ integration_step
     }
