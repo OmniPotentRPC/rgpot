@@ -1,0 +1,84 @@
+concurrency:
+  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
+jobs:
+  build_and_test:
+    name: ${{ matrix.sys }} [EIG:${{ matrix.eigen }} RPC:${{ matrix.rpc }} CACHE:${{ matrix.cache }} PURE:${{ matrix.pure }}]
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        submodules: recursive
+    - uses: prefix-dev/setup-pixi@v0.8.1
+      with:
+        cache: true
+        pixi-version: v0.62.1
+    - uses: astral-sh/setup-uv@v7
+      with:
+        activate-environment: true
+        enable-cache: true
+    - if: ${{ matrix.sys == 'meson' }}
+      name: Build & Test (Meson)
+      run: |-
+        meson setup bbdir \
+          -Dwith_tests=True \
+          -Dwith_examples=False \
+          -Dwith_xtensor=False \
+          -Dwith_eigen=${{ matrix.eigen }} \
+          -Dwith_rpc=${{ matrix.rpc }} \
+          -Dwith_cache=${{ matrix.cache }} \
+          -Dpure_lib=${{ matrix.pure }}
+        meson compile -C bbdir
+        meson test -C bbdir --print-errorlogs
+      shell: pixi run bash -e {0}
+    - if: ${{ matrix.sys == 'cmake' }}
+      name: Build & Test (CMake)
+      run: |-
+        cmake -S . -B build \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DPOTLIB_BUILD_TESTS=True \
+          -DPOTLIB_BUILD_EXAMPLES=False \
+          -DPOTLIB_WITH_XTENSOR=OFF \
+          -DPOTLIB_WITH_EIGEN=${{ matrix.eigen }} \
+          -DPOTLIB_WITH_RPC=${{ matrix.rpc }} \
+          -DPOTLIB_WITH_CACHE=${{ matrix.cache }} \
+          -DPOTLIB_PURE_LIB=${{ matrix.pure }}
+        cmake --build build -j
+        ctest --test-dir build --output-on-failure
+      shell: pixi run bash -e {0}
+    - if: ${{ matrix.rpc == 'true' }}
+      name: RPC Integration Test
+      run: |-
+        uv pip install numpy pycapnp
+        uv run python tests/rpc_integ.py --server-bin ${{ matrix.sys == 'meson' && 'bbdir/CppCore/rgpot/rpc/potserv' || 'build/potserv' }}
+      shell: pixi run bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        cache:
+        - 'true'
+        - 'false'
+        eigen:
+        - 'true'
+        - 'false'
+        os:
+        - ubuntu-latest
+        - macos-latest
+        pure:
+        - 'true'
+        - 'false'
+        rpc:
+        - 'true'
+        - 'false'
+        sys:
+        - meson
+        - cmake
+name: Build Matrix
+on:
+  pull_request:
+    branches:
+    - main
+  push:
+    branches:
+    - main

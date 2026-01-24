@@ -1,10 +1,18 @@
-_deps += dependency('rocksdb')
-# Wrap installed
-_deps += subproject('xxhash', default_options: ['cli=false']).get_variable('xxhash_dep')
+if get_option('with_cache')
+    _deps += dependency('rocksdb')
+    # Wrap installed
+    _deps += subproject('xxhash', default_options: ['cli=false']).get_variable(
+        'xxhash_dep',
+    )
+    _args += ['-DPOT_HAS_CACHE=TRUE']
+    _pot_srcs += files('rgpot/PotentialCache.cc')
+endif
+
+_pot_srcs += files('rgpot/PotHelpers.cc')
 
 pot_core = static_library(
     'pot_core',
-    sources: [files('rgpot/PotHelpers.cc', 'rgpot/PotentialCache.cc')],
+    sources: _pot_srcs,
     dependencies: _deps,
     include_directories: _incdirs,
     install: false,
@@ -29,6 +37,11 @@ potlib = library(
     link_with: _linkto,
     install: true,
 )
+
+# ------------------------ Server
+if get_option('with_rpc')
+    subdir('rgpot/rpc')
+endif
 
 # ------------------------ Examples
 
@@ -68,10 +81,19 @@ if get_option('with_tests')
     test_args += ['-DPOTTEST']
     test_array = [  #
         ['CuH2test', 'cuh2_test', 'CuH2PotTest.cc', ''],
-        ['CacheTest', 'cache_test', 'CacheTest.cc', ''],
-        ['InvarianceTest', 'invariance_test', 'InvarianceTest.cc', ''],
-        # ['CuH2 Utils Test', 'cuh2_util_test', 'cuh2UtilsTest.cc', ''],
+            # ['CuH2 Utils Test', 'cuh2_util_test', 'cuh2UtilsTest.cc', ''],
     ]
+    if get_option('with_cache')
+        test_array += [  #
+            ['CacheTest', 'cache_test', 'CacheTest.cc', ''],
+            ['InvarianceTest', 'invariance_test', 'InvarianceTest.cc', ''],
+        ]
+    endif
+    if get_option('with_rpc')
+        test_deps += dependency('capnp-rpc')
+        test_deps += ptlrpc_dep
+        test_array += [['RPCTest', 'test_rpc', 'CapnpAdapterTest.cc', '']]
+    endif
     foreach test : test_array
         test(
             test.get(0),

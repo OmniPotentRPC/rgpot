@@ -12,6 +12,10 @@ repos:
   hooks:
   - id: clang-format
     types_or: [c++, c]
+- repo: https://github.com/cheshirekow/cmake-format-precommit
+  rev: v0.6.13
+  hooks:
+  - id: cmake-format
 - repo: local
   hooks:
     - id: cppcheck
@@ -26,3 +30,10 @@ repos:
     #   language: system
     #   types_or: [c++, c]
     #   args: ["--filter=-whitespace/comments,-runtime/references,-whitespace/indent,-runtime/int,-build/c++11"]
+    - id: meson-format
+      name: meson format
+      entry: meson
+      language: system
+      types: [meson]
+      files: meson\.build$
+      args: ["format", "-i"]

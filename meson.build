@@ -15,6 +15,7 @@ _args = [cpp_args]  # Extra arguments
 _deps = []  # Dependencies
 _linkto = []  # All the sub-libraries (potentials)
 _incdirs = []  # All the includes
+_pot_srcs = []
 
 # Add conditionals
 if host_system == 'darwin'

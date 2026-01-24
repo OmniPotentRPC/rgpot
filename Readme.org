@@ -1,8 +1,8 @@
 * About
 This is a set of standard potentials in C++ or Fortran. The goal is to provide
 minimal, binding friendly interfaces for ease of usage from Python or even R.
-The core library is header-only, though adapt functions are provided for interfacing
-to ~Eigen~ and ~xtensor~.
+The core library is header-only, though adapter functions are provided for
+interfacing to ~Eigen~ and ~xtensor~.
 
 This was originally designed for interfacing easily to potentials implemented [[http://theory.cm.utexas.edu/eon/][in
 eOn]], but has grown to be more flexible.
@@ -27,9 +27,12 @@ set it up locally as well (using [[https://pypa.github.io/pipx][pipx]] for isola
 
 #+begin_src sh
 # Run before commiting
-pipx run pre-commit run --all-files
-# Or install the git hook to enforce this
-pipx run pre-commit install
+uvx pre-commit run --all-files
+#+end_src
+*** Handling actions
+To keep the build matrix setup manageable, we use Nickel.
+#+begin_src bash
+pixi r gen-gha
 #+end_src
 * License
 MIT, however note that some of the potentials are adapted from eOn which is
