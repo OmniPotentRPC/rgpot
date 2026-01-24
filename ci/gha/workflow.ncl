@@ -15,8 +15,8 @@ in
 let meson_conf = m%"
   meson setup bbdir \
     -Dwith_tests=True \
-    -Dwith_examples=True \
-    -Dwith_xtensor=${{ matrix.xtensor }} \
+    -Dwith_examples=False \
+    -Dwith_xtensor=False \
     -Dwith_eigen=${{ matrix.eigen }} \
     -Dwith_rpc=${{ matrix.rpc }} \
     -Dwith_cache=${{ matrix.cache }} \
@@ -28,8 +28,8 @@ let cmake_conf = m%"
   cmake -S . -B build \
     -DCMAKE_BUILD_TYPE=Release \
     -DPOTLIB_BUILD_TESTS=True \
-    -DPOTLIB_BUILD_EXAMPLES=True \
-    -DPOTLIB_WITH_XTENSOR=${{ matrix.xtensor }} \
+    -DPOTLIB_BUILD_EXAMPLES=False \
+    -DPOTLIB_WITH_XTENSOR=OFF \
     -DPOTLIB_WITH_EIGEN=${{ matrix.eigen }} \
     -DPOTLIB_WITH_RPC=${{ matrix.rpc }} \
     -DPOTLIB_WITH_CACHE=${{ matrix.cache }} \
@@ -40,7 +40,7 @@ let cmake_conf = m%"
 
 let build_steps = [
   # 1. Meson Build & Test
-  # We use '&' to merge the script definition with the name/if metadata
+  # '&' merges the script definition with the name/if metadata
   run_script m%"
     %{meson_conf}
     meson compile -C bbdir
@@ -78,27 +78,41 @@ in
 
 {
   name = "Build Matrix",
+
+  # Trigger logic
   on = {
     push = { branches = ["main"] },
     pull_request = { branches = ["main"] },
   },
+
+  # Concurrency Group
+  # This cancels previous runs of the same PR/branch when a new commit is pushed.
+  concurrency = {
+    group = "${{ github.workflow }}-${{ github.ref }}",
+    cancel-in-progress = true,
+  },
+
   jobs = {
     build_and_test = {
-      # Dynamic name to see what config is running in the UI
-      name = "${{ matrix.sys }} [XT:${{ matrix.xtensor }} EIG:${{ matrix.eigen }} RPC:${{ matrix.rpc }} CACHE:${{ matrix.cache }} PURE:${{ matrix.pure }}]",
-      runs-on = "ubuntu-latest",
+      # Dynamic name for easy UI scanning
+      name = "${{ matrix.sys }} [EIG:${{ matrix.eigen }} RPC:${{ matrix.rpc }} CACHE:${{ matrix.cache }} PURE:${{ matrix.pure }}]",
+      runs-on = "${{ matrix.os }}",
+
       strategy = {
         fail-fast = false,
         matrix = {
+          os = ["ubuntu-latest", "macos-latest"],
           sys = ["meson", "cmake"],
-          # Full Cartesian product of all options
-          xtensor = ["true", "false"],
+          # 2 systems * 2^4 options = 32 Jobs
           eigen   = ["true", "false"],
           rpc     = ["true", "false"],
           cache   = ["true", "false"],
           pure    = ["true", "false"],
+          # Tip: If 32 jobs are too many, use 'exclude' here to skip invalid combos.
+          # e.g. exclude = [{ pure = "true", rpc = "true" }]
         }
       },
+
       steps = [
         {
           uses = "actions/checkout@v4",

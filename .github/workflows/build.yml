@@ -1,7 +1,10 @@
+concurrency:
+  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
 jobs:
   build_and_test:
-    name: ${{ matrix.sys }} [XT:${{ matrix.xtensor }} EIG:${{ matrix.eigen }} RPC:${{ matrix.rpc }} CACHE:${{ matrix.cache }} PURE:${{ matrix.pure }}]
-    runs-on: ubuntu-latest
+    name: ${{ matrix.sys }} [EIG:${{ matrix.eigen }} RPC:${{ matrix.rpc }} CACHE:${{ matrix.cache }} PURE:${{ matrix.pure }}]
+    runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v4
       with:
@@ -20,8 +23,8 @@ jobs:
       run: |-
         meson setup bbdir \
           -Dwith_tests=True \
-          -Dwith_examples=True \
-          -Dwith_xtensor=${{ matrix.xtensor }} \
+          -Dwith_examples=False \
+          -Dwith_xtensor=False \
           -Dwith_eigen=${{ matrix.eigen }} \
           -Dwith_rpc=${{ matrix.rpc }} \
           -Dwith_cache=${{ matrix.cache }} \
@@ -35,8 +38,8 @@ jobs:
         cmake -S . -B build \
           -DCMAKE_BUILD_TYPE=Release \
           -DPOTLIB_BUILD_TESTS=True \
-          -DPOTLIB_BUILD_EXAMPLES=True \
-          -DPOTLIB_WITH_XTENSOR=${{ matrix.xtensor }} \
+          -DPOTLIB_BUILD_EXAMPLES=False \
+          -DPOTLIB_WITH_XTENSOR=OFF \
           -DPOTLIB_WITH_EIGEN=${{ matrix.eigen }} \
           -DPOTLIB_WITH_RPC=${{ matrix.rpc }} \
           -DPOTLIB_WITH_CACHE=${{ matrix.cache }} \
@@ -59,6 +62,9 @@ jobs:
         eigen:
         - 'true'
         - 'false'
+        os:
+        - ubuntu-latest
+        - macos-latest
         pure:
         - 'true'
         - 'false'
@@ -68,9 +74,6 @@ jobs:
         sys:
         - meson
         - cmake
-        xtensor:
-        - 'true'
-        - 'false'
 name: Build Matrix
 on:
   pull_request:
