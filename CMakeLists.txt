@@ -11,6 +11,7 @@ project(potlib
 option(POTLIB_WITH_XTENSOR "Build with xtensor support" OFF)
 option(POTLIB_WITH_EIGEN "Build with Eigen3 support" OFF)
 option(POTLIB_PURE_LIB "Build as a pure library (no fmt dependency)" ON)
+option(POTLIB_WITH_RPC "Build with Cap'n Proto RPC support" OFF)
 option(POTLIB_BUILD_TESTS "Build tests" OFF)
 option(POTLIB_BUILD_EXAMPLES "Build examples" OFF)
 
@@ -66,6 +67,10 @@ if(POTLIB_WITH_EIGEN)
     find_package(Eigen3 3.4.0 REQUIRED)
 endif()
 
+if(POTLIB_WITH_RPC)
+    find_package(CapnProto REQUIRED)
+endif()
+
 # --- Library Definition ---
 add_library(pot
     CppCore/rgpot/PotHelpers.cc
@@ -74,6 +79,18 @@ add_library(pot
     CppCore/rgpot/CuH2/CuH2Pot.cc
     CppCore/rgpot/CuH2/cuh2Utils.cc
 )
+
+if(POTLIB_WITH_RPC)
+    set(CAPNP_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/CppCore")
+    file(MAKE_DIRECTORY "${CAPNP_OUTPUT_DIR}/rgpot/rpc")
+    
+    capnp_generate_cpp(CAPNP_SOURCES CAPNP_HEADERS
+      CppCore/rgpot/rpc/Potentials.capnp)
+    add_library(ptlrpc SHARED ${CAPNP_SOURCES})
+    target_link_libraries(ptlrpc PUBLIC CapnProto::capnp-rpc)
+    target_include_directories(ptlrpc PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/CppCore>)
+    target_link_libraries(pot PUBLIC ptlrpc)
+endif()
 
 add_library(pot::pot ALIAS pot)
 
@@ -153,6 +170,9 @@ if(POTLIB_BUILD_TESTS)
     add_pot_test(CuH2Test CppCore/tests/CuH2PotTest.cc)
     add_pot_test(CacheTest CppCore/tests/CacheTest.cc)
     add_pot_test(InvarianceTest CppCore/tests/InvarianceTest.cc)
+    if(POTLIB_WITH_RPC)
+        add_pot_test(CapnpAdapterTest CppCore/tests/CapnpAdapterTest.cc)
+    endif()
 endif()
 
 # --- Examples ---
@@ -160,6 +180,11 @@ if(POTLIB_BUILD_EXAMPLES)
     # 1. Standard Call
     add_executable(call_cuh2 CppCore/examples/call_cuh2.cc)
     target_link_libraries(call_cuh2 PRIVATE pot::pot fmt)
+
+    if(POTLIB_WITH_RPC)
+        add_executable(potserv CppCore/rgpot/rpc/server.cpp)
+        target_link_libraries(potserv PRIVATE pot::pot ptlrpc CapnProto::capnp-rpc)
+    endif()
 
     # 2. Eigen Examples
     if(POTLIB_WITH_EIGEN)
