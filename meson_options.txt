@@ -1,7 +1,5 @@
 # Booleans
 option('with_tests', type : 'boolean', value : false)
-option('with_pybindings', type : 'boolean', value : false)
-option('with_bench', type : 'boolean', value : false)
 option('with_examples', type : 'boolean', value : false)
 option('with_xtensor', type : 'boolean', value : false)
 option('with_eigen', type : 'boolean', value : false)

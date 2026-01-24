@@ -7,6 +7,7 @@ platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
 version = "0.1.0"
 
 [tasks]
+gen-gha = { cmd = "nickel export --format yaml ci/gha/workflow.ncl -o .github/workflows/build.yml" }
 
 [dependencies]
 compilers = ">=1.8.0,<2"

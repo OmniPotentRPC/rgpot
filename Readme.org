@@ -29,6 +29,11 @@ set it up locally as well (using [[https://pypa.github.io/pipx][pipx]] for isola
 # Run before commiting
 uvx pre-commit run --all-files
 #+end_src
+*** Handling actions
+To keep the build matrix setup manageable, we use Nickel.
+#+begin_src bash
+pixi r gen-gha
+#+end_src
 * License
 MIT, however note that some of the potentials are adapted from eOn which is
 under a BSD 3-Clause License.
