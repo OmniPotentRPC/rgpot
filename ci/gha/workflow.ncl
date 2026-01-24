@@ -86,7 +86,7 @@ in
     build_and_test = {
       # Dynamic name to see what config is running in the UI
       name = "${{ matrix.sys }} [XT:${{ matrix.xtensor }} EIG:${{ matrix.eigen }} RPC:${{ matrix.rpc }} CACHE:${{ matrix.cache }} PURE:${{ matrix.pure }}]",
-      runs_on = "ubuntu-latest",
+      runs-on = "ubuntu-latest",
       strategy = {
         fail-fast = false,
         matrix = {
