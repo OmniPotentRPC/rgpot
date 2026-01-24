@@ -27,9 +27,7 @@ set it up locally as well (using [[https://pypa.github.io/pipx][pipx]] for isola
 
 #+begin_src sh
 # Run before commiting
-pipx run pre-commit run --all-files
-# Or install the git hook to enforce this
-pipx run pre-commit install
+uvx pre-commit run --all-files
 #+end_src
 * License
 MIT, however note that some of the potentials are adapted from eOn which is
