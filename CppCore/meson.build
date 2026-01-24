@@ -81,6 +81,7 @@ if get_option('with_tests')
     ]
     if get_option('with_rpc')
         test_deps += dependency('capnp-rpc')
+        test_deps += ptlrpc_dep
         test_array += [['RPCTest', 'test_rpc', 'CapnpAdapterTest.cc', '']]
     endif
     foreach test : test_array

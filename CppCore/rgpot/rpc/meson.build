@@ -25,6 +25,13 @@ ptlrpc = library(
     include_directories: _incdirs,
     install: true,
 )
+
+ptlrpc_dep = declare_dependency(
+  link_with: ptlrpc,
+  sources: gen_rpc,
+  include_directories: _incdirs,
+)
+
 server = executable(
     'potserv',
     ['server.cpp', gen_rpc],

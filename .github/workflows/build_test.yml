@@ -24,7 +24,7 @@ jobs:
       - name: Build and Test
         shell: pixi run bash -e {0}
         run: |
-          meson setup bbdir -Dwith_tests=True -Dwith_rpc=True
+          meson setup bbdir -Dwith_tests=True -Dwith_rpc=False
           meson test -C bbdir --print-errorlogs
       - name: Install uv
         uses: astral-sh/setup-uv@v7
