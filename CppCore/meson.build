@@ -1,4 +1,4 @@
-if get_option('with_cache')
+if get_option('with_cache') and not get_option('with_rpc_client_only')
     _deps += dependency('rocksdb')
     # Wrap installed
     _deps += subproject('xxhash', default_options: ['cli=false']).get_variable(
@@ -10,42 +10,48 @@ endif
 
 _pot_srcs += files('rgpot/PotHelpers.cc')
 
-pot_core = static_library(
-    'pot_core',
-    sources: _pot_srcs,
-    dependencies: _deps,
-    include_directories: _incdirs,
-    install: false,
-)
+# ------------------------ Main library
+if not get_option('with_rpc_client_only')
+    pot_core = static_library(
+        'pot_core',
+        sources: _pot_srcs,
+        dependencies: _deps,
+        include_directories: _incdirs,
+        install: false,
+    )
 
-_deps += declare_dependency(link_with: pot_core)
+    _deps += declare_dependency(link_with: pot_core)
 
-# Implemented potentials
-subdir('rgpot/LennardJones')  # 'lennard_jones'
-subdir('rgpot/CuH2')  # 'cuh2'
+    # Implemented potentials
+    subdir('rgpot/LennardJones')  # 'lennard_jones'
+    potentials = [lennard_jones]
 
-potentials = [lennard_jones, cuh2]
+    if has_fortran
+        subdir('rgpot/CuH2')  # 'cuh2'
+        potentials += [cuh2]
+    endif
 
-_linkto += potentials
+    _linkto += potentials
 
-# Create library
-potlib = library(
-    'pot',
-    dependencies: _deps,
-    cpp_args: _args,
-    include_directories: _incdirs,
-    link_with: _linkto,
-    install: true,
-)
+    # Create library
+    potlib = library(
+        'pot',
+        dependencies: _deps,
+        cpp_args: _args,
+        include_directories: _incdirs,
+        link_with: _linkto,
+        install: true,
+    )
+endif
 
 # ------------------------ Server
-if get_option('with_rpc')
+if rpc_enabled
     subdir('rgpot/rpc')
 endif
 
 # ------------------------ Examples
 
-if get_option('with_examples')
+if get_option('with_examples') and not get_option('with_rpc_client_only')
     example_array = [  #
         ['EigenCallLJPot', 'ljpot_call_eig', 'eigen_call_ljpot.cc', ''],
         ['EigenCallCuH2Pot', 'cuh2_call_eig', 'eigen_call_cuh2.cc', ''],
@@ -80,19 +86,29 @@ if get_option('with_tests')
     test_args = _args
     test_args += ['-DPOTTEST']
     test_array = [  #
-        ['CuH2test', 'cuh2_test', 'CuH2PotTest.cc', ''],
-            # ['CuH2 Utils Test', 'cuh2_util_test', 'cuh2UtilsTest.cc', ''],
-    ]
+        # ['CuH2 Utils Test', 'cuh2_util_test', 'cuh2UtilsTest.cc', ''],
+]
+    if has_fortran
+        test_array += [  #
+            ['CuH2test', 'cuh2_test', 'CuH2PotTest.cc', ''],
+        ]
+    endif
     if get_option('with_cache')
         test_array += [  #
             ['CacheTest', 'cache_test', 'CacheTest.cc', ''],
             ['InvarianceTest', 'invariance_test', 'InvarianceTest.cc', ''],
         ]
     endif
-    if get_option('with_rpc')
+    if rpc_enabled
         test_deps += dependency('capnp-rpc')
         test_deps += ptlrpc_dep
         test_array += [['RPCTest', 'test_rpc', 'CapnpAdapterTest.cc', '']]
+        if get_option('with_rpc_client_only')
+            test_deps += pot_bridge_dep
+            test_array += [
+                ['RPCClientTest', 'test_rpc_client', 'BridgeStressTest.cc', ''],
+            ]
+        endif
     endif
     foreach test : test_array
         test(

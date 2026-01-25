@@ -25,7 +25,19 @@ endif
 
 # Languages
 add_languages('c', required: true)
-add_languages('fortran', required: true)
+if not get_option('with_rpc_client_only')
+    # Check for Fortran compiler instead of requiring it globally
+    has_fortran = add_languages('fortran', required: false)
+else
+    has_fortran = false
+endif
+
+rpc_enabled = get_option('with_rpc') or get_option('with_rpc_client_only')
+
+if get_option('with_rpc_client_only')
+    _args += ['-DPOTLIB_RPC_CLIENT_ONLY=TRUE']
+endif
+
 cc = meson.get_compiler('c')
 cppc = meson.get_compiler('cpp')
 
@@ -36,7 +48,7 @@ _deps += m_dep
 # For clang
 _deps += [declare_dependency(link_args: '-lstdc++')]
 
-if get_option('with_examples')
+if get_option('with_examples') and not get_option('with_rpc_client_only')
     # Eigen
     if not get_option('with_eigen')
         eigen_dep = dependency('eigen3')
@@ -83,9 +95,12 @@ if not get_option('pure_lib')
 endif
 
 # --------------------- Subprojects
-fortcuh2_proj = subproject('fortcuh2')
-fortcuh2_dep = fortcuh2_proj.get_variable('fortcuh2_dep')
-_deps += [fortcuh2_dep]
+if has_fortran
+    fortcuh2_proj = subproject('fortcuh2')
+    fortcuh2_dep = fortcuh2_proj.get_variable('fortcuh2_dep')
+    _deps += [fortcuh2_dep]
+    _args += ['-DPOT_HAS_FORTRAN=TRUE']
+endif
 
 # --------------------- Projects
 _incdirs += [include_directories('CppCore')]

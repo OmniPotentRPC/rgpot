@@ -21,6 +21,19 @@ cmake --build build
 ctest --test-dir build
 #+end_src
 
+For building only the client, with CXX17 and CapnProto only:
+#+begin_src bash
+cmake -B build_client\
+    -DPOTLIB_RPC_CLIENT_ONLY=ON\
+    -DPOTLIB_BUILD_TESTS=ON
+cmake --build build_client
+# needs a server instance, so in another terminal
+# say from the meson.build
+./bbdir/CppCore/rgpot/rpc/potserv 12345 LJ
+# now test
+ctest --test-dir build_client/ --output-on-failure
+#+end_src
+
 *** Developing locally
 A ~pre-commit~ job is setup on CI to enforce consistent styles, so it is best to
 set it up locally as well (using [[https://pypa.github.io/pipx][pipx]] for isolation):

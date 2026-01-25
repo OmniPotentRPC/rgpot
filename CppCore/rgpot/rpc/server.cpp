@@ -2,8 +2,12 @@
 // Copyright 2023--present Rohit Goswami <HaoZeke>
 #include <capnp/ez-rpc.h>
 #include <capnp/message.h>
+#include <kj/debug.h>
 
+#ifdef POT_HAS_FORTRAN
 #include "rgpot/CuH2/CuH2Pot.hpp"
+#endif // POT_HAS_FORTRAN
+
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Potential.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
@@ -19,7 +23,9 @@ public:
 
   kj::Promise<void> calculate(CalculateContext context) override {
     auto fip = context.getParams().getFip();
-    const auto numAtoms = fip.getNatm();
+    const size_t numAtoms = fip.getPos().size() / 3;
+
+    KJ_REQUIRE(fip.getAtmnrs().size() == numAtoms, "AtomNumbers size mismatch");
 
     rgpot::types::AtomMatrix nativePositions =
         rgpot::types::adapt::capnp::convertPositionsFromCapnp(fip.getPos(),
