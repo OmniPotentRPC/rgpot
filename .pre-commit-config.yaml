@@ -37,3 +37,9 @@ repos:
       types: [meson]
       files: meson\.build$
       args: ["format", "-i"]
+    - id: nickel-format
+      name: nickel format
+      entry: pixi r -e cigen nickel
+      language: system
+      files: \.ncl$
+      args: ["format"]
