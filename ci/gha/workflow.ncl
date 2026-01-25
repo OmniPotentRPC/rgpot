@@ -15,7 +15,8 @@ let ccache_step = {
     # Restore keys allow falling back to the most recent cache on this branch
     "restore-keys" = "ccache-${{ runner.os }}-${{ matrix.sys }}-",
   }
-} in
+}
+in
 
 let get_server_bin = "${{ matrix.sys == 'meson' && 'bbdir/CppCore/rgpot/rpc/potserv' || 'build/potserv' }}"
 in
@@ -32,7 +33,8 @@ let meson_conf = m%"
     -Dwith_rpc=${{ matrix.rpc }} \
     -Dwith_cache=${{ matrix.cache }} \
     -Dpure_lib=False
-"% in
+"%
+in
 
 let cmake_conf = m%"
   cmake -S . -B build \
@@ -46,10 +48,10 @@ let cmake_conf = m%"
     -DPOTLIB_WITH_RPC=${{ matrix.rpc }} \
     -DPOTLIB_WITH_CACHE=${{ matrix.cache }} \
     -DPOTLIB_PURE_LIB=OFF
-"% in
+"%
+in
 
 # --- Steps Definitions ---
-
 let build_steps = [
   # Meson Build & Test
   # '&' merges the script definition with the name/if metadata
@@ -58,7 +60,8 @@ let build_steps = [
     meson compile -C bbdir
     meson test -C bbdir --print-errorlogs
     ccache -s
-  "% & {
+  "%
+  & {
     name = "Build & Test (Meson)",
     "if" = "${{ matrix.sys == 'meson' }}"
   },
@@ -69,7 +72,8 @@ let build_steps = [
     cmake --build build -j
     ctest --test-dir build --output-on-failure
     ccache -s
-  "% & {
+  "%
+  & {
     name = "Build & Test (CMake)",
     "if" = "${{ matrix.sys == 'cmake' }}"
   }
@@ -78,9 +82,10 @@ in
 
 let integration_step = [
   run_script m%"
-    uv pip install numpy pycapnp
-    uv run python tests/rpc_integ.py --server-bin %{get_server_bin}
-  "% & {
+    pixi s -e rpctest
+    python tests/rpc_integ.py --server-bin %{get_server_bin}
+  "%
+  & {
     name = "RPC Integration Test",
     "if" = "${{ matrix.rpc == 'true' }}"
   }
@@ -88,7 +93,6 @@ let integration_step = [
 in
 
 # --- Main Workflow ---
-
 {
   name = "Build Matrix",
 
@@ -115,7 +119,7 @@ in
       env = {
         CCACHE_DIR = "${{ github.workspace }}/.ccache",
         CCACHE_COMPILERCHECK = "content", # Hash content, not mtime
-        CCACHE_MAXSIZE = "500M",          # Prevent cache from growing too large
+        CCACHE_MAXSIZE = "500M", # Prevent cache from growing too large
       },
 
       strategy = {
@@ -124,31 +128,33 @@ in
           os = ["ubuntu-latest", "macos-latest"],
           sys = ["meson", "cmake"],
           # 2 systems * 2^2 options = 4 Jobs
-          rpc     = ["true", "false"],
-          cache   = ["true", "false"],
+          rpc = ["true", "false"],
+          cache = ["true", "false"],
           # Tip: If the jobs are too many, use 'exclude' here to skip invalid combos.
           # e.g. exclude = [{ pure = "true", rpc = "true" }]
         }
       },
 
-      steps = [
-        {
-          uses = "actions/checkout@v4",
-          with = { submodules = "recursive", fetch-depth = 0 }
-        },
-        {
-          uses = "prefix-dev/setup-pixi@v0.8.1",
-          with = { pixi-version = "v0.62.1", cache = true }
-        },
-        {
-          uses = "astral-sh/setup-uv@v7",
-          with = { enable-cache = true, activate-environment = true }
-        },
+      steps =
+        [
+          {
+            uses = "actions/checkout@v4",
+            with = { submodules = "recursive", fetch-depth = 0 }
+          },
+          {
+            uses = "prefix-dev/setup-pixi@v0.8.1",
+            with = {
+              pixi-version = "v0.62.1",
+              cache = true,
+              environments = "devbld",
+              activate-environment = "devbld"
+            }
+          },
 
-        # Restore Ccache before building
-        ccache_step,
-
-      ] @ build_steps
+          # Restore Ccache before building
+          ccache_step,
+        ]
+        @ build_steps
         @ integration_step
     },
 
@@ -170,12 +176,16 @@ in
         },
         {
           uses = "prefix-dev/setup-pixi@v0.8.1",
-          with = { pixi-version = "v0.62.1", cache = true }
+          with = {
+            pixi-version = "v0.62.1",
+            cache = true,
+            environments = "devbld",
+            activate-environment = "devbld"
+          }
         },
 
         # Restore cache here as well
         ccache_step,
-
         run_script m%"
           echo "--- Building Server (Heavy) ---"
           meson setup bbdir_server \
@@ -184,7 +194,6 @@ in
                 -Dwith_examples=false
           meson compile -C bbdir_server
         "%,
-
         run_script m%"
           echo "--- Building Client Bridge (Light) ---"
           cmake -S . -B build_client \
@@ -195,7 +204,6 @@ in
                 -DPOTLIB_BUILD_TESTS=ON
           cmake --build build_client -j
         "%,
-
         run_script m%"
           echo "--- Starting Server ---"
           # Start server in background on port 12345 using LJ potential
