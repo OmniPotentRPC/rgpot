@@ -3,6 +3,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
 jobs:
   build_and_test:
+    env:
+      CCACHE_COMPILERCHECK: content
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
     name: ${{ matrix.sys }} [RPC:${{ matrix.rpc }} CACHE:${{ matrix.cache }}]
     runs-on: ${{ matrix.os }}
     steps:
@@ -18,6 +22,12 @@ jobs:
       with:
         activate-environment: true
         enable-cache: true
+    - name: Restore Compiler Cache
+      uses: actions/cache@v4
+      with:
+        key: ccache-${{ runner.os }}-${{ matrix.sys }}-${{ github.sha }}
+        path: .ccache
+        restore-keys: ccache-${{ runner.os }}-${{ matrix.sys }}-
     - if: ${{ matrix.sys == 'meson' }}
       name: Build & Test (Meson)
       run: |-
@@ -31,11 +41,14 @@ jobs:
           -Dpure_lib=False
         meson compile -C bbdir
         meson test -C bbdir --print-errorlogs
+        ccache -s
       shell: pixi run bash -e {0}
     - if: ${{ matrix.sys == 'cmake' }}
       name: Build & Test (CMake)
       run: |-
         cmake -S . -B build \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
           -DCMAKE_BUILD_TYPE=Release \
           -DPOTLIB_BUILD_TESTS=True \
           -DPOTLIB_BUILD_EXAMPLES=False \
@@ -46,6 +59,7 @@ jobs:
           -DPOTLIB_PURE_LIB=OFF
         cmake --build build -j
         ctest --test-dir build --output-on-failure
+        ccache -s
       shell: pixi run bash -e {0}
     - if: ${{ matrix.rpc == 'true' }}
       name: RPC Integration Test
@@ -69,6 +83,9 @@ jobs:
         - meson
         - cmake
   client_bridge_stress:
+    env:
+      CCACHE_COMPILERCHECK: content
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
     name: Client Bridge Stress Test (Linux)
     runs-on: ubuntu-latest
     steps:
@@ -80,6 +97,12 @@ jobs:
       with:
         cache: true
         pixi-version: v0.62.1
+    - name: Restore Compiler Cache
+      uses: actions/cache@v4
+      with:
+        key: ccache-${{ runner.os }}-${{ matrix.sys }}-${{ github.sha }}
+        path: .ccache
+        restore-keys: ccache-${{ runner.os }}-${{ matrix.sys }}-
     - run: |-
         echo "--- Building Server (Heavy) ---"
         meson setup bbdir_server \
@@ -91,6 +114,8 @@ jobs:
     - run: |-
         echo "--- Building Client Bridge (Light) ---"
         cmake -S . -B build_client \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_C_COMPILER_LAUNCHER=ccache \
               -DCMAKE_BUILD_TYPE=Release \
               -DPOTLIB_RPC_CLIENT_ONLY=ON \
               -DPOTLIB_BUILD_TESTS=ON

@@ -5,13 +5,24 @@ let run_script = fun script =>
   }
 in
 
-# Generate dynamic server path for integration tests
+let ccache_step = {
+  name = "Restore Compiler Cache",
+  uses = "actions/cache@v4",
+  with = {
+    path = ".ccache",
+    # Key includes OS, System (Meson/CMake), and a hash of build files
+    key = "ccache-${{ runner.os }}-${{ matrix.sys }}-${{ github.sha }}",
+    # Restore keys allow falling back to the most recent cache on this branch
+    "restore-keys" = "ccache-${{ runner.os }}-${{ matrix.sys }}-",
+  }
+} in
+
 let get_server_bin = "${{ matrix.sys == 'meson' && 'bbdir/CppCore/rgpot/rpc/potserv' || 'build/potserv' }}"
 in
 
 # --- Flag Generation Logic ---
 
-# Generate the Meson configuration command
+# Meson usually auto-detects ccache if it's in the PATH.
 let meson_conf = m%"
   meson setup bbdir \
     -Dwith_tests=True \
@@ -23,9 +34,10 @@ let meson_conf = m%"
     -Dpure_lib=False
 "% in
 
-# Generate the CMake configuration command
 let cmake_conf = m%"
   cmake -S . -B build \
+    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    -DCMAKE_C_COMPILER_LAUNCHER=ccache \
     -DCMAKE_BUILD_TYPE=Release \
     -DPOTLIB_BUILD_TESTS=True \
     -DPOTLIB_BUILD_EXAMPLES=False \
@@ -39,22 +51,24 @@ let cmake_conf = m%"
 # --- Steps Definitions ---
 
 let build_steps = [
-  # 1. Meson Build & Test
+  # Meson Build & Test
   # '&' merges the script definition with the name/if metadata
   run_script m%"
     %{meson_conf}
     meson compile -C bbdir
     meson test -C bbdir --print-errorlogs
+    ccache -s
   "% & {
     name = "Build & Test (Meson)",
     "if" = "${{ matrix.sys == 'meson' }}"
   },
 
-  # 2. CMake Build & Test
+  # CMake Build & Test
   run_script m%"
     %{cmake_conf}
     cmake --build build -j
     ctest --test-dir build --output-on-failure
+    ccache -s
   "% & {
     name = "Build & Test (CMake)",
     "if" = "${{ matrix.sys == 'cmake' }}"
@@ -62,7 +76,6 @@ let build_steps = [
 ]
 in
 
-# Integration test only runs if RPC was enabled
 let integration_step = [
   run_script m%"
     uv pip install numpy pycapnp
@@ -99,6 +112,12 @@ in
       name = "${{ matrix.sys }} [RPC:${{ matrix.rpc }} CACHE:${{ matrix.cache }}]",
       runs-on = "${{ matrix.os }}",
 
+      env = {
+        CCACHE_DIR = "${{ github.workspace }}/.ccache",
+        CCACHE_COMPILERCHECK = "content", # Hash content, not mtime
+        CCACHE_MAXSIZE = "500M",          # Prevent cache from growing too large
+      },
+
       strategy = {
         fail-fast = false,
         matrix = {
@@ -126,9 +145,10 @@ in
           with = { enable-cache = true, activate-environment = true }
         },
 
-        # Inject the Build Steps
+        # Restore Ccache before building
+        ccache_step,
+
       ] @ build_steps
-        # Inject the Integration Test (conditional on RPC)
         @ integration_step
     },
 
@@ -137,6 +157,12 @@ in
     client_bridge_stress = {
       name = "Client Bridge Stress Test (Linux)",
       runs-on = "ubuntu-latest",
+
+      env = {
+        CCACHE_DIR = "${{ github.workspace }}/.ccache",
+        CCACHE_COMPILERCHECK = "content",
+      },
+
       steps = [
         {
           uses = "actions/checkout@v4",
@@ -146,6 +172,9 @@ in
           uses = "prefix-dev/setup-pixi@v0.8.1",
           with = { pixi-version = "v0.62.1", cache = true }
         },
+
+        # Restore cache here as well
+        ccache_step,
 
         run_script m%"
           echo "--- Building Server (Heavy) ---"
@@ -159,6 +188,8 @@ in
         run_script m%"
           echo "--- Building Client Bridge (Light) ---"
           cmake -S . -B build_client \
+                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+                -DCMAKE_C_COMPILER_LAUNCHER=ccache \
                 -DCMAKE_BUILD_TYPE=Release \
                 -DPOTLIB_RPC_CLIENT_ONLY=ON \
                 -DPOTLIB_BUILD_TESTS=ON
