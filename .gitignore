@@ -1,5 +1,6 @@
 # Added
 build
+build_client
 /compile_commands.json
 *.tmp
 subprojects/*
