@@ -1,8 +1,8 @@
 // MIT License
 // Copyright 2023--present Rohit Goswami <HaoZeke>
-#include <kj/debug.h>
 #include <capnp/ez-rpc.h>
 #include <capnp/message.h>
+#include <kj/debug.h>
 
 #include "rgpot/CuH2/CuH2Pot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
