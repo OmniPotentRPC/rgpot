@@ -224,7 +224,7 @@ if(POTLIB_BUILD_TESTS)
   enable_testing()
   find_package(Catch2 3 REQUIRED)
 
-  if(POTLIB_WITH_RPC)
+  if(POTLIB_RPC_CLIENT_ONLY)
     add_executable(BridgeStressTest CppCore/tests/BridgeStressTest.cc)
     target_link_libraries(BridgeStressTest PRIVATE pot_client_bridge
                                                    Catch2::Catch2WithMain)
