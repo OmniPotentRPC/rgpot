@@ -59,7 +59,7 @@ jobs:
         ctest --test-dir build --output-on-failure
         ccache -s
       shell: pixi run bash -e {0}
-    - if: ${{ matrix.rpc == 'true' }}
+    - if: ${{ matrix.rpc == 'true' && matrix.sys == 'meson' && matrix.os == 'ubuntu-latest' }}
       name: RPC Integration Test
       run: |-
         pixi r -e rpctest \

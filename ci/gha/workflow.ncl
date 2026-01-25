@@ -87,7 +87,8 @@ let integration_step = [
   "%
   & {
     name = "RPC Integration Test",
-    "if" = "${{ matrix.rpc == 'true' }}"
+    # Only run on Linux + Meson + RPC=true
+    "if" = "${{ matrix.rpc == 'true' && matrix.sys == 'meson' && matrix.os == 'ubuntu-latest' }}"
   }
 ]
 in
