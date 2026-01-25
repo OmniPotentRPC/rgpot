@@ -7,7 +7,7 @@ jobs:
       CCACHE_COMPILERCHECK: content
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 500M
-    name: ${{ matrix.sys }} [RPC:${{ matrix.rpc }} CACHE:${{ matrix.cache }}]
+    name: ${{ matrix.sys }} / ${{ matrix.os }} [RPC:${{ matrix.rpc }} CACHE:${{ matrix.cache }}]
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v4
@@ -18,7 +18,7 @@ jobs:
       with:
         activate-environment: devbld
         cache: true
-        environments: devbld
+        environments: devbld rpctest
         pixi-version: v0.62.1
     - name: Restore Compiler Cache
       uses: actions/cache@v4
@@ -62,7 +62,7 @@ jobs:
     - if: ${{ matrix.rpc == 'true' }}
       name: RPC Integration Test
       run: |-
-        pixi s -e rpctest
+        pixi r -e rpctest \
         python tests/rpc_integ.py --server-bin ${{ matrix.sys == 'meson' && 'bbdir/CppCore/rgpot/rpc/potserv' || 'build/potserv' }}
       shell: pixi run bash -e {0}
     strategy:
@@ -95,7 +95,7 @@ jobs:
       with:
         activate-environment: devbld
         cache: true
-        environments: devbld
+        environments: devbld rpctest
         pixi-version: v0.62.1
     - name: Restore Compiler Cache
       uses: actions/cache@v4

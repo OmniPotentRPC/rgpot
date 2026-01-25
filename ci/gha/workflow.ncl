@@ -82,7 +82,7 @@ in
 
 let integration_step = [
   run_script m%"
-    pixi s -e rpctest
+    pixi r -e rpctest \
     python tests/rpc_integ.py --server-bin %{get_server_bin}
   "%
   & {
@@ -113,7 +113,7 @@ in
     # Main Matrix Build
     build_and_test = {
       # Dynamic name for easy UI scanning
-      name = "${{ matrix.sys }} [RPC:${{ matrix.rpc }} CACHE:${{ matrix.cache }}]",
+      name = "${{ matrix.sys }} / ${{ matrix.os }} [RPC:${{ matrix.rpc }} CACHE:${{ matrix.cache }}]",
       runs-on = "${{ matrix.os }}",
 
       env = {
@@ -146,7 +146,7 @@ in
             with = {
               pixi-version = "v0.62.1",
               cache = true,
-              environments = "devbld",
+              environments = "devbld rpctest",
               activate-environment = "devbld"
             }
           },
@@ -179,7 +179,7 @@ in
           with = {
             pixi-version = "v0.62.1",
             cache = true,
-            environments = "devbld",
+            environments = "devbld rpctest",
             activate-environment = "devbld"
           }
         },
