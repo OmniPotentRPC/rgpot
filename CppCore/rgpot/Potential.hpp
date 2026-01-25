@@ -16,7 +16,7 @@
 #include <stdexcept>
 // clang-format on
 
-#ifdef POT_HAS_CACHE
+#ifdef RGPOT_HAS_CACHE
 #define XXH_INLINE_ALL
 #include "rgpot/PotentialCache.hpp"
 #include <xxhash.h>
@@ -59,7 +59,7 @@ public:
   operator()(const AtomMatrix &positions, const std::vector<int> &atmtypes,
              const std::array<std::array<double, 3>, 3> &box) = 0;
 
-#ifdef POT_HAS_CACHE
+#ifdef RGPOT_HAS_CACHE
   /**
    * @brief Sets the computation cache.
    * @param c Pointer to a PotentialCache instance.
@@ -92,7 +92,7 @@ class Potential : public PotentialBase, public registry<Derived> {
 public:
   using PotentialBase::PotentialBase;
 
-#ifdef POT_HAS_CACHE
+#ifdef RGPOT_HAS_CACHE
   /**
    * @brief Sets the computation cache for the specific implementation.
    * @param c Pointer to a PotentialCache instance.
@@ -108,7 +108,7 @@ public:
    * flat @c double arrays.
    *
    * # Caching Logic
-   * If @c POT_HAS_CACHE is defined, the method:
+   * If @c RGPOT_HAS_CACHE is defined, the method:
    * 1. Generates a @c XXH3_64bits hash of positions, types, and box.
    * 2. Checks the @c rocksdb backend for a hit.
    * 3. Returns cached values if present, otherwise computes and stores results.
@@ -139,7 +139,7 @@ public:
                   .box = flatBox};
     ForceOut fo{.F = forces.data(), .energy = energy, .variance = variance};
 
-#ifdef POT_HAS_CACHE
+#ifdef RGPOT_HAS_CACHE
     // Hashing
     size_t hash_val = 0;
     hash_val ^= XXH3_64bits(fi.pos, fi.nAtoms * 3 * sizeof(double));
@@ -185,7 +185,7 @@ public:
   virtual void forceImpl(const ForceInput &in, ForceOut *out) const = 0;
 
 private:
-#ifdef POT_HAS_CACHE
+#ifdef RGPOT_HAS_CACHE
   rgpot::cache::PotentialCache *_cache =
       nullptr; //!< Pointer to the optional calculation cache.
 #endif

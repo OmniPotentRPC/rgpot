@@ -4,38 +4,38 @@ if get_option('with_cache') and not get_option('with_rpc_client_only')
     _deps += subproject('xxhash', default_options: ['cli=false']).get_variable(
         'xxhash_dep',
     )
-    _args += ['-DPOT_HAS_CACHE=TRUE']
-    _pot_srcs += files('rgpot/PotentialCache.cc')
+    _args += ['-DRGPOT_HAS_CACHE=TRUE']
+    _rgpot_srcs += files('rgpot/PotentialCache.cc')
 endif
 
-_pot_srcs += files('rgpot/PotHelpers.cc')
+_rgpot_srcs += files('rgpot/PotHelpers.cc')
 
 # ------------------------ Main library
 if not get_option('with_rpc_client_only')
-    pot_core = static_library(
-        'pot_core',
-        sources: _pot_srcs,
+    rgpot_core = static_library(
+        'rgpot_core',
+        sources: _rgpot_srcs,
         dependencies: _deps,
         include_directories: _incdirs,
         install: false,
     )
 
-    _deps += declare_dependency(link_with: pot_core)
+    _deps += declare_dependency(link_with: rgpot_core)
 
-    # Implemented potentials
+    # Implemented rgpotentials
     subdir('rgpot/LennardJones')  # 'lennard_jones'
-    potentials = [lennard_jones]
+    rgpotentials = [lennard_jones]
 
     if has_fortran
         subdir('rgpot/CuH2')  # 'cuh2'
-        potentials += [cuh2]
+        rgpotentials += [cuh2]
     endif
 
-    _linkto += potentials
+    _linkto += rgpotentials
 
     # Create library
-    potlib = library(
-        'pot',
+    rgpot = library(
+        'rgpot',
         dependencies: _deps,
         cpp_args: _args,
         include_directories: _incdirs,
@@ -84,7 +84,7 @@ if get_option('with_tests')
         modules: ['Catch2::Catch2WithMain'],
     )
     test_args = _args
-    test_args += ['-DPOTTEST']
+    test_args += ['-DRGPOTTEST']
     test_array = [  #
         # ['CuH2 Utils Test', 'cuh2_util_test', 'cuh2UtilsTest.cc', ''],
 ]
@@ -104,7 +104,7 @@ if get_option('with_tests')
         test_deps += ptlrpc_dep
         test_array += [['RPCTest', 'test_rpc', 'CapnpAdapterTest.cc', '']]
         if get_option('with_rpc_client_only')
-            test_deps += pot_bridge_dep
+            test_deps += rgpot_bridge_dep
             test_array += [
                 ['RPCClientTest', 'test_rpc_client', 'BridgeStressTest.cc', ''],
             ]

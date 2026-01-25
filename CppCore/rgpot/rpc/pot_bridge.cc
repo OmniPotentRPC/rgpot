@@ -21,10 +21,9 @@
 /**
  * @class PotClient
  * @details
- * This structure acts as a container for the C++ objects required
- * to manage an RPC session. It is exposed to C as an opaque pointer.
- * The use of @c std::unique_ptr ensures that the RPC client is
- * cleaned up correctly upon destruction.
+ * Container for the C++ objects required to manage an RPC session. It is
+ * exposed to C as an opaque pointer.  The use of @c std::unique_ptr ensures
+ * that the RPC client is cleaned up correctly upon destruction.
  */
 struct PotClient {
   std::unique_ptr<capnp::EzRpcClient>

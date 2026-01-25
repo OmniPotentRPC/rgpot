@@ -1,8 +1,8 @@
 [workspace]
-authors = ["Rohit Goswami <rog32@hi.is>"]
+authors = ["Rohit Goswami <rgoswami@ieee.org>"]
 channels = ["conda-forge"]
-description = "Cpp core for potential energy surface functionality."
-name = "potlib"
+description = "RPC based core for potential energy surface functionality."
+name = "rgpot"
 platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
 version = "0.1.0"
 

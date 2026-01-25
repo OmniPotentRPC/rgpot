@@ -16,7 +16,7 @@ meson test -C bbdir
 
 ~cmake~ works as well.
 #+begin_src bash
-cmake -B build -DPOTLIB_BUILD_TESTS=ON -DPOTLIB_BUILD_EXAMPLES=ON
+cmake -B build -DRGPOT_BUILD_TESTS=ON -DRGPOT_BUILD_EXAMPLES=ON
 cmake --build build
 ctest --test-dir build
 #+end_src
@@ -24,8 +24,8 @@ ctest --test-dir build
 For building only the client, with CXX17 and CapnProto only:
 #+begin_src bash
 cmake -B build_client\
-    -DPOTLIB_RPC_CLIENT_ONLY=ON\
-    -DPOTLIB_BUILD_TESTS=ON
+    -DRGPOT_RPC_CLIENT_ONLY=ON\
+    -DRGPOT_BUILD_TESTS=ON
 cmake --build build_client
 # needs a server instance, so in another terminal
 # say from the meson.build

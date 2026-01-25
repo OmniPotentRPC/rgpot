@@ -1,5 +1,5 @@
 project(
-    'pot',
+    'rgpot',
     'cpp',
     version: '0.1.0',
     default_options: ['warning_level=2', 'cpp_std=c++20'],
@@ -15,7 +15,7 @@ _args = [cpp_args]  # Extra arguments
 _deps = []  # Dependencies
 _linkto = []  # All the sub-libraries (potentials)
 _incdirs = []  # All the includes
-_pot_srcs = []
+_rgpot_srcs = []
 
 # Add conditionals
 if host_system == 'darwin'
@@ -35,7 +35,7 @@ endif
 rpc_enabled = get_option('with_rpc') or get_option('with_rpc_client_only')
 
 if get_option('with_rpc_client_only')
-    _args += ['-DPOTLIB_RPC_CLIENT_ONLY=TRUE']
+    _args += ['-DRGPOT_RPC_CLIENT_ONLY=TRUE']
 endif
 
 cc = meson.get_compiler('c')
@@ -99,13 +99,13 @@ if has_fortran
     fortcuh2_proj = subproject('fortcuh2')
     fortcuh2_dep = fortcuh2_proj.get_variable('fortcuh2_dep')
     _deps += [fortcuh2_dep]
-    _args += ['-DPOT_HAS_FORTRAN=TRUE']
+    _args += ['-DRGPOT_HAS_FORTRAN=TRUE']
 endif
 
 # --------------------- Projects
 _incdirs += [include_directories('CppCore')]
 subdir('CppCore')
-potlib_dep = declare_dependency(
+rgpot_dep = declare_dependency(
     include_directories: _incdirs,
     link_with: _linkto,
     compile_args: _args,
