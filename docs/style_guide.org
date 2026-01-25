@@ -1,0 +1,122 @@
+* ~rgpot~ Documentation Style Guide
+
+API documentation uses Doxygen. As first demonstrated in [[https://docs.dseams.org][d-SEAMS]] and then for
+the [[https://symengine.org/symengine/md_md_doc_guide.html][Symengine C++ bindings]].
+
+** General Conventions
+
+- Language :: English.
+- Dates :: All dates must be formatted as =YYYY-MM-DD=.
+- Symbols :: Avoid Unicode symbols. TeX math mode is permitted for equations.
+- Naming :: Use =snake_case= for variables and functions.
+- Lists :: Use =.= at the end of each list item.
+
+** Doxygen Markup
+
+We use the =@= character for all Doxygen commands.
+
+*** Inline Formatting
+- =@a= : Italics (used for parameters).
+- =@b= : Bold (used for single word emphasis).
+- =@c= : Monospace (used for file names, code symbols, or literals).
+- Multiple words :: Use standard Markdown syntax.
+
+*** Structure
+- Headings :: Use Markdown style (=#=, =##=).
+- HTML :: Strict prohibition on HTML tags.
+
+** License and Copyright
+
+Every source file must begin with the specific license header before any
+includes, guards, or documentation blocks.
+
+#+BEGIN_SRC cpp
+// MIT License
+// Copyright 2023--present potlib developers
+#+END_SRC
+
+** File Documentation Blocks
+
+Every file may contain a =@file= block immediately following the license header.
+
+- =@file= : Must match the filename.
+- =@author= : Always =rgpot Developers=.
+- =@date= : The date the file was last modified (=YYYY-MM-DD=).
+- =@brief= : A single-line summary.
+- =Created on:= : (Non-Doxygen field) The original creation date.
+
+#+BEGIN_SRC cpp
+/**
+ * @file MyFile.hpp
+ * @author rgpot Developers
+ * @date 2026-01-25
+ * @brief Brief description of the file.
+ *
+ * Detailed description of the file layout and purpose.
+ */
+#+END_SRC
+
+** C++ Guidelines
+
+*** Documentation Style
+- Blocks :: Use the =/ ... */= style.
+- Indentation :: One space before the asterisk, two spaces after.
+  #+BEGIN_SRC cpp
+  /**
+   * @brief ...
+   */
+  #+END_SRC
+- Inline :: Use =//!<= for members.
+- Grouping :: Use =@ingroup= in headers (e.g., =rgpot_potentials=, =rgpot_cache=).
+
+*** Header Files (.hpp / .h)
+Keep comments concise. Expand details in the implementation file.
+
+Required directives order:
+1. =@brief=
+2. =@pre= (Optional)
+3. =@see= (Optional)
+4. =@param= (One for each input)
+5. =@return= (Mandatory)
+   - =void= functions must specify: =@return Void.=
+
+*** Source Files (.cc / .cpp)
+- Use =@details= for algorithm descriptions.
+- Use =@note= for important usage information.
+- Use =@warning= for pitfalls.
+- All documentation must precede the function definition.
+
+** Cap'n Proto Guidelines
+
+Since Doxygen is configured to map =.capnp= files to C++, use standard Doxygen commands prefixed by the Cap'n Proto comment character =#=.
+
+#+BEGIN_SRC capnp
+# @struct ForceInput
+# @brief Input configuration for a potential energy evaluation.
+struct ForceInput {
+  pos @0 :List(Float64); # @brief Flat array of atomic coordinates.
+}
+#+END_SRC
+
+** Example: C++ Class
+
+#+BEGIN_SRC cpp
+namespace rgpot {
+
+/**
+ * @class PotentialCache
+ * @brief Caches potential energy and force calculations using RocksDB.
+ * @ingroup rgpot_cache
+ */
+class PotentialCache {
+public:
+  /**
+   * @brief Helper for manual pointer setting.
+   * @param db Pointer to an existing RocksDB instance.
+   * @return Void.
+   */
+  void set_db(rocksdb::DB *db);
+};
+
+} // namespace rgpot
+#+END_SRC
