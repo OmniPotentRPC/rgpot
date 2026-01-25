@@ -32,12 +32,28 @@ ptlrpc_dep = declare_dependency(
     include_directories: _incdirs,
 )
 
-server = executable(
-    'potserv',
-    ['server.cpp', gen_rpc],
-    link_with: [ptlrpc, _linkto],
-    dependencies: _deps + capnp_rpc_dep,
+pot_bridge = library(
+    'pot_client_bridge',
+    'pot_bridge.cc',
+    link_with: ptlrpc,
+    dependencies: [capnp_rpc_dep],
     cpp_args: _args,
     include_directories: _incdirs,
     install: true,
 )
+
+pot_bridge_dep = declare_dependency(
+    link_with: pot_bridge,
+)
+
+if not get_option('with_rpc_client_only')
+    server = executable(
+        'potserv',
+        ['server.cpp', gen_rpc],
+        link_with: [ptlrpc, _linkto],
+        dependencies: _deps + capnp_rpc_dep,
+        cpp_args: _args,
+        include_directories: _incdirs,
+        install: true,
+    )
+endif
