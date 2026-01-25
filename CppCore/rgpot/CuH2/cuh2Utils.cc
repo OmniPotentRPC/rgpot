@@ -1,5 +1,5 @@
 // MIT License
-// Copyright 2023--present Rohit Goswami <HaoZeke>
+// Copyright 2023--present rgpot developers
 
 /**
  * @brief Implementation of coordinate transformation utilities for CuH2.

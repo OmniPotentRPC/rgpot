@@ -1,6 +1,6 @@
 #pragma once
 // MIT License
-// Copyright 2024--present Rohit Goswami <HaoZeke>
+// Copyright 2024--present rgpot developers
 
 /**
  * @file cuh2Utils.hpp

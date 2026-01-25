@@ -1,6 +1,6 @@
 #pragma once
 // MIT License
-// Copyright 2023--present Rohit Goswami <HaoZeke>
+// Copyright 2023--present rgpot developers
 
 /**
  * @brief Definition of the native AtomMatrix class.

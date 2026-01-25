@@ -1,6 +1,6 @@
 #pragma once
 // MIT License
-// Copyright 2023--present Rohit Goswami <HaoZeke>
+// Copyright 2023--present rgpot developers
 
 /**
  * @brief Header for the Copper-Hydrogen (CuH2) EAM potential.

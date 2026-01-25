@@ -1,5 +1,5 @@
 // MIT License
-// Copyright 2023--present Rohit Goswami <HaoZeke>
+// Copyright 2023--present rgpot developers
 // clang-format off
 #include <fmt/ostream.h>
 #include <cstdlib>
