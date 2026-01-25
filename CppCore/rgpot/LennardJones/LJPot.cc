@@ -1,5 +1,14 @@
 // MIT License
 // Copyright 2023--present Rohit Goswami <HaoZeke>
+
+/**
+ * @brief Implementation of the Lennard-Jones potential methods.
+ *
+ * This file contains the implementation of the force and energy
+ * calculation for the Lennard-Jones potential, including periodic
+ * boundary condition handling.
+ */
+
 // clang-format off
 #include <cmath>
 #include <limits>
@@ -11,6 +20,21 @@ using rgpot::types::AtomMatrix;
 
 namespace rgpot {
 
+/**
+ * @class LJPot
+ * @details Implementation of a shifted 12-6 Lennard-Jones potential.
+ *
+ * This method calculates pairwise interactions between all atoms
+ * within the cutoff radius. It applies the minimum image convention
+ * using the provided box dimensions to handle periodic boundaries.
+ *
+ * @note This implementation is adapted, untouched from the eOn project [1].
+ * @warning The box is assumed to be orthogonal.
+ *
+ * # References
+ * [1] EON Development Team. LJ.cpp.
+ * https://github.com/TheochemUI/EONgit/blob/stable/client/potentials/LJ/LJ.cpp
+ */
 void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   long N = in.nAtoms;
   const double *R = in.pos;
@@ -29,7 +53,6 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     F[3 * i + 1] = 0;
     F[3 * i + 2] = 0;
   }
-  // Initializing end
 
   for (int i = 0; i < N - 1; i++) {
     for (int j = i + 1; j < N; j++) {
@@ -37,24 +60,23 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       diffRY = R[3 * i + 1] - R[3 * j + 1];
       diffRZ = R[3 * i + 2] - R[3 * j + 2];
 
-      diffRX =
-          diffRX -
-          box[0] *
-              floor(diffRX / box[0] +
-                    0.5); // floor = largest integer value less than argument
+      // Minimum image convention
+      diffRX = diffRX - box[0] * floor(diffRX / box[0] + 0.5);
       diffRY = diffRY - box[4] * floor(diffRY / box[4] + 0.5);
       diffRZ = diffRZ - box[8] * floor(diffRZ / box[8] + 0.5);
 
       diffR = sqrt(diffRX * diffRX + diffRY * diffRY + diffRZ * diffRZ);
 
       if (diffR < cuttOffR) {
-        // 4u0((psi/r0)^12-(psi/r0)^6)
+        // Standard 12-6 form: 4u0((psi/r)^12 - (psi/r)^6)
         a = pow(psi / diffR, 6);
         b = 4 * u0 * a;
 
         *U = *U + b * (a - 1) - cuttOffU;
 
         dU = -6 * b / diffR * (2 * a - 1);
+
+        // Update forces for both atoms
         // F is the negative derivative
         F[3 * i] = F[3 * i] - dU * diffRX / diffR;
         F[3 * i + 1] = F[3 * i + 1] - dU * diffRY / diffR;
@@ -68,4 +90,5 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   }
   return;
 }
+
 } // namespace rgpot

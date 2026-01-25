@@ -2,6 +2,14 @@
 // MIT License
 // Copyright 2023--present Rohit Goswami <HaoZeke>
 
+/**
+ * @brief Conversion utilities between Cap'n Proto and native types.
+ *
+ * This file contains inline adapter functions designed to facilitate the
+ * seamless transfer of data between the Cap'n Proto RPC layer and the internal
+ * @c Eigen based @c AtomMatrix and other STL types.
+ */
+
 #include <vector>
 
 #include "rgpot/rpc/Potentials.capnp.h"
@@ -16,6 +24,12 @@ namespace capnp {
 
 // --- Functions to convert from Cap'n Proto Readers to Native Types ---
 
+/**
+ * @brief Converts Cap'n Proto position list to an AtomMatrix.
+ * @param capnpPos  The reader for the position list.
+ * @param numAtoms  The number of atoms in the system.
+ * @return An @c AtomMatrix containing the positions.
+ */
 inline AtomMatrix
 convertPositionsFromCapnp(const ::capnp::List<double>::Reader &capnpPos,
                           size_t numAtoms) {
@@ -26,6 +40,11 @@ convertPositionsFromCapnp(const ::capnp::List<double>::Reader &capnpPos,
   return nativePositions;
 }
 
+/**
+ * @brief Converts Cap'n Proto atomic number list to an STL vector.
+ * @param capnpAtmnrs  The reader for the atomic numbers list.
+ * @return A @c std::vector<int> containing the atomic numbers.
+ */
 inline std::vector<int>
 convertAtomNumbersFromCapnp(const ::capnp::List<int>::Reader &capnpAtmnrs) {
   std::vector<int> nativeAtomTypes(capnpAtmnrs.size());
@@ -35,6 +54,11 @@ convertAtomNumbersFromCapnp(const ::capnp::List<int>::Reader &capnpAtmnrs) {
   return nativeAtomTypes;
 }
 
+/**
+ * @brief Converts Cap'n Proto box list to a native 3x3 array.
+ * @param capnpBox  The reader for the box matrix list.
+ * @return A nested @c std::array of doubles representing the cell.
+ */
 inline std::array<std::array<double, 3>, 3>
 convertBoxMatrixFromCapnp(const ::capnp::List<double>::Reader &capnpBox) {
   std::array<std::array<double, 3>, 3> nativeBoxMatrix;
@@ -47,6 +71,12 @@ convertBoxMatrixFromCapnp(const ::capnp::List<double>::Reader &capnpBox) {
 
 // --- Functions to convert from Native Types to Cap'n Proto Builders ---
 
+/**
+ * @brief Serializes an AtomMatrix of positions to a Cap'n Proto builder.
+ * @param capnpPos   The builder for the position list.
+ * @param positions  The source @c AtomMatrix.
+ * @return Void.
+ */
 inline void populatePositionsToCapnp(::capnp::List<double>::Builder &capnpPos,
                                      const AtomMatrix &positions) {
   for (size_t i = 0; i < positions.rows() * positions.cols(); ++i) {
@@ -54,6 +84,12 @@ inline void populatePositionsToCapnp(::capnp::List<double>::Builder &capnpPos,
   }
 }
 
+/**
+ * @brief Serializes an AtomMatrix of forces to a Cap'n Proto builder.
+ * @param capnpForces  The builder for the force list.
+ * @param forces       The source @c AtomMatrix.
+ * @return Void.
+ */
 inline void populateForcesToCapnp(::capnp::List<double>::Builder &capnpForces,
                                   const AtomMatrix &forces) {
   for (size_t i = 0; i < forces.rows() * forces.cols(); ++i) {
@@ -61,6 +97,12 @@ inline void populateForcesToCapnp(::capnp::List<double>::Builder &capnpForces,
   }
 }
 
+/**
+ * @brief Serializes an STL vector of atomic numbers to a Cap'n Proto builder.
+ * @param capnpAtmnrs   The builder for the atomic numbers list.
+ * @param atomNumbers  The source @c std::vector.
+ * @return Void.
+ */
 inline void populateAtomNumbersToCapnp(::capnp::List<int>::Builder &capnpAtmnrs,
                                        const std::vector<int> &atomNumbers) {
   for (size_t i = 0; i < atomNumbers.size(); ++i) {
@@ -68,6 +110,12 @@ inline void populateAtomNumbersToCapnp(::capnp::List<int>::Builder &capnpAtmnrs,
   }
 }
 
+/**
+ * @brief Serializes a native 3x3 box matrix to a Cap'n Proto builder.
+ * @param capnpBox    The builder for the box matrix list.
+ * @param boxMatrix  The source nested @c std::array.
+ * @return Void.
+ */
 inline void populateBoxMatrixToCapnp(
     ::capnp::List<double>::Builder &capnpBox,
     const std::array<std::array<double, 3>, 3> &boxMatrix) {

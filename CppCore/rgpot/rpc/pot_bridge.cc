@@ -1,3 +1,14 @@
+// MIT License
+// Copyright 2023--present Rohit Goswami <HaoZeke>
+
+/**
+ * @brief Implementation of the C API bridge for the RPC client.
+ *
+ * This file implements the C-compatible wrapper for the Cap'n Proto RPC client.
+ * It manages the lifecycle of the EzRpcClient and handles error reporting
+ * through a simple string-based interface.
+ */
+
 #include "pot_bridge.h"
 #include "Potentials.capnp.h"
 #include <algorithm>
@@ -7,12 +18,26 @@
 #include <memory>
 #include <string>
 
+/**
+ * @class PotClient
+ * @details
+ * This structure acts as a container for the C++ objects required
+ * to manage an RPC session. It is exposed to C as an opaque pointer.
+ * The use of @c std::unique_ptr ensures that the RPC client is
+ * cleaned up correctly upon destruction.
+ */
 struct PotClient {
-  std::unique_ptr<capnp::EzRpcClient> rpc_client;
-  Potential::Client capability;
-  kj::WaitScope *wait_scope;
-  std::string last_error;
+  std::unique_ptr<capnp::EzRpcClient>
+      rpc_client;               //!< The Cap'n Proto RPC client.
+  Potential::Client capability; //!< The RPC capability for potential calls.
+  kj::WaitScope *wait_scope;    //!< Reference to the client wait scope.
+  std::string last_error;       //!< Buffer for the most recent error message.
 
+  /**
+   * @brief Constructor for PotClient.
+   * @param client Ownership of the initialized EzRpcClient.
+   * @param cap The capability client for the Potential interface.
+   */
   PotClient(std::unique_ptr<capnp::EzRpcClient> client, Potential::Client cap)
       : rpc_client(std::move(client)), capability(std::move(cap)),
         wait_scope(&rpc_client->getWaitScope()) {}
@@ -33,6 +58,15 @@ struct PotClient {
 
 extern "C" {
 
+/**
+ * @details
+ * Constructs a string-based address from the @a host and @a port,
+ * then initializes a new @c capnp::EzRpcClient. The main capability
+ * is cast to the @c Potential interface defined in the schema.
+ *
+ * @note Returns @c nullptr if the connection cannot be established
+ * or if the address is malformed.
+ */
 PotClient *pot_client_init(const char *host, int32_t port) {
   // We cannot use the client struct for storage yet, so we use a temporary
   if (!host)
@@ -50,12 +84,32 @@ PotClient *pot_client_init(const char *host, int32_t port) {
   }
 }
 
+/**
+ * @details
+ * Performs a standard @c delete on the client pointer. This triggers
+ * the @c PotClient destructor, which cleans up the @c unique_ptr
+ * and associated RPC state.
+ */
 void pot_client_free(PotClient *client) {
   if (client) {
     delete client;
   }
 }
 
+/**
+ * @details
+ * This function performs the following steps:
+ * 1. Resets the @c last_error buffer.
+ * 2. Initializes a calculation request.
+ * 3. Maps the input pointers to @c kj::arrayPtr views to avoid
+ * unnecessary copying before serialization.
+ * 4. Waits for the RPC promise to resolve.
+ * 5. Validates the size of the returned force array.
+ * 6. Copies the results into the provided output buffers.
+ *
+ * @warning The server must return a force array matching @a natoms * 3.
+ * If the sizes do not match, a non-zero error code is returned.
+ */
 int32_t pot_calculate(PotClient *client, int32_t natoms, const double *pos,
                       const int32_t *atmnrs, const double *box,
                       double *out_energy, double *out_forces) {
@@ -112,6 +166,11 @@ int32_t pot_calculate(PotClient *client, int32_t natoms, const double *pos,
   CATCH_AND_REPORT(client, -1)
 }
 
+/**
+ * @details
+ * Checks if a valid client handle is provided and if the @c last_error
+ * buffer contains data. If no error is recorded, an empty string is returned.
+ */
 const char *pot_get_last_error(PotClient *client) {
   if (!client || client->last_error.empty()) {
     return "";
