@@ -96,7 +96,7 @@ in
     # Main Matrix Build
     build_and_test = {
       # Dynamic name for easy UI scanning
-      name = "${{ matrix.sys }} [RPC:${{ matrix.rpc }} CACHE:${{ matrix.cache }}",
+      name = "${{ matrix.sys }} [RPC:${{ matrix.rpc }} CACHE:${{ matrix.cache }}]",
       runs-on = "${{ matrix.os }}",
 
       strategy = {
