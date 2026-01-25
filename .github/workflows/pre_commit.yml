@@ -20,3 +20,7 @@ jobs:
       shell: pixi run bash -e {0}
       run: |
         pipx run pre-commit run -a
+    - name: Audit for large files
+      uses: HaoZeke/large-file-auditor@v0.1.0
+      with:
+        file-size-threshold: "1M"
