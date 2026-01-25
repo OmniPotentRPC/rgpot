@@ -158,7 +158,7 @@ if(NOT POTLIB_RPC_CLIENT_ONLY)
 
   if(POTLIB_HAS_FORTRAN)
     target_link_libraries(pot PUBLIC fortcuh2)
-    target_compile_definitions(pot PUBLIC POT_HAS_CUH2)
+    target_compile_definitions(pot PUBLIC POT_HAS_FORTRAN)
   endif()
 
   if(NOT POTLIB_PURE_LIB)

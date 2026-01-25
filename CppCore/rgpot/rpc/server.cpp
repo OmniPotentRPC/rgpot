@@ -4,7 +4,10 @@
 #include <capnp/message.h>
 #include <kj/debug.h>
 
+#ifdef POT_HAS_FORTRAN
 #include "rgpot/CuH2/CuH2Pot.hpp"
+#endif // POT_HAS_FORTRAN
+
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Potential.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
