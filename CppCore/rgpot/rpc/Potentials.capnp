@@ -1,21 +1,21 @@
 @0xbd1f89fa17369103;
 
-# Design kanged from eOn v4 C-style structs
-# TODO(rg): Should be more object oriented
+# Design kanged from eOn [1] v4 C-style structs
 
 struct ForceInput {
- natm   @0 :Int32; # TODO(rg): Do we really need this..
- pos    @1 :List(Float64);
- atmnrs @2 :List(Int32);
- box    @3 :List(Float64);
+ pos    @0 :List(Float64); # natoms * 3
+ atmnrs @1 :List(Int32);   # natoms
+ box    @2 :List(Float64); # 9 (3x3)
 }
 
 struct PotentialResult {
   energy @0: Float64;
-  forces @1: List(Float64);
+  forces @1: List(Float64); # natoms * 3
 }
 
 interface Potential {
   calculate @0 (fip :ForceInput)
     -> (result :PotentialResult);
 }
+
+# [1] https://eondocs.org

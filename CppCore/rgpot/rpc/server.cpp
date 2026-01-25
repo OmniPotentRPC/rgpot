@@ -1,5 +1,6 @@
 // MIT License
 // Copyright 2023--present Rohit Goswami <HaoZeke>
+#include <kj/debug.h>
 #include <capnp/ez-rpc.h>
 #include <capnp/message.h>
 
@@ -19,7 +20,9 @@ public:
 
   kj::Promise<void> calculate(CalculateContext context) override {
     auto fip = context.getParams().getFip();
-    const auto numAtoms = fip.getNatm();
+    const size_t numAtoms = fip.getPos().size() / 3;
+
+    KJ_REQUIRE(fip.getAtmnrs().size() == numAtoms, "AtomNumbers size mismatch");
 
     rgpot::types::AtomMatrix nativePositions =
         rgpot::types::adapt::capnp::convertPositionsFromCapnp(fip.getPos(),

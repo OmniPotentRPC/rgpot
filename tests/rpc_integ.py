@@ -33,7 +33,6 @@ async def run_client(port):
 
     # Test Case: CuH2 minimal system
     fip = pot_capnp.ForceInput.new_message()
-    fip.natm = 2
 
     # Cu at 0,0,0 and H at 1.5, 0, 0 (Approx distance)
     # Using semantic types from your "Pro" schema if you applied it,
