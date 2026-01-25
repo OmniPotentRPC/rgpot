@@ -13,6 +13,7 @@ gen-gha = { cmd = "nickel export --format yaml ci/gha/workflow.ncl -o .github/wo
 rpctest = {features = ["rpc", "itests"]}
 cigen = {features = ["cigen"]}
 devbld = { features = ["rpc", "cache"] }
+docs = { features = ["docs"]}
 
 [feature.cache.dependencies]
 rocksdb = ">=10.9.1,<11"
@@ -29,6 +30,15 @@ pycapnp = ">=2.0.0,<3"
 ipython = ">=8.28.0,<9"
 pip = ">=24.2,<25"
 numpy = ">=2.4.1,<3"
+
+[feature.docs.dependencies]
+doxygen = ">=1.13.2,<2"
+breathe = ">=4.36.0,<5"
+sphinx = ">=8.2.3,<9"
+
+[feature.docs.pypi-dependencies]
+sphinx-sitemap = ">=2.9.0, <3"
+shibuya = ">=2026.1.9, <2027"
 
 [dependencies]
 compilers = ">=1.8.0,<2"
