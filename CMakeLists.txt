@@ -142,7 +142,7 @@ if(NOT POTLIB_RPC_CLIENT_ONLY)
 
   if(POTLIB_WITH_CACHE)
     target_sources(pot PRIVATE CppCore/rgpot/PotentialCache.cc)
-    target_link_libraries(pot PUBLIC RocksDB::rocksdb xxHash::xxhash)
+    target_link_libraries(pot PUBLIC RocksDB::rocksdb xxhash)
     target_compile_definitions(pot PUBLIC POT_HAS_CACHE)
   endif()
 
