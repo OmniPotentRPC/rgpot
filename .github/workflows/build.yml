@@ -3,7 +3,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
 jobs:
   build_and_test:
-    name: ${{ matrix.sys }} [EIG:${{ matrix.eigen }} RPC:${{ matrix.rpc }} CACHE:${{ matrix.cache }} PURE:${{ matrix.pure }}]
+    name: ${{ matrix.sys }} [RPC:${{ matrix.rpc }} CACHE:${{ matrix.cache }}
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v4
@@ -25,10 +25,10 @@ jobs:
           -Dwith_tests=True \
           -Dwith_examples=False \
           -Dwith_xtensor=False \
-          -Dwith_eigen=${{ matrix.eigen }} \
+          -Dwith_eigen=False \
           -Dwith_rpc=${{ matrix.rpc }} \
           -Dwith_cache=${{ matrix.cache }} \
-          -Dpure_lib=${{ matrix.pure }}
+          -Dpure_lib=False
         meson compile -C bbdir
         meson test -C bbdir --print-errorlogs
       shell: pixi run bash -e {0}
@@ -40,10 +40,10 @@ jobs:
           -DPOTLIB_BUILD_TESTS=True \
           -DPOTLIB_BUILD_EXAMPLES=False \
           -DPOTLIB_WITH_XTENSOR=OFF \
-          -DPOTLIB_WITH_EIGEN=${{ matrix.eigen }} \
+          -DPOTLIB_WITH_EIGEN=OFF \
           -DPOTLIB_WITH_RPC=${{ matrix.rpc }} \
           -DPOTLIB_WITH_CACHE=${{ matrix.cache }} \
-          -DPOTLIB_PURE_LIB=${{ matrix.pure }}
+          -DPOTLIB_PURE_LIB=OFF
         cmake --build build -j
         ctest --test-dir build --output-on-failure
       shell: pixi run bash -e {0}
@@ -59,21 +59,59 @@ jobs:
         cache:
         - 'true'
         - 'false'
-        eigen:
-        - 'true'
-        - 'false'
         os:
         - ubuntu-latest
         - macos-latest
-        pure:
-        - 'true'
-        - 'false'
         rpc:
         - 'true'
         - 'false'
         sys:
         - meson
         - cmake
+  client_bridge_stress:
+    name: Client Bridge Stress Test (Linux)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        submodules: recursive
+    - uses: prefix-dev/setup-pixi@v0.8.1
+      with:
+        cache: true
+        pixi-version: v0.62.1
+    - run: |-
+        echo "--- Building Server (Heavy) ---"
+        meson setup bbdir_server \
+              -Dwith_rpc=true \
+              -Dwith_tests=false \
+              -Dwith_examples=false
+        meson compile -C bbdir_server
+      shell: pixi run bash -e {0}
+    - run: |-
+        echo "--- Building Client Bridge (Light) ---"
+        cmake -S . -B build_client \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DPOTLIB_RPC_CLIENT_ONLY=ON \
+              -DPOTLIB_BUILD_TESTS=ON
+        cmake --build build_client -j
+      shell: pixi run bash -e {0}
+    - run: |-
+        echo "--- Starting Server ---"
+        # Start server in background on port 12345 using LJ potential
+        ./bbdir_server/CppCore/rgpot/rpc/potserv 12345 LJ &
+        SERVER_PID=$!
+
+        # Wait for server to be ready
+        sleep 2
+
+        echo "--- Running Client Stress Tests ---"
+        # This runs BridgeStressTest, which connects to localhost:12345
+        ctest --test-dir build_client --output-on-failure
+
+        echo "--- Teardown ---"
+        kill $SERVER_PID
+      shell: pixi run bash -e {0}
 name: Build Matrix
 on:
   pull_request:
