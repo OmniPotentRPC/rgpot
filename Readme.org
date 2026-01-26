@@ -2,7 +2,7 @@
 :PROPERTIES:
 :CUSTOM_ID: about
 :END:
-[[https://raw.githubusercontent.com/Theochemui/rgpot/refs/heads/main/branding/logo/rgpot_logo.webp]]
+[[https://raw.githubusercontent.com/OmniPotentRPC/rgpot/refs/heads/main/branding/logo/rgpot_logo.webp]]
 
 Originally designed for interfacing easily to potentials implemented [[http://theory.cm.utexas.edu/eon/][in
 eOn]], but has grown to be more flexible.
