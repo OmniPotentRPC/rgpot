@@ -32,4 +32,47 @@ file:../../branding/logo/rgpot_logo.webp
      contributing/index
 #+end_export
 
-     # devnotes
+** Usage
+Setting up and running tests:
+#+begin_src bash
+pixi shell
+meson setup bbdir -Dwith_tests=True --buildtype="debug"
+meson test -C bbdir
+#+end_src
+
+~cmake~ works as well.
+#+begin_src bash
+cmake -B build -DRGPOT_BUILD_TESTS=ON -DRGPOT_BUILD_EXAMPLES=ON
+cmake --build build
+ctest --test-dir build
+#+end_src
+
+For building only the client, with CXX17 and CapnProto only:
+#+begin_src bash
+cmake -B build_client\
+    -DRGPOT_RPC_CLIENT_ONLY=ON\
+    -DRGPOT_BUILD_TESTS=ON
+cmake --build build_client
+# needs a server instance, so in another terminal
+# say from the meson.build
+./bbdir/CppCore/rgpot/rpc/potserv 12345 LJ
+# now test
+ctest --test-dir build_client/ --output-on-failure
+#+end_src
+
+*** Developing locally
+A ~pre-commit~ job is setup on CI to enforce consistent styles, so it is best to
+set it up locally as well (using [[https://pypa.github.io/pipx][pipx]] for isolation):
+
+#+begin_src sh
+# Run before commiting
+uvx pre-commit run --all-files
+#+end_src
+*** Handling actions
+To keep the build matrix setup manageable, we use Nickel.
+#+begin_src bash
+pixi r gen-gha
+#+end_src
+* License
+MIT, however note that some of the potentials are adapted from eOn which is
+under a BSD 3-Clause License.
