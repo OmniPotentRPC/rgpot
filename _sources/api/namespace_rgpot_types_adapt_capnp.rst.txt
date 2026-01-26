@@ -1,0 +1,263 @@
+.. index:: pair: namespace; rgpot::types::adapt::capnp
+.. _doxid-namespacergpot_1_1types_1_1adapt_1_1capnp:
+
+namespace rgpot::types::adapt::capnp
+====================================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace capnp {
+
+	// global functions
+
+	:ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>` :ref:`convertPositionsFromCapnp<doxid-capnp__adapter_8hpp_1a0a79c1c4b7abbc4780efbb15b4518f48>`(const ::capnp::List<double>::Reader& capnpPos, size_t numAtoms);
+	std::vector<int> :ref:`convertAtomNumbersFromCapnp<doxid-capnp__adapter_8hpp_1a4a0d38e4d3dda0fff2e3f1db4080acf2>`(const ::capnp::List<int>::Reader& capnpAtmnrs);
+	std::array<std::array<double, 3>, 3> :ref:`convertBoxMatrixFromCapnp<doxid-capnp__adapter_8hpp_1a0439f60268321b5f177044fb015fdcf9>`(const ::capnp::List<double>::Reader& capnpBox);
+	void :ref:`populatePositionsToCapnp<doxid-capnp__adapter_8hpp_1aaedaa2305fd8ecfb729b8ef49e8c9647>`(::capnp::List<double>::Builder& capnpPos, const :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& positions);
+	void :ref:`populateForcesToCapnp<doxid-capnp__adapter_8hpp_1a052124b85f756b68a270a0fa04633476>`(::capnp::List<double>::Builder& capnpForces, const :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& forces);
+	void :ref:`populateAtomNumbersToCapnp<doxid-capnp__adapter_8hpp_1a551b5cda1f05af62a20cd29db9272407>`(::capnp::List<int>::Builder& capnpAtmnrs, const std::vector<int>& atomNumbers);
+	void :ref:`populateBoxMatrixToCapnp<doxid-capnp__adapter_8hpp_1a20074a7bb255479d980fa7fbbcfbf370>`(::capnp::List<double>::Builder& capnpBox, const std::array<std::array<double, 3>, 3>& boxMatrix);
+
+	} // namespace capnp
+.. _details-namespacergpot_1_1types_1_1adapt_1_1capnp:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Global Functions
+----------------
+
+.. index:: pair: function; convertPositionsFromCapnp
+.. _doxid-capnp__adapter_8hpp_1a0a79c1c4b7abbc4780efbb15b4518f48:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>` convertPositionsFromCapnp(const ::capnp::List<double>::Reader& capnpPos, size_t numAtoms)
+
+Converts Cap'n Proto position list to an :ref:`AtomMatrix <doxid-classrgpot_1_1types_1_1_atom_matrix>`.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- capnpPos
+
+		- The reader for the position list.
+
+	*
+		- numAtoms
+
+		- The number of atoms in the system.
+
+
+
+.. rubric:: Returns:
+
+An ``:ref:`AtomMatrix <doxid-classrgpot_1_1types_1_1_atom_matrix>``` containing the positions.
+
+.. index:: pair: function; convertAtomNumbersFromCapnp
+.. _doxid-capnp__adapter_8hpp_1a4a0d38e4d3dda0fff2e3f1db4080acf2:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::vector<int> convertAtomNumbersFromCapnp(const ::capnp::List<int>::Reader& capnpAtmnrs)
+
+Converts Cap'n Proto atomic number list to an STL vector.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- capnpAtmnrs
+
+		- The reader for the atomic numbers list.
+
+
+
+.. rubric:: Returns:
+
+A ``std::vector<int>`` containing the atomic numbers.
+
+.. index:: pair: function; convertBoxMatrixFromCapnp
+.. _doxid-capnp__adapter_8hpp_1a0439f60268321b5f177044fb015fdcf9:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::array<std::array<double, 3>, 3> convertBoxMatrixFromCapnp(const ::capnp::List<double>::Reader& capnpBox)
+
+Converts Cap'n Proto box list to a native 3x3 array.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- capnpBox
+
+		- The reader for the box matrix list.
+
+
+
+.. rubric:: Returns:
+
+A nested ``std::array`` of doubles representing the cell.
+
+.. index:: pair: function; populatePositionsToCapnp
+.. _doxid-capnp__adapter_8hpp_1aaedaa2305fd8ecfb729b8ef49e8c9647:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void populatePositionsToCapnp(::capnp::List<double>::Builder& capnpPos, const :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& positions)
+
+Serializes an :ref:`AtomMatrix <doxid-classrgpot_1_1types_1_1_atom_matrix>` of positions to a Cap'n Proto builder.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- capnpPos
+
+		- The builder for the position list.
+
+	*
+		- positions
+
+		- The source ``:ref:`AtomMatrix <doxid-classrgpot_1_1types_1_1_atom_matrix>```.
+
+
+
+.. rubric:: Returns:
+
+Void.
+
+.. index:: pair: function; populateForcesToCapnp
+.. _doxid-capnp__adapter_8hpp_1a052124b85f756b68a270a0fa04633476:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void populateForcesToCapnp(::capnp::List<double>::Builder& capnpForces, const :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& forces)
+
+Serializes an :ref:`AtomMatrix <doxid-classrgpot_1_1types_1_1_atom_matrix>` of forces to a Cap'n Proto builder.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- capnpForces
+
+		- The builder for the force list.
+
+	*
+		- forces
+
+		- The source ``:ref:`AtomMatrix <doxid-classrgpot_1_1types_1_1_atom_matrix>```.
+
+
+
+.. rubric:: Returns:
+
+Void.
+
+.. index:: pair: function; populateAtomNumbersToCapnp
+.. _doxid-capnp__adapter_8hpp_1a551b5cda1f05af62a20cd29db9272407:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void populateAtomNumbersToCapnp(::capnp::List<int>::Builder& capnpAtmnrs, const std::vector<int>& atomNumbers)
+
+Serializes an STL vector of atomic numbers to a Cap'n Proto builder.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- capnpAtmnrs
+
+		- The builder for the atomic numbers list.
+
+	*
+		- atomNumbers
+
+		- The source ``std::vector``.
+
+
+
+.. rubric:: Returns:
+
+Void.
+
+.. index:: pair: function; populateBoxMatrixToCapnp
+.. _doxid-capnp__adapter_8hpp_1a20074a7bb255479d980fa7fbbcfbf370:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void populateBoxMatrixToCapnp(::capnp::List<double>::Builder& capnpBox, const std::array<std::array<double, 3>, 3>& boxMatrix)
+
+Serializes a native 3x3 box matrix to a Cap'n Proto builder.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- capnpBox
+
+		- The builder for the box matrix list.
+
+	*
+		- boxMatrix
+
+		- The source nested ``std::array``.
+
+
+
+.. rubric:: Returns:
+
+Void.
+

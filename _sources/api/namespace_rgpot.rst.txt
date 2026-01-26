@@ -1,0 +1,162 @@
+.. index:: pair: namespace; rgpot
+.. _doxid-namespacergpot:
+
+namespace rgpot
+===============
+
+.. toctree::
+	:hidden:
+
+	namespace_rgpot_cache.rst
+	namespace_rgpot_types.rst
+	struct_rgpot_ForceInput.rst
+	struct_rgpot_ForceOut.rst
+	class_rgpot_CuH2Pot.rst
+	class_rgpot_LJPot.rst
+	class_rgpot_PotentialBase.rst
+	class_rgpot_registry.rst
+
+Overview
+~~~~~~~~
+
+POD structures for force and energy calculation interfaces. :ref:`More...<details-namespacergpot>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace rgpot {
+
+	// namespaces
+
+	namespace :ref:`rgpot::cache<doxid-namespacergpot_1_1cache>`;
+	namespace :ref:`rgpot::types<doxid-namespacergpot_1_1types>`;
+		namespace :ref:`rgpot::types::adapt<doxid-namespacergpot_1_1types_1_1adapt>`;
+			namespace :ref:`rgpot::types::adapt::capnp<doxid-namespacergpot_1_1types_1_1adapt_1_1capnp>`;
+			namespace :ref:`rgpot::types::adapt::eigen<doxid-namespacergpot_1_1types_1_1adapt_1_1eigen>`;
+			namespace :ref:`rgpot::types::adapt::xtensor<doxid-namespacergpot_1_1types_1_1adapt_1_1xtensor>`;
+
+	// structs
+
+	struct :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`;
+	struct :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`;
+
+	// classes
+
+	class :ref:`CuH2Pot<doxid-classrgpot_1_1_cu_h2_pot>`;
+	class :ref:`LJPot<doxid-classrgpot_1_1_l_j_pot>`;
+	class :ref:`PotentialBase<doxid-classrgpot_1_1_potential_base>`;
+
+	template <typename T>
+	class :ref:`registry<doxid-classrgpot_1_1registry>`;
+
+	// global variables
+
+	size_t :target:`registry< T >::count<doxid-namespacergpot_1a5c613f864463f489d8c1d42b95a42895>` = 0;
+	size_t :target:`registry< T >::forceCalls<doxid-namespacergpot_1a1198e178c5a8ef5a36aaac296c08cb81>` = 0;
+	T* :target:`registry< T >::head<doxid-namespacergpot_1abd4c9750ac000472e3321df2a5d1fb92>` = nullptr;
+
+	// global functions
+
+	void :ref:`zeroForceOut<doxid-namespacergpot_1aa8cb0fd12ead45cd35dd0ea5c3b6fb7a>`(const size_t& nAtoms, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* efvd);
+	void :ref:`checkParams<doxid-namespacergpot_1a7a27dd46fdc6dc15479964efd8c8f088>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& params);
+
+	} // namespace rgpot
+.. _details-namespacergpot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+POD structures for force and energy calculation interfaces.
+
+Definition of the native :ref:`AtomMatrix <doxid-class_atom_matrix>` class.
+
+Conversion utilities between Cap'n Proto and native types.
+
+Utility templates and functions for potential management.
+
+Implementation of utility functions for potential management.
+
+Defines the core data exchange structures used between the high-level potential wrappers and the low-level physics engines.
+
+Contains the implementations for global helper functions used to manage and validate the core force and energy data structures.
+
+Defines a static registry for tracking potential instances and global force call counters. It also provides utility functions for structure initialization and validation.
+
+This file contains inline adapter functions designed to facilitate the seamless transfer of data between the Cap'n Proto RPC layer and the internal ``Eigen`` based ``:ref:`AtomMatrix <doxid-class_atom_matrix>``` and other STL types.
+
+This file defines a lightweight, row-major matrix class designed for storing atomic coordinates and forces.
+
+Global Functions
+----------------
+
+.. index:: pair: function; zeroForceOut
+.. _doxid-namespacergpot_1aa8cb0fd12ead45cd35dd0ea5c3b6fb7a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void zeroForceOut(const size_t& nAtoms, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* efvd)
+
+Zeroes the members of a :ref:`ForceOut <doxid-structrgpot_1_1_force_out>` structure.
+
+This function performs a manual reset of the ``:ref:`ForceOut <doxid-structrgpot_1_1_force_out>``` structure. It ensures the energy and variance are set to zero and iterates through the force array to clear components for each atom.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- nAtoms
+
+		- The number of atoms.
+
+	*
+		- efvd
+
+		- The results structure to reset.
+
+
+
+.. rubric:: Returns:
+
+Void.
+
+.. index:: pair: function; checkParams
+.. _doxid-namespacergpot_1a7a27dd46fdc6dc15479964efd8c8f088:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void checkParams(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& params)
+
+Validates the input parameters for a potential calculation.
+
+Verifies that the input parameters represent a physically valid configuration. Currently, it strictly checks that the system contains at least one atom.
+
+.. warning::
+
+	Throws a ``std::runtime_error`` if *nAtoms* is zero or less.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- params
+
+		- The configuration structure to check.
+
+
+
+.. rubric:: Returns:
+
+Void.
+

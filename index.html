@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en" data-accent-color="violet" data-content_root="./">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>rgpot documentation</title><link rel="index" title="Index" href="genindex.html" /><link rel="search" title="Search" href="search.html" /><link rel="next" title="API Reference" href="api/index.html" />
+      <link rel="canonical" href="rgpot.rgoswami.me/" /><script>
+    function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
+    setColorMode(localStorage._theme||"auto");
+  </script><link rel="stylesheet" type="text/css" href="_static/pygments.css?v=e1a1ceaf" />
+    <link rel="stylesheet" type="text/css" href="_static/shibuya.css?v=44020203" />
+    <link rel="stylesheet" type="text/css" href="_static/doxyrest-pygments.css?v=ff3f4257" />
+    <link media="print" rel="stylesheet" type="text/css" href="_static/print.css?v=20ff2c19" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --sy-f-text: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+  --sy-f-heading: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+}
+</style>
+    <meta property="og:type" content="website"/>
+  <meta property="og:url" content="rgpot.rgoswami.me/"/>
+  <meta property="og:title" content="rgpot"/><meta property="og:image" content="https://github.com/HaoZeke/rgpycrumbs/blob/main/branding/logo/pycrumbs_logo.webp"/><meta name="twitter:card" content="summary_large_image"/>
+  </head>
+<body><div class="sy-head">
+  <div class="sy-head-blur"></div>
+  <div class="sy-head-inner sy-container mx-auto">
+    <a class="sy-head-brand" href="#">
+      <img class="light-logo" src="_static/rgpot_notext.svg" alt="rgpot" height="28" loading="lazy" />
+      <img class="dark-logo" src="_static/rgpot_notext.svg" alt="rgpot" height="28" loading="lazy" />
+      <strong>rgpot</strong>
+    </a>
+    <div class="sy-head-nav" id="head-nav">
+      <nav class="sy-head-links"></nav>
+      <div class="sy-head-extra flex items-center print:hidden"><form class="searchbox flex items-center" action="search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <kbd>/</kbd>
+</form><div class="sy-head-socials">
+  <a href="https://github.com/OmniPotentRPC/rgpot" aria-label="GitHub">
+    <iconify-icon icon="simple-icons:github"></iconify-icon>
+  </a></div></div>
+    </div>
+    <div class="sy-head-actions flex items-center shrink-0 print:hidden"><button class="js-theme theme-switch flex items-center"
+data-aria-auto="Switch to light color mode"
+data-aria-light="Switch to dark color mode"
+data-aria-dark="Switch to auto color mode">
+<i class="i-lucide theme-icon"></i>
+</button><button class="md:hidden flex items-center js-menu" aria-label="Menu" type="button" aria-controls="head-nav" aria-expanded="false">
+        <div class="hamburger">
+          <span class="hamburger_1"></span>
+          <span class="hamburger_2"></span>
+          <span class="hamburger_3"></span>
+        </div>
+      </button>
+    </div>
+  </div>
+</div>
+<div class="sy-page sy-container flex mx-auto">
+  <aside id="lside" class="sy-lside md:w-72 md:shrink-0 print:hidden">
+    <div class="sy-lside-inner md:sticky">
+      <div class="sy-scrollbar p-6">
+        <div class="globaltoc" data-expand-depth="0"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api/global.html">Global Namespace</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="api/namespace_rgpot.html">namespace rgpot</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="api/namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
+<li class="toctree-l4"><a class="reference internal" href="api/namespace_rgpot_types.html">namespace rgpot::types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="api/struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
+<li class="toctree-l4"><a class="reference internal" href="api/struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
+<li class="toctree-l4"><a class="reference internal" href="api/class_rgpot_CuH2Pot.html">class rgpot::CuH2Pot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="api/class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="api/class_rgpot_PotentialBase.html">class rgpot::PotentialBase</a></li>
+<li class="toctree-l4"><a class="reference internal" href="api/class_rgpot_registry.html">template class rgpot::registry</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="api/class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="api/class_GenericPotImpl.html">class GenericPotImpl</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="api/class_PotClient.html">class PotClient</a><ul class="simple">
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contributing/index.html">Contributing to <code class="docutils literal notranslate"><span class="pre">rgpot</span></code></a><ul>
+<li class="toctree-l2"><a class="reference internal" href="code_of_conduct.html">Code of Conduct</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="lside-overlay js-menu" role="button" aria-label="Close left sidebar" aria-controls="lside" aria-expanded="false"></div>
+  <aside id="rside" class="sy-rside pb-3 w-64 shrink-0 order-last">
+    <button class="rside-close js-menu xl:hidden" aria-label="Close Table of Contents" type="button" aria-controls="rside" aria-expanded="false">
+      <i class="i-lucide close"></i>
+    </button>
+    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
+<li><a class="reference internal" href="#overview">Overview</a></li>
+<li><a class="reference internal" href="#developer-reference">Developer Reference</a><ul>
+<li><a class="reference internal" href="#usage">Usage</a><ul>
+<li><a class="reference internal" href="#developing-locally">Developing locally</a></li>
+<li><a class="reference internal" href="#handling-actions">Handling actions</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#license">License</a></li>
+</ul>
+</div><div id="ethical-ad-placement" data-ea-publisher="readthedocs"></div></div>
+  </aside>
+  <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
+  <main class="sy-main w-full max-sm:max-w-full print:pt-6">
+<div class="sy-breadcrumbs" role="navigation">
+  <div class="sy-breadcrumbs-inner flex items-center">
+    <div class="md:hidden mr-3">
+      <button class="js-menu" aria-label="Menu" type="button" aria-controls="lside" aria-expanded="false">
+        <i class="i-lucide menu"></i>
+      </button>
+    </div>
+    <ol class="flex-1" itemscope itemtype="https://schema.org/BreadcrumbList"><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a itemprop="item" href="#"><span itemprop="name">rgpot</span></a>
+        <span>/</span>
+        <meta itemprop="position" content="1" />
+      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <strong itemprop="name"><code class="docutils literal notranslate"><span class="pre">rgpot</span></code></strong>
+        <meta itemprop="position" content="2" />
+      </li></ol>
+    <div class="xl:hidden ml-1">
+      <button class="js-menu" aria-label="Show table of contents" type="button" aria-controls="rside"
+        aria-expanded="false">
+        <i class="i-lucide outdent"></i>
+      </button>
+    </div>
+  </div>
+</div><div class="flex flex-col break-words justify-between">
+      <div class="relative min-w-0 max-w-6xl px-6 pb-6 pt-8 xl:px-12">
+  <div class="copy-page-wrapper relative pb-4 lg:absolute lg:top-8 lg:right-6 xl:right-12">
+  <div id="copy-page-trigger">
+    <button
+      type="button"
+      class="js-copy px-3 py-1 inline-flex items-center gap-1"
+      data-url="rgpot.rgoswami.me/_sources/index.rst.txt"
+    >
+      <i class="i-lucide" data-icon="copy"></i>
+      <span>Copy page</span>
+    </button>
+    <button class="js-menu px-2 py-1" type="button" aria-label="More actions"
+      aria-haspopup="menu" aria-expanded="false" aria-controls="copy-page-content">
+      <i class="i-lucide chevron-down"></i>
+    </button>
+  </div>
+  <div id="copy-page-content" role="menu" aria-orientation="vertical" aria-hidden="true">
+    <div role="presentation">
+      <div class="flex flex-col" role="group">
+        <button class="js-copy" type="button" role="menuitem"
+          data-url="rgpot.rgoswami.me/_sources/index.rst.txt">
+          <span class="iconify-icon">
+            <i class="i-lucide" data-icon="copy"></i>
+          </span>
+          <span>Copy page</span>
+        </button>
+        <a role="menuitem" href="rgpot.rgoswami.me/_sources/index.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
+            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20rgpot.rgoswami.me/_sources/index.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+          <iconify-icon icon="bi:openai"></iconify-icon>
+          <span>Open in ChatGPT</span>
+        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20rgpot.rgoswami.me/_sources/index.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+          <iconify-icon icon="bi:claude"></iconify-icon>
+          <span>Open in Claude</span>
+        </a></div>
+    </div>
+  </div>
+</div><article class="yue" role="main">
+          <section id="rgpot">
+<h1><code class="docutils literal notranslate"><span class="pre">rgpot</span></code><a class="headerlink" href="#rgpot" title="Link to this heading">¶</a></h1>
+<dl class="field-list simple">
+<dt class="field-odd">Author<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://rgoswami.me">Rohit Goswami</a></p>
+</dd>
+</dl>
+<img alt="_images/rgpot_logo.webp" src="_images/rgpot_logo.webp" />
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">rgpot</span></code> provides a unified RPC potential schema.</p>
+</section>
+<section id="developer-reference">
+<h2>Developer Reference<a class="headerlink" href="#developer-reference" title="Link to this heading">¶</a></h2>
+<p>For details on the dispatcher architecture or internal API:</p>
+<blockquote>
+<div><div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contributing/index.html">Contributing to <code class="docutils literal notranslate"><span class="pre">rgpot</span></code></a><ul>
+<li class="toctree-l2"><a class="reference internal" href="code_of_conduct.html">Code of Conduct</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</div></blockquote>
+<section id="usage">
+<h3>Usage<a class="headerlink" href="#usage" title="Link to this heading">¶</a></h3>
+<p>Setting up and running tests:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">pixi<span class="w"> </span>shell
+</span><span data-line="2">meson<span class="w"> </span>setup<span class="w"> </span>bbdir<span class="w"> </span>-Dwith_tests<span class="o">=</span>True<span class="w"> </span>--buildtype<span class="o">=</span><span class="s2">&quot;debug&quot;</span>
+</span><span data-line="3">meson<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-C<span class="w"> </span>bbdir
+</span></pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">cmake</span></code> works as well.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">cmake<span class="w"> </span>-B<span class="w"> </span>build<span class="w"> </span>-DRGPOT_BUILD_TESTS<span class="o">=</span>ON<span class="w"> </span>-DRGPOT_BUILD_EXAMPLES<span class="o">=</span>ON
+</span><span data-line="2">cmake<span class="w"> </span>--build<span class="w"> </span>build
+</span><span data-line="3">ctest<span class="w"> </span>--test-dir<span class="w"> </span>build
+</span></pre></div>
+</div>
+<p>For building only the client, with CXX17 and CapnProto only:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">cmake<span class="w"> </span>-B<span class="w"> </span>build_client<span class="se">\</span>
+</span><span data-line="2"><span class="w">    </span>-DRGPOT_RPC_CLIENT_ONLY<span class="o">=</span>ON<span class="se">\</span>
+</span><span data-line="3"><span class="w">    </span>-DRGPOT_BUILD_TESTS<span class="o">=</span>ON
+</span><span data-line="4">cmake<span class="w"> </span>--build<span class="w"> </span>build_client
+</span><span data-line="5"><span class="c1"># needs a server instance, so in another terminal</span>
+</span><span data-line="6"><span class="c1"># say from the meson.build</span>
+</span><span data-line="7">./bbdir/CppCore/rgpot/rpc/potserv<span class="w"> </span><span class="m">12345</span><span class="w"> </span>LJ
+</span><span data-line="8"><span class="c1"># now test</span>
+</span><span data-line="9">ctest<span class="w"> </span>--test-dir<span class="w"> </span>build_client/<span class="w"> </span>--output-on-failure
+</span></pre></div>
+</div>
+<section id="developing-locally">
+<h4>Developing locally<a class="headerlink" href="#developing-locally" title="Link to this heading">¶</a></h4>
+<p>A <code class="docutils literal notranslate"><span class="pre">pre-commit</span></code> job is setup on CI to enforce consistent styles, so it is best to
+set it up locally as well (using <a class="reference external" href="https://pypa.github.io/pipx">pipx</a> for isolation):</p>
+<div class="highlight-sh notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1"># Run before commiting</span>
+</span><span data-line="2">uvx<span class="w"> </span>pre-commit<span class="w"> </span>run<span class="w"> </span>--all-files
+</span></pre></div>
+</div>
+</section>
+<section id="handling-actions">
+<h4>Handling actions<a class="headerlink" href="#handling-actions" title="Link to this heading">¶</a></h4>
+<p>To keep the build matrix setup manageable, we use Nickel.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">pixi<span class="w"> </span>r<span class="w"> </span>gen-gha
+</span></pre></div>
+</div>
+</section>
+</section>
+</section>
+<section id="license">
+<h2>License<a class="headerlink" href="#license" title="Link to this heading">¶</a></h2>
+<p>MIT, however note that some of the potentials are adapted from eOn which is
+under a BSD 3-Clause License.</p>
+</section>
+</section>
+
+        </article><button class="back-to-top" type="button">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+    <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+  </svg>
+  <span>Back to top</span>
+</button><div class="navigation flex print:hidden"><div class="navigation-next">
+    <a href="api/index.html">
+      <div class="page-info">
+        <span>Next</span>
+        <div class="title">API Reference</div>
+      </div>
+      <i class="i-lucide chevron-right"></i>
+    </a>
+  </div></div></div>
+    </div>
+  </main>
+</div>
+<footer class="sy-foot">
+  <div class="sy-foot-inner sy-container mx-auto">
+    <div class="sy-foot-reserved md:flex justify-between items-center">
+      <div class="sy-foot-copyright"><p>2025--present, rgpot developers</p>
+  
+  <p>
+    Made with
+    
+    <a href="https://www.sphinx-doc.org/">Sphinx</a> and
+    
+    <a href="https://shibuya.lepture.com">Shibuya theme</a>.
+  </p>
+</div>
+      <div class="sy-foot-socials">
+<a href="https://github.com/OmniPotentRPC/rgpot" aria-label="GitHub">
+  <iconify-icon icon="simple-icons:github"></iconify-icon>
+</a></div>
+    </div>
+  </div>
+</footer>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/target-highlight.js?v=df7d332b"></script>
+      <script src="_static/shibuya.js?v=cac61aee"></script></body>
+</html>

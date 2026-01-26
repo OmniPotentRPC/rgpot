@@ -1,0 +1,60 @@
+.. index:: pair: namespace; rgpot::types
+.. _doxid-namespacergpot_1_1types:
+
+namespace rgpot::types
+======================
+
+.. toctree::
+	:hidden:
+
+	namespace_rgpot_types_adapt.rst
+	class_rgpot_types_AtomMatrix.rst
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace types {
+
+	// namespaces
+
+	namespace :ref:`rgpot::types::adapt<doxid-namespacergpot_1_1types_1_1adapt>`;
+		namespace :ref:`rgpot::types::adapt::capnp<doxid-namespacergpot_1_1types_1_1adapt_1_1capnp>`;
+		namespace :ref:`rgpot::types::adapt::eigen<doxid-namespacergpot_1_1types_1_1adapt_1_1eigen>`;
+		namespace :ref:`rgpot::types::adapt::xtensor<doxid-namespacergpot_1_1types_1_1adapt_1_1xtensor>`;
+
+	// typedefs
+
+	typedef std::vector<double> :ref:`AtomVector<doxid-_atom_matrix_8hpp_1aed0422e5fe186f855e906e6ad1cca57d>`;
+
+	// classes
+
+	class :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`;
+
+	} // namespace types
+.. _details-namespacergpot_1_1types:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Typedefs
+--------
+
+.. index:: pair: typedef; AtomVector
+.. _doxid-_atom_matrix_8hpp_1aed0422e5fe186f855e906e6ad1cca57d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	typedef std::vector<double> AtomVector
+
+Standard vector for atomic data.
+

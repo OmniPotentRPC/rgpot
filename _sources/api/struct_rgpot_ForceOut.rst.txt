@@ -1,0 +1,67 @@
+.. index:: pair: struct; rgpot::ForceOut
+.. _doxid-structrgpot_1_1_force_out:
+
+struct rgpot::ForceOut
+======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Data structure to store results from force calculations. :ref:`More...<details-structrgpot_1_1_force_out>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <ForceStructs.hpp>
+	
+	struct ForceOut {
+		// fields
+	
+		double* :ref:`F<doxid-structrgpot_1_1_force_out_1a03bdf12293973065de4a7bb2f294e2a9>`;
+		double :ref:`energy<doxid-structrgpot_1_1_force_out_1a7a5b68cc41c5f9f94630ad6c6be97310>`;
+		double :ref:`variance<doxid-structrgpot_1_1_force_out_1a17ddcb4c12c62f03ef1e03583abb08f0>`;
+	};
+.. _details-structrgpot_1_1_force_out:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Data structure to store results from force calculations.
+
+Fields
+------
+
+.. index:: pair: variable; F
+.. _doxid-structrgpot_1_1_force_out_1a03bdf12293973065de4a7bb2f294e2a9:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double* F
+
+Pointer to the array where forces will be stored.
+
+.. index:: pair: variable; energy
+.. _doxid-structrgpot_1_1_force_out_1a7a5b68cc41c5f9f94630ad6c6be97310:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double energy
+
+Calculated potential energy of the configuration.
+
+.. index:: pair: variable; variance
+.. _doxid-structrgpot_1_1_force_out_1a17ddcb4c12c62f03ef1e03583abb08f0:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double variance
+
+Variance or uncertainty of the calculation.
+

@@ -1,0 +1,159 @@
+.. index:: pair: namespace; rgpot::types::adapt::eigen
+.. _doxid-namespacergpot_1_1types_1_1adapt_1_1eigen:
+
+namespace rgpot::types::adapt::eigen
+====================================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace eigen {
+
+	// global functions
+
+	:ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>` :ref:`convertToAtomMatrix<doxid-eigen_8hpp_1ad3c7d48fe89d612f203e583e0d1cc414>`(const Eigen::MatrixXd& matrix);
+	Eigen::MatrixXd :ref:`convertToEigen<doxid-eigen_8hpp_1a65b2e1305605a8ffa48cddbe69f279d5>`(const :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& atomMatrix);
+
+	template <typename T>
+	std::vector<T> :ref:`convertToVector<doxid-eigen_8hpp_1ab0f2acc11fcf093dc2b13e5f2e1e2615>`(const Eigen::VectorX<T>& vector);
+
+	std::array<std::array<double, 3>, 3> :ref:`convertToEigen3d<doxid-eigen_8hpp_1a57c9dac1448e6def46a8133843dfd0d4>`(const Eigen::Matrix3d& matrix);
+
+	} // namespace eigen
+.. _details-namespacergpot_1_1types_1_1adapt_1_1eigen:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Global Functions
+----------------
+
+.. index:: pair: function; convertToAtomMatrix
+.. _doxid-eigen_8hpp_1ad3c7d48fe89d612f203e583e0d1cc414:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>` convertToAtomMatrix(const Eigen::MatrixXd& matrix)
+
+Converts an Eigen matrix to a native :ref:`AtomMatrix <doxid-classrgpot_1_1types_1_1_atom_matrix>`.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- matrix
+
+		- The source Eigen matrix.
+
+
+
+.. rubric:: Returns:
+
+An ``:ref:`AtomMatrix <doxid-classrgpot_1_1types_1_1_atom_matrix>``` instance with copied data.
+
+.. index:: pair: function; convertToEigen
+.. _doxid-eigen_8hpp_1a65b2e1305605a8ffa48cddbe69f279d5:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	Eigen::MatrixXd convertToEigen(const :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& atomMatrix)
+
+Converts a native :ref:`AtomMatrix <doxid-classrgpot_1_1types_1_1_atom_matrix>` to an Eigen matrix.
+
+.. note::
+
+	This uses ``Eigen::Map`` for zero-copy access where possible.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- atomMatrix
+
+		- The source native matrix.
+
+
+
+.. rubric:: Returns:
+
+An ``Eigen::MatrixXd`` mapped to the original data.
+
+.. index:: pair: function; convertToVector
+.. _doxid-eigen_8hpp_1ab0f2acc11fcf093dc2b13e5f2e1e2615:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	template <typename T>
+	std::vector<T> convertToVector(const Eigen::VectorX<T>& vector)
+
+Converts an Eigen vector to a standard vector.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- vector
+
+		- The source Eigen vector.
+
+
+
+.. rubric:: Returns:
+
+A ``std::vector`` containing the data.
+
+.. index:: pair: function; convertToEigen3d
+.. _doxid-eigen_8hpp_1a57c9dac1448e6def46a8133843dfd0d4:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::array<std::array<double, 3>, 3> convertToEigen3d(const Eigen::Matrix3d& matrix)
+
+Converts a 3x3 Eigen matrix to a nested standard array.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- matrix
+
+		- The 3x3 Eigen matrix.
+
+
+
+.. rubric:: Returns:
+
+A ``std::array`` of arrays representing the matrix.
+

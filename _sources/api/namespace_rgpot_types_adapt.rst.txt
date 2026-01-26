@@ -1,0 +1,29 @@
+.. index:: pair: namespace; rgpot::types::adapt
+.. _doxid-namespacergpot_1_1types_1_1adapt:
+
+namespace rgpot::types::adapt
+=============================
+
+.. toctree::
+	:hidden:
+
+	namespace_rgpot_types_adapt_capnp.rst
+	namespace_rgpot_types_adapt_eigen.rst
+	namespace_rgpot_types_adapt_xtensor.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace adapt {
+
+	// namespaces
+
+	namespace :ref:`rgpot::types::adapt::capnp<doxid-namespacergpot_1_1types_1_1adapt_1_1capnp>`;
+	namespace :ref:`rgpot::types::adapt::eigen<doxid-namespacergpot_1_1types_1_1adapt_1_1eigen>`;
+	namespace :ref:`rgpot::types::adapt::xtensor<doxid-namespacergpot_1_1types_1_1adapt_1_1xtensor>`;
+
+	} // namespace adapt

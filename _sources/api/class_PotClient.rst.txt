@@ -1,0 +1,116 @@
+.. index:: pair: class; PotClient
+.. _doxid-struct_pot_client:
+
+class PotClient
+===============
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Implementation of the C API bridge for the RPC client. :ref:`More...<details-struct_pot_client>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class PotClient {
+	public:
+		// fields
+	
+		std::unique_ptr<capnp::EzRpcClient> :ref:`rpc_client<doxid-struct_pot_client_1afbb5eff93ceabc6bf320a35a8a883113>`;
+		Potential::Client :ref:`capability<doxid-struct_pot_client_1a5cfe687a4dba16353ee364d404b21c9a>`;
+		kj::WaitScope* :ref:`wait_scope<doxid-struct_pot_client_1aed1f25acec7c6d9302ac62dcf157a71c>`;
+		std::string :ref:`last_error<doxid-struct_pot_client_1a8fc470f19bafc3a6bdde6b2be9407091>`;
+
+		// construction
+	
+		:ref:`PotClient<doxid-struct_pot_client_1a85449af1564b34c7955c21581e258e11>`(std::unique_ptr<capnp::EzRpcClient> client, Potential::Client cap);
+	};
+.. _details-struct_pot_client:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Implementation of the C API bridge for the RPC client.
+
+This file implements the C-compatible wrapper for the Cap'n Proto RPC client. It manages the lifecycle of the EzRpcClient and handles error reporting through a simple string-based interface.
+
+Container for the C++ objects required to manage an RPC session. It is exposed to C as an opaque pointer. The use of ``std::unique_ptr`` ensures that the RPC client is cleaned up correctly upon destruction.
+
+Fields
+------
+
+.. index:: pair: variable; rpc_client
+.. _doxid-struct_pot_client_1afbb5eff93ceabc6bf320a35a8a883113:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::unique_ptr<capnp::EzRpcClient> rpc_client
+
+The Cap'n Proto RPC client.
+
+.. index:: pair: variable; capability
+.. _doxid-struct_pot_client_1a5cfe687a4dba16353ee364d404b21c9a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	Potential::Client capability
+
+The RPC capability for potential calls.
+
+.. index:: pair: variable; wait_scope
+.. _doxid-struct_pot_client_1aed1f25acec7c6d9302ac62dcf157a71c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	kj::WaitScope* wait_scope
+
+Reference to the client wait scope.
+
+.. index:: pair: variable; last_error
+.. _doxid-struct_pot_client_1a8fc470f19bafc3a6bdde6b2be9407091:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::string last_error
+
+Buffer for the most recent error message.
+
+Construction
+------------
+
+.. index:: pair: function; PotClient
+.. _doxid-struct_pot_client_1a85449af1564b34c7955c21581e258e11:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	PotClient(std::unique_ptr<capnp::EzRpcClient> client, Potential::Client cap)
+
+Constructor for :ref:`PotClient <doxid-struct_pot_client>`.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- client
+
+		- Ownership of the initialized EzRpcClient.
+
+	*
+		- cap
+
+		- The capability client for the Potential interface.
+

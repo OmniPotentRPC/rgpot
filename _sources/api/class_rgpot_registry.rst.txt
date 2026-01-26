@@ -1,0 +1,132 @@
+.. index:: pair: class; rgpot::registry
+.. _doxid-classrgpot_1_1registry:
+
+template class rgpot::registry
+==============================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Static registry for instance tracking and statistics. :ref:`More...<details-classrgpot_1_1registry>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <PotHelpers.hpp>
+	
+	template <typename T>
+	class registry {
+	public:
+		// fields
+	
+		static size_t :ref:`count<doxid-classrgpot_1_1registry_1a0caf8c8882659ef75136aa5207ba8d52>`;
+		static size_t :ref:`forceCalls<doxid-classrgpot_1_1registry_1adb02e0b61e75a7ab030a51522f4d3fdd>`;
+		static T* :ref:`head<doxid-classrgpot_1_1registry_1a720ef6941db97af09f637f56fe278e62>`;
+		T* :ref:`prev<doxid-classrgpot_1_1registry_1a6effb1966d43d271447e51244fca341f>`;
+		T* :ref:`next<doxid-classrgpot_1_1registry_1a63702ca67d75ee109e6a1632541d8407>`;
+
+		// methods
+	
+		static void :ref:`incrementForceCalls<doxid-classrgpot_1_1registry_1a5622001c3f346fa761557bc0d0bc232c>`();
+
+	protected:
+		// construction
+	
+		:ref:`~registry<doxid-classrgpot_1_1registry_1aca70fe551ace40790311808388db656d>`();
+	};
+.. _details-classrgpot_1_1registry:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Static registry for instance tracking and statistics.
+
+The registry uses a linked list to track all active instances of a derived potential class.
+
+Fields
+------
+
+.. index:: pair: variable; count
+.. _doxid-classrgpot_1_1registry_1a0caf8c8882659ef75136aa5207ba8d52:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static size_t count
+
+Total number of active instances.
+
+.. index:: pair: variable; forceCalls
+.. _doxid-classrgpot_1_1registry_1adb02e0b61e75a7ab030a51522f4d3fdd:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static size_t forceCalls
+
+Global counter for force evaluations.
+
+.. index:: pair: variable; head
+.. _doxid-classrgpot_1_1registry_1a720ef6941db97af09f637f56fe278e62:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static T* head
+
+Pointer to the head of the linked list.
+
+.. index:: pair: variable; prev
+.. _doxid-classrgpot_1_1registry_1a6effb1966d43d271447e51244fca341f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	T* prev
+
+Pointer to the previous instance in the list.
+
+.. index:: pair: variable; next
+.. _doxid-classrgpot_1_1registry_1a63702ca67d75ee109e6a1632541d8407:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	T* next
+
+Pointer to the next instance in the list.
+
+Construction
+------------
+
+.. _doxid-classrgpot_1_1registry_1aca70fe551ace40790311808388db656d:
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	~registry()
+
+Destructor.
+
+Methods
+-------
+
+.. index:: pair: function; incrementForceCalls
+.. _doxid-classrgpot_1_1registry_1a5622001c3f346fa761557bc0d0bc232c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static void incrementForceCalls()
+
+Increments the force call counter.
+
+
+
+.. rubric:: Returns:
+
+Void.
+
