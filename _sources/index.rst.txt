@@ -12,12 +12,13 @@
 Overview
 --------
 
-``rgpot`` provides a unified RPC potential schema.
+RPC Generalized Potential Library, or ``rgpot`` provides a unified schema for
+interfacing potential servers across languages using runtime interoperability.
 
 Developer Reference
 -------------------
 
-For details on the dispatcher architecture or internal API:
+For details on the architecture or internal API:
 
   .. toctree::
      :maxdepth: 2
