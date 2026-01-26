@@ -158,7 +158,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
 
   if(RGPOT_HAS_FORTRAN)
     target_link_libraries(rgpot PUBLIC fortcuh2)
-    target_compile_definitions(rgpot PUBLIC POT_HAS_FORTRAN)
+    target_compile_definitions(rgpot PUBLIC RGPOT_HAS_FORTRAN)
   endif()
 
   if(NOT RGPOT_PURE_LIB)
