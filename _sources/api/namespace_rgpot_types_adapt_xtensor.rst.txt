@@ -1,0 +1,155 @@
+.. index:: pair: namespace; rgpot::types::adapt::xtensor
+.. _doxid-namespacergpot_1_1types_1_1adapt_1_1xtensor:
+
+namespace rgpot::types::adapt::xtensor
+======================================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace xtensor {
+
+	// global functions
+
+	:ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>` :ref:`convertToAtomMatrix<doxid-xtensor_8hpp_1a8177dc991018ec43e546c35cfb4501b9>`(const xt::xtensor<double, 2>& matrix);
+	xt::xtensor<double, 2> :ref:`convertToXtensor<doxid-xtensor_8hpp_1a4d954bb87434b4613b9cd384b5ea779b>`(const :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& atomMatrix);
+
+	template <typename T>
+	std::vector<T> :ref:`convertToVector<doxid-xtensor_8hpp_1ae2db262cb230f674526b622201368cdf>`(const xt::xtensor<T, 1>& vector);
+
+	std::array<std::array<double, 3>, 3> :ref:`convertToArray3x3<doxid-xtensor_8hpp_1a8355493fa6753aa3ddda7e6a457b02f5>`(const xt::xtensor<double, 2>& matrix);
+
+	} // namespace xtensor
+.. _details-namespacergpot_1_1types_1_1adapt_1_1xtensor:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Global Functions
+----------------
+
+.. index:: pair: function; convertToAtomMatrix
+.. _doxid-xtensor_8hpp_1a8177dc991018ec43e546c35cfb4501b9:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>` convertToAtomMatrix(const xt::xtensor<double, 2>& matrix)
+
+Converts an xtensor array to a native :ref:`AtomMatrix <doxid-classrgpot_1_1types_1_1_atom_matrix>`.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- matrix
+
+		- The source 2D xtensor array.
+
+
+
+.. rubric:: Returns:
+
+An ``:ref:`AtomMatrix <doxid-classrgpot_1_1types_1_1_atom_matrix>``` containing the copied data.
+
+.. index:: pair: function; convertToXtensor
+.. _doxid-xtensor_8hpp_1a4d954bb87434b4613b9cd384b5ea779b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	xt::xtensor<double, 2> convertToXtensor(const :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& atomMatrix)
+
+Converts a native :ref:`AtomMatrix <doxid-classrgpot_1_1types_1_1_atom_matrix>` to an xtensor array.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- atomMatrix
+
+		- The source native matrix.
+
+
+
+.. rubric:: Returns:
+
+A 2D ``xt::xtensor`` containing the data.
+
+.. index:: pair: function; convertToVector
+.. _doxid-xtensor_8hpp_1ae2db262cb230f674526b622201368cdf:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	template <typename T>
+	std::vector<T> convertToVector(const xt::xtensor<T, 1>& vector)
+
+Converts a 1D xtensor to a standard vector.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- vector
+
+		- The source 1D xtensor.
+
+
+
+.. rubric:: Returns:
+
+A ``std::vector`` containing the data.
+
+.. index:: pair: function; convertToArray3x3
+.. _doxid-xtensor_8hpp_1a8355493fa6753aa3ddda7e6a457b02f5:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::array<std::array<double, 3>, 3> convertToArray3x3(const xt::xtensor<double, 2>& matrix)
+
+Converts a 3x3 xtensor to a nested standard array.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- matrix
+
+		- The 3x3 xtensor array.
+
+
+
+.. rubric:: Returns:
+
+A nested ``std::array`` representing the matrix.
+

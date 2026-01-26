@@ -1,0 +1,108 @@
+.. index:: pair: class; GenericPotImpl
+.. _doxid-class_generic_pot_impl:
+
+class GenericPotImpl
+====================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Implementation of the standalone Cap'n Proto potential server. :ref:`More...<details-class_generic_pot_impl>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class GenericPotImpl: public Potential::Server {
+	public:
+		// construction
+	
+		:ref:`GenericPotImpl<doxid-class_generic_pot_impl_1ac77d09e5f96610b4c9c590c6cf7c1cac>`(std::unique_ptr<:ref:`rgpot::PotentialBase<doxid-classrgpot_1_1_potential_base>`> pot);
+
+		// methods
+	
+		kj::Promise<void> :ref:`calculate<doxid-class_generic_pot_impl_1a59c68ff1515d997768279734ff3ebcf8>`(CalculateContext context);
+	};
+.. _details-class_generic_pot_impl:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Implementation of the standalone Cap'n Proto potential server.
+
+This file implements a basic RPC server which exposes toy potentials over a network interface. It utilizes the ``EzRpcServer`` for handling requests.
+
+Server implementation for the Potential RPC interface.
+
+This class wraps a polymorphic ``PotentialBase`` instance and dispatches RPC calculate requests to the underlying physics engine.
+
+Construction
+------------
+
+.. index:: pair: function; GenericPotImpl
+.. _doxid-class_generic_pot_impl_1ac77d09e5f96610b4c9c590c6cf7c1cac:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	GenericPotImpl(std::unique_ptr<:ref:`rgpot::PotentialBase<doxid-classrgpot_1_1_potential_base>`> pot)
+
+Constructor for :ref:`GenericPotImpl <doxid-class_generic_pot_impl>`.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- pot
+
+		- Ownership of a PotentialBase derived object.
+
+Methods
+-------
+
+.. index:: pair: function; calculate
+.. _doxid-class_generic_pot_impl_1a59c68ff1515d997768279734ff3ebcf8:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	kj::Promise<void> calculate(CalculateContext context)
+
+This method performs the following translation steps:
+
+#. Extracts the ``ForceInput`` (fip) from the RPC context.
+
+#. Validates the size of the atomic number list.
+
+#. Converts Cap'n Proto lists into native ``:ref:`AtomMatrix <doxid-class_atom_matrix>``` and ``std::vector`` types.
+
+#. Executes the calculation via the ``PotentialBase`` virtual operator.
+
+#. Populates the ``PotentialResult`` with energy and force data.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- context
+
+		- The Cap'n Proto RPC call context.
+
+
+
+.. rubric:: Returns:
+
+An asynchronous promise for completion.
+

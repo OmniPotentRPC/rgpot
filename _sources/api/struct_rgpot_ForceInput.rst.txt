@@ -1,0 +1,78 @@
+.. index:: pair: struct; rgpot::ForceInput
+.. _doxid-structrgpot_1_1_force_input:
+
+struct rgpot::ForceInput
+========================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Data structure containing input configuration for force calls. :ref:`More...<details-structrgpot_1_1_force_input>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <ForceStructs.hpp>
+	
+	struct ForceInput {
+		// fields
+	
+		const size_t :ref:`nAtoms<doxid-structrgpot_1_1_force_input_1a694e8fb21116f73dd8deaf65499068aa>`;
+		const double* :ref:`pos<doxid-structrgpot_1_1_force_input_1aa5c03c5f4993486f01466ee389957afb>`;
+		const int* :ref:`atmnrs<doxid-structrgpot_1_1_force_input_1ad1a11aee58dd6febe10761256ed609e3>`;
+		const double* :ref:`box<doxid-structrgpot_1_1_force_input_1af3bb99753f39a38ac90a4713d35e9bb4>`;
+	};
+.. _details-structrgpot_1_1_force_input:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Data structure containing input configuration for force calls.
+
+Fields
+------
+
+.. index:: pair: variable; nAtoms
+.. _doxid-structrgpot_1_1_force_input_1a694e8fb21116f73dd8deaf65499068aa:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const size_t nAtoms
+
+Total number of atoms in the system.
+
+.. index:: pair: variable; pos
+.. _doxid-structrgpot_1_1_force_input_1aa5c03c5f4993486f01466ee389957afb:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const double* pos
+
+Pointer to the flat array of atomic positions.
+
+.. index:: pair: variable; atmnrs
+.. _doxid-structrgpot_1_1_force_input_1ad1a11aee58dd6febe10761256ed609e3:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const int* atmnrs
+
+Pointer to the array of atomic numbers.
+
+.. index:: pair: variable; box
+.. _doxid-structrgpot_1_1_force_input_1af3bb99753f39a38ac90a4713d35e9bb4:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const double* box
+
+Pointer to the 3x3 simulation cell matrix.
+

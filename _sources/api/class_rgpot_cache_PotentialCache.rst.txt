@@ -1,0 +1,249 @@
+.. index:: pair: class; rgpot::cache::PotentialCache
+.. _doxid-classrgpot_1_1cache_1_1_potential_cache:
+
+class rgpot::cache::PotentialCache
+==================================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Caches potential energy and force calculations using RocksDB. :ref:`More...<details-classrgpot_1_1cache_1_1_potential_cache>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <PotentialCache.hpp>
+	
+	class PotentialCache {
+	public:
+		// construction
+	
+		:ref:`PotentialCache<doxid-classrgpot_1_1cache_1_1_potential_cache_1a56b7b83f58e226c08055fbb8e9413522>`(const std::string& db_path, bool create_if_missing = true);
+		:ref:`PotentialCache<doxid-classrgpot_1_1cache_1_1_potential_cache_1a6471a2f451e9fa0040a4c193043c591e>`();
+		:ref:`~PotentialCache<doxid-classrgpot_1_1cache_1_1_potential_cache_1af4e9992ce45c6764450cdcc69569a846>`();
+
+		// methods
+	
+		void :ref:`set_db<doxid-classrgpot_1_1cache_1_1_potential_cache_1ab1fb804b926b4c383105e17595658676>`(rocksdb::DB* db);
+		void :ref:`deserialize_hit<doxid-classrgpot_1_1cache_1_1_potential_cache_1ae414402d984323aba6aefe2f83a68018>`(const std::string& value, double& energy, :ref:`rgpot::types::AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& forces);
+		void :ref:`add_serialized<doxid-classrgpot_1_1cache_1_1_potential_cache_1afa65792f6b6ba596dc4852ed802c5d2e>`(const :ref:`KeyHash<doxid-structrgpot_1_1cache_1_1_key_hash>`& key, double energy, const :ref:`rgpot::types::AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& forces);
+		std::optional<std::string> :ref:`find<doxid-classrgpot_1_1cache_1_1_potential_cache_1a85bd93690a8a21fcad691472a535f2b8>`(const :ref:`KeyHash<doxid-structrgpot_1_1cache_1_1_key_hash>`& key);
+	};
+.. _details-classrgpot_1_1cache_1_1_potential_cache:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Caches potential energy and force calculations using RocksDB.
+
+Construction
+------------
+
+.. index:: pair: function; PotentialCache
+.. _doxid-classrgpot_1_1cache_1_1_potential_cache_1a56b7b83f58e226c08055fbb8e9413522:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	PotentialCache(const std::string& db_path, bool create_if_missing = true)
+
+Constructor opens the DB at the given path.
+
+Initializes the RocksDB options, specifically setting ``create_if_missing``. It attempts to open the database at the specified path. If the open fails, an error is printed to stderr and the internal database pointer remains null. If successful, the ``own_db_`` flag is set to true.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- db_path
+
+		- Path to the RocksDB database.
+
+	*
+		- create_if_missing
+
+		- Toggle creation of DB if absent.
+
+.. index:: pair: function; PotentialCache
+.. _doxid-classrgpot_1_1cache_1_1_potential_cache_1a6471a2f451e9fa0040a4c193043c591e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	PotentialCache()
+
+Default constructor.
+
+.. _doxid-classrgpot_1_1cache_1_1_potential_cache_1af4e9992ce45c6764450cdcc69569a846:
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	~PotentialCache()
+
+Destructor.
+
+Checks if the class owns the database pointer. If so, it deletes the ``rocksdb::DB`` instance to prevent memory leaks.
+
+Methods
+-------
+
+.. index:: pair: function; set_db
+.. _doxid-classrgpot_1_1cache_1_1_potential_cache_1ab1fb804b926b4c383105e17595658676:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void set_db(rocksdb::DB* db)
+
+Helper for manual pointer setting.
+
+This function allows for manually injecting a RocksDB pointer. If the current instance already owns a database, it is deleted before accepting the new pointer. Ownership is transferred away from this class (own_db\_ set to false), implying the caller manages the new pointer's lifetime or it is a shared resource.
+
+.. warning::
+
+	Use with caution to avoid double-free or memory leaks if the passed pointer is managed elsewhere.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- db
+
+		- Pointer to an existing RocksDB instance.
+
+
+
+.. rubric:: Returns:
+
+Void.
+
+.. index:: pair: function; deserialize_hit
+.. _doxid-classrgpot_1_1cache_1_1_potential_cache_1ae414402d984323aba6aefe2f83a68018:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void deserialize_hit(const std::string& value, double& energy, :ref:`rgpot::types::AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& forces)
+
+Deserializes a cache hit into output containers.
+
+Performs a binary copy (``std::memcpy``) from the serialized string buffer back into the energy variable and force matrix.
+
+The layout is assumed to be: ``[double energy] [double force_0] ... [double force_N]``
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- value
+
+		- Serialized string from the cache.
+
+	*
+		- energy
+
+		- Reference to store the energy.
+
+	*
+		- forces
+
+		- Reference to store the forces.
+
+
+
+.. rubric:: Returns:
+
+Void.
+
+.. index:: pair: function; add_serialized
+.. _doxid-classrgpot_1_1cache_1_1_potential_cache_1afa65792f6b6ba596dc4852ed802c5d2e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void add_serialized(const :ref:`KeyHash<doxid-structrgpot_1_1cache_1_1_key_hash>`& key, double energy, const :ref:`rgpot::types::AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& forces)
+
+Adds a serialized calculation to the cache.
+
+Serializes the energy and forces into a contiguous binary buffer. The buffer size is calculated as ``sizeof(double) + N * sizeof(double)``. This buffer is then stored in RocksDB using the provided key.
+
+.. note::
+
+	If the database is not initialized, this function returns immediately.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- key
+
+		- Unique hash key for the configuration.
+
+	*
+		- energy
+
+		- Calculated energy.
+
+	*
+		- forces
+
+		- Calculated forces.
+
+
+
+.. rubric:: Returns:
+
+Void.
+
+.. index:: pair: function; find
+.. _doxid-classrgpot_1_1cache_1_1_potential_cache_1a85bd93690a8a21fcad691472a535f2b8:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::optional<std::string> find(const :ref:`KeyHash<doxid-structrgpot_1_1cache_1_1_key_hash>`& key)
+
+Searches the cache for a specific key.
+
+Queries the RocksDB instance for the given key.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- key
+
+		- Unique hash key.
+
+
+
+.. rubric:: Returns:
+
+Optional string containing the serialized data.
+
+std::optional containing the serialized string if found, or std::nullopt if the key does not exist or the DB is closed.
+

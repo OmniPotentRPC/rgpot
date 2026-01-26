@@ -1,0 +1,294 @@
+.. index:: pair: class; AtomMatrix
+.. _doxid-class_atom_matrix:
+
+class AtomMatrix
+================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+A lightweight row-major matrix class for atomic data. :ref:`More...<details-class_atom_matrix>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <AtomMatrix.hpp>
+	
+	class AtomMatrix {
+	public:
+		// construction
+	
+		:ref:`AtomMatrix<doxid-class_atom_matrix_1a8c101eba7749e289067bdeaaeae46e0c>`();
+		:ref:`AtomMatrix<doxid-class_atom_matrix_1a476e46843f9fe74a38d99c2089935516>`(std::initializer_list<std::initializer_list<double>> list);
+		:ref:`AtomMatrix<doxid-class_atom_matrix_1a4309adcdf53934e26ab8eac575547eab>`(size_t rows, size_t cols);
+
+		// methods
+	
+		double& :ref:`operator()<doxid-class_atom_matrix_1a4739be3f423b51418f81274732f4fe2f>`(size_t row, size_t col);
+		const double& :ref:`operator()<doxid-class_atom_matrix_1ab012bd103fff58ae5628de3019a9ce44>`(size_t row, size_t col) const;
+		size_t :ref:`rows<doxid-class_atom_matrix_1a10be77d450b7c64acda49ea0acaec003>`() const;
+		size_t :ref:`cols<doxid-class_atom_matrix_1ae955502629a5a0946ecadfe08d81d316>`() const;
+		size_t :ref:`size<doxid-class_atom_matrix_1a058094707e53d5d40785bf5f46cf528c>`() const;
+		double* :ref:`data<doxid-class_atom_matrix_1abaa8f5f9f59a73913532efc894810f6a>`();
+		const double* :ref:`data<doxid-class_atom_matrix_1a1c90618b37cae46072f062a2a1b57980>`() const;
+		static :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>` :ref:`Zero<doxid-class_atom_matrix_1acecda4c0cbfa45e5260e31a79c08373f>`(size_t rows, size_t cols);
+	};
+.. _details-class_atom_matrix:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+A lightweight row-major matrix class for atomic data.
+
+Implementation of the CuH2 potential force calls.
+
+This file contains the logic to validate atomic species and interface with the Fortran EAM backend via the C bridge.
+
+Construction
+------------
+
+.. index:: pair: function; AtomMatrix
+.. _doxid-class_atom_matrix_1a8c101eba7749e289067bdeaaeae46e0c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	AtomMatrix()
+
+Default constructor.
+
+.. index:: pair: function; AtomMatrix
+.. _doxid-class_atom_matrix_1a476e46843f9fe74a38d99c2089935516:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	AtomMatrix(std::initializer_list<std::initializer_list<double>> list)
+
+Constructor for list initialization.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- list
+
+		- The nested initializer list.
+
+.. index:: pair: function; AtomMatrix
+.. _doxid-class_atom_matrix_1a4309adcdf53934e26ab8eac575547eab:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	AtomMatrix(size_t rows, size_t cols)
+
+Constructor for a matrix of given dimensions.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- rows
+
+		- Number of rows.
+
+	*
+		- cols
+
+		- Number of columns.
+
+Methods
+-------
+
+.. index:: pair: function; operator()
+.. _doxid-class_atom_matrix_1a4739be3f423b51418f81274732f4fe2f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double& operator()(size_t row, size_t col)
+
+Access element for mutation.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- row
+
+		- Row index.
+
+	*
+		- col
+
+		- Column index.
+
+
+
+.. rubric:: Returns:
+
+Reference to the element.
+
+.. index:: pair: function; operator()
+.. _doxid-class_atom_matrix_1ab012bd103fff58ae5628de3019a9ce44:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const double& operator()(size_t row, size_t col) const
+
+Access element for reading.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- row
+
+		- Row index.
+
+	*
+		- col
+
+		- Column index.
+
+
+
+.. rubric:: Returns:
+
+Const reference to the element.
+
+.. index:: pair: function; rows
+.. _doxid-class_atom_matrix_1a10be77d450b7c64acda49ea0acaec003:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	size_t rows() const
+
+Fetches the number of rows.
+
+
+
+.. rubric:: Returns:
+
+Row count.
+
+.. index:: pair: function; cols
+.. _doxid-class_atom_matrix_1ae955502629a5a0946ecadfe08d81d316:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	size_t cols() const
+
+Fetches the number of columns.
+
+
+
+.. rubric:: Returns:
+
+Column count.
+
+.. index:: pair: function; size
+.. _doxid-class_atom_matrix_1a058094707e53d5d40785bf5f46cf528c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	size_t size() const
+
+Fetches the total number of elements.
+
+
+
+.. rubric:: Returns:
+
+Size of the underlying data vector.
+
+.. index:: pair: function; data
+.. _doxid-class_atom_matrix_1abaa8f5f9f59a73913532efc894810f6a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double* data()
+
+Fetches a pointer to the raw data for mutation.
+
+
+
+.. rubric:: Returns:
+
+Raw pointer to memory.
+
+.. index:: pair: function; data
+.. _doxid-class_atom_matrix_1a1c90618b37cae46072f062a2a1b57980:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const double* data() const
+
+Fetches a pointer to the raw data for reading.
+
+
+
+.. rubric:: Returns:
+
+Const raw pointer to memory.
+
+.. index:: pair: function; Zero
+.. _doxid-class_atom_matrix_1acecda4c0cbfa45e5260e31a79c08373f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>` Zero(size_t rows, size_t cols)
+
+Creates a matrix initialized with zeroes.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- rows
+
+		- Number of rows.
+
+	*
+		- cols
+
+		- Number of columns.
+
+
+
+.. rubric:: Returns:
+
+A zero-initialized ``:ref:`AtomMatrix <doxid-class_atom_matrix>```.
+

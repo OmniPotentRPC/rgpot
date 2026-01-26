@@ -1,0 +1,87 @@
+
+:cover: https://github.com/HaoZeke/rgpycrumbs/blob/main/branding/logo/pycrumbs_logo.webp
+
+=========
+``rgpot``
+=========
+
+:Author: `Rohit Goswami <https://rgoswami.me>`_
+
+.. image:: ../../branding/logo/rgpot_logo.webp
+
+Overview
+--------
+
+``rgpot`` provides a unified RPC potential schema.
+
+Developer Reference
+-------------------
+
+For details on the dispatcher architecture or internal API:
+
+  .. toctree::
+     :maxdepth: 2
+     :caption: Reference
+
+     api/index
+     changelog
+     contributing/index
+
+Usage
+~~~~~
+
+Setting up and running tests:
+
+.. code:: bash
+
+    pixi shell
+    meson setup bbdir -Dwith_tests=True --buildtype="debug"
+    meson test -C bbdir
+
+``cmake`` works as well.
+
+.. code:: bash
+
+    cmake -B build -DRGPOT_BUILD_TESTS=ON -DRGPOT_BUILD_EXAMPLES=ON
+    cmake --build build
+    ctest --test-dir build
+
+For building only the client, with CXX17 and CapnProto only:
+
+.. code:: bash
+
+    cmake -B build_client\
+        -DRGPOT_RPC_CLIENT_ONLY=ON\
+        -DRGPOT_BUILD_TESTS=ON
+    cmake --build build_client
+    # needs a server instance, so in another terminal
+    # say from the meson.build
+    ./bbdir/CppCore/rgpot/rpc/potserv 12345 LJ
+    # now test
+    ctest --test-dir build_client/ --output-on-failure
+
+Developing locally
+^^^^^^^^^^^^^^^^^^
+
+A ``pre-commit`` job is setup on CI to enforce consistent styles, so it is best to
+set it up locally as well (using `pipx <https://pypa.github.io/pipx>`_ for isolation):
+
+.. code:: sh
+
+    # Run before commiting
+    uvx pre-commit run --all-files
+
+Handling actions
+^^^^^^^^^^^^^^^^
+
+To keep the build matrix setup manageable, we use Nickel.
+
+.. code:: bash
+
+    pixi r gen-gha
+
+License
+-------
+
+MIT, however note that some of the potentials are adapted from eOn which is
+under a BSD 3-Clause License.

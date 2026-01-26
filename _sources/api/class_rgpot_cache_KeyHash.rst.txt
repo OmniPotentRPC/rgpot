@@ -1,0 +1,86 @@
+.. index:: pair: class; rgpot::cache::KeyHash
+.. _doxid-structrgpot_1_1cache_1_1_key_hash:
+
+class rgpot::cache::KeyHash
+===========================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Struct to hold the hash and string key for caching. :ref:`More...<details-structrgpot_1_1cache_1_1_key_hash>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <PotentialCache.hpp>
+	
+	class KeyHash {
+	public:
+		// fields
+	
+		size_t :ref:`hash<doxid-structrgpot_1_1cache_1_1_key_hash_1a515be7b17a389e01ea452933fc7a27ed>`;
+		std::string :ref:`key<doxid-structrgpot_1_1cache_1_1_key_hash_1a11c0e6299dd44396f71e7be85bcd929f>`;
+
+		// construction
+	
+		:ref:`KeyHash<doxid-structrgpot_1_1cache_1_1_key_hash_1abe48d71ca4541cd7c94b0f6add668c19>`(size_t _hash);
+	};
+.. _details-structrgpot_1_1cache_1_1_key_hash:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Struct to hold the hash and string key for caching.
+
+Fields
+------
+
+.. index:: pair: variable; hash
+.. _doxid-structrgpot_1_1cache_1_1_key_hash_1a515be7b17a389e01ea452933fc7a27ed:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	size_t hash
+
+The numeric hash value.
+
+.. index:: pair: variable; key
+.. _doxid-structrgpot_1_1cache_1_1_key_hash_1a11c0e6299dd44396f71e7be85bcd929f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::string key
+
+The string representation of the hash.
+
+Construction
+------------
+
+.. index:: pair: function; KeyHash
+.. _doxid-structrgpot_1_1cache_1_1_key_hash_1abe48d71ca4541cd7c94b0f6add668c19:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	KeyHash(size_t _hash)
+
+Constructor for :ref:`KeyHash <doxid-structrgpot_1_1cache_1_1_key_hash>`.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- _hash
+
+		- The numeric hash to wrap.
+

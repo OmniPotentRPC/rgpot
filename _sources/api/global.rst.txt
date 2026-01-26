@@ -1,0 +1,436 @@
+.. _global:
+.. index:: pair: namespace; global
+
+Global Namespace
+================
+
+.. toctree::
+	:hidden:
+
+	namespace_rgpot.rst
+	class_AtomMatrix.rst
+	class_GenericPotImpl.rst
+	class_PotClient.rst
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	// namespaces
+
+	namespace :ref:`rgpot<doxid-namespacergpot>`;
+		namespace :ref:`rgpot::cache<doxid-namespacergpot_1_1cache>`;
+		namespace :ref:`rgpot::types<doxid-namespacergpot_1_1types>`;
+			namespace :ref:`rgpot::types::adapt<doxid-namespacergpot_1_1types_1_1adapt>`;
+				namespace :ref:`rgpot::types::adapt::capnp<doxid-namespacergpot_1_1types_1_1adapt_1_1capnp>`;
+				namespace :ref:`rgpot::types::adapt::eigen<doxid-namespacergpot_1_1types_1_1adapt_1_1eigen>`;
+				namespace :ref:`rgpot::types::adapt::xtensor<doxid-namespacergpot_1_1types_1_1adapt_1_1xtensor>`;
+
+	// typedefs
+
+	typedef struct PotClient :ref:`PotClient<doxid-pot__bridge_8h_1ad15494aa275bd98047b204d29533f6ba>`;
+
+	// classes
+
+	class :ref:`AtomMatrix<doxid-class_atom_matrix>`;
+	class :ref:`GenericPotImpl<doxid-class_generic_pot_impl>`;
+	class :ref:`PotClient<doxid-struct_pot_client>`;
+
+	// global functions
+
+	void :ref:`c_force_eam<doxid-_cu_h2_pot_8hpp_1a79b876a461f808a0b8e5ac38ca629988>`(int* natms, int ndim, double* box, double* R, double* F, double* U);
+	:ref:`PotClient<doxid-struct_pot_client>`* :ref:`pot_client_init<doxid-pot__bridge_8cc_1ad254a3ebf2ca0137de55bd82ea1abb42>`(const char* host, int32_t port);
+	void :ref:`pot_client_free<doxid-pot__bridge_8cc_1a605cb8b056e3d895be066472fe1c116e>`(:ref:`PotClient<doxid-struct_pot_client>`* client);
+	int32_t :ref:`pot_calculate<doxid-pot__bridge_8cc_1ab471aef52e0227fbb98588e8366ad646>`(:ref:`PotClient<doxid-struct_pot_client>`* client, int32_t natoms, const double* pos, const int32_t* atmnrs, const double* box, double* out_energy, double* out_forces);
+	const char* :ref:`pot_get_last_error<doxid-pot__bridge_8cc_1a669a1a1ce89314ebbfec4c91438bd782>`(:ref:`PotClient<doxid-struct_pot_client>`* client);
+	:ref:`PotClient<doxid-struct_pot_client>`* :ref:`pot_client_init<doxid-pot__bridge_8h_1ad254a3ebf2ca0137de55bd82ea1abb42>`(const char* host, int32_t port);
+	void :ref:`pot_client_free<doxid-pot__bridge_8h_1a605cb8b056e3d895be066472fe1c116e>`(:ref:`PotClient<doxid-struct_pot_client>`* client);
+	int32_t :ref:`pot_calculate<doxid-pot__bridge_8h_1ab471aef52e0227fbb98588e8366ad646>`(:ref:`PotClient<doxid-struct_pot_client>`* client, int32_t natoms, const double* pos, const int32_t* atmnrs, const double* box, double* out_energy, double* out_forces);
+	const char* :ref:`pot_get_last_error<doxid-pot__bridge_8h_1a669a1a1ce89314ebbfec4c91438bd782>`(:ref:`PotClient<doxid-struct_pot_client>`* client);
+	int :ref:`main<doxid-server_8cpp_1a0ddf1224851353fc92bfbff6f499fa97>`(int argc, char* argv[]);
+
+	// macros
+
+	#define :target:`CATCH_AND_REPORT<doxid-pot__bridge_8cc_1a933409e97453f39bfae6d29f0518b341>`(client, default_ret)
+
+.. _details-global:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Typedefs
+--------
+
+.. index:: pair: typedef; PotClient
+.. _doxid-pot__bridge_8h_1ad15494aa275bd98047b204d29533f6ba:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	typedef struct PotClient PotClient
+
+C API for the RPC potential client bridge.
+
+This header provides a C-compatible interface to the distributed potential calculation client, allowing integration with Fortran or other languages with a C interface, e.g. Julia.
+
+Opaque handle to the client context.
+
+Global Functions
+----------------
+
+.. index:: pair: function; c_force_eam
+.. _doxid-_cu_h2_pot_8hpp_1a79b876a461f808a0b8e5ac38ca629988:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void c_force_eam(int* natms, int ndim, double* box, double* R, double* F, double* U)
+
+C-linkage bridge to the Fortran EAM implementation.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- natms
+
+		- Array containing counts of Cu and H atoms.
+
+	*
+		- ndim
+
+		- Total dimensions (3 \* N).
+
+	*
+		- box
+
+		- Diagonal box vectors (assumes cubic).
+
+	*
+		- R
+
+		- Pointer to flat position array.
+
+	*
+		- F
+
+		- Pointer to output force array.
+
+	*
+		- U
+
+		- Pointer to output energy value.
+
+
+
+.. rubric:: Returns:
+
+Void.
+
+.. index:: pair: function; pot_client_init
+.. _doxid-pot__bridge_8cc_1ad254a3ebf2ca0137de55bd82ea1abb42:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`PotClient<doxid-struct_pot_client>`* pot_client_init(const char* host, int32_t port)
+
+Initializes the RPC client connection.
+
+Constructs a string-based address from the *host* and *port*, then initializes a new ``capnp::EzRpcClient``. The main capability is cast to the ``Potential`` interface defined in the schema.
+
+.. note::
+
+	Returns ``nullptr`` if the connection cannot be established or if the address is malformed.
+
+.. index:: pair: function; pot_client_free
+.. _doxid-pot__bridge_8cc_1a605cb8b056e3d895be066472fe1c116e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void pot_client_free(:ref:`PotClient<doxid-struct_pot_client>`* client)
+
+Frees all resources associated with the client.
+
+Performs a standard ``delete`` on the client pointer. This triggers the ``:ref:`PotClient <doxid-struct_pot_client>``` destructor, which cleans up the ``unique_ptr`` and associated RPC state.
+
+.. index:: pair: function; pot_calculate
+.. _doxid-pot__bridge_8cc_1ab471aef52e0227fbb98588e8366ad646:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int32_t pot_calculate(:ref:`PotClient<doxid-struct_pot_client>`* client, int32_t natoms, const double* pos, const int32_t* atmnrs, const double* box, double* out_energy, double* out_forces)
+
+Executes a remote potential calculation.
+
+This function performs the following steps:
+
+#. Resets the ``last_error`` buffer.
+
+#. Initializes a calculation request.
+
+#. Maps the input pointers to ``kj::arrayPtr`` views to avoid unnecessary copying before serialization.
+
+#. Waits for the RPC promise to resolve.
+
+#. Validates the size of the returned force array.
+
+#. Copies the results into the provided output buffers.
+
+.. warning::
+
+	The server must return a force array matching *natoms* \* 3. If the sizes do not match, a non-zero error code is returned.
+
+.. index:: pair: function; pot_get_last_error
+.. _doxid-pot__bridge_8cc_1a669a1a1ce89314ebbfec4c91438bd782:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const char* pot_get_last_error(:ref:`PotClient<doxid-struct_pot_client>`* client)
+
+Retrieves the most recent error message.
+
+Checks if a valid client handle is provided and if the ``last_error`` buffer contains data. If no error is recorded, an empty string is returned.
+
+.. index:: pair: function; pot_client_init
+.. _doxid-pot__bridge_8h_1ad254a3ebf2ca0137de55bd82ea1abb42:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`PotClient<doxid-struct_pot_client>`* pot_client_init(const char* host, int32_t port)
+
+Initializes the RPC client connection.
+
+Constructs a string-based address from the *host* and *port*, then initializes a new ``capnp::EzRpcClient``. The main capability is cast to the ``Potential`` interface defined in the schema.
+
+.. note::
+
+	Returns ``nullptr`` if the connection cannot be established or if the address is malformed.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- host
+
+		- Target server hostname or IP address.
+
+	*
+		- port
+
+		- Network port of the potential server.
+
+
+
+.. rubric:: Returns:
+
+Pointer to the client context or ``NULL`` on failure.
+
+
+
+.. rubric:: See also:
+
+pot_get_last_error
+
+.. index:: pair: function; pot_client_free
+.. _doxid-pot__bridge_8h_1a605cb8b056e3d895be066472fe1c116e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void pot_client_free(:ref:`PotClient<doxid-struct_pot_client>`* client)
+
+Frees all resources associated with the client.
+
+Performs a standard ``delete`` on the client pointer. This triggers the ``:ref:`PotClient <doxid-struct_pot_client>``` destructor, which cleans up the ``unique_ptr`` and associated RPC state.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- client
+
+		- The opaque client handle to release.
+
+
+
+.. rubric:: Returns:
+
+Void.
+
+.. index:: pair: function; pot_calculate
+.. _doxid-pot__bridge_8h_1ab471aef52e0227fbb98588e8366ad646:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int32_t pot_calculate(:ref:`PotClient<doxid-struct_pot_client>`* client, int32_t natoms, const double* pos, const int32_t* atmnrs, const double* box, double* out_energy, double* out_forces)
+
+Executes a remote potential calculation.
+
+The *client* must be successfully initialized.
+
+This function performs the following steps:
+
+#. Resets the ``last_error`` buffer.
+
+#. Initializes a calculation request.
+
+#. Maps the input pointers to ``kj::arrayPtr`` views to avoid unnecessary copying before serialization.
+
+#. Waits for the RPC promise to resolve.
+
+#. Validates the size of the returned force array.
+
+#. Copies the results into the provided output buffers.
+
+.. warning::
+
+	The server must return a force array matching *natoms* \* 3. If the sizes do not match, a non-zero error code is returned.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- client
+
+		- The opaque client handle.
+
+	*
+		- natoms
+
+		- Total number of atoms in the system.
+
+	*
+		- pos
+
+		- Array of flattened atomic coordinates.
+
+	*
+		- atmnrs
+
+		- Array of atomic numbers.
+
+	*
+		- box
+
+		- Simulation cell vectors in row-major order.
+
+	*
+		- out_energy
+
+		- Pointer to store the calculated energy.
+
+	*
+		- out_forces
+
+		- Buffer to store the calculated forces.
+
+
+
+.. rubric:: Returns:
+
+0 on success, non-zero on failure.
+
+.. index:: pair: function; pot_get_last_error
+.. _doxid-pot__bridge_8h_1a669a1a1ce89314ebbfec4c91438bd782:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const char* pot_get_last_error(:ref:`PotClient<doxid-struct_pot_client>`* client)
+
+Retrieves the most recent error message.
+
+Checks if a valid client handle is provided and if the ``last_error`` buffer contains data. If no error is recorded, an empty string is returned.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- client
+
+		- The opaque client handle.
+
+
+
+.. rubric:: Returns:
+
+String containing the error description.
+
+.. index:: pair: function; main
+.. _doxid-server_8cpp_1a0ddf1224851353fc92bfbff6f499fa97:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int main(int argc, char* argv[])
+
+The main entry point handles command-line arguments to specify the network port and the potential type. It instantiates the requested physics engine and blocks until the server is terminated.
+
+
+
+.. _doxid-server_8cpp_1autotoc_md1:
+
+Usage
+~~~~~
+
+````./potserv <port> <PotentialType>
+
+
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- argc
+
+		- Argument count.
+
+	*
+		- argv
+
+		- Argument vector.
+
+
+
+.. rubric:: Returns:
+
+0 on success, 1 on initialization failure.
+

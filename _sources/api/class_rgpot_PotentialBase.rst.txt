@@ -1,0 +1,129 @@
+.. index:: pair: class; rgpot::PotentialBase
+.. _doxid-classrgpot_1_1_potential_base:
+
+class rgpot::PotentialBase
+==========================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Abstract base class for all potential energy surfaces. :ref:`More...<details-classrgpot_1_1_potential_base>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <Potential.hpp>
+	
+	class PotentialBase {
+	public:
+		// construction
+	
+		:ref:`PotentialBase<doxid-classrgpot_1_1_potential_base_1a35185d956a387e730f6a7e8d0716c57f>`(PotType inp_type);
+		virtual :ref:`~PotentialBase<doxid-classrgpot_1_1_potential_base_1a85dc9932b5cab819c052347dcebb4221>`();
+
+		// methods
+	
+		virtual std::pair<double, :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`> :ref:`operator()<doxid-classrgpot_1_1_potential_base_1a64c4a9352dae2abb8262aeeceef71efa>`(const :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& positions, const std::vector<int>& atmtypes, const std::array<std::array<double, 3>, 3>& box) = 0;
+		PotType :ref:`get_type<doxid-classrgpot_1_1_potential_base_1a4de79175b891b7ea98dedb310029f834>`() const;
+	};
+.. _details-classrgpot_1_1_potential_base:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Abstract base class for all potential energy surfaces.
+
+Construction
+------------
+
+.. index:: pair: function; PotentialBase
+.. _doxid-classrgpot_1_1_potential_base_1a35185d956a387e730f6a7e8d0716c57f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	PotentialBase(PotType inp_type)
+
+Constructor for :ref:`PotentialBase <doxid-classrgpot_1_1_potential_base>`.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- inp_type
+
+		- The type of the potential.
+
+.. _doxid-classrgpot_1_1_potential_base_1a85dc9932b5cab819c052347dcebb4221:
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual ~PotentialBase()
+
+Virtual destructor.
+
+Methods
+-------
+
+.. index:: pair: function; operator()
+.. _doxid-classrgpot_1_1_potential_base_1a64c4a9352dae2abb8262aeeceef71efa:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual std::pair<double, :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`> operator()(const :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& positions, const std::vector<int>& atmtypes, const std::array<std::array<double, 3>, 3>& box) = 0
+
+Main interface for potential and force calculation.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- positions
+
+		- The atomic coordinates.
+
+	*
+		- atmtypes
+
+		- The atomic numbers.
+
+	*
+		- box
+
+		- The simulation cell vectors.
+
+
+
+.. rubric:: Returns:
+
+A pair containing the energy and the force matrix.
+
+.. index:: pair: function; get_type
+.. _doxid-classrgpot_1_1_potential_base_1a4de79175b891b7ea98dedb310029f834:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	PotType get_type() const
+
+Fetches the potential type.
+
+
+
+.. rubric:: Returns:
+
+The potential type.
+

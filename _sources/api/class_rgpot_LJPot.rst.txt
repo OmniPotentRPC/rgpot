@@ -1,0 +1,98 @@
+.. index:: pair: class; rgpot::LJPot
+.. _doxid-classrgpot_1_1_l_j_pot:
+
+class rgpot::LJPot
+==================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Implementation of a shifted 12-6 Lennard-Jones potential. :ref:`More...<details-classrgpot_1_1_l_j_pot>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <LJPot.hpp>
+	
+	class LJPot: public rgpot::Potential< LJPot > {
+	public:
+		// construction
+	
+		:ref:`LJPot<doxid-classrgpot_1_1_l_j_pot_1ac55b1c8585416be6c5a593c6815344d6>`();
+
+		// methods
+	
+		void :ref:`forceImpl<doxid-classrgpot_1_1_l_j_pot_1a74c9c2b391a010329a97b272ef1cc776>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+	};
+.. _details-classrgpot_1_1_l_j_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Implementation of a shifted 12-6 Lennard-Jones potential.
+
+This method calculates pairwise interactions between all atoms within the cutoff radius. It applies the minimum image convention using the provided box dimensions to handle periodic boundaries.
+
+.. note::
+
+	This implementation is adapted, untouched from the `eOn project <https://github.com/TheochemUI/EONgit/blob/stable/client/potentials/LJ/LJ.cpp>`__.
+
+
+
+.. warning::
+
+	The box is assumed to be orthogonal.
+
+Construction
+------------
+
+.. index:: pair: function; LJPot
+.. _doxid-classrgpot_1_1_l_j_pot_1ac55b1c8585416be6c5a593c6815344d6:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	LJPot()
+
+Default constructor initializing parameters.
+
+Methods
+-------
+
+.. index:: pair: function; forceImpl
+.. _doxid-classrgpot_1_1_l_j_pot_1a74c9c2b391a010329a97b272ef1cc776:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void forceImpl(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const
+
+Computes the forces and energy for a given configuration.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- in
+
+		- Structure containing coordinates and cell info.
+
+	*
+		- out
+
+		- Pointer to the results structure.
+
+
+
+.. rubric:: Returns:
+
+Void.
+

@@ -1,0 +1,94 @@
+.. index:: pair: class; rgpot::CuH2Pot
+.. _doxid-classrgpot_1_1_cu_h2_pot:
+
+class rgpot::CuH2Pot
+====================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Implementation of the CuH2 EAM potential. :ref:`More...<details-classrgpot_1_1_cu_h2_pot>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <CuH2Pot.hpp>
+	
+	class CuH2Pot: public rgpot::Potential< CuH2Pot > {
+	public:
+		// construction
+	
+		:ref:`CuH2Pot<doxid-classrgpot_1_1_cu_h2_pot_1abd20555e9e7e91e2d1a7764a68edf761>`();
+
+		// methods
+	
+		void :ref:`forceImpl<doxid-classrgpot_1_1_cu_h2_pot_1a0cb67cde60e098cda46a1a190004bdd2>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+	};
+.. _details-classrgpot_1_1_cu_h2_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Implementation of the CuH2 EAM potential.
+
+Construction
+------------
+
+.. index:: pair: function; CuH2Pot
+.. _doxid-classrgpot_1_1_cu_h2_pot_1abd20555e9e7e91e2d1a7764a68edf761:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	CuH2Pot()
+
+Constructor for :ref:`CuH2Pot <doxid-classrgpot_1_1_cu_h2_pot>`.
+
+Methods
+-------
+
+.. index:: pair: function; forceImpl
+.. _doxid-classrgpot_1_1_cu_h2_pot_1a0cb67cde60e098cda46a1a190004bdd2:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void forceImpl(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const
+
+Computes forces and energy using the Fortran backend.
+
+This method validates that the input system contains only Copper (29) and Hydrogen (1) atoms. It uses a ``std::multiset`` to count occurrences of each species.
+
+* The box vectors are simplified to a diagonal representation (cubic) before being passed to the ``c_force_eam`` Fortran bridge.
+
+* .. warning::
+  
+  	Throws ``std::runtime_error`` if species other than Cu or H are present, or if either species is entirely missing.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- in
+
+		- Structure containing coordinates and cell info.
+
+	*
+		- out
+
+		- Pointer to the results structure.
+
+
+
+.. rubric:: Returns:
+
+Void.
+

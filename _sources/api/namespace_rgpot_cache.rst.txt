@@ -1,0 +1,43 @@
+.. index:: pair: namespace; rgpot::cache
+.. _doxid-namespacergpot_1_1cache:
+
+namespace rgpot::cache
+======================
+
+.. toctree::
+	:hidden:
+
+	class_rgpot_cache_KeyHash.rst
+	class_rgpot_cache_PotentialCache.rst
+
+Overview
+~~~~~~~~
+
+Implementation of the RocksDB-based potential cache. :ref:`More...<details-namespacergpot_1_1cache>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace cache {
+
+	// classes
+
+	class :ref:`KeyHash<doxid-structrgpot_1_1cache_1_1_key_hash>`;
+	class :ref:`PotentialCache<doxid-classrgpot_1_1cache_1_1_potential_cache>`;
+
+	} // namespace cache
+.. _details-namespacergpot_1_1cache:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Implementation of the RocksDB-based potential cache.
+
+Header file for the :ref:`PotentialCache <doxid-classrgpot_1_1cache_1_1_potential_cache>` class.
+
+This file implements the methods for the :ref:`PotentialCache <doxid-classrgpot_1_1cache_1_1_potential_cache>` class, handling the low-level interactions with the RocksDB library for persistent storage of potential evaluations.
+
+This file defines the caching mechanism for the rgpot library, utilizing RocksDB to store and retrieve potential energy and force calculations.
+
