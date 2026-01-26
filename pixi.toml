@@ -39,6 +39,7 @@ platforms = ["linux-64"]
 doxygen = ">=1.13.2,<2"
 sphinx = ">=8.2.3,<9"
 doxyrest = ">=2.1.2,<3"
+emacs = ">=30.2,<31"
 
 [feature.docs.pypi-dependencies]
 sphinx-sitemap = ">=2.9.0, <3"
