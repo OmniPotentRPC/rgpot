@@ -55,4 +55,3 @@ if [ -f "$MD_FILE" ]; then
 else
     echo "Export failed."
 fi
-
