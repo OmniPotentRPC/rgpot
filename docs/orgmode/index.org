@@ -29,6 +29,7 @@
 
      api/index
      changelog
-     devnotes
      contributing/index
 #+end_export
+
+     # devnotes

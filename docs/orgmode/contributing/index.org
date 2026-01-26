@@ -24,16 +24,17 @@ Use the [[https://github.com/HaoZeke/rgpycrumbs/issues][GitHub issue tracker]] t
 provide a minimal reproducible example for all bug reports. User facing comments
 may be directed also to the [[https://matsci.org/c/eon/72][EON materials science section]].
 
-# * Contributing 
-#   For details on the dispatcher architecture or internal API:
+* Contributing 
+  For details on the dispatcher architecture or internal API:
 
-# #+begin_export rst
-#   .. toctree::
-#      :maxdepth: 2
-#      :caption: Reference
+#+begin_export rst
+  .. toctree::
+     :maxdepth: 2
+     :caption: Reference
 
-#      doc_builds
-#      test_requirements
-#      ../code_of_conduct
-#      release
-# #+end_export
+     ../code_of_conduct
+#+end_export
+
+     # doc_builds
+     # test_requirements
+     # release
