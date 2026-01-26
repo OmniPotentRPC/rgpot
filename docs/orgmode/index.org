@@ -1,0 +1,34 @@
+#+TITLE: ~rgpot~
+#+AUTHOR: [[https://rgoswami.me][Rohit Goswami]]
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+
+# Metadata first, including the heading
+#+begin_export rst
+:cover: https://github.com/HaoZeke/rgpycrumbs/blob/main/branding/logo/pycrumbs_logo.webp
+
+=========
+``rgpot``
+=========
+
+:Author: `Rohit Goswami <https://rgoswami.me>`_
+#+end_export
+
+# # Copied over by sphinx-build
+# file:../../branding/logo/pycrumbs_logo.webp
+
+* Overview
+  ~rgpot~ provides a unified RPC potential schema.
+
+* Developer Reference
+  For details on the dispatcher architecture or internal API:
+
+#+begin_export rst
+  .. toctree::
+     :maxdepth: 2
+     :caption: Reference
+
+     api/index
+     changelog
+     devnotes
+     contributing/index
+#+end_export
