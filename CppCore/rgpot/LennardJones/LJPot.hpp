@@ -22,7 +22,7 @@ namespace rgpot {
 
 /**
  * @class LJPot
- * @brief Implementation of the 12-6 Lennard-Jones potential.
+ * @brief Implementation of a shifted 12-6 Lennard-Jones potential.
  * @ingroup rgpot_potentials
  */
 class LJPot : public Potential<LJPot> {

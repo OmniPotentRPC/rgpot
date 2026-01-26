@@ -22,18 +22,15 @@ namespace rgpot {
 
 /**
  * @class LJPot
- * @details Implementation of a shifted 12-6 Lennard-Jones potential.
+ * @details 
  *
  * This method calculates pairwise interactions between all atoms
  * within the cutoff radius. It applies the minimum image convention
  * using the provided box dimensions to handle periodic boundaries.
  *
- * @note This implementation is adapted, untouched from the eOn project [1].
+ * @note This implementation is adapted, untouched from the [eOn project](https://github.com/TheochemUI/EONgit/blob/stable/client/potentials/LJ/LJ.cpp).
  * @warning The box is assumed to be orthogonal.
  *
- * # References
- * [1] EON Development Team. LJ.cpp.
- * https://github.com/TheochemUI/EONgit/blob/stable/client/potentials/LJ/LJ.cpp
  */
 void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   long N = in.nAtoms;
