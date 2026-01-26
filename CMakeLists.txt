@@ -153,8 +153,8 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
   add_library(rgpot::rgpot ALIAS rgpot)
 
   target_include_directories(
-    pot PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/CppCore>
-               $<INSTALL_INTERFACE:include>)
+    rgpot PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/CppCore>
+                 $<INSTALL_INTERFACE:include>)
 
   if(RGPOT_HAS_FORTRAN)
     target_link_libraries(rgpot PUBLIC fortcuh2)

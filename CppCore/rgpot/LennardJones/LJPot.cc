@@ -22,13 +22,14 @@ namespace rgpot {
 
 /**
  * @class LJPot
- * @details 
+ * @details
  *
  * This method calculates pairwise interactions between all atoms
  * within the cutoff radius. It applies the minimum image convention
  * using the provided box dimensions to handle periodic boundaries.
  *
- * @note This implementation is adapted, untouched from the [eOn project](https://github.com/TheochemUI/EONgit/blob/stable/client/potentials/LJ/LJ.cpp).
+ * @note This implementation is adapted, untouched from the [eOn
+ * project](https://github.com/TheochemUI/EONgit/blob/stable/client/potentials/LJ/LJ.cpp).
  * @warning The box is assumed to be orthogonal.
  *
  */
