@@ -10,13 +10,14 @@ sys.path.insert(0, os.path.abspath("../../subprojects/doxyrest/sphinx"))
 project = "rgpot"
 copyright = "2025--present, rgpot developers"
 author = "Rohit Goswami"
-# html_logo = "../../branding/logo/pycrumbs_notext.svg"
+html_logo = "../../branding/logo/rgpot_notext.svg"
 
 # -- General configuration ---------------------------------------------------
 extensions = [
     "doxyrest",
     "cpplexer",
     "sphinx.ext.intersphinx",
+    "sphinx_sitemap",
 ]
 
 templates_path = ["_templates"]
@@ -35,10 +36,5 @@ html_static_path = ["_static"]
 # Shibuya theme specific options
 html_theme_options = {
     "github_url": "https://github.com/OmniPotentRPC/rgpot",
-    # "nav_links": [
-    #     {"title": "EON Tools", "url": "eon_tools"},
-    # ],
 }
-
-autoapi_dirs = ["../../rgpot"]
 html_baseurl = "rgpot.rgoswami.me"

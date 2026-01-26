@@ -297,4 +297,4 @@ Temporary Items
 *.egg-info
 /docs/source/api/
 /docs/source/xml/
-/docs/source/*.rst
+/docs/source/**/*.rst

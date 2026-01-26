@@ -13,8 +13,8 @@
 :Author: `Rohit Goswami <https://rgoswami.me>`_
 #+end_export
 
-# # Copied over by sphinx-build
-# file:../../branding/logo/pycrumbs_logo.webp
+# Copied over by sphinx-build
+file:../../branding/logo/rgpot_logo.webp
 
 * Overview
   ~rgpot~ provides a unified RPC potential schema.
