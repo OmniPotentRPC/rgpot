@@ -36,7 +36,7 @@ ctest --test-dir build_client/ --output-on-failure
 
 *** Developing locally
 A ~pre-commit~ job is setup on CI to enforce consistent styles, so it is best to
-set it up locally as well (using [[https://pypa.github.io/pipx][pipx]] for isolation):
+set it up locally as well (using [[https://docs.astral.sh/uv/guides/tools/][uvx]] for isolation):
 
 #+begin_src sh
 # Run before commiting

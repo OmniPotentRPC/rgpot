@@ -1,16 +1,16 @@
 
 # Table of Contents
 
-1.  [About](#about)
-    1.  [Usage](#orgf05d8d3)
-        1.  [Developing locally](#orgd2c8aa2)
-        2.  [Handling actions](#orgc8b950e)
-2.  [License](#orga1e3f52)
+1.  [RPC Generalized Potential Library](#about)
+    1.  [Usage](#org266167a)
+        1.  [Developing locally](#org2b2a584)
+        2.  [Handling actions](#org974eb42)
+2.  [License](#org826bc28)
 
 
 <a id="about"></a>
 
-# About
+# RPC Generalized Potential Library
 
 ![img](https://raw.githubusercontent.com/OmniPotentRPC/rgpot/refs/heads/main/branding/logo/rgpot_logo.webp)
 
@@ -18,7 +18,7 @@ Originally designed for interfacing easily to potentials implemented [in
 eOn](http://theory.cm.utexas.edu/eon/), but has grown to be more flexible.
 
 
-<a id="orgf05d8d3"></a>
+<a id="org266167a"></a>
 
 ## Usage
 
@@ -47,18 +47,18 @@ For building only the client, with CXX17 and CapnProto only:
     ctest --test-dir build_client/ --output-on-failure
 
 
-<a id="orgd2c8aa2"></a>
+<a id="org2b2a584"></a>
 
 ### Developing locally
 
 A `pre-commit` job is setup on CI to enforce consistent styles, so it is best to
-set it up locally as well (using [pipx](https://pypa.github.io/pipx) for isolation):
+set it up locally as well (using [uvx](https://docs.astral.sh/uv/guides/tools/) for isolation):
 
     # Run before commiting
     uvx pre-commit run --all-files
 
 
-<a id="orgc8b950e"></a>
+<a id="org974eb42"></a>
 
 ### Handling actions
 
@@ -67,9 +67,10 @@ To keep the build matrix setup manageable, we use Nickel.
     pixi r gen-gha
 
 
-<a id="orga1e3f52"></a>
+<a id="org826bc28"></a>
 
 # License
 
 MIT, however note that some of the potentials are adapted from eOn which is
 under a BSD 3-Clause License.
+
