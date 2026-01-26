@@ -1,4 +1,4 @@
-#+TITLE: ~rgpot~
+#+TITLE: RPC Generalized Potential Library
 #+AUTHOR: [[https://rgoswami.me][Rohit Goswami]]
 #+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
 
@@ -17,10 +17,11 @@
 file:../../branding/logo/rgpot_logo.webp
 
 * Overview
-  ~rgpot~ provides a unified RPC potential schema.
+RPC Generalized Potential Library, or ~rgpot~ provides a unified schema for
+interfacing potential servers across languages using runtime interoperability.
 
 * Developer Reference
-  For details on the dispatcher architecture or internal API:
+  For details on the architecture or internal API:
 
 #+begin_export rst
   .. toctree::

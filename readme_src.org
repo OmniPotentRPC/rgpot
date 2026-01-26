@@ -1,4 +1,4 @@
-* About
+* RPC Generalized Potential Library
 :PROPERTIES:
 :CUSTOM_ID: about
 :END:
