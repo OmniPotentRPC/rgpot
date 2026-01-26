@@ -150,7 +150,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     target_link_libraries(rgpot PUBLIC ptlrpc)
   endif()
 
-  add_library(rgpot::pot ALIAS pot)
+  add_library(rgpot::rgpot ALIAS rgpot)
 
   target_include_directories(
     pot PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/CppCore>
