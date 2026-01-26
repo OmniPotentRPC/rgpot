@@ -1,10 +1,10 @@
 * About
-This is a set of standard potentials in C++ or Fortran. The goal is to provide
-minimal, binding friendly interfaces for ease of usage from Python or even R.
-The core library is header-only, though adapter functions are provided for
-interfacing to ~Eigen~ and ~xtensor~.
+:PROPERTIES:
+:CUSTOM_ID: about
+:END:
+[[https://raw.githubusercontent.com/Theochemui/rgpot/refs/heads/main/branding/logo/rgpot_logo.webp]]
 
-This was originally designed for interfacing easily to potentials implemented [[http://theory.cm.utexas.edu/eon/][in
+Originally designed for interfacing easily to potentials implemented [[http://theory.cm.utexas.edu/eon/][in
 eOn]], but has grown to be more flexible.
 ** Usage
 Setting up and running tests:
