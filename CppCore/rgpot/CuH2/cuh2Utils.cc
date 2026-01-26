@@ -1,5 +1,13 @@
 // MIT License
-// Copyright 2023--present Rohit Goswami <HaoZeke>
+// Copyright 2023--present rgpot developers
+
+/**
+ * @brief Implementation of coordinate transformation utilities for CuH2.
+ *
+ * Implements logic for positioning Hydrogen atoms relative to a  Copper surface
+ * slab.
+ */
+
 // clang-format off
 #include <algorithm>
 #include <limits>
@@ -10,6 +18,16 @@ using rgpot::types::AtomMatrix;
 #ifdef WITH_XTENSOR
 namespace rgpot::cuh2::utils::xts {
 
+/**
+ * @details
+ * This function updates the positions of exactly two Hydrogen atoms.
+ * It centers them around their existing midpoint along the X-axis
+ * while placing them at a fixed height above the topmost Copper layer.
+ * * @note The function assumes the Cu slab surface is defined by the
+ * maximum Z-coordinate among Copper atoms.
+ * * @warning Throws @c std::runtime_error if the number of H atoms
+ * is not exactly 2.
+ */
 xt::xtensor<double, 2>
 perturb_positions(const xt::xtensor<double, 2> &base_positions,
                   const xt::xtensor<int, 1> &atmNumVec, double hcu_dist,
@@ -31,7 +49,6 @@ perturb_positions(const xt::xtensor<double, 2> &base_positions,
     throw std::runtime_error("Expected exactly two hydrogen atoms");
   }
 
-  // Compute the midpoint of the hydrogens
   auto hMidpoint =
       (xt::row(positions, hIndices[0]) + xt::row(positions, hIndices[1])) / 2;
 
@@ -74,6 +91,12 @@ perturb_positions(const xt::xtensor<double, 2> &base_positions,
   return positions;
 }
 
+/**
+ * @details
+ * Calculates the Euclidean distance between two Hydrogen atoms and
+ * the vertical offset (Z-axis) between the H atoms and the highest
+ * Cu atom in the system.
+ */
 std::pair<double, double>
 calculateDistances(const xt::xtensor<double, 2> &positions,
                    const xt::xtensor<int, 1> &atmNumVec) {

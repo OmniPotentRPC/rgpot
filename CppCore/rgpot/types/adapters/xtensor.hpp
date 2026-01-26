@@ -1,8 +1,14 @@
-// MIT License
-// Copyright 2023--present Rohit Goswami <HaoZeke>
 #pragma once
+// MIT License
+// Copyright 2023--present rgpot developers
 
-// Include required headers
+/**
+ * @brief Conversion utilities between xtensor and native types.
+ *
+ * This file provides adapters for the @c xtensor library, enabling
+ * interoperability between multidimensional arrays and rgpot data structures.
+ */
+
 #include <array>
 #include <vector>
 #include <xtensor/xtensor.hpp>
@@ -16,7 +22,11 @@ namespace types {
 namespace adapt {
 namespace xtensor {
 
-// Convert from xtensor::xtensor<double, 2> to AtomMatrix
+/**
+ * @brief Converts an xtensor array to a native AtomMatrix.
+ * @param matrix  The source 2D xtensor array.
+ * @return An @c AtomMatrix containing the copied data.
+ */
 inline AtomMatrix convertToAtomMatrix(const xt::xtensor<double, 2> &matrix) {
   AtomMatrix result(matrix.shape(0), matrix.shape(1));
   for (size_t i = 0; i < matrix.shape(0); ++i) {
@@ -27,7 +37,11 @@ inline AtomMatrix convertToAtomMatrix(const xt::xtensor<double, 2> &matrix) {
   return result;
 }
 
-// Convert from AtomMatrix to xtensor::xtensor<double, 2>
+/**
+ * @brief Converts a native AtomMatrix to an xtensor array.
+ * @param atomMatrix  The source native matrix.
+ * @return A 2D @c xt::xtensor containing the data.
+ */
 inline xt::xtensor<double, 2> convertToXtensor(const AtomMatrix &atomMatrix) {
   xt::xtensor<double, 2> result =
       xt::zeros<double>({atomMatrix.rows(), atomMatrix.cols()});
@@ -39,14 +53,21 @@ inline xt::xtensor<double, 2> convertToXtensor(const AtomMatrix &atomMatrix) {
   return result;
 }
 
-// Convert from xtensor::xtensor<int, 1> to std::vector<int>
+/**
+ * @brief Converts a 1D xtensor to a standard vector.
+ * @param vector  The source 1D xtensor.
+ * @return A @c std::vector containing the data.
+ */
 template <typename T>
 std::vector<T> convertToVector(const xt::xtensor<T, 1> &vector) {
   return std::vector<T>(vector.begin(), vector.end());
 }
 
-// Convert from xt::xtensor<double, 2> with shape (3,3) to
-// std::array<std::array<double, 3>, 3>
+/**
+ * @brief Converts a 3x3 xtensor to a nested standard array.
+ * @param matrix  The 3x3 xtensor array.
+ * @return A nested @c std::array representing the matrix.
+ */
 inline std::array<std::array<double, 3>, 3>
 convertToArray3x3(const xt::xtensor<double, 2> &matrix) {
   std::array<std::array<double, 3>, 3> result;

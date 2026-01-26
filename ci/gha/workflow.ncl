@@ -41,13 +41,13 @@ let cmake_conf = m%"
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
     -DCMAKE_C_COMPILER_LAUNCHER=ccache \
     -DCMAKE_BUILD_TYPE=Release \
-    -DPOTLIB_BUILD_TESTS=True \
-    -DPOTLIB_BUILD_EXAMPLES=False \
-    -DPOTLIB_WITH_XTENSOR=OFF \
-    -DPOTLIB_WITH_EIGEN=OFF \
-    -DPOTLIB_WITH_RPC=${{ matrix.rpc }} \
-    -DPOTLIB_WITH_CACHE=${{ matrix.cache }} \
-    -DPOTLIB_PURE_LIB=OFF
+    -DRGPOT_BUILD_TESTS=True \
+    -DRGPOT_BUILD_EXAMPLES=False \
+    -DRGPOT_WITH_XTENSOR=OFF \
+    -DRGPOT_WITH_EIGEN=OFF \
+    -DRGPOT_WITH_RPC=${{ matrix.rpc }} \
+    -DRGPOT_WITH_CACHE=${{ matrix.cache }} \
+    -DRGPOT_PURE_LIB=OFF
 "%
 in
 
@@ -201,8 +201,8 @@ in
                 -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                 -DCMAKE_C_COMPILER_LAUNCHER=ccache \
                 -DCMAKE_BUILD_TYPE=Release \
-                -DPOTLIB_RPC_CLIENT_ONLY=ON \
-                -DPOTLIB_BUILD_TESTS=ON
+                -DRGPOT_RPC_CLIENT_ONLY=ON \
+                -DRGPOT_BUILD_TESTS=ON
           cmake --build build_client -j
         "%,
         run_script m%"

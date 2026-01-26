@@ -1,13 +1,22 @@
 #pragma once
 // MIT License
-// Copyright 2023--present Rohit Goswami <HaoZeke>
+// Copyright 2023--present rgpot developers
+
+/**
+ * @brief Base classes and templates for chemical potentials.
+ *
+ * Provides the abstract interface and CRTP template for all potential energy
+ * surfaces. Handles the high-level logic for caching, hashing, and force call
+ * registration.
+ */
+
 // clang-format off
 #include <utility>
 #include <vector>
-#include<stdexcept>
+#include <stdexcept>
 // clang-format on
 
-#ifdef POT_HAS_CACHE
+#ifdef RGPOT_HAS_CACHE
 #define XXH_INLINE_ALL
 #include "rgpot/PotentialCache.hpp"
 #include <xxhash.h>
@@ -22,35 +31,93 @@ using rgpot::types::AtomMatrix;
 
 namespace rgpot {
 
+/**
+ * @class PotentialBase
+ * @brief Abstract base class for all potential energy surfaces.
+ */
 class PotentialBase {
 public:
+  /**
+   * @brief Constructor for PotentialBase.
+   * @param inp_type The type of the potential.
+   */
   explicit PotentialBase(PotType inp_type) : m_type(inp_type) {}
+
+  /**
+   * @brief Virtual destructor.
+   */
   virtual ~PotentialBase() = default;
 
+  /**
+   * @brief Main interface for potential and force calculation.
+   * @param positions The atomic coordinates.
+   * @param atmtypes The atomic numbers.
+   * @param box The simulation cell vectors.
+   * @return A pair containing the energy and the force matrix.
+   */
   virtual std::pair<double, AtomMatrix>
   operator()(const AtomMatrix &positions, const std::vector<int> &atmtypes,
              const std::array<std::array<double, 3>, 3> &box) = 0;
 
-#ifdef POT_HAS_CACHE
+#ifdef RGPOT_HAS_CACHE
+  /**
+   * @brief Sets the computation cache.
+   * @param c Pointer to a PotentialCache instance.
+   * @return Void.
+   */
   virtual void set_cache(rgpot::cache::PotentialCache * /*c*/) {
     throw std::runtime_error("PotentialBase::set_cache called directly");
   }
 #endif
+
+  /**
+   * @brief Fetches the potential type.
+   * @return The potential type.
+   */
   [[nodiscard]] PotType get_type() const { return m_type; }
 
 protected:
-  PotType m_type;
+  PotType m_type; //!< The type of the potential energy surface.
 };
 
+/**
+ * @class Potential
+ * @brief Template class for specific potential implementations.
+ *
+ * Uses the Curiously Recurring Template Pattern to provide static
+ * polymorphism for the internal @c forceImpl call.
+ */
 template <typename Derived>
 class Potential : public PotentialBase, public registry<Derived> {
 public:
   using PotentialBase::PotentialBase;
 
-#ifdef POT_HAS_CACHE
+#ifdef RGPOT_HAS_CACHE
+  /**
+   * @brief Sets the computation cache for the specific implementation.
+   * @param c Pointer to a PotentialCache instance.
+   * @return Void.
+   */
   void set_cache(rgpot::cache::PotentialCache *c) override { _cache = c; }
 #endif
 
+  /**
+   * @brief Implements the potential and force calculation logic.
+   *
+   * This method manages the transformation of @c Eigen matrices into
+   * flat @c double arrays.
+   *
+   * # Caching Logic
+   * If @c RGPOT_HAS_CACHE is defined, the method:
+   * 1. Generates a @c XXH3_64bits hash of positions, types, and box.
+   * 2. Checks the @c rocksdb backend for a hit.
+   * 3. Returns cached values if present, otherwise computes and stores results.
+   *
+   * @param positions The atomic coordinates.
+   * @param atmtypes The atomic numbers.
+   * @param box The simulation cell vectors.
+   * @return A pair containing the energy and the force matrix.
+   */
   std::pair<double, AtomMatrix>
   operator()(const AtomMatrix &positions, const std::vector<int> &atmtypes,
              const std::array<std::array<double, 3>, 3> &box) override {
@@ -72,7 +139,7 @@ public:
                   .box = flatBox};
     ForceOut fo{.F = forces.data(), .energy = energy, .variance = variance};
 
-#ifdef POT_HAS_CACHE
+#ifdef RGPOT_HAS_CACHE
     // Hashing
     size_t hash_val = 0;
     hash_val ^= XXH3_64bits(fi.pos, fi.nAtoms * 3 * sizeof(double));
@@ -109,12 +176,18 @@ public:
     return {fo.energy, forces};
   }
 
-  // Virtual to allow Python override if strictly necessary
+  /**
+   * @brief Abstract hook for the actual implementation.
+   * @param in Structure containing coordinates and cell info.
+   * @param out Pointer to the results structure.
+   * @return Void.
+   */
   virtual void forceImpl(const ForceInput &in, ForceOut *out) const = 0;
 
 private:
-#ifdef POT_HAS_CACHE
-  rgpot::cache::PotentialCache *_cache = nullptr;
+#ifdef RGPOT_HAS_CACHE
+  rgpot::cache::PotentialCache *_cache =
+      nullptr; //!< Pointer to the optional calculation cache.
 #endif
 };
 

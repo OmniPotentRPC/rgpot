@@ -295,3 +295,6 @@ Temporary Items
 # pixi environments
 .pixi
 *.egg-info
+/docs/source/api/
+/docs/source/xml/
+/docs/source/**/*.rst

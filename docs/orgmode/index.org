@@ -1,11 +1,37 @@
-* About
-:PROPERTIES:
-:CUSTOM_ID: about
-:END:
-[[https://raw.githubusercontent.com/Theochemui/rgpot/refs/heads/main/branding/logo/rgpot_logo.webp]]
+#+TITLE: ~rgpot~
+#+AUTHOR: [[https://rgoswami.me][Rohit Goswami]]
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
 
-Originally designed for interfacing easily to potentials implemented [[http://theory.cm.utexas.edu/eon/][in
-eOn]], but has grown to be more flexible.
+# Metadata first, including the heading
+#+begin_export rst
+:cover: https://github.com/HaoZeke/rgpycrumbs/blob/main/branding/logo/pycrumbs_logo.webp
+
+=========
+``rgpot``
+=========
+
+:Author: `Rohit Goswami <https://rgoswami.me>`_
+#+end_export
+
+# Copied over by sphinx-build
+file:../../branding/logo/rgpot_logo.webp
+
+* Overview
+  ~rgpot~ provides a unified RPC potential schema.
+
+* Developer Reference
+  For details on the dispatcher architecture or internal API:
+
+#+begin_export rst
+  .. toctree::
+     :maxdepth: 2
+     :caption: Reference
+
+     api/index
+     changelog
+     contributing/index
+#+end_export
+
 ** Usage
 Setting up and running tests:
 #+begin_src bash

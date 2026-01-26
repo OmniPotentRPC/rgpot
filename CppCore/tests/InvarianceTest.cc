@@ -1,5 +1,5 @@
 // MIT License
-// Copyright 2023--present Rohit Goswami <HaoZeke>
+// Copyright 2023--present rgpot developers
 #include <catch2/catch_all.hpp>
 #include <cmath>
 #include <vector>
@@ -23,7 +23,7 @@ void rotate_z(rgpot::types::AtomMatrix &pos, double angle_rad) {
 }
 
 TEST_CASE("Invariance and Caching Behavior", "[Invariance]") {
-#ifdef POT_HAS_CACHE
+#ifdef RGPOT_HAS_CACHE
   //  Setup Cache
   std::string db_path = "/tmp/rgpot_test_invariance";
   rocksdb::Options opts;

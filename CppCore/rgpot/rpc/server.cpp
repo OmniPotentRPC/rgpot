@@ -1,26 +1,59 @@
 // MIT License
-// Copyright 2023--present Rohit Goswami <HaoZeke>
+// Copyright 2023--present rgpot developers
+
+/**
+ * @brief Implementation of the standalone Cap'n Proto potential server.
+ *
+ * This file implements a basic RPC server which exposes toy potentials over a
+ * network interface. It utilizes the @c EzRpcServer for handling requests.
+ */
+
 #include <capnp/ez-rpc.h>
 #include <capnp/message.h>
 #include <kj/debug.h>
 
-#ifdef POT_HAS_FORTRAN
+#ifdef RGPOT_HAS_FORTRAN
 #include "rgpot/CuH2/CuH2Pot.hpp"
-#endif // POT_HAS_FORTRAN
+#endif // RGPOT_HAS_FORTRAN
 
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Potential.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 #include "rgpot/types/adapters/capnp/capnp_adapter.hpp"
 
+/**
+ * @class GenericPotImpl
+ * @brief Server implementation for the Potential RPC interface.
+ *
+ * This class wraps a polymorphic @c PotentialBase instance and dispatches
+ * RPC calculate requests to the underlying physics engine.
+ */
 class GenericPotImpl final : public Potential::Server {
 private:
-  std::unique_ptr<rgpot::PotentialBase> m_potential;
+  std::unique_ptr<rgpot::PotentialBase>
+      m_potential; //!< The polymorphic potential engine.
 
 public:
+  /**
+   * @brief Constructor for GenericPotImpl.
+   * @param pot Ownership of a PotentialBase derived object.
+   */
   GenericPotImpl(std::unique_ptr<rgpot::PotentialBase> pot)
       : m_potential(std::move(pot)) {}
 
+  /**
+   * @details
+   * This method performs the following translation steps:
+   * 1. Extracts the @c ForceInput (fip) from the RPC context.
+   * 2. Validates the size of the atomic number list.
+   * 3. Converts Cap'n Proto lists into native @c AtomMatrix and @c std::vector
+   * types.
+   * 4. Executes the calculation via the @c PotentialBase virtual operator.
+   * 5. Populates the @c PotentialResult with energy and force data.
+   *
+   * @param context The Cap'n Proto RPC call context.
+   * @return An asynchronous promise for completion.
+   */
   kj::Promise<void> calculate(CalculateContext context) override {
     auto fip = context.getParams().getFip();
     const size_t numAtoms = fip.getPos().size() / 3;
@@ -51,6 +84,19 @@ public:
   }
 };
 
+/**
+ * @details
+ * The main entry point handles command-line arguments to specify the
+ * network port and the potential type. It instantiates the requested
+ * physics engine and blocks until the server is terminated.
+ *
+ * # Usage
+ * @c ./potserv <port> <PotentialType>
+ *
+ * @param argc Argument count.
+ * @param argv Argument vector.
+ * @return 0 on success, 1 on initialization failure.
+ */
 int main(int argc, char *argv[]) {
   if (argc < 3) {
     std::cerr << "Usage: " << argv[0] << " <port> <PotentialType>" << std::endl;

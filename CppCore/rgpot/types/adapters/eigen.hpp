@@ -1,6 +1,15 @@
 #pragma once
 // MIT License
-// Copyright 2023--present Rohit Goswami <HaoZeke>
+// Copyright 2023--present rgpot developers
+
+/**
+ * @brief Conversion utilities between Eigen and native types.
+ *
+ * This file contains inline adapter functions for integrating the Eigen
+ * linear algebra library with the native @c AtomMatrix and @c std::vector
+ * types used in the rgpot library.
+ */
+
 // clang-format off
 #include <Eigen/Dense>
 // clang-format on
@@ -16,7 +25,11 @@ namespace types {
 namespace adapt {
 namespace eigen {
 
-// Convert from Eigen::MatrixXd to AtomMatrix
+/**
+ * @brief Converts an Eigen matrix to a native AtomMatrix.
+ * @param matrix  The source Eigen matrix.
+ * @return An @c AtomMatrix instance with copied data.
+ */
 inline AtomMatrix convertToAtomMatrix(const Eigen::MatrixXd &matrix) {
   AtomMatrix result(matrix.rows(), matrix.cols());
   for (int i = 0; i < matrix.rows(); ++i) {
@@ -27,20 +40,33 @@ inline AtomMatrix convertToAtomMatrix(const Eigen::MatrixXd &matrix) {
   return result;
 }
 
-// Convert from AtomMatrix to Eigen::MatrixXd
+/**
+ * @brief Converts a native AtomMatrix to an Eigen matrix.
+ * @param atomMatrix  The source native matrix.
+ * @return An @c Eigen::MatrixXd mapped to the original data.
+ * @note This uses @c Eigen::Map for zero-copy access where possible.
+ */
 inline Eigen::MatrixXd convertToEigen(const AtomMatrix &atomMatrix) {
   return Eigen::Map<const Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic,
                                         Eigen::RowMajor>>(
       atomMatrix.data(), atomMatrix.rows(), atomMatrix.cols());
 }
 
-// Convert from Eigen::VectorXi to std::vector<int>
+/**
+ * @brief Converts an Eigen vector to a standard vector.
+ * @param vector  The source Eigen vector.
+ * @return A @c std::vector containing the data.
+ */
 template <typename T>
 std::vector<T> convertToVector(const Eigen::VectorX<T> &vector) {
   return std::vector<T>(vector.data(), vector.data() + vector.size());
 }
 
-// Convert from Matrix3d to std::array<std::array<double, 3>, 3>
+/**
+ * @brief Converts a 3x3 Eigen matrix to a nested standard array.
+ * @param matrix  The 3x3 Eigen matrix.
+ * @return A @c std::array of arrays representing the matrix.
+ */
 inline std::array<std::array<double, 3>, 3>
 convertToEigen3d(const Eigen::Matrix3d &matrix) {
   std::array<std::array<double, 3>, 3> result;
