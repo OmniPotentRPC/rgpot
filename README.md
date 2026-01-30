@@ -73,4 +73,3 @@ To keep the build matrix setup manageable, we use Nickel.
 
 MIT, however note that some of the potentials are adapted from eOn which is
 under a BSD 3-Clause License.
-
