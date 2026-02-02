@@ -1,0 +1,5 @@
+* About
+
+A quick debugging sessions led to one bugfix for upstream later, involving the
+~enum class~ and a hacky fix for syntax highlighting specifically for the
+~shibuya~ theme.

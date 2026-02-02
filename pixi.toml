@@ -75,7 +75,15 @@ depends-on = [
 
 [feature.docs.tasks.setup-doxyrest]
 description = "Clones the doxyrest dependency into the subprojects directory"
-cmd = "test -d subprojects/doxyrest || (mkdir -p subprojects && git clone https://github.com/vovkos/doxyrest subprojects/doxyrest)"
+cmd = "test -d subprojects/doxyrest || (mkdir -p subprojects && git clone --depth 1 --single-branch https://github.com/vovkos/doxyrest subprojects/doxyrest)"
+
+[feature.docs.tasks.patch-doxyrest]
+description = "Apply temporary fixes for documentation"
+depends-on = ["setup-doxyrest"]
+cmd = """
+cp scripts/patches/doxyrest/doxyrest.py subprojects/doxyrest/sphinx/doxyrest.py &&
+patch -p1 -N -s < scripts/patches/doxyrest/enum_class_fix.patch || true
+"""
 
 [feature.docs.tasks.mkrst]
 cwd = "docs"
@@ -84,7 +92,7 @@ cmd = "emacs --batch --load export.el"
 [feature.docs.tasks.doxybuild]
 description = "Generates XML via Doxygen and converts it to RST via Doxyrest"
 cwd = "docs/source"
-depends-on = ["setup-doxyrest"]
+depends-on = ["patch-doxyrest"]
 cmd = "doxygen Doxyfile_potlib.cfg && doxyrest -c doxyrest-config.lua"
 
 
