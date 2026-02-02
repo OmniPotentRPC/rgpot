@@ -9,6 +9,7 @@
   </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
     <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=44020203" />
     <link rel="stylesheet" type="text/css" href="../_static/doxyrest-pygments.css?v=ff3f4257" />
+    <link rel="stylesheet" type="text/css" href="../_static/doxyrest-shibuya.css" />
     <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -217,30 +218,36 @@ data-aria-dark="Switch to auto color mode">
 <section id="overview">
 <h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
 <p>Implementation of the CuH2 EAM potential. <a class="reference internal" href="#details-classrgpot-1-1-cu-h2-pot"><span class="std std-ref">More…</span></a></p>
-<pre class="highlight doxyrest-overview-code-block literal-block">#include <CuH2Pot.hpp>
-
-class CuH2Pot: public rgpot::Potential< CuH2Pot > {
-public:
-    // construction
-
-    <a class="reference internal" href="#doxid-classrgpot-1-1-cu-h2-pot-1abd20555e9e7e91e2d1a7764a68edf761"><span class="std std-ref">CuH2Pot</span></a>();
-
-    // methods
-
-    void <a class="reference internal" href="#doxid-classrgpot-1-1-cu-h2-pot-1a0cb67cde60e098cda46a1a190004bdd2"><span class="std std-ref">forceImpl</span></a>(const <a class="reference internal" href="struct_rgpot_ForceInput.html#doxid-structrgpot-1-1-force-input"><span class="std std-ref">ForceInput</span></a>& in, <a class="reference internal" href="struct_rgpot_ForceOut.html#doxid-structrgpot-1-1-force-out"><span class="std std-ref">ForceOut</span></a>* out) const;
-};</pre>
+<div class="doxyrest-overview-code-block highlight">
+<pre><span data-line="1"><span class="cp">#include</span> <span class="cpf">&lt;CuH2Pot.hpp&gt;</span></span>
+<span data-line="2"> </span>
+<span data-line="3"><span class="k">class</span> <span class="nl">CuH2Pot</span><span class="p">:</span> <span class="k">public</span> <span class="n">rgpot</span><span class="o">::</span><span class="n">Potential</span><span class="o">&lt;</span> <span class="n">CuH2Pot</span> <span class="o">&gt;</span> <span class="p">{</span></span>
+<span data-line="4"><span class="k">public</span><span class="o">:</span></span>
+<span data-line="5">    <span class="c1">// construction</span></span>
+<span data-line="6"> </span>
+<span data-line="7">    <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-cu-h2-pot-1abd20555e9e7e91e2d1a7764a68edf761"><span class="std std-ref">CuH2Pot</span></a><span class="p">();</span></span>
+<span data-line="8"> </span>
+<span data-line="9">    <span class="c1">// methods</span></span>
+<span data-line="10"> </span>
+<span data-line="11">    <span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-cu-h2-pot-1a0cb67cde60e098cda46a1a190004bdd2"><span class="std std-ref">forceImpl</span></a><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceInput.html#doxid-structrgpot-1-1-force-input"><span class="std std-ref">ForceInput</span></a><span class="o">&amp;</span> <span class="n">in</span><span class="p">,</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceOut.html#doxid-structrgpot-1-1-force-out"><span class="std std-ref">ForceOut</span></a><span class="o">*</span> <span class="n">out</span><span class="p">)</span> <span class="k">const</span><span class="p">;</span></span>
+<span data-line="12"><span class="p">};</span></span>
+</pre></div>
 </section>
 <section id="detailed-documentation">
 <span id="details-classrgpot-1-1-cu-h2-pot"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
 <p>Implementation of the CuH2 EAM potential.</p>
 <section id="construction">
 <h3>Construction<a class="headerlink" href="#construction" title="Link to this heading">¶</a></h3>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-classrgpot-1-1-cu-h2-pot-1abd20555e9e7e91e2d1a7764a68edf761"><span id="index-1"></span>CuH2Pot()</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-cu-h2-pot-1abd20555e9e7e91e2d1a7764a68edf761">
+<span id="index-1"></span><pre><span data-line="1"><span class="n">CuH2Pot</span><span class="p">()</span></span>
+</pre></div>
 <p>Constructor for <a class="reference internal" href="#doxid-classrgpot-1-1-cu-h2-pot"><span class="std std-ref">CuH2Pot</span></a>.</p>
 </section>
 <section id="methods">
 <h3>Methods<a class="headerlink" href="#methods" title="Link to this heading">¶</a></h3>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-classrgpot-1-1-cu-h2-pot-1a0cb67cde60e098cda46a1a190004bdd2"><span id="index-2"></span>void forceImpl(const <a class="reference internal" href="struct_rgpot_ForceInput.html#doxid-structrgpot-1-1-force-input"><span class="std std-ref">ForceInput</span></a>& in, <a class="reference internal" href="struct_rgpot_ForceOut.html#doxid-structrgpot-1-1-force-out"><span class="std std-ref">ForceOut</span></a>* out) const</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-cu-h2-pot-1a0cb67cde60e098cda46a1a190004bdd2">
+<span id="index-2"></span><pre><span data-line="1"><span class="kt">void</span> <span class="n">forceImpl</span><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceInput.html#doxid-structrgpot-1-1-force-input"><span class="std std-ref">ForceInput</span></a><span class="o">&amp;</span> <span class="n">in</span><span class="p">,</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceOut.html#doxid-structrgpot-1-1-force-out"><span class="std std-ref">ForceOut</span></a><span class="o">*</span> <span class="n">out</span><span class="p">)</span> <span class="k">const</span></span>
+</pre></div>
 <p>Computes forces and energy using the Fortran backend.</p>
 <p>This method validates that the input system contains only Copper (29) and Hydrogen (1) atoms. It uses a <code class="docutils literal notranslate"><span class="pre">std::multiset</span></code> to count occurrences of each species.</p>
 <ul>

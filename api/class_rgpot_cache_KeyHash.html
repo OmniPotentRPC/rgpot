@@ -9,6 +9,7 @@
   </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
     <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=44020203" />
     <link rel="stylesheet" type="text/css" href="../_static/doxyrest-pygments.css?v=ff3f4257" />
+    <link rel="stylesheet" type="text/css" href="../_static/doxyrest-shibuya.css" />
     <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -221,33 +222,41 @@ data-aria-dark="Switch to auto color mode">
 <section id="overview">
 <h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
 <p>Struct to hold the hash and string key for caching. <a class="reference internal" href="#details-structrgpot-1-1cache-1-1-key-hash"><span class="std std-ref">More…</span></a></p>
-<pre class="highlight doxyrest-overview-code-block literal-block">#include <PotentialCache.hpp>
-
-class KeyHash {
-public:
-    // fields
-
-    size_t <a class="reference internal" href="#doxid-structrgpot-1-1cache-1-1-key-hash-1a515be7b17a389e01ea452933fc7a27ed"><span class="std std-ref">hash</span></a>;
-    std::string <a class="reference internal" href="#doxid-structrgpot-1-1cache-1-1-key-hash-1a11c0e6299dd44396f71e7be85bcd929f"><span class="std std-ref">key</span></a>;
-
-    // construction
-
-    <a class="reference internal" href="#doxid-structrgpot-1-1cache-1-1-key-hash-1abe48d71ca4541cd7c94b0f6add668c19"><span class="std std-ref">KeyHash</span></a>(size_t _hash);
-};</pre>
+<div class="doxyrest-overview-code-block highlight">
+<pre><span data-line="1"><span class="cp">#include</span> <span class="cpf">&lt;PotentialCache.hpp&gt;</span></span>
+<span data-line="2"> </span>
+<span data-line="3"><span class="k">class</span> <span class="n">KeyHash</span> <span class="p">{</span></span>
+<span data-line="4"><span class="k">public</span><span class="o">:</span></span>
+<span data-line="5">    <span class="c1">// fields</span></span>
+<span data-line="6"> </span>
+<span data-line="7">    <span class="kt">size_t</span> <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1cache-1-1-key-hash-1a515be7b17a389e01ea452933fc7a27ed"><span class="std std-ref">hash</span></a><span class="p">;</span></span>
+<span data-line="8">    <span class="n">std</span><span class="o">::</span><span class="n">string</span> <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1cache-1-1-key-hash-1a11c0e6299dd44396f71e7be85bcd929f"><span class="std std-ref">key</span></a><span class="p">;</span></span>
+<span data-line="9"> </span>
+<span data-line="10">    <span class="c1">// construction</span></span>
+<span data-line="11"> </span>
+<span data-line="12">    <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1cache-1-1-key-hash-1abe48d71ca4541cd7c94b0f6add668c19"><span class="std std-ref">KeyHash</span></a><span class="p">(</span><span class="kt">size_t</span> <span class="n">_hash</span><span class="p">);</span></span>
+<span data-line="13"><span class="p">};</span></span>
+</pre></div>
 </section>
 <section id="detailed-documentation">
 <span id="details-structrgpot-1-1cache-1-1-key-hash"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
 <p>Struct to hold the hash and string key for caching.</p>
 <section id="fields">
 <h3>Fields<a class="headerlink" href="#fields" title="Link to this heading">¶</a></h3>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-structrgpot-1-1cache-1-1-key-hash-1a515be7b17a389e01ea452933fc7a27ed"><span id="index-1"></span>size_t hash</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-structrgpot-1-1cache-1-1-key-hash-1a515be7b17a389e01ea452933fc7a27ed">
+<span id="index-1"></span><pre><span data-line="1"><span class="kt">size_t</span> <span class="n">hash</span></span>
+</pre></div>
 <p>The numeric hash value.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-structrgpot-1-1cache-1-1-key-hash-1a11c0e6299dd44396f71e7be85bcd929f"><span id="index-2"></span>std::string key</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-structrgpot-1-1cache-1-1-key-hash-1a11c0e6299dd44396f71e7be85bcd929f">
+<span id="index-2"></span><pre><span data-line="1"><span class="n">std</span><span class="o">::</span><span class="n">string</span> <span class="n">key</span></span>
+</pre></div>
 <p>The string representation of the hash.</p>
 </section>
 <section id="construction">
 <h3>Construction<a class="headerlink" href="#construction" title="Link to this heading">¶</a></h3>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-structrgpot-1-1cache-1-1-key-hash-1abe48d71ca4541cd7c94b0f6add668c19"><span id="index-3"></span>KeyHash(size_t _hash)</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-structrgpot-1-1cache-1-1-key-hash-1abe48d71ca4541cd7c94b0f6add668c19">
+<span id="index-3"></span><pre><span data-line="1"><span class="n">KeyHash</span><span class="p">(</span><span class="kt">size_t</span> <span class="n">_hash</span><span class="p">)</span></span>
+</pre></div>
 <p>Constructor for <a class="reference internal" href="#doxid-structrgpot-1-1cache-1-1-key-hash"><span class="std std-ref">KeyHash</span></a>.</p>
 <p class="rubric">Parameters:</p>
 <div class="table-wrapper colwidths-given docutils container">

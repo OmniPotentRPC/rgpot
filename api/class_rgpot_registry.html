@@ -9,6 +9,7 @@
   </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
     <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=44020203" />
     <link rel="stylesheet" type="text/css" href="../_static/doxyrest-pygments.css?v=ff3f4257" />
+    <link rel="stylesheet" type="text/css" href="../_static/doxyrest-shibuya.css" />
     <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -218,28 +219,30 @@ data-aria-dark="Switch to auto color mode">
 <section id="overview">
 <h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
 <p>Static registry for instance tracking and statistics. <a class="reference internal" href="#details-classrgpot-1-1registry"><span class="std std-ref">More…</span></a></p>
-<pre class="highlight doxyrest-overview-code-block literal-block">#include <PotHelpers.hpp>
-
-template <typename T>
-class registry {
-public:
-    // fields
-
-    static size_t <a class="reference internal" href="#doxid-classrgpot-1-1registry-1a0caf8c8882659ef75136aa5207ba8d52"><span class="std std-ref">count</span></a>;
-    static size_t <a class="reference internal" href="#doxid-classrgpot-1-1registry-1adb02e0b61e75a7ab030a51522f4d3fdd"><span class="std std-ref">forceCalls</span></a>;
-    static T* <a class="reference internal" href="#doxid-classrgpot-1-1registry-1a720ef6941db97af09f637f56fe278e62"><span class="std std-ref">head</span></a>;
-    T* <a class="reference internal" href="#doxid-classrgpot-1-1registry-1a6effb1966d43d271447e51244fca341f"><span class="std std-ref">prev</span></a>;
-    T* <a class="reference internal" href="#doxid-classrgpot-1-1registry-1a63702ca67d75ee109e6a1632541d8407"><span class="std std-ref">next</span></a>;
-
-    // methods
-
-    static void <a class="reference internal" href="#doxid-classrgpot-1-1registry-1a5622001c3f346fa761557bc0d0bc232c"><span class="std std-ref">incrementForceCalls</span></a>();
-
-protected:
-    // construction
-
-    <a class="reference internal" href="#doxid-classrgpot-1-1registry-1aca70fe551ace40790311808388db656d"><span class="std std-ref">~registry</span></a>();
-};</pre>
+<div class="doxyrest-overview-code-block highlight">
+<pre><span data-line="1"><span class="cp">#include</span> <span class="cpf">&lt;PotHelpers.hpp&gt;</span></span>
+<span data-line="2"> </span>
+<span data-line="3"><span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="n">T</span><span class="o">&gt;</span></span>
+<span data-line="4"><span class="k">class</span> <span class="n">registry</span> <span class="p">{</span></span>
+<span data-line="5"><span class="k">public</span><span class="o">:</span></span>
+<span data-line="6">    <span class="c1">// fields</span></span>
+<span data-line="7"> </span>
+<span data-line="8">    <span class="k">static</span> <span class="kt">size_t</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1registry-1a0caf8c8882659ef75136aa5207ba8d52"><span class="std std-ref">count</span></a><span class="p">;</span></span>
+<span data-line="9">    <span class="k">static</span> <span class="kt">size_t</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1registry-1adb02e0b61e75a7ab030a51522f4d3fdd"><span class="std std-ref">forceCalls</span></a><span class="p">;</span></span>
+<span data-line="10">    <span class="k">static</span> <span class="n">T</span><span class="o">*</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1registry-1a720ef6941db97af09f637f56fe278e62"><span class="std std-ref">head</span></a><span class="p">;</span></span>
+<span data-line="11">    <span class="n">T</span><span class="o">*</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1registry-1a6effb1966d43d271447e51244fca341f"><span class="std std-ref">prev</span></a><span class="p">;</span></span>
+<span data-line="12">    <span class="n">T</span><span class="o">*</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1registry-1a63702ca67d75ee109e6a1632541d8407"><span class="std std-ref">next</span></a><span class="p">;</span></span>
+<span data-line="13"> </span>
+<span data-line="14">    <span class="c1">// methods</span></span>
+<span data-line="15"> </span>
+<span data-line="16">    <span class="k">static</span> <span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1registry-1a5622001c3f346fa761557bc0d0bc232c"><span class="std std-ref">incrementForceCalls</span></a><span class="p">();</span></span>
+<span data-line="17"> </span>
+<span data-line="18"><span class="k">protected</span><span class="o">:</span></span>
+<span data-line="19">    <span class="c1">// construction</span></span>
+<span data-line="20"> </span>
+<span data-line="21">    <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1registry-1aca70fe551ace40790311808388db656d"><span class="std std-ref">~registry</span></a><span class="p">();</span></span>
+<span data-line="22"><span class="p">};</span></span>
+</pre></div>
 </section>
 <section id="detailed-documentation">
 <span id="details-classrgpot-1-1registry"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
@@ -247,25 +250,39 @@ protected:
 <p>The registry uses a linked list to track all active instances of a derived potential class.</p>
 <section id="fields">
 <h3>Fields<a class="headerlink" href="#fields" title="Link to this heading">¶</a></h3>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-classrgpot-1-1registry-1a0caf8c8882659ef75136aa5207ba8d52"><span id="index-1"></span>static size_t count</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1registry-1a0caf8c8882659ef75136aa5207ba8d52">
+<span id="index-1"></span><pre><span data-line="1"><span class="k">static</span> <span class="kt">size_t</span> <span class="n">count</span></span>
+</pre></div>
 <p>Total number of active instances.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-classrgpot-1-1registry-1adb02e0b61e75a7ab030a51522f4d3fdd"><span id="index-2"></span>static size_t forceCalls</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1registry-1adb02e0b61e75a7ab030a51522f4d3fdd">
+<span id="index-2"></span><pre><span data-line="1"><span class="k">static</span> <span class="kt">size_t</span> <span class="n">forceCalls</span></span>
+</pre></div>
 <p>Global counter for force evaluations.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-classrgpot-1-1registry-1a720ef6941db97af09f637f56fe278e62"><span id="index-3"></span>static T* head</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1registry-1a720ef6941db97af09f637f56fe278e62">
+<span id="index-3"></span><pre><span data-line="1"><span class="k">static</span> <span class="n">T</span><span class="o">*</span> <span class="n">head</span></span>
+</pre></div>
 <p>Pointer to the head of the linked list.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-classrgpot-1-1registry-1a6effb1966d43d271447e51244fca341f"><span id="index-4"></span>T* prev</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1registry-1a6effb1966d43d271447e51244fca341f">
+<span id="index-4"></span><pre><span data-line="1"><span class="n">T</span><span class="o">*</span> <span class="n">prev</span></span>
+</pre></div>
 <p>Pointer to the previous instance in the list.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-classrgpot-1-1registry-1a63702ca67d75ee109e6a1632541d8407"><span id="index-5"></span>T* next</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1registry-1a63702ca67d75ee109e6a1632541d8407">
+<span id="index-5"></span><pre><span data-line="1"><span class="n">T</span><span class="o">*</span> <span class="n">next</span></span>
+</pre></div>
 <p>Pointer to the next instance in the list.</p>
 </section>
 <section id="construction">
 <h3>Construction<a class="headerlink" href="#construction" title="Link to this heading">¶</a></h3>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-classrgpot-1-1registry-1aca70fe551ace40790311808388db656d">~registry()</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1registry-1aca70fe551ace40790311808388db656d">
+<pre><span data-line="1"><span class="o">~</span><span class="n">registry</span><span class="p">()</span></span>
+</pre></div>
 <p>Destructor.</p>
 </section>
 <section id="methods">
 <h3>Methods<a class="headerlink" href="#methods" title="Link to this heading">¶</a></h3>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-classrgpot-1-1registry-1a5622001c3f346fa761557bc0d0bc232c"><span id="index-6"></span>static void incrementForceCalls()</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1registry-1a5622001c3f346fa761557bc0d0bc232c">
+<span id="index-6"></span><pre><span data-line="1"><span class="k">static</span> <span class="kt">void</span> <span class="n">incrementForceCalls</span><span class="p">()</span></span>
+</pre></div>
 <p>Increments the force call counter.</p>
 <p class="rubric">Returns:</p>
 <p>Void.</p>

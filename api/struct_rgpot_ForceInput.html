@@ -9,6 +9,7 @@
   </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
     <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=44020203" />
     <link rel="stylesheet" type="text/css" href="../_static/doxyrest-pygments.css?v=ff3f4257" />
+    <link rel="stylesheet" type="text/css" href="../_static/doxyrest-shibuya.css" />
     <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -216,29 +217,39 @@ data-aria-dark="Switch to auto color mode">
 <section id="overview">
 <h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
 <p>Data structure containing input configuration for force calls. <a class="reference internal" href="#details-structrgpot-1-1-force-input"><span class="std std-ref">More…</span></a></p>
-<pre class="highlight doxyrest-overview-code-block literal-block">#include <ForceStructs.hpp>
-
-struct ForceInput {
-    // fields
-
-    const size_t <a class="reference internal" href="#doxid-structrgpot-1-1-force-input-1a694e8fb21116f73dd8deaf65499068aa"><span class="std std-ref">nAtoms</span></a>;
-    const double* <a class="reference internal" href="#doxid-structrgpot-1-1-force-input-1aa5c03c5f4993486f01466ee389957afb"><span class="std std-ref">pos</span></a>;
-    const int* <a class="reference internal" href="#doxid-structrgpot-1-1-force-input-1ad1a11aee58dd6febe10761256ed609e3"><span class="std std-ref">atmnrs</span></a>;
-    const double* <a class="reference internal" href="#doxid-structrgpot-1-1-force-input-1af3bb99753f39a38ac90a4713d35e9bb4"><span class="std std-ref">box</span></a>;
-};</pre>
+<div class="doxyrest-overview-code-block highlight">
+<pre><span data-line="1"><span class="cp">#include</span> <span class="cpf">&lt;ForceStructs.hpp&gt;</span></span>
+<span data-line="2"> </span>
+<span data-line="3"><span class="k">struct</span> <span class="n">ForceInput</span> <span class="p">{</span></span>
+<span data-line="4">    <span class="c1">// fields</span></span>
+<span data-line="5"> </span>
+<span data-line="6">    <span class="k">const</span> <span class="kt">size_t</span> <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1-force-input-1a694e8fb21116f73dd8deaf65499068aa"><span class="std std-ref">nAtoms</span></a><span class="p">;</span></span>
+<span data-line="7">    <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1-force-input-1aa5c03c5f4993486f01466ee389957afb"><span class="std std-ref">pos</span></a><span class="p">;</span></span>
+<span data-line="8">    <span class="k">const</span> <span class="kt">int</span><span class="o">*</span> <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1-force-input-1ad1a11aee58dd6febe10761256ed609e3"><span class="std std-ref">atmnrs</span></a><span class="p">;</span></span>
+<span data-line="9">    <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1-force-input-1af3bb99753f39a38ac90a4713d35e9bb4"><span class="std std-ref">box</span></a><span class="p">;</span></span>
+<span data-line="10"><span class="p">};</span></span>
+</pre></div>
 </section>
 <section id="detailed-documentation">
 <span id="details-structrgpot-1-1-force-input"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
 <p>Data structure containing input configuration for force calls.</p>
 <section id="fields">
 <h3>Fields<a class="headerlink" href="#fields" title="Link to this heading">¶</a></h3>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-structrgpot-1-1-force-input-1a694e8fb21116f73dd8deaf65499068aa"><span id="index-1"></span>const size_t nAtoms</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-structrgpot-1-1-force-input-1a694e8fb21116f73dd8deaf65499068aa">
+<span id="index-1"></span><pre><span data-line="1"><span class="k">const</span> <span class="kt">size_t</span> <span class="n">nAtoms</span></span>
+</pre></div>
 <p>Total number of atoms in the system.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-structrgpot-1-1-force-input-1aa5c03c5f4993486f01466ee389957afb"><span id="index-2"></span>const double* pos</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-structrgpot-1-1-force-input-1aa5c03c5f4993486f01466ee389957afb">
+<span id="index-2"></span><pre><span data-line="1"><span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">pos</span></span>
+</pre></div>
 <p>Pointer to the flat array of atomic positions.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-structrgpot-1-1-force-input-1ad1a11aee58dd6febe10761256ed609e3"><span id="index-3"></span>const int* atmnrs</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-structrgpot-1-1-force-input-1ad1a11aee58dd6febe10761256ed609e3">
+<span id="index-3"></span><pre><span data-line="1"><span class="k">const</span> <span class="kt">int</span><span class="o">*</span> <span class="n">atmnrs</span></span>
+</pre></div>
 <p>Pointer to the array of atomic numbers.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-structrgpot-1-1-force-input-1af3bb99753f39a38ac90a4713d35e9bb4"><span id="index-4"></span>const double* box</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-structrgpot-1-1-force-input-1af3bb99753f39a38ac90a4713d35e9bb4">
+<span id="index-4"></span><pre><span data-line="1"><span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">box</span></span>
+</pre></div>
 <p>Pointer to the 3x3 simulation cell matrix.</p>
 </section>
 </section>

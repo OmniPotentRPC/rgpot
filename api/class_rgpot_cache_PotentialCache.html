@@ -9,6 +9,7 @@
   </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
     <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=44020203" />
     <link rel="stylesheet" type="text/css" href="../_static/doxyrest-pygments.css?v=ff3f4257" />
+    <link rel="stylesheet" type="text/css" href="../_static/doxyrest-shibuya.css" />
     <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -221,30 +222,34 @@ data-aria-dark="Switch to auto color mode">
 <section id="overview">
 <h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
 <p>Caches potential energy and force calculations using RocksDB. <a class="reference internal" href="#details-classrgpot-1-1cache-1-1-potential-cache"><span class="std std-ref">More…</span></a></p>
-<pre class="highlight doxyrest-overview-code-block literal-block">#include <PotentialCache.hpp>
-
-class PotentialCache {
-public:
-    // construction
-
-    <a class="reference internal" href="#doxid-classrgpot-1-1cache-1-1-potential-cache-1a56b7b83f58e226c08055fbb8e9413522"><span class="std std-ref">PotentialCache</span></a>(const std::string& db_path, bool create_if_missing = true);
-    <a class="reference internal" href="#doxid-classrgpot-1-1cache-1-1-potential-cache-1a6471a2f451e9fa0040a4c193043c591e"><span class="std std-ref">PotentialCache</span></a>();
-    <a class="reference internal" href="#doxid-classrgpot-1-1cache-1-1-potential-cache-1af4e9992ce45c6764450cdcc69569a846"><span class="std std-ref">~PotentialCache</span></a>();
-
-    // methods
-
-    void <a class="reference internal" href="#doxid-classrgpot-1-1cache-1-1-potential-cache-1ab1fb804b926b4c383105e17595658676"><span class="std std-ref">set_db</span></a>(rocksdb::DB* db);
-    void <a class="reference internal" href="#doxid-classrgpot-1-1cache-1-1-potential-cache-1ae414402d984323aba6aefe2f83a68018"><span class="std std-ref">deserialize_hit</span></a>(const std::string& value, double& energy, <a class="reference internal" href="class_rgpot_types_AtomMatrix.html#doxid-classrgpot-1-1types-1-1-atom-matrix"><span class="std std-ref">rgpot::types::AtomMatrix</span></a>& forces);
-    void <a class="reference internal" href="#doxid-classrgpot-1-1cache-1-1-potential-cache-1afa65792f6b6ba596dc4852ed802c5d2e"><span class="std std-ref">add_serialized</span></a>(const <a class="reference internal" href="class_rgpot_cache_KeyHash.html#doxid-structrgpot-1-1cache-1-1-key-hash"><span class="std std-ref">KeyHash</span></a>& key, double energy, const <a class="reference internal" href="class_rgpot_types_AtomMatrix.html#doxid-classrgpot-1-1types-1-1-atom-matrix"><span class="std std-ref">rgpot::types::AtomMatrix</span></a>& forces);
-    std::optional<std::string> <a class="reference internal" href="#doxid-classrgpot-1-1cache-1-1-potential-cache-1a85bd93690a8a21fcad691472a535f2b8"><span class="std std-ref">find</span></a>(const <a class="reference internal" href="class_rgpot_cache_KeyHash.html#doxid-structrgpot-1-1cache-1-1-key-hash"><span class="std std-ref">KeyHash</span></a>& key);
-};</pre>
+<div class="doxyrest-overview-code-block highlight">
+<pre><span data-line="1"><span class="cp">#include</span> <span class="cpf">&lt;PotentialCache.hpp&gt;</span></span>
+<span data-line="2"> </span>
+<span data-line="3"><span class="k">class</span> <span class="n">PotentialCache</span> <span class="p">{</span></span>
+<span data-line="4"><span class="k">public</span><span class="o">:</span></span>
+<span data-line="5">    <span class="c1">// construction</span></span>
+<span data-line="6"> </span>
+<span data-line="7">    <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1cache-1-1-potential-cache-1a56b7b83f58e226c08055fbb8e9413522"><span class="std std-ref">PotentialCache</span></a><span class="p">(</span><span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span> <span class="n">db_path</span><span class="p">,</span> <span class="kt">bool</span> <span class="n">create_if_missing</span> <span class="o">=</span> <span class="nb">true</span><span class="p">);</span></span>
+<span data-line="8">    <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1cache-1-1-potential-cache-1a6471a2f451e9fa0040a4c193043c591e"><span class="std std-ref">PotentialCache</span></a><span class="p">();</span></span>
+<span data-line="9">    <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1cache-1-1-potential-cache-1af4e9992ce45c6764450cdcc69569a846"><span class="std std-ref">~PotentialCache</span></a><span class="p">();</span></span>
+<span data-line="10"> </span>
+<span data-line="11">    <span class="c1">// methods</span></span>
+<span data-line="12"> </span>
+<span data-line="13">    <span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1cache-1-1-potential-cache-1ab1fb804b926b4c383105e17595658676"><span class="std std-ref">set_db</span></a><span class="p">(</span><span class="n">rocksdb</span><span class="o">::</span><span class="n">DB</span><span class="o">*</span> <span class="n">db</span><span class="p">);</span></span>
+<span data-line="14">    <span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1cache-1-1-potential-cache-1ae414402d984323aba6aefe2f83a68018"><span class="std std-ref">deserialize_hit</span></a><span class="p">(</span><span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span> <span class="n">value</span><span class="p">,</span> <span class="kt">double</span><span class="o">&amp;</span> <span class="n">energy</span><span class="p">,</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_types_AtomMatrix.html#doxid-classrgpot-1-1types-1-1-atom-matrix"><span class="std std-ref">rgpot::types::AtomMatrix</span></a><span class="o">&amp;</span> <span class="n">forces</span><span class="p">);</span></span>
+<span data-line="15">    <span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1cache-1-1-potential-cache-1afa65792f6b6ba596dc4852ed802c5d2e"><span class="std std-ref">add_serialized</span></a><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_cache_KeyHash.html#doxid-structrgpot-1-1cache-1-1-key-hash"><span class="std std-ref">KeyHash</span></a><span class="o">&amp;</span> <span class="n">key</span><span class="p">,</span> <span class="kt">double</span> <span class="n">energy</span><span class="p">,</span> <span class="k">const</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_types_AtomMatrix.html#doxid-classrgpot-1-1types-1-1-atom-matrix"><span class="std std-ref">rgpot::types::AtomMatrix</span></a><span class="o">&amp;</span> <span class="n">forces</span><span class="p">);</span></span>
+<span data-line="16">    <span class="n">std</span><span class="o">::</span><span class="n">optional</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&gt;</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1cache-1-1-potential-cache-1a85bd93690a8a21fcad691472a535f2b8"><span class="std std-ref">find</span></a><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_cache_KeyHash.html#doxid-structrgpot-1-1cache-1-1-key-hash"><span class="std std-ref">KeyHash</span></a><span class="o">&amp;</span> <span class="n">key</span><span class="p">);</span></span>
+<span data-line="17"><span class="p">};</span></span>
+</pre></div>
 </section>
 <section id="detailed-documentation">
 <span id="details-classrgpot-1-1cache-1-1-potential-cache"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
 <p>Caches potential energy and force calculations using RocksDB.</p>
 <section id="construction">
 <h3>Construction<a class="headerlink" href="#construction" title="Link to this heading">¶</a></h3>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-classrgpot-1-1cache-1-1-potential-cache-1a56b7b83f58e226c08055fbb8e9413522"><span id="index-1"></span>PotentialCache(const std::string& db_path, bool create_if_missing = true)</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1cache-1-1-potential-cache-1a56b7b83f58e226c08055fbb8e9413522">
+<span id="index-1"></span><pre><span data-line="1"><span class="n">PotentialCache</span><span class="p">(</span><span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span> <span class="n">db_path</span><span class="p">,</span> <span class="kt">bool</span> <span class="n">create_if_missing</span> <span class="o">=</span> <span class="nb">true</span><span class="p">)</span></span>
+</pre></div>
 <p>Constructor opens the DB at the given path.</p>
 <p>Initializes the RocksDB options, specifically setting <code class="docutils literal notranslate"><span class="pre">create_if_missing</span></code>. It attempts to open the database at the specified path. If the open fails, an error is printed to stderr and the internal database pointer remains null. If successful, the <code class="docutils literal notranslate"><span class="pre">own_db_</span></code> flag is set to true.</p>
 <p class="rubric">Parameters:</p>
@@ -264,15 +269,21 @@ public:
 </tbody>
 </table>
 </div>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-classrgpot-1-1cache-1-1-potential-cache-1a6471a2f451e9fa0040a4c193043c591e"><span id="index-2"></span>PotentialCache()</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1cache-1-1-potential-cache-1a6471a2f451e9fa0040a4c193043c591e">
+<span id="index-2"></span><pre><span data-line="1"><span class="n">PotentialCache</span><span class="p">()</span></span>
+</pre></div>
 <p>Default constructor.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-classrgpot-1-1cache-1-1-potential-cache-1af4e9992ce45c6764450cdcc69569a846">~PotentialCache()</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1cache-1-1-potential-cache-1af4e9992ce45c6764450cdcc69569a846">
+<pre><span data-line="1"><span class="o">~</span><span class="n">PotentialCache</span><span class="p">()</span></span>
+</pre></div>
 <p>Destructor.</p>
 <p>Checks if the class owns the database pointer. If so, it deletes the <code class="docutils literal notranslate"><span class="pre">rocksdb::DB</span></code> instance to prevent memory leaks.</p>
 </section>
 <section id="methods">
 <h3>Methods<a class="headerlink" href="#methods" title="Link to this heading">¶</a></h3>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-classrgpot-1-1cache-1-1-potential-cache-1ab1fb804b926b4c383105e17595658676"><span id="index-3"></span>void set_db(rocksdb::DB* db)</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1cache-1-1-potential-cache-1ab1fb804b926b4c383105e17595658676">
+<span id="index-3"></span><pre><span data-line="1"><span class="kt">void</span> <span class="n">set_db</span><span class="p">(</span><span class="n">rocksdb</span><span class="o">::</span><span class="n">DB</span><span class="o">*</span> <span class="n">db</span><span class="p">)</span></span>
+</pre></div>
 <p>Helper for manual pointer setting.</p>
 <p>This function allows for manually injecting a RocksDB pointer. If the current instance already owns a database, it is deleted before accepting the new pointer. Ownership is transferred away from this class (own_db_ set to false), implying the caller manages the new pointer’s lifetime or it is a shared resource.</p>
 <div class="admonition warning">
@@ -295,7 +306,9 @@ public:
 </div>
 <p class="rubric">Returns:</p>
 <p>Void.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-classrgpot-1-1cache-1-1-potential-cache-1ae414402d984323aba6aefe2f83a68018"><span id="index-4"></span>void deserialize_hit(const std::string& value, double& energy, <a class="reference internal" href="class_rgpot_types_AtomMatrix.html#doxid-classrgpot-1-1types-1-1-atom-matrix"><span class="std std-ref">rgpot::types::AtomMatrix</span></a>& forces)</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1cache-1-1-potential-cache-1ae414402d984323aba6aefe2f83a68018">
+<span id="index-4"></span><pre><span data-line="1"><span class="kt">void</span> <span class="n">deserialize_hit</span><span class="p">(</span><span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span> <span class="n">value</span><span class="p">,</span> <span class="kt">double</span><span class="o">&amp;</span> <span class="n">energy</span><span class="p">,</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_types_AtomMatrix.html#doxid-classrgpot-1-1types-1-1-atom-matrix"><span class="std std-ref">rgpot::types::AtomMatrix</span></a><span class="o">&amp;</span> <span class="n">forces</span><span class="p">)</span></span>
+</pre></div>
 <p>Deserializes a cache hit into output containers.</p>
 <p>Performs a binary copy (<code class="docutils literal notranslate"><span class="pre">std::memcpy</span></code>) from the serialized string buffer back into the energy variable and force matrix.</p>
 <p>The layout is assumed to be: <code class="docutils literal notranslate"><span class="pre">[double</span> <span class="pre">energy]</span> <span class="pre">[double</span> <span class="pre">force_0]</span> <span class="pre">...</span> <span class="pre">[double</span> <span class="pre">force_N]</span></code></p>
@@ -321,7 +334,9 @@ public:
 </div>
 <p class="rubric">Returns:</p>
 <p>Void.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-classrgpot-1-1cache-1-1-potential-cache-1afa65792f6b6ba596dc4852ed802c5d2e"><span id="index-5"></span>void add_serialized(const <a class="reference internal" href="class_rgpot_cache_KeyHash.html#doxid-structrgpot-1-1cache-1-1-key-hash"><span class="std std-ref">KeyHash</span></a>& key, double energy, const <a class="reference internal" href="class_rgpot_types_AtomMatrix.html#doxid-classrgpot-1-1types-1-1-atom-matrix"><span class="std std-ref">rgpot::types::AtomMatrix</span></a>& forces)</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1cache-1-1-potential-cache-1afa65792f6b6ba596dc4852ed802c5d2e">
+<span id="index-5"></span><pre><span data-line="1"><span class="kt">void</span> <span class="n">add_serialized</span><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_cache_KeyHash.html#doxid-structrgpot-1-1cache-1-1-key-hash"><span class="std std-ref">KeyHash</span></a><span class="o">&amp;</span> <span class="n">key</span><span class="p">,</span> <span class="kt">double</span> <span class="n">energy</span><span class="p">,</span> <span class="k">const</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_types_AtomMatrix.html#doxid-classrgpot-1-1types-1-1-atom-matrix"><span class="std std-ref">rgpot::types::AtomMatrix</span></a><span class="o">&amp;</span> <span class="n">forces</span><span class="p">)</span></span>
+</pre></div>
 <p>Adds a serialized calculation to the cache.</p>
 <p>Serializes the energy and forces into a contiguous binary buffer. The buffer size is calculated as <code class="docutils literal notranslate"><span class="pre">sizeof(double)</span> <span class="pre">+</span> <span class="pre">N</span> <span class="pre">*</span> <span class="pre">sizeof(double)</span></code>. This buffer is then stored in RocksDB using the provided key.</p>
 <div class="admonition note">
@@ -350,7 +365,9 @@ public:
 </div>
 <p class="rubric">Returns:</p>
 <p>Void.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-classrgpot-1-1cache-1-1-potential-cache-1a85bd93690a8a21fcad691472a535f2b8"><span id="index-6"></span>std::optional<std::string> find(const <a class="reference internal" href="class_rgpot_cache_KeyHash.html#doxid-structrgpot-1-1cache-1-1-key-hash"><span class="std std-ref">KeyHash</span></a>& key)</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1cache-1-1-potential-cache-1a85bd93690a8a21fcad691472a535f2b8">
+<span id="index-6"></span><pre><span data-line="1"><span class="n">std</span><span class="o">::</span><span class="n">optional</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&gt;</span> <span class="n">find</span><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_cache_KeyHash.html#doxid-structrgpot-1-1cache-1-1-key-hash"><span class="std std-ref">KeyHash</span></a><span class="o">&amp;</span> <span class="n">key</span><span class="p">)</span></span>
+</pre></div>
 <p>Searches the cache for a specific key.</p>
 <p>Queries the RocksDB instance for the given key.</p>
 <p class="rubric">Parameters:</p>

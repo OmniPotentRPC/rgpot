@@ -9,6 +9,7 @@
   </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
     <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=44020203" />
     <link rel="stylesheet" type="text/css" href="../_static/doxyrest-pygments.css?v=ff3f4257" />
+    <link rel="stylesheet" type="text/css" href="../_static/doxyrest-shibuya.css" />
     <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -209,55 +210,61 @@ data-aria-dark="Switch to auto color mode">
 </div>
 <section id="overview">
 <h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
-<pre class="highlight doxyrest-overview-code-block literal-block">// namespaces
-
-namespace <a class="reference internal" href="namespace_rgpot.html#doxid-namespacergpot"><span class="std std-ref">rgpot</span></a>;
-    namespace <a class="reference internal" href="namespace_rgpot_cache.html#doxid-namespacergpot-1-1cache"><span class="std std-ref">rgpot::cache</span></a>;
-    namespace <a class="reference internal" href="namespace_rgpot_types.html#doxid-namespacergpot-1-1types"><span class="std std-ref">rgpot::types</span></a>;
-        namespace <a class="reference internal" href="namespace_rgpot_types_adapt.html#doxid-namespacergpot-1-1types-1-1adapt"><span class="std std-ref">rgpot::types::adapt</span></a>;
-            namespace <a class="reference internal" href="namespace_rgpot_types_adapt_capnp.html#doxid-namespacergpot-1-1types-1-1adapt-1-1capnp"><span class="std std-ref">rgpot::types::adapt::capnp</span></a>;
-            namespace <a class="reference internal" href="namespace_rgpot_types_adapt_eigen.html#doxid-namespacergpot-1-1types-1-1adapt-1-1eigen"><span class="std std-ref">rgpot::types::adapt::eigen</span></a>;
-            namespace <a class="reference internal" href="namespace_rgpot_types_adapt_xtensor.html#doxid-namespacergpot-1-1types-1-1adapt-1-1xtensor"><span class="std std-ref">rgpot::types::adapt::xtensor</span></a>;
-
-// typedefs
-
-typedef struct PotClient <a class="reference internal" href="#doxid-pot-bridge-8h-1ad15494aa275bd98047b204d29533f6ba"><span class="std std-ref">PotClient</span></a>;
-
-// classes
-
-class <a class="reference internal" href="class_AtomMatrix.html#doxid-class-atom-matrix"><span class="std std-ref">AtomMatrix</span></a>;
-class <a class="reference internal" href="class_GenericPotImpl.html#doxid-class-generic-pot-impl"><span class="std std-ref">GenericPotImpl</span></a>;
-class <a class="reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a>;
-
-// global functions
-
-void <a class="reference internal" href="#doxid-cu-h2-pot-8hpp-1a79b876a461f808a0b8e5ac38ca629988"><span class="std std-ref">c_force_eam</span></a>(int* natms, int ndim, double* box, double* R, double* F, double* U);
-<a class="reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a>* <a class="reference internal" href="#doxid-pot-bridge-8cc-1ad254a3ebf2ca0137de55bd82ea1abb42"><span class="std std-ref">pot_client_init</span></a>(const char* host, int32_t port);
-void <a class="reference internal" href="#doxid-pot-bridge-8cc-1a605cb8b056e3d895be066472fe1c116e"><span class="std std-ref">pot_client_free</span></a>(<a class="reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a>* client);
-int32_t <a class="reference internal" href="#doxid-pot-bridge-8cc-1ab471aef52e0227fbb98588e8366ad646"><span class="std std-ref">pot_calculate</span></a>(<a class="reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a>* client, int32_t natoms, const double* pos, const int32_t* atmnrs, const double* box, double* out_energy, double* out_forces);
-const char* <a class="reference internal" href="#doxid-pot-bridge-8cc-1a669a1a1ce89314ebbfec4c91438bd782"><span class="std std-ref">pot_get_last_error</span></a>(<a class="reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a>* client);
-<a class="reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a>* <a class="reference internal" href="#doxid-pot-bridge-8h-1ad254a3ebf2ca0137de55bd82ea1abb42"><span class="std std-ref">pot_client_init</span></a>(const char* host, int32_t port);
-void <a class="reference internal" href="#doxid-pot-bridge-8h-1a605cb8b056e3d895be066472fe1c116e"><span class="std std-ref">pot_client_free</span></a>(<a class="reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a>* client);
-int32_t <a class="reference internal" href="#doxid-pot-bridge-8h-1ab471aef52e0227fbb98588e8366ad646"><span class="std std-ref">pot_calculate</span></a>(<a class="reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a>* client, int32_t natoms, const double* pos, const int32_t* atmnrs, const double* box, double* out_energy, double* out_forces);
-const char* <a class="reference internal" href="#doxid-pot-bridge-8h-1a669a1a1ce89314ebbfec4c91438bd782"><span class="std std-ref">pot_get_last_error</span></a>(<a class="reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a>* client);
-int <a class="reference internal" href="#doxid-server-8cpp-1a0ddf1224851353fc92bfbff6f499fa97"><span class="std std-ref">main</span></a>(int argc, char* argv[]);
-
-// macros
-
-#define <span class="doxyrest-code-target target" id="doxid-pot-bridge-8cc-1a933409e97453f39bfae6d29f0518b341">CATCH_AND_REPORT</span>(client, default_ret)</pre>
+<div class="doxyrest-overview-code-block highlight">
+<pre><span data-line="1"><span class="c1">// namespaces</span></span>
+<span data-line="2"> </span>
+<span data-line="3"><span class="k">namespace</span> <a class="doxyrest-code-link reference internal" href="namespace_rgpot.html#doxid-namespacergpot"><span class="std std-ref">rgpot</span></a><span class="p">;</span></span>
+<span data-line="4">    <span class="k">namespace</span> <a class="doxyrest-code-link reference internal" href="namespace_rgpot_cache.html#doxid-namespacergpot-1-1cache"><span class="std std-ref">rgpot::cache</span></a><span class="p">;</span></span>
+<span data-line="5">    <span class="k">namespace</span> <a class="doxyrest-code-link reference internal" href="namespace_rgpot_types.html#doxid-namespacergpot-1-1types"><span class="std std-ref">rgpot::types</span></a><span class="p">;</span></span>
+<span data-line="6">        <span class="k">namespace</span> <a class="doxyrest-code-link reference internal" href="namespace_rgpot_types_adapt.html#doxid-namespacergpot-1-1types-1-1adapt"><span class="std std-ref">rgpot::types::adapt</span></a><span class="p">;</span></span>
+<span data-line="7">            <span class="k">namespace</span> <a class="doxyrest-code-link reference internal" href="namespace_rgpot_types_adapt_capnp.html#doxid-namespacergpot-1-1types-1-1adapt-1-1capnp"><span class="std std-ref">rgpot::types::adapt::capnp</span></a><span class="p">;</span></span>
+<span data-line="8">            <span class="k">namespace</span> <a class="doxyrest-code-link reference internal" href="namespace_rgpot_types_adapt_eigen.html#doxid-namespacergpot-1-1types-1-1adapt-1-1eigen"><span class="std std-ref">rgpot::types::adapt::eigen</span></a><span class="p">;</span></span>
+<span data-line="9">            <span class="k">namespace</span> <a class="doxyrest-code-link reference internal" href="namespace_rgpot_types_adapt_xtensor.html#doxid-namespacergpot-1-1types-1-1adapt-1-1xtensor"><span class="std std-ref">rgpot::types::adapt::xtensor</span></a><span class="p">;</span></span>
+<span data-line="10"> </span>
+<span data-line="11"><span class="c1">// typedefs</span></span>
+<span data-line="12"> </span>
+<span data-line="13"><span class="k">typedef</span> <span class="k">struct</span> <span class="n">PotClient</span> <a class="doxyrest-code-link reference internal" href="#doxid-pot-bridge-8h-1ad15494aa275bd98047b204d29533f6ba"><span class="std std-ref">PotClient</span></a><span class="p">;</span></span>
+<span data-line="14"> </span>
+<span data-line="15"><span class="c1">// classes</span></span>
+<span data-line="16"> </span>
+<span data-line="17"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_AtomMatrix.html#doxid-class-atom-matrix"><span class="std std-ref">AtomMatrix</span></a><span class="p">;</span></span>
+<span data-line="18"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_GenericPotImpl.html#doxid-class-generic-pot-impl"><span class="std std-ref">GenericPotImpl</span></a><span class="p">;</span></span>
+<span data-line="19"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a><span class="p">;</span></span>
+<span data-line="20"> </span>
+<span data-line="21"><span class="c1">// global functions</span></span>
+<span data-line="22"> </span>
+<span data-line="23"><span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-cu-h2-pot-8hpp-1a79b876a461f808a0b8e5ac38ca629988"><span class="std std-ref">c_force_eam</span></a><span class="p">(</span><span class="kt">int</span><span class="o">*</span> <span class="n">natms</span><span class="p">,</span> <span class="kt">int</span> <span class="n">ndim</span><span class="p">,</span> <span class="kt">double</span><span class="o">*</span> <span class="n">box</span><span class="p">,</span> <span class="kt">double</span><span class="o">*</span> <span class="n">R</span><span class="p">,</span> <span class="kt">double</span><span class="o">*</span> <span class="n">F</span><span class="p">,</span> <span class="kt">double</span><span class="o">*</span> <span class="n">U</span><span class="p">);</span></span>
+<span data-line="24"><a class="doxyrest-code-link reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a><span class="o">*</span> <a class="doxyrest-code-link reference internal" href="#doxid-pot-bridge-8cc-1ad254a3ebf2ca0137de55bd82ea1abb42"><span class="std std-ref">pot_client_init</span></a><span class="p">(</span><span class="k">const</span> <span class="kt">char</span><span class="o">*</span> <span class="n">host</span><span class="p">,</span> <span class="kt">int32_t</span> <span class="n">port</span><span class="p">);</span></span>
+<span data-line="25"><span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-pot-bridge-8cc-1a605cb8b056e3d895be066472fe1c116e"><span class="std std-ref">pot_client_free</span></a><span class="p">(</span><a class="doxyrest-code-link reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a><span class="o">*</span> <span class="n">client</span><span class="p">);</span></span>
+<span data-line="26"><span class="kt">int32_t</span> <a class="doxyrest-code-link reference internal" href="#doxid-pot-bridge-8cc-1ab471aef52e0227fbb98588e8366ad646"><span class="std std-ref">pot_calculate</span></a><span class="p">(</span><a class="doxyrest-code-link reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a><span class="o">*</span> <span class="n">client</span><span class="p">,</span> <span class="kt">int32_t</span> <span class="n">natoms</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">pos</span><span class="p">,</span> <span class="k">const</span> <span class="kt">int32_t</span><span class="o">*</span> <span class="n">atmnrs</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">box</span><span class="p">,</span> <span class="kt">double</span><span class="o">*</span> <span class="n">out_energy</span><span class="p">,</span> <span class="kt">double</span><span class="o">*</span> <span class="n">out_forces</span><span class="p">);</span></span>
+<span data-line="27"><span class="k">const</span> <span class="kt">char</span><span class="o">*</span> <a class="doxyrest-code-link reference internal" href="#doxid-pot-bridge-8cc-1a669a1a1ce89314ebbfec4c91438bd782"><span class="std std-ref">pot_get_last_error</span></a><span class="p">(</span><a class="doxyrest-code-link reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a><span class="o">*</span> <span class="n">client</span><span class="p">);</span></span>
+<span data-line="28"><a class="doxyrest-code-link reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a><span class="o">*</span> <a class="doxyrest-code-link reference internal" href="#doxid-pot-bridge-8h-1ad254a3ebf2ca0137de55bd82ea1abb42"><span class="std std-ref">pot_client_init</span></a><span class="p">(</span><span class="k">const</span> <span class="kt">char</span><span class="o">*</span> <span class="n">host</span><span class="p">,</span> <span class="kt">int32_t</span> <span class="n">port</span><span class="p">);</span></span>
+<span data-line="29"><span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-pot-bridge-8h-1a605cb8b056e3d895be066472fe1c116e"><span class="std std-ref">pot_client_free</span></a><span class="p">(</span><a class="doxyrest-code-link reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a><span class="o">*</span> <span class="n">client</span><span class="p">);</span></span>
+<span data-line="30"><span class="kt">int32_t</span> <a class="doxyrest-code-link reference internal" href="#doxid-pot-bridge-8h-1ab471aef52e0227fbb98588e8366ad646"><span class="std std-ref">pot_calculate</span></a><span class="p">(</span><a class="doxyrest-code-link reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a><span class="o">*</span> <span class="n">client</span><span class="p">,</span> <span class="kt">int32_t</span> <span class="n">natoms</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">pos</span><span class="p">,</span> <span class="k">const</span> <span class="kt">int32_t</span><span class="o">*</span> <span class="n">atmnrs</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">box</span><span class="p">,</span> <span class="kt">double</span><span class="o">*</span> <span class="n">out_energy</span><span class="p">,</span> <span class="kt">double</span><span class="o">*</span> <span class="n">out_forces</span><span class="p">);</span></span>
+<span data-line="31"><span class="k">const</span> <span class="kt">char</span><span class="o">*</span> <a class="doxyrest-code-link reference internal" href="#doxid-pot-bridge-8h-1a669a1a1ce89314ebbfec4c91438bd782"><span class="std std-ref">pot_get_last_error</span></a><span class="p">(</span><a class="doxyrest-code-link reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a><span class="o">*</span> <span class="n">client</span><span class="p">);</span></span>
+<span data-line="32"><span class="kt">int</span> <a class="doxyrest-code-link reference internal" href="#doxid-server-8cpp-1a0ddf1224851353fc92bfbff6f499fa97"><span class="std std-ref">main</span></a><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span><span class="o">*</span> <span class="n">argv</span><span class="p">[]);</span></span>
+<span data-line="33"> </span>
+<span data-line="34"><span class="c1">// macros</span></span>
+<span data-line="35"> </span>
+<span data-line="36"><span class="cp">#define </span><span class="doxyrest-code-target target" id="doxid-pot__bridge_8cc_1a933409e97453f39bfae6d29f0518b341"></span><span class="n">CATCH_AND_REPORT</span><span class="p">(</span><span class="n">client</span><span class="p">,</span> <span class="n">default_ret</span><span class="p">)</span></span>
+</pre></div>
 </section>
 <section id="detailed-documentation">
 <span id="details-global"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
 <section id="typedefs">
 <h3>Typedefs<a class="headerlink" href="#typedefs" title="Link to this heading">¶</a></h3>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-pot-bridge-8h-1ad15494aa275bd98047b204d29533f6ba"><span id="index-1"></span>typedef struct PotClient PotClient</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-pot-bridge-8h-1ad15494aa275bd98047b204d29533f6ba">
+<span id="index-1"></span><pre><span data-line="1"><span class="k">typedef</span> <span class="k">struct</span> <span class="n">PotClient</span> <span class="n">PotClient</span></span>
+</pre></div>
 <p>C API for the RPC potential client bridge.</p>
 <p>This header provides a C-compatible interface to the distributed potential calculation client, allowing integration with Fortran or other languages with a C interface, e.g. Julia.</p>
 <p>Opaque handle to the client context.</p>
 </section>
 <section id="global-functions">
 <h3>Global Functions<a class="headerlink" href="#global-functions" title="Link to this heading">¶</a></h3>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-cu-h2-pot-8hpp-1a79b876a461f808a0b8e5ac38ca629988"><span id="index-2"></span>void c_force_eam(int* natms, int ndim, double* box, double* R, double* F, double* U)</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-cu-h2-pot-8hpp-1a79b876a461f808a0b8e5ac38ca629988">
+<span id="index-2"></span><pre><span data-line="1"><span class="kt">void</span> <span class="n">c_force_eam</span><span class="p">(</span><span class="kt">int</span><span class="o">*</span> <span class="n">natms</span><span class="p">,</span> <span class="kt">int</span> <span class="n">ndim</span><span class="p">,</span> <span class="kt">double</span><span class="o">*</span> <span class="n">box</span><span class="p">,</span> <span class="kt">double</span><span class="o">*</span> <span class="n">R</span><span class="p">,</span> <span class="kt">double</span><span class="o">*</span> <span class="n">F</span><span class="p">,</span> <span class="kt">double</span><span class="o">*</span> <span class="n">U</span><span class="p">)</span></span>
+</pre></div>
 <p>C-linkage bridge to the Fortran EAM implementation.</p>
 <p class="rubric">Parameters:</p>
 <div class="table-wrapper colwidths-given docutils container">
@@ -290,17 +297,23 @@ int <a class="reference internal" href="#doxid-server-8cpp-1a0ddf1224851353fc92b
 </div>
 <p class="rubric">Returns:</p>
 <p>Void.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-pot-bridge-8cc-1ad254a3ebf2ca0137de55bd82ea1abb42"><span id="index-3"></span><a class="reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a>* pot_client_init(const char* host, int32_t port)</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-pot-bridge-8cc-1ad254a3ebf2ca0137de55bd82ea1abb42">
+<span id="index-3"></span><pre><span data-line="1"><a class="doxyrest-code-link reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a><span class="o">*</span> <span class="n">pot_client_init</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span><span class="o">*</span> <span class="n">host</span><span class="p">,</span> <span class="kt">int32_t</span> <span class="n">port</span><span class="p">)</span></span>
+</pre></div>
 <p>Initializes the RPC client connection.</p>
 <p>Constructs a string-based address from the <em>host</em> and <em>port</em>, then initializes a new <code class="docutils literal notranslate"><span class="pre">capnp::EzRpcClient</span></code>. The main capability is cast to the <code class="docutils literal notranslate"><span class="pre">Potential</span></code> interface defined in the schema.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p>Returns <code class="docutils literal notranslate"><span class="pre">nullptr</span></code> if the connection cannot be established or if the address is malformed.</p>
 </div>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-pot-bridge-8cc-1a605cb8b056e3d895be066472fe1c116e"><span id="index-4"></span>void pot_client_free(<a class="reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a>* client)</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-pot-bridge-8cc-1a605cb8b056e3d895be066472fe1c116e">
+<span id="index-4"></span><pre><span data-line="1"><span class="kt">void</span> <span class="n">pot_client_free</span><span class="p">(</span><a class="doxyrest-code-link reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a><span class="o">*</span> <span class="n">client</span><span class="p">)</span></span>
+</pre></div>
 <p>Frees all resources associated with the client.</p>
-<p>Performs a standard <code class="docutils literal notranslate"><span class="pre">delete</span></code> on the client pointer. This triggers the <code class="docutils literal notranslate"><a class="reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref"><span class="pre">PotClient</span></span></a></code> destructor, which cleans up the <code class="docutils literal notranslate"><span class="pre">unique_ptr</span></code> and associated RPC state.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-pot-bridge-8cc-1ab471aef52e0227fbb98588e8366ad646"><span id="index-5"></span>int32_t pot_calculate(<a class="reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a>* client, int32_t natoms, const double* pos, const int32_t* atmnrs, const double* box, double* out_energy, double* out_forces)</pre>
+<p>Performs a standard <code class="docutils literal notranslate"><span class="pre">delete</span></code> on the client pointer. This triggers the <code class="docutils literal notranslate"><span class="pre">PotClient</span></code> destructor, which cleans up the <code class="docutils literal notranslate"><span class="pre">unique_ptr</span></code> and associated RPC state.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-pot-bridge-8cc-1ab471aef52e0227fbb98588e8366ad646">
+<span id="index-5"></span><pre><span data-line="1"><span class="kt">int32_t</span> <span class="n">pot_calculate</span><span class="p">(</span><a class="doxyrest-code-link reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a><span class="o">*</span> <span class="n">client</span><span class="p">,</span> <span class="kt">int32_t</span> <span class="n">natoms</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">pos</span><span class="p">,</span> <span class="k">const</span> <span class="kt">int32_t</span><span class="o">*</span> <span class="n">atmnrs</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">box</span><span class="p">,</span> <span class="kt">double</span><span class="o">*</span> <span class="n">out_energy</span><span class="p">,</span> <span class="kt">double</span><span class="o">*</span> <span class="n">out_forces</span><span class="p">)</span></span>
+</pre></div>
 <p>Executes a remote potential calculation.</p>
 <p>This function performs the following steps:</p>
 <ol class="arabic simple">
@@ -315,10 +328,14 @@ int <a class="reference internal" href="#doxid-server-8cpp-1a0ddf1224851353fc92b
 <p class="admonition-title">Warning</p>
 <p>The server must return a force array matching <em>natoms</em> * 3. If the sizes do not match, a non-zero error code is returned.</p>
 </div>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-pot-bridge-8cc-1a669a1a1ce89314ebbfec4c91438bd782"><span id="index-6"></span>const char* pot_get_last_error(<a class="reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a>* client)</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-pot-bridge-8cc-1a669a1a1ce89314ebbfec4c91438bd782">
+<span id="index-6"></span><pre><span data-line="1"><span class="k">const</span> <span class="kt">char</span><span class="o">*</span> <span class="n">pot_get_last_error</span><span class="p">(</span><a class="doxyrest-code-link reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a><span class="o">*</span> <span class="n">client</span><span class="p">)</span></span>
+</pre></div>
 <p>Retrieves the most recent error message.</p>
 <p>Checks if a valid client handle is provided and if the <code class="docutils literal notranslate"><span class="pre">last_error</span></code> buffer contains data. If no error is recorded, an empty string is returned.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-pot-bridge-8h-1ad254a3ebf2ca0137de55bd82ea1abb42"><span id="index-7"></span><a class="reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a>* pot_client_init(const char* host, int32_t port)</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-pot-bridge-8h-1ad254a3ebf2ca0137de55bd82ea1abb42">
+<span id="index-7"></span><pre><span data-line="1"><a class="doxyrest-code-link reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a><span class="o">*</span> <span class="n">pot_client_init</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span><span class="o">*</span> <span class="n">host</span><span class="p">,</span> <span class="kt">int32_t</span> <span class="n">port</span><span class="p">)</span></span>
+</pre></div>
 <p>Initializes the RPC client connection.</p>
 <p>Constructs a string-based address from the <em>host</em> and <em>port</em>, then initializes a new <code class="docutils literal notranslate"><span class="pre">capnp::EzRpcClient</span></code>. The main capability is cast to the <code class="docutils literal notranslate"><span class="pre">Potential</span></code> interface defined in the schema.</p>
 <div class="admonition note">
@@ -346,9 +363,11 @@ int <a class="reference internal" href="#doxid-server-8cpp-1a0ddf1224851353fc92b
 <p>Pointer to the client context or <code class="docutils literal notranslate"><span class="pre">NULL</span></code> on failure.</p>
 <p class="rubric">See also:</p>
 <p>pot_get_last_error</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-pot-bridge-8h-1a605cb8b056e3d895be066472fe1c116e"><span id="index-8"></span>void pot_client_free(<a class="reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a>* client)</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-pot-bridge-8h-1a605cb8b056e3d895be066472fe1c116e">
+<span id="index-8"></span><pre><span data-line="1"><span class="kt">void</span> <span class="n">pot_client_free</span><span class="p">(</span><a class="doxyrest-code-link reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a><span class="o">*</span> <span class="n">client</span><span class="p">)</span></span>
+</pre></div>
 <p>Frees all resources associated with the client.</p>
-<p>Performs a standard <code class="docutils literal notranslate"><span class="pre">delete</span></code> on the client pointer. This triggers the <code class="docutils literal notranslate"><a class="reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref"><span class="pre">PotClient</span></span></a></code> destructor, which cleans up the <code class="docutils literal notranslate"><span class="pre">unique_ptr</span></code> and associated RPC state.</p>
+<p>Performs a standard <code class="docutils literal notranslate"><span class="pre">delete</span></code> on the client pointer. This triggers the <code class="docutils literal notranslate"><span class="pre">PotClient</span></code> destructor, which cleans up the <code class="docutils literal notranslate"><span class="pre">unique_ptr</span></code> and associated RPC state.</p>
 <p class="rubric">Parameters:</p>
 <div class="table-wrapper colwidths-given docutils container">
 <table class="docutils align-default">
@@ -365,7 +384,9 @@ int <a class="reference internal" href="#doxid-server-8cpp-1a0ddf1224851353fc92b
 </div>
 <p class="rubric">Returns:</p>
 <p>Void.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-pot-bridge-8h-1ab471aef52e0227fbb98588e8366ad646"><span id="index-9"></span>int32_t pot_calculate(<a class="reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a>* client, int32_t natoms, const double* pos, const int32_t* atmnrs, const double* box, double* out_energy, double* out_forces)</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-pot-bridge-8h-1ab471aef52e0227fbb98588e8366ad646">
+<span id="index-9"></span><pre><span data-line="1"><span class="kt">int32_t</span> <span class="n">pot_calculate</span><span class="p">(</span><a class="doxyrest-code-link reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a><span class="o">*</span> <span class="n">client</span><span class="p">,</span> <span class="kt">int32_t</span> <span class="n">natoms</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">pos</span><span class="p">,</span> <span class="k">const</span> <span class="kt">int32_t</span><span class="o">*</span> <span class="n">atmnrs</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">box</span><span class="p">,</span> <span class="kt">double</span><span class="o">*</span> <span class="n">out_energy</span><span class="p">,</span> <span class="kt">double</span><span class="o">*</span> <span class="n">out_forces</span><span class="p">)</span></span>
+</pre></div>
 <p>Executes a remote potential calculation.</p>
 <p>The <em>client</em> must be successfully initialized.</p>
 <p>This function performs the following steps:</p>
@@ -415,7 +436,9 @@ int <a class="reference internal" href="#doxid-server-8cpp-1a0ddf1224851353fc92b
 </div>
 <p class="rubric">Returns:</p>
 <p>0 on success, non-zero on failure.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-pot-bridge-8h-1a669a1a1ce89314ebbfec4c91438bd782"><span id="index-10"></span>const char* pot_get_last_error(<a class="reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a>* client)</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-pot-bridge-8h-1a669a1a1ce89314ebbfec4c91438bd782">
+<span id="index-10"></span><pre><span data-line="1"><span class="k">const</span> <span class="kt">char</span><span class="o">*</span> <span class="n">pot_get_last_error</span><span class="p">(</span><a class="doxyrest-code-link reference internal" href="class_PotClient.html#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a><span class="o">*</span> <span class="n">client</span><span class="p">)</span></span>
+</pre></div>
 <p>Retrieves the most recent error message.</p>
 <p>Checks if a valid client handle is provided and if the <code class="docutils literal notranslate"><span class="pre">last_error</span></code> buffer contains data. If no error is recorded, an empty string is returned.</p>
 <p class="rubric">Parameters:</p>
@@ -434,7 +457,9 @@ int <a class="reference internal" href="#doxid-server-8cpp-1a0ddf1224851353fc92b
 </div>
 <p class="rubric">Returns:</p>
 <p>String containing the error description.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-server-8cpp-1a0ddf1224851353fc92bfbff6f499fa97"><span id="index-11"></span>int main(int argc, char* argv[])</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-server-8cpp-1a0ddf1224851353fc92bfbff6f499fa97">
+<span id="index-11"></span><pre><span data-line="1"><span class="kt">int</span> <span class="n">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span><span class="o">*</span> <span class="n">argv</span><span class="p">[])</span></span>
+</pre></div>
 <p>The main entry point handles command-line arguments to specify the network port and the potential type. It instantiates the requested physics engine and blocks until the server is terminated.</p>
 </section>
 </section>
