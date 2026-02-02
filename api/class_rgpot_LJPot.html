@@ -9,6 +9,7 @@
   </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
     <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=44020203" />
     <link rel="stylesheet" type="text/css" href="../_static/doxyrest-pygments.css?v=ff3f4257" />
+    <link rel="stylesheet" type="text/css" href="../_static/doxyrest-shibuya.css" />
     <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -217,18 +218,20 @@ data-aria-dark="Switch to auto color mode">
 <section id="overview">
 <h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
 <p>Implementation of a shifted 12-6 Lennard-Jones potential. <a class="reference internal" href="#details-classrgpot-1-1-l-j-pot"><span class="std std-ref">More…</span></a></p>
-<pre class="highlight doxyrest-overview-code-block literal-block">#include <LJPot.hpp>
-
-class LJPot: public rgpot::Potential< LJPot > {
-public:
-    // construction
-
-    <a class="reference internal" href="#doxid-classrgpot-1-1-l-j-pot-1ac55b1c8585416be6c5a593c6815344d6"><span class="std std-ref">LJPot</span></a>();
-
-    // methods
-
-    void <a class="reference internal" href="#doxid-classrgpot-1-1-l-j-pot-1a74c9c2b391a010329a97b272ef1cc776"><span class="std std-ref">forceImpl</span></a>(const <a class="reference internal" href="struct_rgpot_ForceInput.html#doxid-structrgpot-1-1-force-input"><span class="std std-ref">ForceInput</span></a>& in, <a class="reference internal" href="struct_rgpot_ForceOut.html#doxid-structrgpot-1-1-force-out"><span class="std std-ref">ForceOut</span></a>* out) const;
-};</pre>
+<div class="doxyrest-overview-code-block highlight">
+<pre><span data-line="1"><span class="cp">#include</span> <span class="cpf">&lt;LJPot.hpp&gt;</span></span>
+<span data-line="2"> </span>
+<span data-line="3"><span class="k">class</span> <span class="nl">LJPot</span><span class="p">:</span> <span class="k">public</span> <span class="n">rgpot</span><span class="o">::</span><span class="n">Potential</span><span class="o">&lt;</span> <span class="n">LJPot</span> <span class="o">&gt;</span> <span class="p">{</span></span>
+<span data-line="4"><span class="k">public</span><span class="o">:</span></span>
+<span data-line="5">    <span class="c1">// construction</span></span>
+<span data-line="6"> </span>
+<span data-line="7">    <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-l-j-pot-1ac55b1c8585416be6c5a593c6815344d6"><span class="std std-ref">LJPot</span></a><span class="p">();</span></span>
+<span data-line="8"> </span>
+<span data-line="9">    <span class="c1">// methods</span></span>
+<span data-line="10"> </span>
+<span data-line="11">    <span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-l-j-pot-1a74c9c2b391a010329a97b272ef1cc776"><span class="std std-ref">forceImpl</span></a><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceInput.html#doxid-structrgpot-1-1-force-input"><span class="std std-ref">ForceInput</span></a><span class="o">&amp;</span> <span class="n">in</span><span class="p">,</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceOut.html#doxid-structrgpot-1-1-force-out"><span class="std std-ref">ForceOut</span></a><span class="o">*</span> <span class="n">out</span><span class="p">)</span> <span class="k">const</span><span class="p">;</span></span>
+<span data-line="12"><span class="p">};</span></span>
+</pre></div>
 </section>
 <section id="detailed-documentation">
 <span id="details-classrgpot-1-1-l-j-pot"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
@@ -244,12 +247,16 @@ public:
 </div>
 <section id="construction">
 <h3>Construction<a class="headerlink" href="#construction" title="Link to this heading">¶</a></h3>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-classrgpot-1-1-l-j-pot-1ac55b1c8585416be6c5a593c6815344d6"><span id="index-1"></span>LJPot()</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-l-j-pot-1ac55b1c8585416be6c5a593c6815344d6">
+<span id="index-1"></span><pre><span data-line="1"><span class="n">LJPot</span><span class="p">()</span></span>
+</pre></div>
 <p>Default constructor initializing parameters.</p>
 </section>
 <section id="methods">
 <h3>Methods<a class="headerlink" href="#methods" title="Link to this heading">¶</a></h3>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-classrgpot-1-1-l-j-pot-1a74c9c2b391a010329a97b272ef1cc776"><span id="index-2"></span>void forceImpl(const <a class="reference internal" href="struct_rgpot_ForceInput.html#doxid-structrgpot-1-1-force-input"><span class="std std-ref">ForceInput</span></a>& in, <a class="reference internal" href="struct_rgpot_ForceOut.html#doxid-structrgpot-1-1-force-out"><span class="std std-ref">ForceOut</span></a>* out) const</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-l-j-pot-1a74c9c2b391a010329a97b272ef1cc776">
+<span id="index-2"></span><pre><span data-line="1"><span class="kt">void</span> <span class="n">forceImpl</span><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceInput.html#doxid-structrgpot-1-1-force-input"><span class="std std-ref">ForceInput</span></a><span class="o">&amp;</span> <span class="n">in</span><span class="p">,</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceOut.html#doxid-structrgpot-1-1-force-out"><span class="std std-ref">ForceOut</span></a><span class="o">*</span> <span class="n">out</span><span class="p">)</span> <span class="k">const</span></span>
+</pre></div>
 <p>Computes the forces and energy for a given configuration.</p>
 <p class="rubric">Parameters:</p>
 <div class="table-wrapper colwidths-given docutils container">

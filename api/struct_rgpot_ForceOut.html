@@ -9,6 +9,7 @@
   </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
     <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=44020203" />
     <link rel="stylesheet" type="text/css" href="../_static/doxyrest-pygments.css?v=ff3f4257" />
+    <link rel="stylesheet" type="text/css" href="../_static/doxyrest-shibuya.css" />
     <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -216,26 +217,34 @@ data-aria-dark="Switch to auto color mode">
 <section id="overview">
 <h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
 <p>Data structure to store results from force calculations. <a class="reference internal" href="#details-structrgpot-1-1-force-out"><span class="std std-ref">More…</span></a></p>
-<pre class="highlight doxyrest-overview-code-block literal-block">#include <ForceStructs.hpp>
-
-struct ForceOut {
-    // fields
-
-    double* <a class="reference internal" href="#doxid-structrgpot-1-1-force-out-1a03bdf12293973065de4a7bb2f294e2a9"><span class="std std-ref">F</span></a>;
-    double <a class="reference internal" href="#doxid-structrgpot-1-1-force-out-1a7a5b68cc41c5f9f94630ad6c6be97310"><span class="std std-ref">energy</span></a>;
-    double <a class="reference internal" href="#doxid-structrgpot-1-1-force-out-1a17ddcb4c12c62f03ef1e03583abb08f0"><span class="std std-ref">variance</span></a>;
-};</pre>
+<div class="doxyrest-overview-code-block highlight">
+<pre><span data-line="1"><span class="cp">#include</span> <span class="cpf">&lt;ForceStructs.hpp&gt;</span></span>
+<span data-line="2"> </span>
+<span data-line="3"><span class="k">struct</span> <span class="n">ForceOut</span> <span class="p">{</span></span>
+<span data-line="4">    <span class="c1">// fields</span></span>
+<span data-line="5"> </span>
+<span data-line="6">    <span class="kt">double</span><span class="o">*</span> <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1-force-out-1a03bdf12293973065de4a7bb2f294e2a9"><span class="std std-ref">F</span></a><span class="p">;</span></span>
+<span data-line="7">    <span class="kt">double</span> <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1-force-out-1a7a5b68cc41c5f9f94630ad6c6be97310"><span class="std std-ref">energy</span></a><span class="p">;</span></span>
+<span data-line="8">    <span class="kt">double</span> <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1-force-out-1a17ddcb4c12c62f03ef1e03583abb08f0"><span class="std std-ref">variance</span></a><span class="p">;</span></span>
+<span data-line="9"><span class="p">};</span></span>
+</pre></div>
 </section>
 <section id="detailed-documentation">
 <span id="details-structrgpot-1-1-force-out"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
 <p>Data structure to store results from force calculations.</p>
 <section id="fields">
 <h3>Fields<a class="headerlink" href="#fields" title="Link to this heading">¶</a></h3>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-structrgpot-1-1-force-out-1a03bdf12293973065de4a7bb2f294e2a9"><span id="index-1"></span>double* F</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-structrgpot-1-1-force-out-1a03bdf12293973065de4a7bb2f294e2a9">
+<span id="index-1"></span><pre><span data-line="1"><span class="kt">double</span><span class="o">*</span> <span class="n">F</span></span>
+</pre></div>
 <p>Pointer to the array where forces will be stored.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-structrgpot-1-1-force-out-1a7a5b68cc41c5f9f94630ad6c6be97310"><span id="index-2"></span>double energy</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-structrgpot-1-1-force-out-1a7a5b68cc41c5f9f94630ad6c6be97310">
+<span id="index-2"></span><pre><span data-line="1"><span class="kt">double</span> <span class="n">energy</span></span>
+</pre></div>
 <p>Calculated potential energy of the configuration.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-structrgpot-1-1-force-out-1a17ddcb4c12c62f03ef1e03583abb08f0"><span id="index-3"></span>double variance</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-structrgpot-1-1-force-out-1a17ddcb4c12c62f03ef1e03583abb08f0">
+<span id="index-3"></span><pre><span data-line="1"><span class="kt">double</span> <span class="n">variance</span></span>
+</pre></div>
 <p>Variance or uncertainty of the calculation.</p>
 </section>
 </section>

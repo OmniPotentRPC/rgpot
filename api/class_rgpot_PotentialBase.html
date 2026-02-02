@@ -9,6 +9,7 @@
   </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
     <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=44020203" />
     <link rel="stylesheet" type="text/css" href="../_static/doxyrest-pygments.css?v=ff3f4257" />
+    <link rel="stylesheet" type="text/css" href="../_static/doxyrest-shibuya.css" />
     <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -217,27 +218,31 @@ data-aria-dark="Switch to auto color mode">
 <section id="overview">
 <h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
 <p>Abstract base class for all potential energy surfaces. <a class="reference internal" href="#details-classrgpot-1-1-potential-base"><span class="std std-ref">More…</span></a></p>
-<pre class="highlight doxyrest-overview-code-block literal-block">#include <Potential.hpp>
-
-class PotentialBase {
-public:
-    // construction
-
-    <a class="reference internal" href="#doxid-classrgpot-1-1-potential-base-1a35185d956a387e730f6a7e8d0716c57f"><span class="std std-ref">PotentialBase</span></a>(PotType inp_type);
-    virtual <a class="reference internal" href="#doxid-classrgpot-1-1-potential-base-1a85dc9932b5cab819c052347dcebb4221"><span class="std std-ref">~PotentialBase</span></a>();
-
-    // methods
-
-    virtual std::pair<double, <a class="reference internal" href="class_rgpot_types_AtomMatrix.html#doxid-classrgpot-1-1types-1-1-atom-matrix"><span class="std std-ref">AtomMatrix</span></a>> <a class="reference internal" href="#doxid-classrgpot-1-1-potential-base-1a64c4a9352dae2abb8262aeeceef71efa"><span class="std std-ref">operator()</span></a>(const <a class="reference internal" href="class_rgpot_types_AtomMatrix.html#doxid-classrgpot-1-1types-1-1-atom-matrix"><span class="std std-ref">AtomMatrix</span></a>& positions, const std::vector<int>& atmtypes, const std::array<std::array<double, 3>, 3>& box) = 0;
-    PotType <a class="reference internal" href="#doxid-classrgpot-1-1-potential-base-1a4de79175b891b7ea98dedb310029f834"><span class="std std-ref">get_type</span></a>() const;
-};</pre>
+<div class="doxyrest-overview-code-block highlight">
+<pre><span data-line="1"><span class="cp">#include</span> <span class="cpf">&lt;Potential.hpp&gt;</span></span>
+<span data-line="2"> </span>
+<span data-line="3"><span class="k">class</span> <span class="n">PotentialBase</span> <span class="p">{</span></span>
+<span data-line="4"><span class="k">public</span><span class="o">:</span></span>
+<span data-line="5">    <span class="c1">// construction</span></span>
+<span data-line="6"> </span>
+<span data-line="7">    <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-base-1a35185d956a387e730f6a7e8d0716c57f"><span class="std std-ref">PotentialBase</span></a><span class="p">(</span><span class="n">PotType</span> <span class="n">inp_type</span><span class="p">);</span></span>
+<span data-line="8">    <span class="k">virtual</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-base-1a85dc9932b5cab819c052347dcebb4221"><span class="std std-ref">~PotentialBase</span></a><span class="p">();</span></span>
+<span data-line="9"> </span>
+<span data-line="10">    <span class="c1">// methods</span></span>
+<span data-line="11"> </span>
+<span data-line="12">    <span class="k">virtual</span> <span class="n">std</span><span class="o">::</span><span class="n">pair</span><span class="o">&lt;</span><span class="kt">double</span><span class="p">,</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_types_AtomMatrix.html#doxid-classrgpot-1-1types-1-1-atom-matrix"><span class="std std-ref">AtomMatrix</span></a><span class="o">&gt;</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-base-1a64c4a9352dae2abb8262aeeceef71efa"><span class="std std-ref">operator()</span></a><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_types_AtomMatrix.html#doxid-classrgpot-1-1types-1-1-atom-matrix"><span class="std std-ref">AtomMatrix</span></a><span class="o">&amp;</span> <span class="n">positions</span><span class="p">,</span> <span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;&amp;</span> <span class="n">atmtypes</span><span class="p">,</span> <span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">array</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">array</span><span class="o">&lt;</span><span class="kt">double</span><span class="p">,</span> <span class="mi">3</span><span class="o">&gt;</span><span class="p">,</span> <span class="mi">3</span><span class="o">&gt;&amp;</span> <span class="n">box</span><span class="p">)</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span></span>
+<span data-line="13">    <span class="n">PotType</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-base-1a4de79175b891b7ea98dedb310029f834"><span class="std std-ref">get_type</span></a><span class="p">()</span> <span class="k">const</span><span class="p">;</span></span>
+<span data-line="14"><span class="p">};</span></span>
+</pre></div>
 </section>
 <section id="detailed-documentation">
 <span id="details-classrgpot-1-1-potential-base"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
 <p>Abstract base class for all potential energy surfaces.</p>
 <section id="construction">
 <h3>Construction<a class="headerlink" href="#construction" title="Link to this heading">¶</a></h3>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-classrgpot-1-1-potential-base-1a35185d956a387e730f6a7e8d0716c57f"><span id="index-1"></span>PotentialBase(PotType inp_type)</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-potential-base-1a35185d956a387e730f6a7e8d0716c57f">
+<span id="index-1"></span><pre><span data-line="1"><span class="n">PotentialBase</span><span class="p">(</span><span class="n">PotType</span> <span class="n">inp_type</span><span class="p">)</span></span>
+</pre></div>
 <p>Constructor for <a class="reference internal" href="#doxid-classrgpot-1-1-potential-base"><span class="std std-ref">PotentialBase</span></a>.</p>
 <p class="rubric">Parameters:</p>
 <div class="table-wrapper colwidths-given docutils container">
@@ -253,12 +258,16 @@ public:
 </tbody>
 </table>
 </div>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-classrgpot-1-1-potential-base-1a85dc9932b5cab819c052347dcebb4221">virtual ~PotentialBase()</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-potential-base-1a85dc9932b5cab819c052347dcebb4221">
+<pre><span data-line="1"><span class="k">virtual</span> <span class="o">~</span><span class="n">PotentialBase</span><span class="p">()</span></span>
+</pre></div>
 <p>Virtual destructor.</p>
 </section>
 <section id="methods">
 <h3>Methods<a class="headerlink" href="#methods" title="Link to this heading">¶</a></h3>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-classrgpot-1-1-potential-base-1a64c4a9352dae2abb8262aeeceef71efa"><span id="index-2"></span>virtual std::pair<double, <a class="reference internal" href="class_rgpot_types_AtomMatrix.html#doxid-classrgpot-1-1types-1-1-atom-matrix"><span class="std std-ref">AtomMatrix</span></a>> operator()(const <a class="reference internal" href="class_rgpot_types_AtomMatrix.html#doxid-classrgpot-1-1types-1-1-atom-matrix"><span class="std std-ref">AtomMatrix</span></a>& positions, const std::vector<int>& atmtypes, const std::array<std::array<double, 3>, 3>& box) = 0</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-potential-base-1a64c4a9352dae2abb8262aeeceef71efa">
+<span id="index-2"></span><pre><span data-line="1"><span class="k">virtual</span> <span class="n">std</span><span class="o">::</span><span class="n">pair</span><span class="o">&lt;</span><span class="kt">double</span><span class="p">,</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_types_AtomMatrix.html#doxid-classrgpot-1-1types-1-1-atom-matrix"><span class="std std-ref">AtomMatrix</span></a><span class="o">&gt;</span> <span class="k">operator</span><span class="p">()(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_types_AtomMatrix.html#doxid-classrgpot-1-1types-1-1-atom-matrix"><span class="std std-ref">AtomMatrix</span></a><span class="o">&amp;</span> <span class="n">positions</span><span class="p">,</span> <span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;&amp;</span> <span class="n">atmtypes</span><span class="p">,</span> <span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">array</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">array</span><span class="o">&lt;</span><span class="kt">double</span><span class="p">,</span> <span class="mi">3</span><span class="o">&gt;</span><span class="p">,</span> <span class="mi">3</span><span class="o">&gt;&amp;</span> <span class="n">box</span><span class="p">)</span> <span class="o">=</span> <span class="mi">0</span></span>
+</pre></div>
 <p>Main interface for potential and force calculation.</p>
 <p class="rubric">Parameters:</p>
 <div class="table-wrapper colwidths-given docutils container">
@@ -282,7 +291,9 @@ public:
 </div>
 <p class="rubric">Returns:</p>
 <p>A pair containing the energy and the force matrix.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-classrgpot-1-1-potential-base-1a4de79175b891b7ea98dedb310029f834"><span id="index-3"></span>PotType get_type() const</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-potential-base-1a4de79175b891b7ea98dedb310029f834">
+<span id="index-3"></span><pre><span data-line="1"><span class="n">PotType</span> <span class="n">get_type</span><span class="p">()</span> <span class="k">const</span></span>
+</pre></div>
 <p>Fetches the potential type.</p>
 <p class="rubric">Returns:</p>
 <p>The potential type.</p>

@@ -9,6 +9,7 @@
   </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
     <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=44020203" />
     <link rel="stylesheet" type="text/css" href="../_static/doxyrest-pygments.css?v=ff3f4257" />
+    <link rel="stylesheet" type="text/css" href="../_static/doxyrest-shibuya.css" />
     <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -213,27 +214,29 @@ data-aria-dark="Switch to auto color mode">
 <section id="overview">
 <h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
 <p>A lightweight row-major matrix class for atomic data. <a class="reference internal" href="#details-class-atom-matrix"><span class="std std-ref">More…</span></a></p>
-<pre class="highlight doxyrest-overview-code-block literal-block">#include <AtomMatrix.hpp>
-
-class AtomMatrix {
-public:
-    // construction
-
-    <a class="reference internal" href="#doxid-class-atom-matrix-1a8c101eba7749e289067bdeaaeae46e0c"><span class="std std-ref">AtomMatrix</span></a>();
-    <a class="reference internal" href="#doxid-class-atom-matrix-1a476e46843f9fe74a38d99c2089935516"><span class="std std-ref">AtomMatrix</span></a>(std::initializer_list<std::initializer_list<double>> list);
-    <a class="reference internal" href="#doxid-class-atom-matrix-1a4309adcdf53934e26ab8eac575547eab"><span class="std std-ref">AtomMatrix</span></a>(size_t rows, size_t cols);
-
-    // methods
-
-    double& <a class="reference internal" href="#doxid-class-atom-matrix-1a4739be3f423b51418f81274732f4fe2f"><span class="std std-ref">operator()</span></a>(size_t row, size_t col);
-    const double& <a class="reference internal" href="#doxid-class-atom-matrix-1ab012bd103fff58ae5628de3019a9ce44"><span class="std std-ref">operator()</span></a>(size_t row, size_t col) const;
-    size_t <a class="reference internal" href="#doxid-class-atom-matrix-1a10be77d450b7c64acda49ea0acaec003"><span class="std std-ref">rows</span></a>() const;
-    size_t <a class="reference internal" href="#doxid-class-atom-matrix-1ae955502629a5a0946ecadfe08d81d316"><span class="std std-ref">cols</span></a>() const;
-    size_t <a class="reference internal" href="#doxid-class-atom-matrix-1a058094707e53d5d40785bf5f46cf528c"><span class="std std-ref">size</span></a>() const;
-    double* <a class="reference internal" href="#doxid-class-atom-matrix-1abaa8f5f9f59a73913532efc894810f6a"><span class="std std-ref">data</span></a>();
-    const double* <a class="reference internal" href="#doxid-class-atom-matrix-1a1c90618b37cae46072f062a2a1b57980"><span class="std std-ref">data</span></a>() const;
-    static <a class="reference internal" href="class_rgpot_types_AtomMatrix.html#doxid-classrgpot-1-1types-1-1-atom-matrix"><span class="std std-ref">AtomMatrix</span></a> <a class="reference internal" href="#doxid-class-atom-matrix-1acecda4c0cbfa45e5260e31a79c08373f"><span class="std std-ref">Zero</span></a>(size_t rows, size_t cols);
-};</pre>
+<div class="doxyrest-overview-code-block highlight">
+<pre><span data-line="1"><span class="cp">#include</span> <span class="cpf">&lt;AtomMatrix.hpp&gt;</span></span>
+<span data-line="2"> </span>
+<span data-line="3"><span class="k">class</span> <span class="n">AtomMatrix</span> <span class="p">{</span></span>
+<span data-line="4"><span class="k">public</span><span class="o">:</span></span>
+<span data-line="5">    <span class="c1">// construction</span></span>
+<span data-line="6"> </span>
+<span data-line="7">    <a class="doxyrest-code-link reference internal" href="#doxid-class-atom-matrix-1a8c101eba7749e289067bdeaaeae46e0c"><span class="std std-ref">AtomMatrix</span></a><span class="p">();</span></span>
+<span data-line="8">    <a class="doxyrest-code-link reference internal" href="#doxid-class-atom-matrix-1a476e46843f9fe74a38d99c2089935516"><span class="std std-ref">AtomMatrix</span></a><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">initializer_list</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">initializer_list</span><span class="o">&lt;</span><span class="kt">double</span><span class="o">&gt;&gt;</span> <span class="n">list</span><span class="p">);</span></span>
+<span data-line="9">    <a class="doxyrest-code-link reference internal" href="#doxid-class-atom-matrix-1a4309adcdf53934e26ab8eac575547eab"><span class="std std-ref">AtomMatrix</span></a><span class="p">(</span><span class="kt">size_t</span> <span class="n">rows</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">cols</span><span class="p">);</span></span>
+<span data-line="10"> </span>
+<span data-line="11">    <span class="c1">// methods</span></span>
+<span data-line="12"> </span>
+<span data-line="13">    <span class="kt">double</span><span class="o">&amp;</span> <a class="doxyrest-code-link reference internal" href="#doxid-class-atom-matrix-1a4739be3f423b51418f81274732f4fe2f"><span class="std std-ref">operator()</span></a><span class="p">(</span><span class="kt">size_t</span> <span class="n">row</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">col</span><span class="p">);</span></span>
+<span data-line="14">    <span class="k">const</span> <span class="kt">double</span><span class="o">&amp;</span> <a class="doxyrest-code-link reference internal" href="#doxid-class-atom-matrix-1ab012bd103fff58ae5628de3019a9ce44"><span class="std std-ref">operator()</span></a><span class="p">(</span><span class="kt">size_t</span> <span class="n">row</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">col</span><span class="p">)</span> <span class="k">const</span><span class="p">;</span></span>
+<span data-line="15">    <span class="kt">size_t</span> <a class="doxyrest-code-link reference internal" href="#doxid-class-atom-matrix-1a10be77d450b7c64acda49ea0acaec003"><span class="std std-ref">rows</span></a><span class="p">()</span> <span class="k">const</span><span class="p">;</span></span>
+<span data-line="16">    <span class="kt">size_t</span> <a class="doxyrest-code-link reference internal" href="#doxid-class-atom-matrix-1ae955502629a5a0946ecadfe08d81d316"><span class="std std-ref">cols</span></a><span class="p">()</span> <span class="k">const</span><span class="p">;</span></span>
+<span data-line="17">    <span class="kt">size_t</span> <a class="doxyrest-code-link reference internal" href="#doxid-class-atom-matrix-1a058094707e53d5d40785bf5f46cf528c"><span class="std std-ref">size</span></a><span class="p">()</span> <span class="k">const</span><span class="p">;</span></span>
+<span data-line="18">    <span class="kt">double</span><span class="o">*</span> <a class="doxyrest-code-link reference internal" href="#doxid-class-atom-matrix-1abaa8f5f9f59a73913532efc894810f6a"><span class="std std-ref">data</span></a><span class="p">();</span></span>
+<span data-line="19">    <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <a class="doxyrest-code-link reference internal" href="#doxid-class-atom-matrix-1a1c90618b37cae46072f062a2a1b57980"><span class="std std-ref">data</span></a><span class="p">()</span> <span class="k">const</span><span class="p">;</span></span>
+<span data-line="20">    <span class="k">static</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_types_AtomMatrix.html#doxid-classrgpot-1-1types-1-1-atom-matrix"><span class="std std-ref">AtomMatrix</span></a> <a class="doxyrest-code-link reference internal" href="#doxid-class-atom-matrix-1acecda4c0cbfa45e5260e31a79c08373f"><span class="std std-ref">Zero</span></a><span class="p">(</span><span class="kt">size_t</span> <span class="n">rows</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">cols</span><span class="p">);</span></span>
+<span data-line="21"><span class="p">};</span></span>
+</pre></div>
 </section>
 <section id="detailed-documentation">
 <span id="details-class-atom-matrix"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
@@ -242,9 +245,13 @@ public:
 <p>This file contains the logic to validate atomic species and interface with the Fortran EAM backend via the C bridge.</p>
 <section id="construction">
 <h3>Construction<a class="headerlink" href="#construction" title="Link to this heading">¶</a></h3>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-class-atom-matrix-1a8c101eba7749e289067bdeaaeae46e0c"><span id="index-1"></span>AtomMatrix()</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-class-atom-matrix-1a8c101eba7749e289067bdeaaeae46e0c">
+<span id="index-1"></span><pre><span data-line="1"><span class="n">AtomMatrix</span><span class="p">()</span></span>
+</pre></div>
 <p>Default constructor.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-class-atom-matrix-1a476e46843f9fe74a38d99c2089935516"><span id="index-2"></span>AtomMatrix(std::initializer_list<std::initializer_list<double>> list)</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-class-atom-matrix-1a476e46843f9fe74a38d99c2089935516">
+<span id="index-2"></span><pre><span data-line="1"><span class="n">AtomMatrix</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">initializer_list</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">initializer_list</span><span class="o">&lt;</span><span class="kt">double</span><span class="o">&gt;&gt;</span> <span class="n">list</span><span class="p">)</span></span>
+</pre></div>
 <p>Constructor for list initialization.</p>
 <p class="rubric">Parameters:</p>
 <div class="table-wrapper colwidths-given docutils container">
@@ -260,7 +267,9 @@ public:
 </tbody>
 </table>
 </div>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-class-atom-matrix-1a4309adcdf53934e26ab8eac575547eab"><span id="index-3"></span>AtomMatrix(size_t rows, size_t cols)</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-class-atom-matrix-1a4309adcdf53934e26ab8eac575547eab">
+<span id="index-3"></span><pre><span data-line="1"><span class="n">AtomMatrix</span><span class="p">(</span><span class="kt">size_t</span> <span class="n">rows</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">cols</span><span class="p">)</span></span>
+</pre></div>
 <p>Constructor for a matrix of given dimensions.</p>
 <p class="rubric">Parameters:</p>
 <div class="table-wrapper colwidths-given docutils container">
@@ -282,7 +291,9 @@ public:
 </section>
 <section id="methods">
 <h3>Methods<a class="headerlink" href="#methods" title="Link to this heading">¶</a></h3>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-class-atom-matrix-1a4739be3f423b51418f81274732f4fe2f"><span id="index-4"></span>double& operator()(size_t row, size_t col)</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-class-atom-matrix-1a4739be3f423b51418f81274732f4fe2f">
+<span id="index-4"></span><pre><span data-line="1"><span class="kt">double</span><span class="o">&amp;</span> <span class="k">operator</span><span class="p">()(</span><span class="kt">size_t</span> <span class="n">row</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">col</span><span class="p">)</span></span>
+</pre></div>
 <p>Access element for mutation.</p>
 <p class="rubric">Parameters:</p>
 <div class="table-wrapper colwidths-given docutils container">
@@ -303,7 +314,9 @@ public:
 </div>
 <p class="rubric">Returns:</p>
 <p>Reference to the element.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-class-atom-matrix-1ab012bd103fff58ae5628de3019a9ce44"><span id="index-5"></span>const double& operator()(size_t row, size_t col) const</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-class-atom-matrix-1ab012bd103fff58ae5628de3019a9ce44">
+<span id="index-5"></span><pre><span data-line="1"><span class="k">const</span> <span class="kt">double</span><span class="o">&amp;</span> <span class="k">operator</span><span class="p">()(</span><span class="kt">size_t</span> <span class="n">row</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">col</span><span class="p">)</span> <span class="k">const</span></span>
+</pre></div>
 <p>Access element for reading.</p>
 <p class="rubric">Parameters:</p>
 <div class="table-wrapper colwidths-given docutils container">
@@ -324,27 +337,39 @@ public:
 </div>
 <p class="rubric">Returns:</p>
 <p>Const reference to the element.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-class-atom-matrix-1a10be77d450b7c64acda49ea0acaec003"><span id="index-6"></span>size_t rows() const</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-class-atom-matrix-1a10be77d450b7c64acda49ea0acaec003">
+<span id="index-6"></span><pre><span data-line="1"><span class="kt">size_t</span> <span class="n">rows</span><span class="p">()</span> <span class="k">const</span></span>
+</pre></div>
 <p>Fetches the number of rows.</p>
 <p class="rubric">Returns:</p>
 <p>Row count.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-class-atom-matrix-1ae955502629a5a0946ecadfe08d81d316"><span id="index-7"></span>size_t cols() const</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-class-atom-matrix-1ae955502629a5a0946ecadfe08d81d316">
+<span id="index-7"></span><pre><span data-line="1"><span class="kt">size_t</span> <span class="n">cols</span><span class="p">()</span> <span class="k">const</span></span>
+</pre></div>
 <p>Fetches the number of columns.</p>
 <p class="rubric">Returns:</p>
 <p>Column count.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-class-atom-matrix-1a058094707e53d5d40785bf5f46cf528c"><span id="index-8"></span>size_t size() const</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-class-atom-matrix-1a058094707e53d5d40785bf5f46cf528c">
+<span id="index-8"></span><pre><span data-line="1"><span class="kt">size_t</span> <span class="n">size</span><span class="p">()</span> <span class="k">const</span></span>
+</pre></div>
 <p>Fetches the total number of elements.</p>
 <p class="rubric">Returns:</p>
 <p>Size of the underlying data vector.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-class-atom-matrix-1abaa8f5f9f59a73913532efc894810f6a"><span id="index-9"></span>double* data()</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-class-atom-matrix-1abaa8f5f9f59a73913532efc894810f6a">
+<span id="index-9"></span><pre><span data-line="1"><span class="kt">double</span><span class="o">*</span> <span class="n">data</span><span class="p">()</span></span>
+</pre></div>
 <p>Fetches a pointer to the raw data for mutation.</p>
 <p class="rubric">Returns:</p>
 <p>Raw pointer to memory.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-class-atom-matrix-1a1c90618b37cae46072f062a2a1b57980"><span id="index-10"></span>const double* data() const</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-class-atom-matrix-1a1c90618b37cae46072f062a2a1b57980">
+<span id="index-10"></span><pre><span data-line="1"><span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">data</span><span class="p">()</span> <span class="k">const</span></span>
+</pre></div>
 <p>Fetches a pointer to the raw data for reading.</p>
 <p class="rubric">Returns:</p>
 <p>Const raw pointer to memory.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-class-atom-matrix-1acecda4c0cbfa45e5260e31a79c08373f"><span id="index-11"></span>static <a class="reference internal" href="class_rgpot_types_AtomMatrix.html#doxid-classrgpot-1-1types-1-1-atom-matrix"><span class="std std-ref">AtomMatrix</span></a> Zero(size_t rows, size_t cols)</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-class-atom-matrix-1acecda4c0cbfa45e5260e31a79c08373f">
+<span id="index-11"></span><pre><span data-line="1"><span class="k">static</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_types_AtomMatrix.html#doxid-classrgpot-1-1types-1-1-atom-matrix"><span class="std std-ref">AtomMatrix</span></a> <span class="n">Zero</span><span class="p">(</span><span class="kt">size_t</span> <span class="n">rows</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">cols</span><span class="p">)</span></span>
+</pre></div>
 <p>Creates a matrix initialized with zeroes.</p>
 <p class="rubric">Parameters:</p>
 <div class="table-wrapper colwidths-given docutils container">
@@ -364,7 +389,7 @@ public:
 </table>
 </div>
 <p class="rubric">Returns:</p>
-<p>A zero-initialized <code class="docutils literal notranslate"><a class="reference internal" href="#doxid-class-atom-matrix"><span class="std std-ref"><span class="pre">AtomMatrix</span></span></a></code>.</p>
+<p>A zero-initialized <code class="docutils literal notranslate"><span class="pre">AtomMatrix</span></code>.</p>
 </section>
 </section>
 </section>

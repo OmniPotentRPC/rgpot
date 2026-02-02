@@ -9,6 +9,7 @@
   </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
     <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=44020203" />
     <link rel="stylesheet" type="text/css" href="../_static/doxyrest-pygments.css?v=ff3f4257" />
+    <link rel="stylesheet" type="text/css" href="../_static/doxyrest-shibuya.css" />
     <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -213,19 +214,21 @@ data-aria-dark="Switch to auto color mode">
 <section id="overview">
 <h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
 <p>Implementation of the C API bridge for the RPC client. <a class="reference internal" href="#details-struct-pot-client"><span class="std std-ref">More…</span></a></p>
-<pre class="highlight doxyrest-overview-code-block literal-block">class PotClient {
-public:
-    // fields
-
-    std::unique_ptr<capnp::EzRpcClient> <a class="reference internal" href="#doxid-struct-pot-client-1afbb5eff93ceabc6bf320a35a8a883113"><span class="std std-ref">rpc_client</span></a>;
-    Potential::Client <a class="reference internal" href="#doxid-struct-pot-client-1a5cfe687a4dba16353ee364d404b21c9a"><span class="std std-ref">capability</span></a>;
-    kj::WaitScope* <a class="reference internal" href="#doxid-struct-pot-client-1aed1f25acec7c6d9302ac62dcf157a71c"><span class="std std-ref">wait_scope</span></a>;
-    std::string <a class="reference internal" href="#doxid-struct-pot-client-1a8fc470f19bafc3a6bdde6b2be9407091"><span class="std std-ref">last_error</span></a>;
-
-    // construction
-
-    <a class="reference internal" href="#doxid-struct-pot-client-1a85449af1564b34c7955c21581e258e11"><span class="std std-ref">PotClient</span></a>(std::unique_ptr<capnp::EzRpcClient> client, Potential::Client cap);
-};</pre>
+<div class="doxyrest-overview-code-block highlight">
+<pre><span data-line="1"><span class="k">class</span> <span class="n">PotClient</span> <span class="p">{</span></span>
+<span data-line="2"><span class="k">public</span><span class="o">:</span></span>
+<span data-line="3">    <span class="c1">// fields</span></span>
+<span data-line="4"> </span>
+<span data-line="5">    <span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">capnp</span><span class="o">::</span><span class="n">EzRpcClient</span><span class="o">&gt;</span> <a class="doxyrest-code-link reference internal" href="#doxid-struct-pot-client-1afbb5eff93ceabc6bf320a35a8a883113"><span class="std std-ref">rpc_client</span></a><span class="p">;</span></span>
+<span data-line="6">    <span class="n">Potential</span><span class="o">::</span><span class="n">Client</span> <a class="doxyrest-code-link reference internal" href="#doxid-struct-pot-client-1a5cfe687a4dba16353ee364d404b21c9a"><span class="std std-ref">capability</span></a><span class="p">;</span></span>
+<span data-line="7">    <span class="n">kj</span><span class="o">::</span><span class="n">WaitScope</span><span class="o">*</span> <a class="doxyrest-code-link reference internal" href="#doxid-struct-pot-client-1aed1f25acec7c6d9302ac62dcf157a71c"><span class="std std-ref">wait_scope</span></a><span class="p">;</span></span>
+<span data-line="8">    <span class="n">std</span><span class="o">::</span><span class="n">string</span> <a class="doxyrest-code-link reference internal" href="#doxid-struct-pot-client-1a8fc470f19bafc3a6bdde6b2be9407091"><span class="std std-ref">last_error</span></a><span class="p">;</span></span>
+<span data-line="9"> </span>
+<span data-line="10">    <span class="c1">// construction</span></span>
+<span data-line="11"> </span>
+<span data-line="12">    <a class="doxyrest-code-link reference internal" href="#doxid-struct-pot-client-1a85449af1564b34c7955c21581e258e11"><span class="std std-ref">PotClient</span></a><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">capnp</span><span class="o">::</span><span class="n">EzRpcClient</span><span class="o">&gt;</span> <span class="n">client</span><span class="p">,</span> <span class="n">Potential</span><span class="o">::</span><span class="n">Client</span> <span class="n">cap</span><span class="p">);</span></span>
+<span data-line="13"><span class="p">};</span></span>
+</pre></div>
 </section>
 <section id="detailed-documentation">
 <span id="details-struct-pot-client"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
@@ -234,18 +237,28 @@ public:
 <p>Container for the C++ objects required to manage an RPC session. It is exposed to C as an opaque pointer. The use of <code class="docutils literal notranslate"><span class="pre">std::unique_ptr</span></code> ensures that the RPC client is cleaned up correctly upon destruction.</p>
 <section id="fields">
 <h3>Fields<a class="headerlink" href="#fields" title="Link to this heading">¶</a></h3>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-struct-pot-client-1afbb5eff93ceabc6bf320a35a8a883113"><span id="index-1"></span>std::unique_ptr<capnp::EzRpcClient> rpc_client</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-struct-pot-client-1afbb5eff93ceabc6bf320a35a8a883113">
+<span id="index-1"></span><pre><span data-line="1"><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">capnp</span><span class="o">::</span><span class="n">EzRpcClient</span><span class="o">&gt;</span> <span class="n">rpc_client</span></span>
+</pre></div>
 <p>The Cap’n Proto RPC client.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-struct-pot-client-1a5cfe687a4dba16353ee364d404b21c9a"><span id="index-2"></span>Potential::Client capability</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-struct-pot-client-1a5cfe687a4dba16353ee364d404b21c9a">
+<span id="index-2"></span><pre><span data-line="1"><span class="n">Potential</span><span class="o">::</span><span class="n">Client</span> <span class="n">capability</span></span>
+</pre></div>
 <p>The RPC capability for potential calls.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-struct-pot-client-1aed1f25acec7c6d9302ac62dcf157a71c"><span id="index-3"></span>kj::WaitScope* wait_scope</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-struct-pot-client-1aed1f25acec7c6d9302ac62dcf157a71c">
+<span id="index-3"></span><pre><span data-line="1"><span class="n">kj</span><span class="o">::</span><span class="n">WaitScope</span><span class="o">*</span> <span class="n">wait_scope</span></span>
+</pre></div>
 <p>Reference to the client wait scope.</p>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-struct-pot-client-1a8fc470f19bafc3a6bdde6b2be9407091"><span id="index-4"></span>std::string last_error</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-struct-pot-client-1a8fc470f19bafc3a6bdde6b2be9407091">
+<span id="index-4"></span><pre><span data-line="1"><span class="n">std</span><span class="o">::</span><span class="n">string</span> <span class="n">last_error</span></span>
+</pre></div>
 <p>Buffer for the most recent error message.</p>
 </section>
 <section id="construction">
 <h3>Construction<a class="headerlink" href="#construction" title="Link to this heading">¶</a></h3>
-<pre class="highlight doxyrest-title-code-block literal-block" id="doxid-struct-pot-client-1a85449af1564b34c7955c21581e258e11"><span id="index-5"></span>PotClient(std::unique_ptr<capnp::EzRpcClient> client, Potential::Client cap)</pre>
+<div class="doxyrest-title-code-block highlight" id="doxid-struct-pot-client-1a85449af1564b34c7955c21581e258e11">
+<span id="index-5"></span><pre><span data-line="1"><span class="n">PotClient</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">capnp</span><span class="o">::</span><span class="n">EzRpcClient</span><span class="o">&gt;</span> <span class="n">client</span><span class="p">,</span> <span class="n">Potential</span><span class="o">::</span><span class="n">Client</span> <span class="n">cap</span><span class="p">)</span></span>
+</pre></div>
 <p>Constructor for <a class="reference internal" href="#doxid-struct-pot-client"><span class="std std-ref">PotClient</span></a>.</p>
 <p class="rubric">Parameters:</p>
 <div class="table-wrapper colwidths-given docutils container">
