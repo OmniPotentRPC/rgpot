@@ -299,4 +299,5 @@ Temporary Items
 /docs/source/crates/
 /docs/source/xml/
 /docs/source/**/*.rst
+/docs/doctrees/
 /crates/
