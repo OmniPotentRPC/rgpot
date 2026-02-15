@@ -18,6 +18,13 @@ repos:
   - id: cmake-format
 - repo: local
   hooks:
+    - id: towncrier-check
+      name: towncrier fragment check
+      entry: uvx towncrier
+      language: system
+      pass_filenames: false
+      always_run: true
+      args: ["check", "--compare-with", "origin/main"]
     - id: cppcheck
       name: cppcheck
       entry: cppcheck

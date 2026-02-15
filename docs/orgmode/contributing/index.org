@@ -14,10 +14,9 @@ We value a respectful and inclusive community. All contributors must follow our
 Please review the technical requirements before submitting a Pull Request:
 
 - Development Environment :: We use ~pixi~ for environment management.
-  Read the [[file:test_requirements.org][Testing & Environment Requirements]] to understand how to handle
-  conflicting dependencies.
-- Documentation :: We author all documentation in ~orgmode~ converted to ~rst~,
-  with the workflow and standards in the [[file:doc_builds.org][Documentation Standards & Authoring]] section.
+  See the [[file:developer/index.org][Developer Guide]] for setup and common tasks.
+- Documentation :: We author all documentation in ~orgmode~ converted to ~rst~.
+  See [[file:developer/faq.org][Developer FAQ]] for documentation workflow details.
 
 * Reporting Issues
 Use the [[https://github.com/HaoZeke/rgpycrumbs/issues][GitHub issue tracker]] to report bugs or suggest enhancements. Please
@@ -32,9 +31,6 @@ may be directed also to the [[https://matsci.org/c/eon/72][EON materials science
      :maxdepth: 2
      :caption: Reference
 
+     developer/index
      ../code_of_conduct
 #+end_export
-
-     # doc_builds
-     # test_requirements
-     # release

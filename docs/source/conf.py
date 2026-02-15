@@ -5,6 +5,7 @@ import sys
 
 # -- Path setup --------------------------------------------------------------
 sys.path.insert(0, os.path.abspath("../../subprojects/doxyrest/sphinx"))
+sys.path.insert(0, os.path.abspath("_ext"))
 
 # -- Project information -----------------------------------------------------
 project = "rgpot"
@@ -18,6 +19,8 @@ extensions = [
     "cpplexer",
     "sphinx.ext.intersphinx",
     "sphinx_sitemap",
+    "sphinxcontrib_rust",
+    "rustdoc_postprocess",
 ]
 
 templates_path = ["_templates"]
@@ -28,6 +31,14 @@ intersphinx_mapping = {
     "numpy": ("https://numpy.org/doc/stable", None),
     "eon": ("https://eondocs.org", None),
 }
+
+# -- sphinxcontrib-rust configuration ----------------------------------------
+rust_crates = {
+    "rgpot_core": os.path.abspath("../../rgpot-core/"),
+}
+rust_doc_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "crates")
+rust_rustdoc_fmt = "rst"
+rust_generate_mode = "always"
 
 # -- Options for HTML output -------------------------------------------------
 html_theme = "shibuya"

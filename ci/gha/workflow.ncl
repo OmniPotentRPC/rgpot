@@ -5,6 +5,13 @@ let run_script = fun script =>
   }
 in
 
+let run_plain = fun script =>
+  {
+    shell = "bash -e {0}",
+    run = script
+  }
+in
+
 let ccache_step = {
   name = "Restore Compiler Cache",
   uses = "actions/cache@v4",
@@ -157,6 +164,51 @@ in
         ]
         @ build_steps
         @ integration_step
+    },
+
+    # Rust Core Unit Tests
+    rust_tests = {
+      name = "Rust Core Tests (${{ matrix.os }})",
+      runs-on = "${{ matrix.os }}",
+
+      strategy = {
+        fail-fast = false,
+        matrix = {
+          os = ["ubuntu-latest", "macos-latest"],
+        }
+      },
+
+      steps = [
+        {
+          uses = "actions/checkout@v4",
+          with = { submodules = "recursive", fetch-depth = 0 }
+        },
+        {
+          uses = "prefix-dev/setup-pixi@v0.8.1",
+          with = {
+            pixi-version = "v0.62.1",
+            cache = true,
+            environments = "devbld",
+            activate-environment = "devbld"
+          }
+        },
+        {
+          name = "Install cargo-nextest",
+          uses = "taiki-e/install-action@v2",
+          with = { tool = "cargo-nextest" }
+        },
+        run_script m%"
+          cd rgpot-core
+          cargo nextest run
+          cargo nextest run --all-features
+        "%
+        & { name = "Run Rust tests (nextest)" },
+        run_script m%"
+          cd rgpot-core
+          cargo test --doc
+        "%
+        & { name = "Run Rust doc-tests" },
+      ]
     },
 
     # Specialized "Client Bridge" Stress Test

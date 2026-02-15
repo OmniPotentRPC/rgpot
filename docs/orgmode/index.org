@@ -28,6 +28,7 @@ interfacing potential servers across languages using runtime interoperability.
      :maxdepth: 2
      :caption: Reference
 
+     architecture
      api/index
      changelog
      contributing/index

@@ -137,6 +137,41 @@ jobs:
         echo "--- Teardown ---"
         kill $SERVER_PID
       shell: pixi run bash -e {0}
+  rust_tests:
+    name: Rust Core Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        submodules: recursive
+    - uses: prefix-dev/setup-pixi@v0.8.1
+      with:
+        activate-environment: devbld
+        cache: true
+        environments: devbld
+        pixi-version: v0.62.1
+    - name: Install cargo-nextest
+      uses: taiki-e/install-action@v2
+      with:
+        tool: cargo-nextest
+    - name: Run Rust tests (nextest)
+      run: |-
+        cd rgpot-core
+        cargo nextest run
+        cargo nextest run --all-features
+      shell: pixi run bash -e {0}
+    - name: Run Rust doc-tests
+      run: |-
+        cd rgpot-core
+        cargo test --doc
+      shell: pixi run bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+        - ubuntu-latest
+        - macos-latest
 name: Build Matrix
 on:
   pull_request:

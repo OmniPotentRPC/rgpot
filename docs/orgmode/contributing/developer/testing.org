@@ -1,0 +1,46 @@
+#+TITLE: Testing
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Testing
+
+** C/C++ Tests
+
+#+begin_src bash
+meson setup bbdir -Dwith_tests=True --buildtype="debug"
+meson test -C bbdir
+#+end_src
+
+=cmake= works as well:
+
+#+begin_src bash
+cmake -B build -DRGPOT_BUILD_TESTS=ON -DRGPOT_BUILD_EXAMPLES=ON
+cmake --build build
+ctest --test-dir build
+#+end_src
+
+** Rust Tests
+
+#+begin_src bash
+pixi r rust-test          # default features only
+pixi r rust-test-all      # all features (rpc, cache, gen-header)
+#+end_src
+
+Or directly:
+
+#+begin_src bash
+cargo nextest run --manifest-path rgpot-core/Cargo.toml
+cargo test --doc --manifest-path rgpot-core/Cargo.toml  # doc tests
+#+end_src
+
+** RPC Integration Tests
+
+The =rpctest= environment includes Python bindings via =pycapnp=:
+
+#+begin_src bash
+pixi shell -e rpctest
+# Start a server in one terminal
+./bbdir/CppCore/rgpot/rpc/potserv 12345 LJ
+# Run client tests in another
+ctest --test-dir build_client/ --output-on-failure
+#+end_src
