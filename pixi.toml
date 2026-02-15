@@ -49,6 +49,9 @@ sphinx-sitemap = ">=2.9.0, <3"
 shibuya = ">=2026.1.9, <2027"
 pycmark = ">=0.9.6, <0.10"
 
+[pypi-dependencies]
+towncrier = ">=24.8.0, <25"
+
 [dependencies]
 compilers = ">=1.8.0,<2"
 meson = ">=1.5.2,<2"
@@ -69,7 +72,12 @@ zlib = ">=1.3.1,<2"
 xtensor-blas = ">=0.23.0,<0.24"
 ccache = ">=4.12.2,<5"
 rust = ">=1.75.0"
+cargo-nextest = ">=0.9.86"
 # cbindgen cannot be installed with pixi here
+
+[tasks]
+rust-test = { cmd = "cargo nextest run --manifest-path rgpot-core/Cargo.toml", description = "Run Rust core unit tests with nextest" }
+rust-test-all = { cmd = "cargo nextest run --manifest-path rgpot-core/Cargo.toml --all-features", description = "Run Rust core tests with all features enabled" }
 
 [feature.docs.tasks.docbld]
 depends-on = [
