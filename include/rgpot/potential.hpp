@@ -17,8 +17,9 @@
  *
  * - @c from_impl<Impl>() — wraps an existing C++ potential whose
  *   @c forceImpl() uses the legacy @c ForceInput / @c ForceOut structs
- *   (defined in @c ForceStructs.hpp).  A template trampoline converts
- *   between the C ABI types and the legacy types automatically.
+ *   (defined in @c ForceStructs.hpp).  A template trampoline extracts
+ *   raw CPU pointers from the DLPack tensors and creates an owning DLPack
+ *   forces tensor from the legacy output.
  * - @c from_callback() — registers a bare C function pointer directly.
  *
  * # Example
@@ -38,8 +39,10 @@
  * @ingroup rgpot_cpp
  */
 
+#include <cstddef>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 #include "rgpot.h"
 #include "rgpot/errors.hpp"
@@ -107,15 +110,16 @@ public:
   /**
    * @brief Perform a force/energy calculation.
    *
-   * Allocates a @c CalcResult sized to the input atom count, delegates to
-   * @c rgpot_potential_calculate(), and checks the returned status code.
+   * Creates a @c CalcResult, delegates to @c rgpot_potential_calculate(),
+   * and checks the returned status code.  The callback sets the forces
+   * tensor in the output struct.
    *
    * @param input The atomic configuration to evaluate.
    * @return A @c CalcResult containing energy, variance, and forces.
    * @throws rgpot::Error when the underlying callback reports failure.
    */
   CalcResult calculate(const InputSpec &input) {
-    CalcResult result(input.n_atoms());
+    CalcResult result;
     auto status = rgpot_potential_calculate(handle_, &input.c_struct(),
                                             &result.c_struct());
     details::check_status(status);
@@ -125,9 +129,10 @@ public:
   /**
    * @brief Create a handle from a legacy C++ potential implementation.
    *
-   * Registers a template trampoline that converts between the C ABI
-   * structs (@c rgpot_force_input_t / @c rgpot_force_out_t) and the
-   * legacy @c ForceInput / @c ForceOut types expected by @a Impl.
+   * Registers a template trampoline that extracts raw CPU pointers from
+   * the DLPack tensors in @c rgpot_force_input_t, constructs legacy
+   * @c ForceInput / @c ForceOut types for @a Impl::forceImpl(), and
+   * wraps the resulting forces in an owning DLPack tensor.
    *
    * The caller retains ownership of @a impl and @b must keep it alive
    * for the lifetime of the returned handle.
@@ -160,8 +165,7 @@ public:
    * @return A new @c PotentialHandle.
    */
   static PotentialHandle
-  from_callback(rgpot_status_t (*callback)(void *,
-                                           const rgpot_force_input_t *,
+  from_callback(rgpot_status_t (*callback)(void *, const rgpot_force_input_t *,
                                            rgpot_force_out_t *),
                 void *user_data, void (*free_fn)(void *) = nullptr) {
     auto *handle = rgpot_potential_new(callback, user_data, free_fn);
@@ -179,16 +183,19 @@ private:
                               //!< after move).
 
   /**
-   * @brief Template trampoline bridging C ABI types to legacy C++ types.
+   * @brief Template trampoline bridging DLPack-based C ABI types to legacy
+   *        C++ types.
    *
-   * Converts @c rgpot_force_input_t → @c ForceInput and
-   * @c rgpot_force_out_t → @c ForceOut via designated initializers,
-   * then invokes @c Impl::forceImpl().  Catches all C++ exceptions to
-   * prevent unwinding across the FFI boundary.
+   * 1. Extracts raw CPU pointers from DLPack tensors in the input.
+   * 2. Constructs legacy @c ForceInput and @c ForceOut.
+   * 3. Calls @c Impl::forceImpl().
+   * 4. Wraps the output forces in an owning DLPack tensor via
+   *    @c rgpot_tensor_owned_cpu_f64_2d() (since the local
+   *    @c std::vector goes out of scope).
    *
    * @tparam Impl The concrete potential type.
    * @param user_data Pointer to the @a Impl instance (cast from @c void*).
-   * @param input     Pointer to the C input struct.
+   * @param input     Pointer to the C input struct (DLPack tensors).
    * @param output    Pointer to the C output struct.
    * @return @c RGPOT_SUCCESS or @c RGPOT_INTERNAL_ERROR.
    */
@@ -199,19 +206,42 @@ private:
     try {
       auto *self = static_cast<Impl *>(user_data);
 
-      // Construct old-style ForceInput from C struct fields.
-      // Uses designated initializers matching ForceStructs.hpp.
-      ::rgpot::ForceInput fi{.nAtoms = input->n_atoms,
-                             .pos = input->pos,
-                             .atmnrs = input->atmnrs,
-                             .box = input->box_};
-      ::rgpot::ForceOut fo{
-          .F = output->forces, .energy = 0.0, .variance = 0.0};
+      // Extract n_atoms from the positions tensor shape[0]
+      if (!input->positions) {
+        return RGPOT_INVALID_PARAMETER;
+      }
+      auto *pos_tensor = &input->positions->dl_tensor;
+      size_t n_atoms = static_cast<size_t>(pos_tensor->shape[0]);
+
+      // Extract raw CPU pointers from DLPack tensors
+      const double *pos = static_cast<const double *>(pos_tensor->data);
+      const int *atmnrs =
+          input->atomic_numbers
+              ? static_cast<const int *>(input->atomic_numbers->dl_tensor.data)
+              : nullptr;
+      const double *box =
+          input->box_matrix
+              ? static_cast<const double *>(input->box_matrix->dl_tensor.data)
+              : nullptr;
+
+      // Construct legacy ForceInput
+      ::rgpot::ForceInput fi{
+          .nAtoms = n_atoms, .pos = pos, .atmnrs = atmnrs, .box = box};
+
+      // Temporary buffer for forces
+      std::vector<double> forces(n_atoms * 3, 0.0);
+      ::rgpot::ForceOut fo{.F = forces.data(), .energy = 0.0, .variance = 0.0};
 
       self->forceImpl(fi, &fo);
 
       output->energy = fo.energy;
       output->variance = fo.variance;
+
+      // Create an owning DLPack tensor that copies the forces data.
+      // This is necessary because `forces` is a local vector that goes
+      // out of scope when this function returns.
+      output->forces = rgpot_tensor_owned_cpu_f64_2d(
+          forces.data(), static_cast<int64_t>(n_atoms), 3);
 
       return RGPOT_SUCCESS;
     } catch (...) {

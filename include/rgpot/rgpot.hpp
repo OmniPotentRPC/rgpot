@@ -25,8 +25,8 @@
  */
 
 #include "rgpot/errors.hpp"
-#include "rgpot/types.hpp"
 #include "rgpot/potential.hpp"
+#include "rgpot/types.hpp"
 
 #ifdef RGPOT_HAS_RPC
 #include "rgpot/rpc_client.hpp"

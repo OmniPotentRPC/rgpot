@@ -121,7 +121,7 @@ public:
    * @throws rgpot::Error on RPC transport or server-side failure.
    */
   CalcResult calculate(const InputSpec &input) {
-    CalcResult result(input.n_atoms());
+    CalcResult result;
     auto status =
         rgpot_rpc_calculate(handle_, &input.c_struct(), &result.c_struct());
     details::check_status(status);
