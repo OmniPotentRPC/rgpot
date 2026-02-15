@@ -34,6 +34,11 @@ fn generate_c_header(crate_dir: &str) {
         .generate()
         .expect("Unable to generate C bindings")
         .write_to_file(output_dir.join("rgpot.h"));
+
+    // Ensure the file ends with exactly one newline (keeps end-of-file-fixer happy).
+    let path = output_dir.join("rgpot.h");
+    let content = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, format!("{}\n", content.trim_end())).unwrap();
 }
 
 fn main() {

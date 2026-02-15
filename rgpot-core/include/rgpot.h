@@ -371,5 +371,3 @@ enum rgpot_status_t rgpot_rpc_server_start(const rgpot_potential_t *pot,
 #endif
 
 #endif  /* RGPOT_H */
-
-
