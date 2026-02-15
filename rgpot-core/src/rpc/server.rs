@@ -4,10 +4,10 @@
 //! Cap'n Proto RPC server that dispatches incoming `calculate` calls
 //! to a `rgpot_potential_t` callback.
 //!
-//! **DLPack Integration**
+//! ## DLPack Integration
 //!
-//! Incoming data is deserialized from Cap'n Proto into owned ``Vec``\s, then
-//! wrapped in non-owning DLPack tensors for the callback. The callback's
+//! Incoming data is deserialized from Cap'n Proto into owned `Vec` values, then
+//! wrapped in non-owning DLPack tensors for the callback.  The callback's
 //! output forces (an owning DLPack tensor) are read back and serialized
 //! into the Cap'n Proto response.
 

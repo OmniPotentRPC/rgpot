@@ -3,35 +3,36 @@
 
 //! C-compatible core data types for force/energy calculations.
 //!
-//! These two ``#[repr(C)]`` structs are the fundamental data exchange types at
-//! the FFI boundary. Each field that previously held a raw pointer to a flat
-//! array now holds a ``*mut DLManagedTensorVersioned``, making the types
-//! device-agnostic (CPU, CUDA, ROCm, etc.) via the DLPack tensor exchange
-//! protocol.
+//! These two `#[repr(C)]` structs are the fundamental data exchange types at the
+//! FFI boundary.  Each field that previously held a raw pointer to a flat array
+//! now holds a `*mut DLManagedTensorVersioned`, making the types device-agnostic
+//! (CPU, CUDA, ROCm, etc.) via the DLPack tensor exchange protocol.
 //!
-//! **Memory Model**
+//! ## Memory Model
 //!
-//! - **Input tensors** are *borrowed* -- the caller retains ownership.
-//! - **Output forces** are *callee-allocated* -- the callback sets
-//!   ``output.forces`` to a DLPack tensor it creates. After the call, the
-//!   caller takes ownership and must free it via ``rgpot_tensor_free``.
-//! - **Energy and variance** are plain ``f64`` scalars, always on the host.
+//! - **Input tensors** are *borrowed* — the caller retains ownership.
+//! - **Output forces** are *callee-allocated* — the callback sets
+//!   `output.forces` to a DLPack tensor it creates.  After the call, the
+//!   caller takes ownership and must free it via `rgpot_tensor_free`.
+//! - **Energy and variance** are plain `f64` scalars, always on the host.
 //!
-//! **DLPack Tensor Shapes**
+//! ## DLPack Tensor Shapes
 //!
-//! - ``positions`` -- f64, 2D ``[n_atoms, 3]``
-//! - ``atomic_numbers`` -- i32, 1D ``[n_atoms]``
-//! - ``box_matrix`` -- f64, 2D ``[3, 3]``
-//! - ``forces`` -- f64, 2D ``[n_atoms, 3]``
+//! | Field | dtype | ndim | shape |
+//! |-------|-------|------|-------|
+//! | `positions` | f64 | 2 | `[n_atoms, 3]` |
+//! | `atomic_numbers` | i32 | 1 | `[n_atoms]` |
+//! | `box_matrix` | f64 | 2 | `[3, 3]` |
+//! | `forces` | f64 | 2 | `[n_atoms, 3]` |
 
 use dlpk::sys::DLManagedTensorVersioned;
 
 /// Input configuration for a potential energy evaluation.
 ///
-/// All tensor fields are *borrowed* -- the caller retains ownership and must
+/// All tensor fields are *borrowed* — the caller retains ownership and must
 /// keep them alive for the lifetime of this struct.
 ///
-/// **Example (from C)**
+/// # Example (from C)
 ///
 /// ```c
 /// double positions[] = {0.0, 0.0, 0.0,  1.0, 0.0, 0.0};
@@ -54,15 +55,15 @@ pub struct rgpot_force_input_t {
 
 /// Results from a potential energy evaluation.
 ///
-/// The ``forces`` field starts as ``NULL`` and is set by the potential callback
-/// to a callee-allocated DLPack tensor. After the call, the caller owns the
-/// tensor and must free it via ``rgpot_tensor_free``.
+/// The `forces` field starts as `NULL` and is set by the potential callback to
+/// a callee-allocated DLPack tensor.  After the call, the caller owns the
+/// tensor and must free it via `rgpot_tensor_free`.
 ///
-/// **Fields**
+/// # Fields
 ///
-/// - ``forces``: output force tensor, same shape/dtype as ``positions``.
-/// - ``energy``: the calculated potential energy.
-/// - ``variance``: uncertainty estimate; zero when not applicable.
+/// - `forces`: output force tensor, same shape/dtype as `positions`.
+/// - `energy`: the calculated potential energy.
+/// - `variance`: uncertainty estimate; zero when not applicable.
 #[repr(C)]
 pub struct rgpot_force_out_t {
     /// Forces tensor `[n_atoms, 3]`, f64 — set by the callback.

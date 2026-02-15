@@ -15,15 +15,15 @@
 //!    [`set_last_error`](crate::status::set_last_error) before returning a
 //!    non-success status.
 //!
-//! **Submodules**
+//! ## Submodules
 //!
-//! - [`types`] -- Convenience constructors for
+//! - [`types`] — Convenience constructors for
 //!   [`rgpot_force_input_t`](crate::types::rgpot_force_input_t) and
 //!   [`rgpot_force_out_t`](crate::types::rgpot_force_out_t).
-//! - [`potential`] -- Lifecycle functions for
+//! - [`potential`] — Lifecycle functions for
 //!   [`rgpot_potential_t`](crate::potential::rgpot_potential_t): create,
 //!   calculate, free.
-//! - [`rpc`] -- RPC client functions (feature-gated on ``rpc``): connect,
+//! - [`rpc`] — RPC client functions (feature-gated on `rpc`): connect,
 //!   calculate, disconnect.
 
 pub mod types;

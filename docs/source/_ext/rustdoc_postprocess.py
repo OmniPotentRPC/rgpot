@@ -42,6 +42,12 @@ _HEADING_RE = re.compile(
     re.MULTILINE,
 )
 
+# Matches markdown inline code (`code`) that is NOT already double-backtick RST.
+# Handles the common case where `code`<letter> breaks RST inline markup rules.
+_INLINE_CODE_RE = re.compile(
+    r"(?<!`)(`)((?!`)(?:[^`\n])+)\1(?!`)",
+)
+
 
 def _pandoc(markdown: str) -> str:
     """Convert a markdown fragment to RST via pandoc."""
@@ -105,6 +111,28 @@ def _convert_tables(content: str) -> str:
     return _TABLE_RE.sub(_replace, content)
 
 
+def _convert_inline_code(content: str) -> str:
+    """Convert markdown inline code to RST double-backtick literals.
+
+    Markdown uses `code` while RST uses ``code``.  When the closing backtick
+    is immediately followed by a word character (e.g. `Vec`s), RST's inline
+    markup recognition rules fail.  Converting to double-backtick form fixes
+    this and also gives proper literal rendering.
+
+    We skip lines inside ``.. code-block::`` directives and other lines that
+    are part of RST directive syntax (starting with ``:`` or ``..``).
+    """
+
+    def _process_line(line: str) -> str:
+        stripped = line.lstrip()
+        # Skip directive lines, option lines, and already-RST markup.
+        if stripped.startswith("..") or stripped.startswith(":"):
+            return line
+        return _INLINE_CODE_RE.sub(r"``\2``", line)
+
+    return "\n".join(_process_line(l) for l in content.split("\n"))
+
+
 def _convert_headings(content: str) -> str:
     """Convert markdown ATX headings to bold labels.
 
@@ -132,6 +160,7 @@ def _postprocess(app: Sphinx) -> None:
         converted = _convert_fences(converted)
         converted = _convert_tables(converted)
         converted = _convert_headings(converted)
+        converted = _convert_inline_code(converted)
         if converted != original:
             _log.info(
                 "[rustdoc_postprocess] Converted markdown in %s",

@@ -8,27 +8,27 @@
 //! the C++ server also uses, ensuring full wire-format compatibility between
 //! Rust and C++ endpoints.
 //!
-//! **Schema**
+//! ## Schema
 //!
 //! The [`schema`] submodule contains the Rust code generated from
-//! ``Potentials.capnp`` by ``capnpc`` during ``build.rs``. The schema defines:
+//! `Potentials.capnp` by `capnpc` during `build.rs`. The schema defines:
 //!
-//! - ``ForceInput`` -- positions, atomic numbers, simulation cell.
-//! - ``PotentialResult`` -- energy and forces.
-//! - ``Potential`` interface -- a single ``calculate`` RPC method.
+//! - `ForceInput` — positions, atomic numbers, simulation cell.
+//! - `PotentialResult` — energy and forces.
+//! - `Potential` interface — a single `calculate` RPC method.
 //!
-//! **Client**
+//! ## Client
 //!
 //! [`client::RpcClient`] connects to a remote rgpot server and provides a
-//! synchronous ``calculate()`` method. Internally it owns a tokio runtime so
+//! synchronous `calculate()` method. Internally it owns a tokio runtime so
 //! that the blocking C API can drive async I/O. Exposed to C via
-//! ``rgpot_rpc_client_new`` / ``rgpot_rpc_calculate`` / ``rgpot_rpc_client_free``.
+//! `rgpot_rpc_client_new` / `rgpot_rpc_calculate` / `rgpot_rpc_client_free`.
 //!
-//! **Server**
+//! ## Server
 //!
-//! [`server::rgpot_rpc_server_start`] accepts a ``rgpot_potential_t`` handle
+//! [`server::rgpot_rpc_server_start`] accepts a `rgpot_potential_t` handle
 //! (callback-backed) and listens for incoming Cap'n Proto RPC connections.
-//! Each ``calculate`` call is dispatched to the callback. The server blocks the
+//! Each `calculate` call is dispatched to the callback. The server blocks the
 //! calling thread.
 
 /// Re-export of the generated Cap'n Proto schema from the crate root.
