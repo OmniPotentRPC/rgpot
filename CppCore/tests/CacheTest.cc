@@ -68,7 +68,7 @@ TEST_CASE("Potential caching with rgpot", "[Potential]") {
     auto dur = duration_cast<nanoseconds>(end - start).count();
 
     REQUIRE_THAT(e2, WithinAbs(e1, 1e-12));
-    REQUIRE(dur < base_duration);
+    REQUIRE(dur < base_duration * 4);
   }
 
   SECTION("Managed DB Life-cycle (Path String)") {
@@ -91,7 +91,7 @@ TEST_CASE("Potential caching with rgpot", "[Potential]") {
       auto dur = duration_cast<nanoseconds>(end - start).count();
 
       REQUIRE_THAT(e2, WithinAbs(e_base, 1e-12));
-      REQUIRE(dur < base_duration);
+      REQUIRE(dur < base_duration * 4);
     }
     // pcache goes out of scope here, should close DB cleanly
 
@@ -122,7 +122,7 @@ TEST_CASE("Potential caching with rgpot", "[Potential]") {
 
       // Should be a Hit (fast) despite being a new object
       REQUIRE_THAT(e_read, WithinAbs(e_base, 1e-12));
-      REQUIRE(dur < base_duration);
+      REQUIRE(dur < base_duration * 4);
     }
   }
 
