@@ -18,6 +18,7 @@
 //! | Module | Purpose |
 //! |--------|---------|
 //! | [`types`] | `#[repr(C)]` data structures for force/energy I/O |
+//! | [`tensor`] | DLPack tensor helpers: create, free, validate |
 //! | [`status`] | Status codes, thread-local error message, panic safety |
 //! | [`potential`] | Callback-based potential dispatch (opaque handle) |
 //! | [`c_api`] | `extern "C"` entry points collected by cbindgen |
@@ -43,31 +44,20 @@
 //!
 //! ## Quick Example (Rust-side)
 //!
-//! ```rust
-//! use rgpot_core::types::*;
-//! use rgpot_core::status::rgpot_status_t;
-//! use rgpot_core::potential::PotentialImpl;
-//!
-//! // Define a trivial callback
-//! unsafe extern "C" fn my_callback(
-//!     _ud: *mut std::os::raw::c_void,
-//!     input: *const rgpot_force_input_t,
-//!     output: *mut rgpot_force_out_t,
-//! ) -> rgpot_status_t {
-//!     let inp = unsafe { &*input };
-//!     let out = unsafe { &mut *output };
-//!     out.energy = inp.n_atoms as f64 * 42.0;
-//!     rgpot_status_t::RGPOT_SUCCESS
-//! }
-//!
-//! let pot = PotentialImpl::new(my_callback, std::ptr::null_mut(), None);
-//! // pot.calculate(&input, &mut output) dispatches to my_callback
-//! ```
+//! The core types use DLPack tensors for device-agnostic data exchange.
+//! See [`tensor`] for helpers to create DLPack tensors from raw pointers.
 
 pub mod types;
+pub mod tensor;
 pub mod status;
 pub mod potential;
 pub mod c_api;
+
+#[cfg(feature = "rpc")]
+#[allow(dead_code, non_snake_case, unused_parens, clippy::all)]
+pub mod Potentials_capnp {
+    include!(concat!(env!("OUT_DIR"), "/Potentials_capnp.rs"));
+}
 
 #[cfg(feature = "rpc")]
 pub mod rpc;

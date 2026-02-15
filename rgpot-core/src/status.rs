@@ -127,4 +127,41 @@ mod tests {
         let msg = unsafe { std::ffi::CStr::from_ptr(ptr) };
         assert_eq!(msg.to_str().unwrap(), "boom");
     }
+
+    #[test]
+    fn test_error_overwrite() {
+        set_last_error("first");
+        set_last_error("second");
+        let ptr = unsafe { rgpot_last_error() };
+        let msg = unsafe { std::ffi::CStr::from_ptr(ptr) };
+        assert_eq!(msg.to_str().unwrap(), "second");
+    }
+
+    #[test]
+    fn test_interior_nul_is_handled() {
+        set_last_error("has\0interior nul");
+        let ptr = unsafe { rgpot_last_error() };
+        let msg = unsafe { std::ffi::CStr::from_ptr(ptr) };
+        // CString::new fails on interior NUL, so the fallback message is stored.
+        assert_eq!(
+            msg.to_str().unwrap(),
+            "(error message contained interior NUL)"
+        );
+    }
+
+    #[test]
+    fn test_catch_unwind_returns_callback_status() {
+        // A closure that returns a non-success status without panicking.
+        let status = catch_unwind(|| rgpot_status_t::RGPOT_RPC_ERROR);
+        assert_eq!(status, rgpot_status_t::RGPOT_RPC_ERROR);
+    }
+
+    #[test]
+    fn test_catch_unwind_string_panic() {
+        let status = catch_unwind(|| panic!("{}", "formatted panic"));
+        assert_eq!(status, rgpot_status_t::RGPOT_INTERNAL_ERROR);
+        let ptr = unsafe { rgpot_last_error() };
+        let msg = unsafe { std::ffi::CStr::from_ptr(ptr) };
+        assert_eq!(msg.to_str().unwrap(), "formatted panic");
+    }
 }

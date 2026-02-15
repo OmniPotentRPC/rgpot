@@ -31,9 +31,12 @@
 //! Each `calculate` call is dispatched to the callback. The server blocks the
 //! calling thread.
 
-pub mod schema {
-    include!(concat!(env!("OUT_DIR"), "/Potentials_capnp.rs"));
-}
+/// Re-export of the generated Cap'n Proto schema from the crate root.
+///
+/// The generated code uses `crate::Potentials_capnp` internally, so the
+/// module must live at the crate root.  This re-export provides a
+/// convenient `rpc::schema` alias.
+pub use crate::Potentials_capnp as schema;
 
 pub mod client;
 pub mod server;

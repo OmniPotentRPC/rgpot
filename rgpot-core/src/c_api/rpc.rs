@@ -8,7 +8,7 @@
 //! disconnect.
 
 #[cfg(feature = "rpc")]
-use std::os::raw::{c_char, c_int};
+use std::os::raw::c_char;
 
 #[cfg(feature = "rpc")]
 use crate::rpc::client::RpcClient;

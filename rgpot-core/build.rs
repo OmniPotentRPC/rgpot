@@ -17,21 +17,31 @@ fn main() {
         .expect("Unable to generate C bindings")
         .write_to_file(output_dir.join("rgpot.h"));
 
-    // Compile Cap'n Proto schema if the rpc feature is enabled
-    #[cfg(feature = "rpc")]
-    {
-        let capnp_schema = PathBuf::from(&crate_dir)
+    // Compile Cap'n Proto schema if the rpc feature is enabled.
+    // Build scripts don't get #[cfg(feature = ...)] — check the env var instead.
+    if env::var("CARGO_FEATURE_RPC").is_ok() {
+        let capnp_dir = PathBuf::from(&crate_dir)
             .join("..")
             .join("CppCore")
             .join("rgpot")
-            .join("rpc")
-            .join("Potentials.capnp");
+            .join("rpc");
+        let capnp_schema = capnp_dir.join("Potentials.capnp");
 
         if capnp_schema.exists() {
             capnpc::CompilerCommand::new()
+                .src_prefix(&capnp_dir)
                 .file(&capnp_schema)
                 .run()
                 .expect("Failed to compile Cap'n Proto schema");
+        } else {
+            // Generate an empty stub so the include! in rpc/mod.rs doesn't fail.
+            let out_dir = env::var("OUT_DIR").unwrap();
+            let stub = PathBuf::from(&out_dir).join("Potentials_capnp.rs");
+            std::fs::write(
+                &stub,
+                "// Auto-generated stub: Potentials.capnp not found at build time.\n",
+            )
+            .expect("Failed to write Cap'n Proto stub");
         }
     }
 }
