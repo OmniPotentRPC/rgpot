@@ -30,6 +30,7 @@ interfacing potential servers across languages using runtime interoperability.
 
      architecture
      api/index
+     crates/rgpot_core/lib
      changelog
      contributing/index
 #+end_export

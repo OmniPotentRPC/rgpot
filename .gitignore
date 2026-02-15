@@ -296,5 +296,7 @@ Temporary Items
 .pixi
 *.egg-info
 /docs/source/api/
+/docs/source/crates/
 /docs/source/xml/
 /docs/source/**/*.rst
+/crates/

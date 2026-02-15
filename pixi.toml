@@ -48,6 +48,7 @@ emacs = ">=30.2,<31"
 sphinx-sitemap = ">=2.9.0, <3"
 shibuya = ">=2026.1.9, <2027"
 pycmark = ">=0.9.6, <0.10"
+sphinxcontrib-rust = ">=1.0.0, <2"
 
 [dependencies]
 compilers = ">=1.8.0,<2"
@@ -80,6 +81,10 @@ gen-header = { cmd = "cargo build --manifest-path rgpot-core/Cargo.toml --featur
 towncrier-draft = { cmd = "uvx towncrier build --draft", description = "Preview release notes" }
 towncrier-build = { cmd = "uvx towncrier build", description = "Build release notes into CHANGELOG.md" }
 
+[feature.docs.tasks.gen-readme]
+description = "Export rgpot-core/README.org to README.md"
+cmd = "emacs --batch rgpot-core/README.org --eval '(require (quote ox-md))' --eval '(org-md-export-to-markdown)'"
+
 [feature.docs.tasks.docbld]
 depends-on = [
 "mkrst",
@@ -110,9 +115,14 @@ depends-on = ["patch-doxyrest"]
 cmd = "doxygen Doxyfile_potlib.cfg && doxyrest -c doxyrest-config.lua"
 
 
+[feature.docs.tasks.setup-rustdocgen]
+description = "Install sphinx-rustdocgen binary for Rust API documentation"
+cmd = "cargo install sphinx-rustdocgen"
+
 [feature.docs.tasks.sphinxbld]
 depends-on = [
 { task = "mkrst", environment = "docs" },
+"setup-rustdocgen",
 ]
 cmd = """
 sphinx-build docs/source/ docs/build

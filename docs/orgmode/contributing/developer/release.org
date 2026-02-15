@@ -1,0 +1,63 @@
+#+TITLE: Release Process
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Release Process
+
+** Changelog Fragments
+
+We use [[https://towncrier.readthedocs.io][towncrier]] to manage release notes. Each PR that affects users should
+include a /news fragment/ in the =changes/= directory:
+
+#+begin_src bash
+# Create a fragment (type: feature, bugfix, doc, removal, misc)
+echo "Added DLPack tensor support to the Rust core." > changes/42.feature
+#+end_src
+
+The fragment filename is =<issue-or-pr-number>.<type>=. The pre-commit hook
+checks for fragments automatically.
+
+** Preview and Build Release Notes
+
+#+begin_src bash
+pixi r towncrier-draft   # preview without writing
+pixi r towncrier-build   # write to CHANGELOG.md and remove fragments
+#+end_src
+
+** Publishing the Rust Crate
+
+The =rgpot-core= crate is published to [[https://crates.io/crates/rgpot-core][crates.io]]. Before publishing:
+
+1. Ensure all tests pass:
+   #+begin_src bash
+   pixi r rust-test-all
+   cargo test --doc --manifest-path rgpot-core/Cargo.toml
+   #+end_src
+
+2. Verify packaging:
+   #+begin_src bash
+   cargo publish --dry-run --manifest-path rgpot-core/Cargo.toml
+   #+end_src
+
+3. Bump the version in =rgpot-core/Cargo.toml=.
+
+4. Regenerate the README (if changed):
+   #+begin_src bash
+   pixi r -e docs gen-readme
+   #+end_src
+
+5. Build release notes:
+   #+begin_src bash
+   pixi r towncrier-build
+   #+end_src
+
+6. Commit and tag:
+   #+begin_src bash
+   git commit -am "Release rgpot-core v0.x.y"
+   git tag rgpot-core-v0.x.y
+   #+end_src
+
+7. Publish:
+   #+begin_src bash
+   cargo publish --manifest-path rgpot-core/Cargo.toml
+   #+end_src
