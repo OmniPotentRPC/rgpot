@@ -7,6 +7,13 @@ project(
   HOMEPAGE_URL "https://github.com/OmniPotentRPC/rgpot"
   LANGUAGES C CXX)
 
+# --- Top-level detection (CMake < 3.21 compat) ---
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  set(RGPOT_IS_TOP_LEVEL TRUE)
+else()
+  set(RGPOT_IS_TOP_LEVEL FALSE)
+endif()
+
 # --- Options ---
 option(RGPOT_RPC_CLIENT_ONLY "Build ONLY the RPC client bridge (lightweight)"
        OFF)
@@ -28,10 +35,10 @@ else()
   option(RGPOT_PURE_LIB "Build as a pure library (no fmt dependency)" ON)
   option(RGPOT_WITH_CACHE "Build with RocksDB caching support" ON)
   option(RGPOT_WITH_RPC "Build with Cap'n Proto RPC support" OFF)
-  option(RGPOT_BUILD_EXAMPLES "Build examples" OFF)
+  option(RGPOT_BUILD_EXAMPLES "Build examples" ${RGPOT_IS_TOP_LEVEL})
 endif()
 
-option(RGPOT_BUILD_TESTS "Build tests" OFF)
+option(RGPOT_BUILD_TESTS "Build tests" ${RGPOT_IS_TOP_LEVEL})
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # --- Dependencies ---
@@ -185,39 +192,48 @@ endif()
 # --- Installation ---
 include(GNUInstallDirs)
 
-if(RGPOT_WITH_RPC)
-  install(
-    TARGETS ptlrpc rgpot_client_bridge
-    EXPORT rgpotTargets
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-  # Install the bridge header in the correct directory structure
-  install(FILES CppCore/rgpot/rpc/pot_bridge.h
-          DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rgpot/rpc)
-endif()
+if(RGPOT_IS_TOP_LEVEL)
+  if(RGPOT_WITH_RPC)
+    install(
+      TARGETS ptlrpc rgpot_client_bridge
+      EXPORT rgpotTargets
+      LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+      ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+      RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    # Install the bridge header in the correct directory structure
+    install(FILES CppCore/rgpot/rpc/pot_bridge.h
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rgpot/rpc)
+  endif()
 
-if(NOT RGPOT_RPC_CLIENT_ONLY)
-  install(
-    TARGETS rgpot
-    EXPORT rgpotTargets
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    INCLUDES
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-  install(
-    DIRECTORY CppCore/rgpot
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-    FILES_MATCHING
-    PATTERN "*.hpp")
-endif()
+  if(NOT RGPOT_RPC_CLIENT_ONLY)
+    install(
+      TARGETS rgpot
+      EXPORT rgpotTargets
+      LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+      ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+      RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+      INCLUDES
+      DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+    install(
+      DIRECTORY CppCore/rgpot
+      DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+      FILES_MATCHING
+      PATTERN "*.hpp")
+  endif()
 
-install(
-  EXPORT rgpotTargets
-  FILE rgpotConfig.cmake
-  NAMESPACE rgpot::
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pot)
+  install(
+    EXPORT rgpotTargets
+    FILE rgpotConfig.cmake
+    NAMESPACE rgpot::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pot)
+
+  include(CMakePackageConfigHelpers)
+  write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/rgpotConfigVersion.cmake"
+    COMPATIBILITY SameMajorVersion)
+  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/rgpotConfigVersion.cmake"
+          DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pot)
+endif()
 
 # --- Tests ---
 if(RGPOT_BUILD_TESTS)

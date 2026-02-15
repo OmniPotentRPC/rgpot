@@ -40,7 +40,7 @@ if not get_option('with_rpc_client_only')
         cpp_args: _args,
         include_directories: _incdirs,
         link_with: _linkto,
-        install: true,
+        install: not meson.is_subproject(),
     )
 endif
 

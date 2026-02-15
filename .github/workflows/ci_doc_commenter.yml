@@ -21,3 +21,4 @@ jobs:
           workflow_run_id: ${{ github.event.workflow_run.id }}
           head_sha: ${{ github.event.workflow_run.head_sha }}
           artifact_name: documentation
+          comment_header: "### rgPot Documentation Preview"

@@ -23,7 +23,7 @@ ptlrpc = library(
     dependencies: _deps + capnp_rpc_dep,
     cpp_args: _args,
     include_directories: _incdirs,
-    install: true,
+    install: not meson.is_subproject(),
 )
 
 ptlrpc_dep = declare_dependency(
@@ -39,7 +39,7 @@ pot_bridge = library(
     dependencies: [capnp_rpc_dep],
     cpp_args: _args,
     include_directories: _incdirs,
-    install: true,
+    install: not meson.is_subproject(),
 )
 
 pot_bridge_dep = declare_dependency(
@@ -54,6 +54,6 @@ if not get_option('with_rpc_client_only')
         dependencies: _deps + capnp_rpc_dep,
         cpp_args: _args,
         include_directories: _incdirs,
-        install: true,
+        install: not meson.is_subproject(),
     )
 endif

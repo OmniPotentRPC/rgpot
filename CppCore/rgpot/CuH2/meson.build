@@ -5,5 +5,5 @@ cuh2 = library(
     dependencies: _deps,
     cpp_args: _args,
     include_directories: _incdirs,
-    install: true,
+    install: not meson.is_subproject(),
 )
