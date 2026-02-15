@@ -1,0 +1,24 @@
+[package]
+name = "rgpot-core"
+version = "0.1.0"
+edition = "2021"
+description = "Core Rust library for rgpot: RPC-based potential energy surface calculations"
+license = "MIT"
+
+[lib]
+name = "rgpot_core"
+crate-type = ["staticlib", "cdylib"]
+
+[features]
+default = []
+rpc = ["dep:capnp", "dep:capnp-rpc", "dep:tokio"]
+cache = []
+
+[dependencies]
+capnp = { version = "0.20", optional = true }
+capnp-rpc = { version = "0.20", optional = true }
+tokio = { version = "1", features = ["rt", "net", "macros"], optional = true }
+
+[build-dependencies]
+cbindgen = "0.27"
+capnpc = "0.20"
