@@ -76,6 +76,7 @@ uv = ">=0.6.0"
 [tasks]
 rust-test = { cmd = "cargo nextest run --manifest-path rgpot-core/Cargo.toml", description = "Run Rust core unit tests with nextest" }
 rust-test-all = { cmd = "cargo nextest run --manifest-path rgpot-core/Cargo.toml --all-features", description = "Run Rust core tests with all features enabled" }
+gen-header = { cmd = "cargo build --manifest-path rgpot-core/Cargo.toml --features gen-header", description = "Regenerate C header (include/rgpot.h) from Rust source" }
 towncrier-draft = { cmd = "uvx towncrier build --draft", description = "Preview release notes" }
 towncrier-build = { cmd = "uvx towncrier build", description = "Build release notes into CHANGELOG.md" }
 
@@ -124,6 +125,7 @@ cmd = """
 rm -rf build
 rm -rf source/xml
 rm -rf source/api
+rm -rf source/crates
 rm -rf source/contributing
 rm -rf source/*.rst
 """

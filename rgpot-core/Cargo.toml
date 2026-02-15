@@ -4,6 +4,12 @@ version = "0.1.0"
 edition = "2021"
 description = "Core Rust library for rgpot: RPC-based potential energy surface calculations"
 license = "MIT"
+repository = "https://github.com/OmniPotentRPC/rgpot"
+documentation = "https://rgpot.rgoswami.me"
+readme = "README.md"
+keywords = ["potential-energy", "rpc", "molecular-dynamics", "dlpack", "ffi"]
+categories = ["science", "api-bindings"]
+exclude = ["Cargo.lock"]
 
 [lib]
 name = "rgpot_core"
@@ -13,6 +19,7 @@ crate-type = ["staticlib", "cdylib", "lib"]
 default = []
 rpc = ["dep:capnp", "dep:capnp-rpc", "dep:tokio", "dep:tokio-util", "dep:futures"]
 cache = []
+gen-header = ["dep:cbindgen"]
 
 [dependencies]
 dlpk = "0.1"
@@ -23,5 +30,5 @@ tokio-util = { version = "0.7", features = ["compat"], optional = true }
 futures = { version = "0.3", optional = true }
 
 [build-dependencies]
-cbindgen = "0.27"
+cbindgen = { version = "0.27", optional = true }
 capnpc = "0.20"
