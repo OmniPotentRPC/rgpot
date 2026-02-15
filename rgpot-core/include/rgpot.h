@@ -17,10 +17,10 @@
 #include <stdlib.h>
 #include <dlpack/dlpack.h>
 
-#define RGPOT_VERSION "1.0.0"
+#define RGPOT_VERSION "1.0.1"
 #define RGPOT_VERSION_MAJOR 1
 #define RGPOT_VERSION_MINOR 0
-#define RGPOT_VERSION_PATCH 0
+#define RGPOT_VERSION_PATCH 1
 
 /**
  * Status codes returned by all C API functions.

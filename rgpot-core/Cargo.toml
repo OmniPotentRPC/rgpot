@@ -1,6 +1,6 @@
 [package]
 name = "rgpot-core"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 description = "Core Rust library for rgpot: RPC-based potential energy surface calculations"
 license = "MIT"
@@ -34,5 +34,4 @@ cbindgen = { version = "0.27", optional = true }
 capnpc = { version = "0.20", optional = true }
 
 [package.metadata.docs.rs]
-features = ["rpc"]
 rustdoc-args = ["--cfg", "docsrs"]
