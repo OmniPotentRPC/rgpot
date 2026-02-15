@@ -55,6 +55,11 @@ pub mod c_api;
 
 #[cfg(feature = "rpc")]
 #[allow(dead_code, non_snake_case, unused_parens, clippy::all)]
+/// Auto-generated Cap'n Proto schema bindings for the RPC wire protocol.
+///
+/// This module is produced at build time from `Potentials.capnp` and is not
+/// intended for direct use.  See the `rpc` module for the public RPC
+/// client/server API.
 pub mod Potentials_capnp {
     include!(concat!(env!("OUT_DIR"), "/Potentials_capnp.rs"));
 }

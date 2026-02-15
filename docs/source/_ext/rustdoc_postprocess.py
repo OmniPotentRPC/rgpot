@@ -51,20 +51,17 @@ _INLINE_CODE_RE = re.compile(
 
 def _pandoc(markdown: str) -> str:
     """Convert a markdown fragment to RST via pandoc."""
-    try:
-        result = subprocess.run(
-            ["pandoc", "-f", "markdown-smart", "-t", "rst", "--wrap=none"],
-            input=markdown,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode == 0:
-            return result.stdout
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-    # Fallback: return original text unchanged.
-    return markdown
+    result = subprocess.run(
+        ["pandoc", "-f", "markdown-smart", "-t", "rst", "--wrap=none"],
+        input=markdown,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if result.returncode != 0:
+        _log.warning("[rustdoc_postprocess] pandoc failed: %s", result.stderr)
+        return markdown
+    return result.stdout
 
 
 def _convert_fences(content: str) -> str:
@@ -98,7 +95,7 @@ def _convert_fences(content: str) -> str:
 
 
 def _convert_tables(content: str) -> str:
-    """Convert markdown tables to RST list-tables via pandoc."""
+    """Convert markdown tables to RST tables via pandoc."""
 
     def _replace(m: re.Match) -> str:
         indent = m.group("indent")
@@ -148,6 +145,39 @@ def _convert_headings(content: str) -> str:
     return _HEADING_RE.sub(_replace, content)
 
 
+_RUST_API_SECTION = """
+
+Rust API (``rgpot-core``)
+-------------------------
+
+.. toctree::
+   :maxdepth: 2
+
+   ../crates/rgpot_core/lib
+"""
+
+
+def _inject_rust_toctree(app: Sphinx) -> None:
+    """Append the Rust crate toctree to the doxyrest-generated api/index.rst.
+
+    Doxyrest regenerates ``api/index.rst`` on every build, so we cannot
+    edit it by hand.  Instead we append the Rust API section after the
+    C++ content whenever the crates directory exists.
+    """
+    api_index = Path(app.srcdir) / "api" / "index.rst"
+    crates_dir = Path(app.srcdir) / "crates"
+    if not api_index.exists() or not crates_dir.exists():
+        return
+
+    content = api_index.read_text(encoding="utf-8")
+    if "crates/rgpot_core/lib" in content:
+        return  # already injected
+
+    api_index.write_text(content.rstrip("\n") + "\n" + _RUST_API_SECTION,
+                         encoding="utf-8")
+    _log.info("[rustdoc_postprocess] Injected Rust API toctree into api/index.rst")
+
+
 def _postprocess(app: Sphinx) -> None:
     """Walk generated RST files and convert markdown fragments."""
     crates_dir = Path(app.srcdir) / "crates"
@@ -167,6 +197,8 @@ def _postprocess(app: Sphinx) -> None:
                 rst_file.relative_to(app.srcdir),
             )
             rst_file.write_text(converted, encoding="utf-8")
+
+    _inject_rust_toctree(app)
 
 
 def setup(app: Sphinx):
