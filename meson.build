@@ -141,8 +141,10 @@ if get_option('with_rust_core')
         command: [
             cargo,
             _cargo_args,
-            '--manifest-path', _rgpot_core_dir / 'Cargo.toml',
-            '--target-dir', meson.current_build_dir() / 'cargo-target',
+            '--manifest-path',
+            _rgpot_core_dir / 'Cargo.toml',
+            '--target-dir',
+            meson.current_build_dir() / 'cargo-target',
         ],
         output: ['librgpot_core.a'],
         build_by_default: true,
@@ -167,7 +169,7 @@ if get_option('with_rust_core')
     # Include paths: generated C header + C++ RAII wrappers
     _incdirs += [
         include_directories('rgpot-core' / 'include'),  # rgpot.h (cbindgen)
-        include_directories('include'),                   # rgpot/*.hpp (C++ RAII)
+        include_directories('include'),  # rgpot/*.hpp (C++ RAII)
     ]
 endif
 
