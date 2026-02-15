@@ -1,0 +1,179 @@
+.. index:: pair: class; rgpot::RpcClient
+.. _doxid-classrgpot_1_1_rpc_client:
+
+class rgpot::RpcClient
+======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Move-only RAII wrapper around ``rgpot_rpc_client_t``. :ref:`More...<details-classrgpot_1_1_rpc_client>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <rpc_client.hpp>
+	
+	class RpcClient {
+	public:
+		// construction
+	
+		:ref:`RpcClient<doxid-classrgpot_1_1_rpc_client_1a91d2c1f60877e3da463777057fa99a50>`(const std::string& host, uint16_t port);
+		:ref:`RpcClient<doxid-classrgpot_1_1_rpc_client_1ae96fdbccb49cb8c5511b9c760128f517>`(RpcClient&& other);
+		:target:`RpcClient<doxid-classrgpot_1_1_rpc_client_1a0645d3448d36a650d30f72b91280c4eb>`(const RpcClient&);
+		:ref:`~RpcClient<doxid-classrgpot_1_1_rpc_client_1a82fcadc09664f18447ff1d0e602fa99a>`();
+
+		// methods
+	
+		RpcClient& :ref:`operator=<doxid-classrgpot_1_1_rpc_client_1ac4438fab8ec203ab317a6e0152ef8ccf>`(RpcClient&& other);
+		RpcClient& :target:`operator=<doxid-classrgpot_1_1_rpc_client_1a777abf4c8dcf786c6496ba7277a1b1e0>`(const RpcClient&);
+		:ref:`CalcResult<doxid-classrgpot_1_1_calc_result>` :ref:`calculate<doxid-classrgpot_1_1_rpc_client_1abebb894e15d2b276c0f12e96ecdb12b8>`(const :ref:`InputSpec<doxid-classrgpot_1_1_input_spec>`& input);
+	};
+.. _details-classrgpot_1_1_rpc_client:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Move-only RAII wrapper around ``rgpot_rpc_client_t``.
+
+Owns an opaque RPC client handle allocated by the Rust core. The connection is established during construction and torn down on destruction via ``rgpot_rpc_client_free()``. The class is non-copyable; move semantics transfer ownership of the connection.
+
+Construction
+------------
+
+.. index:: pair: function; RpcClient
+.. _doxid-classrgpot_1_1_rpc_client_1a91d2c1f60877e3da463777057fa99a50:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	RpcClient(const std::string& host, uint16_t port)
+
+Connect to a remote rgpot server.
+
+Calls ``rgpot_rpc_client_new()`` and throws on failure.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- host
+
+		- Hostname or IP address of the server.
+
+	*
+		- port
+
+		- TCP port the server listens on.
+
+	*
+		- :ref:`rgpot::Error <doxid-classrgpot_1_1_error>`
+
+		- if the connection cannot be established.
+
+.. index:: pair: function; RpcClient
+.. _doxid-classrgpot_1_1_rpc_client_1ae96fdbccb49cb8c5511b9c760128f517:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	RpcClient(RpcClient&& other)
+
+Move constructor — transfers connection ownership.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- other
+
+		- Client to move from; left in a null state.
+
+.. _doxid-classrgpot_1_1_rpc_client_1a82fcadc09664f18447ff1d0e602fa99a:
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	~RpcClient()
+
+Destructor — disconnects and frees the Rust-side client.
+
+Safe to call on a moved-from handle (internal pointer is ``nullptr``).
+
+Methods
+-------
+
+.. index:: pair: function; operator=
+.. _doxid-classrgpot_1_1_rpc_client_1ac4438fab8ec203ab317a6e0152ef8ccf:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	RpcClient& operator=(RpcClient&& other)
+
+Move assignment — releases current connection, transfers ownership.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- other
+
+		- Client to move from; left in a null state.
+
+
+
+.. rubric:: Returns:
+
+Reference to ``*this``.
+
+.. index:: pair: function; calculate
+.. _doxid-classrgpot_1_1_rpc_client_1abebb894e15d2b276c0f12e96ecdb12b8:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`CalcResult<doxid-classrgpot_1_1_calc_result>` calculate(const :ref:`InputSpec<doxid-classrgpot_1_1_input_spec>`& input)
+
+Perform a remote force/energy calculation.
+
+Serialises the input via Cap'n Proto, sends the request to the server, and deserialises the response into a ``:ref:`CalcResult <doxid-classrgpot_1_1_calc_result>```.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- input
+
+		- The atomic configuration to evaluate.
+
+	*
+		- :ref:`rgpot::Error <doxid-classrgpot_1_1_error>`
+
+		- on RPC transport or server-side failure.
+
+
+
+.. rubric:: Returns:
+
+A ``:ref:`CalcResult <doxid-classrgpot_1_1_calc_result>``` containing energy, variance, and forces.
+

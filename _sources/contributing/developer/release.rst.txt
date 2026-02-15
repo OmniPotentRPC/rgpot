@@ -1,0 +1,70 @@
+
+
+Release Process
+---------------
+
+Changelog Fragments
+~~~~~~~~~~~~~~~~~~~
+
+We use `towncrier <https://towncrier.readthedocs.io>`_ to manage release notes. Each PR that affects users should
+include a *news fragment* in the ``docs/newsfragments/`` directory:
+
+.. code:: bash
+
+    # Create a fragment interactively
+    uvx towncrier create --content "Added DLPack tensor support to the Rust core." +mychange.rustcore.added.md
+
+The pre-commit hook checks for fragments automatically.
+
+Preview and Build Release Notes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: bash
+
+    pixi r towncrier-draft   # preview without writing
+    pixi r towncrier-build   # write to CHANGELOG.md and remove fragments
+
+Publishing the Rust Crate
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``rgpot-core`` crate is published to `crates.io <https://crates.io/crates/rgpot-core>`_. Before publishing:
+
+1. Ensure all tests pass:
+
+   .. code:: bash
+
+       pixi r rust-test-all
+       cargo test --doc --manifest-path rgpot-core/Cargo.toml
+
+2. Verify packaging:
+
+   .. code:: bash
+
+       cargo publish --dry-run --manifest-path rgpot-core/Cargo.toml
+
+3. Bump the version in ``rgpot-core/Cargo.toml``.
+
+4. Regenerate the README (if changed):
+
+   .. code:: bash
+
+       pixi r -e docs gen-readme
+
+5. Build release notes:
+
+   .. code:: bash
+
+       pixi r towncrier-build
+
+6. Commit and tag:
+
+   .. code:: bash
+
+       git commit -am "Release rgpot-core v0.x.y"
+       git tag rgpot-core-v0.x.y
+
+7. Publish:
+
+   .. code:: bash
+
+       cargo publish --manifest-path rgpot-core/Cargo.toml

@@ -20,12 +20,11 @@ Please review the technical requirements before submitting a Pull Request:
 
 Development Environment
     We use ``pixi`` for environment management.
-    Read the `Testing & Environment Requirements <test_requirements.rst>`_ to understand how to handle
-    conflicting dependencies.
+    See the `Developer Guide <developer/index.rst>`_ for setup and common tasks.
 
 Documentation
-    We author all documentation in ``orgmode`` converted to ``rst``,
-    with the workflow and standards in the `Documentation Standards & Authoring <doc_builds.rst>`_ section.
+    We author all documentation in ``orgmode`` converted to ``rst``.
+    See `Developer FAQ <developer/faq.rst>`_ for documentation workflow details.
 
 Reporting Issues
 ----------------
@@ -43,4 +42,5 @@ For details on the dispatcher architecture or internal API:
      :maxdepth: 2
      :caption: Reference
 
+     developer/index
      ../code_of_conduct

@@ -1,0 +1,60 @@
+.. index:: pair: class; rgpot::Error
+.. _doxid-classrgpot_1_1_error:
+
+class rgpot::Error
+==================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Exception type for errors originating from the rgpot Rust core. :ref:`More...<details-classrgpot_1_1_error>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <errors.hpp>
+	
+	class Error: public std::runtime_error {
+	public:
+		// construction
+	
+		:ref:`Error<doxid-classrgpot_1_1_error_1aa2872fb3381dcc8a36626727918a6470>`(const std::string& msg);
+	};
+.. _details-classrgpot_1_1_error:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Exception type for errors originating from the rgpot Rust core.
+
+Thrown by the RAII wrappers when the underlying C API call returns a non-success status code. The ``what()`` string includes both the error category and the human-readable message from ``rgpot_last_error()``.
+
+Construction
+------------
+
+.. index:: pair: function; Error
+.. _doxid-classrgpot_1_1_error_1aa2872fb3381dcc8a36626727918a6470:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	Error(const std::string& msg)
+
+Constructs an :ref:`Error <doxid-classrgpot_1_1_error>` with the given message.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- msg
+
+		- Human-readable description of the failure.
+

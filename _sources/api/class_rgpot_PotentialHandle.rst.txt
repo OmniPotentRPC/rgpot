@@ -1,0 +1,269 @@
+.. index:: pair: class; rgpot::PotentialHandle
+.. _doxid-classrgpot_1_1_potential_handle:
+
+class rgpot::PotentialHandle
+============================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Move-only RAII handle around an opaque ``rgpot_potential_t`` pointer. :ref:`More...<details-classrgpot_1_1_potential_handle>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <potential.hpp>
+	
+	class PotentialHandle {
+	public:
+		// construction
+	
+		:ref:`PotentialHandle<doxid-classrgpot_1_1_potential_handle_1a71cb187ba8a84c1b54eaab3d1db03e03>`(rgpot_potential_t* handle);
+		:ref:`PotentialHandle<doxid-classrgpot_1_1_potential_handle_1a6dec8cbeff49b3f49bc153ded417a6c4>`(PotentialHandle&& other);
+		:target:`PotentialHandle<doxid-classrgpot_1_1_potential_handle_1a9bbabf4c44df02f534f42dd72d3a7346>`(const PotentialHandle&);
+		:ref:`~PotentialHandle<doxid-classrgpot_1_1_potential_handle_1abee932b1fa9323d82707bf43a31d0357>`();
+
+		// methods
+	
+		PotentialHandle& :ref:`operator=<doxid-classrgpot_1_1_potential_handle_1a552fe7a058b0411930733882b8512e14>`(PotentialHandle&& other);
+		PotentialHandle& :target:`operator=<doxid-classrgpot_1_1_potential_handle_1a15357a619922bcfedfc11bbdf26f838b>`(const PotentialHandle&);
+		:ref:`CalcResult<doxid-classrgpot_1_1_calc_result>` :ref:`calculate<doxid-classrgpot_1_1_potential_handle_1af864dc8f487587b425fb6c3fdf3bc705>`(const :ref:`InputSpec<doxid-classrgpot_1_1_input_spec>`& input);
+		rgpot_potential_t* :ref:`raw<doxid-classrgpot_1_1_potential_handle_1a864f673374dc6843a4a28dbf98a04839>`() const;
+	
+		template <typename Impl>
+		static PotentialHandle :ref:`from_impl<doxid-classrgpot_1_1_potential_handle_1af5e646d3175b1fdac6040e17ed014c25>`(Impl& impl);
+	
+		static PotentialHandle :ref:`from_callback<doxid-classrgpot_1_1_potential_handle_1aecafbe5b4d058843e4853545f26a2dc6>`(rgpot_status_t(*)(void*, const rgpot_force_input_t*, rgpot_force_out_t*) callback, void* user_data, void(*)(void*) free_fn = nullptr);
+	};
+.. _details-classrgpot_1_1_potential_handle:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Move-only RAII handle around an opaque ``rgpot_potential_t`` pointer.
+
+The handle is non-copyable. Move semantics transfer ownership of the underlying Rust allocation. On destruction the Rust core frees all resources associated with the potential via ``rgpot_potential_free()``.
+
+Construction
+------------
+
+.. index:: pair: function; PotentialHandle
+.. _doxid-classrgpot_1_1_potential_handle_1a71cb187ba8a84c1b54eaab3d1db03e03:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	PotentialHandle(rgpot_potential_t* handle)
+
+Adopt an existing raw handle.
+
+*handle* was obtained from ``rgpot_potential_new()`` and has not been freed.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- handle
+
+		- Raw pointer to the Rust-side potential object.
+
+.. index:: pair: function; PotentialHandle
+.. _doxid-classrgpot_1_1_potential_handle_1a6dec8cbeff49b3f49bc153ded417a6c4:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	PotentialHandle(PotentialHandle&& other)
+
+Move constructor — transfers ownership.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- other
+
+		- Handle to move from; left in a null state.
+
+.. _doxid-classrgpot_1_1_potential_handle_1abee932b1fa9323d82707bf43a31d0357:
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	~PotentialHandle()
+
+Destructor — releases the Rust-side allocation.
+
+Safe to call on a moved-from handle (internal pointer is ``nullptr``).
+
+Methods
+-------
+
+.. index:: pair: function; operator=
+.. _doxid-classrgpot_1_1_potential_handle_1a552fe7a058b0411930733882b8512e14:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	PotentialHandle& operator=(PotentialHandle&& other)
+
+Move assignment — releases current handle, transfers ownership.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- other
+
+		- Handle to move from; left in a null state.
+
+
+
+.. rubric:: Returns:
+
+Reference to ``*this``.
+
+.. index:: pair: function; calculate
+.. _doxid-classrgpot_1_1_potential_handle_1af864dc8f487587b425fb6c3fdf3bc705:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`CalcResult<doxid-classrgpot_1_1_calc_result>` calculate(const :ref:`InputSpec<doxid-classrgpot_1_1_input_spec>`& input)
+
+Perform a force/energy calculation.
+
+Creates a ``:ref:`CalcResult <doxid-classrgpot_1_1_calc_result>```, delegates to ``rgpot_potential_calculate()``, and checks the returned status code. The callback sets the forces tensor in the output struct.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- input
+
+		- The atomic configuration to evaluate.
+
+	*
+		- :ref:`rgpot::Error <doxid-classrgpot_1_1_error>`
+
+		- when the underlying callback reports failure.
+
+
+
+.. rubric:: Returns:
+
+A ``:ref:`CalcResult <doxid-classrgpot_1_1_calc_result>``` containing energy, variance, and forces.
+
+.. index:: pair: function; raw
+.. _doxid-classrgpot_1_1_potential_handle_1a864f673374dc6843a4a28dbf98a04839:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	rgpot_potential_t* raw() const
+
+Access the raw opaque handle for C interop.
+
+
+
+.. rubric:: Returns:
+
+Pointer to the underlying ``rgpot_potential_t``.
+
+.. index:: pair: function; from_impl
+.. _doxid-classrgpot_1_1_potential_handle_1af5e646d3175b1fdac6040e17ed014c25:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	template <typename Impl>
+	static PotentialHandle from_impl(Impl& impl)
+
+Create a handle from a legacy C++ potential implementation.
+
+Registers a template trampoline that extracts raw CPU pointers from the DLPack tensors in ``rgpot_force_input_t``, constructs legacy ``:ref:`ForceInput <doxid-structrgpot_1_1_force_input>``` / ``:ref:`ForceOut <doxid-structrgpot_1_1_force_out>``` types for *Impl::forceImpl()*, and wraps the resulting forces in an owning DLPack tensor.
+
+The caller retains ownership of *impl* and **must** keep it alive for the lifetime of the returned handle.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- Impl
+
+		- A type with ``void`` ``forceImpl`` (const ``:ref:`ForceInput <doxid-structrgpot_1_1_force_input>`&``, ``ForceOut*``).
+
+	*
+		- impl
+
+		- Reference to the C++ potential object.
+
+
+
+.. rubric:: Returns:
+
+A new ``:ref:`PotentialHandle <doxid-classrgpot_1_1_potential_handle>``` wrapping *impl*.
+
+.. index:: pair: function; from_callback
+.. _doxid-classrgpot_1_1_potential_handle_1aecafbe5b4d058843e4853545f26a2dc6:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static PotentialHandle from_callback(rgpot_status_t(*)(void*, const rgpot_force_input_t*, rgpot_force_out_t*) callback, void* user_data, void(*)(void*) free_fn = nullptr)
+
+Create a handle from an explicit C callback and user data.
+
+This is the low-level factory; prefer ``:ref:`from_impl() <doxid-classrgpot_1_1_potential_handle_1af5e646d3175b1fdac6040e17ed014c25>``` for C++ potentials.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- callback
+
+		- Function pointer matching the ``rgpot_potential_t`` callback signature.
+
+	*
+		- user_data
+
+		- Opaque pointer forwarded to every *callback* invocation.
+
+	*
+		- free_fn
+
+		- Optional destructor for *user_data* (may be ``nullptr`` if the caller manages the lifetime).
+
+
+
+.. rubric:: Returns:
+
+A new ``:ref:`PotentialHandle <doxid-classrgpot_1_1_potential_handle>```.
+

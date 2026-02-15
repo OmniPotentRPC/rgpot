@@ -1,0 +1,115 @@
+==============
+``mod client``
+==============
+
+
+.. rust:module:: rgpot_core::rpc::client
+   :index: 0
+   :vis: pub
+
+   Async RPC client wrapping Cap'n Proto ``Potential.calculate()``.
+   
+   The client owns a tokio runtime so that the C API can call it
+   synchronously.
+   
+   **DLPack Integration**
+   
+   Input tensors are read from ``DLManagedTensorVersioned`` pointers (CPU only
+   for RPC — GPU tensors would need a device-to-host copy first).  The
+   response forces are wrapped in an **owning** DLPack tensor so the caller
+   can free them via ``rgpot_tensor_free``.
+
+   .. rust:use:: rgpot_core::rpc::client
+      :used_name: self
+
+
+   .. rust:use:: rgpot_core
+      :used_name: crate
+
+
+   .. rust:use:: capnp::Error
+      :used_name: CapnpError
+
+
+   .. rust:use:: capnp_rpc::RpcSystem
+      :used_name: RpcSystem
+
+
+   .. rust:use:: capnp_rpc::rpc_twoparty_capnp
+      :used_name: rpc_twoparty_capnp
+
+
+   .. rust:use:: capnp_rpc::twoparty
+      :used_name: twoparty
+
+
+   .. rust:use:: dlpk::sys::DLDeviceType
+      :used_name: DLDeviceType
+
+
+   .. rust:use:: futures::AsyncReadExt
+      :used_name: AsyncReadExt
+
+
+   .. rust:use:: tokio::runtime::Runtime
+      :used_name: Runtime
+
+
+   .. rust:use:: rgpot_core::rpc::schema::potential
+      :used_name: potential
+
+
+   .. rust:use:: rgpot_core::tensor::create_owned_f64_tensor
+      :used_name: create_owned_f64_tensor
+
+
+   .. rust:use:: rgpot_core::types::rgpot_force_input_t
+      :used_name: rgpot_force_input_t
+
+
+   .. rust:use:: rgpot_core::types::rgpot_force_out_t
+      :used_name: rgpot_force_out_t
+
+
+   .. rubric:: Structs and Unions
+
+
+   .. rust:struct:: rgpot_core::rpc::client::RpcClient
+      :index: 1
+      :vis: pub
+      :toc: struct RpcClient
+      :layout: [{"type":"keyword","value":"struct"},{"type":"space"},{"type":"name","value":"RpcClient"}]
+
+      RPC client that connects to a remote rgpot server.
+
+      .. rubric:: Implementations
+
+
+      .. rust:impl:: rgpot_core::rpc::client::RpcClient
+         :index: -1
+         :vis: pub
+         :layout: [{"type":"keyword","value":"impl"},{"type":"space"},{"type":"link","value":"RpcClient","target":"RpcClient"}]
+         :toc: impl RpcClient
+
+
+         .. rubric:: Functions
+
+
+         .. rust:function:: rgpot_core::rpc::client::RpcClient::calculate
+            :index: -1
+            :vis: pub
+            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"calculate"},{"type":"punctuation","value":"("},{"type":"punctuation","value":"&"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"keyword","value":"self"},{"type":"punctuation","value":", "},{"type":"name","value":"input"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"link","value":"rgpot_force_input_t","target":"rgpot_force_input_t"},{"type":"punctuation","value":", "},{"type":"name","value":"output"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"rgpot_force_out_t","target":"rgpot_force_out_t"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"Result","target":"Result"},{"type":"punctuation","value":"<"},{"type":"punctuation","value":"("},{"type":"punctuation","value":")"},{"type":"punctuation","value":", "},{"type":"link","value":"String","target":"String"},{"type":"punctuation","value":">"}]
+
+            Perform a synchronous RPC calculation.
+            
+            Internally this blocks on the tokio runtime with a ``LocalSet``
+            (required because ``capnp_rpc::RpcSystem`` is ``!Send``).
+
+         .. rust:function:: rgpot_core::rpc::client::RpcClient::new
+            :index: -1
+            :vis: pub
+            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"new"},{"type":"punctuation","value":"("},{"type":"name","value":"host"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"link","value":"str","target":"str"},{"type":"punctuation","value":", "},{"type":"name","value":"port"},{"type":"punctuation","value":": "},{"type":"link","value":"u16","target":"u16"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"Result","target":"Result"},{"type":"punctuation","value":"<"},{"type":"link","value":"Self","target":"Self"},{"type":"punctuation","value":", "},{"type":"link","value":"String","target":"String"},{"type":"punctuation","value":">"}]
+
+            Create a new RPC client targeting ``host:port``.
+            
+            The connection is established lazily on the first ``calculate`` call.

@@ -1,0 +1,115 @@
+==============
+``mod server``
+==============
+
+
+.. rust:module:: rgpot_core::rpc::server
+   :index: 0
+   :vis: pub
+
+   Cap'n Proto RPC server that dispatches incoming ``calculate`` calls
+   to a ``rgpot_potential_t`` callback.
+   
+   **DLPack Integration**
+   
+   Incoming data is deserialized from Cap'n Proto into owned ``Vec`` values, then
+   wrapped in non-owning DLPack tensors for the callback.  The callback's
+   output forces (an owning DLPack tensor) are read back and serialized
+   into the Cap'n Proto response.
+
+   .. rust:use:: rgpot_core::rpc::server
+      :used_name: self
+
+
+   .. rust:use:: rgpot_core
+      :used_name: crate
+
+
+   .. rust:use:: capnp::Error
+      :used_name: CapnpError
+
+
+   .. rust:use:: capnp_rpc::RpcSystem
+      :used_name: RpcSystem
+
+
+   .. rust:use:: capnp_rpc::pry
+      :used_name: pry
+
+
+   .. rust:use:: capnp_rpc::rpc_twoparty_capnp
+      :used_name: rpc_twoparty_capnp
+
+
+   .. rust:use:: capnp_rpc::twoparty
+      :used_name: twoparty
+
+
+   .. rust:use:: futures::AsyncReadExt
+      :used_name: AsyncReadExt
+
+
+   .. rust:use:: std::os::raw::c_void
+      :used_name: c_void
+
+
+   .. rust:use:: tokio::runtime::Runtime
+      :used_name: Runtime
+
+
+   .. rust:use:: rgpot_core::potential::PotentialCallback
+      :used_name: PotentialCallback
+
+
+   .. rust:use:: rgpot_core::potential::rgpot_potential_t
+      :used_name: rgpot_potential_t
+
+
+   .. rust:use:: rgpot_core::rpc::schema::potential
+      :used_name: potential
+
+
+   .. rust:use:: rgpot_core::status::rgpot_status_t
+      :used_name: rgpot_status_t
+
+
+   .. rust:use:: rgpot_core::tensor::rgpot_tensor_cpu_f64_2d
+      :used_name: rgpot_tensor_cpu_f64_2d
+
+
+   .. rust:use:: rgpot_core::tensor::rgpot_tensor_cpu_f64_matrix3
+      :used_name: rgpot_tensor_cpu_f64_matrix3
+
+
+   .. rust:use:: rgpot_core::tensor::rgpot_tensor_cpu_i32_1d
+      :used_name: rgpot_tensor_cpu_i32_1d
+
+
+   .. rust:use:: rgpot_core::tensor::rgpot_tensor_free
+      :used_name: rgpot_tensor_free
+
+
+   .. rust:use:: rgpot_core::types::rgpot_force_input_t
+      :used_name: rgpot_force_input_t
+
+
+   .. rust:use:: rgpot_core::types::rgpot_force_out_t
+      :used_name: rgpot_force_out_t
+
+
+   .. rubric:: Functions
+
+
+   .. rust:function:: rgpot_core::rpc::server::rgpot_rpc_server_start
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_rpc_server_start"},{"type":"punctuation","value":"("},{"type":"name","value":"pot"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"const"},{"type":"space"},{"type":"link","value":"rgpot_potential_t","target":"rgpot_potential_t"},{"type":"punctuation","value":", "},{"type":"name","value":"host"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"const"},{"type":"space"},{"type":"link","value":"std","target":"std"},{"type":"punctuation","value":"::"},{"type":"name","value":"os"},{"type":"punctuation","value":"::"},{"type":"name","value":"raw"},{"type":"punctuation","value":"::"},{"type":"name","value":"c_char"},{"type":"punctuation","value":", "},{"type":"name","value":"port"},{"type":"punctuation","value":": "},{"type":"link","value":"u16","target":"u16"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"rgpot_status_t","target":"rgpot_status_t"}]
+
+      Start an RPC server listening on ``host:port``, dispatching to ``pot``.
+      
+      This function blocks the current thread. It creates its own tokio runtime.
+      
+      **Safety**
+      ``pot`` must be a valid pointer obtained from ``rgpot_potential_new``.
+      The potential and its user_data must remain valid for the lifetime
+      of the server.

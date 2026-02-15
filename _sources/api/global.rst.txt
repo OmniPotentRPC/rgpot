@@ -8,6 +8,7 @@ Global Namespace
 	:hidden:
 
 	namespace_rgpot.rst
+	namespace_std.rst
 	class_AtomMatrix.rst
 	class_GenericPotImpl.rst
 	class_PotClient.rst
@@ -26,11 +27,13 @@ Overview
 
 	namespace :ref:`rgpot<doxid-namespacergpot>`;
 		namespace :ref:`rgpot::cache<doxid-namespacergpot_1_1cache>`;
+		namespace :ref:`rgpot::details<doxid-namespacergpot_1_1details>`;
 		namespace :ref:`rgpot::types<doxid-namespacergpot_1_1types>`;
 			namespace :ref:`rgpot::types::adapt<doxid-namespacergpot_1_1types_1_1adapt>`;
 				namespace :ref:`rgpot::types::adapt::capnp<doxid-namespacergpot_1_1types_1_1adapt_1_1capnp>`;
 				namespace :ref:`rgpot::types::adapt::eigen<doxid-namespacergpot_1_1types_1_1adapt_1_1eigen>`;
 				namespace :ref:`rgpot::types::adapt::xtensor<doxid-namespacergpot_1_1types_1_1adapt_1_1xtensor>`;
+	namespace :ref:`std<doxid-namespacestd>`;
 
 	// typedefs
 

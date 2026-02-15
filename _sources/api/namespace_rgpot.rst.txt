@@ -8,6 +8,7 @@ namespace rgpot
 	:hidden:
 
 	namespace_rgpot_cache.rst
+	namespace_rgpot_details.rst
 	namespace_rgpot_types.rst
 	struct_rgpot_ForceInput.rst
 	struct_rgpot_ForceOut.rst
@@ -31,6 +32,7 @@ POD structures for force and energy calculation interfaces. :ref:`More...<detail
 	// namespaces
 
 	namespace :ref:`rgpot::cache<doxid-namespacergpot_1_1cache>`;
+	namespace :ref:`rgpot::details<doxid-namespacergpot_1_1details>`;
 	namespace :ref:`rgpot::types<doxid-namespacergpot_1_1types>`;
 		namespace :ref:`rgpot::types::adapt<doxid-namespacergpot_1_1types_1_1adapt>`;
 			namespace :ref:`rgpot::types::adapt::capnp<doxid-namespacergpot_1_1types_1_1adapt_1_1capnp>`;
@@ -44,9 +46,14 @@ POD structures for force and energy calculation interfaces. :ref:`More...<detail
 
 	// classes
 
+	class :ref:`CalcResult<doxid-classrgpot_1_1_calc_result>`;
 	class :ref:`CuH2Pot<doxid-classrgpot_1_1_cu_h2_pot>`;
+	class :ref:`Error<doxid-classrgpot_1_1_error>`;
+	class :ref:`InputSpec<doxid-classrgpot_1_1_input_spec>`;
 	class :ref:`LJPot<doxid-classrgpot_1_1_l_j_pot>`;
 	class :ref:`PotentialBase<doxid-classrgpot_1_1_potential_base>`;
+	class :ref:`PotentialHandle<doxid-classrgpot_1_1_potential_handle>`;
+	class :ref:`RpcClient<doxid-classrgpot_1_1_rpc_client>`;
 
 	template <typename T>
 	class :ref:`registry<doxid-classrgpot_1_1registry>`;

@@ -1,6 +1,16 @@
 API Reference
 =============
 
+.. toctree::
+	:hidden:
+
+	group_rgpot_cpp.rst
+
+.. rubric:: Further Reading:
+
+|	:ref:`C++ RAII Wrappers<doxid-group__rgpot__cpp>`
+
+
 .. rubric:: Reference and Index:
 
 .. toctree::
@@ -11,3 +21,11 @@ API Reference
 |	:doc:`global`
 |	:ref:`genindex`
 
+
+Rust API (``rgpot-core``)
+-------------------------
+
+.. toctree::
+   :maxdepth: 2
+
+   ../crates/rgpot_core/lib

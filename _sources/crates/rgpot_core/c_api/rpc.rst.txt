@@ -1,0 +1,91 @@
+===========
+``mod rpc``
+===========
+
+
+.. rust:module:: rgpot_core::c_api::rpc
+   :index: 0
+   :vis: pub
+
+   C API for the RPC client.
+   
+   Provides ``rgpot_rpc_client_t`` — an opaque handle wrapping the async
+   Cap'n Proto RPC client — and functions to connect, calculate, and
+   disconnect.
+
+   .. rust:use:: rgpot_core::c_api::rpc
+      :used_name: self
+
+
+   .. rust:use:: rgpot_core
+      :used_name: crate
+
+
+   .. rust:use:: std::os::raw::c_char
+      :used_name: c_char
+
+
+   .. rust:use:: rgpot_core::rpc::client::RpcClient
+      :used_name: RpcClient
+
+
+   .. rust:use:: rgpot_core::status::catch_unwind
+      :used_name: catch_unwind
+
+
+   .. rust:use:: rgpot_core::status::rgpot_status_t
+      :used_name: rgpot_status_t
+
+
+   .. rust:use:: rgpot_core::status::set_last_error
+      :used_name: set_last_error
+
+
+   .. rust:use:: rgpot_core::types::rgpot_force_input_t
+      :used_name: rgpot_force_input_t
+
+
+   .. rust:use:: rgpot_core::types::rgpot_force_out_t
+      :used_name: rgpot_force_out_t
+
+
+   .. rubric:: Types
+
+
+   .. rust:type:: rgpot_core::c_api::rpc::rgpot_rpc_client_t
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"type"},{"type":"space"},{"type":"name","value":"rgpot_rpc_client_t"}]
+
+      Opaque RPC client handle.
+
+   .. rubric:: Functions
+
+
+   .. rust:function:: rgpot_core::c_api::rpc::rgpot_rpc_calculate
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_rpc_calculate"},{"type":"punctuation","value":"("},{"type":"name","value":"client"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"rgpot_rpc_client_t","target":"rgpot_rpc_client_t"},{"type":"punctuation","value":", "},{"type":"name","value":"input"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"const"},{"type":"space"},{"type":"link","value":"rgpot_force_input_t","target":"rgpot_force_input_t"},{"type":"punctuation","value":", "},{"type":"name","value":"output"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"rgpot_force_out_t","target":"rgpot_force_out_t"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"rgpot_status_t","target":"rgpot_status_t"}]
+
+      Perform a remote force/energy calculation.
+      
+      Returns ``RGPOT_SUCCESS`` on success, or an error status code.
+
+   .. rust:function:: rgpot_core::c_api::rpc::rgpot_rpc_client_free
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_rpc_client_free"},{"type":"punctuation","value":"("},{"type":"name","value":"client"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"rgpot_rpc_client_t","target":"rgpot_rpc_client_t"},{"type":"punctuation","value":")"}]
+
+      Free an RPC client handle.
+      
+      If ``client`` is ``NULL``, this is a no-op.
+
+   .. rust:function:: rgpot_core::c_api::rpc::rgpot_rpc_client_new
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_rpc_client_new"},{"type":"punctuation","value":"("},{"type":"name","value":"host"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"const"},{"type":"space"},{"type":"link","value":"c_char","target":"c_char"},{"type":"punctuation","value":", "},{"type":"name","value":"port"},{"type":"punctuation","value":": "},{"type":"link","value":"u16","target":"u16"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"rgpot_rpc_client_t","target":"rgpot_rpc_client_t"}]
+
+      Create a new RPC client connected to ``host:port``.
+      
+      Returns a heap-allocated handle, or ``NULL`` on failure.
+      The caller must eventually call ``rgpot_rpc_client_free``.

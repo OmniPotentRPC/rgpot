@@ -1,0 +1,102 @@
+=============
+``mod types``
+=============
+
+
+.. rust:module:: rgpot_core::c_api::types
+   :index: 0
+   :vis: pub
+
+   Convenience constructors for the core C types.
+   
+   The struct definitions themselves live in ``crate::types``. This module
+   provides ``extern "C"`` factory functions so that C callers can construct the
+   structs without needing to create DLPack tensors manually.
+   
+   ``rgpot_force_input_create`` creates non-owning DLPack tensors internally.
+   The caller must call ``rgpot_force_input_free`` when done.
+
+   .. rust:use:: rgpot_core::c_api::types
+      :used_name: self
+
+
+   .. rust:use:: rgpot_core
+      :used_name: crate
+
+
+   .. rust:use:: rgpot_core::tensor::rgpot_tensor_cpu_f64_2d
+      :used_name: rgpot_tensor_cpu_f64_2d
+
+
+   .. rust:use:: rgpot_core::tensor::rgpot_tensor_cpu_f64_matrix3
+      :used_name: rgpot_tensor_cpu_f64_matrix3
+
+
+   .. rust:use:: rgpot_core::tensor::rgpot_tensor_cpu_i32_1d
+      :used_name: rgpot_tensor_cpu_i32_1d
+
+
+   .. rust:use:: rgpot_core::tensor::rgpot_tensor_free
+      :used_name: rgpot_tensor_free
+
+
+   .. rust:use:: rgpot_core::types::rgpot_force_input_t
+      :used_name: rgpot_force_input_t
+
+
+   .. rust:use:: rgpot_core::types::rgpot_force_out_t
+      :used_name: rgpot_force_out_t
+
+
+   .. rust:use:: std::os::raw::c_int
+      :used_name: c_int
+
+
+   .. rubric:: Functions
+
+
+   .. rust:function:: rgpot_core::c_api::types::rgpot_force_input_create
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_force_input_create"},{"type":"punctuation","value":"("},{"type":"name","value":"n_atoms"},{"type":"punctuation","value":": "},{"type":"link","value":"usize","target":"usize"},{"type":"punctuation","value":", "},{"type":"name","value":"pos"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"f64","target":"f64"},{"type":"punctuation","value":", "},{"type":"name","value":"atmnrs"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"c_int","target":"c_int"},{"type":"punctuation","value":", "},{"type":"name","value":"box_"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"f64","target":"f64"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"rgpot_force_input_t","target":"rgpot_force_input_t"}]
+
+      Create a ``rgpot_force_input_t`` from raw CPU arrays.
+      
+      Internally creates non-owning DLPack tensors wrapping the raw pointers.
+      The caller must call ``rgpot_force_input_free`` to free the tensor metadata
+      when done (this does NOT free the underlying data arrays).
+      
+      **Safety**
+      All pointers must be valid for the lifetime of the returned struct.
+      ``pos`` must point to at least ``n_atoms * 3`` doubles.
+      ``atmnrs`` must point to at least ``n_atoms`` ints.
+      ``box_`` must point to at least 9 doubles.
+
+   .. rust:function:: rgpot_core::c_api::types::rgpot_force_input_free
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_force_input_free"},{"type":"punctuation","value":"("},{"type":"name","value":"input"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"rgpot_force_input_t","target":"rgpot_force_input_t"},{"type":"punctuation","value":")"}]
+
+      Free the DLPack tensor metadata in a ``rgpot_force_input_t``.
+      
+      This frees the ``DLManagedTensorVersioned`` wrappers created by
+      ``rgpot_force_input_create``, but does NOT free the underlying data arrays
+      (which are borrowed).
+      
+      After this call, all tensor pointers in ``input`` are set to NULL.
+      
+      If ``input`` is NULL, this is a no-op.
+      
+      **Safety**
+      ``input`` must be NULL or point to a valid ``rgpot_force_input_t`` whose
+      tensors were created by ``rgpot_force_input_create``.
+
+   .. rust:function:: rgpot_core::c_api::types::rgpot_force_out_create
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_force_out_create"},{"type":"punctuation","value":"("},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"rgpot_force_out_t","target":"rgpot_force_out_t"}]
+
+      Create a ``rgpot_force_out_t`` with null forces and zeroed scalars.
+      
+      The ``forces`` field starts as NULL — the potential callback is responsible
+      for setting it to a valid DLPack tensor.

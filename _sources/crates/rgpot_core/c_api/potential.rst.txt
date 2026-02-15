@@ -1,0 +1,122 @@
+=================
+``mod potential``
+=================
+
+
+.. rust:module:: rgpot_core::c_api::potential
+   :index: 0
+   :vis: pub
+
+   C API for the potential handle lifecycle: create, calculate, free.
+   
+   These three functions form the core public interface for potential energy
+   calculations. The typical usage pattern from C/C++ is:
+   
+   .. code-block:: c
+
+      // 1. Create a handle from a callback
+      rgpot_potential_t *pot = rgpot_potential_new(my_callback, my_data, NULL);
+
+      // 2. Prepare input/output
+      rgpot_force_input_t  input  = rgpot_force_input_create(n, pos, types, box);
+      rgpot_force_out_t    output = rgpot_force_out_create();
+
+      // 3. Calculate
+      rgpot_status_t s = rgpot_potential_calculate(pot, &input, &output);
+      if (s != RGPOT_SUCCESS) { /* handle error */ }
+      // output.forces is now a DLPack tensor — use it, then free:
+      rgpot_tensor_free(output.forces);
+
+      // 4. Clean up
+      rgpot_force_input_free(&input);
+      rgpot_potential_free(pot);
+
+
+   .. rust:use:: rgpot_core::c_api::potential
+      :used_name: self
+
+
+   .. rust:use:: rgpot_core
+      :used_name: crate
+
+
+   .. rust:use:: std::os::raw::c_void
+      :used_name: c_void
+
+
+   .. rust:use:: rgpot_core::potential::PotentialCallback
+      :used_name: PotentialCallback
+
+
+   .. rust:use:: rgpot_core::potential::PotentialImpl
+      :used_name: PotentialImpl
+
+
+   .. rust:use:: rgpot_core::potential::rgpot_potential_t
+      :used_name: rgpot_potential_t
+
+
+   .. rust:use:: rgpot_core::status::catch_unwind
+      :used_name: catch_unwind
+
+
+   .. rust:use:: rgpot_core::status::rgpot_status_t
+      :used_name: rgpot_status_t
+
+
+   .. rust:use:: rgpot_core::status::set_last_error
+      :used_name: set_last_error
+
+
+   .. rust:use:: rgpot_core::types::rgpot_force_input_t
+      :used_name: rgpot_force_input_t
+
+
+   .. rust:use:: rgpot_core::types::rgpot_force_out_t
+      :used_name: rgpot_force_out_t
+
+
+   .. rubric:: Functions
+
+
+   .. rust:function:: rgpot_core::c_api::potential::rgpot_potential_calculate
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_potential_calculate"},{"type":"punctuation","value":"("},{"type":"name","value":"pot"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"const"},{"type":"space"},{"type":"link","value":"rgpot_potential_t","target":"rgpot_potential_t"},{"type":"punctuation","value":", "},{"type":"name","value":"input"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"const"},{"type":"space"},{"type":"link","value":"rgpot_force_input_t","target":"rgpot_force_input_t"},{"type":"punctuation","value":", "},{"type":"name","value":"output"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"rgpot_force_out_t","target":"rgpot_force_out_t"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"rgpot_status_t","target":"rgpot_status_t"}]
+
+      Perform a force/energy calculation using the potential handle.
+      
+      - ``pot``: a valid handle obtained from ``rgpot_potential_new``.
+      - ``input``: pointer to the input configuration (DLPack tensors).
+      - ``output``: pointer to the output struct. The callback sets `output->forces`
+        to a callee-allocated DLPack tensor.
+      
+      Returns ``RGPOT_SUCCESS`` on success, or an error status code.
+      On error, call ``rgpot_last_error()`` for details.
+
+   .. rust:function:: rgpot_core::c_api::potential::rgpot_potential_free
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_potential_free"},{"type":"punctuation","value":"("},{"type":"name","value":"pot"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"rgpot_potential_t","target":"rgpot_potential_t"},{"type":"punctuation","value":")"}]
+
+      Free a potential handle previously obtained from ``rgpot_potential_new``.
+      
+      If ``pot`` is ``NULL``, this function is a no-op.
+      After this call, ``pot`` must not be used again.
+
+   .. rust:function:: rgpot_core::c_api::potential::rgpot_potential_new
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_potential_new"},{"type":"punctuation","value":"("},{"type":"name","value":"callback"},{"type":"punctuation","value":": "},{"type":"link","value":"PotentialCallback","target":"PotentialCallback"},{"type":"punctuation","value":", "},{"type":"name","value":"user_data"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"c_void","target":"c_void"},{"type":"punctuation","value":", "},{"type":"name","value":"free_fn"},{"type":"punctuation","value":": "},{"type":"link","value":"Option","target":"Option"},{"type":"punctuation","value":"<"},{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"punctuation","value":"("},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"c_void","target":"c_void"},{"type":"punctuation","value":")"},{"type":"punctuation","value":">"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"rgpot_potential_t","target":"rgpot_potential_t"}]
+
+      Create a new potential handle from a callback function pointer.
+      
+      - ``callback``: the function that performs the force/energy calculation.
+      - ``user_data``: opaque pointer forwarded to every callback invocation
+        (typically a pointer to the C++ potential object).
+      - ``free_fn``: optional destructor for ``user_data``. Pass ``NULL`` if the
+        caller manages the lifetime externally.
+      
+      Returns a heap-allocated ``rgpot_potential_t*``, or ``NULL`` on failure.
+      The caller must eventually pass the returned pointer to
+      ``rgpot_potential_free``.

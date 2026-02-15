@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en" data-accent-color="violet" data-content_root="../">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>class rgpot::PotentialHandle - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="class rgpot::RpcClient" href="class_rgpot_RpcClient.html" /><link rel="prev" title="class rgpot::InputSpec" href="class_rgpot_InputSpec.html" />
+      <link rel="canonical" href="rgpot.rgoswami.me/api/class_rgpot_PotentialHandle.html" /><script>
+    function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
+    setColorMode(localStorage._theme||"auto");
+  </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
+    <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=44020203" />
+    <link rel="stylesheet" type="text/css" href="../_static/doxyrest-pygments.css?v=ff3f4257" />
+    <link rel="stylesheet" type="text/css" href="../_static/doxyrest-shibuya.css" />
+    <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --sy-f-text: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+  --sy-f-heading: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+}
+</style>
+    <meta property="og:type" content="website"/>
+  <meta property="og:url" content="rgpot.rgoswami.me/api/class_rgpot_PotentialHandle.html"/>
+  <meta property="og:title" content="class rgpot::PotentialHandle"/>
+    <meta name="twitter:card" content="summary"/>
+  <!-- Manual favicon handling with favicon.io -->
+<!-- since sphinx-favicon doesn't work with shibuya -->
+<link rel="icon" type="image/png" sizes="16x16" href="../_static/favicons/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="../_static/favicons/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="../_static/favicons/android-chrome-192x192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="../_static/favicons/android-chrome-512x512.png">
+<link rel="apple-touch-icon" sizes="180x180" href="../_static/favicons/apple-touch-icon.png">
+<link rel="shortcut icon" href="../_static/favicons/favicon.ico">
+<link rel="manifest" href="../_static/favicons/site.webmanifest">
+<!-- Plausible injection -->
+<script
+  defer
+  data-domain="rgpot.rgoswami.me"
+  src="https://analytics.turtletech.us/js/script.hash.outbound-links.js"
+></script>
+<script>
+  window.plausible =
+    window.plausible ||
+    function () {
+      (window.plausible.q = window.plausible.q || []).push(arguments);
+    };
+</script></head>
+<body><div class="sy-head">
+  <div class="sy-head-blur"></div>
+  <div class="sy-head-inner sy-container mx-auto">
+    <a class="sy-head-brand" href="../index.html">
+      <img class="light-logo" src="../_static/rgpot_notext.svg" alt="rgpot" height="28" loading="lazy" />
+      <img class="dark-logo" src="../_static/rgpot_notext.svg" alt="rgpot" height="28" loading="lazy" />
+      <strong>rgpot</strong>
+    </a>
+    <div class="sy-head-nav" id="head-nav">
+      <nav class="sy-head-links"></nav>
+      <div class="sy-head-extra flex items-center print:hidden"><form class="searchbox flex items-center" action="../search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <kbd>/</kbd>
+</form><div class="sy-head-socials">
+  <a href="https://github.com/OmniPotentRPC/rgpot" aria-label="GitHub">
+    <iconify-icon icon="simple-icons:github"></iconify-icon>
+  </a></div></div>
+    </div>
+    <div class="sy-head-actions flex items-center shrink-0 print:hidden"><button class="js-theme theme-switch flex items-center"
+data-aria-auto="Switch to light color mode"
+data-aria-light="Switch to dark color mode"
+data-aria-dark="Switch to auto color mode">
+<i class="i-lucide theme-icon"></i>
+</button><button class="md:hidden flex items-center js-menu" aria-label="Menu" type="button" aria-controls="head-nav" aria-expanded="false">
+        <div class="hamburger">
+          <span class="hamburger_1"></span>
+          <span class="hamburger_2"></span>
+          <span class="hamburger_3"></span>
+        </div>
+      </button>
+    </div>
+  </div>
+</div>
+<div class="sy-page sy-container flex mx-auto">
+  <aside id="lside" class="sy-lside md:w-72 md:shrink-0 print:hidden">
+    <div class="sy-lside-inner md:sticky">
+      <div class="sy-scrollbar p-6">
+        <div class="globaltoc" data-expand-depth="0"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../architecture.html">Architecture Overview</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="group_rgpot_cpp.html">C++ RAII Wrappers</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="class_rgpot_CalcResult.html">class rgpot::CalcResult</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="class_rgpot_Error.html">class rgpot::Error</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="class_rgpot_InputSpec.html">class rgpot::InputSpec</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">class rgpot::PotentialHandle</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="class_rgpot_RpcClient.html">class rgpot::RpcClient</a><ul class="simple">
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="global.html">Global Namespace</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot.html">namespace rgpot</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_details.html">namespace rgpot::details</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_types.html">namespace rgpot::types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
+<li class="toctree-l4"><a class="reference internal" href="class_rgpot_CuH2Pot.html">class rgpot::CuH2Pot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="class_rgpot_PotentialBase.html">class rgpot::PotentialBase</a></li>
+<li class="toctree-l4"><a class="reference internal" href="class_rgpot_registry.html">template class rgpot::registry</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_std.html">namespace std</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="class_GenericPotImpl.html">class GenericPotImpl</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="class_PotClient.html">class PotClient</a><ul class="simple">
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../crates/rgpot_core/lib.html">Crate <code class="docutils literal notranslate"><span class="pre">rgpot_core</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/types.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">types</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/tensor.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">tensor</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/status.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">status</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/c_api.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">c_api</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/types.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">types</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/client.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">client</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/server.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">server</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../contributing/index.html">Contributing to <code class="docutils literal notranslate"><span class="pre">rgpot</span></code></a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../contributing/developer/index.html">Developer Guide</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../contributing/developer/testing.html">Testing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../contributing/developer/release.html">Release Process</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../contributing/developer/faq.html">Developer FAQ</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../code_of_conduct.html">Code of Conduct</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="lside-overlay js-menu" role="button" aria-label="Close left sidebar" aria-controls="lside" aria-expanded="false"></div>
+  <aside id="rside" class="sy-rside pb-3 w-64 shrink-0 order-last">
+    <button class="rside-close js-menu xl:hidden" aria-label="Close Table of Contents" type="button" aria-controls="rside" aria-expanded="false">
+      <i class="i-lucide close"></i>
+    </button>
+    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
+<li><a class="reference internal" href="#overview">Overview</a></li>
+<li><a class="reference internal" href="#detailed-documentation">Detailed Documentation</a><ul>
+<li><a class="reference internal" href="#construction">Construction</a></li>
+<li><a class="reference internal" href="#methods">Methods</a></li>
+</ul>
+</li>
+</ul>
+</div><div id="ethical-ad-placement" data-ea-publisher="readthedocs"></div></div>
+  </aside>
+  <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
+  <main class="sy-main w-full max-sm:max-w-full print:pt-6">
+<div class="sy-breadcrumbs" role="navigation">
+  <div class="sy-breadcrumbs-inner flex items-center">
+    <div class="md:hidden mr-3">
+      <button class="js-menu" aria-label="Menu" type="button" aria-controls="lside" aria-expanded="false">
+        <i class="i-lucide menu"></i>
+      </button>
+    </div>
+    <ol class="flex-1" itemscope itemtype="https://schema.org/BreadcrumbList"><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a itemprop="item" href="../index.html"><span itemprop="name">rgpot</span></a>
+        <span>/</span>
+        <meta itemprop="position" content="1" />
+      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a itemprop="item" href="index.html"><span itemprop="name">API Reference</span></a>
+        <span>/</span>
+        <meta itemprop="position" content="2" />
+      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a itemprop="item" href="group_rgpot_cpp.html"><span itemprop="name">C++ RAII Wrappers</span></a>
+        <span>/</span>
+        <meta itemprop="position" content="3" />
+      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <strong itemprop="name">class rgpot::PotentialHandle</strong>
+        <meta itemprop="position" content="4" />
+      </li></ol>
+    <div class="xl:hidden ml-1">
+      <button class="js-menu" aria-label="Show table of contents" type="button" aria-controls="rside"
+        aria-expanded="false">
+        <i class="i-lucide outdent"></i>
+      </button>
+    </div>
+  </div>
+</div><div class="flex flex-col break-words justify-between">
+      <div class="relative min-w-0 max-w-6xl px-6 pb-6 pt-8 xl:px-12">
+  <div class="copy-page-wrapper relative pb-4 lg:absolute lg:top-8 lg:right-6 xl:right-12">
+  <div id="copy-page-trigger">
+    <button
+      type="button"
+      class="js-copy px-3 py-1 inline-flex items-center gap-1"
+      data-url="rgpot.rgoswami.me/_sources/api/class_rgpot_PotentialHandle.rst.txt"
+    >
+      <i class="i-lucide" data-icon="copy"></i>
+      <span>Copy page</span>
+    </button>
+    <button class="js-menu px-2 py-1" type="button" aria-label="More actions"
+      aria-haspopup="menu" aria-expanded="false" aria-controls="copy-page-content">
+      <i class="i-lucide chevron-down"></i>
+    </button>
+  </div>
+  <div id="copy-page-content" role="menu" aria-orientation="vertical" aria-hidden="true">
+    <div role="presentation">
+      <div class="flex flex-col" role="group">
+        <button class="js-copy" type="button" role="menuitem"
+          data-url="rgpot.rgoswami.me/_sources/api/class_rgpot_PotentialHandle.rst.txt">
+          <span class="iconify-icon">
+            <i class="i-lucide" data-icon="copy"></i>
+          </span>
+          <span>Copy page</span>
+        </button>
+        <a role="menuitem" href="rgpot.rgoswami.me/_sources/api/class_rgpot_PotentialHandle.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
+            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20rgpot.rgoswami.me/_sources/api/class_rgpot_PotentialHandle.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+          <iconify-icon icon="bi:openai"></iconify-icon>
+          <span>Open in ChatGPT</span>
+        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20rgpot.rgoswami.me/_sources/api/class_rgpot_PotentialHandle.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+          <iconify-icon icon="bi:claude"></iconify-icon>
+          <span>Open in Claude</span>
+        </a></div>
+    </div>
+  </div>
+</div><article class="yue" role="main">
+          <section id="class-rgpot-potentialhandle">
+<span id="doxid-classrgpot-1-1-potential-handle"></span><span id="index-0"></span><h1>class rgpot::PotentialHandle<a class="headerlink" href="#class-rgpot-potentialhandle" title="Link to this heading">¶</a></h1>
+<div class="toctree-wrapper compound">
+</div>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
+<p>Move-only RAII handle around an opaque <code class="docutils literal notranslate"><span class="pre">rgpot_potential_t</span></code> pointer. <a class="reference internal" href="#details-classrgpot-1-1-potential-handle"><span class="std std-ref">More…</span></a></p>
+<div class="doxyrest-overview-code-block highlight">
+<pre><span data-line="1"><span class="cp">#include</span> <span class="cpf">&lt;potential.hpp&gt;</span></span>
+<span data-line="2"> </span>
+<span data-line="3"><span class="k">class</span> <span class="n">PotentialHandle</span> <span class="p">{</span></span>
+<span data-line="4"><span class="k">public</span><span class="o">:</span></span>
+<span data-line="5">    <span class="c1">// construction</span></span>
+<span data-line="6"> </span>
+<span data-line="7">    <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-handle-1a71cb187ba8a84c1b54eaab3d1db03e03"><span class="std std-ref">PotentialHandle</span></a><span class="p">(</span><span class="n">rgpot_potential_t</span><span class="o">*</span> <span class="n">handle</span><span class="p">);</span></span>
+<span data-line="8">    <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-handle-1a6dec8cbeff49b3f49bc153ded417a6c4"><span class="std std-ref">PotentialHandle</span></a><span class="p">(</span><span class="n">PotentialHandle</span><span class="o">&amp;&amp;</span> <span class="n">other</span><span class="p">);</span></span>
+<span data-line="9">    <span class="doxyrest-code-target target" id="doxid-classrgpot_1_1_potential_handle_1a9bbabf4c44df02f534f42dd72d3a7346"></span><span class="n">PotentialHandle</span><span class="p">(</span><span class="k">const</span> <span class="n">PotentialHandle</span><span class="o">&amp;</span><span class="p">);</span></span>
+<span data-line="10">    <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-handle-1abee932b1fa9323d82707bf43a31d0357"><span class="std std-ref">~PotentialHandle</span></a><span class="p">();</span></span>
+<span data-line="11"> </span>
+<span data-line="12">    <span class="c1">// methods</span></span>
+<span data-line="13"> </span>
+<span data-line="14">    <span class="n">PotentialHandle</span><span class="o">&amp;</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-handle-1a552fe7a058b0411930733882b8512e14"><span class="std std-ref">operator=</span></a><span class="p">(</span><span class="n">PotentialHandle</span><span class="o">&amp;&amp;</span> <span class="n">other</span><span class="p">);</span></span>
+<span data-line="15">    <span class="n">PotentialHandle</span><span class="o">&amp;</span> <span class="doxyrest-code-target target" id="doxid-classrgpot_1_1_potential_handle_1a15357a619922bcfedfc11bbdf26f838b"></span><span class="k">operator</span><span class="o">=</span><span class="p">(</span><span class="k">const</span> <span class="n">PotentialHandle</span><span class="o">&amp;</span><span class="p">);</span></span>
+<span data-line="16">    <a class="doxyrest-code-link reference internal" href="class_rgpot_CalcResult.html#doxid-classrgpot-1-1-calc-result"><span class="std std-ref">CalcResult</span></a> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-handle-1af864dc8f487587b425fb6c3fdf3bc705"><span class="std std-ref">calculate</span></a><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_InputSpec.html#doxid-classrgpot-1-1-input-spec"><span class="std std-ref">InputSpec</span></a><span class="o">&amp;</span> <span class="n">input</span><span class="p">);</span></span>
+<span data-line="17">    <span class="n">rgpot_potential_t</span><span class="o">*</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-handle-1a864f673374dc6843a4a28dbf98a04839"><span class="std std-ref">raw</span></a><span class="p">()</span> <span class="k">const</span><span class="p">;</span></span>
+<span data-line="18"> </span>
+<span data-line="19">    <span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="n">Impl</span><span class="o">&gt;</span></span>
+<span data-line="20">    <span class="k">static</span> <span class="n">PotentialHandle</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-handle-1af5e646d3175b1fdac6040e17ed014c25"><span class="std std-ref">from_impl</span></a><span class="p">(</span><span class="n">Impl</span><span class="o">&amp;</span> <span class="n">impl</span><span class="p">);</span></span>
+<span data-line="21"> </span>
+<span data-line="22">    <span class="k">static</span> <span class="n">PotentialHandle</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-handle-1aecafbe5b4d058843e4853545f26a2dc6"><span class="std std-ref">from_callback</span></a><span class="p">(</span><span class="n">rgpot_status_t</span><span class="p">(</span><span class="o">*</span><span class="p">)(</span><span class="kt">void</span><span class="o">*</span><span class="p">,</span> <span class="k">const</span> <span class="n">rgpot_force_input_t</span><span class="o">*</span><span class="p">,</span> <span class="n">rgpot_force_out_t</span><span class="o">*</span><span class="p">)</span> <span class="n">callback</span><span class="p">,</span> <span class="kt">void</span><span class="o">*</span> <span class="n">user_data</span><span class="p">,</span> <span class="kt">void</span><span class="p">(</span><span class="o">*</span><span class="p">)(</span><span class="kt">void</span><span class="o">*</span><span class="p">)</span> <span class="n">free_fn</span> <span class="o">=</span> <span class="k">nullptr</span><span class="p">);</span></span>
+<span data-line="23"><span class="p">};</span></span>
+</pre></div>
+</section>
+<section id="detailed-documentation">
+<span id="details-classrgpot-1-1-potential-handle"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
+<p>Move-only RAII handle around an opaque <code class="docutils literal notranslate"><span class="pre">rgpot_potential_t</span></code> pointer.</p>
+<p>The handle is non-copyable. Move semantics transfer ownership of the underlying Rust allocation. On destruction the Rust core frees all resources associated with the potential via <code class="docutils literal notranslate"><span class="pre">rgpot_potential_free()</span></code>.</p>
+<section id="construction">
+<h3>Construction<a class="headerlink" href="#construction" title="Link to this heading">¶</a></h3>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-potential-handle-1a71cb187ba8a84c1b54eaab3d1db03e03">
+<span id="index-1"></span><pre><span data-line="1"><span class="n">PotentialHandle</span><span class="p">(</span><span class="n">rgpot_potential_t</span><span class="o">*</span> <span class="n">handle</span><span class="p">)</span></span>
+</pre></div>
+<p>Adopt an existing raw handle.</p>
+<p><em>handle</em> was obtained from <code class="docutils literal notranslate"><span class="pre">rgpot_potential_new()</span></code> and has not been freed.</p>
+<p class="rubric">Parameters:</p>
+<div class="table-wrapper colwidths-given docutils container">
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 80.0%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p>handle</p></td>
+<td><p>Raw pointer to the Rust-side potential object.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-potential-handle-1a6dec8cbeff49b3f49bc153ded417a6c4">
+<span id="index-2"></span><pre><span data-line="1"><span class="n">PotentialHandle</span><span class="p">(</span><span class="n">PotentialHandle</span><span class="o">&amp;&amp;</span> <span class="n">other</span><span class="p">)</span></span>
+</pre></div>
+<p>Move constructor — transfers ownership.</p>
+<p class="rubric">Parameters:</p>
+<div class="table-wrapper colwidths-given docutils container">
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 80.0%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p>other</p></td>
+<td><p>Handle to move from; left in a null state.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-potential-handle-1abee932b1fa9323d82707bf43a31d0357">
+<pre><span data-line="1"><span class="o">~</span><span class="n">PotentialHandle</span><span class="p">()</span></span>
+</pre></div>
+<p>Destructor — releases the Rust-side allocation.</p>
+<p>Safe to call on a moved-from handle (internal pointer is <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>).</p>
+</section>
+<section id="methods">
+<h3>Methods<a class="headerlink" href="#methods" title="Link to this heading">¶</a></h3>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-potential-handle-1a552fe7a058b0411930733882b8512e14">
+<span id="index-3"></span><pre><span data-line="1"><span class="n">PotentialHandle</span><span class="o">&amp;</span> <span class="k">operator</span><span class="o">=</span><span class="p">(</span><span class="n">PotentialHandle</span><span class="o">&amp;&amp;</span> <span class="n">other</span><span class="p">)</span></span>
+</pre></div>
+<p>Move assignment — releases current handle, transfers ownership.</p>
+<p class="rubric">Parameters:</p>
+<div class="table-wrapper colwidths-given docutils container">
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 80.0%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p>other</p></td>
+<td><p>Handle to move from; left in a null state.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p class="rubric">Returns:</p>
+<p>Reference to <code class="docutils literal notranslate"><span class="pre">*this</span></code>.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-potential-handle-1af864dc8f487587b425fb6c3fdf3bc705">
+<span id="index-4"></span><pre><span data-line="1"><a class="doxyrest-code-link reference internal" href="class_rgpot_CalcResult.html#doxid-classrgpot-1-1-calc-result"><span class="std std-ref">CalcResult</span></a> <span class="n">calculate</span><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_InputSpec.html#doxid-classrgpot-1-1-input-spec"><span class="std std-ref">InputSpec</span></a><span class="o">&amp;</span> <span class="n">input</span><span class="p">)</span></span>
+</pre></div>
+<p>Perform a force/energy calculation.</p>
+<p>Creates a <code class="docutils literal notranslate"><span class="pre">CalcResult</span></code>, delegates to <code class="docutils literal notranslate"><span class="pre">rgpot_potential_calculate()</span></code>, and checks the returned status code. The callback sets the forces tensor in the output struct.</p>
+<p class="rubric">Parameters:</p>
+<div class="table-wrapper colwidths-given docutils container">
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 80.0%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p>input</p></td>
+<td><p>The atomic configuration to evaluate.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="class_rgpot_Error.html#doxid-classrgpot-1-1-error"><span class="std std-ref">rgpot::Error</span></a></p></td>
+<td><p>when the underlying callback reports failure.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p class="rubric">Returns:</p>
+<p>A <code class="docutils literal notranslate"><span class="pre">CalcResult</span></code> containing energy, variance, and forces.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-potential-handle-1a864f673374dc6843a4a28dbf98a04839">
+<span id="index-5"></span><pre><span data-line="1"><span class="n">rgpot_potential_t</span><span class="o">*</span> <span class="n">raw</span><span class="p">()</span> <span class="k">const</span></span>
+</pre></div>
+<p>Access the raw opaque handle for C interop.</p>
+<p class="rubric">Returns:</p>
+<p>Pointer to the underlying <code class="docutils literal notranslate"><span class="pre">rgpot_potential_t</span></code>.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-potential-handle-1af5e646d3175b1fdac6040e17ed014c25">
+<span id="index-6"></span><pre><span data-line="1"><span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="n">Impl</span><span class="o">&gt;</span></span>
+<span data-line="2"><span class="k">static</span> <span class="n">PotentialHandle</span> <span class="n">from_impl</span><span class="p">(</span><span class="n">Impl</span><span class="o">&amp;</span> <span class="n">impl</span><span class="p">)</span></span>
+</pre></div>
+<p>Create a handle from a legacy C++ potential implementation.</p>
+<p>Registers a template trampoline that extracts raw CPU pointers from the DLPack tensors in <code class="docutils literal notranslate"><span class="pre">rgpot_force_input_t</span></code>, constructs legacy <code class="docutils literal notranslate"><span class="pre">ForceInput</span></code> / <code class="docutils literal notranslate"><span class="pre">ForceOut</span></code> types for <em>Impl::forceImpl()</em>, and wraps the resulting forces in an owning DLPack tensor.</p>
+<p>The caller retains ownership of <em>impl</em> and <strong>must</strong> keep it alive for the lifetime of the returned handle.</p>
+<p class="rubric">Parameters:</p>
+<div class="table-wrapper colwidths-given docutils container">
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 80.0%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p>Impl</p></td>
+<td><p>A type with <code class="docutils literal notranslate"><span class="pre">void</span></code> <code class="docutils literal notranslate"><span class="pre">forceImpl</span></code> (const <code class="docutils literal notranslate"><span class="pre">ForceInput</span><span class="pre">&amp;</span></code>, <code class="docutils literal notranslate"><span class="pre">ForceOut*</span></code>).</p></td>
+</tr>
+<tr class="row-even"><td><p>impl</p></td>
+<td><p>Reference to the C++ potential object.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p class="rubric">Returns:</p>
+<p>A new <code class="docutils literal notranslate"><span class="pre">PotentialHandle</span></code> wrapping <em>impl</em>.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-potential-handle-1aecafbe5b4d058843e4853545f26a2dc6">
+<span id="index-7"></span><pre><span data-line="1"><span class="k">static</span> <span class="n">PotentialHandle</span> <span class="n">from_callback</span><span class="p">(</span><span class="n">rgpot_status_t</span><span class="p">(</span><span class="o">*</span><span class="p">)(</span><span class="kt">void</span><span class="o">*</span><span class="p">,</span> <span class="k">const</span> <span class="n">rgpot_force_input_t</span><span class="o">*</span><span class="p">,</span> <span class="n">rgpot_force_out_t</span><span class="o">*</span><span class="p">)</span> <span class="n">callback</span><span class="p">,</span> <span class="kt">void</span><span class="o">*</span> <span class="n">user_data</span><span class="p">,</span> <span class="kt">void</span><span class="p">(</span><span class="o">*</span><span class="p">)(</span><span class="kt">void</span><span class="o">*</span><span class="p">)</span> <span class="n">free_fn</span> <span class="o">=</span> <span class="k">nullptr</span><span class="p">)</span></span>
+</pre></div>
+<p>Create a handle from an explicit C callback and user data.</p>
+<p>This is the low-level factory; prefer <code class="docutils literal notranslate"><span class="pre">from_impl()</span></code> for C++ potentials.</p>
+<p class="rubric">Parameters:</p>
+<div class="table-wrapper colwidths-given docutils container">
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 80.0%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p>callback</p></td>
+<td><p>Function pointer matching the <code class="docutils literal notranslate"><span class="pre">rgpot_potential_t</span></code> callback signature.</p></td>
+</tr>
+<tr class="row-even"><td><p>user_data</p></td>
+<td><p>Opaque pointer forwarded to every <em>callback</em> invocation.</p></td>
+</tr>
+<tr class="row-odd"><td><p>free_fn</p></td>
+<td><p>Optional destructor for <em>user_data</em> (may be <code class="docutils literal notranslate"><span class="pre">nullptr</span></code> if the caller manages the lifetime).</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p class="rubric">Returns:</p>
+<p>A new <code class="docutils literal notranslate"><span class="pre">PotentialHandle</span></code>.</p>
+</section>
+</section>
+</section>
+
+        </article><button class="back-to-top" type="button">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+    <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+  </svg>
+  <span>Back to top</span>
+</button><div class="navigation flex print:hidden"><div class="navigation-prev">
+    <a href="class_rgpot_InputSpec.html">
+      <i class="i-lucide chevron-left"></i>
+      <div class="page-info">
+        <span>Previous</span><div class="title">class rgpot::InputSpec</div></div>
+    </a>
+  </div><div class="navigation-next">
+    <a href="class_rgpot_RpcClient.html">
+      <div class="page-info">
+        <span>Next</span>
+        <div class="title">class rgpot::RpcClient</div>
+      </div>
+      <i class="i-lucide chevron-right"></i>
+    </a>
+  </div></div></div>
+    </div>
+  </main>
+</div>
+<footer class="sy-foot">
+  <div class="sy-foot-inner sy-container mx-auto">
+    
+    <div
+      style="
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        margin-bottom: 1.5rem;
+        color: var(--sy-c-text-weak);
+        font-size: 0.9em;
+      "
+    >
+      <div
+        style="
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: center;
+          gap: 1rem;
+          align-items: center;
+        "
+      >
+
+        
+        <span style="display: inline-flex; align-items: center; gap: 0.3em">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="1em"
+            height="1em"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path d="M7,20H4V4h3V20z M14,20h-3V12h3V20z M21,20h-3V8h3V20z" />
+          </svg>
+          <span
+            >Analytics by
+            <a
+              href="https://plausible.io/"
+              target="_blank"
+              rel="noopener noreferrer"
+              style="color: inherit; text-decoration: underline"
+              >Plausible</a
+            ></span
+          >
+        </span>
+
+        
+        <span style="display: inline-flex; align-items: center; gap: 0.3em">
+          <span>provided by</span>
+          <span style="display: inline-flex; align-items: center; gap: 0.3em">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="1.2em"
+              height="1.2em"
+              viewBox="0 0 64 64"
+              aria-hidden="true"
+            >
+              <g fill-rule="evenodd">
+                <ellipse cx="32" cy="11" fill="#80D25B" rx="7" ry="9" />
+                <path
+                  fill="#80D25B"
+                  d="M20.302104,46 C20.302104,46 17.1330329,55.8812548 20.6828149,59.7817355 C24.232597,63.6822162 26.8008673,63.215359 26.8008673,53.7414927 C26.8008673,44.2676263 20.302104,46 20.302104,46 Z"
+                />
+                <path
+                  fill="#80D25B"
+                  d="M38.302104,46 C38.302104,46 35.1330329,55.8812548 38.6828149,59.7817355 C42.232597,63.6822162 44.8008673,63.215359 44.8008673,53.7414927 C44.8008673,44.2676263 38.302104,46 38.302104,46 Z"
+                  transform="matrix(-1 0 0 1 81.8 0)"
+                />
+                <path
+                  fill="#80D25B"
+                  d="M20.6227767,21.2218684 C20.6227767,21.2218684 13.956214,15.3844007 10.091955,16.0534044 C6.22769598,16.722408 6,22.2124633 6,23.9992899 C6,25.7861165 7.78917398,37.3159836 9.78726488,36.4967476 C11.7853558,35.6775115 13.7411938,27.959322 13.7411938,27.959322 15.6510232,30.2287702 18.609193,30.4630388"
+                />
+                <path
+                  fill="#80D25B"
+                  d="M57.6227767,21.2218684 C57.6227767,21.2218684 50.956214,15.3844007 47.091955,16.0534044 C43.227696,16.722408 43,22.2124633 43,23.9992899 C43,25.7861165 44.789174,37.3159836 46.7872649,36.4967476 C48.7853558,35.6775115 50.7411938,27.959322 50.7411938,27.959322 52.6510232,30.2287702 55.609193,30.4630388"
+                  transform="matrix(-1 0 0 1 100.623 0)"
+                />
+                <path
+                  fill="#BD7575"
+                  stroke="#595959"
+                  stroke-linecap="round"
+                  stroke-width="2"
+                  d="M32,53 C40.836556,53 48,44.4934102 48,34 C48,23.5065898 46.6814044,17 32,17 C17.3185956,17 16,23.5065898 16,34 C16,44.4934102 23.163444,53 32,53 Z"
+                />
+                <polygon
+                  fill="#BD7575"
+                  stroke="#595959"
+                  stroke-linecap="round"
+                  stroke-width="2"
+                  points="32 22 38.928 26 38.928 34 32 38 25.072 34 25.072 26"
+                />
+                <path
+                  stroke="#595959"
+                  stroke-linecap="round"
+                  stroke-width="2"
+                  d="M30,8 C28.8954305,8 28,8.8954305 28,10"
+                />
+                <path
+                  stroke="#595959"
+                  stroke-linecap="round"
+                  stroke-width="2"
+                  d="M36,8 C34.8954305,8 34,8.8954305 34,10"
+                  transform="matrix(-1 0 0 1 70 0)"
+                />
+                <path
+                  stroke="#595959"
+                  stroke-linecap="round"
+                  stroke-width="2"
+                  d="M32.1194396 38.1881507L32.1194396 52.4125899M32.0164956 21.7467197L32.0164956 17M25.2141026 26.0041506L17.737148 23.0721126M25.1254173 34.1534318L16.7659494 38.8876521"
+                />
+                <path
+                  stroke="#595959"
+                  stroke-linecap="round"
+                  stroke-width="2"
+                  d="M46.2141026,26.0041506 L38.737148,23.0721126"
+                  transform="matrix(-1 0 0 1 84.951 0)"
+                />
+                <path
+                  stroke="#595959"
+                  stroke-linecap="round"
+                  stroke-width="2"
+                  d="M47.1254173,34.1534318 L38.7659494,38.8876521"
+                  transform="matrix(-1 0 0 1 85.891 0)"
+                />
+              </g>
+            </svg>
+            <a
+              href="https://turtletech.us/"
+              target="_blank"
+              rel="noopener noreferrer"
+              style="color: inherit; text-decoration: underline"
+              >TurtleTech ehf</a
+            >
+          </span>
+        </span>
+      </div>
+    </div>
+
+    
+    <div class="sy-foot-reserved md:flex justify-between items-center">
+      <div class="sy-foot-copyright"><p>2025--present, rgpot developers</p>
+  
+  <p>
+    Made with
+    
+    <a href="https://www.sphinx-doc.org/">Sphinx</a> and
+    
+    <a href="https://shibuya.lepture.com">Shibuya theme</a>.
+  </p>
+</div> <div class="sy-foot-socials">
+<a href="https://github.com/OmniPotentRPC/rgpot" aria-label="GitHub">
+  <iconify-icon icon="simple-icons:github"></iconify-icon>
+</a></div>
+    </div>
+  </div>
+</footer>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/target-highlight.js?v=df7d332b"></script>
+      <script src="../_static/shibuya.js?v=cac61aee"></script></body>
+</html>

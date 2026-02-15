@@ -1,0 +1,171 @@
+.. index:: pair: class; rgpot::InputSpec
+.. _doxid-classrgpot_1_1_input_spec:
+
+class rgpot::InputSpec
+======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Move-only wrapper that creates non-owning DLPack tensors from raw CPU arrays. :ref:`More...<details-classrgpot_1_1_input_spec>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <types.hpp>
+	
+	class InputSpec {
+	public:
+		// construction
+	
+		:ref:`InputSpec<doxid-classrgpot_1_1_input_spec_1a3f79fb87173783d31905481180c53c0c>`(size_t n_atoms, double* pos, int* atmnrs, double* box);
+		:ref:`InputSpec<doxid-classrgpot_1_1_input_spec_1a61b1531ba5f3148a667b7b11cd4c853f>`(std::vector<double>& positions, std::vector<int>& atmnrs, double* box);
+		:target:`InputSpec<doxid-classrgpot_1_1_input_spec_1a6d2b374f46fdc756dab4c33ffd8169ec>`(InputSpec&& other);
+		:target:`InputSpec<doxid-classrgpot_1_1_input_spec_1a3bd3b4cfac154cd5d949365431ad950c>`(const InputSpec&);
+		:target:`~InputSpec<doxid-classrgpot_1_1_input_spec_1a4ca08ac18f315e37617dc5e49b2395af>`();
+
+		// methods
+	
+		InputSpec& :target:`operator=<doxid-classrgpot_1_1_input_spec_1a22220614daff455ba5cf1d0264be0ccc>`(InputSpec&& other);
+		InputSpec& :target:`operator=<doxid-classrgpot_1_1_input_spec_1aebc1c8aca79e0fdd1ba8f00859d298ad>`(const InputSpec&);
+		const rgpot_force_input_t& :ref:`c_struct<doxid-classrgpot_1_1_input_spec_1a1483b107ee9309373c3a07f7bb0f8774>`() const;
+		size_t :ref:`n_atoms<doxid-classrgpot_1_1_input_spec_1ac8a8cfda911ac17c8c890b3858015d68>`() const;
+	};
+.. _details-classrgpot_1_1_input_spec:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Move-only wrapper that creates non-owning DLPack tensors from raw CPU arrays.
+
+Wraps ``rgpot_force_input_t``. The constructor calls ``rgpot_force_input_create()`` which creates non-owning DLPack tensors wrapping the caller's buffers. The destructor calls ``rgpot_force_input_free()`` to release the tensor metadata (NOT the underlying data).
+
+
+
+.. _doxid-classrgpot_1_1_input_spec_1autotoc_md4:
+
+Example
+~~~~~~~
+
+.. ref-code-block:: cpp
+
+	double pos[] = {0,0,0, 1,0,0};
+	int    atm[] = {1, 1};
+	double box[] = {10,0,0, 0,10,0, 0,0,10};
+	rgpot::InputSpec input(2, pos, atm, box);
+
+Construction
+------------
+
+.. index:: pair: function; InputSpec
+.. _doxid-classrgpot_1_1_input_spec_1a3f79fb87173783d31905481180c53c0c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	InputSpec(size_t n_atoms, double* pos, int* atmnrs, double* box)
+
+Construct from raw arrays (data is borrowed, not copied).
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- n_atoms
+
+		- Number of atoms in the configuration.
+
+	*
+		- pos
+
+		- Flat position array ```` [n_atoms\*3], row-major xyz.
+
+	*
+		- atmnrs
+
+		- Atomic number array ```` [n_atoms].
+
+	*
+		- box
+
+		- Flat 3x3 cell matrix ```` [9], row-major.
+
+.. index:: pair: function; InputSpec
+.. _doxid-classrgpot_1_1_input_spec_1a61b1531ba5f3148a667b7b11cd4c853f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	InputSpec(std::vector<double>& positions, std::vector<int>& atmnrs, double* box)
+
+Construct from STL containers and a flat box pointer.
+
+.. note::
+
+	The vectors must outlive this :ref:`InputSpec <doxid-classrgpot_1_1_input_spec>` since the tensors borrow their data.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- positions
+
+		- Flat position vector; size must be a multiple of 3.
+
+	*
+		- atmnrs
+
+		- Atomic number vector.
+
+	*
+		- box
+
+		- Flat 3x3 cell matrix ```` [9], row-major.
+
+Methods
+-------
+
+.. index:: pair: function; c_struct
+.. _doxid-classrgpot_1_1_input_spec_1a1483b107ee9309373c3a07f7bb0f8774:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const rgpot_force_input_t& c_struct() const
+
+Access the underlying C struct.
+
+
+
+.. rubric:: Returns:
+
+Const reference to the wrapped ``rgpot_force_input_t``.
+
+.. index:: pair: function; n_atoms
+.. _doxid-classrgpot_1_1_input_spec_1ac8a8cfda911ac17c8c890b3858015d68:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	size_t n_atoms() const
+
+Returns the number of atoms.
+
+
+
+.. rubric:: Returns:
+
+Atom count.
+

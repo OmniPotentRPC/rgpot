@@ -24,6 +24,7 @@ For details on the architecture or internal API:
      :maxdepth: 2
      :caption: Reference
 
+     architecture
      api/index
      changelog
      contributing/index

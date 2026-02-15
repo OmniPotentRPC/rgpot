@@ -1,0 +1,22 @@
+========================
+``mod Potentials_capnp``
+========================
+
+
+.. rust:module:: rgpot_core::Potentials_capnp
+   :index: 0
+   :vis: pub
+
+   Auto-generated Cap'n Proto schema bindings for the RPC wire protocol.
+   
+   This module is produced at build time from ``Potentials.capnp`` and is not
+   intended for direct use.  See the ``rpc`` module for the public RPC
+   client/server API.
+
+   .. rust:use:: rgpot_core::Potentials_capnp
+      :used_name: self
+
+
+   .. rust:use:: rgpot_core
+      :used_name: crate
+

@@ -1,0 +1,125 @@
+==============
+``mod status``
+==============
+
+
+.. rust:module:: rgpot_core::status
+   :index: 0
+   :vis: pub
+
+   Error handling following the
+   `metatensor <https://docs.metatensor.org/>`_ pattern.
+   
+   This module provides three components that work together to give C/C++
+   callers safe, informative error reporting from Rust:
+   
+   1. **``rgpot_status_t``** — An integer-valued enum returned from every
+      ``extern "C"`` function. ``RGPOT_SUCCESS`` (0) means the call succeeded;
+      any other value indicates a specific error category.
+   
+   2. **Thread-local error message** — On failure, a human-readable
+      description is stored in a thread-local ``CString``. The C caller
+      retrieves it with ``rgpot_last_error()``. The pointer is valid until
+      the next ``rgpot_*`` call on the same thread.
+   
+   3. **``catch_unwind``** — A wrapper used inside every ``extern "C"``
+      function to catch Rust panics before they unwind across the FFI
+      boundary (which is undefined behaviour). Caught panics become
+      ``RGPOT_INTERNAL_ERROR`` with the panic message stored for retrieval.
+   
+   **Usage from C**
+   
+   .. code-block:: c
+
+      rgpot_status_t s = rgpot_potential_calculate(pot, &input, &output);
+      if (s != RGPOT_SUCCESS) {
+          fprintf(stderr, "rgpot error: %s\n", rgpot_last_error());
+      }
+
+
+   .. rust:use:: rgpot_core::status
+      :used_name: self
+
+
+   .. rust:use:: rgpot_core
+      :used_name: crate
+
+
+   .. rust:use:: std::cell::RefCell
+      :used_name: RefCell
+
+
+   .. rust:use:: std::ffi::CString
+      :used_name: CString
+
+
+   .. rust:use:: std::os::raw::c_char
+      :used_name: c_char
+
+
+   .. rubric:: Functions
+
+
+   .. rust:function:: rgpot_core::status::rgpot_last_error
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_last_error"},{"type":"punctuation","value":"("},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"operator","value":"*"},{"type":"keyword","value":"const"},{"type":"space"},{"type":"link","value":"c_char","target":"c_char"}]
+
+      Retrieve a pointer to the last error message for the current thread.
+      
+      The pointer is valid until the next call to any ``rgpot_*`` function
+      on the same thread.
+      
+      **Safety**
+      This is intended to be called from C. The returned pointer must not
+      be freed by the caller.
+
+   .. rubric:: Enums
+
+
+   .. rust:enum:: rgpot_core::status::rgpot_status_t
+      :index: 1
+      :vis: pub
+      :layout: [{"type":"keyword","value":"enum"},{"type":"space"},{"type":"name","value":"rgpot_status_t"}]
+
+      Status codes returned by all C API functions.
+
+      .. rust:struct:: rgpot_core::status::rgpot_status_t::RGPOT_SUCCESS
+         :index: 2
+         :vis: pub
+         :toc: RGPOT_SUCCESS
+         :layout: [{"type":"name","value":"RGPOT_SUCCESS"}]
+
+         Operation completed successfully.
+
+      .. rust:struct:: rgpot_core::status::rgpot_status_t::RGPOT_INVALID_PARAMETER
+         :index: 2
+         :vis: pub
+         :toc: RGPOT_INVALID_PARAMETER
+         :layout: [{"type":"name","value":"RGPOT_INVALID_PARAMETER"}]
+
+         An invalid parameter was passed (null pointer, wrong size, etc.).
+
+      .. rust:struct:: rgpot_core::status::rgpot_status_t::RGPOT_INTERNAL_ERROR
+         :index: 2
+         :vis: pub
+         :toc: RGPOT_INTERNAL_ERROR
+         :layout: [{"type":"name","value":"RGPOT_INTERNAL_ERROR"}]
+
+         An internal error occurred (e.g. a Rust panic was caught).
+
+      .. rust:struct:: rgpot_core::status::rgpot_status_t::RGPOT_RPC_ERROR
+         :index: 2
+         :vis: pub
+         :toc: RGPOT_RPC_ERROR
+         :layout: [{"type":"name","value":"RGPOT_RPC_ERROR"}]
+
+         An RPC communication error occurred.
+
+      .. rust:struct:: rgpot_core::status::rgpot_status_t::RGPOT_BUFFER_SIZE_ERROR
+         :index: 2
+         :vis: pub
+         :toc: RGPOT_BUFFER_SIZE_ERROR
+         :layout: [{"type":"name","value":"RGPOT_BUFFER_SIZE_ERROR"}]
+
+         A buffer was too small for the requested operation.

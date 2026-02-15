@@ -2,7 +2,7 @@
 <html lang="en" data-accent-color="violet" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Contributing to rgpot - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Code of Conduct" href="../code_of_conduct.html" /><link rel="prev" title="Changelog" href="../changelog.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Contributing to rgpot - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Developer Guide" href="developer/index.html" /><link rel="prev" title="Changelog" href="../changelog.html" />
       <link rel="canonical" href="rgpot.rgoswami.me/contributing/" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
@@ -85,10 +85,30 @@ data-aria-dark="Switch to auto color mode">
       <div class="sy-scrollbar p-6">
         <div class="globaltoc" data-expand-depth="0"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
 <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../architecture.html">Architecture Overview</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../api/index.html">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../api/group_rgpot_cpp.html">C++ RAII Wrappers</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_rgpot_CalcResult.html">class rgpot::CalcResult</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_rgpot_Error.html">class rgpot::Error</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_rgpot_InputSpec.html">class rgpot::InputSpec</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_rgpot_PotentialHandle.html">class rgpot::PotentialHandle</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_rgpot_RpcClient.html">class rgpot::RpcClient</a><ul class="simple">
+</ul>
+</li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="../api/global.html">Global Namespace</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot.html">namespace rgpot</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_details.html">namespace rgpot::details</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_types.html">namespace rgpot::types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
@@ -96,6 +116,9 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_PotentialBase.html">class rgpot::PotentialBase</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_registry.html">template class rgpot::registry</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_std.html">namespace std</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
@@ -109,10 +132,35 @@ data-aria-dark="Switch to auto color mode">
 </li>
 </ul>
 </li>
+<li class="toctree-l2"><a class="reference internal" href="../crates/rgpot_core/lib.html">Crate <code class="docutils literal notranslate"><span class="pre">rgpot_core</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/types.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">types</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/tensor.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">tensor</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/status.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">status</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/c_api.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">c_api</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/types.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">types</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/client.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">client</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/server.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">server</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../changelog.html">Changelog</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Contributing to <code class="docutils literal notranslate"><span class="pre">rgpot</span></code></a><ul>
+<li class="toctree-l2"><a class="reference internal" href="developer/index.html">Developer Guide</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="developer/testing.html">Testing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="developer/release.html">Release Process</a></li>
+<li class="toctree-l3"><a class="reference internal" href="developer/faq.html">Developer FAQ</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="../code_of_conduct.html">Code of Conduct</a></li>
 </ul>
 </li>
@@ -212,11 +260,10 @@ better for everyone.</p>
 <p>Please review the technical requirements before submitting a Pull Request:</p>
 <dl class="simple">
 <dt>Development Environment</dt><dd><p>We use <code class="docutils literal notranslate"><span class="pre">pixi</span></code> for environment management.
-Read the <a class="reference external" href="test_requirements.rst">Testing &amp; Environment Requirements</a> to understand how to handle
-conflicting dependencies.</p>
+See the <a class="reference external" href="developer/index.rst">Developer Guide</a> for setup and common tasks.</p>
 </dd>
-<dt>Documentation</dt><dd><p>We author all documentation in <code class="docutils literal notranslate"><span class="pre">orgmode</span></code> converted to <code class="docutils literal notranslate"><span class="pre">rst</span></code>,
-with the workflow and standards in the <a class="reference external" href="doc_builds.rst">Documentation Standards &amp; Authoring</a> section.</p>
+<dt>Documentation</dt><dd><p>We author all documentation in <code class="docutils literal notranslate"><span class="pre">orgmode</span></code> converted to <code class="docutils literal notranslate"><span class="pre">rst</span></code>.
+See <a class="reference external" href="developer/faq.rst">Developer FAQ</a> for documentation workflow details.</p>
 </dd>
 </dl>
 </section>
@@ -233,6 +280,12 @@ may be directed also to the <a class="reference external" href="https://matsci.o
 <div><div class="toctree-wrapper compound">
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="developer/index.html">Developer Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="developer/testing.html">Testing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="developer/release.html">Release Process</a></li>
+<li class="toctree-l2"><a class="reference internal" href="developer/faq.html">Developer FAQ</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="../code_of_conduct.html">Code of Conduct</a></li>
 </ul>
 </div>
@@ -252,10 +305,10 @@ may be directed also to the <a class="reference external" href="https://matsci.o
         <span>Previous</span><div class="title">Changelog</div></div>
     </a>
   </div><div class="navigation-next">
-    <a href="../code_of_conduct.html">
+    <a href="developer/index.html">
       <div class="page-info">
         <span>Next</span>
-        <div class="title">Code of Conduct</div>
+        <div class="title">Developer Guide</div>
       </div>
       <i class="i-lucide chevron-right"></i>
     </a>

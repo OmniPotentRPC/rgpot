@@ -1,0 +1,177 @@
+.. index:: pair: class; rgpot::CalcResult
+.. _doxid-classrgpot_1_1_calc_result:
+
+class rgpot::CalcResult
+=======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Owns the force DLPack tensor and stores energy/variance from a calculation. :ref:`More...<details-classrgpot_1_1_calc_result>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <types.hpp>
+	
+	class CalcResult {
+	public:
+		// construction
+	
+		:ref:`CalcResult<doxid-classrgpot_1_1_calc_result_1a5b4ea0153b7f2c45fb42852fabf674e5>`();
+		:target:`CalcResult<doxid-classrgpot_1_1_calc_result_1a8207f2864a461f1fcbfbcc1b3fac3a4a>`(CalcResult&& other);
+		:target:`CalcResult<doxid-classrgpot_1_1_calc_result_1ad4019d593c812ca9045b4d1f027b9d58>`(const CalcResult&);
+		:target:`~CalcResult<doxid-classrgpot_1_1_calc_result_1aeb9cca3287cb6ad1727a1b1df282fbc8>`();
+
+		// methods
+	
+		CalcResult& :target:`operator=<doxid-classrgpot_1_1_calc_result_1ac8d7f1237bcb60541be6472dc69c504d>`(CalcResult&& other);
+		CalcResult& :target:`operator=<doxid-classrgpot_1_1_calc_result_1a0270e8895242932d6e844e17b0f0593e>`(const CalcResult&);
+		rgpot_force_out_t& :ref:`c_struct<doxid-classrgpot_1_1_calc_result_1ae35ee903ca10d45a9e385327e8a79762>`();
+		double :ref:`energy<doxid-classrgpot_1_1_calc_result_1afc8a2b34da93fdaa39b36a22558a8736>`() const;
+		double :ref:`variance<doxid-classrgpot_1_1_calc_result_1acc76ed425c76d1fc79803f6f88a36594>`() const;
+		const double* :ref:`forces_data<doxid-classrgpot_1_1_calc_result_1a8252035b160b3fd53026fdd7f06245bb>`(size_t& n_elements) const;
+		std::vector<double> :ref:`forces_vec<doxid-classrgpot_1_1_calc_result_1a97f568661a4d4df34f28e2940ca94a27>`() const;
+		bool :ref:`has_forces<doxid-classrgpot_1_1_calc_result_1a51827c449733aa348ff404b24e5662a0>`() const;
+	};
+.. _details-classrgpot_1_1_calc_result:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Owns the force DLPack tensor and stores energy/variance from a calculation.
+
+Wraps ``rgpot_force_out_t``. The ``forces`` field starts as ``NULL`` and is set by the potential callback to an owning DLPack tensor. The destructor calls ``rgpot_tensor_free()`` to release the forces tensor.
+
+For CPU tensors, use ``:ref:`forces_data() <doxid-classrgpot_1_1_calc_result_1a8252035b160b3fd53026fdd7f06245bb>``` to access the raw pointer or ``:ref:`forces_vec() <doxid-classrgpot_1_1_calc_result_1a97f568661a4d4df34f28e2940ca94a27>``` to copy forces into a ``std::vector<double>``.
+
+Construction
+------------
+
+.. index:: pair: function; CalcResult
+.. _doxid-classrgpot_1_1_calc_result_1a5b4ea0153b7f2c45fb42852fabf674e5:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	CalcResult()
+
+Create a zeroed result buffer for a calculation.
+
+Methods
+-------
+
+.. index:: pair: function; c_struct
+.. _doxid-classrgpot_1_1_calc_result_1ae35ee903ca10d45a9e385327e8a79762:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	rgpot_force_out_t& c_struct()
+
+Access the underlying C struct (mutable).
+
+
+
+.. rubric:: Returns:
+
+Mutable reference; used internally by ``:ref:`PotentialHandle::calculate() <doxid-classrgpot_1_1_potential_handle_1af864dc8f487587b425fb6c3fdf3bc705>```.
+
+.. index:: pair: function; energy
+.. _doxid-classrgpot_1_1_calc_result_1afc8a2b34da93fdaa39b36a22558a8736:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double energy() const
+
+Returns the calculated potential energy.
+
+
+
+.. rubric:: Returns:
+
+Energy in the unit system of the potential.
+
+.. index:: pair: function; variance
+.. _doxid-classrgpot_1_1_calc_result_1acc76ed425c76d1fc79803f6f88a36594:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double variance() const
+
+Returns the variance / uncertainty estimate.
+
+
+
+.. rubric:: Returns:
+
+Variance (0.0 when not applicable).
+
+.. index:: pair: function; forces_data
+.. _doxid-classrgpot_1_1_calc_result_1a8252035b160b3fd53026fdd7f06245bb:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const double* forces_data(size_t& n_elements) const
+
+Returns a raw pointer to the forces data (CPU only).
+
+The returned pointer is valid for the lifetime of this :ref:`CalcResult <doxid-classrgpot_1_1_calc_result>`.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- n_elements
+
+		- Output: number of doubles in the forces array.
+
+
+
+.. rubric:: Returns:
+
+Raw pointer to the force data, or ``nullptr`` if no forces tensor.
+
+.. index:: pair: function; forces_vec
+.. _doxid-classrgpot_1_1_calc_result_1a97f568661a4d4df34f28e2940ca94a27:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::vector<double> forces_vec() const
+
+Copy forces into a std::vector<double>.
+
+
+
+.. rubric:: Returns:
+
+Vector of forces [n_atoms \* 3].
+
+.. index:: pair: function; has_forces
+.. _doxid-classrgpot_1_1_calc_result_1a51827c449733aa348ff404b24e5662a0:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool has_forces() const
+
+Check if forces are available.
+
+
+
+.. rubric:: Returns:
+
+True if the forces tensor has been set by the callback.
+

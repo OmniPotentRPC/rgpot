@@ -1,0 +1,164 @@
+==============
+``mod tensor``
+==============
+
+
+.. rust:module:: rgpot_core::tensor
+   :index: 0
+   :vis: pub
+
+   DLPack tensor helpers for creating, freeing, and validating tensors.
+   
+   This module provides the bridge between rgpot's C API and the DLPack tensor
+   exchange format. Two categories of tensors are supported:
+   
+   - **Borrowed (non-owning)**: wraps an existing raw pointer. The deleter
+     frees only the ``DLManagedTensorVersioned`` metadata, not the data.
+   - **Owned**: wraps a `Vec<T>`. The deleter frees both metadata and data.
+   
+   All exported ``extern "C"`` functions are collected by cbindgen into ``rgpot.h``.
+
+   .. rust:use:: rgpot_core::tensor
+      :used_name: self
+
+
+   .. rust:use:: rgpot_core
+      :used_name: crate
+
+
+   .. rust:use:: std::os::raw::c_int
+      :used_name: c_int
+
+
+   .. rust:use:: std::os::raw::c_void
+      :used_name: c_void
+
+
+   .. rust:use:: dlpk::sys::DLDataType
+      :used_name: DLDataType
+
+
+   .. rust:use:: dlpk::sys::DLDataTypeCode
+      :used_name: DLDataTypeCode
+
+
+   .. rust:use:: dlpk::sys::DLDevice
+      :used_name: DLDevice
+
+
+   .. rust:use:: dlpk::sys::DLDeviceType
+      :used_name: DLDeviceType
+
+
+   .. rust:use:: dlpk::sys::DLManagedTensorVersioned
+      :used_name: DLManagedTensorVersioned
+
+
+   .. rust:use:: dlpk::sys::DLPACK_FLAG_BITMASK_IS_COPIED
+      :used_name: DLPACK_FLAG_BITMASK_IS_COPIED
+
+
+   .. rust:use:: dlpk::sys::DLPackVersion
+      :used_name: DLPackVersion
+
+
+   .. rust:use:: dlpk::sys::DLTensor
+      :used_name: DLTensor
+
+
+   .. rubric:: Functions
+
+
+   .. rust:function:: rgpot_core::tensor::rgpot_tensor_cpu_f64_2d
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_tensor_cpu_f64_2d"},{"type":"punctuation","value":"("},{"type":"name","value":"data"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"f64","target":"f64"},{"type":"punctuation","value":", "},{"type":"name","value":"rows"},{"type":"punctuation","value":": "},{"type":"link","value":"i64","target":"i64"},{"type":"punctuation","value":", "},{"type":"name","value":"cols"},{"type":"punctuation","value":": "},{"type":"link","value":"i64","target":"i64"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"DLManagedTensorVersioned","target":"DLManagedTensorVersioned"}]
+
+      Create a non-owning 2-D f64 tensor on CPU wrapping an existing buffer.
+      
+      The returned tensor borrows ``data`` — the caller must keep ``data`` alive
+      for the lifetime of the tensor.  Call ``rgpot_tensor_free`` when done.
+      
+      **Safety**
+      ``data`` must point to at least ``rows * cols`` contiguous ``f64`` values.
+
+   .. rust:function:: rgpot_core::tensor::rgpot_tensor_cpu_f64_matrix3
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_tensor_cpu_f64_matrix3"},{"type":"punctuation","value":"("},{"type":"name","value":"data"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"f64","target":"f64"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"DLManagedTensorVersioned","target":"DLManagedTensorVersioned"}]
+
+      Create a non-owning 2-D f64 tensor on CPU for a 3x3 matrix.
+      
+      Convenience wrapper — equivalent to ``rgpot_tensor_cpu_f64_2d(data, 3, 3)``.
+      
+      **Safety**
+      ``data`` must point to at least 9 contiguous ``f64`` values.
+
+   .. rust:function:: rgpot_core::tensor::rgpot_tensor_cpu_i32_1d
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_tensor_cpu_i32_1d"},{"type":"punctuation","value":"("},{"type":"name","value":"data"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"c_int","target":"c_int"},{"type":"punctuation","value":", "},{"type":"name","value":"len"},{"type":"punctuation","value":": "},{"type":"link","value":"i64","target":"i64"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"DLManagedTensorVersioned","target":"DLManagedTensorVersioned"}]
+
+      Create a non-owning 1-D i32 tensor on CPU wrapping an existing buffer.
+      
+      **Safety**
+      ``data`` must point to at least ``len`` contiguous ``c_int`` values.
+
+   .. rust:function:: rgpot_core::tensor::rgpot_tensor_data
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_tensor_data"},{"type":"punctuation","value":"("},{"type":"name","value":"tensor"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"const"},{"type":"space"},{"type":"link","value":"DLManagedTensorVersioned","target":"DLManagedTensorVersioned"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"operator","value":"*"},{"type":"keyword","value":"const"},{"type":"space"},{"type":"link","value":"c_void","target":"c_void"}]
+
+      Get the raw data pointer of a DLPack tensor.
+      
+      **Safety**
+      ``tensor`` must be a valid, non-null ``DLManagedTensorVersioned*``.
+
+   .. rust:function:: rgpot_core::tensor::rgpot_tensor_device
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_tensor_device"},{"type":"punctuation","value":"("},{"type":"name","value":"tensor"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"const"},{"type":"space"},{"type":"link","value":"DLManagedTensorVersioned","target":"DLManagedTensorVersioned"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"DLDevice","target":"DLDevice"}]
+
+      Get the device of a DLPack tensor.
+      
+      **Safety**
+      ``tensor`` must be a valid, non-null ``DLManagedTensorVersioned*``.
+
+   .. rust:function:: rgpot_core::tensor::rgpot_tensor_free
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_tensor_free"},{"type":"punctuation","value":"("},{"type":"name","value":"tensor"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"DLManagedTensorVersioned","target":"DLManagedTensorVersioned"},{"type":"punctuation","value":")"}]
+
+      Free a DLPack tensor by invoking its deleter.
+      
+      If ``tensor`` is ``NULL``, this is a no-op.
+      
+      **Safety**
+      ``tensor`` must have been obtained from one of the ``rgpot_tensor_*`` creation
+      functions, or be a valid ``DLManagedTensorVersioned`` with a deleter.
+
+   .. rust:function:: rgpot_core::tensor::rgpot_tensor_owned_cpu_f64_2d
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_tensor_owned_cpu_f64_2d"},{"type":"punctuation","value":"("},{"type":"name","value":"data"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"const"},{"type":"space"},{"type":"link","value":"f64","target":"f64"},{"type":"punctuation","value":", "},{"type":"name","value":"rows"},{"type":"punctuation","value":": "},{"type":"link","value":"i64","target":"i64"},{"type":"punctuation","value":", "},{"type":"name","value":"cols"},{"type":"punctuation","value":": "},{"type":"link","value":"i64","target":"i64"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"DLManagedTensorVersioned","target":"DLManagedTensorVersioned"}]
+
+      Create an **owning** 2-D f64 tensor on CPU by copying data.
+      
+      The returned tensor owns a copy of the data — the caller may free the
+      original buffer after this call.  Call ``rgpot_tensor_free`` when done.
+      
+      **Safety**
+      ``data`` must point to at least ``rows * cols`` contiguous ``f64`` values.
+
+   .. rust:function:: rgpot_core::tensor::rgpot_tensor_shape
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_tensor_shape"},{"type":"punctuation","value":"("},{"type":"name","value":"tensor"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"const"},{"type":"space"},{"type":"link","value":"DLManagedTensorVersioned","target":"DLManagedTensorVersioned"},{"type":"punctuation","value":", "},{"type":"name","value":"ndim_out"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"i32","target":"i32"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"operator","value":"*"},{"type":"keyword","value":"const"},{"type":"space"},{"type":"link","value":"i64","target":"i64"}]
+
+      Get the shape array and number of dimensions of a DLPack tensor.
+      
+      Writes the number of dimensions to ``*ndim_out`` and returns a pointer to
+      the shape array (length ``*ndim_out``).
+      
+      **Safety**
+      Both ``tensor`` and ``ndim_out`` must be valid, non-null pointers.

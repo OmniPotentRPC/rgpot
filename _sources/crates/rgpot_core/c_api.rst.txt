@@ -1,0 +1,50 @@
+=============
+``mod c_api``
+=============
+
+
+.. rust:module:: rgpot_core::c_api
+   :index: 0
+   :vis: pub
+
+   Public C API entry points.
+   
+   Each submodule exposes ``extern "C"`` functions that cbindgen collects into
+   ``rgpot-core/include/rgpot.h``. All functions in this module follow three
+   invariants:
+   
+   1. **Return [``rgpot_status_t``](crate::status::rgpot_status_t)** (or a
+      pointer / void for constructors and destructors).
+   2. **Wrap the body in [``catch_unwind``](crate::status::catch_unwind)** to
+      prevent panics from crossing the FFI boundary.
+   3. **Validate pointer arguments** and call
+      [``set_last_error``](crate::status::set_last_error) before returning a
+      non-success status.
+   
+   **Submodules**
+   
+   - ``types`` — Convenience constructors for
+     [``rgpot_force_input_t``](crate::types::rgpot_force_input_t) and
+     [``rgpot_force_out_t``](crate::types::rgpot_force_out_t).
+   - ``potential`` — Lifecycle functions for
+     [``rgpot_potential_t``](crate::potential::rgpot_potential_t): create,
+     calculate, free.
+   - ``rpc`` — RPC client functions (feature-gated on ``rpc``): connect,
+     calculate, disconnect.
+
+   .. rubric:: Modules
+   .. toctree::
+      :maxdepth: 1
+
+      c_api/types
+      c_api/potential
+      c_api/rpc
+
+
+   .. rust:use:: rgpot_core::c_api
+      :used_name: self
+
+
+   .. rust:use:: rgpot_core
+      :used_name: crate
+

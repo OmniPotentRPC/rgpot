@@ -1,0 +1,150 @@
+=================
+``mod potential``
+=================
+
+
+.. rust:module:: rgpot_core::potential
+   :index: 0
+   :vis: pub
+
+   Callback-based potential dispatch.
+   
+   This module defines ``PotentialImpl``, an opaque handle that wraps a C
+   function pointer callback together with a ``void* user_data`` and an optional
+   destructor. This is the core abstraction that lets existing C++ potentials
+   (LJ, CuH2, or any future implementation) plug into the Rust infrastructure
+   without the Rust side knowing the concrete type.
+   
+   **How it Works**
+   
+   1. The C++ side creates a potential object (e.g., ``LJPot``).
+   2. A trampoline function with the ``PotentialCallback`` signature is
+      registered, casting ``user_data`` back to the concrete type and calling
+      ``forceImpl``.
+   3. The Rust core dispatches through the function pointer, receiving results
+      via the ``rgpot_force_out_t`` output struct.
+   
+   **Lifetime Contract**
+   
+   - The ``user_data`` pointer is borrowed by ``PotentialImpl``. The caller must
+     keep the underlying object alive for the lifetime of the handle.
+   - If a ``free_fn`` is provided, it is called on drop when ``user_data`` is
+     non-null, transferring ownership to ``PotentialImpl``.
+   - The handle is exposed to C as ``rgpot_potential_t`` — an opaque pointer
+     managed via ``rgpot_potential_new`` / ``rgpot_potential_free``.
+
+   .. rust:use:: rgpot_core::potential
+      :used_name: self
+
+
+   .. rust:use:: rgpot_core
+      :used_name: crate
+
+
+   .. rust:use:: std::os::raw::c_void
+      :used_name: c_void
+
+
+   .. rust:use:: rgpot_core::status::rgpot_status_t
+      :used_name: rgpot_status_t
+
+
+   .. rust:use:: rgpot_core::types::rgpot_force_input_t
+      :used_name: rgpot_force_input_t
+
+
+   .. rust:use:: rgpot_core::types::rgpot_force_out_t
+      :used_name: rgpot_force_out_t
+
+
+   .. rubric:: Types
+
+
+   .. rust:type:: rgpot_core::potential::FreeFn
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"type"},{"type":"space"},{"type":"name","value":"FreeFn"}]
+
+      Destructor for the user_data pointer.
+
+   .. rust:type:: rgpot_core::potential::PotentialCallback
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"type"},{"type":"space"},{"type":"name","value":"PotentialCallback"}]
+
+      Function pointer type for a potential energy calculation.
+      
+      The callback receives:
+      - ``user_data``: opaque pointer to the C++ object (e.g. ``LJPot*``)
+      - ``input``: the atomic configuration (DLPack tensors)
+      - ``output``: the buffer for results (callback sets ``forces`` tensor)
+      
+      Returns ``RGPOT_SUCCESS`` on success, or an error status code.
+
+   .. rust:type:: rgpot_core::potential::rgpot_potential_t
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"type"},{"type":"space"},{"type":"name","value":"rgpot_potential_t"}]
+
+      Opaque handle exposed to C as ``rgpot_potential_t``.
+      
+      This is a type alias used by cbindgen to generate a forward declaration.
+
+   .. rubric:: Structs and Unions
+
+
+   .. rust:struct:: rgpot_core::potential::PotentialImpl
+      :index: 1
+      :vis: pub
+      :toc: struct PotentialImpl
+      :layout: [{"type":"keyword","value":"struct"},{"type":"space"},{"type":"name","value":"PotentialImpl"}]
+
+      Opaque potential handle wrapping a callback + user data.
+
+      .. rubric:: Implementations
+
+
+      .. rust:impl:: rgpot_core::potential::PotentialImpl
+         :index: -1
+         :vis: pub
+         :layout: [{"type":"keyword","value":"impl"},{"type":"space"},{"type":"link","value":"PotentialImpl","target":"PotentialImpl"}]
+         :toc: impl PotentialImpl
+
+
+         .. rubric:: Functions
+
+
+         .. rust:function:: rgpot_core::potential::PotentialImpl::calculate
+            :index: -1
+            :vis: pub
+            :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"calculate"},{"type":"punctuation","value":"("},{"type":"punctuation","value":"&"},{"type":"keyword","value":"self"},{"type":"punctuation","value":", "},{"type":"name","value":"input"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"const"},{"type":"space"},{"type":"link","value":"rgpot_force_input_t","target":"rgpot_force_input_t"},{"type":"punctuation","value":", "},{"type":"name","value":"output"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"rgpot_force_out_t","target":"rgpot_force_out_t"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"rgpot_status_t","target":"rgpot_status_t"}]
+
+            Invoke the underlying callback.
+            
+            **Safety**
+            The caller must ensure ``input`` and ``output`` point to valid, properly
+            sized structures.
+
+         .. rust:function:: rgpot_core::potential::PotentialImpl::new
+            :index: -1
+            :vis: pub
+            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"new"},{"type":"punctuation","value":"("},{"type":"name","value":"callback"},{"type":"punctuation","value":": "},{"type":"link","value":"PotentialCallback","target":"PotentialCallback"},{"type":"punctuation","value":", "},{"type":"name","value":"user_data"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"c_void","target":"c_void"},{"type":"punctuation","value":", "},{"type":"name","value":"free_fn"},{"type":"punctuation","value":": "},{"type":"link","value":"Option","target":"Option"},{"type":"punctuation","value":"<"},{"type":"link","value":"FreeFn","target":"FreeFn"},{"type":"punctuation","value":">"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"Self","target":"Self"}]
+
+            Create a new potential from a callback, user data, and optional destructor.
+
+      .. rubric:: Traits implemented
+
+
+      .. rust:impl:: rgpot_core::potential::PotentialImpl::Send
+         :index: -1
+         :vis: pub
+         :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"impl"},{"type":"space"},{"type":"link","value":"Send","target":"Send"},{"type":"space"},{"type":"keyword","value":"for"},{"type":"space"},{"type":"link","value":"PotentialImpl","target":"PotentialImpl"}]
+         :toc: impl Send for PotentialImpl
+
+
+      .. rust:impl:: rgpot_core::potential::PotentialImpl::Drop
+         :index: -1
+         :vis: pub
+         :layout: [{"type":"keyword","value":"impl"},{"type":"space"},{"type":"link","value":"Drop","target":"Drop"},{"type":"space"},{"type":"keyword","value":"for"},{"type":"space"},{"type":"link","value":"PotentialImpl","target":"PotentialImpl"}]
+         :toc: impl Drop for PotentialImpl
+

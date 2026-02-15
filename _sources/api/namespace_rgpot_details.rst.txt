@@ -1,0 +1,71 @@
+.. index:: pair: namespace; rgpot::details
+.. _doxid-namespacergpot_1_1details:
+
+namespace rgpot::details
+========================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace details {
+
+	// global functions
+
+	void :ref:`check_status<doxid-errors_8hpp_1a112c6683bf3ab950851345f6f552559a>`(rgpot_status_t status);
+
+	} // namespace details
+.. _details-namespacergpot_1_1details:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Global Functions
+----------------
+
+.. index:: pair: function; check_status
+.. _doxid-errors_8hpp_1a112c6683bf3ab950851345f6f552559a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void check_status(rgpot_status_t status)
+
+Checks a status code and throws ``:ref:`rgpot::Error <doxid-classrgpot_1_1_error>``` on failure.
+
+If *status* is ``RGPOT_SUCCESS`` this function returns immediately. Otherwise it calls ``rgpot_last_error()`` to retrieve the Rust-side error message, prepends a category prefix, and throws ``:ref:`rgpot::Error <doxid-classrgpot_1_1_error>```.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- status
+
+		- The status code returned by a C API function.
+
+	*
+		- :ref:`rgpot::Error <doxid-classrgpot_1_1_error>`
+
+		- when *status*!= ``RGPOT_SUCCESS``.
+
+
+
+.. rubric:: Returns:
+
+Void.
+
