@@ -5,6 +5,7 @@ import sys
 
 # -- Path setup --------------------------------------------------------------
 sys.path.insert(0, os.path.abspath("../../subprojects/doxyrest/sphinx"))
+sys.path.insert(0, os.path.abspath("_ext"))
 
 # -- Project information -----------------------------------------------------
 project = "rgpot"
@@ -19,6 +20,7 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx_sitemap",
     "sphinxcontrib_rust",
+    "rustdoc_postprocess",
 ]
 
 templates_path = ["_templates"]
