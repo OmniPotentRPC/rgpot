@@ -17,7 +17,7 @@ crate-type = ["staticlib", "cdylib", "lib"]
 
 [features]
 default = []
-rpc = ["dep:capnp", "dep:capnp-rpc", "dep:tokio", "dep:tokio-util", "dep:futures"]
+rpc = ["dep:capnp", "dep:capnp-rpc", "dep:capnpc", "dep:tokio", "dep:tokio-util", "dep:futures"]
 cache = []
 gen-header = ["dep:cbindgen"]
 
@@ -31,4 +31,8 @@ futures = { version = "0.3", optional = true }
 
 [build-dependencies]
 cbindgen = { version = "0.27", optional = true }
-capnpc = "0.20"
+capnpc = { version = "0.20", optional = true }
+
+[package.metadata.docs.rs]
+features = ["rpc"]
+rustdoc-args = ["--cfg", "docsrs"]
