@@ -102,6 +102,77 @@ if has_fortran
     _args += ['-DRGPOT_HAS_FORTRAN=TRUE']
 endif
 
+# --------------------- Rust Core (rgpot-core)
+#
+# Build the Rust crate via Cargo and link the resulting static library.
+# The crate also generates include/rgpot.h via cbindgen.
+
+if get_option('with_rust_core')
+    cargo = find_program('cargo', required: true)
+
+    # Determine Cargo build profile and library name
+    if get_option('buildtype') == 'release'
+        _cargo_profile_dir = 'release'
+        _cargo_args = ['build', '--release']
+    else
+        _cargo_profile_dir = 'debug'
+        _cargo_args = ['build']
+    endif
+
+    # Add feature flags for the Rust crate
+    _cargo_features = []
+    if rpc_enabled
+        _cargo_features += ['rpc']
+        _args += ['-DRGPOT_HAS_RPC=TRUE']
+    endif
+    if get_option('with_cache')
+        _cargo_features += ['cache']
+    endif
+
+    if _cargo_features.length() > 0
+        _cargo_args += ['--features', ','.join(_cargo_features)]
+    endif
+
+    _rgpot_core_dir = meson.current_source_dir() / 'rgpot-core'
+
+    # Build the Rust crate; produces librgpot_core.a and include/rgpot.h
+    rgpot_rust_target = custom_target(
+        'rgpot_rust_core',
+        command: [
+            cargo,
+            _cargo_args,
+            '--manifest-path',
+            _rgpot_core_dir / 'Cargo.toml',
+            '--target-dir',
+            meson.current_build_dir() / 'cargo-target',
+        ],
+        output: ['librgpot_core.a'],
+        build_by_default: true,
+        console: true,
+    )
+
+    # Link the Rust static library
+    _rust_target_dir = meson.current_build_dir() / 'cargo-target' / _cargo_profile_dir
+    rgpot_rust_lib = cppc.find_library(
+        'rgpot_core',
+        dirs: [_rust_target_dir],
+        required: true,
+        static: true,
+    )
+
+    # Thread and dl libraries needed by the Rust runtime
+    thread_dep = dependency('threads')
+    dl_dep = cppc.find_library('dl', required: false)
+
+    _deps += [rgpot_rust_lib, thread_dep, dl_dep]
+
+    # Include paths: generated C header + C++ RAII wrappers
+    _incdirs += [
+        include_directories('rgpot-core' / 'include'),  # rgpot.h (cbindgen)
+        include_directories('include'),  # rgpot/*.hpp (C++ RAII)
+    ]
+endif
+
 # --------------------- Projects
 _incdirs += [include_directories('CppCore')]
 subdir('CppCore')
