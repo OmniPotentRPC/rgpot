@@ -58,10 +58,10 @@ typedef struct RpcClient RpcClient;
 /**
  * Input configuration for a potential energy evaluation.
  *
- * All tensor fields are *borrowed* — the caller retains ownership and must
+ * All tensor fields are *borrowed* -- the caller retains ownership and must
  * keep them alive for the lifetime of this struct.
  *
- * # Example (from C)
+ * **Example (from C)**
  *
  * ```c
  * double positions[] = {0.0, 0.0, 0.0,  1.0, 0.0, 0.0};
@@ -91,15 +91,15 @@ typedef struct rgpot_force_input_t {
 /**
  * Results from a potential energy evaluation.
  *
- * The `forces` field starts as `NULL` and is set by the potential callback to
- * a callee-allocated DLPack tensor.  After the call, the caller owns the
- * tensor and must free it via `rgpot_tensor_free`.
+ * The ``forces`` field starts as ``NULL`` and is set by the potential callback
+ * to a callee-allocated DLPack tensor. After the call, the caller owns the
+ * tensor and must free it via ``rgpot_tensor_free``.
  *
- * # Fields
+ * **Fields**
  *
- * - `forces`: output force tensor, same shape/dtype as `positions`.
- * - `energy`: the calculated potential energy.
- * - `variance`: uncertainty estimate; zero when not applicable.
+ * - ``forces``: output force tensor, same shape/dtype as ``positions``.
+ * - ``energy``: the calculated potential energy.
+ * - ``variance``: uncertainty estimate; zero when not applicable.
  */
 typedef struct rgpot_force_out_t {
   /**

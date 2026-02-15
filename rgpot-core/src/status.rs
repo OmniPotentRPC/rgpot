@@ -21,7 +21,7 @@
 //!    boundary (which is undefined behaviour). Caught panics become
 //!    `RGPOT_INTERNAL_ERROR` with the panic message stored for retrieval.
 //!
-//! ## Usage from C
+//! **Usage from C**
 //!
 //! ```c
 //! rgpot_status_t s = rgpot_potential_calculate(pot, &input, &output);

@@ -19,7 +19,6 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx_sitemap",
     "sphinxcontrib_rust",
-    "myst_parser",
 ]
 
 templates_path = ["_templates"]
@@ -36,7 +35,7 @@ rust_crates = {
     "rgpot_core": os.path.abspath("../../rgpot-core/"),
 }
 rust_doc_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "crates")
-rust_rustdoc_fmt = "md"
+rust_rustdoc_fmt = "rst"
 rust_generate_mode = "always"
 
 # -- Options for HTML output -------------------------------------------------

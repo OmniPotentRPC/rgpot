@@ -9,23 +9,23 @@
 //! (LJ, CuH2, or any future implementation) plug into the Rust infrastructure
 //! without the Rust side knowing the concrete type.
 //!
-//! ## How it Works
+//! **How it Works**
 //!
-//! 1. The C++ side creates a potential object (e.g., `LJPot`).
+//! 1. The C++ side creates a potential object (e.g., ``LJPot``).
 //! 2. A trampoline function with the [`PotentialCallback`] signature is
-//!    registered, casting `user_data` back to the concrete type and calling
-//!    `forceImpl`.
+//!    registered, casting ``user_data`` back to the concrete type and calling
+//!    ``forceImpl``.
 //! 3. The Rust core dispatches through the function pointer, receiving results
 //!    via the [`rgpot_force_out_t`] output struct.
 //!
-//! ## Lifetime Contract
+//! **Lifetime Contract**
 //!
-//! - The `user_data` pointer is borrowed by `PotentialImpl`. The caller must
-//!   keep the underlying object alive for the lifetime of the handle.
-//! - If a `free_fn` is provided, it is called on drop when `user_data` is
-//!   non-null, transferring ownership to `PotentialImpl`.
-//! - The handle is exposed to C as `rgpot_potential_t` — an opaque pointer
-//!   managed via `rgpot_potential_new` / `rgpot_potential_free`.
+//! - The ``user_data`` pointer is borrowed by ``PotentialImpl``. The caller
+//!   must keep the underlying object alive for the lifetime of the handle.
+//! - If a ``free_fn`` is provided, it is called on drop when ``user_data`` is
+//!   non-null, transferring ownership to ``PotentialImpl``.
+//! - The handle is exposed to C as ``rgpot_potential_t`` -- an opaque pointer
+//!   managed via ``rgpot_potential_new`` / ``rgpot_potential_free``.
 
 use std::os::raw::c_void;
 

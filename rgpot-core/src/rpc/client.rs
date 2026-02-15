@@ -6,12 +6,12 @@
 //! The client owns a tokio runtime so that the C API can call it
 //! synchronously.
 //!
-//! ## DLPack Integration
+//! **DLPack Integration**
 //!
-//! Input tensors are read from `DLManagedTensorVersioned` pointers (CPU only
-//! for RPC — GPU tensors would need a device-to-host copy first).  The
+//! Input tensors are read from ``DLManagedTensorVersioned`` pointers (CPU only
+//! for RPC -- GPU tensors would need a device-to-host copy first). The
 //! response forces are wrapped in an **owning** DLPack tensor so the caller
-//! can free them via `rgpot_tensor_free`.
+//! can free them via ``rgpot_tensor_free``.
 
 use capnp::Error as CapnpError;
 use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
