@@ -7,15 +7,14 @@
 ** Changelog Fragments
 
 We use [[https://towncrier.readthedocs.io][towncrier]] to manage release notes. Each PR that affects users should
-include a /news fragment/ in the =changes/= directory:
+include a /news fragment/ in the =docs/newsfragments/= directory:
 
 #+begin_src bash
-# Create a fragment (type: feature, bugfix, doc, removal, misc)
-echo "Added DLPack tensor support to the Rust core." > changes/42.feature
+# Create a fragment interactively
+uvx towncrier create --content "Added DLPack tensor support to the Rust core." +mychange.rustcore.added.md
 #+end_src
 
-The fragment filename is =<issue-or-pr-number>.<type>=. The pre-commit hook
-checks for fragments automatically.
+The pre-commit hook checks for fragments automatically.
 
 ** Preview and Build Release Notes
 
