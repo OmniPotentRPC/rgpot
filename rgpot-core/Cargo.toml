@@ -7,7 +7,7 @@ license = "MIT"
 
 [lib]
 name = "rgpot_core"
-crate-type = ["staticlib", "cdylib"]
+crate-type = ["staticlib", "cdylib", "lib"]
 
 [features]
 default = []

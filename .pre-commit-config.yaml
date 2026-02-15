@@ -20,7 +20,7 @@ repos:
   hooks:
     - id: towncrier-check
       name: towncrier fragment check
-      entry: pixi run towncrier
+      entry: uvx towncrier
       language: system
       pass_filenames: false
       always_run: true

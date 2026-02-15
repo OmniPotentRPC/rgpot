@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
     - name: Install environment
       uses: prefix-dev/setup-pixi@v0.8.1
       with:
@@ -19,7 +21,7 @@ jobs:
     - name: Run precommit
       shell: pixi run bash -e {0}
       run: |
-        pipx run pre-commit run -a
+        pipx run prek run -a
     - name: Audit for large files
       uses: HaoZeke/large-file-auditor@v0.1.0
       with:
