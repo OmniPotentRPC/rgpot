@@ -8,8 +8,25 @@ fn generate_c_header(crate_dir: &str) {
     let output_dir = PathBuf::from(crate_dir).join("include");
     std::fs::create_dir_all(&output_dir).unwrap();
 
-    let config = cbindgen::Config::from_file("cbindgen.toml")
+    let mut config = cbindgen::Config::from_file("cbindgen.toml")
         .expect("Unable to find cbindgen.toml");
+
+    let version = env::var("CARGO_PKG_VERSION").unwrap();
+    let parts: Vec<&str> = version.split('.').collect();
+    let version_block = format!(
+        "#define RGPOT_VERSION \"{version}\"\n\
+         #define RGPOT_VERSION_MAJOR {major}\n\
+         #define RGPOT_VERSION_MINOR {minor}\n\
+         #define RGPOT_VERSION_PATCH {patch}",
+        version = version,
+        major = parts[0],
+        minor = parts[1],
+        patch = parts[2],
+    );
+    config.after_includes = Some(match config.after_includes {
+        Some(existing) => format!("{existing}\n\n{version_block}"),
+        None => version_block,
+    });
 
     cbindgen::Builder::new()
         .with_crate(crate_dir)
