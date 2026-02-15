@@ -44,8 +44,19 @@ _HEADING_RE = re.compile(
 
 # Matches markdown inline code (`code`) that is NOT already double-backtick RST.
 # Handles the common case where `code`<letter> breaks RST inline markup rules.
+# Excludes <> so RST links (`text <url>`_) are not mangled.
 _INLINE_CODE_RE = re.compile(
-    r"(?<!`)(`)((?!`)(?:[^`\n])+)\1(?!`)",
+    r"(?<!`)(`)((?!`)(?:[^`\n<>])+)\1(?!`)",
+)
+
+# Matches markdown hyperlinks: [text](url)
+_MD_LINK_RE = re.compile(
+    r"\[(?P<text>[^\[\]]+)\]\((?P<url>https?://[^)]+)\)",
+)
+
+# Matches rustdoc intra-doc links: [`code`] or [``code``] (without a URL part).
+_INTRADOC_LINK_RE = re.compile(
+    r"\[`{1,2}(?P<name>[^`\]]+)`{1,2}\](?!\()",
 )
 
 
@@ -106,6 +117,26 @@ def _convert_tables(content: str) -> str:
         return "\n".join(lines) + "\n"
 
     return _TABLE_RE.sub(_replace, content)
+
+
+def _convert_links(content: str) -> str:
+    """Convert markdown links to RST.
+
+    - ``[text](https://url)`` becomes ```text <https://url>`_``
+    - ``[`name`]`` (rustdoc intra-doc link) becomes ````name````
+    """
+
+    def _process_line(line: str) -> str:
+        stripped = line.lstrip()
+        if stripped.startswith("..") or stripped.startswith(":"):
+            return line
+        # Markdown hyperlinks → RST external links.
+        line = _MD_LINK_RE.sub(r"`\g<text> <\g<url>>`_", line)
+        # Rustdoc intra-doc links → inline code.
+        line = _INTRADOC_LINK_RE.sub(r"``\g<name>``", line)
+        return line
+
+    return "\n".join(_process_line(l) for l in content.split("\n"))
 
 
 def _convert_inline_code(content: str) -> str:
@@ -188,6 +219,7 @@ def _postprocess(app: Sphinx) -> None:
         original = rst_file.read_text(encoding="utf-8")
         converted = original
         converted = _convert_fences(converted)
+        converted = _convert_links(converted)
         converted = _convert_tables(converted)
         converted = _convert_headings(converted)
         converted = _convert_inline_code(converted)
