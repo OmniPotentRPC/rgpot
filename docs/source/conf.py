@@ -5,7 +5,6 @@ import sys
 
 # -- Path setup --------------------------------------------------------------
 sys.path.insert(0, os.path.abspath("../../subprojects/doxyrest/sphinx"))
-sys.path.insert(0, os.path.abspath("_ext"))
 
 # -- Project information -----------------------------------------------------
 project = "rgpot"
@@ -20,7 +19,7 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx_sitemap",
     "sphinxcontrib_rust",
-    "rustdoc_postprocess",
+    "sphinx_rustdoc_postprocess",
 ]
 
 templates_path = ["_templates"]
@@ -39,6 +38,18 @@ rust_crates = {
 rust_doc_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "crates")
 rust_rustdoc_fmt = "rst"
 rust_generate_mode = "always"
+
+# -- sphinx-rustdoc-postprocess configuration --------------------------------
+rustdoc_postprocess_toctree_target = "api/index.rst"
+rustdoc_postprocess_toctree_rst = """
+Rust API (``rgpot-core``)
+-------------------------
+
+.. toctree::
+   :maxdepth: 2
+
+   ../crates/rgpot_core/lib
+"""
 
 # -- Options for HTML output -------------------------------------------------
 html_theme = "shibuya"
