@@ -21,7 +21,6 @@ API Reference
 |	:doc:`global`
 |	:ref:`genindex`
 
-
 Rust API (``rgpot-core``)
 -------------------------
 
