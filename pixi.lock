@@ -1205,6 +1205,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/88/f9/16491d7ed2a919954993e48aa941b200f38040928474c9e85ea9e64222c3/pyyaml-6.0.3-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/37/ae/06d7dfc5633c7250fefc61fd624990aa2c37e3495c08a2f23968b1acb23e/shibuya-2026.1.9-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/e1/fb/e496f16fa11fbe2dbdd0b5e306ede153dfed050aae4766fc89d500720dc7/sphinx_last_updated_by_git-0.3.8-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/cb/65/9e4d9d8a49201572d197995675a6aac184645e3f1ec4670f66247a4c88ac/sphinx_rustdoc_postprocess-0.1.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/e4/94/3c57e8b1985e755c48972e2ecd59526d4bf0b52a1fe805bc52a8e98cb92d/sphinx_sitemap-2.9.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/e6/aa/a89691d03db7bfd456c384b953215cd0f64d1aad516fcc84dee71a95537b/sphinxcontrib_rust-1.0.1.tar.gz
   rpctest:
@@ -8203,6 +8204,13 @@ packages:
   requires_dist:
   - sphinx>=1.8
   requires_python: '>=3.7'
+- pypi: https://files.pythonhosted.org/packages/cb/65/9e4d9d8a49201572d197995675a6aac184645e3f1ec4670f66247a4c88ac/sphinx_rustdoc_postprocess-0.1.0-py3-none-any.whl
+  name: sphinx-rustdoc-postprocess
+  version: 0.1.0
+  sha256: 43dbf9e8e3a1115005b6523d5f06a33fb715cada953d70b79118372c100ae321
+  requires_dist:
+  - sphinx>=7
+  requires_python: '>=3.10'
 - pypi: https://files.pythonhosted.org/packages/e4/94/3c57e8b1985e755c48972e2ecd59526d4bf0b52a1fe805bc52a8e98cb92d/sphinx_sitemap-2.9.0-py3-none-any.whl
   name: sphinx-sitemap
   version: 2.9.0

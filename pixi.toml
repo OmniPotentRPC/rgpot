@@ -50,6 +50,7 @@ sphinx-sitemap = ">=2.9.0, <3"
 shibuya = ">=2026.1.9, <2027"
 pycmark = ">=0.9.6, <0.10"
 sphinxcontrib-rust = ">=1.0.0, <2"
+sphinx-rustdoc-postprocess = ">=0.1.0, <0.2"
 
 [dependencies]
 compilers = ">=1.8.0,<2"
