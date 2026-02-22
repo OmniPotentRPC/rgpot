@@ -29,6 +29,7 @@ interfacing potential servers across languages using runtime interoperability.
      :caption: Reference
 
      architecture
+     integration_guide
      api/index
      changelog
      contributing/index

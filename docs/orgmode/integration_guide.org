@@ -1,0 +1,338 @@
+#+TITLE: External Integration Guide
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* External Integration Guide
+
+This guide describes how to integrate ~rgpot~ into external codebases,
+particularly legacy projects with their own type systems. It covers the
+namespace collision problem, the recommended mitigation strategies, and a
+worked example using [[https://github.com/TheochemUI/eOn][eOn]] as a concrete case study.
+
+** The Namespace Collision Problem
+
+~rgpot~ defines two names that are common in atomistic simulation codebases:
+
+- =AtomMatrix= :: A lightweight row-major matrix class in
+  =rgpot::types::AtomMatrix=. However, =Potential.hpp= contains a
+  top-level =using rgpot::types::AtomMatrix;= directive (line 30) that
+  pulls this name into the global scope of any translation unit that
+  includes the header.
+
+- =Potential= :: The Cap'n Proto schema (=Potentials.capnp=) defines
+  =interface Potential=, which the capnp compiler generates as a global
+  =class Potential=. This collides with any consumer that defines its own
+  =class Potential= at global scope.
+
+Both names are extremely common in computational chemistry codebases.
+For example, [[https://github.com/TheochemUI/eOn][eOn]] defines:
+
+- =AtomMatrix= :: A typedef for =Eigen::Matrix<double, Eigen::Dynamic, 3>=.
+- =class Potential= :: The base class for all eOn potential energy surfaces.
+
+Including both eOn and rgpot headers in the same translation unit produces
+hard compilation errors from the conflicting definitions.
+
+*** Root Cause
+
+The collision stems from two issues:
+
+1. The =using= directive in =Potential.hpp=:
+
+#+begin_src cpp
+// rgpot/CppCore/rgpot/Potential.hpp, line 30
+using rgpot::types::AtomMatrix;
+#+end_src
+
+This leaks =AtomMatrix= into the global namespace for any downstream
+consumer. The =PotentialBase= class itself is correctly inside
+=namespace rgpot=, but the =using= directive precedes the namespace block.
+
+2. Cap'n Proto code generation does not namespace its output. The
+=interface Potential= in =Potentials.capnp= produces a top-level
+=class Potential= in the generated C++ header. This is a constraint of
+the capnp compiler rather than an rgpot design choice.
+
+** Mitigation Strategies
+
+*** Strategy 1: Namespace the =using= directive (recommended for rgpot)
+
+Move the =using= directive inside the =rgpot= namespace:
+
+#+begin_src cpp
+// Before (leaks to global scope):
+using rgpot::types::AtomMatrix;
+namespace rgpot { ... }
+
+// After (contained within rgpot):
+namespace rgpot {
+using types::AtomMatrix;
+...
+} // namespace rgpot
+#+end_src
+
+This is a backward-compatible change for any code that already qualifies
+=rgpot::PotentialBase= or =rgpot::Potential<D>=. Code that relied on the
+global =AtomMatrix= leak would need to switch to =rgpot::types::AtomMatrix=
+or add its own =using= inside its own namespace.
+
+*** Strategy 2: Namespace the consumer's types
+
+If the consuming codebase can be refactored, placing its types inside a
+project namespace eliminates collisions entirely:
+
+#+begin_src cpp
+// Instead of global scope:
+class Potential { ... };
+using AtomMatrix = Eigen::Matrix<double, Eigen::Dynamic, 3>;
+
+// Use a project namespace:
+namespace eon {
+class Potential { ... };
+using AtomMatrix = Eigen::Matrix<double, Eigen::Dynamic, 3>;
+} // namespace eon
+#+end_src
+
+This is the cleanest solution but requires touching every file in the
+consumer codebase -- impractical for large legacy projects.
+
+*** Strategy 3: Separate translation units (for legacy codes)
+
+When neither rgpot nor the consumer can be easily modified, use separate
+translation units (TUs) so the conflicting headers never appear together:
+
+#+begin_example
+TU 1 (ConsumerBridge.cpp):
+  #include "consumer/Potential.h"    // consumer's Potential
+  // Wraps consumer types into a flat-array callback
+
+TU 2 (RpcServer.cpp):
+  #include "Potentials.capnp.h"       // capnp's Potential
+  // Implements the RPC server using only flat arrays
+#+end_example
+
+The two TUs communicate through a type-free interface such as a
+=std::function= over flat C arrays, avoiding any shared header that
+contains either =Potential= or =AtomMatrix=.
+
+*** Strategy 4: RPC-client-only linking
+
+For consumers that only need to /call/ rgpot potentials (not serve them),
+link only the Cap'n Proto schema library (=ptlrpc_dep= in meson) rather
+than the full =rgpot_dep=. This avoids pulling in =Potential.hpp= and
+its =AtomMatrix= leak entirely.
+
+In meson:
+
+#+begin_src meson
+rgpot_proj = subproject('rgpot', default_options: ['with_rpc_client_only=true'])
+ptlrpc_dep = rgpot_proj.get_variable('ptlrpc_dep')
+# Only capnp schema + generated code, no rgpot types
+#+end_src
+
+** Flat-Array Callback Pattern
+
+The recommended integration pattern for legacy codes is a flat-array
+callback that requires no shared types between the consumer and rgpot:
+
+#+begin_src cpp
+// ForceCallback: a std::function over flat C arrays
+using ForceCallback = std::function<void(
+    long nAtoms,
+    const double *positions,   // [nAtoms * 3], row-major
+    const int *atomicNrs,      // [nAtoms]
+    double *forces,            // [nAtoms * 3], output
+    double *energy,            // scalar, output
+    const double *box          // [9], row-major 3x3
+)>;
+#+end_src
+
+This signature maps directly to the Cap'n Proto =ForceInput= /
+=PotentialResult= schema without requiring any Eigen, AtomMatrix, or
+=rgpot::ForceInput= types. The callback is created in the consumer's TU
+(which sees the consumer's types) and passed to the RPC server TU (which
+sees the capnp types). Neither TU needs to include the other's headers.
+
+*** Data layout
+
+All arrays use the same flat layout as the Cap'n Proto schema:
+
+| Array | Layout | Size |
+|-------+--------+------|
+| Positions | =[x1,y1,z1, x2,y2,z2, ...]= | =nAtoms * 3= |
+| Atomic numbers | =[Z1, Z2, ...]= | =nAtoms= |
+| Box | =[ax,ay,az, bx,by,bz, cx,cy,cz]= | =9= |
+| Forces | =[Fx1,Fy1,Fz1, ...]= | =nAtoms * 3= |
+
+This is row-major and matches the convention used by both the Rust core
+(=rgpot_force_input_t=) and the existing C++ potentials (=ForceInput=).
+
+** Worked Example: eOn
+
+[[https://github.com/TheochemUI/eOn][eOn]] is a saddle-point search framework with its own =class Potential= and
+=AtomMatrix= (Eigen-based) at global scope. It integrates with rgpot's
+RPC server using the two-TU + flat-array pattern.
+
+*** Architecture
+
+#+begin_example
++---------------------------+     +---------------------------+
+| ServeMode.cpp (TU 1)      |     | ServeRpcServer.cpp (TU 2) |
+|                           |     |                           |
+| #include "Potential.h"    |     | #include "Potentials.capnp.h"
+| (eOn's Potential class)   |     | (capnp's Potential iface) |
+|                           |     |                           |
+| makeForceCallback(pot)    |---->| startRpcServer(callback)  |
+|   wraps pot->force()      |     |   unwraps capnp structs   |
+|   into ForceCallback      |     |   calls callback(...)     |
++---------------------------+     +---------------------------+
+           |                                    |
+           |    ForceCallback (flat arrays)      |
+           +------------------------------------+
+                      No shared types
+#+end_example
+
+*** TU 1: ServeMode.cpp
+
+This file includes eOn's =Potential.h= and wraps any eOn potential into
+a =ForceCallback=:
+
+#+begin_src cpp
+#include "Potential.h"       // eOn's Potential, AtomMatrix
+#include "ServeRpcServer.h"  // ForceCallback typedef only
+
+namespace {
+ForceCallback makeForceCallback(std::shared_ptr<::Potential> pot) {
+  return [pot = std::move(pot)](long nAtoms, const double *positions,
+                                const int *atomicNrs, double *forces,
+                                double *energy, const double *box) {
+    double variance = 0.0;
+    pot->force(nAtoms, positions, atomicNrs, forces, energy, &variance, box);
+  };
+}
+} // anonymous namespace
+
+void serveMode(const Parameters &params, const std::string &host,
+               uint16_t port) {
+  auto eon_pot = helper_functions::makePotential(params);
+  auto callback = makeForceCallback(std::move(eon_pot));
+  startRpcServer(std::move(callback), host, port);
+}
+#+end_src
+
+*** TU 2: ServeRpcServer.cpp
+
+This file includes the capnp-generated header and implements the RPC
+server. It never includes eOn's =Potential.h=:
+
+#+begin_src cpp
+#include "Potentials.capnp.h"   // capnp's Potential interface
+#include "ServeRpcServer.h"     // ForceCallback typedef
+
+class CallbackPotImpl final : public Potential::Server {
+  ForceCallback m_callback;
+public:
+  explicit CallbackPotImpl(ForceCallback cb)
+      : m_callback(std::move(cb)) {}
+
+  kj::Promise<void> calculate(CalculateContext ctx) override {
+    auto fip = ctx.getParams().getFip();
+    auto pos = fip.getPos();
+    auto atmnrs = fip.getAtmnrs();
+    auto box = fip.getBox();
+
+    long nAtoms = static_cast<long>(atmnrs.size());
+    std::vector<double> forces(nAtoms * 3, 0.0);
+    double energy = 0.0;
+
+    // Call through the flat-array callback -- no eOn types here
+    m_callback(nAtoms, pos.begin(), atmnrs.begin(),
+               forces.data(), &energy, box.begin());
+
+    auto result = ctx.getResults().initResult();
+    result.setEnergy(energy);
+    auto fout = result.initForces(forces.size());
+    for (size_t i = 0; i < forces.size(); ++i) {
+      fout.set(i, forces[i]);
+    }
+    return kj::READY_NOW;
+  }
+};
+#+end_src
+
+*** Bridge header: ServeRpcServer.h
+
+The bridge header defines only the =ForceCallback= type and the server
+entry points. It includes neither eOn nor capnp headers:
+
+#+begin_src cpp
+#pragma once
+#include <functional>
+#include <string>
+#include <vector>
+#include <cstdint>
+
+using ForceCallback = std::function<void(
+    long nAtoms, const double *positions, const int *atomicNrs,
+    double *forces, double *energy, const double *box)>;
+
+void startRpcServer(ForceCallback callback,
+                    const std::string &host, uint16_t port);
+void startPooledRpcServer(std::vector<ForceCallback> pool,
+                          const std::string &host, uint16_t port);
+#+end_src
+
+*** Build system integration
+
+eOn pulls rgpot as a meson subproject with =with_rpc_client_only=true=,
+linking only the capnp schema dependency:
+
+#+begin_src meson
+rgpot_proj = subproject('rgpot',
+    default_options: ['with_rpc_client_only=true'])
+ptlrpc_dep = rgpot_proj.get_variable('ptlrpc_dep')
+
+serve_sources = ['ServeMode.cpp', 'ServeRpcServer.cpp']
+# ptlrpc_dep provides capnp schema; no rgpot types linked
+#+end_src
+
+*** Running the server
+
+#+begin_src bash
+# Serve a Lennard-Jones potential on port 12345
+eonclient --serve "lj:12345"
+
+# Serve a Metatomic ML potential
+eonclient --serve "metatomic:12345" --config model.ini
+
+# Multiple potentials concurrently
+eonclient --serve "lj:12345,metatomic:12346" --config model.ini
+
+# Gateway mode: single port, pooled instances
+eonclient -p metatomic --serve-port 12345 --replicas 4 --gateway \
+    --config model.ini
+#+end_src
+
+Any rgpot-compatible client (Julia, Python, C++) can then connect:
+
+#+begin_src julia
+# Julia (ChemGP)
+using ChemGP
+pot = RpcPotential("localhost", 12345,
+                   Int32[29, 29], Float64[20,0,0, 0,20,0, 0,0,20])
+E, F = calculate(pot, Float64[0,0,0, 2.2,0,0])
+#+end_src
+
+** Summary of Approaches
+
+| Approach | Effort | When to use |
+|----------+--------+-------------|
+| Move =using= inside namespace | Low (rgpot change) | Default for new rgpot releases. |
+| Namespace consumer types | High (consumer refactor) | Greenfield projects or major rewrites. |
+| Separate TUs + flat callback | Medium (build system) | Legacy codes with global-scope types. |
+| RPC-client-only linking | Low (build option) | Consumer only calls potentials, does not serve. |
+
+For legacy codebases like eOn where refactoring all types into a namespace
+is impractical, the two-TU + flat-array callback pattern provides a clean
+integration path with no modifications required to either rgpot or the
+consumer's existing type system.
