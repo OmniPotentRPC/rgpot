@@ -25,6 +25,7 @@ For details on the architecture or internal API:
      :caption: Reference
 
      architecture
+     integration_guide
      api/index
      changelog
      contributing/index

@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="en" data-accent-color="violet" data-content_root="./">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>External Integration Guide - rgpot documentation</title><link rel="index" title="Index" href="genindex.html" /><link rel="search" title="Search" href="search.html" /><link rel="next" title="API Reference" href="api/index.html" /><link rel="prev" title="Architecture Overview" href="architecture.html" />
+      <link rel="canonical" href="rgpot.rgoswami.me/integration_guide.html" /><script>
+    function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
+    setColorMode(localStorage._theme||"auto");
+  </script><link rel="stylesheet" type="text/css" href="_static/pygments.css?v=e1a1ceaf" />
+    <link rel="stylesheet" type="text/css" href="_static/shibuya.css?v=44020203" />
+    <link rel="stylesheet" type="text/css" href="_static/doxyrest-pygments.css?v=ff3f4257" />
+    <link rel="stylesheet" type="text/css" href="_static/doxyrest-shibuya.css" />
+    <link media="print" rel="stylesheet" type="text/css" href="_static/print.css?v=20ff2c19" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --sy-f-text: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+  --sy-f-heading: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+}
+</style>
+    <meta property="og:type" content="website"/>
+  <meta property="og:url" content="rgpot.rgoswami.me/integration_guide.html"/>
+  <meta property="og:title" content="External Integration Guide"/>
+    <meta name="twitter:card" content="summary"/>
+  <!-- Manual favicon handling with favicon.io -->
+<!-- since sphinx-favicon doesn't work with shibuya -->
+<link rel="icon" type="image/png" sizes="16x16" href="_static/favicons/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="_static/favicons/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="_static/favicons/android-chrome-192x192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="_static/favicons/android-chrome-512x512.png">
+<link rel="apple-touch-icon" sizes="180x180" href="_static/favicons/apple-touch-icon.png">
+<link rel="shortcut icon" href="_static/favicons/favicon.ico">
+<link rel="manifest" href="_static/favicons/site.webmanifest">
+<!-- Plausible injection -->
+<script
+  defer
+  data-domain="rgpot.rgoswami.me"
+  src="https://analytics.turtletech.us/js/script.hash.outbound-links.js"
+></script>
+<script>
+  window.plausible =
+    window.plausible ||
+    function () {
+      (window.plausible.q = window.plausible.q || []).push(arguments);
+    };
+</script></head>
+<body><div class="sy-head">
+  <div class="sy-head-blur"></div>
+  <div class="sy-head-inner sy-container mx-auto">
+    <a class="sy-head-brand" href="index.html">
+      <img class="light-logo" src="_static/rgpot_notext.svg" alt="rgpot" height="28" loading="lazy" />
+      <img class="dark-logo" src="_static/rgpot_notext.svg" alt="rgpot" height="28" loading="lazy" />
+      <strong>rgpot</strong>
+    </a>
+    <div class="sy-head-nav" id="head-nav">
+      <nav class="sy-head-links"></nav>
+      <div class="sy-head-extra flex items-center print:hidden"><form class="searchbox flex items-center" action="search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <kbd>/</kbd>
+</form><div class="sy-head-socials">
+  <a href="https://github.com/OmniPotentRPC/rgpot" aria-label="GitHub">
+    <iconify-icon icon="simple-icons:github"></iconify-icon>
+  </a></div></div>
+    </div>
+    <div class="sy-head-actions flex items-center shrink-0 print:hidden"><button class="js-theme theme-switch flex items-center"
+data-aria-auto="Switch to light color mode"
+data-aria-light="Switch to dark color mode"
+data-aria-dark="Switch to auto color mode">
+<i class="i-lucide theme-icon"></i>
+</button><button class="md:hidden flex items-center js-menu" aria-label="Menu" type="button" aria-controls="head-nav" aria-expanded="false">
+        <div class="hamburger">
+          <span class="hamburger_1"></span>
+          <span class="hamburger_2"></span>
+          <span class="hamburger_3"></span>
+        </div>
+      </button>
+    </div>
+  </div>
+</div>
+<div class="sy-page sy-container flex mx-auto">
+  <aside id="lside" class="sy-lside md:w-72 md:shrink-0 print:hidden">
+    <div class="sy-lside-inner md:sticky">
+      <div class="sy-scrollbar p-6">
+        <div class="globaltoc" data-expand-depth="0"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture Overview</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">External Integration Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api/group_rgpot_cpp.html">C++ RAII Wrappers</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="api/class_rgpot_CalcResult.html">class rgpot::CalcResult</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="api/class_rgpot_Error.html">class rgpot::Error</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="api/class_rgpot_InputSpec.html">class rgpot::InputSpec</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="api/class_rgpot_PotentialHandle.html">class rgpot::PotentialHandle</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="api/class_rgpot_RpcClient.html">class rgpot::RpcClient</a><ul class="simple">
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="api/global.html">Global Namespace</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="api/namespace_rgpot.html">namespace rgpot</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="api/namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
+<li class="toctree-l4"><a class="reference internal" href="api/namespace_rgpot_details.html">namespace rgpot::details</a></li>
+<li class="toctree-l4"><a class="reference internal" href="api/namespace_rgpot_types.html">namespace rgpot::types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="api/struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
+<li class="toctree-l4"><a class="reference internal" href="api/struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
+<li class="toctree-l4"><a class="reference internal" href="api/class_rgpot_CuH2Pot.html">class rgpot::CuH2Pot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="api/class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="api/class_rgpot_PotentialBase.html">class rgpot::PotentialBase</a></li>
+<li class="toctree-l4"><a class="reference internal" href="api/class_rgpot_registry.html">template class rgpot::registry</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="api/namespace_std.html">namespace std</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="api/class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="api/class_GenericPotImpl.html">class GenericPotImpl</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="api/class_PotClient.html">class PotClient</a><ul class="simple">
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="crates/rgpot_core/lib.html">Crate <code class="docutils literal notranslate"><span class="pre">rgpot_core</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="crates/rgpot_core/types.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">types</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="crates/rgpot_core/tensor.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">tensor</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="crates/rgpot_core/status.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">status</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="crates/rgpot_core/potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="crates/rgpot_core/c_api.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">c_api</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="crates/rgpot_core/c_api/types.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">types</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="crates/rgpot_core/c_api/potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="crates/rgpot_core/c_api/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="crates/rgpot_core/rpc/client.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">client</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="crates/rgpot_core/rpc/server.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">server</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contributing/index.html">Contributing to <code class="docutils literal notranslate"><span class="pre">rgpot</span></code></a><ul>
+<li class="toctree-l2"><a class="reference internal" href="contributing/developer/index.html">Developer Guide</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="contributing/developer/testing.html">Testing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="contributing/developer/release.html">Release Process</a></li>
+<li class="toctree-l3"><a class="reference internal" href="contributing/developer/faq.html">Developer FAQ</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="code_of_conduct.html">Code of Conduct</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="lside-overlay js-menu" role="button" aria-label="Close left sidebar" aria-controls="lside" aria-expanded="false"></div>
+  <aside id="rside" class="sy-rside pb-3 w-64 shrink-0 order-last">
+    <button class="rside-close js-menu xl:hidden" aria-label="Close Table of Contents" type="button" aria-controls="rside" aria-expanded="false">
+      <i class="i-lucide close"></i>
+    </button>
+    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
+<li><a class="reference internal" href="#the-namespace-collision-problem">The Namespace Collision Problem</a><ul>
+<li><a class="reference internal" href="#root-cause">Root Cause</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#mitigation-strategies">Mitigation Strategies</a><ul>
+<li><a class="reference internal" href="#strategy-1-namespace-the-using-directive-recommended-for-rgpot">Strategy 1: Namespace the <code class="docutils literal notranslate"><span class="pre">using</span></code> directive (recommended for rgpot)</a></li>
+<li><a class="reference internal" href="#strategy-2-namespace-the-consumer-s-types">Strategy 2: Namespace the consumer&#8217;s types</a></li>
+<li><a class="reference internal" href="#strategy-3-separate-translation-units-for-legacy-codes">Strategy 3: Separate translation units (for legacy codes)</a></li>
+<li><a class="reference internal" href="#strategy-4-rpc-client-only-linking">Strategy 4: RPC-client-only linking</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#flat-array-callback-pattern">Flat-Array Callback Pattern</a><ul>
+<li><a class="reference internal" href="#data-layout">Data layout</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#worked-example-eon">Worked Example: eOn</a><ul>
+<li><a class="reference internal" href="#architecture">Architecture</a></li>
+<li><a class="reference internal" href="#tu-1-servemode-cpp">TU 1: ServeMode.cpp</a></li>
+<li><a class="reference internal" href="#tu-2-serverpcserver-cpp">TU 2: ServeRpcServer.cpp</a></li>
+<li><a class="reference internal" href="#bridge-header-serverpcserver-h">Bridge header: ServeRpcServer.h</a></li>
+<li><a class="reference internal" href="#build-system-integration">Build system integration</a></li>
+<li><a class="reference internal" href="#running-the-server">Running the server</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#summary-of-approaches">Summary of Approaches</a></li>
+</ul>
+</div><div id="ethical-ad-placement" data-ea-publisher="readthedocs"></div></div>
+  </aside>
+  <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
+  <main class="sy-main w-full max-sm:max-w-full print:pt-6">
+<div class="sy-breadcrumbs" role="navigation">
+  <div class="sy-breadcrumbs-inner flex items-center">
+    <div class="md:hidden mr-3">
+      <button class="js-menu" aria-label="Menu" type="button" aria-controls="lside" aria-expanded="false">
+        <i class="i-lucide menu"></i>
+      </button>
+    </div>
+    <ol class="flex-1" itemscope itemtype="https://schema.org/BreadcrumbList"><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a itemprop="item" href="index.html"><span itemprop="name">rgpot</span></a>
+        <span>/</span>
+        <meta itemprop="position" content="1" />
+      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <strong itemprop="name">External Integration Guide</strong>
+        <meta itemprop="position" content="2" />
+      </li></ol>
+    <div class="xl:hidden ml-1">
+      <button class="js-menu" aria-label="Show table of contents" type="button" aria-controls="rside"
+        aria-expanded="false">
+        <i class="i-lucide outdent"></i>
+      </button>
+    </div>
+  </div>
+</div><div class="flex flex-col break-words justify-between">
+      <div class="relative min-w-0 max-w-6xl px-6 pb-6 pt-8 xl:px-12">
+  <div class="copy-page-wrapper relative pb-4 lg:absolute lg:top-8 lg:right-6 xl:right-12">
+  <div id="copy-page-trigger">
+    <button
+      type="button"
+      class="js-copy px-3 py-1 inline-flex items-center gap-1"
+      data-url="rgpot.rgoswami.me/_sources/integration_guide.rst.txt"
+    >
+      <i class="i-lucide" data-icon="copy"></i>
+      <span>Copy page</span>
+    </button>
+    <button class="js-menu px-2 py-1" type="button" aria-label="More actions"
+      aria-haspopup="menu" aria-expanded="false" aria-controls="copy-page-content">
+      <i class="i-lucide chevron-down"></i>
+    </button>
+  </div>
+  <div id="copy-page-content" role="menu" aria-orientation="vertical" aria-hidden="true">
+    <div role="presentation">
+      <div class="flex flex-col" role="group">
+        <button class="js-copy" type="button" role="menuitem"
+          data-url="rgpot.rgoswami.me/_sources/integration_guide.rst.txt">
+          <span class="iconify-icon">
+            <i class="i-lucide" data-icon="copy"></i>
+          </span>
+          <span>Copy page</span>
+        </button>
+        <a role="menuitem" href="rgpot.rgoswami.me/_sources/integration_guide.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
+            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20rgpot.rgoswami.me/_sources/integration_guide.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+          <iconify-icon icon="bi:openai"></iconify-icon>
+          <span>Open in ChatGPT</span>
+        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20rgpot.rgoswami.me/_sources/integration_guide.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+          <iconify-icon icon="bi:claude"></iconify-icon>
+          <span>Open in Claude</span>
+        </a></div>
+    </div>
+  </div>
+</div><article class="yue" role="main">
+          <section id="external-integration-guide">
+<h1>External Integration Guide<a class="headerlink" href="#external-integration-guide" title="Link to this heading">¶</a></h1>
+<p>This guide describes how to integrate <code class="docutils literal notranslate"><span class="pre">rgpot</span></code> into external codebases,
+particularly legacy projects with their own type systems. It covers the
+namespace collision problem, the recommended mitigation strategies, and a
+worked example using <a class="reference external" href="https://github.com/TheochemUI/eOn">eOn</a> as a concrete case study.</p>
+<section id="the-namespace-collision-problem">
+<h2>The Namespace Collision Problem<a class="headerlink" href="#the-namespace-collision-problem" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">rgpot</span></code> defines two names that are common in atomistic simulation codebases:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">AtomMatrix</span></code></dt><dd><p>A lightweight row-major matrix class in
+<code class="docutils literal notranslate"><span class="pre">rgpot::types::AtomMatrix</span></code>. However, <code class="docutils literal notranslate"><span class="pre">Potential.hpp</span></code> contains a
+top-level <code class="docutils literal notranslate"><span class="pre">using</span> <span class="pre">rgpot::types::AtomMatrix;</span></code> directive (line 30) that
+pulls this name into the global scope of any translation unit that
+includes the header.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Potential</span></code></dt><dd><p>The Cap’n Proto schema (<code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code>) defines
+<code class="docutils literal notranslate"><span class="pre">interface</span> <span class="pre">Potential</span></code>, which the capnp compiler generates as a global
+<code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">Potential</span></code>. This collides with any consumer that defines its own
+<code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">Potential</span></code> at global scope.</p>
+</dd>
+</dl>
+<p>Both names are extremely common in computational chemistry codebases.
+For example, <a class="reference external" href="https://github.com/TheochemUI/eOn">eOn</a> defines:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">AtomMatrix</span></code></dt><dd><p>A typedef for <code class="docutils literal notranslate"><span class="pre">Eigen::Matrix&lt;double,</span> <span class="pre">Eigen::Dynamic,</span> <span class="pre">3&gt;</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">Potential</span></code></dt><dd><p>The base class for all eOn potential energy surfaces.</p>
+</dd>
+</dl>
+<p>Including both eOn and rgpot headers in the same translation unit produces
+hard compilation errors from the conflicting definitions.</p>
+<section id="root-cause">
+<h3>Root Cause<a class="headerlink" href="#root-cause" title="Link to this heading">¶</a></h3>
+<p>The collision stems from two issues:</p>
+<ol class="arabic simple">
+<li><p>The <code class="docutils literal notranslate"><span class="pre">using</span></code> directive in <code class="docutils literal notranslate"><span class="pre">Potential.hpp</span></code>:</p></li>
+</ol>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1">// rgpot/CppCore/rgpot/Potential.hpp, line 30</span>
+</span><span data-line="2"><span class="k">using</span> <span class="n">rgpot</span><span class="o">::</span><span class="n">types</span><span class="o">::</span><span class="n">AtomMatrix</span><span class="p">;</span>
+</span></pre></div>
+</div>
+<p>This leaks <code class="docutils literal notranslate"><span class="pre">AtomMatrix</span></code> into the global namespace for any downstream
+consumer. The <code class="docutils literal notranslate"><span class="pre">PotentialBase</span></code> class itself is correctly inside
+<code class="docutils literal notranslate"><span class="pre">namespace</span> <span class="pre">rgpot</span></code>, but the <code class="docutils literal notranslate"><span class="pre">using</span></code> directive precedes the namespace block.</p>
+<ol class="arabic simple">
+<li><p>Cap’n Proto code generation does not namespace its output. The</p></li>
+</ol>
+<p><code class="docutils literal notranslate"><span class="pre">interface</span> <span class="pre">Potential</span></code> in <code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code> produces a top-level
+<code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">Potential</span></code> in the generated C++ header. This is a constraint of
+the capnp compiler rather than an rgpot design choice.</p>
+</section>
+</section>
+<section id="mitigation-strategies">
+<h2>Mitigation Strategies<a class="headerlink" href="#mitigation-strategies" title="Link to this heading">¶</a></h2>
+<section id="strategy-1-namespace-the-using-directive-recommended-for-rgpot">
+<h3>Strategy 1: Namespace the <code class="docutils literal notranslate"><span class="pre">using</span></code> directive (recommended for rgpot)<a class="headerlink" href="#strategy-1-namespace-the-using-directive-recommended-for-rgpot" title="Link to this heading">¶</a></h3>
+<p>Move the <code class="docutils literal notranslate"><span class="pre">using</span></code> directive inside the <code class="docutils literal notranslate"><span class="pre">rgpot</span></code> namespace:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1">// Before (leaks to global scope):</span>
+</span><span data-line="2"><span class="k">using</span> <span class="n">rgpot</span><span class="o">::</span><span class="n">types</span><span class="o">::</span><span class="n">AtomMatrix</span><span class="p">;</span>
+</span><span data-line="3"><span class="k">namespace</span> <span class="n">rgpot</span> <span class="p">{</span> <span class="p">...</span> <span class="p">}</span>
+</span><span data-line="4">
+</span><span data-line="5"><span class="c1">// After (contained within rgpot):</span>
+</span><span data-line="6"><span class="k">namespace</span> <span class="n">rgpot</span> <span class="p">{</span>
+</span><span data-line="7"><span class="k">using</span> <span class="n">types</span><span class="o">::</span><span class="n">AtomMatrix</span><span class="p">;</span>
+</span><span data-line="8"><span class="p">...</span>
+</span><span data-line="9"><span class="p">}</span> <span class="c1">// namespace rgpot</span>
+</span></pre></div>
+</div>
+<p>This is a backward-compatible change for any code that already qualifies
+<code class="docutils literal notranslate"><span class="pre">rgpot::PotentialBase</span></code> or <code class="docutils literal notranslate"><span class="pre">rgpot::Potential&lt;D&gt;</span></code>. Code that relied on the
+global <code class="docutils literal notranslate"><span class="pre">AtomMatrix</span></code> leak would need to switch to <code class="docutils literal notranslate"><span class="pre">rgpot::types::AtomMatrix</span></code>
+or add its own <code class="docutils literal notranslate"><span class="pre">using</span></code> inside its own namespace.</p>
+</section>
+<section id="strategy-2-namespace-the-consumer-s-types">
+<h3>Strategy 2: Namespace the consumer’s types<a class="headerlink" href="#strategy-2-namespace-the-consumer-s-types" title="Link to this heading">¶</a></h3>
+<p>If the consuming codebase can be refactored, placing its types inside a
+project namespace eliminates collisions entirely:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1">// Instead of global scope:</span>
+</span><span data-line="2"><span class="k">class</span> <span class="n">Potential</span> <span class="p">{</span> <span class="p">...</span> <span class="p">};</span>
+</span><span data-line="3"><span class="k">using</span> <span class="n">AtomMatrix</span> <span class="o">=</span> <span class="n">Eigen</span><span class="o">::</span><span class="n">Matrix</span><span class="o">&lt;</span><span class="kt">double</span><span class="p">,</span> <span class="n">Eigen</span><span class="o">::</span><span class="n">Dynamic</span><span class="p">,</span> <span class="mi">3</span><span class="o">&gt;</span><span class="p">;</span>
+</span><span data-line="4">
+</span><span data-line="5"><span class="c1">// Use a project namespace:</span>
+</span><span data-line="6"><span class="k">namespace</span> <span class="n">eon</span> <span class="p">{</span>
+</span><span data-line="7"><span class="k">class</span> <span class="n">Potential</span> <span class="p">{</span> <span class="p">...</span> <span class="p">};</span>
+</span><span data-line="8"><span class="k">using</span> <span class="n">AtomMatrix</span> <span class="o">=</span> <span class="n">Eigen</span><span class="o">::</span><span class="n">Matrix</span><span class="o">&lt;</span><span class="kt">double</span><span class="p">,</span> <span class="n">Eigen</span><span class="o">::</span><span class="n">Dynamic</span><span class="p">,</span> <span class="mi">3</span><span class="o">&gt;</span><span class="p">;</span>
+</span><span data-line="9"><span class="p">}</span> <span class="c1">// namespace eon</span>
+</span></pre></div>
+</div>
+<p>This is the cleanest solution but requires touching every file in the
+consumer codebase – impractical for large legacy projects.</p>
+</section>
+<section id="strategy-3-separate-translation-units-for-legacy-codes">
+<h3>Strategy 3: Separate translation units (for legacy codes)<a class="headerlink" href="#strategy-3-separate-translation-units-for-legacy-codes" title="Link to this heading">¶</a></h3>
+<p>When neither rgpot nor the consumer can be easily modified, use separate
+translation units (TUs) so the conflicting headers never appear together:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">TU</span> <span class="mi">1</span> <span class="p">(</span><span class="n">ConsumerBridge</span><span class="o">.</span><span class="n">cpp</span><span class="p">):</span>
+</span><span data-line="2">  <span class="c1">#include &quot;consumer/Potential.h&quot;    // consumer&#39;s Potential</span>
+</span><span data-line="3">  <span class="o">//</span> <span class="n">Wraps</span> <span class="n">consumer</span> <span class="n">types</span> <span class="n">into</span> <span class="n">a</span> <span class="n">flat</span><span class="o">-</span><span class="n">array</span> <span class="n">callback</span>
+</span><span data-line="4">
+</span><span data-line="5"><span class="n">TU</span> <span class="mi">2</span> <span class="p">(</span><span class="n">RpcServer</span><span class="o">.</span><span class="n">cpp</span><span class="p">):</span>
+</span><span data-line="6">  <span class="c1">#include &quot;Potentials.capnp.h&quot;       // capnp&#39;s Potential</span>
+</span><span data-line="7">  <span class="o">//</span> <span class="n">Implements</span> <span class="n">the</span> <span class="n">RPC</span> <span class="n">server</span> <span class="n">using</span> <span class="n">only</span> <span class="n">flat</span> <span class="n">arrays</span>
+</span></pre></div>
+</div>
+<p>The two TUs communicate through a type-free interface such as a
+<code class="docutils literal notranslate"><span class="pre">std::function</span></code> over flat C arrays, avoiding any shared header that
+contains either <code class="docutils literal notranslate"><span class="pre">Potential</span></code> or <code class="docutils literal notranslate"><span class="pre">AtomMatrix</span></code>.</p>
+</section>
+<section id="strategy-4-rpc-client-only-linking">
+<h3>Strategy 4: RPC-client-only linking<a class="headerlink" href="#strategy-4-rpc-client-only-linking" title="Link to this heading">¶</a></h3>
+<p>For consumers that only need to <em>call</em> rgpot potentials (not serve them),
+link only the Cap’n Proto schema library (<code class="docutils literal notranslate"><span class="pre">ptlrpc_dep</span></code> in meson) rather
+than the full <code class="docutils literal notranslate"><span class="pre">rgpot_dep</span></code>. This avoids pulling in <code class="docutils literal notranslate"><span class="pre">Potential.hpp</span></code> and
+its <code class="docutils literal notranslate"><span class="pre">AtomMatrix</span></code> leak entirely.</p>
+<p>In meson:</p>
+<div class="highlight-meson notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">rgpot_proj</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">subproject</span><span class="p">(</span><span class="s">&#39;rgpot&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">default_options</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s">&#39;with_rpc_client_only=true&#39;</span><span class="p">])</span>
+</span><span data-line="2"><span class="n">ptlrpc_dep</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rgpot_proj</span><span class="p">.</span><span class="n">get_variable</span><span class="p">(</span><span class="s">&#39;ptlrpc_dep&#39;</span><span class="p">)</span>
+</span><span data-line="3"><span class="c"># Only capnp schema + generated code, no rgpot types</span>
+</span></pre></div>
+</div>
+</section>
+</section>
+<section id="flat-array-callback-pattern">
+<h2>Flat-Array Callback Pattern<a class="headerlink" href="#flat-array-callback-pattern" title="Link to this heading">¶</a></h2>
+<p>The recommended integration pattern for legacy codes is a flat-array
+callback that requires no shared types between the consumer and rgpot:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1">// ForceCallback: a std::function over flat C arrays</span>
+</span><span data-line="2"><span class="k">using</span> <span class="n">ForceCallback</span> <span class="o">=</span> <span class="n">std</span><span class="o">::</span><span class="n">function</span><span class="o">&lt;</span><span class="kt">void</span><span class="p">(</span>
+</span><span data-line="3">    <span class="kt">long</span> <span class="n">nAtoms</span><span class="p">,</span>
+</span><span data-line="4">    <span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">positions</span><span class="p">,</span>   <span class="c1">// [nAtoms * 3], row-major</span>
+</span><span data-line="5">    <span class="k">const</span> <span class="kt">int</span> <span class="o">*</span><span class="n">atomicNrs</span><span class="p">,</span>      <span class="c1">// [nAtoms]</span>
+</span><span data-line="6">    <span class="kt">double</span> <span class="o">*</span><span class="n">forces</span><span class="p">,</span>            <span class="c1">// [nAtoms * 3], output</span>
+</span><span data-line="7">    <span class="kt">double</span> <span class="o">*</span><span class="n">energy</span><span class="p">,</span>            <span class="c1">// scalar, output</span>
+</span><span data-line="8">    <span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">box</span>          <span class="c1">// [9], row-major 3x3</span>
+</span><span data-line="9"><span class="p">)</span><span class="o">&gt;</span><span class="p">;</span>
+</span></pre></div>
+</div>
+<p>This signature maps directly to the Cap’n Proto <code class="docutils literal notranslate"><span class="pre">ForceInput</span></code> /
+<code class="docutils literal notranslate"><span class="pre">PotentialResult</span></code> schema without requiring any Eigen, AtomMatrix, or
+<code class="docutils literal notranslate"><span class="pre">rgpot::ForceInput</span></code> types. The callback is created in the consumer’s TU
+(which sees the consumer’s types) and passed to the RPC server TU (which
+sees the capnp types). Neither TU needs to include the other’s headers.</p>
+<section id="data-layout">
+<h3>Data layout<a class="headerlink" href="#data-layout" title="Link to this heading">¶</a></h3>
+<p>All arrays use the same flat layout as the Cap’n Proto schema:</p>
+<div class="table-wrapper docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Array</p></th>
+<th class="head"><p>Layout</p></th>
+<th class="head"><p>Size</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Positions</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[x1,y1,z1,</span> <span class="pre">x2,y2,z2,</span> <span class="pre">...]</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">nAtoms</span> <span class="pre">*</span> <span class="pre">3</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Atomic numbers</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[Z1,</span> <span class="pre">Z2,</span> <span class="pre">...]</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">nAtoms</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>Box</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[ax,ay,az,</span> <span class="pre">bx,by,bz,</span> <span class="pre">cx,cy,cz]</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">9</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Forces</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[Fx1,Fy1,Fz1,</span> <span class="pre">...]</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">nAtoms</span> <span class="pre">*</span> <span class="pre">3</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>This is row-major and matches the convention used by both the Rust core
+(<code class="docutils literal notranslate"><span class="pre">rgpot_force_input_t</span></code>) and the existing C++ potentials (<code class="docutils literal notranslate"><span class="pre">ForceInput</span></code>).</p>
+</section>
+</section>
+<section id="worked-example-eon">
+<h2>Worked Example: eOn<a class="headerlink" href="#worked-example-eon" title="Link to this heading">¶</a></h2>
+<p><a class="reference external" href="https://github.com/TheochemUI/eOn">eOn</a> is a saddle-point search framework with its own <code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">Potential</span></code> and
+<code class="docutils literal notranslate"><span class="pre">AtomMatrix</span></code> (Eigen-based) at global scope. It integrates with rgpot’s
+RPC server using the two-TU + flat-array pattern.</p>
+<section id="architecture">
+<h3>Architecture<a class="headerlink" href="#architecture" title="Link to this heading">¶</a></h3>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="o">+---------------------------+</span>     <span class="o">+---------------------------+</span>
+</span><span data-line="2"><span class="o">|</span> <span class="n">ServeMode</span><span class="o">.</span><span class="n">cpp</span> <span class="p">(</span><span class="n">TU</span> <span class="mi">1</span><span class="p">)</span>      <span class="o">|</span>     <span class="o">|</span> <span class="n">ServeRpcServer</span><span class="o">.</span><span class="n">cpp</span> <span class="p">(</span><span class="n">TU</span> <span class="mi">2</span><span class="p">)</span> <span class="o">|</span>
+</span><span data-line="3"><span class="o">|</span>                           <span class="o">|</span>     <span class="o">|</span>                           <span class="o">|</span>
+</span><span data-line="4"><span class="o">|</span> <span class="c1">#include &quot;Potential.h&quot;    |     | #include &quot;Potentials.capnp.h&quot;</span>
+</span><span data-line="5"><span class="o">|</span> <span class="p">(</span><span class="n">eOn</span><span class="s1">&#39;s Potential class)   |     | (capnp&#39;</span><span class="n">s</span> <span class="n">Potential</span> <span class="n">iface</span><span class="p">)</span> <span class="o">|</span>
+</span><span data-line="6"><span class="o">|</span>                           <span class="o">|</span>     <span class="o">|</span>                           <span class="o">|</span>
+</span><span data-line="7"><span class="o">|</span> <span class="n">makeForceCallback</span><span class="p">(</span><span class="n">pot</span><span class="p">)</span>    <span class="o">|----&gt;|</span> <span class="n">startRpcServer</span><span class="p">(</span><span class="n">callback</span><span class="p">)</span>  <span class="o">|</span>
+</span><span data-line="8"><span class="o">|</span>   <span class="n">wraps</span> <span class="n">pot</span><span class="o">-&gt;</span><span class="n">force</span><span class="p">()</span>      <span class="o">|</span>     <span class="o">|</span>   <span class="n">unwraps</span> <span class="n">capnp</span> <span class="n">structs</span>   <span class="o">|</span>
+</span><span data-line="9"><span class="o">|</span>   <span class="n">into</span> <span class="n">ForceCallback</span>      <span class="o">|</span>     <span class="o">|</span>   <span class="n">calls</span> <span class="n">callback</span><span class="p">(</span><span class="o">...</span><span class="p">)</span>     <span class="o">|</span>
+</span><span data-line="10"><span class="o">+---------------------------+</span>     <span class="o">+---------------------------+</span>
+</span><span data-line="11">           <span class="o">|</span>                                    <span class="o">|</span>
+</span><span data-line="12">           <span class="o">|</span>    <span class="n">ForceCallback</span> <span class="p">(</span><span class="n">flat</span> <span class="n">arrays</span><span class="p">)</span>      <span class="o">|</span>
+</span><span data-line="13">           <span class="o">+------------------------------------+</span>
+</span><span data-line="14">                      <span class="n">No</span> <span class="n">shared</span> <span class="n">types</span>
+</span></pre></div>
+</div>
+</section>
+<section id="tu-1-servemode-cpp">
+<h3>TU 1: ServeMode.cpp<a class="headerlink" href="#tu-1-servemode-cpp" title="Link to this heading">¶</a></h3>
+<p>This file includes eOn’s <code class="docutils literal notranslate"><span class="pre">Potential.h</span></code> and wraps any eOn potential into
+a <code class="docutils literal notranslate"><span class="pre">ForceCallback</span></code>:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="cp">#include</span> <span class="cpf">&quot;Potential.h&quot;       // eOn&#39;s Potential, AtomMatrix</span>
+</span><span data-line="2"><span class="cp">#include</span> <span class="cpf">&quot;ServeRpcServer.h&quot;  // ForceCallback typedef only</span>
+</span><span data-line="3">
+</span><span data-line="4"><span class="k">namespace</span> <span class="p">{</span>
+</span><span data-line="5"><span class="n">ForceCallback</span> <span class="n">makeForceCallback</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;::</span><span class="n">Potential</span><span class="o">&gt;</span> <span class="n">pot</span><span class="p">)</span> <span class="p">{</span>
+</span><span data-line="6">  <span class="k">return</span> <span class="p">[</span><span class="n">pot</span> <span class="o">=</span> <span class="n">std</span><span class="o">::</span><span class="n">move</span><span class="p">(</span><span class="n">pot</span><span class="p">)](</span><span class="kt">long</span> <span class="n">nAtoms</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">positions</span><span class="p">,</span>
+</span><span data-line="7">                                <span class="k">const</span> <span class="kt">int</span> <span class="o">*</span><span class="n">atomicNrs</span><span class="p">,</span> <span class="kt">double</span> <span class="o">*</span><span class="n">forces</span><span class="p">,</span>
+</span><span data-line="8">                                <span class="kt">double</span> <span class="o">*</span><span class="n">energy</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">box</span><span class="p">)</span> <span class="p">{</span>
+</span><span data-line="9">    <span class="kt">double</span> <span class="n">variance</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">;</span>
+</span><span data-line="10">    <span class="n">pot</span><span class="o">-&gt;</span><span class="n">force</span><span class="p">(</span><span class="n">nAtoms</span><span class="p">,</span> <span class="n">positions</span><span class="p">,</span> <span class="n">atomicNrs</span><span class="p">,</span> <span class="n">forces</span><span class="p">,</span> <span class="n">energy</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">variance</span><span class="p">,</span> <span class="n">box</span><span class="p">);</span>
+</span><span data-line="11">  <span class="p">};</span>
+</span><span data-line="12"><span class="p">}</span>
+</span><span data-line="13"><span class="p">}</span> <span class="c1">// anonymous namespace</span>
+</span><span data-line="14">
+</span><span data-line="15"><span class="kt">void</span> <span class="n">serveMode</span><span class="p">(</span><span class="k">const</span> <span class="n">Parameters</span> <span class="o">&amp;</span><span class="n">params</span><span class="p">,</span> <span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">string</span> <span class="o">&amp;</span><span class="n">host</span><span class="p">,</span>
+</span><span data-line="16">               <span class="kt">uint16_t</span> <span class="n">port</span><span class="p">)</span> <span class="p">{</span>
+</span><span data-line="17">  <span class="k">auto</span> <span class="n">eon_pot</span> <span class="o">=</span> <span class="n">helper_functions</span><span class="o">::</span><span class="n">makePotential</span><span class="p">(</span><span class="n">params</span><span class="p">);</span>
+</span><span data-line="18">  <span class="k">auto</span> <span class="n">callback</span> <span class="o">=</span> <span class="n">makeForceCallback</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">move</span><span class="p">(</span><span class="n">eon_pot</span><span class="p">));</span>
+</span><span data-line="19">  <span class="n">startRpcServer</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">move</span><span class="p">(</span><span class="n">callback</span><span class="p">),</span> <span class="n">host</span><span class="p">,</span> <span class="n">port</span><span class="p">);</span>
+</span><span data-line="20"><span class="p">}</span>
+</span></pre></div>
+</div>
+</section>
+<section id="tu-2-serverpcserver-cpp">
+<h3>TU 2: ServeRpcServer.cpp<a class="headerlink" href="#tu-2-serverpcserver-cpp" title="Link to this heading">¶</a></h3>
+<p>This file includes the capnp-generated header and implements the RPC
+server. It never includes eOn’s <code class="docutils literal notranslate"><span class="pre">Potential.h</span></code>:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="cp">#include</span> <span class="cpf">&quot;Potentials.capnp.h&quot;   // capnp&#39;s Potential interface</span>
+</span><span data-line="2"><span class="cp">#include</span> <span class="cpf">&quot;ServeRpcServer.h&quot;     // ForceCallback typedef</span>
+</span><span data-line="3">
+</span><span data-line="4"><span class="k">class</span> <span class="n">CallbackPotImpl</span> <span class="k">final</span> <span class="o">:</span> <span class="k">public</span> <span class="n">Potential</span><span class="o">::</span><span class="n">Server</span> <span class="p">{</span>
+</span><span data-line="5">  <span class="n">ForceCallback</span> <span class="n">m_callback</span><span class="p">;</span>
+</span><span data-line="6"><span class="k">public</span><span class="o">:</span>
+</span><span data-line="7">  <span class="k">explicit</span> <span class="n">CallbackPotImpl</span><span class="p">(</span><span class="n">ForceCallback</span> <span class="n">cb</span><span class="p">)</span>
+</span><span data-line="8">      <span class="o">:</span> <span class="n">m_callback</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">move</span><span class="p">(</span><span class="n">cb</span><span class="p">))</span> <span class="p">{}</span>
+</span><span data-line="9">
+</span><span data-line="10">  <span class="n">kj</span><span class="o">::</span><span class="n">Promise</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="n">calculate</span><span class="p">(</span><span class="n">CalculateContext</span> <span class="n">ctx</span><span class="p">)</span> <span class="k">override</span> <span class="p">{</span>
+</span><span data-line="11">    <span class="k">auto</span> <span class="n">fip</span> <span class="o">=</span> <span class="n">ctx</span><span class="p">.</span><span class="n">getParams</span><span class="p">().</span><span class="n">getFip</span><span class="p">();</span>
+</span><span data-line="12">    <span class="k">auto</span> <span class="n">pos</span> <span class="o">=</span> <span class="n">fip</span><span class="p">.</span><span class="n">getPos</span><span class="p">();</span>
+</span><span data-line="13">    <span class="k">auto</span> <span class="n">atmnrs</span> <span class="o">=</span> <span class="n">fip</span><span class="p">.</span><span class="n">getAtmnrs</span><span class="p">();</span>
+</span><span data-line="14">    <span class="k">auto</span> <span class="n">box</span> <span class="o">=</span> <span class="n">fip</span><span class="p">.</span><span class="n">getBox</span><span class="p">();</span>
+</span><span data-line="15">
+</span><span data-line="16">    <span class="kt">long</span> <span class="n">nAtoms</span> <span class="o">=</span> <span class="k">static_cast</span><span class="o">&lt;</span><span class="kt">long</span><span class="o">&gt;</span><span class="p">(</span><span class="n">atmnrs</span><span class="p">.</span><span class="n">size</span><span class="p">());</span>
+</span><span data-line="17">    <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">double</span><span class="o">&gt;</span> <span class="n">forces</span><span class="p">(</span><span class="n">nAtoms</span> <span class="o">*</span> <span class="mi">3</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">);</span>
+</span><span data-line="18">    <span class="kt">double</span> <span class="n">energy</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">;</span>
+</span><span data-line="19">
+</span><span data-line="20">    <span class="c1">// Call through the flat-array callback -- no eOn types here</span>
+</span><span data-line="21">    <span class="n">m_callback</span><span class="p">(</span><span class="n">nAtoms</span><span class="p">,</span> <span class="n">pos</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span> <span class="n">atmnrs</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span>
+</span><span data-line="22">               <span class="n">forces</span><span class="p">.</span><span class="n">data</span><span class="p">(),</span> <span class="o">&amp;</span><span class="n">energy</span><span class="p">,</span> <span class="n">box</span><span class="p">.</span><span class="n">begin</span><span class="p">());</span>
+</span><span data-line="23">
+</span><span data-line="24">    <span class="k">auto</span> <span class="n">result</span> <span class="o">=</span> <span class="n">ctx</span><span class="p">.</span><span class="n">getResults</span><span class="p">().</span><span class="n">initResult</span><span class="p">();</span>
+</span><span data-line="25">    <span class="n">result</span><span class="p">.</span><span class="n">setEnergy</span><span class="p">(</span><span class="n">energy</span><span class="p">);</span>
+</span><span data-line="26">    <span class="k">auto</span> <span class="n">fout</span> <span class="o">=</span> <span class="n">result</span><span class="p">.</span><span class="n">initForces</span><span class="p">(</span><span class="n">forces</span><span class="p">.</span><span class="n">size</span><span class="p">());</span>
+</span><span data-line="27">    <span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">forces</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span> <span class="p">{</span>
+</span><span data-line="28">      <span class="n">fout</span><span class="p">.</span><span class="n">set</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">forces</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+</span><span data-line="29">    <span class="p">}</span>
+</span><span data-line="30">    <span class="k">return</span> <span class="n">kj</span><span class="o">::</span><span class="n">READY_NOW</span><span class="p">;</span>
+</span><span data-line="31">  <span class="p">}</span>
+</span><span data-line="32"><span class="p">};</span>
+</span></pre></div>
+</div>
+</section>
+<section id="bridge-header-serverpcserver-h">
+<h3>Bridge header: ServeRpcServer.h<a class="headerlink" href="#bridge-header-serverpcserver-h" title="Link to this heading">¶</a></h3>
+<p>The bridge header defines only the <code class="docutils literal notranslate"><span class="pre">ForceCallback</span></code> type and the server
+entry points. It includes neither eOn nor capnp headers:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="cp">#pragma once</span>
+</span><span data-line="2"><span class="cp">#include</span> <span class="cpf">&lt;functional&gt;</span>
+</span><span data-line="3"><span class="cp">#include</span> <span class="cpf">&lt;string&gt;</span>
+</span><span data-line="4"><span class="cp">#include</span> <span class="cpf">&lt;vector&gt;</span>
+</span><span data-line="5"><span class="cp">#include</span> <span class="cpf">&lt;cstdint&gt;</span>
+</span><span data-line="6">
+</span><span data-line="7"><span class="k">using</span> <span class="n">ForceCallback</span> <span class="o">=</span> <span class="n">std</span><span class="o">::</span><span class="n">function</span><span class="o">&lt;</span><span class="kt">void</span><span class="p">(</span>
+</span><span data-line="8">    <span class="kt">long</span> <span class="n">nAtoms</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">positions</span><span class="p">,</span> <span class="k">const</span> <span class="kt">int</span> <span class="o">*</span><span class="n">atomicNrs</span><span class="p">,</span>
+</span><span data-line="9">    <span class="kt">double</span> <span class="o">*</span><span class="n">forces</span><span class="p">,</span> <span class="kt">double</span> <span class="o">*</span><span class="n">energy</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">box</span><span class="p">)</span><span class="o">&gt;</span><span class="p">;</span>
+</span><span data-line="10">
+</span><span data-line="11"><span class="kt">void</span> <span class="nf">startRpcServer</span><span class="p">(</span><span class="n">ForceCallback</span> <span class="n">callback</span><span class="p">,</span>
+</span><span data-line="12">                    <span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">string</span> <span class="o">&amp;</span><span class="n">host</span><span class="p">,</span> <span class="kt">uint16_t</span> <span class="n">port</span><span class="p">);</span>
+</span><span data-line="13"><span class="kt">void</span> <span class="nf">startPooledRpcServer</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">ForceCallback</span><span class="o">&gt;</span> <span class="n">pool</span><span class="p">,</span>
+</span><span data-line="14">                          <span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">string</span> <span class="o">&amp;</span><span class="n">host</span><span class="p">,</span> <span class="kt">uint16_t</span> <span class="n">port</span><span class="p">);</span>
+</span></pre></div>
+</div>
+</section>
+<section id="build-system-integration">
+<h3>Build system integration<a class="headerlink" href="#build-system-integration" title="Link to this heading">¶</a></h3>
+<p>eOn pulls rgpot as a meson subproject with <code class="docutils literal notranslate"><span class="pre">with_rpc_client_only=true</span></code>,
+linking only the capnp schema dependency:</p>
+<div class="highlight-meson notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">rgpot_proj</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">subproject</span><span class="p">(</span><span class="s">&#39;rgpot&#39;</span><span class="p">,</span>
+</span><span data-line="2"><span class="w">    </span><span class="n">default_options</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s">&#39;with_rpc_client_only=true&#39;</span><span class="p">])</span>
+</span><span data-line="3"><span class="n">ptlrpc_dep</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rgpot_proj</span><span class="p">.</span><span class="n">get_variable</span><span class="p">(</span><span class="s">&#39;ptlrpc_dep&#39;</span><span class="p">)</span>
+</span><span data-line="4">
+</span><span data-line="5"><span class="n">serve_sources</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s">&#39;ServeMode.cpp&#39;</span><span class="p">,</span><span class="w"> </span><span class="s">&#39;ServeRpcServer.cpp&#39;</span><span class="p">]</span>
+</span><span data-line="6"><span class="c"># ptlrpc_dep provides capnp schema; no rgpot types linked</span>
+</span></pre></div>
+</div>
+</section>
+<section id="running-the-server">
+<h3>Running the server<a class="headerlink" href="#running-the-server" title="Link to this heading">¶</a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1"># Serve a Lennard-Jones potential on port 12345</span>
+</span><span data-line="2">eonclient<span class="w"> </span>--serve<span class="w"> </span><span class="s2">&quot;lj:12345&quot;</span>
+</span><span data-line="3">
+</span><span data-line="4"><span class="c1"># Serve a Metatomic ML potential</span>
+</span><span data-line="5">eonclient<span class="w"> </span>--serve<span class="w"> </span><span class="s2">&quot;metatomic:12345&quot;</span><span class="w"> </span>--config<span class="w"> </span>model.ini
+</span><span data-line="6">
+</span><span data-line="7"><span class="c1"># Multiple potentials concurrently</span>
+</span><span data-line="8">eonclient<span class="w"> </span>--serve<span class="w"> </span><span class="s2">&quot;lj:12345,metatomic:12346&quot;</span><span class="w"> </span>--config<span class="w"> </span>model.ini
+</span><span data-line="9">
+</span><span data-line="10"><span class="c1"># Gateway mode: single port, pooled instances</span>
+</span><span data-line="11">eonclient<span class="w"> </span>-p<span class="w"> </span>metatomic<span class="w"> </span>--serve-port<span class="w"> </span><span class="m">12345</span><span class="w"> </span>--replicas<span class="w"> </span><span class="m">4</span><span class="w"> </span>--gateway<span class="w"> </span><span class="se">\</span>
+</span><span data-line="12"><span class="w">    </span>--config<span class="w"> </span>model.ini
+</span></pre></div>
+</div>
+<p>Any rgpot-compatible client (Julia, Python, C++) can then connect:</p>
+<div class="highlight-julia notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c"># Julia (ChemGP)</span>
+</span><span data-line="2"><span class="k">using</span><span class="w"> </span><span class="n">ChemGP</span>
+</span><span data-line="3"><span class="n">pot</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">RpcPotential</span><span class="p">(</span><span class="s">&quot;localhost&quot;</span><span class="p">,</span><span class="w"> </span><span class="mi">12345</span><span class="p">,</span>
+</span><span data-line="4"><span class="w">                   </span><span class="kt">Int32</span><span class="p">[</span><span class="mi">29</span><span class="p">,</span><span class="w"> </span><span class="mi">29</span><span class="p">],</span><span class="w"> </span><span class="kt">Float64</span><span class="p">[</span><span class="mi">20</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="mi">20</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">20</span><span class="p">])</span>
+</span><span data-line="5"><span class="n">E</span><span class="p">,</span><span class="w"> </span><span class="n">F</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">calculate</span><span class="p">(</span><span class="n">pot</span><span class="p">,</span><span class="w"> </span><span class="kt">Float64</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mf">2.2</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">])</span>
+</span></pre></div>
+</div>
+</section>
+</section>
+<section id="summary-of-approaches">
+<h2>Summary of Approaches<a class="headerlink" href="#summary-of-approaches" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Approach</p></th>
+<th class="head"><p>Effort</p></th>
+<th class="head"><p>When to use</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Move <code class="docutils literal notranslate"><span class="pre">using</span></code> inside namespace</p></td>
+<td><p>Low (rgpot change)</p></td>
+<td><p>Default for new rgpot releases.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Namespace consumer types</p></td>
+<td><p>High (consumer refactor)</p></td>
+<td><p>Greenfield projects or major rewrites.</p></td>
+</tr>
+<tr class="row-even"><td><p>Separate TUs + flat callback</p></td>
+<td><p>Medium (build system)</p></td>
+<td><p>Legacy codes with global-scope types.</p></td>
+</tr>
+<tr class="row-odd"><td><p>RPC-client-only linking</p></td>
+<td><p>Low (build option)</p></td>
+<td><p>Consumer only calls potentials, does not serve.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>For legacy codebases like eOn where refactoring all types into a namespace
+is impractical, the two-TU + flat-array callback pattern provides a clean
+integration path with no modifications required to either rgpot or the
+consumer’s existing type system.</p>
+</section>
+</section>
+
+        </article><button class="back-to-top" type="button">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+    <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+  </svg>
+  <span>Back to top</span>
+</button><div class="navigation flex print:hidden"><div class="navigation-prev">
+    <a href="architecture.html">
+      <i class="i-lucide chevron-left"></i>
+      <div class="page-info">
+        <span>Previous</span><div class="title">Architecture Overview</div></div>
+    </a>
+  </div><div class="navigation-next">
+    <a href="api/index.html">
+      <div class="page-info">
+        <span>Next</span>
+        <div class="title">API Reference</div>
+      </div>
+      <i class="i-lucide chevron-right"></i>
+    </a>
+  </div></div></div>
+    </div>
+  </main>
+</div>
+<footer class="sy-foot">
+  <div class="sy-foot-inner sy-container mx-auto">
+    
+    <div
+      style="
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        margin-bottom: 1.5rem;
+        color: var(--sy-c-text-weak);
+        font-size: 0.9em;
+      "
+    >
+      <div
+        style="
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: center;
+          gap: 1rem;
+          align-items: center;
+        "
+      >
+
+        
+        <span style="display: inline-flex; align-items: center; gap: 0.3em">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="1em"
+            height="1em"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path d="M7,20H4V4h3V20z M14,20h-3V12h3V20z M21,20h-3V8h3V20z" />
+          </svg>
+          <span
+            >Analytics by
+            <a
+              href="https://plausible.io/"
+              target="_blank"
+              rel="noopener noreferrer"
+              style="color: inherit; text-decoration: underline"
+              >Plausible</a
+            ></span
+          >
+        </span>
+
+        
+        <span style="display: inline-flex; align-items: center; gap: 0.3em">
+          <span>provided by</span>
+          <span style="display: inline-flex; align-items: center; gap: 0.3em">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="1.2em"
+              height="1.2em"
+              viewBox="0 0 64 64"
+              aria-hidden="true"
+            >
+              <g fill-rule="evenodd">
+                <ellipse cx="32" cy="11" fill="#80D25B" rx="7" ry="9" />
+                <path
+                  fill="#80D25B"
+                  d="M20.302104,46 C20.302104,46 17.1330329,55.8812548 20.6828149,59.7817355 C24.232597,63.6822162 26.8008673,63.215359 26.8008673,53.7414927 C26.8008673,44.2676263 20.302104,46 20.302104,46 Z"
+                />
+                <path
+                  fill="#80D25B"
+                  d="M38.302104,46 C38.302104,46 35.1330329,55.8812548 38.6828149,59.7817355 C42.232597,63.6822162 44.8008673,63.215359 44.8008673,53.7414927 C44.8008673,44.2676263 38.302104,46 38.302104,46 Z"
+                  transform="matrix(-1 0 0 1 81.8 0)"
+                />
+                <path
+                  fill="#80D25B"
+                  d="M20.6227767,21.2218684 C20.6227767,21.2218684 13.956214,15.3844007 10.091955,16.0534044 C6.22769598,16.722408 6,22.2124633 6,23.9992899 C6,25.7861165 7.78917398,37.3159836 9.78726488,36.4967476 C11.7853558,35.6775115 13.7411938,27.959322 13.7411938,27.959322 15.6510232,30.2287702 18.609193,30.4630388"
+                />
+                <path
+                  fill="#80D25B"
+                  d="M57.6227767,21.2218684 C57.6227767,21.2218684 50.956214,15.3844007 47.091955,16.0534044 C43.227696,16.722408 43,22.2124633 43,23.9992899 C43,25.7861165 44.789174,37.3159836 46.7872649,36.4967476 C48.7853558,35.6775115 50.7411938,27.959322 50.7411938,27.959322 52.6510232,30.2287702 55.609193,30.4630388"
+                  transform="matrix(-1 0 0 1 100.623 0)"
+                />
+                <path
+                  fill="#BD7575"
+                  stroke="#595959"
+                  stroke-linecap="round"
+                  stroke-width="2"
+                  d="M32,53 C40.836556,53 48,44.4934102 48,34 C48,23.5065898 46.6814044,17 32,17 C17.3185956,17 16,23.5065898 16,34 C16,44.4934102 23.163444,53 32,53 Z"
+                />
+                <polygon
+                  fill="#BD7575"
+                  stroke="#595959"
+                  stroke-linecap="round"
+                  stroke-width="2"
+                  points="32 22 38.928 26 38.928 34 32 38 25.072 34 25.072 26"
+                />
+                <path
+                  stroke="#595959"
+                  stroke-linecap="round"
+                  stroke-width="2"
+                  d="M30,8 C28.8954305,8 28,8.8954305 28,10"
+                />
+                <path
+                  stroke="#595959"
+                  stroke-linecap="round"
+                  stroke-width="2"
+                  d="M36,8 C34.8954305,8 34,8.8954305 34,10"
+                  transform="matrix(-1 0 0 1 70 0)"
+                />
+                <path
+                  stroke="#595959"
+                  stroke-linecap="round"
+                  stroke-width="2"
+                  d="M32.1194396 38.1881507L32.1194396 52.4125899M32.0164956 21.7467197L32.0164956 17M25.2141026 26.0041506L17.737148 23.0721126M25.1254173 34.1534318L16.7659494 38.8876521"
+                />
+                <path
+                  stroke="#595959"
+                  stroke-linecap="round"
+                  stroke-width="2"
+                  d="M46.2141026,26.0041506 L38.737148,23.0721126"
+                  transform="matrix(-1 0 0 1 84.951 0)"
+                />
+                <path
+                  stroke="#595959"
+                  stroke-linecap="round"
+                  stroke-width="2"
+                  d="M47.1254173,34.1534318 L38.7659494,38.8876521"
+                  transform="matrix(-1 0 0 1 85.891 0)"
+                />
+              </g>
+            </svg>
+            <a
+              href="https://turtletech.us/"
+              target="_blank"
+              rel="noopener noreferrer"
+              style="color: inherit; text-decoration: underline"
+              >TurtleTech ehf</a
+            >
+          </span>
+        </span>
+      </div>
+    </div>
+
+    
+    <div class="sy-foot-reserved md:flex justify-between items-center">
+      <div class="sy-foot-copyright"><p>2025--present, rgpot developers</p>
+  
+  <p>
+    Made with
+    
+    <a href="https://www.sphinx-doc.org/">Sphinx</a> and
+    
+    <a href="https://shibuya.lepture.com">Shibuya theme</a>.
+  </p>
+</div> <div class="sy-foot-socials">
+<a href="https://github.com/OmniPotentRPC/rgpot" aria-label="GitHub">
+  <iconify-icon icon="simple-icons:github"></iconify-icon>
+</a></div>
+    </div>
+  </div>
+</footer>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/target-highlight.js?v=df7d332b"></script>
+      <script src="_static/shibuya.js?v=cac61aee"></script></body>
+</html>
