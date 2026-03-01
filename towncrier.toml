@@ -1,6 +1,6 @@
 [tool.towncrier]
 name = "rgpot"
-version = "1.0.1"
+version = "1.0.3"
 directory = "docs/newsfragments"
 filename = "CHANGELOG.md"
 start_string = "<!-- towncrier release notes start -->\n"
