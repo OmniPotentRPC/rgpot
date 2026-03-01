@@ -1,6 +1,4 @@
 
-:cover: https://github.com/HaoZeke/rgpycrumbs/blob/main/branding/logo/pycrumbs_logo.webp
-
 =========
 ``rgpot``
 =========
@@ -12,91 +10,45 @@
 Overview
 --------
 
-RPC Generalized Potential Library, or ``rgpot`` provides a unified schema for
-interfacing potential servers across languages using runtime interoperability.
-
-Getting Started
----------------
-
-  .. toctree::
-     :maxdepth: 1
-     :caption: Getting Started
-
-     quickstart
-
-Guides
-------
-
-  .. toctree::
-     :maxdepth: 2
-     :caption: Guides
-
-     integration_guide
-
-Reference
----------
-
-  .. toctree::
-     :maxdepth: 2
-     :caption: Reference
-
-     architecture
-     api/index
-     changelog
-     contributing/index
-
-Usage
-~~~~~
-
-Setting up and running tests:
+``rgpot`` provides a unified schema for interfacing potential servers across
+languages using runtime interoperability. It combines a Rust core with C++
+potentials exposed through a Cap'n Proto RPC layer, enabling language-agnostic
+access to potential energy surface calculations.
 
 .. code:: bash
 
-    pixi shell
-    meson setup bbdir -Dwith_tests=True --buildtype="debug"
-    meson test -C bbdir
+    git clone https://github.com/OmniPotentRPC/rgpot.git
+    cd rgpot && pixi shell
+    meson setup bbdir -Dwith_tests=True --buildtype=debug
+    meson compile -C bbdir && meson test -C bbdir
 
-``cmake`` works as well.
+.. toctree::
+   :maxdepth: 2
+   :caption: Tutorials
 
-.. code:: bash
+   tutorials/quickstart
 
-    cmake -B build -DRGPOT_BUILD_TESTS=ON -DRGPOT_BUILD_EXAMPLES=ON
-    cmake --build build
-    ctest --test-dir build
+.. toctree::
+   :maxdepth: 2
+   :caption: How-To Guides
 
-For building only the client, with CXX17 and CapnProto only:
+   howto/embedding
+   howto/integration
 
-.. code:: bash
+.. toctree::
+   :maxdepth: 2
+   :caption: Reference
 
-    cmake -B build_client\
-        -DRGPOT_RPC_CLIENT_ONLY=ON\
-        -DRGPOT_BUILD_TESTS=ON
-    cmake --build build_client
-    # needs a server instance, so in another terminal
-    # say from the meson.build
-    ./bbdir/CppCore/rgpot/rpc/potserv 12345 LJ
-    # now test
-    ctest --test-dir build_client/ --output-on-failure
+   reference/architecture
+   api/index
+   changelog
 
-Developing locally
-^^^^^^^^^^^^^^^^^^
+.. toctree::
+   :maxdepth: 2
+   :caption: Development
 
-A ``pre-commit`` job is setup on CI to enforce consistent styles, so it is best to
-set it up locally as well (using `pipx <https://pypa.github.io/pipx>`_ for isolation):
-
-.. code:: sh
-
-    # Run before commiting
-    uvx pre-commit run --all-files
-
-Handling actions
-^^^^^^^^^^^^^^^^
-
-To keep the build matrix setup manageable, we use Nickel.
-
-.. code:: bash
-
-    pixi r gen-gha
+   contributing/index
+   code_of_conduct
 
 License
 -------

@@ -1,0 +1,126 @@
+
+
+Quickstart
+----------
+
+This tutorial walks through building rgpot from source, running a
+Lennard-Jones RPC server, and calling it from Python. By the end you will
+have a running potential server that any Cap'n Proto client can connect to.
+
+What you will need
+~~~~~~~~~~~~~~~~~~
+
+- `pixi <https://prefix.dev/pixi>`_ (manages the full toolchain; nothing else to install)
+
+- About 5 minutes
+
+Clone and build
+~~~~~~~~~~~~~~~
+
+.. code:: bash
+
+    git clone https://github.com/OmniPotentRPC/rgpot.git
+    cd rgpot
+    pixi shell
+    meson setup bbdir -Dwith_tests=True --buildtype=debug
+    meson compile -C bbdir
+
+Expected output (last few lines):
+
+::
+
+    [105/105] Linking target CppCore/rgpot/rpc/potserv
+
+Run the tests
+~~~~~~~~~~~~~
+
+.. code:: bash
+
+    meson test -C bbdir
+
+All tests should pass:
+
+::
+
+    Ok:                 7
+    Expected Fail:      0
+    Fail:               0
+
+Start an RPC server
+~~~~~~~~~~~~~~~~~~~
+
+Open a second terminal (or use ``&``) and launch a Lennard-Jones server on
+port 12345:
+
+.. code:: bash
+
+    pixi shell   # if not already in the environment
+    ./bbdir/CppCore/rgpot/rpc/potserv 12345 LJ
+
+The server prints a line and then blocks, waiting for connections:
+
+::
+
+    Listening on 0.0.0.0:12345 with potential: LJ
+
+Call from Python
+~~~~~~~~~~~~~~~~
+
+In the first terminal, install the Python Cap'n Proto bindings and run a
+calculation:
+
+.. code:: bash
+
+    pixi shell -e rpctest
+
+.. code:: python
+
+    import capnp
+    capnp.remove_import_hook()
+    potentials_capnp = capnp.load("CppCore/rgpot/rpc/Potentials.capnp")
+
+    client = capnp.TwoPartyClient("localhost:12345")
+    pot = client.bootstrap().cast_as(potentials_capnp.Potential)
+
+    # Two hydrogen atoms separated by 2.5 Angstrom
+    request = pot.calculate_request()
+    fip = request.init("fip")
+    fip.pos = [0.0, 0.0, 0.0, 2.5, 0.0, 0.0]
+    fip.atmnrs = [1, 1]
+    fip.box = [20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0]
+
+    response = request.send().wait()
+    print(f"Energy: {response.result.energy}")
+    print(f"Forces: {list(response.result.forces)}")
+
+Expected output:
+
+::
+
+    Energy: -0.02734...
+    Forces: [0.02148..., 0.0, 0.0, -0.02148..., 0.0, 0.0]
+
+The forces are equal and opposite, as expected for a two-body LJ pair.
+
+What just happened
+~~~~~~~~~~~~~~~~~~
+
+1. ``potserv`` loaded the built-in Lennard-Jones potential and exposed it
+   over Cap'n Proto RPC.
+
+2. The Python client connected, sent atomic positions, and received
+   energy and forces back.
+
+3. The same wire protocol works from any language with a Cap'n Proto
+   implementation (C++, Rust, Julia, Go, etc.).
+
+Next steps
+~~~~~~~~~~
+
+- `Architecture overview <../reference/architecture.rst>`_ for the layer diagram and design rationale
+
+- `Integration guide <../howto/integration.rst>`_ for embedding rgpot into external projects (e.g. eOn)
+
+- `Embedding as a subproject <../howto/embedding.rst>`_ for using rgpot as a meson/cmake dependency
+
+- `Changelog <../changelog.rst>`_ for release history

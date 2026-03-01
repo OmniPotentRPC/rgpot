@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en" data-accent-color="violet" data-content_root="./">
+<html lang="en" data-accent-color="teal" data-content_root="./">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Code of Conduct - rgpot documentation</title><link rel="index" title="Index" href="genindex.html" /><link rel="search" title="Search" href="search.html" /><link rel="prev" title="Developer FAQ" href="contributing/developer/faq.html" />
-      <link rel="canonical" href="rgpot.rgoswami.me/code_of_conduct.html" /><script>
+      <link rel="canonical" href="https://rgpot.rgoswami.me/code_of_conduct.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
   </script><link rel="stylesheet" type="text/css" href="_static/pygments.css?v=e1a1ceaf" />
@@ -21,7 +21,7 @@
 }
 </style>
     <meta property="og:type" content="website"/>
-  <meta property="og:url" content="rgpot.rgoswami.me/code_of_conduct.html"/>
+  <meta property="og:url" content="https://rgpot.rgoswami.me/code_of_conduct.html"/>
   <meta property="og:title" content="Code of Conduct"/>
     <meta name="twitter:card" content="summary"/>
   <!-- Manual favicon handling with favicon.io -->
@@ -55,7 +55,19 @@
       <strong>rgpot</strong>
     </a>
     <div class="sy-head-nav" id="head-nav">
-      <nav class="sy-head-links"></nav>
+      <nav class="sy-head-links"><ul>
+      <li class="link"><button class="js-menu" type="button" id="nav-trigger-1" aria-controls="nav-children-1">
+            <span>Ecosystem</span>
+            <i class="i-lucide chevron-down"></i>
+          </button>
+        <ul id="nav-children-1" aria-labelledby="nav-trigger-1"><li><a href="https://eondocs.org">
+                <span>eOn</span>
+                <small>Saddle point finding on potential energy surfaces</small>
+              </a></li><li><a href="https://rgpycrumbs.rgoswami.me">
+                <span>rgpycrumbs</span>
+                <small>Python bindings for rgpot</small>
+              </a></li></ul>
+      </li></ul></nav>
       <div class="sy-head-extra flex items-center print:hidden"><form class="searchbox flex items-center" action="search.html" method="get">
   <input type="text" name="q" placeholder="Search" />
   <kbd>/</kbd>
@@ -83,18 +95,19 @@ data-aria-dark="Switch to auto color mode">
   <aside id="lside" class="sy-lside md:w-72 md:shrink-0 print:hidden">
     <div class="sy-lside-inner md:sticky">
       <div class="sy-scrollbar p-6">
-        <div class="globaltoc" data-expand-depth="0"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Getting Started</span></p>
+        <div class="globaltoc" data-expand-depth="1"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Tutorials</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="tutorials/quickstart.html">Quickstart</a></li>
 </ul>
-<p class="caption" role="heading" aria-level="3"><span class="caption-text">Guides</span></p>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">How-To Guides</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="integration_guide.html">External Integration Guide</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="howto/embedding.html">Embedding as a Subproject</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="howto/integration.html">External Integration Guide</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
-<ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture Overview</a></li>
-<li class="toctree-l1"><a class="reference internal" href="api/index.html">API Reference</a><ul>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="reference/architecture.html">Architecture Overview</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="api/index.html">API Reference</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="api/group_rgpot_cpp.html">C++ RAII Wrappers</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="api/class_rgpot_CalcResult.html">class rgpot::CalcResult</a><ul class="simple">
 </ul>
@@ -161,7 +174,10 @@ data-aria-dark="Switch to auto color mode">
 </li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Development</span></p>
+<ul class="current">
 <li class="toctree-l1 current"><a class="reference internal" href="contributing/index.html">Contributing to <code class="docutils literal notranslate"><span class="pre">rgpot</span></code></a><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="contributing/developer/index.html">Developer Guide</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="contributing/developer/testing.html">Testing</a></li>
@@ -172,8 +188,8 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l2 current"><a class="current reference internal" href="#">Code of Conduct</a></li>
 </ul>
 </li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Code of Conduct</a></li>
 </ul>
-
         </div>
       </div>
     </div>
@@ -184,24 +200,47 @@ data-aria-dark="Switch to auto color mode">
       <i class="i-lucide close"></i>
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
-<li><a class="reference internal" href="#id1">Contributor Covenant Code of Conduct</a><ul>
-<li><a class="reference internal" href="#id2">Our Pledge</a></li>
-<li><a class="reference internal" href="#id3">Our Standards</a></li>
-<li><a class="reference internal" href="#id4">Enforcement Responsibilities</a></li>
-<li><a class="reference internal" href="#id5">Scope</a></li>
-<li><a class="reference internal" href="#id6">Enforcement</a></li>
-<li><a class="reference internal" href="#id7">Enforcement Guidelines</a><ul>
-<li><a class="reference internal" href="#id8">1. Correction</a></li>
-<li><a class="reference internal" href="#id9">2. Warning</a></li>
-<li><a class="reference internal" href="#id10">3. Temporary Ban</a></li>
-<li><a class="reference internal" href="#id11">4. Permanent Ban</a></li>
+<li><a class="reference internal" href="#contributor-covenant-code-of-conduct">Contributor Covenant Code of Conduct</a><ul>
+<li><a class="reference internal" href="#our-pledge">Our Pledge</a></li>
+<li><a class="reference internal" href="#our-standards">Our Standards</a></li>
+<li><a class="reference internal" href="#enforcement-responsibilities">Enforcement Responsibilities</a></li>
+<li><a class="reference internal" href="#scope">Scope</a></li>
+<li><a class="reference internal" href="#enforcement">Enforcement</a></li>
+<li><a class="reference internal" href="#enforcement-guidelines">Enforcement Guidelines</a><ul>
+<li><a class="reference internal" href="#correction">1. Correction</a></li>
+<li><a class="reference internal" href="#warning">2. Warning</a></li>
+<li><a class="reference internal" href="#temporary-ban">3. Temporary Ban</a></li>
+<li><a class="reference internal" href="#permanent-ban">4. Permanent Ban</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id12">Attribution</a></li>
+<li><a class="reference internal" href="#attribution">Attribution</a></li>
 </ul>
 </li>
 </ul>
-</div><div id="ethical-ad-placement" data-ea-publisher="readthedocs"></div></div>
+</div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/OmniPotentRPC/rgpot"
+  data-type="github" data-user="OmniPotentRPC" data-repo="rgpot">
+  <span class="w-8 flex items-center justify-around shrink-0 text-3xl">
+    <iconify-icon icon="simple-icons:github"></iconify-icon>
+  </span>
+  <span class="flex-grow px-2 break-all">
+    
+    
+      <span>rgpot</span>
+    
+    <span class="flex text-sm repo-stats-count">
+      <span class="flex items-center pr-3">
+        <iconify-icon icon="lucide:star"></iconify-icon>
+        <strong class="js-repo-stars ml-1">0</strong>
+      </span>
+      <span class="flex items-center">
+        <iconify-icon icon="lucide:git-fork"></iconify-icon>
+        <strong class="js-repo-forks ml-1">0</strong>
+      </span>
+    </span>
+  </span>
+</a><div class="edit-this-page">
+  <a href="https://github.com/OmniPotentRPC/rgpot/blob/main/docs/source/code_of_conduct.rst">Edit this page</a>
+</div></div>
   </aside>
   <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
   <main class="sy-main w-full max-sm:max-w-full print:pt-6">
@@ -238,7 +277,7 @@ data-aria-dark="Switch to auto color mode">
     <button
       type="button"
       class="js-copy px-3 py-1 inline-flex items-center gap-1"
-      data-url="rgpot.rgoswami.me/_sources/code_of_conduct.rst.txt"
+      data-url="https://rgpot.rgoswami.me/_sources/code_of_conduct.rst.txt"
     >
       <i class="i-lucide" data-icon="copy"></i>
       <span>Copy page</span>
@@ -252,23 +291,23 @@ data-aria-dark="Switch to auto color mode">
     <div role="presentation">
       <div class="flex flex-col" role="group">
         <button class="js-copy" type="button" role="menuitem"
-          data-url="rgpot.rgoswami.me/_sources/code_of_conduct.rst.txt">
+          data-url="https://rgpot.rgoswami.me/_sources/code_of_conduct.rst.txt">
           <span class="iconify-icon">
             <i class="i-lucide" data-icon="copy"></i>
           </span>
           <span>Copy page</span>
         </button>
-        <a role="menuitem" href="rgpot.rgoswami.me/_sources/code_of_conduct.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
-            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20rgpot.rgoswami.me/_sources/code_of_conduct.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        <a role="menuitem" href="https://rgpot.rgoswami.me/_sources/code_of_conduct.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
+            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20https%3A//rgpot.rgoswami.me/_sources/code_of_conduct.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:openai"></iconify-icon>
           <span>Open in ChatGPT</span>
-        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20rgpot.rgoswami.me/_sources/code_of_conduct.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20https%3A//rgpot.rgoswami.me/_sources/code_of_conduct.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:claude"></iconify-icon>
           <span>Open in Claude</span>
         </a></div>
     </div>
   </div>
-</div><article class="yue" role="main">
+</div><article class="yue dark-code" role="main">
           <section id="code-of-conduct">
 <h1>Code of Conduct<a class="headerlink" href="#code-of-conduct" title="Link to this heading">¶</a></h1>
 <blockquote>
@@ -278,10 +317,10 @@ data-aria-dark="Switch to auto color mode">
 </dd>
 </dl>
 </div></blockquote>
-<section id="id1">
-<h2>Contributor Covenant Code of Conduct<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h2>
-<section id="id2">
-<h3>Our Pledge<a class="headerlink" href="#id2" title="Link to this heading">¶</a></h3>
+<section id="contributor-covenant-code-of-conduct">
+<h2>Contributor Covenant Code of Conduct<a class="headerlink" href="#contributor-covenant-code-of-conduct" title="Link to this heading">¶</a></h2>
+<section id="our-pledge">
+<h3>Our Pledge<a class="headerlink" href="#our-pledge" title="Link to this heading">¶</a></h3>
 <p>We as members, contributors, and leaders pledge to make participation in our
 community a harassment-free experience for everyone, regardless of age, body
 size, visible or invisible disability, ethnicity, sex characteristics, gender
@@ -291,33 +330,33 @@ identity and orientation.</p>
 <p>We pledge to act and interact in ways that contribute to an open, welcoming,
 diverse, inclusive, and healthy community.</p>
 </section>
-<section id="id3">
-<h3>Our Standards<a class="headerlink" href="#id3" title="Link to this heading">¶</a></h3>
+<section id="our-standards">
+<h3>Our Standards<a class="headerlink" href="#our-standards" title="Link to this heading">¶</a></h3>
 <p>Examples of behavior that contributes to a positive environment for our
 community include:</p>
 <ul class="simple">
-<li>Demonstrating empathy and kindness toward other people</li>
-<li>Being respectful of differing opinions, viewpoints, and experiences</li>
-<li>Giving and gracefully accepting constructive feedback</li>
-<li>Accepting responsibility and apologizing to those affected by our mistakes,
-and learning from the experience</li>
-<li>Focusing on what is best not just for us as individuals, but for the overall
-community</li>
+<li><p>Demonstrating empathy and kindness toward other people</p></li>
+<li><p>Being respectful of differing opinions, viewpoints, and experiences</p></li>
+<li><p>Giving and gracefully accepting constructive feedback</p></li>
+<li><p>Accepting responsibility and apologizing to those affected by our mistakes,
+and learning from the experience</p></li>
+<li><p>Focusing on what is best not just for us as individuals, but for the overall
+community</p></li>
 </ul>
 <p>Examples of unacceptable behavior include:</p>
 <ul class="simple">
-<li>The use of sexualized language or imagery, and sexual attention or advances of
-any kind</li>
-<li>Trolling, insulting or derogatory comments, and personal or political attacks</li>
-<li>Public or private harassment</li>
-<li>Publishing others' private information, such as a physical or email address,
-without their explicit permission</li>
-<li>Other conduct which could reasonably be considered inappropriate in a
-professional setting</li>
+<li><p>The use of sexualized language or imagery, and sexual attention or advances of
+any kind</p></li>
+<li><p>Trolling, insulting or derogatory comments, and personal or political attacks</p></li>
+<li><p>Public or private harassment</p></li>
+<li><p>Publishing others’ private information, such as a physical or email address,
+without their explicit permission</p></li>
+<li><p>Other conduct which could reasonably be considered inappropriate in a
+professional setting</p></li>
 </ul>
 </section>
-<section id="id4">
-<h3>Enforcement Responsibilities<a class="headerlink" href="#id4" title="Link to this heading">¶</a></h3>
+<section id="enforcement-responsibilities">
+<h3>Enforcement Responsibilities<a class="headerlink" href="#enforcement-responsibilities" title="Link to this heading">¶</a></h3>
 <p>Community leaders are responsible for clarifying and enforcing our standards of
 acceptable behavior and will take appropriate and fair corrective action in
 response to any behavior that they deem inappropriate, threatening, offensive,
@@ -327,37 +366,37 @@ comments, commits, code, wiki edits, issues, and other contributions that are
 not aligned to this Code of Conduct, and will communicate reasons for moderation
 decisions when appropriate.</p>
 </section>
-<section id="id5">
-<h3>Scope<a class="headerlink" href="#id5" title="Link to this heading">¶</a></h3>
+<section id="scope">
+<h3>Scope<a class="headerlink" href="#scope" title="Link to this heading">¶</a></h3>
 <p>This Code of Conduct applies within all community spaces, and also applies when
 an individual is officially representing the community in public spaces.
 Examples of representing our community include using an official e-mail address,
 posting via an official social media account, or acting as an appointed
 representative at an online or offline event.</p>
 </section>
-<section id="id6">
-<h3>Enforcement<a class="headerlink" href="#id6" title="Link to this heading">¶</a></h3>
+<section id="enforcement">
+<h3>Enforcement<a class="headerlink" href="#enforcement" title="Link to this heading">¶</a></h3>
 <p>Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement at
-[INSERT CONTACT METHOD].
+<a href="#id1"><span class="problematic" id="id2">INSERT CONTACT METHOD</span></a>.
 All complaints will be reviewed and investigated promptly and fairly.</p>
 <p>All community leaders are obligated to respect the privacy and security of the
 reporter of any incident.</p>
 </section>
-<section id="id7">
-<h3>Enforcement Guidelines<a class="headerlink" href="#id7" title="Link to this heading">¶</a></h3>
+<section id="enforcement-guidelines">
+<h3>Enforcement Guidelines<a class="headerlink" href="#enforcement-guidelines" title="Link to this heading">¶</a></h3>
 <p>Community leaders will follow these Community Impact Guidelines in determining
 the consequences for any action they deem in violation of this Code of Conduct:</p>
-<section id="id8">
-<h4>1. Correction<a class="headerlink" href="#id8" title="Link to this heading">¶</a></h4>
+<section id="correction">
+<h4>1. Correction<a class="headerlink" href="#correction" title="Link to this heading">¶</a></h4>
 <p><strong>Community Impact</strong>: Use of inappropriate language or other behavior deemed
 unprofessional or unwelcome in the community.</p>
 <p><strong>Consequence</strong>: A private, written warning from community leaders, providing
 clarity around the nature of the violation and an explanation of why the
 behavior was inappropriate. A public apology may be requested.</p>
 </section>
-<section id="id9">
-<h4>2. Warning<a class="headerlink" href="#id9" title="Link to this heading">¶</a></h4>
+<section id="warning">
+<h4>2. Warning<a class="headerlink" href="#warning" title="Link to this heading">¶</a></h4>
 <p><strong>Community Impact</strong>: A violation through a single incident or series of
 actions.</p>
 <p><strong>Consequence</strong>: A warning with consequences for continued behavior. No
@@ -367,8 +406,8 @@ includes avoiding interactions in community spaces as well as external channels
 like social media. Violating these terms may lead to a temporary or permanent
 ban.</p>
 </section>
-<section id="id10">
-<h4>3. Temporary Ban<a class="headerlink" href="#id10" title="Link to this heading">¶</a></h4>
+<section id="temporary-ban">
+<h4>3. Temporary Ban<a class="headerlink" href="#temporary-ban" title="Link to this heading">¶</a></h4>
 <p><strong>Community Impact</strong>: A serious violation of community standards, including
 sustained inappropriate behavior.</p>
 <p><strong>Consequence</strong>: A temporary ban from any sort of interaction or public
@@ -377,8 +416,8 @@ private interaction with the people involved, including unsolicited interaction
 with those enforcing the Code of Conduct, is allowed during this period.
 Violating these terms may lead to a permanent ban.</p>
 </section>
-<section id="id11">
-<h4>4. Permanent Ban<a class="headerlink" href="#id11" title="Link to this heading">¶</a></h4>
+<section id="permanent-ban">
+<h4>4. Permanent Ban<a class="headerlink" href="#permanent-ban" title="Link to this heading">¶</a></h4>
 <p><strong>Community Impact</strong>: Demonstrating a pattern of violation of community
 standards, including sustained inappropriate behavior, harassment of an
 individual, or aggression toward or disparagement of classes of individuals.</p>
@@ -386,8 +425,8 @@ individual, or aggression toward or disparagement of classes of individuals.</p>
 community.</p>
 </section>
 </section>
-<section id="id12">
-<h3>Attribution<a class="headerlink" href="#id12" title="Link to this heading">¶</a></h3>
+<section id="attribution">
+<h3>Attribution<a class="headerlink" href="#attribution" title="Link to this heading">¶</a></h3>
 <p>This Code of Conduct is adapted from the <a class="reference external" href="https://www.contributor-covenant.org">Contributor Covenant</a>,
 version 2.1, available at
 <a class="reference external" href="https://www.contributor-covenant.org/version/2/1/code_of_conduct.html">https://www.contributor-covenant.org/version/2/1/code_of_conduct.html</a>.</p>
