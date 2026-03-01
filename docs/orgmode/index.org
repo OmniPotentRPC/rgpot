@@ -34,6 +34,7 @@ meson compile -C bbdir && meson test -C bbdir
    :maxdepth: 2
    :caption: How-To Guides
 
+   howto/embedding
    howto/integration
 
 .. toctree::

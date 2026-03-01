@@ -4,19 +4,16 @@
 
 * Quickstart
 
-This page covers building rgpot from source and running the included
-Lennard-Jones example to verify the setup.
+This tutorial walks through building rgpot from source, running a
+Lennard-Jones RPC server, and calling it from Python. By the end you will
+have a running potential server that any Cap'n Proto client can connect to.
 
-** Prerequisites
+** What you will need
 
-- A C++20 compiler (GCC 11+, Clang 14+, or MSVC 2022+)
-- [[https://mesonbuild.com/][Meson]] 1.0+ and [[https://ninja-build.org/][Ninja]]
-- [[https://capnproto.org/][Cap'n Proto]] (for the RPC server/client)
-- [[https://prefix.dev/pixi][pixi]] (recommended, handles all of the above)
+- [[https://prefix.dev/pixi][pixi]] (manages the full toolchain; nothing else to install)
+- About 5 minutes
 
-** Building with pixi
-
-The fastest path uses pixi, which manages the toolchain and all dependencies:
+** Clone and build
 
 #+begin_src bash
 git clone https://github.com/OmniPotentRPC/rgpot.git
@@ -24,32 +21,52 @@ cd rgpot
 pixi shell
 meson setup bbdir -Dwith_tests=True --buildtype=debug
 meson compile -C bbdir
+#+end_src
+
+Expected output (last few lines):
+
+#+begin_example
+[105/105] Linking target CppCore/rgpot/rpc/potserv
+#+end_example
+
+** Run the tests
+
+#+begin_src bash
 meson test -C bbdir
 #+end_src
 
-** Building with cmake
+All tests should pass:
+
+#+begin_example
+Ok:                 7
+Expected Fail:      0
+Fail:               0
+#+end_example
+
+** Start an RPC server
+
+Open a second terminal (or use =&=) and launch a Lennard-Jones server on
+port 12345:
 
 #+begin_src bash
-cmake -B build -DRGPOT_BUILD_TESTS=ON -DRGPOT_BUILD_EXAMPLES=ON
-cmake --build build
-ctest --test-dir build
-#+end_src
-
-** Windows (MSVC)
-
-rgpot builds on Windows with MSVC 2022. Install Cap'n Proto via conda-forge
-or vcpkg, then use the standard meson or cmake workflow. No special flags
-required since v1.0.3.
-
-** Running the RPC server
-
-Start a Lennard-Jones potential server on port 12345:
-
-#+begin_src bash
+pixi shell   # if not already in the environment
 ./bbdir/CppCore/rgpot/rpc/potserv 12345 LJ
 #+end_src
 
-** Calling from Python
+The server prints a line and then blocks, waiting for connections:
+
+#+begin_example
+Listening on 0.0.0.0:12345 with potential: LJ
+#+end_example
+
+** Call from Python
+
+In the first terminal, install the Python Cap'n Proto bindings and run a
+calculation:
+
+#+begin_src bash
+pixi shell -e rpctest
+#+end_src
 
 #+begin_src python
 import capnp
@@ -59,7 +76,7 @@ potentials_capnp = capnp.load("CppCore/rgpot/rpc/Potentials.capnp")
 client = capnp.TwoPartyClient("localhost:12345")
 pot = client.bootstrap().cast_as(potentials_capnp.Potential)
 
-# Two-atom LJ calculation
+# Two hydrogen atoms separated by 2.5 Angstrom
 request = pot.calculate_request()
 fip = request.init("fip")
 fip.pos = [0.0, 0.0, 0.0, 2.5, 0.0, 0.0]
@@ -71,32 +88,27 @@ print(f"Energy: {response.result.energy}")
 print(f"Forces: {list(response.result.forces)}")
 #+end_src
 
-** Using as a meson subproject
+Expected output:
 
-To embed rgpot in another project, add a =subprojects/rgpot.wrap= file or
-vendor the source into =subprojects/rgpot/=.
+#+begin_example
+Energy: -0.02734...
+Forces: [0.02148..., 0.0, 0.0, -0.02148..., 0.0, 0.0]
+#+end_example
 
-For a full library build (server + potentials):
+The forces are equal and opposite, as expected for a two-body LJ pair.
 
-#+begin_src meson
-rgpot_proj = subproject('rgpot',
-    default_options: ['with_rpc=true', 'with_tests=false'])
-rgpot_dep = rgpot_proj.get_variable('rgpot_dep')
-#+end_src
+** What just happened
 
-For RPC schema only (avoids type collisions with the host project):
-
-#+begin_src meson
-rgpot_proj = subproject('rgpot',
-    default_options: ['with_rpc_client_only=true', 'pure_lib=true'])
-ptlrpc_dep = rgpot_proj.get_variable('ptlrpc_dep')
-#+end_src
-
-See the [[file:../howto/integration.org][integration guide]] for detailed namespace collision mitigation
-strategies when embedding into legacy codebases.
+1. =potserv= loaded the built-in Lennard-Jones potential and exposed it
+   over Cap'n Proto RPC.
+2. The Python client connected, sent atomic positions, and received
+   energy and forces back.
+3. The same wire protocol works from any language with a Cap'n Proto
+   implementation (C++, Rust, Julia, Go, etc.).
 
 ** Next steps
 
 - [[file:../reference/architecture.org][Architecture overview]] for the layer diagram and design rationale
-- [[file:../howto/integration.org][Integration guide]] for embedding into external projects (e.g. eOn)
+- [[file:../howto/integration.org][Integration guide]] for embedding rgpot into external projects (e.g. eOn)
+- [[file:../howto/embedding.org][Embedding as a subproject]] for using rgpot as a meson/cmake dependency
 - [[file:../changelog.org][Changelog]] for release history
