@@ -1,16 +1,18 @@
 # Find dependencies and tools
 capnp_rpc_dep = dependency('capnp-rpc')
-capnpc = find_program('capnpc')
+capnp = find_program('capnp')
+python = find_program('python3', 'python')
 
 gen_rpc = custom_target(
     'gen_rpc',
     input: 'Potentials.capnp',
-    output: ['Potentials.capnp.c++', 'Potentials.capnp.h'],
+    output: ['Potentials.capnp.cpp', 'Potentials.capnp.h'],
     command: [
-        capnpc,
-        '-o',
-        'c++:@OUTDIR@',
-        '--src-prefix=' + meson.current_source_dir(),
+        python,
+        meson.current_source_dir() / 'capnp_compile.py',
+        capnp,
+        '@OUTDIR@',
+        meson.current_source_dir(),
         '@INPUT@',
     ],
 )
@@ -26,10 +28,16 @@ ptlrpc = library(
     install: not meson.is_subproject(),
 )
 
+_ptlrpc_extra_deps = [capnp_rpc_dep]
+if host_machine.system() == 'windows'
+    _ptlrpc_extra_deps += cppc.find_library('ws2_32')
+endif
+
 ptlrpc_dep = declare_dependency(
     link_with: ptlrpc,
     sources: gen_rpc,
     include_directories: _incdirs,
+    dependencies: _ptlrpc_extra_deps,
 )
 
 pot_bridge = library(
