@@ -40,7 +40,7 @@ platforms = ["linux-64"]
 
 [feature.docs.dependencies]
 doxygen = ">=1.13.2,<2"
-sphinx = ">=8.2.3,<9"
+sphinx = ">=8.1,<8.2"
 doxyrest = ">=2.1.2,<3"
 emacs = ">=30.2,<31"
 pandoc = ">=3.1,<4"
