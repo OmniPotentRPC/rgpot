@@ -92,11 +92,11 @@ rgpot_proj = subproject('rgpot',
 ptlrpc_dep = rgpot_proj.get_variable('ptlrpc_dep')
 #+end_src
 
-See the [[file:integration_guide.org][integration guide]] for detailed namespace collision mitigation
+See the [[file:../howto/integration.org][integration guide]] for detailed namespace collision mitigation
 strategies when embedding into legacy codebases.
 
 ** Next steps
 
-- [[file:architecture.org][Architecture overview]] for the layer diagram and design rationale
-- [[file:integration_guide.org][Integration guide]] for embedding into external projects (e.g. eOn)
-- [[file:changelog.org][Changelog]] for release history
+- [[file:../reference/architecture.org][Architecture overview]] for the layer diagram and design rationale
+- [[file:../howto/integration.org][Integration guide]] for embedding into external projects (e.g. eOn)
+- [[file:../changelog.org][Changelog]] for release history
