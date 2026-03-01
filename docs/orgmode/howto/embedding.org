@@ -1,0 +1,77 @@
+#+TITLE: Embedding as a Subproject
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Embedding as a Subproject
+
+This page covers how to embed rgpot into another C/C++ project using meson
+or cmake as a subproject dependency.
+
+** Meson
+
+Add a =subprojects/rgpot.wrap= file or vendor the source directly into
+=subprojects/rgpot/=.
+
+*** Full library build (server + potentials)
+
+Use this when your project hosts an RPC server with rgpot's built-in
+potentials:
+
+#+begin_src meson
+rgpot_proj = subproject('rgpot',
+    default_options: ['with_rpc=true', 'with_tests=false'])
+rgpot_dep = rgpot_proj.get_variable('rgpot_dep')
+#+end_src
+
+*** RPC schema only (client mode)
+
+Use this when your project only needs to /call/ a remote potential server,
+or when you want to avoid namespace collisions with your own types (see
+[[file:integration.org][integration guide]]):
+
+#+begin_src meson
+rgpot_proj = subproject('rgpot',
+    default_options: ['with_rpc_client_only=true', 'pure_lib=true'])
+ptlrpc_dep = rgpot_proj.get_variable('ptlrpc_dep')
+#+end_src
+
+The =ptlrpc_dep= provides only the Cap'n Proto schema and generated code,
+without pulling in =Potential.hpp= or the existing C++ potentials.
+
+** CMake
+
+rgpot also provides a CMake build. To use it as a subdirectory:
+
+#+begin_src cmake
+add_subdirectory(external/rgpot)
+target_link_libraries(my_target PRIVATE rgpot::rgpot)
+#+end_src
+
+*** Build options
+
+| Option | Default | Description |
+|--------+---------+-------------|
+| =RGPOT_BUILD_TESTS= | =OFF= | Build the test suite |
+| =RGPOT_BUILD_EXAMPLES= | =OFF= | Build example programs |
+| =RGPOT_RPC_CLIENT_ONLY= | =OFF= | Build only the RPC client (schema library) |
+
+#+begin_src bash
+cmake -B build -DRGPOT_BUILD_TESTS=ON -DRGPOT_BUILD_EXAMPLES=ON
+cmake --build build
+ctest --test-dir build
+#+end_src
+
+** Windows (MSVC)
+
+rgpot builds on Windows with MSVC 2022. Install Cap'n Proto via
+conda-forge or vcpkg, then use the standard meson or cmake workflow. No
+special flags are required since v1.0.3.
+
+For conda-forge builds, the following are handled automatically by the
+build system:
+
+- =capnp compile= is used instead of =capnpc= (the Windows =capnpc.EXE=
+  does not support the =-o= flag)
+- Generated =.c++= files are renamed to =.cpp= (MSVC does not recognize
+  the =.c++= extension)
+- =ws2_32= is linked for Cap'n Proto's async networking layer

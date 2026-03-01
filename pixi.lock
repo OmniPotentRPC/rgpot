@@ -1199,7 +1199,6 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/fb/86/dd6e5db36df29e76c7a7699123569a4a18c1623ce68d826ed96c62643cae/mdit_py_plugins-0.5.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/5f/df/76d0321c3797b54b60fef9ec3bd6f4cfd124b9e422182156a1dd418722cf/myst_parser-4.0.1-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/cb/3e/52ab85568730493685d194f473a299f8884c580d8da2747416efc2ca4c70/pycmark-0.9.6-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/8f/64/7e0266f0c541e26df86c31d2add9be3dd9914ae83785ce0aba7cbb693667/pygments_styles-0.3.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/88/f9/16491d7ed2a919954993e48aa941b200f38040928474c9e85ea9e64222c3/pyyaml-6.0.3-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/37/ae/06d7dfc5633c7250fefc61fd624990aa2c37e3495c08a2f23968b1acb23e/shibuya-2026.1.9-py3-none-any.whl
@@ -7478,19 +7477,6 @@ packages:
   license_family: BSD
   size: 949858
   timestamp: 1729887827129
-- pypi: https://files.pythonhosted.org/packages/cb/3e/52ab85568730493685d194f473a299f8884c580d8da2747416efc2ca4c70/pycmark-0.9.6-py2.py3-none-any.whl
-  name: pycmark
-  version: 0.9.6
-  sha256: b90fa4759a11bc93998440a16901e401cac25046d2d806bb3cde11fcb279965b
-  requires_dist:
-  - docutils
-  - tox ; extra == 'test'
-  - flake8 ; extra == 'test'
-  - flake8-import-order ; extra == 'test'
-  - pytest ; extra == 'test'
-  - mypy ; extra == 'test'
-  - html5lib ; extra == 'test'
-  requires_python: '>=3.6'
 - conda: https://conda.anaconda.org/conda-forge/noarch/pygments-2.19.2-pyhd8ed1ab_0.conda
   sha256: 5577623b9f6685ece2697c6eb7511b4c9ac5fb607c9babc2646c811b428fd46a
   md5: 6b6ece66ebcae2d5f326c77ef2c5a066

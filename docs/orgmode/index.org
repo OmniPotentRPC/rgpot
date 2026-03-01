@@ -2,10 +2,7 @@
 #+AUTHOR: [[https://rgoswami.me][Rohit Goswami]]
 #+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
 
-# Metadata first, including the heading
 #+begin_export rst
-:cover: https://github.com/HaoZeke/rgpycrumbs/blob/main/branding/logo/pycrumbs_logo.webp
-
 =========
 ``rgpot``
 =========
@@ -13,87 +10,51 @@
 :Author: `Rohit Goswami <https://rgoswami.me>`_
 #+end_export
 
-# Copied over by sphinx-build
 file:../../branding/logo/rgpot_logo.webp
 
 * Overview
-RPC Generalized Potential Library, or ~rgpot~ provides a unified schema for
-interfacing potential servers across languages using runtime interoperability.
+~rgpot~ provides a unified schema for interfacing potential servers across
+languages using runtime interoperability. It combines a Rust core with C++
+potentials exposed through a Cap'n Proto RPC layer, enabling language-agnostic
+access to potential energy surface calculations.
 
-* Getting Started
+#+begin_src bash
+git clone https://github.com/OmniPotentRPC/rgpot.git
+cd rgpot && pixi shell
+meson setup bbdir -Dwith_tests=True --buildtype=debug
+meson compile -C bbdir && meson test -C bbdir
+#+end_src
 
 #+begin_export rst
-  .. toctree::
-     :maxdepth: 1
-     :caption: Getting Started
+.. toctree::
+   :maxdepth: 2
+   :caption: Tutorials
 
-     quickstart
+   tutorials/quickstart
+
+.. toctree::
+   :maxdepth: 2
+   :caption: How-To Guides
+
+   howto/embedding
+   howto/integration
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Reference
+
+   reference/architecture
+   api/index
+   changelog
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Development
+
+   contributing/index
+   code_of_conduct
 #+end_export
 
-* Guides
-
-#+begin_export rst
-  .. toctree::
-     :maxdepth: 2
-     :caption: Guides
-
-     integration_guide
-#+end_export
-
-* Reference
-
-#+begin_export rst
-  .. toctree::
-     :maxdepth: 2
-     :caption: Reference
-
-     architecture
-     api/index
-     changelog
-     contributing/index
-#+end_export
-
-** Usage
-Setting up and running tests:
-#+begin_src bash
-pixi shell
-meson setup bbdir -Dwith_tests=True --buildtype="debug"
-meson test -C bbdir
-#+end_src
-
-~cmake~ works as well.
-#+begin_src bash
-cmake -B build -DRGPOT_BUILD_TESTS=ON -DRGPOT_BUILD_EXAMPLES=ON
-cmake --build build
-ctest --test-dir build
-#+end_src
-
-For building only the client, with CXX17 and CapnProto only:
-#+begin_src bash
-cmake -B build_client\
-    -DRGPOT_RPC_CLIENT_ONLY=ON\
-    -DRGPOT_BUILD_TESTS=ON
-cmake --build build_client
-# needs a server instance, so in another terminal
-# say from the meson.build
-./bbdir/CppCore/rgpot/rpc/potserv 12345 LJ
-# now test
-ctest --test-dir build_client/ --output-on-failure
-#+end_src
-
-*** Developing locally
-A ~pre-commit~ job is setup on CI to enforce consistent styles, so it is best to
-set it up locally as well (using [[https://pypa.github.io/pipx][pipx]] for isolation):
-
-#+begin_src sh
-# Run before commiting
-uvx pre-commit run --all-files
-#+end_src
-*** Handling actions
-To keep the build matrix setup manageable, we use Nickel.
-#+begin_src bash
-pixi r gen-gha
-#+end_src
 * License
 MIT, however note that some of the potentials are adapted from eOn which is
 under a BSD 3-Clause License.

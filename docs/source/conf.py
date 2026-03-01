@@ -56,8 +56,44 @@ Rust API (``rgpot-core``)
 html_theme = "shibuya"
 html_static_path = ["_static"]
 
-# Shibuya theme specific options
 html_theme_options = {
     "github_url": "https://github.com/OmniPotentRPC/rgpot",
+    "accent_color": "teal",
+    "dark_code": True,
+    "globaltoc_expand_depth": 1,
+    "nav_links": [
+        {
+            "title": "Ecosystem",
+            "children": [
+                {
+                    "title": "eOn",
+                    "url": "https://eondocs.org",
+                    "summary": "Saddle point finding on potential energy surfaces",
+                },
+                {
+                    "title": "rgpycrumbs",
+                    "url": "https://rgpycrumbs.rgoswami.me",
+                    "summary": "Python bindings for rgpot",
+                },
+            ],
+        },
+    ],
 }
-html_baseurl = "rgpot.rgoswami.me"
+
+html_context = {
+    "source_type": "github",
+    "source_user": "OmniPotentRPC",
+    "source_repo": "rgpot",
+    "source_version": "main",
+    "source_docs_path": "/docs/source/",
+}
+
+html_sidebars = {
+    "**": [
+        "sidebars/localtoc.html",
+        "sidebars/repo-stats.html",
+        "sidebars/edit-this-page.html",
+    ],
+}
+
+html_baseurl = "https://rgpot.rgoswami.me/"
