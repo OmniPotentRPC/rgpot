@@ -10,7 +10,12 @@ project(
 host_system = host_machine.system()
 
 # Add C++ compiler options
-cpp_args = ['-Wall', '-Wextra', '-Wpedantic']
+_cppc_early = meson.get_compiler('cpp')
+if _cppc_early.get_id() == 'msvc' or _cppc_early.get_id() == 'clang-cl'
+    cpp_args = ['/W3']
+else
+    cpp_args = ['-Wall', '-Wextra', '-Wpedantic']
+endif
 _args = [cpp_args]  # Extra arguments
 _deps = []  # Dependencies
 _linkto = []  # All the sub-libraries (potentials)
@@ -45,8 +50,10 @@ cppc = meson.get_compiler('cpp')
 # libm for Unix systems
 m_dep = cppc.find_library('m', required: false)
 _deps += m_dep
-# For clang
-_deps += [declare_dependency(link_args: '-lstdc++')]
+# For clang on Unix (MSVC links the C++ runtime automatically)
+if host_system != 'windows'
+    _deps += [declare_dependency(link_args: '-lstdc++')]
+endif
 
 if get_option('with_examples') and not get_option('with_rpc_client_only')
     # Eigen
