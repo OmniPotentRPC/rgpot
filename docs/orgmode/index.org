@@ -10,6 +10,8 @@
 :Author: `Rohit Goswami <https://rgoswami.me>`_
 #+end_export
 
+file:../../branding/logo/rgpot_logo.webp
+
 * Overview
 ~rgpot~ provides a unified schema for interfacing potential servers across
 languages using runtime interoperability. It combines a Rust core with C++
