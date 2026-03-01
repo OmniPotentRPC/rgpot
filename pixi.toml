@@ -40,7 +40,7 @@ platforms = ["linux-64"]
 
 [feature.docs.dependencies]
 doxygen = ">=1.13.2,<2"
-sphinx = ">=8.2.3,<9"
+sphinx = ">=8.0,<8.1"
 doxyrest = ">=2.1.2,<3"
 emacs = ">=30.2,<31"
 pandoc = ">=3.1,<4"
@@ -49,6 +49,7 @@ pandoc = ">=3.1,<4"
 sphinx-sitemap = ">=2.9.0, <3"
 shibuya = ">=2026.1.9, <2027"
 pycmark = ">=0.9.6, <0.10"
+myst-parser = ">=4.0, <5"
 sphinxcontrib-rust = ">=1.0.0, <2"
 sphinx-rustdoc-postprocess = ">=0.1.0, <0.2"
 

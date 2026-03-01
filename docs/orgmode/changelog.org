@@ -5,5 +5,5 @@
 
 #+begin_export rst
 .. include:: ../../CHANGELOG.md
-   :parser: commonmark
+   :parser: myst_parser.sphinx_
 #+end_export

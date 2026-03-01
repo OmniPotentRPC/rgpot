@@ -16,6 +16,7 @@ html_logo = "../../branding/logo/rgpot_notext.svg"
 extensions = [
     "doxyrest",
     "cpplexer",
+    "myst_parser",
     "sphinx.ext.intersphinx",
     "sphinx_sitemap",
     "sphinxcontrib_rust",
