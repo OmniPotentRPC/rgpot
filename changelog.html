@@ -83,10 +83,17 @@ data-aria-dark="Switch to auto color mode">
   <aside id="lside" class="sy-lside md:w-72 md:shrink-0 print:hidden">
     <div class="sy-lside-inner md:sticky">
       <div class="sy-scrollbar p-6">
-        <div class="globaltoc" data-expand-depth="0"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
+        <div class="globaltoc" data-expand-depth="0"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Guides</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="integration_guide.html">External Integration Guide</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture Overview</a></li>
-<li class="toctree-l1"><a class="reference internal" href="integration_guide.html">External Integration Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api/index.html">API Reference</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="api/group_rgpot_cpp.html">C++ RAII Wrappers</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="api/class_rgpot_CalcResult.html">class rgpot::CalcResult</a><ul class="simple">
@@ -177,15 +184,24 @@ data-aria-dark="Switch to auto color mode">
       <i class="i-lucide close"></i>
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
-<li><a class="reference internal" href="#id1">Changelog</a><ul>
-<li><a class="reference internal" href="#id2">1.0.0 - 2026-02-15</a><ul>
-<li><a class="reference internal" href="#id3">Added</a></li>
-<li><a class="reference internal" href="#id4">Changed</a></li>
-<li><a class="reference internal" href="#id5">Fixed</a></li>
+<li><a class="reference internal" href="#changelog">Changelog</a><ul>
+<li><a class="reference internal" href="#id1">1.0.3 - 2026-03-01</a><ul>
+<li><a class="reference internal" href="#fixed">Fixed</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id6">0.0.1 - 2024-01-26</a><ul>
-<li><a class="reference internal" href="#id7">Added</a></li>
+<li><a class="reference internal" href="#id2">1.0.2 - 2026-03-01</a><ul>
+<li><a class="reference internal" href="#added">Added</a></li>
+<li><a class="reference internal" href="#changed">Changed</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id3">1.0.0 - 2026-02-15</a><ul>
+<li><a class="reference internal" href="#id4">Added</a></li>
+<li><a class="reference internal" href="#id5">Changed</a></li>
+<li><a class="reference internal" href="#id6">Fixed</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id7">0.0.1 - 2024-01-26</a><ul>
+<li><a class="reference internal" href="#id8">Added</a></li>
 </ul>
 </li>
 </ul>
@@ -264,54 +280,78 @@ data-aria-dark="Switch to auto color mode">
 </dd>
 </dl>
 </div></blockquote>
-<section id="id1">
-<h2>Changelog<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h2>
+<section id="changelog">
+<h2>Changelog<a class="headerlink" href="#changelog" title="Link to this heading">¶</a></h2>
 <p>All notable changes to this project will be documented in this file.</p>
 <p>The format is based on <a class="reference external" href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a class="reference external" href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <!-- towncrier release notes start -->
-<section id="id2">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.0.0">1.0.0</a> - 2026-02-15<a class="headerlink" href="#id2" title="Link to this heading">¶</a></h3>
-<section id="id3">
-<h4>Added<a class="headerlink" href="#id3" title="Link to this heading">¶</a></h4>
-<ul>
-<li>doc(arch): add architecture guide covering layer diagram, error conventions, and how to register new potentials</li>
-<li>feat(build): add release CI workflow, meson subproject install guards, CMake FetchContent readiness, and package version config</li>
-<li>feat(cache): add a RocksDB integration</li>
-<li>feat(ci): add <code class="docutils literal notranslate"><span class="pre">rust_tests</span></code> job using cargo-nextest on Ubuntu and macOS with default and <code class="docutils literal notranslate"><span class="pre">--all-features</span></code> configurations</li>
-<li>feat(cpp): add C++ RAII wrappers (<code class="docutils literal notranslate"><span class="pre">include/rgpot/</span></code>) — <code class="docutils literal notranslate"><span class="pre">PotentialHandle</span></code>, <code class="docutils literal notranslate"><span class="pre">InputSpec</span></code>, <code class="docutils literal notranslate"><span class="pre">CalcResult</span></code>, <code class="docutils literal notranslate"><span class="pre">RpcClient</span></code>, <code class="docutils literal notranslate"><span class="pre">Error</span></code>, with full Doxygen documentation</li>
-<li>feat(rpc): add feature-gated Cap'n Proto RPC client and server in Rust, sharing the existing <code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code> schema with the C++ side</li>
-<li>feat(rpc): initialize a C style integration to the server</li>
-<li>feat(rpc): initialize a server component</li>
-<li>feat(rust): add Rust core library (<code class="docutils literal notranslate"><span class="pre">rgpot-core/</span></code>) with <code class="docutils literal notranslate"><span class="pre">#[repr(C)]</span></code> types, callback-based potential dispatch, status codes, thread-local error handling, and auto-generated C header via cbindgen</li>
-<li>feat(rust): integrate DLPack tensor exchange protocol via <code class="docutils literal notranslate"><span class="pre">dlpk</span></code> crate — core types now use <code class="docutils literal notranslate"><span class="pre">DLManagedTensorVersioned*</span></code> for device-agnostic data exchange, with borrowed (non-owning) and owned tensor helpers in new <code class="docutils literal notranslate"><span class="pre">tensor</span></code> module</li>
-<li>test(rust): add 39 unit tests covering types, status codes, potential lifecycle, C API, null-pointer handling, error propagation, and <code class="docutils literal notranslate"><span class="pre">free_fn</span></code> invocation</li>
+<section id="id1">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.0.3">1.0.3</a> - 2026-03-01<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h3>
+<section id="fixed">
+<h4>Fixed<a class="headerlink" href="#fixed" title="Link to this heading">¶</a></h4>
+<ul class="simple">
+<li><p>MSVC/clang-cl compatibility: use <code class="docutils literal notranslate"><span class="pre">/W3</span></code> instead of GCC/Clang warning flags and skip <code class="docutils literal notranslate"><span class="pre">-lstdc++</span></code> link arg on Windows (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/31">#31</a>)</p></li>
 </ul>
 </section>
+</section>
+<section id="id2">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.0.2">1.0.2</a> - 2026-03-01<a class="headerlink" href="#id2" title="Link to this heading">¶</a></h3>
+<section id="added">
+<h4>Added<a class="headerlink" href="#added" title="Link to this heading">¶</a></h4>
+<ul class="simple">
+<li><p>External integration guide covering namespace collision mitigation when embedding rgpot as a subproject (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/30">#30</a>)</p></li>
+</ul>
+</section>
+<section id="changed">
+<h4>Changed<a class="headerlink" href="#changed" title="Link to this heading">¶</a></h4>
+<ul class="simple">
+<li><p>CI dependency bumps and cleanup to prevent trailing whitespace in generated headers (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/29">#29</a>)</p></li>
+</ul>
+</section>
+</section>
+<section id="id3">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.0.0">1.0.0</a> - 2026-02-15<a class="headerlink" href="#id3" title="Link to this heading">¶</a></h3>
 <section id="id4">
-<h4>Changed<a class="headerlink" href="#id4" title="Link to this heading">¶</a></h4>
-<ul>
-<li>chore(build): add Meson <code class="docutils literal notranslate"><span class="pre">with_rust_core</span></code> option, <code class="docutils literal notranslate"><span class="pre">rust-test</span></code> / <code class="docutils literal notranslate"><span class="pre">rust-test-all</span></code> pixi tasks, and <code class="docutils literal notranslate"><span class="pre">cargo-nextest</span></code> dependency</li>
+<h4>Added<a class="headerlink" href="#id4" title="Link to this heading">¶</a></h4>
+<ul class="simple">
+<li><p>doc(arch): add architecture guide covering layer diagram, error conventions, and how to register new potentials</p></li>
+<li><p>feat(build): add release CI workflow, meson subproject install guards, CMake FetchContent readiness, and package version config</p></li>
+<li><p>feat(cache): add a RocksDB integration</p></li>
+<li><p>feat(ci): add <code class="docutils literal notranslate"><span class="pre">rust_tests</span></code> job using cargo-nextest on Ubuntu and macOS with default and <code class="docutils literal notranslate"><span class="pre">--all-features</span></code> configurations</p></li>
+<li><p>feat(cpp): add C++ RAII wrappers (<code class="docutils literal notranslate"><span class="pre">include/rgpot/</span></code>) — <code class="docutils literal notranslate"><span class="pre">PotentialHandle</span></code>, <code class="docutils literal notranslate"><span class="pre">InputSpec</span></code>, <code class="docutils literal notranslate"><span class="pre">CalcResult</span></code>, <code class="docutils literal notranslate"><span class="pre">RpcClient</span></code>, <code class="docutils literal notranslate"><span class="pre">Error</span></code>, with full Doxygen documentation</p></li>
+<li><p>feat(rpc): add feature-gated Cap’n Proto RPC client and server in Rust, sharing the existing <code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code> schema with the C++ side</p></li>
+<li><p>feat(rpc): initialize a C style integration to the server</p></li>
+<li><p>feat(rpc): initialize a server component</p></li>
+<li><p>feat(rust): add Rust core library (<code class="docutils literal notranslate"><span class="pre">rgpot-core/</span></code>) with <code class="docutils literal notranslate"><span class="pre">#[repr(C)]</span></code> types, callback-based potential dispatch, status codes, thread-local error handling, and auto-generated C header via cbindgen</p></li>
+<li><p>feat(rust): integrate DLPack tensor exchange protocol via <code class="docutils literal notranslate"><span class="pre">dlpk</span></code> crate — core types now use <code class="docutils literal notranslate"><span class="pre">DLManagedTensorVersioned*</span></code> for device-agnostic data exchange, with borrowed (non-owning) and owned tensor helpers in new <code class="docutils literal notranslate"><span class="pre">tensor</span></code> module</p></li>
+<li><p>test(rust): add 39 unit tests covering types, status codes, potential lifecycle, C API, null-pointer handling, error propagation, and <code class="docutils literal notranslate"><span class="pre">free_fn</span></code> invocation</p></li>
 </ul>
 </section>
 <section id="id5">
-<h4>Fixed<a class="headerlink" href="#id5" title="Link to this heading">¶</a></h4>
-<ul>
-<li>fix(cpp): remove incorrect <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">&quot;C&quot;</span></code> trampolines from <code class="docutils literal notranslate"><span class="pre">LJPot.hpp</span></code> and <code class="docutils literal notranslate"><span class="pre">CuH2Pot.hpp</span></code> that used raw <code class="docutils literal notranslate"><span class="pre">int</span></code> returns and <code class="docutils literal notranslate"><span class="pre">void*</span></code> params; use typed <code class="docutils literal notranslate"><span class="pre">PotentialHandle::from_impl&lt;&gt;()</span></code> template instead</li>
+<h4>Changed<a class="headerlink" href="#id5" title="Link to this heading">¶</a></h4>
+<ul class="simple">
+<li><p>chore(build): add Meson <code class="docutils literal notranslate"><span class="pre">with_rust_core</span></code> option, <code class="docutils literal notranslate"><span class="pre">rust-test</span></code> / <code class="docutils literal notranslate"><span class="pre">rust-test-all</span></code> pixi tasks, and <code class="docutils literal notranslate"><span class="pre">cargo-nextest</span></code> dependency</p></li>
+</ul>
+</section>
+<section id="id6">
+<h4>Fixed<a class="headerlink" href="#id6" title="Link to this heading">¶</a></h4>
+<ul class="simple">
+<li><p>fix(cpp): remove incorrect <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">&quot;C&quot;</span></code> trampolines from <code class="docutils literal notranslate"><span class="pre">LJPot.hpp</span></code> and <code class="docutils literal notranslate"><span class="pre">CuH2Pot.hpp</span></code> that used raw <code class="docutils literal notranslate"><span class="pre">int</span></code> returns and <code class="docutils literal notranslate"><span class="pre">void*</span></code> params; use typed <code class="docutils literal notranslate"><span class="pre">PotentialHandle::from_impl&lt;&gt;()</span></code> template instead</p></li>
 </ul>
 </section>
 </section>
-<section id="id6">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/v0.0.1">0.0.1</a> - 2024-01-26<a class="headerlink" href="#id6" title="Link to this heading">¶</a></h3>
 <section id="id7">
-<h4>Added<a class="headerlink" href="#id7" title="Link to this heading">¶</a></h4>
-<ul>
-<li>Initial release with C++ core: Lennard-Jones and CuH2 EAM potentials.</li>
-<li>CRTP-based <code class="docutils literal notranslate"><span class="pre">Potential&lt;Derived&gt;</span></code> template with optional caching.</li>
-<li>Cap'n Proto RPC server and client bridge.</li>
-<li>Meson and CMake build systems.</li>
-<li>CI build matrix (Meson/CMake x Linux/macOS x RPC/Cache feature flags).</li>
-<li>RPC integration tests and client bridge stress tests.</li>
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/v0.0.1">0.0.1</a> - 2024-01-26<a class="headerlink" href="#id7" title="Link to this heading">¶</a></h3>
+<section id="id8">
+<h4>Added<a class="headerlink" href="#id8" title="Link to this heading">¶</a></h4>
+<ul class="simple">
+<li><p>Initial release with C++ core: Lennard-Jones and CuH2 EAM potentials.</p></li>
+<li><p>CRTP-based <code class="docutils literal notranslate"><span class="pre">Potential&lt;Derived&gt;</span></code> template with optional caching.</p></li>
+<li><p>Cap’n Proto RPC server and client bridge.</p></li>
+<li><p>Meson and CMake build systems.</p></li>
+<li><p>CI build matrix (Meson/CMake x Linux/macOS x RPC/Cache feature flags).</p></li>
+<li><p>RPC integration tests and client bridge stress tests.</p></li>
 </ul>
 </section>
 </section>
@@ -501,7 +541,7 @@ and this project adheres to <a class="reference external" href="https://semver.o
   </div>
 </footer>
       <script src="_static/documentation_options.js?v=5929fcd5"></script>
-      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/doctools.js?v=9a2dae69"></script>
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
       <script src="_static/target-highlight.js?v=df7d332b"></script>
       <script src="_static/shibuya.js?v=cac61aee"></script></body>

@@ -5,4 +5,4 @@ Changelog
     :Author: `Rohit Goswami <https://rgoswami.me>`_
 
 .. include:: ../../CHANGELOG.md
-   :parser: commonmark
+   :parser: myst_parser.sphinx_

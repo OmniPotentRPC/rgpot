@@ -1,0 +1,114 @@
+
+
+Quickstart
+----------
+
+This page covers building rgpot from source and running the included
+Lennard-Jones example to verify the setup.
+
+Prerequisites
+~~~~~~~~~~~~~
+
+- A C++20 compiler (GCC 11+, Clang 14+, or MSVC 2022+)
+
+- `Meson <https://mesonbuild.com/>`_ 1.0+ and `Ninja <https://ninja-build.org/>`_
+
+- `Cap'n Proto <https://capnproto.org/>`_ (for the RPC server/client)
+
+- `pixi <https://prefix.dev/pixi>`_ (recommended, handles all of the above)
+
+Building with pixi
+~~~~~~~~~~~~~~~~~~
+
+The fastest path uses pixi, which manages the toolchain and all dependencies:
+
+.. code:: bash
+
+    git clone https://github.com/OmniPotentRPC/rgpot.git
+    cd rgpot
+    pixi shell
+    meson setup bbdir -Dwith_tests=True --buildtype=debug
+    meson compile -C bbdir
+    meson test -C bbdir
+
+Building with cmake
+~~~~~~~~~~~~~~~~~~~
+
+.. code:: bash
+
+    cmake -B build -DRGPOT_BUILD_TESTS=ON -DRGPOT_BUILD_EXAMPLES=ON
+    cmake --build build
+    ctest --test-dir build
+
+Windows (MSVC)
+~~~~~~~~~~~~~~
+
+rgpot builds on Windows with MSVC 2022. Install Cap'n Proto via conda-forge
+or vcpkg, then use the standard meson or cmake workflow. No special flags
+required since v1.0.3.
+
+Running the RPC server
+~~~~~~~~~~~~~~~~~~~~~~
+
+Start a Lennard-Jones potential server on port 12345:
+
+.. code:: bash
+
+    ./bbdir/CppCore/rgpot/rpc/potserv 12345 LJ
+
+Calling from Python
+~~~~~~~~~~~~~~~~~~~
+
+.. code:: python
+
+    import capnp
+    capnp.remove_import_hook()
+    potentials_capnp = capnp.load("CppCore/rgpot/rpc/Potentials.capnp")
+
+    client = capnp.TwoPartyClient("localhost:12345")
+    pot = client.bootstrap().cast_as(potentials_capnp.Potential)
+
+    # Two-atom LJ calculation
+    request = pot.calculate_request()
+    fip = request.init("fip")
+    fip.pos = [0.0, 0.0, 0.0, 2.5, 0.0, 0.0]
+    fip.atmnrs = [1, 1]
+    fip.box = [20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0]
+
+    response = request.send().wait()
+    print(f"Energy: {response.result.energy}")
+    print(f"Forces: {list(response.result.forces)}")
+
+Using as a meson subproject
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To embed rgpot in another project, add a ``subprojects/rgpot.wrap`` file or
+vendor the source into ``subprojects/rgpot/``.
+
+For a full library build (server + potentials):
+
+.. code:: meson
+
+    rgpot_proj = subproject('rgpot',
+        default_options: ['with_rpc=true', 'with_tests=false'])
+    rgpot_dep = rgpot_proj.get_variable('rgpot_dep')
+
+For RPC schema only (avoids type collisions with the host project):
+
+.. code:: meson
+
+    rgpot_proj = subproject('rgpot',
+        default_options: ['with_rpc_client_only=true', 'pure_lib=true'])
+    ptlrpc_dep = rgpot_proj.get_variable('ptlrpc_dep')
+
+See the `integration guide <integration_guide.rst>`_ for detailed namespace collision mitigation
+strategies when embedding into legacy codebases.
+
+Next steps
+~~~~~~~~~~
+
+- `Architecture overview <architecture.rst>`_ for the layer diagram and design rationale
+
+- `Integration guide <integration_guide.rst>`_ for embedding into external projects (e.g. eOn)
+
+- `Changelog <changelog.rst>`_ for release history

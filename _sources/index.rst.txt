@@ -15,17 +15,32 @@ Overview
 RPC Generalized Potential Library, or ``rgpot`` provides a unified schema for
 interfacing potential servers across languages using runtime interoperability.
 
-Developer Reference
--------------------
+Getting Started
+---------------
 
-For details on the architecture or internal API:
+  .. toctree::
+     :maxdepth: 1
+     :caption: Getting Started
+
+     quickstart
+
+Guides
+------
+
+  .. toctree::
+     :maxdepth: 2
+     :caption: Guides
+
+     integration_guide
+
+Reference
+---------
 
   .. toctree::
      :maxdepth: 2
      :caption: Reference
 
      architecture
-     integration_guide
      api/index
      changelog
      contributing/index
