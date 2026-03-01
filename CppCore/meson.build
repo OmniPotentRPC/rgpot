@@ -50,15 +50,30 @@ if rpc_enabled
 endif
 
 # ------------------------ Examples
+# Each example only builds when its required dependencies are present.
 
 if get_option('with_examples') and not get_option('with_rpc_client_only')
-    example_array = [  #
-        ['EigenCallLJPot', 'ljpot_call_eig', 'eigen_call_ljpot.cc', ''],
-        ['EigenCallCuH2Pot', 'cuh2_call_eig', 'eigen_call_cuh2.cc', ''],
-        ['XtCallCuH2Pot', 'cuh2_call_xt', 'xt_call_cuh2.cc', ''],
-        ['CallCuH2Pot', 'cuh2_call', 'call_cuh2.cc', ''],
-    ]
-    # Not really a test but the best way to make tiny programs
+    example_array = []
+    if has_fortran
+        example_array += [
+            ['CallCuH2Pot', 'cuh2_call', 'call_cuh2.cc', ''],
+        ]
+    endif
+    if has_eigen
+        example_array += [
+            ['EigenCallLJPot', 'ljpot_call_eig', 'eigen_call_ljpot.cc', ''],
+        ]
+        if has_fortran
+            example_array += [
+                ['EigenCallCuH2Pot', 'cuh2_call_eig', 'eigen_call_cuh2.cc', ''],
+            ]
+        endif
+    endif
+    if has_xtensor and has_fortran
+        example_array += [
+            ['XtCallCuH2Pot', 'cuh2_call_xt', 'xt_call_cuh2.cc', ''],
+        ]
+    endif
     foreach example : example_array
         test(
             example.get(0),
@@ -85,13 +100,16 @@ if get_option('with_tests')
     )
     test_args = _args
     test_args += ['-DRGPOTTEST']
-    test_array = [  #
-        # ['CuH2 Utils Test', 'cuh2_util_test', 'cuh2UtilsTest.cc', ''],
-]
+    test_array = []
     if has_fortran
-        test_array += [  #
+        test_array += [
             ['CuH2test', 'cuh2_test', 'CuH2PotTest.cc', ''],
         ]
+        if has_xtensor
+            test_array += [
+                ['CuH2 Utils Test', 'cuh2_util_test', 'cuh2UtilsTest.cc', ''],
+            ]
+        endif
     endif
     if get_option('with_cache')
         test_array += [  #

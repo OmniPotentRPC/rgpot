@@ -55,50 +55,40 @@ if host_system != 'windows'
     _deps += [declare_dependency(link_args: '-lstdc++')]
 endif
 
-if get_option('with_examples') and not get_option('with_rpc_client_only')
-    # Eigen
-    if not get_option('with_eigen')
-        eigen_dep = dependency('eigen3')
-        if not eigen_dep.found()
-            eigen_dep = dependency(
-                'eigen3',
-                subproject: subproject('eigen'),
-                required: true,
-            )
-        endif
-        _deps += eigen_dep
+# --------------------- Optional dependencies
+# Each dependency is controlled by a single flag; examples select
+# themselves based on which deps are available (see CppCore/meson.build).
+
+has_eigen = false
+if get_option('with_eigen') or (get_option('with_examples') and not get_option('with_rpc_client_only'))
+    eigen_dep = dependency('eigen3', required: false)
+    if not eigen_dep.found()
+        eigen_dep = dependency(
+            'eigen3',
+            subproject: subproject('eigen'),
+            required: get_option('with_eigen'),
+        )
     endif
-    # fmt
-    fmt_dep = dependency('fmt', required: true)
-    _deps += fmt_dep
-    if not get_option('with_xtensor')
-        # These are added if not done later
-        _deps += dependency('xtensor')
-        _deps += dependency('xtensor-blas')
-        _args += ['-DWITH_XTENSOR=TRUE']
+    if eigen_dep.found()
+        _deps += eigen_dep
+        has_eigen = true
     endif
 endif
 
+has_xtensor = false
 if get_option('with_xtensor')
     _deps += dependency('xtensor')
     _deps += dependency('xtensor-blas')
     _args += ['-DWITH_XTENSOR=TRUE']
+    has_xtensor = true
 endif
 
-if get_option('with_eigen')
-    eigen_dep = dependency('eigen3')
-    if not eigen_dep.found()
-        eigen_dep = dependency('eigen3', subproject: subproject('eigen'))
-    endif
-    _deps += eigen_dep
-endif
-
-
-if not get_option('pure_lib')
+has_fmt = false
+if not get_option('pure_lib') or (get_option('with_examples') and not get_option('with_rpc_client_only'))
     _args += ['-DNOT_PURE_LIB=TRUE']
-    subproject('fmt')
     fmt_dep = dependency('fmt', required: true)
     _deps += fmt_dep
+    has_fmt = true
 endif
 
 # --------------------- Subprojects
