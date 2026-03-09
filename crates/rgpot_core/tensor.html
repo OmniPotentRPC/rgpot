@@ -33,19 +33,9 @@
 <link rel="apple-touch-icon" sizes="180x180" href="../../_static/favicons/apple-touch-icon.png">
 <link rel="shortcut icon" href="../../_static/favicons/favicon.ico">
 <link rel="manifest" href="../../_static/favicons/site.webmanifest">
-<!-- Plausible injection -->
-<script
-  defer
-  data-domain="rgpot.rgoswami.me"
-  src="https://analytics.turtletech.us/js/script.hash.outbound-links.js"
-></script>
-<script>
-  window.plausible =
-    window.plausible ||
-    function () {
-      (window.plausible.q = window.plausible.q || []).push(arguments);
-    };
-</script></head>
+<!-- Umami analytics -->
+<script defer src="https://analytics.turtletech.us/script.js" data-website-id="2a881f07-4e2d-4463-a396-b9b2e868aecb"></script>
+<script>window.umami=window.umami||{track:function(){}};document.addEventListener('click',function(e){var a=e.target.closest('a');if(a&&a.hostname!==location.hostname)umami.track('Outbound Link',{url:a.href})});</script></head>
 <body><div class="sy-head">
   <div class="sy-head-blur"></div>
   <div class="sy-head-inner sy-container mx-auto">
@@ -459,11 +449,11 @@ Both <code class="docutils literal notranslate"><span class="pre">tensor</span><
           <span
             >Analytics by
             <a
-              href="https://plausible.io/"
+              href="https://umami.is/"
               target="_blank"
               rel="noopener noreferrer"
               style="color: inherit; text-decoration: underline"
-              >Plausible</a
+              >Umami</a
             ></span
           >
         </span>
