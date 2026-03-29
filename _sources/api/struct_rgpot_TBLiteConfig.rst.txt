@@ -1,0 +1,26 @@
+.. index:: pair: struct; rgpot::TBLiteConfig
+.. _doxid-structrgpot_1_1_t_b_lite_config:
+
+struct rgpot::TBLiteConfig
+==========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct TBLiteConfig {
+		// fields
+	
+		TBLiteMethod :target:`method<doxid-structrgpot_1_1_t_b_lite_config_1a5b5ce5cc84e356a99c0b4e5dd1ece6e5>` = TBLiteMethod::GFN2;
+		double :target:`accuracy<doxid-structrgpot_1_1_t_b_lite_config_1a0b6d700b9655249c625eaf8d1053ac4d>` = 1.0;
+		double :target:`electronic_temperature<doxid-structrgpot_1_1_t_b_lite_config_1af09c295afc824ba4b6d1c30021eb2d0b>` = 300.0;
+		int :target:`max_iterations<doxid-structrgpot_1_1_t_b_lite_config_1a59daa07dbda12092154ac6d4d50dcfc1>` = 250;
+		double :target:`charge<doxid-structrgpot_1_1_t_b_lite_config_1a19e48ca82ad1b83beebedc35a8b79c8d>` = 0.0;
+		int :target:`uhf<doxid-structrgpot_1_1_t_b_lite_config_1a58333758f8be0bda303814f99c3d12db>` = 0;
+	};

@@ -1,0 +1,26 @@
+.. index:: pair: struct; rgpot::XTBConfig
+.. _doxid-structrgpot_1_1_x_t_b_config:
+
+struct rgpot::XTBConfig
+=======================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct XTBConfig {
+		// fields
+	
+		GFNMethod :target:`method<doxid-structrgpot_1_1_x_t_b_config_1a45a1171f8501e8335d9cf4a2c45a1685>` = GFNMethod::GFN2xTB;
+		double :target:`accuracy<doxid-structrgpot_1_1_x_t_b_config_1a4003d7e6f950a3192ed6072ca4c79b00>` = 1.0;
+		double :target:`electronic_temperature<doxid-structrgpot_1_1_x_t_b_config_1a77f8c10e0fbbcbc8dc4f92cc49004fac>` = 300.0;
+		int :target:`max_iterations<doxid-structrgpot_1_1_x_t_b_config_1a4becab3591b427ed4728c76c0fa1f8ac>` = 250;
+		double :target:`charge<doxid-structrgpot_1_1_x_t_b_config_1acfc866e6d7cc3878778a4c3995c8e9e1>` = 0.0;
+		int :target:`uhf<doxid-structrgpot_1_1_x_t_b_config_1a72424ea20e42123cae849a1ce4a392db>` = 0;
+	};

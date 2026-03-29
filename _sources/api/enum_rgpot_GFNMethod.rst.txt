@@ -1,0 +1,20 @@
+.. index:: pair: enum; GFNMethod
+.. _doxid-namespacergpot_1aae57e5e203e816b45fcd9d34745282ec:
+
+enum rgpot::GFNMethod
+=====================
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <XTBPot.hpp>
+
+	enum GFNMethod {
+	    :target:`GFNFF<doxid-namespacergpot_1aae57e5e203e816b45fcd9d34745282eca6f62d6b7f8b3a94e971d84f9eeecd534>`,
+	    :target:`GFN0xTB<doxid-namespacergpot_1aae57e5e203e816b45fcd9d34745282eca6a135c34e4b52990043a8fb09950a320>`,
+	    :target:`GFN1xTB<doxid-namespacergpot_1aae57e5e203e816b45fcd9d34745282ecad9d8be1a4b5713c231cd308f0960e1fe>`,
+	    :target:`GFN2xTB<doxid-namespacergpot_1aae57e5e203e816b45fcd9d34745282eca59557bd48038c4ff9241df156c8774a6>`,
+	};
+

@@ -1,0 +1,42 @@
+.. index:: pair: namespace; rgpot::units
+.. _doxid-namespacergpot_1_1units:
+
+namespace rgpot::units
+======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Physical constants and unit conversion factors for atomistic potentials. :ref:`More...<details-namespacergpot_1_1units>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace units {
+
+	// global variables
+
+	double :target:`BOHR_TO_ANGSTROM<doxid-namespacergpot_1_1units_1aadfdc5072a906707470c699430fe9628>` = 0.529177210903;
+	double :target:`ANGSTROM_TO_BOHR<doxid-namespacergpot_1_1units_1a9c35602c6f75abf12f88a9a9a1c6134d>` = 1.0 / BOHR_TO_ANGSTROM;
+	double :target:`HARTREE_TO_EV<doxid-namespacergpot_1_1units_1abe8557f69bfc3a00e7da3df8bf5eb342>` = 27.211386245988;
+	double :target:`EV_TO_HARTREE<doxid-namespacergpot_1_1units_1a5311480912c5f036e68466d22a4499ff>` = 1.0 / HARTREE_TO_EV;
+	double :target:`HARTREE_BOHR_TO_EV_ANGSTROM<doxid-namespacergpot_1_1units_1a3d23438b7b456f7a1803278824c8a561>` =     HARTREE_TO_EV / BOHR_TO_ANGSTROM;
+	double :target:`NEG_GRAD_TO_FORCE<doxid-namespacergpot_1_1units_1a2d26d3e6d027b6539de0799a4925f541>` = -HARTREE_BOHR_TO_EV_ANGSTROM;
+	double :target:`KB_HARTREE<doxid-namespacergpot_1_1units_1a9a742b09aa478149e322c44ad4514736>` = 3.1668115634556e-6;
+	double :target:`KB_EV<doxid-namespacergpot_1_1units_1a8493ea362e4eaeee3fbfaa0b0d2a03f3>` = 8.617333262e-5;
+
+	} // namespace units
+.. _details-namespacergpot_1_1units:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Physical constants and unit conversion factors for atomistic potentials.
+
+All values are CODATA 2018 recommended values. rgpot's native unit system: energy = eV, length = Angstrom, force = eV/Angstrom.
+

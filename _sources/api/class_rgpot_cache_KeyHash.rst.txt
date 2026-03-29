@@ -23,11 +23,14 @@ Struct to hold the hash and string key for caching. :ref:`More...<details-struct
 		// fields
 	
 		size_t :ref:`hash<doxid-structrgpot_1_1cache_1_1_key_hash_1a515be7b17a389e01ea452933fc7a27ed>`;
-		std::string :ref:`key<doxid-structrgpot_1_1cache_1_1_key_hash_1a11c0e6299dd44396f71e7be85bcd929f>`;
 
 		// construction
 	
 		:ref:`KeyHash<doxid-structrgpot_1_1cache_1_1_key_hash_1abe48d71ca4541cd7c94b0f6add668c19>`(size_t _hash);
+
+		// methods
+	
+		rocksdb::Slice :ref:`slice<doxid-structrgpot_1_1cache_1_1_key_hash_1aedd56f38f860cf64d88140fe37261020>`() const;
 	};
 .. _details-structrgpot_1_1cache_1_1_key_hash:
 
@@ -48,16 +51,6 @@ Fields
 	size_t hash
 
 The numeric hash value.
-
-.. index:: pair: variable; key
-.. _doxid-structrgpot_1_1cache_1_1_key_hash_1a11c0e6299dd44396f71e7be85bcd929f:
-
-.. ref-code-block:: cpp
-	:class: doxyrest-title-code-block
-
-	std::string key
-
-The string representation of the hash.
 
 Construction
 ------------
@@ -83,4 +76,23 @@ Constructor for :ref:`KeyHash <doxid-structrgpot_1_1cache_1_1_key_hash>`.
 		- _hash
 
 		- The numeric hash to wrap.
+
+Methods
+-------
+
+.. index:: pair: function; slice
+.. _doxid-structrgpot_1_1cache_1_1_key_hash_1aedd56f38f860cf64d88140fe37261020:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	rocksdb::Slice slice() const
+
+Returns a binary slice view of the hash for RocksDB.
+
+
+
+.. rubric:: Returns:
+
+A rocksdb::Slice wrapping the raw hash bytes.
 

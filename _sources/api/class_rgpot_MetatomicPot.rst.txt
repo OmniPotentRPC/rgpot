@@ -1,0 +1,29 @@
+.. index:: pair: class; rgpot::MetatomicPot
+.. _doxid-classrgpot_1_1_metatomic_pot:
+
+class rgpot::MetatomicPot
+=========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class MetatomicPot: public rgpot::Potential< MetatomicPot > {
+	public:
+		// construction
+	
+		:target:`MetatomicPot<doxid-classrgpot_1_1_metatomic_pot_1a1003bd49ef929d63f6fd72746f08964e>`(const :ref:`MetatomicConfig<doxid-structrgpot_1_1_metatomic_config>`& config);
+		:target:`MetatomicPot<doxid-classrgpot_1_1_metatomic_pot_1abac47769655f3585f1339b11e8e7eb45>`(const MetatomicPot&);
+		:target:`~MetatomicPot<doxid-classrgpot_1_1_metatomic_pot_1aeed2dd8072df538e7e8094ce9dd05c77>`();
+
+		// methods
+	
+		MetatomicPot& :target:`operator=<doxid-classrgpot_1_1_metatomic_pot_1aa2f36d3e7b3deef3421e10ac45f46bef>`(const MetatomicPot&);
+		void :target:`forceImpl<doxid-classrgpot_1_1_metatomic_pot_1a85936bb9b3fc63fee08f34ae1e02ad5c>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+	};

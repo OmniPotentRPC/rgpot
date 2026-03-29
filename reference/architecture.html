@@ -121,15 +121,27 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_details.html">namespace rgpot::details</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_types.html">namespace rgpot::types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_units.html">namespace rgpot::units</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_GFNMethod.html">enum rgpot::GFNMethod</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XTBConfig.html">struct rgpot::XTBConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_CuH2Pot.html">class rgpot::CuH2Pot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_MetatomicPot.html">class rgpot::MetatomicPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_PotentialBase.html">class rgpot::PotentialBase</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_TBLitePot.html">class rgpot::TBLitePot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_XTBPot.html">class rgpot::XTBPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_registry.html">template class rgpot::registry</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_std.html">namespace std</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_string_literals.html">namespace string_literals</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
@@ -199,7 +211,11 @@ data-aria-dark="Switch to auto color mode">
 </li>
 <li><a class="reference internal" href="#c-abi-rgpot-core-include-rgpot-h">C ABI (<code class="docutils literal notranslate"><span class="pre">rgpot-core/include/rgpot.h</span></code>)</a></li>
 <li><a class="reference internal" href="#c-raii-wrappers-include-rgpot">C++ RAII Wrappers (<code class="docutils literal notranslate"><span class="pre">include/rgpot/</span></code>)</a></li>
-<li><a class="reference internal" href="#existing-c-potentials">Existing C++ Potentials</a></li>
+<li><a class="reference internal" href="#c-potentials">C++ Potentials</a><ul>
+<li><a class="reference internal" href="#built-in-potentials">Built-in Potentials</a></li>
+<li><a class="reference internal" href="#feature-gated-potentials">Feature-gated Potentials</a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li><a class="reference internal" href="#error-handling-conventions">Error Handling Conventions</a></li>
@@ -322,8 +338,8 @@ remain callable through an FFI callback mechanism.</p>
 </span><span data-line="14"><span class="o">+---------------------------------------------+</span>
 </span><span data-line="15">        <span class="o">|</span> <span class="n">FFI</span> <span class="n">callbacks</span>
 </span><span data-line="16"><span class="o">+---------------------------------------------+</span>
-</span><span data-line="17"><span class="o">|</span>  <span class="n">Existing</span> <span class="n">C</span><span class="o">++</span> <span class="n">Potentials</span> <span class="p">(</span><span class="n">LJ</span><span class="p">,</span> <span class="n">CuH2</span><span class="p">)</span>         <span class="o">|</span>
-</span><span data-line="18"><span class="o">|</span>  <span class="n">CppCore</span><span class="o">/</span><span class="n">rgpot</span><span class="o">/</span><span class="n">LennardJones</span><span class="o">/</span><span class="p">,</span> <span class="n">CuH2</span><span class="o">/</span>         <span class="o">|</span>
+</span><span data-line="17"><span class="o">|</span>  <span class="n">C</span><span class="o">++</span> <span class="n">Potentials</span>                              <span class="o">|</span>
+</span><span data-line="18"><span class="o">|</span>  <span class="n">LJ</span><span class="p">,</span> <span class="n">CuH2</span><span class="p">,</span> <span class="n">XTBPot</span><span class="p">,</span> <span class="n">TBLitePot</span><span class="p">,</span> <span class="n">MetatomicPot</span> <span class="o">|</span>
 </span><span data-line="19"><span class="o">+---------------------------------------------+</span>
 </span></pre></div>
 </div>
@@ -431,14 +447,42 @@ remote server on construction and provides <code class="docutils literal notrans
 </dd>
 </dl>
 </section>
-<section id="existing-c-potentials">
-<h3>Existing C++ Potentials<a class="headerlink" href="#existing-c-potentials" title="Link to this heading">¶</a></h3>
-<p>The <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/</span></code> directory contains the original potential implementations
-(<code class="docutils literal notranslate"><span class="pre">LJPot</span></code>, <code class="docutils literal notranslate"><span class="pre">CuH2Pot</span></code>) using the CRTP-based <code class="docutils literal notranslate"><span class="pre">Potential&lt;Derived&gt;</span></code> template. These
-remain fully functional and unmodified. To use them through the new API, pass
-them to <code class="docutils literal notranslate"><span class="pre">PotentialHandle::from_impl&lt;&gt;()</span></code>, which generates a type-safe trampoline
-that converts between the C ABI structs and the legacy <code class="docutils literal notranslate"><span class="pre">ForceInput</span></code> / <code class="docutils literal notranslate"><span class="pre">ForceOut</span></code>
-types automatically.</p>
+<section id="c-potentials">
+<h3>C++ Potentials<a class="headerlink" href="#c-potentials" title="Link to this heading">¶</a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/</span></code> directory contains all potential implementations using the
+CRTP-based <code class="docutils literal notranslate"><span class="pre">Potential&lt;Derived&gt;</span></code> template. Each potential provides <code class="docutils literal notranslate"><span class="pre">void</span> <span class="pre">forceImpl(const</span> <span class="pre">ForceInput&amp;,</span> <span class="pre">ForceOut*)</span> <span class="pre">const</span></code>. To use them through the Rust
+core, pass them to <code class="docutils literal notranslate"><span class="pre">PotentialHandle::from_impl&lt;&gt;()</span></code>.</p>
+<section id="built-in-potentials">
+<h4>Built-in Potentials<a class="headerlink" href="#built-in-potentials" title="Link to this heading">¶</a></h4>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">LJPot</span></code></dt><dd><p>Standard 12-6 Lennard-Jones (always available).</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">CuH2Pot</span></code></dt><dd><p>Copper-Hydrogen EAM via Fortran (requires Fortran compiler).</p>
+</dd>
+</dl>
+</section>
+<section id="feature-gated-potentials">
+<h4>Feature-gated Potentials<a class="headerlink" href="#feature-gated-potentials" title="Link to this heading">¶</a></h4>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">XTBPot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_xtb=true</span></code>)</dt><dd><p>GFN tight-binding methods (GFNFF, GFN0-xTB,
+GFN1-xTB, GFN2-xTB) via the <a class="reference external" href="https://github.com/grimme-lab/xtb">xtb</a> C API. Configurable via <code class="docutils literal notranslate"><span class="pre">XTBConfig</span></code>
+struct (method, accuracy, electronic temperature, charge, spin). Not
+thread-safe on a single instance; create separate instances for parallel use.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">TBLitePot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_tblite=true</span></code>)</dt><dd><p>GFN tight-binding methods (GFN1, GFN2,
+IPEA1) via the <a class="reference external" href="https://github.com/tblite/tblite">tblite</a> C API. Same config pattern as <code class="docutils literal notranslate"><span class="pre">XTBPot</span></code>. Lighter
+weight than xtb but fewer methods.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">MetatomicPot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_metatomic=true</span></code>)</dt><dd><p>Pre-trained ML atomistic models via
+<a class="reference external" href="https://github.com/metatensor/metatomic">metatomic</a>/PyTorch. Requires a TorchScript model file. Uses <code class="docutils literal notranslate"><span class="pre">vesin</span></code> for
+neighbor lists and PyTorch autograd for forces. Thread-safe via internal
+mutex. Configurable device (CPU/CUDA), dtype, and length unit.</p>
+</dd>
+</dl>
+<p>All feature-gated potentials are detected via <code class="docutils literal notranslate"><span class="pre">pkg-config</span></code> / <code class="docutils literal notranslate"><span class="pre">cmake</span></code> and
+controlled by Meson options. Unit conversions (Angstrom/Bohr, Hartree/eV) use
+shared constants from <code class="docutils literal notranslate"><span class="pre">rgpot/units.hpp</span></code>.</p>
+</section>
 </section>
 </section>
 <section id="error-handling-conventions">

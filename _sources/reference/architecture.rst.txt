@@ -29,8 +29,8 @@ Layer Diagram
     +---------------------------------------------+
             | FFI callbacks
     +---------------------------------------------+
-    |  Existing C++ Potentials (LJ, CuH2)         |
-    |  CppCore/rgpot/LennardJones/, CuH2/         |
+    |  C++ Potentials                              |
+    |  LJ, CuH2, XTBPot, TBLitePot, MetatomicPot |
     +---------------------------------------------+
 
 Layers in Detail
@@ -154,15 +154,45 @@ Hand-written C++ headers provide idiomatic wrappers around the C API:
 ``rgpot.hpp``
     Aggregate header that includes everything.
 
-Existing C++ Potentials
-^^^^^^^^^^^^^^^^^^^^^^^
+C++ Potentials
+^^^^^^^^^^^^^^
 
-The ``CppCore/rgpot/`` directory contains the original potential implementations
-(``LJPot``, ``CuH2Pot``) using the CRTP-based ``Potential<Derived>`` template. These
-remain fully functional and unmodified. To use them through the new API, pass
-them to ``PotentialHandle::from_impl<>()``, which generates a type-safe trampoline
-that converts between the C ABI structs and the legacy ``ForceInput`` / ``ForceOut``
-types automatically.
+The ``CppCore/rgpot/`` directory contains all potential implementations using the
+CRTP-based ``Potential<Derived>`` template. Each potential provides ``void forceImpl(const ForceInput&, ForceOut*) const``. To use them through the Rust
+core, pass them to ``PotentialHandle::from_impl<>()``.
+
+Built-in Potentials
+:::::::::::::::::::
+
+``LJPot``
+    Standard 12-6 Lennard-Jones (always available).
+
+``CuH2Pot``
+    Copper-Hydrogen EAM via Fortran (requires Fortran compiler).
+
+Feature-gated Potentials
+::::::::::::::::::::::::
+
+``XTBPot`` (``-Dwith_xtb=true``)
+    GFN tight-binding methods (GFNFF, GFN0-xTB,
+    GFN1-xTB, GFN2-xTB) via the `xtb <https://github.com/grimme-lab/xtb>`_ C API. Configurable via ``XTBConfig``
+    struct (method, accuracy, electronic temperature, charge, spin). Not
+    thread-safe on a single instance; create separate instances for parallel use.
+
+``TBLitePot`` (``-Dwith_tblite=true``)
+    GFN tight-binding methods (GFN1, GFN2,
+    IPEA1) via the `tblite <https://github.com/tblite/tblite>`_ C API. Same config pattern as ``XTBPot``. Lighter
+    weight than xtb but fewer methods.
+
+``MetatomicPot`` (``-Dwith_metatomic=true``)
+    Pre-trained ML atomistic models via
+    `metatomic <https://github.com/metatensor/metatomic>`_/PyTorch. Requires a TorchScript model file. Uses ``vesin`` for
+    neighbor lists and PyTorch autograd for forces. Thread-safe via internal
+    mutex. Configurable device (CPU/CUDA), dtype, and length unit.
+
+All feature-gated potentials are detected via ``pkg-config`` / ``cmake`` and
+controlled by Meson options. Unit conversions (Angstrom/Bohr, Hartree/eV) use
+shared constants from ``rgpot/units.hpp``.
 
 Error Handling Conventions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

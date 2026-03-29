@@ -1,0 +1,30 @@
+.. index:: pair: class; rgpot::XTBPot
+.. _doxid-classrgpot_1_1_x_t_b_pot:
+
+class rgpot::XTBPot
+===================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class XTBPot: public rgpot::Potential< XTBPot > {
+	public:
+		// construction
+	
+		:target:`XTBPot<doxid-classrgpot_1_1_x_t_b_pot_1ababa2830f4d57f9190f51c8817679df2>`();
+		:target:`XTBPot<doxid-classrgpot_1_1_x_t_b_pot_1a6119c2db84b7aeb72243848e9efef56a>`(const :ref:`XTBConfig<doxid-structrgpot_1_1_x_t_b_config>`& config);
+		:target:`XTBPot<doxid-classrgpot_1_1_x_t_b_pot_1aeec957d00d941752a088569ffad28bef>`(const XTBPot&);
+		:target:`~XTBPot<doxid-classrgpot_1_1_x_t_b_pot_1a05be75abec29b5d95cc75a79ee6e0863>`();
+
+		// methods
+	
+		XTBPot& :target:`operator=<doxid-classrgpot_1_1_x_t_b_pot_1afe6d5ae3b6cae4e0e2537039df0c7dce>`(const XTBPot&);
+		void :target:`forceImpl<doxid-classrgpot_1_1_x_t_b_pot_1a7180249bbc61a142c0b35b886ed5da52>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+	};

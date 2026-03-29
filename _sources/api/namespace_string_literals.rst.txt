@@ -1,0 +1,11 @@
+.. index:: pair: namespace; string_literals
+.. _doxid-namespacestd_1_1string__literals:
+
+namespace string_literals
+=========================
+
+.. toctree::
+	:hidden:
+
+
+

@@ -1,0 +1,30 @@
+.. index:: pair: class; rgpot::TBLitePot
+.. _doxid-classrgpot_1_1_t_b_lite_pot:
+
+class rgpot::TBLitePot
+======================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class TBLitePot: public rgpot::Potential< TBLitePot > {
+	public:
+		// construction
+	
+		:target:`TBLitePot<doxid-classrgpot_1_1_t_b_lite_pot_1a087d3caa6cbf43b640cdfbe357e1e855>`();
+		:target:`TBLitePot<doxid-classrgpot_1_1_t_b_lite_pot_1a57ce40048286369959458fd6e69986d8>`(const :ref:`TBLiteConfig<doxid-structrgpot_1_1_t_b_lite_config>`& config);
+		:target:`TBLitePot<doxid-classrgpot_1_1_t_b_lite_pot_1a21f7d2ba3aec886753213025d5df0fb2>`(const TBLitePot&);
+		:target:`~TBLitePot<doxid-classrgpot_1_1_t_b_lite_pot_1a52d15e38112c444bf9e0b215a44fe874>`();
+
+		// methods
+	
+		TBLitePot& :target:`operator=<doxid-classrgpot_1_1_t_b_lite_pot_1a77d10237a85d916d898d10ed167f0ca0>`(const TBLitePot&);
+		void :target:`forceImpl<doxid-classrgpot_1_1_t_b_lite_pot_1aa640a27fb912fa9db897eb96bd048a87>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+	};

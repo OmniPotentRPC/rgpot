@@ -1,0 +1,19 @@
+.. index:: pair: enum; TBLiteMethod
+.. _doxid-namespacergpot_1a2f909ccdc3eed1e7f9217e9fbbfa85d8:
+
+enum rgpot::TBLiteMethod
+========================
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <TBLitePot.hpp>
+
+	enum TBLiteMethod {
+	    :target:`GFN1<doxid-namespacergpot_1a2f909ccdc3eed1e7f9217e9fbbfa85d8a92af1fb7f30e3a7152b45751bd02aed6>`,
+	    :target:`GFN2<doxid-namespacergpot_1a2f909ccdc3eed1e7f9217e9fbbfa85d8ac532b38d13102b9dcefa2e631fd44912>`,
+	    :target:`IPEA1<doxid-namespacergpot_1a2f909ccdc3eed1e7f9217e9fbbfa85d8a9d957c284ea55149e07a60154383a015>`,
+	};
+

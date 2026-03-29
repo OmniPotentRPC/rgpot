@@ -1,0 +1,27 @@
+.. index:: pair: struct; rgpot::MetatomicConfig
+.. _doxid-structrgpot_1_1_metatomic_config:
+
+struct rgpot::MetatomicConfig
+=============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct MetatomicConfig {
+		// fields
+	
+		std::string :target:`model_path<doxid-structrgpot_1_1_metatomic_config_1a4f74aebd7e1ac215729d5107da765a8b>`;
+		std::string :target:`device<doxid-structrgpot_1_1_metatomic_config_1a521834a6714343db695d0dbec0086e96>`;
+		std::string :target:`length_unit<doxid-structrgpot_1_1_metatomic_config_1a4d79b38c96e15198592ab35977be13aa>` = "angstrom";
+		std::string :target:`extensions_directory<doxid-structrgpot_1_1_metatomic_config_1a2d42c2c1499fa96b3d8ffe28b5a8b7d8>`;
+		bool :target:`check_consistency<doxid-structrgpot_1_1_metatomic_config_1acb85f95ca02c1cd78efd77f2c67dd900>` = false;
+		double :target:`uncertainty_threshold<doxid-structrgpot_1_1_metatomic_config_1a0c6f348fa3e61e83e62a82ba09830fa4>` = -1.0;
+		std::string :target:`dtype_override<doxid-structrgpot_1_1_metatomic_config_1aecc6abe553023e1cd550ea78ecd65a03>`;
+	};

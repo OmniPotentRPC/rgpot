@@ -121,15 +121,27 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_details.html">namespace rgpot::details</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_types.html">namespace rgpot::types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_units.html">namespace rgpot::units</a></li>
+<li class="toctree-l4"><a class="reference internal" href="enum_rgpot_GFNMethod.html">enum rgpot::GFNMethod</a></li>
+<li class="toctree-l4"><a class="reference internal" href="enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_XTBConfig.html">struct rgpot::XTBConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_CuH2Pot.html">class rgpot::CuH2Pot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="class_rgpot_MetatomicPot.html">class rgpot::MetatomicPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_PotentialBase.html">class rgpot::PotentialBase</a></li>
+<li class="toctree-l4"><a class="reference internal" href="class_rgpot_TBLitePot.html">class rgpot::TBLitePot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="class_rgpot_XTBPot.html">class rgpot::XTBPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_registry.html">template class rgpot::registry</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_std.html">namespace std</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_string_literals.html">namespace string_literals</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
@@ -310,38 +322,54 @@ data-aria-dark="Switch to auto color mode">
 <span data-line="9">        <span class="k">namespace</span> <a class="doxyrest-code-link reference internal" href="namespace_rgpot_types_adapt_capnp.html#doxid-namespacergpot-1-1types-1-1adapt-1-1capnp"><span class="std std-ref">rgpot::types::adapt::capnp</span></a><span class="p">;</span></span>
 <span data-line="10">        <span class="k">namespace</span> <a class="doxyrest-code-link reference internal" href="namespace_rgpot_types_adapt_eigen.html#doxid-namespacergpot-1-1types-1-1adapt-1-1eigen"><span class="std std-ref">rgpot::types::adapt::eigen</span></a><span class="p">;</span></span>
 <span data-line="11">        <span class="k">namespace</span> <a class="doxyrest-code-link reference internal" href="namespace_rgpot_types_adapt_xtensor.html#doxid-namespacergpot-1-1types-1-1adapt-1-1xtensor"><span class="std std-ref">rgpot::types::adapt::xtensor</span></a><span class="p">;</span></span>
-<span data-line="12"> </span>
-<span data-line="13"><span class="c1">// structs</span></span>
-<span data-line="14"> </span>
-<span data-line="15"><span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceInput.html#doxid-structrgpot-1-1-force-input"><span class="std std-ref">ForceInput</span></a><span class="p">;</span></span>
-<span data-line="16"><span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceOut.html#doxid-structrgpot-1-1-force-out"><span class="std std-ref">ForceOut</span></a><span class="p">;</span></span>
-<span data-line="17"> </span>
-<span data-line="18"><span class="c1">// classes</span></span>
-<span data-line="19"> </span>
-<span data-line="20"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_CalcResult.html#doxid-classrgpot-1-1-calc-result"><span class="std std-ref">CalcResult</span></a><span class="p">;</span></span>
-<span data-line="21"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_CuH2Pot.html#doxid-classrgpot-1-1-cu-h2-pot"><span class="std std-ref">CuH2Pot</span></a><span class="p">;</span></span>
-<span data-line="22"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_Error.html#doxid-classrgpot-1-1-error"><span class="std std-ref">Error</span></a><span class="p">;</span></span>
-<span data-line="23"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_InputSpec.html#doxid-classrgpot-1-1-input-spec"><span class="std std-ref">InputSpec</span></a><span class="p">;</span></span>
-<span data-line="24"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_LJPot.html#doxid-classrgpot-1-1-l-j-pot"><span class="std std-ref">LJPot</span></a><span class="p">;</span></span>
-<span data-line="25"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_PotentialBase.html#doxid-classrgpot-1-1-potential-base"><span class="std std-ref">PotentialBase</span></a><span class="p">;</span></span>
-<span data-line="26"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_PotentialHandle.html#doxid-classrgpot-1-1-potential-handle"><span class="std std-ref">PotentialHandle</span></a><span class="p">;</span></span>
-<span data-line="27"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_RpcClient.html#doxid-classrgpot-1-1-rpc-client"><span class="std std-ref">RpcClient</span></a><span class="p">;</span></span>
+<span data-line="12"><span class="k">namespace</span> <a class="doxyrest-code-link reference internal" href="namespace_rgpot_units.html#doxid-namespacergpot-1-1units"><span class="std std-ref">rgpot::units</span></a><span class="p">;</span></span>
+<span data-line="13"> </span>
+<span data-line="14"><span class="c1">// enums</span></span>
+<span data-line="15"> </span>
+<span data-line="16"><span class="k">enum</span> <a class="doxyrest-code-link reference internal" href="enum_rgpot_GFNMethod.html#doxid-namespacergpot-1aae57e5e203e816b45fcd9d34745282ec"><span class="std std-ref">GFNMethod</span></a><span class="p">;</span></span>
+<span data-line="17"><span class="k">enum</span> <a class="doxyrest-code-link reference internal" href="enum_rgpot_TBLiteMethod.html#doxid-namespacergpot-1a2f909ccdc3eed1e7f9217e9fbbfa85d8"><span class="std std-ref">TBLiteMethod</span></a><span class="p">;</span></span>
+<span data-line="18"> </span>
+<span data-line="19"><span class="c1">// structs</span></span>
+<span data-line="20"> </span>
+<span data-line="21"><span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceInput.html#doxid-structrgpot-1-1-force-input"><span class="std std-ref">ForceInput</span></a><span class="p">;</span></span>
+<span data-line="22"><span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceOut.html#doxid-structrgpot-1-1-force-out"><span class="std std-ref">ForceOut</span></a><span class="p">;</span></span>
+<span data-line="23"><span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_MetatomicConfig.html#doxid-structrgpot-1-1-metatomic-config"><span class="std std-ref">MetatomicConfig</span></a><span class="p">;</span></span>
+<span data-line="24"><span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_TBLiteConfig.html#doxid-structrgpot-1-1-t-b-lite-config"><span class="std std-ref">TBLiteConfig</span></a><span class="p">;</span></span>
+<span data-line="25"><span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_XTBConfig.html#doxid-structrgpot-1-1-x-t-b-config"><span class="std std-ref">XTBConfig</span></a><span class="p">;</span></span>
+<span data-line="26"> </span>
+<span data-line="27"><span class="c1">// classes</span></span>
 <span data-line="28"> </span>
-<span data-line="29"><span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="n">T</span><span class="o">&gt;</span></span>
-<span data-line="30"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_registry.html#doxid-classrgpot-1-1registry"><span class="std std-ref">registry</span></a><span class="p">;</span></span>
-<span data-line="31"> </span>
-<span data-line="32"><span class="c1">// global variables</span></span>
-<span data-line="33"> </span>
-<span data-line="34"><span class="kt">size_t</span> <span class="doxyrest-code-target target" id="doxid-namespacergpot_1a5c613f864463f489d8c1d42b95a42895"></span><span class="n">registry</span><span class="o">&lt;</span> <span class="n">T</span> <span class="o">&gt;::</span><span class="n">count</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span></span>
-<span data-line="35"><span class="kt">size_t</span> <span class="doxyrest-code-target target" id="doxid-namespacergpot_1a1198e178c5a8ef5a36aaac296c08cb81"></span><span class="n">registry</span><span class="o">&lt;</span> <span class="n">T</span> <span class="o">&gt;::</span><span class="n">forceCalls</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span></span>
-<span data-line="36"><span class="n">T</span><span class="o">*</span> <span class="doxyrest-code-target target" id="doxid-namespacergpot_1abd4c9750ac000472e3321df2a5d1fb92"></span><span class="n">registry</span><span class="o">&lt;</span> <span class="n">T</span> <span class="o">&gt;::</span><span class="n">head</span> <span class="o">=</span> <span class="k">nullptr</span><span class="p">;</span></span>
-<span data-line="37"> </span>
-<span data-line="38"><span class="c1">// global functions</span></span>
-<span data-line="39"> </span>
-<span data-line="40"><span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-namespacergpot-1aa8cb0fd12ead45cd35dd0ea5c3b6fb7a"><span class="std std-ref">zeroForceOut</span></a><span class="p">(</span><span class="k">const</span> <span class="kt">size_t</span><span class="o">&amp;</span> <span class="n">nAtoms</span><span class="p">,</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceOut.html#doxid-structrgpot-1-1-force-out"><span class="std std-ref">ForceOut</span></a><span class="o">*</span> <span class="n">efvd</span><span class="p">);</span></span>
-<span data-line="41"><span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-namespacergpot-1a7a27dd46fdc6dc15479964efd8c8f088"><span class="std std-ref">checkParams</span></a><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceInput.html#doxid-structrgpot-1-1-force-input"><span class="std std-ref">ForceInput</span></a><span class="o">&amp;</span> <span class="n">params</span><span class="p">);</span></span>
-<span data-line="42"> </span>
-<span data-line="43"><span class="p">}</span> <span class="c1">// namespace rgpot</span></span>
+<span data-line="29"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_CalcResult.html#doxid-classrgpot-1-1-calc-result"><span class="std std-ref">CalcResult</span></a><span class="p">;</span></span>
+<span data-line="30"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_CuH2Pot.html#doxid-classrgpot-1-1-cu-h2-pot"><span class="std std-ref">CuH2Pot</span></a><span class="p">;</span></span>
+<span data-line="31"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_Error.html#doxid-classrgpot-1-1-error"><span class="std std-ref">Error</span></a><span class="p">;</span></span>
+<span data-line="32"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_InputSpec.html#doxid-classrgpot-1-1-input-spec"><span class="std std-ref">InputSpec</span></a><span class="p">;</span></span>
+<span data-line="33"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_LJPot.html#doxid-classrgpot-1-1-l-j-pot"><span class="std std-ref">LJPot</span></a><span class="p">;</span></span>
+<span data-line="34"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_MetatomicPot.html#doxid-classrgpot-1-1-metatomic-pot"><span class="std std-ref">MetatomicPot</span></a><span class="p">;</span></span>
+<span data-line="35"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_PotentialBase.html#doxid-classrgpot-1-1-potential-base"><span class="std std-ref">PotentialBase</span></a><span class="p">;</span></span>
+<span data-line="36"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_PotentialHandle.html#doxid-classrgpot-1-1-potential-handle"><span class="std std-ref">PotentialHandle</span></a><span class="p">;</span></span>
+<span data-line="37"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_RpcClient.html#doxid-classrgpot-1-1-rpc-client"><span class="std std-ref">RpcClient</span></a><span class="p">;</span></span>
+<span data-line="38"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_TBLitePot.html#doxid-classrgpot-1-1-t-b-lite-pot"><span class="std std-ref">TBLitePot</span></a><span class="p">;</span></span>
+<span data-line="39"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_XTBPot.html#doxid-classrgpot-1-1-x-t-b-pot"><span class="std std-ref">XTBPot</span></a><span class="p">;</span></span>
+<span data-line="40"> </span>
+<span data-line="41"><span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="n">T</span><span class="o">&gt;</span></span>
+<span data-line="42"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_registry.html#doxid-classrgpot-1-1registry"><span class="std std-ref">registry</span></a><span class="p">;</span></span>
+<span data-line="43"> </span>
+<span data-line="44"><span class="c1">// global variables</span></span>
+<span data-line="45"> </span>
+<span data-line="46"><span class="kt">size_t</span> <span class="doxyrest-code-target target" id="doxid-namespacergpot_1a5c613f864463f489d8c1d42b95a42895"></span><span class="n">registry</span><span class="o">&lt;</span> <span class="n">T</span> <span class="o">&gt;::</span><span class="n">count</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span></span>
+<span data-line="47"><span class="kt">size_t</span> <span class="doxyrest-code-target target" id="doxid-namespacergpot_1a1198e178c5a8ef5a36aaac296c08cb81"></span><span class="n">registry</span><span class="o">&lt;</span> <span class="n">T</span> <span class="o">&gt;::</span><span class="n">forceCalls</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span></span>
+<span data-line="48"><span class="n">T</span><span class="o">*</span> <span class="doxyrest-code-target target" id="doxid-namespacergpot_1abd4c9750ac000472e3321df2a5d1fb92"></span><span class="n">registry</span><span class="o">&lt;</span> <span class="n">T</span> <span class="o">&gt;::</span><span class="n">head</span> <span class="o">=</span> <span class="k">nullptr</span><span class="p">;</span></span>
+<span data-line="49"><span class="kt">double</span> <span class="doxyrest-code-target target" id="doxid-namespacergpot_1a9a742b09aa478149e322c44ad4514736"></span><span class="n">KB_HARTREE</span><span class="p">;</span></span>
+<span data-line="50"><span class="kt">double</span> <span class="doxyrest-code-target target" id="doxid-namespacergpot_1a9c35602c6f75abf12f88a9a9a1c6134d"></span><span class="n">ANGSTROM_TO_BOHR</span><span class="p">;</span></span>
+<span data-line="51"><span class="kt">double</span> <span class="doxyrest-code-target target" id="doxid-namespacergpot_1abe8557f69bfc3a00e7da3df8bf5eb342"></span><span class="n">HARTREE_TO_EV</span><span class="p">;</span></span>
+<span data-line="52"><span class="kt">double</span> <span class="doxyrest-code-target target" id="doxid-namespacergpot_1a2d26d3e6d027b6539de0799a4925f541"></span><span class="n">NEG_GRAD_TO_FORCE</span><span class="p">;</span></span>
+<span data-line="53"> </span>
+<span data-line="54"><span class="c1">// global functions</span></span>
+<span data-line="55"> </span>
+<span data-line="56"><span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-namespacergpot-1aa8cb0fd12ead45cd35dd0ea5c3b6fb7a"><span class="std std-ref">zeroForceOut</span></a><span class="p">(</span><span class="k">const</span> <span class="kt">size_t</span><span class="o">&amp;</span> <span class="n">nAtoms</span><span class="p">,</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceOut.html#doxid-structrgpot-1-1-force-out"><span class="std std-ref">ForceOut</span></a><span class="o">*</span> <span class="n">efvd</span><span class="p">);</span></span>
+<span data-line="57"><span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-namespacergpot-1a7a27dd46fdc6dc15479964efd8c8f088"><span class="std std-ref">checkParams</span></a><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceInput.html#doxid-structrgpot-1-1-force-input"><span class="std std-ref">ForceInput</span></a><span class="o">&amp;</span> <span class="n">params</span><span class="p">);</span></span>
+<span data-line="58"> </span>
+<span data-line="59"><span class="p">}</span> <span class="c1">// namespace rgpot</span></span>
 </pre></div>
 </section>
 <section id="detailed-documentation">

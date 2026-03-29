@@ -10,11 +10,20 @@ namespace rgpot
 	namespace_rgpot_cache.rst
 	namespace_rgpot_details.rst
 	namespace_rgpot_types.rst
+	namespace_rgpot_units.rst
+	enum_rgpot_GFNMethod.rst
+	enum_rgpot_TBLiteMethod.rst
 	struct_rgpot_ForceInput.rst
 	struct_rgpot_ForceOut.rst
+	struct_rgpot_MetatomicConfig.rst
+	struct_rgpot_TBLiteConfig.rst
+	struct_rgpot_XTBConfig.rst
 	class_rgpot_CuH2Pot.rst
 	class_rgpot_LJPot.rst
+	class_rgpot_MetatomicPot.rst
 	class_rgpot_PotentialBase.rst
+	class_rgpot_TBLitePot.rst
+	class_rgpot_XTBPot.rst
 	class_rgpot_registry.rst
 
 Overview
@@ -38,11 +47,20 @@ POD structures for force and energy calculation interfaces. :ref:`More...<detail
 			namespace :ref:`rgpot::types::adapt::capnp<doxid-namespacergpot_1_1types_1_1adapt_1_1capnp>`;
 			namespace :ref:`rgpot::types::adapt::eigen<doxid-namespacergpot_1_1types_1_1adapt_1_1eigen>`;
 			namespace :ref:`rgpot::types::adapt::xtensor<doxid-namespacergpot_1_1types_1_1adapt_1_1xtensor>`;
+	namespace :ref:`rgpot::units<doxid-namespacergpot_1_1units>`;
+
+	// enums
+
+	enum :ref:`GFNMethod<doxid-namespacergpot_1aae57e5e203e816b45fcd9d34745282ec>`;
+	enum :ref:`TBLiteMethod<doxid-namespacergpot_1a2f909ccdc3eed1e7f9217e9fbbfa85d8>`;
 
 	// structs
 
 	struct :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`;
 	struct :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`;
+	struct :ref:`MetatomicConfig<doxid-structrgpot_1_1_metatomic_config>`;
+	struct :ref:`TBLiteConfig<doxid-structrgpot_1_1_t_b_lite_config>`;
+	struct :ref:`XTBConfig<doxid-structrgpot_1_1_x_t_b_config>`;
 
 	// classes
 
@@ -51,9 +69,12 @@ POD structures for force and energy calculation interfaces. :ref:`More...<detail
 	class :ref:`Error<doxid-classrgpot_1_1_error>`;
 	class :ref:`InputSpec<doxid-classrgpot_1_1_input_spec>`;
 	class :ref:`LJPot<doxid-classrgpot_1_1_l_j_pot>`;
+	class :ref:`MetatomicPot<doxid-classrgpot_1_1_metatomic_pot>`;
 	class :ref:`PotentialBase<doxid-classrgpot_1_1_potential_base>`;
 	class :ref:`PotentialHandle<doxid-classrgpot_1_1_potential_handle>`;
 	class :ref:`RpcClient<doxid-classrgpot_1_1_rpc_client>`;
+	class :ref:`TBLitePot<doxid-classrgpot_1_1_t_b_lite_pot>`;
+	class :ref:`XTBPot<doxid-classrgpot_1_1_x_t_b_pot>`;
 
 	template <typename T>
 	class :ref:`registry<doxid-classrgpot_1_1registry>`;
@@ -63,6 +84,10 @@ POD structures for force and energy calculation interfaces. :ref:`More...<detail
 	size_t :target:`registry< T >::count<doxid-namespacergpot_1a5c613f864463f489d8c1d42b95a42895>` = 0;
 	size_t :target:`registry< T >::forceCalls<doxid-namespacergpot_1a1198e178c5a8ef5a36aaac296c08cb81>` = 0;
 	T* :target:`registry< T >::head<doxid-namespacergpot_1abd4c9750ac000472e3321df2a5d1fb92>` = nullptr;
+	double :target:`KB_HARTREE<doxid-namespacergpot_1a9a742b09aa478149e322c44ad4514736>`;
+	double :target:`ANGSTROM_TO_BOHR<doxid-namespacergpot_1a9c35602c6f75abf12f88a9a9a1c6134d>`;
+	double :target:`HARTREE_TO_EV<doxid-namespacergpot_1abe8557f69bfc3a00e7da3df8bf5eb342>`;
+	double :target:`NEG_GRAD_TO_FORCE<doxid-namespacergpot_1a2d26d3e6d027b6539de0799a4925f541>`;
 
 	// global functions
 
