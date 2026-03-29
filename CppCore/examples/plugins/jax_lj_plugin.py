@@ -130,7 +130,8 @@ if __name__ == "__main__":
     print(f"Energy: {e:.10f}")
     print(f"Forces:\n{f.reshape(-1, 3)}")
     # Forces should be equal and opposite (Newton's third law)
-    assert np.allclose(f[:3] + f[3:], 0.0, atol=1e-10)
+    f2d = f.reshape(-1, 3)
+    assert np.allclose(f2d[0] + f2d[1], 0.0, atol=1e-10)
     print("Newton's third law: OK")
 
     # Verify forces via finite differences

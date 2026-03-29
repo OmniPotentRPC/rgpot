@@ -18,6 +18,7 @@ xtbbld = { features = ["xtb"] }
 tblitebld = { features = ["tblite"] }
 tbbld = { features = ["xtb", "tblite"] }
 metatomicbld = { features = ["metatomic"] }
+plugintest = { features = ["plugintest"] }
 
 [feature.cache.dependencies]
 rocksdb = ">=10.9.1,<11"
@@ -40,6 +41,18 @@ metatomic-torch = ">=0.1.9, <0.2"
 metatensor-torch = ">=0.8.4, <0.9"
 vesin-torch = ">=0.5.2, <0.6"
 vesin = ">=0.5.2, <0.6"
+
+[feature.plugintest]
+platforms = ["linux-64"]
+
+[feature.plugintest.dependencies]
+numpy = ">=2.0"
+julia = ">=1.10"
+
+[feature.plugintest.pypi-dependencies]
+jax = ">=0.4.30"
+jaxlib = ">=0.4.30"
+torch = ">=2.5.0"
 
 [feature.rpc.dependencies]
 capnproto = ">=1.0.2,<2"

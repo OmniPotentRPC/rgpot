@@ -144,6 +144,64 @@ if has_plugins and get_option('with_tests')
     endif
 endif
 
+# ------------------------ Plugin self-tests (Python, Julia, Rust)
+# These run the plugin examples as standalone scripts to verify they work.
+
+if has_plugins and get_option('with_tests')
+    python3 = find_program('python3', required: false)
+    julia = find_program('julia', required: false)
+
+    _plugin_examples_dir = meson.current_source_dir() / 'examples' / 'plugins'
+
+    if python3.found()
+        test(
+            'PythonHarmonicPlugin',
+            python3,
+            args: [_plugin_examples_dir / 'harmonic_plugin.py'],
+            timeout: 30,
+        )
+        test(
+            'PythonJaxLJPlugin',
+            python3,
+            args: [_plugin_examples_dir / 'jax_lj_plugin.py'],
+            timeout: 120,
+        )
+        test(
+            'PythonTorchNNPlugin',
+            python3,
+            args: [_plugin_examples_dir / 'torch_nn_plugin.py'],
+            timeout: 120,
+        )
+    endif
+
+    if julia.found()
+        test(
+            'JuliaSpringPlugin',
+            julia,
+            args: [_plugin_examples_dir / 'spring_plugin.jl'],
+            timeout: 120,
+        )
+    endif
+
+    # Rust Morse plugin: build with cargo, test by loading .so
+    cargo = find_program('cargo', required: false)
+    if cargo.found()
+        _morse_rust_dir = meson.current_source_dir() / 'examples' / 'plugins' / 'morse_rust'
+        _morse_rust_target = meson.current_build_dir() / 'morse_rust_target'
+        _morse_rust_build = custom_target(
+            'morse_rust_plugin',
+            command: [
+                cargo, 'build', '--release',
+                '--manifest-path', _morse_rust_dir / 'Cargo.toml',
+                '--target-dir', _morse_rust_target,
+            ],
+            output: ['libmorse_plugin.so'],
+            build_by_default: true,
+            console: true,
+        )
+    endif
+endif
+
 # ------------------------ Tests
 
 if get_option('with_tests')

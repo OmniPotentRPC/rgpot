@@ -99,7 +99,7 @@ class TorchNNPotential:
         if model_path:
             self.model = torch.jit.load(model_path, map_location=self.device)
         else:
-            self.model = PairwiseNN(cutoff=cutoff).to(self.device)
+            self.model = PairwiseNN(cutoff=cutoff).double().to(self.device)
             self.model.eval()
 
     def calculate(
