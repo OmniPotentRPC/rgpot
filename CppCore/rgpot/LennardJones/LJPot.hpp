@@ -30,7 +30,8 @@ public:
   /**
    * @brief Default constructor initializing parameters.
    */
-  LJPot() : Potential(PotType::LJ), u0{1.0}, cuttOffR{15.0}, psi{1.0} {}
+  LJPot()
+      : Potential(PotType::LJ), u0{1.0}, cuttOffR{15.0}, psi{1.0}, cuttOffU{0.0} {}
 
   /**
    * @brief Computes the forces and energy for a given configuration.

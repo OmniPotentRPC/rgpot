@@ -110,6 +110,40 @@ if get_option('with_examples') and not get_option('with_rpc_client_only')
     endforeach
 endif
 
+# ------------------------ External plugin .so targets (for testing)
+
+if has_plugins and get_option('with_tests')
+    plugin_inc = include_directories('../include')
+
+    # C: null plugin
+    rgpot_null_plugin = shared_library(
+        'rgpot_null',
+        'examples/plugins/null_plugin.c',
+        include_directories: plugin_inc,
+        install: false,
+    )
+
+    # C: Morse plugin
+    rgpot_morse_plugin = shared_library(
+        'rgpot_morse',
+        'examples/plugins/morse_plugin.c',
+        include_directories: plugin_inc,
+        dependencies: m_dep,
+        install: false,
+    )
+
+    # Fortran + C: Coulomb plugin
+    if has_fortran
+        rgpot_coulomb_plugin = shared_library(
+            'rgpot_coulomb',
+            ['examples/plugins/coulomb_plugin.f90',
+             'examples/plugins/coulomb_plugin_wrapper.c'],
+            include_directories: plugin_inc,
+            install: false,
+        )
+    endif
+endif
+
 # ------------------------ Tests
 
 if get_option('with_tests')
@@ -144,6 +178,30 @@ if get_option('with_tests')
         test_array += [
             ['PluginTest', 'plugin_test', 'PluginTest.cc', ''],
         ]
+        # External plugin integration tests (need the .so files built above)
+        _ext_plugin_test = executable(
+            'external_plugin_test',
+            sources: ['tests/ExternalPluginTest.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+        )
+        _ext_plugin_env = environment()
+        _ext_plugin_env.set(
+            'RGPOT_TEST_PLUGIN_DIR',
+            meson.current_build_dir(),
+        )
+        _ext_test_depends = [rgpot_null_plugin, rgpot_morse_plugin]
+        if has_fortran
+            _ext_test_depends += [rgpot_coulomb_plugin]
+        endif
+        test(
+            'ExternalPluginTest',
+            _ext_plugin_test,
+            env: _ext_plugin_env,
+            depends: _ext_test_depends,
+        )
     endif
     if has_xtb
         test_array += [

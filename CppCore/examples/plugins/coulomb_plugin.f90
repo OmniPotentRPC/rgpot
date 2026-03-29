@@ -50,8 +50,8 @@ contains
 
         energy = energy + KE * qi * qj * inv_r
 
-        ! Force: -dE/dr * r_hat
-        fij = -KE * qi * qj * inv_r * inv_r * inv_r
+        ! F_i = KE * qi * qj * (r_i - r_j) / r^3
+        fij = KE * qi * qj * inv_r * inv_r * inv_r
         forces(1, i) = forces(1, i) + fij * dx
         forces(2, i) = forces(2, i) + fij * dy
         forces(3, i) = forces(3, i) + fij * dz
