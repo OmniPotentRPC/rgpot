@@ -10,6 +10,7 @@ endif
 
 _rgpot_srcs += files('rgpot/PotHelpers.cc')
 _rgpot_srcs += files('rgpot/units.cc')
+_rgpot_srcs += files('rgpot/BatchEvaluator.cc')
 
 if has_plugins
     _incdirs += [include_directories('../include')]  # rgpot/plugin.h
@@ -215,6 +216,7 @@ if get_option('with_tests')
     test_args += ['-DRGPOTTEST']
     test_array = [
         ['UnitsTest', 'units_test', 'UnitsTest.cc', ''],
+        ['BatchTest', 'batch_test', 'BatchTest.cc', ''],
     ]
     if has_fortran
         test_array += [

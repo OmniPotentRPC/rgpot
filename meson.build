@@ -160,6 +160,10 @@ if get_option('with_metatomic')
     has_metatomic = true
 endif
 
+# Threads (needed by BatchEvaluator)
+thread_dep = dependency('threads')
+_deps += thread_dep
+
 has_plugins = get_option('with_plugins')
 if has_plugins
     _args += ['-DRGPOT_HAS_PLUGINS=TRUE']

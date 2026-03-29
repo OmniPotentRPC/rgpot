@@ -2,6 +2,7 @@
 // Copyright 2023--present rgpot developers
 
 #include "rgpot/plugin/PluginBridge.hpp"
+#include "rgpot/simd_ops.hpp"
 #include "rgpot/units.hpp"
 
 #include <stdexcept>
@@ -35,14 +36,10 @@ public:
 
     // Convert host positions (angstrom) to plugin native units
     m_pos_buf.resize(n3);
-    for (size_t i = 0; i < n3; ++i) {
-      m_pos_buf[i] = in.pos[i] * m_length_factor;
-    }
+    simd::scale(m_pos_buf.data(), in.pos, m_length_factor, n3);
 
     double cell_conv[9];
-    for (int i = 0; i < 9; ++i) {
-      cell_conv[i] = in.box[i] * m_length_factor;
-    }
+    simd::scale(cell_conv, in.box, m_length_factor, 9);
 
     rgpot_plugin_input_t pin = {in.nAtoms, m_pos_buf.data(), in.atmnrs,
                                 cell_conv};
@@ -62,9 +59,7 @@ public:
     // Convert results from plugin units to host units (eV/angstrom)
     out->energy = pout.energy * m_energy_factor;
     out->variance = pout.variance * m_energy_factor * m_energy_factor;
-    for (size_t i = 0; i < n3; ++i) {
-      out->F[i] *= m_force_factor;
-    }
+    simd::scale_inplace(out->F, m_force_factor, n3);
   }
 
 private:

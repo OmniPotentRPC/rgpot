@@ -2,6 +2,7 @@
 // Copyright 2023--present rgpot developers
 
 #include "rgpot/TBLitePot/TBLitePot.hpp"
+#include "rgpot/simd_ops.hpp"
 #include "rgpot/units.hpp"
 
 #include <stdexcept>
@@ -78,14 +79,10 @@ void TBLitePot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
   // Reuse preallocated buffer
   m_pos_bohr.resize(n3);
-  for (size_t i = 0; i < n3; ++i) {
-    m_pos_bohr[i] = in.pos[i] * ANGSTROM_TO_BOHR;
-  }
+  simd::scale(m_pos_bohr.data(), in.pos, ANGSTROM_TO_BOHR, n3);
 
   double box_bohr[9];
-  for (int i = 0; i < 9; ++i) {
-    box_bohr[i] = in.box[i] * ANGSTROM_TO_BOHR;
-  }
+  simd::scale(box_bohr, in.box, ANGSTROM_TO_BOHR, 9);
 
   if (!m_initialized) {
     tblite_error err = tblite_new_error();
@@ -131,9 +128,7 @@ void TBLitePot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
   // Write gradient directly into output, convert in-place
   tblite_get_result_gradient(err, m_res, out->F);
-  for (size_t i = 0; i < n3; ++i) {
-    out->F[i] *= NEG_GRAD_TO_FORCE;
-  }
+  simd::scale_inplace(out->F, NEG_GRAD_TO_FORCE, n3);
 
   out->variance = 0.0;
   tblite_delete_error(&err);
