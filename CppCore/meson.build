@@ -11,6 +11,11 @@ endif
 _rgpot_srcs += files('rgpot/PotHelpers.cc')
 _rgpot_srcs += files('rgpot/units.cc')
 
+if has_plugins
+    _incdirs += [include_directories('../include')]  # rgpot/plugin.h
+    subdir('rgpot/plugin')
+endif
+
 # ------------------------ Main library
 if not get_option('with_rpc_client_only')
     rgpot_core = static_library(
@@ -133,6 +138,11 @@ if get_option('with_tests')
         test_array += [  #
             ['CacheTest', 'cache_test', 'CacheTest.cc', ''],
             ['InvarianceTest', 'invariance_test', 'InvarianceTest.cc', ''],
+        ]
+    endif
+    if has_plugins
+        test_array += [
+            ['PluginTest', 'plugin_test', 'PluginTest.cc', ''],
         ]
     endif
     if has_xtb

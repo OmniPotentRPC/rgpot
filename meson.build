@@ -160,6 +160,17 @@ if get_option('with_metatomic')
     has_metatomic = true
 endif
 
+has_plugins = get_option('with_plugins')
+if has_plugins
+    _args += ['-DRGPOT_HAS_PLUGINS=TRUE']
+    if host_system != 'windows'
+        dl_dep = cppc.find_library('dl', required: false)
+        if dl_dep.found()
+            _deps += dl_dep
+        endif
+    endif
+endif
+
 # --------------------- Subprojects
 if has_fortran
     fortcuh2_proj = subproject('fortcuh2')
