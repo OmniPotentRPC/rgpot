@@ -1,0 +1,85 @@
+#+TITLE: rgpot Plugin Examples
+#+OPTIONS: toc:nil
+
+* Overview
+
+Example plugins demonstrating the rgpot plugin ABI
+(=include/rgpot/plugin.h=) in multiple languages. Each plugin
+implements a simple potential and can be built as a standalone =.so=.
+
+* Examples
+
+| File | Language | Potential | Forces |
+|------+----------+-----------+--------|
+| =null_plugin.c= | C | Zero (no-op) | Zeroed |
+| =morse_plugin.rs= | Rust | Morse pairwise | Analytic |
+| =coulomb_plugin.f90= | Fortran | Coulomb (point charges) | Analytic |
+| =harmonic_plugin.py= | Python | Harmonic tether | NumPy |
+| =jax_lj_plugin.py= | Python/JAX | Lennard-Jones | =jax.grad= autodiff |
+| =torch_nn_plugin.py= | Python/PyTorch | Feed-forward NN | =torch.autograd= |
+| =spring_plugin.jl= | Julia | Harmonic spring | Analytic |
+| =python_bridge.c= | C (CPython embed) | Generic Python wrapper | Delegated |
+
+* Building
+
+** C (null potential)
+
+#+begin_src bash
+cc -shared -fPIC -o rgpot_null.so null_plugin.c -I../../../include
+#+end_src
+
+** Rust (Morse potential)
+
+#+begin_src bash
+# In a Cargo project with src/lib.rs = morse_plugin.rs
+cargo build --release
+cp target/release/libmorse_plugin.so $RGPOT_PLUGIN_PATH/
+#+end_src
+
+** Fortran (Coulomb potential)
+
+#+begin_src bash
+gfortran -shared -fPIC -o rgpot_coulomb.so coulomb_plugin.f90
+#+end_src
+
+** Python (via bridge)
+
+#+begin_src bash
+cc -shared -fPIC -o rgpot_python.so python_bridge.c \
+   $(python3-config --includes --ldflags --embed) \
+   -I../../../include
+export PYTHONPATH=/path/to/plugins
+#+end_src
+
+** Python standalone (without bridge)
+
+The Python examples can also be used directly from Python:
+
+#+begin_src python
+from jax_lj_plugin import JaxLJPotential
+pot = JaxLJPotential(epsilon=1.0, sigma=1.0)
+energy, forces = pot.calculate(positions, atomic_numbers, cell)
+#+end_src
+
+* Discovery
+
+Set =RGPOT_PLUGIN_PATH= to the directory containing your plugin =.so= files:
+
+#+begin_src bash
+export RGPOT_PLUGIN_PATH=/path/to/plugins
+#+end_src
+
+rgpot scans this path at startup and loads every shared library that exports
+=rgpot_plugin_init()=.
+
+* Unit Handling
+
+Each plugin declares its native units in the descriptor:
+
+#+begin_src c
+.length_unit = "bohr",    // or NULL for angstrom
+.energy_unit = "hartree", // or NULL for eV
+#+end_src
+
+The host converts automatically using the Shunting-Yard expression parser.
+Compound units like ="kJ/mol/A^2"= are supported.
