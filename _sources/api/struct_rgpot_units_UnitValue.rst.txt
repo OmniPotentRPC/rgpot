@@ -1,0 +1,22 @@
+.. index:: pair: struct; rgpot::units::UnitValue
+.. _doxid-structrgpot_1_1units_1_1_unit_value:
+
+struct rgpot::units::UnitValue
+==============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct UnitValue {
+		// fields
+	
+		double :target:`factor<doxid-structrgpot_1_1units_1_1_unit_value_1a06fd137a6e2bafedde1abd14c37c1c01>`;
+		:ref:`Dimension<doxid-structrgpot_1_1units_1_1_dimension>` :target:`dim<doxid-structrgpot_1_1units_1_1_unit_value_1a01491d02127a31b744bad6100778be6e>`;
+	};

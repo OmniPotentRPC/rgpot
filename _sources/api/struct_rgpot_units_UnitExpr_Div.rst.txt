@@ -1,0 +1,22 @@
+.. index:: pair: struct; rgpot::units::UnitExpr::Div
+.. _doxid-structrgpot_1_1units_1_1_unit_expr_1_1_div:
+
+struct rgpot::units::UnitExpr::Div
+==================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Div {
+		// fields
+	
+		UnitExprPtr :target:`lhs<doxid-structrgpot_1_1units_1_1_unit_expr_1_1_div_1aa4dfcdb93b08d346823b73cfbb97c265>`;
+		UnitExprPtr :target:`rhs<doxid-structrgpot_1_1units_1_1_unit_expr_1_1_div_1a468f33bb416d81e563d0c4e7f2a0f3b9>`;
+	};

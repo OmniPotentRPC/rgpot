@@ -1,0 +1,38 @@
+.. index:: pair: struct; rgpot::units::UnitExpr
+.. _doxid-structrgpot_1_1units_1_1_unit_expr:
+
+struct rgpot::units::UnitExpr
+=============================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_units_UnitExpr_Div.rst
+	struct_rgpot_units_UnitExpr_Mul.rst
+	struct_rgpot_units_UnitExpr_Pow.rst
+	struct_rgpot_units_UnitExpr_Val.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct UnitExpr {
+		// structs
+	
+		struct :ref:`Div<doxid-structrgpot_1_1units_1_1_unit_expr_1_1_div>`;
+		struct :ref:`Mul<doxid-structrgpot_1_1units_1_1_unit_expr_1_1_mul>`;
+		struct :ref:`Pow<doxid-structrgpot_1_1units_1_1_unit_expr_1_1_pow>`;
+		struct :ref:`Val<doxid-structrgpot_1_1units_1_1_unit_expr_1_1_val>`;
+
+		// fields
+	
+		std::variant<:ref:`Val<doxid-structrgpot_1_1units_1_1_unit_expr_1_1_val>`, :ref:`Mul<doxid-structrgpot_1_1units_1_1_unit_expr_1_1_mul>`, :ref:`Div<doxid-structrgpot_1_1units_1_1_unit_expr_1_1_div>`, :ref:`Pow<doxid-structrgpot_1_1units_1_1_unit_expr_1_1_pow>`> :target:`data<doxid-structrgpot_1_1units_1_1_unit_expr_1aca4e53ceab4952873e542eddd929dcbe>`;
+
+		// methods
+	
+		std::string :target:`to_string<doxid-structrgpot_1_1units_1_1_unit_expr_1a32772945fdb3fa40b85ec7de98a5d80e>`() const;
+		:ref:`UnitValue<doxid-structrgpot_1_1units_1_1_unit_value>` :target:`eval<doxid-structrgpot_1_1units_1_1_unit_expr_1ae2854c74dcc98b71ef07796a5f0213a9>`() const;
+	};

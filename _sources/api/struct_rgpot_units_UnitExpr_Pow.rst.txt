@@ -1,0 +1,22 @@
+.. index:: pair: struct; rgpot::units::UnitExpr::Pow
+.. _doxid-structrgpot_1_1units_1_1_unit_expr_1_1_pow:
+
+struct rgpot::units::UnitExpr::Pow
+==================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Pow {
+		// fields
+	
+		UnitExprPtr :target:`base<doxid-structrgpot_1_1units_1_1_unit_expr_1_1_pow_1a4c941548af3e1f1555662d0ac1d56266>`;
+		UnitExprPtr :target:`exponent<doxid-structrgpot_1_1units_1_1_unit_expr_1_1_pow_1ae79b7ad2bc15d6b9af02d9aa0b09c728>`;
+	};

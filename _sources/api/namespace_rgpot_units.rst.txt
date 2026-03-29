@@ -7,10 +7,17 @@ namespace rgpot::units
 .. toctree::
 	:hidden:
 
+	enum_rgpot_units_DimIndex.rst
+	enum_rgpot_units_TokenType.rst
+	struct_rgpot_units_Dimension.rst
+	struct_rgpot_units_Token.rst
+	struct_rgpot_units_UnitExpr.rst
+	struct_rgpot_units_UnitValue.rst
+
 Overview
 ~~~~~~~~
 
-Physical constants and unit conversion factors for atomistic potentials. :ref:`More...<details-namespacergpot_1_1units>`
+Physical constants, unit conversion factors, and runtime unit parser. :ref:`More...<details-namespacergpot_1_1units>`
 
 
 .. ref-code-block:: cpp
@@ -19,8 +26,32 @@ Physical constants and unit conversion factors for atomistic potentials. :ref:`M
 	
 	namespace units {
 
+	// typedefs
+
+	typedef std::unique_ptr<:ref:`UnitExpr<doxid-structrgpot_1_1units_1_1_unit_expr>`> :target:`UnitExprPtr<doxid-namespacergpot_1_1units_1a28a8dce65dd2f37712b78a6288b74f81>`;
+
+	// enums
+
+	enum :ref:`DimIndex<doxid-namespacergpot_1_1units_1ac0208524cd97ec1ee43b59dc93586e53>`;
+	enum :ref:`TokenType<doxid-namespacergpot_1_1units_1ac61cb41e277ce3051c99e2f467e43cb2>`;
+
+	// structs
+
+	struct :ref:`Dimension<doxid-structrgpot_1_1units_1_1_dimension>`;
+	struct :ref:`Token<doxid-structrgpot_1_1units_1_1_token>`;
+	struct :ref:`UnitExpr<doxid-structrgpot_1_1units_1_1_unit_expr>`;
+	struct :ref:`UnitValue<doxid-structrgpot_1_1units_1_1_unit_value>`;
+
 	// global variables
 
+	static const :ref:`Dimension<doxid-structrgpot_1_1units_1_1_dimension>` :target:`DIM_LENGTH<doxid-namespacergpot_1_1units_1a21868b96ade245d2b7077f86ef094661>` = {{1, 0, 0, 0, 0}};
+	static const :ref:`Dimension<doxid-structrgpot_1_1units_1_1_dimension>` :target:`DIM_TIME<doxid-namespacergpot_1_1units_1a5ae8d06e636b3b5a67aa12643fcdf594>` = {{0, 1, 0, 0, 0}};
+	static const :ref:`Dimension<doxid-structrgpot_1_1units_1_1_dimension>` :target:`DIM_MASS<doxid-namespacergpot_1_1units_1a37e368798e79e2f499e6271cd2b357c4>` = {{0, 0, 1, 0, 0}};
+	static const :ref:`Dimension<doxid-structrgpot_1_1units_1_1_dimension>` :target:`DIM_CHARGE<doxid-namespacergpot_1_1units_1a539f6a288cb80b45b5fb80d9c80f1424>` = {{0, 0, 0, 1, 0}};
+	static const :ref:`Dimension<doxid-structrgpot_1_1units_1_1_dimension>` :target:`DIM_ENERGY<doxid-namespacergpot_1_1units_1ab410bb9b3752399e541ebf419efa6827>` = {{2, -2, 1, 0, 0}};
+	static const :ref:`Dimension<doxid-structrgpot_1_1units_1_1_dimension>` :target:`DIM_NONE<doxid-namespacergpot_1_1units_1a82575139c1b6017bfe3dd335742e975e>` = {{0, 0, 0, 0, 0}};
+	static const auto :target:`BASE_UNITS<doxid-namespacergpot_1_1units_1adb240cce6d64d843c1a954d7c0fbb806>`;
+	static const auto :target:`QUANTITY_DIMS<doxid-namespacergpot_1_1units_1aafabcac13f1e128bc1f772ff3ea4ad88>` = std::unordered_map<std::string, :ref:`Dimension<doxid-structrgpot_1_1units_1_1_dimension>`>{     {"length", DIM_LENGTH},     {"energy", DIM_ENERGY},     {"force", {{1, -2, 1, 0, 0}}},     {"pressure", {{-1, -2, 1, 0, 0}}},     {"momentum", {{1, -1, 1, 0, 0}}},     {"mass", DIM_MASS},     {"velocity", {{1, -1, 0, 0, 0}}},     {"charge", DIM_CHARGE}, };
 	double :target:`BOHR_TO_ANGSTROM<doxid-namespacergpot_1_1units_1aadfdc5072a906707470c699430fe9628>` = 0.529177210903;
 	double :target:`ANGSTROM_TO_BOHR<doxid-namespacergpot_1_1units_1a9c35602c6f75abf12f88a9a9a1c6134d>` = 1.0 / BOHR_TO_ANGSTROM;
 	double :target:`HARTREE_TO_EV<doxid-namespacergpot_1_1units_1abe8557f69bfc3a00e7da3df8bf5eb342>` = 27.211386245988;
@@ -30,13 +61,84 @@ Physical constants and unit conversion factors for atomistic potentials. :ref:`M
 	double :target:`KB_HARTREE<doxid-namespacergpot_1_1units_1a9a742b09aa478149e322c44ad4514736>` = 3.1668115634556e-6;
 	double :target:`KB_EV<doxid-namespacergpot_1_1units_1a8493ea362e4eaeee3fbfaa0b0d2a03f3>` = 8.617333262e-5;
 
+	// global functions
+
+	static std::string :target:`to_lower<doxid-namespacergpot_1_1units_1af23b39ec0635b62145fe7dae8bd6663e>`(std::string s);
+	static std::vector<:ref:`Token<doxid-structrgpot_1_1units_1_1_token>`> :target:`tokenize<doxid-namespacergpot_1_1units_1aa8b6882c891c97889664568aa6791af6>`(const std::string& unit);
+	static std::vector<:ref:`Token<doxid-structrgpot_1_1units_1_1_token>`> :target:`shunting_yard<doxid-namespacergpot_1_1units_1af6a81d32131d5be2fb9a8730c93dcfda>`(const std::vector<:ref:`Token<doxid-structrgpot_1_1units_1_1_token>`>& tokens);
+	static UnitExprPtr :target:`read_expr<doxid-namespacergpot_1_1units_1ae5a626023803942c51050927dd6e070e>`(std::vector<:ref:`Token<doxid-structrgpot_1_1units_1_1_token>`>& stream);
+	static :ref:`UnitValue<doxid-structrgpot_1_1units_1_1_unit_value>` :target:`parse_unit_expression<doxid-namespacergpot_1_1units_1acbac0c26fc1b92d6d69da999128f3be2>`(const std::string& unit);
+	double :ref:`unit_conversion_factor<doxid-namespacergpot_1_1units_1ad9fd973ab92395903989f89dd938c37f>`(const std::string& from_unit, const std::string& to_unit);
+	void :ref:`validate_unit<doxid-namespacergpot_1_1units_1a7fe0822d8d392d957c6a1e52dc197b69>`(const std::string& quantity, const std::string& unit);
+
 	} // namespace units
 .. _details-namespacergpot_1_1units:
 
 Detailed Documentation
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Physical constants and unit conversion factors for atomistic potentials.
+Physical constants, unit conversion factors, and runtime unit parser.
 
-All values are CODATA 2018 recommended values. rgpot's native unit system: energy = eV, length = Angstrom, force = eV/Angstrom.
+Compile-time constants use CODATA 2018 recommended values. rgpot's native unit system: energy = eV, length = Angstrom, force = eV/Angstrom.
+
+The runtime expression parser (unit_conversion_factor) is derived from metatomic-torch (`https://github.com/metatensor/metatomic <https://github.com/metatensor/metatomic>`__), specifically PR #173 by Rohit Goswami. Original code: BSD-3-Clause licensed, copyright metatensor developers. The parser uses the Shunting-Yard algorithm for compound unit expressions like "kJ/mol/A^2" or "(eV\*u)^(1/2)" with SI-based dimensional analysis.
+
+Global Functions
+----------------
+
+.. index:: pair: function; unit_conversion_factor
+.. _doxid-namespacergpot_1_1units_1ad9fd973ab92395903989f89dd938c37f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double unit_conversion_factor(const std::string& from_unit, const std::string& to_unit)
+
+Get the multiplicative conversion factor from ``from_unit`` to ``to_unit``.
+
+Both arguments are parsed as compound unit expressions. Operators: ``*`` (multiply), ``/`` (divide), ``^`` (power), ``()`` (grouping). Whitespace is ignored, lookup is case-insensitive.
+
+Examples:
+
+* ``unit_conversion_factor("angstrom", "bohr")`` length
+
+* ``unit_conversion_factor("eV/A", "hartree/bohr")`` force
+
+* ``unit_conversion_factor("kJ/mol", "eV")`` energy per particle
+
+* ``unit_conversion_factor("(eV*u)^(1/2)", "u*A/fs")`` momentum
+
+Supported base units:
+
+* Length: angstrom (A), bohr, nanometer (nm), meter (m), cm, mm, um
+
+* Energy: eV, meV, Hartree, Ry, Joule (J), kcal, kJ
+
+* Time: second (s), ms, us, ns, ps, femtosecond (fs)
+
+* Mass: dalton (u), kilogram (kg), gram (g), electron_mass (m_e)
+
+* Charge: e, coulomb (c)
+
+* Dimensionless: mol
+
+* Derived: hbar
+
+Throws std::invalid_argument on dimension mismatch or unknown unit.
+
+.. note::
+
+	Derived from metatomic-torch (metatensor/metatomic PR #173).
+
+.. index:: pair: function; validate_unit
+.. _doxid-namespacergpot_1_1units_1a7fe0822d8d392d957c6a1e52dc197b69:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void validate_unit(const std::string& quantity, const std::string& unit)
+
+Check that ``unit`` is a valid expression with dimensions matching ``quantity``. Known quantities: "length", "energy", "force", "pressure", "momentum", "mass", "velocity", "charge".
+
+Throws std::invalid_argument on mismatch or parse error.
 

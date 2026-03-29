@@ -1,0 +1,27 @@
+.. index:: pair: struct; rgpot::units::Token
+.. _doxid-structrgpot_1_1units_1_1_token:
+
+struct rgpot::units::Token
+==========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Token {
+		// fields
+	
+		TokenType :target:`type<doxid-structrgpot_1_1units_1_1_token_1a0d6a5f47d5b43712b930fa74bd22a464>`;
+		std::string :target:`value<doxid-structrgpot_1_1units_1_1_token_1abbbb0fbab78a35173ab533d95ab670e8>`;
+
+		// methods
+	
+		int :target:`precedence<doxid-structrgpot_1_1units_1_1_token_1a714bfad45182ecc95ed16cd9daebe618>`() const;
+		std::string :target:`as_str<doxid-structrgpot_1_1units_1_1_token_1a10a339f73fd9555d1d8ef0a85c5896f8>`() const;
+	};

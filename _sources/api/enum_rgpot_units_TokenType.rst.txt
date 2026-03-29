@@ -1,0 +1,21 @@
+.. index:: pair: enum; TokenType
+.. _doxid-namespacergpot_1_1units_1ac61cb41e277ce3051c99e2f467e43cb2:
+
+enum rgpot::units::TokenType
+============================
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	enum TokenType {
+	    :target:`LParen<doxid-namespacergpot_1_1units_1ac61cb41e277ce3051c99e2f467e43cb2a876a9d4efdf66785e41cb452f0402c79>`,
+	    :target:`RParen<doxid-namespacergpot_1_1units_1ac61cb41e277ce3051c99e2f467e43cb2ad011e3feb19babda65e8951ff7189c0c>`,
+	    :target:`Mul<doxid-namespacergpot_1_1units_1ac61cb41e277ce3051c99e2f467e43cb2a62b6d55816cf737bfc6f42e60df1a3f2>`,
+	    :target:`Div<doxid-namespacergpot_1_1units_1ac61cb41e277ce3051c99e2f467e43cb2a43d11850893d2fe84a1e618121c1cc0a>`,
+	    :target:`Pow<doxid-namespacergpot_1_1units_1ac61cb41e277ce3051c99e2f467e43cb2a8be6d3e955290ee50c00a4bc92aa7749>`,
+	    :target:`Value<doxid-namespacergpot_1_1units_1ac61cb41e277ce3051c99e2f467e43cb2a689202409e48743b914713f96d93947c>`,
+	};
+

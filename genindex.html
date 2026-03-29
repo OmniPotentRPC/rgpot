@@ -102,6 +102,7 @@ data-aria-dark="Switch to auto color mode">
  | <a href="#R"><strong>R</strong></a>
  | <a href="#S"><strong>S</strong></a>
  | <a href="#T"><strong>T</strong></a>
+ | <a href="#U"><strong>U</strong></a>
  | <a href="#V"><strong>V</strong></a>
  | <a href="#W"><strong>W</strong></a>
  | <a href="#Z"><strong>Z</strong></a>
@@ -357,13 +358,20 @@ data-aria-dark="Switch to auto color mode">
         <li><a href="api/class_AtomMatrix.html#index-10">function</a>, <a href="api/class_AtomMatrix.html#index-9">[1]</a>, <a href="api/class_rgpot_types_AtomMatrix.html#index-10">[2]</a>, <a href="api/class_rgpot_types_AtomMatrix.html#index-9">[3]</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     deserialize_hit
 
       <ul>
         <li><a href="api/class_rgpot_cache_PotentialCache.html#index-4">function</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li>
+    DimIndex
+
+      <ul>
+        <li><a href="api/enum_rgpot_units_DimIndex.html#index-0">enum</a>
 </li>
       </ul></li>
   </ul></td>
@@ -385,9 +393,13 @@ data-aria-dark="Switch to auto color mode">
     enum
 
       <ul>
+        <li><a href="api/enum_rgpot_units_DimIndex.html#index-0">DimIndex</a>
+</li>
         <li><a href="api/enum_rgpot_GFNMethod.html#index-0">GFNMethod</a>
 </li>
         <li><a href="api/enum_rgpot_TBLiteMethod.html#index-0">TBLiteMethod</a>
+</li>
+        <li><a href="api/enum_rgpot_units_TokenType.html#index-0">TokenType</a>
 </li>
       </ul></li>
   </ul></td>
@@ -580,6 +592,10 @@ data-aria-dark="Switch to auto color mode">
         <li><a href="api/class_AtomMatrix.html#index-8">size</a>, <a href="api/class_rgpot_types_AtomMatrix.html#index-8">[1]</a>
 </li>
         <li><a href="api/class_rgpot_cache_KeyHash.html#index-3">slice</a>
+</li>
+        <li><a href="api/namespace_rgpot_units.html#index-1">unit_conversion_factor</a>
+</li>
+        <li><a href="api/namespace_rgpot_units.html#index-2">validate_unit</a>
 </li>
         <li><a href="api/class_rgpot_CalcResult.html#index-4">variance</a>
 </li>
@@ -1125,6 +1141,64 @@ data-aria-dark="Switch to auto color mode">
 </li>
       </ul></li>
       <li>
+    rgpot::units::Dimension
+
+      <ul>
+        <li><a href="api/struct_rgpot_units_Dimension.html#index-0">struct</a>
+</li>
+      </ul></li>
+      <li>
+    rgpot::units::Token
+
+      <ul>
+        <li><a href="api/struct_rgpot_units_Token.html#index-0">struct</a>
+</li>
+      </ul></li>
+      <li>
+    rgpot::units::UnitExpr
+
+      <ul>
+        <li><a href="api/struct_rgpot_units_UnitExpr.html#index-0">struct</a>
+</li>
+      </ul></li>
+      <li>
+    rgpot::units::UnitExpr::Div
+
+      <ul>
+        <li><a href="api/struct_rgpot_units_UnitExpr_Div.html#index-0">struct</a>
+</li>
+      </ul></li>
+      <li>
+    rgpot::units::UnitExpr::Mul
+
+      <ul>
+        <li><a href="api/struct_rgpot_units_UnitExpr_Mul.html#index-0">struct</a>
+</li>
+      </ul></li>
+      <li>
+    rgpot::units::UnitExpr::Pow
+
+      <ul>
+        <li><a href="api/struct_rgpot_units_UnitExpr_Pow.html#index-0">struct</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li>
+    rgpot::units::UnitExpr::Val
+
+      <ul>
+        <li><a href="api/struct_rgpot_units_UnitExpr_Val.html#index-0">struct</a>
+</li>
+      </ul></li>
+      <li>
+    rgpot::units::UnitValue
+
+      <ul>
+        <li><a href="api/struct_rgpot_units_UnitValue.html#index-0">struct</a>
+</li>
+      </ul></li>
+      <li>
     rgpot::XTBConfig
 
       <ul>
@@ -1138,8 +1212,6 @@ data-aria-dark="Switch to auto color mode">
         <li><a href="api/class_rgpot_XTBPot.html#index-0">class</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="crates/rgpot_core/lib.html#rgpot_core">rgpot_core</a>
 </li>
       <li><a href="crates/rgpot_core/c_api.html#rgpot_core-c_api">rgpot_core::c_api</a>
@@ -1299,8 +1371,6 @@ data-aria-dark="Switch to auto color mode">
         <li><a href="api/namespace_std.html#index-0">namespace</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     string_literals
 
@@ -1320,6 +1390,22 @@ data-aria-dark="Switch to auto color mode">
 </li>
         <li><a href="api/struct_rgpot_TBLiteConfig.html#index-0">rgpot::TBLiteConfig</a>
 </li>
+        <li><a href="api/struct_rgpot_units_Dimension.html#index-0">rgpot::units::Dimension</a>
+</li>
+        <li><a href="api/struct_rgpot_units_Token.html#index-0">rgpot::units::Token</a>
+</li>
+        <li><a href="api/struct_rgpot_units_UnitExpr.html#index-0">rgpot::units::UnitExpr</a>
+</li>
+        <li><a href="api/struct_rgpot_units_UnitExpr_Div.html#index-0">rgpot::units::UnitExpr::Div</a>
+</li>
+        <li><a href="api/struct_rgpot_units_UnitExpr_Mul.html#index-0">rgpot::units::UnitExpr::Mul</a>
+</li>
+        <li><a href="api/struct_rgpot_units_UnitExpr_Pow.html#index-0">rgpot::units::UnitExpr::Pow</a>
+</li>
+        <li><a href="api/struct_rgpot_units_UnitExpr_Val.html#index-0">rgpot::units::UnitExpr::Val</a>
+</li>
+        <li><a href="api/struct_rgpot_units_UnitValue.html#index-0">rgpot::units::UnitValue</a>
+</li>
         <li><a href="api/struct_rgpot_XTBConfig.html#index-0">rgpot::XTBConfig</a>
 </li>
       </ul></li>
@@ -1336,6 +1422,13 @@ data-aria-dark="Switch to auto color mode">
         <li><a href="api/enum_rgpot_TBLiteMethod.html#index-0">enum</a>
 </li>
       </ul></li>
+      <li>
+    TokenType
+
+      <ul>
+        <li><a href="api/enum_rgpot_units_TokenType.html#index-0">enum</a>
+</li>
+      </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li>
@@ -1350,9 +1443,29 @@ data-aria-dark="Switch to auto color mode">
   </ul></td>
 </tr></table>
 
+<h2 id="U">U</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li>
+    unit_conversion_factor
+
+      <ul>
+        <li><a href="api/namespace_rgpot_units.html#index-1">function</a>
+</li>
+      </ul></li>
+  </ul></td>
+</tr></table>
+
 <h2 id="V">V</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li>
+    validate_unit
+
+      <ul>
+        <li><a href="api/namespace_rgpot_units.html#index-2">function</a>
+</li>
+      </ul></li>
       <li>
     variable
 

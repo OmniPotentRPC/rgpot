@@ -1,0 +1,22 @@
+.. index:: pair: struct; rgpot::units::UnitExpr::Mul
+.. _doxid-structrgpot_1_1units_1_1_unit_expr_1_1_mul:
+
+struct rgpot::units::UnitExpr::Mul
+==================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Mul {
+		// fields
+	
+		UnitExprPtr :target:`lhs<doxid-structrgpot_1_1units_1_1_unit_expr_1_1_mul_1a09d9801ede31d0fb03d284f9069b4b06>`;
+		UnitExprPtr :target:`rhs<doxid-structrgpot_1_1units_1_1_unit_expr_1_1_mul_1a02ff2c614d1ae3a5703c3331b5192d10>`;
+	};

@@ -1,0 +1,21 @@
+.. index:: pair: enum; DimIndex
+.. _doxid-namespacergpot_1_1units_1ac0208524cd97ec1ee43b59dc93586e53:
+
+enum rgpot::units::DimIndex
+===========================
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	enum DimIndex {
+	    :target:`LENGTH<doxid-namespacergpot_1_1units_1ac0208524cd97ec1ee43b59dc93586e53aaddeac40406177897b3fccba88558f1c>`      = 0,
+	    :target:`TIME<doxid-namespacergpot_1_1units_1ac0208524cd97ec1ee43b59dc93586e53a346ff32eaa3c09983fb2ec057816d352>`        = 1,
+	    :target:`MASS<doxid-namespacergpot_1_1units_1ac0208524cd97ec1ee43b59dc93586e53acb6c2c4b3c8f95f9b58ad13f0a97245d>`        = 2,
+	    :target:`CHARGE<doxid-namespacergpot_1_1units_1ac0208524cd97ec1ee43b59dc93586e53a0405a707a4790a264c10e6cacded18b3>`      = 3,
+	    :target:`TEMPERATURE<doxid-namespacergpot_1_1units_1ac0208524cd97ec1ee43b59dc93586e53ab976538812ef6e3e5881e245d5fc3c76>` = 4,
+	    :target:`COUNT<doxid-namespacergpot_1_1units_1ac0208524cd97ec1ee43b59dc93586e53a4905ac9d6a22bdfc1ae096094ce6248d>`       = 5,
+	};
+

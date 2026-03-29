@@ -1,0 +1,30 @@
+.. index:: pair: struct; rgpot::units::Dimension
+.. _doxid-structrgpot_1_1units_1_1_dimension:
+
+struct rgpot::units::Dimension
+==============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Dimension {
+		// fields
+	
+		std::array<double, 5> :target:`exponents<doxid-structrgpot_1_1units_1_1_dimension_1a870f7de9ca6dd0604f7de50b98815447>` = {};
+
+		// methods
+	
+		Dimension :target:`operator*<doxid-structrgpot_1_1units_1_1_dimension_1a41fa005efd0dd7b497c92e7d00e44cbb>`(const Dimension& other) const;
+		Dimension :target:`operator/<doxid-structrgpot_1_1units_1_1_dimension_1a4c7e6f0310929661a1fc1d2786750ec2>`(const Dimension& other) const;
+		Dimension :target:`pow<doxid-structrgpot_1_1units_1_1_dimension_1ab05a9b828d9e62c7fce96badbc41dba1>`(double p) const;
+		bool :target:`operator==<doxid-structrgpot_1_1units_1_1_dimension_1a37b4f4fb0b8981e31a0c28eb147c7f88>`(const Dimension& other) const;
+		bool :target:`operator!=<doxid-structrgpot_1_1units_1_1_dimension_1a104e64f4cddb26073bb6cd510eb91633>`(const Dimension& other) const;
+		std::string :target:`to_string<doxid-structrgpot_1_1units_1_1_dimension_1a20ff8d340ae3d4d5ec3eac9276fc1dc7>`() const;
+	};
