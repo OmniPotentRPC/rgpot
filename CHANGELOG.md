@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Metatomic link failures on conda/pixi layouts where Torch CMake config does not fully propagate ``libtorch_cpu`` into Meson's dependency graph.
+- MetatomicPot targets vesin **0.5+** ``VesinDevice`` struct (``{type, device_id}``) and zero-initialized ``VesinOptions`` including ``sorted`` / ``algorithm`` (``VesinAutoAlgorithm``). pixi pins ``vesin>=0.5.2,<0.6``.
 
 
 ## [1.0.3](https://github.com/OmniPotentRPC/rgpot/tree/1.0.3) - 2026-03-01
