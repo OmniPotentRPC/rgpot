@@ -1,6 +1,9 @@
 #pragma once
 // MIT License
 // Copyright 2023--present rgpot developers
+//
+// Requires vesin >= 0.5 (VesinDevice is a struct {type, device_id}; VesinOptions
+// includes algorithm/sorted). Pin via pixi feature.metatomic (vesin>=0.5.2,<0.6).
 
 #include <mutex>
 #include <string>

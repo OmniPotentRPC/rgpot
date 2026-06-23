@@ -187,19 +187,23 @@ metatensor_torch::TensorBlock MetatomicPot::computeNeighbors(
 
   auto cutoff = request->engine_cutoff(m_config.length_unit);
 
+  // vesin 0.5+: VesinOptions gained `sorted` and `algorithm` (default zero =
+  // VesinAutoAlgorithm). Zero-init then set only the fields we care about so
+  // newer fields stay at safe defaults.
   VesinOptions options{};
   options.cutoff = cutoff;
   options.full = request->full_list();
+  options.sorted = false;
+  options.algorithm = VesinAutoAlgorithm;
   options.return_shifts = true;
   options.return_distances = false;
   options.return_vectors = true;
 
   VesinNeighborList *vesin_nl = new VesinNeighborList();
 
-  // vesin <=0.2 / >=0.5: VesinDevice is a struct {type, device_id}.
-  // vesin 0.3–0.4 briefly made VesinDevice an enum alias of VesinDeviceKind.
-  // Brace-init works for the struct form shipped by current PyPI wheels.
-  VesinDevice cpu{VesinCPU, 0};
+  // vesin 0.5+: VesinDevice is struct { VesinDeviceKind type; int device_id; }.
+  // (0.3–0.4 briefly used an enum typedef; we require >=0.5 for the struct API.)
+  VesinDevice cpu{VesinCPU, /*device_id=*/0};
   const char *error_message = nullptr;
   int status = vesin_neighbors(reinterpret_cast<const double(*)[3]>(positions),
                                static_cast<size_t>(nAtoms),
