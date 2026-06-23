@@ -1,0 +1,145 @@
+# Feature-gated C++ potential backends (xtb, tblite, metatomic/vesin).
+# Complements the default Build Matrix (RPC/cache only).
+name: Potentials matrix
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: potentials-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tight_binding:
+    name: xtb+tblite (meson / ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_COMPILERCHECK: content
+      CCACHE_MAXSIZE: 500M
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - uses: prefix-dev/setup-pixi@v0.9.4
+        with:
+          pixi-version: v0.62.1
+          cache: true
+          environments: tbbld
+          activate-environment: tbbld
+
+      - uses: actions/cache@v5
+        with:
+          path: .ccache
+          key: ccache-pot-tb-${{ runner.os }}-${{ github.sha }}
+          restore-keys: ccache-pot-tb-${{ runner.os }}-
+
+      - name: Meson build & test (xtb + tblite)
+        shell: pixi run -e tbbld bash -e {0}
+        run: |
+          meson setup bbdir-tb \
+            -Dwith_tests=true \
+            -Dwith_examples=false \
+            -Dwith_xtb=true \
+            -Dwith_tblite=true \
+            -Dwith_rpc=false \
+            -Dwith_cache=false \
+            --buildtype=debug
+          meson compile -C bbdir-tb
+          meson test -C bbdir-tb --print-errorlogs
+          ccache -s
+
+  metatomic:
+    name: metatomic+vesin (meson / ubuntu)
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_COMPILERCHECK: content
+      CCACHE_MAXSIZE: 800M
+      TORCH_DEVICE: cpu
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - uses: prefix-dev/setup-pixi@v0.9.4
+        with:
+          pixi-version: v0.62.1
+          cache: true
+          environments: metatomicbld
+          activate-environment: metatomicbld
+
+      - uses: actions/cache@v5
+        with:
+          path: .ccache
+          key: ccache-pot-mta-${{ runner.os }}-${{ github.sha }}
+          restore-keys: ccache-pot-mta-${{ runner.os }}-
+
+      - name: Ensure torch wheel has libtorch (CPU reinstall fallback)
+        shell: pixi run -e metatomicbld bash -e {0}
+        run: |
+          set -euo pipefail
+          ensure_torch() {
+            python - <<'PY'
+          import pathlib, sys
+          try:
+              import torch
+          except OSError as exc:
+              print("torch import OSError:", exc, file=sys.stderr)
+              sys.exit(2)
+          lib = pathlib.Path(torch.__file__).resolve().parent / "lib"
+          deps = lib / "libtorch_global_deps.so"
+          print("torch", torch.__version__, "lib", lib, "deps", deps.is_file())
+          if not lib.is_dir() or not deps.is_file():
+              sys.exit(3)
+          PY
+          }
+          if ! ensure_torch; then
+            echo "Reinstalling CPU torch (incomplete wheel / missing libtorch_global_deps.so)"
+            python -m pip install --force-reinstall --no-cache-dir \
+              --index-url https://download.pytorch.org/whl/cpu \
+              "torch>=2.10,<2.11"
+            python -m pip install --force-reinstall --no-cache-dir \
+              "metatomic-torch>=0.1.9,<0.2" "metatensor-torch>=0.8.4,<0.9" \
+              "vesin>=0.5.2,<0.6" "vesin-torch>=0.5.2,<0.6"
+          fi
+          ensure_torch
+          TORCH_LIB="$(python -c 'import pathlib,torch; print(pathlib.Path(torch.__file__).resolve().parent / "lib")')"
+          echo "TORCH_LIB=${TORCH_LIB}" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=${TORCH_LIB}:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          SHARE="$(python -c 'import pathlib,torch; print(pathlib.Path(torch.__file__).resolve().parent / "share" / "cmake")')"
+          echo "CMAKE_PREFIX_PATH=${SHARE}:${CMAKE_PREFIX_PATH:-}" >> "$GITHUB_ENV"
+          python - <<'PY'
+          import pathlib, vesin, metatomic_torch  # noqa: F401
+          hdr = pathlib.Path(vesin.__file__).resolve().parent / "include" / "vesin.h"
+          assert hdr.is_file(), hdr
+          print("vesin.h", hdr)
+          print("metatomic_torch ok")
+          PY
+
+      - name: Meson build & test (metatomic)
+        shell: pixi run -e metatomicbld bash -e {0}
+        run: |
+          export LD_LIBRARY_PATH="${TORCH_LIB:-}:${LD_LIBRARY_PATH:-}"
+          export CMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH:-}"
+          meson setup bbdir-mta \
+            -Dwith_tests=true \
+            -Dwith_examples=false \
+            -Dwith_metatomic=true \
+            -Dwith_rpc=false \
+            -Dwith_cache=false \
+            --buildtype=debug
+          meson compile -C bbdir-mta
+          meson test -C bbdir-mta --print-errorlogs
+          ccache -s
