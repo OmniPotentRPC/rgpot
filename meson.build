@@ -1,7 +1,7 @@
 project(
     'rgpot',
     'cpp',
-    version: '0.1.0',
+    version: '1.1.0',
     default_options: ['warning_level=2', 'cpp_std=c++20'],
 )
 # IMPORTANT!! warning_level=3 passes -fimplicit-none
@@ -99,6 +99,79 @@ if not get_option('pure_lib') or (
     fmt_dep = dependency('fmt', required: true)
     _deps += fmt_dep
     has_fmt = true
+endif
+
+has_xtb = false
+if get_option('with_xtb')
+    xtb_dep = dependency('xtb', required: true)
+    _deps += xtb_dep
+    _args += ['-DRGPOT_HAS_XTB=TRUE']
+    has_xtb = true
+endif
+
+has_tblite = false
+if get_option('with_tblite')
+    tblite_dep = dependency('tblite', required: true)
+    _deps += tblite_dep
+    _args += ['-DRGPOT_HAS_TBLITE=TRUE']
+    has_tblite = true
+endif
+
+has_metatomic = false
+if get_option('with_metatomic')
+    # PyTorch C++ API (libtorch) -- found via cmake.
+    # Meson's cmake trace often fails to resolve the full linker flags for
+    # libtorch_cpu.so. We supplement with an explicit rpath + link_args.
+    torch_dep = dependency('Torch', method: 'cmake', modules: ['torch'], required: true)
+    _deps += torch_dep
+    _torch_libdir = run_command(
+        find_program('python3'), '-c',
+        'import torch, os; print(os.path.join(os.path.dirname(torch.__file__), "lib"))',
+        check: true,
+    ).stdout().strip()
+    _deps += declare_dependency(
+        link_args: [
+            '-L' + _torch_libdir,
+            '-Wl,-rpath,' + _torch_libdir,
+            '-ltorch_cpu',
+        ],
+    )
+
+    # metatensor-torch: try pkg-config, then cmake, then find_library
+    mts_dep = dependency('metatensor_torch', required: false)
+    if not mts_dep.found()
+        mts_dep = dependency('metatensor-torch', required: false)
+    endif
+    if not mts_dep.found()
+        mts_dep = dependency('metatensor_torch', method: 'cmake', required: false)
+    endif
+    if not mts_dep.found()
+        mts_dep = [
+            cppc.find_library('metatensor'),
+            cppc.find_library('metatensor_torch'),
+        ]
+    endif
+    _deps += mts_dep
+
+    # metatomic-torch: try pkg-config, then cmake, then find_library
+    mta_dep = dependency('metatomic_torch', required: false)
+    if not mta_dep.found()
+        mta_dep = dependency('metatomic-torch', required: false)
+    endif
+    if not mta_dep.found()
+        mta_dep = cppc.find_library('metatomic_torch')
+    endif
+    _deps += mta_dep
+
+    # vesin neighbor list library
+    vesin_dep = dependency('vesin', required: false)
+    if not vesin_dep.found()
+        vesin_dep = cppc.find_library('vesin')
+    endif
+    _deps += vesin_dep
+
+    _args += ['-DRGPOT_HAS_METATOMIC=TRUE']
+    has_metatomic = true
 endif
 
 # --------------------- Subprojects

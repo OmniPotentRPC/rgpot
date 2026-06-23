@@ -22,14 +22,21 @@ namespace rgpot::cache {
  * @ingroup rgpot_cache
  */
 struct KeyHash {
-  size_t hash;     //!< The numeric hash value.
-  std::string key; //!< The string representation of the hash.
+  size_t hash; //!< The numeric hash value.
 
   /**
    * @brief Constructor for KeyHash.
    * @param _hash The numeric hash to wrap.
    */
-  KeyHash(size_t _hash) : hash{_hash}, key(std::to_string(_hash)) {}
+  KeyHash(size_t _hash) : hash{_hash} {}
+
+  /**
+   * @brief Returns a binary slice view of the hash for RocksDB.
+   * @return A rocksdb::Slice wrapping the raw hash bytes.
+   */
+  rocksdb::Slice slice() const {
+    return rocksdb::Slice(reinterpret_cast<const char *>(&hash), sizeof(hash));
+  }
 };
 
 /**

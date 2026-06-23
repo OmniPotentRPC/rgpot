@@ -16,10 +16,23 @@
 #include "rgpot/CuH2/CuH2Pot.hpp"
 #endif // RGPOT_HAS_FORTRAN
 
+#ifdef RGPOT_HAS_XTB
+#include "rgpot/XTBPot/XTBPot.hpp"
+#endif // RGPOT_HAS_XTB
+
+#ifdef RGPOT_HAS_TBLITE
+#include "rgpot/TBLitePot/TBLitePot.hpp"
+#endif // RGPOT_HAS_TBLITE
+
+#ifdef RGPOT_HAS_METATOMIC
+#include "rgpot/MetatomicPot/MetatomicPot.hpp"
+#endif // RGPOT_HAS_METATOMIC
+
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Potential.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 #include "rgpot/types/adapters/capnp/capnp_adapter.hpp"
+#include "rgpot/units.hpp"
 
 /**
  * @class GenericPotImpl
@@ -60,24 +73,51 @@ public:
 
     KJ_REQUIRE(fip.getAtmnrs().size() == numAtoms, "AtomNumbers size mismatch");
 
+    // Unit conversion factors (caller units -> internal angstrom/eV)
+    std::string lengthUnit = fip.getLengthUnit();
+    std::string energyUnit = fip.getEnergyUnit();
+    double len_to_angstrom = rgpot::units::unit_conversion_factor(lengthUnit, "angstrom");
+    double ev_to_caller = rgpot::units::unit_conversion_factor("eV", energyUnit);
+    // Force unit: energy/length in caller's system
+    double force_to_caller = ev_to_caller / len_to_angstrom;
+
     rgpot::types::AtomMatrix nativePositions =
         rgpot::types::adapt::capnp::convertPositionsFromCapnp(fip.getPos(),
                                                               numAtoms);
+    // Convert positions from caller's length unit to angstrom
+    if (len_to_angstrom != 1.0) {
+      for (size_t i = 0; i < numAtoms * 3; ++i) {
+        nativePositions.data()[i] *= len_to_angstrom;
+      }
+    }
+
     std::vector<int> nativeAtomTypes =
         rgpot::types::adapt::capnp::convertAtomNumbersFromCapnp(
             fip.getAtmnrs());
     std::array<std::array<double, 3>, 3> nativeBoxMatrix =
         rgpot::types::adapt::capnp::convertBoxMatrixFromCapnp(fip.getBox());
+    // Convert box from caller's length unit to angstrom
+    if (len_to_angstrom != 1.0) {
+      for (auto &row : nativeBoxMatrix)
+        for (auto &val : row)
+          val *= len_to_angstrom;
+    }
 
-    // Call via the virtual operator() on PotentialBase
+    // Potential always computes in eV/angstrom
     auto [energy, forces] =
         (*m_potential)(nativePositions, nativeAtomTypes, nativeBoxMatrix);
 
+    // Convert results to caller's units
     auto result = context.getResults();
     auto pres = result.initResult();
-    pres.setEnergy(energy);
+    pres.setEnergy(energy * ev_to_caller);
 
     auto forcesList = pres.initForces(numAtoms * 3);
+    if (force_to_caller != 1.0) {
+      for (size_t i = 0; i < numAtoms * 3; ++i) {
+        forces.data()[i] *= force_to_caller;
+      }
+    }
     rgpot::types::adapt::capnp::populateForcesToCapnp(forcesList, forces);
 
     return kj::READY_NOW;
@@ -100,7 +140,17 @@ public:
 int main(int argc, char *argv[]) {
   if (argc < 3) {
     std::cerr << "Usage: " << argv[0] << " <port> <PotentialType>" << std::endl;
-    std::cerr << "  Available PotentialTypes: CuH2, LJ" << std::endl;
+    std::cerr << "  Available PotentialTypes: CuH2, LJ"
+#ifdef RGPOT_HAS_XTB
+              << ", XTB, GFNFF, GFN0xTB, GFN1xTB"
+#endif
+#ifdef RGPOT_HAS_TBLITE
+              << ", TBLite, TBLiteGFN1, TBLiteIPEA1"
+#endif
+#ifdef RGPOT_HAS_METATOMIC
+              << ", Metatomic:<model_path>"
+#endif
+              << std::endl;
     return 1;
   }
 
@@ -121,6 +171,50 @@ int main(int argc, char *argv[]) {
   } else if (pot_type == "LJ") {
     std::cout << "Loading LJ potential..." << std::endl;
     potential_to_use = std::make_unique<rgpot::LJPot>();
+#ifdef RGPOT_HAS_XTB
+  } else if (pot_type == "XTB") {
+    std::cout << "Loading XTB potential (GFN2-xTB)..." << std::endl;
+    potential_to_use = std::make_unique<rgpot::XTBPot>();
+  } else if (pot_type == "GFNFF") {
+    rgpot::XTBConfig cfg;
+    cfg.method = rgpot::GFNMethod::GFNFF;
+    std::cout << "Loading XTB potential (GFNFF)..." << std::endl;
+    potential_to_use = std::make_unique<rgpot::XTBPot>(cfg);
+  } else if (pot_type == "GFN1xTB") {
+    rgpot::XTBConfig cfg;
+    cfg.method = rgpot::GFNMethod::GFN1xTB;
+    std::cout << "Loading XTB potential (GFN1-xTB)..." << std::endl;
+    potential_to_use = std::make_unique<rgpot::XTBPot>(cfg);
+  } else if (pot_type == "GFN0xTB") {
+    rgpot::XTBConfig cfg;
+    cfg.method = rgpot::GFNMethod::GFN0xTB;
+    std::cout << "Loading XTB potential (GFN0-xTB)..." << std::endl;
+    potential_to_use = std::make_unique<rgpot::XTBPot>(cfg);
+#endif // RGPOT_HAS_XTB
+#ifdef RGPOT_HAS_TBLITE
+  } else if (pot_type == "TBLite" || pot_type == "TBLiteGFN2") {
+    std::cout << "Loading TBLite potential (GFN2)..." << std::endl;
+    potential_to_use = std::make_unique<rgpot::TBLitePot>();
+  } else if (pot_type == "TBLiteGFN1") {
+    rgpot::TBLiteConfig cfg;
+    cfg.method = rgpot::TBLiteMethod::GFN1;
+    std::cout << "Loading TBLite potential (GFN1)..." << std::endl;
+    potential_to_use = std::make_unique<rgpot::TBLitePot>(cfg);
+  } else if (pot_type == "TBLiteIPEA1") {
+    rgpot::TBLiteConfig cfg;
+    cfg.method = rgpot::TBLiteMethod::IPEA1;
+    std::cout << "Loading TBLite potential (IPEA1)..." << std::endl;
+    potential_to_use = std::make_unique<rgpot::TBLitePot>(cfg);
+#endif // RGPOT_HAS_TBLITE
+#ifdef RGPOT_HAS_METATOMIC
+  } else if (pot_type.rfind("Metatomic:", 0) == 0) {
+    auto model_path = pot_type.substr(10);
+    rgpot::MetatomicConfig cfg;
+    cfg.model_path = model_path;
+    std::cout << "Loading Metatomic potential from '" << model_path << "'..."
+              << std::endl;
+    potential_to_use = std::make_unique<rgpot::MetatomicPot>(cfg);
+#endif // RGPOT_HAS_METATOMIC
   } else {
     std::cerr << "Error: Unknown potential type '" << pot_type << "'"
               << std::endl;

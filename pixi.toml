@@ -14,10 +14,32 @@ rpctest = {features = ["rpc", "itests"]}
 cigen = {features = ["cigen"]}
 devbld = { features = ["rpc", "cache"] }
 docs = { features = ["docs"]}
+xtbbld = { features = ["xtb"] }
+tblitebld = { features = ["tblite"] }
+tbbld = { features = ["xtb", "tblite"] }
+metatomicbld = { features = ["metatomic"] }
 
 [feature.cache.dependencies]
 rocksdb = ">=10.9.1,<11"
 xxhash = ">=0.8.3,<0.9"
+
+[feature.xtb.dependencies]
+xtb = ">=6.6.0,<7"
+
+[feature.tblite.dependencies]
+tblite = ">=0.3.0,<1"
+
+[feature.metatomic]
+platforms = ["linux-64"]
+
+[feature.metatomic.dependencies]
+
+[feature.metatomic.pypi-dependencies]
+torch = ">=2.10, <2.11"
+metatomic-torch = ">=0.1.9, <0.2"
+metatensor-torch = ">=0.8.4, <0.9"
+vesin-torch = ">=0.5.2, <0.6"
+vesin = ">=0.5.2, <0.6"
 
 [feature.rpc.dependencies]
 capnproto = ">=1.0.2,<2"

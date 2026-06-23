@@ -11,6 +11,7 @@
  */
 
 // clang-format off
+#include <cstring>
 #include <utility>
 #include <vector>
 #include <stdexcept>
@@ -127,11 +128,8 @@ public:
     double variance = 0.0;
 
     double flatBox[9];
-    for (size_t i = 0; i < 3; ++i) {
-      for (size_t j = 0; j < 3; ++j) {
-        flatBox[i * 3 + j] = box[i][j];
-      }
-    }
+    static_assert(sizeof(box) == 9 * sizeof(double));
+    std::memcpy(flatBox, &box[0][0], sizeof(flatBox));
 
     ForceInput fi{.nAtoms = nAtoms,
                   .pos = positions.data(),
@@ -155,7 +153,7 @@ public:
       auto hit = _cache->find(key);
       if (hit) {
         _cache->deserialize_hit(*hit, fo.energy, forces);
-        return {fo.energy, forces};
+        return {fo.energy, std::move(forces)};
       }
     }
 
@@ -173,7 +171,7 @@ public:
     registry<Derived>::incrementForceCalls();
 #endif
 
-    return {fo.energy, forces};
+    return {fo.energy, std::move(forces)};
   }
 
   /**

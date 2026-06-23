@@ -11,10 +11,16 @@
 
 # @struct ForceInput
 # @brief Input configuration for a potential energy evaluation.
+# @field lengthUnit Unit expression for positions/box (default "angstrom").
+# @field energyUnit Unit expression for energy output (default "eV").
+# Unit strings are parsed by rgpot::units::unit_conversion_factor().
+# Examples: "angstrom", "bohr", "eV", "hartree", "kJ/mol", "kcal/mol".
 struct ForceInput {
-  pos    @0 :List(Float64); # @brief Flat array of atomic coordinates [natoms * 3].
-  atmnrs @1 :List(Int32);   # @brief Array of atomic numbers [natoms].
-  box    @2 :List(Float64); # @brief Simulation cell vectors [9] (row-major 3x3).
+  pos        @0 :List(Float64); # @brief Flat array of atomic coordinates [natoms * 3].
+  atmnrs     @1 :List(Int32);   # @brief Array of atomic numbers [natoms].
+  box        @2 :List(Float64); # @brief Simulation cell vectors [9] (row-major 3x3).
+  lengthUnit @3 :Text = "angstrom"; # @brief Unit for positions and box vectors.
+  energyUnit @4 :Text = "eV";       # @brief Unit for energy and forces output.
 }
 
 # @struct PotentialResult

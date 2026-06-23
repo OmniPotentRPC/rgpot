@@ -105,7 +105,7 @@ void PotentialCache::add_serialized(const KeyHash &kv, double energy,
               forces.size() * sizeof(double));
 
   rocksdb::Slice value(buffer.data(), buffer.size());
-  db_->Put(rocksdb::WriteOptions(), kv.key, value);
+  db_->Put(rocksdb::WriteOptions(), kv.slice(), value);
 }
 
 /**
@@ -119,7 +119,7 @@ std::optional<std::string> PotentialCache::find(const KeyHash &kv) {
   if (!db_)
     return std::nullopt;
   std::string value;
-  rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), kv.key, &value);
+  rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), kv.slice(), &value);
   if (s.ok()) {
     return value;
   }

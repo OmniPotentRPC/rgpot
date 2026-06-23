@@ -26,7 +26,10 @@ namespace rgpot {
 enum class PotType {
   UNKNOWN = 0, //!<  The type is not defined or is invalid.
   CuH2,        //!<  Copper-Hydrogen EAM potential.
-  LJ           //!<  Standard 12-6 Lennard-Jones pairwise potential.
+  LJ,          //!<  Standard 12-6 Lennard-Jones pairwise potential.
+  XTB,         //!<  GFN tight-binding via xtb (GFNFF/GFN0/GFN1/GFN2).
+  TBLite,      //!<  GFN tight-binding via tblite (GFN1/GFN2/IPEA1).
+  Metatomic    //!<  ML atomistic models via metatomic/PyTorch.
 };
 
 } // namespace rgpot

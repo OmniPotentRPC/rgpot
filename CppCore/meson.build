@@ -9,6 +9,7 @@ if get_option('with_cache') and not get_option('with_rpc_client_only')
 endif
 
 _rgpot_srcs += files('rgpot/PotHelpers.cc')
+_rgpot_srcs += files('rgpot/units.cc')
 
 # ------------------------ Main library
 if not get_option('with_rpc_client_only')
@@ -29,6 +30,21 @@ if not get_option('with_rpc_client_only')
     if has_fortran
         subdir('rgpot/CuH2')  # 'cuh2'
         rgpotentials += [cuh2]
+    endif
+
+    if has_xtb
+        subdir('rgpot/XTBPot')  # 'xtbpot'
+        rgpotentials += [xtbpot]
+    endif
+
+    if has_tblite
+        subdir('rgpot/TBLitePot')  # 'tblitepot'
+        rgpotentials += [tblitepot]
+    endif
+
+    if has_metatomic
+        subdir('rgpot/MetatomicPot')  # 'metatomicpot'
+        rgpotentials += [metatomicpot]
     endif
 
     _linkto += rgpotentials
@@ -100,7 +116,9 @@ if get_option('with_tests')
     )
     test_args = _args
     test_args += ['-DRGPOTTEST']
-    test_array = []
+    test_array = [
+        ['UnitsTest', 'units_test', 'UnitsTest.cc', ''],
+    ]
     if has_fortran
         test_array += [
             ['CuH2test', 'cuh2_test', 'CuH2PotTest.cc', ''],
@@ -115,6 +133,21 @@ if get_option('with_tests')
         test_array += [  #
             ['CacheTest', 'cache_test', 'CacheTest.cc', ''],
             ['InvarianceTest', 'invariance_test', 'InvarianceTest.cc', ''],
+        ]
+    endif
+    if has_xtb
+        test_array += [
+            ['XTBtest', 'xtb_test', 'XTBPotTest.cc', ''],
+        ]
+    endif
+    if has_tblite
+        test_array += [
+            ['TBLitetest', 'tblite_test', 'TBLitePotTest.cc', ''],
+        ]
+    endif
+    if has_metatomic
+        test_array += [
+            ['MetatomicTest', 'metatomic_test', 'MetatomicPotTest.cc', '/CppCore/tests'],
         ]
     endif
     if rpc_enabled

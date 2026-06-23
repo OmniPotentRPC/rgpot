@@ -14,6 +14,7 @@
 #include <Eigen/Dense>
 // clang-format on
 #include <array>
+#include <cstring>
 #include <vector>
 
 #include "rgpot/types/AtomMatrix.hpp"
@@ -32,11 +33,10 @@ namespace eigen {
  */
 inline AtomMatrix convertToAtomMatrix(const Eigen::MatrixXd &matrix) {
   AtomMatrix result(matrix.rows(), matrix.cols());
-  for (int i = 0; i < matrix.rows(); ++i) {
-    for (int j = 0; j < matrix.cols(); ++j) {
-      result(i, j) = matrix(i, j);
-    }
-  }
+  // Eigen default is column-major; use Map to reorder into row-major layout
+  Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic,
+                           Eigen::RowMajor>>(result.data(), matrix.rows(),
+                                             matrix.cols()) = matrix;
   return result;
 }
 
