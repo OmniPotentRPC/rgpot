@@ -1,0 +1,1 @@
+Lockstep monorepo release via cocogitto 7 + towncrier: ``cog bump`` runs ``scripts/release/sync-versions.sh`` then towncrier; ``release.yml`` publishes ``rgpot-core`` on ``v*`` tags. CI ``potentials.yml`` builds xtb/tblite and metatomic/vesin backends.

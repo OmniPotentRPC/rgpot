@@ -5,18 +5,28 @@
 * Release Process
 
 rgpot uses a *lockstep monorepo version*: the same SemVer appears in
-=meson.build=, =rgpot-core/Cargo.toml=, =towncrier.toml=, and =pixi.toml=.
+=meson.build=, =rgpot-core/Cargo.toml=, =towncrier.toml=, and =pixi.toml=
+(workspace key only — not dependency pins such as nickel).
 Git tags are =vX.Y.Z= (see =cog.toml= =tag_prefix=).
+
+Requires [[https://docs.cocogitto.io][cocogitto]] *7+* locally and in CI (=release-prepare.yml= installs 7.0.0).
+Do *not* hand-edit a =## [X.Y.Z]= section above the towncrier marker; fragments under
+=docs/newsfragments/= are the only input for the next release notes block.
 
 Tooling:
 
 | Tool | Role |
 |------+------|
-| [[https://docs.cocogitto.io][cocogitto]] (=cog=) | Conventional-commit aware bump, version commit, annotated tag |
+| [[https://docs.cocogitto.io][cocogitto]] (=cog=) 7+ | Conventional-commit aware bump, version commit, annotated tag |
 | [[https://towncrier.readthedocs.io][towncrier]] | Curated =CHANGELOG.md= from =docs/newsfragments/= |
 | =scripts/release/sync-versions.sh= | Writes the lockstep version into all surfaces |
 | =.github/workflows/release.yml= | On =v*= tag: lockstep assert, Rust tests, =cargo publish=, GH Release |
 | =.github/workflows/release-prepare.yml= | Dry-run / config validation (no publish) |
+| =.github/workflows/potentials.yml= | Feature-gated C++ backends (xtb+tblite, metatomic/vesin) |
+
+*Secrets (maintainer)*: repository secret =CARGO_REGISTRY_TOKEN= must be set for
+=release.yml= to publish =rgpot-core= to crates.io (GH Release notes still need a
+matching =CHANGELOG.md= section from towncrier).
 
 ** Changelog fragments
 

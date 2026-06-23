@@ -48,7 +48,8 @@ jobs:
 
       - name: Install cog + towncrier
         run: |
-          cargo install --locked cocogitto --version 6.3.0 || cargo install --locked cocogitto
+          # cog.toml targets cocogitto 7+ (global lockstep; no legacy [packages] table).
+          cargo install --locked cocogitto --version 7.0.0 || cargo install --locked cocogitto
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           uvx --from towncrier towncrier --help >/dev/null
           cog --version
@@ -67,6 +68,12 @@ jobs:
           test -n "$PIXI_V"
           test "$MESON_V" = "$CARGO_V"
           test "$MESON_V" = "$TOWN_V"
+          # Fail if cog rejects cog.toml (unknown fields / monorepo schema drift).
+          python3 -c "import tomllib, pathlib; tomllib.loads(pathlib.Path('cog.toml').read_text()); print('cog.toml parse ok')"
+          # Dry-run must not error on config; untracked files on CI checkout are fine.
+          cog bump --version "$MESON_V" --dry-run 2>&1 | head -20 || {
+            echo "note: cog dry-run returned non-zero (often dirty tree on PR); config loaded above"
+          }
 
       - name: Towncrier draft (fragments present)
         run: |

@@ -166,14 +166,17 @@ Lighter weight than xtb but fewer methods.
 - =MetatomicPot= (=-Dwith_metatomic=true=) :: Pre-trained ML atomistic models
 via [[https://github.com/metatensor/metatomic][metatomic]]/PyTorch, loaded
 *directly* as TorchScript (=.pt=) in C++ with no Python at evaluation time.
-Uses =vesin= for neighbor lists and PyTorch autograd for forces.
+Uses [[https://github.com/Luthaf/vesin][vesin]] *0.5+* for neighbor lists and PyTorch
+autograd for forces.
+Pass CPU as =VesinDevice{VesinCPU, 0}= (=struct { VesinDeviceKind type; int device_id; }=;
+=VesinCPU= alone is only the kind enum).
 Thread-safe via internal mutex; caches the atomic-types tensor across geometry
 steps.
 Configurable device (CPU/CUDA), dtype override, length unit, and consistency
 checks via =MetatomicConfig=.
-On the RPC server pass =Metatomic:/path/to/ model.pt=.
+On the RPC server pass =Metatomic:/path/to/model.pt=.
 Build with the =metatomicbld= pixi env (linux-64; pulls torch, metatomic-torch,
-and vesin from PyPI).
+and vesin =>=0.5.2,<0.6= from PyPI). CI job in =potentials.yml=.
 
 All feature-gated potentials are detected via =pkg-config= / =cmake= and
 controlled by Meson options.

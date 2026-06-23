@@ -1,9 +1,12 @@
-# Cocogitto release driver for rgpot (https://docs.cocogitto.io)
+# Cocogitto 7+ release driver for rgpot (https://docs.cocogitto.io)
 # Prepare:  cog bump --auto   (or --minor / --major / --version X.Y.Z)
 # Hooks lockstep-bump all version surfaces, then towncrier builds CHANGELOG.
 # Publish remains tag-triggered via .github/workflows/release.yml (v*).
+#
+# Single global monorepo version (not per-crate monorepo packages). Leave
+# [monorepo] unset so `cog bump` produces one vX.Y.Z for the whole tree.
 
-from_latest_tag = false
+from_latest_tag = true
 ignore_merge_commits = true
 # Towncrier owns CHANGELOG.md; cog still creates the version commit + tag.
 disable_changelog = true
@@ -57,6 +60,3 @@ authors = [{ username = "HaoZeke", signature = "Rohit Goswami" }]
 [git_hooks]
 
 [bump_profiles]
-
-[packages]
-# Single global tag for the monorepo; rgpot-core is versioned lockstep with meson.
