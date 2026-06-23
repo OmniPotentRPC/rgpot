@@ -24,7 +24,7 @@ Examples:
 
 ```bash
 uvx towncrier create --content "MetatomicPot loads TorchScript models directly." 37.added.md
-uvx towncrier create --content "Vesin 0.5+ device struct compatibility." vesin05.fixed.md
+uvx towncrier create --content "Vesin 0.5+ device struct compatibility." +vesin05.fixed.md
 ```
 
 Fragments are required on PRs that change shipped behavior (CI: `towncrier check`

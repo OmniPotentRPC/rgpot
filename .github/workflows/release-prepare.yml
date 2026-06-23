@@ -62,7 +62,9 @@ jobs:
           MESON_V=$(sed -nE "s/.*version: *'([^']+)'.*/\1/p" meson.build | head -1)
           CARGO_V=$(sed -nE 's/^version = "([^"]+)"/\1/p' rgpot-core/Cargo.toml | head -1)
           TOWN_V=$(sed -nE 's/^version = "([^"]+)"/\1/p' towncrier.toml | head -1)
-          echo "meson=$MESON_V cargo=$CARGO_V towncrier=$TOWN_V"
+          PIXI_V=$(awk '/^version = "/ {print; exit}' pixi.toml | sed -nE 's/^version = "([^"]+)"/\1/p')
+          echo "meson=$MESON_V cargo=$CARGO_V towncrier=$TOWN_V pixi_workspace=$PIXI_V"
+          test -n "$PIXI_V"
           test "$MESON_V" = "$CARGO_V"
           test "$MESON_V" = "$TOWN_V"
 
