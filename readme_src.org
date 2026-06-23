@@ -34,13 +34,46 @@ cmake --build build_client
 ctest --test-dir build_client/ --output-on-failure
 #+end_src
 
+*** Optional potentials (v1.1+)
+
+Feature-gated backends stay off by default. Enable them with Meson options and
+matching pixi environments:
+
+| Backend | Meson flag | pixi env | Notes |
+|---------+------------+----------+-------|
+| =XTBPot= | =-Dwith_xtb=true= | =xtbbld= / =tbbld= | GFNFF, GFN0/1/2-xTB via xtb |
+| =TBLitePot= | =-Dwith_tblite=true= | =tblitebld= / =tbbld= | GFN1, GFN2, IPEA1 via tblite |
+| =MetatomicPot= | =-Dwith_metatomic=true= | =metatomicbld= (linux-64) | TorchScript models via metatomic/PyTorch + vesin |
+
+#+begin_src bash
+# Tight-binding (xtb + tblite)
+pixi shell -e tbbld
+meson setup bbdir -Dwith_tests=true -Dwith_xtb=true -Dwith_tblite=true
+meson compile -C bbdir && meson test -C bbdir
+
+# Metatomic ML potentials (direct TorchScript load, no Python at eval time)
+pixi shell -e metatomicbld
+meson setup bbdir -Dwith_tests=true -Dwith_metatomic=true
+meson compile -C bbdir && meson test -C bbdir
+
+# Serve a metatomic model over RPC (path after the colon)
+./bbdir/CppCore/rgpot/rpc/potserv 12345 Metatomic:CppCore/tests/data/lj38/lennard-jones.pt
+#+end_src
+
+Native units are *eV* / *Angstrom*. =rgpot/units.hpp= provides CODATA 2018
+constants and a runtime expression parser for compound units. RPC clients may
+set =lengthUnit= / =energyUnit= on =ForceInput=; the server negotiates
+conversion at the boundary (defaults remain Angstrom / eV).
+
 *** Developing locally
-A ~pre-commit~ job is setup on CI to enforce consistent styles, so it is best to
-set it up locally as well (using [[https://docs.astral.sh/uv/guides/tools/][uvx]] for isolation):
+Hooks use [[https://prek.j178.dev][prek]] (=prek.toml=), not the legacy Python =pre-commit= CLI.
+CI runs =prek run -a= on every PR (=.github/workflows/prek.yml=). Locally:
 
 #+begin_src sh
-# Run before commiting
-uvx pre-commit run --all-files
+prek install                 # one-time git shim install
+prek run -a --config prek.toml
+# or via pixi:
+pixi r prek-install && pixi r prek
 #+end_src
 *** Handling actions
 To keep the build matrix setup manageable, we use Nickel.
@@ -49,4 +82,5 @@ pixi r gen-gha
 #+end_src
 * License
 MIT, however note that some of the potentials are adapted from eOn which is
-under a BSD 3-Clause License.
+under a BSD 3-Clause License. The unit expression parser in =units.cc= is
+derived from metatomic-torch (BSD-3-Clause, metatensor developers).

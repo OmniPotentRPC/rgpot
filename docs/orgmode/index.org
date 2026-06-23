@@ -14,9 +14,10 @@ file:../../branding/logo/rgpot_logo.webp
 
 * Overview
 ~rgpot~ provides a unified schema for interfacing potential servers across
-languages using runtime interoperability. It combines a Rust core with C++
-potentials exposed through a Cap'n Proto RPC layer, enabling language-agnostic
-access to potential energy surface calculations.
+languages using runtime interoperability.
+It combines a Rust core with C++ potentials exposed through a Cap'n Proto
+RPC layer, enabling language-agnostic access to potential energy surface
+calculations.
 
 #+begin_src bash
 git clone https://github.com/OmniPotentRPC/rgpot.git
