@@ -1,0 +1,47 @@
+# Link checker config for rgpot (lycheeverse/lychee)
+# Docs: https://lychee.cli.rs/
+
+#############################  Runtime  ############################
+
+# Accept rate-limited upstreams as non-fatal for CI noise reduction.
+accept = [200, 204, 206, 429]
+
+max_redirects = 5
+timeout = 30
+max_retries = 3
+max_concurrency = 8
+
+#############################  Requests  ###########################
+
+user_agent = "rgpot-lychee/1.1 (+https://github.com/OmniPotentRPC/rgpot)"
+
+#############################  Exclusions  #########################
+
+exclude_path = [
+  ".pixi",
+  "pixi.lock",
+  "docs/build",
+  "docs/source/_static",
+  "rgpot-core/target",
+  "subprojects",
+  "CppCore/tests/data",
+  "rgpot-core/include/rgpot.h",
+]
+
+# Substring / regex patterns matched against the URL.
+exclude = [
+  "localhost",
+  "127.0.0.1",
+  "0.0.0.0",
+  "example.com",
+  # Forward-looking towncrier / release anchors (valid only after cut).
+  "github.com/OmniPotentRPC/rgpot/issues/",
+  "github.com/OmniPotentRPC/rgpot/tree/",
+  # Historical eOn host is intermittently unreachable.
+  "theory.cm.utexas.edu",
+  # Prefer github.com/dmlc/dlpack in prose; old site 404s.
+  "dmlc.github.io/dlpack",
+]
+
+include_mail = false
+method = "head"

@@ -1,0 +1,93 @@
+# Prose and link hygiene for rgpot.
+# - snapper: semantic line breaks on org/markdown/tex (TurtleTech-ehf/snapper)
+# - lychee:  fast async link checker (lycheeverse/lychee)
+name: Docs quality (snapper + lychee)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly link audit; snapper is cheap so it rides along.
+    - cron: "15 7 * * 1"
+
+concurrency:
+  group: docs-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  snapper:
+    name: snapper semantic line breaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install snapper
+        run: |
+          curl --proto '=https' --tlsv1.2 -LsSf \
+            https://github.com/TurtleTech-ehf/snapper/releases/latest/download/snapper-installer.sh | sh
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          snapper --version
+
+      - name: Check prose formatting
+        # Scope: Sphinx org sources only. Markdown with long URLs (CHANGELOG,
+        # CODE_OF_CONDUCT, exported README) is excluded because snapper can
+        # split URLs across lines and poison link checkers.
+        # Fix locally: pixi r snapper-fix
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find docs/orgmode -type f -name '*.org' ! -path '*/.pixi/*' | sort)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No org prose files found"
+            exit 0
+          fi
+          printf 'Checking %s org file(s)\n' "${#files[@]}"
+          # Fail on non-zero exit or on "would reformat" output (belt and braces).
+          if ! out=$(snapper --check --config .snapper.toml --format org "${files[@]}" 2>&1); then
+            printf '%s\n' "$out"
+            exit 1
+          fi
+          printf '%s\n' "$out"
+          if printf '%s\n' "$out" | grep -q 'would reformat:'; then
+            echo "::error::snapper would reformat prose; run \`pixi r snapper-fix\` and commit"
+            exit 1
+          fi
+
+  lychee:
+    name: lychee link check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Restore lychee cache
+        uses: actions/cache@v4
+        with:
+          path: .lycheecache
+          key: lychee-${{ runner.os }}-${{ hashFiles('.lychee.toml', 'README.md', 'docs/**/*.org', 'docs/**/*.md') }}
+          restore-keys: |
+            lychee-${{ runner.os }}-
+
+      - name: Link check
+        uses: lycheeverse/lychee-action@v2
+        with:
+          # Prefer the repo config; cache path is explicit for GHA caching.
+          args: >-
+            --config .lychee.toml
+            --cache
+            --max-cache-age 2d
+            --cache-exclude-status 429,500,502,503,504
+            --no-progress
+            README.md
+            CHANGELOG.md
+            CODE_OF_CONDUCT.md
+            readme_src.org
+            docs/orgmode/**/*.org
+            rgpot-core/README.md
+            rgpot-core/README.org
+          # Fail the job on broken links (schedule included).
+          fail: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

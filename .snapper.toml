@@ -1,0 +1,8 @@
+# Semantic line-break settings for rgpot prose (TurtleTech snapper / snapper-fmt).
+# https://github.com/TurtleTech-ehf/snapper
+
+# Prefer explicit width for org/markdown docs under docs/ and top-level readme.
+max_width = 80
+
+# Extensions handled in this repo (org is the source of truth for Sphinx pages).
+# CLI globs still drive which files are visited; this documents intent for `snapper init`.

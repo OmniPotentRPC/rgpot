@@ -1,0 +1,63 @@
+# Hook runner: prek (https://prek.j178.dev), configured via prek.toml.
+# Replaces the legacy pre-commit workflow name; config is no longer
+# .pre-commit-config.yaml.
+name: prek
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: prek-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prek:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install environment
+        uses: prefix-dev/setup-pixi@v0.9.4
+        with:
+          pixi-version: "v0.62.1"
+          cache: true
+          cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
+          activate-environment: true
+
+      # Prefer the standalone binary over pipx when available; fall back to uvx.
+      - name: Install prek
+        run: |
+          if ! command -v prek >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -LsSf \
+              https://github.com/j178/prek/releases/latest/download/prek-installer.sh | sh
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          fi
+          prek --version
+
+      # Optional system tools used by local hooks in prek.toml.
+      - name: Install system hook deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cppcheck clang-format-16 || \
+            sudo apt-get install -y -qq cppcheck clang-format
+          # snapper for org docs; best-effort so missing binary does not block if hook is skipped
+          if ! command -v snapper >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -LsSf \
+              https://github.com/TurtleTech-ehf/snapper/releases/latest/download/snapper-installer.sh | sh || true
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          fi
+
+      - name: Run prek on all files
+        shell: pixi run bash -e {0}
+        run: |
+          prek validate-config prek.toml
+          prek run -a --config prek.toml
+
+      - name: Audit for large files
+        uses: HaoZeke/large-file-auditor@v0.1.0
+        with:
+          file-size-threshold: "1M"

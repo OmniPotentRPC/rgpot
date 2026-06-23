@@ -1,0 +1,84 @@
+# Git hooks via `prek` (https://prek.j178.dev) — Rust drop-in for pre-commit.
+# Install locally: `prek install`  (or `pixi r prek-install`)
+# Run all hooks:   `prek run -a`   (or `pixi r prek`)
+#:schema https://www.schemastore.org/prek.json
+
+minimum_prek_version = "0.3.0"
+
+exclude = """(?x)(
+    ^\\.pixi/|
+    ^docs/build/|
+    ^docs/doctrees/|
+    ^rgpot-core/target/|
+    ^subprojects/(?!.*\\.wrap$)|
+    ^CppCore/tests/data/
+)"""
+
+# Fast native implementations (no clone / no Python env).
+[[repos]]
+repo = "builtin"
+hooks = [
+  { id = "trailing-whitespace", exclude = "^(src)" },
+  { id = "end-of-file-fixer" },
+  { id = "check-yaml" },
+  { id = "check-toml" },
+  { id = "check-merge-conflict" },
+  { id = "check-added-large-files", args = ["--maxkb=1000"] },
+  { id = "detect-private-key" },
+]
+
+# Remaining remote hooks that prek does not ship as builtins.
+[[repos]]
+repo = "https://github.com/pre-commit/mirrors-clang-format"
+rev = "v16.0.6"
+hooks = [
+  {
+    id = "clang-format",
+    types_or = ["c++", "c"],
+    exclude = "^rgpot-core/include/",
+  },
+]
+
+[[repos]]
+repo = "https://github.com/cheshirekow/cmake-format-precommit"
+rev = "v0.6.13"
+hooks = [{ id = "cmake-format" }]
+
+# Project-local tools (must be on PATH in the pixi / CI environment).
+[[repos]]
+repo = "local"
+hooks = [
+  {
+    id = "cppcheck",
+    name = "cppcheck",
+    entry = "cppcheck",
+    language = "system",
+    types_or = ["c++", "c"],
+    args = ["--error-exitcode=0"],
+  },
+  {
+    id = "meson-format",
+    name = "meson format",
+    entry = "meson",
+    language = "system",
+    types = ["meson"],
+    files = 'meson\.build$',
+    args = ["format", "-i"],
+  },
+  {
+    id = "nickel-format",
+    name = "nickel format",
+    entry = "pixi",
+    language = "system",
+    files = '\.ncl$',
+    args = ["r", "-e", "cigen", "nickel", "format"],
+  },
+  {
+    id = "snapper",
+    name = "snapper semantic line breaks (org docs)",
+    entry = "snapper",
+    language = "system",
+    files = '^docs/orgmode/.*\.org$',
+    args = ["--in-place", "--config", ".snapper.toml", "--format", "org"],
+  },
+]

@@ -105,6 +105,17 @@ gen-header = { cmd = "cargo build --manifest-path rgpot-core/Cargo.toml --featur
 towncrier-draft = { cmd = "uvx towncrier build --draft", description = "Preview release notes" }
 towncrier-build = { cmd = "uvx towncrier build", description = "Build release notes into CHANGELOG.md" }
 
+# Prose / link hygiene (mirrors .github/workflows/docs_quality.yml).
+# snapper: org sources under docs/orgmode only (avoids splitting long markdown URLs).
+snapper-check = { cmd = "bash -lc 'set -euo pipefail; mapfile -t f < <(find docs/orgmode -type f -name \"*.org\" | sort); snapper --check --config .snapper.toml --format org \"${f[@]}\"'", description = "Semantic line-break check on docs/orgmode (CI parity)" }
+snapper-fix = { cmd = "bash -lc 'set -euo pipefail; mapfile -t f < <(find docs/orgmode -type f -name \"*.org\" | sort); snapper --in-place --config .snapper.toml --format org \"${f[@]}\"'", description = "Apply semantic line breaks to docs/orgmode" }
+lychee-check = { cmd = "lychee --config .lychee.toml --cache --max-cache-age 2d --no-progress README.md CHANGELOG.md CODE_OF_CONDUCT.md readme_src.org 'docs/orgmode/**/*.org' rgpot-core/README.md rgpot-core/README.org", description = "Link check with lychee (CI parity)" }
+
+# Hook runner (prek replaces pre-commit; config is prek.toml)
+prek = { cmd = "prek run -a --config prek.toml", description = "Run all prek hooks on the repo" }
+prek-install = { cmd = "prek install", description = "Install prek git shims into .git/hooks" }
+prek-validate = { cmd = "prek validate-config prek.toml", description = "Validate prek.toml" }
+
 [feature.docs.tasks.gen-readme]
 description = "Export rgpot-core/README.org to README.md"
 cmd = "emacs --batch rgpot-core/README.org --eval '(require (quote ox-md))' --eval '(org-md-export-to-markdown)'"
