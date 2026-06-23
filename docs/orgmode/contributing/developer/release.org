@@ -4,64 +4,98 @@
 
 * Release Process
 
-** Changelog Fragments
+rgpot uses a *lockstep monorepo version*: the same SemVer appears in
+=meson.build=, =rgpot-core/Cargo.toml=, =towncrier.toml=, and =pixi.toml=.
+Git tags are =vX.Y.Z= (see =cog.toml= =tag_prefix=).
 
-We use [[https://towncrier.readthedocs.io][towncrier]] to manage release notes.
-Each PR that affects users should include a /news fragment/ in the =docs/
-newsfragments/= directory:
+Tooling:
+
+| Tool | Role |
+|------+------|
+| [[https://docs.cocogitto.io][cocogitto]] (=cog=) | Conventional-commit aware bump, version commit, annotated tag |
+| [[https://towncrier.readthedocs.io][towncrier]] | Curated =CHANGELOG.md= from =docs/newsfragments/= |
+| =scripts/release/sync-versions.sh= | Writes the lockstep version into all surfaces |
+| =.github/workflows/release.yml= | On =v*= tag: lockstep assert, Rust tests, =cargo publish=, GH Release |
+| =.github/workflows/release-prepare.yml= | Dry-run / config validation (no publish) |
+
+** Changelog fragments
+
+Each user-facing PR should add a fragment under =docs/newsfragments/=:
 
 #+begin_src bash
-# Create a fragment interactively
-uvx towncrier create --content "Added DLPack tensor support to the Rust core." +mychange.rustcore.added.md
+uvx towncrier create --content "Short user-facing note." 42.added.md
+# or interactive:
+uvx towncrier create
 #+end_src
 
-Towncrier fragment checks are not yet wired into =prek.toml=; add a fragment
-under =docs/newsfragments/= for user-facing changes and run =pixi r towncrier-draft=
-before cutting a release.
+Types (see =towncrier.toml=): =security=, =removed=, =deprecated=, =added=,
+=dev=, =changed=, =fixed=, =misc=. Preview with =pixi r towncrier-draft=.
 
-** Preview and Build Release Notes
+CI runs =towncrier check= on pull requests when fragments are required (see
+=prek.toml= / release-prepare workflow). Pure =docs= / =ci= / =chore= commits
+may omit fragments.
+
+** Preparing a release (maintainer)
+
+1. Ensure =main= is green (build matrix, =prek=, =docs_quality=).
+2. Confirm fragments exist for everything since the last tag.
+3. Dry-run (optional, also available as GHA =workflow_dispatch= on
+   =release-prepare.yml=):
+
+   #+begin_src bash
+   cog bump --auto --dry-run
+   # or: --patch / --minor / --major / --version 1.2.0
+   #+end_src
+
+4. Cut the release *locally* (needs push rights; does *not* publish to crates.io):
+
+   #+begin_src bash
+   cog bump --auto          # runs sync-versions.sh + towncrier build, commits, tags vX.Y.Z
+   git push origin HEAD --follow-tags
+   #+end_src
+
+   Hooks (=cog.toml= =pre_bump_hooks=):
+
+   - =scripts/release/sync-versions.sh {{version}}= — lockstep write
+   - =uvx towncrier build --yes --version {{version}}= — update =CHANGELOG.md=, clear fragments
+
+5. Tag push triggers =release.yml=:
+
+   - Assert tag version equals meson + Cargo package versions
+   - =cargo nextest= / doc tests for =rgpot-core=
+   - =cargo publish= for =rgpot-core= (secret =CARGO_REGISTRY_TOKEN=)
+   - GitHub Release body from the matching =CHANGELOG.md= section
+
+Do *not* run =cargo publish= by hand unless CI is unavailable; the workflow is
+the source of truth.
+
+** Version policy
+
+- *Lockstep*: C++ (=meson=), Rust crate (=rgpot-core=), docs towncrier stamp, and
+  pixi workspace version share one =X.Y.Z=.
+- *One global tag*: =vX.Y.Z= (not =rgpot-core-v…=).
+- *Crate publish* ships =rgpot-core= only; C++ consumers track the git tag /
+  source release, not crates.io.
+
+** Emergency / hotfixes
 
 #+begin_src bash
-pixi r towncrier-draft   # preview without writing
-pixi r towncrier-build   # write to CHANGELOG.md and remove fragments
+cog bump --patch
+git push origin HEAD --follow-tags
 #+end_src
 
-** Publishing the Rust Crate
+For a named version (release candidate):
 
-The =rgpot-core= crate is published to [[https://crates.io/crates/rgpot-core]
-[crates.io]].
-Before publishing:
+#+begin_src bash
+cog bump --version 1.1.1
+#+end_src
 
-1. Ensure all tests pass:
-   #+begin_src bash
-   pixi r rust-test-all
-   cargo test --doc --manifest-path rgpot-core/Cargo.toml
-   #+end_src
+** Local checks before bump
 
-2. Verify packaging:
-   #+begin_src bash
-   cargo publish --dry-run --manifest-path rgpot-core/Cargo.toml
-   #+end_src
-
-3. Bump the version in =rgpot-core/Cargo.toml=.
-
-4. Regenerate the README (if changed):
-   #+begin_src bash
-   pixi r -e docs gen-readme
-   #+end_src
-
-5. Build release notes:
-   #+begin_src bash
-   pixi r towncrier-build
-   #+end_src
-
-6. Commit and tag:
-   #+begin_src bash
-   git commit -am "Release rgpot-core v0.x.y"
-   git tag rgpot-core-v0.x.y
-   #+end_src
-
-7. Publish:
-   #+begin_src bash
-   cargo publish --manifest-path rgpot-core/Cargo.toml
-   #+end_src
+#+begin_src bash
+pixi r rust-test-all
+pixi r prek
+pixi r towncrier-draft
+pixi r lychee-check   # optional link hygiene
+bash scripts/release/sync-versions.sh 1.2.3   # must refuse garbage input
+#+end_src

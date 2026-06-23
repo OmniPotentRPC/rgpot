@@ -4,7 +4,7 @@ channels = ["conda-forge"]
 description = "RPC based core for potential energy surface functionality."
 name = "rgpot"
 platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
-version = "0.1.0"
+version = "1.1.0"
 
 [feature.cigen.tasks]
 gen-gha = { cmd = "nickel export --format yaml ci/gha/workflow.ncl -o .github/workflows/build.yml" }
@@ -115,6 +115,11 @@ lychee-check = { cmd = "lychee --config .lychee.toml --cache --max-cache-age 2d 
 prek = { cmd = "prek run -a --config prek.toml", description = "Run all prek hooks on the repo" }
 prek-install = { cmd = "prek install", description = "Install prek git shims into .git/hooks" }
 prek-validate = { cmd = "prek validate-config prek.toml", description = "Validate prek.toml" }
+
+# Release (cog + towncrier lockstep; see cog.toml and docs/.../release.org)
+release-sync-versions = { cmd = "bash scripts/release/sync-versions.sh", description = "Lockstep version write. Usage: pixi r release-sync-versions -- 1.2.3" }
+release-cog-dry = { cmd = "cog bump --auto --dry-run", description = "Preview next cog bump without writing" }
+release-towncrier-check = { cmd = "uvx towncrier check", description = "Fail if PR lacks newsfragments vs base (run in CI with --compare-with)" }
 
 [feature.docs.tasks.gen-readme]
 description = "Export rgpot-core/README.org to README.md"

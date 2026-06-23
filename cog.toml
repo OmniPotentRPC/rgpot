@@ -1,0 +1,62 @@
+# Cocogitto release driver for rgpot (https://docs.cocogitto.io)
+# Prepare:  cog bump --auto   (or --minor / --major / --version X.Y.Z)
+# Hooks lockstep-bump all version surfaces, then towncrier builds CHANGELOG.
+# Publish remains tag-triggered via .github/workflows/release.yml (v*).
+
+from_latest_tag = false
+ignore_merge_commits = true
+# Towncrier owns CHANGELOG.md; cog still creates the version commit + tag.
+disable_changelog = true
+disable_bump_commit = false
+generate_mono_repository_global_tag = true
+tag_prefix = "v"
+skip_ci = "[skip ci]"
+skip_untracked = false
+branch_whitelist = ["main", "master", "release/**"]
+
+# Lockstep monorepo version: C++ (meson), Rust crate, towncrier, pixi workspace.
+pre_bump_hooks = [
+    "bash scripts/release/sync-versions.sh {{version}}",
+    # Curated notes from docs/newsfragments/ into CHANGELOG.md (Keep a Changelog).
+    "uvx towncrier build --yes --version {{version}}",
+]
+
+post_bump_hooks = [
+    # Show the prepared state; CI publishes on tag push (do not cargo publish here).
+    "git --no-pager show --stat HEAD",
+    "echo \"Prepared v{{version}}. Push the version commit and tag 'v{{version}}' to run release.yml.\"",
+]
+
+[commit_types]
+feat     = { changelog_title = "Features" }
+fix      = { changelog_title = "Bug Fixes" }
+perf     = { changelog_title = "Performance" }
+refactor = { changelog_title = "Refactoring" }
+docs     = { changelog_title = "Documentation" }
+test     = { changelog_title = "Tests" }
+build    = { changelog_title = "Build System" }
+ci       = { changelog_title = "CI" }
+chore    = { changelog_title = "Miscellaneous" }
+style    = { changelog_title = "Style" }
+revert   = { changelog_title = "Reverts" }
+
+# Map common legacy / project-specific prefixes used in this monorepo history.
+enh  = { changelog_title = "Enhancements" }
+bug  = { changelog_title = "Bugfixes" }
+maint = { changelog_title = "Maintenance" }
+prj  = { changelog_title = "Project" }
+doc  = { changelog_title = "Documentation" }
+tst  = { changelog_title = "Tests" }
+bld  = { changelog_title = "Buildsystem" }
+gen  = { changelog_title = "Generated" }
+
+[changelog]
+path = "CHANGELOG.md"
+authors = [{ username = "HaoZeke", signature = "Rohit Goswami" }]
+
+[git_hooks]
+
+[bump_profiles]
+
+[packages]
+# Single global tag for the monorepo; rgpot-core is versioned lockstep with meson.

@@ -1,0 +1,91 @@
+# Dry-run / advisory release preparation (does not publish).
+# Full cut: run `cog bump` locally or on a maintainer machine with push rights,
+# then push the version commit + tag `vX.Y.Z` to trigger release.yml.
+name: Release prepare (cog dry-run)
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "SemVer component for cog dry-run"
+        required: true
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - patch
+          - minor
+          - major
+  pull_request:
+    paths:
+      - "cog.toml"
+      - "towncrier.toml"
+      - "scripts/release/**"
+      - "docs/newsfragments/**"
+      - "rgpot-core/Cargo.toml"
+      - "meson.build"
+
+concurrency:
+  group: release-prepare-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  cog-dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: prefix-dev/setup-pixi@v0.9.4
+        with:
+          pixi-version: "v0.62.1"
+          cache: true
+          activate-environment: true
+
+      - name: Install cog + towncrier
+        run: |
+          cargo install --locked cocogitto --version 6.3.0 || cargo install --locked cocogitto
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          uvx --from towncrier towncrier --help >/dev/null
+          cog --version
+
+      - name: Validate release config surfaces
+        run: |
+          test -f cog.toml
+          test -x scripts/release/sync-versions.sh
+          test -d docs/newsfragments
+          # Lockstep sanity: Cargo package version must match meson project version.
+          MESON_V=$(sed -nE "s/.*version: *'([^']+)'.*/\1/p" meson.build | head -1)
+          CARGO_V=$(sed -nE 's/^version = "([^"]+)"/\1/p' rgpot-core/Cargo.toml | head -1)
+          TOWN_V=$(sed -nE 's/^version = "([^"]+)"/\1/p' towncrier.toml | head -1)
+          echo "meson=$MESON_V cargo=$CARGO_V towncrier=$TOWN_V"
+          test "$MESON_V" = "$CARGO_V"
+          test "$MESON_V" = "$TOWN_V"
+
+      - name: Towncrier draft (fragments present)
+        run: |
+          if compgen -G "docs/newsfragments/*.md" > /dev/null; then
+            uvx towncrier build --draft
+          else
+            echo "No newsfragments yet; skip draft"
+          fi
+
+      - name: Cog bump dry-run
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          BUMP="${{ inputs.bump }}"
+          case "$BUMP" in
+            auto)  cog bump --auto --dry-run ;;
+            patch) cog bump --patch --dry-run ;;
+            minor) cog bump --minor --dry-run ;;
+            major) cog bump --major --dry-run ;;
+          esac
+
+      - name: Cog check (history is conventional enough)
+        # Advisory on PRs: do not fail the whole monorepo history at once.
+        continue-on-error: true
+        run: cog check || true

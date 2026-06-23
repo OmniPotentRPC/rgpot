@@ -1,0 +1,36 @@
+# Require towncrier fragments on PRs that touch shipped surfaces.
+name: towncrier
+
+on:
+  pull_request:
+    paths:
+      - "CppCore/**"
+      - "rgpot-core/**"
+      - "include/**"
+      - "meson.build"
+      - "meson_options.txt"
+      - "CHANGELOG.md"
+      - "docs/newsfragments/**"
+      - "towncrier.toml"
+
+concurrency:
+  group: towncrier-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  fragments:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Towncrier check vs base branch
+        run: |
+          pipx install towncrier
+          BASE="${{ github.event.pull_request.base.sha }}"
+          towncrier check --compare-with "$BASE"

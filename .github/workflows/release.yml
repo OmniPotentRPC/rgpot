@@ -1,34 +1,52 @@
+# Publish path for monorepo tags produced by `cog bump` (tag_prefix = "v").
+# Prepare versions + CHANGELOG with cog/towncrier *before* pushing the tag.
+# See docs/orgmode/contributing/developer/release.org and cog.toml.
 name: Release
+
 on:
   push:
     tags: ["v*"]
 
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v6
-        with: { fetch-depth: 0 }
+        with:
+          fetch-depth: 0
 
       - uses: prefix-dev/setup-pixi@v0.9.4
         with:
           activate-environment: true
           environments: devbld
 
+      - name: Assert lockstep versions match the tag
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          MESON_V=$(sed -nE "s/.*version: *'([^']+)'.*/\1/p" meson.build | head -1)
+          CARGO_V=$(sed -nE 's/^version = "([^"]+)"/\1/p' rgpot-core/Cargo.toml | head -1)
+          echo "tag=$VERSION meson=$MESON_V cargo=$CARGO_V"
+          test "$VERSION" = "$MESON_V"
+          test "$VERSION" = "$CARGO_V"
+
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2
-        with: { tool: cargo-nextest }
+        with:
+          tool: cargo-nextest
 
       - name: Run Rust tests
+        shell: pixi run bash -e {0}
         run: |
           cargo nextest run --manifest-path rgpot-core/Cargo.toml --all-features
           cargo test --doc --manifest-path rgpot-core/Cargo.toml
-        shell: pixi run bash -e {0}
 
-      - name: Cargo publish
-        run: cargo publish --manifest-path rgpot-core/Cargo.toml
+      - name: Cargo publish (rgpot-core)
+        run: cargo publish --manifest-path rgpot-core/Cargo.toml --locked || \
+             cargo publish --manifest-path rgpot-core/Cargo.toml
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
@@ -37,11 +55,21 @@ jobs:
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           VERSION="${TAG#v}"
-          # Extract the section for this version from CHANGELOG.md
-          awk "/^## \[${VERSION}\]/,/^## \[/" CHANGELOG.md | head -n -1 > /tmp/release_notes.md
+          # Section header is towncrier title_format: ## [VERSION](...)
+          awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" {grab=1; print; next}
+            grab && $0 ~ /^## \[/ {exit}
+            grab {print}
+          ' CHANGELOG.md > /tmp/release_notes.md
+          if ! grep -q . /tmp/release_notes.md; then
+            echo "error: no CHANGELOG.md section for ${VERSION}" >&2
+            exit 1
+          fi
+          head -20 /tmp/release_notes.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           body_path: /tmp/release_notes.md
           generate_release_notes: false
+          fail_on_unmatched_files: false
