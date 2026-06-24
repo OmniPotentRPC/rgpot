@@ -43,11 +43,21 @@ html:not(.dark) .rgpot-hero-logo--dark {
 }
 
 /*
- * Doxyrest ships doxyrest-pygments.css with fixed light-theme colours
- * (#000 / #902000) and !important. With Shibuya dark_code (dark block on a
- * light page) or full dark mode, that yields unreadable dark-on-dark tokens.
- * Re-map to Shibuya's syntax CSS variables, which track light/dark code mode.
+ * API / doxyrest code blocks (e.g. group_rgpot_cpp.html)
+ * -------------------------------------------------------
+ * 1) doxyrest-pygments.css forces light-theme #000/#902000 with !important.
+ * 2) Shibuya only remaps --syntax-* on `html.light .dark-code` / `html.dark`;
+ *    if <html> has neither class yet, vars stay light-theme (dark ink) on a
+ *    dark code block background.
+ * 3) Most identifiers are NOT pygments .n/.nc — they are links:
+ *      <a class="doxyrest-code-link"><span class="std std-ref">rgpot::CalcResult</span></a>
+ *    which pick up normal page link colours (also unreadable on dark pre).
+ *
+ * Force a readable dark-code palette on article.yue.dark-code and full html.dark,
+ * including links / .std-ref inside .highlight.
  */
+
+/* --- When Shibuya did apply vars, still beat doxyrest !important on tokens --- */
 .highlight,
 .highlight pre,
 .doxyrest-overview-code-block,
@@ -55,9 +65,10 @@ html:not(.dark) .rgpot-hero-logo--dark {
   color: var(--syntax-text);
 }
 
-.highlight .hll { background-color: var(--syntax-highlight, var(--code-block-highlight)); }
+.highlight .hll {
+  background-color: var(--syntax-highlight, var(--code-block-highlight));
+}
 
-/* Keywords / types (was #902000) */
 .highlight .k,
 .highlight .kc,
 .highlight .kd,
@@ -66,11 +77,10 @@ html:not(.dark) .rgpot-hero-logo--dark {
 .highlight .kr,
 .highlight .kt,
 .highlight .nb {
-  color: var(--syntax-keyword) !important;
+  color: var(--syntax-keyword, #ff7b72) !important;
   font-weight: bold !important;
 }
 
-/* Names / identifiers (was #000000) */
 .highlight .n,
 .highlight .na,
 .highlight .nc,
@@ -90,27 +100,27 @@ html:not(.dark) .rgpot-hero-logo--dark {
 .highlight .vg,
 .highlight .vi,
 .highlight .vm {
-  color: var(--syntax-text) !important;
+  color: var(--syntax-text, #e6edf3) !important;
   font-weight: normal !important;
 }
 
-.highlight .nc,
-.highlight .nn,
-.highlight .ne,
-.highlight .nf {
-  color: var(--syntax-name-class, var(--syntax-name-function, var(--syntax-text))) !important;
+.highlight .c,
+.highlight .ch,
+.highlight .cm,
+.highlight .cp,
+.highlight .cpf,
+.highlight .c1,
+.highlight .cs {
+  color: var(--syntax-comment, #8b949e) !important;
+  font-style: italic;
 }
 
-.highlight .nf {
-  color: var(--syntax-name-function, var(--syntax-text)) !important;
+.highlight .o,
+.highlight .ow,
+.highlight .p {
+  color: var(--syntax-text, #e6edf3) !important;
 }
 
-.highlight .kt,
-.highlight .nb {
-  color: var(--syntax-keyword-type, var(--syntax-keyword)) !important;
-}
-
-/* Literals */
 .highlight .s,
 .highlight .sa,
 .highlight .sb,
@@ -124,15 +134,8 @@ html:not(.dark) .rgpot-hero-logo--dark {
 .highlight .sx,
 .highlight .sr,
 .highlight .s1,
-.highlight .ss,
-.highlight .m,
-.highlight .mb,
-.highlight .mf,
-.highlight .mh,
-.highlight .mi,
-.highlight .mo,
-.highlight .il {
-  color: var(--syntax-literal-string, var(--syntax-literal, var(--syntax-text))) !important;
+.highlight .ss {
+  color: var(--syntax-literal-string, var(--syntax-literal, #a5d6ff)) !important;
 }
 
 .highlight .m,
@@ -142,46 +145,103 @@ html:not(.dark) .rgpot-hero-logo--dark {
 .highlight .mi,
 .highlight .mo,
 .highlight .il {
-  color: var(--syntax-literal-number, var(--syntax-literal, var(--syntax-text))) !important;
+  color: var(--syntax-literal-number, var(--syntax-literal, #79c0ff)) !important;
 }
 
-/* Comments / operators / punctuation */
-.highlight .c,
-.highlight .ch,
-.highlight .cm,
-.highlight .cp,
-.highlight .cpf,
-.highlight .c1,
-.highlight .cs {
-  color: var(--syntax-comment) !important;
-  font-style: italic;
+/* --- Dark code blocks: force palette even when html lacks .light/.dark --- */
+/* GitHub dark dimmed-ish fallbacks match pygments --syntax-dark-* in this theme. */
+.yue.dark-code,
+.yue.dark-code .highlight,
+.yue.dark-code .highlight pre,
+.yue.dark-code .doxyrest-overview-code-block,
+.yue.dark-code .doxyrest-title-code-block,
+html.dark .highlight,
+html.dark .highlight pre,
+html.dark .doxyrest-overview-code-block {
+  --syntax-text: #e6edf3;
+  --syntax-comment: #8b949e;
+  --syntax-keyword: #ff7b72;
+  --syntax-keyword-type: #ff7b72;
+  --syntax-literal: #a5d6ff;
+  --syntax-literal-string: #a5d6ff;
+  --syntax-literal-number: #79c0ff;
+  --syntax-operator: #ff7b72;
+  --syntax-name-function: #d2a8ff;
+  --syntax-name-class: #f0883e;
+  color: #e6edf3;
 }
 
-.highlight .o,
-.highlight .ow {
-  color: var(--syntax-operator, var(--syntax-text)) !important;
+.yue.dark-code .highlight .k,
+.yue.dark-code .highlight .kc,
+.yue.dark-code .highlight .kd,
+.yue.dark-code .highlight .kn,
+.yue.dark-code .highlight .kp,
+.yue.dark-code .highlight .kr,
+.yue.dark-code .highlight .kt,
+.yue.dark-code .highlight .nb,
+html.dark .highlight .k,
+html.dark .highlight .kt,
+html.dark .highlight .nb {
+  color: #ff7b72 !important;
 }
 
-.highlight .p {
-  color: var(--syntax-text) !important;
+.yue.dark-code .highlight .c,
+.yue.dark-code .highlight .c1,
+.yue.dark-code .highlight .cm,
+.yue.dark-code .highlight .cp,
+html.dark .highlight .c,
+html.dark .highlight .c1 {
+  color: #8b949e !important;
 }
 
-.highlight .err {
-  color: var(--syntax-error, var(--syntax-text)) !important;
+.yue.dark-code .highlight .p,
+.yue.dark-code .highlight .o,
+html.dark .highlight .p,
+html.dark .highlight .o {
+  color: #e6edf3 !important;
 }
 
-/* Inline code / cref links inside API pages */
-.yue code.literal,
-.yue tt.literal,
-.doxyrest-code-link,
-span.pre {
+/*
+ * Doxyrest cross-refs inside code (the unreadable rgpot::CalcResult case).
+ * Beat .yue a / .reference / .std-ref page-link colours on dark pre backgrounds.
+ */
+.yue.dark-code .highlight a,
+.yue.dark-code .highlight a:visited,
+.yue.dark-code .highlight a:hover,
+.yue.dark-code .doxyrest-code-link,
+.yue.dark-code .doxyrest-code-link:visited,
+.yue.dark-code .doxyrest-code-link:hover,
+.yue.dark-code .doxyrest-code-link .std-ref,
+.yue.dark-code .doxyrest-code-link .std.std-ref,
+.yue.dark-code .highlight .std-ref,
+.yue.dark-code .highlight .std.std-ref,
+html.dark .highlight a,
+html.dark .highlight a:visited,
+html.dark .doxyrest-code-link,
+html.dark .doxyrest-code-link .std-ref,
+html.dark .highlight .std-ref {
+  color: #79c0ff !important;
+  text-decoration: none;
+  border-bottom: none;
+}
+
+.yue.dark-code .doxyrest-code-link:hover .std-ref,
+.yue.dark-code .highlight a:hover,
+html.dark .doxyrest-code-link:hover .std-ref,
+html.dark .highlight a:hover {
+  color: #a5d6ff !important;
+  text-decoration: underline;
+}
+
+/* Inline `code` in prose (outside dark pre) keeps normal theme link/text colours */
+.yue:not(.dark-code) code.literal,
+.yue:not(.dark-code) tt.literal,
+.yue:not(.dark-code) span.pre {
   color: inherit;
 }
 
-/* Ensure code blocks always have legible default ink on the block background */
-.yue.dark-code .highlight,
-.yue.dark-code .highlight pre,
-html.dark .highlight,
-html.dark .highlight pre {
-  color: var(--syntax-text);
+/* Light-page code blocks without dark_code: keep doxyrest links readable as normal links */
+html.light:not(.dark) .yue:not(.dark-code) .doxyrest-code-link,
+html.light:not(.dark) .yue:not(.dark-code) .doxyrest-code-link .std-ref {
+  color: var(--sy-c-link, var(--accent-11));
 }
