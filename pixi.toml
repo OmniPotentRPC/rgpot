@@ -7,7 +7,10 @@ platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
 version = "1.2.0"
 
 [feature.cigen.tasks]
-gen-gha = { cmd = "nickel export --format yaml ci/gha/workflow.ncl -o .github/workflows/build.yml" }
+# Export every ci/gha/*.ncl workflow (shared pins/steps in ci/gha/lib/).
+gen-gha = { cmd = "bash ci/gha/gen.sh" }
+# Format all Nickel sources (prek nickel-format hook runs this on changed .ncl files).
+nickel-fmt = { cmd = "find ci/gha -name '*.ncl' -print0 | xargs -0 -r nickel format" }
 
 [environments]
 rpctest = {features = ["rpc", "itests"]}

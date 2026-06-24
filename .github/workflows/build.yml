@@ -173,17 +173,11 @@ jobs:
       shell: pixi run bash -e {0}
     - run: |-
         echo "--- Starting Server ---"
-        # Start server in background on port 12345 using LJ potential
         ./bbdir_server/CppCore/rgpot/rpc/potserv 12345 LJ &
         SERVER_PID=$!
-
-        # Wait for server to be ready
         sleep 2
-
         echo "--- Running Client Stress Tests ---"
-        # This runs BridgeStressTest, which connects to localhost:12345
         ctest --test-dir build_client --output-on-failure
-
         echo "--- Teardown ---"
         kill $SERVER_PID
       shell: pixi run bash -e {0}

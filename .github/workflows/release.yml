@@ -1,208 +1,179 @@
-# Publish path for monorepo tags produced by `cog bump` (tag_prefix = "v").
-# Prepare versions + CHANGELOG with cog/towncrier *before* pushing the tag.
-# See docs/orgmode/contributing/developer/release.org and cog.toml.
-#
-# Staged CI: job `tools` builds potctl once (rust-cache + artifact); later jobs
-# only restore-ci-tools (no second cargo build for potctl).
-#
-# Maintainer setup (once per repo):
-#   - Secret CARGO_REGISTRY_TOKEN (crates.io)
-#   - Optional GitHub Environment "release" with required reviewers
-#   - Prefer signed tags: git tag -s vX.Y.Z
-name: Release
-
-on:
-  push:
-    tags: ["v*"]
-
-permissions:
-  contents: write
-
 env:
-  # Linux musl potctl (release runners are ubuntu-latest only).
   CI_TOOLS_ARTIFACT: ci-tools-${{ github.sha }}-Linux
-
 jobs:
-  # --- Stage 0: build/install tools once, share via artifact (+ rust-cache for next runs)
-  tools:
+  cpp-smoke:
+    needs:
+    - gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Stage portable potctl (Linux musl + upload)
-        uses: ./.github/actions/setup-ci-tools
-        with:
-          install-cog: "false"
-          upload-artifact: "true"
-          artifact-name: ${{ env.CI_TOOLS_ARTIFACT }}
-
-  # --- Stage 1: lockstep + CHANGELOG gate (fail fast; only needs potctl)
+    - uses: actions/checkout@v6
+    - uses: prefix-dev/setup-pixi@v0.9.4
+      with:
+        activate-environment: true
+        cache: true
+        environments: devbld
+        pixi-version: v0.62.1
+    - name: C++ install smoke (meson, default features off)
+      run: |-
+        meson setup build-release-smoke \
+          -Dwith_tests=false \
+          -Dwith_examples=false \
+          -Dwith_rpc=false \
+          -Dwith_cache=false \
+          -Dpure_lib=true \
+          --prefix="${RUNNER_TEMP}/rgpot-prefix"
+        meson compile -C build-release-smoke
+        meson install -C build-release-smoke
+        test -d "${RUNNER_TEMP}/rgpot-prefix/include" || test -d "${RUNNER_TEMP}/rgpot-prefix/lib" \
+          || ls -la "${RUNNER_TEMP}/rgpot-prefix"
+      shell: pixi run bash -e {0}
   gate:
-    needs: [tools]
-    runs-on: ubuntu-latest
+    needs:
+    - tools
     outputs:
       is_prerelease: ${{ steps.prerelease.outputs.is_prerelease }}
-      version: ${{ steps.meta.outputs.version }}
       tag: ${{ steps.meta.outputs.tag }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Restore potctl from tools job
-        uses: ./.github/actions/restore-ci-tools
-        with:
-          artifact-name: ${{ env.CI_TOOLS_ARTIFACT }}
-
-      - name: Tag / version meta
-        id: meta
-        run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          VERSION="${TAG#v}"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Release gate for ${TAG} (${VERSION})"
-
-      - name: Assert lockstep versions + CHANGELOG section (fail fast)
-        run: |
-          VERSION="${{ steps.meta.outputs.version }}"
-          potctl release assert --require-changelog "$VERSION"
-          potctl release notes "$VERSION" -o "${RUNNER_TEMP}/release_notes.md"
-          echo "--- release notes (head) ---"
-          head -25 "${RUNNER_TEMP}/release_notes.md"
-
-      - name: Upload release notes for gh-release job
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-notes-${{ github.sha }}
-          path: ${{ runner.temp }}/release_notes.md
-          retention-days: 3
-
-      - name: Detect pre-release (RC) tag
-        id: prerelease
-        run: |
-          VERSION="${{ steps.meta.outputs.version }}"
-          if [[ "$VERSION" == *-* ]]; then
-            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
-            echo "Pre-release: will skip cargo publish (crates.io stable only)."
-          else
-            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
-          fi
-
-  # --- Stage 2: parallel confidence (C++ smoke + Rust tests)
-  cpp-smoke:
-    needs: [gate]
+      version: ${{ steps.meta.outputs.version }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-
-      - uses: prefix-dev/setup-pixi@v0.9.4
-        with:
-          activate-environment: true
-          environments: devbld
-          pixi-version: v0.62.1
-
-      - name: C++ install smoke (meson, default features off)
-        shell: pixi run bash -e {0}
-        run: |
-          meson setup build-release-smoke \
-            -Dwith_tests=false \
-            -Dwith_examples=false \
-            -Dwith_rpc=false \
-            -Dwith_cache=false \
-            -Dpure_lib=true \
-            --prefix="${RUNNER_TEMP}/rgpot-prefix"
-          meson compile -C build-release-smoke
-          meson install -C build-release-smoke
-          test -d "${RUNNER_TEMP}/rgpot-prefix/include" || test -d "${RUNNER_TEMP}/rgpot-prefix/lib" \
-            || ls -la "${RUNNER_TEMP}/rgpot-prefix"
-
-  rust-test:
-    needs: [gate]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: prefix-dev/setup-pixi@v0.9.4
-        with:
-          activate-environment: true
-          environments: devbld
-          pixi-version: v0.62.1
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ". -> target"
-          shared-key: rgpot-core-release
-          cache-targets: true
-
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-nextest
-
-      - name: Run Rust tests
-        shell: pixi run bash -e {0}
-        run: |
-          cargo nextest run -p rgpot-core --all-features
-          cargo test --doc -p rgpot-core
-
-  # --- Stage 3: publish only after gate + confidence
-  publish:
-    needs: [gate, cpp-smoke, rust-test]
-    if: needs.gate.outputs.is_prerelease != 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ". -> target"
-          shared-key: rgpot-core-release
-          cache-targets: true
-
-      - name: Cargo publish (rgpot-core, locked only)
-        run: cargo publish -p rgpot-core --locked
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-  publish-skip-rc:
-    needs: [gate, cpp-smoke, rust-test]
-    if: needs.gate.outputs.is_prerelease == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
-          echo "Skipped cargo publish for pre-release ${{ needs.gate.outputs.tag }}."
-          echo "GitHub Release will still be created as prerelease."
-
-  # --- Stage 4: GitHub Release (notes from gate artifact)
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+    - name: Restore potctl from tools job
+      uses: ./.github/actions/restore-ci-tools
+      with:
+        artifact-name: ${{ env.CI_TOOLS_ARTIFACT }}
+    - id: meta
+      name: Tag / version meta
+      run: |-
+        TAG="${GITHUB_REF#refs/tags/}"
+        VERSION="${TAG#v}"
+        echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+        echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+        echo "Release gate for ${TAG} (${VERSION})"
+    - name: Assert lockstep versions + CHANGELOG section (fail fast)
+      run: |-
+        VERSION="${{ steps.meta.outputs.version }}"
+        potctl release assert --require-changelog "$VERSION"
+        potctl release notes "$VERSION" -o "${RUNNER_TEMP}/release_notes.md"
+        echo "--- release notes (head) ---"
+        head -25 "${RUNNER_TEMP}/release_notes.md"
+    - name: Upload release notes for gh-release job
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-notes-${{ github.sha }}
+        path: ${{ runner.temp }}/release_notes.md
+        retention-days: 3
+    - id: prerelease
+      name: Detect pre-release (RC) tag
+      run: |-
+        VERSION="${{ steps.meta.outputs.version }}"
+        if [[ "$VERSION" == *-* ]]; then
+          echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          echo "Pre-release: will skip cargo publish (crates.io stable only)."
+        else
+          echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+        fi
   gh-release:
-    needs: [gate, cpp-smoke, rust-test, publish, publish-skip-rc]
-    # publish or publish-skip-rc: one is skipped; allow incomplete success of the skipped branch
-    if: |
+    if: |-
       always() &&
       needs.gate.result == 'success' &&
       needs.cpp-smoke.result == 'success' &&
       needs.rust-test.result == 'success' &&
       (needs.publish.result == 'success' || needs.publish.result == 'skipped') &&
       (needs.publish-skip-rc.result == 'success' || needs.publish-skip-rc.result == 'skipped')
+    needs:
+    - gate
+    - cpp-smoke
+    - rust-test
+    - publish
+    - publish-skip-rc
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Download release notes
-        uses: actions/download-artifact@v4
-        with:
-          name: release-notes-${{ github.sha }}
-          path: ${{ runner.temp }}/release-notes
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          body_path: ${{ runner.temp }}/release-notes/release_notes.md
-          generate_release_notes: false
-          fail_on_unmatched_files: false
-          prerelease: ${{ needs.gate.outputs.is_prerelease == 'true' }}
+    - uses: actions/checkout@v6
+    - name: Download release notes
+      uses: actions/download-artifact@v4
+      with:
+        name: release-notes-${{ github.sha }}
+        path: ${{ runner.temp }}/release-notes
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        body_path: ${{ runner.temp }}/release-notes/release_notes.md
+        fail_on_unmatched_files: false
+        generate_release_notes: false
+        prerelease: ${{ needs.gate.outputs.is_prerelease == 'true' }}
+  publish:
+    if: needs.gate.outputs.is_prerelease != 'true'
+    needs:
+    - gate
+    - cpp-smoke
+    - rust-test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: Swatinem/rust-cache@v2
+      with:
+        cache-targets: true
+        shared-key: rgpot-core-release
+        workspaces: . -> target
+    - env:
+        CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      name: Cargo publish (rgpot-core, locked only)
+      run: cargo publish -p rgpot-core --locked
+  publish-skip-rc:
+    if: needs.gate.outputs.is_prerelease == 'true'
+    needs:
+    - gate
+    - cpp-smoke
+    - rust-test
+    runs-on: ubuntu-latest
+    steps:
+    - run: |-
+        echo "Skipped cargo publish for pre-release ${{ needs.gate.outputs.tag }}."
+        echo "GitHub Release will still be created as prerelease."
+  rust-test:
+    needs:
+    - gate
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - uses: prefix-dev/setup-pixi@v0.9.4
+      with:
+        activate-environment: true
+        cache: true
+        environments: devbld
+        pixi-version: v0.62.1
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: Swatinem/rust-cache@v2
+      with:
+        cache-targets: true
+        shared-key: rgpot-core-release
+        workspaces: . -> target
+    - name: Install cargo-nextest
+      uses: taiki-e/install-action@v2
+      with:
+        tool: cargo-nextest
+    - name: Run Rust tests
+      run: |-
+        cargo nextest run -p rgpot-core --all-features
+        cargo test --doc -p rgpot-core
+      shell: pixi run bash -e {0}
+  tools:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - name: Stage portable potctl (Linux musl + upload)
+      uses: ./.github/actions/setup-ci-tools
+      with:
+        artifact-name: ${{ env.CI_TOOLS_ARTIFACT }}
+        install-cog: 'false'
+        upload-artifact: 'true'
+name: Release
+on:
+  push:
+    tags:
+    - v*
+permissions:
+  contents: write

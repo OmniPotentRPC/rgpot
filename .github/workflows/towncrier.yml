@@ -1,43 +1,35 @@
-# Require towncrier fragments on PRs that touch shipped surfaces.
-# Pure docs/ci/chore-only PRs that avoid these paths need no fragment.
-# One fragment per user-visible change; see docs/newsfragments/README.md.
-name: towncrier
-
-on:
-  pull_request:
-    paths:
-      - "CppCore/**"
-      - "rgpot-core/**"
-      - "include/**"
-      - "meson.build"
-      - "meson_options.txt"
-      - "CMakeLists.txt"
-      - "pixi.toml"
-      - "CHANGELOG.md"
-      - "docs/newsfragments/**"
-      - "towncrier.toml"
-      - "cog.toml"
-      - "potctl/**"
-      - "Cargo.toml"
-
 concurrency:
-  group: towncrier-${{ github.ref }}
   cancel-in-progress: true
-
-permissions:
-  contents: read
-  pull-requests: read
-
+  group: towncrier-${{ github.ref }}
 jobs:
   fragments:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Towncrier check vs base branch
-        run: |
-          pipx install towncrier
-          BASE="${{ github.event.pull_request.base.sha }}"
-          towncrier check --compare-with "$BASE"
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+    - name: Towncrier check vs base branch
+      run: |-
+        pipx install towncrier
+        BASE="${{ github.event.pull_request.base.sha }}"
+        towncrier check --compare-with "$BASE"
+name: towncrier
+on:
+  pull_request:
+    paths:
+    - CppCore/**
+    - rgpot-core/**
+    - include/**
+    - meson.build
+    - meson_options.txt
+    - CMakeLists.txt
+    - pixi.toml
+    - CHANGELOG.md
+    - docs/newsfragments/**
+    - towncrier.toml
+    - cog.toml
+    - potctl/**
+    - Cargo.toml
+permissions:
+  contents: read
+  pull-requests: read

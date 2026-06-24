@@ -1,22 +1,16 @@
-# Historical name: cosmo potctl was promoted to gating PR/release CI.
-# Canonical workflow: .github/workflows/cosmo-potctl.yml (name: potctl Cosmopolitan APE).
-# This file remains only so path filters / old links do not 404; it does not define jobs.
-# Delete after all branches point at cosmo-potctl.yml only.
-name: potctl Cosmopolitan APE (legacy spike alias)
-
-on:
-  workflow_dispatch:
-    inputs:
-      note:
-        description: "No-op; use cosmo-potctl.yml"
-        required: false
-        default: "deprecated"
-
 jobs:
   redirect:
     name: use cosmo-potctl.yml instead
     runs-on: ubuntu-latest
     steps:
-      - run: |
-          echo "cosmo potctl is gating via .github/workflows/cosmo-potctl.yml"
-          echo "This spike alias is a no-op (workflow_dispatch only)."
+    - run: |-
+        echo "cosmo potctl is gating via .github/workflows/cosmo-potctl.yml"
+        echo "This spike alias is a no-op (workflow_dispatch only)."
+name: potctl Cosmopolitan APE (legacy spike alias)
+on:
+  workflow_dispatch:
+    inputs:
+      note:
+        default: deprecated
+        description: No-op; use cosmo-potctl.yml
+        required: false

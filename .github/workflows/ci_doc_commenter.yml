@@ -1,24 +1,22 @@
-name: Comment on pull request
-# Adapted from the atomistic-cookbook, EON, and rgpycrumbs
-
-on:
-  workflow_run:
-    workflows: ["Build and Deploy Documentation"]
-    types: [completed]
-
 jobs:
   pr_comment:
     if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
-    runs-on: ubuntu-latest
     permissions:
-      pull-requests: write
-      issues: write
       actions: read
-
+      issues: write
+      pull-requests: write
+    runs-on: ubuntu-latest
     steps:
-      - uses: HaoZeke/doc-previewer@v0.0.1
-        with:
-          workflow_run_id: ${{ github.event.workflow_run.id }}
-          head_sha: ${{ github.event.workflow_run.head_sha }}
-          artifact_name: documentation
-          comment_header: "### rgPot Documentation Preview"
+    - uses: HaoZeke/doc-previewer@v0.0.1
+      with:
+        artifact_name: documentation
+        comment_header: '### rgPot Documentation Preview'
+        head_sha: ${{ github.event.workflow_run.head_sha }}
+        workflow_run_id: ${{ github.event.workflow_run.id }}
+name: Comment on pull request
+on:
+  workflow_run:
+    types:
+    - completed
+    workflows:
+    - Build and Deploy Documentation
