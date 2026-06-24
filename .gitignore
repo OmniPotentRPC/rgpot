@@ -25,6 +25,9 @@ downloads/
 eggs/
 .eggs/
 lib/
+# Nickel GHA library lives under ci/gha/lib/ (pins + step builders); must be tracked.
+!ci/gha/lib/
+!ci/gha/lib/**
 lib64/
 parts/
 sdist/

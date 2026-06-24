@@ -62,6 +62,16 @@ hooks = [
     files = '\.ncl$',
     args = ["r", "-e", "cigen", "nickel", "format"],
   },
+  # Generated GHA must match ci/gha/*.ncl; edit Nickel only, never hand-edit YAML.
+  {
+    id = "gha-nickel-drift",
+    name = "GHA Nickel drift (gen-gha + diff)",
+    entry = "pixi",
+    language = "system",
+    pass_filenames = false,
+    files = '^(ci/gha/.*\\.ncl|\\.github/workflows/.*\\.yml)$',
+    args = ["r", "-e", "cigen", "gha-drift"],
+  },
   {
     id = "snapper",
     name = "snapper semantic line breaks (org docs)",

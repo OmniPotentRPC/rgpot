@@ -7,14 +7,7 @@ let P = S.pins in
   permissions = { contents = "write" },
   env = { CI_TOOLS_ARTIFACT = "ci-tools-${{ github.sha }}-Linux" },
   jobs = {
-    tools = {
-      "runs-on" = P.ubuntu,
-      steps = [
-        S.checkout_minimal,
-        S.setup_ci_tools_upload "false" "${{ env.CI_TOOLS_ARTIFACT }}"
-          "Stage portable potctl (Linux musl + upload)",
-      ],
-    },
+    tools = S.job_tools_linux "false" "Stage portable potctl (Linux musl + upload)",
     gate = {
       needs = ["tools"],
       "runs-on" = P.ubuntu,

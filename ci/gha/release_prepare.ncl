@@ -39,14 +39,7 @@ in
   permissions = { contents = "read" },
   env = { CI_TOOLS_ARTIFACT = "ci-tools-${{ github.sha }}-Linux" },
   jobs = {
-    tools = {
-      "runs-on" = P.ubuntu,
-      steps = [
-        S.checkout_minimal,
-        S.setup_ci_tools_upload "true" "${{ env.CI_TOOLS_ARTIFACT }}"
-          "Stage portable potctl + cog (Linux musl + upload)",
-      ],
-    },
+    tools = S.job_tools_linux "true" "Stage portable potctl + cog (Linux musl + upload)",
     prepare = {
       needs = ["tools"],
       "runs-on" = P.ubuntu,

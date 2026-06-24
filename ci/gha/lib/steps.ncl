@@ -147,4 +147,23 @@ let P = import "pins.ncl" in
     push = { branches = ["main"] },
     pull_request = {},
   },
+
+  # Single-runner Linux potctl (+ optional cog) for release/release-prepare style workflows.
+  job_tools_linux = fun install_cog step_name =>
+    {
+      "runs-on" = P.ubuntu,
+      steps = [
+        { uses = P.checkout },
+        {
+          name = step_name,
+          uses = P.setup_ci_tools,
+          with = {
+            "install-cog" = install_cog,
+            "upload-artifact" = "true",
+            "artifact-name" = "${{ env.CI_TOOLS_ARTIFACT }}",
+          },
+        },
+      ],
+    },
+
 }
