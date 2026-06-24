@@ -1,0 +1,5 @@
+# If/when you `dagger develop` here, keep generated noise out of reviews unless desired.
+/dagger.gen.go
+/internal/dagger/
+/internal/querybuilder/
+/internal/telemetry/

@@ -1,0 +1,68 @@
+# SKETCH / non-gating: Dagger + GHA integration experiment.
+# Does not replace ci/gha (Nickel) workflows. See ci/dagger/README.md.
+# Promote to required checks only after a real module implements ci-smoke reliably.
+name: Dagger CI (sketch)
+
+on:
+  workflow_dispatch:
+    inputs:
+      function:
+        description: "Dagger function to call (module-relative)"
+        required: true
+        default: "ci-smoke"
+  # Uncomment when the module is real and you want PR smoke only on dagger path changes:
+  # pull_request:
+  #   paths:
+  #     - "ci/dagger/**"
+  #     - ".github/workflows/dagger-ci.yml"
+
+concurrency:
+  group: dagger-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # --- Pattern A: thin GHA shell, all work in Dagger (what the action is for) ---
+  dagger-call:
+    name: dagger call (${{ github.event.inputs.function || 'ci-smoke' }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      # Optional: still install pixi on the *runner* if your module shells out to host pixi.
+      # For pure container functions you can omit this entirely.
+      - uses: prefix-dev/setup-pixi@v0.9.4
+        with:
+          pixi-version: v0.62.1
+          cache: true
+          environments: devbld
+          activate-environment: true
+
+      - name: Run Dagger function
+        uses: dagger/dagger-for-github@v8
+        with:
+          # Pin CLI in real use (e.g. "0.18.12"); "latest" is fine for sketch only.
+          version: "latest"
+          # Local module under ci/dagger (placeholder until dagger init + functions land).
+          workdir: ci/dagger
+          # verb defaults to call; equivalent: verb: call
+          call: ${{ github.event.inputs.function || 'ci-smoke' }}
+          # Uncomment for Dagger Cloud cache/traces (recommended if this graduates):
+          # cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+          # dagger-flags: "--cloud"
+
+  # --- Pattern B: GHA still owns matrix; Dagger only runs one leg (hybrid) ---
+  # Example: keep Nickel/GHA for meson/cmake macOS; use Dagger only for Linux unit tests.
+  # (Disabled by default — enable when module exists.)
+  # rust-via-dagger:
+  #   if: false
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v6
+  #     - uses: dagger/dagger-for-github@v8
+  #       with:
+  #         version: "latest"
+  #         workdir: ci/dagger
+  #         call: rust-test --all-features
