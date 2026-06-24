@@ -1,65 +1,85 @@
-let run_script = fun script =>
+# Build Matrix workflow generator (Nickel → .github/workflows/build.yml).
+#
+# Regenerate:  pixi r -e cigen gen-gha
+# Format:      pixi r -e cigen nickel format ci/gha/workflow.ncl
+#
+# Keep this file in lockstep with potctl CI helpers:
+#   - potctl ci darwin-env  (macOS host clang/SDK + pixi dep paths)
+#   - potctl ci preflight   (via ensure-potctl composite action)
+#   - setup-ci-tools / ensure-potctl (portable musl Linux + fat macOS potctl)
+let PIXi_VERSION = "v0.62.1" in
+let CHECKOUT = "actions/checkout@v6" in
+let SETUP_PIXI = "prefix-dev/setup-pixi@v0.9.4" in
+let CACHE = "actions/cache@v5" in
+let INSTALL_ACTION = "taiki-e/install-action@v2" in
+
+# --- Small step builders ----------------------------------------------------
+let run_pixi = fun script =>
   {
     shell = "pixi run bash -e {0}",
-    run = script
+    run = script,
   }
 in
 
-let run_plain = fun script =>
+let checkout_full = {
+  uses = CHECKOUT,
+  with = { submodules = "recursive", "fetch-depth" = 0 },
+}
+in
+
+let setup_pixi = fun envs =>
   {
-    shell = "bash -e {0}",
-    run = script
+    uses = SETUP_PIXI,
+    with = {
+      "pixi-version" = PIXi_VERSION,
+      cache = true,
+      environments = envs,
+      "activate-environment" = "devbld",
+    },
   }
+in
+
+# potctl once per OS (Linux musl / macOS lipo fat); consumers restore via ensure-potctl.
+let ensure_potctl = {
+  name = "Ensure potctl (OS-matched portable/fat artifact)",
+  uses = "./.github/actions/ensure-potctl",
+  with = { "artifact-prefix" = "ci-tools-${{ github.sha }}" },
+}
 in
 
 let ccache_step = {
   name = "Restore Compiler Cache",
-  uses = "actions/cache@v4",
+  uses = CACHE,
   with = {
     path = ".ccache",
-    # Key includes OS, System (Meson/CMake), and a hash of build files
     key = "ccache-${{ runner.os }}-${{ matrix.sys }}-${{ github.sha }}",
-    # Restore keys allow falling back to the most recent cache on this branch
     "restore-keys" = "ccache-${{ runner.os }}-${{ matrix.sys }}-",
-  }
+  },
 }
 in
 
-let get_server_bin = "${{ matrix.sys == 'meson' && 'bbdir/CppCore/rgpot/rpc/potserv' || 'build/potserv' }}"
+let ccache_env = {
+  CCACHE_DIR = "${{ github.workspace }}/.ccache",
+  CCACHE_COMPILERCHECK = "content",
+  CCACHE_MAXSIZE = "500M",
+}
 in
 
-# --- Flag Generation Logic ---
-
-# Meson usually auto-detects ccache if it's in the PATH.
-# macOS/pixi: system clang + SDKROOT; CONDA_PREFIX via LIBRARY_PATH/CPATH only
-# (no -isysroot in LDFLAGS — breaks meson -Wl,--version probe on Apple ld).
-# Full RPC/cache/CuH2 matrix.
-let meson_conf = m%"
-  MESON_EXTRA=""
+# Shared prologue for matrix meson/cmake: SDKROOT on macOS, then potctl darwin-env.
+let darwin_env_prelude = m%"
+  # macOS/pixi host clang/SDK via potctl (unit-tested); Linux is a no-op eval.
   if [ "${{ runner.os }}" = "macOS" ]; then
     export SDKROOT="$(xcrun --show-sdk-path)"
-    export CC=/usr/bin/clang
-    export CXX=/usr/bin/clang++
-    export OBJC=/usr/bin/clang
-    export OBJCXX=/usr/bin/clang++
-    export LD=/usr/bin/clang++
-    unset CONDA_BUILD_SYSROOT CC_FOR_BUILD CXX_FOR_BUILD CPP_FOR_BUILD \
-      CMAKE_ARGS host_alias build_alias CFLAGS CXXFLAGS CPPFLAGS LDFLAGS || true
-    if [ -n "${CONDA_PREFIX:-}" ]; then
-      export CMAKE_PREFIX_PATH="${CONDA_PREFIX}${CMAKE_PREFIX_PATH:+:${CMAKE_PREFIX_PATH}}"
-      export PKG_CONFIG_PATH="${CONDA_PREFIX}/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
-      export LIBRARY_PATH="${CONDA_PREFIX}/lib${LIBRARY_PATH:+:${LIBRARY_PATH}}"
-      export CPATH="${CONDA_PREFIX}/include${CPATH:+:${CPATH}}"
-      export DYLD_FALLBACK_LIBRARY_PATH="${CONDA_PREFIX}/lib${DYLD_FALLBACK_LIBRARY_PATH:+:${DYLD_FALLBACK_LIBRARY_PATH}}"
-      if [ -x "${CONDA_PREFIX}/bin/gfortran" ]; then
-        export FC="${CONDA_PREFIX}/bin/gfortran"
-        export F77="$FC" F90="$FC" F95="$FC" GFORTRAN="$FC"
-      fi
-    fi
-    MESON_EXTRA="-Ddefault_library=static"
   fi
+  eval "$(potctl ci darwin-env)"
+"%
+in
+
+let meson_build_test =
+  run_pixi m%"
+  %{darwin_env_prelude}
   meson setup bbdir \
-    $MESON_EXTRA \
+    ${POTCTL_MESON_EXTRA:-} \
     -Dwith_tests=True \
     -Dwith_examples=False \
     -Dwith_xtensor=False \
@@ -67,31 +87,21 @@ let meson_conf = m%"
     -Dwith_rpc=${{ matrix.rpc }} \
     -Dwith_cache=${{ matrix.cache }} \
     -Dpure_lib=False
+  meson compile -C bbdir
+  meson test -C bbdir --print-errorlogs
+  ccache -s
 "%
+  & {
+    name = "Build & Test (Meson)",
+    "if" = "${{ matrix.sys == 'meson' }}",
+  }
 in
 
-let cmake_conf = m%"
+let cmake_build_test =
+  run_pixi m%"
   CMAKE_EXTRA=""
+  %{darwin_env_prelude}
   if [ "${{ runner.os }}" = "macOS" ]; then
-    export SDKROOT="$(xcrun --show-sdk-path)"
-    export CC=/usr/bin/clang
-    export CXX=/usr/bin/clang++
-    export OBJC=/usr/bin/clang
-    export OBJCXX=/usr/bin/clang++
-    export LD=/usr/bin/clang++
-    unset CONDA_BUILD_SYSROOT CC_FOR_BUILD CXX_FOR_BUILD CPP_FOR_BUILD \
-      CMAKE_ARGS host_alias build_alias CFLAGS CXXFLAGS CPPFLAGS LDFLAGS || true
-    if [ -n "${CONDA_PREFIX:-}" ]; then
-      export CMAKE_PREFIX_PATH="${CONDA_PREFIX}${CMAKE_PREFIX_PATH:+:${CMAKE_PREFIX_PATH}}"
-      export PKG_CONFIG_PATH="${CONDA_PREFIX}/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
-      export LIBRARY_PATH="${CONDA_PREFIX}/lib${LIBRARY_PATH:+:${LIBRARY_PATH}}"
-      export CPATH="${CONDA_PREFIX}/include${CPATH:+:${CPATH}}"
-      export DYLD_FALLBACK_LIBRARY_PATH="${CONDA_PREFIX}/lib${DYLD_FALLBACK_LIBRARY_PATH:+:${DYLD_FALLBACK_LIBRARY_PATH}}"
-      if [ -x "${CONDA_PREFIX}/bin/gfortran" ]; then
-        export FC="${CONDA_PREFIX}/bin/gfortran"
-        export F77="$FC" F90="$FC" F95="$FC" GFORTRAN="$FC"
-      fi
-    fi
     CMAKE_EXTRA="-DCMAKE_C_COMPILER=/usr/bin/clang -DCMAKE_CXX_COMPILER=/usr/bin/clang++ -DCMAKE_OSX_SYSROOT=${SDKROOT}"
     if [ -n "${CONDA_PREFIX:-}" ]; then
       CMAKE_EXTRA="${CMAKE_EXTRA} -DCMAKE_PREFIX_PATH=${CONDA_PREFIX} -DCMAKE_BUILD_RPATH=${CONDA_PREFIX}/lib -DCMAKE_INSTALL_RPATH=${CONDA_PREFIX}/lib"
@@ -112,225 +122,179 @@ let cmake_conf = m%"
     -DRGPOT_WITH_CACHE=${{ matrix.cache }} \
     -DRGPOT_PURE_LIB=OFF \
     $CMAKE_EXTRA
+  cmake --build build -j
+  ctest --test-dir build --output-on-failure
+  ccache -s
 "%
-in
-
-# --- Steps Definitions ---
-let build_steps = [
-  # Meson Build & Test
-  # '&' merges the script definition with the name/if metadata
-  run_script m%"
-    %{meson_conf}
-    meson compile -C bbdir
-    meson test -C bbdir --print-errorlogs
-    ccache -s
-  "%
-  & {
-    name = "Build & Test (Meson)",
-    "if" = "${{ matrix.sys == 'meson' }}"
-  },
-
-  # CMake Build & Test
-  run_script m%"
-    %{cmake_conf}
-    cmake --build build -j
-    ctest --test-dir build --output-on-failure
-    ccache -s
-  "%
   & {
     name = "Build & Test (CMake)",
-    "if" = "${{ matrix.sys == 'cmake' }}"
+    "if" = "${{ matrix.sys == 'cmake' }}",
   }
-]
 in
 
-let integration_step = [
-  run_script m%"
-    pixi r -e rpctest \
-    python tests/rpc_integ.py --server-bin %{get_server_bin}
-  "%
+let rpc_integration =
+  run_pixi m%"
+  pixi r -e rpctest \
+  python tests/rpc_integ.py --server-bin ${{ matrix.sys == 'meson' && 'bbdir/CppCore/rgpot/rpc/potserv' || 'build/potserv' }}
+"%
   & {
     name = "RPC Integration Test",
-    # Only run on Linux + Meson + RPC=true
-    "if" = "${{ matrix.rpc == 'true' && matrix.sys == 'meson' && matrix.os == 'ubuntu-latest' }}"
+    "if" = "${{ matrix.rpc == 'true' && matrix.sys == 'meson' && matrix.os == 'ubuntu-latest' }}",
   }
-]
 in
 
-# --- Main Workflow ---
+# --- Jobs -------------------------------------------------------------------
+let job_ci_tools = {
+  name = "ci-tools (potctl / ${{ matrix.os }})",
+  "runs-on" = "${{ matrix.os }}",
+  strategy = {
+    "fail-fast" = false,
+    matrix = { os = ["ubuntu-latest", "macos-latest"] },
+  },
+  steps = [
+    { uses = CHECKOUT },
+    {
+      name = "Stage portable/fat potctl",
+      uses = "./.github/actions/setup-ci-tools",
+      with = {
+        "upload-artifact" = "true",
+        "artifact-name" = "ci-tools-${{ github.sha }}-${{ runner.os }}",
+      },
+    },
+  ],
+}
+in
+
+let job_build_and_test = {
+  needs = ["ci-tools"],
+  name = "${{ matrix.sys }} / ${{ matrix.os }} [RPC:${{ matrix.rpc }} CACHE:${{ matrix.cache }}]",
+  "runs-on" = "${{ matrix.os }}",
+  env = ccache_env,
+  strategy = {
+    "fail-fast" = false,
+    matrix = {
+      os = ["ubuntu-latest", "macos-latest"],
+      sys = ["meson", "cmake"],
+      rpc = ["true", "false"],
+      cache = ["true", "false"],
+    },
+  },
+  steps =
+    [
+      checkout_full,
+      ensure_potctl,
+      setup_pixi "devbld rpctest",
+      ccache_step,
+    ]
+    @ [meson_build_test, cmake_build_test, rpc_integration],
+}
+in
+
+let job_rust_tests = {
+  needs = ["ci-tools"],
+  name = "Rust Core Tests (${{ matrix.os }})",
+  "runs-on" = "${{ matrix.os }}",
+  strategy = {
+    "fail-fast" = false,
+    matrix = { os = ["ubuntu-latest", "macos-latest"] },
+  },
+  steps = [
+    checkout_full,
+    ensure_potctl,
+    setup_pixi "devbld",
+    {
+      name = "Install cargo-nextest",
+      uses = INSTALL_ACTION,
+      with = { tool = "cargo-nextest" },
+    },
+    {
+      name = "potctl unit tests",
+      run = "cargo test -p potctl",
+    },
+    run_pixi m%"
+      cargo nextest run -p rgpot-core
+      cargo nextest run -p rgpot-core --all-features
+    "%
+    & { name = "Run Rust tests (nextest)" },
+    run_pixi m%"
+      cargo test --doc -p rgpot-core
+    "%
+    & { name = "Run Rust doc-tests" },
+  ],
+}
+in
+
+let job_client_bridge_stress = {
+  needs = ["ci-tools"],
+  name = "Client Bridge Stress Test (Linux)",
+  "runs-on" = "ubuntu-latest",
+  env = {
+    CCACHE_DIR = "${{ github.workspace }}/.ccache",
+    CCACHE_COMPILERCHECK = "content",
+  },
+  steps = [
+    checkout_full,
+    ensure_potctl,
+    setup_pixi "devbld rpctest",
+    ccache_step,
+    run_pixi m%"
+      echo "--- Building Server (Heavy) ---"
+      meson setup bbdir_server \
+            -Dwith_rpc=true \
+            -Dwith_tests=false \
+            -Dwith_examples=false
+      meson compile -C bbdir_server
+    "%,
+    run_pixi m%"
+      echo "--- Building Client Bridge (Light) ---"
+      cmake -S . -B build_client \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DRGPOT_RPC_CLIENT_ONLY=ON \
+            -DRGPOT_BUILD_TESTS=ON
+      cmake --build build_client -j
+    "%,
+    run_pixi m%"
+      echo "--- Starting Server ---"
+      # Start server in background on port 12345 using LJ potential
+      ./bbdir_server/CppCore/rgpot/rpc/potserv 12345 LJ &
+      SERVER_PID=$!
+
+      # Wait for server to be ready
+      sleep 2
+
+      echo "--- Running Client Stress Tests ---"
+      # This runs BridgeStressTest, which connects to localhost:12345
+      ctest --test-dir build_client --output-on-failure
+
+      echo "--- Teardown ---"
+      kill $SERVER_PID
+    "%,
+  ],
+}
+in
+
+# --- Workflow root ----------------------------------------------------------
 {
   name = "Build Matrix",
 
-  # Trigger logic
   on = {
     push = { branches = ["main"] },
     pull_request = { branches = ["main"] },
   },
 
-  # Concurrency Group
-  # This cancels previous runs of the same PR/branch when a new commit is pushed.
   concurrency = {
     group = "${{ github.workflow }}-${{ github.ref }}",
-    cancel-in-progress = true,
+    "cancel-in-progress" = true,
   },
 
   jobs = {
-    # Main Matrix Build
-    build_and_test = {
-      # Dynamic name for easy UI scanning
-      name = "${{ matrix.sys }} / ${{ matrix.os }} [RPC:${{ matrix.rpc }} CACHE:${{ matrix.cache }}]",
-      runs-on = "${{ matrix.os }}",
-
-      env = {
-        CCACHE_DIR = "${{ github.workspace }}/.ccache",
-        CCACHE_COMPILERCHECK = "content", # Hash content, not mtime
-        CCACHE_MAXSIZE = "500M", # Prevent cache from growing too large
-      },
-
-      strategy = {
-        fail-fast = false,
-        matrix = {
-          os = ["ubuntu-latest", "macos-latest"],
-          sys = ["meson", "cmake"],
-          # 2 systems * 2^2 options = 4 Jobs
-          rpc = ["true", "false"],
-          cache = ["true", "false"],
-          # Tip: If the jobs are too many, use 'exclude' here to skip invalid combos.
-          # e.g. exclude = [{ pure = "true", rpc = "true" }]
-        }
-      },
-
-      steps =
-        [
-          {
-            uses = "actions/checkout@v4",
-            with = { submodules = "recursive", fetch-depth = 0 }
-          },
-          {
-            uses = "prefix-dev/setup-pixi@v0.8.1",
-            with = {
-              pixi-version = "v0.62.1",
-              cache = true,
-              environments = "devbld rpctest",
-              activate-environment = "devbld"
-            }
-          },
-
-          # Restore Ccache before building
-          ccache_step,
-        ]
-        @ build_steps
-        @ integration_step
-    },
-
-    # Rust Core Unit Tests
-    rust_tests = {
-      name = "Rust Core Tests (${{ matrix.os }})",
-      runs-on = "${{ matrix.os }}",
-
-      strategy = {
-        fail-fast = false,
-        matrix = {
-          os = ["ubuntu-latest", "macos-latest"],
-        }
-      },
-
-      steps = [
-        {
-          uses = "actions/checkout@v4",
-          with = { submodules = "recursive", fetch-depth = 0 }
-        },
-        {
-          uses = "prefix-dev/setup-pixi@v0.8.1",
-          with = {
-            pixi-version = "v0.62.1",
-            cache = true,
-            environments = "devbld",
-            activate-environment = "devbld"
-          }
-        },
-        {
-          name = "Install cargo-nextest",
-          uses = "taiki-e/install-action@v2",
-          with = { tool = "cargo-nextest" }
-        },
-        run_script m%"
-          cd rgpot-core
-          cargo nextest run
-          cargo nextest run --all-features
-        "%
-        & { name = "Run Rust tests (nextest)" },
-        run_script m%"
-          cd rgpot-core
-          cargo test --doc
-        "%
-        & { name = "Run Rust doc-tests" },
-      ]
-    },
-
-    # Specialized "Client Bridge" Stress Test
-    # This job builds the Server (Heavy) and Client (Light) separately to verify interoperability.
-    client_bridge_stress = {
-      name = "Client Bridge Stress Test (Linux)",
-      runs-on = "ubuntu-latest",
-
-      env = {
-        CCACHE_DIR = "${{ github.workspace }}/.ccache",
-        CCACHE_COMPILERCHECK = "content",
-      },
-
-      steps = [
-        {
-          uses = "actions/checkout@v4",
-          with = { submodules = "recursive", fetch-depth = 0 }
-        },
-        {
-          uses = "prefix-dev/setup-pixi@v0.8.1",
-          with = {
-            pixi-version = "v0.62.1",
-            cache = true,
-            environments = "devbld rpctest",
-            activate-environment = "devbld"
-          }
-        },
-
-        # Restore cache here as well
-        ccache_step,
-        run_script m%"
-          echo "--- Building Server (Heavy) ---"
-          meson setup bbdir_server \
-                -Dwith_rpc=true \
-                -Dwith_tests=false \
-                -Dwith_examples=false
-          meson compile -C bbdir_server
-        "%,
-        run_script m%"
-          echo "--- Building Client Bridge (Light) ---"
-          cmake -S . -B build_client \
-                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-                -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-                -DCMAKE_BUILD_TYPE=Release \
-                -DRGPOT_RPC_CLIENT_ONLY=ON \
-                -DRGPOT_BUILD_TESTS=ON
-          cmake --build build_client -j
-        "%,
-        run_script m%"
-          echo "--- Starting Server ---"
-          # Start server in background on port 12345 using LJ potential
-          ./bbdir_server/CppCore/rgpot/rpc/potserv 12345 LJ &
-          SERVER_PID=$!
-
-          # Wait for server to be ready
-          sleep 2
-
-          echo "--- Running Client Stress Tests ---"
-          # This runs BridgeStressTest, which connects to localhost:12345
-          ctest --test-dir build_client --output-on-failure
-
-          echo "--- Teardown ---"
-          kill $SERVER_PID
-        "%
-      ]
-    }
-  }
+    # potctl once per OS: Linux musl (portable) + macOS fat (arm64+x86_64 lipo).
+    # Consumer jobs restore ci-tools-<sha>-${{ runner.os }} (not a Linux ELF on Darwin).
+    "ci-tools" = job_ci_tools,
+    build_and_test = job_build_and_test,
+    rust_tests = job_rust_tests,
+    client_bridge_stress = job_client_bridge_stress,
+  },
 }

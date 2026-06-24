@@ -1,32 +1,15 @@
-name: Build Matrix
 concurrency:
   cancel-in-progress: true
   group: ${{ github.workflow }}-${{ github.ref }}
 jobs:
-  # potctl once per OS: Linux musl (portable) + macOS fat (arm64+x86_64 lipo).
-  # Consumer jobs restore ci-tools-<sha>-${{ runner.os }} (not a Linux ELF on Darwin).
-  ci-tools:
-    name: ci-tools (potctl / ${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    steps:
-      - uses: actions/checkout@v6
-      - name: Stage portable/fat potctl
-        uses: ./.github/actions/setup-ci-tools
-        with:
-          upload-artifact: "true"
-          artifact-name: ci-tools-${{ github.sha }}-${{ runner.os }}
-
   build_and_test:
-    needs: [ci-tools]
     env:
       CCACHE_COMPILERCHECK: content
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 500M
     name: ${{ matrix.sys }} / ${{ matrix.os }} [RPC:${{ matrix.rpc }} CACHE:${{ matrix.cache }}]
+    needs:
+    - ci-tools
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v6
@@ -74,6 +57,7 @@ jobs:
       name: Build & Test (CMake)
       run: |-
         CMAKE_EXTRA=""
+        # macOS/pixi host clang/SDK via potctl (unit-tested); Linux is a no-op eval.
         if [ "${{ runner.os }}" = "macOS" ]; then
           export SDKROOT="$(xcrun --show-sdk-path)"
         fi
@@ -124,12 +108,29 @@ jobs:
         sys:
         - meson
         - cmake
+  ci-tools:
+    name: ci-tools (potctl / ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v6
+    - name: Stage portable/fat potctl
+      uses: ./.github/actions/setup-ci-tools
+      with:
+        artifact-name: ci-tools-${{ github.sha }}-${{ runner.os }}
+        upload-artifact: 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+        - ubuntu-latest
+        - macos-latest
   client_bridge_stress:
-    needs: [ci-tools]
     env:
       CCACHE_COMPILERCHECK: content
       CCACHE_DIR: ${{ github.workspace }}/.ccache
     name: Client Bridge Stress Test (Linux)
+    needs:
+    - ci-tools
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v6
@@ -187,8 +188,9 @@ jobs:
         kill $SERVER_PID
       shell: pixi run bash -e {0}
   rust_tests:
-    needs: [ci-tools]
     name: Rust Core Tests (${{ matrix.os }})
+    needs:
+    - ci-tools
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v6
@@ -217,8 +219,7 @@ jobs:
         cargo nextest run -p rgpot-core --all-features
       shell: pixi run bash -e {0}
     - name: Run Rust doc-tests
-      run: |-
-        cargo test --doc -p rgpot-core
+      run: cargo test --doc -p rgpot-core
       shell: pixi run bash -e {0}
     strategy:
       fail-fast: false
@@ -226,7 +227,7 @@ jobs:
         os:
         - ubuntu-latest
         - macos-latest
-
+name: Build Matrix
 on:
   pull_request:
     branches:
