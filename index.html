@@ -11,6 +11,7 @@
     <link rel="stylesheet" type="text/css" href="_static/doxyrest-pygments.css?v=ff3f4257" />
     <link rel="stylesheet" type="text/css" href="_static/doxyrest-shibuya.css" />
     <link media="print" rel="stylesheet" type="text/css" href="_static/print.css?v=20ff2c19" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=8e519925" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -41,8 +42,8 @@
   <div class="sy-head-blur"></div>
   <div class="sy-head-inner sy-container mx-auto">
     <a class="sy-head-brand" href="#">
-      <img class="light-logo" src="_static/rgpot_notext.svg" alt="rgpot" height="28" loading="lazy" />
-      <img class="dark-logo" src="_static/rgpot_notext.svg" alt="rgpot" height="28" loading="lazy" />
+      <img class="light-logo" src="_static/rgpot_notext_light.webp" alt="rgpot" height="28" loading="lazy" />
+      <img class="dark-logo" src="_static/rgpot_notext_dark.webp" alt="rgpot" height="28" loading="lazy" />
       <strong>rgpot</strong>
     </a>
     <div class="sy-head-nav" id="head-nav">
@@ -302,8 +303,20 @@ data-aria-dark="Switch to auto color mode">
 <dd class="field-odd"><p><a class="reference external" href="https://rgoswami.me">Rohit Goswami</a></p>
 </dd>
 </dl>
-<img alt="_images/rgpot_logo.webp" src="_images/rgpot_logo.webp" />
-<section id="overview">
+<p class="rgpot-hero">
+  <img class="rgpot-hero-logo rgpot-hero-logo--light"
+       src="_static/rgpot_logo_light.webp"
+       alt="rgpot logo"
+       width="320"
+       height="320"
+       loading="eager" />
+  <img class="rgpot-hero-logo rgpot-hero-logo--dark"
+       src="_static/rgpot_logo_dark.webp"
+       alt="rgpot logo"
+       width="320"
+       height="320"
+       loading="eager" />
+</p><section id="overview">
 <h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">rgpot</span></code> provides a unified schema for interfacing potential servers across
 languages using runtime interoperability.

@@ -5,7 +5,22 @@
 
 :Author: `Rohit Goswami <https://rgoswami.me>`_
 
-.. image:: ../../branding/logo/rgpot_logo.webp
+.. raw:: html
+
+   <p class="rgpot-hero">
+     <img class="rgpot-hero-logo rgpot-hero-logo--light"
+          src="_static/rgpot_logo_light.webp"
+          alt="rgpot logo"
+          width="320"
+          height="320"
+          loading="eager" />
+     <img class="rgpot-hero-logo rgpot-hero-logo--dark"
+          src="_static/rgpot_logo_dark.webp"
+          alt="rgpot logo"
+          width="320"
+          height="320"
+          loading="eager" />
+   </p>
 
 Overview
 --------

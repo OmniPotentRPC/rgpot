@@ -1,0 +1,43 @@
+/* Homepage hero: full logo with wordmark; swap light/dark variants via Shibuya
+   color-mode classes (html.light / html.dark). Fallback: prefers-color-scheme. */
+
+.rgpot-hero {
+  text-align: center;
+  margin: 0.5rem 0 1.25rem;
+}
+
+.rgpot-hero-logo {
+  display: none;
+  margin: 0 auto;
+  max-width: min(320px, 70vw);
+  height: auto;
+}
+
+/* Default / light: dark wordmark on light page */
+html.light .rgpot-hero-logo--light,
+html:not(.dark) .rgpot-hero-logo--light {
+  display: block;
+}
+
+html.dark .rgpot-hero-logo--light {
+  display: none;
+}
+
+html.dark .rgpot-hero-logo--dark {
+  display: block;
+}
+
+html.light .rgpot-hero-logo--dark,
+html:not(.dark) .rgpot-hero-logo--dark {
+  display: none;
+}
+
+/* Before Shibuya applies .light/.dark, honour system preference */
+@media (prefers-color-scheme: dark) {
+  html:not(.light):not(.dark) .rgpot-hero-logo--light {
+    display: none;
+  }
+  html:not(.light):not(.dark) .rgpot-hero-logo--dark {
+    display: block;
+  }
+}
