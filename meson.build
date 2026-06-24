@@ -166,6 +166,20 @@ if get_option('with_metatomic')
     # vesin neighbor list library
     vesin_dep = dependency('vesin', required: false)
     if not vesin_dep.found()
+        _vesin_incdir = run_command(
+            find_program('python3'), '-c',
+            'import os, vesin; print(os.path.join(os.path.dirname(vesin.__file__), "include"))',
+            check: true,
+        ).stdout().strip()
+        _vesin_libdir = run_command(
+            find_program('python3'), '-c',
+            'import os, vesin; print(os.path.join(os.path.dirname(vesin.__file__), "lib"))',
+            check: true,
+        ).stdout().strip()
+        vesin_dep = cppc.find_library('vesin', dirs: [_vesin_libdir], required: false)
+        _deps += declare_dependency(compile_args: ['-I' + _vesin_incdir])
+    endif
+    if not vesin_dep.found()
         vesin_dep = cppc.find_library('vesin')
     endif
     _deps += vesin_dep
@@ -189,6 +203,7 @@ endif
 
 if get_option('with_rust_core')
     cargo = find_program('cargo', required: true)
+    bash = find_program('bash', required: true)
 
     # Determine Cargo build profile and library name
     if get_option('buildtype') == 'release'
@@ -219,32 +234,25 @@ if get_option('with_rust_core')
     rgpot_rust_target = custom_target(
         'rgpot_rust_core',
         command: [
-            cargo,
-            _cargo_args,
-            '--manifest-path',
+            bash,
+            meson.current_source_dir() / 'scripts' / 'build_rgpot_core.sh',
             _rgpot_core_dir / 'Cargo.toml',
-            '--target-dir',
             meson.current_build_dir() / 'cargo-target',
+            _cargo_profile_dir,
+            '@OUTPUT@',
+            ','.join(_cargo_features),
         ],
         output: ['librgpot_core.a'],
         build_by_default: true,
         console: true,
     )
 
-    # Link the Rust static library
-    _rust_target_dir = meson.current_build_dir() / 'cargo-target' / _cargo_profile_dir
-    rgpot_rust_lib = cppc.find_library(
-        'rgpot_core',
-        dirs: [_rust_target_dir],
-        required: true,
-        static: true,
-    )
-
     # Thread and dl libraries needed by the Rust runtime
     thread_dep = dependency('threads')
     dl_dep = cppc.find_library('dl', required: false)
 
-    _deps += [rgpot_rust_lib, thread_dep, dl_dep]
+    _linkto += [rgpot_rust_target]
+    _deps += [thread_dep, dl_dep]
 
     # Include paths: generated C header + C++ RAII wrappers
     _incdirs += [

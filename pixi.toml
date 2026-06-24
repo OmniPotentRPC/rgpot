@@ -32,6 +32,10 @@ tblite = ">=0.3.0,<1"
 [feature.metatomic]
 platforms = ["linux-64"]
 
+[feature.metatomic.pypi-options]
+extra-index-urls = ["https://download.pytorch.org/whl/cpu"]
+index-strategy = "unsafe-best-match"
+
 [feature.metatomic.dependencies]
 
 [feature.metatomic.pypi-dependencies]

@@ -149,6 +149,11 @@ if get_option('with_tests')
         test_array += [
             ['MetatomicTest', 'metatomic_test', 'MetatomicPotTest.cc', '/CppCore/tests'],
         ]
+        if get_option('with_rust_core')
+            test_array += [
+                ['Metatomic C API Test', 'metatomic_capi_test', 'MetatomicCapiTest.cc', '/CppCore/tests'],
+            ]
+        endif
     endif
     if rpc_enabled
         test_deps += dependency('capnp-rpc')

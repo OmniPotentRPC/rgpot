@@ -17,6 +17,10 @@
 #include <stdlib.h>
 #include <dlpack/dlpack.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define RGPOT_VERSION "1.0.1"
 #define RGPOT_VERSION_MAJOR 1
 #define RGPOT_VERSION_MINOR 0
@@ -368,6 +372,10 @@ void rgpot_rpc_client_free(rgpot_rpc_client_t *client);
 enum rgpot_status_t rgpot_rpc_server_start(const rgpot_potential_t *pot,
                                            const char *host,
                                            uint16_t port);
+#endif
+
+#ifdef __cplusplus
+}  /* extern "C" */
 #endif
 
 #endif  /* RGPOT_H */

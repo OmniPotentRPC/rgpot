@@ -1,6 +1,7 @@
 metatomicpot = library(
     'metatomicpot',
     'MetatomicPot.cc',
+    'MetatomicCAPI.cc',
     dependencies: _deps,
     cpp_args: _args,
     link_with: _linkto,
