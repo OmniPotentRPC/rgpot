@@ -11,9 +11,10 @@ Overview
 --------
 
 ``rgpot`` provides a unified schema for interfacing potential servers across
-languages using runtime interoperability. It combines a Rust core with C++
-potentials exposed through a Cap'n Proto RPC layer, enabling language-agnostic
-access to potential energy surface calculations.
+languages using runtime interoperability.
+It combines a Rust core with C++ potentials exposed through a Cap'n Proto
+RPC layer, enabling language-agnostic access to potential energy surface
+calculations.
 
 .. code:: bash
 

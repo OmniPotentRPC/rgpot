@@ -326,6 +326,12 @@ data-aria-dark="Switch to auto color mode">
 </dd>
 </dl>
 </div></blockquote>
+<p>Canonical user-facing changelog is the repo-root <code class="docutils literal notranslate"><span class="pre">CHANGELOG.md</span></code> (Keep a
+Changelog, maintained by towncrier + <code class="docutils literal notranslate"><span class="pre">cog</span> <span class="pre">bump</span></code> hooks).
+This org file is a Sphinx/docs entry point only: it includes <code class="docutils literal notranslate"><span class="pre">CHANGELOG.md</span></code> and
+must not diverge as a second source of truth.
+Edit <code class="docutils literal notranslate"><span class="pre">docs/newsfragments/</span></code>, never hand-write <code class="docutils literal notranslate"><span class="pre">##</span> <span class="pre">[X.Y.Z]</span></code> sections above the
+towncrier marker.</p>
 <section id="changelog">
 <h2>Changelog<a class="headerlink" href="#changelog" title="Link to this heading">¶</a></h2>
 <p>All notable changes to this project will be documented in this file.</p>

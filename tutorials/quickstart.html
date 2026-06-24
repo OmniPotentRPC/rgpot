@@ -300,13 +300,17 @@ data-aria-dark="Switch to auto color mode">
 </div><article class="yue dark-code" role="main">
           <section id="quickstart">
 <h1>Quickstart<a class="headerlink" href="#quickstart" title="Link to this heading">¶</a></h1>
-<p>This tutorial walks through building rgpot from source, running a
-Lennard-Jones RPC server, and calling it from Python. By the end you will
-have a running potential server that any Cap’n Proto client can connect to.</p>
+<p>This tutorial walks through building rgpot from source, running a Lennard-Jones
+RPC server, and calling it from Python.
+By the end you will have a running potential server that any Cap’n Proto client
+can connect to.</p>
 <section id="what-you-will-need">
 <h2>What you will need<a class="headerlink" href="#what-you-will-need" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p><a class="reference external" href="https://prefix.dev/pixi">pixi</a> (manages the full toolchain; nothing else to install)</p></li>
+<li><p><a class="reference external" href="https://pixi.sh">pixi</a> (manages the full toolchain; nothing else</p></li>
+</ul>
+<p>to install)</p>
+<ul class="simple">
 <li><p>About 5 minutes</p></li>
 </ul>
 </section>
@@ -338,8 +342,8 @@ have a running potential server that any Cap’n Proto client can connect to.</p
 </section>
 <section id="start-an-rpc-server">
 <h2>Start an RPC server<a class="headerlink" href="#start-an-rpc-server" title="Link to this heading">¶</a></h2>
-<p>Open a second terminal (or use <code class="docutils literal notranslate"><span class="pre">&amp;</span></code>) and launch a Lennard-Jones server on
-port 12345:</p>
+<p>Open a second terminal (or use <code class="docutils literal notranslate"><span class="pre">&amp;</span></code>) and launch a Lennard-Jones server on port
+12345:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">pixi<span class="w"> </span>shell<span class="w">   </span><span class="c1"># if not already in the environment</span>
 </span><span data-line="2">./bbdir/CppCore/rgpot/rpc/potserv<span class="w"> </span><span class="m">12345</span><span class="w"> </span>LJ
 </span></pre></div>
@@ -385,20 +389,33 @@ calculation:</p>
 <section id="what-just-happened">
 <h2>What just happened<a class="headerlink" href="#what-just-happened" title="Link to this heading">¶</a></h2>
 <ol class="arabic simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">potserv</span></code> loaded the built-in Lennard-Jones potential and exposed it
-over Cap’n Proto RPC.</p></li>
-<li><p>The Python client connected, sent atomic positions, and received
-energy and forces back.</p></li>
-<li><p>The same wire protocol works from any language with a Cap’n Proto
-implementation (C++, Rust, Julia, Go, etc.).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">potserv</span></code> loaded the built-in Lennard-Jones potential and exposed it over Cap’n</p></li>
 </ol>
+<p>Proto RPC.</p>
+<ol class="arabic simple">
+<li><p>The Python client connected, sent atomic positions, and received energy and</p></li>
+</ol>
+<p>forces back.</p>
+<ol class="arabic simple">
+<li><p>The same wire protocol works from any language with a Cap’n Proto implementation</p></li>
+</ol>
+<p>(C++, Rust, Julia, Go, etc.).</p>
 </section>
 <section id="next-steps">
 <h2>Next steps<a class="headerlink" href="#next-steps" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p><a class="reference external" href="../reference/architecture.rst">Architecture overview</a> for the layer diagram and design rationale</p></li>
-<li><p><a class="reference external" href="../howto/integration.rst">Integration guide</a> for embedding rgpot into external projects (e.g. eOn)</p></li>
-<li><p><a class="reference external" href="../howto/embedding.rst">Embedding as a subproject</a> for using rgpot as a meson/cmake dependency</p></li>
+<li><p><a class="reference external" href="../reference/architecture.rst">Architecture overview</a> for the layer</p></li>
+</ul>
+<p>diagram and design rationale</p>
+<ul class="simple">
+<li><p><a class="reference external" href="../howto/integration.rst">Integration guide</a> for embedding rgpot into</p></li>
+</ul>
+<p>external projects (e.g. eOn)</p>
+<ul class="simple">
+<li><p><a class="reference external" href="../howto/embedding.rst">Embedding as a subproject</a> for using rgpot as a</p></li>
+</ul>
+<p>meson/cmake dependency</p>
+<ul class="simple">
 <li><p><a class="reference external" href="../changelog.rst">Changelog</a> for release history</p></li>
 </ul>
 </section>

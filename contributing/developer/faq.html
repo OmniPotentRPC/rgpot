@@ -309,37 +309,39 @@ data-aria-dark="Switch to auto color mode">
 <h1>Developer FAQ<a class="headerlink" href="#developer-faq" title="Link to this heading">¶</a></h1>
 <section id="why-is-cbindgen-behind-a-feature-flag">
 <h2>Why is cbindgen behind a feature flag?<a class="headerlink" href="#why-is-cbindgen-behind-a-feature-flag" title="Link to this heading">¶</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">cargo</span> <span class="pre">publish</span></code> forbids build scripts that modify the source directory. Since
-<code class="docutils literal notranslate"><span class="pre">cbindgen</span></code> writes <code class="docutils literal notranslate"><span class="pre">include/rgpot.h</span></code> into the crate tree, it must be opt-in. The
-committed header is the canonical copy; regenerate it with <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">r</span> <span class="pre">gen-header</span></code>
-when the public Rust API changes.</p>
+<p><code class="docutils literal notranslate"><span class="pre">cargo</span> <span class="pre">publish</span></code> forbids build scripts that modify the source directory.
+Since <code class="docutils literal notranslate"><span class="pre">cbindgen</span></code> writes <code class="docutils literal notranslate"><span class="pre">include/rgpot.h</span></code> into the crate tree, it must be opt-
+in.
+The committed header is the canonical copy; regenerate it with <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">r</span> <span class="pre">gen-</span> <span class="pre">header</span></code> when the public Rust API changes.</p>
 </section>
 <section id="why-is-the-cap-n-proto-schema-bundled">
 <h2>Why is the Cap’n Proto schema bundled?<a class="headerlink" href="#why-is-the-cap-n-proto-schema-bundled" title="Link to this heading">¶</a></h2>
-<p>The schema at <code class="docutils literal notranslate"><span class="pre">rgpot-core/schema/Potentials.capnp</span></code> is included in the crate so
-that the <code class="docutils literal notranslate"><span class="pre">rpc</span></code> feature works when installed from <code class="docutils literal notranslate"><span class="pre">crates.io</span></code>, where the
-monorepo’s <code class="docutils literal notranslate"><span class="pre">CppCore/</span></code> directory is not available. The <code class="docutils literal notranslate"><span class="pre">build.rs</span></code> tries the
-bundled copy first, then falls back to <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/rpc/Potentials.capnp</span></code> in
-the monorepo.</p>
+<p>The schema at <code class="docutils literal notranslate"><span class="pre">rgpot-core/schema/Potentials.capnp</span></code> is included in the crate
+so that the <code class="docutils literal notranslate"><span class="pre">rpc</span></code> feature works when installed from <code class="docutils literal notranslate"><span class="pre">crates.io</span></code>, where the
+monorepo’s <code class="docutils literal notranslate"><span class="pre">CppCore/</span></code> directory is not available.
+The <code class="docutils literal notranslate"><span class="pre">build.rs</span></code> tries the bundled copy first, then falls back to <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/</span> <span class="pre">rpc/Potentials.capnp</span></code> in the monorepo.</p>
 </section>
 <section id="why-is-the-crate-readme-in-org-mode">
 <h2>Why is the crate README in org-mode?<a class="headerlink" href="#why-is-the-crate-readme-in-org-mode" title="Link to this heading">¶</a></h2>
-<p>The source of truth is <code class="docutils literal notranslate"><span class="pre">rgpot-core/README.org</span></code>. It is exported to <code class="docutils literal notranslate"><span class="pre">README.md</span></code>
-via <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">r</span> <span class="pre">-e</span> <span class="pre">docs</span> <span class="pre">gen-readme</span></code> (which uses Emacs <code class="docutils literal notranslate"><span class="pre">ox-md</span></code>). The rendered
-markdown is committed and referenced by <code class="docutils literal notranslate"><span class="pre">Cargo.toml</span></code> for display on crates.io.
+<p>The source of truth is <code class="docutils literal notranslate"><span class="pre">rgpot-core/README.org</span></code>.
+It is exported to <code class="docutils literal notranslate"><span class="pre">README.md</span></code> via <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">r</span> <span class="pre">-e</span> <span class="pre">docs</span> <span class="pre">gen-readme</span></code> (which uses Emacs
+<code class="docutils literal notranslate"><span class="pre">ox-md</span></code>).
+The rendered markdown is committed and referenced by <code class="docutils literal notranslate"><span class="pre">Cargo.toml</span></code> for display
+on crates.io.
 Edit the <code class="docutils literal notranslate"><span class="pre">.org</span></code> file, then regenerate.</p>
 </section>
 <section id="how-do-i-add-a-new-pixi-environment">
 <h2>How do I add a new pixi environment?<a class="headerlink" href="#how-do-i-add-a-new-pixi-environment" title="Link to this heading">¶</a></h2>
 <p>Edit <code class="docutils literal notranslate"><span class="pre">pixi.toml</span></code>: add a feature section with its dependencies, then register it
-in <code class="docutils literal notranslate"><span class="pre">[environments]</span></code>. See the existing <code class="docutils literal notranslate"><span class="pre">rpctest</span></code> and <code class="docutils literal notranslate"><span class="pre">docs</span></code> features as examples.</p>
+in <code class="docutils literal notranslate"><span class="pre">[environments]</span></code>.
+See the existing <code class="docutils literal notranslate"><span class="pre">rpctest</span></code> and <code class="docutils literal notranslate"><span class="pre">docs</span></code> features as examples.</p>
 </section>
 <section id="where-does-the-rust-api-documentation-come-from">
 <h2>Where does the Rust API documentation come from?<a class="headerlink" href="#where-does-the-rust-api-documentation-come-from" title="Link to this heading">¶</a></h2>
 <p>The Sphinx extension <code class="docutils literal notranslate"><span class="pre">sphinxcontrib-rust</span></code> parses the Rust source directly
-(<code class="docutils literal notranslate"><span class="pre">rgpot-core/src/</span></code>) and generates RST during <code class="docutils literal notranslate"><span class="pre">sphinx-build</span></code>. The output goes to
-<code class="docutils literal notranslate"><span class="pre">docs/source/crates/rgpot_core/</span></code> and is included in the main documentation site
-alongside the C++ API reference.</p>
+(<code class="docutils literal notranslate"><span class="pre">rgpot-core/src/</span></code>) and generates RST during <code class="docutils literal notranslate"><span class="pre">sphinx-build</span></code>.
+The output goes to <code class="docutils literal notranslate"><span class="pre">docs/source/crates/rgpot_core/</span></code> and is included in the main
+documentation site alongside the C++ API reference.</p>
 </section>
 <section id="how-do-i-run-a-single-rust-test">
 <h2>How do I run a single Rust test?<a class="headerlink" href="#how-do-i-run-a-single-rust-test" title="Link to this heading">¶</a></h2>

@@ -207,7 +207,7 @@ data-aria-dark="Switch to auto color mode">
 <li><a class="reference internal" href="#common-tasks">Common Tasks</a></li>
 <li><a class="reference internal" href="#regenerating-the-c-header">Regenerating the C Header</a></li>
 <li><a class="reference internal" href="#building-documentation">Building Documentation</a></li>
-<li><a class="reference internal" href="#pre-commit-hooks">Pre-commit Hooks</a></li>
+<li><a class="reference internal" href="#git-hooks-prek">Git hooks (<code class="docutils literal notranslate"><span class="pre">prek</span></code>)</a></li>
 </ul>
 </div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/OmniPotentRPC/rgpot"
   data-type="github" data-user="OmniPotentRPC" data-repo="rgpot">
@@ -305,7 +305,8 @@ data-aria-dark="Switch to auto color mode">
 <p>This section covers the day-to-day development workflow for <code class="docutils literal notranslate"><span class="pre">rgpot</span></code>.</p>
 <section id="environment-setup">
 <h2>Environment Setup<a class="headerlink" href="#environment-setup" title="Link to this heading">¶</a></h2>
-<p>All development is managed through <a class="reference external" href="https://pixi.sh">pixi</a>. Install it first, then:</p>
+<p>All development is managed through <a class="reference external" href="https://pixi.sh">pixi</a>.
+Install it first, then:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">pixi<span class="w"> </span>install<span class="w">          </span><span class="c1"># default environment (build + test)</span>
 </span><span data-line="2">pixi<span class="w"> </span>shell<span class="w">            </span><span class="c1"># activate the environment</span>
 </span></pre></div>
@@ -367,14 +368,44 @@ data-aria-dark="Switch to auto color mode">
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">towncrier-build</span></code></p></td>
 <td><p>Write release notes into <code class="docutils literal notranslate"><span class="pre">CHANGELOG.md</span></code></p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">docbld</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">release-potctl</span></code> / <code class="docutils literal notranslate"><span class="pre">potctl</span></code></p></td>
+<td><p>Project CLI (<code class="docutils literal notranslate"><span class="pre">cargo</span> <span class="pre">run</span> <span class="pre">-p</span> <span class="pre">potctl</span> <span class="pre">--</span> <span class="pre">…</span></code>; <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">r</span> <span class="pre">release-potctl</span> <span class="pre">--</span> <span class="pre">release</span> <span class="pre">assert</span></code>)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">release-sync-versions</span></code></p></td>
+<td><p>Lockstep write (<code class="docutils literal notranslate"><span class="pre">potctl</span> <span class="pre">release</span> <span class="pre">sync</span></code>; <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">r</span> <span class="pre">release-sync-versions</span> <span class="pre">--</span> <span class="pre">1.2.3</span></code>)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">release-assert-lockstep</span></code></p></td>
+<td><p>Assert meson/cmake/cargo/towncrier/pixi agree (<code class="docutils literal notranslate"><span class="pre">potctl</span> <span class="pre">release</span> <span class="pre">assert</span></code>)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">release-extract-changelog</span></code></p></td>
+<td><p>One <code class="docutils literal notranslate"><span class="pre">CHANGELOG.md</span></code> section (<code class="docutils literal notranslate"><span class="pre">potctl</span> <span class="pre">release</span> <span class="pre">notes</span></code>; optional <code class="docutils literal notranslate"><span class="pre">-o</span></code>)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">release-towncrier-check</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">towncrier</span> <span class="pre">check</span></code> vs base (CI uses <code class="docutils literal notranslate"><span class="pre">towncrier.yml</span></code>)</p></td>
+</tr>
+<tr class="row-odd"><td><p>Cut release</p></td>
+<td><p>On <code class="docutils literal notranslate"><span class="pre">main</span></code>: <code class="docutils literal notranslate"><span class="pre">cog</span> <span class="pre">bump</span> <span class="pre">--auto</span></code> (cog 7+) then <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">push</span> <span class="pre">--follow-tags</span></code>; see <a class="reference external" href="release.rst">release.org</a></p></td>
+</tr>
+<tr class="row-even"><td><p>Potentials CI</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.github/workflows/potentials.yml</span></code> (xtb+tblite, metatomic/vesin)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">docbld</span></code></p></td>
 <td><p>Build full documentation (org export + Doxygen + Sphinx)</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">docdel</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">docdel</span></code></p></td>
 <td><p>Clean all generated documentation artifacts</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">gen-readme</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">gen-readme</span></code></p></td>
 <td><p>Export <code class="docutils literal notranslate"><span class="pre">rgpot-core/README.org</span></code> to <code class="docutils literal notranslate"><span class="pre">README.md</span></code> (docs env)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">snapper-check</span></code> / <code class="docutils literal notranslate"><span class="pre">snapper-fix</span></code></p></td>
+<td><p>Semantic line breaks (TurtleTech snapper; GHA <code class="docutils literal notranslate"><span class="pre">docs_quality.yml</span></code>)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">lychee-check</span></code></p></td>
+<td><p>Link audit with lychee (<code class="docutils literal notranslate"><span class="pre">.lychee.toml</span></code>; GHA <code class="docutils literal notranslate"><span class="pre">docs_quality.yml</span></code>)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">prek</span></code> / <code class="docutils literal notranslate"><span class="pre">prek-install</span></code> / <code class="docutils literal notranslate"><span class="pre">prek-validate</span></code></p></td>
+<td><p>Run / install / validate <code class="docutils literal notranslate"><span class="pre">prek.toml</span></code> hooks (GHA <code class="docutils literal notranslate"><span class="pre">prek.yml</span></code>)</p></td>
 </tr>
 </tbody>
 </table>
@@ -383,8 +414,9 @@ data-aria-dark="Switch to auto color mode">
 <section id="regenerating-the-c-header">
 <h2>Regenerating the C Header<a class="headerlink" href="#regenerating-the-c-header" title="Link to this heading">¶</a></h2>
 <p>The C header <code class="docutils literal notranslate"><span class="pre">rgpot-core/include/rgpot.h</span></code> is auto-generated by <code class="docutils literal notranslate"><span class="pre">cbindgen</span></code> from
-the Rust source. It is committed to the repository so C/C++ consumers always
-have a working copy. After changing the public Rust API:</p>
+the Rust source.
+It is committed to the repository so C/C++ consumers always have a working copy.
+After changing the public Rust API:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">pixi<span class="w"> </span>r<span class="w"> </span>gen-header
 </span><span data-line="2">git<span class="w"> </span>diff<span class="w"> </span>rgpot-core/include/rgpot.h<span class="w">  </span><span class="c1"># review changes</span>
 </span></pre></div>
@@ -393,7 +425,9 @@ have a working copy. After changing the public Rust API:</p>
 </section>
 <section id="building-documentation">
 <h2>Building Documentation<a class="headerlink" href="#building-documentation" title="Link to this heading">¶</a></h2>
-<p>Documentation is built with Sphinx and served at <a class="reference external" href="https://rgpot.rgoswami.me">rgpot.rgoswami.me</a>. It combines:</p>
+<p>Documentation is built with Sphinx and served at [[<a class="reference external" href="https://rgpot.rgoswami.me">https://rgpot.rgoswami.me</a>]
+[rgpot.rgoswami.me]].
+It combines:</p>
 <ul class="simple">
 <li><p><strong>Org-mode pages</strong> (this guide, architecture, changelog) exported to RST</p></li>
 <li><p><strong>C++ API reference</strong> generated by Doxygen + doxyrest</p></li>
@@ -409,12 +443,24 @@ have a working copy. After changing the public Rust API:</p>
 </span></pre></div>
 </div>
 </section>
-<section id="pre-commit-hooks">
-<h2>Pre-commit Hooks<a class="headerlink" href="#pre-commit-hooks" title="Link to this heading">¶</a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">uvx<span class="w"> </span>pre-commit<span class="w"> </span>run<span class="w"> </span>--all-files
+<section id="git-hooks-prek">
+<h2>Git hooks (<code class="docutils literal notranslate"><span class="pre">prek</span></code>)<a class="headerlink" href="#git-hooks-prek" title="Link to this heading">¶</a></h2>
+<p>Hooks are configured in <code class="docutils literal notranslate"><span class="pre">prek.toml</span></code> and run with <a class="reference external" href="https://prek.j178.dev">prek</a>
+(Rust drop-in for pre-commit).
+Prefer <code class="docutils literal notranslate"><span class="pre">prek</span></code> over <code class="docutils literal notranslate"><span class="pre">pre-commit</span></code> / <code class="docutils literal notranslate"><span class="pre">uvx</span> <span class="pre">pre-commit</span></code>.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1"># one-time: install shims into .git/hooks</span>
+</span><span data-line="2">pixi<span class="w"> </span>r<span class="w"> </span>prek-install<span class="w">   </span><span class="c1"># or: prek install</span>
+</span><span data-line="3">
+</span><span data-line="4"><span class="c1"># run all hooks on the whole tree (CI parity)</span>
+</span><span data-line="5">pixi<span class="w"> </span>r<span class="w"> </span>prek<span class="w">           </span><span class="c1"># or: prek run -a --config prek.toml</span>
+</span><span data-line="6">
+</span><span data-line="7"><span class="c1"># validate config only</span>
+</span><span data-line="8">pixi<span class="w"> </span>r<span class="w"> </span>prek-validate
 </span></pre></div>
 </div>
-<p>CI runs these automatically on every PR via <code class="docutils literal notranslate"><span class="pre">pipx</span> <span class="pre">run</span> <span class="pre">prek</span></code>.</p>
+<p>CI runs <code class="docutils literal notranslate"><span class="pre">prek</span> <span class="pre">run</span> <span class="pre">-a</span></code> on every PR via <code class="docutils literal notranslate"><span class="pre">.github/workflows/prek.yml</span></code>.
+Org docs also go through <code class="docutils literal notranslate"><span class="pre">snapper</span></code> (semantic line breaks); links are audited
+separately by the <code class="docutils literal notranslate"><span class="pre">docs_quality</span></code> workflow (<code class="docutils literal notranslate"><span class="pre">lychee</span></code>).</p>
 <blockquote>
 <div><div class="toctree-wrapper compound">
 <p class="caption" role="heading"><span class="caption-text">Details</span></p>

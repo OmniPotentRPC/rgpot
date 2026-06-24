@@ -3,8 +3,8 @@
 Embedding as a Subproject
 -------------------------
 
-This page covers how to embed rgpot into another C/C++ project using meson
-or cmake as a subproject dependency.
+This page covers how to embed rgpot into another C/C++ project using meson or
+cmake as a subproject dependency.
 
 Meson
 ~~~~~
@@ -15,8 +15,7 @@ Add a ``subprojects/rgpot.wrap`` file or vendor the source directly into
 Full library build (server + potentials)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Use this when your project hosts an RPC server with rgpot's built-in
-potentials:
+Use this when your project hosts an RPC server with rgpot's built-in potentials:
 
 .. code:: meson
 
@@ -40,10 +39,47 @@ or when you want to avoid namespace collisions with your own types (see
 The ``ptlrpc_dep`` provides only the Cap'n Proto schema and generated code,
 without pulling in ``Potential.hpp`` or the existing C++ potentials.
 
+Feature-gated potentials (Meson)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Optional backends are off by default so the core library stays lightweight.
+Enable only what the host project needs:
+
+.. table::
+
+    +---------------------------+-----------------------------+---------------------------------------+
+    | Meson option              | pixi env                    | Backend                               |
+    +===========================+=============================+=======================================+
+    | ``-Dwith_xtb=true``       | ``xtbbld`` / ``tbbld``      | ``XTBPot`` (GFNFF, GFN0/1/2-xTB)      |
+    +---------------------------+-----------------------------+---------------------------------------+
+    | ``-Dwith_tblite=true``    | ``tblitebld`` / ``tbbld``   | ``TBLitePot`` (GFN1, GFN2, IPEA1)     |
+    +---------------------------+-----------------------------+---------------------------------------+
+    | ``-Dwith_metatomic=true`` | ``metatomicbld`` (linux-64) | ``MetatomicPot`` (TorchScript models) |
+    +---------------------------+-----------------------------+---------------------------------------+
+
+Example -- embed with metatomic support:
+
+.. code:: meson
+
+    rgpot_proj = subproject('rgpot',
+        default_options: [
+          'with_rpc=true',
+          'with_metatomic=true',
+          'with_tests=false',
+        ])
+    rgpot_dep = rgpot_proj.get_variable('rgpot_dep')
+
+The metatomic path needs PyTorch (``Torch`` CMake package), ``metatensor_torch``,
+``metatomic_torch``, and ``vesin`` on the linker path.
+The Meson build supplements Torch CMake discovery with explicit ``-L`` /
+``-rpath`` / ``-ltorch_cpu`` taken from ``python3 -c 'import torch; ...'`` so
+``libtorch_cpu.so`` resolves under conda/pixi layouts.
+
 CMake
 ~~~~~
 
-rgpot also provides a CMake build. To use it as a subdirectory:
+rgpot also provides a CMake build.
+To use it as a subdirectory:
 
 .. code:: cmake
 
@@ -74,17 +110,20 @@ Build options
 Windows (MSVC)
 ~~~~~~~~~~~~~~
 
-rgpot builds on Windows with MSVC 2022. Install Cap'n Proto via
-conda-forge or vcpkg, then use the standard meson or cmake workflow. No
-special flags are required since v1.0.3.
+rgpot builds on Windows with MSVC 2022.
+Install Cap'n Proto via conda-forge or vcpkg, then use the standard meson or
+cmake workflow.
+No special flags are required since v1.0.3.
 
-For conda-forge builds, the following are handled automatically by the
-build system:
+For conda-forge builds, the following are handled automatically by the build
+system:
 
-- ``capnp compile`` is used instead of ``capnpc`` (the Windows ``capnpc.EXE``
-  does not support the ``-o`` flag)
+- ``capnp compile`` is used instead of ``capnpc`` (the Windows ``capnpc.EXE`` does not
 
-- Generated ``.c++`` files are renamed to ``.cpp`` (MSVC does not recognize
-  the ``.c++`` extension)
+support the ``-o`` flag)
+
+- Generated ``.c++`` files are renamed to ``.cpp`` (MSVC does not recognize the =.c+
+
++= extension)
 
 - ``ws2_32`` is linked for Cap'n Proto's async networking layer

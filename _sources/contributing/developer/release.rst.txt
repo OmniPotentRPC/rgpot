@@ -3,68 +3,254 @@
 Release Process
 ---------------
 
-Changelog Fragments
+rgpot uses a **lockstep monorepo version**: the same SemVer appears in
+``meson.build``, ``CMakeLists.txt`` (``project(VERSION ...)``), ``rgpot-core/ Cargo.toml``, ``towncrier.toml``, and ``pixi.toml`` (workspace key only — not
+dependency pins such as nickel).
+Git tags are ``vX.Y.Z`` (see ``cog.toml`` ``tag_prefix``).
+Pre-release tags such as ``v1.2.0-rc.1`` are allowed; ``release.yml`` marks the
+GitHub Release as prerelease and **skips** ``cargo publish`` (stable crates.io
+only).
+
+Requires `cocogitto <https://docs.cocogitto.io>`_ **7+** locally and in CI
+(``release-prepare.yml`` installs 7.0.0), plus a normal Rust toolchain so ``potctl``
+(``potctl/`` workspace crate; ``cargo run -p potctl -- …``) can run lockstep
+commands.
+CI builds ``target/release/potctl`` in ``release.yml`` / ``release-prepare.yml``.
+Do **not** hand-edit a ``## [X.Y.Z]`` section above the towncrier marker; fragments
+under ``docs/newsfragments/`` are the only input for the next release notes block.
+
+**Canonical changelog**: repository-root ``CHANGELOG.md`` (towncrier).
+``docs/orgmode/changelog.org`` only includes that file for Sphinx; do not maintain
+a second prose changelog.
+
+Tooling:
+
+.. table::
+
+    +-------------------------------------------------------+---------------------------------------------------------------------------------------------------------+
+    | Tool                                                  | Role                                                                                                    |
+    +=======================================================+=========================================================================================================+
+    | `cocogitto <https://docs.cocogitto.io>`_ (``cog``) 7+ | Conventional-commit aware bump, version commit, annotated tag                                           |
+    +-------------------------------------------------------+---------------------------------------------------------------------------------------------------------+
+    | `towncrier <https://towncrier.readthedocs.io>`_       | Curated ``CHANGELOG.md`` from ``docs/newsfragments/``                                                   |
+    +-------------------------------------------------------+---------------------------------------------------------------------------------------------------------+
+    | ``potctl`` (``potctl/``, ``publish = false``)         | Project CLI: ``release sync`` / ``release assert`` / ``release notes``                                  |
+    +-------------------------------------------------------+---------------------------------------------------------------------------------------------------------+
+    | ``.github/actions/setup-ci-tools``                    | Build ``potctl`` (+ optional ``cog``) once with ``Swatinem/rust-cache``; optional artifact upload       |
+    +-------------------------------------------------------+---------------------------------------------------------------------------------------------------------+
+    | ``.github/actions/restore-ci-tools``                  | Later jobs/runners: download ``ci-tools`` artifact, put ``bin/`` on ``PATH`` (no second cargo build)    |
+    +-------------------------------------------------------+---------------------------------------------------------------------------------------------------------+
+    | ``.github/workflows/release.yml``                     | Staged on ``v*``: ``tools`` → ``gate`` → (``cpp-smoke`` ∥ ``rust-test``) → ``publish`` → ``gh-release`` |
+    +-------------------------------------------------------+---------------------------------------------------------------------------------------------------------+
+    | ``.github/workflows/release-prepare.yml``             | Staged: ``tools`` (``potctl=+=cog`` artifact) → ``prepare`` (lockstep, towncrier, cog dry-run)          |
+    +-------------------------------------------------------+---------------------------------------------------------------------------------------------------------+
+    | ``.github/workflows/towncrier.yml``                   | ``towncrier check`` on PRs touching shipped surfaces                                                    |
+    +-------------------------------------------------------+---------------------------------------------------------------------------------------------------------+
+    | ``.github/workflows/potentials.yml``                  | Feature-gated C++ backends (xtb+tblite, metatomic/vesin) on PRs                                         |
+    +-------------------------------------------------------+---------------------------------------------------------------------------------------------------------+
+    | ``SECURITY.md``                                       | Supported versions + private report path                                                                |
+    +-------------------------------------------------------+---------------------------------------------------------------------------------------------------------+
+    | ``.github/CODEOWNERS``                                | Release-surface review hints (enable on branch protection)                                              |
+    +-------------------------------------------------------+---------------------------------------------------------------------------------------------------------+
+
+**Secrets / protection (maintainer, once per repo)**:
+
+- Repository secret ``CARGO_REGISTRY_TOKEN`` for ``release.yml`` ``cargo publish``.
+
+- Optional GitHub Environment named ``release`` with required reviewers (workflow
+
+references ``environment: release``; create under Settings > Environments).
+
+- Prefer **signed tags** when cutting locally: ``git tag -s vX.Y.Z`` (or ensure ``cog``
+
+produces signed tags if configured).
+GHA does not replace maintainer GPG.
+
+**C++ distribution note**: tag/source is the C++ contract; ``release.yml`` runs a
+minimal ``meson install`` smoke.
+Optional backends (xtb/tblite/metatomic) are validated on PRs via
+``potentials.yml``, not re-run on every tag. conda-forge / Spack / system packages
+are **out of band** (separate feedstock/PR track), not part of ``release.yml``.
+
+Changelog fragments
 ~~~~~~~~~~~~~~~~~~~
 
-We use `towncrier <https://towncrier.readthedocs.io>`_ to manage release notes. Each PR that affects users should
-include a *news fragment* in the ``docs/newsfragments/`` directory:
+Each user-facing PR should add a fragment under ``docs/newsfragments/`` (one
+fragment per user-visible change; see ``docs/newsfragments/README.md``):
 
 .. code:: bash
 
-    # Create a fragment interactively
-    uvx towncrier create --content "Added DLPack tensor support to the Rust core." +mychange.rustcore.added.md
+    uvx towncrier create --content "Short user-facing note." 42.added.md
+    # or interactive:
+    uvx towncrier create
 
-The pre-commit hook checks for fragments automatically.
+Types (see ``towncrier.toml``): ``security``, ``removed``, ``deprecated``, ``added``,
+``dev``, ``changed``, ``fixed``, ``misc``.
+Preview with ``uvx towncrier build --draft`` or ``pixi r towncrier-draft`` if
+defined.
 
-Preview and Build Release Notes
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+CI runs ``towncrier check`` on pull requests when shipped paths change
+(``towncrier.yml`` includes ``CppCore/``, ``rgpot-core/``, meson, ``CMakeLists.txt``,
+``pixi.toml``, release scripts, etc.).
+Pure ``docs`` / ``ci`` / ``chore`` commits may omit fragments if they avoid those
+paths.
+
+Preparing a release (maintainer) — run as soon as this lands on ``main``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+1. Ensure ``main`` is green (build matrix, ``prek``, ``docs_quality``, potentials if
+
+relevant).
+
+1. Confirm fragments exist for everything since the last tag (=uvx towncrier build
+
+--draft=).
+
+1. Local sanity:
+
+   .. code:: bash
+
+       cargo run -q -p potctl -- release assert
+       cargo publish --manifest-path rgpot-core/Cargo.toml --locked --dry-run
+
+2. Dry-run bump (optional; also GHA ``workflow_dispatch`` on ``release-prepare.yml``):
+
+   .. code:: bash
+
+       cog bump --auto --dry-run
+       # or: --patch / --minor / --major / --version 1.2.0
+
+3. Cut the release **locally** (needs push rights; does **not** publish to crates.io by
+
+itself — the tag workflow does):
 
 .. code:: bash
 
-    pixi r towncrier-draft   # preview without writing
-    pixi r towncrier-build   # write to CHANGELOG.md and remove fragments
+    # Stable 1.2.0 example (first cut after lockstep PR merges with versions at 1.2.0):
+    cog bump --version 1.2.0
+    # or let cog compute from conventional commits since last tag:
+    # cog bump --auto
+    git push origin HEAD --follow-tags
 
-Publishing the Rust Crate
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Hooks (``cog.toml`` ``pre_bump_hooks``):
 
-The ``rgpot-core`` crate is published to `crates.io <https://crates.io/crates/rgpot-core>`_. Before publishing:
+- ``cargo run -q -p potctl -- release sync {{version}}`` — lockstep write (meson,
 
-1. Ensure all tests pass:
+CMake, towncrier, Cargo, pixi workspace)
 
-   .. code:: bash
+- ``uvx towncrier build --yes --version {{version}}`` — update ``CHANGELOG.md``, clear
 
-       pixi r rust-test-all
-       cargo test --doc --manifest-path rgpot-core/Cargo.toml
+fragments
 
-2. Verify packaging:
+- ``cargo run -q -p potctl -- release assert --require-changelog {{version}}``
 
-   .. code:: bash
+— gate
 
-       cargo publish --dry-run --manifest-path rgpot-core/Cargo.toml
+1. Tag push triggers ``release.yml`` (staged, not one fat job):
 
-3. Bump the version in ``rgpot-core/Cargo.toml``.
+   - ``tools`` job: ``setup-ci-tools`` builds ``potctl`` (rust-cache ``shared-key`` =potctl-
 
-4. Regenerate the README (if changed):
+ci-tools=) and uploads artifact ``ci-tools-<sha>``
 
-   .. code:: bash
+- ``gate`` job: ``restore-ci-tools`` only — =potctl release assert --require-
 
-       pixi r -e docs gen-readme
+changelog=, ``release notes`` → artifact ``release-notes-<sha>`` (fail fast before
+matrix work)
 
-5. Build release notes:
+- ``cpp-smoke`` ∥ ``rust-test`` (parallel; only need green ``gate``)
 
-   .. code:: bash
+- ``publish`` (stable tags only) then ``gh-release`` (body from gate artifact; RC
 
-       pixi r towncrier-build
+``prerelease``)
 
-6. Commit and tag:
+Within a single job, steps share the runner FS (no reinstall per step).
+Across jobs, binaries travel via artifacts; ``cargo=/deps hit =Swatinem/rust- cache`` on tool and ``rgpot-core`` runners so the next tag cut is cheap when
+sources are unchanged.
 
-   .. code:: bash
+Do **not** run ``cargo publish`` by hand unless CI is unavailable; the workflow is
+the source of truth.
+Do **not** use ``cargo publish`` without ``--locked`` (lockfile drift must fail the
+release).
 
-       git commit -am "Release rgpot-core v0.x.y"
-       git tag rgpot-core-v0.x.y
+Pre-release / RC tags
+~~~~~~~~~~~~~~~~~~~~~
 
-7. Publish:
+.. code:: bash
 
-   .. code:: bash
+    cog bump --version 1.2.0-rc.1
+    git push origin HEAD --follow-tags
 
-       cargo publish --manifest-path rgpot-core/Cargo.toml
+- Creates ``v1.2.0-rc.1``, builds towncrier section for ``1.2.0-rc.1`` if fragments
+
+exist.
+
+- ``release.yml`` creates a **prerelease** GitHub Release and **does not** publish to
+
+crates.io (avoid yanking/stable pollution).
+
+- Promote by a normal stable bump to ``1.2.0`` with a full fragment set if needed.
+
+Version policy
+~~~~~~~~~~~~~~
+
+- **Lockstep**: C++ (meson + CMake), Rust crate (``rgpot-core``), docs towncrier
+
+stamp, and pixi workspace version share one semver (optionally with ``-[a-z0- 9.]+`` suffix for RCs).
+
+- **One global tag**: ``vX.Y.Z`` or ``vX.Y.Z-rc.N`` (not ``rgpot-core-v…``).
+
+- **Crate publish** ships ``rgpot-core`` only on **stable** tags; C++ consumers track
+
+the git tag / source tarball, not crates.io.
+
+Emergency / hotfixes
+~~~~~~~~~~~~~~~~~~~~
+
+.. code:: bash
+
+    cog bump --patch
+    git push origin HEAD --follow-tags
+
+For a named version:
+
+.. code:: bash
+
+    cog bump --version 1.1.1
+
+Local checks before bump
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: bash
+
+    pixi r rust-test-all
+    pixi r prek
+    uvx towncrier build --draft
+    cargo run -q -p potctl -- release assert
+    cargo run -q -p potctl -- release sync 9.9.9   # ok semver; use real target in dry tests
+    # refuse garbage:
+    cargo run -q -p potctl -- release sync not-a-version   # must error
+    # restore if you ran a fake version: git checkout -- meson.build CMakeLists.txt ...
+    cargo publish --manifest-path rgpot-core/Cargo.toml --locked --dry-run
+    pixi r lychee-check   # optional link hygiene
+
+Post-merge checklist (first 1.2.0 cut)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+1. Merge the lockstep/release-machinery PR to ``main`` (versions may already read
+
+``1.2.0``).
+
+1. Ensure ``rustc`` / ``cargo`` work (same as building ``rgpot-core``).
+
+2. On ``main``: ``cog bump --version 1.2.0`` (or ``--auto`` if you want cog to decide).
+
+This runs ``potctl release sync``, ``towncrier build`` (so ``CHANGELOG.md`` gains
+``## [1.2.0]`` and fragments are cleared), then ``potctl release assert --require- changelog``.
+
+1. ``git push origin main --follow-tags`` (or push commit then ``v1.2.0`` explicitly).
+
+2. Confirm ``Release`` workflow: lockstep gate, smoke install, rust tests, crates.io,
+
+GH Release body.
+
+1. Optional: announce; open conda-forge/Spack bumps out of band if applicable.

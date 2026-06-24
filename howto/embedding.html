@@ -206,6 +206,7 @@ data-aria-dark="Switch to auto color mode">
 <li><a class="reference internal" href="#meson">Meson</a><ul>
 <li><a class="reference internal" href="#full-library-build-server-potentials">Full library build (server + potentials)</a></li>
 <li><a class="reference internal" href="#rpc-schema-only-client-mode">RPC schema only (client mode)</a></li>
+<li><a class="reference internal" href="#feature-gated-potentials-meson">Feature-gated potentials (Meson)</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#cmake">CMake</a><ul>
@@ -303,16 +304,15 @@ data-aria-dark="Switch to auto color mode">
 </div><article class="yue dark-code" role="main">
           <section id="embedding-as-a-subproject">
 <h1>Embedding as a Subproject<a class="headerlink" href="#embedding-as-a-subproject" title="Link to this heading">¶</a></h1>
-<p>This page covers how to embed rgpot into another C/C++ project using meson
-or cmake as a subproject dependency.</p>
+<p>This page covers how to embed rgpot into another C/C++ project using meson or
+cmake as a subproject dependency.</p>
 <section id="meson">
 <h2>Meson<a class="headerlink" href="#meson" title="Link to this heading">¶</a></h2>
 <p>Add a <code class="docutils literal notranslate"><span class="pre">subprojects/rgpot.wrap</span></code> file or vendor the source directly into
 <code class="docutils literal notranslate"><span class="pre">subprojects/rgpot/</span></code>.</p>
 <section id="full-library-build-server-potentials">
 <h3>Full library build (server + potentials)<a class="headerlink" href="#full-library-build-server-potentials" title="Link to this heading">¶</a></h3>
-<p>Use this when your project hosts an RPC server with rgpot’s built-in
-potentials:</p>
+<p>Use this when your project hosts an RPC server with rgpot’s built-in potentials:</p>
 <div class="highlight-meson notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">rgpot_proj</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">subproject</span><span class="p">(</span><span class="s">&#39;rgpot&#39;</span><span class="p">,</span>
 </span><span data-line="2"><span class="w">    </span><span class="n">default_options</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s">&#39;with_rpc=true&#39;</span><span class="p">,</span><span class="w"> </span><span class="s">&#39;with_tests=false&#39;</span><span class="p">])</span>
 </span><span data-line="3"><span class="n">rgpot_dep</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rgpot_proj</span><span class="p">.</span><span class="n">get_variable</span><span class="p">(</span><span class="s">&#39;rgpot_dep&#39;</span><span class="p">)</span>
@@ -332,10 +332,55 @@ or when you want to avoid namespace collisions with your own types (see
 <p>The <code class="docutils literal notranslate"><span class="pre">ptlrpc_dep</span></code> provides only the Cap’n Proto schema and generated code,
 without pulling in <code class="docutils literal notranslate"><span class="pre">Potential.hpp</span></code> or the existing C++ potentials.</p>
 </section>
+<section id="feature-gated-potentials-meson">
+<h3>Feature-gated potentials (Meson)<a class="headerlink" href="#feature-gated-potentials-meson" title="Link to this heading">¶</a></h3>
+<p>Optional backends are off by default so the core library stays lightweight.
+Enable only what the host project needs:</p>
+<div class="table-wrapper docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Meson option</p></th>
+<th class="head"><p>pixi env</p></th>
+<th class="head"><p>Backend</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">-Dwith_xtb=true</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">xtbbld</span></code> / <code class="docutils literal notranslate"><span class="pre">tbbld</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">XTBPot</span></code> (GFNFF, GFN0/1/2-xTB)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">-Dwith_tblite=true</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tblitebld</span></code> / <code class="docutils literal notranslate"><span class="pre">tbbld</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">TBLitePot</span></code> (GFN1, GFN2, IPEA1)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">-Dwith_metatomic=true</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">metatomicbld</span></code> (linux-64)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">MetatomicPot</span></code> (TorchScript models)</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Example – embed with metatomic support:</p>
+<div class="highlight-meson notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">rgpot_proj</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">subproject</span><span class="p">(</span><span class="s">&#39;rgpot&#39;</span><span class="p">,</span>
+</span><span data-line="2"><span class="w">    </span><span class="n">default_options</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+</span><span data-line="3"><span class="w">      </span><span class="s">&#39;with_rpc=true&#39;</span><span class="p">,</span>
+</span><span data-line="4"><span class="w">      </span><span class="s">&#39;with_metatomic=true&#39;</span><span class="p">,</span>
+</span><span data-line="5"><span class="w">      </span><span class="s">&#39;with_tests=false&#39;</span><span class="p">,</span>
+</span><span data-line="6"><span class="w">    </span><span class="p">])</span>
+</span><span data-line="7"><span class="n">rgpot_dep</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rgpot_proj</span><span class="p">.</span><span class="n">get_variable</span><span class="p">(</span><span class="s">&#39;rgpot_dep&#39;</span><span class="p">)</span>
+</span></pre></div>
+</div>
+<p>The metatomic path needs PyTorch (<code class="docutils literal notranslate"><span class="pre">Torch</span></code> CMake package), <code class="docutils literal notranslate"><span class="pre">metatensor_torch</span></code>,
+<code class="docutils literal notranslate"><span class="pre">metatomic_torch</span></code>, and <code class="docutils literal notranslate"><span class="pre">vesin</span></code> on the linker path.
+The Meson build supplements Torch CMake discovery with explicit <code class="docutils literal notranslate"><span class="pre">-L</span></code> /
+<code class="docutils literal notranslate"><span class="pre">-rpath</span></code> / <code class="docutils literal notranslate"><span class="pre">-ltorch_cpu</span></code> taken from <code class="docutils literal notranslate"><span class="pre">python3</span> <span class="pre">-c</span> <span class="pre">'import</span> <span class="pre">torch;</span> <span class="pre">...'</span></code> so
+<code class="docutils literal notranslate"><span class="pre">libtorch_cpu.so</span></code> resolves under conda/pixi layouts.</p>
+</section>
 </section>
 <section id="cmake">
 <h2>CMake<a class="headerlink" href="#cmake" title="Link to this heading">¶</a></h2>
-<p>rgpot also provides a CMake build. To use it as a subdirectory:</p>
+<p>rgpot also provides a CMake build.
+To use it as a subdirectory:</p>
 <div class="highlight-cmake notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="nb">add_subdirectory</span><span class="p">(</span><span class="s">external/rgpot</span><span class="p">)</span>
 </span><span data-line="2"><span class="nb">target_link_libraries</span><span class="p">(</span><span class="s">my_target</span><span class="w"> </span><span class="s">PRIVATE</span><span class="w"> </span><span class="s">rgpot::rgpot</span><span class="p">)</span>
 </span></pre></div>
@@ -375,16 +420,21 @@ without pulling in <code class="docutils literal notranslate"><span class="pre">
 </section>
 <section id="windows-msvc">
 <h2>Windows (MSVC)<a class="headerlink" href="#windows-msvc" title="Link to this heading">¶</a></h2>
-<p>rgpot builds on Windows with MSVC 2022. Install Cap’n Proto via
-conda-forge or vcpkg, then use the standard meson or cmake workflow. No
-special flags are required since v1.0.3.</p>
-<p>For conda-forge builds, the following are handled automatically by the
-build system:</p>
+<p>rgpot builds on Windows with MSVC 2022.
+Install Cap’n Proto via conda-forge or vcpkg, then use the standard meson or
+cmake workflow.
+No special flags are required since v1.0.3.</p>
+<p>For conda-forge builds, the following are handled automatically by the build
+system:</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">capnp</span> <span class="pre">compile</span></code> is used instead of <code class="docutils literal notranslate"><span class="pre">capnpc</span></code> (the Windows <code class="docutils literal notranslate"><span class="pre">capnpc.EXE</span></code>
-does not support the <code class="docutils literal notranslate"><span class="pre">-o</span></code> flag)</p></li>
-<li><p>Generated <code class="docutils literal notranslate"><span class="pre">.c++</span></code> files are renamed to <code class="docutils literal notranslate"><span class="pre">.cpp</span></code> (MSVC does not recognize
-the <code class="docutils literal notranslate"><span class="pre">.c++</span></code> extension)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">capnp</span> <span class="pre">compile</span></code> is used instead of <code class="docutils literal notranslate"><span class="pre">capnpc</span></code> (the Windows <code class="docutils literal notranslate"><span class="pre">capnpc.EXE</span></code> does not</p></li>
+</ul>
+<p>support the <code class="docutils literal notranslate"><span class="pre">-o</span></code> flag)</p>
+<ul class="simple">
+<li><p>Generated <code class="docutils literal notranslate"><span class="pre">.c++</span></code> files are renamed to <code class="docutils literal notranslate"><span class="pre">.cpp</span></code> (MSVC does not recognize the =.c+</p></li>
+</ul>
+<p>+= extension)</p>
+<ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">ws2_32</span></code> is linked for Cap’n Proto’s async networking layer</p></li>
 </ul>
 </section>

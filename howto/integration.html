@@ -319,25 +319,28 @@ data-aria-dark="Switch to auto color mode">
           <section id="external-integration-guide">
 <h1>External Integration Guide<a class="headerlink" href="#external-integration-guide" title="Link to this heading">¶</a></h1>
 <p>This guide describes how to integrate <code class="docutils literal notranslate"><span class="pre">rgpot</span></code> into external codebases,
-particularly legacy projects with their own type systems. It covers the
-namespace collision problem, the recommended mitigation strategies, and a
-worked example using <a class="reference external" href="https://github.com/TheochemUI/eOn">eOn</a> as a concrete case study.</p>
+particularly legacy projects with their own type systems.
+It covers the namespace collision problem, the recommended mitigation
+strategies, and a worked example using [[<a class="reference external" href="https://github.com/TheochemUI/eOn">https://github.com/TheochemUI/eOn</a>]
+[eOn]] as a concrete case study.</p>
 <section id="the-namespace-collision-problem">
 <h2>The Namespace Collision Problem<a class="headerlink" href="#the-namespace-collision-problem" title="Link to this heading">¶</a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">rgpot</span></code> defines two names that are common in atomistic simulation codebases:</p>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">AtomMatrix</span></code></dt><dd><p>A lightweight row-major matrix class in
-<code class="docutils literal notranslate"><span class="pre">rgpot::types::AtomMatrix</span></code>. However, <code class="docutils literal notranslate"><span class="pre">Potential.hpp</span></code> contains a
-top-level <code class="docutils literal notranslate"><span class="pre">using</span> <span class="pre">rgpot::types::AtomMatrix;</span></code> directive (line 30) that
-pulls this name into the global scope of any translation unit that
-includes the header.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">Potential</span></code></dt><dd><p>The Cap’n Proto schema (<code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code>) defines
-<code class="docutils literal notranslate"><span class="pre">interface</span> <span class="pre">Potential</span></code>, which the capnp compiler generates as a global
-<code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">Potential</span></code>. This collides with any consumer that defines its own
-<code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">Potential</span></code> at global scope.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">AtomMatrix</span></code></dt><dd><p>A lightweight row-major matrix class in</p>
 </dd>
 </dl>
+<p><code class="docutils literal notranslate"><span class="pre">rgpot::types::AtomMatrix</span></code>.
+However, <code class="docutils literal notranslate"><span class="pre">Potential.hpp</span></code> contains a top-level <code class="docutils literal notranslate"><span class="pre">using</span> <span class="pre">rgpot::types::AtomMatrix;</span></code>
+directive (line 30) that pulls this name into the global scope of any
+translation unit that includes the header.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">Potential</span></code></dt><dd><p>The Cap’n Proto schema (<code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code>) defines =interface</p>
+</dd>
+</dl>
+<p>Potential=, which the capnp compiler generates as a global <code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">Potential</span></code>.
+This collides with any consumer that defines its own <code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">Potential</span></code> at global
+scope.</p>
 <p>Both names are extremely common in computational chemistry codebases.
 For example, <a class="reference external" href="https://github.com/TheochemUI/eOn">eOn</a> defines:</p>
 <dl class="simple">
@@ -346,8 +349,8 @@ For example, <a class="reference external" href="https://github.com/TheochemUI/e
 <dt><code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">Potential</span></code></dt><dd><p>The base class for all eOn potential energy surfaces.</p>
 </dd>
 </dl>
-<p>Including both eOn and rgpot headers in the same translation unit produces
-hard compilation errors from the conflicting definitions.</p>
+<p>Including both eOn and rgpot headers in the same translation unit produces hard
+compilation errors from the conflicting definitions.</p>
 <section id="root-cause">
 <h3>Root Cause<a class="headerlink" href="#root-cause" title="Link to this heading">¶</a></h3>
 <p>The collision stems from two issues:</p>
@@ -358,15 +361,14 @@ hard compilation errors from the conflicting definitions.</p>
 </span><span data-line="2"><span class="k">using</span> <span class="n">rgpot</span><span class="o">::</span><span class="n">types</span><span class="o">::</span><span class="n">AtomMatrix</span><span class="p">;</span>
 </span></pre></div>
 </div>
-<p>This leaks <code class="docutils literal notranslate"><span class="pre">AtomMatrix</span></code> into the global namespace for any downstream
-consumer. The <code class="docutils literal notranslate"><span class="pre">PotentialBase</span></code> class itself is correctly inside
-<code class="docutils literal notranslate"><span class="pre">namespace</span> <span class="pre">rgpot</span></code>, but the <code class="docutils literal notranslate"><span class="pre">using</span></code> directive precedes the namespace block.</p>
+<p>This leaks <code class="docutils literal notranslate"><span class="pre">AtomMatrix</span></code> into the global namespace for any downstream consumer.
+The <code class="docutils literal notranslate"><span class="pre">PotentialBase</span></code> class itself is correctly inside <code class="docutils literal notranslate"><span class="pre">namespace</span> <span class="pre">rgpot</span></code>, but the
+<code class="docutils literal notranslate"><span class="pre">using</span></code> directive precedes the namespace block.</p>
 <ol class="arabic simple">
-<li><p>Cap’n Proto code generation does not namespace its output. The</p></li>
+<li><p>Cap’n Proto code generation does not namespace its output.</p></li>
 </ol>
-<p><code class="docutils literal notranslate"><span class="pre">interface</span> <span class="pre">Potential</span></code> in <code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code> produces a top-level
-<code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">Potential</span></code> in the generated C++ header. This is a constraint of
-the capnp compiler rather than an rgpot design choice.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">interface</span> <span class="pre">Potential</span></code> in <code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code> produces a top-level <code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">Potential</span></code> in the generated C++ header.
+This is a constraint of the capnp compiler rather than an rgpot design choice.</p>
 </section>
 </section>
 <section id="mitigation-strategies">
@@ -386,14 +388,14 @@ the capnp compiler rather than an rgpot design choice.</p>
 </span></pre></div>
 </div>
 <p>This is a backward-compatible change for any code that already qualifies
-<code class="docutils literal notranslate"><span class="pre">rgpot::PotentialBase</span></code> or <code class="docutils literal notranslate"><span class="pre">rgpot::Potential&lt;D&gt;</span></code>. Code that relied on the
-global <code class="docutils literal notranslate"><span class="pre">AtomMatrix</span></code> leak would need to switch to <code class="docutils literal notranslate"><span class="pre">rgpot::types::AtomMatrix</span></code>
-or add its own <code class="docutils literal notranslate"><span class="pre">using</span></code> inside its own namespace.</p>
+<code class="docutils literal notranslate"><span class="pre">rgpot::PotentialBase</span></code> or <code class="docutils literal notranslate"><span class="pre">rgpot::Potential&lt;D&gt;</span></code>.
+Code that relied on the global <code class="docutils literal notranslate"><span class="pre">AtomMatrix</span></code> leak would need to switch to
+<code class="docutils literal notranslate"><span class="pre">rgpot::types::AtomMatrix</span></code> or add its own <code class="docutils literal notranslate"><span class="pre">using</span></code> inside its own namespace.</p>
 </section>
 <section id="strategy-2-namespace-the-consumer-s-types">
 <h3>Strategy 2: Namespace the consumer’s types<a class="headerlink" href="#strategy-2-namespace-the-consumer-s-types" title="Link to this heading">¶</a></h3>
-<p>If the consuming codebase can be refactored, placing its types inside a
-project namespace eliminates collisions entirely:</p>
+<p>If the consuming codebase can be refactored, placing its types inside a project
+namespace eliminates collisions entirely:</p>
 <div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1">// Instead of global scope:</span>
 </span><span data-line="2"><span class="k">class</span> <span class="n">Potential</span> <span class="p">{</span> <span class="p">...</span> <span class="p">};</span>
 </span><span data-line="3"><span class="k">using</span> <span class="n">AtomMatrix</span> <span class="o">=</span> <span class="n">Eigen</span><span class="o">::</span><span class="n">Matrix</span><span class="o">&lt;</span><span class="kt">double</span><span class="p">,</span> <span class="n">Eigen</span><span class="o">::</span><span class="n">Dynamic</span><span class="p">,</span> <span class="mi">3</span><span class="o">&gt;</span><span class="p">;</span>
@@ -405,8 +407,8 @@ project namespace eliminates collisions entirely:</p>
 </span><span data-line="9"><span class="p">}</span> <span class="c1">// namespace eon</span>
 </span></pre></div>
 </div>
-<p>This is the cleanest solution but requires touching every file in the
-consumer codebase – impractical for large legacy projects.</p>
+<p>This is the cleanest solution but requires touching every file in the consumer
+codebase – impractical for large legacy projects.</p>
 </section>
 <section id="strategy-3-separate-translation-units-for-legacy-codes">
 <h3>Strategy 3: Separate translation units (for legacy codes)<a class="headerlink" href="#strategy-3-separate-translation-units-for-legacy-codes" title="Link to this heading">¶</a></h3>
@@ -421,16 +423,16 @@ translation units (TUs) so the conflicting headers never appear together:</p>
 </span><span data-line="7">  <span class="o">//</span> <span class="n">Implements</span> <span class="n">the</span> <span class="n">RPC</span> <span class="n">server</span> <span class="n">using</span> <span class="n">only</span> <span class="n">flat</span> <span class="n">arrays</span>
 </span></pre></div>
 </div>
-<p>The two TUs communicate through a type-free interface such as a
-<code class="docutils literal notranslate"><span class="pre">std::function</span></code> over flat C arrays, avoiding any shared header that
-contains either <code class="docutils literal notranslate"><span class="pre">Potential</span></code> or <code class="docutils literal notranslate"><span class="pre">AtomMatrix</span></code>.</p>
+<p>The two TUs communicate through a type-free interface such as a <code class="docutils literal notranslate"><span class="pre">std::function</span></code>
+over flat C arrays, avoiding any shared header that contains either <code class="docutils literal notranslate"><span class="pre">Potential</span></code>
+or <code class="docutils literal notranslate"><span class="pre">AtomMatrix</span></code>.</p>
 </section>
 <section id="strategy-4-rpc-client-only-linking">
 <h3>Strategy 4: RPC-client-only linking<a class="headerlink" href="#strategy-4-rpc-client-only-linking" title="Link to this heading">¶</a></h3>
-<p>For consumers that only need to <em>call</em> rgpot potentials (not serve them),
-link only the Cap’n Proto schema library (<code class="docutils literal notranslate"><span class="pre">ptlrpc_dep</span></code> in meson) rather
-than the full <code class="docutils literal notranslate"><span class="pre">rgpot_dep</span></code>. This avoids pulling in <code class="docutils literal notranslate"><span class="pre">Potential.hpp</span></code> and
-its <code class="docutils literal notranslate"><span class="pre">AtomMatrix</span></code> leak entirely.</p>
+<p>For consumers that only need to <em>call</em> rgpot potentials (not serve them), link
+only the Cap’n Proto schema library (<code class="docutils literal notranslate"><span class="pre">ptlrpc_dep</span></code> in meson) rather than the
+full <code class="docutils literal notranslate"><span class="pre">rgpot_dep</span></code>.
+This avoids pulling in <code class="docutils literal notranslate"><span class="pre">Potential.hpp</span></code> and its <code class="docutils literal notranslate"><span class="pre">AtomMatrix</span></code> leak entirely.</p>
 <p>In meson:</p>
 <div class="highlight-meson notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">rgpot_proj</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">subproject</span><span class="p">(</span><span class="s">&#39;rgpot&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">default_options</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s">&#39;with_rpc_client_only=true&#39;</span><span class="p">])</span>
 </span><span data-line="2"><span class="n">ptlrpc_dep</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rgpot_proj</span><span class="p">.</span><span class="n">get_variable</span><span class="p">(</span><span class="s">&#39;ptlrpc_dep&#39;</span><span class="p">)</span>
@@ -441,8 +443,8 @@ its <code class="docutils literal notranslate"><span class="pre">AtomMatrix</spa
 </section>
 <section id="flat-array-callback-pattern">
 <h2>Flat-Array Callback Pattern<a class="headerlink" href="#flat-array-callback-pattern" title="Link to this heading">¶</a></h2>
-<p>The recommended integration pattern for legacy codes is a flat-array
-callback that requires no shared types between the consumer and rgpot:</p>
+<p>The recommended integration pattern for legacy codes is a flat-array callback
+that requires no shared types between the consumer and rgpot:</p>
 <div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1">// ForceCallback: a std::function over flat C arrays</span>
 </span><span data-line="2"><span class="k">using</span> <span class="n">ForceCallback</span> <span class="o">=</span> <span class="n">std</span><span class="o">::</span><span class="n">function</span><span class="o">&lt;</span><span class="kt">void</span><span class="p">(</span>
 </span><span data-line="3">    <span class="kt">long</span> <span class="n">nAtoms</span><span class="p">,</span>
@@ -454,11 +456,11 @@ callback that requires no shared types between the consumer and rgpot:</p>
 </span><span data-line="9"><span class="p">)</span><span class="o">&gt;</span><span class="p">;</span>
 </span></pre></div>
 </div>
-<p>This signature maps directly to the Cap’n Proto <code class="docutils literal notranslate"><span class="pre">ForceInput</span></code> /
-<code class="docutils literal notranslate"><span class="pre">PotentialResult</span></code> schema without requiring any Eigen, AtomMatrix, or
-<code class="docutils literal notranslate"><span class="pre">rgpot::ForceInput</span></code> types. The callback is created in the consumer’s TU
-(which sees the consumer’s types) and passed to the RPC server TU (which
-sees the capnp types). Neither TU needs to include the other’s headers.</p>
+<p>This signature maps directly to the Cap’n Proto <code class="docutils literal notranslate"><span class="pre">ForceInput</span></code> / <code class="docutils literal notranslate"><span class="pre">PotentialResult</span></code>
+schema without requiring any Eigen, AtomMatrix, or <code class="docutils literal notranslate"><span class="pre">rgpot::ForceInput</span></code> types.
+The callback is created in the consumer’s TU (which sees the consumer’s types)
+and passed to the RPC server TU (which sees the capnp types).
+Neither TU needs to include the other’s headers.</p>
 <section id="data-layout">
 <h3>Data layout<a class="headerlink" href="#data-layout" title="Link to this heading">¶</a></h3>
 <p>All arrays use the same flat layout as the Cap’n Proto schema:</p>
@@ -496,9 +498,9 @@ sees the capnp types). Neither TU needs to include the other’s headers.</p>
 </section>
 <section id="worked-example-eon">
 <h2>Worked Example: eOn<a class="headerlink" href="#worked-example-eon" title="Link to this heading">¶</a></h2>
-<p><a class="reference external" href="https://github.com/TheochemUI/eOn">eOn</a> is a saddle-point search framework with its own <code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">Potential</span></code> and
-<code class="docutils literal notranslate"><span class="pre">AtomMatrix</span></code> (Eigen-based) at global scope. It integrates with rgpot’s
-RPC server using the two-TU + flat-array pattern.</p>
+<p><a class="reference external" href="https://github.com/TheochemUI/eOn">eOn</a> is a saddle-point search framework
+with its own <code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">Potential</span></code> and <code class="docutils literal notranslate"><span class="pre">AtomMatrix</span></code> (Eigen-based) at global scope.
+It integrates with rgpot’s RPC server using the two-TU + flat-array pattern.</p>
 <section id="architecture">
 <h3>Architecture<a class="headerlink" href="#architecture" title="Link to this heading">¶</a></h3>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="o">+---------------------------+</span>     <span class="o">+---------------------------+</span>
@@ -520,8 +522,8 @@ RPC server using the two-TU + flat-array pattern.</p>
 </section>
 <section id="tu-1-servemode-cpp">
 <h3>TU 1: ServeMode.cpp<a class="headerlink" href="#tu-1-servemode-cpp" title="Link to this heading">¶</a></h3>
-<p>This file includes eOn’s <code class="docutils literal notranslate"><span class="pre">Potential.h</span></code> and wraps any eOn potential into
-a <code class="docutils literal notranslate"><span class="pre">ForceCallback</span></code>:</p>
+<p>This file includes eOn’s <code class="docutils literal notranslate"><span class="pre">Potential.h</span></code> and wraps any eOn potential into a
+<code class="docutils literal notranslate"><span class="pre">ForceCallback</span></code>:</p>
 <div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="cp">#include</span> <span class="cpf">&quot;Potential.h&quot;       // eOn&#39;s Potential, AtomMatrix</span>
 </span><span data-line="2"><span class="cp">#include</span> <span class="cpf">&quot;ServeRpcServer.h&quot;  // ForceCallback typedef only</span>
 </span><span data-line="3">
@@ -547,8 +549,8 @@ a <code class="docutils literal notranslate"><span class="pre">ForceCallback</sp
 </section>
 <section id="tu-2-serverpcserver-cpp">
 <h3>TU 2: ServeRpcServer.cpp<a class="headerlink" href="#tu-2-serverpcserver-cpp" title="Link to this heading">¶</a></h3>
-<p>This file includes the capnp-generated header and implements the RPC
-server. It never includes eOn’s <code class="docutils literal notranslate"><span class="pre">Potential.h</span></code>:</p>
+<p>This file includes the capnp-generated header and implements the RPC server.
+It never includes eOn’s <code class="docutils literal notranslate"><span class="pre">Potential.h</span></code>:</p>
 <div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="cp">#include</span> <span class="cpf">&quot;Potentials.capnp.h&quot;   // capnp&#39;s Potential interface</span>
 </span><span data-line="2"><span class="cp">#include</span> <span class="cpf">&quot;ServeRpcServer.h&quot;     // ForceCallback typedef</span>
 </span><span data-line="3">
@@ -586,8 +588,9 @@ server. It never includes eOn’s <code class="docutils literal notranslate"><sp
 </section>
 <section id="bridge-header-serverpcserver-h">
 <h3>Bridge header: ServeRpcServer.h<a class="headerlink" href="#bridge-header-serverpcserver-h" title="Link to this heading">¶</a></h3>
-<p>The bridge header defines only the <code class="docutils literal notranslate"><span class="pre">ForceCallback</span></code> type and the server
-entry points. It includes neither eOn nor capnp headers:</p>
+<p>The bridge header defines only the <code class="docutils literal notranslate"><span class="pre">ForceCallback</span></code> type and the server entry
+points.
+It includes neither eOn nor capnp headers:</p>
 <div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="cp">#pragma once</span>
 </span><span data-line="2"><span class="cp">#include</span> <span class="cpf">&lt;functional&gt;</span>
 </span><span data-line="3"><span class="cp">#include</span> <span class="cpf">&lt;string&gt;</span>
@@ -607,8 +610,8 @@ entry points. It includes neither eOn nor capnp headers:</p>
 </section>
 <section id="build-system-integration">
 <h3>Build system integration<a class="headerlink" href="#build-system-integration" title="Link to this heading">¶</a></h3>
-<p>eOn pulls rgpot as a meson subproject with <code class="docutils literal notranslate"><span class="pre">with_rpc_client_only=true</span></code>,
-linking only the capnp schema dependency:</p>
+<p>eOn pulls rgpot as a meson subproject with <code class="docutils literal notranslate"><span class="pre">with_rpc_client_only=true</span></code>, linking
+only the capnp schema dependency:</p>
 <div class="highlight-meson notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">rgpot_proj</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">subproject</span><span class="p">(</span><span class="s">&#39;rgpot&#39;</span><span class="p">,</span>
 </span><span data-line="2"><span class="w">    </span><span class="n">default_options</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s">&#39;with_rpc_client_only=true&#39;</span><span class="p">])</span>
 </span><span data-line="3"><span class="n">ptlrpc_dep</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rgpot_proj</span><span class="p">.</span><span class="n">get_variable</span><span class="p">(</span><span class="s">&#39;ptlrpc_dep&#39;</span><span class="p">)</span>

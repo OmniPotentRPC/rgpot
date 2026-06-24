@@ -3,14 +3,17 @@
 Quickstart
 ----------
 
-This tutorial walks through building rgpot from source, running a
-Lennard-Jones RPC server, and calling it from Python. By the end you will
-have a running potential server that any Cap'n Proto client can connect to.
+This tutorial walks through building rgpot from source, running a Lennard-Jones
+RPC server, and calling it from Python.
+By the end you will have a running potential server that any Cap'n Proto client
+can connect to.
 
 What you will need
 ~~~~~~~~~~~~~~~~~~
 
-- `pixi <https://prefix.dev/pixi>`_ (manages the full toolchain; nothing else to install)
+- `pixi <https://pixi.sh>`_ (manages the full toolchain; nothing else
+
+to install)
 
 - About 5 minutes
 
@@ -49,8 +52,8 @@ All tests should pass:
 Start an RPC server
 ~~~~~~~~~~~~~~~~~~~
 
-Open a second terminal (or use ``&``) and launch a Lennard-Jones server on
-port 12345:
+Open a second terminal (or use ``&``) and launch a Lennard-Jones server on port
+12345:
 
 .. code:: bash
 
@@ -105,22 +108,31 @@ The forces are equal and opposite, as expected for a two-body LJ pair.
 What just happened
 ~~~~~~~~~~~~~~~~~~
 
-1. ``potserv`` loaded the built-in Lennard-Jones potential and exposed it
-   over Cap'n Proto RPC.
+1. ``potserv`` loaded the built-in Lennard-Jones potential and exposed it over Cap'n
 
-2. The Python client connected, sent atomic positions, and received
-   energy and forces back.
+Proto RPC.
 
-3. The same wire protocol works from any language with a Cap'n Proto
-   implementation (C++, Rust, Julia, Go, etc.).
+1. The Python client connected, sent atomic positions, and received energy and
+
+forces back.
+
+1. The same wire protocol works from any language with a Cap'n Proto implementation
+
+(C++, Rust, Julia, Go, etc.).
 
 Next steps
 ~~~~~~~~~~
 
-- `Architecture overview <../reference/architecture.rst>`_ for the layer diagram and design rationale
+- `Architecture overview <../reference/architecture.rst>`_ for the layer
 
-- `Integration guide <../howto/integration.rst>`_ for embedding rgpot into external projects (e.g. eOn)
+diagram and design rationale
 
-- `Embedding as a subproject <../howto/embedding.rst>`_ for using rgpot as a meson/cmake dependency
+- `Integration guide <../howto/integration.rst>`_ for embedding rgpot into
+
+external projects (e.g. eOn)
+
+- `Embedding as a subproject <../howto/embedding.rst>`_ for using rgpot as a
+
+meson/cmake dependency
 
 - `Changelog <../changelog.rst>`_ for release history
