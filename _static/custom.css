@@ -41,3 +41,147 @@ html:not(.dark) .rgpot-hero-logo--dark {
     display: block;
   }
 }
+
+/*
+ * Doxyrest ships doxyrest-pygments.css with fixed light-theme colours
+ * (#000 / #902000) and !important. With Shibuya dark_code (dark block on a
+ * light page) or full dark mode, that yields unreadable dark-on-dark tokens.
+ * Re-map to Shibuya's syntax CSS variables, which track light/dark code mode.
+ */
+.highlight,
+.highlight pre,
+.doxyrest-overview-code-block,
+.doxyrest-title-code-block {
+  color: var(--syntax-text);
+}
+
+.highlight .hll { background-color: var(--syntax-highlight, var(--code-block-highlight)); }
+
+/* Keywords / types (was #902000) */
+.highlight .k,
+.highlight .kc,
+.highlight .kd,
+.highlight .kn,
+.highlight .kp,
+.highlight .kr,
+.highlight .kt,
+.highlight .nb {
+  color: var(--syntax-keyword) !important;
+  font-weight: bold !important;
+}
+
+/* Names / identifiers (was #000000) */
+.highlight .n,
+.highlight .na,
+.highlight .nc,
+.highlight .no,
+.highlight .nd,
+.highlight .ni,
+.highlight .ne,
+.highlight .nf,
+.highlight .nl,
+.highlight .nn,
+.highlight .nt,
+.highlight .nv,
+.highlight .nx,
+.highlight .py,
+.highlight .bp,
+.highlight .vc,
+.highlight .vg,
+.highlight .vi,
+.highlight .vm {
+  color: var(--syntax-text) !important;
+  font-weight: normal !important;
+}
+
+.highlight .nc,
+.highlight .nn,
+.highlight .ne,
+.highlight .nf {
+  color: var(--syntax-name-class, var(--syntax-name-function, var(--syntax-text))) !important;
+}
+
+.highlight .nf {
+  color: var(--syntax-name-function, var(--syntax-text)) !important;
+}
+
+.highlight .kt,
+.highlight .nb {
+  color: var(--syntax-keyword-type, var(--syntax-keyword)) !important;
+}
+
+/* Literals */
+.highlight .s,
+.highlight .sa,
+.highlight .sb,
+.highlight .sc,
+.highlight .dl,
+.highlight .sd,
+.highlight .s2,
+.highlight .se,
+.highlight .sh,
+.highlight .si,
+.highlight .sx,
+.highlight .sr,
+.highlight .s1,
+.highlight .ss,
+.highlight .m,
+.highlight .mb,
+.highlight .mf,
+.highlight .mh,
+.highlight .mi,
+.highlight .mo,
+.highlight .il {
+  color: var(--syntax-literal-string, var(--syntax-literal, var(--syntax-text))) !important;
+}
+
+.highlight .m,
+.highlight .mb,
+.highlight .mf,
+.highlight .mh,
+.highlight .mi,
+.highlight .mo,
+.highlight .il {
+  color: var(--syntax-literal-number, var(--syntax-literal, var(--syntax-text))) !important;
+}
+
+/* Comments / operators / punctuation */
+.highlight .c,
+.highlight .ch,
+.highlight .cm,
+.highlight .cp,
+.highlight .cpf,
+.highlight .c1,
+.highlight .cs {
+  color: var(--syntax-comment) !important;
+  font-style: italic;
+}
+
+.highlight .o,
+.highlight .ow {
+  color: var(--syntax-operator, var(--syntax-text)) !important;
+}
+
+.highlight .p {
+  color: var(--syntax-text) !important;
+}
+
+.highlight .err {
+  color: var(--syntax-error, var(--syntax-text)) !important;
+}
+
+/* Inline code / cref links inside API pages */
+.yue code.literal,
+.yue tt.literal,
+.doxyrest-code-link,
+span.pre {
+  color: inherit;
+}
+
+/* Ensure code blocks always have legible default ink on the block background */
+.yue.dark-code .highlight,
+.yue.dark-code .highlight pre,
+html.dark .highlight,
+html.dark .highlight pre {
+  color: var(--syntax-text);
+}
