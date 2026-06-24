@@ -2,7 +2,8 @@
 let S = import "lib/steps.ncl" in
 let P = S.pins in
 
-let meson_build_test = S.run_pixi m%"
+let meson_build_test =
+  S.run_pixi m%"
   %{S.darwin_env_prelude}
   meson setup bbdir \
     ${POTCTL_MESON_EXTRA:-} \
@@ -17,13 +18,14 @@ let meson_build_test = S.run_pixi m%"
   meson test -C bbdir --print-errorlogs
   ccache -s
 "%
-& {
-  name = "Build & Test (Meson)",
-  "if" = "${{ matrix.sys == 'meson' }}",
-}
+  & {
+    name = "Build & Test (Meson)",
+    "if" = "${{ matrix.sys == 'meson' }}",
+  }
 in
 
-let cmake_build_test = S.run_pixi m%"
+let cmake_build_test =
+  S.run_pixi m%"
   CMAKE_EXTRA=""
   %{S.darwin_env_prelude}
   if [ "${{ runner.os }}" = "macOS" ]; then
@@ -51,20 +53,21 @@ let cmake_build_test = S.run_pixi m%"
   ctest --test-dir build --output-on-failure
   ccache -s
 "%
-& {
-  name = "Build & Test (CMake)",
-  "if" = "${{ matrix.sys == 'cmake' }}",
-}
+  & {
+    name = "Build & Test (CMake)",
+    "if" = "${{ matrix.sys == 'cmake' }}",
+  }
 in
 
-let rpc_integration = S.run_pixi m%"
+let rpc_integration =
+  S.run_pixi m%"
   pixi r -e rpctest \
   python tests/rpc_integ.py --server-bin ${{ matrix.sys == 'meson' && 'bbdir/CppCore/rgpot/rpc/potserv' || 'build/potserv' }}
 "%
-& {
-  name = "RPC Integration Test",
-  "if" = "${{ matrix.rpc == 'true' && matrix.sys == 'meson' && matrix.os == 'ubuntu-latest' }}",
-}
+  & {
+    name = "RPC Integration Test",
+    "if" = "${{ matrix.rpc == 'true' && matrix.sys == 'meson' && matrix.os == 'ubuntu-latest' }}",
+  }
 in
 
 {
