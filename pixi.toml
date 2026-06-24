@@ -10,8 +10,7 @@ version = "1.2.0"
 # Export every ci/gha/*.ncl workflow (shared pins/steps in ci/gha/lib/).
 gen-gha = { cmd = "bash ci/gha/gen.sh" }
 # Format all Nickel sources (prek nickel-format hook runs this on changed .ncl files).
-# Portable: empty find results must not invoke nickel (GNU xargs -r is not on all hosts).
-nickel-fmt = { cmd = "bash -c 'shopt -s nullglob; files=(ci/gha/**/*.ncl ci/gha/*.ncl); (( ${#files[@]} )) && nickel format \"${files[@]}\" || true'" }
+nickel-fmt = { cmd = "bash ci/gha/format.sh" }
 # Fail if .github/workflows drifted from ci/gha (regen + git diff --exit-code).
 gha-drift = { cmd = "bash ci/gha/check-drift.sh" }
 
