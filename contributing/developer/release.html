@@ -356,10 +356,10 @@ a second prose changelog.</p>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.github/workflows/release-prepare.yml</span></code></p></td>
 <td><p>Staged: <code class="docutils literal notranslate"><span class="pre">tools</span></code> (<code class="docutils literal notranslate"><span class="pre">potctl=+=cog</span></code> artifact) → <code class="docutils literal notranslate"><span class="pre">prepare</span></code> (lockstep, towncrier, cog dry-run)</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.github/workflows/towncrier.yml</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">towncrier</span> <span class="pre">check</span></code> on PRs touching shipped surfaces</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CI</span> <span class="pre">(orchestrator)</span></code> / <code class="docutils literal notranslate"><span class="pre">towncrier</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">towncrier</span> <span class="pre">check</span></code> on PRs (orchestrator job)</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.github/workflows/potentials.yml</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CI</span> <span class="pre">(orchestrator)</span></code> / potentials</p></td>
 <td><p>Feature-gated C++ backends (xtb+tblite, metatomic/vesin) on PRs</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">SECURITY.md</span></code></p></td>
@@ -384,8 +384,8 @@ a second prose changelog.</p>
 GHA does not replace maintainer GPG.</p>
 <p><strong>C++ distribution note</strong>: tag/source is the C++ contract; <code class="docutils literal notranslate"><span class="pre">release.yml</span></code> runs a
 minimal <code class="docutils literal notranslate"><span class="pre">meson</span> <span class="pre">install</span></code> smoke.
-Optional backends (xtb/tblite/metatomic) are validated on PRs via
-<code class="docutils literal notranslate"><span class="pre">potentials.yml</span></code>, not re-run on every tag. conda-forge / Spack / system packages
+Optional backends (xtb/tblite/metatomic) are validated on PRs via orchestrator
+potentials jobs, not re-run on every tag. conda-forge / Spack / system packages
 are <strong>out of band</strong> (separate feedstock/PR track), not part of <code class="docutils literal notranslate"><span class="pre">release.yml</span></code>.</p>
 <section id="changelog-fragments">
 <h2>Changelog fragments<a class="headerlink" href="#changelog-fragments" title="Link to this heading">¶</a></h2>
@@ -401,15 +401,14 @@ fragment per user-visible change; see <code class="docutils literal notranslate"
 Preview with <code class="docutils literal notranslate"><span class="pre">uvx</span> <span class="pre">towncrier</span> <span class="pre">build</span> <span class="pre">--draft</span></code> or <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">r</span> <span class="pre">towncrier-draft</span></code> if
 defined.</p>
 <p>CI runs <code class="docutils literal notranslate"><span class="pre">towncrier</span> <span class="pre">check</span></code> on pull requests when shipped paths change
-(<code class="docutils literal notranslate"><span class="pre">towncrier.yml</span></code> includes <code class="docutils literal notranslate"><span class="pre">CppCore/</span></code>, <code class="docutils literal notranslate"><span class="pre">rgpot-core/</span></code>, meson, <code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code>,
-<code class="docutils literal notranslate"><span class="pre">pixi.toml</span></code>, release scripts, etc.).
+(orchestrator <code class="docutils literal notranslate"><span class="pre">towncrier</span></code> runs on all PRs; fragments under <code class="docutils literal notranslate"><span class="pre">CppCore/</span></code>, <code class="docutils literal notranslate"><span class="pre">rgpot-</span> <span class="pre">core/</span></code>, meson, <code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code>, <code class="docutils literal notranslate"><span class="pre">pixi.toml</span></code>, release scripts, etc.).
 Pure <code class="docutils literal notranslate"><span class="pre">docs</span></code> / <code class="docutils literal notranslate"><span class="pre">ci</span></code> / <code class="docutils literal notranslate"><span class="pre">chore</span></code> commits may omit fragments if they avoid those
 paths.</p>
 </section>
 <section id="preparing-a-release-maintainer-run-as-soon-as-this-lands-on-main">
 <h2>Preparing a release (maintainer) — run as soon as this lands on <code class="docutils literal notranslate"><span class="pre">main</span></code><a class="headerlink" href="#preparing-a-release-maintainer-run-as-soon-as-this-lands-on-main" title="Link to this heading">¶</a></h2>
 <ol class="arabic simple">
-<li><p>Ensure <code class="docutils literal notranslate"><span class="pre">main</span></code> is green (build matrix, <code class="docutils literal notranslate"><span class="pre">prek</span></code>, <code class="docutils literal notranslate"><span class="pre">docs_quality</span></code>, potentials if</p></li>
+<li><p>Ensure <code class="docutils literal notranslate"><span class="pre">main</span></code> is green (orchestrator <code class="docutils literal notranslate"><span class="pre">CI</span> <span class="pre">gate</span></code>, potentials if</p></li>
 </ol>
 <p>relevant).</p>
 <ol class="arabic simple">

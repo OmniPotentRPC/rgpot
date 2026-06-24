@@ -44,9 +44,9 @@ Tooling:
     +-------------------------------------------------------+---------------------------------------------------------------------------------------------------------+
     | ``.github/workflows/release-prepare.yml``             | Staged: ``tools`` (``potctl=+=cog`` artifact) → ``prepare`` (lockstep, towncrier, cog dry-run)          |
     +-------------------------------------------------------+---------------------------------------------------------------------------------------------------------+
-    | ``.github/workflows/towncrier.yml``                   | ``towncrier check`` on PRs touching shipped surfaces                                                    |
+    | ``CI (orchestrator)`` / ``towncrier``                 | ``towncrier check`` on PRs (orchestrator job)                                                           |
     +-------------------------------------------------------+---------------------------------------------------------------------------------------------------------+
-    | ``.github/workflows/potentials.yml``                  | Feature-gated C++ backends (xtb+tblite, metatomic/vesin) on PRs                                         |
+    | ``CI (orchestrator)`` / potentials                    | Feature-gated C++ backends (xtb+tblite, metatomic/vesin) on PRs                                         |
     +-------------------------------------------------------+---------------------------------------------------------------------------------------------------------+
     | ``SECURITY.md``                                       | Supported versions + private report path                                                                |
     +-------------------------------------------------------+---------------------------------------------------------------------------------------------------------+
@@ -68,8 +68,8 @@ GHA does not replace maintainer GPG.
 
 **C++ distribution note**: tag/source is the C++ contract; ``release.yml`` runs a
 minimal ``meson install`` smoke.
-Optional backends (xtb/tblite/metatomic) are validated on PRs via
-``potentials.yml``, not re-run on every tag. conda-forge / Spack / system packages
+Optional backends (xtb/tblite/metatomic) are validated on PRs via orchestrator
+potentials jobs, not re-run on every tag. conda-forge / Spack / system packages
 are **out of band** (separate feedstock/PR track), not part of ``release.yml``.
 
 Changelog fragments
@@ -90,15 +90,14 @@ Preview with ``uvx towncrier build --draft`` or ``pixi r towncrier-draft`` if
 defined.
 
 CI runs ``towncrier check`` on pull requests when shipped paths change
-(``towncrier.yml`` includes ``CppCore/``, ``rgpot-core/``, meson, ``CMakeLists.txt``,
-``pixi.toml``, release scripts, etc.).
+(orchestrator ``towncrier`` runs on all PRs; fragments under ``CppCore/``, ``rgpot- core/``, meson, ``CMakeLists.txt``, ``pixi.toml``, release scripts, etc.).
 Pure ``docs`` / ``ci`` / ``chore`` commits may omit fragments if they avoid those
 paths.
 
 Preparing a release (maintainer) — run as soon as this lands on ``main``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-1. Ensure ``main`` is green (build matrix, ``prek``, ``docs_quality``, potentials if
+1. Ensure ``main`` is green (orchestrator ``CI gate``, potentials if
 
 relevant).
 

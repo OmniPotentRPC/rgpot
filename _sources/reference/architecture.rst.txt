@@ -233,7 +233,7 @@ Configurable device (CPU/CUDA), dtype override, length unit, and consistency
 checks via ``MetatomicConfig``.
 On the RPC server pass ``Metatomic:/path/to/model.pt``.
 Build with the ``metatomicbld`` pixi env (linux-64; pulls torch, metatomic-torch,
-and vesin ``>=0.5.2,<0.6`` from PyPI). CI job in ``potentials.yml``.
+and vesin ``>=0.5.2,<0.6`` from PyPI). CI job ``potentials_metatomic`` in ``ci- orchestrator.yml``.
 
 All feature-gated potentials are detected via ``pkg-config`` / ``cmake`` and
 controlled by Meson options.

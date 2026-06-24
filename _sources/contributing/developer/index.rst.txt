@@ -50,7 +50,7 @@ All tasks are invoked via ``pixi r <task>``:
     +-------------------------------------------------+-------------------------------------------------------------------------------------------------------------+
     | ``gen-header``                                  | Regenerate ``include/rgpot.h`` from Rust source via cbindgen                                                |
     +-------------------------------------------------+-------------------------------------------------------------------------------------------------------------+
-    | ``gen-gha``                                     | Regenerate GitHub Actions workflow from Nickel template                                                     |
+    | ``gen-gha``                                     | Regenerate nickel-exported workflows (release/docs/cosmo; not orchestrator)                                 |
     +-------------------------------------------------+-------------------------------------------------------------------------------------------------------------+
     | ``towncrier-draft``                             | Preview release notes (dry run)                                                                             |
     +-------------------------------------------------+-------------------------------------------------------------------------------------------------------------+
@@ -64,11 +64,11 @@ All tasks are invoked via ``pixi r <task>``:
     +-------------------------------------------------+-------------------------------------------------------------------------------------------------------------+
     | ``release-extract-changelog``                   | One ``CHANGELOG.md`` section (``potctl release notes``; optional ``-o``)                                    |
     +-------------------------------------------------+-------------------------------------------------------------------------------------------------------------+
-    | ``release-towncrier-check``                     | ``towncrier check`` vs base (CI uses ``towncrier.yml``)                                                     |
+    | ``release-towncrier-check``                     | ``towncrier check`` vs base (CI: orchestrator ``towncrier`` job on PRs)                                     |
     +-------------------------------------------------+-------------------------------------------------------------------------------------------------------------+
     | Cut release                                     | On ``main``: ``cog bump --auto`` (cog 7+) then ``git push --follow-tags``; see `release.org <release.rst>`_ |
     +-------------------------------------------------+-------------------------------------------------------------------------------------------------------------+
-    | Potentials CI                                   | ``.github/workflows/potentials.yml`` (xtb+tblite, metatomic/vesin)                                          |
+    | Potentials CI                                   | ``ci-orchestrator.yml`` jobs ``potentials_metatomic`` / ``potentials_tight_binding``                        |
     +-------------------------------------------------+-------------------------------------------------------------------------------------------------------------+
     | ``docbld``                                      | Build full documentation (org export + Doxygen + Sphinx)                                                    |
     +-------------------------------------------------+-------------------------------------------------------------------------------------------------------------+
@@ -76,11 +76,11 @@ All tasks are invoked via ``pixi r <task>``:
     +-------------------------------------------------+-------------------------------------------------------------------------------------------------------------+
     | ``gen-readme``                                  | Export ``rgpot-core/README.org`` to ``README.md`` (docs env)                                                |
     +-------------------------------------------------+-------------------------------------------------------------------------------------------------------------+
-    | ``snapper-check`` / ``snapper-fix``             | Semantic line breaks (TurtleTech snapper; GHA ``docs_quality.yml``)                                         |
+    | ``snapper-check`` / ``snapper-fix``             | Semantic line breaks (TurtleTech snapper; GHA orchestrator ``docs_snapper``)                                |
     +-------------------------------------------------+-------------------------------------------------------------------------------------------------------------+
-    | ``lychee-check``                                | Link audit with lychee (``.lychee.toml``; GHA ``docs_quality.yml``)                                         |
+    | ``lychee-check``                                | Link audit with lychee (``.lychee.toml``; GHA orchestrator ``docs_lychee``)                                 |
     +-------------------------------------------------+-------------------------------------------------------------------------------------------------------------+
-    | ``prek`` / ``prek-install`` / ``prek-validate`` | Run / install / validate ``prek.toml`` hooks (GHA ``prek.yml``)                                             |
+    | ``prek`` / ``prek-install`` / ``prek-validate`` | Run / install / validate ``prek.toml`` hooks (GHA orchestrator ``prek`` job)                                |
     +-------------------------------------------------+-------------------------------------------------------------------------------------------------------------+
 
 Regenerating the C Header
@@ -142,9 +142,9 @@ Prefer ``prek`` over ``pre-commit`` / ``uvx pre-commit``.
     # validate config only
     pixi r prek-validate
 
-CI runs ``prek run -a`` on every PR via ``.github/workflows/prek.yml``.
+CI runs ``prek run -a`` on every PR via ``CI (orchestrator)`` (``prek`` job).
 Org docs also go through ``snapper`` (semantic line breaks); links are audited
-separately by the ``docs_quality`` workflow (``lychee``).
+separately by orchestrator ``docs_lychee`` (and weekly schedule).
 
   .. toctree::
      :maxdepth: 2

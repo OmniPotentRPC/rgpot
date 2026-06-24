@@ -537,7 +537,7 @@ Configurable device (CPU/CUDA), dtype override, length unit, and consistency
 checks via <code class="docutils literal notranslate"><span class="pre">MetatomicConfig</span></code>.
 On the RPC server pass <code class="docutils literal notranslate"><span class="pre">Metatomic:/path/to/model.pt</span></code>.
 Build with the <code class="docutils literal notranslate"><span class="pre">metatomicbld</span></code> pixi env (linux-64; pulls torch, metatomic-torch,
-and vesin <code class="docutils literal notranslate"><span class="pre">&gt;=0.5.2,&lt;0.6</span></code> from PyPI). CI job in <code class="docutils literal notranslate"><span class="pre">potentials.yml</span></code>.</p>
+and vesin <code class="docutils literal notranslate"><span class="pre">&gt;=0.5.2,&lt;0.6</span></code> from PyPI). CI job <code class="docutils literal notranslate"><span class="pre">potentials_metatomic</span></code> in <code class="docutils literal notranslate"><span class="pre">ci-</span> <span class="pre">orchestrator.yml</span></code>.</p>
 <p>All feature-gated potentials are detected via <code class="docutils literal notranslate"><span class="pre">pkg-config</span></code> / <code class="docutils literal notranslate"><span class="pre">cmake</span></code> and
 controlled by Meson options.</p>
 </section>
