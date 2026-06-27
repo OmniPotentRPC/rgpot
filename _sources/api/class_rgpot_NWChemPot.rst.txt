@@ -1,0 +1,98 @@
+.. index:: pair: class; rgpot::NWChemPot
+.. _doxid-classrgpot_1_1_n_w_chem_pot:
+
+class rgpot::NWChemPot
+======================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_NWChemPot_Impl.rst
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class NWChemPot: public rgpot::Potential< NWChemPot > {
+	public:
+		// structs
+	
+		struct :ref:`Impl<doxid-structrgpot_1_1_n_w_chem_pot_1_1_impl>`;
+
+		// construction
+	
+		:target:`NWChemPot<doxid-classrgpot_1_1_n_w_chem_pot_1a3121965159e93befb513a11cfa2965c9>`();
+		:ref:`NWChemPot<doxid-classrgpot_1_1_n_w_chem_pot_1ad66b7a1369f9e9ccc78f6d8d9adcd626>`(const ::NWChemParams::Reader& params);
+		:target:`NWChemPot<doxid-classrgpot_1_1_n_w_chem_pot_1adbdd3b3fba257a5347082ada6f808ede>`(const NWChemPot&);
+		:target:`~NWChemPot<doxid-classrgpot_1_1_n_w_chem_pot_1a307dc84224222f4836618913652d3a5c>`();
+
+		// methods
+	
+		NWChemPot& :target:`operator=<doxid-classrgpot_1_1_n_w_chem_pot_1a136d8f3bdcf670aab0969eab299ed1e8>`(const NWChemPot&);
+		void :target:`forceImpl<doxid-classrgpot_1_1_n_w_chem_pot_1ac17b35779ef380b82bc90b69815a000d>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		bool :ref:`setParams<doxid-classrgpot_1_1_n_w_chem_pot_1a1318591fc626ae2f3fdb27c40e380b0e>`(const ::NWChemParams::Reader& params);
+		void :ref:`getParams<doxid-classrgpot_1_1_n_w_chem_pot_1af43bd2a50c93577f155b6ca4a85409f1>`(::NWChemParams::Builder out) const;
+		bool :ref:`setPotentialConfig<doxid-classrgpot_1_1_n_w_chem_pot_1afe1b5ac6acd29e8f8e3c56f92714f951>`(const ::PotentialConfig::Reader& cfg, std::string* message_out = nullptr);
+		bool :target:`available<doxid-classrgpot_1_1_n_w_chem_pot_1a97d745ef38da9b98a5d8fb03826c40e1>`() const;
+		static bool :target:`probe_available<doxid-classrgpot_1_1_n_w_chem_pot_1a10c1e6ab4971f8969fbef683aecfe768>`();
+		static bool :target:`abi_available<doxid-classrgpot_1_1_n_w_chem_pot_1a30f244ff54edbb17af427561970fe371>`();
+	};
+.. _details-classrgpot_1_1_n_w_chem_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Construction
+------------
+
+.. index:: pair: function; NWChemPot
+.. _doxid-classrgpot_1_1_n_w_chem_pot_1ad66b7a1369f9e9ccc78f6d8d9adcd626:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	NWChemPot(const ::NWChemParams::Reader& params)
+
+Apply schema defaults, then optional Cap'n Proto NWChemParams.
+
+Methods
+-------
+
+.. index:: pair: function; setParams
+.. _doxid-classrgpot_1_1_n_w_chem_pot_1a1318591fc626ae2f3fdb27c40e380b0e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool setParams(const ::NWChemParams::Reader& params)
+
+Apply NWChem arm payload as the next Cap'n Proto message for the engine.
+
+.. index:: pair: function; getParams
+.. _doxid-classrgpot_1_1_n_w_chem_pot_1af43bd2a50c93577f155b6ca4a85409f1:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void getParams(::NWChemParams::Builder out) const
+
+Write last applied NWChem params back to Cap'n Proto.
+
+.. index:: pair: function; setPotentialConfig
+.. _doxid-classrgpot_1_1_n_w_chem_pot_1afe1b5ac6acd29e8f8e3c56f92714f951:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool setPotentialConfig(const ::PotentialConfig::Reader& cfg, std::string* message_out = nullptr)
+
+Apply full rgpot PotentialConfig; only succeeds for none or nwchem arms.
+

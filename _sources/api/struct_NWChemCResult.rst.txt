@@ -1,0 +1,67 @@
+.. index:: pair: struct; NWChemCResult
+.. _doxid-struct_n_w_chem_c_result:
+
+struct NWChemCResult
+====================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Result of energy+gradient (atomic units). :ref:`More...<details-struct_n_w_chem_c_result>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <nwchem_c_abi.h>
+	
+	struct NWChemCResult {
+		// fields
+	
+		int :ref:`ok<doxid-struct_n_w_chem_c_result_1a6716ca76d3d142da217ebc30a702681f>`;
+		double :ref:`energy_h<doxid-struct_n_w_chem_c_result_1a0f4eabb0a8c23f80efce3645b498d715>`;
+		char :ref:`message<doxid-struct_n_w_chem_c_result_1a4e82f422e6059e27e476b11ed8cd1895>`[512];
+	};
+.. _details-struct_n_w_chem_c_result:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Result of energy+gradient (atomic units).
+
+Fields
+------
+
+.. index:: pair: variable; ok
+.. _doxid-struct_n_w_chem_c_result_1a6716ca76d3d142da217ebc30a702681f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int ok
+
+1 success, 0 failure
+
+.. index:: pair: variable; energy_h
+.. _doxid-struct_n_w_chem_c_result_1a0f4eabb0a8c23f80efce3645b498d715:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double energy_h
+
+total energy Hartree
+
+.. index:: pair: variable; message
+.. _doxid-struct_n_w_chem_c_result_1a4e82f422e6059e27e476b11ed8cd1895:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	char message[512]
+
+status / error, NUL-terminated
+

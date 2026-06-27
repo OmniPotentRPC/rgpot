@@ -90,11 +90,13 @@ data-aria-dark="Switch to auto color mode">
         <div class="globaltoc" data-expand-depth="1"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Tutorials</span></p>
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../tutorials/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../tutorials/molecular-global-optimization.html">Find the Ground State of an EON Structure</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">How-To Guides</span></p>
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../howto/embedding.html">Embedding as a Subproject</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../howto/integration.html">External Integration Guide</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../howto/eindir-anneal.html">rgpot Potentials as eindir Objectives</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
 <ul>
@@ -131,19 +133,38 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_XTBConfig.html">struct rgpot::XTBConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_CPMDPot.html">class rgpot::CPMDPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_CuH2Pot.html">class rgpot::CuH2Pot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_DynLib.html">class rgpot::DynLib</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_MetatomicPot.html">class rgpot::MetatomicPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_NWChemPot.html">class rgpot::NWChemPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_PotentialBase.html">class rgpot::PotentialBase</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_TBLitePot.html">class rgpot::TBLitePot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_XTBPot.html">class rgpot::XTBPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_registry.html">template class rgpot::registry</a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-2.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-3.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="../../api/namespace_std.html">namespace std</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../api/namespace_string_literals.html">namespace string_literals</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/enum_CPMDCFeatureKind.html">enum CPMDCFeatureKind</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/struct_CPMDCFeatureEntry.html">struct CPMDCFeatureEntry</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/struct_CPMDCResult.html">struct CPMDCResult</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/struct_NWChemCResult.html">struct NWChemCResult</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../api/class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
@@ -162,6 +183,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../../crates/rgpot_core/tensor.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">tensor</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../crates/rgpot_core/status.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">status</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../crates/rgpot_core/potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../crates/rgpot_core/eindir.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">eindir</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../crates/rgpot_core/c_api.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">c_api</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../crates/rgpot_core/c_api/types.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">types</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../crates/rgpot_core/c_api/potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
@@ -207,6 +229,8 @@ data-aria-dark="Switch to auto color mode">
 <li><a class="reference internal" href="#c-c-tests">C/C++ Tests</a></li>
 <li><a class="reference internal" href="#rust-tests">Rust Tests</a></li>
 <li><a class="reference internal" href="#rpc-integration-tests">RPC Integration Tests</a></li>
+<li><a class="reference internal" href="#nwchem-suite-suite-nwchem">NWChem suite (<code class="docutils literal notranslate"><span class="pre">--suite</span> <span class="pre">nwchem</span></code>)</a></li>
+<li><a class="reference internal" href="#cpmd-suite-suite-cpmd">CPMD suite (<code class="docutils literal notranslate"><span class="pre">--suite</span> <span class="pre">cpmd</span></code>)</a></li>
 </ul>
 </div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/OmniPotentRPC/rgpot"
   data-type="github" data-user="OmniPotentRPC" data-repo="rgpot">
@@ -307,14 +331,18 @@ data-aria-dark="Switch to auto color mode">
 <h1>Testing<a class="headerlink" href="#testing" title="Link to this heading">¶</a></h1>
 <section id="c-c-tests">
 <h2>C/C++ Tests<a class="headerlink" href="#c-c-tests" title="Link to this heading">¶</a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">meson<span class="w"> </span>setup<span class="w"> </span>bbdir<span class="w"> </span>-Dwith_tests<span class="o">=</span>True<span class="w"> </span>--buildtype<span class="o">=</span><span class="s2">&quot;debug&quot;</span>
-</span><span data-line="2">meson<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-C<span class="w"> </span>bbdir
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">meson<span class="w"> </span>setup<span class="w"> </span>bbdir<span class="w"> </span>-Dwith_tests<span class="o">=</span><span class="nb">true</span><span class="w"> </span>-Dwith_rpc<span class="o">=</span><span class="nb">true</span><span class="w"> </span>--buildtype<span class="o">=</span>debug
+</span><span data-line="2">meson<span class="w"> </span>compile<span class="w"> </span>-C<span class="w"> </span>bbdir
+</span><span data-line="3">meson<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-C<span class="w"> </span>bbdir<span class="w"> </span>--print-errorlogs
 </span></pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">cmake</span></code> works as well:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">cmake<span class="w"> </span>-B<span class="w"> </span>build<span class="w"> </span>-DRGPOT_BUILD_TESTS<span class="o">=</span>ON<span class="w"> </span>-DRGPOT_BUILD_EXAMPLES<span class="o">=</span>ON
-</span><span data-line="2">cmake<span class="w"> </span>--build<span class="w"> </span>build
-</span><span data-line="3">ctest<span class="w"> </span>--test-dir<span class="w"> </span>build
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">cmake<span class="w"> </span>-B<span class="w"> </span>build<span class="w"> </span><span class="se">\</span>
+</span><span data-line="2"><span class="w">  </span>-DRGPOT_BUILD_TESTS<span class="o">=</span>ON<span class="w"> </span><span class="se">\</span>
+</span><span data-line="3"><span class="w">  </span>-DRGPOT_BUILD_EXAMPLES<span class="o">=</span>ON<span class="w"> </span><span class="se">\</span>
+</span><span data-line="4"><span class="w">  </span>-DRGPOT_WITH_RPC<span class="o">=</span>ON
+</span><span data-line="5">cmake<span class="w"> </span>--build<span class="w"> </span>build
+</span><span data-line="6">ctest<span class="w"> </span>--test-dir<span class="w"> </span>build<span class="w"> </span>--output-on-failure
 </span></pre></div>
 </div>
 </section>
@@ -334,12 +362,48 @@ data-aria-dark="Switch to auto color mode">
 <h2>RPC Integration Tests<a class="headerlink" href="#rpc-integration-tests" title="Link to this heading">¶</a></h2>
 <p>The <code class="docutils literal notranslate"><span class="pre">rpctest</span></code> environment includes Python bindings via <code class="docutils literal notranslate"><span class="pre">pycapnp</span></code>:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">pixi<span class="w"> </span>shell<span class="w"> </span>-e<span class="w"> </span>rpctest
-</span><span data-line="2"><span class="c1"># Start a server in one terminal</span>
-</span><span data-line="3">./bbdir/CppCore/rgpot/rpc/potserv<span class="w"> </span><span class="m">12345</span><span class="w"> </span>LJ
-</span><span data-line="4"><span class="c1"># Run client tests in another</span>
-</span><span data-line="5">ctest<span class="w"> </span>--test-dir<span class="w"> </span>build_client/<span class="w"> </span>--output-on-failure
+</span><span data-line="2">python<span class="w"> </span>tests/rpc_integ.py<span class="w"> </span>--server-bin<span class="w"> </span>./bbdir/CppCore/potserv
+</span><span data-line="3">python<span class="w"> </span>tests/rpc_integ.py<span class="w"> </span><span class="se">\</span>
+</span><span data-line="4"><span class="w">  </span>--server-bin<span class="w"> </span>./bbdir/CppCore/potserv<span class="w"> </span><span class="se">\</span>
+</span><span data-line="5"><span class="w">  </span>--nwchem-smoke<span class="w"> </span><span class="se">\</span>
+</span><span data-line="6"><span class="w">  </span>--cpmd-smoke
+</span><span data-line="7">python<span class="w"> </span>tests/test_cpmd_params.py
+</span><span data-line="8">python<span class="w"> </span>tests/test_rpc_integ_cpmd.py
 </span></pre></div>
 </div>
+</section>
+<section id="nwchem-suite-suite-nwchem">
+<h2>NWChem suite (<code class="docutils literal notranslate"><span class="pre">--suite</span> <span class="pre">nwchem</span></code>)<a class="headerlink" href="#nwchem-suite-suite-nwchem" title="Link to this heading">¶</a></h2>
+<p>Frontend + stub ABI tests always build with the main library
+(<code class="docutils literal notranslate"><span class="pre">with_tests=true</span></code>). Energy/grad tests <code class="docutils literal notranslate"><span class="pre">SKIP</span></code> unless an external <code class="docutils literal notranslate"><span class="pre">libnwchemc</span></code>
+is on the library path (<code class="docutils literal notranslate"><span class="pre">NWCHEMC_LIBRARY</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_NWCHEMC_ENGINE</span></code>, or
+<code class="docutils literal notranslate"><span class="pre">RGPOT_NWCHEM_ENGINE</span></code>). The message ABI test uses a fake <code class="docutils literal notranslate"><span class="pre">nwchemc_*</span></code> shared
+library and verifies rgpot passes serialized <code class="docutils literal notranslate"><span class="pre">NWChemParams</span></code> bytes through the
+<code class="docutils literal notranslate"><span class="pre">dlopen</span></code> boundary.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">meson<span class="w"> </span>setup<span class="w"> </span>bbdir<span class="w"> </span>-Dwith_tests<span class="o">=</span><span class="nb">true</span><span class="w"> </span>-Dwith_rpc<span class="o">=</span><span class="nb">true</span>
+</span><span data-line="2">meson<span class="w"> </span>compile<span class="w"> </span>-C<span class="w"> </span>bbdir
+</span><span data-line="3">meson<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-C<span class="w"> </span>bbdir<span class="w"> </span>--suite<span class="w"> </span>nwchem<span class="w"> </span>--print-errorlogs
+</span></pre></div>
+</div>
+<p>See <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/NWChemPot/README.md</span></code>; the engine (<code class="docutils literal notranslate"><span class="pre">libnwchemc</span></code>) is built by
+the split <a class="reference external" href="https://github.com/OmniPotentRPC/nwchemc">nwchemc</a> project, not
+by rgpot.</p>
+</section>
+<section id="cpmd-suite-suite-cpmd">
+<h2>CPMD suite (<code class="docutils literal notranslate"><span class="pre">--suite</span> <span class="pre">cpmd</span></code>)<a class="headerlink" href="#cpmd-suite-suite-cpmd" title="Link to this heading">¶</a></h2>
+<p>Frontend + stub ABI tests always build with the main library
+(<code class="docutils literal notranslate"><span class="pre">with_tests=true</span></code>). The CPMD frontend loads a split <code class="docutils literal notranslate"><span class="pre">libcpmdc</span></code> engine at
+runtime via <code class="docutils literal notranslate"><span class="pre">CPMDC_LIBRARY</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_CPMDC_ENGINE</span></code>, or <code class="docutils literal notranslate"><span class="pre">RGPOT_CPMD_ENGINE</span></code>.
+Configure-only Python smokes use <code class="docutils literal notranslate"><span class="pre">PotentialConfig.cpmd</span></code> and do not require a
+live engine.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">meson<span class="w"> </span>setup<span class="w"> </span>bbdir<span class="w"> </span>-Dwith_tests<span class="o">=</span><span class="nb">true</span><span class="w"> </span>-Dwith_rpc<span class="o">=</span><span class="nb">true</span>
+</span><span data-line="2">meson<span class="w"> </span>compile<span class="w"> </span>-C<span class="w"> </span>bbdir
+</span><span data-line="3">meson<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-C<span class="w"> </span>bbdir<span class="w"> </span>--suite<span class="w"> </span>cpmd<span class="w"> </span>--print-errorlogs
+</span><span data-line="4">pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>rpctest<span class="w"> </span>python<span class="w"> </span>tests/rpc_integ.py<span class="w"> </span>--server-bin<span class="w"> </span>./bbdir/CppCore/potserv<span class="w"> </span>--cpmd-smoke
+</span></pre></div>
+</div>
+<p>See <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/CPMDPot/README.md</span></code>; the engine (<code class="docutils literal notranslate"><span class="pre">libcpmdc</span></code>) is built by the
+split <a class="reference external" href="https://github.com/OmniPotentRPC/cpmdc">cpmdc</a> project, not by rgpot.</p>
 </section>
 </section>
 

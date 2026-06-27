@@ -1,0 +1,67 @@
+.. index:: pair: struct; CPMDCResult
+.. _doxid-struct_c_p_m_d_c_result:
+
+struct CPMDCResult
+==================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Result returned by energy / gradient / forces entry points. :ref:`More...<details-struct_c_p_m_d_c_result>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <cpmd_c_abi.h>
+	
+	struct CPMDCResult {
+		// fields
+	
+		int :ref:`ok<doxid-struct_c_p_m_d_c_result_1a6626b49c21bdbc37bf27026edd8ff18e>`;
+		double :ref:`energy_h<doxid-struct_c_p_m_d_c_result_1ad7d895d59a07a6877826506656894b2f>`;
+		char :ref:`message<doxid-struct_c_p_m_d_c_result_1a89e6a7732a81d9d608bbfcbec53aaafc>`[512];
+	};
+.. _details-struct_c_p_m_d_c_result:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Result returned by energy / gradient / forces entry points.
+
+Fields
+------
+
+.. index:: pair: variable; ok
+.. _doxid-struct_c_p_m_d_c_result_1a6626b49c21bdbc37bf27026edd8ff18e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int ok
+
+Non-zero when the calculation succeeds.
+
+.. index:: pair: variable; energy_h
+.. _doxid-struct_c_p_m_d_c_result_1ad7d895d59a07a6877826506656894b2f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double energy_h
+
+Total energy in Hartree (CPMD native a.u. energy).
+
+.. index:: pair: variable; message
+.. _doxid-struct_c_p_m_d_c_result_1a89e6a7732a81d9d608bbfcbec53aaafc:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	char message[512]
+
+Null-terminated status or error message.
+

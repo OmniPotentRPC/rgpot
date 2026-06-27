@@ -90,11 +90,13 @@ data-aria-dark="Switch to auto color mode">
         <div class="globaltoc" data-expand-depth="1"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Tutorials</span></p>
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../../tutorials/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../../tutorials/molecular-global-optimization.html">Find the Ground State of an EON Structure</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">How-To Guides</span></p>
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../../howto/embedding.html">Embedding as a Subproject</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../../howto/integration.html">External Integration Guide</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../../howto/eindir-anneal.html">rgpot Potentials as eindir Objectives</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -131,19 +133,38 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../../../api/struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/struct_rgpot_XTBConfig.html">struct rgpot::XTBConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/class_rgpot_CPMDPot.html">class rgpot::CPMDPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/class_rgpot_CuH2Pot.html">class rgpot::CuH2Pot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/class_rgpot_DynLib.html">class rgpot::DynLib</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/class_rgpot_MetatomicPot.html">class rgpot::MetatomicPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/class_rgpot_NWChemPot.html">class rgpot::NWChemPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/class_rgpot_PotentialBase.html">class rgpot::PotentialBase</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/class_rgpot_TBLitePot.html">class rgpot::TBLitePot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/class_rgpot_XTBPot.html">class rgpot::XTBPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/class_rgpot_registry.html">template class rgpot::registry</a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/namespace_rgpot-2.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/namespace_rgpot-3.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/namespace_std.html">namespace std</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/namespace_string_literals.html">namespace string_literals</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/enum_CPMDCFeatureKind.html">enum CPMDCFeatureKind</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/struct_CPMDCFeatureEntry.html">struct CPMDCFeatureEntry</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/struct_CPMDCResult.html">struct CPMDCResult</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/struct_NWChemCResult.html">struct NWChemCResult</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
@@ -162,6 +183,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../tensor.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">tensor</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../status.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">status</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../eindir.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">eindir</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../c_api.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">c_api</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../c_api/types.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">types</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="../c_api/potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
@@ -320,7 +342,7 @@ into the Cap’n Proto response.</p>
 <p class="rubric">Functions</p>
 <dl class="rust function">
 <dt class="sig sig-object rust" id="rgpot_core-rpc-server-rgpot_rpc_server_start">
-<span class="sig-name descname"><span class="k"><span class="pre">unsafe</span></span><span class="w"> </span><span class="k"><span class="pre">extern</span></span><span class="w"> </span><span class="s"><span class="pre">C</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_rpc_server_start</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">pot</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="../potential.html#rgpot_core-potential-rgpot_potential_t" title="rgpot_core::potential::rgpot_potential_t"><span class="n"><span class="pre">rgpot_potential_t</span></span></a><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">host</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">os</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">raw</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">c_char</span></span><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">port</span></span><span class="p"><span class="pre">:</span> </span><span class="n"><span class="pre">u16</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><a class="reference internal" href="../status.html#rgpot_core-status-rgpot_status_t" title="rgpot_core::status::rgpot_status_t"><span class="n"><span class="pre">rgpot_status_t</span></span></a></span><a class="headerlink" href="#rgpot_core-rpc-server-rgpot_rpc_server_start" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="k"><span class="pre">unsafe</span></span><span class="w"> </span><span class="k"><span class="pre">extern</span></span><span class="w"> </span><span class="s"><span class="pre">C</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_rpc_server_start</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">pot</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="../eindir.html#rgpot_core-eindir-rgpot_potential_t" title="rgpot_core::eindir::rgpot_potential_t"><span class="n"><span class="pre">rgpot_potential_t</span></span></a><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">host</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">os</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">raw</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">c_char</span></span><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">port</span></span><span class="p"><span class="pre">:</span> </span><span class="n"><span class="pre">u16</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><a class="reference internal" href="../status.html#rgpot_core-status-rgpot_status_t" title="rgpot_core::status::rgpot_status_t"><span class="n"><span class="pre">rgpot_status_t</span></span></a></span><a class="headerlink" href="#rgpot_core-rpc-server-rgpot_rpc_server_start" title="Link to this definition">¶</a></dt>
 <dd><p>Start an RPC server listening on <code class="docutils literal notranslate"><span class="pre">host:port</span></code>, dispatching to <code class="docutils literal notranslate"><span class="pre">pot</span></code>.</p>
 <p>This function blocks the current thread. It creates its own tokio runtime.</p>
 <p><strong>Safety</strong>

@@ -57,6 +57,20 @@ Enable only what the host project needs:
     | ``-Dwith_metatomic=true`` | ``metatomicbld`` (linux-64) | ``MetatomicPot`` (TorchScript models) |
     +---------------------------+-----------------------------+---------------------------------------+
 
+``NWChemPot`` is a pure consumer: the frontend is always compiled and ``dlopen=s =libnwchemc.so`` from `nwchemc <https://github.com/OmniPotentRPC/nwchemc>`_
+(stable ``nwchemc_*`` C symbols). rgpot builds no in-process NWChem embed of its
+own and has no ``-Dwith_nwchem`` option.
+No ``nwchem`` CLI/subprocess path. Build ``libnwchemc.so`` from the ``nwchemc``
+project, then set ``NWCHEMC_LIBRARY`` or ``RGPOT_NWCHEMC_ENGINE``. See ``CppCore/ rgpot/NWChemPot/README.md``.
+
+``CPMDPot`` follows the same split-engine pattern: the frontend is always compiled
+and ``dlopen=s =libcpmdc.so`` from [[`https://github.com/OmniPotentRPC/cpmdc <https://github.com/OmniPotentRPC/cpmdc>`_]
+[cpmdc]]. rgpot builds no in-process OpenCPMD embed of its own and has no
+``-Dwith_cpmd`` option.
+Build ``libcpmdc.so`` from the ``cpmdc`` project, then set ``CPMDC_LIBRARY``,
+``RGPOT_CPMDC_ENGINE``, or ``RGPOT_CPMD_ENGINE``.
+See ``CppCore/rgpot/CPMDPot/README.md``.
+
 Example -- embed with metatomic support:
 
 .. code:: meson

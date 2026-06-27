@@ -90,11 +90,13 @@ data-aria-dark="Switch to auto color mode">
         <div class="globaltoc" data-expand-depth="1"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Tutorials</span></p>
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../../tutorials/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../../tutorials/molecular-global-optimization.html">Find the Ground State of an EON Structure</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">How-To Guides</span></p>
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../../howto/embedding.html">Embedding as a Subproject</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../../howto/integration.html">External Integration Guide</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../../howto/eindir-anneal.html">rgpot Potentials as eindir Objectives</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -131,19 +133,38 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../../../api/struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/struct_rgpot_XTBConfig.html">struct rgpot::XTBConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/class_rgpot_CPMDPot.html">class rgpot::CPMDPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/class_rgpot_CuH2Pot.html">class rgpot::CuH2Pot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/class_rgpot_DynLib.html">class rgpot::DynLib</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/class_rgpot_MetatomicPot.html">class rgpot::MetatomicPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/class_rgpot_NWChemPot.html">class rgpot::NWChemPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/class_rgpot_PotentialBase.html">class rgpot::PotentialBase</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/class_rgpot_TBLitePot.html">class rgpot::TBLitePot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/class_rgpot_XTBPot.html">class rgpot::XTBPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/class_rgpot_registry.html">template class rgpot::registry</a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/namespace_rgpot-2.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/namespace_rgpot-3.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/namespace_std.html">namespace std</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/namespace_string_literals.html">namespace string_literals</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/enum_CPMDCFeatureKind.html">enum CPMDCFeatureKind</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/struct_CPMDCFeatureEntry.html">struct CPMDCFeatureEntry</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/struct_CPMDCResult.html">struct CPMDCResult</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/struct_NWChemCResult.html">struct NWChemCResult</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
@@ -162,6 +183,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../tensor.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">tensor</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../status.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">status</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../eindir.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">eindir</span></code></a></li>
 <li class="toctree-l3 current"><a class="reference internal" href="../c_api.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">c_api</span></code></a><ul class="current">
 <li class="toctree-l4"><a class="reference internal" href="types.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">types</span></code></a></li>
 <li class="toctree-l4 current"><a class="current reference internal" href="#"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
@@ -313,63 +335,50 @@ data-aria-dark="Switch to auto color mode">
 <dt class="sig sig-object rust" id="rgpot_core-c_api-potential">
 <span class="sig-name descname"><span class="k"><span class="pre">module</span></span><span class="w"> </span><span class="n"><span class="pre">potential</span></span></span><a class="headerlink" href="#rgpot_core-c_api-potential" title="Link to this definition">¶</a></dt>
 <dd><p>C API for the potential handle lifecycle: create, calculate, free.</p>
-<p>These three functions form the core public interface for potential energy
-calculations. The typical usage pattern from C/C++ is:</p>
-<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1">// 1. Create a handle from a callback</span>
+<p><code class="docutils literal notranslate"><span class="pre">rgpot_potential_t</span></code> is the superset struct defined in <code class="docutils literal notranslate"><span class="pre">crate::eindir</span></code>:
+it embeds <code class="docutils literal notranslate"><span class="pre">eindir_objective_t</span></code> as its first member so every
+<code class="docutils literal notranslate"><span class="pre">rgpot_potential_t*</span></code> IS-A <code class="docutils literal notranslate"><span class="pre">eindir_objective_t*</span></code> at the C ABI.</p>
+<p>The three lifecycle functions here use the direct callback path
+(<code class="docutils literal notranslate"><span class="pre">pot.callback</span></code>); the eindir evaluation path goes through
+<code class="docutils literal notranslate"><span class="pre">eindir_objective_eval</span></code> with the zero-cost cast.</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1">// Direct rgpot path:</span>
 </span><span data-line="2"><span class="n">rgpot_potential_t</span> <span class="o">*</span><span class="n">pot</span> <span class="o">=</span> <span class="n">rgpot_potential_new</span><span class="p">(</span><span class="n">my_callback</span><span class="p">,</span> <span class="n">my_data</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">);</span>
-</span><span data-line="3">
-</span><span data-line="4"><span class="c1">// 2. Prepare input/output</span>
-</span><span data-line="5"><span class="n">rgpot_force_input_t</span>  <span class="n">input</span>  <span class="o">=</span> <span class="n">rgpot_force_input_create</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">pos</span><span class="p">,</span> <span class="n">types</span><span class="p">,</span> <span class="n">box</span><span class="p">);</span>
-</span><span data-line="6"><span class="n">rgpot_force_out_t</span>    <span class="n">output</span> <span class="o">=</span> <span class="n">rgpot_force_out_create</span><span class="p">();</span>
-</span><span data-line="7">
-</span><span data-line="8"><span class="c1">// 3. Calculate</span>
-</span><span data-line="9"><span class="n">rgpot_status_t</span> <span class="n">s</span> <span class="o">=</span> <span class="n">rgpot_potential_calculate</span><span class="p">(</span><span class="n">pot</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">input</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">output</span><span class="p">);</span>
-</span><span data-line="10"><span class="k">if</span> <span class="p">(</span><span class="n">s</span> <span class="o">!=</span> <span class="n">RGPOT_SUCCESS</span><span class="p">)</span> <span class="p">{</span> <span class="cm">/* handle error */</span> <span class="p">}</span>
-</span><span data-line="11"><span class="c1">// output.forces is now a DLPack tensor — use it, then free:</span>
-</span><span data-line="12"><span class="n">rgpot_tensor_free</span><span class="p">(</span><span class="n">output</span><span class="p">.</span><span class="n">forces</span><span class="p">);</span>
-</span><span data-line="13">
-</span><span data-line="14"><span class="c1">// 4. Clean up</span>
-</span><span data-line="15"><span class="n">rgpot_force_input_free</span><span class="p">(</span><span class="o">&amp;</span><span class="n">input</span><span class="p">);</span>
-</span><span data-line="16"><span class="n">rgpot_potential_free</span><span class="p">(</span><span class="n">pot</span><span class="p">);</span>
+</span><span data-line="3"><span class="n">rgpot_status_t</span> <span class="n">s</span> <span class="o">=</span> <span class="n">rgpot_potential_calculate</span><span class="p">(</span><span class="n">pot</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">input</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">output</span><span class="p">);</span>
+</span><span data-line="4"><span class="n">rgpot_potential_free</span><span class="p">(</span><span class="n">pot</span><span class="p">);</span>
+</span><span data-line="5">
+</span><span data-line="6"><span class="c1">// eindir path (IS-A cast, no conversion method):</span>
+</span><span data-line="7"><span class="n">eindir_objective_t</span> <span class="o">*</span><span class="n">obj</span> <span class="o">=</span> <span class="p">(</span><span class="n">eindir_objective_t</span><span class="o">*</span><span class="p">)</span><span class="n">pot</span><span class="p">;</span>
+</span><span data-line="8"><span class="kt">double</span> <span class="n">val</span><span class="p">;</span>
+</span><span data-line="9"><span class="n">eindir_objective_eval</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">x_tensor</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">val</span><span class="p">);</span>
 </span></pre></div>
 </div>
 <p class="rubric">Functions</p>
 <dl class="rust function">
 <dt class="sig sig-object rust" id="rgpot_core-c_api-potential-rgpot_potential_calculate">
-<span class="sig-name descname"><span class="k"><span class="pre">unsafe</span></span><span class="w"> </span><span class="k"><span class="pre">extern</span></span><span class="w"> </span><span class="s"><span class="pre">C</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_potential_calculate</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">pot</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="../potential.html#rgpot_core-potential-rgpot_potential_t" title="rgpot_core::potential::rgpot_potential_t"><span class="n"><span class="pre">rgpot_potential_t</span></span></a><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">input</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="../types.html#rgpot_core-types-rgpot_force_input_t" title="rgpot_core::types::rgpot_force_input_t"><span class="n"><span class="pre">rgpot_force_input_t</span></span></a><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">output</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">mut</span></span><span class="w"> </span><a class="reference internal" href="../types.html#rgpot_core-types-rgpot_force_out_t" title="rgpot_core::types::rgpot_force_out_t"><span class="n"><span class="pre">rgpot_force_out_t</span></span></a><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><a class="reference internal" href="../status.html#rgpot_core-status-rgpot_status_t" title="rgpot_core::status::rgpot_status_t"><span class="n"><span class="pre">rgpot_status_t</span></span></a></span><a class="headerlink" href="#rgpot_core-c_api-potential-rgpot_potential_calculate" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="k"><span class="pre">unsafe</span></span><span class="w"> </span><span class="k"><span class="pre">extern</span></span><span class="w"> </span><span class="s"><span class="pre">C</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_potential_calculate</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">pot</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="../eindir.html#rgpot_core-eindir-rgpot_potential_t" title="rgpot_core::eindir::rgpot_potential_t"><span class="n"><span class="pre">rgpot_potential_t</span></span></a><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">input</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="../types.html#rgpot_core-types-rgpot_force_input_t" title="rgpot_core::types::rgpot_force_input_t"><span class="n"><span class="pre">rgpot_force_input_t</span></span></a><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">output</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">mut</span></span><span class="w"> </span><a class="reference internal" href="../types.html#rgpot_core-types-rgpot_force_out_t" title="rgpot_core::types::rgpot_force_out_t"><span class="n"><span class="pre">rgpot_force_out_t</span></span></a><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><a class="reference internal" href="../status.html#rgpot_core-status-rgpot_status_t" title="rgpot_core::status::rgpot_status_t"><span class="n"><span class="pre">rgpot_status_t</span></span></a></span><a class="headerlink" href="#rgpot_core-c_api-potential-rgpot_potential_calculate" title="Link to this definition">¶</a></dt>
 <dd><p>Perform a force/energy calculation using the potential handle.</p>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">pot</span></code>: a valid handle obtained from <code class="docutils literal notranslate"><span class="pre">rgpot_potential_new</span></code>.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">input</span></code>: pointer to the input configuration (DLPack tensors).</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">output</span></code>: pointer to the output struct. The callback sets <cite>output-&gt;forces</cite>
-to a callee-allocated DLPack tensor.</p></li>
-</ul>
-<p>Returns <code class="docutils literal notranslate"><span class="pre">RGPOT_SUCCESS</span></code> on success, or an error status code.
-On error, call <code class="docutils literal notranslate"><span class="pre">rgpot_last_error()</span></code> for details.</p>
+<p>Routes through the direct rgpot callback (<code class="docutils literal notranslate"><span class="pre">pot.callback</span></code>), bypassing the
+eindir evaluation path.</p>
 </dd></dl>
 
 <dl class="rust function">
 <dt class="sig sig-object rust" id="rgpot_core-c_api-potential-rgpot_potential_free">
-<span class="sig-name descname"><span class="k"><span class="pre">unsafe</span></span><span class="w"> </span><span class="k"><span class="pre">extern</span></span><span class="w"> </span><span class="s"><span class="pre">C</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_potential_free</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">pot</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">mut</span></span><span class="w"> </span><a class="reference internal" href="../potential.html#rgpot_core-potential-rgpot_potential_t" title="rgpot_core::potential::rgpot_potential_t"><span class="n"><span class="pre">rgpot_potential_t</span></span></a><span class="p"><span class="pre">)</span></span></span><a class="headerlink" href="#rgpot_core-c_api-potential-rgpot_potential_free" title="Link to this definition">¶</a></dt>
-<dd><p>Free a potential handle previously obtained from <code class="docutils literal notranslate"><span class="pre">rgpot_potential_new</span></code>.</p>
-<p>If <code class="docutils literal notranslate"><span class="pre">pot</span></code> is <code class="docutils literal notranslate"><span class="pre">NULL</span></code>, this function is a no-op.
-After this call, <code class="docutils literal notranslate"><span class="pre">pot</span></code> must not be used again.</p>
+<span class="sig-name descname"><span class="k"><span class="pre">unsafe</span></span><span class="w"> </span><span class="k"><span class="pre">extern</span></span><span class="w"> </span><span class="s"><span class="pre">C</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_potential_free</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">pot</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">mut</span></span><span class="w"> </span><a class="reference internal" href="../eindir.html#rgpot_core-eindir-rgpot_potential_t" title="rgpot_core::eindir::rgpot_potential_t"><span class="n"><span class="pre">rgpot_potential_t</span></span></a><span class="p"><span class="pre">)</span></span></span><a class="headerlink" href="#rgpot_core-c_api-potential-rgpot_potential_free" title="Link to this definition">¶</a></dt>
+<dd><p>Free a potential handle previously obtained from <code class="docutils literal notranslate"><span class="pre">rgpot_potential_new</span></code> or
+<code class="docutils literal notranslate"><span class="pre">rgpot_potential_new_eindir</span></code>.</p>
+<p>Calls <code class="docutils literal notranslate"><span class="pre">pot_free_fn(pot_user_data)</span></code> if provided, frees all owned arrays,
+then frees the struct.</p>
 </dd></dl>
 
 <dl class="rust function">
 <dt class="sig sig-object rust" id="rgpot_core-c_api-potential-rgpot_potential_new">
-<span class="sig-name descname"><span class="k"><span class="pre">unsafe</span></span><span class="w"> </span><span class="k"><span class="pre">extern</span></span><span class="w"> </span><span class="s"><span class="pre">C</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_potential_new</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">callback</span></span><span class="p"><span class="pre">:</span> </span><a class="reference internal" href="../potential.html#rgpot_core-potential-PotentialCallback" title="rgpot_core::potential::PotentialCallback"><span class="n"><span class="pre">PotentialCallback</span></span></a><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">user_data</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">mut</span></span><span class="w"> </span><span class="n"><span class="pre">c_void</span></span><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">free_fn</span></span><span class="p"><span class="pre">:</span> </span><span class="n"><span class="pre">Option</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">unsafe</span></span><span class="w"> </span><span class="k"><span class="pre">extern</span></span><span class="w"> </span><span class="s"><span class="pre">C</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="p"><span class="pre">(</span></span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">mut</span></span><span class="w"> </span><span class="n"><span class="pre">c_void</span></span><span class="p"><span class="pre">)</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">mut</span></span><span class="w"> </span><a class="reference internal" href="../potential.html#rgpot_core-potential-rgpot_potential_t" title="rgpot_core::potential::rgpot_potential_t"><span class="n"><span class="pre">rgpot_potential_t</span></span></a></span><a class="headerlink" href="#rgpot_core-c_api-potential-rgpot_potential_new" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="k"><span class="pre">unsafe</span></span><span class="w"> </span><span class="k"><span class="pre">extern</span></span><span class="w"> </span><span class="s"><span class="pre">C</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_potential_new</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">callback</span></span><span class="p"><span class="pre">:</span> </span><a class="reference internal" href="../potential.html#rgpot_core-potential-PotentialCallback" title="rgpot_core::potential::PotentialCallback"><span class="n"><span class="pre">PotentialCallback</span></span></a><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">user_data</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">mut</span></span><span class="w"> </span><span class="n"><span class="pre">c_void</span></span><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">free_fn</span></span><span class="p"><span class="pre">:</span> </span><span class="n"><span class="pre">Option</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">unsafe</span></span><span class="w"> </span><span class="k"><span class="pre">extern</span></span><span class="w"> </span><span class="s"><span class="pre">C</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="p"><span class="pre">(</span></span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">mut</span></span><span class="w"> </span><span class="n"><span class="pre">c_void</span></span><span class="p"><span class="pre">)</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">mut</span></span><span class="w"> </span><a class="reference internal" href="../eindir.html#rgpot_core-eindir-rgpot_potential_t" title="rgpot_core::eindir::rgpot_potential_t"><span class="n"><span class="pre">rgpot_potential_t</span></span></a></span><a class="headerlink" href="#rgpot_core-c_api-potential-rgpot_potential_new" title="Link to this definition">¶</a></dt>
 <dd><p>Create a new potential handle from a callback function pointer.</p>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">callback</span></code>: the function that performs the force/energy calculation.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">user_data</span></code>: opaque pointer forwarded to every callback invocation
-(typically a pointer to the C++ potential object).</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">free_fn</span></code>: optional destructor for <code class="docutils literal notranslate"><span class="pre">user_data</span></code>. Pass <code class="docutils literal notranslate"><span class="pre">NULL</span></code> if the
-caller manages the lifetime externally.</p></li>
-</ul>
+<p>Creates a <code class="docutils literal notranslate"><span class="pre">rgpot_potential_t</span></code> with no molecular context (n_atoms = 0) and
+no eindir bounds.  The potential evaluates through <code class="docutils literal notranslate"><span class="pre">callback</span></code> directly.
+Use <code class="docutils literal notranslate"><span class="pre">rgpot_potential_new_eindir</span></code> when the IS-A eindir embedding is needed.</p>
 <p>Returns a heap-allocated <code class="docutils literal notranslate"><span class="pre">rgpot_potential_t*</span></code>, or <code class="docutils literal notranslate"><span class="pre">NULL</span></code> on failure.
-The caller must eventually pass the returned pointer to
-<code class="docutils literal notranslate"><span class="pre">rgpot_potential_free</span></code>.</p>
+The caller must eventually pass the returned pointer to <code class="docutils literal notranslate"><span class="pre">rgpot_potential_free</span></code>.</p>
 </dd></dl>
 
 </dd></dl>

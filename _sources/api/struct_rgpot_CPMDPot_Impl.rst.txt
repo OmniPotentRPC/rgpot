@@ -1,0 +1,32 @@
+.. index:: pair: struct; rgpot::CPMDPot::Impl
+.. _doxid-structrgpot_1_1_c_p_m_d_pot_1_1_impl:
+
+struct rgpot::CPMDPot::Impl
+===========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Impl {
+		// fields
+	
+		EngineBundle :target:`bundle<doxid-structrgpot_1_1_c_p_m_d_pot_1_1_impl_1aabc4cc6274a35a150f39b0baa244a73e>`;
+		std::vector<::capnp::word> :target:`params_words<doxid-structrgpot_1_1_c_p_m_d_pot_1_1_impl_1a78c77b2db587ef640c01146402396810>`;
+		std::string :target:`engine_path<doxid-structrgpot_1_1_c_p_m_d_pot_1_1_impl_1a5bcfcf55bdba92bd9d8d2631abe9be40>`;
+		std::string :target:`cpmd_root<doxid-structrgpot_1_1_c_p_m_d_pot_1_1_impl_1a4f85fcfb82733890ee4b3f6085b33221>`;
+		:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* :target:`session<doxid-structrgpot_1_1_c_p_m_d_pot_1_1_impl_1a4a1e2042a359c20d12489e1b5950011c>` = nullptr;
+		std::vector<double> :target:`grad_scratch<doxid-structrgpot_1_1_c_p_m_d_pot_1_1_impl_1a2215963e5a6a4843acfe48cfd093dcc5>`;
+
+		// methods
+	
+		void :target:`destroySession<doxid-structrgpot_1_1_c_p_m_d_pot_1_1_impl_1a233a272c363fc63d64ad2bdf3e62e441>`();
+		bool :target:`configure<doxid-structrgpot_1_1_c_p_m_d_pot_1_1_impl_1a3b52602350a79fc7c364e6f2ea2508ab>`();
+		void :target:`forceSession<doxid-structrgpot_1_1_c_p_m_d_pot_1_1_impl_1a84ef9bd97be9cb02068f999eef331903>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out);
+	};

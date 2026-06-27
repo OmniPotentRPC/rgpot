@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en" data-accent-color="teal" data-content_root="../">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Find the Ground State of an EON Structure - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Embedding as a Subproject" href="../howto/embedding.html" /><link rel="prev" title="Quickstart" href="quickstart.html" />
+      <link rel="canonical" href="https://rgpot.rgoswami.me/tutorials/molecular-global-optimization.html" /><script>
+    function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
+    setColorMode(localStorage._theme||"auto");
+  </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
+    <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=44020203" />
+    <link rel="stylesheet" type="text/css" href="../_static/doxyrest-pygments.css?v=ff3f4257" />
+    <link rel="stylesheet" type="text/css" href="../_static/doxyrest-shibuya.css" />
+    <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=23824103" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --sy-f-text: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+  --sy-f-heading: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+}
+</style>
+    <meta property="og:type" content="website"/>
+  <meta property="og:url" content="https://rgpot.rgoswami.me/tutorials/molecular-global-optimization.html"/>
+  <meta property="og:title" content="Find the Ground State of an EON Structure"/>
+    <meta name="twitter:card" content="summary"/>
+  <!-- Manual favicon handling with favicon.io -->
+<!-- since sphinx-favicon doesn't work with shibuya -->
+<link rel="icon" type="image/png" sizes="16x16" href="../_static/favicons/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="../_static/favicons/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="../_static/favicons/android-chrome-192x192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="../_static/favicons/android-chrome-512x512.png">
+<link rel="apple-touch-icon" sizes="180x180" href="../_static/favicons/apple-touch-icon.png">
+<link rel="shortcut icon" href="../_static/favicons/favicon.ico">
+<link rel="manifest" href="../_static/favicons/site.webmanifest">
+<!-- Umami analytics -->
+<script defer src="https://analytics.turtletech.us/script.js" data-website-id="2a881f07-4e2d-4463-a396-b9b2e868aecb"></script>
+<script>window.umami=window.umami||{track:function(){}};document.addEventListener('click',function(e){var a=e.target.closest('a');if(a&&a.hostname!==location.hostname)umami.track('Outbound Link',{url:a.href})});</script>
+<script defer src="https://antics-api.turtletech.us/antics.js"></script></head>
+<body><div class="sy-head">
+  <div class="sy-head-blur"></div>
+  <div class="sy-head-inner sy-container mx-auto">
+    <a class="sy-head-brand" href="../index.html">
+      <img class="light-logo" src="../_static/rgpot_notext_light.webp" alt="rgpot" height="28" loading="lazy" />
+      <img class="dark-logo" src="../_static/rgpot_notext_dark.webp" alt="rgpot" height="28" loading="lazy" />
+      <strong>rgpot</strong>
+    </a>
+    <div class="sy-head-nav" id="head-nav">
+      <nav class="sy-head-links"><ul>
+      <li class="link"><button class="js-menu" type="button" id="nav-trigger-1" aria-controls="nav-children-1">
+            <span>Ecosystem</span>
+            <i class="i-lucide chevron-down"></i>
+          </button>
+        <ul id="nav-children-1" aria-labelledby="nav-trigger-1"><li><a href="https://eondocs.org">
+                <span>eOn</span>
+                <small>Saddle point finding on potential energy surfaces</small>
+              </a></li><li><a href="https://rgpycrumbs.rgoswami.me">
+                <span>rgpycrumbs</span>
+                <small>Python bindings for rgpot</small>
+              </a></li></ul>
+      </li></ul></nav>
+      <div class="sy-head-extra flex items-center print:hidden"><form class="searchbox flex items-center" action="../search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <kbd>/</kbd>
+</form><div class="sy-head-socials">
+  <a href="https://github.com/OmniPotentRPC/rgpot" aria-label="GitHub">
+    <iconify-icon icon="simple-icons:github"></iconify-icon>
+  </a></div></div>
+    </div>
+    <div class="sy-head-actions flex items-center shrink-0 print:hidden"><button class="js-theme theme-switch flex items-center"
+data-aria-auto="Switch to light color mode"
+data-aria-light="Switch to dark color mode"
+data-aria-dark="Switch to auto color mode">
+<i class="i-lucide theme-icon"></i>
+</button><button class="md:hidden flex items-center js-menu" aria-label="Menu" type="button" aria-controls="head-nav" aria-expanded="false">
+        <div class="hamburger">
+          <span class="hamburger_1"></span>
+          <span class="hamburger_2"></span>
+          <span class="hamburger_3"></span>
+        </div>
+      </button>
+    </div>
+  </div>
+</div>
+<div class="sy-page sy-container flex mx-auto">
+  <aside id="lside" class="sy-lside md:w-72 md:shrink-0 print:hidden">
+    <div class="sy-lside-inner md:sticky">
+      <div class="sy-scrollbar p-6">
+        <div class="globaltoc" data-expand-depth="1"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Tutorials</span></p>
+<ul class="current">
+<li class="toctree-l1 _expand"><a class="reference internal" href="quickstart.html">Quickstart</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Find the Ground State of an EON Structure</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">How-To Guides</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/embedding.html">Embedding as a Subproject</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/integration.html">External Integration Guide</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eindir-anneal.html">rgpot Potentials as eindir Objectives</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../reference/architecture.html">Architecture Overview</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../api/index.html">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../api/group_rgpot_cpp.html">C++ RAII Wrappers</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_rgpot_CalcResult.html">class rgpot::CalcResult</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_rgpot_Error.html">class rgpot::Error</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_rgpot_InputSpec.html">class rgpot::InputSpec</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_rgpot_PotentialHandle.html">class rgpot::PotentialHandle</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_rgpot_RpcClient.html">class rgpot::RpcClient</a><ul class="simple">
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../api/global.html">Global Namespace</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot.html">namespace rgpot</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_details.html">namespace rgpot::details</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_types.html">namespace rgpot::types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_units.html">namespace rgpot::units</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_GFNMethod.html">enum rgpot::GFNMethod</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XTBConfig.html">struct rgpot::XTBConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_CPMDPot.html">class rgpot::CPMDPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_CuH2Pot.html">class rgpot::CuH2Pot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_DynLib.html">class rgpot::DynLib</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_MetatomicPot.html">class rgpot::MetatomicPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_NWChemPot.html">class rgpot::NWChemPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_PotentialBase.html">class rgpot::PotentialBase</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_TBLitePot.html">class rgpot::TBLitePot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_XTBPot.html">class rgpot::XTBPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_registry.html">template class rgpot::registry</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-2.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-3.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_std.html">namespace std</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_string_literals.html">namespace string_literals</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/enum_CPMDCFeatureKind.html">enum CPMDCFeatureKind</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_CPMDCFeatureEntry.html">struct CPMDCFeatureEntry</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_CPMDCResult.html">struct CPMDCResult</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_NWChemCResult.html">struct NWChemCResult</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_GenericPotImpl.html">class GenericPotImpl</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_PotClient.html">class PotClient</a><ul class="simple">
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../crates/rgpot_core/lib.html">Crate <code class="docutils literal notranslate"><span class="pre">rgpot_core</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/types.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">types</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/tensor.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">tensor</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/status.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">status</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/eindir.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">eindir</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/c_api.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">c_api</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/types.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">types</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/client.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">client</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/server.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">server</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../changelog.html">Changelog</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Development</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../contributing/index.html">Contributing to <code class="docutils literal notranslate"><span class="pre">rgpot</span></code></a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../contributing/developer/index.html">Developer Guide</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../contributing/developer/testing.html">Testing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../contributing/developer/release.html">Release Process</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../contributing/developer/faq.html">Developer FAQ</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../code_of_conduct.html">Code of Conduct</a></li>
+</ul>
+</li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../code_of_conduct.html">Code of Conduct</a></li>
+</ul>
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="lside-overlay js-menu" role="button" aria-label="Close left sidebar" aria-controls="lside" aria-expanded="false"></div>
+  <aside id="rside" class="sy-rside pb-3 w-64 shrink-0 order-last">
+    <button class="rside-close js-menu xl:hidden" aria-label="Close Table of Contents" type="button" aria-controls="rside" aria-expanded="false">
+      <i class="i-lucide close"></i>
+    </button>
+    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
+<li><a class="reference internal" href="#what-you-will-need">What you will need</a></li>
+<li><a class="reference internal" href="#step-1-drive-an-rgpot-potential-from-python">Step 1: drive an rgpot potential from Python</a></li>
+<li><a class="reference internal" href="#step-2-local-relaxation-stops-at-the-nearest-minimum">Step 2: local relaxation stops at the nearest minimum</a></li>
+<li><a class="reference internal" href="#step-3-find-the-global-minimum">Step 3: find the global minimum</a><ul>
+<li><a class="reference internal" href="#which-minimizer-for-which-job">Which minimizer for which job</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#step-4-start-from-a-con-file">Step 4: start from a <code class="docutils literal notranslate"><span class="pre">.con</span></code> file</a></li>
+<li><a class="reference internal" href="#visualize-the-minimization-on-the-s-d-landscape">Visualize the minimization on the (s, d) landscape</a></li>
+<li><a class="reference internal" href="#where-to-go-next">Where to go next</a></li>
+</ul>
+</div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/OmniPotentRPC/rgpot"
+  data-type="github" data-user="OmniPotentRPC" data-repo="rgpot">
+  <span class="w-8 flex items-center justify-around shrink-0 text-3xl">
+    <iconify-icon icon="simple-icons:github"></iconify-icon>
+  </span>
+  <span class="flex-grow px-2 break-all">
+    
+    
+      <span>rgpot</span>
+    
+    <span class="flex text-sm repo-stats-count">
+      <span class="flex items-center pr-3">
+        <iconify-icon icon="lucide:star"></iconify-icon>
+        <strong class="js-repo-stars ml-1">0</strong>
+      </span>
+      <span class="flex items-center">
+        <iconify-icon icon="lucide:git-fork"></iconify-icon>
+        <strong class="js-repo-forks ml-1">0</strong>
+      </span>
+    </span>
+  </span>
+</a><div class="edit-this-page">
+  <a href="https://github.com/OmniPotentRPC/rgpot/blob/main/docs/source/tutorials/molecular-global-optimization.rst">Edit this page</a>
+</div></div>
+  </aside>
+  <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
+  <main class="sy-main w-full max-sm:max-w-full print:pt-6">
+<div class="sy-breadcrumbs" role="navigation">
+  <div class="sy-breadcrumbs-inner flex items-center">
+    <div class="md:hidden mr-3">
+      <button class="js-menu" aria-label="Menu" type="button" aria-controls="lside" aria-expanded="false">
+        <i class="i-lucide menu"></i>
+      </button>
+    </div>
+    <ol class="flex-1" itemscope itemtype="https://schema.org/BreadcrumbList"><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a itemprop="item" href="../index.html"><span itemprop="name">rgpot</span></a>
+        <span>/</span>
+        <meta itemprop="position" content="1" />
+      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <strong itemprop="name">Find the Ground State of an EON Structure</strong>
+        <meta itemprop="position" content="2" />
+      </li></ol>
+    <div class="xl:hidden ml-1">
+      <button class="js-menu" aria-label="Show table of contents" type="button" aria-controls="rside"
+        aria-expanded="false">
+        <i class="i-lucide outdent"></i>
+      </button>
+    </div>
+  </div>
+</div><div class="flex flex-col break-words justify-between">
+      <div class="relative min-w-0 max-w-6xl px-6 pb-6 pt-8 xl:px-12">
+  <div class="copy-page-wrapper relative pb-4 lg:absolute lg:top-8 lg:right-6 xl:right-12">
+  <div id="copy-page-trigger">
+    <button
+      type="button"
+      class="js-copy px-3 py-1 inline-flex items-center gap-1"
+      data-url="https://rgpot.rgoswami.me/_sources/tutorials/molecular-global-optimization.rst.txt"
+    >
+      <i class="i-lucide" data-icon="copy"></i>
+      <span>Copy page</span>
+    </button>
+    <button class="js-menu px-2 py-1" type="button" aria-label="More actions"
+      aria-haspopup="menu" aria-expanded="false" aria-controls="copy-page-content">
+      <i class="i-lucide chevron-down"></i>
+    </button>
+  </div>
+  <div id="copy-page-content" role="menu" aria-orientation="vertical" aria-hidden="true">
+    <div role="presentation">
+      <div class="flex flex-col" role="group">
+        <button class="js-copy" type="button" role="menuitem"
+          data-url="https://rgpot.rgoswami.me/_sources/tutorials/molecular-global-optimization.rst.txt">
+          <span class="iconify-icon">
+            <i class="i-lucide" data-icon="copy"></i>
+          </span>
+          <span>Copy page</span>
+        </button>
+        <a role="menuitem" href="https://rgpot.rgoswami.me/_sources/tutorials/molecular-global-optimization.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
+            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20https%3A//rgpot.rgoswami.me/_sources/tutorials/molecular-global-optimization.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+          <iconify-icon icon="bi:openai"></iconify-icon>
+          <span>Open in ChatGPT</span>
+        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20https%3A//rgpot.rgoswami.me/_sources/tutorials/molecular-global-optimization.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+          <iconify-icon icon="bi:claude"></iconify-icon>
+          <span>Open in Claude</span>
+        </a></div>
+    </div>
+  </div>
+</div><article class="yue dark-code" role="main">
+          <section id="find-the-ground-state-of-an-eon-structure">
+<h1>Find the Ground State of an EON Structure<a class="headerlink" href="#find-the-ground-state-of-an-eon-structure" title="Link to this heading">¶</a></h1>
+<p>Atomistic workflows minimize.
+ASE relaxes structures with L-BFGS and FIRE; eOn (TheochemUI/eOn on GitHub) runs
+its own L-BFGS and conjugate-gradient minimizers at the end of every min-mode
+and nudged-elastic-band search, over structures stored as EON <code class="docutils literal notranslate"><span class="pre">.con</span></code> files and
+driven by a potential rgpot serves over RPC. The atomistic-cookbook example lab-
+cosmo/atomistic-cookbook runs exactly this stack: a PET-MAD model, a NEB path,
+eOn’s saddle search.</p>
+<p>All of these minimizers are <em>local</em>: they walk downhill to the nearest minimum.
+The nearest minimum is often not the one you want.
+This tutorial finds the minimum a local search misses, and shows that <code class="docutils literal notranslate"><span class="pre">anneal</span></code>
+reaches it where ASE’s optimizer and scipy’s simulated annealing do not improve
+on it.
+The numbers you will reproduce, from one disordered start on a 7-atom Lennard-
+Jones cluster (reduced units, global minimum <code class="docutils literal notranslate"><span class="pre">-16.505384</span></code>):</p>
+<div class="table-wrapper docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Minimizer</p></th>
+<th class="head"><p>Final energy</p></th>
+<th class="head"><p>Evaluations</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>local L-BFGS (ASE, eOn)</p></td>
+<td><p>-3.13</p></td>
+<td><p>500</p></td>
+</tr>
+<tr class="row-odd"><td><p>scipy <code class="docutils literal notranslate"><span class="pre">dual_annealing</span></code> (global)</p></td>
+<td><p>-16.505384</p></td>
+<td><p>17006</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">anneal</span></code> portfolio (global)</p></td>
+<td><p>-16.505384</p></td>
+<td><p>14920</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Local L-BFGS stops at the nearest minimum.
+Both global methods reach the ground state; <code class="docutils literal notranslate"><span class="pre">anneal</span></code> reaches it in fewer
+evaluations than scipy.</p>
+<section id="what-you-will-need">
+<h2>What you will need<a class="headerlink" href="#what-you-will-need" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><a class="reference external" href="https://pixi.sh">pixi</a> (manages the toolchain)</p></li>
+<li><p>The <code class="docutils literal notranslate"><span class="pre">rgpot</span></code>, <code class="docutils literal notranslate"><span class="pre">anneal</span></code>, and <code class="docutils literal notranslate"><span class="pre">readcon-core</span></code> checkouts side by side</p></li>
+<li><p>About 10 minutes</p></li>
+</ul>
+<p>One command builds everything and runs the comparison:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="nb">cd</span><span class="w"> </span>rgpot
+</span><span data-line="2">pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>rpctest<span class="w"> </span>ase-anneal-compare
+</span></pre></div>
+</div>
+<p>It builds the <code class="docutils literal notranslate"><span class="pre">potserv</span></code> potential server, builds the <code class="docutils literal notranslate"><span class="pre">anneal</span></code> and <code class="docutils literal notranslate"><span class="pre">readcon</span></code>
+Python modules, and runs the two scripts below.</p>
+</section>
+<section id="step-1-drive-an-rgpot-potential-from-python">
+<h2>Step 1: drive an rgpot potential from Python<a class="headerlink" href="#step-1-drive-an-rgpot-potential-from-python" title="Link to this heading">¶</a></h2>
+<p>rgpot exposes every potential through one ASE calculator, <code class="docutils literal notranslate"><span class="pre">RgpotCalculator</span></code>.
+It talks to the same <code class="docutils literal notranslate"><span class="pre">potserv</span></code> RPC server the eOn client connects to, so Python
+and eOn evaluate the same energies and forces.
+Point it at a potential and it launches the server:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+</span><span data-line="2"><span class="kn">from</span><span class="w"> </span><span class="nn">ase</span><span class="w"> </span><span class="kn">import</span> <span class="n">Atoms</span>
+</span><span data-line="3"><span class="kn">from</span><span class="w"> </span><span class="nn">ase_calculator</span><span class="w"> </span><span class="kn">import</span> <span class="n">RgpotCalculator</span>   <span class="c1"># CppCore/rgpot/rpc on sys.path</span>
+</span><span data-line="4">
+</span><span data-line="5"><span class="n">calc</span> <span class="o">=</span> <span class="n">RgpotCalculator</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">server_bin</span><span class="o">=</span><span class="s2">&quot;path/to/potserv&quot;</span><span class="p">,</span> <span class="n">potential</span><span class="o">=</span><span class="s2">&quot;LJ&quot;</span><span class="p">)</span>
+</span><span data-line="6">
+</span><span data-line="7"><span class="n">start</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">RandomState</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="o">-</span><span class="mf">2.3</span><span class="p">,</span> <span class="mf">2.3</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="mi">7</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+</span><span data-line="8"><span class="n">atoms</span> <span class="o">=</span> <span class="n">Atoms</span><span class="p">(</span><span class="n">numbers</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mi">7</span><span class="p">,</span> <span class="n">positions</span><span class="o">=</span><span class="n">start</span><span class="p">,</span> <span class="n">cell</span><span class="o">=</span><span class="p">[</span><span class="mi">40</span><span class="p">,</span> <span class="mi">40</span><span class="p">,</span> <span class="mi">40</span><span class="p">])</span>
+</span><span data-line="9"><span class="n">atoms</span><span class="o">.</span><span class="n">calc</span> <span class="o">=</span> <span class="n">calc</span>
+</span><span data-line="10">
+</span><span data-line="11"><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;start energy:&quot;</span><span class="p">,</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">())</span>   <span class="c1"># about +20</span>
+</span></pre></div>
+</div>
+<p>Use <code class="docutils literal notranslate"><span class="pre">spawn</span></code> as a context manager (<code class="docutils literal notranslate"><span class="pre">with</span> <span class="pre">RgpotCalculator.spawn(...)</span> <span class="pre">as</span> <span class="pre">calc:</span></code>) to
+stop the managed server on exit.</p>
+</section>
+<section id="step-2-local-relaxation-stops-at-the-nearest-minimum">
+<h2>Step 2: local relaxation stops at the nearest minimum<a class="headerlink" href="#step-2-local-relaxation-stops-at-the-nearest-minimum" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">ase.optimize</span><span class="w"> </span><span class="kn">import</span> <span class="n">LBFGS</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="n">LBFGS</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span><span class="o">=</span><span class="mf">1e-3</span><span class="p">)</span>
+</span><span data-line="4"><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;local L-BFGS energy:&quot;</span><span class="p">,</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">())</span>   <span class="c1"># about -3.13</span>
+</span></pre></div>
+</div>
+<p>L-BFGS converges to a minimum, just not the global one.
+The LJ7 global minimum, the pentagonal bipyramid at <code class="docutils literal notranslate"><span class="pre">-16.505384</span></code>, sits in a
+different basin; from a random start a local minimizer cannot cross into it.
+eOn’s L-BFGS, run on the same surface, stops in the same place – this is the
+wall a local search hits when a relaxation lands in a metastable basin instead
+of the product state.</p>
+</section>
+<section id="step-3-find-the-global-minimum">
+<h2>Step 3: find the global minimum<a class="headerlink" href="#step-3-find-the-global-minimum" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">AnnealOptimizer</span></code> wraps <code class="docutils literal notranslate"><span class="pre">anneal</span></code>’s portfolio optimizer (the method of
+the INFORMS Journal on Computing paper: Thompson-allocated basin hopping,
+differential evolution, generalized simulated annealing, parallel tempering,
+GLE-Langevin) behind the same <code class="docutils literal notranslate"><span class="pre">run()</span></code>.
+It uses the rgpot forces as the gradient:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">ase_helpers</span><span class="w"> </span><span class="kn">import</span> <span class="n">AnnealOptimizer</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="n">atoms</span><span class="o">.</span><span class="n">set_positions</span><span class="p">(</span><span class="n">start</span><span class="p">)</span>              <span class="c1"># back to the disordered start</span>
+</span><span data-line="4"><span class="n">opt</span> <span class="o">=</span> <span class="n">AnnealOptimizer</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="n">budget</span><span class="o">=</span><span class="mi">15000</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">11</span><span class="p">,</span> <span class="n">pad</span><span class="o">=</span><span class="mf">3.0</span><span class="p">)</span>
+</span><span data-line="5"><span class="n">opt</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+</span><span data-line="6"><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;anneal energy:&quot;</span><span class="p">,</span> <span class="n">opt</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">())</span>   <span class="c1"># -16.505384</span>
+</span><span data-line="7"><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;evaluations:&quot;</span><span class="p">,</span> <span class="n">opt</span><span class="o">.</span><span class="n">nevals</span><span class="p">)</span>
+</span></pre></div>
+</div>
+<p>The geometry ends at the global minimum.
+<code class="docutils literal notranslate"><span class="pre">scipy.optimize.dual_annealing</span></code> reaches the same value on this surface; <code class="docutils literal notranslate"><span class="pre">anneal</span></code>
+reaches it in fewer evaluations, and both pass the value the local search
+returns.
+<code class="docutils literal notranslate"><span class="pre">tests/ase_vs_anneal.py</span></code> runs all three side by side.</p>
+<section id="which-minimizer-for-which-job">
+<h3>Which minimizer for which job<a class="headerlink" href="#which-minimizer-for-which-job" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Local L-BFGS / FIRE / conjugate gradient (ASE or eOn): refine a structure</p></li>
+</ul>
+<p>inside the basin you want – an eOn saddle endpoint, a perturbed crystal, an
+MD snapshot.</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">AnnealOptimizer</span></code>: find the minimum when the basin is unknown – cluster ground</p></li>
+</ul>
+<p>states, conformer search, potential-parameter fitting.</p>
+<p>Chain them: an <code class="docutils literal notranslate"><span class="pre">anneal</span></code> search to locate the basin, then a local polish.</p>
+</section>
+</section>
+<section id="step-4-start-from-a-con-file">
+<h2>Step 4: start from a <code class="docutils literal notranslate"><span class="pre">.con</span></code> file<a class="headerlink" href="#step-4-start-from-a-con-file" title="Link to this heading">¶</a></h2>
+<p>EON workflows start from a structure on disk.
+<code class="docutils literal notranslate"><span class="pre">atoms_from_con</span></code> reads an EON <code class="docutils literal notranslate"><span class="pre">.con</span></code> file into <code class="docutils literal notranslate"><span class="pre">ase.Atoms</span></code> through <code class="docutils literal notranslate"><span class="pre">readcon-</span> <span class="pre">core</span></code> – the files eOn reads and writes:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">ase_helpers</span><span class="w"> </span><span class="kn">import</span> <span class="n">atoms_from_con</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="n">calc</span> <span class="o">=</span> <span class="n">RgpotCalculator</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">server_bin</span><span class="o">=</span><span class="s2">&quot;path/to/potserv&quot;</span><span class="p">,</span> <span class="n">potential</span><span class="o">=</span><span class="s2">&quot;CuH2&quot;</span><span class="p">)</span>
+</span><span data-line="4"><span class="n">atoms</span> <span class="o">=</span> <span class="n">atoms_from_con</span><span class="p">(</span><span class="s2">&quot;tiny_cuh2.con&quot;</span><span class="p">,</span> <span class="n">calc</span><span class="o">=</span><span class="n">calc</span><span class="p">)</span>
+</span><span data-line="5"><span class="nb">print</span><span class="p">(</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_chemical_symbols</span><span class="p">())</span>          <span class="c1"># [&#39;Cu&#39;, &#39;Cu&#39;, &#39;H&#39;, &#39;H&#39;]</span>
+</span><span data-line="6"><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;energy:&quot;</span><span class="p">,</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">())</span>
+</span><span data-line="7">
+</span><span data-line="8"><span class="c1"># The cell comes from the .con; override it with a larger box when needed.</span>
+</span><span data-line="9"><span class="n">atoms</span> <span class="o">=</span> <span class="n">atoms_from_con</span><span class="p">(</span><span class="s2">&quot;tiny_cuh2.con&quot;</span><span class="p">,</span> <span class="n">cell</span><span class="o">=</span><span class="p">[</span><span class="mi">15</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">30</span><span class="p">],</span> <span class="n">pbc</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span></pre></div>
+</div>
+<p>Relaxing it is the same <code class="docutils literal notranslate"><span class="pre">run()</span></code>: rattle the structure, then walk it back to the
+minimum the <code class="docutils literal notranslate"><span class="pre">.con</span></code> recorded:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">atoms</span><span class="o">.</span><span class="n">calc</span> <span class="o">=</span> <span class="n">calc</span>
+</span><span data-line="2"><span class="n">atoms</span><span class="o">.</span><span class="n">rattle</span><span class="p">(</span><span class="n">stdev</span><span class="o">=</span><span class="mf">0.15</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+</span><span data-line="3"><span class="n">LBFGS</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span><span class="o">=</span><span class="mf">0.02</span><span class="p">)</span>
+</span><span data-line="4"><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;relaxed energy:&quot;</span><span class="p">,</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">())</span>   <span class="c1"># back to -6.474708</span>
+</span></pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">tests/con_relax_demo.py</span></code> runs this round-trip.</p>
+</section>
+<section id="visualize-the-minimization-on-the-s-d-landscape">
+<h2>Visualize the minimization on the (s, d) landscape<a class="headerlink" href="#visualize-the-minimization-on-the-s-d-landscape" title="Link to this heading">¶</a></h2>
+<p>Two complementary views.
+First, sample the surface densely: a probe atom moved through the x-y plane
+near a lone atom (a shallow well) and a bound pair (a deeper well) gives a 2D
+Lennard-Jones double well.
+ASE LBFGS started in the shallow basin stops there; anneal’s portfolio reaches
+the deep one.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>rpctest<span class="w"> </span>pes-double-well
+</span></pre></div>
+</div>
+<figure class="align-default" id="id1">
+<img alt="_static/pes_double_well.png" src="_static/pes_double_well.png" />
+<figcaption>
+<p><span class="caption-text">rgpot LJ double well (densely evaluated 2D PES). ASE LBFGS (red) stops in the shallow left basin at -2.0; anneal’s global portfolio (orange star) reaches the deep right basin at -3.0.</span><a class="headerlink" href="#id1" title="Link to this image">¶</a></p>
+</figcaption>
+</figure>
+<p>Second, for an EON minimization, ``rgpycrumbs eon plt-min`` renders the actual
+trajectory on a gradient-enhanced 2D landscape: progress ``s`` toward the
+minimum against lateral deviation ``d``, with the energy surface fitted from the
+path. ``tests/eon<sub>min</sub><sub>landscape.py</sub>\`` runs an ``eonclient`` LJ7 minimization and
+plots it (energies capped with ``plt-min –energy-cap-window`` so the colorbar
+resolves the well):</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>eonviz<span class="w"> </span>eon-min-landscape
+</span></pre></div>
+</div>
+<figure class="align-default" id="id2">
+<img alt="_static/eon_min_landscape.png" src="_static/eon_min_landscape.png" />
+<figcaption>
+<p><span class="caption-text">An EON LJ7 minimization on the (s, d) landscape: the path descends from the start (Init) to the global minimum at -16.505 (Min), and the surface energy drops monotonically along progress s.</span><a class="headerlink" href="#id2" title="Link to this image">¶</a></p>
+</figcaption>
+</figure>
+<p>The ``eonviz`` environment is separate from the C++ build env: ``eon`` pins
+``fmt&gt;=12`` (clashing with rgpot’s C++ ``fmt&lt;12``), so it carries no default
+feature and pulls ``eon``, ``ira``, ``jax``, and the dev ``chemparseplot`` /
+``rgpycrumbs`` (the published releases lack the embedded-metadata trajectory
+parser and ``plt-min``).</p>
+</section>
+<section id="where-to-go-next">
+<h2>Where to go next<a class="headerlink" href="#where-to-go-next" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Swap <code class="docutils literal notranslate"><span class="pre">potential</span></code>”LJ”= for <code class="docutils literal notranslate"><span class="pre">CuH2</span></code>, <code class="docutils literal notranslate"><span class="pre">XTB</span></code>, <code class="docutils literal notranslate"><span class="pre">TBLite</span></code>, or <code class="docutils literal notranslate"><span class="pre">Metatomic:&lt;model&gt;</span></code> (the</p></li>
+</ul>
+<p>PET-MAD model the cookbook uses); the calculator stays the same, only the server
+backend changes, and the same server serves eOn.</p>
+<ul class="simple">
+<li><p>Read <a class="reference external" href="../howto/integration.rst">External Integration Guide</a> for how eOn</p></li>
+</ul>
+<p>links rgpot’s RPC server from C++.</p>
+<ul class="simple">
+<li><p>Read <a class="reference external" href="../howto/eindir-anneal.rst">rgpot potentials as eindir objectives</a></p></li>
+</ul>
+<p>for how an rgpot potential becomes an <code class="docutils literal notranslate"><span class="pre">anneal</span></code> objective with no glue code.</p>
+</section>
+</section>
+
+        </article><button class="back-to-top" type="button">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+    <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+  </svg>
+  <span>Back to top</span>
+</button><div class="navigation flex print:hidden"><div class="navigation-prev">
+    <a href="quickstart.html">
+      <i class="i-lucide chevron-left"></i>
+      <div class="page-info">
+        <span>Previous</span><div class="title">Quickstart</div></div>
+    </a>
+  </div><div class="navigation-next">
+    <a href="../howto/embedding.html">
+      <div class="page-info">
+        <span>Next</span>
+        <div class="title">Embedding as a Subproject</div>
+      </div>
+      <i class="i-lucide chevron-right"></i>
+    </a>
+  </div></div></div>
+    </div>
+  </main>
+</div>
+<footer class="sy-foot">
+  <div class="sy-foot-inner sy-container mx-auto">
+    
+    <div
+      style="
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        margin-bottom: 1.5rem;
+        color: var(--sy-c-text-weak);
+        font-size: 0.9em;
+      "
+    >
+      <div
+        style="
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: center;
+          gap: 1rem;
+          align-items: center;
+        "
+      >
+
+        
+        <span style="display: inline-flex; align-items: center; gap: 0.3em">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="1em"
+            height="1em"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path d="M7,20H4V4h3V20z M14,20h-3V12h3V20z M21,20h-3V8h3V20z" />
+          </svg>
+          <span
+            >Analytics by
+            <a
+              href="https://umami.is/"
+              target="_blank"
+              rel="noopener noreferrer"
+              style="color: inherit; text-decoration: underline"
+              >Umami</a
+            ></span
+          >
+        </span>
+
+        
+        <span style="display: inline-flex; align-items: center; gap: 0.3em">
+          <span>provided by</span>
+          <span style="display: inline-flex; align-items: center; gap: 0.3em">
+            <svg xmlns="http://www.w3.org/2000/svg" width="1.4em" height="1.4em" viewBox="0 0 64 64" aria-hidden="true"><g fill-rule="evenodd"><ellipse cx="32" cy="11" fill="#80D25B" rx="7" ry="9"/><path fill="#80D25B" d="M20.3,46c0,0-3.2,9.9.3,13.8c3.5,3.9 6.1,3.4 6.1-6C26.8,44.3 20.3,46 20.3,46Z"/><path fill="#80D25B" d="M38.3,46c0,0-3.2,9.9.4,13.8c3.5,3.9 6.1,3.4 6.1-6C44.8,44.3 38.3,46 38.3,46Z" transform="matrix(-1 0 0 1 81.8 0)"/><path fill="#80D25B" d="M20.6,21.2c0,0-6.7-5.8-10.5-5.2C6.2,16.7 6,22.2 6,24c0,1.8 1.8,13.3 3.8,12.5c2-0.8 4-8.5 4-8.5c1.9,2.3 4.8,2.5 4.8,2.5L20.6,21.2Z"/><path fill="#80D25B" d="M57.6,21.2c0,0-6.6-5.8-10.5-5.2C43.2,16.7 43,22.2 43,24c0,1.8 1.8,13.3 3.8,12.5c2-0.8 4-8.5 4-8.5c1.9,2.3 4.8,2.5 4.8,2.5L57.6,21.2Z" transform="matrix(-1 0 0 1 100.623 0)"/><path fill="#BD7575" stroke="#595959" stroke-linecap="round" stroke-width="2" d="M32,53C40.8,53 48,44.5 48,34C48,23.5 46.7,17 32,17C17.3,17 16,23.5 16,34C16,44.5 23.2,53 32,53Z"/><polygon fill="#BD7575" stroke="#595959" stroke-linecap="round" stroke-width="2" points="32 22 38.9 26 38.9 34 32 38 25.1 34 25.1 26"/><path stroke="#595959" stroke-linecap="round" stroke-width="2" d="M30,8C28.9,8 28,8.9 28,10"/><path stroke="#595959" stroke-linecap="round" stroke-width="2" d="M36,8C34.9,8 34,8.9 34,10" transform="matrix(-1 0 0 1 70 0)"/><path stroke="#595959" stroke-linecap="round" stroke-width="2" d="M32.1,38.2L32.1,52.4M32,21.7L32,17M25.2,26L17.7,23.1M25.1,34.2L16.8,38.9"/><path stroke="#595959" stroke-linecap="round" stroke-width="2" d="M46.2,26L38.7,23.1" transform="matrix(-1 0 0 1 84.951 0)"/><path stroke="#595959" stroke-linecap="round" stroke-width="2" d="M47.1,34.2L38.8,38.9" transform="matrix(-1 0 0 1 85.891 0)"/></g></svg>
+            <a
+              href="https://turtletech.us/"
+              target="_blank"
+              rel="noopener noreferrer"
+              style="color: inherit; text-decoration: underline"
+              >TurtleTech ehf</a
+            >
+          </span>
+        </span>
+      </div>
+    </div>
+
+    
+    <div class="sy-foot-reserved md:flex justify-between items-center">
+      <div class="sy-foot-copyright"><p>2025--present, rgpot developers</p>
+  
+  <p>
+    Made with
+    
+    <a href="https://www.sphinx-doc.org/">Sphinx</a> and
+    
+    <a href="https://shibuya.lepture.com">Shibuya theme</a>.
+  </p>
+</div> <div class="sy-foot-socials">
+<a href="https://github.com/OmniPotentRPC/rgpot" aria-label="GitHub">
+  <iconify-icon icon="simple-icons:github"></iconify-icon>
+</a></div>
+    </div>
+  </div>
+</footer>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/target-highlight.js?v=df7d332b"></script>
+      <script src="../_static/shibuya.js?v=cac61aee"></script></body>
+</html>

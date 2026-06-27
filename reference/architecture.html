@@ -2,7 +2,7 @@
 <html lang="en" data-accent-color="teal" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Architecture Overview - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="API Reference" href="../api/index.html" /><link rel="prev" title="External Integration Guide" href="../howto/integration.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Architecture Overview - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="API Reference" href="../api/index.html" /><link rel="prev" title="rgpot Potentials as eindir Objectives" href="../howto/eindir-anneal.html" />
       <link rel="canonical" href="https://rgpot.rgoswami.me/reference/architecture.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
@@ -90,11 +90,13 @@ data-aria-dark="Switch to auto color mode">
         <div class="globaltoc" data-expand-depth="1"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Tutorials</span></p>
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/molecular-global-optimization.html">Find the Ground State of an EON Structure</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">How-To Guides</span></p>
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/embedding.html">Embedding as a Subproject</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/integration.html">External Integration Guide</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eindir-anneal.html">rgpot Potentials as eindir Objectives</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -131,19 +133,38 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XTBConfig.html">struct rgpot::XTBConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_CPMDPot.html">class rgpot::CPMDPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_CuH2Pot.html">class rgpot::CuH2Pot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_DynLib.html">class rgpot::DynLib</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_MetatomicPot.html">class rgpot::MetatomicPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_NWChemPot.html">class rgpot::NWChemPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_PotentialBase.html">class rgpot::PotentialBase</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_TBLitePot.html">class rgpot::TBLitePot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_XTBPot.html">class rgpot::XTBPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_registry.html">template class rgpot::registry</a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-2.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-3.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_std.html">namespace std</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_string_literals.html">namespace string_literals</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/enum_CPMDCFeatureKind.html">enum CPMDCFeatureKind</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_CPMDCFeatureEntry.html">struct CPMDCFeatureEntry</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_CPMDCResult.html">struct CPMDCResult</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_NWChemCResult.html">struct NWChemCResult</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
@@ -162,6 +183,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/tensor.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">tensor</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/status.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">status</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/eindir.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">eindir</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/c_api.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">c_api</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/types.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">types</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
@@ -216,6 +238,7 @@ data-aria-dark="Switch to auto color mode">
 <li><a class="reference internal" href="#c-potentials">C++ Potentials</a><ul>
 <li><a class="reference internal" href="#built-in-potentials">Built-in Potentials</a></li>
 <li><a class="reference internal" href="#feature-gated-potentials">Feature-gated Potentials</a></li>
+<li><a class="reference internal" href="#nwchempot-rgpot-nwchempot">NWChemPot (<code class="docutils literal notranslate"><span class="pre">rgpot/NWChemPot/</span></code>)</a></li>
 <li><a class="reference internal" href="#units-rgpot-units-hpp">Units (<code class="docutils literal notranslate"><span class="pre">rgpot/units.hpp</span></code>)</a></li>
 </ul>
 </li>
@@ -529,17 +552,28 @@ Lighter weight than xtb but fewer methods.</p>
 <p>via <a class="reference external" href="https://github.com/metatensor/metatomic">metatomic</a>/PyTorch, loaded
 <strong>directly</strong> as TorchScript (<code class="docutils literal notranslate"><span class="pre">.pt</span></code>) in C++ with no Python at evaluation time.
 Uses <a class="reference external" href="https://github.com/Luthaf/vesin">vesin</a> <strong>0.5+</strong> for neighbor lists and
-PyTorch autograd for forces.
-Pass CPU as <code class="docutils literal notranslate"><span class="pre">VesinDevice{VesinCPU,</span> <span class="pre">0}</span></code> (<code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">{</span> <span class="pre">VesinDeviceKind</span> <span class="pre">type;</span> <span class="pre">int</span> <span class="pre">device_id;</span> <span class="pre">}</span></code>; <code class="docutils literal notranslate"><span class="pre">VesinCPU</span></code> alone is only the kind enum).
-Thread-safe via internal mutex; caches the atomic-types tensor across geometry
-steps.
-Configurable device (CPU/CUDA), dtype override, length unit, and consistency
-checks via <code class="docutils literal notranslate"><span class="pre">MetatomicConfig</span></code>.
+PyTorch autograd for forces. Pass CPU as <code class="docutils literal notranslate"><span class="pre">VesinDevice{VesinCPU,</span> <span class="pre">0}</span></code> (<code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">{</span> <span class="pre">VesinDeviceKind</span> <span class="pre">type;</span> <span class="pre">int</span> <span class="pre">device_id;</span> <span class="pre">}</span></code>; <code class="docutils literal notranslate"><span class="pre">VesinCPU</span></code> alone is only the kind
+enum). Thread-safe via internal mutex; caches the atomic-types tensor across
+geometry steps. Configurable device (CPU/CUDA), dtype override, length unit, and
+consistency checks via <code class="docutils literal notranslate"><span class="pre">MetatomicConfig</span></code>.
 On the RPC server pass <code class="docutils literal notranslate"><span class="pre">Metatomic:/path/to/model.pt</span></code>.
 Build with the <code class="docutils literal notranslate"><span class="pre">metatomicbld</span></code> pixi env (linux-64; pulls torch, metatomic-torch,
 and vesin <code class="docutils literal notranslate"><span class="pre">&gt;=0.5.2,&lt;0.6</span></code> from PyPI). CI job <code class="docutils literal notranslate"><span class="pre">potentials_metatomic</span></code> in <code class="docutils literal notranslate"><span class="pre">ci-</span> <span class="pre">orchestrator.yml</span></code>.</p>
 <p>All feature-gated potentials are detected via <code class="docutils literal notranslate"><span class="pre">pkg-config</span></code> / <code class="docutils literal notranslate"><span class="pre">cmake</span></code> and
 controlled by Meson options.</p>
+</section>
+<section id="nwchempot-rgpot-nwchempot">
+<h4>NWChemPot (<code class="docutils literal notranslate"><span class="pre">rgpot/NWChemPot/</span></code>)<a class="headerlink" href="#nwchempot-rgpot-nwchempot" title="Link to this heading">¶</a></h4>
+<p>Always-built frontend (<code class="docutils literal notranslate"><span class="pre">NWChemPot.cc</span></code>) that serializes <code class="docutils literal notranslate"><span class="pre">NWChemParams</span></code> and
+<code class="docutils literal notranslate"><span class="pre">dlopen=s</span> <span class="pre">=libnwchemc</span></code> (via <code class="docutils literal notranslate"><span class="pre">DynLib.hpp</span></code>).
+Stable consumer C-ABI contract in <code class="docutils literal notranslate"><span class="pre">nwchem_c_abi.h</span></code> uses <code class="docutils literal notranslate"><span class="pre">nwchemc_*</span></code> symbols and
+flat Cap’n Proto message bytes; <code class="docutils literal notranslate"><span class="pre">nwchem_c_abi_stub.c</span></code> is a no-op ABI linked by
+the conformance test only. rgpot is a pure consumer: the engine implementation
+(NWChem embed + Fortran) lives in the split <code class="docutils literal notranslate"><span class="pre">https://github.com/OmniPotentRPC/</span> <span class="pre">nwchemc</span></code> project, not in rgpot.
+RPC schema adds <code class="docutils literal notranslate"><span class="pre">NWChemParams</span></code>, <code class="docutils literal notranslate"><span class="pre">PotentialConfig</span></code>, and <code class="docutils literal notranslate"><span class="pre">configure</span> <span class="pre">&#64;1</span></code> on
+<code class="docutils literal notranslate"><span class="pre">Potential</span></code>; <code class="docutils literal notranslate"><span class="pre">potserv</span> <span class="pre">&lt;port&gt;</span> <span class="pre">NWChem</span></code>.
+Runtime: <code class="docutils literal notranslate"><span class="pre">NWCHEMC_LIBRARY</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_NWCHEMC_ENGINE</span></code>, <code class="docutils literal notranslate"><span class="pre">NWCHEM_TOP</span></code>.
+Details: <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/NWChemPot/README.md</span></code>.</p>
 </section>
 <section id="units-rgpot-units-hpp">
 <h4>Units (<code class="docutils literal notranslate"><span class="pre">rgpot/units.hpp</span></code>)<a class="headerlink" href="#units-rgpot-units-hpp" title="Link to this heading">¶</a></h4>
@@ -697,10 +731,10 @@ options.</p>
   </svg>
   <span>Back to top</span>
 </button><div class="navigation flex print:hidden"><div class="navigation-prev">
-    <a href="../howto/integration.html">
+    <a href="../howto/eindir-anneal.html">
       <i class="i-lucide chevron-left"></i>
       <div class="page-info">
-        <span>Previous</span><div class="title">External Integration Guide</div></div>
+        <span>Previous</span><div class="title">rgpot Potentials as eindir Objectives</div></div>
     </a>
   </div><div class="navigation-next">
     <a href="../api/index.html">

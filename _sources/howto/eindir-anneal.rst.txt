@@ -1,0 +1,91 @@
+
+
+rgpot Potentials as eindir Objectives
+-------------------------------------
+
+This guide shows how an rgpot potential becomes an `eindir <https://github.com/HaoZeke/ eindir>`_ objective and how `anneal <https://github.com/HaoZeke/anneal>`_
+then minimizes it.
+The three projects share one contract -- eindir's ``Objective`` -- so rgpot
+produces objectives and anneal consumes them with no direct dependency between
+the two.
+
+The lingua franca: ``eindir_objective_t`` + ``Objective<f64>``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+eindir defines the objective contract twice, on purpose, with a bridge between
+the two halves:
+
+- A C ABI struct, ``eindir_objective_t`` (``#[repr(C)]``): ``dim``, bounds ``low`` /
+
+``high``, and ``eval_fn`` / ``grad_fn`` callbacks over DLPack tensors.
+
+- A Rust trait, ``Objective<f64>`` (plus ``Gradient<f64>``).
+
+- ``EindirObjectiveWrapper``, which borrows an ``eindir_objective_t`` and presents it
+
+as a Rust ``Objective<f64>``.
+
+Any language that can write the C struct produces an objective; any Rust code
+that takes ``Objective<f64>`` consumes one.
+
+rgpot side: ``rgpot_potential_t`` IS-A ``eindir_objective_t``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``rgpot_potential_t`` embeds ``eindir_objective_t`` as its **first** member, so a
+``rgpot_potential_t*`` is an ``eindir_objective_t*`` at zero cost (the C "is- a"
+idiom).
+The embedded ``eval_fn`` / ``grad_fn`` call straight through to the rgpot force/
+energy callback, so there is one evaluation path and no conversion step
+(gradient = -force).
+
+.. code:: rust
+
+    let pot = rgpot_potential_new_eindir(
+        callback,        // rgpot force/energy callback (LJ, CuH2, NWChem dlopen, ...)
+        user_data, free_fn,
+        n_atoms, atomic_numbers, box_matrix,
+        bounds_low, bounds_high,                  // length n_atoms * 3
+    );
+    let objective = pot as *mut eindir_objective_t; // zero-cost IS-A cast
+
+rgpot-core consumes eindir-core as a normal Cargo crate (``features = ["capi"]``),
+**not** a prebuilt ``libeindir_core.a``. One shared compilation of eindir-core
+backs both crates, so a downstream Rust binary that links rgpot-core and anneal-
+core (both depending on eindir-core) gets a single eindir-core and avoids the
+duplicate-symbol / two-Rust-runtime conflict a static lib would cause.
+
+anneal side: minimize any ``Objective<f64>``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+anneal's drivers are generic over ``O: eindir_core::Objective<f64>``.
+Wrap the rgpot objective and hand it to a variant:
+
+.. code:: rust
+
+    let wrapper = EindirObjectiveWrapper::new(&*objective); // impl Objective<f64>
+    let variant = boltzmann(wrapper, /*t_init*/ 3.0, /*sigma*/ 0.15)?;
+    let history = run_rs_qmc_variant(variant, /*starts*/ 24, /*epochs*/ 300, /*steps*/ 200, seed);
+    // history.best.pos / history.best.val hold the minimizer found by SA.
+
+A runnable end-to-end demonstration lives in the anneal repo at ``examples/ rgpot_minimize.rs`` (``cargo run --example rgpot_minimize``).
+It builds a 9-D quadratic rgpot potential, wraps it, and anneals it from a
+random ``[-5, 5]^9`` start (mean energy approximately +75) into the basin around
+the minimum (energy < 0.1).
+
+Dependency shape
+~~~~~~~~~~~~~~~~
+
+::
+
+                  eindir-core  (Objective<f64>, eindir_objective_t, EindirObjectiveWrapper)
+                   /        \
+        rgpot-core           anneal-core
+    (rgpot_potential_t        (run_rs_variant<O: Objective>,
+     IS-A eindir_objective_t)  boltzmann / fast / gsa / QMC multistart)
+                   \        /
+               demo: examples/rgpot_minimize.rs
+
+rgpot-core and anneal-core never depend on each other; eindir-core is the only
+shared vocabulary.
+Pin all three to the same eindir-core (and ``dlpk``) revision so the one shared
+compilation lines up.

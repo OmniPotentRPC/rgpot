@@ -57,6 +57,14 @@
       :used_name: rgpot_force_out_t
 
 
+   .. rust:use:: rgpot_core::eindir::rgpot_potential_t
+      :used_name: rgpot_potential_t
+      :reexport: rgpot_core::potential
+
+   .. rubric:: Re-exports
+
+   * :rust:any:``rgpot_core::eindir::rgpot_potential_t``
+
    .. rubric:: Types
 
 
@@ -80,15 +88,6 @@
       - ``output``: the buffer for results (callback sets ``forces`` tensor)
       
       Returns ``RGPOT_SUCCESS`` on success, or an error status code.
-
-   .. rust:type:: rgpot_core::potential::rgpot_potential_t
-      :index: 0
-      :vis: pub
-      :layout: [{"type":"keyword","value":"type"},{"type":"space"},{"type":"name","value":"rgpot_potential_t"}]
-
-      Opaque handle exposed to C as ``rgpot_potential_t``.
-      
-      This is a type alias used by cbindgen to generate a forward declaration.
 
    .. rubric:: Structs and Unions
 

@@ -2,7 +2,7 @@
 <html lang="en" data-accent-color="teal" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>External Integration Guide - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Architecture Overview" href="../reference/architecture.html" /><link rel="prev" title="Embedding as a Subproject" href="embedding.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>External Integration Guide - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="rgpot Potentials as eindir Objectives" href="eindir-anneal.html" /><link rel="prev" title="Embedding as a Subproject" href="embedding.html" />
       <link rel="canonical" href="https://rgpot.rgoswami.me/howto/integration.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
@@ -90,11 +90,13 @@ data-aria-dark="Switch to auto color mode">
         <div class="globaltoc" data-expand-depth="1"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Tutorials</span></p>
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/molecular-global-optimization.html">Find the Ground State of an EON Structure</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">How-To Guides</span></p>
 <ul class="current">
 <li class="toctree-l1 _expand"><a class="reference internal" href="embedding.html">Embedding as a Subproject</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">External Integration Guide</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="eindir-anneal.html">rgpot Potentials as eindir Objectives</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
 <ul>
@@ -131,19 +133,38 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XTBConfig.html">struct rgpot::XTBConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_CPMDPot.html">class rgpot::CPMDPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_CuH2Pot.html">class rgpot::CuH2Pot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_DynLib.html">class rgpot::DynLib</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_MetatomicPot.html">class rgpot::MetatomicPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_NWChemPot.html">class rgpot::NWChemPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_PotentialBase.html">class rgpot::PotentialBase</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_TBLitePot.html">class rgpot::TBLitePot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_XTBPot.html">class rgpot::XTBPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_registry.html">template class rgpot::registry</a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-2.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-3.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_std.html">namespace std</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_string_literals.html">namespace string_literals</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/enum_CPMDCFeatureKind.html">enum CPMDCFeatureKind</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_CPMDCFeatureEntry.html">struct CPMDCFeatureEntry</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_CPMDCResult.html">struct CPMDCResult</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_NWChemCResult.html">struct NWChemCResult</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
@@ -162,6 +183,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/tensor.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">tensor</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/status.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">status</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/eindir.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">eindir</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/c_api.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">c_api</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/types.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">types</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
@@ -205,6 +227,9 @@ data-aria-dark="Switch to auto color mode">
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
 <li><a class="reference internal" href="#the-namespace-collision-problem">The Namespace Collision Problem</a><ul>
+<li><a class="reference internal" href="#rgpot-user-parameters-potentialconfig-over-rpc">rgpot user parameters (<code class="docutils literal notranslate"><span class="pre">PotentialConfig</span></code>) over RPC</a></li>
+<li><a class="reference internal" href="#nwchem-arm-potentialconfig-nwchem-nwchemparams">NWChem arm (<code class="docutils literal notranslate">nwchem</span></code> / <code class="docutils literal notranslate"><span class="pre">NWChemParams</span></code>)</a></li>
+<li><a class="reference internal" href="#cpmd-arm-potentialconfig-cpmd-cpmdparams">CPMD arm (<code class="docutils literal notranslate">cpmd</span></code> / <code class="docutils literal notranslate"><span class="pre">CPMDParams</span></code>)</a></li>
 <li><a class="reference internal" href="#root-cause">Root Cause</a></li>
 </ul>
 </li>
@@ -342,8 +367,72 @@ translation unit that includes the header.</p>
 <p>Potential=, which the capnp compiler generates as a global <code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">Potential</span></code>.
 This collides with any consumer that defines its own <code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">Potential</span></code> at global
 scope.</p>
-<p>Both names are extremely common in computational chemistry codebases.
-For example, <a class="reference external" href="https://github.com/TheochemUI/eOn">eOn</a> defines:</p>
+<p>Both names are extremely common in computational chemistry codebases.</p>
+<section id="rgpot-user-parameters-potentialconfig-over-rpc">
+<h3>rgpot user parameters (<code class="docutils literal notranslate"><span class="pre">PotentialConfig</span></code>) over RPC<a class="headerlink" href="#rgpot-user-parameters-potentialconfig-over-rpc" title="Link to this heading">¶</a></h3>
+<p>Backend knobs for a live <code class="docutils literal notranslate"><span class="pre">Potential</span></code> use Cap’n Proto <code class="docutils literal notranslate"><span class="pre">PotentialConfig</span></code>: an
+extensible union (<code class="docutils literal notranslate"><span class="pre">none</span></code>, <code class="docutils literal notranslate"><span class="pre">nwchem</span></code>, <code class="docutils literal notranslate"><span class="pre">cpmd</span></code>, later <code class="docutils literal notranslate"><span class="pre">metatomic</span></code> / <code class="docutils literal notranslate"><span class="pre">xtb</span></code> / …).
+Geometry stays on <code class="docutils literal notranslate"><span class="pre">ForceInput</span></code>; <code class="docutils literal notranslate"><span class="pre">configure(config)</span></code> applies method/backend setup
+only.</p>
+</section>
+<section id="nwchem-arm-potentialconfig-nwchem-nwchemparams">
+<h3>NWChem arm (<code class="docutils literal notranslate"><span class="pre">PotentialConfig.nwchem</span></code> / <code class="docutils literal notranslate"><span class="pre">NWChemParams</span></code>)<a class="headerlink" href="#nwchem-arm-potentialconfig-nwchem-nwchemparams" title="Link to this heading">¶</a></h3>
+<p>With <code class="docutils literal notranslate"><span class="pre">potserv</span> <span class="pre">&lt;port&gt;</span> <span class="pre">NWChem</span></code>, pass <code class="docutils literal notranslate"><span class="pre">configure</span></code> with the <code class="docutils literal notranslate"><span class="pre">nwchem</span></code> arm set.
+Payload fields (<code class="docutils literal notranslate"><span class="pre">basis</span></code>, <code class="docutils literal notranslate"><span class="pre">theory</span></code>, <code class="docutils literal notranslate"><span class="pre">scfType</span></code>, <code class="docutils literal notranslate"><span class="pre">charge</span></code>, <code class="docutils literal notranslate"><span class="pre">multiplicity</span></code>,
+<code class="docutils literal notranslate"><span class="pre">enginePath</span></code>, <code class="docutils literal notranslate"><span class="pre">nwchemRoot</span></code>) are NWChem-specific; the outer message is still
+generic rgpot params so other backends can add arms without a new config
+language.</p>
+<p>Python: <code class="docutils literal notranslate"><span class="pre">tests/nwchem_params.py</span></code> builds <code class="docutils literal notranslate"><span class="pre">PotentialConfig</span></code> + <code class="docutils literal notranslate"><span class="pre">nwchem</span></code>.
+BLYP: <code class="docutils literal notranslate"><span class="pre">theory</span></code>”dft”<code class="docutils literal notranslate"><span class="pre">,</span> <span class="pre">=scfType</span></code>”blyp”<code class="docutils literal notranslate"><span class="pre">.</span> <span class="pre">Embed</span> <span class="pre">=.so</span></code> still required for <code class="docutils literal notranslate"><span class="pre">calculate</span></code>.</p>
+</section>
+<section id="cpmd-arm-potentialconfig-cpmd-cpmdparams">
+<h3>CPMD arm (<code class="docutils literal notranslate"><span class="pre">PotentialConfig.cpmd</span></code> / <code class="docutils literal notranslate"><span class="pre">CPMDParams</span></code>)<a class="headerlink" href="#cpmd-arm-potentialconfig-cpmd-cpmdparams" title="Link to this heading">¶</a></h3>
+<p>With <code class="docutils literal notranslate"><span class="pre">potserv</span> <span class="pre">&lt;port&gt;</span> <span class="pre">CPMD</span></code>, pass <code class="docutils literal notranslate"><span class="pre">configure</span></code> with the <code class="docutils literal notranslate"><span class="pre">cpmd</span></code> arm set.
+<code class="docutils literal notranslate"><span class="pre">CPMDParams</span></code> is method/backend setup only; each <code class="docutils literal notranslate"><span class="pre">calculate()</span></code> call still carries
+geometry in <code class="docutils literal notranslate"><span class="pre">ForceInput</span></code>.</p>
+<p>The rgpot frontend loads <code class="docutils literal notranslate"><span class="pre">libcpmdc</span></code> at runtime and forwards serialized
+<code class="docutils literal notranslate"><span class="pre">CPMDParams</span></code> to that C ABI.
+Engine lookup checks <code class="docutils literal notranslate"><span class="pre">CPMDParams.enginePath</span></code>, <code class="docutils literal notranslate"><span class="pre">CPMDC_LIBRARY</span></code>,
+<code class="docutils literal notranslate"><span class="pre">RGPOT_CPMDC_ENGINE</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_CPMD_ENGINE</span></code>, and default shared-library names.
+<code class="docutils literal notranslate"><span class="pre">CPMDParams.cpmdRoot</span></code> is applied as <code class="docutils literal notranslate"><span class="pre">CPMD_ROOT</span></code> before loading the engine.</p>
+<p>Payload fields include method-level defaults (<code class="docutils literal notranslate"><span class="pre">functional</span></code>, <code class="docutils literal notranslate"><span class="pre">cutOffRy</span></code>,
+<code class="docutils literal notranslate"><span class="pre">charge</span></code>, <code class="docutils literal notranslate"><span class="pre">multiplicity</span></code>, <code class="docutils literal notranslate"><span class="pre">task</span></code>), frontend hints (<code class="docutils literal notranslate"><span class="pre">enginePath</span></code>, <code class="docutils literal notranslate"><span class="pre">cpmdRoot</span></code>),
+runtime file placement (<code class="docutils literal notranslate"><span class="pre">scratchDir</span></code>, <code class="docutils literal notranslate"><span class="pre">permanentDir</span></code>), raw <code class="docutils literal notranslate"><span class="pre">inputBlocks</span></code>, and
+structured <code class="docutils literal notranslate"><span class="pre">inputSections</span></code> for <code class="docutils literal notranslate"><span class="pre">SYSTEM</span></code>, <code class="docutils literal notranslate"><span class="pre">CPMD</span></code>, <code class="docutils literal notranslate"><span class="pre">DFT</span></code>, <code class="docutils literal notranslate"><span class="pre">ATOMS</span></code>, <code class="docutils literal notranslate"><span class="pre">SET</span></code>, and
+raw sections.
+The typed <code class="docutils literal notranslate"><span class="pre">cpmd</span></code> section covers wavefunction and geometry optimization,
+molecular dynamics, orbital and geometry convergence thresholds, iteration
+limits, timestep, electron mass, CP/BO/EH/PT/classical MD variants, MD file,
+Nose/Berendsen/Langevin/annealing/quench thermostat controls, RATTLE/SHAKE,
+constraints, Trotter factor, restart, print/store, center molecule, DIIS/
+ODIIS/PCG/diagonalization, free-energy, interface, QMMM, bicanonical, CDFT,
+properties, and trajectory controls.
+The typed <code class="docutils literal notranslate"><span class="pre">dft</span></code> section covers functional, LSD, GC cutoff, XC driver, LIBXC, LR
+kernel, refunct, MTS high/low functionals, HFX, HFX screening, Hubbard, alpha,
+beta, old/new code selection, correlation, exchange, and Becke88 controls.</p>
+<p>Python: <code class="docutils literal notranslate"><span class="pre">tests/cpmd_params.py</span></code> builds <code class="docutils literal notranslate"><span class="pre">PotentialConfig</span></code> + <code class="docutils literal notranslate"><span class="pre">cpmd</span></code>.
+The helper uses <code class="docutils literal notranslate"><span class="pre">CPMD_ROOT</span></code> for <code class="docutils literal notranslate"><span class="pre">cpmdRoot</span></code> and <code class="docutils literal notranslate"><span class="pre">CPMDC_LIBRARY</span></code> /
+<code class="docutils literal notranslate"><span class="pre">RGPOT_CPMDC_ENGINE</span></code> / <code class="docutils literal notranslate"><span class="pre">RGPOT_CPMD_ENGINE</span></code> for <code class="docutils literal notranslate"><span class="pre">enginePath</span></code> when explicit values
+are not supplied.
+Use <code class="docutils literal notranslate"><span class="pre">input_sections</span></code> to build every structured <code class="docutils literal notranslate"><span class="pre">CPMDInputSection</span></code> arm
+(<code class="docutils literal notranslate"><span class="pre">generic</span></code>, <code class="docutils literal notranslate"><span class="pre">system</span></code>, <code class="docutils literal notranslate"><span class="pre">cpmd</span></code>, <code class="docutils literal notranslate"><span class="pre">dft</span></code>, <code class="docutils literal notranslate"><span class="pre">atoms</span></code>, <code class="docutils literal notranslate"><span class="pre">set</span></code>, and <code class="docutils literal notranslate"><span class="pre">raw</span></code>) without raw
+Cap’n Proto builder code in clients.</p>
+<p>Typed <code class="docutils literal notranslate"><span class="pre">atoms</span></code> sections carry pseudopotential entries keyed by element symbol.
+The engine groups <code class="docutils literal notranslate"><span class="pre">ForceInput</span></code> coordinates into <code class="docutils literal notranslate"><span class="pre">&amp;ATOMS</span></code> and requires entries
+for every atomic number present in a step.
+Without an <code class="docutils literal notranslate"><span class="pre">atoms</span></code> section, built-in BLYP pseudopotential defaults cover H and
+O only.
+The same <code class="docutils literal notranslate"><span class="pre">atoms</span></code> section also accepts structured <code class="docutils literal notranslate"><span class="pre">directives</span></code> for ATOMS keywords
+that are not pseudopotential entries.</p>
+<p>The integration script exercises RPC <code class="docutils literal notranslate"><span class="pre">configure()</span></code> plumbing.
+The <code class="docutils literal notranslate"><span class="pre">cpmd</span></code> configure result is <code class="docutils literal notranslate"><span class="pre">ok=false</span></code> when no usable <code class="docutils literal notranslate"><span class="pre">libcpmdc</span></code> engine can
+be loaded or when the engine rejects the params:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>rpctest<span class="w"> </span>python<span class="w"> </span>tests/rpc_integ.py<span class="w"> </span><span class="se">\</span>
+</span><span data-line="2"><span class="w">  </span>--server-bin<span class="w"> </span>./bbdir/CppCore/potserv<span class="w"> </span><span class="se">\</span>
+</span><span data-line="3"><span class="w">  </span>--cpmd-smoke
+</span></pre></div>
+</div>
+<p>For example, <a class="reference external" href="https://github.com/TheochemUI/eOn">eOn</a> defines:</p>
 <dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">AtomMatrix</span></code></dt><dd><p>A typedef for <code class="docutils literal notranslate"><span class="pre">Eigen::Matrix&lt;double,</span> <span class="pre">Eigen::Dynamic,</span> <span class="pre">3&gt;</span></code>.</p>
 </dd>
@@ -352,6 +441,7 @@ For example, <a class="reference external" href="https://github.com/TheochemUI/e
 </dl>
 <p>Including both eOn and rgpot headers in the same translation unit produces hard
 compilation errors from the conflicting definitions.</p>
+</section>
 <section id="root-cause">
 <h3>Root Cause<a class="headerlink" href="#root-cause" title="Link to this heading">¶</a></h3>
 <p>The collision stems from two issues:</p>
@@ -697,10 +787,10 @@ consumer’s existing type system.</p>
         <span>Previous</span><div class="title">Embedding as a Subproject</div></div>
     </a>
   </div><div class="navigation-next">
-    <a href="../reference/architecture.html">
+    <a href="eindir-anneal.html">
       <div class="page-info">
         <span>Next</span>
-        <div class="title">Architecture Overview</div>
+        <div class="title">rgpot Potentials as eindir Objectives</div>
       </div>
       <i class="i-lucide chevron-right"></i>
     </a>

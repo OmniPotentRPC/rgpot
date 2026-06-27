@@ -18,9 +18,12 @@ namespace rgpot
 	struct_rgpot_MetatomicConfig.rst
 	struct_rgpot_TBLiteConfig.rst
 	struct_rgpot_XTBConfig.rst
+	class_rgpot_CPMDPot.rst
 	class_rgpot_CuH2Pot.rst
+	class_rgpot_DynLib.rst
 	class_rgpot_LJPot.rst
 	class_rgpot_MetatomicPot.rst
+	class_rgpot_NWChemPot.rst
 	class_rgpot_PotentialBase.rst
 	class_rgpot_TBLitePot.rst
 	class_rgpot_XTBPot.rst
@@ -29,7 +32,7 @@ namespace rgpot
 Overview
 ~~~~~~~~
 
-POD structures for force and energy calculation interfaces. :ref:`More...<details-namespacergpot>`
+CPMD potential under rgpot ``PotentialConfig`` user parameters. :ref:`More...<details-namespacergpot>`
 
 
 .. ref-code-block:: cpp
@@ -64,12 +67,15 @@ POD structures for force and energy calculation interfaces. :ref:`More...<detail
 
 	// classes
 
+	class :ref:`CPMDPot<doxid-classrgpot_1_1_c_p_m_d_pot>`;
 	class :ref:`CalcResult<doxid-classrgpot_1_1_calc_result>`;
 	class :ref:`CuH2Pot<doxid-classrgpot_1_1_cu_h2_pot>`;
+	class :ref:`DynLib<doxid-classrgpot_1_1_dyn_lib>`;
 	class :ref:`Error<doxid-classrgpot_1_1_error>`;
 	class :ref:`InputSpec<doxid-classrgpot_1_1_input_spec>`;
 	class :ref:`LJPot<doxid-classrgpot_1_1_l_j_pot>`;
 	class :ref:`MetatomicPot<doxid-classrgpot_1_1_metatomic_pot>`;
+	class :ref:`NWChemPot<doxid-classrgpot_1_1_n_w_chem_pot>`;
 	class :ref:`PotentialBase<doxid-classrgpot_1_1_potential_base>`;
 	class :ref:`PotentialHandle<doxid-classrgpot_1_1_potential_handle>`;
 	class :ref:`RpcClient<doxid-classrgpot_1_1_rpc_client>`;
@@ -100,7 +106,7 @@ POD structures for force and energy calculation interfaces. :ref:`More...<detail
 Detailed Documentation
 ~~~~~~~~~~~~~~~~~~~~~~
 
-POD structures for force and energy calculation interfaces.
+CPMD potential under rgpot ``PotentialConfig`` user parameters.
 
 Definition of the native :ref:`AtomMatrix <doxid-class_atom_matrix>` class.
 
@@ -110,7 +116,17 @@ Utility templates and functions for potential management.
 
 Implementation of utility functions for potential management.
 
+NWChem potential under rgpot ``PotentialConfig`` user parameters.
+
+Portable dynamic library loader (dlopen / LoadLibrary family).
+
+POD structures for force and energy calculation interfaces.
+
 Defines the core data exchange structures used between the high-level potential wrappers and the low-level physics engines.
+
+Used by :ref:`NWChemPot <doxid-classrgpot_1_1_n_w_chem_pot>` to resolve libnwchemc at runtime without a build-time link dependency on NWChem.
+
+User path: Cap'n Proto ``PotentialConfig`` / ``NWChemParams`` only. The frontend serializes that message and passes it through C ABI symbols resolved by dlopen.
 
 Contains the implementations for global helper functions used to manage and validate the core force and energy data structures.
 

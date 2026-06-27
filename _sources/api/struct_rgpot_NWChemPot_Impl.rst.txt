@@ -1,0 +1,25 @@
+.. index:: pair: struct; rgpot::NWChemPot::Impl
+.. _doxid-structrgpot_1_1_n_w_chem_pot_1_1_impl:
+
+struct rgpot::NWChemPot::Impl
+=============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Impl {
+		// fields
+	
+		EngineBundle :target:`bundle<doxid-structrgpot_1_1_n_w_chem_pot_1_1_impl_1a3675a80f0adfaace73261181227034b8>`;
+		std::vector<::capnp::word> :target:`params_words<doxid-structrgpot_1_1_n_w_chem_pot_1_1_impl_1a0dbe8e5bf6f2c3d00f85f3d9d8760f66>`;
+		std::string :target:`engine_path<doxid-structrgpot_1_1_n_w_chem_pot_1_1_impl_1a4f807a6cdbf5a48bbd1f9727771af947>`;
+		std::string :target:`nwchem_root<doxid-structrgpot_1_1_n_w_chem_pot_1_1_impl_1ac8e31504bdc21d5fc4fabcef5ffbc333>`;
+		std::vector<double> :target:`grad_scratch<doxid-structrgpot_1_1_n_w_chem_pot_1_1_impl_1a86f440d18d90ed1cb070e6786c62aa0c>`;
+	};

@@ -1,0 +1,42 @@
+.. index:: pair: class; rgpot::CPMDPot
+.. _doxid-classrgpot_1_1_c_p_m_d_pot:
+
+class rgpot::CPMDPot
+====================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_CPMDPot_Impl.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class CPMDPot: public rgpot::Potential< CPMDPot > {
+	public:
+		// structs
+	
+		struct :ref:`Impl<doxid-structrgpot_1_1_c_p_m_d_pot_1_1_impl>`;
+
+		// construction
+	
+		:target:`CPMDPot<doxid-classrgpot_1_1_c_p_m_d_pot_1a65b0eeb93b61b5079ccd7f0dcbe5e412>`();
+		:target:`CPMDPot<doxid-classrgpot_1_1_c_p_m_d_pot_1a7f54ead3be9f4bfdb381eaadc6fbaa22>`(const ::CPMDParams::Reader& params);
+		:target:`CPMDPot<doxid-classrgpot_1_1_c_p_m_d_pot_1a714aef68a2d9d99ad0e247ec95b74f20>`(const CPMDPot&);
+		:target:`~CPMDPot<doxid-classrgpot_1_1_c_p_m_d_pot_1a2dab3a121c8e404d48575a1dde489892>`();
+
+		// methods
+	
+		CPMDPot& :target:`operator=<doxid-classrgpot_1_1_c_p_m_d_pot_1a5b11785bd07e721e29fc21603cd0198a>`(const CPMDPot&);
+		void :target:`forceImpl<doxid-classrgpot_1_1_c_p_m_d_pot_1a7ce83b3efda939edaecd8c9691d52ba9>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		bool :target:`setParams<doxid-classrgpot_1_1_c_p_m_d_pot_1a80b707459bab810f682ba9f337b76e62>`(const ::CPMDParams::Reader& params);
+		void :target:`getParams<doxid-classrgpot_1_1_c_p_m_d_pot_1a29db37ef0464ae0c4086320515e02d5d>`(::CPMDParams::Builder out) const;
+		bool :target:`setPotentialConfig<doxid-classrgpot_1_1_c_p_m_d_pot_1ab2c8fdfbd07db81f8d023ba1d01fbefc>`(const ::PotentialConfig::Reader& cfg, std::string* message_out = nullptr);
+		bool :target:`available<doxid-classrgpot_1_1_c_p_m_d_pot_1a9b006e0439de5445527c23332c16b88c>`() const;
+		static bool :target:`probe_available<doxid-classrgpot_1_1_c_p_m_d_pot_1a055db00e0a19a8ed3d4bb0b6ddba1eaf>`();
+		static bool :target:`abi_available<doxid-classrgpot_1_1_c_p_m_d_pot_1aa6d5fa95440d78578a67318a6f94ebca>`();
+	};

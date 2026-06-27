@@ -225,18 +225,30 @@ Lighter weight than xtb but fewer methods.
 via `metatomic <https://github.com/metatensor/metatomic>`_/PyTorch, loaded
 **directly** as TorchScript (``.pt``) in C++ with no Python at evaluation time.
 Uses `vesin <https://github.com/Luthaf/vesin>`_ **0.5+** for neighbor lists and
-PyTorch autograd for forces.
-Pass CPU as ``VesinDevice{VesinCPU, 0}`` (``struct { VesinDeviceKind type; int device_id; }``; ``VesinCPU`` alone is only the kind enum).
-Thread-safe via internal mutex; caches the atomic-types tensor across geometry
-steps.
-Configurable device (CPU/CUDA), dtype override, length unit, and consistency
-checks via ``MetatomicConfig``.
+PyTorch autograd for forces. Pass CPU as ``VesinDevice{VesinCPU, 0}`` (``struct { VesinDeviceKind type; int device_id; }``; ``VesinCPU`` alone is only the kind
+enum). Thread-safe via internal mutex; caches the atomic-types tensor across
+geometry steps. Configurable device (CPU/CUDA), dtype override, length unit, and
+consistency checks via ``MetatomicConfig``.
 On the RPC server pass ``Metatomic:/path/to/model.pt``.
 Build with the ``metatomicbld`` pixi env (linux-64; pulls torch, metatomic-torch,
 and vesin ``>=0.5.2,<0.6`` from PyPI). CI job ``potentials_metatomic`` in ``ci- orchestrator.yml``.
 
 All feature-gated potentials are detected via ``pkg-config`` / ``cmake`` and
 controlled by Meson options.
+
+NWChemPot (``rgpot/NWChemPot/``)
+::::::::::::::::::::::::::::::::
+
+Always-built frontend (``NWChemPot.cc``) that serializes ``NWChemParams`` and
+``dlopen=s =libnwchemc`` (via ``DynLib.hpp``).
+Stable consumer C-ABI contract in ``nwchem_c_abi.h`` uses ``nwchemc_*`` symbols and
+flat Cap'n Proto message bytes; ``nwchem_c_abi_stub.c`` is a no-op ABI linked by
+the conformance test only. rgpot is a pure consumer: the engine implementation
+(NWChem embed + Fortran) lives in the split ``https://github.com/OmniPotentRPC/ nwchemc`` project, not in rgpot.
+RPC schema adds ``NWChemParams``, ``PotentialConfig``, and ``configure @1`` on
+``Potential``; ``potserv <port> NWChem``.
+Runtime: ``NWCHEMC_LIBRARY``, ``RGPOT_NWCHEMC_ENGINE``, ``NWCHEM_TOP``.
+Details: ``CppCore/rgpot/NWChemPot/README.md``.
 
 Units (``rgpot/units.hpp``)
 :::::::::::::::::::::::::::

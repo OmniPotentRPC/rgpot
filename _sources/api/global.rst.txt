@@ -8,8 +8,14 @@ Global Namespace
 	:hidden:
 
 	namespace_rgpot.rst
+	namespace_rgpot-2.rst
+	namespace_rgpot-3.rst
 	namespace_std.rst
 	namespace_string_literals.rst
+	enum_CPMDCFeatureKind.rst
+	struct_CPMDCFeatureEntry.rst
+	struct_CPMDCResult.rst
+	struct_NWChemCResult.rst
 	class_AtomMatrix.rst
 	class_GenericPotImpl.rst
 	class_PotClient.rst
@@ -35,12 +41,29 @@ Overview
 				namespace :ref:`rgpot::types::adapt::eigen<doxid-namespacergpot_1_1types_1_1adapt_1_1eigen>`;
 				namespace :ref:`rgpot::types::adapt::xtensor<doxid-namespacergpot_1_1types_1_1adapt_1_1xtensor>`;
 		namespace :ref:`rgpot::units<doxid-namespacergpot_1_1units>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d166331164204151220333054351225362033006173021072>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d330074065165043016212166146146214025043016253057>`;
 	namespace :ref:`std<doxid-namespacestd>`;
 	namespace :ref:`string_literals<doxid-namespacestd_1_1string__literals>`;
 
 	// typedefs
 
+	typedef struct CPMDCResult :ref:`CPMDCResult<doxid-cpmd__c__abi_8h_1a624f3d7d040e783aef1536f49e2a43ca>`;
+	typedef struct :ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>` :ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`;
+	typedef enum CPMDCFeatureKind :target:`CPMDCFeatureKind<doxid-cpmd__c__abi_8h_1ab8efa8b96095d9bcb86951f47cdf3ddd>`;
+	typedef struct CPMDCFeatureEntry :target:`CPMDCFeatureEntry<doxid-cpmd__c__abi_8h_1a78e933e2bdea5d5a752302a384a3137b>`;
+	typedef struct NWChemCResult :ref:`NWChemCResult<doxid-nwchem__c__abi_8h_1a7ebd0cbe28327ac32f7726770f826961>`;
 	typedef struct PotClient :ref:`PotClient<doxid-pot__bridge_8h_1ad15494aa275bd98047b204d29533f6ba>`;
+
+	// enums
+
+	enum :ref:`CPMDCFeatureKind<doxid-cpmd__c__abi_8h_1af730055345a93286960ba9ef1a3f05b2>`;
+
+	// structs
+
+	struct :ref:`CPMDCFeatureEntry<doxid-struct_c_p_m_d_c_feature_entry>`;
+	struct :ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>`;
+	struct :ref:`NWChemCResult<doxid-struct_n_w_chem_c_result>`;
 
 	// classes
 
@@ -48,9 +71,63 @@ Overview
 	class :ref:`GenericPotImpl<doxid-class_generic_pot_impl>`;
 	class :ref:`PotClient<doxid-struct_pot_client>`;
 
+	// global variables
+
+	static const :ref:`CPMDCFeatureEntry<doxid-struct_c_p_m_d_c_feature_entry>` :target:`g_features<doxid-cpmd__c__abi__stub_8c_1a9cf3ddf52a7a4d9d9c60222bd80ec58c>`[];
+	static const char* :target:`STUB_VERSION<doxid-nwchem__c__abi__stub_8c_1a8a786d4b9e35a342db493b2427841545>` = "nwchemc-stub/1.0.0";
+
 	// global functions
 
+	int :ref:`cpmdc_set_params<doxid-cpmd__c__abi_8h_1a22da50d15419dadce4925c88100a1c23>`(const void* params_capnp, size_t params_capnp_size_bytes);
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :ref:`cpmdc_energy_gradient<doxid-cpmd__c__abi_8h_1a525b75c1e47dd8595be42d2175f9f64f>`(int n_atoms, const double* positions_ang, const int* atomic_numbers, const void* params_capnp, size_t params_capnp_size_bytes, double* grad_h_bohr);
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :ref:`cpmdc_energy<doxid-cpmd__c__abi_8h_1a6e17756faffc4d181352a5953991f584>`(int n_atoms, const double* positions_ang, const int* atomic_numbers, const void* params_capnp, size_t params_capnp_size_bytes);
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :ref:`cpmdc_energy_forces<doxid-cpmd__c__abi_8h_1ad653481360bf399295aed47e14cef118>`(int n_atoms, const double* positions_ang, const int* atomic_numbers, const void* params_capnp, size_t params_capnp_size_bytes, double* forces_h_bohr);
+	:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* :ref:`cpmdc_session_create<doxid-cpmd__c__abi_8h_1a08b6b5b994b9754e6c853d3dd46c7745>`(const void* params_capnp, size_t params_capnp_size_bytes);
+	int :ref:`cpmdc_session_set_params<doxid-cpmd__c__abi_8h_1a0ffb70752daab4a244e5ffd58eaa6db5>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, const void* params_capnp, size_t params_capnp_size_bytes);
+	void :ref:`cpmdc_session_destroy<doxid-cpmd__c__abi_8h_1a6d07b0b1700b5352f1ce33f396a9f578>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session);
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :target:`cpmdc_session_energy_gradient<doxid-cpmd__c__abi_8h_1a6d79318bc9f2eae253d4906376123570>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, int n_atoms, const double* positions_ang, const int* atomic_numbers, double* grad_h_bohr);
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :target:`cpmdc_session_energy<doxid-cpmd__c__abi_8h_1a3c36a0c86b25223e47eb139ec2d89a33>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, int n_atoms, const double* positions_ang, const int* atomic_numbers);
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :target:`cpmdc_session_energy_forces<doxid-cpmd__c__abi_8h_1ab94170b806559374915fb2510fd46d6b>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, int n_atoms, const double* positions_ang, const int* atomic_numbers, double* forces_h_bohr);
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :ref:`cpmdc_session_calculate_forces<doxid-cpmd__c__abi_8h_1a9f5e4a955e689dcf3e06b52e68b6adb1>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, const void* force_input_capnp, size_t force_input_capnp_size_bytes, double* forces_h_bohr, size_t forces_len);
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :ref:`cpmdc_session_calculate_result<doxid-cpmd__c__abi_8h_1ac63ef923626641269d88b5319f5eed8a>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, const void* force_input_capnp, size_t force_input_capnp_size_bytes, void* potential_result_capnp, size_t potential_result_capnp_capacity_bytes, size_t* potential_result_capnp_size_bytes);
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :ref:`cpmdc_calculate_result<doxid-cpmd__c__abi_8h_1a9b206e2d2173eafb39c00977101da25b>`(const void* params_capnp, size_t params_capnp_size_bytes, const void* force_input_capnp, size_t force_input_capnp_size_bytes, void* potential_result_capnp, size_t potential_result_capnp_capacity_bytes, size_t* potential_result_capnp_size_bytes);
+	size_t :ref:`cpmdc_potential_result_size_for_force_input<doxid-cpmd__c__abi_8h_1a50c58b775c95334c2842f3d07c247408>`(const void* force_input_capnp, size_t force_input_capnp_size_bytes);
+	const char* :ref:`cpmdc_version<doxid-cpmd__c__abi_8h_1a4d5a0eade3deceabe9f7e48e7a45d430>`(void);
+	int :ref:`cpmdc_available<doxid-cpmd__c__abi_8h_1a25f2bc651370d207f2049574e7073e0d>`(void);
+	void :ref:`cpmdc_finalize<doxid-cpmd__c__abi_8h_1afae0c7a27c94036223f7a0cf60488f56>`(void);
+	size_t :target:`cpmdc_feature_count<doxid-cpmd__c__abi_8h_1a4cf7e2f669806606c1d1293533b3d38e>`(void);
+	const :ref:`CPMDCFeatureEntry<doxid-struct_c_p_m_d_c_feature_entry>`* :target:`cpmdc_feature_table<doxid-cpmd__c__abi_8h_1ae40eb0e96927dc5f3feacc20c3869315>`(void);
+	const :ref:`CPMDCFeatureEntry<doxid-struct_c_p_m_d_c_feature_entry>`* :target:`cpmdc_feature_find<doxid-cpmd__c__abi_8h_1a4d2414cdfa87d867cf1ab1e708dfb4ca>`(const char* feature_id);
+	static :ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :target:`stub_fail<doxid-cpmd__c__abi__stub_8c_1ad84ca2b805996eae671ada2dc718ae0e>`(void);
+	int :ref:`cpmdc_set_params<doxid-cpmd__c__abi__stub_8c_1a22da50d15419dadce4925c88100a1c23>`(const void* params_capnp, size_t params_capnp_size_bytes);
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :ref:`cpmdc_energy_gradient<doxid-cpmd__c__abi__stub_8c_1a525b75c1e47dd8595be42d2175f9f64f>`(int n_atoms, const double* positions_ang, const int* atomic_numbers, const void* params_capnp, size_t params_capnp_size_bytes, double* grad_h_bohr);
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :ref:`cpmdc_energy<doxid-cpmd__c__abi__stub_8c_1a6e17756faffc4d181352a5953991f584>`(int n_atoms, const double* positions_ang, const int* atomic_numbers, const void* params_capnp, size_t params_capnp_size_bytes);
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :ref:`cpmdc_energy_forces<doxid-cpmd__c__abi__stub_8c_1ad653481360bf399295aed47e14cef118>`(int n_atoms, const double* positions_ang, const int* atomic_numbers, const void* params_capnp, size_t params_capnp_size_bytes, double* forces_h_bohr);
+	const char* :ref:`cpmdc_version<doxid-cpmd__c__abi__stub_8c_1a4d5a0eade3deceabe9f7e48e7a45d430>`(void);
+	int :ref:`cpmdc_available<doxid-cpmd__c__abi__stub_8c_1a25f2bc651370d207f2049574e7073e0d>`(void);
+	void :ref:`cpmdc_finalize<doxid-cpmd__c__abi__stub_8c_1afae0c7a27c94036223f7a0cf60488f56>`(void);
+	:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* :ref:`cpmdc_session_create<doxid-cpmd__c__abi__stub_8c_1a08b6b5b994b9754e6c853d3dd46c7745>`(const void* params_capnp, size_t params_capnp_size_bytes);
+	int :ref:`cpmdc_session_set_params<doxid-cpmd__c__abi__stub_8c_1a0ffb70752daab4a244e5ffd58eaa6db5>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, const void* params_capnp, size_t params_capnp_size_bytes);
+	void :ref:`cpmdc_session_destroy<doxid-cpmd__c__abi__stub_8c_1a6d07b0b1700b5352f1ce33f396a9f578>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session);
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :target:`cpmdc_session_energy<doxid-cpmd__c__abi__stub_8c_1a3c36a0c86b25223e47eb139ec2d89a33>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, int n_atoms, const double* positions_ang, const int* atomic_numbers);
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :target:`cpmdc_session_energy_gradient<doxid-cpmd__c__abi__stub_8c_1a6d79318bc9f2eae253d4906376123570>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, int n_atoms, const double* positions_ang, const int* atomic_numbers, double* grad_h_bohr);
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :target:`cpmdc_session_energy_forces<doxid-cpmd__c__abi__stub_8c_1ab94170b806559374915fb2510fd46d6b>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, int n_atoms, const double* positions_ang, const int* atomic_numbers, double* forces_h_bohr);
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :ref:`cpmdc_session_calculate_forces<doxid-cpmd__c__abi__stub_8c_1a9f5e4a955e689dcf3e06b52e68b6adb1>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, const void* force_input_capnp, size_t force_input_capnp_size_bytes, double* forces_h_bohr, size_t forces_len);
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :ref:`cpmdc_session_calculate_result<doxid-cpmd__c__abi__stub_8c_1ac63ef923626641269d88b5319f5eed8a>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, const void* force_input_capnp, size_t force_input_capnp_size_bytes, void* potential_result_capnp, size_t potential_result_capnp_capacity_bytes, size_t* potential_result_capnp_size_bytes);
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :ref:`cpmdc_calculate_result<doxid-cpmd__c__abi__stub_8c_1a9b206e2d2173eafb39c00977101da25b>`(const void* params_capnp, size_t params_capnp_size_bytes, const void* force_input_capnp, size_t force_input_capnp_size_bytes, void* potential_result_capnp, size_t potential_result_capnp_capacity_bytes, size_t* potential_result_capnp_size_bytes);
+	size_t :ref:`cpmdc_potential_result_size_for_force_input<doxid-cpmd__c__abi__stub_8c_1a50c58b775c95334c2842f3d07c247408>`(const void* force_input_capnp, size_t force_input_capnp_size_bytes);
+	size_t :target:`cpmdc_feature_count<doxid-cpmd__c__abi__stub_8c_1a4cf7e2f669806606c1d1293533b3d38e>`(void);
+	const :ref:`CPMDCFeatureEntry<doxid-struct_c_p_m_d_c_feature_entry>`* :target:`cpmdc_feature_table<doxid-cpmd__c__abi__stub_8c_1ae40eb0e96927dc5f3feacc20c3869315>`(void);
+	const :ref:`CPMDCFeatureEntry<doxid-struct_c_p_m_d_c_feature_entry>`* :target:`cpmdc_feature_find<doxid-cpmd__c__abi__stub_8c_1a4d2414cdfa87d867cf1ab1e708dfb4ca>`(const char* feature_id);
 	void :ref:`c_force_eam<doxid-_cu_h2_pot_8hpp_1a79b876a461f808a0b8e5ac38ca629988>`(int* natms, int ndim, double* box, double* R, double* F, double* U);
+	int :ref:`nwchemc_set_params<doxid-nwchem__c__abi_8h_1a2b19e40d3fa84cd9c0c26d4e61ee1aec>`(const void* params_capnp, size_t params_capnp_size_bytes);
+	:ref:`NWChemCResult<doxid-struct_n_w_chem_c_result>` :ref:`nwchemc_energy_gradient<doxid-nwchem__c__abi_8h_1a9452e5aaf6c8e097d7797f3697fcc00d>`(int n_atoms, const double* positions_ang, const int* atomic_numbers, const void* params_capnp, size_t params_capnp_size_bytes, double* grad_h_bohr);
+	const char* :ref:`nwchemc_version<doxid-nwchem__c__abi_8h_1a90abe502c32b33e3bdd7f4415c7a3c6e>`(void);
+	int :ref:`nwchemc_available<doxid-nwchem__c__abi_8h_1a85faef1e24ae6c734d0d43e7d498ef53>`(void);
+	int :ref:`nwchemc_set_params<doxid-nwchem__c__abi__stub_8c_1a2b19e40d3fa84cd9c0c26d4e61ee1aec>`(const void* params_capnp, size_t params_capnp_size_bytes);
+	:ref:`NWChemCResult<doxid-struct_n_w_chem_c_result>` :ref:`nwchemc_energy_gradient<doxid-nwchem__c__abi__stub_8c_1a9452e5aaf6c8e097d7797f3697fcc00d>`(int n_atoms, const double* positions_ang, const int* atomic_numbers, const void* params_capnp, size_t params_capnp_size_bytes, double* grad_h_bohr);
+	const char* :ref:`nwchemc_version<doxid-nwchem__c__abi__stub_8c_1a90abe502c32b33e3bdd7f4415c7a3c6e>`(void);
+	int :ref:`nwchemc_available<doxid-nwchem__c__abi__stub_8c_1a85faef1e24ae6c734d0d43e7d498ef53>`(void);
 	:ref:`PotClient<doxid-struct_pot_client>`* :ref:`pot_client_init<doxid-pot__bridge_8cc_1ad254a3ebf2ca0137de55bd82ea1abb42>`(const char* host, int32_t port);
 	void :ref:`pot_client_free<doxid-pot__bridge_8cc_1a605cb8b056e3d895be066472fe1c116e>`(:ref:`PotClient<doxid-struct_pot_client>`* client);
 	int32_t :ref:`pot_calculate<doxid-pot__bridge_8cc_1ab471aef52e0227fbb98588e8366ad646>`(:ref:`PotClient<doxid-struct_pot_client>`* client, int32_t natoms, const double* pos, const int32_t* atmnrs, const double* box, double* out_energy, double* out_forces);
@@ -75,6 +152,36 @@ Detailed Documentation
 Typedefs
 --------
 
+.. index:: pair: typedef; CPMDCResult
+.. _doxid-cpmd__c__abi_8h_1a624f3d7d040e783aef1536f49e2a43ca:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	typedef struct CPMDCResult CPMDCResult
+
+Result returned by energy / gradient / forces entry points.
+
+.. index:: pair: typedef; CPMDCSession
+.. _doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	typedef struct :ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>` CPMDCSession
+
+Opaque handle for repeated evaluations with one Cap'n Proto parameter set.
+
+.. index:: pair: typedef; NWChemCResult
+.. _doxid-nwchem__c__abi_8h_1a7ebd0cbe28327ac32f7726770f826961:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	typedef struct NWChemCResult NWChemCResult
+
+Result of energy+gradient (atomic units).
+
 .. index:: pair: typedef; PotClient
 .. _doxid-pot__bridge_8h_1ad15494aa275bd98047b204d29533f6ba:
 
@@ -91,6 +198,360 @@ Opaque handle to the client context.
 
 Global Functions
 ----------------
+
+.. index:: pair: function; cpmdc_set_params
+.. _doxid-cpmd__c__abi_8h_1a22da50d15419dadce4925c88100a1c23:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int cpmdc_set_params(const void* params_capnp, size_t params_capnp_size_bytes)
+
+Apply CPMD method parameters from a Cap'n Proto message.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- params_capnp
+
+		- Pointer to an unpacked flat ``CPMDParams`` message.
+
+	*
+		- params_capnp_size_bytes
+
+		- Size of ``params_capnp`` in bytes.
+
+
+
+.. rubric:: Returns:
+
+0 on success, -1 on parse or configuration failure.
+
+.. index:: pair: function; cpmdc_energy_gradient
+.. _doxid-cpmd__c__abi_8h_1a525b75c1e47dd8595be42d2175f9f64f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` cpmdc_energy_gradient(int n_atoms, const double* positions_ang, const int* atomic_numbers, const void* params_capnp, size_t params_capnp_size_bytes, double* grad_h_bohr)
+
+Compute energy and nuclear gradient for an atomic configuration.
+
+Positions are Angstrom; gradient is Hartree/Bohr (CPMD ionic forces are negated into a nuclear gradient for API symmetry with nwchemc).
+
+.. index:: pair: function; cpmdc_energy
+.. _doxid-cpmd__c__abi_8h_1a6e17756faffc4d181352a5953991f584:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` cpmdc_energy(int n_atoms, const double* positions_ang, const int* atomic_numbers, const void* params_capnp, size_t params_capnp_size_bytes)
+
+Compute total energy only (no gradient allocation).
+
+.. index:: pair: function; cpmdc_energy_forces
+.. _doxid-cpmd__c__abi_8h_1ad653481360bf399295aed47e14cef118:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` cpmdc_energy_forces(int n_atoms, const double* positions_ang, const int* atomic_numbers, const void* params_capnp, size_t params_capnp_size_bytes, double* forces_h_bohr)
+
+Compute energy and nuclear forces (negative gradient, Hartree/Bohr).
+
+.. index:: pair: function; cpmdc_session_create
+.. _doxid-cpmd__c__abi_8h_1a08b6b5b994b9754e6c853d3dd46c7745:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* cpmdc_session_create(const void* params_capnp, size_t params_capnp_size_bytes)
+
+Create a persistent evaluation session from a Cap'n Proto message.
+
+The session owns a copy of the serialized message so callers may release the input buffer after this call returns.
+
+.. index:: pair: function; cpmdc_session_set_params
+.. _doxid-cpmd__c__abi_8h_1a0ffb70752daab4a244e5ffd58eaa6db5:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int cpmdc_session_set_params(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, const void* params_capnp, size_t params_capnp_size_bytes)
+
+Replace Cap'n Proto parameters before the session accepts topology.
+
+.. index:: pair: function; cpmdc_session_destroy
+.. _doxid-cpmd__c__abi_8h_1a6d07b0b1700b5352f1ce33f396a9f578:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void cpmdc_session_destroy(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session)
+
+Release a persistent evaluation session.
+
+.. index:: pair: function; cpmdc_session_calculate_forces
+.. _doxid-cpmd__c__abi_8h_1a9f5e4a955e689dcf3e06b52e68b6adb1:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` cpmdc_session_calculate_forces(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, const void* force_input_capnp, size_t force_input_capnp_size_bytes, double* forces_h_bohr, size_t forces_len)
+
+Compute energy and forces for one Cap'n Proto ``ForceInput`` step.
+
+Session keeps persistent ``CPMDParams``; each call supplies geometry. Returned energy/forces use CPMD native units: Hartree and Hartree/Bohr.
+
+.. index:: pair: function; cpmdc_session_calculate_result
+.. _doxid-cpmd__c__abi_8h_1ac63ef923626641269d88b5319f5eed8a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` cpmdc_session_calculate_result(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, const void* force_input_capnp, size_t force_input_capnp_size_bytes, void* potential_result_capnp, size_t potential_result_capnp_capacity_bytes, size_t* potential_result_capnp_size_bytes)
+
+Compute forces for one ``ForceInput`` step and write ``PotentialResult``.
+
+Direct-call socket entry point: method state in the session, geometry in ``ForceInput``, output energy/forces converted to ``ForceInput.energyUnit`` and ``energyUnit / lengthUnit``.
+
+When ``potential_result_capnp_capacity_bytes`` is too small, returns ``ok == 0``, writes the required byte count to ``potential_result_capnp_size_bytes``, and does not evaluate CPMD.
+
+.. index:: pair: function; cpmdc_calculate_result
+.. _doxid-cpmd__c__abi_8h_1a9b206e2d2173eafb39c00977101da25b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` cpmdc_calculate_result(const void* params_capnp, size_t params_capnp_size_bytes, const void* force_input_capnp, size_t force_input_capnp_size_bytes, void* potential_result_capnp, size_t potential_result_capnp_capacity_bytes, size_t* potential_result_capnp_size_bytes)
+
+One-shot Cap'n Proto entry point (params + ForceInput -> PotentialResult).
+
+Multi-step callers should create one session and call ``:ref:`cpmdc_session_calculate_result() <doxid-cpmd__c__abi_8h_1ac63ef923626641269d88b5319f5eed8a>``` per step.
+
+.. index:: pair: function; cpmdc_potential_result_size_for_force_input
+.. _doxid-cpmd__c__abi_8h_1a50c58b775c95334c2842f3d07c247408:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	size_t cpmdc_potential_result_size_for_force_input(const void* force_input_capnp, size_t force_input_capnp_size_bytes)
+
+Byte count needed for a ``PotentialResult`` for the given ``ForceInput``.
+
+Parses geometry only; does not initialize or evaluate CPMD. Returns 0 when the message is invalid or too large for the C ABI.
+
+.. index:: pair: function; cpmdc_version
+.. _doxid-cpmd__c__abi_8h_1a4d5a0eade3deceabe9f7e48e7a45d430:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const char* cpmdc_version(void)
+
+Compiled library version string.
+
+.. index:: pair: function; cpmdc_available
+.. _doxid-cpmd__c__abi_8h_1a25f2bc651370d207f2049574e7073e0d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int cpmdc_available(void)
+
+1 when the embedded OpenCPMD runtime is available.
+
+.. index:: pair: function; cpmdc_finalize
+.. _doxid-cpmd__c__abi_8h_1afae0c7a27c94036223f7a0cf60488f56:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void cpmdc_finalize(void)
+
+Finalize an owned embedded CPMD runtime.
+
+.. index:: pair: function; cpmdc_set_params
+.. _doxid-cpmd__c__abi__stub_8c_1a22da50d15419dadce4925c88100a1c23:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int cpmdc_set_params(const void* params_capnp, size_t params_capnp_size_bytes)
+
+Apply CPMD method parameters from a Cap'n Proto message.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- params_capnp
+
+		- Pointer to an unpacked flat ``CPMDParams`` message.
+
+	*
+		- params_capnp_size_bytes
+
+		- Size of ``params_capnp`` in bytes.
+
+
+
+.. rubric:: Returns:
+
+0 on success, -1 on parse or configuration failure.
+
+.. index:: pair: function; cpmdc_energy_gradient
+.. _doxid-cpmd__c__abi__stub_8c_1a525b75c1e47dd8595be42d2175f9f64f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` cpmdc_energy_gradient(int n_atoms, const double* positions_ang, const int* atomic_numbers, const void* params_capnp, size_t params_capnp_size_bytes, double* grad_h_bohr)
+
+Compute energy and nuclear gradient for an atomic configuration.
+
+Positions are Angstrom; gradient is Hartree/Bohr (CPMD ionic forces are negated into a nuclear gradient for API symmetry with nwchemc).
+
+.. index:: pair: function; cpmdc_energy
+.. _doxid-cpmd__c__abi__stub_8c_1a6e17756faffc4d181352a5953991f584:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` cpmdc_energy(int n_atoms, const double* positions_ang, const int* atomic_numbers, const void* params_capnp, size_t params_capnp_size_bytes)
+
+Compute total energy only (no gradient allocation).
+
+.. index:: pair: function; cpmdc_energy_forces
+.. _doxid-cpmd__c__abi__stub_8c_1ad653481360bf399295aed47e14cef118:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` cpmdc_energy_forces(int n_atoms, const double* positions_ang, const int* atomic_numbers, const void* params_capnp, size_t params_capnp_size_bytes, double* forces_h_bohr)
+
+Compute energy and nuclear forces (negative gradient, Hartree/Bohr).
+
+.. index:: pair: function; cpmdc_version
+.. _doxid-cpmd__c__abi__stub_8c_1a4d5a0eade3deceabe9f7e48e7a45d430:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const char* cpmdc_version(void)
+
+Compiled library version string.
+
+.. index:: pair: function; cpmdc_available
+.. _doxid-cpmd__c__abi__stub_8c_1a25f2bc651370d207f2049574e7073e0d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int cpmdc_available(void)
+
+1 when the embedded OpenCPMD runtime is available.
+
+.. index:: pair: function; cpmdc_finalize
+.. _doxid-cpmd__c__abi__stub_8c_1afae0c7a27c94036223f7a0cf60488f56:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void cpmdc_finalize(void)
+
+Finalize an owned embedded CPMD runtime.
+
+.. index:: pair: function; cpmdc_session_create
+.. _doxid-cpmd__c__abi__stub_8c_1a08b6b5b994b9754e6c853d3dd46c7745:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* cpmdc_session_create(const void* params_capnp, size_t params_capnp_size_bytes)
+
+Create a persistent evaluation session from a Cap'n Proto message.
+
+The session owns a copy of the serialized message so callers may release the input buffer after this call returns.
+
+.. index:: pair: function; cpmdc_session_set_params
+.. _doxid-cpmd__c__abi__stub_8c_1a0ffb70752daab4a244e5ffd58eaa6db5:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int cpmdc_session_set_params(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, const void* params_capnp, size_t params_capnp_size_bytes)
+
+Replace Cap'n Proto parameters before the session accepts topology.
+
+.. index:: pair: function; cpmdc_session_destroy
+.. _doxid-cpmd__c__abi__stub_8c_1a6d07b0b1700b5352f1ce33f396a9f578:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void cpmdc_session_destroy(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session)
+
+Release a persistent evaluation session.
+
+.. index:: pair: function; cpmdc_session_calculate_forces
+.. _doxid-cpmd__c__abi__stub_8c_1a9f5e4a955e689dcf3e06b52e68b6adb1:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` cpmdc_session_calculate_forces(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, const void* force_input_capnp, size_t force_input_capnp_size_bytes, double* forces_h_bohr, size_t forces_len)
+
+Compute energy and forces for one Cap'n Proto ``ForceInput`` step.
+
+Session keeps persistent ``CPMDParams``; each call supplies geometry. Returned energy/forces use CPMD native units: Hartree and Hartree/Bohr.
+
+.. index:: pair: function; cpmdc_session_calculate_result
+.. _doxid-cpmd__c__abi__stub_8c_1ac63ef923626641269d88b5319f5eed8a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` cpmdc_session_calculate_result(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, const void* force_input_capnp, size_t force_input_capnp_size_bytes, void* potential_result_capnp, size_t potential_result_capnp_capacity_bytes, size_t* potential_result_capnp_size_bytes)
+
+Compute forces for one ``ForceInput`` step and write ``PotentialResult``.
+
+Direct-call socket entry point: method state in the session, geometry in ``ForceInput``, output energy/forces converted to ``ForceInput.energyUnit`` and ``energyUnit / lengthUnit``.
+
+When ``potential_result_capnp_capacity_bytes`` is too small, returns ``ok == 0``, writes the required byte count to ``potential_result_capnp_size_bytes``, and does not evaluate CPMD.
+
+.. index:: pair: function; cpmdc_calculate_result
+.. _doxid-cpmd__c__abi__stub_8c_1a9b206e2d2173eafb39c00977101da25b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` cpmdc_calculate_result(const void* params_capnp, size_t params_capnp_size_bytes, const void* force_input_capnp, size_t force_input_capnp_size_bytes, void* potential_result_capnp, size_t potential_result_capnp_capacity_bytes, size_t* potential_result_capnp_size_bytes)
+
+One-shot Cap'n Proto entry point (params + ForceInput -> PotentialResult).
+
+Multi-step callers should create one session and call ``:ref:`cpmdc_session_calculate_result() <doxid-cpmd__c__abi_8h_1ac63ef923626641269d88b5319f5eed8a>``` per step.
+
+.. index:: pair: function; cpmdc_potential_result_size_for_force_input
+.. _doxid-cpmd__c__abi__stub_8c_1a50c58b775c95334c2842f3d07c247408:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	size_t cpmdc_potential_result_size_for_force_input(const void* force_input_capnp, size_t force_input_capnp_size_bytes)
+
+Byte count needed for a ``PotentialResult`` for the given ``ForceInput``.
+
+Parses geometry only; does not initialize or evaluate CPMD. Returns 0 when the message is invalid or too large for the C ABI.
 
 .. index:: pair: function; c_force_eam
 .. _doxid-_cu_h2_pot_8hpp_1a79b876a461f808a0b8e5ac38ca629988:
@@ -144,6 +605,172 @@ C-linkage bridge to the Fortran EAM implementation.
 .. rubric:: Returns:
 
 Void.
+
+.. index:: pair: function; nwchemc_set_params
+.. _doxid-nwchem__c__abi_8h_1a2b19e40d3fa84cd9c0c26d4e61ee1aec:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int nwchemc_set_params(const void* params_capnp, size_t params_capnp_size_bytes)
+
+Apply sticky method options from an unpacked flat ``NWChemParams`` message.
+
+
+
+.. rubric:: Returns:
+
+0 on success, non-zero if embed unavailable or params are invalid
+
+.. index:: pair: function; nwchemc_energy_gradient
+.. _doxid-nwchem__c__abi_8h_1a9452e5aaf6c8e097d7797f3697fcc00d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`NWChemCResult<doxid-struct_n_w_chem_c_result>` nwchemc_energy_gradient(int n_atoms, const double* positions_ang, const int* atomic_numbers, const void* params_capnp, size_t params_capnp_size_bytes, double* grad_h_bohr)
+
+Energy + nuclear gradient.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- n_atoms
+
+		- atom count
+
+	*
+		- positions_ang
+
+		- n_atoms\*3 Angstrom, row-major xyz
+
+	*
+		- atomic_numbers
+
+		- n_atoms Z values
+
+	*
+		- params_capnp
+
+		- unpacked flat ``NWChemParams`` message
+
+	*
+		- params_capnp_size_bytes
+
+		- size of params_capnp in bytes
+
+	*
+		- grad_h_bohr
+
+		- out n_atoms\*3 Hartree/Bohr, row-major
+
+.. index:: pair: function; nwchemc_version
+.. _doxid-nwchem__c__abi_8h_1a90abe502c32b33e3bdd7f4415c7a3c6e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const char* nwchemc_version(void)
+
+Engine version string (static buffer).
+
+.. index:: pair: function; nwchemc_available
+.. _doxid-nwchem__c__abi_8h_1a85faef1e24ae6c734d0d43e7d498ef53:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int nwchemc_available(void)
+
+1 if real embed (RGPOT_HAS_NWCHEM), 0 if stub.
+
+.. index:: pair: function; nwchemc_set_params
+.. _doxid-nwchem__c__abi__stub_8c_1a2b19e40d3fa84cd9c0c26d4e61ee1aec:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int nwchemc_set_params(const void* params_capnp, size_t params_capnp_size_bytes)
+
+Apply sticky method options from an unpacked flat ``NWChemParams`` message.
+
+
+
+.. rubric:: Returns:
+
+0 on success, non-zero if embed unavailable or params are invalid
+
+.. index:: pair: function; nwchemc_energy_gradient
+.. _doxid-nwchem__c__abi__stub_8c_1a9452e5aaf6c8e097d7797f3697fcc00d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`NWChemCResult<doxid-struct_n_w_chem_c_result>` nwchemc_energy_gradient(int n_atoms, const double* positions_ang, const int* atomic_numbers, const void* params_capnp, size_t params_capnp_size_bytes, double* grad_h_bohr)
+
+Energy + nuclear gradient.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- n_atoms
+
+		- atom count
+
+	*
+		- positions_ang
+
+		- n_atoms\*3 Angstrom, row-major xyz
+
+	*
+		- atomic_numbers
+
+		- n_atoms Z values
+
+	*
+		- params_capnp
+
+		- unpacked flat ``NWChemParams`` message
+
+	*
+		- params_capnp_size_bytes
+
+		- size of params_capnp in bytes
+
+	*
+		- grad_h_bohr
+
+		- out n_atoms\*3 Hartree/Bohr, row-major
+
+.. index:: pair: function; nwchemc_version
+.. _doxid-nwchem__c__abi__stub_8c_1a90abe502c32b33e3bdd7f4415c7a3c6e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const char* nwchemc_version(void)
+
+Engine version string (static buffer).
+
+.. index:: pair: function; nwchemc_available
+.. _doxid-nwchem__c__abi__stub_8c_1a85faef1e24ae6c734d0d43e7d498ef53:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int nwchemc_available(void)
+
+1 if real embed (RGPOT_HAS_NWCHEM), 0 if stub.
 
 .. index:: pair: function; pot_client_init
 .. _doxid-pot__bridge_8cc_1ad254a3ebf2ca0137de55bd82ea1abb42:
@@ -408,7 +1035,7 @@ The main entry point handles command-line arguments to specify the network port 
 
 
 
-.. _doxid-server_8cpp_1autotoc_md1:
+.. _doxid-server_8cpp_1autotoc_md19:
 
 Usage
 ~~~~~

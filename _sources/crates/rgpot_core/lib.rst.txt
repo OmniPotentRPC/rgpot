@@ -59,6 +59,7 @@ Crate ``rgpot_core``
       tensor
       status
       potential
+      eindir
       c_api
       Potentials_capnp
       rpc

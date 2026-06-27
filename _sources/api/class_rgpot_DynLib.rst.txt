@@ -1,0 +1,40 @@
+.. index:: pair: class; rgpot::DynLib
+.. _doxid-classrgpot_1_1_dyn_lib:
+
+class rgpot::DynLib
+===================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class DynLib {
+	public:
+		// construction
+	
+		:target:`DynLib<doxid-classrgpot_1_1_dyn_lib_1ab37eb2895a38c1a4ef40c36abe54c8f5>`();
+		:target:`DynLib<doxid-classrgpot_1_1_dyn_lib_1a6a59a531a0fe624eb08e36376775e01a>`(const std::string& path);
+		:target:`DynLib<doxid-classrgpot_1_1_dyn_lib_1a588599819bbb84d7c78751a9d258de1e>`(const DynLib&);
+		:target:`DynLib<doxid-classrgpot_1_1_dyn_lib_1ac676d9fcea27e0e16fa52decc03756e6>`(DynLib&& other);
+		:target:`~DynLib<doxid-classrgpot_1_1_dyn_lib_1aadca2e2e65dcd1fe86d2f96c0eebe0e7>`();
+
+		// methods
+	
+		DynLib& :target:`operator=<doxid-classrgpot_1_1_dyn_lib_1aa7bfcb5faab692d11440b6543a683765>`(const DynLib&);
+		DynLib& :target:`operator=<doxid-classrgpot_1_1_dyn_lib_1a2df6534f2e2892c52227086476832bdf>`(DynLib&& other);
+		bool :target:`valid<doxid-classrgpot_1_1_dyn_lib_1a1413514d5678b68e604d95f5f1ee87e5>`() const;
+		void :target:`open<doxid-classrgpot_1_1_dyn_lib_1aff44850acffb261e6065ad5645c03b79>`(const std::string& path);
+		void :target:`close<doxid-classrgpot_1_1_dyn_lib_1a6bf2baddbbef19d89e3a10b2bd0fe15b>`();
+	
+		template <typename T>
+		T :target:`sym<doxid-classrgpot_1_1_dyn_lib_1a3b16f99d35f3d750b6cb765e28dbb8c0>`(const char* name) const;
+	
+		template <typename T>
+		T :target:`sym_optional<doxid-classrgpot_1_1_dyn_lib_1a8c8ea79c93ac28a3deb65a63ee60bcbe>`(const char* name) const;
+	};

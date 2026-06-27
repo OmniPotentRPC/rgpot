@@ -90,11 +90,13 @@ data-aria-dark="Switch to auto color mode">
         <div class="globaltoc" data-expand-depth="1"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Tutorials</span></p>
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="tutorials/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="tutorials/molecular-global-optimization.html">Find the Ground State of an EON Structure</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">How-To Guides</span></p>
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="howto/embedding.html">Embedding as a Subproject</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="howto/integration.html">External Integration Guide</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="howto/eindir-anneal.html">rgpot Potentials as eindir Objectives</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -131,19 +133,38 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="api/struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="api/struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="api/struct_rgpot_XTBConfig.html">struct rgpot::XTBConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="api/class_rgpot_CPMDPot.html">class rgpot::CPMDPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="api/class_rgpot_CuH2Pot.html">class rgpot::CuH2Pot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="api/class_rgpot_DynLib.html">class rgpot::DynLib</a></li>
 <li class="toctree-l4"><a class="reference internal" href="api/class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="api/class_rgpot_MetatomicPot.html">class rgpot::MetatomicPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="api/class_rgpot_NWChemPot.html">class rgpot::NWChemPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="api/class_rgpot_PotentialBase.html">class rgpot::PotentialBase</a></li>
 <li class="toctree-l4"><a class="reference internal" href="api/class_rgpot_TBLitePot.html">class rgpot::TBLitePot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="api/class_rgpot_XTBPot.html">class rgpot::XTBPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="api/class_rgpot_registry.html">template class rgpot::registry</a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="api/namespace_rgpot-2.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="api/namespace_rgpot-3.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="api/namespace_std.html">namespace std</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="api/namespace_string_literals.html">namespace string_literals</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="api/enum_CPMDCFeatureKind.html">enum CPMDCFeatureKind</a></li>
+<li class="toctree-l3"><a class="reference internal" href="api/struct_CPMDCFeatureEntry.html">struct CPMDCFeatureEntry</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="api/struct_CPMDCResult.html">struct CPMDCResult</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="api/struct_NWChemCResult.html">struct NWChemCResult</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="api/class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
@@ -162,6 +183,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="crates/rgpot_core/tensor.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">tensor</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="crates/rgpot_core/status.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">status</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="crates/rgpot_core/potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="crates/rgpot_core/eindir.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">eindir</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="crates/rgpot_core/c_api.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">c_api</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="crates/rgpot_core/c_api/types.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">types</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="crates/rgpot_core/c_api/potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
@@ -205,33 +227,39 @@ data-aria-dark="Switch to auto color mode">
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
 <li><a class="reference internal" href="#changelog">Changelog</a><ul>
-<li><a class="reference internal" href="#id1">1.2.0 - 2026-06-24</a><ul>
+<li><a class="reference internal" href="#id1">2.0.0 - 2026-06-26</a><ul>
 <li><a class="reference internal" href="#added">Added</a></li>
 <li><a class="reference internal" href="#developer">Developer</a></li>
-<li><a class="reference internal" href="#fixed">Fixed</a></li>
-</ul>
-</li>
-<li><a class="reference internal" href="#id2">1.1.0 - 2026-03-29</a><ul>
-<li><a class="reference internal" href="#id3">Added</a></li>
-</ul>
-</li>
-<li><a class="reference internal" href="#id4">1.0.3 - 2026-03-01</a><ul>
-<li><a class="reference internal" href="#id5">Fixed</a></li>
-</ul>
-</li>
-<li><a class="reference internal" href="#id6">1.0.2 - 2026-03-01</a><ul>
-<li><a class="reference internal" href="#id7">Added</a></li>
 <li><a class="reference internal" href="#changed">Changed</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id8">1.0.0 - 2026-02-15</a><ul>
-<li><a class="reference internal" href="#id9">Added</a></li>
-<li><a class="reference internal" href="#id10">Changed</a></li>
-<li><a class="reference internal" href="#id11">Fixed</a></li>
+<li><a class="reference internal" href="#id2">1.2.0 - 2026-06-24</a><ul>
+<li><a class="reference internal" href="#id3">Added</a></li>
+<li><a class="reference internal" href="#id4">Developer</a></li>
+<li><a class="reference internal" href="#fixed">Fixed</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id12">0.0.1 - 2024-01-26</a><ul>
+<li><a class="reference internal" href="#id5">1.1.0 - 2026-03-29</a><ul>
+<li><a class="reference internal" href="#id6">Added</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id7">1.0.3 - 2026-03-01</a><ul>
+<li><a class="reference internal" href="#id8">Fixed</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id9">1.0.2 - 2026-03-01</a><ul>
+<li><a class="reference internal" href="#id10">Added</a></li>
+<li><a class="reference internal" href="#id11">Changed</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id12">1.0.0 - 2026-02-15</a><ul>
 <li><a class="reference internal" href="#id13">Added</a></li>
+<li><a class="reference internal" href="#id14">Changed</a></li>
+<li><a class="reference internal" href="#id15">Fixed</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id16">0.0.1 - 2024-01-26</a><ul>
+<li><a class="reference internal" href="#id17">Added</a></li>
 </ul>
 </li>
 </ul>
@@ -336,9 +364,8 @@ data-aria-dark="Switch to auto color mode">
 <p>Canonical user-facing changelog is the repo-root <code class="docutils literal notranslate"><span class="pre">CHANGELOG.md</span></code> (Keep a
 Changelog, maintained by towncrier + <code class="docutils literal notranslate"><span class="pre">cog</span> <span class="pre">bump</span></code> hooks).
 This org file is a Sphinx/docs entry point only: it includes <code class="docutils literal notranslate"><span class="pre">CHANGELOG.md</span></code> and
-must not diverge as a second source of truth.
-Edit <code class="docutils literal notranslate"><span class="pre">docs/newsfragments/</span></code>, never hand-write <code class="docutils literal notranslate"><span class="pre">##</span> <span class="pre">[X.Y.Z]</span></code> sections above the
-towncrier marker.</p>
+must not diverge as a second source of truth. Edit <code class="docutils literal notranslate"><span class="pre">docs/newsfragments/</span></code>, never
+hand-write <code class="docutils literal notranslate"><span class="pre">##</span> <span class="pre">[X.Y.Z]</span></code> sections above the towncrier marker.</p>
 <section id="changelog">
 <h2>Changelog<a class="headerlink" href="#changelog" title="Link to this heading">¶</a></h2>
 <p>All notable changes to this project will be documented in this file.</p>
@@ -346,9 +373,37 @@ towncrier marker.</p>
 and this project adheres to <a class="reference external" href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <!-- towncrier release notes start -->
 <section id="id1">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.2.0">1.2.0</a> - 2026-06-24<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h3>
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/2.0.0">2.0.0</a> - 2026-06-26<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h3>
 <section id="added">
 <h4>Added<a class="headerlink" href="#added" title="Link to this heading">¶</a></h4>
+<ul class="simple">
+<li><p>NWChemPot backend: stable message-based C ABI (<code class="docutils literal notranslate"><span class="pre">nwchem_c_abi.h</span></code>), always-built frontend with <code class="docutils literal notranslate"><span class="pre">dlopen</span></code> of optional <code class="docutils literal notranslate"><span class="pre">libnwchemc</span></code>, stub ABI for CI without NWChem, Cap’n Proto <code class="docutils literal notranslate"><span class="pre">NWChemParams</span></code>/<code class="docutils literal notranslate"><span class="pre">configure</span> <span class="pre">&#64;1</span></code>, and <code class="docutils literal notranslate"><span class="pre">potserv</span> <span class="pre">...</span> <span class="pre">NWChem</span></code>.</p></li>
+<li><p>CPMDPot backend: always-built frontend with <code class="docutils literal notranslate"><span class="pre">dlopen</span></code> of optional <code class="docutils literal notranslate"><span class="pre">libcpmdc</span></code> (split <a class="reference external" href="https://github.com/OmniPotentRPC/cpmdc"><code class="docutils literal notranslate"><span class="pre">cpmdc</span></code></a> engine), Cap’n Proto <code class="docutils literal notranslate"><span class="pre">CPMDParams</span></code> / <code class="docutils literal notranslate"><span class="pre">PotentialConfig.cpmd</span></code> / <code class="docutils literal notranslate"><span class="pre">configure</span></code>, structured <code class="docutils literal notranslate"><span class="pre">CPMDInputSection</span></code> arms, in-tree <code class="docutils literal notranslate"><span class="pre">cpmdc_fake_engine</span></code> for CI without CPMD, and <code class="docutils literal notranslate"><span class="pre">potserv</span> <span class="pre">...</span> <span class="pre">CPMD</span></code>. Engine lookup: <code class="docutils literal notranslate"><span class="pre">CPMDC_LIBRARY</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_CPMDC_ENGINE</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_CPMD_ENGINE</span></code>, then <code class="docutils literal notranslate"><span class="pre">enginePath</span></code> on params.</p></li>
+<li><p>rgpot potentials are now eindir objectives: <code class="docutils literal notranslate"><span class="pre">rgpot_potential_t</span></code> embeds eindir’s <code class="docutils literal notranslate"><span class="pre">eindir_objective_t</span></code> as its first member (zero-cost IS-A), with the embedded eval/grad callbacks routed through the rgpot force callback (gradient = -force). rgpot-core consumes <code class="docutils literal notranslate"><span class="pre">eindir-core</span></code> as a shared Cargo crate rather than a prebuilt static lib, so downstream Rust consumers (e.g. <code class="docutils literal notranslate"><span class="pre">anneal-core</span></code>) can minimize an rgpot potential through <code class="docutils literal notranslate"><span class="pre">eindir_core::Objective&lt;f64&gt;</span></code> without a two-Rust-runtime conflict. See <code class="docutils literal notranslate"><span class="pre">docs/orgmode/howto/eindir-anneal.org</span></code>.</p></li>
+</ul>
+</section>
+<section id="developer">
+<h4>Developer<a class="headerlink" href="#developer" title="Link to this heading">¶</a></h4>
+<ul class="simple">
+<li><p>CI authoring uses a Nickel <code class="docutils literal notranslate"><span class="pre">ci/gha/</span></code> library with a single hand-maintained
+<code class="docutils literal notranslate"><span class="pre">ci-orchestrator.yml</span></code> for PR/main jobs (prepare/plan, hygiene, build/rust/bridge,
+potentials, CI gate), and nickel-exported workflows only for release, docs,
+cosmo potctl, and doc-commenter. Removed redundant <code class="docutils literal notranslate"><span class="pre">build</span></code>/<code class="docutils literal notranslate"><span class="pre">prek</span></code>/<code class="docutils literal notranslate"><span class="pre">potentials</span></code>/
+<code class="docutils literal notranslate"><span class="pre">docs_quality</span></code>/<code class="docutils literal notranslate"><span class="pre">towncrier</span></code>/<code class="docutils literal notranslate"><span class="pre">cosmo-potctl-spike</span></code> committed workflows in favor of
+the orchestrator plus <code class="docutils literal notranslate"><span class="pre">gen-gha</span></code>/<code class="docutils literal notranslate"><span class="pre">gha-drift</span></code> for the remaining exports. (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/40">#40</a>)</p></li>
+</ul>
+</section>
+<section id="changed">
+<h4>Changed<a class="headerlink" href="#changed" title="Link to this heading">¶</a></h4>
+<ul class="simple">
+<li><p>NWChemPot is now a pure consumer of the split <a class="reference external" href="https://github.com/OmniPotentRPC/nwchemc"><code class="docutils literal notranslate"><span class="pre">nwchemc</span></code></a> engine: the in-tree NWChem embed (<code class="docutils literal notranslate"><span class="pre">nwchem_c_abi.c</span></code>, <code class="docutils literal notranslate"><span class="pre">nwchem_embed_c_api.f90</span></code>, <code class="docutils literal notranslate"><span class="pre">nwchem_embed_legacy.F</span></code>) and the <code class="docutils literal notranslate"><span class="pre">-Dwith_nwchem</span></code>/<code class="docutils literal notranslate"><span class="pre">-Dnwchem_root</span></code>/<code class="docutils literal notranslate"><span class="pre">-Dnwchem_target</span></code> build options are removed. The frontend always builds and <code class="docutils literal notranslate"><span class="pre">dlopen</span></code>s <code class="docutils literal notranslate"><span class="pre">libnwchemc.so</span></code>; the capnp schema is synced byte-for-byte to nwchemc’s canonical superset so a flat <code class="docutils literal notranslate"><span class="pre">NWChemParams</span></code> round-trips with no field loss.</p></li>
+</ul>
+</section>
+</section>
+<section id="id2">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.2.0">1.2.0</a> - 2026-06-24<a class="headerlink" href="#id2" title="Link to this heading">¶</a></h3>
+<section id="id3">
+<h4>Added<a class="headerlink" href="#id3" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>XTBPot: GFN tight-binding via the xtb C API (GFNFF, GFN0/1/2-xTB). Feature-gated with <code class="docutils literal notranslate"><span class="pre">-Dwith_xtb=true</span></code>. RPC names <code class="docutils literal notranslate"><span class="pre">XTB</span></code>, <code class="docutils literal notranslate"><span class="pre">GFNFF</span></code>, <code class="docutils literal notranslate"><span class="pre">GFN0xTB</span></code>, <code class="docutils literal notranslate"><span class="pre">GFN1xTB</span></code>. (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/35">#35</a>)</p></li>
 <li><p>TBLitePot: GFN tight-binding via the tblite C API (GFN1, GFN2, IPEA1). Feature-gated with <code class="docutils literal notranslate"><span class="pre">-Dwith_tblite=true</span></code>. (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/36">#36</a>)</p></li>
@@ -356,8 +411,8 @@ and this project adheres to <a class="reference external" href="https://semver.o
 <li><p>Units module (<code class="docutils literal notranslate"><span class="pre">rgpot/units.hpp</span></code>): CODATA 2018 constants plus a runtime unit expression parser, with Cap’n Proto <code class="docutils literal notranslate"><span class="pre">lengthUnit</span></code>/<code class="docutils literal notranslate"><span class="pre">energyUnit</span></code> negotiation on the RPC boundary. (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/38">#38</a>)</p></li>
 </ul>
 </section>
-<section id="developer">
-<h4>Developer<a class="headerlink" href="#developer" title="Link to this heading">¶</a></h4>
+<section id="id4">
+<h4>Developer<a class="headerlink" href="#id4" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>Lockstep monorepo release via cocogitto 7 + towncrier + <code class="docutils literal notranslate"><span class="pre">potctl</span></code> (<code class="docutils literal notranslate"><span class="pre">potctl/</span></code>,
 not published): <code class="docutils literal notranslate"><span class="pre">cog</span> <span class="pre">bump</span></code> runs <code class="docutils literal notranslate"><span class="pre">potctl</span> <span class="pre">release</span> <span class="pre">sync</span></code> then towncrier then
@@ -377,10 +432,10 @@ release-prepare cargo dry-run, SECURITY.md and CODEOWNERS for release surfaces.<
 </ul>
 </section>
 </section>
-<section id="id2">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.1.0">1.1.0</a> - 2026-03-29<a class="headerlink" href="#id2" title="Link to this heading">¶</a></h3>
-<section id="id3">
-<h4>Added<a class="headerlink" href="#id3" title="Link to this heading">¶</a></h4>
+<section id="id5">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.1.0">1.1.0</a> - 2026-03-29<a class="headerlink" href="#id5" title="Link to this heading">¶</a></h3>
+<section id="id6">
+<h4>Added<a class="headerlink" href="#id6" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>XTBPot: GFN tight-binding potential via xtb (GFNFF, GFN0, GFN1, GFN2). Feature-gated with <code class="docutils literal notranslate"><span class="pre">-Dwith_xtb=true</span></code>. (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/35">#35</a>)</p></li>
 <li><p>TBLitePot: GFN tight-binding potential via tblite (GFN1, GFN2, IPEA1). Feature-gated with <code class="docutils literal notranslate"><span class="pre">-Dwith_tblite=true</span></code>. (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/36">#36</a>)</p></li>
@@ -389,34 +444,34 @@ release-prepare cargo dry-run, SECURITY.md and CODEOWNERS for release surfaces.<
 </ul>
 </section>
 </section>
-<section id="id4">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.0.3">1.0.3</a> - 2026-03-01<a class="headerlink" href="#id4" title="Link to this heading">¶</a></h3>
-<section id="id5">
-<h4>Fixed<a class="headerlink" href="#id5" title="Link to this heading">¶</a></h4>
+<section id="id7">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.0.3">1.0.3</a> - 2026-03-01<a class="headerlink" href="#id7" title="Link to this heading">¶</a></h3>
+<section id="id8">
+<h4>Fixed<a class="headerlink" href="#id8" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>MSVC/clang-cl compatibility: use <code class="docutils literal notranslate"><span class="pre">/W3</span></code> instead of GCC/Clang warning flags and skip <code class="docutils literal notranslate"><span class="pre">-lstdc++</span></code> link arg on Windows (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/31">#31</a>)</p></li>
 </ul>
 </section>
 </section>
-<section id="id6">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.0.2">1.0.2</a> - 2026-03-01<a class="headerlink" href="#id6" title="Link to this heading">¶</a></h3>
-<section id="id7">
-<h4>Added<a class="headerlink" href="#id7" title="Link to this heading">¶</a></h4>
+<section id="id9">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.0.2">1.0.2</a> - 2026-03-01<a class="headerlink" href="#id9" title="Link to this heading">¶</a></h3>
+<section id="id10">
+<h4>Added<a class="headerlink" href="#id10" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>External integration guide covering namespace collision mitigation when embedding rgpot as a subproject (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/30">#30</a>)</p></li>
 </ul>
 </section>
-<section id="changed">
-<h4>Changed<a class="headerlink" href="#changed" title="Link to this heading">¶</a></h4>
+<section id="id11">
+<h4>Changed<a class="headerlink" href="#id11" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>CI dependency bumps and cleanup to prevent trailing whitespace in generated headers (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/29">#29</a>)</p></li>
 </ul>
 </section>
 </section>
-<section id="id8">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.0.0">1.0.0</a> - 2026-02-15<a class="headerlink" href="#id8" title="Link to this heading">¶</a></h3>
-<section id="id9">
-<h4>Added<a class="headerlink" href="#id9" title="Link to this heading">¶</a></h4>
+<section id="id12">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.0.0">1.0.0</a> - 2026-02-15<a class="headerlink" href="#id12" title="Link to this heading">¶</a></h3>
+<section id="id13">
+<h4>Added<a class="headerlink" href="#id13" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>doc(arch): add architecture guide covering layer diagram, error conventions, and how to register new potentials</p></li>
 <li><p>feat(build): add release CI workflow, meson subproject install guards, CMake FetchContent readiness, and package version config</p></li>
@@ -431,23 +486,23 @@ release-prepare cargo dry-run, SECURITY.md and CODEOWNERS for release surfaces.<
 <li><p>test(rust): add 39 unit tests covering types, status codes, potential lifecycle, C API, null-pointer handling, error propagation, and <code class="docutils literal notranslate"><span class="pre">free_fn</span></code> invocation</p></li>
 </ul>
 </section>
-<section id="id10">
-<h4>Changed<a class="headerlink" href="#id10" title="Link to this heading">¶</a></h4>
+<section id="id14">
+<h4>Changed<a class="headerlink" href="#id14" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>chore(build): add Meson <code class="docutils literal notranslate"><span class="pre">with_rust_core</span></code> option, <code class="docutils literal notranslate"><span class="pre">rust-test</span></code> / <code class="docutils literal notranslate"><span class="pre">rust-test-all</span></code> pixi tasks, and <code class="docutils literal notranslate"><span class="pre">cargo-nextest</span></code> dependency</p></li>
 </ul>
 </section>
-<section id="id11">
-<h4>Fixed<a class="headerlink" href="#id11" title="Link to this heading">¶</a></h4>
+<section id="id15">
+<h4>Fixed<a class="headerlink" href="#id15" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>fix(cpp): remove incorrect <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">&quot;C&quot;</span></code> trampolines from <code class="docutils literal notranslate"><span class="pre">LJPot.hpp</span></code> and <code class="docutils literal notranslate"><span class="pre">CuH2Pot.hpp</span></code> that used raw <code class="docutils literal notranslate"><span class="pre">int</span></code> returns and <code class="docutils literal notranslate"><span class="pre">void*</span></code> params; use typed <code class="docutils literal notranslate"><span class="pre">PotentialHandle::from_impl&lt;&gt;()</span></code> template instead</p></li>
 </ul>
 </section>
 </section>
-<section id="id12">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/v0.0.1">0.0.1</a> - 2024-01-26<a class="headerlink" href="#id12" title="Link to this heading">¶</a></h3>
-<section id="id13">
-<h4>Added<a class="headerlink" href="#id13" title="Link to this heading">¶</a></h4>
+<section id="id16">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/v0.0.1">0.0.1</a> - 2024-01-26<a class="headerlink" href="#id16" title="Link to this heading">¶</a></h3>
+<section id="id17">
+<h4>Added<a class="headerlink" href="#id17" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>Initial release with C++ core: Lennard-Jones and CuH2 EAM potentials.</p></li>
 <li><p>CRTP-based <code class="docutils literal notranslate"><span class="pre">Potential&lt;Derived&gt;</span></code> template with optional caching.</p></li>

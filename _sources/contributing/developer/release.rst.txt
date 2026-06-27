@@ -66,11 +66,11 @@ references ``environment: release``; create under Settings > Environments).
 produces signed tags if configured).
 GHA does not replace maintainer GPG.
 
-**C++ distribution note**: tag/source is the C++ contract; ``release.yml`` runs a
-minimal ``meson install`` smoke.
-Optional backends (xtb/tblite/metatomic) are validated on PRs via orchestrator
-potentials jobs, not re-run on every tag. conda-forge / Spack / system packages
-are **out of band** (separate feedstock/PR track), not part of ``release.yml``.
+**C++ distribution note**: tag/source is the C++ contract; ``release.yml`` runs
+a minimal ``meson install`` smoke. Optional backends (xtb/tblite/metatomic) are
+validated on PRs via orchestrator potentials jobs, not re-run on every tag.
+conda-forge / Spack / system packages are **out of band** (separate feedstock/PR
+track), not part of ``release.yml``.
 
 Changelog fragments
 ~~~~~~~~~~~~~~~~~~~

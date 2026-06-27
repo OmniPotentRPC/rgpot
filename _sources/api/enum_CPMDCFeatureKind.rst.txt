@@ -1,0 +1,20 @@
+.. index:: pair: enum; CPMDCFeatureKind
+.. _doxid-cpmd__c__abi_8h_1af730055345a93286960ba9ef1a3f05b2:
+
+enum CPMDCFeatureKind
+=====================
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <cpmd_c_abi.h>
+
+	enum CPMDCFeatureKind {
+	    :target:`CPMDC_FEATURE_SECTION<doxid-cpmd__c__abi_8h_1af730055345a93286960ba9ef1a3f05b2a10b8c0f0846fd3083eaa32fd2ac815b9>` = 1,
+	    :target:`CPMDC_FEATURE_PARAMS<doxid-cpmd__c__abi_8h_1af730055345a93286960ba9ef1a3f05b2a51409d149d8bc82536d47a433093fd88>`  = 2,
+	    :target:`CPMDC_FEATURE_ABI<doxid-cpmd__c__abi_8h_1af730055345a93286960ba9ef1a3f05b2a64f399c7f6179d9eb652b50884d43bd8>`     = 3,
+	    :target:`CPMDC_FEATURE_KEYWORD<doxid-cpmd__c__abi_8h_1af730055345a93286960ba9ef1a3f05b2ab4937f616b6a49ac5102fdbf11372425>` = 4,
+	};
+

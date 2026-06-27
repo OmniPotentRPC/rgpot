@@ -48,3 +48,17 @@
    .. rust:use:: rgpot_core
       :used_name: crate
 
+
+   .. rust:use:: rgpot_core::eindir::rgpot_potential_free_eindir
+      :used_name: rgpot_potential_free_eindir
+      :reexport: rgpot_core::c_api
+
+
+   .. rust:use:: rgpot_core::eindir::rgpot_potential_new_eindir
+      :used_name: rgpot_potential_new_eindir
+      :reexport: rgpot_core::c_api
+
+   .. rubric:: Re-exports
+
+   * :rust:any:``rgpot_core::eindir::rgpot_potential_free_eindir``
+   * :rust:any:``rgpot_core::eindir::rgpot_potential_new_eindir``

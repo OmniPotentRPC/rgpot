@@ -22,10 +22,13 @@ Implementation of the standalone Cap'n Proto potential server. :ref:`More...<det
 		// construction
 	
 		:ref:`GenericPotImpl<doxid-class_generic_pot_impl_1ac77d09e5f96610b4c9c590c6cf7c1cac>`(std::unique_ptr<:ref:`rgpot::PotentialBase<doxid-classrgpot_1_1_potential_base>`> pot);
+		:ref:`GenericPotImpl<doxid-class_generic_pot_impl_1ac688b4558b6ba9d25f60efe6273c4ed9>`(std::unique_ptr<:ref:`rgpot::NWChemPot<doxid-classrgpot_1_1_n_w_chem_pot>`> pot);
+		:target:`GenericPotImpl<doxid-class_generic_pot_impl_1aa2b3e7da508312e29d44bac930d5c8fb>`(std::unique_ptr<:ref:`rgpot::CPMDPot<doxid-classrgpot_1_1_c_p_m_d_pot>`> pot);
 
 		// methods
 	
 		kj::Promise<void> :ref:`calculate<doxid-class_generic_pot_impl_1a59c68ff1515d997768279734ff3ebcf8>`(CalculateContext context);
+		kj::Promise<void> :target:`configure<doxid-class_generic_pot_impl_1a8eff60089b9853326964768ba3a5b848>`(ConfigureContext context);
 	};
 .. _details-class_generic_pot_impl:
 
@@ -64,6 +67,16 @@ Constructor for :ref:`GenericPotImpl <doxid-class_generic_pot_impl>`.
 		- pot
 
 		- Ownership of a PotentialBase derived object.
+
+.. index:: pair: function; GenericPotImpl
+.. _doxid-class_generic_pot_impl_1ac688b4558b6ba9d25f60efe6273c4ed9:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	GenericPotImpl(std::unique_ptr<:ref:`rgpot::NWChemPot<doxid-classrgpot_1_1_n_w_chem_pot>`> pot)
+
+Constructor retaining an NWChemPot pointer for configure(). Members initialize in declaration order (m_potential then m_nwchem).
 
 Methods
 -------

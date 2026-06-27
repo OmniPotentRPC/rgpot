@@ -1,0 +1,24 @@
+.. index:: pair: struct; CPMDCFeatureEntry
+.. _doxid-struct_c_p_m_d_c_feature_entry:
+
+struct CPMDCFeatureEntry
+========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct CPMDCFeatureEntry {
+		// fields
+	
+		const char* :target:`feature_id<doxid-struct_c_p_m_d_c_feature_entry_1aeea621b6e77fa5bb0ea64c79bf5788f1>`;
+		CPMDCFeatureKind :target:`kind<doxid-struct_c_p_m_d_c_feature_entry_1a25c110dc3efcf9c60c8e9cea5552b875>`;
+		int :target:`stub_applicable<doxid-struct_c_p_m_d_c_feature_entry_1aa6bb7b57531c1d4a83a7869d1f24b039>`;
+		int :target:`embed_applicable<doxid-struct_c_p_m_d_c_feature_entry_1aace20749543a7b4bbb6f5439c183bf41>`;
+	};
