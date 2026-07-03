@@ -115,7 +115,7 @@ struct NWChemDftGridSpec {
     medium      @3;
     fine        @4;
     xfine       @5;
-    huge        @6;
+    hugeGrid    @6; # Renders as NWChem token "huge"; named to dodge math.h HUGE in C++.
   }
 }
 
