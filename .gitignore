@@ -333,3 +333,14 @@ third_party/
 /*.hess
 /*_embed
 /*.temp0000.nw
+
+# CPMD runtime output and link-check cache
+/RESTART.*
+/GEOMETRY
+/GEOMETRY.xyz
+/LATEST
+/ENERGIES
+/DENSITY
+fort.*
+LocalError-*.log
+.lycheecache
