@@ -2,8 +2,8 @@
 <html lang="en" data-accent-color="teal" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>class rgpot::RpcClient - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Global Namespace" href="global.html" /><link rel="prev" title="class rgpot::PotentialHandle" href="class_rgpot_PotentialHandle.html" />
-      <link rel="canonical" href="https://rgpot.rgoswami.me/api/class_rgpot_RpcClient.html" /><script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>eOn Potentials Over rgpot - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Architecture Overview" href="../reference/architecture.html" /><link rel="prev" title="rgpot Potentials as eindir Objectives" href="eindir-anneal.html" />
+      <link rel="canonical" href="https://rgpot.rgoswami.me/howto/eon-rgpot.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
   </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
@@ -22,8 +22,8 @@
 }
 </style>
     <meta property="og:type" content="website"/>
-  <meta property="og:url" content="https://rgpot.rgoswami.me/api/class_rgpot_RpcClient.html"/>
-  <meta property="og:title" content="class rgpot::RpcClient"/>
+  <meta property="og:url" content="https://rgpot.rgoswami.me/howto/eon-rgpot.html"/>
+  <meta property="og:title" content="eOn Potentials Over rgpot"/>
     <meta name="twitter:card" content="summary"/>
   <!-- Manual favicon handling with favicon.io -->
 <!-- since sphinx-favicon doesn't work with shibuya -->
@@ -93,92 +93,92 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/molecular-global-optimization.html">Find the Ground State of an EON Structure</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">How-To Guides</span></p>
-<ul>
-<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/embedding.html">Embedding as a Subproject</a></li>
-<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/integration.html">External Integration Guide</a></li>
-<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eindir-anneal.html">rgpot Potentials as eindir Objectives</a></li>
-<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html">eOn Potentials Over rgpot</a></li>
-<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#why-this-shape">Why This Shape</a></li>
-<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#landed-work-items">Landed Work Items</a></li>
-<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#operator-cheatsheet-rgpot-side">Operator Cheatsheet (rgpot side)</a></li>
-<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#related">Related</a></li>
+<ul class="current">
+<li class="toctree-l1 _expand"><a class="reference internal" href="embedding.html">Embedding as a Subproject</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="integration.html">External Integration Guide</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="eindir-anneal.html">rgpot Potentials as eindir Objectives</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">eOn Potentials Over rgpot</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="#why-this-shape">Why This Shape</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="#landed-work-items">Landed Work Items</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="#operator-cheatsheet-rgpot-side">Operator Cheatsheet (rgpot side)</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="#related">Related</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
-<ul class="current">
+<ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../reference/architecture.html">Architecture Overview</a></li>
-<li class="toctree-l1 current"><a class="reference internal" href="index.html">API Reference</a><ul class="current">
-<li class="toctree-l2 current"><a class="reference internal" href="group_rgpot_cpp.html">C++ RAII Wrappers</a><ul class="current">
-<li class="toctree-l3"><a class="reference internal" href="class_rgpot_CalcResult.html">class rgpot::CalcResult</a><ul class="simple">
+<li class="toctree-l1 _expand"><a class="reference internal" href="../api/index.html">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../api/group_rgpot_cpp.html">C++ RAII Wrappers</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_rgpot_CalcResult.html">class rgpot::CalcResult</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="class_rgpot_Error.html">class rgpot::Error</a><ul class="simple">
+<li class="toctree-l3"><a class="reference internal" href="../api/class_rgpot_Error.html">class rgpot::Error</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="class_rgpot_InputSpec.html">class rgpot::InputSpec</a><ul class="simple">
+<li class="toctree-l3"><a class="reference internal" href="../api/class_rgpot_InputSpec.html">class rgpot::InputSpec</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="class_rgpot_PotentialHandle.html">class rgpot::PotentialHandle</a><ul class="simple">
+<li class="toctree-l3"><a class="reference internal" href="../api/class_rgpot_PotentialHandle.html">class rgpot::PotentialHandle</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3 current"><a class="current reference internal" href="#">class rgpot::RpcClient</a><ul class="simple">
+<li class="toctree-l3"><a class="reference internal" href="../api/class_rgpot_RpcClient.html">class rgpot::RpcClient</a><ul class="simple">
 </ul>
 </li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="global.html">Global Namespace</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot.html">namespace rgpot</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
-<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_details.html">namespace rgpot::details</a></li>
-<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_types.html">namespace rgpot::types</a></li>
-<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_units.html">namespace rgpot::units</a></li>
-<li class="toctree-l4"><a class="reference internal" href="enum_rgpot_GFNMethod.html">enum rgpot::GFNMethod</a></li>
-<li class="toctree-l4"><a class="reference internal" href="enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
-<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
-<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
-<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
-<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
-<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_XTBConfig.html">struct rgpot::XTBConfig</a></li>
-<li class="toctree-l4"><a class="reference internal" href="class_rgpot_CPMDPot.html">class rgpot::CPMDPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="class_rgpot_CuH2Pot.html">class rgpot::CuH2Pot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="class_rgpot_DynLib.html">class rgpot::DynLib</a></li>
-<li class="toctree-l4"><a class="reference internal" href="class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="class_rgpot_MetatomicPot.html">class rgpot::MetatomicPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="class_rgpot_NWChemPot.html">class rgpot::NWChemPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="class_rgpot_PotentialBase.html">class rgpot::PotentialBase</a></li>
-<li class="toctree-l4"><a class="reference internal" href="class_rgpot_TBLitePot.html">class rgpot::TBLitePot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="class_rgpot_XTBPot.html">class rgpot::XTBPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="class_rgpot_registry.html">template class rgpot::registry</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../api/global.html">Global Namespace</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot.html">namespace rgpot</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_details.html">namespace rgpot::details</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_types.html">namespace rgpot::types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_units.html">namespace rgpot::units</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_GFNMethod.html">enum rgpot::GFNMethod</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XTBConfig.html">struct rgpot::XTBConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_CPMDPot.html">class rgpot::CPMDPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_CuH2Pot.html">class rgpot::CuH2Pot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_DynLib.html">class rgpot::DynLib</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_MetatomicPot.html">class rgpot::MetatomicPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_NWChemPot.html">class rgpot::NWChemPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_PotentialBase.html">class rgpot::PotentialBase</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_TBLitePot.html">class rgpot::TBLitePot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_XTBPot.html">class rgpot::XTBPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_registry.html">template class rgpot::registry</a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-2.html">namespace rgpot</a><ul class="simple">
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-2.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-3.html">namespace rgpot</a><ul class="simple">
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-3.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_std.html">namespace std</a><ul class="simple">
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_std.html">namespace std</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_string_literals.html">namespace string_literals</a><ul class="simple">
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_string_literals.html">namespace string_literals</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="enum_CPMDCFeatureKind.html">enum CPMDCFeatureKind</a></li>
-<li class="toctree-l3"><a class="reference internal" href="struct_CPMDCFeatureEntry.html">struct CPMDCFeatureEntry</a><ul class="simple">
+<li class="toctree-l3"><a class="reference internal" href="../api/enum_CPMDCFeatureKind.html">enum CPMDCFeatureKind</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_CPMDCFeatureEntry.html">struct CPMDCFeatureEntry</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="struct_CPMDCResult.html">struct CPMDCResult</a><ul class="simple">
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_CPMDCResult.html">struct CPMDCResult</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="struct_NWChemCResult.html">struct NWChemCResult</a><ul class="simple">
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_NWChemCResult.html">struct NWChemCResult</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
+<li class="toctree-l3"><a class="reference internal" href="../api/class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="class_GenericPotImpl.html">class GenericPotImpl</a><ul class="simple">
+<li class="toctree-l3"><a class="reference internal" href="../api/class_GenericPotImpl.html">class GenericPotImpl</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="class_PotClient.html">class PotClient</a><ul class="simple">
+<li class="toctree-l3"><a class="reference internal" href="../api/class_PotClient.html">class PotClient</a><ul class="simple">
 </ul>
 </li>
 </ul>
@@ -231,12 +231,11 @@ data-aria-dark="Switch to auto color mode">
       <i class="i-lucide close"></i>
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
-<li><a class="reference internal" href="#overview">Overview</a></li>
-<li><a class="reference internal" href="#detailed-documentation">Detailed Documentation</a><ul>
-<li><a class="reference internal" href="#construction">Construction</a></li>
-<li><a class="reference internal" href="#methods">Methods</a></li>
-</ul>
-</li>
+<li><a class="reference internal" href="#">eOn Potentials Over rgpot</a></li>
+<li><a class="reference internal" href="#why-this-shape">Why This Shape</a></li>
+<li><a class="reference internal" href="#landed-work-items">Landed Work Items</a></li>
+<li><a class="reference internal" href="#operator-cheatsheet-rgpot-side">Operator Cheatsheet (rgpot side)</a></li>
+<li><a class="reference internal" href="#related">Related</a></li>
 </ul>
 </div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/OmniPotentRPC/rgpot"
   data-type="github" data-user="OmniPotentRPC" data-repo="rgpot">
@@ -260,7 +259,7 @@ data-aria-dark="Switch to auto color mode">
     </span>
   </span>
 </a><div class="edit-this-page">
-  <a href="https://github.com/OmniPotentRPC/rgpot/blob/main/docs/source/api/class_rgpot_RpcClient.rst">Edit this page</a>
+  <a href="https://github.com/OmniPotentRPC/rgpot/blob/main/docs/source/howto/eon-rgpot.rst">Edit this page</a>
 </div></div>
   </aside>
   <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
@@ -277,16 +276,8 @@ data-aria-dark="Switch to auto color mode">
         <span>/</span>
         <meta itemprop="position" content="1" />
       </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-        <a itemprop="item" href="index.html"><span itemprop="name">API Reference</span></a>
-        <span>/</span>
+        <strong itemprop="name">eOn Potentials Over rgpot</strong>
         <meta itemprop="position" content="2" />
-      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-        <a itemprop="item" href="group_rgpot_cpp.html"><span itemprop="name">C++ RAII Wrappers</span></a>
-        <span>/</span>
-        <meta itemprop="position" content="3" />
-      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-        <strong itemprop="name">class rgpot::RpcClient</strong>
-        <meta itemprop="position" content="4" />
       </li></ol>
     <div class="xl:hidden ml-1">
       <button class="js-menu" aria-label="Show table of contents" type="button" aria-controls="rside"
@@ -302,7 +293,7 @@ data-aria-dark="Switch to auto color mode">
     <button
       type="button"
       class="js-copy px-3 py-1 inline-flex items-center gap-1"
-      data-url="https://rgpot.rgoswami.me/_sources/api/class_rgpot_RpcClient.rst.txt"
+      data-url="https://rgpot.rgoswami.me/_sources/howto/eon-rgpot.rst.txt"
     >
       <i class="i-lucide" data-icon="copy"></i>
       <span>Copy page</span>
@@ -316,153 +307,104 @@ data-aria-dark="Switch to auto color mode">
     <div role="presentation">
       <div class="flex flex-col" role="group">
         <button class="js-copy" type="button" role="menuitem"
-          data-url="https://rgpot.rgoswami.me/_sources/api/class_rgpot_RpcClient.rst.txt">
+          data-url="https://rgpot.rgoswami.me/_sources/howto/eon-rgpot.rst.txt">
           <span class="iconify-icon">
             <i class="i-lucide" data-icon="copy"></i>
           </span>
           <span>Copy page</span>
         </button>
-        <a role="menuitem" href="https://rgpot.rgoswami.me/_sources/api/class_rgpot_RpcClient.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
-            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20https%3A//rgpot.rgoswami.me/_sources/api/class_rgpot_RpcClient.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        <a role="menuitem" href="https://rgpot.rgoswami.me/_sources/howto/eon-rgpot.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
+            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20https%3A//rgpot.rgoswami.me/_sources/howto/eon-rgpot.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:openai"></iconify-icon>
           <span>Open in ChatGPT</span>
-        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20https%3A//rgpot.rgoswami.me/_sources/api/class_rgpot_RpcClient.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20https%3A//rgpot.rgoswami.me/_sources/howto/eon-rgpot.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:claude"></iconify-icon>
           <span>Open in Claude</span>
         </a></div>
     </div>
   </div>
 </div><article class="yue dark-code" role="main">
-          <section id="class-rgpot-rpcclient">
-<span id="doxid-classrgpot-1-1-rpc-client"></span><span id="index-0"></span><h1>class rgpot::RpcClient<a class="headerlink" href="#class-rgpot-rpcclient" title="Link to this heading">¶</a></h1>
-<div class="toctree-wrapper compound">
-</div>
-<section id="overview">
-<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
-<p>Move-only RAII wrapper around <code class="docutils literal notranslate"><span class="pre">rgpot_rpc_client_t</span></code>. <a class="reference internal" href="#details-classrgpot-1-1-rpc-client"><span class="std std-ref">More…</span></a></p>
-<div class="doxyrest-overview-code-block highlight">
-<pre><span data-line="1"><span class="cp">#include</span> <span class="cpf">&lt;rpc_client.hpp&gt;</span></span>
-<span data-line="2"> </span>
-<span data-line="3"><span class="k">class</span> <span class="n">RpcClient</span> <span class="p">{</span></span>
-<span data-line="4"><span class="k">public</span><span class="o">:</span></span>
-<span data-line="5">    <span class="c1">// construction</span></span>
-<span data-line="6"> </span>
-<span data-line="7">    <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-rpc-client-1a91d2c1f60877e3da463777057fa99a50"><span class="std std-ref">RpcClient</span></a><span class="p">(</span><span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span> <span class="n">host</span><span class="p">,</span> <span class="kt">uint16_t</span> <span class="n">port</span><span class="p">);</span></span>
-<span data-line="8">    <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-rpc-client-1ae96fdbccb49cb8c5511b9c760128f517"><span class="std std-ref">RpcClient</span></a><span class="p">(</span><span class="n">RpcClient</span><span class="o">&amp;&amp;</span> <span class="n">other</span><span class="p">);</span></span>
-<span data-line="9">    <span class="doxyrest-code-target target" id="doxid-classrgpot_1_1_rpc_client_1a0645d3448d36a650d30f72b91280c4eb"></span><span class="n">RpcClient</span><span class="p">(</span><span class="k">const</span> <span class="n">RpcClient</span><span class="o">&amp;</span><span class="p">);</span></span>
-<span data-line="10">    <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-rpc-client-1a82fcadc09664f18447ff1d0e602fa99a"><span class="std std-ref">~RpcClient</span></a><span class="p">();</span></span>
-<span data-line="11"> </span>
-<span data-line="12">    <span class="c1">// methods</span></span>
-<span data-line="13"> </span>
-<span data-line="14">    <span class="n">RpcClient</span><span class="o">&amp;</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-rpc-client-1ac4438fab8ec203ab317a6e0152ef8ccf"><span class="std std-ref">operator=</span></a><span class="p">(</span><span class="n">RpcClient</span><span class="o">&amp;&amp;</span> <span class="n">other</span><span class="p">);</span></span>
-<span data-line="15">    <span class="n">RpcClient</span><span class="o">&amp;</span> <span class="doxyrest-code-target target" id="doxid-classrgpot_1_1_rpc_client_1a777abf4c8dcf786c6496ba7277a1b1e0"></span><span class="k">operator</span><span class="o">=</span><span class="p">(</span><span class="k">const</span> <span class="n">RpcClient</span><span class="o">&amp;</span><span class="p">);</span></span>
-<span data-line="16">    <a class="doxyrest-code-link reference internal" href="class_rgpot_CalcResult.html#doxid-classrgpot-1-1-calc-result"><span class="std std-ref">CalcResult</span></a> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-rpc-client-1abebb894e15d2b276c0f12e96ecdb12b8"><span class="std std-ref">calculate</span></a><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_InputSpec.html#doxid-classrgpot-1-1-input-spec"><span class="std std-ref">InputSpec</span></a><span class="o">&amp;</span> <span class="n">input</span><span class="p">);</span></span>
-<span data-line="17"><span class="p">};</span></span>
-</pre></div>
+          <section id="eon-potentials-over-rgpot">
+<h1>eOn Potentials Over rgpot<a class="headerlink" href="#eon-potentials-over-rgpot" title="Link to this heading">¶</a></h1>
+<p>The <strong>**eOn ↔ rgpot**</strong> integration gives eOn access to rgpot’s quantum-chemistry
+backends (<strong>**NWChem**</strong> via <code class="docutils literal notranslate"><span class="pre">nwchemc</span></code>, <strong>**CPMD**</strong> e.g. BLYP via <code class="docutils literal notranslate"><span class="pre">cpmdc</span></code>) through two
+independent roles:</p>
+<ul class="simple">
+<li><p><strong>**In-process (shipped in eOn):**</strong> eOn’s <code class="docutils literal notranslate"><span class="pre">RgpotPot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_rgpot=true</span></code>) links</p></li>
+</ul>
+<p>rgpot’s <code class="docutils literal notranslate"><span class="pre">NWChemPot</span></code> / <code class="docutils literal notranslate"><span class="pre">CPMDPot</span></code> frontends as a Meson subproject and <code class="docutils literal notranslate"><span class="pre">dlopen=s</span> <span class="pre">the</span> <span class="pre">engine</span> <span class="pre">libraries</span> <span class="pre">directly.</span> <span class="pre">No</span> <span class="pre">sockets,</span> <span class="pre">no</span> <span class="pre">potserv.</span> <span class="pre">Configured</span> <span class="pre">through</span> <span class="pre">the</span> <span class="pre">eOn</span> <span class="pre">=[RgpotPot]</span></code> INI section (<code class="docutils literal notranslate"><span class="pre">backend</span></code>,
+<code class="docutils literal notranslate"><span class="pre">basis</span></code>, <code class="docutils literal notranslate"><span class="pre">theory</span></code>, <code class="docutils literal notranslate"><span class="pre">scf_type</span></code>, <code class="docutils literal notranslate"><span class="pre">functional</span></code>, <code class="docutils literal notranslate"><span class="pre">charge</span></code>, <code class="docutils literal notranslate"><span class="pre">multiplicity</span></code>,
+<code class="docutils literal notranslate"><span class="pre">engine_library</span></code>, …).</p>
+<ul class="simple">
+<li><p><strong>**Out-of-process RPC (this repo):**</strong> <code class="docutils literal notranslate"><span class="pre">potserv</span> <span class="pre">&lt;port&gt;</span> <span class="pre">NWChem|CPMD</span></code> serves the</p></li>
+</ul>
+<p>Cap’n Proto <code class="docutils literal notranslate"><span class="pre">Potential</span></code> interface for any client; eOn can also act as an RPC
+<strong>server</strong> via <code class="docutils literal notranslate"><span class="pre">eonclient</span> <span class="pre">--serve</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_serve=true</span></code>).</p>
+<p>Engine builds live in <code class="docutils literal notranslate"><span class="pre">nwchemc</span></code> / <code class="docutils literal notranslate"><span class="pre">cpmdc</span></code>; rgpot frontends <code class="docutils literal notranslate"><span class="pre">dlopen</span></code> them at
+runtime in both roles.</p>
 </section>
-<section id="detailed-documentation">
-<span id="details-classrgpot-1-1-rpc-client"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
-<p>Move-only RAII wrapper around <code class="docutils literal notranslate"><span class="pre">rgpot_rpc_client_t</span></code>.</p>
-<p>Owns an opaque RPC client handle allocated by the Rust core. The connection is established during construction and torn down on destruction via <code class="docutils literal notranslate"><span class="pre">rgpot_rpc_client_free()</span></code>. The class is non-copyable; move semantics transfer ownership of the connection.</p>
-<section id="construction">
-<h3>Construction<a class="headerlink" href="#construction" title="Link to this heading">¶</a></h3>
-<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-rpc-client-1a91d2c1f60877e3da463777057fa99a50">
-<span id="index-1"></span><pre><span data-line="1"><span class="n">RpcClient</span><span class="p">(</span><span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span> <span class="n">host</span><span class="p">,</span> <span class="kt">uint16_t</span> <span class="n">port</span><span class="p">)</span></span>
-</pre></div>
-<p>Connect to a remote rgpot server.</p>
-<p>Calls <code class="docutils literal notranslate"><span class="pre">rgpot_rpc_client_new()</span></code> and throws on failure.</p>
-<p class="rubric">Parameters:</p>
-<div class="table-wrapper colwidths-given docutils container">
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 20.0%" />
-<col style="width: 80.0%" />
-</colgroup>
-<tbody>
-<tr class="row-odd"><td><p>host</p></td>
-<td><p>Hostname or IP address of the server.</p></td>
-</tr>
-<tr class="row-even"><td><p>port</p></td>
-<td><p>TCP port the server listens on.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="class_rgpot_Error.html#doxid-classrgpot-1-1-error"><span class="std std-ref">rgpot::Error</span></a></p></td>
-<td><p>if the connection cannot be established.</p></td>
-</tr>
-</tbody>
-</table>
-</div>
-<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-rpc-client-1ae96fdbccb49cb8c5511b9c760128f517">
-<span id="index-2"></span><pre><span data-line="1"><span class="n">RpcClient</span><span class="p">(</span><span class="n">RpcClient</span><span class="o">&amp;&amp;</span> <span class="n">other</span><span class="p">)</span></span>
-</pre></div>
-<p>Move constructor — transfers connection ownership.</p>
-<p class="rubric">Parameters:</p>
-<div class="table-wrapper colwidths-given docutils container">
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 20.0%" />
-<col style="width: 80.0%" />
-</colgroup>
-<tbody>
-<tr class="row-odd"><td><p>other</p></td>
-<td><p>Client to move from; left in a null state.</p></td>
-</tr>
-</tbody>
-</table>
-</div>
-<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-rpc-client-1a82fcadc09664f18447ff1d0e602fa99a">
-<pre><span data-line="1"><span class="o">~</span><span class="n">RpcClient</span><span class="p">()</span></span>
-</pre></div>
-<p>Destructor — disconnects and frees the Rust-side client.</p>
-<p>Safe to call on a moved-from handle (internal pointer is <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>).</p>
+<section id="why-this-shape">
+<h1>Why This Shape<a class="headerlink" href="#why-this-shape" title="Link to this heading">¶</a></h1>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">configure(PotentialConfig)</span></code> once per method (NWChemParams / CPMDParams).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">calculate(ForceInput)</span></code> per geometry (positions, atomic numbers, cell, units).</p></li>
+<li><p>Units on the wire (<code class="docutils literal notranslate"><span class="pre">lengthUnit</span></code> / <code class="docutils literal notranslate"><span class="pre">energyUnit</span></code>); eOn’s <code class="docutils literal notranslate"><span class="pre">RgpotPot</span></code> converts</p></li>
+</ul>
+<p>Hartree → eV and Hartree/bohr → eV/Å at the boundary.</p>
+<ul class="simple">
+<li><p>Engines are optional at build time: CI uses fake <code class="docutils literal notranslate"><span class="pre">libnwchemc</span></code> / <code class="docutils literal notranslate"><span class="pre">libcpmdc</span></code>;</p></li>
+</ul>
+<p>production sets <code class="docutils literal notranslate"><span class="pre">NWCHEMC_LIBRARY</span></code> / <code class="docutils literal notranslate"><span class="pre">CPMDC_LIBRARY</span></code> (or aliases).</p>
 </section>
-<section id="methods">
-<h3>Methods<a class="headerlink" href="#methods" title="Link to this heading">¶</a></h3>
-<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-rpc-client-1ac4438fab8ec203ab317a6e0152ef8ccf">
-<span id="index-3"></span><pre><span data-line="1"><span class="n">RpcClient</span><span class="o">&amp;</span> <span class="k">operator</span><span class="o">=</span><span class="p">(</span><span class="n">RpcClient</span><span class="o">&amp;&amp;</span> <span class="n">other</span><span class="p">)</span></span>
-</pre></div>
-<p>Move assignment — releases current connection, transfers ownership.</p>
-<p class="rubric">Parameters:</p>
-<div class="table-wrapper colwidths-given docutils container">
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 20.0%" />
-<col style="width: 80.0%" />
-</colgroup>
-<tbody>
-<tr class="row-odd"><td><p>other</p></td>
-<td><p>Client to move from; left in a null state.</p></td>
-</tr>
-</tbody>
-</table>
-</div>
-<p class="rubric">Returns:</p>
-<p>Reference to <code class="docutils literal notranslate"><span class="pre">*this</span></code>.</p>
-<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-rpc-client-1abebb894e15d2b276c0f12e96ecdb12b8">
-<span id="index-4"></span><pre><span data-line="1"><a class="doxyrest-code-link reference internal" href="class_rgpot_CalcResult.html#doxid-classrgpot-1-1-calc-result"><span class="std std-ref">CalcResult</span></a> <span class="n">calculate</span><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_InputSpec.html#doxid-classrgpot-1-1-input-spec"><span class="std std-ref">InputSpec</span></a><span class="o">&amp;</span> <span class="n">input</span><span class="p">)</span></span>
-</pre></div>
-<p>Perform a remote force/energy calculation.</p>
-<p>Serialises the input via Cap’n Proto, sends the request to the server, and deserialises the response into a <code class="docutils literal notranslate"><span class="pre">CalcResult</span></code>.</p>
-<p class="rubric">Parameters:</p>
-<div class="table-wrapper colwidths-given docutils container">
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 20.0%" />
-<col style="width: 80.0%" />
-</colgroup>
-<tbody>
-<tr class="row-odd"><td><p>input</p></td>
-<td><p>The atomic configuration to evaluate.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="class_rgpot_Error.html#doxid-classrgpot-1-1-error"><span class="std std-ref">rgpot::Error</span></a></p></td>
-<td><p>on RPC transport or server-side failure.</p></td>
-</tr>
-</tbody>
-</table>
-</div>
-<p class="rubric">Returns:</p>
-<p>A <code class="docutils literal notranslate"><span class="pre">CalcResult</span></code> containing energy, variance, and forces.</p>
+<section id="landed-work-items">
+<h1>Landed Work Items<a class="headerlink" href="#landed-work-items" title="Link to this heading">¶</a></h1>
+<ol class="arabic simple">
+<li><p><strong>**eOn potential class**</strong> (eOn tree): <code class="docutils literal notranslate"><span class="pre">client/potentials/Rgpot/</span></code> —</p></li>
+</ol>
+<p><code class="docutils literal notranslate"><span class="pre">RgpotPot</span></code> (eOn <code class="docutils literal notranslate"><span class="pre">Potential</span></code> subclass) over an opaque <code class="docutils literal notranslate"><span class="pre">RGPotEngine</span></code> TU that
+isolates rgpot / Cap’n Proto headers from eOn’s own <code class="docutils literal notranslate"><span class="pre">Potential</span></code> type.</p>
+<ol class="arabic simple">
+<li><p><strong>**CPMD BLYP example**</strong> (eOn tree): <code class="docutils literal notranslate"><span class="pre">examples/rgpot_cpmd_blyp/</span></code> with the</p></li>
+</ol>
+<p>in-process <code class="docutils literal notranslate"><span class="pre">[RgpotPot]</span></code> configuration.</p>
+<ol class="arabic simple">
+<li><p><strong>**NWChem comparison**</strong> (eOn tree): <code class="docutils literal notranslate"><span class="pre">scripts/bench_rgpot_vs_socket_forces.sh</span></code></p></li>
+</ol>
+<p>and <code class="docutils literal notranslate"><span class="pre">scripts/rgpot_nwchem_vs_socket.sh</span></code> compare <code class="docutils literal notranslate"><span class="pre">RgpotPot</span></code> against eOn’s
+<code class="docutils literal notranslate"><span class="pre">SocketNWChem</span></code> on a fixed deck class.</p>
+<ol class="arabic simple">
+<li><p><strong>**rgpot ergonomics**</strong> (this repo): potentials-schema v1.5.0 parity (typed</p></li>
+</ol>
+<p>NWChem/CPMD arms, metatomic outputs surface), schema-sync CI gate, and the in-
+process CPMD timing harness (<code class="docutils literal notranslate"><span class="pre">scripts/cpmd_inprocess_vs_subprocess_timing.sh</span></code>).</p>
 </section>
+<section id="operator-cheatsheet-rgpot-side">
+<h1>Operator Cheatsheet (rgpot side)<a class="headerlink" href="#operator-cheatsheet-rgpot-side" title="Link to this heading">¶</a></h1>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1"># Real engines (built in OmniPotentRPC/nwchemc and OmniPotentRPC/cpmdc)</span>
+</span><span data-line="2"><span class="nv">NWCHEMC_LIBRARY</span><span class="o">=</span>/path/to/libnwchemc.so<span class="w"> </span>./bbdir/CppCore/potserv<span class="w"> </span><span class="m">12345</span><span class="w"> </span>NWChem
+</span><span data-line="3"><span class="nv">CPMDC_LIBRARY</span><span class="o">=</span>/path/to/libcpmdc.so<span class="w">   </span>./bbdir/CppCore/potserv<span class="w"> </span><span class="m">12346</span><span class="w"> </span>CPMD
+</span><span data-line="4">
+</span><span data-line="5"><span class="c1"># Fake engines (meson -Dwith_rpc=true -Dwith_tests=true)</span>
+</span><span data-line="6"><span class="nb">export</span><span class="w"> </span><span class="nv">RGPOT_POTSERV</span><span class="o">=</span>./bbdir/CppCore/potserv
+</span><span data-line="7"><span class="nb">export</span><span class="w"> </span><span class="nv">NWCHEMC_LIBRARY</span><span class="o">=</span>./bbdir/CppCore/libnwchemc_fake_engine.so
+</span><span data-line="8"><span class="nb">export</span><span class="w"> </span><span class="nv">RGPOT_CPMD_ENGINE</span><span class="o">=</span>./bbdir/CppCore/libcpmdc_fake_engine.so
+</span><span data-line="9">pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>rpctest<span class="w"> </span>--<span class="w"> </span>python<span class="w"> </span>tests/test_rpc_e2e_c_abi.py
+</span></pre></div>
+</div>
+<p>See <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/NWChemPot/README.md</span></code>, <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/CPMDPot/README.md</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">docs/orgmode/howto/integration.org</span></code>.</p>
 </section>
+<section id="related">
+<h1>Related<a class="headerlink" href="#related" title="Link to this heading">¶</a></h1>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">docs/orgmode/howto/eindir-anneal.org</span></code> — minimizers via embedded eindir</p></li>
+</ul>
+<p>objective in <code class="docutils literal notranslate"><span class="pre">rgpot-core</span></code> (orthogonal to eOn’s own optimizers, but shares the
+potential energy API story).</p>
+<ul class="simple">
+<li><p>eOn user guide pages <code class="docutils literal notranslate"><span class="pre">rgpot_pot.md</span></code> / <code class="docutils literal notranslate"><span class="pre">rgpot_integration.md</span></code> (eOn tree) for</p></li>
+</ul>
+<p>the consumer-side documentation.</p>
 </section>
 
         </article><button class="back-to-top" type="button">
@@ -471,16 +413,16 @@ data-aria-dark="Switch to auto color mode">
   </svg>
   <span>Back to top</span>
 </button><div class="navigation flex print:hidden"><div class="navigation-prev">
-    <a href="class_rgpot_PotentialHandle.html">
+    <a href="eindir-anneal.html">
       <i class="i-lucide chevron-left"></i>
       <div class="page-info">
-        <span>Previous</span><div class="title">class rgpot::PotentialHandle</div></div>
+        <span>Previous</span><div class="title">rgpot Potentials as eindir Objectives</div></div>
     </a>
   </div><div class="navigation-next">
-    <a href="global.html">
+    <a href="../reference/architecture.html">
       <div class="page-info">
         <span>Next</span>
-        <div class="title">Global Namespace</div>
+        <div class="title">Architecture Overview</div>
       </div>
       <i class="i-lucide chevron-right"></i>
     </a>

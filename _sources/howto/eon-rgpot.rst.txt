@@ -1,0 +1,89 @@
+
+
+eOn Potentials Over rgpot
+-------------------------
+
+The ****eOn ↔ rgpot**** integration gives eOn access to rgpot's quantum-chemistry
+backends (****NWChem**** via ``nwchemc``, ****CPMD**** e.g. BLYP via ``cpmdc``) through two
+independent roles:
+
+- ****In-process (shipped in eOn):**** eOn's ``RgpotPot`` (``-Dwith_rgpot=true``) links
+
+rgpot's ``NWChemPot`` / ``CPMDPot`` frontends as a Meson subproject and ``dlopen=s the engine libraries directly. No sockets, no potserv. Configured through the eOn =[RgpotPot]`` INI section (``backend``,
+``basis``, ``theory``, ``scf_type``, ``functional``, ``charge``, ``multiplicity``,
+``engine_library``, ...).
+
+- ****Out-of-process RPC (this repo):**** ``potserv <port> NWChem|CPMD`` serves the
+
+Cap'n Proto ``Potential`` interface for any client; eOn can also act as an RPC
+**server** via ``eonclient --serve`` (``-Dwith_serve=true``).
+
+Engine builds live in ``nwchemc`` / ``cpmdc``; rgpot frontends ``dlopen`` them at
+runtime in both roles.
+
+Why This Shape
+--------------
+
+- ``configure(PotentialConfig)`` once per method (NWChemParams / CPMDParams).
+
+- ``calculate(ForceInput)`` per geometry (positions, atomic numbers, cell, units).
+
+- Units on the wire (``lengthUnit`` / ``energyUnit``); eOn's ``RgpotPot`` converts
+
+Hartree → eV and Hartree/bohr → eV/Å at the boundary.
+
+- Engines are optional at build time: CI uses fake ``libnwchemc`` / ``libcpmdc``;
+
+production sets ``NWCHEMC_LIBRARY`` / ``CPMDC_LIBRARY`` (or aliases).
+
+Landed Work Items
+-----------------
+
+1. ****eOn potential class**** (eOn tree): ``client/potentials/Rgpot/`` —
+
+``RgpotPot`` (eOn ``Potential`` subclass) over an opaque ``RGPotEngine`` TU that
+isolates rgpot / Cap'n Proto headers from eOn's own ``Potential`` type.
+
+1. ****CPMD BLYP example**** (eOn tree): ``examples/rgpot_cpmd_blyp/`` with the
+
+in-process ``[RgpotPot]`` configuration.
+
+1. ****NWChem comparison**** (eOn tree): ``scripts/bench_rgpot_vs_socket_forces.sh``
+
+and ``scripts/rgpot_nwchem_vs_socket.sh`` compare ``RgpotPot`` against eOn's
+``SocketNWChem`` on a fixed deck class.
+
+1. ****rgpot ergonomics**** (this repo): potentials-schema v1.5.0 parity (typed
+
+NWChem/CPMD arms, metatomic outputs surface), schema-sync CI gate, and the in-
+process CPMD timing harness (``scripts/cpmd_inprocess_vs_subprocess_timing.sh``).
+
+Operator Cheatsheet (rgpot side)
+--------------------------------
+
+.. code:: bash
+
+    # Real engines (built in OmniPotentRPC/nwchemc and OmniPotentRPC/cpmdc)
+    NWCHEMC_LIBRARY=/path/to/libnwchemc.so ./bbdir/CppCore/potserv 12345 NWChem
+    CPMDC_LIBRARY=/path/to/libcpmdc.so   ./bbdir/CppCore/potserv 12346 CPMD
+
+    # Fake engines (meson -Dwith_rpc=true -Dwith_tests=true)
+    export RGPOT_POTSERV=./bbdir/CppCore/potserv
+    export NWCHEMC_LIBRARY=./bbdir/CppCore/libnwchemc_fake_engine.so
+    export RGPOT_CPMD_ENGINE=./bbdir/CppCore/libcpmdc_fake_engine.so
+    pixi run -e rpctest -- python tests/test_rpc_e2e_c_abi.py
+
+See ``CppCore/rgpot/NWChemPot/README.md``, ``CppCore/rgpot/CPMDPot/README.md``, and
+``docs/orgmode/howto/integration.org``.
+
+Related
+-------
+
+- ``docs/orgmode/howto/eindir-anneal.org`` — minimizers via embedded eindir
+
+objective in ``rgpot-core`` (orthogonal to eOn's own optimizers, but shares the
+potential energy API story).
+
+- eOn user guide pages ``rgpot_pot.md`` / ``rgpot_integration.md`` (eOn tree) for
+
+the consumer-side documentation.

@@ -97,6 +97,7 @@ CPMD potential under rgpot ``PotentialConfig`` user parameters. :ref:`More...<de
 
 	// global functions
 
+	EngineBundle& :target:`probe_engine_bundle<doxid-namespacergpot_1abaf5e074f00973f6696f820b40b3dd78>`();
 	void :ref:`zeroForceOut<doxid-namespacergpot_1aa8cb0fd12ead45cd35dd0ea5c3b6fb7a>`(const size_t& nAtoms, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* efvd);
 	void :ref:`checkParams<doxid-namespacergpot_1a7a27dd46fdc6dc15479964efd8c8f088>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& params);
 

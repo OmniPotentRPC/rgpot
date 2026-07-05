@@ -97,6 +97,11 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/embedding.html">Embedding as a Subproject</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/integration.html">External Integration Guide</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eindir-anneal.html">rgpot Potentials as eindir Objectives</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html">eOn Potentials Over rgpot</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#why-this-shape">Why This Shape</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#landed-work-items">Landed Work Items</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#operator-cheatsheet-rgpot-side">Operator Cheatsheet (rgpot side)</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#related">Related</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -338,10 +343,15 @@ data-aria-dark="Switch to auto color mode">
 <span data-line="3"> </span>
 <span data-line="4">    <span class="n">EngineBundle</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1_n_w_chem_pot_1_1_impl_1a3675a80f0adfaace73261181227034b8"></span><span class="n">bundle</span><span class="p">;</span></span>
 <span data-line="5">    <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;::</span><span class="n">capnp</span><span class="o">::</span><span class="n">word</span><span class="o">&gt;</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1_n_w_chem_pot_1_1_impl_1a0dbe8e5bf6f2c3d00f85f3d9d8760f66"></span><span class="n">params_words</span><span class="p">;</span></span>
-<span data-line="6">    <span class="n">std</span><span class="o">::</span><span class="n">string</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1_n_w_chem_pot_1_1_impl_1a4f807a6cdbf5a48bbd1f9727771af947"></span><span class="n">engine_path</span><span class="p">;</span></span>
-<span data-line="7">    <span class="n">std</span><span class="o">::</span><span class="n">string</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1_n_w_chem_pot_1_1_impl_1ac8e31504bdc21d5fc4fabcef5ffbc333"></span><span class="n">nwchem_root</span><span class="p">;</span></span>
-<span data-line="8">    <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">double</span><span class="o">&gt;</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1_n_w_chem_pot_1_1_impl_1a86f440d18d90ed1cb070e6786c62aa0c"></span><span class="n">grad_scratch</span><span class="p">;</span></span>
-<span data-line="9"><span class="p">};</span></span>
+<span data-line="6">    <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;::</span><span class="n">capnp</span><span class="o">::</span><span class="n">word</span><span class="o">&gt;</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1_n_w_chem_pot_1_1_impl_1a44290cd3a1bd9edba141028f4b8c0fda"></span><span class="n">abi_params_words</span><span class="p">;</span></span>
+<span data-line="7">    <span class="n">std</span><span class="o">::</span><span class="n">string</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1_n_w_chem_pot_1_1_impl_1a4f807a6cdbf5a48bbd1f9727771af947"></span><span class="n">engine_path</span><span class="p">;</span></span>
+<span data-line="8">    <span class="n">std</span><span class="o">::</span><span class="n">string</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1_n_w_chem_pot_1_1_impl_1ac8e31504bdc21d5fc4fabcef5ffbc333"></span><span class="n">nwchem_root</span><span class="p">;</span></span>
+<span data-line="9">    <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">double</span><span class="o">&gt;</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1_n_w_chem_pot_1_1_impl_1a86f440d18d90ed1cb070e6786c62aa0c"></span><span class="n">grad_scratch</span><span class="p">;</span></span>
+<span data-line="10"> </span>
+<span data-line="11">    <span class="c1">// methods</span></span>
+<span data-line="12"> </span>
+<span data-line="13">    <span class="kt">void</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1_n_w_chem_pot_1_1_impl_1a87174ed6700bfefcef6a61c3f9d1e265"></span><span class="n">store</span><span class="p">(</span><span class="k">const</span> <span class="o">::</span><span class="n">NWChemParams</span><span class="o">::</span><span class="n">Reader</span><span class="o">&amp;</span> <span class="n">params</span><span class="p">);</span></span>
+<span data-line="14"><span class="p">};</span></span>
 </pre></div>
 </section>
 

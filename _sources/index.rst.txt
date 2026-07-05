@@ -59,6 +59,7 @@ the matching ``PotentialConfig`` arm.
    howto/embedding
    howto/integration
    howto/eindir-anneal
+   howto/eon-rgpot
 
 .. toctree::
    :maxdepth: 2

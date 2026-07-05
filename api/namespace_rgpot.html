@@ -97,6 +97,11 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/embedding.html">Embedding as a Subproject</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/integration.html">External Integration Guide</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eindir-anneal.html">rgpot Potentials as eindir Objectives</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html">eOn Potentials Over rgpot</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#why-this-shape">Why This Shape</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#landed-work-items">Landed Work Items</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#operator-cheatsheet-rgpot-side">Operator Cheatsheet (rgpot side)</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#related">Related</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -393,10 +398,11 @@ data-aria-dark="Switch to auto color mode">
 <span data-line="56"> </span>
 <span data-line="57"><span class="c1">// global functions</span></span>
 <span data-line="58"> </span>
-<span data-line="59"><span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-namespacergpot-1aa8cb0fd12ead45cd35dd0ea5c3b6fb7a"><span class="std std-ref">zeroForceOut</span></a><span class="p">(</span><span class="k">const</span> <span class="kt">size_t</span><span class="o">&amp;</span> <span class="n">nAtoms</span><span class="p">,</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceOut.html#doxid-structrgpot-1-1-force-out"><span class="std std-ref">ForceOut</span></a><span class="o">*</span> <span class="n">efvd</span><span class="p">);</span></span>
-<span data-line="60"><span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-namespacergpot-1a7a27dd46fdc6dc15479964efd8c8f088"><span class="std std-ref">checkParams</span></a><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceInput.html#doxid-structrgpot-1-1-force-input"><span class="std std-ref">ForceInput</span></a><span class="o">&amp;</span> <span class="n">params</span><span class="p">);</span></span>
-<span data-line="61"> </span>
-<span data-line="62"><span class="p">}</span> <span class="c1">// namespace rgpot</span></span>
+<span data-line="59"><span class="n">EngineBundle</span><span class="o">&amp;</span> <span class="doxyrest-code-target target" id="doxid-namespacergpot_1abaf5e074f00973f6696f820b40b3dd78"></span><span class="n">probe_engine_bundle</span><span class="p">();</span></span>
+<span data-line="60"><span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-namespacergpot-1aa8cb0fd12ead45cd35dd0ea5c3b6fb7a"><span class="std std-ref">zeroForceOut</span></a><span class="p">(</span><span class="k">const</span> <span class="kt">size_t</span><span class="o">&amp;</span> <span class="n">nAtoms</span><span class="p">,</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceOut.html#doxid-structrgpot-1-1-force-out"><span class="std std-ref">ForceOut</span></a><span class="o">*</span> <span class="n">efvd</span><span class="p">);</span></span>
+<span data-line="61"><span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-namespacergpot-1a7a27dd46fdc6dc15479964efd8c8f088"><span class="std std-ref">checkParams</span></a><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceInput.html#doxid-structrgpot-1-1-force-input"><span class="std std-ref">ForceInput</span></a><span class="o">&amp;</span> <span class="n">params</span><span class="p">);</span></span>
+<span data-line="62"> </span>
+<span data-line="63"><span class="p">}</span> <span class="c1">// namespace rgpot</span></span>
 </pre></div>
 </section>
 <section id="detailed-documentation">
