@@ -1,0 +1,105 @@
+.. index:: pair: class; rgpot::abi::ProfileLoader
+.. _doxid-classrgpot_1_1abi_1_1_profile_loader:
+
+class rgpot::abi::ProfileLoader
+===============================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class ProfileLoader {
+	public:
+		// typedefs
+	
+		typedef int(*)(void) :target:`AbiVersionFn<doxid-classrgpot_1_1abi_1_1_profile_loader_1aade0d76d0977e922632c710cf11e5ed8>`;
+		typedef const char*(*)(void) :target:`VersionFn<doxid-classrgpot_1_1abi_1_1_profile_loader_1aab5a5d5bc9ab808203b56d9c5480a1d1>`;
+		typedef const char*(*)(void) :target:`LastErrorFn<doxid-classrgpot_1_1abi_1_1_profile_loader_1a573f950edcae04250b76db725f719253>`;
+		typedef int(*)(void) :target:`AvailableFn<doxid-classrgpot_1_1abi_1_1_profile_loader_1a0105e2896de31f83171fc5085d793278>`;
+		typedef void(*)(void) :target:`FinalizeFn<doxid-classrgpot_1_1abi_1_1_profile_loader_1a3a2dcb7b69192ab3fdd13e45d91d1cc9>`;
+		typedef int(*)(const void*, size_t) :target:`ConfigureFn<doxid-classrgpot_1_1abi_1_1_profile_loader_1a680f425b8def25d833fed6a28acb1c35>`;
+		typedef void*(*)(const void*, size_t) :target:`SessionCreateFromConfigFn<doxid-classrgpot_1_1abi_1_1_profile_loader_1afb8c6fd55897c14fc0397156b3344f83>`;
+		typedef int(*)(void*, const void*, size_t) :target:`SessionConfigureFn<doxid-classrgpot_1_1abi_1_1_profile_loader_1aeb3a8e312340816803254e3045c3390e>`;
+		typedef void(*)(void*) :target:`SessionDestroyFn<doxid-classrgpot_1_1abi_1_1_profile_loader_1aae68f0eba4c822614fe44617a36a8724>`;
+		typedef :ref:`ProfileResult<doxid-structrgpot_1_1abi_1_1_profile_result>`(*)(void*, const void*, size_t, void*, size_t, size_t*) :target:`SessionCalculateResultFn<doxid-classrgpot_1_1abi_1_1_profile_loader_1a79446f24568099021c2b0e0004f97016>`;
+		typedef :ref:`ProfileResult<doxid-structrgpot_1_1abi_1_1_profile_result>`(*)(const void*, size_t, const void*, size_t, void*, size_t, size_t*) :target:`CalculateResultFromConfigFn<doxid-classrgpot_1_1abi_1_1_profile_loader_1af11c9806dc45fcc9fc086e1526597749>`;
+		typedef size_t(*)(const void*, size_t) :target:`PotentialResultSizeFn<doxid-classrgpot_1_1abi_1_1_profile_loader_1aead12d28cdbfa815a822e1894b75d3bd>`;
+		typedef int(*)(void*, size_t, size_t*) :target:`CapabilitiesResultFn<doxid-classrgpot_1_1abi_1_1_profile_loader_1a8531b4b490d1eafcdb8cef1e9d537aa1>`;
+
+		// fields
+	
+		AbiVersionFn :target:`abi_version<doxid-classrgpot_1_1abi_1_1_profile_loader_1adc5efa9bb3e9cffd5ed58dd4d0de720e>` = nullptr;
+		VersionFn :target:`version<doxid-classrgpot_1_1abi_1_1_profile_loader_1a0c2108382e6a37a04fc68befb341cf25>` = nullptr;
+		LastErrorFn :target:`last_error<doxid-classrgpot_1_1abi_1_1_profile_loader_1a87f6c94fcd874aed90b2955e2af79d4b>` = nullptr;
+		AvailableFn :target:`available<doxid-classrgpot_1_1abi_1_1_profile_loader_1ace3818fcbd51abd12692e08c26da4482>` = nullptr;
+		FinalizeFn :target:`finalize<doxid-classrgpot_1_1abi_1_1_profile_loader_1aaf3c49eec8778702457058d25f56c2f6>` = nullptr;
+		ConfigureFn :target:`configure<doxid-classrgpot_1_1abi_1_1_profile_loader_1a9f830817579a3ae17fae93dec5efaa67>` = nullptr;
+		SessionCreateFromConfigFn :target:`session_create_from_config<doxid-classrgpot_1_1abi_1_1_profile_loader_1a982d20c3b2be60644ad8373c85b1a68d>` = nullptr;
+		SessionConfigureFn :target:`session_configure<doxid-classrgpot_1_1abi_1_1_profile_loader_1a5ba4dd06d3d608cf0c7e4dc4aa79478f>` = nullptr;
+		SessionDestroyFn :target:`session_destroy<doxid-classrgpot_1_1abi_1_1_profile_loader_1a7022e0119a38c430e0f46396859a8e1c>` = nullptr;
+		SessionCalculateResultFn :target:`session_calculate_result<doxid-classrgpot_1_1abi_1_1_profile_loader_1adc5631859890b30ab56646087084340a>` = nullptr;
+		CalculateResultFromConfigFn :target:`calculate_result_from_config<doxid-classrgpot_1_1abi_1_1_profile_loader_1a8225ef366e5e82fd3ebfced296292fdb>` = nullptr;
+		PotentialResultSizeFn :target:`potential_result_size_for_force_input<doxid-classrgpot_1_1abi_1_1_profile_loader_1a55bf44b3cfd0b25972066313649aaf49>` = nullptr;
+		CapabilitiesResultFn :target:`capabilities_result<doxid-classrgpot_1_1abi_1_1_profile_loader_1a5384acd651576cd34eeadab21cc9857a>` = nullptr;
+
+		// construction
+	
+		:target:`ProfileLoader<doxid-classrgpot_1_1abi_1_1_profile_loader_1ab4b46f62b0bc5acb4e527e720a09772a>`();
+
+		// methods
+	
+		void :ref:`load<doxid-classrgpot_1_1abi_1_1_profile_loader_1a2de51b82457889ecfbc63183833c732d>`(const std::string& prefix, const std::string& explicit_path = "");
+		bool :target:`loaded<doxid-classrgpot_1_1abi_1_1_profile_loader_1a06a3c20d8f8c279dd1c9a1ff31082011>`() const;
+		const std::string& :target:`prefix<doxid-classrgpot_1_1abi_1_1_profile_loader_1a4879277de054298d634c8243252fb21c>`() const;
+		std::vector<unsigned char> :ref:`capabilities<doxid-classrgpot_1_1abi_1_1_profile_loader_1adf9b0d0c77d990e49de8f830f7938ae8>`() const;
+		static std::vector<std::string> :ref:`candidates<doxid-classrgpot_1_1abi_1_1_profile_loader_1a10613432e0cdd58b4a3e5d94b8cc7011>`(const std::string& prefix, const std::string& explicit_path);
+	};
+.. _details-classrgpot_1_1abi_1_1_profile_loader:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Methods
+-------
+
+.. index:: pair: function; load
+.. _doxid-classrgpot_1_1abi_1_1_profile_loader_1a2de51b82457889ecfbc63183833c732d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void load(const std::string& prefix, const std::string& explicit_path = "")
+
+dlopen the first loadable candidate and resolve the full minimum profile. Throws std::runtime_error naming every missing symbol, so a non-conforming build fails loudly at load time instead of at dispatch.
+
+.. index:: pair: function; capabilities
+.. _doxid-classrgpot_1_1abi_1_1_profile_loader_1adf9b0d0c77d990e49de8f830f7938ae8:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::vector<unsigned char> capabilities() const
+
+Flat ``Capabilities`` message bytes (size query + fill).
+
+.. index:: pair: function; candidates
+.. _doxid-classrgpot_1_1abi_1_1_profile_loader_1a10613432e0cdd58b4a3e5d94b8cc7011:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static std::vector<std::string> candidates(const std::string& prefix, const std::string& explicit_path)
+
+Candidate library paths for a prefix: explicit path, env hints, platform default names.
+

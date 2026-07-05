@@ -33,6 +33,7 @@ Overview
 	// namespaces
 
 	namespace :ref:`rgpot<doxid-namespacergpot>`;
+		namespace :ref:`rgpot::abi<doxid-namespacergpot_1_1abi>`;
 		namespace :ref:`rgpot::cache<doxid-namespacergpot_1_1cache>`;
 		namespace :ref:`rgpot::details<doxid-namespacergpot_1_1details>`;
 		namespace :ref:`rgpot::types<doxid-namespacergpot_1_1types>`;

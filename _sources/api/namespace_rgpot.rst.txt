@@ -7,6 +7,7 @@ namespace rgpot
 .. toctree::
 	:hidden:
 
+	namespace_rgpot_abi.rst
 	namespace_rgpot_cache.rst
 	namespace_rgpot_details.rst
 	namespace_rgpot_types.rst
@@ -32,7 +33,7 @@ namespace rgpot
 Overview
 ~~~~~~~~
 
-CPMD potential under rgpot ``PotentialConfig`` user parameters. :ref:`More...<details-namespacergpot>`
+Prefix-parameterized loader for the minimum potential ABI profile. :ref:`More...<details-namespacergpot>`
 
 
 .. ref-code-block:: cpp
@@ -43,6 +44,7 @@ CPMD potential under rgpot ``PotentialConfig`` user parameters. :ref:`More...<de
 
 	// namespaces
 
+	namespace :ref:`rgpot::abi<doxid-namespacergpot_1_1abi>`;
 	namespace :ref:`rgpot::cache<doxid-namespacergpot_1_1cache>`;
 	namespace :ref:`rgpot::details<doxid-namespacergpot_1_1details>`;
 	namespace :ref:`rgpot::types<doxid-namespacergpot_1_1types>`;
@@ -107,7 +109,7 @@ CPMD potential under rgpot ``PotentialConfig`` user parameters. :ref:`More...<de
 Detailed Documentation
 ~~~~~~~~~~~~~~~~~~~~~~
 
-CPMD potential under rgpot ``PotentialConfig`` user parameters.
+Prefix-parameterized loader for the minimum potential ABI profile.
 
 Definition of the native :ref:`AtomMatrix <doxid-class_atom_matrix>` class.
 
@@ -122,6 +124,10 @@ NWChem potential under rgpot ``PotentialConfig`` user parameters.
 Portable dynamic library loader (dlopen / LoadLibrary family).
 
 POD structures for force and energy calculation interfaces.
+
+CPMD potential under rgpot ``PotentialConfig`` user parameters.
+
+Backends (nwchemc, cpmdc, future lammpsc/gromacsc) export the same C symbol set prefix-parameterized on ``<p>`` (see potentials-schema PROFILE.md). This loader resolves that whole set from one dlopen'd shared library, so rgpot drives every conforming backend through identical function pointers with no per-backend loader code. Everything stays native: flat binary Cap'n Proto messages both directions, plain C calls in-process.
 
 Defines the core data exchange structures used between the high-level potential wrappers and the low-level physics engines.
 

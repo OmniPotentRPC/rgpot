@@ -1,0 +1,30 @@
+.. index:: pair: namespace; rgpot::abi
+.. _doxid-namespacergpot_1_1abi:
+
+namespace rgpot::abi
+====================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_abi_ProfileResult.rst
+	class_rgpot_abi_ProfileLoader.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace abi {
+
+	// structs
+
+	struct :ref:`ProfileResult<doxid-structrgpot_1_1abi_1_1_profile_result>`;
+
+	// classes
+
+	class :ref:`ProfileLoader<doxid-classrgpot_1_1abi_1_1_profile_loader>`;
+
+	} // namespace abi

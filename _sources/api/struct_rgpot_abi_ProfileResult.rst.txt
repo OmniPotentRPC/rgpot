@@ -1,0 +1,24 @@
+.. index:: pair: struct; rgpot::abi::ProfileResult
+.. _doxid-structrgpot_1_1abi_1_1_profile_result:
+
+struct rgpot::abi::ProfileResult
+================================
+
+.. toctree::
+	:hidden:
+
+Layout-compatible with every backend's ``<P>Result`` POD (``:ref:`NWChemCResult <doxid-struct_n_w_chem_c_result>```, ``:ref:`CPMDCResult <doxid-struct_c_p_m_d_c_result>```, ...): {int ok; double energy_h; char message[512];}. PROFILE.md fixes this shape, which is what makes the prefix-generic function pointers below well-defined.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <ProfileLoader.hpp>
+	
+	struct ProfileResult {
+		// fields
+	
+		int :target:`ok<doxid-structrgpot_1_1abi_1_1_profile_result_1a1b312ebe2d3763928bdbf87f6ed4ac06>`;
+		double :target:`energy_h<doxid-structrgpot_1_1abi_1_1_profile_result_1ad9f320ae5e1dda4652c63e2076592dcb>`;
+		char :target:`message<doxid-structrgpot_1_1abi_1_1_profile_result_1abc7130a5ca06b45596c18dd420af22b3>`[512];
+	};
