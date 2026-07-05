@@ -1952,6 +1952,27 @@ struct MetatomicParams {
   }
 }
 
+# @struct LammpsParams
+# @brief LAMMPS backend arm driving the lammpc dynlib shim.
+#
+# lammpc calls the actual liblammps functions directly, in process: instance
+# creation, pair setup and pair compute, position/force array access. No
+# command-string parsing, no input scripts, no file traffic anywhere in the
+# force loop. Geometry arrives per step via ForceInput; these fields fix the
+# interaction model once per session.
+struct LammpsParams {
+  unitsStyle @0 :Text = "metal";  # LAMMPS units; metal => eV / Angstrom.
+  atomStyle  @1 :Text = "atomic";
+  pairStyle  @2 :Text = "";       # pair_style args, e.g. "eam/alloy" or "lj/cut 10.0".
+  pairCoeffs @3 :List(Text);      # pair_coeff argument lines, one entry per line.
+  typeToAtomicNumber @4 :List(Int32); # LAMMPS type i+1 -> Z; maps ForceInput.atmnrs.
+  masses     @5 :List(Float64);   # Per-type mass (amu); empty => standard weight per Z.
+  newtonPair @6 :Bool = true;
+  boundary   @7 :Text = "p p p";  # boundary keyword args.
+  extraSetup @8 :List(Text);      # Escape hatch: raw commands after the pair block.
+  suffix     @9 :Text = "";       # Accelerator suffix (omp/gpu/kk) when compiled in.
+}
+
 # @struct NWChemDplotStanza
 # @brief "dplot" block: density/orbital cube output.
 struct NWChemDplotStanza {
@@ -2386,8 +2407,9 @@ struct PotentialConfig {
     nwchem    @1 :NWChemParams; # NWChemPot / potserv ... NWChem
     cpmd      @2 :CPMDParams;   # CPMDPot / potserv ... OpenCPMD
     metatomic @4 :MetatomicParams; # MetatomicPot (torch ML models)
-    # xtb       @5 :XTBParams;
-    # tblite    @6 :TBLiteParams;
+    lammps    @5 :LammpsParams;    # lammpc dynlib shim (LAMMPS library API)
+    # xtb       @6 :XTBParams;
+    # tblite    @7 :TBLiteParams;
   }
   # Normalized overlay applied BEFORE the native arm; native settings win.
   common @3 :CommonMethodSpec;
