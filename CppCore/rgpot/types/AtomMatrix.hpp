@@ -9,10 +9,6 @@
  * atomic coordinates and forces.
  */
 
-// clang-format off
-#include <cxxabi.h>
-// clang-format on
-
 #include <algorithm>
 #include <iomanip>
 #include <iostream>

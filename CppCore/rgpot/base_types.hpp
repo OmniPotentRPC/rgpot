@@ -10,10 +10,6 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 
-// clang-format off
-#include <cxxabi.h>
-// clang-format on
-
 #include <algorithm>
 #include <any>
 #include <cctype>

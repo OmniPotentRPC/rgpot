@@ -11,6 +11,7 @@
  */
 
 // clang-format off
+#include <array>
 #include <cstring>
 #include <utility>
 #include <vector>
@@ -129,7 +130,9 @@ public:
 
     double flatBox[9];
     static_assert(sizeof(box) == 9 * sizeof(double));
-    std::memcpy(flatBox, &box[0][0], sizeof(flatBox));
+    // Nested std::array is contiguous; &box[0][0] is invalid on MSVC (C2676)
+    // and box.data() can hit incomplete-type issues depending on include order.
+    std::memcpy(flatBox, static_cast<const void *>(&box), sizeof(flatBox));
 
     ForceInput fi{.nAtoms = nAtoms,
                   .pos = positions.data(),
