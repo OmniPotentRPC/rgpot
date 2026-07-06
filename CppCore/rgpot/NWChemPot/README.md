@@ -41,6 +41,15 @@ rgpot is a pure consumer of the split engine project
 `dlopen`s `libnwchemc.so`, and passes the message bytes directly. rgpot builds
 no in-process NWChem embed of its own; build `libnwchemc.so` from `nwchemc`.
 
+### Host-only paths and process teardown
+
+- `NWChemParams.enginePath` / `nwchemRoot` locate the DSO and set env hints in
+  **this** process. They are stripped before `nwchemc_set_params` /
+  `nwchemc_energy_gradient` (the embed ABI rejects non-empty `enginePath`).
+- `libnwchemc` registers `atexit(nwchemc_finalize)`. The engine is opened with
+  `RTLD_NODELETE`, and `~NWChemPot` calls `nwchemc_finalize` while the handle is
+  still valid, so process exit does not SIGSEGV into an unmapped DSO.
+
 ## Layers
 
 | Piece | Built when | Role |

@@ -262,7 +262,21 @@ NWChemPot::NWChemPot(const ::NWChemParams::Reader &params)
     (void)push_params_to_engine(impl_->bundle, impl_->abi_params_words);
 }
 
-NWChemPot::~NWChemPot() { delete impl_; }
+NWChemPot::~NWChemPot() {
+  // Tear down the embed runtime while the engine handle is still valid.
+  // libnwchemc also registers atexit(nwchemc_finalize); without an explicit
+  // call here, process exit can run atexit after ~DynLib has dropped the last
+  // *logical* open (or race with other static teardown) and SIGSEGV.
+  // Double-finalize is safe: nwchemc_finalize no-ops when already finalized.
+  if (impl_ && impl_->bundle.loaded && impl_->bundle.engine_lib.valid()) {
+    using FinalizeFn = void (*)(void);
+    if (auto fin =
+            impl_->bundle.engine_lib.sym_optional<FinalizeFn>("nwchemc_finalize")) {
+      fin();
+    }
+  }
+  delete impl_;
+}
 
 bool NWChemPot::setParams(const ::NWChemParams::Reader &params) {
   if (!impl_)

@@ -58,7 +58,15 @@ public:
     }
 #else
     // RTLD_GLOBAL: export NWChem/engine symbols for dependent .so resolution.
-    handle_ = dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL);
+    // RTLD_NODELETE: libnwchemc registers atexit(nwchemc_finalize). If DynLib
+    // unmaps the DSO before process atexit handlers run (typical when
+    // NWChemPot is destroyed at end of main), the atexit trampoline points
+    // into freed text and SIGSEGV on Quill/libc teardown threads.
+#ifndef RTLD_NODELETE
+#define RTLD_NODELETE 0
+#endif
+    handle_ =
+        dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL | RTLD_NODELETE);
     if (!handle_) {
       const char *err = dlerror();
       throw std::runtime_error(std::string("dlopen failed: ") + path + ": " +
@@ -73,6 +81,7 @@ public:
 #if defined(_WIN32) || defined(_WIN64)
     FreeLibrary(static_cast<HMODULE>(handle_));
 #else
+    // With RTLD_NODELETE the mapping stays for atexit; still drop our handle.
     dlclose(handle_);
 #endif
     handle_ = nullptr;
