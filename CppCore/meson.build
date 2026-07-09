@@ -91,6 +91,24 @@ if rpc_enabled and not get_option('with_rpc_client_only')
         link_language: 'cpp',
         install: not meson.is_subproject(),
     )
+    # Multi-rank host for NWChemPot: host owns MPI; every rank calls force.
+    # Optional when MPI C/C++ is available (not required for potserv).
+    mpi_host_dep = dependency('mpi', language: 'cpp', required: false)
+    if not mpi_host_dep.found()
+        mpi_host_dep = dependency('mpi', language: 'c', required: false)
+    endif
+    if mpi_host_dep.found()
+        nwchem_mpi_force_host = executable(
+            'nwchem_mpi_force_host',
+            'tools/nwchem_mpi_force_host.cc',
+            link_with: [ptlrpc, _linkto],
+            dependencies: _deps + [capnp_rpc_dep, mpi_host_dep],
+            cpp_args: _args,
+            include_directories: _incdirs,
+            link_language: 'cpp',
+            install: false,
+        )
+    endif
 endif
 
 # ------------------------ Examples

@@ -155,6 +155,38 @@ The dlopen boundary itself is covered by the `nwchem` meson test suite
 `potserv <port> NWChem` + `configure` with `NWChemParams` is optional plumbing on
 top of the same frontend; it is not required for the C ABI or embed path.
 
+## Multi-rank / strong scaling (host-owned MPI)
+
+`NWChemParams` and `ForceInput` do **not** carry MPI ranks or communicators.
+Multi-rank PEF scaling works when the **host process** is launched under
+`mpirun` and **every rank** calls `force` / `calculate` with the same geometry
+and params. The engine co-inits GA/MPI if the host already called `MPI_Init`
+(`pbeginf` path in nwchemc).
+
+```bash
+# Build potserv + host (needs -Dwith_rpc=true and an MPI C/C++ toolchain)
+meson setup bbdir -Dwith_rpc=true
+meson compile -C bbdir nwchem_mpi_force_host
+
+export NWCHEMC_LIBRARY=/path/to/libnwchemc.so
+export NWCHEM_TOP=/path/to/nwchem
+export LD_LIBRARY_PATH=…  # NWChem libext, GA, OpenBLAS, …
+
+mpirun -np 4 --bind-to none \
+  ./bbdir/CppCore/nwchem_mpi_force_host \
+  --system benzene --basis '6-31g*' --theory scf --scf-type rhf
+```
+
+Rank 0 prints `rgpot_mpi_force ranks=… wall_s=… energy_ev=… ok=…`.
+
+| Host | Status |
+|------|--------|
+| `nwchem_mpi_force_host` | Multi-rank SPMD host through `NWChemPot` |
+| `potserv` | Single-process RPC today; multi-rank needs rank-0 socket + collective force |
+| eOn `RgpotPot` | Single-process in-process today; production multi-rank → PEF potential ranks |
+
+Do **not** put `mpiRanks` into Cap'n Proto expecting the library to spawn ranks.
+
 ## Units
 
 ABI: Hartree, Hartree/Bohr. Frontend: eV, eV/Angstrom (`rgpot::units`).

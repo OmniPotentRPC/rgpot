@@ -62,6 +62,21 @@ pixi run -e rpctest -- python tests/test_rpc_e2e_c_abi.py
 See =CppCore/rgpot/NWChemPot/README.md=, =CppCore/rgpot/CPMDPot/README.md=, and
 =docs/orgmode/howto/integration.org=.
 
+* Multi-rank PEF (host-owned MPI)
+
+NWChem multi-rank strong scaling is **not** encoded in Cap'n Proto. The host
+must own MPI:
+
+1. Launch under =mpirun -np P=.
+2. Every PEF rank calls =force= / =calculate= with the same geometry and
+   =NWChemParams=.
+3. =libnwchemc= co-inits GA on the existing world.
+
+rgpot ships =nwchem_mpi_force_host= (built with =-Dwith_rpc=true= when MPI is
+found) as the reference SPMD host through =NWChemPot=. =potserv= and eOn
+=RgpotPot= remain single-process until they grow a rank-0 server / potential-rank
+partition. See =CppCore/rgpot/NWChemPot/README.md= (section Multi-rank).
+
 * Related
 
 - =docs/orgmode/howto/eindir-anneal.org= — minimizers via embedded eindir
