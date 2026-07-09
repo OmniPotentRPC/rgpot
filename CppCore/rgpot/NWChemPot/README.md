@@ -166,26 +166,48 @@ and params. The engine co-inits GA/MPI if the host already called `MPI_Init`
 ```bash
 # Build potserv + host (needs -Dwith_rpc=true and an MPI C/C++ toolchain)
 meson setup bbdir -Dwith_rpc=true
-meson compile -C bbdir nwchem_mpi_force_host
+meson compile -C bbdir potserv nwchem_mpi_force_host
 
 export NWCHEMC_LIBRARY=/path/to/libnwchemc.so
 export NWCHEM_TOP=/path/to/nwchem
 export LD_LIBRARY_PATH=…  # NWChem libext, GA, OpenBLAS, …
 
+# Direct SPMD host (no RPC)
 mpirun -np 4 --bind-to none \
   ./bbdir/CppCore/nwchem_mpi_force_host \
   --system benzene --basis '6-31g*' --theory scf --scf-type rhf
+
+# potserv PEF: rank 0 binds Cap'n Proto TCP; ranks 1..P-1 are PEF workers.
+# Same engine env as single-rank (NWCHEMC_LIBRARY / NWCHEM_TOP / LD_LIBRARY_PATH).
+mpirun -np 4 --bind-to none \
+  ./bbdir/CppCore/potserv 15000 NWChem
+# client: configure + calculate against localhost:15000 (unchanged RPC)
 ```
 
-Rank 0 prints `rgpot_mpi_force ranks=… wall_s=… energy_ev=… ok=…`.
+Rank 0 of the host prints `rgpot_mpi_force ranks=… wall_s=… energy_ev=… ok=…`.
+`potserv` prints `PEF ranks=P` on rank 0 when `np>1`.
 
 | Host | Status |
 |------|--------|
 | `nwchem_mpi_force_host` | Multi-rank SPMD host through `NWChemPot` |
-| `potserv` | Single-process RPC today; multi-rank needs rank-0 socket + collective force |
+| `potserv` | Multi-rank PEF for NWChem/CPMD when linked with MPI (`RGPOT_POTSERV_MPI`); rank 0 socket, workers mirror `calculate`/`configure` via `MPI_Bcast`. Other backends refuse `np>1`. Single-rank (`np=1` or no mpirun) unchanged. |
 | eOn `RgpotPot` | Single-process in-process today; production multi-rank → PEF potential ranks |
 
 Do **not** put `mpiRanks` into Cap'n Proto expecting the library to spawn ranks.
+
+### potserv multi-rank notes
+
+- Configure Meson with an MPI C/C++ dependency available so `potserv` gets
+  `-DRGPOT_POTSERV_MPI=1` and links MPI. Without MPI at configure time, potserv
+  stays single-process only.
+- Env for the engine is **identical** to single-rank: `NWCHEMC_LIBRARY` /
+  `RGPOT_NWCHEMC_ENGINE`, `NWCHEM_TOP`, `LD_LIBRARY_PATH` (and CPMD equivalents
+  for the CPMD backend).
+- Cap'n Proto remains free of ranks/comms: only rank 0 accepts RPC; workers never
+  bind the port.
+- Destroy order matches the SPMD host: pot/engine teardown before host
+  `MPI_Finalize` (worker ranks reset the pot before finalize; rank 0 holds the
+  pot for the lifetime of the server).
 
 ## Units
 

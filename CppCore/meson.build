@@ -81,22 +81,29 @@ endif
 
 # ------------------------ Server
 if rpc_enabled and not get_option('with_rpc_client_only')
+    # Optional MPI for multi-rank PEF potserv (NWChem/CPMD) and the SPMD host.
+    # Single-rank potserv still works when size==1 or MPI is absent at configure.
+    mpi_host_dep = dependency('mpi', language: 'cpp', required: false)
+    if not mpi_host_dep.found()
+        mpi_host_dep = dependency('mpi', language: 'c', required: false)
+    endif
+    potserv_deps = _deps + [capnp_rpc_dep]
+    potserv_args = _args
+    if mpi_host_dep.found()
+        potserv_deps += [mpi_host_dep]
+        potserv_args += ['-DRGPOT_POTSERV_MPI=1']
+    endif
     server = executable(
         'potserv',
         ['rgpot/rpc/server.cpp', gen_rpc],
         link_with: [ptlrpc, _linkto],
-        dependencies: _deps + [capnp_rpc_dep],
-        cpp_args: _args,
+        dependencies: potserv_deps,
+        cpp_args: potserv_args,
         include_directories: _incdirs,
         link_language: 'cpp',
         install: not meson.is_subproject(),
     )
     # Multi-rank host for NWChemPot: host owns MPI; every rank calls force.
-    # Optional when MPI C/C++ is available (not required for potserv).
-    mpi_host_dep = dependency('mpi', language: 'cpp', required: false)
-    if not mpi_host_dep.found()
-        mpi_host_dep = dependency('mpi', language: 'c', required: false)
-    endif
     if mpi_host_dep.found()
         nwchem_mpi_force_host = executable(
             'nwchem_mpi_force_host',
