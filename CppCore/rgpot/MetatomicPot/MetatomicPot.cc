@@ -194,7 +194,9 @@ metatensor_torch::TensorBlock MetatomicPot::computeNeighbors(
   options.cutoff = cutoff;
   options.full = request->full_list();
   options.sorted = false;
+#ifdef RGPOT_VESIN_HAS_ALGORITHM
   options.algorithm = VesinAutoAlgorithm;
+#endif
   options.return_shifts = true;
   options.return_distances = false;
   options.return_vectors = true;
@@ -204,7 +206,11 @@ metatensor_torch::TensorBlock MetatomicPot::computeNeighbors(
   // vesin 0.5+: VesinDevice is struct { VesinDeviceKind type; int device_id; }.
   // (0.3–0.4 briefly used an enum typedef; we require >=0.5 for the struct
   // API.)
+#ifdef RGPOT_VESIN_DEVICE_STRUCT
   VesinDevice cpu{VesinCPU, /*device_id=*/0};
+#else
+  VesinDevice cpu = VesinCPU;
+#endif
   const char *error_message = nullptr;
   int status = vesin_neighbors(
       reinterpret_cast<const double (*)[3]>(positions),
