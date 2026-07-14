@@ -102,13 +102,20 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq cppcheck clang-format-16 || \
             sudo apt-get install -y -qq cppcheck clang-format
+          # Pin v0.7.8: latest tag can ship without assets (404 on installer).
+          SNAPPER_VER="${SNAPPER_VER:-0.7.8}"
           if ! command -v snapper >/dev/null 2>&1 && ! command -v snapper-fmt >/dev/null 2>&1; then
-            curl --proto '=https' --tlsv1.2 -LsSf \
-              https://github.com/TurtleTech-ehf/snapper/releases/latest/download/snapper-fmt-installer.sh | sh || true
-            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+            curl -fsSL -o /tmp/snapper-fmt.tar.xz \
+              "https://github.com/TurtleTech-ehf/snapper/releases/download/v${SNAPPER_VER}/snapper-fmt-x86_64-unknown-linux-gnu.tar.xz"
+            mkdir -p "$HOME/.local/bin"
+            tar -xJf /tmp/snapper-fmt.tar.xz -C /tmp
+            BIN=$(find /tmp -maxdepth 3 -type f -name snapper-fmt 2>/dev/null | head -1)
+            install -m 755 "$BIN" "$HOME/.local/bin/snapper-fmt"
+            ln -sf "$HOME/.local/bin/snapper-fmt" "$HOME/.local/bin/snapper"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           fi
           if command -v snapper-fmt >/dev/null 2>&1 && ! command -v snapper >/dev/null 2>&1; then
-            ln -sf "$(command -v snapper-fmt)" "$HOME/.cargo/bin/snapper"
+            ln -sf "$(command -v snapper-fmt)" "$HOME/.cargo/bin/snapper" 2>/dev/null || true
             echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           fi
       - name: Run prek on all files
@@ -134,12 +141,17 @@ jobs:
       - uses: actions/checkout@v6
       - name: Install snapper-fmt
         run: |
-          curl --proto '=https' --tlsv1.2 -LsSf \
-            https://github.com/TurtleTech-ehf/snapper/releases/latest/download/snapper-fmt-installer.sh | sh
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          if command -v snapper-fmt >/dev/null 2>&1 && ! command -v snapper >/dev/null 2>&1; then
-            ln -sf "$(command -v snapper-fmt)" "$HOME/.cargo/bin/snapper"
-          fi
+          # Pin v0.7.8: latest tag can ship without assets (404 on installer).
+          SNAPPER_VER="${SNAPPER_VER:-0.7.8}"
+          curl -fsSL -o /tmp/snapper-fmt.tar.xz \
+            "https://github.com/TurtleTech-ehf/snapper/releases/download/v${SNAPPER_VER}/snapper-fmt-x86_64-unknown-linux-gnu.tar.xz"
+          mkdir -p "$HOME/.local/bin"
+          tar -xJf /tmp/snapper-fmt.tar.xz -C /tmp
+          BIN=$(find /tmp -maxdepth 3 -type f -name snapper-fmt 2>/dev/null | head -1)
+          install -m 755 "$BIN" "$HOME/.local/bin/snapper-fmt"
+          ln -sf "$HOME/.local/bin/snapper-fmt" "$HOME/.local/bin/snapper"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
           snapper --version || snapper-fmt --version
       - name: Check prose formatting
         run: |
