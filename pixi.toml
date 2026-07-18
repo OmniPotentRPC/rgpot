@@ -4,7 +4,7 @@ channels = ["conda-forge"]
 description = "RPC based core for potential energy surface functionality."
 name = "rgpot"
 platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
-version = "2.5.0"
+version = "2.5.1"
 
 [feature.cigen.tasks]
 # Export every ci/gha/*.ncl workflow (shared pins/steps in ci/gha/lib/).

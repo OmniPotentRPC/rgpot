@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
+## [2.5.1](https://github.com/OmniPotentRPC/rgpot/tree/2.5.1) - 2026-07-17
+
+### Fixed
+
+- ``potctl release sync`` / ``assert`` include ``pyproject.toml`` so the PyPI package version stays lockstep with meson/CMake/cargo/pixi (missed for 2.5.0, which left pip at 2.4.2).
+
+### Miscellaneous
+
+- PyPI ``rgpot`` 2.5.1 manylinux wheel and sdist ship the 2.5.0 Metatomic multi-ABI / SoftGil / pkg-config surfaces (2.5.0 tag published crates.io + GitHub only).
+
+
 ## [2.5.0](https://github.com/OmniPotentRPC/rgpot/tree/2.5.0) - 2026-07-17
 
 ### Added

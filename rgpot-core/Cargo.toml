@@ -1,6 +1,6 @@
 [package]
 name = "rgpot-core"
-version = "2.5.0"
+version = "2.5.1"
 edition = "2021"
 description = "Core Rust library for rgpot: RPC-based potential energy surface calculations"
 license = "MIT"
