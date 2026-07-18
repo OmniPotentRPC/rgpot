@@ -6,9 +6,8 @@
 
 rgpot uses a *lockstep monorepo version*: the same SemVer appears in
 =meson.build=, =CMakeLists.txt= (=project(VERSION ...)=), =rgpot-core/
-Cargo.toml=, =towncrier.toml=, =pixi.toml= (workspace key only — not
-dependency pins such as nickel), and =pyproject.toml= (PyPI package
-metadata).
+Cargo.toml=, =towncrier.toml=, =pixi.toml= (workspace key only — not dependency
+pins such as nickel), and =pyproject.toml= (PyPI package metadata).
 Git tags are =vX.Y.Z= (see =cog.toml= =tag_prefix=).
 Pre-release tags such as =v1.2.0-rc.1= are allowed; =release.yml= marks the
 GitHub Release as prerelease and *skips* =cargo publish= (stable crates.io
@@ -163,8 +162,9 @@ stamp, pixi workspace, and =pyproject.toml= share one semver (optionally with
 the git tag / source tarball, not crates.io.
 - *PyPI* (=rgpot= manylinux wheel + sdist) is *out of band* from =release.yml=:
 after the tag is green, build with =scripts/rgpot_build_wheel.sh= (and sdist)
-and upload with =twine=. Lockstep keeps =pyproject.toml= version aligned so the
-wheel metadata matches the git tag.
+and upload with =twine=.
+Lockstep keeps =pyproject.toml= version aligned so the wheel metadata matches
+the git tag.
 
 ** Emergency / hotfixes
 
