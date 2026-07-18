@@ -1,0 +1,21 @@
+.. index:: pair: struct; rgpot::vesin_compat::has_skin_member<Options, std::void_t<decltype(std::declval<Options>().skin)>>
+.. _doxid-structrgpot_1_1vesin__compat_1_1has__skin__member_3_01_options_00_01std_1_1void__t_3_01decltype_91024ce8011362f81235716ddecc4e3b:
+
+template struct rgpot::vesin_compat::has_skin_member<Options, std::void_t<decltype(std::declval<Options>().skin)>>
+==================================================================================================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	template <typename Options>
+	struct has_skin_member<Options, std::void_t<decltype(std::declval<Options>().skin)>>:
+	    public std::false_type,
+	    public std::true_type {
+	};

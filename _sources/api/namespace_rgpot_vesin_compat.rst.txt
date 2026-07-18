@@ -9,6 +9,10 @@ namespace rgpot::vesin_compat
 
 	struct_rgpot_vesin_compat_has_algorithm_member.rst
 	struct_rgpot_vesin_compat_has_algorithm_member-2.rst
+	struct_rgpot_vesin_compat_has_n_threads_member.rst
+	struct_rgpot_vesin_compat_has_n_threads_member-2.rst
+	struct_rgpot_vesin_compat_has_skin_member.rst
+	struct_rgpot_vesin_compat_has_skin_member-2.rst
 	struct_rgpot_vesin_compat_is_device_struct.rst
 	struct_rgpot_vesin_compat_is_device_struct-2.rst
 
@@ -29,6 +33,18 @@ namespace rgpot::vesin_compat
 	template <typename Options>
 	struct :ref:`has_algorithm_member<Options, std::void_t<decltype(std::declval<Options>().algorithm)>><doxid-structrgpot_1_1vesin__compat_1_1has__algorithm__member_3_01_options_00_01std_1_1void__t_3_01decl1d9e34284fec03e09f4121715a01b98c>`;
 
+	template <typename Options, typename = void>
+	struct :ref:`has_n_threads_member<doxid-structrgpot_1_1vesin__compat_1_1has__n__threads__member>`;
+
+	template <typename Options>
+	struct :ref:`has_n_threads_member<Options, std::void_t<decltype(std::declval<Options>().n_threads)>><doxid-structrgpot_1_1vesin__compat_1_1has__n__threads__member_3_01_options_00_01std_1_1void__t_3_01decf6eef88f2132042a5aba32c26f56e094>`;
+
+	template <typename Options, typename = void>
+	struct :ref:`has_skin_member<doxid-structrgpot_1_1vesin__compat_1_1has__skin__member>`;
+
+	template <typename Options>
+	struct :ref:`has_skin_member<Options, std::void_t<decltype(std::declval<Options>().skin)>><doxid-structrgpot_1_1vesin__compat_1_1has__skin__member_3_01_options_00_01std_1_1void__t_3_01decltype_91024ce8011362f81235716ddecc4e3b>`;
+
 	template <typename Device, typename = void>
 	struct :ref:`is_device_struct<doxid-structrgpot_1_1vesin__compat_1_1is__device__struct>`;
 
@@ -42,5 +58,14 @@ namespace rgpot::vesin_compat
 
 	template <typename Options>
 	void :target:`set_algorithm_default<doxid-vesin__compat_8hpp_1a1ad4ce79d05eabf592e8a9fa420076ad>`(Options& options);
+
+	template <typename Options>
+	void :target:`set_skin<doxid-vesin__compat_8hpp_1a329383dbc79eb98efb96f1d80354503b>`(Options& options, double skin);
+
+	template <typename Options>
+	void :target:`set_n_threads<doxid-vesin__compat_8hpp_1aec5780b4dba334dde5c1c23828d3fa4b>`(Options& options, std::int32_t n_threads);
+
+	template <typename Options>
+	void :target:`fill_neighbor_options<doxid-vesin__compat_8hpp_1a8e00cb9bfaf77bcccb9bd6f5bf745b18>`(Options& options, double cutoff, bool full_list);
 
 	} // namespace vesin_compat

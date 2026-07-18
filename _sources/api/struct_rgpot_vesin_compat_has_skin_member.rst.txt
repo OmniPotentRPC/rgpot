@@ -1,0 +1,19 @@
+.. index:: pair: struct; rgpot::vesin_compat::has_skin_member
+.. _doxid-structrgpot_1_1vesin__compat_1_1has__skin__member:
+
+template struct rgpot::vesin_compat::has_skin_member
+====================================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	template <typename Options, typename = void>
+	struct has_skin_member: public std::false_type {
+	};

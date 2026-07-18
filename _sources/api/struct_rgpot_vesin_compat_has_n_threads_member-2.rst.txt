@@ -1,0 +1,21 @@
+.. index:: pair: struct; rgpot::vesin_compat::has_n_threads_member<Options, std::void_t<decltype(std::declval<Options>().n_threads)>>
+.. _doxid-structrgpot_1_1vesin__compat_1_1has__n__threads__member_3_01_options_00_01std_1_1void__t_3_01decf6eef88f2132042a5aba32c26f56e094:
+
+template struct rgpot::vesin_compat::has_n_threads_member<Options, std::void_t<decltype(std::declval<Options>().n_threads)>>
+============================================================================================================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	template <typename Options>
+	struct has_n_threads_member<Options, std::void_t<decltype(std::declval<Options>().n_threads)>>:
+	    public std::false_type,
+	    public std::true_type {
+	};
