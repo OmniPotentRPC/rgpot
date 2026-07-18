@@ -17,7 +17,7 @@ skip_ci = "[skip ci]"
 skip_untracked = false
 branch_whitelist = ["main", "master", "release/**"]
 
-# Lockstep monorepo version: C++ (meson + CMake), Rust crate, towncrier, pixi workspace.
+# Lockstep monorepo version: C++ (meson + CMake), Rust crate, towncrier, pixi workspace, pyproject.
 # potctl is built via `cargo build -p potctl` (workspace root); use release binary when present.
 pre_bump_hooks = [
     "cargo run -q -p potctl --bin potctl -- release sync {{version}}",

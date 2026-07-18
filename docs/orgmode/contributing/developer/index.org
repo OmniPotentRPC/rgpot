@@ -40,7 +40,7 @@ All tasks are invoked via =pixi r <task>=:
 | =towncrier-build= | Write release notes into =CHANGELOG.md= |
 | =release-potctl= / =potctl= | Project CLI (=cargo run -p potctl -- …=; =pixi r release-potctl -- release assert=) |
 | =release-sync-versions= | Lockstep write (=potctl release sync=; =pixi r release-sync-versions -- 1.2.3=) |
-| =release-assert-lockstep= | Assert meson/cmake/cargo/towncrier/pixi agree (=potctl release assert=) |
+| =release-assert-lockstep= | Assert meson/cmake/cargo/towncrier/pixi/pyproject agree (=potctl release assert=) |
 | =release-extract-changelog= | One =CHANGELOG.md= section (=potctl release notes=; optional =-o=) |
 | =release-towncrier-check= | =towncrier check= vs base (CI: orchestrator =towncrier= job on PRs) |
 | Cut release | On =main=: =cog bump --auto= (cog 7+) then =git push --follow-tags=; see [[file:release.org][release.org]] |

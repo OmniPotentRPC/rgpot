@@ -1,4 +1,5 @@
-//! Lockstep semver surfaces for the rgpot monorepo (meson / CMake / cargo / towncrier / pixi).
+//! Lockstep semver surfaces for the rgpot monorepo
+//! (meson / CMake / cargo / towncrier / pixi / pyproject).
 
 use std::env;
 use std::fs;
@@ -169,6 +170,10 @@ pub fn read_pixi_workspace_version(root: &Path) -> Result<String> {
     read_first_toml_version(root, "pixi.toml")
 }
 
+pub fn read_pyproject_version(root: &Path) -> Result<String> {
+    read_first_toml_version(root, "pyproject.toml")
+}
+
 pub fn changelog_section(root: &Path, ver: &str) -> Result<String> {
     let path = root.join("CHANGELOG.md");
     if !path.is_file() {
@@ -276,7 +281,12 @@ pub fn sync_versions(root: &Path, version: &str) -> Result<()> {
         write_text(&cmake_p, &replace_first_cmake_version(&t, version))?;
     }
 
-    for rel in ["towncrier.toml", "rgpot-core/Cargo.toml", "pixi.toml"] {
+    for rel in [
+        "towncrier.toml",
+        "rgpot-core/Cargo.toml",
+        "pixi.toml",
+        "pyproject.toml",
+    ] {
         let p = root.join(rel);
         if p.is_file() {
             let t = read_text(&p)?;
@@ -286,7 +296,7 @@ pub fn sync_versions(root: &Path, version: &str) -> Result<()> {
 
     println!("synced lockstep version -> {version}");
     println!(
-        "  meson.build / CMakeLists.txt / towncrier.toml / rgpot-core/Cargo.toml / pixi.toml [workspace]"
+        "  meson.build / CMakeLists.txt / towncrier.toml / rgpot-core/Cargo.toml / pixi.toml [workspace] / pyproject.toml"
     );
     Ok(())
 }
@@ -297,6 +307,7 @@ pub fn assert_lockstep(root: &Path, expected: Option<&str>, require_changelog: b
     let cargo_v = read_cargo_version(root)?;
     let town_v = read_towncrier_version(root)?;
     let pixi_v = read_pixi_workspace_version(root)?;
+    let pyproj_v = read_pyproject_version(root)?;
     let exp = expected.map(strip_v).filter(|s| !s.is_empty());
 
     println!("lockstep surfaces:");
@@ -305,6 +316,7 @@ pub fn assert_lockstep(root: &Path, expected: Option<&str>, require_changelog: b
     println!("  Cargo.toml       = {cargo_v}");
     println!("  towncrier.toml   = {town_v}");
     println!("  pixi.toml[ws]    = {pixi_v}");
+    println!("  pyproject.toml   = {pyproj_v}");
 
     let refv = &meson_v;
     for (name, val) in [
@@ -312,6 +324,7 @@ pub fn assert_lockstep(root: &Path, expected: Option<&str>, require_changelog: b
         ("cargo", &cargo_v),
         ("towncrier", &town_v),
         ("pixi", &pixi_v),
+        ("pyproject", &pyproj_v),
     ] {
         if val != refv {
             return Err(format!("{name} version ({val}) != meson ({refv})"));
