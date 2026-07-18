@@ -354,10 +354,13 @@ data-aria-dark="Switch to auto color mode">
 </div><article class="yue dark-code" role="main">
           <section id="python-package-pypi">
 <h1>Python package (PyPI)<a class="headerlink" href="#python-package-pypi" title="Link to this heading">¶</a></h1>
-<p>The <code class="docutils literal notranslate"><span class="pre">rgpot</span></code> package on <a class="reference external" href="https://pypi.org/project/rgpot/">PyPI</a> ships manylinux wheels with:</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">rgpot</span></code> package on <a class="reference external" href="https://pypi.org/project/rgpot/">PyPI</a> ships manylinux
+wheels with:</p>
 <ul class="simple">
-<li><p>Lennard-Jones via a <strong>nanobind</strong> extension (<code class="docutils literal notranslate"><span class="pre">_core.abi3.so</span></code>, stable ABI /
-<code class="docutils literal notranslate"><span class="pre">Py_LIMITED_API</span></code> 3.12 when built on CPython &gt;= 3.12)</p></li>
+<li><p>Lennard-Jones via a <strong>nanobind</strong> extension (<code class="docutils literal notranslate"><span class="pre">_core.abi3.so</span></code>, stable ABI /</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">Py_LIMITED_API</span></code> 3.12 when built on CPython &gt;= 3.12)</p>
+<ul class="simple">
 <li><p>Metatomic force evaluation via <strong>dlopen</strong> of a portable C-ABI engine plugin</p></li>
 </ul>
 <p>This is separate from the Cap’n Proto RPC path (<code class="docutils literal notranslate"><span class="pre">potserv</span></code>).
@@ -436,7 +439,8 @@ List what the installed wheel actually contains:</p>
 </span><span data-line="13"><span class="p">)</span>
 </span></pre></div>
 </div>
-<p>Override the engine with <code class="docutils literal notranslate"><span class="pre">RGPOT_METATOMIC_ENGINE</span></code> / <code class="docutils literal notranslate"><span class="pre">METATOMIC_ENGINE</span></code> if needed.</p>
+<p>Override the engine with <code class="docutils literal notranslate"><span class="pre">RGPOT_METATOMIC_ENGINE</span></code> / <code class="docutils literal notranslate"><span class="pre">METATOMIC_ENGINE</span></code> if
+needed.</p>
 </section>
 <section id="related">
 <h2>Related<a class="headerlink" href="#related" title="Link to this heading">¶</a></h2>

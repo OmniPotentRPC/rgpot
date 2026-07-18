@@ -590,26 +590,27 @@ enum). Thread-safe via internal mutex; caches the atomic-types tensor across
 geometry steps. Configurable device (CPU/CUDA), dtype override, length unit,
 consistency checks, and <code class="docutils literal notranslate"><span class="pre">torch_determinism</span></code> via <code class="docutils literal notranslate"><span class="pre">MetatomicConfig</span></code>.
 <code class="docutils literal notranslate"><span class="pre">TorchDeterminismPolicy::Fast</span></code> (default) does not touch process-global LibTorch
-state. <code class="docutils literal notranslate"><span class="pre">Strict</span></code> calls <code class="docutils literal notranslate"><span class="pre">apply_torch_determinism_policy</span></code>, which sets
+state.
+<code class="docutils literal notranslate"><span class="pre">Strict</span></code> calls <code class="docutils literal notranslate"><span class="pre">apply_torch_determinism_policy</span></code>, which sets
 <code class="docutils literal notranslate"><span class="pre">at::globalContext()</span></code> deterministic algorithms (no warn-only fallback), pins
 scaled-dot-product attention to the math SDP backend (flash, memory-efficient,
-and cuDNN SDP off), disables TF32 for cuBLAS and cuDNN (full fp32 mantissas
-on Ampere+), forces deterministic cuDNN algorithms with benchmarking off, and
-fills uninitialized memory deterministically. Those flags are process-global:
-they affect every Torch user in the process, and Fast does not restore a
-previous Strict setting. CUDA host processes that need bit-stable cuBLAS must
-also export <code class="docutils literal notranslate"><span class="pre">CUBLAS_WORKSPACE_CONFIG</span></code>:4096:8= (or <code class="docutils literal notranslate"><span class="pre">:16:8</span></code>) <strong>before</strong> the first
-cuBLAS call — that is process environment, not <code class="docutils literal notranslate"><span class="pre">at::globalContext()</span></code> (see
-NVIDIA cuBLAS reproducibility and <code class="docutils literal notranslate"><span class="pre">alertCuBLASConfigNotDeterministic</span></code>).
-On the RPC server pass <code class="docutils literal notranslate"><span class="pre">Metatomic:/path/to/model.pt</span></code>.
-Build with the <code class="docutils literal notranslate"><span class="pre">metatomicbld</span></code> pixi env (linux-64; pulls torch, metatomic-torch,
-and vesin <code class="docutils literal notranslate"><span class="pre">&gt;=0.5.2,&lt;0.6</span></code> from PyPI). CI job <code class="docutils literal notranslate"><span class="pre">potentials_metatomic</span></code> in <code class="docutils literal notranslate"><span class="pre">ci-</span> <span class="pre">orchestrator.yml</span></code>.</p>
+and cuDNN SDP off), disables TF32 for cuBLAS and cuDNN (full fp32 mantissas on
+Ampere+), forces deterministic cuDNN algorithms with benchmarking off, and fills
+uninitialized memory deterministically.
+Those flags are process-global: they affect every Torch user in the process, and
+Fast does not restore a previous Strict setting.
+CUDA host processes that need bit-stable cuBLAS must also export
+<code class="docutils literal notranslate"><span class="pre">CUBLAS_WORKSPACE_CONFIG</span></code>:4096:8= (or <code class="docutils literal notranslate"><span class="pre">:16:8</span></code>) <strong>before</strong> the first cuBLAS call
+— that is process environment, not <code class="docutils literal notranslate"><span class="pre">at::globalContext()</span></code> (see NVIDIA cuBLAS
+reproducibility and <code class="docutils literal notranslate"><span class="pre">alertCuBLASConfigNotDeterministic</span></code>). On the RPC server pass
+<code class="docutils literal notranslate"><span class="pre">Metatomic:/path/to/model.pt</span></code>. Build with the <code class="docutils literal notranslate"><span class="pre">metatomicbld</span></code> pixi env (linux-64;
+pulls torch, metatomic-torch, and vesin <code class="docutils literal notranslate"><span class="pre">&gt;=0.5.2,&lt;0.6</span></code> from PyPI).
+CI job <code class="docutils literal notranslate"><span class="pre">potentials_metatomic</span></code> in <code class="docutils literal notranslate"><span class="pre">ci-</span> <span class="pre">orchestrator.yml</span></code>.</p>
 <p>The <strong>pip</strong> product (<code class="docutils literal notranslate"><span class="pre">rgpot</span></code> on PyPI) does not link Metatomic into the Python
 extension.
-It <code class="docutils literal notranslate"><span class="pre">dlopen=s</span> <span class="pre">a</span> <span class="pre">portable</span> <span class="pre">=libmetatomic_engine.so</span></code> chosen from
-<code class="docutils literal notranslate"><span class="pre">rgpot/lib/torch-X.Y/</span></code> for the installed torch major.
-Supported torch majors for bundled engines start at <strong>2.7</strong> (wheels ship
-2.7–2.13).
+It <code class="docutils literal notranslate"><span class="pre">dlopen=s</span> <span class="pre">a</span> <span class="pre">portable</span> <span class="pre">=libmetatomic_engine.so</span></code> chosen from <code class="docutils literal notranslate"><span class="pre">rgpot/lib/torch-</span> <span class="pre">X.Y/</span></code> for the installed torch major.
+Supported torch majors for bundled engines start at <strong>2.7</strong> (wheels ship 2.7–
+2.13).
 See:</p>
 <p><a class="reference internal" href="../howto/pip-python.html"><span class="doc">Python package (PyPI)</span></a></p>
 <p>All feature-gated potentials are detected via <code class="docutils literal notranslate"><span class="pre">pkg-config</span></code> / <code class="docutils literal notranslate"><span class="pre">cmake</span></code> and

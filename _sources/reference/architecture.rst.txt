@@ -230,27 +230,28 @@ enum). Thread-safe via internal mutex; caches the atomic-types tensor across
 geometry steps. Configurable device (CPU/CUDA), dtype override, length unit,
 consistency checks, and ``torch_determinism`` via ``MetatomicConfig``.
 ``TorchDeterminismPolicy::Fast`` (default) does not touch process-global LibTorch
-state. ``Strict`` calls ``apply_torch_determinism_policy``, which sets
+state.
+``Strict`` calls ``apply_torch_determinism_policy``, which sets
 ``at::globalContext()`` deterministic algorithms (no warn-only fallback), pins
 scaled-dot-product attention to the math SDP backend (flash, memory-efficient,
-and cuDNN SDP off), disables TF32 for cuBLAS and cuDNN (full fp32 mantissas
-on Ampere+), forces deterministic cuDNN algorithms with benchmarking off, and
-fills uninitialized memory deterministically. Those flags are process-global:
-they affect every Torch user in the process, and Fast does not restore a
-previous Strict setting. CUDA host processes that need bit-stable cuBLAS must
-also export ``CUBLAS_WORKSPACE_CONFIG``:4096:8= (or ``:16:8``) **before** the first
-cuBLAS call — that is process environment, not ``at::globalContext()`` (see
-NVIDIA cuBLAS reproducibility and ``alertCuBLASConfigNotDeterministic``).
-On the RPC server pass ``Metatomic:/path/to/model.pt``.
-Build with the ``metatomicbld`` pixi env (linux-64; pulls torch, metatomic-torch,
-and vesin ``>=0.5.2,<0.6`` from PyPI). CI job ``potentials_metatomic`` in ``ci- orchestrator.yml``.
+and cuDNN SDP off), disables TF32 for cuBLAS and cuDNN (full fp32 mantissas on
+Ampere+), forces deterministic cuDNN algorithms with benchmarking off, and fills
+uninitialized memory deterministically.
+Those flags are process-global: they affect every Torch user in the process, and
+Fast does not restore a previous Strict setting.
+CUDA host processes that need bit-stable cuBLAS must also export
+``CUBLAS_WORKSPACE_CONFIG``:4096:8= (or ``:16:8``) **before** the first cuBLAS call
+— that is process environment, not ``at::globalContext()`` (see NVIDIA cuBLAS
+reproducibility and ``alertCuBLASConfigNotDeterministic``). On the RPC server pass
+``Metatomic:/path/to/model.pt``. Build with the ``metatomicbld`` pixi env (linux-64;
+pulls torch, metatomic-torch, and vesin ``>=0.5.2,<0.6`` from PyPI).
+CI job ``potentials_metatomic`` in ``ci- orchestrator.yml``.
 
 The **pip** product (``rgpot`` on PyPI) does not link Metatomic into the Python
 extension.
-It ``dlopen=s a portable =libmetatomic_engine.so`` chosen from
-``rgpot/lib/torch-X.Y/`` for the installed torch major.
-Supported torch majors for bundled engines start at **2.7** (wheels ship
-2.7–2.13).
+It ``dlopen=s a portable =libmetatomic_engine.so`` chosen from ``rgpot/lib/torch- X.Y/`` for the installed torch major.
+Supported torch majors for bundled engines start at **2.7** (wheels ship 2.7–
+2.13).
 See:
 
 :doc:`../howto/pip-python`

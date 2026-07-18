@@ -3,10 +3,12 @@
 Python package (PyPI)
 ---------------------
 
-The ``rgpot`` package on `PyPI <https://pypi.org/project/rgpot/>`_ ships manylinux wheels with:
+The ``rgpot`` package on `PyPI <https://pypi.org/project/rgpot/>`_ ships manylinux
+wheels with:
 
 - Lennard-Jones via a **nanobind** extension (``_core.abi3.so``, stable ABI /
-  ``Py_LIMITED_API`` 3.12 when built on CPython >= 3.12)
+
+``Py_LIMITED_API`` 3.12 when built on CPython >= 3.12)
 
 - Metatomic force evaluation via **dlopen** of a portable C-ABI engine plugin
 
@@ -89,7 +91,8 @@ Metatomic dlopen
         device="cpu",
     )
 
-Override the engine with ``RGPOT_METATOMIC_ENGINE`` / ``METATOMIC_ENGINE`` if needed.
+Override the engine with ``RGPOT_METATOMIC_ENGINE`` / ``METATOMIC_ENGINE`` if
+needed.
 
 Related
 ~~~~~~~
