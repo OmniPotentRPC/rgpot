@@ -1,0 +1,99 @@
+
+
+Python package (PyPI)
+---------------------
+
+The ``rgpot`` package on `PyPI <https://pypi.org/project/rgpot/>`_ ships manylinux wheels with:
+
+- Lennard-Jones via a **nanobind** extension (``_core.abi3.so``, stable ABI /
+  ``Py_LIMITED_API`` 3.12 when built on CPython >= 3.12)
+
+- Metatomic force evaluation via **dlopen** of a portable C-ABI engine plugin
+
+This is separate from the Cap'n Proto RPC path (``potserv``).
+LJ needs only ``numpy``; Metatomic needs the optional dependency stack below.
+
+Install
+~~~~~~~
+
+.. code:: bash
+
+    pip install -U rgpot
+    # Metatomic path (provides the NEEDED shared libs at runtime):
+    pip install 'rgpot[metatomic]'
+    # equivalent:
+    # pip install torch metatomic-torch metatensor-torch metatensor-core vesin
+
+Multi-ABI engines and torch floor
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Engines live in the wheel as:
+
+::
+
+    rgpot/lib/torch-X.Y/libmetatomic_engine.so
+
+At import time, ``rgpot.default_metatomic_engine_path()`` picks the directory that
+matches the installed ``torch`` major (same multi-ABI idea as metatomic-torch).
+
+.. table::
+
+    +---------------+------------------------------------+
+    | Torch major   | Bundled engine (typical wheel)     |
+    +===============+====================================+
+    | 2.7 and newer | Supported (wheels ship 2.7–2.13)   |
+    +---------------+------------------------------------+
+    | 2.6 and older | Not supported for Metatomic dlopen |
+    +---------------+------------------------------------+
+
+Optional dependency pins match the floor (``torch>=2.7``).
+List what the installed wheel actually contains:
+
+.. code:: python
+
+    import rgpot
+    print(rgpot.__version__)
+    print(rgpot.available_metatomic_engine_abis())
+    print(rgpot.default_metatomic_engine_path())
+
+Minimal LJ example
+~~~~~~~~~~~~~~~~~~
+
+.. code:: python
+
+    import numpy as np
+    import rgpot
+
+    pos = np.ascontiguousarray([[0.0, 0.0, 0.0], [1.1, 0.0, 0.0]], dtype=np.float64)
+    types = np.ascontiguousarray([1, 1], dtype=np.int32)
+    box = np.ascontiguousarray(np.eye(3) * 10.0, dtype=np.float64)
+    energy, forces, virial = rgpot.evaluate_lj(pos, types, box)
+    print(energy, forces.shape)
+
+Metatomic dlopen
+~~~~~~~~~~~~~~~~
+
+.. code:: python
+
+    import numpy as np
+    import rgpot
+
+    # torch must be importable first so the engine's DT_NEEDED libs resolve
+    # to the same process image.
+    energy, forces, variance = rgpot.evaluate_metatomic(
+        positions,   # (N, 3) float64 C-contiguous
+        atom_types,  # (N,) int32
+        box,         # (3, 3) float64
+        model_path="model.pt",
+        # engine_path=...  optional override; default uses torch-X.Y picker
+        device="cpu",
+    )
+
+Override the engine with ``RGPOT_METATOMIC_ENGINE`` / ``METATOMIC_ENGINE`` if needed.
+
+Related
+~~~~~~~
+
+- In-tree C++ ``MetatomicPot`` (Meson ``-Dwith_metatomic=true``):
+  :doc:`embedding` and :doc:`../reference/architecture`
+- RPC server path remains ``potserv``; this page is the pip product only

@@ -2,7 +2,7 @@
 <html lang="en" data-accent-color="teal" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>class rgpot::XTBPot - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="template class rgpot::registry" href="class_rgpot_registry.html" /><link rel="prev" title="class rgpot::TBLitePot" href="class_rgpot_TBLitePot.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>class rgpot::XTBPot - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="template class rgpot::registry" href="class_rgpot_registry.html" /><link rel="prev" title="class rgpot::XTBDlopen" href="class_rgpot_XTBDlopen.html" />
       <link rel="canonical" href="https://rgpot.rgoswami.me/api/class_rgpot_XTBPot.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
@@ -94,6 +94,7 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">How-To Guides</span></p>
 <ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/pip-python.html">Python package (PyPI)</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/embedding.html">Embedding as a Subproject</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/integration.html">External Integration Guide</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eindir-anneal.html">rgpot Potentials as eindir Objectives</a></li>
@@ -132,21 +133,26 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_details.html">namespace rgpot::details</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_types.html">namespace rgpot::types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_units.html">namespace rgpot::units</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_vesin_compat.html">namespace rgpot::vesin_compat</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_GFNMethod.html">enum rgpot::GFNMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
+<li class="toctree-l4"><a class="reference internal" href="enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_XTBConfig.html">struct rgpot::XTBConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_XTBDlopenConfig.html">struct rgpot::XTBDlopenConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_CPMDPot.html">class rgpot::CPMDPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_CuH2Pot.html">class rgpot::CuH2Pot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_DynLib.html">class rgpot::DynLib</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="class_rgpot_MetatomicDlopen.html">class rgpot::MetatomicDlopen</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_MetatomicPot.html">class rgpot::MetatomicPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_NWChemPot.html">class rgpot::NWChemPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_PotentialBase.html">class rgpot::PotentialBase</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_TBLitePot.html">class rgpot::TBLitePot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="class_rgpot_XTBDlopen.html">class rgpot::XTBDlopen</a></li>
 <li class="toctree-l4 current"><a class="current reference internal" href="#">class rgpot::XTBPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_registry.html">template class rgpot::registry</a></li>
 </ul>
@@ -155,6 +161,15 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-3.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-4.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-5.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-6.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_std.html">namespace std</a><ul class="simple">
@@ -171,6 +186,18 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="struct_NWChemCResult.html">struct NWChemCResult</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_RgpotMtaConfig.html">struct RgpotMtaConfig</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_RgpotMtaPot.html">struct RgpotMtaPot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_RgpotXtbConfig.html">struct RgpotXtbConfig</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_RgpotXtbPot.html">struct RgpotXtbPot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
@@ -334,21 +361,25 @@ data-aria-dark="Switch to auto color mode">
 <span id="doxid-classrgpot-1-1-x-t-b-pot"></span><span id="index-0"></span><h1>class rgpot::XTBPot<a class="headerlink" href="#class-rgpot-xtbpot" title="Link to this heading">¶</a></h1>
 <div class="toctree-wrapper compound">
 </div>
+<p>Linked GFN-xTB pot (NEEDED libxtb).</p>
+<p>libxtb exposes a stable <strong>ISO_C_BINDING</strong> C API (<code class="docutils literal notranslate"><span class="pre">xtb.h</span></code>): opaque <code class="docutils literal notranslate"><span class="pre">xtb_TEnvironment</span></code> / <code class="docutils literal notranslate"><span class="pre">xtb_TCalculator</span></code> / <code class="docutils literal notranslate"><span class="pre">xtb_TMolecule</span></code> / <code class="docutils literal notranslate"><span class="pre">xtb_TResults</span></code> handles with explicit create/update/destroy. We test and use that C contract—not free-form Fortran ABI. Each <code class="docutils literal notranslate"><span class="pre">XTBPot</span></code> owns its handles; first force builds the molecule, later forces call <code class="docutils literal notranslate"><span class="pre">xtb_updateMolecule</span></code>. <code class="docutils literal notranslate"><span class="pre">xtb_releaseOutput</span></code> is called on create (library recommendation for multi-env processes). Do not share one instance across threads; distinct instances may be used from different threads if the loaded libxtb build is reentrant for independent handle sets.</p>
 <div class="doxyrest-overview-code-block highlight">
-<pre><span data-line="1"><span class="k">class</span> <span class="nl">XTBPot</span><span class="p">:</span> <span class="k">public</span> <span class="n">rgpot</span><span class="o">::</span><span class="n">Potential</span><span class="o">&lt;</span> <span class="n">XTBPot</span> <span class="o">&gt;</span> <span class="p">{</span></span>
-<span data-line="2"><span class="k">public</span><span class="o">:</span></span>
-<span data-line="3">    <span class="c1">// construction</span></span>
-<span data-line="4"> </span>
-<span data-line="5">    <span class="doxyrest-code-target target" id="doxid-classrgpot_1_1_x_t_b_pot_1ababa2830f4d57f9190f51c8817679df2"></span><span class="n">XTBPot</span><span class="p">();</span></span>
-<span data-line="6">    <span class="doxyrest-code-target target" id="doxid-classrgpot_1_1_x_t_b_pot_1a6119c2db84b7aeb72243848e9efef56a"></span><span class="n">XTBPot</span><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_XTBConfig.html#doxid-structrgpot-1-1-x-t-b-config"><span class="std std-ref">XTBConfig</span></a><span class="o">&amp;</span> <span class="n">config</span><span class="p">);</span></span>
-<span data-line="7">    <span class="doxyrest-code-target target" id="doxid-classrgpot_1_1_x_t_b_pot_1aeec957d00d941752a088569ffad28bef"></span><span class="n">XTBPot</span><span class="p">(</span><span class="k">const</span> <span class="n">XTBPot</span><span class="o">&amp;</span><span class="p">);</span></span>
-<span data-line="8">    <span class="doxyrest-code-target target" id="doxid-classrgpot_1_1_x_t_b_pot_1a05be75abec29b5d95cc75a79ee6e0863"></span><span class="o">~</span><span class="n">XTBPot</span><span class="p">();</span></span>
-<span data-line="9"> </span>
-<span data-line="10">    <span class="c1">// methods</span></span>
+<pre><span data-line="1"><span class="cp">#include</span> <span class="cpf">&lt;XTBPot.hpp&gt;</span></span>
+<span data-line="2"> </span>
+<span data-line="3"><span class="k">class</span> <span class="nl">XTBPot</span><span class="p">:</span> <span class="k">public</span> <span class="n">rgpot</span><span class="o">::</span><span class="n">Potential</span><span class="o">&lt;</span> <span class="n">XTBPot</span> <span class="o">&gt;</span> <span class="p">{</span></span>
+<span data-line="4"><span class="k">public</span><span class="o">:</span></span>
+<span data-line="5">    <span class="c1">// construction</span></span>
+<span data-line="6"> </span>
+<span data-line="7">    <span class="doxyrest-code-target target" id="doxid-classrgpot_1_1_x_t_b_pot_1ababa2830f4d57f9190f51c8817679df2"></span><span class="n">XTBPot</span><span class="p">();</span></span>
+<span data-line="8">    <span class="doxyrest-code-target target" id="doxid-classrgpot_1_1_x_t_b_pot_1a6119c2db84b7aeb72243848e9efef56a"></span><span class="n">XTBPot</span><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_XTBConfig.html#doxid-structrgpot-1-1-x-t-b-config"><span class="std std-ref">XTBConfig</span></a><span class="o">&amp;</span> <span class="n">config</span><span class="p">);</span></span>
+<span data-line="9">    <span class="doxyrest-code-target target" id="doxid-classrgpot_1_1_x_t_b_pot_1aeec957d00d941752a088569ffad28bef"></span><span class="n">XTBPot</span><span class="p">(</span><span class="k">const</span> <span class="n">XTBPot</span><span class="o">&amp;</span><span class="p">);</span></span>
+<span data-line="10">    <span class="doxyrest-code-target target" id="doxid-classrgpot_1_1_x_t_b_pot_1a05be75abec29b5d95cc75a79ee6e0863"></span><span class="o">~</span><span class="n">XTBPot</span><span class="p">();</span></span>
 <span data-line="11"> </span>
-<span data-line="12">    <span class="n">XTBPot</span><span class="o">&amp;</span> <span class="doxyrest-code-target target" id="doxid-classrgpot_1_1_x_t_b_pot_1afe6d5ae3b6cae4e0e2537039df0c7dce"></span><span class="k">operator</span><span class="o">=</span><span class="p">(</span><span class="k">const</span> <span class="n">XTBPot</span><span class="o">&amp;</span><span class="p">);</span></span>
-<span data-line="13">    <span class="kt">void</span> <span class="doxyrest-code-target target" id="doxid-classrgpot_1_1_x_t_b_pot_1a7180249bbc61a142c0b35b886ed5da52"></span><span class="n">forceImpl</span><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceInput.html#doxid-structrgpot-1-1-force-input"><span class="std std-ref">ForceInput</span></a><span class="o">&amp;</span> <span class="n">in</span><span class="p">,</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceOut.html#doxid-structrgpot-1-1-force-out"><span class="std std-ref">ForceOut</span></a><span class="o">*</span> <span class="n">out</span><span class="p">)</span> <span class="k">const</span><span class="p">;</span></span>
-<span data-line="14"><span class="p">};</span></span>
+<span data-line="12">    <span class="c1">// methods</span></span>
+<span data-line="13"> </span>
+<span data-line="14">    <span class="n">XTBPot</span><span class="o">&amp;</span> <span class="doxyrest-code-target target" id="doxid-classrgpot_1_1_x_t_b_pot_1afe6d5ae3b6cae4e0e2537039df0c7dce"></span><span class="k">operator</span><span class="o">=</span><span class="p">(</span><span class="k">const</span> <span class="n">XTBPot</span><span class="o">&amp;</span><span class="p">);</span></span>
+<span data-line="15">    <span class="kt">void</span> <span class="doxyrest-code-target target" id="doxid-classrgpot_1_1_x_t_b_pot_1a7180249bbc61a142c0b35b886ed5da52"></span><span class="n">forceImpl</span><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceInput.html#doxid-structrgpot-1-1-force-input"><span class="std std-ref">ForceInput</span></a><span class="o">&amp;</span> <span class="n">in</span><span class="p">,</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceOut.html#doxid-structrgpot-1-1-force-out"><span class="std std-ref">ForceOut</span></a><span class="o">*</span> <span class="n">out</span><span class="p">)</span> <span class="k">const</span><span class="p">;</span></span>
+<span data-line="16"><span class="p">};</span></span>
 </pre></div>
 </section>
 
@@ -358,10 +389,10 @@ data-aria-dark="Switch to auto color mode">
   </svg>
   <span>Back to top</span>
 </button><div class="navigation flex print:hidden"><div class="navigation-prev">
-    <a href="class_rgpot_TBLitePot.html">
+    <a href="class_rgpot_XTBDlopen.html">
       <i class="i-lucide chevron-left"></i>
       <div class="page-info">
-        <span>Previous</span><div class="title">class rgpot::TBLitePot</div></div>
+        <span>Previous</span><div class="title">class rgpot::XTBDlopen</div></div>
     </a>
   </div><div class="navigation-next">
     <a href="class_rgpot_registry.html">

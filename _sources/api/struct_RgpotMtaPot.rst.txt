@@ -1,0 +1,21 @@
+.. index:: pair: struct; RgpotMtaPot
+.. _doxid-struct_rgpot_mta_pot:
+
+struct RgpotMtaPot
+==================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct RgpotMtaPot {
+		// fields
+	
+		std::unique_ptr<:ref:`rgpot::MetatomicPot<doxid-classrgpot_1_1_metatomic_pot>`> :target:`impl<doxid-struct_rgpot_mta_pot_1a3fceda5f7c4ab9e72bf6650036d975cd>`;
+	};

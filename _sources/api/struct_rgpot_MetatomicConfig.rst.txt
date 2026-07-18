@@ -7,6 +7,9 @@ struct rgpot::MetatomicConfig
 .. toctree::
 	:hidden:
 
+Overview
+~~~~~~~~
+
 
 
 
@@ -24,4 +27,29 @@ struct rgpot::MetatomicConfig
 		bool :target:`check_consistency<doxid-structrgpot_1_1_metatomic_config_1acb85f95ca02c1cd78efd77f2c67dd900>` = false;
 		double :target:`uncertainty_threshold<doxid-structrgpot_1_1_metatomic_config_1a0c6f348fa3e61e83e62a82ba09830fa4>` = -1.0;
 		std::string :target:`dtype_override<doxid-structrgpot_1_1_metatomic_config_1aecc6abe553023e1cd550ea78ecd65a03>`;
+		bool :target:`random_rotation<doxid-structrgpot_1_1_metatomic_config_1adf966335c913d03f8532e884ffb52e9d>` = false;
+		long :target:`n_symmetry_rotations<doxid-structrgpot_1_1_metatomic_config_1a50fd677af7c80f5b1878cf8b9708f746>` = 0;
+		bool :target:`so3_probe_scatter<doxid-structrgpot_1_1_metatomic_config_1a85f3588b5538a741e4901a837117e355>` = false;
+		TorchDeterminismPolicy :target:`torch_determinism<doxid-structrgpot_1_1_metatomic_config_1a5abb79bcbeb0bef2e1f1726cf1da8cdb>` = TorchDeterminismPolicy::Fast;
+		std::string :ref:`engine_path<doxid-structrgpot_1_1_metatomic_config_1a583641dcd773db985882bb1d51942920>`;
 	};
+.. _details-structrgpot_1_1_metatomic_config:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Fields
+------
+
+.. index:: pair: variable; engine_path
+.. _doxid-structrgpot_1_1_metatomic_config_1a583641dcd773db985882bb1d51942920:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::string engine_path
+
+Optional explicit path to libmetatomic_engine.so (dlopen path).
+

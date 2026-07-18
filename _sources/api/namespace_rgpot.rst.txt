@@ -12,21 +12,26 @@ namespace rgpot
 	namespace_rgpot_details.rst
 	namespace_rgpot_types.rst
 	namespace_rgpot_units.rst
+	namespace_rgpot_vesin_compat.rst
 	enum_rgpot_GFNMethod.rst
 	enum_rgpot_TBLiteMethod.rst
+	enum_rgpot_TorchDeterminismPolicy.rst
 	struct_rgpot_ForceInput.rst
 	struct_rgpot_ForceOut.rst
 	struct_rgpot_MetatomicConfig.rst
 	struct_rgpot_TBLiteConfig.rst
 	struct_rgpot_XTBConfig.rst
+	struct_rgpot_XTBDlopenConfig.rst
 	class_rgpot_CPMDPot.rst
 	class_rgpot_CuH2Pot.rst
 	class_rgpot_DynLib.rst
 	class_rgpot_LJPot.rst
+	class_rgpot_MetatomicDlopen.rst
 	class_rgpot_MetatomicPot.rst
 	class_rgpot_NWChemPot.rst
 	class_rgpot_PotentialBase.rst
 	class_rgpot_TBLitePot.rst
+	class_rgpot_XTBDlopen.rst
 	class_rgpot_XTBPot.rst
 	class_rgpot_registry.rst
 
@@ -53,11 +58,13 @@ Prefix-parameterized loader for the minimum potential ABI profile. :ref:`More...
 			namespace :ref:`rgpot::types::adapt::eigen<doxid-namespacergpot_1_1types_1_1adapt_1_1eigen>`;
 			namespace :ref:`rgpot::types::adapt::xtensor<doxid-namespacergpot_1_1types_1_1adapt_1_1xtensor>`;
 	namespace :ref:`rgpot::units<doxid-namespacergpot_1_1units>`;
+	namespace :ref:`rgpot::vesin_compat<doxid-namespacergpot_1_1vesin__compat>`;
 
 	// enums
 
 	enum :ref:`GFNMethod<doxid-namespacergpot_1aae57e5e203e816b45fcd9d34745282ec>`;
 	enum :ref:`TBLiteMethod<doxid-namespacergpot_1a2f909ccdc3eed1e7f9217e9fbbfa85d8>`;
+	enum :ref:`TorchDeterminismPolicy<doxid-namespacergpot_1a1d14edb973a1e16767ba17002b71ae35>`;
 
 	// structs
 
@@ -66,6 +73,7 @@ Prefix-parameterized loader for the minimum potential ABI profile. :ref:`More...
 	struct :ref:`MetatomicConfig<doxid-structrgpot_1_1_metatomic_config>`;
 	struct :ref:`TBLiteConfig<doxid-structrgpot_1_1_t_b_lite_config>`;
 	struct :ref:`XTBConfig<doxid-structrgpot_1_1_x_t_b_config>`;
+	struct :ref:`XTBDlopenConfig<doxid-structrgpot_1_1_x_t_b_dlopen_config>`;
 
 	// classes
 
@@ -76,12 +84,14 @@ Prefix-parameterized loader for the minimum potential ABI profile. :ref:`More...
 	class :ref:`Error<doxid-classrgpot_1_1_error>`;
 	class :ref:`InputSpec<doxid-classrgpot_1_1_input_spec>`;
 	class :ref:`LJPot<doxid-classrgpot_1_1_l_j_pot>`;
+	class :ref:`MetatomicDlopen<doxid-classrgpot_1_1_metatomic_dlopen>`;
 	class :ref:`MetatomicPot<doxid-classrgpot_1_1_metatomic_pot>`;
 	class :ref:`NWChemPot<doxid-classrgpot_1_1_n_w_chem_pot>`;
 	class :ref:`PotentialBase<doxid-classrgpot_1_1_potential_base>`;
 	class :ref:`PotentialHandle<doxid-classrgpot_1_1_potential_handle>`;
 	class :ref:`RpcClient<doxid-classrgpot_1_1_rpc_client>`;
 	class :ref:`TBLitePot<doxid-classrgpot_1_1_t_b_lite_pot>`;
+	class :ref:`XTBDlopen<doxid-classrgpot_1_1_x_t_b_dlopen>`;
 	class :ref:`XTBPot<doxid-classrgpot_1_1_x_t_b_pot>`;
 
 	template <typename T>
@@ -99,6 +109,7 @@ Prefix-parameterized loader for the minimum potential ABI profile. :ref:`More...
 
 	// global functions
 
+	void :target:`apply_torch_determinism_policy<doxid-namespacergpot_1ac9c11e28c61a5763d13471a25a96bf5e>`(TorchDeterminismPolicy policy);
 	EngineBundle& :target:`probe_engine_bundle<doxid-namespacergpot_1abaf5e074f00973f6696f820b40b3dd78>`();
 	void :ref:`zeroForceOut<doxid-namespacergpot_1aa8cb0fd12ead45cd35dd0ea5c3b6fb7a>`(const size_t& nAtoms, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* efvd);
 	void :ref:`checkParams<doxid-namespacergpot_1a7a27dd46fdc6dc15479964efd8c8f088>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& params);

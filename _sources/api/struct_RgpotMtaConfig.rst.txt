@@ -1,0 +1,55 @@
+.. index:: pair: struct; RgpotMtaConfig
+.. _doxid-struct_rgpot_mta_config:
+
+struct RgpotMtaConfig
+=====================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Flat config (subset of MetatomicConfig). :ref:`More...<details-struct_rgpot_mta_config>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <metatomic_c_abi.h>
+	
+	struct RgpotMtaConfig {
+		// fields
+	
+		const char* :target:`model_path<doxid-struct_rgpot_mta_config_1a81e02b978716417d5981a61380522030>`;
+		const char* :target:`device<doxid-struct_rgpot_mta_config_1a67dc7e1e46a7139ed6f44f23dbff7bc6>`;
+		const char* :target:`length_unit<doxid-struct_rgpot_mta_config_1aebb663fbb08d22b80b24bbe2b9ea0a55>`;
+		const char* :target:`extensions_directory<doxid-struct_rgpot_mta_config_1a47825f9f05548e0aa43356cff625c0ad>`;
+		int :target:`check_consistency<doxid-struct_rgpot_mta_config_1ae190acb7c5a3f44395faf4a7f34b555b>`;
+		double :target:`uncertainty_threshold<doxid-struct_rgpot_mta_config_1a47adfcae3492f6a299b134dfa0d27953>`;
+		const char* :target:`dtype_override<doxid-struct_rgpot_mta_config_1a7467b40b72325edb7b79ec7fd6eab113>`;
+		int :target:`random_rotation<doxid-struct_rgpot_mta_config_1a3071b0a47501fd90685100596cf9f736>`;
+		long :target:`n_symmetry_rotations<doxid-struct_rgpot_mta_config_1a3206aaa60265e81f27c7f57d1b7a446c>`;
+		int :target:`so3_probe_scatter<doxid-struct_rgpot_mta_config_1a902780ac5d83310702c25e93029bbe17>`;
+		int :ref:`torch_determinism_strict<doxid-struct_rgpot_mta_config_1af567f59e7015736c36a2b187a94453b8>`;
+	};
+.. _details-struct_rgpot_mta_config:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Flat config (subset of MetatomicConfig). NULL strings => empty/default.
+
+Fields
+------
+
+.. index:: pair: variable; torch_determinism_strict
+.. _doxid-struct_rgpot_mta_config_1af567f59e7015736c36a2b187a94453b8:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int torch_determinism_strict
+
+0=Fast, 1=Strict
+

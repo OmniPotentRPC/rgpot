@@ -1,0 +1,46 @@
+.. index:: pair: namespace; rgpot::vesin_compat
+.. _doxid-namespacergpot_1_1vesin__compat:
+
+namespace rgpot::vesin_compat
+=============================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_vesin_compat_has_algorithm_member.rst
+	struct_rgpot_vesin_compat_has_algorithm_member-2.rst
+	struct_rgpot_vesin_compat_is_device_struct.rst
+	struct_rgpot_vesin_compat_is_device_struct-2.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace vesin_compat {
+
+	// structs
+
+	template <typename Options, typename = void>
+	struct :ref:`has_algorithm_member<doxid-structrgpot_1_1vesin__compat_1_1has__algorithm__member>`;
+
+	template <typename Options>
+	struct :ref:`has_algorithm_member<Options, std::void_t<decltype(std::declval<Options>().algorithm)>><doxid-structrgpot_1_1vesin__compat_1_1has__algorithm__member_3_01_options_00_01std_1_1void__t_3_01decl1d9e34284fec03e09f4121715a01b98c>`;
+
+	template <typename Device, typename = void>
+	struct :ref:`is_device_struct<doxid-structrgpot_1_1vesin__compat_1_1is__device__struct>`;
+
+	template <typename Device>
+	struct :ref:`is_device_struct<Device, std::void_t<decltype(std::declval<Device>().type), decltype(std::declval<Device>().device_id)>><doxid-structrgpot_1_1vesin__compat_1_1is__device__struct_3_01_device_00_01std_1_1void__t_3_01decltype_4a4b37a1083f071d6d5233681cb59054>`;
+
+	// global functions
+
+	template <typename Device = VesinDevice>
+	Device :target:`make_cpu_device<doxid-vesin__compat_8hpp_1a505bd80215d2c80d49bd3730c3d42767>`();
+
+	template <typename Options>
+	void :target:`set_algorithm_default<doxid-vesin__compat_8hpp_1a1ad4ce79d05eabf592e8a9fa420076ad>`(Options& options);
+
+	} // namespace vesin_compat

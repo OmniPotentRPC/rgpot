@@ -88,16 +88,9 @@ For runtime-loaded quantum engines, pass the matching selector and engine path:
 Next steps
 ~~~~~~~~~~
 
-- `Architecture overview <../reference/architecture.rst>`_ for the layer
-
-diagram and design rationale
-
-- `Integration guide <../howto/integration.rst>`_ for embedding rgpot into
-
-external projects (e.g. eOn)
-
-- `Embedding as a subproject <../howto/embedding.rst>`_ for using rgpot as a
-
-meson/cmake dependency
-
-- `Changelog <../changelog.rst>`_ for release history
+- :doc:`../howto/pip-python` — ``pip install rgpot`` (LJ + Metatomic multi-ABI
+  engines, torch 2.7+)
+- :doc:`../reference/architecture` — architecture overview
+- :doc:`../howto/integration` — embedding into external projects
+- :doc:`../howto/embedding` — meson/cmake subproject
+- :doc:`../changelog` — release history

@@ -1,0 +1,21 @@
+.. index:: pair: struct; rgpot::vesin_compat::is_device_struct<Device, std::void_t<decltype(std::declval<Device>().type), decltype(std::declval<Device>().device_id)>>
+.. _doxid-structrgpot_1_1vesin__compat_1_1is__device__struct_3_01_device_00_01std_1_1void__t_3_01decltype_4a4b37a1083f071d6d5233681cb59054:
+
+template struct rgpot::vesin_compat::is_device_struct<Device, std::void_t<decltype(std::declval<Device>().type), decltype(std::declval<Device>().device_id)>>
+=============================================================================================================================================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	template <typename Device>
+	struct is_device_struct<Device, std::void_t<decltype(std::declval<Device>().type), decltype(std::declval<Device>().device_id)>>:
+	    public std::false_type,
+	    public std::true_type {
+	};

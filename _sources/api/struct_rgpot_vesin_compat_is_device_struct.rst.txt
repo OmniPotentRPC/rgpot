@@ -1,0 +1,19 @@
+.. index:: pair: struct; rgpot::vesin_compat::is_device_struct
+.. _doxid-structrgpot_1_1vesin__compat_1_1is__device__struct:
+
+template struct rgpot::vesin_compat::is_device_struct
+=====================================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	template <typename Device, typename = void>
+	struct is_device_struct: public std::false_type {
+	};

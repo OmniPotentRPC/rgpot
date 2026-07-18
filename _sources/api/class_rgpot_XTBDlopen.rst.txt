@@ -1,0 +1,55 @@
+.. index:: pair: class; rgpot::XTBDlopen
+.. _doxid-classrgpot_1_1_x_t_b_dlopen:
+
+class rgpot::XTBDlopen
+======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class XTBDlopen {
+	public:
+		// construction
+	
+		:target:`XTBDlopen<doxid-classrgpot_1_1_x_t_b_dlopen_1a6c06df99f228b1fc95c3f9dfb240c4d4>`(const :ref:`XTBDlopenConfig<doxid-structrgpot_1_1_x_t_b_dlopen_config>`& config);
+		:target:`XTBDlopen<doxid-classrgpot_1_1_x_t_b_dlopen_1a519eec3ca0eabe91c2401a7e5c37e3ac>`(const :ref:`XTBConfig<doxid-structrgpot_1_1_x_t_b_config>`& xtb = :ref:`XTBConfig<doxid-structrgpot_1_1_x_t_b_config>`{});
+		:target:`XTBDlopen<doxid-classrgpot_1_1_x_t_b_dlopen_1a5f204e65ba4826617f1acefd242f0304>`(const XTBDlopen&);
+		:target:`~XTBDlopen<doxid-classrgpot_1_1_x_t_b_dlopen_1a069b6ce841e67576b49c802cf263c985>`();
+
+		// methods
+	
+		XTBDlopen& :target:`operator=<doxid-classrgpot_1_1_x_t_b_dlopen_1a28d2a2800ca6f6dea8b737fe3dd495a9>`(const XTBDlopen&);
+		bool :target:`available<doxid-classrgpot_1_1_x_t_b_dlopen_1a53a15363c952bc34c914499be1eabffa>`() const;
+		void :target:`forceImpl<doxid-classrgpot_1_1_x_t_b_dlopen_1a4cca38529aac66d52ec52b3a936c69c9>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		std::tuple<double, :ref:`types::AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`, double> :ref:`operator()<doxid-classrgpot_1_1_x_t_b_dlopen_1a8e36276d08cec60655c0b0a41c936012>`(const :ref:`types::AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& positions, const std::vector<int>& atmtypes, const std::array<std::array<double, 3>, 3>& box) const;
+	};
+.. _details-classrgpot_1_1_x_t_b_dlopen:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Methods
+-------
+
+.. index:: pair: function; operator()
+.. _doxid-classrgpot_1_1_x_t_b_dlopen_1a8e36276d08cec60655c0b0a41c936012:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::tuple<double, :ref:`types::AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`, double> operator()(const :ref:`types::AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& positions, const std::vector<int>& atmtypes, const std::array<std::array<double, 3>, 3>& box) const
+
+Convenience operator matching Potential interface shape.
+

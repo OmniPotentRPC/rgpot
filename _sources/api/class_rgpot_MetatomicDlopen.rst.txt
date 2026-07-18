@@ -1,0 +1,31 @@
+.. index:: pair: class; rgpot::MetatomicDlopen
+.. _doxid-classrgpot_1_1_metatomic_dlopen:
+
+class rgpot::MetatomicDlopen
+============================
+
+.. toctree::
+	:hidden:
+
+Slow path: no torch headers; loads libmetatomic_engine.so at runtime. Search: config.engine_path, RGPOT_METATOMIC_ENGINE, METATOMIC_ENGINE, bare libmetatomic_engine.so on LD_LIBRARY_PATH / EON_POTENTIALS_PATH.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <MetatomicDlopen.hpp>
+	
+	class MetatomicDlopen {
+	public:
+		// construction
+	
+		:target:`MetatomicDlopen<doxid-classrgpot_1_1_metatomic_dlopen_1aeed5ede2d65b7fccded18203165ca765>`(const :ref:`MetatomicConfig<doxid-structrgpot_1_1_metatomic_config>`& config);
+		:target:`MetatomicDlopen<doxid-classrgpot_1_1_metatomic_dlopen_1a974e8205f9bb8fbbd33763fd2ade4910>`(const MetatomicDlopen&);
+		:target:`~MetatomicDlopen<doxid-classrgpot_1_1_metatomic_dlopen_1a0409802648c9158e70ec48b173fceb4d>`();
+
+		// methods
+	
+		MetatomicDlopen& :target:`operator=<doxid-classrgpot_1_1_metatomic_dlopen_1a53ec28ca585aa9ade8cc38177588605b>`(const MetatomicDlopen&);
+		bool :target:`available<doxid-classrgpot_1_1_metatomic_dlopen_1ac8c503a6a69bca05f557076144861c02>`() const;
+		void :target:`forceImpl<doxid-classrgpot_1_1_metatomic_dlopen_1aeb63eee5db8bcef881566b5167b96564>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+	};

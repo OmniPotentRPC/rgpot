@@ -1,0 +1,21 @@
+.. index:: pair: struct; RgpotXtbPot
+.. _doxid-struct_rgpot_xtb_pot:
+
+struct RgpotXtbPot
+==================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct RgpotXtbPot {
+		// fields
+	
+		std::unique_ptr<:ref:`rgpot::XTBPot<doxid-classrgpot_1_1_x_t_b_pot>`> :target:`pot<doxid-struct_rgpot_xtb_pot_1a4ae348a702a2a58d201786c01a54df56>`;
+	};

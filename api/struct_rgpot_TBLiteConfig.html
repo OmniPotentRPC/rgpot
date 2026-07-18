@@ -94,6 +94,7 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">How-To Guides</span></p>
 <ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/pip-python.html">Python package (PyPI)</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/embedding.html">Embedding as a Subproject</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/integration.html">External Integration Guide</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eindir-anneal.html">rgpot Potentials as eindir Objectives</a></li>
@@ -132,21 +133,26 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_details.html">namespace rgpot::details</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_types.html">namespace rgpot::types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_units.html">namespace rgpot::units</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_vesin_compat.html">namespace rgpot::vesin_compat</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_GFNMethod.html">enum rgpot::GFNMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
+<li class="toctree-l4"><a class="reference internal" href="enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
 <li class="toctree-l4 current"><a class="current reference internal" href="#">struct rgpot::TBLiteConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_XTBConfig.html">struct rgpot::XTBConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_XTBDlopenConfig.html">struct rgpot::XTBDlopenConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_CPMDPot.html">class rgpot::CPMDPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_CuH2Pot.html">class rgpot::CuH2Pot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_DynLib.html">class rgpot::DynLib</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="class_rgpot_MetatomicDlopen.html">class rgpot::MetatomicDlopen</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_MetatomicPot.html">class rgpot::MetatomicPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_NWChemPot.html">class rgpot::NWChemPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_PotentialBase.html">class rgpot::PotentialBase</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_TBLitePot.html">class rgpot::TBLitePot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="class_rgpot_XTBDlopen.html">class rgpot::XTBDlopen</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_XTBPot.html">class rgpot::XTBPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_registry.html">template class rgpot::registry</a></li>
 </ul>
@@ -155,6 +161,15 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-3.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-4.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-5.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-6.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_std.html">namespace std</a><ul class="simple">
@@ -171,6 +186,18 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="struct_NWChemCResult.html">struct NWChemCResult</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_RgpotMtaConfig.html">struct RgpotMtaConfig</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_RgpotMtaPot.html">struct RgpotMtaPot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_RgpotXtbConfig.html">struct RgpotXtbConfig</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_RgpotXtbPot.html">struct RgpotXtbPot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">

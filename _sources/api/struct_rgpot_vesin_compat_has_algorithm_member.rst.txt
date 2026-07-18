@@ -1,0 +1,19 @@
+.. index:: pair: struct; rgpot::vesin_compat::has_algorithm_member
+.. _doxid-structrgpot_1_1vesin__compat_1_1has__algorithm__member:
+
+template struct rgpot::vesin_compat::has_algorithm_member
+=========================================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	template <typename Options, typename = void>
+	struct has_algorithm_member: public std::false_type {
+	};

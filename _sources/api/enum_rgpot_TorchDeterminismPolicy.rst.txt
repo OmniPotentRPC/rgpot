@@ -1,0 +1,18 @@
+.. index:: pair: enum; TorchDeterminismPolicy
+.. _doxid-namespacergpot_1a1d14edb973a1e16767ba17002b71ae35:
+
+enum rgpot::TorchDeterminismPolicy
+==================================
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <MetatomicConfig.hpp>
+
+	enum TorchDeterminismPolicy {
+	    :target:`Fast<doxid-namespacergpot_1a1d14edb973a1e16767ba17002b71ae35ae16b5b7f26f54214445cbe38d72c2828>`   = 0,
+	    :target:`Strict<doxid-namespacergpot_1a1d14edb973a1e16767ba17002b71ae35a2e979835dd62324f5bfe217449ba4974>` = 1,
+	};
+

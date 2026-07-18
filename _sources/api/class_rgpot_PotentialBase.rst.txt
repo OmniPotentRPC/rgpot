@@ -27,7 +27,7 @@ Abstract base class for all potential energy surfaces. :ref:`More...<details-cla
 
 		// methods
 	
-		virtual std::pair<double, :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`> :ref:`operator()<doxid-classrgpot_1_1_potential_base_1a64c4a9352dae2abb8262aeeceef71efa>`(const :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& positions, const std::vector<int>& atmtypes, const std::array<std::array<double, 3>, 3>& box) = 0;
+		virtual std::tuple<double, :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`, double> :ref:`operator()<doxid-classrgpot_1_1_potential_base_1a9f382de265f24e19b1f3dd01f8f1f1dd>`(const :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& positions, const std::vector<int>& atmtypes, const std::array<std::array<double, 3>, 3>& box) = 0;
 		PotType :ref:`get_type<doxid-classrgpot_1_1_potential_base_1a4de79175b891b7ea98dedb310029f834>`() const;
 	};
 .. _details-classrgpot_1_1_potential_base:
@@ -74,12 +74,12 @@ Methods
 -------
 
 .. index:: pair: function; operator()
-.. _doxid-classrgpot_1_1_potential_base_1a64c4a9352dae2abb8262aeeceef71efa:
+.. _doxid-classrgpot_1_1_potential_base_1a9f382de265f24e19b1f3dd01f8f1f1dd:
 
 .. ref-code-block:: cpp
 	:class: doxyrest-title-code-block
 
-	virtual std::pair<double, :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`> operator()(const :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& positions, const std::vector<int>& atmtypes, const std::array<std::array<double, 3>, 3>& box) = 0
+	virtual std::tuple<double, :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`, double> operator()(const :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& positions, const std::vector<int>& atmtypes, const std::array<std::array<double, 3>, 3>& box) = 0
 
 Main interface for potential and force calculation.
 
@@ -109,7 +109,7 @@ Main interface for potential and force calculation.
 
 .. rubric:: Returns:
 
-A pair containing the energy and the force matrix.
+A pair containing the energy and the force matrix. Energy, forces, and optional uncertainty scale (eV). See derived Potential::operator() for variance semantics.
 
 .. index:: pair: function; get_type
 .. _doxid-classrgpot_1_1_potential_base_1a4de79175b891b7ea98dedb310029f834:

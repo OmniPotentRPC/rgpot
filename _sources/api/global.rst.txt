@@ -10,12 +10,19 @@ Global Namespace
 	namespace_rgpot.rst
 	namespace_rgpot-2.rst
 	namespace_rgpot-3.rst
+	namespace_rgpot-4.rst
+	namespace_rgpot-5.rst
+	namespace_rgpot-6.rst
 	namespace_std.rst
 	namespace_string_literals.rst
 	enum_CPMDCFeatureKind.rst
 	struct_CPMDCFeatureEntry.rst
 	struct_CPMDCResult.rst
 	struct_NWChemCResult.rst
+	struct_RgpotMtaConfig.rst
+	struct_RgpotMtaPot.rst
+	struct_RgpotXtbConfig.rst
+	struct_RgpotXtbPot.rst
 	class_AtomMatrix.rst
 	class_GenericPotImpl.rst
 	class_PotClient.rst
@@ -42,8 +49,12 @@ Overview
 				namespace :ref:`rgpot::types::adapt::eigen<doxid-namespacergpot_1_1types_1_1adapt_1_1eigen>`;
 				namespace :ref:`rgpot::types::adapt::xtensor<doxid-namespacergpot_1_1types_1_1adapt_1_1xtensor>`;
 		namespace :ref:`rgpot::units<doxid-namespacergpot_1_1units>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d166331164204151220333054351225362033006173021072>`;
+		namespace :ref:`rgpot::vesin_compat<doxid-namespacergpot_1_1vesin__compat>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d330074065165043016212166146146214025043016253057>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d307112313373357257323066107376333004137304370130>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d305002241363136067011226310027215036350216205241>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d166331164204151220333054351225362033006173021072>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d122207310312103133225144130321077133074162141334>`;
 	namespace :ref:`std<doxid-namespacestd>`;
 	namespace :ref:`string_literals<doxid-namespacestd_1_1string__literals>`;
 
@@ -53,10 +64,21 @@ Overview
 	typedef struct :ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>` :ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`;
 	typedef enum CPMDCFeatureKind :target:`CPMDCFeatureKind<doxid-cpmd__c__abi_8h_1ab8efa8b96095d9bcb86951f47cdf3ddd>`;
 	typedef struct CPMDCFeatureEntry :target:`CPMDCFeatureEntry<doxid-cpmd__c__abi_8h_1a78e933e2bdea5d5a752302a384a3137b>`;
+	typedef struct RgpotMtaPot :target:`RgpotMtaPot<doxid-metatomic__c__abi_8h_1a0b390572334b63f7e4a35cee4c75df64>`;
+	typedef struct RgpotMtaConfig :ref:`RgpotMtaConfig<doxid-metatomic__c__abi_8h_1a5f3ddc99188390e16bcefecd044cd132>`;
 	typedef struct NWChemCResult :ref:`NWChemCResult<doxid-nwchem__c__abi_8h_1a7ebd0cbe28327ac32f7726770f826961>`;
 	typedef struct PotClient :ref:`PotClient<doxid-pot__bridge_8h_1ad15494aa275bd98047b204d29533f6ba>`;
+	typedef struct RgpotXtbPot :target:`RgpotXtbPot<doxid-xtb__c__abi_8h_1a37b502b1326e503b40aced0b4726dffb>`;
+	typedef struct RgpotXtbConfig :target:`RgpotXtbConfig<doxid-xtb__c__abi_8h_1a1786d9f1df089ee1d5b41e1389567afe>`;
 
 	// enums
+
+	enum {
+	    :target:`RGPOT_XTB_METHOD_GFNFF<doxid-xtb__c__abi_8h_1aa4735a8aa62a590a523a141131a12db1a08d7c287ff5a1e4d66e1e91afa31a251>` = 0,
+	    :target:`RGPOT_XTB_METHOD_GFN0<doxid-xtb__c__abi_8h_1aa4735a8aa62a590a523a141131a12db1ad7612a0284242d4a93795ee24a14fa8d>`  = 1,
+	    :target:`RGPOT_XTB_METHOD_GFN1<doxid-xtb__c__abi_8h_1aa4735a8aa62a590a523a141131a12db1a2311c7e1404180d7eb1d8ef0c8249e2a>`  = 2,
+	    :target:`RGPOT_XTB_METHOD_GFN2<doxid-xtb__c__abi_8h_1aa4735a8aa62a590a523a141131a12db1ad259bae7d981be9a386a4a73e098b70f>`  = 3,
+	};
 
 	enum :ref:`CPMDCFeatureKind<doxid-cpmd__c__abi_8h_1af730055345a93286960ba9ef1a3f05b2>`;
 
@@ -65,6 +87,10 @@ Overview
 	struct :ref:`CPMDCFeatureEntry<doxid-struct_c_p_m_d_c_feature_entry>`;
 	struct :ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>`;
 	struct :ref:`NWChemCResult<doxid-struct_n_w_chem_c_result>`;
+	struct :ref:`RgpotMtaConfig<doxid-struct_rgpot_mta_config>`;
+	struct :ref:`RgpotMtaPot<doxid-struct_rgpot_mta_pot>`;
+	struct :ref:`RgpotXtbConfig<doxid-struct_rgpot_xtb_config>`;
+	struct :ref:`RgpotXtbPot<doxid-struct_rgpot_xtb_pot>`;
 
 	// classes
 
@@ -75,7 +101,25 @@ Overview
 	// global variables
 
 	static const :ref:`CPMDCFeatureEntry<doxid-struct_c_p_m_d_c_feature_entry>` :target:`g_features<doxid-cpmd__c__abi__stub_8c_1a9cf3ddf52a7a4d9d9c60222bd80ec58c>`[];
+	char* :target:`errbuf<doxid-metatomic__c__abi_8h_1a844ffb41af9cf83add741994874afb59>`;
+	char size_t :target:`errlen<doxid-metatomic__c__abi_8h_1a80768050917daae31ae1a45b422508fc>`;
+	long :target:`nAtoms<doxid-metatomic__c__abi_8h_1a20b20f2726e47e948b24c1565ce5aa14>`;
+	long const double* :target:`positions<doxid-metatomic__c__abi_8h_1a8436501526a309242e3fe7546e718f42>`;
+	long const double const int* :target:`atomicNrs<doxid-metatomic__c__abi_8h_1ade02cb4b724090387725b1cda6d08656>`;
+	long const double const int double* :target:`forces<doxid-metatomic__c__abi_8h_1a80f2f54fb4a6b7d518f8e4eba4f2a001>`;
+	long const double const int double double* :target:`energy<doxid-metatomic__c__abi_8h_1a1b6a00e3dc8a6c1560f95c3e4c529884>`;
+	long const double const int double double double* :target:`variance<doxid-metatomic__c__abi_8h_1ac7007adf191d5924b65f55f8d8d67006>`;
+	long const double const int double double double const double* :target:`box<doxid-metatomic__c__abi_8h_1a457eec3aafb3887047af8a00ed2c8593>`;
 	static const char* :target:`STUB_VERSION<doxid-nwchem__c__abi__stub_8c_1a8a786d4b9e35a342db493b2427841545>` = "nwchemc-stub/1.0.0";
+	char* :target:`errbuf<doxid-xtb__c__abi_8h_1a844ffb41af9cf83add741994874afb59>`;
+	char size_t :target:`errlen<doxid-xtb__c__abi_8h_1a80768050917daae31ae1a45b422508fc>`;
+	long :target:`nAtoms<doxid-xtb__c__abi_8h_1a20b20f2726e47e948b24c1565ce5aa14>`;
+	long const double* :target:`positions<doxid-xtb__c__abi_8h_1a8436501526a309242e3fe7546e718f42>`;
+	long const double const int* :target:`atomicNrs<doxid-xtb__c__abi_8h_1ade02cb4b724090387725b1cda6d08656>`;
+	long const double const int double* :target:`forces<doxid-xtb__c__abi_8h_1a80f2f54fb4a6b7d518f8e4eba4f2a001>`;
+	long const double const int double double* :target:`energy<doxid-xtb__c__abi_8h_1a1b6a00e3dc8a6c1560f95c3e4c529884>`;
+	long const double const int double double double* :target:`variance<doxid-xtb__c__abi_8h_1ac7007adf191d5924b65f55f8d8d67006>`;
+	long const double const int double double double const double* :target:`box<doxid-xtb__c__abi_8h_1a457eec3aafb3887047af8a00ed2c8593>`;
 
 	// global functions
 
@@ -121,6 +165,14 @@ Overview
 	const :ref:`CPMDCFeatureEntry<doxid-struct_c_p_m_d_c_feature_entry>`* :target:`cpmdc_feature_table<doxid-cpmd__c__abi__stub_8c_1ae40eb0e96927dc5f3feacc20c3869315>`(void);
 	const :ref:`CPMDCFeatureEntry<doxid-struct_c_p_m_d_c_feature_entry>`* :target:`cpmdc_feature_find<doxid-cpmd__c__abi__stub_8c_1a4d2414cdfa87d867cf1ab1e708dfb4ca>`(const char* feature_id);
 	void :ref:`c_force_eam<doxid-_cu_h2_pot_8hpp_1a79b876a461f808a0b8e5ac38ca629988>`(int* natms, int ndim, double* box, double* R, double* F, double* U);
+	:ref:`__attribute__<doxid-metatomic__c__abi_8h_1ab1c3edb5fb26c2406f212d203a3f76c0>`((visibility("default")));
+	static const char* :target:`nz<doxid-_metatomic_engine_abi_8cc_1a6560fd88de4ee3cb0ad11596138b42c7>`(const char* s);
+	static void :target:`set_err<doxid-_metatomic_engine_abi_8cc_1a3cbaa0d62282e2faf4f8f8267c065187>`(char* errbuf, size_t errlen, const char* msg);
+	int :target:`rgpot_mta_abi_version<doxid-_metatomic_engine_abi_8cc_1a70d8fad1263be239b81ec569f1f9fcc5>`(void);
+	int :target:`rgpot_mta_available<doxid-_metatomic_engine_abi_8cc_1ada2d2586cf0affa06065aa0e2908ea32>`(void);
+	:ref:`RgpotMtaPot<doxid-struct_rgpot_mta_pot>`* :target:`rgpot_mta_create<doxid-_metatomic_engine_abi_8cc_1ac2558a08d907c0164621c0c0c915ac14>`(const :ref:`RgpotMtaConfig<doxid-struct_rgpot_mta_config>`* cfg, char* errbuf, size_t errlen);
+	void :target:`rgpot_mta_destroy<doxid-_metatomic_engine_abi_8cc_1ac909ef1b3fb4639a073851edd1676e17>`(:ref:`RgpotMtaPot<doxid-struct_rgpot_mta_pot>`* pot);
+	int :target:`rgpot_mta_force<doxid-_metatomic_engine_abi_8cc_1a169ba9edd8ae10118ba8dc2fcb307f8b>`(:ref:`RgpotMtaPot<doxid-struct_rgpot_mta_pot>`* pot, long nAtoms, const double* positions, const int* atomicNrs, double* forces, double* energy, double* variance, const double* box);
 	int :ref:`nwchemc_set_params<doxid-nwchem__c__abi_8h_1a2b19e40d3fa84cd9c0c26d4e61ee1aec>`(const void* params_capnp, size_t params_capnp_size_bytes);
 	:ref:`NWChemCResult<doxid-struct_n_w_chem_c_result>` :ref:`nwchemc_energy_gradient<doxid-nwchem__c__abi_8h_1a9452e5aaf6c8e097d7797f3697fcc00d>`(int n_atoms, const double* positions_ang, const int* atomic_numbers, const void* params_capnp, size_t params_capnp_size_bytes, double* grad_h_bohr);
 	const char* :ref:`nwchemc_version<doxid-nwchem__c__abi_8h_1a90abe502c32b33e3bdd7f4415c7a3c6e>`(void);
@@ -138,10 +190,22 @@ Overview
 	int32_t :ref:`pot_calculate<doxid-pot__bridge_8h_1ab471aef52e0227fbb98588e8366ad646>`(:ref:`PotClient<doxid-struct_pot_client>`* client, int32_t natoms, const double* pos, const int32_t* atmnrs, const double* box, double* out_energy, double* out_forces);
 	const char* :ref:`pot_get_last_error<doxid-pot__bridge_8h_1a669a1a1ce89314ebbfec4c91438bd782>`(:ref:`PotClient<doxid-struct_pot_client>`* client);
 	int :ref:`main<doxid-server_8cpp_1a0ddf1224851353fc92bfbff6f499fa97>`(int argc, char* argv[]);
+	:ref:`__attribute__<doxid-xtb__c__abi_8h_1aed6dec1342c11226fbf6d9f0d23fc168>`((visibility("default")));
+	static rgpot::GFNMethod :target:`method_from_c<doxid-_x_t_b_engine_abi_8cc_1ae58142d5e4c55f2b690a5ca116db1df5>`(int m);
+	int :target:`rgpot_xtb_abi_version<doxid-_x_t_b_engine_abi_8cc_1a9c767ca43d4c49b5f2f65165b8990469>`(void);
+	int :target:`rgpot_xtb_available<doxid-_x_t_b_engine_abi_8cc_1a29c15cff90f198c7a405949ddcfde4db>`(void);
+	:ref:`RgpotXtbPot<doxid-struct_rgpot_xtb_pot>`* :target:`rgpot_xtb_create<doxid-_x_t_b_engine_abi_8cc_1ae236995756b357bc95dde5512632c1ff>`(const :ref:`RgpotXtbConfig<doxid-struct_rgpot_xtb_config>`* cfg, char* errbuf, size_t errlen);
+	void :target:`rgpot_xtb_destroy<doxid-_x_t_b_engine_abi_8cc_1ada1988d2a4fb508f956e17b49d5c597f>`(:ref:`RgpotXtbPot<doxid-struct_rgpot_xtb_pot>`* pot);
+	int :target:`rgpot_xtb_force<doxid-_x_t_b_engine_abi_8cc_1af8e626b83b9f7ec1dadfebf53a920d23>`(:ref:`RgpotXtbPot<doxid-struct_rgpot_xtb_pot>`* pot, long nAtoms, const double* positions, const int* atomicNrs, double* forces, double* energy, double* variance, const double* box);
 
 	// macros
 
 	#define :target:`CATCH_AND_REPORT<doxid-pot__bridge_8cc_1a933409e97453f39bfae6d29f0518b341>`(client, default_ret)
+	#define :target:`RGPOT_MTA_ABI_VERSION<doxid-metatomic__c__abi_8h_1a2108b4728d818bb75e88ace00bcd11d3>`
+	#define :target:`RGPOT_MTA_API<doxid-metatomic__c__abi_8h_1a409c918f350af84ff87227c561b27aa3>`
+	#define :target:`RGPOT_MTA_ENGINE_BUILD<doxid-_metatomic_engine_abi_8cc_1a8eaafdf8bea9f6c384cda06d3e8eea42>`
+	#define :target:`RGPOT_XTB_ABI_VERSION<doxid-xtb__c__abi_8h_1aa3b73c6a3161c5d0da0ec0b357f13b8f>`
+	#define :target:`RGPOT_XTB_API<doxid-xtb__c__abi_8h_1a1c2e4e9e5c694894e8e5e08ae2c99479>`
 
 .. _details-global:
 
@@ -172,6 +236,16 @@ Result returned by energy / gradient / forces entry points.
 	typedef struct :ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>` CPMDCSession
 
 Opaque handle for repeated evaluations with one Cap'n Proto parameter set.
+
+.. index:: pair: typedef; RgpotMtaConfig
+.. _doxid-metatomic__c__abi_8h_1a5f3ddc99188390e16bcefecd044cd132:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	typedef struct RgpotMtaConfig RgpotMtaConfig
+
+Flat config (subset of MetatomicConfig). NULL strings => empty/default.
 
 .. index:: pair: typedef; NWChemCResult
 .. _doxid-nwchem__c__abi_8h_1a7ebd0cbe28327ac32f7726770f826961:
@@ -606,6 +680,16 @@ C-linkage bridge to the Fortran EAM implementation.
 .. rubric:: Returns:
 
 Void.
+
+.. index:: pair: function; __attribute__
+.. _doxid-metatomic__c__abi_8h_1ab1c3edb5fb26c2406f212d203a3f76c0:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	__attribute__((visibility("default")))
+
+Energy + forces. Returns 0 on success. variance may be NULL.
 
 .. index:: pair: function; nwchemc_set_params
 .. _doxid-nwchem__c__abi_8h_1a2b19e40d3fa84cd9c0c26d4e61ee1aec:
@@ -1067,4 +1151,14 @@ Usage
 .. rubric:: Returns:
 
 0 on success, 1 on initialization failure.
+
+.. index:: pair: function; __attribute__
+.. _doxid-xtb__c__abi_8h_1aed6dec1342c11226fbf6d9f0d23fc168:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	__attribute__((visibility("default")))
+
+Energy + forces. Returns 0 on success. variance may be NULL.
 

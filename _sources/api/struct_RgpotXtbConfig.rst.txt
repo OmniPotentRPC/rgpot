@@ -1,0 +1,59 @@
+.. index:: pair: struct; RgpotXtbConfig
+.. _doxid-struct_rgpot_xtb_config:
+
+struct RgpotXtbConfig
+=====================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct RgpotXtbConfig {
+		// fields
+	
+		int :ref:`method<doxid-struct_rgpot_xtb_config_1a7b43908e41e1c082c9f7ad38dac3bb08>`;
+		double :target:`accuracy<doxid-struct_rgpot_xtb_config_1a4a5bac5e366e4295cd94f1f1c8997d93>`;
+		double :ref:`electronic_temperature<doxid-struct_rgpot_xtb_config_1acb9e0df8416e0e7d67f06a42d9a1dc3e>`;
+		int :target:`max_iterations<doxid-struct_rgpot_xtb_config_1a12de28c5fae37fd1c778978b92d1dc81>`;
+		double :target:`charge<doxid-struct_rgpot_xtb_config_1aa5960455dfbf8cf2f8d83c99673b0f2a>`;
+		int :target:`uhf<doxid-struct_rgpot_xtb_config_1aec9bb8e7b24bd74542ca2f946c802363>`;
+	};
+.. _details-struct_rgpot_xtb_config:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Fields
+------
+
+.. index:: pair: variable; method
+.. _doxid-struct_rgpot_xtb_config_1a7b43908e41e1c082c9f7ad38dac3bb08:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int method
+
+RGPOT_XTB_METHOD\_\*
+
+.. index:: pair: variable; electronic_temperature
+.. _doxid-struct_rgpot_xtb_config_1acb9e0df8416e0e7d67f06a42d9a1dc3e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double electronic_temperature
+
+Kelvin
+

@@ -1,0 +1,23 @@
+.. index:: pair: struct; rgpot::XTBDlopenConfig
+.. _doxid-structrgpot_1_1_x_t_b_dlopen_config:
+
+struct rgpot::XTBDlopenConfig
+=============================
+
+.. toctree::
+	:hidden:
+
+Plugin path: ``dlopen`` ``libxtb_engine.so``, which implements the same ISO_C_BINDING singlepoint as linked ``:ref:`XTBPot <doxid-classrgpot_1_1_x_t_b_pot>``` behind ``xtb_c_abi.h``. Search: ``engine_path``, ``RGPOT_XTB_ENGINE``, ``XTB_ENGINE``, bare ``libxtb_engine.so``, then ``EON_POTENTIALS_PATH`` / ``RGPOT_ENGINE_PATH``.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <XTBDlopen.hpp>
+	
+	struct XTBDlopenConfig {
+		// fields
+	
+		:ref:`XTBConfig<doxid-structrgpot_1_1_x_t_b_config>` :target:`xtb<doxid-structrgpot_1_1_x_t_b_dlopen_config_1a2105d41c5bda191e3d5152498a050278>` {};
+		std::string :target:`engine_path<doxid-structrgpot_1_1_x_t_b_dlopen_config_1aee06f1c0bb984458359b2ffe22b1adac>`;
+	};
