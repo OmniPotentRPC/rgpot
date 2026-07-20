@@ -57,8 +57,18 @@ public:
       throw std::runtime_error("LoadLibrary failed: " + path);
     }
 #else
-    // RTLD_GLOBAL: export NWChem/engine symbols for dependent .so resolution.
-    handle_ = dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL);
+    // Prefer LOCAL so the engine's BLAS/LAPACK (often linked into
+    // libnwchemc) does not become the process-global dpotf2/dgemm used by
+    // ScaLAPACK / OpenBLAS after first load. DEEPBIND keeps the engine's
+    // own unresolved symbols inside its DSO first. GLOBAL alone made
+    // pdpotrf in ScaLAPACK lazy-bind into NWChem LAPACK and SIGSEGV during
+    // GP hyperparameter Cholesky. Fall back without DEEPBIND when the
+    // platform lacks it (non-glibc).
+    int flags = RTLD_NOW | RTLD_LOCAL;
+#ifdef RTLD_DEEPBIND
+    flags |= RTLD_DEEPBIND;
+#endif
+    handle_ = dlopen(path.c_str(), flags);
     if (!handle_) {
       const char *err = dlerror();
       throw std::runtime_error(std::string("dlopen failed: ") + path + ": " +
