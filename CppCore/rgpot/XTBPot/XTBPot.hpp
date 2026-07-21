@@ -7,19 +7,9 @@
 #include <xtb.h>
 
 #include "rgpot/Potential.hpp"
+#include "rgpot/XTBPot/XTBConfig.hpp"
 
 namespace rgpot {
-
-enum class GFNMethod { GFNFF, GFN0xTB, GFN1xTB, GFN2xTB };
-
-struct XTBConfig {
-  GFNMethod method = GFNMethod::GFN2xTB;
-  double accuracy = 1.0;
-  double electronic_temperature = 300.0; // Kelvin
-  int max_iterations = 250;
-  double charge = 0.0;
-  int uhf = 0;
-};
 
 /**
  * Linked GFN-xTB pot (NEEDED libxtb).
@@ -33,6 +23,9 @@ struct XTBConfig {
  * recommendation for multi-env processes). Do not share one instance across
  * threads; distinct instances may be used from different threads if the
  * loaded libxtb build is reentrant for independent handle sets.
+ *
+ * For hosts that must not NEEDED libxtb, use ``XTBDlopen`` +
+ * ``libxtb_engine.so`` instead (always built; no ``-Dwith_xtb`` required).
  */
 class XTBPot : public Potential<XTBPot> {
 public:

@@ -28,7 +28,7 @@ Optional engine plugins (install separately / set `*_ENGINE` env at run time):
 | `libnwchemc.so` | `NWCHEMC_LIBRARY` / `RGPOT_NWCHEMC_ENGINE` | no |
 | `libcpmdc.so` | `CPMDC_LIBRARY` / `RGPOT_CPMDC_ENGINE` | no |
 | `libmetatomic_engine.so` | `RGPOT_METATOMIC_ENGINE` | no |
-| `libxtb_engine.so` | `RGPOT_XTB_ENGINE` | no |
+| `libxtb_engine.so` | `RGPOT_XTB_ENGINE` | no (thin `XTBDlopen` is always in the host link; engine is runtime-only) |
 
 ## eOn configure
 
