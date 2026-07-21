@@ -71,10 +71,11 @@ if not get_option('with_rpc_client_only')
         )
     endif
 
+    # XTBDlopen frontend always (no libxtb). Linked pot + engine when has_xtb.
+    subdir('rgpot/XTBPot')
+    _linkto += [xtb_dlopen]
     if has_xtb
-        subdir('rgpot/XTBPot')  # 'xtbpot' + engine + dlopen frontend
         rgpotentials += [xtbpot]
-        _linkto += [xtb_dlopen]
     endif
 
     if has_xckernel
@@ -202,11 +203,15 @@ if not get_option('with_rpc_client_only')
     endif
 endif
 
-# Metatomic engine + dlopen frontend for client-only (eOn with_rgpot) consumers.
-# Thin host links metatomic_dlopen_dep; optional libmetatomic_engine.so holds torch.
-if get_option('with_rpc_client_only') and has_metatomic
-    subdir('rgpot/MetatomicPot')
-    _metatomic_build_rpath = _engine_build_rpath
+# Client-only (eOn with_rgpot): thin dlopen frontends without fat link deps.
+# XTB always; metatomic only when torch/metatomic are available to build the
+# engine, whose optional libmetatomic_engine.so holds torch.
+if get_option('with_rpc_client_only')
+    subdir('rgpot/XTBPot')
+    if has_metatomic
+        subdir('rgpot/MetatomicPot')
+        _metatomic_build_rpath = _engine_build_rpath
+    endif
 endif
 
 # ------------------------ Server
@@ -323,6 +328,8 @@ if get_option('with_tests')
                 '',
             ],
             ['ZBLPotTest', 'zbl_pot_test', 'ZBLPotTest.cc', ''],
+            # The dlopen frontend is in librgpot whether or not with_xtb is.
+            ['XTBDlopenTest', 'xtb_dlopen_test', 'XTBDlopenTest.cc', ''],
         ]
     endif
     if has_fortran
@@ -801,6 +808,7 @@ endif
 #   -Dwith_rpc_client_only=true -Dpure_lib=true
 #   -Dwith_tests=false -Dwith_examples=false
 #   -Dwith_xtb=false -Dwith_metatomic=false
+# XTBDlopen frontend still builds; set RGPOT_XTB_ENGINE for libxtb_engine.so.
 # See docs/eon_pkgconfig.md.
 if not meson.is_subproject()
     # Headers: #include "rgpot/NWChemPot/..." with -I${prefix}/include

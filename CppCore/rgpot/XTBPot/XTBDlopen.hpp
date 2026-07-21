@@ -1,10 +1,15 @@
 #pragma once
 // MIT License — thin XTB frontend: dlopen libxtb_engine.so
+// No libxtb headers; safe for hosts built without -Dwith_xtb.
 #include "rgpot/ForceStructs.hpp"
-#include "rgpot/XTBPot/XTBPot.hpp"
+#include "rgpot/XTBPot/XTBConfig.hpp"
 #include "rgpot/XTBPot/xtb_c_abi.h"
+#include "rgpot/types/AtomMatrix.hpp"
 
+#include <array>
 #include <string>
+#include <tuple>
+#include <vector>
 
 namespace rgpot {
 
@@ -13,12 +18,10 @@ namespace rgpot {
  * ISO_C_BINDING singlepoint as linked ``XTBPot`` behind ``xtb_c_abi.h``.
  * Search: ``engine_path``, ``RGPOT_XTB_ENGINE``, ``XTB_ENGINE``, bare
  * ``libxtb_engine.so``, then ``EON_POTENTIALS_PATH`` / ``RGPOT_ENGINE_PATH``.
+ *
+ * Always compiled (no NEEDED libxtb). Linked ``XTBPot`` remains optional via
+ * ``-Dwith_xtb=true``.
  */
-struct XTBDlopenConfig {
-  XTBConfig xtb{};
-  std::string engine_path;
-};
-
 class XTBDlopen {
 public:
   explicit XTBDlopen(const XTBDlopenConfig &config);
