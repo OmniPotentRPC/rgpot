@@ -1,0 +1,54 @@
+.. index:: pair: class; rgpot::nlist::PairListCache
+.. _doxid-classrgpot_1_1nlist_1_1_pair_list_cache:
+
+class rgpot::nlist::PairListCache
+=================================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Process-wide pool of :ref:`CachedPairList <doxid-classrgpot_1_1nlist_1_1_cached_pair_list>` slots, matched by geometry proximity; safe for shared potential instances evaluated from short-lived worker threads. :ref:`More...<details-classrgpot_1_1nlist_1_1_pair_list_cache>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <PairListCache.hpp>
+	
+	class PairListCache {
+	public:
+		// fields
+	
+		static std::size_t :target:`kMaxSlots<doxid-classrgpot_1_1nlist_1_1_pair_list_cache_1a499f83cd9a5a9d161dbb4948cd1a546f>` = 8;
+
+		// methods
+	
+		template <typename Fn>
+		void :ref:`evaluate<doxid-classrgpot_1_1nlist_1_1_pair_list_cache_1ac0d9fac543a88095bcb8cade5b3afe27>`(const double* R, std::size_t n, const double* box, const :ref:`CachedPairList::Options<doxid-structrgpot_1_1nlist_1_1_cached_pair_list_1_1_options>`& opt, Fn&& fn);
+	
+		static PairListCache& :target:`global<doxid-classrgpot_1_1nlist_1_1_pair_list_cache_1a0d61a818e4fe37a295ce212ca7319ad5>`();
+	};
+.. _details-classrgpot_1_1nlist_1_1_pair_list_cache:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Process-wide pool of :ref:`CachedPairList <doxid-classrgpot_1_1nlist_1_1_cached_pair_list>` slots, matched by geometry proximity; safe for shared potential instances evaluated from short-lived worker threads.
+
+Methods
+-------
+
+.. index:: pair: function; evaluate
+.. _doxid-classrgpot_1_1nlist_1_1_pair_list_cache_1ac0d9fac543a88095bcb8cade5b3afe27:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	template <typename Fn>
+	void evaluate(const double* R, std::size_t n, const double* box, const :ref:`CachedPairList::Options<doxid-structrgpot_1_1nlist_1_1_cached_pair_list_1_1_options>`& opt, Fn&& fn)
+
+Single-pass evaluation with lazy list capture (see file header).
+

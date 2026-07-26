@@ -1,0 +1,25 @@
+.. index:: pair: namespace; vesin
+.. _doxid-namespacevesin:
+
+namespace vesin
+===============
+
+.. toctree::
+	:hidden:
+
+	namespace_vesin_cpu.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace vesin {
+
+	// namespaces
+
+	namespace :ref:`vesin::cpu<doxid-namespacevesin_1_1cpu>`;
+
+	} // namespace vesin

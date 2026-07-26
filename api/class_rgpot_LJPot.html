@@ -131,6 +131,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_abi.html">namespace rgpot::abi</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_details.html">namespace rgpot::details</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_nlist.html">namespace rgpot::nlist</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_types.html">namespace rgpot::types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_units.html">namespace rgpot::units</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_vesin_compat.html">namespace rgpot::vesin_compat</a></li>
@@ -176,6 +177,10 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_string_literals.html">namespace string_literals</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_vesin.html">namespace vesin</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="namespace_vesin_cpu.html">namespace vesin::cpu</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="enum_CPMDCFeatureKind.html">enum CPMDCFeatureKind</a></li>
@@ -390,11 +395,7 @@ data-aria-dark="Switch to auto color mode">
 <section id="detailed-documentation">
 <span id="details-classrgpot-1-1-l-j-pot"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
 <p>Implementation of a shifted 12-6 Lennard-Jones potential.</p>
-<p>This method calculates pairwise interactions between all atoms within the cutoff radius. It applies the minimum image convention using the provided box dimensions to handle periodic boundaries.</p>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>This implementation is adapted, untouched from the <a class="reference external" href="https://github.com/TheochemUI/EONgit/blob/stable/client/potentials/LJ/LJ.cpp">eOn project</a>.</p>
-</div>
+<p>Pairwise interactions within the cutoff radius, minimum image convention on an orthogonal box. Pairs come from the shared <code class="docutils literal notranslate"><span class="pre">rgpot::nlist::PairListCache</span></code> (the eOn PairListCache design): repeated evaluations on nearby geometries reuse a Verlet-skin cached candidate list, and one-shot evaluations run a single fused scan identical in pair content to the historical per-call double loop.</p>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
 <p>The box is assumed to be orthogonal.</p>

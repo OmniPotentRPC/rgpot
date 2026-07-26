@@ -15,6 +15,7 @@ Global Namespace
 	namespace_rgpot-6.rst
 	namespace_std.rst
 	namespace_string_literals.rst
+	namespace_vesin.rst
 	enum_CPMDCFeatureKind.rst
 	struct_CPMDCFeatureEntry.rst
 	struct_CPMDCResult.rst
@@ -43,6 +44,7 @@ Overview
 		namespace :ref:`rgpot::abi<doxid-namespacergpot_1_1abi>`;
 		namespace :ref:`rgpot::cache<doxid-namespacergpot_1_1cache>`;
 		namespace :ref:`rgpot::details<doxid-namespacergpot_1_1details>`;
+		namespace :ref:`rgpot::nlist<doxid-namespacergpot_1_1nlist>`;
 		namespace :ref:`rgpot::types<doxid-namespacergpot_1_1types>`;
 			namespace :ref:`rgpot::types::adapt<doxid-namespacergpot_1_1types_1_1adapt>`;
 				namespace :ref:`rgpot::types::adapt::capnp<doxid-namespacergpot_1_1types_1_1adapt_1_1capnp>`;
@@ -51,12 +53,14 @@ Overview
 		namespace :ref:`rgpot::units<doxid-namespacergpot_1_1units>`;
 		namespace :ref:`rgpot::vesin_compat<doxid-namespacergpot_1_1vesin__compat>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d330074065165043016212166146146214025043016253057>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d307112313373357257323066107376333004137304370130>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d305002241363136067011226310027215036350216205241>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d307112313373357257323066107376333004137304370130>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d166331164204151220333054351225362033006173021072>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d122207310312103133225144130321077133074162141334>`;
 	namespace :ref:`std<doxid-namespacestd>`;
 	namespace :ref:`string_literals<doxid-namespacestd_1_1string__literals>`;
+	namespace :ref:`vesin<doxid-namespacevesin>`;
+		namespace :ref:`vesin::cpu<doxid-namespacevesin_1_1cpu>`;
 
 	// typedefs
 

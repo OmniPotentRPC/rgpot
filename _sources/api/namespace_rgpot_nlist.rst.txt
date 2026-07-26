@@ -1,0 +1,27 @@
+.. index:: pair: namespace; rgpot::nlist
+.. _doxid-namespacergpot_1_1nlist:
+
+namespace rgpot::nlist
+======================
+
+.. toctree::
+	:hidden:
+
+	class_rgpot_nlist_CachedPairList.rst
+	class_rgpot_nlist_PairListCache.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace nlist {
+
+	// classes
+
+	class :ref:`CachedPairList<doxid-classrgpot_1_1nlist_1_1_cached_pair_list>`;
+	class :ref:`PairListCache<doxid-classrgpot_1_1nlist_1_1_pair_list_cache>`;
+
+	} // namespace nlist

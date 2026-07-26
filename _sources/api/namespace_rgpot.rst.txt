@@ -10,6 +10,7 @@ namespace rgpot
 	namespace_rgpot_abi.rst
 	namespace_rgpot_cache.rst
 	namespace_rgpot_details.rst
+	namespace_rgpot_nlist.rst
 	namespace_rgpot_types.rst
 	namespace_rgpot_units.rst
 	namespace_rgpot_vesin_compat.rst
@@ -52,6 +53,7 @@ Prefix-parameterized loader for the minimum potential ABI profile. :ref:`More...
 	namespace :ref:`rgpot::abi<doxid-namespacergpot_1_1abi>`;
 	namespace :ref:`rgpot::cache<doxid-namespacergpot_1_1cache>`;
 	namespace :ref:`rgpot::details<doxid-namespacergpot_1_1details>`;
+	namespace :ref:`rgpot::nlist<doxid-namespacergpot_1_1nlist>`;
 	namespace :ref:`rgpot::types<doxid-namespacergpot_1_1types>`;
 		namespace :ref:`rgpot::types::adapt<doxid-namespacergpot_1_1types_1_1adapt>`;
 			namespace :ref:`rgpot::types::adapt::capnp<doxid-namespacergpot_1_1types_1_1adapt_1_1capnp>`;

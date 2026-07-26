@@ -1,0 +1,66 @@
+.. index:: pair: class; rgpot::nlist::CachedPairList
+.. _doxid-classrgpot_1_1nlist_1_1_cached_pair_list:
+
+class rgpot::nlist::CachedPairList
+==================================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_nlist_CachedPairList_Options.rst
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class CachedPairList {
+	public:
+		// structs
+	
+		struct :ref:`Options<doxid-structrgpot_1_1nlist_1_1_cached_pair_list_1_1_options>`;
+
+		// methods
+	
+		template <typename Fn>
+		void :ref:`forEach<doxid-classrgpot_1_1nlist_1_1_cached_pair_list_1a8f83c8d5e53b4ffff0bf0a230296e0a8>`(const double* R, Fn&& fn) const;
+	};
+.. _details-classrgpot_1_1nlist_1_1_cached_pair_list:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Methods
+-------
+
+.. index:: pair: function; forEach
+.. _doxid-classrgpot_1_1nlist_1_1_cached_pair_list_1a8f83c8d5e53b4ffff0bf0a230296e0a8:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	template <typename Fn>
+	void forEach(const double* R, Fn&& fn) const
+
+True while the cached pair set is valid for positions ``R`` : same / atom count, options and box as the build, and max displacement / below skin/2. [[nodiscard]] bool valid(const double \*R, std::size_t n, const double \*box,
+                           const Options &opt) const { if (!built\_ || n != n\_ || !(opt == opt\_)) { return false; } for (int k = 0; k < 9; ++k) { if (box[k] != boxref\_[k]) { return false; } } if (complete\_) { return true; // all pairs are candidates; motion cannot invalidate } const double thr2 = 0.25 \* opt\_.skin \* opt\_.skin; const double \*ref = Rref\_.data(); for (std::size_t a = 0; a < n; ++a) { const double dx = R[3 \* a] - ref[3 \* a]; const double dy = R[3 \* a + 1] - ref[3 \* a + 1]; const double dz = R[3 \* a + 2] - ref[3 \* a + 2]; if (dx \* dx + dy \* dy + dz \* dz > thr2) { return false; } } return true; }
+
+[[nodiscard]] bool isPhantom() const { return phantom\_; }
+
+/ First sighting: fused eval-only scan plus a phantom stamp (MIC / regime), or just the scan when caching is unsafe for this box. template <typename Fn> void visitOnly(const double \*R, std::size_t n, const double \*box,
+                 const Options &opt, Fn &&fn) { setup(n, box, opt); double w[3]; double inv[3]; fold_params(box, opt, w, inv); vesin::cpu::brute_force_visit_only( R, n, w, inv, opt.cutoff \* opt.cutoff, [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) { fn(i, j, -dx, -dy, -dz, r2); }); if (mic\_) { pairsIJ\_.clear(); finishRebuild(R, n, box, opt); phantom\_ = true; } }
+
+/ Second sighting: capture the candidate list at cutoff+skin while / evaluating ``fn`` in the same scan. template <typename Fn> void rebuildFused(const double \*R, std::size_t n, const double \*box,
+                    const Options &opt, Fn &&fn) { setup(n, box, opt); double w[3]; double inv[3]; fold_params(box, opt, w, inv); const double bc = opt.cutoff + opt.skin; vesin::cpu::brute_force_visit( R, n, w, inv, bc \* bc, opt.cutoff \* opt.cutoff, pairsIJ\_, [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) { fn(i, j, -dx, -dy, -dz, r2); }); finishRebuild(R, n, box, opt); }
+
+/ True when caching applies to this box (decided by the last build). [[nodiscard]] bool cacheable() const { return mic\_; }
+
+/ Visit every cached pair within the true cutoff of the current / positions; ``fn(i, j, dx, dy, dz, r2)`` uses ``d = r_i - r_j`` with the minimum image applied.
+

@@ -35,13 +35,7 @@ Detailed Documentation
 
 Implementation of a shifted 12-6 Lennard-Jones potential.
 
-This method calculates pairwise interactions between all atoms within the cutoff radius. It applies the minimum image convention using the provided box dimensions to handle periodic boundaries.
-
-.. note::
-
-	This implementation is adapted, untouched from the `eOn project <https://github.com/TheochemUI/EONgit/blob/stable/client/potentials/LJ/LJ.cpp>`__.
-
-
+Pairwise interactions within the cutoff radius, minimum image convention on an orthogonal box. Pairs come from the shared ``:ref:`rgpot::nlist::PairListCache <doxid-classrgpot_1_1nlist_1_1_pair_list_cache>``` (the eOn PairListCache design): repeated evaluations on nearby geometries reuse a Verlet-skin cached candidate list, and one-shot evaluations run a single fused scan identical in pair content to the historical per-call double loop.
 
 .. warning::
 

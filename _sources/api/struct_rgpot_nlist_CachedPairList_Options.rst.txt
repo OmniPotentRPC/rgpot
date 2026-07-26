@@ -1,0 +1,27 @@
+.. index:: pair: struct; rgpot::nlist::CachedPairList::Options
+.. _doxid-structrgpot_1_1nlist_1_1_cached_pair_list_1_1_options:
+
+struct rgpot::nlist::CachedPairList::Options
+============================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Options {
+		// fields
+	
+		double :target:`cutoff<doxid-structrgpot_1_1nlist_1_1_cached_pair_list_1_1_options_1a059953aa4548ac81d23e9d2a421da913>` {0.0};
+		double :target:`skin<doxid-structrgpot_1_1nlist_1_1_cached_pair_list_1_1_options_1a0206003e9f1f9f7c6689d9e22fff4649>` {1.0};
+		std::array<bool, 3> :target:`periodic<doxid-structrgpot_1_1nlist_1_1_cached_pair_list_1_1_options_1af79c8313108f062c56b38e6e7c8896d2>` {{true, true, true}};
+
+		// methods
+	
+		bool :target:`operator==<doxid-structrgpot_1_1nlist_1_1_cached_pair_list_1_1_options_1a759821b827e48023d5d921d501360cbe>`(const Options& o) const;
+	};
