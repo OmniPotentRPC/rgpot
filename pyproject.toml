@@ -96,6 +96,12 @@ python_files = ["test_*.py"]
 # manylinux images carry gcc/g++ but not gfortran, and the Fortran kernels
 # are part of the library's point.
 build-frontend = "build"
+# abi3 via nanobind: one wheel per platform covers every supported CPython.
+build = "cp310-*"
+skip = ["pp*", "*-musllinux*", "*_i686", "*-win32"]
+# Prove the kernels are in the artifact rather than trusting the flag: a
+# wheel whose librgpot has no bind(c) entry points is the bug 3.0.1 fixed.
+test-command = "python -c \"import rgpot; print(rgpot.__file__)\""
 
 [tool.cibuildwheel.linux]
 before-all = "yum install -y gcc-gfortran || dnf install -y gcc-gfortran"
