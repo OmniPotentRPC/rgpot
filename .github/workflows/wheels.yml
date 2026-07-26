@@ -1,0 +1,111 @@
+name: Wheels
+
+# rgpot had no wheel workflow: 2.5.4 reached PyPI hand-built from a branch,
+# with no tag and no main-branch source behind it. Tag-driven builds keep the
+# artifact and the tag describing each other.
+concurrency:
+  group: wheels-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the built artifacts"
+        type: boolean
+        default: false
+      target:
+        description: "Index to publish to (rehearse on TestPyPI first)"
+        type: choice
+        options:
+          - testpypi
+          - pypi
+        default: testpypi
+  push:
+    tags:
+      - "v*"
+  pull_request:
+    paths:
+      - "pyproject.toml"
+      - "meson.build"
+      - "CppCore/**"
+      - ".github/workflows/wheels.yml"
+
+jobs:
+  wheels:
+    name: wheel (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pypa/cibuildwheel@v3.2.1
+      - name: The kernels must be in the artifact, not just in the flags
+        shell: bash
+        run: |
+          set -euo pipefail
+          for whl in wheelhouse/*.whl; do
+            echo "== ${whl}"
+            rm -rf _whlx && mkdir _whlx && unzip -qo "${whl}" -d _whlx
+            lib=$(find _whlx -name 'librgpot*' | head -1)
+            test -n "${lib}" || { echo "no librgpot in wheel" >&2; exit 1; }
+            # The eight Fortran 2018 kernels reach C++ through these entries.
+            n=$(nm "${lib}" 2>/dev/null \
+              | grep -cE 'rgpot_(sw|edip|lenosky|tersoff|eam_al|fehe|cuh2|water_h)_force' || true)
+            echo "   bind(c) kernel entries: ${n}"
+            if [ "${n}" -lt 8 ]; then
+              echo "wheel carries ${n}/8 Fortran kernels; -Dwith_fortran_pots lost" >&2
+              exit 1
+            fi
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: wheelhouse/*.whl
+
+  sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build sdist
+        run: pipx run build --sdist
+      - name: Check
+        run: pipx run twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  publish:
+    needs: [wheels, sdist]
+    if: >-
+      github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+      || (github.event_name == 'workflow_dispatch' && inputs.publish)
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ (github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi') && 'testpypi-rgpot' || 'pypi-rgpot' }}
+      url: ${{ (github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi') && 'https://test.pypi.org/p/rgpot' || 'https://pypi.org/p/rgpot' }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Collect
+        run: |
+          mkdir -p upload
+          find dist -type f \( -name '*.whl' -o -name '*.tar.gz' \) -exec cp -v {} upload/ \;
+          ls -la upload/
+      # A tag publishes to PyPI; a manual run defaults to TestPyPI so the
+      # upload can be rehearsed before the irreversible one.
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: upload/
+          repository-url: ${{ (github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi') && 'https://test.pypi.org/legacy/' || '' }}
+          skip-existing: true
+          verbose: true
