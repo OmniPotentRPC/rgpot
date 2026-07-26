@@ -329,6 +329,25 @@ print(api_inc)
     _torch_api_inc = _py_probe[4]
     # Manual torch dep (no cmake): includes + link search paths only.
     # Portable RUNPATH is install_rpath / repair script.
+    #
+    # -rpath-link and --as-needed are GNU ld only; Apple's ld rejects them
+    # outright ("unknown options"), and it resolves the dylibs from -L plus
+    # their install_name anyway. Older libtorch splits symbols across
+    # libtorch + libtorch_cpu + libc10, which is what --no-as-needed guards
+    # on the GNU side.
+    _torch_link_args = ['-L' + _torch_libdir]
+    if host_system == 'darwin'
+        _torch_link_args += ['-ltorch', '-ltorch_cpu', '-lc10']
+    else
+        _torch_link_args += [
+            '-Wl,-rpath-link,' + _torch_libdir,
+            '-Wl,--no-as-needed',
+            '-ltorch',
+            '-ltorch_cpu',
+            '-lc10',
+            '-Wl,--as-needed',
+        ]
+    endif
     torch_dep = declare_dependency(
         compile_args: [
             '-isystem',
@@ -336,16 +355,7 @@ print(api_inc)
             '-isystem',
             _torch_api_inc,
         ],
-        link_args: [
-            '-L' + _torch_libdir,
-            '-Wl,-rpath-link,' + _torch_libdir,
-            # Older libtorch splits symbols across libtorch + libtorch_cpu + libc10.
-            '-Wl,--no-as-needed',
-            '-ltorch',
-            '-ltorch_cpu',
-            '-lc10',
-            '-Wl,--as-needed',
-        ],
+        link_args: _torch_link_args,
     )
     _deps += torch_dep
 
