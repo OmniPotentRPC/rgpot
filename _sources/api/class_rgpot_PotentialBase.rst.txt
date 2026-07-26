@@ -27,7 +27,9 @@ Abstract base class for all potential energy surfaces. :ref:`More...<details-cla
 
 		// methods
 	
-		virtual std::tuple<double, :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`, double> :ref:`operator()<doxid-classrgpot_1_1_potential_base_1a9f382de265f24e19b1f3dd01f8f1f1dd>`(const :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& positions, const std::vector<int>& atmtypes, const std::array<std::array<double, 3>, 3>& box) = 0;
+		virtual std::tuple<double, :ref:`types::AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`, double> :ref:`operator()<doxid-classrgpot_1_1_potential_base_1afcb163c2c50b0b3a9a8fea8a90c6ab03>`(const :ref:`types::AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& positions, const std::vector<int>& atmtypes, const std::array<std::array<double, 3>, 3>& box) = 0;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_potential_base_1a32efde0927ea88bf90e3d24fbb948899>`() const;
+		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_potential_base_1af6ed01a80dc945fcc1f8a0735aa36621>`() const;
 		PotType :ref:`get_type<doxid-classrgpot_1_1_potential_base_1a4de79175b891b7ea98dedb310029f834>`() const;
 	};
 .. _details-classrgpot_1_1_potential_base:
@@ -74,12 +76,12 @@ Methods
 -------
 
 .. index:: pair: function; operator()
-.. _doxid-classrgpot_1_1_potential_base_1a9f382de265f24e19b1f3dd01f8f1f1dd:
+.. _doxid-classrgpot_1_1_potential_base_1afcb163c2c50b0b3a9a8fea8a90c6ab03:
 
 .. ref-code-block:: cpp
 	:class: doxyrest-title-code-block
 
-	virtual std::tuple<double, :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`, double> operator()(const :ref:`AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& positions, const std::vector<int>& atmtypes, const std::array<std::array<double, 3>, 3>& box) = 0
+	virtual std::tuple<double, :ref:`types::AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`, double> operator()(const :ref:`types::AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& positions, const std::vector<int>& atmtypes, const std::array<std::array<double, 3>, 3>& box) = 0
 
 Main interface for potential and force calculation.
 
@@ -110,6 +112,30 @@ Main interface for potential and force calculation.
 .. rubric:: Returns:
 
 A pair containing the energy and the force matrix. Energy, forces, and optional uncertainty scale (eV). See derived Potential::operator() for variance semantics.
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1_potential_base_1a32efde0927ea88bf90e3d24fbb948899:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Concurrency and evaluation capabilities of this potential.
+
+Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
+
+.. index:: pair: function; paramsKey
+.. _doxid-classrgpot_1_1_potential_base_1af6ed01a80dc945fcc1f8a0735aa36621:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual uint64_t paramsKey() const
+
+Fingerprint of the potential's parameter set.
+
+Mixed into the result-cache key so results never cross parameter sets. Implementations hash their config field by field (see :ref:`ParamHash.hpp <doxid-_param_hash_8hpp_source>`) plus a kernel-version salt that changes whenever the numerics change. The default (0) suits parameter-free potentials whose numerics never changed.
 
 .. index:: pair: function; get_type
 .. _doxid-classrgpot_1_1_potential_base_1a4de79175b891b7ea98dedb310029f834:

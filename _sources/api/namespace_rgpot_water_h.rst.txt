@@ -1,0 +1,106 @@
+.. index:: pair: namespace; rgpot_water_h
+.. _doxid-namespacergpot__water__h:
+
+namespace rgpot_water_h
+=======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+One H atom moving in the field of water molecules. :ref:`More...<details-namespacergpot__water__h>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace rgpot_water_h {
+
+	// global variables
+
+	integer(ip), parameter, public :ref:`z_hydrogen<doxid-namespacergpot__water__h_1af9b0e9b939bb229dedfee3c838e463c7>` = 1_ip;
+	integer(ip), parameter, public :target:`z_oxygen<doxid-namespacergpot__water__h_1a18ecb389bf3d335000ea4e17b1f8c8d5>` = 8_ip;
+	real(wp), parameter :ref:`min_separation<doxid-namespacergpot__water__h_1a9f371d4ca3c279e16152fda3a7a8f968>` = 1.0e-8_wp;
+
+	// global functions
+
+	subroutine, public :ref:`water_h_classify<doxid-namespacergpot__water__h_1aa5bceba6d76fa817c5d385fb04f4c6a3>`(integer(ip), dimension(:), intent(in) atomic_numbers, integer(ip), intent(out) lone_h, logical, dimension(:), intent(out), allocatable is_oxygen, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg);
+	subroutine, public :ref:`water_h_energy_forces<doxid-namespacergpot__water__h_1aec0f3746443fcbd20de8a7b482b35ad9>`(real(wp), dimension(:, :), intent(in), contiguous positions, integer(ip), dimension(:), intent(in), contiguous atomic_numbers, real(wp), dimension(3, 3), intent(in) cell, type(:ref:`water_h_params_t<doxid-structrgpot__water__h_1_1water__h__params__t>`), intent(in) par, real(wp), intent(out) energy, real(wp), dimension(:, :), intent(out), contiguous forces, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg);
+
+	} // namespace rgpot_water_h
+.. _details-namespacergpot__water__h:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+One H atom moving in the field of water molecules.
+
+The legacy kernel takes three distances measured from the lone H atom (to the oxygen, and to each of the two hydrogens of one water) and returns an energy plus the three radial derivatives. Each of the three distances enters through its own independent terms: a damped ``-C6/r^6`` dispersion on every leg, a Born-Mayer repulsion on every leg, and a Morse well on the oxygen leg alone. No term couples two distances.
+
+Structure: a star gather over sites, not a neighbour-table pair sum.
+
+Three properties of the expression pick that shape.
+
+* There is one centre. Every interaction has the lone H at one end, so the sum is ``natoms - 1`` legs, not ``O(natoms^2)`` pairs.
+
+* The legs are independent and the two hydrogen legs share a single parameter set, so which water a hydrogen belongs to cancels out of the total. Grouping sites into molecules changes nothing, which is why this is a site loop rather than a molecule loop.
+
+* There is no cutoff. Every site interacts with the lone H at its nearest periodic image, however far away. A vesin table built at some finite radius would silently truncate the sum, so the minimum image is taken here instead.
+
+Each site writes only its own force, and the lone H takes the negated sum of the legs, so the site loop runs under ``do concurrent`` and the reduction happens once outside it.
+
+This module carries the H-water term. Water-water TIP4P electrostatics, the oxygen Lennard-Jones, and the CCL quartic intramolecular restraints are the water potential's own physics and enter through its module.
+
+Units: the published parameters are kJ/mol and Angstrom, and are held that way. ``energy_scale`` converts the result to the eV/Angstrom that every rgpot entry point reports.
+
+Global Variables
+----------------
+
+.. index:: pair: variable; z_hydrogen
+.. _doxid-namespacergpot__water__h_1af9b0e9b939bb229dedfee3c838e463c7:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	integer(ip), parameter, public z_hydrogen = 1_ip
+
+Atomic numbers this potential accepts.
+
+.. index:: pair: variable; min_separation
+.. _doxid-namespacergpot__water__h_1a9f371d4ca3c279e16152fda3a7a8f968:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	real(wp), parameter min_separation = 1.0e-8_wp
+
+Separations below this leave the radial derivative undefined, so a leg this short is reported as a fault rather than evaluated.
+
+Global Functions
+----------------
+
+.. index:: pair: function; water_h_classify
+.. _doxid-namespacergpot__water__h_1aa5bceba6d76fa817c5d385fb04f4c6a3:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	subroutine, public water_h_classify(integer(ip), dimension(:), intent(in) atomic_numbers, integer(ip), intent(out) lone_h, logical, dimension(:), intent(out), allocatable is_oxygen, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg)
+
+Identify the lone H and mark which of the remaining atoms are oxygen.
+
+Atomic numbers alone cannot separate the lone H from the hydrogens bound in water, because both are Z=1. The eOn kernel this ports resolves that by position: the lone H is the last atom. That convention is enforced here rather than guessed at, together with the composition it implies, ``n_hydrogen == 2 * n_oxygen + 1``.
+
+.. index:: pair: function; water_h_energy_forces
+.. _doxid-namespacergpot__water__h_1aec0f3746443fcbd20de8a7b482b35ad9:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	subroutine, public water_h_energy_forces(real(wp), dimension(:, :), intent(in), contiguous positions, integer(ip), dimension(:), intent(in), contiguous atomic_numbers, real(wp), dimension(3, 3), intent(in) cell, type(:ref:`water_h_params_t<doxid-structrgpot__water__h_1_1water__h__params__t>`), intent(in) par, real(wp), intent(out) energy, real(wp), dimension(:, :), intent(out), contiguous forces, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg)
+
+Energy and forces for ``positions`` (3 x natoms) in ``cell``.
+

@@ -1,0 +1,52 @@
+.. index:: pair: class; rgpot::fortranpots::LenoskyPot
+.. _doxid-classrgpot_1_1fortranpots_1_1_lenosky_pot:
+
+class rgpot::fortranpots::LenoskyPot
+====================================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class LenoskyPot: public rgpot::Potential< LenoskyPot > {
+	public:
+		// construction
+	
+		:target:`LenoskyPot<doxid-classrgpot_1_1fortranpots_1_1_lenosky_pot_1ade39229d1ca99a4b56b974645789c13b>`();
+
+		// methods
+	
+		void :target:`forceImpl<doxid-classrgpot_1_1fortranpots_1_1_lenosky_pot_1ac88e43c598eff78d1a8cc1ada4d496de>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1fortranpots_1_1_lenosky_pot_1a6302f26cfc54ba0af60237ba6d9250b9>`() const;
+	};
+.. _details-classrgpot_1_1fortranpots_1_1_lenosky_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1fortranpots_1_1_lenosky_pot_1a6302f26cfc54ba0af60237ba6d9250b9:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Concurrency and evaluation capabilities of this potential.
+
+Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
+

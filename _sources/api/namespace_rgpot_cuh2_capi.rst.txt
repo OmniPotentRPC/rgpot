@@ -1,0 +1,50 @@
+.. index:: pair: namespace; rgpot_cuh2_capi
+.. _doxid-namespacergpot__cuh2__capi:
+
+namespace rgpot_cuh2_capi
+=========================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+C entry point for the CuH2 embedded-atom potential. :ref:`More...<details-namespacergpot__cuh2__capi>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace rgpot_cuh2_capi {
+
+	// global functions
+
+	integer(c_int) function, public :ref:`rgpot_cuh2_force<doxid-namespacergpot__cuh2__capi_1a7d2021b2b80a60761fa3dc5e1c33c631>`(integer(c_int), intent(in), value natoms, real(c_double), dimension(3, natoms), intent(in) positions, integer(c_int), dimension(natoms), intent(in) atomic_numbers, real(c_double), dimension(3, 3), intent(in) cell, real(c_double), dimension(3, natoms), intent(out) forces, real(c_double), intent(out) energy);
+
+	} // namespace rgpot_cuh2_capi
+.. _details-namespacergpot__cuh2__capi:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+C entry point for the CuH2 embedded-atom potential.
+
+Only ``bind(c)`` names leave this library; the physics module exports no external symbols of its own that C could collide with. The neighbour table lives here, saved across calls so vesin reuses its buffers.
+
+Global Functions
+----------------
+
+.. index:: pair: function; rgpot_cuh2_force
+.. _doxid-namespacergpot__cuh2__capi_1a7d2021b2b80a60761fa3dc5e1c33c631:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	integer(c_int) function, public rgpot_cuh2_force(integer(c_int), intent(in), value natoms, real(c_double), dimension(3, natoms), intent(in) positions, integer(c_int), dimension(natoms), intent(in) atomic_numbers, real(c_double), dimension(3, 3), intent(in) cell, real(c_double), dimension(3, natoms), intent(out) forces, real(c_double), intent(out) energy)
+
+Evaluate CuH2 forces and energy.
+
+``positions`` and ``forces`` are ``3 * natoms`` doubles, x/y/z interleaved; ``atomic_numbers`` holds one atomic number per atom, 29 for Cu and 1 for H, in any order; ``cell`` is nine doubles, row-major, one cell vector per row. Returns zero on success, non-zero on failure with the message available through ``rgpot_fortran_last_error``.
+

@@ -1,0 +1,81 @@
+.. index:: pair: namespace; rgpot_edip
+.. _doxid-namespacergpot__edip:
+
+namespace rgpot_edip
+====================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+EDIP silicon in gather form. :ref:`More...<details-namespacergpot__edip>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace rgpot_edip {
+
+	// global variables
+
+	real(wp), parameter :ref:`exp_floor<doxid-namespacergpot__edip_1a63dd0f191c49f4adc045524ec1c150ee>` = -300.0_wp;
+
+	// global functions
+
+	subroutine, public :ref:`edip_energy_forces<doxid-namespacergpot__edip_1aec230a5d866031d4d855466c3e9845e4>`(real(wp), dimension(:, :), intent(in), contiguous positions, real(wp), dimension(3, 3), intent(in) cell, type(:ref:`edip_params_t<doxid-structrgpot__edip_1_1edip__params__t>`), intent(in) par, type(:ref:`neighbor_table_t<doxid-structrgpot__neighbors_1_1neighbor__table__t>`), intent(inout) table, real(wp), intent(out) energy, real(wp), dimension(:, :), intent(out), contiguous forces, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg);
+
+	} // namespace rgpot_edip
+.. _details-namespacergpot__edip:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+EDIP silicon in gather form.
+
+EDIP gives atom ``i`` a pair sum whose strength depends on a coordination number ``Z_i``, plus a three-body sum over the neighbour pairs ``i`` centres:
+
+``E_i = sum_j V2(r_ij, Z_i) + sum_{j<k} V3(r_ij, r_ik, theta_jik, Z_i)``
+
+``Z_i`` counts neighbours through a cutoff function ``f(r)`` that falls from one to zero between ``c`` and ``b``, so every term of ``E_i`` also pushes on the atoms that set ``Z_i``. The published form is a scatter with three force channels writing into other atoms' slots, which serialises the atom loop.
+
+The gather closes because both environment dependencies collapse to one scalar per atom, ``Z_i`` and ``dE_i/dZ_i``. With those known the whole force on ``i`` is a sum over ``i`` 's own neighbourhood:
+
+* two-body, ``[dV2/dr(r_ij, Z_i) + dV2/dr(r_ij, Z_j)] * u_ij``;
+
+* coordination, ``[dE_i/dZ_i + dE_j/dZ_j] * df/dr(r_ij) * u_ij``;
+
+* three-body, ``i`` as the centre of ``(j, i, k)`` and as an end of every triplet centred on a neighbour ``m``, the two roles of ``:ref:`rgpot_sw <doxid-namespacergpot__sw>```.
+
+Evaluation is therefore two ``do concurrent`` passes: one over the per-atom scalars (``Z``, energy, ``dE/dZ``), one over forces. Neither writes outside the atom it is indexed by.
+
+A triplet whose two ends are the same atom reached through different periodic images is dropped, in the centre role and the end role alike, so the force stays the exact gradient of the energy reported here.
+
+Global Variables
+----------------
+
+.. index:: pair: variable; exp_floor
+.. _doxid-namespacergpot__edip_1a63dd0f191c49f4adc045524ec1c150ee:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	real(wp), parameter exp_floor = -300.0_wp
+
+Exponential arguments below this underflow to zero; guarding keeps ``exp`` out of its denormal range for pairs sitting at a cutoff.
+
+Global Functions
+----------------
+
+.. index:: pair: function; edip_energy_forces
+.. _doxid-namespacergpot__edip_1aec230a5d866031d4d855466c3e9845e4:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	subroutine, public edip_energy_forces(real(wp), dimension(:, :), intent(in), contiguous positions, real(wp), dimension(3, 3), intent(in) cell, type(:ref:`edip_params_t<doxid-structrgpot__edip_1_1edip__params__t>`), intent(in) par, type(:ref:`neighbor_table_t<doxid-structrgpot__neighbors_1_1neighbor__table__t>`), intent(inout) table, real(wp), intent(out) energy, real(wp), dimension(:, :), intent(out), contiguous forces, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg)
+
+Energy and forces for ``positions`` (3 x natoms) in ``cell``.
+

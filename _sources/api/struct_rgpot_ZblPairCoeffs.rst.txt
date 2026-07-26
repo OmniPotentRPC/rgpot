@@ -1,0 +1,144 @@
+.. index:: pair: struct; rgpot::ZblPairCoeffs
+.. _doxid-structrgpot_1_1_zbl_pair_coeffs:
+
+struct rgpot::ZblPairCoeffs
+===========================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Screening and switching coefficients for one ordered pair of species. :ref:`More...<details-structrgpot_1_1_zbl_pair_coeffs>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <ZBLPot.hpp>
+	
+	struct ZblPairCoeffs {
+		// fields
+	
+		double :ref:`d1<doxid-structrgpot_1_1_zbl_pair_coeffs_1a405b0dec90d2e5a50b09738d825bf1c4>` = 0.0;
+		double :ref:`d2<doxid-structrgpot_1_1_zbl_pair_coeffs_1ada191454f7b4f9199bc87fd008a64eaa>` = 0.0;
+		double :ref:`d3<doxid-structrgpot_1_1_zbl_pair_coeffs_1af45ac09f66a2cf30eb7f4f0192598a0a>` = 0.0;
+		double :ref:`d4<doxid-structrgpot_1_1_zbl_pair_coeffs_1a63edd4a77f843a23f3c129bc3f351f59>` = 0.0;
+		double :ref:`zze<doxid-structrgpot_1_1_zbl_pair_coeffs_1a2cc4db1030b4705ec76181e99a5b5858>` = 0.0;
+		double :ref:`sw1<doxid-structrgpot_1_1_zbl_pair_coeffs_1ac185e999d448f02d749c588e13e7ba62>` = 0.0;
+		double :ref:`sw2<doxid-structrgpot_1_1_zbl_pair_coeffs_1a0731df88acc10abb7f06f1feedeb5f5a>` = 0.0;
+		double :ref:`sw3<doxid-structrgpot_1_1_zbl_pair_coeffs_1a2c7f10d7efa2617304f1bed60870fbdb>` = 0.0;
+		double :ref:`sw4<doxid-structrgpot_1_1_zbl_pair_coeffs_1a3e0b8745a534be214e7c4633166ad760>` = 0.0;
+		double :ref:`sw5<doxid-structrgpot_1_1_zbl_pair_coeffs_1a96149b8982a74c6c74d9b13762adc032>` = 0.0;
+	};
+.. _details-structrgpot_1_1_zbl_pair_coeffs:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Screening and switching coefficients for one ordered pair of species.
+
+Fields
+------
+
+.. index:: pair: variable; d1
+.. _doxid-structrgpot_1_1_zbl_pair_coeffs_1a405b0dec90d2e5a50b09738d825bf1c4:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double d1 = 0.0
+
+Screening exponent 1, scaled by the pair radius.
+
+.. index:: pair: variable; d2
+.. _doxid-structrgpot_1_1_zbl_pair_coeffs_1ada191454f7b4f9199bc87fd008a64eaa:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double d2 = 0.0
+
+Screening exponent 2, scaled by the pair radius.
+
+.. index:: pair: variable; d3
+.. _doxid-structrgpot_1_1_zbl_pair_coeffs_1af45ac09f66a2cf30eb7f4f0192598a0a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double d3 = 0.0
+
+Screening exponent 3, scaled by the pair radius.
+
+.. index:: pair: variable; d4
+.. _doxid-structrgpot_1_1_zbl_pair_coeffs_1a63edd4a77f843a23f3c129bc3f351f59:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double d4 = 0.0
+
+Screening exponent 4, scaled by the pair radius.
+
+.. index:: pair: variable; zze
+.. _doxid-structrgpot_1_1_zbl_pair_coeffs_1a2cc4db1030b4705ec76181e99a5b5858:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double zze = 0.0
+
+Z_i Z_j e^2 in eV Angstrom.
+
+.. index:: pair: variable; sw1
+.. _doxid-structrgpot_1_1_zbl_pair_coeffs_1ac185e999d448f02d749c588e13e7ba62:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double sw1 = 0.0
+
+Quadratic switching coefficient of the force.
+
+.. index:: pair: variable; sw2
+.. _doxid-structrgpot_1_1_zbl_pair_coeffs_1a0731df88acc10abb7f06f1feedeb5f5a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double sw2 = 0.0
+
+Cubic switching coefficient of the force.
+
+.. index:: pair: variable; sw3
+.. _doxid-structrgpot_1_1_zbl_pair_coeffs_1a2c7f10d7efa2617304f1bed60870fbdb:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double sw3 = 0.0
+
+Cubic switching coefficient of the energy.
+
+.. index:: pair: variable; sw4
+.. _doxid-structrgpot_1_1_zbl_pair_coeffs_1a3e0b8745a534be214e7c4633166ad760:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double sw4 = 0.0
+
+Quartic switching coefficient of the energy.
+
+.. index:: pair: variable; sw5
+.. _doxid-structrgpot_1_1_zbl_pair_coeffs_1a96149b8982a74c6c74d9b13762adc032:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double sw5 = 0.0
+
+Constant energy offset at the cutoff.
+

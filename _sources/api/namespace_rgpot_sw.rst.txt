@@ -1,0 +1,73 @@
+.. index:: pair: namespace; rgpot_sw
+.. _doxid-namespacergpot__sw:
+
+namespace rgpot_sw
+==================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Stillinger-Weber potential in gather form. :ref:`More...<details-namespacergpot__sw>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace rgpot_sw {
+
+	// global variables
+
+	real(wp), parameter :ref:`exp_floor<doxid-namespacergpot__sw_1aae60c5415388517d2f7f73353efd2b51>` = -300.0_wp;
+
+	// global functions
+
+	subroutine, public :ref:`sw_energy_forces<doxid-namespacergpot__sw_1af6418e19490c418ad484332895331b53>`(real(wp), dimension(:, :), intent(in), contiguous positions, real(wp), dimension(3, 3), intent(in) cell, type(:ref:`sw_params_t<doxid-structrgpot__sw_1_1sw__params__t>`), intent(in) par, type(:ref:`neighbor_table_t<doxid-structrgpot__neighbors_1_1neighbor__table__t>`), intent(inout) table, real(wp), intent(out) energy, real(wp), dimension(:, :), intent(out), contiguous forces, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg);
+
+	} // namespace rgpot_sw
+.. _details-namespacergpot__sw:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Stillinger-Weber potential in gather form.
+
+The published SW expression sums a two-body term over pairs and a three-body term over triplets centred on each atom. Written as a scatter (one triplet updating three atoms) the atom loop carries dependencies; written as a gather each atom accumulates only its own force and the loop runs under ``do concurrent``.
+
+An atom ``i`` collects three-body force in two roles:
+
+* as the centre of a triplet ``(j, i, k)``, taking ``-(f_j + f_k)``;
+
+* as an end of a triplet centred on a neighbour ``m``, taking the end-atom force of ``(i, m, k)`` for every other neighbour ``k`` of ``m``.
+
+The two roles together reproduce the scatter sum exactly, at the cost of walking each neighbour's neighbour list. Energy accrues to the centre atom only, so it is counted once.
+
+Global Variables
+----------------
+
+.. index:: pair: variable; exp_floor
+.. _doxid-namespacergpot__sw_1aae60c5415388517d2f7f73353efd2b51:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	real(wp), parameter exp_floor = -300.0_wp
+
+Exponential arguments below this underflow to zero; guarding keeps ``exp`` out of its denormal range for pairs at the cutoff.
+
+Global Functions
+----------------
+
+.. index:: pair: function; sw_energy_forces
+.. _doxid-namespacergpot__sw_1af6418e19490c418ad484332895331b53:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	subroutine, public sw_energy_forces(real(wp), dimension(:, :), intent(in), contiguous positions, real(wp), dimension(3, 3), intent(in) cell, type(:ref:`sw_params_t<doxid-structrgpot__sw_1_1sw__params__t>`), intent(in) par, type(:ref:`neighbor_table_t<doxid-structrgpot__neighbors_1_1neighbor__table__t>`), intent(inout) table, real(wp), intent(out) energy, real(wp), dimension(:, :), intent(out), contiguous forces, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg)
+
+Energy and forces for ``positions`` (3 x natoms) in ``cell``.
+

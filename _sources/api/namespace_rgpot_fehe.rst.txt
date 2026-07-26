@@ -1,0 +1,75 @@
+.. index:: pair: namespace; rgpot_fehe
+.. _doxid-namespacergpot__fehe:
+
+namespace rgpot_fehe
+====================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Fe-He embedded-atom potential in gather form. :ref:`More...<details-namespacergpot__fehe>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace rgpot_fehe {
+
+	// global functions
+
+	pure real(wp) function :ref:`fehe_cutoff<doxid-namespacergpot__fehe_1ae090d482a994c4fdf12da9de9988397b>`(class(:ref:`fehe_params_t<doxid-structrgpot__fehe_1_1fehe__params__t>`), intent(in) self);
+	subroutine, public :ref:`fehe_energy_forces<doxid-namespacergpot__fehe_1ab80618ca0dac17894b6d4987fb073fce>`(real(wp), dimension(:, :), intent(in), contiguous positions, integer(ip), dimension(:), intent(in), contiguous atomic_numbers, real(wp), dimension(3, 3), intent(in) cell, type(:ref:`fehe_params_t<doxid-structrgpot__fehe_1_1fehe__params__t>`), intent(in) par, type(:ref:`neighbor_table_t<doxid-structrgpot__neighbors_1_1neighbor__table__t>`), intent(inout) table, real(wp), intent(out) energy, real(wp), dimension(:, :), intent(out), contiguous forces, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg);
+
+	} // namespace rgpot_fehe
+.. _details-namespacergpot__fehe:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Fe-He embedded-atom potential in gather form.
+
+The energy has three species-dependent pair terms (Fe-Fe, Fe-He, He-He) and *two* independent embedding channels:
+
+* a d-band density ``rho_d``, fed only by Fe-Fe pairs and embedded only on Fe atoms through ``-sqrt(rho_d) + ...``;
+
+* an s-band density ``rho_s``, fed only by Fe-He pairs and embedded on both species through ``xhep(9) sqrt(rho_s) + ...``.
+
+He-He pairs feed neither density, so a pure-helium configuration reduces to the bare HFD-B dimer potential.
+
+An embedded-atom sum closes as a gather in three passes, because the force on atom ``i`` needs ``dF/drho`` at *both* ends of every pair:
+
+#. per-atom densities from the full neighbour list;
+
+#. per-atom embedding energy and ``dF/drho`` for both channels;
+
+#. per-atom force gather, reading ``dF/drho`` of ``i`` and of each ``j``.
+
+Each pass writes only slot ``i`` of its output arrays, so all three run under ``do concurrent``. Energy accrues to per-atom arrays and reduces afterwards.
+
+Global Functions
+----------------
+
+.. index:: pair: function; fehe_cutoff
+.. _doxid-namespacergpot__fehe_1ae090d482a994c4fdf12da9de9988397b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	pure real(wp) function fehe_cutoff(class(:ref:`fehe_params_t<doxid-structrgpot__fehe_1_1fehe__params__t>`), intent(in) self)
+
+Largest of the five cutoffs, which is what the neighbour table needs. Every pair term re-checks its own cutoff.
+
+.. index:: pair: function; fehe_energy_forces
+.. _doxid-namespacergpot__fehe_1ab80618ca0dac17894b6d4987fb073fce:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	subroutine, public fehe_energy_forces(real(wp), dimension(:, :), intent(in), contiguous positions, integer(ip), dimension(:), intent(in), contiguous atomic_numbers, real(wp), dimension(3, 3), intent(in) cell, type(:ref:`fehe_params_t<doxid-structrgpot__fehe_1_1fehe__params__t>`), intent(in) par, type(:ref:`neighbor_table_t<doxid-structrgpot__neighbors_1_1neighbor__table__t>`), intent(inout) table, real(wp), intent(out) energy, real(wp), dimension(:, :), intent(out), contiguous forces, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg)
+
+Energy and forces for ``positions`` (3 x natoms) of the species named by ``atomic_numbers``, in ``cell``.
+

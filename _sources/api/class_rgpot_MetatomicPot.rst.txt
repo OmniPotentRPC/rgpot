@@ -7,6 +7,9 @@ class rgpot::MetatomicPot
 .. toctree::
 	:hidden:
 
+Overview
+~~~~~~~~
+
 
 
 
@@ -26,4 +29,25 @@ class rgpot::MetatomicPot
 	
 		MetatomicPot& :target:`operator=<doxid-classrgpot_1_1_metatomic_pot_1aa2f36d3e7b3deef3421e10ac45f46bef>`(const MetatomicPot&);
 		void :target:`forceImpl<doxid-classrgpot_1_1_metatomic_pot_1a85936bb9b3fc63fee08f34ae1e02ad5c>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_metatomic_pot_1a9eb144be8d1ff68de864a7f0ae52626b>`() const;
 	};
+.. _details-classrgpot_1_1_metatomic_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1_metatomic_pot_1a9eb144be8d1ff68de864a7f0ae52626b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Internal mutex serializes the torch session, so a shared instance is safe; multi-image callers still prefer clones for throughput.
+

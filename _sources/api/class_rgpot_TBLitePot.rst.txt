@@ -7,6 +7,9 @@ class rgpot::TBLitePot
 .. toctree::
 	:hidden:
 
+Overview
+~~~~~~~~
+
 
 
 
@@ -27,4 +30,25 @@ class rgpot::TBLitePot
 	
 		TBLitePot& :target:`operator=<doxid-classrgpot_1_1_t_b_lite_pot_1a77d10237a85d916d898d10ed167f0ca0>`(const TBLitePot&);
 		void :target:`forceImpl<doxid-classrgpot_1_1_t_b_lite_pot_1aa640a27fb912fa9db897eb96bd048a87>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_t_b_lite_pot_1ae4147e050b7771592e7c4f03ecdf6c5d>`() const;
 	};
+.. _details-classrgpot_1_1_t_b_lite_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1_t_b_lite_pot_1ae4147e050b7771592e7c4f03ecdf6c5d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Native handles are per-instance; concurrent use needs one instance per thread.
+

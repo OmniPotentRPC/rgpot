@@ -1,0 +1,39 @@
+.. index:: pair: namespace; rgpot::fortranpots
+.. _doxid-namespacergpot_1_1fortranpots:
+
+namespace rgpot::fortranpots
+============================
+
+.. toctree::
+	:hidden:
+
+	class_rgpot_fortranpots_CuH2Pot.rst
+	class_rgpot_fortranpots_EAMAlPot.rst
+	class_rgpot_fortranpots_EDIPPot.rst
+	class_rgpot_fortranpots_FeHePot.rst
+	class_rgpot_fortranpots_LenoskyPot.rst
+	class_rgpot_fortranpots_SWPot.rst
+	class_rgpot_fortranpots_TersoffPot.rst
+	class_rgpot_fortranpots_WaterHPot.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace fortranpots {
+
+	// classes
+
+	class :ref:`CuH2Pot<doxid-classrgpot_1_1fortranpots_1_1_cu_h2_pot>`;
+	class :ref:`EAMAlPot<doxid-classrgpot_1_1fortranpots_1_1_e_a_m_al_pot>`;
+	class :ref:`EDIPPot<doxid-classrgpot_1_1fortranpots_1_1_e_d_i_p_pot>`;
+	class :ref:`FeHePot<doxid-classrgpot_1_1fortranpots_1_1_fe_he_pot>`;
+	class :ref:`LenoskyPot<doxid-classrgpot_1_1fortranpots_1_1_lenosky_pot>`;
+	class :ref:`SWPot<doxid-classrgpot_1_1fortranpots_1_1_s_w_pot>`;
+	class :ref:`TersoffPot<doxid-classrgpot_1_1fortranpots_1_1_tersoff_pot>`;
+	class :ref:`WaterHPot<doxid-classrgpot_1_1fortranpots_1_1_water_h_pot>`;
+
+	} // namespace fortranpots

@@ -1,0 +1,52 @@
+.. index:: pair: class; rgpot::fortranpots::EAMAlPot
+.. _doxid-classrgpot_1_1fortranpots_1_1_e_a_m_al_pot:
+
+class rgpot::fortranpots::EAMAlPot
+==================================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class EAMAlPot: public rgpot::Potential< EAMAlPot > {
+	public:
+		// construction
+	
+		:target:`EAMAlPot<doxid-classrgpot_1_1fortranpots_1_1_e_a_m_al_pot_1a8bf40936d4774d15a94fee42d7bfe160>`();
+
+		// methods
+	
+		void :target:`forceImpl<doxid-classrgpot_1_1fortranpots_1_1_e_a_m_al_pot_1a94f71c4e40f15f59adc4f1d3a96406a1>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1fortranpots_1_1_e_a_m_al_pot_1a33693c0014f1a0164b115e5f3537cd32>`() const;
+	};
+.. _details-classrgpot_1_1fortranpots_1_1_e_a_m_al_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1fortranpots_1_1_e_a_m_al_pot_1a33693c0014f1a0164b115e5f3537cd32:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Concurrency and evaluation capabilities of this potential.
+
+Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
+

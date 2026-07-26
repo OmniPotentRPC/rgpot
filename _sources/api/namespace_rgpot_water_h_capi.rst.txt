@@ -1,0 +1,54 @@
+.. index:: pair: namespace; rgpot_water_h_capi
+.. _doxid-namespacergpot__water__h__capi:
+
+namespace rgpot_water_h_capi
+============================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+C entry point for the H-in-water potential. :ref:`More...<details-namespacergpot__water__h__capi>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace rgpot_water_h_capi {
+
+	// global functions
+
+	integer(c_int) function, public :ref:`rgpot_water_h_force<doxid-namespacergpot__water__h__capi_1a90483e9b08c79b6a46733311863fdfe1>`(integer(c_int), intent(in), value natoms, real(c_double), dimension(3, natoms), intent(in) positions, integer(c_int), dimension(natoms), intent(in) atomic_numbers, real(c_double), dimension(3, 3), intent(in) cell, real(c_double), dimension(3, natoms), intent(out) forces, real(c_double), intent(out) energy);
+
+	} // namespace rgpot_water_h_capi
+.. _details-namespacergpot__water__h__capi:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+C entry point for the H-in-water potential.
+
+Only ``bind(c)`` names leave this library; the physics module exports no external symbols of its own that C could collide with. The parameter set is saved here so a caller can be given a way to retune it without the kernel holding state of its own.
+
+Unlike the pair potentials, this one keeps no neighbour table. Its sum has a single centre and no cutoff, so every atom contributes one leg at its nearest periodic image and there is nothing for vesin to build.
+
+Global Functions
+----------------
+
+.. index:: pair: function; rgpot_water_h_force
+.. _doxid-namespacergpot__water__h__capi_1a90483e9b08c79b6a46733311863fdfe1:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	integer(c_int) function, public rgpot_water_h_force(integer(c_int), intent(in), value natoms, real(c_double), dimension(3, natoms), intent(in) positions, integer(c_int), dimension(natoms), intent(in) atomic_numbers, real(c_double), dimension(3, 3), intent(in) cell, real(c_double), dimension(3, natoms), intent(out) forces, real(c_double), intent(out) energy)
+
+Evaluate H-water forces and energy.
+
+``positions`` and ``forces`` are ``3 * natoms`` doubles, x/y/z interleaved; ``atomic_numbers`` is one ``int`` per atom; ``cell`` is nine doubles, row-major, one cell vector per row, and a zero cell means an isolated cluster. Returns zero on success, non-zero on failure with the message available through ``rgpot_fortran_last_error``.
+
+The atoms must be hydrogen and oxygen only, in whole water molecules plus one extra H, and that extra H must be the last atom: nothing in an atomic-number list distinguishes it from the hydrogens bound in water, so its position in the list is what identifies it. A list that does not meet this is rejected with a message naming the fault.
+

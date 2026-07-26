@@ -1,0 +1,52 @@
+.. index:: pair: class; rgpot::fortranpots::TersoffPot
+.. _doxid-classrgpot_1_1fortranpots_1_1_tersoff_pot:
+
+class rgpot::fortranpots::TersoffPot
+====================================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class TersoffPot: public rgpot::Potential< TersoffPot > {
+	public:
+		// construction
+	
+		:target:`TersoffPot<doxid-classrgpot_1_1fortranpots_1_1_tersoff_pot_1a4af4978d49b927acd821e4924a8b0f47>`();
+
+		// methods
+	
+		void :target:`forceImpl<doxid-classrgpot_1_1fortranpots_1_1_tersoff_pot_1aa1c913a2897e7292e9fa70ee186da6d6>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1fortranpots_1_1_tersoff_pot_1aa67b03ce8e0d4c722c5778b607b6d2b6>`() const;
+	};
+.. _details-classrgpot_1_1fortranpots_1_1_tersoff_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1fortranpots_1_1_tersoff_pot_1aa67b03ce8e0d4c722c5778b607b6d2b6:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Concurrency and evaluation capabilities of this potential.
+
+Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
+

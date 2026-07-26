@@ -1,0 +1,70 @@
+.. index:: pair: namespace; rgpot_kinds
+.. _doxid-namespacergpot__kinds:
+
+namespace rgpot_kinds
+=====================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Numeric kinds shared by every Fortran potential. :ref:`More...<details-namespacergpot__kinds>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace rgpot_kinds {
+
+	// global variables
+
+	integer, parameter, public :ref:`wp<doxid-namespacergpot__kinds_1ab4871e7f01fd2273ea779e4784b7e43d>` = real64;
+	integer, parameter, public :ref:`ip<doxid-namespacergpot__kinds_1ad755b1c0a90d439500cc987e0325e5d9>` = int32;
+	integer, parameter, public :ref:`lp<doxid-namespacergpot__kinds_1a42d9cfbd48124167263b0cd3ea149078>` = int64;
+
+	} // namespace rgpot_kinds
+.. _details-namespacergpot__kinds:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Numeric kinds shared by every Fortran potential.
+
+Kinds come from ``iso_fortran_env``, and the C-interoperable kinds of ``iso_c_binding`` are asserted against them at compile time: the ``bind(c)`` entry points hand raw ``double`` / ``int`` buffers straight to the kernels, so a mismatch would silently reinterpret memory. A failing assertion divides by zero in a constant expression, which every conforming compiler rejects.
+
+Global Variables
+----------------
+
+.. index:: pair: variable; wp
+.. _doxid-namespacergpot__kinds_1ab4871e7f01fd2273ea779e4784b7e43d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	integer, parameter, public wp = real64
+
+Working precision for every energy, force, and coordinate.
+
+.. index:: pair: variable; ip
+.. _doxid-namespacergpot__kinds_1ad755b1c0a90d439500cc987e0325e5d9:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	integer, parameter, public ip = int32
+
+Index kind for atom indices crossing the C boundary.
+
+.. index:: pair: variable; lp
+.. _doxid-namespacergpot__kinds_1a42d9cfbd48124167263b0cd3ea149078:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	integer, parameter, public lp = int64
+
+Wide index kind for pair counts, which exceed 2^31 on large cells.
+

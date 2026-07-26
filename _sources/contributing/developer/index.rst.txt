@@ -60,7 +60,7 @@ All tasks are invoked via ``pixi r <task>``:
     +-------------------------------------------------+-------------------------------------------------------------------------------------------------------------+
     | ``release-sync-versions``                       | Lockstep write (``potctl release sync``; ``pixi r release-sync-versions -- 1.2.3``)                         |
     +-------------------------------------------------+-------------------------------------------------------------------------------------------------------------+
-    | ``release-assert-lockstep``                     | Assert meson/cmake/cargo/towncrier/pixi agree (``potctl release assert``)                                   |
+    | ``release-assert-lockstep``                     | Assert meson/cmake/cargo/towncrier/pixi/pyproject agree (``potctl release assert``)                         |
     +-------------------------------------------------+-------------------------------------------------------------------------------------------------------------+
     | ``release-extract-changelog``                   | One ``CHANGELOG.md`` section (``potctl release notes``; optional ``-o``)                                    |
     +-------------------------------------------------+-------------------------------------------------------------------------------------------------------------+

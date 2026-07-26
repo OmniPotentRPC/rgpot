@@ -1,0 +1,80 @@
+.. index:: pair: struct; rgpot::MorseConfig
+.. _doxid-structrgpot_1_1_morse_config:
+
+struct rgpot::MorseConfig
+=========================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Parameters for the shifted Morse potential. :ref:`More...<details-structrgpot_1_1_morse_config>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <MorsePot.hpp>
+	
+	struct MorseConfig {
+		// fields
+	
+		double :ref:`De<doxid-structrgpot_1_1_morse_config_1a6cf7b71002b50740c613e75b3d27a792>` = 0.7102;
+		double :ref:`a<doxid-structrgpot_1_1_morse_config_1ab482b9faf3f187c1d1cc0487ae5992d5>` = 1.6047;
+		double :ref:`re<doxid-structrgpot_1_1_morse_config_1a31b7f04e644f1109c6b3512b3290123b>` = 2.8970;
+		double :ref:`cutoff<doxid-structrgpot_1_1_morse_config_1aa0d757dd1900ef5c789a918317b9bfb6>` = 9.5;
+	};
+.. _details-structrgpot_1_1_morse_config:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Parameters for the shifted Morse potential.
+
+Plain aggregate with inline defaults (platinum): construct with designated initializers.
+
+Fields
+------
+
+.. index:: pair: variable; De
+.. _doxid-structrgpot_1_1_morse_config_1a6cf7b71002b50740c613e75b3d27a792:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double De = 0.7102
+
+Well depth (eV).
+
+.. index:: pair: variable; a
+.. _doxid-structrgpot_1_1_morse_config_1ab482b9faf3f187c1d1cc0487ae5992d5:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double a = 1.6047
+
+Range parameter (1/Angstrom).
+
+.. index:: pair: variable; re
+.. _doxid-structrgpot_1_1_morse_config_1a31b7f04e644f1109c6b3512b3290123b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double re = 2.8970
+
+Equilibrium pair distance (Angstrom).
+
+.. index:: pair: variable; cutoff
+.. _doxid-structrgpot_1_1_morse_config_1aa0d757dd1900ef5c789a918317b9bfb6:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double cutoff = 9.5
+
+Truncation distance (Angstrom).
+

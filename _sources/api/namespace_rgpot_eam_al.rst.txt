@@ -1,0 +1,64 @@
+.. index:: pair: namespace; rgpot_eam_al
+.. _doxid-namespacergpot__eam__al:
+
+namespace rgpot_eam_al
+======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Embedded-atom aluminium with double-exponential pair, density, and an eighth-order polynomial embedding function, in gather form. :ref:`More...<details-namespacergpot__eam__al>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace rgpot_eam_al {
+
+	// global functions
+
+	pure real(wp) function :ref:`eam_al_cutoff<doxid-namespacergpot__eam__al_1ad11baa69559054182e268b5535176c62>`(class(:ref:`eam_al_params_t<doxid-structrgpot__eam__al_1_1eam__al__params__t>`), intent(in) self);
+	subroutine, public :ref:`eam_al_energy_forces<doxid-namespacergpot__eam__al_1a598d2104d00e3272104d7add88835f36>`(real(wp), dimension(:, :), intent(in), contiguous positions, real(wp), dimension(3, 3), intent(in) cell, type(:ref:`eam_al_params_t<doxid-structrgpot__eam__al_1_1eam__al__params__t>`), intent(in) par, type(:ref:`neighbor_table_t<doxid-structrgpot__neighbors_1_1neighbor__table__t>`), intent(inout) table, real(wp), intent(out) energy, real(wp), dimension(:, :), intent(out), contiguous forces, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg);
+
+	} // namespace rgpot_eam_al
+.. _details-namespacergpot__eam__al:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Embedded-atom aluminium with double-exponential pair, density, and an eighth-order polynomial embedding function, in gather form.
+
+The energy is a pair sum plus a per-atom embedding term, E = sum\_{i<j} phi(r_ij) + sum_i F(rho_i),
+rho_i = sum\_{j /= i} rho(r_ij),
+
+so the force on atom ``i`` couples to F ``evaluated at every neighbour's density as well as at its own. Three passes turn that into a gather: densities first, then`` F ``and`` F' ``for all atoms, then the force. By the time the force loop runs,`` F'(rho_j) ``is a plain array lookup, and atom`` i ``can sum the whole force acting on it while writing only`` f(:, i) : f_i = sum_j [ phi&rsquo;(r_ij) + (F'_i + F'_j) rho'(r_ij) ] rhat_ij,
+
+with ``rhat_ij`` the unit vector from ``i`` towards ``j``. This is where EAM closes and a bond-order gather does not: the neighbour-dependent factor is one scalar per atom, not a sum that has to be rebuilt by walking atom ``j`` 's own neighbour list.
+
+Global Functions
+----------------
+
+.. index:: pair: function; eam_al_cutoff
+.. _doxid-namespacergpot__eam__al_1ad11baa69559054182e268b5535176c62:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	pure real(wp) function eam_al_cutoff(class(:ref:`eam_al_params_t<doxid-structrgpot__eam__al_1_1eam__al__params__t>`), intent(in) self)
+
+Interaction cutoff, the radius the neighbour table is built at.
+
+.. index:: pair: function; eam_al_energy_forces
+.. _doxid-namespacergpot__eam__al_1a598d2104d00e3272104d7add88835f36:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	subroutine, public eam_al_energy_forces(real(wp), dimension(:, :), intent(in), contiguous positions, real(wp), dimension(3, 3), intent(in) cell, type(:ref:`eam_al_params_t<doxid-structrgpot__eam__al_1_1eam__al__params__t>`), intent(in) par, type(:ref:`neighbor_table_t<doxid-structrgpot__neighbors_1_1neighbor__table__t>`), intent(inout) table, real(wp), intent(out) energy, real(wp), dimension(:, :), intent(out), contiguous forces, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg)
+
+Energy and forces for ``positions`` (3 x natoms) in ``cell``.
+

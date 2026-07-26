@@ -23,8 +23,8 @@ Static registry for instance tracking and statistics. :ref:`More...<details-clas
 	public:
 		// fields
 	
-		static size_t :ref:`count<doxid-classrgpot_1_1registry_1a0caf8c8882659ef75136aa5207ba8d52>`;
-		static size_t :ref:`forceCalls<doxid-classrgpot_1_1registry_1adb02e0b61e75a7ab030a51522f4d3fdd>`;
+		static std::atomic<size_t> :ref:`count<doxid-classrgpot_1_1registry_1ac4bac5e107803e7b48bb0eab8b0978eb>`;
+		static std::atomic<size_t> :ref:`forceCalls<doxid-classrgpot_1_1registry_1abc3831dfa650a4ca2d5a347b73f76915>`;
 		static T* :ref:`head<doxid-classrgpot_1_1registry_1a720ef6941db97af09f637f56fe278e62>`;
 		T* :ref:`prev<doxid-classrgpot_1_1registry_1a6effb1966d43d271447e51244fca341f>`;
 		T* :ref:`next<doxid-classrgpot_1_1registry_1a63702ca67d75ee109e6a1632541d8407>`;
@@ -51,22 +51,24 @@ Fields
 ------
 
 .. index:: pair: variable; count
-.. _doxid-classrgpot_1_1registry_1a0caf8c8882659ef75136aa5207ba8d52:
+.. _doxid-classrgpot_1_1registry_1ac4bac5e107803e7b48bb0eab8b0978eb:
 
 .. ref-code-block:: cpp
 	:class: doxyrest-title-code-block
 
-	static size_t count
+	static std::atomic<size_t> count
 
 Total number of active instances.
 
+Statistics counters are atomic: force evaluations run concurrently from NEB image / dimer endpoint threads. The instance linked list is NOT concurrency-safe — construct and destroy potentials from one thread (setup paths), only evaluate them concurrently.
+
 .. index:: pair: variable; forceCalls
-.. _doxid-classrgpot_1_1registry_1adb02e0b61e75a7ab030a51522f4d3fdd:
+.. _doxid-classrgpot_1_1registry_1abc3831dfa650a4ca2d5a347b73f76915:
 
 .. ref-code-block:: cpp
 	:class: doxyrest-title-code-block
 
-	static size_t forceCalls
+	static std::atomic<size_t> forceCalls
 
 Global counter for force evaluations.
 

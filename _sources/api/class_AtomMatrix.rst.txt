@@ -44,9 +44,9 @@ Detailed Documentation
 
 A lightweight row-major matrix class for atomic data.
 
-Implementation of the CuH2 potential force calls.
+Implementation of the Lennard-Jones potential methods.
 
-This file contains the logic to validate atomic species and interface with the Fortran EAM backend via the C bridge.
+This file contains the implementation of the force and energy calculation for the Lennard-Jones potential, including periodic boundary condition handling.
 
 Construction
 ------------

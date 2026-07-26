@@ -1,0 +1,69 @@
+.. index:: pair: struct; rgpot::LJConfig
+.. _doxid-structrgpot_1_1_l_j_config:
+
+struct rgpot::LJConfig
+======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Parameters for the shifted 12-6 Lennard-Jones potential. :ref:`More...<details-structrgpot_1_1_l_j_config>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <LJPot.hpp>
+	
+	struct LJConfig {
+		// fields
+	
+		double :ref:`u0<doxid-structrgpot_1_1_l_j_config_1a8d1f80251f78287ad556a5c42844a7af>` = 1.0;
+		double :ref:`cutoff<doxid-structrgpot_1_1_l_j_config_1a25c0700f7ef1103c0f28bdba3229384d>` = 15.0;
+		double :ref:`psi<doxid-structrgpot_1_1_l_j_config_1a6d1cbb56642a64db5d630e7998ff370d>` = 1.0;
+	};
+.. _details-structrgpot_1_1_l_j_config:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Parameters for the shifted 12-6 Lennard-Jones potential.
+
+Plain aggregate with inline defaults: the parameter convention for every classical potential (construct with designated initializers).
+
+Fields
+------
+
+.. index:: pair: variable; u0
+.. _doxid-structrgpot_1_1_l_j_config_1a8d1f80251f78287ad556a5c42844a7af:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double u0 = 1.0
+
+Well depth (eV).
+
+.. index:: pair: variable; cutoff
+.. _doxid-structrgpot_1_1_l_j_config_1a25c0700f7ef1103c0f28bdba3229384d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double cutoff = 15.0
+
+Truncation distance (Angstrom).
+
+.. index:: pair: variable; psi
+.. _doxid-structrgpot_1_1_l_j_config_1a6d1cbb56642a64db5d630e7998ff370d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double psi = 1.0
+
+Zero-crossing distance (Angstrom).
+

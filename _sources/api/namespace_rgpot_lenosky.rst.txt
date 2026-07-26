@@ -1,0 +1,89 @@
+.. index:: pair: namespace; rgpot_lenosky
+.. _doxid-namespacergpot__lenosky:
+
+namespace rgpot_lenosky
+=======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Lenosky tight-binding-fit silicon in gather form. :ref:`More...<details-namespacergpot__lenosky>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace rgpot_lenosky {
+
+	// global variables
+
+	real(wp), dimension(0:9), parameter :ref:`cof_phi<doxid-namespacergpot__lenosky_1a38b4793f2fbbfe88cc4c87a6afead20d>` = [       6.92994_wp, -0.43995_wp, -1.70123_wp, -1.62473_wp, -0.99696_wp,       -0.27391_wp, -0.02499_wp, -0.01784_wp, -0.00961_wp, 0.0_wp];
+
+	// global functions
+
+	pure subroutine :ref:`splint<doxid-namespacergpot__lenosky_1a2a31f23bfd707492226aea09cf9a149e>`(type(:ref:`spline_t<doxid-structrgpot__lenosky_1_1spline__t>`), intent(in) sp, real(wp), dimension(0:), intent(in) ya, real(wp), dimension(0:), intent(in) y2a, real(wp), intent(in) x, real(wp), intent(out) y, real(wp), intent(out) yp);
+	subroutine, public :ref:`lenosky_energy_forces<doxid-namespacergpot__lenosky_1ae41fa93d7b4d7787734f3b33b807ac84>`(real(wp), dimension(:, :), intent(in), contiguous positions, real(wp), dimension(3, 3), intent(in) cell, type(:ref:`lenosky_params_t<doxid-structrgpot__lenosky_1_1lenosky__params__t>`), intent(in) par, type(:ref:`neighbor_table_t<doxid-structrgpot__neighbors_1_1neighbor__table__t>`), intent(inout) table, real(wp), intent(out) energy, real(wp), dimension(:, :), intent(out), contiguous forces, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg);
+
+	} // namespace rgpot_lenosky
+.. _details-namespacergpot__lenosky:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Lenosky tight-binding-fit silicon in gather form.
+
+Atom ``i`` carries a pair sum and an embedding term evaluated at a local density built from two- and three-body pieces: dens_i = sum_j rho(r_ij) + sum\_{j<k} f(r_ij) f(r_ik) g(cos t_jik),
+E_i    = sum_j phi(r_ij)/2 + U(dens_i).
+
+Every ingredient is a cubic spline over a tabulated grid, linearly extrapolated outside it.
+
+``dU/ddens`` is not known until ``dens_i`` is complete, which is what stops a single-pass gather. Evaluation therefore runs in three passes: the densities, then the embedding derivative per atom, then the force gather, in which atom ``a`` collects
+
+* its own pair terms,
+
+* ``-dU/ddens_a`` times the density gradients of the terms it centres,
+
+* ``+dU/ddens_m`` times the gradients it contributes to each neighbour ``m`` 's density, both as ``m`` 's two-body partner and as an end of the triplets ``m`` centres.
+
+Each pass writes one slot per atom, so all three run under ``do concurrent``.
+
+Global Variables
+----------------
+
+.. index:: pair: variable; cof_phi
+.. _doxid-namespacergpot__lenosky_1a38b4793f2fbbfe88cc4c87a6afead20d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	real(wp), dimension(0:9), parameter cof_phi = [       6.92994_wp, -0.43995_wp, -1.70123_wp, -1.62473_wp, -0.99696_wp,       -0.27391_wp, -0.02499_wp, -0.01784_wp, -0.00961_wp, 0.0_wp]
+
+Pair energy spline: 10 knots on [1.5_wp, 4.5_wp].
+
+Global Functions
+----------------
+
+.. index:: pair: function; splint
+.. _doxid-namespacergpot__lenosky_1a2a31f23bfd707492226aea09cf9a149e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	pure subroutine splint(type(:ref:`spline_t<doxid-structrgpot__lenosky_1_1spline__t>`), intent(in) sp, real(wp), dimension(0:), intent(in) ya, real(wp), dimension(0:), intent(in) y2a, real(wp), intent(in) x, real(wp), intent(out) y, real(wp), intent(out) yp)
+
+Cubic spline value and derivative, linear outside the knot range.
+
+.. index:: pair: function; lenosky_energy_forces
+.. _doxid-namespacergpot__lenosky_1ae41fa93d7b4d7787734f3b33b807ac84:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	subroutine, public lenosky_energy_forces(real(wp), dimension(:, :), intent(in), contiguous positions, real(wp), dimension(3, 3), intent(in) cell, type(:ref:`lenosky_params_t<doxid-structrgpot__lenosky_1_1lenosky__params__t>`), intent(in) par, type(:ref:`neighbor_table_t<doxid-structrgpot__neighbors_1_1neighbor__table__t>`), intent(inout) table, real(wp), intent(out) energy, real(wp), dimension(:, :), intent(out), contiguous forces, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg)
+
+Energy and forces for ``positions`` (3 x natoms) in ``cell``.
+

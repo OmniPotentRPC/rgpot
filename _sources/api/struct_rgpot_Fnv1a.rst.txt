@@ -1,0 +1,32 @@
+.. index:: pair: struct; rgpot::Fnv1a
+.. _doxid-structrgpot_1_1_fnv1a:
+
+struct rgpot::Fnv1a
+===================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Fnv1a {
+		// fields
+	
+		static uint64_t :target:`kOffset<doxid-structrgpot_1_1_fnv1a_1ae83345dba510f2bbe87703b5fbdd3f83>` = 0xcbf29ce484222325ULL;
+		static uint64_t :target:`kPrime<doxid-structrgpot_1_1_fnv1a_1a47dd9463747e7c10cd0808f1d5e0c393>` = 0x100000001b3ULL;
+		uint64_t :target:`h<doxid-structrgpot_1_1_fnv1a_1a39094fdce3b44f3fe4ce1c2b7c478768>` = kOffset;
+
+		// methods
+	
+		void :target:`bytes<doxid-structrgpot_1_1_fnv1a_1a18c141e117e77ea495ea6bf0d8bc4515>`(const void* data, std::size_t n);
+		void :target:`f64<doxid-structrgpot_1_1_fnv1a_1a4609f6d778a58cd834556a1e27054632>`(double v);
+		void :target:`i64<doxid-structrgpot_1_1_fnv1a_1aadca1ee19471d3615d176663377626e0>`(int64_t v);
+		void :target:`u64<doxid-structrgpot_1_1_fnv1a_1a8e433e5016b69ca3c3b61a1cc24ac8c0>`(uint64_t v);
+		void :target:`b8<doxid-structrgpot_1_1_fnv1a_1a5a789f20205307a821766ea3caf397a3>`(bool v);
+		void :target:`str<doxid-structrgpot_1_1_fnv1a_1ac9c7b1b25f208c904de042f11723d370>`(std::string_view s);
+	};

@@ -1,0 +1,50 @@
+.. index:: pair: namespace; rgpot_eam_al_capi
+.. _doxid-namespacergpot__eam__al__capi:
+
+namespace rgpot_eam_al_capi
+===========================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+C entry point for the embedded-atom aluminium potential. :ref:`More...<details-namespacergpot__eam__al__capi>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace rgpot_eam_al_capi {
+
+	// global functions
+
+	integer(c_int) function, public :ref:`rgpot_eam_al_force<doxid-namespacergpot__eam__al__capi_1a6b9112989a9116c2f5b71599ad7c9704>`(integer(c_int), intent(in), value natoms, real(c_double), dimension(3, natoms), intent(in) positions, real(c_double), dimension(3, 3), intent(in) cell, real(c_double), dimension(3, natoms), intent(out) forces, real(c_double), intent(out) energy);
+
+	} // namespace rgpot_eam_al_capi
+.. _details-namespacergpot__eam__al__capi:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+C entry point for the embedded-atom aluminium potential.
+
+Only ``bind(c)`` names leave this library; the physics module exports no external symbols of its own that C could collide with. The neighbour table lives here, saved across calls so vesin reuses its buffers and tracks list staleness itself, in place of a hand-rolled skin radius.
+
+Global Functions
+----------------
+
+.. index:: pair: function; rgpot_eam_al_force
+.. _doxid-namespacergpot__eam__al__capi_1a6b9112989a9116c2f5b71599ad7c9704:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	integer(c_int) function, public rgpot_eam_al_force(integer(c_int), intent(in), value natoms, real(c_double), dimension(3, natoms), intent(in) positions, real(c_double), dimension(3, 3), intent(in) cell, real(c_double), dimension(3, natoms), intent(out) forces, real(c_double), intent(out) energy)
+
+Evaluate embedded-atom aluminium forces and energy.
+
+``positions`` and ``forces`` are ``3 * natoms`` doubles, x/y/z interleaved; ``cell`` is nine doubles, row-major, one cell vector per row. Energies are eV and forces eV/Angstrom. Returns zero on success, non-zero on failure with the message available through ``rgpot_fortran_last_error``.
+

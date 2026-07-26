@@ -197,8 +197,30 @@ Built-in Potentials
 ``LJPot``
     Standard 12-6 Lennard-Jones (always available).
 
-``CuH2Pot``
-    Copper-Hydrogen EAM via Fortran (requires Fortran compiler).
+``LJClusterPot``
+    12-6 Lennard-Jones on free boundaries, for isolated
+
+clusters; the cell is ignored.
+Configurable via ``LJClusterConfig`` (``u0``, ``cutoff``, ``psi``).
+
+``MorsePot``
+    Pairwise Morse with a shifted cutoff, platinum parameters by
+
+default.
+Configurable via ``MorseConfig`` (``De``, ``a``, ``re``, ``cutoff``).
+
+``ZBLPot``
+    Screened nuclear repulsion (Ziegler-Biersack-Littmark) with the
+
+LAMMPS switching function, on free boundaries.
+Configurable via ``ZBLConfig`` (``cut_inner``, ``cut_global``); the constructor throws
+``std::invalid_argument`` unless ``0 < cut_inner < cut_global``.
+
+``rgpot::fortranpots::CuH2Pot``
+    Copper-Hydrogen EAM.
+
+One of the Fortran 2018 kernels under ``CppCore/rgpot/fortran/``, declared in
+``FortranPots.hpp`` and built when ``with_fortran_pots`` finds a Fortran compiler.
 
 Feature-gated Potentials
 ::::::::::::::::::::::::

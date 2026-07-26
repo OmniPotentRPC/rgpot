@@ -36,6 +36,7 @@ Overview
 	
 		NWChemPot& :target:`operator=<doxid-classrgpot_1_1_n_w_chem_pot_1a136d8f3bdcf670aab0969eab299ed1e8>`(const NWChemPot&);
 		void :target:`forceImpl<doxid-classrgpot_1_1_n_w_chem_pot_1ac17b35779ef380b82bc90b69815a000d>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_n_w_chem_pot_1a1838558d186d46689659134076afe0a3>`() const;
 		bool :ref:`setParams<doxid-classrgpot_1_1_n_w_chem_pot_1a1318591fc626ae2f3fdb27c40e380b0e>`(const ::NWChemParams::Reader& params);
 		void :ref:`getParams<doxid-classrgpot_1_1_n_w_chem_pot_1af43bd2a50c93577f155b6ca4a85409f1>`(::NWChemParams::Builder out) const;
 		bool :ref:`setPotentialConfig<doxid-classrgpot_1_1_n_w_chem_pot_1afe1b5ac6acd29e8f8e3c56f92714f951>`(const ::PotentialConfig::Reader& cfg, std::string* message_out = nullptr);
@@ -65,6 +66,16 @@ Apply schema defaults, then optional Cap'n Proto NWChemParams.
 
 Methods
 -------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1_n_w_chem_pot_1a1838558d186d46689659134076afe0a3:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+The dlopen'd engine keeps global session state: serialize process-wide.
 
 .. index:: pair: function; setParams
 .. _doxid-classrgpot_1_1_n_w_chem_pot_1a1318591fc626ae2f3fdb27c40e380b0e:

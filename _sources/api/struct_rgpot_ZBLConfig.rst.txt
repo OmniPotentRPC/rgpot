@@ -1,0 +1,58 @@
+.. index:: pair: struct; rgpot::ZBLConfig
+.. _doxid-structrgpot_1_1_z_b_l_config:
+
+struct rgpot::ZBLConfig
+=======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Parameters for the ZBL potential. :ref:`More...<details-structrgpot_1_1_z_b_l_config>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <ZBLPot.hpp>
+	
+	struct ZBLConfig {
+		// fields
+	
+		double :ref:`cut_inner<doxid-structrgpot_1_1_z_b_l_config_1af5802162adf0aea94bd3e149967ff51c>` = 2.0;
+		double :ref:`cut_global<doxid-structrgpot_1_1_z_b_l_config_1a6b38d8bc481298c55cb2ba73cbda7347>` = 2.5;
+	};
+.. _details-structrgpot_1_1_z_b_l_config:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Parameters for the ZBL potential.
+
+Plain aggregate with inline defaults matching eOn's ``[:ref:`ZBLPot <doxid-classrgpot_1_1_z_b_l_pot>`]`` options: construct with designated initializers.
+
+Fields
+------
+
+.. index:: pair: variable; cut_inner
+.. _doxid-structrgpot_1_1_z_b_l_config_1af5802162adf0aea94bd3e149967ff51c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double cut_inner = 2.0
+
+Distance where switching starts (Angstrom).
+
+.. index:: pair: variable; cut_global
+.. _doxid-structrgpot_1_1_z_b_l_config_1a6b38d8bc481298c55cb2ba73cbda7347:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double cut_global = 2.5
+
+Truncation distance (Angstrom).
+

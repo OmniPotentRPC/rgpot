@@ -9,6 +9,9 @@ class rgpot::CPMDPot
 
 	struct_rgpot_CPMDPot_Impl.rst
 
+Overview
+~~~~~~~~
+
 
 
 
@@ -33,6 +36,7 @@ class rgpot::CPMDPot
 	
 		CPMDPot& :target:`operator=<doxid-classrgpot_1_1_c_p_m_d_pot_1a5b11785bd07e721e29fc21603cd0198a>`(const CPMDPot&);
 		void :target:`forceImpl<doxid-classrgpot_1_1_c_p_m_d_pot_1a7ce83b3efda939edaecd8c9691d52ba9>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_c_p_m_d_pot_1a52e734d25d7da5f6660d904e0140b60f>`() const;
 		bool :target:`setParams<doxid-classrgpot_1_1_c_p_m_d_pot_1a80b707459bab810f682ba9f337b76e62>`(const ::CPMDParams::Reader& params);
 		void :target:`getParams<doxid-classrgpot_1_1_c_p_m_d_pot_1a29db37ef0464ae0c4086320515e02d5d>`(::CPMDParams::Builder out) const;
 		bool :target:`setPotentialConfig<doxid-classrgpot_1_1_c_p_m_d_pot_1ab2c8fdfbd07db81f8d023ba1d01fbefc>`(const ::PotentialConfig::Reader& cfg, std::string* message_out = nullptr);
@@ -40,3 +44,23 @@ class rgpot::CPMDPot
 		static bool :target:`probe_available<doxid-classrgpot_1_1_c_p_m_d_pot_1a055db00e0a19a8ed3d4bb0b6ddba1eaf>`();
 		static bool :target:`abi_available<doxid-classrgpot_1_1_c_p_m_d_pot_1aa6d5fa95440d78578a67318a6f94ebca>`();
 	};
+.. _details-classrgpot_1_1_c_p_m_d_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1_c_p_m_d_pot_1a52e734d25d7da5f6660d904e0140b60f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+The dlopen'd engine keeps global session state: serialize process-wide.
+

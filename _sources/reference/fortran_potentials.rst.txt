@@ -1,0 +1,208 @@
+=================================
+Fortran potentials: porting rules
+=================================
+
+
+.. contents::
+
+
+1 Why a port and not a wrapper
+------------------------------
+
+The kernels absorbed from eOn were written between 1985 and 2010: fixed form,
+``implicit real*8 (a-h,o-z)``, COMMON blocks holding state across calls, ``goto``
+chains, and hand-rolled neighbour lists with fixed-size caps that overflow
+silently.
+Wrapping that in ``bind(c)`` preserves every one of those properties and adds a
+language boundary on top.
+
+Each kernel is instead rewritten as a Fortran 2018 module.
+The physics expressions carry over term by term; everything around them is
+replaced.
+
+2 Rules
+-------
+
+1. **Module, ``implicit none``, ``private`` by default.** Export the physics entry points
+
+and the parameter type; nothing else.
+
+1. **Kinds from ``rgpot_kinds``** (``wp``, ``ip``, ``lp``).
+
+No ``real*8``, no ``double precision``, no kind literals spelled out at use sites.
+The module asserts ``wp == c_double`` at compile time.
+
+1. **No COMMON, no ``save`` state in the physics.** Parameters live in a derived type
+
+with defaults; scratch lives in local automatic arrays.
+Saved state is allowed only in the ``_capi`` module (the neighbour table and the
+parameter set), never in a kernel.
+
+1. **Every dummy argument gets ``intent``**, and arrays that cross into kernels are
+
+``contiguous`` where the caller can guarantee it.
+
+1. **No ``goto``, no arithmetic ``if``, no labelled ``do``.** Structured control flow only.
+
+``cycle`` and ``exit`` replace jump targets.
+
+1. **Kernels are ``pure``** (or ``elemental``) wherever the algorithm allows, which is
+
+also what ``do concurrent`` requires of anything it calls.
+
+1. **Failures return a status.** No ``stop``, no ``write(6,*)`` diagnostics from a
+
+library kernel: set a message through ``rgpot_ferror`` and return non-zero.
+The C++ wrapper turns that into an exception.
+
+1. **Neighbours come from vesin** through ``rgpot_neighbors``.
+
+No pot builds its own list, and no pot repeats minimum-image arithmetic: the
+table carries pair vectors and distances.
+
+3 Gather, not scatter
+---------------------
+
+Legacy pair loops update both atoms of a pair (``f(i) += g; f(j) -= g``), so the
+atom loop carries dependencies and cannot be parallelised as written.
+Every port restates the sum as a **gather**: with a full neighbour list, atom ``i``
+accumulates the entire force acting on it and writes only ``f(:, i)``.
+Iterations then touch disjoint memory:
+
+.. code:: fortran
+
+    do concurrent(i=1:natoms)
+       call atom_contribution(par, table, i, e_atom(i), forces(:, i))
+    end do
+    energy = sum(e_atom)
+
+Energy reduces through a per-atom array rather than a shared accumulator,
+because ``do concurrent`` gained reduction clauses only in Fortran 2023.
+
+3.1 What ``do concurrent`` actually buys
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Compilers are not obliged to run these iterations in parallel, and by default
+gfortran does not: without ``-ftree-parallelize-loops`` (or a compiler that
+maps the construct onto threads) it treats the construct as an assertion about
+independence.
+The assertion is still worth having.
+It licenses vectorisation, it documents the dependency structure for the next
+reader, and above all it forces the discipline that made the port correct:
+every procedure the loop body calls must be ``pure``, and every write must land in
+memory no other iteration touches.
+Turning the construct into real parallelism later is then a compiler flag rather
+than a rewrite.
+
+3.2 Cost
+~~~~~~~~
+
+A gather evaluates each pair twice (once from each end).
+For three-body terms the atom also walks its neighbours' neighbour lists to
+collect the triplets it participates in without centring.
+The arithmetic roughly doubles; the loop becomes trivially parallel and cache-
+local per atom.
+
+3.3 When the gather does not close
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Some kernels have terms whose force cannot be attributed to one atom without
+recomputing a large intermediate (bond-order derivatives that depend on a full
+coordination sum, for instance).
+Where restating the term would cost more than it saves, keep a structured
+scatter loop for that phase, run the independent phases under ``do concurrent``,
+and say so in a comment naming the dependency.
+Do not silently put a scatter inside ``do concurrent``.
+
+4 Layout
+--------
+
+Two modules per potential:
+
+``rgpot_<pot>.f90``
+    parameters, pure kernels, the energy/force driver.
+
+Pure Fortran, testable without the C++ stack.
+
+``rgpot_<pot>_capi.f90``
+    the ``bind(c)`` entry ~rgpot\_<pot>\ :sub:`force`\(natoms,
+
+positions, cell, forces, energy)~ returning a status, plus the saved neighbour
+table and parameter set.
+
+The static library builds with hidden visibility.
+Only the C++ wrapper inside ``librgpot`` calls the entry points, so no Fortran
+symbol reaches the dynamic table and the old collision class (two potentials
+exporting ``force_``) cannot recur.
+
+4.1 Archive rules
+~~~~~~~~~~~~~~~~~
+
+The kernels are one of several PIC convenience archives that ``link_whole`` into a
+single ``librgpot``.
+Three rules keep that arrangement sound; each was learned by breaking it.
+
+- A convenience archive takes a **headers-only** dependency on anything another
+
+archive also links.
+Meson copies a static library's objects into every static library that links it,
+so two archives that both ``link_with`` a third each carry its objects, and the
+umbrella then sees every symbol twice.
+Linking dependencies belong on the umbrella and on leaf binaries, where the
+objects arrive once.
+This is why ``vesin_dep`` has a ``vesin_hdr_dep`` counterpart, and ``ptlrpc_dep``
+a ``ptlrpc_hdr_dep``.
+
+- The **Fortran runtime is named explicitly**.
+
+``librgpot`` is a C++ target that takes the kernels through ``link_whole``, so meson
+has no Fortran source of its own to infer ``-lgfortran`` (or the flang equivalent)
+from.
+
+- **Generated sources propagate as headers.** A ``declare_dependency`` that lists a
+
+generated ``.cpp`` in ``sources:`` compiles that translation unit again in every
+consumer; list only the generated header.
+
+The invariants are worth checking mechanically: no object appears in two whole-
+linked archives, ``librgpot`` carries no ``NEEDED`` entry on a sibling rgpot object
+(consumers that bundle the umbrella alone depend on this), and the Fortran
+runtime appears when the kernels are enabled.
+
+5 Cell convention
+-----------------
+
+C callers pass nine doubles, row-major, one cell vector per row.
+Fortran reads the same memory column-major, so a ``real(wp) :: cell(3, 3)`` dummy
+sees one cell vector per column -- which is what vesin expects.
+No transpose anywhere in the chain.
+
+6 Tests
+-------
+
+Each port carries a Fortran-only test program alongside the Catch2 suite:
+translation invariance, vanishing net force on a periodic cell, and analytic
+forces against central differences of the energy.
+The finite-difference check is what catches a mis-attributed gather term, since
+such an error can leave the energy correct.
+
+Pinned reference energies from the pre-port kernels live in the Catch2 tests, at
+the tolerances the original suites used.
+
+6.1 Compilers
+~~~~~~~~~~~~~
+
+CI builds the kernels with the conda-forge gfortran (13/14) and, on Windows,
+with LLVM Flang.
+The port was additionally built and tested under **gfortran 15.2.0**, which passes
+all of it and reports diagnostics the older compilers stay quiet about, notably
+``Unused parameter ... which has been explicitly imported`` and ``-Wcompare-reals``.
+Both classes are worth reading rather than silencing: the first is dead code,
+and the second is fair warning unless the comparison really is asking "are these
+the same number I was handed before" -- cache validity or a switch parameter --
+in which case say so in a comment at the site.
+
+Flang on ``x86_64-pc-windows-msvc`` cannot lower a by-value ``BIND(C)`` derived
+type; it aborts rather than diagnosing.
+Interfaces that must build there pass such structs by pointer, which is why the
+vendored vesin interface binds ``vesin_neighbors_byref``.

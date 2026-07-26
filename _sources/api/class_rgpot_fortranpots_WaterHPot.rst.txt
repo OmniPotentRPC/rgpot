@@ -1,0 +1,52 @@
+.. index:: pair: class; rgpot::fortranpots::WaterHPot
+.. _doxid-classrgpot_1_1fortranpots_1_1_water_h_pot:
+
+class rgpot::fortranpots::WaterHPot
+===================================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class WaterHPot: public rgpot::Potential< WaterHPot > {
+	public:
+		// construction
+	
+		:target:`WaterHPot<doxid-classrgpot_1_1fortranpots_1_1_water_h_pot_1a8c8f8b7ee0e0de44cb21a423ca55bb38>`();
+
+		// methods
+	
+		void :target:`forceImpl<doxid-classrgpot_1_1fortranpots_1_1_water_h_pot_1a6b8c2273eeb1c3bb6a505243d937df29>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1fortranpots_1_1_water_h_pot_1afc3bb4ec2169f378ee2bff2d10e5037a>`() const;
+	};
+.. _details-classrgpot_1_1fortranpots_1_1_water_h_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1fortranpots_1_1_water_h_pot_1afc3bb4ec2169f378ee2bff2d10e5037a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Concurrency and evaluation capabilities of this potential.
+
+Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
+

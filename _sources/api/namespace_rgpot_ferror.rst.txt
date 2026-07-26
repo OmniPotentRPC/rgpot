@@ -1,0 +1,72 @@
+.. index:: pair: namespace; rgpot_ferror
+.. _doxid-namespacergpot__ferror:
+
+namespace rgpot_ferror
+======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Error channel shared by the Fortran potentials' C entry points. :ref:`More...<details-namespacergpot__ferror>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace rgpot_ferror {
+
+	// global functions
+
+	subroutine, public :ref:`set_error<doxid-namespacergpot__ferror_1a1424503cf12aa9a7f8c7ab9b5401d8bb>`(character(len=*), intent(in) text);
+	subroutine, public :ref:`clear_error<doxid-namespacergpot__ferror_1ace15f8afd8e1380c086877546ee23f19>`();
+	integer(c_int) function, public :ref:`rgpot_fortran_last_error<doxid-namespacergpot__ferror_1adf5356997afc2c7ec0a059f1baef0a62>`(character(kind=c_char), dimension(*), intent(out) buffer, integer(c_int), intent(in), value buffer_len);
+
+	} // namespace rgpot_ferror
+.. _details-namespacergpot__ferror:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Error channel shared by the Fortran potentials' C entry points.
+
+Legacy kernels reported failures by writing to unit 6 and calling ``stop``, which takes the host process down. The ported kernels return a status instead and leave the message here for the C++ wrapper to turn into an exception. One buffer suffices: the Fortran potentials declare ``Reentrancy::ProcessSerial``, so evaluations never overlap.
+
+Global Functions
+----------------
+
+.. index:: pair: function; set_error
+.. _doxid-namespacergpot__ferror_1a1424503cf12aa9a7f8c7ab9b5401d8bb:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	subroutine, public set_error(character(len=*), intent(in) text)
+
+Record a failure message for the next ``rgpot_fortran_last_error``.
+
+.. index:: pair: function; clear_error
+.. _doxid-namespacergpot__ferror_1ace15f8afd8e1380c086877546ee23f19:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	subroutine, public clear_error()
+
+Forget any recorded message.
+
+.. index:: pair: function; rgpot_fortran_last_error
+.. _doxid-namespacergpot__ferror_1adf5356997afc2c7ec0a059f1baef0a62:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	integer(c_int) function, public rgpot_fortran_last_error(character(kind=c_char), dimension(*), intent(out) buffer, integer(c_int), intent(in), value buffer_len)
+
+Copy the last message into ``buffer`` as a NUL-terminated C string.
+
+Returns the number of characters written, excluding the terminator.
+

@@ -1,0 +1,52 @@
+.. index:: pair: class; rgpot::fortranpots::CuH2Pot
+.. _doxid-classrgpot_1_1fortranpots_1_1_cu_h2_pot:
+
+class rgpot::fortranpots::CuH2Pot
+=================================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class CuH2Pot: public rgpot::Potential< CuH2Pot > {
+	public:
+		// construction
+	
+		:target:`CuH2Pot<doxid-classrgpot_1_1fortranpots_1_1_cu_h2_pot_1aa62ea35a3d58842f08e448e3d760f318>`();
+
+		// methods
+	
+		void :target:`forceImpl<doxid-classrgpot_1_1fortranpots_1_1_cu_h2_pot_1a83138a771cb314261fab7ffac673477d>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1fortranpots_1_1_cu_h2_pot_1af5bf2292d231789ee3359aecf3ba2dd0>`() const;
+	};
+.. _details-classrgpot_1_1fortranpots_1_1_cu_h2_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1fortranpots_1_1_cu_h2_pot_1af5bf2292d231789ee3359aecf3ba2dd0:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Concurrency and evaluation capabilities of this potential.
+
+Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
+

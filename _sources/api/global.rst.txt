@@ -7,12 +7,33 @@ Global Namespace
 .. toctree::
 	:hidden:
 
+	namespace_fortranpots.rst
 	namespace_rgpot.rst
 	namespace_rgpot-2.rst
 	namespace_rgpot-3.rst
 	namespace_rgpot-4.rst
 	namespace_rgpot-5.rst
 	namespace_rgpot-6.rst
+	namespace_rgpot-7.rst
+	namespace_rgpot_cuh2.rst
+	namespace_rgpot_cuh2_capi.rst
+	namespace_rgpot_eam_al.rst
+	namespace_rgpot_eam_al_capi.rst
+	namespace_rgpot_edip.rst
+	namespace_rgpot_edip_capi.rst
+	namespace_rgpot_fehe.rst
+	namespace_rgpot_fehe_capi.rst
+	namespace_rgpot_ferror.rst
+	namespace_rgpot_kinds.rst
+	namespace_rgpot_lenosky.rst
+	namespace_rgpot_lenosky_capi.rst
+	namespace_rgpot_neighbors.rst
+	namespace_rgpot_sw.rst
+	namespace_rgpot_sw_capi.rst
+	namespace_rgpot_tersoff.rst
+	namespace_rgpot_tersoff_capi.rst
+	namespace_rgpot_water_h.rst
+	namespace_rgpot_water_h_capi.rst
 	namespace_std.rst
 	namespace_string_literals.rst
 	namespace_vesin.rst
@@ -40,10 +61,13 @@ Overview
 	
 	// namespaces
 
+	namespace :ref:`fortranpots<doxid-namespacergpot_1_1fortranpots_1_1_0d165254177354022106360171111037067337336127011041>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d307112313373357257323066107376333004137304370130>`;
 	namespace :ref:`rgpot<doxid-namespacergpot>`;
 		namespace :ref:`rgpot::abi<doxid-namespacergpot_1_1abi>`;
 		namespace :ref:`rgpot::cache<doxid-namespacergpot_1_1cache>`;
 		namespace :ref:`rgpot::details<doxid-namespacergpot_1_1details>`;
+		namespace :ref:`rgpot::fortranpots<doxid-namespacergpot_1_1fortranpots>`;
 		namespace :ref:`rgpot::nlist<doxid-namespacergpot_1_1nlist>`;
 		namespace :ref:`rgpot::types<doxid-namespacergpot_1_1types>`;
 			namespace :ref:`rgpot::types::adapt<doxid-namespacergpot_1_1types_1_1adapt>`;
@@ -52,11 +76,30 @@ Overview
 				namespace :ref:`rgpot::types::adapt::xtensor<doxid-namespacergpot_1_1types_1_1adapt_1_1xtensor>`;
 		namespace :ref:`rgpot::units<doxid-namespacergpot_1_1units>`;
 		namespace :ref:`rgpot::vesin_compat<doxid-namespacergpot_1_1vesin__compat>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d330074065165043016212166146146214025043016253057>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d305002241363136067011226310027215036350216205241>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d307112313373357257323066107376333004137304370130>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d330074065165043016212166146146214025043016253057>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d166331164204151220333054351225362033006173021072>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d122207310312103133225144130321077133074162141334>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d171070010102105364072226347021272242150151256304>`;
+	namespace :ref:`rgpot_cuh2<doxid-namespacergpot__cuh2>`;
+	namespace :ref:`rgpot_cuh2_capi<doxid-namespacergpot__cuh2__capi>`;
+	namespace :ref:`rgpot_eam_al<doxid-namespacergpot__eam__al>`;
+	namespace :ref:`rgpot_eam_al_capi<doxid-namespacergpot__eam__al__capi>`;
+	namespace :ref:`rgpot_edip<doxid-namespacergpot__edip>`;
+	namespace :ref:`rgpot_edip_capi<doxid-namespacergpot__edip__capi>`;
+	namespace :ref:`rgpot_fehe<doxid-namespacergpot__fehe>`;
+	namespace :ref:`rgpot_fehe_capi<doxid-namespacergpot__fehe__capi>`;
+	namespace :ref:`rgpot_ferror<doxid-namespacergpot__ferror>`;
+	namespace :ref:`rgpot_kinds<doxid-namespacergpot__kinds>`;
+	namespace :ref:`rgpot_lenosky<doxid-namespacergpot__lenosky>`;
+	namespace :ref:`rgpot_lenosky_capi<doxid-namespacergpot__lenosky__capi>`;
+	namespace :ref:`rgpot_neighbors<doxid-namespacergpot__neighbors>`;
+	namespace :ref:`rgpot_sw<doxid-namespacergpot__sw>`;
+	namespace :ref:`rgpot_sw_capi<doxid-namespacergpot__sw__capi>`;
+	namespace :ref:`rgpot_tersoff<doxid-namespacergpot__tersoff>`;
+	namespace :ref:`rgpot_tersoff_capi<doxid-namespacergpot__tersoff__capi>`;
+	namespace :ref:`rgpot_water_h<doxid-namespacergpot__water__h>`;
+	namespace :ref:`rgpot_water_h_capi<doxid-namespacergpot__water__h__capi>`;
 	namespace :ref:`std<doxid-namespacestd>`;
 	namespace :ref:`string_literals<doxid-namespacestd_1_1string__literals>`;
 	namespace :ref:`vesin<doxid-namespacevesin>`;
@@ -168,7 +211,22 @@ Overview
 	size_t :target:`cpmdc_feature_count<doxid-cpmd__c__abi__stub_8c_1a4cf7e2f669806606c1d1293533b3d38e>`(void);
 	const :ref:`CPMDCFeatureEntry<doxid-struct_c_p_m_d_c_feature_entry>`* :target:`cpmdc_feature_table<doxid-cpmd__c__abi__stub_8c_1ae40eb0e96927dc5f3feacc20c3869315>`(void);
 	const :ref:`CPMDCFeatureEntry<doxid-struct_c_p_m_d_c_feature_entry>`* :target:`cpmdc_feature_find<doxid-cpmd__c__abi__stub_8c_1a4d2414cdfa87d867cf1ab1e708dfb4ca>`(const char* feature_id);
-	void :ref:`c_force_eam<doxid-_cu_h2_pot_8hpp_1a79b876a461f808a0b8e5ac38ca629988>`(int* natms, int ndim, double* box, double* R, double* F, double* U);
+	program :ref:`test_cuh2<doxid-test__cuh2_8f90_1a28fab5a3a8a56075a6254660b9e5903c>`();
+	subroutine :ref:`cu_slab_with_h2<doxid-test__cuh2_8f90_1a1502d8d4c3943fc4764b7c301f6d6914>`(integer, intent(in) cells, real(wp), intent(in) a, real(wp), intent(in) gap, real(wp), intent(in) height, real(wp), intent(in) bond, real(wp), dimension(:, :), intent(out), allocatable pos, integer(ip), dimension(:), intent(out), allocatable z, real(wp), dimension(3, 3), intent(out) box);
+	program :ref:`test_eam_al<doxid-test__eam__al_8f90_1a60b89bc74578824e0c6d3668238fc347>`();
+	subroutine :ref:`fcc_lattice<doxid-test__eam__al_8f90_1a989acedbdceb8dad00b8fd9ae8ef26ab>`(integer, intent(in) cells, real(wp), intent(in) a, real(wp), dimension(:, :), intent(out), allocatable pos, real(wp), dimension(3, 3), intent(out) box);
+	program :ref:`test_edip<doxid-test__edip_8f90_1aa5fd34e06fc7306cb75bb98c510a0c4a>`();
+	subroutine :ref:`diamond_lattice<doxid-test__edip_8f90_1a885dce18ca0d738c00d100a13babf14a>`(integer, intent(in) cells, real(wp), intent(in) a, real(wp), dimension(:, :), intent(out), allocatable pos, real(wp), dimension(3, 3), intent(out) box);
+	program :ref:`test_fehe<doxid-test__fehe_8f90_1a2b385c641400e7a081f0d681b7bcf061>`();
+	subroutine :ref:`bcc_lattice<doxid-test__fehe_8f90_1a29a647b6bf0b7a5b15c70a59969b6f22>`(integer, intent(in) cells, real(wp), intent(in) a, real(wp), dimension(:, :), intent(out), allocatable pos, real(wp), dimension(3, 3), intent(out) box);
+	program :ref:`test_lenosky<doxid-test__lenosky_8f90_1a388b2cd05b01120677871cf493a3daf3>`();
+	subroutine :ref:`diamond_lattice<doxid-test__lenosky_8f90_1a7fd420ce3c12e57a8cc0f1808ebba426>`(integer, intent(in) cells, real(wp), intent(in) a, real(wp), dimension(:, :), intent(out), allocatable pos, real(wp), dimension(3, 3), intent(out) box);
+	program :ref:`test_sw_gather<doxid-test__sw__gather_8f90_1a53b0070bc4a26e93afd55a69b39dce97>`();
+	subroutine :ref:`diamond_lattice<doxid-test__sw__gather_8f90_1a2709841b63e7b2d230f805d4fd70b1d1>`(integer, intent(in) cells, real(wp), intent(in) a, real(wp), dimension(:, :), intent(out), allocatable pos, real(wp), dimension(3, 3), intent(out) box);
+	program :ref:`test_tersoff<doxid-test__tersoff_8f90_1a38705175b97a953531215844d2b83845>`();
+	subroutine :ref:`diamond_lattice<doxid-test__tersoff_8f90_1ac8fb63cde1dbd4f0bad5381f020b8f23>`(integer, intent(in) cells, real(wp), intent(in) a, real(wp), dimension(:, :), intent(out), allocatable pos, real(wp), dimension(3, 3), intent(out) box);
+	program :ref:`test_water_h<doxid-test__water__h_8f90_1a9144dc60253ade13f3a55258a051a655>`();
+	subroutine :ref:`water_plus_h<doxid-test__water__h_8f90_1a5bead4f6e72ad696d3853ad273cc8bbc>`(real(wp), dimension(3, natoms), intent(out) pos, integer(ip), dimension(natoms), intent(out) atomic_numbers, real(wp), dimension(3, 3), intent(out) cellv);
 	:ref:`__attribute__<doxid-metatomic__c__abi_8h_1ab1c3edb5fb26c2406f212d203a3f76c0>`((visibility("default")));
 	static const char* :target:`nz<doxid-_metatomic_engine_abi_8cc_1a6560fd88de4ee3cb0ad11596138b42c7>`(const char* s);
 	static void :target:`set_err<doxid-_metatomic_engine_abi_8cc_1a3cbaa0d62282e2faf4f8f8267c065187>`(char* errbuf, size_t errlen, const char* msg);
@@ -205,6 +263,9 @@ Overview
 	// macros
 
 	#define :target:`CATCH_AND_REPORT<doxid-pot__bridge_8cc_1a933409e97453f39bfae6d29f0518b341>`(client, default_ret)
+	#define :target:`RGPOT_FORTRAN_POT_CLASS<doxid-_fortran_pots_8hpp_1a158452799fad368ca2afc583b2406ca7>`(ClassName, PotTypeValue)
+	#define :target:`RGPOT_FORTRAN_POT_IMPL<doxid-_fortran_pots_8cc_1ae0c8728579e5d29f83c2c9a20b525944>`(ClassName, Entry, Label)
+	#define :target:`RGPOT_FORTRAN_SPECIES_POT_IMPL<doxid-_fortran_pots_8cc_1aeeec8475d493e2cb38640dc234e04688>`(ClassName, Entry, Label)
 	#define :target:`RGPOT_MTA_ABI_VERSION<doxid-metatomic__c__abi_8h_1a2108b4728d818bb75e88ace00bcd11d3>`
 	#define :target:`RGPOT_MTA_API<doxid-metatomic__c__abi_8h_1a409c918f350af84ff87227c561b27aa3>`
 	#define :target:`RGPOT_MTA_ENGINE_BUILD<doxid-_metatomic_engine_abi_8cc_1a8eaafdf8bea9f6c384cda06d3e8eea42>`
@@ -632,58 +693,193 @@ Byte count needed for a ``PotentialResult`` for the given ``ForceInput``.
 
 Parses geometry only; does not initialize or evaluate CPMD. Returns 0 when the message is invalid or too large for the C ABI.
 
-.. index:: pair: function; c_force_eam
-.. _doxid-_cu_h2_pot_8hpp_1a79b876a461f808a0b8e5ac38ca629988:
+.. index:: pair: function; test_cuh2
+.. _doxid-test__cuh2_8f90_1a28fab5a3a8a56075a6254660b9e5903c:
 
 .. ref-code-block:: cpp
 	:class: doxyrest-title-code-block
 
-	void c_force_eam(int* natms, int ndim, double* box, double* R, double* F, double* U)
+	program test_cuh2()
 
-C-linkage bridge to the Fortran EAM implementation.
+Physics checks for the CuH2 embedded-atom gather kernel, run from pure Fortran so a failure points at the kernel rather than the bindings.
 
+Checked: translational invariance of the energy, vanishing net force, invariance under a relabelling of the atoms, and agreement between the analytic forces and a central difference of the energy.
 
+The finite-difference check is the acceptance gate for the gather rearrangement. An embedding force attributed to the wrong end of a pair leaves the energy exactly right, keeps the net force at zero, and shows up only here.
 
-.. rubric:: Parameters:
+The reordering check is the gate for the species dispatch: energies and forces are compared against a run with the atom list reversed, so H no longer occupies the trailing indices.
 
-.. list-table::
-	:widths: 20 80
+.. index:: pair: function; cu_slab_with_h2
+.. _doxid-test__cuh2_8f90_1a1502d8d4c3943fc4764b7c301f6d6914:
 
-	*
-		- natms
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
 
-		- Array containing counts of Cu and H atoms.
+	subroutine cu_slab_with_h2(integer, intent(in) cells, real(wp), intent(in) a, real(wp), intent(in) gap, real(wp), intent(in) height, real(wp), intent(in) bond, real(wp), dimension(:, :), intent(out), allocatable pos, integer(ip), dimension(:), intent(out), allocatable z, real(wp), dimension(3, 3), intent(out) box)
 
-	*
-		- ndim
+FCC Cu slab of ``cells`` conventional cells per direction, with a vacuum gap stacked on top and an H2 molecule inside it.
 
-		- Total dimensions (3 \* N).
+The gap exceeds the 6.1 Angstrom cutoff, so the slab does not see its own periodic image through the vacuum.
 
-	*
-		- box
+.. index:: pair: function; test_eam_al
+.. _doxid-test__eam__al_8f90_1a60b89bc74578824e0c6d3668238fc347:
 
-		- Diagonal box vectors (assumes cubic).
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
 
-	*
-		- R
+	program test_eam_al()
 
-		- Pointer to flat position array.
+Physics checks for the embedded-atom aluminium gather kernel, run from pure Fortran so a failure points at the kernel rather than the bindings.
 
-	*
-		- F
+Checked: the force vanishes on the ideal FCC lattice, the net force vanishes on a rattled periodic cell, the energy is translation invariant, and the analytic forces agree with a central difference of the energy. The finite-difference check is the gate on the gather rearrangement: dropping a neighbour's embedding derivative from ``f_i`` leaves the energy exactly right and the force wrong by order one.
 
-		- Pointer to output force array.
+.. index:: pair: function; fcc_lattice
+.. _doxid-test__eam__al_8f90_1a989acedbdceb8dad00b8fd9ae8ef26ab:
 
-	*
-		- U
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
 
-		- Pointer to output energy value.
+	subroutine fcc_lattice(integer, intent(in) cells, real(wp), intent(in) a, real(wp), dimension(:, :), intent(out), allocatable pos, real(wp), dimension(3, 3), intent(out) box)
 
+Face-centred cubic lattice, ``cells`` conventional cells per direction.
 
+.. index:: pair: function; test_edip
+.. _doxid-test__edip_8f90_1aa5fd34e06fc7306cb75bb98c510a0c4a:
 
-.. rubric:: Returns:
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
 
-Void.
+	program test_edip()
+
+Physics checks for the EDIP gather kernel, run from pure Fortran so a failure points at the kernel rather than the bindings.
+
+Checked: translational invariance of the energy, vanishing net force, and agreement between the analytic forces and a central difference of the energy. The checks run on a rattled diamond lattice, not the perfect one: at equilibrium every force vanishes by symmetry and the difference check compares zero against zero, which passes whatever the force expression says. Off equilibrium it pins the gather rearrangement, since a mis-attributed coordination or end-atom term breaks the difference check even where the energy stays right.
+
+.. index:: pair: function; diamond_lattice
+.. _doxid-test__edip_8f90_1a885dce18ca0d738c00d100a13babf14a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	subroutine diamond_lattice(integer, intent(in) cells, real(wp), intent(in) a, real(wp), dimension(:, :), intent(out), allocatable pos, real(wp), dimension(3, 3), intent(out) box)
+
+Diamond-cubic lattice, ``n_side`` conventional cells per direction.
+
+.. index:: pair: function; test_fehe
+.. _doxid-test__fehe_8f90_1a2b385c641400e7a081f0d681b7bcf061:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	program test_fehe()
+
+Physics checks for the Fe-He gather kernel, run from pure Fortran so a failure points at the kernel rather than the bindings.
+
+Checked: translational invariance of the energy, vanishing net force, agreement between the analytic forces and a central difference of the energy, and rejection of an atomic number the potential does not cover. The finite-difference check is the gate: an embedded-atom force splits into a pair part and two embedding parts weighted by ``dF/drho`` at both ends of the pair, and dropping either end leaves the energy correct.
+
+The cell is body-centred iron with two substitutional helium atoms on a nearest-neighbour <111>/2 bond, which puts force into all three pair channels and both density channels at once. Four cells a side keeps the largest cutoff (5.4 A, He-He) below half the box edge (5.71 A), so each pair enters the neighbour table exactly once per direction and the check measures the potential rather than vesin's multiple-image path.
+
+.. index:: pair: function; bcc_lattice
+.. _doxid-test__fehe_8f90_1a29a647b6bf0b7a5b15c70a59969b6f22:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	subroutine bcc_lattice(integer, intent(in) cells, real(wp), intent(in) a, real(wp), dimension(:, :), intent(out), allocatable pos, real(wp), dimension(3, 3), intent(out) box)
+
+Body-centred cubic lattice, ``cells`` conventional cells per direction. Site 1 is the corner of the first cell and site 2 its body centre, so substituting the first two atoms puts helium on a nearest-neighbour bond.
+
+.. index:: pair: function; test_lenosky
+.. _doxid-test__lenosky_8f90_1a388b2cd05b01120677871cf493a3daf3:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	program test_lenosky()
+
+Physics checks for the Lenosky gather kernel, run from pure Fortran so a failure points at the kernel rather than the bindings.
+
+Checked: translational invariance of the energy, vanishing net force, and agreement between the analytic forces and a central difference of the energy. The checks run on a rattled diamond lattice, not the perfect one: at equilibrium every force vanishes by symmetry and the difference check compares zero against zero, which passes whatever the force expression says. Off equilibrium it pins the gather rearrangement, since a mis-attributed embedding or end-atom term breaks the difference check even where the energy stays right.
+
+.. index:: pair: function; diamond_lattice
+.. _doxid-test__lenosky_8f90_1a7fd420ce3c12e57a8cc0f1808ebba426:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	subroutine diamond_lattice(integer, intent(in) cells, real(wp), intent(in) a, real(wp), dimension(:, :), intent(out), allocatable pos, real(wp), dimension(3, 3), intent(out) box)
+
+Diamond-cubic lattice, ``n_side`` conventional cells per direction.
+
+.. index:: pair: function; test_sw_gather
+.. _doxid-test__sw__gather_8f90_1a53b0070bc4a26e93afd55a69b39dce97:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	program test_sw_gather()
+
+Physics checks for the Stillinger-Weber gather kernel, run from pure Fortran so a failure points at the kernel rather than the bindings.
+
+Checked: translational invariance of the energy, vanishing net force, and agreement between the analytic forces and a central difference of the energy. Together these pin the gather rearrangement: a mismatched end-atom term would break the finite-difference check even where the energy stayed right.
+
+.. index:: pair: function; diamond_lattice
+.. _doxid-test__sw__gather_8f90_1a2709841b63e7b2d230f805d4fd70b1d1:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	subroutine diamond_lattice(integer, intent(in) cells, real(wp), intent(in) a, real(wp), dimension(:, :), intent(out), allocatable pos, real(wp), dimension(3, 3), intent(out) box)
+
+Diamond-cubic lattice, ``n_side`` conventional cells per direction.
+
+.. index:: pair: function; test_tersoff
+.. _doxid-test__tersoff_8f90_1a38705175b97a953531215844d2b83845:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	program test_tersoff()
+
+Physics checks for the Tersoff gather kernel, run from pure Fortran so a failure points at the kernel rather than the bindings.
+
+Checked: translational invariance of the energy, vanishing net force, and agreement between the analytic forces and a central difference of the energy. The finite-difference check is the acceptance gate. A bond-order term attributed to the wrong atom leaves the energy exactly right, keeps the net force zero whenever the misattribution is antisymmetric, and shows up only here.
+
+Two configurations carry the checks. The diamond lattice at its experimental constant places every bond inside the inner taper radius, where the cutoff function is flat and its derivative drops out; the expanded lattice places bonds in the taper window so the cutoff derivative enters both the pair term and the coordination sum. Both carry a fixed jitter, because a force that vanishes by symmetry tests nothing.
+
+.. index:: pair: function; diamond_lattice
+.. _doxid-test__tersoff_8f90_1ac8fb63cde1dbd4f0bad5381f020b8f23:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	subroutine diamond_lattice(integer, intent(in) cells, real(wp), intent(in) a, real(wp), dimension(:, :), intent(out), allocatable pos, real(wp), dimension(3, 3), intent(out) box)
+
+Diamond-cubic lattice, ``n_side`` conventional cells per direction.
+
+.. index:: pair: function; test_water_h
+.. _doxid-test__water__h_8f90_1a9144dc60253ade13f3a55258a051a655:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	program test_water_h()
+
+Physics checks for the H-in-water star gather, run from pure Fortran so a failure points at the kernel rather than the bindings.
+
+Checked: translational invariance of the energy, vanishing net force, agreement between the analytic forces and a central difference of the energy, independence of the energy from the order the water sites arrive in, and rejection of atom lists that are not a water plus H system.
+
+The finite-difference check is the one that can fail. Newton's third law holds by construction here (the lone H is handed the negated sum of the legs), so a vanishing net force says nothing about whether the radial derivatives are right; the central difference does.
+
+.. index:: pair: function; water_plus_h
+.. _doxid-test__water__h_8f90_1a5bead4f6e72ad696d3853ad273cc8bbc:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	subroutine water_plus_h(real(wp), dimension(3, natoms), intent(out) pos, integer(ip), dimension(natoms), intent(out) atomic_numbers, real(wp), dimension(3, 3), intent(out) cellv)
+
+Two water molecules and one extra H in a cubic cell, laid out in the order the entry point expects: the hydrogens of every molecule, then the oxygens, then the lone H.
 
 .. index:: pair: function; __attribute__
 .. _doxid-metatomic__c__abi_8h_1ab1c3edb5fb26c2406f212d203a3f76c0:

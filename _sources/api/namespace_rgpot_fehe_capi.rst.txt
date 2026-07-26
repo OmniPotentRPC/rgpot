@@ -1,0 +1,52 @@
+.. index:: pair: namespace; rgpot_fehe_capi
+.. _doxid-namespacergpot__fehe__capi:
+
+namespace rgpot_fehe_capi
+=========================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+C entry point for the Fe-He embedded-atom potential. :ref:`More...<details-namespacergpot__fehe__capi>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace rgpot_fehe_capi {
+
+	// global functions
+
+	integer(c_int) function, public :ref:`rgpot_fehe_force<doxid-namespacergpot__fehe__capi_1a6b1863b2c0eee5cd2191e0ffc3957fbf>`(integer(c_int), intent(in), value natoms, real(c_double), dimension(3, natoms), intent(in) positions, integer(c_int), dimension(natoms), intent(in) atomic_numbers, real(c_double), dimension(3, 3), intent(in) cell, real(c_double), dimension(3, natoms), intent(out) forces, real(c_double), intent(out) energy);
+
+	} // namespace rgpot_fehe_capi
+.. _details-namespacergpot__fehe__capi:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+C entry point for the Fe-He embedded-atom potential.
+
+Only ``bind(c)`` names leave this library; the physics module exports no external symbols of its own that C could collide with. The neighbour table lives here, saved across calls so vesin reuses its buffers.
+
+This potential is a mixture, so the entry point takes an atomic-number array alongside the positions. Iron (26) and helium (2) are the only numbers it accepts; anything else returns non-zero with a message naming the offending atom.
+
+Global Functions
+----------------
+
+.. index:: pair: function; rgpot_fehe_force
+.. _doxid-namespacergpot__fehe__capi_1a6b1863b2c0eee5cd2191e0ffc3957fbf:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	integer(c_int) function, public rgpot_fehe_force(integer(c_int), intent(in), value natoms, real(c_double), dimension(3, natoms), intent(in) positions, integer(c_int), dimension(natoms), intent(in) atomic_numbers, real(c_double), dimension(3, 3), intent(in) cell, real(c_double), dimension(3, natoms), intent(out) forces, real(c_double), intent(out) energy)
+
+Evaluate Fe-He forces and energy.
+
+``positions`` and ``forces`` are ``3 * natoms`` doubles, x/y/z interleaved; ``atomic_numbers`` is ``natoms`` ints, one per atom, in the same order; ``cell`` is nine doubles, row-major, one cell vector per row. Returns zero on success, non-zero on failure with the message available through ``rgpot_fortran_last_error``.
+

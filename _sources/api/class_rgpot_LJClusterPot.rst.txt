@@ -1,0 +1,103 @@
+.. index:: pair: class; rgpot::LJClusterPot
+.. _doxid-classrgpot_1_1_l_j_cluster_pot:
+
+class rgpot::LJClusterPot
+=========================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Shifted 12-6 Lennard-Jones for isolated clusters. :ref:`More...<details-classrgpot_1_1_l_j_cluster_pot>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <LJClusterPot.hpp>
+	
+	class LJClusterPot: public rgpot::Potential< LJClusterPot > {
+	public:
+		// construction
+	
+		:target:`LJClusterPot<doxid-classrgpot_1_1_l_j_cluster_pot_1aef9afa14efd1363945997c86bd0f358a>`();
+		:target:`LJClusterPot<doxid-classrgpot_1_1_l_j_cluster_pot_1aef5586c496397cc58f9379ee9411dc89>`(const :ref:`LJClusterConfig<doxid-structrgpot_1_1_l_j_cluster_config>`& c);
+
+		// methods
+	
+		const :ref:`LJClusterConfig<doxid-structrgpot_1_1_l_j_cluster_config>`& :target:`config<doxid-classrgpot_1_1_l_j_cluster_pot_1abaf59a087e5200ecda1ee1d44f56ecc4>`() const;
+		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_l_j_cluster_pot_1acd4671bb73a60e0f16f8e9ae61881eb6>`() const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_l_j_cluster_pot_1af424a4742c6e993deef6ccdec5aca78e>`() const;
+		void :ref:`forceImpl<doxid-classrgpot_1_1_l_j_cluster_pot_1a2c831c32b78d72a59e3bad9b025b1b01>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+	};
+.. _details-classrgpot_1_1_l_j_cluster_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Shifted 12-6 Lennard-Jones for isolated clusters.
+
+Every pair within the cutoff contributes, with vectors taken straight from the coordinates: ``opt.periodic`` is off in all three directions, so the pair scan never folds a separation into the cell. A degenerate input cell (any non-positive diagonal entry) is replaced by a 1e6 Angstrom cube, which keeps the pair list cacheable for callers that hand over a cluster without a box.
+
+Same pair kernel as ``:ref:`LJPot <doxid-classrgpot_1_1_l_j_pot>``` with the minimum image convention switched off, so an input cell never folds pair vectors.
+
+Methods
+-------
+
+.. index:: pair: function; paramsKey
+.. _doxid-classrgpot_1_1_l_j_cluster_pot_1acd4671bb73a60e0f16f8e9ae61881eb6:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual uint64_t paramsKey() const
+
+Fingerprint of the potential's parameter set.
+
+Mixed into the result-cache key so results never cross parameter sets. Implementations hash their config field by field (see :ref:`ParamHash.hpp <doxid-_param_hash_8hpp_source>`) plus a kernel-version salt that changes whenever the numerics change. The default (0) suits parameter-free potentials whose numerics never changed.
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1_l_j_cluster_pot_1af424a4742c6e993deef6ccdec5aca78e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Free boundaries: the kernel ignores the cell and never applies the minimum image convention.
+
+.. index:: pair: function; forceImpl
+.. _doxid-classrgpot_1_1_l_j_cluster_pot_1a2c831c32b78d72a59e3bad9b025b1b01:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void forceImpl(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const
+
+Computes the forces and energy for a given configuration.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- in
+
+		- Structure containing coordinates and cell info.
+
+	*
+		- out
+
+		- Pointer to the results structure.
+
+
+
+.. rubric:: Returns:
+
+Void.
+

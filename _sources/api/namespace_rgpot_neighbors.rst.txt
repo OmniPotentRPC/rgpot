@@ -1,0 +1,64 @@
+.. index:: pair: namespace; rgpot_neighbors
+.. _doxid-namespacergpot__neighbors:
+
+namespace rgpot_neighbors
+=========================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Full neighbour tables in CSR form, built with vesin. :ref:`More...<details-namespacergpot__neighbors>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace rgpot_neighbors {
+
+	// global functions
+
+	subroutine :ref:`neighbor_table_build<doxid-namespacergpot__neighbors_1a91a676da09205d8c464fd613ff995de7>`(class(:ref:`neighbor_table_t<doxid-structrgpot__neighbors_1_1neighbor__table__t>`), intent(inout) self, real(wp), dimension(:, :), intent(in), contiguous positions, real(wp), dimension(3, 3), intent(in) cell, real(wp), intent(in) cutoff, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg, logical, dimension(3), intent(in), optional periodic, real(wp), intent(in), optional skin);
+
+	} // namespace rgpot_neighbors
+.. _details-namespacergpot__neighbors:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Full neighbour tables in CSR form, built with vesin.
+
+Every ported potential evaluates forces as a *gather* : atom ``i`` sums the whole force acting on it from its own neighbours, and writes only ``f(:, i)``. Iterations of the atom loop then touch disjoint memory, so they run under ``do concurrent``. That needs a **full** list (both ``i->j`` and ``j->i``), which this type provides along with the pair vectors and distances vesin already computed, so the kernels never redo minimum image arithmetic.
+
+Cell convention: C callers hand over nine doubles, row-major, one cell vector per row. Fortran reads that same memory column-major, so a ``real(wp) :: cell(3, 3)`` dummy sees one cell vector per *column*, which is exactly what vesin expects. No transpose anywhere.
+
+Global Functions
+----------------
+
+.. index:: pair: function; neighbor_table_build
+.. _doxid-namespacergpot__neighbors_1a91a676da09205d8c464fd613ff995de7:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	subroutine neighbor_table_build(class(:ref:`neighbor_table_t<doxid-structrgpot__neighbors_1_1neighbor__table__t>`), intent(inout) self, real(wp), dimension(:, :), intent(in), contiguous positions, real(wp), dimension(3, 3), intent(in) cell, real(wp), intent(in) cutoff, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg, logical, dimension(3), intent(in), optional periodic, real(wp), intent(in), optional skin)
+
+Rebuild the table for ``positions`` (3 x natoms) within ``cutoff``.
+
+``periodic`` defaults to fully periodic. ``status`` is zero on success; on failure the table is left empty and ``errmsg`` describes the fault.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- skin
+
+		- Verlet skin handed to vesin, which then caches its topology between calls and rebuilds only once an atom has moved more than half of it. Defaults to a tenth of the cutoff.
+

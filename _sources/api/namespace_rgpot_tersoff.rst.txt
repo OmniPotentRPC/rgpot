@@ -1,0 +1,83 @@
+.. index:: pair: namespace; rgpot_tersoff
+.. _doxid-namespacergpot__tersoff:
+
+namespace rgpot_tersoff
+=======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Tersoff bond-order potential in gather form. :ref:`More...<details-namespacergpot__tersoff>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace rgpot_tersoff {
+
+	// global variables
+
+	real(wp), parameter :ref:`zeta_floor<doxid-namespacergpot__tersoff_1a5a26b72843bec32ca0f66553c7870aca>` = 1.0e-15_wp;
+
+	// global functions
+
+	subroutine, public :ref:`tersoff_energy_forces<doxid-namespacergpot__tersoff_1a3fa63e255bc6aae9cdee337043f259cb>`(real(wp), dimension(:, :), intent(in), contiguous positions, real(wp), dimension(3, 3), intent(in) cell, type(:ref:`tersoff_params_t<doxid-structrgpot__tersoff_1_1tersoff__params__t>`), intent(in) par, type(:ref:`neighbor_table_t<doxid-structrgpot__neighbors_1_1neighbor__table__t>`), intent(inout) table, real(wp), intent(out) energy, real(wp), dimension(:, :), intent(out), contiguous forces, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg);
+
+	} // namespace rgpot_tersoff
+.. _details-namespacergpot__tersoff:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Tersoff bond-order potential in gather form.
+
+Every directed pair ``(i, j)`` carries a bond order ``b_ij`` set by a coordination sum ``zeta_ij`` over the neighbours ``k`` of ``i``. The pair therefore couples to a whole shell of third atoms, and its gradient splits into terms landing on ``i``, on ``j``, and on each ``k``. That is why a bond-order kernel resists the one-pass gather a pair potential allows: the ``k`` terms need ``dE_ij/dzeta_ij``, which is not known until the whole shell has been summed.
+
+Splitting the evaluation into three passes over the full neighbour table removes the obstacle:
+
+#. ``zeta`` for every directed pair, from the neighbours of the pair's first atom;
+
+#. the per-pair scalars the gradient needs, ``dE_ij/dr_ij`` at fixed bond order and ``dE_ij/dzeta_ij``;
+
+#. the gather, in which atom ``a`` collects every term that lands on it and writes only ``forces(:, a)``.
+
+Pass 3 closes because pass 2 leaves ``dE_ij/dzeta_ij`` stored per pair. Atom ``a`` then plays three roles, all reachable from its own row of the table:
+
+* owner of the pairs ``(a, j)``, taking their radial term and ``dzeta_aj/dr_a``;
+
+* far end of the pairs ``(m, a)`` for ``m`` in ``a`` 's row, reached through the reverse entry, taking their radial term and ``dzeta_ma/dr_a``;
+
+* third atom of the pairs ``(m, j)`` for ``m`` in ``a`` 's row and ``j`` in ``m`` 's, taking ``dzeta_mj/dr_a``.
+
+The last two roles share one walk over ``m`` 's row and one cosine per step, so the gather costs ``O(natoms * nn^2)`` like the two passes before it. All three passes run under ``do concurrent``; none of them scatters.
+
+Global Variables
+----------------
+
+.. index:: pair: variable; zeta_floor
+.. _doxid-namespacergpot__tersoff_1a5a26b72843bec32ca0f66553c7870aca:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	real(wp), parameter zeta_floor = 1.0e-15_wp
+
+Below this coordination the bond order is its ``zeta -> 0`` limit ``chi``, and its derivative is dropped: ``zeta**(n - 1)`` has a negative exponent and diverges at the origin while the energy stays finite.
+
+Global Functions
+----------------
+
+.. index:: pair: function; tersoff_energy_forces
+.. _doxid-namespacergpot__tersoff_1a3fa63e255bc6aae9cdee337043f259cb:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	subroutine, public tersoff_energy_forces(real(wp), dimension(:, :), intent(in), contiguous positions, real(wp), dimension(3, 3), intent(in) cell, type(:ref:`tersoff_params_t<doxid-structrgpot__tersoff_1_1tersoff__params__t>`), intent(in) par, type(:ref:`neighbor_table_t<doxid-structrgpot__neighbors_1_1neighbor__table__t>`), intent(inout) table, real(wp), intent(out) energy, real(wp), dimension(:, :), intent(out), contiguous forces, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg)
+
+Energy and forces for ``positions`` (3 x natoms) in ``cell``.
+

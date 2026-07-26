@@ -38,6 +38,9 @@ or when you want to avoid namespace collisions with your own types (see
 
 The ``ptlrpc_dep`` provides only the Cap'n Proto schema and generated code,
 without pulling in ``Potential.hpp`` or the existing C++ potentials.
+It is a static convenience archive: the same symbols are also inside ``librgpot``,
+so a consumer that resolves rgpot through ``pkg-config`` instead of the wrap links
+them from the umbrella and has no separate ``libptlrpc`` to find at run time.
 
 Feature-gated potentials (Meson)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,68 @@
+.. index:: pair: struct; rgpot::PotCaps
+.. _doxid-structrgpot_1_1_pot_caps:
+
+struct rgpot::PotCaps
+=====================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Capability set a potential advertises to its callers. :ref:`More...<details-structrgpot_1_1_pot_caps>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <pot_caps.hpp>
+	
+	struct PotCaps {
+		// fields
+	
+		:ref:`Reentrancy<doxid-namespacergpot_1afc52f666d5e44be6f4cc73b2009ed9bb>` :target:`reentrancy<doxid-structrgpot_1_1_pot_caps_1aae973da4d1a97650f3dbfa7543f681b6>` = :ref:`Reentrancy::SharedInstance<doxid-namespacergpot_1afc52f666d5e44be6f4cc73b2009ed9bba5f6e336fccd3e63480cec33b4e94151c>`;
+		bool :ref:`perImageInstances<doxid-structrgpot_1_1_pot_caps_1acfb40395659b641b17a4dcc66d0a5afc>` = false;
+		bool :ref:`batched<doxid-structrgpot_1_1_pot_caps_1aa358af63d17e45c5a0fd9030f4555299>` = false;
+		bool :ref:`periodic<doxid-structrgpot_1_1_pot_caps_1a0a912d066e6cabc4e7dc30a8cb8b4e3b>` = true;
+	};
+.. _details-structrgpot_1_1_pot_caps:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Capability set a potential advertises to its callers.
+
+Fields
+------
+
+.. index:: pair: variable; perImageInstances
+.. _doxid-structrgpot_1_1_pot_caps_1acfb40395659b641b17a4dcc66d0a5afc:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool perImageInstances = false
+
+Callers running multi-image methods (NEB) should clone one instance per image even when reentrancy alone would allow sharing.
+
+.. index:: pair: variable; batched
+.. _doxid-structrgpot_1_1_pot_caps_1aa358af63d17e45c5a0fd9030f4555299:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool batched = false
+
+Native multi-system batch evaluation exists (forceBatch-style hook).
+
+.. index:: pair: variable; periodic
+.. _doxid-structrgpot_1_1_pot_caps_1a0a912d066e6cabc4e7dc30a8cb8b4e3b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool periodic = true
+
+Kernel supports periodic boundary conditions.
+

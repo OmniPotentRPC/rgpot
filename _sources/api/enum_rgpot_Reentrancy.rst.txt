@@ -1,0 +1,62 @@
+.. index:: pair: enum; Reentrancy
+.. _doxid-namespacergpot_1afc52f666d5e44be6f4cc73b2009ed9bb:
+
+enum rgpot::Reentrancy
+======================
+
+Overview
+~~~~~~~~
+
+How a potential tolerates concurrent evaluation. :ref:`More...<details-namespacergpot_1afc52f666d5e44be6f4cc73b2009ed9bb>`
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <pot_caps.hpp>
+
+	enum Reentrancy {
+	    :ref:`SharedInstance<doxid-namespacergpot_1afc52f666d5e44be6f4cc73b2009ed9bba5f6e336fccd3e63480cec33b4e94151c>`,
+	    :ref:`PerInstance<doxid-namespacergpot_1afc52f666d5e44be6f4cc73b2009ed9bba638926405e39d8cd5227b49fa3156e1a>`,
+	    :ref:`ProcessSerial<doxid-namespacergpot_1afc52f666d5e44be6f4cc73b2009ed9bba1126ea18c888becdeece7e1ca9f29206>`,
+	};
+
+.. _details-namespacergpot_1afc52f666d5e44be6f4cc73b2009ed9bb:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+How a potential tolerates concurrent evaluation.
+
+Enum Values
+-----------
+
+.. index:: pair: enumvalue; SharedInstance
+.. _doxid-namespacergpot_1afc52f666d5e44be6f4cc73b2009ed9bba5f6e336fccd3e63480cec33b4e94151c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	SharedInstance
+
+One instance may be called from many threads concurrently.
+
+.. index:: pair: enumvalue; PerInstance
+.. _doxid-namespacergpot_1afc52f666d5e44be6f4cc73b2009ed9bba638926405e39d8cd5227b49fa3156e1a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	PerInstance
+
+Concurrent evaluation needs one instance per thread (per-instance native handles or scratch state).
+
+.. index:: pair: enumvalue; ProcessSerial
+.. _doxid-namespacergpot_1afc52f666d5e44be6f4cc73b2009ed9bba1126ea18c888becdeece7e1ca9f29206:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	ProcessSerial
+
+Global or COMMON-block state: all evaluations in the process must be serialized regardless of instance count.
+

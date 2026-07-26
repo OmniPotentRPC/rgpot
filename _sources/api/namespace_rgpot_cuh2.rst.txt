@@ -1,0 +1,89 @@
+.. index:: pair: namespace; rgpot_cuh2
+.. _doxid-namespacergpot__cuh2:
+
+namespace rgpot_cuh2
+====================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Embedded-atom potential for Cu/H systems, in gather form. :ref:`More...<details-namespacergpot__cuh2>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace rgpot_cuh2 {
+
+	// global variables
+
+	integer(ip), parameter, public :ref:`cuh2_z_cu<doxid-namespacergpot__cuh2_1af0adb68dbc926b12204f4f67acbc1d6f>` = 29_ip;
+	integer(ip), parameter, public :target:`cuh2_z_h<doxid-namespacergpot__cuh2_1a641fe4e71aa426489a96f074c8e1a235>` = 1_ip;
+
+	// global functions
+
+	pure real(wp) function :ref:`cuh2_cutoff<doxid-namespacergpot__cuh2_1a7bf6dec44e89830689665ae1a04fbc02>`(class(:ref:`cuh2_params_t<doxid-structrgpot__cuh2_1_1cuh2__params__t>`), intent(in) self);
+	subroutine, public :ref:`cuh2_energy_forces<doxid-namespacergpot__cuh2_1a2445679cc94871f81d7fc3f463985fe1>`(real(wp), dimension(:, :), intent(in), contiguous positions, integer(ip), dimension(:), intent(in), contiguous atomic_numbers, real(wp), dimension(3, 3), intent(in) cell, type(:ref:`cuh2_params_t<doxid-structrgpot__cuh2_1_1cuh2__params__t>`), intent(in) par, type(:ref:`neighbor_table_t<doxid-structrgpot__neighbors_1_1neighbor__table__t>`), intent(inout) table, real(wp), intent(out) energy, real(wp), dimension(:, :), intent(out), contiguous forces, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg);
+
+	} // namespace rgpot_cuh2
+.. _details-namespacergpot__cuh2:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Embedded-atom potential for Cu/H systems, in gather form.
+
+The EAM energy splits into a pair sum and an embedding sum, U = sum\_{i<j} phi\_{Z_i Z_j}(r_ij) + sum_i F\_{Z_i}(rho_i),
+rho_i = sum\_{j /= i} rho\_{Z_j}(r_ij),
+
+so the force on atom ``i`` needs ``dF/drho`` at both ends of every pair. That fixes the shape of the evaluation: densities first, embedding derivatives second, forces third. Each of the three passes writes one slot per atom and runs under ``do concurrent``.
+
+With a full neighbour list the force on ``i`` closes over its own row, f_i = sum_j (r_j - r_i) \* [ phi'/r + rho'\_{Z_j}/r \* F'(rho_i)
+                                   + rho'\_{Z_i}/r \* F'(rho_j) ],
+
+and the bracket is symmetric under i <-> j, so the net force vanishes to rounding without the loop ever touching ``f_j``.
+
+Species come from atomic numbers rather than index ranges, so a caller may interleave Cu and H in any order.
+
+Global Variables
+----------------
+
+.. index:: pair: variable; cuh2_z_cu
+.. _doxid-namespacergpot__cuh2_1af0adb68dbc926b12204f4f67acbc1d6f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	integer(ip), parameter, public cuh2_z_cu = 29_ip
+
+Atomic numbers this potential covers.
+
+Global Functions
+----------------
+
+.. index:: pair: function; cuh2_cutoff
+.. _doxid-namespacergpot__cuh2_1a7bf6dec44e89830689665ae1a04fbc02:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	pure real(wp) function cuh2_cutoff(class(:ref:`cuh2_params_t<doxid-structrgpot__cuh2_1_1cuh2__params__t>`), intent(in) self)
+
+Interaction cutoff.
+
+.. index:: pair: function; cuh2_energy_forces
+.. _doxid-namespacergpot__cuh2_1a2445679cc94871f81d7fc3f463985fe1:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	subroutine, public cuh2_energy_forces(real(wp), dimension(:, :), intent(in), contiguous positions, integer(ip), dimension(:), intent(in), contiguous atomic_numbers, real(wp), dimension(3, 3), intent(in) cell, type(:ref:`cuh2_params_t<doxid-structrgpot__cuh2_1_1cuh2__params__t>`), intent(in) par, type(:ref:`neighbor_table_t<doxid-structrgpot__neighbors_1_1neighbor__table__t>`), intent(inout) table, real(wp), intent(out) energy, real(wp), dimension(:, :), intent(out), contiguous forces, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg)
+
+Energy and forces for ``positions`` (3 x natoms) in ``cell``.
+
+``atomic_numbers`` selects the species per atom and must hold only ``cuh2_z_cu`` or ``cuh2_z_h``. Non-zero ``status`` leaves ``energy`` and ``forces`` zeroed and describes the fault in ``errmsg``.
+

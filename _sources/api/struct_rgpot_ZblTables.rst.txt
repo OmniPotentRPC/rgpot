@@ -1,0 +1,56 @@
+.. index:: pair: struct; rgpot::ZblTables
+.. _doxid-structrgpot_1_1_zbl_tables:
+
+struct rgpot::ZblTables
+=======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Species-resolved coefficient tables for one set of atomic numbers. :ref:`More...<details-structrgpot_1_1_zbl_tables>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <ZBLPot.hpp>
+	
+	struct ZblTables {
+		// fields
+	
+		std::vector<int> :ref:`z<doxid-structrgpot_1_1_zbl_tables_1af5dd153f904c0a23fcbd17f6b674af7d>`;
+		std::vector<:ref:`ZblPairCoeffs<doxid-structrgpot_1_1_zbl_pair_coeffs>`> :ref:`pairs<doxid-structrgpot_1_1_zbl_tables_1a274870ae9b53dc33611d791a0a5c7114>`;
+	};
+.. _details-structrgpot_1_1_zbl_tables:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Species-resolved coefficient tables for one set of atomic numbers.
+
+Fields
+------
+
+.. index:: pair: variable; z
+.. _doxid-structrgpot_1_1_zbl_tables_1af5dd153f904c0a23fcbd17f6b674af7d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::vector<int> z
+
+Sorted unique atomic numbers.
+
+.. index:: pair: variable; pairs
+.. _doxid-structrgpot_1_1_zbl_tables_1a274870ae9b53dc33611d791a0a5c7114:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::vector<:ref:`ZblPairCoeffs<doxid-structrgpot_1_1_zbl_pair_coeffs>`> pairs
+
+z.size() x z.size(), row-major.
+

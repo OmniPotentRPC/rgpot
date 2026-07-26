@@ -220,6 +220,12 @@ In meson:
     ptlrpc_dep = rgpot_proj.get_variable('ptlrpc_dep')
     # Only capnp schema + generated code, no rgpot types
 
+``ptlrpc_dep`` links a static convenience archive, so this strategy costs the
+consumer no extra shared object.
+Take ``ptlrpc_hdr_dep`` instead in any static library of your own that another
+of your static libraries also links, or both end up carrying the generated
+translation unit.
+
 Flat-Array Callback Pattern
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

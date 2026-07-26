@@ -7,9 +7,10 @@ class rgpot::XTBPot
 .. toctree::
 	:hidden:
 
-Linked GFN-xTB pot (NEEDED libxtb).
+Overview
+~~~~~~~~
 
-libxtb exposes a stable **ISO_C_BINDING** C API (``xtb.h``): opaque ``xtb_TEnvironment`` / ``xtb_TCalculator`` / ``xtb_TMolecule`` / ``xtb_TResults`` handles with explicit create/update/destroy. We test and use that C contract—not free-form Fortran ABI. Each ``:ref:`XTBPot <doxid-classrgpot_1_1_x_t_b_pot>``` owns its handles; first force builds the molecule, later forces call ``xtb_updateMolecule``. ``xtb_releaseOutput`` is called on create (library recommendation for multi-env processes). Do not share one instance across threads; distinct instances may be used from different threads if the loaded libxtb build is reentrant for independent handle sets.
+Linked GFN-xTB pot (NEEDED libxtb). :ref:`More...<details-classrgpot_1_1_x_t_b_pot>`
 
 
 .. ref-code-block:: cpp
@@ -30,4 +31,27 @@ libxtb exposes a stable **ISO_C_BINDING** C API (``xtb.h``): opaque ``xtb_TEnvir
 	
 		XTBPot& :target:`operator=<doxid-classrgpot_1_1_x_t_b_pot_1afe6d5ae3b6cae4e0e2537039df0c7dce>`(const XTBPot&);
 		void :target:`forceImpl<doxid-classrgpot_1_1_x_t_b_pot_1a7180249bbc61a142c0b35b886ed5da52>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_x_t_b_pot_1a45b3800a2be60758506f83414af94b0f>`() const;
 	};
+.. _details-classrgpot_1_1_x_t_b_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Linked GFN-xTB pot (NEEDED libxtb).
+
+libxtb exposes a stable **ISO_C_BINDING** C API (``xtb.h``): opaque ``xtb_TEnvironment`` / ``xtb_TCalculator`` / ``xtb_TMolecule`` / ``xtb_TResults`` handles with explicit create/update/destroy. We test and use that C contract—not free-form Fortran ABI. Each ``:ref:`XTBPot <doxid-classrgpot_1_1_x_t_b_pot>``` owns its handles; first force builds the molecule, later forces call ``xtb_updateMolecule``. ``xtb_releaseOutput`` is called on create (library recommendation for multi-env processes). Do not share one instance across threads; distinct instances may be used from different threads if the loaded libxtb build is reentrant for independent handle sets.
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1_x_t_b_pot_1a45b3800a2be60758506f83414af94b0f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Native handles are per-instance; concurrent use needs one instance per thread.
+
