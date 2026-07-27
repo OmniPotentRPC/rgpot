@@ -105,6 +105,29 @@ test-command = "python -c \"import rgpot; print(rgpot.__file__)\""
 
 [tool.cibuildwheel.linux]
 before-all = "yum install -y gcc-gfortran || dnf install -y gcc-gfortran"
+# meson-python vendors librgpot into .rgpot.mesonpy.libs inside the wheel and
+# rewrites RPATHs to match, but auditwheel resolves dependencies against the
+# filesystem and reports "required library librgpot.so.3 could not be
+# located". Unpack the wheel and put that directory on the search path.
+repair-wheel-command = """
+  set -eu
+  tmp=$(mktemp -d)
+  unzip -q "{wheel}" -d "$tmp"
+  libdir=$(dirname "$(find "$tmp" -name 'librgpot.so*' | head -1)")
+  LD_LIBRARY_PATH="$libdir:${LD_LIBRARY_PATH:-}" \
+    auditwheel repair -w {dest_dir} "{wheel}"
+  rm -rf "$tmp"
+"""
 
 [tool.cibuildwheel.macos]
 before-all = "brew list gcc >/dev/null 2>&1 || brew install gcc"
+# Same story for delocate ("Could not find all dependencies").
+repair-wheel-command = """
+  set -eu
+  tmp=$(mktemp -d)
+  unzip -q "{wheel}" -d "$tmp"
+  libdir=$(dirname "$(find "$tmp" -name 'librgpot*.dylib' | head -1)")
+  DYLD_LIBRARY_PATH="$libdir:${DYLD_LIBRARY_PATH:-}" \
+    delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v "{wheel}"
+  rm -rf "$tmp"
+"""
