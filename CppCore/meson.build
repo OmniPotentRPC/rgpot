@@ -25,7 +25,8 @@ if not get_option('with_rpc_client_only')
 
     # Implemented rgpotentials
     subdir('rgpot/LennardJones')  # 'lennard_jones'
-    rgpotentials = [lennard_jones]
+    subdir('rgpot/Morse')  # 'morse'
+    rgpotentials = [lennard_jones, morse]
 
     if has_fortran
         subdir('rgpot/CuH2')  # 'cuh2'
@@ -118,6 +119,7 @@ if get_option('with_tests')
     test_args += ['-DRGPOTTEST']
     test_array = [
         ['UnitsTest', 'units_test', 'UnitsTest.cc', ''],
+        ['MorseTest', 'morse_test', 'MorsePotTest.cc', ''],
     ]
     if has_fortran
         test_array += [

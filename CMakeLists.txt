@@ -138,7 +138,8 @@ endif()
 if(NOT RGPOT_RPC_CLIENT_ONLY)
   # Basic sources
   set(RGPOT_SOURCES CppCore/rgpot/PotHelpers.cc
-                    CppCore/rgpot/LennardJones/LJPot.cc)
+                    CppCore/rgpot/LennardJones/LJPot.cc
+                    CppCore/rgpot/Morse/MorsePot.cc)
 
   if(RGPOT_HAS_FORTRAN)
     list(APPEND RGPOT_SOURCES CppCore/rgpot/CuH2/CuH2Pot.cc
