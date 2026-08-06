@@ -105,29 +105,48 @@ test-command = "python -c \"import rgpot; print(rgpot.__file__)\""
 
 [tool.cibuildwheel.linux]
 before-all = "yum install -y gcc-gfortran || dnf install -y gcc-gfortran"
-# meson-python vendors librgpot into .rgpot.mesonpy.libs inside the wheel and
-# rewrites RPATHs to match, but auditwheel resolves dependencies against the
-# filesystem and reports "required library librgpot.so.3 could not be
-# located". Unpack the wheel and put that directory on the search path.
+# meson-python vendors librgpot into .rgpot.mesonpy.libs and rewrites RPATHs,
+# but auditwheel still resolves NEEDED against the filesystem. Unpack the
+# wheel and put that directory on LD_LIBRARY_PATH.
+#
+# Torch / metatomic / metatensor are runtime deps of the Metatomic engine
+# plugin (dlopen / RPATH). Do not vendor them into the wheel — exclude so
+# auditwheel leaves those NEEDED entries for the installed torch stack.
 repair-wheel-command = """
   set -eu
   tmp=$(mktemp -d)
   unzip -q "{wheel}" -d "$tmp"
   libdir=$(dirname "$(find "$tmp" -name 'librgpot.so*' | head -1)")
   LD_LIBRARY_PATH="$libdir:${LD_LIBRARY_PATH:-}" \
-    auditwheel repair -w {dest_dir} "{wheel}"
+    auditwheel repair -w {dest_dir} "{wheel}" \
+      --exclude libtorch.so \
+      --exclude libtorch_cpu.so \
+      --exclude libc10.so \
+      --exclude libtorch_python.so \
+      --exclude libmetatensor_torch.so \
+      --exclude libmetatomic_torch.so \
+      --exclude libmetatensor.so \
+      --exclude libgomp.so.1
   rm -rf "$tmp"
 """
 
 [tool.cibuildwheel.macos]
 before-all = "brew list gcc >/dev/null 2>&1 || brew install gcc"
-# Same story for delocate ("Could not find all dependencies").
+# Same librgpot search-path story as Linux. Exclude torch/metatomic dylibs:
+# they ship with the pip torch / metatomic-torch wheels, not inside rgpot.
 repair-wheel-command = """
   set -eu
   tmp=$(mktemp -d)
   unzip -q "{wheel}" -d "$tmp"
   libdir=$(dirname "$(find "$tmp" -name 'librgpot*.dylib' | head -1)")
   DYLD_LIBRARY_PATH="$libdir:${DYLD_LIBRARY_PATH:-}" \
-    delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v "{wheel}"
+    delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v "{wheel}" \
+      --exclude libtorch \
+      --exclude libtorch_cpu \
+      --exclude libc10 \
+      --exclude libtorch_python \
+      --exclude libmetatensor_torch \
+      --exclude libmetatomic_torch \
+      --exclude libmetatensor
   rm -rf "$tmp"
 """
