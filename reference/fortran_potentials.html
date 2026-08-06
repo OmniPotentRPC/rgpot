@@ -354,6 +354,7 @@ data-aria-dark="Switch to auto color mode">
 <li><a class="reference internal" href="#cell-convention">5 Cell convention</a></li>
 <li><a class="reference internal" href="#tests">6 Tests</a><ul>
 <li><a class="reference internal" href="#compilers">6.1 Compilers</a></li>
+<li><a class="reference internal" href="#windows-flang-msvc-link">6.2 Windows Flang + MSVC link</a></li>
 </ul>
 </li>
 </ul>
@@ -469,6 +470,7 @@ data-aria-dark="Switch to auto color mode">
 <li><p><a class="reference internal" href="#tests" id="id11">6 Tests</a></p>
 <ul>
 <li><p><a class="reference internal" href="#compilers" id="id12">6.1 Compilers</a></p></li>
+<li><p><a class="reference internal" href="#windows-flang-msvc-link" id="id13">6.2 Windows Flang + MSVC link</a></p></li>
 </ul>
 </li>
 </ul>
@@ -657,6 +659,17 @@ in which case say so in a comment at the site.</p>
 type; it aborts rather than diagnosing.
 Interfaces that must build there pass such structs by pointer, which is why the
 vendored vesin interface binds <code class="docutils literal notranslate"><span class="pre">vesin_neighbors_byref</span></code>.</p>
+</section>
+<section id="windows-flang-msvc-link">
+<h3><a class="toc-backref" href="#id13" role="doc-backlink">6.2 Windows Flang + MSVC link</a><a class="headerlink" href="#windows-flang-msvc-link" title="Link to this heading">¶</a></h3>
+<p>Flang emits COFF objects that MSVC <code class="docutils literal notranslate"><span class="pre">link.exe</span></code> can consume, but the flang-shipped
+<code class="docutils literal notranslate"><span class="pre">llvm-ar</span></code> wraps them in a GNU archive.
+<code class="docutils literal notranslate"><span class="pre">link.exe</span></code> then fails with <code class="docutils literal notranslate"><span class="pre">LNK1107</span></code> when it opens the static library.
+Force MSVC’s librarian (<code class="docutils literal notranslate"><span class="pre">lib.exe</span></code>) via <code class="docutils literal notranslate"><span class="pre">AR=lib</span></code> and the Meson native file
+<code class="docutils literal notranslate"><span class="pre">ci/gha/machines/win-flang-msvc.ini</span></code> so the archives are COFF <code class="docutils literal notranslate"><span class="pre">.lib</span></code> and
+<code class="docutils literal notranslate"><span class="pre">link_whole</span></code> into <code class="docutils literal notranslate"><span class="pre">librgpot</span></code> succeeds.
+That is the supported Windows kernel path; do not disable Fortran to dodge the
+archiver.</p>
 </section>
 </section>
 </section>

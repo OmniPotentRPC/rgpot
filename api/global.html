@@ -345,7 +345,10 @@ data-aria-dark="Switch to auto color mode">
 <li><a class="reference internal" href="#global-functions">Global Functions</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#usage">Usage</a></li>
+<li><a class="reference internal" href="#usage">Usage</a><ul>
+<li><a class="reference internal" href="#macros">Macros</a></li>
+</ul>
+</li>
 </ul>
 </div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/OmniPotentRPC/rgpot"
   data-type="github" data-user="OmniPotentRPC" data-repo="rgpot">
@@ -649,14 +652,17 @@ data-aria-dark="Switch to auto color mode">
 <span data-line="202"><span class="c1">// macros</span></span>
 <span data-line="203"> </span>
 <span data-line="204"><span class="cp">#define </span><span class="doxyrest-code-target target" id="doxid-pot__bridge_8cc_1a933409e97453f39bfae6d29f0518b341"></span><span class="n">CATCH_AND_REPORT</span><span class="p">(</span><span class="n">client</span><span class="p">,</span> <span class="n">default_ret</span><span class="p">)</span></span>
-<span data-line="205"><span class="cp">#define </span><span class="doxyrest-code-target target" id="doxid-_fortran_pots_8hpp_1a158452799fad368ca2afc583b2406ca7"></span><span class="n">RGPOT_FORTRAN_POT_CLASS</span><span class="p">(</span><span class="n">ClassName</span><span class="p">,</span> <span class="n">PotTypeValue</span><span class="p">)</span></span>
-<span data-line="206"><span class="cp">#define </span><span class="doxyrest-code-target target" id="doxid-_fortran_pots_8cc_1ae0c8728579e5d29f83c2c9a20b525944"></span><span class="n">RGPOT_FORTRAN_POT_IMPL</span><span class="p">(</span><span class="n">ClassName</span><span class="p">,</span> <span class="n">Entry</span><span class="p">,</span> <span class="n">Label</span><span class="p">)</span></span>
-<span data-line="207"><span class="cp">#define </span><span class="doxyrest-code-target target" id="doxid-_fortran_pots_8cc_1aeeec8475d493e2cb38640dc234e04688"></span><span class="n">RGPOT_FORTRAN_SPECIES_POT_IMPL</span><span class="p">(</span><span class="n">ClassName</span><span class="p">,</span> <span class="n">Entry</span><span class="p">,</span> <span class="n">Label</span><span class="p">)</span></span>
-<span data-line="208"><span class="cp">#define </span><span class="doxyrest-code-target target" id="doxid-metatomic__c__abi_8h_1a2108b4728d818bb75e88ace00bcd11d3"></span><span class="n">RGPOT_MTA_ABI_VERSION</span></span>
-<span data-line="209"><span class="cp">#define </span><span class="doxyrest-code-target target" id="doxid-metatomic__c__abi_8h_1a409c918f350af84ff87227c561b27aa3"></span><span class="n">RGPOT_MTA_API</span></span>
-<span data-line="210"><span class="cp">#define </span><span class="doxyrest-code-target target" id="doxid-_metatomic_engine_abi_8cc_1a8eaafdf8bea9f6c384cda06d3e8eea42"></span><span class="n">RGPOT_MTA_ENGINE_BUILD</span></span>
-<span data-line="211"><span class="cp">#define </span><span class="doxyrest-code-target target" id="doxid-xtb__c__abi_8h_1aa3b73c6a3161c5d0da0ec0b357f13b8f"></span><span class="n">RGPOT_XTB_ABI_VERSION</span></span>
-<span data-line="212"><span class="cp">#define </span><span class="doxyrest-code-target target" id="doxid-xtb__c__abi_8h_1a1c2e4e9e5c694894e8e5e08ae2c99479"></span><span class="n">RGPOT_XTB_API</span></span>
+<span data-line="205"><span class="cp">#define </span><a class="doxyrest-code-link reference internal" href="#doxid-pot-bridge-8h-1a30ca0aa10367d7a1679284a7ed9969e4"><span class="std std-ref">POT_BRIDGE_API</span></a></span>
+<span data-line="206"><span class="cp">#define </span><span class="doxyrest-code-target target" id="doxid-cpmd__c__abi_8h_1a744600c686fd30c24b0e0882c773088a"></span><span class="n">RGPOT_CPMDC_API</span></span>
+<span data-line="207"><span class="cp">#define </span><span class="doxyrest-code-target target" id="doxid-_fortran_pots_8hpp_1a158452799fad368ca2afc583b2406ca7"></span><span class="n">RGPOT_FORTRAN_POT_CLASS</span><span class="p">(</span><span class="n">ClassName</span><span class="p">,</span> <span class="n">PotTypeValue</span><span class="p">)</span></span>
+<span data-line="208"><span class="cp">#define </span><span class="doxyrest-code-target target" id="doxid-_fortran_pots_8cc_1ae0c8728579e5d29f83c2c9a20b525944"></span><span class="n">RGPOT_FORTRAN_POT_IMPL</span><span class="p">(</span><span class="n">ClassName</span><span class="p">,</span> <span class="n">Entry</span><span class="p">,</span> <span class="n">Label</span><span class="p">)</span></span>
+<span data-line="209"><span class="cp">#define </span><span class="doxyrest-code-target target" id="doxid-_fortran_pots_8cc_1aeeec8475d493e2cb38640dc234e04688"></span><span class="n">RGPOT_FORTRAN_SPECIES_POT_IMPL</span><span class="p">(</span><span class="n">ClassName</span><span class="p">,</span> <span class="n">Entry</span><span class="p">,</span> <span class="n">Label</span><span class="p">)</span></span>
+<span data-line="210"><span class="cp">#define </span><span class="doxyrest-code-target target" id="doxid-metatomic__c__abi_8h_1a2108b4728d818bb75e88ace00bcd11d3"></span><span class="n">RGPOT_MTA_ABI_VERSION</span></span>
+<span data-line="211"><span class="cp">#define </span><span class="doxyrest-code-target target" id="doxid-metatomic__c__abi_8h_1a409c918f350af84ff87227c561b27aa3"></span><span class="n">RGPOT_MTA_API</span></span>
+<span data-line="212"><span class="cp">#define </span><span class="doxyrest-code-target target" id="doxid-_metatomic_engine_abi_8cc_1a8eaafdf8bea9f6c384cda06d3e8eea42"></span><span class="n">RGPOT_MTA_ENGINE_BUILD</span></span>
+<span data-line="213"><span class="cp">#define </span><span class="doxyrest-code-target target" id="doxid-nwchem__c__abi_8h_1a6ad5679b2111999202bb48844af14a93"></span><span class="n">RGPOT_NWCHEMC_API</span></span>
+<span data-line="214"><span class="cp">#define </span><span class="doxyrest-code-target target" id="doxid-xtb__c__abi_8h_1aa3b73c6a3161c5d0da0ec0b357f13b8f"></span><span class="n">RGPOT_XTB_ABI_VERSION</span></span>
+<span data-line="215"><span class="cp">#define </span><span class="doxyrest-code-target target" id="doxid-xtb__c__abi_8h_1a1c2e4e9e5c694894e8e5e08ae2c99479"></span><span class="n">RGPOT_XTB_API</span></span>
 </pre></div>
 </section>
 <section id="detailed-documentation">
@@ -682,8 +688,6 @@ data-aria-dark="Switch to auto color mode">
 <div class="doxyrest-title-code-block highlight" id="doxid-pot-bridge-8h-1ad15494aa275bd98047b204d29533f6ba">
 <span id="index-5"></span><pre><span data-line="1"><span class="k">typedef</span> <span class="k">struct</span> <span class="n">PotClient</span> <span class="n">PotClient</span></span>
 </pre></div>
-<p>C API for the RPC potential client bridge.</p>
-<p>This header provides a C-compatible interface to the distributed potential calculation client, allowing integration with Fortran or other languages with a C interface, e.g. Julia.</p>
 <p>Opaque handle to the client context.</p>
 </section>
 <section id="global-functions">
@@ -1220,6 +1224,14 @@ data-aria-dark="Switch to auto color mode">
 <span id="index-68"></span><pre><span data-line="1"><span class="n">__attribute__</span><span class="p">((</span><span class="n">visibility</span><span class="p">(</span><span class="err">“</span><span class="k">default</span><span class="err">”</span><span class="p">)))</span></span>
 </pre></div>
 <p>Energy + forces. Returns 0 on success. variance may be NULL.</p>
+<section id="macros">
+<h3>Macros<a class="headerlink" href="#macros" title="Link to this heading">¶</a></h3>
+<div class="doxyrest-title-code-block highlight" id="doxid-pot-bridge-8h-1a30ca0aa10367d7a1679284a7ed9969e4">
+<span id="index-69"></span><pre><span data-line="1"><span class="cp">#define POT_BRIDGE_API</span></span>
+</pre></div>
+<p>C API for the RPC potential client bridge.</p>
+<p>This header provides a C-compatible interface to the distributed potential calculation client, allowing integration with Fortran or other languages with a C interface, e.g. Julia.</p>
+</section>
 </section>
 </section>
 

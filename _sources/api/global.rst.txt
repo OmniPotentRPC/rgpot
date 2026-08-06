@@ -263,12 +263,15 @@ Overview
 	// macros
 
 	#define :target:`CATCH_AND_REPORT<doxid-pot__bridge_8cc_1a933409e97453f39bfae6d29f0518b341>`(client, default_ret)
+	#define :ref:`POT_BRIDGE_API<doxid-pot__bridge_8h_1a30ca0aa10367d7a1679284a7ed9969e4>`
+	#define :target:`RGPOT_CPMDC_API<doxid-cpmd__c__abi_8h_1a744600c686fd30c24b0e0882c773088a>`
 	#define :target:`RGPOT_FORTRAN_POT_CLASS<doxid-_fortran_pots_8hpp_1a158452799fad368ca2afc583b2406ca7>`(ClassName, PotTypeValue)
 	#define :target:`RGPOT_FORTRAN_POT_IMPL<doxid-_fortran_pots_8cc_1ae0c8728579e5d29f83c2c9a20b525944>`(ClassName, Entry, Label)
 	#define :target:`RGPOT_FORTRAN_SPECIES_POT_IMPL<doxid-_fortran_pots_8cc_1aeeec8475d493e2cb38640dc234e04688>`(ClassName, Entry, Label)
 	#define :target:`RGPOT_MTA_ABI_VERSION<doxid-metatomic__c__abi_8h_1a2108b4728d818bb75e88ace00bcd11d3>`
 	#define :target:`RGPOT_MTA_API<doxid-metatomic__c__abi_8h_1a409c918f350af84ff87227c561b27aa3>`
 	#define :target:`RGPOT_MTA_ENGINE_BUILD<doxid-_metatomic_engine_abi_8cc_1a8eaafdf8bea9f6c384cda06d3e8eea42>`
+	#define :target:`RGPOT_NWCHEMC_API<doxid-nwchem__c__abi_8h_1a6ad5679b2111999202bb48844af14a93>`
 	#define :target:`RGPOT_XTB_ABI_VERSION<doxid-xtb__c__abi_8h_1aa3b73c6a3161c5d0da0ec0b357f13b8f>`
 	#define :target:`RGPOT_XTB_API<doxid-xtb__c__abi_8h_1a1c2e4e9e5c694894e8e5e08ae2c99479>`
 
@@ -329,10 +332,6 @@ Result of energy+gradient (atomic units).
 	:class: doxyrest-title-code-block
 
 	typedef struct PotClient PotClient
-
-C API for the RPC potential client bridge.
-
-This header provides a C-compatible interface to the distributed potential calculation client, allowing integration with Fortran or other languages with a C interface, e.g. Julia.
 
 Opaque handle to the client context.
 
@@ -1361,4 +1360,19 @@ Usage
 	__attribute__((visibility("default")))
 
 Energy + forces. Returns 0 on success. variance may be NULL.
+
+Macros
+------
+
+.. index:: pair: define; POT_BRIDGE_API
+.. _doxid-pot__bridge_8h_1a30ca0aa10367d7a1679284a7ed9969e4:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	#define POT_BRIDGE_API
+
+C API for the RPC potential client bridge.
+
+This header provides a C-compatible interface to the distributed potential calculation client, allowing integration with Fortran or other languages with a C interface, e.g. Julia.
 

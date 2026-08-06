@@ -206,3 +206,15 @@ Flang on ``x86_64-pc-windows-msvc`` cannot lower a by-value ``BIND(C)`` derived
 type; it aborts rather than diagnosing.
 Interfaces that must build there pass such structs by pointer, which is why the
 vendored vesin interface binds ``vesin_neighbors_byref``.
+
+6.2 Windows Flang + MSVC link
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Flang emits COFF objects that MSVC ``link.exe`` can consume, but the flang-shipped
+``llvm-ar`` wraps them in a GNU archive.
+``link.exe`` then fails with ``LNK1107`` when it opens the static library.
+Force MSVC's librarian (``lib.exe``) via ``AR=lib`` and the Meson native file
+``ci/gha/machines/win-flang-msvc.ini`` so the archives are COFF ``.lib`` and
+``link_whole`` into ``librgpot`` succeeds.
+That is the supported Windows kernel path; do not disable Fortran to dodge the
+archiver.
