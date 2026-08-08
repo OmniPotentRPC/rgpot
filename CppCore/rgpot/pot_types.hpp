@@ -30,7 +30,8 @@ enum class PotType {
   Morse,       //!<  Morse pairwise potential; one range parameter.
   XTB,         //!<  GFN tight-binding via xtb (GFNFF/GFN0/GFN1/GFN2).
   TBLite,      //!<  GFN tight-binding via tblite (GFN1/GFN2/IPEA1).
-  Metatomic    //!<  ML atomistic models via metatomic/PyTorch.
+  Metatomic,   //!<  ML atomistic models via metatomic/PyTorch.
+  Shared       //!<  A backend dlopened from a shared library.
 };
 
 } // namespace rgpot

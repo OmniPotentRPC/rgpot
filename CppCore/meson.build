@@ -48,6 +48,12 @@ if not get_option('with_rpc_client_only')
         rgpotentials += [metatomicpot]
     endif
 
+    if host_machine.system() != 'windows'
+        dep_dl = meson.get_compiler('cpp').find_library('dl', required: false)
+        subdir('rgpot/SharedPot')  # 'sharedpot'
+        rgpotentials += [sharedpot]
+    endif
+
     _linkto += rgpotentials
 
     # Create library

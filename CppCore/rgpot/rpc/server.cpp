@@ -14,6 +14,7 @@
 
 #ifdef RGPOT_HAS_FORTRAN
 #include "rgpot/CuH2/CuH2Pot.hpp"
+#include "rgpot/SharedPot/SharedPot.hpp"
 #endif // RGPOT_HAS_FORTRAN
 
 #ifdef RGPOT_HAS_XTB
@@ -207,10 +208,23 @@ int main(int argc, char *argv[]) {
     potential_to_use = std::make_unique<rgpot::TBLitePot>(cfg);
 #endif // RGPOT_HAS_TBLITE
 #ifdef RGPOT_HAS_METATOMIC
+  } else if (pot_type.rfind("Shared:", 0) == 0) {
+    auto library_path = pot_type.substr(7);
+    std::cout << "Loading shared-library potential from '" << library_path
+              << "'..." << std::endl;
+    potential_to_use = std::make_unique<rgpot::SharedPot>(library_path);
   } else if (pot_type.rfind("Metatomic:", 0) == 0) {
-    auto model_path = pot_type.substr(10);
+    auto spec = pot_type.substr(10);
     rgpot::MetatomicConfig cfg;
-    cfg.model_path = model_path;
+    // Metatomic:<model.pt>[:<device>] -- the device is part of the request,
+    // cuda on an accelerated node, cpu elsewhere.
+    auto colon = spec.rfind(':');
+    if (colon != std::string::npos && spec.substr(colon + 1).find('/') == std::string::npos) {
+      cfg.device = spec.substr(colon + 1);
+      spec = spec.substr(0, colon);
+    }
+    cfg.model_path = spec;
+    auto model_path = spec;
     std::cout << "Loading Metatomic potential from '" << model_path << "'..."
               << std::endl;
     potential_to_use = std::make_unique<rgpot::MetatomicPot>(cfg);
