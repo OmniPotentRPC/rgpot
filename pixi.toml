@@ -18,6 +18,7 @@ xtbbld = { features = ["xtb"] }
 tblitebld = { features = ["tblite"] }
 tbbld = { features = ["xtb", "tblite"] }
 metatomicbld = { features = ["metatomic"] }
+metatomicgpu = { features = ["metatomicgpu"] }
 
 [feature.cache.dependencies]
 rocksdb = ">=10.9.1,<11"
@@ -29,13 +30,32 @@ xtb = ">=6.6.0,<7"
 [feature.tblite.dependencies]
 tblite = ">=0.3.0,<1"
 
+[feature.metatomicgpu]
+platforms = ["linux-64"]
+
+[feature.metatomicgpu.system-requirements]
+cuda = "12"
+
+[feature.metatomicgpu.dependencies]
+pytorch-gpu = ">=2.10, <2.11"
+cuda-version = "12.*"
+cuda-nvcc = "*"
+cuda-cudart-dev = "*"
+capnproto = "*"
+
+[feature.metatomicgpu.pypi-dependencies]
+metatomic-torch = ">=0.1.9, <0.2"
+metatensor-torch = ">=0.8.4, <0.9"
+
 [feature.metatomic]
 platforms = ["linux-64"]
 
 [feature.metatomic.dependencies]
+pytorch-cpu = ">=2.10, <2.11"
+capnproto = "*"
 
 [feature.metatomic.pypi-dependencies]
-torch = ">=2.10, <2.11"
+metatrain = "*"
 metatomic-torch = ">=0.1.9, <0.2"
 metatensor-torch = ">=0.8.4, <0.9"
 vesin-torch = ">=0.5.2, <0.6"
@@ -82,7 +102,7 @@ pkgconfig = ">=1.5.5,<2"
 openblas = ">=0.3.28,<0.4"
 xtensor = ">=0.27.1,<0.28"
 eigen = ">=3.4.0,<4"
-fmt = ">=11.0.2,<12"
+fmt = ">=11.0.2,<13"
 spdlog = ">=1.14.1,<2"
 catch2 = ">=3.7.1,<4"
 cppcheck = ">=2.15.0,<3"

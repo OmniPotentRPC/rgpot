@@ -196,7 +196,8 @@ metatensor_torch::TensorBlock MetatomicPot::computeNeighbors(
 
   VesinNeighborList *vesin_nl = new VesinNeighborList();
 
-  VesinDevice cpu = VesinCPU;
+  VesinDevice cpu{};
+  cpu.type = VesinCPU;
   const char *error_message = nullptr;
   int status = vesin_neighbors(reinterpret_cast<const double(*)[3]>(positions),
                                static_cast<size_t>(nAtoms),
