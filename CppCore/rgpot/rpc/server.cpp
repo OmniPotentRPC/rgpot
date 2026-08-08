@@ -298,9 +298,18 @@ int main(int argc, char *argv[]) {
 #endif // RGPOT_HAS_DFTD4
 #ifdef RGPOT_HAS_METATOMIC
   } else if (pot_type.rfind("Metatomic:", 0) == 0) {
-    auto model_path = pot_type.substr(10);
+    auto spec = pot_type.substr(10);
     rgpot::MetatomicConfig cfg;
-    cfg.model_path = model_path;
+    // Metatomic:<model.pt>[:<device>] -- the device is part of the request,
+    // cuda on an accelerated node, cpu elsewhere.
+    auto colon = spec.rfind(':');
+    if (colon != std::string::npos &&
+        spec.substr(colon + 1).find('/') == std::string::npos) {
+      cfg.device = spec.substr(colon + 1);
+      spec = spec.substr(0, colon);
+    }
+    cfg.model_path = spec;
+    auto model_path = spec;
     std::cout << "Loading Metatomic potential from '" << model_path << "'..."
               << std::endl;
     potential_to_use = std::make_unique<rgpot::MetatomicPot>(cfg);
