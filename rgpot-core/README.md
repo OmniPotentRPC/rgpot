@@ -18,6 +18,8 @@ for device-agnostic interoperability (CPU, CUDA, ROCm).
 | Feature | Description |
 |---------|-------------|
 | *(default)* | Core types, DLPack tensor helpers, callback-based potential dispatch |
+| `schema` | Generated bindings for the shared `PotentialConfig`, `ForceInput`, and `PotentialResult` carriers |
+| `profile` | Prefix-generic in-process loader with one persistent backend session |
 | `rpc` | Cap'n Proto RPC client and server for distributed calculations |
 | `cache` | *(planned)* Result caching layer |
 
@@ -25,14 +27,22 @@ for device-agnostic interoperability (CPU, CUDA, ROCm).
 
 ```toml
 [dependencies]
-rgpot-core = "0.1"
+rgpot-core = "3.1"
 ```
 
-Enable the RPC feature:
+Enable the in-process profile loader for backends such as `nwchemc` and
+`cpmdc`:
 
 ```toml
 [dependencies]
-rgpot-core = { version = "0.1", features = ["rpc"] }
+rgpot-core = { version = "3.1", features = ["profile"] }
+```
+
+Enable the RPC client and server:
+
+```toml
+[dependencies]
+rgpot-core = { version = "3.1", features = ["rpc"] }
 ```
 
 ## Documentation
