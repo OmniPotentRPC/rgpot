@@ -27,8 +27,8 @@ pub struct ProfileRequest<'a> {
     pub positions: &'a [f64],
     /// Atomic numbers in the same atom order as `positions`.
     pub atomic_numbers: &'a [i32],
-    /// Row-major 3x3 simulation cell.
-    pub box_matrix: &'a [f64; 9],
+    /// Optional row-major 3x3 simulation cell; molecular inputs use `None`.
+    pub box_matrix: Option<&'a [f64; 9]>,
     /// Unit expression for coordinates and cell vectors.
     pub length_unit: &'a str,
     /// Unit expression requested for energy and forces.
@@ -137,9 +137,11 @@ pub fn encode_force_input(request: &ProfileRequest<'_>) -> ProfileResult<Vec<u8>
             atomic_numbers.set(index as u32, value);
         }
 
-        let mut box_matrix = input.reborrow().init_box(9);
-        for (index, value) in request.box_matrix.iter().copied().enumerate() {
-            box_matrix.set(index as u32, value);
+        if let Some(box_matrix) = request.box_matrix {
+            let mut encoded_box = input.reborrow().init_box(9);
+            for (index, value) in box_matrix.iter().copied().enumerate() {
+                encoded_box.set(index as u32, value);
+            }
         }
         input.set_length_unit(request.length_unit);
         input.set_energy_unit(request.energy_unit);
