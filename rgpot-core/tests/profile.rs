@@ -1,9 +1,9 @@
 use capnp::message::Builder;
 use capnp::serialize;
-use rgpot_core::Potentials_capnp::potential_result;
 use rgpot_core::profile::{
-    ProfileRequest, decode_potential_result, encode_force_input, library_candidates,
+    decode_potential_result, encode_force_input, library_candidates, ProfileRequest,
 };
+use rgpot_core::Potentials_capnp::potential_result;
 
 #[test]
 fn candidates_are_prefix_parameterized() {
@@ -31,11 +31,9 @@ fn force_input_codec_preserves_geometry_and_units() {
     .expect("encode ForceInput");
 
     let mut bytes = encoded.as_slice();
-    let message = serialize::read_message_from_flat_slice(
-        &mut bytes,
-        capnp::message::ReaderOptions::new(),
-    )
-    .expect("read ForceInput");
+    let message =
+        serialize::read_message_from_flat_slice(&mut bytes, capnp::message::ReaderOptions::new())
+            .expect("read ForceInput");
     let input = message
         .get_root::<rgpot_core::Potentials_capnp::force_input::Reader>()
         .expect("ForceInput root");
@@ -56,10 +54,15 @@ fn force_input_codec_preserves_geometry_and_units() {
         atomic_numbers
     );
     assert_eq!(
-        (0..got_box.len()).map(|i| got_box.get(i)).collect::<Vec<_>>(),
+        (0..got_box.len())
+            .map(|i| got_box.get(i))
+            .collect::<Vec<_>>(),
         box_matrix
     );
-    assert_eq!(input.get_length_unit().unwrap().to_str().unwrap(), "angstrom");
+    assert_eq!(
+        input.get_length_unit().unwrap().to_str().unwrap(),
+        "angstrom"
+    );
     assert_eq!(input.get_energy_unit().unwrap().to_str().unwrap(), "eV");
 }
 
@@ -70,10 +73,7 @@ fn potential_result_codec_preserves_one_fused_evaluation() {
         let mut result = message.init_root::<potential_result::Builder>();
         result.set_energy(-12.75);
         let mut forces = result.reborrow().init_forces(6);
-        for (i, value) in [1.0, 2.0, 3.0, -1.0, -2.0, -3.0]
-            .into_iter()
-            .enumerate()
-        {
+        for (i, value) in [1.0, 2.0, 3.0, -1.0, -2.0, -3.0].into_iter().enumerate() {
             forces.set(i as u32, value);
         }
     }
