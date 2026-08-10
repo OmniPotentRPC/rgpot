@@ -141,8 +141,8 @@ pub fn encode_force_input(request: &ProfileRequest<'_>) -> ProfileResult<Vec<u8>
         for (index, value) in request.box_matrix.iter().copied().enumerate() {
             box_matrix.set(index as u32, value);
         }
-        input.set_length_unit(request.length_unit.into());
-        input.set_energy_unit(request.energy_unit.into());
+        input.set_length_unit(request.length_unit);
+        input.set_energy_unit(request.energy_unit);
     }
     Ok(serialize::write_message_to_words(&message))
 }
