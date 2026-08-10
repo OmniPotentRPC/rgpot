@@ -24,7 +24,7 @@ fn force_input_codec_preserves_geometry_and_units() {
     let encoded = encode_force_input(&ProfileRequest {
         positions: &positions,
         atomic_numbers: &atomic_numbers,
-        box_matrix: &box_matrix,
+        box_matrix: Some(&box_matrix),
         length_unit: "angstrom",
         energy_unit: "eV",
     })
@@ -64,6 +64,30 @@ fn force_input_codec_preserves_geometry_and_units() {
         "angstrom"
     );
     assert_eq!(input.get_energy_unit().unwrap().to_str().unwrap(), "eV");
+}
+
+#[test]
+fn force_input_codec_omits_cell_for_molecular_geometry() {
+    let positions = [0.0, 0.0, 0.0, 0.9, 0.0, 0.0];
+    let atomic_numbers = [8, 1];
+    let encoded = encode_force_input(&ProfileRequest {
+        positions: &positions,
+        atomic_numbers: &atomic_numbers,
+        box_matrix: None,
+        length_unit: "angstrom",
+        energy_unit: "eV",
+    })
+    .expect("encode molecular ForceInput");
+
+    let mut bytes = encoded.as_slice();
+    let message =
+        serialize::read_message_from_flat_slice(&mut bytes, capnp::message::ReaderOptions::new())
+            .expect("read ForceInput");
+    let input = message
+        .get_root::<rgpot_core::Potentials_capnp::force_input::Reader>()
+        .expect("ForceInput root");
+
+    assert_eq!(input.get_box().expect("box list").len(), 0);
 }
 
 #[test]
