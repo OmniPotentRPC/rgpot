@@ -80,6 +80,31 @@ fortran_kernels_dep = declare_dependency(
     dependencies: [vesin_f_dep, vesin_dep],
 )
 
+# Plugin anneal dlopens as RGPOT_CUH2_LIBRARY. The umbrella librgpot hides
+# Fortran symbols; this .so exports only the bind(c) entry.
+_cuh2_plugin_args = fc.get_supported_arguments(
+    [
+        '-std=f2018',
+        '-fimplicit-none',
+        '-Wall',
+        '-Wno-unused-dummy-argument',
+    ],
+)
+rgpot_cuh2 = library(
+    'rgpot_cuh2',
+    [
+        'rgpot_kinds.f90',
+        'rgpot_ferror.f90',
+        'rgpot_neighbors.f90',
+        'rgpot_cuh2.f90',
+        'rgpot_cuh2_capi.f90',
+    ],
+    dependencies: [vesin_f_dep, vesin_dep],
+    fortran_args: _cuh2_plugin_args,
+    install: not meson.is_subproject(),
+    gnu_symbol_visibility: 'default',
+)
+
 # Physics checks that run without the C++ stack: a failure here points at
 # the kernel, not the bindings.
 if get_option('with_tests')
