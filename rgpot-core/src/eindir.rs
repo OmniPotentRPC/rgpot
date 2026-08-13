@@ -18,6 +18,7 @@
 //! eval path and no conversion method.
 
 use std::os::raw::c_void;
+use std::sync::Mutex;
 
 use dlpk::sys::DLManagedTensorVersioned;
 
@@ -72,6 +73,13 @@ pub struct rgpot_potential_t {
     pub atomic_numbers: *mut i32,
     /// Box matrix (column-major, 3x3), copied at construction.
     pub box_matrix: [f64; 9],
+    /// Energy/gradient result shared by a matching eval-then-grad request.
+    fused_cache: Mutex<Option<FusedEvaluation>>,
+}
+
+struct FusedEvaluation {
+    positions: Vec<f64>,
+    gradient: Vec<f64>,
 }
 
 // Safety: user pointers are opaque; caller guarantees thread safety.
@@ -114,6 +122,16 @@ unsafe extern "C" fn rgpot_eval_cb(
     };
     let status =
         unsafe { (pot.callback)(pot.pot_user_data, &input, &mut output) };
+    let fused = if status == rgpot_status_t::RGPOT_SUCCESS && !output.forces.is_null() {
+        let ft = unsafe { &(*output.forces).dl_tensor };
+        let forces = unsafe { std::slice::from_raw_parts(ft.data as *const f64, n) };
+        Some(FusedEvaluation {
+            positions: x_data.to_vec(),
+            gradient: forces.iter().map(|force| -*force).collect(),
+        })
+    } else {
+        None
+    };
     unsafe {
         rgpot_tensor_free(output.forces);
         rgpot_tensor_free(input.positions);
@@ -121,8 +139,14 @@ unsafe extern "C" fn rgpot_eval_cb(
         rgpot_tensor_free(input.box_matrix);
     }
     if status != rgpot_status_t::RGPOT_SUCCESS {
+        *pot.fused_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
         return eindir_status_t::EINDIR_INTERNAL_ERROR;
     }
+    *pot.fused_cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = fused;
     unsafe { *value_out = output.energy };
     eindir_status_t::EINDIR_SUCCESS
 }
@@ -136,6 +160,19 @@ unsafe extern "C" fn rgpot_grad_cb(
     let xt = unsafe { &(*x).dl_tensor };
     let n = pot.n_atoms * 3;
     let x_data = unsafe { std::slice::from_raw_parts(xt.data as *const f64, n) };
+    let cached = pot
+        .fused_cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take();
+    if let Some(cached) = cached {
+        if cached.positions == x_data {
+            let gt = unsafe { &(*grad_out).dl_tensor };
+            let dst = unsafe { std::slice::from_raw_parts_mut(gt.data as *mut f64, n) };
+            dst.copy_from_slice(&cached.gradient);
+            return eindir_status_t::EINDIR_SUCCESS;
+        }
+    }
     let mut pos = x_data.to_vec();
     let mut atmnrs =
         unsafe { std::slice::from_raw_parts(pot.atomic_numbers, pot.n_atoms) }.to_vec();
@@ -253,6 +290,7 @@ pub unsafe extern "C" fn rgpot_potential_new_eindir(
         n_atoms,
         atomic_numbers: atmnrs,
         box_matrix: box_arr,
+        fused_cache: Mutex::new(None),
     });
     let ptr = Box::into_raw(pot);
     // Self-referential: the eindir base's user_data points to the owning struct
@@ -384,7 +422,6 @@ mod tests {
     #[test]
     fn fused_value_and_gradient_executes_one_force_request() {
         let n_atoms = 2usize;
-        let dim = n_atoms * 3;
         let atmnrs = [1i32, 1];
         let box_ = [10.0f64, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 10.0];
         let mut calls = 0usize;
