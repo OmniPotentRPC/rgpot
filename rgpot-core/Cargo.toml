@@ -37,6 +37,9 @@ tokio = { version = "1", features = ["rt", "rt-multi-thread", "net", "macros"], 
 tokio-util = { version = "0.7", features = ["compat"], optional = true }
 futures = { version = "0.3", optional = true }
 
+[dev-dependencies]
+ndarray = "0.17.2"
+
 [build-dependencies]
 cbindgen = { version = "0.27", optional = true }
 capnpc = { version = "0.20", optional = true }
