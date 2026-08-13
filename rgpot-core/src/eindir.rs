@@ -300,6 +300,9 @@ pub unsafe extern "C" fn rgpot_potential_free_eindir(pot: *mut rgpot_potential_t
 mod tests {
     use super::*;
     use crate::tensor::create_owned_f64_tensor;
+    use eindir_core::ffi::EindirObjectiveWrapper;
+    use eindir_core::gradient::DifferentiableObjective;
+    use ndarray::Array1;
 
     struct Ctx1d {
         shape: [i64; 1],
@@ -366,6 +369,47 @@ mod tests {
         out.variance = 0.0;
         out.forces = create_owned_f64_tensor(vec![-1.0f64; n * 3], vec![n as i64, 3]);
         rgpot_status_t::RGPOT_SUCCESS
+    }
+
+    unsafe extern "C" fn counting_energy_callback(
+        user_data: *mut c_void,
+        input: *const rgpot_force_input_t,
+        output: *mut rgpot_force_out_t,
+    ) -> rgpot_status_t {
+        let calls = unsafe { &mut *(user_data as *mut usize) };
+        *calls += 1;
+        unsafe { mock_energy_callback(std::ptr::null_mut(), input, output) }
+    }
+
+    #[test]
+    fn fused_value_and_gradient_executes_one_force_request() {
+        let n_atoms = 2usize;
+        let dim = n_atoms * 3;
+        let atmnrs = [1i32, 1];
+        let box_ = [10.0f64, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 10.0];
+        let mut calls = 0usize;
+        let pot = unsafe {
+            rgpot_potential_new_eindir(
+                counting_energy_callback,
+                (&mut calls as *mut usize).cast(),
+                None,
+                n_atoms,
+                atmnrs.as_ptr(),
+                box_.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+            )
+        };
+        assert!(!pot.is_null());
+        let objective = unsafe { EindirObjectiveWrapper::new(&(*pot).base) };
+        let x = Array1::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+
+        let (energy, gradient) = objective.value_and_gradient(x.view());
+
+        assert_eq!(energy, 21.0);
+        assert!(gradient.iter().all(|&value| value == 1.0));
+        assert_eq!(calls, 1, "a fused request must execute the engine once");
+        unsafe { rgpot_potential_free_eindir(pot) };
     }
 
     /// The IS-A cast: a rgpot_potential_t* is passed to eindir functions by
