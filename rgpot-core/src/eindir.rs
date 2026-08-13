@@ -302,7 +302,7 @@ mod tests {
     use crate::tensor::create_owned_f64_tensor;
     use eindir_core::ffi::EindirObjectiveWrapper;
     use eindir_core::gradient::DifferentiableObjective;
-    use ndarray::Array1;
+    use dlpk::ndarray::Array1;
 
     struct Ctx1d {
         shape: [i64; 1],
