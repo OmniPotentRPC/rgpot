@@ -1,0 +1,295 @@
+===============
+``mod profile``
+===============
+
+
+.. rust:module:: rgpot_core::profile
+   :index: 0
+   :vis: pub
+
+   Native loader for the minimum potential ABI profile.
+   
+   A backend prefix such as ``nwchemc`` or ``cpmdc`` selects one conforming
+   shared library. The library receives ``PotentialConfig`` bytes once, keeps a
+   persistent session, and receives ``ForceInput`` bytes for every geometry.
+   Results return as ``PotentialResult`` bytes in the units requested by the
+   input message.
+
+   .. rust:use:: rgpot_core::profile
+      :used_name: self
+
+
+   .. rust:use:: rgpot_core
+      :used_name: crate
+
+
+   .. rust:use:: std::ffi::CStr
+      :used_name: CStr
+
+
+   .. rust:use:: std::ffi::c_char
+      :used_name: c_char
+
+
+   .. rust:use:: std::ffi::c_int
+      :used_name: c_int
+
+
+   .. rust:use:: std::ffi::c_void
+      :used_name: c_void
+
+
+   .. rust:use:: std::fmt
+      :used_name: fmt
+
+
+   .. rust:use:: std::mem::ManuallyDrop
+      :used_name: ManuallyDrop
+
+
+   .. rust:use:: std::path::Path
+      :used_name: Path
+
+
+   .. rust:use:: capnp::message::Builder
+      :used_name: Builder
+
+
+   .. rust:use:: capnp::message::ReaderOptions
+      :used_name: ReaderOptions
+
+
+   .. rust:use:: capnp::serialize
+      :used_name: serialize
+
+
+   .. rust:use:: libloading::Library
+      :used_name: Library
+
+
+   .. rust:use:: rgpot_core::Potentials_capnp::force_input
+      :used_name: force_input
+
+
+   .. rust:use:: rgpot_core::Potentials_capnp::potential_result
+      :used_name: potential_result
+
+
+   .. rubric:: Types
+
+
+   .. rust:type:: rgpot_core::profile::ProfileResult
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"type"},{"type":"space"},{"type":"name","value":"ProfileResult"},{"type":"punctuation","value":"<"},{"type":"name","value":"T"},{"type":"punctuation","value":">"}]
+
+      Result type for profile loading and evaluation.
+
+   .. rubric:: Functions
+
+
+   .. rust:function:: rgpot_core::profile::decode_potential_result
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"decode_potential_result"},{"type":"punctuation","value":"("},{"type":"name","value":"encoded"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"punctuation","value":"["},{"type":"link","value":"u8","target":"u8"},{"type":"punctuation","value":"]"},{"type":"punctuation","value":", "},{"type":"name","value":"expected_force_count"},{"type":"punctuation","value":": "},{"type":"link","value":"usize","target":"usize"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"ProfileResult","target":"ProfileResult"},{"type":"punctuation","value":"<"},{"type":"link","value":"ProfileEvaluation","target":"ProfileEvaluation"},{"type":"punctuation","value":">"}]
+
+      Decode the energy and force fields from a shared ``PotentialResult`` carrier.
+
+   .. rust:function:: rgpot_core::profile::encode_force_input
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"encode_force_input"},{"type":"punctuation","value":"("},{"type":"name","value":"request"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"link","value":"ProfileRequest","target":"ProfileRequest"},{"type":"punctuation","value":"<"},{"type":"lifetime","value":"'_"},{"type":"punctuation","value":">"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"ProfileResult","target":"ProfileResult"},{"type":"punctuation","value":"<"},{"type":"link","value":"Vec","target":"Vec"},{"type":"punctuation","value":"<"},{"type":"link","value":"u8","target":"u8"},{"type":"punctuation","value":">"},{"type":"punctuation","value":">"}]
+
+      Serialize a request as the shared ``ForceInput`` carrier.
+
+   .. rust:function:: rgpot_core::profile::library_candidates
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"library_candidates"},{"type":"punctuation","value":"("},{"type":"name","value":"prefix"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"link","value":"str","target":"str"},{"type":"punctuation","value":", "},{"type":"name","value":"explicit_path"},{"type":"punctuation","value":": "},{"type":"link","value":"Option","target":"Option"},{"type":"punctuation","value":"<"},{"type":"punctuation","value":"&"},{"type":"link","value":"str","target":"str"},{"type":"punctuation","value":">"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"Vec","target":"Vec"},{"type":"punctuation","value":"<"},{"type":"link","value":"String","target":"String"},{"type":"punctuation","value":">"}]
+
+      Ordered shared-library candidates for a backend prefix.
+
+   .. rubric:: Structs and Unions
+
+
+   .. rust:struct:: rgpot_core::profile::ProfileError
+      :index: 1
+      :vis: pub
+      :toc: struct ProfileError
+      :layout: [{"type":"keyword","value":"struct"},{"type":"space"},{"type":"name","value":"ProfileError"},{"type":"punctuation","value":"("},{"type":"link","value":"String","target":"String"},{"type":"punctuation","value":")"}]
+
+      Error raised while loading or driving a potential profile.
+
+      .. rubric:: Implementations
+
+
+      .. rust:impl:: rgpot_core::profile::ProfileError
+         :index: -1
+         :vis: pub
+         :layout: [{"type":"keyword","value":"impl"},{"type":"space"},{"type":"link","value":"ProfileError","target":"ProfileError"}]
+         :toc: impl ProfileError
+
+
+      .. rubric:: Traits implemented
+
+
+      .. rust:impl:: rgpot_core::profile::ProfileError::Display
+         :index: -1
+         :vis: pub
+         :layout: [{"type":"keyword","value":"impl"},{"type":"space"},{"type":"link","value":"fmt","target":"fmt"},{"type":"punctuation","value":"::"},{"type":"name","value":"Display"},{"type":"space"},{"type":"keyword","value":"for"},{"type":"space"},{"type":"link","value":"ProfileError","target":"ProfileError"}]
+         :toc: impl Display for ProfileError
+
+
+      .. rust:impl:: rgpot_core::profile::ProfileError::Error
+         :index: -1
+         :vis: pub
+         :layout: [{"type":"keyword","value":"impl"},{"type":"space"},{"type":"link","value":"std","target":"std"},{"type":"punctuation","value":"::"},{"type":"name","value":"error"},{"type":"punctuation","value":"::"},{"type":"name","value":"Error"},{"type":"space"},{"type":"keyword","value":"for"},{"type":"space"},{"type":"link","value":"ProfileError","target":"ProfileError"}]
+         :toc: impl Error for ProfileError
+
+
+      .. rust:impl:: rgpot_core::profile::ProfileError::From
+         :index: -1
+         :vis: pub
+         :layout: [{"type":"keyword","value":"impl"},{"type":"space"},{"type":"link","value":"From","target":"From"},{"type":"punctuation","value":"<"},{"type":"link","value":"capnp","target":"capnp"},{"type":"punctuation","value":"::"},{"type":"name","value":"Error"},{"type":"punctuation","value":">"},{"type":"space"},{"type":"keyword","value":"for"},{"type":"space"},{"type":"link","value":"ProfileError","target":"ProfileError"}]
+         :toc: impl From for ProfileError
+
+
+   .. rust:struct:: rgpot_core::profile::ProfileEvaluation
+      :index: 1
+      :vis: pub
+      :toc: struct ProfileEvaluation
+      :layout: [{"type":"keyword","value":"struct"},{"type":"space"},{"type":"name","value":"ProfileEvaluation"}]
+
+      Energy and forces returned by one fused backend calculation.
+
+      .. rust:variable:: rgpot_core::profile::ProfileEvaluation::energy
+         :index: 2
+         :vis: pub
+         :toc: energy
+         :layout: [{"type":"name","value":"energy"},{"type":"punctuation","value":": "},{"type":"link","value":"f64","target":"f64"}]
+
+         Energy in the ``ProfileRequest::energy_unit`` unit.
+
+      .. rust:variable:: rgpot_core::profile::ProfileEvaluation::forces
+         :index: 2
+         :vis: pub
+         :toc: forces
+         :layout: [{"type":"name","value":"forces"},{"type":"punctuation","value":": "},{"type":"link","value":"Vec","target":"Vec"},{"type":"punctuation","value":"<"},{"type":"link","value":"f64","target":"f64"},{"type":"punctuation","value":">"}]
+
+         Forces in energy-unit per length-unit.
+
+   .. rust:struct:: rgpot_core::profile::ProfileRequest
+      :index: 1
+      :vis: pub
+      :toc: struct ProfileRequest
+      :layout: [{"type":"keyword","value":"struct"},{"type":"space"},{"type":"name","value":"ProfileRequest"},{"type":"punctuation","value":"<"},{"type":"lifetime","value":"'a"},{"type":"punctuation","value":">"}]
+
+      One atomistic evaluation sent through a profile session.
+
+      .. rust:variable:: rgpot_core::profile::ProfileRequest::positions
+         :index: 2
+         :vis: pub
+         :toc: positions
+         :layout: [{"type":"name","value":"positions"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"lifetime","value":"'a"},{"type":"space"},{"type":"punctuation","value":"["},{"type":"link","value":"f64","target":"f64"},{"type":"punctuation","value":"]"}]
+
+         Flat Cartesian coordinates, three values per atom.
+
+      .. rust:variable:: rgpot_core::profile::ProfileRequest::atomic_numbers
+         :index: 2
+         :vis: pub
+         :toc: atomic_numbers
+         :layout: [{"type":"name","value":"atomic_numbers"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"lifetime","value":"'a"},{"type":"space"},{"type":"punctuation","value":"["},{"type":"link","value":"i32","target":"i32"},{"type":"punctuation","value":"]"}]
+
+         Atomic numbers in the same atom order as ``positions``.
+
+      .. rust:variable:: rgpot_core::profile::ProfileRequest::box_matrix
+         :index: 2
+         :vis: pub
+         :toc: box_matrix
+         :layout: [{"type":"name","value":"box_matrix"},{"type":"punctuation","value":": "},{"type":"link","value":"Option","target":"Option"},{"type":"punctuation","value":"<"},{"type":"punctuation","value":"&"},{"type":"lifetime","value":"'a"},{"type":"space"},{"type":"punctuation","value":"["},{"type":"link","value":"f64","target":"f64"},{"type":"punctuation","value":"; "},{"type":"literal","value":"9"},{"type":"punctuation","value":"]"},{"type":"punctuation","value":">"}]
+
+         Optional row-major 3x3 simulation cell; molecular inputs use ``None``.
+
+      .. rust:variable:: rgpot_core::profile::ProfileRequest::length_unit
+         :index: 2
+         :vis: pub
+         :toc: length_unit
+         :layout: [{"type":"name","value":"length_unit"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"lifetime","value":"'a"},{"type":"space"},{"type":"link","value":"str","target":"str"}]
+
+         Unit expression for coordinates and cell vectors.
+
+      .. rust:variable:: rgpot_core::profile::ProfileRequest::energy_unit
+         :index: 2
+         :vis: pub
+         :toc: energy_unit
+         :layout: [{"type":"name","value":"energy_unit"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"lifetime","value":"'a"},{"type":"space"},{"type":"link","value":"str","target":"str"}]
+
+         Unit expression requested for energy and forces.
+
+   .. rust:struct:: rgpot_core::profile::ProfileSession
+      :index: 1
+      :vis: pub
+      :toc: struct ProfileSession
+      :layout: [{"type":"keyword","value":"struct"},{"type":"space"},{"type":"name","value":"ProfileSession"}]
+
+      One persistent session loaded through the prefix-generic potential profile.
+
+      .. rubric:: Implementations
+
+
+      .. rust:impl:: rgpot_core::profile::ProfileSession
+         :index: -1
+         :vis: pub
+         :layout: [{"type":"keyword","value":"impl"},{"type":"space"},{"type":"link","value":"ProfileSession","target":"ProfileSession"}]
+         :toc: impl ProfileSession
+
+
+         .. rubric:: Functions
+
+
+         .. rust:function:: rgpot_core::profile::ProfileSession::abi_version
+            :index: -1
+            :vis: pub
+            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"abi_version"},{"type":"punctuation","value":"("},{"type":"punctuation","value":"&"},{"type":"keyword","value":"self"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"i32","target":"i32"}]
+
+            Numeric ABI generation reported by the backend.
+
+         .. rust:function:: rgpot_core::profile::ProfileSession::evaluate
+            :index: -1
+            :vis: pub
+            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"evaluate"},{"type":"punctuation","value":"("},{"type":"punctuation","value":"&"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"keyword","value":"self"},{"type":"punctuation","value":", "},{"type":"name","value":"request"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"link","value":"ProfileRequest","target":"ProfileRequest"},{"type":"punctuation","value":"<"},{"type":"lifetime","value":"'_"},{"type":"punctuation","value":">"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"ProfileResult","target":"ProfileResult"},{"type":"punctuation","value":"<"},{"type":"link","value":"ProfileEvaluation","target":"ProfileEvaluation"},{"type":"punctuation","value":">"}]
+
+            Evaluate one geometry through the persistent session.
+
+         .. rust:function:: rgpot_core::profile::ProfileSession::library_path
+            :index: -1
+            :vis: pub
+            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"library_path"},{"type":"punctuation","value":"("},{"type":"punctuation","value":"&"},{"type":"keyword","value":"self"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"punctuation","value":"&"},{"type":"link","value":"str","target":"str"}]
+
+            Path of the shared library selected by the candidate search.
+
+         .. rust:function:: rgpot_core::profile::ProfileSession::load
+            :index: -1
+            :vis: pub
+            :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"load"},{"type":"punctuation","value":"("},{"type":"name","value":"prefix"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"link","value":"str","target":"str"},{"type":"punctuation","value":", "},{"type":"name","value":"explicit_path"},{"type":"punctuation","value":": "},{"type":"link","value":"Option","target":"Option"},{"type":"punctuation","value":"<"},{"type":"punctuation","value":"&"},{"type":"link","value":"Path","target":"Path"},{"type":"punctuation","value":">"},{"type":"punctuation","value":", "},{"type":"name","value":"config"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"punctuation","value":"["},{"type":"link","value":"u8","target":"u8"},{"type":"punctuation","value":"]"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"ProfileResult","target":"ProfileResult"},{"type":"punctuation","value":"<"},{"type":"link","value":"Self","target":"Self"},{"type":"punctuation","value":">"}]
+
+            Load a conforming backend and create one session from ``PotentialConfig`` bytes.
+            
+            **Safety**
+            
+            The selected shared library must implement the minimum potential ABI
+            profile for ``prefix`` with the C layouts defined by the profile contract.
+
+         .. rust:function:: rgpot_core::profile::ProfileSession::prefix
+            :index: -1
+            :vis: pub
+            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"prefix"},{"type":"punctuation","value":"("},{"type":"punctuation","value":"&"},{"type":"keyword","value":"self"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"punctuation","value":"&"},{"type":"link","value":"str","target":"str"}]
+
+            Backend prefix used to resolve the profile symbols.
+
+         .. rust:function:: rgpot_core::profile::ProfileSession::version
+            :index: -1
+            :vis: pub
+            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"version"},{"type":"punctuation","value":"("},{"type":"punctuation","value":"&"},{"type":"keyword","value":"self"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"punctuation","value":"&"},{"type":"link","value":"str","target":"str"}]
+
+            Human-readable backend version string.

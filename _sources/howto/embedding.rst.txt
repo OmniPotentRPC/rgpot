@@ -9,8 +9,8 @@ cmake as a subproject dependency.
 Meson
 ~~~~~
 
-Add a ``subprojects/rgpot.wrap`` file or vendor the source directly into
-``subprojects/rgpot/``.
+Add a
+``subprojects/rgpot.wrap`` file or vendor the source directly into ``subprojects/rgpot/``.
 
 Full library build (server + potentials)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -26,8 +26,8 @@ Use this when your project hosts an RPC server with rgpot's built-in potentials:
 RPC schema only (client mode)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Use this when your project only needs to *call* a remote potential server,
-or when you want to avoid namespace collisions with your own types (see
+Use this when your project only needs to *call* a remote potential server, or
+when you want to avoid namespace collisions with your own types (see
 `integration guide <integration.rst>`_):
 
 .. code:: meson
@@ -60,18 +60,22 @@ Enable only what the host project needs:
     | ``-Dwith_metatomic=true`` | ``metatomicbld`` (linux-64) | ``MetatomicPot`` (TorchScript models) |
     +---------------------------+-----------------------------+---------------------------------------+
 
-``NWChemPot`` is a pure consumer: the frontend is always compiled and ``dlopen=s =libnwchemc.so`` from `nwchemc <https://github.com/OmniPotentRPC/nwchemc>`_
-(stable ``nwchemc_*`` C symbols). rgpot builds no in-process NWChem embed of its
-own and has no ``-Dwith_nwchem`` option.
-No ``nwchem`` CLI/subprocess path. Build ``libnwchemc.so`` from the ``nwchemc``
-project, then set ``NWCHEMC_LIBRARY`` or ``RGPOT_NWCHEMC_ENGINE``. See ``CppCore/ rgpot/NWChemPot/README.md``.
+``NWChemPot`` is a pure consumer: the frontend is always compiled and
+``dlopen=s =libnwchemc.so`` from
+`nwchemc <https://github.com/OmniPotentRPC/nwchemc>`_ (stable
+``nwchemc_*`` C symbols). rgpot builds no in-process NWChem embed of its own and has no ``-Dwith_nwchem``
+option.
+No ``nwchem`` CLI/subprocess path.
+Build ``libnwchemc.so`` from the ``nwchemc`` project, then set
+``NWCHEMC_LIBRARY`` or ``RGPOT_NWCHEMC_ENGINE``.
+See ``CppCore/ rgpot/NWChemPot/README.md``.
 
 ``CPMDPot`` follows the same split-engine pattern: the frontend is always compiled
 and ``dlopen=s =libcpmdc.so`` from [[`https://github.com/OmniPotentRPC/cpmdc <https://github.com/OmniPotentRPC/cpmdc>`_]
 [cpmdc]]. rgpot builds no in-process OpenCPMD embed of its own and has no
 ``-Dwith_cpmd`` option.
-Build ``libcpmdc.so`` from the ``cpmdc`` project, then set ``CPMDC_LIBRARY``,
-``RGPOT_CPMDC_ENGINE``, or ``RGPOT_CPMD_ENGINE``.
+Build ``libcpmdc.so`` from the ``cpmdc`` project, then set
+``CPMDC_LIBRARY``, ``RGPOT_CPMDC_ENGINE``, or ``RGPOT_CPMD_ENGINE``.
 See ``CppCore/rgpot/CPMDPot/README.md``.
 
 Example -- embed with metatomic support:
@@ -86,11 +90,11 @@ Example -- embed with metatomic support:
         ])
     rgpot_dep = rgpot_proj.get_variable('rgpot_dep')
 
-The metatomic path needs PyTorch (``Torch`` CMake package), ``metatensor_torch``,
-``metatomic_torch``, and ``vesin`` on the linker path.
-The Meson build supplements Torch CMake discovery with explicit ``-L`` /
-``-rpath`` / ``-ltorch_cpu`` taken from ``python3 -c 'import torch; ...'`` so
-``libtorch_cpu.so`` resolves under conda/pixi layouts.
+The metatomic path needs PyTorch (``Torch`` CMake package),
+``metatensor_torch``, ``metatomic_torch``, and ``vesin`` on the linker path.
+The Meson build supplements Torch CMake discovery with explicit ``-L`` / ``-rpath``
+/ ``-ltorch_cpu`` taken from ``python3 -c 'import torch; ...'`` so ``libtorch_cpu.so``
+resolves under conda/pixi layouts.
 
 For the **pip** wheel (nanobind abi3 + multi-ABI ``dlopen`` engines, torch **2.7+**),
 see:

@@ -36,6 +36,10 @@
       :used_name: c_void
 
 
+   .. rust:use:: std::sync::Mutex
+      :used_name: Mutex
+
+
    .. rust:use:: dlpk::sys::DLManagedTensorVersioned
       :used_name: DLManagedTensorVersioned
 

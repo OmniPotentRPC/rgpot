@@ -1,0 +1,71 @@
+.. index:: pair: struct; rgpot::ForceBatch
+.. _doxid-structrgpot_1_1_force_batch:
+
+struct rgpot::ForceBatch
+========================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+One batch of independent systems for a single evaluation call. :ref:`More...<details-structrgpot_1_1_force_batch>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <ForceStructs.hpp>
+	
+	struct ForceBatch {
+		// fields
+	
+		size_t :ref:`nSystems<doxid-structrgpot_1_1_force_batch_1a5f2b0902499fe59ba63fb256ecbcc42b>`;
+		const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`* :ref:`in<doxid-structrgpot_1_1_force_batch_1a33c47afc6e55da460075389ed5b82f65>`;
+		:ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* :ref:`out<doxid-structrgpot_1_1_force_batch_1a3a1062f4608c5b7209c1ef3ab2e66b78>`;
+	};
+.. _details-structrgpot_1_1_force_batch:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+One batch of independent systems for a single evaluation call.
+
+Systems in a batch share nothing: each carries its own atom count, cell and species list, so a caller may batch NEB images of one system or a set of unrelated structures. ``in`` and ``out`` are parallel arrays of length ``nSystems``, and ``out[i]`` corresponds to ``in[i]``.
+
+The caller owns both arrays and every buffer they point at, including each ``out[i].F``, which must have room for ``3 * in[i].nAtoms`` doubles.
+
+Fields
+------
+
+.. index:: pair: variable; nSystems
+.. _doxid-structrgpot_1_1_force_batch_1a5f2b0902499fe59ba63fb256ecbcc42b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	size_t nSystems
+
+Number of independent systems in this batch.
+
+.. index:: pair: variable; in
+.. _doxid-structrgpot_1_1_force_batch_1a33c47afc6e55da460075389ed5b82f65:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`* in
+
+Array of nSystems inputs.
+
+.. index:: pair: variable; out
+.. _doxid-structrgpot_1_1_force_batch_1a3a1062f4608c5b7209c1ef3ab2e66b78:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out
+
+Array of nSystems result slots.
+

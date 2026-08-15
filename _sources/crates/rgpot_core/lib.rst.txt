@@ -62,6 +62,7 @@ Crate ``rgpot_core``
       eindir
       c_api
       Potentials_capnp
+      profile
       rpc
 
 

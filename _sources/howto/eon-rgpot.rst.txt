@@ -9,9 +9,10 @@ independent roles:
 
 - ****In-process (shipped in eOn):**** eOn's ``RgpotPot`` (``-Dwith_rgpot=true``) links
 
-rgpot's ``NWChemPot`` / ``CPMDPot`` frontends as a Meson subproject and ``dlopen=s the engine libraries directly. No sockets, no potserv. Configured through the eOn =[RgpotPot]`` INI section (``backend``,
-``basis``, ``theory``, ``scf_type``, ``functional``, ``charge``, ``multiplicity``,
-``engine_library``, ...).
+rgpot's ``NWChemPot`` / ``CPMDPot`` frontends as a Meson subproject and
+``dlopen=s the engine libraries directly. No sockets, no potserv. Configured through the eOn =[RgpotPot]``
+INI section (``backend``, ``basis``, ``theory``,
+``scf_type``, ``functional``, ``charge``, ``multiplicity``, ``engine_library``, ...).
 
 - ****Out-of-process RPC (this repo):**** ``potserv <port> NWChem|CPMD`` serves the
 
@@ -55,8 +56,7 @@ and ``scripts/rgpot_nwchem_vs_socket.sh`` compare ``RgpotPot`` against eOn's
 
 1. ****rgpot ergonomics**** (this repo): potentials-schema v1.5.0 parity (typed
 
-NWChem/CPMD arms, metatomic outputs surface), schema-sync CI gate, and the in-
-process CPMD timing harness (``scripts/cpmd_inprocess_vs_subprocess_timing.sh``).
+NWChem/CPMD arms, metatomic outputs surface), schema-sync CI gate, and the in- process CPMD timing harness (``scripts/cpmd_inprocess_vs_subprocess_timing.sh``).
 
 Operator Cheatsheet (rgpot side)
 --------------------------------

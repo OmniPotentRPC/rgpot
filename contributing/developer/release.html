@@ -147,6 +147,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../../api/enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_ForceBatch.html">struct rgpot::ForceBatch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_LJClusterConfig.html">struct rgpot::LJClusterConfig</a></li>
@@ -304,6 +305,7 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../crates/rgpot_core/profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../crates/rgpot_core/rpc/client.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">client</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../crates/rgpot_core/rpc/server.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">server</span></code></a></li>
@@ -445,8 +447,9 @@ data-aria-dark="Switch to auto color mode">
           <section id="release-process">
 <h1>Release Process<a class="headerlink" href="#release-process" title="Link to this heading">¶</a></h1>
 <p>rgpot uses a <strong>lockstep monorepo version</strong>: the same SemVer appears in
-<code class="docutils literal notranslate"><span class="pre">meson.build</span></code>, <code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code> (<code class="docutils literal notranslate"><span class="pre">project(VERSION</span> <span class="pre">...)</span></code>), <code class="docutils literal notranslate"><span class="pre">rgpot-core/</span> <span class="pre">Cargo.toml</span></code>, <code class="docutils literal notranslate"><span class="pre">towncrier.toml</span></code>, and <code class="docutils literal notranslate"><span class="pre">pixi.toml</span></code> (workspace key only — not
-dependency pins such as nickel).
+<code class="docutils literal notranslate"><span class="pre">meson.build</span></code>, <code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code> (<code class="docutils literal notranslate"><span class="pre">project(VERSION</span> <span class="pre">...)</span></code>),
+<code class="docutils literal notranslate"><span class="pre">rgpot-core/</span> <span class="pre">Cargo.toml</span></code>, <code class="docutils literal notranslate"><span class="pre">towncrier.toml</span></code>, and <code class="docutils literal notranslate"><span class="pre">pixi.toml</span></code> (workspace key only
+— not dependency pins such as nickel).
 Git tags are <code class="docutils literal notranslate"><span class="pre">vX.Y.Z</span></code> (see <code class="docutils literal notranslate"><span class="pre">cog.toml</span></code> <code class="docutils literal notranslate"><span class="pre">tag_prefix</span></code>).
 Pre-release tags such as <code class="docutils literal notranslate"><span class="pre">v1.2.0-rc.1</span></code> are allowed; <code class="docutils literal notranslate"><span class="pre">release.yml</span></code> marks the
 GitHub Release as prerelease and <strong>skips</strong> <code class="docutils literal notranslate"><span class="pre">cargo</span> <span class="pre">publish</span></code> (stable crates.io
@@ -513,13 +516,14 @@ a second prose changelog.</p>
 </ul>
 <p>references <code class="docutils literal notranslate"><span class="pre">environment:</span> <span class="pre">release</span></code>; create under Settings &gt; Environments).</p>
 <ul class="simple">
-<li><p>Prefer <strong>signed tags</strong> when cutting locally: <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">tag</span> <span class="pre">-s</span> <span class="pre">vX.Y.Z</span></code> (or ensure <code class="docutils literal notranslate"><span class="pre">cog</span></code></p></li>
+<li><p>Prefer <strong>signed tags</strong> when cutting locally: <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">tag</span> <span class="pre">-s</span> <span class="pre">vX.Y.Z</span></code> (or ensure
+<code class="docutils literal notranslate"><span class="pre">cog</span></code></p></li>
 </ul>
 <p>produces signed tags if configured).
 GHA does not replace maintainer GPG.</p>
-<p><strong>C++ distribution note</strong>: tag/source is the C++ contract; <code class="docutils literal notranslate"><span class="pre">release.yml</span></code> runs
-a minimal <code class="docutils literal notranslate"><span class="pre">meson</span> <span class="pre">install</span></code> smoke. Optional backends (xtb/tblite/metatomic) are
-validated on PRs via orchestrator potentials jobs, not re-run on every tag.
+<p><strong>C++ distribution note</strong>:
+tag/source is the C++ contract; <code class="docutils literal notranslate"><span class="pre">release.yml</span></code> runs a minimal <code class="docutils literal notranslate"><span class="pre">meson</span> <span class="pre">install</span></code> smoke. Optional backends (xtb/tblite/metatomic)
+are validated on PRs via orchestrator potentials jobs, not re-run on every tag.
 conda-forge / Spack / system packages are <strong>out of band</strong> (separate feedstock/PR
 track), not part of <code class="docutils literal notranslate"><span class="pre">release.yml</span></code>.</p>
 <section id="changelog-fragments">
@@ -536,7 +540,9 @@ fragment per user-visible change; see <code class="docutils literal notranslate"
 Preview with <code class="docutils literal notranslate"><span class="pre">uvx</span> <span class="pre">towncrier</span> <span class="pre">build</span> <span class="pre">--draft</span></code> or <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">r</span> <span class="pre">towncrier-draft</span></code> if
 defined.</p>
 <p>CI runs <code class="docutils literal notranslate"><span class="pre">towncrier</span> <span class="pre">check</span></code> on pull requests when shipped paths change
-(orchestrator <code class="docutils literal notranslate"><span class="pre">towncrier</span></code> runs on all PRs; fragments under <code class="docutils literal notranslate"><span class="pre">CppCore/</span></code>, <code class="docutils literal notranslate"><span class="pre">rgpot-</span> <span class="pre">core/</span></code>, meson, <code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code>, <code class="docutils literal notranslate"><span class="pre">pixi.toml</span></code>, release scripts, etc.).
+(orchestrator <code class="docutils literal notranslate"><span class="pre">towncrier</span></code> runs on all PRs; fragments under
+<code class="docutils literal notranslate"><span class="pre">CppCore/</span></code>, <code class="docutils literal notranslate"><span class="pre">rgpot-</span> <span class="pre">core/</span></code>, meson, <code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code>, <code class="docutils literal notranslate"><span class="pre">pixi.toml</span></code>, release
+scripts, etc.).
 Pure <code class="docutils literal notranslate"><span class="pre">docs</span></code> / <code class="docutils literal notranslate"><span class="pre">ci</span></code> / <code class="docutils literal notranslate"><span class="pre">chore</span></code> commits may omit fragments if they avoid those
 paths.</p>
 </section>
@@ -547,7 +553,8 @@ paths.</p>
 </ol>
 <p>relevant).</p>
 <ol class="arabic simple">
-<li><p>Confirm fragments exist for everything since the last tag (=uvx towncrier build</p></li>
+<li><p>Confirm fragments exist for everything since the last tag (=uvx towncrier
+build</p></li>
 </ol>
 <p>–draft=).</p>
 <ol class="arabic">
@@ -557,13 +564,15 @@ paths.</p>
 </span></pre></div>
 </div>
 </li>
-<li><p>Dry-run bump (optional; also GHA <code class="docutils literal notranslate"><span class="pre">workflow_dispatch</span></code> on <code class="docutils literal notranslate"><span class="pre">release-prepare.yml</span></code>):</p>
+<li><p>Dry-run bump (optional; also GHA <code class="docutils literal notranslate"><span class="pre">workflow_dispatch</span></code> on
+<code class="docutils literal notranslate"><span class="pre">release-prepare.yml</span></code>):</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">cog<span class="w"> </span>bump<span class="w"> </span>--auto<span class="w"> </span>--dry-run
 </span><span data-line="2"><span class="c1"># or: --patch / --minor / --major / --version 1.2.0</span>
 </span></pre></div>
 </div>
 </li>
-<li><p>Cut the release <strong>locally</strong> (needs push rights; does <strong>not</strong> publish to crates.io by</p></li>
+<li><p>Cut the release <strong>locally</strong> (needs push rights; does <strong>not</strong> publish to crates.io
+by</p></li>
 </ol>
 <p>itself — the tag workflow does):</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1"># Stable 1.2.0 example (first cut after lockstep PR merges with versions at 1.2.0):</span>
@@ -575,11 +584,13 @@ paths.</p>
 </div>
 <p>Hooks (<code class="docutils literal notranslate"><span class="pre">cog.toml</span></code> <code class="docutils literal notranslate"><span class="pre">pre_bump_hooks</span></code>):</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">cargo</span> <span class="pre">run</span> <span class="pre">-q</span> <span class="pre">-p</span> <span class="pre">potctl</span> <span class="pre">--</span> <span class="pre">release</span> <span class="pre">sync</span> <span class="pre">{{version}}</span></code> — lockstep write (meson,</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">cargo</span> <span class="pre">run</span> <span class="pre">-q</span> <span class="pre">-p</span> <span class="pre">potctl</span> <span class="pre">--</span> <span class="pre">release</span> <span class="pre">sync</span> <span class="pre">{{version}}</span></code> — lockstep write
+(meson,</p></li>
 </ul>
 <p>CMake, towncrier, Cargo, pixi workspace)</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">uvx</span> <span class="pre">towncrier</span> <span class="pre">build</span> <span class="pre">--yes</span> <span class="pre">--version</span> <span class="pre">{{version}}</span></code> — update <code class="docutils literal notranslate"><span class="pre">CHANGELOG.md</span></code>, clear</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">uvx</span> <span class="pre">towncrier</span> <span class="pre">build</span> <span class="pre">--yes</span> <span class="pre">--version</span> <span class="pre">{{version}}</span></code> — update <code class="docutils literal notranslate"><span class="pre">CHANGELOG.md</span></code>,
+clear</p></li>
 </ul>
 <p>fragments</p>
 <ul class="simple">
@@ -589,7 +600,8 @@ paths.</p>
 <ol class="arabic simple">
 <li><p>Tag push triggers <code class="docutils literal notranslate"><span class="pre">release.yml</span></code> (staged, not one fat job):</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">tools</span></code> job: <code class="docutils literal notranslate"><span class="pre">setup-ci-tools</span></code> builds <code class="docutils literal notranslate"><span class="pre">potctl</span></code> (rust-cache <code class="docutils literal notranslate"><span class="pre">shared-key</span></code> =potctl-</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">tools</span></code> job: <code class="docutils literal notranslate"><span class="pre">setup-ci-tools</span></code> builds <code class="docutils literal notranslate"><span class="pre">potctl</span></code> (rust-cache <code class="docutils literal notranslate"><span class="pre">shared-key</span></code>
+=potctl-</p></li>
 </ul>
 </li>
 </ol>
@@ -605,8 +617,9 @@ matrix work)</p>
 </ul>
 <p><code class="docutils literal notranslate"><span class="pre">prerelease</span></code>)</p>
 <p>Within a single job, steps share the runner FS (no reinstall per step).
-Across jobs, binaries travel via artifacts; <code class="docutils literal notranslate"><span class="pre">cargo=/deps</span> <span class="pre">hit</span> <span class="pre">=Swatinem/rust-</span> <span class="pre">cache</span></code> on tool and <code class="docutils literal notranslate"><span class="pre">rgpot-core</span></code> runners so the next tag cut is cheap when
-sources are unchanged.</p>
+Across jobs, binaries travel via artifacts;
+<code class="docutils literal notranslate"><span class="pre">cargo=/deps</span> <span class="pre">hit</span> <span class="pre">=Swatinem/rust-</span> <span class="pre">cache</span></code> on tool and <code class="docutils literal notranslate"><span class="pre">rgpot-core</span></code> runners so the
+next tag cut is cheap when sources are unchanged.</p>
 <p>Do <strong>not</strong> run <code class="docutils literal notranslate"><span class="pre">cargo</span> <span class="pre">publish</span></code> by hand unless CI is unavailable; the workflow is
 the source of truth.
 Do <strong>not</strong> use <code class="docutils literal notranslate"><span class="pre">cargo</span> <span class="pre">publish</span></code> without <code class="docutils literal notranslate"><span class="pre">--locked</span></code> (lockfile drift must fail the
@@ -635,7 +648,8 @@ release).</p>
 <ul class="simple">
 <li><p><strong>Lockstep</strong>: C++ (meson + CMake), Rust crate (<code class="docutils literal notranslate"><span class="pre">rgpot-core</span></code>), docs towncrier</p></li>
 </ul>
-<p>stamp, and pixi workspace version share one semver (optionally with <code class="docutils literal notranslate"><span class="pre">-[a-z0-</span> <span class="pre">9.]+</span></code> suffix for RCs).</p>
+<p>stamp, and pixi workspace version share one semver (optionally with
+<code class="docutils literal notranslate"><span class="pre">-[a-z0-</span> <span class="pre">9.]+</span></code> suffix for RCs).</p>
 <ul class="simple">
 <li><p><strong>One global tag</strong>: <code class="docutils literal notranslate"><span class="pre">vX.Y.Z</span></code> or <code class="docutils literal notranslate"><span class="pre">vX.Y.Z-rc.N</span></code> (not <code class="docutils literal notranslate"><span class="pre">rgpot-core-v…</span></code>).</p></li>
 <li><p><strong>Crate publish</strong> ships <code class="docutils literal notranslate"><span class="pre">rgpot-core</span></code> only on <strong>stable</strong> tags; C++ consumers track</p></li>
@@ -676,13 +690,17 @@ release).</p>
 <p><code class="docutils literal notranslate"><span class="pre">1.2.0</span></code>).</p>
 <ol class="arabic simple">
 <li><p>Ensure <code class="docutils literal notranslate"><span class="pre">rustc</span></code> / <code class="docutils literal notranslate"><span class="pre">cargo</span></code> work (same as building <code class="docutils literal notranslate"><span class="pre">rgpot-core</span></code>).</p></li>
-<li><p>On <code class="docutils literal notranslate"><span class="pre">main</span></code>: <code class="docutils literal notranslate"><span class="pre">cog</span> <span class="pre">bump</span> <span class="pre">--version</span> <span class="pre">1.2.0</span></code> (or <code class="docutils literal notranslate"><span class="pre">--auto</span></code> if you want cog to decide).</p></li>
+<li><p>On <code class="docutils literal notranslate"><span class="pre">main</span></code>: <code class="docutils literal notranslate"><span class="pre">cog</span> <span class="pre">bump</span> <span class="pre">--version</span> <span class="pre">1.2.0</span></code> (or <code class="docutils literal notranslate"><span class="pre">--auto</span></code> if you want cog to
+decide).</p></li>
 </ol>
 <p>This runs <code class="docutils literal notranslate"><span class="pre">potctl</span> <span class="pre">release</span> <span class="pre">sync</span></code>, <code class="docutils literal notranslate"><span class="pre">towncrier</span> <span class="pre">build</span></code> (so <code class="docutils literal notranslate"><span class="pre">CHANGELOG.md</span></code> gains
-<code class="docutils literal notranslate"><span class="pre">##</span> <span class="pre">[1.2.0]</span></code> and fragments are cleared), then <code class="docutils literal notranslate"><span class="pre">potctl</span> <span class="pre">release</span> <span class="pre">assert</span> <span class="pre">--require-</span> <span class="pre">changelog</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">##</span> <span class="pre">[1.2.0]</span></code> and fragments are cleared), then
+<code class="docutils literal notranslate"><span class="pre">potctl</span> <span class="pre">release</span> <span class="pre">assert</span> <span class="pre">--require-</span> <span class="pre">changelog</span></code>.</p>
 <ol class="arabic simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">push</span> <span class="pre">origin</span> <span class="pre">main</span> <span class="pre">--follow-tags</span></code> (or push commit then <code class="docutils literal notranslate"><span class="pre">v1.2.0</span></code> explicitly).</p></li>
-<li><p>Confirm <code class="docutils literal notranslate"><span class="pre">Release</span></code> workflow: lockstep gate, smoke install, rust tests, crates.io,</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">push</span> <span class="pre">origin</span> <span class="pre">main</span> <span class="pre">--follow-tags</span></code> (or push commit then <code class="docutils literal notranslate"><span class="pre">v1.2.0</span></code>
+explicitly).</p></li>
+<li><p>Confirm <code class="docutils literal notranslate"><span class="pre">Release</span></code> workflow: lockstep gate, smoke install, rust tests,
+crates.io,</p></li>
 </ol>
 <p>GH Release body.</p>
 <ol class="arabic simple">

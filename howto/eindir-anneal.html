@@ -147,6 +147,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceBatch.html">struct rgpot::ForceBatch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_LJClusterConfig.html">struct rgpot::LJClusterConfig</a></li>
@@ -304,6 +305,7 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/client.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">client</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/server.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">server</span></code></a></li>
@@ -433,8 +435,9 @@ data-aria-dark="Switch to auto color mode">
 </div><article class="yue dark-code" role="main">
           <section id="rgpot-potentials-as-eindir-objectives">
 <h1>rgpot Potentials as eindir Objectives<a class="headerlink" href="#rgpot-potentials-as-eindir-objectives" title="Link to this heading">¶</a></h1>
-<p>This guide shows how an rgpot potential becomes an <a class="reference external" href="https://github.com/HaoZeke/eindir">eindir</a> objective and how <a class="reference external" href="https://github.com/HaoZeke/anneal">anneal</a>
-then minimizes it.
+<p>This guide shows how an rgpot potential becomes an
+<a class="reference external" href="https://github.com/HaoZeke/eindir">eindir</a> objective and how
+<a class="reference external" href="https://github.com/HaoZeke/anneal">anneal</a> then minimizes it.
 The three projects share one contract – eindir’s <code class="docutils literal notranslate"><span class="pre">Objective</span></code> – so rgpot
 produces objectives and anneal consumes them with no direct dependency between
 the two.</p>
@@ -448,7 +451,8 @@ the two halves:</p>
 <p><code class="docutils literal notranslate"><span class="pre">high</span></code>, and <code class="docutils literal notranslate"><span class="pre">eval_fn</span></code> / <code class="docutils literal notranslate"><span class="pre">grad_fn</span></code> callbacks over DLPack tensors.</p>
 <ul class="simple">
 <li><p>A Rust trait, <code class="docutils literal notranslate"><span class="pre">Objective&lt;f64&gt;</span></code> (plus <code class="docutils literal notranslate"><span class="pre">Gradient&lt;f64&gt;</span></code>).</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">EindirObjectiveWrapper</span></code>, which borrows an <code class="docutils literal notranslate"><span class="pre">eindir_objective_t</span></code> and presents it</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">EindirObjectiveWrapper</span></code>, which borrows an <code class="docutils literal notranslate"><span class="pre">eindir_objective_t</span></code> and presents
+it</p></li>
 </ul>
 <p>as a Rust <code class="docutils literal notranslate"><span class="pre">Objective&lt;f64&gt;</span></code>.</p>
 <p>Any language that can write the C struct produces an objective; any Rust code
@@ -472,10 +476,11 @@ energy callback, so there is one evaluation path and no conversion step
 </span></pre></div>
 </div>
 <p>rgpot-core consumes eindir-core as a normal Cargo crate (<code class="docutils literal notranslate"><span class="pre">features</span> <span class="pre">=</span> <span class="pre">[&quot;capi&quot;]</span></code>),
-<strong>not</strong> a prebuilt <code class="docutils literal notranslate"><span class="pre">libeindir_core.a</span></code>. One shared compilation of eindir-core
-backs both crates, so a downstream Rust binary that links rgpot-core and anneal-
-core (both depending on eindir-core) gets a single eindir-core and avoids the
-duplicate-symbol / two-Rust-runtime conflict a static lib would cause.</p>
+<strong>not</strong> a prebuilt <code class="docutils literal notranslate"><span class="pre">libeindir_core.a</span></code>.
+One shared compilation of eindir-core backs both crates, so a downstream Rust
+binary that links rgpot-core and anneal- core (both depending on eindir-core)
+gets a single eindir-core and avoids the duplicate-symbol / two-Rust-runtime
+conflict a static lib would cause.</p>
 </section>
 <section id="anneal-side-minimize-any-objective-f64">
 <h2>anneal side: minimize any <code class="docutils literal notranslate"><span class="pre">Objective&lt;f64&gt;</span></code><a class="headerlink" href="#anneal-side-minimize-any-objective-f64" title="Link to this heading">¶</a></h2>
@@ -487,7 +492,8 @@ Wrap the rgpot objective and hand it to a variant:</p>
 </span><span data-line="4"><span class="c1">// history.best.pos / history.best.val hold the minimizer found by SA.</span>
 </span></pre></div>
 </div>
-<p>A runnable end-to-end demonstration lives in the anneal repo at <code class="docutils literal notranslate"><span class="pre">examples/</span> <span class="pre">rgpot_minimize.rs</span></code> (<code class="docutils literal notranslate"><span class="pre">cargo</span> <span class="pre">run</span> <span class="pre">--example</span> <span class="pre">rgpot_minimize</span></code>).
+<p>A runnable end-to-end demonstration lives in the anneal repo at
+<code class="docutils literal notranslate"><span class="pre">examples/</span> <span class="pre">rgpot_minimize.rs</span></code> (<code class="docutils literal notranslate"><span class="pre">cargo</span> <span class="pre">run</span> <span class="pre">--example</span> <span class="pre">rgpot_minimize</span></code>).
 It builds a 9-D quadratic rgpot potential, wraps it, and anneals it from a
 random <code class="docutils literal notranslate"><span class="pre">[-5,</span> <span class="pre">5]^9</span></code> start (mean energy approximately +75) into the basin around
 the minimum (energy &lt; 0.1).</p>

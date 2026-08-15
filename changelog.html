@@ -147,6 +147,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="api/enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="api/enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="api/struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
+<li class="toctree-l4"><a class="reference internal" href="api/struct_rgpot_ForceBatch.html">struct rgpot::ForceBatch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="api/struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
 <li class="toctree-l4"><a class="reference internal" href="api/struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
 <li class="toctree-l4"><a class="reference internal" href="api/struct_rgpot_LJClusterConfig.html">struct rgpot::LJClusterConfig</a></li>
@@ -304,6 +305,7 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="crates/rgpot_core/profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="crates/rgpot_core/rpc/client.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">client</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="crates/rgpot_core/rpc/server.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">server</span></code></a></li>
@@ -520,8 +522,9 @@ data-aria-dark="Switch to auto color mode">
 <p>Canonical user-facing changelog is the repo-root <code class="docutils literal notranslate"><span class="pre">CHANGELOG.md</span></code> (Keep a
 Changelog, maintained by towncrier + <code class="docutils literal notranslate"><span class="pre">cog</span> <span class="pre">bump</span></code> hooks).
 This org file is a Sphinx/docs entry point only: it includes <code class="docutils literal notranslate"><span class="pre">CHANGELOG.md</span></code> and
-must not diverge as a second source of truth. Edit <code class="docutils literal notranslate"><span class="pre">docs/newsfragments/</span></code>, never
-hand-write <code class="docutils literal notranslate"><span class="pre">##</span> <span class="pre">[X.Y.Z]</span></code> sections above the towncrier marker.</p>
+must not diverge as a second source of truth.
+Edit <code class="docutils literal notranslate"><span class="pre">docs/newsfragments/</span></code>, never hand-write <code class="docutils literal notranslate"><span class="pre">##</span> <span class="pre">[X.Y.Z]</span></code> sections above the
+towncrier marker.</p>
 <section id="changelog">
 <h2>Changelog<a class="headerlink" href="#changelog" title="Link to this heading">¶</a></h2>
 <p>All notable changes to this project will be documented in this file.</p>

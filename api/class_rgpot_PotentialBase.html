@@ -147,6 +147,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_ForceBatch.html">struct rgpot::ForceBatch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_LJClusterConfig.html">struct rgpot::LJClusterConfig</a></li>
@@ -304,6 +305,7 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/client.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">client</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/server.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">server</span></code></a></li>
@@ -466,9 +468,10 @@ data-aria-dark="Switch to auto color mode">
 <span data-line="11"> </span>
 <span data-line="12">    <span class="k">virtual</span> <span class="n">std</span><span class="o">::</span><span class="n">tuple</span><span class="o">&lt;</span><span class="kt">double</span><span class="p">,</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_types_AtomMatrix.html#doxid-classrgpot-1-1types-1-1-atom-matrix"><span class="std std-ref">types::AtomMatrix</span></a><span class="p">,</span> <span class="kt">double</span><span class="o">&gt;</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-base-1afcb163c2c50b0b3a9a8fea8a90c6ab03"><span class="std std-ref">operator()</span></a><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_types_AtomMatrix.html#doxid-classrgpot-1-1types-1-1-atom-matrix"><span class="std std-ref">types::AtomMatrix</span></a><span class="o">&amp;</span> <span class="n">positions</span><span class="p">,</span> <span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;&amp;</span> <span class="n">atmtypes</span><span class="p">,</span> <span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">array</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">array</span><span class="o">&lt;</span><span class="kt">double</span><span class="p">,</span> <span class="mi">3</span><span class="o">&gt;</span><span class="p">,</span> <span class="mi">3</span><span class="o">&gt;&amp;</span> <span class="n">box</span><span class="p">)</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span></span>
 <span data-line="13">    <span class="k">virtual</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_PotCaps.html#doxid-structrgpot-1-1-pot-caps"><span class="std std-ref">PotCaps</span></a> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-base-1a32efde0927ea88bf90e3d24fbb948899"><span class="std std-ref">caps</span></a><span class="p">()</span> <span class="k">const</span><span class="p">;</span></span>
-<span data-line="14">    <span class="k">virtual</span> <span class="kt">uint64_t</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-base-1af6ed01a80dc945fcc1f8a0735aa36621"><span class="std std-ref">paramsKey</span></a><span class="p">()</span> <span class="k">const</span><span class="p">;</span></span>
-<span data-line="15">    <span class="n">PotType</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-base-1a4de79175b891b7ea98dedb310029f834"><span class="std std-ref">get_type</span></a><span class="p">()</span> <span class="k">const</span><span class="p">;</span></span>
-<span data-line="16"><span class="p">};</span></span>
+<span data-line="14">    <span class="k">virtual</span> <span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-base-1a8087be94eea866e7ad37a54a229c184a"><span class="std std-ref">forceBatch</span></a><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceBatch.html#doxid-structrgpot-1-1-force-batch"><span class="std std-ref">ForceBatch</span></a><span class="o">&amp;</span><span class="p">);</span></span>
+<span data-line="15">    <span class="k">virtual</span> <span class="kt">uint64_t</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-base-1af6ed01a80dc945fcc1f8a0735aa36621"><span class="std std-ref">paramsKey</span></a><span class="p">()</span> <span class="k">const</span><span class="p">;</span></span>
+<span data-line="16">    <span class="n">PotType</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-base-1a4de79175b891b7ea98dedb310029f834"><span class="std std-ref">get_type</span></a><span class="p">()</span> <span class="k">const</span><span class="p">;</span></span>
+<span data-line="17"><span class="p">};</span></span>
 </pre></div>
 </section>
 <section id="detailed-documentation">
@@ -532,13 +535,20 @@ data-aria-dark="Switch to auto color mode">
 </pre></div>
 <p>Concurrency and evaluation capabilities of this potential.</p>
 <p>Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-potential-base-1a8087be94eea866e7ad37a54a229c184a">
+<span id="index-4"></span><pre><span data-line="1"><span class="k">virtual</span> <span class="kt">void</span> <span class="n">forceBatch</span><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceBatch.html#doxid-structrgpot-1-1-force-batch"><span class="std std-ref">ForceBatch</span></a><span class="o">&amp;</span><span class="p">)</span></span>
+</pre></div>
+<p>Evaluate a batch of independent systems in one call.</p>
+<p>Callers running multi-system methods (NEB images, dimer endpoints) use this instead of a loop over <code class="docutils literal notranslate"><span class="pre">operator()</span></code>, so a kernel that can evaluate many systems at once a GPU model batching into a single forward pass, say gets the chance to.</p>
+<p>Every kernel supports this call. <code class="docutils literal notranslate"><span class="pre">caps()</span></code>.batched reports whether it is served natively or by the default per-system loop, which callers read when deciding whether batching is worth the marshalling.</p>
+<p>Results land in <code class="docutils literal notranslate"><span class="pre">batch.out</span></code>; see <a class="reference internal" href="struct_rgpot_ForceBatch.html#doxid-structrgpot-1-1-force-batch"><span class="std std-ref">ForceBatch</span></a> for the buffer contract.</p>
 <div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-potential-base-1af6ed01a80dc945fcc1f8a0735aa36621">
-<span id="index-4"></span><pre><span data-line="1"><span class="k">virtual</span> <span class="kt">uint64_t</span> <span class="n">paramsKey</span><span class="p">()</span> <span class="k">const</span></span>
+<span id="index-5"></span><pre><span data-line="1"><span class="k">virtual</span> <span class="kt">uint64_t</span> <span class="n">paramsKey</span><span class="p">()</span> <span class="k">const</span></span>
 </pre></div>
 <p>Fingerprint of the potential’s parameter set.</p>
 <p>Mixed into the result-cache key so results never cross parameter sets. Implementations hash their config field by field (see <span class="xref std std-ref">ParamHash.hpp</span>) plus a kernel-version salt that changes whenever the numerics change. The default (0) suits parameter-free potentials whose numerics never changed.</p>
 <div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-potential-base-1a4de79175b891b7ea98dedb310029f834">
-<span id="index-5"></span><pre><span data-line="1"><span class="n">PotType</span> <span class="n">get_type</span><span class="p">()</span> <span class="k">const</span></span>
+<span id="index-6"></span><pre><span data-line="1"><span class="n">PotType</span> <span class="n">get_type</span><span class="p">()</span> <span class="k">const</span></span>
 </pre></div>
 <p>Fetches the potential type.</p>
 <p class="rubric">Returns:</p>

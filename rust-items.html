@@ -205,6 +205,21 @@ data-aria-dark="Switch to auto color mode">
      <tr>
        <td></td>
        <td>
+       <a href="crates/rgpot_core/profile.html#rgpot_core-profile-decode_potential_result"><code class="xref">fn decode_potential_result</code></a> <em>(in rgpot_core::profile)</em></td><td>
+       <em>Decode the energy and force fields from a shared ``PotentialResult`` carrier.</em></td></tr>
+     <tr>
+       <td></td>
+       <td>
+       <a href="crates/rgpot_core/profile.html#rgpot_core-profile-encode_force_input"><code class="xref">fn encode_force_input</code></a> <em>(in rgpot_core::profile)</em></td><td>
+       <em>Serialize a request as the shared ``ForceInput`` carrier.</em></td></tr>
+     <tr>
+       <td></td>
+       <td>
+       <a href="crates/rgpot_core/profile.html#rgpot_core-profile-library_candidates"><code class="xref">fn library_candidates</code></a> <em>(in rgpot_core::profile)</em></td><td>
+       <em>Ordered shared-library candidates for a backend prefix.</em></td></tr>
+     <tr>
+       <td></td>
+       <td>
        <a href="crates/rgpot_core/rpc/server.html#rgpot_core-rpc-server-rgpot_rpc_server_start"><code class="xref">fn rgpot_rpc_server_start</code></a> <em>(in rgpot_core::rpc::server)</em></td><td>
        <em>Start an RPC server listening on ``host:port``, dispatching to ``pot``.</em></td></tr>
      <tr>
@@ -293,6 +308,11 @@ data-aria-dark="Switch to auto color mode">
      <tr>
        <td></td>
        <td>
+       <a href="crates/rgpot_core/profile.html#rgpot_core-profile"><code class="xref">module profile</code></a> <em>(in rgpot_core)</em></td><td>
+       <em>Native loader for the minimum potential ABI profile.</em></td></tr>
+     <tr>
+       <td></td>
+       <td>
        <a href="crates/rgpot_core/rpc.html#rgpot_core-rpc"><code class="xref">module rpc</code></a> <em>(in rgpot_core)</em></td><td>
        <em>Cap&#39;n Proto RPC module for distributed potential calculations.</em></td></tr>
      <tr>
@@ -374,46 +394,105 @@ data-aria-dark="Switch to auto color mode">
        <td><img src="_static/minus.png" class="toggler"
               id="toggle-4" style="display: none" alt="-" /></td>
        <td>
-       <a href="crates/rgpot_core/rpc/client.html#rgpot_core-rpc-client-RpcClient"><code class="xref">struct RpcClient</code></a> <em>(in rgpot_core::rpc::client)</em></td><td>
-       <em>RPC client that connects to a remote rgpot server.</em></td></tr>
+       <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileError"><code class="xref">struct ProfileError</code></a> <em>(in rgpot_core::profile)</em></td><td>
+       <em>Error raised while loading or driving a potential profile.</em></td></tr>
      <tr>
        <td><img src="_static/minus.png" class="toggler"
               id="toggle-5" style="display: none" alt="-" /></td>
        <td>
+       <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileEvaluation"><code class="xref">struct ProfileEvaluation</code></a> <em>(in rgpot_core::profile)</em></td><td>
+       <em>Energy and forces returned by one fused backend calculation.</em></td></tr>
+     <tr class="cg-5">
+       <td></td>
+       <td>&#160;&#160;&#160;
+       <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileEvaluation-energy"><code class="xref">energy</code></a></td><td>
+       <em>Energy in the ``ProfileRequest::energy_unit`` unit.</em></td></tr>
+     <tr class="cg-5">
+       <td></td>
+       <td>&#160;&#160;&#160;
+       <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileEvaluation-forces"><code class="xref">forces</code></a></td><td>
+       <em>Forces in energy-unit per length-unit.</em></td></tr>
+     <tr>
+       <td><img src="_static/minus.png" class="toggler"
+              id="toggle-6" style="display: none" alt="-" /></td>
+       <td>
+       <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileRequest"><code class="xref">struct ProfileRequest</code></a> <em>(in rgpot_core::profile)</em></td><td>
+       <em>One atomistic evaluation sent through a profile session.</em></td></tr>
+     <tr class="cg-6">
+       <td></td>
+       <td>&#160;&#160;&#160;
+       <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileRequest-atomic_numbers"><code class="xref">atomic_numbers</code></a></td><td>
+       <em>Atomic numbers in the same atom order as ``positions``.</em></td></tr>
+     <tr class="cg-6">
+       <td></td>
+       <td>&#160;&#160;&#160;
+       <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileRequest-box_matrix"><code class="xref">box_matrix</code></a></td><td>
+       <em>Optional row-major 3x3 simulation cell; molecular inputs use ``None``.</em></td></tr>
+     <tr class="cg-6">
+       <td></td>
+       <td>&#160;&#160;&#160;
+       <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileRequest-energy_unit"><code class="xref">energy_unit</code></a></td><td>
+       <em>Unit expression requested for energy and forces.</em></td></tr>
+     <tr class="cg-6">
+       <td></td>
+       <td>&#160;&#160;&#160;
+       <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileRequest-length_unit"><code class="xref">length_unit</code></a></td><td>
+       <em>Unit expression for coordinates and cell vectors.</em></td></tr>
+     <tr class="cg-6">
+       <td></td>
+       <td>&#160;&#160;&#160;
+       <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileRequest-positions"><code class="xref">positions</code></a></td><td>
+       <em>Flat Cartesian coordinates, three values per atom.</em></td></tr>
+     <tr>
+       <td><img src="_static/minus.png" class="toggler"
+              id="toggle-7" style="display: none" alt="-" /></td>
+       <td>
+       <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileSession"><code class="xref">struct ProfileSession</code></a> <em>(in rgpot_core::profile)</em></td><td>
+       <em>One persistent session loaded through the prefix-generic potential profile.</em></td></tr>
+     <tr>
+       <td><img src="_static/minus.png" class="toggler"
+              id="toggle-8" style="display: none" alt="-" /></td>
+       <td>
+       <a href="crates/rgpot_core/rpc/client.html#rgpot_core-rpc-client-RpcClient"><code class="xref">struct RpcClient</code></a> <em>(in rgpot_core::rpc::client)</em></td><td>
+       <em>RPC client that connects to a remote rgpot server.</em></td></tr>
+     <tr>
+       <td><img src="_static/minus.png" class="toggler"
+              id="toggle-9" style="display: none" alt="-" /></td>
+       <td>
        <a href="crates/rgpot_core/types.html#rgpot_core-types-rgpot_force_input_t"><code class="xref">struct rgpot_force_input_t</code></a> <em>(in rgpot_core::types)</em></td><td>
        <em>Input configuration for a potential energy evaluation.</em></td></tr>
-     <tr class="cg-5">
+     <tr class="cg-9">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/types.html#rgpot_core-types-rgpot_force_input_t-atomic_numbers"><code class="xref">atomic_numbers</code></a></td><td>
        <em>Atomic numbers tensor: ``[n_atoms]``, dtype i32, any device.</em></td></tr>
-     <tr class="cg-5">
+     <tr class="cg-9">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/types.html#rgpot_core-types-rgpot_force_input_t-box_matrix"><code class="xref">box_matrix</code></a></td><td>
        <em>Box matrix tensor: ``[3, 3]``, dtype f64, any device.</em></td></tr>
-     <tr class="cg-5">
+     <tr class="cg-9">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/types.html#rgpot_core-types-rgpot_force_input_t-positions"><code class="xref">positions</code></a></td><td>
        <em>Positions tensor: ``[n_atoms, 3]``, dtype f64, any device.</em></td></tr>
      <tr>
        <td><img src="_static/minus.png" class="toggler"
-              id="toggle-6" style="display: none" alt="-" /></td>
+              id="toggle-10" style="display: none" alt="-" /></td>
        <td>
        <a href="crates/rgpot_core/types.html#rgpot_core-types-rgpot_force_out_t"><code class="xref">struct rgpot_force_out_t</code></a> <em>(in rgpot_core::types)</em></td><td>
        <em>Results from a potential energy evaluation.</em></td></tr>
-     <tr class="cg-6">
+     <tr class="cg-10">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/types.html#rgpot_core-types-rgpot_force_out_t-energy"><code class="xref">energy</code></a></td><td>
        <em>Calculated potential energy.</em></td></tr>
-     <tr class="cg-6">
+     <tr class="cg-10">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/types.html#rgpot_core-types-rgpot_force_out_t-forces"><code class="xref">forces</code></a></td><td>
        <em>Forces tensor ``[n_atoms, 3]``, f64 — set by the callback.</em></td></tr>
-     <tr class="cg-6">
+     <tr class="cg-10">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/types.html#rgpot_core-types-rgpot_force_out_t-variance"><code class="xref">variance</code></a></td><td>
@@ -436,6 +515,11 @@ data-aria-dark="Switch to auto color mode">
        <td>
        <a href="crates/rgpot_core/potential.html#rgpot_core-potential-PotentialCallback"><code class="xref">type PotentialCallback</code></a> <em>(in rgpot_core::potential)</em></td><td>
        <em>Function pointer type for a potential energy calculation.</em></td></tr>
+     <tr>
+       <td></td>
+       <td>
+       <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileResult"><code class="xref">type ProfileResult</code></a> <em>(in rgpot_core::profile)</em></td><td>
+       <em>Result type for profile loading and evaluation.</em></td></tr>
    </table>
 
 

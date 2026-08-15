@@ -147,6 +147,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceBatch.html">struct rgpot::ForceBatch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_LJClusterConfig.html">struct rgpot::LJClusterConfig</a></li>
@@ -304,6 +305,7 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/client.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">client</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/server.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">server</span></code></a></li>
@@ -440,9 +442,10 @@ independent roles:</p>
 <ul class="simple">
 <li><p><strong>**In-process (shipped in eOn):**</strong> eOn’s <code class="docutils literal notranslate"><span class="pre">RgpotPot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_rgpot=true</span></code>) links</p></li>
 </ul>
-<p>rgpot’s <code class="docutils literal notranslate"><span class="pre">NWChemPot</span></code> / <code class="docutils literal notranslate"><span class="pre">CPMDPot</span></code> frontends as a Meson subproject and <code class="docutils literal notranslate"><span class="pre">dlopen=s</span> <span class="pre">the</span> <span class="pre">engine</span> <span class="pre">libraries</span> <span class="pre">directly.</span> <span class="pre">No</span> <span class="pre">sockets,</span> <span class="pre">no</span> <span class="pre">potserv.</span> <span class="pre">Configured</span> <span class="pre">through</span> <span class="pre">the</span> <span class="pre">eOn</span> <span class="pre">=[RgpotPot]</span></code> INI section (<code class="docutils literal notranslate"><span class="pre">backend</span></code>,
-<code class="docutils literal notranslate"><span class="pre">basis</span></code>, <code class="docutils literal notranslate"><span class="pre">theory</span></code>, <code class="docutils literal notranslate"><span class="pre">scf_type</span></code>, <code class="docutils literal notranslate"><span class="pre">functional</span></code>, <code class="docutils literal notranslate"><span class="pre">charge</span></code>, <code class="docutils literal notranslate"><span class="pre">multiplicity</span></code>,
-<code class="docutils literal notranslate"><span class="pre">engine_library</span></code>, …).</p>
+<p>rgpot’s <code class="docutils literal notranslate"><span class="pre">NWChemPot</span></code> / <code class="docutils literal notranslate"><span class="pre">CPMDPot</span></code> frontends as a Meson subproject and
+<code class="docutils literal notranslate"><span class="pre">dlopen=s</span> <span class="pre">the</span> <span class="pre">engine</span> <span class="pre">libraries</span> <span class="pre">directly.</span> <span class="pre">No</span> <span class="pre">sockets,</span> <span class="pre">no</span> <span class="pre">potserv.</span> <span class="pre">Configured</span> <span class="pre">through</span> <span class="pre">the</span> <span class="pre">eOn</span> <span class="pre">=[RgpotPot]</span></code>
+INI section (<code class="docutils literal notranslate"><span class="pre">backend</span></code>, <code class="docutils literal notranslate"><span class="pre">basis</span></code>, <code class="docutils literal notranslate"><span class="pre">theory</span></code>,
+<code class="docutils literal notranslate"><span class="pre">scf_type</span></code>, <code class="docutils literal notranslate"><span class="pre">functional</span></code>, <code class="docutils literal notranslate"><span class="pre">charge</span></code>, <code class="docutils literal notranslate"><span class="pre">multiplicity</span></code>, <code class="docutils literal notranslate"><span class="pre">engine_library</span></code>, …).</p>
 <ul class="simple">
 <li><p><strong>**Out-of-process RPC (this repo):**</strong> <code class="docutils literal notranslate"><span class="pre">potserv</span> <span class="pre">&lt;port&gt;</span> <span class="pre">NWChem|CPMD</span></code> serves the</p></li>
 </ul>
@@ -483,8 +486,7 @@ isolates rgpot / Cap’n Proto headers from eOn’s own <code class="docutils li
 <ol class="arabic simple">
 <li><p><strong>**rgpot ergonomics**</strong> (this repo): potentials-schema v1.5.0 parity (typed</p></li>
 </ol>
-<p>NWChem/CPMD arms, metatomic outputs surface), schema-sync CI gate, and the in-
-process CPMD timing harness (<code class="docutils literal notranslate"><span class="pre">scripts/cpmd_inprocess_vs_subprocess_timing.sh</span></code>).</p>
+<p>NWChem/CPMD arms, metatomic outputs surface), schema-sync CI gate, and the in- process CPMD timing harness (<code class="docutils literal notranslate"><span class="pre">scripts/cpmd_inprocess_vs_subprocess_timing.sh</span></code>).</p>
 </section>
 <section id="operator-cheatsheet-rgpot-side">
 <h1>Operator Cheatsheet (rgpot side)<a class="headerlink" href="#operator-cheatsheet-rgpot-side" title="Link to this heading">¶</a></h1>

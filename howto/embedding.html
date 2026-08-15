@@ -147,6 +147,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceBatch.html">struct rgpot::ForceBatch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_LJClusterConfig.html">struct rgpot::LJClusterConfig</a></li>
@@ -304,6 +305,7 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/client.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">client</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/server.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">server</span></code></a></li>
@@ -444,8 +446,8 @@ data-aria-dark="Switch to auto color mode">
 cmake as a subproject dependency.</p>
 <section id="meson">
 <h2>Meson<a class="headerlink" href="#meson" title="Link to this heading">¶</a></h2>
-<p>Add a <code class="docutils literal notranslate"><span class="pre">subprojects/rgpot.wrap</span></code> file or vendor the source directly into
-<code class="docutils literal notranslate"><span class="pre">subprojects/rgpot/</span></code>.</p>
+<p>Add a
+<code class="docutils literal notranslate"><span class="pre">subprojects/rgpot.wrap</span></code> file or vendor the source directly into <code class="docutils literal notranslate"><span class="pre">subprojects/rgpot/</span></code>.</p>
 <section id="full-library-build-server-potentials">
 <h3>Full library build (server + potentials)<a class="headerlink" href="#full-library-build-server-potentials" title="Link to this heading">¶</a></h3>
 <p>Use this when your project hosts an RPC server with rgpot’s built-in potentials:</p>
@@ -457,8 +459,8 @@ cmake as a subproject dependency.</p>
 </section>
 <section id="rpc-schema-only-client-mode">
 <h3>RPC schema only (client mode)<a class="headerlink" href="#rpc-schema-only-client-mode" title="Link to this heading">¶</a></h3>
-<p>Use this when your project only needs to <em>call</em> a remote potential server,
-or when you want to avoid namespace collisions with your own types (see
+<p>Use this when your project only needs to <em>call</em> a remote potential server, or
+when you want to avoid namespace collisions with your own types (see
 <a class="reference external" href="integration.rst">integration guide</a>):</p>
 <div class="highlight-meson notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">rgpot_proj</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">subproject</span><span class="p">(</span><span class="s">&#39;rgpot&#39;</span><span class="p">,</span>
 </span><span data-line="2"><span class="w">    </span><span class="n">default_options</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s">&#39;with_rpc_client_only=true&#39;</span><span class="p">,</span><span class="w"> </span><span class="s">&#39;pure_lib=true&#39;</span><span class="p">])</span>
@@ -499,17 +501,21 @@ Enable only what the host project needs:</p>
 </tbody>
 </table>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">NWChemPot</span></code> is a pure consumer: the frontend is always compiled and <code class="docutils literal notranslate"><span class="pre">dlopen=s</span> <span class="pre">=libnwchemc.so</span></code> from <a class="reference external" href="https://github.com/OmniPotentRPC/nwchemc">nwchemc</a>
-(stable <code class="docutils literal notranslate"><span class="pre">nwchemc_*</span></code> C symbols). rgpot builds no in-process NWChem embed of its
-own and has no <code class="docutils literal notranslate"><span class="pre">-Dwith_nwchem</span></code> option.
-No <code class="docutils literal notranslate"><span class="pre">nwchem</span></code> CLI/subprocess path. Build <code class="docutils literal notranslate"><span class="pre">libnwchemc.so</span></code> from the <code class="docutils literal notranslate"><span class="pre">nwchemc</span></code>
-project, then set <code class="docutils literal notranslate"><span class="pre">NWCHEMC_LIBRARY</span></code> or <code class="docutils literal notranslate"><span class="pre">RGPOT_NWCHEMC_ENGINE</span></code>. See <code class="docutils literal notranslate"><span class="pre">CppCore/</span> <span class="pre">rgpot/NWChemPot/README.md</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">NWChemPot</span></code> is a pure consumer: the frontend is always compiled and
+<code class="docutils literal notranslate"><span class="pre">dlopen=s</span> <span class="pre">=libnwchemc.so</span></code> from
+<a class="reference external" href="https://github.com/OmniPotentRPC/nwchemc">nwchemc</a> (stable
+<code class="docutils literal notranslate"><span class="pre">nwchemc_*</span></code> C symbols). rgpot builds no in-process NWChem embed of its own and has no <code class="docutils literal notranslate"><span class="pre">-Dwith_nwchem</span></code>
+option.
+No <code class="docutils literal notranslate"><span class="pre">nwchem</span></code> CLI/subprocess path.
+Build <code class="docutils literal notranslate"><span class="pre">libnwchemc.so</span></code> from the <code class="docutils literal notranslate"><span class="pre">nwchemc</span></code> project, then set
+<code class="docutils literal notranslate"><span class="pre">NWCHEMC_LIBRARY</span></code> or <code class="docutils literal notranslate"><span class="pre">RGPOT_NWCHEMC_ENGINE</span></code>.
+See <code class="docutils literal notranslate"><span class="pre">CppCore/</span> <span class="pre">rgpot/NWChemPot/README.md</span></code>.</p>
 <p><code class="docutils literal notranslate"><span class="pre">CPMDPot</span></code> follows the same split-engine pattern: the frontend is always compiled
 and <code class="docutils literal notranslate"><span class="pre">dlopen=s</span> <span class="pre">=libcpmdc.so</span></code> from [[<a class="reference external" href="https://github.com/OmniPotentRPC/cpmdc">https://github.com/OmniPotentRPC/cpmdc</a>]
 [cpmdc]]. rgpot builds no in-process OpenCPMD embed of its own and has no
 <code class="docutils literal notranslate"><span class="pre">-Dwith_cpmd</span></code> option.
-Build <code class="docutils literal notranslate"><span class="pre">libcpmdc.so</span></code> from the <code class="docutils literal notranslate"><span class="pre">cpmdc</span></code> project, then set <code class="docutils literal notranslate"><span class="pre">CPMDC_LIBRARY</span></code>,
-<code class="docutils literal notranslate"><span class="pre">RGPOT_CPMDC_ENGINE</span></code>, or <code class="docutils literal notranslate"><span class="pre">RGPOT_CPMD_ENGINE</span></code>.
+Build <code class="docutils literal notranslate"><span class="pre">libcpmdc.so</span></code> from the <code class="docutils literal notranslate"><span class="pre">cpmdc</span></code> project, then set
+<code class="docutils literal notranslate"><span class="pre">CPMDC_LIBRARY</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_CPMDC_ENGINE</span></code>, or <code class="docutils literal notranslate"><span class="pre">RGPOT_CPMD_ENGINE</span></code>.
 See <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/CPMDPot/README.md</span></code>.</p>
 <p>Example – embed with metatomic support:</p>
 <div class="highlight-meson notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">rgpot_proj</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">subproject</span><span class="p">(</span><span class="s">&#39;rgpot&#39;</span><span class="p">,</span>
@@ -521,11 +527,11 @@ See <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/C
 </span><span data-line="7"><span class="n">rgpot_dep</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rgpot_proj</span><span class="p">.</span><span class="n">get_variable</span><span class="p">(</span><span class="s">&#39;rgpot_dep&#39;</span><span class="p">)</span>
 </span></pre></div>
 </div>
-<p>The metatomic path needs PyTorch (<code class="docutils literal notranslate"><span class="pre">Torch</span></code> CMake package), <code class="docutils literal notranslate"><span class="pre">metatensor_torch</span></code>,
-<code class="docutils literal notranslate"><span class="pre">metatomic_torch</span></code>, and <code class="docutils literal notranslate"><span class="pre">vesin</span></code> on the linker path.
-The Meson build supplements Torch CMake discovery with explicit <code class="docutils literal notranslate"><span class="pre">-L</span></code> /
-<code class="docutils literal notranslate"><span class="pre">-rpath</span></code> / <code class="docutils literal notranslate"><span class="pre">-ltorch_cpu</span></code> taken from <code class="docutils literal notranslate"><span class="pre">python3</span> <span class="pre">-c</span> <span class="pre">'import</span> <span class="pre">torch;</span> <span class="pre">...'</span></code> so
-<code class="docutils literal notranslate"><span class="pre">libtorch_cpu.so</span></code> resolves under conda/pixi layouts.</p>
+<p>The metatomic path needs PyTorch (<code class="docutils literal notranslate"><span class="pre">Torch</span></code> CMake package),
+<code class="docutils literal notranslate"><span class="pre">metatensor_torch</span></code>, <code class="docutils literal notranslate"><span class="pre">metatomic_torch</span></code>, and <code class="docutils literal notranslate"><span class="pre">vesin</span></code> on the linker path.
+The Meson build supplements Torch CMake discovery with explicit <code class="docutils literal notranslate"><span class="pre">-L</span></code> / <code class="docutils literal notranslate"><span class="pre">-rpath</span></code>
+/ <code class="docutils literal notranslate"><span class="pre">-ltorch_cpu</span></code> taken from <code class="docutils literal notranslate"><span class="pre">python3</span> <span class="pre">-c</span> <span class="pre">'import</span> <span class="pre">torch;</span> <span class="pre">...'</span></code> so <code class="docutils literal notranslate"><span class="pre">libtorch_cpu.so</span></code>
+resolves under conda/pixi layouts.</p>
 <p>For the <strong>pip</strong> wheel (nanobind abi3 + multi-ABI <code class="docutils literal notranslate"><span class="pre">dlopen</span></code> engines, torch <strong>2.7+</strong>),
 see:</p>
 <p><a class="reference internal" href="pip-python.html"><span class="doc">Python package (PyPI)</span></a></p>

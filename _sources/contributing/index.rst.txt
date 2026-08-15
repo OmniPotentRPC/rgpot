@@ -11,7 +11,8 @@ Communication and Conduct
 -------------------------
 
 We value a respectful and inclusive community.
-All contributors must follow our `Code of Conduct <https://rgpycrumbs.rgoswami.me/ code_of_conduct.html>`_.
+All contributors must follow our
+`Code of Conduct <https://rgpycrumbs.rgoswami.me/ code_of_conduct.html>`_.
 
 Getting Started
 ---------------

@@ -147,6 +147,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../../api/enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_ForceBatch.html">struct rgpot::ForceBatch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_LJClusterConfig.html">struct rgpot::LJClusterConfig</a></li>
@@ -304,6 +305,7 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../crates/rgpot_core/profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../crates/rgpot_core/rpc/client.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">client</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../crates/rgpot_core/rpc/server.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">server</span></code></a></li>
@@ -448,22 +450,24 @@ data-aria-dark="Switch to auto color mode">
 <p><code class="docutils literal notranslate"><span class="pre">cargo</span> <span class="pre">publish</span></code> forbids build scripts that modify the source directory.
 Since <code class="docutils literal notranslate"><span class="pre">cbindgen</span></code> writes <code class="docutils literal notranslate"><span class="pre">include/rgpot.h</span></code> into the crate tree, it must be opt-
 in.
-The committed header is the canonical copy; regenerate it with <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">r</span> <span class="pre">gen-</span> <span class="pre">header</span></code> when the public Rust API changes.</p>
+The committed header is the canonical copy; regenerate it with
+<code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">r</span> <span class="pre">gen-</span> <span class="pre">header</span></code> when the public Rust API changes.</p>
 </section>
 <section id="why-is-the-cap-n-proto-schema-bundled">
 <h2>Why is the Cap’n Proto schema bundled?<a class="headerlink" href="#why-is-the-cap-n-proto-schema-bundled" title="Link to this heading">¶</a></h2>
-<p>The schema at <code class="docutils literal notranslate"><span class="pre">rgpot-core/schema/Potentials.capnp</span></code> is included in the crate
-so that the <code class="docutils literal notranslate"><span class="pre">rpc</span></code> feature works when installed from <code class="docutils literal notranslate"><span class="pre">crates.io</span></code>, where the
+<p>The schema at <code class="docutils literal notranslate"><span class="pre">rgpot-core/schema/Potentials.capnp</span></code> is included in the crate so
+that the <code class="docutils literal notranslate"><span class="pre">rpc</span></code> feature works when installed from <code class="docutils literal notranslate"><span class="pre">crates.io</span></code>, where the
 monorepo’s <code class="docutils literal notranslate"><span class="pre">CppCore/</span></code> directory is not available.
-The <code class="docutils literal notranslate"><span class="pre">build.rs</span></code> tries the bundled copy first, then falls back to <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/</span> <span class="pre">rpc/Potentials.capnp</span></code> in the monorepo.</p>
+The <code class="docutils literal notranslate"><span class="pre">build.rs</span></code> tries the bundled copy first, then falls back to
+<code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/</span> <span class="pre">rpc/Potentials.capnp</span></code> in the monorepo.</p>
 </section>
 <section id="why-is-the-crate-readme-in-org-mode">
 <h2>Why is the crate README in org-mode?<a class="headerlink" href="#why-is-the-crate-readme-in-org-mode" title="Link to this heading">¶</a></h2>
 <p>The source of truth is <code class="docutils literal notranslate"><span class="pre">rgpot-core/README.org</span></code>.
 It is exported to <code class="docutils literal notranslate"><span class="pre">README.md</span></code> via <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">r</span> <span class="pre">-e</span> <span class="pre">docs</span> <span class="pre">gen-readme</span></code> (which uses Emacs
 <code class="docutils literal notranslate"><span class="pre">ox-md</span></code>).
-The rendered markdown is committed and referenced by <code class="docutils literal notranslate"><span class="pre">Cargo.toml</span></code> for display
-on crates.io.
+The rendered markdown is committed and referenced by <code class="docutils literal notranslate"><span class="pre">Cargo.toml</span></code> for display on
+crates.io.
 Edit the <code class="docutils literal notranslate"><span class="pre">.org</span></code> file, then regenerate.</p>
 </section>
 <section id="how-do-i-add-a-new-pixi-environment">

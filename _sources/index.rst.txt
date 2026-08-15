@@ -27,8 +27,8 @@ Overview
 
 ``rgpot`` provides a unified Cap'n Proto schema and RPC server for potential
 energy calculations.
-Clients send ``ForceInput`` messages containing geometry and units,
-receive ``PotentialResult`` messages containing energy and forces, and use
+Clients send ``ForceInput`` messages containing geometry and units, receive
+``PotentialResult`` messages containing energy and forces, and use
 ``PotentialConfig`` only for backend setup.
 
 The C++ server hosts built-in potentials such as Lennard-Jones and CuH2,

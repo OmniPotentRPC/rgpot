@@ -147,6 +147,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../../api/enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_ForceBatch.html">struct rgpot::ForceBatch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_LJClusterConfig.html">struct rgpot::LJClusterConfig</a></li>
@@ -304,6 +305,7 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../crates/rgpot_core/profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../crates/rgpot_core/rpc/client.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">client</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../crates/rgpot_core/rpc/server.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">server</span></code></a></li>
@@ -488,25 +490,26 @@ data-aria-dark="Switch to auto color mode">
 <section id="nwchem-suite-suite-nwchem">
 <h2>NWChem suite (<code class="docutils literal notranslate"><span class="pre">--suite</span> <span class="pre">nwchem</span></code>)<a class="headerlink" href="#nwchem-suite-suite-nwchem" title="Link to this heading">¶</a></h2>
 <p>Frontend + stub ABI tests always build with the main library
-(<code class="docutils literal notranslate"><span class="pre">with_tests=true</span></code>). Energy/grad tests <code class="docutils literal notranslate"><span class="pre">SKIP</span></code> unless an external <code class="docutils literal notranslate"><span class="pre">libnwchemc</span></code>
-is on the library path (<code class="docutils literal notranslate"><span class="pre">NWCHEMC_LIBRARY</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_NWCHEMC_ENGINE</span></code>, or
-<code class="docutils literal notranslate"><span class="pre">RGPOT_NWCHEM_ENGINE</span></code>). The message ABI test uses a fake <code class="docutils literal notranslate"><span class="pre">nwchemc_*</span></code> shared
-library and verifies rgpot passes serialized <code class="docutils literal notranslate"><span class="pre">NWChemParams</span></code> bytes through the
-<code class="docutils literal notranslate"><span class="pre">dlopen</span></code> boundary.</p>
+(<code class="docutils literal notranslate"><span class="pre">with_tests=true</span></code>).
+Energy/grad tests <code class="docutils literal notranslate"><span class="pre">SKIP</span></code> unless an external <code class="docutils literal notranslate"><span class="pre">libnwchemc</span></code> is on the library path
+(<code class="docutils literal notranslate"><span class="pre">NWCHEMC_LIBRARY</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_NWCHEMC_ENGINE</span></code>, or <code class="docutils literal notranslate"><span class="pre">RGPOT_NWCHEM_ENGINE</span></code>).
+The message ABI test uses a fake <code class="docutils literal notranslate"><span class="pre">nwchemc_*</span></code> shared library and verifies rgpot
+passes serialized <code class="docutils literal notranslate"><span class="pre">NWChemParams</span></code> bytes through the <code class="docutils literal notranslate"><span class="pre">dlopen</span></code> boundary.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">meson<span class="w"> </span>setup<span class="w"> </span>bbdir<span class="w"> </span>-Dwith_tests<span class="o">=</span><span class="nb">true</span><span class="w"> </span>-Dwith_rpc<span class="o">=</span><span class="nb">true</span>
 </span><span data-line="2">meson<span class="w"> </span>compile<span class="w"> </span>-C<span class="w"> </span>bbdir
 </span><span data-line="3">meson<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-C<span class="w"> </span>bbdir<span class="w"> </span>--suite<span class="w"> </span>nwchem<span class="w"> </span>--print-errorlogs
 </span></pre></div>
 </div>
-<p>See <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/NWChemPot/README.md</span></code>; the engine (<code class="docutils literal notranslate"><span class="pre">libnwchemc</span></code>) is built by
-the split <a class="reference external" href="https://github.com/OmniPotentRPC/nwchemc">nwchemc</a> project, not
-by rgpot.</p>
+<p>See
+<code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/NWChemPot/README.md</span></code>; the engine (<code class="docutils literal notranslate"><span class="pre">libnwchemc</span></code>) is built by the split <a class="reference external" href="https://github.com/OmniPotentRPC/nwchemc">nwchemc</a>
+project, not by rgpot.</p>
 </section>
 <section id="cpmd-suite-suite-cpmd">
 <h2>CPMD suite (<code class="docutils literal notranslate"><span class="pre">--suite</span> <span class="pre">cpmd</span></code>)<a class="headerlink" href="#cpmd-suite-suite-cpmd" title="Link to this heading">¶</a></h2>
 <p>Frontend + stub ABI tests always build with the main library
-(<code class="docutils literal notranslate"><span class="pre">with_tests=true</span></code>). The CPMD frontend loads a split <code class="docutils literal notranslate"><span class="pre">libcpmdc</span></code> engine at
-runtime via <code class="docutils literal notranslate"><span class="pre">CPMDC_LIBRARY</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_CPMDC_ENGINE</span></code>, or <code class="docutils literal notranslate"><span class="pre">RGPOT_CPMD_ENGINE</span></code>.
+(<code class="docutils literal notranslate"><span class="pre">with_tests=true</span></code>).
+The CPMD frontend loads a split <code class="docutils literal notranslate"><span class="pre">libcpmdc</span></code> engine at runtime via
+<code class="docutils literal notranslate"><span class="pre">CPMDC_LIBRARY</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_CPMDC_ENGINE</span></code>, or <code class="docutils literal notranslate"><span class="pre">RGPOT_CPMD_ENGINE</span></code>.
 Configure-only Python smokes use <code class="docutils literal notranslate"><span class="pre">PotentialConfig.cpmd</span></code> and do not require a
 live engine.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">meson<span class="w"> </span>setup<span class="w"> </span>bbdir<span class="w"> </span>-Dwith_tests<span class="o">=</span><span class="nb">true</span><span class="w"> </span>-Dwith_rpc<span class="o">=</span><span class="nb">true</span>
@@ -515,8 +518,9 @@ live engine.</p>
 </span><span data-line="4">pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>rpctest<span class="w"> </span>python<span class="w"> </span>tests/rpc_integ.py<span class="w"> </span>--server-bin<span class="w"> </span>./bbdir/CppCore/potserv<span class="w"> </span>--cpmd-smoke
 </span></pre></div>
 </div>
-<p>See <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/CPMDPot/README.md</span></code>; the engine (<code class="docutils literal notranslate"><span class="pre">libcpmdc</span></code>) is built by the
-split <a class="reference external" href="https://github.com/OmniPotentRPC/cpmdc">cpmdc</a> project, not by rgpot.</p>
+<p>See
+<code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/CPMDPot/README.md</span></code>; the engine (<code class="docutils literal notranslate"><span class="pre">libcpmdc</span></code>) is built by the split <a class="reference external" href="https://github.com/OmniPotentRPC/cpmdc">cpmdc</a>
+project, not by rgpot.</p>
 </section>
 </section>
 

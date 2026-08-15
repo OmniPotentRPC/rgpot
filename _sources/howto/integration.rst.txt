@@ -49,7 +49,8 @@ generic rgpot params so other backends can add arms without a new config
 language.
 
 Python: ``tests/nwchem_params.py`` builds ``PotentialConfig`` + ``nwchem``.
-BLYP: ``theory``"dft"``, =scfType``"blyp"``. Embed =.so`` still required for ``calculate``.
+BLYP: ``theory``"dft"``, =scfType``"blyp"``. Embed =.so`` still required for
+``calculate``.
 
 CPMD arm (``PotentialConfig.cpmd`` / ``CPMDParams``)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -60,25 +61,27 @@ geometry in ``ForceInput``.
 
 The rgpot frontend loads ``libcpmdc`` at runtime and forwards serialized
 ``CPMDParams`` to that C ABI.
-Engine lookup checks ``CPMDParams.enginePath``, ``CPMDC_LIBRARY``,
-``RGPOT_CPMDC_ENGINE``, ``RGPOT_CPMD_ENGINE``, and default shared-library names.
+Engine lookup checks ``CPMDParams.enginePath``,
+``CPMDC_LIBRARY``, ``RGPOT_CPMDC_ENGINE``, ``RGPOT_CPMD_ENGINE``, and default
+shared-library names.
 ``CPMDParams.cpmdRoot`` is applied as ``CPMD_ROOT`` before loading the engine.
 
 Payload fields include method-level defaults (``functional``, ``cutOffRy``,
 ``charge``, ``multiplicity``, ``task``), frontend hints (``enginePath``, ``cpmdRoot``),
 runtime file placement (``scratchDir``, ``permanentDir``), raw ``inputBlocks``, and
-structured ``inputSections`` for ``SYSTEM``, ``CPMD``, ``DFT``, ``ATOMS``, ``SET``, and
-raw sections.
+structured ``inputSections`` for ``SYSTEM``, ``CPMD``, ``DFT``, ``ATOMS``, ``SET``, and raw
+sections.
 The typed ``cpmd`` section covers wavefunction and geometry optimization,
 molecular dynamics, orbital and geometry convergence thresholds, iteration
 limits, timestep, electron mass, CP/BO/EH/PT/classical MD variants, MD file,
-Nose/Berendsen/Langevin/annealing/quench thermostat controls, RATTLE/SHAKE,
-constraints, Trotter factor, restart, print/store, center molecule, DIIS/
-ODIIS/PCG/diagonalization, free-energy, interface, QMMM, bicanonical, CDFT,
-properties, and trajectory controls.
+Nose/Berendsen/Langevin/annealing/quench thermostat controls,
+RATTLE/SHAKE, constraints, Trotter factor, restart, print/store, center
+molecule, DIIS/ ODIIS/PCG/diagonalization, free-energy, interface, QMMM,
+bicanonical, CDFT, properties, and trajectory controls.
 The typed ``dft`` section covers functional, LSD, GC cutoff, XC driver, LIBXC, LR
-kernel, refunct, MTS high/low functionals, HFX, HFX screening, Hubbard, alpha,
-beta, old/new code selection, correlation, exchange, and Becke88 controls.
+kernel, refunct, MTS
+high/low functionals, HFX, HFX screening, Hubbard, alpha, beta, old/new code
+selection, correlation, exchange, and Becke88 controls.
 
 Python: ``tests/cpmd_params.py`` builds ``PotentialConfig`` + ``cpmd``.
 The helper uses ``CPMD_ROOT`` for ``cpmdRoot`` and ``CPMDC_LIBRARY`` /
@@ -91,8 +94,8 @@ Cap'n Proto builder code in clients.
 Typed ``atoms`` sections carry pseudopotential entries keyed by element symbol.
 The engine groups ``ForceInput`` coordinates into ``&ATOMS`` and requires entries
 for every atomic number present in a step.
-Without an ``atoms`` section, built-in BLYP pseudopotential defaults cover H and
-O only.
+Without an ``atoms`` section, built-in BLYP pseudopotential defaults cover H and O
+only.
 The same ``atoms`` section also accepts structured ``directives`` for ATOMS keywords
 that are not pseudopotential entries.
 
@@ -135,7 +138,8 @@ The ``PotentialBase`` class itself is correctly inside ``namespace rgpot``, but 
 
 1. Cap'n Proto code generation does not namespace its output.
 
-The ``interface Potential`` in ``Potentials.capnp`` produces a top-level ``class Potential`` in the generated C++ header.
+The ``interface Potential`` in ``Potentials.capnp`` produces a top-level
+``class Potential`` in the generated C++ header.
 This is a constraint of the capnp compiler rather than an rgpot design choice.
 
 Mitigation Strategies
@@ -208,8 +212,8 @@ Strategy 4: RPC-client-only linking
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 For consumers that only need to *call* rgpot potentials (not serve them), link
-only the Cap'n Proto schema library (``ptlrpc_dep`` in meson) rather than the
-full ``rgpot_dep``.
+only the Cap'n Proto schema library
+(``ptlrpc_dep`` in meson) rather than the full ``rgpot_dep``.
 This avoids pulling in ``Potential.hpp`` and its ``AtomMatrix`` leak entirely.
 
 In meson:
@@ -222,8 +226,8 @@ In meson:
 
 ``ptlrpc_dep`` links a static convenience archive, so this strategy costs the
 consumer no extra shared object.
-Take ``ptlrpc_hdr_dep`` instead in any static library of your own that another
-of your static libraries also links, or both end up carrying the generated
+Take ``ptlrpc_hdr_dep`` instead in any static library of your own that another of
+your static libraries also links, or both end up carrying the generated
 translation unit.
 
 Flat-Array Callback Pattern
@@ -453,7 +457,7 @@ Summary of Approaches
     | RPC-client-only linking         | Low (build option)       | Consumer only calls potentials, does not serve. |
     +---------------------------------+--------------------------+-------------------------------------------------+
 
-For legacy codebases like eOn where refactoring all types into a namespace
-is impractical, the two-TU + flat-array callback pattern provides a clean
+For legacy codebases like eOn where refactoring all types into a namespace is
+impractical, the two-TU + flat-array callback pattern provides a clean
 integration path with no modifications required to either rgpot or the
 consumer's existing type system.

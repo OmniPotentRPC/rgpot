@@ -147,6 +147,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceBatch.html">struct rgpot::ForceBatch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_LJClusterConfig.html">struct rgpot::LJClusterConfig</a></li>
@@ -304,6 +305,7 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/client.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">client</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/server.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">server</span></code></a></li>
@@ -492,7 +494,8 @@ replaced.</p>
 <section id="rules">
 <h2><a class="toc-backref" href="#id3" role="doc-backlink">2 Rules</a><a class="headerlink" href="#rules" title="Link to this heading">¶</a></h2>
 <ol class="arabic simple">
-<li><p><strong>Module, ``implicit none``, ``private`` by default.</strong> Export the physics entry points</p></li>
+<li><p><strong>Module, ``implicit none``, ``private`` by default.</strong> Export the physics entry
+points</p></li>
 </ol>
 <p>and the parameter type; nothing else.</p>
 <ol class="arabic simple">
@@ -501,7 +504,8 @@ replaced.</p>
 <p>No <code class="docutils literal notranslate"><span class="pre">real*8</span></code>, no <code class="docutils literal notranslate"><span class="pre">double</span> <span class="pre">precision</span></code>, no kind literals spelled out at use sites.
 The module asserts <code class="docutils literal notranslate"><span class="pre">wp</span> <span class="pre">==</span> <span class="pre">c_double</span></code> at compile time.</p>
 <ol class="arabic simple">
-<li><p><strong>No COMMON, no ``save`` state in the physics.</strong> Parameters live in a derived type</p></li>
+<li><p><strong>No COMMON, no ``save`` state in the physics.</strong> Parameters live in a derived
+type</p></li>
 </ol>
 <p>with defaults; scratch lives in local automatic arrays.
 Saved state is allowed only in the <code class="docutils literal notranslate"><span class="pre">_capi</span></code> module (the neighbour table and the
@@ -511,7 +515,8 @@ parameter set), never in a kernel.</p>
 </ol>
 <p><code class="docutils literal notranslate"><span class="pre">contiguous</span></code> where the caller can guarantee it.</p>
 <ol class="arabic simple">
-<li><p><strong>No ``goto``, no arithmetic ``if``, no labelled ``do``.</strong> Structured control flow only.</p></li>
+<li><p><strong>No ``goto``, no arithmetic ``if``, no labelled ``do``.</strong> Structured control flow
+only.</p></li>
 </ol>
 <p><code class="docutils literal notranslate"><span class="pre">cycle</span></code> and <code class="docutils literal notranslate"><span class="pre">exit</span></code> replace jump targets.</p>
 <ol class="arabic simple">
@@ -547,13 +552,13 @@ because <code class="docutils literal notranslate"><span class="pre">do</span> <
 <section id="what-do-concurrent-actually-buys">
 <h3><a class="toc-backref" href="#id5" role="doc-backlink">3.1 What <code class="docutils literal notranslate"><span class="pre">do</span> <span class="pre">concurrent</span></code> actually buys</a><a class="headerlink" href="#what-do-concurrent-actually-buys" title="Link to this heading">¶</a></h3>
 <p>Compilers are not obliged to run these iterations in parallel, and by default
-gfortran does not: without <code class="docutils literal notranslate"><span class="pre">-ftree-parallelize-loops</span></code> (or a compiler that
-maps the construct onto threads) it treats the construct as an assertion about
+gfortran does not: without <code class="docutils literal notranslate"><span class="pre">-ftree-parallelize-loops</span></code> (or a compiler that maps
+the construct onto threads) it treats the construct as an assertion about
 independence.
 The assertion is still worth having.
 It licenses vectorisation, it documents the dependency structure for the next
-reader, and above all it forces the discipline that made the port correct:
-every procedure the loop body calls must be <code class="docutils literal notranslate"><span class="pre">pure</span></code>, and every write must land in
+reader, and above all it forces the discipline that made the port correct: every
+procedure the loop body calls must be <code class="docutils literal notranslate"><span class="pre">pure</span></code>, and every write must land in
 memory no other iteration touches.
 Turning the construct into real parallelism later is then a compiler flag rather
 than a rewrite.</p>
@@ -609,8 +614,8 @@ so two archives that both <code class="docutils literal notranslate"><span class
 umbrella then sees every symbol twice.
 Linking dependencies belong on the umbrella and on leaf binaries, where the
 objects arrive once.
-This is why <code class="docutils literal notranslate"><span class="pre">vesin_dep</span></code> has a <code class="docutils literal notranslate"><span class="pre">vesin_hdr_dep</span></code> counterpart, and <code class="docutils literal notranslate"><span class="pre">ptlrpc_dep</span></code>
-a <code class="docutils literal notranslate"><span class="pre">ptlrpc_hdr_dep</span></code>.</p>
+This is why <code class="docutils literal notranslate"><span class="pre">vesin_dep</span></code> has a <code class="docutils literal notranslate"><span class="pre">vesin_hdr_dep</span></code> counterpart, and <code class="docutils literal notranslate"><span class="pre">ptlrpc_dep</span></code> a
+<code class="docutils literal notranslate"><span class="pre">ptlrpc_hdr_dep</span></code>.</p>
 <ul class="simple">
 <li><p>The <strong>Fortran runtime is named explicitly</strong>.</p></li>
 </ul>

@@ -4,12 +4,9 @@ Find the Ground State of an EON Structure
 -----------------------------------------
 
 Atomistic workflows minimize.
-ASE relaxes structures with L-BFGS and FIRE; eOn (TheochemUI/eOn on GitHub) runs
-its own L-BFGS and conjugate-gradient minimizers at the end of every min-mode
-and nudged-elastic-band search, over structures stored as EON ``.con`` files and
-driven by a potential rgpot serves over RPC. The atomistic-cookbook example lab-
-cosmo/atomistic-cookbook runs exactly this stack: a PET-MAD model, a NEB path,
-eOn's saddle search.
+ASE relaxes structures with L-BFGS and FIRE; eOn
+(TheochemUI/eOn on GitHub) runs its own L-BFGS and conjugate-gradient minimizers at the end of every min-mode and nudged-elastic-band search, over structures stored as EON ``.con`` files and driven by a potential rgpot serves over RPC. The atomistic-cookbook example lab- cosmo/atomistic-cookbook
+runs exactly this stack: a PET-MAD model, a NEB path, eOn's saddle search.
 
 All of these minimizers are *local*: they walk downhill to the nearest minimum.
 The nearest minimum is often not the one you want.
@@ -99,8 +96,8 @@ of the product state.
 Step 3: find the global minimum
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``AnnealOptimizer`` wraps ``anneal``'s portfolio optimizer (the method of
-the INFORMS Journal on Computing paper: Thompson-allocated basin hopping,
+``AnnealOptimizer`` wraps ``anneal``'s portfolio optimizer (the method of the
+INFORMS Journal on Computing paper: Thompson-allocated basin hopping,
 differential evolution, generalized simulated annealing, parallel tempering,
 GLE-Langevin) behind the same ``run()``.
 It uses the rgpot forces as the gradient:
@@ -126,10 +123,11 @@ Which minimizer for which job
 
 - Local L-BFGS / FIRE / conjugate gradient (ASE or eOn): refine a structure
 
-inside the basin you want -- an eOn saddle endpoint, a perturbed crystal, an
-MD snapshot.
+inside the basin you want -- an eOn saddle endpoint, a perturbed crystal, an MD
+snapshot.
 
-- ``AnnealOptimizer``: find the minimum when the basin is unknown -- cluster ground
+- ``AnnealOptimizer``: find the minimum when the basin is unknown -- cluster
+  ground
 
 states, conformer search, potential-parameter fitting.
 
@@ -139,7 +137,8 @@ Step 4: start from a ``.con`` file
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 EON workflows start from a structure on disk.
-``atoms_from_con`` reads an EON ``.con`` file into ``ase.Atoms`` through ``readcon- core`` -- the files eOn reads and writes:
+``atoms_from_con`` reads an EON ``.con`` file into ``ase.Atoms`` through
+``readcon- core`` -- the files eOn reads and writes:
 
 .. code:: python
 
@@ -169,8 +168,8 @@ Visualize the minimization on the (s, d) landscape
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Two complementary views.
-First, sample the surface densely: a probe atom moved through the x-y plane
-near a lone atom (a shallow well) and a bound pair (a deeper well) gives a 2D
+First, sample the surface densely: a probe atom moved through the x-y plane near
+a lone atom (a shallow well) and a bound pair (a deeper well) gives a 2D
 Lennard-Jones double well.
 ASE LBFGS started in the shallow basin stops there; anneal's portfolio reaches
 the deep one.
@@ -186,8 +185,9 @@ the deep one.
 Second, for an EON minimization, \`\`rgpycrumbs eon plt-min\`\` renders the actual
 trajectory on a gradient-enhanced 2D landscape: progress \`\`s\`\` toward the
 minimum against lateral deviation \`\`d\`\`, with the energy surface fitted from the
-path. \`\`tests/eon\ :sub:`min`\ \ :sub:`landscape.py`\\`\` runs an \`\`eonclient\`\` LJ7 minimization and
-plots it (energies capped with \`\`plt-min --energy-cap-window\`\` so the colorbar
+path.
+\`\`tests/eon\ :sub:`min`\ \ :sub:`landscape.py`\\`\` runs an \`\`eonclient\`\` LJ7 minimization and plots
+it (energies capped with \`\`plt-min --energy-cap-window\`\` so the colorbar
 resolves the well):
 
 .. code:: bash
@@ -216,6 +216,7 @@ backend changes, and the same server serves eOn.
 
 links rgpot's RPC server from C++.
 
-- Read `rgpot potentials as eindir objectives <../howto/eindir-anneal.rst>`_
+- Read
+  `rgpot potentials as eindir objectives <../howto/eindir-anneal.rst>`_
 
 for how an rgpot potential becomes an ``anneal`` objective with no glue code.

@@ -147,6 +147,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceBatch.html">struct rgpot::ForceBatch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_LJClusterConfig.html">struct rgpot::LJClusterConfig</a></li>
@@ -304,6 +305,7 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/client.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">client</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/server.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">server</span></code></a></li>
@@ -440,12 +442,9 @@ data-aria-dark="Switch to auto color mode">
           <section id="find-the-ground-state-of-an-eon-structure">
 <h1>Find the Ground State of an EON Structure<a class="headerlink" href="#find-the-ground-state-of-an-eon-structure" title="Link to this heading">¶</a></h1>
 <p>Atomistic workflows minimize.
-ASE relaxes structures with L-BFGS and FIRE; eOn (TheochemUI/eOn on GitHub) runs
-its own L-BFGS and conjugate-gradient minimizers at the end of every min-mode
-and nudged-elastic-band search, over structures stored as EON <code class="docutils literal notranslate"><span class="pre">.con</span></code> files and
-driven by a potential rgpot serves over RPC. The atomistic-cookbook example lab-
-cosmo/atomistic-cookbook runs exactly this stack: a PET-MAD model, a NEB path,
-eOn’s saddle search.</p>
+ASE relaxes structures with L-BFGS and FIRE; eOn
+(TheochemUI/eOn on GitHub) runs its own L-BFGS and conjugate-gradient minimizers at the end of every min-mode and nudged-elastic-band search, over structures stored as EON <code class="docutils literal notranslate"><span class="pre">.con</span></code> files and driven by a potential rgpot serves over RPC. The atomistic-cookbook example lab- cosmo/atomistic-cookbook
+runs exactly this stack: a PET-MAD model, a NEB path, eOn’s saddle search.</p>
 <p>All of these minimizers are <em>local</em>: they walk downhill to the nearest minimum.
 The nearest minimum is often not the one you want.
 This tutorial finds the minimum a local search misses, and shows that <code class="docutils literal notranslate"><span class="pre">anneal</span></code>
@@ -534,8 +533,8 @@ of the product state.</p>
 </section>
 <section id="step-3-find-the-global-minimum">
 <h2>Step 3: find the global minimum<a class="headerlink" href="#step-3-find-the-global-minimum" title="Link to this heading">¶</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">AnnealOptimizer</span></code> wraps <code class="docutils literal notranslate"><span class="pre">anneal</span></code>’s portfolio optimizer (the method of
-the INFORMS Journal on Computing paper: Thompson-allocated basin hopping,
+<p><code class="docutils literal notranslate"><span class="pre">AnnealOptimizer</span></code> wraps <code class="docutils literal notranslate"><span class="pre">anneal</span></code>’s portfolio optimizer (the method of the
+INFORMS Journal on Computing paper: Thompson-allocated basin hopping,
 differential evolution, generalized simulated annealing, parallel tempering,
 GLE-Langevin) behind the same <code class="docutils literal notranslate"><span class="pre">run()</span></code>.
 It uses the rgpot forces as the gradient:</p>
@@ -558,10 +557,11 @@ returns.
 <ul class="simple">
 <li><p>Local L-BFGS / FIRE / conjugate gradient (ASE or eOn): refine a structure</p></li>
 </ul>
-<p>inside the basin you want – an eOn saddle endpoint, a perturbed crystal, an
-MD snapshot.</p>
+<p>inside the basin you want – an eOn saddle endpoint, a perturbed crystal, an MD
+snapshot.</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">AnnealOptimizer</span></code>: find the minimum when the basin is unknown – cluster ground</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">AnnealOptimizer</span></code>: find the minimum when the basin is unknown – cluster
+ground</p></li>
 </ul>
 <p>states, conformer search, potential-parameter fitting.</p>
 <p>Chain them: an <code class="docutils literal notranslate"><span class="pre">anneal</span></code> search to locate the basin, then a local polish.</p>
@@ -570,7 +570,8 @@ MD snapshot.</p>
 <section id="step-4-start-from-a-con-file">
 <h2>Step 4: start from a <code class="docutils literal notranslate"><span class="pre">.con</span></code> file<a class="headerlink" href="#step-4-start-from-a-con-file" title="Link to this heading">¶</a></h2>
 <p>EON workflows start from a structure on disk.
-<code class="docutils literal notranslate"><span class="pre">atoms_from_con</span></code> reads an EON <code class="docutils literal notranslate"><span class="pre">.con</span></code> file into <code class="docutils literal notranslate"><span class="pre">ase.Atoms</span></code> through <code class="docutils literal notranslate"><span class="pre">readcon-</span> <span class="pre">core</span></code> – the files eOn reads and writes:</p>
+<code class="docutils literal notranslate"><span class="pre">atoms_from_con</span></code> reads an EON <code class="docutils literal notranslate"><span class="pre">.con</span></code> file into <code class="docutils literal notranslate"><span class="pre">ase.Atoms</span></code> through
+<code class="docutils literal notranslate"><span class="pre">readcon-</span> <span class="pre">core</span></code> – the files eOn reads and writes:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">ase_helpers</span><span class="w"> </span><span class="kn">import</span> <span class="n">atoms_from_con</span>
 </span><span data-line="2">
 </span><span data-line="3"><span class="n">calc</span> <span class="o">=</span> <span class="n">RgpotCalculator</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">server_bin</span><span class="o">=</span><span class="s2">&quot;path/to/potserv&quot;</span><span class="p">,</span> <span class="n">potential</span><span class="o">=</span><span class="s2">&quot;CuH2&quot;</span><span class="p">)</span>
@@ -595,8 +596,8 @@ minimum the <code class="docutils literal notranslate"><span class="pre">.con</s
 <section id="visualize-the-minimization-on-the-s-d-landscape">
 <h2>Visualize the minimization on the (s, d) landscape<a class="headerlink" href="#visualize-the-minimization-on-the-s-d-landscape" title="Link to this heading">¶</a></h2>
 <p>Two complementary views.
-First, sample the surface densely: a probe atom moved through the x-y plane
-near a lone atom (a shallow well) and a bound pair (a deeper well) gives a 2D
+First, sample the surface densely: a probe atom moved through the x-y plane near
+a lone atom (a shallow well) and a bound pair (a deeper well) gives a 2D
 Lennard-Jones double well.
 ASE LBFGS started in the shallow basin stops there; anneal’s portfolio reaches
 the deep one.</p>
@@ -612,8 +613,9 @@ the deep one.</p>
 <p>Second, for an EON minimization, ``rgpycrumbs eon plt-min`` renders the actual
 trajectory on a gradient-enhanced 2D landscape: progress ``s`` toward the
 minimum against lateral deviation ``d``, with the energy surface fitted from the
-path. ``tests/eon<sub>min</sub><sub>landscape.py</sub>\`` runs an ``eonclient`` LJ7 minimization and
-plots it (energies capped with ``plt-min –energy-cap-window`` so the colorbar
+path.
+``tests/eon<sub>min</sub><sub>landscape.py</sub>\`` runs an ``eonclient`` LJ7 minimization and plots
+it (energies capped with ``plt-min –energy-cap-window`` so the colorbar
 resolves the well):</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>eonviz<span class="w"> </span>eon-min-landscape
 </span></pre></div>
@@ -642,7 +644,8 @@ backend changes, and the same server serves eOn.</p>
 </ul>
 <p>links rgpot’s RPC server from C++.</p>
 <ul class="simple">
-<li><p>Read <a class="reference external" href="../howto/eindir-anneal.rst">rgpot potentials as eindir objectives</a></p></li>
+<li><p>Read
+<a class="reference external" href="../howto/eindir-anneal.rst">rgpot potentials as eindir objectives</a></p></li>
 </ul>
 <p>for how an rgpot potential becomes an <code class="docutils literal notranslate"><span class="pre">anneal</span></code> objective with no glue code.</p>
 </section>

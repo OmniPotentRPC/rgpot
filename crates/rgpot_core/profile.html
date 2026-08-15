@@ -2,8 +2,8 @@
 <html lang="en" data-accent-color="teal" data-content_root="../../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>mod potential - rgpot documentation</title><link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="mod eindir" href="eindir.html" /><link rel="prev" title="mod status" href="status.html" />
-      <link rel="canonical" href="https://rgpot.rgoswami.me/crates/rgpot_core/potential.html" /><script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>mod profile - rgpot documentation</title><link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="mod rpc" href="rpc.html" /><link rel="prev" title="mod Potentials_capnp" href="Potentials_capnp.html" />
+      <link rel="canonical" href="https://rgpot.rgoswami.me/crates/rgpot_core/profile.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
   </script><link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=e1a1ceaf" />
@@ -22,8 +22,8 @@
 }
 </style>
     <meta property="og:type" content="website"/>
-  <meta property="og:url" content="https://rgpot.rgoswami.me/crates/rgpot_core/potential.html"/>
-  <meta property="og:title" content="mod potential"/>
+  <meta property="og:url" content="https://rgpot.rgoswami.me/crates/rgpot_core/profile.html"/>
+  <meta property="og:title" content="mod profile"/>
     <meta name="twitter:card" content="summary"/>
   <!-- Manual favicon handling with favicon.io -->
 <!-- since sphinx-favicon doesn't work with shibuya -->
@@ -296,7 +296,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="types.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">types</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="tensor.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">tensor</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="status.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">status</span></code></a></li>
-<li class="toctree-l3 current"><a class="current reference internal" href="#"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="eindir.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">eindir</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="c_api.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">c_api</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="c_api/types.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">types</span></code></a></li>
@@ -305,7 +305,7 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="rpc/client.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">client</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="rpc/server.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">server</span></code></a></li>
@@ -341,16 +341,40 @@ data-aria-dark="Switch to auto color mode">
       <i class="i-lucide close"></i>
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
-<li><a class="reference internal" href="#rgpot_core-potential-FreeFn"><code class="docutils literal notranslate"><span class="pre">type</span> <span class="pre">FreeFn</span></code></a></li>
-<li><a class="reference internal" href="#rgpot_core-potential-PotentialCallback"><code class="docutils literal notranslate"><span class="pre">type</span> <span class="pre">PotentialCallback</span></code></a></li>
-<li><a class="reference internal" href="#rgpot_core-potential-PotentialImpl"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">PotentialImpl</span></code></a><ul>
-<li><a class="reference internal" href="#rgpot_core-potential-PotentialImpl"><code class="docutils literal notranslate"><span class="pre">impl</span> <span class="pre">PotentialImpl</span></code></a><ul>
-<li><a class="reference internal" href="#rgpot_core-potential-PotentialImpl-calculate"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">calculate</span></code></a></li>
-<li><a class="reference internal" href="#rgpot_core-potential-PotentialImpl-new"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">new</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileResult"><code class="docutils literal notranslate"><span class="pre">type</span> <span class="pre">ProfileResult</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-profile-decode_potential_result"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">decode_potential_result</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-profile-encode_force_input"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">encode_force_input</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-profile-library_candidates"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">library_candidates</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileError"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">ProfileError</span></code></a><ul>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileError"><code class="docutils literal notranslate"><span class="pre">impl</span> <span class="pre">ProfileError</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileError-Display"><code class="docutils literal notranslate"><span class="pre">impl</span> <span class="pre">Display</span> <span class="pre">for</span> <span class="pre">ProfileError</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileError-Error"><code class="docutils literal notranslate"><span class="pre">impl</span> <span class="pre">Error</span> <span class="pre">for</span> <span class="pre">ProfileError</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileError-From"><code class="docutils literal notranslate"><span class="pre">impl</span> <span class="pre">From</span> <span class="pre">for</span> <span class="pre">ProfileError</span></code></a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#rgpot_core-potential-PotentialImpl-Send"><code class="docutils literal notranslate"><span class="pre">impl</span> <span class="pre">Send</span> <span class="pre">for</span> <span class="pre">PotentialImpl</span></code></a></li>
-<li><a class="reference internal" href="#rgpot_core-potential-PotentialImpl-Drop"><code class="docutils literal notranslate"><span class="pre">impl</span> <span class="pre">Drop</span> <span class="pre">for</span> <span class="pre">PotentialImpl</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileEvaluation"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">ProfileEvaluation</span></code></a><ul>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileEvaluation-energy"><code class="docutils literal notranslate"><span class="pre">energy</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileEvaluation-forces"><code class="docutils literal notranslate"><span class="pre">forces</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileRequest"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">ProfileRequest</span></code></a><ul>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileRequest-positions"><code class="docutils literal notranslate"><span class="pre">positions</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileRequest-atomic_numbers"><code class="docutils literal notranslate"><span class="pre">atomic_numbers</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileRequest-box_matrix"><code class="docutils literal notranslate"><span class="pre">box_matrix</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileRequest-length_unit"><code class="docutils literal notranslate"><span class="pre">length_unit</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileRequest-energy_unit"><code class="docutils literal notranslate"><span class="pre">energy_unit</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileSession"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">ProfileSession</span></code></a><ul>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileSession"><code class="docutils literal notranslate"><span class="pre">impl</span> <span class="pre">ProfileSession</span></code></a><ul>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileSession-abi_version"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">abi_version</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileSession-evaluate"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">evaluate</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileSession-library_path"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">library_path</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileSession-load"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">load</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileSession-prefix"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">prefix</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileSession-version"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">version</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -376,7 +400,7 @@ data-aria-dark="Switch to auto color mode">
     </span>
   </span>
 </a><div class="edit-this-page">
-  <a href="https://github.com/OmniPotentRPC/rgpot/blob/main/docs/source/crates/rgpot_core/potential.rst">Edit this page</a>
+  <a href="https://github.com/OmniPotentRPC/rgpot/blob/main/docs/source/crates/rgpot_core/profile.rst">Edit this page</a>
 </div></div>
   </aside>
   <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
@@ -401,7 +425,7 @@ data-aria-dark="Switch to auto color mode">
         <span>/</span>
         <meta itemprop="position" content="3" />
       </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-        <strong itemprop="name"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></strong>
+        <strong itemprop="name"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></strong>
         <meta itemprop="position" content="4" />
       </li></ol>
     <div class="xl:hidden ml-1">
@@ -418,7 +442,7 @@ data-aria-dark="Switch to auto color mode">
     <button
       type="button"
       class="js-copy px-3 py-1 inline-flex items-center gap-1"
-      data-url="https://rgpot.rgoswami.me/_sources/crates/rgpot_core/potential.rst.txt"
+      data-url="https://rgpot.rgoswami.me/_sources/crates/rgpot_core/profile.rst.txt"
     >
       <i class="i-lucide" data-icon="copy"></i>
       <span>Copy page</span>
@@ -432,111 +456,192 @@ data-aria-dark="Switch to auto color mode">
     <div role="presentation">
       <div class="flex flex-col" role="group">
         <button class="js-copy" type="button" role="menuitem"
-          data-url="https://rgpot.rgoswami.me/_sources/crates/rgpot_core/potential.rst.txt">
+          data-url="https://rgpot.rgoswami.me/_sources/crates/rgpot_core/profile.rst.txt">
           <span class="iconify-icon">
             <i class="i-lucide" data-icon="copy"></i>
           </span>
           <span>Copy page</span>
         </button>
-        <a role="menuitem" href="https://rgpot.rgoswami.me/_sources/crates/rgpot_core/potential.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
-            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20https%3A//rgpot.rgoswami.me/_sources/crates/rgpot_core/potential.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        <a role="menuitem" href="https://rgpot.rgoswami.me/_sources/crates/rgpot_core/profile.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
+            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20https%3A//rgpot.rgoswami.me/_sources/crates/rgpot_core/profile.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:openai"></iconify-icon>
           <span>Open in ChatGPT</span>
-        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20https%3A//rgpot.rgoswami.me/_sources/crates/rgpot_core/potential.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20https%3A//rgpot.rgoswami.me/_sources/crates/rgpot_core/profile.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:claude"></iconify-icon>
           <span>Open in Claude</span>
         </a></div>
     </div>
   </div>
 </div><article class="yue dark-code" role="main">
-          <section id="mod-potential">
-<h1><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code><a class="headerlink" href="#mod-potential" title="Link to this heading">¶</a></h1>
+          <section id="mod-profile">
+<h1><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code><a class="headerlink" href="#mod-profile" title="Link to this heading">¶</a></h1>
 <dl class="rust module">
-<dt class="sig sig-object rust" id="rgpot_core-potential">
-<span class="sig-name descname"><span class="k"><span class="pre">module</span></span><span class="w"> </span><span class="n"><span class="pre">potential</span></span></span><a class="headerlink" href="#rgpot_core-potential" title="Link to this definition">¶</a></dt>
-<dd><p>Callback-based potential dispatch.</p>
-<p>This module defines <code class="docutils literal notranslate"><span class="pre">PotentialImpl</span></code>, an opaque handle that wraps a C
-function pointer callback together with a <code class="docutils literal notranslate"><span class="pre">void*</span> <span class="pre">user_data</span></code> and an optional
-destructor. This is the core abstraction that lets existing C++ potentials
-(LJ, CuH2, or any future implementation) plug into the Rust infrastructure
-without the Rust side knowing the concrete type.</p>
-<p><strong>How it Works</strong></p>
-<ol class="arabic simple">
-<li><p>The C++ side creates a potential object (e.g., <code class="docutils literal notranslate"><span class="pre">LJPot</span></code>).</p></li>
-<li><p>A trampoline function with the <code class="docutils literal notranslate"><span class="pre">PotentialCallback</span></code> signature is
-registered, casting <code class="docutils literal notranslate"><span class="pre">user_data</span></code> back to the concrete type and calling
-<code class="docutils literal notranslate"><span class="pre">forceImpl</span></code>.</p></li>
-<li><p>The Rust core dispatches through the function pointer, receiving results
-via the <code class="docutils literal notranslate"><span class="pre">rgpot_force_out_t</span></code> output struct.</p></li>
-</ol>
-<p><strong>Lifetime Contract</strong></p>
-<ul class="simple">
-<li><p>The <code class="docutils literal notranslate"><span class="pre">user_data</span></code> pointer is borrowed by <code class="docutils literal notranslate"><span class="pre">PotentialImpl</span></code>. The caller must
-keep the underlying object alive for the lifetime of the handle.</p></li>
-<li><p>If a <code class="docutils literal notranslate"><span class="pre">free_fn</span></code> is provided, it is called on drop when <code class="docutils literal notranslate"><span class="pre">user_data</span></code> is
-non-null, transferring ownership to <code class="docutils literal notranslate"><span class="pre">PotentialImpl</span></code>.</p></li>
-<li><p>The handle is exposed to C as <code class="docutils literal notranslate"><span class="pre">rgpot_potential_t</span></code> — an opaque pointer
-managed via <code class="docutils literal notranslate"><span class="pre">rgpot_potential_new</span></code> / <code class="docutils literal notranslate"><span class="pre">rgpot_potential_free</span></code>.</p></li>
-</ul>
-<p class="rubric">Re-exports</p>
-<ul class="simple">
-<li><p>:rust:any:<code class="docutils literal notranslate"><span class="pre">rgpot_core::eindir::rgpot_potential_t</span></code></p></li>
-</ul>
+<dt class="sig sig-object rust" id="rgpot_core-profile">
+<span class="sig-name descname"><span class="k"><span class="pre">module</span></span><span class="w"> </span><span class="n"><span class="pre">profile</span></span></span><a class="headerlink" href="#rgpot_core-profile" title="Link to this definition">¶</a></dt>
+<dd><p>Native loader for the minimum potential ABI profile.</p>
+<p>A backend prefix such as <code class="docutils literal notranslate"><span class="pre">nwchemc</span></code> or <code class="docutils literal notranslate"><span class="pre">cpmdc</span></code> selects one conforming
+shared library. The library receives <code class="docutils literal notranslate"><span class="pre">PotentialConfig</span></code> bytes once, keeps a
+persistent session, and receives <code class="docutils literal notranslate"><span class="pre">ForceInput</span></code> bytes for every geometry.
+Results return as <code class="docutils literal notranslate"><span class="pre">PotentialResult</span></code> bytes in the units requested by the
+input message.</p>
 <p class="rubric">Types</p>
 <dl class="rust type">
-<dt class="sig sig-object rust" id="rgpot_core-potential-FreeFn">
-<span class="sig-name descname"><span class="k"><span class="pre">type</span></span><span class="w"> </span><span class="n"><span class="pre">FreeFn</span></span></span><a class="headerlink" href="#rgpot_core-potential-FreeFn" title="Link to this definition">¶</a></dt>
-<dd><p>Destructor for the user_data pointer.</p>
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileResult">
+<span class="sig-name descname"><span class="k"><span class="pre">type</span></span><span class="w"> </span><span class="n"><span class="pre">ProfileResult</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">T</span></span><span class="p"><span class="pre">&gt;</span></span></span><a class="headerlink" href="#rgpot_core-profile-ProfileResult" title="Link to this definition">¶</a></dt>
+<dd><p>Result type for profile loading and evaluation.</p>
 </dd></dl>
 
-<dl class="rust type">
-<dt class="sig sig-object rust" id="rgpot_core-potential-PotentialCallback">
-<span class="sig-name descname"><span class="k"><span class="pre">type</span></span><span class="w"> </span><span class="n"><span class="pre">PotentialCallback</span></span></span><a class="headerlink" href="#rgpot_core-potential-PotentialCallback" title="Link to this definition">¶</a></dt>
-<dd><p>Function pointer type for a potential energy calculation.</p>
-<p>The callback receives:
-- <code class="docutils literal notranslate"><span class="pre">user_data</span></code>: opaque pointer to the C++ object (e.g. <code class="docutils literal notranslate"><span class="pre">LJPot*</span></code>)
-- <code class="docutils literal notranslate"><span class="pre">input</span></code>: the atomic configuration (DLPack tensors)
-- <code class="docutils literal notranslate"><span class="pre">output</span></code>: the buffer for results (callback sets <code class="docutils literal notranslate"><span class="pre">forces</span></code> tensor)</p>
-<p>Returns <code class="docutils literal notranslate"><span class="pre">RGPOT_SUCCESS</span></code> on success, or an error status code.</p>
+<p class="rubric">Functions</p>
+<dl class="rust function">
+<dt class="sig sig-object rust" id="rgpot_core-profile-decode_potential_result">
+<span class="sig-name descname"><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">decode_potential_result</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">encoded</span></span><span class="p"><span class="pre">:</span> </span><span class="p"><span class="pre">&amp;</span></span><span class="p"><span class="pre">[</span></span><span class="n"><span class="pre">u8</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">expected_force_count</span></span><span class="p"><span class="pre">:</span> </span><span class="n"><span class="pre">usize</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-profile-ProfileResult" title="rgpot_core::profile::ProfileResult"><span class="n"><span class="pre">ProfileResult</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#rgpot_core-profile-ProfileEvaluation" title="rgpot_core::profile::ProfileEvaluation"><span class="n"><span class="pre">ProfileEvaluation</span></span></a><span class="p"><span class="pre">&gt;</span></span></span><a class="headerlink" href="#rgpot_core-profile-decode_potential_result" title="Link to this definition">¶</a></dt>
+<dd><p>Decode the energy and force fields from a shared <code class="docutils literal notranslate"><span class="pre">PotentialResult</span></code> carrier.</p>
+</dd></dl>
+
+<dl class="rust function">
+<dt class="sig sig-object rust" id="rgpot_core-profile-encode_force_input">
+<span class="sig-name descname"><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">encode_force_input</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span> </span><span class="p"><span class="pre">&amp;</span></span><a class="reference internal" href="#rgpot_core-profile-ProfileRequest" title="rgpot_core::profile::ProfileRequest"><span class="n"><span class="pre">ProfileRequest</span></span></a><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">'_</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-profile-ProfileResult" title="rgpot_core::profile::ProfileResult"><span class="n"><span class="pre">ProfileResult</span></span></a><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">Vec</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">u8</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span></span><a class="headerlink" href="#rgpot_core-profile-encode_force_input" title="Link to this definition">¶</a></dt>
+<dd><p>Serialize a request as the shared <code class="docutils literal notranslate"><span class="pre">ForceInput</span></code> carrier.</p>
+</dd></dl>
+
+<dl class="rust function">
+<dt class="sig sig-object rust" id="rgpot_core-profile-library_candidates">
+<span class="sig-name descname"><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">library_candidates</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">prefix</span></span><span class="p"><span class="pre">:</span> </span><span class="p"><span class="pre">&amp;</span></span><span class="n"><span class="pre">str</span></span><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">explicit_path</span></span><span class="p"><span class="pre">:</span> </span><span class="n"><span class="pre">Option</span></span><span class="p"><span class="pre">&lt;</span></span><span class="p"><span class="pre">&amp;</span></span><span class="n"><span class="pre">str</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><span class="n"><span class="pre">Vec</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">String</span></span><span class="p"><span class="pre">&gt;</span></span></span><a class="headerlink" href="#rgpot_core-profile-library_candidates" title="Link to this definition">¶</a></dt>
+<dd><p>Ordered shared-library candidates for a backend prefix.</p>
 </dd></dl>
 
 <p class="rubric">Structs and Unions</p>
 <dl class="rust struct">
-<dt class="sig sig-object rust" id="rgpot_core-potential-PotentialImpl">
-<span class="sig-name descname"><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="n"><span class="pre">PotentialImpl</span></span></span><a class="headerlink" href="#rgpot_core-potential-PotentialImpl" title="Link to this definition">¶</a></dt>
-<dd><p>Opaque potential handle wrapping a callback + user data.</p>
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileError">
+<span class="sig-name descname"><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="n"><span class="pre">ProfileError</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">String</span></span><span class="p"><span class="pre">)</span></span></span><a class="headerlink" href="#rgpot_core-profile-ProfileError" title="Link to this definition">¶</a></dt>
+<dd><p>Error raised while loading or driving a potential profile.</p>
 <p class="rubric">Implementations</p>
 <dl class="rust impl">
-<dt class="sig sig-object rust" id="rgpot_core-potential-PotentialImpl">
-<span class="sig-name descname"><span class="k"><span class="pre">impl</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-potential-PotentialImpl" title="rgpot_core::potential::PotentialImpl"><span class="n"><span class="pre">PotentialImpl</span></span></a></span><a class="headerlink" href="#rgpot_core-potential-PotentialImpl" title="Link to this definition">¶</a></dt>
-<dd><p class="rubric">Functions</p>
-<dl class="rust function">
-<dt class="sig sig-object rust" id="rgpot_core-potential-PotentialImpl-calculate">
-<span class="sig-name descname"><span class="k"><span class="pre">unsafe</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">calculate</span></span><span class="p"><span class="pre">(</span></span><span class="p"><span class="pre">&amp;</span></span><span class="k"><span class="pre">self</span></span><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">input</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="types.html#rgpot_core-types-rgpot_force_input_t" title="rgpot_core::types::rgpot_force_input_t"><span class="n"><span class="pre">rgpot_force_input_t</span></span></a><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">output</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">mut</span></span><span class="w"> </span><a class="reference internal" href="types.html#rgpot_core-types-rgpot_force_out_t" title="rgpot_core::types::rgpot_force_out_t"><span class="n"><span class="pre">rgpot_force_out_t</span></span></a><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><a class="reference internal" href="status.html#rgpot_core-status-rgpot_status_t" title="rgpot_core::status::rgpot_status_t"><span class="n"><span class="pre">rgpot_status_t</span></span></a></span><a class="headerlink" href="#rgpot_core-potential-PotentialImpl-calculate" title="Link to this definition">¶</a></dt>
-<dd><p>Invoke the underlying callback.</p>
-<p><strong>Safety</strong>
-The caller must ensure <code class="docutils literal notranslate"><span class="pre">input</span></code> and <code class="docutils literal notranslate"><span class="pre">output</span></code> point to valid, properly
-sized structures.</p>
-</dd></dl>
-
-<dl class="rust function">
-<dt class="sig sig-object rust" id="rgpot_core-potential-PotentialImpl-new">
-<span class="sig-name descname"><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">new</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">callback</span></span><span class="p"><span class="pre">:</span> </span><a class="reference internal" href="#rgpot_core-potential-PotentialCallback" title="rgpot_core::potential::PotentialCallback"><span class="n"><span class="pre">PotentialCallback</span></span></a><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">user_data</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">mut</span></span><span class="w"> </span><span class="n"><span class="pre">c_void</span></span><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">free_fn</span></span><span class="p"><span class="pre">:</span> </span><span class="n"><span class="pre">Option</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#rgpot_core-potential-FreeFn" title="rgpot_core::potential::FreeFn"><span class="n"><span class="pre">FreeFn</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><span class="n"><span class="pre">Self</span></span></span><a class="headerlink" href="#rgpot_core-potential-PotentialImpl-new" title="Link to this definition">¶</a></dt>
-<dd><p>Create a new potential from a callback, user data, and optional destructor.</p>
-</dd></dl>
-
-</dd></dl>
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileError">
+<span class="sig-name descname"><span class="k"><span class="pre">impl</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-profile-ProfileError" title="rgpot_core::profile::ProfileError"><span class="n"><span class="pre">ProfileError</span></span></a></span><a class="headerlink" href="#rgpot_core-profile-ProfileError" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
 
 <p class="rubric">Traits implemented</p>
 <dl class="rust impl">
-<dt class="sig sig-object rust" id="rgpot_core-potential-PotentialImpl-Send">
-<span class="sig-name descname"><span class="k"><span class="pre">unsafe</span></span><span class="w"> </span><span class="k"><span class="pre">impl</span></span><span class="w"> </span><span class="n"><span class="pre">Send</span></span><span class="w"> </span><span class="k"><span class="pre">for</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-potential-PotentialImpl" title="rgpot_core::potential::PotentialImpl"><span class="n"><span class="pre">PotentialImpl</span></span></a></span><a class="headerlink" href="#rgpot_core-potential-PotentialImpl-Send" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileError-Display">
+<span class="sig-name descname"><span class="k"><span class="pre">impl</span></span><span class="w"> </span><span class="n"><span class="pre">fmt</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">Display</span></span><span class="w"> </span><span class="k"><span class="pre">for</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-profile-ProfileError" title="rgpot_core::profile::ProfileError"><span class="n"><span class="pre">ProfileError</span></span></a></span><a class="headerlink" href="#rgpot_core-profile-ProfileError-Display" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="rust impl">
-<dt class="sig sig-object rust" id="rgpot_core-potential-PotentialImpl-Drop">
-<span class="sig-name descname"><span class="k"><span class="pre">impl</span></span><span class="w"> </span><span class="n"><span class="pre">Drop</span></span><span class="w"> </span><span class="k"><span class="pre">for</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-potential-PotentialImpl" title="rgpot_core::potential::PotentialImpl"><span class="n"><span class="pre">PotentialImpl</span></span></a></span><a class="headerlink" href="#rgpot_core-potential-PotentialImpl-Drop" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileError-Error">
+<span class="sig-name descname"><span class="k"><span class="pre">impl</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">error</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">Error</span></span><span class="w"> </span><span class="k"><span class="pre">for</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-profile-ProfileError" title="rgpot_core::profile::ProfileError"><span class="n"><span class="pre">ProfileError</span></span></a></span><a class="headerlink" href="#rgpot_core-profile-ProfileError-Error" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
+
+<dl class="rust impl">
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileError-From">
+<span class="sig-name descname"><span class="k"><span class="pre">impl</span></span><span class="w"> </span><span class="n"><span class="pre">From</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">capnp</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">Error</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="k"><span class="pre">for</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-profile-ProfileError" title="rgpot_core::profile::ProfileError"><span class="n"><span class="pre">ProfileError</span></span></a></span><a class="headerlink" href="#rgpot_core-profile-ProfileError-From" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="rust struct">
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileEvaluation">
+<span class="sig-name descname"><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="n"><span class="pre">ProfileEvaluation</span></span></span><a class="headerlink" href="#rgpot_core-profile-ProfileEvaluation" title="Link to this definition">¶</a></dt>
+<dd><p>Energy and forces returned by one fused backend calculation.</p>
+<dl class="rust variable">
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileEvaluation-energy">
+<span class="sig-name descname"><span class="n"><span class="pre">energy</span></span><span class="p"><span class="pre">:</span> </span><span class="n"><span class="pre">f64</span></span></span><a class="headerlink" href="#rgpot_core-profile-ProfileEvaluation-energy" title="Link to this definition">¶</a></dt>
+<dd><p>Energy in the <code class="docutils literal notranslate"><span class="pre">ProfileRequest::energy_unit</span></code> unit.</p>
+</dd></dl>
+
+<dl class="rust variable">
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileEvaluation-forces">
+<span class="sig-name descname"><span class="n"><span class="pre">forces</span></span><span class="p"><span class="pre">:</span> </span><span class="n"><span class="pre">Vec</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">f64</span></span><span class="p"><span class="pre">&gt;</span></span></span><a class="headerlink" href="#rgpot_core-profile-ProfileEvaluation-forces" title="Link to this definition">¶</a></dt>
+<dd><p>Forces in energy-unit per length-unit.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="rust struct">
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileRequest">
+<span class="sig-name descname"><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="n"><span class="pre">ProfileRequest</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">'a</span></span><span class="p"><span class="pre">&gt;</span></span></span><a class="headerlink" href="#rgpot_core-profile-ProfileRequest" title="Link to this definition">¶</a></dt>
+<dd><p>One atomistic evaluation sent through a profile session.</p>
+<dl class="rust variable">
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileRequest-positions">
+<span class="sig-name descname"><span class="n"><span class="pre">positions</span></span><span class="p"><span class="pre">:</span> </span><span class="p"><span class="pre">&amp;</span></span><span class="k"><span class="pre">'a</span></span><span class="w"> </span><span class="p"><span class="pre">[</span></span><span class="n"><span class="pre">f64</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#rgpot_core-profile-ProfileRequest-positions" title="Link to this definition">¶</a></dt>
+<dd><p>Flat Cartesian coordinates, three values per atom.</p>
+</dd></dl>
+
+<dl class="rust variable">
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileRequest-atomic_numbers">
+<span class="sig-name descname"><span class="n"><span class="pre">atomic_numbers</span></span><span class="p"><span class="pre">:</span> </span><span class="p"><span class="pre">&amp;</span></span><span class="k"><span class="pre">'a</span></span><span class="w"> </span><span class="p"><span class="pre">[</span></span><span class="n"><span class="pre">i32</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#rgpot_core-profile-ProfileRequest-atomic_numbers" title="Link to this definition">¶</a></dt>
+<dd><p>Atomic numbers in the same atom order as <code class="docutils literal notranslate"><span class="pre">positions</span></code>.</p>
+</dd></dl>
+
+<dl class="rust variable">
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileRequest-box_matrix">
+<span class="sig-name descname"><span class="n"><span class="pre">box_matrix</span></span><span class="p"><span class="pre">:</span> </span><span class="n"><span class="pre">Option</span></span><span class="p"><span class="pre">&lt;</span></span><span class="p"><span class="pre">&amp;</span></span><span class="k"><span class="pre">'a</span></span><span class="w"> </span><span class="p"><span class="pre">[</span></span><span class="n"><span class="pre">f64</span></span><span class="p"><span class="pre">;</span> </span><span class="s"><span class="pre">9</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">&gt;</span></span></span><a class="headerlink" href="#rgpot_core-profile-ProfileRequest-box_matrix" title="Link to this definition">¶</a></dt>
+<dd><p>Optional row-major 3x3 simulation cell; molecular inputs use <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
+</dd></dl>
+
+<dl class="rust variable">
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileRequest-length_unit">
+<span class="sig-name descname"><span class="n"><span class="pre">length_unit</span></span><span class="p"><span class="pre">:</span> </span><span class="p"><span class="pre">&amp;</span></span><span class="k"><span class="pre">'a</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></span><a class="headerlink" href="#rgpot_core-profile-ProfileRequest-length_unit" title="Link to this definition">¶</a></dt>
+<dd><p>Unit expression for coordinates and cell vectors.</p>
+</dd></dl>
+
+<dl class="rust variable">
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileRequest-energy_unit">
+<span class="sig-name descname"><span class="n"><span class="pre">energy_unit</span></span><span class="p"><span class="pre">:</span> </span><span class="p"><span class="pre">&amp;</span></span><span class="k"><span class="pre">'a</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></span><a class="headerlink" href="#rgpot_core-profile-ProfileRequest-energy_unit" title="Link to this definition">¶</a></dt>
+<dd><p>Unit expression requested for energy and forces.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="rust struct">
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileSession">
+<span class="sig-name descname"><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="n"><span class="pre">ProfileSession</span></span></span><a class="headerlink" href="#rgpot_core-profile-ProfileSession" title="Link to this definition">¶</a></dt>
+<dd><p>One persistent session loaded through the prefix-generic potential profile.</p>
+<p class="rubric">Implementations</p>
+<dl class="rust impl">
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileSession">
+<span class="sig-name descname"><span class="k"><span class="pre">impl</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-profile-ProfileSession" title="rgpot_core::profile::ProfileSession"><span class="n"><span class="pre">ProfileSession</span></span></a></span><a class="headerlink" href="#rgpot_core-profile-ProfileSession" title="Link to this definition">¶</a></dt>
+<dd><p class="rubric">Functions</p>
+<dl class="rust function">
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileSession-abi_version">
+<span class="sig-name descname"><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">abi_version</span></span><span class="p"><span class="pre">(</span></span><span class="p"><span class="pre">&amp;</span></span><span class="k"><span class="pre">self</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><span class="n"><span class="pre">i32</span></span></span><a class="headerlink" href="#rgpot_core-profile-ProfileSession-abi_version" title="Link to this definition">¶</a></dt>
+<dd><p>Numeric ABI generation reported by the backend.</p>
+</dd></dl>
+
+<dl class="rust function">
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileSession-evaluate">
+<span class="sig-name descname"><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">evaluate</span></span><span class="p"><span class="pre">(</span></span><span class="p"><span class="pre">&amp;</span></span><span class="k"><span class="pre">mut</span></span><span class="w"> </span><span class="k"><span class="pre">self</span></span><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span> </span><span class="p"><span class="pre">&amp;</span></span><a class="reference internal" href="#rgpot_core-profile-ProfileRequest" title="rgpot_core::profile::ProfileRequest"><span class="n"><span class="pre">ProfileRequest</span></span></a><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">'_</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-profile-ProfileResult" title="rgpot_core::profile::ProfileResult"><span class="n"><span class="pre">ProfileResult</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#rgpot_core-profile-ProfileEvaluation" title="rgpot_core::profile::ProfileEvaluation"><span class="n"><span class="pre">ProfileEvaluation</span></span></a><span class="p"><span class="pre">&gt;</span></span></span><a class="headerlink" href="#rgpot_core-profile-ProfileSession-evaluate" title="Link to this definition">¶</a></dt>
+<dd><p>Evaluate one geometry through the persistent session.</p>
+</dd></dl>
+
+<dl class="rust function">
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileSession-library_path">
+<span class="sig-name descname"><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">library_path</span></span><span class="p"><span class="pre">(</span></span><span class="p"><span class="pre">&amp;</span></span><span class="k"><span class="pre">self</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n"><span class="pre">str</span></span></span><a class="headerlink" href="#rgpot_core-profile-ProfileSession-library_path" title="Link to this definition">¶</a></dt>
+<dd><p>Path of the shared library selected by the candidate search.</p>
+</dd></dl>
+
+<dl class="rust function">
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileSession-load">
+<span class="sig-name descname"><span class="k"><span class="pre">unsafe</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">load</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">prefix</span></span><span class="p"><span class="pre">:</span> </span><span class="p"><span class="pre">&amp;</span></span><span class="n"><span class="pre">str</span></span><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">explicit_path</span></span><span class="p"><span class="pre">:</span> </span><span class="n"><span class="pre">Option</span></span><span class="p"><span class="pre">&lt;</span></span><span class="p"><span class="pre">&amp;</span></span><span class="n"><span class="pre">Path</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">config</span></span><span class="p"><span class="pre">:</span> </span><span class="p"><span class="pre">&amp;</span></span><span class="p"><span class="pre">[</span></span><span class="n"><span class="pre">u8</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-profile-ProfileResult" title="rgpot_core::profile::ProfileResult"><span class="n"><span class="pre">ProfileResult</span></span></a><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">Self</span></span><span class="p"><span class="pre">&gt;</span></span></span><a class="headerlink" href="#rgpot_core-profile-ProfileSession-load" title="Link to this definition">¶</a></dt>
+<dd><p>Load a conforming backend and create one session from <code class="docutils literal notranslate"><span class="pre">PotentialConfig</span></code> bytes.</p>
+<p><strong>Safety</strong></p>
+<p>The selected shared library must implement the minimum potential ABI
+profile for <code class="docutils literal notranslate"><span class="pre">prefix</span></code> with the C layouts defined by the profile contract.</p>
+</dd></dl>
+
+<dl class="rust function">
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileSession-prefix">
+<span class="sig-name descname"><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">prefix</span></span><span class="p"><span class="pre">(</span></span><span class="p"><span class="pre">&amp;</span></span><span class="k"><span class="pre">self</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n"><span class="pre">str</span></span></span><a class="headerlink" href="#rgpot_core-profile-ProfileSession-prefix" title="Link to this definition">¶</a></dt>
+<dd><p>Backend prefix used to resolve the profile symbols.</p>
+</dd></dl>
+
+<dl class="rust function">
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileSession-version">
+<span class="sig-name descname"><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">version</span></span><span class="p"><span class="pre">(</span></span><span class="p"><span class="pre">&amp;</span></span><span class="k"><span class="pre">self</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n"><span class="pre">str</span></span></span><a class="headerlink" href="#rgpot_core-profile-ProfileSession-version" title="Link to this definition">¶</a></dt>
+<dd><p>Human-readable backend version string.</p>
+</dd></dl>
+
+</dd></dl>
 
 </dd></dl>
 
@@ -550,16 +655,16 @@ sized structures.</p>
   </svg>
   <span>Back to top</span>
 </button><div class="navigation flex print:hidden"><div class="navigation-prev">
-    <a href="status.html">
+    <a href="Potentials_capnp.html">
       <i class="i-lucide chevron-left"></i>
       <div class="page-info">
-        <span>Previous</span><div class="title"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">status</span></code></div></div>
+        <span>Previous</span><div class="title"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></div></div>
     </a>
   </div><div class="navigation-next">
-    <a href="eindir.html">
+    <a href="rpc.html">
       <div class="page-info">
         <span>Next</span>
-        <div class="title"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">eindir</span></code></div>
+        <div class="title"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></div>
       </div>
       <i class="i-lucide chevron-right"></i>
     </a>

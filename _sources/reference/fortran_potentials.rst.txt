@@ -23,7 +23,8 @@ replaced.
 2 Rules
 -------
 
-1. **Module, ``implicit none``, ``private`` by default.** Export the physics entry points
+1. **Module, ``implicit none``, ``private`` by default.** Export the physics entry
+   points
 
 and the parameter type; nothing else.
 
@@ -32,7 +33,8 @@ and the parameter type; nothing else.
 No ``real*8``, no ``double precision``, no kind literals spelled out at use sites.
 The module asserts ``wp == c_double`` at compile time.
 
-1. **No COMMON, no ``save`` state in the physics.** Parameters live in a derived type
+1. **No COMMON, no ``save`` state in the physics.** Parameters live in a derived
+   type
 
 with defaults; scratch lives in local automatic arrays.
 Saved state is allowed only in the ``_capi`` module (the neighbour table and the
@@ -42,7 +44,8 @@ parameter set), never in a kernel.
 
 ``contiguous`` where the caller can guarantee it.
 
-1. **No ``goto``, no arithmetic ``if``, no labelled ``do``.** Structured control flow only.
+1. **No ``goto``, no arithmetic ``if``, no labelled ``do``.** Structured control flow
+   only.
 
 ``cycle`` and ``exit`` replace jump targets.
 
@@ -83,13 +86,13 @@ because ``do concurrent`` gained reduction clauses only in Fortran 2023.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Compilers are not obliged to run these iterations in parallel, and by default
-gfortran does not: without ``-ftree-parallelize-loops`` (or a compiler that
-maps the construct onto threads) it treats the construct as an assertion about
+gfortran does not: without ``-ftree-parallelize-loops`` (or a compiler that maps
+the construct onto threads) it treats the construct as an assertion about
 independence.
 The assertion is still worth having.
 It licenses vectorisation, it documents the dependency structure for the next
-reader, and above all it forces the discipline that made the port correct:
-every procedure the loop body calls must be ``pure``, and every write must land in
+reader, and above all it forces the discipline that made the port correct: every
+procedure the loop body calls must be ``pure``, and every write must land in
 memory no other iteration touches.
 Turning the construct into real parallelism later is then a compiler flag rather
 than a rewrite.
@@ -150,8 +153,8 @@ so two archives that both ``link_with`` a third each carry its objects, and the
 umbrella then sees every symbol twice.
 Linking dependencies belong on the umbrella and on leaf binaries, where the
 objects arrive once.
-This is why ``vesin_dep`` has a ``vesin_hdr_dep`` counterpart, and ``ptlrpc_dep``
-a ``ptlrpc_hdr_dep``.
+This is why ``vesin_dep`` has a ``vesin_hdr_dep`` counterpart, and ``ptlrpc_dep`` a
+``ptlrpc_hdr_dep``.
 
 - The **Fortran runtime is named explicitly**.
 

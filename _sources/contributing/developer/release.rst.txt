@@ -4,8 +4,9 @@ Release Process
 ---------------
 
 rgpot uses a **lockstep monorepo version**: the same SemVer appears in
-``meson.build``, ``CMakeLists.txt`` (``project(VERSION ...)``), ``rgpot-core/ Cargo.toml``, ``towncrier.toml``, and ``pixi.toml`` (workspace key only — not
-dependency pins such as nickel).
+``meson.build``, ``CMakeLists.txt`` (``project(VERSION ...)``),
+``rgpot-core/ Cargo.toml``, ``towncrier.toml``, and ``pixi.toml`` (workspace key only
+— not dependency pins such as nickel).
 Git tags are ``vX.Y.Z`` (see ``cog.toml`` ``tag_prefix``).
 Pre-release tags such as ``v1.2.0-rc.1`` are allowed; ``release.yml`` marks the
 GitHub Release as prerelease and **skips** ``cargo publish`` (stable crates.io
@@ -61,14 +62,15 @@ Tooling:
 
 references ``environment: release``; create under Settings > Environments).
 
-- Prefer **signed tags** when cutting locally: ``git tag -s vX.Y.Z`` (or ensure ``cog``
+- Prefer **signed tags** when cutting locally: ``git tag -s vX.Y.Z`` (or ensure
+  ``cog``
 
 produces signed tags if configured).
 GHA does not replace maintainer GPG.
 
-**C++ distribution note**: tag/source is the C++ contract; ``release.yml`` runs
-a minimal ``meson install`` smoke. Optional backends (xtb/tblite/metatomic) are
-validated on PRs via orchestrator potentials jobs, not re-run on every tag.
+**C++ distribution note**:
+tag/source is the C++ contract; ``release.yml`` runs a minimal ``meson install`` smoke. Optional backends (xtb/tblite/metatomic)
+are validated on PRs via orchestrator potentials jobs, not re-run on every tag.
 conda-forge / Spack / system packages are **out of band** (separate feedstock/PR
 track), not part of ``release.yml``.
 
@@ -90,7 +92,9 @@ Preview with ``uvx towncrier build --draft`` or ``pixi r towncrier-draft`` if
 defined.
 
 CI runs ``towncrier check`` on pull requests when shipped paths change
-(orchestrator ``towncrier`` runs on all PRs; fragments under ``CppCore/``, ``rgpot- core/``, meson, ``CMakeLists.txt``, ``pixi.toml``, release scripts, etc.).
+(orchestrator ``towncrier`` runs on all PRs; fragments under
+``CppCore/``, ``rgpot- core/``, meson, ``CMakeLists.txt``, ``pixi.toml``, release
+scripts, etc.).
 Pure ``docs`` / ``ci`` / ``chore`` commits may omit fragments if they avoid those
 paths.
 
@@ -101,7 +105,8 @@ Preparing a release (maintainer) — run as soon as this lands on ``main``
 
 relevant).
 
-1. Confirm fragments exist for everything since the last tag (=uvx towncrier build
+1. Confirm fragments exist for everything since the last tag (=uvx towncrier
+   build
 
 --draft=).
 
@@ -112,14 +117,16 @@ relevant).
        cargo run -q -p potctl -- release assert
        cargo publish --manifest-path rgpot-core/Cargo.toml --locked --dry-run
 
-2. Dry-run bump (optional; also GHA ``workflow_dispatch`` on ``release-prepare.yml``):
+2. Dry-run bump (optional; also GHA ``workflow_dispatch`` on
+   ``release-prepare.yml``):
 
    .. code:: bash
 
        cog bump --auto --dry-run
        # or: --patch / --minor / --major / --version 1.2.0
 
-3. Cut the release **locally** (needs push rights; does **not** publish to crates.io by
+3. Cut the release **locally** (needs push rights; does **not** publish to crates.io
+   by
 
 itself — the tag workflow does):
 
@@ -133,11 +140,13 @@ itself — the tag workflow does):
 
 Hooks (``cog.toml`` ``pre_bump_hooks``):
 
-- ``cargo run -q -p potctl -- release sync {{version}}`` — lockstep write (meson,
+- ``cargo run -q -p potctl -- release sync {{version}}`` — lockstep write
+  (meson,
 
 CMake, towncrier, Cargo, pixi workspace)
 
-- ``uvx towncrier build --yes --version {{version}}`` — update ``CHANGELOG.md``, clear
+- ``uvx towncrier build --yes --version {{version}}`` — update ``CHANGELOG.md``,
+  clear
 
 fragments
 
@@ -147,7 +156,8 @@ fragments
 
 1. Tag push triggers ``release.yml`` (staged, not one fat job):
 
-   - ``tools`` job: ``setup-ci-tools`` builds ``potctl`` (rust-cache ``shared-key`` =potctl-
+   - ``tools`` job: ``setup-ci-tools`` builds ``potctl`` (rust-cache ``shared-key``
+     =potctl-
 
 ci-tools=) and uploads artifact ``ci-tools-<sha>``
 
@@ -163,8 +173,9 @@ matrix work)
 ``prerelease``)
 
 Within a single job, steps share the runner FS (no reinstall per step).
-Across jobs, binaries travel via artifacts; ``cargo=/deps hit =Swatinem/rust- cache`` on tool and ``rgpot-core`` runners so the next tag cut is cheap when
-sources are unchanged.
+Across jobs, binaries travel via artifacts;
+``cargo=/deps hit =Swatinem/rust- cache`` on tool and ``rgpot-core`` runners so the
+next tag cut is cheap when sources are unchanged.
 
 Do **not** run ``cargo publish`` by hand unless CI is unavailable; the workflow is
 the source of truth.
@@ -194,7 +205,8 @@ Version policy
 
 - **Lockstep**: C++ (meson + CMake), Rust crate (``rgpot-core``), docs towncrier
 
-stamp, and pixi workspace version share one semver (optionally with ``-[a-z0- 9.]+`` suffix for RCs).
+stamp, and pixi workspace version share one semver (optionally with
+``-[a-z0- 9.]+`` suffix for RCs).
 
 - **One global tag**: ``vX.Y.Z`` or ``vX.Y.Z-rc.N`` (not ``rgpot-core-v…``).
 
@@ -241,14 +253,18 @@ Post-merge checklist (first 1.2.0 cut)
 
 1. Ensure ``rustc`` / ``cargo`` work (same as building ``rgpot-core``).
 
-2. On ``main``: ``cog bump --version 1.2.0`` (or ``--auto`` if you want cog to decide).
+2. On ``main``: ``cog bump --version 1.2.0`` (or ``--auto`` if you want cog to
+   decide).
 
 This runs ``potctl release sync``, ``towncrier build`` (so ``CHANGELOG.md`` gains
-``## [1.2.0]`` and fragments are cleared), then ``potctl release assert --require- changelog``.
+``## [1.2.0]`` and fragments are cleared), then
+``potctl release assert --require- changelog``.
 
-1. ``git push origin main --follow-tags`` (or push commit then ``v1.2.0`` explicitly).
+1. ``git push origin main --follow-tags`` (or push commit then ``v1.2.0``
+   explicitly).
 
-2. Confirm ``Release`` workflow: lockstep gate, smoke install, rust tests, crates.io,
+2. Confirm ``Release`` workflow: lockstep gate, smoke install, rust tests,
+   crates.io,
 
 GH Release body.
 
