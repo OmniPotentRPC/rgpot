@@ -34,10 +34,9 @@
 <link rel="apple-touch-icon" sizes="180x180" href="../_static/favicons/apple-touch-icon.png">
 <link rel="shortcut icon" href="../_static/favicons/favicon.ico">
 <link rel="manifest" href="../_static/favicons/site.webmanifest">
-<!-- Umami analytics -->
-<script defer src="https://analytics.turtletech.us/script.js" data-website-id="2a881f07-4e2d-4463-a396-b9b2e868aecb"></script>
-<script>window.umami=window.umami||{track:function(){}};document.addEventListener('click',function(e){var a=e.target.closest('a');if(a&&a.hostname!==location.hostname)umami.track('Outbound Link',{url:a.href})});</script>
-<script defer src="https://antics-api.turtletech.us/antics.js"></script></head>
+<!-- Antics analytics -->
+<script defer src="https://antics-api.turtletech.us/antics.js"></script>
+<script>window.antics=window.antics||{event:function(){}};document.addEventListener('click',function(e){var a=e.target.closest('a');if(a&&a.hostname&&a.hostname!==location.hostname)antics.event('Outbound Link',{url:a.href})});</script></head>
 <body><div class="sy-head">
   <div class="sy-head-blur"></div>
   <div class="sy-head-inner sy-container mx-auto">
@@ -562,11 +561,11 @@ E_i    = sum_j phi(r_ij)/2 + U(dens_i).</p>
           <span
             >Analytics by
             <a
-              href="https://umami.is/"
+              href="https://antics.turtletech.us/"
               target="_blank"
               rel="noopener noreferrer"
               style="color: inherit; text-decoration: underline"
-              >Umami</a
+              >antics</a>
             ></span
           >
         </span>
