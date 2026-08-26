@@ -4,13 +4,16 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
 
 #include "rgpot/UmaPot/UmaPot.hpp"
+#include "rgpot/UmaPot/aoti_execstack.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
 using Catch::Matchers::WithinAbs;
@@ -48,6 +51,110 @@ static std::string resolve_uma_omol_pt2() {
        "file at CppCore/tests/data/uma/uma-s-1p1-omol-hcn.pt2 or "
        "bench_data/uma/uma-s-1p1-omol-hcn.pt2");
   return {};
+}
+
+static std::vector<uint8_t> elf64_gnu_stack(uint32_t flags) {
+  std::vector<uint8_t> elf(120, 0);
+  elf[0] = 0x7f;
+  elf[1] = 'E';
+  elf[2] = 'L';
+  elf[3] = 'F';
+  elf[4] = 2;
+  elf[5] = 1;
+  elf[6] = 1;
+  elf[16] = 3;
+  elf[18] = 62;
+  elf[20] = 1;
+  elf[32] = 64;
+  elf[52] = 64;
+  elf[54] = 56;
+  elf[56] = 1;
+  rgpot::aoti_execstack::wr32(elf.data() + 64, 0x6474e551u);
+  rgpot::aoti_execstack::wr32(elf.data() + 68, flags);
+  return elf;
+}
+
+static std::vector<uint8_t> stored_zip_with_so(const std::vector<uint8_t> &so) {
+  const char *name = "model/foo.wrapper.so";
+  const uint16_t namelen = static_cast<uint16_t>(std::strlen(name));
+  const uint32_t sz = static_cast<uint32_t>(so.size());
+  std::vector<uint8_t> z;
+  auto push32 = [&](uint32_t v) {
+    z.push_back(uint8_t(v));
+    z.push_back(uint8_t(v >> 8));
+    z.push_back(uint8_t(v >> 16));
+    z.push_back(uint8_t(v >> 24));
+  };
+  auto push16 = [&](uint16_t v) {
+    z.push_back(uint8_t(v));
+    z.push_back(uint8_t(v >> 8));
+  };
+  push32(0x04034b50u);
+  push16(20);
+  push16(0);
+  push16(0);
+  push16(0);
+  push16(0);
+  push32(0);
+  push32(sz);
+  push32(sz);
+  push16(namelen);
+  push16(0);
+  z.insert(z.end(), name, name + namelen);
+  z.insert(z.end(), so.begin(), so.end());
+  const uint32_t local_len = 30u + namelen + sz;
+  push32(0x02014b50u);
+  push16(20);
+  push16(20);
+  push16(0);
+  push16(0);
+  push16(0);
+  push16(0);
+  push32(0);
+  push32(sz);
+  push32(sz);
+  push16(namelen);
+  push16(0);
+  push16(0);
+  push16(0);
+  push16(0);
+  push32(0);
+  push32(0);
+  z.insert(z.end(), name, name + namelen);
+  push32(0x06054b50u);
+  push16(0);
+  push16(0);
+  push16(1);
+  push16(1);
+  push32(46u + namelen);
+  push32(local_len);
+  push16(0);
+  return z;
+}
+
+TEST_CASE("clear_elf_gnu_stack drops PF_X", "[UmaPot][execstack]") {
+  auto elf = elf64_gnu_stack(7);
+  REQUIRE(rgpot::aoti_execstack::elf_needs_gnu_stack_clear(elf.data(),
+                                                           elf.size()));
+  REQUIRE(rgpot::aoti_execstack::clear_elf_gnu_stack(elf.data(), elf.size()));
+  REQUIRE_FALSE(rgpot::aoti_execstack::elf_needs_gnu_stack_clear(
+      elf.data(), elf.size()));
+  REQUIRE(rgpot::aoti_execstack::rd32(elf.data() + 68) == 6u);
+}
+
+TEST_CASE("prepare_pt2_for_load caches a noexec copy", "[UmaPot][execstack]") {
+  auto zip = stored_zip_with_so(elf64_gnu_stack(7));
+  const fs::path src = fs::temp_directory_path() / "rgpot-elmc-src.pt2";
+  {
+    std::ofstream out(src, std::ios::binary | std::ios::trunc);
+    REQUIRE(out.write(reinterpret_cast<const char *>(zip.data()),
+                      static_cast<std::streamsize>(zip.size())));
+  }
+  const std::string dst = rgpot::aoti_execstack::prepare_pt2_for_load(src.string());
+  REQUIRE(dst != src.string());
+  auto patched = rgpot::aoti_execstack::read_all(dst);
+  REQUIRE_FALSE(rgpot::aoti_execstack::scan_or_clear_pt2(
+      patched.data(), patched.size(), /*write=*/false));
 }
 
 TEST_CASE("UmaPot empty model_path throws", "[UmaPot]") {

@@ -2,6 +2,7 @@
 
 #include "rgpot/UmaPot/UmaPot.hpp"
 
+#include "rgpot/UmaPot/aoti_execstack.hpp"
 #include "rgpot/MetatomicPot/vesin_compat.hpp"
 #include "vesin.h"
 
@@ -184,9 +185,10 @@ void UmaPot::ensureLoaded() const {
   if (m_impl->loader)
     return;
   c10::InferenceMode guard;
+  const std::string load_path =
+      aoti_execstack::prepare_pt2_for_load(m_config.model_path);
   m_impl->loader =
-      std::make_unique<torch::inductor::AOTIModelPackageLoader>(
-          m_config.model_path);
+      std::make_unique<torch::inductor::AOTIModelPackageLoader>(load_path);
   // The package's embedded metadata is the runtime contract: one
   // producer (scripts/export_uma_aoti.py), the .pt2 self-describing.
   const auto meta = m_impl->loader->get_metadata();

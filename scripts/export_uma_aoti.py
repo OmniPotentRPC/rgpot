@@ -23,6 +23,11 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
+from aoti_execstack import clear_pt2_execstack  # noqa: E402
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -706,6 +711,7 @@ def aoti_package(exported, path: Path, metadata=None):
             }
         }
     fn(exported, **kwargs)
+    clear_pt2_execstack(path)
     return path
 
 
