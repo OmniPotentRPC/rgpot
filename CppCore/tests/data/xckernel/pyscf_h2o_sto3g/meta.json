@@ -1,0 +1,21 @@
+{
+  "nao": 7,
+  "ngrid": 33704,
+  "geometry": "O 0 0 0; H 0 0 0.96; H 0 0.93 -0.24",
+  "basis": "sto-3g",
+  "grids.level": 3,
+  "seeds": {
+    "dm1": 0,
+    "tda_z": 4,
+    "rpa_xy": 5,
+    "nz": 3
+  },
+  "functionals": {
+    "lda": "LDA_X,",
+    "gga": "GGA_X_PBE,",
+    "mgga_tau": "MGGA_X_SCAN,"
+  },
+  "libxckernel_rev": "d6a9d57ba3fe0f2763667ce168d0c0ef21cff4a4",
+  "pyscf_version": "2.13.1",
+  "pylibxc_version": "7.1.2"
+}
