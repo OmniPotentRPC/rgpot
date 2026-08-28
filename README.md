@@ -16,6 +16,13 @@ backend-configuration carrier:
 -   `PotentialConfig`: backend setup, with arms such as `none`, `nwchem`, and
     `cpmd`
 
+XC response kernels (`rgpot::XcKernel`, meson `-Dwith_xckernel=true`) are
+in-process only. They are not a `Potential`, and there is no
+`PotentialConfig.xckernel` arm: operands are collocation plus named Libxc
+arrays, not `ForceInput`. See `docs/xckernel.md`.
+`pylibxc` is not on PyPI (`pylibxc2` is an unrelated stub); use the
+conda-forge `libxc` package via `pixi install -e xckernel`.
+
 The public wire schema lives in `CppCore/rgpot/rpc/Potentials.capnp` and is
 shared by the C++ server, Python integration tests, and the Rust core crate.
 Native rgpot units are eV and Angstrom.
