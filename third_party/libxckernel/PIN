@@ -1,0 +1,5 @@
+libxckernel d6a9d57ba3fe0f2763667ce168d0c0ef21cff4a4
+families lda,gga,mgga_tau
+max_order 2
+command python3 -m xckernel.catalog third_party/libxckernel lda,gga,mgga_tau 2 c
+host rgam5terra
