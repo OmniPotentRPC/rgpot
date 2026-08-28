@@ -77,6 +77,11 @@ if not get_option('with_rpc_client_only')
         rgpotentials += [tblitepot]
     endif
 
+    if has_xckernel
+        subdir('rgpot/XcKernel')  # 'xckernel_api' over vendored libxckernel
+        rgpotentials += [xckernelpot]
+    endif
+
     # MetatomicDlopen frontend always (no torch). Engine/fat pot when has_metatomic.
     subdir('rgpot/MetatomicPot')
     _linkto += [metatomic_dlopen]
@@ -282,6 +287,33 @@ if get_option('with_tests')
         test_array += [
             ['TBLitetest', 'tblite_test', 'TBLitePotTest.cc', ''],
         ]
+    endif
+    if has_xckernel
+        xckernel_test_deps = test_deps + [dependency('zlib')]
+        test(
+            'XcKernelGolden',
+            executable(
+                'xckernel_golden_test',
+                sources: ['tests/XcKernelTest.cc'],
+                dependencies: xckernel_test_deps,
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+            ),
+            workdir: meson.source_root() / 'CppCore' / 'tests',
+            suite: 'xckernel',
+        )
+        test(
+            'XcKernelGoldenPy',
+            find_program('python3'),
+            args: [
+                meson.current_source_dir() / 'tests/test_xckernel_goldens.py',
+                meson.source_root(),
+            ],
+            suite: 'xckernel',
+            workdir: meson.source_root() / 'CppCore' / 'tests',
+        )
     endif
     if has_metatomic
         test_array += [
@@ -572,6 +604,9 @@ if not meson.is_subproject()
         endif
         if has_tblite
             _pc_cflags += ['-DRGPOT_HAS_TBLITE_POT=TRUE']
+        endif
+        if has_xckernel
+            _pc_cflags += ['-DRGPOT_HAS_XCKERNEL=TRUE']
         endif
     endif
     if _rpc_stack

@@ -248,6 +248,15 @@ if get_option('with_xtb')
     has_xtb = true
 endif
 
+# In-process XC kernel layer (libxckernel). Not a Potential; no pkg-config
+# libxc at runtime. Generated/vendored first-slice C lives under
+# third_party/libxckernel (families lda,gga,mgga_tau; max_order 2).
+has_xckernel = false
+if get_option('with_xckernel')
+    _args += ['-DRGPOT_HAS_XCKERNEL=TRUE']
+    has_xckernel = true
+endif
+
 # NWChemPot frontend always builds and dlopens the split nwchemc engine
 # (libnwchemc.so) at runtime. rgpot carries no in-process NWChem embed.
 _args += ['-DRGPOT_HAS_NWCHEM_FRONTEND=TRUE']

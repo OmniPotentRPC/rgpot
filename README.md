@@ -16,6 +16,11 @@ backend-configuration carrier:
 -   `PotentialConfig`: backend setup, with arms such as `none`, `nwchem`, and
     `cpmd`
 
+XC kernel contractions are a separate in-process type, `rgpot::XcKernel`
+(meson `-Dwith_xckernel`, default off). They are not a PES: there is no
+`PotentialConfig.xckernel` arm. See [docs/xckernel.md](docs/xckernel.md)
+and arXiv:2608.26440.
+
 The public wire schema lives in `CppCore/rgpot/rpc/Potentials.capnp` and is
 shared by the C++ server, Python integration tests, and the Rust core crate.
 Native rgpot units are eV and Angstrom.
@@ -65,6 +70,16 @@ they need pycapnp.
     meson compile -C bbdir
     meson test -C bbdir --print-errorlogs
     python tests/rpc_integ.py --server-bin ./bbdir/CppCore/potserv
+
+XC kernel contractions (`rgpot::XcKernel`, not a `Potential`) are off by
+default. On a remote builder, generate the first-slice C package, then:
+
+    pixi install -e xckernelbld
+    meson setup bbdir-xck -Dwith_xckernel=true -Dwith_tests=true
+    meson test -C bbdir-xck --suite xckernel --print-errorlogs
+
+`pylibxc` comes from conda-forge `libxc` in the `xckernel` pixi feature.
+Do not `pip install pylibxc` or `pylibxc2`. See `docs/xckernel.md`.
 
 CMake is supported as well:
 

@@ -25,12 +25,39 @@ xtbbld = { features = ["xtb"] }
 tblitebld = { features = ["tblite"] }
 tbbld = { features = ["xtb", "tblite"] }
 metatomicbld = { features = ["metatomic"] }
+xckernelbld = { features = ["xckernel"] }
+xckerneltest = { features = ["xckernel", "xckernel-test"] }
 [feature.cache.dependencies]
 rocksdb = ">=10.9.1,<11"
 xxhash = ">=0.8.3,<0.9"
 
 [feature.xtb.dependencies]
 xtb = ">=6.6.0,<7"
+
+# libxckernel generator + Libxc derivative arrays. Feature-gated like xtb:
+# the default workspace must not pull libxc. pylibxc ships inside the
+# conda-forge libxc package. Do not `pip install pylibxc` (that name is
+# missing on PyPI) and do not `pip install pylibxc2` (unrelated empty stub).
+# linux-64 only: first-slice generation and goldens run on rg.terra; win-64
+# has no conda-forge libxc in this range.
+[feature.xckernel]
+platforms = ["linux-64"]
+
+[feature.xckernel.dependencies]
+python = ">=3.11,<3.13"
+libxc = ">=6.2.0,<8"
+# Same feedstock as libxc (not PyPI pylibxc2). Split output on conda-forge 7.x.
+pylibxc = ">=6.2.0,<8"
+sympy = ">=1.12"
+numpy = ">=1.26"
+
+# Golden-master PySCF cross-check only. Not needed to compile libxckernel.
+[feature.xckernel-test]
+platforms = ["linux-64"]
+
+[feature.xckernel-test.dependencies]
+pyscf = ">=2.6"
+scipy = ">=1.13"
 
 [feature.tblite.dependencies]
 tblite = ">=0.3.0,<1"

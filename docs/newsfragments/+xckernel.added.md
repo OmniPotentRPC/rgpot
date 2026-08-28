@@ -1,0 +1,1 @@
+Add in-process `XcKernel` (libxckernel, arXiv:2608.26440) behind meson `-Dwith_xckernel` (default off). First slice is LDA/GGA/mGGA-tau Fock and fxc; Coulomb/HF/RSH stay host-owned and there is no `PotentialConfig` arm.

@@ -1,0 +1,4 @@
+libxckernel d6a9d57ba3fe0f2763667ce168d0c0ef21cff4a4
+families lda,gga,mgga_tau
+max_order 2
+backend c

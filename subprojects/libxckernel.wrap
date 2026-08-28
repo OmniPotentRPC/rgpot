@@ -1,0 +1,9 @@
+[wrap-git]
+directory = libxckernel-src
+url = https://github.com/susilehtola/libxckernel.git
+revision = d6a9d57ba3fe0f2763667ce168d0c0ef21cff4a4
+depth = 1
+
+[provide]
+# Generator pin only. rgpot vendors the first-slice C package under
+# third_party/libxckernel (lda,gga,mgga_tau; max_order 2). Do not float main.
