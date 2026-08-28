@@ -321,6 +321,7 @@ build-eon-min/
 # in the release tarball.
 third_party/*
 !third_party/vesin/
+!third_party/libxckernel/
 
 # NWChem embed/CLI runtime scratch written to the repo root (CWD) by the
 # nwchem smoke/embed tests. Root-anchored so they never shadow real sources.

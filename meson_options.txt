@@ -1,15 +1,31 @@
 # Booleans
-option('with_tests', type : 'boolean', value : false)
-option('with_examples', type : 'boolean', value : false)
-option('with_xtensor', type : 'boolean', value : false)
-option('with_eigen', type : 'boolean', value : false)
-option('with_rpc', type : 'boolean', value : false)
-option('with_rpc_client_only', type : 'boolean', value : false)
-option('with_cache', type : 'boolean', value : false)
-option('pure_lib', type : 'boolean', value : true)
-option('with_rust_core', type : 'boolean', value : false)
-option('with_xtb', type : 'boolean', value : false)
-option('with_tblite', type : 'boolean', value : false)
-option('with_metatomic', type : 'boolean', value : false)
-option('with_python', type : 'boolean', value : false, description : 'Build pip-installable Python package (rgpot._core)')
-option('with_fortran_pots', type : 'feature', value : 'auto', description : 'Fortran-backed potentials (CuH2; grows with the eOn migration). Independent of the RPC options.')
+option('with_tests', type: 'boolean', value: false)
+option('with_examples', type: 'boolean', value: false)
+option('with_xtensor', type: 'boolean', value: false)
+option('with_eigen', type: 'boolean', value: false)
+option('with_rpc', type: 'boolean', value: false)
+option('with_rpc_client_only', type: 'boolean', value: false)
+option('with_cache', type: 'boolean', value: false)
+option('pure_lib', type: 'boolean', value: true)
+option('with_rust_core', type: 'boolean', value: false)
+option('with_xtb', type: 'boolean', value: false)
+option(
+    'with_xckernel',
+    type: 'boolean',
+    value: false,
+    description: 'In-process libxckernel XC Fock/fxc (generated C ABI; not a Potential)',
+)
+option('with_tblite', type: 'boolean', value: false)
+option('with_metatomic', type: 'boolean', value: false)
+option(
+    'with_python',
+    type: 'boolean',
+    value: false,
+    description: 'Build pip-installable Python package (rgpot._core)',
+)
+option(
+    'with_fortran_pots',
+    type: 'feature',
+    value: 'auto',
+    description: 'Fortran-backed potentials (CuH2; grows with the eOn migration). Independent of the RPC options.',
+)

@@ -86,6 +86,7 @@ setup = [
   "-Dwith_fortran_pots=enabled",
   "-Dwith_metatomic=true",
   "-Dwith_xtb=false",
+  "-Dwith_xckernel=false",
   "-Dwith_tblite=false",
   "-Dwith_rust_core=false",
   "-Dwith_cache=false",

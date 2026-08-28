@@ -72,6 +72,11 @@ if not get_option('with_rpc_client_only')
         _linkto += [xtb_dlopen]
     endif
 
+    if has_xckernel
+        subdir('rgpot/XcKernel')  # in-process XcKernel, not a Potential
+        rgpotentials += [xckernel]
+    endif
+
     if has_tblite
         subdir('rgpot/TBLitePot')  # 'tblitepot'
         rgpotentials += [tblitepot]
@@ -458,6 +463,23 @@ if get_option('with_tests')
             workdir: meson.source_root() + test.get(3),
         )
     endforeach
+
+    if has_xckernel
+        test(
+            'XcKernelGoldens',
+            executable(
+                'xckernel_test',
+                sources: ['tests/XcKernelTest.cc'],
+                dependencies: test_deps,
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+            ),
+            workdir: meson.source_root(),
+            suite: 'xckernel',
+        )
+    endif
 
     if has_xtb
         xtb_test_env = environment()
