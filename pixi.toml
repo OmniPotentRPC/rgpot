@@ -26,6 +26,7 @@ xckernel = { features = ["xckernel"] }
 xckerneltest = { features = ["xckernel", "xckerneltest"] }
 dftd3 = { features = ["dftd3"] }
 dftd4 = { features = ["dftd4"] }
+dftd = { features = ["dftd3", "dftd4"] }
 tblitebld = { features = ["tblite"] }
 tbbld = { features = ["xtb", "tblite"] }
 metatomicbld = { features = ["metatomic"] }

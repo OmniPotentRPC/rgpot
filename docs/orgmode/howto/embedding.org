@@ -49,8 +49,8 @@ Enable only what the host project needs:
 |--------------+----------+---------|
 | =-Dwith_xtb=true= | =xtbbld= / =tbbld= | =XTBPot= (GFNFF, GFN0/1/2-xTB) |
 | =-Dwith_tblite=true= | =tblitebld= / =tbbld= | =TBLitePot= (GFN1, GFN2, IPEA1) |
-| =-Dwith_dftd3=true= | =dftd3= | =D3Pot= (DFT-D3 BJ/zero, explicit ATM) |
-| =-Dwith_dftd4=true= | =dftd4= | =D4Pot= (DFT-D4 functional/charge, explicit ATM) |
+| =-Dwith_dftd3=true= | =dftd3= / =dftd= | =D3Pot= (DFT-D3 BJ/zero, explicit ATM; goldens =meson test --suite dftd=) |
+| =-Dwith_dftd4=true= | =dftd4= / =dftd= | =D4Pot= (DFT-D4 functional/charge, explicit ATM; goldens =meson test --suite dftd=) |
 | =-Dwith_metatomic=true= | =metatomicbld= (linux-64) | =MetatomicPot= (TorchScript models) |
 
 =NWChemPot= is a pure consumer: the frontend is always compiled and

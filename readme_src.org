@@ -99,8 +99,8 @@ ctest --test-dir build_client --output-on-failure
 | =CuH2Pot= | =CuH2= | Built-in Cu-H EAM potential |
 | =XTBPot= | =XTB=, =GFNFF=, =GFN0xTB=, =GFN1xTB= | Enable with =-Dwith_xtb=true=; use pixi env =xtbbld= or =tbbld= |
 | =TBLitePot= | =TBLite=, =TBLiteGFN1=, =TBLiteIPEA1= | Enable with =-Dwith_tblite=true=; use pixi env =tblitebld= or =tbbld= |
-| =D3Pot= | =D3= | Enable with =-Dwith_dftd3=true=; use pixi env =dftd3=. BJ/zero damping, functional key, explicit ATM flag |
-| =D4Pot= | =D4= | Enable with =-Dwith_dftd4=true=; use pixi env =dftd4=. Functional key, charge, explicit ATM/many-body flag |
+| =D3Pot= | =D3= | Enable with =-Dwith_dftd3=true=; use pixi env =dftd3= or =dftd=. BJ/zero damping, functional key, explicit ATM flag. Goldens: =meson test --suite dftd= |
+| =D4Pot= | =D4= | Enable with =-Dwith_dftd4=true=; use pixi env =dftd4= or =dftd=. Functional key, charge, explicit ATM/many-body flag. Goldens: =meson test --suite dftd= |
 | =MetatomicPot= | =Metatomic:<model_path>= | Enable with =-Dwith_metatomic=true=; use pixi env =metatomicbld=. Pip engines: torch 2.7+ |
 | =NWChemPot= | =NWChem= | Frontend always builds; load =libnwchemc= from the split =nwchemc= project at runtime |
 | =CPMDPot= | =CPMD= | Frontend always builds; load =libcpmdc= from the split =cpmdc= project at runtime |

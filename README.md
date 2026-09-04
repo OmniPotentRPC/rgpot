@@ -139,13 +139,13 @@ RPC client types:
 <tr>
 <td class="org-left"><code>D3Pot</code></td>
 <td class="org-left"><code>D3</code></td>
-<td class="org-left">Enable with <code>-Dwith_dftd3=true</code>; use pixi env <code>dftd3</code>. BJ/zero damping, functional key, explicit ATM flag</td>
+<td class="org-left">Enable with <code>-Dwith_dftd3=true</code>; use pixi env <code>dftd3</code> or <code>dftd</code>. BJ/zero damping, functional key, explicit ATM flag. Goldens: <code>meson test --suite dftd</code></td>
 </tr>
 
 <tr>
 <td class="org-left"><code>D4Pot</code></td>
 <td class="org-left"><code>D4</code></td>
-<td class="org-left">Enable with <code>-Dwith_dftd4=true</code>; use pixi env <code>dftd4</code>. Functional key, charge, explicit ATM/many-body flag</td>
+<td class="org-left">Enable with <code>-Dwith_dftd4=true</code>; use pixi env <code>dftd4</code> or <code>dftd</code>. Functional key, charge, explicit ATM/many-body flag. Goldens: <code>meson test --suite dftd</code></td>
 </tr>
 
 <tr>

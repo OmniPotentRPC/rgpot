@@ -484,6 +484,33 @@ if get_option('with_tests')
         )
     endforeach
 
+    if has_dftd3 or has_dftd4
+        test(
+            'DftdGoldens',
+            executable(
+                'dftd_golden_test',
+                sources: ['tests/DftdGoldenTest.cc'],
+                dependencies: test_deps,
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+            ),
+            workdir: meson.source_root(),
+            suite: 'dftd',
+        )
+        executable(
+            'dump_dftd_goldens',
+            sources: ['tests/dump_dftd_goldens.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            install: false,
+        )
+    endif
+
     if has_xckernel
         test(
             'XcKernelGoldens',

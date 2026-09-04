@@ -1,0 +1,56 @@
+{
+  "host_only": "rg.terra",
+  "regen": "scripts/regen_dftd_goldens.py",
+  "functional": "pbe",
+  "fixture": "water_octamer_cube",
+  "units": {
+    "energy": "hartree",
+    "gradient": "hartree/bohr"
+  },
+  "s_dftd3": "1.5.0",
+  "dftd4": "4.2.0",
+  "tolerances": {
+    "energy": 2.220446049250313e-14,
+    "gradient": 1.4901161193847656e-08,
+    "source": "s-dftd3 test/unit/test_dftd3.f90 and dftd4 test/unit/test_dftd4.f90: thr=100*epsilon, thr2=sqrt(epsilon)"
+  },
+  "cases": [
+    "d3_bj_pbe_atm_off",
+    "d3_bj_pbe_atm_on",
+    "d4_pbe"
+  ],
+  "files": {
+    "geometry.npz": {
+      "sha256": "d293c92036085b5e4b5b5ae12e4d6eb92fc6fa649c9ef8aaa18e1f0fbe322a6e",
+      "bytes": 1246
+    },
+    "water_octamer.xyz": {
+      "sha256": "2bcd90cbed511ea92cf5456fccc8dc5d7c394ee992c23cc2d01fae6e82006de6",
+      "bytes": 1341
+    },
+    "d3_bj_pbe_atm_off_energy.npy": {
+      "sha256": "2db58fb281978788177e79502ba1f9d1b799631fce0366d6ae3c9545fdd900d2",
+      "bytes": 136
+    },
+    "d3_bj_pbe_atm_off_grad.npy": {
+      "sha256": "2702c60f88ccb3ff7320e36b6a33fd97804f8645bd4024193c1ca230c6ade45b",
+      "bytes": 704
+    },
+    "d3_bj_pbe_atm_on_energy.npy": {
+      "sha256": "b4d7f8a261f2e8e6e5957f6623bb3ad2a1540e60da1f9b7d5f1619ba34377770",
+      "bytes": 136
+    },
+    "d3_bj_pbe_atm_on_grad.npy": {
+      "sha256": "5d1ce9b23e978908842eb8051f2c53facfa7135d7fc2bd49bdaf21f18ffc3e81",
+      "bytes": 704
+    },
+    "d4_pbe_energy.npy": {
+      "sha256": "82281a73236c22745dd862cebd10d1c6f27dc94fc3bd3783f5c03d0e4cb21ba0",
+      "bytes": 136
+    },
+    "d4_pbe_grad.npy": {
+      "sha256": "921cb80bdd3acf428616e17259d55f93cd226b1a6a844c49315418d74eb3713a",
+      "bytes": 704
+    }
+  }
+}
