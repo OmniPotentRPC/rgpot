@@ -436,6 +436,8 @@ int XcKernel::tdaSigma(const XcGrid &grid,
   if (rc != 0) {
     return rc;
   }
+  // Singlet 0.5 after C st_o2_p. Fused LDA wv (w*rho1*0.5*(v2_0+v2_1)
+  // scale-then-dot) is farther from the PySCF pins (lda TDA 1.20e-16).
   for (std::size_t k = 0; k < nao * nao; ++k) {
     v1[k] = vj[k] + 0.5 * vxc[k];
   }
