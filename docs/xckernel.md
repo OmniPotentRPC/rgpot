@@ -76,8 +76,8 @@ TDA/RPA assembly is `XcKernel::tdaSigma` / `rpaSigma` over the singlet
 `xck_*_st_o2_p` C kernels plus host Coulomb. Transition densities, ov
 projection, and perturbed fields follow the PySCF `gen_vind` /
 `gen_tdhf_operation` einsum order (scale `Co` by occupancy first;
-`eval_rho` GEMM for `rho_p1`). The singlet kernel matches
-`_gen_rks_response`: `v2*` / `vsigma*` operands are halved before
-stage A (`fxc *= 0.5`) and `v1 = J + vxc` with no post-contraction
-scale. Coulomb `J` stays host-owned (pinned `tda_*_j.npy` /
-`rpa_*_j.npy` from PySCF `get_j` on that same DM).
+`eval_rho` GEMM for `rho_p1`). The singlet kernel matches `_gen_rks_response` / `nr_rks_fxc`:
+LDA fuses `wv = w * rho1 * 0.5 * (v2rho2_0 + v2rho2_1)` and
+scale-then-dots like `_dot_ao_ao`; `v1 = J + vxc`. Coulomb `J`
+stays host-owned (pinned `tda_*_j.npy` / `rpa_*_j.npy` from
+PySCF `get_j` on that same DM).
