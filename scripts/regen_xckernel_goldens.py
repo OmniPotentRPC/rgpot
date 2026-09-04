@@ -110,6 +110,38 @@ def _expand_into(scal, key, val):
     scal[key] = np.ascontiguousarray(val.reshape(-1))
 
 
+def _as_ld(arr: np.ndarray) -> np.ndarray:
+    return np.ascontiguousarray(arr, dtype=np.longdouble)
+
+
+def _stage_b_ld(U: np.ndarray, c: np.ndarray, V: np.ndarray) -> np.ndarray:
+    """out[u,v] = sum_g U[u,g] * c[g] * V[v,g] in long double."""
+    return (U * c) @ V.T
+
+
+def _fock_longdouble(chi, dchi, scal, fam: str) -> np.ndarray:
+    """XC Fock with long-double stage A/B (same algebra as C evaluator.hpp)."""
+    chi_ld = _as_ld(chi)
+    dchi_ld = _as_ld(dchi)
+    w = _as_ld(scal["w"])
+    vrho = _as_ld(scal["vrho"])
+    out = _stage_b_ld(chi_ld, w * vrho, chi_ld)
+    if fam != "lda":
+        vsigma = _as_ld(scal["vsigma"])
+        two = np.longdouble(2)
+        for ax, name in enumerate("xyz"):
+            g = _as_ld(scal[f"grad_rho_{name}"])
+            c = (two * w * vsigma) * g
+            out = out + _stage_b_ld(chi_ld, c, dchi_ld[ax])
+            out = out + _stage_b_ld(dchi_ld[ax], c, chi_ld)
+    if fam == "mgga_tau":
+        vtau = _as_ld(scal["vtau"])
+        c = np.longdouble("0.5") * w * vtau
+        for ax in range(3):
+            out = out + _stage_b_ld(dchi_ld[ax], c, dchi_ld[ax])
+    return np.asarray(out, dtype=np.float64)
+
+
 def regen_s2jz() -> dict:
     from pylibxc import LibXCFunctional
 
@@ -275,7 +307,6 @@ def regen_pyscf() -> None:
     from pylibxc import LibXCFunctional
     from pyscf.dft import numint as ni_mod
 
-    from xckernel.engine.kernel import fock
     from xckernel.engine.response import response_fock
     from xckernel.tests.response_validate import _pert_fields
 
@@ -343,21 +374,14 @@ def regen_pyscf() -> None:
         extra = dict(scal)
         extra.update(chi=chi, dchi=dchi, w=grids.weights, dm0=dm0)
         save_npz(dest / f"{stem}_operands.npz", **extra)
-        ref_xk, _ = _numpy_eval(
-            fock(fam),
-            chi,
-            dchi,
-            np.zeros_like(chi),
-            np.zeros((6,) + chi.shape),
-            scal,
-        )
+        ref_xk = _fock_longdouble(chi, dchi, scal, fam)
         _, _, vref = ni.nr_rks(mol, grids, xcname + ",", dm0)
         err = float(np.max(np.abs(ref_xk - vref)))
         scale = float(np.max(np.abs(vref)) or 1.0)
         rel = err / scale
         print(f"  {fam} Fock vs nr_rks abs={err:.3e} rel={rel:.3e}")
-        if rel > 1e-14:
-            sys.exit(f"{fam} Fock vs nr_rks rel={rel:.3e} exceeds ~1e-15 decade")
+        if rel > 1e-15:
+            sys.exit(f"{fam} Fock vs nr_rks rel={rel:.3e} exceeds exclusive 1e-15")
         save_npy(dest / f"{stem}_ref.npy", vref)
         save_npy(dest / f"{stem}_xk.npy", ref_xk)
 

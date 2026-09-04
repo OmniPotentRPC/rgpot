@@ -65,4 +65,5 @@ named file is missing. Regenerator:
 
 That script refuses to run off rg.terra. Tolerances are the paper/README
 bars: C vs NumPy `1e-16`, Fock vs PySCF `1e-15`, fxc vs PySCF `1e-13`.
-Do not invent looser values.
+`--pyscf` Fock vs live `nr_rks` is exclusive `1e-15` via long-double
+stage A/B (not float64 NumPy einsum). Do not invent looser values.

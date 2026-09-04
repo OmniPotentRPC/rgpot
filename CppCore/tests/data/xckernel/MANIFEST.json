@@ -166,7 +166,7 @@
       "dtype": "float64"
     },
     "pyscf_h2o_sto3g/gga_fock_xk.npy": {
-      "sha256": "20f2c97765b2998a447ace1abada9a33de5b5539cab81a3cc02045e46c8b4209",
+      "sha256": "7474c7dd1a6a071f798351786cf74e2d7b1cff3d15b9df52d04acd89fc70e5dc",
       "bytes": 520,
       "shape": [
         7,
@@ -201,7 +201,7 @@
       "dtype": "float64"
     },
     "pyscf_h2o_sto3g/lda_fock_xk.npy": {
-      "sha256": "96d67b533d79520ee0324f078d5812a30d4a89d2e038dff7fa2be8113597255e",
+      "sha256": "56505467bb596d7b835c23c89a33f0a422b1f8a297146b9e830ec1c79c783c79",
       "bytes": 520,
       "shape": [
         7,
@@ -227,7 +227,7 @@
       "dtype": "float64"
     },
     "pyscf_h2o_sto3g/mgga_tau_fock_xk.npy": {
-      "sha256": "b84c8ab876695a5532b243d6bfff61d18665e5e8688a3722dab074841d38c81f",
+      "sha256": "0debcd67948b62a6a1216863e4499821614fb16cf8aa8b2e4c4b01d9fc783779",
       "bytes": 520,
       "shape": [
         7,
