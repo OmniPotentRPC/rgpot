@@ -235,6 +235,14 @@ if get_option('with_examples') and not get_option('with_rpc_client_only')
             ['CallExprPot', 'exprpot_call', 'call_exprpot.cc', ''],
         ]
     endif
+    # Not a meson test: scripts/time_lj_rgpot_vs_pyeonclient.py drives this.
+    executable(
+        'time_lj_force',
+        sources: ['examples/time_lj_force.cc'],
+        dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+        link_with: _linkto,
+        cpp_args: _args,
+    )
     foreach example : example_array
         test(
             example.get(0),

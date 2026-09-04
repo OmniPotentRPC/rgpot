@@ -87,3 +87,47 @@ Terms are =unique_ptr<PotentialBase>= only.
 =-Dwith_dftd4=).
 =XcKernel= is not a term: it is in-process XC collocation, not a
 =Potential=.
+Do not time =XcKernel= against pyeonclient; that is a category error.
+
+** In-process LJ vs pyeonclient Matter
+
+pyeonclient is the eOn algorithm layer (=Matter.relax=, Dimer, NEB).
+rgpot is the PES. A claim that =ExprPot= or =XcKernel= beats pyeonclient
+is a category error unless the race is the same geometry, same pot, and
+the same host job.
+
+=scripts/time_lj_rgpot_vs_pyeonclient.py= times that race on rg.terra
+with repo defaults (no invented cheaper pot settings):
+
+- Fixture: the =ExprPotTest= two-atom Ar pair (1.5 A, Z=18, 40 A box),
+  default =LJConfig= (=u0= 1 eV, cutoff 15 A, =psi= 1 A).
+- A: =rgpot::LJPot::operator()= via =CppCore/examples/time_lj_force.cc=
+  (or the Python =rgpot.LJPot= binding).
+- B: in-process pyeonclient =Matter= with =PotType.LJ= (not potserv RPC).
+- C (optional, =-Dwith_expr=true=): =ExprPot("lj", {lj})= vs A.
+
+Build the helper (terra only; release, repo options):
+
+#+begin_src bash
+pixi run meson setup bbdir-lj-bench \
+  -Dwith_examples=true -Dwith_expr=true -Dwith_tests=false \
+  -Dwith_rpc=false --buildtype=release
+pixi run meson compile -C bbdir-lj-bench time_lj_force
+python scripts/time_lj_rgpot_vs_pyeonclient.py \
+  --a-bin bbdir-lj-bench/CppCore/time_lj_force
+#+end_src
+
+Measured on rg.terra (2026-09-04), =n_calls=1000000=,
+=warmup=5000=, same fixture and default =LJConfig=. Two consecutive
+runs of =scripts/time_lj_rgpot_vs_pyeonclient.py --a-bin time_lj_force=:
+
+| Run | A =LJPot::operator()= (ns/call) | B pyeonclient =Matter.forces= (ns/call) | B/A |
+|-----+----------------------------------+-----------------------------------------+-----|
+| 1   | 32.8244                          | 687.4060                                | 20.94 |
+| 2   | 30.8468                          | 790.8451                                | 25.64 |
+
+A energy =-0.3203362431126247= eV; B energy =-0.3203362431126207= eV.
+B was pyeonclient 0.3.2 with =built_with_rgpot()= true, in-process
+(=B_rpc=no=), not potserv. C (=ExprPot("lj")=) was not measured: the
+helper was compiled without =-Dwith_expr=true= (the wheel still ships
+=with_expr= off). This is not a claim that =XcKernel= beats pyeonclient.

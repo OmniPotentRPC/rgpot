@@ -33,6 +33,13 @@ the XC kernel.
 named child `Potential` objects. The parser is vendored OpenMM Lepton;
 there is no pixi muparser feature and no `PotentialConfig.expr` arm.
 
+In-process `LJPot` vs pyeonclient `Matter` on the same LJ fixture is
+`scripts/time_lj_rgpot_vs_pyeonclient.py` (rg.terra). On rg.terra
+(2026-09-04, 1e6 calls) A (`LJPot::operator()`) was 31-33 ns/call and
+B (in-process pyeonclient `Matter.forces`, not potserv) was 687 to 791
+ns/call. `XcKernel` is not a `Potential` and is not part of that race.
+See `docs/orgmode/howto/exprpot.org`.
+
 The public wire schema lives in `CppCore/rgpot/rpc/Potentials.capnp` and is
 shared by the C++ server, Python integration tests, and the Rust core crate.
 Native rgpot units are eV and Angstrom.
