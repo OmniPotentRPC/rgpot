@@ -29,7 +29,7 @@ Existing C++ potentials remain callable through an FFI callback mechanism.
         | FFI callbacks
 +---------------------------------------------+
 |  C++ Potentials                              |
-|  LJ, CuH2, XTBPot, TBLitePot, MetatomicPot |
+|  LJ, CuH2, XTBPot, TBLitePot, D3Pot, MetatomicPot |
 +---------------------------------------------+
 #+end_example
 
@@ -177,6 +177,12 @@ use.
 IPEA1) via the [[https://github.com/tblite/tblite][tblite]] C API.
 Same config pattern as =XTBPot=.
 Lighter weight than xtb but fewer methods.
+
+- =D3Pot= (=-Dwith_dftd3=true=) :: Grimme DFT-D3 via the
+[[https://github.com/dftd3/simple-dftd3][s-dftd3]] ISO C API.
+Configurable via =D3Config= (damping BJ/zero, functional key, =atm= for
+Axilrod-Teller-Muto E(3)). Default ATM is on. In-process only; no
+=PotentialConfig= arm.
 
 - =MetatomicPot= (=-Dwith_metatomic=true=) :: Pre-trained ML atomistic models
 via

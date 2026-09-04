@@ -137,6 +137,12 @@ RPC client types:
 </tr>
 
 <tr>
+<td class="org-left"><code>D3Pot</code></td>
+<td class="org-left"><code>D3</code></td>
+<td class="org-left">Enable with <code>-Dwith_dftd3=true</code>; use pixi env <code>dftd3</code>. In-process PBE-BJ ATM-on default; no <code>PotentialConfig</code> arm</td>
+</tr>
+
+<tr>
 <td class="org-left"><code>MetatomicPot</code></td>
 <td class="org-left"><code>Metatomic:&lt;model_path&gt;</code></td>
 <td class="org-left">Enable with <code>-Dwith_metatomic=true</code>; use pixi env <code>metatomicbld</code>. Pip engines: torch 2.7+</td>

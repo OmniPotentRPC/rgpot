@@ -24,6 +24,10 @@
 #include "rgpot/TBLitePot/TBLitePot.hpp"
 #endif // RGPOT_HAS_TBLITE
 
+#ifdef RGPOT_HAS_DFTD3
+#include "rgpot/D3Pot/D3Pot.hpp"
+#endif // RGPOT_HAS_DFTD3
+
 #ifdef RGPOT_HAS_METATOMIC
 #include "rgpot/MetatomicPot/MetatomicPot.hpp"
 #endif // RGPOT_HAS_METATOMIC
@@ -259,6 +263,11 @@ int main(int argc, char *argv[]) {
     std::cout << "Loading TBLite potential (IPEA1)..." << std::endl;
     potential_to_use = std::make_unique<rgpot::TBLitePot>(cfg);
 #endif // RGPOT_HAS_TBLITE
+#ifdef RGPOT_HAS_DFTD3
+  } else if (pot_type == "D3") {
+    std::cout << "Loading D3 potential (PBE-BJ, ATM on)..." << std::endl;
+    potential_to_use = std::make_unique<rgpot::D3Pot>();
+#endif // RGPOT_HAS_DFTD3
 #ifdef RGPOT_HAS_METATOMIC
   } else if (pot_type.rfind("Metatomic:", 0) == 0) {
     auto model_path = pot_type.substr(10);

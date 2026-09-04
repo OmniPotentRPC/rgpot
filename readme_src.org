@@ -99,6 +99,7 @@ ctest --test-dir build_client --output-on-failure
 | =CuH2Pot= | =CuH2= | Built-in Cu-H EAM potential |
 | =XTBPot= | =XTB=, =GFNFF=, =GFN0xTB=, =GFN1xTB= | Enable with =-Dwith_xtb=true=; use pixi env =xtbbld= or =tbbld= |
 | =TBLitePot= | =TBLite=, =TBLiteGFN1=, =TBLiteIPEA1= | Enable with =-Dwith_tblite=true=; use pixi env =tblitebld= or =tbbld= |
+| =D3Pot= | =D3= | Enable with =-Dwith_dftd3=true=; use pixi env =dftd3=. In-process PBE-BJ ATM-on default; no =PotentialConfig= arm |
 | =MetatomicPot= | =Metatomic:<model_path>= | Enable with =-Dwith_metatomic=true=; use pixi env =metatomicbld=. Pip engines: torch 2.7+ |
 | =NWChemPot= | =NWChem= | Frontend always builds; load =libnwchemc= from the split =nwchemc= project at runtime |
 | =CPMDPot= | =CPMD= | Frontend always builds; load =libcpmdc= from the split =cpmdc= project at runtime |
