@@ -308,7 +308,7 @@ def _mol_grid():
     return mol, grids, mf, dm0, dm1, numint
 
 
-def regen_pyscf() -> None:
+def regen_pyscf() -> bool:
     from pylibxc import LibXCFunctional
     from pyscf.dft import numint as ni_mod
 
@@ -429,7 +429,7 @@ def regen_pyscf() -> None:
         sys.exit(f"GGA fxc vs nr_rks_fxc rel={err / scale:.3e} exceeds 1e-13")
     save_npy(dest / "gga_fxc_ref.npy", Rref)
 
-    regen_tda_rpa(mol=mol, dest=dest)
+    return regen_tda_rpa(mol=mol, dest=dest)
 
 
 def _gate_pin(path: Path, live: np.ndarray, label: str) -> bool:
@@ -446,17 +446,24 @@ def _gate_pin(path: Path, live: np.ndarray, label: str) -> bool:
     return rel > 1e-17
 
 
-def regen_tda_rpa(mol=None, dest: Path | None = None) -> None:
+def regen_tda_rpa(mol=None, dest: Path | None = None) -> bool:
     """TDA/RPA sigma pins plus host-J / MO / st_o2_p operands.
 
     Replay committed MOs when `{fam}_mo.npz` exists so live gen_vind is
     the same SCF as the pin. A fresh RKS kernel on the same mol/xc
-    already drifts past exclusive 1e-17.
+    already drifts past exclusive 1e-17. Pin PySCF to one OpenMP thread:
+    multi-thread gen_vind / gen_tdhf_operation jitters 1-2 ulp, which is
+    already past exclusive 1e-17 on this sto-3g case.
+
+    Returns True when any live-vs-committed sigma pin exceeds 1e-17.
     """
     from pyscf import dft as dft_mod
     from pyscf import gto
+    from pyscf import lib as pyscf_lib
     from pyscf.dft import numint as ni_mod
     from pyscf.tdscf.rhf import gen_tdhf_operation
+
+    pyscf_lib.num_threads(1)
 
     if mol is None:
         mol = gto.M(
@@ -583,8 +590,7 @@ def regen_tda_rpa(mol=None, dest: Path | None = None) -> None:
         rpa = op(xys.reshape(3, -1)).reshape(3, 2, nocc, nvir)
         drifted = _gate_pin(dest / f"rpa_{fam}_sigma_ref.npy", rpa, f"{fam} RPA") or drifted
         print(f"  {fam} TDA/RPA pins nocc={nocc} nvir={nvir} ngrid={ng}")
-    if drifted:
-        sys.exit("TDA/RPA live vs committed exceeded exclusive 1e-17")
+    return drifted
 
 
 def write_manifest() -> None:
@@ -648,15 +654,18 @@ def main(argv=None) -> int:
     )
     if do_all or args.s2jz or args.c_vs_numpy or args.pyscf:
         _ensure_xckernel()
+    drifted = False
     if do_all or args.s2jz:
         regen_s2jz()
     if do_all or args.c_vs_numpy:
         regen_c_vs_numpy()
     if do_all or args.pyscf:
-        regen_pyscf()
+        drifted = regen_pyscf()
     elif args.tda_rpa:
-        regen_tda_rpa()
+        drifted = regen_tda_rpa()
     write_manifest()
+    if drifted:
+        sys.exit("TDA/RPA live vs committed exceeded exclusive 1e-17")
     return 0
 
 

@@ -264,7 +264,7 @@
       "dtype": "float64"
     },
     "pyscf_h2o_sto3g/rpa_gga_sigma_ref.npy": {
-      "sha256": "a8bb00db15c2beefd94fee76b211bfebcb2209c0a6b4cb979f873de6be291d60",
+      "sha256": "d7f8d0d60b92fb91b92a54650fb052940ef68bfc5dc6cc1abb56754292b43a83",
       "bytes": 608,
       "shape": [
         3,
@@ -296,7 +296,7 @@
       "dtype": "float64"
     },
     "pyscf_h2o_sto3g/rpa_lda_sigma_ref.npy": {
-      "sha256": "0e522fa37bcd14d0806cec1a78f37cd63e9dce9e620ba9a56da50aff20a6a739",
+      "sha256": "af1f01ed6aba01342beece97060ce40604a0ab433bf725ec0fe9335214a19463",
       "bytes": 608,
       "shape": [
         3,
@@ -328,7 +328,7 @@
       "dtype": "float64"
     },
     "pyscf_h2o_sto3g/tda_gga_sigma_ref.npy": {
-      "sha256": "8f38a7c14e9b90002f55d2ccd00f0ab193d1e19bddd8f4b52a300c535ae7aee0",
+      "sha256": "4ad024c257c6b62c996d04a643003f70743e55aac13540bf88c53dd470dbb355",
       "bytes": 368,
       "shape": [
         3,
@@ -358,7 +358,7 @@
       "dtype": "float64"
     },
     "pyscf_h2o_sto3g/tda_lda_sigma_ref.npy": {
-      "sha256": "a5d18d7977c2ae87e03cc74083beab7ce32af5c58fea995cb32c6a6b13c8a9a1",
+      "sha256": "cf13a333f18f354a553a2ed6d6505011e95d161aa41dadf48e6bc062dd0ef7f1",
       "bytes": 368,
       "shape": [
         3,
