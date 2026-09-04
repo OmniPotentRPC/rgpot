@@ -254,6 +254,22 @@ if get_option('with_xckernel')
     has_xckernel = true
 endif
 
+has_dftd3 = false
+if get_option('with_dftd3')
+    dftd3_dep = dependency('s-dftd3', required: true)
+    _deps += dftd3_dep
+    _args += ['-DRGPOT_HAS_DFTD3=TRUE']
+    has_dftd3 = true
+endif
+
+has_dftd4 = false
+if get_option('with_dftd4')
+    dftd4_dep = dependency('dftd4', required: true)
+    _deps += dftd4_dep
+    _args += ['-DRGPOT_HAS_DFTD4=TRUE']
+    has_dftd4 = true
+endif
+
 # NWChemPot frontend always builds and dlopens the split nwchemc engine
 # (libnwchemc.so) at runtime. rgpot carries no in-process NWChem embed.
 _args += ['-DRGPOT_HAS_NWCHEM_FRONTEND=TRUE']

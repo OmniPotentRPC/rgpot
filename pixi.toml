@@ -24,6 +24,8 @@ docs = { features = ["docs"]}
 xtbbld = { features = ["xtb"] }
 xckernel = { features = ["xckernel"] }
 xckerneltest = { features = ["xckernel", "xckerneltest"] }
+dftd3 = { features = ["dftd3"] }
+dftd4 = { features = ["dftd4"] }
 tblitebld = { features = ["tblite"] }
 tbbld = { features = ["xtb", "tblite"] }
 metatomicbld = { features = ["metatomic"] }
@@ -33,6 +35,16 @@ xxhash = ">=0.8.3,<0.9"
 
 [feature.xtb.dependencies]
 xtb = ">=6.6.0,<7"
+
+# s-dftd3 C library. conda-forge name is simple-dftd3; pkg-config name
+# is s-dftd3. Do not pip-install a PyPI dftd3 stub.
+# Keep feature-gated: default workspace deps stay s-dftd3/dftd4-free.
+[feature.dftd3.dependencies]
+simple-dftd3 = ">=1.2.0,<2"
+
+# dftd4 C library from conda-forge. Not a PyPI stub.
+[feature.dftd4.dependencies]
+dftd4 = ">=3.7.0,<5"
 
 # libxckernel generation + numerical evaluation (rgpot-4c7j).
 # pylibxc is NOT on PyPI: the pylibxc2 name there is an unrelated empty stub.
