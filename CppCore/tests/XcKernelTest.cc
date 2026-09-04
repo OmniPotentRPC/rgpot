@@ -19,6 +19,7 @@
 
 using rgpot::XcGrid;
 using rgpot::XcKernel;
+using rgpot::XcMo;
 using rgpot::testio::NpyArray;
 using rgpot::testio::load_npy;
 using rgpot::testio::load_npz;
@@ -31,6 +32,7 @@ constexpr const char *kData = "CppCore/tests/data/xckernel";
 constexpr double kCVsNumpy = 1e-16;
 constexpr double kFockVsPyscf = 1e-15;
 constexpr double kFxcVsPyscf = 1e-13;
+constexpr double kTdaRpaVsPyscf = 1e-17;
 
 void require_file(const std::string &path) {
   REQUIRE(std::filesystem::exists(path));
@@ -108,6 +110,24 @@ scal_from_npz(const XcKernel &k, const std::map<std::string, NpyArray> &op) {
   return scal;
 }
 
+bool is_pert_scal(const std::string &name) {
+  return name.find("_p1") != std::string::npos;
+}
+
+std::map<std::string, const double *>
+ground_scal_from_npz(const XcKernel &k,
+                     const std::map<std::string, NpyArray> &op) {
+  std::map<std::string, const double *> scal;
+  for (const auto &name : k.scalNames()) {
+    if (is_pert_scal(name)) {
+      continue;
+    }
+    REQUIRE(op.count(name) == 1);
+    scal[name] = op.at(name).data.data();
+  }
+  return scal;
+}
+
 std::vector<double> run_kernel(const std::string &name,
                                const std::map<std::string, NpyArray> &op,
                                std::int64_t nbf, std::int64_t npts,
@@ -170,6 +190,19 @@ TEST_CASE("golden fixtures exist (fail closed)", "[xckernel][golden]") {
       "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/tda_gga_sigma_ref.npy",
       "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/rpa_lda_sigma_ref.npy",
       "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/rpa_gga_sigma_ref.npy",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/eri.npy",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/lda_mo.npz",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/gga_mo.npz",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/lda_st_operands.npz",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/gga_st_operands.npz",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/tda_lda_z.npy",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/tda_gga_z.npy",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/rpa_lda_xy.npy",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/rpa_gga_xy.npy",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/tda_lda_vj.npy",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/tda_gga_vj.npy",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/rpa_lda_vj.npy",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/rpa_gga_vj.npy",
   };
   for (const char *p : required) {
     require_file(p);
@@ -273,4 +306,84 @@ TEST_CASE("PySCF Fock and GGA fxc pins (4e7y)", "[xckernel][golden][pyscf]") {
   require_file(root + "/tda_gga_sigma_ref.npy");
   require_file(root + "/rpa_lda_sigma_ref.npy");
   require_file(root + "/rpa_gga_sigma_ref.npy");
+}
+
+TEST_CASE("PySCF TDA/RPA sigma at 1e-17 (8513)", "[xckernel][golden][tda]") {
+  const std::string root = std::string(kData) + "/pyscf_h2o_sto3g";
+  require_file(root + "/eri.npy");
+
+  struct Case {
+    const char *kernel;
+    const char *fam;
+  };
+  const Case cases[] = {
+      {"xck_lda_st_o2_p", "lda"},
+      {"xck_gga_st_o2_p", "gga"},
+  };
+  for (const auto &c : cases) {
+    auto mo_np = load_npz(root + "/" + std::string(c.fam) + "_mo.npz");
+    auto op = load_npz(root + "/" + std::string(c.fam) + "_st_operands.npz");
+    auto zref = load_npy(root + "/tda_" + std::string(c.fam) + "_z.npy");
+    auto tda_ref =
+        load_npy(root + "/tda_" + std::string(c.fam) + "_sigma_ref.npy");
+    auto tda_vj = load_npy(root + "/tda_" + std::string(c.fam) + "_vj.npy");
+    auto xyref = load_npy(root + "/rpa_" + std::string(c.fam) + "_xy.npy");
+    auto rpa_ref =
+        load_npy(root + "/rpa_" + std::string(c.fam) + "_sigma_ref.npy");
+    auto rpa_vj = load_npy(root + "/rpa_" + std::string(c.fam) + "_vj.npy");
+    REQUIRE(zref.shape.size() == 3);
+    REQUIRE(tda_ref.shape == zref.shape);
+    REQUIRE(xyref.shape.size() == 4);
+    REQUIRE(rpa_ref.shape == xyref.shape);
+
+    const auto nocc = static_cast<std::int64_t>(zref.shape[1]);
+    const auto nvir = static_cast<std::int64_t>(zref.shape[2]);
+    const auto nz = static_cast<std::int64_t>(zref.shape[0]);
+    const auto nao = static_cast<std::int64_t>(mo_np.at("Co").shape[0]);
+    REQUIRE(tda_vj.shape.size() == 3);
+    REQUIRE(static_cast<std::int64_t>(tda_vj.shape[1]) == nao);
+
+    XcMo mo;
+    mo.nao = nao;
+    mo.nocc = nocc;
+    mo.nvir = nvir;
+    mo.Co = mo_np.at("Co").data.data();
+    mo.Cv = mo_np.at("Cv").data.data();
+    mo.e_ia = mo_np.at("e_ia").data.data();
+
+    XcKernel k(c.kernel);
+    std::vector<double> dchi_c;
+    const auto npts = static_cast<std::int64_t>(op.at("chi").shape[1]);
+    XcGrid g = grid_from_npz(op, nao, npts, &dchi_c, false);
+    auto ground = ground_scal_from_npz(k, op);
+
+    const auto nov = static_cast<std::size_t>(nocc * nvir);
+    const auto n2 = static_cast<std::size_t>(nao * nao);
+    std::vector<double> tda_got(static_cast<std::size_t>(nz) * nov, 0.0);
+    for (std::int64_t iz = 0; iz < nz; ++iz) {
+      const double *z = zref.data.data() + static_cast<std::size_t>(iz) * nov;
+      const double *vj = tda_vj.data.data() + static_cast<std::size_t>(iz) * n2;
+      REQUIRE(k.tdaSigma(g, ground, mo, z, vj,
+                         tda_got.data() + static_cast<std::size_t>(iz) * nov) ==
+              0);
+    }
+    const double tda_rel = max_rel(tda_got, tda_ref.data);
+    const double tda_abs = max_abs(tda_got, tda_ref.data);
+    UNSCOPED_INFO(c.fam << " TDA rel=" << tda_rel << " abs=" << tda_abs);
+
+    std::vector<double> rpa_got(static_cast<std::size_t>(nz) * 2 * nov, 0.0);
+    for (std::int64_t iz = 0; iz < nz; ++iz) {
+      const double *xy =
+          xyref.data.data() + static_cast<std::size_t>(iz) * 2 * nov;
+      const double *vj = rpa_vj.data.data() + static_cast<std::size_t>(iz) * n2;
+      REQUIRE(k.rpaSigma(g, ground, mo, xy, vj,
+                         rpa_got.data() + static_cast<std::size_t>(iz) * 2 *
+                                              nov) == 0);
+    }
+    const double rpa_rel = max_rel(rpa_got, rpa_ref.data);
+    const double rpa_abs = max_abs(rpa_got, rpa_ref.data);
+    UNSCOPED_INFO(c.fam << " RPA rel=" << rpa_rel << " abs=" << rpa_abs);
+    REQUIRE(tda_rel <= kTdaRpaVsPyscf);
+    REQUIRE(rpa_rel <= kTdaRpaVsPyscf);
+  }
 }
