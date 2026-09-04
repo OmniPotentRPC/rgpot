@@ -13,8 +13,7 @@ There is no =PotentialConfig.expr= arm: composition is a C++ constructor, not a
 wire configure union.
 
 A host that wants a single objective for
-[[https://github.com/HaoZeke/rgmin][rgmin]] /
-[[https://github.com/HaoZeke/rgsaddle][rgsaddle]] /
+[[https://github.com/HaoZeke/rgmin][rgmin]], rgsaddle, or
 [[https://github.com/HaoZeke/anneal][anneal]] constructs one =ExprPot= and wraps
 it with =PotentialHandle::from_impl= or =rgpot_potential_new_eindir=.
 See [[file:eindir-anneal.org][rgpot potentials as eindir objectives]].
