@@ -19,6 +19,7 @@
 
 using rgpot::XcGrid;
 using rgpot::XcKernel;
+using rgpot::XcMo;
 using rgpot::testio::NpyArray;
 using rgpot::testio::load_npy;
 using rgpot::testio::load_npz;
@@ -31,6 +32,7 @@ constexpr const char *kData = "CppCore/tests/data/xckernel";
 constexpr double kCVsNumpy = 1e-16;
 constexpr double kFockVsPyscf = 1e-15;
 constexpr double kFxcVsPyscf = 1e-13;
+constexpr double kTdaRpaVsPyscf = 1e-17;
 
 void require_file(const std::string &path) {
   REQUIRE(std::filesystem::exists(path));
@@ -108,6 +110,19 @@ scal_from_npz(const XcKernel &k, const std::map<std::string, NpyArray> &op) {
   return scal;
 }
 
+std::map<std::string, const double *>
+ground_from_npz(const XcKernel &k, const std::map<std::string, NpyArray> &op) {
+  std::map<std::string, const double *> scal;
+  for (const auto &name : k.scalNames()) {
+    if (name.find("_p1") != std::string::npos) {
+      continue;
+    }
+    REQUIRE(op.count(name) == 1);
+    scal[name] = op.at(name).data.data();
+  }
+  return scal;
+}
+
 std::vector<double> run_kernel(const std::string &name,
                                const std::map<std::string, NpyArray> &op,
                                std::int64_t nbf, std::int64_t npts,
@@ -170,6 +185,18 @@ TEST_CASE("golden fixtures exist (fail closed)", "[xckernel][golden]") {
       "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/tda_gga_sigma_ref.npy",
       "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/rpa_lda_sigma_ref.npy",
       "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/rpa_gga_sigma_ref.npy",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/lda_mo.npz",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/gga_mo.npz",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/lda_st_operands.npz",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/gga_st_operands.npz",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/tda_lda_z.npy",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/tda_gga_z.npy",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/tda_lda_j.npy",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/tda_gga_j.npy",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/rpa_lda_xy.npy",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/rpa_gga_xy.npy",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/rpa_lda_j.npy",
+      "CppCore/tests/data/xckernel/pyscf_h2o_sto3g/rpa_gga_j.npy",
   };
   for (const char *p : required) {
     require_file(p);
@@ -273,4 +300,76 @@ TEST_CASE("PySCF Fock and GGA fxc pins (4e7y)", "[xckernel][golden][pyscf]") {
   require_file(root + "/tda_gga_sigma_ref.npy");
   require_file(root + "/rpa_lda_sigma_ref.npy");
   require_file(root + "/rpa_gga_sigma_ref.npy");
+}
+
+TEST_CASE("PySCF TDA/RPA sigma pins at 1e-17 (vjzs)",
+          "[xckernel][golden][tda][rpa]") {
+  const std::string root = std::string(kData) + "/pyscf_h2o_sto3g";
+  struct Case {
+    const char *fam;
+    const char *kernel;
+  };
+  const Case cases[] = {
+      {"lda", "xck_lda_st_o2_p"},
+      {"gga", "xck_gga_st_o2_p"},
+  };
+  for (const auto &c : cases) {
+    auto mo_npz = load_npz(root + "/" + std::string(c.fam) + "_mo.npz");
+    auto op = load_npz(root + "/" + std::string(c.fam) + "_st_operands.npz");
+    auto zs = load_npy(root + "/tda_" + std::string(c.fam) + "_z.npy");
+    auto tda_ref =
+        load_npy(root + "/tda_" + std::string(c.fam) + "_sigma_ref.npy");
+    auto tda_j = load_npy(root + "/tda_" + std::string(c.fam) + "_j.npy");
+    auto xys = load_npy(root + "/rpa_" + std::string(c.fam) + "_xy.npy");
+    auto rpa_ref =
+        load_npy(root + "/rpa_" + std::string(c.fam) + "_sigma_ref.npy");
+    auto rpa_j = load_npy(root + "/rpa_" + std::string(c.fam) + "_j.npy");
+    REQUIRE(zs.shape.size() == 3);
+    const auto nz = static_cast<std::int64_t>(zs.shape[0]);
+    const auto nocc = static_cast<std::int64_t>(zs.shape[1]);
+    const auto nvir = static_cast<std::int64_t>(zs.shape[2]);
+    const auto nao = static_cast<std::int64_t>(mo_npz.at("Co").shape[0]);
+    const auto npts = static_cast<std::int64_t>(op.at("chi").shape[1]);
+    XcKernel k(c.kernel);
+    std::vector<double> dchi_c;
+    XcGrid g = grid_from_npz(op, nao, npts, &dchi_c, false);
+    auto ground = ground_from_npz(k, op);
+    XcMo mo;
+    mo.nao = nao;
+    mo.nocc = nocc;
+    mo.nvir = nvir;
+    mo.Co = mo_npz.at("Co").data.data();
+    mo.Cv = mo_npz.at("Cv").data.data();
+    mo.e_ia = mo_npz.at("e_ia").data.data();
+
+    std::vector<double> got_tda(static_cast<std::size_t>(nz * nocc * nvir), 0.0);
+    for (std::int64_t iz = 0; iz < nz; ++iz) {
+      const double *z =
+          zs.data.data() + static_cast<std::size_t>(iz * nocc * nvir);
+      const double *vj =
+          tda_j.data.data() + static_cast<std::size_t>(iz * nao * nao);
+      double *sig = got_tda.data() + static_cast<std::size_t>(iz * nocc * nvir);
+      REQUIRE(k.tdaSigma(g, ground, mo, z, vj, sig) == 0);
+    }
+    const double tda_rel = max_rel(got_tda, tda_ref.data);
+    const double tda_abs = max_abs(got_tda, tda_ref.data);
+
+    std::vector<double> got_rpa(static_cast<std::size_t>(nz * 2 * nocc * nvir),
+                                0.0);
+    for (std::int64_t iz = 0; iz < nz; ++iz) {
+      const double *xy =
+          xys.data.data() + static_cast<std::size_t>(iz * 2 * nocc * nvir);
+      const double *vj =
+          rpa_j.data.data() + static_cast<std::size_t>(iz * nao * nao);
+      double *sig =
+          got_rpa.data() + static_cast<std::size_t>(iz * 2 * nocc * nvir);
+      REQUIRE(k.rpaSigma(g, ground, mo, xy, vj, sig) == 0);
+    }
+    const double rpa_rel = max_rel(got_rpa, rpa_ref.data);
+    const double rpa_abs = max_abs(got_rpa, rpa_ref.data);
+    UNSCOPED_INFO(c.fam << " TDA rel=" << tda_rel << " abs=" << tda_abs);
+    UNSCOPED_INFO(c.fam << " RPA rel=" << rpa_rel << " abs=" << rpa_abs);
+    CHECK(tda_rel <= kTdaRpaVsPyscf);
+    CHECK(rpa_rel <= kTdaRpaVsPyscf);
+  }
 }

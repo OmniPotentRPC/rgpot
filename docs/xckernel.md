@@ -65,5 +65,12 @@ named file is missing. Regenerator:
 
 That script refuses to run off rg.terra. Tolerances are the paper/README
 bars: C vs NumPy `1e-16`, Fock vs PySCF exclusive `1e-15`, fxc vs PySCF
-`1e-13`. `--pyscf` Fock compares long-double stage A/B to live `nr_rks`
-and exits when `rel > 1e-15`. Do not invent looser values.
+`1e-13`, TDA/RPA sigma vs PySCF `1e-17`. `--pyscf` Fock compares
+long-double stage A/B to live `nr_rks` and exits when `rel > 1e-15`.
+`--tda-rpa` (also part of `--pyscf`) writes host-J / MO / `st_o2_p`
+operands and exits when live PySCF drifted past exclusive `1e-17` on
+the committed sigma pins. Do not invent looser values.
+
+TDA/RPA assembly is `XcKernel::tdaSigma` / `rpaSigma` over the singlet
+`xck_*_st_o2_p` kernels. Coulomb `J` stays host-owned (pinned
+`tda_*_j.npy` / `rpa_*_j.npy` from PySCF `get_j`).
