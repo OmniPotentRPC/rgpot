@@ -25,8 +25,10 @@ namespace rgpot {
  * evaluates functionals: the host mixes Libxc arrays and passes them in.
  *
  * First slice (rgpot-chjn): families lda, gga, mgga_tau; max_order 2
- * (Fock o1 + fxc o2). Dispatch is by kernel name; scalar operand order is
- * read from <name>_scal_names / <name>_n_scal, not hard-coded.
+ * (Fock o1 + fxc o2). TDA/RPA sigma (rgpot-8513) is the algebra.py
+ * assembly around the singlet spin-adapted o2 kernels (`xck_*_st_o2_p`)
+ * plus host-owned Coulomb. Dispatch is by kernel name; scalar operand
+ * order is read from <name>_scal_names / <name>_n_scal, not hard-coded.
  *
  * Each XcKernel instance is a name + resolved ABI pointers. The C kernels
  * are reentrant on distinct out/scal buffers. Do not share one `out`
@@ -47,6 +49,18 @@ struct XcFields {
   std::vector<double> tau;      //!< (npts,)
   std::vector<double> lapl;     //!< (npts,)
   std::vector<double> grad_rho; //!< 3 * npts, xyz packed
+};
+
+/// Occupied/virtual MO blocks for TDA/RPA (algebra.py / tda_validate.py).
+/// Co (nao, nocc), Cv (nao, nvir), e_ia (nocc, nvir) with
+/// e_ia[i,a] = e_vir[a] - e_occ[i]. Row-major.
+struct XcMo {
+  std::int64_t nao = 0;
+  std::int64_t nocc = 0;
+  std::int64_t nvir = 0;
+  const double *Co = nullptr;
+  const double *Cv = nullptr;
+  const double *e_ia = nullptr;
 };
 
 class XcKernel {
@@ -74,10 +88,50 @@ public:
                const std::map<std::string, const double *> &scal,
                double *out) const;
 
-  /// Convenience: build rho / sigma / tau / lapl / grad_rho from a
-  /// symmetric AO density. Host still evaluates Libxc on these fields.
+  /// Convenience: build rho / sigma / tau / lapl / grad_rho from an
+  /// AO density (symmetric or transition). Host still evaluates Libxc.
   [[nodiscard]] static XcFields fieldsFromDensity(const XcGrid &grid,
                                                   const double *P);
+
+  /// dm = occ * Cv @ z^T @ Co^T  (nao*nao). z is (nocc, nvir).
+  static void transitionDm(const XcMo &mo, const double *z, double occ,
+                           double *dm);
+
+  /// dm = occ * (Cv @ X^T @ Co^T + Co @ Y @ Cv^T).
+  static void rpaTransitionDm(const XcMo &mo, const double *x, const double *y,
+                              double occ, double *dm);
+
+  /// ov = Co^T @ Vao^T @ Cv  (nocc*nvir).
+  static void projectOv(const XcMo &mo, const double *Vao, double *ov);
+
+  /// (A z)_ia = e_ia z_ia + project_ov(v1). v1 is AO (nao*nao).
+  static void tdaSigma(const XcMo &mo, const double *z, const double *v1,
+                       double *sigma);
+
+  /// [[A,B],[-B,-A]](X,Y). xy and out are 2*nocc*nvir (X then Y).
+  static void rpaSigma(const XcMo &mo, const double *xy, const double *v1,
+                       double *sigma);
+
+  /// XC fxc on one AO density via this kernel. Ground-state scal holds
+  /// weights, Libxc arrays, and (GGA) grad_rho_a_*. Perturbed rho/grad
+  /// names (`rho_a_p1`, `grad_rho_a_p1_*`) are built from dm.
+  /// Accumulates into vxc (nao*nao, +=).
+  int applyFxc(const XcGrid &grid,
+               const std::map<std::string, const double *> &ground,
+               const double *dm, double *vxc) const;
+
+  /// TDA sigma with host Coulomb: v1 = vj + 0.5 * applyFxc(dm(z)).
+  /// vj is the host J matrix on the transition DM (nao*nao).
+  int tdaSigma(const XcGrid &grid,
+               const std::map<std::string, const double *> &ground,
+               const XcMo &mo, const double *z, const double *vj,
+               double *sigma) const;
+
+  /// RPA sigma with host Coulomb on dm(X,Y). xy/out are 2*nocc*nvir.
+  int rpaSigma(const XcGrid &grid,
+               const std::map<std::string, const double *> &ground,
+               const XcMo &mo, const double *xy, const double *vj,
+               double *sigma) const;
 
 private:
   std::string m_name;

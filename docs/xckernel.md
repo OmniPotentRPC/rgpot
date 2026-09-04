@@ -64,5 +64,11 @@ named file is missing. Regenerator:
     pixi run -e xckerneltest -- python scripts/regen_xckernel_goldens.py
 
 That script refuses to run off rg.terra. Tolerances are the paper/README
-bars: C vs NumPy `1e-16`, Fock vs PySCF `1e-15`, fxc vs PySCF `1e-13`.
+bars: C vs NumPy `1e-16`, Fock vs PySCF `1e-15`, fxc vs PySCF `1e-13`,
+TDA/RPA sigma vs `TDA.gen_vind` / `gen_tdhf_operation` `1e-17`.
 Do not invent looser values.
+
+TDA/RPA assembly is `XcKernel::tdaSigma` / `rpaSigma` over the singlet
+`xck_*_st_o2_p` kernels plus host Coulomb (`get_j` pins `tda_*_vj.npy` /
+`rpa_*_vj.npy`). Operands live next to the sigma pins under
+`CppCore/tests/data/xckernel/pyscf_h2o_sto3g/`.
