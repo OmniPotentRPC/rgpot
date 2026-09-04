@@ -239,140 +239,6 @@ int apply_fxc_d(const XcKernel &k, const XcGrid &grid,
   }
   return k.contract(grid, scal, vxc);
 }
-
-const double *scal_or(const std::map<std::string, const double *> &ground,
-                      const char *a, const char *b) {
-  auto it = ground.find(a);
-  if (it != ground.end() && it->second != nullptr) {
-    return it->second;
-  }
-  it = ground.find(b);
-  if (it != ground.end() && it->second != nullptr) {
-    return it->second;
-  }
-  return nullptr;
-}
-
-// PySCF nr_rks_fxc LDA: wv = weight * rho1 * fxc_st with
-// fxc_st = 0.5 * (v2rho2_0 + v2rho2_1), then scale-then-dot
-// (aow = chi * wv; vmat = chi @ aow). One fused multiply matches
-// `weight * rho1 * _fxc[0]`; the C kernel's two monomials plus a
-// post-contraction 0.5 do not.
-int apply_fxc_lda_st(const std::map<std::string, const double *> &ground,
-                     const XcGrid &grid, const double *rho1, double *vxc) {
-  const auto ng = static_cast<std::size_t>(grid.npts);
-  const auto nbf = static_cast<std::size_t>(grid.nbf);
-  const double *w = scal_or(ground, "w", "w");
-  const double *v20 = scal_or(ground, "v2rho2_0", "v2rho2_0");
-  const double *v21 = scal_or(ground, "v2rho2_1", "v2rho2_1");
-  if (w == nullptr || v20 == nullptr || v21 == nullptr || grid.chi == nullptr) {
-    return 3;
-  }
-  std::vector<double> wv(ng, 0.0);
-  for (std::size_t g = 0; g < ng; ++g) {
-    wv[g] = w[g] * rho1[g] * (0.5 * (v20[g] + v21[g]));
-  }
-  std::vector<double> aow(nbf * ng, 0.0);
-  const double *chi = grid.chi;
-  for (std::size_t v = 0; v < nbf; ++v) {
-    const double *chi_v = chi + v * ng;
-    double *aow_v = aow.data() + v * ng;
-    for (std::size_t g = 0; g < ng; ++g) {
-      aow_v[g] = chi_v[g] * wv[g];
-    }
-  }
-  for (std::size_t u = 0; u < nbf; ++u) {
-    const double *chi_u = chi + u * ng;
-    for (std::size_t v = 0; v < nbf; ++v) {
-      const double *aow_v = aow.data() + v * ng;
-      double acc = 0.0;
-      for (std::size_t g = 0; g < ng; ++g) {
-        acc += chi_u[g] * aow_v[g];
-      }
-      vxc[u * nbf + v] += acc;
-    }
-  }
-  return 0;
-}
-
-int apply_fxc_st(const XcKernel &k, const XcGrid &grid,
-                 const std::map<std::string, const double *> &ground,
-                 const double *dm, double *vxc) {
-  if (dm == nullptr || vxc == nullptr) {
-    return 4;
-  }
-  const auto ng = static_cast<std::size_t>(grid.npts);
-  const auto nbf = static_cast<std::size_t>(grid.nbf);
-  if (grid.chi == nullptr || grid.npts <= 0 || grid.nbf <= 0) {
-    return 2;
-  }
-  std::vector<double> tmp(nbf * ng, 0.0);
-  gemm_dm_ao(dm, grid.chi, nbf, ng, tmp.data());
-  std::vector<double> rho_p1(ng, 0.0);
-  contract_rho(grid.chi, tmp.data(), nbf, ng, rho_p1.data());
-
-  bool gga = false;
-  for (const auto &name : k.scalNames()) {
-    if (name.find("grad_rho") != std::string::npos &&
-        name.find("_p1") != std::string::npos) {
-      gga = true;
-      break;
-    }
-  }
-  if (!gga) {
-    return apply_fxc_lda_st(ground, grid, rho_p1.data(), vxc);
-  }
-
-  std::vector<double> gxd(ng, 0.0);
-  std::vector<double> gyd(ng, 0.0);
-  std::vector<double> gzd(ng, 0.0);
-  if (grid.dchi != nullptr) {
-    std::vector<double> tmpx(nbf * ng, 0.0);
-    std::vector<double> tmpy(nbf * ng, 0.0);
-    std::vector<double> tmpz(nbf * ng, 0.0);
-    const double *dx = grid.dchi;
-    const double *dy = grid.dchi + nbf * ng;
-    const double *dz = grid.dchi + 2 * nbf * ng;
-    gemm_dm_ao(dm, dx, nbf, ng, tmpx.data());
-    gemm_dm_ao(dm, dy, nbf, ng, tmpy.data());
-    gemm_dm_ao(dm, dz, nbf, ng, tmpz.data());
-    for (std::size_t g = 0; g < ng; ++g) {
-      double ax = 0.0;
-      double ay = 0.0;
-      double az = 0.0;
-      for (std::size_t u = 0; u < nbf; ++u) {
-        const std::size_t ug = u * ng + g;
-        ax += dx[ug] * tmp[ug] + grid.chi[ug] * tmpx[ug];
-        ay += dy[ug] * tmp[ug] + grid.chi[ug] * tmpy[ug];
-        az += dz[ug] * tmp[ug] + grid.chi[ug] * tmpz[ug];
-      }
-      gxd[g] = ax;
-      gyd[g] = ay;
-      gzd[g] = az;
-    }
-  }
-  std::map<std::string, const double *> scal = ground;
-  for (const auto &name : k.scalNames()) {
-    if (name == "rho_a_p1" || name == "rho_p1") {
-      scal[name] = rho_p1.data();
-    } else if (name == "grad_rho_a_p1_x" || name == "grad_rho_p1_x") {
-      scal[name] = gxd.data();
-    } else if (name == "grad_rho_a_p1_y" || name == "grad_rho_p1_y") {
-      scal[name] = gyd.data();
-    } else if (name == "grad_rho_a_p1_z" || name == "grad_rho_p1_z") {
-      scal[name] = gzd.data();
-    }
-  }
-  const int rc = k.contract(grid, scal, vxc);
-  if (rc != 0) {
-    return rc;
-  }
-  const auto n2 = nbf * nbf;
-  for (std::size_t i = 0; i < n2; ++i) {
-    vxc[i] *= 0.5;
-  }
-  return 0;
-}
 #endif
 
 } // namespace
@@ -566,12 +432,12 @@ int XcKernel::tdaSigma(const XcGrid &grid,
   std::vector<double> vxc(nao * nao, 0.0);
   std::vector<double> v1(nao * nao, 0.0);
   transitionDm(mo, z, 2.0, dm.data());
-  const int rc = apply_fxc_st(*this, grid, ground, dm.data(), vxc.data());
+  const int rc = apply_fxc_d(*this, grid, ground, dm.data(), vxc.data());
   if (rc != 0) {
     return rc;
   }
   for (std::size_t k = 0; k < nao * nao; ++k) {
-    v1[k] = vj[k] + vxc[k];
+    v1[k] = vj[k] + 0.5 * vxc[k];
   }
   tdaSigma(mo, z, v1.data(), sigma);
   return 0;
@@ -597,12 +463,12 @@ int XcKernel::rpaSigma(const XcGrid &grid,
   std::vector<double> vxc(nao * nao, 0.0);
   std::vector<double> v1(nao * nao, 0.0);
   rpaTransitionDm(mo, xy, xy + nov, 2.0, dm.data());
-  const int rc = apply_fxc_st(*this, grid, ground, dm.data(), vxc.data());
+  const int rc = apply_fxc_d(*this, grid, ground, dm.data(), vxc.data());
   if (rc != 0) {
     return rc;
   }
   for (std::size_t k = 0; k < nao * nao; ++k) {
-    v1[k] = vj[k] + vxc[k];
+    v1[k] = vj[k] + 0.5 * vxc[k];
   }
   rpaSigma(mo, xy, v1.data(), sigma);
   return 0;

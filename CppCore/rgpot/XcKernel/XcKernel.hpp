@@ -120,9 +120,8 @@ public:
                const std::map<std::string, const double *> &ground,
                const double *dm, double *vxc) const;
 
-  /// TDA sigma with host Coulomb: v1 = vj + singlet fxc(dm(z)).
-  /// LDA uses PySCF nr_rks_fxc wv (w*rho1*0.5*(v2_0+v2_1)) and
-  /// scale-then-dot. vj is host J on the transition DM (nao*nao).
+  /// TDA sigma with host Coulomb: v1 = vj + 0.5 * applyFxc(dm(z)).
+  /// vj is the host J matrix on the transition DM (nao*nao).
   int tdaSigma(const XcGrid &grid,
                const std::map<std::string, const double *> &ground,
                const XcMo &mo, const double *z, const double *vj,
