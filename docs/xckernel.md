@@ -83,4 +83,6 @@ projection follow the PySCF `lib.einsum` contraction path
 `vxq,qo->xov` for the ov block). Perturbed fields follow PySCF
 `eval_rho` (`c0 = ao @ dm`, GGA `hermi=0` adds `ao @ dm.T`). Coulomb
 `J` stays host-owned (pinned `tda_*_j.npy` / `rpa_*_j.npy` from PySCF
-`get_j` on that same DM).
+`get_j` on the `lib.einsum` DM, the same contraction as `gen_vind`).
+LDA TDA/RPA fxc uses the singlet `st_o2_p` operands with a blocked-128
+AO reduction matching PySCF `_dot_ao_ao`.

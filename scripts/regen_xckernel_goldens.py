@@ -578,8 +578,8 @@ def regen_tda_rpa(mol=None, dest: Path | None = None) -> bool:
         if z_path.exists():
             zs = np.load(z_path)
         save_npy(z_path, zs)
-        # Same contraction as TDA.gen_vind: einsum('xov,pv,qo->xpq', z, Cv, Co*2)
-        tda_dms = np.einsum("xov,pv,qo->xpq", zs, Cv, Co * 2.0)
+        # Same contraction as TDA.gen_vind (lib.einsum, not np.einsum).
+        tda_dms = pyscf_lib.einsum("xov,pv,qo->xpq", zs, Cv, Co * 2.0)
         save_npy(
             dest / f"tda_{fam}_j.npy",
             np.ascontiguousarray(mf_x.get_j(mol, tda_dms, hermi=0)),
@@ -592,10 +592,10 @@ def regen_tda_rpa(mol=None, dest: Path | None = None) -> bool:
         if xy_path.exists():
             xys = np.load(xy_path)
         save_npy(xy_path, xys)
-        # Same contraction as gen_tdhf_operation (X then Y).
+        # Same contraction as gen_tdhf_operation (X then Y, lib.einsum).
         xs, ys = xys[:, 0], xys[:, 1]
-        rpa_dms = np.einsum("xov,pv,qo->xpq", xs, Cv, Co * 2.0)
-        rpa_dms = rpa_dms + np.einsum("xov,qv,po->xpq", ys, Cv, Co * 2.0)
+        rpa_dms = pyscf_lib.einsum("xov,pv,qo->xpq", xs, Cv, Co * 2.0)
+        rpa_dms = rpa_dms + pyscf_lib.einsum("xov,qv,po->xpq", ys, Cv, Co * 2.0)
         save_npy(
             dest / f"rpa_{fam}_j.npy",
             np.ascontiguousarray(mf_x.get_j(mol, rpa_dms, hermi=0)),

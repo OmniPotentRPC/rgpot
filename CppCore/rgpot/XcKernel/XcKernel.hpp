@@ -123,8 +123,8 @@ public:
                const std::map<std::string, const double *> &ground,
                const double *dm, double *vxc) const;
 
-  /// TDA sigma with host Coulomb: v1 = vj + 0.5 * applyFxc(dm(z)).
-  /// vj is the host J matrix on the transition DM (nao*nao).
+  /// TDA sigma with host Coulomb. vj is the host J matrix on the
+  /// transition DM (nao*nao). Singlet 0.5 is inside applyFxc wv.
   int tdaSigma(const XcGrid &grid,
                const std::map<std::string, const double *> &ground,
                const XcMo &mo, const double *z, const double *vj,

@@ -3,13 +3,18 @@
 
 #include "rgpot/XcKernel/XcKernel.hpp"
 
+#include <algorithm>
+#include <cstdint>
 #include <map>
 #include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
 #ifdef RGPOT_HAS_XCKERNEL
 #include "xckernel.h"
+#include "xckernel/kernels/xck_gga_st_o2_p.hpp"
+#include "xckernel/kernels/xck_lda_st_o2_p.hpp"
 
 namespace {
 
@@ -202,6 +207,78 @@ void add_contract_rho(const double *left, const double *right, std::size_t nbf,
   }
 }
 
+// PySCF _dot_ao_ao BLKSIZE=128. Full-grid stage_b is 1-2 ulp farther from
+// gen_vind than this blocked reduction on the sto-3g TDA case.
+void blocked_stage_b(std::int64_t npts, std::int64_t nbf, const double *U,
+                     const double *c, const double *V, double *out) {
+  constexpr std::int64_t kBlk = 128;
+  for (std::int64_t p0 = 0; p0 < npts; p0 += kBlk) {
+    const std::int64_t n = std::min(kBlk, npts - p0);
+    for (std::int64_t u = 0; u < nbf; ++u) {
+      for (std::int64_t v = 0; v < nbf; ++v) {
+        double s = 0.0;
+        const double *Ug = U + u * npts + p0;
+        const double *Vg = V + v * npts + p0;
+        for (std::int64_t g = 0; g < n; ++g) {
+          s += Ug[g] * c[p0 + g] * Vg[g];
+        }
+        out[u * nbf + v] += s;
+      }
+    }
+  }
+}
+
+int apply_lda_st_blocked(const XcGrid &grid,
+                         const std::map<std::string, const double *> &scal,
+                         double *vxc) {
+  auto w = scal.find("w");
+  auto rho = scal.find("rho_a_p1");
+  auto v20 = scal.find("v2rho2_0");
+  auto v21 = scal.find("v2rho2_1");
+  if (w == scal.end() || rho == scal.end() || v20 == scal.end() ||
+      v21 == scal.end() || w->second == nullptr || rho->second == nullptr ||
+      v20->second == nullptr || v21->second == nullptr) {
+    return 3;
+  }
+  const auto ng = static_cast<std::size_t>(grid.npts);
+  std::vector<double> c(ng, 0.0);
+  // Singlet fxc *= 0.5 is applied in wv, matching nr_rks_fxc_st.
+  for (std::size_t g = 0; g < ng; ++g) {
+    c[g] = w->second[g] * rho->second[g] * 0.5 *
+           (v20->second[g] + v21->second[g]);
+  }
+  blocked_stage_b(grid.npts, grid.nbf, grid.chi, c.data(), grid.chi, vxc);
+  return 0;
+}
+
+int apply_gga_st_blocked(const XcGrid &grid, const double *const *fields,
+                         const double *const *xc, double *vxc) {
+  const auto ng = static_cast<std::size_t>(grid.npts);
+  std::vector<double> c(ng, 0.0);
+  const double *chi = grid.chi;
+  const double *dchi = grid.dchi;
+  const std::int64_t npts = grid.npts;
+  const std::int64_t nbf = grid.nbf;
+  using namespace xckernel::detail_xck_gga_st_o2_p;
+  auto stage = [&](std::int64_t nm, const double *cf, const int32_t *off,
+                   const uint16_t *fid, const double *U, const double *V) {
+    xckernel::stage_a<double, double>(npts, nm, cf, off, fid, NFLD, fields, xc,
+                                      c.data());
+    for (std::size_t g = 0; g < ng; ++g) {
+      c[g] *= 0.5;
+    }
+    blocked_stage_b(npts, nbf, U, c.data(), V, vxc);
+  };
+  stage(11, c0, o0, f0, chi, chi);
+  stage(21, c1, o1, f1, chi, dchi + 0 * nbf * npts);
+  stage(21, c2, o2, f2, chi, dchi + 1 * nbf * npts);
+  stage(21, c3, o3, f3, chi, dchi + 2 * nbf * npts);
+  stage(21, c4, o4, f4, dchi + 0 * nbf * npts, chi);
+  stage(21, c5, o5, f5, dchi + 1 * nbf * npts, chi);
+  stage(21, c6, o6, f6, dchi + 2 * nbf * npts, chi);
+  return 0;
+}
+
 int apply_fxc_d(const XcKernel &k, const XcGrid &grid,
                 const std::map<std::string, const double *> &ground,
                 const double *dm, double *vxc) {
@@ -250,6 +327,22 @@ int apply_fxc_d(const XcKernel &k, const XcGrid &grid,
     } else if (name == "grad_rho_a_p1_z" || name == "grad_rho_p1_z") {
       scal[name] = gzd.data();
     }
+  }
+  if (k.name() == "xck_lda_st_o2_p") {
+    return apply_lda_st_blocked(grid, scal, vxc);
+  }
+  if (k.name() == "xck_gga_st_o2_p") {
+    const auto names = k.scalNames();
+    std::vector<const double *> ptrs(names.size(), nullptr);
+    for (std::size_t i = 0; i < names.size(); ++i) {
+      auto it = scal.find(names[i]);
+      if (it == scal.end() || it->second == nullptr) {
+        return 3;
+      }
+      ptrs[i] = it->second;
+    }
+    return apply_gga_st_blocked(grid, ptrs.data(),
+                               ptrs.data() + k.nFields(), vxc);
   }
   return k.contract(grid, scal, vxc);
 }
@@ -444,8 +537,9 @@ int XcKernel::tdaSigma(const XcGrid &grid,
   if (rc != 0) {
     return rc;
   }
+  // Singlet 0.5 is inside blocked wv (nr_rks_fxc_st).
   for (std::size_t k = 0; k < nao * nao; ++k) {
-    v1[k] = vj[k] + 0.5 * vxc[k];
+    v1[k] = vj[k] + vxc[k];
   }
   tdaSigma(mo, z, v1.data(), sigma);
   return 0;
@@ -476,7 +570,7 @@ int XcKernel::rpaSigma(const XcGrid &grid,
     return rc;
   }
   for (std::size_t k = 0; k < nao * nao; ++k) {
-    v1[k] = vj[k] + 0.5 * vxc[k];
+    v1[k] = vj[k] + vxc[k];
   }
   rpaSigma(mo, xy, v1.data(), sigma);
   return 0;
