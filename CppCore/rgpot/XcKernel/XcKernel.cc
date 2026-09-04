@@ -3,6 +3,8 @@
 
 #include "rgpot/XcKernel/XcKernel.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <map>
 #include <stdexcept>
 #include <unordered_map>
@@ -202,6 +204,34 @@ void add_contract_rho(const double *left, const double *right, std::size_t nbf,
   }
 }
 
+// PySCF _dot_ao_ao: vmat += ao.T @ (ao * wv[:,None]), BLKSIZE=128.
+void dot_ao_ao(const double *chi, const double *wv, std::size_t nbf,
+               std::size_t npts, double *vmat) {
+  constexpr std::size_t kBlk = 128;
+  std::vector<double> aow(nbf * kBlk, 0.0);
+  for (std::size_t g0 = 0; g0 < npts; g0 += kBlk) {
+    const std::size_t ng = std::min(kBlk, npts - g0);
+    for (std::size_t u = 0; u < nbf; ++u) {
+      const double *chi_u = chi + u * npts + g0;
+      double *aow_u = aow.data() + u * ng;
+      for (std::size_t g = 0; g < ng; ++g) {
+        aow_u[g] = chi_u[g] * wv[g0 + g];
+      }
+    }
+    for (std::size_t u = 0; u < nbf; ++u) {
+      const double *aow_u = aow.data() + u * ng;
+      for (std::size_t v = 0; v < nbf; ++v) {
+        const double *chi_v = chi + v * npts + g0;
+        double acc = 0.0;
+        for (std::size_t g = 0; g < ng; ++g) {
+          acc += aow_u[g] * chi_v[g];
+        }
+        vmat[u * nbf + v] += acc;
+      }
+    }
+  }
+}
+
 int apply_fxc_d(const XcKernel &k, const XcGrid &grid,
                 const std::map<std::string, const double *> &ground,
                 const double *dm, double *vxc) {
@@ -252,6 +282,41 @@ int apply_fxc_d(const XcKernel &k, const XcGrid &grid,
     }
   }
   return k.contract(grid, scal, vxc);
+}
+
+// PySCF nr_rks_fxc_st singlet LDA: fxc *= 0.5 then
+// fxc_st = f_aa + f_ab, wv = w * rho1 * fxc_st, v1 = J + _dot_ao_ao.
+// Returns true when vxc already includes the closed-shell 0.5.
+bool apply_fxc_st_lda(const XcGrid &grid,
+                      const std::map<std::string, const double *> &ground,
+                      const double *dm, double *vxc) {
+  auto it_w = ground.find("w");
+  auto it0 = ground.find("v2rho2_0");
+  auto it1 = ground.find("v2rho2_1");
+  // GGA st_o2_p also ships v2rho2_*; only LDA has no vsigma / grad p1.
+  if (it_w == ground.end() || it0 == ground.end() || it1 == ground.end() ||
+      it_w->second == nullptr || it0->second == nullptr ||
+      it1->second == nullptr || grid.chi == nullptr || dm == nullptr ||
+      vxc == nullptr || ground.count("vsigma_0") != 0 ||
+      ground.count("grad_rho_a_p1_x") != 0 ||
+      ground.count("grad_rho_a_x") != 0) {
+    return false;
+  }
+  const auto ng = static_cast<std::size_t>(grid.npts);
+  const auto nbf = static_cast<std::size_t>(grid.nbf);
+  std::vector<double> c0(nbf * ng, 0.0);
+  gemm_dmt_ao(dm, grid.chi, nbf, ng, c0.data());
+  std::vector<double> rho_p1(ng, 0.0);
+  contract_rho(grid.chi, c0.data(), nbf, ng, rho_p1.data());
+  std::vector<double> wv(ng, 0.0);
+  const double *w = it_w->second;
+  const double *faa = it0->second;
+  const double *fab = it1->second;
+  for (std::size_t g = 0; g < ng; ++g) {
+    wv[g] = w[g] * rho_p1[g] * 0.5 * (faa[g] + fab[g]);
+  }
+  dot_ao_ao(grid.chi, wv.data(), nbf, ng, vxc);
+  return true;
 }
 #endif
 
@@ -372,7 +437,7 @@ void XcKernel::tdaSigma(const XcMo &mo, const double *z, const double *v1,
   for (std::size_t i = 0; i < nocc; ++i) {
     for (std::size_t a = 0; a < nvir; ++a) {
       const std::size_t ia = i * nvir + a;
-      sigma[ia] = sigma[ia] + mo.e_ia[ia] * z[ia];
+      sigma[ia] = std::fma(mo.e_ia[ia], z[ia], sigma[ia]);
     }
   }
 }
@@ -408,7 +473,7 @@ void XcKernel::rpaSigma(const XcMo &mo, const double *xy, const double *v1,
         acc += tmp[a * nao + p] * mo.Co[p * nocc + i];
       }
       const std::size_t ia = i * nvir + a;
-      bot[ia] = -(mo.e_ia[ia] * y[ia] + acc);
+      bot[ia] = -std::fma(mo.e_ia[ia], y[ia], acc);
     }
   }
 }
@@ -440,12 +505,15 @@ int XcKernel::tdaSigma(const XcGrid &grid,
   std::vector<double> vxc(nao * nao, 0.0);
   std::vector<double> v1(nao * nao, 0.0);
   transitionDm(mo, z, 2.0, dm.data());
-  const int rc = apply_fxc_d(*this, grid, ground, dm.data(), vxc.data());
-  if (rc != 0) {
-    return rc;
+  const bool lda_st = apply_fxc_st_lda(grid, ground, dm.data(), vxc.data());
+  if (!lda_st) {
+    const int rc = apply_fxc_d(*this, grid, ground, dm.data(), vxc.data());
+    if (rc != 0) {
+      return rc;
+    }
   }
   for (std::size_t k = 0; k < nao * nao; ++k) {
-    v1[k] = vj[k] + 0.5 * vxc[k];
+    v1[k] = lda_st ? vj[k] + vxc[k] : std::fma(0.5, vxc[k], vj[k]);
   }
   tdaSigma(mo, z, v1.data(), sigma);
   return 0;
@@ -471,12 +539,15 @@ int XcKernel::rpaSigma(const XcGrid &grid,
   std::vector<double> vxc(nao * nao, 0.0);
   std::vector<double> v1(nao * nao, 0.0);
   rpaTransitionDm(mo, xy, xy + nov, 2.0, dm.data());
-  const int rc = apply_fxc_d(*this, grid, ground, dm.data(), vxc.data());
-  if (rc != 0) {
-    return rc;
+  const bool lda_st = apply_fxc_st_lda(grid, ground, dm.data(), vxc.data());
+  if (!lda_st) {
+    const int rc = apply_fxc_d(*this, grid, ground, dm.data(), vxc.data());
+    if (rc != 0) {
+      return rc;
+    }
   }
   for (std::size_t k = 0; k < nao * nao; ++k) {
-    v1[k] = vj[k] + 0.5 * vxc[k];
+    v1[k] = lda_st ? vj[k] + vxc[k] : std::fma(0.5, vxc[k], vj[k]);
   }
   rpaSigma(mo, xy, v1.data(), sigma);
   return 0;

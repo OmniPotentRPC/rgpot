@@ -72,11 +72,13 @@ long-double stage A/B to live `nr_rks` and exits when `rel > 1e-15`.
 `gen_tdhf_operation` drifted past exclusive `1e-17`. Do not invent
 looser values.
 
-TDA/RPA assembly is `XcKernel::tdaSigma` / `rpaSigma` over the singlet
-`xck_*_st_o2_p` C kernels plus host Coulomb. Transition densities and ov
-projection follow the PySCF `lib.einsum` contraction path
-(`qo,xov->vxq` then `vxq,pv->xpq` for the TDA DM; `pv,xpq->vxq` then
-`vxq,qo->xov` for the ov block). Perturbed fields follow PySCF
-`eval_rho` (`c0 = ao @ dm`, GGA `hermi=0` adds `ao @ dm.T`). Coulomb
-`J` stays host-owned (pinned `tda_*_j.npy` / `rpa_*_j.npy` from PySCF
-`get_j` on that same DM).
+TDA/RPA assembly is `XcKernel::tdaSigma` / `rpaSigma` plus host Coulomb.
+LDA fxc follows PySCF `nr_rks_fxc_st` (`wv = w*rho1*0.5*(v2rho2_0+v2rho2_1)`,
+then blocked `_dot_ao_ao`, `v1 = J + vxc`). GGA still uses the singlet
+`xck_gga_st_o2_p` C kernel (generated double evaluator) with `v1 = J + 0.5*vxc`.
+Transition densities and ov projection follow the PySCF
+`lib.einsum` contraction path (`qo,xov->vxq` then `vxq,pv->xpq` for the TDA
+DM; `pv,xpq->vxq` then `vxq,qo->xov` for the ov block). Perturbed fields
+follow PySCF `eval_rho` (`c0 = ao @ dm`, GGA `hermi=0` adds `ao @ dm.T`).
+Coulomb `J` stays host-owned (pinned `tda_*_j.npy` / `rpa_*_j.npy` from
+PySCF `get_j` on that same DM).
