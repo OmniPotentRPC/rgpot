@@ -95,6 +95,7 @@ data-aria-dark="Switch to auto color mode">
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/pip-python.html">Python package (PyPI)</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/embedding.html">Embedding as a Subproject</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/exprpot.html">Compose potentials with ExprPot</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/integration.html">External Integration Guide</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eindir-anneal.html">rgpot Potentials as eindir Objectives</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html">eOn Potentials Over rgpot</a></li>
@@ -129,10 +130,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_fortranpots.html">namespace fortranpots</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot.html">namespace rgpot</a><ul class="simple">
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-2.html">namespace rgpot</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot.html">namespace rgpot</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_abi.html">namespace rgpot::abi</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_details.html">namespace rgpot::details</a></li>
@@ -141,10 +139,13 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_types.html">namespace rgpot::types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_units.html">namespace rgpot::units</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_vesin_compat.html">namespace rgpot::vesin_compat</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_D3Damping.html">enum rgpot::D3Damping</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_GFNMethod.html">enum rgpot::GFNMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_Reentrancy.html">enum rgpot::Reentrancy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_D3Config.html">struct rgpot::D3Config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_D4Config.html">struct rgpot::D4Config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceBatch.html">struct rgpot::ForceBatch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
@@ -157,11 +158,17 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XTBConfig.html">struct rgpot::XTBConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XTBDlopenConfig.html">struct rgpot::XTBDlopenConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XcFields.html">struct rgpot::XcFields</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XcGrid.html">struct rgpot::XcGrid</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XcMo.html">struct rgpot::XcMo</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ZBLConfig.html">struct rgpot::ZBLConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ZblPairCoeffs.html">struct rgpot::ZblPairCoeffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ZblTables.html">struct rgpot::ZblTables</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_CPMDPot.html">class rgpot::CPMDPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_D3Pot.html">class rgpot::D3Pot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_D4Pot.html">class rgpot::D4Pot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_DynLib.html">class rgpot::DynLib</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_ExprPot.html">class rgpot::ExprPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_LJClusterPot.html">class rgpot::LJClusterPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_MetatomicDlopen.html">class rgpot::MetatomicDlopen</a></li>
@@ -172,8 +179,12 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_TBLitePot.html">class rgpot::TBLitePot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_XTBDlopen.html">class rgpot::XTBDlopen</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_XTBPot.html">class rgpot::XTBPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_XcKernel.html">class rgpot::XcKernel</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_ZBLPot.html">class rgpot::ZBLPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_registry.html">template class rgpot::registry</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-2.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-3.html">namespace rgpot</a><ul class="simple">
@@ -189,6 +200,12 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-7.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-8.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-9.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_cuh2.html">namespace rgpot_cuh2</a><ul class="simple">
@@ -258,6 +275,9 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_vesin_cpu.html">namespace vesin::cpu</a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_xckernel.html">namespace xckernel</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="../api/enum_CPMDCFeatureKind.html">enum CPMDCFeatureKind</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../api/struct_CPMDCFeatureEntry.html">struct CPMDCFeatureEntry</a><ul class="simple">
 </ul>
@@ -278,6 +298,9 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/struct_RgpotXtbPot.html">struct RgpotXtbPot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_eindir_objective_t.html">struct eindir_objective_t</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
@@ -479,8 +502,9 @@ Existing C++ potentials remain callable through an FFI callback mechanism.</p>
 </span><span data-line="15">        <span class="o">|</span> <span class="n">FFI</span> <span class="n">callbacks</span>
 </span><span data-line="16"><span class="o">+---------------------------------------------+</span>
 </span><span data-line="17"><span class="o">|</span>  <span class="n">C</span><span class="o">++</span> <span class="n">Potentials</span>                              <span class="o">|</span>
-</span><span data-line="18"><span class="o">|</span>  <span class="n">LJ</span><span class="p">,</span> <span class="n">CuH2</span><span class="p">,</span> <span class="n">XTBPot</span><span class="p">,</span> <span class="n">TBLitePot</span><span class="p">,</span> <span class="n">MetatomicPot</span> <span class="o">|</span>
-</span><span data-line="19"><span class="o">+---------------------------------------------+</span>
+</span><span data-line="18"><span class="o">|</span>  <span class="n">LJ</span><span class="p">,</span> <span class="n">CuH2</span><span class="p">,</span> <span class="n">XTBPot</span><span class="p">,</span> <span class="n">TBLitePot</span><span class="p">,</span> <span class="n">D3Pot</span><span class="p">,</span> <span class="n">D4Pot</span><span class="p">,</span><span class="o">|</span>
+</span><span data-line="19"><span class="o">|</span>  <span class="n">ExprPot</span><span class="p">,</span> <span class="n">MetatomicPot</span>                       <span class="o">|</span>
+</span><span data-line="20"><span class="o">+---------------------------------------------+</span>
 </span></pre></div>
 </div>
 </section>
@@ -684,6 +708,51 @@ use.</p>
 <p>IPEA1) via the <a class="reference external" href="https://github.com/tblite/tblite">tblite</a> C API.
 Same config pattern as <code class="docutils literal notranslate"><span class="pre">XTBPot</span></code>.
 Lighter weight than xtb but fewer methods.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">D3Pot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_dftd3=true</span></code>)</dt><dd><p>Grimme DFT-D3 via the</p>
+</dd>
+</dl>
+<p><a class="reference external" href="https://github.com/dftd3/simple-dftd3">s-dftd3</a> ISO C API.
+<code class="docutils literal notranslate"><span class="pre">D3Config</span></code> selects BJ or zero damping, the functional key for C6 parameters, and
+an explicit <code class="docutils literal notranslate"><span class="pre">atm</span></code> flag for the Axilrod-Teller-Muto E(3) term (default on).
+In-process <code class="docutils literal notranslate"><span class="pre">Potential</span></code> summand: construct it and evaluate <code class="docutils literal notranslate"><span class="pre">ForceInput</span></code> to
+energy+forces.
+Not an XC kernel and not a <code class="docutils literal notranslate"><span class="pre">PotentialConfig</span></code> arm.
+There is no <code class="docutils literal notranslate"><span class="pre">PotentialConfig.d3</span></code>.
+A DFT host adds this as the Edisp summand next to XcKernel and VV10; do not fold
+D3 into the kernel.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">D4Pot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_dftd4=true</span></code>)</dt><dd><p>Grimme DFT-D4 via the</p>
+</dd>
+</dl>
+<p><a class="reference external" href="https://github.com/dftd4/dftd4">dftd4</a> ISO C API.
+<code class="docutils literal notranslate"><span class="pre">D4Config</span></code> selects the functional key, the total charge forwarded to
+<code class="docutils literal notranslate"><span class="pre">dftd4_new_structure</span></code>, and an explicit <code class="docutils literal notranslate"><span class="pre">atm</span></code> flag for the many-body (<code class="docutils literal notranslate"><span class="pre">mdb</span></code>) term
+(default on).
+Charge scaling stays inside dftd4.
+In-process <code class="docutils literal notranslate"><span class="pre">Potential</span></code> summand: construct it and evaluate <code class="docutils literal notranslate"><span class="pre">ForceInput</span></code> to
+energy+forces.
+Not an XC kernel and not a <code class="docutils literal notranslate"><span class="pre">PotentialConfig</span></code> arm.
+There is no <code class="docutils literal notranslate"><span class="pre">PotentialConfig.d4</span></code>.
+A DFT host adds this as the Edisp summand next to XcKernel and VV10; do not fold
+D4 into the kernel.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">ExprPot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_expr=true</span></code>)</dt><dd><p>Named-child PES algebra compiled with</p>
+</dd>
+</dl>
+<p>vendored OpenMM Lepton (no pixi muparser).
+The constructor takes an energy string and <code class="docutils literal notranslate"><span class="pre">unique_ptr&lt;PotentialBase&gt;</span></code> children.
+Names must be Lepton identifiers; unknown, duplicate, unused, empty, or
+non-identifier names fail at construct.
+Forces are analytic chain-rule weights from
+<code class="docutils literal notranslate"><span class="pre">ParsedExpression::differentiate(name)</span></code>.
+<code class="docutils literal notranslate"><span class="pre">D3Pot</span></code> / <code class="docutils literal notranslate"><span class="pre">D4Pot</span></code> are ordinary children.
+<code class="docutils literal notranslate"><span class="pre">XcKernel</span></code> is not a term.
+There is no <code class="docutils literal notranslate"><span class="pre">PotentialConfig.expr</span></code> arm.
+The C++ constructor is the first-slice API; RPC/config names the same tree as
+recursive <code class="docutils literal notranslate"><span class="pre">ExprParams</span></code> / <code class="docutils literal notranslate"><span class="pre">PotSpec</span></code>.
+<code class="docutils literal notranslate"><span class="pre">PotentialHandle::from_impl</span></code> / <code class="docutils literal notranslate"><span class="pre">rgpot_potential_new_eindir</span></code> wraps one <code class="docutils literal notranslate"><span class="pre">ExprPot</span></code>
+as one eindir objective.</p>
 <dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">MetatomicPot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_metatomic=true</span></code>)</dt><dd><p>Pre-trained ML atomistic models</p>
 </dd>

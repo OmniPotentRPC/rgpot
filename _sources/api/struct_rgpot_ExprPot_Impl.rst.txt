@@ -1,0 +1,35 @@
+.. index:: pair: struct; rgpot::ExprPot::Impl
+.. _doxid-structrgpot_1_1_expr_pot_1_1_impl:
+
+struct rgpot::ExprPot::Impl
+===========================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_ExprPot_Impl_NamedChild.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Impl {
+		// structs
+	
+		struct :ref:`NamedChild<doxid-structrgpot_1_1_expr_pot_1_1_impl_1_1_named_child>`;
+
+		// fields
+	
+		std::string :target:`expression<doxid-structrgpot_1_1_expr_pot_1_1_impl_1a98ac4f836beb8535005f10c681392895>`;
+		std::vector<:ref:`NamedChild<doxid-structrgpot_1_1_expr_pot_1_1_impl_1_1_named_child>`> :target:`terms<doxid-structrgpot_1_1_expr_pot_1_1_impl_1ab2559ebff4f98229378016b68d482605>`;
+		Lepton::CompiledExpression :target:`energy<doxid-structrgpot_1_1_expr_pot_1_1_impl_1a5f2f1e1a5eeea65563cf7e511f06ff93>`;
+		uint64_t :target:`paramsKey<doxid-structrgpot_1_1_expr_pot_1_1_impl_1aed762c11be2c270dce9077ad19b7640b>` = 0;
+		:ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :target:`caps<doxid-structrgpot_1_1_expr_pot_1_1_impl_1ad7d1c5afac617f81cf872d0aff884d2e>` {};
+
+		// methods
+	
+		void :target:`bindVars<doxid-structrgpot_1_1_expr_pot_1_1_impl_1a5ae40183ffb9da369c6905f62447fcbf>`();
+	};

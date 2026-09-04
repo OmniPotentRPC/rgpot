@@ -1,0 +1,18 @@
+.. index:: pair: enum; D3Damping
+.. _doxid-namespacergpot_1ad2c0c9f9065c92cae6f5bbe30db75610:
+
+enum rgpot::D3Damping
+=====================
+
+Damping form for DFT-D3. BJ is rational (Becke-Johnson) damping.
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <D3Pot.hpp>
+
+	enum D3Damping {
+	    :target:`BJ<doxid-namespacergpot_1ad2c0c9f9065c92cae6f5bbe30db75610addd70bbaf5be05e1e9caded444c03095>`,
+	    :target:`Zero<doxid-namespacergpot_1ad2c0c9f9065c92cae6f5bbe30db75610ad7ed4ee1df437474d005188535f74875>`,
+	};
+

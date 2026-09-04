@@ -15,6 +15,8 @@ Global Namespace
 	namespace_rgpot-5.rst
 	namespace_rgpot-6.rst
 	namespace_rgpot-7.rst
+	namespace_rgpot-8.rst
+	namespace_rgpot-9.rst
 	namespace_rgpot_cuh2.rst
 	namespace_rgpot_cuh2_capi.rst
 	namespace_rgpot_eam_al.rst
@@ -37,6 +39,7 @@ Global Namespace
 	namespace_std.rst
 	namespace_string_literals.rst
 	namespace_vesin.rst
+	namespace_xckernel.rst
 	enum_CPMDCFeatureKind.rst
 	struct_CPMDCFeatureEntry.rst
 	struct_CPMDCResult.rst
@@ -45,6 +48,7 @@ Global Namespace
 	struct_RgpotMtaPot.rst
 	struct_RgpotXtbConfig.rst
 	struct_RgpotXtbPot.rst
+	struct_eindir_objective_t.rst
 	class_AtomMatrix.rst
 	class_GenericPotImpl.rst
 	class_PotClient.rst
@@ -62,7 +66,6 @@ Overview
 	// namespaces
 
 	namespace :ref:`fortranpots<doxid-namespacergpot_1_1fortranpots_1_1_0d165254177354022106360171111037067337336127011041>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d307112313373357257323066107376333004137304370130>`;
 	namespace :ref:`rgpot<doxid-namespacergpot>`;
 		namespace :ref:`rgpot::abi<doxid-namespacergpot_1_1abi>`;
 		namespace :ref:`rgpot::cache<doxid-namespacergpot_1_1cache>`;
@@ -76,11 +79,14 @@ Overview
 				namespace :ref:`rgpot::types::adapt::xtensor<doxid-namespacergpot_1_1types_1_1adapt_1_1xtensor>`;
 		namespace :ref:`rgpot::units<doxid-namespacergpot_1_1units>`;
 		namespace :ref:`rgpot::vesin_compat<doxid-namespacergpot_1_1vesin__compat>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d307112313373357257323066107376333004137304370130>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d371345205050316044211301074104100300046352051004>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d305002241363136067011226310027215036350216205241>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d330074065165043016212166146146214025043016253057>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d166331164204151220333054351225362033006173021072>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d122207310312103133225144130321077133074162141334>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d164173104033017375130307150113162274222310040315>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d171070010102105364072226347021272242150151256304>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d122207310312103133225144130321077133074162141334>`;
 	namespace :ref:`rgpot_cuh2<doxid-namespacergpot__cuh2>`;
 	namespace :ref:`rgpot_cuh2_capi<doxid-namespacergpot__cuh2__capi>`;
 	namespace :ref:`rgpot_eam_al<doxid-namespacergpot__eam__al>`;
@@ -104,6 +110,7 @@ Overview
 	namespace :ref:`string_literals<doxid-namespacestd_1_1string__literals>`;
 	namespace :ref:`vesin<doxid-namespacevesin>`;
 		namespace :ref:`vesin::cpu<doxid-namespacevesin_1_1cpu>`;
+	namespace :ref:`xckernel<doxid-namespacexckernel>`;
 
 	// typedefs
 
@@ -117,6 +124,7 @@ Overview
 	typedef struct PotClient :ref:`PotClient<doxid-pot__bridge_8h_1ad15494aa275bd98047b204d29533f6ba>`;
 	typedef struct RgpotXtbPot :target:`RgpotXtbPot<doxid-xtb__c__abi_8h_1a37b502b1326e503b40aced0b4726dffb>`;
 	typedef struct RgpotXtbConfig :target:`RgpotXtbConfig<doxid-xtb__c__abi_8h_1a1786d9f1df089ee1d5b41e1389567afe>`;
+	typedef struct eindir_objective_t :target:`eindir_objective_t<doxid-eindir__abi_8hpp_1a2cd0da5d11e8702270a9a1f4ad8e2256>`;
 
 	// enums
 
@@ -138,6 +146,7 @@ Overview
 	struct :ref:`RgpotMtaPot<doxid-struct_rgpot_mta_pot>`;
 	struct :ref:`RgpotXtbConfig<doxid-struct_rgpot_xtb_config>`;
 	struct :ref:`RgpotXtbPot<doxid-struct_rgpot_xtb_pot>`;
+	struct :ref:`eindir_objective_t<doxid-structeindir__objective__t>`;
 
 	// classes
 
@@ -263,8 +272,10 @@ Overview
 	// macros
 
 	#define :target:`CATCH_AND_REPORT<doxid-pot__bridge_8cc_1a933409e97453f39bfae6d29f0518b341>`(client, default_ret)
+	#define :target:`EINDIR_OBJECTIVE_T_DEFINED<doxid-eindir__abi_8hpp_1a55525eed573290331dddbee46c32b516>`
 	#define :ref:`POT_BRIDGE_API<doxid-pot__bridge_8h_1a30ca0aa10367d7a1679284a7ed9969e4>`
 	#define :target:`RGPOT_CPMDC_API<doxid-cpmd__c__abi_8h_1a744600c686fd30c24b0e0882c773088a>`
+	#define :target:`RGPOT_EINDIR_ABI_HPP<doxid-eindir__abi_8hpp_1a9dc0ea36adfc2c8faac4a152e4e901d4>`
 	#define :target:`RGPOT_FORTRAN_POT_CLASS<doxid-_fortran_pots_8hpp_1a158452799fad368ca2afc583b2406ca7>`(ClassName, PotTypeValue)
 	#define :target:`RGPOT_FORTRAN_POT_IMPL<doxid-_fortran_pots_8cc_1ae0c8728579e5d29f83c2c9a20b525944>`(ClassName, Entry, Label)
 	#define :target:`RGPOT_FORTRAN_SPECIES_POT_IMPL<doxid-_fortran_pots_8cc_1aeeec8475d493e2cb38640dc234e04688>`(ClassName, Entry, Label)
@@ -274,6 +285,7 @@ Overview
 	#define :target:`RGPOT_NWCHEMC_API<doxid-nwchem__c__abi_8h_1a6ad5679b2111999202bb48844af14a93>`
 	#define :target:`RGPOT_XTB_ABI_VERSION<doxid-xtb__c__abi_8h_1aa3b73c6a3161c5d0da0ec0b357f13b8f>`
 	#define :target:`RGPOT_XTB_API<doxid-xtb__c__abi_8h_1a1c2e4e9e5c694894e8e5e08ae2c99479>`
+	#define :target:`XCK_HD<doxid-evaluator_8hpp_1a188c81a8a602db0d56a4447043fab829>`
 
 .. _details-global:
 

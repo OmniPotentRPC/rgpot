@@ -1,0 +1,180 @@
+.. index:: pair: class; rgpot::XcKernel
+.. _doxid-classrgpot_1_1_xc_kernel:
+
+class rgpot::XcKernel
+=====================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class XcKernel {
+	public:
+		// typedefs
+	
+		typedef int(*)(std::int64_t npts, std::int64_t nbf, const double*chi, const double*dchi, const double*lapl_chi, const double*hess_chi, const double*const*scal, double*out) :target:`KernelFn<doxid-classrgpot_1_1_xc_kernel_1ac1a4e5c9e88fb977b76b1bee790b66b8>`;
+
+		// construction
+	
+		:ref:`XcKernel<doxid-classrgpot_1_1_xc_kernel_1ab93741e88b2ae4a57be31f29f0460e9a>`(std::string name);
+
+		// methods
+	
+		const std::string& :target:`name<doxid-classrgpot_1_1_xc_kernel_1a1b358af38b14cac06bb197252be68b83>`() const;
+		std::vector<std::string> :target:`scalNames<doxid-classrgpot_1_1_xc_kernel_1a5c914453d27ff5b83fe75f77934f041c>`() const;
+		int :target:`nScal<doxid-classrgpot_1_1_xc_kernel_1ad6f50f9b8730561c99d7a2c59285ca87>`() const;
+		int :target:`nFields<doxid-classrgpot_1_1_xc_kernel_1a03879d88844118590c4aa70e5b04f216>`() const;
+		int :ref:`contract<doxid-classrgpot_1_1_xc_kernel_1ac16dbc411a5d52f883cc7f8a5652228c>`(const :ref:`XcGrid<doxid-structrgpot_1_1_xc_grid>`& grid, const std::map<std::string, const double*>& scal, double* out) const;
+		int :ref:`applyFxc<doxid-classrgpot_1_1_xc_kernel_1a2a83dda9543d1539f684479519095340>`(const :ref:`XcGrid<doxid-structrgpot_1_1_xc_grid>`& grid, const std::map<std::string, const double*>& ground, const double* dm, double* vxc) const;
+		int :ref:`tdaSigma<doxid-classrgpot_1_1_xc_kernel_1aed64e593bf7cb66f1d45025c8ef6bed7>`(const :ref:`XcGrid<doxid-structrgpot_1_1_xc_grid>`& grid, const std::map<std::string, const double*>& ground, const :ref:`XcMo<doxid-structrgpot_1_1_xc_mo>`& mo, const double* z, const double* vj, double* sigma) const;
+		int :ref:`rpaSigma<doxid-classrgpot_1_1_xc_kernel_1aac55c8346dad3730e2ad2f305447c9aa>`(const :ref:`XcGrid<doxid-structrgpot_1_1_xc_grid>`& grid, const std::map<std::string, const double*>& ground, const :ref:`XcMo<doxid-structrgpot_1_1_xc_mo>`& mo, const double* xy, const double* vj, double* sigma) const;
+		static std::vector<std::string> :ref:`catalog<doxid-classrgpot_1_1_xc_kernel_1ae3558ec99e6e9a1a3bab9b42566030dd>`();
+		static :ref:`XcFields<doxid-structrgpot_1_1_xc_fields>` :ref:`fieldsFromDensity<doxid-classrgpot_1_1_xc_kernel_1a2d547e17536e6922829ea650685c0084>`(const :ref:`XcGrid<doxid-structrgpot_1_1_xc_grid>`& grid, const double* P);
+		static void :ref:`transitionDm<doxid-classrgpot_1_1_xc_kernel_1af79d1b1fd1fb6e351328f099cf5e72bb>`(const :ref:`XcMo<doxid-structrgpot_1_1_xc_mo>`& mo, const double* z, double occ, double* dm);
+		static void :ref:`rpaTransitionDm<doxid-classrgpot_1_1_xc_kernel_1a70c4a00fc64b153c801e7f13317aecc7>`(const :ref:`XcMo<doxid-structrgpot_1_1_xc_mo>`& mo, const double* x, const double* y, double occ, double* dm);
+		static void :ref:`projectOv<doxid-classrgpot_1_1_xc_kernel_1a164186b0df8b3d04c7495cef35987295>`(const :ref:`XcMo<doxid-structrgpot_1_1_xc_mo>`& mo, const double* Vao, double* ov);
+		static void :ref:`tdaSigma<doxid-classrgpot_1_1_xc_kernel_1afdcba4135a430ac83eb7d778c7d531d1>`(const :ref:`XcMo<doxid-structrgpot_1_1_xc_mo>`& mo, const double* z, const double* v1, double* sigma);
+		static void :ref:`rpaSigma<doxid-classrgpot_1_1_xc_kernel_1a745327feccf15e7979898aada1a41986>`(const :ref:`XcMo<doxid-structrgpot_1_1_xc_mo>`& mo, const double* xy, const double* v1, double* sigma);
+	};
+.. _details-classrgpot_1_1_xc_kernel:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Construction
+------------
+
+.. index:: pair: function; XcKernel
+.. _doxid-classrgpot_1_1_xc_kernel_1ab93741e88b2ae4a57be31f29f0460e9a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	XcKernel(std::string name)
+
+Resolve a first-slice catalog name, e.g. "xck_gga_r_o2".
+
+Methods
+-------
+
+.. index:: pair: function; contract
+.. _doxid-classrgpot_1_1_xc_kernel_1ac16dbc411a5d52f883cc7f8a5652228c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int contract(const :ref:`XcGrid<doxid-structrgpot_1_1_xc_grid>`& grid, const std::map<std::string, const double*>& scal, double* out) const
+
+Assemble ``scal`` in <name>_scal_names order and accumulate into out (nbf \* nbf, +=). Returns the C ABI rc (0 on success).
+
+.. index:: pair: function; applyFxc
+.. _doxid-classrgpot_1_1_xc_kernel_1a2a83dda9543d1539f684479519095340:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int applyFxc(const :ref:`XcGrid<doxid-structrgpot_1_1_xc_grid>`& grid, const std::map<std::string, const double*>& ground, const double* dm, double* vxc) const
+
+XC fxc on one AO density via this kernel. Ground-state scal holds weights, Libxc arrays, and (GGA) grad_rho_a\_\*. Perturbed rho/grad names (``rho_a_p1``, ``grad_rho_a_p1_*``) are built from dm. Accumulates into vxc (nao\*nao, +=).
+
+.. index:: pair: function; tdaSigma
+.. _doxid-classrgpot_1_1_xc_kernel_1aed64e593bf7cb66f1d45025c8ef6bed7:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int tdaSigma(const :ref:`XcGrid<doxid-structrgpot_1_1_xc_grid>`& grid, const std::map<std::string, const double*>& ground, const :ref:`XcMo<doxid-structrgpot_1_1_xc_mo>`& mo, const double* z, const double* vj, double* sigma) const
+
+TDA sigma with host Coulomb: v1 = vj + 0.5 \* applyFxc(dm(z)). vj is the host J matrix on the transition DM (nao\*nao).
+
+.. index:: pair: function; rpaSigma
+.. _doxid-classrgpot_1_1_xc_kernel_1aac55c8346dad3730e2ad2f305447c9aa:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int rpaSigma(const :ref:`XcGrid<doxid-structrgpot_1_1_xc_grid>`& grid, const std::map<std::string, const double*>& ground, const :ref:`XcMo<doxid-structrgpot_1_1_xc_mo>`& mo, const double* xy, const double* vj, double* sigma) const
+
+RPA sigma with host Coulomb on dm(X,Y). xy/out are 2\*nocc\*nvir.
+
+.. index:: pair: function; catalog
+.. _doxid-classrgpot_1_1_xc_kernel_1ae3558ec99e6e9a1a3bab9b42566030dd:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static std::vector<std::string> catalog()
+
+Known first-slice contraction names (o1 Fock + o2 fxc). Empty if the translation unit was compiled without -Dwith_xckernel.
+
+.. index:: pair: function; fieldsFromDensity
+.. _doxid-classrgpot_1_1_xc_kernel_1a2d547e17536e6922829ea650685c0084:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static :ref:`XcFields<doxid-structrgpot_1_1_xc_fields>` fieldsFromDensity(const :ref:`XcGrid<doxid-structrgpot_1_1_xc_grid>`& grid, const double* P)
+
+Convenience: build rho / sigma / tau / lapl / grad_rho from an AO density (symmetric or transition). Host still evaluates Libxc.
+
+.. index:: pair: function; transitionDm
+.. _doxid-classrgpot_1_1_xc_kernel_1af79d1b1fd1fb6e351328f099cf5e72bb:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static void transitionDm(const :ref:`XcMo<doxid-structrgpot_1_1_xc_mo>`& mo, const double* z, double occ, double* dm)
+
+dm = einsum('qo,ov,pv->pq', Co\*occ, z, Cv). Matches lib.einsum path ('qo,xov->vxq' then 'vxq,pv->xpq') used by TDA.gen_vind.
+
+.. index:: pair: function; rpaTransitionDm
+.. _doxid-classrgpot_1_1_xc_kernel_1a70c4a00fc64b153c801e7f13317aecc7:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static void rpaTransitionDm(const :ref:`XcMo<doxid-structrgpot_1_1_xc_mo>`& mo, const double* x, const double* y, double occ, double* dm)
+
+dm = einsum X plus einsum('po,ov,qv->pq', Co\*occ, y, Cv) ('po,xov->vxp' then 'vxp,qv->xpq').
+
+.. index:: pair: function; projectOv
+.. _doxid-classrgpot_1_1_xc_kernel_1a164186b0df8b3d04c7495cef35987295:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static void projectOv(const :ref:`XcMo<doxid-structrgpot_1_1_xc_mo>`& mo, const double* Vao, double* ov)
+
+ov = einsum('pv,pq,qo->ov', Cv, V, Co) == Co^T @ (V^T @ Cv). Matches lib.einsum path ('pv,xpq->vxq' then 'vxq,qo->xov').
+
+.. index:: pair: function; tdaSigma
+.. _doxid-classrgpot_1_1_xc_kernel_1afdcba4135a430ac83eb7d778c7d531d1:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static void tdaSigma(const :ref:`XcMo<doxid-structrgpot_1_1_xc_mo>`& mo, const double* z, const double* v1, double* sigma)
+
+(A z)_ia = e_ia z_ia + (Co^T @ v1^T @ Cv)_ia. v1 is AO (nao\*nao).
+
+.. index:: pair: function; rpaSigma
+.. _doxid-classrgpot_1_1_xc_kernel_1a745327feccf15e7979898aada1a41986:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static void rpaSigma(const :ref:`XcMo<doxid-structrgpot_1_1_xc_mo>`& mo, const double* xy, const double* v1, double* sigma)
+
+[[A,B],[-B,-A]](X,Y). xy and out are 2\*nocc\*nvir (X then Y).
+

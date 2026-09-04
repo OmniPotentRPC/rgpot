@@ -1,0 +1,155 @@
+
+
+Compose potentials with ExprPot
+-------------------------------
+
+``ExprPot`` (meson ``-Dwith_expr=true``) compiles an energy string over named child
+``Potential`` objects with vendored OpenMM Lepton.
+There is no pixi muparser feature.
+One ``ExprPot`` is one ``Potential``, so
+``PotentialHandle::from_impl`` / ``rgpot_potential_new_eindir`` makes that one
+eindir objective for rgmin, rgsaddle, and anneal.
+See `rgpot potentials as eindir objectives <eindir-anneal.rst>`_.
+
+There is no ``PotentialConfig.expr`` arm.
+The C++ constructor is the first-slice API.
+RPC/config names the same tree as recursive ``ExprParams`` / ``PotSpec`` (expression
+plus named ``ExprTerm`` children), not a ``configure`` union.
+
+Named terms
+~~~~~~~~~~~
+
+The constructor takes an energy string and a
+``std::vector<rgpot::ExprPot::Term>``, where ``Term`` is
+``std::pair<std::string, std::unique_ptr<PotentialBase>>``.
+Each name in the string is that child's energy.
+``0.5*lj + morse`` means half the Lennard-Jones energy plus the Morse energy on
+the same geometry.
+
+.. code:: cpp
+
+    #include "rgpot/ExprPot/ExprPot.hpp"
+    #include "rgpot/LennardJones/LJPot.hpp"
+    #include "rgpot/Morse/MorsePot.hpp"
+
+    std::vector<rgpot::ExprPot::Term> terms;
+    terms.emplace_back("lj", std::make_unique<rgpot::LJPot>());
+    terms.emplace_back("morse", std::make_unique<rgpot::MorsePot>());
+    rgpot::ExprPot pot("0.5*lj + morse", std::move(terms));
+
+When ``-Dwith_dftd3=true``, ``D3Pot`` is an ordinary child:
+
+.. code:: cpp
+
+    #include "rgpot/D3Pot/D3Pot.hpp"
+    #include "rgpot/ExprPot/ExprPot.hpp"
+    #include "rgpot/LennardJones/LJPot.hpp"
+
+    std::vector<rgpot::ExprPot::Term> terms;
+    terms.emplace_back("lj", std::make_unique<rgpot::LJPot>());
+    terms.emplace_back("d3", std::make_unique<rgpot::D3Pot>());
+    rgpot::ExprPot pot("0.5*lj + d3", std::move(terms));
+
+Lepton identifier grammar
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A term name must be a Lepton identifier: an ASCII letter or underscore first,
+then ASCII letters, digits, or underscores.
+``lj``, ``morse``, and ``d3`` are valid.
+``1lj``, ``lj-x``, and ``lj.x`` are not.
+
+Construct-time fail-closed names
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The constructor throws ``std::invalid_argument`` before any force call when:
+
+- the expression is empty or blank
+
+- there are zero terms
+
+- a name is not a Lepton identifier
+
+- a name is duplicated
+
+- a child pointer is null
+
+- Lepton cannot parse or compile the expression
+
+- a supplied name is missing from the expression
+
+- an identifier in the expression has no child
+
+- ``ParsedExpression::differentiate(name)`` fails
+
+Analytic forces
+~~~~~~~~~~~~~~~
+
+At construct, Lepton compiles the energy once and
+``ParsedExpression::differentiate(name)`` once per term.
+A force call evaluates each child, then applies the chain rule
+``F = sum_i (df/dE_i) F_i``.
+Variance uses the same analytic weights.
+There is no finite-difference force path.
+
+What is a term
+~~~~~~~~~~~~~~
+
+Terms are ``unique_ptr<PotentialBase>`` only.
+``D3Pot`` and ``D4Pot`` are ordinary children (enable
+``-Dwith_dftd3`` / ``-Dwith_dftd4``).
+``XcKernel`` is not a term: it is in-process XC collocation, not a ``Potential``.
+Do not time ``XcKernel`` against pyeonclient; that is a category error.
+
+In-process LJ vs pyeonclient Matter
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+pyeonclient is the eOn algorithm layer (``Matter.relax``, Dimer, NEB). rgpot is
+the PES.
+A claim that ``ExprPot`` or ``XcKernel`` beats pyeonclient is a category error
+unless the race is the same geometry, same pot, and the same host job.
+
+``scripts/time_lj_rgpot_vs_pyeonclient.py`` times that race on rg.terra with repo
+defaults (no invented cheaper pot settings):
+
+- Fixture: the ``ExprPotTest`` two-atom Ar pair (1.5 A, Z=18, 40 A box), default
+  ``LJConfig`` (``u0`` 1 eV, cutoff 15 A, ``psi`` 1 A).
+
+- A: ``rgpot::LJPot::operator()`` via ``CppCore/examples/time_lj_force.cc`` (or the
+  Python ``rgpot.LJPot`` binding).
+
+- B: in-process pyeonclient ``Matter`` with ``PotType.LJ`` (not potserv RPC).
+
+- C (optional, ``-Dwith_expr=true``): ``ExprPot("lj", {lj})`` vs A.
+
+Build the helper (terra only; release, repo options):
+
+.. code:: bash
+
+    pixi run meson setup bbdir-lj-bench \
+      -Dwith_examples=true -Dwith_expr=true -Dwith_tests=false \
+      -Dwith_rpc=false --buildtype=release
+    pixi run meson compile -C bbdir-lj-bench time_lj_force
+    python scripts/time_lj_rgpot_vs_pyeonclient.py \
+      --a-bin bbdir-lj-bench/CppCore/time_lj_force
+
+Measured on rg.terra (2026-09-04), ``n_calls=1000000``, ``warmup=5000``, same
+fixture and default ``LJConfig``.
+Two consecutive runs of
+``scripts/time_lj_rgpot_vs_pyeonclient.py --a-bin time_lj_force``:
+
+.. table::
+
+    +-----+-----------------------------------+-------------------------------------------+-------+
+    | Run | A ``LJPot::operator()`` (ns/call) | B pyeonclient ``Matter.forces`` (ns/call) |   B/A |
+    +=====+===================================+===========================================+=======+
+    |   1 |                           32.8244 |                                  687.4060 | 20.94 |
+    +-----+-----------------------------------+-------------------------------------------+-------+
+    |   2 |                           30.8468 |                                  790.8451 | 25.64 |
+    +-----+-----------------------------------+-------------------------------------------+-------+
+
+A energy ``-0.3203362431126247`` eV; B energy ``-0.3203362431126207`` eV.
+B was pyeonclient 0.3.2 with ``built_with_rgpot()`` true, in-process (``B_rpc=no``),
+not potserv.
+C (``ExprPot("lj")``) was not measured: the helper was compiled without
+``-Dwith_expr=true`` (the wheel still ships ``with_expr`` off).
+This is not a claim that ``XcKernel`` beats pyeonclient.

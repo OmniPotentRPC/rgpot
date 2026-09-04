@@ -65,6 +65,7 @@ See:
 
    howto/pip-python
    howto/embedding
+   howto/exprpot
    howto/integration
    howto/eindir-anneal
    howto/eon-rgpot

@@ -1,0 +1,62 @@
+.. index:: pair: class; rgpot::D4Pot
+.. _doxid-classrgpot_1_1_d4_pot:
+
+class rgpot::D4Pot
+==================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Grimme DFT-D4 dispersion via the dftd4 ISO C API (``dftd4.h``). :ref:`More...<details-classrgpot_1_1_d4_pot>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <D4Pot.hpp>
+	
+	class D4Pot: public rgpot::Potential< D4Pot > {
+	public:
+		// construction
+	
+		:target:`D4Pot<doxid-classrgpot_1_1_d4_pot_1a3cdc9b661997366d07d03d67a9b3be10>`();
+		:target:`D4Pot<doxid-classrgpot_1_1_d4_pot_1a5f13b0cad2a22c03a5d8ef1dc44eb64b>`(const :ref:`D4Config<doxid-structrgpot_1_1_d4_config>`& config);
+		:target:`D4Pot<doxid-classrgpot_1_1_d4_pot_1a9d6d928c666d34fb05fb2d2fdbfcd17f>`(const D4Pot&);
+		:target:`~D4Pot<doxid-classrgpot_1_1_d4_pot_1a1753ba6401f0b16956e4adf0ed48cedd>`();
+
+		// methods
+	
+		D4Pot& :target:`operator=<doxid-classrgpot_1_1_d4_pot_1a656427aea5646474a8ae96d20a9674a0>`(const D4Pot&);
+		void :target:`forceImpl<doxid-classrgpot_1_1_d4_pot_1a6e5076ed3e24f9dd7f18f3411f20f2a5>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_d4_pot_1a58c8b564c9b666d938baa687dfcbaf13>`() const;
+		const :ref:`D4Config<doxid-structrgpot_1_1_d4_config>`& :target:`config<doxid-classrgpot_1_1_d4_pot_1a6bc4bb94fc876ffd92e3c16f7c33dca4>`() const;
+	};
+.. _details-classrgpot_1_1_d4_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Grimme DFT-D4 dispersion via the dftd4 ISO C API (``dftd4.h``).
+
+In-process Potential summand: :ref:`ForceInput <doxid-structrgpot_1_1_force_input>` in, energy+forces out. Do not fold this into :ref:`XcKernel::contract <doxid-classrgpot_1_1_xc_kernel_1ac16dbc411a5d52f883cc7f8a5652228c>` or applyFxc. No PotentialConfig.d4 arm until a DFT host sums :ref:`XcKernel <doxid-classrgpot_1_1_xc_kernel>` + VV10 + D4 on the wire (rgpot-8mse; rgpot-uw9w / rgpot-eipa add this as Edisp from rgpot-2ftk).
+
+Each instance owns ``dftd4_error`` / ``dftd4_structure`` / ``dftd4_model`` / ``dftd4_param`` handles. First force builds the structure and model; later forces call ``dftd4_update_structure``. Do not share one instance across threads.
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1_d4_pot_1a58c8b564c9b666d938baa687dfcbaf13:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Concurrency and evaluation capabilities of this potential.
+
+Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
+

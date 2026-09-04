@@ -30,7 +30,8 @@ Layer Diagram
             | FFI callbacks
     +---------------------------------------------+
     |  C++ Potentials                              |
-    |  LJ, CuH2, XTBPot, TBLitePot, MetatomicPot |
+    |  LJ, CuH2, XTBPot, TBLitePot, D3Pot, D4Pot,|
+    |  ExprPot, MetatomicPot                       |
     +---------------------------------------------+
 
 Layers in Detail
@@ -244,6 +245,51 @@ use.
 IPEA1) via the `tblite <https://github.com/tblite/tblite>`_ C API.
 Same config pattern as ``XTBPot``.
 Lighter weight than xtb but fewer methods.
+
+``D3Pot`` (``-Dwith_dftd3=true``)
+    Grimme DFT-D3 via the
+
+`s-dftd3 <https://github.com/dftd3/simple-dftd3>`_ ISO C API.
+``D3Config`` selects BJ or zero damping, the functional key for C6 parameters, and
+an explicit ``atm`` flag for the Axilrod-Teller-Muto E(3) term (default on).
+In-process ``Potential`` summand: construct it and evaluate ``ForceInput`` to
+energy+forces.
+Not an XC kernel and not a ``PotentialConfig`` arm.
+There is no ``PotentialConfig.d3``.
+A DFT host adds this as the Edisp summand next to XcKernel and VV10; do not fold
+D3 into the kernel.
+
+``D4Pot`` (``-Dwith_dftd4=true``)
+    Grimme DFT-D4 via the
+
+`dftd4 <https://github.com/dftd4/dftd4>`_ ISO C API.
+``D4Config`` selects the functional key, the total charge forwarded to
+``dftd4_new_structure``, and an explicit ``atm`` flag for the many-body (``mdb``) term
+(default on).
+Charge scaling stays inside dftd4.
+In-process ``Potential`` summand: construct it and evaluate ``ForceInput`` to
+energy+forces.
+Not an XC kernel and not a ``PotentialConfig`` arm.
+There is no ``PotentialConfig.d4``.
+A DFT host adds this as the Edisp summand next to XcKernel and VV10; do not fold
+D4 into the kernel.
+
+``ExprPot`` (``-Dwith_expr=true``)
+    Named-child PES algebra compiled with
+
+vendored OpenMM Lepton (no pixi muparser).
+The constructor takes an energy string and ``unique_ptr<PotentialBase>`` children.
+Names must be Lepton identifiers; unknown, duplicate, unused, empty, or
+non-identifier names fail at construct.
+Forces are analytic chain-rule weights from
+``ParsedExpression::differentiate(name)``.
+``D3Pot`` / ``D4Pot`` are ordinary children.
+``XcKernel`` is not a term.
+There is no ``PotentialConfig.expr`` arm.
+The C++ constructor is the first-slice API; RPC/config names the same tree as
+recursive ``ExprParams`` / ``PotSpec``.
+``PotentialHandle::from_impl`` / ``rgpot_potential_new_eindir`` wraps one ``ExprPot``
+as one eindir objective.
 
 ``MetatomicPot`` (``-Dwith_metatomic=true``)
     Pre-trained ML atomistic models

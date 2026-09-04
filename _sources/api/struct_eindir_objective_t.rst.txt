@@ -1,0 +1,27 @@
+.. index:: pair: struct; eindir_objective_t
+.. _doxid-structeindir__objective__t:
+
+struct eindir_objective_t
+=========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct eindir_objective_t {
+		// fields
+	
+		size_t :target:`dim<doxid-structeindir__objective__t_1ade2e88bdda7dfe6339d4f95b5066fd31>`;
+		double* :target:`low<doxid-structeindir__objective__t_1aa44f191f865009c7743857d87067e5fa>`;
+		double* :target:`high<doxid-structeindir__objective__t_1aab42e40d2b6e495aab291cb03f573db7>`;
+		void* :target:`eval_fn<doxid-structeindir__objective__t_1a1bd14c0d6c253d22cb48c84fb59cd72b>`;
+		void* :target:`grad_fn<doxid-structeindir__objective__t_1a22a2f036b610e93e56551c9f6825e86a>`;
+		void* :target:`user_data<doxid-structeindir__objective__t_1ac9ff422d958559c36414b952fe9c7dae>`;
+		void* :target:`free_fn<doxid-structeindir__objective__t_1a23c1888b295e24300a9e355862414105>`;
+	};

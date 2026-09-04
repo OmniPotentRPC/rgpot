@@ -1,0 +1,88 @@
+.. index:: pair: struct; rgpot::XcGrid
+.. _doxid-structrgpot_1_1_xc_grid:
+
+struct rgpot::XcGrid
+====================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+In-process XC kernel contraction (libxckernel C ABI). :ref:`More...<details-structrgpot_1_1_xc_grid>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <XcKernel.hpp>
+	
+	struct XcGrid {
+		// fields
+	
+		std::int64_t :target:`npts<doxid-structrgpot_1_1_xc_grid_1a04ed873fffa70a7196b16d1f3b675c7c>` = 0;
+		std::int64_t :target:`nbf<doxid-structrgpot_1_1_xc_grid_1a8b63853cb66a30c4155a50e401b0aeb8>` = 0;
+		const double* :ref:`chi<doxid-structrgpot_1_1_xc_grid_1a8069f044ae9d837caf110ecaa4987236>` = nullptr;
+		const double* :ref:`dchi<doxid-structrgpot_1_1_xc_grid_1aa72522b6b43b2ef8470b45590ad137f7>` = nullptr;
+		const double* :ref:`lapl_chi<doxid-structrgpot_1_1_xc_grid_1a86e8f71dd71a871faf50838054cfe582>` = nullptr;
+		const double* :ref:`hess_chi<doxid-structrgpot_1_1_xc_grid_1a1ffc4c74486626e0faf7d45709cb83d0>` = nullptr;
+	};
+.. _details-structrgpot_1_1_xc_grid:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+In-process XC kernel contraction (libxckernel C ABI).
+
+This is not a geometry PES. Do not subclass Potential. Do not add a PotentialConfig.xckernel arm (rgpot-qf6b, rgpot-nrve): operands are collocation + named Libxc derivative arrays + (perturbed) fields, not :ref:`ForceInput <doxid-structrgpot_1_1_force_input>`; results are AO matrices, not PotentialResult energy/forces. No DFT host sends chi / dchi / weights over potserv in this slice.
+
+Term ownership is XC-only (rgpot-nkyx). Coulomb, Hartree-Fock exact exchange, and range-separated exchange stay host-owned. libxckernel never evaluates functionals: the host mixes Libxc arrays and passes them in.
+
+First slice (rgpot-chjn): families lda, gga, mgga_tau; max_order 2 (Fock o1 + fxc o2). TDA/RPA sigma assembly uses the singlet spin-adapted o2 kernels (``xck_*_st_o2_p``) plus host Coulomb. LDA TDA/RPA forms wv as w\*rho\*(v2rho2_0+v2rho2_1) and tiles stage B at PySCF BLKSIZE=128. GGA st_o2_p applyFxc uses the generated 7-term monomials via contract() (host long-double stage A/B). Double tiled stage B misses exclusive 1e-17 vs live gen_vind on the sto-3g pin. Dispatch is by kernel name; scalar operand order is read from <name>_scal_names / <name>_n_scal, not hard-coded.
+
+Each :ref:`XcKernel <doxid-classrgpot_1_1_xc_kernel>` instance is a name + resolved ABI pointers. The C kernels are reentrant on distinct out/scal buffers. Do not share one ``out`` pointer across threads. Distinct instances may run concurrently.
+
+Fields
+------
+
+.. index:: pair: variable; chi
+.. _doxid-structrgpot_1_1_xc_grid_1a8069f044ae9d837caf110ecaa4987236:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const double* chi = nullptr
+
+nbf \* npts, row-major
+
+.. index:: pair: variable; dchi
+.. _doxid-structrgpot_1_1_xc_grid_1aa72522b6b43b2ef8470b45590ad137f7:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const double* dchi = nullptr
+
+3 \* nbf \* npts
+
+.. index:: pair: variable; lapl_chi
+.. _doxid-structrgpot_1_1_xc_grid_1a86e8f71dd71a871faf50838054cfe582:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const double* lapl_chi = nullptr
+
+nbf \* npts, or nullptr
+
+.. index:: pair: variable; hess_chi
+.. _doxid-structrgpot_1_1_xc_grid_1a1ffc4c74486626e0faf7d45709cb83d0:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const double* hess_chi = nullptr
+
+6 \* nbf \* npts, or nullptr
+

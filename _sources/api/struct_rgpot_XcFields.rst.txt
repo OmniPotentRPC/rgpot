@@ -1,0 +1,88 @@
+.. index:: pair: struct; rgpot::XcFields
+.. _doxid-structrgpot_1_1_xc_fields:
+
+struct rgpot::XcFields
+======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct XcFields {
+		// fields
+	
+		std::vector<double> :ref:`rho<doxid-structrgpot_1_1_xc_fields_1aee7fed71dfa886fc296cde44140a97b8>`;
+		std::vector<double> :ref:`sigma<doxid-structrgpot_1_1_xc_fields_1a4a8df82376d8a45f643599348da100f5>`;
+		std::vector<double> :ref:`tau<doxid-structrgpot_1_1_xc_fields_1a6494e3ce5e1c37d9aef3cc31ed35098a>`;
+		std::vector<double> :ref:`lapl<doxid-structrgpot_1_1_xc_fields_1a807f99a8871f5be79d89ff05ca711630>`;
+		std::vector<double> :ref:`grad_rho<doxid-structrgpot_1_1_xc_fields_1a805bfb3e7164231e919d8acb6c9126d1>`;
+	};
+.. _details-structrgpot_1_1_xc_fields:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Fields
+------
+
+.. index:: pair: variable; rho
+.. _doxid-structrgpot_1_1_xc_fields_1aee7fed71dfa886fc296cde44140a97b8:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::vector<double> rho
+
+(npts,)
+
+.. index:: pair: variable; sigma
+.. _doxid-structrgpot_1_1_xc_fields_1a4a8df82376d8a45f643599348da100f5:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::vector<double> sigma
+
+(npts,)
+
+.. index:: pair: variable; tau
+.. _doxid-structrgpot_1_1_xc_fields_1a6494e3ce5e1c37d9aef3cc31ed35098a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::vector<double> tau
+
+(npts,)
+
+.. index:: pair: variable; lapl
+.. _doxid-structrgpot_1_1_xc_fields_1a807f99a8871f5be79d89ff05ca711630:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::vector<double> lapl
+
+(npts,)
+
+.. index:: pair: variable; grad_rho
+.. _doxid-structrgpot_1_1_xc_fields_1a805bfb3e7164231e919d8acb6c9126d1:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::vector<double> grad_rho
+
+3 \* npts, xyz packed
+

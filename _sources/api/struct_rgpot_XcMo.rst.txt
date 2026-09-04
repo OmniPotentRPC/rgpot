@@ -1,0 +1,27 @@
+.. index:: pair: struct; rgpot::XcMo
+.. _doxid-structrgpot_1_1_xc_mo:
+
+struct rgpot::XcMo
+==================
+
+.. toctree::
+	:hidden:
+
+Occupied/virtual MO blocks for TDA/RPA sigma. Co is (nao, nocc), Cv is (nao, nvir), e_ia is (nocc, nvir) with e_ia[i,a] = e_vir[a] - e_occ[i]. All row-major.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <XcKernel.hpp>
+	
+	struct XcMo {
+		// fields
+	
+		std::int64_t :target:`nao<doxid-structrgpot_1_1_xc_mo_1a421aca415e9e175778a93f91a095578b>` = 0;
+		std::int64_t :target:`nocc<doxid-structrgpot_1_1_xc_mo_1a7e807e193f7dcfe0bfbc32db2abe9807>` = 0;
+		std::int64_t :target:`nvir<doxid-structrgpot_1_1_xc_mo_1a495aae23eed256e7514782dbf0c5bdbf>` = 0;
+		const double* :target:`Co<doxid-structrgpot_1_1_xc_mo_1a21fb848152bdb6ee80c8c105427c831c>` = nullptr;
+		const double* :target:`Cv<doxid-structrgpot_1_1_xc_mo_1a40fd862c21bb62c4b99d5e1dcb5bce11>` = nullptr;
+		const double* :target:`e_ia<doxid-structrgpot_1_1_xc_mo_1a5b79e7429f4e2dbe88a011a30a6b8af6>` = nullptr;
+	};

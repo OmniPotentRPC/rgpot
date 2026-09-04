@@ -95,6 +95,7 @@ data-aria-dark="Switch to auto color mode">
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/pip-python.html">Python package (PyPI)</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/embedding.html">Embedding as a Subproject</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/exprpot.html">Compose potentials with ExprPot</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/integration.html">External Integration Guide</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eindir-anneal.html">rgpot Potentials as eindir Objectives</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html">eOn Potentials Over rgpot</a></li>
@@ -129,10 +130,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="namespace_fortranpots.html">namespace fortranpots</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot.html">namespace rgpot</a><ul class="simple">
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-2.html">namespace rgpot</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot.html">namespace rgpot</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_abi.html">namespace rgpot::abi</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_details.html">namespace rgpot::details</a></li>
@@ -141,10 +139,13 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_types.html">namespace rgpot::types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_units.html">namespace rgpot::units</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_vesin_compat.html">namespace rgpot::vesin_compat</a></li>
+<li class="toctree-l4"><a class="reference internal" href="enum_rgpot_D3Damping.html">enum rgpot::D3Damping</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_GFNMethod.html">enum rgpot::GFNMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_Reentrancy.html">enum rgpot::Reentrancy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_D3Config.html">struct rgpot::D3Config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_D4Config.html">struct rgpot::D4Config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_ForceBatch.html">struct rgpot::ForceBatch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
@@ -157,11 +158,17 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_XTBConfig.html">struct rgpot::XTBConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_XTBDlopenConfig.html">struct rgpot::XTBDlopenConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_XcFields.html">struct rgpot::XcFields</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_XcGrid.html">struct rgpot::XcGrid</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_XcMo.html">struct rgpot::XcMo</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_ZBLConfig.html">struct rgpot::ZBLConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_ZblPairCoeffs.html">struct rgpot::ZblPairCoeffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_ZblTables.html">struct rgpot::ZblTables</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_CPMDPot.html">class rgpot::CPMDPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="class_rgpot_D3Pot.html">class rgpot::D3Pot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="class_rgpot_D4Pot.html">class rgpot::D4Pot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_DynLib.html">class rgpot::DynLib</a></li>
+<li class="toctree-l4"><a class="reference internal" href="class_rgpot_ExprPot.html">class rgpot::ExprPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_LJClusterPot.html">class rgpot::LJClusterPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_MetatomicDlopen.html">class rgpot::MetatomicDlopen</a></li>
@@ -172,8 +179,12 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_TBLitePot.html">class rgpot::TBLitePot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_XTBDlopen.html">class rgpot::XTBDlopen</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_XTBPot.html">class rgpot::XTBPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="class_rgpot_XcKernel.html">class rgpot::XcKernel</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_ZBLPot.html">class rgpot::ZBLPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_registry.html">template class rgpot::registry</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-2.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-3.html">namespace rgpot</a><ul class="simple">
@@ -189,6 +200,12 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-7.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-8.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-9.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_cuh2.html">namespace rgpot_cuh2</a><ul class="simple">
@@ -258,6 +275,9 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="namespace_vesin_cpu.html">namespace vesin::cpu</a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_xckernel.html">namespace xckernel</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="enum_CPMDCFeatureKind.html">enum CPMDCFeatureKind</a></li>
 <li class="toctree-l3"><a class="reference internal" href="struct_CPMDCFeatureEntry.html">struct CPMDCFeatureEntry</a><ul class="simple">
 </ul>
@@ -278,6 +298,9 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="struct_RgpotXtbPot.html">struct RgpotXtbPot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_eindir_objective_t.html">struct eindir_objective_t</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
@@ -471,8 +494,11 @@ data-aria-dark="Switch to auto color mode">
 <span data-line="19">    <span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="n">Impl</span><span class="o">&gt;</span></span>
 <span data-line="20">    <span class="k">static</span> <span class="n">PotentialHandle</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-handle-1af5e646d3175b1fdac6040e17ed014c25"><span class="std std-ref">from_impl</span></a><span class="p">(</span><span class="n">Impl</span><span class="o">&amp;</span> <span class="n">impl</span><span class="p">);</span></span>
 <span data-line="21"> </span>
-<span data-line="22">    <span class="k">static</span> <span class="n">PotentialHandle</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-handle-1aecafbe5b4d058843e4853545f26a2dc6"><span class="std std-ref">from_callback</span></a><span class="p">(</span><span class="n">rgpot_status_t</span><span class="p">(</span><span class="o">*</span><span class="p">)(</span><span class="kt">void</span><span class="o">*</span><span class="p">,</span> <span class="k">const</span> <span class="n">rgpot_force_input_t</span><span class="o">*</span><span class="p">,</span> <span class="n">rgpot_force_out_t</span><span class="o">*</span><span class="p">)</span> <span class="n">callback</span><span class="p">,</span> <span class="kt">void</span><span class="o">*</span> <span class="n">user_data</span><span class="p">,</span> <span class="kt">void</span><span class="p">(</span><span class="o">*</span><span class="p">)(</span><span class="kt">void</span><span class="o">*</span><span class="p">)</span> <span class="n">free_fn</span> <span class="o">=</span> <span class="k">nullptr</span><span class="p">);</span></span>
-<span data-line="23"><span class="p">};</span></span>
+<span data-line="22">    <span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="n">Impl</span><span class="o">&gt;</span></span>
+<span data-line="23">    <span class="k">static</span> <span class="n">PotentialHandle</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-handle-1a7a993c90ad1cea414f1d73585f432cfe"><span class="std std-ref">from_impl</span></a><span class="p">(</span><span class="n">Impl</span><span class="o">&amp;</span> <span class="n">impl</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">n_atoms</span><span class="p">,</span> <span class="k">const</span> <span class="kt">int32_t</span><span class="o">*</span> <span class="n">atomic_numbers</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">box_matrix</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">bounds_low</span> <span class="o">=</span> <span class="k">nullptr</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">bounds_high</span> <span class="o">=</span> <span class="k">nullptr</span><span class="p">);</span></span>
+<span data-line="24"> </span>
+<span data-line="25">    <span class="k">static</span> <span class="n">PotentialHandle</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1-potential-handle-1aecafbe5b4d058843e4853545f26a2dc6"><span class="std std-ref">from_callback</span></a><span class="p">(</span><span class="n">rgpot_status_t</span><span class="p">(</span><span class="o">*</span><span class="p">)(</span><span class="kt">void</span><span class="o">*</span><span class="p">,</span> <span class="k">const</span> <span class="n">rgpot_force_input_t</span><span class="o">*</span><span class="p">,</span> <span class="n">rgpot_force_out_t</span><span class="o">*</span><span class="p">)</span> <span class="n">callback</span><span class="p">,</span> <span class="kt">void</span><span class="o">*</span> <span class="n">user_data</span><span class="p">,</span> <span class="kt">void</span><span class="p">(</span><span class="o">*</span><span class="p">)(</span><span class="kt">void</span><span class="o">*</span><span class="p">)</span> <span class="n">free_fn</span> <span class="o">=</span> <span class="k">nullptr</span><span class="p">);</span></span>
+<span data-line="26"><span class="p">};</span></span>
 </pre></div>
 </section>
 <section id="detailed-documentation">
@@ -583,6 +609,7 @@ data-aria-dark="Switch to auto color mode">
 <p>Create a handle from a legacy C++ potential implementation.</p>
 <p>Registers a template trampoline that extracts raw CPU pointers from the DLPack tensors in <code class="docutils literal notranslate"><span class="pre">rgpot_force_input_t</span></code>, constructs legacy <code class="docutils literal notranslate"><span class="pre">ForceInput</span></code> / <code class="docutils literal notranslate"><span class="pre">ForceOut</span></code> types for <em>Impl::forceImpl()</em>, and wraps the resulting forces in an owning DLPack tensor.</p>
 <p>The caller retains ownership of <em>impl</em> and <strong>must</strong> keep it alive for the lifetime of the returned handle.</p>
+<p>The handle is one <code class="docutils literal notranslate"><span class="pre">rgpot_potential_t</span></code> and therefore one <code class="docutils literal notranslate"><span class="pre">eindir_objective_t</span></code> (first-member IS-A). Child terms stay inside <em>impl</em>; this factory does not build a list of objectives.</p>
 <p class="rubric">Parameters:</p>
 <div class="table-wrapper colwidths-given docutils container">
 <table class="docutils align-default">
@@ -602,8 +629,14 @@ data-aria-dark="Switch to auto color mode">
 </div>
 <p class="rubric">Returns:</p>
 <p>A new <code class="docutils literal notranslate"><span class="pre">PotentialHandle</span></code> wrapping <em>impl</em>.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-potential-handle-1a7a993c90ad1cea414f1d73585f432cfe">
+<span id="index-7"></span><pre><span data-line="1"><span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="n">Impl</span><span class="o">&gt;</span></span>
+<span data-line="2"><span class="k">static</span> <span class="n">PotentialHandle</span> <span class="n">from_impl</span><span class="p">(</span><span class="n">Impl</span><span class="o">&amp;</span> <span class="n">impl</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">n_atoms</span><span class="p">,</span> <span class="k">const</span> <span class="kt">int32_t</span><span class="o">*</span> <span class="n">atomic_numbers</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">box_matrix</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">bounds_low</span> <span class="o">=</span> <span class="k">nullptr</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">bounds_high</span> <span class="o">=</span> <span class="k">nullptr</span><span class="p">)</span></span>
+</pre></div>
+<p>Wrap <em>impl</em> as one eindir objective with molecular context.</p>
+<p>Same trampoline as <code class="docutils literal notranslate"><span class="pre">from_impl(Impl&amp;)</span></code>, but calls <code class="docutils literal notranslate"><span class="pre">rgpot_potential_new_eindir</span></code> with atom count, species, and cell so hosts that eval through <code class="docutils literal notranslate"><span class="pre">eindir_objective_t*</span></code> have bounds and species. <code class="docutils literal notranslate"><span class="pre">rgpot_potential_calculate</span></code> still uses the input tensors.</p>
 <div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-potential-handle-1aecafbe5b4d058843e4853545f26a2dc6">
-<span id="index-7"></span><pre><span data-line="1"><span class="k">static</span> <span class="n">PotentialHandle</span> <span class="n">from_callback</span><span class="p">(</span><span class="n">rgpot_status_t</span><span class="p">(</span><span class="o">*</span><span class="p">)(</span><span class="kt">void</span><span class="o">*</span><span class="p">,</span> <span class="k">const</span> <span class="n">rgpot_force_input_t</span><span class="o">*</span><span class="p">,</span> <span class="n">rgpot_force_out_t</span><span class="o">*</span><span class="p">)</span> <span class="n">callback</span><span class="p">,</span> <span class="kt">void</span><span class="o">*</span> <span class="n">user_data</span><span class="p">,</span> <span class="kt">void</span><span class="p">(</span><span class="o">*</span><span class="p">)(</span><span class="kt">void</span><span class="o">*</span><span class="p">)</span> <span class="n">free_fn</span> <span class="o">=</span> <span class="k">nullptr</span><span class="p">)</span></span>
+<span id="index-8"></span><pre><span data-line="1"><span class="k">static</span> <span class="n">PotentialHandle</span> <span class="n">from_callback</span><span class="p">(</span><span class="n">rgpot_status_t</span><span class="p">(</span><span class="o">*</span><span class="p">)(</span><span class="kt">void</span><span class="o">*</span><span class="p">,</span> <span class="k">const</span> <span class="n">rgpot_force_input_t</span><span class="o">*</span><span class="p">,</span> <span class="n">rgpot_force_out_t</span><span class="o">*</span><span class="p">)</span> <span class="n">callback</span><span class="p">,</span> <span class="kt">void</span><span class="o">*</span> <span class="n">user_data</span><span class="p">,</span> <span class="kt">void</span><span class="p">(</span><span class="o">*</span><span class="p">)(</span><span class="kt">void</span><span class="o">*</span><span class="p">)</span> <span class="n">free_fn</span> <span class="o">=</span> <span class="k">nullptr</span><span class="p">)</span></span>
 </pre></div>
 <p>Create a handle from an explicit C callback and user data.</p>
 <p>This is the low-level factory; prefer <code class="docutils literal notranslate"><span class="pre">from_impl()</span></code> for C++ potentials.</p>

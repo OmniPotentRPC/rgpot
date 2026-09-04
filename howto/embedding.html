@@ -2,7 +2,7 @@
 <html lang="en" data-accent-color="teal" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Embedding as a Subproject - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="External Integration Guide" href="integration.html" /><link rel="prev" title="Python package (PyPI)" href="pip-python.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Embedding as a Subproject - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Compose potentials with ExprPot" href="exprpot.html" /><link rel="prev" title="Python package (PyPI)" href="pip-python.html" />
       <link rel="canonical" href="https://rgpot.rgoswami.me/howto/embedding.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
@@ -95,6 +95,7 @@ data-aria-dark="Switch to auto color mode">
 <ul class="current">
 <li class="toctree-l1 _expand"><a class="reference internal" href="pip-python.html">Python package (PyPI)</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Embedding as a Subproject</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="exprpot.html">Compose potentials with ExprPot</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="integration.html">External Integration Guide</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="eindir-anneal.html">rgpot Potentials as eindir Objectives</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="eon-rgpot.html">eOn Potentials Over rgpot</a></li>
@@ -129,10 +130,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_fortranpots.html">namespace fortranpots</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot.html">namespace rgpot</a><ul class="simple">
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-2.html">namespace rgpot</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot.html">namespace rgpot</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_abi.html">namespace rgpot::abi</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_details.html">namespace rgpot::details</a></li>
@@ -141,10 +139,13 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_types.html">namespace rgpot::types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_units.html">namespace rgpot::units</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_vesin_compat.html">namespace rgpot::vesin_compat</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_D3Damping.html">enum rgpot::D3Damping</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_GFNMethod.html">enum rgpot::GFNMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_Reentrancy.html">enum rgpot::Reentrancy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_D3Config.html">struct rgpot::D3Config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_D4Config.html">struct rgpot::D4Config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceBatch.html">struct rgpot::ForceBatch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
@@ -157,11 +158,17 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XTBConfig.html">struct rgpot::XTBConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XTBDlopenConfig.html">struct rgpot::XTBDlopenConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XcFields.html">struct rgpot::XcFields</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XcGrid.html">struct rgpot::XcGrid</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XcMo.html">struct rgpot::XcMo</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ZBLConfig.html">struct rgpot::ZBLConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ZblPairCoeffs.html">struct rgpot::ZblPairCoeffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ZblTables.html">struct rgpot::ZblTables</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_CPMDPot.html">class rgpot::CPMDPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_D3Pot.html">class rgpot::D3Pot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_D4Pot.html">class rgpot::D4Pot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_DynLib.html">class rgpot::DynLib</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_ExprPot.html">class rgpot::ExprPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_LJClusterPot.html">class rgpot::LJClusterPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_MetatomicDlopen.html">class rgpot::MetatomicDlopen</a></li>
@@ -172,8 +179,12 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_TBLitePot.html">class rgpot::TBLitePot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_XTBDlopen.html">class rgpot::XTBDlopen</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_XTBPot.html">class rgpot::XTBPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_XcKernel.html">class rgpot::XcKernel</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_ZBLPot.html">class rgpot::ZBLPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_registry.html">template class rgpot::registry</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-2.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-3.html">namespace rgpot</a><ul class="simple">
@@ -189,6 +200,12 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-7.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-8.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-9.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_cuh2.html">namespace rgpot_cuh2</a><ul class="simple">
@@ -258,6 +275,9 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_vesin_cpu.html">namespace vesin::cpu</a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_xckernel.html">namespace xckernel</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="../api/enum_CPMDCFeatureKind.html">enum CPMDCFeatureKind</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../api/struct_CPMDCFeatureEntry.html">struct CPMDCFeatureEntry</a><ul class="simple">
 </ul>
@@ -278,6 +298,9 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/struct_RgpotXtbPot.html">struct RgpotXtbPot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_eindir_objective_t.html">struct eindir_objective_t</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
@@ -493,7 +516,19 @@ Enable only what the host project needs:</p>
 <td><p><code class="docutils literal notranslate"><span class="pre">tblitebld</span></code> / <code class="docutils literal notranslate"><span class="pre">tbbld</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">TBLitePot</span></code> (GFN1, GFN2, IPEA1)</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">-Dwith_metatomic=true</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">-Dwith_dftd3=true</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dftd3</span></code> / <code class="docutils literal notranslate"><span class="pre">dftd</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">D3Pot</span></code> in-process Potential summand (DFT-D3 BJ/zero, explicit ATM; no <code class="docutils literal notranslate"><span class="pre">PotentialConfig.d3</span></code>; goldens <code class="docutils literal notranslate"><span class="pre">meson</span> <span class="pre">test</span> <span class="pre">--suite</span> <span class="pre">dftd</span></code>)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">-Dwith_dftd4=true</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dftd4</span></code> / <code class="docutils literal notranslate"><span class="pre">dftd</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">D4Pot</span></code> in-process Potential summand (DFT-D4 functional/charge, explicit ATM; no <code class="docutils literal notranslate"><span class="pre">PotentialConfig.d4</span></code>; goldens <code class="docutils literal notranslate"><span class="pre">meson</span> <span class="pre">test</span> <span class="pre">--suite</span> <span class="pre">dftd</span></code>)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">-Dwith_expr=true</span></code></p></td>
+<td><p>none (vendored OpenMM Lepton; no pixi muparser)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ExprPot</span></code> named-child PES algebra (no <code class="docutils literal notranslate"><span class="pre">PotentialConfig.expr</span></code>)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">-Dwith_metatomic=true</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">metatomicbld</span></code> (linux-64)</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">MetatomicPot</span></code> (TorchScript models)</p></td>
 </tr>
@@ -612,10 +647,10 @@ system:</p>
         <span>Previous</span><div class="title">Python package (PyPI)</div></div>
     </a>
   </div><div class="navigation-next">
-    <a href="integration.html">
+    <a href="exprpot.html">
       <div class="page-info">
         <span>Next</span>
-        <div class="title">External Integration Guide</div>
+        <div class="title">Compose potentials with ExprPot</div>
       </div>
       <i class="i-lucide chevron-right"></i>
     </a>

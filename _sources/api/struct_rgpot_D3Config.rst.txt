@@ -1,0 +1,49 @@
+.. index:: pair: struct; rgpot::D3Config
+.. _doxid-structrgpot_1_1_d3_config:
+
+struct rgpot::D3Config
+======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Linked s-dftd3 pot (NEEDED libs-dftd3). :ref:`More...<details-structrgpot_1_1_d3_config>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <D3Pot.hpp>
+	
+	struct D3Config {
+		// fields
+	
+		:ref:`D3Damping<doxid-namespacergpot_1ad2c0c9f9065c92cae6f5bbe30db75610>` :target:`damping<doxid-structrgpot_1_1_d3_config_1aba7313a94637f1fe6c2b1d648b223b2f>` = D3Damping::BJ;
+		std::string :target:`functional<doxid-structrgpot_1_1_d3_config_1a30165ca733e6124576ba109872246352>` = "pbe";
+		bool :ref:`atm<doxid-structrgpot_1_1_d3_config_1aeee24bf9a424a4d339f64a9dce9365c5>` = true;
+	};
+.. _details-structrgpot_1_1_d3_config:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Linked s-dftd3 pot (NEEDED libs-dftd3).
+
+``atm`` is the Axilrod-Teller-Muto E(3) three-body term. The literature D3-ATM default is on; the flag is an explicit constructor field so tests can pin both states. ``functional`` is the s-dftd3 method key for C6 parameters (for example ``"pbe"``).
+
+Fields
+------
+
+.. index:: pair: variable; atm
+.. _doxid-structrgpot_1_1_d3_config_1aeee24bf9a424a4d339f64a9dce9365c5:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool atm = true
+
+Axilrod-Teller-Muto E(3); default on (D3-ATM).
+

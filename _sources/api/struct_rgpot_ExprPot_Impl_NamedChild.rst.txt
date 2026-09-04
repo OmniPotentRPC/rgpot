@@ -1,0 +1,24 @@
+.. index:: pair: struct; rgpot::ExprPot::Impl::NamedChild
+.. _doxid-structrgpot_1_1_expr_pot_1_1_impl_1_1_named_child:
+
+struct rgpot::ExprPot::Impl::NamedChild
+=======================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct NamedChild {
+		// fields
+	
+		std::string :target:`name<doxid-structrgpot_1_1_expr_pot_1_1_impl_1_1_named_child_1a0e5bda749f0d69de4b6817d745b16169>`;
+		std::unique_ptr<:ref:`PotentialBase<doxid-classrgpot_1_1_potential_base>`> :target:`child<doxid-structrgpot_1_1_expr_pot_1_1_impl_1_1_named_child_1abf9bacb7a0e437fd3717acee2dc16fc5>`;
+		double :target:`energyValue<doxid-structrgpot_1_1_expr_pot_1_1_impl_1_1_named_child_1a762402ef9040eea76b6f4ce8c5329999>` = 0.0;
+		Lepton::CompiledExpression :target:`dEnergy<doxid-structrgpot_1_1_expr_pot_1_1_impl_1_1_named_child_1ae07911ef9060961585803a0d1d5eeb87>`;
+	};

@@ -1,0 +1,95 @@
+.. index:: pair: class; rgpot::ExprPot
+.. _doxid-classrgpot_1_1_expr_pot:
+
+class rgpot::ExprPot
+====================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_ExprPot_Impl.rst
+
+Overview
+~~~~~~~~
+
+Energy :math:`E = f(E_0, E_1, \ldots)` over named child potentials. :ref:`More...<details-classrgpot_1_1_expr_pot>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <ExprPot.hpp>
+	
+	class ExprPot: public rgpot::Potential< ExprPot > {
+	public:
+		// typedefs
+	
+		typedef std::pair<std::string, std::unique_ptr<:ref:`PotentialBase<doxid-classrgpot_1_1_potential_base>`>> :target:`Term<doxid-classrgpot_1_1_expr_pot_1a1caec6861ef78510e0911e70fbd78fdd>`;
+
+		// structs
+	
+		struct :ref:`Impl<doxid-structrgpot_1_1_expr_pot_1_1_impl>`;
+
+		// construction
+	
+		:target:`ExprPot<doxid-classrgpot_1_1_expr_pot_1a7abf6307d6a546808664de271bb9c3f0>`(std::string expression, std::vector<Term> terms);
+		:target:`ExprPot<doxid-classrgpot_1_1_expr_pot_1a9590cc39b62ef66c2059b72c52543f01>`(const ExprPot&);
+		:target:`ExprPot<doxid-classrgpot_1_1_expr_pot_1ada686b33e2e6861d82fba5e59ff512c9>`(ExprPot&& other);
+		:target:`~ExprPot<doxid-classrgpot_1_1_expr_pot_1a5ae912d3ba3f09ee102d1839a2a821f9>`();
+
+		// methods
+	
+		ExprPot& :target:`operator=<doxid-classrgpot_1_1_expr_pot_1afe939227b697cebfcd1320cc2ef550b0>`(const ExprPot&);
+		ExprPot& :target:`operator=<doxid-classrgpot_1_1_expr_pot_1acc473f354141d96695ce5565eda61b1f>`(ExprPot&& other);
+		void :target:`forceImpl<doxid-classrgpot_1_1_expr_pot_1a63c18bc88d2beb11a5cebbd81c1647b9>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_expr_pot_1acb09d0d256feb5f20d022a3a937d94ed>`() const;
+		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_expr_pot_1a5dd55c06126fb36c9cd539a84c162e9b>`() const;
+		const std::string& :target:`expression<doxid-classrgpot_1_1_expr_pot_1a93ddae276c4f5d8a1072a75a66168903>`() const;
+		double :ref:`dEnergyDTerm<doxid-classrgpot_1_1_expr_pot_1a37681cf4eb0cb3b65be9ba401151f759>`(const std::string& name) const;
+	};
+.. _details-classrgpot_1_1_expr_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Energy :math:`E = f(E_0, E_1, \ldots)` over named child potentials.
+
+The constructor parses ``expression`` with ``Lepton::Parser::parse``, compiles the energy once, and compiles ``ParsedExpression::differentiate(name)`` once per term. Unknown, duplicate, unused, or non-identifier names fail closed before any force call. Forces are the chain rule :math:`F = \sum_i (\partial f/\partial E_i)\, F_i`.
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1_expr_pot_1acb09d0d256feb5f20d022a3a937d94ed:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Concurrency and evaluation capabilities of this potential.
+
+Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
+
+.. index:: pair: function; paramsKey
+.. _doxid-classrgpot_1_1_expr_pot_1a5dd55c06126fb36c9cd539a84c162e9b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual uint64_t paramsKey() const
+
+Fingerprint of the potential's parameter set.
+
+Mixed into the result-cache key so results never cross parameter sets. Implementations hash their config field by field (see :ref:`ParamHash.hpp <doxid-_param_hash_8hpp_source>`) plus a kernel-version salt that changes whenever the numerics change. The default (0) suits parameter-free potentials whose numerics never changed.
+
+.. index:: pair: function; dEnergyDTerm
+.. _doxid-classrgpot_1_1_expr_pot_1a37681cf4eb0cb3b65be9ba401151f759:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double dEnergyDTerm(const std::string& name) const
+
+Analytic :math:`\partial f/\partial E_{\mathrm{name}}` from the construct-time compiled derivative, evaluated at the last child energies (zero if no force call has run).
+

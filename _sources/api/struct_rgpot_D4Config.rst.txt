@@ -1,0 +1,49 @@
+.. index:: pair: struct; rgpot::D4Config
+.. _doxid-structrgpot_1_1_d4_config:
+
+struct rgpot::D4Config
+======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Linked dftd4 pot (NEEDED libdftd4). :ref:`More...<details-structrgpot_1_1_d4_config>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <D4Pot.hpp>
+	
+	struct D4Config {
+		// fields
+	
+		std::string :target:`functional<doxid-structrgpot_1_1_d4_config_1ad0c612b0f1d2c882993f82630ea7fbf7>` = "pbe";
+		double :target:`charge<doxid-structrgpot_1_1_d4_config_1ac6d63d8126202483aef4571f4b657559>` = 0.0;
+		bool :ref:`atm<doxid-structrgpot_1_1_d4_config_1a83df845d1d20c961b6d4febb55e462da>` = true;
+	};
+.. _details-structrgpot_1_1_d4_config:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Linked dftd4 pot (NEEDED libdftd4).
+
+``atm`` is the many-body (Axilrod-Teller-Muto) term the C API names ``mdb``. The literature D4-ATM default is on; the flag is an explicit constructor field so tests can pin both states. ``functional`` is the dftd4 method key for damping parameters (for example ``"pbe"``). ``charge`` is the total molecular charge passed to ``dftd4_new_structure``. Charge scaling lives inside dftd4; this wrapper does not reimplement it.
+
+Fields
+------
+
+.. index:: pair: variable; atm
+.. _doxid-structrgpot_1_1_d4_config_1a83df845d1d20c961b6d4febb55e462da:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool atm = true
+
+many-body ATM (``mdb``); default on (D4-ATM).
+

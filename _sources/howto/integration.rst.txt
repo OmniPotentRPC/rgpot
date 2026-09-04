@@ -35,9 +35,13 @@ rgpot user parameters (``PotentialConfig``) over RPC
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Backend knobs for a live ``Potential`` use Cap'n Proto ``PotentialConfig``: an
-extensible union (``none``, ``nwchem``, ``cpmd``, later ``metatomic`` / ``xtb`` / …).
+extensible union (``none``, ``nwchem``, ``cpmd``, ``metatomic``; later ``xtb`` / …).
 Geometry stays on ``ForceInput``; ``configure(config)`` applies method/backend setup
 only.
+``D3Pot`` and ``D4Pot`` stay in-process ``Potential`` summands.
+There is no ``PotentialConfig.d3`` or ``PotentialConfig.d4`` arm.
+A DFT host that wants XcKernel + VV10 + D4 sums those terms itself; do not fold
+dispersion into the XC kernel.
 
 NWChem arm (``PotentialConfig.nwchem`` / ``NWChemParams``)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

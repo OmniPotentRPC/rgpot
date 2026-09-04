@@ -1,0 +1,31 @@
+.. index:: pair: namespace; xckernel
+.. _doxid-namespacexckernel:
+
+namespace xckernel
+==================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace xckernel {
+
+	// global functions
+
+	template <typename T, typename Txc = T>
+	void :target:`stage_a<doxid-evaluator_8hpp_1a28afa7e79334c63b417d1ede975d5f45>`(int64_t npts, int64_t nm, const double* cf, const int32_t* off, const uint16_t* fid, int64_t nfld, const T*const* fields, const Txc*const* xc, T* c);
+
+	void :target:`stage_a< double, double ><doxid-evaluator_8hpp_1aef7940abd9061373928f497278f3eb49>`(int64_t npts, int64_t nm, const double* cf, const int32_t* off, const uint16_t* fid, int64_t nfld, const double*const* fields, const double*const* xc, double* c);
+
+	template <typename T>
+	void :target:`stage_b<doxid-evaluator_8hpp_1a52f2a6bf06639e04b8225ab667eb3be8>`(int64_t npts, int64_t nbf, const T* U, const T* c, const T* V, T* out);
+
+	void :target:`stage_b< double ><doxid-evaluator_8hpp_1a863fda400b50deb9702ee06706edc942>`(int64_t npts, int64_t nbf, const double* U, const double* c, const double* V, double* out);
+
+	} // namespace xckernel
