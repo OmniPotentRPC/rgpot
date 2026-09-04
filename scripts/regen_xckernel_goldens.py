@@ -429,12 +429,27 @@ def regen_pyscf() -> None:
         sys.exit(f"GGA fxc vs nr_rks_fxc rel={err / scale:.3e} exceeds 1e-13")
     save_npy(dest / "gga_fxc_ref.npy", Rref)
 
-    # TDA / RPA pins from live PySCF (tda_validate.py convention)
+    return regen_tda_rpa(mol, dest)
+
+
+def regen_tda_rpa(mol=None, dest=None) -> list[str]:
+    """TDA/RPA operands + live-vs-committed exclusive 1e-17 gate.
+
+    Needs PySCF only (no libxckernel Python generator).
+    Writes same-SCF pins, then returns drifted live-vs-committed rows.
+    """
     from pyscf import dft as dft_mod
+    from pyscf.dft import numint as ni_tda
     from pyscf.tdscf.rhf import gen_tdhf_operation
+
+    if mol is None or dest is None:
+        mol, _grids, _mf, _dm0, _dm1, _numint = _mol_grid()
+        dest = DATA / "pyscf_h2o_sto3g"
+        dest.mkdir(parents=True, exist_ok=True)
 
     rngz = np.random.default_rng(4)
     rngxy = np.random.default_rng(5)
+    drifted = []
     for fam, xc in (("lda", "LDA_X,"), ("gga", "GGA_X_PBE,")):
         mf_x = dft_mod.RKS(mol)
         mf_x.xc = xc
@@ -445,13 +460,108 @@ def regen_pyscf() -> None:
         vind, _hdiag = td.gen_vind(mf_x)
         nocc = int((mf_x.mo_occ > 0).sum())
         nvir = mol.nao - nocc
+        Co = np.ascontiguousarray(mf_x.mo_coeff[:, mf_x.mo_occ > 0])
+        Cv = np.ascontiguousarray(mf_x.mo_coeff[:, mf_x.mo_occ == 0])
+        e_ia = np.ascontiguousarray(
+            mf_x.mo_energy[mf_x.mo_occ == 0]
+            - mf_x.mo_energy[mf_x.mo_occ > 0, None]
+        )
+        save_npz(
+            dest / f"{fam}_mo.npz",
+            Co=Co,
+            Cv=Cv,
+            e_ia=e_ia,
+            mo_energy=np.ascontiguousarray(mf_x.mo_energy),
+            mo_occ=np.ascontiguousarray(mf_x.mo_occ),
+        )
+        grids_x = mf_x.grids
+        xctype = "LDA" if fam == "lda" else "GGA"
+        deriv = 0 if xctype == "LDA" else 1
+        ao = ni_tda.eval_ao(mol, grids_x.coords, deriv=deriv)
+        dm0_x = mf_x.make_rdm1()
+        rho = ni_tda.eval_rho(mol, ao, dm0_x, xctype=xctype)
+        rho_s = rho * 0.5
+        _exc, vxc, fxc = dft_mod.libxc.eval_xc(
+            xc, (rho_s, rho_s), spin=1, deriv=2
+        )[:3]
+        ng = int(len(grids_x.weights))
+
+        def _col(arr):
+            arr = np.asarray(arr)
+            return arr if arr.shape[0] == ng else arr.T
+
+        scal = {"w": np.ascontiguousarray(grids_x.weights)}
+        names_v = ["vrho"] if xctype == "LDA" else ["vrho", "vsigma"]
+        names_f = (
+            ["v2rho2"]
+            if xctype == "LDA"
+            else ["v2rho2", "v2rhosigma", "v2sigma2"]
+        )
+        for name, arr in zip(
+            names_v + names_f,
+            list(vxc[: len(names_v)]) + list(fxc[: len(names_f)]),
+        ):
+            A = _col(arr)
+            for c in range(A.shape[1]):
+                scal[f"{name}_{c}"] = np.ascontiguousarray(A[:, c])
+        if xctype == "LDA":
+            chi = np.ascontiguousarray(ao.T)
+            dchi = np.zeros((3,) + chi.shape)
+        else:
+            chi = np.ascontiguousarray(ao[0].T)
+            dchi = np.ascontiguousarray(np.transpose(ao[1:4], (0, 2, 1)))
+            _expand_into(scal, "grad_rho_a", rho[1:4] * 0.5)
+        extra = dict(scal)
+        extra.update(chi=chi, dchi=dchi, w=grids_x.weights, dm0=dm0_x)
+        save_npz(dest / f"{fam}_st_operands.npz", **extra)
+
         zs = rngz.standard_normal((3, nocc, nvir))
+        save_npy(dest / f"tda_{fam}_z.npy", zs)
+        tda_dms = np.array(
+            [2.0 * (Cv @ z.T @ Co.T) for z in zs], dtype=np.float64
+        )
+        save_npy(
+            dest / f"tda_{fam}_vj.npy",
+            np.ascontiguousarray(mf_x.get_j(mol, tda_dms, hermi=0)),
+        )
         sig = vind(zs.reshape(3, -1)).reshape(3, nocc, nvir)
-        save_npy(dest / f"tda_{fam}_sigma_ref.npy", sig)
+        tda_pin = dest / f"tda_{fam}_sigma_ref.npy"
+        if tda_pin.exists():
+            prev = np.load(tda_pin)
+            err = float(np.max(np.abs(sig - prev)))
+            scale = float(np.max(np.abs(prev)) or 1.0)
+            rel = err / scale
+            print(f"  {fam} TDA live vs pin abs={err:.3e} rel={rel:.3e}")
+            if rel > 1e-17:
+                drifted.append(f"{fam} TDA rel={rel:.3e}")
+        save_npy(tda_pin, sig)
         op, _ = gen_tdhf_operation(mf_x, singlet=True)
         xys = rngxy.standard_normal((3, 2, nocc, nvir))
+        save_npy(dest / f"rpa_{fam}_xy.npy", xys)
+        rpa_dms = np.array(
+            [
+                2.0 * (Cv @ x.T @ Co.T) + 2.0 * (Co @ y @ Cv.T)
+                for x, y in xys
+            ],
+            dtype=np.float64,
+        )
+        save_npy(
+            dest / f"rpa_{fam}_vj.npy",
+            np.ascontiguousarray(mf_x.get_j(mol, rpa_dms, hermi=0)),
+        )
         rpa = op(xys.reshape(3, -1)).reshape(3, 2, nocc, nvir)
-        save_npy(dest / f"rpa_{fam}_sigma_ref.npy", rpa)
+        rpa_pin = dest / f"rpa_{fam}_sigma_ref.npy"
+        if rpa_pin.exists():
+            prev = np.load(rpa_pin)
+            err = float(np.max(np.abs(rpa - prev)))
+            scale = float(np.max(np.abs(prev)) or 1.0)
+            rel = err / scale
+            print(f"  {fam} RPA live vs pin abs={err:.3e} rel={rel:.3e}")
+            if rel > 1e-17:
+                drifted.append(f"{fam} RPA rel={rel:.3e}")
+        save_npy(rpa_pin, rpa)
+        print(f"  {fam} TDA/RPA pins nocc={nocc} nvir={nvir} ngrid={ng}")
+    return drifted
 
 
 def write_manifest() -> None:
@@ -501,21 +611,36 @@ def write_manifest() -> None:
 
 def main(argv=None) -> int:
     _require_terra()
-    _ensure_xckernel()
     p = argparse.ArgumentParser()
     p.add_argument("--s2jz", action="store_true")
     p.add_argument("--c-vs-numpy", action="store_true")
     p.add_argument("--pyscf", action="store_true")
+    p.add_argument("--tda", action="store_true")
     p.add_argument("--all", action="store_true")
     args = p.parse_args(argv)
-    do_all = args.all or not (args.s2jz or args.c_vs_numpy or args.pyscf)
+    need_xck = args.all or args.s2jz or args.c_vs_numpy or args.pyscf
+    do_all = args.all or not (
+        args.s2jz or args.c_vs_numpy or args.pyscf or args.tda
+    )
+    if do_all:
+        need_xck = True
+    if need_xck:
+        _ensure_xckernel()
     if do_all or args.s2jz:
         regen_s2jz()
     if do_all or args.c_vs_numpy:
         regen_c_vs_numpy()
+    drifted: list[str] = []
     if do_all or args.pyscf:
-        regen_pyscf()
+        drifted = regen_pyscf()
+    elif args.tda:
+        drifted = regen_tda_rpa()
     write_manifest()
+    if drifted:
+        sys.exit(
+            "TDA/RPA live vs committed pin exceeds exclusive 1e-17: "
+            + "; ".join(drifted)
+        )
     return 0
 
 
