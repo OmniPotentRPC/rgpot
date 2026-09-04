@@ -373,7 +373,7 @@ void XcKernel::tdaSigma(const XcMo &mo, const double *z, const double *v1,
   for (std::size_t i = 0; i < nocc; ++i) {
     for (std::size_t a = 0; a < nvir; ++a) {
       const std::size_t ia = i * nvir + a;
-      sigma[ia] = std::fma(mo.e_ia[ia], z[ia], sigma[ia]);
+      sigma[ia] = sigma[ia] + mo.e_ia[ia] * z[ia];
     }
   }
 }
@@ -409,7 +409,7 @@ void XcKernel::rpaSigma(const XcMo &mo, const double *xy, const double *v1,
         acc += tmp[a * nao + p] * mo.Co[p * nocc + i];
       }
       const std::size_t ia = i * nvir + a;
-      bot[ia] = -std::fma(mo.e_ia[ia], y[ia], acc);
+      bot[ia] = -(mo.e_ia[ia] * y[ia] + acc);
     }
   }
 }
