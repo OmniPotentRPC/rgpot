@@ -73,6 +73,9 @@ long-double stage A/B to live `nr_rks` and exits when `rel > 1e-15`.
 looser values.
 
 TDA/RPA assembly is `XcKernel::tdaSigma` / `rpaSigma` over the singlet
-`xck_*_st_o2_p` C kernels plus host Coulomb. Perturbed fields and the
-MO/J/fxc pipeline accumulate in long double. Coulomb `J` stays
-host-owned (pinned `tda_*_j.npy` / `rpa_*_j.npy` from PySCF `get_j`).
+`xck_*_st_o2_p` C kernels plus host Coulomb. Perturbed rho follows
+PySCF `eval_rho` (`ao @ dm` then contract). `st_o2_p` uses the generated
+double stage B so the fxc contraction matches `nr_rks_fxc` /
+`_dot_ao_ao`. GGA `vxc` is hermitized the same way as `nr_rks_fxc`.
+Coulomb `J` stays host-owned (pinned `tda_*_j.npy` / `rpa_*_j.npy`
+from PySCF `get_j`).

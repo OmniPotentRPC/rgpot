@@ -101,7 +101,7 @@ public:
   static void rpaTransitionDm(const XcMo &mo, const double *x, const double *y,
                               double occ, double *dm);
 
-  /// ov = Co^T @ Vao^T @ Cv  (nocc*nvir). Matches PySCF
+  /// ov = (V @ Co)^T @ Cv  (nocc*nvir). Matches PySCF
   /// einsum('pq,qo,pv->ov', V, Co, Cv).
   static void projectOv(const XcMo &mo, const double *Vao, double *ov);
 
