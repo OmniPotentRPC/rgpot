@@ -1,0 +1,110 @@
+#+TITLE: Compose named potentials with ExprPot
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Compose named potentials with ExprPot
+
+=ExprPot= is an in-process =Potential= whose energy is a Lepton string over
+named child potentials.
+Enable it with Meson =-Dwith_expr=true=.
+The parser is vendored OpenMM Lepton under =third_party/lepton=; there is no
+pixi muparser feature.
+There is no =PotentialConfig.expr= arm: composition is a C++ constructor, not a
+wire configure union.
+
+A host that wants a single objective for
+[[https://github.com/HaoZeke/rgmin][rgmin]] /
+[[https://github.com/HaoZeke/rgsaddle][rgsaddle]] /
+[[https://github.com/HaoZeke/anneal][anneal]] constructs one =ExprPot= and wraps
+it with =PotentialHandle::from_impl= or =rgpot_potential_new_eindir=.
+See [[file:eindir-anneal.org][rgpot potentials as eindir objectives]].
+
+** Named terms
+
+The constructor takes an energy string and a vector of
+=ExprPot::Term= pairs (=std::string= name, =unique_ptr<PotentialBase>= child).
+Names in the string are child *energies*.
+=D3Pot= and =D4Pot= are ordinary children when those backends are built.
+
+#+begin_src cpp
+#include "rgpot/ExprPot/ExprPot.hpp"
+#include "rgpot/LennardJones/LJPot.hpp"
+#include "rgpot/Morse/MorsePot.hpp"
+
+std::vector<rgpot::ExprPot::Term> terms;
+terms.emplace_back("lj", std::make_unique<rgpot::LJPot>());
+terms.emplace_back("morse", std::make_unique<rgpot::MorsePot>());
+rgpot::ExprPot pot("0.5*lj + morse", std::move(terms));
+#+end_src
+
+With =-Dwith_dftd3=true= the same shape holds for dispersion:
+
+#+begin_src cpp
+#include "rgpot/D3Pot/D3Pot.hpp"
+
+std::vector<rgpot::ExprPot::Term> terms;
+terms.emplace_back("lj", std::make_unique<rgpot::LJPot>());
+terms.emplace_back("d3", std::make_unique<rgpot::D3Pot>());
+rgpot::ExprPot pot("0.5*lj + d3", std::move(terms));
+#+end_src
+
+=XcKernel= is not a term.
+Terms are =unique_ptr<PotentialBase>= only.
+A kernel contraction is not a geometry PES and cannot appear in the string.
+
+** Lepton identifier grammar
+
+Each term name must be a Lepton identifier:
+
+- first character: ASCII letter or =_=
+- later characters: ASCII letter, digit, or =_=
+
+Names such as =1lj=, =lj-x=, or =lj.x= are rejected before any force call.
+
+** Construct-time fail-closed names
+
+=ExprPot= parses and compiles at construct.
+It throws =std::invalid_argument= when:
+
+- the expression is empty or blank
+- the term list is empty
+- a name is not a Lepton identifier
+- a name is duplicated
+- a child pointer is null
+- Lepton cannot parse or compile the string
+- a supplied name is missing from the expression
+- an identifier in the expression has no term
+- =differentiate(name)= fails for a term
+
+No force call runs until every name is bound.
+
+** Analytic forces
+
+Energy is =E = f(E_0, E_1, ...)=.
+Forces use the chain rule
+
+=F = sum_i (df/dE_i) F_i=
+
+where =df/dE_i= is =Lepton::ParsedExpression::differentiate(name)= compiled
+once per term at construct, then evaluated at the last child energies.
+There is no finite-difference stencil.
+Variance uses the same analytic weights.
+
+** One eindir objective
+
+=ExprPot= is one =Potential=.
+Wrap the instance:
+
+#+begin_src cpp
+#include "rgpot/potential.hpp"
+
+auto handle = rgpot::PotentialHandle::from_impl(pot);
+#+end_src
+
+or register the same object with =rgpot_potential_new_eindir=.
+That handle is one eindir objective for rgmin, rgsaddle, and anneal.
+The wrap path is the same as any other in-process potential; see
+[[file:eindir-anneal.org][eindir-anneal]].
+
+A runnable C++ example lives at =CppCore/examples/call_exprpot.cc= (Meson
+=-Dwith_expr=true -Dwith_examples=true=).

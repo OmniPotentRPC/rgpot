@@ -7,6 +7,8 @@
 
 [[https://raw.githubusercontent.com/OmniPotentRPC/rgpot/refs/heads/main/branding/logo/rgpot_logo.webp]]
 
+[[https://app.codecov.io/gh/OmniPotentRPC/rgpot][https://codecov.io/gh/OmniPotentRPC/rgpot/graph/badge.svg]]
+
 ~rgpot~ is a potential-energy library and Cap'n Proto RPC server for atomistic
 simulation codes.
 It gives clients one geometry carrier, one result carrier, and one extensible
@@ -16,6 +18,13 @@ backend-configuration carrier:
 - ~PotentialResult~: energy plus flat force array
 - ~PotentialConfig~: backend setup, with arms such as ~none~, ~nwchem~, and
   ~cpmd~
+
+XC response kernels (=rgpot::XcKernel=, meson =-Dwith_xckernel=true=) are
+in-process only. They are not a =Potential=, and there is no
+=PotentialConfig.xckernel= arm: operands are collocation plus named Libxc
+arrays, not =ForceInput=. See =docs/xckernel.md=.
+=pylibxc= is not on PyPI (=pylibxc2= is an unrelated stub); use the
+conda-forge =libxc= package via =pixi install -e xckernel=.
 
 =D3Pot= and =D4Pot= (meson =-Dwith_dftd3= / =-Dwith_dftd4=) are in-process
 =Potential= summands: construct them and evaluate =ForceInput= to energy and
@@ -31,7 +40,7 @@ RPC clients may request compatible units through ~ForceInput.lengthUnit~ and
 
 ** Python (PyPI)
 
-Install the manylinux wheel (nanobind **abi3**, Python >= 3.12 for the stable
+Install the manylinux wheel (nanobind =abi3=, Python >= 3.12 for the stable
 ABI extension; requires-python is >= 3.10 for pure metadata):
 
 #+begin_src bash
@@ -41,12 +50,12 @@ pip install 'rgpot[metatomic]'
 # or: pip install torch metatomic-torch metatensor-torch metatensor-core vesin
 #+end_src
 
-Lennard-Jones needs only ~numpy~. Metatomic uses **dlopen** of a bundled
+Lennard-Jones needs only ~numpy~. Metatomic uses =dlopen= of a bundled
 engine:
 
 - layout: ~rgpot/lib/torch-X.Y/libmetatomic_engine.so~
 - picker: installed ~torch~ major (same multi-ABI idea as metatomic-torch)
-- **supported torch majors: 2.7 and newer** (wheels ship 2.7–2.13 engines)
+- supported torch majors: 2.7 and newer (wheels ship 2.7-2.13 engines)
 - torch 2.6 and older are not supported for Metatomic dlopen
 
 #+begin_src python
@@ -103,13 +112,54 @@ ctest --test-dir build_client --output-on-failure
 |---------+-----------------+-----------------------|
 | =LJ= | =LJ= | Built-in 12-6 Lennard-Jones reference potential |
 | =CuH2Pot= | =CuH2= | Built-in Cu-H EAM potential |
-| =XTBPot= | =XTB=, =GFNFF=, =GFN0xTB=, =GFN1xTB= | Enable with =-Dwith_xtb=true=; use pixi env =xtbbld= or =tbbld= |
+| =XTBPot= | =XTB=, =GFNFF=, =GFN0xTB=, =GFN1xTB= | Enable with =-Dwith_xtb=true=; use pixi env =xtbbld= or =tbbld=; linked =XTBPot= + dlopen =libxtb_engine.so= (see =docs/xtb_backends.md=) |
 | =TBLitePot= | =TBLite=, =TBLiteGFN1=, =TBLiteIPEA1= | Enable with =-Dwith_tblite=true=; use pixi env =tblitebld= or =tbbld= |
 | =D3Pot= | =D3= | In-process Potential summand. Enable with =-Dwith_dftd3=true=; use pixi env =dftd3= or =dftd=. BJ/zero damping, functional key, explicit ATM flag. No =PotentialConfig.d3=. Goldens: =meson test --suite dftd= |
 | =D4Pot= | =D4= | In-process Potential summand. Enable with =-Dwith_dftd4=true=; use pixi env =dftd4= or =dftd=. Functional key, charge, explicit ATM/many-body flag. No =PotentialConfig.d4=. Goldens: =meson test --suite dftd= |
+| =ExprPot= | (none; construct in process) | In-process PES algebra over named =Potential= children. Enable with =-Dwith_expr=true=. Vendored OpenMM Lepton under =third_party/lepton=; no pixi muparser. No =PotentialConfig.expr=. =XcKernel= is not a term. =D3Pot= / =D4Pot= are ordinary children. |
 | =MetatomicPot= | =Metatomic:<model_path>= | Enable with =-Dwith_metatomic=true=; use pixi env =metatomicbld=. Pip engines: torch 2.7+ |
 | =NWChemPot= | =NWChem= | Frontend always builds; load =libnwchemc= from the split =nwchemc= project at runtime |
 | =CPMDPot= | =CPMD= | Frontend always builds; load =libcpmdc= from the split =cpmdc= project at runtime |
+
+*** Compose 0.5*lj + morse (or + d3)
+
+Build with =-Dwith_expr=true=.
+The energy string names child potentials; there is no =PotentialConfig.expr=
+arm.
+
+#+begin_src cpp
+#include <array>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "rgpot/ExprPot/ExprPot.hpp"
+#include "rgpot/LennardJones/LJPot.hpp"
+#include "rgpot/Morse/MorsePot.hpp"
+#include "rgpot/types/AtomMatrix.hpp"
+
+std::vector<rgpot::ExprPot::Term> terms;
+terms.emplace_back("lj", std::make_unique<rgpot::LJPot>());
+terms.emplace_back("morse", std::make_unique<rgpot::MorsePot>());
+rgpot::ExprPot pot("0.5*lj + morse", std::move(terms));
+
+rgpot::types::AtomMatrix positions{{1.0, 2.0, 3.0}, {1.5, 2.5, 3.5}};
+std::vector<int> atomTypes{0, 0};
+std::array<std::array<double, 3>, 3> box{{{15.0, 0.0, 0.0},
+                                          {0.0, 20.0, 0.0},
+                                          {0.0, 0.0, 30.0}}};
+auto [energy, forces, variance] = pot(positions, atomTypes, box);
+#+end_src
+
+With =-Dwith_dftd3=true=, swap the second child for =D3Pot= and write
+=ExprPot("0.5*lj + d3", ...)= instead.
+
+That one =ExprPot= is one =Potential=.
+=PotentialHandle::from_impl(pot)= or =rgpot_potential_new_eindir= makes it one
+eindir objective for rgmin, rgsaddle, and anneal.
+
+Runnable copy: =CppCore/examples/call_exprpot.cc= (=-Dwith_expr=true
+-Dwith_examples=true=).
 
 Example server commands:
 

@@ -73,6 +73,7 @@ meson compile -C bbdir && meson test -C bbdir
 
    howto/pip-python
    howto/embedding
+   howto/exprpot
    howto/integration
    howto/eindir-anneal
    howto/eon-rgpot

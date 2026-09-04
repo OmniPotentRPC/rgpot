@@ -30,7 +30,7 @@ Existing C++ potentials remain callable through an FFI callback mechanism.
 +---------------------------------------------+
 |  C++ Potentials                              |
 |  LJ, CuH2, XTBPot, TBLitePot, D3Pot, D4Pot,|
-|  MetatomicPot                                |
+|  MetatomicPot, ExprPot                       |
 +---------------------------------------------+
 #+end_example
 
@@ -197,6 +197,26 @@ In-process =Potential= summand: construct it and evaluate =ForceInput= to
 energy+forces. Not an XC kernel and not a =PotentialConfig= arm.
 There is no =PotentialConfig.d4=. A DFT host adds this as the Edisp
 summand next to XcKernel and VV10; do not fold D4 into the kernel.
+
+- =ExprPot= (=-Dwith_expr=true=) :: In-process PES algebra over named
+=unique_ptr<PotentialBase>= children, compiled with vendored OpenMM Lepton
+(=third_party/lepton=; no pixi muparser).
+Construct with an energy string such as ="0.5*lj + morse"= or, when
+=-Dwith_dftd3=true=, ="0.5*lj + d3"=.
+Term names must be Lepton identifiers (letter or =_=, then letters, digits, or
+=_=) and fail closed at construct: unknown, duplicate, unused, or empty names
+throw before any force call.
+Forces are analytic =Lepton::ParsedExpression::differentiate(name)= weights,
+=F = sum_i (df/dE_i) F_i=.
+There is no =PotentialConfig.expr= arm.
+=XcKernel= is not a term; =D3Pot= and =D4Pot= are ordinary children.
+One =ExprPot= is one =Potential=; =PotentialHandle::from_impl= or
+=rgpot_potential_new_eindir= makes that one eindir objective.
+See:
+
+#+begin_export rst
+:doc:`../howto/exprpot`
+#+end_export
 
 - =MetatomicPot= (=-Dwith_metatomic=true=) :: Pre-trained ML atomistic models
 via

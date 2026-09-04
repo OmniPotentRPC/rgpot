@@ -4,7 +4,7 @@
 
 ![img](https://raw.githubusercontent.com/OmniPotentRPC/rgpot/refs/heads/main/branding/logo/rgpot_logo.webp)
 
-[![codecov](https://codecov.io/gh/OmniPotentRPC/rgpot/graph/badge.svg)](https://app.codecov.io/gh/OmniPotentRPC/rgpot)
+[![img](https://codecov.io/gh/OmniPotentRPC/rgpot/graph/badge.svg)](https://app.codecov.io/gh/OmniPotentRPC/rgpot)
 
 `rgpot` is a potential-energy library and Cap'n Proto RPC server for atomistic
 simulation codes.
@@ -38,7 +38,7 @@ RPC clients may request compatible units through `ForceInput.lengthUnit` and
 
 ## Python (PyPI)
 
-Install the manylinux wheel (nanobind **abi3**, Python >= 3.12 for the stable
+Install the manylinux wheel (nanobind `abi3`, Python >= 3.12 for the stable
 ABI extension; requires-python is >= 3.10 for pure metadata):
 
     pip install rgpot
@@ -46,25 +46,23 @@ ABI extension; requires-python is >= 3.10 for pure metadata):
     pip install 'rgpot[metatomic]'
     # or: pip install torch metatomic-torch metatensor-torch metatensor-core vesin
 
-Lennard-Jones needs only `numpy`. Metatomic uses **dlopen** of a bundled
+Lennard-Jones needs only `numpy`. Metatomic uses `dlopen` of a bundled
 engine:
 
 -   layout: `rgpot/lib/torch-X.Y/libmetatomic_engine.so`
 -   picker: installed `torch` major (same multi-ABI idea as metatomic-torch)
--   **supported torch majors: 2.7 and newer** (wheels ship 2.7–2.13 engines)
+-   supported torch majors: 2.7 and newer (wheels ship 2.7-2.13 engines)
 -   torch 2.6 and older are not supported for Metatomic dlopen
 
-```python
-import numpy as np
-import rgpot
+    import numpy as np
+    import rgpot
+    
+    print(rgpot.__version__)
+    print(rgpot.available_metatomic_engine_abis())  # e.g. 2.7 .. 2.13
+    # energy, forces, variance = rgpot.evaluate_metatomic(
+    #     positions, atom_types, box, model_path="model.pt")
 
-print(rgpot.__version__)
-print(rgpot.available_metatomic_engine_abis())  # e.g. 2.7 .. 2.13
-# energy, forces, variance = rgpot.evaluate_metatomic(
-#     positions, atom_types, box, model_path="model.pt")
-```
-
-See <https://pypi.org/project/rgpot/>.
+See <https://pypi.org/project/rgpot/> .
 
 
 ## Build And Test
@@ -155,6 +153,12 @@ RPC client types:
 </tr>
 
 <tr>
+<td class="org-left"><code>ExprPot</code></td>
+<td class="org-left">(none; construct in process)</td>
+<td class="org-left">In-process PES algebra over named <code>Potential</code> children. Enable with <code>-Dwith_expr=true</code>. Vendored OpenMM Lepton under <code>third_party/lepton</code>; no pixi muparser. No <code>PotentialConfig.expr</code>. <code>XcKernel</code> is not a term. <code>D3Pot</code> / <code>D4Pot</code> are ordinary children.</td>
+</tr>
+
+<tr>
 <td class="org-left"><code>MetatomicPot</code></td>
 <td class="org-left"><code>Metatomic:&lt;model_path&gt;</code></td>
 <td class="org-left">Enable with <code>-Dwith_metatomic=true</code>; use pixi env <code>metatomicbld</code>. Pip engines: torch 2.7+</td>
@@ -173,6 +177,45 @@ RPC client types:
 </tr>
 </tbody>
 </table>
+
+
+### Compose 0.5\*lj + morse (or + d3)
+
+Build with `-Dwith_expr=true`.
+The energy string names child potentials; there is no `PotentialConfig.expr`
+arm.
+
+    #include <array>
+    #include <memory>
+    #include <utility>
+    #include <vector>
+    
+    #include "rgpot/ExprPot/ExprPot.hpp"
+    #include "rgpot/LennardJones/LJPot.hpp"
+    #include "rgpot/Morse/MorsePot.hpp"
+    #include "rgpot/types/AtomMatrix.hpp"
+    
+    std::vector<rgpot::ExprPot::Term> terms;
+    terms.emplace_back("lj", std::make_unique<rgpot::LJPot>());
+    terms.emplace_back("morse", std::make_unique<rgpot::MorsePot>());
+    rgpot::ExprPot pot("0.5*lj + morse", std::move(terms));
+    
+    rgpot::types::AtomMatrix positions{{1.0, 2.0, 3.0}, {1.5, 2.5, 3.5}};
+    std::vector<int> atomTypes{0, 0};
+    std::array<std::array<double, 3>, 3> box{{{15.0, 0.0, 0.0},
+                                              {0.0, 20.0, 0.0},
+                                              {0.0, 0.0, 30.0}}};
+    auto [energy, forces, variance] = pot(positions, atomTypes, box);
+
+With `-Dwith_dftd3=true`, swap the second child for `D3Pot` and write
+`ExprPot("0.5*lj + d3", ...)` instead.
+
+That one `ExprPot` is one `Potential`.
+`PotentialHandle::from_impl(pot)` or `rgpot_potential_new_eindir` makes it one
+eindir objective for rgmin, rgsaddle, and anneal.
+
+Runnable copy: `CppCore/examples/call_exprpot.cc` (`-Dwith_expr=true
+-Dwith_examples=true`).
 
 Example server commands:
 
@@ -254,3 +297,4 @@ MIT, with backend-specific notes:
 some potentials are adapted from eOn under BSD-3-Clause terms.
 The unit expression parser in `CppCore/rgpot/units.cc` is derived from
 metatomic-torch (BSD-3-Clause, metatensor developers).
+
