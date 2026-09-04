@@ -1,1 +1,1 @@
-`XcKernel` assembles TDA and RPA sigma over the singlet `st_o2_p` C kernels plus host Coulomb, matching the PySCF `gen_vind` einsum order, and compares the result to the PySCF pins at exclusive 1e-17.
+`XcKernel` assembles TDA and RPA sigma over the singlet `st_o2_p` C kernels plus host Coulomb, matching the PySCF `gen_vind` einsum order and singlet `fxc *= 0.5` placement, and compares the result to the PySCF pins at exclusive 1e-17.

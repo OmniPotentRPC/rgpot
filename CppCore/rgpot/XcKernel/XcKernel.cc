@@ -239,6 +239,43 @@ int apply_fxc_d(const XcKernel &k, const XcGrid &grid,
   }
   return k.contract(grid, scal, vxc);
 }
+
+// PySCF singlet TDA/RPA does `fxc *= 0.5` on the cached kernel, then
+// `v1 = nr_rks_fxc_st(dm) + J` (`_response_functions._gen_rks_response`).
+// Halve v2* / vsigma* here so the 0.5 lands on the operands, not after
+// the AO contraction: 0.5 * K(fxc) and K(fxc*0.5) differ by 1-3 ulp.
+struct HalvedFxc {
+  std::map<std::string, const double *> scal;
+  std::vector<std::vector<double>> bufs;
+};
+
+HalvedFxc half_fxc_kernel(const XcKernel &k,
+                          const std::map<std::string, const double *> &ground,
+                          std::size_t npts) {
+  HalvedFxc out;
+  out.scal = ground;
+  std::vector<std::string> names;
+  for (const auto &name : k.scalNames()) {
+    if (name.compare(0, 2, "v2") != 0 && name.compare(0, 6, "vsigma") != 0) {
+      continue;
+    }
+    auto it = ground.find(name);
+    if (it == ground.end() || it->second == nullptr) {
+      continue;
+    }
+    names.push_back(name);
+  }
+  out.bufs.resize(names.size());
+  for (std::size_t i = 0; i < names.size(); ++i) {
+    const auto &src = ground.at(names[i]);
+    out.bufs[i].resize(npts);
+    for (std::size_t g = 0; g < npts; ++g) {
+      out.bufs[i][g] = 0.5 * src[g];
+    }
+    out.scal[names[i]] = out.bufs[i].data();
+  }
+  return out;
+}
 #endif
 
 } // namespace
@@ -428,16 +465,18 @@ int XcKernel::tdaSigma(const XcGrid &grid,
   }
 #ifdef RGPOT_HAS_XCKERNEL
   const auto nao = static_cast<std::size_t>(mo.nao);
+  const auto ng = static_cast<std::size_t>(grid.npts);
   std::vector<double> dm(nao * nao, 0.0);
   std::vector<double> vxc(nao * nao, 0.0);
   std::vector<double> v1(nao * nao, 0.0);
   transitionDm(mo, z, 2.0, dm.data());
-  const int rc = apply_fxc_d(*this, grid, ground, dm.data(), vxc.data());
+  const HalvedFxc half = half_fxc_kernel(*this, ground, ng);
+  const int rc = apply_fxc_d(*this, grid, half.scal, dm.data(), vxc.data());
   if (rc != 0) {
     return rc;
   }
   for (std::size_t k = 0; k < nao * nao; ++k) {
-    v1[k] = vj[k] + 0.5 * vxc[k];
+    v1[k] = vj[k] + vxc[k];
   }
   tdaSigma(mo, z, v1.data(), sigma);
   return 0;
@@ -457,18 +496,20 @@ int XcKernel::rpaSigma(const XcGrid &grid,
   }
 #ifdef RGPOT_HAS_XCKERNEL
   const auto nao = static_cast<std::size_t>(mo.nao);
+  const auto ng = static_cast<std::size_t>(grid.npts);
   const auto nov =
       static_cast<std::size_t>(mo.nocc) * static_cast<std::size_t>(mo.nvir);
   std::vector<double> dm(nao * nao, 0.0);
   std::vector<double> vxc(nao * nao, 0.0);
   std::vector<double> v1(nao * nao, 0.0);
   rpaTransitionDm(mo, xy, xy + nov, 2.0, dm.data());
-  const int rc = apply_fxc_d(*this, grid, ground, dm.data(), vxc.data());
+  const HalvedFxc half = half_fxc_kernel(*this, ground, ng);
+  const int rc = apply_fxc_d(*this, grid, half.scal, dm.data(), vxc.data());
   if (rc != 0) {
     return rc;
   }
   for (std::size_t k = 0; k < nao * nao; ++k) {
-    v1[k] = vj[k] + 0.5 * vxc[k];
+    v1[k] = vj[k] + vxc[k];
   }
   rpaSigma(mo, xy, v1.data(), sigma);
   return 0;
