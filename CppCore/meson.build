@@ -511,6 +511,33 @@ if get_option('with_tests')
         )
     endif
 
+    if has_dftd3 or has_dftd4
+        test(
+            'DFTDGoldens',
+            executable(
+                'dftd_golden_test',
+                sources: ['tests/DFTDGoldenTest.cc'],
+                dependencies: test_deps,
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+            ),
+            workdir: meson.source_root(),
+            suite: 'dftd',
+        )
+        executable(
+            'dump_dftd_goldens',
+            sources: ['tests/dump_dftd_goldens.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            install: false,
+        )
+    endif
+
     if has_xtb
         xtb_test_env = environment()
         xtb_test_env.set('RGPOT_XTB_ENGINE', xtb_engine.full_path())

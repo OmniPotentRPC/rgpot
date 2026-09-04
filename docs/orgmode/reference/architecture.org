@@ -190,6 +190,10 @@ A geometry PES term: =ForceInput= in, energy+forces out. Not an XC kernel.
 =dftd4_new_structure=, and an explicit =atm= flag for the many-body
 (=mdb=) term (default on). Charge scaling stays inside dftd4.
 A geometry PES term: =ForceInput= in, energy+forces out. Not an XC kernel.
+Golden masters pin Baker-water energy and forces against s-dftd3 / dftd4
+at the libraries' =100*epsilon= Hartree bar
+(=CppCore/tests/data/dftd/=, =meson test --suite dftd=). Regen only on
+rg.terra: =scripts/regen_dftd_goldens.py=.
 
 - =MetatomicPot= (=-Dwith_metatomic=true=) :: Pre-trained ML atomistic models
 via

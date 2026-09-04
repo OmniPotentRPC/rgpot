@@ -51,6 +51,12 @@ Enable only what the host project needs:
 | =-Dwith_tblite=true= | =tblitebld= / =tbbld= | =TBLitePot= (GFN1, GFN2, IPEA1) |
 | =-Dwith_dftd3=true= | =dftd3= | =D3Pot= (DFT-D3 BJ/zero, explicit ATM) |
 | =-Dwith_dftd4=true= | =dftd4= | =D4Pot= (DFT-D4 functional/charge, explicit ATM) |
+
+D3/D4 golden masters (Baker water vs s-dftd3 / dftd4, library
+=100*epsilon= Hartree) live under =CppCore/tests/data/dftd/=. Build with
+both =-Dwith_dftd3=true= and =-Dwith_dftd4=true=, then
+=meson test --suite dftd=. Regen on rg.terra only
+(=scripts/regen_dftd_goldens.py=).
 | =-Dwith_metatomic=true= | =metatomicbld= (linux-64) | =MetatomicPot= (TorchScript models) |
 
 =NWChemPot= is a pure consumer: the frontend is always compiled and

@@ -1,0 +1,59 @@
+{
+  "regen": "scripts/regen_dftd_goldens.py",
+  "dump": "CppCore/tests/dump_dftd_goldens.cc",
+  "host_only": "rg.terra",
+  "fixture": "baker_water",
+  "functional": "pbe",
+  "units": {
+    "energy": "hartree",
+    "gradient": "hartree/bohr"
+  },
+  "tolerances": {
+    "energy_hartree": 2.220446049250313e-14,
+    "gradient_hartree_bohr": 2.220446049250313e-14,
+    "note": "100*epsilon; s-dftd3/dftd4 library energy bar"
+  },
+  "cases": [
+    "d3_bj_pbe_atm_off",
+    "d3_bj_pbe_atm_on",
+    "d4_pbe"
+  ],
+  "files": {
+    "water.xyz": {
+      "sha256": "11c7da56ff2cfbd511a45aced328c99ce36938d0c8d30b74e43b721147f95700",
+      "bytes": 142
+    },
+    "water_pos.npy": {
+      "sha256": "bcb0a0104857545c6dc36c4f96c13b176e24b8d58c1da62b8a32be43dd4f043b",
+      "bytes": 200
+    },
+    "water_z.npy": {
+      "sha256": "4e5338f099d3106c7d67be63fa072fef82e664fbeebde619ac0aad2934d4a197",
+      "bytes": 152
+    },
+    "d3_bj_pbe_atm_off_energy.npy": {
+      "sha256": "51b7105fdbc09ac2389981627d196170b1c6be0d46d70430acd7a4a987c8973d",
+      "bytes": 136
+    },
+    "d3_bj_pbe_atm_off_grad.npy": {
+      "sha256": "4f8fe05f6953c4939ac4a3b69210b7f9a410b36b5b0de4d71a3e05a157b9caf5",
+      "bytes": 200
+    },
+    "d3_bj_pbe_atm_on_energy.npy": {
+      "sha256": "f237807cc78ce42910a7e2c2147c0660405fded140d527fad09eef4f28042809",
+      "bytes": 136
+    },
+    "d3_bj_pbe_atm_on_grad.npy": {
+      "sha256": "4f8fe05f6953c4939ac4a3b69210b7f9a410b36b5b0de4d71a3e05a157b9caf5",
+      "bytes": 200
+    },
+    "d4_pbe_energy.npy": {
+      "sha256": "2ce06c1dd28339e15e3aa2a1ab398b458215d3147b4812431f40e1d9ab131088",
+      "bytes": 136
+    },
+    "d4_pbe_grad.npy": {
+      "sha256": "30e307a7f1192c679daa6ceda2e8bfb5708b9657e329ee43f44b6c146742f1f9",
+      "bytes": 200
+    }
+  }
+}
