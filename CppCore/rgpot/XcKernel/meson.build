@@ -4,10 +4,7 @@
 xck_inc = include_directories('.')
 _xck_gen_inc = include_directories('../../../third_party/libxckernel/include')
 
-# Fock/fxc o1/o2 use the host long-double evaluator (C vs NumPy 1e-16).
-# Singlet st_o2_* use the generated double evaluator so TDA/RPA stage B
-# matches PySCF nr_rks_fxc / _dot_ao_ao rounding at exclusive 1e-17.
-_xck_ld_slice = [
+_xck_first_slice = [
     'xck_lda_r_o0',
     'xck_gga_r_o0',
     'xck_mgga_tau_r_o0',
@@ -17,24 +14,22 @@ _xck_ld_slice = [
     'xck_lda_r_o2',
     'xck_lda_ua_o2',
     'xck_lda_ub_o2',
+    'xck_lda_st_o2_p',
+    'xck_lda_st_o2_m',
     'xck_gga_r_o1',
     'xck_gga_ua_o1',
     'xck_gga_ub_o1',
     'xck_gga_r_o2',
     'xck_gga_ua_o2',
     'xck_gga_ub_o2',
+    'xck_gga_st_o2_p',
+    'xck_gga_st_o2_m',
     'xck_mgga_tau_r_o1',
     'xck_mgga_tau_ua_o1',
     'xck_mgga_tau_ub_o1',
     'xck_mgga_tau_r_o2',
     'xck_mgga_tau_ua_o2',
     'xck_mgga_tau_ub_o2',
-]
-_xck_st_slice = [
-    'xck_lda_st_o2_p',
-    'xck_lda_st_o2_m',
-    'xck_gga_st_o2_p',
-    'xck_gga_st_o2_m',
     'xck_mgga_tau_st_o2_p',
     'xck_mgga_tau_st_o2_m',
 ]
@@ -47,47 +42,26 @@ if not fs.is_file(_xck_root / 'include' / 'xckernel.h')
     )
 endif
 
-_xck_src_ld = files('XcKernel.cc')
-foreach _name : _xck_ld_slice
+_xck_src = files('XcKernel.cc')
+foreach _name : _xck_first_slice
     _tu = _xck_root / 'src' / (_name + '.cpp')
     if not fs.is_file(_tu)
         error('with_xckernel=true missing generated ' + _tu)
     endif
-    _xck_src_ld += files(_tu)
+    _xck_src += files(_tu)
 endforeach
-
-_xck_src_st = []
-foreach _name : _xck_st_slice
-    _tu = _xck_root / 'src' / (_name + '.cpp')
-    if not fs.is_file(_tu)
-        error('with_xckernel=true missing generated ' + _tu)
-    endif
-    _xck_src_st += files(_tu)
-endforeach
-
-# Generated evaluator only: no host xck_inc shadow.
-xckernel_st = static_library(
-    'xckernel_st',
-    _xck_src_st,
-    dependencies: _deps,
-    cpp_args: _args,
-    include_directories: [_xck_gen_inc],
-    pic: true,
-    install: false,
-)
 
 xckernel = static_library(
     'xckernel',
-    _xck_src_ld,
+    _xck_src,
     dependencies: _deps,
     cpp_args: _args,
     include_directories: _incdirs + [xck_inc, _xck_gen_inc],
-    link_with: [xckernel_st],
     pic: true,
     install: false,
 )
 
 xckernel_dep = declare_dependency(
-    link_with: [xckernel, xckernel_st],
+    link_with: [xckernel],
     include_directories: _incdirs + [xck_inc, _xck_gen_inc],
 )
