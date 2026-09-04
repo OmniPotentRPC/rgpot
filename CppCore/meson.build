@@ -230,6 +230,11 @@ if get_option('with_examples') and not get_option('with_rpc_client_only')
             ['XtCallCuH2Pot', 'cuh2_call_xt', 'xt_call_cuh2.cc', ''],
         ]
     endif
+    if has_expr
+        example_array += [
+            ['CallExprPot', 'exprpot_call', 'call_exprpot.cc', ''],
+        ]
+    endif
     foreach example : example_array
         test(
             example.get(0),

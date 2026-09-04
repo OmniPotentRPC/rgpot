@@ -29,6 +29,10 @@ forces. There is no `PotentialConfig.d3` or `PotentialConfig.d4` arm.
 A DFT host sums XcKernel + VV10 + D4 itself; dispersion is not folded into
 the XC kernel.
 
+`ExprPot` (meson `-Dwith_expr=true`) compiles a Lepton energy string over
+named child `Potential` objects. The parser is vendored OpenMM Lepton;
+there is no pixi muparser feature and no `PotentialConfig.expr` arm.
+
 The public wire schema lives in `CppCore/rgpot/rpc/Potentials.capnp` and is
 shared by the C++ server, Python integration tests, and the Rust core crate.
 Native rgpot units are eV and Angstrom.
@@ -155,6 +159,12 @@ RPC client types:
 </tr>
 
 <tr>
+<td class="org-left"><code>ExprPot</code></td>
+<td class="org-left">in-process</td>
+<td class="org-left">Enable with <code>-Dwith_expr=true</code>. Vendored OpenMM Lepton (no pixi muparser). Named <code>Potential</code> children; construct-time fail-closed names. No <code>PotentialConfig.expr</code>.</td>
+</tr>
+
+<tr>
 <td class="org-left"><code>MetatomicPot</code></td>
 <td class="org-left"><code>Metatomic:&lt;model_path&gt;</code></td>
 <td class="org-left">Enable with <code>-Dwith_metatomic=true</code>; use pixi env <code>metatomicbld</code>. Pip engines: torch 2.7+</td>
@@ -173,6 +183,41 @@ RPC client types:
 </tr>
 </tbody>
 </table>
+
+Copyable construct-and-evaluate (meson `-Dwith_expr=true`).
+`PotentialHandle::from_impl` / `rgpot_potential_new_eindir` wraps that
+one `ExprPot` as one eindir objective for rgmin, rgsaddle, and anneal.
+
+    #include "rgpot/ExprPot/ExprPot.hpp"
+    #include "rgpot/LennardJones/LJPot.hpp"
+    #include "rgpot/Morse/MorsePot.hpp"
+    #include "rgpot/types/AtomMatrix.hpp"
+    
+    #include <array>
+    #include <memory>
+    #include <vector>
+    
+    int main() {
+      std::vector<rgpot::ExprPot::Term> terms;
+      terms.emplace_back("lj", std::make_unique<rgpot::LJPot>());
+      terms.emplace_back("morse", std::make_unique<rgpot::MorsePot>());
+      rgpot::ExprPot pot("0.5*lj + morse", std::move(terms));
+    
+      rgpot::types::AtomMatrix positions{{1.0, 2.0, 3.0}, {1.5, 2.5, 3.5}};
+      std::vector<int> atomTypes{0, 0};
+      std::array<std::array<double, 3>, 3> box{{
+          {15.0, 0.0, 0.0},
+          {0.0, 20.0, 0.0},
+          {0.0, 0.0, 30.0},
+      }};
+      auto [energy, forces, variance] = pot(positions, atomTypes, box);
+      (void)forces;
+      (void)variance;
+      (void)energy;
+    }
+
+When the build also has `-Dwith_dftd3=true`, swap the Morse child for
+`D3Pot` and the string `"0.5*lj + d3"`.
 
 Example server commands:
 
@@ -254,3 +299,4 @@ MIT, with backend-specific notes:
 some potentials are adapted from eOn under BSD-3-Clause terms.
 The unit expression parser in `CppCore/rgpot/units.cc` is derived from
 metatomic-torch (BSD-3-Clause, metatensor developers).
+

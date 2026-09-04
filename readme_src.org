@@ -23,6 +23,10 @@ forces. There is no =PotentialConfig.d3= or =PotentialConfig.d4= arm.
 A DFT host sums XcKernel + VV10 + D4 itself; dispersion is not folded into
 the XC kernel.
 
+=ExprPot= (meson =-Dwith_expr=true=) compiles a Lepton energy string over
+named child =Potential= objects. The parser is vendored OpenMM Lepton;
+there is no pixi muparser feature and no =PotentialConfig.expr= arm.
+
 The public wire schema lives in ~CppCore/rgpot/rpc/Potentials.capnp~ and is
 shared by the C++ server, Python integration tests, and the Rust core crate.
 Native rgpot units are eV and Angstrom.
@@ -107,9 +111,47 @@ ctest --test-dir build_client --output-on-failure
 | =TBLitePot= | =TBLite=, =TBLiteGFN1=, =TBLiteIPEA1= | Enable with =-Dwith_tblite=true=; use pixi env =tblitebld= or =tbbld= |
 | =D3Pot= | =D3= | In-process Potential summand. Enable with =-Dwith_dftd3=true=; use pixi env =dftd3= or =dftd=. BJ/zero damping, functional key, explicit ATM flag. No =PotentialConfig.d3=. Goldens: =meson test --suite dftd= |
 | =D4Pot= | =D4= | In-process Potential summand. Enable with =-Dwith_dftd4=true=; use pixi env =dftd4= or =dftd=. Functional key, charge, explicit ATM/many-body flag. No =PotentialConfig.d4=. Goldens: =meson test --suite dftd= |
+| =ExprPot= | in-process | Enable with =-Dwith_expr=true=. Vendored OpenMM Lepton (no pixi muparser). Named =Potential= children; construct-time fail-closed names. No =PotentialConfig.expr=. |
 | =MetatomicPot= | =Metatomic:<model_path>= | Enable with =-Dwith_metatomic=true=; use pixi env =metatomicbld=. Pip engines: torch 2.7+ |
 | =NWChemPot= | =NWChem= | Frontend always builds; load =libnwchemc= from the split =nwchemc= project at runtime |
 | =CPMDPot= | =CPMD= | Frontend always builds; load =libcpmdc= from the split =cpmdc= project at runtime |
+
+Copyable construct-and-evaluate (meson =-Dwith_expr=true=).
+=PotentialHandle::from_impl= / =rgpot_potential_new_eindir= wraps that
+one =ExprPot= as one eindir objective for rgmin, rgsaddle, and anneal.
+
+#+begin_src cpp
+#include "rgpot/ExprPot/ExprPot.hpp"
+#include "rgpot/LennardJones/LJPot.hpp"
+#include "rgpot/Morse/MorsePot.hpp"
+#include "rgpot/types/AtomMatrix.hpp"
+
+#include <array>
+#include <memory>
+#include <vector>
+
+int main() {
+  std::vector<rgpot::ExprPot::Term> terms;
+  terms.emplace_back("lj", std::make_unique<rgpot::LJPot>());
+  terms.emplace_back("morse", std::make_unique<rgpot::MorsePot>());
+  rgpot::ExprPot pot("0.5*lj + morse", std::move(terms));
+
+  rgpot::types::AtomMatrix positions{{1.0, 2.0, 3.0}, {1.5, 2.5, 3.5}};
+  std::vector<int> atomTypes{0, 0};
+  std::array<std::array<double, 3>, 3> box{{
+      {15.0, 0.0, 0.0},
+      {0.0, 20.0, 0.0},
+      {0.0, 0.0, 30.0},
+  }};
+  auto [energy, forces, variance] = pot(positions, atomTypes, box);
+  (void)forces;
+  (void)variance;
+  (void)energy;
+}
+#+end_src
+
+When the build also has =-Dwith_dftd3=true=, swap the Morse child for
+=D3Pot= and the string ="0.5*lj + d3"=.
 
 Example server commands:
 

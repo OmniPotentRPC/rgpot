@@ -1,0 +1,87 @@
+#+TITLE: Compose potentials with ExprPot
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Compose potentials with ExprPot
+
+=ExprPot= (meson =-Dwith_expr=true=) compiles an energy string over named
+child =Potential= objects with vendored OpenMM Lepton.
+There is no pixi muparser feature.
+One =ExprPot= is one =Potential=, so
+=PotentialHandle::from_impl= / =rgpot_potential_new_eindir= makes that
+one eindir objective for rgmin, rgsaddle, and anneal.
+See [[file:eindir-anneal.org][rgpot potentials as eindir objectives]].
+
+There is no =PotentialConfig.expr= arm.
+Composition is the C++ constructor, not a wire =configure= union.
+
+** Named terms
+
+The constructor takes an energy string and a
+=std::vector<rgpot::ExprPot::Term>=, where
+=Term= is =std::pair<std::string, std::unique_ptr<PotentialBase>>=.
+Each name in the string is that child's energy.
+=0.5*lj + morse= means half the Lennard-Jones energy plus the Morse
+energy on the same geometry.
+
+#+begin_src cpp
+#include "rgpot/ExprPot/ExprPot.hpp"
+#include "rgpot/LennardJones/LJPot.hpp"
+#include "rgpot/Morse/MorsePot.hpp"
+
+std::vector<rgpot::ExprPot::Term> terms;
+terms.emplace_back("lj", std::make_unique<rgpot::LJPot>());
+terms.emplace_back("morse", std::make_unique<rgpot::MorsePot>());
+rgpot::ExprPot pot("0.5*lj + morse", std::move(terms));
+#+end_src
+
+When =-Dwith_dftd3=true=, =D3Pot= is an ordinary child:
+
+#+begin_src cpp
+#include "rgpot/D3Pot/D3Pot.hpp"
+#include "rgpot/ExprPot/ExprPot.hpp"
+#include "rgpot/LennardJones/LJPot.hpp"
+
+std::vector<rgpot::ExprPot::Term> terms;
+terms.emplace_back("lj", std::make_unique<rgpot::LJPot>());
+terms.emplace_back("d3", std::make_unique<rgpot::D3Pot>());
+rgpot::ExprPot pot("0.5*lj + d3", std::move(terms));
+#+end_src
+
+** Lepton identifier grammar
+
+A term name must be a Lepton identifier: an ASCII letter or underscore
+first, then ASCII letters, digits, or underscores.
+=lj=, =morse=, and =d3= are valid.
+=1lj=, =lj-x=, and =lj.x= are not.
+
+** Construct-time fail-closed names
+
+The constructor throws =std::invalid_argument= before any force call when:
+
+- the expression is empty or blank
+- there are zero terms
+- a name is not a Lepton identifier
+- a name is duplicated
+- a child pointer is null
+- Lepton cannot parse or compile the expression
+- a supplied name is missing from the expression
+- an identifier in the expression has no child
+- =ParsedExpression::differentiate(name)= fails
+
+** Analytic forces
+
+At construct, Lepton compiles the energy once and
+=ParsedExpression::differentiate(name)= once per term.
+A force call evaluates each child, then applies the chain rule
+=F = sum_i (df/dE_i) F_i=.
+Variance uses the same analytic weights.
+There is no finite-difference force path.
+
+** What is a term
+
+Terms are =unique_ptr<PotentialBase>= only.
+=D3Pot= and =D4Pot= are ordinary children (enable =-Dwith_dftd3= /
+=-Dwith_dftd4=).
+=XcKernel= is not a term: it is in-process XC collocation, not a
+=Potential=.
