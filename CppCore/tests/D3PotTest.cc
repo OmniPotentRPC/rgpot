@@ -71,11 +71,14 @@ TEST_CASE("D3Pot water energy is finite and ATM flips it", "[d3][atm]") {
 
   REQUIRE(f_on.rows() == 3);
   REQUIRE(f_off.rows() == 3);
+  double f2 = 0.0;
   for (size_t i = 0; i < 3; ++i)
     for (size_t j = 0; j < 3; ++j) {
       REQUIRE(std::isfinite(f_on(i, j)));
       REQUIRE(std::isfinite(f_off(i, j)));
+      f2 += f_on(i, j) * f_on(i, j);
     }
+  REQUIRE(f2 > 0.0);
 
   double fx = 0, fy = 0, fz = 0;
   for (size_t i = 0; i < 3; ++i) {

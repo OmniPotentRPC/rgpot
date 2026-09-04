@@ -104,8 +104,10 @@ void D3Pot::forceImpl(const ForceInput &in, ForceOut *out) const {
   }
 
   double energy_hartree = 0.0;
+  // s-dftd3 skips the gradient unless sigma is also non-NULL.
+  double sigma[9] = {};
   dftd3_get_dispersion(m_err, m_mol, m_model, m_param, &energy_hartree, out->F,
-                       nullptr);
+                       sigma);
   throwIfError("s-dftd3 get dispersion");
 
   out->energy = energy_hartree * HARTREE_TO_EV;
