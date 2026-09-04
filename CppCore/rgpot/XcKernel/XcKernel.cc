@@ -11,7 +11,6 @@
 
 #ifdef RGPOT_HAS_XCKERNEL
 #include "xckernel.h"
-#include "xckernel/kernels/xck_lda_st_o2_p.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -272,11 +271,15 @@ int contract_st_blocked(const XcKernel &k, const XcGrid &grid,
   const double *const *xc = ptrs.data() + k.nFields();
   const double *chi = grid.chi;
   if (k.name() == "xck_lda_st_o2_p") {
-    xckernel::stage_a<double, double>(
-        npts, 2, xckernel::detail_xck_lda_st_o2_p::c0,
-        xckernel::detail_xck_lda_st_o2_p::o0,
-        xckernel::detail_xck_lda_st_o2_p::f0,
-        xckernel::detail_xck_lda_st_o2_p::NFLD, fields, xc, c.data());
+    // PySCF nr_rks_fxc_st wv is w * rho * (v2rho2_0 + v2rho2_1).
+    // Two monomials (w*rho*v20 + w*rho*v21) land 1 ulp off gen_vind.
+    const double *w = fields[0];
+    const double *rho = fields[1];
+    const double *v20 = xc[0];
+    const double *v21 = xc[1];
+    for (std::int64_t g = 0; g < npts; ++g) {
+      c[static_cast<std::size_t>(g)] = w[g] * rho[g] * (v20[g] + v21[g]);
+    }
     blocked_stage_b(npts, nbf, chi, c.data(), chi, out);
     return 0;
   }
