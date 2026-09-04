@@ -11,7 +11,8 @@ It is **not** a geometry PES.
 - Inputs: AO collocation (`chi`, `dchi`, optional `lapl_chi` / `hess_chi`),
   grid weights, named Libxc derivative arrays, and (for fxc) perturbed fields.
 - Outputs: AO matrices accumulated `+=` (XC Fock at order 1, fxc contraction
-  at order 2).
+  at order 2). TDA/RPA sigma is assembled in C++ over `xck_*_st_o2_p`
+  plus host Coulomb (`get_j`, hermi=0) and the orbital-energy diagonal.
 - Term ownership is XC-only. Coulomb, Hartree-Fock exact exchange, and
   range-separated exchange stay host-owned.
 
@@ -65,5 +66,8 @@ named file is missing. Regenerator:
 
 That script refuses to run off rg.terra. Tolerances are the paper/README
 bars: C vs NumPy `1e-16`, Fock vs PySCF exclusive `1e-15`, fxc vs PySCF
-`1e-13`. `--pyscf` Fock compares long-double stage A/B to live `nr_rks`
-and exits when `rel > 1e-15`. Do not invent looser values.
+`1e-13`, TDA/RPA vs PySCF exclusive `1e-17`. `--pyscf` Fock compares
+long-double stage A/B to live `nr_rks` and exits when `rel > 1e-15`.
+`--tda` writes same-SCF MO / `st_o2_p` operands / host J and exits when
+live PySCF `gen_vind` / `gen_tdhf_operation` drifts past exclusive
+`1e-17` vs the committed sigma pins. Do not invent looser values.
