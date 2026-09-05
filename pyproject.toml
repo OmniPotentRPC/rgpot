@@ -1,6 +1,6 @@
 [project]
 name = "rgpot"
-version = "3.1.1"
+version = "3.1.2"
 description = "Potential energy surfaces for atomistic simulation (LJ + Metatomic multi-ABI dlopen; nanobind abi3)"
 readme = "README.md"
 license = { text = "MIT" }

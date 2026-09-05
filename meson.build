@@ -1,7 +1,7 @@
 project(
     'rgpot',
     'cpp',
-    version: '3.1.1',
+    version: '3.1.2',
     default_options: ['warning_level=2', 'cpp_std=c++20'],
 )
 # IMPORTANT!! warning_level=3 passes -fimplicit-none
