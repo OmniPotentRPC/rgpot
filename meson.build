@@ -366,8 +366,8 @@ print(api_inc)
     _torch_libdir = _py_probe[2]
     _torch_inc = _py_probe[3]
     _torch_api_inc = _py_probe[4]
-    # Manual torch dep (no cmake): includes + link search paths only.
-    # Portable RUNPATH is install_rpath / repair script.
+    # Declaring the runtime library lets Meson populate the build RPATH.
+    # The ordered link arguments retain the split-library Torch ABI.
     #
     # -rpath-link and --as-needed are GNU ld only; Apple's ld rejects them
     # outright ("unknown options"), and it resolves the dylibs from -L plus
@@ -388,6 +388,11 @@ print(api_inc)
         ]
     endif
     torch_dep = declare_dependency(
+        dependencies: cppc.find_library(
+            'torch_cpu',
+            dirs: [_torch_libdir],
+            static: false,
+        ),
         compile_args: [
             '-isystem',
             _torch_inc,
