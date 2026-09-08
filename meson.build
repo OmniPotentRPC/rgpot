@@ -200,6 +200,28 @@ if has_fortran
             endif
         endif
     endforeach
+    # A toolchain that ships only the versioned runtime (conda's
+    # libgfortran.so.5 without the libgfortran.so link) is invisible to
+    # find_library; ask the compiler where its runtime lives and link that
+    # file directly. Static consumers of the Fortran kernels otherwise fail
+    # with unresolved _gfortran_* symbols.
+    if fortran_rt_deps.length() == 0 and _fc_id == 'gcc'
+        _fs_rt = import('fs')
+        foreach _cand : ['libgfortran.so', 'libgfortran.so.5', 'libgfortran.a']
+            _pf = run_command(
+                _fc.cmd_array() + ['-print-file-name=' + _cand],
+                check: false,
+            )
+            if _pf.returncode() == 0
+                _rt_path = _pf.stdout().strip()
+                if _rt_path != _cand and _fs_rt.is_absolute(_rt_path) and _fs_rt.exists(_rt_path)
+                    fortran_rt_deps += declare_dependency(link_args: [_rt_path])
+                    message('fortran runtime (compiler file): ' + _rt_path)
+                    break
+                endif
+            endif
+        endforeach
+    endif
 endif
 
 # --------------------- Optional dependencies
