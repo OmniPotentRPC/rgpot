@@ -8,6 +8,10 @@
  * network interface. It utilizes the @c EzRpcServer for handling requests.
  */
 
+#include <algorithm>
+#include <sstream>
+#include <vector>
+
 #include <capnp/ez-rpc.h>
 #include <capnp/message.h>
 #include <kj/debug.h>
@@ -215,7 +219,7 @@ int main(int argc, char *argv[]) {
 #ifdef RGPOT_HAS_SKALA
               << ", Skala, Skala:<basis>"
 #endif
-              << ", NWChem"
+              << ", NWChem[:basis[:theory[:xc]]]"
               << ", CPMD"
               << std::endl;
     return 1;
@@ -342,10 +346,51 @@ int main(int argc, char *argv[]) {
               << " basis=" << cfg.basis << ")..." << std::endl;
     potential_to_use = std::make_unique<rgpot::SkalaPot>(cfg);
 #endif // RGPOT_HAS_SKALA
-  } else if (pot_type == "NWChem") {
+  } else if (pot_type.rfind("NWChem", 0) == 0) {
     std::cout << "Loading NWChem potential (dlopen libnwchemc)..."
               << std::endl;
-    auto nw = std::make_unique<rgpot::NWChemPot>();
+    // NWChem[:<basis>[:<theory>[:<xc>]]] -- unset fields keep the schema
+    // defaults; commas in the xc field stand in for spaces so a request
+    // like NWChem:6-31g*:dft:xpbe96,cpbe96 stays one shell token.
+    std::string nw_basis, nw_theory, nw_xc;
+    {
+      std::vector<std::string> parts;
+      std::stringstream ss(pot_type);
+      std::string tok;
+      while (std::getline(ss, tok, ':'))
+        parts.push_back(tok);
+      if (parts.size() > 1)
+        nw_basis = parts[1];
+      if (parts.size() > 2)
+        nw_theory = parts[2];
+      if (parts.size() > 3)
+        nw_xc = parts[3];
+      std::replace(nw_xc.begin(), nw_xc.end(), ',', ' ');
+    }
+    std::unique_ptr<rgpot::NWChemPot> nw;
+    if (nw_basis.empty() && nw_theory.empty() && nw_xc.empty()) {
+      nw = std::make_unique<rgpot::NWChemPot>();
+    } else {
+      capnp::MallocMessageBuilder nw_msg;
+      auto nw_params = nw_msg.initRoot<NWChemParams>();
+      if (!nw_basis.empty())
+        nw_params.setBasis(nw_basis);
+      if (!nw_theory.empty())
+        nw_params.setTheory(nw_theory);
+      if (!nw_xc.empty()) {
+        // The xc directive rides the raw input-block escape hatch; the
+        // scfType field is the HF reference choice, not the functional.
+        // The iteration cap bounds a pathological geometry's SCF: the
+        // engine returns a convergence failure the driver refuses and
+        // moves past, instead of one stuck call eating the RPC budget.
+        auto nw_blocks = nw_params.initInputBlocks(1);
+        nw_blocks.set(0, std::string("dft\n  xc " + nw_xc +
+                                     "\n  iterations 60\nend"));
+      }
+      std::cout << "  basis='" << nw_basis << "' theory='" << nw_theory
+                << "' xc='" << nw_xc << "'" << std::endl;
+      nw = std::make_unique<rgpot::NWChemPot>(nw_params.asReader());
+    }
     if (!nw->available()) {
       std::cerr << "Warning: libnwchemc not loaded; calculate() will fail "
                    "until engine is available (configure() still accepted)."
