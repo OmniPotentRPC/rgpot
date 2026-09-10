@@ -106,11 +106,17 @@ if not get_option('with_rpc_client_only')
     # engine plugin (has_metatomic); it is dlopen'd, not linked.
     if has_metatomic and not get_option('with_python')
         rgpotentials += [metatomicpot]
+        subdir('rgpot/UmaPot')
+        rgpotentials += [uma]
     endif
 
     if _rpc_stack
         rgpotentials += [nwchempot]
         rgpotentials += [cpmdpot]
+        if has_skala
+            subdir('rgpot/SkalaPot')
+            rgpotentials += [skala]
+        endif
     endif
 
     _linkto += rgpotentials
@@ -403,7 +409,22 @@ if get_option('with_tests')
                 'MetatomicPotTest.cc',
                 '/CppCore/tests',
             ],
+            [
+                'UmaPotTest',
+                'uma_pot_test',
+                'UmaPotTest.cc',
+                '/CppCore/tests',
+            ],
         ]
+        executable(
+            'uma_ase_parity',
+            sources: ['tests/uma_ase_parity.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+        )
     endif
     # NWChem/CPMD frontend tests (need ptlrpc + frontends from _rpc_stack)
     if _rpc_stack and not get_option('with_rpc_client_only')
@@ -434,6 +455,24 @@ if get_option('with_tests')
             workdir: meson.source_root(),
             suite: 'nwchem',
         )
+        if has_skala
+            test(
+                'SkalaPotTest',
+                executable(
+                    'skala_pot_test',
+                    sources: ['tests/SkalaPotTest.cc'],
+                    dependencies: test_deps + [ptlrpc_dep],
+                    include_directories: _incdirs + ['.'],
+                    cpp_args: test_args,
+                    link_with: _linkto,
+                    link_language: 'cpp',
+                ),
+                env: nwchemc_fake_env,
+                depends: nwchemc_fake_engine,
+                workdir: meson.source_root(),
+                suite: 'skala',
+            )
+        endif
         test(
             'NWChemPotMessageAbiTest',
             executable(
@@ -732,6 +771,7 @@ if not meson.is_subproject()
         endif
         if has_metatomic
             _pc_cflags += ['-DRGPOT_HAS_METATOMIC_POT=TRUE']
+            _pc_cflags += ['-DRGPOT_HAS_UMA=TRUE']
         endif
         if has_xtb
             _pc_cflags += ['-DRGPOT_HAS_XTB_POT=TRUE']
@@ -747,6 +787,9 @@ if not meson.is_subproject()
         endif
         if has_expr
             _pc_cflags += ['-DRGPOT_HAS_EXPR=TRUE']
+        endif
+        if has_skala
+            _pc_cflags += ['-DRGPOT_HAS_SKALA=TRUE']
         endif
     endif
     if _rpc_stack

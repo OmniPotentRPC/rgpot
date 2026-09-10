@@ -128,9 +128,17 @@ if has_fortran
         dependencies: vesin_hdr_dep,
         pic: true,
     )
+    # vesin_dep, not vesin_hdr_dep: the Fortran wrapper calls vesin_free
+    # and vesin_neighbors_byref, so anything linking the wrapper needs the
+    # vesin objects too. Compile information alone is enough for the
+    # umbrella, which links vesin_dep separately, but not for an executable
+    # that pulls wrapper objects of its own -- a static archive linked into
+    # a shared library does not re-export what it resolved. Meson
+    # deduplicates the static link, so naming it here does not duplicate
+    # objects in the umbrella.
     vesin_f_dep = declare_dependency(
         link_with: vesin_fortran_lib,
-        dependencies: vesin_hdr_dep,
+        dependencies: vesin_dep,
         include_directories: vesin_fortran_lib.private_dir_include(),
     )
 endif
@@ -192,6 +200,28 @@ if has_fortran
             endif
         endif
     endforeach
+    # A toolchain that ships only the versioned runtime (conda's
+    # libgfortran.so.5 without the libgfortran.so link) is invisible to
+    # find_library; ask the compiler where its runtime lives and link that
+    # file directly. Static consumers of the Fortran kernels otherwise fail
+    # with unresolved _gfortran_* symbols.
+    if fortran_rt_deps.length() == 0 and _fc_id == 'gcc'
+        _fs_rt = import('fs')
+        foreach _cand : ['libgfortran.so', 'libgfortran.so.5', 'libgfortran.a']
+            _pf = run_command(
+                _fc.cmd_array() + ['-print-file-name=' + _cand],
+                check: false,
+            )
+            if _pf.returncode() == 0
+                _rt_path = _pf.stdout().strip()
+                if _rt_path != _cand and _fs_rt.is_absolute(_rt_path) and _fs_rt.exists(_rt_path)
+                    fortran_rt_deps += declare_dependency(link_args: [_rt_path])
+                    message('fortran runtime (compiler file): ' + _rt_path)
+                    break
+                endif
+            endif
+        endforeach
+    endif
 endif
 
 # --------------------- Optional dependencies
@@ -316,6 +346,15 @@ endif
 # (libnwchemc.so) at runtime. rgpot carries no in-process NWChem embed.
 _args += ['-DRGPOT_HAS_NWCHEM_FRONTEND=TRUE']
 
+
+has_skala = get_option('with_skala')
+if has_skala
+    if not get_option('with_rpc') and not get_option('with_rpc_client_only')
+        error('with_skala=true needs with_rpc=true (NWChemPot / Cap\'n Proto)')
+    endif
+    _args += ['-DRGPOT_HAS_SKALA=TRUE']
+endif
+
 has_tblite = false
 if get_option('with_tblite')
     tblite_dep = dependency('tblite', required: true)
@@ -392,8 +431,8 @@ print(api_inc)
     _torch_libdir = _py_probe[2]
     _torch_inc = _py_probe[3]
     _torch_api_inc = _py_probe[4]
-    # Manual torch dep (no cmake): includes + link search paths only.
-    # Portable RUNPATH is install_rpath / repair script.
+    # Declaring the runtime library lets Meson populate the build RPATH.
+    # The ordered link arguments retain the split-library Torch ABI.
     #
     # -rpath-link and --as-needed are GNU ld only; Apple's ld rejects them
     # outright ("unknown options"), and it resolves the dylibs from -L plus
@@ -414,6 +453,11 @@ print(api_inc)
         ]
     endif
     torch_dep = declare_dependency(
+        dependencies: cppc.find_library(
+            'torch_cpu',
+            dirs: [_torch_libdir],
+            static: false,
+        ),
         compile_args: [
             '-isystem',
             _torch_inc,
@@ -507,6 +551,7 @@ print(api_inc)
     # is unnecessary here.
 
     _args += ['-DRGPOT_HAS_METATOMIC=TRUE']
+    _args += ['-DRGPOT_HAS_UMA=TRUE']
     has_metatomic = true
 endif
 

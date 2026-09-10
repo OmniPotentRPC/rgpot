@@ -18,5 +18,6 @@ option('lapack', type : 'combo', value : 'auto', choices : ['auto', 'mkl', 'mkl-
 option('with_expr', type : 'boolean', value : false, description : 'Compile vendored OpenMM Lepton (third_party/lepton)')
 option('with_tblite', type : 'boolean', value : false)
 option('with_metatomic', type : 'boolean', value : false)
+option('with_skala', type : 'boolean', value : false, description : 'Skala XC via NWChemPot / libnwchemc (requires with_rpc)')
 option('with_python', type : 'boolean', value : false, description : 'Build pip-installable Python package (rgpot._core)')
 option('with_fortran_pots', type : 'feature', value : 'auto', description : 'Fortran-backed potentials (CuH2; grows with the eOn migration). Independent of the RPC options.')

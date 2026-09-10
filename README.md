@@ -187,6 +187,12 @@ RPC client types:
 </tr>
 
 <tr>
+<td class="org-left"><code>UmaPot</code></td>
+<td class="org-left"><code>Uma:&lt;model_path&gt;</code>, <code>Uma:&lt;model_path&gt;:omol</code></td>
+<td class="org-left">Enable with <code>-Dwith_metatomic=true</code>. AOTInductor <code>.pt2</code> plus vesin neighbor lists; charge/spin are per-call tensor inputs</td>
+</tr>
+
+<tr>
 <td class="org-left"><code>NWChemPot</code></td>
 <td class="org-left"><code>NWChem</code></td>
 <td class="org-left">Frontend always builds; load <code>libnwchemc</code> from the split <code>nwchemc</code> project at runtime</td>

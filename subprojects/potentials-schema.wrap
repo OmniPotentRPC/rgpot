@@ -1,7 +1,6 @@
-[wrap-file]
-directory = potentials-schema-1.13.0
-source_url = https://github.com/OmniPotentRPC/potentials-schema/archive/refs/tags/v1.13.0.tar.gz
-source_filename = potentials-schema-1.13.0.tar.gz
-source_hash = dafb670a80a471e27e6b8e33dd74fee8ca72e828f4accbabe2d47f3e514c0fac
-# Same ExprParams/PotSpec tree as the vendored copies, until a release carries it.
+[wrap-git]
+directory = potentials-schema-e825c207886b
+url = https://github.com/OmniPotentRPC/potentials-schema.git
+revision = e825c207886b336b4b9c1197e968f184c1b2eb47
+# Same ExprParams/PotSpec tree as the vendored copies, on top of the UMA pin.
 diff_files = expr-potspec.diff

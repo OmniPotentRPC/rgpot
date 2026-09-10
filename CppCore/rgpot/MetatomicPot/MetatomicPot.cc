@@ -109,6 +109,25 @@ std::vector<torch::Tensor> rotation_group(long n, torch::Device device,
   return out;
 }
 
+metatensor_torch::TensorMap scalar_system_data(const std::string &name,
+                                               double value,
+                                               torch::Device device,
+                                               torch::ScalarType dtype) {
+  auto int_opts = torch::TensorOptions().dtype(torch::kInt32).device(device);
+  auto values = torch::tensor({value}, torch::TensorOptions().dtype(dtype).device(device))
+                    .reshape({1, 1});
+  auto samples = torch::make_intrusive<metatensor_torch::LabelsHolder>(
+      "system", torch::zeros({1, 1}, int_opts));
+  auto properties = torch::make_intrusive<metatensor_torch::LabelsHolder>(
+      name, torch::zeros({1, 1}, int_opts));
+  auto block = torch::make_intrusive<metatensor_torch::TensorBlockHolder>(
+      values, samples, std::vector<metatensor_torch::Labels>{}, properties);
+  auto keys = torch::make_intrusive<metatensor_torch::LabelsHolder>(
+      "_", torch::zeros({1, 1}, int_opts));
+  return torch::make_intrusive<metatensor_torch::TensorMapHolder>(
+      keys, std::vector<metatensor_torch::TensorBlock>{block});
+}
+
 } // namespace
 
 void apply_torch_determinism_policy(TorchDeterminismPolicy policy) {
@@ -384,6 +403,25 @@ void MetatomicPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
     auto system = torch::make_intrusive<metatomic_torch::SystemHolder>(
         atomic_types, torch_positions, torch_cell, torch_pbc);
+
+    if (m_config.attach_system_extras) {
+      // add_data rejects bare names that are not known outputs; extras
+      // must be <domain>::<name>. Keep both the metatomic multiplicity
+      // name and the UMA/fairchem "spin" alias.
+      system->add_data("rgpot::charge",
+                       scalar_system_data("charge",
+                                          static_cast<double>(m_config.charge),
+                                          m_device, m_dtype));
+      system->add_data(
+          "rgpot::spin_multiplicity",
+          scalar_system_data("spin_multiplicity",
+                             static_cast<double>(m_config.spin), m_device,
+                             m_dtype));
+      system->add_data("rgpot::spin",
+                       scalar_system_data("spin",
+                                          static_cast<double>(m_config.spin),
+                                          m_device, m_dtype));
+    }
 
     for (const auto &request : m_nl_requests) {
       auto neighbors = computeNeighbors(request, nAtoms, pos_buf.data(),

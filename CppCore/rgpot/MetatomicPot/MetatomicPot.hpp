@@ -41,6 +41,11 @@ public:
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
+  void setChargeSpin(int charge, int spin) {
+    m_config.charge = charge;
+    m_config.spin = spin;
+  }
+
   /// Internal mutex serializes the torch session, so a shared instance is
   /// safe; multi-image callers still prefer clones for throughput.
   [[nodiscard]] PotCaps caps() const noexcept override {

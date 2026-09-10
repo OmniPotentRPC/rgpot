@@ -1,12 +1,8 @@
 diff --git a/Potentials.capnp b/Potentials.capnp
-index 0655766..9648d34 100644
+index 5884f27..61c4e96 100644
 --- a/Potentials.capnp
 +++ b/Potentials.capnp
-@@ -2365,14 +2365,49 @@ struct NWChemCdftSpec {
-     unspecified @0;
-     becke       @1;
-     mulliken    @2;
-     lowdin      @3;
+@@ -2475,6 +2475,41 @@ struct NWChemCdftSpec {
    }
  }
  
@@ -48,7 +44,3 @@ index 0655766..9648d34 100644
  # @struct PotentialConfig
  # @brief **rgpot user parameters (extensible, in/out via Cap'n Proto only).**
  #
- # This is the single user-facing options carrier for rgpot: pass in to configure
- # a live Potential (RPC `configure` or in-process apply), and/or round-trip out
- # when a backend supports get. One schema for wire + embed - no parallel
- # TOML/JSON/YAML option files for backends.
