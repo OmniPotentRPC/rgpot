@@ -41,7 +41,8 @@ enum class PotType {
   TersoffSi,   //!<  Tersoff bond-order silicon.
   EAMAl,       //!<  Double-exponential EAM aluminium.
   FeHe,        //!<  Fe-He embedded atom with species-dependent terms.
-  WaterH       //!<  TIP4P water with an interacting hydrogen atom.
+  WaterH,      //!<  TIP4P water with an interacting hydrogen atom.
+  MOPAC        //!<  Semi-empirical AM1 via runtime-loaded mopacc C ABI.
 };
 
 } // namespace rgpot

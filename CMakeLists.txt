@@ -157,8 +157,17 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
          CppCore/rgpot/CPMDPot/CPMDPot.cc)
   endif()
 
+  # MOPACPot is a pure dlopen consumer of libmopacc.so (no Cap'n Proto).
+  list(APPEND RGPOT_SOURCES CppCore/rgpot/MOPACPot/MOPACPot.cc)
+
   add_library(rgpot ${RGPOT_SOURCES})
   set_target_properties(rgpot PROPERTIES LINKER_LANGUAGE CXX)
+  target_compile_definitions(rgpot PUBLIC RGPOT_HAS_MOPAC_FRONTEND)
+  if(UNIX AND NOT APPLE)
+    target_link_libraries(rgpot PUBLIC ${CMAKE_DL_LIBS})
+  elseif(UNIX)
+    target_link_libraries(rgpot PUBLIC dl)
+  endif()
 
   if(RGPOT_WITH_CACHE)
     target_sources(rgpot PRIVATE CppCore/rgpot/PotentialCache.cc)

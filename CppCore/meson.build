@@ -22,6 +22,9 @@ if _rpc_stack
     subdir('rgpot/CPMDPot')    # 'cpmdpot' frontend + no-op ABI stub
 endif
 
+# Always-on dlopen of libmopacc.so (packed MopacCParams, no Cap'n Proto).
+subdir('rgpot/MOPACPot')  # 'mopacpot' frontend
+
 # ------------------------ Main library
 if not get_option('with_rpc_client_only')
     rgpot_core = static_library(
@@ -96,6 +99,8 @@ if not get_option('with_rpc_client_only')
         rgpotentials += [nwchempot]
         rgpotentials += [cpmdpot]
     endif
+
+    rgpotentials += [mopacpot]
 
     _linkto += rgpotentials
 
@@ -589,6 +594,10 @@ if not meson.is_subproject()
         if has_tblite
             _pc_cflags += ['-DRGPOT_HAS_TBLITE_POT=TRUE']
         endif
+        _pc_cflags += ['-DRGPOT_HAS_MOPAC_FRONTEND=TRUE']
+    else
+        _pc_libs += [mopacpot]
+        _pc_cflags += ['-DRGPOT_HAS_MOPAC_FRONTEND=TRUE']
     endif
     if _rpc_stack
         _pc_libs += [nwchempot, cpmdpot]
