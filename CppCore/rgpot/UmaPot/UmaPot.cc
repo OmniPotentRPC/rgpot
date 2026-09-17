@@ -1,6 +1,7 @@
 // MIT License — UmaPot: vesin neighbor list + AOTInductor .pt2
 
 #include "rgpot/UmaPot/UmaPot.hpp"
+#include "rgpot/UmaPot/MolecularFrame.hpp"
 
 #include "rgpot/UmaPot/aoti_execstack.hpp"
 #include "rgpot/MetatomicPot/vesin_compat.hpp"
@@ -264,16 +265,7 @@ void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   if (molecular) {
     const double L = m_impl->molecular_box;
     mol_pos.assign(in.pos, in.pos + 3 * in.nAtoms);
-    double c[3] = {0.0, 0.0, 0.0};
-    for (size_t i = 0; i < in.nAtoms; ++i)
-      for (int d = 0; d < 3; ++d)
-        c[d] += mol_pos[3 * i + d];
-    for (int d = 0; d < 3; ++d)
-      c[d] /= static_cast<double>(in.nAtoms);
-    for (size_t i = 0; i < in.nAtoms; ++i)
-      for (int d = 0; d < 3; ++d)
-        mol_pos[3 * i + d] += 0.5 * L - c[d];
-    mol_box = {L, 0.0, 0.0, 0.0, L, 0.0, 0.0, 0.0, L};
+    mol_box = uma::molecularFrame(mol_pos, L);
   }
   const ForceInput local{in.nAtoms, molecular ? mol_pos.data() : in.pos,
                          in.atmnrs, molecular ? mol_box.data() : in.box};
@@ -429,16 +421,7 @@ void UmaPot::forceBatchImpl(const ForceBatch &batch) const {
       auto &box_b = sys_box[static_cast<size_t>(b)];
       pos_b.assign(in.pos, in.pos + 3 * n);
       if (molecular) {
-        double c[3] = {0.0, 0.0, 0.0};
-        for (int64_t i = 0; i < n; ++i)
-          for (int d = 0; d < 3; ++d)
-            c[d] += pos_b[static_cast<size_t>(3 * i + d)];
-        for (int d = 0; d < 3; ++d)
-          c[d] /= static_cast<double>(n);
-        for (int64_t i = 0; i < n; ++i)
-          for (int d = 0; d < 3; ++d)
-            pos_b[static_cast<size_t>(3 * i + d)] += 0.5 * L - c[d];
-        box_b = {L, 0.0, 0.0, 0.0, L, 0.0, 0.0, 0.0, L};
+        box_b = uma::molecularFrame(pos_b, L);
       } else {
         std::copy(in.box, in.box + 9, box_b.begin());
       }

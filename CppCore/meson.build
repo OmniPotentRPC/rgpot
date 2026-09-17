@@ -281,6 +281,14 @@ endif
 # ------------------------ Tests
 
 if get_option('with_tests')
+    test(
+        'MolecularFrameTest',
+        executable(
+            'molecular_frame_test',
+            'tests/MolecularFrameTest.cc',
+            include_directories: ['.'],
+        ),
+    )
     test_deps = _deps + [vesin_dep] + fortran_rt_deps
     if has_metatomic
         test_deps += _mta_engine_deps
