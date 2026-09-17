@@ -8,7 +8,7 @@
 
 namespace rgpot::uma {
 
-/// Normalize a molecular coordinate frame and return its synthetic cell.
+/// Centre molecular inputs at zero before conversion to model precision.
 inline std::array<double, 9> molecularFrame(std::span<double> positions,
                                            double length) {
   if (positions.empty() || positions.size() % 3 != 0 ||
@@ -23,7 +23,7 @@ inline std::array<double, 9> molecularFrame(std::span<double> positions,
     coordinate /= static_cast<double>(atoms);
   for (std::size_t i = 0; i < atoms; ++i)
     for (std::size_t d = 0; d < 3; ++d)
-      positions[3 * i + d] += 0.5 * length - center[d];
+      positions[3 * i + d] -= center[d];
   return {length, 0.0, 0.0, 0.0, length, 0.0, 0.0, 0.0, length};
 }
 

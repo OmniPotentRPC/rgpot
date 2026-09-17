@@ -256,9 +256,9 @@ void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     return;
   }
 
-  // Under the molecular-box convention the caller's cell is replaced by
-  // the sidecar's cube and positions re-center into it. Energies and
-  // forces are translation invariant, so only the graph changes.
+  // Molecular inputs use the sidecar's cube and an origin-centred frame.
+  // A common translation preserves all relative vectors and cell offsets;
+  // avoiding a large coordinate offset retains precision in float32 models.
   const bool molecular = m_impl->molecular_box > 0.0;
   std::vector<double> mol_pos;
   std::array<double, 9> mol_box{};
