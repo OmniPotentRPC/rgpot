@@ -282,6 +282,15 @@ endif
 
 if get_option('with_tests')
     test(
+        'AotiPublicationTest',
+        executable(
+            'aoti_publication_test',
+            'tests/AotiPublicationTest.cc',
+            include_directories: ['.'],
+            dependencies: dependency('threads'),
+        ),
+    )
+    test(
         'MolecularFrameTest',
         executable(
             'molecular_frame_test',
