@@ -247,9 +247,32 @@ inline std::vector<uint8_t> read_all(const std::string &path) {
 }
 
 inline void write_all(const std::string &path, const std::vector<uint8_t> &buf) {
-  std::filesystem::create_directories(
-      std::filesystem::path(path).parent_path());
-  const std::string tmp = path + ".tmp";
+  namespace fs = std::filesystem;
+  const auto parent = fs::path(path).parent_path();
+  if (!parent.empty()) fs::create_directories(parent);
+  struct Publication {
+    fs::path directory;
+    fs::path payload;
+    bool owned = false;
+    ~Publication() {
+      if (!owned) return;
+      std::error_code ignored;
+      fs::remove(payload, ignored);
+      fs::remove(directory, ignored);
+    }
+  } publication;
+  // Directory creation reserves a private publication slot across processes
+  // and threads. Only a closed, complete file is renamed to the shared path.
+  for (std::size_t slot = 0; !publication.owned; ++slot) {
+    publication.directory = path + ".tmp." + std::to_string(slot);
+    publication.payload = publication.directory / "payload.pt2";
+    std::error_code error;
+    publication.owned = fs::create_directory(publication.directory, error);
+    if (error && error != std::errc::file_exists)
+      throw std::runtime_error("UmaPot: cannot reserve publication for " +
+                               path + ": " + error.message());
+  }
+  const std::string tmp = publication.payload.string();
   {
     std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
     if (!out)
@@ -258,6 +281,9 @@ inline void write_all(const std::string &path, const std::vector<uint8_t> &buf) 
         !out.write(reinterpret_cast<const char *>(buf.data()),
                    static_cast<std::streamsize>(buf.size())))
       throw std::runtime_error("UmaPot: short write of " + tmp);
+    out.close();
+    if (!out)
+      throw std::runtime_error("UmaPot: cannot close " + tmp);
   }
   std::error_code ec;
   std::filesystem::rename(tmp, path, ec);
