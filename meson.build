@@ -36,7 +36,7 @@ if host_system == 'darwin'
 endif
 
 # Languages
-add_languages('c', required: true)
+add_languages('c', required: true, native: false)
 # Fortran pot kernels on all hosts where a compiler is available. On
 # Darwin/CI, pair with system clang++ (not conda arm64-apple-darwin20 clang)
 # so C++ targets link the host SDK.
@@ -51,6 +51,7 @@ else
     has_fortran = add_languages(
         'fortran',
         required: _fortran_pots_opt.enabled(),
+        native: false,
     )
 endif
 fc = disabler()
