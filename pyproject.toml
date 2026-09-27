@@ -153,6 +153,11 @@ repair-wheel-command = """
       --exclude libmetatensor.so \
       --exclude libgomp.so.1
   rm -rf "$tmp"
+  # auditwheel rewrites NEEDED in librgpot.so.X.Y.Z alone; refresh the
+  # soname copies _core loads from the repaired file.
+  for w in {dest_dir}/*.whl; do
+    bash scripts/rgpot_sync_soname_copies.sh "$w"
+  done
 """
 
 [tool.cibuildwheel.macos]
