@@ -179,7 +179,11 @@ public:
                   .pos = positions.data(),
                   .atmnrs = atmtypes.data(),
                   .box = flatBox};
-    ForceOut fo{.F = forces.data(), .energy = 0.0, .variance = 0.0};
+    ForceOut fo{.F = forces.data(),
+                .energy = 0.0,
+                .variance = 0.0,
+                .stress = {},
+                .has_stress = 0};
 
 #ifdef RGPOT_HAS_CACHE
     rgpot::cache::KeyHash key = cacheKey(fi);

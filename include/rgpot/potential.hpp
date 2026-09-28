@@ -255,7 +255,11 @@ private:
 
       // Temporary buffer for forces
       std::vector<double> forces(n_atoms * 3, 0.0);
-      ::rgpot::ForceOut fo{.F = forces.data(), .energy = 0.0, .variance = 0.0};
+      ::rgpot::ForceOut fo{.F = forces.data(),
+                           .energy = 0.0,
+                           .variance = 0.0,
+                           .stress = {},
+                           .has_stress = 0};
 
       self->forceImpl(fi, &fo);
 

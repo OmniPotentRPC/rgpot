@@ -455,6 +455,7 @@ void CPMDPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
   out->energy = res.energy_h * HARTREE_TO_EV;
   out->variance = 0.0;
+  out->has_stress = 0;
   for (int i = 0; i < n * 3; ++i)
     out->F[static_cast<size_t>(i)] =
         grad[static_cast<size_t>(i)] * NEG_GRAD_TO_FORCE;
@@ -493,6 +494,13 @@ void CPMDPot::Impl::forceSession(const ForceInput &in, ForceOut *out) {
   out->variance = 0.0;
   for (unsigned int i = 0; i < forces.size(); ++i)
     out->F[i] = forces[i];
+  out->has_stress = 0;
+  const auto stress = result.getStress();
+  if (stress.size() == 9) {
+    for (unsigned int i = 0; i < 9; ++i)
+      out->stress[i] = stress[i];
+    out->has_stress = 1;
+  }
 }
 
 } // namespace rgpot
