@@ -38,6 +38,7 @@ using AvailableFn = int (*)(void);
 using FeatureCountFn = size_t (*)(void);
 using FeatureTableFn = const CPMDCFeatureEntry *(*)(void);
 using FeatureFindFn = const CPMDCFeatureEntry *(*)(const char *);
+using BindCalculatorsFn = int (*)(int);
 
 struct ParamsView {
   const void *data = nullptr;
@@ -396,6 +397,17 @@ bool CPMDPot::available() const {
   if (has_session_result_abi(impl_->bundle))
     return impl_->session != nullptr;
   return impl_->bundle.energy_gradient && impl_->bundle.set_params;
+}
+
+int CPMDPot::bindCalculators(int ranks_per_calc) {
+  EngineBundle bundle;
+  if (!try_load_engine(bundle, ""))
+    return -1;
+  auto bind = bundle.engine_lib.sym_optional<BindCalculatorsFn>(
+      "cpmdc_bind_calculator");
+  if (!bind)
+    return -1;
+  return bind(ranks_per_calc);
 }
 
 bool CPMDPot::probe_available() {
