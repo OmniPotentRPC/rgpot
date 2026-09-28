@@ -243,9 +243,9 @@ dependencies = [
 
 [[package]]
 name = "eindir-core"
-version = "0.5.2"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6fb7523dd5458e184ceb87773846ff91659efe891a91411c57eea029e31afbe"
+checksum = "e330e3abad9c1a597b144d40eb4b07ab3511d79f7d2cdbbcb37a44662f974db0"
 dependencies = [
  "cbindgen 0.29.4",
  "dlpk",

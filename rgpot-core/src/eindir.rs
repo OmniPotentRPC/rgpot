@@ -43,9 +43,21 @@ use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
 
 pub use eindir_core::ffi::eindir_status_t;
 pub use eindir_core::ffi::{
-    eindir_objective_eval, eindir_objective_grad, eindir_objective_has_grad,
-    eindir_objective_t, EindirEvalFn, EindirFreeFn, EindirGradFn,
+    eindir_abi_stamp_t, eindir_objective_eval, eindir_objective_grad,
+    eindir_objective_has_grad, eindir_objective_t, EindirEvalFn, EindirFreeFn, EindirGradFn,
 };
+
+/// The eindir ABI stamp of the `eindir_objective_t` base that
+/// `rgpot_potential_t` embeds as its first member.
+///
+/// A consumer that takes the potential as an eindir objective (rgmin's
+/// `rgmin_minimize_eindir`, for one) passes this stamp to
+/// `eindir_core_abi_compatible`, so a layout from a different eindir-core
+/// revision is refused instead of read as the wrong struct.
+#[no_mangle]
+pub extern "C" fn rgpot_eindir_abi_stamp() -> eindir_abi_stamp_t {
+    eindir_core::ffi::eindir_core_abi_stamp()
+}
 
 // ---------------------------------------------------------------------------
 // rgpot_potential_t: rgpot_potential_t* IS-A eindir_objective_t*
@@ -74,8 +86,12 @@ pub struct rgpot_potential_t {
     /// Box matrix (column-major, 3x3), copied at construction.
     pub box_matrix: [f64; 9],
     /// Energy/gradient result shared by a matching eval-then-grad request.
-    fused_cache: Mutex<Option<FusedEvaluation>>,
+    /// Held behind a pointer so the C view of the struct stays plain C.
+    fused_cache: Box<rgpot_fused_cache_t>,
 }
+
+/// Opaque cache of the last fused energy and gradient evaluation.
+pub struct rgpot_fused_cache_t(Mutex<Option<FusedEvaluation>>);
 
 struct FusedEvaluation {
     positions: Vec<f64>,
@@ -140,11 +156,13 @@ unsafe extern "C" fn rgpot_eval_cb(
     }
     if status != rgpot_status_t::RGPOT_SUCCESS {
         *pot.fused_cache
+            .0
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
         return eindir_status_t::EINDIR_INTERNAL_ERROR;
     }
     *pot.fused_cache
+        .0
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = fused;
     unsafe { *value_out = output.energy };
@@ -162,6 +180,7 @@ unsafe extern "C" fn rgpot_grad_cb(
     let x_data = unsafe { std::slice::from_raw_parts(xt.data as *const f64, n) };
     let cached = pot
         .fused_cache
+        .0
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .take();
@@ -231,6 +250,13 @@ unsafe extern "C" fn rgpot_grad_cb(
 ///
 /// The caller must eventually pass the returned pointer to
 /// [`rgpot_potential_free`].
+///
+/// # Safety
+///
+/// `atomic_numbers` must be NULL or point to `n_atoms` readable `i32`
+/// values, `box_matrix` NULL or 9 readable `f64` values, and each bound NULL
+/// or `n_atoms * 3` readable `f64` values. `callback` and `free_fn` must be
+/// safe to call with `user_data`.
 #[no_mangle]
 pub unsafe extern "C" fn rgpot_potential_new_eindir(
     callback: PotentialCallback,
@@ -290,7 +316,7 @@ pub unsafe extern "C" fn rgpot_potential_new_eindir(
         n_atoms,
         atomic_numbers: atmnrs,
         box_matrix: box_arr,
-        fused_cache: Mutex::new(None),
+        fused_cache: Box::new(rgpot_fused_cache_t(Mutex::new(None))),
     });
     let ptr = Box::into_raw(pot);
     // Self-referential: the eindir base's user_data points to the owning struct
@@ -304,6 +330,12 @@ pub unsafe extern "C" fn rgpot_potential_new_eindir(
 /// Calls `pot_free_fn(pot_user_data)` if provided, frees all owned arrays,
 /// then frees the struct.  Do NOT call `eindir_objective_free` on the embedded
 /// base; call this function.
+///
+/// # Safety
+///
+/// `pot` must be NULL or a pointer returned by
+/// [`rgpot_potential_new_eindir`] that has not been freed yet. The pointer is
+/// invalid after the call.
 #[no_mangle]
 pub unsafe extern "C" fn rgpot_potential_free_eindir(pot: *mut rgpot_potential_t) {
     if pot.is_null() {
@@ -610,5 +642,12 @@ mod tests {
             del1d(g_t);
             rgpot_potential_free_eindir(pot);
         }
+    }
+
+    #[test]
+    fn eindir_abi_stamp_is_accepted_by_eindir_core() {
+        let stamp = rgpot_eindir_abi_stamp();
+        assert_eq!(stamp.objective_size, std::mem::size_of::<eindir_objective_t>());
+        assert_eq!(unsafe { eindir_core::ffi::eindir_core_abi_compatible(&stamp) }, 1);
     }
 }
