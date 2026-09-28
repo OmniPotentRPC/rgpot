@@ -148,6 +148,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_Reentrancy.html">enum rgpot::Reentrancy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_CalculatorGroup.html">struct rgpot::CalculatorGroup</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_D3Config.html">struct rgpot::D3Config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_D4Config.html">struct rgpot::D4Config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
@@ -221,6 +222,9 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-12.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-13.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_cuh2.html">namespace rgpot_cuh2</a><ul class="simple">
@@ -332,6 +336,9 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="struct_RgpotXtbPot.html">struct RgpotXtbPot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_eindir_abi_stamp_t.html">struct eindir_abi_stamp_t</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="struct_eindir_objective_t.html">struct eindir_objective_t</a><ul class="simple">
@@ -533,7 +540,8 @@ data-aria-dark="Switch to auto color mode">
 <span data-line="22">    <span class="kt">bool</span> <span class="doxyrest-code-target target" id="doxid-classrgpot_1_1_c_p_m_d_pot_1a9b006e0439de5445527c23332c16b88c"></span><span class="n">available</span><span class="p">()</span> <span class="k">const</span><span class="p">;</span></span>
 <span data-line="23">    <span class="k">static</span> <span class="kt">bool</span> <span class="doxyrest-code-target target" id="doxid-classrgpot_1_1_c_p_m_d_pot_1a055db00e0a19a8ed3d4bb0b6ddba1eaf"></span><span class="n">probe_available</span><span class="p">();</span></span>
 <span data-line="24">    <span class="k">static</span> <span class="kt">bool</span> <span class="doxyrest-code-target target" id="doxid-classrgpot_1_1_c_p_m_d_pot_1aa6d5fa95440d78578a67318a6f94ebca"></span><span class="n">abi_available</span><span class="p">();</span></span>
-<span data-line="25"><span class="p">};</span></span>
+<span data-line="25">    <span class="k">static</span> <span class="kt">int</span> <span class="doxyrest-code-target target" id="doxid-classrgpot_1_1_c_p_m_d_pot_1adaecbf76c0c5f2fda166136873c07e7b"></span><span class="n">bindCalculators</span><span class="p">(</span><span class="kt">int</span> <span class="n">ranks_per_calc</span><span class="p">);</span></span>
+<span data-line="26"><span class="p">};</span></span>
 </pre></div>
 </section>
 <section id="detailed-documentation">

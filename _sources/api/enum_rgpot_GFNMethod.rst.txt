@@ -9,7 +9,7 @@ enum rgpot::GFNMethod
 .. ref-code-block:: cpp
 	:class: doxyrest-overview-code-block
 
-	#include <XTBPot.hpp>
+	#include <XTBConfig.hpp>
 
 	enum GFNMethod {
 	    :target:`GFNFF<doxid-namespacergpot_1aae57e5e203e816b45fcd9d34745282eca6f62d6b7f8b3a94e971d84f9eeecd534>`,

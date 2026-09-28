@@ -96,6 +96,11 @@
       :reexport: rgpot_core::eindir
 
 
+   .. rust:use:: eindir_core::ffi::eindir_abi_stamp_t
+      :used_name: eindir_abi_stamp_t
+      :reexport: rgpot_core::eindir
+
+
    .. rust:use:: eindir_core::ffi::eindir_objective_eval
       :used_name: eindir_objective_eval
       :reexport: rgpot_core::eindir
@@ -121,6 +126,7 @@
    * :rust:any:``eindir_core::ffi::EindirEvalFn``
    * :rust:any:``eindir_core::ffi::EindirFreeFn``
    * :rust:any:``eindir_core::ffi::EindirGradFn``
+   * :rust:any:``eindir_core::ffi::eindir_abi_stamp_t``
    * :rust:any:``eindir_core::ffi::eindir_objective_eval``
    * :rust:any:``eindir_core::ffi::eindir_objective_grad``
    * :rust:any:``eindir_core::ffi::eindir_objective_has_grad``
@@ -128,6 +134,19 @@
 
    .. rubric:: Functions
 
+
+   .. rust:function:: rgpot_core::eindir::rgpot_eindir_abi_stamp
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_eindir_abi_stamp"},{"type":"punctuation","value":"("},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"eindir_abi_stamp_t","target":"eindir_abi_stamp_t"}]
+
+      The eindir ABI stamp of the ``eindir_objective_t`` base that
+      ``rgpot_potential_t`` embeds as its first member.
+      
+      A consumer that takes the potential as an eindir objective (rgmin's
+      ``rgmin_minimize_eindir``, for one) passes this stamp to
+      ``eindir_core_abi_compatible``, so a layout from a different eindir-core
+      revision is refused instead of read as the wrong struct.
 
    .. rust:function:: rgpot_core::eindir::rgpot_potential_free_eindir
       :index: 0
@@ -139,6 +158,12 @@
       Calls ``pot_free_fn(pot_user_data)`` if provided, frees all owned arrays,
       then frees the struct.  Do NOT call ``eindir_objective_free`` on the embedded
       base; call this function.
+      
+      **Safety**
+      
+      ``pot`` must be NULL or a pointer returned by
+      ``rgpot_potential_new_eindir`` that has not been freed yet. The pointer is
+      invalid after the call.
 
    .. rust:function:: rgpot_core::eindir::rgpot_potential_new_eindir
       :index: 0
@@ -158,9 +183,24 @@
       
       The caller must eventually pass the returned pointer to
       ``rgpot_potential_free``.
+      
+      **Safety**
+      
+      ``atomic_numbers`` must be NULL or point to ``n_atoms`` readable ``i32``
+      values, ``box_matrix`` NULL or 9 readable ``f64`` values, and each bound NULL
+      or ``n_atoms * 3`` readable ``f64`` values. ``callback`` and ``free_fn`` must be
+      safe to call with ``user_data``.
 
    .. rubric:: Structs and Unions
 
+
+   .. rust:struct:: rgpot_core::eindir::rgpot_fused_cache_t
+      :index: 1
+      :vis: pub
+      :toc: struct rgpot_fused_cache_t
+      :layout: [{"type":"keyword","value":"struct"},{"type":"space"},{"type":"name","value":"rgpot_fused_cache_t"},{"type":"punctuation","value":"("},{"type":"link","value":"Mutex","target":"Mutex"},{"type":"punctuation","value":"<"},{"type":"link","value":"Option","target":"Option"},{"type":"punctuation","value":"<"},{"type":"link","value":"FusedEvaluation","target":"FusedEvaluation"},{"type":"punctuation","value":">"},{"type":"punctuation","value":">"},{"type":"punctuation","value":")"}]
+
+      Opaque cache of the last fused energy and gradient evaluation.
 
    .. rust:struct:: rgpot_core::eindir::rgpot_potential_t
       :index: 1

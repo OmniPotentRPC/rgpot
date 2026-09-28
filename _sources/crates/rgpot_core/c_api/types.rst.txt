@@ -100,3 +100,9 @@
       
       The ``forces`` field starts as NULL — the potential callback is responsible
       for setting it to a valid DLPack tensor.
+      
+      **Safety**
+      
+      The function reads no memory. It stays ``unsafe`` because the C ABI
+      declares it so; the caller owns the ``forces`` tensor once the callback
+      sets it.

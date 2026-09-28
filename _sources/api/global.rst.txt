@@ -20,6 +20,7 @@ Global Namespace
 	namespace_rgpot-10.rst
 	namespace_rgpot-11.rst
 	namespace_rgpot-12.rst
+	namespace_rgpot-13.rst
 	namespace_rgpot_cuh2.rst
 	namespace_rgpot_cuh2_capi.rst
 	namespace_rgpot_eam_al.rst
@@ -58,6 +59,7 @@ Global Namespace
 	struct_RgpotMtaPot.rst
 	struct_RgpotXtbConfig.rst
 	struct_RgpotXtbPot.rst
+	struct_eindir_abi_stamp_t.rst
 	struct_eindir_objective_t.rst
 	class_AtomMatrix.rst
 	class_GenericPotImpl.rst
@@ -91,16 +93,17 @@ Overview
 				namespace :ref:`rgpot::types::adapt::xtensor<doxid-namespacergpot_1_1types_1_1adapt_1_1xtensor>`;
 		namespace :ref:`rgpot::units<doxid-namespacergpot_1_1units>`;
 		namespace :ref:`rgpot::vesin_compat<doxid-namespacergpot_1_1vesin__compat>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d305002241363136067011226310027215036350216205241>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d307112313373357257323066107376333004137304370130>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d337125225102314171335167206375002356240231265256>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d371345205050316044211301074104100300046352051004>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d217266233327203303134017362164326260230263145325>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d307112313373357257323066107376333004137304370130>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d005211301367263113147155070242204034047317366225>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d171070010102105364072226347021272242150151256304>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d164173104033017375130307150113162274222310040315>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d305002241363136067011226310027215036350216205241>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d122207310312103133225144130321077133074162141334>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d005211301367263113147155070242204034047317366225>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d215115311063156157302310316040026264140105104166>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d164173104033017375130307150113162274222310040315>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d166331164204151220333054351225362033006173021072>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d171070010102105364072226347021272242150151256304>`;
 	namespace :ref:`rgpot_cuh2<doxid-namespacergpot__cuh2>`;
 	namespace :ref:`rgpot_cuh2_capi<doxid-namespacergpot__cuh2__capi>`;
 	namespace :ref:`rgpot_eam_al<doxid-namespacergpot__eam__al>`;
@@ -150,6 +153,7 @@ Overview
 	typedef struct RgpotXtbPot :target:`RgpotXtbPot<doxid-xtb__c__abi_8h_1a37b502b1326e503b40aced0b4726dffb>`;
 	typedef struct RgpotXtbConfig :target:`RgpotXtbConfig<doxid-xtb__c__abi_8h_1a1786d9f1df089ee1d5b41e1389567afe>`;
 	typedef struct eindir_objective_t :target:`eindir_objective_t<doxid-eindir__abi_8hpp_1a2cd0da5d11e8702270a9a1f4ad8e2256>`;
+	typedef struct eindir_abi_stamp_t :target:`eindir_abi_stamp_t<doxid-eindir__abi_8hpp_1af98f5d743d120e3f73a6e524045f6b12>`;
 
 	// enums
 
@@ -178,6 +182,7 @@ Overview
 	struct :ref:`RgpotMtaPot<doxid-struct_rgpot_mta_pot>`;
 	struct :ref:`RgpotXtbConfig<doxid-struct_rgpot_xtb_config>`;
 	struct :ref:`RgpotXtbPot<doxid-struct_rgpot_xtb_pot>`;
+	struct :ref:`eindir_abi_stamp_t<doxid-structeindir__abi__stamp__t>`;
 	struct :ref:`eindir_objective_t<doxid-structeindir__objective__t>`;
 
 	// classes
@@ -344,6 +349,7 @@ Overview
 	// macros
 
 	#define :target:`CATCH_AND_REPORT<doxid-pot__bridge_8cc_1a933409e97453f39bfae6d29f0518b341>`(client, default_ret)
+	#define :target:`EINDIR_ABI_STAMP_T_DEFINED<doxid-eindir__abi_8hpp_1a8e303a53a9afcdaf08f1f32960b3bdab>`
 	#define :target:`EINDIR_OBJECTIVE_T_DEFINED<doxid-eindir__abi_8hpp_1a55525eed573290331dddbee46c32b516>`
 	#define :target:`MOPACC_MODEL_AM1<doxid-mopac__c__abi_8h_1a344bad1bb031e242114c60e4d6a8db19>`
 	#define :target:`MOPACC_MODEL_PM6<doxid-mopac__c__abi_8h_1a8ec5030ea1bd8a56f22c0417b2adcff9>`
@@ -368,6 +374,7 @@ Overview
 	#define :target:`RGPOT_MTA_API<doxid-metatomic__c__abi_8h_1a409c918f350af84ff87227c561b27aa3>`
 	#define :target:`RGPOT_MTA_ENGINE_BUILD<doxid-_metatomic_engine_abi_8cc_1a8eaafdf8bea9f6c384cda06d3e8eea42>`
 	#define :target:`RGPOT_NWCHEMC_API<doxid-nwchem__c__abi_8h_1a6ad5679b2111999202bb48844af14a93>`
+	#define :ref:`RGPOT_ROCKSDB_UNIQUE_PTR_OPEN<doxid-_potential_cache_8hpp_1a4d2e3dd07b69975ea6e7a022076e0a4b>`
 	#define :target:`RGPOT_XTB_ABI_VERSION<doxid-xtb__c__abi_8h_1aa3b73c6a3161c5d0da0ec0b357f13b8f>`
 	#define :target:`RGPOT_XTB_API<doxid-xtb__c__abi_8h_1a1c2e4e9e5c694894e8e5e08ae2c99479>`
 	#define :target:`XCK_HD<doxid-evaluator_8hpp_1a188c81a8a602db0d56a4447043fab829>`
@@ -1523,4 +1530,16 @@ This header provides a C-compatible interface to the distributed potential calcu
 Gate settings for a learning engine, passed as the config blob.
 
 INTERIM. The config arm is specified as a Cap'n Proto message and becomes GprParams once Potentials.capnp carries a nested PotentialSpec (rgpot-b7zw). Until then a learning engine has no way to be configured at all, which leaves certifyBelowForce at zero and so leaves a driver's convergence claim unbacked by ground truth the one guarantee such an engine exists to provide. A fixed-layout struct with a magic word closes that hole without pretending to be capnp: an engine dispatches on the magic, so the capnp message can replace it later without either side guessing which it received.
+
+.. index:: pair: define; RGPOT_ROCKSDB_UNIQUE_PTR_OPEN
+.. _doxid-_potential_cache_8hpp_1a4d2e3dd07b69975ea6e7a022076e0a4b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	#define RGPOT_ROCKSDB_UNIQUE_PTR_OPEN
+
+Header file for the PotentialCache class.
+
+This file defines the caching mechanism for the rgpot library, utilizing RocksDB to store and retrieve potential energy and force calculations.
 

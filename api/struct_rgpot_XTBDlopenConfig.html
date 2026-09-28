@@ -148,6 +148,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_Reentrancy.html">enum rgpot::Reentrancy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_CalculatorGroup.html">struct rgpot::CalculatorGroup</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_D3Config.html">struct rgpot::D3Config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_D4Config.html">struct rgpot::D4Config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
@@ -221,6 +222,9 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-12.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-13.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_cuh2.html">namespace rgpot_cuh2</a><ul class="simple">
@@ -332,6 +336,9 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="struct_RgpotXtbPot.html">struct RgpotXtbPot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_eindir_abi_stamp_t.html">struct eindir_abi_stamp_t</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="struct_eindir_objective_t.html">struct eindir_objective_t</a><ul class="simple">
@@ -499,9 +506,9 @@ data-aria-dark="Switch to auto color mode">
 <span id="doxid-structrgpot-1-1-x-t-b-dlopen-config"></span><span id="index-0"></span><h1>struct rgpot::XTBDlopenConfig<a class="headerlink" href="#struct-rgpot-xtbdlopenconfig" title="Link to this heading">¶</a></h1>
 <div class="toctree-wrapper compound">
 </div>
-<p>Plugin path: <code class="docutils literal notranslate"><span class="pre">dlopen</span></code> <code class="docutils literal notranslate"><span class="pre">libxtb_engine.so</span></code>, which implements the same ISO_C_BINDING singlepoint as linked <code class="docutils literal notranslate"><span class="pre">XTBPot</span></code> behind <code class="docutils literal notranslate"><span class="pre">xtb_c_abi.h</span></code>. Search: <code class="docutils literal notranslate"><span class="pre">engine_path</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_XTB_ENGINE</span></code>, <code class="docutils literal notranslate"><span class="pre">XTB_ENGINE</span></code>, bare <code class="docutils literal notranslate"><span class="pre">libxtb_engine.so</span></code>, then <code class="docutils literal notranslate"><span class="pre">EON_POTENTIALS_PATH</span></code> / <code class="docutils literal notranslate"><span class="pre">RGPOT_ENGINE_PATH</span></code>.</p>
+<p>Optional engine path for the dlopen frontend (also RGPOT_XTB_ENGINE).</p>
 <div class="doxyrest-overview-code-block highlight">
-<pre><span data-line="1"><span class="cp">#include</span> <span class="cpf">&lt;XTBDlopen.hpp&gt;</span></span>
+<pre><span data-line="1"><span class="cp">#include</span> <span class="cpf">&lt;XTBConfig.hpp&gt;</span></span>
 <span data-line="2"> </span>
 <span data-line="3"><span class="k">struct</span> <span class="n">XTBDlopenConfig</span> <span class="p">{</span></span>
 <span data-line="4">    <span class="c1">// fields</span></span>

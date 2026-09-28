@@ -1,0 +1,28 @@
+.. index:: pair: struct; eindir_abi_stamp_t
+.. _doxid-structeindir__abi__stamp__t:
+
+struct eindir_abi_stamp_t
+=========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct eindir_abi_stamp_t {
+		// fields
+	
+		uint32_t :target:`abi_major<doxid-structeindir__abi__stamp__t_1ac19d56dbeaee7203a93e5de32bbd1e8a>`;
+		uint32_t :target:`abi_minor<doxid-structeindir__abi__stamp__t_1a73564c7ece27ccd7a457926576ea4afd>`;
+		uint32_t :target:`objective_layout<doxid-structeindir__abi__stamp__t_1a06192f6b4ec9520b5b277b2a47f73203>`;
+		size_t :target:`objective_size<doxid-structeindir__abi__stamp__t_1a20dacb60bb71b0424db44bd07197c989>`;
+		size_t :target:`objective_align<doxid-structeindir__abi__stamp__t_1a4be1adf10cdfa677d1280971d4975861>`;
+		uint32_t :target:`dlpack_major<doxid-structeindir__abi__stamp__t_1a82f1d90e3cb0d5d63b874e37c88f10b7>`;
+		uint32_t :target:`dlpack_minor<doxid-structeindir__abi__stamp__t_1a880404e9962149bc3e5ed37c2d4a4a7a>`;
+		uint64_t :target:`features<doxid-structeindir__abi__stamp__t_1aa18cf6067cb6a7d85fa62b833272ac25>`;
+	};

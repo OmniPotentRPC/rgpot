@@ -148,6 +148,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../../api/enum_rgpot_Reentrancy.html">enum rgpot::Reentrancy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_CalculatorGroup.html">struct rgpot::CalculatorGroup</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_D3Config.html">struct rgpot::D3Config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_D4Config.html">struct rgpot::D4Config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
@@ -221,6 +222,9 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-12.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-13.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot_cuh2.html">namespace rgpot_cuh2</a><ul class="simple">
@@ -334,6 +338,9 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../../api/struct_RgpotXtbPot.html">struct RgpotXtbPot</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/struct_eindir_abi_stamp_t.html">struct eindir_abi_stamp_t</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="../../api/struct_eindir_objective_t.html">struct eindir_objective_t</a><ul class="simple">
 </ul>
 </li>
@@ -397,8 +404,10 @@ data-aria-dark="Switch to auto color mode">
       <i class="i-lucide close"></i>
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
+<li><a class="reference internal" href="#rgpot_core-eindir-rgpot_eindir_abi_stamp"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_eindir_abi_stamp</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_free_eindir"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_potential_free_eindir</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_new_eindir"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_potential_new_eindir</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-eindir-rgpot_fused_cache_t"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">rgpot_fused_cache_t</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_t"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">rgpot_potential_t</span></code></a><ul>
 <li><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_t-base"><code class="docutils literal notranslate"><span class="pre">base</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_t-callback"><code class="docutils literal notranslate"><span class="pre">callback</span></code></a></li>
@@ -529,6 +538,7 @@ eval path and no conversion method.</p>
 <li><p>:rust:any:<code class="docutils literal notranslate"><span class="pre">eindir_core::ffi::EindirEvalFn</span></code></p></li>
 <li><p>:rust:any:<code class="docutils literal notranslate"><span class="pre">eindir_core::ffi::EindirFreeFn</span></code></p></li>
 <li><p>:rust:any:<code class="docutils literal notranslate"><span class="pre">eindir_core::ffi::EindirGradFn</span></code></p></li>
+<li><p>:rust:any:<code class="docutils literal notranslate"><span class="pre">eindir_core::ffi::eindir_abi_stamp_t</span></code></p></li>
 <li><p>:rust:any:<code class="docutils literal notranslate"><span class="pre">eindir_core::ffi::eindir_objective_eval</span></code></p></li>
 <li><p>:rust:any:<code class="docutils literal notranslate"><span class="pre">eindir_core::ffi::eindir_objective_grad</span></code></p></li>
 <li><p>:rust:any:<code class="docutils literal notranslate"><span class="pre">eindir_core::ffi::eindir_objective_has_grad</span></code></p></li>
@@ -536,12 +546,27 @@ eval path and no conversion method.</p>
 </ul>
 <p class="rubric">Functions</p>
 <dl class="rust function">
+<dt class="sig sig-object rust" id="rgpot_core-eindir-rgpot_eindir_abi_stamp">
+<span class="sig-name descname"><span class="k"><span class="pre">extern</span></span><span class="w"> </span><span class="s"><span class="pre">C</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_eindir_abi_stamp</span></span><span class="p"><span class="pre">(</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><span class="n"><span class="pre">eindir_abi_stamp_t</span></span></span><a class="headerlink" href="#rgpot_core-eindir-rgpot_eindir_abi_stamp" title="Link to this definition">¶</a></dt>
+<dd><p>The eindir ABI stamp of the <code class="docutils literal notranslate"><span class="pre">eindir_objective_t</span></code> base that
+<code class="docutils literal notranslate"><span class="pre">rgpot_potential_t</span></code> embeds as its first member.</p>
+<p>A consumer that takes the potential as an eindir objective (rgmin’s
+<code class="docutils literal notranslate"><span class="pre">rgmin_minimize_eindir</span></code>, for one) passes this stamp to
+<code class="docutils literal notranslate"><span class="pre">eindir_core_abi_compatible</span></code>, so a layout from a different eindir-core
+revision is refused instead of read as the wrong struct.</p>
+</dd></dl>
+
+<dl class="rust function">
 <dt class="sig sig-object rust" id="rgpot_core-eindir-rgpot_potential_free_eindir">
 <span class="sig-name descname"><span class="k"><span class="pre">unsafe</span></span><span class="w"> </span><span class="k"><span class="pre">extern</span></span><span class="w"> </span><span class="s"><span class="pre">C</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_potential_free_eindir</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">pot</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">mut</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_t" title="rgpot_core::eindir::rgpot_potential_t"><span class="n"><span class="pre">rgpot_potential_t</span></span></a><span class="p"><span class="pre">)</span></span></span><a class="headerlink" href="#rgpot_core-eindir-rgpot_potential_free_eindir" title="Link to this definition">¶</a></dt>
 <dd><p>Free a potential created by <code class="docutils literal notranslate"><span class="pre">rgpot_potential_new_eindir</span></code>.</p>
 <p>Calls <code class="docutils literal notranslate"><span class="pre">pot_free_fn(pot_user_data)</span></code> if provided, frees all owned arrays,
 then frees the struct.  Do NOT call <code class="docutils literal notranslate"><span class="pre">eindir_objective_free</span></code> on the embedded
 base; call this function.</p>
+<p><strong>Safety</strong></p>
+<p><code class="docutils literal notranslate"><span class="pre">pot</span></code> must be NULL or a pointer returned by
+<code class="docutils literal notranslate"><span class="pre">rgpot_potential_new_eindir</span></code> that has not been freed yet. The pointer is
+invalid after the call.</p>
 </dd></dl>
 
 <dl class="rust function">
@@ -559,9 +584,20 @@ zero-cost cast to the first member) an <code class="docutils literal notranslate
 </ul>
 <p>The caller must eventually pass the returned pointer to
 <code class="docutils literal notranslate"><span class="pre">rgpot_potential_free</span></code>.</p>
+<p><strong>Safety</strong></p>
+<p><code class="docutils literal notranslate"><span class="pre">atomic_numbers</span></code> must be NULL or point to <code class="docutils literal notranslate"><span class="pre">n_atoms</span></code> readable <code class="docutils literal notranslate"><span class="pre">i32</span></code>
+values, <code class="docutils literal notranslate"><span class="pre">box_matrix</span></code> NULL or 9 readable <code class="docutils literal notranslate"><span class="pre">f64</span></code> values, and each bound NULL
+or <code class="docutils literal notranslate"><span class="pre">n_atoms</span> <span class="pre">*</span> <span class="pre">3</span></code> readable <code class="docutils literal notranslate"><span class="pre">f64</span></code> values. <code class="docutils literal notranslate"><span class="pre">callback</span></code> and <code class="docutils literal notranslate"><span class="pre">free_fn</span></code> must be
+safe to call with <code class="docutils literal notranslate"><span class="pre">user_data</span></code>.</p>
 </dd></dl>
 
 <p class="rubric">Structs and Unions</p>
+<dl class="rust struct">
+<dt class="sig sig-object rust" id="rgpot_core-eindir-rgpot_fused_cache_t">
+<span class="sig-name descname"><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_fused_cache_t</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">Mutex</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">Option</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">FusedEvaluation</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">)</span></span></span><a class="headerlink" href="#rgpot_core-eindir-rgpot_fused_cache_t" title="Link to this definition">¶</a></dt>
+<dd><p>Opaque cache of the last fused energy and gradient evaluation.</p>
+</dd></dl>
+
 <dl class="rust struct">
 <dt class="sig sig-object rust" id="rgpot_core-eindir-rgpot_potential_t">
 <span class="sig-name descname"><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_potential_t</span></span></span><a class="headerlink" href="#rgpot_core-eindir-rgpot_potential_t" title="Link to this definition">¶</a></dt>

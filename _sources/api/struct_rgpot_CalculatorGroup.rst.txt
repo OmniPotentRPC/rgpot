@@ -1,0 +1,24 @@
+.. index:: pair: struct; rgpot::CalculatorGroup
+.. _doxid-structrgpot_1_1_calculator_group:
+
+struct rgpot::CalculatorGroup
+=============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct CalculatorGroup {
+		// fields
+	
+		int :target:`index<doxid-structrgpot_1_1_calculator_group_1a2bab6bd45166c8845329d6f75f11c2b8>` = 0;
+		int :target:`ranks<doxid-structrgpot_1_1_calculator_group_1a586aabab5a19aabfeecf9388be990c54>` = 1;
+		int :target:`rank_in_group<doxid-structrgpot_1_1_calculator_group_1acdb29e218af494c70ec1c06796a100af>` = 0;
+		int :target:`world_size<doxid-structrgpot_1_1_calculator_group_1a011e1a84b480ada875cd8c0f65e2e941>` = 1;
+	};

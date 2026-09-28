@@ -148,6 +148,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../../../api/enum_rgpot_Reentrancy.html">enum rgpot::Reentrancy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/struct_rgpot_CalculatorGroup.html">struct rgpot::CalculatorGroup</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/struct_rgpot_D3Config.html">struct rgpot::D3Config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/struct_rgpot_D4Config.html">struct rgpot::D4Config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
@@ -221,6 +222,9 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/namespace_rgpot-12.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/namespace_rgpot-13.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/namespace_rgpot_cuh2.html">namespace rgpot_cuh2</a><ul class="simple">
@@ -332,6 +336,9 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/struct_RgpotXtbPot.html">struct RgpotXtbPot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/struct_eindir_abi_stamp_t.html">struct eindir_abi_stamp_t</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/struct_eindir_objective_t.html">struct eindir_objective_t</a><ul class="simple">
@@ -546,6 +553,10 @@ tensors were created by <code class="docutils literal notranslate"><span class="
 <dd><p>Create a <code class="docutils literal notranslate"><span class="pre">rgpot_force_out_t</span></code> with null forces and zeroed scalars.</p>
 <p>The <code class="docutils literal notranslate"><span class="pre">forces</span></code> field starts as NULL — the potential callback is responsible
 for setting it to a valid DLPack tensor.</p>
+<p><strong>Safety</strong></p>
+<p>The function reads no memory. It stays <code class="docutils literal notranslate"><span class="pre">unsafe</span></code> because the C ABI
+declares it so; the caller owns the <code class="docutils literal notranslate"><span class="pre">forces</span></code> tensor once the callback
+sets it.</p>
 </dd></dl>
 
 </dd></dl>

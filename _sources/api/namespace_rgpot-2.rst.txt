@@ -21,6 +21,7 @@ namespace rgpot
 	enum_rgpot_Reentrancy.rst
 	enum_rgpot_TBLiteMethod.rst
 	enum_rgpot_TorchDeterminismPolicy.rst
+	struct_rgpot_CalculatorGroup.rst
 	struct_rgpot_D3Config.rst
 	struct_rgpot_D4Config.rst
 	struct_rgpot_Fnv1a.rst
@@ -93,6 +94,10 @@ Prefix-parameterized loader for the minimum potential ABI profile. :ref:`More...
 	namespace :ref:`rgpot::units<doxid-namespacergpot_1_1units>`;
 	namespace :ref:`rgpot::vesin_compat<doxid-namespacergpot_1_1vesin__compat>`;
 
+	// typedefs
+
+	typedef int(*)(int ranks_per_calculator) :target:`CalculatorHook<doxid-namespacergpot_1ae8c651a5edee6b369326d372c16a6f45>`;
+
 	// enums
 
 	enum :ref:`D3Damping<doxid-namespacergpot_1ad2c0c9f9065c92cae6f5bbe30db75610>`;
@@ -103,6 +108,7 @@ Prefix-parameterized loader for the minimum potential ABI profile. :ref:`More...
 
 	// structs
 
+	struct :ref:`CalculatorGroup<doxid-structrgpot_1_1_calculator_group>`;
 	struct :ref:`D3Config<doxid-structrgpot_1_1_d3_config>`;
 	struct :ref:`D4Config<doxid-structrgpot_1_1_d4_config>`;
 	struct :ref:`Fnv1a<doxid-structrgpot_1_1_fnv1a>`;
@@ -169,6 +175,10 @@ Prefix-parameterized loader for the minimum potential ABI profile. :ref:`More...
 
 	// global functions
 
+	void :target:`addCalculatorHook<doxid-namespacergpot_1a60828e4ba2f43f1430625c0564f9aac6>`(CalculatorHook hook);
+	:ref:`CalculatorGroup<doxid-structrgpot_1_1_calculator_group>` :target:`bindCalculators<doxid-namespacergpot_1a9cfa05e9b4282c3111dd0507ebce1e32>`(int ranks_per_calculator);
+	const :ref:`CalculatorGroup<doxid-structrgpot_1_1_calculator_group>`& :target:`thisCalculator<doxid-namespacergpot_1a0f6a0947342f9c3086b6d2d746ee2a8e>`();
+	int :target:`calculatorComm<doxid-namespacergpot_1a64038b0d53e8bbed0e9dca37dff843c8>`(void* comm_out, std::size_t comm_bytes);
 	void :target:`apply_torch_determinism_policy<doxid-namespacergpot_1ac9c11e28c61a5763d13471a25a96bf5e>`(TorchDeterminismPolicy policy);
 	EngineBundle& :target:`probe_engine_bundle<doxid-namespacergpot_1abaf5e074f00973f6696f820b40b3dd78>`();
 	void :ref:`zeroForceOut<doxid-namespacergpot_1aa8cb0fd12ead45cd35dd0ea5c3b6fb7a>`(const size_t& nAtoms, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* efvd);

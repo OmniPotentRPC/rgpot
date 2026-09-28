@@ -148,6 +148,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_Reentrancy.html">enum rgpot::Reentrancy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_CalculatorGroup.html">struct rgpot::CalculatorGroup</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_D3Config.html">struct rgpot::D3Config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_D4Config.html">struct rgpot::D4Config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
@@ -221,6 +222,9 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-12.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-13.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_cuh2.html">namespace rgpot_cuh2</a><ul class="simple">
@@ -332,6 +336,9 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="struct_RgpotXtbPot.html">struct RgpotXtbPot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_eindir_abi_stamp_t.html">struct eindir_abi_stamp_t</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="struct_eindir_objective_t.html">struct eindir_objective_t</a><ul class="simple">
@@ -533,6 +540,7 @@ data-aria-dark="Switch to auto color mode">
 <span id="details-classrgpot-1-1-x-t-b-pot"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
 <p>Linked GFN-xTB pot (NEEDED libxtb).</p>
 <p>libxtb exposes a stable <strong>ISO_C_BINDING</strong> C API (<code class="docutils literal notranslate"><span class="pre">xtb.h</span></code>): opaque <code class="docutils literal notranslate"><span class="pre">xtb_TEnvironment</span></code> / <code class="docutils literal notranslate"><span class="pre">xtb_TCalculator</span></code> / <code class="docutils literal notranslate"><span class="pre">xtb_TMolecule</span></code> / <code class="docutils literal notranslate"><span class="pre">xtb_TResults</span></code> handles with explicit create/update/destroy. We test and use that C contract—not free-form Fortran ABI. Each <code class="docutils literal notranslate"><span class="pre">XTBPot</span></code> owns its handles; first force builds the molecule, later forces call <code class="docutils literal notranslate"><span class="pre">xtb_updateMolecule</span></code>. <code class="docutils literal notranslate"><span class="pre">xtb_releaseOutput</span></code> is called on create (library recommendation for multi-env processes). Do not share one instance across threads; distinct instances may be used from different threads if the loaded libxtb build is reentrant for independent handle sets.</p>
+<p>For hosts that must not NEEDED libxtb, use <code class="docutils literal notranslate"><span class="pre">XTBDlopen</span></code> + <code class="docutils literal notranslate"><span class="pre">libxtb_engine.so</span></code> instead (always built; no <code class="docutils literal notranslate"><span class="pre">-Dwith_xtb</span></code> required).</p>
 <section id="methods">
 <h3>Methods<a class="headerlink" href="#methods" title="Link to this heading">¶</a></h3>
 <div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-x-t-b-pot-1a45b3800a2be60758506f83414af94b0f">

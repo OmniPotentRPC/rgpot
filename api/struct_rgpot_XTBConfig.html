@@ -148,6 +148,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_Reentrancy.html">enum rgpot::Reentrancy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_CalculatorGroup.html">struct rgpot::CalculatorGroup</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_D3Config.html">struct rgpot::D3Config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_D4Config.html">struct rgpot::D4Config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
@@ -221,6 +222,9 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-12.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-13.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_cuh2.html">namespace rgpot_cuh2</a><ul class="simple">
@@ -334,6 +338,9 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="struct_RgpotXtbPot.html">struct RgpotXtbPot</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="struct_eindir_abi_stamp_t.html">struct eindir_abi_stamp_t</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="struct_eindir_objective_t.html">struct eindir_objective_t</a><ul class="simple">
 </ul>
 </li>
@@ -396,7 +403,14 @@ data-aria-dark="Switch to auto color mode">
     <button class="rside-close js-menu xl:hidden" aria-label="Close Table of Contents" type="button" aria-controls="rside" aria-expanded="false">
       <i class="i-lucide close"></i>
     </button>
-    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/OmniPotentRPC/rgpot"
+    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
+<li><a class="reference internal" href="#overview">Overview</a></li>
+<li><a class="reference internal" href="#detailed-documentation">Detailed Documentation</a><ul>
+<li><a class="reference internal" href="#fields">Fields</a></li>
+</ul>
+</li>
+</ul>
+</div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/OmniPotentRPC/rgpot"
   data-type="github" data-user="OmniPotentRPC" data-repo="rgpot">
   <span class="w-8 flex items-center justify-around shrink-0 text-3xl">
     <iconify-icon icon="simple-icons:github"></iconify-icon>
@@ -499,6 +513,8 @@ data-aria-dark="Switch to auto color mode">
 <span id="doxid-structrgpot-1-1-x-t-b-config"></span><span id="index-0"></span><h1>struct rgpot::XTBConfig<a class="headerlink" href="#struct-rgpot-xtbconfig" title="Link to this heading">¶</a></h1>
 <div class="toctree-wrapper compound">
 </div>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
 <div class="doxyrest-overview-code-block highlight">
 <pre><span data-line="1"><span class="k">struct</span> <span class="n">XTBConfig</span> <span class="p">{</span></span>
 <span data-line="2">    <span class="c1">// fields</span></span>
@@ -508,9 +524,20 @@ data-aria-dark="Switch to auto color mode">
 <span data-line="6">    <span class="kt">double</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1_x_t_b_config_1a77f8c10e0fbbcbc8dc4f92cc49004fac"></span><span class="n">electronic_temperature</span> <span class="o">=</span> <span class="mf">300.0</span><span class="p">;</span></span>
 <span data-line="7">    <span class="kt">int</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1_x_t_b_config_1a4becab3591b427ed4728c76c0fa1f8ac"></span><span class="n">max_iterations</span> <span class="o">=</span> <span class="mi">250</span><span class="p">;</span></span>
 <span data-line="8">    <span class="kt">double</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1_x_t_b_config_1acfc866e6d7cc3878778a4c3995c8e9e1"></span><span class="n">charge</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">;</span></span>
-<span data-line="9">    <span class="kt">int</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1_x_t_b_config_1a72424ea20e42123cae849a1ce4a392db"></span><span class="n">uhf</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span></span>
+<span data-line="9">    <span class="kt">int</span> <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1-x-t-b-config-1a72424ea20e42123cae849a1ce4a392db"><span class="std std-ref">uhf</span></a> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span></span>
 <span data-line="10"><span class="p">};</span></span>
 </pre></div>
+</section>
+<section id="detailed-documentation">
+<span id="details-structrgpot-1-1-x-t-b-config"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
+<section id="fields">
+<h3>Fields<a class="headerlink" href="#fields" title="Link to this heading">¶</a></h3>
+<div class="doxyrest-title-code-block highlight" id="doxid-structrgpot-1-1-x-t-b-config-1a72424ea20e42123cae849a1ce4a392db">
+<span id="index-1"></span><pre><span data-line="1"><span class="kt">int</span> <span class="n">uhf</span> <span class="o">=</span> <span class="mi">0</span></span>
+</pre></div>
+<p>Number of unpaired electrons (libxtb uhf; multiplicity 2 =&gt; uhf 1).</p>
+</section>
+</section>
 </section>
 
         </article><button class="back-to-top" type="button">

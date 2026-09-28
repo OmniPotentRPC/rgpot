@@ -148,6 +148,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../../../api/enum_rgpot_Reentrancy.html">enum rgpot::Reentrancy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/struct_rgpot_CalculatorGroup.html">struct rgpot::CalculatorGroup</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/struct_rgpot_D3Config.html">struct rgpot::D3Config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/struct_rgpot_D4Config.html">struct rgpot::D4Config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
@@ -221,6 +222,9 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/namespace_rgpot-12.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/namespace_rgpot-13.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/namespace_rgpot_cuh2.html">namespace rgpot_cuh2</a><ul class="simple">
@@ -332,6 +336,9 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/struct_RgpotXtbPot.html">struct RgpotXtbPot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/struct_eindir_abi_stamp_t.html">struct eindir_abi_stamp_t</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/struct_eindir_objective_t.html">struct eindir_objective_t</a><ul class="simple">
@@ -530,6 +537,12 @@ it embeds <code class="docutils literal notranslate"><span class="pre">eindir_ob
 <dd><p>Perform a force/energy calculation using the potential handle.</p>
 <p>Routes through the direct rgpot callback (<code class="docutils literal notranslate"><span class="pre">pot.callback</span></code>), bypassing the
 eindir evaluation path.</p>
+<p><strong>Safety</strong></p>
+<p>A NULL <code class="docutils literal notranslate"><span class="pre">pot</span></code>, <code class="docutils literal notranslate"><span class="pre">input</span></code> or <code class="docutils literal notranslate"><span class="pre">output</span></code> returns <code class="docutils literal notranslate"><span class="pre">RGPOT_INVALID_PARAMETER</span></code>.
+Otherwise <code class="docutils literal notranslate"><span class="pre">pot</span></code> must be a live handle from <code class="docutils literal notranslate"><span class="pre">rgpot_potential_new</span></code> or
+<code class="docutils literal notranslate"><span class="pre">rgpot_potential_new_eindir</span></code>, <code class="docutils literal notranslate"><span class="pre">input</span></code> must point to a valid
+<code class="docutils literal notranslate"><span class="pre">rgpot_force_input_t</span></code> whose tensors stay alive for the call, and <code class="docutils literal notranslate"><span class="pre">output</span></code>
+must point to writable <code class="docutils literal notranslate"><span class="pre">rgpot_force_out_t</span></code> storage.</p>
 </dd></dl>
 
 <dl class="rust function">
@@ -539,6 +552,9 @@ eindir evaluation path.</p>
 <code class="docutils literal notranslate"><span class="pre">rgpot_potential_new_eindir</span></code>.</p>
 <p>Calls <code class="docutils literal notranslate"><span class="pre">pot_free_fn(pot_user_data)</span></code> if provided, frees all owned arrays,
 then frees the struct.</p>
+<p><strong>Safety</strong></p>
+<p><code class="docutils literal notranslate"><span class="pre">pot</span></code> must be NULL or a pointer returned by one of those constructors
+that has not been freed yet. The pointer is invalid after the call.</p>
 </dd></dl>
 
 <dl class="rust function">
@@ -550,6 +566,9 @@ no eindir bounds.  The potential evaluates through <code class="docutils literal
 Use <code class="docutils literal notranslate"><span class="pre">rgpot_potential_new_eindir</span></code> when the IS-A eindir embedding is needed.</p>
 <p>Returns a heap-allocated <code class="docutils literal notranslate"><span class="pre">rgpot_potential_t*</span></code>, or <code class="docutils literal notranslate"><span class="pre">NULL</span></code> on failure.
 The caller must eventually pass the returned pointer to <code class="docutils literal notranslate"><span class="pre">rgpot_potential_free</span></code>.</p>
+<p><strong>Safety</strong></p>
+<p><code class="docutils literal notranslate"><span class="pre">callback</span></code> and <code class="docutils literal notranslate"><span class="pre">free_fn</span></code> must be safe to call with <code class="docutils literal notranslate"><span class="pre">user_data</span></code> for as
+long as the handle lives.</p>
 </dd></dl>
 
 </dd></dl>

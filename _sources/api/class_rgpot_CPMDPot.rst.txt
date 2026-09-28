@@ -43,6 +43,7 @@ Overview
 		bool :target:`available<doxid-classrgpot_1_1_c_p_m_d_pot_1a9b006e0439de5445527c23332c16b88c>`() const;
 		static bool :target:`probe_available<doxid-classrgpot_1_1_c_p_m_d_pot_1a055db00e0a19a8ed3d4bb0b6ddba1eaf>`();
 		static bool :target:`abi_available<doxid-classrgpot_1_1_c_p_m_d_pot_1aa6d5fa95440d78578a67318a6f94ebca>`();
+		static int :target:`bindCalculators<doxid-classrgpot_1_1_c_p_m_d_pot_1adaecbf76c0c5f2fda166136873c07e7b>`(int ranks_per_calc);
 	};
 .. _details-classrgpot_1_1_c_p_m_d_pot:
 
