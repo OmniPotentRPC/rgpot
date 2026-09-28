@@ -12,7 +12,16 @@
 #include "rgpot/types/AtomMatrix.hpp"
 #include <optional>
 #include <rocksdb/db.h>
+#include <rocksdb/version.h>
 #include <string>
+
+// RocksDB 10.4 added the std::unique_ptr<DB> DB::Open overload and 11.0
+// removed the raw-pointer one.
+#if ROCKSDB_MAJOR > 10 || (ROCKSDB_MAJOR == 10 && ROCKSDB_MINOR >= 4)
+#define RGPOT_ROCKSDB_UNIQUE_PTR_OPEN 1
+#else
+#define RGPOT_ROCKSDB_UNIQUE_PTR_OPEN 0
+#endif
 
 namespace rgpot::cache {
 

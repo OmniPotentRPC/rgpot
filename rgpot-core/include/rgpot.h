@@ -17,9 +17,13 @@
 #include <stdlib.h>
 #include <dlpack/dlpack.h>
 
-#define RGPOT_VERSION "2.0.0"
-#define RGPOT_VERSION_MAJOR 2
-#define RGPOT_VERSION_MINOR 0
+#ifndef __cplusplus
+typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
+#endif
+
+#define RGPOT_VERSION "3.2.0"
+#define RGPOT_VERSION_MAJOR 3
+#define RGPOT_VERSION_MINOR 2
 #define RGPOT_VERSION_PATCH 0
 
 /**
@@ -54,6 +58,11 @@ typedef enum rgpot_status_t {
  */
 typedef struct RpcClient RpcClient;
 #endif
+
+/**
+ * Opaque cache of the last fused energy and gradient evaluation.
+ */
+typedef struct rgpot_fused_cache_t rgpot_fused_cache_t;
 
 /**
  * Input configuration for a potential energy evaluation.
@@ -167,6 +176,11 @@ typedef struct rgpot_potential_t {
    * Box matrix (column-major, 3x3), copied at construction.
    */
   double box_matrix[9];
+  /**
+   * Energy/gradient result shared by a matching eval-then-grad request.
+   * Held behind a pointer so the C view of the struct stays plain C.
+   */
+  struct rgpot_fused_cache_t *fused_cache;
 } rgpot_potential_t;
 
 #if (defined(RGPOT_HAS_RPC) && defined(RGPOT_HAS_RPC))
@@ -269,6 +283,17 @@ const int64_t *rgpot_tensor_shape(const DLManagedTensorVersioned *tensor, int32_
 const char *rgpot_last_error(void);
 
 /**
+ * The eindir ABI stamp of the `eindir_objective_t` base that
+ * `rgpot_potential_t` embeds as its first member.
+ *
+ * A consumer that takes the potential as an eindir objective (rgmin's
+ * `rgmin_minimize_eindir`, for one) passes this stamp to
+ * `eindir_core_abi_compatible`, so a layout from a different eindir-core
+ * revision is refused instead of read as the wrong struct.
+ */
+eindir_abi_stamp_t rgpot_eindir_abi_stamp(void);
+
+/**
  * Create a potential that is ALSO a valid eindir objective.
  *
  * The returned pointer is simultaneously a `rgpot_potential_t*` and (via
@@ -282,6 +307,13 @@ const char *rgpot_last_error(void);
  *
  * The caller must eventually pass the returned pointer to
  * [`rgpot_potential_free`].
+ *
+ * # Safety
+ *
+ * `atomic_numbers` must be NULL or point to `n_atoms` readable `i32`
+ * values, `box_matrix` NULL or 9 readable `f64` values, and each bound NULL
+ * or `n_atoms * 3` readable `f64` values. `callback` and `free_fn` must be
+ * safe to call with `user_data`.
  */
 struct rgpot_potential_t *rgpot_potential_new_eindir(PotentialCallback callback,
                                                      void *user_data,
@@ -298,6 +330,12 @@ struct rgpot_potential_t *rgpot_potential_new_eindir(PotentialCallback callback,
  * Calls `pot_free_fn(pot_user_data)` if provided, frees all owned arrays,
  * then frees the struct.  Do NOT call `eindir_objective_free` on the embedded
  * base; call this function.
+ *
+ * # Safety
+ *
+ * `pot` must be NULL or a pointer returned by
+ * [`rgpot_potential_new_eindir`] that has not been freed yet. The pointer is
+ * invalid after the call.
  */
 void rgpot_potential_free_eindir(struct rgpot_potential_t *pot);
 
@@ -341,6 +379,12 @@ void rgpot_force_input_free(struct rgpot_force_input_t *input);
  *
  * The `forces` field starts as NULL — the potential callback is responsible
  * for setting it to a valid DLPack tensor.
+ *
+ * # Safety
+ *
+ * The function reads no memory. It stays `unsafe` because the C ABI
+ * declares it so; the caller owns the `forces` tensor once the callback
+ * sets it.
  */
 struct rgpot_force_out_t rgpot_force_out_create(void);
 
@@ -353,6 +397,11 @@ struct rgpot_force_out_t rgpot_force_out_create(void);
  *
  * Returns a heap-allocated `rgpot_potential_t*`, or `NULL` on failure.
  * The caller must eventually pass the returned pointer to `rgpot_potential_free`.
+ *
+ * # Safety
+ *
+ * `callback` and `free_fn` must be safe to call with `user_data` for as
+ * long as the handle lives.
  */
 struct rgpot_potential_t *rgpot_potential_new(PotentialCallback callback,
                                               void *user_data,
@@ -363,6 +412,14 @@ struct rgpot_potential_t *rgpot_potential_new(PotentialCallback callback,
  *
  * Routes through the direct rgpot callback (`pot.callback`), bypassing the
  * eindir evaluation path.
+ *
+ * # Safety
+ *
+ * A NULL `pot`, `input` or `output` returns `RGPOT_INVALID_PARAMETER`.
+ * Otherwise `pot` must be a live handle from `rgpot_potential_new` or
+ * `rgpot_potential_new_eindir`, `input` must point to a valid
+ * `rgpot_force_input_t` whose tensors stay alive for the call, and `output`
+ * must point to writable `rgpot_force_out_t` storage.
  */
 enum rgpot_status_t rgpot_potential_calculate(const struct rgpot_potential_t *pot,
                                               const struct rgpot_force_input_t *input,
@@ -374,6 +431,11 @@ enum rgpot_status_t rgpot_potential_calculate(const struct rgpot_potential_t *po
  *
  * Calls `pot_free_fn(pot_user_data)` if provided, frees all owned arrays,
  * then frees the struct.
+ *
+ * # Safety
+ *
+ * `pot` must be NULL or a pointer returned by one of those constructors
+ * that has not been freed yet. The pointer is invalid after the call.
  */
 void rgpot_potential_free(struct rgpot_potential_t *pot);
 

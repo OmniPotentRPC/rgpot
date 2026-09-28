@@ -1,0 +1,1 @@
+The new `rgpot_eindir_abi_stamp()` returns the eindir-core ABI stamp of the objective base in `rgpot_potential_t`. The generated `rgpot.h` stays valid C, with the fused evaluation cache behind an opaque pointer.
