@@ -1,0 +1,1 @@
+rgpot configures offline: the `potentials-schema` subproject is optional, and the two schema-sync tests run only when it is available, so `--wrap-mode=nodownload` builds no longer fail at `meson setup`.
