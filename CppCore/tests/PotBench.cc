@@ -118,7 +118,11 @@ double evalPot(const Pot &pot, const std::vector<double> &pos,
                        .pos = pos.data(),
                        .atmnrs = types.data(),
                        .box = box.data()};
-  rgpot::ForceOut fo{.F = forces.data(), .energy = 0.0, .variance = 0.0};
+  rgpot::ForceOut fo{.F = forces.data(),
+                      .energy = 0.0,
+                      .variance = 0.0,
+                      .stress = {},
+                      .has_stress = 0};
   pot.forceImpl(fi, &fo);
   return fo.energy;
 }
@@ -314,7 +318,11 @@ TEST_CASE("Benchmark: CuH2Pot force", "[.][benchmark][cuh2]") {
                          .pos = pos.data(),
                          .atmnrs = types.data(),
                          .box = box.data()};
-    rgpot::ForceOut fo{.F = forces.data(), .energy = 0.0, .variance = 0.0};
+    rgpot::ForceOut fo{.F = forces.data(),
+                      .energy = 0.0,
+                      .variance = 0.0,
+                      .stress = {},
+                      .has_stress = 0};
     pot.forceImpl(fi, &fo);
     return fo.energy;
   };

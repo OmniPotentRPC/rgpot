@@ -201,7 +201,9 @@ void ExprPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     auto &term = m_impl->terms[i];
     ForceOut childOut{.F = n3 == 0 ? nullptr : childForces.data() + i * n3,
                       .energy = 0.0,
-                      .variance = 0.0};
+                      .variance = 0.0,
+                      .stress = {},
+                      .has_stress = 0};
     ForceBatch batch{.nSystems = 1, .in = &in, .out = &childOut};
     term.child->forceBatch(batch);
     term.energyValue = childOut.energy;
