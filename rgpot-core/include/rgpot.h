@@ -17,6 +17,10 @@
 #include <stdlib.h>
 #include <dlpack/dlpack.h>
 
+#ifndef __cplusplus
+typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
+#endif
+
 #define RGPOT_VERSION "3.2.0"
 #define RGPOT_VERSION_MAJOR 3
 #define RGPOT_VERSION_MINOR 2
