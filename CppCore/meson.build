@@ -7,6 +7,7 @@ if get_option('with_cache') and not get_option('with_rpc_client_only')
     _rgpot_srcs += files('rgpot/PotentialCache.cc')
 endif
 
+_rgpot_srcs += files('rgpot/CalculatorGroup.cc')
 _rgpot_srcs += files('rgpot/PotHelpers.cc')
 _rgpot_srcs += files('rgpot/units.cc')
 
