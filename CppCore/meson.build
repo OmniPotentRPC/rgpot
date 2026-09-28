@@ -869,6 +869,11 @@ if not meson.is_subproject()
         if has_skala
             _pc_cflags += ['-DRGPOT_HAS_SKALA=TRUE']
         endif
+        if get_option('with_cache')
+            # PotentialCache.hpp includes rocksdb/db.h.
+            _pc_cflags += ['-DRGPOT_HAS_CACHE=TRUE']
+            _pc_requires += ['rocksdb']
+        endif
     endif
     if _rpc_stack
         _pc_libs += [nwchempot, cpmdpot]
