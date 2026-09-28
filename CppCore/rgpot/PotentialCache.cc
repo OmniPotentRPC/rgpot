@@ -12,6 +12,7 @@
 #include "rgpot/PotentialCache.hpp"
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <rocksdb/options.h>
 #include <vector>
 
@@ -28,7 +29,13 @@ PotentialCache::PotentialCache(const std::string &db_path,
                                bool create_if_missing) {
   rocksdb::Options options;
   options.create_if_missing = create_if_missing;
+#if RGPOT_ROCKSDB_UNIQUE_PTR_OPEN
+  std::unique_ptr<rocksdb::DB> db;
+  rocksdb::Status status = rocksdb::DB::Open(options, db_path, &db);
+  db_ = db.release();
+#else
   rocksdb::Status status = rocksdb::DB::Open(options, db_path, &db_);
+#endif
   if (!status.ok()) {
     std::cerr << "Unable to open RocksDB at " << db_path << ": "
               << status.ToString() << std::endl;

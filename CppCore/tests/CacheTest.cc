@@ -41,17 +41,19 @@ TEST_CASE("Potential caching with rgpot", "[Potential]") {
 
   SECTION("Manual DB Management (Raw Pointer)") {
     // Setup RocksDB Manually
-    rocksdb::DB *db_ptr;
     rocksdb::Options options;
     options.create_if_missing = true;
     std::string db_path = "/tmp/rgpot_test_rocksdb_manual";
     rocksdb::DestroyDB(db_path, options);
+#if RGPOT_ROCKSDB_UNIQUE_PTR_OPEN
+    std::unique_ptr<rocksdb::DB> db;
+    rocksdb::Status status = rocksdb::DB::Open(options, db_path, &db);
+#else
+    rocksdb::DB *db_ptr = nullptr;
     rocksdb::Status status = rocksdb::DB::Open(options, db_path, &db_ptr);
+    std::unique_ptr<rocksdb::DB> db(db_ptr);
+#endif
     REQUIRE(status.ok());
-
-    // RAII wrapper for test safety
-    auto db = std::unique_ptr<rocksdb::DB, void (*)(rocksdb::DB *)>(
-        db_ptr, [](rocksdb::DB *ptr) { delete ptr; });
 
     auto pcache = rgpot::cache::PotentialCache();
     pcache.set_db(db.get());
