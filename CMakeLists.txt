@@ -141,6 +141,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
   # source here surfaces as an undefined constructor at link time rather than
   # as a smaller build.
   set(RGPOT_SOURCES
+      CppCore/rgpot/CalculatorGroup.cc
       CppCore/rgpot/PotHelpers.cc
       CppCore/rgpot/units.cc
       CppCore/rgpot/LennardJones/LJPot.cc
@@ -159,6 +160,12 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
 
   add_library(rgpot ${RGPOT_SOURCES})
   set_target_properties(rgpot PROPERTIES LINKER_LANGUAGE CXX)
+
+  find_package(MPI QUIET COMPONENTS CXX)
+  if(MPI_FOUND)
+    target_link_libraries(rgpot PUBLIC MPI::MPI_CXX)
+    target_compile_definitions(rgpot PUBLIC RGPOT_HAS_MPI)
+  endif()
 
   if(RGPOT_WITH_CACHE)
     target_sources(rgpot PRIVATE CppCore/rgpot/PotentialCache.cc)

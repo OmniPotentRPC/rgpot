@@ -2,6 +2,7 @@
 // Copyright 2023--present rgpot developers
 
 #include "rgpot/CPMDPot/CPMDPot.hpp"
+#include "rgpot/CalculatorGroup.hpp"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
@@ -39,6 +40,14 @@ using FeatureCountFn = size_t (*)(void);
 using FeatureTableFn = const CPMDCFeatureEntry *(*)(void);
 using FeatureFindFn = const CPMDCFeatureEntry *(*)(const char *);
 using BindCalculatorsFn = int (*)(int);
+
+BindCalculatorsFn g_cpmd_bind = nullptr;
+
+int cpmd_calculator_hook(int ranks_per_calc) {
+  if (!g_cpmd_bind)
+    return -1;
+  return g_cpmd_bind(ranks_per_calc);
+}
 
 struct ParamsView {
   const void *data = nullptr;
@@ -121,6 +130,10 @@ bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
 
   b.energy_gradient =
       b.engine_lib.sym_optional<EnergyGradientFn>("cpmdc_energy_gradient");
+  g_cpmd_bind =
+      b.engine_lib.sym_optional<BindCalculatorsFn>("cpmdc_bind_calculator");
+  if (g_cpmd_bind)
+    addCalculatorHook(cpmd_calculator_hook);
   b.set_params = b.engine_lib.sym_optional<SetParamsFn>("cpmdc_set_params");
   b.session_create =
       b.engine_lib.sym_optional<SessionCreateFn>("cpmdc_session_create");
@@ -401,13 +414,8 @@ bool CPMDPot::available() const {
 
 int CPMDPot::bindCalculators(int ranks_per_calc) {
   EngineBundle bundle;
-  if (!try_load_engine(bundle, ""))
-    return -1;
-  auto bind = bundle.engine_lib.sym_optional<BindCalculatorsFn>(
-      "cpmdc_bind_calculator");
-  if (!bind)
-    return -1;
-  return bind(ranks_per_calc);
+  try_load_engine(bundle, "");
+  return ::rgpot::bindCalculators(ranks_per_calc).index;
 }
 
 bool CPMDPot::probe_available() {
