@@ -18,6 +18,9 @@ meson setup bbdir -Dwith_tests=true -Dwith_rpc=true -Dwith_mpi=enabled
 
 A build with MPI linked can call =bindCalculators= to split =MPI_COMM_WORLD=
 into calculator groups.
+=CPMDPot::bindCalculators= copies that communicator into the engine through
+=cpmdc_adopt_calculator_comm=.
+A missing symbol returns -1 and does not split.
 =shareFromCalculator= broadcasts one group's bytes to every rank.
 When more than one rank is bound, a rank that cannot enter that broadcast prints
 the error on every rank and calls =MPI_Abort= on =MPI_COMM_WORLD=.

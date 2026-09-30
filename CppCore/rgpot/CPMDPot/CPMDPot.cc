@@ -48,7 +48,7 @@ using AvailableFn = int (*)(void);
 using FeatureCountFn = size_t (*)(void);
 using FeatureTableFn = const CPMDCFeatureEntry *(*)(void);
 using FeatureFindFn = const CPMDCFeatureEntry *(*)(const char *);
-using BindCalculatorsFn = int (*)(int);
+using AdoptCommFn = int (*)(const void *, size_t, int);
 
 // Layout matches cpmdc CPMDCStressTensor: int valid, then nine doubles.
 struct CPMDCStressTensor {
@@ -59,12 +59,20 @@ using LastStressFn = int (*)(CPMDCStressTensor *);
 static_assert(offsetof(CPMDCStressTensor, values) == 8,
               "CPMDCStressTensor values follow the valid flag");
 
-BindCalculatorsFn g_cpmd_bind = nullptr;
+AdoptCommFn g_cpmd_adopt = nullptr;
 
 int cpmd_calculator_hook(int ranks_per_calc) {
-  if (!g_cpmd_bind)
+  if (!g_cpmd_adopt)
     return -1;
-  return g_cpmd_bind(ranks_per_calc);
+#ifdef RGPOT_HAS_MPI
+  MPI_Comm comm = MPI_COMM_NULL;
+  if (!calculatorComm(&comm, sizeof(comm)))
+    return -1;
+  return g_cpmd_adopt(&comm, sizeof(comm), ranks_per_calc);
+#else
+  (void)ranks_per_calc;
+  return -1;
+#endif
 }
 
 struct ParamsView {
@@ -117,6 +125,7 @@ struct EngineBundle {
 };
 
 bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
+  g_cpmd_adopt = nullptr;
   b.load_error.clear();
   b.loaded = false;
   b.energy_gradient = nullptr;
@@ -150,10 +159,8 @@ bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
 
   b.energy_gradient =
       b.engine_lib.sym_optional<EnergyGradientFn>("cpmdc_energy_gradient");
-  g_cpmd_bind =
-      b.engine_lib.sym_optional<BindCalculatorsFn>("cpmdc_bind_calculator");
-  if (g_cpmd_bind)
-    addCalculatorHook(cpmd_calculator_hook);
+  g_cpmd_adopt = b.engine_lib.sym_optional<AdoptCommFn>(
+      "cpmdc_adopt_calculator_comm");
   b.set_params = b.engine_lib.sym_optional<SetParamsFn>("cpmdc_set_params");
   b.session_create =
       b.engine_lib.sym_optional<SessionCreateFn>("cpmdc_session_create");
@@ -183,14 +190,22 @@ bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
   const bool has_feature_discovery =
       b.feature_count && b.feature_table && b.feature_find;
   if (!has_feature_discovery) {
+    g_cpmd_adopt = nullptr;
     b.load_error = "engine missing cpmdc feature discovery ABI";
     return false;
   }
   if (!has_one_shot && !has_session_result) {
+    g_cpmd_adopt = nullptr;
     b.load_error =
         "engine missing cpmdc session result ABI or one-shot gradient ABI";
     return false;
   }
+#ifdef RGPOT_HAS_MPI
+  if (g_cpmd_adopt)
+    addCalculatorHook(cpmd_calculator_hook);
+#else
+  g_cpmd_adopt = nullptr;
+#endif
   b.loaded = true;
   return true;
 }
@@ -550,7 +565,14 @@ bool CPMDPot::available() const {
 
 int CPMDPot::bindCalculators(int ranks_per_calc) {
   EngineBundle bundle;
-  try_load_engine(bundle, "");
+  if (!try_load_engine(bundle, ""))
+    return -1;
+#ifdef RGPOT_HAS_MPI
+  // Every rank loads the same engine, so a missing symbol returns before
+  // the collective. The hook then hands calculatorComm to the engine.
+  if (!g_cpmd_adopt)
+    return -1;
+#endif
   return ::rgpot::bindCalculators(ranks_per_calc).index;
 }
 

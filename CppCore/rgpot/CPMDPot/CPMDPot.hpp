@@ -47,11 +47,13 @@ public:
   static bool probe_available();
   static bool abi_available();
 
-  /// Collective on MPI_COMM_WORLD. Splits into calculators of
-  /// ranks_per_calc ranks via cpmdc_bind_calculator. One NEB image
-  /// is one calculator. A second band calls this on its own world.
-  /// Every rank must call it before the first force. Returns the
-  /// group index, or -1 when the engine has no bind symbol.
+  /// When this build has MPI and the engine exports
+  /// cpmdc_adopt_calculator_comm, every rank calls this before the
+  /// first force. One MPI_Comm_split builds the calculator
+  /// communicator and that symbol receives it. One NEB image is one
+  /// calculator. A second band calls this on its own world. Returns
+  /// the group index. Returns -1, before any MPI call, when this
+  /// build has MPI and the engine has no adopt symbol.
   static int bindCalculators(int ranks_per_calc);
 
 private:

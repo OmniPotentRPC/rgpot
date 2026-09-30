@@ -26,7 +26,8 @@ struct CalculatorGroup {
 
 // A backend that must own the subcommunicator (CPMD, and the same
 // shape for any other MPI engine) registers this. It is called on
-// every rank from bindCalculators. Return the group index, or -1.
+// every rank from bindCalculators. Return the group index, or -1
+// to refuse the bind.
 using CalculatorHook = int (*)(int ranks_per_calculator);
 
 void addCalculatorHook(CalculatorHook hook);

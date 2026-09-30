@@ -100,9 +100,13 @@ CalculatorGroup bindCalculators(int ranks_per_calculator) {
     g_group.world_size = 1;
   }
 #endif
+  // A negative hook return refuses the bind. A non-negative return
+  // fills an index the local split left negative.
   for (CalculatorHook hook : g_hooks) {
     int idx = hook(rpc);
-    if (g_group.index < 0 && idx >= 0)
+    if (idx < 0)
+      g_group.index = -1;
+    else if (g_group.index < 0)
       g_group.index = idx;
   }
   g_bound = true;
