@@ -17,6 +17,8 @@ int main() {
     return 3;
 
   const rgpot::CalculatorGroup group = rgpot::bindCalculators(5);
+  // mpirun treats an initialized process that skips MPI_Finalize as a failed job.
+  rgpot::finalizeMpiAtExit();
   MPI_Initialized(&inited);
   if (!inited || rgpot::calculatorsUseMpi() != 1)
     return 4;
