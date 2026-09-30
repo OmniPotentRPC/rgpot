@@ -40,6 +40,9 @@ struct PotCaps {
   bool batched = false;
   /// Kernel supports periodic boundary conditions.
   bool periodic = true;
+  /// forceImpl writes a Cauchy stress on every call with a positive cell
+  /// volume. sigma = (1/V) dE/dε, eV/Angstrom^3, row-major in ForceOut.
+  bool stress = false;
 };
 
 } // namespace rgpot

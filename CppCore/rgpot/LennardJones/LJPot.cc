@@ -16,6 +16,7 @@
 
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/nlist/PairListCache.hpp"
+#include "rgpot/stress.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 using rgpot::types::AtomMatrix;
 
@@ -47,7 +48,10 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     F[3 * i + 1] = 0;
     F[3 * i + 2] = 0;
   }
+  const double volume = cellVolume(box);
+  double strainAcc[6] = {};
   if (N < 2 || cuttOffR <= 0.0) {
+    publishCauchyStress(out, strainAcc, volume);
     return;
   }
 
@@ -78,9 +82,10 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
         F[3 * j] -= fx;
         F[3 * j + 1] -= fy;
         F[3 * j + 2] -= fz;
+        accumulatePairStrain(strainAcc, fscale, dx, dy, dz);
       });
   *U = energyAcc;
-  return;
+  publishCauchyStress(out, strainAcc, volume);
 }
 
 } // namespace rgpot

@@ -124,3 +124,51 @@ TEST_CASE("LJClusterPot parameter fingerprint tracks the config",
   // kernels apart through PotType, not through paramsKey.
   REQUIRE(defaults.paramsKey() == rgpot::LJPot{}.paramsKey());
 }
+
+TEST_CASE("LJPot stress matches a coordinate difference", "[LJPot]") {
+  rgpot::LJPot pot;
+  REQUIRE(pot.caps().stress);
+
+  AtomMatrix pos(2, 3);
+  pos << 0.0, 0.0, 0.0, 1.3, 0.4, -0.25;
+  const std::vector<int> types{1, 1};
+  // Row-major cell, large enough that the pair is the minimum image.
+  const double box[9] = {12.0, 0.0, 0.0, 0.4, 11.0, 0.0, -0.2, 0.3, 10.0};
+  double forces[6] = {};
+  rgpot::ForceOut out{forces, 0.0, 0.0, {}, 0};
+  pot.forceImpl(rgpot::ForceInput{2, pos.data(), types.data(), box}, &out);
+  REQUIRE(out.has_stress == 1);
+
+  const double volume =
+      std::abs(box[0] * (box[4] * box[8] - box[5] * box[7]) -
+               box[1] * (box[3] * box[8] - box[5] * box[6]) +
+               box[2] * (box[3] * box[7] - box[4] * box[6]));
+  constexpr double step = 1e-6;
+  const int rows[6] = {0, 1, 2, 1, 0, 0};
+  const int cols[6] = {0, 1, 2, 2, 2, 1};
+  for (int comp = 0; comp < 6; ++comp) {
+    const int row = rows[comp];
+    const int col = cols[comp];
+    auto energyAt = [&](double eps) {
+      AtomMatrix shifted = pos;
+      double strained[9];
+      std::copy(box, box + 9, strained);
+      for (int atom = 0; atom < 2; ++atom) {
+        shifted(atom, col) += pos(atom, row) * eps;
+      }
+      for (int k = 0; k < 3; ++k) {
+        strained[k * 3 + col] += box[k * 3 + row] * eps;
+      }
+      double f2[6] = {};
+      rgpot::ForceOut sample{f2, 0.0, 0.0, {}, 0};
+      pot.forceImpl(
+          rgpot::ForceInput{2, shifted.data(), types.data(), strained},
+          &sample);
+      return sample.energy;
+    };
+    const double derivative = (energyAt(step) - energyAt(-step)) / (2.0 * step);
+    const double expected = derivative / volume;
+    const double got = out.stress[row * 3 + col];
+    REQUIRE_THAT(got, WithinAbs(expected, 1e-6));
+  }
+}

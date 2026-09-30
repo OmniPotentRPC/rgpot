@@ -61,6 +61,10 @@ public:
 
   [[nodiscard]] const LJConfig &config() const noexcept { return m_config; }
 
+  [[nodiscard]] PotCaps caps() const noexcept override {
+    return {.stress = true};
+  }
+
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
     return m_paramsKey;
   }

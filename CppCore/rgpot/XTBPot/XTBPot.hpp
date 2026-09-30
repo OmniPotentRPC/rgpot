@@ -41,7 +41,7 @@ public:
   /// Native handles are per-instance; concurrent use needs one instance
   /// per thread.
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.reentrancy = Reentrancy::PerInstance};
+    return {.reentrancy = Reentrancy::PerInstance, .stress = true};
   }
 
 

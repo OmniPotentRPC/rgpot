@@ -8,9 +8,7 @@
  * This file defines the @c MorsePot class, which implements the pairwise
  * Morse potential with a shifted cutoff. The kernel is ported from eOn
  * (https://github.com/TheochemUI/eOn, client/potentials/Morse), BSD-3-Clause
- * licensed, copyright the eOn Development Team; the original attribution
- * names A. Pedersen or G. Henkelman, revised by Jean Claude C. Berthet
- * (2010, University of Iceland).
+ * licensed, copyright the eOn Development Team, 2010.
  */
 
 // clang-format off
@@ -74,6 +72,10 @@ public:
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
     return m_paramsKey;
+  }
+
+  [[nodiscard]] PotCaps caps() const noexcept override {
+    return {.stress = true};
   }
 
   /**
