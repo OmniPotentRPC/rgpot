@@ -508,15 +508,18 @@ data-aria-dark="Switch to auto color mode">
 <span id="doxid-structrgpot-1-1-calculator-group"></span><span id="index-0"></span><h1>struct rgpot::CalculatorGroup<a class="headerlink" href="#struct-rgpot-calculatorgroup" title="Link to this heading">¶</a></h1>
 <div class="toctree-wrapper compound">
 </div>
+<p>One independent calculator. A NEB image, a dimer end, or any other concurrent evaluation is one group. Ranks in a group share a subcommunicator. A second band is a second world, not a second split of the same one.</p>
 <div class="doxyrest-overview-code-block highlight">
-<pre><span data-line="1"><span class="k">struct</span> <span class="n">CalculatorGroup</span> <span class="p">{</span></span>
-<span data-line="2">    <span class="c1">// fields</span></span>
-<span data-line="3"> </span>
-<span data-line="4">    <span class="kt">int</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1_calculator_group_1a2bab6bd45166c8845329d6f75f11c2b8"></span><span class="n">index</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span></span>
-<span data-line="5">    <span class="kt">int</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1_calculator_group_1a586aabab5a19aabfeecf9388be990c54"></span><span class="n">ranks</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span></span>
-<span data-line="6">    <span class="kt">int</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1_calculator_group_1acdb29e218af494c70ec1c06796a100af"></span><span class="n">rank_in_group</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span></span>
-<span data-line="7">    <span class="kt">int</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1_calculator_group_1a011e1a84b480ada875cd8c0f65e2e941"></span><span class="n">world_size</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span></span>
-<span data-line="8"><span class="p">};</span></span>
+<pre><span data-line="1"><span class="cp">#include</span> <span class="cpf">&lt;CalculatorGroup.hpp&gt;</span></span>
+<span data-line="2"> </span>
+<span data-line="3"><span class="k">struct</span> <span class="n">CalculatorGroup</span> <span class="p">{</span></span>
+<span data-line="4">    <span class="c1">// fields</span></span>
+<span data-line="5"> </span>
+<span data-line="6">    <span class="kt">int</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1_calculator_group_1a2bab6bd45166c8845329d6f75f11c2b8"></span><span class="n">index</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span></span>
+<span data-line="7">    <span class="kt">int</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1_calculator_group_1a586aabab5a19aabfeecf9388be990c54"></span><span class="n">ranks</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span></span>
+<span data-line="8">    <span class="kt">int</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1_calculator_group_1acdb29e218af494c70ec1c06796a100af"></span><span class="n">rank_in_group</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span></span>
+<span data-line="9">    <span class="kt">int</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1_calculator_group_1a011e1a84b480ada875cd8c0f65e2e941"></span><span class="n">world_size</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span></span>
+<span data-line="10"><span class="p">};</span></span>
 </pre></div>
 </section>
 

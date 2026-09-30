@@ -35,7 +35,7 @@ Overview
 		// methods
 	
 		CPMDPot& :target:`operator=<doxid-classrgpot_1_1_c_p_m_d_pot_1a5b11785bd07e721e29fc21603cd0198a>`(const CPMDPot&);
-		void :target:`forceImpl<doxid-classrgpot_1_1_c_p_m_d_pot_1a7ce83b3efda939edaecd8c9691d52ba9>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		void :ref:`forceImpl<doxid-classrgpot_1_1_c_p_m_d_pot_1a7ce83b3efda939edaecd8c9691d52ba9>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
 		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_c_p_m_d_pot_1a52e734d25d7da5f6660d904e0140b60f>`() const;
 		bool :target:`setParams<doxid-classrgpot_1_1_c_p_m_d_pot_1a80b707459bab810f682ba9f337b76e62>`(const ::CPMDParams::Reader& params);
 		void :target:`getParams<doxid-classrgpot_1_1_c_p_m_d_pot_1a29db37ef0464ae0c4086320515e02d5d>`(::CPMDParams::Builder out) const;
@@ -43,7 +43,7 @@ Overview
 		bool :target:`available<doxid-classrgpot_1_1_c_p_m_d_pot_1a9b006e0439de5445527c23332c16b88c>`() const;
 		static bool :target:`probe_available<doxid-classrgpot_1_1_c_p_m_d_pot_1a055db00e0a19a8ed3d4bb0b6ddba1eaf>`();
 		static bool :target:`abi_available<doxid-classrgpot_1_1_c_p_m_d_pot_1aa6d5fa95440d78578a67318a6f94ebca>`();
-		static int :target:`bindCalculators<doxid-classrgpot_1_1_c_p_m_d_pot_1adaecbf76c0c5f2fda166136873c07e7b>`(int ranks_per_calc);
+		static int :ref:`bindCalculators<doxid-classrgpot_1_1_c_p_m_d_pot_1adaecbf76c0c5f2fda166136873c07e7b>`(int ranks_per_calc);
 	};
 .. _details-classrgpot_1_1_c_p_m_d_pot:
 
@@ -55,6 +55,16 @@ Detailed Documentation
 Methods
 -------
 
+.. index:: pair: function; forceImpl
+.. _doxid-classrgpot_1_1_c_p_m_d_pot_1a7ce83b3efda939edaecd8c9691d52ba9:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void forceImpl(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const
+
+When a calculator group is bound and calculatorWorldSize() is greater than 1, every rank enters this call. The call fills :ref:`ForceOut <doxid-structrgpot_1_1_force_out>` on the rank that calls it. A failure is printed on every rank in the call, then MPI_Abort runs on MPI_COMM_WORLD, and then the exception leaves the call.
+
 .. index:: pair: function; caps
 .. _doxid-classrgpot_1_1_c_p_m_d_pot_1a52e734d25d7da5f6660d904e0140b60f:
 
@@ -64,4 +74,14 @@ Methods
 	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
 
 The dlopen'd engine keeps global session state: serialize process-wide.
+
+.. index:: pair: function; bindCalculators
+.. _doxid-classrgpot_1_1_c_p_m_d_pot_1adaecbf76c0c5f2fda166136873c07e7b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static int bindCalculators(int ranks_per_calc)
+
+Collective on MPI_COMM_WORLD. Splits into calculators of ranks_per_calc ranks via cpmdc_bind_calculator. One NEB image is one calculator. A second band calls this on its own world. Every rank must call it before the first force. Returns the group index, or -1 when the engine has no bind symbol.
 

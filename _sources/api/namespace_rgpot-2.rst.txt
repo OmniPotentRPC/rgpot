@@ -168,6 +168,7 @@ Prefix-parameterized loader for the minimum potential ABI profile. :ref:`More...
 	std::atomic<size_t> :target:`registry< T >::count<doxid-namespacergpot_1a513ab41cec758862407123454d55c430>` {0};
 	std::atomic<size_t> :target:`registry< T >::forceCalls<doxid-namespacergpot_1a8e21670419bd19dd834796be5bbfd343>` {0};
 	T* :target:`registry< T >::head<doxid-namespacergpot_1abd4c9750ac000472e3321df2a5d1fb92>` = nullptr;
+	double :target:`HARTREE_PER_BOHR3_TO_EV_PER_ANGSTROM3<doxid-namespacergpot_1a7c20ce9900df5a3023d291d3afce970e>`;
 	double :target:`KB_HARTREE<doxid-namespacergpot_1a9a742b09aa478149e322c44ad4514736>`;
 	double :target:`ANGSTROM_TO_BOHR<doxid-namespacergpot_1a9c35602c6f75abf12f88a9a9a1c6134d>`;
 	double :target:`HARTREE_TO_EV<doxid-namespacergpot_1abe8557f69bfc3a00e7da3df8bf5eb342>`;
@@ -176,13 +177,13 @@ Prefix-parameterized loader for the minimum potential ABI profile. :ref:`More...
 	// global functions
 
 	void :target:`addCalculatorHook<doxid-namespacergpot_1a60828e4ba2f43f1430625c0564f9aac6>`(CalculatorHook hook);
-	:ref:`CalculatorGroup<doxid-structrgpot_1_1_calculator_group>` :target:`bindCalculators<doxid-namespacergpot_1a9cfa05e9b4282c3111dd0507ebce1e32>`(int ranks_per_calculator);
+	:ref:`CalculatorGroup<doxid-structrgpot_1_1_calculator_group>` :ref:`bindCalculators<doxid-namespacergpot_1a9cfa05e9b4282c3111dd0507ebce1e32>`(int ranks_per_calculator);
 	const :ref:`CalculatorGroup<doxid-structrgpot_1_1_calculator_group>`& :target:`thisCalculator<doxid-namespacergpot_1a0f6a0947342f9c3086b6d2d746ee2a8e>`();
 	int :target:`calculatorComm<doxid-namespacergpot_1a64038b0d53e8bbed0e9dca37dff843c8>`(void* comm_out, std::size_t comm_bytes);
 	int :target:`calculatorsUseMpi<doxid-namespacergpot_1a42d9640e720fc06436f7e1fcf725d48a>`();
 	int :target:`calculatorWorldSize<doxid-namespacergpot_1a933137e65c8039384fa082abe199d612>`();
 	int :target:`calculatorCount<doxid-namespacergpot_1ac0164f9e1c56148ac999115063cba8c1>`();
-	int :target:`shareFromCalculator<doxid-namespacergpot_1a65ecb7719c0fce4862b14e3c395b9e03>`(int owner, void* data, std::size_t bytes);
+	int :ref:`shareFromCalculator<doxid-namespacergpot_1a65ecb7719c0fce4862b14e3c395b9e03>`(int owner, void* data, std::size_t bytes);
 	void :target:`finalizeMpiAtExit<doxid-namespacergpot_1a9d26d152de5f5ffad71a120849cc5924>`();
 	void :target:`apply_torch_determinism_policy<doxid-namespacergpot_1ac9c11e28c61a5763d13471a25a96bf5e>`(TorchDeterminismPolicy policy);
 	EngineBundle& :target:`probe_engine_bundle<doxid-namespacergpot_1abaf5e074f00973f6696f820b40b3dd78>`();
@@ -245,6 +246,8 @@ CPMD potential under rgpot ``PotentialConfig`` user parameters.
 
 Backends (nwchemc, cpmdc, future lammpsc/gromacsc) export the same C symbol set prefix-parameterized on ``<p>`` (see potentials-schema PROFILE.md). This loader resolves that whole set from one dlopen'd shared library, so rgpot drives every conforming backend through identical function pointers with no per-backend loader code. Everything stays native: flat binary Cap'n Proto messages both directions, plain C calls in-process.
 
+One independent calculator is one group. A NEB image or a dimer end is that group, and ranks in a group share a subcommunicator. bindCalculators is collective on MPI_COMM_WORLD. Every rank calls it before the first force. shareFromCalculator broadcasts from the first rank of calculator owner onto MPI_COMM_WORLD. forceImpl fills :ref:`ForceOut <doxid-structrgpot_1_1_force_out>` on the rank that calls it.
+
 ``:ref:`ExprPot <doxid-classrgpot_1_1_expr_pot>``` is a ``Potential``. Terms are ``unique_ptr<PotentialBase>`` only.
 
 Defines the core data exchange structures used between the high-level potential wrappers and the low-level physics engines.
@@ -294,6 +297,26 @@ Matter", Pergamon (1985). The kernel is ported from eOn (`https://github.com/The
 
 Global Functions
 ----------------
+
+.. index:: pair: function; bindCalculators
+.. _doxid-namespacergpot_1a9cfa05e9b4282c3111dd0507ebce1e32:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`CalculatorGroup<doxid-structrgpot_1_1_calculator_group>` bindCalculators(int ranks_per_calculator)
+
+Collective on MPI_COMM_WORLD when the process was started under MPI. ranks_per_calculator <= 0 means one group for the whole world. Returns index -1 when the world cannot be divided that way.
+
+.. index:: pair: function; shareFromCalculator
+.. _doxid-namespacergpot_1a65ecb7719c0fce4862b14e3c395b9e03:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int shareFromCalculator(int owner, void* data, std::size_t bytes)
+
+Broadcasts bytes from the first rank of calculator ``owner`` to every rank of MPI_COMM_WORLD, so all ranks hold that calculator's result. Collective on MPI_COMM_WORLD. When more than one rank is bound, a rank that cannot enter the broadcast aborts the world after every rank prints the error. Returns 0 without MPI, before a split, or for a bad owner in a single process. Returns 1 once the bytes are in place.
 
 .. index:: pair: function; zeroForceOut
 .. _doxid-namespacergpot_1aa8cb0fd12ead45cd35dd0ea5c3b6fb7a:
