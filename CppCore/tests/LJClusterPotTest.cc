@@ -129,8 +129,7 @@ TEST_CASE("LJPot stress matches a coordinate difference", "[LJPot]") {
   rgpot::LJPot pot;
   REQUIRE(pot.caps().stress);
 
-  AtomMatrix pos(2, 3);
-  pos << 0.0, 0.0, 0.0, 1.3, 0.4, -0.25;
+  AtomMatrix pos{{0.0, 0.0, 0.0}, {1.3, 0.4, -0.25}};
   const std::vector<int> types{1, 1};
   // Row-major cell, large enough that the pair is the minimum image.
   const double box[9] = {12.0, 0.0, 0.0, 0.4, 11.0, 0.0, -0.2, 0.3, 10.0};
