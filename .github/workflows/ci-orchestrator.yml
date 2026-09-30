@@ -265,10 +265,25 @@ jobs:
           key: ccache-orch-${{ runner.os }}-${{ matrix.sys }}-${{ github.sha }}
           restore-keys: ccache-orch-${{ runner.os }}-${{ matrix.sys }}-
       # potctl owns step logic (darwin-env + configure/build/test); nickel/GHA owns matrix only
+      - if: matrix.sys == 'meson' && matrix.os == 'ubuntu-latest'
+        name: Install MPI build environment
+        run: pixi install -e mpibld
       - if: matrix.sys == 'meson'
         name: Build & Test (Meson)
-        shell: pixi run bash -e {0}
-        run: potctl ci meson-test --rpc ${{ matrix.rpc }} --cache ${{ matrix.cache }}
+        shell: bash
+        env:
+          # ubuntu: -Dwith_mpi=enabled via POTCTL_WITH_MPI. Other OS values stay off.
+          POTCTL_WITH_MPI: ${{ matrix.os == 'ubuntu-latest' && 'enabled' || 'disabled' }}
+        run: |
+          set -euo pipefail
+          if [ "${POTCTL_WITH_MPI}" = "enabled" ]; then
+            pixi run -e mpibld potctl ci meson-test --rpc ${{ matrix.rpc }} --cache ${{ matrix.cache }}
+          else
+            pixi run -e devbld potctl ci meson-test --rpc ${{ matrix.rpc }} --cache ${{ matrix.cache }}
+          fi
+      - if: matrix.sys == 'meson' && matrix.os == 'ubuntu-latest'
+        name: mpirun calculator_group_test
+        run: pixi run -e mpibld mpirun --oversubscribe -n 4 ./bbdir/CppCore/calculator_group_test
       - if: matrix.sys == 'cmake'
         name: Build & Test (CMake)
         shell: pixi run bash -e {0}
