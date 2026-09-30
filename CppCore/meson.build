@@ -551,6 +551,36 @@ if get_option('with_tests')
             'RGPOT_CPMD_ENGINE',
             cpmdc_fake_engine.full_path(),
         )
+        cpmdc_gradient_engine = shared_library(
+            'cpmdc_gradient_engine',
+            sources: ['tests/cpmdc_gradient_engine.cc'],
+            include_directories: _incdirs + ['.'] + include_directories(
+                'rgpot/CPMDPot',
+            ),
+            install: false,
+        )
+        cpmdc_gradient_env = environment()
+        cpmdc_gradient_env.set(
+            'RGPOT_CPMD_ENGINE',
+            cpmdc_gradient_engine.full_path(),
+        )
+        test(
+            'CPMDPotGradientStressTest',
+            executable(
+                'cpmd_pot_gradient_stress_test',
+                sources: ['tests/CPMDPotGradientStressTest.cc'],
+                dependencies: test_deps + [ptlrpc_dep],
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+                build_rpath: _metatomic_build_rpath,
+            ),
+            env: cpmdc_gradient_env,
+            depends: cpmdc_gradient_engine,
+            workdir: meson.source_root(),
+            suite: 'cpmd',
+        )
         test(
             'CPMDPotMessageAbiTest',
             executable(

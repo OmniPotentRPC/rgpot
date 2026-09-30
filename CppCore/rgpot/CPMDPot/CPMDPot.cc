@@ -13,6 +13,7 @@
 #include "rgpot/units.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -28,6 +29,7 @@
 
 namespace rgpot {
 
+using units::HARTREE_PER_BOHR3_TO_EV_PER_ANGSTROM3;
 using units::HARTREE_TO_EV;
 using units::NEG_GRAD_TO_FORCE;
 
@@ -47,6 +49,15 @@ using FeatureCountFn = size_t (*)(void);
 using FeatureTableFn = const CPMDCFeatureEntry *(*)(void);
 using FeatureFindFn = const CPMDCFeatureEntry *(*)(const char *);
 using BindCalculatorsFn = int (*)(int);
+
+// Layout matches cpmdc CPMDCStressTensor: int valid, then nine doubles.
+struct CPMDCStressTensor {
+  int valid;
+  double values[9];
+};
+using LastStressFn = int (*)(CPMDCStressTensor *);
+static_assert(offsetof(CPMDCStressTensor, values) == 8,
+              "CPMDCStressTensor values follow the valid flag");
 
 BindCalculatorsFn g_cpmd_bind = nullptr;
 
@@ -100,6 +111,7 @@ struct EngineBundle {
   FeatureCountFn feature_count = nullptr;
   FeatureTableFn feature_table = nullptr;
   FeatureFindFn feature_find = nullptr;
+  LastStressFn last_stress = nullptr;
   std::string load_error;
   bool loaded = false;
 };
@@ -118,6 +130,7 @@ bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
   b.feature_count = nullptr;
   b.feature_table = nullptr;
   b.feature_find = nullptr;
+  b.last_stress = nullptr;
 
   bool eng_ok = false;
   std::string eng_err;
@@ -160,6 +173,8 @@ bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
       b.engine_lib.sym_optional<FeatureTableFn>("cpmdc_feature_table");
   b.feature_find =
       b.engine_lib.sym_optional<FeatureFindFn>("cpmdc_feature_find");
+  b.last_stress =
+      b.engine_lib.sym_optional<LastStressFn>("cpmdc_last_stress");
 
   const bool has_one_shot = b.energy_gradient && b.set_params;
   const bool has_session_result =
@@ -617,6 +632,15 @@ void CPMDPot::forceImplOrThrow(const ForceInput &in, ForceOut *out) const {
   for (int i = 0; i < n * 3; ++i)
     out->F[static_cast<size_t>(i)] =
         grad[static_cast<size_t>(i)] * NEG_GRAD_TO_FORCE;
+  if (impl_->bundle.last_stress) {
+    CPMDCStressTensor tensor{};
+    if (impl_->bundle.last_stress(&tensor) == 0 && tensor.valid) {
+      for (int i = 0; i < 9; ++i)
+        out->stress[i] =
+            tensor.values[i] * HARTREE_PER_BOHR3_TO_EV_PER_ANGSTROM3;
+      out->has_stress = 1;
+    }
+  }
 }
 
 void CPMDPot::Impl::forceSession(const ForceInput &in, ForceOut *out) {

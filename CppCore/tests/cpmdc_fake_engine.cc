@@ -4,6 +4,8 @@
 #include "rgpot/CPMDPot/cpmd_c_abi.h"
 #include "rgpot/rpc/Potentials.capnp.h"
 
+#include "cpmd_stress_oracle.hpp"
+
 #include <capnp/message.h>
 #include <capnp/serialize.h>
 #include <kj/array.h>
@@ -64,10 +66,14 @@ bool force_input_ok(const ::ForceInput::Reader &input, size_t *force_count,
 std::vector<unsigned char> make_result(size_t force_count, double cell_zz) {
   ::capnp::MallocMessageBuilder msg;
   auto result = msg.initRoot<::PotentialResult>();
-  result.setEnergy(0.75 + 0.001 * cell_zz);
+  const double hartree = cpmd_stress_oracle::sessionHartree(cell_zz);
+  result.setEnergy(hartree * rgpot::units::HARTREE_TO_EV);
   auto forces = result.initForces(static_cast<unsigned int>(force_count));
   for (unsigned int i = 0; i < forces.size(); ++i)
     forces.set(i, 0.011 + 0.001 * static_cast<double>(i));
+  auto stress = result.initStress(9);
+  for (unsigned int i = 0; i < 9; ++i)
+    stress.set(i, cpmd_stress_oracle::stressEvPerAngstrom3(static_cast<int>(i)));
   auto words = ::capnp::messageToFlatArray(msg);
   const auto bytes = words.asBytes();
   return std::vector<unsigned char>(bytes.begin(), bytes.end());
