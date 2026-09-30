@@ -1,0 +1,64 @@
+
+
+Evaluate a water geometry with CPMD
+-----------------------------------
+
+This tutorial builds rgpot, loads a CPMD engine, and evaluates one water
+geometry.
+The geometry file is ``tests/data/cpmd/water.xyz``.
+Its title is ``water``.
+The atoms are oxygen and two hydrogens, in angstrom, in that order.
+The cell is a cube with side 20 angstrom.
+
+What you will need
+~~~~~~~~~~~~~~~~~~
+
+- `pixi <https://pixi.sh>`_ (manages the full toolchain)
+
+Clone and build
+~~~~~~~~~~~~~~~
+
+.. code:: bash
+
+    git clone https://github.com/OmniPotentRPC/rgpot.git
+    cd rgpot
+    pixi shell -e rpctest
+    meson setup bbdir -Dwith_tests=true -Dwith_rpc=true --buildtype=debug
+    meson compile -C bbdir
+
+A tests build produces the stand-in engine and the server:
+
+::
+
+    bbdir/CppCore/libcpmdc_fake_engine.so
+    bbdir/CppCore/potserv
+
+Evaluate water
+~~~~~~~~~~~~~~
+
+.. code:: bash
+
+    export RGPOT_CPMD_ENGINE="$PWD/bbdir/CppCore/libcpmdc_fake_engine.so"
+    python tests/cpmd_water.py \
+      --server-bin ./bbdir/CppCore/potserv \
+      --expect 0.77
+
+The command prints:
+
+::
+
+    water geometry: water
+    water energy: 0.77
+
+``0.77`` is the energy the stand-in engine returns for this geometry and this
+cell.
+Point ``RGPOT_CPMD_ENGINE`` at a ``libcpmdc.so`` built from the CPMD archive to
+evaluate the same file with CPMD.
+Read the energy the command prints.
+
+Next steps
+~~~~~~~~~~
+
+- :doc:`quickstart`: build, test, and the CuH2 RPC smoke
+- :doc:`../reference/mpi`: ``with_mpi`` values ``auto``, ``enabled``, and ``disabled``
+- :doc:`../howto/integration`: configure and calculate over RPC

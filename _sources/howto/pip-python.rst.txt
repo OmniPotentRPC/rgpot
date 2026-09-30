@@ -100,3 +100,4 @@ Related
 - In-tree C++ ``MetatomicPot`` (Meson ``-Dwith_metatomic=true``):
   :doc:`embedding` and :doc:`../reference/architecture`
 - RPC server path remains ``potserv``; this page is the pip product only
+- :doc:`../reference/mpi` — ``with_mpi`` values ``auto``, ``enabled``, and ``disabled``

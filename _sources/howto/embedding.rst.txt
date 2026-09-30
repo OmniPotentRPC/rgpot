@@ -163,3 +163,5 @@ support the ``-o`` flag)
 += extension)
 
 - ``ws2_32`` is linked for Cap'n Proto's async networking layer
+
+See :doc:`../reference/mpi` for the ``with_mpi`` values ``auto``, ``enabled``, and ``disabled``.

@@ -87,3 +87,5 @@ potential energy API story).
 - eOn user guide pages ``rgpot_pot.md`` / ``rgpot_integration.md`` (eOn tree) for
 
 the consumer-side documentation.
+
+See :doc:`../reference/mpi` for the ``with_mpi`` values ``auto``, ``enabled``, and ``disabled``.

@@ -1,0 +1,25 @@
+
+
+MPI
+---
+
+``with_mpi`` is a Meson feature option in ``meson_options.txt``.
+The default is ``disabled``.
+The accepted values are ``auto``, ``enabled``, and ``disabled``.
+
+.. code:: bash
+
+    meson setup bbdir -Dwith_tests=true -Dwith_rpc=true -Dwith_mpi=enabled
+
+``auto`` links MPI when the build finds it.
+``enabled`` stops configuration when MPI is absent.
+``disabled`` leaves every process as one calculator of one rank.
+
+A build with MPI linked can call ``bindCalculators`` to split ``MPI_COMM_WORLD``
+into calculator groups.
+``shareFromCalculator`` broadcasts one group's bytes to every rank.
+When more than one rank is bound, a rank that cannot enter that broadcast prints
+the error on every rank and calls ``MPI_Abort`` on ``MPI_COMM_WORLD``.
+The same abort runs when one rank leaves ``CPMDPot::forceImpl`` by an exception.
+``MPI_Finalize`` at process exit runs when ``bindCalculators`` called ``MPI_Init``.
+A host that called ``MPI_Init`` finalizes itself.

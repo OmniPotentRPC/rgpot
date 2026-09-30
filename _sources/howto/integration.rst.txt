@@ -465,3 +465,5 @@ For legacy codebases like eOn where refactoring all types into a namespace is
 impractical, the two-TU + flat-array callback pattern provides a clean
 integration path with no modifications required to either rgpot or the
 consumer's existing type system.
+
+See :doc:`../reference/mpi` for the ``with_mpi`` values ``auto``, ``enabled``, and ``disabled``.

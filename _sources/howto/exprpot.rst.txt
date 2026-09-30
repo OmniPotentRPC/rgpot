@@ -153,3 +153,5 @@ not potserv.
 C (``ExprPot("lj")``) was not measured: the helper was compiled without
 ``-Dwith_expr=true`` (the wheel still ships ``with_expr`` off).
 This is not a claim that ``XcKernel`` beats pyeonclient.
+
+See :doc:`../reference/mpi` for the ``with_mpi`` values ``auto``, ``enabled``, and ``disabled``.

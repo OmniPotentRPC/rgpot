@@ -58,6 +58,7 @@ See:
    :caption: Tutorials
 
    tutorials/quickstart
+   tutorials/cpmd
    tutorials/molecular-global-optimization
 
 .. toctree::
@@ -76,6 +77,7 @@ See:
    :caption: Reference
 
    reference/architecture
+   reference/mpi
    api/index
    changelog
 

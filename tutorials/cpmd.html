@@ -2,8 +2,8 @@
 <html lang="en" data-accent-color="teal" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Find the Ground State of an EON Structure - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Python package (PyPI)" href="../howto/pip-python.html" /><link rel="prev" title="Evaluate a water geometry with CPMD" href="cpmd.html" />
-      <link rel="canonical" href="https://rgpot.rgoswami.me/tutorials/molecular-global-optimization.html" /><script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Evaluate a water geometry with CPMD - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Find the Ground State of an EON Structure" href="molecular-global-optimization.html" /><link rel="prev" title="Quickstart" href="quickstart.html" />
+      <link rel="canonical" href="https://rgpot.rgoswami.me/tutorials/cpmd.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
   </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
@@ -22,8 +22,8 @@
 }
 </style>
     <meta property="og:type" content="website"/>
-  <meta property="og:url" content="https://rgpot.rgoswami.me/tutorials/molecular-global-optimization.html"/>
-  <meta property="og:title" content="Find the Ground State of an EON Structure"/>
+  <meta property="og:url" content="https://rgpot.rgoswami.me/tutorials/cpmd.html"/>
+  <meta property="og:title" content="Evaluate a water geometry with CPMD"/>
     <meta name="twitter:card" content="summary"/>
   <!-- Manual favicon handling with favicon.io -->
 <!-- since sphinx-favicon doesn't work with shibuya -->
@@ -89,8 +89,8 @@ data-aria-dark="Switch to auto color mode">
         <div class="globaltoc" data-expand-depth="1"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Tutorials</span></p>
 <ul class="current">
 <li class="toctree-l1 _expand"><a class="reference internal" href="quickstart.html">Quickstart</a></li>
-<li class="toctree-l1 _expand"><a class="reference internal" href="cpmd.html">Evaluate a water geometry with CPMD</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Find the Ground State of an EON Structure</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Evaluate a water geometry with CPMD</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="molecular-global-optimization.html">Find the Ground State of an EON Structure</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">How-To Guides</span></p>
 <ul>
@@ -407,15 +407,9 @@ data-aria-dark="Switch to auto color mode">
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
 <li><a class="reference internal" href="#what-you-will-need">What you will need</a></li>
-<li><a class="reference internal" href="#step-1-drive-an-rgpot-potential-from-python">Step 1: drive an rgpot potential from Python</a></li>
-<li><a class="reference internal" href="#step-2-local-relaxation-stops-at-the-nearest-minimum">Step 2: local relaxation stops at the nearest minimum</a></li>
-<li><a class="reference internal" href="#step-3-find-the-global-minimum">Step 3: find the global minimum</a><ul>
-<li><a class="reference internal" href="#which-minimizer-for-which-job">Which minimizer for which job</a></li>
-</ul>
-</li>
-<li><a class="reference internal" href="#step-4-start-from-a-con-file">Step 4: start from a <code class="docutils literal notranslate"><span class="pre">.con</span></code> file</a></li>
-<li><a class="reference internal" href="#visualize-the-minimization-on-the-s-d-landscape">Visualize the minimization on the (s, d) landscape</a></li>
-<li><a class="reference internal" href="#where-to-go-next">Where to go next</a></li>
+<li><a class="reference internal" href="#clone-and-build">Clone and build</a></li>
+<li><a class="reference internal" href="#evaluate-water">Evaluate water</a></li>
+<li><a class="reference internal" href="#next-steps">Next steps</a></li>
 </ul>
 </div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/OmniPotentRPC/rgpot"
   data-type="github" data-user="OmniPotentRPC" data-repo="rgpot">
@@ -439,7 +433,7 @@ data-aria-dark="Switch to auto color mode">
     </span>
   </span>
 </a><div class="edit-this-page">
-  <a href="https://github.com/OmniPotentRPC/rgpot/blob/main/docs/source/tutorials/molecular-global-optimization.rst">Edit this page</a>
+  <a href="https://github.com/OmniPotentRPC/rgpot/blob/main/docs/source/tutorials/cpmd.rst">Edit this page</a>
 </div></div>
   </aside>
   <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
@@ -456,7 +450,7 @@ data-aria-dark="Switch to auto color mode">
         <span>/</span>
         <meta itemprop="position" content="1" />
       </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-        <strong itemprop="name">Find the Ground State of an EON Structure</strong>
+        <strong itemprop="name">Evaluate a water geometry with CPMD</strong>
         <meta itemprop="position" content="2" />
       </li></ol>
     <div class="xl:hidden ml-1">
@@ -473,7 +467,7 @@ data-aria-dark="Switch to auto color mode">
     <button
       type="button"
       class="js-copy px-3 py-1 inline-flex items-center gap-1"
-      data-url="https://rgpot.rgoswami.me/_sources/tutorials/molecular-global-optimization.rst.txt"
+      data-url="https://rgpot.rgoswami.me/_sources/tutorials/cpmd.rst.txt"
     >
       <i class="i-lucide" data-icon="copy"></i>
       <span>Copy page</span>
@@ -487,232 +481,78 @@ data-aria-dark="Switch to auto color mode">
     <div role="presentation">
       <div class="flex flex-col" role="group">
         <button class="js-copy" type="button" role="menuitem"
-          data-url="https://rgpot.rgoswami.me/_sources/tutorials/molecular-global-optimization.rst.txt">
+          data-url="https://rgpot.rgoswami.me/_sources/tutorials/cpmd.rst.txt">
           <span class="iconify-icon">
             <i class="i-lucide" data-icon="copy"></i>
           </span>
           <span>Copy page</span>
         </button>
-        <a role="menuitem" href="https://rgpot.rgoswami.me/_sources/tutorials/molecular-global-optimization.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
-            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20https%3A//rgpot.rgoswami.me/_sources/tutorials/molecular-global-optimization.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        <a role="menuitem" href="https://rgpot.rgoswami.me/_sources/tutorials/cpmd.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
+            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20https%3A//rgpot.rgoswami.me/_sources/tutorials/cpmd.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:openai"></iconify-icon>
           <span>Open in ChatGPT</span>
-        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20https%3A//rgpot.rgoswami.me/_sources/tutorials/molecular-global-optimization.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20https%3A//rgpot.rgoswami.me/_sources/tutorials/cpmd.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:claude"></iconify-icon>
           <span>Open in Claude</span>
         </a></div>
     </div>
   </div>
 </div><article class="yue dark-code" role="main">
-          <section id="find-the-ground-state-of-an-eon-structure">
-<h1>Find the Ground State of an EON Structure<a class="headerlink" href="#find-the-ground-state-of-an-eon-structure" title="Link to this heading">¶</a></h1>
-<p>Atomistic workflows minimize.
-ASE relaxes structures with L-BFGS and FIRE; eOn
-(TheochemUI/eOn on GitHub) runs its own L-BFGS and conjugate-gradient minimizers at the end of every min-mode and nudged-elastic-band search, over structures stored as EON <code class="docutils literal notranslate"><span class="pre">.con</span></code> files and driven by a potential rgpot serves over RPC. The atomistic-cookbook example lab- cosmo/atomistic-cookbook
-runs exactly this stack: a PET-MAD model, a NEB path, eOn’s saddle search.</p>
-<p>All of these minimizers are <em>local</em>: they walk downhill to the nearest minimum.
-The nearest minimum is often not the one you want.
-This tutorial finds the minimum a local search misses, and shows that <code class="docutils literal notranslate"><span class="pre">anneal</span></code>
-reaches it where ASE’s optimizer and scipy’s simulated annealing do not improve
-on it.
-The numbers you will reproduce, from one disordered start on a 7-atom Lennard-
-Jones cluster (reduced units, global minimum <code class="docutils literal notranslate"><span class="pre">-16.505384</span></code>):</p>
-<div class="table-wrapper docutils container">
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Minimizer</p></th>
-<th class="head"><p>Final energy</p></th>
-<th class="head"><p>Evaluations</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p>local L-BFGS (ASE, eOn)</p></td>
-<td><p>-3.13</p></td>
-<td><p>500</p></td>
-</tr>
-<tr class="row-odd"><td><p>scipy <code class="docutils literal notranslate"><span class="pre">dual_annealing</span></code> (global)</p></td>
-<td><p>-16.505384</p></td>
-<td><p>17006</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">anneal</span></code> portfolio (global)</p></td>
-<td><p>-16.505384</p></td>
-<td><p>14920</p></td>
-</tr>
-</tbody>
-</table>
-</div>
-<p>Local L-BFGS stops at the nearest minimum.
-Both global methods reach the ground state; <code class="docutils literal notranslate"><span class="pre">anneal</span></code> reaches it in fewer
-evaluations than scipy.</p>
+          <section id="evaluate-a-water-geometry-with-cpmd">
+<h1>Evaluate a water geometry with CPMD<a class="headerlink" href="#evaluate-a-water-geometry-with-cpmd" title="Link to this heading">¶</a></h1>
+<p>This tutorial builds rgpot, loads a CPMD engine, and evaluates one water
+geometry.
+The geometry file is <code class="docutils literal notranslate"><span class="pre">tests/data/cpmd/water.xyz</span></code>.
+Its title is <code class="docutils literal notranslate"><span class="pre">water</span></code>.
+The atoms are oxygen and two hydrogens, in angstrom, in that order.
+The cell is a cube with side 20 angstrom.</p>
 <section id="what-you-will-need">
 <h2>What you will need<a class="headerlink" href="#what-you-will-need" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p><a class="reference external" href="https://pixi.sh">pixi</a> (manages the toolchain)</p></li>
-<li><p>The <code class="docutils literal notranslate"><span class="pre">rgpot</span></code>, <code class="docutils literal notranslate"><span class="pre">anneal</span></code>, and <code class="docutils literal notranslate"><span class="pre">readcon-core</span></code> checkouts side by side</p></li>
-<li><p>About 10 minutes</p></li>
+<li><p><a class="reference external" href="https://pixi.sh">pixi</a> (manages the full toolchain)</p></li>
 </ul>
-<p>One command builds everything and runs the comparison:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="nb">cd</span><span class="w"> </span>rgpot
-</span><span data-line="2">pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>rpctest<span class="w"> </span>ase-anneal-compare
-</span></pre></div>
-</div>
-<p>It builds the <code class="docutils literal notranslate"><span class="pre">potserv</span></code> potential server, builds the <code class="docutils literal notranslate"><span class="pre">anneal</span></code> and <code class="docutils literal notranslate"><span class="pre">readcon</span></code>
-Python modules, and runs the two scripts below.</p>
 </section>
-<section id="step-1-drive-an-rgpot-potential-from-python">
-<h2>Step 1: drive an rgpot potential from Python<a class="headerlink" href="#step-1-drive-an-rgpot-potential-from-python" title="Link to this heading">¶</a></h2>
-<p>rgpot exposes every potential through one ASE calculator, <code class="docutils literal notranslate"><span class="pre">RgpotCalculator</span></code>.
-It talks to the same <code class="docutils literal notranslate"><span class="pre">potserv</span></code> RPC server the eOn client connects to, so Python
-and eOn evaluate the same energies and forces.
-Point it at a potential and it launches the server:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-</span><span data-line="2"><span class="kn">from</span><span class="w"> </span><span class="nn">ase</span><span class="w"> </span><span class="kn">import</span> <span class="n">Atoms</span>
-</span><span data-line="3"><span class="kn">from</span><span class="w"> </span><span class="nn">ase_calculator</span><span class="w"> </span><span class="kn">import</span> <span class="n">RgpotCalculator</span>   <span class="c1"># CppCore/rgpot/rpc on sys.path</span>
-</span><span data-line="4">
-</span><span data-line="5"><span class="n">calc</span> <span class="o">=</span> <span class="n">RgpotCalculator</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">server_bin</span><span class="o">=</span><span class="s2">&quot;path/to/potserv&quot;</span><span class="p">,</span> <span class="n">potential</span><span class="o">=</span><span class="s2">&quot;LJ&quot;</span><span class="p">)</span>
-</span><span data-line="6">
-</span><span data-line="7"><span class="n">start</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">RandomState</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="o">-</span><span class="mf">2.3</span><span class="p">,</span> <span class="mf">2.3</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="mi">7</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
-</span><span data-line="8"><span class="n">atoms</span> <span class="o">=</span> <span class="n">Atoms</span><span class="p">(</span><span class="n">numbers</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mi">7</span><span class="p">,</span> <span class="n">positions</span><span class="o">=</span><span class="n">start</span><span class="p">,</span> <span class="n">cell</span><span class="o">=</span><span class="p">[</span><span class="mi">40</span><span class="p">,</span> <span class="mi">40</span><span class="p">,</span> <span class="mi">40</span><span class="p">])</span>
-</span><span data-line="9"><span class="n">atoms</span><span class="o">.</span><span class="n">calc</span> <span class="o">=</span> <span class="n">calc</span>
-</span><span data-line="10">
-</span><span data-line="11"><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;start energy:&quot;</span><span class="p">,</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">())</span>   <span class="c1"># about +20</span>
+<section id="clone-and-build">
+<h2>Clone and build<a class="headerlink" href="#clone-and-build" title="Link to this heading">¶</a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">git<span class="w"> </span>clone<span class="w"> </span>https://github.com/OmniPotentRPC/rgpot.git
+</span><span data-line="2"><span class="nb">cd</span><span class="w"> </span>rgpot
+</span><span data-line="3">pixi<span class="w"> </span>shell<span class="w"> </span>-e<span class="w"> </span>rpctest
+</span><span data-line="4">meson<span class="w"> </span>setup<span class="w"> </span>bbdir<span class="w"> </span>-Dwith_tests<span class="o">=</span><span class="nb">true</span><span class="w"> </span>-Dwith_rpc<span class="o">=</span><span class="nb">true</span><span class="w"> </span>--buildtype<span class="o">=</span>debug
+</span><span data-line="5">meson<span class="w"> </span>compile<span class="w"> </span>-C<span class="w"> </span>bbdir
 </span></pre></div>
 </div>
-<p>Use <code class="docutils literal notranslate"><span class="pre">spawn</span></code> as a context manager (<code class="docutils literal notranslate"><span class="pre">with</span> <span class="pre">RgpotCalculator.spawn(...)</span> <span class="pre">as</span> <span class="pre">calc:</span></code>) to
-stop the managed server on exit.</p>
+<p>A tests build produces the stand-in engine and the server:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">bbdir</span><span class="o">/</span><span class="n">CppCore</span><span class="o">/</span><span class="n">libcpmdc_fake_engine</span><span class="o">.</span><span class="n">so</span>
+</span><span data-line="2"><span class="n">bbdir</span><span class="o">/</span><span class="n">CppCore</span><span class="o">/</span><span class="n">potserv</span>
+</span></pre></div>
+</div>
 </section>
-<section id="step-2-local-relaxation-stops-at-the-nearest-minimum">
-<h2>Step 2: local relaxation stops at the nearest minimum<a class="headerlink" href="#step-2-local-relaxation-stops-at-the-nearest-minimum" title="Link to this heading">¶</a></h2>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">ase.optimize</span><span class="w"> </span><span class="kn">import</span> <span class="n">LBFGS</span>
-</span><span data-line="2">
-</span><span data-line="3"><span class="n">LBFGS</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span><span class="o">=</span><span class="mf">1e-3</span><span class="p">)</span>
-</span><span data-line="4"><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;local L-BFGS energy:&quot;</span><span class="p">,</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">())</span>   <span class="c1"># about -3.13</span>
+<section id="evaluate-water">
+<h2>Evaluate water<a class="headerlink" href="#evaluate-water" title="Link to this heading">¶</a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="nb">export</span><span class="w"> </span><span class="nv">RGPOT_CPMD_ENGINE</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">/bbdir/CppCore/libcpmdc_fake_engine.so&quot;</span>
+</span><span data-line="2">python<span class="w"> </span>tests/cpmd_water.py<span class="w"> </span><span class="se">\</span>
+</span><span data-line="3"><span class="w">  </span>--server-bin<span class="w"> </span>./bbdir/CppCore/potserv<span class="w"> </span><span class="se">\</span>
+</span><span data-line="4"><span class="w">  </span>--expect<span class="w"> </span><span class="m">0</span>.77
 </span></pre></div>
 </div>
-<p>L-BFGS converges to a minimum, just not the global one.
-The LJ7 global minimum, the pentagonal bipyramid at <code class="docutils literal notranslate"><span class="pre">-16.505384</span></code>, sits in a
-different basin; from a random start a local minimizer cannot cross into it.
-eOn’s L-BFGS, run on the same surface, stops in the same place – this is the
-wall a local search hits when a relaxation lands in a metastable basin instead
-of the product state.</p>
+<p>The command prints:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">water</span> <span class="n">geometry</span><span class="p">:</span> <span class="n">water</span>
+</span><span data-line="2"><span class="n">water</span> <span class="n">energy</span><span class="p">:</span> <span class="mf">0.77</span>
+</span></pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">0.77</span></code> is the energy the stand-in engine returns for this geometry and this
+cell.
+Point <code class="docutils literal notranslate"><span class="pre">RGPOT_CPMD_ENGINE</span></code> at a <code class="docutils literal notranslate"><span class="pre">libcpmdc.so</span></code> built from the CPMD archive to
+evaluate the same file with CPMD.
+Read the energy the command prints.</p>
 </section>
-<section id="step-3-find-the-global-minimum">
-<h2>Step 3: find the global minimum<a class="headerlink" href="#step-3-find-the-global-minimum" title="Link to this heading">¶</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">AnnealOptimizer</span></code> wraps <code class="docutils literal notranslate"><span class="pre">anneal</span></code>’s portfolio optimizer (the method of the
-INFORMS Journal on Computing paper: Thompson-allocated basin hopping,
-differential evolution, generalized simulated annealing, parallel tempering,
-GLE-Langevin) behind the same <code class="docutils literal notranslate"><span class="pre">run()</span></code>.
-It uses the rgpot forces as the gradient:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">ase_helpers</span><span class="w"> </span><span class="kn">import</span> <span class="n">AnnealOptimizer</span>
-</span><span data-line="2">
-</span><span data-line="3"><span class="n">atoms</span><span class="o">.</span><span class="n">set_positions</span><span class="p">(</span><span class="n">start</span><span class="p">)</span>              <span class="c1"># back to the disordered start</span>
-</span><span data-line="4"><span class="n">opt</span> <span class="o">=</span> <span class="n">AnnealOptimizer</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="n">budget</span><span class="o">=</span><span class="mi">15000</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">11</span><span class="p">,</span> <span class="n">pad</span><span class="o">=</span><span class="mf">3.0</span><span class="p">)</span>
-</span><span data-line="5"><span class="n">opt</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
-</span><span data-line="6"><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;anneal energy:&quot;</span><span class="p">,</span> <span class="n">opt</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">())</span>   <span class="c1"># -16.505384</span>
-</span><span data-line="7"><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;evaluations:&quot;</span><span class="p">,</span> <span class="n">opt</span><span class="o">.</span><span class="n">nevals</span><span class="p">)</span>
-</span></pre></div>
-</div>
-<p>The geometry ends at the global minimum.
-<code class="docutils literal notranslate"><span class="pre">scipy.optimize.dual_annealing</span></code> reaches the same value on this surface; <code class="docutils literal notranslate"><span class="pre">anneal</span></code>
-reaches it in fewer evaluations, and both pass the value the local search
-returns.
-<code class="docutils literal notranslate"><span class="pre">tests/ase_vs_anneal.py</span></code> runs all three side by side.</p>
-<section id="which-minimizer-for-which-job">
-<h3>Which minimizer for which job<a class="headerlink" href="#which-minimizer-for-which-job" title="Link to this heading">¶</a></h3>
+<section id="next-steps">
+<h2>Next steps<a class="headerlink" href="#next-steps" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p>Local L-BFGS / FIRE / conjugate gradient (ASE or eOn): refine a structure</p></li>
+<li><p><a class="reference internal" href="quickstart.html"><span class="doc">Quickstart</span></a>: build, test, and the CuH2 RPC smoke</p></li>
+<li><p><a class="reference internal" href="../reference/mpi.html"><span class="doc">MPI</span></a>: <code class="docutils literal notranslate"><span class="pre">with_mpi</span></code> values <code class="docutils literal notranslate"><span class="pre">auto</span></code>, <code class="docutils literal notranslate"><span class="pre">enabled</span></code>, and <code class="docutils literal notranslate"><span class="pre">disabled</span></code></p></li>
+<li><p><a class="reference internal" href="../howto/integration.html"><span class="doc">External Integration Guide</span></a>: configure and calculate over RPC</p></li>
 </ul>
-<p>inside the basin you want – an eOn saddle endpoint, a perturbed crystal, an MD
-snapshot.</p>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">AnnealOptimizer</span></code>: find the minimum when the basin is unknown – cluster
-ground</p></li>
-</ul>
-<p>states, conformer search, potential-parameter fitting.</p>
-<p>Chain them: an <code class="docutils literal notranslate"><span class="pre">anneal</span></code> search to locate the basin, then a local polish.</p>
-</section>
-</section>
-<section id="step-4-start-from-a-con-file">
-<h2>Step 4: start from a <code class="docutils literal notranslate"><span class="pre">.con</span></code> file<a class="headerlink" href="#step-4-start-from-a-con-file" title="Link to this heading">¶</a></h2>
-<p>EON workflows start from a structure on disk.
-<code class="docutils literal notranslate"><span class="pre">atoms_from_con</span></code> reads an EON <code class="docutils literal notranslate"><span class="pre">.con</span></code> file into <code class="docutils literal notranslate"><span class="pre">ase.Atoms</span></code> through
-<code class="docutils literal notranslate"><span class="pre">readcon-</span> <span class="pre">core</span></code> – the files eOn reads and writes:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">ase_helpers</span><span class="w"> </span><span class="kn">import</span> <span class="n">atoms_from_con</span>
-</span><span data-line="2">
-</span><span data-line="3"><span class="n">calc</span> <span class="o">=</span> <span class="n">RgpotCalculator</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">server_bin</span><span class="o">=</span><span class="s2">&quot;path/to/potserv&quot;</span><span class="p">,</span> <span class="n">potential</span><span class="o">=</span><span class="s2">&quot;CuH2&quot;</span><span class="p">)</span>
-</span><span data-line="4"><span class="n">atoms</span> <span class="o">=</span> <span class="n">atoms_from_con</span><span class="p">(</span><span class="s2">&quot;tiny_cuh2.con&quot;</span><span class="p">,</span> <span class="n">calc</span><span class="o">=</span><span class="n">calc</span><span class="p">)</span>
-</span><span data-line="5"><span class="nb">print</span><span class="p">(</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_chemical_symbols</span><span class="p">())</span>          <span class="c1"># [&#39;Cu&#39;, &#39;Cu&#39;, &#39;H&#39;, &#39;H&#39;]</span>
-</span><span data-line="6"><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;energy:&quot;</span><span class="p">,</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">())</span>
-</span><span data-line="7">
-</span><span data-line="8"><span class="c1"># The cell comes from the .con; override it with a larger box when needed.</span>
-</span><span data-line="9"><span class="n">atoms</span> <span class="o">=</span> <span class="n">atoms_from_con</span><span class="p">(</span><span class="s2">&quot;tiny_cuh2.con&quot;</span><span class="p">,</span> <span class="n">cell</span><span class="o">=</span><span class="p">[</span><span class="mi">15</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">30</span><span class="p">],</span> <span class="n">pbc</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-</span></pre></div>
-</div>
-<p>Relaxing it is the same <code class="docutils literal notranslate"><span class="pre">run()</span></code>: rattle the structure, then walk it back to the
-minimum the <code class="docutils literal notranslate"><span class="pre">.con</span></code> recorded:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">atoms</span><span class="o">.</span><span class="n">calc</span> <span class="o">=</span> <span class="n">calc</span>
-</span><span data-line="2"><span class="n">atoms</span><span class="o">.</span><span class="n">rattle</span><span class="p">(</span><span class="n">stdev</span><span class="o">=</span><span class="mf">0.15</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-</span><span data-line="3"><span class="n">LBFGS</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span><span class="o">=</span><span class="mf">0.02</span><span class="p">)</span>
-</span><span data-line="4"><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;relaxed energy:&quot;</span><span class="p">,</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">())</span>   <span class="c1"># back to -6.474708</span>
-</span></pre></div>
-</div>
-<p><code class="docutils literal notranslate"><span class="pre">tests/con_relax_demo.py</span></code> runs this round-trip.</p>
-</section>
-<section id="visualize-the-minimization-on-the-s-d-landscape">
-<h2>Visualize the minimization on the (s, d) landscape<a class="headerlink" href="#visualize-the-minimization-on-the-s-d-landscape" title="Link to this heading">¶</a></h2>
-<p>Two complementary views.
-First, sample the surface densely: a probe atom moved through the x-y plane near
-a lone atom (a shallow well) and a bound pair (a deeper well) gives a 2D
-Lennard-Jones double well.
-ASE LBFGS started in the shallow basin stops there; anneal’s portfolio reaches
-the deep one.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>rpctest<span class="w"> </span>pes-double-well
-</span></pre></div>
-</div>
-<figure class="align-default" id="id1">
-<img alt="_static/pes_double_well.png" src="_static/pes_double_well.png" />
-<figcaption>
-<p><span class="caption-text">rgpot LJ double well (densely evaluated 2D PES). ASE LBFGS (red) stops in the shallow left basin at -2.0; anneal’s global portfolio (orange star) reaches the deep right basin at -3.0.</span><a class="headerlink" href="#id1" title="Link to this image">¶</a></p>
-</figcaption>
-</figure>
-<p>Second, for an EON minimization, ``rgpycrumbs eon plt-min`` renders the actual
-trajectory on a gradient-enhanced 2D landscape: progress ``s`` toward the
-minimum against lateral deviation ``d``, with the energy surface fitted from the
-path.
-``tests/eon<sub>min</sub><sub>landscape.py</sub>\`` runs an ``eonclient`` LJ7 minimization and plots
-it (energies capped with ``plt-min –energy-cap-window`` so the colorbar
-resolves the well):</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>eonviz<span class="w"> </span>eon-min-landscape
-</span></pre></div>
-</div>
-<figure class="align-default" id="id2">
-<img alt="_static/eon_min_landscape.png" src="_static/eon_min_landscape.png" />
-<figcaption>
-<p><span class="caption-text">An EON LJ7 minimization on the (s, d) landscape: the path descends from the start (Init) to the global minimum at -16.505 (Min), and the surface energy drops monotonically along progress s.</span><a class="headerlink" href="#id2" title="Link to this image">¶</a></p>
-</figcaption>
-</figure>
-<p>The ``eonviz`` environment is separate from the C++ build env: ``eon`` pins
-``fmt&gt;=12`` (clashing with rgpot’s C++ ``fmt&lt;12``), so it carries no default
-feature and pulls ``eon``, ``ira``, ``jax``, and the dev ``chemparseplot`` /
-``rgpycrumbs`` (the published releases lack the embedded-metadata trajectory
-parser and ``plt-min``).</p>
-</section>
-<section id="where-to-go-next">
-<h2>Where to go next<a class="headerlink" href="#where-to-go-next" title="Link to this heading">¶</a></h2>
-<ul class="simple">
-<li><p>Swap <code class="docutils literal notranslate"><span class="pre">potential</span></code>”LJ”= for <code class="docutils literal notranslate"><span class="pre">CuH2</span></code>, <code class="docutils literal notranslate"><span class="pre">XTB</span></code>, <code class="docutils literal notranslate"><span class="pre">TBLite</span></code>, or <code class="docutils literal notranslate"><span class="pre">Metatomic:&lt;model&gt;</span></code> (the</p></li>
-</ul>
-<p>PET-MAD model the cookbook uses); the calculator stays the same, only the server
-backend changes, and the same server serves eOn.</p>
-<ul class="simple">
-<li><p>Read <a class="reference external" href="../howto/integration.rst">External Integration Guide</a> for how eOn</p></li>
-</ul>
-<p>links rgpot’s RPC server from C++.</p>
-<ul class="simple">
-<li><p>Read
-<a class="reference external" href="../howto/eindir-anneal.rst">rgpot potentials as eindir objectives</a></p></li>
-</ul>
-<p>for how an rgpot potential becomes an <code class="docutils literal notranslate"><span class="pre">anneal</span></code> objective with no glue code.</p>
 </section>
 </section>
 
@@ -722,16 +562,16 @@ backend changes, and the same server serves eOn.</p>
   </svg>
   <span>Back to top</span>
 </button><div class="navigation flex print:hidden"><div class="navigation-prev">
-    <a href="cpmd.html">
+    <a href="quickstart.html">
       <i class="i-lucide chevron-left"></i>
       <div class="page-info">
-        <span>Previous</span><div class="title">Evaluate a water geometry with CPMD</div></div>
+        <span>Previous</span><div class="title">Quickstart</div></div>
     </a>
   </div><div class="navigation-next">
-    <a href="../howto/pip-python.html">
+    <a href="molecular-global-optimization.html">
       <div class="page-info">
         <span>Next</span>
-        <div class="title">Python package (PyPI)</div>
+        <div class="title">Find the Ground State of an EON Structure</div>
       </div>
       <i class="i-lucide chevron-right"></i>
     </a>

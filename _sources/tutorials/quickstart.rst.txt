@@ -82,12 +82,40 @@ For runtime-loaded quantum engines, pass the matching selector and engine path:
 
 .. code:: bash
 
-    CPMDC_LIBRARY=/path/to/libcpmdc.so ./bbdir/CppCore/potserv 12345 CPMD
+    RGPOT_CPMD_ENGINE="$PWD/bbdir/CppCore/libcpmdc_fake_engine.so" \
+      ./bbdir/CppCore/potserv 12345 CPMD
     NWCHEMC_LIBRARY=/path/to/libnwchemc.so ./bbdir/CppCore/potserv 12345 NWChem
+
+Evaluate water with CPMD
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+The configure smoke does not calculate.
+This command reads the water geometry in ``tests/data/cpmd/water.xyz``.
+The cell is a cube with side 20 angstrom.
+The stand-in engine comes from the tests build above.
+
+.. code:: bash
+
+    export RGPOT_CPMD_ENGINE="$PWD/bbdir/CppCore/libcpmdc_fake_engine.so"
+    python tests/cpmd_water.py \
+      --server-bin ./bbdir/CppCore/potserv \
+      --expect 0.77
+
+The command prints:
+
+::
+
+    water geometry: water
+    water energy: 0.77
+
+``0.77`` is the energy that stand-in engine returns for this geometry and cell.
+The same command with ``RGPOT_CPMD_ENGINE`` pointed at a CPMD-archive
+``libcpmdc.so`` evaluates that file with CPMD.
 
 Next steps
 ~~~~~~~~~~
 
+- :doc:`cpmd`: evaluate the water geometry and read the energy
 - :doc:`../howto/pip-python` — ``pip install rgpot`` (LJ + Metatomic multi-ABI
   engines, torch 2.7+)
 - :doc:`../reference/architecture` — architecture overview
