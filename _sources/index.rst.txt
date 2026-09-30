@@ -35,6 +35,7 @@ The C++ server hosts built-in potentials such as Lennard-Jones and CuH2,
 optional xTB / tblite / metatomic backends, and runtime-loaded quantum engines.
 ``NWChemPot`` loads ``libnwchemc`` from the split ``nwchemc`` project.
 ``CPMDPot`` loads ``libcpmdc`` from the split ``cpmdc`` project.
+Its documentation is at `cpmdc.rgoswami.me <https://cpmdc.rgoswami.me>`_.
 Both quantum frontends keep geometry on ``ForceInput`` and carry method options in
 the matching ``PotentialConfig`` arm.
 

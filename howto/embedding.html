@@ -587,8 +587,10 @@ Build <code class="docutils literal notranslate"><span class="pre">libnwchemc.so
 See <code class="docutils literal notranslate"><span class="pre">CppCore/</span> <span class="pre">rgpot/NWChemPot/README.md</span></code>.</p>
 <p><code class="docutils literal notranslate"><span class="pre">CPMDPot</span></code> follows the same split-engine pattern: the frontend is always compiled
 and <code class="docutils literal notranslate"><span class="pre">dlopen=s</span> <span class="pre">=libcpmdc.so</span></code> from [[<a class="reference external" href="https://github.com/OmniPotentRPC/cpmdc">https://github.com/OmniPotentRPC/cpmdc</a>]
-[cpmdc]]. rgpot builds no in-process OpenCPMD embed of its own and has no
-<code class="docutils literal notranslate"><span class="pre">-Dwith_cpmd</span></code> option.
+[cpmdc]].
+The engine is documented at <a class="reference external" href="https://cpmdc.rgoswami.me">cpmdc.rgoswami.me</a>.
+rgpot builds no in-process OpenCPMD embed of its own and has no <code class="docutils literal notranslate"><span class="pre">-Dwith_cpmd</span></code>
+option.
 Build <code class="docutils literal notranslate"><span class="pre">libcpmdc.so</span></code> from the <code class="docutils literal notranslate"><span class="pre">cpmdc</span></code> project, then set
 <code class="docutils literal notranslate"><span class="pre">CPMDC_LIBRARY</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_CPMDC_ENGINE</span></code>, or <code class="docutils literal notranslate"><span class="pre">RGPOT_CPMD_ENGINE</span></code>.
 See <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/CPMDPot/README.md</span></code>.</p>
