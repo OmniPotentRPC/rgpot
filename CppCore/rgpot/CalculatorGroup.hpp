@@ -4,12 +4,19 @@
 
 #include <cstddef>
 
+/// One independent calculator is one group. A NEB image or a dimer end
+/// is that group, and ranks in a group share a subcommunicator.
+/// bindCalculators is collective on MPI_COMM_WORLD. Every rank calls it
+/// before the first force.
+/// shareFromCalculator broadcasts from the first rank of calculator
+/// owner onto MPI_COMM_WORLD.
+/// forceImpl fills ForceOut on the rank that calls it.
 namespace rgpot {
 
-// One independent calculator. A NEB image, a dimer end, or any other
-// concurrent evaluation is one group. Ranks in a group share a
-// subcommunicator. A second band is a second world, not a second
-// split of the same one.
+/// One independent calculator. A NEB image, a dimer end, or any other
+/// concurrent evaluation is one group. Ranks in a group share a
+/// subcommunicator. A second band is a second world, not a second
+/// split of the same one.
 struct CalculatorGroup {
   int index = 0;
   int ranks = 1;
@@ -24,9 +31,9 @@ using CalculatorHook = int (*)(int ranks_per_calculator);
 
 void addCalculatorHook(CalculatorHook hook);
 
-// Collective on MPI_COMM_WORLD when the process was started under MPI.
-// ranks_per_calculator <= 0 means one group for the whole world.
-// Returns index -1 when the world cannot be divided that way.
+/// Collective on MPI_COMM_WORLD when the process was started under MPI.
+/// ranks_per_calculator <= 0 means one group for the whole world.
+/// Returns index -1 when the world cannot be divided that way.
 CalculatorGroup bindCalculators(int ranks_per_calculator);
 
 const CalculatorGroup &thisCalculator();
@@ -48,13 +55,13 @@ int calculatorWorldSize();
 // when the world could not be divided.
 int calculatorCount();
 
-// Broadcasts bytes from the first rank of calculator `owner` to every
-// rank of MPI_COMM_WORLD, so all ranks hold that calculator's result.
-// Collective on MPI_COMM_WORLD. When more than one rank is bound, a
-// rank that cannot enter the broadcast aborts the world after every
-// rank prints the error. Returns 0 without MPI, before a split, or
-// for a bad owner in a single process. Returns 1 once the bytes are
-// in place.
+/// Broadcasts bytes from the first rank of calculator `owner` to every
+/// rank of MPI_COMM_WORLD, so all ranks hold that calculator's result.
+/// Collective on MPI_COMM_WORLD. When more than one rank is bound, a
+/// rank that cannot enter the broadcast aborts the world after every
+/// rank prints the error. Returns 0 without MPI, before a split, or
+/// for a bad owner in a single process. Returns 1 once the bytes are
+/// in place.
 int shareFromCalculator(int owner, void *data, std::size_t bytes);
 
 // Registers, once per process, an exit handler that calls MPI_Finalize

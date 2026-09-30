@@ -22,10 +22,11 @@ public:
   CPMDPot(const CPMDPot &) = delete;
   CPMDPot &operator=(const CPMDPot &) = delete;
 
-  // When a calculator group is bound and calculatorWorldSize() is
-  // greater than 1, every rank enters this call. A failure is printed
-  // on every rank in the call, then MPI_Abort runs on MPI_COMM_WORLD,
-  // and then the exception leaves the call.
+  /// When a calculator group is bound and calculatorWorldSize() is
+  /// greater than 1, every rank enters this call. The call fills
+  /// ForceOut on the rank that calls it. A failure is printed on every
+  /// rank in the call, then MPI_Abort runs on MPI_COMM_WORLD, and then
+  /// the exception leaves the call.
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
   /// The dlopen'd engine keeps global session state: serialize
@@ -46,11 +47,11 @@ public:
   static bool probe_available();
   static bool abi_available();
 
-  // Collective on MPI_COMM_WORLD. Splits into calculators of
-  // ranks_per_calc ranks via cpmdc_bind_calculator. One NEB image
-  // is one calculator. A second band calls this on its own world.
-  // Every rank must call it before the first force. Returns the
-  // group index, or -1 when the engine has no bind symbol.
+  /// Collective on MPI_COMM_WORLD. Splits into calculators of
+  /// ranks_per_calc ranks via cpmdc_bind_calculator. One NEB image
+  /// is one calculator. A second band calls this on its own world.
+  /// Every rank must call it before the first force. Returns the
+  /// group index, or -1 when the engine has no bind symbol.
   static int bindCalculators(int ranks_per_calc);
 
 private:
