@@ -1,0 +1,1 @@
+`CPMDPot::selectOrbitals(key)` names the image or bead the next forces belong to and passes it to `cpmdc_session_select_orbitals`, so an engine that keeps orbitals per key starts each SCF from that image's or bead's own previous orbitals.

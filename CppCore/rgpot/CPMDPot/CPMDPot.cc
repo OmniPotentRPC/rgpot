@@ -47,6 +47,7 @@ using FeatureCountFn = size_t (*)(void);
 using FeatureTableFn = const CPMDCFeatureEntry *(*)(void);
 using FeatureFindFn = const CPMDCFeatureEntry *(*)(const char *);
 using BindCalculatorsFn = int (*)(int);
+using SelectOrbitalsFn = int (*)(CPMDCSession *, long long);
 
 // Layout matches cpmdc CPMDCStressTensor: int valid, then nine doubles.
 struct CPMDCStressTensor {
@@ -69,6 +70,7 @@ struct ParamsView {
   const void *data = nullptr;
   size_t size = 0;
 };
+
 
 std::vector<std::string> engine_lib_candidates(const std::string &explicit_path) {
   std::vector<std::string> out;
@@ -110,6 +112,7 @@ struct EngineBundle {
   FeatureTableFn feature_table = nullptr;
   FeatureFindFn feature_find = nullptr;
   LastStressFn last_stress = nullptr;
+  SelectOrbitalsFn select_orbitals = nullptr;
   std::string load_error;
   bool loaded = false;
 };
@@ -129,6 +132,7 @@ bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
   b.feature_table = nullptr;
   b.feature_find = nullptr;
   b.last_stress = nullptr;
+  b.select_orbitals = nullptr;
 
   bool eng_ok = false;
   std::string eng_err;
@@ -173,6 +177,8 @@ bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
       b.engine_lib.sym_optional<FeatureFindFn>("cpmdc_feature_find");
   b.last_stress =
       b.engine_lib.sym_optional<LastStressFn>("cpmdc_last_stress");
+  b.select_orbitals = b.engine_lib.sym_optional<SelectOrbitalsFn>(
+      "cpmdc_session_select_orbitals");
 
   const bool has_one_shot = b.energy_gradient && b.set_params;
   const bool has_session_result =
@@ -338,6 +344,9 @@ struct CPMDPot::Impl {
   std::string session_engine_path;
   uint64_t params_key = 0;
   mutable std::vector<double> grad_scratch;
+  // The calculation the next force belongs to, see selectOrbitals.
+  bool has_orbital_key = false;
+  int64_t orbital_key = 0;
 
   void destroySession();
   bool configure();
@@ -402,6 +411,18 @@ CPMDPot::CPMDPot(const ::CPMDParams::Reader &params)
   apply_env_hints(impl_->cpmd_root);
   if (try_load_engine(impl_->bundle, impl_->engine_path))
     (void)impl_->configure();
+}
+
+void CPMDPot::selectOrbitals(int64_t key) {
+  if (!impl_)
+    return;
+  impl_->has_orbital_key = true;
+  impl_->orbital_key = key;
+}
+
+bool CPMDPot::keepsOrbitalsPerKey() const {
+  return impl_ && impl_->bundle.loaded && impl_->bundle.select_orbitals &&
+         has_session_result_abi(impl_->bundle);
 }
 
 uint64_t CPMDPot::paramsKey() const noexcept {
@@ -609,6 +630,12 @@ void CPMDPot::Impl::forceSession(const ForceInput &in, ForceOut *out) {
   std::vector<::capnp::word> result_words(
       (required + sizeof(::capnp::word) - 1u) / sizeof(::capnp::word));
   size_t written = 0;
+  // The engine keeps converged orbitals per key; naming the key on every
+  // call keeps it right when the session was recreated since.
+  if (has_orbital_key && bundle.select_orbitals &&
+      bundle.select_orbitals(session, static_cast<long long>(orbital_key)) !=
+          0)
+    fail_force("CPMD engine refused the orbital key");
   CPMDCResult res = bundle.session_calculate_result(
       session, force_view.data, force_view.size, result_words.data(),
       result_words.size() * sizeof(::capnp::word), &written);

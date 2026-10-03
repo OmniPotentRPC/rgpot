@@ -84,6 +84,12 @@ int cpmdc_session_set_params(CPMDCSession *session, const void *params_capnp,
 
 void cpmdc_session_destroy(CPMDCSession *session) { (void)session; }
 
+int cpmdc_session_select_orbitals(CPMDCSession *session, long long key) {
+  (void)session;
+  (void)key;
+  return -1;
+}
+
 CPMDCResult cpmdc_session_energy(CPMDCSession *session, int n_atoms,
                                  const double *positions_ang,
                                  const int *atomic_numbers) {

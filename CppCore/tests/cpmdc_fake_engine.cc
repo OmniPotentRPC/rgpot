@@ -24,6 +24,8 @@ struct CPMDCSession {
   // Use bytes, not vector<capnp::word>: word is not default-constructible on
   // Apple libc++ (resize/assign fail in CI Xcode 16).
   std::vector<unsigned char> params;
+  long long orbital_key = -1;
+  bool has_orbital_key = false;
 };
 
 namespace {
@@ -98,6 +100,9 @@ CPMDCResult ok_result(const char *message) {
 // Sessions created through cpmdc_session_create, read back by tests
 // through cpmdc_fake_session_create_count.
 int g_session_create_count = 0;
+// Key named for the last session evaluation; kNoOrbitalKey when none was.
+constexpr long long kNoOrbitalKey = -1000000;
+long long g_last_orbital_key = kNoOrbitalKey;
 
 } // namespace
 
@@ -167,6 +172,14 @@ int cpmdc_session_set_params(CPMDCSession *session, const void *params_capnp,
 }
 
 void cpmdc_session_destroy(CPMDCSession *session) { delete session; }
+
+int cpmdc_session_select_orbitals(CPMDCSession *session, long long key) {
+  if (session == nullptr)
+    return -1;
+  session->orbital_key = key;
+  session->has_orbital_key = true;
+  return 0;
+}
 
 CPMDCResult cpmdc_session_energy_gradient(CPMDCSession *session, int n_atoms,
                                           const double *positions_ang,
@@ -275,6 +288,8 @@ CPMDCResult cpmdc_session_calculate_result(
                         &force_count, &cell_zz))
       return fail_result("invalid fake ForceInput");
     const auto result_bytes = make_result(force_count, cell_zz);
+    g_last_orbital_key =
+        session->has_orbital_key ? session->orbital_key : kNoOrbitalKey;
     const size_t required = result_bytes.size();
     *potential_result_capnp_size_bytes = required;
     if (potential_result_capnp == nullptr ||
@@ -345,6 +360,12 @@ RGPOT_FAKE_ONLY int cpmdc_abi_version(void) { return 0; }
 // session.
 RGPOT_FAKE_ONLY int cpmdc_fake_session_create_count(void) {
   return g_session_create_count;
+}
+
+// Test-only: the key named before the last session evaluation, or
+// -1000000 when the session never named one.
+RGPOT_FAKE_ONLY long long cpmdc_fake_last_orbital_key(void) {
+  return g_last_orbital_key;
 }
 
 RGPOT_FAKE_ONLY const char *cpmdc_last_error(void) { return ""; }

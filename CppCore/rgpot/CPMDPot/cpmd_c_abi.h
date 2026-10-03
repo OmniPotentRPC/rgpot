@@ -108,6 +108,17 @@ RGPOT_CPMDC_API int cpmdc_session_set_params(CPMDCSession *session, const void *
 /** @brief Release a persistent evaluation session. */
 RGPOT_CPMDC_API void cpmdc_session_destroy(CPMDCSession *session);
 
+/**
+ * @brief Name the calculation the next evaluations of this session belong to.
+ *
+ * The engine keeps the converged orbitals per key, so a calculator that
+ * evaluates several images or beads in turn starts each SCF from that
+ * image's or bead's own previous orbitals. Optional: an engine without the
+ * symbol keeps one stored copy.
+ */
+RGPOT_CPMDC_API int cpmdc_session_select_orbitals(CPMDCSession *session,
+                                                  long long key);
+
 RGPOT_CPMDC_API CPMDCResult cpmdc_session_energy_gradient(CPMDCSession *session, int n_atoms,
                                           const double *positions_ang,
                                           const int *atomic_numbers,
