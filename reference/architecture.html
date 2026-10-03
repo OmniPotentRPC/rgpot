@@ -162,6 +162,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_MorseConfig.html">struct rgpot::MorseConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_PotCaps.html">struct rgpot::PotCaps</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_QuinticSwitch.html">struct rgpot::QuinticSwitch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_SkalaConfig.html">struct rgpot::SkalaConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_UmaConfig.html">struct rgpot::UmaConfig</a></li>
@@ -286,6 +287,9 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_water_h_capi.html">namespace rgpot_water_h_capi</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_workspace.html">namespace rgpot_workspace</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_std.html">namespace std</a><ul class="simple">
 </ul>
 </li>
@@ -346,6 +350,12 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../api/struct_eindir_objective_t.html">struct eindir_objective_t</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_rgpot_mpi_api_t.html">struct rgpot_mpi_api_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_rgpot_mpi_group_t.html">struct rgpot_mpi_group_t</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="../api/class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
 </ul>
 </li>
@@ -369,6 +379,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/version.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">version</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
@@ -708,17 +719,36 @@ To use them through the Rust core, pass them to
 <dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">LJPot</span></code></dt><dd><p>Standard 12-6 Lennard-Jones (always available).</p>
 </dd>
+</dl>
+<p>Configurable via <code class="docutils literal notranslate"><span class="pre">LJConfig</span></code> (<code class="docutils literal notranslate"><span class="pre">u0</span></code>, <code class="docutils literal notranslate"><span class="pre">cutoff</span></code>, <code class="docutils literal notranslate"><span class="pre">psi</span></code>, <code class="docutils literal notranslate"><span class="pre">switch_width</span></code>).</p>
+<dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">LJClusterPot</span></code></dt><dd><p>12-6 Lennard-Jones on free boundaries, for isolated</p>
 </dd>
 </dl>
 <p>clusters; the cell is ignored.
-Configurable via <code class="docutils literal notranslate"><span class="pre">LJClusterConfig</span></code> (<code class="docutils literal notranslate"><span class="pre">u0</span></code>, <code class="docutils literal notranslate"><span class="pre">cutoff</span></code>, <code class="docutils literal notranslate"><span class="pre">psi</span></code>).</p>
+Configurable via <code class="docutils literal notranslate"><span class="pre">LJClusterConfig</span></code> (<code class="docutils literal notranslate"><span class="pre">u0</span></code>, <code class="docutils literal notranslate"><span class="pre">cutoff</span></code>, <code class="docutils literal notranslate"><span class="pre">psi</span></code>, <code class="docutils literal notranslate"><span class="pre">switch_width</span></code>).</p>
 <dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">MorsePot</span></code></dt><dd><p>Pairwise Morse with a shifted cutoff, platinum parameters by</p>
 </dd>
 </dl>
 <p>default.
-Configurable via <code class="docutils literal notranslate"><span class="pre">MorseConfig</span></code> (<code class="docutils literal notranslate"><span class="pre">De</span></code>, <code class="docutils literal notranslate"><span class="pre">a</span></code>, <code class="docutils literal notranslate"><span class="pre">re</span></code>, <code class="docutils literal notranslate"><span class="pre">cutoff</span></code>).</p>
+Configurable via <code class="docutils literal notranslate"><span class="pre">MorseConfig</span></code> (<code class="docutils literal notranslate"><span class="pre">De</span></code>, <code class="docutils literal notranslate"><span class="pre">a</span></code>, <code class="docutils literal notranslate"><span class="pre">re</span></code>, <code class="docutils literal notranslate"><span class="pre">cutoff</span></code>, <code class="docutils literal notranslate"><span class="pre">switch_width</span></code>).</p>
+<p>With <code class="docutils literal notranslate"><span class="pre">switch_width</span></code> at 0 (the default) these three shift each pair energy to
+zero at the cutoff, and the force jumps there.
+A positive
+<code class="docutils literal notranslate"><span class="pre">switch_width</span></code> multiplies the unshifted pair energy by the quintic switch <span class="math notranslate nohighlight">\(S(t) = 1 - 10t^3 + 15t^4 - 6t^5\)</span>, <span class="math notranslate nohighlight">\(t = (r - r_c +
+w)/w\)</span> clamped to <span class="math notranslate nohighlight">\([0, 1]\)</span>, so energy, force and curvature reach zero at the
+cutoff (<code class="docutils literal notranslate"><span class="pre">PairSwitch.hpp</span></code>).
+The constructors throw <code class="docutils literal notranslate"><span class="pre">std::invalid_argument</span></code> unless <span class="math notranslate nohighlight">\(0 &lt; w \le r_c\)</span>.
+<code class="docutils literal notranslate"><span class="pre">scripts/validation/pair_kernels.py</span></code> checks the kernels and the switch with sympy, and <code class="docutils literal notranslate"><span class="pre">scripts/validation/quintic_switch.sollya</span></code>
+bounds the switch’s binary64 evaluation error at <span class="math notranslate nohighlight">\(28u\)</span> for <span class="math notranslate nohighlight">\(S\)</span> and <span class="math notranslate nohighlight">\(12u\)</span> for
+<span class="math notranslate nohighlight">\(S'\)</span> (<span class="math notranslate nohighlight">\(u = 2^{-53}\)</span>).</p>
+<p>These pair potentials share <code class="docutils literal notranslate"><span class="pre">rgpot::nlist::PairListCache</span></code>, a pool of Verlet
+lists with a 1 Angstrom skin.
+A search for pairs uses linked cells once the box holds 64 or more cells of one
+cutoff plus skin, and an all-pairs scan below that.
+The cached list is a CSR half list, and the force loop subtracts the periodic
+image recorded at build whenever cutoff plus skin is below half the box.</p>
 <dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">ZBLPot</span></code></dt><dd><p>Screened nuclear repulsion (Ziegler-Biersack-Littmark) with the</p>
 </dd>
@@ -1113,5 +1143,6 @@ options.</p>
       <script src="../_static/doctools.js?v=9a2dae69"></script>
       <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
       <script src="../_static/target-highlight.js?v=df7d332b"></script>
-      <script src="../_static/shibuya.js?v=cac61aee"></script></body>
+      <script src="../_static/shibuya.js?v=cac61aee"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script></body>
 </html>

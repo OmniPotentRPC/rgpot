@@ -25,6 +25,7 @@ Capability set a potential advertises to its callers. :ref:`More...<details-stru
 		bool :ref:`perImageInstances<doxid-structrgpot_1_1_pot_caps_1acfb40395659b641b17a4dcc66d0a5afc>` = false;
 		bool :ref:`batched<doxid-structrgpot_1_1_pot_caps_1aa358af63d17e45c5a0fd9030f4555299>` = false;
 		bool :ref:`periodic<doxid-structrgpot_1_1_pot_caps_1a0a912d066e6cabc4e7dc30a8cb8b4e3b>` = true;
+		bool :ref:`groupCollective<doxid-structrgpot_1_1_pot_caps_1adc13ae570a235cc2d93227216ae38a05>` = false;
 	};
 .. _details-structrgpot_1_1_pot_caps:
 
@@ -65,4 +66,14 @@ Native multi-system batch evaluation exists (forceBatch-style hook).
 	bool periodic = true
 
 Kernel supports periodic boundary conditions.
+
+.. index:: pair: variable; groupCollective
+.. _doxid-structrgpot_1_1_pot_caps_1adc13ae570a235cc2d93227216ae38a05:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool groupCollective = false
+
+Every rank of a calculator group enters each force call together (an MPI engine whose call runs collectives on the group's communicator). The result cache then takes its hit-or-miss decision jointly over the group: a hit on one rank and a miss on another would leave the missing rank alone in a collective. Other groups take no part, so a host may hand groups uneven batches.
 

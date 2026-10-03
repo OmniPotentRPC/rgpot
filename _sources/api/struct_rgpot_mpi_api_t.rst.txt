@@ -1,0 +1,29 @@
+.. index:: pair: struct; rgpot_mpi_api_t
+.. _doxid-structrgpot__mpi__api__t:
+
+struct rgpot_mpi_api_t
+======================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct rgpot_mpi_api_t {
+		// fields
+	
+		uint32_t :target:`abi_version<doxid-structrgpot__mpi__api__t_1ae1024f0ee8adc99d1990d856d8631faf>`;
+		uint32_t :target:`struct_size<doxid-structrgpot__mpi__api__t_1aa906a7e556356736ca54182140d85938>`;
+		void(* :target:`bind<doxid-structrgpot__mpi__api__t_1a486f00d47957bc0aba32c3f9048b3605>`)(int ranks_per_calculator, rgpot_mpi_group_t *out);
+		int(* :target:`comm<doxid-structrgpot__mpi__api__t_1a858955a6c5fb3e63b235afb816d60846>`)(void *comm_out, size_t comm_bytes);
+		int(* :target:`initialized<doxid-structrgpot__mpi__api__t_1a6ab0b590ee08ccfde02fa3bed14ef96b>`)(void);
+		int(* :target:`share<doxid-structrgpot__mpi__api__t_1af65efedcb0a0f0560f2360860576bbe4>`)(int owner, void *data, size_t bytes);
+		void(* :target:`finalize_at_exit<doxid-structrgpot__mpi__api__t_1a2a13430498c2c15fd0e84a665fb035d9>`)(int(*abort_requested)(void));
+		int(* :target:`agree<doxid-structrgpot__mpi__api__t_1ac99790a7f536d163d57cf0289d1de3b4>`)(unsigned char *flags, size_t n);
+		void(* :target:`publish_error<doxid-structrgpot__mpi__api__t_1ab5763010b49f5a447357c8fc36158728>`)(const char *message, size_t len);
+	};

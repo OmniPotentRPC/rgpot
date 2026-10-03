@@ -62,3 +62,5 @@ Interaction cutoff, the radius the neighbour table is built at.
 
 Energy and forces for ``positions`` (3 x natoms) in ``cell``.
 
+Per ordered neighbour entry the density pass evaluates the two density exponentials once and keeps ``rho(r)`` and rho (r) ``; the force pass adds the two pair exponentials. The shifts at`` rcut` are evaluated once per call. scripts/validation/eam_al.py checks these forms, the Horner embedding and the gather force against the closed form in the module header.
+

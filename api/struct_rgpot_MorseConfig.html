@@ -162,6 +162,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
 <li class="toctree-l4 current"><a class="current reference internal" href="#">struct rgpot::MorseConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_PotCaps.html">struct rgpot::PotCaps</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_QuinticSwitch.html">struct rgpot::QuinticSwitch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_SkalaConfig.html">struct rgpot::SkalaConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_UmaConfig.html">struct rgpot::UmaConfig</a></li>
@@ -286,6 +287,9 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_water_h_capi.html">namespace rgpot_water_h_capi</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_workspace.html">namespace rgpot_workspace</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_std.html">namespace std</a><ul class="simple">
 </ul>
 </li>
@@ -346,6 +350,12 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="struct_eindir_objective_t.html">struct eindir_objective_t</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_mpi_api_t.html">struct rgpot_mpi_api_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_mpi_group_t.html">struct rgpot_mpi_group_t</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
 </ul>
 </li>
@@ -369,6 +379,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/version.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">version</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
@@ -528,7 +539,8 @@ data-aria-dark="Switch to auto color mode">
 <span data-line="7">    <span class="kt">double</span> <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1-morse-config-1ab482b9faf3f187c1d1cc0487ae5992d5"><span class="std std-ref">a</span></a> <span class="o">=</span> <span class="mf">1.6047</span><span class="p">;</span></span>
 <span data-line="8">    <span class="kt">double</span> <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1-morse-config-1a31b7f04e644f1109c6b3512b3290123b"><span class="std std-ref">re</span></a> <span class="o">=</span> <span class="mf">2.8970</span><span class="p">;</span></span>
 <span data-line="9">    <span class="kt">double</span> <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1-morse-config-1aa0d757dd1900ef5c789a918317b9bfb6"><span class="std std-ref">cutoff</span></a> <span class="o">=</span> <span class="mf">9.5</span><span class="p">;</span></span>
-<span data-line="10"><span class="p">};</span></span>
+<span data-line="10">    <span class="kt">double</span> <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1-morse-config-1a7fe1ac125cf3568298a35231de30561c"><span class="std std-ref">switch_width</span></a> <span class="o">=</span> <span class="mf">0.0</span><span class="p">;</span></span>
+<span data-line="11"><span class="p">};</span></span>
 </pre></div>
 </section>
 <section id="detailed-documentation">
@@ -553,6 +565,10 @@ data-aria-dark="Switch to auto color mode">
 <span id="index-4"></span><pre><span data-line="1"><span class="kt">double</span> <span class="n">cutoff</span> <span class="o">=</span> <span class="mf">9.5</span></span>
 </pre></div>
 <p>Truncation distance (Angstrom).</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-structrgpot-1-1-morse-config-1a7fe1ac125cf3568298a35231de30561c">
+<span id="index-5"></span><pre><span data-line="1"><span class="kt">double</span> <span class="n">switch_width</span> <span class="o">=</span> <span class="mf">0.0</span></span>
+</pre></div>
+<p>Width (Angstrom) of the C^2 quintic switch (<span class="xref std std-ref">PairSwitch.hpp</span>) that takes each pair term to zero over [cutoff - switch_width, cutoff]. 0 keeps the shifted truncation, whose force jumps at the cutoff.</p>
 </section>
 </section>
 </section>

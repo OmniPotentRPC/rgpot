@@ -41,7 +41,9 @@ Detailed Documentation
 Pairwise Morse potential, :math:`V(r) = D_e [1 - e^{-a(r - r_e)}]^2 -
 D_e`, shifted so that :math:`V(r_\mathrm{cut}) = 0`.
 
-Pairwise interactions within the cutoff radius, minimum image convention on an orthogonal box. Pairs come from the shared ``:ref:`rgpot::nlist::PairListCache <doxid-classrgpot_1_1nlist_1_1_pair_list_cache>```, so repeated evaluations on nearby geometries (NEB images, dimer rotations) reuse a Verlet-skin cached candidate list.
+Pairwise interactions within the cutoff radius, minimum image convention on an orthogonal box. Pairs come from the shared ``rgpot::nlist::PairListCache``, so repeated evaluations on nearby geometries (NEB images, dimer rotations) reuse a Verlet-skin cached candidate list.
+
+With ``:ref:`MorseConfig::switch_width <doxid-structrgpot_1_1_morse_config_1a7fe1ac125cf3568298a35231de30561c>``` set, each pair term is the unshifted Morse energy times the C^2 quintic switch of :ref:`PairSwitch.hpp <doxid-_pair_switch_8hpp_source>`; otherwise the energy is shifted to zero at the cutoff and the force jumps there.
 
 .. warning::
 
@@ -58,7 +60,7 @@ Methods
 
 	double energyShift() const
 
-Energy offset subtracted from every pair term (the unshifted well depth at the cutoff).
+Energy offset subtracted from every pair term (the unshifted pair energy at the cutoff); 0 when the quintic switch replaces the shift.
 
 .. index:: pair: function; paramsKey
 .. _doxid-classrgpot_1_1_morse_pot_1a3efdba266543f10b6b5c18ad0384e4ce:

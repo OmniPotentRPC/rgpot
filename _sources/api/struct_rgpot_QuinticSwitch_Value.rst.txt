@@ -1,0 +1,55 @@
+.. index:: pair: struct; rgpot::QuinticSwitch::Value
+.. _doxid-structrgpot_1_1_quintic_switch_1_1_value:
+
+struct rgpot::QuinticSwitch::Value
+==================================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Value {
+		// fields
+	
+		double :ref:`s<doxid-structrgpot_1_1_quintic_switch_1_1_value_1a6dae43f8300e70dd0a36212b5b6daa99>`;
+		double :ref:`dsdr<doxid-structrgpot_1_1_quintic_switch_1_1_value_1af9d87c19904bc58e095d996558011270>`;
+	};
+.. _details-structrgpot_1_1_quintic_switch_1_1_value:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Fields
+------
+
+.. index:: pair: variable; s
+.. _doxid-structrgpot_1_1_quintic_switch_1_1_value_1a6dae43f8300e70dd0a36212b5b6daa99:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double s
+
+S(t(r)).
+
+.. index:: pair: variable; dsdr
+.. _doxid-structrgpot_1_1_quintic_switch_1_1_value_1af9d87c19904bc58e095d996558011270:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double dsdr
+
+dS/dr.
+

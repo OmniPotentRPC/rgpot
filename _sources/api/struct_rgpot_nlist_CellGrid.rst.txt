@@ -1,0 +1,86 @@
+.. index:: pair: struct; rgpot::nlist::CellGrid
+.. _doxid-structrgpot_1_1nlist_1_1_cell_grid:
+
+struct rgpot::nlist::CellGrid
+=============================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Cell decomposition of one configuration: atoms sorted by cell (CSR). :ref:`More...<details-structrgpot_1_1nlist_1_1_cell_grid>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <cell_visit.hpp>
+	
+	struct CellGrid {
+		// fields
+	
+		std::array<int, 3> :target:`nc<doxid-structrgpot_1_1nlist_1_1_cell_grid_1ac97e27795326e60243def639fd8e055e>` {{1, 1, 1}};
+		std::array<bool, 3> :target:`wrap<doxid-structrgpot_1_1nlist_1_1_cell_grid_1a181aa3a6ac2c4da69148465c634b56bc>` {{false, false, false}};
+		std::vector<int32_t> :ref:`start<doxid-structrgpot_1_1nlist_1_1_cell_grid_1a616d9b2141605534a91cf1be712b58eb>`;
+		std::vector<int32_t> :ref:`atoms<doxid-structrgpot_1_1nlist_1_1_cell_grid_1a006789da87e1569d7de2744ea62f855e>`;
+
+		// methods
+	
+		long :ref:`neighbour<doxid-structrgpot_1_1nlist_1_1_cell_grid_1abba1e64fa51fe4e82110c395a7f366d7>`(int cx, int cy, int cz, const int o[3]) const;
+		bool :ref:`build<doxid-structrgpot_1_1nlist_1_1_cell_grid_1a8325e8f4b5bd62f82b8922074de0cca8>`(const double* points, std::size_t n, const double w[3], const double inv[3], double rl);
+	};
+.. _details-structrgpot_1_1nlist_1_1_cell_grid:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Cell decomposition of one configuration: atoms sorted by cell (CSR).
+
+Fields
+------
+
+.. index:: pair: variable; start
+.. _doxid-structrgpot_1_1nlist_1_1_cell_grid_1a616d9b2141605534a91cf1be712b58eb:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::vector<int32_t> start
+
+ncells + 1 row starts into ``atoms``.
+
+.. index:: pair: variable; atoms
+.. _doxid-structrgpot_1_1nlist_1_1_cell_grid_1a006789da87e1569d7de2744ea62f855e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::vector<int32_t> atoms
+
+Atom indices grouped by cell.
+
+Methods
+-------
+
+.. index:: pair: function; neighbour
+.. _doxid-structrgpot_1_1nlist_1_1_cell_grid_1abba1e64fa51fe4e82110c395a7f366d7:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	long neighbour(int cx, int cy, int cz, const int o[3]) const
+
+Linear index of cell (cx, cy, cz) shifted by stencil offset ``o``, or -1 when the shift leaves a free axis.
+
+.. index:: pair: function; build
+.. _doxid-structrgpot_1_1nlist_1_1_cell_grid_1a8325e8f4b5bd62f82b8922074de0cca8:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool build(const double* points, std::size_t n, const double w[3], const double inv[3], double rl)
+
+Bin ``points`` into cells no narrower than ``rl``. ``w[k]`` is the periodic width and ``inv[k]`` its inverse, zero for a free axis. Returns false when a grid cannot serve (fewer than three cells along a periodic axis, or fewer than kMinCellsForGrid cells in all) or would not pay (the cell scan's pair tests for this occupancy, plus the stencil walk, above half the brute-force scan's n (n - 1) / 2: a cluster in a mostly empty box crowds a few cells), in which case the caller uses the brute-force scan.
+

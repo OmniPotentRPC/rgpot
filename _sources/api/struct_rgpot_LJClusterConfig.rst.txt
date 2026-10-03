@@ -24,6 +24,7 @@ Parameters for the free-boundary shifted 12-6 Lennard-Jones potential. :ref:`Mor
 		double :ref:`u0<doxid-structrgpot_1_1_l_j_cluster_config_1a8b76bf73b3e6bee784d5d9879d2f07d9>` = 1.0;
 		double :ref:`cutoff<doxid-structrgpot_1_1_l_j_cluster_config_1a576f1d46fb70dbb642b16e8f7860ec99>` = 15.0;
 		double :ref:`psi<doxid-structrgpot_1_1_l_j_cluster_config_1a63e599f50be53d3e5c909b5ae71d1601>` = 1.0;
+		double :ref:`switch_width<doxid-structrgpot_1_1_l_j_cluster_config_1acd174d49619623ee7992be017a8cb055>` = 0.0;
 	};
 .. _details-structrgpot_1_1_l_j_cluster_config:
 
@@ -66,4 +67,14 @@ Truncation distance (Angstrom).
 	double psi = 1.0
 
 Zero-crossing distance (Angstrom).
+
+.. index:: pair: variable; switch_width
+.. _doxid-structrgpot_1_1_l_j_cluster_config_1acd174d49619623ee7992be017a8cb055:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double switch_width = 0.0
+
+Width (Angstrom) of the C^2 quintic switch (:ref:`PairSwitch.hpp <doxid-_pair_switch_8hpp_source>`) that takes each pair term to zero over [cutoff - switch_width, cutoff]. 0 keeps the shifted truncation, whose force jumps at the cutoff.
 

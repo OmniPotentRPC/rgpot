@@ -33,6 +33,7 @@ namespace rgpot
 	struct_rgpot_MetatomicConfig.rst
 	struct_rgpot_MorseConfig.rst
 	struct_rgpot_PotCaps.rst
+	struct_rgpot_QuinticSwitch.rst
 	struct_rgpot_SkalaConfig.rst
 	struct_rgpot_TBLiteConfig.rst
 	struct_rgpot_UmaConfig.rst
@@ -120,6 +121,7 @@ Prefix-parameterized loader for the minimum potential ABI profile. :ref:`More...
 	struct :ref:`MetatomicConfig<doxid-structrgpot_1_1_metatomic_config>`;
 	struct :ref:`MorseConfig<doxid-structrgpot_1_1_morse_config>`;
 	struct :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>`;
+	struct :ref:`QuinticSwitch<doxid-structrgpot_1_1_quintic_switch>`;
 	struct :ref:`SkalaConfig<doxid-structrgpot_1_1_skala_config>`;
 	struct :ref:`TBLiteConfig<doxid-structrgpot_1_1_t_b_lite_config>`;
 	struct :ref:`UmaConfig<doxid-structrgpot_1_1_uma_config>`;
@@ -176,6 +178,9 @@ Prefix-parameterized loader for the minimum potential ABI profile. :ref:`More...
 
 	// global functions
 
+	int :target:`loadCalculatorMpi<doxid-namespacergpot_1a5b881c52589c8a340fe910b4229b1d64>`(const char* path);
+	std::string :target:`calculatorMpiLoadError<doxid-namespacergpot_1a874b39442ecc805e25f070d719e484be>`();
+	int :target:`calculatorMpiLoaded<doxid-namespacergpot_1a89ae8eab7217a10a6f8b01f01ea500c2>`();
 	void :target:`addCalculatorHook<doxid-namespacergpot_1a60828e4ba2f43f1430625c0564f9aac6>`(CalculatorHook hook);
 	:ref:`CalculatorGroup<doxid-structrgpot_1_1_calculator_group>` :ref:`bindCalculators<doxid-namespacergpot_1a9cfa05e9b4282c3111dd0507ebce1e32>`(int ranks_per_calculator);
 	const :ref:`CalculatorGroup<doxid-structrgpot_1_1_calculator_group>`& :target:`thisCalculator<doxid-namespacergpot_1a0f6a0947342f9c3086b6d2d746ee2a8e>`();
@@ -187,6 +192,8 @@ Prefix-parameterized loader for the minimum potential ABI profile. :ref:`More...
 	void :target:`finalizeMpiAtExit<doxid-namespacergpot_1a9d26d152de5f5ffad71a120849cc5924>`();
 	void :target:`abortMpiAtExit<doxid-namespacergpot_1a0b51dd0d8f5322440360e67b2f3bfe27>`();
 	bool :target:`mpiAbortRequested<doxid-namespacergpot_1a496f067cecba08cab3f570dda55a11cd>`();
+	int :target:`calculatorAgree<doxid-namespacergpot_1a7e60c7c0a34a6d536918043f6903d936>`(unsigned char* flags, std::size_t n);
+	void :target:`publishCalculatorError<doxid-namespacergpot_1aff7e5000cbff230a8381db3d58b58fb5>`(const std::string& message);
 	void :target:`apply_torch_determinism_policy<doxid-namespacergpot_1ac9c11e28c61a5763d13471a25a96bf5e>`(TorchDeterminismPolicy policy);
 	EngineBundle& :target:`probe_engine_bundle<doxid-namespacergpot_1abaf5e074f00973f6696f820b40b3dd78>`();
 	void :ref:`zeroForceOut<doxid-namespacergpot_1aa8cb0fd12ead45cd35dd0ea5c3b6fb7a>`(const size_t& nAtoms, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* efvd);
@@ -222,6 +229,8 @@ Capability descriptors for potential implementations.
 
 Field-by-field FNV-1a hashing for potential parameter sets.
 
+C^2 quintic switch that takes a pair term smoothly to zero at its cutoff.
+
 NWChem potential under rgpot ``PotentialConfig`` user parameters.
 
 Portable dynamic library loader (dlopen / LoadLibrary family).
@@ -250,13 +259,15 @@ Backends (nwchemc, cpmdc, future lammpsc/gromacsc) export the same C symbol set 
 
 One independent calculator is one group. A NEB image or a dimer end is that group, and ranks in a group share a subcommunicator. bindCalculators is collective on MPI_COMM_WORLD. Every rank calls it before the first force. shareFromCalculator broadcasts from the first rank of calculator owner onto MPI_COMM_WORLD. forceImpl fills :ref:`ForceOut <doxid-structrgpot_1_1_force_out>` on the rank that calls it.
 
+librgpot never links MPI. The MPI side lives in librgpot_mpi (meson dependency and pkg-config name rgpot-mpi), which bindCalculators and calculatorsUseMpi load with dlopen on first use through the C ABI in :ref:`calculator_mpi_abi.h <doxid-calculator__mpi__abi_8h_source>`. A process that never calls them never maps libmpi; until the library is loaded every call below behaves as in a build without MPI.
+
 ``:ref:`ExprPot <doxid-classrgpot_1_1_expr_pot>``` is a ``Potential``. Terms are ``unique_ptr<PotentialBase>`` only.
 
 Defines the core data exchange structures used between the high-level potential wrappers and the low-level physics engines.
 
 Each kernel exposes one ``bind(c)`` entry taking flat buffers and returning a status. Those entries stay inside librgpot: ``forceImpl`` is defined out of line, and the archive holding the Fortran objects is linked with ``--exclude-libs``, so no Fortran symbol reaches the dynamic table and consumers reach the kernels only through these classes.
 
-All of them report ``:ref:`Reentrancy::ProcessSerial <doxid-namespacergpot_1afc52f666d5e44be6f4cc73b2009ed9bba1126ea18c888becdeece7e1ca9f29206>``` : the kernels carry no saved physics state, but each keeps one neighbour table in module storage so vesin can reuse its buffers across calls, and that table is process-global. Handing the table to the caller as an opaque handle would lift them to ``SharedInstance``.
+Each instance owns a Fortran workspace (:ref:`rgpot_workspace.f90 <doxid-rgpot__workspace_8f90_source>`): its own neighbour table, which vesin keeps between calls and rebuilds only when an atom leaves the Verlet skin, and its own error message. The kernels carry no other state, so instances evaluate on separate threads at once (``:ref:`Reentrancy::PerInstance <doxid-namespacergpot_1afc52f666d5e44be6f4cc73b2009ed9bba638926405e39d8cd5227b49fa3156e1a>```), and multi-image callers keep one instance per image (``perImageInstances``) so each table follows one geometry instead of every image rebuilding a shared one.
 
 Ported from eOn (`https://github.com/TheochemUI/eOn <https://github.com/TheochemUI/eOn>`__, client/potentials/LJCluster), BSD-3-Clause licensed, copyright the eOn Development Team.
 
@@ -268,11 +279,22 @@ Packed :ref:`MopacCParams <doxid-struct_mopac_c_params>`. Default model is AM1.
 
 Ported from eOn (`https://github.com/TheochemUI/eOn <https://github.com/TheochemUI/eOn>`__, client/potentials/Morse), BSD-3-Clause licensed, copyright the eOn Development Team.
 
-This file defines the ``:ref:`MorsePot <doxid-classrgpot_1_1_morse_pot>``` class, which implements the pairwise Morse potential with a shifted cutoff. The kernel is ported from eOn (`https://github.com/TheochemUI/eOn <https://github.com/TheochemUI/eOn>`__, client/potentials/Morse), BSD-3-Clause licensed, copyright the eOn Development Team; the original attribution names A. Pedersen or G. Henkelman, revised by Jean Claude C. Berthet (2010, University of Iceland).
+This file defines the ``:ref:`MorsePot <doxid-classrgpot_1_1_morse_pot>``` class, which implements the pairwise Morse potential with a shifted cutoff. The kernel is ported from eOn (`https://github.com/TheochemUI/eOn <https://github.com/TheochemUI/eOn>`__, client/potentials/Morse), BSD-3-Clause licensed, copyright the eOn Development Team; the original attribution names A. Pedersen or G. Henkelman, revised by J.-C. C. Berthet (2010, University of Iceland).
 
 Used by :ref:`NWChemPot <doxid-classrgpot_1_1_n_w_chem_pot>` to resolve libnwchemc at runtime without a build-time link dependency on NWChem.
 
 User path: Cap'n Proto ``PotentialConfig`` / ``NWChemParams`` only. The frontend serializes that message and passes it through C ABI symbols resolved by dlopen.
+
+With :math:`t = (r - r_\mathrm{on}) / (r_c - r_\mathrm{on})` clamped to :math:`[0, 1]`,
+
+.. math::
+
+	S(t) = 1 - 10 t^3 + 15 t^4 - 6 t^5,\qquad
+	S'(t) = -30 t^2 (1 - t)^2 .
+
+The coefficients are the unique quintic with :math:`S(0) = 1`, :math:`S'(0) = S''(0) = 0` and :math:`S(1) = S'(1) = S''(1) = 0`, so :math:`V(r) S(t(r))` and its first two derivatives are continuous at :math:`r_\mathrm{on}` and vanish at :math:`r_c` for any smooth :math:`V`. scripts/validation/pair_kernels.py derives them and checks the C^2 conditions symbolically; scripts/validation/quintic_switch.sollya bounds the binary64 evaluation error of the Horner forms used here.
+
+The clamp is a min/max pair, so evaluation carries no branch: below :math:`r_\mathrm{on}` it returns :math:`S = 1`, :math:`dS/dr = 0` exactly.
 
 Potentials fingerprint their configuration into ``:ref:`PotentialBase::paramsKey() <doxid-classrgpot_1_1_potential_base_1af6ed01a80dc945fcc1f8a0735aa36621>``` so cached results never cross parameter sets. Hash field by field — never memcpy a struct (padding bytes).
 

@@ -2,8 +2,8 @@
 <html lang="en" data-accent-color="teal" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>class rgpot::nlist::PairListCache - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="namespace rgpot::types" href="namespace_rgpot_types.html" /><link rel="prev" title="struct rgpot::nlist::CachedPairList::Options" href="struct_rgpot_nlist_CachedPairList_Options.html" />
-      <link rel="canonical" href="https://rgpot.rgoswami.me/api/class_rgpot_nlist_PairListCache.html" /><script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>struct rgpot_mpi_group_t - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="class AtomMatrix" href="class_AtomMatrix.html" /><link rel="prev" title="struct rgpot_mpi_api_t" href="struct_rgpot_mpi_api_t.html" />
+      <link rel="canonical" href="https://rgpot.rgoswami.me/api/struct_rgpot_mpi_group_t.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
   </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
@@ -22,8 +22,8 @@
 }
 </style>
     <meta property="og:type" content="website"/>
-  <meta property="og:url" content="https://rgpot.rgoswami.me/api/class_rgpot_nlist_PairListCache.html"/>
-  <meta property="og:title" content="class rgpot::nlist::PairListCache"/>
+  <meta property="og:url" content="https://rgpot.rgoswami.me/api/struct_rgpot_mpi_group_t.html"/>
+  <meta property="og:title" content="struct rgpot_mpi_group_t"/>
     <meta name="twitter:card" content="summary"/>
   <!-- Manual favicon handling with favicon.io -->
 <!-- since sphinx-favicon doesn't work with shibuya -->
@@ -135,13 +135,13 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3 current"><a class="reference internal" href="namespace_rgpot-2.html">namespace rgpot</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-2.html">namespace rgpot</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_abi.html">namespace rgpot::abi</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_aoti_execstack.html">namespace rgpot::aoti_execstack</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_details.html">namespace rgpot::details</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_fortranpots.html">namespace rgpot::fortranpots</a></li>
-<li class="toctree-l4 current"><a class="reference internal" href="namespace_rgpot_nlist.html">namespace rgpot::nlist</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_nlist.html">namespace rgpot::nlist</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_types.html">namespace rgpot::types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_units.html">namespace rgpot::units</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_vesin_compat.html">namespace rgpot::vesin_compat</a></li>
@@ -162,6 +162,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_MorseConfig.html">struct rgpot::MorseConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_PotCaps.html">struct rgpot::PotCaps</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_QuinticSwitch.html">struct rgpot::QuinticSwitch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_SkalaConfig.html">struct rgpot::SkalaConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_UmaConfig.html">struct rgpot::UmaConfig</a></li>
@@ -286,6 +287,9 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_water_h_capi.html">namespace rgpot_water_h_capi</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_workspace.html">namespace rgpot_workspace</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_std.html">namespace std</a><ul class="simple">
 </ul>
 </li>
@@ -346,6 +350,12 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="struct_eindir_objective_t.html">struct eindir_objective_t</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_mpi_api_t.html">struct rgpot_mpi_api_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">struct rgpot_mpi_group_t</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
 </ul>
 </li>
@@ -369,6 +379,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/version.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">version</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
@@ -405,14 +416,7 @@ data-aria-dark="Switch to auto color mode">
     <button class="rside-close js-menu xl:hidden" aria-label="Close Table of Contents" type="button" aria-controls="rside" aria-expanded="false">
       <i class="i-lucide close"></i>
     </button>
-    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
-<li><a class="reference internal" href="#overview">Overview</a></li>
-<li><a class="reference internal" href="#detailed-documentation">Detailed Documentation</a><ul>
-<li><a class="reference internal" href="#methods">Methods</a></li>
-</ul>
-</li>
-</ul>
-</div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/OmniPotentRPC/rgpot"
+    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/OmniPotentRPC/rgpot"
   data-type="github" data-user="OmniPotentRPC" data-repo="rgpot">
   <span class="w-8 flex items-center justify-around shrink-0 text-3xl">
     <iconify-icon icon="simple-icons:github"></iconify-icon>
@@ -434,7 +438,7 @@ data-aria-dark="Switch to auto color mode">
     </span>
   </span>
 </a><div class="edit-this-page">
-  <a href="https://github.com/OmniPotentRPC/rgpot/blob/main/docs/source/api/class_rgpot_nlist_PairListCache.rst">Edit this page</a>
+  <a href="https://github.com/OmniPotentRPC/rgpot/blob/main/docs/source/api/struct_rgpot_mpi_group_t.rst">Edit this page</a>
 </div></div>
   </aside>
   <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
@@ -459,16 +463,8 @@ data-aria-dark="Switch to auto color mode">
         <span>/</span>
         <meta itemprop="position" content="3" />
       </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-        <a itemprop="item" href="namespace_rgpot-2.html"><span itemprop="name">namespace rgpot</span></a>
-        <span>/</span>
+        <strong itemprop="name">struct rgpot_mpi_group_t</strong>
         <meta itemprop="position" content="4" />
-      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-        <a itemprop="item" href="namespace_rgpot_nlist.html"><span itemprop="name">namespace rgpot::nlist</span></a>
-        <span>/</span>
-        <meta itemprop="position" content="5" />
-      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-        <strong itemprop="name">class rgpot::nlist::PairListCache</strong>
-        <meta itemprop="position" content="6" />
       </li></ol>
     <div class="xl:hidden ml-1">
       <button class="js-menu" aria-label="Show table of contents" type="button" aria-controls="rside"
@@ -484,7 +480,7 @@ data-aria-dark="Switch to auto color mode">
     <button
       type="button"
       class="js-copy px-3 py-1 inline-flex items-center gap-1"
-      data-url="https://rgpot.rgoswami.me/_sources/api/class_rgpot_nlist_PairListCache.rst.txt"
+      data-url="https://rgpot.rgoswami.me/_sources/api/struct_rgpot_mpi_group_t.rst.txt"
     >
       <i class="i-lucide" data-icon="copy"></i>
       <span>Copy page</span>
@@ -498,60 +494,37 @@ data-aria-dark="Switch to auto color mode">
     <div role="presentation">
       <div class="flex flex-col" role="group">
         <button class="js-copy" type="button" role="menuitem"
-          data-url="https://rgpot.rgoswami.me/_sources/api/class_rgpot_nlist_PairListCache.rst.txt">
+          data-url="https://rgpot.rgoswami.me/_sources/api/struct_rgpot_mpi_group_t.rst.txt">
           <span class="iconify-icon">
             <i class="i-lucide" data-icon="copy"></i>
           </span>
           <span>Copy page</span>
         </button>
-        <a role="menuitem" href="https://rgpot.rgoswami.me/_sources/api/class_rgpot_nlist_PairListCache.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
-            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20https%3A//rgpot.rgoswami.me/_sources/api/class_rgpot_nlist_PairListCache.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        <a role="menuitem" href="https://rgpot.rgoswami.me/_sources/api/struct_rgpot_mpi_group_t.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
+            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20https%3A//rgpot.rgoswami.me/_sources/api/struct_rgpot_mpi_group_t.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:openai"></iconify-icon>
           <span>Open in ChatGPT</span>
-        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20https%3A//rgpot.rgoswami.me/_sources/api/class_rgpot_nlist_PairListCache.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20https%3A//rgpot.rgoswami.me/_sources/api/struct_rgpot_mpi_group_t.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:claude"></iconify-icon>
           <span>Open in Claude</span>
         </a></div>
     </div>
   </div>
 </div><article class="yue dark-code" role="main">
-          <section id="class-rgpot-nlist-pairlistcache">
-<span id="doxid-classrgpot-1-1nlist-1-1-pair-list-cache"></span><span id="index-0"></span><h1>class rgpot::nlist::PairListCache<a class="headerlink" href="#class-rgpot-nlist-pairlistcache" title="Link to this heading">¶</a></h1>
+          <section id="struct-rgpot-mpi-group-t">
+<span id="doxid-structrgpot-mpi-group-t"></span><span id="index-0"></span><h1>struct rgpot_mpi_group_t<a class="headerlink" href="#struct-rgpot-mpi-group-t" title="Link to this heading">¶</a></h1>
 <div class="toctree-wrapper compound">
 </div>
-<section id="overview">
-<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
-<p>Process-wide pool of <a class="reference internal" href="class_rgpot_nlist_CachedPairList.html#doxid-classrgpot-1-1nlist-1-1-cached-pair-list"><span class="std std-ref">CachedPairList</span></a> slots, matched by geometry proximity; safe for shared potential instances evaluated from short-lived worker threads. <a class="reference internal" href="#details-classrgpot-1-1nlist-1-1-pair-list-cache"><span class="std std-ref">More…</span></a></p>
 <div class="doxyrest-overview-code-block highlight">
-<pre><span data-line="1"><span class="cp">#include</span> <span class="cpf">&lt;PairListCache.hpp&gt;</span></span>
-<span data-line="2"> </span>
-<span data-line="3"><span class="k">class</span> <span class="n">PairListCache</span> <span class="p">{</span></span>
-<span data-line="4"><span class="k">public</span><span class="o">:</span></span>
-<span data-line="5">    <span class="c1">// fields</span></span>
-<span data-line="6"> </span>
-<span data-line="7">    <span class="k">static</span> <span class="n">std</span><span class="o">::</span><span class="kt">size_t</span> <span class="doxyrest-code-target target" id="doxid-classrgpot_1_1nlist_1_1_pair_list_cache_1a499f83cd9a5a9d161dbb4948cd1a546f"></span><span class="n">kMaxSlots</span> <span class="o">=</span> <span class="mi">8</span><span class="p">;</span></span>
-<span data-line="8"> </span>
-<span data-line="9">    <span class="c1">// methods</span></span>
-<span data-line="10"> </span>
-<span data-line="11">    <span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="n">Fn</span><span class="o">&gt;</span></span>
-<span data-line="12">    <span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1nlist-1-1-pair-list-cache-1ac0d9fac543a88095bcb8cade5b3afe27"><span class="std std-ref">evaluate</span></a><span class="p">(</span><span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">R</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">box</span><span class="p">,</span> <span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_CachedPairList_Options.html#doxid-structrgpot-1-1nlist-1-1-cached-pair-list-1-1-options"><span class="std std-ref">CachedPairList::Options</span></a><span class="o">&amp;</span> <span class="n">opt</span><span class="p">,</span> <span class="n">Fn</span><span class="o">&amp;&amp;</span> <span class="n">fn</span><span class="p">);</span></span>
-<span data-line="13"> </span>
-<span data-line="14">    <span class="k">static</span> <span class="n">PairListCache</span><span class="o">&amp;</span> <span class="doxyrest-code-target target" id="doxid-classrgpot_1_1nlist_1_1_pair_list_cache_1a0d61a818e4fe37a295ce212ca7319ad5"></span><span class="n">global</span><span class="p">();</span></span>
-<span data-line="15"><span class="p">};</span></span>
+<pre><span data-line="1"><span class="k">struct</span> <span class="n">rgpot_mpi_group_t</span> <span class="p">{</span></span>
+<span data-line="2">    <span class="c1">// fields</span></span>
+<span data-line="3"> </span>
+<span data-line="4">    <span class="kt">int</span> <span class="doxyrest-code-target target" id="doxid-structrgpot__mpi__group__t_1a17622bd51e782fca106209997be6efc0"></span><span class="n">index</span><span class="p">;</span></span>
+<span data-line="5">    <span class="kt">int</span> <span class="doxyrest-code-target target" id="doxid-structrgpot__mpi__group__t_1a8eb444feb4bab4d3971ef2ebcc73cade"></span><span class="n">ranks</span><span class="p">;</span></span>
+<span data-line="6">    <span class="kt">int</span> <span class="doxyrest-code-target target" id="doxid-structrgpot__mpi__group__t_1a3ce9dd4fc44439507ee75ba09b76a9e2"></span><span class="n">rank_in_group</span><span class="p">;</span></span>
+<span data-line="7">    <span class="kt">int</span> <span class="doxyrest-code-target target" id="doxid-structrgpot__mpi__group__t_1ac0bfb5c27fa0dbf7382f33bf7546f692"></span><span class="n">world_size</span><span class="p">;</span></span>
+<span data-line="8"><span class="p">};</span></span>
 </pre></div>
-</section>
-<section id="detailed-documentation">
-<span id="details-classrgpot-1-1nlist-1-1-pair-list-cache"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
-<p>Process-wide pool of <a class="reference internal" href="class_rgpot_nlist_CachedPairList.html#doxid-classrgpot-1-1nlist-1-1-cached-pair-list"><span class="std std-ref">CachedPairList</span></a> slots, matched by geometry proximity; safe for shared potential instances evaluated from short-lived worker threads.</p>
-<section id="methods">
-<h3>Methods<a class="headerlink" href="#methods" title="Link to this heading">¶</a></h3>
-<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1nlist-1-1-pair-list-cache-1ac0d9fac543a88095bcb8cade5b3afe27">
-<span id="index-1"></span><pre><span data-line="1"><span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="n">Fn</span><span class="o">&gt;</span></span>
-<span data-line="2"><span class="kt">void</span> <span class="n">evaluate</span><span class="p">(</span><span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">R</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">box</span><span class="p">,</span> <span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_CachedPairList_Options.html#doxid-structrgpot-1-1nlist-1-1-cached-pair-list-1-1-options"><span class="std std-ref">CachedPairList::Options</span></a><span class="o">&amp;</span> <span class="n">opt</span><span class="p">,</span> <span class="n">Fn</span><span class="o">&amp;&amp;</span> <span class="n">fn</span><span class="p">)</span></span>
-</pre></div>
-<p>Single-pass evaluation with lazy list capture (see file header).</p>
-</section>
-</section>
 </section>
 
         </article><button class="back-to-top" type="button">
@@ -560,16 +533,16 @@ data-aria-dark="Switch to auto color mode">
   </svg>
   <span>Back to top</span>
 </button><div class="navigation flex print:hidden"><div class="navigation-prev">
-    <a href="struct_rgpot_nlist_CachedPairList_Options.html">
+    <a href="struct_rgpot_mpi_api_t.html">
       <i class="i-lucide chevron-left"></i>
       <div class="page-info">
-        <span>Previous</span><div class="title">struct rgpot::nlist::CachedPairList::Options</div></div>
+        <span>Previous</span><div class="title">struct rgpot_mpi_api_t</div></div>
     </a>
   </div><div class="navigation-next">
-    <a href="namespace_rgpot_types.html">
+    <a href="class_AtomMatrix.html">
       <div class="page-info">
         <span>Next</span>
-        <div class="title">namespace rgpot::types</div>
+        <div class="title">class AtomMatrix</div>
       </div>
       <i class="i-lucide chevron-right"></i>
     </a>

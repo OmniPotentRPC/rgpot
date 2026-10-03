@@ -1,0 +1,32 @@
+.. index:: pair: class; rgpot::fortranpots::FortranWorkspace
+.. _doxid-classrgpot_1_1fortranpots_1_1_fortran_workspace:
+
+class rgpot::fortranpots::FortranWorkspace
+==========================================
+
+.. toctree::
+	:hidden:
+
+Owner of one Fortran workspace handle. Copies get a workspace of their own, so a cloned potential never shares a neighbour table.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <FortranPots.hpp>
+	
+	class FortranWorkspace {
+	public:
+		// construction
+	
+		:target:`FortranWorkspace<doxid-classrgpot_1_1fortranpots_1_1_fortran_workspace_1a59bc2916b7e4304cd3484292b4c104ab>`();
+		:target:`FortranWorkspace<doxid-classrgpot_1_1fortranpots_1_1_fortran_workspace_1a1f4cb8743452df1bad590ffc3a2350b6>`(const FortranWorkspace&);
+		:target:`FortranWorkspace<doxid-classrgpot_1_1fortranpots_1_1_fortran_workspace_1ac1dae30c044c0ab385d38a6580882913>`(FortranWorkspace&&);
+		:target:`~FortranWorkspace<doxid-classrgpot_1_1fortranpots_1_1_fortran_workspace_1a7116d7160846bc2ecc87a028884b02a8>`();
+
+		// methods
+	
+		FortranWorkspace& :target:`operator=<doxid-classrgpot_1_1fortranpots_1_1_fortran_workspace_1a6c1876736af7c46a4a0786dad5c44e54>`(const FortranWorkspace&);
+		FortranWorkspace& :target:`operator=<doxid-classrgpot_1_1fortranpots_1_1_fortran_workspace_1afd0beec1219cccbb1a7ccf33a631a701>`(FortranWorkspace&&);
+		void* :target:`get<doxid-classrgpot_1_1fortranpots_1_1_fortran_workspace_1a51c25b975e47e666160088b4353760c8>`() const;
+	};

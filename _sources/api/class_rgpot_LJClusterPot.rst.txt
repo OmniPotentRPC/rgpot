@@ -39,7 +39,7 @@ Detailed Documentation
 
 Shifted 12-6 Lennard-Jones for isolated clusters.
 
-Every pair within the cutoff contributes, with vectors taken straight from the coordinates: ``opt.periodic`` is off in all three directions, so the pair scan never folds a separation into the cell. A degenerate input cell (any non-positive diagonal entry) is replaced by a 1e6 Angstrom cube, which keeps the pair list cacheable for callers that hand over a cluster without a box.
+Every pair within the cutoff contributes, with vectors taken straight from the coordinates: ``opt.periodic`` is off in all three directions, so the pair scan never folds a separation into the cell. A degenerate input cell (any non-positive diagonal entry) is replaced by a 1e6 Angstrom cube, which keeps the pair list cacheable for callers that hand over a cluster without a box. ``:ref:`LJClusterConfig::switch_width <doxid-structrgpot_1_1_l_j_cluster_config_1acd174d49619623ee7992be017a8cb055>``` selects the C^2 quintic switch as for :ref:`LJPot <doxid-classrgpot_1_1_l_j_pot>`.
 
 Same pair kernel as ``:ref:`LJPot <doxid-classrgpot_1_1_l_j_pot>``` with the minimum image convention switched off, so an input cell never folds pair vectors.
 

@@ -22,6 +22,7 @@ C entry point for the embedded-atom aluminium potential. :ref:`More...<details-n
 	// global functions
 
 	integer(c_int) function, public :ref:`rgpot_eam_al_force<doxid-namespacergpot__eam__al__capi_1a6b9112989a9116c2f5b71599ad7c9704>`(integer(c_int), intent(in), value natoms, real(c_double), dimension(3, natoms), intent(in) positions, real(c_double), dimension(3, 3), intent(in) cell, real(c_double), dimension(3, natoms), intent(out) forces, real(c_double), intent(out) energy);
+	integer(c_int) function, public :ref:`rgpot_eam_al_force_ws<doxid-namespacergpot__eam__al__capi_1a2e7fea25ce5cfd9cce3ba74103170186>`(type(c_ptr), value handle, integer(c_int), intent(in), value natoms, real(c_double), dimension(3, natoms), intent(in) positions, real(c_double), dimension(3, 3), intent(in) cell, real(c_double), dimension(3, natoms), intent(out) forces, real(c_double), intent(out) energy);
 
 	} // namespace rgpot_eam_al_capi
 .. _details-namespacergpot__eam__al__capi:
@@ -31,7 +32,7 @@ Detailed Documentation
 
 C entry point for the embedded-atom aluminium potential.
 
-Only ``bind(c)`` names leave this library; the physics module exports no external symbols of its own that C could collide with. The neighbour table lives here, saved across calls so vesin reuses its buffers and tracks list staleness itself, in place of a hand-rolled skin radius.
+Only ``bind(c)`` names leave this library; the physics module exports no external symbols of its own that C could collide with. The ``_ws`` entry point keeps the neighbour table in the caller's workspace (:ref:`rgpot_workspace <doxid-namespacergpot__workspace>`), where vesin reuses its buffers and tracks list staleness for that caller's geometry; the entry point without a handle shares one module-level workspace and is process-serial.
 
 Global Functions
 ----------------
@@ -47,4 +48,16 @@ Global Functions
 Evaluate embedded-atom aluminium forces and energy.
 
 ``positions`` and ``forces`` are ``3 * natoms`` doubles, x/y/z interleaved; ``cell`` is nine doubles, row-major, one cell vector per row. Energies are eV and forces eV/Angstrom. Returns zero on success, non-zero on failure with the message available through ``rgpot_fortran_last_error``.
+
+.. index:: pair: function; rgpot_eam_al_force_ws
+.. _doxid-namespacergpot__eam__al__capi_1a2e7fea25ce5cfd9cce3ba74103170186:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	integer(c_int) function, public rgpot_eam_al_force_ws(type(c_ptr), value handle, integer(c_int), intent(in), value natoms, real(c_double), dimension(3, natoms), intent(in) positions, real(c_double), dimension(3, 3), intent(in) cell, real(c_double), dimension(3, natoms), intent(out) forces, real(c_double), intent(out) energy)
+
+Evaluate embedded-atom aluminium forces and energy in a per-caller workspace.
+
+``positions`` and ``forces`` are ``3 * natoms`` doubles, x/y/z interleaved; ``cell`` is nine doubles, row-major, one cell vector per row. Energies are eV and forces eV/Angstrom. Returns zero on success, non-zero on failure with the message available through ``rgpot_fortran_workspace_error``. ``handle`` is a workspace from ``rgpot_fortran_workspace_new``; a NULL handle returns -1.
 

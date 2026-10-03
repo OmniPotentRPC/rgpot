@@ -162,6 +162,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_MorseConfig.html">struct rgpot::MorseConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_PotCaps.html">struct rgpot::PotCaps</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_QuinticSwitch.html">struct rgpot::QuinticSwitch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_SkalaConfig.html">struct rgpot::SkalaConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_UmaConfig.html">struct rgpot::UmaConfig</a></li>
@@ -286,6 +287,9 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_water_h_capi.html">namespace rgpot_water_h_capi</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_workspace.html">namespace rgpot_workspace</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_std.html">namespace std</a><ul class="simple">
 </ul>
 </li>
@@ -346,6 +350,12 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="struct_eindir_objective_t.html">struct eindir_objective_t</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_mpi_api_t.html">struct rgpot_mpi_api_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_mpi_group_t.html">struct rgpot_mpi_group_t</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
 </ul>
 </li>
@@ -369,6 +379,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/version.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">version</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
@@ -566,11 +577,11 @@ data-aria-dark="Switch to auto color mode">
 <div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-c-p-m-d-pot-1a7ce83b3efda939edaecd8c9691d52ba9">
 <span id="index-2"></span><pre><span data-line="1"><span class="kt">void</span> <span class="n">forceImpl</span><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceInput.html#doxid-structrgpot-1-1-force-input"><span class="std std-ref">ForceInput</span></a><span class="o">&amp;</span> <span class="n">in</span><span class="p">,</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_ForceOut.html#doxid-structrgpot-1-1-force-out"><span class="std std-ref">ForceOut</span></a><span class="o">*</span> <span class="n">out</span><span class="p">)</span> <span class="k">const</span></span>
 </pre></div>
-<p>When a calculator group is bound and calculatorWorldSize() is greater than 1, every rank enters this call. The call fills <a class="reference internal" href="struct_rgpot_ForceOut.html#doxid-structrgpot-1-1-force-out"><span class="std std-ref">ForceOut</span></a> on the rank that calls it. A failure is printed on every rank in the call, then MPI_Abort runs on MPI_COMM_WORLD, and then the exception leaves the call.</p>
+<p>Every rank of the calling calculator enters this call together; other calculators need not (a host may give them no system in a batch). The call fills <a class="reference internal" href="struct_rgpot_ForceOut.html#doxid-structrgpot-1-1-force-out"><span class="std std-ref">ForceOut</span></a> on the rank that calls it. A failure is printed on every rank of the calculator, then MPI_Abort runs on MPI_COMM_WORLD, and then the exception leaves the call.</p>
 <div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-c-p-m-d-pot-1a52e734d25d7da5f6660d904e0140b60f">
 <span id="index-3"></span><pre><span data-line="1"><span class="k">virtual</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_PotCaps.html#doxid-structrgpot-1-1-pot-caps"><span class="std std-ref">PotCaps</span></a> <span class="n">caps</span><span class="p">()</span> <span class="k">const</span></span>
 </pre></div>
-<p>The dlopen’d engine keeps global session state: serialize process-wide.</p>
+<p>The dlopen’d engine keeps global session state: serialize process-wide. Every rank of a calculator enters forceImpl together: the engine’s SCF and the error exchange are collectives on the calculator’s communicator.</p>
 <div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-c-p-m-d-pot-1a43fabf217aef4c3b44447e27f13ea26c">
 <span id="index-4"></span><pre><span data-line="1"><span class="k">virtual</span> <span class="kt">uint64_t</span> <span class="n">paramsKey</span><span class="p">()</span> <span class="k">const</span></span>
 </pre></div>

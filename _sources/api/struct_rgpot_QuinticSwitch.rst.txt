@@ -1,0 +1,79 @@
+.. index:: pair: struct; rgpot::QuinticSwitch
+.. _doxid-structrgpot_1_1_quintic_switch:
+
+struct rgpot::QuinticSwitch
+===========================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_QuinticSwitch_Value.rst
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct QuinticSwitch {
+		// structs
+	
+		struct :ref:`Value<doxid-structrgpot_1_1_quintic_switch_1_1_value>`;
+
+		// fields
+	
+		double :ref:`r_on<doxid-structrgpot_1_1_quintic_switch_1a2a70048e08b741573781f81e5dc27985>` {0.0};
+		double :ref:`inv_width<doxid-structrgpot_1_1_quintic_switch_1a1898bce40bc2e94685a580018845964c>` {0.0};
+
+		// methods
+	
+		static QuinticSwitch :ref:`endingAt<doxid-structrgpot_1_1_quintic_switch_1af9e4bbe5884ccb80b19f5282642e08b5>`(double cutoff, double width);
+		:ref:`Value<doxid-structrgpot_1_1_quintic_switch_1_1_value>` :target:`operator()<doxid-structrgpot_1_1_quintic_switch_1ae209a316c6e098955de99a8f633303f3>`(double r) const;
+	};
+.. _details-structrgpot_1_1_quintic_switch:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Fields
+------
+
+.. index:: pair: variable; r_on
+.. _doxid-structrgpot_1_1_quintic_switch_1a2a70048e08b741573781f81e5dc27985:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double r_on {0.0}
+
+Where the switch starts (Angstrom).
+
+.. index:: pair: variable; inv_width
+.. _doxid-structrgpot_1_1_quintic_switch_1a1898bce40bc2e94685a580018845964c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double inv_width {0.0}
+
+1 / (cutoff - r_on).
+
+Methods
+-------
+
+.. index:: pair: function; endingAt
+.. _doxid-structrgpot_1_1_quintic_switch_1af9e4bbe5884ccb80b19f5282642e08b5:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static QuinticSwitch endingAt(double cutoff, double width)
+
+Switch over the last ``width`` Angstrom below ``cutoff``. Throws std::invalid_argument unless 0 < width <= cutoff.
+

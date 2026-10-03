@@ -1,0 +1,72 @@
+===============
+``mod version``
+===============
+
+
+.. rust:module:: rgpot_core::version
+   :index: 0
+   :vis: pub
+
+   Version of the loaded library, for callers to check against the header
+   they compiled with.
+   
+   ``rgpot.h`` stamps ``RGPOT_VERSION`` and ``RGPOT_VERSION_MAJOR`` / ``_MINOR`` /
+   ``_PATCH`` at generation time; these functions report the same numbers
+   from the shared object actually loaded. The C ABI follows semver: a
+   caller built against major M runs on any library of major M whose minor
+   is at least the header's.
+   
+   .. code-block:: c
+
+      if (rgpot_version_major() != RGPOT_VERSION_MAJOR ||
+          rgpot_version_minor() < RGPOT_VERSION_MINOR) {
+        fprintf(stderr, "rgpot %s loaded, built against %s\n",
+                rgpot_version(), RGPOT_VERSION);
+        abort();
+      }
+
+
+   .. rust:use:: rgpot_core::version
+      :used_name: self
+
+
+   .. rust:use:: rgpot_core
+      :used_name: crate
+
+
+   .. rust:use:: std::os::raw::c_char
+      :used_name: c_char
+
+
+   .. rubric:: Functions
+
+
+   .. rust:function:: rgpot_core::version::rgpot_version
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_version"},{"type":"punctuation","value":"("},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"operator","value":"*"},{"type":"keyword","value":"const"},{"type":"space"},{"type":"link","value":"c_char","target":"c_char"}]
+
+      Full version string of the loaded library, e.g. ``"3.4.0"``.
+      
+      The pointer refers to static storage: never free it.
+
+   .. rust:function:: rgpot_core::version::rgpot_version_major
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_version_major"},{"type":"punctuation","value":"("},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"u32","target":"u32"}]
+
+      Major version of the loaded library.
+
+   .. rust:function:: rgpot_core::version::rgpot_version_minor
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_version_minor"},{"type":"punctuation","value":"("},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"u32","target":"u32"}]
+
+      Minor version of the loaded library.
+
+   .. rust:function:: rgpot_core::version::rgpot_version_patch
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_version_patch"},{"type":"punctuation","value":"("},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"u32","target":"u32"}]
+
+      Patch version of the loaded library.

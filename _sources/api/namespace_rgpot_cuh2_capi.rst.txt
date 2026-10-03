@@ -22,6 +22,7 @@ C entry point for the CuH2 embedded-atom potential. :ref:`More...<details-namesp
 	// global functions
 
 	integer(c_int) function, public :ref:`rgpot_cuh2_force<doxid-namespacergpot__cuh2__capi_1a7d2021b2b80a60761fa3dc5e1c33c631>`(integer(c_int), intent(in), value natoms, real(c_double), dimension(3, natoms), intent(in) positions, integer(c_int), dimension(natoms), intent(in) atomic_numbers, real(c_double), dimension(3, 3), intent(in) cell, real(c_double), dimension(3, natoms), intent(out) forces, real(c_double), intent(out) energy);
+	integer(c_int) function, public :ref:`rgpot_cuh2_force_ws<doxid-namespacergpot__cuh2__capi_1a713059faa85dc363ed248bcf0734476b>`(type(c_ptr), value handle, integer(c_int), intent(in), value natoms, real(c_double), dimension(3, natoms), intent(in) positions, integer(c_int), dimension(natoms), intent(in) atomic_numbers, real(c_double), dimension(3, 3), intent(in) cell, real(c_double), dimension(3, natoms), intent(out) forces, real(c_double), intent(out) energy);
 
 	} // namespace rgpot_cuh2_capi
 .. _details-namespacergpot__cuh2__capi:
@@ -31,7 +32,7 @@ Detailed Documentation
 
 C entry point for the CuH2 embedded-atom potential.
 
-Only ``bind(c)`` names leave this library; the physics module exports no external symbols of its own that C could collide with. The neighbour table lives here, saved across calls so vesin reuses its buffers.
+Only ``bind(c)`` names leave this library; the physics module exports no external symbols of its own that C could collide with. The ``_ws`` entry point keeps the neighbour table in the caller's workspace (:ref:`rgpot_workspace <doxid-namespacergpot__workspace>`), so each caller's vesin table follows its own geometry; the entry point without a handle shares one module-level workspace and is process-serial.
 
 Global Functions
 ----------------
@@ -47,4 +48,16 @@ Global Functions
 Evaluate CuH2 forces and energy.
 
 ``positions`` and ``forces`` are ``3 * natoms`` doubles, x/y/z interleaved; ``atomic_numbers`` holds one atomic number per atom, 29 for Cu and 1 for H, in any order; ``cell`` is nine doubles, row-major, one cell vector per row. Returns zero on success, non-zero on failure with the message available through ``rgpot_fortran_last_error``.
+
+.. index:: pair: function; rgpot_cuh2_force_ws
+.. _doxid-namespacergpot__cuh2__capi_1a713059faa85dc363ed248bcf0734476b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	integer(c_int) function, public rgpot_cuh2_force_ws(type(c_ptr), value handle, integer(c_int), intent(in), value natoms, real(c_double), dimension(3, natoms), intent(in) positions, integer(c_int), dimension(natoms), intent(in) atomic_numbers, real(c_double), dimension(3, 3), intent(in) cell, real(c_double), dimension(3, natoms), intent(out) forces, real(c_double), intent(out) energy)
+
+Evaluate CuH2 forces and energy in a per-caller workspace.
+
+``positions`` and ``forces`` are ``3 * natoms`` doubles, x/y/z interleaved; ``atomic_numbers`` holds one atomic number per atom, 29 for Cu and 1 for H, in any order; ``cell`` is nine doubles, row-major, one cell vector per row. Returns zero on success, non-zero on failure with the message available through ``rgpot_fortran_workspace_error``. ``handle`` is a workspace from ``rgpot_fortran_workspace_new``; a NULL handle returns -1.
 

@@ -162,6 +162,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_MorseConfig.html">struct rgpot::MorseConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_PotCaps.html">struct rgpot::PotCaps</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_QuinticSwitch.html">struct rgpot::QuinticSwitch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_SkalaConfig.html">struct rgpot::SkalaConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_UmaConfig.html">struct rgpot::UmaConfig</a></li>
@@ -286,6 +287,9 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_water_h_capi.html">namespace rgpot_water_h_capi</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_workspace.html">namespace rgpot_workspace</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_std.html">namespace std</a><ul class="simple">
 </ul>
 </li>
@@ -346,6 +350,12 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="struct_eindir_objective_t.html">struct eindir_objective_t</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_mpi_api_t.html">struct rgpot_mpi_api_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_mpi_group_t.html">struct rgpot_mpi_group_t</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
 </ul>
 </li>
@@ -369,6 +379,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/version.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">version</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
@@ -527,7 +538,8 @@ data-aria-dark="Switch to auto color mode">
 <span data-line="6">    <span class="kt">double</span> <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1-l-j-config-1a8d1f80251f78287ad556a5c42844a7af"><span class="std std-ref">u0</span></a> <span class="o">=</span> <span class="mf">1.0</span><span class="p">;</span></span>
 <span data-line="7">    <span class="kt">double</span> <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1-l-j-config-1a25c0700f7ef1103c0f28bdba3229384d"><span class="std std-ref">cutoff</span></a> <span class="o">=</span> <span class="mf">15.0</span><span class="p">;</span></span>
 <span data-line="8">    <span class="kt">double</span> <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1-l-j-config-1a6d1cbb56642a64db5d630e7998ff370d"><span class="std std-ref">psi</span></a> <span class="o">=</span> <span class="mf">1.0</span><span class="p">;</span></span>
-<span data-line="9"><span class="p">};</span></span>
+<span data-line="9">    <span class="kt">double</span> <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1-l-j-config-1a967c7adc35528cafea6aabad6541cf9a"><span class="std std-ref">switch_width</span></a> <span class="o">=</span> <span class="mf">0.0</span><span class="p">;</span></span>
+<span data-line="10"><span class="p">};</span></span>
 </pre></div>
 </section>
 <section id="detailed-documentation">
@@ -548,6 +560,10 @@ data-aria-dark="Switch to auto color mode">
 <span id="index-3"></span><pre><span data-line="1"><span class="kt">double</span> <span class="n">psi</span> <span class="o">=</span> <span class="mf">1.0</span></span>
 </pre></div>
 <p>Zero-crossing distance (Angstrom).</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-structrgpot-1-1-l-j-config-1a967c7adc35528cafea6aabad6541cf9a">
+<span id="index-4"></span><pre><span data-line="1"><span class="kt">double</span> <span class="n">switch_width</span> <span class="o">=</span> <span class="mf">0.0</span></span>
+</pre></div>
+<p>Width (Angstrom) of the C^2 quintic switch (<span class="xref std std-ref">PairSwitch.hpp</span>) that takes each pair term to zero over [cutoff - switch_width, cutoff]. 0 keeps the shifted truncation, whose force jumps at the cutoff.</p>
 </section>
 </section>
 </section>

@@ -25,6 +25,7 @@ Parameters for the shifted Morse potential. :ref:`More...<details-structrgpot_1_
 		double :ref:`a<doxid-structrgpot_1_1_morse_config_1ab482b9faf3f187c1d1cc0487ae5992d5>` = 1.6047;
 		double :ref:`re<doxid-structrgpot_1_1_morse_config_1a31b7f04e644f1109c6b3512b3290123b>` = 2.8970;
 		double :ref:`cutoff<doxid-structrgpot_1_1_morse_config_1aa0d757dd1900ef5c789a918317b9bfb6>` = 9.5;
+		double :ref:`switch_width<doxid-structrgpot_1_1_morse_config_1a7fe1ac125cf3568298a35231de30561c>` = 0.0;
 	};
 .. _details-structrgpot_1_1_morse_config:
 
@@ -77,4 +78,14 @@ Equilibrium pair distance (Angstrom).
 	double cutoff = 9.5
 
 Truncation distance (Angstrom).
+
+.. index:: pair: variable; switch_width
+.. _doxid-structrgpot_1_1_morse_config_1a7fe1ac125cf3568298a35231de30561c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double switch_width = 0.0
+
+Width (Angstrom) of the C^2 quintic switch (:ref:`PairSwitch.hpp <doxid-_pair_switch_8hpp_source>`) that takes each pair term to zero over [cutoff - switch_width, cutoff]. 0 keeps the shifted truncation, whose force jumps at the cutoff.
 

@@ -1,0 +1,83 @@
+.. index:: pair: namespace; rgpot_workspace
+.. _doxid-namespacergpot__workspace:
+
+namespace rgpot_workspace
+=========================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Per-caller state of the Fortran potentials: one neighbour table and one error message, behind an opaque C pointer. :ref:`More...<details-namespacergpot__workspace>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace rgpot_workspace {
+
+	// global functions
+
+	type(c_ptr) function, public :ref:`rgpot_fortran_workspace_new<doxid-namespacergpot__workspace_1a6eb7193ec785ba17d358bc2f2861911f>`();
+	subroutine, public :ref:`rgpot_fortran_workspace_free<doxid-namespacergpot__workspace_1a5ae830a0a41a44d0a12352662a9f1c1a>`(type(c_ptr), value handle);
+	integer(c_int) function, public :ref:`rgpot_fortran_workspace_error<doxid-namespacergpot__workspace_1ab3d515d85dfeca0b81664b9f8d12f252>`(type(c_ptr), value handle, character(kind=c_char), dimension(*), intent(out) buffer, integer(c_int), intent(in), value buffer_len);
+	type(:ref:`rgpot_workspace_t<doxid-structrgpot__workspace_1_1rgpot__workspace__t>`) function, pointer, public :ref:`workspace_from_c<doxid-namespacergpot__workspace_1afcfd9002b9e03c82705df2613572633b>`(type(c_ptr), intent(in) handle);
+	subroutine, public :target:`ws_set_error<doxid-namespacergpot__workspace_1a08fbe2b7b794e39171b0f4309550eda3>`(type(:ref:`rgpot_workspace_t<doxid-structrgpot__workspace_1_1rgpot__workspace__t>`), intent(inout) ws, character(len=*), intent(in) text);
+	subroutine, public :target:`ws_clear_error<doxid-namespacergpot__workspace_1a6f5baf8f1d3e5f55dfbe4124fb30ea33>`(type(:ref:`rgpot_workspace_t<doxid-structrgpot__workspace_1_1rgpot__workspace__t>`), intent(inout) ws);
+
+	} // namespace rgpot_workspace
+.. _details-namespacergpot__workspace:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Per-caller state of the Fortran potentials: one neighbour table and one error message, behind an opaque C pointer.
+
+Each C++ potential instance owns one workspace, so two instances keep separate vesin tables (their Verlet skins track their own geometries) and can evaluate on separate threads at once. The ``_ws`` entry points of the kernels take a workspace; the older entry points without it share one module-level workspace and stay process-serial.
+
+Global Functions
+----------------
+
+.. index:: pair: function; rgpot_fortran_workspace_new
+.. _doxid-namespacergpot__workspace_1a6eb7193ec785ba17d358bc2f2861911f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	type(c_ptr) function, public rgpot_fortran_workspace_new()
+
+A fresh workspace, or NULL when allocation fails.
+
+.. index:: pair: function; rgpot_fortran_workspace_free
+.. _doxid-namespacergpot__workspace_1a5ae830a0a41a44d0a12352662a9f1c1a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	subroutine, public rgpot_fortran_workspace_free(type(c_ptr), value handle)
+
+Release a workspace from rgpot_fortran_workspace_new. NULL is a no-op.
+
+.. index:: pair: function; rgpot_fortran_workspace_error
+.. _doxid-namespacergpot__workspace_1ab3d515d85dfeca0b81664b9f8d12f252:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	integer(c_int) function, public rgpot_fortran_workspace_error(type(c_ptr), value handle, character(kind=c_char), dimension(*), intent(out) buffer, integer(c_int), intent(in), value buffer_len)
+
+Copy the workspace's last message into ``buffer`` as a NUL-terminated C string; returns the characters written, excluding the terminator.
+
+.. index:: pair: function; workspace_from_c
+.. _doxid-namespacergpot__workspace_1afcfd9002b9e03c82705df2613572633b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	type(:ref:`rgpot_workspace_t<doxid-structrgpot__workspace_1_1rgpot__workspace__t>`) function, pointer, public workspace_from_c(type(c_ptr), intent(in) handle)
+
+The workspace behind a C handle (unassociated for NULL).
+

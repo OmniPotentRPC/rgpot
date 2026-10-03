@@ -81,7 +81,7 @@ Methods
 
 	void forceImpl(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const
 
-When a calculator group is bound and calculatorWorldSize() is greater than 1, every rank enters this call. The call fills :ref:`ForceOut <doxid-structrgpot_1_1_force_out>` on the rank that calls it. A failure is printed on every rank in the call, then MPI_Abort runs on MPI_COMM_WORLD, and then the exception leaves the call.
+Every rank of the calling calculator enters this call together; other calculators need not (a host may give them no system in a batch). The call fills :ref:`ForceOut <doxid-structrgpot_1_1_force_out>` on the rank that calls it. A failure is printed on every rank of the calculator, then MPI_Abort runs on MPI_COMM_WORLD, and then the exception leaves the call.
 
 .. index:: pair: function; caps
 .. _doxid-classrgpot_1_1_c_p_m_d_pot_1a52e734d25d7da5f6660d904e0140b60f:
@@ -91,7 +91,7 @@ When a calculator group is bound and calculatorWorldSize() is greater than 1, ev
 
 	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
 
-The dlopen'd engine keeps global session state: serialize process-wide.
+The dlopen'd engine keeps global session state: serialize process-wide. Every rank of a calculator enters forceImpl together: the engine's SCF and the error exchange are collectives on the calculator's communicator.
 
 .. index:: pair: function; paramsKey
 .. _doxid-classrgpot_1_1_c_p_m_d_pot_1a43fabf217aef4c3b44447e27f13ea26c:

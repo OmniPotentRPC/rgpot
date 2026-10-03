@@ -162,6 +162,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_MorseConfig.html">struct rgpot::MorseConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_PotCaps.html">struct rgpot::PotCaps</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_QuinticSwitch.html">struct rgpot::QuinticSwitch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_SkalaConfig.html">struct rgpot::SkalaConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_UmaConfig.html">struct rgpot::UmaConfig</a></li>
@@ -286,6 +287,9 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_water_h_capi.html">namespace rgpot_water_h_capi</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_workspace.html">namespace rgpot_workspace</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_std.html">namespace std</a><ul class="simple">
 </ul>
 </li>
@@ -346,6 +350,12 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="struct_eindir_objective_t.html">struct eindir_objective_t</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_mpi_api_t.html">struct rgpot_mpi_api_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_mpi_group_t.html">struct rgpot_mpi_group_t</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
 </ul>
 </li>
@@ -369,6 +379,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/version.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">version</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
@@ -517,12 +528,13 @@ data-aria-dark="Switch to auto color mode">
 <span data-line="6"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_fortranpots_EAMAlPot.html#doxid-classrgpot-1-1fortranpots-1-1-e-a-m-al-pot"><span class="std std-ref">EAMAlPot</span></a><span class="p">;</span></span>
 <span data-line="7"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_fortranpots_EDIPPot.html#doxid-classrgpot-1-1fortranpots-1-1-e-d-i-p-pot"><span class="std std-ref">EDIPPot</span></a><span class="p">;</span></span>
 <span data-line="8"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_fortranpots_FeHePot.html#doxid-classrgpot-1-1fortranpots-1-1-fe-he-pot"><span class="std std-ref">FeHePot</span></a><span class="p">;</span></span>
-<span data-line="9"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_fortranpots_LenoskyPot.html#doxid-classrgpot-1-1fortranpots-1-1-lenosky-pot"><span class="std std-ref">LenoskyPot</span></a><span class="p">;</span></span>
-<span data-line="10"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_fortranpots_SWPot.html#doxid-classrgpot-1-1fortranpots-1-1-s-w-pot"><span class="std std-ref">SWPot</span></a><span class="p">;</span></span>
-<span data-line="11"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_fortranpots_TersoffPot.html#doxid-classrgpot-1-1fortranpots-1-1-tersoff-pot"><span class="std std-ref">TersoffPot</span></a><span class="p">;</span></span>
-<span data-line="12"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_fortranpots_WaterHPot.html#doxid-classrgpot-1-1fortranpots-1-1-water-h-pot"><span class="std std-ref">WaterHPot</span></a><span class="p">;</span></span>
-<span data-line="13"> </span>
-<span data-line="14"><span class="p">}</span> <span class="c1">// namespace fortranpots</span></span>
+<span data-line="9"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_fortranpots_FortranWorkspace.html#doxid-classrgpot-1-1fortranpots-1-1-fortran-workspace"><span class="std std-ref">FortranWorkspace</span></a><span class="p">;</span></span>
+<span data-line="10"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_fortranpots_LenoskyPot.html#doxid-classrgpot-1-1fortranpots-1-1-lenosky-pot"><span class="std std-ref">LenoskyPot</span></a><span class="p">;</span></span>
+<span data-line="11"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_fortranpots_SWPot.html#doxid-classrgpot-1-1fortranpots-1-1-s-w-pot"><span class="std std-ref">SWPot</span></a><span class="p">;</span></span>
+<span data-line="12"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_fortranpots_TersoffPot.html#doxid-classrgpot-1-1fortranpots-1-1-tersoff-pot"><span class="std std-ref">TersoffPot</span></a><span class="p">;</span></span>
+<span data-line="13"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_fortranpots_WaterHPot.html#doxid-classrgpot-1-1fortranpots-1-1-water-h-pot"><span class="std std-ref">WaterHPot</span></a><span class="p">;</span></span>
+<span data-line="14"> </span>
+<span data-line="15"><span class="p">}</span> <span class="c1">// namespace fortranpots</span></span>
 </pre></div>
 </section>
 

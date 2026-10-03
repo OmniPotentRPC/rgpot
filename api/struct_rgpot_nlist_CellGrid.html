@@ -2,8 +2,8 @@
 <html lang="en" data-accent-color="teal" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>class rgpot::nlist::CachedPairList - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="struct rgpot::nlist::CachedPairList::Options" href="struct_rgpot_nlist_CachedPairList_Options.html" /><link rel="prev" title="namespace rgpot::nlist" href="namespace_rgpot_nlist.html" />
-      <link rel="canonical" href="https://rgpot.rgoswami.me/api/class_rgpot_nlist_CachedPairList.html" /><script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>struct rgpot::nlist::CellGrid - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="namespace rgpot::types" href="namespace_rgpot_types.html" /><link rel="prev" title="namespace rgpot::nlist" href="namespace_rgpot_nlist.html" />
+      <link rel="canonical" href="https://rgpot.rgoswami.me/api/struct_rgpot_nlist_CellGrid.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
   </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
@@ -22,8 +22,8 @@
 }
 </style>
     <meta property="og:type" content="website"/>
-  <meta property="og:url" content="https://rgpot.rgoswami.me/api/class_rgpot_nlist_CachedPairList.html"/>
-  <meta property="og:title" content="class rgpot::nlist::CachedPairList"/>
+  <meta property="og:url" content="https://rgpot.rgoswami.me/api/struct_rgpot_nlist_CellGrid.html"/>
+  <meta property="og:title" content="struct rgpot::nlist::CellGrid"/>
     <meta name="twitter:card" content="summary"/>
   <!-- Manual favicon handling with favicon.io -->
 <!-- since sphinx-favicon doesn't work with shibuya -->
@@ -162,6 +162,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_MorseConfig.html">struct rgpot::MorseConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_PotCaps.html">struct rgpot::PotCaps</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_QuinticSwitch.html">struct rgpot::QuinticSwitch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_SkalaConfig.html">struct rgpot::SkalaConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_UmaConfig.html">struct rgpot::UmaConfig</a></li>
@@ -286,6 +287,9 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_water_h_capi.html">namespace rgpot_water_h_capi</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_workspace.html">namespace rgpot_workspace</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_std.html">namespace std</a><ul class="simple">
 </ul>
 </li>
@@ -346,6 +350,12 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="struct_eindir_objective_t.html">struct eindir_objective_t</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_mpi_api_t.html">struct rgpot_mpi_api_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_mpi_group_t.html">struct rgpot_mpi_group_t</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
 </ul>
 </li>
@@ -369,6 +379,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/version.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">version</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
@@ -408,6 +419,7 @@ data-aria-dark="Switch to auto color mode">
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
 <li><a class="reference internal" href="#overview">Overview</a></li>
 <li><a class="reference internal" href="#detailed-documentation">Detailed Documentation</a><ul>
+<li><a class="reference internal" href="#fields">Fields</a></li>
 <li><a class="reference internal" href="#methods">Methods</a></li>
 </ul>
 </li>
@@ -434,7 +446,7 @@ data-aria-dark="Switch to auto color mode">
     </span>
   </span>
 </a><div class="edit-this-page">
-  <a href="https://github.com/OmniPotentRPC/rgpot/blob/main/docs/source/api/class_rgpot_nlist_CachedPairList.rst">Edit this page</a>
+  <a href="https://github.com/OmniPotentRPC/rgpot/blob/main/docs/source/api/struct_rgpot_nlist_CellGrid.rst">Edit this page</a>
 </div></div>
   </aside>
   <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
@@ -467,7 +479,7 @@ data-aria-dark="Switch to auto color mode">
         <span>/</span>
         <meta itemprop="position" content="5" />
       </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-        <strong itemprop="name">class rgpot::nlist::CachedPairList</strong>
+        <strong itemprop="name">struct rgpot::nlist::CellGrid</strong>
         <meta itemprop="position" content="6" />
       </li></ol>
     <div class="xl:hidden ml-1">
@@ -484,7 +496,7 @@ data-aria-dark="Switch to auto color mode">
     <button
       type="button"
       class="js-copy px-3 py-1 inline-flex items-center gap-1"
-      data-url="https://rgpot.rgoswami.me/_sources/api/class_rgpot_nlist_CachedPairList.rst.txt"
+      data-url="https://rgpot.rgoswami.me/_sources/api/struct_rgpot_nlist_CellGrid.rst.txt"
     >
       <i class="i-lucide" data-icon="copy"></i>
       <span>Copy page</span>
@@ -498,64 +510,72 @@ data-aria-dark="Switch to auto color mode">
     <div role="presentation">
       <div class="flex flex-col" role="group">
         <button class="js-copy" type="button" role="menuitem"
-          data-url="https://rgpot.rgoswami.me/_sources/api/class_rgpot_nlist_CachedPairList.rst.txt">
+          data-url="https://rgpot.rgoswami.me/_sources/api/struct_rgpot_nlist_CellGrid.rst.txt">
           <span class="iconify-icon">
             <i class="i-lucide" data-icon="copy"></i>
           </span>
           <span>Copy page</span>
         </button>
-        <a role="menuitem" href="https://rgpot.rgoswami.me/_sources/api/class_rgpot_nlist_CachedPairList.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
-            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20https%3A//rgpot.rgoswami.me/_sources/api/class_rgpot_nlist_CachedPairList.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        <a role="menuitem" href="https://rgpot.rgoswami.me/_sources/api/struct_rgpot_nlist_CellGrid.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
+            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20https%3A//rgpot.rgoswami.me/_sources/api/struct_rgpot_nlist_CellGrid.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:openai"></iconify-icon>
           <span>Open in ChatGPT</span>
-        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20https%3A//rgpot.rgoswami.me/_sources/api/class_rgpot_nlist_CachedPairList.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20https%3A//rgpot.rgoswami.me/_sources/api/struct_rgpot_nlist_CellGrid.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:claude"></iconify-icon>
           <span>Open in Claude</span>
         </a></div>
     </div>
   </div>
 </div><article class="yue dark-code" role="main">
-          <section id="class-rgpot-nlist-cachedpairlist">
-<span id="doxid-classrgpot-1-1nlist-1-1-cached-pair-list"></span><span id="index-0"></span><h1>class rgpot::nlist::CachedPairList<a class="headerlink" href="#class-rgpot-nlist-cachedpairlist" title="Link to this heading">¶</a></h1>
+          <section id="struct-rgpot-nlist-cellgrid">
+<span id="doxid-structrgpot-1-1nlist-1-1-cell-grid"></span><span id="index-0"></span><h1>struct rgpot::nlist::CellGrid<a class="headerlink" href="#struct-rgpot-nlist-cellgrid" title="Link to this heading">¶</a></h1>
 <div class="toctree-wrapper compound">
 </div>
 <section id="overview">
 <h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
+<p>Cell decomposition of one configuration: atoms sorted by cell (CSR). <a class="reference internal" href="#details-structrgpot-1-1nlist-1-1-cell-grid"><span class="std std-ref">More…</span></a></p>
 <div class="doxyrest-overview-code-block highlight">
-<pre><span data-line="1"><span class="k">class</span> <span class="n">CachedPairList</span> <span class="p">{</span></span>
-<span data-line="2"><span class="k">public</span><span class="o">:</span></span>
-<span data-line="3">    <span class="c1">// structs</span></span>
-<span data-line="4"> </span>
-<span data-line="5">    <span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_CachedPairList_Options.html#doxid-structrgpot-1-1nlist-1-1-cached-pair-list-1-1-options"><span class="std std-ref">Options</span></a><span class="p">;</span></span>
-<span data-line="6"> </span>
-<span data-line="7">    <span class="c1">// methods</span></span>
-<span data-line="8"> </span>
-<span data-line="9">    <span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="n">Fn</span><span class="o">&gt;</span></span>
-<span data-line="10">    <span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-classrgpot-1-1nlist-1-1-cached-pair-list-1a8f83c8d5e53b4ffff0bf0a230296e0a8"><span class="std std-ref">forEach</span></a><span class="p">(</span><span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">R</span><span class="p">,</span> <span class="n">Fn</span><span class="o">&amp;&amp;</span> <span class="n">fn</span><span class="p">)</span> <span class="k">const</span><span class="p">;</span></span>
-<span data-line="11"><span class="p">};</span></span>
+<pre><span data-line="1"><span class="cp">#include</span> <span class="cpf">&lt;cell_visit.hpp&gt;</span></span>
+<span data-line="2"> </span>
+<span data-line="3"><span class="k">struct</span> <span class="n">CellGrid</span> <span class="p">{</span></span>
+<span data-line="4">    <span class="c1">// fields</span></span>
+<span data-line="5"> </span>
+<span data-line="6">    <span class="n">std</span><span class="o">::</span><span class="n">array</span><span class="o">&lt;</span><span class="kt">int</span><span class="p">,</span> <span class="mi">3</span><span class="o">&gt;</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1nlist_1_1_cell_grid_1ac97e27795326e60243def639fd8e055e"></span><span class="n">nc</span> <span class="p">{{</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">}};</span></span>
+<span data-line="7">    <span class="n">std</span><span class="o">::</span><span class="n">array</span><span class="o">&lt;</span><span class="kt">bool</span><span class="p">,</span> <span class="mi">3</span><span class="o">&gt;</span> <span class="doxyrest-code-target target" id="doxid-structrgpot_1_1nlist_1_1_cell_grid_1a181aa3a6ac2c4da69148465c634b56bc"></span><span class="n">wrap</span> <span class="p">{{</span><span class="nb">false</span><span class="p">,</span> <span class="nb">false</span><span class="p">,</span> <span class="nb">false</span><span class="p">}};</span></span>
+<span data-line="8">    <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int32_t</span><span class="o">&gt;</span> <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1nlist-1-1-cell-grid-1a616d9b2141605534a91cf1be712b58eb"><span class="std std-ref">start</span></a><span class="p">;</span></span>
+<span data-line="9">    <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int32_t</span><span class="o">&gt;</span> <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1nlist-1-1-cell-grid-1a006789da87e1569d7de2744ea62f855e"><span class="std std-ref">atoms</span></a><span class="p">;</span></span>
+<span data-line="10"> </span>
+<span data-line="11">    <span class="c1">// methods</span></span>
+<span data-line="12"> </span>
+<span data-line="13">    <span class="kt">long</span> <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1nlist-1-1-cell-grid-1abba1e64fa51fe4e82110c395a7f366d7"><span class="std std-ref">neighbour</span></a><span class="p">(</span><span class="kt">int</span> <span class="n">cx</span><span class="p">,</span> <span class="kt">int</span> <span class="n">cy</span><span class="p">,</span> <span class="kt">int</span> <span class="n">cz</span><span class="p">,</span> <span class="k">const</span> <span class="kt">int</span> <span class="n">o</span><span class="p">[</span><span class="mi">3</span><span class="p">])</span> <span class="k">const</span><span class="p">;</span></span>
+<span data-line="14">    <span class="kt">bool</span> <a class="doxyrest-code-link reference internal" href="#doxid-structrgpot-1-1nlist-1-1-cell-grid-1a8325e8f4b5bd62f82b8922074de0cca8"><span class="std std-ref">build</span></a><span class="p">(</span><span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">points</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span> <span class="n">w</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="k">const</span> <span class="kt">double</span> <span class="n">inv</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="kt">double</span> <span class="n">rl</span><span class="p">);</span></span>
+<span data-line="15"><span class="p">};</span></span>
 </pre></div>
 </section>
 <section id="detailed-documentation">
-<span id="details-classrgpot-1-1nlist-1-1-cached-pair-list"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
+<span id="details-structrgpot-1-1nlist-1-1-cell-grid"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
+<p>Cell decomposition of one configuration: atoms sorted by cell (CSR).</p>
+<section id="fields">
+<h3>Fields<a class="headerlink" href="#fields" title="Link to this heading">¶</a></h3>
+<div class="doxyrest-title-code-block highlight" id="doxid-structrgpot-1-1nlist-1-1-cell-grid-1a616d9b2141605534a91cf1be712b58eb">
+<span id="index-1"></span><pre><span data-line="1"><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int32_t</span><span class="o">&gt;</span> <span class="n">start</span></span>
+</pre></div>
+<p>ncells + 1 row starts into <code class="docutils literal notranslate"><span class="pre">atoms</span></code>.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-structrgpot-1-1nlist-1-1-cell-grid-1a006789da87e1569d7de2744ea62f855e">
+<span id="index-2"></span><pre><span data-line="1"><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int32_t</span><span class="o">&gt;</span> <span class="n">atoms</span></span>
+</pre></div>
+<p>Atom indices grouped by cell.</p>
+</section>
 <section id="methods">
 <h3>Methods<a class="headerlink" href="#methods" title="Link to this heading">¶</a></h3>
-<div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1nlist-1-1-cached-pair-list-1a8f83c8d5e53b4ffff0bf0a230296e0a8">
-<span id="index-1"></span><pre><span data-line="1"><span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="n">Fn</span><span class="o">&gt;</span></span>
-<span data-line="2"><span class="kt">void</span> <span class="n">forEach</span><span class="p">(</span><span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">R</span><span class="p">,</span> <span class="n">Fn</span><span class="o">&amp;&amp;</span> <span class="n">fn</span><span class="p">)</span> <span class="k">const</span></span>
+<div class="doxyrest-title-code-block highlight" id="doxid-structrgpot-1-1nlist-1-1-cell-grid-1abba1e64fa51fe4e82110c395a7f366d7">
+<span id="index-3"></span><pre><span data-line="1"><span class="kt">long</span> <span class="n">neighbour</span><span class="p">(</span><span class="kt">int</span> <span class="n">cx</span><span class="p">,</span> <span class="kt">int</span> <span class="n">cy</span><span class="p">,</span> <span class="kt">int</span> <span class="n">cz</span><span class="p">,</span> <span class="k">const</span> <span class="kt">int</span> <span class="n">o</span><span class="p">[</span><span class="mi">3</span><span class="p">])</span> <span class="k">const</span></span>
 </pre></div>
-<dl class="simple">
-<dt>True while the cached pair set is valid for positions <code class="docutils literal notranslate"><span class="pre">R</span></code><span class="classifier">same / atom count, options and box as the build, and max displacement / below skin/2. [[nodiscard]] bool valid(const double *R, std::size_t n, const double *box,</span></dt><dd><p>const Options &amp;opt) const { if (!built_ || n != n_ || !(opt == opt_)) { return false; } for (int k = 0; k &lt; 9; ++k) { if (box[k] != boxref_[k]) { return false; } } if (complete_) { return true; // all pairs are candidates; motion cannot invalidate } const double thr2 = 0.25 * opt_.skin * opt_.skin; const double *ref = Rref_.data(); for (std::size_t a = 0; a &lt; n; ++a) { const double dx = R[3 * a] - ref[3 * a]; const double dy = R[3 * a + 1] - ref[3 * a + 1]; const double dz = R[3 * a + 2] - ref[3 * a + 2]; if (dx * dx + dy * dy + dz * dz &gt; thr2) { return false; } } return true; }</p>
-</dd>
-</dl>
-<p>[[nodiscard]] bool isPhantom() const { return phantom_; }</p>
-<dl class="simple">
-<dt>/ First sighting: fused eval-only scan plus a phantom stamp (MIC / regime), or just the scan when caching is unsafe for this box. template &lt;typename Fn&gt; void visitOnly(const double *R, std::size_t n, const double *box,</dt><dd><p>const Options &amp;opt, Fn &amp;&amp;fn) { setup(n, box, opt); double w[3]; double inv[3]; fold_params(box, opt, w, inv); vesin::cpu::brute_force_visit_only( R, n, w, inv, opt.cutoff * opt.cutoff, [&amp;](int32_t i, int32_t j, double dx, double dy, double dz, double r2) { fn(i, j, -dx, -dy, -dz, r2); }); if (mic_) { pairsIJ_.clear(); finishRebuild(R, n, box, opt); phantom_ = true; } }</p>
-</dd>
-<dt>/ Second sighting: capture the candidate list at cutoff+skin while / evaluating <code class="docutils literal notranslate"><span class="pre">fn</span></code> in the same scan. template &lt;typename Fn&gt; void rebuildFused(const double *R, std::size_t n, const double *box,</dt><dd><p>const Options &amp;opt, Fn &amp;&amp;fn) { setup(n, box, opt); double w[3]; double inv[3]; fold_params(box, opt, w, inv); const double bc = opt.cutoff + opt.skin; vesin::cpu::brute_force_visit( R, n, w, inv, bc * bc, opt.cutoff * opt.cutoff, pairsIJ_, [&amp;](int32_t i, int32_t j, double dx, double dy, double dz, double r2) { fn(i, j, -dx, -dy, -dz, r2); }); finishRebuild(R, n, box, opt); }</p>
-</dd>
-</dl>
-<p>/ True when caching applies to this box (decided by the last build). [[nodiscard]] bool cacheable() const { return mic_; }</p>
-<p>/ Visit every cached pair within the true cutoff of the current / positions; <code class="docutils literal notranslate"><span class="pre">fn(i,</span> <span class="pre">j,</span> <span class="pre">dx,</span> <span class="pre">dy,</span> <span class="pre">dz,</span> <span class="pre">r2)</span></code> uses <code class="docutils literal notranslate"><span class="pre">d</span> <span class="pre">=</span> <span class="pre">r_i</span> <span class="pre">-</span> <span class="pre">r_j</span></code> with the minimum image applied.</p>
+<p>Linear index of cell (cx, cy, cz) shifted by stencil offset <code class="docutils literal notranslate"><span class="pre">o</span></code>, or -1 when the shift leaves a free axis.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-structrgpot-1-1nlist-1-1-cell-grid-1a8325e8f4b5bd62f82b8922074de0cca8">
+<span id="index-4"></span><pre><span data-line="1"><span class="kt">bool</span> <span class="n">build</span><span class="p">(</span><span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">points</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span> <span class="n">w</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="k">const</span> <span class="kt">double</span> <span class="n">inv</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="kt">double</span> <span class="n">rl</span><span class="p">)</span></span>
+</pre></div>
+<p>Bin <code class="docutils literal notranslate"><span class="pre">points</span></code> into cells no narrower than <code class="docutils literal notranslate"><span class="pre">rl</span></code>. <code class="docutils literal notranslate"><span class="pre">w[k]</span></code> is the periodic width and <code class="docutils literal notranslate"><span class="pre">inv[k]</span></code> its inverse, zero for a free axis. Returns false when a grid cannot serve (fewer than three cells along a periodic axis, or fewer than kMinCellsForGrid cells in all) or would not pay (the cell scan’s pair tests for this occupancy, plus the stencil walk, above half the brute-force scan’s n (n - 1) / 2: a cluster in a mostly empty box crowds a few cells), in which case the caller uses the brute-force scan.</p>
 </section>
 </section>
 </section>
@@ -572,10 +592,10 @@ data-aria-dark="Switch to auto color mode">
         <span>Previous</span><div class="title">namespace rgpot::nlist</div></div>
     </a>
   </div><div class="navigation-next">
-    <a href="struct_rgpot_nlist_CachedPairList_Options.html">
+    <a href="namespace_rgpot_types.html">
       <div class="page-info">
         <span>Next</span>
-        <div class="title">struct rgpot::nlist::CachedPairList::Options</div>
+        <div class="title">namespace rgpot::types</div>
       </div>
       <i class="i-lucide chevron-right"></i>
     </a>

@@ -162,6 +162,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_MorseConfig.html">struct rgpot::MorseConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_PotCaps.html">struct rgpot::PotCaps</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_QuinticSwitch.html">struct rgpot::QuinticSwitch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_SkalaConfig.html">struct rgpot::SkalaConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_UmaConfig.html">struct rgpot::UmaConfig</a></li>
@@ -286,6 +287,9 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_water_h_capi.html">namespace rgpot_water_h_capi</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_workspace.html">namespace rgpot_workspace</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_std.html">namespace std</a><ul class="simple">
 </ul>
 </li>
@@ -346,6 +350,12 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="struct_eindir_objective_t.html">struct eindir_objective_t</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_mpi_api_t.html">struct rgpot_mpi_api_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_mpi_group_t.html">struct rgpot_mpi_group_t</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
 </ul>
 </li>
@@ -369,6 +379,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/version.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">version</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
@@ -543,6 +554,7 @@ D_e\)</span>, shifted so that <span class="math notranslate nohighlight">\(V(r_\
 <p>Pairwise Morse potential, <span class="math notranslate nohighlight">\(V(r) = D_e [1 - e^{-a(r - r_e)}]^2 -
 D_e\)</span>, shifted so that <span class="math notranslate nohighlight">\(V(r_\mathrm{cut}) = 0\)</span>.</p>
 <p>Pairwise interactions within the cutoff radius, minimum image convention on an orthogonal box. Pairs come from the shared <code class="docutils literal notranslate"><span class="pre">rgpot::nlist::PairListCache</span></code>, so repeated evaluations on nearby geometries (NEB images, dimer rotations) reuse a Verlet-skin cached candidate list.</p>
+<p>With <code class="docutils literal notranslate"><span class="pre">MorseConfig::switch_width</span></code> set, each pair term is the unshifted Morse energy times the C^2 quintic switch of <span class="xref std std-ref">PairSwitch.hpp</span>; otherwise the energy is shifted to zero at the cutoff and the force jumps there.</p>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
 <p>The box is assumed to be orthogonal.</p>
@@ -552,7 +564,7 @@ D_e\)</span>, shifted so that <span class="math notranslate nohighlight">\(V(r_\
 <div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-morse-pot-1a4a12503dd2fb3c2ac2efbc86a3ae27c7">
 <span id="index-1"></span><pre><span data-line="1"><span class="kt">double</span> <span class="n">energyShift</span><span class="p">()</span> <span class="k">const</span></span>
 </pre></div>
-<p>Energy offset subtracted from every pair term (the unshifted well depth at the cutoff).</p>
+<p>Energy offset subtracted from every pair term (the unshifted pair energy at the cutoff); 0 when the quintic switch replaces the shift.</p>
 <div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-morse-pot-1a3efdba266543f10b6b5c18ad0384e4ce">
 <span id="index-2"></span><pre><span data-line="1"><span class="k">virtual</span> <span class="kt">uint64_t</span> <span class="n">paramsKey</span><span class="p">()</span> <span class="k">const</span></span>
 </pre></div>

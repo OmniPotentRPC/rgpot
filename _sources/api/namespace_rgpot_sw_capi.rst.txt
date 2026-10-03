@@ -22,6 +22,7 @@ C entry point for the Stillinger-Weber potential. :ref:`More...<details-namespac
 	// global functions
 
 	integer(c_int) function, public :ref:`rgpot_sw_force<doxid-namespacergpot__sw__capi_1ae1b98f5cc973ec3dc3143b85a7db1955>`(integer(c_int), intent(in), value natoms, real(c_double), dimension(3, natoms), intent(in) positions, real(c_double), dimension(3, 3), intent(in) cell, real(c_double), dimension(3, natoms), intent(out) forces, real(c_double), intent(out) energy);
+	integer(c_int) function, public :ref:`rgpot_sw_force_ws<doxid-namespacergpot__sw__capi_1a1f2609456273856a7f9a930691074524>`(type(c_ptr), value handle, integer(c_int), intent(in), value natoms, real(c_double), dimension(3, natoms), intent(in) positions, real(c_double), dimension(3, 3), intent(in) cell, real(c_double), dimension(3, natoms), intent(out) forces, real(c_double), intent(out) energy);
 
 	} // namespace rgpot_sw_capi
 .. _details-namespacergpot__sw__capi:
@@ -31,7 +32,7 @@ Detailed Documentation
 
 C entry point for the Stillinger-Weber potential.
 
-Only ``bind(c)`` names leave this library; the physics module exports no external symbols of its own that C could collide with. The neighbour table lives here, saved across calls so vesin reuses its buffers.
+Only ``bind(c)`` names leave this library; the physics module exports no external symbols of its own that C could collide with. The ``_ws`` entry point keeps the neighbour table in the caller's workspace (:ref:`rgpot_workspace <doxid-namespacergpot__workspace>`), so each caller's vesin table follows its own geometry; the entry point without a handle shares one module-level workspace and is process-serial.
 
 Global Functions
 ----------------
@@ -47,4 +48,16 @@ Global Functions
 Evaluate Stillinger-Weber forces and energy.
 
 ``positions`` and ``forces`` are ``3 * natoms`` doubles, x/y/z interleaved; ``cell`` is nine doubles, row-major, one cell vector per row. Returns zero on success, non-zero on failure with the message available through ``rgpot_fortran_last_error``.
+
+.. index:: pair: function; rgpot_sw_force_ws
+.. _doxid-namespacergpot__sw__capi_1a1f2609456273856a7f9a930691074524:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	integer(c_int) function, public rgpot_sw_force_ws(type(c_ptr), value handle, integer(c_int), intent(in), value natoms, real(c_double), dimension(3, natoms), intent(in) positions, real(c_double), dimension(3, 3), intent(in) cell, real(c_double), dimension(3, natoms), intent(out) forces, real(c_double), intent(out) energy)
+
+Evaluate Stillinger-Weber forces and energy in a per-caller workspace.
+
+``positions`` and ``forces`` are ``3 * natoms`` doubles, x/y/z interleaved; ``cell`` is nine doubles, row-major, one cell vector per row. Returns zero on success, non-zero on failure with the message available through ``rgpot_fortran_workspace_error``. ``handle`` is a workspace from ``rgpot_fortran_workspace_new``; a NULL handle returns -1.
 

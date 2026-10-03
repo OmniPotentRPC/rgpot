@@ -1,0 +1,24 @@
+.. index:: pair: struct; rgpot_mpi_group_t
+.. _doxid-structrgpot__mpi__group__t:
+
+struct rgpot_mpi_group_t
+========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct rgpot_mpi_group_t {
+		// fields
+	
+		int :target:`index<doxid-structrgpot__mpi__group__t_1a17622bd51e782fca106209997be6efc0>`;
+		int :target:`ranks<doxid-structrgpot__mpi__group__t_1a8eb444feb4bab4d3971ef2ebcc73cade>`;
+		int :target:`rank_in_group<doxid-structrgpot__mpi__group__t_1a3ce9dd4fc44439507ee75ba09b76a9e2>`;
+		int :target:`world_size<doxid-structrgpot__mpi__group__t_1ac0bfb5c27fa0dbf7382f33bf7546f692>`;
+	};

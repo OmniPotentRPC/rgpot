@@ -11,6 +11,7 @@ namespace rgpot::fortranpots
 	class_rgpot_fortranpots_EAMAlPot.rst
 	class_rgpot_fortranpots_EDIPPot.rst
 	class_rgpot_fortranpots_FeHePot.rst
+	class_rgpot_fortranpots_FortranWorkspace.rst
 	class_rgpot_fortranpots_LenoskyPot.rst
 	class_rgpot_fortranpots_SWPot.rst
 	class_rgpot_fortranpots_TersoffPot.rst
@@ -31,6 +32,7 @@ namespace rgpot::fortranpots
 	class :ref:`EAMAlPot<doxid-classrgpot_1_1fortranpots_1_1_e_a_m_al_pot>`;
 	class :ref:`EDIPPot<doxid-classrgpot_1_1fortranpots_1_1_e_d_i_p_pot>`;
 	class :ref:`FeHePot<doxid-classrgpot_1_1fortranpots_1_1_fe_he_pot>`;
+	class :ref:`FortranWorkspace<doxid-classrgpot_1_1fortranpots_1_1_fortran_workspace>`;
 	class :ref:`LenoskyPot<doxid-classrgpot_1_1fortranpots_1_1_lenosky_pot>`;
 	class :ref:`SWPot<doxid-classrgpot_1_1fortranpots_1_1_s_w_pot>`;
 	class :ref:`TersoffPot<doxid-classrgpot_1_1fortranpots_1_1_tersoff_pot>`;

@@ -39,7 +39,7 @@ Detailed Documentation
 
 Universal screened nuclear repulsion with a switched cutoff.
 
-Every pair within ``cut_global`` contributes, with vectors taken straight from the coordinates: ``opt.periodic`` is off in all three directions, so the pair scan never folds a separation into the cell. Pairs come from the shared ``:ref:`rgpot::nlist::PairListCache <doxid-classrgpot_1_1nlist_1_1_pair_list_cache>```, and the per-species coefficient tables are built once per species set.
+Every pair within ``cut_global`` contributes, with vectors taken straight from the coordinates: ``opt.periodic`` is off in all three directions, so the pair scan never folds a separation into the cell. Pairs come from the shared ``rgpot::nlist::PairListCache``, and the per-species coefficient tables are built once per species set.
 
 Construction
 ------------

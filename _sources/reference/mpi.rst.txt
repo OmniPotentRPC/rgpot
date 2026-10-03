@@ -15,11 +15,41 @@ The accepted values are ``auto``, ``enabled``, and ``disabled``.
 ``enabled`` stops configuration when MPI is absent.
 ``disabled`` leaves every process as one calculator of one rank.
 
-A build with MPI linked can call ``bindCalculators`` to split ``MPI_COMM_WORLD``
-into calculator groups.
+``librgpot`` never links MPI.
+With MPI found, the build adds ``librgpot_mpi`` (meson dependency and pkg-config
+name ``rgpot-mpi``), which holds every MPI call of the calculator groups.
+``bindCalculators`` and ``calculatorsUseMpi`` load it with ``dlopen`` on first use, so
+a host that never asks for calculator groups never maps ``libmpi`` or its
+transport layers.
+The loader tries ``loadCalculatorMpi(path)`` when the host names a file, then the
+``RGPOT_MPI_LIBRARY`` environment variable, then ``librgpot_mpi.so.3`` next to
+``librgpot``, then the dynamic linker's search path.
+The two libraries meet at one C symbol,
+``rgpot_mpi_api_v1``, which returns the function table of ``rgpot/calculator_mpi_abi.h`` (``RGPOT_MPI_ABI_VERSION``
+1).
+Until the library is loaded every calculator call behaves as in a build without
+MPI.
+
+A process with
+``librgpot_mpi`` loaded can call ``bindCalculators`` to split ``MPI_COMM_WORLD`` into
+calculator groups.
 ``shareFromCalculator`` broadcasts one group's bytes to every rank.
 When more than one rank is bound, a rank that cannot enter that broadcast prints
 the error on every rank and calls ``MPI_Abort`` on ``MPI_COMM_WORLD``.
 The same abort runs when one rank leaves ``CPMDPot::forceImpl`` by an exception.
 ``MPI_Finalize`` at process exit runs when ``bindCalculators`` called ``MPI_Init``.
 A host that called ``MPI_Init`` finalizes itself.
+
+``CPMDPot`` reports ``PotCaps::groupCollective``: every rank of a calculator enters
+each of its force calls together, and the call's collectives stay on that
+calculator's communicator.
+A host may hand calculators an uneven batch, with some calculators making no
+call at all, and then share results with ``shareFromCalculator``.
+A failure inside the call prints on every rank of the failing calculator, then
+``MPI_Abort`` on ``MPI_COMM_WORLD`` ends the run.
+For such a potential the result cache decides hit or miss jointly, through
+``calculatorAgree`` (a logical AND over the calculator's communicator).
+A geometry that any rank of the calculator misses is computed on all of its
+ranks, so no rank waits alone inside the call.
+Give each rank its own cache directory: RocksDB locks a directory to one
+process.
