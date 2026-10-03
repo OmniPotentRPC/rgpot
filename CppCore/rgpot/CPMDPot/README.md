@@ -65,6 +65,13 @@ uses the session-result ABI when available:
 `cpmdc_session_calculate_result`. Older engines can fall back to the one-shot
 energy-gradient ABI if they expose it.
 
+`CPMDPot::selectOrbitals(key)` names the calculation the following forces
+belong to, an image of a band or a bead of a ring polymer. When the engine
+exports `cpmdc_session_select_orbitals`, it keeps the converged orbitals per
+key, so a calculator that evaluates several images or beads in turn starts
+each SCF from that key's own previous orbitals. Every rank of a calculator
+names the same key before the same force.
+
 ## `CPMDParams` Fields
 
 | Field | Default | Role |
