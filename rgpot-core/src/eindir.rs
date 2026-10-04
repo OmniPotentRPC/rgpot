@@ -92,11 +92,21 @@ pub struct rgpot_potential_t {
     fused_cache: Box<rgpot_fused_cache_t>,
 }
 
+impl rgpot_potential_t {
+    /// The recorded peer refusal, if capabilities were installed and refused.
+    pub(crate) fn fused_cache_peer_refusal(&self) -> Option<String> {
+        self.fused_cache.peer_refusal()
+    }
+}
+
 /// Opaque cache of the last fused energy and gradient evaluation.
 pub struct rgpot_fused_cache_t {
     last: Mutex<Option<FusedEvaluation>>,
     computed: AtomicU64,
     served: AtomicU64,
+    /// Why the peer behind this handle was refused, once capabilities were
+    /// installed and found incompatible. Evaluations fail while it is set.
+    peer_refusal: Mutex<Option<String>>,
 }
 
 impl rgpot_fused_cache_t {
@@ -105,6 +115,73 @@ impl rgpot_fused_cache_t {
             last: Mutex::new(None),
             computed: AtomicU64::new(0),
             served: AtomicU64::new(0),
+            peer_refusal: Mutex::new(None),
+        }
+    }
+
+    /// The recorded refusal, if any.
+    pub(crate) fn peer_refusal(&self) -> Option<String> {
+        self.peer_refusal
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    fn set_peer_refusal(&self, why: Option<String>) {
+        *self
+            .peer_refusal
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = why;
+        *self
+            .last
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+    }
+}
+
+/// Install the `Capabilities` message of the peer behind `pot`, checked
+/// against what this build speaks.
+///
+/// A compatible peer is accepted. An incompatible one makes
+/// `rgpot_potential_calculate`, `eindir_objective_eval` and
+/// `eindir_objective_grad` on this handle fail before the callback runs: the
+/// first returns `RGPOT_INVALID_PARAMETER`, the others
+/// `EINDIR_INVALID_PARAMETER`, all with a `rgpot_last_error()` message of the
+/// form `peer refused: <first mismatch>`. A handle that never receives a
+/// message keeps the plain callback contract.
+///
+/// `caps` points to `size` bytes of a flat Cap'n Proto `Capabilities`
+/// message.
+///
+/// # Safety
+///
+/// `pot` must be NULL or a live handle, and `caps` NULL or `size` readable
+/// bytes.
+#[cfg(feature = "schema")]
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_potential_set_peer_capabilities(
+    pot: *const rgpot_potential_t,
+    caps: *const u8,
+    size: usize,
+) -> rgpot_status_t {
+    if pot.is_null() || caps.is_null() || size == 0 || size % 8 != 0 {
+        set_last_error("rgpot_potential_set_peer_capabilities: invalid argument");
+        return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+    }
+    let mut words = vec![0u64; size / 8];
+    unsafe { std::ptr::copy_nonoverlapping(caps, words.as_mut_ptr().cast::<u8>(), size) };
+    let verdict = crate::compat::check_capabilities_words(&words, &crate::compat::Expectation::default());
+    let cache = unsafe { &*(*pot).fused_cache };
+    match verdict {
+        Ok(()) => {
+            cache.set_peer_refusal(None);
+            rgpot_status_t::RGPOT_SUCCESS
+        }
+        Err(why) => {
+            let message = format!("peer refused: {why}");
+            set_last_error(&message);
+            cache.set_peer_refusal(Some(message));
+            rgpot_status_t::RGPOT_INVALID_PARAMETER
         }
     }
 }
@@ -203,6 +280,9 @@ unsafe extern "C" fn rgpot_eval_cb(
     value_out: *mut f64,
 ) -> eindir_status_t {
     let pot = unsafe { &*(user_data as *const rgpot_potential_t) };
+    if let Some(why) = pot.fused_cache.peer_refusal() {
+        return reject(&why);
+    }
     let Some(n) = pot.n_atoms.checked_mul(3) else {
         return reject("n_atoms * 3 overflows");
     };
@@ -274,6 +354,9 @@ unsafe extern "C" fn rgpot_grad_cb(
     grad_out: *mut DLManagedTensorVersioned,
 ) -> eindir_status_t {
     let pot = unsafe { &*(user_data as *const rgpot_potential_t) };
+    if let Some(why) = pot.fused_cache.peer_refusal() {
+        return reject(&why);
+    }
     let Some(n) = pot.n_atoms.checked_mul(3) else {
         return reject("n_atoms * 3 overflows");
     };
@@ -982,6 +1065,167 @@ mod tests {
             del1d(x_t);
             del1d(g_t);
             rgpot_potential_free_eindir(pot);
+        }
+    }
+
+    #[cfg(feature = "schema")]
+    mod peer {
+        use super::*;
+        use crate::c_api::potential::rgpot_potential_calculate;
+        use crate::Potentials_capnp::capabilities::{Builder as Caps, Operation};
+        use capnp::message::Builder as Message;
+
+        fn caps_bytes(edit: impl FnOnce(&mut Caps<'_>)) -> Vec<u8> {
+            let mut msg = Message::new_default();
+            {
+                let mut caps = msg.init_root::<Caps<'_>>();
+                crate::compat::fill_compatibility(caps.reborrow());
+                let mut ops = caps.reborrow().init_operations(2);
+                ops.set(0, Operation::Energy);
+                ops.set(1, Operation::Forces);
+                edit(&mut caps);
+            }
+            capnp::serialize::write_message_to_words(&msg)
+        }
+
+        struct Handle {
+            pot: *mut rgpot_potential_t,
+            calls: Box<usize>,
+        }
+
+        impl Handle {
+            fn new() -> Self {
+                let mut calls = Box::new(0usize);
+                let atmnrs = [1i32, 1];
+                let pot = unsafe {
+                    rgpot_potential_new_eindir(
+                        counting_energy_callback,
+                        (&mut *calls as *mut usize).cast(),
+                        None,
+                        2,
+                        atmnrs.as_ptr(),
+                        std::ptr::null(),
+                        std::ptr::null(),
+                        std::ptr::null(),
+                    )
+                };
+                Self { pot, calls }
+            }
+
+            fn install(&self, bytes: &[u8]) -> rgpot_status_t {
+                unsafe { rgpot_potential_set_peer_capabilities(self.pot, bytes.as_ptr(), bytes.len()) }
+            }
+
+            fn eval(&self) -> eindir_status_t {
+                let mut x = [1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0];
+                let x_t = make_1d(x.as_mut_ptr(), 6);
+                let mut value = 0.0f64;
+                let s = unsafe { eindir_objective_eval(self.pot as *mut eindir_objective_t, x_t, &mut value) };
+                unsafe { del1d(x_t) };
+                s
+            }
+
+            fn grad(&self) -> eindir_status_t {
+                let mut x = [1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0];
+                let x_t = make_1d(x.as_mut_ptr(), 6);
+                let mut g = [0.0f64; 6];
+                let g_t = make_1d(g.as_mut_ptr(), 6);
+                let s = unsafe { eindir_objective_grad(self.pot as *mut eindir_objective_t, x_t, g_t) };
+                unsafe {
+                    del1d(x_t);
+                    del1d(g_t);
+                }
+                s
+            }
+
+            fn calculate(&self) -> rgpot_status_t {
+                let mut pos = [0.0f64; 6];
+                let mut atm = [1i32, 1];
+                let mut box_ = [10.0f64, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0];
+                let input = rgpot_force_input_t {
+                    positions: unsafe { rgpot_tensor_cpu_f64_2d(pos.as_mut_ptr(), 2, 3) },
+                    atomic_numbers: unsafe { rgpot_tensor_cpu_i32_1d(atm.as_mut_ptr(), 2) },
+                    box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(box_.as_mut_ptr()) },
+                };
+                let mut out = rgpot_force_out_t {
+                    forces: std::ptr::null_mut(),
+                    energy: 0.0,
+                    variance: 0.0,
+                };
+                let s = unsafe { rgpot_potential_calculate(self.pot, &input, &mut out) };
+                unsafe {
+                    rgpot_tensor_free(out.forces);
+                    rgpot_tensor_free(input.positions);
+                    rgpot_tensor_free(input.atomic_numbers);
+                    rgpot_tensor_free(input.box_matrix);
+                }
+                s
+            }
+        }
+
+        impl Drop for Handle {
+            fn drop(&mut self) {
+                unsafe { rgpot_potential_free_eindir(self.pot) };
+                let _ = &self.calls;
+            }
+        }
+
+        fn last_error() -> String {
+            unsafe { std::ffi::CStr::from_ptr(crate::status::rgpot_last_error()) }
+                .to_string_lossy()
+                .into_owned()
+        }
+
+        #[test]
+        fn handle_without_a_message_keeps_the_callback_contract() {
+            let h = Handle::new();
+            assert_eq!(h.eval(), eindir_status_t::EINDIR_SUCCESS);
+            assert_eq!(h.calculate(), rgpot_status_t::RGPOT_SUCCESS);
+        }
+
+        #[test]
+        fn compatible_peer_is_accepted() {
+            let h = Handle::new();
+            assert_eq!(h.install(&caps_bytes(|_| {})), rgpot_status_t::RGPOT_SUCCESS);
+            assert_eq!(h.eval(), eindir_status_t::EINDIR_SUCCESS);
+            assert_eq!(h.grad(), eindir_status_t::EINDIR_SUCCESS);
+            assert_eq!(h.calculate(), rgpot_status_t::RGPOT_SUCCESS);
+        }
+
+        #[test]
+        fn incompatible_peer_is_refused_before_the_callback_runs() {
+            let h = Handle::new();
+            let bytes = caps_bytes(|c| c.set_protocol_family("other.family"));
+            assert_eq!(h.install(&bytes), rgpot_status_t::RGPOT_INVALID_PARAMETER);
+            assert!(last_error().starts_with("peer refused: protocol family"), "{}", last_error());
+
+            assert_eq!(h.eval(), eindir_status_t::EINDIR_INVALID_PARAMETER);
+            assert!(last_error().starts_with("peer refused:"), "{}", last_error());
+            assert_eq!(h.grad(), eindir_status_t::EINDIR_INVALID_PARAMETER);
+            assert_eq!(h.calculate(), rgpot_status_t::RGPOT_INVALID_PARAMETER);
+            assert!(last_error().starts_with("peer refused:"), "{}", last_error());
+            assert_eq!(*h.calls, 0, "no callback may run for a refused peer");
+        }
+
+        #[test]
+        fn a_compatible_message_lifts_an_earlier_refusal() {
+            let h = Handle::new();
+            h.install(&caps_bytes(|c| c.set_dlpack_major(2)));
+            assert_eq!(h.eval(), eindir_status_t::EINDIR_INVALID_PARAMETER);
+            assert_eq!(h.install(&caps_bytes(|_| {})), rgpot_status_t::RGPOT_SUCCESS);
+            assert_eq!(h.eval(), eindir_status_t::EINDIR_SUCCESS);
+        }
+
+        #[test]
+        fn malformed_installation_is_rejected_and_leaves_the_handle_usable() {
+            let h = Handle::new();
+            assert_eq!(h.install(&[0u8; 3]), rgpot_status_t::RGPOT_INVALID_PARAMETER);
+            assert_eq!(h.install(&[0u8; 8]), rgpot_status_t::RGPOT_INVALID_PARAMETER);
+            assert_eq!(
+                unsafe { rgpot_potential_set_peer_capabilities(std::ptr::null(), [0u8; 8].as_ptr(), 8) },
+                rgpot_status_t::RGPOT_INVALID_PARAMETER
+            );
+            assert_eq!(h.eval(), eindir_status_t::EINDIR_SUCCESS);
         }
     }
 

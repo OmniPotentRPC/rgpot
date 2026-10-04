@@ -155,6 +155,22 @@ pub fn check_capabilities(caps: Reader<'_>, want: &Expectation) -> Result<(), St
     Ok(())
 }
 
+/// Decode a flat `Capabilities` message held as aligned words and check it.
+pub fn check_capabilities_words(words: &[u64], want: &Expectation) -> Result<(), String> {
+    let bytes =
+        unsafe { std::slice::from_raw_parts(words.as_ptr().cast::<u8>(), words.len() * 8) };
+    let mut cursor = bytes;
+    let message = capnp::serialize::read_message_from_flat_slice(
+        &mut cursor,
+        capnp::message::ReaderOptions::new(),
+    )
+    .map_err(|e| format!("capabilities unreadable: {e}"))?;
+    let caps = message
+        .get_root::<Reader<'_>>()
+        .map_err(|e| format!("capabilities unreadable: {e}"))?;
+    check_capabilities(caps, want)
+}
+
 /// Fill the compatibility fields of `caps` with what this build speaks.
 pub fn fill_compatibility(mut caps: Builder<'_>) {
     let want = Expectation::default();
