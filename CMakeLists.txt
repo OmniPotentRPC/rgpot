@@ -407,6 +407,8 @@ if(RGPOT_BUILD_TESTS)
 
     add_pot_test(LJClusterPotTest CppCore/tests/LJClusterPotTest.cc)
     add_pot_test(PairListTest CppCore/tests/PairListTest.cc)
+    add_pot_test(BatchEvaluatorTest CppCore/tests/BatchEvaluatorTest.cc)
+    target_link_libraries(BatchEvaluatorTest PRIVATE Threads::Threads)
     add_pot_test(CxxLayoutTest CppCore/tests/CxxLayoutTest.cc)
     target_link_libraries(CxxLayoutTest PRIVATE ${CMAKE_DL_LIBS})
     add_library(rgpot_layout_fixture SHARED CppCore/tests/layout_fixture.cc)

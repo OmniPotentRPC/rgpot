@@ -26,6 +26,7 @@ trap 'rm -f "$COVRC"' EXIT
 
 PYTEST_ARGS=(
   tests/test_cpmd_params.py
+  tests/test_expr_params.py
   tests/test_nwchem_params.py
 )
 if [[ -n "${RGPOT_POTSERV:-}" && -x "${RGPOT_POTSERV}" ]]; then

@@ -452,6 +452,12 @@ if get_option('with_tests')
             ['MorsePotTest', 'morse_pot_test', 'MorsePotTest.cc', ''],
             ['PairListTest', 'pair_list_test', 'PairListTest.cc', ''],
             [
+                'BatchEvaluatorTest',
+                'batch_evaluator_test',
+                'BatchEvaluatorTest.cc',
+                '',
+            ],
+            [
                 'CalculatorGroupTest',
                 'calculator_group_test',
                 'CalculatorGroupTest.cc',
