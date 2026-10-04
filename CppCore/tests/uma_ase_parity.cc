@@ -10,7 +10,11 @@
 using rgpot::types::AtomMatrix;
 
 int main(int argc, char **argv) {
-  const char *model = argc > 1 ? argv[1] : "data/lj38/lennard-jones.pt";
+  if (argc < 2) {
+    std::fprintf(stderr, "usage: %s MODEL.pt2\n", argv[0]);
+    return 2;
+  }
+  const char *model = argv[1];
 
   rgpot::UmaConfig cfg;
   cfg.model_path = model;

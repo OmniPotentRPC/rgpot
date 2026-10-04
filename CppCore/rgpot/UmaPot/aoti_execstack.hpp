@@ -291,11 +291,19 @@ inline void write_all(const std::string &path,
   } publication;
   // Directory creation reserves a private publication slot across processes
   // and threads. Only a closed, complete file is renamed to the shared path.
+  int reservation_failures = 0;
   for (std::size_t slot = 0; !publication.owned; ++slot) {
     publication.directory = path + ".tmp." + std::to_string(slot);
     publication.payload = publication.directory / "payload.pt2";
     std::error_code error;
     publication.owned = fs::create_directory(publication.directory, error);
+    // A slot another thread is deleting reports a transient error on Windows.
+    if (error && error != std::errc::file_exists &&
+        publication_retryable(error) &&
+        ++reservation_failures < kPublicationAttempts) {
+      publication_backoff();
+      continue;
+    }
     if (error && error != std::errc::file_exists)
       throw std::runtime_error("UmaPot: cannot reserve publication for " +
                                path + ": " + error.message());
