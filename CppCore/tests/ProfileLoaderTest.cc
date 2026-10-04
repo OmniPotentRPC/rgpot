@@ -266,3 +266,68 @@ TEST_CASE("checked_load refuses an incompatible backend before dispatch",
       Catch::Matchers::ContainsSubstring("backend refused: protocol family"));
   REQUIRE_FALSE(loader.loaded());
 }
+
+#include <capnp/ez-rpc.h>
+
+namespace {
+
+// A server built before Potential.getCapabilities existed: only calculate is
+// overridden, so the generated default answers UNIMPLEMENTED.
+class OldServer final : public Potential::Server {
+public:
+  kj::Promise<void> calculate(CalculateContext) override {
+    return kj::READY_NOW;
+  }
+};
+
+class CapabilitiesServer final : public Potential::Server {
+public:
+  explicit CapabilitiesServer(bool other_family = false)
+      : other_family_(other_family) {}
+  kj::Promise<void> calculate(CalculateContext) override {
+    return kj::READY_NOW;
+  }
+  kj::Promise<void> getCapabilities(GetCapabilitiesContext context) override {
+    auto caps = context.getResults().initCapabilities();
+    auto ops = caps.initOperations(2);
+    ops.set(0, ::Capabilities::Operation::ENERGY);
+    ops.set(1, ::Capabilities::Operation::FORCES);
+    rgpot::abi::fill_compatibility(caps);
+    if (other_family_)
+      caps.setProtocolFamily("other.family");
+    return kj::READY_NOW;
+  }
+
+private:
+  bool other_family_;
+};
+
+template <typename Server> std::string server_verdict(Server server) {
+  capnp::EzRpcServer rpc_server(kj::heap<Server>(std::move(server)),
+                                "127.0.0.1", 0);
+  auto &wait_scope = rpc_server.getWaitScope();
+  const unsigned port = rpc_server.getPort().wait(wait_scope);
+  capnp::EzRpcClient rpc_client("127.0.0.1", port);
+  auto cap = rpc_client.getMain<Potential>();
+  return rgpot::abi::check_server(cap, rpc_client.getWaitScope());
+}
+
+} // namespace
+
+TEST_CASE("check_server accepts a server that reports compatible capabilities",
+          "[abi][compat][rpc]") {
+  REQUIRE(server_verdict(CapabilitiesServer()).empty());
+}
+
+TEST_CASE("check_server refuses a server without getCapabilities and names it",
+          "[abi][compat][rpc]") {
+  const std::string why = server_verdict(OldServer());
+  REQUIRE(why.find("Potential.getCapabilities") != std::string::npos);
+  REQUIRE(why.find("upgrade the server") != std::string::npos);
+}
+
+TEST_CASE("check_server refuses a server with another protocol family",
+          "[abi][compat][rpc]") {
+  const std::string why = server_verdict(CapabilitiesServer(true));
+  REQUIRE(why.find("protocol family") != std::string::npos);
+}
