@@ -10,8 +10,8 @@ pixi run -e xtbbld meson compile -C bbdir-xtb
 pixi run -e xtbbld meson test -C bbdir-xtb --suite xtb --print-errorlogs
 #+end_src
 
-Catch tags: =[xtb]=, =[xtb][linked]=, =[xtb][dlopen]=. Dlopen tests set
-=RGPOT_XTB_ENGINE= to the built engine full path.
+Catch tags: =[xtb]=, =[xtb][linked]=, =[xtb][dlopen]=.
+Dlopen tests set =RGPOT_XTB_ENGINE= to the built engine full path.
 
 Thin-host compile check (no libxtb):
 
@@ -37,6 +37,7 @@ Full head-to-head vs eOn ship (subprocess JSON merge):
 bash scripts/run_xtb_backend_bench.sh --out-dir /path/to/scratch
 #+end_src
 
-See =scripts/compare_xtb_backends.py= for flags. Protocol: shared water GFN2
-geometry, warmup force calls, then timed samples; report mean wall ms and
-whether dlopen is as-fast-or-faster than eOn linked ship (5% band).
+See =scripts/compare_xtb_backends.py= for flags.
+Protocol: shared water GFN2 geometry, warmup force calls, then timed samples;
+report mean wall ms and whether dlopen is as-fast-or-faster than eOn linked ship
+(5% band).

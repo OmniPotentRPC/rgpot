@@ -4,8 +4,8 @@
 
 * eOn packaging: pkg-config install of rgpot
 eOn resolves *installed* rgpot via =dependency('rgpot')= before the Meson
-subproject wrap (=subprojects/rgpot.wrap=). Engines stay *runtime dlopen*
-(no torch / metatomic / xtb at link time).
+subproject wrap (=subprojects/rgpot.wrap=).
+Engines stay *runtime dlopen* (no torch / metatomic / xtb at link time).
 
 * Build + install profile (matches eOn wrap options)
 #+begin_src bash
