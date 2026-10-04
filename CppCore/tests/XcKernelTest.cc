@@ -36,6 +36,9 @@ constexpr const char *kData = "CppCore/tests/data/xckernel";
 // Measured worst case on x86_64 over every fixture below: 2.2 eps*scale;
 // k = 4 leaves room for another architecture's blocking and FMA use.
 constexpr double kNumpyEps = 4.0;
+// The C output is pinned at the same bound, against another architecture's
+// rounding of the same blocks.
+constexpr double kRegressionEps = 4.0;
 // PySCF bars: Fock 1e-15, fxc 1e-13, TDA/RPA sigma 1e-17.
 constexpr double kFockVsPyscf = 1e-15;
 constexpr double kFxcVsPyscf = 1e-13;
@@ -232,6 +235,11 @@ TEST_CASE("golden fixtures exist (fail closed)", "[xckernel][golden]") {
   const std::string man = slurp("CppCore/tests/data/xckernel/MANIFEST.json");
   REQUIRE(man.find("sha256") != std::string::npos);
   REQUIRE(man.find("d6a9d57") != std::string::npos);
+  // The recorded C-vs-NumPy bound is the one this file enforces.
+  const std::string key = "\"c_vs_numpy_eps_scale\":";
+  const auto at = man.find(key);
+  REQUIRE(at != std::string::npos);
+  REQUIRE(std::stod(man.substr(at + key.size())) == kNumpyEps);
 }
 
 TEST_CASE("random-grid Fock pins (s2jz)", "[xckernel][golden][fock]") {
@@ -317,7 +325,7 @@ TEST_CASE("C backend regression pins", "[xckernel][golden][regression]") {
     op.insert(scal.begin(), scal.end());
     auto pin = load_npy(root + "/" + c.pin);
     auto got = run_kernel(c.kernel, op, 4, 200, true);
-    REQUIRE(deviation_in_eps(got, pin.data) <= kNumpyEps);
+    REQUIRE(deviation_in_eps(got, pin.data) <= kRegressionEps);
   }
   for (const char *k :
        {"xck_lda_r_o1", "xck_gga_r_o1", "xck_gga_r_o2", "xck_mgga_tau_r_o1"}) {
@@ -325,14 +333,14 @@ TEST_CASE("C backend regression pins", "[xckernel][golden][regression]") {
         load_npz(std::string(kData) + "/c_vs_numpy/" + k + "_operands.npz");
     auto pin = load_npy(root + "/c_vs_numpy_" + k + "_c.npy");
     auto got = run_kernel(k, op, 4, 60, false);
-    REQUIRE(deviation_in_eps(got, pin.data) <= kNumpyEps);
+    REQUIRE(deviation_in_eps(got, pin.data) <= kRegressionEps);
   }
   auto mol = load_npz(std::string(kData) + "/mol_h2o_sto3g_lvl3_operands.npz");
   auto pin = load_npy(root + "/gga_r_o2_fxc_c.npy");
   const auto nbf = static_cast<std::int64_t>(mol.at("chi").shape[0]);
   const auto npts = static_cast<std::int64_t>(mol.at("chi").shape[1]);
   auto got = run_kernel("xck_gga_r_o2", mol, nbf, npts, false);
-  REQUIRE(deviation_in_eps(got, pin.data) <= kNumpyEps);
+  REQUIRE(deviation_in_eps(got, pin.data) <= kRegressionEps);
 }
 
 TEST_CASE("PySCF Fock and GGA fxc pins (4e7y)", "[xckernel][golden][pyscf]") {

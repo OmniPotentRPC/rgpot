@@ -799,7 +799,7 @@ def write_manifest() -> None:
         "regen": "scripts/regen_xckernel_goldens.py",
         "host_only": "rg.terra",
         "tolerances": {
-            "c_vs_numpy_ulp": 6,
+            "c_vs_numpy_eps_scale": 4,  # k in |C - ref| <= k * eps * max|ref|
             "fock_vs_pyscf": 1e-15,
             "fxc_vs_pyscf": 1e-13,
             "tda_rpa_vs_pyscf": 1e-17,
