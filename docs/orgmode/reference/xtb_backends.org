@@ -20,9 +20,9 @@ Default method: *GFN2-xTB* (=GFNMethod::GFN2xTB= / =RGPOT_XTB_METHOD_GFN2=).
 To test and time the backends, see
 [[file:../howto/xtb-backends-tests.org][Run the tests and compare timings]].
 
-* ISO_C_BINDING C API (libxtb)
+* =ISO_C_BINDING= C API (libxtb)
 libxtb is implemented in Fortran but the public surface used here is the
-*ISO_C_BINDING* C API (=xtb.h=): interoperable types, =bind(c)= procedures,
+=ISO_C_BINDING= C API (=xtb.h=): interoperable types, =bind(c)= procedures,
 and opaque C pointers. Hosts (linked =XTBPot= and =libxtb_engine.so=) only call
 that C contract.
 
