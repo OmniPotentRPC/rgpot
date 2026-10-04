@@ -249,6 +249,11 @@ TEST_CASE("checked_load accepts the fake engine, whose capabilities are "
           rgpot::abi::kProtocolFamily);
   REQUIRE(caps.getProtocolMajor() == rgpot::abi::kProtocolMajor);
   REQUIRE(std::string(caps.getSchemaId().cStr()) == rgpot::abi::kSchemaId);
+#ifdef RGPOT_SCHEMA_HAS_BUILD_IDENTITY
+  REQUIRE(std::string(caps.getBuildVersion().cStr()) == RGPOT_BUILD_VERSION);
+  REQUIRE_FALSE(std::string(caps.getBuildVersion().cStr()).empty());
+  REQUIRE(std::string(caps.getBuildRevision().cStr()) == RGPOT_BUILD_REVISION);
+#endif
 }
 
 TEST_CASE("checked_load refuses an incompatible backend before dispatch",

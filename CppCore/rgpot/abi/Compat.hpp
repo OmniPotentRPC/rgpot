@@ -29,6 +29,17 @@
 namespace rgpot {
 namespace abi {
 
+// Build identity of this rgpot build, defined by the build system. Both are
+// empty when unknown. The schema fields exist only in Potentials.capnp
+// revisions that carry buildVersion/buildRevision; RGPOT_SCHEMA_HAS_BUILD_IDENTITY
+// is defined by the build system when the compiled schema has them.
+#ifndef RGPOT_BUILD_VERSION
+#define RGPOT_BUILD_VERSION ""
+#endif
+#ifndef RGPOT_BUILD_REVISION
+#define RGPOT_BUILD_REVISION ""
+#endif
+
 inline constexpr const char *kProtocolFamily = "rgpot.potentials";
 inline constexpr uint16_t kProtocolMajor = 1;
 inline constexpr uint16_t kProtocolMinor = 0;
@@ -116,6 +127,10 @@ inline void fill_compatibility(::Capabilities::Builder caps) {
   caps.setDlpackMajor(want.dlpack_major);
   caps.setDlpackMinor(want.dlpack_minor_max);
   caps.setBridgeFeatures(want.bridge_features);
+#ifdef RGPOT_SCHEMA_HAS_BUILD_IDENTITY
+  caps.setBuildVersion(RGPOT_BUILD_VERSION);
+  caps.setBuildRevision(RGPOT_BUILD_REVISION);
+#endif
 }
 
 /**

@@ -692,9 +692,36 @@ if get_option('with_tests')
             ),
             suite: 'nwchem',
         )
+        _fs = import('fs')
+        _rev_env = run_command(
+            'sh',
+            '-c',
+            'printf %s "$RGPOT_SOURCE_REVISION"',
+            check: false,
+        ).stdout().strip()
+        _rev_git = run_command(
+            'git',
+            '-C',
+            meson.project_source_root(),
+            'rev-parse',
+            '--short=12',
+            'HEAD',
+            check: false,
+        )
+        _build_revision = _rev_env != '' ? _rev_env : (
+            _rev_git.returncode() == 0 ? _rev_git.stdout().strip() : ''
+        )
+        _build_identity_args = [
+            '-DRGPOT_BUILD_VERSION="@0@"'.format(meson.project_version()),
+            '-DRGPOT_BUILD_REVISION="@0@"'.format(_build_revision),
+        ]
+        if _fs.read('rgpot/rpc/Potentials.capnp').contains('buildVersion')
+            _build_identity_args += ['-DRGPOT_SCHEMA_HAS_BUILD_IDENTITY']
+        endif
         cpmdc_fake_engine = shared_library(
             'cpmdc_fake_engine',
             sources: ['tests/cpmdc_fake_engine.cc'],
+            cpp_args: _build_identity_args,
             dependencies: [ptlrpc_dep],
             include_directories: _incdirs + ['.'] + include_directories(
                 'rgpot/CPMDPot',
@@ -1008,7 +1035,7 @@ if get_option('with_tests')
                 sources: ['tests/ProfileLoaderTest.cc'],
                 dependencies: test_deps + [ptlrpc_dep],
                 include_directories: _incdirs + ['.'],
-                cpp_args: test_args,
+                cpp_args: test_args + _build_identity_args,
                 link_with: _linkto,
                 link_language: 'cpp',
                 build_rpath: _metatomic_build_rpath,

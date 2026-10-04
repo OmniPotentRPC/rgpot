@@ -31,6 +31,17 @@ pub extern "C" fn rgpot_version() -> *const c_char {
     VERSION.as_ptr().cast()
 }
 
+static REVISION: &str = concat!(env!("RGPOT_SOURCE_REVISION"), "\0");
+
+/// Source revision the loaded library was built from (a git short hash), or
+/// an empty string when the build had no revision to record.
+///
+/// The pointer refers to static storage: never free it.
+#[no_mangle]
+pub extern "C" fn rgpot_source_revision() -> *const c_char {
+    REVISION.as_ptr().cast()
+}
+
 /// Major version of the loaded library.
 #[no_mangle]
 pub extern "C" fn rgpot_version_major() -> u32 {
@@ -81,6 +92,15 @@ mod tests {
     /// The committed header must carry this crate's version: cbindgen
     /// stamps it only on regeneration and a release bump stamps it with
     /// potctl, so drift means one of the two was skipped.
+    #[test]
+    fn source_revision_is_a_c_string_of_the_build_revision() {
+        let got = unsafe { std::ffi::CStr::from_ptr(rgpot_source_revision()) }
+            .to_str()
+            .unwrap();
+        assert_eq!(got, env!("RGPOT_SOURCE_REVISION"));
+        assert!(got.bytes().all(|b| b.is_ascii_alphanumeric()), "{got:?}");
+    }
+
     #[test]
     fn committed_header_matches_the_crate() {
         let header = std::fs::read_to_string(concat!(

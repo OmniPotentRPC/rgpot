@@ -168,6 +168,11 @@ pub fn fill_compatibility(mut caps: Builder<'_>) {
     caps.set_dlpack_major(want.dlpack_major);
     caps.set_dlpack_minor(want.dlpack_minor_max);
     caps.set_bridge_features(want.bridge_features);
+    #[cfg(rgpot_schema_build_identity)]
+    {
+        caps.set_build_version(env!("CARGO_PKG_VERSION"));
+        caps.set_build_revision(env!("RGPOT_SOURCE_REVISION"));
+    }
 }
 
 #[cfg(test)]
@@ -238,6 +243,38 @@ mod tests {
             let err = verdict(edit, &want).expect_err(name);
             assert!(err.contains(needle), "{name}: {err}");
         }
+    }
+
+    #[cfg(rgpot_schema_build_identity)]
+    #[test]
+    fn producer_reports_the_build_identity() {
+        let msg = message(|_| {});
+        let caps = msg.get_root_as_reader::<Reader<'_>>().unwrap();
+        assert_eq!(
+            caps.get_build_version().unwrap().to_str().unwrap(),
+            env!("CARGO_PKG_VERSION")
+        );
+        assert_eq!(
+            caps.get_build_revision().unwrap().to_str().unwrap(),
+            env!("RGPOT_SOURCE_REVISION")
+        );
+    }
+
+    #[test]
+    fn expectation_default_tracks_the_eindir_stamp() {
+        let want = Expectation::default();
+        assert_eq!(
+            (
+                want.bridge_abi_major,
+                want.bridge_abi_minor_max,
+                want.bridge_layout,
+                want.dlpack_major,
+                want.dlpack_minor_max,
+                want.bridge_features
+            ),
+            (1, 0, 1, 1, 0, 0x3),
+            "update Expectation in CppCore/rgpot/abi/Compat.hpp with these"
+        );
     }
 
     #[test]
