@@ -88,6 +88,8 @@ struct Capabilities {
   dlpackMajor    @15 :UInt16; # DLPack callback major revision.
   dlpackMinor    @16 :UInt16; # DLPack callback minor revision.
   bridgeFeatures @17 :UInt64; # eindir bridge feature bitset.
+  buildVersion   @18 :Text; # Version of the build that produced this message; empty when unknown.
+  buildRevision  @19 :Text; # Source revision of that build (e.g. a git commit); empty when unknown.
 
   enum Operation {
     energy         @0;
