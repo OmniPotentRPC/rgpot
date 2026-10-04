@@ -5,6 +5,7 @@
 #include "rgpot/stress.hpp"
 #include "rgpot/units.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 
@@ -73,6 +74,19 @@ void TBLitePot::createCalculator() const {
   tblite_set_calculator_temperature(m_ctx, m_calc, etemp_hartree);
 }
 
+namespace {
+
+/// An axis is periodic when its lattice vector (a row of the row-major box)
+/// has nonzero length.
+void periodicityFromBox(const double *box, bool periodic[3]) {
+  for (int axis = 0; axis < 3; ++axis) {
+    const double *v = box + 3 * axis;
+    periodic[axis] = v[0] * v[0] + v[1] * v[1] + v[2] * v[2] > 0.0;
+  }
+}
+
+} // namespace
+
 void TBLitePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   int intN = static_cast<int>(in.nAtoms);
   const size_t n3 = 3 * in.nAtoms;
@@ -88,12 +102,24 @@ void TBLitePot::forceImpl(const ForceInput &in, ForceOut *out) const {
     box_bohr[i] = in.box[i] * ANGSTROM_TO_BOHR;
   }
 
+  bool periodicity[3];
+  periodicityFromBox(in.box, periodicity);
+
+  // tblite fixes the boundary conditions when the structure is created, so a
+  // change of periodic axes rebuilds the structure and calculator.
+  if (m_initialized && !std::equal(periodicity, periodicity + 3, m_periodic)) {
+    tblite_delete_calculator(&m_calc);
+    tblite_delete_structure(&m_mol);
+    m_initialized = false;
+  }
+
   if (!m_initialized) {
+    std::copy(periodicity, periodicity + 3, m_periodic);
     tblite_error err = tblite_new_error();
     double charge = m_config.charge;
     int uhf = m_config.uhf;
     m_mol = tblite_new_structure(err, intN, in.atmnrs, m_pos_bohr.data(),
-                                 &charge, &uhf, box_bohr, nullptr);
+                                 &charge, &uhf, box_bohr, periodicity);
     if (tblite_check_error(err) != 0) {
       char err_msg[512];
       tblite_get_error(err, err_msg, nullptr);
