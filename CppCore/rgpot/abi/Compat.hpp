@@ -55,8 +55,9 @@ struct Expectation {
       ::Capabilities::Operation::ENERGY, ::Capabilities::Operation::FORCES};
 };
 
-inline std::string mismatch(const std::string &field, const std::string &required,
-                            const std::string &received) {
+inline std::string capability_mismatch(const std::string &field,
+                                         const std::string &required,
+                                         const std::string &received) {
   return field + ": required " + required + ", received " + received;
 }
 
@@ -97,36 +98,36 @@ inline std::string check_capabilities(::Capabilities::Reader caps,
                                       const Expectation &want = {}) {
   const std::string family = caps.getProtocolFamily().cStr();
   if (family != want.family)
-    return mismatch("protocolFamily", want.family, family);
+    return capability_mismatch("protocolFamily", want.family, family);
   if (caps.getProtocolMajor() != want.protocol_major)
-    return mismatch("protocolMajor", std::to_string(want.protocol_major),
+    return capability_mismatch("protocolMajor", std::to_string(want.protocol_major),
                     std::to_string(caps.getProtocolMajor()));
   if (caps.getProtocolMinor() < want.protocol_minor_min)
-    return mismatch("protocolMinor",
+    return capability_mismatch("protocolMinor",
                     ">= " + std::to_string(want.protocol_minor_min),
                     std::to_string(caps.getProtocolMinor()));
   const std::string schema_id = caps.getSchemaId().cStr();
   if (schema_id != want.schema_id)
-    return mismatch("schemaId", want.schema_id, schema_id);
+    return capability_mismatch("schemaId", want.schema_id, schema_id);
   if (caps.getBridgeAbiMajor() != want.bridge_abi_major)
-    return mismatch("bridgeAbiMajor", std::to_string(want.bridge_abi_major),
+    return capability_mismatch("bridgeAbiMajor", std::to_string(want.bridge_abi_major),
                     std::to_string(caps.getBridgeAbiMajor()));
   if (caps.getBridgeAbiMinor() > want.bridge_abi_minor_max)
-    return mismatch("bridgeAbiMinor",
+    return capability_mismatch("bridgeAbiMinor",
                     "<= " + std::to_string(want.bridge_abi_minor_max),
                     std::to_string(caps.getBridgeAbiMinor()));
   if (caps.getBridgeLayout() != want.bridge_layout)
-    return mismatch("bridgeLayout", std::to_string(want.bridge_layout),
+    return capability_mismatch("bridgeLayout", std::to_string(want.bridge_layout),
                     std::to_string(caps.getBridgeLayout()));
   if (caps.getDlpackMajor() != want.dlpack_major)
-    return mismatch("dlpackMajor", std::to_string(want.dlpack_major),
+    return capability_mismatch("dlpackMajor", std::to_string(want.dlpack_major),
                     std::to_string(caps.getDlpackMajor()));
   if (caps.getDlpackMinor() > want.dlpack_minor_max)
-    return mismatch("dlpackMinor",
+    return capability_mismatch("dlpackMinor",
                     "<= " + std::to_string(want.dlpack_minor_max),
                     std::to_string(caps.getDlpackMinor()));
   if ((caps.getBridgeFeatures() & ~want.bridge_features) != 0)
-    return mismatch("bridgeFeatures",
+    return capability_mismatch("bridgeFeatures",
                     "subset of " + hex_u64(want.bridge_features),
                     hex_u64(caps.getBridgeFeatures()));
   std::string served;
@@ -142,7 +143,7 @@ inline std::string check_capabilities(::Capabilities::Reader caps,
     for (const auto op : caps.getOperations())
       found = found || op == required;
     if (!found)
-      return mismatch("operations", operation_name(required), served);
+      return capability_mismatch("operations", operation_name(required), served);
   }
   return {};
 }
@@ -152,7 +153,7 @@ inline std::string
 check_capabilities_bytes(const std::vector<unsigned char> &bytes,
                          const Expectation &want = {}) {
   if (bytes.empty() || bytes.size() % sizeof(::capnp::word) != 0)
-    return mismatch("capabilities", "a word-aligned Capabilities message",
+    return capability_mismatch("capabilities", "a word-aligned Capabilities message",
                     std::to_string(bytes.size()) + " bytes");
   std::vector<::capnp::word> storage(bytes.size() / sizeof(::capnp::word));
   std::memcpy(storage.data(), bytes.data(), bytes.size());
@@ -161,7 +162,7 @@ check_capabilities_bytes(const std::vector<unsigned char> &bytes,
         kj::arrayPtr(storage.data(), storage.size()));
     return check_capabilities(reader.getRoot<::Capabilities>(), want);
   } catch (const kj::Exception &ex) {
-    return mismatch("capabilities", "a Capabilities message",
+    return capability_mismatch("capabilities", "a Capabilities message",
                     ex.getDescription().cStr());
   }
 }
