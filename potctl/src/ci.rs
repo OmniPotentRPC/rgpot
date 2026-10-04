@@ -888,8 +888,10 @@ pub fn metatomic_meson_setup_args(build_dir: &str, rpc: bool) -> Vec<String> {
         "--buildtype=debug".into(),
     ];
     if rpc {
-        // The engine leg builds every engine plugin, xtb's included.
+        // The engine leg builds every engine plugin, xtb's and Skala's
+        // included, and the Skala tests.
         args.push("-Dwith_xtb=true".into());
+        args.push("-Dwith_skala=true".into());
     }
     args
 }
@@ -1578,7 +1580,9 @@ mod tests {
         assert!(on.iter().any(|x| x == "-Dwith_rpc=true"));
         assert!(on.iter().any(|x| x == "-Dwith_metatomic=true"));
         assert!(on.iter().any(|x| x == "-Dwith_xtb=true"));
+        assert!(on.iter().any(|x| x == "-Dwith_skala=true"));
         assert!(!off.iter().any(|x| x == "-Dwith_xtb=true"));
+        assert!(!off.iter().any(|x| x == "-Dwith_skala=true"));
     }
 
     #[test]
