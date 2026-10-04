@@ -558,4 +558,42 @@ mod tests {
 
         assert_eq!(LIFECYCLE_STEP.load(Ordering::SeqCst), 2);
     }
+
+    fn flat_words(edit: impl FnOnce(&mut crate::Potentials_capnp::capabilities::Builder<'_>)) -> Vec<u64> {
+        use crate::Potentials_capnp::capabilities::{Builder as Caps, Operation};
+        let mut msg = Builder::new_default();
+        {
+            let mut caps = msg.init_root::<Caps<'_>>();
+            crate::compat::fill_compatibility(caps.reborrow());
+            let mut ops = caps.reborrow().init_operations(2);
+            ops.set(0, Operation::Energy);
+            ops.set(1, Operation::Forces);
+            edit(&mut caps);
+        }
+        let bytes = serialize::write_message_to_words(&msg);
+        bytes
+            .chunks_exact(8)
+            .map(|c| u64::from_le_bytes(c.try_into().unwrap()))
+            .collect()
+    }
+
+    #[test]
+    fn dispatch_check_accepts_compatible_and_names_the_refused_field() {
+        let want = Expectation::default();
+        assert!(check_capabilities_bytes("fake", &flat_words(|_| {}), &want).is_ok());
+
+        let refused =
+            check_capabilities_bytes("fake", &flat_words(|c| c.set_dlpack_major(2)), &want)
+                .unwrap_err()
+                .to_string();
+        assert!(refused.contains("fake backend refused"), "{refused}");
+        assert!(refused.contains("DLPack major"), "{refused}");
+    }
+
+    #[test]
+    fn dispatch_check_rejects_a_truncated_message() {
+        let mut words = flat_words(|_| {});
+        words.truncate(1);
+        assert!(check_capabilities_bytes("fake", &words, &Expectation::default()).is_err());
+    }
 }
