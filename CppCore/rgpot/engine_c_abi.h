@@ -67,7 +67,19 @@ typedef struct RgpotEnginePot RgpotEnginePot;
 typedef int (*rgpot_engine_coord_transform)(void *user, long nAtoms,
                                             double *positions, double *box);
 
+/**
+ * ABI identity. `RGPOT_ENGINE_ABI_VERSION` is the major: an incompatible change
+ * increments it, and a host compares it for equality. Additions that leave
+ * every existing call valid (a new optional symbol, a new field at the end of
+ * a size-prefixed struct) increment `RGPOT_ENGINE_ABI_MINOR`. The layout
+ * revision increments when an existing struct changes size or field order.
+ * Hosts that read only `rgpot_engine_abi_version()` keep working across minor
+ * bumps; `rgpot_engine_abi_stamp()` is optional and an engine without it is
+ * minor 0, layout 1.
+ */
 #define RGPOT_ENGINE_ABI_VERSION 1
+#define RGPOT_ENGINE_ABI_MINOR 1
+#define RGPOT_ENGINE_ABI_LAYOUT_REVISION 1
 
 RGPOT_ENGINE_API int rgpot_engine_abi_version(void);
 
@@ -207,6 +219,71 @@ RGPOT_ENGINE_API int rgpot_engine_set_callbacks(
 RGPOT_ENGINE_API int rgpot_engine_hint(RgpotEnginePot *pot, const void *msg,
                                        size_t msg_len, char *errbuf,
                                        size_t errlen);
+
+/** Compatibility identity of the loaded engine (see RGPOT_ENGINE_ABI_MINOR). */
+typedef struct {
+  unsigned short abi_major;
+  unsigned short abi_minor;
+  unsigned short layout_revision;
+} RgpotEngineAbiStamp;
+
+/** The loaded engine's identity. */
+RGPOT_ENGINE_API RgpotEngineAbiStamp rgpot_engine_abi_stamp(void);
+
+/**
+ * Nonzero when the loaded engine serves a host built against `stamp`: equal
+ * major, equal layout revision, engine minor at least the host's. NULL
+ * returns 0.
+ */
+RGPOT_ENGINE_API int rgpot_engine_abi_compatible(
+    const RgpotEngineAbiStamp *stamp);
+
+/**
+ * Concurrency and evaluation capabilities, the engine-side image of rgpot's
+ * PotCaps. `size` is sizeof(RgpotEngineCaps) on the host; the engine fills
+ * the fields that fit and sets `size` to the size it wrote.
+ * reentrancy: 0 one instance may be called from many threads, 1 one instance
+ * per thread, 2 every evaluation in the process is serialized.
+ */
+typedef struct {
+  unsigned size;
+  int reentrancy;
+  int per_image_instances; /**< clone one instance per NEB image */
+  int batched;             /**< force_batch is served natively */
+  int periodic;            /**< periodic boundary conditions supported */
+  int stress;              /**< cell stress is available */
+  int group_collective;    /**< every rank of a group enters each call */
+} RgpotEngineCaps;
+
+RGPOT_ENGINE_API int rgpot_engine_caps(const RgpotEnginePot *pot,
+                                       RgpotEngineCaps *out);
+
+/**
+ * Message of the last failed call on this instance (create errors go to its
+ * errbuf). Copies at most `len - 1` bytes and NUL-terminates; returns the
+ * full message length, 0 when there is none. Reading does not clear it; the
+ * next successful call does.
+ */
+RGPOT_ENGINE_API size_t rgpot_engine_last_error(const RgpotEnginePot *pot,
+                                                char *buf, size_t len);
+
+/**
+ * Backend thread settings: intra-op and inter-op worker threads of the
+ * engine's tensor runtime. A value below 1 leaves that setting alone. Process
+ * wide in effect, and the inter-op count can be set once before the first
+ * evaluation; a refused setting returns a positive code with the reason in
+ * last_error. Returns 0 on success.
+ */
+RGPOT_ENGINE_API int rgpot_engine_set_num_threads(RgpotEnginePot *pot,
+                                                  int intra_op, int inter_op);
+
+/**
+ * Change the total charge and spin multiplicity the next evaluations assume.
+ * The package was exported for one charge and spin; a mismatch is reported by
+ * the next force call. Returns 0 on success.
+ */
+RGPOT_ENGINE_API int rgpot_engine_set_charge_spin(RgpotEnginePot *pot,
+                                                  int charge, int spin);
 
 /**
  * Neighbor-list declaration. An engine exporting this symbol expects
