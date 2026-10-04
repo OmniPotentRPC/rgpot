@@ -116,3 +116,30 @@ def test_core_is_abi3_or_free_threaded():
     gil_disabled = bool(sysconfig.get_config_var("Py_GIL_DISABLED"))
     if sys.version_info >= (3, 12) and not gil_disabled:
         assert "abi3" in name, f"expected abi3 extension, got {name}"
+
+
+@pytest.mark.skipif(not rgpot.has_cache, reason="built without -Dwith_cache")
+def test_cache_counts_split_computed_from_served(tmp_path):
+    """Cold run computes, warm run on the same store is served."""
+    positions = np.array([[0.0, 0.0, 0.0], [1.5, 0.0, 0.0]], dtype=np.float64)
+    atom_types = np.array([0, 0], dtype=np.int32)
+    box = np.eye(3, dtype=np.float64) * 20.0
+    store = str(tmp_path / "cache")
+
+    cold = rgpot.PotentialCache(store)
+    pot = rgpot.LJPot()
+    pot.set_cache(cold)
+    assert cold.counts() == (0, 0)
+    first = pot(positions, atom_types, box)
+    pot(positions, atom_types, box)
+    assert cold.counts() == (1, 1)
+    del pot, cold
+
+    warm = rgpot.PotentialCache(store)
+    pot = rgpot.LJPot()
+    pot.set_cache(warm)
+    again = pot(positions, atom_types, box)
+    assert warm.counts() == (0, 1)
+    assert float(again[0]) == float(first[0])
+    warm.reset_counts()
+    assert warm.counts() == (0, 0)

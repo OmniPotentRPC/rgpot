@@ -22,12 +22,18 @@ from rgpot._core import (
     __version__,
     evaluate_lj,
     evaluate_metatomic_dlopen,
+    has_cache,
     has_dftd3,
     has_dftd4,
     has_expr,
     has_metatomic_dlopen,
     has_xckernel,
 )
+
+try:
+    from rgpot._core import PotentialCache
+except ImportError:  # compiled without -Dwith_cache
+    PotentialCache = None  # type: ignore[misc, assignment]
 
 try:
     from rgpot._core import D3Pot
@@ -138,12 +144,14 @@ __all__ = [
     "D4Pot",
     "ExprPot",
     "XcKernel",
+    "PotentialCache",
     "evaluate_lj",
     "evaluate_metatomic",
     "evaluate_metatomic_dlopen",
     "default_metatomic_engine_path",
     "available_metatomic_engine_abis",
     "has_metatomic_dlopen",
+    "has_cache",
     "has_expr",
     "has_dftd3",
     "has_dftd4",
