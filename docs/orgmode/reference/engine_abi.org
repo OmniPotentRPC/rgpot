@@ -80,9 +80,9 @@ spin.
 (default 1; a value below 1 leaves the runtime alone), applied once when the
 engine creates the model.
 =UmaParams.deterministicAlgorithms= requests deterministic torch algorithms.
-=MetatomicParams.torchDeterminism= (=fast= or =deterministic=) is the same request for
-that arm, with the attention-backend and TF32 restrictions of rgpot's
-=TorchDeterminismPolicy=, and =nSymmetryRotations=, =randomRotation= and
+=MetatomicParams.torchDeterminism= (=fast= or =deterministic=) is the same
+request for that arm, with the attention-backend and TF32 restrictions of
+rgpot's =TorchDeterminismPolicy=, and =nSymmetryRotations=, =randomRotation= and
 =so3ProbeScatter= mirror =MetatomicConfig=.
 The inter-op count can be set once per process before the runtime starts
 parallel work; asking for the value already in force is accepted, and another
