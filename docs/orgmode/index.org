@@ -86,6 +86,7 @@ meson compile -C bbdir && meson test -C bbdir
 
    reference/architecture
    reference/mpi
+   reference/c_abi
    api/index
    changelog
 

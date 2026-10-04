@@ -1,0 +1,82 @@
+#+TITLE: C ABI of rgpot-core
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* C ABI of rgpot-core
+
+=rgpot-core/include/rgpot.h= carries two identities.
+The package version (=RGPOT_VERSION=, =RGPOT_VERSION_MAJOR=, =RGPOT_VERSION_MINOR=,
+=RGPOT_VERSION_PATCH=) follows the crate.
+The ABI stamp follows the layout of the exported structs and the signatures of
+the exported functions, and does not move with the package version.
+A consumer that loads =librgpot= at run time checks the stamp.
+
+** Stamp
+
+#+begin_src c
+typedef struct rgpot_abi_stamp_t {
+  uint16_t abi_major;
+  uint16_t abi_minor;
+  uint16_t layout_revision;
+} rgpot_abi_stamp_t;
+
+#define RGPOT_ABI_VERSION_MAJOR 1
+#define RGPOT_ABI_VERSION_MINOR 0
+#define RGPOT_ABI_LAYOUT_REVISION 1
+
+rgpot_abi_stamp_t rgpot_abi_stamp(void);
+int32_t rgpot_abi_compatible(const rgpot_abi_stamp_t *stamp);
+#+end_src
+
+The macros hold the stamp of the header the caller compiled against.
+=rgpot_abi_stamp()= returns the stamp of the library actually loaded.
+=rgpot_abi_compatible(&stamp)= returns nonzero when the loaded library can serve
+a caller built with =stamp=: equal =abi_major=, equal =layout_revision=, and a
+library =abi_minor= at least the caller's.
+A null pointer returns 0.
+
+#+begin_src c
+rgpot_abi_stamp_t built = {RGPOT_ABI_VERSION_MAJOR, RGPOT_ABI_VERSION_MINOR,
+                           RGPOT_ABI_LAYOUT_REVISION};
+if (!rgpot_abi_compatible(&built)) {
+  rgpot_abi_stamp_t have = rgpot_abi_stamp();
+  fprintf(stderr, "librgpot ABI %u.%u layout %u, built against %u.%u layout %u\n",
+          have.abi_major, have.abi_minor, have.layout_revision,
+          built.abi_major, built.abi_minor, built.layout_revision);
+  abort();
+}
+#+end_src
+
+** Bumping the numbers
+
+The numbers live in =rgpot-core/src/version.rs= as =RGPOT_ABI_VERSION_MAJOR=,
+=RGPOT_ABI_VERSION_MINOR= and =RGPOT_ABI_LAYOUT_REVISION=.
+Regenerate the header with =pixi run gen-header= and commit it with the change.
+The crate test =committed_header_matches_the_crate= fails when the header and
+the source disagree.
+
+- =abi_major=: increment for a change a caller built against the old header
+  cannot survive: removing or renaming an exported function, changing a
+  signature, changing the meaning of an existing argument or status code.
+  Reset =abi_minor= to 0.
+- =abi_minor=: increment for an additive change that leaves every old call
+  valid: a new exported function, a new status code, a new enum value a caller
+  may ignore.
+  A caller built against minor N runs on any library of the same major and
+  layout revision whose minor is at least N.
+- =layout_revision=: increment when the size or field order of an exported
+  struct changes, or an existing field changes type, even when every function
+  keeps its name.
+  A caller and a library with different layout revisions never match, whatever
+  their minors.
+
+The ABI numbers do not follow the package version: a release that changes no
+exported symbol leaves them where they are.
+
+** Scope
+
+The stamp covers the C surface of =rgpot-core=.
+The C++ and Python packages do not re-export it.
+The engine plugins carry their own number, =rgpot_engine_abi_version()=.
+The eindir objective keeps =rgpot_eindir_abi_stamp()=, which reports the
+stamp of =eindir-core=.
