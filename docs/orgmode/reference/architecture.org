@@ -336,27 +336,27 @@ at the =extern "C"= boundary.
 
 ** Backend Capability Handshake
 
-A backend loaded through the potential profile reports a =Capabilities=
-message (=<prefix>_capabilities_result=).
+A backend loaded through the potential profile reports a =Capabilities= message
+(=<prefix>_capabilities_result=).
 Before a session is created, =ProfileSession::load= (Rust) and
 =rgpot::abi::checked_load= (C++) compare it with the host's expectation and
 refuse the backend with a message naming the first mismatch:
 
-| Field                                  | Refused when                                    |
-|----------------------------------------+-------------------------------------------------|
-| =protocolFamily=, =protocolMajor=      | family differs from =rgpot.potentials= or major differs |
-| =protocolMinor=                        | below the host's required minor                 |
-| =schemaId=                             | differs from the =Potentials.capnp= identity    |
+| Field                                                    | Refused when                                                                          |
+|----------------------------------------------------------+---------------------------------------------------------------------------------------|
+| =protocolFamily=, =protocolMajor=                        | family differs from =rgpot.potentials= or major differs                               |
+| =protocolMinor=                                          | below the host's required minor                                                       |
+| =schemaId=                                               | differs from the =Potentials.capnp= identity                                          |
 | =bridgeAbiMajor/Minor=, =bridgeLayout=, =bridgeFeatures= | different eindir objective ABI, a newer minor, another layout or unknown feature bits |
-| =dlpackMajor/Minor=                    | different DLPack major or a newer minor         |
-| =operations=                           | energy or forces not served                     |
+| =dlpackMajor/Minor=                                      | different DLPack major or a newer minor                                               |
+| =operations=                                             | energy or forces not served                                                           |
 
 Metadata a backend leaves unset (empty family, zero bridge major) is not a
 declaration and is not checked, so backends that predate the fields keep
 loading.
-=buildVersion= and =buildRevision= report the version and source revision of
-the build that produced the message; =rgpot_source_revision()= returns the
-same revision through the C ABI.
+=buildVersion= and =buildRevision= report the version and source revision of the
+build that produced the message; =rgpot_source_revision()= returns the same
+revision through the C ABI.
 
 The same check guards RPC.
 The rgpot servers (=potserv=, =rgpot_rpc_server_start=) implement
