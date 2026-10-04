@@ -1084,6 +1084,16 @@ if get_option('with_tests')
             suite: 'nwchem',
         )
         test(
+            'CapabilitiesWire',
+            find_program('python3'),
+            args: [
+                meson.current_source_dir() / 'tests/test_capabilities_wire.py',
+                meson.source_root(),
+                capnp.full_path(),
+            ],
+            suite: 'rpc',
+        )
+        test(
             'RPCSchemaSync',
             find_program('python3'),
             args: [

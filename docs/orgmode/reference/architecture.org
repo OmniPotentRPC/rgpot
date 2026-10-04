@@ -358,6 +358,17 @@ loading.
 the build that produced the message; =rgpot_source_revision()= returns the
 same revision through the C ABI.
 
+The same check guards RPC.
+The rgpot servers (=potserv=, =rgpot_rpc_server_start=) implement
+=Potential.getCapabilities=; the Rust client (=RpcClient=) and the C bridge
+(=pot_calculate=) call it before the first =calculate= and refuse the server
+when its capabilities are incompatible.
+A server that does not implement the call answers UNIMPLEMENTED and is refused
+with a message naming =Potential.getCapabilities= and asking for an upgrade to
+an rgpot release whose =Potentials.capnp= carries it.
+eOn's two callback servers do not implement it yet and gain it in a separate
+change, so an rgpot client built from this revision refuses them until then.
+
 ** Adding a New Potential
 
 To register a new C++ potential with the Rust core:
