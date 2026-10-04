@@ -1073,6 +1073,16 @@ if get_option('with_tests')
             depends: gen_rpc,
             suite: 'rpc',
         )
+        test(
+            'CapabilitiesEvolution',
+            find_program('python3'),
+            args: [
+                meson.current_source_dir() / 'tests/test_capabilities_evolution.py',
+                meson.project_source_root(),
+                capnp.full_path(),
+            ],
+            suite: 'rpc',
+        )
     endif
     if rpc_enabled
         test_deps += dependency('capnp-rpc')
