@@ -116,7 +116,24 @@ int main(int argc, char **argv) {
   std::vector<double> times_us;
   const int warmup = 5;
 
-  if (mode == "direct-force" || mode == "direct-operator") {
+  if (mode == "dlsym-cost") {
+    // Cost of the three RTLD_DEFAULT lookups the engine makes per call to
+    // see whether a Python host holds the GIL, with torch loaded.
+    for (int it = 0; it < warmup + ncalls; ++it) {
+      const auto t0 = Clock::now();
+      volatile void *a = dlsym(RTLD_DEFAULT, "PyGILState_Check");
+      volatile void *b = dlsym(RTLD_DEFAULT, "PyEval_SaveThread");
+      volatile void *c = dlsym(RTLD_DEFAULT, "PyEval_RestoreThread");
+      (void)a;
+      (void)b;
+      (void)c;
+      const auto t1 = Clock::now();
+      if (it >= warmup) {
+        times_us.push_back(
+            std::chrono::duration<double, std::micro>(t1 - t0).count());
+      }
+    }
+  } else if (mode == "direct-force" || mode == "direct-operator") {
     rgpot::UmaConfig cfg;
     cfg.model_path = model;
     cfg.device = "cpu";
