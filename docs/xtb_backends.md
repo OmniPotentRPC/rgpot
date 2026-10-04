@@ -96,3 +96,32 @@ bash scripts/run_xtb_backend_bench.sh --out-dir /path/to/scratch
 See `scripts/compare_xtb_backends.py` for flags. Protocol: shared water GFN2
 geometry, warmup force calls, then timed samples; report mean wall ms and
 whether dlopen is as-fast-or-faster than eOn linked ship (5% band).
+
+## Periodic boundary conditions
+
+`XTBPot` and `TBLitePot` derive periodicity from the box. An axis is periodic
+when its lattice vector (a row of the row-major box) has nonzero length; an
+all-zero box is an isolated system. A change of periodic axes between calls
+rebuilds the native molecule and calculator.
+
+- **xtb GFN2-xTB** always runs isolated, because libxtb has no multipoles
+  under periodic boundary conditions. The box only sets the stress volume.
+- **xtb GFN1-xTB and GFN-FF** run periodic. The atoms are centered in the
+  cell and wrapped, which libxtb needs to converge for a molecule near a cell
+  face. libxtb returns a zero virial for periodic cells, so `has_stress` stays
+  clear.
+- **tblite** runs periodic for every method. The GFN1 stress matches the
+  strain derivative of the energy; the GFN2 periodic stress does not.
+
+A vacuum box with a nonzero lattice (for example 100 A) is periodic for
+tblite and for xtb GFN1 and GFN-FF; pass an all-zero box for an isolated
+system.
+
+## Metatomic batching
+
+`MetatomicPot::forceBatch` evaluates all systems of a batch in one model
+forward and splits the summed-energy gradient into per-system forces
+(`caps().batched`). Orientation averaging (`random_rotation`,
+`n_symmetry_rotations`) and model uncertainty output evaluate one system at
+a time. A model that stacks per-atom outputs may reject systems with unequal
+atom counts in one batch.

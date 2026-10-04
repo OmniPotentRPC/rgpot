@@ -1,0 +1,1 @@
+XTBPot and TBLitePot derive periodicity from the box (nonzero lattice vector per axis) instead of fixing it to isolated. GFN2-xTB under libxtb stays isolated, and a virial libxtb did not compute no longer sets `has_stress`.
