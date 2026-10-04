@@ -18,6 +18,7 @@ export-plan = { cmd = "bash ci/gha/export-plan.sh" }
 [environments]
 rpctest = {features = ["rpc", "itests"]}
 eonviz = { features = ["eonviz"], no-default-feature = true }
+umaexport = { features = ["umaexport"], no-default-feature = true }
 cigen = {features = ["cigen"]}
 devbld = { features = ["rpc", "cache"] }
 docs = { features = ["docs"]}
@@ -148,6 +149,22 @@ rgpycrumbs = "==1.11.0"
 readcon = ">=0.14.7"
 jax = "*"
 
+# UMA AOTI exporter (scripts/export_uma_aoti.py). fairchem-core 2.23 requires
+# torch 2.13, which conflicts with the metatomic feature's torch line, so this
+# environment carries no default feature.
+[feature.umaexport]
+platforms = ["linux-64"]
+
+[feature.umaexport.dependencies]
+python = ">=3.11,<3.13"
+ase = ">=3.26"
+numpy = ">=2.0,<2.5"
+
+[feature.umaexport.pypi-dependencies]
+fairchem-core = "==2.23.0"
+torch = "==2.13.*"
+vesin = ">=0.6.0,<0.7"
+
 [feature.docs]
 # doxyrest only works on linux
 platforms = ["linux-64"]
@@ -193,6 +210,7 @@ uv = ">=0.6.0"
 [tasks]
 rust-test = { cmd = "cargo nextest run --manifest-path rgpot-core/Cargo.toml", description = "Run Rust core unit tests with nextest" }
 ase-anneal-compare = { cmd = "bash scripts/ase_anneal_compare.sh", description = "ASE local optimizer vs anneal SOTA portfolio on an rgpot LJ potential (run with -e rpctest)" }
+export-uma-aoti = { cmd = "python scripts/export_uma_aoti.py", description = "Export a UMA AOTI .pt2 package (run with -e umaexport; --help lists the options)" }
 check-eonviz-pins = { cmd = "bash scripts/check_eonviz_pins.sh", description = "Fail unless every eonviz dependency is an immutable pin" }
 eon-min-landscape = { cmd = "python tests/eon_min_landscape.py", description = "Run an EON LJ minimization and render the (s,d) optimization landscape (run with -e eonviz)" }
 pes-double-well = { cmd = "bash scripts/pes_double_well.sh", description = "Render the rgpot LJ double-well 2D PES: ASE local vs anneal global (run with -e rpctest)" }
