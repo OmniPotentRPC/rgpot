@@ -1128,9 +1128,18 @@ if get_option('with_tests')
             link_language: 'cpp',
             build_rpath: _metatomic_build_rpath,
         )
+        _test_env = environment()
+        _test_depends = []
+        if test.get(1) == 'metatomic_test'
+            # The dlopen parity case loads the engine named here.
+            _test_env.set('RGPOT_METATOMIC_ENGINE', metatomic_engine.full_path())
+            _test_depends += [metatomic_engine]
+        endif
         test(
             test.get(0),
             _test_exe,
+            env: _test_env,
+            depends: _test_depends,
             workdir: meson.source_root() + test.get(3),
         )
         if test.get(1) == 'calculator_group_test'

@@ -540,7 +540,7 @@ TEST_CASE("MetatomicDlopen loads engine and matches linked pot energy",
     return;
   }
   rgpot::MetatomicConfig cfg;
-  cfg.model_path = "lennard-jones.pt";
+  cfg.model_path = "data/lj38/lennard-jones.pt";
   cfg.device = "cpu";
   cfg.engine_path = eng;
 
