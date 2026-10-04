@@ -560,3 +560,61 @@ TEST_CASE("MetatomicDlopen loads engine and matches linked pot energy",
   REQUIRE(std::isfinite(o2.energy));
   REQUIRE(o1.energy == Catch::Approx(o2.energy).margin(1e-5));
 }
+
+TEST_CASE("MetatomicPot forceBatch matches scalar calls", "[metatomic][batch]") {
+  rgpot::MetatomicConfig cfg;
+  cfg.model_path = "data/lj38/lennard-jones.pt";
+  cfg.device = "cpu";
+  cfg.length_unit = "angstrom";
+  rgpot::MetatomicPot pot(cfg);
+  REQUIRE(pot.caps().batched);
+
+  // Three independent systems: the reference geometry, a displaced copy in
+  // a different cell, and a smaller cluster with another atom count.
+  const std::array<double, 9> box_a{101.9424, 0.0, 0.0, 0.0, 103.1426,
+                                    0.0,      0.0, 0.0, 102.6055};
+  const std::array<double, 9> box_b{110.0, 0.0, 0.0, 0.0, 109.0,
+                                    0.0,   0.0, 0.0, 111.0};
+  std::vector<double> pos_a(lj13_pos, lj13_pos + 3 * N_ATOMS);
+  std::vector<double> pos_b = pos_a;
+  for (size_t i = 0; i < pos_b.size(); ++i)
+    pos_b[i] += 0.05 * std::sin(static_cast<double>(i)) + 3.0;
+  constexpr int n_small = 8;
+  std::vector<double> pos_c(lj13_pos, lj13_pos + 3 * n_small);
+  const std::vector<int> z_a(lj13_atmnrs, lj13_atmnrs + N_ATOMS);
+  const std::vector<int> z_c(lj13_atmnrs, lj13_atmnrs + n_small);
+
+  const std::vector<rgpot::ForceInput> inputs{
+      {static_cast<size_t>(N_ATOMS), pos_a.data(), z_a.data(), box_a.data()},
+      {static_cast<size_t>(N_ATOMS), pos_b.data(), z_a.data(), box_b.data()},
+      {static_cast<size_t>(n_small), pos_c.data(), z_c.data(), box_a.data()},
+  };
+
+  std::vector<std::vector<double>> scalar_f, batch_f;
+  std::vector<rgpot::ForceOut> scalar_out, batch_out;
+  for (const auto &in : inputs) {
+    scalar_f.emplace_back(3 * in.nAtoms, 0.0);
+    batch_f.emplace_back(3 * in.nAtoms, 0.0);
+  }
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    scalar_out.push_back({scalar_f[i].data(), 0.0, 0.0, {}, 0});
+    batch_out.push_back({batch_f[i].data(), 0.0, 0.0, {}, 0});
+    pot.forceImpl(inputs[i], &scalar_out[i]);
+  }
+  pot.forceBatch({inputs.size(), inputs.data(), batch_out.data()});
+
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    CAPTURE(i);
+    REQUIRE_THAT(batch_out[i].energy,
+                 WithinAbs(scalar_out[i].energy,
+                           1e-9 * std::abs(scalar_out[i].energy)));
+    double scale = 0.0;
+    for (double v : scalar_f[i])
+      scale = std::max(scale, std::abs(v));
+    for (size_t k = 0; k < scalar_f[i].size(); ++k)
+      REQUIRE_THAT(batch_f[i][k], WithinAbs(scalar_f[i][k], 1e-9 * scale));
+  }
+  // The geometries differ, so a batch that returned one result for all
+  // would fail the comparison above.
+  REQUIRE(std::abs(scalar_out[0].energy - scalar_out[1].energy) > 1.0);
+}

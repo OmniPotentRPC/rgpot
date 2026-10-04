@@ -522,6 +522,126 @@ void MetatomicPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 }
 
 
+void MetatomicPot::forceBatchImpl(const ForceBatch &batch) const {
+  // Orientation averaging and model uncertainty reduce per pass or per
+  // system over several forwards; those configurations evaluate one system
+  // at a time.
+  const bool use_rotation =
+      m_config.random_rotation || m_config.n_symmetry_rotations > 0;
+  if (batch.nSystems <= 1 || use_rotation || m_uncertainty_threshold > 0) {
+    for (size_t i = 0; i < batch.nSystems; ++i) {
+      forceImpl(batch.in[i], &batch.out[i]);
+    }
+    return;
+  }
+
+  std::lock_guard<std::mutex> lock(m_mutex);
+
+  auto f64_options =
+      torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU);
+
+  std::vector<metatomic_torch::System> systems;
+  systems.reserve(batch.nSystems);
+  for (size_t i = 0; i < batch.nSystems; ++i) {
+    const ForceInput &in = batch.in[i];
+    const long nAtoms = static_cast<long>(in.nAtoms);
+
+    std::vector<int32_t> types_vec(in.atmnrs, in.atmnrs + nAtoms);
+    auto atomic_types =
+        torch::tensor(types_vec, torch::TensorOptions().dtype(torch::kInt32))
+            .to(m_device);
+
+    // The neighbor builder reads these host buffers after the tensors below
+    // are created, so they outlive the system.
+    std::vector<double> pos_buf(in.pos, in.pos + static_cast<size_t>(nAtoms) * 3);
+    std::vector<double> cell_buf(in.box, in.box + 9);
+
+    auto torch_positions =
+        torch::from_blob(pos_buf.data(), {nAtoms, 3}, f64_options)
+            .clone()
+            .to(m_dtype)
+            .to(m_device)
+            .set_requires_grad(true);
+    auto torch_cell =
+        torch::from_blob(cell_buf.data(), {3, 3}, f64_options)
+            .clone()
+            .to(m_dtype)
+            .to(m_device);
+
+    auto cell_norms = torch::norm(torch_cell, 2, /*dim=*/1);
+    auto torch_pbc = cell_norms.abs() > 1e-9;
+    bool periodic[3] = {torch_pbc[0].item<bool>(), torch_pbc[1].item<bool>(),
+                        torch_pbc[2].item<bool>()};
+
+    auto system = torch::make_intrusive<metatomic_torch::SystemHolder>(
+        atomic_types, torch_positions, torch_cell, torch_pbc);
+
+    if (m_config.attach_system_extras) {
+      system->add_data("rgpot::charge",
+                       scalar_system_data("charge",
+                                          static_cast<double>(m_config.charge),
+                                          m_device, m_dtype));
+      system->add_data(
+          "rgpot::spin_multiplicity",
+          scalar_system_data("spin_multiplicity",
+                             static_cast<double>(m_config.spin), m_device,
+                             m_dtype));
+      system->add_data("rgpot::spin",
+                       scalar_system_data("spin",
+                                          static_cast<double>(m_config.spin),
+                                          m_device, m_dtype));
+    }
+
+    for (const auto &request : m_nl_requests) {
+      auto neighbors = computeNeighbors(request, nAtoms, pos_buf.data(),
+                                        cell_buf.data(), periodic);
+      metatomic_torch::register_autograd_neighbors(system, neighbors,
+                                                   m_check_consistency);
+      system->add_neighbor_list(request, neighbors);
+    }
+    systems.push_back(system);
+  }
+
+  auto ivalue_output = m_model.forward({
+      systems,
+      m_eval_options,
+      m_check_consistency,
+  });
+  auto dict_output = ivalue_output.toGenericDict();
+  auto output_map = dict_output.at(m_energy_key)
+                        .toCustomClass<metatensor_torch::TensorMapHolder>();
+  auto energy_block =
+      metatensor_torch::TensorMapHolder::block_by_id(output_map, 0);
+  auto energy_values = energy_block->values().reshape({-1}).to(torch::kFloat64);
+  auto sample_system = energy_block->samples()->column("system").to(torch::kInt64);
+
+  // Per-system energies: a total energy has one sample per system, a
+  // per-atom energy one per atom, and the system column groups either.
+  auto per_system = torch::zeros({static_cast<long>(batch.nSystems)},
+                                 torch::TensorOptions()
+                                     .dtype(torch::kFloat64)
+                                     .device(energy_values.device()))
+                        .index_add(0, sample_system.to(energy_values.device()),
+                                   energy_values);
+  // The systems share no variable, so the gradient of the sum is each
+  // system's own force.
+  per_system.sum().backward();
+
+  auto energies = per_system.detach().to(torch::kCPU);
+  for (size_t i = 0; i < batch.nSystems; ++i) {
+    const ForceInput &in = batch.in[i];
+    auto forces = (-systems[i]->positions().grad())
+                      .to(torch::kCPU)
+                      .to(torch::kFloat64)
+                      .contiguous();
+    std::memcpy(batch.out[i].F, forces.data_ptr<double>(),
+                in.nAtoms * 3 * sizeof(double));
+    batch.out[i].energy = energies[static_cast<long>(i)].item<double>();
+    batch.out[i].variance = 0.0;
+    batch.out[i].has_stress = 0;
+  }
+}
+
 metatensor_torch::TensorBlock MetatomicPot::computeNeighbors(
     metatomic_torch::NeighborListOptions request, long nAtoms,
     const double *positions, const double *box, const bool periodic[3]) const {

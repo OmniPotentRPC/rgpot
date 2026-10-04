@@ -41,6 +41,10 @@ public:
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
+  /// One model forward over all systems when no orientation averaging or
+  /// uncertainty output is configured; otherwise one system at a time.
+  void forceBatchImpl(const ForceBatch &batch) const override;
+
   void setChargeSpin(int charge, int spin) {
     m_config.charge = charge;
     m_config.spin = spin;
@@ -50,7 +54,8 @@ public:
   /// safe; multi-image callers still prefer clones for throughput.
   [[nodiscard]] PotCaps caps() const noexcept override {
     return {.reentrancy = Reentrancy::SharedInstance,
-            .perImageInstances = true};
+            .perImageInstances = true,
+            .batched = true};
   }
 
 
