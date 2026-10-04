@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
@@ -12,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "rgpot/abi/Compat.hpp"
 #include "rgpot/abi/ProfileLoader.hpp"
 #include "rgpot/rpc/Potentials.capnp.h"
 
@@ -153,4 +155,109 @@ TEST_CASE("ProfileLoader rejects a library missing the profile symbols",
   rgpot::abi::ProfileLoader loader;
   REQUIRE_THROWS_AS(loader.load("nwchemc", fake_engine_path()),
                     std::runtime_error);
+}
+
+namespace {
+
+// Capabilities builder with the host's own compatibility fields plus the
+// required operations, edited by the caller to break exactly one of them.
+template <typename Edit>
+std::string verdict(Edit edit, const rgpot::abi::Expectation &want = {}) {
+  ::capnp::MallocMessageBuilder msg;
+  auto caps = msg.initRoot<::Capabilities>();
+  rgpot::abi::fill_compatibility(caps);
+  auto ops = caps.initOperations(2);
+  ops.set(0, ::Capabilities::Operation::ENERGY);
+  ops.set(1, ::Capabilities::Operation::FORCES);
+  edit(caps);
+  return rgpot::abi::check_capabilities(caps.asReader(), want);
+}
+
+} // namespace
+
+TEST_CASE("Capabilities handshake accepts matching metadata",
+          "[abi][profile][compat]") {
+  REQUIRE(verdict([](::Capabilities::Builder) {}).empty());
+}
+
+TEST_CASE("Capabilities handshake does not check unstated metadata",
+          "[abi][profile][compat]") {
+  ::capnp::MallocMessageBuilder msg;
+  auto caps = msg.initRoot<::Capabilities>();
+  auto ops = caps.initOperations(2);
+  ops.set(0, ::Capabilities::Operation::ENERGY);
+  ops.set(1, ::Capabilities::Operation::FORCES);
+  REQUIRE(rgpot::abi::check_capabilities(caps.asReader()).empty());
+}
+
+TEST_CASE("Capabilities handshake rejection matrix",
+          "[abi][profile][compat]") {
+  using B = ::Capabilities::Builder;
+  struct Row {
+    const char *name;
+    std::string why;
+    const char *needle;
+  };
+  const Row rows[] = {
+      {"family", verdict([](B c) { c.setProtocolFamily("other.family"); }),
+       "protocol family"},
+      {"major", verdict([](B c) { c.setProtocolMajor(2); }), "protocol major"},
+      {"schema", verdict([](B c) { c.setSchemaId("0xdeadbeef"); }),
+       "schema id"},
+      {"bridge major", verdict([](B c) { c.setBridgeAbiMajor(2); }),
+       "bridge ABI major"},
+      {"bridge minor", verdict([](B c) { c.setBridgeAbiMinor(9); }),
+       "bridge ABI minor"},
+      {"layout", verdict([](B c) { c.setBridgeLayout(7); }), "objective layout"},
+      {"features", verdict([](B c) { c.setBridgeFeatures(1ULL << 40); }),
+       "bridge features"},
+      {"dlpack major", verdict([](B c) { c.setDlpackMajor(2); }),
+       "DLPack major"},
+      {"dlpack minor", verdict([](B c) { c.setDlpackMinor(9); }),
+       "DLPack minor"},
+      {"operation", verdict([](B c) { c.initOperations(1).set(0, ::Capabilities::Operation::ENERGY); }),
+       "operation"},
+  };
+  for (const auto &row : rows) {
+    INFO(row.name);
+    REQUIRE_FALSE(row.why.empty());
+    REQUIRE(row.why.find(row.needle) != std::string::npos);
+  }
+
+  rgpot::abi::Expectation strict;
+  strict.protocol_minor_min = 2;
+  REQUIRE(verdict([](B) {}, strict).find("protocol minor") !=
+          std::string::npos);
+  REQUIRE(verdict([](B c) { c.setProtocolMinor(2); }, strict).empty());
+}
+
+TEST_CASE("checked_load accepts the fake engine, whose capabilities are "
+          "filled by the producer helper",
+          "[abi][profile][compat]") {
+  rgpot::abi::ProfileLoader loader;
+  rgpot::abi::checked_load(loader, "cpmdc", fake_engine_path());
+  REQUIRE(loader.loaded());
+
+  ::capnp::MallocMessageBuilder probe;
+  auto bytes = loader.capabilities();
+  auto words = kj::arrayPtr(
+      reinterpret_cast<const ::capnp::word *>(bytes.data()),
+      bytes.size() / sizeof(::capnp::word));
+  ::capnp::FlatArrayMessageReader reader(words);
+  auto caps = reader.getRoot<::Capabilities>();
+  REQUIRE(std::string(caps.getProtocolFamily().cStr()) ==
+          rgpot::abi::kProtocolFamily);
+  REQUIRE(caps.getProtocolMajor() == rgpot::abi::kProtocolMajor);
+  REQUIRE(std::string(caps.getSchemaId().cStr()) == rgpot::abi::kSchemaId);
+}
+
+TEST_CASE("checked_load refuses an incompatible backend before dispatch",
+          "[abi][profile][compat]") {
+  rgpot::abi::ProfileLoader loader;
+  rgpot::abi::Expectation other;
+  other.family = "someone.else";
+  REQUIRE_THROWS_WITH(
+      rgpot::abi::checked_load(loader, "cpmdc", fake_engine_path(), other),
+      Catch::Matchers::ContainsSubstring("backend refused: protocol family"));
+  REQUIRE_FALSE(loader.loaded());
 }
