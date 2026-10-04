@@ -215,7 +215,9 @@ if not get_option('with_rpc_client_only')
         _engine_common = files('rgpot/engine/EngineTable.cc')
         _engine_args = _args + [
             '-DRGPOT_ENGINE_BUILD',
-            '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(meson.project_version()),
+            '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(
+                meson.project_version(),
+            ),
         ]
         _engine_deps = _deps_sans_core + [
             vesin_dep,
@@ -1275,7 +1277,9 @@ if get_option('with_tests')
                 ['tests/engine_stub.cc', 'rgpot/engine/EngineTable.cc'],
                 include_directories: _incdirs + ['.'],
                 cpp_args: test_args + [
-                    '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(meson.project_version()),
+                    '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(
+                        meson.project_version(),
+                    ),
                 ],
                 dependencies: test_deps,
                 install: false,
@@ -1304,14 +1308,27 @@ if get_option('with_tests')
         if _rpc_stack and host_system != 'windows'
             engine_table_env = environment()
             engine_table_expect = ['CLASSICAL', 'MOPAC', 'NWCHEM']
-            engine_table_depends = [classical_engine, mopac_engine, nwchem_engine]
-            engine_table_env.set('RGPOT_ENGINE_CLASSICAL', classical_engine.full_path())
+            engine_table_depends = [
+                classical_engine,
+                mopac_engine,
+                nwchem_engine,
+            ]
+            engine_table_env.set(
+                'RGPOT_ENGINE_CLASSICAL',
+                classical_engine.full_path(),
+            )
             engine_table_env.set('RGPOT_ENGINE_MOPAC', mopac_engine.full_path())
-            engine_table_env.set('RGPOT_ENGINE_NWCHEM', nwchem_engine.full_path())
+            engine_table_env.set(
+                'RGPOT_ENGINE_NWCHEM',
+                nwchem_engine.full_path(),
+            )
             if has_skala
                 engine_table_expect += ['SKALA']
                 engine_table_depends += [skala_engine]
-                engine_table_env.set('RGPOT_ENGINE_SKALA', skala_engine.full_path())
+                engine_table_env.set(
+                    'RGPOT_ENGINE_SKALA',
+                    skala_engine.full_path(),
+                )
             endif
             if has_xtb
                 engine_table_expect += ['XTB']
@@ -1321,9 +1338,15 @@ if get_option('with_tests')
             if has_metatomic
                 engine_table_expect += ['METATOMIC']
                 engine_table_depends += [metatomic_engine]
-                engine_table_env.set('RGPOT_ENGINE_METATOMIC', metatomic_engine.full_path())
+                engine_table_env.set(
+                    'RGPOT_ENGINE_METATOMIC',
+                    metatomic_engine.full_path(),
+                )
             endif
-            engine_table_env.set('RGPOT_ENGINE_EXPECT', ','.join(engine_table_expect))
+            engine_table_env.set(
+                'RGPOT_ENGINE_EXPECT',
+                ','.join(engine_table_expect),
+            )
             test(
                 'EngineTableTest',
                 executable(

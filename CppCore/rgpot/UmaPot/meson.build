@@ -35,7 +35,9 @@ if _rpc_stack
         ],
         cpp_args: _args + [
             '-DRGPOT_ENGINE_BUILD',
-            '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(meson.project_version()),
+            '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(
+                meson.project_version(),
+            ),
         ],
         include_directories: ['../../'],
         install: not meson.is_subproject(),

@@ -88,7 +88,9 @@ if has_metatomic
         _engine_table_deps = [capnp_rpc_dep, ptlrpc_dep]
         _engine_table_args = [
             '-DRGPOT_ENGINE_BUILD',
-            '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(meson.project_version()),
+            '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(
+                meson.project_version(),
+            ),
         ]
     endif
 
