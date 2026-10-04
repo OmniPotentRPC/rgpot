@@ -63,6 +63,31 @@ energy, forces, virial = rgpot.evaluate_lj(pos, types, box)
 print(energy, forces.shape)
 #+end_src
 
+** Pair parameters and the cutoff switch
+
+=rgpot.LJPot= takes the =LJConfig= fields as keywords. =u0= is in eV;
+=cutoff=, =psi= and =switch_width= are in Angstrom. The defaults are the
+C++ ones (1, 15, 1 and 0). A positive =switch_width= replaces the
+shifted truncation with the C^2 quintic switch over the last
+=switch_width= Angstrom below the cutoff, so the energy, the force and the
+curvature reach zero there. A width above the cutoff raises =ValueError=.
+
+#+begin_src python
+pot = rgpot.LJPot(cutoff=2.5, switch_width=0.5)
+energy, forces, variance = pot(pos, types, box)
+#+end_src
+
+An =ExprPot= child given as a dict takes the same keys: =u0=, =cutoff=,
+=psi= and =switch_width= for ="lj"=, and =De=, =a=, =re=, =cutoff= and
+=switch_width= for ="morse"=. A key the dict leaves out keeps its default.
+
+#+begin_src python
+pot = rgpot.ExprPot("lj + morse", {
+    "lj": {"kind": "lj", "switch_width": 0.5},
+    "morse": {"kind": "morse", "cutoff": 6.0, "switch_width": 1.0},
+})
+#+end_src
+
 ** Metatomic dlopen
 
 #+begin_src python
