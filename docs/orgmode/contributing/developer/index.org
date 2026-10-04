@@ -54,8 +54,8 @@ All tasks are invoked via =pixi r <task>=:
 
 ** One job and one ccache key per pixi environment
 
-Each pixi environment that builds the project runs in its own CI job with its own
-compiler-cache key (=ccache-pot-mta-=, =ccache-pot-engine-=, ...).
+Each pixi environment that builds the project runs in its own CI job with its
+own compiler-cache key (=ccache-pot-mta-=, =ccache-pot-engine-=, ...).
 Two environments in one job share the step environment and the cache directory.
 =potctl ci ensure-torch-metatomic= exports the torch and cmake paths of its
 environment through =GITHUB_ENV=, so a later step in another environment
