@@ -500,7 +500,7 @@ jobs:
         with:
           activate-environment: metatomicbld
           cache: true
-          environments: metatomicbld umaenginebld
+          environments: metatomicbld
           pixi-version: v0.70.2
       - name: Restore Compiler Cache
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
@@ -515,10 +515,46 @@ jobs:
       - name: Meson build & test (metatomic)
         shell: pixi run -e metatomicbld bash -e {0}
         run: potctl ci metatomic-test
-      - name: Ensure torch + metatomic C++ layout (UMA engine plugin)
+
+  # Own job, not a second step of potentials_metatomic: ensure-torch-metatomic
+  # exports the metatomicbld torch and cmake paths through GITHUB_ENV, and a
+  # build in umaenginebld that inherits them mixes the two environments'
+  # Catch2 headers and libraries.
+  potentials_uma_engine:
+    name: engine plugins (meson / ubuntu)
+    needs: [prepare, ci-tools]
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_COMPILERCHECK: content
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 800M
+      TORCH_DEVICE: cpu
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - name: Ensure potctl
+        uses: ./.github/actions/ensure-potctl
+        with:
+          artifact-prefix: ci-tools-${{ github.sha }}
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
+        with:
+          activate-environment: umaenginebld
+          cache: true
+          environments: umaenginebld
+          pixi-version: v0.70.2
+      - name: Restore Compiler Cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          key: ccache-pot-engine-${{ runner.os }}-${{ github.sha }}
+          path: .ccache
+          restore-keys: ccache-pot-engine-${{ runner.os }}-
+      - name: Ensure torch + metatomic C++ layout
         shell: pixi run -e umaenginebld bash -e {0}
         run: potctl ci ensure-torch-metatomic
-      - name: Meson build & test (UMA engine plugin)
+      - name: Meson build & test (engine plugins)
         shell: pixi run -e umaenginebld bash -e {0}
         run: potctl ci metatomic-test --rpc --build-dir bbdir-uma-engine
 
@@ -629,6 +665,7 @@ jobs:
       - rust_tests
       - client_bridge_stress
       - potentials_metatomic
+      - potentials_uma_engine
       - potentials_tight_binding
       - potentials_plugins
       - eonviz_pins
