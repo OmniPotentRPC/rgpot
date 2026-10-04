@@ -107,6 +107,10 @@ def main() -> None:
                         raise AssertionError("server did not accept a connection")
                     time.sleep(0.05)
             run([client, f"localhost:{port}", backend, layout], env)
+            # The handshake refuses an incompatible protocol before any call.
+            refusal = run([client, f"localhost:{port}", backend, layout, "refuse"], env)
+            if "handshake refusal" not in refusal:
+                raise AssertionError("the client did not report the handshake refusal")
         finally:
             if process.poll() is None:
                 os.killpg(process.pid, signal.SIGTERM)
