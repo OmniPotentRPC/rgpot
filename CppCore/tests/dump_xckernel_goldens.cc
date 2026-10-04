@@ -1,6 +1,7 @@
-// Dump XcKernel C matrices over committed operands. Overwrites *_ref.npy
-// so the exclusive 1e-16 C pin is the host long-double evaluator, not a
-// stale NumPy einsum that sits a few ulp away.
+// Dump XcKernel C matrices over committed operands into c_regression/. These
+// are regression pins of the C backend's own output; the NumPy references
+// (*_ref.npy) come from scripts/regen_xckernel_goldens.py and are never
+// written here.
 
 #include <cstdio>
 #include <cstdlib>
@@ -98,25 +99,36 @@ int main() {
     const char *ref;
   };
   const Fock focks[] = {
-      {"xck_lda_r_o1", "lda_r_o1_scal.npz", "lda_r_o1_fock_ref.npy"},
-      {"xck_gga_r_o1", "gga_r_o1_scal.npz", "gga_r_o1_fock_ref.npy"},
+      {"xck_lda_r_o1", "lda_r_o1_scal.npz",
+       "randgrid_lda_r_o1_fock_c.npy"},
+      {"xck_gga_r_o1", "gga_r_o1_scal.npz",
+       "randgrid_gga_r_o1_fock_c.npy"},
       {"xck_mgga_tau_r_o1", "mgga_tau_r_o1_scal.npz",
-       "mgga_tau_r_o1_fock_ref.npy"},
+       "randgrid_mgga_tau_r_o1_fock_c.npy"},
   };
   for (const auto &c : focks) {
     auto scal = load_npz(std::string(data) + "/" + c.scal);
     auto op = geom;
     op.insert(scal.begin(), scal.end());
-    dump(std::string(data) + "/" + c.ref, run_kernel(c.kernel, op, 4, 200, true),
-         4);
+    dump(std::string(data) + "/c_regression/" + c.ref,
+         run_kernel(c.kernel, op, 4, 200, true), 4);
+  }
+
+  {
+    auto op = load_npz(std::string(data) + "/mol_h2o_sto3g_lvl3_operands.npz");
+    const auto nbf = static_cast<std::int64_t>(op.at("chi").shape[0]);
+    const auto npts = static_cast<std::int64_t>(op.at("chi").shape[1]);
+    dump(std::string(data) + "/c_regression/gga_r_o2_fxc_c.npy",
+         run_kernel("xck_gga_r_o2", op, nbf, npts, false), nbf);
   }
 
   const char *cnps[] = {"xck_lda_r_o1", "xck_gga_r_o1", "xck_gga_r_o2",
                         "xck_mgga_tau_r_o1"};
   for (const char *k : cnps) {
-    const std::string base = std::string(data) + "/c_vs_numpy/" + k;
-    auto op = load_npz(base + "_operands.npz");
-    dump(base + "_ref.npy", run_kernel(k, op, 4, 60, false), 4);
+    auto op = load_npz(std::string(data) + "/c_vs_numpy/" + k +
+                       "_operands.npz");
+    dump(std::string(data) + "/c_regression/c_vs_numpy_" + k + "_c.npy",
+         run_kernel(k, op, 4, 60, false), 4);
   }
   return 0;
 }
