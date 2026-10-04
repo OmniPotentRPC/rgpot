@@ -27,6 +27,21 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 #define RGPOT_VERSION_PATCH 0
 
 /**
+ * ABI major of this build.
+ */
+#define RGPOT_ABI_VERSION_MAJOR 1
+
+/**
+ * ABI minor of this build.
+ */
+#define RGPOT_ABI_VERSION_MINOR 0
+
+/**
+ * Layout revision of this build.
+ */
+#define RGPOT_ABI_LAYOUT_REVISION 1
+
+/**
  * Status codes returned by all C API functions.
  */
 typedef enum rgpot_status_t {
@@ -201,6 +216,27 @@ typedef struct rgpot_eval_counts_t {
  */
 typedef struct RpcClient rgpot_rpc_client_t;
 #endif
+
+/**
+ * Compatibility identity of the rgpot-core C ABI.
+ *
+ * The numbers move with the layout of the exported structs and the
+ * signatures of the exported functions, not with the crate version.
+ */
+typedef struct rgpot_abi_stamp_t {
+  /**
+   * Incompatible changes increment this value.
+   */
+  uint16_t abi_major;
+  /**
+   * Additive compatible changes increment this value.
+   */
+  uint16_t abi_minor;
+  /**
+   * Struct and function-layout revision for this ABI major.
+   */
+  uint16_t layout_revision;
+} rgpot_abi_stamp_t;
 
 /**
  * Create a non-owning 2-D f64 tensor on CPU wrapping an existing buffer.
@@ -523,6 +559,26 @@ uint32_t rgpot_version_minor(void);
  * Patch version of the loaded library.
  */
 uint32_t rgpot_version_patch(void);
+
+/**
+ * Compatibility identity of the loaded library.
+ *
+ * Compare it with the `RGPOT_ABI_*` macros of the header the caller
+ * compiled with, or pass the caller's own stamp to
+ * [`rgpot_abi_compatible`].
+ */
+struct rgpot_abi_stamp_t rgpot_abi_stamp(void);
+
+/**
+ * Return nonzero when the loaded library can serve a caller built with
+ * `stamp`: equal major, equal layout revision, and a library minor at least
+ * the caller's. A null `stamp` is not compatible.
+ *
+ * # Safety
+ *
+ * `stamp` must be null or point to a readable `rgpot_abi_stamp_t`.
+ */
+int32_t rgpot_abi_compatible(const struct rgpot_abi_stamp_t *stamp);
 
 #if defined(RGPOT_HAS_RPC)
 /**
