@@ -1,16 +1,24 @@
 plugin_test_inc = include_directories('../../../include')
 plugin_null = shared_library(
-    'rgpot_null', '../../examples/plugins/null_plugin.c',
-    include_directories: plugin_test_inc, name_prefix: 'lib', install: false,
+    'rgpot_null',
+    '../../examples/plugins/null_plugin.c',
+    include_directories: plugin_test_inc,
+    name_prefix: 'lib',
+    install: false,
 )
 plugin_morse = shared_library(
-    'rgpot_morse', '../../examples/plugins/morse_plugin.c',
-    include_directories: plugin_test_inc, dependencies: cppc.find_library('m', required: false),
-    name_prefix: 'lib', install: false,
+    'rgpot_morse',
+    '../../examples/plugins/morse_plugin.c',
+    include_directories: plugin_test_inc,
+    dependencies: cppc.find_library('m', required: false),
+    name_prefix: 'lib',
+    install: false,
 )
 plugin_fixture = shared_library(
-    'rgpot_plugin_lifetime', '../plugin_lifetime_fixture.c',
-    include_directories: plugin_test_inc, install: false,
+    'rgpot_plugin_lifetime',
+    '../plugin_lifetime_fixture.c',
+    include_directories: plugin_test_inc,
+    install: false,
 )
 plugin_env = environment()
 plugin_env.set('RGPOT_TEST_PLUGIN_DIR', meson.current_build_dir())
@@ -20,32 +28,71 @@ foreach item : [
     ['ExternalPluginTest', 'external_plugin_test', '../ExternalPluginTest.cc'],
 ]
     plugin_test = executable(
-        item[1], item[2], dependencies: test_deps,
-        include_directories: _incdirs, cpp_args: test_args, link_with: _linkto,
-        link_language: 'cpp', build_rpath: _metatomic_build_rpath,
+        item[1],
+        item[2],
+        dependencies: test_deps,
+        include_directories: _incdirs,
+        cpp_args: test_args,
+        link_with: _linkto,
+        link_language: 'cpp',
+        build_rpath: _metatomic_build_rpath,
     )
-    test(item[0], plugin_test, env: plugin_env,
-         depends: [plugin_null, plugin_morse], suite: 'plugin')
+    test(
+        item[0],
+        plugin_test,
+        env: plugin_env,
+        depends: [plugin_null, plugin_morse],
+        suite: 'plugin',
+    )
 endforeach
 if has_fortran
     plugin_coulomb = shared_library(
         'rgpot_coulomb',
-        ['../../examples/plugins/coulomb_plugin.f90', '../../examples/plugins/coulomb_plugin_wrapper.c'],
-        include_directories: plugin_test_inc, name_prefix: 'lib', install: false,
+        [
+            '../../examples/plugins/coulomb_plugin.f90',
+            '../../examples/plugins/coulomb_plugin_wrapper.c',
+        ],
+        include_directories: plugin_test_inc,
+        name_prefix: 'lib',
+        install: false,
     )
     plugin_fortran_test = executable(
-        'external_fortran_plugin_test', '../ExternalFortranPluginTest.cc',
-        dependencies: test_deps, include_directories: _incdirs,
-        cpp_args: test_args, link_with: _linkto, link_language: 'cpp', build_rpath: _metatomic_build_rpath,
+        'external_fortran_plugin_test',
+        '../ExternalFortranPluginTest.cc',
+        dependencies: test_deps,
+        include_directories: _incdirs,
+        cpp_args: test_args,
+        link_with: _linkto,
+        link_language: 'cpp',
+        build_rpath: _metatomic_build_rpath,
     )
-    test('ExternalFortranPluginTest', plugin_fortran_test, env: plugin_env,
-         depends: plugin_coulomb, suite: 'plugin')
+    test(
+        'ExternalFortranPluginTest',
+        plugin_fortran_test,
+        env: plugin_env,
+        depends: plugin_coulomb,
+        suite: 'plugin',
+    )
 endif
 plugin_lifetime = executable(
-    'plugin_lifetime_test', '../PluginLifetimeTest.cc',
-    dependencies: test_deps, include_directories: _incdirs,
-    cpp_args: test_args, link_with: _linkto, link_language: 'cpp', build_rpath: _metatomic_build_rpath,
+    'plugin_lifetime_test',
+    '../PluginLifetimeTest.cc',
+    dependencies: test_deps,
+    include_directories: _incdirs,
+    cpp_args: test_args,
+    link_with: _linkto,
+    link_language: 'cpp',
+    build_rpath: _metatomic_build_rpath,
 )
-test('PluginLifetimeTest', find_program('python3', 'python'),
-     args: [files('../test_plugin_lifetime.py')[0], plugin_lifetime.full_path(), plugin_fixture.full_path()],
-     depends: [plugin_lifetime, plugin_fixture], timeout: 30, suite: 'plugin')
+test(
+    'PluginLifetimeTest',
+    find_program('python3', 'python'),
+    args: [
+        files('../test_plugin_lifetime.py')[0],
+        plugin_lifetime.full_path(),
+        plugin_fixture.full_path(),
+    ],
+    depends: [plugin_lifetime, plugin_fixture],
+    timeout: 30,
+    suite: 'plugin',
+)

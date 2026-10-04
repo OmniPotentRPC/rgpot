@@ -73,4 +73,3 @@ TEST_CASE("External Coulomb plugin: two protons", "[plugin][external]") {
   // Newton's third law
   REQUIRE_THAT(forces(0, 0) + forces(1, 0), WithinAbs(0.0, 1e-10));
 }
-
