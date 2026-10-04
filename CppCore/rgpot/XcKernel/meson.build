@@ -43,6 +43,15 @@ _xck_kernels = [
     'xck_mgga_lapl_st_o2_m',
 ]
 
+# Stage B of every generated kernel is a dgemm or dsyr2k. FlexiBLAS first, so
+# the backend is switchable at run time, then the generic blas dependency.
+_xck_blas = dependency('flexiblas', required: false)
+if not _xck_blas.found()
+    _xck_blas = dependency('blas', required: true)
+endif
+
+_deps += [_xck_blas]
+
 fs = import('fs')
 _xck_root = meson.project_source_root() / 'third_party' / 'libxckernel'
 if not fs.is_file(_xck_root / 'include' / 'xckernel.h')
@@ -72,5 +81,6 @@ xckernel = static_library(
 
 xckernel_dep = declare_dependency(
     link_with: [xckernel],
+    dependencies: [_xck_blas],
     include_directories: _incdirs + [xck_inc, _xck_gen_inc],
 )
