@@ -1,6 +1,6 @@
 [wrap-git]
-directory = potentials-schema-afd50e64a4ec
+directory = potentials-schema-ecc52e30addd
 url = https://github.com/OmniPotentRPC/potentials-schema.git
-revision = afd50e64a4ec48810ab426e1a301567027573cc0
+revision = ecc52e30addd93b68047c3127178ccac7f835552
 # Same ExprParams/PotSpec tree as the vendored copies, on top of the UMA pin.
 diff_files = expr-potspec.diff
