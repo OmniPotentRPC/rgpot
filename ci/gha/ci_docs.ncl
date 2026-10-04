@@ -9,11 +9,11 @@ let P = S.pins in
     pull_request = {},
     schedule = [{ cron = "0 8 * * 1" }],
   },
+  permissions = { contents = "read" },
   jobs = {
     build_docs = {
       name = "Build documentation",
       "runs-on" = P.ubuntu,
-      permissions = { contents = "write" },
       steps = [
         {
           name = "Checkout repository",
@@ -30,9 +30,23 @@ let P = S.pins in
           uses = P.upload_artifact_v6,
           with = { name = "documentation", path = "docs/build" },
         },
+      ],
+    },
+    deploy_docs = {
+      name = "Deploy documentation",
+      needs = ["build_docs"],
+      "if" = "github.event_name == 'push'",
+      "runs-on" = P.ubuntu,
+      permissions = { contents = "write" },
+      steps = [
+        { uses = P.checkout, with = { "persist-credentials" = false } },
+        {
+          name = "Download documentation",
+          uses = P.download_artifact_v6,
+          with = { name = "documentation", path = "docs/build" },
+        },
         {
           name = "Deploy",
-          "if" = "github.event_name == 'push'",
           uses = P.gh_pages,
           with = {
             github_token = "${{ secrets.GITHUB_TOKEN }}",

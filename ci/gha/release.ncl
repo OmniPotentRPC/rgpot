@@ -92,7 +92,7 @@ let P = S.pins in
       steps = [
         S.checkout_minimal,
         S.setup_pixi_default "devbld",
-        { uses = P.rust_toolchain },
+        { uses = P.rust_toolchain, with = { toolchain = "stable" } },
         {
           uses = P.rust_cache,
           with = {
@@ -119,7 +119,7 @@ let P = S.pins in
       "runs-on" = P.ubuntu,
       steps = [
         S.checkout_minimal,
-        { uses = P.rust_toolchain },
+        { uses = P.rust_toolchain, with = { toolchain = "stable" } },
         {
           uses = P.rust_cache,
           with = {
