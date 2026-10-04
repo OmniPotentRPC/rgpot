@@ -1,0 +1,1 @@
+`pixi run check-eonviz-pins` (`scripts/check_eonviz_pins.sh`) fails when an `eonviz` dependency is a git branch or tag, lacks a full commit `rev`, or when `chemparseplot` or `rgpycrumbs` is not an exact `==` pin.

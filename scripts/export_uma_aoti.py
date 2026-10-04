@@ -957,7 +957,8 @@ def main() -> int:
     patch_export_ops()
     print("torch.export", flush=True)
     natoms_dim = torch.export.Dim("natoms", min=1, max=256)
-    nedges_dim = torch.export.Dim("nedges", min=1, max=65536)
+    nedges_min, nedges_max = 1, 65536
+    nedges_dim = torch.export.Dim("nedges", min=nedges_min, max=nedges_max)
     dyn = {
         "pos": {0: natoms_dim},
         "atomic_numbers": {0: natoms_dim},
@@ -1028,6 +1029,13 @@ def main() -> int:
 
     print("export ok", type(exported), flush=True)
     meta["export_path"] = export_path
+    # UmaPot refuses an edge count outside this range instead of feeding
+    # the compiled graph a shape it was not traced for.
+    if export_path == "dynamic-nonstrict":
+        meta["nedges_min"] = nedges_min
+        meta["nedges_max"] = nedges_max
+    else:
+        meta["nedges_min"] = meta["nedges_max"] = int(example[4].shape[1])
     if export_path == "make_fx-nonstrict" and not (
         args.molecular_box and args.molecular_box > 0.0
     ):
