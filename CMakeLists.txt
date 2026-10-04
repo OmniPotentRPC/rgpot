@@ -162,7 +162,8 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/Morse/MorsePot.cc
       CppCore/rgpot/ZBL/ZBLPot.cc
       CppCore/rgpot/CuH2/cuh2Utils.cc
-      CppCore/rgpot/fortran/FortranPots.cc)
+      CppCore/rgpot/fortran/FortranPots.cc
+      CppCore/rgpot/nlist/periodic_images.cc)
 
   # NWChemPot / CPMDPot are pure dlopen consumers of the split nwchemc / cpmdc
   # engines (parity with meson). Cap'n Proto params live in the generated schema,
@@ -176,6 +177,15 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     enable_testing()
   endif()
   find_package(Threads REQUIRED)
+  FetchContent_Declare(
+    linkcell
+    GIT_REPOSITORY https://github.com/d-SEAMS/linkcell.git
+    GIT_TAG v0.3.5
+    GIT_SHALLOW TRUE)
+  set(LINKCELL_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(LINKCELL_WITH_GPULITE OFF CACHE BOOL "" FORCE)
+  set(LINKCELL_INSTALL OFF CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(linkcell)
   add_library(rgpot_vesin STATIC third_party/vesin/vesin-single-build.cpp)
   add_library(rgpot::vesin ALIAS rgpot_vesin)
   set_target_properties(rgpot_vesin PROPERTIES
@@ -191,6 +201,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
   set_target_properties(rgpot PROPERTIES LINKER_LANGUAGE CXX
                                         POSITION_INDEPENDENT_CODE ON)
   target_link_libraries(rgpot PRIVATE rgpot_fortran_kernels Threads::Threads)
+  target_link_libraries(rgpot PUBLIC linkcell::cpp)
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_options(
       rgpot PRIVATE

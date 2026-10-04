@@ -5,14 +5,14 @@
 // Verlet-skin cached pair lists for classical pair potentials, ported from
 // eOn's eonc::PairListCache (TheochemUI/eOn, fix/vesin-neighbor-perf).
 //
-// Header-only and dependency-free: the MIC regime (orthorhombic box, true
-// cutoff within half the smallest periodic width) searches pairs with the
-// linked-cell scan from cell_visit.hpp once the box holds enough cells
-// (O(n) per search), and with the fused brute-force scan from
-// vesin_visit.hpp below that (O(n^2), cheaper for a handful of cells).
-// Both report the same pair set. Outside the cached regime every call
-// performs a brute-force scan. Nonorthogonal cells use the full lattice
-// minimum image; orthorhombic cells retain the componentwise fold.
+// The fully periodic search is linkcell's cutoff list (`pairs_within`).
+// Each kernel still keeps one image per unordered pair, the shortest,
+// and folds that image the way it did before: a stored code when
+// cutoff + skin is below half the box, a per-call round otherwise, and
+// the full-cell minimum image for a nonorthogonal box. An open axis
+// stays on the orthorhombic half stencil or the brute-force scan.
+// The orthorhombic stencil runs once the box holds enough cells
+// (O(n) per search); below that the brute-force scan is cheaper.
 //
 // Design invariants (see the eOn failure analysis for the derivation):
 // - Slots are immutable after build and handed out as shared_ptr, so
@@ -35,12 +35,14 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <vector>
 
 #include "rgpot/nlist/MinimumImage.hpp"
 #include "rgpot/nlist/cell_visit.hpp"
+#include "rgpot/nlist/periodic_images.hpp"
 #include "rgpot/nlist/vesin_visit.hpp"
 
 namespace rgpot {
@@ -110,6 +112,19 @@ public:
   void visitOnly(const double *R, std::size_t n, const double *box,
                  const Options &opt, Fn &&fn) {
     setup(n, box, opt);
+    if (allPeriodic(opt)) {
+      const double query =
+          std::nextafter(opt.cutoff, std::numeric_limits<double>::infinity());
+      if (scanLinkcell(R, n, box, query, -1.0, opt.cutoff * opt.cutoff, false,
+                       fn)) {
+        if (mic_) {
+          pairsIJ_.clear();
+          finishRebuild(R, n, box, opt, true, false);
+          phantom_ = true;
+        }
+        return;
+      }
+    }
     double w[3];
     double inv[3];
     fold_params(box, opt, w, inv);
@@ -138,10 +153,16 @@ public:
   void rebuildFused(const double *R, std::size_t n, const double *box,
                     const Options &opt, Fn &&fn) {
     setup(n, box, opt);
+    const double bc = opt.cutoff + opt.skin;
+    if (allPeriodic(opt) &&
+        scanLinkcell(R, n, box, bc, bc * bc, opt.cutoff * opt.cutoff, true,
+                     fn)) {
+      finishRebuild(R, n, box, opt, true, true);
+      return;
+    }
     double w[3];
     double inv[3];
     fold_params(box, opt, w, inv);
-    const double bc = opt.cutoff + opt.skin;
     auto flip = [&](int32_t i, int32_t j, double dx, double dy, double dz,
                     double r2) { fn(i, j, -dx, -dy, -dz, r2); };
     CellGrid grid;
@@ -178,6 +199,15 @@ public:
     fold_params(box, opt, w, inv);
     const double c2 = opt.cutoff * opt.cutoff;
     auto none = [](int32_t, int32_t, double, double, double, double) {};
+    if (allPeriodic(opt)) {
+      const double query =
+          std::nextafter(opt.cutoff, std::numeric_limits<double>::infinity());
+      if (scanLinkcell(R, n, box, query, std::nextafter(c2, HUGE_VAL), -1.0,
+                       true, none)) {
+        finishRebuild(R, n, box, opt, true, false);
+        return;
+      }
+    }
     CellGrid grid;
     const bool cells = mic_ && grid.build(R, n, w, inv, opt.cutoff);
     if (general_) {
@@ -256,6 +286,37 @@ public:
   }
 
 private:
+  static bool allPeriodic(const Options &opt) {
+    return opt.periodic[0] && opt.periodic[1] && opt.periodic[2];
+  }
+
+  /// Cutoff rows from linkcell, reduced to the shortest image of each
+  /// unordered pair. The vector is `r_i - r_j` of that image. False when
+  /// the cell cannot be inverted, so the caller keeps its other scan.
+  template <typename Fn>
+  bool scanLinkcell(const double *R, std::size_t n, const double *box,
+                    double query, double listCutoff2, double visitCutoff2,
+                    bool collect, Fn &fn) {
+    std::vector<ImageRow> rows;
+    if (!periodicImages(R, n, box, query, rows)) {
+      return false;
+    }
+    pairsIJ_.clear();
+    if (collect) {
+      pairsIJ_.reserve(rows.size() * 2);
+    }
+    for (const ImageRow &row : rows) {
+      if (collect && row.r2 < listCutoff2) {
+        pairsIJ_.push_back(row.i);
+        pairsIJ_.push_back(row.j);
+      }
+      if (row.r2 <= visitCutoff2) {
+        fn(row.i, row.j, row.dx, row.dy, row.dz, row.r2);
+      }
+    }
+    return true;
+  }
+
   template <FoldMode M, typename Fn>
   void forEachImpl(const double *R, Fn &fn) const {
     const double cutoff2 = opt_.cutoff * opt_.cutoff;

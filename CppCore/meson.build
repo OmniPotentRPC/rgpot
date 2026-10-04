@@ -54,6 +54,13 @@ endif
 # ------------------------ Main library
 if not get_option('with_rpc_client_only')
     _deps += dependency('threads')
+    _deps += dependency(
+        'linkcell',
+        version: '>=0.3.5',
+        fallback: ['linkcell', 'linkcell_dep'],
+        default_options: ['with_gpulite=disabled'],
+    )
+    _rgpot_srcs += files('rgpot/nlist/periodic_images.cc')
     _rgpot_srcs += files(
         'rgpot/plugin/PluginBridge.cc',
         'rgpot/plugin/PluginRegistry.cc',
