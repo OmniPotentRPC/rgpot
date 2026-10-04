@@ -26,5 +26,6 @@ for line in "${SPECS[@]}"; do
   dst="${line##*|}"
   echo "nickel export $src -> $dst"
   nickel export --format yaml "ci/gha/$src" -o "$dst"
+  python3 ci/gha/annotate-pins.py "$dst"
 done
 echo "OK: ${#SPECS[@]} workflows exported (orchestrator is hand-maintained)"

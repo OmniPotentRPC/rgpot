@@ -33,9 +33,9 @@ jobs:
     outputs:
       plan_sha: ${{ steps.plan.outputs.plan_sha }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           pixi-version: v0.70.2
           cache: true
@@ -63,7 +63,7 @@ jobs:
           PY
 
       - name: Upload plan + audit workflows
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ci-plan-${{ github.sha }}
           path: |
@@ -79,11 +79,11 @@ jobs:
     # schedule runs are docs-only hygiene; skip full prek (slow, needs apt hooks)
     if: github.event_name != 'schedule'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
       - name: Install environment
-        uses: prefix-dev/setup-pixi@v0.9.4
+        uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           activate-environment: true
           cache: true
@@ -129,7 +129,7 @@ jobs:
     needs: [prepare]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Install snapper-fmt
         run: |
           curl --proto '=https' --tlsv1.2 -LsSf \
@@ -164,15 +164,15 @@ jobs:
     needs: [prepare]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Restore lychee cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           key: lychee-${{ runner.os }}-${{ hashFiles('.lychee.toml', 'README.md', 'docs/**/*.org', 'docs/**/*.md') }}
           path: .lycheecache
           restore-keys: lychee-${{ runner.os }}-
       - name: Link check
-        uses: lycheeverse/lychee-action@v2
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -198,7 +198,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
       - name: Ensure potctl
@@ -219,7 +219,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Stage portable/fat potctl
         uses: ./.github/actions/setup-ci-tools
         with:
@@ -244,7 +244,7 @@ jobs:
         rpc: ["true", "false"]
         cache: ["true", "false"]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           submodules: recursive
@@ -252,14 +252,14 @@ jobs:
         uses: ./.github/actions/ensure-potctl
         with:
           artifact-prefix: ci-tools-${{ github.sha }}
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           pixi-version: v0.70.2
           cache: true
           environments: devbld rpctest
           activate-environment: devbld
       - name: Restore ccache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: .ccache
           key: ccache-orch-${{ runner.os }}-${{ matrix.sys }}-${{ github.sha }}
@@ -308,13 +308,13 @@ jobs:
     # params on 18, "VS not found" when pinned to 2022).
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       # No activate-environment here: the default env carries
       # vs2022_win-64 and vswhere, whose activation rewrites PATH instead of
       # appending, and setup-pixi refuses that ("Unable to handle environment
       # activation which does not only append to PATH"). The build step runs
       # through `pixi run`, which activates per command anyway.
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           pixi-version: v0.70.2
           cache: true
@@ -324,7 +324,7 @@ jobs:
       # cl.exe still has to be on PATH for meson's compiler detection inside
       # `pixi run`; without this it reports Unknown compiler(s): [['cl.exe']].
       - name: Activate MSVC
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
         with:
           arch: x64
           vsversion: "2022"
@@ -370,8 +370,8 @@ jobs:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           pixi-version: v0.70.2
           cache: true
@@ -412,7 +412,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           submodules: recursive
@@ -420,14 +420,14 @@ jobs:
         uses: ./.github/actions/ensure-potctl
         with:
           artifact-prefix: ci-tools-${{ github.sha }}
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           pixi-version: v0.70.2
           cache: true
           environments: devbld
           activate-environment: devbld
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@861a07ce7084f55488e375df125cdc99bba60eb7 # v2
         with:
           tool: cargo-nextest
       - name: potctl unit tests
@@ -451,7 +451,7 @@ jobs:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_COMPILERCHECK: content
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           submodules: recursive
@@ -459,14 +459,14 @@ jobs:
         uses: ./.github/actions/ensure-potctl
         with:
           artifact-prefix: ci-tools-${{ github.sha }}
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           pixi-version: v0.70.2
           cache: true
           environments: devbld rpctest
           activate-environment: devbld
       - name: Restore ccache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: .ccache
           key: ccache-orch-bridge-${{ runner.os }}-${{ github.sha }}
@@ -488,7 +488,7 @@ jobs:
       CCACHE_MAXSIZE: 800M
       TORCH_DEVICE: cpu
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           submodules: recursive
@@ -496,14 +496,14 @@ jobs:
         uses: ./.github/actions/ensure-potctl
         with:
           artifact-prefix: ci-tools-${{ github.sha }}
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           activate-environment: metatomicbld
           cache: true
           environments: metatomicbld
           pixi-version: v0.70.2
       - name: Restore Compiler Cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           key: ccache-pot-mta-${{ runner.os }}-${{ github.sha }}
           path: .ccache
@@ -530,7 +530,7 @@ jobs:
       matrix:
         os: [ubuntu-latest]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           submodules: recursive
@@ -538,14 +538,14 @@ jobs:
         uses: ./.github/actions/ensure-potctl
         with:
           artifact-prefix: ci-tools-${{ github.sha }}
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           activate-environment: tbbld
           cache: true
           environments: tbbld
           pixi-version: v0.70.2
       - name: Restore Compiler Cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           key: ccache-pot-tb-${{ runner.os }}-${{ github.sha }}
           path: .ccache
@@ -568,7 +568,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           submodules: recursive
@@ -576,14 +576,14 @@ jobs:
         uses: ./.github/actions/ensure-potctl
         with:
           artifact-prefix: ci-tools-${{ github.sha }}
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           activate-environment: devbld
           cache: true
           environments: devbld
           pixi-version: v0.70.2
       - name: Restore Compiler Cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           key: ccache-pot-plugins-${{ runner.os }}-${{ github.sha }}
           path: .ccache

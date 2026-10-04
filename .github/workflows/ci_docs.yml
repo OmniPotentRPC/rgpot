@@ -7,10 +7,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v6
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       with:
         fetch-depth: 0
-    - uses: prefix-dev/setup-pixi@v0.9.4
+    - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
       with:
         activate-environment: true
         cache: true
@@ -21,7 +21,7 @@ jobs:
       run: pixi r docbld
       shell: pixi run bash -e {0}
     - name: Upload artifact
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
       with:
         name: documentation
         path: docs/build
@@ -34,16 +34,16 @@ jobs:
       contents: write
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       with:
         persist-credentials: false
     - name: Download documentation
-      uses: actions/download-artifact@v6
+      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
       with:
         name: documentation
         path: docs/build
     - name: Deploy
-      uses: peaceiris/actions-gh-pages@v4
+      uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4
       with:
         cname: rgpot.rgoswami.me
         github_token: ${{ secrets.GITHUB_TOKEN }}
