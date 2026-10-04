@@ -874,9 +874,10 @@ fn apply_torch_env_from_github_or_purelib() -> Result<()> {
 }
 
 /// Meson setup argv of the metatomic leg. With `rpc` the rpc stack is on, which
-/// builds the `libuma_engine` plugin and its test.
+/// builds every engine plugin (UMA, Metatomic, XTB and the classical, MOPAC and
+/// NWChem ones) and their tests.
 pub fn metatomic_meson_setup_args(build_dir: &str, rpc: bool) -> Vec<String> {
-    vec![
+    let mut args: Vec<String> = vec![
         "setup".into(),
         build_dir.into(),
         "-Dwith_tests=true".into(),
@@ -885,7 +886,12 @@ pub fn metatomic_meson_setup_args(build_dir: &str, rpc: bool) -> Vec<String> {
         format!("-Dwith_rpc={rpc}"),
         "-Dwith_cache=false".into(),
         "--buildtype=debug".into(),
-    ]
+    ];
+    if rpc {
+        // The engine leg builds every engine plugin, xtb's included.
+        args.push("-Dwith_xtb=true".into());
+    }
+    args
 }
 
 /// `potctl ci metatomic-test` — meson setup/compile/test with metatomic+vesin (orchestrator leg).
@@ -1571,6 +1577,8 @@ mod tests {
         assert_eq!(on[1], "bbdir-uma-engine");
         assert!(on.iter().any(|x| x == "-Dwith_rpc=true"));
         assert!(on.iter().any(|x| x == "-Dwith_metatomic=true"));
+        assert!(on.iter().any(|x| x == "-Dwith_xtb=true"));
+        assert!(!off.iter().any(|x| x == "-Dwith_xtb=true"));
     }
 
     #[test]
