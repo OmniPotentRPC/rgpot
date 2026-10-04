@@ -46,6 +46,32 @@ kernels: four energy helpers, 12 Fock kernels, and 20 response kernels.
 derivative order two. Laplacian kernels require the AO Laplacians in
 `lapl_chi`; missing Laplacians return error code 2 without changing the output.
 
+## Stage B on BLAS
+
+Every generated kernel ends in `stage_b`, `out(u,v) += sum_g U(u,g) c(g) V(v,g)`,
+a matrix product of the weighted block `U * c` with `V^T`.
+`CppCore/rgpot/XcKernel/xckernel/evaluator.hpp` includes the generated
+`third_party/libxckernel/include/xckernel/evaluator.hpp` and specializes two of
+its templates for `double`; the generated tree is untouched, and regenerating it
+keeps the specializations in force because the kernels include
+`xckernel/evaluator.hpp` and the rgpot directory precedes the generated one on
+the include path.
+
+- `stage_a` forms the per-point coefficient, accumulating the monomials in long
+  double and rounding once.
+- `stage_b` runs one `dgemm` (or `dsyr2k` when `U` and `V` are the same array,
+  the symmetric Fock-like blocks) per block of 256 grid points. The double
+  rounding of a block sum grows with the block, not the grid; the block results
+  are added in long double and rounded once into `out`. A single double `dgemm`
+  over the whole grid misses the PySCF bars (GGA TDA/RPA sigma at `1e-17`,
+  unrestricted GGA Fock at `1e-15`).
+
+The meson build links FlexiBLAS when `pkg-config` finds it and otherwise the
+generic `blas` dependency, through the Fortran BLAS interface; the BLAS
+library's own dispatch picks the kernel. The kernels are built with the
+toolchain's default `-march`. `xckernel_bench` times the Fock and fxc
+contractions on the H2O fixture and on a generated random grid.
+
 ## Dependencies
 
 Libxc implements the functional-derivative tower. Numerical evaluation needs
@@ -96,14 +122,16 @@ checkout at the pinned revision. The C backend's own output is kept apart in
 `c_regression/` (written by `dump_xckernel_goldens`) and is checked by the
 "regression" test, which detects change and validates nothing.
 
-Bars. C vs NumPy is a bound in ulp (`CppCore/tests/ulp_bound.hpp`): the
-largest `|C - NumPy|` over an array, in units of the spacing of doubles at the
-array's largest magnitude, at most `k = 6`. The two sides sum the same terms
-over 60 to 200 grid points, one sequentially in double and the other through
-OpenBLAS dgemm, so they agree to the rounding of that sum; a decimal literal
-fits one architecture's rounding and not another's. Measured on x86_64 across
-the fixtures: 0.25 to 3.0 ulp, worst `xck_gga_r_o2` on the `c_vs_numpy`
-operands. PySCF bars are decimal: Fock `1e-15`, fxc `1e-13`, TDA/RPA sigma
+Bars. C vs NumPy is `|C - ref| <= k * eps * max|ref|` per array
+(`CppCore/tests/scale_bound.hpp`), with `eps` the machine epsilon of double and
+`k = 4`. The rounding of a grid sum scales with the magnitude of what is
+summed, so the array's largest entry sets the scale; entries that cancel to
+near zero carry the rounding of the terms that formed them and are not held to
+their own ulp. The C contraction is a blocked `dgemm` and the reference a
+`dgemm` of another blocking, so the two differ by a few rounding errors of the
+largest term. A decimal literal fits one architecture's rounding and not
+another's. Measured on x86_64 across the fixtures: 0.2 to 2.2 `eps * scale`.
+PySCF bars are decimal: Fock `1e-15`, fxc `1e-13`, TDA/RPA sigma
 `1e-17`. `--pyscf` Fock compares
 long-double stage A/B to live `nr_rks` and exits when `rel > 1e-15`.
 `--tda-rpa` (also part of `--pyscf`) pins PySCF to one OpenMP thread,

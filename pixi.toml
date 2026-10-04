@@ -60,6 +60,7 @@ platforms = ["linux-64"]
 [feature.xckernel.dependencies]
 python = ">=3.11,<3.14"
 libxc = ">=6.2.2,<8"
+libblas = "*"
 pylibxc = ">=6.2.2,<8"
 sympy = ">=1.12,<2"
 numpy = ">=1.26,<3"

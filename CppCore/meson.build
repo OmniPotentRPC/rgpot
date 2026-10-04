@@ -1216,6 +1216,16 @@ if get_option('with_tests')
             link_language: 'cpp',
             install: false,
         )
+        executable(
+            'xckernel_bench',
+            sources: ['tests/xckernel_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            install: false,
+        )
     endif
 
     if has_xtb
