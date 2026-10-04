@@ -76,29 +76,46 @@ the include path.
 The meson build links FlexiBLAS when =pkg-config= finds it and otherwise the
 generic =blas= dependency, through the Fortran BLAS interface; the BLAS
 library's own dispatch picks the kernel.
-The kernels are built with the toolchain's default =-march=.
+This measured build finds no FlexiBLAS package, so the link is OpenBLAS 0.3.34,
+the pthreads build, via =-lopenblas=.
 =xckernel_bench= times the Fock and fxc contractions on the H2O fixture and on a
 generated random grid.
-The blocked binary and the long-double scalar binary are both debug builds with
-optimization 0.
+Both binaries are release builds (=--buildtype=release=, optimization 3).
+The kernel command ends in =-O3= and keeps the toolchain's
+=-march=nocona -mtune=haswell=.
+The activation's trailing =-O2= is removed from the compiler flag variables and
+=-O3= is appended, because the last =-O= wins.
 The scalar =stage_b= is the long-double loop over basis pairs and grid points.
 The blocked path is one =dgemm=, or one =dsyr2k= when =U= and =V= are the same
 array, on each block of 256 grid points, with those blocks summed in long double
 and rounded once.
-The times are the best single call, in milliseconds, on an AMD Ryzen 9 9950X (16
-cores, 32 threads) linked to OpenBLAS 0.3.34.
-The allocation was CPUs 0, 1, 16 and 17, cores 0 and 1 with both threads, so
-four OpenBLAS threads share two cores.
-The load average was 41.19 at the start and 43.59 at the end.
-H2O times are the best of 20 scalar calls and of 60 blocked calls.
-Random-grid times are one scalar sample and the best of three blocked calls.
+The step requests 16 CPUs with
+=--cpus-per-task=16 --hint=nomultithread --mem=12G= and binds four logical CPUs
+on distinct cores with =taskset=.
+A 4-CPU step with that hint and core binding landed on three cores.
+The measured CPUs are 16, 1, 2, 20, on cores 0, 1, 2, 4 of an AMD Ryzen 9 9950X
+(16 cores, 32 threads).
+One-thread runs bind CPU 16.
+Four-thread runs bind CPUs 1, 2, 16, 20 with =OPENBLAS_NUM_THREADS=4= and
+=OMP_NUM_THREADS=4=.
+That process had four threads, one on each of those CPUs.
+The one-minute load on every timed sample stayed between 2.10 and 2.50.
+Each cell is the median of five recorded processes of =xckernel_bench --reps 1=
+after one discarded warmup.
+The bracket is the minimum and the maximum of those five.
+An H2O cell is a median of best-of-20 samples, because the fixture uses
+=20 * reps=.
+A random-grid cell is a median of single calls.
+Times are milliseconds.
+On the H2O grid =nbf= is 7, and the four-thread median sits above the one-thread
+median.
 
-| grid                            | kernel         | scalar, 1 thread | blocked, 1 thread | blocked, 4 threads |
-|---------------------------------+----------------+------------------+-------------------+--------------------|
-| H2O STO-3G, nbf 7, 33704 points | =xck_gga_r_o1= | 16.455           | 2.112             | 1.253              |
-| H2O STO-3G, nbf 7, 33704 points | =xck_gga_r_o2= | 18.807           | 5.200             | 3.544              |
-| random, nbf 200, 100000 points  | =xck_gga_r_o1= | 50875.5          | 1058.3            | 771.7              |
-| random, nbf 200, 100000 points  | =xck_gga_r_o2= | 47741.9          | 1040.3            | 798.4              |
+| grid                            | kernel         | scalar, 1 thread       | OpenBLAS, 1 thread   | OpenBLAS, 4 threads  |
+|---------------------------------+----------------+------------------------+----------------------+----------------------|
+| H2O STO-3G, nbf 7, 33704 points | =xck_gga_r_o1= | 12.904 [12.827, 14.516] | 1.009 [1.001, 1.044] | 1.115 [0.962, 1.166] |
+| H2O STO-3G, nbf 7, 33704 points | =xck_gga_r_o2= | 15.008 [14.832, 17.428] | 3.006 [2.991, 3.014] | 3.213 [3.026, 3.302] |
+| random, nbf 200, 100000 points  | =xck_gga_r_o1= | 35554.2 [35381.1, 36899.4] | 859.8 [858.5, 886.2] | 515.0 [508.1, 518.3] |
+| random, nbf 200, 100000 points  | =xck_gga_r_o2= | 35580.7 [35519.0, 35993.6] | 865.2 [864.7, 875.7] | 525.5 [524.6, 527.6] |
 
 * Dependencies
 Libxc implements the functional-derivative tower.
