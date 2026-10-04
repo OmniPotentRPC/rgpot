@@ -1133,6 +1133,7 @@ if get_option('with_tests')
         if test.get(1) == 'metatomic_test'
             # The dlopen parity case loads the engine named here.
             _test_env.set('RGPOT_METATOMIC_ENGINE', metatomic_engine.full_path())
+            _test_env.set('RGPOT_METATOMIC_REQUIRE_ENGINE', '1')
             _test_depends += [metatomic_engine]
         endif
         test(

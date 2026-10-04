@@ -536,8 +536,16 @@ TEST_CASE("MetatomicDlopen loads engine and matches linked pot energy",
           "[metatomic][dlopen]") {
   const char *eng = std::getenv("RGPOT_METATOMIC_ENGINE");
   if (!eng || !*eng) {
-    WARN("RGPOT_METATOMIC_ENGINE unset; skip dlopen parity");
-    return;
+    // Hosts that build the engine set RGPOT_METATOMIC_REQUIRE_ENGINE so a
+    // missing engine fails; elsewhere the case skips.
+    constexpr const char *kMissing =
+        "MetatomicDlopen parity needs libmetatomic_engine.so: set "
+        "RGPOT_METATOMIC_ENGINE to its path";
+    if (const char *req = std::getenv("RGPOT_METATOMIC_REQUIRE_ENGINE");
+        req && *req) {
+      FAIL(kMissing);
+    }
+    SKIP(kMissing);
   }
   rgpot::MetatomicConfig cfg;
   cfg.model_path = "data/lj38/lennard-jones.pt";
