@@ -897,6 +897,58 @@ pub fn run_metatomic_test(root: &Path, build_dir: &str) -> Result<()> {
     Ok(())
 }
 
+/// Plugin ABI tests that must exist and pass in the plugin leg.
+pub const PLUGIN_TESTS: [&str; 3] = ["PluginTest", "PluginContractTest", "ExternalPluginTest"];
+
+/// Meson setup argv for the plugin leg: tests on, plugin host built (the
+/// default; only `with_rpc_client_only` drops it), no optional engines.
+pub fn plugin_meson_setup_args(build_dir: &str) -> Vec<String> {
+    vec![
+        "setup".into(),
+        build_dir.into(),
+        "-Dwith_tests=true".into(),
+        "-Dwith_examples=false".into(),
+        "-Dwith_rpc=false".into(),
+        "-Dwith_rpc_client_only=false".into(),
+        "-Dwith_cache=false".into(),
+        "--buildtype=debug".into(),
+    ]
+}
+
+/// Meson test argv naming the plugin tests; meson errors on an unknown name,
+/// so a test dropped from the build fails the leg instead of vanishing.
+pub fn plugin_meson_test_args(build_dir: &str) -> Vec<String> {
+    let mut args: Vec<String> = vec![
+        "test".into(),
+        "-C".into(),
+        build_dir.into(),
+        "--print-errorlogs".into(),
+    ];
+    args.extend(PLUGIN_TESTS.iter().map(|t| t.to_string()));
+    args
+}
+
+/// `potctl ci plugin-test` — meson build with the plugin host, then the plugin suite.
+pub fn run_plugin_test(root: &Path, build_dir: &str, apply_darwin: bool) -> Result<()> {
+    if apply_darwin {
+        apply_darwin_env_to_process(false)?;
+    }
+    let setup = plugin_meson_setup_args(build_dir);
+    let setup_refs: Vec<&str> = setup.iter().map(String::as_str).collect();
+    run_cmd("meson", &setup_refs, root)?;
+    run_cmd("meson", &["compile", "-C", build_dir], root)?;
+    let named = plugin_meson_test_args(build_dir);
+    let named_refs: Vec<&str> = named.iter().map(String::as_str).collect();
+    run_cmd("meson", &named_refs, root)?;
+    run_cmd(
+        "meson",
+        &["test", "-C", build_dir, "--print-errorlogs", "--suite", "plugin"],
+        root,
+    )?;
+    maybe_ccache_stats();
+    Ok(())
+}
+
 /// `potctl ci xtb-tblite-test` — meson setup/compile/test with xtb+tblite.
 pub fn run_xtb_tblite_test(root: &Path, build_dir: &str) -> Result<()> {
     let setup = [
@@ -1502,6 +1554,19 @@ mod tests {
             select_towncrier_invoke(true, true),
             Some(TowncrierInvoke::Bin)
         );
+    }
+
+    #[test]
+    fn plugin_argv_builders() {
+        let s = plugin_meson_setup_args("bbdir-plugin");
+        assert_eq!(s[0], "setup");
+        assert_eq!(s[1], "bbdir-plugin");
+        assert!(s.iter().any(|x| x == "-Dwith_tests=true"));
+        assert!(s.iter().any(|x| x == "-Dwith_rpc_client_only=false"));
+        let t = plugin_meson_test_args("bbdir-plugin");
+        for name in PLUGIN_TESTS {
+            assert!(t.iter().any(|x| x == name), "missing {name}");
+        }
     }
 
     #[test]

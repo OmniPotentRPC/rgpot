@@ -19,13 +19,20 @@ if [[ ! -d "$BUILD" ]]; then
   exit 1
 fi
 
+# lcov 2 reports template instances in toolchain headers as inconsistent;
+# that one class is tolerated, every other lcov error fails the script.
+LCOV_MAJOR=$(lcov --version | sed -n 's/.*LCOV version \([0-9][0-9]*\)\..*/\1/p')
+LCOV_ARGS=()
+if [[ "${LCOV_MAJOR:-0}" -ge 2 ]]; then
+  LCOV_ARGS+=(--ignore-errors inconsistent)
+fi
+
 echo "==> extract Fortran kernels from meson coverage tree $BUILD"
 RAW=$(mktemp)
 trap 'rm -f "$RAW"' EXIT
-lcov --directory "$BUILD" --capture --output-file "$RAW" 2>/dev/null \
-  || lcov --directory "$BUILD" --capture --output-file "$RAW"
+lcov --directory "$BUILD" --capture --output-file "$RAW" "${LCOV_ARGS[@]}"
 lcov --extract "$RAW" '*/CppCore/rgpot/fortran/*' \
-  --output-file "$OUT"
+  --output-file "$OUT" "${LCOV_ARGS[@]}"
 
 test -s "$OUT"
 python3 - "$OUT" <<'PY'

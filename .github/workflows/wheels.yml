@@ -30,6 +30,8 @@ on:
       - "meson.build"
       - "CppCore/**"
       - "python/**"
+      - "tests/check_wheel_contents.py"
+      - "tests/test_wheel_contents.py"
       - "subprojects/*.wrap"
       - "third_party/lepton/**"
       - "third_party/libxckernel/**"
@@ -40,8 +42,8 @@ jobs:
     name: wheel (ubuntu-latest)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: pypa/cibuildwheel@v3.2.1
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c # v3.2.1
       - name: The kernels must be in the artifact, not just in the flags
         shell: bash
         run: |
@@ -77,7 +79,16 @@ jobs:
               exit 1
             fi
           done
-      - uses: actions/upload-artifact@v4
+      - name: No xckernel generator or sympy in the wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "${RUNNER_TEMP}/wheel-check"
+          . "${RUNNER_TEMP}/wheel-check/bin/activate"
+          python -m pip install pytest
+          python -m pytest -q tests/test_wheel_contents.py
+          python tests/check_wheel_contents.py wheelhouse/*.whl
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: wheels-ubuntu-latest
           path: wheelhouse/*.whl
@@ -85,12 +96,56 @@ jobs:
   wheels-macos:
     name: wheel (macos-14)
     runs-on: macos-14
-    continue-on-error: true
     steps:
-      - uses: actions/checkout@v6
-      - uses: pypa/cibuildwheel@v3.2.1
-      - uses: actions/upload-artifact@v4
-        if: success()
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c # v3.2.1
+      - name: The kernels must be in the artifact, not just in the flags
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          wheels=(wheelhouse/*.whl)
+          test "${#wheels[@]}" -gt 0 || { echo "no wheels built" >&2; exit 1; }
+          for whl in "${wheels[@]}"; do
+            echo "== ${whl}"
+            rm -rf _whlx && mkdir _whlx && unzip -qo "${whl}" -d _whlx
+            lib=$(find _whlx -name 'librgpot*.dylib' | head -1)
+            test -n "${lib}" || { echo "no librgpot in wheel" >&2; exit 1; }
+            nm -g "${lib}" > _syms_raw
+            n=$(grep -cE 'rgpot_(sw|edip|lenosky|tersoff|eam_al|fehe|cuh2|water_h)_force' _syms_raw || true)
+            echo "   bind(c) kernel entries: ${n}"
+            if [ "${n}" -lt 8 ]; then
+              echo "wheel carries ${n}/8 Fortran kernels; -Dwith_fortran_pots lost" >&2
+              exit 1
+            fi
+            c++filt < _syms_raw > _syms
+            grep -q 'rgpot::ExprPot' _syms \
+              || { echo "wheel missing ExprPot; -Dwith_expr lost" >&2; exit 1; }
+            grep -q 'rgpot::D3Pot' _syms \
+              || { echo "wheel missing D3Pot; -Dwith_dftd3 lost" >&2; exit 1; }
+            grep -q 'rgpot::D4Pot' _syms \
+              || { echo "wheel missing D4Pot; -Dwith_dftd4 lost" >&2; exit 1; }
+            grep -q 'rgpot::XcKernel' _syms \
+              || { echo "wheel missing XcKernel; -Dwith_xckernel lost" >&2; exit 1; }
+            core=$(find _whlx -name '_core*.so' | head -1)
+            test -n "${core}" || { echo "no _core in wheel" >&2; exit 1; }
+            otool -L "${core}" > _deps
+            if grep -q 'libtorch' _deps; then
+              echo "_core links libtorch; pip import would require torch" >&2
+              cat _deps
+              exit 1
+            fi
+          done
+      - name: No xckernel generator or sympy in the wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "${RUNNER_TEMP}/wheel-check"
+          . "${RUNNER_TEMP}/wheel-check/bin/activate"
+          python -m pip install pytest
+          python -m pytest -q tests/test_wheel_contents.py
+          python tests/check_wheel_contents.py wheelhouse/*.whl
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: wheels-macos-14
           path: wheelhouse/*.whl
@@ -98,7 +153,7 @@ jobs:
   sdist:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       # meson-python runs setup for the sdist; -Dwith_dftd4 pulls the
       # wrap, which needs gfortran and OpenBLAS (lapack=openblas).
       - name: OpenBLAS for the dftd4 wrap
@@ -107,13 +162,13 @@ jobs:
         run: pipx run build --sdist
       - name: Check
         run: pipx run twine check dist/*
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sdist
           path: dist/*.tar.gz
 
   publish:
-    needs: [wheels-linux, sdist]
+    needs: [wheels-linux, wheels-macos, sdist]
     if: >-
       github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
       || (github.event_name == 'workflow_dispatch' && inputs.publish)
@@ -125,7 +180,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: dist
           merge-multiple: true
@@ -139,7 +194,7 @@ jobs:
       # environment PYPI_TOKEN until that publisher exists; keep
       # id-token: write so a later OIDC switch is one-line.
       - name: Publish
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with:
           user: __token__
           password: ${{ secrets.PYPI_TOKEN }}
