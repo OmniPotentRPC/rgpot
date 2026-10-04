@@ -16,6 +16,7 @@
 #include "npy_io.hpp"
 #include "rgpot/Potential.hpp"
 #include "rgpot/XcKernel/XcKernel.hpp"
+#include "rgpot/XcKernel/xckernel/evaluator.hpp"
 
 using rgpot::XcGrid;
 using rgpot::XcKernel;
@@ -411,4 +412,18 @@ TEST_CASE("TDA pin operator vs libnwchemc roots",
                       << " abs=" << absd);
     CHECK(rel <= kTdaNwchemcVsPin);
   }
+}
+
+TEST_CASE("The generated kernels run the BLAS stage B wrapper",
+          "[xckernel][blas]") {
+  // xck_gga_r_o1 ends in seven stage_b calls. A scalar stage_b leaves the
+  // counter unchanged.
+  auto geom = load_npz(std::string(kData) +
+                       "/randgrid_s1_nbf4_ng200_operands.npz");
+  auto scal = load_npz(std::string(kData) + "/gga_r_o1_scal.npz");
+  geom.insert(scal.begin(), scal.end());
+  auto &calls = xckernel::blas_stage_b_calls();
+  const unsigned long before = calls.load();
+  run_kernel("xck_gga_r_o1", geom, 4, 200, true);
+  REQUIRE(calls.load() - before == 7);
 }

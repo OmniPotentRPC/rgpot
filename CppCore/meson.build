@@ -737,6 +737,16 @@ if get_option('with_tests')
             suite: 'xckernel',
         )
         executable(
+            'xckernel_bench',
+            sources: ['tests/xckernel_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            install: false,
+        )
+        executable(
             'dump_xckernel_goldens',
             sources: ['tests/dump_xckernel_goldens.cc'],
             dependencies: test_deps,
