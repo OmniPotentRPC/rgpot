@@ -222,7 +222,7 @@ if not get_option('with_rpc_client_only')
             capnp_rpc_dep,
             ptlrpc_dep,
         ] + fortran_rt_deps
-        _classical_whole = [rgpot_core, lennard_jones, morse, zbl]
+        _classical_whole = [lennard_jones, morse, zbl]
         if has_fortran
             _classical_whole += [cuh2, fortran_pots, fortran_kernels]
         endif
@@ -230,6 +230,7 @@ if not get_option('with_rpc_client_only')
             'classical_engine',
             [_engine_common, files('rgpot/engine/ClassicalEngine.cc')],
             dependencies: _engine_deps,
+            link_with: [rgpot_core],
             link_whole: _classical_whole,
             cpp_args: _engine_args,
             include_directories: _incdirs,
@@ -240,7 +241,8 @@ if not get_option('with_rpc_client_only')
             'mopac_engine',
             [_engine_common, files('rgpot/engine/MopacEngine.cc')],
             dependencies: _engine_deps + [mopac_dl_dep],
-            link_whole: [rgpot_core, mopacpot],
+            link_with: [rgpot_core],
+            link_whole: [mopacpot],
             cpp_args: _engine_args,
             include_directories: _incdirs,
             gnu_symbol_visibility: 'default',
@@ -250,7 +252,8 @@ if not get_option('with_rpc_client_only')
             'nwchem_engine',
             [_engine_common, files('rgpot/engine/NWChemEngine.cc')],
             dependencies: _engine_deps + [nwchem_dl_dep],
-            link_whole: [rgpot_core, nwchempot],
+            link_with: [rgpot_core],
+            link_whole: [nwchempot],
             cpp_args: _engine_args,
             include_directories: _incdirs,
             gnu_symbol_visibility: 'default',
@@ -261,7 +264,8 @@ if not get_option('with_rpc_client_only')
                 'skala_engine',
                 [_engine_common, files('rgpot/engine/SkalaEngine.cc')],
                 dependencies: _engine_deps + [nwchem_dl_dep],
-                link_whole: [rgpot_core, nwchempot, skala],
+                link_with: [rgpot_core],
+                link_whole: [nwchempot, skala],
                 cpp_args: _engine_args,
                 include_directories: _incdirs,
                 gnu_symbol_visibility: 'default',
