@@ -873,19 +873,26 @@ fn apply_torch_env_from_github_or_purelib() -> Result<()> {
     Ok(())
 }
 
+/// Meson setup argv of the metatomic leg. With `rpc` the rpc stack is on, which
+/// builds the `libuma_engine` plugin and its test.
+pub fn metatomic_meson_setup_args(build_dir: &str, rpc: bool) -> Vec<String> {
+    vec![
+        "setup".into(),
+        build_dir.into(),
+        "-Dwith_tests=true".into(),
+        "-Dwith_examples=false".into(),
+        "-Dwith_metatomic=true".into(),
+        format!("-Dwith_rpc={rpc}"),
+        "-Dwith_cache=false".into(),
+        "--buildtype=debug".into(),
+    ]
+}
+
 /// `potctl ci metatomic-test` — meson setup/compile/test with metatomic+vesin (orchestrator leg).
-pub fn run_metatomic_test(root: &Path, build_dir: &str) -> Result<()> {
+pub fn run_metatomic_test(root: &Path, build_dir: &str, rpc: bool) -> Result<()> {
     apply_torch_env_from_github_or_purelib()?;
-    let setup = [
-        "setup",
-        build_dir,
-        "-Dwith_tests=true",
-        "-Dwith_examples=false",
-        "-Dwith_metatomic=true",
-        "-Dwith_rpc=false",
-        "-Dwith_cache=false",
-        "--buildtype=debug",
-    ];
+    let setup = metatomic_meson_setup_args(build_dir, rpc);
+    let setup: Vec<&str> = setup.iter().map(String::as_str).collect();
     run_cmd("meson", &setup, root)?;
     run_cmd("meson", &["compile", "-C", build_dir], root)?;
     run_cmd(
@@ -1554,6 +1561,16 @@ mod tests {
             select_towncrier_invoke(true, true),
             Some(TowncrierInvoke::Bin)
         );
+    }
+
+    #[test]
+    fn metatomic_argv_follows_the_rpc_flag() {
+        let off = metatomic_meson_setup_args("bbdir-mta", false);
+        assert!(off.iter().any(|x| x == "-Dwith_rpc=false"));
+        let on = metatomic_meson_setup_args("bbdir-uma-engine", true);
+        assert_eq!(on[1], "bbdir-uma-engine");
+        assert!(on.iter().any(|x| x == "-Dwith_rpc=true"));
+        assert!(on.iter().any(|x| x == "-Dwith_metatomic=true"));
     }
 
     #[test]

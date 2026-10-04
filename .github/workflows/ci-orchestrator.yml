@@ -500,7 +500,7 @@ jobs:
         with:
           activate-environment: metatomicbld
           cache: true
-          environments: metatomicbld
+          environments: metatomicbld umaenginebld
           pixi-version: v0.70.2
       - name: Restore Compiler Cache
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
@@ -515,6 +515,12 @@ jobs:
       - name: Meson build & test (metatomic)
         shell: pixi run -e metatomicbld bash -e {0}
         run: potctl ci metatomic-test
+      - name: Ensure torch + metatomic C++ layout (UMA engine plugin)
+        shell: pixi run -e umaenginebld bash -e {0}
+        run: potctl ci ensure-torch-metatomic
+      - name: Meson build & test (UMA engine plugin)
+        shell: pixi run -e umaenginebld bash -e {0}
+        run: potctl ci metatomic-test --rpc --build-dir bbdir-uma-engine
 
   potentials_tight_binding:
     name: xtb+tblite (meson / ${{ matrix.os }})

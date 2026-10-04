@@ -594,6 +594,27 @@ if get_option('with_tests')
             link_language: 'cpp',
         )
         if _rpc_stack
+            uma_engine_env = environment()
+            uma_engine_env.set('RGPOT_UMA_ENGINE', uma_engine.full_path())
+            uma_engine_test = executable(
+                'uma_engine_test',
+                sources: ['tests/UmaEngineTest.cc'],
+                dependencies: test_deps + [capnp_rpc_dep, ptlrpc_dep],
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+                build_rpath: _metatomic_build_rpath,
+            )
+            test(
+                'UmaEngineTest',
+                uma_engine_test,
+                env: uma_engine_env,
+                depends: [uma_engine],
+                workdir: meson.source_root(),
+            )
+        endif
+        if _rpc_stack
             executable(
                 'uma_engine_bench',
                 sources: ['tests/uma_engine_bench.cc'],
