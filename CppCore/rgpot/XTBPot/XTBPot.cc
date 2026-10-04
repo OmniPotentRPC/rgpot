@@ -5,6 +5,8 @@
 #include "rgpot/stress.hpp"
 #include "rgpot/units.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <stdexcept>
 #include <string>
 
@@ -76,10 +78,84 @@ void XTBPot::loadParametrisation() const {
   xtb_setMaxIter(m_env, m_calc, m_config.max_iterations);
 }
 
+namespace {
+
+/// An axis is periodic when its lattice vector (a row of the row-major box)
+/// has nonzero length. GFN2-xTB needs multipoles, which libxtb does not
+/// provide under periodic boundary conditions, so it always sees an isolated
+/// system and the box only sets the stress volume.
+void periodicityFromBox(const double *box, GFNMethod method,
+                        bool periodic[3]) {
+  for (int axis = 0; axis < 3; ++axis) {
+    if (method == GFNMethod::GFN2xTB) {
+      periodic[axis] = false;
+      continue;
+    }
+    const double *v = box + 3 * axis;
+    periodic[axis] = v[0] * v[0] + v[1] * v[1] + v[2] * v[2] > 0.0;
+  }
+}
+
+/// Translates the atoms so their centroid sits at the cell center, then folds
+/// them into the cell [0, 1)^3 of a fully periodic box (row-major lattice
+/// vectors, same length unit as the positions). Both moves are lattice-
+/// or uniform translations, so energy, forces and virial do not change.
+/// libxtb's periodic SCF fails to converge for a molecule that straddles a
+/// cell face, and the centering keeps a molecule in a vacuum box whole.
+void centerAndWrapIntoCell(const double *box, size_t nAtoms, double *pos) {
+  const double det =
+      box[0] * (box[4] * box[8] - box[5] * box[7]) -
+      box[1] * (box[3] * box[8] - box[5] * box[6]) +
+      box[2] * (box[3] * box[7] - box[4] * box[6]);
+  if (det == 0.0) {
+    return;
+  }
+  // Fractional coordinates f = r * inverse(box), row vector times matrix.
+  const double inv[9] = {
+      (box[4] * box[8] - box[5] * box[7]) / det,
+      (box[2] * box[7] - box[1] * box[8]) / det,
+      (box[1] * box[5] - box[2] * box[4]) / det,
+      (box[5] * box[6] - box[3] * box[8]) / det,
+      (box[0] * box[8] - box[2] * box[6]) / det,
+      (box[2] * box[3] - box[0] * box[5]) / det,
+      (box[3] * box[7] - box[4] * box[6]) / det,
+      (box[1] * box[6] - box[0] * box[7]) / det,
+      (box[0] * box[4] - box[1] * box[3]) / det};
+  if (nAtoms == 0) {
+    return;
+  }
+  double shift[3] = {0.0, 0.0, 0.0};
+  for (size_t a = 0; a < nAtoms; ++a) {
+    for (int d = 0; d < 3; ++d) {
+      shift[d] -= pos[3 * a + d] / static_cast<double>(nAtoms);
+    }
+  }
+  for (int d = 0; d < 3; ++d) {
+    shift[d] += 0.5 * (box[d] + box[3 + d] + box[6 + d]);
+  }
+  for (size_t a = 0; a < nAtoms; ++a) {
+    double *r = pos + 3 * a;
+    for (int d = 0; d < 3; ++d) {
+      r[d] += shift[d];
+    }
+    double f[3];
+    for (int k = 0; k < 3; ++k) {
+      f[k] = r[0] * inv[k] + r[1] * inv[3 + k] + r[2] * inv[6 + k];
+      f[k] -= std::floor(f[k]);
+    }
+    for (int d = 0; d < 3; ++d) {
+      r[d] = f[0] * box[d] + f[1] * box[3 + d] + f[2] * box[6 + d];
+    }
+  }
+}
+
+} // namespace
+
 void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   int intN = static_cast<int>(in.nAtoms);
   const size_t n3 = 3 * in.nAtoms;
-  const bool periodicity[3] = {false, false, false};
+  bool periodicity[3];
+  periodicityFromBox(in.box, m_config.method, periodicity);
 
   // Reuse preallocated buffer, resize only when atom count changes
   m_pos_bohr.resize(n3);
@@ -91,8 +167,24 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   for (int i = 0; i < 9; ++i) {
     box_bohr[i] = in.box[i] * ANGSTROM_TO_BOHR;
   }
+  if (periodicity[0] && periodicity[1] && periodicity[2]) {
+    centerAndWrapIntoCell(box_bohr, in.nAtoms, m_pos_bohr.data());
+  }
+
+  // xtb fixes the boundary conditions when the molecule is created, so a
+  // change of periodic axes rebuilds the molecule and calculator.
+  if (m_initialized && !std::equal(periodicity, periodicity + 3, m_periodic)) {
+    xtb_delMolecule(&m_mol);
+    xtb_delCalculator(&m_calc);
+    m_calc = xtb_newCalculator();
+    if (!m_calc) {
+      throw std::runtime_error("Failed to create xtb calculator");
+    }
+    m_initialized = false;
+  }
 
   if (!m_initialized) {
+    std::copy(periodicity, periodicity + 3, m_periodic);
     double charge = m_config.charge;
     int uhf = m_config.uhf;
     m_mol = xtb_newMolecule(m_env, &intN, in.atmnrs, m_pos_bohr.data(), &charge,
@@ -124,8 +216,12 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   // xtb stores dE/dε in Hartree. sigma = virial / V in eV/Angstrom^3.
   double virial[9] = {};
   xtb_getVirial(m_env, m_res, virial);
+  // libxtb leaves the virial at exactly zero when it computed none (periodic
+  // GFN1 and GFN-FF), which must not read as a measured zero stress.
+  const bool virial_computed =
+      std::any_of(virial, virial + 9, [](double v) { return v != 0.0; });
   const double volume = cellVolume(in.box);
-  if (volume > 0.0) {
+  if (volume > 0.0 && virial_computed) {
     const double scale = units::HARTREE_TO_EV / volume;
     for (int col = 0; col < 3; ++col) {
       for (int row = 0; row < 3; ++row) {

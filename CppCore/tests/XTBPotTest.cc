@@ -14,6 +14,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdlib>
@@ -298,4 +299,81 @@ TEST_CASE("XTBDlopen serial multi-instance via recreate",
     REQUIRE_THAT(e, WithinAbs(e_ref, 1e-8));
     require_finite_forces(f, 3);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Periodic boundary conditions derived from the box
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Water in a 6 A cube with the second hydrogen written as its image one
+// lattice vector away; a periodic evaluation cannot tell the two apart.
+constexpr double kPeriodicEdge = 6.0;
+
+// GFN2-xTB runs isolated; GFN1-xTB is the periodic method of libxtb.
+rgpot::XTBConfig periodicConfig() {
+  rgpot::XTBConfig cfg;
+  cfg.method = rgpot::GFNMethod::GFN1xTB;
+  return cfg;
+}
+
+struct PeriodicResult {
+  double energy;
+  int has_stress;
+  std::array<double, 9> stress;
+};
+
+struct PeriodicFixture {
+  std::array<double, 9> box{kPeriodicEdge, 0.0, 0.0, 0.0, kPeriodicEdge,
+                            0.0,           0.0, 0.0, kPeriodicEdge};
+  std::array<double, 9> pos{1.0, 1.0, 1.1177,  1.0, 1.75545, 0.52884,
+                            1.0, 0.24455, 0.52884};
+  std::array<int, 3> z{8, 1, 1};
+};
+
+PeriodicResult eval_xtb(rgpot::XTBPot &pot, const std::array<double, 9> &pos,
+                     const std::array<int, 3> &z,
+                     const std::array<double, 9> &box) {
+  std::array<double, 9> f{};
+  rgpot::ForceOut out{f.data(), 0.0, 0.0, {}, 0};
+  pot.forceImpl({3, pos.data(), z.data(), box.data()}, &out);
+  return {out.energy, out.has_stress,
+          {out.stress[0], out.stress[1], out.stress[2], out.stress[3],
+           out.stress[4], out.stress[5], out.stress[6], out.stress[7],
+           out.stress[8]}};
+}
+
+} // namespace
+
+TEST_CASE("XTBPot treats a nonzero box as periodic", "[xtb][linked][periodic]") {
+  PeriodicFixture fx;
+  rgpot::XTBPot pot(periodicConfig());
+  const auto base = eval_xtb(pot, fx.pos, fx.z, fx.box);
+
+  auto imaged = fx.pos;
+  imaged[6] += kPeriodicEdge; // second H, one lattice vector along x
+  imaged[8] -= kPeriodicEdge; // and along -z
+  const auto shifted = eval_xtb(pot, imaged, fx.z, fx.box);
+  REQUIRE_THAT(shifted.energy, WithinAbs(base.energy, 1e-7));
+}
+
+TEST_CASE("XTBPot does not report a stress libxtb did not compute",
+          "[xtb][linked][periodic][stress]") {
+  PeriodicFixture fx;
+  rgpot::XTBPot pot(periodicConfig());
+  const auto periodic = eval_xtb(pot, fx.pos, fx.z, fx.box);
+  REQUIRE(periodic.has_stress == 0);
+}
+
+TEST_CASE("XTBPot switches between periodic and isolated boxes",
+          "[xtb][linked][periodic]") {
+  PeriodicFixture fx;
+  rgpot::XTBPot pot(periodicConfig());
+  const std::array<double, 9> none{};
+  const auto isolated_first = eval_xtb(pot, fx.pos, fx.z, none);
+  const auto periodic = eval_xtb(pot, fx.pos, fx.z, fx.box);
+  const auto isolated_again = eval_xtb(pot, fx.pos, fx.z, none);
+  REQUIRE_THAT(isolated_again.energy, WithinAbs(isolated_first.energy, 1e-9));
+  REQUIRE(std::abs(periodic.energy - isolated_first.energy) > 1e-6);
 }

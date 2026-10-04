@@ -52,6 +52,7 @@ private:
   mutable xtb_TMolecule m_mol = nullptr;
   mutable xtb_TResults m_res = nullptr;
   mutable bool m_initialized = false;
+  mutable bool m_periodic[3] = {false, false, false}; //!< Axes of m_mol.
   mutable std::vector<double> m_pos_bohr; //!< Preallocated position buffer.
 
   void initHandles();
