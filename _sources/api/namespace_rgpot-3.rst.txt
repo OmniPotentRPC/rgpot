@@ -76,7 +76,7 @@ namespace rgpot
 Overview
 ~~~~~~~~
 
-Prefix-parameterized loader for the minimum potential ABI profile. :ref:`More...<details-namespacergpot>`
+Capability handshake applied while loading a profile backend; the expectation, check and producer helpers live in :ref:`Handshake.hpp <doxid-_handshake_8hpp_source>`. :ref:`More...<details-namespacergpot>`
 
 
 .. ref-code-block:: cpp
@@ -227,7 +227,7 @@ Prefix-parameterized loader for the minimum potential ABI profile. :ref:`More...
 Detailed Documentation
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Prefix-parameterized loader for the minimum potential ABI profile.
+Capability handshake applied while loading a profile backend; the expectation, check and producer helpers live in :ref:`Handshake.hpp <doxid-_handshake_8hpp_source>`.
 
 Header file for the screened nuclear repulsion (ZBL) potential.
 
@@ -278,6 +278,12 @@ Named-child PES algebra compiled with OpenMM Lepton.
 CPMD potential under rgpot ``PotentialConfig`` user parameters.
 
 Parallel evaluation of independent configurations.
+
+Prefix-parameterized loader for the minimum potential ABI profile.
+
+Capability handshake for backends loaded through the potential profile: decide from a ``Capabilities`` message whether this build can drive the backend before any work is dispatched, and fill the same message from the producing side.
+
+Metadata a backend leaves unset (empty family, zero bridge major) is not a declaration and is not checked. The constants mirror the eindir-core objective ABI stamp that rgpot-core compares against.
 
 Backends (nwchemc, cpmdc, future lammpsc/gromacsc) export the same C symbol set prefix-parameterized on ``<p>`` (see potentials-schema PROFILE.md). This loader resolves that whole set from one dlopen'd shared library, so rgpot drives every conforming backend through identical function pointers with no per-backend loader code. Everything stays native: flat binary Cap'n Proto messages both directions, plain C calls in-process.
 

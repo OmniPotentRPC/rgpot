@@ -2,7 +2,7 @@
 <html lang="en" data-accent-color="teal" data-content_root="../../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>mod profile - rgpot documentation</title><link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="mod rpc" href="rpc.html" /><link rel="prev" title="mod Potentials_capnp" href="Potentials_capnp.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>mod profile - rgpot documentation</title><link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="mod rpc" href="rpc.html" /><link rel="prev" title="mod compat" href="compat.html" />
       <link rel="canonical" href="https://rgpot.rgoswami.me/crates/rgpot_core/profile.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
@@ -418,6 +418,7 @@ data-aria-dark="Switch to auto color mode">
 </li>
 <li class="toctree-l3"><a class="reference internal" href="version.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">version</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="compat.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">compat</span></code></a></li>
 <li class="toctree-l3 current"><a class="current reference internal" href="#"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="rpc/client.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">client</span></code></a></li>
@@ -455,6 +456,7 @@ data-aria-dark="Switch to auto color mode">
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
 <li><a class="reference internal" href="#rgpot_core-profile-ProfileResult"><code class="docutils literal notranslate"><span class="pre">type</span> <span class="pre">ProfileResult</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-profile-check_capabilities_bytes"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">check_capabilities_bytes</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-profile-decode_potential_result"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">decode_potential_result</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-profile-encode_force_input"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">encode_force_input</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-profile-library_candidates"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">library_candidates</span></code></a></li>
@@ -484,6 +486,7 @@ data-aria-dark="Switch to auto color mode">
 <li><a class="reference internal" href="#rgpot_core-profile-ProfileSession-evaluate"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">evaluate</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-profile-ProfileSession-library_path"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">library_path</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-profile-ProfileSession-load"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">load</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-profile-ProfileSession-load_with"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">load_with</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-profile-ProfileSession-prefix"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">prefix</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-profile-ProfileSession-version"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">version</span></code></a></li>
 </ul>
@@ -605,6 +608,12 @@ input message.</p>
 </dd></dl>
 
 <p class="rubric">Functions</p>
+<dl class="rust function">
+<dt class="sig sig-object rust" id="rgpot_core-profile-check_capabilities_bytes">
+<span class="sig-name descname"><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">check_capabilities_bytes</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">prefix</span></span><span class="p"><span class="pre">:</span> </span><span class="p"><span class="pre">&amp;</span></span><span class="n"><span class="pre">str</span></span><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">words</span></span><span class="p"><span class="pre">:</span> </span><span class="p"><span class="pre">&amp;</span></span><span class="p"><span class="pre">[</span></span><span class="n"><span class="pre">u64</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">expectation</span></span><span class="p"><span class="pre">:</span> </span><span class="p"><span class="pre">&amp;</span></span><a class="reference internal" href="compat.html#rgpot_core-compat-Expectation" title="rgpot_core::compat::Expectation"><span class="n"><span class="pre">Expectation</span></span></a><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-profile-ProfileResult" title="rgpot_core::profile::ProfileResult"><span class="n"><span class="pre">ProfileResult</span></span></a><span class="p"><span class="pre">&lt;</span></span><span class="p"><span class="pre">(</span></span><span class="p"><span class="pre">)</span></span><span class="p"><span class="pre">&gt;</span></span></span><a class="headerlink" href="#rgpot_core-profile-check_capabilities_bytes" title="Link to this definition">¶</a></dt>
+<dd><p>Decode a <code class="docutils literal notranslate"><span class="pre">Capabilities</span></code> message and apply the handshake to it.</p>
+</dd></dl>
+
 <dl class="rust function">
 <dt class="sig sig-object rust" id="rgpot_core-profile-decode_potential_result">
 <span class="sig-name descname"><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">decode_potential_result</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">encoded</span></span><span class="p"><span class="pre">:</span> </span><span class="p"><span class="pre">&amp;</span></span><span class="p"><span class="pre">[</span></span><span class="n"><span class="pre">u8</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">expected_force_count</span></span><span class="p"><span class="pre">:</span> </span><span class="n"><span class="pre">usize</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-profile-ProfileResult" title="rgpot_core::profile::ProfileResult"><span class="n"><span class="pre">ProfileResult</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#rgpot_core-profile-ProfileEvaluation" title="rgpot_core::profile::ProfileEvaluation"><span class="n"><span class="pre">ProfileEvaluation</span></span></a><span class="p"><span class="pre">&gt;</span></span></span><a class="headerlink" href="#rgpot_core-profile-decode_potential_result" title="Link to this definition">¶</a></dt>
@@ -743,6 +752,16 @@ profile for <code class="docutils literal notranslate"><span class="pre">prefix<
 </dd></dl>
 
 <dl class="rust function">
+<dt class="sig sig-object rust" id="rgpot_core-profile-ProfileSession-load_with">
+<span class="sig-name descname"><span class="k"><span class="pre">unsafe</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">load_with</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">prefix</span></span><span class="p"><span class="pre">:</span> </span><span class="p"><span class="pre">&amp;</span></span><span class="n"><span class="pre">str</span></span><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">explicit_path</span></span><span class="p"><span class="pre">:</span> </span><span class="n"><span class="pre">Option</span></span><span class="p"><span class="pre">&lt;</span></span><span class="p"><span class="pre">&amp;</span></span><span class="n"><span class="pre">Path</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">config</span></span><span class="p"><span class="pre">:</span> </span><span class="p"><span class="pre">&amp;</span></span><span class="p"><span class="pre">[</span></span><span class="n"><span class="pre">u8</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">expectation</span></span><span class="p"><span class="pre">:</span> </span><span class="p"><span class="pre">&amp;</span></span><a class="reference internal" href="compat.html#rgpot_core-compat-Expectation" title="rgpot_core::compat::Expectation"><span class="n"><span class="pre">Expectation</span></span></a><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-profile-ProfileResult" title="rgpot_core::profile::ProfileResult"><span class="n"><span class="pre">ProfileResult</span></span></a><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">Self</span></span><span class="p"><span class="pre">&gt;</span></span></span><a class="headerlink" href="#rgpot_core-profile-ProfileSession-load_with" title="Link to this definition">¶</a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">ProfileSession::load</span></code> with an explicit host <code class="docutils literal notranslate"><span class="pre">Expectation</span></code>. The
+backend’s <code class="docutils literal notranslate"><span class="pre">Capabilities</span></code> are checked before the session is created, so
+an incompatible backend is refused before any work is dispatched.</p>
+<p><strong>Safety</strong></p>
+<p>Same contract as <code class="docutils literal notranslate"><span class="pre">ProfileSession::load</span></code>.</p>
+</dd></dl>
+
+<dl class="rust function">
 <dt class="sig sig-object rust" id="rgpot_core-profile-ProfileSession-prefix">
 <span class="sig-name descname"><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">prefix</span></span><span class="p"><span class="pre">(</span></span><span class="p"><span class="pre">&amp;</span></span><span class="k"><span class="pre">self</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n"><span class="pre">str</span></span></span><a class="headerlink" href="#rgpot_core-profile-ProfileSession-prefix" title="Link to this definition">¶</a></dt>
 <dd><p>Backend prefix used to resolve the profile symbols.</p>
@@ -768,10 +787,10 @@ profile for <code class="docutils literal notranslate"><span class="pre">prefix<
   </svg>
   <span>Back to top</span>
 </button><div class="navigation flex print:hidden"><div class="navigation-prev">
-    <a href="Potentials_capnp.html">
+    <a href="compat.html">
       <i class="i-lucide chevron-left"></i>
       <div class="page-info">
-        <span>Previous</span><div class="title"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></div></div>
+        <span>Previous</span><div class="title"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">compat</span></code></div></div>
     </a>
   </div><div class="navigation-next">
     <a href="rpc.html">

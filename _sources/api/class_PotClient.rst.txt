@@ -25,6 +25,7 @@ Implementation of the C API bridge for the RPC client. :ref:`More...<details-str
 		Potential::Client :ref:`capability<doxid-struct_pot_client_1a5cfe687a4dba16353ee364d404b21c9a>`;
 		kj::WaitScope* :ref:`wait_scope<doxid-struct_pot_client_1aed1f25acec7c6d9302ac62dcf157a71c>`;
 		std::string :ref:`last_error<doxid-struct_pot_client_1a8fc470f19bafc3a6bdde6b2be9407091>`;
+		bool :ref:`server_checked<doxid-struct_pot_client_1ae6b76c2e31ea8fa4314c1d8d71c5bf3b>` = false;
 
 		// construction
 	
@@ -83,6 +84,16 @@ Reference to the client wait scope.
 	std::string last_error
 
 Buffer for the most recent error message.
+
+.. index:: pair: variable; server_checked
+.. _doxid-struct_pot_client_1ae6b76c2e31ea8fa4314c1d8d71c5bf3b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool server_checked = false
+
+True once the server passed the handshake.
 
 Construction
 ------------

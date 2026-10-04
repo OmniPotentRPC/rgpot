@@ -64,6 +64,7 @@ Crate ``rgpot_core``
       c_api
       version
       Potentials_capnp
+      compat
       profile
       rpc
 

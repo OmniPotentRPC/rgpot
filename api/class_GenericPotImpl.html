@@ -418,6 +418,7 @@ data-aria-dark="Switch to auto color mode">
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/version.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">version</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/compat.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">compat</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/client.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">client</span></code></a></li>
@@ -574,9 +575,10 @@ data-aria-dark="Switch to auto color mode">
 <span data-line="8"> </span>
 <span data-line="9">    <span class="c1">// methods</span></span>
 <span data-line="10"> </span>
-<span data-line="11">    <span class="n">kj</span><span class="o">::</span><span class="n">Promise</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <a class="doxyrest-code-link reference internal" href="#doxid-class-generic-pot-impl-1a59c68ff1515d997768279734ff3ebcf8"><span class="std std-ref">calculate</span></a><span class="p">(</span><span class="n">CalculateContext</span> <span class="n">context</span><span class="p">);</span></span>
-<span data-line="12">    <span class="n">kj</span><span class="o">::</span><span class="n">Promise</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="doxyrest-code-target target" id="doxid-class_generic_pot_impl_1a8eff60089b9853326964768ba3a5b848"></span><span class="n">configure</span><span class="p">(</span><span class="n">ConfigureContext</span> <span class="n">context</span><span class="p">);</span></span>
-<span data-line="13"><span class="p">};</span></span>
+<span data-line="11">    <span class="n">kj</span><span class="o">::</span><span class="n">Promise</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <a class="doxyrest-code-link reference internal" href="#doxid-class-generic-pot-impl-1a1864c5ba6a6ea8afae5687885a343bfa"><span class="std std-ref">getCapabilities</span></a><span class="p">(</span><span class="n">GetCapabilitiesContext</span> <span class="n">context</span><span class="p">);</span></span>
+<span data-line="12">    <span class="n">kj</span><span class="o">::</span><span class="n">Promise</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <a class="doxyrest-code-link reference internal" href="#doxid-class-generic-pot-impl-1a59c68ff1515d997768279734ff3ebcf8"><span class="std std-ref">calculate</span></a><span class="p">(</span><span class="n">CalculateContext</span> <span class="n">context</span><span class="p">);</span></span>
+<span data-line="13">    <span class="n">kj</span><span class="o">::</span><span class="n">Promise</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="doxyrest-code-target target" id="doxid-class_generic_pot_impl_1a8eff60089b9853326964768ba3a5b848"></span><span class="n">configure</span><span class="p">(</span><span class="n">ConfigureContext</span> <span class="n">context</span><span class="p">);</span></span>
+<span data-line="14"><span class="p">};</span></span>
 </pre></div>
 </section>
 <section id="detailed-documentation">
@@ -610,8 +612,12 @@ data-aria-dark="Switch to auto color mode">
 </section>
 <section id="methods">
 <h3>Methods<a class="headerlink" href="#methods" title="Link to this heading">¶</a></h3>
+<div class="doxyrest-title-code-block highlight" id="doxid-class-generic-pot-impl-1a1864c5ba6a6ea8afae5687885a343bfa">
+<span id="index-3"></span><pre><span data-line="1"><span class="n">kj</span><span class="o">::</span><span class="n">Promise</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="n">getCapabilities</span><span class="p">(</span><span class="n">GetCapabilitiesContext</span> <span class="n">context</span><span class="p">)</span></span>
+</pre></div>
+<p>Reports what this server speaks, so a client can refuse an incompatible peer before the first calculate call.</p>
 <div class="doxyrest-title-code-block highlight" id="doxid-class-generic-pot-impl-1a59c68ff1515d997768279734ff3ebcf8">
-<span id="index-3"></span><pre><span data-line="1"><span class="n">kj</span><span class="o">::</span><span class="n">Promise</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="n">calculate</span><span class="p">(</span><span class="n">CalculateContext</span> <span class="n">context</span><span class="p">)</span></span>
+<span id="index-4"></span><pre><span data-line="1"><span class="n">kj</span><span class="o">::</span><span class="n">Promise</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="n">calculate</span><span class="p">(</span><span class="n">CalculateContext</span> <span class="n">context</span><span class="p">)</span></span>
 </pre></div>
 <p>This method performs the following translation steps:</p>
 <ol class="arabic simple">

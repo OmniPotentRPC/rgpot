@@ -440,6 +440,8 @@ Overview
 	#define :target:`MOPACC_MODEL_PM7<doxid-mopac__c__abi_8h_1a09489eaabe28f8c637bc606a2360acf2>`
 	#define :target:`MOPACC_MODEL_RM1<doxid-mopac__c__abi_8h_1ae03a231e9d48a338927aed6b492d0b22>`
 	#define :ref:`POT_BRIDGE_API<doxid-pot__bridge_8h_1a30ca0aa10367d7a1679284a7ed9969e4>`
+	#define :target:`RGPOT_BUILD_REVISION<doxid-_handshake_8hpp_1a5e60ed30b6a3d29a16c142695d7a5c0d>`
+	#define :target:`RGPOT_BUILD_VERSION<doxid-_handshake_8hpp_1a5d41ef1b9d934d21f189be192110ee09>`
 	#define :target:`RGPOT_CPMDC_API<doxid-cpmd__c__abi_8h_1a744600c686fd30c24b0e0882c773088a>`
 	#define :target:`RGPOT_CXX_LAYOUT_API<doxid-_cxx_layout_8hpp_1a6a6e1a00ca94c4ed94e9c9b3e91ae792>`
 	#define :target:`RGPOT_CXX_LAYOUT_BUILDING<doxid-_cxx_layout_8cc_1a8ca8c99fa942847424611162ebdd1141>`

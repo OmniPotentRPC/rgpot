@@ -418,6 +418,7 @@ data-aria-dark="Switch to auto color mode">
 </li>
 <li class="toctree-l3 current"><a class="current reference internal" href="#"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">version</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="compat.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">compat</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="rpc/client.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">client</span></code></a></li>
@@ -459,6 +460,7 @@ data-aria-dark="Switch to auto color mode">
 <li><a class="reference internal" href="#rgpot_core-version-RGPOT_ABI_VERSION_MINOR"><code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">RGPOT_ABI_VERSION_MINOR</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-version-rgpot_abi_compatible"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_abi_compatible</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-version-rgpot_abi_stamp"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_abi_stamp</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-version-rgpot_source_revision"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_source_revision</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-version-rgpot_version"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_version</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-version-rgpot_version_major"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_version_major</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-version-rgpot_version_minor"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_version_minor</span></code></a></li>
@@ -624,6 +626,14 @@ the caller’s. A null <code class="docutils literal notranslate"><span class="p
 <p>Compare it with the <code class="docutils literal notranslate"><span class="pre">RGPOT_ABI_*</span></code> macros of the header the caller
 compiled with, or pass the caller’s own stamp to
 <code class="docutils literal notranslate"><span class="pre">rgpot_abi_compatible</span></code>.</p>
+</dd></dl>
+
+<dl class="rust function">
+<dt class="sig sig-object rust" id="rgpot_core-version-rgpot_source_revision">
+<span class="sig-name descname"><span class="k"><span class="pre">extern</span></span><span class="w"> </span><span class="s"><span class="pre">C</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_source_revision</span></span><span class="p"><span class="pre">(</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">c_char</span></span></span><a class="headerlink" href="#rgpot_core-version-rgpot_source_revision" title="Link to this definition">¶</a></dt>
+<dd><p>Source revision the loaded library was built from (a git short hash), or
+an empty string when the build had no revision to record.</p>
+<p>The pointer refers to static storage: never free it.</p>
 </dd></dl>
 
 <dl class="rust function">

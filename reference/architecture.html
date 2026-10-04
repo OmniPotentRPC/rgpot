@@ -418,6 +418,7 @@ data-aria-dark="Switch to auto color mode">
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/version.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">version</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/compat.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">compat</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/client.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">client</span></code></a></li>
@@ -473,6 +474,7 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li><a class="reference internal" href="#error-handling-conventions">Error Handling Conventions</a></li>
+<li><a class="reference internal" href="#backend-capability-handshake">Backend Capability Handshake</a></li>
 <li><a class="reference internal" href="#adding-a-new-potential">Adding a New Potential</a></li>
 <li><a class="reference internal" href="#build-system-integration">Build System Integration</a><ul>
 <li><a class="reference internal" href="#meson">Meson</a></li>
@@ -966,6 +968,60 @@ C++ consumers work with exceptions as usual.</p>
 codes</p></li>
 </ol>
 <p>at the <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">&quot;C&quot;</span></code> boundary.</p>
+</section>
+<section id="backend-capability-handshake">
+<h2>Backend Capability Handshake<a class="headerlink" href="#backend-capability-handshake" title="Link to this heading">¶</a></h2>
+<p>A backend loaded through the potential profile reports a <code class="docutils literal notranslate"><span class="pre">Capabilities</span></code> message
+(<code class="docutils literal notranslate"><span class="pre">&lt;prefix&gt;_capabilities_result</span></code>).
+Before a session is created, <code class="docutils literal notranslate"><span class="pre">ProfileSession::load</span></code> (Rust) and
+<code class="docutils literal notranslate"><span class="pre">rgpot::abi::checked_load</span></code> (C++) compare it with the host’s expectation and
+refuse the backend with a message naming the first mismatch:</p>
+<div class="table-wrapper docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Refused when</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">protocolFamily</span></code>, <code class="docutils literal notranslate"><span class="pre">protocolMajor</span></code></p></td>
+<td><p>family differs from <code class="docutils literal notranslate"><span class="pre">rgpot.potentials</span></code> or major differs</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">protocolMinor</span></code></p></td>
+<td><p>below the host’s required minor</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">schemaId</span></code></p></td>
+<td><p>differs from the <code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code> identity</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">bridgeAbiMajor/Minor</span></code>, <code class="docutils literal notranslate"><span class="pre">bridgeLayout</span></code>, <code class="docutils literal notranslate"><span class="pre">bridgeFeatures</span></code></p></td>
+<td><p>different eindir objective ABI, a newer minor, another layout or unknown feature bits</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">dlpackMajor/Minor</span></code></p></td>
+<td><p>different DLPack major or a newer minor</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">operations</span></code></p></td>
+<td><p>energy or forces not served</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Metadata a backend leaves unset (empty family, zero bridge major) is not a
+declaration and is not checked, so backends that predate the fields keep
+loading.
+<code class="docutils literal notranslate"><span class="pre">buildVersion</span></code> and <code class="docutils literal notranslate"><span class="pre">buildRevision</span></code> report the version and source revision of the
+build that produced the message; <code class="docutils literal notranslate"><span class="pre">rgpot_source_revision()</span></code> returns the same
+revision through the C ABI.</p>
+<p>The same check guards RPC.
+The rgpot servers implement <code class="docutils literal notranslate"><span class="pre">Potential.getCapabilities</span></code> in <code class="docutils literal notranslate"><span class="pre">potserv</span></code> and
+<code class="docutils literal notranslate"><span class="pre">rgpot_rpc_server_start</span></code>.
+The Rust client (<code class="docutils literal notranslate"><span class="pre">RpcClient</span></code>) and the C bridge (<code class="docutils literal notranslate"><span class="pre">pot_calculate</span></code>) call it before
+the first <code class="docutils literal notranslate"><span class="pre">calculate</span></code> and refuse the server when its capabilities are
+incompatible.
+A server that does not implement the call answers UNIMPLEMENTED.
+It is refused with a message naming <code class="docutils literal notranslate"><span class="pre">Potential.getCapabilities</span></code> and asking for
+an upgrade to an rgpot release whose <code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code> carries it.
+The two eOn callback servers do not implement it yet and gain it in a separate
+change, so an rgpot client built from this revision refuses them until then.</p>
 </section>
 <section id="adding-a-new-potential">
 <h2>Adding a New Potential<a class="headerlink" href="#adding-a-new-potential" title="Link to this heading">¶</a></h2>

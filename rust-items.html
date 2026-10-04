@@ -195,6 +195,26 @@ data-aria-dark="Switch to auto color mode">
      <tr>
        <td></td>
        <td>
+       <a href="crates/rgpot_core/compat.html#rgpot_core-compat-check_capabilities"><code class="xref">fn check_capabilities</code></a> <em>(in rgpot_core::compat)</em></td><td>
+       <em>Check ``caps`` against ``want``; the error names the first incompatibility.</em></td></tr>
+     <tr>
+       <td></td>
+       <td>
+       <a href="crates/rgpot_core/compat.html#rgpot_core-compat-check_server"><code class="xref">fn check_server</code></a> <em>(in rgpot_core::compat)</em></td><td>
+       <em>Ask a connected server for its ``Capabilities`` and refuse it when they are</em></td></tr>
+     <tr>
+       <td></td>
+       <td>
+       <a href="crates/rgpot_core/compat.html#rgpot_core-compat-describe_server"><code class="xref">fn describe_server</code></a> <em>(in rgpot_core::compat)</em></td><td>
+       <em>Fill ``caps`` as the self-description of an rgpot RPC server.</em></td></tr>
+     <tr>
+       <td></td>
+       <td>
+       <a href="crates/rgpot_core/compat.html#rgpot_core-compat-fill_compatibility"><code class="xref">fn fill_compatibility</code></a> <em>(in rgpot_core::compat)</em></td><td>
+       <em>Fill the compatibility fields of ``caps`` with what this build speaks.</em></td></tr>
+     <tr>
+       <td></td>
+       <td>
        <a href="crates/rgpot_core/eindir.html#rgpot_core-eindir-rgpot_eindir_abi_stamp"><code class="xref">fn rgpot_eindir_abi_stamp</code></a> <em>(in rgpot_core::eindir)</em></td><td>
        <em>The eindir ABI stamp of the ``eindir_objective_t`` base that</em></td></tr>
      <tr>
@@ -217,6 +237,11 @@ data-aria-dark="Switch to auto color mode">
        <td>
        <a href="crates/rgpot_core/eindir.html#rgpot_core-eindir-rgpot_potential_reset_eval_counts"><code class="xref">fn rgpot_potential_reset_eval_counts</code></a> <em>(in rgpot_core::eindir)</em></td><td>
        <em>Zero the counters of ``pot``.</em></td></tr>
+     <tr>
+       <td></td>
+       <td>
+       <a href="crates/rgpot_core/profile.html#rgpot_core-profile-check_capabilities_bytes"><code class="xref">fn check_capabilities_bytes</code></a> <em>(in rgpot_core::profile)</em></td><td>
+       <em>Decode a ``Capabilities`` message and apply the handshake to it.</em></td></tr>
      <tr>
        <td></td>
        <td>
@@ -295,6 +320,11 @@ data-aria-dark="Switch to auto color mode">
      <tr>
        <td></td>
        <td>
+       <a href="crates/rgpot_core/version.html#rgpot_core-version-rgpot_source_revision"><code class="xref">fn rgpot_source_revision</code></a> <em>(in rgpot_core::version)</em></td><td>
+       <em>Source revision the loaded library was built from (a git short hash), or</em></td></tr>
+     <tr>
+       <td></td>
+       <td>
        <a href="crates/rgpot_core/version.html#rgpot_core-version-rgpot_version"><code class="xref">fn rgpot_version</code></a> <em>(in rgpot_core::version)</em></td><td>
        <em>Full version string of the loaded library, e.g. ``&#34;3.4.0&#34;``.</em></td></tr>
      <tr>
@@ -340,6 +370,11 @@ data-aria-dark="Switch to auto color mode">
        <td>
        <a href="crates/rgpot_core/c_api/types.html#rgpot_core-c_api-types"><code class="xref">module types</code></a> <em>(in rgpot_core::c_api)</em></td><td>
        <em>Convenience constructors for the core C types.</em></td></tr>
+     <tr>
+       <td></td>
+       <td>
+       <a href="crates/rgpot_core/compat.html#rgpot_core-compat"><code class="xref">module compat</code></a> <em>(in rgpot_core)</em></td><td>
+       <em>Capability handshake: decide from a backend&#39;s ``Capabilities`` message</em></td></tr>
      <tr>
        <td></td>
        <td>
@@ -397,195 +432,256 @@ data-aria-dark="Switch to auto color mode">
        <td><img src="_static/minus.png" class="toggler"
               id="toggle-2" style="display: none" alt="-" /></td>
        <td>
+       <a href="crates/rgpot_core/compat.html#rgpot_core-compat-Expectation"><code class="xref">struct Expectation</code></a> <em>(in rgpot_core::compat)</em></td><td>
+       <em>What the host requires of a backend.</em></td></tr>
+     <tr class="cg-2">
+       <td></td>
+       <td>&#160;&#160;&#160;
+       <a href="crates/rgpot_core/compat.html#rgpot_core-compat-Expectation-bridge_abi_major"><code class="xref">bridge_abi_major</code></a></td><td>
+       <em></em></td></tr>
+     <tr class="cg-2">
+       <td></td>
+       <td>&#160;&#160;&#160;
+       <a href="crates/rgpot_core/compat.html#rgpot_core-compat-Expectation-bridge_abi_minor_max"><code class="xref">bridge_abi_minor_max</code></a></td><td>
+       <em>Highest bridge minor the host can consume.</em></td></tr>
+     <tr class="cg-2">
+       <td></td>
+       <td>&#160;&#160;&#160;
+       <a href="crates/rgpot_core/compat.html#rgpot_core-compat-Expectation-bridge_features"><code class="xref">bridge_features</code></a></td><td>
+       <em>Bridge feature bits the host understands.</em></td></tr>
+     <tr class="cg-2">
+       <td></td>
+       <td>&#160;&#160;&#160;
+       <a href="crates/rgpot_core/compat.html#rgpot_core-compat-Expectation-bridge_layout"><code class="xref">bridge_layout</code></a></td><td>
+       <em></em></td></tr>
+     <tr class="cg-2">
+       <td></td>
+       <td>&#160;&#160;&#160;
+       <a href="crates/rgpot_core/compat.html#rgpot_core-compat-Expectation-dlpack_major"><code class="xref">dlpack_major</code></a></td><td>
+       <em></em></td></tr>
+     <tr class="cg-2">
+       <td></td>
+       <td>&#160;&#160;&#160;
+       <a href="crates/rgpot_core/compat.html#rgpot_core-compat-Expectation-dlpack_minor_max"><code class="xref">dlpack_minor_max</code></a></td><td>
+       <em>Highest DLPack minor the host can consume.</em></td></tr>
+     <tr class="cg-2">
+       <td></td>
+       <td>&#160;&#160;&#160;
+       <a href="crates/rgpot_core/compat.html#rgpot_core-compat-Expectation-family"><code class="xref">family</code></a></td><td>
+       <em></em></td></tr>
+     <tr class="cg-2">
+       <td></td>
+       <td>&#160;&#160;&#160;
+       <a href="crates/rgpot_core/compat.html#rgpot_core-compat-Expectation-protocol_major"><code class="xref">protocol_major</code></a></td><td>
+       <em></em></td></tr>
+     <tr class="cg-2">
+       <td></td>
+       <td>&#160;&#160;&#160;
+       <a href="crates/rgpot_core/compat.html#rgpot_core-compat-Expectation-protocol_minor_min"><code class="xref">protocol_minor_min</code></a></td><td>
+       <em>Lowest protocol minor the host accepts.</em></td></tr>
+     <tr class="cg-2">
+       <td></td>
+       <td>&#160;&#160;&#160;
+       <a href="crates/rgpot_core/compat.html#rgpot_core-compat-Expectation-required_operations"><code class="xref">required_operations</code></a></td><td>
+       <em></em></td></tr>
+     <tr class="cg-2">
+       <td></td>
+       <td>&#160;&#160;&#160;
+       <a href="crates/rgpot_core/compat.html#rgpot_core-compat-Expectation-schema_id"><code class="xref">schema_id</code></a></td><td>
+       <em></em></td></tr>
+     <tr>
+       <td><img src="_static/minus.png" class="toggler"
+              id="toggle-3" style="display: none" alt="-" /></td>
+       <td>
        <a href="crates/rgpot_core/eindir.html#rgpot_core-eindir-rgpot_eval_counts_t"><code class="xref">struct rgpot_eval_counts_t</code></a> <em>(in rgpot_core::eindir)</em></td><td>
        <em>Evaluations a potential handle has answered, split by origin.</em></td></tr>
-     <tr class="cg-2">
+     <tr class="cg-3">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/eindir.html#rgpot_core-eindir-rgpot_eval_counts_t-computed"><code class="xref">computed</code></a></td><td>
        <em></em></td></tr>
-     <tr class="cg-2">
+     <tr class="cg-3">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/eindir.html#rgpot_core-eindir-rgpot_eval_counts_t-served"><code class="xref">served</code></a></td><td>
        <em></em></td></tr>
      <tr>
        <td><img src="_static/minus.png" class="toggler"
-              id="toggle-3" style="display: none" alt="-" /></td>
+              id="toggle-4" style="display: none" alt="-" /></td>
        <td>
        <a href="crates/rgpot_core/eindir.html#rgpot_core-eindir-rgpot_fused_cache_t"><code class="xref">struct rgpot_fused_cache_t</code></a> <em>(in rgpot_core::eindir)</em></td><td>
        <em>Opaque cache of the last fused energy and gradient evaluation.</em></td></tr>
      <tr>
        <td><img src="_static/minus.png" class="toggler"
-              id="toggle-4" style="display: none" alt="-" /></td>
+              id="toggle-5" style="display: none" alt="-" /></td>
        <td>
        <a href="crates/rgpot_core/eindir.html#rgpot_core-eindir-rgpot_potential_t"><code class="xref">struct rgpot_potential_t</code></a> <em>(in rgpot_core::eindir)</em></td><td>
        <em>Superset potential: embeds ``eindir_objective_t`` as its first member.</em></td></tr>
-     <tr class="cg-4">
+     <tr class="cg-5">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/eindir.html#rgpot_core-eindir-rgpot_potential_t-atomic_numbers"><code class="xref">atomic_numbers</code></a></td><td>
        <em>Atomic numbers, heap-allocated (len = n_atoms), owned by this struct.</em></td></tr>
-     <tr class="cg-4">
+     <tr class="cg-5">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/eindir.html#rgpot_core-eindir-rgpot_potential_t-base"><code class="xref">base</code></a></td><td>
        <em>Embedded eindir base: the IS-A relationship lives here.</em></td></tr>
-     <tr class="cg-4">
+     <tr class="cg-5">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/eindir.html#rgpot_core-eindir-rgpot_potential_t-box_matrix"><code class="xref">box_matrix</code></a></td><td>
        <em>Box matrix (column-major, 3x3), copied at construction.</em></td></tr>
-     <tr class="cg-4">
+     <tr class="cg-5">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/eindir.html#rgpot_core-eindir-rgpot_potential_t-callback"><code class="xref">callback</code></a></td><td>
        <em>The underlying rgpot force/energy callback.</em></td></tr>
-     <tr class="cg-4">
+     <tr class="cg-5">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/eindir.html#rgpot_core-eindir-rgpot_potential_t-n_atoms"><code class="xref">n_atoms</code></a></td><td>
        <em>Atom count; set by ``rgpot_potential_new_eindir``.</em></td></tr>
-     <tr class="cg-4">
+     <tr class="cg-5">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/eindir.html#rgpot_core-eindir-rgpot_potential_t-pot_free_fn"><code class="xref">pot_free_fn</code></a></td><td>
        <em>Optional destructor for ``pot_user_data``.</em></td></tr>
-     <tr class="cg-4">
+     <tr class="cg-5">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/eindir.html#rgpot_core-eindir-rgpot_potential_t-pot_user_data"><code class="xref">pot_user_data</code></a></td><td>
        <em>Opaque context for ``callback`` (distinct from ``base.user_data``).</em></td></tr>
      <tr>
        <td><img src="_static/minus.png" class="toggler"
-              id="toggle-5" style="display: none" alt="-" /></td>
+              id="toggle-6" style="display: none" alt="-" /></td>
        <td>
        <a href="crates/rgpot_core/potential.html#rgpot_core-potential-PotentialImpl"><code class="xref">struct PotentialImpl</code></a> <em>(in rgpot_core::potential)</em></td><td>
        <em>Opaque potential handle wrapping a callback + user data.</em></td></tr>
      <tr>
        <td><img src="_static/minus.png" class="toggler"
-              id="toggle-6" style="display: none" alt="-" /></td>
+              id="toggle-7" style="display: none" alt="-" /></td>
        <td>
        <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileError"><code class="xref">struct ProfileError</code></a> <em>(in rgpot_core::profile)</em></td><td>
        <em>Error raised while loading or driving a potential profile.</em></td></tr>
      <tr>
        <td><img src="_static/minus.png" class="toggler"
-              id="toggle-7" style="display: none" alt="-" /></td>
+              id="toggle-8" style="display: none" alt="-" /></td>
        <td>
        <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileEvaluation"><code class="xref">struct ProfileEvaluation</code></a> <em>(in rgpot_core::profile)</em></td><td>
        <em>Energy and forces returned by one fused backend calculation.</em></td></tr>
-     <tr class="cg-7">
+     <tr class="cg-8">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileEvaluation-energy"><code class="xref">energy</code></a></td><td>
        <em>Energy in the ``ProfileRequest::energy_unit`` unit.</em></td></tr>
-     <tr class="cg-7">
+     <tr class="cg-8">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileEvaluation-forces"><code class="xref">forces</code></a></td><td>
        <em>Forces in energy-unit per length-unit.</em></td></tr>
      <tr>
        <td><img src="_static/minus.png" class="toggler"
-              id="toggle-8" style="display: none" alt="-" /></td>
+              id="toggle-9" style="display: none" alt="-" /></td>
        <td>
        <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileRequest"><code class="xref">struct ProfileRequest</code></a> <em>(in rgpot_core::profile)</em></td><td>
        <em>One atomistic evaluation sent through a profile session.</em></td></tr>
-     <tr class="cg-8">
+     <tr class="cg-9">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileRequest-atomic_numbers"><code class="xref">atomic_numbers</code></a></td><td>
        <em>Atomic numbers in the same atom order as ``positions``.</em></td></tr>
-     <tr class="cg-8">
+     <tr class="cg-9">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileRequest-box_matrix"><code class="xref">box_matrix</code></a></td><td>
        <em>Optional row-major 3x3 simulation cell; molecular inputs use ``None``.</em></td></tr>
-     <tr class="cg-8">
+     <tr class="cg-9">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileRequest-energy_unit"><code class="xref">energy_unit</code></a></td><td>
        <em>Unit expression requested for energy and forces.</em></td></tr>
-     <tr class="cg-8">
+     <tr class="cg-9">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileRequest-length_unit"><code class="xref">length_unit</code></a></td><td>
        <em>Unit expression for coordinates and cell vectors.</em></td></tr>
-     <tr class="cg-8">
+     <tr class="cg-9">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileRequest-positions"><code class="xref">positions</code></a></td><td>
        <em>Flat Cartesian coordinates, three values per atom.</em></td></tr>
      <tr>
        <td><img src="_static/minus.png" class="toggler"
-              id="toggle-9" style="display: none" alt="-" /></td>
+              id="toggle-10" style="display: none" alt="-" /></td>
        <td>
        <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileSession"><code class="xref">struct ProfileSession</code></a> <em>(in rgpot_core::profile)</em></td><td>
        <em>One persistent session loaded through the prefix-generic potential profile.</em></td></tr>
      <tr>
        <td><img src="_static/minus.png" class="toggler"
-              id="toggle-10" style="display: none" alt="-" /></td>
+              id="toggle-11" style="display: none" alt="-" /></td>
        <td>
        <a href="crates/rgpot_core/rpc/client.html#rgpot_core-rpc-client-RpcClient"><code class="xref">struct RpcClient</code></a> <em>(in rgpot_core::rpc::client)</em></td><td>
        <em>RPC client that connects to a remote rgpot server.</em></td></tr>
      <tr>
        <td><img src="_static/minus.png" class="toggler"
-              id="toggle-11" style="display: none" alt="-" /></td>
+              id="toggle-12" style="display: none" alt="-" /></td>
        <td>
        <a href="crates/rgpot_core/types.html#rgpot_core-types-rgpot_force_input_t"><code class="xref">struct rgpot_force_input_t</code></a> <em>(in rgpot_core::types)</em></td><td>
        <em>Input configuration for a potential energy evaluation.</em></td></tr>
-     <tr class="cg-11">
+     <tr class="cg-12">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/types.html#rgpot_core-types-rgpot_force_input_t-atomic_numbers"><code class="xref">atomic_numbers</code></a></td><td>
        <em>Atomic numbers tensor: ``[n_atoms]``, dtype i32, any device.</em></td></tr>
-     <tr class="cg-11">
+     <tr class="cg-12">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/types.html#rgpot_core-types-rgpot_force_input_t-box_matrix"><code class="xref">box_matrix</code></a></td><td>
        <em>Box matrix tensor: ``[3, 3]``, dtype f64, any device.</em></td></tr>
-     <tr class="cg-11">
+     <tr class="cg-12">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/types.html#rgpot_core-types-rgpot_force_input_t-positions"><code class="xref">positions</code></a></td><td>
        <em>Positions tensor: ``[n_atoms, 3]``, dtype f64, any device.</em></td></tr>
      <tr>
        <td><img src="_static/minus.png" class="toggler"
-              id="toggle-12" style="display: none" alt="-" /></td>
+              id="toggle-13" style="display: none" alt="-" /></td>
        <td>
        <a href="crates/rgpot_core/types.html#rgpot_core-types-rgpot_force_out_t"><code class="xref">struct rgpot_force_out_t</code></a> <em>(in rgpot_core::types)</em></td><td>
        <em>Results from a potential energy evaluation.</em></td></tr>
-     <tr class="cg-12">
+     <tr class="cg-13">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/types.html#rgpot_core-types-rgpot_force_out_t-energy"><code class="xref">energy</code></a></td><td>
        <em>Calculated potential energy.</em></td></tr>
-     <tr class="cg-12">
+     <tr class="cg-13">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/types.html#rgpot_core-types-rgpot_force_out_t-forces"><code class="xref">forces</code></a></td><td>
        <em>Forces tensor ``[n_atoms, 3]``, f64 — set by the callback.</em></td></tr>
-     <tr class="cg-12">
+     <tr class="cg-13">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/types.html#rgpot_core-types-rgpot_force_out_t-variance"><code class="xref">variance</code></a></td><td>
        <em>Variance / uncertainty of the calculation (0.0 when unused).</em></td></tr>
      <tr>
        <td><img src="_static/minus.png" class="toggler"
-              id="toggle-13" style="display: none" alt="-" /></td>
+              id="toggle-14" style="display: none" alt="-" /></td>
        <td>
        <a href="crates/rgpot_core/version.html#rgpot_core-version-rgpot_abi_stamp_t"><code class="xref">struct rgpot_abi_stamp_t</code></a> <em>(in rgpot_core::version)</em></td><td>
        <em>Compatibility identity of the rgpot-core C ABI.</em></td></tr>
-     <tr class="cg-13">
+     <tr class="cg-14">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/version.html#rgpot_core-version-rgpot_abi_stamp_t-abi_major"><code class="xref">abi_major</code></a></td><td>
        <em>Incompatible changes increment this value.</em></td></tr>
-     <tr class="cg-13">
+     <tr class="cg-14">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/version.html#rgpot_core-version-rgpot_abi_stamp_t-abi_minor"><code class="xref">abi_minor</code></a></td><td>
        <em>Additive compatible changes increment this value.</em></td></tr>
-     <tr class="cg-13">
+     <tr class="cg-14">
        <td></td>
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/version.html#rgpot_core-version-rgpot_abi_stamp_t-layout_revision"><code class="xref">layout_revision</code></a></td><td>
@@ -616,6 +712,26 @@ data-aria-dark="Switch to auto color mode">
      <tr class="pcap"><td></td><td>&#160;</td><td></td></tr>
      <tr class="cap" id="cap-Variables"><td></td><td>
        <strong>Variables</strong></td><td></td></tr>
+     <tr>
+       <td></td>
+       <td>
+       <a href="crates/rgpot_core/compat.html#rgpot_core-compat-PROTOCOL_FAMILY"><code class="xref">const PROTOCOL_FAMILY</code></a> <em>(in rgpot_core::compat)</em></td><td>
+       <em>Protocol family this build speaks.</em></td></tr>
+     <tr>
+       <td></td>
+       <td>
+       <a href="crates/rgpot_core/compat.html#rgpot_core-compat-PROTOCOL_MAJOR"><code class="xref">const PROTOCOL_MAJOR</code></a> <em>(in rgpot_core::compat)</em></td><td>
+       <em>Wire-incompatible protocol revision.</em></td></tr>
+     <tr>
+       <td></td>
+       <td>
+       <a href="crates/rgpot_core/compat.html#rgpot_core-compat-PROTOCOL_MINOR"><code class="xref">const PROTOCOL_MINOR</code></a> <em>(in rgpot_core::compat)</em></td><td>
+       <em>Additive protocol revision.</em></td></tr>
+     <tr>
+       <td></td>
+       <td>
+       <a href="crates/rgpot_core/compat.html#rgpot_core-compat-SCHEMA_ID"><code class="xref">const SCHEMA_ID</code></a> <em>(in rgpot_core::compat)</em></td><td>
+       <em>Cap&#39;n Proto identity of ``Potentials.capnp``.</em></td></tr>
      <tr>
        <td></td>
        <td>

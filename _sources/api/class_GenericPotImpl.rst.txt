@@ -27,6 +27,7 @@ Server implementation for the Potential RPC interface. :ref:`More...<details-cla
 
 		// methods
 	
+		kj::Promise<void> :ref:`getCapabilities<doxid-class_generic_pot_impl_1a1864c5ba6a6ea8afae5687885a343bfa>`(GetCapabilitiesContext context);
 		kj::Promise<void> :ref:`calculate<doxid-class_generic_pot_impl_1a59c68ff1515d997768279734ff3ebcf8>`(CalculateContext context);
 		kj::Promise<void> :target:`configure<doxid-class_generic_pot_impl_1a8eff60089b9853326964768ba3a5b848>`(ConfigureContext context);
 	};
@@ -76,6 +77,16 @@ Constructor retaining an NWChemPot pointer for configure(). Members initialize i
 
 Methods
 -------
+
+.. index:: pair: function; getCapabilities
+.. _doxid-class_generic_pot_impl_1a1864c5ba6a6ea8afae5687885a343bfa:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	kj::Promise<void> getCapabilities(GetCapabilitiesContext context)
+
+Reports what this server speaks, so a client can refuse an incompatible peer before the first calculate call.
 
 .. index:: pair: function; calculate
 .. _doxid-class_generic_pot_impl_1a59c68ff1515d997768279734ff3ebcf8:

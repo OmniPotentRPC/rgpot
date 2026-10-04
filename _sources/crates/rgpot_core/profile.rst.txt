@@ -67,6 +67,14 @@
       :used_name: Library
 
 
+   .. rust:use:: rgpot_core::compat::Expectation
+      :used_name: Expectation
+
+
+   .. rust:use:: rgpot_core::compat::check_capabilities
+      :used_name: check_capabilities
+
+
    .. rust:use:: rgpot_core::Potentials_capnp::force_input
       :used_name: force_input
 
@@ -87,6 +95,13 @@
 
    .. rubric:: Functions
 
+
+   .. rust:function:: rgpot_core::profile::check_capabilities_bytes
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"check_capabilities_bytes"},{"type":"punctuation","value":"("},{"type":"name","value":"prefix"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"link","value":"str","target":"str"},{"type":"punctuation","value":", "},{"type":"name","value":"words"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"punctuation","value":"["},{"type":"link","value":"u64","target":"u64"},{"type":"punctuation","value":"]"},{"type":"punctuation","value":", "},{"type":"name","value":"expectation"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"link","value":"Expectation","target":"Expectation"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"ProfileResult","target":"ProfileResult"},{"type":"punctuation","value":"<"},{"type":"punctuation","value":"("},{"type":"punctuation","value":")"},{"type":"punctuation","value":">"}]
+
+      Decode a ``Capabilities`` message and apply the handshake to it.
 
    .. rust:function:: rgpot_core::profile::decode_potential_result
       :index: 0
@@ -279,6 +294,19 @@
             
             The selected shared library must implement the minimum potential ABI
             profile for ``prefix`` with the C layouts defined by the profile contract.
+
+         .. rust:function:: rgpot_core::profile::ProfileSession::load_with
+            :index: -1
+            :vis: pub
+            :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"load_with"},{"type":"punctuation","value":"("},{"type":"name","value":"prefix"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"link","value":"str","target":"str"},{"type":"punctuation","value":", "},{"type":"name","value":"explicit_path"},{"type":"punctuation","value":": "},{"type":"link","value":"Option","target":"Option"},{"type":"punctuation","value":"<"},{"type":"punctuation","value":"&"},{"type":"link","value":"Path","target":"Path"},{"type":"punctuation","value":">"},{"type":"punctuation","value":", "},{"type":"name","value":"config"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"punctuation","value":"["},{"type":"link","value":"u8","target":"u8"},{"type":"punctuation","value":"]"},{"type":"punctuation","value":", "},{"type":"name","value":"expectation"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"link","value":"Expectation","target":"Expectation"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"ProfileResult","target":"ProfileResult"},{"type":"punctuation","value":"<"},{"type":"link","value":"Self","target":"Self"},{"type":"punctuation","value":">"}]
+
+            ``ProfileSession::load`` with an explicit host ``Expectation``. The
+            backend's ``Capabilities`` are checked before the session is created, so
+            an incompatible backend is refused before any work is dispatched.
+            
+            **Safety**
+            
+            Same contract as ``ProfileSession::load``.
 
          .. rust:function:: rgpot_core::profile::ProfileSession::prefix
             :index: -1

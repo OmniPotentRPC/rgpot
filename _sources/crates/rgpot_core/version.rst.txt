@@ -95,6 +95,16 @@
       compiled with, or pass the caller's own stamp to
       ``rgpot_abi_compatible``.
 
+   .. rust:function:: rgpot_core::version::rgpot_source_revision
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_source_revision"},{"type":"punctuation","value":"("},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"operator","value":"*"},{"type":"keyword","value":"const"},{"type":"space"},{"type":"link","value":"c_char","target":"c_char"}]
+
+      Source revision the loaded library was built from (a git short hash), or
+      an empty string when the build had no revision to record.
+      
+      The pointer refers to static storage: never free it.
+
    .. rust:function:: rgpot_core::version::rgpot_version
       :index: 0
       :vis: pub

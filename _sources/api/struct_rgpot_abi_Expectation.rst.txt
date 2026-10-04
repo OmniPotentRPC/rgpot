@@ -1,0 +1,85 @@
+.. index:: pair: struct; rgpot::abi::Expectation
+.. _doxid-structrgpot_1_1abi_1_1_expectation:
+
+struct rgpot::abi::Expectation
+==============================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+What the host requires of a backend. :ref:`More...<details-structrgpot_1_1abi_1_1_expectation>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <Handshake.hpp>
+	
+	struct Expectation {
+		// fields
+	
+		std::string :target:`family<doxid-structrgpot_1_1abi_1_1_expectation_1a2810b37de51f89189a2ffd8bb1416a95>` = kProtocolFamily;
+		uint16_t :target:`protocol_major<doxid-structrgpot_1_1abi_1_1_expectation_1a6423da56570a64d88a73a80e12b745cc>` = kProtocolMajor;
+		uint16_t :ref:`protocol_minor_min<doxid-structrgpot_1_1abi_1_1_expectation_1a389af785c617b1671abdd0049b785ec9>` = 0;
+		std::string :target:`schema_id<doxid-structrgpot_1_1abi_1_1_expectation_1a7074629711ea920b4ae4a90ff964e7f3>` = kSchemaId;
+		uint16_t :target:`bridge_abi_major<doxid-structrgpot_1_1abi_1_1_expectation_1a036c075673b3b874f45b830f155e1dd2>` = 1;
+		uint16_t :ref:`bridge_abi_minor_max<doxid-structrgpot_1_1abi_1_1_expectation_1a2f8451020fe3d34d686764f36afe13cf>` = 0;
+		uint32_t :target:`bridge_layout<doxid-structrgpot_1_1abi_1_1_expectation_1a9dbe708eb49e89a532fed55eaddba509>` = 1;
+		uint16_t :target:`dlpack_major<doxid-structrgpot_1_1abi_1_1_expectation_1a2f4d486c0fcb23dcfef5b9790c51bba0>` = 1;
+		uint16_t :ref:`dlpack_minor_max<doxid-structrgpot_1_1abi_1_1_expectation_1ab91fe9623e734d87b426f6d8bcfa43d4>` = 0;
+		uint64_t :ref:`bridge_features<doxid-structrgpot_1_1abi_1_1_expectation_1a08ef11eb0bf3d8289e2fcb77452d4c10>` = 0x3;
+		std::vector<::Capabilities::Operation> :target:`required_operations<doxid-structrgpot_1_1abi_1_1_expectation_1a3ff9bc073423de81b22529acf4f8c693>` = {       ::Capabilities::Operation::ENERGY, ::Capabilities::Operation::FORCES};
+	};
+.. _details-structrgpot_1_1abi_1_1_expectation:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+What the host requires of a backend.
+
+Fields
+------
+
+.. index:: pair: variable; protocol_minor_min
+.. _doxid-structrgpot_1_1abi_1_1_expectation_1a389af785c617b1671abdd0049b785ec9:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	uint16_t protocol_minor_min = 0
+
+Lowest protocol minor accepted.
+
+.. index:: pair: variable; bridge_abi_minor_max
+.. _doxid-structrgpot_1_1abi_1_1_expectation_1a2f8451020fe3d34d686764f36afe13cf:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	uint16_t bridge_abi_minor_max = 0
+
+Highest bridge minor consumable.
+
+.. index:: pair: variable; dlpack_minor_max
+.. _doxid-structrgpot_1_1abi_1_1_expectation_1ab91fe9623e734d87b426f6d8bcfa43d4:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	uint16_t dlpack_minor_max = 0
+
+Highest DLPack minor consumable.
+
+.. index:: pair: variable; bridge_features
+.. _doxid-structrgpot_1_1abi_1_1_expectation_1a08ef11eb0bf3d8289e2fcb77452d4c10:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	uint64_t bridge_features = 0x3
+
+gradient | batch.
+

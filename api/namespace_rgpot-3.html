@@ -418,6 +418,7 @@ data-aria-dark="Switch to auto color mode">
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/version.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">version</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/compat.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">compat</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/client.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">client</span></code></a></li>
@@ -562,7 +563,7 @@ data-aria-dark="Switch to auto color mode">
 </div>
 <section id="overview">
 <h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
-<p>Prefix-parameterized loader for the minimum potential ABI profile. <a class="reference internal" href="#details-namespacergpot"><span class="std std-ref">More…</span></a></p>
+<p>Capability handshake applied while loading a profile backend; the expectation, check and producer helpers live in <span class="xref std std-ref">Handshake.hpp</span>. <a class="reference internal" href="#details-namespacergpot"><span class="std std-ref">More…</span></a></p>
 <div class="doxyrest-overview-code-block highlight">
 <pre><span data-line="1"><span class="k">namespace</span> <span class="n">rgpot</span> <span class="p">{</span></span>
 <span data-line="2"> </span>
@@ -707,7 +708,7 @@ data-aria-dark="Switch to auto color mode">
 </section>
 <section id="detailed-documentation">
 <span id="details-namespacergpot"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
-<p>Prefix-parameterized loader for the minimum potential ABI profile.</p>
+<p>Capability handshake applied while loading a profile backend; the expectation, check and producer helpers live in <span class="xref std std-ref">Handshake.hpp</span>.</p>
 <p>Header file for the screened nuclear repulsion (ZBL) potential.</p>
 <p>Implementation of the ZBL potential methods.</p>
 <p>Definition of the native <a class="reference internal" href="class_AtomMatrix.html#doxid-class-atom-matrix"><span class="std std-ref">AtomMatrix</span></a> class.</p>
@@ -733,6 +734,9 @@ data-aria-dark="Switch to auto color mode">
 <p>Named-child PES algebra compiled with OpenMM Lepton.</p>
 <p>CPMD potential under rgpot <code class="docutils literal notranslate"><span class="pre">PotentialConfig</span></code> user parameters.</p>
 <p>Parallel evaluation of independent configurations.</p>
+<p>Prefix-parameterized loader for the minimum potential ABI profile.</p>
+<p>Capability handshake for backends loaded through the potential profile: decide from a <code class="docutils literal notranslate"><span class="pre">Capabilities</span></code> message whether this build can drive the backend before any work is dispatched, and fill the same message from the producing side.</p>
+<p>Metadata a backend leaves unset (empty family, zero bridge major) is not a declaration and is not checked. The constants mirror the eindir-core objective ABI stamp that rgpot-core compares against.</p>
 <p>Backends (nwchemc, cpmdc, future lammpsc/gromacsc) export the same C symbol set prefix-parameterized on <code class="docutils literal notranslate"><span class="pre">&lt;p&gt;</span></code> (see potentials-schema PROFILE.md). This loader resolves that whole set from one dlopen’d shared library, so rgpot drives every conforming backend through identical function pointers with no per-backend loader code. Everything stays native: flat binary Cap’n Proto messages both directions, plain C calls in-process.</p>
 <p>A <a class="reference internal" href="class_rgpot_BatchEvaluator.html#doxid-classrgpot-1-1-batch-evaluator"><span class="std std-ref">BatchEvaluator</span></a> owns one potential instance per worker, created by a caller-supplied factory, and splits the configurations of one call into contiguous ranges, one range per worker. Instances share nothing, so no potential has to be re-entrant across threads; a potential that reports <code class="docutils literal notranslate"><span class="pre">PotCaps::reentrancy</span></code> as process-serial is safe here because each instance is touched by one thread at a time.</p>
 <div class="highlight">

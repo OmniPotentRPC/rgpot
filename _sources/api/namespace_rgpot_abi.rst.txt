@@ -8,6 +8,7 @@ namespace rgpot::abi
 	:hidden:
 
 	namespace_rgpot_abi_detail.rst
+	struct_rgpot_abi_Expectation.rst
 	struct_rgpot_abi_ProfileResult.rst
 	class_rgpot_abi_ProfileLoader.rst
 
@@ -29,6 +30,7 @@ Overview
 
 	// structs
 
+	struct :ref:`Expectation<doxid-structrgpot_1_1abi_1_1_expectation>`;
 	struct :ref:`ProfileResult<doxid-structrgpot_1_1abi_1_1_profile_result>`;
 
 	// classes
@@ -42,12 +44,20 @@ Overview
 	std::uint32_t :target:`kPotentialBaseCacheVirtuals<doxid-_cxx_layout_8hpp_1a8aaa3a0c52ecc55915755ef12588a420>` = 1;
 	std::uint32_t :ref:`kPotentialVirtuals<doxid-_cxx_layout_8hpp_1a732c22e957eb2e1632aa0b440d610768>` = 2;
 	std::uint32_t :target:`kFeatures<doxid-_cxx_layout_8hpp_1a68a36e6f340fff65f973db0b9c154d4c>` = 0;
+	const char* :target:`kProtocolFamily<doxid-_handshake_8hpp_1a78a08e4e0b1fe7e54dbbd40faf924543>` = "rgpot.potentials";
+	uint16_t :target:`kProtocolMajor<doxid-_handshake_8hpp_1a0a7a85b5c929adb0a6e58ff1ce09e245>` = 1;
+	uint16_t :target:`kProtocolMinor<doxid-_handshake_8hpp_1a3be83fb0ed9d22a6977d80746e131548>` = 0;
+	const char* :target:`kSchemaId<doxid-_handshake_8hpp_1a40ad25fc61459f62428b154409c88be1>` = "0xbd1f89fa17369103";
 
 	// global functions
 
+	void :ref:`checked_load<doxid-_compat_8hpp_1af4b62919113952b0df48f4b4ed837b36>`(:ref:`ProfileLoader<doxid-classrgpot_1_1abi_1_1_profile_loader>`& loader, const std::string& prefix, const std::string& explicit_path = "", const :ref:`Expectation<doxid-structrgpot_1_1abi_1_1_expectation>`& want = {});
 	:ref:`rgpot_cxx_layout_stamp_t<doxid-structrgpot__cxx__layout__stamp__t>` :ref:`header_stamp<doxid-_cxx_layout_8hpp_1a5b7b7e5fb73bbcf0ebb3d6bbf5f0ab44>`();
 	:ref:`rgpot_cxx_layout_stamp_t<doxid-structrgpot__cxx__layout__stamp__t>` :ref:`library_stamp<doxid-_cxx_layout_8hpp_1acb57c9e8e468242a18092915e267c949>`();
 	bool :ref:`layout_compatible<doxid-_cxx_layout_8hpp_1a82944f1ad802513342c545d067ea8821>`();
+	std::string :ref:`check_capabilities<doxid-_handshake_8hpp_1a6cdab4c79683cd2f731ab6d0f3ba3e28>`(::Capabilities::Reader caps, const :ref:`Expectation<doxid-structrgpot_1_1abi_1_1_expectation>`& want = {});
+	void :ref:`fill_compatibility<doxid-_handshake_8hpp_1a5234e7c7ab83b7db5499d077114949f7>`(::Capabilities::Builder caps);
+	std::string :ref:`check_server<doxid-_handshake_8hpp_1a5c90b35ace813e6fd2337a3812ff2416>`(::Potential::Client& server, kj::WaitScope& wait_scope, const :ref:`Expectation<doxid-structrgpot_1_1abi_1_1_expectation>`& want = {});
 
 	} // namespace abi
 .. _details-namespacergpot_1_1abi:
@@ -93,6 +103,16 @@ Virtual functions ``Potential<Derived>`` declares itself (``forceImpl`` and ``fo
 Global Functions
 ----------------
 
+.. index:: pair: function; checked_load
+.. _doxid-_compat_8hpp_1af4b62919113952b0df48f4b4ed837b36:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void checked_load(:ref:`ProfileLoader<doxid-classrgpot_1_1abi_1_1_profile_loader>`& loader, const std::string& prefix, const std::string& explicit_path = "", const :ref:`Expectation<doxid-structrgpot_1_1abi_1_1_expectation>`& want = {})
+
+Load a profile backend and refuse it before dispatch when its ``Capabilities`` are incompatible. On refusal the loader is left unloaded and std::runtime_error names the first mismatch.
+
 .. index:: pair: function; header_stamp
 .. _doxid-_cxx_layout_8hpp_1a5b7b7e5fb73bbcf0ebb3d6bbf5f0ab44:
 
@@ -122,4 +142,34 @@ What the loaded library was built with.
 	bool layout_compatible()
 
 True when the loaded library was built from the same layouts as these headers: equal revision, equal feature bits, equal hash.
+
+.. index:: pair: function; check_capabilities
+.. _doxid-_handshake_8hpp_1a6cdab4c79683cd2f731ab6d0f3ba3e28:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::string check_capabilities(::Capabilities::Reader caps, const :ref:`Expectation<doxid-structrgpot_1_1abi_1_1_expectation>`& want = {})
+
+Empty when ``caps`` is acceptable, else the first incompatibility.
+
+.. index:: pair: function; fill_compatibility
+.. _doxid-_handshake_8hpp_1a5234e7c7ab83b7db5499d077114949f7:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void fill_compatibility(::Capabilities::Builder caps)
+
+Fill the compatibility fields of ``caps`` with what this build speaks.
+
+.. index:: pair: function; check_server
+.. _doxid-_handshake_8hpp_1a5c90b35ace813e6fd2337a3812ff2416:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::string check_server(::Potential::Client& server, kj::WaitScope& wait_scope, const :ref:`Expectation<doxid-structrgpot_1_1abi_1_1_expectation>`& want = {})
+
+Ask a connected server for its ``Capabilities`` and return empty when it is compatible, else the reason. A server built before ``Potential.getCapabilities`` existed answers UNIMPLEMENTED; that is reported as a missing call with the upgrade path, never as a successful handshake.
 

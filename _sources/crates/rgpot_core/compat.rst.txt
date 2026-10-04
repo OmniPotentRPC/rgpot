@@ -1,0 +1,208 @@
+==============
+``mod compat``
+==============
+
+
+.. rust:module:: rgpot_core::compat
+   :index: 0
+   :vis: pub
+
+   Capability handshake: decide from a backend's ``Capabilities`` message
+   whether this build can drive it, before any work is dispatched.
+   
+   The host states what it speaks as an ``Expectation``. A backend that
+   declares an incompatible protocol family or major, a lower protocol minor
+   than required, a different schema identity, an incompatible eindir bridge
+   or DLPack revision, or that lacks a required operation is refused with a
+   message naming the first mismatch. Metadata a backend leaves unset (empty
+   family, zero bridge major) is not a declaration and is not checked.
+
+   .. rust:use:: rgpot_core::compat
+      :used_name: self
+
+
+   .. rust:use:: rgpot_core
+      :used_name: crate
+
+
+   .. rust:use:: rgpot_core::Potentials_capnp::capabilities::Builder
+      :used_name: Builder
+
+
+   .. rust:use:: rgpot_core::Potentials_capnp::capabilities::Operation
+      :used_name: Operation
+
+
+   .. rust:use:: rgpot_core::Potentials_capnp::capabilities::Reader
+      :used_name: Reader
+
+
+   .. rubric:: Variables
+
+
+   .. rust:variable:: rgpot_core::compat::PROTOCOL_FAMILY
+      :index: 0
+      :vis: pub
+      :toc: const PROTOCOL_FAMILY
+      :layout: [{"type":"keyword","value":"const"},{"type":"space"},{"type":"name","value":"PROTOCOL_FAMILY"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"link","value":"str","target":"str"}]
+
+      Protocol family this build speaks.
+
+   .. rust:variable:: rgpot_core::compat::PROTOCOL_MAJOR
+      :index: 0
+      :vis: pub
+      :toc: const PROTOCOL_MAJOR
+      :layout: [{"type":"keyword","value":"const"},{"type":"space"},{"type":"name","value":"PROTOCOL_MAJOR"},{"type":"punctuation","value":": "},{"type":"link","value":"u16","target":"u16"}]
+
+      Wire-incompatible protocol revision.
+
+   .. rust:variable:: rgpot_core::compat::PROTOCOL_MINOR
+      :index: 0
+      :vis: pub
+      :toc: const PROTOCOL_MINOR
+      :layout: [{"type":"keyword","value":"const"},{"type":"space"},{"type":"name","value":"PROTOCOL_MINOR"},{"type":"punctuation","value":": "},{"type":"link","value":"u16","target":"u16"}]
+
+      Additive protocol revision.
+
+   .. rust:variable:: rgpot_core::compat::SCHEMA_ID
+      :index: 0
+      :vis: pub
+      :toc: const SCHEMA_ID
+      :layout: [{"type":"keyword","value":"const"},{"type":"space"},{"type":"name","value":"SCHEMA_ID"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"link","value":"str","target":"str"}]
+
+      Cap'n Proto identity of ``Potentials.capnp``.
+
+   .. rubric:: Functions
+
+
+   .. rust:function:: rgpot_core::compat::check_capabilities
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"check_capabilities"},{"type":"punctuation","value":"("},{"type":"name","value":"caps"},{"type":"punctuation","value":": "},{"type":"link","value":"Reader","target":"Reader"},{"type":"punctuation","value":"<"},{"type":"lifetime","value":"'_"},{"type":"punctuation","value":">"},{"type":"punctuation","value":", "},{"type":"name","value":"want"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"link","value":"Expectation","target":"Expectation"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"Result","target":"Result"},{"type":"punctuation","value":"<"},{"type":"punctuation","value":"("},{"type":"punctuation","value":")"},{"type":"punctuation","value":", "},{"type":"link","value":"String","target":"String"},{"type":"punctuation","value":">"}]
+
+      Check ``caps`` against ``want``; the error names the first incompatibility.
+
+   .. rust:function:: rgpot_core::compat::check_server
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"async"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"check_server"},{"type":"punctuation","value":"("},{"type":"name","value":"server"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"link","value":"crate","target":"crate"},{"type":"punctuation","value":"::"},{"type":"name","value":"Potentials_capnp"},{"type":"punctuation","value":"::"},{"type":"name","value":"potential"},{"type":"punctuation","value":"::"},{"type":"name","value":"Client"},{"type":"punctuation","value":", "},{"type":"name","value":"want"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"link","value":"Expectation","target":"Expectation"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"Result","target":"Result"},{"type":"punctuation","value":"<"},{"type":"punctuation","value":"("},{"type":"punctuation","value":")"},{"type":"punctuation","value":", "},{"type":"link","value":"String","target":"String"},{"type":"punctuation","value":">"}]
+
+      Ask a connected server for its ``Capabilities`` and refuse it when they are
+      incompatible. A server that predates ``Potential.getCapabilities`` answers
+      UNIMPLEMENTED, which is reported as a missing call with the upgrade path.
+
+   .. rust:function:: rgpot_core::compat::describe_server
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"describe_server"},{"type":"punctuation","value":"("},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"name","value":"caps"},{"type":"punctuation","value":": "},{"type":"link","value":"Builder","target":"Builder"},{"type":"punctuation","value":"<"},{"type":"lifetime","value":"'_"},{"type":"punctuation","value":">"},{"type":"punctuation","value":")"}]
+
+      Fill ``caps`` as the self-description of an rgpot RPC server.
+
+   .. rust:function:: rgpot_core::compat::fill_compatibility
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"fill_compatibility"},{"type":"punctuation","value":"("},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"name","value":"caps"},{"type":"punctuation","value":": "},{"type":"link","value":"Builder","target":"Builder"},{"type":"punctuation","value":"<"},{"type":"lifetime","value":"'_"},{"type":"punctuation","value":">"},{"type":"punctuation","value":")"}]
+
+      Fill the compatibility fields of ``caps`` with what this build speaks.
+
+   .. rubric:: Structs and Unions
+
+
+   .. rust:struct:: rgpot_core::compat::Expectation
+      :index: 1
+      :vis: pub
+      :toc: struct Expectation
+      :layout: [{"type":"keyword","value":"struct"},{"type":"space"},{"type":"name","value":"Expectation"}]
+
+      What the host requires of a backend.
+
+      .. rust:variable:: rgpot_core::compat::Expectation::family
+         :index: 2
+         :vis: pub
+         :toc: family
+         :layout: [{"type":"name","value":"family"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"lifetime","value":"'static"},{"type":"space"},{"type":"link","value":"str","target":"str"}]
+
+
+      .. rust:variable:: rgpot_core::compat::Expectation::protocol_major
+         :index: 2
+         :vis: pub
+         :toc: protocol_major
+         :layout: [{"type":"name","value":"protocol_major"},{"type":"punctuation","value":": "},{"type":"link","value":"u16","target":"u16"}]
+
+
+      .. rust:variable:: rgpot_core::compat::Expectation::protocol_minor_min
+         :index: 2
+         :vis: pub
+         :toc: protocol_minor_min
+         :layout: [{"type":"name","value":"protocol_minor_min"},{"type":"punctuation","value":": "},{"type":"link","value":"u16","target":"u16"}]
+
+         Lowest protocol minor the host accepts.
+
+      .. rust:variable:: rgpot_core::compat::Expectation::schema_id
+         :index: 2
+         :vis: pub
+         :toc: schema_id
+         :layout: [{"type":"name","value":"schema_id"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"lifetime","value":"'static"},{"type":"space"},{"type":"link","value":"str","target":"str"}]
+
+
+      .. rust:variable:: rgpot_core::compat::Expectation::bridge_abi_major
+         :index: 2
+         :vis: pub
+         :toc: bridge_abi_major
+         :layout: [{"type":"name","value":"bridge_abi_major"},{"type":"punctuation","value":": "},{"type":"link","value":"u16","target":"u16"}]
+
+
+      .. rust:variable:: rgpot_core::compat::Expectation::bridge_abi_minor_max
+         :index: 2
+         :vis: pub
+         :toc: bridge_abi_minor_max
+         :layout: [{"type":"name","value":"bridge_abi_minor_max"},{"type":"punctuation","value":": "},{"type":"link","value":"u16","target":"u16"}]
+
+         Highest bridge minor the host can consume.
+
+      .. rust:variable:: rgpot_core::compat::Expectation::bridge_layout
+         :index: 2
+         :vis: pub
+         :toc: bridge_layout
+         :layout: [{"type":"name","value":"bridge_layout"},{"type":"punctuation","value":": "},{"type":"link","value":"u32","target":"u32"}]
+
+
+      .. rust:variable:: rgpot_core::compat::Expectation::dlpack_major
+         :index: 2
+         :vis: pub
+         :toc: dlpack_major
+         :layout: [{"type":"name","value":"dlpack_major"},{"type":"punctuation","value":": "},{"type":"link","value":"u16","target":"u16"}]
+
+
+      .. rust:variable:: rgpot_core::compat::Expectation::dlpack_minor_max
+         :index: 2
+         :vis: pub
+         :toc: dlpack_minor_max
+         :layout: [{"type":"name","value":"dlpack_minor_max"},{"type":"punctuation","value":": "},{"type":"link","value":"u16","target":"u16"}]
+
+         Highest DLPack minor the host can consume.
+
+      .. rust:variable:: rgpot_core::compat::Expectation::bridge_features
+         :index: 2
+         :vis: pub
+         :toc: bridge_features
+         :layout: [{"type":"name","value":"bridge_features"},{"type":"punctuation","value":": "},{"type":"link","value":"u64","target":"u64"}]
+
+         Bridge feature bits the host understands.
+
+      .. rust:variable:: rgpot_core::compat::Expectation::required_operations
+         :index: 2
+         :vis: pub
+         :toc: required_operations
+         :layout: [{"type":"name","value":"required_operations"},{"type":"punctuation","value":": "},{"type":"link","value":"Vec","target":"Vec"},{"type":"punctuation","value":"<"},{"type":"link","value":"Operation","target":"Operation"},{"type":"punctuation","value":">"}]
+
+
+      .. rubric:: Traits implemented
+
+
+      .. rust:impl:: rgpot_core::compat::Expectation::Default
+         :index: -1
+         :vis: pub
+         :layout: [{"type":"keyword","value":"impl"},{"type":"space"},{"type":"link","value":"Default","target":"Default"},{"type":"space"},{"type":"keyword","value":"for"},{"type":"space"},{"type":"link","value":"Expectation","target":"Expectation"}]
+         :toc: impl Default for Expectation
+
