@@ -1,0 +1,1 @@
+rgpot::BatchEvaluator evaluates many configurations in parallel: it builds one potential per worker from a factory, splits the batch into contiguous ranges and returns results in input order, with no re-entrancy requirement on the potential. A worker failure is rethrown after every worker has joined.
