@@ -16,7 +16,7 @@
 namespace abi = rgpot::abi;
 
 TEST_CASE("the library stamp equals the header stamp", "[abi][layout]") {
-  const auto header = abi::header_stamp();
+  constexpr auto header = abi::header_stamp();
   const auto library = abi::library_stamp();
   REQUIRE(library.revision == header.revision);
   REQUIRE(library.features == header.features);
@@ -41,7 +41,7 @@ TEST_CASE("the feature bit follows RGPOT_HAS_CACHE", "[abi][layout]") {
 }
 
 TEST_CASE("the exported check refuses a different stamp", "[abi][layout]") {
-  auto stamp = abi::header_stamp();
+  rgpot_cxx_layout_stamp_t stamp = abi::header_stamp();
   REQUIRE(rgpot_cxx_layout_compatible(&stamp) == 1);
   auto other = stamp;
   other.hash ^= 1u;
@@ -66,7 +66,7 @@ TEST_CASE("a library built with a changed structure is refused",
       rgpot::plugin::dynlib::sym(handle, "rgpot_cxx_layout_stamp"));
   REQUIRE(stamp_fn != nullptr);
   const auto fixture = stamp_fn();
-  const auto mine = abi::header_stamp();
+  constexpr auto mine = abi::header_stamp();
   REQUIRE(fixture.revision == mine.revision);
   REQUIRE(fixture.features == mine.features);
   REQUIRE(fixture.hash != mine.hash);

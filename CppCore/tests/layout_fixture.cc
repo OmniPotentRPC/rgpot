@@ -15,19 +15,27 @@
 #define RGPOT_CXX_LAYOUT_BUILDING
 #include "rgpot/abi/CxxLayout.hpp"
 
-static_assert(sizeof(rgpot::ForceOut) > 0);
+// Fails to compile when the macro above did not change ForceOut.
+static_assert(offsetof(rgpot::ForceOut, fixture_extra) >
+              offsetof(rgpot::ForceOut, has_stress));
+
+namespace {
+// Constant-initialised in this translation unit, so the exported functions
+// never call an inline function another shared object may also define.
+constexpr rgpot_cxx_layout_stamp_t kStamp = rgpot::abi::header_stamp();
+} // namespace
 
 extern "C" {
 
 rgpot_cxx_layout_stamp_t rgpot_cxx_layout_stamp(void) {
-  return rgpot::abi::header_stamp();
+  return kStamp;
 }
 
 int32_t rgpot_cxx_layout_compatible(const rgpot_cxx_layout_stamp_t *caller) {
   if (caller == nullptr) {
     return 0;
   }
-  const rgpot_cxx_layout_stamp_t mine = rgpot::abi::header_stamp();
+  const rgpot_cxx_layout_stamp_t &mine = kStamp;
   return caller->revision == mine.revision && caller->features == mine.features &&
                  caller->hash == mine.hash
              ? 1

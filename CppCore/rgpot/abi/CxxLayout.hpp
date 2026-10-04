@@ -94,9 +94,14 @@ inline constexpr std::uint32_t kFeatures = 0;
 
 namespace detail {
 
-/// Incomplete derived type: gives the CRTP template one instantiation whose
-/// size and alignment the stamp covers.
-struct LayoutProbe;
+/// A complete derived type: gives the CRTP template one instantiation whose
+/// size and alignment the stamp covers. Complete because compilers that
+/// instantiate the virtual members with the class need the base-to-derived
+/// conversion to be valid.
+struct LayoutProbe final : Potential<LayoutProbe> {
+  LayoutProbe() : Potential(PotType::UNKNOWN) {}
+  void forceImpl(const ForceInput &, ForceOut *) const override {}
+};
 
 struct Fold {
   std::uint64_t h = 0xcbf29ce484222325ull;
@@ -203,7 +208,9 @@ constexpr std::uint64_t compute_hash() {
 
 } // namespace detail
 
-/// What the consumer compiled against.
+/// What the consumer compiled against. Initialise a @c constexpr variable
+/// with it; a call evaluated at run time is not tied to this translation
+/// unit (see layout_compatible()).
 inline constexpr rgpot_cxx_layout_stamp_t header_stamp() noexcept {
   return {kCxxLayoutRevision, kFeatures, detail::compute_hash()};
 }
@@ -216,7 +223,10 @@ inline rgpot_cxx_layout_stamp_t library_stamp() noexcept {
 /// True when the loaded library was built from the same layouts as these
 /// headers: equal revision, equal feature bits, equal hash.
 inline bool layout_compatible() noexcept {
-  const rgpot_cxx_layout_stamp_t mine = header_stamp();
+  // Evaluated at compile time: a runtime call to an inline function would
+  // bind, across shared objects, to whichever definition the loader meets
+  // first, and defeat the comparison.
+  constexpr rgpot_cxx_layout_stamp_t mine = header_stamp();
   return rgpot_cxx_layout_compatible(&mine) != 0;
 }
 
