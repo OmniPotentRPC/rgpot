@@ -79,6 +79,26 @@ library's own dispatch picks the kernel.
 The kernels are built with the toolchain's default =-march=.
 =xckernel_bench= times the Fock and fxc contractions on the H2O fixture and on a
 generated random grid.
+The blocked binary and the long-double scalar binary are both debug builds with
+optimization 0.
+The scalar =stage_b= is the long-double loop over basis pairs and grid points.
+The blocked path is one =dgemm=, or one =dsyr2k= when =U= and =V= are the same
+array, on each block of 256 grid points, with those blocks summed in long double
+and rounded once.
+The times are the best single call, in milliseconds, on an AMD Ryzen 9 9950X (16
+cores, 32 threads) linked to OpenBLAS 0.3.34.
+The allocation was CPUs 0, 1, 16 and 17, cores 0 and 1 with both threads, so
+four OpenBLAS threads share two cores.
+The load average was 41.19 at the start and 43.59 at the end.
+H2O times are the best of 20 scalar calls and of 60 blocked calls.
+Random-grid times are one scalar sample and the best of three blocked calls.
+
+| grid                            | kernel         | scalar, 1 thread | blocked, 1 thread | blocked, 4 threads |
+|---------------------------------+----------------+------------------+-------------------+--------------------|
+| H2O STO-3G, nbf 7, 33704 points | =xck_gga_r_o1= | 16.455           | 2.112             | 1.253              |
+| H2O STO-3G, nbf 7, 33704 points | =xck_gga_r_o2= | 18.807           | 5.200             | 3.544              |
+| random, nbf 200, 100000 points  | =xck_gga_r_o1= | 50875.5          | 1058.3            | 771.7              |
+| random, nbf 200, 100000 points  | =xck_gga_r_o2= | 47741.9          | 1040.3            | 798.4              |
 
 * Dependencies
 Libxc implements the functional-derivative tower.
@@ -148,7 +168,7 @@ rounding of the terms that formed them and are not held to their own ulp.
 The C contraction is a blocked =dgemm= and the reference a =dgemm= of another
 blocking, so the two differ by a few rounding errors of the largest term.
 A decimal literal fits one architecture's rounding and not another's.
-Measured on x86_64 across the fixtures: 0.2 to 2.2 =eps * scale=.
+Measured on x86_64 across the eight NumPy fixtures: 1.35 to 2.22 =eps * scale=.
 PySCF bars are decimal: Fock =1e-15=, fxc =1e-13=,
 TDA/RPA sigma =1e-17=. =--pyscf= Fock compares long-double stage A/B to live
 =nr_rks= and exits when =rel > 1e-15=.
