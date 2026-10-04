@@ -7,6 +7,7 @@ namespace rgpot::cache
 .. toctree::
 	:hidden:
 
+	struct_rgpot_cache_EvalCounts.rst
 	class_rgpot_cache_KeyHash.rst
 	class_rgpot_cache_PotentialCache.rst
 
@@ -21,6 +22,10 @@ Implementation of the RocksDB-based potential cache. :ref:`More...<details-names
 
 	
 	namespace cache {
+
+	// structs
+
+	struct :ref:`EvalCounts<doxid-structrgpot_1_1cache_1_1_eval_counts>`;
 
 	// classes
 

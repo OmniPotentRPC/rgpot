@@ -1,0 +1,58 @@
+.. index:: pair: struct; rgpot::cache::EvalCounts
+.. _doxid-structrgpot_1_1cache_1_1_eval_counts:
+
+struct rgpot::cache::EvalCounts
+===============================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Evaluations a cache handle has answered, split by origin. :ref:`More...<details-structrgpot_1_1cache_1_1_eval_counts>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <PotentialCache.hpp>
+	
+	struct EvalCounts {
+		// fields
+	
+		uint64_t :ref:`computed<doxid-structrgpot_1_1cache_1_1_eval_counts_1a1aea41424df64e148a3433fcac701af4>` = 0;
+		uint64_t :ref:`served<doxid-structrgpot_1_1cache_1_1_eval_counts_1ab9c1cc5afd6aeb02a4c5f583bfac983a>` = 0;
+	};
+.. _details-structrgpot_1_1cache_1_1_eval_counts:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Evaluations a cache handle has answered, split by origin.
+
+``computed`` counts results the kernel produced while the cache was attached; ``served`` counts results returned from the cache without running the kernel. A caller that charges evaluations picks which field it bills, so two runs under different cache states stay comparable.
+
+Fields
+------
+
+.. index:: pair: variable; computed
+.. _doxid-structrgpot_1_1cache_1_1_eval_counts_1a1aea41424df64e148a3433fcac701af4:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	uint64_t computed = 0
+
+Results produced by the kernel.
+
+.. index:: pair: variable; served
+.. _doxid-structrgpot_1_1cache_1_1_eval_counts_1ab9c1cc5afd6aeb02a4c5f583bfac983a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	uint64_t served = 0
+
+Results answered from the cache.
+

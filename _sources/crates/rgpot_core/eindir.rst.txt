@@ -36,6 +36,14 @@
       :used_name: c_void
 
 
+   .. rust:use:: std::sync::atomic::AtomicU64
+      :used_name: AtomicU64
+
+
+   .. rust:use:: std::sync::atomic::Ordering
+      :used_name: Ordering
+
+
    .. rust:use:: std::sync::Mutex
       :used_name: Mutex
 
@@ -50,6 +58,18 @@
 
    .. rust:use:: rgpot_core::status::rgpot_status_t
       :used_name: rgpot_status_t
+
+
+   .. rust:use:: rgpot_core::status::set_last_error
+      :used_name: set_last_error
+
+
+   .. rust:use:: rgpot_core::tensor::checked_f64_data
+      :used_name: checked_f64_data
+
+
+   .. rust:use:: rgpot_core::tensor::copy_f64_tensor
+      :used_name: copy_f64_tensor
 
 
    .. rust:use:: rgpot_core::tensor::rgpot_tensor_cpu_f64_2d
@@ -148,6 +168,19 @@
       ``eindir_core_abi_compatible``, so a layout from a different eindir-core
       revision is refused instead of read as the wrong struct.
 
+   .. rust:function:: rgpot_core::eindir::rgpot_potential_eval_counts
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_potential_eval_counts"},{"type":"punctuation","value":"("},{"type":"name","value":"pot"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"const"},{"type":"space"},{"type":"link","value":"rgpot_potential_t","target":"rgpot_potential_t"},{"type":"punctuation","value":", "},{"type":"name","value":"out"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"link","value":"rgpot_eval_counts_t","target":"rgpot_eval_counts_t"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"rgpot_status_t","target":"rgpot_status_t"}]
+
+      Read the computed and served counters of ``pot`` into ``out``.
+      
+      **Safety**
+      
+      ``pot`` must be NULL or a live pointer from ``rgpot_potential_new_eindir``,
+      and ``out`` NULL or writable. NULL for either yields
+      ``RGPOT_INVALID_PARAMETER``.
+
    .. rust:function:: rgpot_core::eindir::rgpot_potential_free_eindir
       :index: 0
       :vis: pub
@@ -191,16 +224,63 @@
       or ``n_atoms * 3`` readable ``f64`` values. ``callback`` and ``free_fn`` must be
       safe to call with ``user_data``.
 
+   .. rust:function:: rgpot_core::eindir::rgpot_potential_reset_eval_counts
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_potential_reset_eval_counts"},{"type":"punctuation","value":"("},{"type":"name","value":"pot"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"const"},{"type":"space"},{"type":"link","value":"rgpot_potential_t","target":"rgpot_potential_t"},{"type":"punctuation","value":")"}]
+
+      Zero the counters of ``pot``.
+      
+      **Safety**
+      
+      ``pot`` must be NULL or a live pointer from ``rgpot_potential_new_eindir``.
+
    .. rubric:: Structs and Unions
+
+
+   .. rust:struct:: rgpot_core::eindir::rgpot_eval_counts_t
+      :index: 1
+      :vis: pub
+      :toc: struct rgpot_eval_counts_t
+      :layout: [{"type":"keyword","value":"struct"},{"type":"space"},{"type":"name","value":"rgpot_eval_counts_t"}]
+
+      Evaluations a potential handle has answered, split by origin.
+      
+      ``computed`` counts callback invocations; ``served`` counts gradients
+      answered from the fused energy-and-gradient result without invoking the
+      callback. A caller that charges evaluations chooses which field to bill.
+
+      .. rust:variable:: rgpot_core::eindir::rgpot_eval_counts_t::computed
+         :index: 2
+         :vis: pub
+         :toc: computed
+         :layout: [{"type":"name","value":"computed"},{"type":"punctuation","value":": "},{"type":"link","value":"u64","target":"u64"}]
+
+
+      .. rust:variable:: rgpot_core::eindir::rgpot_eval_counts_t::served
+         :index: 2
+         :vis: pub
+         :toc: served
+         :layout: [{"type":"name","value":"served"},{"type":"punctuation","value":": "},{"type":"link","value":"u64","target":"u64"}]
 
 
    .. rust:struct:: rgpot_core::eindir::rgpot_fused_cache_t
       :index: 1
       :vis: pub
       :toc: struct rgpot_fused_cache_t
-      :layout: [{"type":"keyword","value":"struct"},{"type":"space"},{"type":"name","value":"rgpot_fused_cache_t"},{"type":"punctuation","value":"("},{"type":"link","value":"Mutex","target":"Mutex"},{"type":"punctuation","value":"<"},{"type":"link","value":"Option","target":"Option"},{"type":"punctuation","value":"<"},{"type":"link","value":"FusedEvaluation","target":"FusedEvaluation"},{"type":"punctuation","value":">"},{"type":"punctuation","value":">"},{"type":"punctuation","value":")"}]
+      :layout: [{"type":"keyword","value":"struct"},{"type":"space"},{"type":"name","value":"rgpot_fused_cache_t"}]
 
       Opaque cache of the last fused energy and gradient evaluation.
+
+      .. rubric:: Implementations
+
+
+      .. rust:impl:: rgpot_core::eindir::rgpot_fused_cache_t
+         :index: -1
+         :vis: pub
+         :layout: [{"type":"keyword","value":"impl"},{"type":"space"},{"type":"link","value":"rgpot_fused_cache_t","target":"rgpot_fused_cache_t"}]
+         :toc: impl rgpot_fused_cache_t
+
 
    .. rust:struct:: rgpot_core::eindir::rgpot_potential_t
       :index: 1

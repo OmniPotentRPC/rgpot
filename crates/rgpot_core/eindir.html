@@ -441,9 +441,19 @@ data-aria-dark="Switch to auto color mode">
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
 <li><a class="reference internal" href="#rgpot_core-eindir-rgpot_eindir_abi_stamp"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_eindir_abi_stamp</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_eval_counts"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_potential_eval_counts</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_free_eindir"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_potential_free_eindir</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_new_eindir"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_potential_new_eindir</span></code></a></li>
-<li><a class="reference internal" href="#rgpot_core-eindir-rgpot_fused_cache_t"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">rgpot_fused_cache_t</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_reset_eval_counts"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_potential_reset_eval_counts</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-eindir-rgpot_eval_counts_t"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">rgpot_eval_counts_t</span></code></a><ul>
+<li><a class="reference internal" href="#rgpot_core-eindir-rgpot_eval_counts_t-computed"><code class="docutils literal notranslate"><span class="pre">computed</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-eindir-rgpot_eval_counts_t-served"><code class="docutils literal notranslate"><span class="pre">served</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#rgpot_core-eindir-rgpot_fused_cache_t"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">rgpot_fused_cache_t</span></code></a><ul>
+<li><a class="reference internal" href="#rgpot_core-eindir-rgpot_fused_cache_t"><code class="docutils literal notranslate"><span class="pre">impl</span> <span class="pre">rgpot_fused_cache_t</span></code></a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_t"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">rgpot_potential_t</span></code></a><ul>
 <li><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_t-base"><code class="docutils literal notranslate"><span class="pre">base</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_t-callback"><code class="docutils literal notranslate"><span class="pre">callback</span></code></a></li>
@@ -593,6 +603,16 @@ revision is refused instead of read as the wrong struct.</p>
 </dd></dl>
 
 <dl class="rust function">
+<dt class="sig sig-object rust" id="rgpot_core-eindir-rgpot_potential_eval_counts">
+<span class="sig-name descname"><span class="k"><span class="pre">unsafe</span></span><span class="w"> </span><span class="k"><span class="pre">extern</span></span><span class="w"> </span><span class="s"><span class="pre">C</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_potential_eval_counts</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">pot</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_t" title="rgpot_core::eindir::rgpot_potential_t"><span class="n"><span class="pre">rgpot_potential_t</span></span></a><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">out</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">mut</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-eindir-rgpot_eval_counts_t" title="rgpot_core::eindir::rgpot_eval_counts_t"><span class="n"><span class="pre">rgpot_eval_counts_t</span></span></a><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><a class="reference internal" href="status.html#rgpot_core-status-rgpot_status_t" title="rgpot_core::status::rgpot_status_t"><span class="n"><span class="pre">rgpot_status_t</span></span></a></span><a class="headerlink" href="#rgpot_core-eindir-rgpot_potential_eval_counts" title="Link to this definition">¶</a></dt>
+<dd><p>Read the computed and served counters of <code class="docutils literal notranslate"><span class="pre">pot</span></code> into <code class="docutils literal notranslate"><span class="pre">out</span></code>.</p>
+<p><strong>Safety</strong></p>
+<p><code class="docutils literal notranslate"><span class="pre">pot</span></code> must be NULL or a live pointer from <code class="docutils literal notranslate"><span class="pre">rgpot_potential_new_eindir</span></code>,
+and <code class="docutils literal notranslate"><span class="pre">out</span></code> NULL or writable. NULL for either yields
+<code class="docutils literal notranslate"><span class="pre">RGPOT_INVALID_PARAMETER</span></code>.</p>
+</dd></dl>
+
+<dl class="rust function">
 <dt class="sig sig-object rust" id="rgpot_core-eindir-rgpot_potential_free_eindir">
 <span class="sig-name descname"><span class="k"><span class="pre">unsafe</span></span><span class="w"> </span><span class="k"><span class="pre">extern</span></span><span class="w"> </span><span class="s"><span class="pre">C</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_potential_free_eindir</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">pot</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">mut</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_t" title="rgpot_core::eindir::rgpot_potential_t"><span class="n"><span class="pre">rgpot_potential_t</span></span></a><span class="p"><span class="pre">)</span></span></span><a class="headerlink" href="#rgpot_core-eindir-rgpot_potential_free_eindir" title="Link to this definition">¶</a></dt>
 <dd><p>Free a potential created by <code class="docutils literal notranslate"><span class="pre">rgpot_potential_new_eindir</span></code>.</p>
@@ -627,11 +647,44 @@ or <code class="docutils literal notranslate"><span class="pre">n_atoms</span> <
 safe to call with <code class="docutils literal notranslate"><span class="pre">user_data</span></code>.</p>
 </dd></dl>
 
+<dl class="rust function">
+<dt class="sig sig-object rust" id="rgpot_core-eindir-rgpot_potential_reset_eval_counts">
+<span class="sig-name descname"><span class="k"><span class="pre">unsafe</span></span><span class="w"> </span><span class="k"><span class="pre">extern</span></span><span class="w"> </span><span class="s"><span class="pre">C</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_potential_reset_eval_counts</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">pot</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_t" title="rgpot_core::eindir::rgpot_potential_t"><span class="n"><span class="pre">rgpot_potential_t</span></span></a><span class="p"><span class="pre">)</span></span></span><a class="headerlink" href="#rgpot_core-eindir-rgpot_potential_reset_eval_counts" title="Link to this definition">¶</a></dt>
+<dd><p>Zero the counters of <code class="docutils literal notranslate"><span class="pre">pot</span></code>.</p>
+<p><strong>Safety</strong></p>
+<p><code class="docutils literal notranslate"><span class="pre">pot</span></code> must be NULL or a live pointer from <code class="docutils literal notranslate"><span class="pre">rgpot_potential_new_eindir</span></code>.</p>
+</dd></dl>
+
 <p class="rubric">Structs and Unions</p>
 <dl class="rust struct">
+<dt class="sig sig-object rust" id="rgpot_core-eindir-rgpot_eval_counts_t">
+<span class="sig-name descname"><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_eval_counts_t</span></span></span><a class="headerlink" href="#rgpot_core-eindir-rgpot_eval_counts_t" title="Link to this definition">¶</a></dt>
+<dd><p>Evaluations a potential handle has answered, split by origin.</p>
+<p><code class="docutils literal notranslate"><span class="pre">computed</span></code> counts callback invocations; <code class="docutils literal notranslate"><span class="pre">served</span></code> counts gradients
+answered from the fused energy-and-gradient result without invoking the
+callback. A caller that charges evaluations chooses which field to bill.</p>
+<dl class="rust variable">
+<dt class="sig sig-object rust" id="rgpot_core-eindir-rgpot_eval_counts_t-computed">
+<span class="sig-name descname"><span class="n"><span class="pre">computed</span></span><span class="p"><span class="pre">:</span> </span><span class="n"><span class="pre">u64</span></span></span><a class="headerlink" href="#rgpot_core-eindir-rgpot_eval_counts_t-computed" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="rust variable">
+<dt class="sig sig-object rust" id="rgpot_core-eindir-rgpot_eval_counts_t-served">
+<span class="sig-name descname"><span class="n"><span class="pre">served</span></span><span class="p"><span class="pre">:</span> </span><span class="n"><span class="pre">u64</span></span></span><a class="headerlink" href="#rgpot_core-eindir-rgpot_eval_counts_t-served" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="rust struct">
 <dt class="sig sig-object rust" id="rgpot_core-eindir-rgpot_fused_cache_t">
-<span class="sig-name descname"><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_fused_cache_t</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">Mutex</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">Option</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">FusedEvaluation</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">)</span></span></span><a class="headerlink" href="#rgpot_core-eindir-rgpot_fused_cache_t" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_fused_cache_t</span></span></span><a class="headerlink" href="#rgpot_core-eindir-rgpot_fused_cache_t" title="Link to this definition">¶</a></dt>
 <dd><p>Opaque cache of the last fused energy and gradient evaluation.</p>
+<p class="rubric">Implementations</p>
+<dl class="rust impl">
+<dt class="sig sig-object rust" id="rgpot_core-eindir-rgpot_fused_cache_t">
+<span class="sig-name descname"><span class="k"><span class="pre">impl</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-eindir-rgpot_fused_cache_t" title="rgpot_core::eindir::rgpot_fused_cache_t"><span class="n"><span class="pre">rgpot_fused_cache_t</span></span></a></span><a class="headerlink" href="#rgpot_core-eindir-rgpot_fused_cache_t" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
 </dd></dl>
 
 <dl class="rust struct">

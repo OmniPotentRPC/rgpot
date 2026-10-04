@@ -33,6 +33,10 @@ Caches potential energy and force calculations using RocksDB. :ref:`More...<deta
 		void :ref:`add_serialized<doxid-classrgpot_1_1cache_1_1_potential_cache_1afa65792f6b6ba596dc4852ed802c5d2e>`(const :ref:`KeyHash<doxid-structrgpot_1_1cache_1_1_key_hash>`& key, double energy, const :ref:`rgpot::types::AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& forces);
 		void :target:`deserialize_hit<doxid-classrgpot_1_1cache_1_1_potential_cache_1a7d521450aec6d2fc59fe9510a7c7df3f>`(const std::string& value, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`& out, size_t n_atoms);
 		void :target:`add_serialized<doxid-classrgpot_1_1cache_1_1_potential_cache_1a07c03c78ada067a983e05e760ec004a1>`(const :ref:`KeyHash<doxid-structrgpot_1_1cache_1_1_key_hash>`& key, const :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`& out, size_t n_atoms);
+		void :ref:`note_computed<doxid-classrgpot_1_1cache_1_1_potential_cache_1a8d569270ade624f30dbc3d997e3585a8>`(uint64_t n = 1);
+		void :ref:`note_served<doxid-classrgpot_1_1cache_1_1_potential_cache_1a8c49e1c52e7c247bd3557d4e21642fec>`(uint64_t n = 1);
+		:ref:`EvalCounts<doxid-structrgpot_1_1cache_1_1_eval_counts>` :ref:`counts<doxid-classrgpot_1_1cache_1_1_potential_cache_1a5697f0f2976996ec0c28aabc5c5de1ef>`() const;
+		void :ref:`reset_counts<doxid-classrgpot_1_1cache_1_1_potential_cache_1aa037e199fa2ffcef90a7680b22e4078a>`();
 		std::optional<std::string> :ref:`find<doxid-classrgpot_1_1cache_1_1_potential_cache_1a85bd93690a8a21fcad691472a535f2b8>`(const :ref:`KeyHash<doxid-structrgpot_1_1cache_1_1_key_hash>`& key);
 		static bool :ref:`has_result_metadata<doxid-classrgpot_1_1cache_1_1_potential_cache_1aff5200078b32e4f802bc06647a139f68>`(const std::string& value, size_t n_atoms);
 	};
@@ -217,6 +221,46 @@ Serializes the energy and forces into a contiguous binary buffer. The buffer siz
 .. rubric:: Returns:
 
 Void.
+
+.. index:: pair: function; note_computed
+.. _doxid-classrgpot_1_1cache_1_1_potential_cache_1a8d569270ade624f30dbc3d997e3585a8:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void note_computed(uint64_t n = 1)
+
+Records ``n`` results produced by the kernel.
+
+.. index:: pair: function; note_served
+.. _doxid-classrgpot_1_1cache_1_1_potential_cache_1a8c49e1c52e7c247bd3557d4e21642fec:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void note_served(uint64_t n = 1)
+
+Records ``n`` results answered from the cache.
+
+.. index:: pair: function; counts
+.. _doxid-classrgpot_1_1cache_1_1_potential_cache_1a5697f0f2976996ec0c28aabc5c5de1ef:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`EvalCounts<doxid-structrgpot_1_1cache_1_1_eval_counts>` counts() const
+
+Snapshot of the computed and served counters of this handle.
+
+.. index:: pair: function; reset_counts
+.. _doxid-classrgpot_1_1cache_1_1_potential_cache_1aa037e199fa2ffcef90a7680b22e4078a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void reset_counts()
+
+Zeroes both counters; stored entries are untouched.
 
 .. index:: pair: function; find
 .. _doxid-classrgpot_1_1cache_1_1_potential_cache_1a85bd93690a8a21fcad691472a535f2b8:

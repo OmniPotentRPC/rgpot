@@ -50,6 +50,23 @@ energy callback, so there is one evaluation path and no conversion step
     );
     let objective = pot as *mut eindir_objective_t; // zero-cost IS-A cast
 
+A callback that reports
+``RGPOT_SUCCESS`` must return a non-null f64 CPU forces tensor with exactly ``n_atoms * 3``
+finite elements and a finite energy.
+Anything else makes ``eindir_objective_eval`` / ``eindir_objective_grad`` return
+``EINDIR_INVALID_PARAMETER`` (a failing callback returns ``EINDIR_INTERNAL_ERROR``),
+leave the output untouched, and set the message read by ``rgpot_last_error()``.
+
+Charged-evaluation accounting reads the per-handle counters:
+
+.. code:: c
+
+    rgpot_eval_counts_t c;
+    rgpot_potential_eval_counts(pot, &c);  // c.computed: callback invocations
+                                           // c.served: gradients answered from the
+                                           //           fused energy+gradient result
+    rgpot_potential_reset_eval_counts(pot);
+
 rgpot-core consumes eindir-core as a normal Cargo crate (``features = ["capi"]``),
 **not** a prebuilt ``libeindir_core.a``.
 One shared compilation of eindir-core backs both crates, so a downstream Rust

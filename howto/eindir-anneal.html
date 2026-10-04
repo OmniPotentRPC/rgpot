@@ -574,6 +574,20 @@ energy callback, so there is one evaluation path and no conversion step
 </span><span data-line="7"><span class="kd">let</span><span class="w"> </span><span class="n">objective</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">pot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="o">*</span><span class="k">mut</span><span class="w"> </span><span class="n">eindir_objective_t</span><span class="p">;</span><span class="w"> </span><span class="c1">// zero-cost IS-A cast</span>
 </span></pre></div>
 </div>
+<p>A callback that reports
+<code class="docutils literal notranslate"><span class="pre">RGPOT_SUCCESS</span></code> must return a non-null f64 CPU forces tensor with exactly <code class="docutils literal notranslate"><span class="pre">n_atoms</span> <span class="pre">*</span> <span class="pre">3</span></code>
+finite elements and a finite energy.
+Anything else makes <code class="docutils literal notranslate"><span class="pre">eindir_objective_eval</span></code> / <code class="docutils literal notranslate"><span class="pre">eindir_objective_grad</span></code> return
+<code class="docutils literal notranslate"><span class="pre">EINDIR_INVALID_PARAMETER</span></code> (a failing callback returns <code class="docutils literal notranslate"><span class="pre">EINDIR_INTERNAL_ERROR</span></code>),
+leave the output untouched, and set the message read by <code class="docutils literal notranslate"><span class="pre">rgpot_last_error()</span></code>.</p>
+<p>Charged-evaluation accounting reads the per-handle counters:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">rgpot_eval_counts_t</span> <span class="n">c</span><span class="p">;</span>
+</span><span data-line="2"><span class="n">rgpot_potential_eval_counts</span><span class="p">(</span><span class="n">pot</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">c</span><span class="p">);</span>  <span class="c1">// c.computed: callback invocations</span>
+</span><span data-line="3">                                       <span class="c1">// c.served: gradients answered from the</span>
+</span><span data-line="4">                                       <span class="c1">//           fused energy+gradient result</span>
+</span><span data-line="5"><span class="n">rgpot_potential_reset_eval_counts</span><span class="p">(</span><span class="n">pot</span><span class="p">);</span>
+</span></pre></div>
+</div>
 <p>rgpot-core consumes eindir-core as a normal Cargo crate (<code class="docutils literal notranslate"><span class="pre">features</span> <span class="pre">=</span> <span class="pre">[&quot;capi&quot;]</span></code>),
 <strong>not</strong> a prebuilt <code class="docutils literal notranslate"><span class="pre">libeindir_core.a</span></code>.
 One shared compilation of eindir-core backs both crates, so a downstream Rust
