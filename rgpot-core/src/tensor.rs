@@ -320,6 +320,90 @@ pub(crate) fn validate_box_matrix(
     Ok(())
 }
 
+/// Resolve the data pointer of an f64 CPU tensor holding exactly
+/// `expected_len` elements, after checking every property the pointer
+/// arithmetic relies on: non-null tensor and data, f64 dtype with one lane,
+/// CPU device, 1-D or 2-D shape with non-negative extents whose checked
+/// product equals `expected_len`, and C-contiguous strides when present.
+pub(crate) fn checked_f64_data(
+    tensor: *const DLManagedTensorVersioned,
+    label: &str,
+    expected_len: usize,
+) -> Result<*mut f64, String> {
+    if tensor.is_null() {
+        return Err(format!("{label}: tensor is NULL"));
+    }
+    let t = unsafe { &(*tensor).dl_tensor };
+    if t.data.is_null() {
+        return Err(format!("{label}: data pointer is NULL"));
+    }
+    if t.dtype != dtype_f64() {
+        return Err(format!("{label}: expected f64, got {:?}", t.dtype));
+    }
+    if t.device.device_type != DLDeviceType::kDLCPU {
+        return Err(format!("{label}: expected a CPU tensor"));
+    }
+    if t.ndim != 1 && t.ndim != 2 {
+        return Err(format!("{label}: expected ndim 1 or 2, got {}", t.ndim));
+    }
+    if t.shape.is_null() {
+        return Err(format!("{label}: shape pointer is NULL"));
+    }
+    let ndim = t.ndim as usize;
+    let shape = unsafe { std::slice::from_raw_parts(t.shape, ndim) };
+    let mut count: usize = 1;
+    for &extent in shape {
+        let extent = usize::try_from(extent)
+            .map_err(|_| format!("{label}: negative extent {extent}"))?;
+        count = count
+            .checked_mul(extent)
+            .ok_or_else(|| format!("{label}: element count overflows"))?;
+    }
+    if count != expected_len {
+        return Err(format!(
+            "{label}: expected {expected_len} elements, got {count}"
+        ));
+    }
+    if !t.strides.is_null() {
+        let strides = unsafe { std::slice::from_raw_parts(t.strides, ndim) };
+        let contiguous = if ndim == 1 {
+            strides[0] == 1 || shape[0] <= 1
+        } else {
+            (strides[1] == 1 || shape[1] <= 1) && (strides[0] == shape[1] || shape[0] <= 1)
+        };
+        if !contiguous {
+            return Err(format!("{label}: tensor is not C-contiguous"));
+        }
+    }
+    let base = t.data.cast::<u8>();
+    if t.byte_offset > isize::MAX as u64 {
+        return Err(format!("{label}: byte_offset out of range"));
+    }
+    let ptr = unsafe { base.add(t.byte_offset as usize) }.cast::<f64>();
+    if (ptr as usize) % std::mem::align_of::<f64>() != 0 {
+        return Err(format!("{label}: data is not 8-byte aligned"));
+    }
+    Ok(ptr)
+}
+
+/// Copy a validated f64 tensor into a `Vec`; see [`checked_f64_data`].
+/// With `require_finite`, a NaN or infinite element is an error.
+pub(crate) fn copy_f64_tensor(
+    tensor: *const DLManagedTensorVersioned,
+    label: &str,
+    expected_len: usize,
+    require_finite: bool,
+) -> Result<Vec<f64>, String> {
+    let ptr = checked_f64_data(tensor, label, expected_len)?;
+    let values = unsafe { std::slice::from_raw_parts(ptr, expected_len) }.to_vec();
+    if require_finite {
+        if let Some(i) = values.iter().position(|v| !v.is_finite()) {
+            return Err(format!("{label}: non-finite value at element {i}"));
+        }
+    }
+    Ok(values)
+}
+
 // ---------------------------------------------------------------------------
 // C-exported tensor functions
 // ---------------------------------------------------------------------------
