@@ -1079,7 +1079,10 @@ if get_option('with_tests')
             args: [
                 meson.current_source_dir() / 'tests/test_rpc_schema_sync.py',
                 meson.source_root(),
+                capnp.full_path(),
+                meson.project_build_root(),
             ],
+            depends: gen_rpc,
             suite: 'rpc',
         )
     endif
