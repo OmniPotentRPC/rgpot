@@ -18,6 +18,7 @@ use capnp::message::{Builder, ReaderOptions};
 use capnp::serialize;
 use libloading::Library;
 
+use crate::compat::{check_capabilities, Expectation};
 use crate::Potentials_capnp::{force_input, potential_result};
 
 /// One atomistic evaluation sent through a profile session.
@@ -256,6 +257,22 @@ impl ProfileSession {
         explicit_path: Option<&Path>,
         config: &[u8],
     ) -> ProfileResult<Self> {
+        unsafe { Self::load_with(prefix, explicit_path, config, &Expectation::default()) }
+    }
+
+    /// [`ProfileSession::load`] with an explicit host [`Expectation`]. The
+    /// backend's `Capabilities` are checked before the session is created, so
+    /// an incompatible backend is refused before any work is dispatched.
+    ///
+    /// # Safety
+    ///
+    /// Same contract as [`ProfileSession::load`].
+    pub unsafe fn load_with(
+        prefix: &str,
+        explicit_path: Option<&Path>,
+        config: &[u8],
+        expectation: &Expectation,
+    ) -> ProfileResult<Self> {
         if prefix.is_empty()
             || !prefix
                 .bytes()
@@ -301,8 +318,10 @@ impl ProfileSession {
                 "potential_result_size_for_force_input",
             )?
         };
-        let _capabilities =
+        let capabilities =
             unsafe { resolve::<CapabilitiesResultFn>(&library, prefix, "capabilities_result")? };
+        let words = read_capabilities(prefix, capabilities)?;
+        check_capabilities_bytes(prefix, &words, expectation)?;
 
         if unsafe { available() } == 0 {
             return Err(ProfileError::new(format!(
@@ -403,6 +422,47 @@ impl ProfileSession {
     fn last_error_message(&self) -> String {
         c_string(unsafe { (self.last_error)() })
     }
+}
+
+/// Capabilities message bytes as aligned words (size query, then fill).
+fn read_capabilities(prefix: &str, f: CapabilitiesResultFn) -> ProfileResult<Vec<u64>> {
+    let mut required = 0usize;
+    unsafe { f(std::ptr::null_mut(), 0, &mut required) };
+    if required == 0 || required % std::mem::size_of::<u64>() != 0 {
+        return Err(ProfileError::new(format!(
+            "{prefix}_capabilities_result reported invalid size {required}"
+        )));
+    }
+    let mut words = vec![0u64; required / std::mem::size_of::<u64>()];
+    let mut written = 0usize;
+    let status = unsafe { f(words.as_mut_ptr().cast(), required, &mut written) };
+    if status != 0 || written != required {
+        return Err(ProfileError::new(format!(
+            "{prefix}_capabilities_result failed (status {status}, wrote {written} of {required})"
+        )));
+    }
+    Ok(words)
+}
+
+/// Decode a `Capabilities` message and apply the handshake to it.
+pub fn check_capabilities_bytes(
+    prefix: &str,
+    words: &[u64],
+    expectation: &Expectation,
+) -> ProfileResult<()> {
+    let bytes =
+        unsafe { std::slice::from_raw_parts(words.as_ptr().cast::<u8>(), words.len() * 8) };
+    let mut cursor = bytes;
+    let message = capnp::serialize::read_message_from_flat_slice(
+        &mut cursor,
+        capnp::message::ReaderOptions::new(),
+    )
+    .map_err(|e| ProfileError::new(format!("{prefix} capabilities unreadable: {e}")))?;
+    let caps = message
+        .get_root::<crate::Potentials_capnp::capabilities::Reader>()
+        .map_err(|e| ProfileError::new(format!("{prefix} capabilities unreadable: {e}")))?;
+    check_capabilities(caps, expectation)
+        .map_err(|why| ProfileError::new(format!("{prefix} backend refused: {why}")))
 }
 
 fn open_first(prefix: &str, explicit_path: Option<&str>) -> ProfileResult<(Library, String)> {
