@@ -159,6 +159,7 @@ platforms = ["linux-64"]
 python = ">=3.11,<3.13"
 ase = ">=3.26"
 numpy = ">=2.0,<2.5"
+pytest = "*"
 
 [feature.umaexport.pypi-dependencies]
 fairchem-core = "==2.23.0"
