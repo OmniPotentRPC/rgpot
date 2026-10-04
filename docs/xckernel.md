@@ -62,6 +62,26 @@ Python output) via the pixi feature `xckernel`. PySCF lives only in
 The compiled libxckernel runtime does not link pylibxc. The host passes
 already-mixed derivative arrays.
 
+## Spin-resolved entry points
+
+`XcKernel::contract` evaluates any catalog kernel from named operands, so the
+unrestricted Fock kernels (`xck_*_ua_o1`, `xck_*_ub_o1`) take the polarized
+Libxc arrays and `grad_rho_a_*` / `grad_rho_b_*` directly. The response
+side has two entry points:
+
+- `applyFxc` serves the closed-shell kernels `xck_*_r_o2`, `xck_*_st_o2_p`
+  (singlet) and `xck_*_st_o2_m` (triplet) from one perturbed density.
+- `applyFxcUnrestricted` serves `xck_*_ua_o2` and `xck_*_ub_o2` from the
+  alpha and beta perturbed densities; a `ua` instance returns the alpha
+  block and a `ub` instance the beta block.
+
+Pins: `pyscf_uks_h2o_cation_sto3g/` (H2O cation doublet, `nr_uks` Fock and
+`nr_uks_fxc`) and `pyscf_h2o_sto3g/*_st_{p,m}_fxc_ref.npy`
+(`nr_rks_fxc_st`, singlet and triplet). Both use exchange plus correlation;
+exchange-only functionals have no alpha-beta second derivative, which would
+make the singlet and triplet pins equal. Regenerate with
+`python scripts/regen_xckernel_goldens.py --spin-resolved` on rg.terra.
+
 ## Golden masters
 
 Fixtures live under `CppCore/tests/data/xckernel/`. Tests fail closed if a

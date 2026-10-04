@@ -291,56 +291,109 @@ int contract_st_blocked(const XcKernel &k, const XcGrid &grid,
   return k.contract(grid, scal, out);
 }
 
-int apply_fxc_d(const XcKernel &k, const XcGrid &grid,
-                const std::map<std::string, const double *> &ground,
-                const double *dm, double *vxc) {
-  if (dm == nullptr || vxc == nullptr) {
-    return 4;
-  }
+// Perturbed density and density gradient of one AO matrix, PySCF eval_rho
+// with hermi=0: c0 = ao @ dm, GGA adds ao @ dm.T.
+struct PerturbedFields {
+  std::vector<double> rho;
+  std::vector<double> gx;
+  std::vector<double> gy;
+  std::vector<double> gz;
+};
+
+PerturbedFields perturbed_fields(const XcGrid &grid, const double *dm) {
   const auto ng = static_cast<std::size_t>(grid.npts);
   const auto nbf = static_cast<std::size_t>(grid.nbf);
-  if (grid.chi == nullptr || grid.npts <= 0 || grid.nbf <= 0) {
-    return 2;
-  }
-
   const double *chi = grid.chi;
   const double *dchi = grid.dchi;
-  // PySCF eval_rho hermi=0: c0 = ao @ dm = (dm.T @ chi).T, rho = contract(ao, c0).
+  PerturbedFields f;
   std::vector<double> c0(nbf * ng, 0.0);
   gemm_dmt_ao(dm, chi, nbf, ng, c0.data());
-  std::vector<double> rho_p1(ng, 0.0);
-  contract_rho(chi, c0.data(), nbf, ng, rho_p1.data());
+  f.rho.assign(ng, 0.0);
+  contract_rho(chi, c0.data(), nbf, ng, f.rho.data());
 
-  std::vector<double> gxd(ng, 0.0);
-  std::vector<double> gyd(ng, 0.0);
-  std::vector<double> gzd(ng, 0.0);
+  f.gx.assign(ng, 0.0);
+  f.gy.assign(ng, 0.0);
+  f.gz.assign(ng, 0.0);
   if (dchi != nullptr) {
     std::vector<double> c1(nbf * ng, 0.0);
     gemm_dm_ao(dm, chi, nbf, ng, c1.data());
     const double *dx = dchi;
     const double *dy = dchi + nbf * ng;
     const double *dz = dchi + 2 * nbf * ng;
-    contract_rho(c0.data(), dx, nbf, ng, gxd.data());
-    contract_rho(c0.data(), dy, nbf, ng, gyd.data());
-    contract_rho(c0.data(), dz, nbf, ng, gzd.data());
-    add_contract_rho(c1.data(), dx, nbf, ng, gxd.data());
-    add_contract_rho(c1.data(), dy, nbf, ng, gyd.data());
-    add_contract_rho(c1.data(), dz, nbf, ng, gzd.data());
+    contract_rho(c0.data(), dx, nbf, ng, f.gx.data());
+    contract_rho(c0.data(), dy, nbf, ng, f.gy.data());
+    contract_rho(c0.data(), dz, nbf, ng, f.gz.data());
+    add_contract_rho(c1.data(), dx, nbf, ng, f.gx.data());
+    add_contract_rho(c1.data(), dy, nbf, ng, f.gy.data());
+    add_contract_rho(c1.data(), dz, nbf, ng, f.gz.data());
   }
+  return f;
+}
+
+int apply_fxc_d(const XcKernel &k, const XcGrid &grid,
+                const std::map<std::string, const double *> &ground,
+                const double *dm, double *vxc) {
+  if (dm == nullptr || vxc == nullptr) {
+    return 4;
+  }
+  if (grid.chi == nullptr || grid.npts <= 0 || grid.nbf <= 0) {
+    return 2;
+  }
+  const PerturbedFields p = perturbed_fields(grid, dm);
 
   std::map<std::string, const double *> scal = ground;
   for (const auto &name : k.scalNames()) {
     if (name == "rho_a_p1" || name == "rho_p1") {
-      scal[name] = rho_p1.data();
+      scal[name] = p.rho.data();
     } else if (name == "grad_rho_a_p1_x" || name == "grad_rho_p1_x") {
-      scal[name] = gxd.data();
+      scal[name] = p.gx.data();
     } else if (name == "grad_rho_a_p1_y" || name == "grad_rho_p1_y") {
-      scal[name] = gyd.data();
+      scal[name] = p.gy.data();
     } else if (name == "grad_rho_a_p1_z" || name == "grad_rho_p1_z") {
-      scal[name] = gzd.data();
+      scal[name] = p.gz.data();
     }
   }
   return contract_st_blocked(k, grid, scal, vxc);
+}
+
+// Unrestricted response: alpha and beta perturbations enter separately.
+int apply_fxc_unrestricted_d(
+    const XcKernel &k, const XcGrid &grid,
+    const std::map<std::string, const double *> &ground, const double *dm_a,
+    const double *dm_b, double *vxc) {
+  if (dm_a == nullptr || dm_b == nullptr || vxc == nullptr) {
+    return 4;
+  }
+  if (grid.chi == nullptr || grid.npts <= 0 || grid.nbf <= 0) {
+    return 2;
+  }
+  const PerturbedFields pa = perturbed_fields(grid, dm_a);
+  const PerturbedFields pb = perturbed_fields(grid, dm_b);
+
+  std::map<std::string, const double *> scal = ground;
+  for (const auto &name : k.scalNames()) {
+    if (name == "rho_a_p1") {
+      scal[name] = pa.rho.data();
+    } else if (name == "grad_rho_a_p1_x") {
+      scal[name] = pa.gx.data();
+    } else if (name == "grad_rho_a_p1_y") {
+      scal[name] = pa.gy.data();
+    } else if (name == "grad_rho_a_p1_z") {
+      scal[name] = pa.gz.data();
+    } else if (name == "rho_b_p1") {
+      scal[name] = pb.rho.data();
+    } else if (name == "grad_rho_b_p1_x") {
+      scal[name] = pb.gx.data();
+    } else if (name == "grad_rho_b_p1_y") {
+      scal[name] = pb.gy.data();
+    } else if (name == "grad_rho_b_p1_z") {
+      scal[name] = pb.gz.data();
+    }
+  }
+  const auto n2 =
+      static_cast<std::size_t>(grid.nbf) * static_cast<std::size_t>(grid.nbf);
+  std::memset(vxc, 0, n2 * sizeof(double));
+  return k.contract(grid, scal, vxc);
 }
 #endif
 
@@ -511,6 +564,21 @@ int XcKernel::applyFxc(const XcGrid &grid,
   (void)grid;
   (void)ground;
   (void)dm;
+  (void)vxc;
+  return 1;
+#endif
+}
+
+int XcKernel::applyFxcUnrestricted(
+    const XcGrid &grid, const std::map<std::string, const double *> &ground,
+    const double *dm_a, const double *dm_b, double *vxc) const {
+#ifdef RGPOT_HAS_XCKERNEL
+  return apply_fxc_unrestricted_d(*this, grid, ground, dm_a, dm_b, vxc);
+#else
+  (void)grid;
+  (void)ground;
+  (void)dm_a;
+  (void)dm_b;
   (void)vxc;
   return 1;
 #endif

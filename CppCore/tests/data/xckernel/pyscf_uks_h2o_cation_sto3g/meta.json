@@ -1,0 +1,15 @@
+{
+  "geometry": "O 0 0 0; H 0 0 0.96; H 0 0.93 -0.24",
+  "basis": "sto-3g",
+  "charge": 1,
+  "spin": 1,
+  "grids.level": 3,
+  "seeds": {
+    "dm1": 7
+  },
+  "functionals": {
+    "lda": "LDA,VWN",
+    "gga": "PBE,PBE"
+  },
+  "libxckernel_rev": "d6a9d57ba3fe0f2763667ce168d0c0ef21cff4a4"
+}

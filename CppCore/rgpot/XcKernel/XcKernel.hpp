@@ -123,11 +123,24 @@ public:
 
   /// XC fxc on one AO density via this kernel. Ground-state scal holds
   /// weights, Libxc arrays, and (GGA) grad_rho_a_*. Perturbed rho/grad
-  /// names (`rho_a_p1`, `grad_rho_a_p1_*`) are built from dm.
+  /// names (`rho_a_p1`, `grad_rho_a_p1_*`) are built from dm. Serves the
+  /// closed-shell kernels `_r_o2`, `_st_o2_p` (singlet) and `_st_o2_m`
+  /// (triplet).
   /// Accumulates into vxc (nao*nao, +=).
   int applyFxc(const XcGrid &grid,
                const std::map<std::string, const double *> &ground,
                const double *dm, double *vxc) const;
+
+  /// Unrestricted fxc for a `_ua_o2` or `_ub_o2` kernel: the alpha (dm_a)
+  /// and beta (dm_b) perturbed densities fill the `*_a_p1` and `*_b_p1`
+  /// operands. A `_ua_o2` instance yields the alpha block and a `_ub_o2`
+  /// instance the beta block, from the same ground-state operands
+  /// (`grad_rho_a_*`, `grad_rho_b_*`, polarized Libxc arrays).
+  /// Writes vxc (nao*nao, overwritten).
+  int applyFxcUnrestricted(const XcGrid &grid,
+                           const std::map<std::string, const double *> &ground,
+                           const double *dm_a, const double *dm_b,
+                           double *vxc) const;
 
   /// TDA sigma with host Coulomb: v1 = vj + 0.5 * applyFxc(dm(z)).
   /// vj is the host J matrix on the transition DM (nao*nao).

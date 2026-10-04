@@ -442,6 +442,143 @@ def regen_pyscf() -> bool:
     return regen_tda_rpa(mol=mol, dest=dest)
 
 
+def _polarized_scal(xc_code, ni, mol, grids, ao, dms, xctype):
+    """Ground-state operands for the spin-resolved kernels from PySCF.
+
+    `dms` is the (alpha, beta) pair of AO densities. Libxc arrays are in
+    the polarized packing (vrho_0/1, vsigma_0..2, v2rho2_0..2,
+    v2rhosigma_0..5, v2sigma2_0..5) that the `ua`, `ub` and `st` kernels
+    index into.
+    """
+    from pyscf import dft as dft_mod
+
+    rho_a = ni.eval_rho(mol, ao, dms[0], xctype=xctype)
+    rho_b = ni.eval_rho(mol, ao, dms[1], xctype=xctype)
+    _exc, vxc, fxc = dft_mod.libxc.eval_xc(
+        xc_code, (rho_a, rho_b), spin=1, deriv=2
+    )[:3]
+    ng = int(len(grids.weights))
+
+    def _col(arr):
+        arr = np.asarray(arr)
+        return arr if arr.shape[0] == ng else arr.T
+
+    scal = {"w": np.ascontiguousarray(grids.weights)}
+    names_v = ["vrho"] if xctype == "LDA" else ["vrho", "vsigma"]
+    names_f = (
+        ["v2rho2"] if xctype == "LDA" else ["v2rho2", "v2rhosigma", "v2sigma2"]
+    )
+    for name, arr in zip(
+        names_v + names_f, list(vxc[: len(names_v)]) + list(fxc[: len(names_f)])
+    ):
+        A = _col(arr)
+        for c in range(A.shape[1]):
+            scal[f"{name}_{c}"] = np.ascontiguousarray(A[:, c])
+    if xctype != "LDA":
+        _expand_into(scal, "grad_rho_a", rho_a[1:4])
+        _expand_into(scal, "grad_rho_b", rho_b[1:4])
+    return scal
+
+
+def regen_spin_resolved() -> None:
+    """Unrestricted (ua/ub) Fock and fxc pins from nr_uks / nr_uks_fxc on the
+    H2O cation doublet, plus closed-shell spin-adapted (st_o2_p singlet,
+    st_o2_m triplet) fxc pins from nr_rks_fxc_st on the closed-shell H2O
+    operands already committed."""
+    from pyscf import dft, gto
+    from pyscf.dft import numint as ni_mod
+
+    ni = ni_mod.NumInt()
+    atom = "O 0 0 0; H 0 0 0.96; H 0 0.93 -0.24"
+    # Exchange plus correlation: exchange-only functionals have a vanishing
+    # alpha-beta second derivative, which makes the singlet and triplet
+    # kernels equal and the unrestricted cross terms trivial.
+    families = (("lda", "LDA,VWN", "LDA", 0), ("gga", "PBE,PBE", "GGA", 1))
+
+    mol = gto.M(atom=atom, basis="sto-3g", charge=1, spin=1, verbose=0)
+    grids = dft.gen_grid.Grids(mol)
+    grids.level = 3
+    grids.build()
+    mf = dft.UKS(mol)
+    mf.xc = "LDA,VWN"
+    mf.verbose = 0
+    mf.kernel()
+    dm0 = np.ascontiguousarray(mf.make_rdm1())
+    rng = np.random.default_rng(7)
+    a = rng.standard_normal(dm0.shape)
+    dm1 = np.ascontiguousarray(a + a.transpose(0, 2, 1))
+    dest = DATA / "pyscf_uks_h2o_cation_sto3g"
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / "meta.json").write_text(
+        json.dumps(
+            {
+                "geometry": atom,
+                "basis": "sto-3g",
+                "charge": 1,
+                "spin": 1,
+                "grids.level": 3,
+                "seeds": {"dm1": 7},
+                "functionals": {"lda": "LDA,VWN", "gga": "PBE,PBE"},
+                "libxckernel_rev": PIN,
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    for fam, xc_code, xctype, deriv in families:
+        ao = ni.eval_ao(mol, grids.coords, deriv=deriv)
+        scal = _polarized_scal(xc_code, ni, mol, grids, ao, dm0, xctype)
+        if xctype == "LDA":
+            chi = np.ascontiguousarray(ao.T)
+            dchi = np.zeros((3,) + chi.shape)
+        else:
+            chi = np.ascontiguousarray(ao[0].T)
+            dchi = np.ascontiguousarray(np.transpose(ao[1:4], (0, 2, 1)))
+        extra = dict(scal)
+        extra.update(chi=chi, dchi=dchi, w=grids.weights, dm0=dm0, dm1=dm1)
+        save_npz(dest / f"{fam}_operands.npz", **extra)
+        _, _, vmat = ni.nr_uks(mol, grids, xc_code, dm0)
+        fmat = ni.nr_uks_fxc(mol, grids, xc_code, dm0, dm1, hermi=0)
+        for i, tag in enumerate(("ua", "ub")):
+            save_npy(dest / f"{fam}_{tag}_fock_ref.npy", np.asarray(vmat[i]))
+            save_npy(dest / f"{fam}_{tag}_fxc_ref.npy", np.asarray(fmat[i]))
+        print(f"  {fam} UKS Fock/fxc pins nao={mol.nao} ngrid={len(grids.weights)}")
+
+    # Closed-shell spin-adapted fxc on the committed RKS operands.
+    root = DATA / "pyscf_h2o_sto3g"
+    mol_c = gto.M(atom=atom, basis="sto-3g", verbose=0)
+    grids_c = dft.gen_grid.Grids(mol_c)
+    grids_c.level = 3
+    grids_c.build()
+    dm1_c = np.load(root / "dm1.npy")
+    for fam, xc_code, xctype, deriv in families:
+        st = np.load(root / f"{fam}_st_operands.npz")
+        if not np.array_equal(st["w"], grids_c.weights):
+            sys.exit(f"{fam} st operands grid differs from level-3 PySCF grid")
+        dm0_c = st["dm0"]
+        ao = ni.eval_ao(mol_c, grids_c.coords, deriv=deriv)
+        scal = _polarized_scal(
+            xc_code, ni, mol_c, grids_c, ao, (0.5 * dm0_c, 0.5 * dm0_c), xctype
+        )
+        extra = dict(scal)
+        extra.update(
+            chi=st["chi"], dchi=st["dchi"], w=grids_c.weights, dm0=dm0_c, dm1=dm1_c
+        )
+        save_npz(root / f"{fam}_st_corr_operands.npz", **extra)
+        for tag, singlet in (("p", True), ("m", False)):
+            ref = ni.nr_rks_fxc_st(
+                mol_c,
+                grids_c,
+                xc_code,
+                dm0_c,
+                dm1_c,
+                hermi=0,
+                singlet=singlet,
+            )
+            save_npy(root / f"{fam}_st_{tag}_fxc_ref.npy", np.asarray(ref))
+        print(f"  {fam} nr_rks_fxc_st singlet/triplet pins")
+
+
 def _gate_pin(path: Path, live: np.ndarray, label: str) -> bool:
     """Exclusive 1e-17 live-vs-committed. Returns True when the bar is red.
 
@@ -666,6 +803,7 @@ def write_manifest() -> None:
             "fock_vs_pyscf": 1e-15,
             "fxc_vs_pyscf": 1e-13,
             "tda_rpa_vs_pyscf": 1e-17,
+            "tda_nwchemc_vs_pin_operator": 1e-06,
         },
         "seeds": {"randgrid": 1, "c_vs_numpy": 11, "dm1": 0, "tda": 4, "rpa": 5},
         "nbf": 4,
@@ -678,6 +816,16 @@ def write_manifest() -> None:
             "xck_mgga_tau_r_o1",
             "xck_lda_st_o2_p",
             "xck_gga_st_o2_p",
+            "xck_lda_st_o2_m",
+            "xck_gga_st_o2_m",
+            "xck_lda_ua_o1",
+            "xck_lda_ub_o1",
+            "xck_gga_ua_o1",
+            "xck_gga_ub_o1",
+            "xck_lda_ua_o2",
+            "xck_lda_ub_o2",
+            "xck_gga_ua_o2",
+            "xck_gga_ub_o2",
         ],
         "libxc_ids": ["LDA_X", "GGA_X_PBE", "MGGA_X_SCAN"],
         "files": files,
@@ -695,10 +843,15 @@ def main(argv=None) -> int:
     p.add_argument("--c-vs-numpy", action="store_true")
     p.add_argument("--pyscf", action="store_true")
     p.add_argument("--tda-rpa", action="store_true")
+    p.add_argument("--spin-resolved", action="store_true")
     p.add_argument("--all", action="store_true")
     args = p.parse_args(argv)
     do_all = args.all or not (
-        args.s2jz or args.c_vs_numpy or args.pyscf or args.tda_rpa
+        args.s2jz
+        or args.c_vs_numpy
+        or args.pyscf
+        or args.tda_rpa
+        or args.spin_resolved
     )
     if do_all or args.s2jz or args.c_vs_numpy or args.pyscf:
         _ensure_xckernel()
@@ -711,6 +864,8 @@ def main(argv=None) -> int:
         drifted = regen_pyscf() or drifted
     elif args.tda_rpa:
         drifted = regen_tda_rpa() or drifted
+    if do_all or args.spin_resolved:
+        regen_spin_resolved()
     write_manifest()
     if drifted:
         sys.exit("TDA/RPA live vs committed exceeded exclusive 1e-17")

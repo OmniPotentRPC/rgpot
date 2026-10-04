@@ -538,3 +538,89 @@ TEST_CASE("Every Laplacian host kernel rejects missing AO Laplacians",
     REQUIRE(output == sentinel);
   }
 }
+
+TEST_CASE("UKS Fock pins for the ua and ub kernels",
+          "[xckernel][golden][uks][fock]") {
+  const std::string root = std::string(kData) + "/pyscf_uks_h2o_cation_sto3g";
+  for (const char *fam : {"lda", "gga"}) {
+    auto op = load_npz(root + "/" + fam + "_operands.npz");
+    const auto nbf = static_cast<std::int64_t>(op.at("chi").shape[0]);
+    const auto npts = static_cast<std::int64_t>(op.at("chi").shape[1]);
+    for (const char *tag : {"ua", "ub"}) {
+      auto ref = load_npy(root + "/" + fam + "_" + tag + "_fock_ref.npy");
+      auto got = run_kernel(std::string("xck_") + fam + "_" + tag + "_o1", op,
+                            nbf, npts, false);
+      INFO(fam << " " << tag << " rel=" << max_rel(got, ref.data));
+      REQUIRE(max_rel(got, ref.data) <= kFockVsPyscf);
+    }
+  }
+}
+
+TEST_CASE("UKS fxc pins for the ua and ub kernels",
+          "[xckernel][golden][uks][fxc]") {
+  const std::string root = std::string(kData) + "/pyscf_uks_h2o_cation_sto3g";
+  for (const char *fam : {"lda", "gga"}) {
+    auto op = load_npz(root + "/" + fam + "_operands.npz");
+    const auto nbf = static_cast<std::int64_t>(op.at("chi").shape[0]);
+    const auto npts = static_cast<std::int64_t>(op.at("chi").shape[1]);
+    const auto n2 = static_cast<std::size_t>(nbf * nbf);
+    // dm1 is the (alpha, beta) pair of perturbed densities.
+    REQUIRE(op.at("dm1").data.size() == 2 * n2);
+    const double *dm_a = op.at("dm1").data.data();
+    const double *dm_b = dm_a + n2;
+    for (const char *tag : {"ua", "ub"}) {
+      XcKernel k(std::string("xck_") + fam + "_" + tag + "_o2");
+      std::vector<double> dchi_c;
+      XcGrid g = grid_from_npz(op, nbf, npts, &dchi_c, false);
+      auto ground = ground_from_npz(k, op);
+      std::vector<double> got(n2, 1.0e3); // overwritten, not accumulated
+      REQUIRE(k.applyFxcUnrestricted(g, ground, dm_a, dm_b, got.data()) == 0);
+      auto ref = load_npy(root + "/" + fam + "_" + tag + "_fxc_ref.npy");
+      INFO(fam << " " << tag << " rel=" << max_rel(got, ref.data));
+      REQUIRE(max_rel(got, ref.data) <= kFxcVsPyscf);
+    }
+  }
+}
+
+TEST_CASE("UKS fxc rejects a missing density",
+          "[xckernel][golden][uks][fxc]") {
+  const std::string root = std::string(kData) + "/pyscf_uks_h2o_cation_sto3g";
+  auto op = load_npz(root + "/lda_operands.npz");
+  const auto nbf = static_cast<std::int64_t>(op.at("chi").shape[0]);
+  const auto npts = static_cast<std::int64_t>(op.at("chi").shape[1]);
+  XcKernel k("xck_lda_ua_o2");
+  std::vector<double> dchi_c;
+  XcGrid g = grid_from_npz(op, nbf, npts, &dchi_c, false);
+  auto ground = ground_from_npz(k, op);
+  std::vector<double> out(static_cast<std::size_t>(nbf * nbf), 0.0);
+  REQUIRE(k.applyFxcUnrestricted(g, ground, nullptr, nullptr, out.data()) !=
+          0);
+}
+
+TEST_CASE("Closed-shell spin-adapted fxc pins, singlet and triplet",
+          "[xckernel][golden][st][fxc]") {
+  const std::string root = std::string(kData) + "/pyscf_h2o_sto3g";
+  for (const char *fam : {"lda", "gga"}) {
+    auto op = load_npz(root + "/" + fam + "_st_corr_operands.npz");
+    const auto nbf = static_cast<std::int64_t>(op.at("chi").shape[0]);
+    const auto npts = static_cast<std::int64_t>(op.at("chi").shape[1]);
+    std::vector<double> singlet_minus_triplet;
+    for (const char *tag : {"p", "m"}) {
+      XcKernel k(std::string("xck_") + fam + "_st_o2_" + tag);
+      std::vector<double> dchi_c;
+      XcGrid g = grid_from_npz(op, nbf, npts, &dchi_c, false);
+      auto ground = ground_from_npz(k, op);
+      std::vector<double> got(static_cast<std::size_t>(nbf * nbf), 0.0);
+      REQUIRE(k.applyFxc(g, ground, op.at("dm1").data.data(), got.data()) ==
+              0);
+      auto ref = load_npy(root + "/" + fam + "_st_" + tag + "_fxc_ref.npy");
+      INFO(fam << " " << tag << " rel=" << max_rel(got, ref.data));
+      REQUIRE(max_rel(got, ref.data) <= kFxcVsPyscf);
+    }
+    // The pinned kernels differ: with correlation the singlet and triplet
+    // responses are distinct matrices.
+    auto p = load_npy(root + "/" + fam + "_st_p_fxc_ref.npy");
+    auto m = load_npy(root + "/" + fam + "_st_m_fxc_ref.npy");
+    REQUIRE(max_abs(p.data, m.data) > 1e-2);
+  }
+}

@@ -25,7 +25,17 @@
     "xck_gga_r_o2",
     "xck_mgga_tau_r_o1",
     "xck_lda_st_o2_p",
-    "xck_gga_st_o2_p"
+    "xck_gga_st_o2_p",
+    "xck_lda_st_o2_m",
+    "xck_gga_st_o2_m",
+    "xck_lda_ua_o1",
+    "xck_lda_ub_o1",
+    "xck_gga_ua_o1",
+    "xck_gga_ub_o1",
+    "xck_lda_ua_o2",
+    "xck_lda_ub_o2",
+    "xck_gga_ua_o2",
+    "xck_gga_ub_o2"
   ],
   "libxc_ids": [
     "LDA_X",
@@ -194,9 +204,31 @@
       "sha256": "1ad22df9373cbb33bd0336660a243f85345a1e2e49d2a65c3bdad72ea51181c3",
       "bytes": 1712
     },
+    "pyscf_h2o_sto3g/gga_st_corr_operands.npz": {
+      "sha256": "938cf7e23bb5073e75d7718be4e847b75dbf7bf0989bf7405a32c37c77378fb9",
+      "bytes": 14837694
+    },
+    "pyscf_h2o_sto3g/gga_st_m_fxc_ref.npy": {
+      "sha256": "5a637e2921bc59a282562b649069fcdd94b249d0d4854355c2e4a8d0acadd129",
+      "bytes": 520,
+      "shape": [
+        7,
+        7
+      ],
+      "dtype": "float64"
+    },
     "pyscf_h2o_sto3g/gga_st_operands.npz": {
       "sha256": "e2249a35a0c6d8f895aa80b2d85fdf25f7941886b0dd41088ac413737552a36a",
       "bytes": 14027480
+    },
+    "pyscf_h2o_sto3g/gga_st_p_fxc_ref.npy": {
+      "sha256": "7284f267b2ce309147c93d257f248f349d7df554456d6b014e99df1bf375356e",
+      "bytes": 520,
+      "shape": [
+        7,
+        7
+      ],
+      "dtype": "float64"
     },
     "pyscf_h2o_sto3g/lda_fock_operands.npz": {
       "sha256": "2b7cabbdaccb87b67a60844dda6267237697187075e08ffc715dbcfea4e00b15",
@@ -224,9 +256,31 @@
       "sha256": "3b40eaf99555934788f937624387213ac8b6353a2c7e1c0fd7466e678546aafb",
       "bytes": 1712
     },
+    "pyscf_h2o_sto3g/lda_st_corr_operands.npz": {
+      "sha256": "17f2fb9972a82ebc9349cb4895f37ec62da58e3cac0d3a49f5dddcc345d05446",
+      "bytes": 9170514
+    },
+    "pyscf_h2o_sto3g/lda_st_m_fxc_ref.npy": {
+      "sha256": "2092960ce42d4ee39731599e9b8194c0249d331e479c6a8bf444ce9236059d69",
+      "bytes": 520,
+      "shape": [
+        7,
+        7
+      ],
+      "dtype": "float64"
+    },
     "pyscf_h2o_sto3g/lda_st_operands.npz": {
       "sha256": "67355c305041b640891d6a1ebe4ffece742dae4799033f25e33ecd7ca73fec70",
       "bytes": 9169904
+    },
+    "pyscf_h2o_sto3g/lda_st_p_fxc_ref.npy": {
+      "sha256": "a05ac3a8778252e0fb16cfe3a8068d24d0fa230abbc6542bbd4135161dbccf75",
+      "bytes": 520,
+      "shape": [
+        7,
+        7
+      ],
+      "dtype": "float64"
     },
     "pyscf_h2o_sto3g/meta.json": {
       "sha256": "4196705d54307846427e34b3c447afac720b0f150695b1312197e8f5a3bf5304",
@@ -328,6 +382,22 @@
       ],
       "dtype": "float64"
     },
+    "pyscf_h2o_sto3g/tda_gga_nwchemc_roots.npy": {
+      "sha256": "831334dcc3ff230430e8070901ae93f4ec8dd0eba3cad4098ce3b257d47926e2",
+      "bytes": 168,
+      "shape": [
+        5
+      ],
+      "dtype": "float64"
+    },
+    "pyscf_h2o_sto3g/tda_gga_pyscf_roots.npy": {
+      "sha256": "c584e88c9cdf1908d7db9cac37c6d99511709b46366ecc93883174b7f6881201",
+      "bytes": 168,
+      "shape": [
+        5
+      ],
+      "dtype": "float64"
+    },
     "pyscf_h2o_sto3g/tda_gga_sigma_ref.npy": {
       "sha256": "4ad024c257c6b62c996d04a643003f70743e55aac13540bf88c53dd470dbb355",
       "bytes": 368,
@@ -358,6 +428,22 @@
       ],
       "dtype": "float64"
     },
+    "pyscf_h2o_sto3g/tda_lda_nwchemc_roots.npy": {
+      "sha256": "6fc39b911224aaf2c2aa2b3bf77fae979bf03ad0ad1b8acbe79262b8dd95088a",
+      "bytes": 168,
+      "shape": [
+        5
+      ],
+      "dtype": "float64"
+    },
+    "pyscf_h2o_sto3g/tda_lda_pyscf_roots.npy": {
+      "sha256": "ec9a04cfcdb82af6bb346a46ebfb67e569ff0bcf0ec7d0aa68a2862770678acc",
+      "bytes": 168,
+      "shape": [
+        5
+      ],
+      "dtype": "float64"
+    },
     "pyscf_h2o_sto3g/tda_lda_sigma_ref.npy": {
       "sha256": "cf13a333f18f354a553a2ed6d6505011e95d161aa41dadf48e6bc062dd0ef7f1",
       "bytes": 368,
@@ -378,41 +464,93 @@
       ],
       "dtype": "float64"
     },
+    "pyscf_uks_h2o_cation_sto3g/gga_operands.npz": {
+      "sha256": "8fad2d41e96bfa5ec0ddc4e3bb705069987eaa68e83316e910dbb9ce3bd636ef",
+      "bytes": 14838478
+    },
+    "pyscf_uks_h2o_cation_sto3g/gga_ua_fock_ref.npy": {
+      "sha256": "47379daa38945e74d4f5326df207dc76e066aee516bb4bb3faf9235f03d28898",
+      "bytes": 520,
+      "shape": [
+        7,
+        7
+      ],
+      "dtype": "float64"
+    },
+    "pyscf_uks_h2o_cation_sto3g/gga_ua_fxc_ref.npy": {
+      "sha256": "582307f0d0794196700c2f78d60833c713d498b23fa2d23cadd3124628112aef",
+      "bytes": 520,
+      "shape": [
+        7,
+        7
+      ],
+      "dtype": "float64"
+    },
+    "pyscf_uks_h2o_cation_sto3g/gga_ub_fock_ref.npy": {
+      "sha256": "61b865d0bfb46125673ef8770e262f0a2b8b0d49254f5825bd62f11b41594849",
+      "bytes": 520,
+      "shape": [
+        7,
+        7
+      ],
+      "dtype": "float64"
+    },
+    "pyscf_uks_h2o_cation_sto3g/gga_ub_fxc_ref.npy": {
+      "sha256": "94abbfb84366fddde2367bfdd5cfa3a4aad86f7c4c2d3e9f497898758527d17c",
+      "bytes": 520,
+      "shape": [
+        7,
+        7
+      ],
+      "dtype": "float64"
+    },
+    "pyscf_uks_h2o_cation_sto3g/lda_operands.npz": {
+      "sha256": "700da5bd73567bd40f04677e76318a12b643db5a035592618888c0fd1da28c1f",
+      "bytes": 9171298
+    },
+    "pyscf_uks_h2o_cation_sto3g/lda_ua_fock_ref.npy": {
+      "sha256": "4c2b1d58c8ba33c32add67486ea3d480fdc5b1250e654d4ba15be2efbaa8969b",
+      "bytes": 520,
+      "shape": [
+        7,
+        7
+      ],
+      "dtype": "float64"
+    },
+    "pyscf_uks_h2o_cation_sto3g/lda_ua_fxc_ref.npy": {
+      "sha256": "889813e9b6dd616805facf045c49ff035debf4c2e5446b01faebb34cf8297c35",
+      "bytes": 520,
+      "shape": [
+        7,
+        7
+      ],
+      "dtype": "float64"
+    },
+    "pyscf_uks_h2o_cation_sto3g/lda_ub_fock_ref.npy": {
+      "sha256": "cd593eae2b245e9fb928ebd9eeb1486a64210ff1b4e45243ffef1fba002abdf0",
+      "bytes": 520,
+      "shape": [
+        7,
+        7
+      ],
+      "dtype": "float64"
+    },
+    "pyscf_uks_h2o_cation_sto3g/lda_ub_fxc_ref.npy": {
+      "sha256": "a18f5b0c71ce923246092838301f90950ad02f47384dd8763482083f8bab514c",
+      "bytes": 520,
+      "shape": [
+        7,
+        7
+      ],
+      "dtype": "float64"
+    },
+    "pyscf_uks_h2o_cation_sto3g/meta.json": {
+      "sha256": "b9a600bdb3301e9d13cb780a857dbb58ed4266340ef4b3302423bd7f130d74ea",
+      "bytes": 288
+    },
     "randgrid_s1_nbf4_ng200_operands.npz": {
       "sha256": "7cbdc5ccc474aee80654f252e3e2cc37023dfadc1dd05b633edf5b95e3ac0bde",
       "bytes": 34844
-    },
-    "pyscf_h2o_sto3g/tda_lda_nwchemc_roots.npy": {
-      "sha256": "6fc39b911224aaf2c2aa2b3bf77fae979bf03ad0ad1b8acbe79262b8dd95088a",
-      "bytes": 168,
-      "shape": [
-        5
-      ],
-      "dtype": "float64"
-    },
-    "pyscf_h2o_sto3g/tda_lda_pyscf_roots.npy": {
-      "sha256": "ec9a04cfcdb82af6bb346a46ebfb67e569ff0bcf0ec7d0aa68a2862770678acc",
-      "bytes": 168,
-      "shape": [
-        5
-      ],
-      "dtype": "float64"
-    },
-    "pyscf_h2o_sto3g/tda_gga_nwchemc_roots.npy": {
-      "sha256": "831334dcc3ff230430e8070901ae93f4ec8dd0eba3cad4098ce3b257d47926e2",
-      "bytes": 168,
-      "shape": [
-        5
-      ],
-      "dtype": "float64"
-    },
-    "pyscf_h2o_sto3g/tda_gga_pyscf_roots.npy": {
-      "sha256": "c584e88c9cdf1908d7db9cac37c6d99511709b46366ecc93883174b7f6881201",
-      "bytes": 168,
-      "shape": [
-        5
-      ],
-      "dtype": "float64"
     }
   }
 }
