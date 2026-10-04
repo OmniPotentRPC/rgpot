@@ -383,13 +383,13 @@ TEST_CASE("metatomic engine keeps its own table and adds the generic one",
   p.setNSymmetryRotations(4);
   p.setRandomRotation(true);
   p.setSo3ProbeScatter(true);
-  p.setTorchDeterminism(::MetatomicParams::TorchDeterminism::STRICT);
+  p.setTorchDeterminism(::MetatomicParams::TorchDeterminism::DETERMINISTIC);
   p.setIntraopThreads(2);
   p.setInteropThreads(1);
   capnp::MallocMessageBuilder copy;
   copy.setRoot(p.asReader());
   auto r = copy.getRoot<::MetatomicParams>();
   REQUIRE(r.getNSymmetryRotations() == 4);
-  REQUIRE(r.getTorchDeterminism() == ::MetatomicParams::TorchDeterminism::STRICT);
+  REQUIRE(r.getTorchDeterminism() == ::MetatomicParams::TorchDeterminism::DETERMINISTIC);
   REQUIRE(r.getIntraopThreads() == 2);
 }

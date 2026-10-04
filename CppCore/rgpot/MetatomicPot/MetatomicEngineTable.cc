@@ -41,7 +41,7 @@ Created create(const void *config, std::size_t config_len) {
     c.random_rotation = params.getRandomRotation();
     c.so3_probe_scatter = params.getSo3ProbeScatter();
     c.torch_determinism =
-        params.getTorchDeterminism() == ::MetatomicParams::TorchDeterminism::STRICT
+        params.getTorchDeterminism() == ::MetatomicParams::TorchDeterminism::DETERMINISTIC
             ? TorchDeterminismPolicy::Strict
             : TorchDeterminismPolicy::Fast;
 
