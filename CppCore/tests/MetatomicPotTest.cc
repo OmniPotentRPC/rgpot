@@ -569,8 +569,10 @@ TEST_CASE("MetatomicPot forceBatch matches scalar calls", "[metatomic][batch]") 
   rgpot::MetatomicPot pot(cfg);
   REQUIRE(pot.caps().batched);
 
-  // Three independent systems: the reference geometry, a displaced copy in
-  // a different cell, and a smaller cluster with another atom count.
+  // Three independent systems of equal size (the packaged test model stacks
+  // per-atom outputs and rejects unequal atom counts in one forward): the
+  // reference geometry, a displaced copy in a different cell, and a
+  // second displacement in the reference cell.
   const std::array<double, 9> box_a{101.9424, 0.0, 0.0, 0.0, 103.1426,
                                     0.0,      0.0, 0.0, 102.6055};
   const std::array<double, 9> box_b{110.0, 0.0, 0.0, 0.0, 109.0,
@@ -579,15 +581,15 @@ TEST_CASE("MetatomicPot forceBatch matches scalar calls", "[metatomic][batch]") 
   std::vector<double> pos_b = pos_a;
   for (size_t i = 0; i < pos_b.size(); ++i)
     pos_b[i] += 0.05 * std::sin(static_cast<double>(i)) + 3.0;
-  constexpr int n_small = 8;
-  std::vector<double> pos_c(lj13_pos, lj13_pos + 3 * n_small);
+  std::vector<double> pos_c = pos_a;
+  for (size_t i = 0; i < pos_c.size(); ++i)
+    pos_c[i] += 0.03 * std::cos(static_cast<double>(i));
   const std::vector<int> z_a(lj13_atmnrs, lj13_atmnrs + N_ATOMS);
-  const std::vector<int> z_c(lj13_atmnrs, lj13_atmnrs + n_small);
 
   const std::vector<rgpot::ForceInput> inputs{
       {static_cast<size_t>(N_ATOMS), pos_a.data(), z_a.data(), box_a.data()},
       {static_cast<size_t>(N_ATOMS), pos_b.data(), z_a.data(), box_b.data()},
-      {static_cast<size_t>(n_small), pos_c.data(), z_c.data(), box_a.data()},
+      {static_cast<size_t>(N_ATOMS), pos_c.data(), z_a.data(), box_a.data()},
   };
 
   std::vector<std::vector<double>> scalar_f, batch_f;
