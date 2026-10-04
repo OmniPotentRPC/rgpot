@@ -1299,7 +1299,7 @@ endif
 #   -Dwith_tests=false -Dwith_examples=false
 #   -Dwith_xtb=false -Dwith_metatomic=false
 # XTBDlopen frontend still builds; set RGPOT_XTB_ENGINE for libxtb_engine.so.
-# See docs/eon_pkgconfig.md.
+# See docs/orgmode/howto/eon-pkgconfig.org.
 if not meson.is_subproject()
     install_headers('../include/rgpot/plugin.h', subdir: 'rgpot')
     # Headers: #include "rgpot/NWChemPot/..." with -I${prefix}/include

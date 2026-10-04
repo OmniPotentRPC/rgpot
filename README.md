@@ -19,7 +19,7 @@ backend-configuration carrier:
 XC response kernels (`rgpot::XcKernel`, meson `-Dwith_xckernel=true`) are
 in-process only. They are not a `Potential`, and there is no
 `PotentialConfig.xckernel` arm: operands are collocation plus named Libxc
-arrays, not `ForceInput`. See `docs/xckernel.md`.
+arrays, not `ForceInput`. See `docs/orgmode/reference/xckernel.org`.
 `pylibxc` is not on PyPI (`pylibxc2` is an unrelated stub); use the
 conda-forge `libxc` package via `pixi install -e xckernel`.
 
@@ -153,7 +153,7 @@ RPC client types:
 <tr>
 <td class="org-left"><code>XTBPot</code></td>
 <td class="org-left"><code>XTB</code>, <code>GFNFF</code>, <code>GFN0xTB</code>, <code>GFN1xTB</code></td>
-<td class="org-left">Enable with <code>-Dwith_xtb=true</code>; use pixi env <code>xtbbld</code> or <code>tbbld</code>; linked <code>XTBPot</code> + dlopen <code>libxtb_engine.so</code> (see <code>docs/xtb_backends.md</code>)</td>
+<td class="org-left">Enable with <code>-Dwith_xtb=true</code>; use pixi env <code>xtbbld</code> or <code>tbbld</code>; linked <code>XTBPot</code> + dlopen <code>libxtb_engine.so</code> (see <code>docs/orgmode/reference/xtb_backends.org</code>)</td>
 </tr>
 
 <tr>

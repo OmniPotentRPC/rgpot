@@ -79,6 +79,8 @@ meson compile -C bbdir && meson test -C bbdir
    howto/integration
    howto/eindir-anneal
    howto/eon-rgpot
+   howto/eon-pkgconfig
+   howto/xtb-backends-tests
 
 .. toctree::
    :maxdepth: 2
@@ -86,6 +88,8 @@ meson compile -C bbdir && meson test -C bbdir
 
    reference/architecture
    reference/mpi
+   reference/xckernel
+   reference/xtb_backends
    api/index
    changelog
 

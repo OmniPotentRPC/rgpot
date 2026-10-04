@@ -364,7 +364,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Install headers and ``rgpot.pc`` (``nwchempot`` / ``cpmdpot`` / ``ptlrpc``; no
   torch or xTB at link time) so eOn and other hosts can prefer
   ``dependency('rgpot')`` over the Meson subproject wrap. Engines stay runtime
-  dlopen. See ``docs/eon_pkgconfig.md``.
+  dlopen. See ``docs/orgmode/howto/eon-pkgconfig.org``.
 - Keep Metatomic **dlopen** product on pip: portable `libmetatomic_engine.so` plugin (no eonclib) + `evaluate_metatomic` frontend (not LJ-only wheels).
 - Metatomic dual path: linked ``MetatomicPot`` (fast) and ``MetatomicDlopen``
   frontend plus optional ``libmetatomic_engine.so`` C ABI (slow/plugin path).
