@@ -20,7 +20,6 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write
 
 env:
   PIXi_VERSION: v0.70.2
@@ -80,17 +79,6 @@ jobs:
             rust_codecov.json
           if-no-files-found: error
 
-      - name: Upload rust coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          files: lcov.info,rust_codecov.json
-          flags: rust
-          name: rgpot-rust
-          use_oidc: true
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
-          verbose: true
-
   coverage-cpp:
     runs-on: ubuntu-22.04
     name: cpp coverage
@@ -130,29 +118,6 @@ jobs:
             fortran_lcov.info
           if-no-files-found: error
 
-      - name: Upload cpp coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          files: cpp_lcov.info
-          flags: cpp
-          name: rgpot-cpp
-          use_oidc: true
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
-          verbose: true
-
-      - name: Upload fortran coverage to Codecov
-        if: hashFiles('fortran_lcov.info') != ''
-        uses: codecov/codecov-action@v5
-        with:
-          files: fortran_lcov.info
-          flags: fortran
-          name: rgpot-fortran
-          use_oidc: true
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
-          verbose: true
-
   coverage-python:
     runs-on: ubuntu-22.04
     name: python coverage
@@ -182,17 +147,6 @@ jobs:
           name: coverage-python
           path: python_coverage.xml
           if-no-files-found: error
-
-      - name: Upload python coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          files: python_coverage.xml
-          flags: python
-          name: rgpot-python
-          use_oidc: true
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
-          verbose: true
 
   # Dedicated fortran path when the cpp job skipped the kernels; no-op if already uploaded.
   coverage-fortran:
@@ -232,10 +186,62 @@ jobs:
           path: fortran_lcov.info
           if-no-files-found: error
 
+  # Upload runs only on push to main: the OIDC token (id-token: write) exists in
+  # no other job, and pull_request runs stay read-only.
+  codecov-upload:
+    runs-on: ubuntu-22.04
+    name: codecov upload
+    needs: [coverage-rust, coverage-cpp, coverage-python, coverage-fortran]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: cov
+
+      - name: Upload rust coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: cov/coverage-rust/lcov.info,cov/coverage-rust/rust_codecov.json
+          flags: rust
+          name: rgpot-rust
+          use_oidc: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+          verbose: true
+
+      - name: Upload cpp coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: cov/coverage-cpp/cpp_lcov.info
+          flags: cpp
+          name: rgpot-cpp
+          use_oidc: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+          verbose: true
+
+      - name: Upload python coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: cov/coverage-python/python_coverage.xml
+          flags: python
+          name: rgpot-python
+          use_oidc: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+          verbose: true
+
       - name: Upload fortran coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
-          files: fortran_lcov.info
+          files: cov/coverage-fortran/fortran_lcov.info
           flags: fortran
           name: rgpot-fortran
           use_oidc: true

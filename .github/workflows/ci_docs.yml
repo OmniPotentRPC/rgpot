@@ -4,8 +4,6 @@ concurrency:
 jobs:
   build_docs:
     name: Build documentation
-    permissions:
-      contents: write
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
@@ -27,8 +25,24 @@ jobs:
       with:
         name: documentation
         path: docs/build
-    - if: github.event_name == 'push'
-      name: Deploy
+  deploy_docs:
+    if: github.event_name == 'push'
+    name: Deploy documentation
+    needs:
+    - build_docs
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        persist-credentials: false
+    - name: Download documentation
+      uses: actions/download-artifact@v6
+      with:
+        name: documentation
+        path: docs/build
+    - name: Deploy
       uses: peaceiris/actions-gh-pages@v4
       with:
         cname: rgpot.rgoswami.me
@@ -44,3 +58,5 @@ on:
     - '*'
   schedule:
   - cron: 0 8 * * 1
+permissions:
+  contents: read
