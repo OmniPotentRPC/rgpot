@@ -52,7 +52,7 @@ bool periodicImages(const double *positions, std::size_t n, const double *box,
   const linkcell::Cell cell = linkcell::Cell::from_vectors(
       {box[0], box[1], box[2]}, {box[3], box[4], box[5]},
       {box[6], box[7], box[8]});
-  const std::vector<linkcell::ShiftedPair> rows = linkcell::pairs_within(
+  std::vector<linkcell::ShiftedPair> rows = linkcell::pairs_within(
       positions, n, cell, cutoff, nullptr, 0.0, true);
 
   std::vector<int> folded(n * 3, 0);
