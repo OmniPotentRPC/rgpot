@@ -7,8 +7,12 @@ namespace rgpot::abi
 .. toctree::
 	:hidden:
 
+	namespace_rgpot_abi_detail.rst
 	struct_rgpot_abi_ProfileResult.rst
 	class_rgpot_abi_ProfileLoader.rst
+
+Overview
+~~~~~~~~
 
 
 
@@ -19,6 +23,10 @@ namespace rgpot::abi
 	
 	namespace abi {
 
+	// namespaces
+
+	namespace :ref:`rgpot::abi::detail<doxid-namespacergpot_1_1abi_1_1detail>`;
+
 	// structs
 
 	struct :ref:`ProfileResult<doxid-structrgpot_1_1abi_1_1_profile_result>`;
@@ -27,4 +35,91 @@ namespace rgpot::abi
 
 	class :ref:`ProfileLoader<doxid-classrgpot_1_1abi_1_1_profile_loader>`;
 
+	// global variables
+
+	std::uint32_t :ref:`kCxxLayoutRevision<doxid-_cxx_layout_8hpp_1ac7b4d4e345fba7e766ff7bd887f854b5>` = 1;
+	std::uint32_t :ref:`kPotentialBaseVirtuals<doxid-_cxx_layout_8hpp_1a658bcb7d732752d499f279c25b1008a5>` = 5;
+	std::uint32_t :target:`kPotentialBaseCacheVirtuals<doxid-_cxx_layout_8hpp_1a8aaa3a0c52ecc55915755ef12588a420>` = 1;
+	std::uint32_t :ref:`kPotentialVirtuals<doxid-_cxx_layout_8hpp_1a732c22e957eb2e1632aa0b440d610768>` = 2;
+	std::uint32_t :target:`kFeatures<doxid-_cxx_layout_8hpp_1a68a36e6f340fff65f973db0b9c154d4c>` = 0;
+
+	// global functions
+
+	:ref:`rgpot_cxx_layout_stamp_t<doxid-structrgpot__cxx__layout__stamp__t>` :ref:`header_stamp<doxid-_cxx_layout_8hpp_1a5b7b7e5fb73bbcf0ebb3d6bbf5f0ab44>`();
+	:ref:`rgpot_cxx_layout_stamp_t<doxid-structrgpot__cxx__layout__stamp__t>` :ref:`library_stamp<doxid-_cxx_layout_8hpp_1acb57c9e8e468242a18092915e267c949>`();
+	bool :ref:`layout_compatible<doxid-_cxx_layout_8hpp_1a82944f1ad802513342c545d067ea8821>`();
+
 	} // namespace abi
+.. _details-namespacergpot_1_1abi:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Global Variables
+----------------
+
+.. index:: pair: variable; kCxxLayoutRevision
+.. _doxid-_cxx_layout_8hpp_1ac7b4d4e345fba7e766ff7bd887f854b5:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::uint32_t kCxxLayoutRevision = 1
+
+Hand-maintained. Increment when a change the hash cannot see alters the C++ ABI: reordering virtuals without changing their count, changing the meaning of a field, changing a base class of a covered type. Any change to size, alignment or a field offset moves the hash by itself.
+
+.. index:: pair: variable; kPotentialBaseVirtuals
+.. _doxid-_cxx_layout_8hpp_1a658bcb7d732752d499f279c25b1008a5:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::uint32_t kPotentialBaseVirtuals = 5
+
+Virtual functions declared by ``:ref:`PotentialBase <doxid-classrgpot_1_1_potential_base>```, destructor included. The cache hook ``set_cache`` adds one when ``RGPOT_HAS_CACHE`` is defined. A test counts the ``virtual`` declarations in Potential.hpp and fails when this and the header disagree.
+
+.. index:: pair: variable; kPotentialVirtuals
+.. _doxid-_cxx_layout_8hpp_1a732c22e957eb2e1632aa0b440d610768:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::uint32_t kPotentialVirtuals = 2
+
+Virtual functions ``Potential<Derived>`` declares itself (``forceImpl`` and ``forceBatchImpl``).
+
+Global Functions
+----------------
+
+.. index:: pair: function; header_stamp
+.. _doxid-_cxx_layout_8hpp_1a5b7b7e5fb73bbcf0ebb3d6bbf5f0ab44:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`rgpot_cxx_layout_stamp_t<doxid-structrgpot__cxx__layout__stamp__t>` header_stamp()
+
+What the consumer compiled against. Initialise a ``constexpr`` variable with it; a call evaluated at run time is not tied to this translation unit (see :ref:`layout_compatible() <doxid-_cxx_layout_8hpp_1a82944f1ad802513342c545d067ea8821>`).
+
+.. index:: pair: function; library_stamp
+.. _doxid-_cxx_layout_8hpp_1acb57c9e8e468242a18092915e267c949:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`rgpot_cxx_layout_stamp_t<doxid-structrgpot__cxx__layout__stamp__t>` library_stamp()
+
+What the loaded library was built with.
+
+.. index:: pair: function; layout_compatible
+.. _doxid-_cxx_layout_8hpp_1a82944f1ad802513342c545d067ea8821:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool layout_compatible()
+
+True when the loaded library was built from the same layouts as these headers: equal revision, equal feature bits, equal hash.
+

@@ -1,0 +1,67 @@
+.. index:: pair: struct; rgpot_cxx_layout_stamp_t
+.. _doxid-structrgpot__cxx__layout__stamp__t:
+
+struct rgpot_cxx_layout_stamp_t
+===============================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Plain-C view of the stamp, returned by the exported function. :ref:`More...<details-structrgpot__cxx__layout__stamp__t>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <CxxLayout.hpp>
+	
+	struct rgpot_cxx_layout_stamp_t {
+		// fields
+	
+		uint32_t :ref:`revision<doxid-structrgpot__cxx__layout__stamp__t_1a6d8baf0ada470ad9308bfa7754072cd6>`;
+		uint32_t :ref:`features<doxid-structrgpot__cxx__layout__stamp__t_1ae2e72e6f26378b15694beb14d0cd5b3c>`;
+		uint64_t :ref:`hash<doxid-structrgpot__cxx__layout__stamp__t_1a841f18412d90c7c928764a43e082ef8d>`;
+	};
+.. _details-structrgpot__cxx__layout__stamp__t:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Plain-C view of the stamp, returned by the exported function.
+
+Fields
+------
+
+.. index:: pair: variable; revision
+.. _doxid-structrgpot__cxx__layout__stamp__t_1a6d8baf0ada470ad9308bfa7754072cd6:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	uint32_t revision
+
+kCxxLayoutRevision of the header that built it.
+
+.. index:: pair: variable; features
+.. _doxid-structrgpot__cxx__layout__stamp__t_1ae2e72e6f26378b15694beb14d0cd5b3c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	uint32_t features
+
+Bit 0: RGPOT_HAS_CACHE.
+
+.. index:: pair: variable; hash
+.. _doxid-structrgpot__cxx__layout__stamp__t_1a841f18412d90c7c928764a43e082ef8d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	uint64_t hash
+
+Fold of sizeof/alignof/offsetof of the covered types.
+

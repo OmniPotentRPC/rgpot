@@ -1,0 +1,26 @@
+.. index:: pair: struct; rgpot::abi::detail::LayoutProbe
+.. _doxid-structrgpot_1_1abi_1_1detail_1_1_layout_probe:
+
+struct rgpot::abi::detail::LayoutProbe
+======================================
+
+.. toctree::
+	:hidden:
+
+A complete derived type: gives the CRTP template one instantiation whose size and alignment the stamp covers. Complete because compilers that instantiate the virtual members with the class need the base-to-derived conversion to be valid.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <CxxLayout.hpp>
+	
+	struct LayoutProbe: public rgpot::Potential< LayoutProbe > {
+		// construction
+	
+		:target:`LayoutProbe<doxid-structrgpot_1_1abi_1_1detail_1_1_layout_probe_1af5dceeb7d7e6a54910b683947fd5f286>`();
+
+		// methods
+	
+		void :target:`forceImpl<doxid-structrgpot_1_1abi_1_1detail_1_1_layout_probe_1a2ab1bbd6cbe4bf362e0c556fd793c28b>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`&, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`*) const;
+	};

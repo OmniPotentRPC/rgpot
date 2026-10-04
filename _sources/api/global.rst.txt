@@ -67,6 +67,7 @@ Global Namespace
 	struct_RgpotXtbPot.rst
 	struct_eindir_abi_stamp_t.rst
 	struct_eindir_objective_t.rst
+	struct_rgpot_cxx_layout_stamp_t.rst
 	struct_rgpot_mpi_api_t.rst
 	struct_rgpot_mpi_group_t.rst
 	struct_rgpot_plugin_descriptor_t.rst
@@ -96,6 +97,7 @@ Overview
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d371345205050316044211301074104100300046352051004>`;
 	namespace :ref:`rgpot<doxid-namespacergpot>`;
 		namespace :ref:`rgpot::abi<doxid-namespacergpot_1_1abi>`;
+			namespace :ref:`rgpot::abi::detail<doxid-namespacergpot_1_1abi_1_1detail>`;
 		namespace :ref:`rgpot::aoti_execstack<doxid-namespacergpot_1_1aoti__execstack>`;
 		namespace :ref:`rgpot::cache<doxid-namespacergpot_1_1cache>`;
 		namespace :ref:`rgpot::details<doxid-namespacergpot_1_1details>`;
@@ -151,6 +153,7 @@ Overview
 
 	// typedefs
 
+	typedef struct rgpot_cxx_layout_stamp_t :ref:`rgpot_cxx_layout_stamp_t<doxid-_cxx_layout_8hpp_1a1d87bca8211f62e390d8b3c43e1c0823>`;
 	typedef struct rgpot_mpi_group_t :target:`rgpot_mpi_group_t<doxid-calculator__mpi__abi_8h_1a138f6f574a4246887c8ad6a099db9cdb>`;
 	typedef struct rgpot_mpi_api_t :target:`rgpot_mpi_api_t<doxid-calculator__mpi__abi_8h_1ae8d958132d69870796b8ce496cb647d7>`;
 	typedef const :ref:`rgpot_mpi_api_t<doxid-structrgpot__mpi__api__t>`* (*:target:`rgpot_mpi_api_fn<doxid-calculator__mpi__abi_8h_1a1ef35a35b112c3c2a0ba192d2cc68056>`)(void);
@@ -231,6 +234,7 @@ Overview
 	struct :ref:`RgpotXtbPot<doxid-struct_rgpot_xtb_pot>`;
 	struct :ref:`eindir_abi_stamp_t<doxid-structeindir__abi__stamp__t>`;
 	struct :ref:`eindir_objective_t<doxid-structeindir__objective__t>`;
+	struct :ref:`rgpot_cxx_layout_stamp_t<doxid-structrgpot__cxx__layout__stamp__t>`;
 	struct :ref:`rgpot_mpi_api_t<doxid-structrgpot__mpi__api__t>`;
 	struct :ref:`rgpot_mpi_group_t<doxid-structrgpot__mpi__group__t>`;
 	struct :ref:`rgpot_plugin_descriptor_t<doxid-structrgpot__plugin__descriptor__t>`;
@@ -290,6 +294,10 @@ Overview
 
 	// global functions
 
+	:ref:`rgpot_cxx_layout_stamp_t<doxid-structrgpot__cxx__layout__stamp__t>` :ref:`rgpot_cxx_layout_stamp<doxid-_cxx_layout_8cc_1a3bc750527eaf5888ec3b31656a6fda95>`(void);
+	int32_t :ref:`rgpot_cxx_layout_compatible<doxid-_cxx_layout_8cc_1a29b49ecbc802b4766fbc818d636fe927>`(const :ref:`rgpot_cxx_layout_stamp_t<doxid-structrgpot__cxx__layout__stamp__t>`* caller);
+	:ref:`rgpot_cxx_layout_stamp_t<doxid-structrgpot__cxx__layout__stamp__t>` :ref:`rgpot_cxx_layout_stamp<doxid-_cxx_layout_8hpp_1a3bc750527eaf5888ec3b31656a6fda95>`(void);
+	int32_t :ref:`rgpot_cxx_layout_compatible<doxid-_cxx_layout_8hpp_1a29b49ecbc802b4766fbc818d636fe927>`(const :ref:`rgpot_cxx_layout_stamp_t<doxid-structrgpot__cxx__layout__stamp__t>`* caller);
 	const :ref:`rgpot_mpi_api_t<doxid-structrgpot__mpi__api__t>`* :target:`rgpot_mpi_api_v1<doxid-calculator__mpi__abi_8h_1af36dda0f53b647c58d50d7948cd13058>`(void);
 	:ref:`__attribute__<doxid-_calculator_group_mpi_8cc_1a1ebccaf814e165a7657d76b3931cbc7b>`((visibility("default"))) const;
 	int :ref:`cpmdc_set_params<doxid-cpmd__c__abi_8h_1a22da50d15419dadce4925c88100a1c23>`(const void* params_capnp, size_t params_capnp_size_bytes);
@@ -416,6 +424,8 @@ Overview
 	#define :target:`MOPACC_MODEL_RM1<doxid-mopac__c__abi_8h_1ae03a231e9d48a338927aed6b492d0b22>`
 	#define :ref:`POT_BRIDGE_API<doxid-pot__bridge_8h_1a30ca0aa10367d7a1679284a7ed9969e4>`
 	#define :target:`RGPOT_CPMDC_API<doxid-cpmd__c__abi_8h_1a744600c686fd30c24b0e0882c773088a>`
+	#define :target:`RGPOT_CXX_LAYOUT_API<doxid-_cxx_layout_8hpp_1a6a6e1a00ca94c4ed94e9c9b3e91ae792>`
+	#define :target:`RGPOT_CXX_LAYOUT_BUILDING<doxid-_cxx_layout_8cc_1a8ca8c99fa942847424611162ebdd1141>`
 	#define :target:`RGPOT_EINDIR_ABI_HPP<doxid-eindir__abi_8hpp_1a9dc0ea36adfc2c8faac4a152e4e901d4>`
 	#define :target:`RGPOT_ENGINE_ABI_VERSION<doxid-engine__c__abi_8h_1a11ea1c5296399dbe5d95e7634e11c958>`
 	#define :target:`RGPOT_ENGINE_API<doxid-engine__c__abi_8h_1a6b6448a4c3433c0cba3ab85983f1bf9d>`
@@ -451,6 +461,16 @@ Detailed Documentation
 
 Typedefs
 --------
+
+.. index:: pair: typedef; rgpot_cxx_layout_stamp_t
+.. _doxid-_cxx_layout_8hpp_1a1d87bca8211f62e390d8b3c43e1c0823:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	typedef struct rgpot_cxx_layout_stamp_t rgpot_cxx_layout_stamp_t
+
+Plain-C view of the stamp, returned by the exported function.
 
 .. index:: pair: typedef; CPMDCResult
 .. _doxid-cpmd__c__abi_8h_1a624f3d7d040e783aef1536f49e2a43ca:
@@ -519,6 +539,46 @@ Opaque handle to the client context.
 
 Global Functions
 ----------------
+
+.. index:: pair: function; rgpot_cxx_layout_stamp
+.. _doxid-_cxx_layout_8cc_1a3bc750527eaf5888ec3b31656a6fda95:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`rgpot_cxx_layout_stamp_t<doxid-structrgpot__cxx__layout__stamp__t>` rgpot_cxx_layout_stamp(void)
+
+Stamp of the loaded library, computed from the headers it was built with.
+
+.. index:: pair: function; rgpot_cxx_layout_compatible
+.. _doxid-_cxx_layout_8cc_1a29b49ecbc802b4766fbc818d636fe927:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int32_t rgpot_cxx_layout_compatible(const :ref:`rgpot_cxx_layout_stamp_t<doxid-structrgpot__cxx__layout__stamp__t>`* caller)
+
+Nonzero when ``caller`` equals the stamp of the loaded library.
+
+.. index:: pair: function; rgpot_cxx_layout_stamp
+.. _doxid-_cxx_layout_8hpp_1a3bc750527eaf5888ec3b31656a6fda95:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`rgpot_cxx_layout_stamp_t<doxid-structrgpot__cxx__layout__stamp__t>` rgpot_cxx_layout_stamp(void)
+
+Stamp of the loaded library, computed from the headers it was built with.
+
+.. index:: pair: function; rgpot_cxx_layout_compatible
+.. _doxid-_cxx_layout_8hpp_1a29b49ecbc802b4766fbc818d636fe927:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int32_t rgpot_cxx_layout_compatible(const :ref:`rgpot_cxx_layout_stamp_t<doxid-structrgpot__cxx__layout__stamp__t>`* caller)
+
+Nonzero when ``caller`` equals the stamp of the loaded library.
 
 .. index:: pair: function; __attribute__
 .. _doxid-_calculator_group_mpi_8cc_1a1ebccaf814e165a7657d76b3931cbc7b:

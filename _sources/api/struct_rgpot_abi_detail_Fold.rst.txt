@@ -1,0 +1,52 @@
+.. index:: pair: struct; rgpot::abi::detail::Fold
+.. _doxid-structrgpot_1_1abi_1_1detail_1_1_fold:
+
+struct rgpot::abi::detail::Fold
+===============================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Fold {
+		// fields
+	
+		std::uint64_t :target:`h<doxid-structrgpot_1_1abi_1_1detail_1_1_fold_1a36a791cb3d5605b08ba1f8d27a3ed222>` = 0xcbf29ce484222325ull;
+
+		// methods
+	
+		void :target:`add<doxid-structrgpot_1_1abi_1_1detail_1_1_fold_1a4384cd1c8ee6169a44847ab5f9a7f908>`(std::uint64_t v);
+	
+		template <typename T>
+		void :ref:`type<doxid-structrgpot_1_1abi_1_1detail_1_1_fold_1ae2ce527557d49dc432307fe24bc0abe1>`();
+	};
+.. _details-structrgpot_1_1abi_1_1detail_1_1_fold:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Methods
+-------
+
+.. index:: pair: function; type
+.. _doxid-structrgpot_1_1abi_1_1detail_1_1_fold_1ae2ce527557d49dc432307fe24bc0abe1:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	template <typename T>
+	void type()
+
+sizeof and alignof of a type.
+

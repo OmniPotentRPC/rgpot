@@ -368,6 +368,9 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../api/struct_eindir_objective_t.html">struct eindir_objective_t</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_rgpot_cxx_layout_stamp_t.html">struct rgpot_cxx_layout_stamp_t</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="../api/struct_rgpot_mpi_api_t.html">struct rgpot_mpi_api_t</a><ul class="simple">
 </ul>
 </li>
@@ -446,6 +449,10 @@ data-aria-dark="Switch to auto color mode">
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
 <li><a class="reference internal" href="#stamp">Stamp</a></li>
 <li><a class="reference internal" href="#bumping-the-numbers">Bumping the numbers</a></li>
+<li><a class="reference internal" href="#c-layout-stamp">C++ layout stamp</a><ul>
+<li><a class="reference internal" href="#bumping">Bumping</a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#scope">Scope</a></li>
 </ul>
 </div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/OmniPotentRPC/rgpot"
@@ -605,10 +612,85 @@ their minors.</p></li>
 <p>The ABI numbers do not follow the package version: a release that changes no
 exported symbol leaves them where they are.</p>
 </section>
+<section id="c-layout-stamp">
+<h2>C++ layout stamp<a class="headerlink" href="#c-layout-stamp" title="Link to this heading">¶</a></h2>
+<p>The stamp above covers the C interface of <code class="docutils literal notranslate"><span class="pre">rgpot-core</span></code>.
+The header-only C++ classes are a second boundary: a consumer compiles
+<code class="docutils literal notranslate"><span class="pre">Potential</span></code>, the force structures and the pair potentials, and the library
+supplies their out-of-line members.
+A library built from another revision of those headers, or with another value of
+<code class="docutils literal notranslate"><span class="pre">RGPOT_HAS_CACHE</span></code>, carries the same C stamp and still runs with the wrong
+offsets or the wrong vtable.
+<code class="docutils literal notranslate"><span class="pre">rgpot/abi/CxxLayout.hpp</span></code> stamps that boundary.
+It needs neither <code class="docutils literal notranslate"><span class="pre">rgpot.h</span></code> nor the Rust core, so every build of <code class="docutils literal notranslate"><span class="pre">librgpot</span></code>
+exports it.</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="cp">#include</span> <span class="cpf">&quot;rgpot/abi/CxxLayout.hpp&quot;</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">rgpot</span><span class="o">::</span><span class="n">abi</span><span class="o">::</span><span class="n">layout_compatible</span><span class="p">())</span> <span class="p">{</span>
+</span><span data-line="4">  <span class="c1">// the loaded library was built from other layouts than these headers</span>
+</span><span data-line="5"><span class="p">}</span>
+</span></pre></div>
+</div>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">rgpot::abi::header_stamp()</span></code> is a <code class="docutils literal notranslate"><span class="pre">constexpr</span></code> of the header: the stamp the
+consumer compiled against.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">rgpot::abi::library_stamp()</span></code> calls the exported <code class="docutils literal notranslate"><span class="pre">rgpot_cxx_layout_stamp()</span></code>:
+the stamp of the loaded library.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">rgpot::abi::layout_compatible()</span></code> is true when the revision, the feature bits
+and the hash are equal.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">rgpot_cxx_layout_compatible(const</span> <span class="pre">rgpot_cxx_layout_stamp_t</span> <span class="pre">*)</span></code> is the same check for a caller that holds only the C struct <code class="docutils literal notranslate"><span class="pre">(uint32_t</span> <span class="pre">revision,</span> <span class="pre">uint32_t</span> <span class="pre">features,</span> <span class="pre">uint64_t</span> <span class="pre">hash)</span></code>.
+The C stamp struct of <code class="docutils literal notranslate"><span class="pre">rgpot.h</span></code> does not change.</p></li>
+</ul>
+<p>The hash folds <code class="docutils literal notranslate"><span class="pre">sizeof</span></code>, <code class="docutils literal notranslate"><span class="pre">alignof</span></code> and, for plain structures, <code class="docutils literal notranslate"><span class="pre">offsetof</span></code> of each
+covered type, plus the pointer width.
+Feature bit 0 is <code class="docutils literal notranslate"><span class="pre">RGPOT_HAS_CACHE</span></code>, which adds a virtual to <code class="docutils literal notranslate"><span class="pre">PotentialBase</span></code> and
+changes <code class="docutils literal notranslate"><span class="pre">Potential</span></code>.</p>
+<p>Covered types:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">ForceInput</span></code>, <code class="docutils literal notranslate"><span class="pre">ForceOut</span></code>, <code class="docutils literal notranslate"><span class="pre">ForceBatch</span></code>, <code class="docutils literal notranslate"><span class="pre">PotCaps</span></code>, <code class="docutils literal notranslate"><span class="pre">CalculatorGroup</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">LJConfig</span></code>, <code class="docutils literal notranslate"><span class="pre">LJClusterConfig</span></code>, <code class="docutils literal notranslate"><span class="pre">MorseConfig</span></code>, <code class="docutils literal notranslate"><span class="pre">ZBLConfig</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Reentrancy</span></code> and <code class="docutils literal notranslate"><span class="pre">PotType</span></code> (width, and the values of the enumerators consumers
+switch on)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">PotentialBase</span></code>, <code class="docutils literal notranslate"><span class="pre">Potential&lt;Derived&gt;</span></code> (through one probe instantiation),
+<code class="docutils literal notranslate"><span class="pre">LJPot</span></code>, <code class="docutils literal notranslate"><span class="pre">LJClusterPot</span></code>, <code class="docutils literal notranslate"><span class="pre">MorsePot</span></code>, <code class="docutils literal notranslate"><span class="pre">ZBLPot</span></code></p></li>
+<li><p>with the cache: <code class="docutils literal notranslate"><span class="pre">cache::EvalCounts</span></code> and <code class="docutils literal notranslate"><span class="pre">cache::PotentialCache</span></code></p></li>
+</ul>
+<p>Not covered: the classes of optional backends (xtb, tblite, dftd3, dftd4,
+ExprPot, XcKernel, Metatomic, UMA, NWChem, CPMD, MOPAC, Skala, the Fortran
+potentials).
+Their headers and features differ between builds, so a stamp over them would
+refuse libraries that agree on everything a consumer uses.
+The plugin interface carries
+<code class="docutils literal notranslate"><span class="pre">RGPOT_PLUGIN_API_VERSION</span></code>, and the engine libraries carry <code class="docutils literal notranslate"><span class="pre">rgpot_engine_abi_version()</span></code>.</p>
+<section id="bumping">
+<h3>Bumping<a class="headerlink" href="#bumping" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>A change to the size, alignment or a field offset of a covered type moves the
+hash by itself.
+Commit it with the change; no number to edit.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">kCxxLayoutRevision</span></code> in <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/abi/CxxLayout.hpp</span></code>: increment when a
+change keeps every size and offset and still alters the ABI.
+Reordering virtual functions, changing the meaning of a field, changing a base
+class, changing a default member initializer a consumer inlines.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">kPotentialBaseVirtuals</span></code>, <code class="docutils literal notranslate"><span class="pre">kPotentialBaseCacheVirtuals</span></code> and
+<code class="docutils literal notranslate"><span class="pre">kPotentialVirtuals</span></code> count the virtual functions of the polymorphic classes,
+because the compiler hides a vtable change from <code class="docutils literal notranslate"><span class="pre">sizeof</span></code>.
+<code class="docutils literal notranslate"><span class="pre">CppCore/tests/check_virtual_counts.py</span></code> counts the <code class="docutils literal notranslate"><span class="pre">virtual</span></code> declarations in
+<code class="docutils literal notranslate"><span class="pre">Potential.hpp</span></code> and fails when a count is stale.
+Update the constant and increment <code class="docutils literal notranslate"><span class="pre">kCxxLayoutRevision</span></code> together.</p></li>
+<li><p>Adding a covered type changes the hash, so it needs no revision bump.
+Add it to <code class="docutils literal notranslate"><span class="pre">detail::compute_hash()</span></code> in the same commit.</p></li>
+</ul>
+<p>The fixture <code class="docutils literal notranslate"><span class="pre">CppCore/tests/layout_fixture.cc</span></code> is a shared object built from a
+header in which <code class="docutils literal notranslate"><span class="pre">ForceOut</span></code> gained a field; <code class="docutils literal notranslate"><span class="pre">CxxLayoutTest</span></code> requires that its
+stamp differs and that its compatibility check refuses the real stamp.</p>
+</section>
+</section>
 <section id="scope">
 <h2>Scope<a class="headerlink" href="#scope" title="Link to this heading">¶</a></h2>
-<p>The stamp covers the C surface of <code class="docutils literal notranslate"><span class="pre">rgpot-core</span></code>.
-The C++ and Python packages do not re-export it.
+<p>The first stamp covers the C surface of <code class="docutils literal notranslate"><span class="pre">rgpot-core</span></code>.
+The C++ and Python packages do not re-export it; the C++ classes have the layout
+stamp above.
 The engine plugins carry their own number, <code class="docutils literal notranslate"><span class="pre">rgpot_engine_abi_version()</span></code>.
 The eindir objective keeps <code class="docutils literal notranslate"><span class="pre">rgpot_eindir_abi_stamp()</span></code>, which reports the stamp
 of <code class="docutils literal notranslate"><span class="pre">eindir-core</span></code>.</p>

@@ -2,7 +2,7 @@
 <html lang="en" data-accent-color="teal" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>namespace rgpot::abi - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="struct rgpot::abi::ProfileResult" href="struct_rgpot_abi_ProfileResult.html" /><link rel="prev" title="namespace rgpot" href="namespace_rgpot-3.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>namespace rgpot::abi - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="namespace rgpot::abi::detail" href="namespace_rgpot_abi_detail.html" /><link rel="prev" title="namespace rgpot" href="namespace_rgpot-3.html" />
       <link rel="canonical" href="https://rgpot.rgoswami.me/api/namespace_rgpot_abi.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
@@ -368,6 +368,9 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="struct_eindir_objective_t.html">struct eindir_objective_t</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_cxx_layout_stamp_t.html">struct rgpot_cxx_layout_stamp_t</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="struct_rgpot_mpi_api_t.html">struct rgpot_mpi_api_t</a><ul class="simple">
 </ul>
 </li>
@@ -443,7 +446,15 @@ data-aria-dark="Switch to auto color mode">
     <button class="rside-close js-menu xl:hidden" aria-label="Close Table of Contents" type="button" aria-controls="rside" aria-expanded="false">
       <i class="i-lucide close"></i>
     </button>
-    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/OmniPotentRPC/rgpot"
+    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
+<li><a class="reference internal" href="#overview">Overview</a></li>
+<li><a class="reference internal" href="#detailed-documentation">Detailed Documentation</a><ul>
+<li><a class="reference internal" href="#global-variables">Global Variables</a></li>
+<li><a class="reference internal" href="#global-functions">Global Functions</a></li>
+</ul>
+</li>
+</ul>
+</div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/OmniPotentRPC/rgpot"
   data-type="github" data-user="OmniPotentRPC" data-repo="rgpot">
   <span class="w-8 flex items-center justify-around shrink-0 text-3xl">
     <iconify-icon icon="simple-icons:github"></iconify-icon>
@@ -546,19 +557,73 @@ data-aria-dark="Switch to auto color mode">
 <span id="doxid-namespacergpot-1-1abi"></span><span id="index-0"></span><h1>namespace rgpot::abi<a class="headerlink" href="#namespace-rgpot-abi" title="Link to this heading">¶</a></h1>
 <div class="toctree-wrapper compound">
 </div>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
 <div class="doxyrest-overview-code-block highlight">
 <pre><span data-line="1"><span class="k">namespace</span> <span class="n">abi</span> <span class="p">{</span></span>
 <span data-line="2"> </span>
-<span data-line="3"><span class="c1">// structs</span></span>
+<span data-line="3"><span class="c1">// namespaces</span></span>
 <span data-line="4"> </span>
-<span data-line="5"><span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_abi_ProfileResult.html#doxid-structrgpot-1-1abi-1-1-profile-result"><span class="std std-ref">ProfileResult</span></a><span class="p">;</span></span>
+<span data-line="5"><span class="k">namespace</span> <a class="doxyrest-code-link reference internal" href="namespace_rgpot_abi_detail.html#doxid-namespacergpot-1-1abi-1-1detail"><span class="std std-ref">rgpot::abi::detail</span></a><span class="p">;</span></span>
 <span data-line="6"> </span>
-<span data-line="7"><span class="c1">// classes</span></span>
+<span data-line="7"><span class="c1">// structs</span></span>
 <span data-line="8"> </span>
-<span data-line="9"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_abi_ProfileLoader.html#doxid-classrgpot-1-1abi-1-1-profile-loader"><span class="std std-ref">ProfileLoader</span></a><span class="p">;</span></span>
+<span data-line="9"><span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_abi_ProfileResult.html#doxid-structrgpot-1-1abi-1-1-profile-result"><span class="std std-ref">ProfileResult</span></a><span class="p">;</span></span>
 <span data-line="10"> </span>
-<span data-line="11"><span class="p">}</span> <span class="c1">// namespace abi</span></span>
+<span data-line="11"><span class="c1">// classes</span></span>
+<span data-line="12"> </span>
+<span data-line="13"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_abi_ProfileLoader.html#doxid-classrgpot-1-1abi-1-1-profile-loader"><span class="std std-ref">ProfileLoader</span></a><span class="p">;</span></span>
+<span data-line="14"> </span>
+<span data-line="15"><span class="c1">// global variables</span></span>
+<span data-line="16"> </span>
+<span data-line="17"><span class="n">std</span><span class="o">::</span><span class="kt">uint32_t</span> <a class="doxyrest-code-link reference internal" href="#doxid-cxx-layout-8hpp-1ac7b4d4e345fba7e766ff7bd887f854b5"><span class="std std-ref">kCxxLayoutRevision</span></a> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span></span>
+<span data-line="18"><span class="n">std</span><span class="o">::</span><span class="kt">uint32_t</span> <a class="doxyrest-code-link reference internal" href="#doxid-cxx-layout-8hpp-1a658bcb7d732752d499f279c25b1008a5"><span class="std std-ref">kPotentialBaseVirtuals</span></a> <span class="o">=</span> <span class="mi">5</span><span class="p">;</span></span>
+<span data-line="19"><span class="n">std</span><span class="o">::</span><span class="kt">uint32_t</span> <span class="doxyrest-code-target target" id="doxid-_cxx_layout_8hpp_1a8aaa3a0c52ecc55915755ef12588a420"></span><span class="n">kPotentialBaseCacheVirtuals</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span></span>
+<span data-line="20"><span class="n">std</span><span class="o">::</span><span class="kt">uint32_t</span> <a class="doxyrest-code-link reference internal" href="#doxid-cxx-layout-8hpp-1a732c22e957eb2e1632aa0b440d610768"><span class="std std-ref">kPotentialVirtuals</span></a> <span class="o">=</span> <span class="mi">2</span><span class="p">;</span></span>
+<span data-line="21"><span class="n">std</span><span class="o">::</span><span class="kt">uint32_t</span> <span class="doxyrest-code-target target" id="doxid-_cxx_layout_8hpp_1a68a36e6f340fff65f973db0b9c154d4c"></span><span class="n">kFeatures</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span></span>
+<span data-line="22"> </span>
+<span data-line="23"><span class="c1">// global functions</span></span>
+<span data-line="24"> </span>
+<span data-line="25"><a class="doxyrest-code-link reference internal" href="struct_rgpot_cxx_layout_stamp_t.html#doxid-structrgpot-cxx-layout-stamp-t"><span class="std std-ref">rgpot_cxx_layout_stamp_t</span></a> <a class="doxyrest-code-link reference internal" href="#doxid-cxx-layout-8hpp-1a5b7b7e5fb73bbcf0ebb3d6bbf5f0ab44"><span class="std std-ref">header_stamp</span></a><span class="p">();</span></span>
+<span data-line="26"><a class="doxyrest-code-link reference internal" href="struct_rgpot_cxx_layout_stamp_t.html#doxid-structrgpot-cxx-layout-stamp-t"><span class="std std-ref">rgpot_cxx_layout_stamp_t</span></a> <a class="doxyrest-code-link reference internal" href="#doxid-cxx-layout-8hpp-1acb57c9e8e468242a18092915e267c949"><span class="std std-ref">library_stamp</span></a><span class="p">();</span></span>
+<span data-line="27"><span class="kt">bool</span> <a class="doxyrest-code-link reference internal" href="#doxid-cxx-layout-8hpp-1a82944f1ad802513342c545d067ea8821"><span class="std std-ref">layout_compatible</span></a><span class="p">();</span></span>
+<span data-line="28"> </span>
+<span data-line="29"><span class="p">}</span> <span class="c1">// namespace abi</span></span>
 </pre></div>
+</section>
+<section id="detailed-documentation">
+<span id="details-namespacergpot-1-1abi"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
+<section id="global-variables">
+<h3>Global Variables<a class="headerlink" href="#global-variables" title="Link to this heading">¶</a></h3>
+<div class="doxyrest-title-code-block highlight" id="doxid-cxx-layout-8hpp-1ac7b4d4e345fba7e766ff7bd887f854b5">
+<span id="index-1"></span><pre><span data-line="1"><span class="n">std</span><span class="o">::</span><span class="kt">uint32_t</span> <span class="n">kCxxLayoutRevision</span> <span class="o">=</span> <span class="mi">1</span></span>
+</pre></div>
+<p>Hand-maintained. Increment when a change the hash cannot see alters the C++ ABI: reordering virtuals without changing their count, changing the meaning of a field, changing a base class of a covered type. Any change to size, alignment or a field offset moves the hash by itself.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-cxx-layout-8hpp-1a658bcb7d732752d499f279c25b1008a5">
+<span id="index-2"></span><pre><span data-line="1"><span class="n">std</span><span class="o">::</span><span class="kt">uint32_t</span> <span class="n">kPotentialBaseVirtuals</span> <span class="o">=</span> <span class="mi">5</span></span>
+</pre></div>
+<p>Virtual functions declared by <code class="docutils literal notranslate"><span class="pre">PotentialBase</span></code>, destructor included. The cache hook <code class="docutils literal notranslate"><span class="pre">set_cache</span></code> adds one when <code class="docutils literal notranslate"><span class="pre">RGPOT_HAS_CACHE</span></code> is defined. A test counts the <code class="docutils literal notranslate"><span class="pre">virtual</span></code> declarations in Potential.hpp and fails when this and the header disagree.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-cxx-layout-8hpp-1a732c22e957eb2e1632aa0b440d610768">
+<span id="index-3"></span><pre><span data-line="1"><span class="n">std</span><span class="o">::</span><span class="kt">uint32_t</span> <span class="n">kPotentialVirtuals</span> <span class="o">=</span> <span class="mi">2</span></span>
+</pre></div>
+<p>Virtual functions <code class="docutils literal notranslate"><span class="pre">Potential&lt;Derived&gt;</span></code> declares itself (<code class="docutils literal notranslate"><span class="pre">forceImpl</span></code> and <code class="docutils literal notranslate"><span class="pre">forceBatchImpl</span></code>).</p>
+</section>
+<section id="global-functions">
+<h3>Global Functions<a class="headerlink" href="#global-functions" title="Link to this heading">¶</a></h3>
+<div class="doxyrest-title-code-block highlight" id="doxid-cxx-layout-8hpp-1a5b7b7e5fb73bbcf0ebb3d6bbf5f0ab44">
+<span id="index-4"></span><pre><span data-line="1"><a class="doxyrest-code-link reference internal" href="struct_rgpot_cxx_layout_stamp_t.html#doxid-structrgpot-cxx-layout-stamp-t"><span class="std std-ref">rgpot_cxx_layout_stamp_t</span></a> <span class="n">header_stamp</span><span class="p">()</span></span>
+</pre></div>
+<p>What the consumer compiled against. Initialise a <code class="docutils literal notranslate"><span class="pre">constexpr</span></code> variable with it; a call evaluated at run time is not tied to this translation unit (see <a class="reference internal" href="#doxid-cxx-layout-8hpp-1a82944f1ad802513342c545d067ea8821"><span class="std std-ref">layout_compatible()</span></a>).</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-cxx-layout-8hpp-1acb57c9e8e468242a18092915e267c949">
+<span id="index-5"></span><pre><span data-line="1"><a class="doxyrest-code-link reference internal" href="struct_rgpot_cxx_layout_stamp_t.html#doxid-structrgpot-cxx-layout-stamp-t"><span class="std std-ref">rgpot_cxx_layout_stamp_t</span></a> <span class="n">library_stamp</span><span class="p">()</span></span>
+</pre></div>
+<p>What the loaded library was built with.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-cxx-layout-8hpp-1a82944f1ad802513342c545d067ea8821">
+<span id="index-6"></span><pre><span data-line="1"><span class="kt">bool</span> <span class="n">layout_compatible</span><span class="p">()</span></span>
+</pre></div>
+<p>True when the loaded library was built from the same layouts as these headers: equal revision, equal feature bits, equal hash.</p>
+</section>
+</section>
 </section>
 
         </article><button class="back-to-top" type="button">
@@ -573,10 +638,10 @@ data-aria-dark="Switch to auto color mode">
         <span>Previous</span><div class="title">namespace rgpot</div></div>
     </a>
   </div><div class="navigation-next">
-    <a href="struct_rgpot_abi_ProfileResult.html">
+    <a href="namespace_rgpot_abi_detail.html">
       <div class="page-info">
         <span>Next</span>
-        <div class="title">struct rgpot::abi::ProfileResult</div>
+        <div class="title">namespace rgpot::abi::detail</div>
       </div>
       <i class="i-lucide chevron-right"></i>
     </a>

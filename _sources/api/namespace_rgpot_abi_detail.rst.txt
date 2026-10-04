@@ -1,0 +1,31 @@
+.. index:: pair: namespace; rgpot::abi::detail
+.. _doxid-namespacergpot_1_1abi_1_1detail:
+
+namespace rgpot::abi::detail
+============================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_abi_detail_Fold.rst
+	struct_rgpot_abi_detail_LayoutProbe.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace detail {
+
+	// structs
+
+	struct :ref:`Fold<doxid-structrgpot_1_1abi_1_1detail_1_1_fold>`;
+	struct :ref:`LayoutProbe<doxid-structrgpot_1_1abi_1_1detail_1_1_layout_probe>`;
+
+	// global functions
+
+	std::uint64_t :target:`compute_hash<doxid-_cxx_layout_8hpp_1afa68732f26426818df620a4510639002>`();
+
+	} // namespace detail

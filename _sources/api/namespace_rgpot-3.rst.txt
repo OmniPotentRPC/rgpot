@@ -88,6 +88,7 @@ Prefix-parameterized loader for the minimum potential ABI profile. :ref:`More...
 	// namespaces
 
 	namespace :ref:`rgpot::abi<doxid-namespacergpot_1_1abi>`;
+		namespace :ref:`rgpot::abi::detail<doxid-namespacergpot_1_1abi_1_1detail>`;
 	namespace :ref:`rgpot::aoti_execstack<doxid-namespacergpot_1_1aoti__execstack>`;
 	namespace :ref:`rgpot::cache<doxid-namespacergpot_1_1cache>`;
 	namespace :ref:`rgpot::details<doxid-namespacergpot_1_1details>`;
