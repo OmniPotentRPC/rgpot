@@ -181,9 +181,10 @@ pixi run -e eonviz eon-min-landscape
 
 The ``eonviz`` environment is separate from the C++ build env: ``eon`` pins
 ``fmt>=12`` (clashing with rgpot's C++ ``fmt<12``), so it carries no default
-feature and pulls ``eon``, ``ira``, ``jax``, and the dev ``chemparseplot`` /
-``rgpycrumbs`` (the published releases lack the embedded-metadata trajectory
-parser and ``plt-min``).
+feature and pulls ``eon``, ``ira``, ``jax``, and the released ``chemparseplot``
+and ``rgpycrumbs`` (both pinned to 1.11.0, which carry the embedded-metadata
+trajectory parser and ``plt-min``). ``pixi run check-eonviz-pins`` fails when
+an ``eonviz`` dependency stops being an immutable pin.
 
 ** Where to go next
 
