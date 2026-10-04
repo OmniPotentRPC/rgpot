@@ -258,7 +258,7 @@ TEST_CASE("H2O GGA fxc pin (s2jz)", "[xckernel][golden][fxc]") {
   const auto nbf = static_cast<std::int64_t>(op.at("chi").shape[0]);
   const auto npts = static_cast<std::int64_t>(op.at("chi").shape[1]);
   auto got = run_kernel("xck_gga_r_o2", op, nbf, npts, false);
-  REQUIRE(max_rel(got, ref.data) <= kCVsNumpy);
+  REQUIRE(max_rel(got, ref.data) <= kFxcVsPyscf);
 }
 
 TEST_CASE("C backend vs NumPy pin at 1e-16 (2520)", "[xckernel][golden][cnp]") {

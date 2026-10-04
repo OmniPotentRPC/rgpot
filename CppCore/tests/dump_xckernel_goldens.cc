@@ -2,11 +2,8 @@
 // so the exclusive 1e-16 C pin is the host long-double evaluator, not a
 // stale NumPy einsum that sits a few ulp away.
 
-#include <algorithm>
-#include <cmath>
 #include <cstdio>
 #include <cstdlib>
-#include <filesystem>
 #include <map>
 #include <string>
 #include <vector>
@@ -17,7 +14,6 @@
 using rgpot::XcGrid;
 using rgpot::XcKernel;
 using rgpot::testio::NpyArray;
-using rgpot::testio::load_npy;
 using rgpot::testio::load_npz;
 using rgpot::testio::save_npy;
 
@@ -83,23 +79,8 @@ std::vector<double> run_kernel(const std::string &name,
   return out;
 }
 
-// Max |got - ref| / max(1, max|ref|), the same measure the tests apply.
-double max_rel(const std::vector<double> &got, const std::vector<double> &ref) {
-  double num = 0.0;
-  double den = 1.0;
-  for (std::size_t i = 0; i < got.size() && i < ref.size(); ++i) {
-    num = std::max(num, std::abs(got[i] - ref[i]));
-    den = std::max(den, std::abs(ref[i]));
-  }
-  return num / den;
-}
-
 void dump(const std::string &path, const std::vector<double> &mat,
           std::int64_t nbf) {
-  if (std::filesystem::exists(path)) {
-    std::printf("deviation of C from previous pin %s: %.3e\n", path.c_str(),
-                max_rel(mat, load_npy(path).data));
-  }
   save_npy(path, mat,
            {static_cast<std::size_t>(nbf), static_cast<std::size_t>(nbf)});
   std::printf("wrote %s (%lld x %lld)\n", path.c_str(),
@@ -128,14 +109,6 @@ int main() {
     op.insert(scal.begin(), scal.end());
     dump(std::string(data) + "/" + c.ref, run_kernel(c.kernel, op, 4, 200, true),
          4);
-  }
-
-  {
-    auto op = load_npz(std::string(data) + "/mol_h2o_sto3g_lvl3_operands.npz");
-    const auto nbf = static_cast<std::int64_t>(op.at("chi").shape[0]);
-    const auto npts = static_cast<std::int64_t>(op.at("chi").shape[1]);
-    dump(std::string(data) + "/gga_r_o2_fxc_ref.npy",
-         run_kernel("xck_gga_r_o2", op, nbf, npts, false), nbf);
   }
 
   const char *cnps[] = {"xck_lda_r_o1", "xck_gga_r_o1", "xck_gga_r_o2",
