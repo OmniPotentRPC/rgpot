@@ -75,14 +75,28 @@ if has_metatomic
         endif
     endif
 
+    # The generic rgpot_engine_* table needs the Cap'n Proto params schema,
+    # so it joins the engine only when the rpc stack is built.
+    _metatomic_engine_srcs = ['MetatomicPot.cc', 'MetatomicEngineAbi.cc']
+    _engine_table_deps = []
+    _engine_table_args = []
+    if _rpc_stack
+        _metatomic_engine_srcs += [
+            'MetatomicEngineTable.cc',
+            '../engine/EngineTable.cc',
+        ]
+        _engine_table_deps = [capnp_rpc_dep, ptlrpc_dep]
+        _engine_table_args = [
+            '-DRGPOT_ENGINE_BUILD',
+            '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(meson.project_version()),
+        ]
+    endif
+
     metatomic_engine = library(
         'metatomic_engine',
-        [
-            'MetatomicPot.cc',
-            'MetatomicEngineAbi.cc',
-        ],
-        dependencies: _deps + _mta_engine_deps + [dl_dep, vesin_dep],
-        cpp_args: _args + ['-DRGPOT_MTA_ENGINE_BUILD'],
+        _metatomic_engine_srcs,
+        dependencies: _deps + _mta_engine_deps + [dl_dep, vesin_dep] + _engine_table_deps,
+        cpp_args: _args + _engine_table_args + ['-DRGPOT_MTA_ENGINE_BUILD'],
         # No link_with: _linkto — engine must not NEEDED host pot libs
         include_directories: _incdirs + [mta_inc],
         install: not meson.is_subproject(),

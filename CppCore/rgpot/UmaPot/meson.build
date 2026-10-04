@@ -21,6 +21,7 @@ if _rpc_stack
         [
             'UmaPot.cc',
             'UmaEngineAbi.cc',
+            '../engine/EngineTable.cc',
         ],
         # ptlrpc_dep carries the generated Potentials.capnp.h include
         # view plus the schema TU objects (final-binary rule: a plugin
@@ -32,7 +33,10 @@ if _rpc_stack
             capnp_rpc_dep,
             ptlrpc_dep,
         ],
-        cpp_args: _args + ['-DRGPOT_ENGINE_BUILD'],
+        cpp_args: _args + [
+            '-DRGPOT_ENGINE_BUILD',
+            '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(meson.project_version()),
+        ],
         include_directories: ['../../'],
         install: not meson.is_subproject(),
         build_rpath: _engine_build_rpath,
