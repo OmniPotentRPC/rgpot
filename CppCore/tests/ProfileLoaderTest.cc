@@ -99,6 +99,10 @@ TEST_CASE("ProfileLoader capabilities round-trips a Capabilities message",
   auto kinds = caps.getConfigKinds();
   REQUIRE(kinds.size() == 1);
   REQUIRE(std::string(kinds[0].cStr()) == "cpmd");
+  REQUIRE(std::string(RGPOT_BUILD_VERSION) != "");
+  REQUIRE(std::string(caps.getBuildVersion().cStr()) == RGPOT_BUILD_VERSION);
+  REQUIRE(std::string(caps.getBuildRevision().cStr()) == RGPOT_BUILD_REVISION);
+  REQUIRE(std::string(caps.getProtocolFamily().cStr()) == "rgpot.potentials");
 }
 
 TEST_CASE("ProfileLoader drives a config -> session -> step evaluation",
@@ -153,4 +157,113 @@ TEST_CASE("ProfileLoader rejects a library missing the profile symbols",
   rgpot::abi::ProfileLoader loader;
   REQUIRE_THROWS_AS(loader.load("nwchemc", fake_engine_path()),
                     std::runtime_error);
+}
+
+namespace {
+
+::Capabilities::Builder filled_capabilities(::capnp::MallocMessageBuilder &msg) {
+  auto caps = msg.initRoot<::Capabilities>();
+  rgpot::abi::fill_compatibility(caps);
+  auto ops = caps.initOperations(2);
+  ops.set(0, ::Capabilities::Operation::ENERGY);
+  ops.set(1, ::Capabilities::Operation::FORCES);
+  return caps;
+}
+
+} // namespace
+
+TEST_CASE("capability handshake names the field, required value and received value",
+          "[abi][profile]") {
+  using rgpot::abi::Expectation;
+  auto refuse = [](auto edit, const Expectation &want, const char *exact) {
+    ::capnp::MallocMessageBuilder msg;
+    auto caps = filled_capabilities(msg);
+    edit(caps);
+    REQUIRE(rgpot::abi::check_capabilities(caps.asReader(), want) == exact);
+  };
+  auto allow = [](auto edit, const Expectation &want) {
+    ::capnp::MallocMessageBuilder msg;
+    auto caps = filled_capabilities(msg);
+    edit(caps);
+    REQUIRE(rgpot::abi::check_capabilities(caps.asReader(), want).empty());
+  };
+
+  Expectation want;
+  Expectation minor = want;
+  minor.protocol_minor_min = 1;
+  Expectation bridge_minor = want;
+  bridge_minor.bridge_abi_minor_max = 2;
+  Expectation dlpack_minor = want;
+  dlpack_minor.dlpack_minor_max = 2;
+
+  allow([](auto) {}, want);
+  refuse([](auto caps) { caps.setProtocolFamily("old.family"); }, want,
+         "protocolFamily: required rgpot.potentials, received old.family");
+  refuse([](auto caps) { caps.setProtocolFamily("new.family"); }, want,
+         "protocolFamily: required rgpot.potentials, received new.family");
+  refuse([](auto caps) { caps.setProtocolFamily(""); }, want,
+         "protocolFamily: required rgpot.potentials, received ");
+  refuse([](auto caps) { caps.setProtocolMajor(0); }, want,
+         "protocolMajor: required 1, received 0");
+  refuse([](auto caps) { caps.setProtocolMajor(2); }, want,
+         "protocolMajor: required 1, received 2");
+  allow([](auto caps) { caps.setProtocolMinor(1); }, minor);
+  refuse([](auto caps) { caps.setProtocolMinor(0); }, minor,
+         "protocolMinor: required >= 1, received 0");
+  allow([](auto caps) { caps.setProtocolMinor(3); }, minor);
+  refuse([](auto) {}, minor, "protocolMinor: required >= 1, received 0");
+  refuse([](auto caps) { caps.setSchemaId(""); }, want,
+         "schemaId: required 0xbd1f89fa17369103, received ");
+  refuse([](auto caps) { caps.setSchemaId("0x0000000000000001"); }, want,
+         "schemaId: required 0xbd1f89fa17369103, received 0x0000000000000001");
+  refuse([](auto caps) { caps.setSchemaId("0xffffffffffffffff"); }, want,
+         "schemaId: required 0xbd1f89fa17369103, received 0xffffffffffffffff");
+  refuse([](auto caps) { caps.setBridgeAbiMajor(0); }, want,
+         "bridgeAbiMajor: required 1, received 0");
+  refuse([](auto caps) { caps.setBridgeAbiMajor(2); }, want,
+         "bridgeAbiMajor: required 1, received 2");
+  allow([](auto caps) { caps.setBridgeAbiMinor(2); }, bridge_minor);
+  allow([](auto caps) { caps.setBridgeAbiMinor(1); }, bridge_minor);
+  refuse([](auto caps) { caps.setBridgeAbiMinor(3); }, bridge_minor,
+         "bridgeAbiMinor: required <= 2, received 3");
+  allow([](auto caps) { caps.setBridgeAbiMinor(0); }, bridge_minor);
+  refuse([](auto caps) { caps.setBridgeLayout(0); }, want,
+         "bridgeLayout: required 1, received 0");
+  refuse([](auto caps) { caps.setBridgeLayout(2); }, want,
+         "bridgeLayout: required 1, received 2");
+  allow([](auto caps) { caps.setBridgeFeatures(0x1); }, want);
+  refuse([](auto caps) { caps.setBridgeFeatures(0x7); }, want,
+         "bridgeFeatures: required subset of 0x3, received 0x7");
+  allow([](auto caps) { caps.setBridgeFeatures(0); }, want);
+  refuse([](auto caps) { caps.setDlpackMajor(0); }, want,
+         "dlpackMajor: required 1, received 0");
+  refuse([](auto caps) { caps.setDlpackMajor(2); }, want,
+         "dlpackMajor: required 1, received 2");
+  allow([](auto caps) { caps.setDlpackMinor(2); }, dlpack_minor);
+  allow([](auto caps) { caps.setDlpackMinor(1); }, dlpack_minor);
+  refuse([](auto caps) { caps.setDlpackMinor(3); }, dlpack_minor,
+         "dlpackMinor: required <= 2, received 3");
+  allow([](auto caps) { caps.setDlpackMinor(0); }, dlpack_minor);
+  refuse(
+      [](auto caps) {
+        auto ops = caps.initOperations(1);
+        ops.set(0, ::Capabilities::Operation::ENERGY);
+      },
+      want, "operations: required forces, received energy");
+  allow(
+      [](auto caps) {
+        auto ops = caps.initOperations(3);
+        ops.set(0, ::Capabilities::Operation::ENERGY);
+        ops.set(1, ::Capabilities::Operation::FORCES);
+        ops.set(2, ::Capabilities::Operation::HESSIAN);
+      },
+      want);
+  refuse([](auto caps) { caps.initOperations(0); }, want,
+         "operations: required energy, received none");
+
+  ::capnp::MallocMessageBuilder cleared;
+  auto caps = filled_capabilities(cleared);
+  caps.setBuildVersion("");
+  caps.setBuildRevision("");
+  REQUIRE(rgpot::abi::check_capabilities(caps.asReader()).empty());
 }

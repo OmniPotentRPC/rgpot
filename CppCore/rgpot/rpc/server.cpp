@@ -63,6 +63,7 @@ class MpiPefSession;
 #include "rgpot/Potential.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
+#include "rgpot/abi/Compat.hpp"
 #include "rgpot/types/adapters/capnp/capnp_adapter.hpp"
 #include "rgpot/units.hpp"
 
@@ -118,6 +119,18 @@ public:
    * @param context The Cap'n Proto RPC call context.
    * @return An asynchronous promise for completion.
    */
+  kj::Promise<void> getCapabilities(GetCapabilitiesContext context) override {
+    auto caps = context.getResults().initCapabilities();
+    rgpot::abi::fill_compatibility(caps);
+    caps.setBackendName("rgpot");
+    caps.setBackendVersion(RGPOT_BUILD_VERSION);
+    caps.setAvailable(true);
+    auto ops = caps.initOperations(2);
+    ops.set(0, ::Capabilities::Operation::ENERGY);
+    ops.set(1, ::Capabilities::Operation::FORCES);
+    return kj::READY_NOW;
+  }
+
   kj::Promise<void> calculate(CalculateContext context) override {
     auto fip = context.getParams().getFip();
     const size_t numAtoms = fip.getPos().size() / 3;

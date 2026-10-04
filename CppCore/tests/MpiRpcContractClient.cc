@@ -1,4 +1,5 @@
 // MIT License
+#include "rgpot/abi/Compat.hpp"
 #include "rgpot/rpc/Potentials.capnp.h"
 #include "rgpot/units.hpp"
 #include <capnp/ez-rpc.h>
@@ -23,6 +24,13 @@ int main(int argc, char **argv) {
     capnp::EzRpcClient client(argv[1]);
     auto potential = client.getMain<Potential>();
     auto &wait = client.getWaitScope();
+    {
+      auto request = potential.getCapabilitiesRequest();
+      auto response = request.send().wait(wait);
+      const std::string why =
+          rgpot::abi::check_capabilities(response.getCapabilities());
+      require(why.empty(), why.c_str());
+    }
     auto configure = [&](int charge, const char *title, bool accepted) {
       auto request = potential.configureRequest();
       auto configuration = request.initConfig();

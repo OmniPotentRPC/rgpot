@@ -10,8 +10,8 @@ fn generate_c_header(crate_dir: &str) {
     let output_dir = PathBuf::from(crate_dir).join("include");
     std::fs::create_dir_all(&output_dir).unwrap();
 
-    let mut config = cbindgen::Config::from_file("cbindgen.toml")
-        .expect("Unable to find cbindgen.toml");
+    let mut config =
+        cbindgen::Config::from_file("cbindgen.toml").expect("Unable to find cbindgen.toml");
 
     let version = env::var("CARGO_PKG_VERSION").unwrap();
     let parts: Vec<&str> = version.split('.').collect();
@@ -43,9 +43,39 @@ fn generate_c_header(crate_dir: &str) {
     std::fs::write(&path, format!("{}\n", content.trim_end())).unwrap();
 }
 
+/// Source revision of this build.
+///
+/// `RGPOT_SOURCE_REVISION` wins. Otherwise the git short hash of `crate_dir`.
+/// A tarball, or any value that is not alphanumeric, records an empty string.
+fn source_revision(crate_dir: &str) -> String {
+    let raw = if let Ok(rev) = env::var("RGPOT_SOURCE_REVISION") {
+        rev
+    } else {
+        std::process::Command::new("git")
+            .args(["-C", crate_dir, "rev-parse", "--short=12", "HEAD"])
+            .output()
+            .ok()
+            .filter(|out| out.status.success())
+            .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
+            .unwrap_or_default()
+    };
+    let rev = raw.trim();
+    if rev.bytes().all(|b| b.is_ascii_alphanumeric()) {
+        rev.to_owned()
+    } else {
+        String::new()
+    }
+}
+
 fn main() {
     #[allow(unused_variables)]
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+
+    println!("cargo::rerun-if-env-changed=RGPOT_SOURCE_REVISION");
+    println!(
+        "cargo::rustc-env=RGPOT_SOURCE_REVISION={}",
+        source_revision(&crate_dir)
+    );
 
     // eindir-core is a normal Cargo dependency now; its capi #[no_mangle] symbols
     // resolve through the shared crate, so no prebuilt static lib link is needed.

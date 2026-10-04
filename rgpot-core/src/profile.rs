@@ -18,6 +18,7 @@ use capnp::message::{Builder, ReaderOptions};
 use capnp::serialize;
 use libloading::Library;
 
+use crate::compat::{self, Expectation};
 use crate::Potentials_capnp::{force_input, potential_result};
 
 /// One atomistic evaluation sent through a profile session.
@@ -242,6 +243,10 @@ pub struct ProfileSession {
     last_error: LastErrorFn,
     calculate: SessionCalculateResultFn,
     result_size: PotentialResultSizeFn,
+    /// Flat `Capabilities` message read from the backend at load.
+    capabilities: Vec<u8>,
+    build_version: String,
+    build_revision: String,
 }
 
 impl ProfileSession {
@@ -301,7 +306,7 @@ impl ProfileSession {
                 "potential_result_size_for_force_input",
             )?
         };
-        let _capabilities =
+        let capabilities_fn =
             unsafe { resolve::<CapabilitiesResultFn>(&library, prefix, "capabilities_result")? };
 
         if unsafe { available() } == 0 {
@@ -309,6 +314,9 @@ impl ProfileSession {
                 "potential profile {prefix} is not available"
             )));
         }
+        let capabilities = read_capabilities(prefix, capabilities_fn)?;
+        let identity =
+            compat::inspect(&capabilities, &Expectation::default()).map_err(ProfileError::new)?;
         let version = c_string(unsafe { version_fn() });
         let session = unsafe { session_create(config.as_ptr().cast(), config.len()) };
         if session.is_null() {
@@ -333,6 +341,9 @@ impl ProfileSession {
             last_error,
             calculate,
             result_size,
+            capabilities,
+            build_version: identity.build_version,
+            build_revision: identity.build_revision,
         })
     }
 
@@ -356,8 +367,22 @@ impl ProfileSession {
         self.abi_version
     }
 
+    /// `buildVersion` from the peer `Capabilities` message. Empty when unknown.
+    pub fn build_version(&self) -> &str {
+        &self.build_version
+    }
+
+    /// `buildRevision` from the peer `Capabilities` message. Empty when unknown.
+    pub fn build_revision(&self) -> &str {
+        &self.build_revision
+    }
+
     /// Evaluate one geometry through the persistent session.
+    ///
+    /// The peer `Capabilities` message is checked again before the backend
+    /// is asked for forces.
     pub fn evaluate(&mut self, request: &ProfileRequest<'_>) -> ProfileResult<ProfileEvaluation> {
+        compat::inspect(&self.capabilities, &Expectation::default()).map_err(ProfileError::new)?;
         let force_input = encode_force_input(request)?;
         let required =
             unsafe { (self.result_size)(force_input.as_ptr().cast(), force_input.len()) };
@@ -403,6 +428,27 @@ impl ProfileSession {
     fn last_error_message(&self) -> String {
         c_string(unsafe { (self.last_error)() })
     }
+}
+
+/// Capabilities message bytes: size query, then fill.
+fn read_capabilities(prefix: &str, read: CapabilitiesResultFn) -> ProfileResult<Vec<u8>> {
+    let mut required = 0usize;
+    let _ = unsafe { read(std::ptr::null_mut(), 0, &mut required) };
+    if required == 0 || required % 8 != 0 {
+        return Err(ProfileError::new(format!(
+            "{prefix}_capabilities_result reported invalid size {required}"
+        )));
+    }
+    let mut bytes = vec![0u8; required];
+    let mut written = 0usize;
+    let status = unsafe { read(bytes.as_mut_ptr().cast(), bytes.len(), &mut written) };
+    if status != 0 || written == 0 || written > bytes.len() || written % 8 != 0 {
+        return Err(ProfileError::new(format!(
+            "{prefix}_capabilities_result failed (status {status}, wrote {written} of {required})"
+        )));
+    }
+    bytes.truncate(written);
+    Ok(bytes)
 }
 
 fn open_first(prefix: &str, explicit_path: Option<&str>) -> ProfileResult<(Library, String)> {

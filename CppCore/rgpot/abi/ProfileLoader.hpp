@@ -14,6 +14,7 @@
  */
 
 #include "rgpot/NWChemPot/DynLib.hpp"
+#include "rgpot/abi/Compat.hpp"
 
 #include <cstddef>
 #include <cstdlib>
@@ -133,6 +134,9 @@ public:
         what += " " + sym;
       throw std::runtime_error(what);
     }
+    const std::string why = check_capabilities_bytes(capabilities());
+    if (!why.empty())
+      throw std::runtime_error(prefix_ + " backend refused: " + why);
   }
 
   bool loaded() const { return lib_.valid() && capabilities_result; }

@@ -88,6 +88,8 @@ struct Capabilities {
   dlpackMajor    @15 :UInt16; # DLPack callback major revision.
   dlpackMinor    @16 :UInt16; # DLPack callback minor revision.
   bridgeFeatures @17 :UInt64; # eindir bridge feature bitset.
+  buildVersion   @18 :Text; # Version of the build that produced this message; empty when unknown.
+  buildRevision  @19 :Text; # Source revision of that build (e.g. a git commit); empty when unknown.
 
   enum Operation {
     energy         @0;
@@ -2586,4 +2588,9 @@ interface Potential {
   # @brief Compute potential energy and nuclear gradient for this geometry.
   # @return PotentialResult.energy and PotentialResult.gradient.
   calculateGradient @11 (fip :ForceInput) -> (result :PotentialResult);
+
+  # @brief Capabilities of this server, read before any calculate call.
+  # @return The protocol, schema, eindir bridge, DLPack and build identity.
+  # buildVersion and buildRevision are empty when the build does not know them.
+  getCapabilities @12 () -> (capabilities :Capabilities);
 }

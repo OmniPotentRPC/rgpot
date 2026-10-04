@@ -11,6 +11,7 @@
 
 #include "pot_bridge.h"
 #include "Potentials.capnp.h"
+#include "rgpot/abi/Compat.hpp"
 #include <algorithm>
 #include <capnp/ez-rpc.h>
 #include <capnp/message.h>
@@ -120,6 +121,26 @@ int32_t pot_calculate(PotClient *client, int32_t natoms, const double *pos,
 
   try {
     auto &waitScope = *client->wait_scope;
+    std::string why;
+    try {
+      auto cap_request = client->capability.getCapabilitiesRequest();
+      auto cap_response = cap_request.send().wait(waitScope);
+      why = rgpot::abi::check_capabilities(cap_response.getCapabilities());
+    } catch (const kj::Exception &ex) {
+      client->last_error =
+          std::string("capabilities: required a Capabilities message, received ") +
+          ex.getDescription().cStr();
+      return -3;
+    } catch (const std::exception &ex) {
+      client->last_error =
+          std::string("capabilities: required a Capabilities message, received ") +
+          ex.what();
+      return -3;
+    }
+    if (!why.empty()) {
+      client->last_error = why;
+      return -3;
+    }
     auto req = client->capability.calculateRequest();
     auto fip = req.initFip();
 

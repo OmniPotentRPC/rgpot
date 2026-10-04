@@ -26,8 +26,7 @@ use dlpk::sys::DLManagedTensorVersioned;
 use crate::potential::PotentialCallback;
 use crate::status::{rgpot_status_t, set_last_error};
 use crate::tensor::{
-    checked_f64_data, copy_f64_tensor,
-    rgpot_tensor_cpu_f64_2d, rgpot_tensor_cpu_f64_matrix3,
+    checked_f64_data, copy_f64_tensor, rgpot_tensor_cpu_f64_2d, rgpot_tensor_cpu_f64_matrix3,
     rgpot_tensor_cpu_i32_1d, rgpot_tensor_free,
 };
 use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
@@ -45,8 +44,8 @@ use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
 
 pub use eindir_core::ffi::eindir_status_t;
 pub use eindir_core::ffi::{
-    eindir_abi_stamp_t, eindir_objective_eval, eindir_objective_grad,
-    eindir_objective_has_grad, eindir_objective_t, EindirEvalFn, EindirFreeFn, EindirGradFn,
+    eindir_abi_stamp_t, eindir_objective_eval, eindir_objective_grad, eindir_objective_has_grad,
+    eindir_objective_t, EindirEvalFn, EindirFreeFn, EindirGradFn,
 };
 
 /// The eindir ABI stamp of the `eindir_objective_t` base that
@@ -97,6 +96,10 @@ pub struct rgpot_fused_cache_t {
     last: Mutex<Option<FusedEvaluation>>,
     computed: AtomicU64,
     served: AtomicU64,
+    /// Peer `Capabilities` bytes. Absent means the callback contract has no
+    /// metadata to compare, which is how handles created without a peer
+    /// message keep evaluating.
+    peer_capabilities: Mutex<Option<Vec<u8>>>,
 }
 
 impl rgpot_fused_cache_t {
@@ -105,8 +108,42 @@ impl rgpot_fused_cache_t {
             last: Mutex::new(None),
             computed: AtomicU64::new(0),
             served: AtomicU64::new(0),
+            peer_capabilities: Mutex::new(None),
         }
     }
+}
+
+/// Install the peer `Capabilities` message checked before eindir and C ABI
+/// force dispatch. `None` clears it.
+pub fn set_peer_capabilities(pot: &rgpot_potential_t, bytes: Option<Vec<u8>>) {
+    *pot.fused_cache
+        .peer_capabilities
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = bytes;
+}
+
+/// Refuse an incompatible peer before the force callback runs.
+///
+/// A handle with no installed message is the callback contract and is allowed.
+/// A message that fails the handshake returns the field, the required value
+/// and the received value.
+pub(crate) fn refuse_incompatible_peer(pot: &rgpot_potential_t) -> Result<(), String> {
+    #[cfg(feature = "schema")]
+    {
+        let guard = pot
+            .fused_cache
+            .peer_capabilities
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(bytes) = guard.as_ref() {
+            crate::compat::inspect(bytes, &crate::compat::Expectation::default())?;
+        }
+    }
+    #[cfg(not(feature = "schema"))]
+    {
+        let _ = pot;
+    }
+    Ok(())
 }
 
 /// Evaluations a potential handle has answered, split by origin.
@@ -203,6 +240,9 @@ unsafe extern "C" fn rgpot_eval_cb(
     value_out: *mut f64,
 ) -> eindir_status_t {
     let pot = unsafe { &*(user_data as *const rgpot_potential_t) };
+    if let Err(msg) = refuse_incompatible_peer(pot) {
+        return reject(&msg);
+    }
     let Some(n) = pot.n_atoms.checked_mul(3) else {
         return reject("n_atoms * 3 overflows");
     };
@@ -215,12 +255,8 @@ unsafe extern "C" fn rgpot_eval_cb(
         unsafe { std::slice::from_raw_parts(pot.atomic_numbers, pot.n_atoms) }.to_vec();
     let mut box_ = pot.box_matrix;
     let input = rgpot_force_input_t {
-        positions: unsafe {
-            rgpot_tensor_cpu_f64_2d(pos.as_mut_ptr(), pot.n_atoms as i64, 3)
-        },
-        atomic_numbers: unsafe {
-            rgpot_tensor_cpu_i32_1d(atmnrs.as_mut_ptr(), pot.n_atoms as i64)
-        },
+        positions: unsafe { rgpot_tensor_cpu_f64_2d(pos.as_mut_ptr(), pot.n_atoms as i64, 3) },
+        atomic_numbers: unsafe { rgpot_tensor_cpu_i32_1d(atmnrs.as_mut_ptr(), pot.n_atoms as i64) },
         box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(box_.as_mut_ptr()) },
     };
     let mut output = rgpot_force_out_t {
@@ -229,8 +265,7 @@ unsafe extern "C" fn rgpot_eval_cb(
         variance: 0.0,
     };
     pot.fused_cache.computed.fetch_add(1, Ordering::Relaxed);
-    let status =
-        unsafe { (pot.callback)(pot.pot_user_data, &input, &mut output) };
+    let status = unsafe { (pot.callback)(pot.pot_user_data, &input, &mut output) };
     let forces = if status == rgpot_status_t::RGPOT_SUCCESS {
         validated_result(&output, n)
     } else {
@@ -274,6 +309,9 @@ unsafe extern "C" fn rgpot_grad_cb(
     grad_out: *mut DLManagedTensorVersioned,
 ) -> eindir_status_t {
     let pot = unsafe { &*(user_data as *const rgpot_potential_t) };
+    if let Err(msg) = refuse_incompatible_peer(pot) {
+        return reject(&msg);
+    }
     let Some(n) = pot.n_atoms.checked_mul(3) else {
         return reject("n_atoms * 3 overflows");
     };
@@ -304,12 +342,8 @@ unsafe extern "C" fn rgpot_grad_cb(
         unsafe { std::slice::from_raw_parts(pot.atomic_numbers, pot.n_atoms) }.to_vec();
     let mut box_ = pot.box_matrix;
     let input = rgpot_force_input_t {
-        positions: unsafe {
-            rgpot_tensor_cpu_f64_2d(pos.as_mut_ptr(), pot.n_atoms as i64, 3)
-        },
-        atomic_numbers: unsafe {
-            rgpot_tensor_cpu_i32_1d(atmnrs.as_mut_ptr(), pot.n_atoms as i64)
-        },
+        positions: unsafe { rgpot_tensor_cpu_f64_2d(pos.as_mut_ptr(), pot.n_atoms as i64, 3) },
+        atomic_numbers: unsafe { rgpot_tensor_cpu_i32_1d(atmnrs.as_mut_ptr(), pot.n_atoms as i64) },
         box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(box_.as_mut_ptr()) },
     };
     let mut output = rgpot_force_out_t {
@@ -318,8 +352,7 @@ unsafe extern "C" fn rgpot_grad_cb(
         variance: 0.0,
     };
     pot.fused_cache.computed.fetch_add(1, Ordering::Relaxed);
-    let status =
-        unsafe { (pot.callback)(pot.pot_user_data, &input, &mut output) };
+    let status = unsafe { (pot.callback)(pot.pot_user_data, &input, &mut output) };
     let forces = if status == rgpot_status_t::RGPOT_SUCCESS {
         validated_result(&output, n)
     } else {
@@ -784,7 +817,9 @@ mod tests {
         out.energy = 1.0;
         out.forces = match mode {
             Bad::NullForces => std::ptr::null_mut(),
-            Bad::WrongLength => create_owned_f64_tensor(vec![0.0; n * 3 - 1], vec![(n * 3 - 1) as i64]),
+            Bad::WrongLength => {
+                create_owned_f64_tensor(vec![0.0; n * 3 - 1], vec![(n * 3 - 1) as i64])
+            }
             Bad::WrongRank => create_owned_f64_tensor(vec![0.0; n * 3], vec![1, n as i64, 3]),
             Bad::NotF64 => {
                 let t = create_owned_f64_tensor(vec![0.0; n * 3], vec![n as i64, 3]);
@@ -852,7 +887,10 @@ mod tests {
             assert_eq!(s, eindir_status_t::EINDIR_INVALID_PARAMETER);
             let s = unsafe { eindir_objective_grad(obj, x_t, g_t) };
             assert_eq!(s, eindir_status_t::EINDIR_INVALID_PARAMETER);
-            assert!(g_data.iter().all(|&v| v == 7.0), "gradient must stay untouched");
+            assert!(
+                g_data.iter().all(|&v| v == 7.0),
+                "gradient must stay untouched"
+            );
 
             unsafe {
                 del1d(x_t);
@@ -945,7 +983,13 @@ mod tests {
             unsafe { rgpot_potential_eval_counts(pot, &mut counts) },
             rgpot_status_t::RGPOT_SUCCESS
         );
-        assert_eq!(counts, rgpot_eval_counts_t { computed: 0, served: 0 });
+        assert_eq!(
+            counts,
+            rgpot_eval_counts_t {
+                computed: 0,
+                served: 0
+            }
+        );
 
         let mut x = [1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0];
         let x_t = make_1d(x.as_mut_ptr(), 6);
@@ -957,13 +1001,25 @@ mod tests {
         unsafe { eindir_objective_eval(obj, x_t, &mut value) };
         unsafe { eindir_objective_grad(obj, x_t, g_t) };
         unsafe { rgpot_potential_eval_counts(pot, &mut counts) };
-        assert_eq!(counts, rgpot_eval_counts_t { computed: 1, served: 1 });
+        assert_eq!(
+            counts,
+            rgpot_eval_counts_t {
+                computed: 1,
+                served: 1
+            }
+        );
         assert_eq!(calls, 1);
 
         // A gradient with no preceding energy is computed.
         unsafe { eindir_objective_grad(obj, x_t, g_t) };
         unsafe { rgpot_potential_eval_counts(pot, &mut counts) };
-        assert_eq!(counts, rgpot_eval_counts_t { computed: 2, served: 1 });
+        assert_eq!(
+            counts,
+            rgpot_eval_counts_t {
+                computed: 2,
+                served: 1
+            }
+        );
         assert_eq!(calls, 2);
 
         unsafe { rgpot_potential_reset_eval_counts(pot) };
@@ -988,7 +1044,73 @@ mod tests {
     #[test]
     fn eindir_abi_stamp_is_accepted_by_eindir_core() {
         let stamp = rgpot_eindir_abi_stamp();
-        assert_eq!(stamp.objective_size, std::mem::size_of::<eindir_objective_t>());
-        assert_eq!(unsafe { eindir_core::ffi::eindir_core_abi_compatible(&stamp) }, 1);
+        assert_eq!(
+            stamp.objective_size,
+            std::mem::size_of::<eindir_objective_t>()
+        );
+        assert_eq!(
+            unsafe { eindir_core::ffi::eindir_core_abi_compatible(&stamp) },
+            1
+        );
+    }
+
+    #[cfg(feature = "schema")]
+    #[test]
+    fn eindir_eval_refuses_an_incompatible_peer_before_the_callback() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static CALLS: AtomicU32 = AtomicU32::new(0);
+        unsafe extern "C" fn cb(
+            _ud: *mut c_void,
+            _input: *const rgpot_force_input_t,
+            output: *mut rgpot_force_out_t,
+        ) -> rgpot_status_t {
+            CALLS.fetch_add(1, Ordering::SeqCst);
+            let out = unsafe { &mut *output };
+            out.energy = 1.0;
+            out.variance = 0.0;
+            out.forces = create_owned_f64_tensor(vec![0.0; 3], vec![1, 3]);
+            rgpot_status_t::RGPOT_SUCCESS
+        }
+        CALLS.store(0, Ordering::SeqCst);
+        let atoms = [1i32];
+        let pot = unsafe {
+            rgpot_potential_new_eindir(
+                cb,
+                std::ptr::null_mut(),
+                None,
+                1,
+                atoms.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+            )
+        };
+        set_peer_capabilities(
+            unsafe { &*pot },
+            Some(crate::compat::flat_message(|caps| {
+                caps.set_schema_id("0xdead")
+            })),
+        );
+        let obj = pot as *mut eindir_objective_t;
+        let mut x = [0.0f64; 3];
+        let x_t = make_1d(x.as_mut_ptr(), 3);
+        let mut value = 0.0;
+        let status = unsafe { eindir_objective_eval(obj, x_t, &mut value) };
+        assert_eq!(status, eindir_status_t::EINDIR_INVALID_PARAMETER);
+        assert_eq!(CALLS.load(Ordering::SeqCst), 0);
+        let err = unsafe { std::ffi::CStr::from_ptr(crate::status::rgpot_last_error()) };
+        assert_eq!(
+            err.to_str().unwrap(),
+            "schemaId: required 0xbd1f89fa17369103, received 0xdead"
+        );
+        set_peer_capabilities(unsafe { &*pot }, Some(crate::compat::flat_message(|_| {})));
+        let status = unsafe { eindir_objective_eval(obj, x_t, &mut value) };
+        assert_eq!(status, eindir_status_t::EINDIR_SUCCESS);
+        assert_eq!(CALLS.load(Ordering::SeqCst), 1);
+        assert_eq!(value, 1.0);
+        unsafe {
+            del1d(x_t);
+            rgpot_potential_free_eindir(pot);
+        }
     }
 }
