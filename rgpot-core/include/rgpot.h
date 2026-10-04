@@ -42,6 +42,16 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 #define RGPOT_ABI_LAYOUT_REVISION 1
 
 /**
+ * Wire-incompatible protocol revision.
+ */
+#define PROTOCOL_MAJOR 1
+
+/**
+ * Additive protocol revision.
+ */
+#define PROTOCOL_MINOR 0
+
+/**
  * Status codes returned by all C API functions.
  */
 typedef enum rgpot_status_t {
@@ -544,6 +554,14 @@ void rgpot_rpc_client_free(rgpot_rpc_client_t *client);
  * The pointer refers to static storage: never free it.
  */
 const char *rgpot_version(void);
+
+/**
+ * Source revision the loaded library was built from (a git short hash), or
+ * an empty string when the build had no revision to record.
+ *
+ * The pointer refers to static storage: never free it.
+ */
+const char *rgpot_source_revision(void);
 
 /**
  * Major version of the loaded library.
