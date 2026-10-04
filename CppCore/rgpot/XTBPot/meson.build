@@ -40,14 +40,28 @@ if has_xtb
     )
 
     # Portable plugin: links libxtb + XTBPot implementation via XTBEngineAbi.
+    _xtb_engine_srcs = ['XTBPot.cc', 'XTBEngineAbi.cc']
+    _xtb_engine_deps = []
+    _xtb_engine_args = []
+    if _rpc_stack
+        # The generic rgpot_engine_* table needs the Cap'n Proto params schema.
+        _xtb_engine_srcs += [
+            '../engine/XtbEngine.cc',
+            '../engine/EngineTable.cc',
+        ]
+        _xtb_engine_deps = [capnp_rpc_dep, ptlrpc_dep]
+        _xtb_engine_args = [
+            '-DRGPOT_ENGINE_BUILD',
+            '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(
+                meson.project_version(),
+            ),
+        ]
+    endif
     xtb_engine = library(
         'xtb_engine',
-        [
-            'XTBPot.cc',
-            'XTBEngineAbi.cc',
-        ],
-        dependencies: _deps + [vesin_dep],
-        cpp_args: _args + ['-DRGPOT_XTB_ENGINE_BUILD'],
+        _xtb_engine_srcs,
+        dependencies: _deps + [vesin_dep] + _xtb_engine_deps,
+        cpp_args: _args + _xtb_engine_args + ['-DRGPOT_XTB_ENGINE_BUILD'],
         include_directories: _incdirs + [xtb_inc],
         install: not meson.is_subproject(),
         gnu_symbol_visibility: 'default',
