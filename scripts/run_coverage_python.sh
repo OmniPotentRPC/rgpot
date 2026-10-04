@@ -5,7 +5,6 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 OUT_XML="${1:-python_coverage.xml}"
 
-python3 -m pip install -U pip -q 2>/dev/null || true
 python3 -m pip install -q pytest pytest-cov coverage 'pycapnp>=2' numpy
 
 export PYTHONPATH="${ROOT}/tests${PYTHONPATH:+:$PYTHONPATH}"

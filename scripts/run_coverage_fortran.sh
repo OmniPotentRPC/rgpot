@@ -22,8 +22,7 @@ fi
 echo "==> extract Fortran kernels from meson coverage tree $BUILD"
 RAW=$(mktemp)
 trap 'rm -f "$RAW"' EXIT
-lcov --directory "$BUILD" --capture --output-file "$RAW" 2>/dev/null \
-  || lcov --directory "$BUILD" --capture --output-file "$RAW"
+lcov --directory "$BUILD" --capture --output-file "$RAW"
 lcov --extract "$RAW" '*/CppCore/rgpot/fortran/*' \
   --output-file "$OUT"
 

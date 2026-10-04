@@ -29,24 +29,19 @@ meson setup "$BUILD" \
   --buildtype=debug
 
 meson compile -C "$BUILD"
-meson test -C "$BUILD" --print-errorlogs || true
+meson test -C "$BUILD" --print-errorlogs
 
 echo "==> lcov capture"
 lcov --directory "$BUILD" --capture --output-file "$OUT" \
-  --rc lcov_branch_coverage=1 2>/dev/null \
-  || lcov --directory "$BUILD" --capture --output-file "$OUT"
+  --rc lcov_branch_coverage=1
 
 # Keep library sources: CppCore/rgpot (C++ and Fortran kernels)
 TMP=$(mktemp)
-if lcov --extract "$OUT" \
+trap 'rm -f "$TMP"' EXIT
+lcov --extract "$OUT" \
   '*/CppCore/rgpot/*' '*/include/*' \
-  --output-file "$TMP" 2>/dev/null; then
-  mv "$TMP" "$OUT"
-else
-  rm -f "$TMP"
-  lcov --remove "$OUT" '/usr/*' '*/CppCore/tests/*' '*/.pixi/*' '*/meson-private/*' \
-    --output-file "$OUT" || true
-fi
+  --output-file "$TMP"
+mv "$TMP" "$OUT"
 
 test -s "$OUT"
 python3 - "$OUT" <<'PY'

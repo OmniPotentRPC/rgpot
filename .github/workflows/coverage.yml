@@ -106,8 +106,9 @@ jobs:
           bash scripts/run_coverage_cpp.sh cpp_lcov.info
           test -s cpp_lcov.info
           # Fortran kernel hits from the same tree (the pot tests drive them)
-          bash scripts/run_coverage_fortran.sh fortran_lcov.info || true
-          ls -la cpp_lcov.info fortran_lcov.info 2>/dev/null || true
+          bash scripts/run_coverage_fortran.sh fortran_lcov.info
+          test -s fortran_lcov.info
+          ls -la cpp_lcov.info fortran_lcov.info
 
       - name: Upload cpp coverage artifact
         uses: actions/upload-artifact@v4
@@ -173,7 +174,7 @@ jobs:
         run: |
           # The meson tree is required: the kernels build inside it.
           if [[ ! -d bbdir-cov ]]; then
-            bash scripts/run_coverage_cpp.sh /tmp/cpp_for_fort.info || true
+            bash scripts/run_coverage_cpp.sh /tmp/cpp_for_fort.info
           fi
           bash scripts/run_coverage_fortran.sh fortran_lcov.info
           test -s fortran_lcov.info
