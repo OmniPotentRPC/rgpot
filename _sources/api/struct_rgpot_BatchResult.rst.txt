@@ -1,0 +1,24 @@
+.. index:: pair: struct; rgpot::BatchResult
+.. _doxid-structrgpot_1_1_batch_result:
+
+struct rgpot::BatchResult
+=========================
+
+.. toctree::
+	:hidden:
+
+Energy, forces and variance of one configuration.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <BatchEvaluator.hpp>
+	
+	struct BatchResult {
+		// fields
+	
+		double :target:`energy<doxid-structrgpot_1_1_batch_result_1a36cf7524379f0aa8c0c37db3166391fc>` = 0.0;
+		:ref:`types::AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>` :target:`forces<doxid-structrgpot_1_1_batch_result_1a8d7eb928ead7d05e3fdf961700a4f1a0>`;
+		double :target:`variance<doxid-structrgpot_1_1_batch_result_1a63f2ada30ac398b2066e6e27bd41aa43>` = 0.0;
+	};

@@ -1,0 +1,24 @@
+.. index:: pair: struct; rgpot::BatchInput
+.. _doxid-structrgpot_1_1_batch_input:
+
+struct rgpot::BatchInput
+========================
+
+.. toctree::
+	:hidden:
+
+One configuration of a batch.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <BatchEvaluator.hpp>
+	
+	struct BatchInput {
+		// fields
+	
+		:ref:`types::AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>` :target:`positions<doxid-structrgpot_1_1_batch_input_1ad07cdce593785ff217201306a9d61e76>`;
+		std::vector<int> :target:`atomic_numbers<doxid-structrgpot_1_1_batch_input_1a2bd05125f39504df6295a0e387f6dcbb>`;
+		std::array<std::array<double, 3>, 3> :target:`box<doxid-structrgpot_1_1_batch_input_1abc24e4997bf67da078ca5c46c1a0f154>`;
+	};

@@ -1,0 +1,88 @@
+.. index:: pair: class; rgpot::BatchEvaluator
+.. _doxid-classrgpot_1_1_batch_evaluator:
+
+class rgpot::BatchEvaluator
+===========================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class BatchEvaluator {
+	public:
+		// construction
+	
+		:ref:`BatchEvaluator<doxid-classrgpot_1_1_batch_evaluator_1a222557a7df1e3a946dd8eeb3d570113b>`(:ref:`PotentialFactory<doxid-namespacergpot_1ae8abfa3d92c0185e23f86252925a2d68>` factory, unsigned n_threads = 0);
+
+		// methods
+	
+		std::vector<:ref:`BatchResult<doxid-structrgpot_1_1_batch_result>`> :ref:`evaluate<doxid-classrgpot_1_1_batch_evaluator_1ae629254db4618cb98ec298c2dffb1e2a>`(const std::vector<:ref:`BatchInput<doxid-structrgpot_1_1_batch_input>`>& inputs);
+		unsigned :ref:`n_threads<doxid-classrgpot_1_1_batch_evaluator_1a61a9d91ec017c9edff322c9457709d82>`() const;
+	};
+.. _details-classrgpot_1_1_batch_evaluator:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Construction
+------------
+
+.. index:: pair: function; BatchEvaluator
+.. _doxid-classrgpot_1_1_batch_evaluator_1a222557a7df1e3a946dd8eeb3d570113b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	BatchEvaluator(:ref:`PotentialFactory<doxid-namespacergpot_1ae8abfa3d92c0185e23f86252925a2d68>` factory, unsigned n_threads = 0)
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- factory
+
+		- Called once per worker; must return a distinct instance each call.
+
+	*
+		- n_threads
+
+		- Number of workers; 0 selects the hardware concurrency (at least 1).
+
+Methods
+-------
+
+.. index:: pair: function; evaluate
+.. _doxid-classrgpot_1_1_batch_evaluator_1ae629254db4618cb98ec298c2dffb1e2a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::vector<:ref:`BatchResult<doxid-structrgpot_1_1_batch_result>`> evaluate(const std::vector<:ref:`BatchInput<doxid-structrgpot_1_1_batch_input>`>& inputs)
+
+Evaluate every configuration; results[i] answers inputs[i].
+
+.. index:: pair: function; n_threads
+.. _doxid-classrgpot_1_1_batch_evaluator_1a61a9d91ec017c9edff322c9457709d82:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	unsigned n_threads() const
+
+Number of workers.
+

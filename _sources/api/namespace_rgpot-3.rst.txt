@@ -24,6 +24,8 @@ namespace rgpot
 	enum_rgpot_Reentrancy.rst
 	enum_rgpot_TBLiteMethod.rst
 	enum_rgpot_TorchDeterminismPolicy.rst
+	struct_rgpot_BatchInput.rst
+	struct_rgpot_BatchResult.rst
 	struct_rgpot_CalculatorGroup.rst
 	struct_rgpot_D3Config.rst
 	struct_rgpot_D4Config.rst
@@ -48,6 +50,7 @@ namespace rgpot
 	struct_rgpot_ZBLConfig.rst
 	struct_rgpot_ZblPairCoeffs.rst
 	struct_rgpot_ZblTables.rst
+	class_rgpot_BatchEvaluator.rst
 	class_rgpot_CPMDPot.rst
 	class_rgpot_D3Pot.rst
 	class_rgpot_D4Pot.rst
@@ -105,6 +108,7 @@ Prefix-parameterized loader for the minimum potential ABI profile. :ref:`More...
 
 	// typedefs
 
+	typedef std::function<std::unique_ptr<:ref:`PotentialBase<doxid-classrgpot_1_1_potential_base>`>()> :ref:`PotentialFactory<doxid-namespacergpot_1ae8abfa3d92c0185e23f86252925a2d68>`;
 	typedef int(*)(int ranks_per_calculator) :target:`CalculatorHook<doxid-namespacergpot_1ae8c651a5edee6b369326d372c16a6f45>`;
 	typedef int(*)(const void*, std::size_t, int) :target:`CalculatorCommAdopter<doxid-namespacergpot_1a26176aa23658758479715a8be075b56b>`;
 
@@ -118,6 +122,8 @@ Prefix-parameterized loader for the minimum potential ABI profile. :ref:`More...
 
 	// structs
 
+	struct :ref:`BatchInput<doxid-structrgpot_1_1_batch_input>`;
+	struct :ref:`BatchResult<doxid-structrgpot_1_1_batch_result>`;
 	struct :ref:`CalculatorGroup<doxid-structrgpot_1_1_calculator_group>`;
 	struct :ref:`D3Config<doxid-structrgpot_1_1_d3_config>`;
 	struct :ref:`D4Config<doxid-structrgpot_1_1_d4_config>`;
@@ -145,6 +151,7 @@ Prefix-parameterized loader for the minimum potential ABI profile. :ref:`More...
 
 	// classes
 
+	class :ref:`BatchEvaluator<doxid-classrgpot_1_1_batch_evaluator>`;
 	class :ref:`CPMDPot<doxid-classrgpot_1_1_c_p_m_d_pot>`;
 	class :ref:`CalcResult<doxid-classrgpot_1_1_calc_result>`;
 	class :ref:`D3Pot<doxid-classrgpot_1_1_d3_pot>`;
@@ -269,7 +276,19 @@ Named-child PES algebra compiled with OpenMM Lepton.
 
 CPMD potential under rgpot ``PotentialConfig`` user parameters.
 
+Parallel evaluation of independent configurations.
+
 Backends (nwchemc, cpmdc, future lammpsc/gromacsc) export the same C symbol set prefix-parameterized on ``<p>`` (see potentials-schema PROFILE.md). This loader resolves that whole set from one dlopen'd shared library, so rgpot drives every conforming backend through identical function pointers with no per-backend loader code. Everything stays native: flat binary Cap'n Proto messages both directions, plain C calls in-process.
+
+A :ref:`BatchEvaluator <doxid-classrgpot_1_1_batch_evaluator>` owns one potential instance per worker, created by a caller-supplied factory, and splits the configurations of one call into contiguous ranges, one range per worker. Instances share nothing, so no potential has to be re-entrant across threads; a potential that reports ``PotCaps::reentrancy`` as process-serial is safe here because each instance is touched by one thread at a time.
+
+.. ref-code-block:: cpp
+
+	:ref:`rgpot::BatchEvaluator <doxid-classrgpot_1_1_batch_evaluator>` eval(
+	    [] { return std::make_unique<rgpot::LJPot>(); }, 4);
+	auto results = eval.:ref:`evaluate <doxid-classrgpot_1_1_batch_evaluator_1ae629254db4618cb98ec298c2dffb1e2a>`(inputs);  // results[i] answers inputs[i]
+
+A worker that throws stops its range; evaluate() rethrows the exception of the lowest-numbered failing worker after every worker has joined.
 
 One independent calculator is one group. A NEB image or a dimer end is that group, and ranks in a group share a subcommunicator. bindCalculators is collective on MPI_COMM_WORLD. Every rank calls it before the first force. shareFromCalculator broadcasts from the first rank of calculator owner onto MPI_COMM_WORLD. forceImpl fills :ref:`ForceOut <doxid-structrgpot_1_1_force_out>` on the rank that calls it.
 
@@ -336,6 +355,19 @@ Ported from eOn (`https://github.com/TheochemUI/eOn <https://github.com/Theochem
 
 This file defines the ``:ref:`ZBLPot <doxid-classrgpot_1_1_z_b_l_pot>``` class, a universal screened Coulomb repulsion with the LAMMPS switching function. Based on J. F. Ziegler, J. P. Biersack and U. Littmark, "The Stopping and Range of Ions in
 Matter", Pergamon (1985). The kernel is ported from eOn (`https://github.com/TheochemUI/eOn <https://github.com/TheochemUI/eOn>`__, client/potentials/ZBL), BSD-3-Clause licensed, copyright the eOn Development Team, which in turn adapts the GPL-licensed LAMMPS ``pair_zbl`` implementation.
+
+Typedefs
+--------
+
+.. index:: pair: typedef; PotentialFactory
+.. _doxid-namespacergpot_1ae8abfa3d92c0185e23f86252925a2d68:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	typedef std::function<std::unique_ptr<:ref:`PotentialBase<doxid-classrgpot_1_1_potential_base>`>()> PotentialFactory
+
+Creates one independent potential instance.
 
 Global Functions
 ----------------
