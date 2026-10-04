@@ -30,6 +30,8 @@ on:
       - "meson.build"
       - "CppCore/**"
       - "python/**"
+      - "tests/check_wheel_contents.py"
+      - "tests/test_wheel_contents.py"
       - "subprojects/*.wrap"
       - "third_party/lepton/**"
       - "third_party/libxckernel/**"
@@ -77,6 +79,13 @@ jobs:
               exit 1
             fi
           done
+      - name: No xckernel generator or sympy in the wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install pytest
+          python3 -m pytest -q tests/test_wheel_contents.py
+          python3 tests/check_wheel_contents.py wheelhouse/*.whl
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-ubuntu-latest
@@ -125,6 +134,13 @@ jobs:
               exit 1
             fi
           done
+      - name: No xckernel generator or sympy in the wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install pytest
+          python3 -m pytest -q tests/test_wheel_contents.py
+          python3 tests/check_wheel_contents.py wheelhouse/*.whl
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-macos-14
