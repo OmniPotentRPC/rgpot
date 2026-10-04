@@ -74,7 +74,8 @@ bool open_engine(const std::string &key, Engine &out) {
   // dlerror() is null after a success, and streaming a null char pointer
   // crashes libc++.
   const char *load_error = out.handle ? nullptr : dlerror();
-  INFO(load_error ? load_error : "");
+  const std::string load_message = load_error ? load_error : "";
+  INFO(load_message);
   REQUIRE(out.handle != nullptr);
   auto h = out.handle;
   out.abi_version = sym<int (*)()>(h, "rgpot_engine_abi_version");
