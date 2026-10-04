@@ -28,9 +28,10 @@ def mpi_command(launcher: str, ranks: int, env: dict[str, str]) -> list[str]:
                              text=True, timeout=10)
     command = [launcher]
     if "Open MPI" in version.stdout + version.stderr or "OpenRTE" in version.stdout + version.stderr:
-        # Slurm can grant hardware threads that share a physical core.
+        # Slurm can grant hardware threads that share a physical core, and
+        # CI runners offer fewer slots than the four ranks these tests start.
         # The job's CPU mask supplies placement for these correctness tests.
-        command += ["--map-by", "slot", "--bind-to", "none"]
+        command += ["--map-by", "slot:OVERSUBSCRIBE", "--bind-to", "none"]
     return command + ["-n", str(ranks)]
 
 

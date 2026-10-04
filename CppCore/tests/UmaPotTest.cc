@@ -54,10 +54,18 @@ static std::string resolve_uma_omol_pt2() {
     if (fs::exists(path))
       return std::string(path);
   }
-  FAIL("UmaPot HCN fixture needs uma-s-1p1-omol-hcn.pt2. Export with "
-       "scripts/export_uma_aoti.py and set RGPOT_UMA_OMOL_PT2, or place the "
-       "file at CppCore/tests/data/uma/uma-s-1p1-omol-hcn.pt2 or "
-       "bench_data/uma/uma-s-1p1-omol-hcn.pt2");
+  // Hosts that hold the fixtures set RGPOT_UMA_REQUIRE_FIXTURES so a missing
+  // package fails; elsewhere the fixture cases skip.
+  static constexpr const char *kMissing =
+      "UmaPot HCN fixture needs uma-s-1p1-omol-hcn.pt2. Export with "
+      "scripts/export_uma_aoti.py and set RGPOT_UMA_OMOL_PT2, or place the "
+      "file at CppCore/tests/data/uma/uma-s-1p1-omol-hcn.pt2 or "
+      "bench_data/uma/uma-s-1p1-omol-hcn.pt2";
+  if (const char *req = std::getenv("RGPOT_UMA_REQUIRE_FIXTURES");
+      req && *req) {
+    FAIL(kMissing);
+  }
+  SKIP(kMissing);
   return {};
 }
 

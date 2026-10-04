@@ -210,7 +210,20 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
   # asks for calculator groups (CppCore/rgpot/calculator_mpi_abi.h).
   target_link_libraries(rgpot PRIVATE ${CMAKE_DL_LIBS})
   find_package(MPI QUIET COMPONENTS CXX)
+  set(RGPOT_HAVE_MPI OFF)
   if(MPI_FOUND)
+    # A system MPI wrapper can be found without headers the active
+    # compiler can include; only a configuration that compiles counts.
+    include(CheckCXXSourceCompiles)
+    set(CMAKE_REQUIRED_LIBRARIES MPI::MPI_CXX)
+    check_cxx_source_compiles(
+      "#include <mpi.h>
+       int main(int argc, char **argv) { MPI_Init(&argc, &argv); return MPI_Finalize(); }"
+      RGPOT_MPI_COMPILES)
+    unset(CMAKE_REQUIRED_LIBRARIES)
+    set(RGPOT_HAVE_MPI ${RGPOT_MPI_COMPILES})
+  endif()
+  if(RGPOT_HAVE_MPI)
     add_library(rgpot_mpi SHARED CppCore/rgpot/CalculatorGroupMpi.cc)
     target_include_directories(rgpot_mpi
                                PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/CppCore)
@@ -274,7 +287,7 @@ endif()
 if(RGPOT_WITH_RPC AND NOT RGPOT_RPC_CLIENT_ONLY)
   add_executable(potserv CppCore/rgpot/rpc/server.cpp)
   target_link_libraries(potserv PRIVATE rgpot::rgpot ptlrpc CapnProto::capnp-rpc)
-  if(TARGET MPI::MPI_CXX)
+  if(RGPOT_HAVE_MPI)
     add_executable(potserv_mpi CppCore/rgpot/rpc/server.cpp)
     target_compile_definitions(potserv_mpi PRIVATE RGPOT_POTSERV_MPI)
     target_link_libraries(potserv_mpi PRIVATE rgpot::rgpot ptlrpc
@@ -424,7 +437,7 @@ if(RGPOT_BUILD_TESTS)
                   $<TARGET_FILE:NWChemPotLifetimeTest>
                   $<TARGET_FILE:nwchemc_lifetime_engine> ${_lifetime_mode})
       endforeach()
-      if(TARGET MPI::MPI_CXX)
+      if(RGPOT_HAVE_MPI)
         add_executable(MpiHostContractTest CppCore/tests/MpiHostContractTest.cc)
         target_include_directories(MpiHostContractTest PRIVATE CppCore)
         target_link_libraries(MpiHostContractTest PRIVATE MPI::MPI_CXX)
