@@ -207,6 +207,8 @@ mod tests {
     use crate::Potentials_capnp::capabilities::Operation;
     use capnp::Error as CapnpError;
     use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
+    use futures::io::{BufReader, BufWriter};
+    use futures::AsyncReadExt;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::time::Duration;
@@ -225,7 +227,7 @@ mod tests {
             _: potential::GetCapabilitiesParams,
             mut results: potential::GetCapabilitiesResults,
         ) -> capnp::capability::Promise<(), CapnpError> {
-            let mut caps = capnp_rpc::pry!(results.get()).init_capabilities();
+            let mut caps = results.get().init_capabilities();
             crate::compat::fill_compatibility(caps.reborrow());
             caps.set_protocol_major(self.major);
             let mut ops = caps.reborrow().init_operations(2);
@@ -240,7 +242,7 @@ mod tests {
             mut results: potential::CalculateResults,
         ) -> capnp::capability::Promise<(), CapnpError> {
             self.called.store(true, Ordering::SeqCst);
-            let mut result = capnp_rpc::pry!(results.get()).init_result();
+            let mut result = results.get().init_result();
             result.set_energy(1.25);
             let mut forces = result.init_forces(3);
             for i in 0..3 {
@@ -262,10 +264,10 @@ mod tests {
                 let (stream, _) = listener.accept().await.expect("accept");
                 let _ = stream.set_nodelay(true);
                 let client = capnp_rpc::new_client::<potential::Client, _>(peer);
-                let (reader, writer) = TokioAsyncReadCompatExt::compat(stream).split();
+                let (reader, writer) = AsyncReadExt::split(TokioAsyncReadCompatExt::compat(stream));
                 let network = twoparty::VatNetwork::new(
-                    futures::io::BufReader::new(reader),
-                    futures::io::BufWriter::new(writer),
+                    BufReader::new(reader),
+                    BufWriter::new(writer),
                     rpc_twoparty_capnp::Side::Server,
                     Default::default(),
                 );

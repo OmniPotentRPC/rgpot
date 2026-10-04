@@ -44,7 +44,7 @@ impl potential::Server for PotentialServer {
         _: potential::GetCapabilitiesParams,
         mut results: potential::GetCapabilitiesResults,
     ) -> capnp::capability::Promise<(), CapnpError> {
-        let mut caps = pry!(results.get()).init_capabilities();
+        let mut caps = results.get().init_capabilities();
         crate::compat::fill_compatibility(caps.reborrow());
         caps.set_backend_name("rgpot");
         caps.set_backend_version(env!("CARGO_PKG_VERSION"));
