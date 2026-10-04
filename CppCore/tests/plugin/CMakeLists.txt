@@ -10,6 +10,16 @@ endforeach()
 if(UNIX)
   target_link_libraries(rgpot_morse PRIVATE m)
 endif()
+if(APPLE)
+  # Link with the C driver so the wrapper's libSystem references resolve at
+  # the C toolchain's deployment target, with the Fortran runtime added
+  # explicitly.
+  set_target_properties(rgpot_coulomb PROPERTIES LINKER_LANGUAGE C)
+  target_link_directories(rgpot_coulomb PRIVATE
+                          ${CMAKE_Fortran_IMPLICIT_LINK_DIRECTORIES})
+  target_link_libraries(rgpot_coulomb PRIVATE
+                        ${CMAKE_Fortran_IMPLICIT_LINK_LIBRARIES})
+endif()
 foreach(_test PluginTest PluginContractTest ExternalPluginTest ExternalFortranPluginTest)
   add_pot_test(${_test} ../${_test}.cc)
   set_tests_properties(${_test} PROPERTIES

@@ -55,8 +55,8 @@ endif
 if not get_option('with_rpc_client_only')
     _deps += dependency('threads')
     _rgpot_srcs += files(
-        'rgpot/plugin/PluginRegistry.cc',
         'rgpot/plugin/PluginBridge.cc',
+        'rgpot/plugin/PluginRegistry.cc',
         'rgpot/plugin/builtins/lj_plugin.cpp',
     )
     rgpot_core = static_library(

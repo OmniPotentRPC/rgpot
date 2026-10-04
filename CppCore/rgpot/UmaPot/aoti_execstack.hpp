@@ -3,6 +3,7 @@
 // wrapper.so does not need an executable stack (Elja inductor output
 // on a kernel that refuses mprotect(PROT_EXEC) on the stack).
 
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -11,6 +12,7 @@
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <vector>
 
 namespace rgpot {
@@ -231,8 +233,32 @@ inline bool scan_or_clear_pt2(uint8_t *buf, size_t n, bool write) {
   return needed;
 }
 
+// Windows refuses to open or replace a file while another handle is in the
+// middle of replacing it. A short bounded retry rides out that window; other
+// platforms succeed on the first attempt.
+inline constexpr int kPublicationAttempts = 400;
+
+inline void publication_backoff() {
+  std::this_thread::sleep_for(std::chrono::milliseconds(2));
+}
+
+inline bool publication_retryable(const std::error_code &ec) {
+#ifdef _WIN32
+  return static_cast<bool>(ec);
+#else
+  return ec == std::errc::permission_denied;
+#endif
+}
+
 inline std::vector<uint8_t> read_all(const std::string &path) {
   std::ifstream in(path, std::ios::binary);
+  for (int attempt = 1; !in && attempt < kPublicationAttempts &&
+                        std::filesystem::exists(path);
+       ++attempt) {
+    publication_backoff();
+    in.clear();
+    in.open(path, std::ios::binary);
+  }
   if (!in)
     throw std::runtime_error("UmaPot: cannot read AOTI package " + path);
   in.seekg(0, std::ios::end);
@@ -265,11 +291,19 @@ inline void write_all(const std::string &path,
   } publication;
   // Directory creation reserves a private publication slot across processes
   // and threads. Only a closed, complete file is renamed to the shared path.
+  int reservation_failures = 0;
   for (std::size_t slot = 0; !publication.owned; ++slot) {
     publication.directory = path + ".tmp." + std::to_string(slot);
     publication.payload = publication.directory / "payload.pt2";
     std::error_code error;
     publication.owned = fs::create_directory(publication.directory, error);
+    // A slot another thread is deleting reports a transient error on Windows.
+    if (error && error != std::errc::file_exists &&
+        publication_retryable(error) &&
+        ++reservation_failures < kPublicationAttempts) {
+      publication_backoff();
+      continue;
+    }
     if (error && error != std::errc::file_exists)
       throw std::runtime_error("UmaPot: cannot reserve publication for " +
                                path + ": " + error.message());
@@ -288,6 +322,13 @@ inline void write_all(const std::string &path,
   }
   std::error_code ec;
   std::filesystem::rename(tmp, path, ec);
+  for (int attempt = 1; publication_retryable(ec) &&
+                        attempt < kPublicationAttempts;
+       ++attempt) {
+    publication_backoff();
+    ec.clear();
+    std::filesystem::rename(tmp, path, ec);
+  }
   if (ec)
     throw std::runtime_error("UmaPot: cannot publish " + path + ": " +
                              ec.message());

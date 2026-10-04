@@ -57,8 +57,10 @@ private:
  * ``scripts/export_uma_aoti.py`` writes ``task_name``, ``charge``,
  * ``spin``, ``z_set`` (a list such as ``[1, 6, 7]``), ``natoms`` and
  * ``counts`` (a JSON object of atomic number to atom count, such as
- * ``{"1": 1, "6": 1, "7": 1}``); packages from older exporters carry
- * the first four only.
+ * ``{"1": 1, "6": 1, "7": 1}``), plus ``nedges_min`` and ``nedges_max``,
+ * the edge-count range the exported graph accepts (equal for a static
+ * package, whose graph is traced at one edge count); packages from older
+ * exporters carry the first four only.
  */
 struct UmaContract {
   std::optional<std::string> task_name;
@@ -67,6 +69,8 @@ struct UmaContract {
   std::optional<std::vector<int64_t>> z_set;
   std::optional<std::map<int64_t, int64_t>> counts;
   std::optional<int64_t> natoms;
+  std::optional<int64_t> nedges_min;
+  std::optional<int64_t> nedges_max;
 
   /// Signed decimal integers in order of appearance; anything else
   /// separates them.
@@ -112,6 +116,8 @@ struct UmaContract {
     c.charge = one_int("charge");
     c.spin = one_int("spin");
     c.natoms = one_int("natoms");
+    c.nedges_min = one_int("nedges_min");
+    c.nedges_max = one_int("nedges_max");
     if (const std::string *raw = get("z_set")) {
       auto zs = integers(*raw);
       std::sort(zs.begin(), zs.end());
@@ -157,6 +163,22 @@ struct UmaContract {
     if (spin && *spin != cfg.spin)
       throw UmaContractError("spin", std::to_string(*spin),
                              std::to_string(cfg.spin), "config");
+  }
+
+  /// Edge count of one call (the whole band for a batched package)
+  /// against the range the compiled graph was exported for.
+  void checkEdges(int64_t nedges) const {
+    const bool below = nedges_min && nedges < *nedges_min;
+    const bool above = nedges_max && nedges > *nedges_max;
+    if (!below && !above)
+      return;
+    const int64_t lo = nedges_min ? *nedges_min : 0;
+    const std::string want =
+        nedges_max && lo == *nedges_max
+            ? std::to_string(lo)
+            : "[" + std::to_string(lo) + ", " +
+                  (nedges_max ? std::to_string(*nedges_max) : "inf") + "]";
+    throw UmaContractError("nedges", want, std::to_string(nedges), "input");
   }
 
   /// Atom count, element set and per-element counts of one system.

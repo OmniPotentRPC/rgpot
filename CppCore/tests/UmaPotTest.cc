@@ -54,10 +54,18 @@ static std::string resolve_uma_omol_pt2() {
     if (fs::exists(path))
       return std::string(path);
   }
-  FAIL("UmaPot HCN fixture needs uma-s-1p1-omol-hcn.pt2. Export with "
-       "scripts/export_uma_aoti.py and set RGPOT_UMA_OMOL_PT2, or place the "
-       "file at CppCore/tests/data/uma/uma-s-1p1-omol-hcn.pt2 or "
-       "bench_data/uma/uma-s-1p1-omol-hcn.pt2");
+  // Hosts that hold the fixtures set RGPOT_UMA_REQUIRE_FIXTURES so a missing
+  // package fails; elsewhere the fixture cases skip.
+  static constexpr const char *kMissing =
+      "UmaPot HCN fixture needs uma-s-1p1-omol-hcn.pt2. Export with "
+      "scripts/export_uma_aoti.py and set RGPOT_UMA_OMOL_PT2, or place the "
+      "file at CppCore/tests/data/uma/uma-s-1p1-omol-hcn.pt2 or "
+      "bench_data/uma/uma-s-1p1-omol-hcn.pt2";
+  if (const char *req = std::getenv("RGPOT_UMA_REQUIRE_FIXTURES");
+      req && *req) {
+    FAIL(kMissing);
+  }
+  SKIP(kMissing);
   return {};
 }
 
@@ -354,6 +362,34 @@ TEST_CASE("UmaContract rejects an input of another composition",
   REQUIRE(contract_field([&] {
             acetylene.checkSystem(c3h1.size(), c3h1.data());
           }) == "counts");
+}
+
+TEST_CASE("UmaContract refuses an edge count the graph was not exported for",
+          "[UmaPot][contract]") {
+  auto meta = hcn_metadata();
+  meta["nedges_min"] = "6";
+  meta["nedges_max"] = "6";
+  const auto fixed = rgpot::UmaContract::fromMetadata(meta);
+  REQUIRE_NOTHROW(fixed.checkEdges(6));
+  REQUIRE(contract_field([&] { fixed.checkEdges(4); }) == "nedges");
+  REQUIRE_THROWS_WITH(
+      fixed.checkEdges(8),
+      Catch::Matchers::Equals(
+          "UmaPot: input nedges is 8, the package was exported for 6"));
+
+  meta["nedges_min"] = "1";
+  meta["nedges_max"] = "65536";
+  const auto dynamic = rgpot::UmaContract::fromMetadata(meta);
+  REQUIRE_NOTHROW(dynamic.checkEdges(1));
+  REQUIRE_NOTHROW(dynamic.checkEdges(65536));
+  REQUIRE_THROWS_WITH(
+      dynamic.checkEdges(65537),
+      Catch::Matchers::Equals("UmaPot: input nedges is 65537, the package "
+                              "was exported for [1, 65536]"));
+
+  // A package without edge metadata is not checked.
+  REQUIRE_NOTHROW(rgpot::UmaContract::fromMetadata(hcn_metadata())
+                      .checkEdges(1000000));
 }
 
 TEST_CASE("UmaContract checks z_set alone for packages without counts",

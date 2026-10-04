@@ -288,6 +288,7 @@ void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const auto nedges = static_cast<int64_t>(edges.neighbor.size());
   if (nedges == 0)
     throw std::runtime_error("UmaPot: vesin produced no edges");
+  m_impl->contract.checkEdges(nedges);
 
   auto opts_f = torch::TensorOptions().dtype(m_impl->dtype).device(torch::kCPU);
   auto opts_l = torch::TensorOptions().dtype(torch::kLong).device(torch::kCPU);
@@ -444,6 +445,7 @@ void UmaPot::forceBatchImpl(const ForceBatch &batch) const {
     }
     if (nedges_total == 0)
       throw std::runtime_error("UmaPot: vesin produced no edges (batch)");
+    m_impl->contract.checkEdges(nedges_total);
 
     auto opts_f =
         torch::TensorOptions().dtype(m_impl->dtype).device(torch::kCPU);
