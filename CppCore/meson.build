@@ -63,6 +63,7 @@ if not get_option('with_rpc_client_only')
         'rgpot_core',
         sources: _rgpot_srcs,
         dependencies: _deps,
+        cpp_args: _args,
         include_directories: _incdirs,
         pic: true,
         install: false,
