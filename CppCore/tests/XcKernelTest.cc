@@ -14,14 +14,14 @@
 #include <vector>
 
 #include "npy_io.hpp"
-#include "ulp_bound.hpp"
+#include "scale_bound.hpp"
 #include "rgpot/Potential.hpp"
 #include "rgpot/XcKernel/XcKernel.hpp"
 
 using rgpot::XcGrid;
 using rgpot::XcKernel;
 using rgpot::XcMo;
-using rgpot::testing::max_deviation_ulp;
+using rgpot::testing::deviation_in_eps;
 using rgpot::testio::NpyArray;
 using rgpot::testio::load_npy;
 using rgpot::testio::load_npz;
@@ -29,13 +29,13 @@ using rgpot::testio::load_npz;
 namespace {
 
 constexpr const char *kData = "CppCore/tests/data/xckernel";
-// Bars. C vs NumPy is a bound in ulp of the compared array (ulp_bound.hpp):
-// both sides sum the same terms over 60 to 200 grid points, one sequentially
-// in double, the other through OpenBLAS dgemm, so they agree to the rounding
-// of that sum and not to a decimal literal. Measured worst case on x86_64 over
-// every fixture below: 3.0 ulp (xck_gga_r_o2 c_vs_numpy). k = 6 doubles it
-// for the rounding of a second architecture.
-constexpr double kNumpyUlp = 6.0;
+// Bars. C vs NumPy is |C - ref| <= k * eps * max|ref| per array
+// (scale_bound.hpp). The C contraction is a blocked dgemm/dsyr2k and the
+// reference a dgemm of a different blocking, so the two differ by a few
+// rounding errors of the largest term, never by a fixed decimal.
+// Measured worst case on x86_64 over every fixture below: 2.2 eps*scale;
+// k = 4 leaves room for another architecture's blocking and FMA use.
+constexpr double kNumpyEps = 4.0;
 // PySCF bars: Fock 1e-15, fxc 1e-13, TDA/RPA sigma 1e-17.
 constexpr double kFockVsPyscf = 1e-15;
 constexpr double kFxcVsPyscf = 1e-13;
@@ -255,8 +255,8 @@ TEST_CASE("random-grid Fock pins (s2jz)", "[xckernel][golden][fock]") {
     op.insert(scal.begin(), scal.end());
     auto ref = load_npy(std::string(kData) + "/" + c.ref);
     auto got = run_kernel(c.kernel, op, 4, 200, true);
-    INFO("deviation " << max_deviation_ulp(got, ref.data) << " ulp");
-    REQUIRE(max_deviation_ulp(got, ref.data) <= kNumpyUlp);
+    INFO("deviation " << deviation_in_eps(got, ref.data) << " eps*scale");
+    REQUIRE(deviation_in_eps(got, ref.data) <= kNumpyEps);
   }
 }
 
@@ -266,8 +266,8 @@ TEST_CASE("H2O GGA fxc pin (s2jz)", "[xckernel][golden][fxc]") {
   const auto nbf = static_cast<std::int64_t>(op.at("chi").shape[0]);
   const auto npts = static_cast<std::int64_t>(op.at("chi").shape[1]);
   auto got = run_kernel("xck_gga_r_o2", op, nbf, npts, false);
-  INFO("deviation " << max_deviation_ulp(got, ref.data) << " ulp");
-  REQUIRE(max_deviation_ulp(got, ref.data) <= kNumpyUlp);
+  INFO("deviation " << deviation_in_eps(got, ref.data) << " eps*scale");
+  REQUIRE(deviation_in_eps(got, ref.data) <= kNumpyEps);
 }
 
 TEST_CASE("C backend vs NumPy pin in ulp (2520)", "[xckernel][golden][cnp]") {
@@ -288,8 +288,8 @@ TEST_CASE("C backend vs NumPy pin in ulp (2520)", "[xckernel][golden][cnp]") {
     auto op = load_npz(base + "_operands.npz");
     auto ref = load_npy(base + "_ref.npy");
     auto got = run_kernel(c.kernel, op, 4, 60, false);
-    INFO("deviation " << max_deviation_ulp(got, ref.data) << " ulp");
-    REQUIRE(max_deviation_ulp(got, ref.data) <= kNumpyUlp);
+    INFO("deviation " << deviation_in_eps(got, ref.data) << " eps*scale");
+    REQUIRE(deviation_in_eps(got, ref.data) <= kNumpyEps);
   }
 }
 
@@ -317,7 +317,7 @@ TEST_CASE("C backend regression pins", "[xckernel][golden][regression]") {
     op.insert(scal.begin(), scal.end());
     auto pin = load_npy(root + "/" + c.pin);
     auto got = run_kernel(c.kernel, op, 4, 200, true);
-    REQUIRE(max_deviation_ulp(got, pin.data) <= kNumpyUlp);
+    REQUIRE(deviation_in_eps(got, pin.data) <= kNumpyEps);
   }
   for (const char *k :
        {"xck_lda_r_o1", "xck_gga_r_o1", "xck_gga_r_o2", "xck_mgga_tau_r_o1"}) {
@@ -325,14 +325,14 @@ TEST_CASE("C backend regression pins", "[xckernel][golden][regression]") {
         load_npz(std::string(kData) + "/c_vs_numpy/" + k + "_operands.npz");
     auto pin = load_npy(root + "/c_vs_numpy_" + k + "_c.npy");
     auto got = run_kernel(k, op, 4, 60, false);
-    REQUIRE(max_deviation_ulp(got, pin.data) <= kNumpyUlp);
+    REQUIRE(deviation_in_eps(got, pin.data) <= kNumpyEps);
   }
   auto mol = load_npz(std::string(kData) + "/mol_h2o_sto3g_lvl3_operands.npz");
   auto pin = load_npy(root + "/gga_r_o2_fxc_c.npy");
   const auto nbf = static_cast<std::int64_t>(mol.at("chi").shape[0]);
   const auto npts = static_cast<std::int64_t>(mol.at("chi").shape[1]);
   auto got = run_kernel("xck_gga_r_o2", mol, nbf, npts, false);
-  REQUIRE(max_deviation_ulp(got, pin.data) <= kNumpyUlp);
+  REQUIRE(deviation_in_eps(got, pin.data) <= kNumpyEps);
 }
 
 TEST_CASE("PySCF Fock and GGA fxc pins (4e7y)", "[xckernel][golden][pyscf]") {
