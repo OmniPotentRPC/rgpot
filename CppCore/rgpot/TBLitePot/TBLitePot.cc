@@ -2,6 +2,7 @@
 // Copyright 2023--present rgpot developers
 
 #include "rgpot/TBLitePot/TBLitePot.hpp"
+#include "rgpot/stress.hpp"
 #include "rgpot/units.hpp"
 
 #include <stdexcept>
@@ -133,6 +134,22 @@ void TBLitePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   tblite_get_result_gradient(err, m_res, out->F);
   for (size_t i = 0; i < n3; ++i) {
     out->F[i] *= NEG_GRAD_TO_FORCE;
+  }
+
+  // tblite stores dE/dε in Hartree, column-major. sigma = virial / V.
+  double virial[9] = {};
+  tblite_get_result_virial(err, m_res, virial);
+  const double volume = cellVolume(in.box);
+  if (volume > 0.0 && tblite_check_error(err) == 0) {
+    const double scale = units::HARTREE_TO_EV / volume;
+    for (int col = 0; col < 3; ++col) {
+      for (int row = 0; row < 3; ++row) {
+        out->stress[row * 3 + col] = virial[row + 3 * col] * scale;
+      }
+    }
+    out->has_stress = 1;
+  } else {
+    out->has_stress = 0;
   }
 
   out->variance = 0.0;

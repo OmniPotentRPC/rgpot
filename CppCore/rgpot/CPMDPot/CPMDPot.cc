@@ -18,12 +18,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <time.h>
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <time.h>
+#include <utility>
 #include <vector>
-
 
 namespace rgpot {
 
@@ -39,14 +39,16 @@ using SetParamsFn = int (*)(const void *, size_t);
 using SessionCreateFn = CPMDCSession *(*)(const void *, size_t);
 using SessionDestroyFn = void (*)(CPMDCSession *);
 using PotentialResultSizeFn = size_t (*)(const void *, size_t);
-using SessionCalculateResultFn = CPMDCResult (*)(
-    CPMDCSession *, const void *, size_t, void *, size_t, size_t *);
+using SessionCalculateResultFn = CPMDCResult (*)(CPMDCSession *, const void *,
+                                                 size_t, void *, size_t,
+                                                 size_t *);
 using VersionFn = const char *(*)(void);
 using AvailableFn = int (*)(void);
 using FeatureCountFn = size_t (*)(void);
 using FeatureTableFn = const CPMDCFeatureEntry *(*)(void);
 using FeatureFindFn = const CPMDCFeatureEntry *(*)(const char *);
-using BindCalculatorsFn = int (*)(int);
+using AdoptCommFn = int (*)(const void *, std::size_t, int);
+using SelectOrbitalsFn = int (*)(CPMDCSession *, long long);
 
 // Layout matches cpmdc CPMDCStressTensor: int valid, then nine doubles.
 struct CPMDCStressTensor {
@@ -57,20 +59,13 @@ using LastStressFn = int (*)(CPMDCStressTensor *);
 static_assert(offsetof(CPMDCStressTensor, values) == 8,
               "CPMDCStressTensor values follow the valid flag");
 
-BindCalculatorsFn g_cpmd_bind = nullptr;
-
-int cpmd_calculator_hook(int ranks_per_calc) {
-  if (!g_cpmd_bind)
-    return -1;
-  return g_cpmd_bind(ranks_per_calc);
-}
-
 struct ParamsView {
   const void *data = nullptr;
   size_t size = 0;
 };
 
-std::vector<std::string> engine_lib_candidates(const std::string &explicit_path) {
+std::vector<std::string>
+engine_lib_candidates(const std::string &explicit_path) {
   std::vector<std::string> out;
   if (!explicit_path.empty())
     out.emplace_back(explicit_path);
@@ -110,12 +105,16 @@ struct EngineBundle {
   FeatureTableFn feature_table = nullptr;
   FeatureFindFn feature_find = nullptr;
   LastStressFn last_stress = nullptr;
+  SelectOrbitalsFn select_orbitals = nullptr;
+  AdoptCommFn adopt_comm = nullptr;
+  std::string loaded_path;
   std::string load_error;
   bool loaded = false;
 };
 
 bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
   b.load_error.clear();
+  b.loaded_path.clear();
   b.loaded = false;
   b.energy_gradient = nullptr;
   b.set_params = nullptr;
@@ -129,12 +128,15 @@ bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
   b.feature_table = nullptr;
   b.feature_find = nullptr;
   b.last_stress = nullptr;
+  b.select_orbitals = nullptr;
+  b.adopt_comm = nullptr;
 
   bool eng_ok = false;
   std::string eng_err;
   for (const auto &cand : engine_lib_candidates(engine_path)) {
     try {
       b.engine_lib.open(cand);
+      b.loaded_path = cand;
       eng_ok = true;
       break;
     } catch (const std::exception &ex) {
@@ -148,10 +150,8 @@ bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
 
   b.energy_gradient =
       b.engine_lib.sym_optional<EnergyGradientFn>("cpmdc_energy_gradient");
-  g_cpmd_bind =
-      b.engine_lib.sym_optional<BindCalculatorsFn>("cpmdc_bind_calculator");
-  if (g_cpmd_bind)
-    addCalculatorHook(cpmd_calculator_hook);
+  b.adopt_comm =
+      b.engine_lib.sym_optional<AdoptCommFn>("cpmdc_adopt_calculator_comm");
   b.set_params = b.engine_lib.sym_optional<SetParamsFn>("cpmdc_set_params");
   b.session_create =
       b.engine_lib.sym_optional<SessionCreateFn>("cpmdc_session_create");
@@ -171,13 +171,14 @@ bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
       b.engine_lib.sym_optional<FeatureTableFn>("cpmdc_feature_table");
   b.feature_find =
       b.engine_lib.sym_optional<FeatureFindFn>("cpmdc_feature_find");
-  b.last_stress =
-      b.engine_lib.sym_optional<LastStressFn>("cpmdc_last_stress");
+  b.last_stress = b.engine_lib.sym_optional<LastStressFn>("cpmdc_last_stress");
+  b.select_orbitals = b.engine_lib.sym_optional<SelectOrbitalsFn>(
+      "cpmdc_session_select_orbitals");
 
   const bool has_one_shot = b.energy_gradient && b.set_params;
-  const bool has_session_result =
-      b.session_create && b.session_destroy &&
-      b.potential_result_size_for_force_input && b.session_calculate_result;
+  const bool has_session_result = b.session_create && b.session_destroy &&
+                                  b.potential_result_size_for_force_input &&
+                                  b.session_calculate_result;
   const bool has_feature_discovery =
       b.feature_count && b.feature_table && b.feature_find;
   if (!has_feature_discovery) {
@@ -193,6 +194,32 @@ bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
   return true;
 }
 
+bool register_engine_adopter(const EngineBundle &b) {
+  if (!b.adopt_comm)
+    return true;
+  struct PinnedEngine {
+    DynLib library;
+    AdoptCommFn callback;
+  };
+  // The registry retains one handle per callback through the MPI exit
+  // handler. Availability probes never enter it. Instance destruction
+  // and enginePath changes cannot unload a registered callback.
+  static auto *engines = new std::vector<PinnedEngine>;
+  static std::mutex mutex;
+  std::lock_guard<std::mutex> lock(mutex);
+  for (const auto &engine : *engines) {
+    if (engine.callback == b.adopt_comm)
+      return addCalculatorCommAdopter(engine.callback);
+  }
+  DynLib library(b.loaded_path);
+  if (library.sym_optional<AdoptCommFn>("cpmdc_adopt_calculator_comm") !=
+      b.adopt_comm)
+    throw std::runtime_error(
+        "CPMD communicator callback changed while loading");
+  engines->push_back({std::move(library), b.adopt_comm});
+  return addCalculatorCommAdopter(b.adopt_comm);
+}
+
 bool has_session_result_abi(const EngineBundle &b) {
   return b.session_create && b.session_destroy &&
          b.potential_result_size_for_force_input && b.session_calculate_result;
@@ -202,7 +229,8 @@ void publishForceError(const std::string &message) {
   publishCalculatorError(message);
 }
 
-std::vector<::capnp::word> serialize_params(const ::CPMDParams::Reader &params) {
+std::vector<::capnp::word>
+serialize_params(const ::CPMDParams::Reader &params) {
   ::capnp::MallocMessageBuilder msg;
   msg.setRoot(params);
   auto words = ::capnp::messageToFlatArray(msg);
@@ -287,9 +315,9 @@ void copy_params_to_builder(const ::CPMDParams::Reader &params,
   out.setInputSections(params.getInputSections());
 }
 
-::CPMDParams::Reader read_params_words(
-    const std::vector<::capnp::word> &params_words,
-    ::capnp::FlatArrayMessageReader &reader) {
+::CPMDParams::Reader
+read_params_words(const std::vector<::capnp::word> &params_words,
+                  ::capnp::FlatArrayMessageReader &reader) {
   (void)params_words;
   return reader.getRoot<::CPMDParams>();
 }
@@ -338,6 +366,9 @@ struct CPMDPot::Impl {
   std::string session_engine_path;
   uint64_t params_key = 0;
   mutable std::vector<double> grad_scratch;
+  // The calculation the next force belongs to, see selectOrbitals.
+  bool has_orbital_key = false;
+  int64_t orbital_key = 0;
 
   void destroySession();
   bool configure();
@@ -365,6 +396,12 @@ void CPMDPot::Impl::destroySession() {
 }
 
 bool CPMDPot::Impl::configure() {
+  if (!register_engine_adopter(bundle)) {
+    bundle.load_error = "engine refused calculator communicator";
+    bundle.loaded = false;
+    destroySession();
+    return false;
+  }
   if (has_session_result_abi(bundle)) {
     // A session holds the engine's converged wavefunction; recreating
     // it for identical params costs a cold SCF on the next force. Keep
@@ -402,6 +439,18 @@ CPMDPot::CPMDPot(const ::CPMDParams::Reader &params)
   apply_env_hints(impl_->cpmd_root);
   if (try_load_engine(impl_->bundle, impl_->engine_path))
     (void)impl_->configure();
+}
+
+void CPMDPot::selectOrbitals(int64_t key) {
+  if (!impl_)
+    return;
+  impl_->has_orbital_key = true;
+  impl_->orbital_key = key;
+}
+
+bool CPMDPot::keepsOrbitalsPerKey() const {
+  return impl_ && impl_->bundle.loaded && impl_->bundle.select_orbitals &&
+         has_session_result_abi(impl_->bundle);
 }
 
 uint64_t CPMDPot::paramsKey() const noexcept {
@@ -498,16 +547,11 @@ bool CPMDPot::available() const {
 }
 
 int CPMDPot::bindCalculators(int ranks_per_calc) {
-  // cpmdc_bind_calculator stores the split communicator inside the
-  // engine, and the hook list runs once per process. The bundle that
-  // loaded the engine for the bind therefore lives as long as the
-  // process: a dlclose here, with no CPMDPot alive to hold another
-  // reference, would drop the engine and its communicator. Heap
-  // allocated and never freed so no static destructor unloads it
-  // behind the MPI exit handler.
-  static EngineBundle *bundle = new EngineBundle;
-  if (!bundle->loaded)
-    try_load_engine(*bundle, "");
+  EngineBundle bundle;
+  // Reject an incompatible engine before creating an MPI communicator.
+  if (!try_load_engine(bundle, "") || !bundle.adopt_comm ||
+      !register_engine_adopter(bundle))
+    return -1;
   return ::rgpot::bindCalculators(ranks_per_calc).index;
 }
 
@@ -552,6 +596,9 @@ void CPMDPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 }
 
 void CPMDPot::forceImplOrThrow(const ForceInput &in, ForceOut *out) const {
+  // A configured instance can outlive a refused calculator binding.
+  if (thisCalculator().index < 0)
+    fail_force("CPMDPot: calculator binding was refused");
   if (!available()) {
     fail_force(std::string("CPMD engine (libcpmdc) not loaded: ") +
                (impl_ ? impl_->bundle.load_error : "no impl"));
@@ -600,15 +647,19 @@ void CPMDPot::forceImplOrThrow(const ForceInput &in, ForceOut *out) const {
 void CPMDPot::Impl::forceSession(const ForceInput &in, ForceOut *out) {
   const auto force_words = serialize_force_input(in);
   const ParamsView force_view = params_view(force_words);
-  const size_t required =
-      bundle.potential_result_size_for_force_input(force_view.data,
-                                                   force_view.size);
+  const size_t required = bundle.potential_result_size_for_force_input(
+      force_view.data, force_view.size);
   if (required == 0)
     fail_force("CPMD engine rejected ForceInput sizing");
 
   std::vector<::capnp::word> result_words(
       (required + sizeof(::capnp::word) - 1u) / sizeof(::capnp::word));
   size_t written = 0;
+  // The engine keeps converged orbitals per key; naming the key on every
+  // call keeps it right when the session was recreated since.
+  if (has_orbital_key && bundle.select_orbitals &&
+      bundle.select_orbitals(session, static_cast<long long>(orbital_key)) != 0)
+    fail_force("CPMD engine refused the orbital key");
   CPMDCResult res = bundle.session_calculate_result(
       session, force_view.data, force_view.size, result_words.data(),
       result_words.size() * sizeof(::capnp::word), &written);

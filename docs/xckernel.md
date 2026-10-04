@@ -1,6 +1,6 @@
 # XcKernel: in-process libxckernel contractions
 
-`rgpot::XcKernel` is the first-slice host for
+`rgpot::XcKernel` provides contractions from
 [libxckernel](https://github.com/susilehtola/libxckernel)
 (arXiv:2608.26440, pin `d6a9d57ba3fe0f2763667ce168d0c0ef21cff4a4`).
 It is **not** a geometry PES.
@@ -35,14 +35,16 @@ Meson option, same shape as `with_xtb`:
 
     meson setup bbdir-xck -Dwith_xckernel=true -Dwith_tests=true
 
-Generate the first-slice C package **on rg.terra only**:
+Generate the C package **on rg.terra only**:
 
     pixi install -e xckernel
     pixi run -e xckernel -- bash scripts/gen_libxckernel.sh
 
-Families: `lda,gga,mgga_tau`. `max_order`: 2 (27 C kernels: 3 energy helpers
-+ 9 Fock + 15 fxc). Later slices (o3/o4, GIAO, noncollinear, hmgga,
-`mgga_lapl`) stay out of this tree.
+Families: `lda,gga,mgga_tau,mgga_lapl`. The generated package contains 36 C
+kernels: four energy helpers, 12 Fock kernels, and 20 response kernels.
+`XcKernel::catalog()` exposes the 32 Fock and response contractions through
+derivative order two. Laplacian kernels require the AO Laplacians in
+`lapl_chi`; missing Laplacians return error code 2 without changing the output.
 
 ## Dependencies
 

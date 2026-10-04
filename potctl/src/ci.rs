@@ -92,7 +92,12 @@ fn try_xcrun_sdkroot() -> Option<String> {
 }
 
 /// Pure: meson configure argv (after `meson setup <builddir>`).
-pub fn meson_configure_args(rpc: bool, cache: bool, meson_extra: &str) -> Vec<String> {
+pub fn meson_configure_args(
+    rpc: bool,
+    cache: bool,
+    with_mpi: bool,
+    meson_extra: &str,
+) -> Vec<String> {
     let mut args = vec![
         "-Dwith_tests=True".into(),
         "-Dwith_examples=False".into(),
@@ -102,6 +107,9 @@ pub fn meson_configure_args(rpc: bool, cache: bool, meson_extra: &str) -> Vec<St
         format!("-Dwith_cache={}", if cache { "true" } else { "false" }),
         "-Dpure_lib=False".into(),
     ];
+    if with_mpi {
+        args.push("-Dwith_mpi=enabled".into());
+    }
     for tok in meson_extra.split_whitespace() {
         if !tok.is_empty() {
             args.push(tok.to_string());
@@ -193,8 +201,9 @@ pub fn run_meson_test(
         apply_darwin_env_to_process(false)?;
     }
     let meson_extra = env::var("POTCTL_MESON_EXTRA").unwrap_or_default();
+    let with_mpi = env::var("POTCTL_WITH_MPI").ok().as_deref() == Some("enabled");
     let mut setup_args: Vec<String> = vec!["setup".into(), build_dir.into()];
-    setup_args.extend(meson_configure_args(rpc, cache, &meson_extra));
+    setup_args.extend(meson_configure_args(rpc, cache, with_mpi, &meson_extra));
     let setup_refs: Vec<&str> = setup_args.iter().map(String::as_str).collect();
     run_cmd("meson", &setup_refs, root)?;
     run_cmd("meson", &["compile", "-C", build_dir], root)?;
@@ -1420,11 +1429,14 @@ mod tests {
 
     #[test]
     fn meson_configure_args_include_rpc_cache_and_extra() {
-        let a = meson_configure_args(true, false, "-Ddefault_library=static");
+        let a = meson_configure_args(true, false, true, "-Ddefault_library=static");
         assert!(a.iter().any(|x| x == "-Dwith_rpc=true"));
         assert!(a.iter().any(|x| x == "-Dwith_cache=false"));
         assert!(a.iter().any(|x| x == "-Dwith_tests=True"));
+        assert!(a.iter().any(|x| x == "-Dwith_mpi=enabled"));
         assert!(a.iter().any(|x| x == "-Ddefault_library=static"));
+        let off = meson_configure_args(true, false, false, "");
+        assert!(!off.iter().any(|x| x.contains("with_mpi")));
     }
 
     #[test]

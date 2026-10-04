@@ -247,17 +247,24 @@ std::unique_ptr<rgpot::ExprPot> make_expr_pot(const std::string &expression,
 #endif
 
 #ifdef RGPOT_HAS_XCKERNEL
-rgpot::XcGrid grid_from_numpy(const NpF64 &chi, nb::handle dchi_obj,
-                              nb::handle lapl_obj, nb::handle hess_obj) {
+struct NumpyXcGrid {
+  rgpot::XcGrid grid;
+  NpF64 dchi, lapl, hess;
+};
+
+NumpyXcGrid grid_from_numpy(const NpF64 &chi, nb::handle dchi_obj,
+                            nb::handle lapl_obj, nb::handle hess_obj) {
   if (chi.ndim() != 2) {
     throw std::invalid_argument("chi must have shape (nbf, npts)");
   }
-  rgpot::XcGrid grid;
+  NumpyXcGrid storage;
+  auto &grid = storage.grid;
   grid.nbf = static_cast<std::int64_t>(chi.shape(0));
   grid.npts = static_cast<std::int64_t>(chi.shape(1));
   grid.chi = chi.data();
   if (!dchi_obj.is_none()) {
-    auto dchi = nb::cast<NpF64>(dchi_obj);
+    storage.dchi = nb::cast<NpF64>(dchi_obj);
+    const auto &dchi = storage.dchi;
     if (dchi.ndim() != 3 || dchi.shape(0) != 3 ||
         dchi.shape(1) != chi.shape(0) || dchi.shape(2) != chi.shape(1)) {
       throw std::invalid_argument("dchi must have shape (3, nbf, npts)");
@@ -265,25 +272,46 @@ rgpot::XcGrid grid_from_numpy(const NpF64 &chi, nb::handle dchi_obj,
     grid.dchi = dchi.data();
   }
   if (!lapl_obj.is_none()) {
-    auto lapl = nb::cast<NpF64>(lapl_obj);
+    storage.lapl = nb::cast<NpF64>(lapl_obj);
+    const auto &lapl = storage.lapl;
+    if (lapl.ndim() != 2 || lapl.shape(0) != chi.shape(0) ||
+        lapl.shape(1) != chi.shape(1)) {
+      throw std::invalid_argument("lapl_chi must have shape (nbf, npts)");
+    }
     grid.lapl_chi = lapl.data();
   }
   if (!hess_obj.is_none()) {
-    auto hess = nb::cast<NpF64>(hess_obj);
+    storage.hess = nb::cast<NpF64>(hess_obj);
+    const auto &hess = storage.hess;
+    if (hess.ndim() != 3 || hess.shape(0) != 6 ||
+        hess.shape(1) != chi.shape(0) || hess.shape(2) != chi.shape(1)) {
+      throw std::invalid_argument("hess_chi must have shape (6, nbf, npts)");
+    }
     grid.hess_chi = hess.data();
   }
-  return grid;
+  return storage;
 }
 
-std::map<std::string, const double *>
-scal_from_dict(const nb::dict &scal) {
-  std::map<std::string, const double *> out;
+struct NumpyXcScalars {
+  std::map<std::string, const double *> pointers;
+  std::vector<NpF64> arrays;
+};
+
+NumpyXcScalars scal_from_dict(const nb::dict &scal, std::size_t npts) {
+  NumpyXcScalars storage;
+  storage.arrays.reserve(scal.size());
   for (auto item : scal) {
     auto name = nb::cast<std::string>(item.first);
     auto arr = nb::cast<NpF64>(item.second);
-    out.emplace(std::move(name), arr.data());
+    if (!((arr.ndim() == 1 && arr.shape(0) == npts) ||
+          (arr.ndim() == 2 && arr.shape(0) == npts && arr.shape(1) == 1))) {
+      throw std::invalid_argument("scalar " + name +
+                                  " must have shape (npts,) or (npts, 1)");
+    }
+    storage.pointers.emplace(std::move(name), arr.data());
+    storage.arrays.push_back(std::move(arr));
   }
-  return out;
+  return storage;
 }
 #endif
 
@@ -420,11 +448,12 @@ NB_MODULE(_core, m) {
           "contract",
           [](const rgpot::XcKernel &self, const NpF64 &chi, nb::handle dchi,
              const nb::dict &scal, nb::handle lapl_chi, nb::handle hess_chi) {
-            auto grid = grid_from_numpy(chi, dchi, lapl_chi, hess_chi);
-            auto scalmap = scal_from_dict(scal);
+            auto storage = grid_from_numpy(chi, dchi, lapl_chi, hess_chi);
+            const auto &grid = storage.grid;
+            auto scalars = scal_from_dict(scal, static_cast<size_t>(grid.npts));
             const auto nbf = static_cast<size_t>(grid.nbf);
             std::vector<double> out(nbf * nbf, 0.0);
-            const int rc = self.contract(grid, scalmap, out.data());
+            const int rc = self.contract(grid, scalars.pointers, out.data());
             if (rc != 0) {
               throw std::runtime_error("XcKernel.contract rc=" +
                                        std::to_string(rc));
@@ -437,7 +466,8 @@ NB_MODULE(_core, m) {
           "fields_from_density",
           [](const NpF64 &chi, nb::handle dchi, const NpF64 &density,
              nb::handle lapl_chi, nb::handle hess_chi) {
-            auto grid = grid_from_numpy(chi, dchi, lapl_chi, hess_chi);
+            auto storage = grid_from_numpy(chi, dchi, lapl_chi, hess_chi);
+            const auto &grid = storage.grid;
             if (density.ndim() != 2 ||
                 density.shape(0) != chi.shape(0) ||
                 density.shape(1) != chi.shape(0)) {

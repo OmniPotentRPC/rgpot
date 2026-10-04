@@ -18,7 +18,7 @@ package is read.
 | Key | Use at runtime |
 | --- | --- |
 | `cutoff`, `max_neighbors` | vesin neighbor list |
-| `molecular_box` | re-center into this cube (0: caller's cell) |
+| `molecular_box` | cube side length; molecular positions are centred at zero (0: caller's cell) |
 | `batch_max` | band graph size (0 or 1: single system) |
 | `pos_dtype` | `float64` switches the input dtype |
 | `task_name`, `charge`, `spin` | must equal `UmaConfig` |

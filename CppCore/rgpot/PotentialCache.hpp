@@ -9,6 +9,7 @@
  * RocksDB to store and retrieve potential energy and force calculations.
  */
 
+#include "rgpot/ForceStructs.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 #include <optional>
 #include <rocksdb/db.h>
@@ -103,6 +104,12 @@ public:
    */
   void add_serialized(const KeyHash &key, double energy,
                       const rgpot::types::AtomMatrix &forces);
+
+  /// Result records retain the energy/force prefix and append versioned
+  /// variance and stress metadata. Energy/force-only records remain readable.
+  static bool has_result_metadata(const std::string &value, size_t n_atoms);
+  void deserialize_hit(const std::string &value, ForceOut &out, size_t n_atoms);
+  void add_serialized(const KeyHash &key, const ForceOut &out, size_t n_atoms);
 
   /**
    * @brief Searches the cache for a specific key.

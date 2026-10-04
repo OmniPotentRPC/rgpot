@@ -35,6 +35,7 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 from aoti_execstack import clear_pt2_execstack  # noqa: E402
+from aoti_graph import canonicalize_strided_slices  # noqa: E402
 
 import numpy as np
 import torch
@@ -747,7 +748,7 @@ def aoti_package(exported, path: Path, metadata=None):
                 str(k): str(v) for k, v in metadata.items()
             }
         }
-    fn(exported, **kwargs)
+    fn(canonicalize_strided_slices(exported), **kwargs)
     clear_pt2_execstack(path)
     return path
 
@@ -987,7 +988,17 @@ def main() -> int:
     for attempt, kwargs in attempts:
         try:
             print("try export", attempt, flush=True)
-            exported = torch.export.export(wrap, example, **kwargs)
+            candidate = torch.export.export(wrap, example, **kwargs)
+            # Export acceptance requires executable tensors and the same
+            # reference comparison as the packaged model.
+            with torch.enable_grad():
+                e_trial, f_trial = candidate.module()(*example)
+            if not compare_batched(
+                f"exported-{attempt}", e_trial.detach().cpu(),
+                f_trial.detach().cpu().numpy(), e_ref, f_ref, len(atoms)
+            ):
+                raise RuntimeError("exported program does not match ASE")
+            exported = candidate
             print("export ok", attempt, type(exported), flush=True)
             export_path = attempt
             break

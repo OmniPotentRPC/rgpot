@@ -10,6 +10,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <random>
 #include <stdexcept>
 #include <tuple>
@@ -153,8 +154,9 @@ Eval cachedLJ(const std::vector<double> &R0, const std::vector<double> &R,
   REQUIRE(list.valid(R.data(), n, box.data(), opt));
   mode = list.foldMode();
   Eval e{0.0, std::vector<double>(3 * n, 0.0)};
-  e.energy = list.accumulate(R.data(), e.F.data(),
-                             [](int32_t, int32_t, double r2) { return ljTerm(r2); });
+  e.energy =
+      list.accumulate(R.data(), e.F.data(),
+                      [](int32_t, int32_t, double r2) { return ljTerm(r2); });
   return e;
 }
 
@@ -349,9 +351,9 @@ TEST_CASE("Pair potentials: warm, cold and cell-grid calls agree",
       e.energy = fo.energy;
       return e;
     };
-    const Eval cold = call(R);     // first sighting: list at the cutoff
-    const Eval capture = call(R);  // second sighting: list captured
-    const Eval warm = call(R);     // list hit
+    const Eval cold = call(R);    // first sighting: list at the cutoff
+    const Eval capture = call(R); // second sighting: list captured
+    const Eval warm = call(R);    // list hit
     // Every call sums the same pairs in the same order, so the three agree
     // to the bit whichever list served them.
     REQUIRE(capture.energy == cold.energy);
@@ -384,7 +386,8 @@ TEST_CASE("Pair forces equal minus the energy gradient", "[PairList]") {
   const std::array<double, 9> box{side, 0, 0, 0, side, 0, 0, 0, side};
   SECTION("LJPot, Ar") {
     const auto R = randomPositions(24, 0.0, side, 3.2, 41);
-    const rgpot::LJPot pot{rgpot::LJConfig{.u0 = 0.0104, .cutoff = 8.5, .psi = 3.4}};
+    const rgpot::LJPot pot{
+        rgpot::LJConfig{.u0 = 0.0104, .cutoff = 8.5, .psi = 3.4}};
     requireForcesAreMinusGradient(pot, R, std::vector<int>(24, 18), box, 1e-6);
   }
   SECTION("LJClusterPot, Ar") {
@@ -462,12 +465,14 @@ TEST_CASE("Quintic switch takes the pair term smoothly to zero",
     mc.switch_width = 2.5;
     const rgpot::MorsePot morse{mc};
     REQUIRE(morse.energyShift() == 0.0);
-    requireForcesAreMinusGradient(morse, randomPositions(24, 0.0, side, 2.4, 52),
+    requireForcesAreMinusGradient(morse,
+                                  randomPositions(24, 0.0, side, 2.4, 52),
                                   std::vector<int>(24, 78), cell, 1e-6);
     rgpot::LJClusterConfig cc{.u0 = 0.0104, .cutoff = 8.5, .psi = 3.4};
     cc.switch_width = 1.5;
     const rgpot::LJClusterPot cluster{cc};
-    requireForcesAreMinusGradient(cluster, randomPositions(24, 0.0, 12.0, 3.2, 53),
+    requireForcesAreMinusGradient(cluster,
+                                  randomPositions(24, 0.0, 12.0, 3.2, 53),
                                   std::vector<int>(24, 18), cell, 1e-6);
   }
 
@@ -482,4 +487,138 @@ TEST_CASE("Quintic switch takes the pair term smoothly to zero",
     bad.switch_width = rc + 1.0;
     REQUIRE_THROWS_AS(rgpot::LJPot{bad}, std::invalid_argument);
   }
+}
+
+namespace {
+std::array<double, 3> enumeratedImage(std::array<double, 3> displacement,
+                                      const std::array<double, 9> &cell,
+                                      const std::array<bool, 3> &periodic) {
+  auto best = displacement;
+  const auto norm2 = [](const auto &v) {
+    return v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+  };
+  double shortest = norm2(best);
+  const int nx = periodic[0] ? 64 : 0;
+  const int ny = periodic[1] ? 12 : 0;
+  const int nz = periodic[2] ? 12 : 0;
+  for (int i = -nx; i <= nx; ++i)
+    for (int j = -ny; j <= ny; ++j)
+      for (int k = -nz; k <= nz; ++k) {
+        std::array<double, 3> v{};
+        for (int c = 0; c < 3; ++c)
+          v[c] =
+              displacement[c] - i * cell[c] - j * cell[3 + c] - k * cell[6 + c];
+        if (norm2(v) < shortest) {
+          shortest = norm2(v);
+          best = v;
+        }
+      }
+  return best;
+}
+} // namespace
+
+TEST_CASE("Full-cell pair paths match independent lattice enumeration",
+          "[PairList][triclinic]") {
+  const std::array<std::array<double, 9>, 3> cells{
+      {{4.0, 0.2, 0.1, 0.3, 5.0, -0.2, 0.1, -0.3, 6.0},
+       {4.0, 0.0, 0.0, 15.6, 0.5, 0.0, 0.2, 0.3, 5.0},
+       {0.1, -0.3, 6.0, 0.3, 5.0, -0.2, 4.0, 0.2, 0.1}}};
+  const std::array<double, 12> positions{0.17,  -0.31, 0.23, 3.87, 0.42,  -0.39,
+                                         -3.46, 0.21,  1.63, 7.31, -0.41, 2.07};
+  for (const auto &cell : cells) {
+    for (unsigned mask = 0; mask < 8; ++mask) {
+      CAPTURE(cell, mask);
+      CachedPairList::Options opt;
+      opt.cutoff = 3.0;
+      for (unsigned k = 0; k < 3; ++k)
+        opt.periodic[k] = (mask & (1u << k)) != 0;
+      std::vector<PairRecord> expected;
+      std::array<double, 12> expected_force{};
+      double expected_energy = 0.0;
+      for (int i = 0; i < 4; ++i) {
+        for (int j = i + 1; j < 4; ++j) {
+          std::array<double, 3> d{};
+          for (int k = 0; k < 3; ++k)
+            d[k] = positions[3 * i + k] - positions[3 * j + k];
+          const auto folded = enumeratedImage(d, cell, opt.periodic);
+          const double r2 = folded[0] * folded[0] + folded[1] * folded[1] +
+                            folded[2] * folded[2];
+          if (r2 > opt.cutoff * opt.cutoff)
+            continue;
+          expected.emplace_back(i, j, folded[0], folded[1], folded[2]);
+          expected_energy += 0.5 * r2;
+          for (int k = 0; k < 3; ++k) {
+            expected_force[3 * i + k] -= folded[k];
+            expected_force[3 * j + k] += folded[k];
+          }
+        }
+      }
+      const auto check = [&](const std::vector<PairRecord> &got) {
+        REQUIRE(got.size() == expected.size());
+        for (std::size_t p = 0; p < got.size(); ++p) {
+          REQUIRE(std::get<0>(got[p]) == std::get<0>(expected[p]));
+          REQUIRE(std::get<1>(got[p]) == std::get<1>(expected[p]));
+          REQUIRE_THAT(std::get<2>(got[p]),
+                       WithinAbs(std::get<2>(expected[p]), 1e-12));
+          REQUIRE_THAT(std::get<3>(got[p]),
+                       WithinAbs(std::get<3>(expected[p]), 1e-12));
+          REQUIRE_THAT(std::get<4>(got[p]),
+                       WithinAbs(std::get<4>(expected[p]), 1e-12));
+        }
+      };
+      std::vector<PairRecord> got;
+      auto collect = [&](int32_t i, int32_t j, double dx, double dy, double dz,
+                         double) { got.emplace_back(i, j, dx, dy, dz); };
+      CachedPairList direct;
+      direct.visitOnly(positions.data(), 4, cell.data(), opt, collect);
+      check(got);
+      for (int route = 0; route < 3; ++route) {
+        CAPTURE(route);
+        CachedPairList list;
+        got.clear();
+        if (route == 0) {
+          list.rebuildFused(positions.data(), 4, cell.data(), opt, collect);
+          check(got);
+        } else if (route == 1) {
+          list.buildForEval(positions.data(), 4, cell.data(), opt);
+        } else {
+          list.rebuild(positions.data(), 4, cell.data(), opt);
+        }
+        got.clear();
+        list.forEach(positions.data(), collect);
+        check(got);
+        std::array<double, 12> force{};
+        const double energy = list.accumulate(positions.data(), force.data(),
+                                              [](int32_t, int32_t, double r2) {
+                                                return PairTerm{0.5 * r2, -1.0};
+                                              });
+        REQUIRE_THAT(energy, WithinAbs(expected_energy, 1e-12));
+        for (std::size_t i = 0; i < force.size(); ++i)
+          REQUIRE_THAT(force[i], WithinAbs(expected_force[i], 1e-12));
+      }
+    }
+  }
+}
+
+TEST_CASE("Full-cell image search rejects invalid and unrepresentable cells",
+          "[PairList][triclinic]") {
+  const std::array<bool, 3> periodic{true, true, true};
+  const double singular[9] = {1.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0};
+  REQUIRE_THROWS_AS(rgpot::nlist::MinimumImage(singular, periodic),
+                    std::invalid_argument);
+  auto invalid =
+      std::array<double, 9>{1.0, 0.1, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
+  invalid[1] = std::numeric_limits<double>::infinity();
+  REQUIRE_THROWS_AS(rgpot::nlist::MinimumImage(invalid.data(), periodic),
+                    std::invalid_argument);
+  const double ill_conditioned[9] = {1.0, 1.0, 0.0, 1.0, 1.0 + 1e-12,
+                                     0.0, 0.0, 0.0, 1.0};
+  REQUIRE_THROWS_AS(rgpot::nlist::MinimumImage(ill_conditioned, periodic),
+                    std::invalid_argument);
+  const double cell[9] = {1.0, 0.1, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
+  const rgpot::nlist::MinimumImage image(cell, periodic);
+  double dx = 1e30, dy = 0.0, dz = 0.0;
+  REQUIRE_THROWS_AS(image.fold(dx, dy, dz), std::overflow_error);
+  dx = std::numeric_limits<double>::quiet_NaN();
+  REQUIRE_THROWS_AS(image.fold(dx, dy, dz), std::invalid_argument);
 }

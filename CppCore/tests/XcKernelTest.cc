@@ -147,7 +147,7 @@ TEST_CASE("XcKernel is not a Potential and has no PotType", "[xckernel][api]") {
   REQUIRE(types.find("XcKernel") == std::string::npos);
   REQUIRE(types.find("XCKERNEL") == std::string::npos);
   auto names = XcKernel::catalog();
-  REQUIRE(names.size() == 24);
+  REQUIRE(names.size() == 32);
   const std::string schema = slurp("CppCore/rgpot/rpc/Potentials.capnp");
   REQUIRE(schema.find("xckernel") == std::string::npos);
   REQUIRE(schema.find("XcKernel") == std::string::npos);
@@ -410,5 +410,131 @@ TEST_CASE("TDA pin operator vs libnwchemc roots",
     UNSCOPED_INFO(fam << " nwchemc vs pin-operator rel=" << rel
                       << " abs=" << absd);
     CHECK(rel <= kTdaNwchemcVsPin);
+  }
+}
+
+
+namespace {
+struct LaplacianGridFixture {
+  static constexpr std::int64_t points = 3;
+  static constexpr std::int64_t basis = 2;
+  std::vector<double> chi{0.5, 0.75, 1.0, -0.25, 0.25, 0.5};
+  std::vector<double> grad{0.25, -0.5, 0.75, 0.5, 0.25, -0.25,
+                           -0.5, 0.25, 0.5, 0.25, -0.75, 0.5,
+                           0.5, 0.75, -0.25, -0.25, 0.5, 0.25};
+  std::vector<double> lapl{0.25, -0.5, 0.75, -0.5, 0.25, 0.125};
+  std::vector<double> weights{0.5, 0.25, 1.0};
+
+  XcGrid grid() const {
+    return {points, basis, chi.data(), grad.data(), lapl.data(), nullptr};
+  }
+
+  double energy(const std::vector<double> &density) const {
+    double total = 0.0;
+    for (std::int64_t g = 0; g < points; ++g) {
+      double rho = 0.0, laplacian = 0.0;
+      double gradient[3] = {};
+      for (std::int64_t u = 0; u < basis; ++u) {
+        for (std::int64_t v = 0; v < basis; ++v) {
+          const double P = density[u * basis + v];
+          const double a = chi[u * points + g];
+          const double b = chi[v * points + g];
+          rho += P * a * b;
+          laplacian += P * (lapl[u * points + g] * b +
+                            a * lapl[v * points + g]);
+          for (std::int64_t axis = 0; axis < 3; ++axis) {
+            const double da = grad[(axis * basis + u) * points + g];
+            const double db = grad[(axis * basis + v) * points + g];
+            gradient[axis] += P * (da * b + a * db);
+            laplacian += 2.0 * P * da * db;
+          }
+        }
+      }
+      double sigma = 0.0;
+      for (double value : gradient) sigma += value * value;
+      total += weights[g] * (0.5 * rho * rho + 0.25 * sigma +
+                             0.75 * laplacian * laplacian +
+                             0.125 * rho * laplacian);
+    }
+    return total;
+  }
+
+  std::vector<double> fock(const std::vector<double> &density) const {
+    const auto fields = XcKernel::fieldsFromDensity(grid(), density.data());
+    std::vector<double> vrho(points), vlapl(points), vsigma(points, 0.25);
+    for (std::int64_t g = 0; g < points; ++g) {
+      vrho[g] = fields.rho[g] + 0.125 * fields.lapl[g];
+      vlapl[g] = 1.5 * fields.lapl[g] + 0.125 * fields.rho[g];
+    }
+    const std::map<std::string, const double *> scal{
+        {"w", weights.data()}, {"vrho", vrho.data()},
+        {"vsigma", vsigma.data()}, {"vlapl", vlapl.data()},
+        {"grad_rho_x", fields.grad_rho.data()},
+        {"grad_rho_y", fields.grad_rho.data() + points},
+        {"grad_rho_z", fields.grad_rho.data() + 2 * points}};
+    std::vector<double> result(basis * basis, 0.0);
+    REQUIRE(XcKernel("xck_mgga_lapl_r_o1").contract(grid(), scal, result.data()) == 0);
+    return result;
+  }
+};
+} // namespace
+
+TEST_CASE("Laplacian Fock and response differentiate a scalar functional",
+          "[xckernel][laplacian]") {
+  const LaplacianGridFixture fixture;
+  const std::vector<double> density{0.5, 0.25, -0.125, 0.75};
+  const std::vector<double> direction{0.25, -0.5, 0.125, 0.25};
+  constexpr double step = 1.0 / 1024.0;
+  const auto fock = fixture.fock(density);
+  for (std::size_t i = 0; i < density.size(); ++i) {
+    auto plus = density, minus = density;
+    plus[i] += step;
+    minus[i] -= step;
+    REQUIRE(fock[i] == (fixture.energy(plus) - fixture.energy(minus)) / (2.0 * step));
+  }
+
+  const auto fields = XcKernel::fieldsFromDensity(fixture.grid(), density.data());
+  const auto perturbation = XcKernel::fieldsFromDensity(fixture.grid(), direction.data());
+  const auto n = fixture.points;
+  const std::vector<double> one(n, 1.0), zero(n, 0.0), sigma(n, 0.25),
+      lapl(n, 1.5), mixed(n, 0.125);
+  const std::map<std::string, const double *> scal{
+      {"w", fixture.weights.data()}, {"vsigma", sigma.data()},
+      {"v2rho2", one.data()}, {"v2lapl2", lapl.data()},
+      {"v2rholapl", mixed.data()}, {"v2sigma2", zero.data()},
+      {"v2rhosigma", zero.data()}, {"v2sigmalapl", zero.data()},
+      {"rho_p1", perturbation.rho.data()},
+      {"lapl_rho_p1", perturbation.lapl.data()},
+      {"grad_rho_x", fields.grad_rho.data()},
+      {"grad_rho_y", fields.grad_rho.data() + n},
+      {"grad_rho_z", fields.grad_rho.data() + 2 * n},
+      {"grad_rho_p1_x", perturbation.grad_rho.data()},
+      {"grad_rho_p1_y", perturbation.grad_rho.data() + n},
+      {"grad_rho_p1_z", perturbation.grad_rho.data() + 2 * n}};
+  std::vector<double> response(4, 0.0);
+  REQUIRE(XcKernel("xck_mgga_lapl_r_o2").contract(fixture.grid(), scal, response.data()) == 0);
+  auto plus = density, minus = density;
+  for (std::size_t i = 0; i < density.size(); ++i) {
+    plus[i] += step * direction[i];
+    minus[i] -= step * direction[i];
+  }
+  const auto upper = fixture.fock(plus), lower = fixture.fock(minus);
+  for (std::size_t i = 0; i < response.size(); ++i)
+    REQUIRE(response[i] == (upper[i] - lower[i]) / (2.0 * step));
+}
+
+TEST_CASE("Every Laplacian host kernel rejects missing AO Laplacians",
+          "[xckernel][laplacian][api]") {
+  const LaplacianGridFixture fixture;
+  auto incomplete = fixture.grid();
+  incomplete.lapl_chi = nullptr;
+  for (const char *suffix : {"r_o1", "ua_o1", "ub_o1", "r_o2", "ua_o2",
+                             "ub_o2", "st_o2_p", "st_o2_m"}) {
+    const XcKernel kernel(std::string("xck_mgga_lapl_") + suffix);
+    REQUIRE(kernel.nScal() > kernel.nFields());
+    const std::vector<double> sentinel{1.0, 2.0, 3.0, 4.0};
+    auto output = sentinel;
+    REQUIRE(kernel.contract(incomplete, {}, output.data()) == 2);
+    REQUIRE(output == sentinel);
   }
 }

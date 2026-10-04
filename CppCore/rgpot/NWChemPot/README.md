@@ -13,7 +13,7 @@ Same schema for RPC and in-process; add future arms without new TOML/JSON:
 | `none` | void | no backend knobs / no-op configure |
 | `nwchem` | `NWChemParams` | NWChemPot |
 | *(later)* `metatomic` | `MetatomicParams` | MetatomicPot |
-| *(later)* `xtb` / `tblite` | … | XTBPot / TBLitePot |
+| *(later)* `xtb` / `tblite` | ... | XTBPot / TBLitePot |
 
 ```
 user / client
@@ -45,9 +45,9 @@ no in-process NWChem embed of its own; build `libnwchemc.so` from `nwchemc`.
 
 | Piece | Built when | Role |
 |-------|------------|------|
-| `NWChemPot.cc` frontend | always | Serialize `NWChemParams`, `dlopen` engine, units to eV/Angstrom |
+| `NWChemPot.cc` frontend | RPC schema support is enabled | Serialize `NWChemParams`, `dlopen` engine, units to eV/Angstrom |
 | `nwchem_c_abi.h` | header | stable consumer C-ABI contract (`nwchemc_*`) |
-| `nwchem_c_abi_stub.c` | always | no-op ABI: `nwchemc_available()==0`, used by the ABI conformance test |
+| `nwchem_c_abi_stub.c` | NWChem ABI tests are enabled | no-op ABI: `nwchemc_available()==0`, used by the ABI conformance test |
 
 The real engine (`nwchemc_*` implementation, NWChem embed, Fortran) lives in the
 split [`nwchemc`](https://github.com/OmniPotentRPC/nwchemc) project, not here.
@@ -69,8 +69,8 @@ NWChem embed  ->  geom/basis via embed API + task_energy/gradient  (NWCHEM_TOP l
 ## Meson
 
 ```bash
-# Frontend only: always builds. Resolves libnwchemc.so by dlopen at runtime.
-meson setup bbdir -Dwith_rpc=false
+# Frontend and schema support; resolves libnwchemc.so by dlopen at runtime.
+meson setup bbdir -Dwith_rpc=true
 meson compile -C bbdir
 ```
 
@@ -95,8 +95,8 @@ binary**, not the embed SDK; `nwchemc` needs an NWChem source tree.
 | field | default | meaning |
 |-------|---------|---------|
 | `basis` | `sto-3g` | Gaussian basis |
-| `theory` | `scf` | Method: `scf`, `dft`, `blyp`, `b3lyp`, … |
-| `scfType` | `rhf` | HF: `rhf`/`uhf`; with DFT: XC functional (`blyp`, …) |
+| `theory` | `scf` | Method: `scf`, `dft`, `blyp`, `b3lyp`, ... |
+| `scfType` | `rhf` | HF: `rhf`/`uhf`; with DFT: XC functional (`blyp`, ...) |
 | `charge` | `0` | Molecular charge |
 | `multiplicity` | `1` | 2S+1 |
 | `enginePath` | `""` | Frontend: explicit `libnwchemc.so` path; empty -> env/probe |
@@ -158,3 +158,57 @@ top of the same frontend; it is not required for the C ABI or embed path.
 ## Units
 
 ABI: Hartree, Hartree/Bohr. Frontend: eV, eV/Angstrom (`rgpot::units`).
+
+## MPI hosts
+
+With RPC schema support and MPI enabled, the build provides two explicit MPI
+executables. `nwchem_mpi_force_host` evaluates one geometry through the public
+NWChem frontend. `potserv_mpi` serves NWChem or CPMD requests with one socket on
+rank zero and engine workers on the other ranks. The serial `potserv` and core
+library retain their existing MPI-free load path.
+
+Build the executables with Meson:
+
+```sh
+meson setup build -Dwith_rpc=true -Dwith_mpi=enabled
+meson compile -C build nwchem_mpi_force_host potserv_mpi
+```
+
+The force host accepts a built-in H2, water, or benzene geometry. An explicit
+engine path selects the shared library on every rank:
+
+```sh
+mpirun -np 4 build/CppCore/nwchem_mpi_force_host \
+  --system water --basis sto-3g --engine /path/to/libnwchemc.so
+```
+
+Its output contains the energy in eV and the maximum absolute force component
+in eV/angstrom. `ok=1` means every rank returned finite results. `wall_s` is the
+maximum elapsed force-call time across the ranks. A geometry file starts with
+the atom count, followed by one `Z x y z` line per atom; pass it with `--geom`.
+Rank zero reads that file and sends the same coordinates and parameters to all
+workers.
+
+Start an MPI RPC server with the existing backend syntax:
+
+```sh
+export RGPOT_NWCHEM_ENGINE=/path/to/libnwchemc.so
+mpirun -np 4 build/CppCore/potserv_mpi 12345 NWChem:sto-3g:scf
+```
+
+The RPC client connects to port 12345 and uses the same `PotentialConfig` and
+`ForceInput` messages as the serial server. `CPMD` selects the CPMD backend.
+CMake also builds and installs both executables when RPC and MPI are available.
+These hosts use one `MPI_COMM_WORLD` for the engine request stream; calculator
+groups continue to use the separate `rgpot::bindCalculators` interface.
+
+A host that initializes MPI registers its exit handler before loading the
+engine. Engine exit handlers therefore run while that runtime is live. A caller
+that supplies an initialized runtime owns its finalization; borrowed
+communicators are never freed by the host helper.
+
+The command channel agrees geometry preparation and receive-allocation errors
+before transferring a request. A force or configuration failure returned by a
+worker reaches the RPC client, and workers can accept another request. Every
+engine callback must return or throw on all participating ranks. Collective
+operations inside the engine must follow its own matching-call contract.

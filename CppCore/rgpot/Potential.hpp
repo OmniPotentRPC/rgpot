@@ -11,6 +11,7 @@
  */
 
 // clang-format off
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <stdexcept>
@@ -201,7 +202,7 @@ public:
         }
       }
       if (hit) {
-        _cache->deserialize_hit(*hit, fo.energy, forces);
+        _cache->deserialize_hit(*hit, fo, nAtoms);
         return {fo.energy, std::move(forces), fo.variance};
       }
     }
@@ -212,7 +213,7 @@ public:
 
     // Cache Write
     if (_cache) {
-      _cache->add_serialized(key, fo.energy, forces);
+      _cache->add_serialized(key, fo, nAtoms);
     }
 #else
     // Fallback when caching is disabled
@@ -247,8 +248,7 @@ public:
    */
   virtual void forceBatchImpl(const ForceBatch &batch) const {
     for (size_t i = 0; i < batch.nSystems; ++i) {
-      static_cast<const Derived *>(this)->forceImpl(batch.in[i],
-                                                    &batch.out[i]);
+      static_cast<const Derived *>(this)->forceImpl(batch.in[i], &batch.out[i]);
     }
   }
 
@@ -265,6 +265,11 @@ public:
     if (batch.nSystems == 0) {
       return;
     }
+    for (size_t i = 0; i < batch.nSystems; ++i) {
+      batch.out[i].variance = 0.0;
+      batch.out[i].has_stress = 0;
+      std::fill(batch.out[i].stress, batch.out[i].stress + 9, 0.0);
+    }
 #ifdef RGPOT_HAS_CACHE
     if (_cache) {
       std::vector<size_t> misses;
@@ -276,6 +281,11 @@ public:
       for (size_t i = 0; i < batch.nSystems; ++i) {
         keys.push_back(cacheKey(batch.in[i]));
         hits.push_back(_cache->find(keys[i]));
+        if (hits.back() && caps().stress &&
+            !cache::PotentialCache::has_result_metadata(*hits.back(),
+                                                        batch.in[i].nAtoms)) {
+          hits.back().reset();
+        }
       }
       if (caps().groupCollective) {
         // One joint decision per system, so a system any rank misses is
@@ -295,12 +305,7 @@ public:
       for (size_t i = 0; i < batch.nSystems; ++i) {
         auto &hit = hits[i];
         if (hit) {
-          types::AtomMatrix forces =
-              types::AtomMatrix::Zero(batch.in[i].nAtoms, 3);
-          _cache->deserialize_hit(*hit, batch.out[i].energy, forces);
-          std::memcpy(batch.out[i].F, forces.data(),
-                      forces.size() * sizeof(double));
-          batch.out[i].variance = 0.0;
+          _cache->deserialize_hit(*hit, batch.out[i], batch.in[i].nAtoms);
         } else {
           misses.push_back(i);
         }
@@ -319,20 +324,19 @@ public:
         missIn.push_back(batch.in[idx]);
         missOut.push_back(batch.out[idx]);
       }
-      ForceBatch missBatch{
-          .nSystems = missIn.size(), .in = missIn.data(), .out = missOut.data()};
+      ForceBatch missBatch{.nSystems = missIn.size(),
+                           .in = missIn.data(),
+                           .out = missOut.data()};
       static_cast<Derived *>(this)->forceBatchImpl(missBatch);
 
       for (size_t j = 0; j < misses.size(); ++j) {
         const size_t idx = misses[j];
         batch.out[idx].energy = missOut[j].energy;
         batch.out[idx].variance = missOut[j].variance;
+        batch.out[idx].has_stress = missOut[j].has_stress;
+        std::copy_n(missOut[j].stress, 9, batch.out[idx].stress);
         registry<Derived>::incrementForceCalls();
-        types::AtomMatrix forces =
-            types::AtomMatrix::Zero(batch.in[idx].nAtoms, 3);
-        std::memcpy(forces.data(), batch.out[idx].F,
-                    forces.size() * sizeof(double));
-        _cache->add_serialized(keys[idx], batch.out[idx].energy, forces);
+        _cache->add_serialized(keys[idx], batch.out[idx], batch.in[idx].nAtoms);
       }
       return;
     }

@@ -47,6 +47,9 @@ struct PotCaps {
   /// rank alone in a collective. Other groups take no part, so a host may
   /// hand groups uneven batches.
   bool groupCollective = false;
+  /// forceImpl writes Cauchy stress for a positive cell volume:
+  /// sigma = (1/V) dE/dstrain in energy/length^3, row-major in ForceOut.
+  bool stress = false;
 };
 
 } // namespace rgpot

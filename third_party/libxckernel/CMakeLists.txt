@@ -16,6 +16,7 @@ if(XCKERNEL_MAX_ORDER GREATER_EQUAL 0)
         src/xck_lda_r_o0.cpp
         src/xck_gga_r_o0.cpp
         src/xck_mgga_tau_r_o0.cpp
+        src/xck_mgga_lapl_r_o0.cpp
     )
 endif()
 if(XCKERNEL_MAX_ORDER GREATER_EQUAL 1)
@@ -29,6 +30,9 @@ if(XCKERNEL_MAX_ORDER GREATER_EQUAL 1)
         src/xck_mgga_tau_r_o1.cpp
         src/xck_mgga_tau_ua_o1.cpp
         src/xck_mgga_tau_ub_o1.cpp
+        src/xck_mgga_lapl_r_o1.cpp
+        src/xck_mgga_lapl_ua_o1.cpp
+        src/xck_mgga_lapl_ub_o1.cpp
     )
 endif()
 if(XCKERNEL_MAX_ORDER GREATER_EQUAL 2)
@@ -48,6 +52,11 @@ if(XCKERNEL_MAX_ORDER GREATER_EQUAL 2)
         src/xck_mgga_tau_ub_o2.cpp
         src/xck_mgga_tau_st_o2_p.cpp
         src/xck_mgga_tau_st_o2_m.cpp
+        src/xck_mgga_lapl_r_o2.cpp
+        src/xck_mgga_lapl_ua_o2.cpp
+        src/xck_mgga_lapl_ub_o2.cpp
+        src/xck_mgga_lapl_st_o2_p.cpp
+        src/xck_mgga_lapl_st_o2_m.cpp
     )
 endif()
 target_compile_definitions(xckernel PUBLIC

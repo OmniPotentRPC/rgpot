@@ -15,6 +15,7 @@
 
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/nlist/PairListCache.hpp"
+#include "rgpot/stress.hpp"
 
 namespace rgpot {
 
@@ -40,6 +41,12 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const double *box = in.box;
   double *F = out->F;
   double *U = &out->energy;
+  double strain[6] = {};
+  const double volume = cellVolume(in.box);
+  publishCauchyStress(out, strain, volume);
+  const auto observe = [&](double fscale, double dx, double dy, double dz) {
+    accumulatePairStrain(strain, fscale, dx, dy, dz);
+  };
   *U = 0.0;
   for (long k = 0; k < 3 * N; k++) {
     F[k] = 0.0;
@@ -69,7 +76,9 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
           const auto s = sw(r);
           return nlist::PairTerm{
               v * s.s, (twoDeA * d * (d - 1.0) * s.s - v * s.dsdr) / r};
-        });
+        },
+        observe);
+    publishCauchyStress(out, strain, volume);
     return;
   }
   *U = pool.accumulate(
@@ -80,7 +89,9 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
         // -dU/dr / r: the force on i is fscale * (r_i - r_j).
         return nlist::PairTerm{depth * d * d - depth - shiftU,
                                twoDeA * d * (d - 1.0) / r};
-      });
+      },
+      observe);
+  publishCauchyStress(out, strain, volume);
 }
 
 } // namespace rgpot

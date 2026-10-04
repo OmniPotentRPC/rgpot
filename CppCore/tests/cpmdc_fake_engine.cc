@@ -19,11 +19,12 @@
 #include <string>
 #include <vector>
 
-
 struct CPMDCSession {
   // Use bytes, not vector<capnp::word>: word is not default-constructible on
   // Apple libc++ (resize/assign fail in CI Xcode 16).
   std::vector<unsigned char> params;
+  long long orbital_key = -1;
+  bool has_orbital_key = false;
 };
 
 namespace {
@@ -73,7 +74,8 @@ std::vector<unsigned char> make_result(size_t force_count, double cell_zz) {
     forces.set(i, 0.011 + 0.001 * static_cast<double>(i));
   auto stress = result.initStress(9);
   for (unsigned int i = 0; i < 9; ++i)
-    stress.set(i, cpmd_stress_oracle::stressEvPerAngstrom3(static_cast<int>(i)));
+    stress.set(i,
+               cpmd_stress_oracle::stressEvPerAngstrom3(static_cast<int>(i)));
   auto words = ::capnp::messageToFlatArray(msg);
   const auto bytes = words.asBytes();
   return std::vector<unsigned char>(bytes.begin(), bytes.end());
@@ -98,6 +100,9 @@ CPMDCResult ok_result(const char *message) {
 // Sessions created through cpmdc_session_create, read back by tests
 // through cpmdc_fake_session_create_count.
 int g_session_create_count = 0;
+// Key named for the last session evaluation; kNoOrbitalKey when none was.
+constexpr long long kNoOrbitalKey = -1000000;
+long long g_last_orbital_key = kNoOrbitalKey;
 
 } // namespace
 
@@ -107,10 +112,11 @@ int cpmdc_set_params(const void *params_capnp, size_t params_capnp_size_bytes) {
   return has_flat_message(params_capnp, params_capnp_size_bytes) ? 0 : -1;
 }
 
-CPMDCResult cpmdc_energy_gradient(
-    int n_atoms, const double *positions_ang, const int *atomic_numbers,
-    const void *params_capnp, size_t params_capnp_size_bytes,
-    double *grad_h_bohr) {
+CPMDCResult cpmdc_energy_gradient(int n_atoms, const double *positions_ang,
+                                  const int *atomic_numbers,
+                                  const void *params_capnp,
+                                  size_t params_capnp_size_bytes,
+                                  double *grad_h_bohr) {
   (void)n_atoms;
   (void)positions_ang;
   (void)atomic_numbers;
@@ -168,6 +174,14 @@ int cpmdc_session_set_params(CPMDCSession *session, const void *params_capnp,
 
 void cpmdc_session_destroy(CPMDCSession *session) { delete session; }
 
+int cpmdc_session_select_orbitals(CPMDCSession *session, long long key) {
+  if (session == nullptr)
+    return -1;
+  session->orbital_key = key;
+  session->has_orbital_key = true;
+  return 0;
+}
+
 CPMDCResult cpmdc_session_energy_gradient(CPMDCSession *session, int n_atoms,
                                           const double *positions_ang,
                                           const int *atomic_numbers,
@@ -207,9 +221,9 @@ size_t cpmdc_potential_result_size_for_force_input(
   if (!has_flat_message(force_input_capnp, force_input_capnp_size_bytes))
     return 0;
   try {
-    auto words = kj::arrayPtr(static_cast<const ::capnp::word *>(force_input_capnp),
-                              force_input_capnp_size_bytes /
-                                  sizeof(::capnp::word));
+    auto words =
+        kj::arrayPtr(static_cast<const ::capnp::word *>(force_input_capnp),
+                     force_input_capnp_size_bytes / sizeof(::capnp::word));
     ::capnp::FlatArrayMessageReader reader(words);
     size_t force_count = 0;
     double cell_zz = 0.0;
@@ -223,18 +237,19 @@ size_t cpmdc_potential_result_size_for_force_input(
   }
 }
 
-CPMDCResult cpmdc_session_calculate_forces(
-    CPMDCSession *session, const void *force_input_capnp,
-    size_t force_input_capnp_size_bytes, double *forces_h_bohr,
-    size_t forces_len) {
+CPMDCResult cpmdc_session_calculate_forces(CPMDCSession *session,
+                                           const void *force_input_capnp,
+                                           size_t force_input_capnp_size_bytes,
+                                           double *forces_h_bohr,
+                                           size_t forces_len) {
   if (session == nullptr ||
       !has_flat_message(force_input_capnp, force_input_capnp_size_bytes) ||
       forces_h_bohr == nullptr)
     return fail_result("invalid fake session arguments");
   try {
-    auto words = kj::arrayPtr(static_cast<const ::capnp::word *>(force_input_capnp),
-                              force_input_capnp_size_bytes /
-                                  sizeof(::capnp::word));
+    auto words =
+        kj::arrayPtr(static_cast<const ::capnp::word *>(force_input_capnp),
+                     force_input_capnp_size_bytes / sizeof(::capnp::word));
     ::capnp::FlatArrayMessageReader reader(words);
     size_t force_count = 0;
     double cell_zz = 0.0;
@@ -264,9 +279,9 @@ CPMDCResult cpmdc_session_calculate_result(
       potential_result_capnp_size_bytes == nullptr)
     return fail_result("invalid fake session arguments");
   try {
-    auto words = kj::arrayPtr(static_cast<const ::capnp::word *>(force_input_capnp),
-                              force_input_capnp_size_bytes /
-                                  sizeof(::capnp::word));
+    auto words =
+        kj::arrayPtr(static_cast<const ::capnp::word *>(force_input_capnp),
+                     force_input_capnp_size_bytes / sizeof(::capnp::word));
     ::capnp::FlatArrayMessageReader reader(words);
     size_t force_count = 0;
     double cell_zz = 0.0;
@@ -275,6 +290,8 @@ CPMDCResult cpmdc_session_calculate_result(
                         &force_count, &cell_zz))
       return fail_result("invalid fake ForceInput");
     const auto result_bytes = make_result(force_count, cell_zz);
+    g_last_orbital_key =
+        session->has_orbital_key ? session->orbital_key : kNoOrbitalKey;
     const size_t required = result_bytes.size();
     *potential_result_capnp_size_bytes = required;
     if (potential_result_capnp == nullptr ||
@@ -347,15 +364,22 @@ RGPOT_FAKE_ONLY int cpmdc_fake_session_create_count(void) {
   return g_session_create_count;
 }
 
+// Test-only: the key named before the last session evaluation, or
+// -1000000 when the session never named one.
+RGPOT_FAKE_ONLY long long cpmdc_fake_last_orbital_key(void) {
+  return g_last_orbital_key;
+}
+
 RGPOT_FAKE_ONLY const char *cpmdc_last_error(void) { return ""; }
 
 RGPOT_FAKE_ONLY int cpmdc_configure(const void *config_capnp,
-                    size_t config_capnp_size_bytes) {
+                                    size_t config_capnp_size_bytes) {
   return has_flat_message(config_capnp, config_capnp_size_bytes) ? 0 : -1;
 }
 
-RGPOT_FAKE_ONLY CPMDCSession *cpmdc_session_create_from_config(
-    const void *config_capnp, size_t config_capnp_size_bytes) {
+RGPOT_FAKE_ONLY CPMDCSession *
+cpmdc_session_create_from_config(const void *config_capnp,
+                                 size_t config_capnp_size_bytes) {
   if (!has_flat_message(config_capnp, config_capnp_size_bytes))
     return nullptr;
   auto *session = new CPMDCSession();
@@ -364,8 +388,9 @@ RGPOT_FAKE_ONLY CPMDCSession *cpmdc_session_create_from_config(
   return session;
 }
 
-RGPOT_FAKE_ONLY int cpmdc_session_configure(CPMDCSession *session, const void *config_capnp,
-                            size_t config_capnp_size_bytes) {
+RGPOT_FAKE_ONLY int cpmdc_session_configure(CPMDCSession *session,
+                                            const void *config_capnp,
+                                            size_t config_capnp_size_bytes) {
   if (session == nullptr ||
       !has_flat_message(config_capnp, config_capnp_size_bytes))
     return -1;
@@ -377,8 +402,7 @@ RGPOT_FAKE_ONLY int cpmdc_session_configure(CPMDCSession *session, const void *c
 RGPOT_FAKE_ONLY CPMDCResult cpmdc_calculate_result_from_config(
     const void *config_capnp, size_t config_capnp_size_bytes,
     const void *force_input_capnp, size_t force_input_capnp_size_bytes,
-    void *potential_result_capnp,
-    size_t potential_result_capnp_capacity_bytes,
+    void *potential_result_capnp, size_t potential_result_capnp_capacity_bytes,
     size_t *potential_result_capnp_size_bytes) {
   CPMDCSession *session =
       cpmdc_session_create_from_config(config_capnp, config_capnp_size_bytes);
@@ -392,9 +416,10 @@ RGPOT_FAKE_ONLY CPMDCResult cpmdc_calculate_result_from_config(
   return result;
 }
 
-RGPOT_FAKE_ONLY int cpmdc_capabilities_result(void *capabilities_capnp,
-                              size_t capabilities_capnp_capacity_bytes,
-                              size_t *capabilities_capnp_size_bytes) {
+RGPOT_FAKE_ONLY int
+cpmdc_capabilities_result(void *capabilities_capnp,
+                          size_t capabilities_capnp_capacity_bytes,
+                          size_t *capabilities_capnp_size_bytes) {
   if (capabilities_capnp_size_bytes == nullptr)
     return -1;
   try {

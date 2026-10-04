@@ -48,6 +48,18 @@ public:
 
   bool setParams(const ::CPMDParams::Reader &params);
 
+  /// Names the calculation the following forces belong to: an image of a
+  /// band, a bead of a ring polymer. The engine keeps the converged
+  /// orbitals per key, so a calculator that evaluates several of them in
+  /// turn starts each SCF from that key's own previous orbitals instead of
+  /// from whichever calculation it ran last. Every rank of a calculator
+  /// names the same key before the same force. An engine without
+  /// cpmdc_session_select_orbitals ignores the key.
+  void selectOrbitals(int64_t key);
+
+  /// True when the loaded engine keeps orbitals per key.
+  [[nodiscard]] bool keepsOrbitalsPerKey() const;
+
   void getParams(::CPMDParams::Builder out) const;
 
   bool setPotentialConfig(const ::PotentialConfig::Reader &cfg,
@@ -57,18 +69,18 @@ public:
   static bool probe_available();
   static bool abi_available();
 
-  /// Collective on MPI_COMM_WORLD. Splits into calculators of
-  /// ranks_per_calc ranks via cpmdc_bind_calculator. One NEB image
-  /// is one calculator. A second band calls this on its own world.
-  /// Every rank must call it before the first force. Returns the
-  /// group index, or -1 when the engine has no bind symbol.
+  /// Collective on MPI_COMM_WORLD. rgpot splits into calculators of
+  /// ranks_per_calc ranks and cpmdc_adopt_calculator_comm gives the
+  /// engine that same communicator. One NEB image is one calculator.
+  /// A second band calls this on its own world. Every rank must call
+  /// it before the first force. Returns the group index, or -1 before
+  /// the split when the engine has no communicator-adoption symbol.
   ///
-  /// Ordering: the engine is loaded here and stays loaded for the rest
-  /// of the process, whether or not a CPMDPot exists yet. The split
-  /// communicator lives inside the engine and the calculator hooks run
-  /// once, so an engine unloaded between this call and the first
-  /// CPMDPot would lose the split with no way to redo it. Construct
-  /// CPMDPot instances after this call; they share the loaded engine.
+  /// Instances may be constructed before or after calculator binding.
+  /// Every rank uses the same construction and binding order. Each
+  /// engine adopts the split once and stays loaded through process exit.
+  /// Constructing an instance after rgpot::bindCalculators gives its
+  /// engine the existing communicator without another split.
   static int bindCalculators(int ranks_per_calc);
 
 private:

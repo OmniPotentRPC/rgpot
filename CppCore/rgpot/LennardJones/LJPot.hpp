@@ -48,10 +48,7 @@ public:
   LJPot() : LJPot(LJConfig{}) {}
 
   explicit LJPot(const LJConfig &c)
-      : Potential(PotType::LJ),
-        u0{c.u0},
-        cuttOffR{c.cutoff},
-        psi{c.psi},
+      : Potential(PotType::LJ), u0{c.u0}, cuttOffR{c.cutoff}, psi{c.psi},
         m_config{c} {
     // Shift so U(cuttOffR) = 0 (standard shifted 12-6 LJ).
     const double a = std::pow(psi / cuttOffR, 6.0);
@@ -72,6 +69,10 @@ public:
   }
 
   [[nodiscard]] const LJConfig &config() const noexcept { return m_config; }
+
+  [[nodiscard]] PotCaps caps() const noexcept override {
+    return {.stress = true};
+  }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
     return m_paramsKey;

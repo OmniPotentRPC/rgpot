@@ -2,6 +2,7 @@
 // Copyright 2023--present rgpot developers
 
 #include "rgpot/XTBPot/XTBPot.hpp"
+#include "rgpot/stress.hpp"
 #include "rgpot/units.hpp"
 
 #include <stdexcept>
@@ -118,6 +119,22 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   xtb_getGradient(m_env, m_res, out->F);
   for (size_t i = 0; i < n3; ++i) {
     out->F[i] *= NEG_GRAD_TO_FORCE;
+  }
+
+  // xtb stores dE/dε in Hartree. sigma = virial / V in eV/Angstrom^3.
+  double virial[9] = {};
+  xtb_getVirial(m_env, m_res, virial);
+  const double volume = cellVolume(in.box);
+  if (volume > 0.0) {
+    const double scale = units::HARTREE_TO_EV / volume;
+    for (int col = 0; col < 3; ++col) {
+      for (int row = 0; row < 3; ++row) {
+        out->stress[row * 3 + col] = virial[row + 3 * col] * scale;
+      }
+    }
+    out->has_stress = 1;
+  } else {
+    out->has_stress = 0;
   }
 
   out->variance = 0.0;

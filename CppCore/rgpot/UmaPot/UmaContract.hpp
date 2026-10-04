@@ -26,8 +26,8 @@ namespace rgpot {
  */
 class UmaContractError : public std::runtime_error {
 public:
-  UmaContractError(std::string field, std::string package,
-                   std::string actual, const std::string &where)
+  UmaContractError(std::string field, std::string package, std::string actual,
+                   const std::string &where)
       : std::runtime_error("UmaPot: " + where + " " + field + " is " + actual +
                            ", the package was exported for " + package),
         m_field(std::move(field)), m_package(std::move(package)),
@@ -74,8 +74,8 @@ struct UmaContract {
     std::vector<int64_t> out;
     size_t i = 0;
     while (i < s.size()) {
-      const bool neg = s[i] == '-' && i + 1 < s.size() && s[i + 1] >= '0' &&
-                       s[i + 1] <= '9';
+      const bool neg =
+          s[i] == '-' && i + 1 < s.size() && s[i + 1] >= '0' && s[i + 1] <= '9';
       if (!neg && !(s[i] >= '0' && s[i] <= '9')) {
         ++i;
         continue;

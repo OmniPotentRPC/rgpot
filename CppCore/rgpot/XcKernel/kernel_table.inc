@@ -1,6 +1,5 @@
-// First-slice C ABI contraction kernels (lda/gga/mgga_tau, order 1-2).
+// C ABI contraction kernels for LDA, GGA, and meta-GGA, orders 1 and 2.
 // Energy o0 helpers use a different signature and are not in this table.
-// GIAO / o3 / o4 / mgga_lapl / cmgga / hmgga stay out of the first cut.
 XCK_KERNEL(xck_lda_r_o1)
 XCK_KERNEL(xck_lda_ua_o1)
 XCK_KERNEL(xck_lda_ub_o1)
@@ -25,3 +24,11 @@ XCK_KERNEL(xck_mgga_tau_ua_o2)
 XCK_KERNEL(xck_mgga_tau_ub_o2)
 XCK_KERNEL(xck_mgga_tau_st_o2_p)
 XCK_KERNEL(xck_mgga_tau_st_o2_m)
+XCK_KERNEL(xck_mgga_lapl_r_o1)
+XCK_KERNEL(xck_mgga_lapl_ua_o1)
+XCK_KERNEL(xck_mgga_lapl_ub_o1)
+XCK_KERNEL(xck_mgga_lapl_r_o2)
+XCK_KERNEL(xck_mgga_lapl_ua_o2)
+XCK_KERNEL(xck_mgga_lapl_ub_o2)
+XCK_KERNEL(xck_mgga_lapl_st_o2_p)
+XCK_KERNEL(xck_mgga_lapl_st_o2_m)

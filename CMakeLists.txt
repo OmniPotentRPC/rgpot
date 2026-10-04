@@ -51,8 +51,9 @@ endif()
 
 # 1. Server/Physics Dependencies
 if(NOT RGPOT_RPC_CLIENT_ONLY)
-  # The Fortran 2018 pot kernels (rgpot/fortran) build under meson only; this
-  # CMake path is a consumer smoke build of the pure C++ surface.
+  # Core builds provide every public Fortran potential. The RPC-only
+  # bridge has no numerical kernels and does not need a Fortran compiler.
+  enable_language(Fortran)
   if(RGPOT_WITH_CACHE)
     # Conda macOS runners sometimes fail FindThreads before RocksDB; set the
     # pthread hint explicitly so RocksDBConfig's find_dependency(Threads) works.
@@ -62,7 +63,9 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     set(THREADS_PREFER_PTHREAD_FLAG ON)
     find_package(Threads REQUIRED)
     find_package(RocksDB REQUIRED)
-    find_package(xxHash CONFIG QUIET)
+    list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+    find_package(xxHash QUIET)
+    list(POP_BACK CMAKE_MODULE_PATH)
     if(NOT xxHash_FOUND)
       message(
         STATUS "xxHash not found via find_package, fetching from source...")
@@ -71,9 +74,14 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
         GIT_REPOSITORY https://github.com/Cyan4973/xxHash.git
         GIT_TAG v0.8.3)
       FetchContent_MakeAvailable(xxHash)
-      if(TARGET xxhash AND NOT TARGET xxHash::xxhash)
-        add_library(xxHash::xxhash ALIAS xxhash)
+      if(NOT TARGET xxHash::xxhash)
+        # The pinned release keeps its CMake project below the source root.
+        set(XXHASH_BUILD_XXHSUM OFF)
+        set(XXHASH_BUNDLED_MODE OFF)
+        add_subdirectory("${xxhash_SOURCE_DIR}/cmake_unofficial"
+                         "${xxhash_BINARY_DIR}")
       endif()
+      set_target_properties(xxhash PROPERTIES POSITION_INDEPENDENT_CODE ON)
     endif()
   endif()
 
@@ -117,7 +125,9 @@ if(RGPOT_WITH_RPC)
     ptlrpc
     PUBLIC $<BUILD_INTERFACE:${CAPNP_OUTPUT_DIR}/rgpot/rpc>
            $<BUILD_INTERFACE:${CAPNP_OUTPUT_DIR}>
-           $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
+           $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+           $<INSTALL_INTERFACE:include/rgpot/rpc>
+           $<INSTALL_INTERFACE:include>)
 
   # Client Bridge
   if(APPLE)
@@ -144,11 +154,15 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/CalculatorGroup.cc
       CppCore/rgpot/PotHelpers.cc
       CppCore/rgpot/units.cc
+      CppCore/rgpot/plugin/PluginRegistry.cc
+      CppCore/rgpot/plugin/PluginBridge.cc
+      CppCore/rgpot/plugin/builtins/lj_plugin.cpp
       CppCore/rgpot/LennardJones/LJPot.cc
       CppCore/rgpot/LennardJones/LJClusterPot.cc
       CppCore/rgpot/Morse/MorsePot.cc
       CppCore/rgpot/ZBL/ZBLPot.cc
-      CppCore/rgpot/CuH2/cuh2Utils.cc)
+      CppCore/rgpot/CuH2/cuh2Utils.cc
+      CppCore/rgpot/fortran/FortranPots.cc)
 
   # NWChemPot / CPMDPot are pure dlopen consumers of the split nwchemc / cpmdc
   # engines (parity with meson). Cap'n Proto params live in the generated schema,
@@ -158,14 +172,58 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
          CppCore/rgpot/CPMDPot/CPMDPot.cc)
   endif()
 
+  if(RGPOT_BUILD_TESTS)
+    enable_testing()
+  endif()
+  find_package(Threads REQUIRED)
+  add_library(rgpot_vesin STATIC third_party/vesin/vesin-single-build.cpp)
+  add_library(rgpot::vesin ALIAS rgpot_vesin)
+  set_target_properties(rgpot_vesin PROPERTIES
+    EXPORT_NAME vesin
+    POSITION_INDEPENDENT_CODE ON
+    CXX_VISIBILITY_PRESET hidden)
+  target_include_directories(rgpot_vesin
+    PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/vesin>
+           $<INSTALL_INTERFACE:include/rgpot/vesin>)
+  target_link_libraries(rgpot_vesin PRIVATE Threads::Threads)
+  add_subdirectory(CppCore/rgpot/fortran)
   add_library(rgpot ${RGPOT_SOURCES})
-  set_target_properties(rgpot PROPERTIES LINKER_LANGUAGE CXX)
+  set_target_properties(rgpot PROPERTIES LINKER_LANGUAGE CXX
+                                        POSITION_INDEPENDENT_CODE ON)
+  target_link_libraries(rgpot PRIVATE rgpot_fortran_kernels Threads::Threads)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_options(
+      rgpot PRIVATE
+      "LINKER:--exclude-libs,$<TARGET_FILE_NAME:rgpot_fortran_kernels>")
+    get_target_property(_rgpot_library_type rgpot TYPE)
+    if(_rgpot_library_type STREQUAL "STATIC_LIBRARY")
+      # Static consumers perform the final link and must hide the kernel
+      # archive's internal Fortran entries in their own shared objects.
+      target_link_options(
+        rgpot INTERFACE
+        "$<BUILD_INTERFACE:LINKER:--exclude-libs,$<TARGET_FILE_NAME:rgpot_fortran_kernels>>"
+        "$<INSTALL_INTERFACE:LINKER:--exclude-libs,$<TARGET_FILE_NAME:rgpot::rgpot_fortran_kernels>>")
+    endif()
+  endif()
 
   # librgpot never links MPI; it loads librgpot_mpi with dlopen when a host
   # asks for calculator groups (CppCore/rgpot/calculator_mpi_abi.h).
   target_link_libraries(rgpot PRIVATE ${CMAKE_DL_LIBS})
   find_package(MPI QUIET COMPONENTS CXX)
+  set(RGPOT_HAVE_MPI OFF)
   if(MPI_FOUND)
+    # A system MPI wrapper can be found without headers the active
+    # compiler can include; only a configuration that compiles counts.
+    include(CheckCXXSourceCompiles)
+    set(CMAKE_REQUIRED_LIBRARIES MPI::MPI_CXX)
+    check_cxx_source_compiles(
+      "#include <mpi.h>
+       int main(int argc, char **argv) { MPI_Init(&argc, &argv); return MPI_Finalize(); }"
+      RGPOT_MPI_COMPILES)
+    unset(CMAKE_REQUIRED_LIBRARIES)
+    set(RGPOT_HAVE_MPI ${RGPOT_MPI_COMPILES})
+  endif()
+  if(RGPOT_HAVE_MPI)
     add_library(rgpot_mpi SHARED CppCore/rgpot/CalculatorGroupMpi.cc)
     target_include_directories(rgpot_mpi
                                PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/CppCore)
@@ -176,7 +234,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
 
   if(RGPOT_WITH_CACHE)
     target_sources(rgpot PRIVATE CppCore/rgpot/PotentialCache.cc)
-    target_link_libraries(rgpot PUBLIC RocksDB::rocksdb xxhash)
+    target_link_libraries(rgpot PUBLIC RocksDB::rocksdb xxHash::xxhash)
     target_compile_definitions(rgpot PUBLIC RGPOT_HAS_CACHE)
   endif()
 
@@ -196,6 +254,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
 
   target_include_directories(
     rgpot PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/CppCore>
+                 $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                  $<INSTALL_INTERFACE:include>)
 
   if(UNIX AND NOT APPLE)
@@ -223,10 +282,32 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
   endif()
 endif()
 
+# The MPI hosts are explicit executables; the serial server and core library
+# do not acquire an MPI load dependency.
+if(RGPOT_WITH_RPC AND NOT RGPOT_RPC_CLIENT_ONLY)
+  add_executable(potserv CppCore/rgpot/rpc/server.cpp)
+  target_link_libraries(potserv PRIVATE rgpot::rgpot ptlrpc CapnProto::capnp-rpc)
+  if(RGPOT_HAVE_MPI)
+    add_executable(potserv_mpi CppCore/rgpot/rpc/server.cpp)
+    target_compile_definitions(potserv_mpi PRIVATE RGPOT_POTSERV_MPI)
+    target_link_libraries(potserv_mpi PRIVATE rgpot::rgpot ptlrpc
+                                            CapnProto::capnp-rpc MPI::MPI_CXX)
+    add_executable(nwchem_mpi_force_host CppCore/tools/nwchem_mpi_force_host.cc)
+    target_link_libraries(nwchem_mpi_force_host PRIVATE rgpot::rgpot MPI::MPI_CXX)
+  endif()
+endif()
+
 # --- Installation ---
 include(GNUInstallDirs)
 
 if(RGPOT_IS_TOP_LEVEL)
+  if(TARGET potserv)
+    install(TARGETS potserv RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
+  if(TARGET potserv_mpi)
+    install(TARGETS potserv_mpi nwchem_mpi_force_host
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
   if(RGPOT_WITH_RPC)
     install(
       TARGETS ptlrpc rgpot_client_bridge
@@ -237,41 +318,72 @@ if(RGPOT_IS_TOP_LEVEL)
     # Install the bridge header in the correct directory structure
     install(FILES CppCore/rgpot/rpc/pot_bridge.h
             DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rgpot/rpc)
+    install(FILES ${CAPNP_HEADERS} CppCore/rgpot/rpc/Potentials.capnp
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rgpot/rpc)
   endif()
 
   if(NOT RGPOT_RPC_CLIENT_ONLY)
     install(
-      TARGETS rgpot
+      TARGETS rgpot rgpot_fortran_kernels rgpot_vesin
       EXPORT rgpotTargets
       LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
       ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
       RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
       INCLUDES
       DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+    install(FILES third_party/vesin/vesin.h
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rgpot/vesin)
+    install(TARGETS rgpot_cuh2
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    if(TARGET rgpot_mpi)
+      install(TARGETS rgpot_mpi
+              LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+              RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    endif()
+    install(FILES CppCore/rgpot/calculator_mpi_abi.h include/rgpot/plugin.h
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rgpot)
     install(
       DIRECTORY CppCore/rgpot
       DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
       FILES_MATCHING
-      PATTERN "*.hpp")
+      PATTERN "*.hpp"
+      PATTERN "*.h")
   endif()
 
   install(
     EXPORT rgpotTargets
-    FILE rgpotConfig.cmake
+    FILE rgpotTargets.cmake
     NAMESPACE rgpot::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pot)
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/rgpot)
 
   include(CMakePackageConfigHelpers)
+  configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/rgpotConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/rgpotConfig.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/rgpot)
   write_basic_package_version_file(
     "${CMAKE_CURRENT_BINARY_DIR}/rgpotConfigVersion.cmake"
     COMPATIBILITY SameMajorVersion)
-  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/rgpotConfigVersion.cmake"
-          DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pot)
+  install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindxxHash.cmake"
+                "${CMAKE_CURRENT_BINARY_DIR}/rgpotConfig.cmake"
+                "${CMAKE_CURRENT_BINARY_DIR}/rgpotConfigVersion.cmake"
+          DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/rgpot)
 endif()
 
 # --- Tests ---
 if(RGPOT_BUILD_TESTS)
   enable_testing()
+  find_package(Threads REQUIRED)
+  add_executable(AotiPublicationTest CppCore/tests/AotiPublicationTest.cc)
+  target_include_directories(AotiPublicationTest PRIVATE CppCore)
+  target_compile_features(AotiPublicationTest PRIVATE cxx_std_20)
+  target_link_libraries(AotiPublicationTest PRIVATE Threads::Threads)
+  add_test(NAME AotiPublicationTest COMMAND AotiPublicationTest)
+  add_executable(MolecularFrameTest CppCore/tests/MolecularFrameTest.cc)
+  target_include_directories(MolecularFrameTest PRIVATE CppCore)
+  target_compile_features(MolecularFrameTest PRIVATE cxx_std_20)
+  add_test(NAME MolecularFrameTest COMMAND MolecularFrameTest)
   find_package(Catch2 3 REQUIRED)
 
   if(RGPOT_RPC_CLIENT_ONLY)
@@ -290,6 +402,20 @@ if(RGPOT_BUILD_TESTS)
       add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
     endfunction()
 
+    add_subdirectory(CppCore/tests/plugin)
+
+    add_pot_test(LJClusterPotTest CppCore/tests/LJClusterPotTest.cc)
+    add_pot_test(PairListTest CppCore/tests/PairListTest.cc)
+    add_pot_test(MorsePotTest CppCore/tests/MorsePotTest.cc)
+    add_pot_test(FortranPotsTest CppCore/tests/FortranPotsTest.cc)
+    target_link_libraries(FortranPotsTest PRIVATE Threads::Threads)
+    add_pot_test(CuH2PotTest CppCore/tests/CuH2PotTest.cc)
+    if(BUILD_SHARED_LIBS AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      add_test(NAME FortranSymbolAudit
+               COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/scripts/audit_fortran_symbols.sh"
+                       $<TARGET_FILE:rgpot>)
+    endif()
+
     if(RGPOT_WITH_CACHE)
       add_pot_test(InvarianceTest CppCore/tests/InvarianceTest.cc)
       add_pot_test(CacheTest CppCore/tests/CacheTest.cc)
@@ -297,10 +423,56 @@ if(RGPOT_BUILD_TESTS)
 
     if(RGPOT_WITH_RPC)
       add_pot_test(CapnpAdapterTest CppCore/tests/CapnpAdapterTest.cc)
-      add_executable(potserv CppCore/rgpot/rpc/server.cpp)
-      target_link_libraries(potserv PRIVATE rgpot::rgpot ptlrpc
-                                            CapnProto::capnp-rpc)
-      set_target_properties(potserv PROPERTIES LINKER_LANGUAGE CXX)
+      find_package(Python3 COMPONENTS Interpreter REQUIRED)
+      add_library(nwchemc_lifetime_engine SHARED
+                  CppCore/tests/nwchemc_lifetime_engine.cc)
+      target_include_directories(nwchemc_lifetime_engine PRIVATE CppCore)
+      add_executable(NWChemPotLifetimeTest CppCore/tests/NWChemPotLifetimeTest.cc)
+      target_link_libraries(NWChemPotLifetimeTest PRIVATE rgpot::rgpot)
+      foreach(_lifetime_mode ordinary probe)
+        add_test(
+          NAME NWChemPotLifetime-${_lifetime_mode}
+          COMMAND Python3::Interpreter
+                  "${CMAKE_CURRENT_SOURCE_DIR}/CppCore/tests/test_nwchem_lifetime.py"
+                  $<TARGET_FILE:NWChemPotLifetimeTest>
+                  $<TARGET_FILE:nwchemc_lifetime_engine> ${_lifetime_mode})
+      endforeach()
+      if(RGPOT_HAVE_MPI)
+        add_executable(MpiHostContractTest CppCore/tests/MpiHostContractTest.cc)
+        target_include_directories(MpiHostContractTest PRIVATE CppCore)
+        target_link_libraries(MpiHostContractTest PRIVATE MPI::MPI_CXX)
+        add_library(collective_engine SHARED CppCore/tests/nwchemc_collective_engine.cc)
+        target_link_libraries(collective_engine PRIVATE rgpot::rgpot MPI::MPI_CXX)
+        add_executable(MpiRpcContractClient CppCore/tests/MpiRpcContractClient.cc)
+        target_link_libraries(MpiRpcContractClient PRIVATE rgpot::rgpot CapnProto::capnp-rpc)
+        set(_mpi_host_script "${CMAKE_CURRENT_SOURCE_DIR}/CppCore/tests/test_mpi_hosts.py")
+        foreach(_mode owned borrowed)
+          add_test(NAME MpiHost-${_mode}
+                   COMMAND Python3::Interpreter "${_mpi_host_script}" ${_mode}
+                           "${MPIEXEC_EXECUTABLE}" $<TARGET_FILE:MpiHostContractTest>)
+          set_tests_properties(MpiHost-${_mode} PROPERTIES TIMEOUT 60 PROCESSORS 4)
+        endforeach()
+        add_test(NAME NWChemMpiForceHost
+                 COMMAND Python3::Interpreter "${_mpi_host_script}" force
+                         "${MPIEXEC_EXECUTABLE}" $<TARGET_FILE:nwchem_mpi_force_host>
+                         $<TARGET_FILE:collective_engine>)
+        set_tests_properties(NWChemMpiForceHost PROPERTIES TIMEOUT 60 PROCESSORS 2)
+        foreach(_backend NWChem CPMD)
+          foreach(_layout serial mpi)
+            set(_rpc_server potserv)
+            if(_layout STREQUAL "mpi")
+              set(_rpc_server potserv_mpi)
+            endif()
+            add_test(NAME CollectiveRPC-${_backend}-${_layout}
+                     COMMAND Python3::Interpreter "${_mpi_host_script}" rpc
+                             "${MPIEXEC_EXECUTABLE}" $<TARGET_FILE:${_rpc_server}>
+                             $<TARGET_FILE:MpiRpcContractClient>
+                             $<TARGET_FILE:collective_engine> ${_backend} ${_layout})
+            set_tests_properties(CollectiveRPC-${_backend}-${_layout}
+                                 PROPERTIES TIMEOUT 60 PROCESSORS 2)
+          endforeach()
+        endforeach()
+      endif()
     endif()
   endif()
 endif()

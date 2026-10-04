@@ -32,9 +32,9 @@ struct CalculatorGroup {
   int world_size = 1;
 };
 
-// A backend that must own the subcommunicator (CPMD, and the same
-// shape for any other MPI engine) registers this. It is called on
-// every rank from bindCalculators. Return the group index, or -1.
+// A backend that must use the calculator subcommunicator registers this.
+// It is called on every rank from bindCalculators. Return the group index,
+// or -1 to refuse the bind.
 using CalculatorHook = int (*)(int ranks_per_calculator);
 
 void addCalculatorHook(CalculatorHook hook);
@@ -50,6 +50,22 @@ const CalculatorGroup &thisCalculator();
 // and a split exists. comm_bytes is sizeof(MPI_Comm) on the caller.
 // Returns 0 when there is no communicator to give.
 int calculatorComm(void *comm_out, std::size_t comm_bytes);
+
+// Passes the calculator's MPI_Comm to an engine without requiring MPI
+// types in the caller. The callback receives the handle's address and
+// byte size, then the ranks per calculator. It must borrow the handle,
+// not free it. Returns -1 without a split or callback, else its result.
+using CalculatorCommAdopter = int (*)(const void *, std::size_t, int);
+int adoptCalculatorComm(CalculatorCommAdopter callback);
+
+// Registers each callback once by address. Its code must stay loaded for
+// the process lifetime. Registration before binding queues the callback;
+// registration after binding gives it the existing communicator at once.
+// Every rank registers the same callbacks in the same order. A callback
+// must not reenter calculator binding or registration. Returns false for
+// a null callback or a refused bind; a refusal remains in thisCalculator.
+// Registration alone does not load MPI.
+bool addCalculatorCommAdopter(CalculatorCommAdopter callback);
 
 // Loads librgpot_mpi when needed, then 1 when MPI_Initialized reports
 // that MPI is up. 0 when the library cannot be loaded, and 0 when MPI is

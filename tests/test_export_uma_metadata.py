@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import numpy as np
 
 torch = pytest.importorskip("torch")
 ase = pytest.importorskip("ase")
@@ -89,3 +90,102 @@ def test_baker_dedup_keeps_compositions_that_share_an_element_set(
     assert jobs[0]["counts"] == {1: 2, 6: 2}
     assert jobs[1]["counts"] == {1: 4, 6: 2}
     assert jobs[1]["z_set"] == [1, 6]
+
+
+class _StridedWrite(torch.nn.Module):
+    def __init__(self, size, stride, offset):
+        super().__init__()
+        self.size = size
+        self.stride = stride
+        self.offset = offset
+
+    def forward(self, base, values):
+        return torch.as_strided_scatter(
+            base, values, self.size, self.stride, self.offset
+        )
+
+
+@pytest.mark.parametrize("axis", [0, 1, 2])
+@pytest.mark.parametrize("start", [0, 1])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_strided_slices_match_independent_tensor_assignment(axis, start, dtype):
+    base = torch.arange(120, dtype=dtype).reshape(4, 5, 6)
+    shape = list(base.shape)
+    shape[axis] = 2
+    values = -torch.arange(int(np.prod(shape)), dtype=dtype).reshape(shape) - 1
+    module = _StridedWrite(shape, base.stride(), start * base.stride()[axis])
+    program = torch.export.export(module, (base, values), strict=False)
+    canonical = exp.canonicalize_strided_slices(program)
+    expected = base.clone()
+    selected = [slice(None)] * 3
+    selected[axis] = slice(start, start + 2)
+    expected[tuple(selected)] = values
+    torch.testing.assert_close(
+        canonical.module()(base, values), expected, rtol=0, atol=0
+    )
+    assert any(node.target == torch.ops.aten.slice_scatter.default
+               for node in canonical.graph_module.graph.nodes)
+
+
+@pytest.mark.parametrize("case", ["noncontiguous", "multiple_axes", "unaligned"])
+def test_general_strided_writes_retain_their_exact_address_map(case):
+    base = torch.arange(120, dtype=torch.float64).reshape(4, 5, 6)
+    offset = 0
+    if case == "noncontiguous":
+        base = base.transpose(0, 1)
+        shape = (2, 4, 6)
+    elif case == "multiple_axes":
+        shape = (2, 2, 6)
+    else:
+        shape = (2, 5, 6)
+        offset = 1
+    values = -torch.arange(int(np.prod(shape)), dtype=base.dtype).reshape(shape) - 1
+    module = _StridedWrite(shape, base.stride(), offset)
+    program = torch.export.export(module, (base, values), strict=False)
+    canonical = exp.canonicalize_strided_slices(program)
+    # Enumerate storage addresses independently of the tensor scatter operators.
+    expected_storage = np.arange(120, dtype=np.float64)
+    for index in np.ndindex(shape):
+        address = offset + sum(i * stride for i, stride in
+                               zip(index, base.stride()))
+        expected_storage[address] = float(values[index])
+    expected = torch.empty_like(base)
+    for index in np.ndindex(tuple(base.shape)):
+        address = sum(i * stride for i, stride in zip(index, base.stride()))
+        expected[index] = expected_storage[address]
+    torch.testing.assert_close(
+        canonical.module()(base, values), expected, rtol=0, atol=0
+    )
+    assert any(node.target == torch.ops.aten.as_strided_scatter.default
+               for node in canonical.graph_module.graph.nodes)
+
+
+class _ReverseViewGradient(torch.nn.Module):
+    def forward(self, gradient):
+        source = torch.ops.aten.slice_backward.default(
+            gradient, [12, 9, 128], 1, 0, 1, 1
+        )
+        empty = torch.ops.aten.new_empty_strided.default(
+            source, [12, 9, 128], [1152, 128, 1]
+        )
+        buffer = torch.ops.aten.copy_.default(empty, source)
+        view = torch.ops.aten.as_strided.default(
+            buffer, [12, 1, 128], [1152, 128, 1], 0
+        )
+        snapshot = view.clone(memory_format=torch.contiguous_format)
+        view.copy_(torch.zeros_like(snapshot))
+        restored = torch.ops.aten.slice_backward.default(
+            snapshot, [12, 9, 128], 1, 0, 1, 1
+        )
+        return gradient.sum(), buffer + restored
+
+
+def test_aoti_package_preserves_reverse_view_gradient(tmp_path):
+    gradient = torch.arange(12 * 128, dtype=torch.float32).reshape(12, 1, 128) / 128
+    expected = torch.zeros((12, 9, 128), dtype=gradient.dtype)
+    expected[:, :1, :] = gradient
+    program = torch.export.export(_ReverseViewGradient(), (gradient,), strict=False)
+    package = exp.aoti_package(program, tmp_path / "reverse-view.pt2")
+    energy, restored = exp.run_aoti(exp.load_aoti(package), (gradient,))
+    torch.testing.assert_close(energy, gradient.sum(), rtol=0, atol=0)
+    torch.testing.assert_close(restored, expected, rtol=0, atol=0)

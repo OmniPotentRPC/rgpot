@@ -75,6 +75,11 @@ typedef struct rgpot_mpi_api_t {
    * one, every message prints on every rank of the calculator and the
    * world aborts; otherwise the call returns. */
   void (*publish_error)(const char *message, size_t len);
+  /* Invokes an engine callback with the calculator's MPI_Comm and its
+   * byte size, then the ranks per calculator. The handle is borrowed:
+   * the engine must not free it. Returns -1 without a valid split or
+   * callback, otherwise the callback's result. */
+  int (*adopt)(int (*callback)(const void *, size_t, int));
 } rgpot_mpi_api_t;
 
 typedef const rgpot_mpi_api_t *(*rgpot_mpi_api_fn)(void);

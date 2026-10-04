@@ -19,6 +19,7 @@
 
 #include "rgpot/ZBL/ZBLPot.hpp"
 #include "rgpot/nlist/PairListCache.hpp"
+#include "rgpot/stress.hpp"
 
 namespace rgpot {
 
@@ -87,11 +88,8 @@ double d2zbldr2(const ZblPairCoeffs &p, double r) {
 } // namespace
 
 ZBLPot::ZBLPot(const ZBLConfig &c)
-    : Potential(PotType::ZBL),
-      cut_inner{c.cut_inner},
-      cut_global{c.cut_global},
-      cut_inner_sq{c.cut_inner * c.cut_inner},
-      m_config{c} {
+    : Potential(PotType::ZBL), cut_inner{c.cut_inner}, cut_global{c.cut_global},
+      cut_inner_sq{c.cut_inner * c.cut_inner}, m_config{c} {
   if (!(cut_inner > 0.0) || !(cut_inner < cut_global)) {
     throw std::invalid_argument(
         "ZBLPot: invalid cutoffs, require 0.0 < cut_inner < cut_global.");
@@ -179,6 +177,12 @@ void ZBLPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const double *R = in.pos;
   double *F = out->F;
   double *U = &out->energy;
+  double strain[6] = {};
+  const double volume = cellVolume(in.box);
+  publishCauchyStress(out, strain, volume);
+  const auto observe = [&](double fscale, double dx, double dy, double dz) {
+    accumulatePairStrain(strain, fscale, dx, dy, dz);
+  };
   *U = 0.0;
   std::fill(F, F + 3 * N, 0.0);
   if (N < 2) {
@@ -229,7 +233,9 @@ void ZBLPot::forceImpl(const ForceInput &in, ForceOut *out) const {
         }
         // -dU/dr / r: the force on i is fscale * (r_i - r_j).
         return nlist::PairTerm{energy_pair, -dEdr / r};
-      });
+      },
+      observe);
+  publishCauchyStress(out, strain, volume);
 }
 
 } // namespace rgpot

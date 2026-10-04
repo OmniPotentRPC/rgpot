@@ -630,7 +630,7 @@ if get_option('with_rust_core')
 endif
 
 # --------------------- Projects
-_incdirs += [include_directories('CppCore')]
+_incdirs += [include_directories('CppCore'), include_directories('include')]
 subdir('CppCore')
 rgpot_has_rpc = _rpc_stack
 if get_option('with_rpc_client_only')

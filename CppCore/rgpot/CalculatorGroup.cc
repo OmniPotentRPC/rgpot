@@ -25,6 +25,7 @@ namespace rgpot {
 namespace {
 std::mutex g_mu;
 std::vector<CalculatorHook> g_hooks;
+std::vector<CalculatorCommAdopter> g_adopters;
 CalculatorGroup g_group;
 int g_bound_rpc = 0;
 bool g_bound = false;
@@ -34,9 +35,7 @@ std::mutex g_load_mu;
 std::atomic<const rgpot_mpi_api_t *> g_api{nullptr};
 std::string g_load_error;
 
-const rgpot_mpi_api_t *api() {
-  return g_api.load(std::memory_order_acquire);
-}
+const rgpot_mpi_api_t *api() { return g_api.load(std::memory_order_acquire); }
 
 int abortRequested() {
   return g_abort_at_exit.load(std::memory_order_acquire) ? 1 : 0;
@@ -62,8 +61,8 @@ const rgpot_mpi_api_t *openLibrary(const std::string &path) {
     g_load_error = why ? why : ("cannot open " + path);
     return nullptr;
   }
-  auto fn = reinterpret_cast<rgpot_mpi_api_fn>(
-      dlsym(handle, RGPOT_MPI_API_SYMBOL));
+  auto fn =
+      reinterpret_cast<rgpot_mpi_api_fn>(dlsym(handle, RGPOT_MPI_API_SYMBOL));
   if (fn == nullptr) {
     g_load_error = path + " lacks " RGPOT_MPI_API_SYMBOL;
     return nullptr;
@@ -131,6 +130,24 @@ void addCalculatorHook(CalculatorHook hook) {
   g_hooks.push_back(hook);
 }
 
+bool addCalculatorCommAdopter(CalculatorCommAdopter callback) {
+  if (!callback)
+    return false;
+  std::lock_guard<std::mutex> lock(g_mu);
+  for (CalculatorCommAdopter have : g_adopters) {
+    if (have == callback)
+      return !g_bound || g_group.index >= 0;
+  }
+  if (g_bound && g_group.index < 0)
+    return false;
+  g_adopters.push_back(callback);
+  if (g_bound && adoptCalculatorComm(callback) != g_group.index) {
+    g_group.index = -1;
+    return false;
+  }
+  return true;
+}
+
 CalculatorGroup bindCalculators(int ranks_per_calculator) {
   loadCalculatorMpi(nullptr);
   std::lock_guard<std::mutex> lock(g_mu);
@@ -164,10 +181,20 @@ CalculatorGroup bindCalculators(int ranks_per_calculator) {
       g_group.world_size = 1;
     }
   }
+  const int expected_index = g_group.index;
   for (CalculatorHook hook : g_hooks) {
     int idx = hook(rpc);
-    if (g_group.index < 0 && idx >= 0)
-      g_group.index = idx;
+    // A hook cannot recover a refused split or another hook's refusal.
+    if (idx < 0)
+      g_group.index = -1;
+  }
+  // All registered engines receive the same split, including when a
+  // hook refuses it. Skipping later callbacks could strand their ranks
+  // inside an engine collective. No callback can clear a refusal.
+  for (CalculatorCommAdopter callback : g_adopters) {
+    const int idx = adoptCalculatorComm(callback);
+    if (idx < 0 || idx != expected_index)
+      g_group.index = -1;
   }
   g_bound = true;
   g_bound_rpc = rpc;
@@ -179,6 +206,11 @@ const CalculatorGroup &thisCalculator() { return g_group; }
 int calculatorComm(void *comm_out, std::size_t comm_bytes) {
   const rgpot_mpi_api_t *mpi = api();
   return mpi ? mpi->comm(comm_out, comm_bytes) : 0;
+}
+
+int adoptCalculatorComm(CalculatorCommAdopter callback) {
+  const rgpot_mpi_api_t *mpi = api();
+  return mpi && callback ? mpi->adopt(callback) : -1;
 }
 
 int calculatorsUseMpi() {

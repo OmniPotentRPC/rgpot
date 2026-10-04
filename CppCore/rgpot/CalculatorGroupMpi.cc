@@ -93,6 +93,12 @@ int comm(void *comm_out, std::size_t comm_bytes) {
   return 1;
 }
 
+int adopt(int (*callback)(const void *, std::size_t, int)) {
+  if (!callback || !g_bound || g_group.index < 0 || g_comm == MPI_COMM_NULL)
+    return -1;
+  return callback(&g_comm, sizeof(g_comm), g_group.ranks);
+}
+
 int initialized() {
   int inited = 0;
   MPI_Initialized(&inited);
@@ -128,15 +134,14 @@ int share(int owner, void *data, std::size_t bytes) {
   const long long local[3] = {
       reason,
       static_cast<long long>(owner),
-      static_cast<long long>(bytes > static_cast<std::size_t>(LLONG_MAX)
-                                 ? LLONG_MAX
-                                 : bytes),
+      static_cast<long long>(
+          bytes > static_cast<std::size_t>(LLONG_MAX) ? LLONG_MAX : bytes),
   };
   std::vector<long long> all(static_cast<std::size_t>(size) * 3, 0);
   if (MPI_Allgather(local, 3, MPI_LONG_LONG, all.data(), 3, MPI_LONG_LONG,
                     MPI_COMM_WORLD) != MPI_SUCCESS) {
-    std::fprintf(stderr, "rgpot rank %d: shareFromCalculator allgather failed\n",
-                 rank);
+    std::fprintf(stderr,
+                 "rgpot rank %d: shareFromCalculator allgather failed\n", rank);
     std::fflush(stderr);
     MPI_Abort(MPI_COMM_WORLD, 1);
     return 0;
@@ -276,8 +281,8 @@ void publishError(const char *message, std::size_t len) {
   // keyed by rank / ranks, ordered by rank % ranks).
   const int world_base = g_group.index * g_group.ranks;
 
-  const int local_n = static_cast<int>(
-      std::min(len, static_cast<std::size_t>(kErrorCap)));
+  const int local_n =
+      static_cast<int>(std::min(len, static_cast<std::size_t>(kErrorCap)));
   std::vector<int> counts(static_cast<std::size_t>(size), 0);
   MPI_Request req = MPI_REQUEST_NULL;
   if (MPI_Iallgather(&local_n, 1, MPI_INT, counts.data(), 1, MPI_INT, g_comm,
@@ -345,6 +350,7 @@ const rgpot_mpi_api_t kApi = {
     &finalizeAtExit,
     &agree,
     &publishError,
+    &adopt,
 };
 
 } // namespace

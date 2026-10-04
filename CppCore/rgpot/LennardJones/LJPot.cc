@@ -16,6 +16,7 @@
 
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/nlist/PairListCache.hpp"
+#include "rgpot/stress.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 using rgpot::types::AtomMatrix;
 
@@ -26,7 +27,7 @@ namespace rgpot {
  * @details
  *
  * Pairwise interactions within the cutoff radius, minimum image convention
- * on an orthogonal box. Pairs come from the shared
+ * with the full cell. Pairs come from the shared
  * ``rgpot::nlist::PairListCache`` (the eOn PairListCache design): repeated
  * evaluations on nearby geometries reuse a Verlet-skin cached candidate
  * list, and one-shot evaluations run a single fused scan identical in pair
@@ -37,8 +38,6 @@ namespace rgpot {
  * force and curvature reach zero at the cutoff; otherwise the energy is
  * shifted to zero there and the force jumps.
  *
- * @warning The box is assumed to be orthogonal.
- *
  */
 void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const long N = in.nAtoms;
@@ -46,6 +45,12 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const double *box = in.box;
   double *F = out->F;
   double *U = &out->energy;
+  double strain[6] = {};
+  const double volume = cellVolume(in.box);
+  publishCauchyStress(out, strain, volume);
+  const auto observe = [&](double fscale, double dx, double dy, double dz) {
+    accumulatePairStrain(strain, fscale, dx, dy, dz);
+  };
   *U = 0;
   for (long i = 0; i < N; i++) {
     F[3 * i] = 0;
@@ -76,9 +81,12 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
           const double v = b * (a - 1.0);
           const double r = std::sqrt(r2);
           const auto s = sw(r);
-          return nlist::PairTerm{
-              v * s.s, 6.0 * b * invR2 * (2.0 * a - 1.0) * s.s - v * s.dsdr / r};
-        });
+          return nlist::PairTerm{v * s.s,
+                                 6.0 * b * invR2 * (2.0 * a - 1.0) * s.s -
+                                     v * s.dsdr / r};
+        },
+        observe);
+    publishCauchyStress(out, strain, volume);
     return;
   }
   *U = pool.accumulate(
@@ -91,7 +99,9 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
         // -dU/dr / r: the force on i is fscale * (r_i - r_j).
         return nlist::PairTerm{b * (a - 1.0) - shiftU,
                                6.0 * b * invR2 * (2.0 * a - 1.0)};
-      });
+      },
+      observe);
+  publishCauchyStress(out, strain, volume);
   return;
 }
 

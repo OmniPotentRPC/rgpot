@@ -53,10 +53,17 @@ endif
 
 # ------------------------ Main library
 if not get_option('with_rpc_client_only')
+    _deps += dependency('threads')
+    _rgpot_srcs += files(
+        'rgpot/plugin/PluginBridge.cc',
+        'rgpot/plugin/PluginRegistry.cc',
+        'rgpot/plugin/builtins/lj_plugin.cpp',
+    )
     rgpot_core = static_library(
         'rgpot_core',
         sources: _rgpot_srcs,
         dependencies: _deps,
+        cpp_args: _args,
         include_directories: _incdirs,
         pic: true,
         install: false,
@@ -265,6 +272,34 @@ if rpc_enabled and not get_option('with_rpc_client_only')
         link_language: 'cpp',
         install: not meson.is_subproject(),
     )
+    if _mpi_dep.found()
+        mpi_server = executable(
+            'potserv_mpi',
+            ['rgpot/rpc/server.cpp'],
+            link_with: [ptlrpc, _linkto],
+            dependencies: _deps + [
+                capnp_rpc_dep,
+                ptlrpc_hdr_dep,
+                vesin_dep,
+                _mpi_dep,
+            ] + fortran_rt_deps,
+            cpp_args: _args + ['-DRGPOT_POTSERV_MPI'],
+            build_rpath: _metatomic_build_rpath,
+            include_directories: _incdirs,
+            link_language: 'cpp',
+            install: not meson.is_subproject(),
+        )
+        nwchem_mpi_force_host = executable(
+            'nwchem_mpi_force_host',
+            ['tools/nwchem_mpi_force_host.cc'],
+            link_with: [ptlrpc, _linkto],
+            dependencies: _deps + [ptlrpc_hdr_dep, vesin_dep, _mpi_dep] + fortran_rt_deps,
+            cpp_args: _args,
+            build_rpath: _metatomic_build_rpath,
+            include_directories: _incdirs,
+            install: not meson.is_subproject(),
+        )
+    endif
 endif
 
 # ------------------------ Examples
@@ -352,6 +387,25 @@ endif
 # ------------------------ Tests
 
 if get_option('with_tests')
+    test(
+        'AotiPublicationTest',
+        executable(
+            'aoti_publication_test',
+            'tests/AotiPublicationTest.cc',
+            include_directories: ['.'],
+            dependencies: dependency('threads'),
+            override_options: ['cpp_std=c++20'],
+        ),
+    )
+    test(
+        'MolecularFrameTest',
+        executable(
+            'molecular_frame_test',
+            'tests/MolecularFrameTest.cc',
+            include_directories: ['.'],
+            override_options: ['cpp_std=c++20'],
+        ),
+    )
     test_deps = _deps + [vesin_dep] + fortran_rt_deps
     if has_metatomic
         test_deps += _mta_engine_deps
@@ -367,6 +421,9 @@ if get_option('with_tests')
         # Tests expect librgpot_mpi next to them (it builds in this
         # directory), whether or not they link MPI themselves.
         test_args += ['-DRGPOT_HAS_MPI']
+    endif
+    if not get_option('with_rpc_client_only')
+        subdir('tests/plugin')
     endif
     # Client-only builds skip rgpot_core; UnitsTest still needs units.cc.
     if get_option('with_rpc_client_only')
@@ -538,6 +595,36 @@ if get_option('with_tests')
             include_directories: include_directories('rgpot/NWChemPot'),
             install: false,
         )
+        nwchemc_lifetime_engine = shared_library(
+            'nwchemc_lifetime_engine',
+            sources: ['tests/nwchemc_lifetime_engine.cc'],
+            include_directories: _incdirs,
+            install: false,
+        )
+        nwchem_lifetime_test = executable(
+            'nwchem_lifetime_test',
+            sources: ['tests/NWChemPotLifetimeTest.cc'],
+            dependencies: test_deps + [ptlrpc_dep],
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+        )
+        foreach lifetime_mode : ['ordinary', 'probe']
+            test(
+                'NWChemPotLifetime-' + lifetime_mode,
+                find_program('python3'),
+                args: [
+                    meson.current_source_dir() / 'tests/test_nwchem_lifetime.py',
+                    nwchem_lifetime_test.full_path(),
+                    nwchemc_lifetime_engine.full_path(),
+                    lifetime_mode,
+                ],
+                depends: [nwchem_lifetime_test, nwchemc_lifetime_engine],
+                suite: 'nwchem',
+            )
+        endforeach
         nwchemc_fake_env = environment()
         nwchemc_fake_env.set(
             'RGPOT_NWCHEM_ENGINE',
@@ -668,6 +755,80 @@ if get_option('with_tests')
         )
         mpiexec = find_program('mpirun', 'mpiexec', required: false)
         if _mpi_dep.found() and mpiexec.found()
+            mpi_host_contract = executable(
+                'mpi_host_contract',
+                'tests/MpiHostContractTest.cc',
+                dependencies: [_mpi_dep],
+                include_directories: _incdirs,
+            )
+            collective_engine = shared_library(
+                'collective_engine',
+                'tests/nwchemc_collective_engine.cc',
+                dependencies: [ptlrpc_dep, _mpi_dep],
+                include_directories: _incdirs,
+                install: false,
+            )
+            mpi_rpc_client = executable(
+                'mpi_rpc_contract_client',
+                'tests/MpiRpcContractClient.cc',
+                dependencies: _deps + [ptlrpc_dep],
+                include_directories: _incdirs,
+                link_with: _linkto,
+                cpp_args: test_args,
+                build_rpath: _metatomic_build_rpath,
+            )
+            mpi_host_script = meson.current_source_dir() / 'tests/test_mpi_hosts.py'
+            foreach mode : ['owned', 'borrowed']
+                test(
+                    'MpiHost-' + mode,
+                    find_program('python3'),
+                    args: [
+                        mpi_host_script,
+                        mode,
+                        mpiexec.full_path(),
+                        mpi_host_contract.full_path(),
+                    ],
+                    depends: mpi_host_contract,
+                    timeout: 60,
+                    suite: 'mpi-host',
+                )
+            endforeach
+            test(
+                'NWChemMpiForceHost',
+                find_program('python3'),
+                args: [
+                    mpi_host_script,
+                    'force',
+                    mpiexec.full_path(),
+                    nwchem_mpi_force_host.full_path(),
+                    collective_engine.full_path(),
+                ],
+                depends: [nwchem_mpi_force_host, collective_engine],
+                timeout: 60,
+                suite: 'mpi-host',
+            )
+            foreach backend : ['NWChem', 'CPMD']
+                foreach layout : ['serial', 'mpi']
+                    rpc_server = layout == 'mpi' ? mpi_server : server
+                    test(
+                        'CollectiveRPC-' + backend + '-' + layout,
+                        find_program('python3'),
+                        args: [
+                            mpi_host_script,
+                            'rpc',
+                            mpiexec.full_path(),
+                            rpc_server.full_path(),
+                            mpi_rpc_client.full_path(),
+                            collective_engine.full_path(),
+                            backend,
+                            layout,
+                        ],
+                        depends: [rpc_server, mpi_rpc_client, collective_engine],
+                        timeout: 60,
+                        suite: 'mpi-host',
+                    )
+                endforeach
+            endforeach
             rank_exception = executable(
                 'rank_exception_abort',
                 sources: ['tests/RankExceptionAbort.cc'],
@@ -763,6 +924,59 @@ if get_option('with_tests')
                 is_parallel: false,
                 suite: 'cpmd',
             )
+            cpmdc_adopt_engine = shared_library(
+                'cpmdc_adopt_engine',
+                sources: ['tests/cpmdc_adopt_engine.cc'],
+                dependencies: [_mpi_dep],
+                include_directories: _incdirs + ['.'] + include_directories(
+                    'rgpot/CPMDPot',
+                ),
+                install: false,
+            )
+            mpi_split_profile = shared_library(
+                'mpi_split_profile',
+                sources: ['tests/mpi_split_profile.c'],
+                dependencies: [dependency('mpi', language: 'c')],
+                install: false,
+            )
+            adopt_comm = executable(
+                'adopt_comm',
+                sources: ['tests/AdoptComm.cc'],
+                dependencies: test_deps + [ptlrpc_dep, rgpot_mpi_dep, _dl_dep],
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+                build_rpath: _metatomic_build_rpath,
+            )
+            adopt_comm_sh = find_program(
+                meson.current_source_dir() / 'tests/adopt_comm.sh',
+            )
+            foreach entry : [
+                ['AdoptCommMissing', 'missing', cpmdc_gradient_engine],
+                ['AdoptCommSplit', 'split', cpmdc_adopt_engine],
+                ['AdoptCommRefusedHook', 'refused-hook', cpmdc_adopt_engine],
+                ['AdoptCommProbe', 'probe', cpmdc_adopt_engine],
+                ['AdoptCommInstanceFirst', 'instance-first', cpmdc_adopt_engine],
+                ['AdoptCommBoundStatic', 'bound-static', cpmdc_adopt_engine],
+                ['AdoptCommBoundInstance', 'bound-instance', cpmdc_adopt_engine],
+                ['AdoptCommRefusedForce', 'refused-force', cpmdc_adopt_engine],
+            ]
+                test(
+                    entry[0],
+                    adopt_comm_sh,
+                    args: [
+                        entry[1],
+                        adopt_comm.full_path(),
+                        entry[2].full_path(),
+                        mpi_split_profile.full_path(),
+                    ],
+                    depends: [adopt_comm, entry[2], mpi_split_profile],
+                    timeout: 60,
+                    is_parallel: false,
+                    suite: 'cpmd',
+                )
+            endforeach
             if get_option('with_cache')
                 collective_cache = executable(
                     'collective_cache_test',
@@ -1077,6 +1291,7 @@ endif
 # XTBDlopen frontend still builds; set RGPOT_XTB_ENGINE for libxtb_engine.so.
 # See docs/eon_pkgconfig.md.
 if not meson.is_subproject()
+    install_headers('../include/rgpot/plugin.h', subdir: 'rgpot')
     # Headers: #include "rgpot/NWChemPot/..." with -I${prefix}/include
     install_subdir(
         'rgpot',

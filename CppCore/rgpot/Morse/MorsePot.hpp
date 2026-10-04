@@ -52,12 +52,8 @@ public:
   MorsePot() : MorsePot(MorseConfig{}) {}
 
   explicit MorsePot(const MorseConfig &c)
-      : Potential(PotType::Morse),
-        De{c.De},
-        a{c.a},
-        re{c.re},
-        cuttOffR{c.cutoff},
-        m_config{c} {
+      : Potential(PotType::Morse), De{c.De}, a{c.a}, re{c.re},
+        cuttOffR{c.cutoff}, m_config{c} {
     // Shift so U(cuttOffR) = 0, evaluating the same closed form as the
     // pair kernel below.
     const double d = 1.0 - std::exp(-a * (cuttOffR - re));
@@ -84,6 +80,10 @@ public:
   /// energy at the cutoff); 0 when the quintic switch replaces the shift.
   [[nodiscard]] double energyShift() const noexcept {
     return m_config.switch_width != 0.0 ? 0.0 : energyCutoff;
+  }
+
+  [[nodiscard]] PotCaps caps() const noexcept override {
+    return {.stress = true};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {

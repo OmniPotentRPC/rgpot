@@ -1,6 +1,6 @@
 # Pin for the libxckernel Python generator (rgpot-u1at).
 # The compiled C/C++ library is a generated artifact, not this wrap.
-# First-slice families: lda,gga,mgga_tau ; max_order 2.
+# Families: lda,gga,mgga_tau,mgga_lapl ; max_order 2.
 # Generate on rg.terra: scripts/gen_libxckernel.sh
 [wrap-git]
 directory = libxckernel-d6a9d57

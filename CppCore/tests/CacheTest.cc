@@ -1,8 +1,11 @@
 // MIT License
 // Copyright 2023--present rgpot developers
+#include <array>
 #include <catch2/catch_all.hpp>
 #include <chrono>
 #include <filesystem>
+#include <limits>
+#include <memory>
 #include <random>
 
 #include "rgpot/LennardJones/LJPot.hpp"
@@ -188,4 +191,206 @@ TEST_CASE("Cache keys separate parameter sets", "[Potential][cache]") {
   auto [eNarrow2, fNarrow2, vNarrow2] = (*potNarrow)(positions, types, box);
   REQUIRE(eWide2 == eWide);
   REQUIRE(eNarrow2 == eNarrow);
+}
+
+namespace {
+class ResultMetadataPotential
+    : public rgpot::Potential<ResultMetadataPotential> {
+public:
+  ResultMetadataPotential() : Potential(rgpot::PotType::LJ) {}
+  mutable size_t evaluations = 0;
+
+  rgpot::PotCaps caps() const noexcept override { return {.stress = true}; }
+  uint64_t paramsKey() const noexcept override { return 0x726573756c74ULL; }
+
+  void forceImpl(const rgpot::ForceInput &in,
+                 rgpot::ForceOut *out) const override {
+    ++evaluations;
+    out->energy = 3.0 + in.pos[0];
+    out->variance = 0.25;
+    for (size_t i = 0; i < 3 * in.nAtoms; ++i) {
+      out->F[i] = -in.pos[i];
+    }
+    for (size_t i = 0; i < 9; ++i) {
+      out->stress[i] = static_cast<double>(i + 1) + in.pos[0];
+    }
+    out->has_stress = 1;
+  }
+};
+
+std::string resultCachePath() {
+  return (fs::temp_directory_path() /
+          ("rgpot_result_metadata_" +
+           std::to_string(steady_clock::now().time_since_epoch().count())))
+      .string();
+}
+
+void checkResultMetadata(const rgpot::ForceInput &in,
+                         const rgpot::ForceOut &out) {
+  REQUIRE(out.energy == 3.0 + in.pos[0]);
+  REQUIRE(out.variance == 0.25);
+  REQUIRE(out.has_stress == 1);
+  for (size_t i = 0; i < 3 * in.nAtoms; ++i) {
+    REQUIRE(out.F[i] == -in.pos[i]);
+  }
+  for (size_t i = 0; i < 9; ++i) {
+    REQUIRE(out.stress[i] == static_cast<double>(i + 1) + in.pos[0]);
+  }
+}
+} // namespace
+
+TEST_CASE("Cached force batches retain result metadata through misses and hits",
+          "[Potential][cache][stress]") {
+  ResultMetadataPotential pot;
+  double positions[2][6] = {{0.0, 0.1, 0.2, 1.1, 1.2, 1.3},
+                            {0.5, 0.6, 0.7, 1.6, 1.7, 1.8}};
+  const int types[2] = {1, 1};
+  const double box[9] = {8.0, 0.0, 0.0, 0.0, 8.0, 0.0, 0.0, 0.0, 8.0};
+  const rgpot::ForceInput inputs[] = {{2, positions[0], types, box},
+                                      {2, positions[1], types, box}};
+  double forces[2][6] = {};
+  rgpot::ForceOut outputs[] = {{forces[0], 0.0, 0.0, {}, 0},
+                               {forces[1], 0.0, 0.0, {}, 0}};
+  const rgpot::ForceBatch batch{2, inputs, outputs};
+  const std::string path = resultCachePath();
+  {
+    rgpot::cache::PotentialCache cache(path);
+    pot.set_cache(&cache);
+    pot.forceBatch(batch);
+    REQUIRE(pot.evaluations == 2);
+    for (size_t i = 0; i < 2; ++i) {
+      checkResultMetadata(inputs[i], outputs[i]);
+      outputs[i].variance = -1.0;
+      outputs[i].has_stress = 0;
+      std::fill(outputs[i].stress, outputs[i].stress + 9,
+                std::numeric_limits<double>::quiet_NaN());
+    }
+    pot.forceBatch(batch);
+    REQUIRE(pot.evaluations == 2);
+    for (size_t i = 0; i < 2; ++i) {
+      checkResultMetadata(inputs[i], outputs[i]);
+    }
+
+    positions[1][0] += 0.75;
+    pot.forceBatch(batch);
+    REQUIRE(pot.evaluations == 3);
+    for (size_t i = 0; i < 2; ++i) {
+      checkResultMetadata(inputs[i], outputs[i]);
+    }
+    pot.set_cache(nullptr);
+  }
+  {
+    rgpot::cache::PotentialCache cache(path);
+    pot.set_cache(&cache);
+    for (auto &out : outputs) {
+      out.energy = 0.0;
+      out.variance = 0.0;
+      out.has_stress = 0;
+      std::fill(out.stress, out.stress + 9, 0.0);
+    }
+    pot.forceBatch(batch);
+    REQUIRE(pot.evaluations == 3);
+    for (size_t i = 0; i < 2; ++i) {
+      checkResultMetadata(inputs[i], outputs[i]);
+    }
+    pot.set_cache(nullptr);
+  }
+  REQUIRE(rocksdb::DestroyDB(path, rocksdb::Options()).ok());
+}
+
+TEST_CASE("Stress batches refresh energy-force-only cache records",
+          "[Potential][cache][stress]") {
+  const std::string path = resultCachePath();
+  rocksdb::Options options;
+  options.create_if_missing = true;
+  std::unique_ptr<rocksdb::DB> db;
+#if RGPOT_ROCKSDB_UNIQUE_PTR_OPEN
+  REQUIRE(rocksdb::DB::Open(options, path, &db).ok());
+#else
+  rocksdb::DB *raw = nullptr;
+  REQUIRE(rocksdb::DB::Open(options, path, &raw).ok());
+  db.reset(raw);
+#endif
+  rgpot::cache::PotentialCache cache;
+  cache.set_db(db.get());
+  ResultMetadataPotential pot;
+  pot.set_cache(&cache);
+  double positions[6] = {0.25, 0.5, 0.75, 1.25, 1.5, 1.75};
+  const int types[2] = {1, 1};
+  const double box[9] = {8.0, 0.0, 0.0, 0.0, 8.0, 0.0, 0.0, 0.0, 8.0};
+  const rgpot::ForceInput input{2, positions, types, box};
+  double forces[6] = {};
+  rgpot::ForceOut out{forces, 0.0, 0.0, {}, 0};
+  const rgpot::ForceBatch batch{1, &input, &out};
+  pot.forceBatch(batch);
+  REQUIRE(pot.evaluations == 1);
+  checkResultMetadata(input, out);
+
+  std::unique_ptr<rocksdb::Iterator> it(
+      db->NewIterator(rocksdb::ReadOptions()));
+  it->SeekToFirst();
+  REQUIRE(it->Valid());
+  const std::string key = it->key().ToString();
+  std::string value = it->value().ToString();
+  REQUIRE(rgpot::cache::PotentialCache::has_result_metadata(value, 2));
+  it.reset();
+  value.resize((1 + 6) * sizeof(double));
+  REQUIRE_FALSE(rgpot::cache::PotentialCache::has_result_metadata(value, 2));
+  REQUIRE(db->Put(rocksdb::WriteOptions(), key, value).ok());
+
+  cache.deserialize_hit(value, out, 2);
+  REQUIRE(out.energy == 3.25);
+  REQUIRE(out.variance == 0.0);
+  REQUIRE(out.has_stress == 0);
+  for (double component : out.stress) {
+    REQUIRE(component == 0.0);
+  }
+  REQUIRE_THROWS_AS(cache.deserialize_hit(value.substr(0, 1), out, 2),
+                    std::runtime_error);
+
+  pot.forceBatch(batch);
+  REQUIRE(pot.evaluations == 2);
+  checkResultMetadata(input, out);
+  pot.forceBatch(batch);
+  REQUIRE(pot.evaluations == 2);
+  checkResultMetadata(input, out);
+
+  std::string refreshed;
+  REQUIRE(db->Get(rocksdb::ReadOptions(), key, &refreshed).ok());
+  rgpot::types::AtomMatrix decoded(2, 3);
+  double energy = 0.0;
+  cache.deserialize_hit(refreshed, energy, decoded);
+  REQUIRE(energy == out.energy);
+  for (size_t i = 0; i < 6; ++i) {
+    REQUIRE(decoded.data()[i] == out.F[i]);
+  }
+  pot.set_cache(nullptr);
+  cache.set_db(nullptr);
+  db.reset();
+  REQUIRE(rocksdb::DestroyDB(path, rocksdb::Options()).ok());
+}
+
+TEST_CASE("Scalar cache retains calculator variance", "[Potential][cache]") {
+  const std::string path = resultCachePath();
+  ResultMetadataPotential pot;
+  rgpot::types::AtomMatrix positions{{0.0, 0.1, 0.2}, {1.0, 1.1, 1.2}};
+  const std::vector<int> types{1, 1};
+  const std::array<std::array<double, 3>, 3> box{
+      {{8.0, 0.0, 0.0}, {0.0, 8.0, 0.0}, {0.0, 0.0, 8.0}}};
+  {
+    rgpot::cache::PotentialCache cache(path);
+    pot.set_cache(&cache);
+    const auto [first_energy, first_forces, first_variance] =
+        pot(positions, types, box);
+    const auto [energy, forces, variance] = pot(positions, types, box);
+    REQUIRE(pot.evaluations == 1);
+    REQUIRE(first_variance == 0.25);
+    REQUIRE(variance == first_variance);
+    REQUIRE(energy == first_energy);
+    for (size_t i = 0; i < 6; ++i) {
+      REQUIRE(forces.data()[i] == first_forces.data()[i]);
+    }
+    pot.set_cache(nullptr);
+  }
+  REQUIRE(rocksdb::DestroyDB(path, rocksdb::Options()).ok());
 }
