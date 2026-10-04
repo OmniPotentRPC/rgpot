@@ -154,6 +154,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/CalculatorGroup.cc
       CppCore/rgpot/PotHelpers.cc
       CppCore/rgpot/units.cc
+      CppCore/rgpot/abi/CxxLayout.cc
       CppCore/rgpot/plugin/PluginRegistry.cc
       CppCore/rgpot/plugin/PluginBridge.cc
       CppCore/rgpot/plugin/builtins/lj_plugin.cpp
@@ -406,6 +407,23 @@ if(RGPOT_BUILD_TESTS)
 
     add_pot_test(LJClusterPotTest CppCore/tests/LJClusterPotTest.cc)
     add_pot_test(PairListTest CppCore/tests/PairListTest.cc)
+    add_pot_test(CxxLayoutTest CppCore/tests/CxxLayoutTest.cc)
+    target_link_libraries(CxxLayoutTest PRIVATE ${CMAKE_DL_LIBS})
+    add_library(rgpot_layout_fixture SHARED CppCore/tests/layout_fixture.cc)
+    target_include_directories(rgpot_layout_fixture
+                               PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/CppCore)
+    target_link_libraries(rgpot_layout_fixture PRIVATE rgpot::rgpot)
+    set_target_properties(rgpot_layout_fixture PROPERTIES PREFIX "lib")
+    set_tests_properties(
+      CxxLayoutTest
+      PROPERTIES ENVIRONMENT
+                 "RGPOT_LAYOUT_FIXTURE=$<TARGET_FILE:rgpot_layout_fixture>")
+    find_package(Python3 COMPONENTS Interpreter)
+    if(Python3_FOUND)
+      add_test(NAME CxxLayoutVirtualCounts
+               COMMAND Python3::Interpreter
+                       "${CMAKE_CURRENT_SOURCE_DIR}/CppCore/tests/check_virtual_counts.py")
+    endif()
     add_pot_test(MorsePotTest CppCore/tests/MorsePotTest.cc)
     add_pot_test(FortranPotsTest CppCore/tests/FortranPotsTest.cc)
     target_link_libraries(FortranPotsTest PRIVATE Threads::Threads)
