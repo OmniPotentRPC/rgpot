@@ -5,8 +5,9 @@
 * C ABI of rgpot-core
 
 =rgpot-core/include/rgpot.h= carries two identities.
-The package version (=RGPOT_VERSION=, =RGPOT_VERSION_MAJOR=, =RGPOT_VERSION_MINOR=,
-=RGPOT_VERSION_PATCH=) follows the crate.
+The package version
+(=RGPOT_VERSION=, =RGPOT_VERSION_MAJOR=, =RGPOT_VERSION_MINOR=, =RGPOT_VERSION_PATCH=)
+follows the crate.
 The ABI stamp follows the layout of the exported structs and the signatures of
 the exported functions, and does not move with the package version.
 A consumer that loads =librgpot= at run time checks the stamp.
@@ -49,8 +50,9 @@ if (!rgpot_abi_compatible(&built)) {
 
 ** Bumping the numbers
 
-The numbers live in =rgpot-core/src/version.rs= as =RGPOT_ABI_VERSION_MAJOR=,
-=RGPOT_ABI_VERSION_MINOR= and =RGPOT_ABI_LAYOUT_REVISION=.
+The numbers live in =rgpot-core/src/version.rs= as
+=RGPOT_ABI_VERSION_MAJOR=, =RGPOT_ABI_VERSION_MINOR= and
+=RGPOT_ABI_LAYOUT_REVISION=.
 Regenerate the header with =pixi run gen-header= and commit it with the change.
 The crate test =committed_header_matches_the_crate= fails when the header and
 the source disagree.
@@ -78,5 +80,5 @@ exported symbol leaves them where they are.
 The stamp covers the C surface of =rgpot-core=.
 The C++ and Python packages do not re-export it.
 The engine plugins carry their own number, =rgpot_engine_abi_version()=.
-The eindir objective keeps =rgpot_eindir_abi_stamp()=, which reports the
-stamp of =eindir-core=.
+The eindir objective keeps =rgpot_eindir_abi_stamp()=, which reports the stamp
+of =eindir-core=.
