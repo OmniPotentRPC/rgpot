@@ -176,7 +176,7 @@ resolves the well):
 pixi run -e eonviz eon-min-landscape
 #+end_src
 
-#+CAPTION: An EON LJ7 minimization on the (s, d) landscape: the path descends from the start (Init) to the global minimum at -16.505 (Min), and the surface energy drops monotonically along progress s.
+#+CAPTION: An EON LJ7 minimization on the (s, d) landscape: the path descends from the start (initial) to the global minimum at -16.505 (minimized), and the surface energy, shown relative to that minimum, drops monotonically along progress s.
 [[file:../_static/eon_min_landscape.png]]
 
 The ``eonviz`` environment is separate from the C++ build env: ``eon`` pins
