@@ -97,7 +97,8 @@ data-aria-dark="Switch to auto color mode">
    <a href="#cap-Functions"><strong>Functions</strong></a> | 
    <a href="#cap-Modules"><strong>Modules</strong></a> | 
    <a href="#cap-Structs"><strong>Structs</strong></a> | 
-   <a href="#cap-Types"><strong>Types</strong></a>
+   <a href="#cap-Types"><strong>Types</strong></a> | 
+   <a href="#cap-Variables"><strong>Variables</strong></a>
    </div>
 
    <table class="indextable modindextable">
@@ -281,6 +282,16 @@ data-aria-dark="Switch to auto color mode">
        <td>
        <a href="crates/rgpot_core/tensor.html#rgpot_core-tensor-rgpot_tensor_shape"><code class="xref">fn rgpot_tensor_shape</code></a> <em>(in rgpot_core::tensor)</em></td><td>
        <em>Get the shape array and number of dimensions of a DLPack tensor.</em></td></tr>
+     <tr>
+       <td></td>
+       <td>
+       <a href="crates/rgpot_core/version.html#rgpot_core-version-rgpot_abi_compatible"><code class="xref">fn rgpot_abi_compatible</code></a> <em>(in rgpot_core::version)</em></td><td>
+       <em>Return nonzero when the loaded library can serve a caller built with</em></td></tr>
+     <tr>
+       <td></td>
+       <td>
+       <a href="crates/rgpot_core/version.html#rgpot_core-version-rgpot_abi_stamp"><code class="xref">fn rgpot_abi_stamp</code></a> <em>(in rgpot_core::version)</em></td><td>
+       <em>Compatibility identity of the loaded library.</em></td></tr>
      <tr>
        <td></td>
        <td>
@@ -558,6 +569,27 @@ data-aria-dark="Switch to auto color mode">
        <td>&#160;&#160;&#160;
        <a href="crates/rgpot_core/types.html#rgpot_core-types-rgpot_force_out_t-variance"><code class="xref">variance</code></a></td><td>
        <em>Variance / uncertainty of the calculation (0.0 when unused).</em></td></tr>
+     <tr>
+       <td><img src="_static/minus.png" class="toggler"
+              id="toggle-13" style="display: none" alt="-" /></td>
+       <td>
+       <a href="crates/rgpot_core/version.html#rgpot_core-version-rgpot_abi_stamp_t"><code class="xref">struct rgpot_abi_stamp_t</code></a> <em>(in rgpot_core::version)</em></td><td>
+       <em>Compatibility identity of the rgpot-core C ABI.</em></td></tr>
+     <tr class="cg-13">
+       <td></td>
+       <td>&#160;&#160;&#160;
+       <a href="crates/rgpot_core/version.html#rgpot_core-version-rgpot_abi_stamp_t-abi_major"><code class="xref">abi_major</code></a></td><td>
+       <em>Incompatible changes increment this value.</em></td></tr>
+     <tr class="cg-13">
+       <td></td>
+       <td>&#160;&#160;&#160;
+       <a href="crates/rgpot_core/version.html#rgpot_core-version-rgpot_abi_stamp_t-abi_minor"><code class="xref">abi_minor</code></a></td><td>
+       <em>Additive compatible changes increment this value.</em></td></tr>
+     <tr class="cg-13">
+       <td></td>
+       <td>&#160;&#160;&#160;
+       <a href="crates/rgpot_core/version.html#rgpot_core-version-rgpot_abi_stamp_t-layout_revision"><code class="xref">layout_revision</code></a></td><td>
+       <em>Struct and function-layout revision for this ABI major.</em></td></tr>
      <tr class="pcap"><td></td><td>&#160;</td><td></td></tr>
      <tr class="cap" id="cap-Types"><td></td><td>
        <strong>Types</strong></td><td></td></tr>
@@ -581,6 +613,24 @@ data-aria-dark="Switch to auto color mode">
        <td>
        <a href="crates/rgpot_core/profile.html#rgpot_core-profile-ProfileResult"><code class="xref">type ProfileResult</code></a> <em>(in rgpot_core::profile)</em></td><td>
        <em>Result type for profile loading and evaluation.</em></td></tr>
+     <tr class="pcap"><td></td><td>&#160;</td><td></td></tr>
+     <tr class="cap" id="cap-Variables"><td></td><td>
+       <strong>Variables</strong></td><td></td></tr>
+     <tr>
+       <td></td>
+       <td>
+       <a href="crates/rgpot_core/version.html#rgpot_core-version-RGPOT_ABI_LAYOUT_REVISION"><code class="xref">const RGPOT_ABI_LAYOUT_REVISION</code></a> <em>(in rgpot_core::version)</em></td><td>
+       <em>Layout revision of this build.</em></td></tr>
+     <tr>
+       <td></td>
+       <td>
+       <a href="crates/rgpot_core/version.html#rgpot_core-version-RGPOT_ABI_VERSION_MAJOR"><code class="xref">const RGPOT_ABI_VERSION_MAJOR</code></a> <em>(in rgpot_core::version)</em></td><td>
+       <em>ABI major of this build.</em></td></tr>
+     <tr>
+       <td></td>
+       <td>
+       <a href="crates/rgpot_core/version.html#rgpot_core-version-RGPOT_ABI_VERSION_MINOR"><code class="xref">const RGPOT_ABI_VERSION_MINOR</code></a> <em>(in rgpot_core::version)</em></td><td>
+       <em>ABI minor of this build.</em></td></tr>
    </table>
 
 

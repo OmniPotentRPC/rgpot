@@ -109,6 +109,7 @@ data-aria-dark="Switch to auto color mode">
 <ul class="current">
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/architecture.html">Architecture Overview</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/mpi.html">MPI</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/c_abi.html">C ABI of rgpot-core</a></li>
 <li class="toctree-l1 current"><a class="reference internal" href="../../api/index.html">API Reference</a><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="../../api/group_rgpot_cpp.html">C++ RAII Wrappers</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../../api/class_rgpot_CalcResult.html">class rgpot::CalcResult</a><ul class="simple">
@@ -440,10 +441,21 @@ data-aria-dark="Switch to auto color mode">
       <i class="i-lucide close"></i>
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
+<li><a class="reference internal" href="#rgpot_core-version-RGPOT_ABI_LAYOUT_REVISION"><code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">RGPOT_ABI_LAYOUT_REVISION</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-version-RGPOT_ABI_VERSION_MAJOR"><code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">RGPOT_ABI_VERSION_MAJOR</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-version-RGPOT_ABI_VERSION_MINOR"><code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">RGPOT_ABI_VERSION_MINOR</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-version-rgpot_abi_compatible"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_abi_compatible</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-version-rgpot_abi_stamp"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_abi_stamp</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-version-rgpot_version"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_version</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-version-rgpot_version_major"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_version_major</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-version-rgpot_version_minor"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_version_minor</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-version-rgpot_version_patch"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_version_patch</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-version-rgpot_abi_stamp_t"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">rgpot_abi_stamp_t</span></code></a><ul>
+<li><a class="reference internal" href="#rgpot_core-version-rgpot_abi_stamp_t-abi_major"><code class="docutils literal notranslate"><span class="pre">abi_major</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-version-rgpot_abi_stamp_t-abi_minor"><code class="docutils literal notranslate"><span class="pre">abi_minor</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-version-rgpot_abi_stamp_t-layout_revision"><code class="docutils literal notranslate"><span class="pre">layout_revision</span></code></a></li>
+</ul>
+</li>
 </ul>
 </div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/OmniPotentRPC/rgpot"
   data-type="github" data-user="OmniPotentRPC" data-repo="rgpot">
@@ -552,6 +564,8 @@ they compiled with.</p>
 from the shared object actually loaded. The C ABI follows semver: a
 caller built against major M runs on any library of major M whose minor
 is at least the header’s.</p>
+<p>The ABI stamp is separate from the crate version: see
+<code class="docutils literal notranslate"><span class="pre">rgpot_abi_stamp()</span></code> and <code class="docutils literal notranslate"><span class="pre">rgpot_abi_compatible()</span></code>.</p>
 <div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">if</span> <span class="p">(</span><span class="n">rgpot_version_major</span><span class="p">()</span> <span class="o">!=</span> <span class="n">RGPOT_VERSION_MAJOR</span> <span class="o">||</span>
 </span><span data-line="2">    <span class="n">rgpot_version_minor</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">RGPOT_VERSION_MINOR</span><span class="p">)</span> <span class="p">{</span>
 </span><span data-line="3">  <span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span> <span class="s">&quot;rgpot %s loaded, built against %s</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span>
@@ -560,7 +574,45 @@ is at least the header’s.</p>
 </span><span data-line="6"><span class="p">}</span>
 </span></pre></div>
 </div>
+<p class="rubric">Variables</p>
+<dl class="rust variable">
+<dt class="sig sig-object rust" id="rgpot_core-version-RGPOT_ABI_LAYOUT_REVISION">
+<span class="sig-name descname"><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">RGPOT_ABI_LAYOUT_REVISION</span></span><span class="p"><span class="pre">:</span> </span><span class="n"><span class="pre">u16</span></span></span><a class="headerlink" href="#rgpot_core-version-RGPOT_ABI_LAYOUT_REVISION" title="Link to this definition">¶</a></dt>
+<dd><p>Layout revision of this build.</p>
+</dd></dl>
+
+<dl class="rust variable">
+<dt class="sig sig-object rust" id="rgpot_core-version-RGPOT_ABI_VERSION_MAJOR">
+<span class="sig-name descname"><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">RGPOT_ABI_VERSION_MAJOR</span></span><span class="p"><span class="pre">:</span> </span><span class="n"><span class="pre">u16</span></span></span><a class="headerlink" href="#rgpot_core-version-RGPOT_ABI_VERSION_MAJOR" title="Link to this definition">¶</a></dt>
+<dd><p>ABI major of this build.</p>
+</dd></dl>
+
+<dl class="rust variable">
+<dt class="sig sig-object rust" id="rgpot_core-version-RGPOT_ABI_VERSION_MINOR">
+<span class="sig-name descname"><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">RGPOT_ABI_VERSION_MINOR</span></span><span class="p"><span class="pre">:</span> </span><span class="n"><span class="pre">u16</span></span></span><a class="headerlink" href="#rgpot_core-version-RGPOT_ABI_VERSION_MINOR" title="Link to this definition">¶</a></dt>
+<dd><p>ABI minor of this build.</p>
+</dd></dl>
+
 <p class="rubric">Functions</p>
+<dl class="rust function">
+<dt class="sig sig-object rust" id="rgpot_core-version-rgpot_abi_compatible">
+<span class="sig-name descname"><span class="k"><span class="pre">unsafe</span></span><span class="w"> </span><span class="k"><span class="pre">extern</span></span><span class="w"> </span><span class="s"><span class="pre">C</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_abi_compatible</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">stamp</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-version-rgpot_abi_stamp_t" title="rgpot_core::version::rgpot_abi_stamp_t"><span class="n"><span class="pre">rgpot_abi_stamp_t</span></span></a><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><span class="n"><span class="pre">i32</span></span></span><a class="headerlink" href="#rgpot_core-version-rgpot_abi_compatible" title="Link to this definition">¶</a></dt>
+<dd><p>Return nonzero when the loaded library can serve a caller built with
+<code class="docutils literal notranslate"><span class="pre">stamp</span></code>: equal major, equal layout revision, and a library minor at least
+the caller’s. A null <code class="docutils literal notranslate"><span class="pre">stamp</span></code> is not compatible.</p>
+<p><strong>Safety</strong></p>
+<p><code class="docutils literal notranslate"><span class="pre">stamp</span></code> must be null or point to a readable <code class="docutils literal notranslate"><span class="pre">rgpot_abi_stamp_t</span></code>.</p>
+</dd></dl>
+
+<dl class="rust function">
+<dt class="sig sig-object rust" id="rgpot_core-version-rgpot_abi_stamp">
+<span class="sig-name descname"><span class="k"><span class="pre">extern</span></span><span class="w"> </span><span class="s"><span class="pre">C</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_abi_stamp</span></span><span class="p"><span class="pre">(</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-version-rgpot_abi_stamp_t" title="rgpot_core::version::rgpot_abi_stamp_t"><span class="n"><span class="pre">rgpot_abi_stamp_t</span></span></a></span><a class="headerlink" href="#rgpot_core-version-rgpot_abi_stamp" title="Link to this definition">¶</a></dt>
+<dd><p>Compatibility identity of the loaded library.</p>
+<p>Compare it with the <code class="docutils literal notranslate"><span class="pre">RGPOT_ABI_*</span></code> macros of the header the caller
+compiled with, or pass the caller’s own stamp to
+<code class="docutils literal notranslate"><span class="pre">rgpot_abi_compatible</span></code>.</p>
+</dd></dl>
+
 <dl class="rust function">
 <dt class="sig sig-object rust" id="rgpot_core-version-rgpot_version">
 <span class="sig-name descname"><span class="k"><span class="pre">extern</span></span><span class="w"> </span><span class="s"><span class="pre">C</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_version</span></span><span class="p"><span class="pre">(</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">c_char</span></span></span><a class="headerlink" href="#rgpot_core-version-rgpot_version" title="Link to this definition">¶</a></dt>
@@ -584,6 +636,33 @@ is at least the header’s.</p>
 <dt class="sig sig-object rust" id="rgpot_core-version-rgpot_version_patch">
 <span class="sig-name descname"><span class="k"><span class="pre">extern</span></span><span class="w"> </span><span class="s"><span class="pre">C</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_version_patch</span></span><span class="p"><span class="pre">(</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><span class="n"><span class="pre">u32</span></span></span><a class="headerlink" href="#rgpot_core-version-rgpot_version_patch" title="Link to this definition">¶</a></dt>
 <dd><p>Patch version of the loaded library.</p>
+</dd></dl>
+
+<p class="rubric">Structs and Unions</p>
+<dl class="rust struct">
+<dt class="sig sig-object rust" id="rgpot_core-version-rgpot_abi_stamp_t">
+<span class="sig-name descname"><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_abi_stamp_t</span></span></span><a class="headerlink" href="#rgpot_core-version-rgpot_abi_stamp_t" title="Link to this definition">¶</a></dt>
+<dd><p>Compatibility identity of the rgpot-core C ABI.</p>
+<p>The numbers move with the layout of the exported structs and the
+signatures of the exported functions, not with the crate version.</p>
+<dl class="rust variable">
+<dt class="sig sig-object rust" id="rgpot_core-version-rgpot_abi_stamp_t-abi_major">
+<span class="sig-name descname"><span class="n"><span class="pre">abi_major</span></span><span class="p"><span class="pre">:</span> </span><span class="n"><span class="pre">u16</span></span></span><a class="headerlink" href="#rgpot_core-version-rgpot_abi_stamp_t-abi_major" title="Link to this definition">¶</a></dt>
+<dd><p>Incompatible changes increment this value.</p>
+</dd></dl>
+
+<dl class="rust variable">
+<dt class="sig sig-object rust" id="rgpot_core-version-rgpot_abi_stamp_t-abi_minor">
+<span class="sig-name descname"><span class="n"><span class="pre">abi_minor</span></span><span class="p"><span class="pre">:</span> </span><span class="n"><span class="pre">u16</span></span></span><a class="headerlink" href="#rgpot_core-version-rgpot_abi_stamp_t-abi_minor" title="Link to this definition">¶</a></dt>
+<dd><p>Additive compatible changes increment this value.</p>
+</dd></dl>
+
+<dl class="rust variable">
+<dt class="sig sig-object rust" id="rgpot_core-version-rgpot_abi_stamp_t-layout_revision">
+<span class="sig-name descname"><span class="n"><span class="pre">layout_revision</span></span><span class="p"><span class="pre">:</span> </span><span class="n"><span class="pre">u16</span></span></span><a class="headerlink" href="#rgpot_core-version-rgpot_abi_stamp_t-layout_revision" title="Link to this definition">¶</a></dt>
+<dd><p>Struct and function-layout revision for this ABI major.</p>
+</dd></dl>
+
 </dd></dl>
 
 </dd></dl>

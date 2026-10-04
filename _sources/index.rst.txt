@@ -78,6 +78,7 @@ See:
 
    reference/architecture
    reference/mpi
+   reference/c_abi
    api/index
    changelog
 

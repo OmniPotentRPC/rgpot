@@ -2,8 +2,8 @@
 <html lang="en" data-accent-color="teal" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Contributing to rgpot - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Developer Guide" href="developer/index.html" /><link rel="prev" title="Changelog" href="../changelog.html" />
-      <link rel="canonical" href="https://rgpot.rgoswami.me/contributing/" /><script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>C ABI of rgpot-core - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="API Reference" href="../api/index.html" /><link rel="prev" title="MPI" href="mpi.html" />
+      <link rel="canonical" href="https://rgpot.rgoswami.me/reference/c_abi.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
   </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
@@ -22,8 +22,8 @@
 }
 </style>
     <meta property="og:type" content="website"/>
-  <meta property="og:url" content="https://rgpot.rgoswami.me/contributing/"/>
-  <meta property="og:title" content="Contributing to rgpot"/>
+  <meta property="og:url" content="https://rgpot.rgoswami.me/reference/c_abi.html"/>
+  <meta property="og:title" content="C ABI of rgpot-core"/>
     <meta name="twitter:card" content="summary"/>
   <!-- Manual favicon handling with favicon.io -->
 <!-- since sphinx-favicon doesn't work with shibuya -->
@@ -106,10 +106,10 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#related">Related</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
-<ul>
-<li class="toctree-l1 _expand"><a class="reference internal" href="../reference/architecture.html">Architecture Overview</a></li>
-<li class="toctree-l1 _expand"><a class="reference internal" href="../reference/mpi.html">MPI</a></li>
-<li class="toctree-l1 _expand"><a class="reference internal" href="../reference/c_abi.html">C ABI of rgpot-core</a></li>
+<ul class="current">
+<li class="toctree-l1 _expand"><a class="reference internal" href="architecture.html">Architecture Overview</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="mpi.html">MPI</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">C ABI of rgpot-core</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../api/index.html">API Reference</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="../api/group_rgpot_cpp.html">C++ RAII Wrappers</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../api/class_rgpot_CalcResult.html">class rgpot::CalcResult</a><ul class="simple">
@@ -418,12 +418,12 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l1 _expand"><a class="reference internal" href="../changelog.html">Changelog</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Development</span></p>
-<ul class="current">
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Contributing to <code class="docutils literal notranslate"><span class="pre">rgpot</span></code></a><ul>
-<li class="toctree-l2"><a class="reference internal" href="developer/index.html">Developer Guide</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="developer/testing.html">Testing</a></li>
-<li class="toctree-l3"><a class="reference internal" href="developer/release.html">Release Process</a></li>
-<li class="toctree-l3"><a class="reference internal" href="developer/faq.html">Developer FAQ</a></li>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../contributing/index.html">Contributing to <code class="docutils literal notranslate"><span class="pre">rgpot</span></code></a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../contributing/developer/index.html">Developer Guide</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../contributing/developer/testing.html">Testing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../contributing/developer/release.html">Release Process</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../contributing/developer/faq.html">Developer FAQ</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="../code_of_conduct.html">Code of Conduct</a></li>
@@ -441,10 +441,9 @@ data-aria-dark="Switch to auto color mode">
       <i class="i-lucide close"></i>
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
-<li><a class="reference internal" href="#communication-and-conduct">Communication and Conduct</a></li>
-<li><a class="reference internal" href="#getting-started">Getting Started</a></li>
-<li><a class="reference internal" href="#reporting-issues">Reporting Issues</a></li>
-<li><a class="reference internal" href="#contributing">Contributing</a></li>
+<li><a class="reference internal" href="#stamp">Stamp</a></li>
+<li><a class="reference internal" href="#bumping-the-numbers">Bumping the numbers</a></li>
+<li><a class="reference internal" href="#scope">Scope</a></li>
 </ul>
 </div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/OmniPotentRPC/rgpot"
   data-type="github" data-user="OmniPotentRPC" data-repo="rgpot">
@@ -468,7 +467,7 @@ data-aria-dark="Switch to auto color mode">
     </span>
   </span>
 </a><div class="edit-this-page">
-  <a href="https://github.com/OmniPotentRPC/rgpot/blob/main/docs/source/contributing/index.rst">Edit this page</a>
+  <a href="https://github.com/OmniPotentRPC/rgpot/blob/main/docs/source/reference/c_abi.rst">Edit this page</a>
 </div></div>
   </aside>
   <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
@@ -485,7 +484,7 @@ data-aria-dark="Switch to auto color mode">
         <span>/</span>
         <meta itemprop="position" content="1" />
       </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-        <strong itemprop="name">Contributing to <code class="docutils literal notranslate"><span class="pre">rgpot</span></code></strong>
+        <strong itemprop="name">C ABI of rgpot-core</strong>
         <meta itemprop="position" content="2" />
       </li></ol>
     <div class="xl:hidden ml-1">
@@ -502,7 +501,7 @@ data-aria-dark="Switch to auto color mode">
     <button
       type="button"
       class="js-copy px-3 py-1 inline-flex items-center gap-1"
-      data-url="https://rgpot.rgoswami.me/_sources/contributing/index.rst.txt"
+      data-url="https://rgpot.rgoswami.me/_sources/reference/c_abi.rst.txt"
     >
       <i class="i-lucide" data-icon="copy"></i>
       <span>Copy page</span>
@@ -516,75 +515,100 @@ data-aria-dark="Switch to auto color mode">
     <div role="presentation">
       <div class="flex flex-col" role="group">
         <button class="js-copy" type="button" role="menuitem"
-          data-url="https://rgpot.rgoswami.me/_sources/contributing/index.rst.txt">
+          data-url="https://rgpot.rgoswami.me/_sources/reference/c_abi.rst.txt">
           <span class="iconify-icon">
             <i class="i-lucide" data-icon="copy"></i>
           </span>
           <span>Copy page</span>
         </button>
-        <a role="menuitem" href="https://rgpot.rgoswami.me/_sources/contributing/index.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
-            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20https%3A//rgpot.rgoswami.me/_sources/contributing/index.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        <a role="menuitem" href="https://rgpot.rgoswami.me/_sources/reference/c_abi.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
+            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20https%3A//rgpot.rgoswami.me/_sources/reference/c_abi.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:openai"></iconify-icon>
           <span>Open in ChatGPT</span>
-        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20https%3A//rgpot.rgoswami.me/_sources/contributing/index.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20https%3A//rgpot.rgoswami.me/_sources/reference/c_abi.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:claude"></iconify-icon>
           <span>Open in Claude</span>
         </a></div>
     </div>
   </div>
 </div><article class="yue dark-code" role="main">
-          <section id="contributing-to-rgpot">
-<h1>Contributing to <code class="docutils literal notranslate"><span class="pre">rgpot</span></code><a class="headerlink" href="#contributing-to-rgpot" title="Link to this heading">¶</a></h1>
-<p>We welcome all contributions and contributors to <code class="docutils literal notranslate"><span class="pre">rgpot</span></code>.
-Whether you report bugs, improve documentation, or submit code, your help makes
-the tools better for everyone.</p>
-<section id="communication-and-conduct">
-<h2>Communication and Conduct<a class="headerlink" href="#communication-and-conduct" title="Link to this heading">¶</a></h2>
-<p>We value a respectful and inclusive community.
-All contributors must follow our
-<a class="reference external" href="https://rgpycrumbs.rgoswami.me/code_of_conduct.html">Code of Conduct</a>.</p>
-</section>
-<section id="getting-started">
-<h2>Getting Started<a class="headerlink" href="#getting-started" title="Link to this heading">¶</a></h2>
-<p>Please review the technical requirements before submitting a Pull Request:</p>
-<dl class="simple">
-<dt>Development Environment</dt><dd><p>We use <code class="docutils literal notranslate"><span class="pre">pixi</span></code> for environment management.</p>
-</dd>
-</dl>
-<p>See the <a class="reference external" href="developer/index.rst">Developer Guide</a> for setup and common
-tasks.</p>
-<dl class="simple">
-<dt>Documentation</dt><dd><p>We author all documentation in <code class="docutils literal notranslate"><span class="pre">orgmode</span></code> converted to <code class="docutils literal notranslate"><span class="pre">rst</span></code>.</p>
-</dd>
-</dl>
-<p>See <a class="reference external" href="developer/faq.rst">Developer FAQ</a> for documentation workflow
-details.</p>
-</section>
-<section id="reporting-issues">
-<h2>Reporting Issues<a class="headerlink" href="#reporting-issues" title="Link to this heading">¶</a></h2>
-<p>Use the <a class="reference external" href="https://github.com/HaoZeke/rgpycrumbs/issues">GitHub issue tracker</a>
-to report bugs or suggest enhancements.
-Please provide a minimal reproducible example for all bug reports.
-User facing comments may be directed also to the [[<a class="reference external" href="https://matsci.org/c/eon/72">https://matsci.org/c/eon/72</a>]
-[EON materials science section]].</p>
-</section>
-<section id="contributing">
-<h2>Contributing<a class="headerlink" href="#contributing" title="Link to this heading">¶</a></h2>
-<p>For details on the dispatcher architecture or internal API:</p>
-<blockquote>
-<div><div class="toctree-wrapper compound">
-<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="developer/index.html">Developer Guide</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="developer/testing.html">Testing</a></li>
-<li class="toctree-l2"><a class="reference internal" href="developer/release.html">Release Process</a></li>
-<li class="toctree-l2"><a class="reference internal" href="developer/faq.html">Developer FAQ</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="../code_of_conduct.html">Code of Conduct</a></li>
-</ul>
+          <section id="c-abi-of-rgpot-core">
+<h1>C ABI of rgpot-core<a class="headerlink" href="#c-abi-of-rgpot-core" title="Link to this heading">¶</a></h1>
+<p><code class="docutils literal notranslate"><span class="pre">rgpot-core/include/rgpot.h</span></code> carries two identities.
+The package version
+(<code class="docutils literal notranslate"><span class="pre">RGPOT_VERSION</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_VERSION_MAJOR</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_VERSION_MINOR</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_VERSION_PATCH</span></code>)
+follows the crate.
+The ABI stamp follows the layout of the exported structs and the signatures of
+the exported functions, and does not move with the package version.
+A consumer that loads <code class="docutils literal notranslate"><span class="pre">librgpot</span></code> at run time checks the stamp.</p>
+<section id="stamp">
+<h2>Stamp<a class="headerlink" href="#stamp" title="Link to this heading">¶</a></h2>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">typedef</span> <span class="k">struct</span> <span class="n">rgpot_abi_stamp_t</span> <span class="p">{</span>
+</span><span data-line="2">  <span class="kt">uint16_t</span> <span class="n">abi_major</span><span class="p">;</span>
+</span><span data-line="3">  <span class="kt">uint16_t</span> <span class="n">abi_minor</span><span class="p">;</span>
+</span><span data-line="4">  <span class="kt">uint16_t</span> <span class="n">layout_revision</span><span class="p">;</span>
+</span><span data-line="5"><span class="p">}</span> <span class="n">rgpot_abi_stamp_t</span><span class="p">;</span>
+</span><span data-line="6">
+</span><span data-line="7"><span class="cp">#define RGPOT_ABI_VERSION_MAJOR 1</span>
+</span><span data-line="8"><span class="cp">#define RGPOT_ABI_VERSION_MINOR 0</span>
+</span><span data-line="9"><span class="cp">#define RGPOT_ABI_LAYOUT_REVISION 1</span>
+</span><span data-line="10">
+</span><span data-line="11"><span class="n">rgpot_abi_stamp_t</span> <span class="nf">rgpot_abi_stamp</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+</span><span data-line="12"><span class="kt">int32_t</span> <span class="nf">rgpot_abi_compatible</span><span class="p">(</span><span class="k">const</span> <span class="n">rgpot_abi_stamp_t</span> <span class="o">*</span><span class="n">stamp</span><span class="p">);</span>
+</span></pre></div>
 </div>
-</div></blockquote>
+<p>The macros hold the stamp of the header the caller compiled against.
+<code class="docutils literal notranslate"><span class="pre">rgpot_abi_stamp()</span></code> returns the stamp of the library actually loaded.
+<code class="docutils literal notranslate"><span class="pre">rgpot_abi_compatible(&amp;stamp)</span></code> returns nonzero when the loaded library can serve
+a caller built with <code class="docutils literal notranslate"><span class="pre">stamp</span></code>: equal <code class="docutils literal notranslate"><span class="pre">abi_major</span></code>, equal <code class="docutils literal notranslate"><span class="pre">layout_revision</span></code>, and a
+library <code class="docutils literal notranslate"><span class="pre">abi_minor</span></code> at least the caller’s.
+A null pointer returns 0.</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">rgpot_abi_stamp_t</span> <span class="n">built</span> <span class="o">=</span> <span class="p">{</span><span class="n">RGPOT_ABI_VERSION_MAJOR</span><span class="p">,</span> <span class="n">RGPOT_ABI_VERSION_MINOR</span><span class="p">,</span>
+</span><span data-line="2">                           <span class="n">RGPOT_ABI_LAYOUT_REVISION</span><span class="p">};</span>
+</span><span data-line="3"><span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">rgpot_abi_compatible</span><span class="p">(</span><span class="o">&amp;</span><span class="n">built</span><span class="p">))</span> <span class="p">{</span>
+</span><span data-line="4">  <span class="n">rgpot_abi_stamp_t</span> <span class="n">have</span> <span class="o">=</span> <span class="n">rgpot_abi_stamp</span><span class="p">();</span>
+</span><span data-line="5">  <span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span> <span class="s">&quot;librgpot ABI %u.%u layout %u, built against %u.%u layout %u</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span>
+</span><span data-line="6">          <span class="n">have</span><span class="p">.</span><span class="n">abi_major</span><span class="p">,</span> <span class="n">have</span><span class="p">.</span><span class="n">abi_minor</span><span class="p">,</span> <span class="n">have</span><span class="p">.</span><span class="n">layout_revision</span><span class="p">,</span>
+</span><span data-line="7">          <span class="n">built</span><span class="p">.</span><span class="n">abi_major</span><span class="p">,</span> <span class="n">built</span><span class="p">.</span><span class="n">abi_minor</span><span class="p">,</span> <span class="n">built</span><span class="p">.</span><span class="n">layout_revision</span><span class="p">);</span>
+</span><span data-line="8">  <span class="n">abort</span><span class="p">();</span>
+</span><span data-line="9"><span class="p">}</span>
+</span></pre></div>
+</div>
+</section>
+<section id="bumping-the-numbers">
+<h2>Bumping the numbers<a class="headerlink" href="#bumping-the-numbers" title="Link to this heading">¶</a></h2>
+<p>The numbers live in <code class="docutils literal notranslate"><span class="pre">rgpot-core/src/version.rs</span></code> as
+<code class="docutils literal notranslate"><span class="pre">RGPOT_ABI_VERSION_MAJOR</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_ABI_VERSION_MINOR</span></code> and
+<code class="docutils literal notranslate"><span class="pre">RGPOT_ABI_LAYOUT_REVISION</span></code>.
+Regenerate the header with <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">run</span> <span class="pre">gen-header</span></code> and commit it with the change.
+The crate test <code class="docutils literal notranslate"><span class="pre">committed_header_matches_the_crate</span></code> fails when the header and
+the source disagree.</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">abi_major</span></code>: increment for a change a caller built against the old header
+cannot survive: removing or renaming an exported function, changing a
+signature, changing the meaning of an existing argument or status code.
+Reset <code class="docutils literal notranslate"><span class="pre">abi_minor</span></code> to 0.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">abi_minor</span></code>: increment for an additive change that leaves every old call
+valid: a new exported function, a new status code, a new enum value a caller
+may ignore.
+A caller built against minor N runs on any library of the same major and
+layout revision whose minor is at least N.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">layout_revision</span></code>: increment when the size or field order of an exported
+struct changes, or an existing field changes type, even when every function
+keeps its name.
+A caller and a library with different layout revisions never match, whatever
+their minors.</p></li>
+</ul>
+<p>The ABI numbers do not follow the package version: a release that changes no
+exported symbol leaves them where they are.</p>
+</section>
+<section id="scope">
+<h2>Scope<a class="headerlink" href="#scope" title="Link to this heading">¶</a></h2>
+<p>The stamp covers the C surface of <code class="docutils literal notranslate"><span class="pre">rgpot-core</span></code>.
+The C++ and Python packages do not re-export it.
+The engine plugins carry their own number, <code class="docutils literal notranslate"><span class="pre">rgpot_engine_abi_version()</span></code>.
+The eindir objective keeps <code class="docutils literal notranslate"><span class="pre">rgpot_eindir_abi_stamp()</span></code>, which reports the stamp
+of <code class="docutils literal notranslate"><span class="pre">eindir-core</span></code>.</p>
 </section>
 </section>
 
@@ -594,16 +618,16 @@ User facing comments may be directed also to the [[<a class="reference external"
   </svg>
   <span>Back to top</span>
 </button><div class="navigation flex print:hidden"><div class="navigation-prev">
-    <a href="../changelog.html">
+    <a href="mpi.html">
       <i class="i-lucide chevron-left"></i>
       <div class="page-info">
-        <span>Previous</span><div class="title">Changelog</div></div>
+        <span>Previous</span><div class="title">MPI</div></div>
     </a>
   </div><div class="navigation-next">
-    <a href="developer/index.html">
+    <a href="../api/index.html">
       <div class="page-info">
         <span>Next</span>
-        <div class="title">Developer Guide</div>
+        <div class="title">API Reference</div>
       </div>
       <i class="i-lucide chevron-right"></i>
     </a>
