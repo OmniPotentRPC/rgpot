@@ -75,8 +75,8 @@ TEST_CASE("Plugin unit conversion preserves the Cartesian energy derivative", "[
   auto pot=rgpot::plugin::create_from_plugin(&desc);
   auto positions=coordinates();
   const auto [energy,forces,variance]=(*pot)(positions,{1},box);
-  constexpr double hartree=27.211386245988;
-  constexpr double bohr=0.529177210903;
+  constexpr double hartree=4.359744722206048e-18/1.602176634e-19;
+  constexpr double bohr=5.2917721054482e-11/1e-10;
   const double expected=hartree*(0.125*20.0/bohr+0.5*(0.49+0.04+0.01)/(bohr*bohr));
   REQUIRE_THAT(energy,WithinAbs(expected,2e-12));
   REQUIRE_THAT(variance,WithinAbs(0.25*hartree*hartree,2e-12));
