@@ -111,6 +111,12 @@ let P = S.pins in
       matrix = { os = [P.ubuntu, P.macos] },
     },
     {
+      id = "eonviz_pins",
+      needs = ["prepare"],
+      runs_on = P.ubuntu,
+      role = "pixi task check-eonviz-pins (blocking)",
+    },
+    {
       id = "ci_gate",
       needs = [
         "prepare",
@@ -127,6 +133,7 @@ let P = S.pins in
         "potentials_metatomic",
         "potentials_tight_binding",
         "potentials_plugins",
+        "eonviz_pins",
       ],
       role = "single required check aggregator (branch protection target)",
     },

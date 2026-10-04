@@ -592,6 +592,20 @@ jobs:
         shell: pixi run -e devbld bash -e {0}
         run: potctl ci plugin-test
 
+  eonviz_pins:
+    name: eonviz pins
+    needs: [prepare]
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
+        with:
+          pixi-version: v0.70.2
+          cache: true
+      - name: Check eonviz pins
+        run: pixi run check-eonviz-pins
+
   # --- Single branch-protection target (require this job name in settings) ---
   ci_gate:
     name: CI gate
@@ -611,6 +625,7 @@ jobs:
       - potentials_metatomic
       - potentials_tight_binding
       - potentials_plugins
+      - eonviz_pins
     runs-on: ubuntu-latest
     steps:
       - name: Aggregate job results
@@ -638,7 +653,8 @@ jobs:
             "client_bridge_stress:${{ needs.client_bridge_stress.result }}" \
             "potentials_metatomic:${{ needs.potentials_metatomic.result }}" \
             "potentials_tight_binding:${{ needs.potentials_tight_binding.result }}" \
-            "potentials_plugins:${{ needs.potentials_plugins.result }}"
+            "potentials_plugins:${{ needs.potentials_plugins.result }}" \
+            "eonviz_pins:${{ needs.eonviz_pins.result }}"
           do
             name="${pair%%:*}"
             res="${pair##*:}"
