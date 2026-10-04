@@ -593,6 +593,17 @@ if get_option('with_tests')
             link_with: _linkto,
             link_language: 'cpp',
         )
+        if _rpc_stack
+            executable(
+                'uma_engine_bench',
+                sources: ['tests/uma_engine_bench.cc'],
+                dependencies: test_deps + [capnp_rpc_dep, ptlrpc_dep],
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+            )
+        endif
     endif
     # NWChem/CPMD frontend tests (need ptlrpc + frontends from _rpc_stack)
     if _rpc_stack and not get_option('with_rpc_client_only')
