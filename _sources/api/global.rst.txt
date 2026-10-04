@@ -57,7 +57,9 @@ Global Namespace
 	struct_MopacCParams.rst
 	struct_MopacCResult.rst
 	struct_NWChemCResult.rst
+	struct_RgpotEngineAbiStamp.rst
 	struct_RgpotEngineCallbacks.rst
+	struct_RgpotEngineCaps.rst
 	struct_RgpotEngineGprGate.rst
 	struct_RgpotEngineNeighborOptions.rst
 	struct_RgpotEnginePot.rst
@@ -224,7 +226,9 @@ Overview
 	struct :ref:`MopacCParams<doxid-struct_mopac_c_params>`;
 	struct :ref:`MopacCResult<doxid-struct_mopac_c_result>`;
 	struct :ref:`NWChemCResult<doxid-struct_n_w_chem_c_result>`;
+	struct :ref:`RgpotEngineAbiStamp<doxid-struct_rgpot_engine_abi_stamp>`;
 	struct :ref:`RgpotEngineCallbacks<doxid-struct_rgpot_engine_callbacks>`;
+	struct :ref:`RgpotEngineCaps<doxid-struct_rgpot_engine_caps>`;
 	struct :ref:`RgpotEngineGprGate<doxid-struct_rgpot_engine_gpr_gate>`;
 	struct :ref:`RgpotEngineNeighborOptions<doxid-struct_rgpot_engine_neighbor_options>`;
 	struct :ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`;
@@ -269,6 +273,13 @@ Overview
 	const :ref:`RgpotEngineCallbacks<doxid-struct_rgpot_engine_callbacks>`* :target:`callbacks<doxid-engine__c__abi_8h_1a4a8b7dc3b2bdf4f95ee0a7c5fd5a8159>`;
 	const void* :target:`msg<doxid-engine__c__abi_8h_1a15f28edffbf203b90900ab8ce99c7682>`;
 	const void size_t :target:`msg_len<doxid-engine__c__abi_8h_1a8042961cc4723aeee7048ae5c67c63c5>`;
+	:ref:`RgpotEngineCaps<doxid-struct_rgpot_engine_caps>`* :target:`out<doxid-engine__c__abi_8h_1ac9daeb6a05f6ce3c8faf6ffe33e1aafc>`;
+	char* :target:`buf<doxid-engine__c__abi_8h_1a1fe855c208bc17a51a4d34fefdb2d5b1>`;
+	char size_t :target:`len<doxid-engine__c__abi_8h_1a015e45425930f05215408965e9d7c50b>`;
+	int :target:`intra_op<doxid-engine__c__abi_8h_1a2dd5a5b5d4d3a5444d3dc1fa40da21c8>`;
+	int int :target:`inter_op<doxid-engine__c__abi_8h_1a5b7a1aa7c9787071d095ccf64ba5d204>`;
+	int :target:`charge<doxid-engine__c__abi_8h_1ae8b866d74c9f0b8464b1aee9788c04eb>`;
+	int int :target:`spin<doxid-engine__c__abi_8h_1a013675a99fd1ca4ee9f38b5f36c1c087>`;
 	:ref:`RgpotEngineNeighborOptions<doxid-struct_rgpot_engine_neighbor_options>`* :target:`opts<doxid-engine__c__abi_8h_1a5ec0602c82ab2dc0b1c22c1cb0d8b35f>`;
 	:ref:`RgpotEngineNeighborOptions<doxid-struct_rgpot_engine_neighbor_options>` long :target:`capacity<doxid-engine__c__abi_8h_1ae9fcdfb7864ea5e1142244370cad273d>`;
 	char* :target:`errbuf<doxid-metatomic__c__abi_8h_1a844ffb41af9cf83add741994874afb59>`;
@@ -403,6 +414,12 @@ Overview
 	void :target:`rgpot_engine_destroy<doxid-_uma_engine_abi_8cc_1a98d830e2ecbffd05fddda2d46bae0776>`(:ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* pot);
 	int :target:`rgpot_engine_force<doxid-_uma_engine_abi_8cc_1a22ef069426966b9045a657948cbbae8b>`(:ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* pot, long nAtoms, const double* positions, const int* atomicNrs, double* forces, double* energy, double* variance, const double* box, :ref:`rgpot_engine_coord_transform<doxid-engine__c__abi_8h_1ab4f545283d91eb3fa1a596ecffe36568>` transform, void* transform_user);
 	int :target:`rgpot_engine_force_batch<doxid-_uma_engine_abi_8cc_1ab7d7f0d191c887918cb019c17b5036fb>`(:ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* pot, long nSystems, long nAtoms, const double* positions, const int* atomicNrs, double* forces, double* energies, double* variances, const double* boxes, :ref:`rgpot_engine_coord_transform<doxid-engine__c__abi_8h_1ab4f545283d91eb3fa1a596ecffe36568>` transform, void* transform_user);
+	:ref:`RgpotEngineAbiStamp<doxid-struct_rgpot_engine_abi_stamp>` :target:`rgpot_engine_abi_stamp<doxid-_uma_engine_abi_8cc_1aff52a4385e67ac0153f7d669faa2edb6>`(void);
+	int :target:`rgpot_engine_abi_compatible<doxid-_uma_engine_abi_8cc_1a69f4abb9ae0aec48c3fdb7180dabab39>`(const :ref:`RgpotEngineAbiStamp<doxid-struct_rgpot_engine_abi_stamp>`* stamp);
+	int :target:`rgpot_engine_caps<doxid-_uma_engine_abi_8cc_1a2f78a91dcf141ceb5e6c31c572702c63>`(const :ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* pot, :ref:`RgpotEngineCaps<doxid-struct_rgpot_engine_caps>`* out);
+	size_t :target:`rgpot_engine_last_error<doxid-_uma_engine_abi_8cc_1a520b88ac6a9f969f5e47e29280000d0f>`(const :ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* pot, char* buf, size_t len);
+	int :target:`rgpot_engine_set_num_threads<doxid-_uma_engine_abi_8cc_1af5631d9a8027b6cecd4b334154e6ff64>`(:ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* pot, int intra_op, int inter_op);
+	int :target:`rgpot_engine_set_charge_spin<doxid-_uma_engine_abi_8cc_1a40b313b6efbbee020d50ea14b6839a48>`(:ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* pot, int charge, int spin);
 	:ref:`__attribute__<doxid-xtb__c__abi_8h_1aed6dec1342c11226fbf6d9f0d23fc168>`((visibility("default")));
 	static rgpot::GFNMethod :target:`method_from_c<doxid-_x_t_b_engine_abi_8cc_1ae58142d5e4c55f2b690a5ca116db1df5>`(int m);
 	int :target:`rgpot_xtb_abi_version<doxid-_x_t_b_engine_abi_8cc_1a9c767ca43d4c49b5f2f65165b8990469>`(void);
@@ -427,7 +444,9 @@ Overview
 	#define :target:`RGPOT_CXX_LAYOUT_API<doxid-_cxx_layout_8hpp_1a6a6e1a00ca94c4ed94e9c9b3e91ae792>`
 	#define :target:`RGPOT_CXX_LAYOUT_BUILDING<doxid-_cxx_layout_8cc_1a8ca8c99fa942847424611162ebdd1141>`
 	#define :target:`RGPOT_EINDIR_ABI_HPP<doxid-eindir__abi_8hpp_1a9dc0ea36adfc2c8faac4a152e4e901d4>`
-	#define :target:`RGPOT_ENGINE_ABI_VERSION<doxid-engine__c__abi_8h_1a11ea1c5296399dbe5d95e7634e11c958>`
+	#define :target:`RGPOT_ENGINE_ABI_LAYOUT_REVISION<doxid-engine__c__abi_8h_1ad58cf15cd28ca526c253c39150185229>`
+	#define :target:`RGPOT_ENGINE_ABI_MINOR<doxid-engine__c__abi_8h_1a8855e6295162e6fa1493ecb58de231c6>`
+	#define :ref:`RGPOT_ENGINE_ABI_VERSION<doxid-engine__c__abi_8h_1a11ea1c5296399dbe5d95e7634e11c958>`
 	#define :target:`RGPOT_ENGINE_API<doxid-engine__c__abi_8h_1a6b6448a4c3433c0cba3ab85983f1bf9d>`
 	#define :target:`RGPOT_ENGINE_BUILD<doxid-_uma_engine_abi_8cc_1a4fc2daae5ded127c486fdba63ae78d01>`
 	#define :ref:`RGPOT_ENGINE_GPR_GATE_MAGIC<doxid-engine__c__abi_8h_1a3b2742f085d2fcaeedae33b380a6dc73>`
@@ -599,6 +618,16 @@ Monotone model-state counter for engines with internal mutable state. Increments
 Register host callbacks. The struct is copied; ctx must outlive the potential or a subsequent call replacing it. Learning engines require an oracle before the first evaluation and fail create-time validation without one.
 
 Runtime hint/tunable message: a Cap'n Proto flat-array whose root is the engine's hint arm on the shared Potentials.capnp wire (never a string-keyed channel). Also the host-initiated incorporation boundary for learning engines. The engine validates the resulting configuration as a whole before it takes effect; on failure the previous configuration stays active and errbuf holds the reason.
+
+The loaded engine's identity.
+
+Nonzero when the loaded engine serves a host built against ``stamp`` : equal major, equal layout revision, engine minor at least the host's. NULL returns 0.
+
+Message of the last failed call on this instance (create errors go to its errbuf). Copies at most ``len - 1`` bytes and NUL-terminates; returns the full message length, 0 when there is none. Reading does not clear it; the next successful call does.
+
+Backend thread settings: intra-op and inter-op worker threads of the engine's tensor runtime. A value below 1 leaves that setting alone. Process wide in effect, and the inter-op count can be set once before the first evaluation; a refused setting returns a positive code with the reason in last_error. Returns 0 on success.
+
+Change the total charge and spin multiplicity the next evaluations assume. The package was exported for one charge and spin; a mismatch is reported by the next force call. Returns 0 on success.
 
 Writes up to capacity declarations into opts and returns the total count (call with capacity 0 to size). Declarations may change after on_model_update; hosts re-query on that boundary.
 
@@ -1001,6 +1030,16 @@ Monotone model-state counter for engines with internal mutable state. Increments
 Register host callbacks. The struct is copied; ctx must outlive the potential or a subsequent call replacing it. Learning engines require an oracle before the first evaluation and fail create-time validation without one.
 
 Runtime hint/tunable message: a Cap'n Proto flat-array whose root is the engine's hint arm on the shared Potentials.capnp wire (never a string-keyed channel). Also the host-initiated incorporation boundary for learning engines. The engine validates the resulting configuration as a whole before it takes effect; on failure the previous configuration stays active and errbuf holds the reason.
+
+The loaded engine's identity.
+
+Nonzero when the loaded engine serves a host built against ``stamp`` : equal major, equal layout revision, engine minor at least the host's. NULL returns 0.
+
+Message of the last failed call on this instance (create errors go to its errbuf). Copies at most ``len - 1`` bytes and NUL-terminates; returns the full message length, 0 when there is none. Reading does not clear it; the next successful call does.
+
+Backend thread settings: intra-op and inter-op worker threads of the engine's tensor runtime. A value below 1 leaves that setting alone. Process wide in effect, and the inter-op count can be set once before the first evaluation; a refused setting returns a positive code with the reason in last_error. Returns 0 on success.
+
+Change the total charge and spin multiplicity the next evaluations assume. The package was exported for one charge and spin; a mismatch is reported by the next force call. Returns 0 on success.
 
 Writes up to capacity declarations into opts and returns the total count (call with capacity 0 to size). Declarations may change after on_model_update; hosts re-query on that boundary.
 
@@ -1687,6 +1726,16 @@ Macros
 C API for the RPC potential client bridge.
 
 This header provides a C-compatible interface to the distributed potential calculation client, allowing integration with Fortran or other languages with a C interface, e.g. Julia.
+
+.. index:: pair: define; RGPOT_ENGINE_ABI_VERSION
+.. _doxid-engine__c__abi_8h_1a11ea1c5296399dbe5d95e7634e11c958:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	#define RGPOT_ENGINE_ABI_VERSION
+
+ABI identity. ``RGPOT_ENGINE_ABI_VERSION`` is the major: an incompatible change increments it, and a host compares it for equality. Additions that leave every existing call valid (a new optional symbol, a new field at the end of a size-prefixed struct) increment ``RGPOT_ENGINE_ABI_MINOR``. The layout revision increments when an existing struct changes size or field order. Hosts that read only ``rgpot_engine_abi_version()`` keep working across minor bumps; ``rgpot_engine_abi_stamp()`` is optional and an engine without it is minor 0, layout 1.
 
 .. index:: pair: define; RGPOT_ENGINE_GPR_GATE_MAGIC
 .. _doxid-engine__c__abi_8h_1a3b2742f085d2fcaeedae33b380a6dc73:

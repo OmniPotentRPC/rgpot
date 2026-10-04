@@ -1,0 +1,24 @@
+.. index:: pair: struct; RgpotEngineAbiStamp
+.. _doxid-struct_rgpot_engine_abi_stamp:
+
+struct RgpotEngineAbiStamp
+==========================
+
+.. toctree::
+	:hidden:
+
+Compatibility identity of the loaded engine (see RGPOT_ENGINE_ABI_MINOR).
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <engine_c_abi.h>
+	
+	struct RgpotEngineAbiStamp {
+		// fields
+	
+		unsigned short :target:`abi_major<doxid-struct_rgpot_engine_abi_stamp_1aa9bd5adfc7191ad269ab810db8b448cd>`;
+		unsigned short :target:`abi_minor<doxid-struct_rgpot_engine_abi_stamp_1a82662fa43f0f3783fc675f7e9066bf0e>`;
+		unsigned short :target:`layout_revision<doxid-struct_rgpot_engine_abi_stamp_1ad3845213eb5ea67ea9501b8220a6b025>`;
+	};

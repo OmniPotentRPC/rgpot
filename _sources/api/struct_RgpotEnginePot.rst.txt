@@ -7,6 +7,9 @@ struct RgpotEnginePot
 .. toctree::
 	:hidden:
 
+Overview
+~~~~~~~~
+
 
 
 
@@ -18,4 +21,31 @@ struct RgpotEnginePot
 		// fields
 	
 		std::unique_ptr<:ref:`rgpot::UmaPot<doxid-classrgpot_1_1_uma_pot>`> :target:`impl<doxid-struct_rgpot_engine_pot_1a793c61a1eab3877157a8b43168f0c95d>`;
+		std::mutex :ref:`error_mutex<doxid-struct_rgpot_engine_pot_1ac9051d058b888a9edb11dc9e52fdc95a>`;
+		std::string :target:`error<doxid-struct_rgpot_engine_pot_1af8460b28ca8be690651f468a12960423>`;
+
+		// methods
+	
+		void :target:`set_error<doxid-struct_rgpot_engine_pot_1a7f8082681896e8775816d0a76b47daab>`(const std::string& message);
+		void :target:`clear_error<doxid-struct_rgpot_engine_pot_1aafae98a2f125ad14ef0e99f29b310517>`();
 	};
+.. _details-struct_rgpot_engine_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Fields
+------
+
+.. index:: pair: variable; error_mutex
+.. _doxid-struct_rgpot_engine_pot_1ac9051d058b888a9edb11dc9e52fdc95a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::mutex error_mutex
+
+Message of the last failed call. Evaluations may run concurrently on a shared instance, so the message has its own lock.
+

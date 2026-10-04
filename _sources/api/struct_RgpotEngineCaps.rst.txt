@@ -1,0 +1,91 @@
+.. index:: pair: struct; RgpotEngineCaps
+.. _doxid-struct_rgpot_engine_caps:
+
+struct RgpotEngineCaps
+======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Concurrency and evaluation capabilities, the engine-side image of rgpot's PotCaps. :ref:`More...<details-struct_rgpot_engine_caps>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <engine_c_abi.h>
+	
+	struct RgpotEngineCaps {
+		// fields
+	
+		unsigned :target:`size<doxid-struct_rgpot_engine_caps_1a3430f8aa86c7297441a39adaac398457>`;
+		int :target:`reentrancy<doxid-struct_rgpot_engine_caps_1a91be6202fef1adac40f3b6e1e652f0cc>`;
+		int :ref:`per_image_instances<doxid-struct_rgpot_engine_caps_1a737cc1fb8a0fd952914484aba438d30e>`;
+		int :ref:`batched<doxid-struct_rgpot_engine_caps_1ad76e71c1fbbb0488dd4d382e8d7dc491>`;
+		int :ref:`periodic<doxid-struct_rgpot_engine_caps_1a633bc0066222acbde2d62ed8f9996b2c>`;
+		int :ref:`stress<doxid-struct_rgpot_engine_caps_1af7f86c7d47bcd686ae9f39a9791eb2f0>`;
+		int :ref:`group_collective<doxid-struct_rgpot_engine_caps_1aa5d26683e3abbc6fae6535092e002ba6>`;
+	};
+.. _details-struct_rgpot_engine_caps:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Concurrency and evaluation capabilities, the engine-side image of rgpot's PotCaps. ``size`` is sizeof(RgpotEngineCaps) on the host; the engine fills the fields that fit and sets ``size`` to the size it wrote. reentrancy: 0 one instance may be called from many threads, 1 one instance per thread, 2 every evaluation in the process is serialized.
+
+Fields
+------
+
+.. index:: pair: variable; per_image_instances
+.. _doxid-struct_rgpot_engine_caps_1a737cc1fb8a0fd952914484aba438d30e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int per_image_instances
+
+clone one instance per NEB image
+
+.. index:: pair: variable; batched
+.. _doxid-struct_rgpot_engine_caps_1ad76e71c1fbbb0488dd4d382e8d7dc491:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int batched
+
+force_batch is served natively
+
+.. index:: pair: variable; periodic
+.. _doxid-struct_rgpot_engine_caps_1a633bc0066222acbde2d62ed8f9996b2c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int periodic
+
+periodic boundary conditions supported
+
+.. index:: pair: variable; stress
+.. _doxid-struct_rgpot_engine_caps_1af7f86c7d47bcd686ae9f39a9791eb2f0:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int stress
+
+cell stress is available
+
+.. index:: pair: variable; group_collective
+.. _doxid-struct_rgpot_engine_caps_1aa5d26683e3abbc6fae6535092e002ba6:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int group_collective
+
+every rank of a group enters each call
+
