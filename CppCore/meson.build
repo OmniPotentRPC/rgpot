@@ -708,9 +708,10 @@ if get_option('with_tests')
             'HEAD',
             check: false,
         )
-        _build_revision = _rev_env != '' ? _rev_env : (
-            _rev_git.returncode() == 0 ? _rev_git.stdout().strip() : ''
-        )
+        _build_revision = _rev_env
+        if _build_revision == '' and _rev_git.returncode() == 0
+            _build_revision = _rev_git.stdout().strip()
+        endif
         _build_identity_args = [
             '-DRGPOT_BUILD_VERSION="@0@"'.format(meson.project_version()),
             '-DRGPOT_BUILD_REVISION="@0@"'.format(_build_revision),
