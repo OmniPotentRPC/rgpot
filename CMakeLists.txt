@@ -406,6 +406,8 @@ if(RGPOT_BUILD_TESTS)
 
     add_pot_test(LJClusterPotTest CppCore/tests/LJClusterPotTest.cc)
     add_pot_test(PairListTest CppCore/tests/PairListTest.cc)
+    add_pot_test(BatchEvaluatorTest CppCore/tests/BatchEvaluatorTest.cc)
+    target_link_libraries(BatchEvaluatorTest PRIVATE Threads::Threads)
     add_pot_test(MorsePotTest CppCore/tests/MorsePotTest.cc)
     add_pot_test(FortranPotsTest CppCore/tests/FortranPotsTest.cc)
     target_link_libraries(FortranPotsTest PRIVATE Threads::Threads)
