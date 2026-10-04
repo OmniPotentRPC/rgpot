@@ -18,7 +18,7 @@ use capnp::message::{Builder, ReaderOptions};
 use capnp::serialize;
 use libloading::Library;
 
-use crate::compat::{check_capabilities, Expectation};
+use crate::compat::Expectation;
 use crate::Potentials_capnp::{force_input, potential_result};
 
 /// One atomistic evaluation sent through a profile session.

@@ -20,7 +20,6 @@ documentation_style = "doxy"
 
 [defines]
 "feature = rpc" = "RGPOT_HAS_RPC"
-"feature = schema" = "RGPOT_HAS_SCHEMA"
 
 [export]
 include = []

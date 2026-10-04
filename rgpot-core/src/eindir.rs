@@ -1217,15 +1217,41 @@ mod tests {
         }
 
         #[test]
-        fn malformed_installation_is_rejected_and_leaves_the_handle_usable() {
+        fn invalid_arguments_are_rejected_and_leave_the_handle_usable() {
             let h = Handle::new();
             assert_eq!(h.install(&[0u8; 3]), rgpot_status_t::RGPOT_INVALID_PARAMETER);
-            assert_eq!(h.install(&[0u8; 8]), rgpot_status_t::RGPOT_INVALID_PARAMETER);
             assert_eq!(
                 unsafe { rgpot_potential_set_peer_capabilities(std::ptr::null(), [0u8; 8].as_ptr(), 8) },
                 rgpot_status_t::RGPOT_INVALID_PARAMETER
             );
+            assert_eq!(
+                unsafe { rgpot_potential_set_peer_capabilities(h.pot, std::ptr::null(), 8) },
+                rgpot_status_t::RGPOT_INVALID_PARAMETER
+            );
             assert_eq!(h.eval(), eindir_status_t::EINDIR_SUCCESS);
+        }
+
+        #[test]
+        fn an_unreadable_message_is_refused() {
+            let h = Handle::new();
+            assert_eq!(h.install(&[0u8; 8]), rgpot_status_t::RGPOT_INVALID_PARAMETER);
+            assert!(
+                last_error().starts_with("peer refused: capabilities unreadable"),
+                "{}",
+                last_error()
+            );
+            assert_eq!(h.eval(), eindir_status_t::EINDIR_INVALID_PARAMETER);
+        }
+
+        #[test]
+        fn a_message_that_serves_no_operation_is_refused() {
+            let h = Handle::new();
+            let bytes = caps_bytes(|c| {
+                c.reborrow().init_operations(0);
+            });
+            assert_eq!(h.install(&bytes), rgpot_status_t::RGPOT_INVALID_PARAMETER);
+            assert!(last_error().starts_with("peer refused: operation"), "{}", last_error());
+            assert_eq!(h.calculate(), rgpot_status_t::RGPOT_INVALID_PARAMETER);
         }
     }
 

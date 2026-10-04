@@ -352,6 +352,30 @@ const char *rgpot_last_error(void);
 eindir_abi_stamp_t rgpot_eindir_abi_stamp(void);
 
 /**
+ * Install the `Capabilities` message of the peer behind `pot`, checked
+ * against what this build speaks.
+ *
+ * A compatible peer is accepted. An incompatible one makes
+ * `rgpot_potential_calculate`, `eindir_objective_eval` and
+ * `eindir_objective_grad` on this handle fail before the callback runs: the
+ * first returns `RGPOT_INVALID_PARAMETER`, the others
+ * `EINDIR_INVALID_PARAMETER`, all with a `rgpot_last_error()` message of the
+ * form `peer refused: <first mismatch>`. A handle that never receives a
+ * message keeps the plain callback contract.
+ *
+ * `caps` points to `size` bytes of a flat Cap'n Proto `Capabilities`
+ * message.
+ *
+ * # Safety
+ *
+ * `pot` must be NULL or a live handle, and `caps` NULL or `size` readable
+ * bytes.
+ */
+enum rgpot_status_t rgpot_potential_set_peer_capabilities(const struct rgpot_potential_t *pot,
+                                                          const uint8_t *caps,
+                                                          uintptr_t size);
+
+/**
  * Read the computed and served counters of `pot` into `out`.
  *
  * # Safety
