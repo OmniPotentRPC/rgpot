@@ -41,7 +41,8 @@ TEST_CASE("the feature bit follows RGPOT_HAS_CACHE", "[abi][layout]") {
 }
 
 TEST_CASE("the exported check refuses a different stamp", "[abi][layout]") {
-  rgpot_cxx_layout_stamp_t stamp = abi::header_stamp();
+  constexpr rgpot_cxx_layout_stamp_t kHeader = abi::header_stamp();
+  rgpot_cxx_layout_stamp_t stamp = kHeader;
   REQUIRE(rgpot_cxx_layout_compatible(&stamp) == 1);
   auto other = stamp;
   other.hash ^= 1u;
