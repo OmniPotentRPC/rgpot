@@ -1975,8 +1975,8 @@ struct MetatomicParams {
   torchDeterminism   @12 :TorchDeterminism = fast;
 
   enum TorchDeterminism {
-    fast   @0; # Leave the process-global torch flags alone.
-    strict @1; # Deterministic algorithms, math SDP attention, no TF32.
+    fast          @0; # Leave the process-global torch flags alone.
+    deterministic @1; # Deterministic algorithms, math SDP attention, no TF32.
   }
 }
 
