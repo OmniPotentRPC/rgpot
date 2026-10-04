@@ -85,12 +85,47 @@ jobs:
   wheels-macos:
     name: wheel (macos-14)
     runs-on: macos-14
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
       - uses: pypa/cibuildwheel@v3.2.1
+      - name: The kernels must be in the artifact, not just in the flags
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          wheels=(wheelhouse/*.whl)
+          test "${#wheels[@]}" -gt 0 || { echo "no wheels built" >&2; exit 1; }
+          for whl in "${wheels[@]}"; do
+            echo "== ${whl}"
+            rm -rf _whlx && mkdir _whlx && unzip -qo "${whl}" -d _whlx
+            lib=$(find _whlx -name 'librgpot*.dylib' | head -1)
+            test -n "${lib}" || { echo "no librgpot in wheel" >&2; exit 1; }
+            nm -g "${lib}" > _syms_raw
+            n=$(grep -cE 'rgpot_(sw|edip|lenosky|tersoff|eam_al|fehe|cuh2|water_h)_force' _syms_raw || true)
+            echo "   bind(c) kernel entries: ${n}"
+            if [ "${n}" -lt 8 ]; then
+              echo "wheel carries ${n}/8 Fortran kernels; -Dwith_fortran_pots lost" >&2
+              exit 1
+            fi
+            c++filt < _syms_raw > _syms
+            grep -q 'rgpot::ExprPot' _syms \
+              || { echo "wheel missing ExprPot; -Dwith_expr lost" >&2; exit 1; }
+            grep -q 'rgpot::D3Pot' _syms \
+              || { echo "wheel missing D3Pot; -Dwith_dftd3 lost" >&2; exit 1; }
+            grep -q 'rgpot::D4Pot' _syms \
+              || { echo "wheel missing D4Pot; -Dwith_dftd4 lost" >&2; exit 1; }
+            grep -q 'rgpot::XcKernel' _syms \
+              || { echo "wheel missing XcKernel; -Dwith_xckernel lost" >&2; exit 1; }
+            core=$(find _whlx -name '_core*.so' | head -1)
+            test -n "${core}" || { echo "no _core in wheel" >&2; exit 1; }
+            otool -L "${core}" > _deps
+            if grep -q 'libtorch' _deps; then
+              echo "_core links libtorch; pip import would require torch" >&2
+              cat _deps
+              exit 1
+            fi
+          done
       - uses: actions/upload-artifact@v4
-        if: success()
         with:
           name: wheels-macos-14
           path: wheelhouse/*.whl
@@ -113,7 +148,7 @@ jobs:
           path: dist/*.tar.gz
 
   publish:
-    needs: [wheels-linux, sdist]
+    needs: [wheels-linux, wheels-macos, sdist]
     if: >-
       github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
       || (github.event_name == 'workflow_dispatch' && inputs.publish)
