@@ -175,6 +175,42 @@ pub fn fill_compatibility(mut caps: Builder<'_>) {
     }
 }
 
+/// Fill `caps` as the self-description of an rgpot RPC server.
+pub fn describe_server(mut caps: Builder<'_>) {
+    caps.set_backend_name("rgpot");
+    caps.set_backend_version(env!("CARGO_PKG_VERSION"));
+    caps.set_available(true);
+    let mut ops = caps.reborrow().init_operations(2);
+    ops.set(0, Operation::Energy);
+    ops.set(1, Operation::Forces);
+    fill_compatibility(caps);
+}
+
+/// Ask a connected server for its `Capabilities` and refuse it when they are
+/// incompatible. A server that predates `Potential.getCapabilities` answers
+/// UNIMPLEMENTED, which is reported as a missing call with the upgrade path.
+#[cfg(feature = "rpc")]
+pub async fn check_server(
+    server: &crate::Potentials_capnp::potential::Client,
+    want: &Expectation,
+) -> Result<(), String> {
+    let response = match server.get_capabilities_request().send().promise.await {
+        Ok(response) => response,
+        Err(e) if e.kind == capnp::ErrorKind::Unimplemented => {
+            return Err("the server does not implement Potential.getCapabilities; \
+                        upgrade the server to an rgpot release whose Potentials.capnp \
+                        carries it"
+                .to_string());
+        }
+        Err(e) => return Err(format!("capabilities request failed: {e}")),
+    };
+    let caps = response
+        .get()
+        .and_then(|r| r.get_capabilities())
+        .map_err(|e| format!("capabilities unreadable: {e}"))?;
+    check_capabilities(caps, want).map_err(|why| format!("server refused: {why}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -286,5 +322,69 @@ mod tests {
         let err = verdict(|_| {}, &want).unwrap_err();
         assert!(err.contains("protocol minor"), "{err}");
         assert_eq!(verdict(|c| c.set_protocol_minor(2), &want), Ok(()));
+    }
+}
+
+#[cfg(all(test, feature = "rpc"))]
+mod server_tests {
+    use super::*;
+    use crate::Potentials_capnp::potential;
+    use capnp::capability::Promise;
+
+    /// Predates getCapabilities: relies on the generated default, UNIMPLEMENTED.
+    struct Old;
+    impl potential::Server for Old {}
+
+    struct Current;
+    impl potential::Server for Current {
+        fn get_capabilities(
+            &mut self,
+            _p: potential::GetCapabilitiesParams,
+            mut r: potential::GetCapabilitiesResults,
+        ) -> Promise<(), capnp::Error> {
+            describe_server(r.get().init_capabilities());
+            Promise::ok(())
+        }
+    }
+
+    struct OtherFamily;
+    impl potential::Server for OtherFamily {
+        fn get_capabilities(
+            &mut self,
+            _p: potential::GetCapabilitiesParams,
+            mut r: potential::GetCapabilitiesResults,
+        ) -> Promise<(), capnp::Error> {
+            let mut caps = r.get().init_capabilities();
+            describe_server(caps.reborrow());
+            caps.set_protocol_family("other.family");
+            Promise::ok(())
+        }
+    }
+
+    fn verdict<S: potential::Server + 'static>(server: S) -> Result<(), String> {
+        let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
+        let local = tokio::task::LocalSet::new();
+        local.block_on(&rt, async {
+            let client: potential::Client = capnp_rpc::new_client(server);
+            check_server(&client, &Expectation::default()).await
+        })
+    }
+
+    #[test]
+    fn current_server_is_accepted() {
+        assert_eq!(verdict(Current), Ok(()));
+    }
+
+    #[test]
+    fn server_without_get_capabilities_is_refused_naming_the_call() {
+        let err = verdict(Old).unwrap_err();
+        assert!(err.contains("Potential.getCapabilities"), "{err}");
+        assert!(err.contains("upgrade the server"), "{err}");
+    }
+
+    #[test]
+    fn server_with_another_protocol_family_is_refused() {
+        let err = verdict(OtherFamily).unwrap_err();
+        assert!(err.contains("server refused: protocol family"), "{err}");
     }
 }

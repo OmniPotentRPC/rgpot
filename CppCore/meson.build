@@ -1,3 +1,32 @@
+_fs = import('fs')
+_rev_env = run_command(
+    'sh',
+    '-c',
+    'printf %s "$RGPOT_SOURCE_REVISION"',
+    check: false,
+).stdout().strip()
+_rev_git = run_command(
+    'git',
+    '-C',
+    meson.project_source_root(),
+    'rev-parse',
+    '--short=12',
+    'HEAD',
+    check: false,
+)
+_build_revision = _rev_env
+if _build_revision == '' and _rev_git.returncode() == 0
+    _build_revision = _rev_git.stdout().strip()
+endif
+_build_identity_args = [
+    '-DRGPOT_BUILD_VERSION="@0@"'.format(meson.project_version()),
+    '-DRGPOT_BUILD_REVISION="@0@"'.format(_build_revision),
+]
+if _fs.read('rgpot/rpc/Potentials.capnp').contains('buildVersion')
+    _build_identity_args += ['-DRGPOT_SCHEMA_HAS_BUILD_IDENTITY']
+endif
+_args += _build_identity_args
+
 if get_option('with_cache') and not get_option('with_rpc_client_only')
     _deps += dependency('rocksdb')
     _deps += subproject('xxhash', default_options: ['cli=false']).get_variable(
@@ -699,33 +728,6 @@ if get_option('with_tests')
             ),
             suite: 'nwchem',
         )
-        _fs = import('fs')
-        _rev_env = run_command(
-            'sh',
-            '-c',
-            'printf %s "$RGPOT_SOURCE_REVISION"',
-            check: false,
-        ).stdout().strip()
-        _rev_git = run_command(
-            'git',
-            '-C',
-            meson.project_source_root(),
-            'rev-parse',
-            '--short=12',
-            'HEAD',
-            check: false,
-        )
-        _build_revision = _rev_env
-        if _build_revision == '' and _rev_git.returncode() == 0
-            _build_revision = _rev_git.stdout().strip()
-        endif
-        _build_identity_args = [
-            '-DRGPOT_BUILD_VERSION="@0@"'.format(meson.project_version()),
-            '-DRGPOT_BUILD_REVISION="@0@"'.format(_build_revision),
-        ]
-        if _fs.read('rgpot/rpc/Potentials.capnp').contains('buildVersion')
-            _build_identity_args += ['-DRGPOT_SCHEMA_HAS_BUILD_IDENTITY']
-        endif
         cpmdc_fake_engine = shared_library(
             'cpmdc_fake_engine',
             sources: ['tests/cpmdc_fake_engine.cc'],
@@ -1043,7 +1045,7 @@ if get_option('with_tests')
                 sources: ['tests/ProfileLoaderTest.cc'],
                 dependencies: test_deps + [ptlrpc_dep],
                 include_directories: _incdirs + ['.'],
-                cpp_args: test_args + _build_identity_args,
+                cpp_args: test_args,
                 link_with: _linkto,
                 link_language: 'cpp',
                 build_rpath: _metatomic_build_rpath,
