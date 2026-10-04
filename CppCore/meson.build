@@ -1,3 +1,32 @@
+_fs = import('fs')
+_rev_env = run_command(
+    'sh',
+    '-c',
+    'printf %s "$RGPOT_SOURCE_REVISION"',
+    check: false,
+).stdout().strip()
+_rev_git = run_command(
+    'git',
+    '-C',
+    meson.project_source_root(),
+    'rev-parse',
+    '--short=12',
+    'HEAD',
+    check: false,
+)
+_build_revision = _rev_env
+if _build_revision == '' and _rev_git.returncode() == 0
+    _build_revision = _rev_git.stdout().strip()
+endif
+_build_identity_args = [
+    '-DRGPOT_BUILD_VERSION="@0@"'.format(meson.project_version()),
+    '-DRGPOT_BUILD_REVISION="@0@"'.format(_build_revision),
+]
+if _fs.read('rgpot/rpc/Potentials.capnp').contains('buildVersion')
+    _build_identity_args += ['-DRGPOT_SCHEMA_HAS_BUILD_IDENTITY']
+endif
+_args += _build_identity_args
+
 if get_option('with_cache') and not get_option('with_rpc_client_only')
     _deps += dependency('rocksdb')
     _deps += subproject('xxhash', default_options: ['cli=false']).get_variable(
@@ -803,6 +832,7 @@ if get_option('with_tests')
         cpmdc_fake_engine = shared_library(
             'cpmdc_fake_engine',
             sources: ['tests/cpmdc_fake_engine.cc'],
+            cpp_args: _build_identity_args,
             dependencies: [ptlrpc_dep],
             include_directories: _incdirs + ['.'] + include_directories(
                 'rgpot/CPMDPot',
@@ -1155,12 +1185,25 @@ if get_option('with_tests')
             suite: 'nwchem',
         )
         test(
+            'CapabilitiesWire',
+            find_program('python3'),
+            args: [
+                meson.current_source_dir() / 'tests/test_capabilities_wire.py',
+                meson.source_root(),
+                capnp.full_path(),
+            ],
+            suite: 'rpc',
+        )
+        test(
             'RPCSchemaSync',
             find_program('python3'),
             args: [
                 meson.current_source_dir() / 'tests/test_rpc_schema_sync.py',
                 meson.source_root(),
+                capnp.full_path(),
+                meson.project_build_root(),
             ],
+            depends: gen_rpc,
             suite: 'rpc',
         )
     endif

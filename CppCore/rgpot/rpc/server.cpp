@@ -61,6 +61,7 @@ class MpiPefSession;
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/NWChemPot/NWChemPot.hpp"
 #include "rgpot/Potential.hpp"
+#include "rgpot/abi/Handshake.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 #include "rgpot/types/adapters/capnp/capnp_adapter.hpp"
@@ -104,6 +105,22 @@ public:
                  rgpot::tools::MpiPefSession *pef = nullptr)
       : m_potential(std::move(pot)),
         m_cpmd(static_cast<rgpot::CPMDPot *>(m_potential.get())), m_pef(pef) {}
+
+  /**
+   * @brief Reports what this server speaks, so a client can refuse an
+   * incompatible peer before the first calculate call.
+   */
+  kj::Promise<void> getCapabilities(GetCapabilitiesContext context) override {
+    auto caps = context.getResults().initCapabilities();
+    caps.setBackendName("rgpot");
+    caps.setBackendVersion(RGPOT_BUILD_VERSION);
+    caps.setAvailable(true);
+    auto ops = caps.initOperations(2);
+    ops.set(0, ::Capabilities::Operation::ENERGY);
+    ops.set(1, ::Capabilities::Operation::FORCES);
+    rgpot::abi::fill_compatibility(caps);
+    return kj::READY_NOW;
+  }
 
   /**
    * @details
