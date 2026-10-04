@@ -67,6 +67,9 @@ pub mod Potentials_capnp {
     include!(concat!(env!("OUT_DIR"), "/Potentials_capnp.rs"));
 }
 
+#[cfg(feature = "schema")]
+pub mod compat;
+
 #[cfg(feature = "profile")]
 pub mod profile;
 

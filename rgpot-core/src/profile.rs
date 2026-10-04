@@ -18,6 +18,7 @@ use capnp::message::{Builder, ReaderOptions};
 use capnp::serialize;
 use libloading::Library;
 
+use crate::compat::{check_capabilities, Expectation};
 use crate::Potentials_capnp::{force_input, potential_result};
 
 /// One atomistic evaluation sent through a profile session.
@@ -256,6 +257,22 @@ impl ProfileSession {
         explicit_path: Option<&Path>,
         config: &[u8],
     ) -> ProfileResult<Self> {
+        unsafe { Self::load_with(prefix, explicit_path, config, &Expectation::default()) }
+    }
+
+    /// [`ProfileSession::load`] with an explicit host [`Expectation`]. The
+    /// backend's `Capabilities` are checked before the session is created, so
+    /// an incompatible backend is refused before any work is dispatched.
+    ///
+    /// # Safety
+    ///
+    /// Same contract as [`ProfileSession::load`].
+    pub unsafe fn load_with(
+        prefix: &str,
+        explicit_path: Option<&Path>,
+        config: &[u8],
+        expectation: &Expectation,
+    ) -> ProfileResult<Self> {
         if prefix.is_empty()
             || !prefix
                 .bytes()
@@ -301,8 +318,10 @@ impl ProfileSession {
                 "potential_result_size_for_force_input",
             )?
         };
-        let _capabilities =
+        let capabilities =
             unsafe { resolve::<CapabilitiesResultFn>(&library, prefix, "capabilities_result")? };
+        let words = read_capabilities(prefix, capabilities)?;
+        check_capabilities_bytes(prefix, &words, expectation)?;
 
         if unsafe { available() } == 0 {
             return Err(ProfileError::new(format!(
@@ -405,6 +424,47 @@ impl ProfileSession {
     }
 }
 
+/// Capabilities message bytes as aligned words (size query, then fill).
+fn read_capabilities(prefix: &str, f: CapabilitiesResultFn) -> ProfileResult<Vec<u64>> {
+    let mut required = 0usize;
+    unsafe { f(std::ptr::null_mut(), 0, &mut required) };
+    if required == 0 || required % std::mem::size_of::<u64>() != 0 {
+        return Err(ProfileError::new(format!(
+            "{prefix}_capabilities_result reported invalid size {required}"
+        )));
+    }
+    let mut words = vec![0u64; required / std::mem::size_of::<u64>()];
+    let mut written = 0usize;
+    let status = unsafe { f(words.as_mut_ptr().cast(), required, &mut written) };
+    if status != 0 || written != required {
+        return Err(ProfileError::new(format!(
+            "{prefix}_capabilities_result failed (status {status}, wrote {written} of {required})"
+        )));
+    }
+    Ok(words)
+}
+
+/// Decode a `Capabilities` message and apply the handshake to it.
+pub fn check_capabilities_bytes(
+    prefix: &str,
+    words: &[u64],
+    expectation: &Expectation,
+) -> ProfileResult<()> {
+    let bytes =
+        unsafe { std::slice::from_raw_parts(words.as_ptr().cast::<u8>(), words.len() * 8) };
+    let mut cursor = bytes;
+    let message = capnp::serialize::read_message_from_flat_slice(
+        &mut cursor,
+        capnp::message::ReaderOptions::new(),
+    )
+    .map_err(|e| ProfileError::new(format!("{prefix} capabilities unreadable: {e}")))?;
+    let caps = message
+        .get_root::<crate::Potentials_capnp::capabilities::Reader>()
+        .map_err(|e| ProfileError::new(format!("{prefix} capabilities unreadable: {e}")))?;
+    check_capabilities(caps, expectation)
+        .map_err(|why| ProfileError::new(format!("{prefix} backend refused: {why}")))
+}
+
 fn open_first(prefix: &str, explicit_path: Option<&str>) -> ProfileResult<(Library, String)> {
     let candidates = library_candidates(prefix, explicit_path);
     let mut failures = Vec::new();
@@ -497,5 +557,43 @@ mod tests {
         drop(lifecycle);
 
         assert_eq!(LIFECYCLE_STEP.load(Ordering::SeqCst), 2);
+    }
+
+    fn flat_words(edit: impl FnOnce(&mut crate::Potentials_capnp::capabilities::Builder<'_>)) -> Vec<u64> {
+        use crate::Potentials_capnp::capabilities::{Builder as Caps, Operation};
+        let mut msg = Builder::new_default();
+        {
+            let mut caps = msg.init_root::<Caps<'_>>();
+            crate::compat::fill_compatibility(caps.reborrow());
+            let mut ops = caps.reborrow().init_operations(2);
+            ops.set(0, Operation::Energy);
+            ops.set(1, Operation::Forces);
+            edit(&mut caps);
+        }
+        let bytes = serialize::write_message_to_words(&msg);
+        bytes
+            .chunks_exact(8)
+            .map(|c| u64::from_le_bytes(c.try_into().unwrap()))
+            .collect()
+    }
+
+    #[test]
+    fn dispatch_check_accepts_compatible_and_names_the_refused_field() {
+        let want = Expectation::default();
+        assert!(check_capabilities_bytes("fake", &flat_words(|_| {}), &want).is_ok());
+
+        let refused =
+            check_capabilities_bytes("fake", &flat_words(|c| c.set_dlpack_major(2)), &want)
+                .unwrap_err()
+                .to_string();
+        assert!(refused.contains("fake backend refused"), "{refused}");
+        assert!(refused.contains("DLPack major"), "{refused}");
+    }
+
+    #[test]
+    fn dispatch_check_rejects_a_truncated_message() {
+        let mut words = flat_words(|_| {});
+        words.truncate(1);
+        assert!(check_capabilities_bytes("fake", &words, &Expectation::default()).is_err());
     }
 }
