@@ -656,80 +656,6 @@ if get_option('with_tests')
             link_with: _linkto,
             link_language: 'cpp',
         )
-        if host_system != 'windows'
-            # The generic engine table over a stand-in backend: no rpc stack,
-            # no torch.
-            engine_stub = shared_library(
-                'engine_stub',
-                ['tests/engine_stub.cc', 'rgpot/engine/EngineTable.cc'],
-                include_directories: _incdirs + ['.'],
-                cpp_args: test_args + [
-                    '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(meson.project_version()),
-                ],
-                dependencies: test_deps,
-                install: false,
-            )
-            engine_stub_env = environment()
-            engine_stub_env.set('RGPOT_ENGINE_STUB', engine_stub.full_path())
-            engine_stub_env.set(
-                'RGPOT_ENGINE_STUB_MODEL',
-                meson.current_build_dir() / 'engine_stub_model.bin',
-            )
-            test(
-                'EngineAdapterTest',
-                executable(
-                    'engine_adapter_test',
-                    sources: ['tests/EngineAdapterTest.cc'],
-                    dependencies: test_deps,
-                    include_directories: _incdirs + ['.'],
-                    cpp_args: test_args,
-                    link_language: 'cpp',
-                ),
-                env: engine_stub_env,
-                depends: [engine_stub],
-                workdir: meson.source_root(),
-            )
-        endif
-        if _rpc_stack and host_system != 'windows'
-            engine_table_env = environment()
-            engine_table_expect = ['CLASSICAL', 'MOPAC', 'NWCHEM']
-            engine_table_depends = [classical_engine, mopac_engine, nwchem_engine]
-            engine_table_env.set('RGPOT_ENGINE_CLASSICAL', classical_engine.full_path())
-            engine_table_env.set('RGPOT_ENGINE_MOPAC', mopac_engine.full_path())
-            engine_table_env.set('RGPOT_ENGINE_NWCHEM', nwchem_engine.full_path())
-            if has_skala
-                engine_table_expect += ['SKALA']
-                engine_table_depends += [skala_engine]
-                engine_table_env.set('RGPOT_ENGINE_SKALA', skala_engine.full_path())
-            endif
-            if has_xtb
-                engine_table_expect += ['XTB']
-                engine_table_depends += [xtb_engine]
-                engine_table_env.set('RGPOT_ENGINE_XTB', xtb_engine.full_path())
-            endif
-            if has_metatomic
-                engine_table_expect += ['METATOMIC']
-                engine_table_depends += [metatomic_engine]
-                engine_table_env.set('RGPOT_ENGINE_METATOMIC', metatomic_engine.full_path())
-            endif
-            engine_table_env.set('RGPOT_ENGINE_EXPECT', ','.join(engine_table_expect))
-            test(
-                'EngineTableTest',
-                executable(
-                    'engine_table_test',
-                    sources: ['tests/EngineTableTest.cc'],
-                    dependencies: test_deps + [capnp_rpc_dep, ptlrpc_dep],
-                    include_directories: _incdirs + ['.'],
-                    cpp_args: test_args,
-                    link_with: _linkto,
-                    link_language: 'cpp',
-                    build_rpath: _metatomic_build_rpath,
-                ),
-                env: engine_table_env,
-                depends: engine_table_depends,
-                workdir: meson.source_root(),
-            )
-        endif
         if _rpc_stack
             uma_engine_env = environment()
             uma_engine_env.set('RGPOT_UMA_ENGINE', uma_engine.full_path())
@@ -1337,6 +1263,80 @@ if get_option('with_tests')
             depends: [layout_fixture],
             workdir: meson.source_root(),
         )
+        if host_system != 'windows'
+            # The generic engine table over a stand-in backend: no rpc stack,
+            # no torch.
+            engine_stub = shared_library(
+                'engine_stub',
+                ['tests/engine_stub.cc', 'rgpot/engine/EngineTable.cc'],
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args + [
+                    '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(meson.project_version()),
+                ],
+                dependencies: test_deps,
+                install: false,
+            )
+            engine_stub_env = environment()
+            engine_stub_env.set('RGPOT_ENGINE_STUB', engine_stub.full_path())
+            engine_stub_env.set(
+                'RGPOT_ENGINE_STUB_MODEL',
+                meson.current_build_dir() / 'engine_stub_model.bin',
+            )
+            test(
+                'EngineAdapterTest',
+                executable(
+                    'engine_adapter_test',
+                    sources: ['tests/EngineAdapterTest.cc'],
+                    dependencies: test_deps,
+                    include_directories: _incdirs + ['.'],
+                    cpp_args: test_args,
+                    link_language: 'cpp',
+                ),
+                env: engine_stub_env,
+                depends: [engine_stub],
+                workdir: meson.source_root(),
+            )
+        endif
+        if _rpc_stack and host_system != 'windows'
+            engine_table_env = environment()
+            engine_table_expect = ['CLASSICAL', 'MOPAC', 'NWCHEM']
+            engine_table_depends = [classical_engine, mopac_engine, nwchem_engine]
+            engine_table_env.set('RGPOT_ENGINE_CLASSICAL', classical_engine.full_path())
+            engine_table_env.set('RGPOT_ENGINE_MOPAC', mopac_engine.full_path())
+            engine_table_env.set('RGPOT_ENGINE_NWCHEM', nwchem_engine.full_path())
+            if has_skala
+                engine_table_expect += ['SKALA']
+                engine_table_depends += [skala_engine]
+                engine_table_env.set('RGPOT_ENGINE_SKALA', skala_engine.full_path())
+            endif
+            if has_xtb
+                engine_table_expect += ['XTB']
+                engine_table_depends += [xtb_engine]
+                engine_table_env.set('RGPOT_ENGINE_XTB', xtb_engine.full_path())
+            endif
+            if has_metatomic
+                engine_table_expect += ['METATOMIC']
+                engine_table_depends += [metatomic_engine]
+                engine_table_env.set('RGPOT_ENGINE_METATOMIC', metatomic_engine.full_path())
+            endif
+            engine_table_env.set('RGPOT_ENGINE_EXPECT', ','.join(engine_table_expect))
+            test(
+                'EngineTableTest',
+                executable(
+                    'engine_table_test',
+                    sources: ['tests/EngineTableTest.cc'],
+                    dependencies: test_deps + [capnp_rpc_dep, ptlrpc_dep],
+                    include_directories: _incdirs + ['.'],
+                    cpp_args: test_args,
+                    link_with: _linkto,
+                    link_language: 'cpp',
+                    build_rpath: _metatomic_build_rpath,
+                ),
+                env: engine_table_env,
+                depends: engine_table_depends,
+                workdir: meson.source_root(),
+            )
+        endif
         python3_prog = find_program('python3', required: false)
         if python3_prog.found()
             test(

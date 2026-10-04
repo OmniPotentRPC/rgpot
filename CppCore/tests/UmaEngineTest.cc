@@ -8,6 +8,7 @@
 // path in RGPOT_UMA_ENGINE and dlsym of each symbol.
 
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -17,9 +18,13 @@
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
+#include <ATen/Context.h>
+#include <ATen/Parallel.h>
 #include <catch2/catch_all.hpp>
+#include <thread>
 
 #include "rgpot/UmaPot/UmaPot.hpp"
+#include "rgpot/engine/Sha256.hpp"
 #include "rgpot/engine_c_abi.h"
 #include "rgpot/rpc/Potentials.capnp.h"
 #include "rgpot/types/AtomMatrix.hpp"
@@ -89,7 +94,9 @@ std::string last_error(const Engine &e, const RgpotEnginePot *pot) {
 
 /// capnp flat array of UmaParams.
 kj::Array<capnp::word> uma_params(const std::string &model, int charge = 0,
-                                  int spin = 1) {
+                                  int spin = 1, int intra_op = 1,
+                                  int inter_op = 1,
+                                  bool deterministic = false) {
   capnp::MallocMessageBuilder msg;
   auto params = msg.initRoot<::UmaParams>();
   params.setModelPath(model);
@@ -97,6 +104,9 @@ kj::Array<capnp::word> uma_params(const std::string &model, int charge = 0,
   params.setDevice("cpu");
   params.setCharge(charge);
   params.setSpin(spin);
+  params.setIntraopThreads(intra_op);
+  params.setInteropThreads(inter_op);
+  params.setDeterministicAlgorithms(deterministic);
   return capnp::messageToFlatArray(msg);
 }
 
@@ -171,7 +181,7 @@ TEST_CASE("create refuses a missing or malformed configuration",
   const Engine &e = engine();
   char err[256] = {0};
   REQUIRE(e.create(nullptr, 0, err, sizeof(err)) == nullptr);
-  REQUIRE(std::string(err).find("UmaParams") != std::string::npos);
+  REQUIRE(std::string(err).find("params message") != std::string::npos);
 
   std::memset(err, 0, sizeof(err));
   auto empty = uma_params("");
@@ -316,5 +326,104 @@ TEST_CASE("a band package serves a batch through the engine",
   for (long s = 0; s < B; ++s) {
     REQUIRE_THAT(U[s], Catch::Matchers::WithinAbs(e1, 1e-5));
   }
+  e.destroy(pot);
+}
+
+TEST_CASE("the engine names itself and digests its model", "[uma][engine][fixture]") {
+  const std::string model = fixture("RGPOT_UMA_OMOL_PT2");
+  if (model.empty()) {
+    SKIP("RGPOT_UMA_OMOL_PT2 names no fixture");
+  }
+  const Engine &e = engine();
+  auto name = sym<const char *(*)()>(e.handle, "rgpot_engine_name");
+  auto version = sym<const char *(*)()>(e.handle, "rgpot_engine_version");
+  auto digest = sym<size_t (*)(const RgpotEnginePot *, char *, size_t)>(
+      e.handle, "rgpot_engine_model_digest");
+  REQUIRE(std::string(name()) == "uma");
+  REQUIRE(std::string(version()).rfind("uma/", 0) == 0);
+
+  auto params = uma_params(model);
+  auto bytes = params.asBytes();
+  char err[512] = {0};
+  RgpotEnginePot *pot = e.create(bytes.begin(), bytes.size(), err, sizeof(err));
+  INFO(err);
+  REQUIRE(pot != nullptr);
+  char hex[65] = {0};
+  REQUIRE(digest(pot, hex, sizeof(hex)) == 64);
+  REQUIRE(std::string(hex) == rgpot::engine::Sha256::of_file(model));
+  e.destroy(pot);
+}
+
+TEST_CASE("UmaParams sets the torch runtime at create", "[uma][engine][fixture]") {
+  const std::string model = fixture("RGPOT_UMA_OMOL_PT2");
+  if (model.empty()) {
+    SKIP("RGPOT_UMA_OMOL_PT2 names no fixture");
+  }
+  const Engine &e = engine();
+  // The engine and this test share one libtorch, so its settings are visible
+  // here.
+  auto params = uma_params(model, 0, 1, /*intra*/ 3, /*inter*/ 1,
+                           /*deterministic*/ true);
+  auto bytes = params.asBytes();
+  char err[512] = {0};
+  RgpotEnginePot *pot = e.create(bytes.begin(), bytes.size(), err, sizeof(err));
+  INFO(err);
+  REQUIRE(pot != nullptr);
+  REQUIRE(at::get_num_threads() == 3);
+  REQUIRE(at::get_num_interop_threads() == 1);
+  REQUIRE(at::globalContext().deterministicAlgorithms());
+
+  // The same inter-op count again is accepted; another one is refused once
+  // the runtime has started parallel work.
+  REQUIRE(e.set_num_threads(pot, 2, 1) == 0);
+  REQUIRE(at::get_num_threads() == 2);
+  std::vector<double> forces(9, 0.0);
+  double energy = 0.0;
+  REQUIRE(e.force(pot, 3, kHcnPositions.data(), kHcnZ.data(), forces.data(),
+                  &energy, nullptr, kBox.data(), nullptr, nullptr) == 0);
+  REQUIRE(e.set_num_threads(pot, -1, 2) == 2);
+  REQUIRE(last_error(e, pot).find("inter-op") != std::string::npos);
+  e.destroy(pot);
+}
+
+TEST_CASE("one UMA handle serves several threads", "[uma][engine][fixture]") {
+  const std::string model = fixture("RGPOT_UMA_OMOL_PT2");
+  if (model.empty()) {
+    SKIP("RGPOT_UMA_OMOL_PT2 names no fixture");
+  }
+  const Engine &e = engine();
+  auto params = uma_params(model);
+  auto bytes = params.asBytes();
+  char err[512] = {0};
+  RgpotEnginePot *pot = e.create(bytes.begin(), bytes.size(), err, sizeof(err));
+  REQUIRE(pot != nullptr);
+  RgpotEngineCaps caps;
+  caps.size = sizeof(caps);
+  REQUIRE(e.caps(pot, &caps) == 0);
+  REQUIRE(caps.reentrancy == 0); // shared instance: no serialization inside
+
+  std::vector<double> ref(9, 0.0);
+  double ref_e = 0.0;
+  REQUIRE(e.force(pot, 3, kHcnPositions.data(), kHcnZ.data(), ref.data(),
+                  &ref_e, nullptr, kBox.data(), nullptr, nullptr) == 0);
+  std::atomic<int> bad{0};
+  std::vector<std::thread> workers;
+  for (int w = 0; w < 4; ++w) {
+    workers.emplace_back([&] {
+      std::vector<double> f(9, 0.0);
+      double en = 0.0;
+      for (int c = 0; c < 3; ++c) {
+        if (e.force(pot, 3, kHcnPositions.data(), kHcnZ.data(), f.data(), &en,
+                    nullptr, kBox.data(), nullptr, nullptr) != 0 ||
+            std::abs(en - ref_e) > 1e-5) {
+          ++bad;
+        }
+      }
+    });
+  }
+  for (auto &t : workers) {
+    t.join();
+  }
+  REQUIRE(bad == 0);
   e.destroy(pot);
 }
