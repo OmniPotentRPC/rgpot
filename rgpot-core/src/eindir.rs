@@ -23,8 +23,9 @@ use std::sync::Mutex;
 use dlpk::sys::DLManagedTensorVersioned;
 
 use crate::potential::PotentialCallback;
-use crate::status::rgpot_status_t;
+use crate::status::{rgpot_status_t, set_last_error};
 use crate::tensor::{
+    checked_f64_data, copy_f64_tensor,
     rgpot_tensor_cpu_f64_2d, rgpot_tensor_cpu_f64_matrix3,
     rgpot_tensor_cpu_i32_1d, rgpot_tensor_free,
 };
@@ -109,16 +110,39 @@ unsafe impl Send for rgpot_potential_t {}
 // to access molecular data and the rgpot callback.
 // ---------------------------------------------------------------------------
 
+/// Record `msg` for `rgpot_last_error` and report a malformed argument or
+/// callback result, which stays distinguishable from a failed callback
+/// (`EINDIR_INTERNAL_ERROR`).
+fn reject(msg: &str) -> eindir_status_t {
+    set_last_error(msg);
+    eindir_status_t::EINDIR_INVALID_PARAMETER
+}
+
+/// Forces returned by a callback that reported success: shape, dtype and
+/// finiteness are checked before any element is read, and the energy must be
+/// finite.
+fn validated_result(output: &rgpot_force_out_t, n: usize) -> Result<Vec<f64>, String> {
+    let forces = copy_f64_tensor(output.forces, "callback forces", n, true)?;
+    if !output.energy.is_finite() {
+        return Err("callback energy is not finite".into());
+    }
+    Ok(forces)
+}
+
 unsafe extern "C" fn rgpot_eval_cb(
     user_data: *mut c_void,
     x: *const DLManagedTensorVersioned,
     value_out: *mut f64,
 ) -> eindir_status_t {
     let pot = unsafe { &*(user_data as *const rgpot_potential_t) };
-    let xt = unsafe { &(*x).dl_tensor };
-    let n = pot.n_atoms * 3;
-    let x_data = unsafe { std::slice::from_raw_parts(xt.data as *const f64, n) };
-    let mut pos = x_data.to_vec();
+    let Some(n) = pot.n_atoms.checked_mul(3) else {
+        return reject("n_atoms * 3 overflows");
+    };
+    let x_data = match copy_f64_tensor(x, "eindir x", n, false) {
+        Ok(v) => v,
+        Err(msg) => return reject(&msg),
+    };
+    let mut pos = x_data.clone();
     let mut atmnrs =
         unsafe { std::slice::from_raw_parts(pot.atomic_numbers, pot.n_atoms) }.to_vec();
     let mut box_ = pot.box_matrix;
@@ -138,16 +162,15 @@ unsafe extern "C" fn rgpot_eval_cb(
     };
     let status =
         unsafe { (pot.callback)(pot.pot_user_data, &input, &mut output) };
-    let fused = if status == rgpot_status_t::RGPOT_SUCCESS && !output.forces.is_null() {
-        let ft = unsafe { &(*output.forces).dl_tensor };
-        let forces = unsafe { std::slice::from_raw_parts(ft.data as *const f64, n) };
-        Some(FusedEvaluation {
-            positions: x_data.to_vec(),
-            gradient: forces.iter().map(|force| -*force).collect(),
-        })
+    let forces = if status == rgpot_status_t::RGPOT_SUCCESS {
+        validated_result(&output, n)
     } else {
-        None
+        Err(String::new())
     };
+    let fused = forces.as_ref().ok().map(|forces| FusedEvaluation {
+        positions: x_data.clone(),
+        gradient: forces.iter().map(|force| -*force).collect(),
+    });
     unsafe {
         rgpot_tensor_free(output.forces);
         rgpot_tensor_free(input.positions);
@@ -160,6 +183,13 @@ unsafe extern "C" fn rgpot_eval_cb(
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
         return eindir_status_t::EINDIR_INTERNAL_ERROR;
+    }
+    if let Err(msg) = forces {
+        *pot.fused_cache
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+        return reject(&msg);
     }
     *pot.fused_cache
         .0
@@ -175,9 +205,17 @@ unsafe extern "C" fn rgpot_grad_cb(
     grad_out: *mut DLManagedTensorVersioned,
 ) -> eindir_status_t {
     let pot = unsafe { &*(user_data as *const rgpot_potential_t) };
-    let xt = unsafe { &(*x).dl_tensor };
-    let n = pot.n_atoms * 3;
-    let x_data = unsafe { std::slice::from_raw_parts(xt.data as *const f64, n) };
+    let Some(n) = pot.n_atoms.checked_mul(3) else {
+        return reject("n_atoms * 3 overflows");
+    };
+    let x_data = match copy_f64_tensor(x, "eindir x", n, false) {
+        Ok(v) => v,
+        Err(msg) => return reject(&msg),
+    };
+    let dst_ptr = match checked_f64_data(grad_out, "eindir grad_out", n) {
+        Ok(p) => p,
+        Err(msg) => return reject(&msg),
+    };
     let cached = pot
         .fused_cache
         .0
@@ -186,8 +224,7 @@ unsafe extern "C" fn rgpot_grad_cb(
         .take();
     if let Some(cached) = cached {
         if cached.positions == x_data {
-            let gt = unsafe { &(*grad_out).dl_tensor };
-            let dst = unsafe { std::slice::from_raw_parts_mut(gt.data as *mut f64, n) };
+            let dst = unsafe { std::slice::from_raw_parts_mut(dst_ptr, n) };
             dst.copy_from_slice(&cached.gradient);
             return eindir_status_t::EINDIR_SUCCESS;
         }
@@ -212,13 +249,15 @@ unsafe extern "C" fn rgpot_grad_cb(
     };
     let status =
         unsafe { (pot.callback)(pot.pot_user_data, &input, &mut output) };
-    if status == rgpot_status_t::RGPOT_SUCCESS && !output.forces.is_null() {
-        let ft = unsafe { &(*output.forces).dl_tensor };
-        let src = unsafe { std::slice::from_raw_parts(ft.data as *const f64, n) };
-        let gt = unsafe { &(*grad_out).dl_tensor };
-        let dst = unsafe { std::slice::from_raw_parts_mut(gt.data as *mut f64, n) };
-        for i in 0..n {
-            dst[i] = -src[i]; // gradient = -force
+    let forces = if status == rgpot_status_t::RGPOT_SUCCESS {
+        validated_result(&output, n)
+    } else {
+        Err(String::new())
+    };
+    if let Ok(src) = &forces {
+        let dst = unsafe { std::slice::from_raw_parts_mut(dst_ptr, n) };
+        for (d, s) in dst.iter_mut().zip(src) {
+            *d = -*s; // gradient = -force
         }
     }
     unsafe {
@@ -229,6 +268,9 @@ unsafe extern "C" fn rgpot_grad_cb(
     }
     if status != rgpot_status_t::RGPOT_SUCCESS {
         return eindir_status_t::EINDIR_INTERNAL_ERROR;
+    }
+    if let Err(msg) = forces {
+        return reject(&msg);
     }
     eindir_status_t::EINDIR_SUCCESS
 }
@@ -268,7 +310,10 @@ pub unsafe extern "C" fn rgpot_potential_new_eindir(
     bounds_low: *const f64,
     bounds_high: *const f64,
 ) -> *mut rgpot_potential_t {
-    let dim = n_atoms * 3;
+    let Some(dim) = n_atoms.checked_mul(3) else {
+        set_last_error("n_atoms * 3 overflows");
+        return std::ptr::null_mut();
+    };
 
     let alloc_f64 = |src: *const f64, default: f64| -> *mut f64 {
         let mut v = vec![default; dim];
@@ -642,6 +687,169 @@ mod tests {
             del1d(g_t);
             rgpot_potential_free_eindir(pot);
         }
+    }
+
+    /// What a hostile or buggy callback hands back with RGPOT_SUCCESS.
+    #[derive(Clone, Copy)]
+    enum Bad {
+        NullForces,
+        WrongLength,
+        WrongRank,
+        NotF64,
+        Nan,
+        Inf,
+        NullData,
+        NonFiniteEnergy,
+    }
+
+    unsafe extern "C" fn bad_callback(
+        user_data: *mut c_void,
+        input: *const rgpot_force_input_t,
+        output: *mut rgpot_force_out_t,
+    ) -> rgpot_status_t {
+        let mode = unsafe { *(user_data as *const Bad) };
+        let n = unsafe { (*input).n_atoms() }.unwrap_or(0);
+        let out = unsafe { &mut *output };
+        out.energy = 1.0;
+        out.forces = match mode {
+            Bad::NullForces => std::ptr::null_mut(),
+            Bad::WrongLength => create_owned_f64_tensor(vec![0.0; n * 3 - 1], vec![(n * 3 - 1) as i64]),
+            Bad::WrongRank => create_owned_f64_tensor(vec![0.0; n * 3], vec![1, n as i64, 3]),
+            Bad::NotF64 => {
+                let t = create_owned_f64_tensor(vec![0.0; n * 3], vec![n as i64, 3]);
+                unsafe { (*t).dl_tensor.dtype.bits = 32 };
+                t
+            }
+            Bad::Nan => {
+                let mut v = vec![0.0; n * 3];
+                v[1] = f64::NAN;
+                create_owned_f64_tensor(v, vec![n as i64, 3])
+            }
+            Bad::Inf => {
+                let mut v = vec![0.0; n * 3];
+                v[2] = f64::INFINITY;
+                create_owned_f64_tensor(v, vec![n as i64, 3])
+            }
+            Bad::NullData => {
+                let t = create_owned_f64_tensor(vec![0.0; n * 3], vec![n as i64, 3]);
+                unsafe { (*t).dl_tensor.data = std::ptr::null_mut() };
+                t
+            }
+            Bad::NonFiniteEnergy => {
+                out.energy = f64::NAN;
+                create_owned_f64_tensor(vec![0.0; n * 3], vec![n as i64, 3])
+            }
+        };
+        rgpot_status_t::RGPOT_SUCCESS
+    }
+
+    #[test]
+    fn malformed_successful_results_are_rejected() {
+        let atmnrs = [1i32, 1];
+        let box_ = [10.0f64, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0];
+        for mode in [
+            Bad::NullForces,
+            Bad::WrongLength,
+            Bad::WrongRank,
+            Bad::NotF64,
+            Bad::Nan,
+            Bad::Inf,
+            Bad::NullData,
+            Bad::NonFiniteEnergy,
+        ] {
+            let mut mode = mode;
+            let pot = unsafe {
+                rgpot_potential_new_eindir(
+                    bad_callback,
+                    (&mut mode as *mut Bad).cast(),
+                    None,
+                    2,
+                    atmnrs.as_ptr(),
+                    box_.as_ptr(),
+                    std::ptr::null(),
+                    std::ptr::null(),
+                )
+            };
+            let obj = pot as *mut eindir_objective_t;
+            let mut x_data = [0.5f64; 6];
+            let x_t = make_1d(x_data.as_mut_ptr(), 6);
+            let mut g_data = [7.0f64; 6];
+            let g_t = make_1d(g_data.as_mut_ptr(), 6);
+
+            let mut value = 0.0f64;
+            let s = unsafe { eindir_objective_eval(obj, x_t, &mut value) };
+            assert_eq!(s, eindir_status_t::EINDIR_INVALID_PARAMETER);
+            let s = unsafe { eindir_objective_grad(obj, x_t, g_t) };
+            assert_eq!(s, eindir_status_t::EINDIR_INVALID_PARAMETER);
+            assert!(g_data.iter().all(|&v| v == 7.0), "gradient must stay untouched");
+
+            unsafe {
+                del1d(x_t);
+                del1d(g_t);
+                rgpot_potential_free_eindir(pot);
+            }
+        }
+    }
+
+    #[test]
+    fn malformed_input_tensors_are_rejected() {
+        let atmnrs = [1i32, 1];
+        let pot = unsafe {
+            rgpot_potential_new_eindir(
+                mock_energy_callback,
+                std::ptr::null_mut(),
+                None,
+                2,
+                atmnrs.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+            )
+        };
+        let obj = pot as *mut eindir_objective_t;
+        let mut value = 0.0f64;
+        let mut short = [0.5f64; 5];
+        let short_t = make_1d(short.as_mut_ptr(), 5);
+        let mut x_data = [0.5f64; 6];
+        let x_t = make_1d(x_data.as_mut_ptr(), 6);
+        let mut g_data = [0.0f64; 5];
+        let g_short = make_1d(g_data.as_mut_ptr(), 5);
+
+        assert_eq!(
+            unsafe { eindir_objective_eval(obj, std::ptr::null(), &mut value) },
+            eindir_status_t::EINDIR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            unsafe { eindir_objective_eval(obj, short_t, &mut value) },
+            eindir_status_t::EINDIR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            unsafe { eindir_objective_grad(obj, x_t, g_short) },
+            eindir_status_t::EINDIR_INVALID_PARAMETER
+        );
+        unsafe {
+            del1d(short_t);
+            del1d(x_t);
+            del1d(g_short);
+            rgpot_potential_free_eindir(pot);
+        }
+    }
+
+    #[test]
+    fn oversized_atom_count_is_refused() {
+        let pot = unsafe {
+            rgpot_potential_new_eindir(
+                mock_energy_callback,
+                std::ptr::null_mut(),
+                None,
+                usize::MAX,
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+            )
+        };
+        assert!(pot.is_null());
     }
 
     #[test]
