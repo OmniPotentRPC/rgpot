@@ -549,10 +549,19 @@ TEST_CASE("UmaPot band batch matches per-system evaluation",
   const rgpot::ForceBatch batch{3, in.data(), out.data()};
   pot.forceBatch(batch);
 
+  // The batched graph is not exactly independent of a system's slot in
+  // the batch: fairchem-core 2.23 eager (uma-s-1p1, omol) gives three
+  // identical HCN copies energies spread over 1.8e-7 eV, and the AOTI
+  // band package differs from single calls by up to 1.1e-7 eV and
+  // 1.7e-7 eV/A. The bounds are 5e-7, a margin of 2.8x over the energy
+  // spread and 2.9x over the largest force difference seen.
+  constexpr double kBandEnergyTol = 5e-7; // eV
+  constexpr double kBandForceTol = 5e-7;  // eV/A
+
   for (size_t s = 0; s < 3; ++s) {
-    REQUIRE_THAT(out[s].energy, WithinAbs(e_single[s], 1e-8));
+    REQUIRE_THAT(out[s].energy, WithinAbs(e_single[s], kBandEnergyTol));
     for (size_t k = 0; k < 9; ++k) {
-      REQUIRE_THAT(f_batch[s][k], WithinAbs(f_single[s][k], 1e-7));
+      REQUIRE_THAT(f_batch[s][k], WithinAbs(f_single[s][k], kBandForceTol));
     }
   }
 }
