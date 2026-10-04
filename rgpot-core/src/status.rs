@@ -57,9 +57,8 @@ thread_local! {
 /// Store an error message in the thread-local slot.
 pub(crate) fn set_last_error(msg: &str) {
     LAST_ERROR.with(|cell| {
-        let c = CString::new(msg).unwrap_or_else(|_| {
-            CString::new("(error message contained interior NUL)").unwrap()
-        });
+        let c = CString::new(msg)
+            .unwrap_or_else(|_| CString::new("(error message contained interior NUL)").unwrap());
         *cell.borrow_mut() = c;
     });
 }
