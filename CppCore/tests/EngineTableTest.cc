@@ -71,7 +71,10 @@ bool open_engine(const std::string &key, Engine &out) {
     return false;
   }
   out.handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
-  INFO(dlerror());
+  // dlerror() is null after a success, and streaming a null char pointer
+  // crashes libc++.
+  const char *load_error = out.handle ? nullptr : dlerror();
+  INFO(load_error ? load_error : "");
   REQUIRE(out.handle != nullptr);
   auto h = out.handle;
   out.abi_version = sym<int (*)()>(h, "rgpot_engine_abi_version");
