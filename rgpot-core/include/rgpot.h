@@ -183,6 +183,18 @@ typedef struct rgpot_potential_t {
   struct rgpot_fused_cache_t *fused_cache;
 } rgpot_potential_t;
 
+/**
+ * Evaluations a potential handle has answered, split by origin.
+ *
+ * `computed` counts callback invocations; `served` counts gradients
+ * answered from the fused energy-and-gradient result without invoking the
+ * callback. A caller that charges evaluations chooses which field to bill.
+ */
+typedef struct rgpot_eval_counts_t {
+  uint64_t computed;
+  uint64_t served;
+} rgpot_eval_counts_t;
+
 #if (defined(RGPOT_HAS_RPC) && defined(RGPOT_HAS_RPC))
 /**
  * Opaque RPC client handle.
@@ -292,6 +304,27 @@ const char *rgpot_last_error(void);
  * revision is refused instead of read as the wrong struct.
  */
 eindir_abi_stamp_t rgpot_eindir_abi_stamp(void);
+
+/**
+ * Read the computed and served counters of `pot` into `out`.
+ *
+ * # Safety
+ *
+ * `pot` must be NULL or a live pointer from [`rgpot_potential_new_eindir`],
+ * and `out` NULL or writable. NULL for either yields
+ * `RGPOT_INVALID_PARAMETER`.
+ */
+enum rgpot_status_t rgpot_potential_eval_counts(const struct rgpot_potential_t *pot,
+                                                struct rgpot_eval_counts_t *out);
+
+/**
+ * Zero the counters of `pot`.
+ *
+ * # Safety
+ *
+ * `pot` must be NULL or a live pointer from [`rgpot_potential_new_eindir`].
+ */
+void rgpot_potential_reset_eval_counts(const struct rgpot_potential_t *pot);
 
 /**
  * Create a potential that is ALSO a valid eindir objective.

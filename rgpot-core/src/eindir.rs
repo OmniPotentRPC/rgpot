@@ -18,6 +18,7 @@
 //! eval path and no conversion method.
 
 use std::os::raw::c_void;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use dlpk::sys::DLManagedTensorVersioned;
@@ -92,7 +93,74 @@ pub struct rgpot_potential_t {
 }
 
 /// Opaque cache of the last fused energy and gradient evaluation.
-pub struct rgpot_fused_cache_t(Mutex<Option<FusedEvaluation>>);
+pub struct rgpot_fused_cache_t {
+    last: Mutex<Option<FusedEvaluation>>,
+    computed: AtomicU64,
+    served: AtomicU64,
+}
+
+impl rgpot_fused_cache_t {
+    fn new() -> Self {
+        Self {
+            last: Mutex::new(None),
+            computed: AtomicU64::new(0),
+            served: AtomicU64::new(0),
+        }
+    }
+}
+
+/// Evaluations a potential handle has answered, split by origin.
+///
+/// `computed` counts callback invocations; `served` counts gradients
+/// answered from the fused energy-and-gradient result without invoking the
+/// callback. A caller that charges evaluations chooses which field to bill.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct rgpot_eval_counts_t {
+    pub computed: u64,
+    pub served: u64,
+}
+
+/// Read the computed and served counters of `pot` into `out`.
+///
+/// # Safety
+///
+/// `pot` must be NULL or a live pointer from [`rgpot_potential_new_eindir`],
+/// and `out` NULL or writable. NULL for either yields
+/// `RGPOT_INVALID_PARAMETER`.
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_potential_eval_counts(
+    pot: *const rgpot_potential_t,
+    out: *mut rgpot_eval_counts_t,
+) -> rgpot_status_t {
+    if pot.is_null() || out.is_null() {
+        set_last_error("rgpot_potential_eval_counts: NULL argument");
+        return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+    }
+    let cache = unsafe { &*(*pot).fused_cache };
+    unsafe {
+        *out = rgpot_eval_counts_t {
+            computed: cache.computed.load(Ordering::Relaxed),
+            served: cache.served.load(Ordering::Relaxed),
+        };
+    }
+    rgpot_status_t::RGPOT_SUCCESS
+}
+
+/// Zero the counters of `pot`.
+///
+/// # Safety
+///
+/// `pot` must be NULL or a live pointer from [`rgpot_potential_new_eindir`].
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_potential_reset_eval_counts(pot: *const rgpot_potential_t) {
+    if pot.is_null() {
+        return;
+    }
+    let cache = unsafe { &*(*pot).fused_cache };
+    cache.computed.store(0, Ordering::Relaxed);
+    cache.served.store(0, Ordering::Relaxed);
+}
 
 struct FusedEvaluation {
     positions: Vec<f64>,
@@ -160,6 +228,7 @@ unsafe extern "C" fn rgpot_eval_cb(
         energy: 0.0,
         variance: 0.0,
     };
+    pot.fused_cache.computed.fetch_add(1, Ordering::Relaxed);
     let status =
         unsafe { (pot.callback)(pot.pot_user_data, &input, &mut output) };
     let forces = if status == rgpot_status_t::RGPOT_SUCCESS {
@@ -179,20 +248,20 @@ unsafe extern "C" fn rgpot_eval_cb(
     }
     if status != rgpot_status_t::RGPOT_SUCCESS {
         *pot.fused_cache
-            .0
+            .last
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
         return eindir_status_t::EINDIR_INTERNAL_ERROR;
     }
     if let Err(msg) = forces {
         *pot.fused_cache
-            .0
+            .last
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
         return reject(&msg);
     }
     *pot.fused_cache
-        .0
+        .last
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = fused;
     unsafe { *value_out = output.energy };
@@ -218,7 +287,7 @@ unsafe extern "C" fn rgpot_grad_cb(
     };
     let cached = pot
         .fused_cache
-        .0
+        .last
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .take();
@@ -226,6 +295,7 @@ unsafe extern "C" fn rgpot_grad_cb(
         if cached.positions == x_data {
             let dst = unsafe { std::slice::from_raw_parts_mut(dst_ptr, n) };
             dst.copy_from_slice(&cached.gradient);
+            pot.fused_cache.served.fetch_add(1, Ordering::Relaxed);
             return eindir_status_t::EINDIR_SUCCESS;
         }
     }
@@ -247,6 +317,7 @@ unsafe extern "C" fn rgpot_grad_cb(
         energy: 0.0,
         variance: 0.0,
     };
+    pot.fused_cache.computed.fetch_add(1, Ordering::Relaxed);
     let status =
         unsafe { (pot.callback)(pot.pot_user_data, &input, &mut output) };
     let forces = if status == rgpot_status_t::RGPOT_SUCCESS {
@@ -361,7 +432,7 @@ pub unsafe extern "C" fn rgpot_potential_new_eindir(
         n_atoms,
         atomic_numbers: atmnrs,
         box_matrix: box_arr,
-        fused_cache: Box::new(rgpot_fused_cache_t(Mutex::new(None))),
+        fused_cache: Box::new(rgpot_fused_cache_t::new()),
     });
     let ptr = Box::into_raw(pot);
     // Self-referential: the eindir base's user_data points to the owning struct
@@ -850,6 +921,68 @@ mod tests {
             )
         };
         assert!(pot.is_null());
+    }
+
+    #[test]
+    fn eval_counts_split_computed_from_served() {
+        let atmnrs = [1i32, 1];
+        let mut calls = 0usize;
+        let pot = unsafe {
+            rgpot_potential_new_eindir(
+                counting_energy_callback,
+                (&mut calls as *mut usize).cast(),
+                None,
+                2,
+                atmnrs.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+            )
+        };
+        let obj = pot as *mut eindir_objective_t;
+        let mut counts = rgpot_eval_counts_t::default();
+        assert_eq!(
+            unsafe { rgpot_potential_eval_counts(pot, &mut counts) },
+            rgpot_status_t::RGPOT_SUCCESS
+        );
+        assert_eq!(counts, rgpot_eval_counts_t { computed: 0, served: 0 });
+
+        let mut x = [1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let x_t = make_1d(x.as_mut_ptr(), 6);
+        let mut g = [0.0f64; 6];
+        let g_t = make_1d(g.as_mut_ptr(), 6);
+        let mut value = 0.0f64;
+
+        // Energy then gradient at the same point: one computed, one served.
+        unsafe { eindir_objective_eval(obj, x_t, &mut value) };
+        unsafe { eindir_objective_grad(obj, x_t, g_t) };
+        unsafe { rgpot_potential_eval_counts(pot, &mut counts) };
+        assert_eq!(counts, rgpot_eval_counts_t { computed: 1, served: 1 });
+        assert_eq!(calls, 1);
+
+        // A gradient with no preceding energy is computed.
+        unsafe { eindir_objective_grad(obj, x_t, g_t) };
+        unsafe { rgpot_potential_eval_counts(pot, &mut counts) };
+        assert_eq!(counts, rgpot_eval_counts_t { computed: 2, served: 1 });
+        assert_eq!(calls, 2);
+
+        unsafe { rgpot_potential_reset_eval_counts(pot) };
+        unsafe { rgpot_potential_eval_counts(pot, &mut counts) };
+        assert_eq!(counts, rgpot_eval_counts_t::default());
+
+        assert_eq!(
+            unsafe { rgpot_potential_eval_counts(std::ptr::null(), &mut counts) },
+            rgpot_status_t::RGPOT_INVALID_PARAMETER
+        );
+        assert_eq!(
+            unsafe { rgpot_potential_eval_counts(pot, std::ptr::null_mut()) },
+            rgpot_status_t::RGPOT_INVALID_PARAMETER
+        );
+        unsafe {
+            del1d(x_t);
+            del1d(g_t);
+            rgpot_potential_free_eindir(pot);
+        }
     }
 
     #[test]
