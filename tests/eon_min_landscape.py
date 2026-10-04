@@ -88,6 +88,7 @@ def main() -> int:
     cmd = [
         sys.executable, "-m", "rgpycrumbs.eon.plt_min",
         "--job-dir", str(best[1]),
+        "--label", "LJ7",
         "--plot-type", "landscape",
         "--energy-cap-window", "12",
         "-o", str(out),

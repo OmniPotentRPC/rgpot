@@ -364,6 +364,34 @@ TEST_CASE("UmaContract rejects an input of another composition",
           }) == "counts");
 }
 
+TEST_CASE("UmaContract refuses an edge count the graph was not exported for",
+          "[UmaPot][contract]") {
+  auto meta = hcn_metadata();
+  meta["nedges_min"] = "6";
+  meta["nedges_max"] = "6";
+  const auto fixed = rgpot::UmaContract::fromMetadata(meta);
+  REQUIRE_NOTHROW(fixed.checkEdges(6));
+  REQUIRE(contract_field([&] { fixed.checkEdges(4); }) == "nedges");
+  REQUIRE_THROWS_WITH(
+      fixed.checkEdges(8),
+      Catch::Matchers::Equals(
+          "UmaPot: input nedges is 8, the package was exported for 6"));
+
+  meta["nedges_min"] = "1";
+  meta["nedges_max"] = "65536";
+  const auto dynamic = rgpot::UmaContract::fromMetadata(meta);
+  REQUIRE_NOTHROW(dynamic.checkEdges(1));
+  REQUIRE_NOTHROW(dynamic.checkEdges(65536));
+  REQUIRE_THROWS_WITH(
+      dynamic.checkEdges(65537),
+      Catch::Matchers::Equals("UmaPot: input nedges is 65537, the package "
+                              "was exported for [1, 65536]"));
+
+  // A package without edge metadata is not checked.
+  REQUIRE_NOTHROW(rgpot::UmaContract::fromMetadata(hcn_metadata())
+                      .checkEdges(1000000));
+}
+
 TEST_CASE("UmaContract checks z_set alone for packages without counts",
           "[UmaPot][contract]") {
   auto legacy = hcn_metadata();
