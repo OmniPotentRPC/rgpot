@@ -560,6 +560,7 @@ data-aria-dark="Switch to auto color mode">
 <span id="details-classrgpot-1-1-uma-pot"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
 <p>UMA / OMol calculator: vesin neighbor list + AOTI package.</p>
 <p>Loads an AOTInductor <code class="docutils literal notranslate"><span class="pre">.pt2</span></code> exported by <code class="docutils literal notranslate"><span class="pre">scripts/export_uma_aoti.py</span></code>. Each force call builds a fairchem-convention edge list with vesin and runs the compiled graph. Charge and spin are per-call tensor inputs.</p>
+<p>The package was merged for one composition, charge, spin and task. Every force call checks the config and the input against the metadata embedded in the package and throws UmaContractError on a mismatch (see UmaContract).</p>
 <section id="methods">
 <h3>Methods<a class="headerlink" href="#methods" title="Link to this heading">¶</a></h3>
 <div class="doxyrest-title-code-block highlight" id="doxid-classrgpot-1-1-uma-pot-1adba21af630a10ae2db55f615b0fdc445">

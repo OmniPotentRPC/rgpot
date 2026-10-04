@@ -23,6 +23,7 @@ struct rgpot::UmaPot::Impl
 		double :target:`molecular_box<doxid-structrgpot_1_1_uma_pot_1_1_impl_1a27f9d11e74dffefc337a2856fff944e0>` {0.0};
 		int :target:`max_neighbors<doxid-structrgpot_1_1_uma_pot_1_1_impl_1a1185dc2d0adb9f26e064d1515e445024>` {300};
 		int64_t :target:`batch_max<doxid-structrgpot_1_1_uma_pot_1_1_impl_1ae8626f2b728fcd963df63079e5a36352>` {0};
+		UmaContract :target:`contract<doxid-structrgpot_1_1_uma_pot_1_1_impl_1a880f33ae27e8a604240b28cd3b5515a8>`;
 		std::unique_ptr<torch::inductor::AOTIModelPackageLoader> :target:`loader<doxid-structrgpot_1_1_uma_pot_1_1_impl_1aefb61615049850495794f2a04c4b0eb7>`;
 		std::mutex :target:`mutex<doxid-structrgpot_1_1_uma_pot_1_1_impl_1ae73856e50b723fe45b43ec89e994de98>`;
 	};

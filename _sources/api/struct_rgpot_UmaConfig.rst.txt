@@ -49,5 +49,5 @@ Fields
 
 	double cutoff = 6.0
 
-Cutoff in angstrom. Overridden by the sidecar JSON next to .pt2 when present.
+Cutoff in angstrom. The package's embedded ``cutoff`` metadata wins when present; no sidecar file is read.
 

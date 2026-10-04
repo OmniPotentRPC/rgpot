@@ -51,6 +51,8 @@ UMA / OMol calculator: vesin neighbor list + AOTI package.
 
 Loads an AOTInductor ``.pt2`` exported by ``scripts/export_uma_aoti.py``. Each force call builds a fairchem-convention edge list with vesin and runs the compiled graph. Charge and spin are per-call tensor inputs.
 
+The package was merged for one composition, charge, spin and task. Every force call checks the config and the input against the metadata embedded in the package and throws UmaContractError on a mismatch (see UmaContract).
+
 Methods
 -------
 

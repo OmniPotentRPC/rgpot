@@ -46,7 +46,7 @@ Wraps ``rgpot_force_input_t``. The constructor calls ``rgpot_force_input_create(
 
 
 
-.. _doxid-classrgpot_1_1_input_spec_1autotoc_md27:
+.. _doxid-classrgpot_1_1_input_spec_1autotoc_md29:
 
 Example
 ~~~~~~~
