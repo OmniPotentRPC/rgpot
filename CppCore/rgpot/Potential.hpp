@@ -203,6 +203,7 @@ public:
       }
       if (hit) {
         _cache->deserialize_hit(*hit, fo, nAtoms);
+        _cache->note_served();
         return {fo.energy, std::move(forces), fo.variance};
       }
     }
@@ -213,6 +214,7 @@ public:
 
     // Cache Write
     if (_cache) {
+      _cache->note_computed();
       _cache->add_serialized(key, fo, nAtoms);
     }
 #else
@@ -306,6 +308,7 @@ public:
         auto &hit = hits[i];
         if (hit) {
           _cache->deserialize_hit(*hit, batch.out[i], batch.in[i].nAtoms);
+          _cache->note_served();
         } else {
           misses.push_back(i);
         }
@@ -336,6 +339,7 @@ public:
         batch.out[idx].has_stress = missOut[j].has_stress;
         std::copy_n(missOut[j].stress, 9, batch.out[idx].stress);
         registry<Derived>::incrementForceCalls();
+        _cache->note_computed();
         _cache->add_serialized(keys[idx], batch.out[idx], batch.in[idx].nAtoms);
       }
       return;

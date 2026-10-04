@@ -394,3 +394,62 @@ TEST_CASE("Scalar cache retains calculator variance", "[Potential][cache]") {
   }
   REQUIRE(rocksdb::DestroyDB(path, rocksdb::Options()).ok());
 }
+
+TEST_CASE("Cache counters split computed from served evaluations",
+          "[Potential][cache][counts]") {
+  ResultMetadataPotential pot;
+  double positions[2][6] = {{0.0, 0.1, 0.2, 1.1, 1.2, 1.3},
+                            {0.5, 0.6, 0.7, 1.6, 1.7, 1.8}};
+  const int types[2] = {1, 1};
+  const double box[9] = {8.0, 0.0, 0.0, 0.0, 8.0, 0.0, 0.0, 0.0, 8.0};
+  const rgpot::ForceInput inputs[] = {{2, positions[0], types, box},
+                                      {2, positions[1], types, box}};
+  double forces[2][6] = {};
+  rgpot::ForceOut outputs[] = {{forces[0], 0.0, 0.0, {}, 0},
+                               {forces[1], 0.0, 0.0, {}, 0}};
+  const rgpot::ForceBatch batch{2, inputs, outputs};
+  const std::string path = resultCachePath();
+
+  {
+    // Cold: both systems are computed.
+    rgpot::cache::PotentialCache cache(path);
+    pot.set_cache(&cache);
+    REQUIRE(cache.counts().computed == 0);
+    REQUIRE(cache.counts().served == 0);
+    pot.forceBatch(batch);
+    REQUIRE(cache.counts().computed == 2);
+    REQUIRE(cache.counts().served == 0);
+
+    // Same batch again: both served, computed unchanged.
+    pot.forceBatch(batch);
+    REQUIRE(cache.counts().computed == 2);
+    REQUIRE(cache.counts().served == 2);
+
+    // One moved system: one computed, one served.
+    positions[1][0] += 0.75;
+    pot.forceBatch(batch);
+    REQUIRE(cache.counts().computed == 3);
+    REQUIRE(cache.counts().served == 3);
+
+    // Scalar entry point counts through the same handle.
+    rgpot::types::AtomMatrix pos(2, 3);
+    std::copy_n(positions[0], 6, pos.data());
+    pot(pos, {1, 1}, {{{8, 0, 0}, {0, 8, 0}, {0, 0, 8}}});
+    REQUIRE(cache.counts().computed + cache.counts().served == 7);
+
+    cache.reset_counts();
+    REQUIRE(cache.counts().computed == 0);
+    REQUIRE(cache.counts().served == 0);
+    pot.set_cache(nullptr);
+  }
+  {
+    // Warm start from the persisted entries: nothing is computed.
+    rgpot::cache::PotentialCache cache(path);
+    pot.set_cache(&cache);
+    pot.forceBatch(batch);
+    REQUIRE(cache.counts().computed == 0);
+    REQUIRE(cache.counts().served == 2);
+    pot.set_cache(nullptr);
+  }
+  REQUIRE(rocksdb::DestroyDB(path, rocksdb::Options()).ok());
+}
