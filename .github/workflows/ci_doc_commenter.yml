@@ -7,7 +7,7 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
-    - uses: HaoZeke/doc-previewer@v0.0.1
+    - uses: HaoZeke/doc-previewer@0e1094735b4f7ee9a2c60a18a34d7a7e5bc6bb63 # v0.0.1
       with:
         artifact_name: documentation
         comment_header: '### rgPot Documentation Preview'

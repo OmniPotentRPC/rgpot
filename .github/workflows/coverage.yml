@@ -20,7 +20,6 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write
 
 env:
   PIXi_VERSION: v0.70.2
@@ -36,7 +35,7 @@ jobs:
       CC: clang-${{ matrix.llvm-version }}
       CXX: clang++-${{ matrix.llvm-version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup LLVM
         run: |
@@ -47,14 +46,17 @@ jobs:
           sudo apt-get install --no-install-recommends -y clang-${{ matrix.llvm-version }}
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
         with:
+          toolchain: stable
           components: llvm-tools-preview
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
+        uses: taiki-e/install-action@db3874b116727aa105fa89413c3552b9346f8cc9 # cargo-llvm-cov
+        with:
+          tool: cargo-llvm-cov
 
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           pixi-version: ${{ env.PIXi_VERSION }}
           cache: true
@@ -72,7 +74,7 @@ jobs:
           test -s lcov.info
 
       - name: Upload rust coverage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage-rust
           path: |
@@ -80,22 +82,11 @@ jobs:
             rust_codecov.json
           if-no-files-found: error
 
-      - name: Upload rust coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          files: lcov.info,rust_codecov.json
-          flags: rust
-          name: rgpot-rust
-          use_oidc: true
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
-          verbose: true
-
   coverage-cpp:
     runs-on: ubuntu-22.04
     name: cpp coverage
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           submodules: recursive
 
@@ -104,7 +95,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends lcov gfortran
 
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           pixi-version: ${{ env.PIXi_VERSION }}
           cache: true
@@ -118,11 +109,12 @@ jobs:
           bash scripts/run_coverage_cpp.sh cpp_lcov.info
           test -s cpp_lcov.info
           # Fortran kernel hits from the same tree (the pot tests drive them)
-          bash scripts/run_coverage_fortran.sh fortran_lcov.info || true
-          ls -la cpp_lcov.info fortran_lcov.info 2>/dev/null || true
+          bash scripts/run_coverage_fortran.sh fortran_lcov.info
+          test -s fortran_lcov.info
+          ls -la cpp_lcov.info fortran_lcov.info
 
       - name: Upload cpp coverage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage-cpp
           path: |
@@ -130,40 +122,17 @@ jobs:
             fortran_lcov.info
           if-no-files-found: error
 
-      - name: Upload cpp coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          files: cpp_lcov.info
-          flags: cpp
-          name: rgpot-cpp
-          use_oidc: true
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
-          verbose: true
-
-      - name: Upload fortran coverage to Codecov
-        if: hashFiles('fortran_lcov.info') != ''
-        uses: codecov/codecov-action@v5
-        with:
-          files: fortran_lcov.info
-          flags: fortran
-          name: rgpot-fortran
-          use_oidc: true
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
-          verbose: true
-
   coverage-python:
     runs-on: ubuntu-22.04
     name: python coverage
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
 
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           pixi-version: ${{ env.PIXi_VERSION }}
           cache: true
@@ -177,36 +146,25 @@ jobs:
           head -c 400 python_coverage.xml; echo
 
       - name: Upload python coverage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage-python
           path: python_coverage.xml
           if-no-files-found: error
-
-      - name: Upload python coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          files: python_coverage.xml
-          flags: python
-          name: rgpot-python
-          use_oidc: true
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
-          verbose: true
 
   # Dedicated fortran path when the cpp job skipped the kernels; no-op if already uploaded.
   coverage-fortran:
     runs-on: ubuntu-22.04
     name: fortran coverage
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install gfortran + lcov
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends gfortran lcov
 
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           pixi-version: ${{ env.PIXi_VERSION }}
           cache: true
@@ -219,23 +177,75 @@ jobs:
         run: |
           # The meson tree is required: the kernels build inside it.
           if [[ ! -d bbdir-cov ]]; then
-            bash scripts/run_coverage_cpp.sh /tmp/cpp_for_fort.info || true
+            bash scripts/run_coverage_cpp.sh /tmp/cpp_for_fort.info
           fi
           bash scripts/run_coverage_fortran.sh fortran_lcov.info
           test -s fortran_lcov.info
           grep -E '^(SF:|DA:)' fortran_lcov.info | head -15
 
       - name: Upload fortran coverage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage-fortran
           path: fortran_lcov.info
           if-no-files-found: error
 
-      - name: Upload fortran coverage to Codecov
-        uses: codecov/codecov-action@v5
+  # Upload runs only on push to main: the OIDC token (id-token: write) exists in
+  # no other job, and pull_request runs stay read-only.
+  codecov-upload:
+    runs-on: ubuntu-22.04
+    name: codecov upload
+    needs: [coverage-rust, coverage-cpp, coverage-python, coverage-fortran]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          files: fortran_lcov.info
+          persist-credentials: false
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: cov
+
+      - name: Upload rust coverage to Codecov
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
+        with:
+          files: cov/coverage-rust/lcov.info,cov/coverage-rust/rust_codecov.json
+          flags: rust
+          name: rgpot-rust
+          use_oidc: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+          verbose: true
+
+      - name: Upload cpp coverage to Codecov
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
+        with:
+          files: cov/coverage-cpp/cpp_lcov.info
+          flags: cpp
+          name: rgpot-cpp
+          use_oidc: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+          verbose: true
+
+      - name: Upload python coverage to Codecov
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
+        with:
+          files: cov/coverage-python/python_coverage.xml
+          flags: python
+          name: rgpot-python
+          use_oidc: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+          verbose: true
+
+      - name: Upload fortran coverage to Codecov
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
+        with:
+          files: cov/coverage-fortran/fortran_lcov.info
           flags: fortran
           name: rgpot-fortran
           use_oidc: true

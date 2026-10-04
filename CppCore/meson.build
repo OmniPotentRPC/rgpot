@@ -38,6 +38,7 @@ if _mpi_dep.found()
 endif
 _rgpot_srcs += files('rgpot/PotHelpers.cc')
 _rgpot_srcs += files('rgpot/units.cc')
+_rgpot_srcs += files('rgpot/abi/CxxLayout.cc')
 
 # Cap'n Proto schema + NWChem/CPMD frontends need libcapnp (ptlrpc). Only pull
 # them in when RPC is on (server or client-only); lean -Dwith_rpc=false builds
@@ -450,6 +451,12 @@ if get_option('with_tests')
         test_array += [
             ['MorsePotTest', 'morse_pot_test', 'MorsePotTest.cc', ''],
             ['PairListTest', 'pair_list_test', 'PairListTest.cc', ''],
+            [
+                'BatchEvaluatorTest',
+                'batch_evaluator_test',
+                'BatchEvaluatorTest.cc',
+                '',
+            ],
             [
                 'CalculatorGroupTest',
                 'calculator_group_test',
@@ -1168,6 +1175,39 @@ if get_option('with_tests')
             calculator_group_test_exe = _test_exe
         endif
     endforeach
+    if not get_option('with_rpc_client_only')
+        layout_fixture = shared_library(
+            'rgpot_layout_fixture',
+            sources: ['tests/layout_fixture.cc'],
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            dependencies: test_deps,
+            install: false,
+        )
+        test(
+            'CxxLayoutTest',
+            executable(
+                'cxx_layout_test',
+                sources: ['tests/CxxLayoutTest.cc'],
+                dependencies: test_deps,
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+            ),
+            env: {'RGPOT_LAYOUT_FIXTURE': layout_fixture.full_path()},
+            depends: [layout_fixture],
+            workdir: meson.source_root(),
+        )
+        python3_prog = find_program('python3', required: false)
+        if python3_prog.found()
+            test(
+                'CxxLayoutVirtualCounts',
+                python3_prog,
+                args: [files('tests/check_virtual_counts.py')],
+            )
+        endif
+    endif
     if _mpi_dep.found() and not is_disabler(calculator_group_test_exe)
         _calc_mpiexec = find_program('mpirun', 'mpiexec', required: false)
         if _calc_mpiexec.found()

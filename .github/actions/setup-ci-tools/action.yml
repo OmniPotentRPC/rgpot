@@ -30,8 +30,9 @@ runs:
   using: composite
   steps:
     - name: Rust toolchain (stable + cross targets)
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
       with:
+        toolchain: stable
         targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || 'x86_64-unknown-linux-musl' }}
 
     - name: musl linker (Linux portable build)
@@ -47,7 +48,7 @@ runs:
         musl-gcc --version | head -1 || true
 
     - name: Rust cache (workspace / potctl)
-      uses: Swatinem/rust-cache@v2
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       with:
         workspaces: ". -> target"
         # Include OS so macOS/linux caches do not collide
@@ -126,7 +127,7 @@ runs:
 
     - name: Upload ci-tools artifact
       if: inputs.upload-artifact == 'true'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         name: ${{ inputs.artifact-name }}
         path: ${{ runner.temp }}/ci-tools

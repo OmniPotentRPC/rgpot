@@ -27,14 +27,19 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 #define RGPOT_VERSION_PATCH 0
 
 /**
- * Wire-incompatible protocol revision.
+ * ABI major of this build.
  */
-#define PROTOCOL_MAJOR 1
+#define RGPOT_ABI_VERSION_MAJOR 1
 
 /**
- * Additive protocol revision.
+ * ABI minor of this build.
  */
-#define PROTOCOL_MINOR 0
+#define RGPOT_ABI_VERSION_MINOR 0
+
+/**
+ * Layout revision of this build.
+ */
+#define RGPOT_ABI_LAYOUT_REVISION 1
 
 /**
  * Status codes returned by all C API functions.
@@ -193,12 +198,45 @@ typedef struct rgpot_potential_t {
   struct rgpot_fused_cache_t *fused_cache;
 } rgpot_potential_t;
 
+/**
+ * Evaluations a potential handle has answered, split by origin.
+ *
+ * `computed` counts callback invocations; `served` counts gradients
+ * answered from the fused energy-and-gradient result without invoking the
+ * callback. A caller that charges evaluations chooses which field to bill.
+ */
+typedef struct rgpot_eval_counts_t {
+  uint64_t computed;
+  uint64_t served;
+} rgpot_eval_counts_t;
+
 #if (defined(RGPOT_HAS_RPC) && defined(RGPOT_HAS_RPC))
 /**
  * Opaque RPC client handle.
  */
 typedef struct RpcClient rgpot_rpc_client_t;
 #endif
+
+/**
+ * Compatibility identity of the rgpot-core C ABI.
+ *
+ * The numbers move with the layout of the exported structs and the
+ * signatures of the exported functions, not with the crate version.
+ */
+typedef struct rgpot_abi_stamp_t {
+  /**
+   * Incompatible changes increment this value.
+   */
+  uint16_t abi_major;
+  /**
+   * Additive compatible changes increment this value.
+   */
+  uint16_t abi_minor;
+  /**
+   * Struct and function-layout revision for this ABI major.
+   */
+  uint16_t layout_revision;
+} rgpot_abi_stamp_t;
 
 /**
  * Create a non-owning 2-D f64 tensor on CPU wrapping an existing buffer.
@@ -302,6 +340,27 @@ const char *rgpot_last_error(void);
  * revision is refused instead of read as the wrong struct.
  */
 eindir_abi_stamp_t rgpot_eindir_abi_stamp(void);
+
+/**
+ * Read the computed and served counters of `pot` into `out`.
+ *
+ * # Safety
+ *
+ * `pot` must be NULL or a live pointer from [`rgpot_potential_new_eindir`],
+ * and `out` NULL or writable. NULL for either yields
+ * `RGPOT_INVALID_PARAMETER`.
+ */
+enum rgpot_status_t rgpot_potential_eval_counts(const struct rgpot_potential_t *pot,
+                                                struct rgpot_eval_counts_t *out);
+
+/**
+ * Zero the counters of `pot`.
+ *
+ * # Safety
+ *
+ * `pot` must be NULL or a live pointer from [`rgpot_potential_new_eindir`].
+ */
+void rgpot_potential_reset_eval_counts(const struct rgpot_potential_t *pot);
 
 /**
  * Create a potential that is ALSO a valid eindir objective.
@@ -487,14 +546,6 @@ void rgpot_rpc_client_free(rgpot_rpc_client_t *client);
 const char *rgpot_version(void);
 
 /**
- * Source revision the loaded library was built from (a git short hash), or
- * an empty string when the build had no revision to record.
- *
- * The pointer refers to static storage: never free it.
- */
-const char *rgpot_source_revision(void);
-
-/**
  * Major version of the loaded library.
  */
 uint32_t rgpot_version_major(void);
@@ -508,6 +559,26 @@ uint32_t rgpot_version_minor(void);
  * Patch version of the loaded library.
  */
 uint32_t rgpot_version_patch(void);
+
+/**
+ * Compatibility identity of the loaded library.
+ *
+ * Compare it with the `RGPOT_ABI_*` macros of the header the caller
+ * compiled with, or pass the caller's own stamp to
+ * [`rgpot_abi_compatible`].
+ */
+struct rgpot_abi_stamp_t rgpot_abi_stamp(void);
+
+/**
+ * Return nonzero when the loaded library can serve a caller built with
+ * `stamp`: equal major, equal layout revision, and a library minor at least
+ * the caller's. A null `stamp` is not compatible.
+ *
+ * # Safety
+ *
+ * `stamp` must be null or point to a readable `rgpot_abi_stamp_t`.
+ */
+int32_t rgpot_abi_compatible(const struct rgpot_abi_stamp_t *stamp);
 
 #if defined(RGPOT_HAS_RPC)
 /**

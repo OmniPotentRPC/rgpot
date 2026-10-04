@@ -11,6 +11,8 @@
 
 #include "rgpot/ForceStructs.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
+#include <atomic>
+#include <cstdint>
 #include <optional>
 #include <rocksdb/db.h>
 #include <rocksdb/version.h>
@@ -50,6 +52,20 @@ struct KeyHash {
 };
 
 /**
+ * @brief Evaluations a cache handle has answered, split by origin.
+ *
+ * `computed` counts results the kernel produced while the cache was
+ * attached; `served` counts results returned from the cache without
+ * running the kernel. A caller that charges evaluations picks which field
+ * it bills, so two runs under different cache states stay comparable.
+ * @ingroup rgpot_cache
+ */
+struct EvalCounts {
+  uint64_t computed = 0; //!< Results produced by the kernel.
+  uint64_t served = 0;   //!< Results answered from the cache.
+};
+
+/**
  * @class PotentialCache
  * @brief Caches potential energy and force calculations using RocksDB.
  * @ingroup rgpot_cache
@@ -58,6 +74,8 @@ class PotentialCache {
 private:
   rocksdb::DB *db_ = nullptr; //!< Pointer to the RocksDB instance.
   bool own_db_ = false;       //!< Ownership flag for the DB pointer.
+  std::atomic<uint64_t> computed_{0}; //!< Kernel-produced result count.
+  std::atomic<uint64_t> served_{0};   //!< Cache-served result count.
 
 public:
   /**
@@ -110,6 +128,25 @@ public:
   static bool has_result_metadata(const std::string &value, size_t n_atoms);
   void deserialize_hit(const std::string &value, ForceOut &out, size_t n_atoms);
   void add_serialized(const KeyHash &key, const ForceOut &out, size_t n_atoms);
+
+  /// Records @p n results produced by the kernel.
+  void note_computed(uint64_t n = 1) {
+    computed_.fetch_add(n, std::memory_order_relaxed);
+  }
+  /// Records @p n results answered from the cache.
+  void note_served(uint64_t n = 1) {
+    served_.fetch_add(n, std::memory_order_relaxed);
+  }
+  /// Snapshot of the computed and served counters of this handle.
+  [[nodiscard]] EvalCounts counts() const {
+    return {computed_.load(std::memory_order_relaxed),
+            served_.load(std::memory_order_relaxed)};
+  }
+  /// Zeroes both counters; stored entries are untouched.
+  void reset_counts() {
+    computed_.store(0, std::memory_order_relaxed);
+    served_.store(0, std::memory_order_relaxed);
+  }
 
   /**
    * @brief Searches the cache for a specific key.

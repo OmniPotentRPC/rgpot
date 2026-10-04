@@ -27,6 +27,10 @@
 #include "rgpot/types/AtomMatrix.hpp"
 #include "rgpot/XcKernel/XcKernel.hpp"
 
+#ifdef RGPOT_HAS_CACHE
+#include "rgpot/PotentialCache.hpp"
+#endif
+
 #ifdef RGPOT_HAS_DFTD3
 #include "rgpot/D3Pot/D3Pot.hpp"
 #endif
@@ -323,6 +327,11 @@ NB_MODULE(_core, m) {
       "D3Pot, D4Pot, and XcKernel when the wheel/meson flags are on.";
   m.attr("__version__") = RGPOT_PY_VERSION;
   m.attr("has_metatomic_dlopen") = true;
+#ifdef RGPOT_HAS_CACHE
+  m.attr("has_cache") = true;
+#else
+  m.attr("has_cache") = false;
+#endif
 #ifdef RGPOT_HAS_EXPR
   m.attr("has_expr") = true;
 #else
@@ -355,8 +364,32 @@ NB_MODULE(_core, m) {
         "engine_path may be empty to use RGPOT_METATOMIC_ENGINE / "
         "package-bundled multi-ABI engine under rgpot/lib/torch-X.Y/.");
 
+#ifdef RGPOT_HAS_CACHE
+  nb::class_<rgpot::cache::PotentialCache>(m, "PotentialCache")
+      .def(nb::init<const std::string &, bool>(), nb::arg("path"),
+           nb::arg("create_if_missing") = true)
+      .def(
+          "counts",
+          [](const rgpot::cache::PotentialCache &self) {
+            const auto c = self.counts();
+            return nb::make_tuple(c.computed, c.served);
+          },
+          "Return (computed, served): results the kernel produced against "
+          "results answered from this cache since construction or the last "
+          "reset_counts().")
+      .def("reset_counts", &rgpot::cache::PotentialCache::reset_counts);
+#endif
+
   nb::class_<rgpot::LJPot>(m, "LJPot")
       .def(nb::init<>())
+#ifdef RGPOT_HAS_CACHE
+      .def(
+          "set_cache",
+          [](rgpot::LJPot &self, rgpot::cache::PotentialCache *cache) {
+            self.set_cache(cache);
+          },
+          nb::arg("cache").none(), nb::keep_alive<1, 2>())
+#endif
       .def(
           "__call__",
           [](rgpot::LJPot &self, const NpF64 &positions,
