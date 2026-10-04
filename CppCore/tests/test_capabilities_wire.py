@@ -4,7 +4,10 @@
 A message written before buildVersion/buildRevision (@18, @19) existed must
 decode under the current schema with both fields empty, and a message that
 carries them must decode under the older definition with every earlier field
-intact. Usage: test_capabilities_wire.py <root> [<capnp>]
+intact. The older definition is the whole pre-build-identity Potentials.capnp
+(CppCore/tests/fixtures), and every member it declares must still exist in the
+current file with the same ordinal and type (append-only evolution).
+Usage: test_capabilities_wire.py <root> [<capnp>]
 """
 
 from __future__ import annotations
@@ -44,13 +47,50 @@ def fields(decoded: str) -> dict[str, str]:
     return dict(p.split(" = ", 1) for p in parts)
 
 
+OPENERS = re.compile(r"^\s*(struct|enum|union|interface|group)\b\s*(\w*)")
+MEMBER = re.compile(r"^\s*(\w+)\s+@(\d+)\s*(.*?)\s*(?:#.*)?$")
+
+
+def members(text: str) -> set[tuple[str, str, int, str]]:
+    """(scope, name, ordinal, type text) for every ordinal-bearing member."""
+    scope: list[str] = []
+    depth_at_open: list[int] = []
+    depth = 0
+    found: set[tuple[str, str, int, str]] = set()
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0]
+        opener = OPENERS.match(line)
+        if opener and "{" in line:
+            scope.append(opener.group(2) or opener.group(1))
+            depth_at_open.append(depth)
+        elif (m := MEMBER.match(line)) and scope:
+            kind = re.sub(r"\s+", " ", m.group(3).rstrip(";").strip())
+            kind = re.sub(r"\s*=.*$", "", kind)
+            found.add(("/".join(scope), m.group(1), int(m.group(2)), kind))
+        depth += line.count("{") - line.count("}")
+        while depth_at_open and depth <= depth_at_open[-1]:
+            depth_at_open.pop()
+            scope.pop()
+    return found
+
+
 def main() -> int:
     root = Path(sys.argv[1])
     capnp = sys.argv[2] if len(sys.argv) > 2 else shutil.which("capnp")
     if capnp is None:
         raise AssertionError("capnp is required")
     new = root / "CppCore" / "rgpot" / "rpc" / "Potentials.capnp"
-    old = root / "CppCore" / "tests" / "data" / "capabilities_before_build_identity.capnp"
+    old = root / "CppCore" / "tests" / "fixtures" / "Potentials.pre-build-identity.capnp"
+
+    # Append-only: nothing the older file declares may move, rename or retype.
+    old_members = members(old.read_text(encoding="utf-8"))
+    new_members = members(new.read_text(encoding="utf-8"))
+    assert len(old_members) > 500, len(old_members)
+    missing = sorted(old_members - new_members)
+    if missing:
+        raise AssertionError(f"members changed or removed since the older schema: {missing[:5]}")
+    added = {m for m in new_members - old_members if m[0] == "Capabilities"}
+    assert {(m[1], m[2]) for m in added} >= {("buildVersion", 18), ("buildRevision", 19)}, added
 
     schema_text = new.read_text(encoding="utf-8")
     for ordinal, name in ((18, "buildVersion"), (19, "buildRevision")):
