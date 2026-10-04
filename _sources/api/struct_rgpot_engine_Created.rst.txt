@@ -1,0 +1,45 @@
+.. index:: pair: struct; rgpot::engine::Created
+.. _doxid-structrgpot_1_1engine_1_1_created:
+
+struct rgpot::engine::Created
+=============================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Created {
+		// fields
+	
+		std::unique_ptr<:ref:`Backend<doxid-structrgpot_1_1engine_1_1_backend>`> :target:`backend<doxid-structrgpot_1_1engine_1_1_created_1a1d60a63579145c643d2f0411e0c76952>`;
+		std::string :ref:`error<doxid-structrgpot_1_1engine_1_1_created_1aed43622eac245890a03dd937c1414a01>`;
+	};
+.. _details-structrgpot_1_1engine_1_1_created:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Fields
+------
+
+.. index:: pair: variable; error
+.. _doxid-structrgpot_1_1engine_1_1_created_1aed43622eac245890a03dd937c1414a01:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::string error
+
+Reason when ``backend`` is null.
+

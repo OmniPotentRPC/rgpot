@@ -7,6 +7,8 @@ struct RgpotEnginePot
 .. toctree::
 	:hidden:
 
+	struct_RgpotEnginePot_CallGuard.rst
+
 Overview
 ~~~~~~~~
 
@@ -18,11 +20,20 @@ Overview
 
 	
 	struct RgpotEnginePot {
+		// structs
+	
+		struct :ref:`CallGuard<doxid-struct_rgpot_engine_pot_1_1_call_guard>`;
+
 		// fields
 	
-		std::unique_ptr<:ref:`rgpot::UmaPot<doxid-classrgpot_1_1_uma_pot>`> :target:`impl<doxid-struct_rgpot_engine_pot_1a793c61a1eab3877157a8b43168f0c95d>`;
-		std::mutex :ref:`error_mutex<doxid-struct_rgpot_engine_pot_1ac9051d058b888a9edb11dc9e52fdc95a>`;
+		std::unique_ptr<:ref:`rgpot::engine::Backend<doxid-structrgpot_1_1engine_1_1_backend>`> :target:`backend<doxid-struct_rgpot_engine_pot_1a75a69c8ca0000094deb0c7305fbc8674>`;
+		:ref:`rgpot::PotCaps<doxid-structrgpot_1_1_pot_caps>` :target:`caps<doxid-struct_rgpot_engine_pot_1a71802a314ab73eea6f0d47d10ce61d36>`;
+		std::mutex :target:`error_mutex<doxid-struct_rgpot_engine_pot_1ac9051d058b888a9edb11dc9e52fdc95a>`;
 		std::string :target:`error<doxid-struct_rgpot_engine_pot_1af8460b28ca8be690651f468a12960423>`;
+		std::mutex :ref:`call_mutex<doxid-struct_rgpot_engine_pot_1aba68d106dc2806be6657021f892b548b>`;
+		std::mutex :target:`digest_mutex<doxid-struct_rgpot_engine_pot_1afee733b531f8fab93a145f42d6702d44>`;
+		bool :target:`digest_done<doxid-struct_rgpot_engine_pot_1aa40d1295e17c72a922c3ca0168e434be>` = false;
+		std::string :target:`digest<doxid-struct_rgpot_engine_pot_1a0c03173f6a5656a73fecd0d137f092da>`;
 
 		// methods
 	
@@ -39,13 +50,13 @@ Detailed Documentation
 Fields
 ------
 
-.. index:: pair: variable; error_mutex
-.. _doxid-struct_rgpot_engine_pot_1ac9051d058b888a9edb11dc9e52fdc95a:
+.. index:: pair: variable; call_mutex
+.. _doxid-struct_rgpot_engine_pot_1aba68d106dc2806be6657021f892b548b:
 
 .. ref-code-block:: cpp
 	:class: doxyrest-title-code-block
 
-	std::mutex error_mutex
+	std::mutex call_mutex
 
-Message of the last failed call. Evaluations may run concurrently on a shared instance, so the message has its own lock.
+Serializes calls on this handle when the backend is not shared.
 

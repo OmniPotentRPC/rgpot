@@ -11,6 +11,7 @@ namespace rgpot
 	namespace_rgpot_aoti_execstack.rst
 	namespace_rgpot_cache.rst
 	namespace_rgpot_details.rst
+	namespace_rgpot_engine.rst
 	namespace_rgpot_fortranpots.rst
 	namespace_rgpot_nlist.rst
 	namespace_rgpot_plugin.rst
@@ -92,6 +93,7 @@ Capability handshake applied while loading a profile backend; the expectation, c
 	namespace :ref:`rgpot::aoti_execstack<doxid-namespacergpot_1_1aoti__execstack>`;
 	namespace :ref:`rgpot::cache<doxid-namespacergpot_1_1cache>`;
 	namespace :ref:`rgpot::details<doxid-namespacergpot_1_1details>`;
+	namespace :ref:`rgpot::engine<doxid-namespacergpot_1_1engine>`;
 	namespace :ref:`rgpot::fortranpots<doxid-namespacergpot_1_1fortranpots>`;
 	namespace :ref:`rgpot::nlist<doxid-namespacergpot_1_1nlist>`;
 	namespace :ref:`rgpot::plugin<doxid-namespacergpot_1_1plugin>`;

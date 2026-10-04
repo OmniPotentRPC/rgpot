@@ -1,0 +1,95 @@
+.. index:: pair: namespace; rgpot::engine
+.. _doxid-namespacergpot_1_1engine:
+
+namespace rgpot::engine
+=======================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_engine_Backend.rst
+	struct_rgpot_engine_Builtin.rst
+	struct_rgpot_engine_Created.rst
+	class_rgpot_engine_Sha256.rst
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace engine {
+
+	// structs
+
+	struct :ref:`Backend<doxid-structrgpot_1_1engine_1_1_backend>`;
+	struct :ref:`Builtin<doxid-structrgpot_1_1engine_1_1_builtin>`;
+	struct :ref:`Created<doxid-structrgpot_1_1engine_1_1_created>`;
+
+	// classes
+
+	class :ref:`Sha256<doxid-classrgpot_1_1engine_1_1_sha256>`;
+
+	// global functions
+
+	:ref:`Builtin<doxid-structrgpot_1_1engine_1_1_builtin>` :target:`read_builtin<doxid-_builtin_params_8hpp_1a979480922e8a6e48808d00471a76526d>`(const void* config, std::size_t config_len);
+	const char* :ref:`backend_name<doxid-_classical_engine_8cc_1adcd540f80d995853385ec59e0f6bbba9>`();
+	:ref:`Created<doxid-structrgpot_1_1engine_1_1_created>` :ref:`create<doxid-_classical_engine_8cc_1abb82966cfcfc0b1e69d54b0671e14aca>`(const void* config, std::size_t config_len);
+	void :ref:`set_torch_threads<doxid-_torch_runtime_8hpp_1a1223ca221483b550cd0d386a0eeaaa4b>`(int intra_op, int inter_op);
+	void :ref:`set_torch_deterministic<doxid-_torch_runtime_8hpp_1ad38f54846cf425493f6c49c5600f64bd>`(bool on);
+
+	} // namespace engine
+.. _details-namespacergpot_1_1engine:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Global Functions
+----------------
+
+.. index:: pair: function; backend_name
+.. _doxid-_classical_engine_8cc_1adcd540f80d995853385ec59e0f6bbba9:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const char* backend_name()
+
+Defined by the engine library: short name of the backend ("uma", "lj").
+
+.. index:: pair: function; create
+.. _doxid-_classical_engine_8cc_1abb82966cfcfc0b1e69d54b0671e14aca:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`Created<doxid-structrgpot_1_1engine_1_1_created>` create(const void* config, std::size_t config_len)
+
+Defined by the engine library: builds the backend from the Cap'n Proto flat-array message ``config`` (``config_len`` bytes).
+
+.. index:: pair: function; set_torch_threads
+.. _doxid-_torch_runtime_8hpp_1a1223ca221483b550cd0d386a0eeaaa4b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void set_torch_threads(int intra_op, int inter_op)
+
+A value below 1 leaves that setting alone. The inter-op count can be set once per process before parallel work starts; asking for the value already in force is accepted.
+
+.. index:: pair: function; set_torch_deterministic
+.. _doxid-_torch_runtime_8hpp_1ad38f54846cf425493f6c49c5600f64bd:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void set_torch_deterministic(bool on)
+
+Deterministic algorithms: an operation without a deterministic implementation throws instead of running.
+

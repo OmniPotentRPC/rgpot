@@ -154,6 +154,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_aoti_execstack.html">namespace rgpot::aoti_execstack</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_details.html">namespace rgpot::details</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_engine.html">namespace rgpot::engine</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_fortranpots.html">namespace rgpot::fortranpots</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_nlist.html">namespace rgpot::nlist</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_plugin.html">namespace rgpot::plugin</a></li>
@@ -354,7 +355,8 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../../api/struct_RgpotEngineNeighborOptions.html">struct RgpotEngineNeighborOptions</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="../../api/struct_RgpotEnginePot.html">struct RgpotEnginePot</a><ul class="simple">
+<li class="toctree-l3"><a class="reference internal" href="../../api/struct_RgpotEnginePot.html">struct RgpotEnginePot</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../api/struct_RgpotEnginePot_CallGuard.html">struct RgpotEnginePot::CallGuard</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../api/struct_RgpotMtaConfig.html">struct RgpotMtaConfig</a><ul class="simple">
@@ -457,6 +459,7 @@ data-aria-dark="Switch to auto color mode">
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
 <li><a class="reference internal" href="#environment-setup">Environment Setup</a></li>
 <li><a class="reference internal" href="#common-tasks">Common Tasks</a></li>
+<li><a class="reference internal" href="#one-job-and-one-ccache-key-per-pixi-environment">One job and one ccache key per pixi environment</a></li>
 <li><a class="reference internal" href="#regenerating-the-c-header">Regenerating the C Header</a></li>
 <li><a class="reference internal" href="#building-documentation">Building Documentation</a></li>
 <li><a class="reference internal" href="#git-hooks-prek">Git hooks (<code class="docutils literal notranslate"><span class="pre">prek</span></code>)</a></li>
@@ -639,7 +642,7 @@ Install it first, then:</p>
 <td><p>On <code class="docutils literal notranslate"><span class="pre">main</span></code>: <code class="docutils literal notranslate"><span class="pre">cog</span> <span class="pre">bump</span> <span class="pre">--auto</span></code> (cog 7+) then <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">push</span> <span class="pre">--follow-tags</span></code>; see <a class="reference external" href="release.rst">release.org</a></p></td>
 </tr>
 <tr class="row-even"><td><p>Potentials CI</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">ci-orchestrator.yml</span></code> jobs <code class="docutils literal notranslate"><span class="pre">potentials_metatomic</span></code> / <code class="docutils literal notranslate"><span class="pre">potentials_tight_binding</span></code> / <code class="docutils literal notranslate"><span class="pre">potentials_plugins</span></code> (<code class="docutils literal notranslate"><span class="pre">potctl</span> <span class="pre">ci</span> <span class="pre">plugin-test</span></code>)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ci-orchestrator.yml</span></code> jobs <code class="docutils literal notranslate"><span class="pre">potentials_metatomic</span></code> / <code class="docutils literal notranslate"><span class="pre">potentials_uma_engine</span></code> (<code class="docutils literal notranslate"><span class="pre">potctl</span> <span class="pre">ci</span> <span class="pre">metatomic-test</span> <span class="pre">--rpc</span></code>) / <code class="docutils literal notranslate"><span class="pre">potentials_tight_binding</span></code> / <code class="docutils literal notranslate"><span class="pre">potentials_plugins</span></code> (<code class="docutils literal notranslate"><span class="pre">potctl</span> <span class="pre">ci</span> <span class="pre">plugin-test</span></code>); see <a class="reference internal" href="#one-job-and-one-ccache-key-per-pixi-environment">One job and one ccache key per pixi environment</a></p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">docbld</span></code></p></td>
 <td><p>Build full documentation (org export + Doxygen + Sphinx)</p></td>
@@ -662,6 +665,20 @@ Install it first, then:</p>
 </tbody>
 </table>
 </div>
+</section>
+<section id="one-job-and-one-ccache-key-per-pixi-environment">
+<h2>One job and one ccache key per pixi environment<a class="headerlink" href="#one-job-and-one-ccache-key-per-pixi-environment" title="Link to this heading">¶</a></h2>
+<p>Each pixi environment that builds the project runs in its own CI job with its
+own compiler-cache key (<code class="docutils literal notranslate"><span class="pre">ccache-pot-mta-</span></code>, <code class="docutils literal notranslate"><span class="pre">ccache-pot-engine-</span></code>, …).
+Two environments in one job share the step environment and the cache directory.
+<code class="docutils literal notranslate"><span class="pre">potctl</span> <span class="pre">ci</span> <span class="pre">ensure-torch-metatomic</span></code> exports the torch and cmake paths of its
+environment through <code class="docutils literal notranslate"><span class="pre">GITHUB_ENV</span></code>, so a later step in another environment
+inherits them, and a cache entry written against one environment’s headers can
+satisfy a build against another’s.
+A <code class="docutils literal notranslate"><span class="pre">metatomicbld</span></code> build followed by an <code class="docutils literal notranslate"><span class="pre">umaenginebld</span></code> build in one job linked
+objects compiled against Catch2 3.13 headers with the Catch2 3.16 library of the
+second environment, and failed at the link of <code class="docutils literal notranslate"><span class="pre">plugin_test</span></code>.
+Add a new environment leg as a new job, not as another step of an existing one.</p>
 </section>
 <section id="regenerating-the-c-header">
 <h2>Regenerating the C Header<a class="headerlink" href="#regenerating-the-c-header" title="Link to this heading">¶</a></h2>

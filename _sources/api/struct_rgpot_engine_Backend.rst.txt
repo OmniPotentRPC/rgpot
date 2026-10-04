@@ -1,0 +1,68 @@
+.. index:: pair: struct; rgpot::engine::Backend
+.. _doxid-structrgpot_1_1engine_1_1_backend:
+
+struct rgpot::engine::Backend
+=============================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+What a backend hands the adapter at create. :ref:`More...<details-structrgpot_1_1engine_1_1_backend>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <EngineTable.hpp>
+	
+	struct Backend {
+		// fields
+	
+		std::unique_ptr<:ref:`PotentialBase<doxid-classrgpot_1_1_potential_base>`> :target:`pot<doxid-structrgpot_1_1engine_1_1_backend_1a811fdad59f6e74e2c711e2343d766af1>`;
+		std::string :ref:`model_path<doxid-structrgpot_1_1engine_1_1_backend_1a45bd4d47ac6d1539bdc4fcb09e32ba7b>`;
+		std::function<void(int charge, int spin)> :ref:`set_charge_spin<doxid-structrgpot_1_1engine_1_1_backend_1a0b32b5307bc0a365f14465a9866a405c>`;
+		std::function<void(int intra_op, int inter_op)> :ref:`set_num_threads<doxid-structrgpot_1_1engine_1_1_backend_1a08b2685a9ac8388350e9bfd120520db7>`;
+	};
+.. _details-structrgpot_1_1engine_1_1_backend:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+What a backend hands the adapter at create.
+
+Fields
+------
+
+.. index:: pair: variable; model_path
+.. _doxid-structrgpot_1_1engine_1_1_backend_1a45bd4d47ac6d1539bdc4fcb09e32ba7b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::string model_path
+
+File whose SHA-256 identifies the loaded model; empty when the backend has no model file.
+
+.. index:: pair: variable; set_charge_spin
+.. _doxid-structrgpot_1_1engine_1_1_backend_1a0b32b5307bc0a365f14465a9866a405c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::function<void(int charge, int spin)> set_charge_spin
+
+Empty when the backend has no charge and spin to change.
+
+.. index:: pair: variable; set_num_threads
+.. _doxid-structrgpot_1_1engine_1_1_backend_1a08b2685a9ac8388350e9bfd120520db7:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::function<void(int intra_op, int inter_op)> set_num_threads
+
+Empty when the backend has no tensor runtime.
+

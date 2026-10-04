@@ -103,6 +103,7 @@ Overview
 		namespace :ref:`rgpot::aoti_execstack<doxid-namespacergpot_1_1aoti__execstack>`;
 		namespace :ref:`rgpot::cache<doxid-namespacergpot_1_1cache>`;
 		namespace :ref:`rgpot::details<doxid-namespacergpot_1_1details>`;
+		namespace :ref:`rgpot::engine<doxid-namespacergpot_1_1engine>`;
 		namespace :ref:`rgpot::fortranpots<doxid-namespacergpot_1_1fortranpots>`;
 		namespace :ref:`rgpot::nlist<doxid-namespacergpot_1_1nlist>`;
 		namespace :ref:`rgpot::plugin<doxid-namespacergpot_1_1plugin>`;
@@ -274,7 +275,7 @@ Overview
 	const void* :target:`msg<doxid-engine__c__abi_8h_1a15f28edffbf203b90900ab8ce99c7682>`;
 	const void size_t :target:`msg_len<doxid-engine__c__abi_8h_1a8042961cc4723aeee7048ae5c67c63c5>`;
 	:ref:`RgpotEngineCaps<doxid-struct_rgpot_engine_caps>`* :target:`out<doxid-engine__c__abi_8h_1ac9daeb6a05f6ce3c8faf6ffe33e1aafc>`;
-	char* :target:`buf<doxid-engine__c__abi_8h_1a1fe855c208bc17a51a4d34fefdb2d5b1>`;
+	char* :target:`buf<doxid-engine__c__abi_8h_1ac14417684334d01b4e1e807a19d92816>`;
 	char size_t :target:`len<doxid-engine__c__abi_8h_1a015e45425930f05215408965e9d7c50b>`;
 	int :target:`intra_op<doxid-engine__c__abi_8h_1a2dd5a5b5d4d3a5444d3dc1fa40da21c8>`;
 	int int :target:`inter_op<doxid-engine__c__abi_8h_1a5b7a1aa7c9787071d095ccf64ba5d204>`;
@@ -354,6 +355,21 @@ Overview
 	size_t :target:`cpmdc_feature_count<doxid-cpmd__c__abi__stub_8c_1a4cf7e2f669806606c1d1293533b3d38e>`(void);
 	const :ref:`CPMDCFeatureEntry<doxid-struct_c_p_m_d_c_feature_entry>`* :target:`cpmdc_feature_table<doxid-cpmd__c__abi__stub_8c_1ae40eb0e96927dc5f3feacc20c3869315>`(void);
 	const :ref:`CPMDCFeatureEntry<doxid-struct_c_p_m_d_c_feature_entry>`* :target:`cpmdc_feature_find<doxid-cpmd__c__abi__stub_8c_1a4d2414cdfa87d867cf1ab1e708dfb4ca>`(const char* feature_id);
+	int :target:`rgpot_engine_abi_version<doxid-_engine_table_8cc_1a98cc4c5e859160b4cc816ee692cef651>`(void);
+	int :target:`rgpot_engine_available<doxid-_engine_table_8cc_1a6e1e42d077dbc8cbbd1b8299b7f6c04a>`(void);
+	const char* :target:`rgpot_engine_name<doxid-_engine_table_8cc_1a0328d50b230f71b291a08c47721f30dd>`(void);
+	const char* :target:`rgpot_engine_version<doxid-_engine_table_8cc_1a95dfa61f5217b4f4e2071b4009a32adf>`(void);
+	:ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* :target:`rgpot_engine_create<doxid-_engine_table_8cc_1a475b0c50ffdd45bc97810a737d20e1dd>`(const void* config, size_t config_len, char* errbuf, size_t errlen);
+	void :target:`rgpot_engine_destroy<doxid-_engine_table_8cc_1a98d830e2ecbffd05fddda2d46bae0776>`(:ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* pot);
+	int :target:`rgpot_engine_force<doxid-_engine_table_8cc_1a22ef069426966b9045a657948cbbae8b>`(:ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* pot, long nAtoms, const double* positions, const int* atomicNrs, double* forces, double* energy, double* variance, const double* box, :ref:`rgpot_engine_coord_transform<doxid-engine__c__abi_8h_1ab4f545283d91eb3fa1a596ecffe36568>` transform, void* transform_user);
+	int :target:`rgpot_engine_force_batch<doxid-_engine_table_8cc_1ab7d7f0d191c887918cb019c17b5036fb>`(:ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* pot, long nSystems, long nAtoms, const double* positions, const int* atomicNrs, double* forces, double* energies, double* variances, const double* boxes, :ref:`rgpot_engine_coord_transform<doxid-engine__c__abi_8h_1ab4f545283d91eb3fa1a596ecffe36568>` transform, void* transform_user);
+	:ref:`RgpotEngineAbiStamp<doxid-struct_rgpot_engine_abi_stamp>` :target:`rgpot_engine_abi_stamp<doxid-_engine_table_8cc_1aff52a4385e67ac0153f7d669faa2edb6>`(void);
+	int :target:`rgpot_engine_abi_compatible<doxid-_engine_table_8cc_1a69f4abb9ae0aec48c3fdb7180dabab39>`(const :ref:`RgpotEngineAbiStamp<doxid-struct_rgpot_engine_abi_stamp>`* stamp);
+	int :target:`rgpot_engine_caps<doxid-_engine_table_8cc_1a2f78a91dcf141ceb5e6c31c572702c63>`(const :ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* pot, :ref:`RgpotEngineCaps<doxid-struct_rgpot_engine_caps>`* out);
+	size_t :target:`rgpot_engine_last_error<doxid-_engine_table_8cc_1a520b88ac6a9f969f5e47e29280000d0f>`(const :ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* pot, char* buf, size_t len);
+	size_t :target:`rgpot_engine_model_digest<doxid-_engine_table_8cc_1a9a35542086bfdbf6b8ac07fab512bf21>`(const :ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* pot, char* buf, size_t len);
+	int :target:`rgpot_engine_set_num_threads<doxid-_engine_table_8cc_1af5631d9a8027b6cecd4b334154e6ff64>`(:ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* pot, int intra_op, int inter_op);
+	int :target:`rgpot_engine_set_charge_spin<doxid-_engine_table_8cc_1a40b313b6efbbee020d50ea14b6839a48>`(:ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* pot, int charge, int spin);
 	:ref:`__attribute__<doxid-engine__c__abi_8h_1a163bd5348c498a95bcc47164f10b4ae6>`((visibility("default"))) const;
 	program :ref:`test_cuh2<doxid-test__cuh2_8f90_1a28fab5a3a8a56075a6254660b9e5903c>`();
 	subroutine :ref:`cu_slab_with_h2<doxid-test__cuh2_8f90_1a1502d8d4c3943fc4764b7c301f6d6914>`(integer, intent(in) cells, real(wp), intent(in) a, real(wp), intent(in) gap, real(wp), intent(in) height, real(wp), intent(in) bond, real(wp), dimension(:, :), intent(out), allocatable pos, integer(ip), dimension(:), intent(out), allocatable z, real(wp), dimension(3, 3), intent(out) box);
@@ -407,19 +423,6 @@ Overview
 	const char* :ref:`pot_get_last_error<doxid-pot__bridge_8h_1a669a1a1ce89314ebbfec4c91438bd782>`(:ref:`PotClient<doxid-struct_pot_client>`* client);
 	int :ref:`runServer<doxid-server_8cpp_1a46b7d52e9feae7b71cb54690fd608c99>`(int argc, char* argv[]);
 	int :target:`main<doxid-server_8cpp_1a3c04138a5bfe5d72780bb7e82a18e627>`(int argc, char** argv);
-	static void :target:`set_err<doxid-_uma_engine_abi_8cc_1a3cbaa0d62282e2faf4f8f8267c065187>`(char* errbuf, size_t errlen, const char* msg);
-	int :target:`rgpot_engine_abi_version<doxid-_uma_engine_abi_8cc_1a98cc4c5e859160b4cc816ee692cef651>`(void);
-	int :target:`rgpot_engine_available<doxid-_uma_engine_abi_8cc_1a6e1e42d077dbc8cbbd1b8299b7f6c04a>`(void);
-	:ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* :target:`rgpot_engine_create<doxid-_uma_engine_abi_8cc_1a475b0c50ffdd45bc97810a737d20e1dd>`(const void* config, size_t config_len, char* errbuf, size_t errlen);
-	void :target:`rgpot_engine_destroy<doxid-_uma_engine_abi_8cc_1a98d830e2ecbffd05fddda2d46bae0776>`(:ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* pot);
-	int :target:`rgpot_engine_force<doxid-_uma_engine_abi_8cc_1a22ef069426966b9045a657948cbbae8b>`(:ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* pot, long nAtoms, const double* positions, const int* atomicNrs, double* forces, double* energy, double* variance, const double* box, :ref:`rgpot_engine_coord_transform<doxid-engine__c__abi_8h_1ab4f545283d91eb3fa1a596ecffe36568>` transform, void* transform_user);
-	int :target:`rgpot_engine_force_batch<doxid-_uma_engine_abi_8cc_1ab7d7f0d191c887918cb019c17b5036fb>`(:ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* pot, long nSystems, long nAtoms, const double* positions, const int* atomicNrs, double* forces, double* energies, double* variances, const double* boxes, :ref:`rgpot_engine_coord_transform<doxid-engine__c__abi_8h_1ab4f545283d91eb3fa1a596ecffe36568>` transform, void* transform_user);
-	:ref:`RgpotEngineAbiStamp<doxid-struct_rgpot_engine_abi_stamp>` :target:`rgpot_engine_abi_stamp<doxid-_uma_engine_abi_8cc_1aff52a4385e67ac0153f7d669faa2edb6>`(void);
-	int :target:`rgpot_engine_abi_compatible<doxid-_uma_engine_abi_8cc_1a69f4abb9ae0aec48c3fdb7180dabab39>`(const :ref:`RgpotEngineAbiStamp<doxid-struct_rgpot_engine_abi_stamp>`* stamp);
-	int :target:`rgpot_engine_caps<doxid-_uma_engine_abi_8cc_1a2f78a91dcf141ceb5e6c31c572702c63>`(const :ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* pot, :ref:`RgpotEngineCaps<doxid-struct_rgpot_engine_caps>`* out);
-	size_t :target:`rgpot_engine_last_error<doxid-_uma_engine_abi_8cc_1a520b88ac6a9f969f5e47e29280000d0f>`(const :ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* pot, char* buf, size_t len);
-	int :target:`rgpot_engine_set_num_threads<doxid-_uma_engine_abi_8cc_1af5631d9a8027b6cecd4b334154e6ff64>`(:ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* pot, int intra_op, int inter_op);
-	int :target:`rgpot_engine_set_charge_spin<doxid-_uma_engine_abi_8cc_1a40b313b6efbbee020d50ea14b6839a48>`(:ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`* pot, int charge, int spin);
 	:ref:`__attribute__<doxid-xtb__c__abi_8h_1aed6dec1342c11226fbf6d9f0d23fc168>`((visibility("default")));
 	static rgpot::GFNMethod :target:`method_from_c<doxid-_x_t_b_engine_abi_8cc_1ae58142d5e4c55f2b690a5ca116db1df5>`(int m);
 	int :target:`rgpot_xtb_abi_version<doxid-_x_t_b_engine_abi_8cc_1a9c767ca43d4c49b5f2f65165b8990469>`(void);
@@ -450,9 +453,9 @@ Overview
 	#define :target:`RGPOT_ENGINE_ABI_MINOR<doxid-engine__c__abi_8h_1a8855e6295162e6fa1493ecb58de231c6>`
 	#define :ref:`RGPOT_ENGINE_ABI_VERSION<doxid-engine__c__abi_8h_1a11ea1c5296399dbe5d95e7634e11c958>`
 	#define :target:`RGPOT_ENGINE_API<doxid-engine__c__abi_8h_1a6b6448a4c3433c0cba3ab85983f1bf9d>`
-	#define :target:`RGPOT_ENGINE_BUILD<doxid-_uma_engine_abi_8cc_1a4fc2daae5ded127c486fdba63ae78d01>`
 	#define :ref:`RGPOT_ENGINE_GPR_GATE_MAGIC<doxid-engine__c__abi_8h_1a3b2742f085d2fcaeedae33b380a6dc73>`
 	#define :target:`RGPOT_ENGINE_GPR_GATE_VERSION<doxid-engine__c__abi_8h_1a7e55bdef6b0891b7e205c94dfa764dcf>`
+	#define :target:`RGPOT_ENGINE_PROJECT_VERSION<doxid-_engine_table_8cc_1a08c473aa9bec40c30c594441a4131f8a>`
 	#define :target:`RGPOT_FORTRAN_POT_CLASS<doxid-_fortran_pots_8hpp_1a158452799fad368ca2afc583b2406ca7>`(ClassName, PotTypeValue)
 	#define :target:`RGPOT_FORTRAN_POT_IMPL<doxid-_fortran_pots_8cc_1ae0c8728579e5d29f83c2c9a20b525944>`(ClassName, Entry, Label)
 	#define :target:`RGPOT_FORTRAN_SPECIES_POT_IMPL<doxid-_fortran_pots_8cc_1aeeec8475d493e2cb38640dc234e04688>`(ClassName, Entry, Label)
@@ -627,9 +630,15 @@ Nonzero when the loaded engine serves a host built against ``stamp`` : equal maj
 
 Message of the last failed call on this instance (create errors go to its errbuf). Copies at most ``len - 1`` bytes and NUL-terminates; returns the full message length, 0 when there is none. Reading does not clear it; the next successful call does.
 
-Backend thread settings: intra-op and inter-op worker threads of the engine's tensor runtime. A value below 1 leaves that setting alone. Process wide in effect, and the inter-op count can be set once before the first evaluation; a refused setting returns a positive code with the reason in last_error. Returns 0 on success.
+Short name of the backend the library serves, for example "uma".
 
-Change the total charge and spin multiplicity the next evaluations assume. The package was exported for one charge and spin; a mismatch is reported by the next force call. Returns 0 on success.
+Version of the engine build: "<name>/<rgpot version>". The pointer refers to static storage.
+
+SHA-256 of the model file or archive the instance loaded, as 64 lowercase hexadecimal digits. Copies at most ``len - 1`` bytes and NUL-terminates; returns the digest length (64), or 0 when the backend has no model file or the file cannot be read. The digest is computed on first request and kept.
+
+Backend thread settings: intra-op and inter-op worker threads of the engine's tensor runtime. A value below 1 leaves that setting alone. Process wide in effect, and the inter-op count can be set once before the first evaluation; a refused setting returns a positive code with the reason in last_error. Returns 0 on success and 3 for a backend without a tensor runtime. UmaParams and MetatomicParams carry the same two counts and apply them at create.
+
+Change the total charge and spin multiplicity the next evaluations assume. The package was exported for one charge and spin; a mismatch is reported by the next force call. Returns 0 on success and 3 for a backend without a charge or spin.
 
 Writes up to capacity declarations into opts and returns the total count (call with capacity 0 to size). Declarations may change after on_model_update; hosts re-query on that boundary.
 
@@ -1039,9 +1048,15 @@ Nonzero when the loaded engine serves a host built against ``stamp`` : equal maj
 
 Message of the last failed call on this instance (create errors go to its errbuf). Copies at most ``len - 1`` bytes and NUL-terminates; returns the full message length, 0 when there is none. Reading does not clear it; the next successful call does.
 
-Backend thread settings: intra-op and inter-op worker threads of the engine's tensor runtime. A value below 1 leaves that setting alone. Process wide in effect, and the inter-op count can be set once before the first evaluation; a refused setting returns a positive code with the reason in last_error. Returns 0 on success.
+Short name of the backend the library serves, for example "uma".
 
-Change the total charge and spin multiplicity the next evaluations assume. The package was exported for one charge and spin; a mismatch is reported by the next force call. Returns 0 on success.
+Version of the engine build: "<name>/<rgpot version>". The pointer refers to static storage.
+
+SHA-256 of the model file or archive the instance loaded, as 64 lowercase hexadecimal digits. Copies at most ``len - 1`` bytes and NUL-terminates; returns the digest length (64), or 0 when the backend has no model file or the file cannot be read. The digest is computed on first request and kept.
+
+Backend thread settings: intra-op and inter-op worker threads of the engine's tensor runtime. A value below 1 leaves that setting alone. Process wide in effect, and the inter-op count can be set once before the first evaluation; a refused setting returns a positive code with the reason in last_error. Returns 0 on success and 3 for a backend without a tensor runtime. UmaParams and MetatomicParams carry the same two counts and apply them at create.
+
+Change the total charge and spin multiplicity the next evaluations assume. The package was exported for one charge and spin; a mismatch is reported by the next force call. Returns 0 on success and 3 for a backend without a charge or spin.
 
 Writes up to capacity declarations into opts and returns the total count (call with capacity 0 to size). Declarations may change after on_model_update; hosts re-query on that boundary.
 

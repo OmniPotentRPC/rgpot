@@ -1,0 +1,55 @@
+.. index:: pair: struct; rgpot::engine::Builtin
+.. _doxid-structrgpot_1_1engine_1_1_builtin:
+
+struct rgpot::engine::Builtin
+=============================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Builtin {
+		// fields
+	
+		std::string :ref:`name<doxid-structrgpot_1_1engine_1_1_builtin_1a6cfb820d4f6722fd4775d51f4ae69a49>`;
+		std::string :ref:`library<doxid-structrgpot_1_1engine_1_1_builtin_1ada211a5058506b1429e3a4f305a64c69>`;
+	};
+.. _details-structrgpot_1_1engine_1_1_builtin:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Fields
+------
+
+.. index:: pair: variable; name
+.. _doxid-structrgpot_1_1engine_1_1_builtin_1a6cfb820d4f6722fd4775d51f4ae69a49:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::string name
+
+Lowercased.
+
+.. index:: pair: variable; library
+.. _doxid-structrgpot_1_1engine_1_1_builtin_1ada211a5058506b1429e3a4f305a64c69:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::string library
+
+Optional explicit engine library path.
+

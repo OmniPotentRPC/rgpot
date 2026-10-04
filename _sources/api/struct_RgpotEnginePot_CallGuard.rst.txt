@@ -1,0 +1,26 @@
+.. index:: pair: struct; RgpotEnginePot::CallGuard
+.. _doxid-struct_rgpot_engine_pot_1_1_call_guard:
+
+struct RgpotEnginePot::CallGuard
+================================
+
+.. toctree::
+	:hidden:
+
+Holds the locks the backend's reentrancy asks for.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct CallGuard {
+		// fields
+	
+		std::unique_lock<std::mutex> :target:`handle<doxid-struct_rgpot_engine_pot_1_1_call_guard_1ad7535709c3972fe9773e3b8a9691a1cc>`;
+		std::unique_lock<std::mutex> :target:`process<doxid-struct_rgpot_engine_pot_1_1_call_guard_1ade73eda699cd817248a7b2bcb55246b5>`;
+
+		// construction
+	
+		:target:`CallGuard<doxid-struct_rgpot_engine_pot_1_1_call_guard_1a1c022e9b49355cf982467628e7bfb840>`(:ref:`RgpotEnginePot<doxid-struct_rgpot_engine_pot>`& p);
+	};

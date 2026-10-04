@@ -1,0 +1,62 @@
+.. index:: pair: class; rgpot::engine::Sha256
+.. _doxid-classrgpot_1_1engine_1_1_sha256:
+
+class rgpot::engine::Sha256
+===========================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class Sha256 {
+	public:
+		// construction
+	
+		:target:`Sha256<doxid-classrgpot_1_1engine_1_1_sha256_1ad821ddd2df63e146dee643ce6607a84f>`();
+
+		// methods
+	
+		void :target:`reset<doxid-classrgpot_1_1engine_1_1_sha256_1aea05ba3e0d40ec190af8bc1ed4492838>`();
+		void :target:`update<doxid-classrgpot_1_1engine_1_1_sha256_1a0e191fd8842ad9478868815dad216557>`(const void* data, std::size_t size);
+		std::string :ref:`hex_digest<doxid-classrgpot_1_1engine_1_1_sha256_1a2b1a6f8ae7ea651ee6ac67056c6479e8>`();
+		static std::string :ref:`of_file<doxid-classrgpot_1_1engine_1_1_sha256_1ae23f947f99b14f82d54549eb39e92f19>`(const std::string& path);
+	};
+.. _details-classrgpot_1_1engine_1_1_sha256:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Methods
+-------
+
+.. index:: pair: function; hex_digest
+.. _doxid-classrgpot_1_1engine_1_1_sha256_1a2b1a6f8ae7ea651ee6ac67056c6479e8:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::string hex_digest()
+
+Lowercase hexadecimal digest; the object is reset afterwards.
+
+.. index:: pair: function; of_file
+.. _doxid-classrgpot_1_1engine_1_1_sha256_1ae23f947f99b14f82d54549eb39e92f19:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static std::string of_file(const std::string& path)
+
+Digest of a whole file; empty when it cannot be read.
+

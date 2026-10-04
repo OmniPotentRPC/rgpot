@@ -2,7 +2,7 @@
 <html lang="en" data-accent-color="teal" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>struct RgpotEnginePot - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="struct RgpotMtaConfig" href="struct_RgpotMtaConfig.html" /><link rel="prev" title="struct RgpotEngineNeighborOptions" href="struct_RgpotEngineNeighborOptions.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>struct RgpotEnginePot - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="struct RgpotEnginePot::CallGuard" href="struct_RgpotEnginePot_CallGuard.html" /><link rel="prev" title="struct RgpotEngineNeighborOptions" href="struct_RgpotEngineNeighborOptions.html" />
       <link rel="canonical" href="https://rgpot.rgoswami.me/api/struct_RgpotEnginePot.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
@@ -154,6 +154,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_aoti_execstack.html">namespace rgpot::aoti_execstack</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_details.html">namespace rgpot::details</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_engine.html">namespace rgpot::engine</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_fortranpots.html">namespace rgpot::fortranpots</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_nlist.html">namespace rgpot::nlist</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_plugin.html">namespace rgpot::plugin</a></li>
@@ -354,7 +355,8 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="struct_RgpotEngineNeighborOptions.html">struct RgpotEngineNeighborOptions</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3 current"><a class="current reference internal" href="#">struct RgpotEnginePot</a><ul class="simple">
+<li class="toctree-l3 current"><a class="current reference internal" href="#">struct RgpotEnginePot</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="struct_RgpotEnginePot_CallGuard.html">struct RgpotEnginePot::CallGuard</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="struct_RgpotMtaConfig.html">struct RgpotMtaConfig</a><ul class="simple">
@@ -564,27 +566,36 @@ data-aria-dark="Switch to auto color mode">
 <h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
 <div class="doxyrest-overview-code-block highlight">
 <pre><span data-line="1"><span class="k">struct</span> <span class="n">RgpotEnginePot</span> <span class="p">{</span></span>
-<span data-line="2">    <span class="c1">// fields</span></span>
+<span data-line="2">    <span class="c1">// structs</span></span>
 <span data-line="3"> </span>
-<span data-line="4">    <span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><a class="doxyrest-code-link reference internal" href="class_rgpot_UmaPot.html#doxid-classrgpot-1-1-uma-pot"><span class="std std-ref">rgpot::UmaPot</span></a><span class="o">&gt;</span> <span class="doxyrest-code-target target" id="doxid-struct_rgpot_engine_pot_1a793c61a1eab3877157a8b43168f0c95d"></span><span class="n">impl</span><span class="p">;</span></span>
-<span data-line="5">    <span class="n">std</span><span class="o">::</span><span class="n">mutex</span> <a class="doxyrest-code-link reference internal" href="#doxid-struct-rgpot-engine-pot-1ac9051d058b888a9edb11dc9e52fdc95a"><span class="std std-ref">error_mutex</span></a><span class="p">;</span></span>
-<span data-line="6">    <span class="n">std</span><span class="o">::</span><span class="n">string</span> <span class="doxyrest-code-target target" id="doxid-struct_rgpot_engine_pot_1af8460b28ca8be690651f468a12960423"></span><span class="n">error</span><span class="p">;</span></span>
+<span data-line="4">    <span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_RgpotEnginePot_CallGuard.html#doxid-struct-rgpot-engine-pot-1-1-call-guard"><span class="std std-ref">CallGuard</span></a><span class="p">;</span></span>
+<span data-line="5"> </span>
+<span data-line="6">    <span class="c1">// fields</span></span>
 <span data-line="7"> </span>
-<span data-line="8">    <span class="c1">// methods</span></span>
-<span data-line="9"> </span>
-<span data-line="10">    <span class="kt">void</span> <span class="doxyrest-code-target target" id="doxid-struct_rgpot_engine_pot_1a7f8082681896e8775816d0a76b47daab"></span><span class="n">set_error</span><span class="p">(</span><span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span> <span class="n">message</span><span class="p">);</span></span>
-<span data-line="11">    <span class="kt">void</span> <span class="doxyrest-code-target target" id="doxid-struct_rgpot_engine_pot_1aafae98a2f125ad14ef0e99f29b310517"></span><span class="n">clear_error</span><span class="p">();</span></span>
-<span data-line="12"><span class="p">};</span></span>
+<span data-line="8">    <span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><a class="doxyrest-code-link reference internal" href="struct_rgpot_engine_Backend.html#doxid-structrgpot-1-1engine-1-1-backend"><span class="std std-ref">rgpot::engine::Backend</span></a><span class="o">&gt;</span> <span class="doxyrest-code-target target" id="doxid-struct_rgpot_engine_pot_1a75a69c8ca0000094deb0c7305fbc8674"></span><span class="n">backend</span><span class="p">;</span></span>
+<span data-line="9">    <a class="doxyrest-code-link reference internal" href="struct_rgpot_PotCaps.html#doxid-structrgpot-1-1-pot-caps"><span class="std std-ref">rgpot::PotCaps</span></a> <span class="doxyrest-code-target target" id="doxid-struct_rgpot_engine_pot_1a71802a314ab73eea6f0d47d10ce61d36"></span><span class="n">caps</span><span class="p">;</span></span>
+<span data-line="10">    <span class="n">std</span><span class="o">::</span><span class="n">mutex</span> <span class="doxyrest-code-target target" id="doxid-struct_rgpot_engine_pot_1ac9051d058b888a9edb11dc9e52fdc95a"></span><span class="n">error_mutex</span><span class="p">;</span></span>
+<span data-line="11">    <span class="n">std</span><span class="o">::</span><span class="n">string</span> <span class="doxyrest-code-target target" id="doxid-struct_rgpot_engine_pot_1af8460b28ca8be690651f468a12960423"></span><span class="n">error</span><span class="p">;</span></span>
+<span data-line="12">    <span class="n">std</span><span class="o">::</span><span class="n">mutex</span> <a class="doxyrest-code-link reference internal" href="#doxid-struct-rgpot-engine-pot-1aba68d106dc2806be6657021f892b548b"><span class="std std-ref">call_mutex</span></a><span class="p">;</span></span>
+<span data-line="13">    <span class="n">std</span><span class="o">::</span><span class="n">mutex</span> <span class="doxyrest-code-target target" id="doxid-struct_rgpot_engine_pot_1afee733b531f8fab93a145f42d6702d44"></span><span class="n">digest_mutex</span><span class="p">;</span></span>
+<span data-line="14">    <span class="kt">bool</span> <span class="doxyrest-code-target target" id="doxid-struct_rgpot_engine_pot_1aa40d1295e17c72a922c3ca0168e434be"></span><span class="n">digest_done</span> <span class="o">=</span> <span class="nb">false</span><span class="p">;</span></span>
+<span data-line="15">    <span class="n">std</span><span class="o">::</span><span class="n">string</span> <span class="doxyrest-code-target target" id="doxid-struct_rgpot_engine_pot_1a0c03173f6a5656a73fecd0d137f092da"></span><span class="n">digest</span><span class="p">;</span></span>
+<span data-line="16"> </span>
+<span data-line="17">    <span class="c1">// methods</span></span>
+<span data-line="18"> </span>
+<span data-line="19">    <span class="kt">void</span> <span class="doxyrest-code-target target" id="doxid-struct_rgpot_engine_pot_1a7f8082681896e8775816d0a76b47daab"></span><span class="n">set_error</span><span class="p">(</span><span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span> <span class="n">message</span><span class="p">);</span></span>
+<span data-line="20">    <span class="kt">void</span> <span class="doxyrest-code-target target" id="doxid-struct_rgpot_engine_pot_1aafae98a2f125ad14ef0e99f29b310517"></span><span class="n">clear_error</span><span class="p">();</span></span>
+<span data-line="21"><span class="p">};</span></span>
 </pre></div>
 </section>
 <section id="detailed-documentation">
 <span id="details-struct-rgpot-engine-pot"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
 <section id="fields">
 <h3>Fields<a class="headerlink" href="#fields" title="Link to this heading">¶</a></h3>
-<div class="doxyrest-title-code-block highlight" id="doxid-struct-rgpot-engine-pot-1ac9051d058b888a9edb11dc9e52fdc95a">
-<span id="index-1"></span><pre><span data-line="1"><span class="n">std</span><span class="o">::</span><span class="n">mutex</span> <span class="n">error_mutex</span></span>
+<div class="doxyrest-title-code-block highlight" id="doxid-struct-rgpot-engine-pot-1aba68d106dc2806be6657021f892b548b">
+<span id="index-1"></span><pre><span data-line="1"><span class="n">std</span><span class="o">::</span><span class="n">mutex</span> <span class="n">call_mutex</span></span>
 </pre></div>
-<p>Message of the last failed call. Evaluations may run concurrently on a shared instance, so the message has its own lock.</p>
+<p>Serializes calls on this handle when the backend is not shared.</p>
 </section>
 </section>
 </section>
@@ -601,10 +612,10 @@ data-aria-dark="Switch to auto color mode">
         <span>Previous</span><div class="title">struct RgpotEngineNeighborOptions</div></div>
     </a>
   </div><div class="navigation-next">
-    <a href="struct_RgpotMtaConfig.html">
+    <a href="struct_RgpotEnginePot_CallGuard.html">
       <div class="page-info">
         <span>Next</span>
-        <div class="title">struct RgpotMtaConfig</div>
+        <div class="title">struct RgpotEnginePot::CallGuard</div>
       </div>
       <i class="i-lucide chevron-right"></i>
     </a>
