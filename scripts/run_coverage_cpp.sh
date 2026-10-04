@@ -31,16 +31,27 @@ meson setup "$BUILD" \
 meson compile -C "$BUILD"
 meson test -C "$BUILD" --print-errorlogs
 
+# lcov 2 renamed the branch-coverage rc option and rejects the old name. It
+# also checks gcov data against source lines and reports template instances in
+# toolchain headers as inconsistent; that one class is tolerated, every other
+# lcov error still fails the script.
+LCOV_MAJOR=$(lcov --version | sed -n 's/.*LCOV version \([0-9][0-9]*\)\..*/\1/p')
+LCOV_ARGS=()
+if [[ "${LCOV_MAJOR:-0}" -ge 2 ]]; then
+  LCOV_ARGS+=(--rc branch_coverage=1 --ignore-errors inconsistent)
+else
+  LCOV_ARGS+=(--rc lcov_branch_coverage=1)
+fi
+
 echo "==> lcov capture"
-lcov --directory "$BUILD" --capture --output-file "$OUT" \
-  --rc lcov_branch_coverage=1
+lcov --directory "$BUILD" --capture --output-file "$OUT" "${LCOV_ARGS[@]}"
 
 # Keep library sources: CppCore/rgpot (C++ and Fortran kernels)
 TMP=$(mktemp)
 trap 'rm -f "$TMP"' EXIT
 lcov --extract "$OUT" \
   '*/CppCore/rgpot/*' '*/include/*' \
-  --output-file "$TMP"
+  --output-file "$TMP" "${LCOV_ARGS[@]}"
 mv "$TMP" "$OUT"
 
 test -s "$OUT"
