@@ -1,0 +1,86 @@
+#+TITLE: xTB, tblite and Metatomic backends
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* xTB, tblite and Metatomic backends
+rgpot exposes two GFN-xTB force loading strategies over the same single-point
+semantics (Å / eV host units; Bohr / Hartree inside libxtb).
+
+| Backend  | Class              | Build                                                                 | Runtime                                     |
+|----------+--------------------+-----------------------------------------------------------------------+---------------------------------------------|
+| *Linked* | =rgpot::XTBPot=    | =-Dwith_xtb=true= (pkg-config =xtb=)                                  | NEEDED =libxtb= in =libxtbpot= / host       |
+| *dlopen* | =rgpot::XTBDlopen= | *always* (no libxtb at link time); engine needs =with_xtb= to /build/ | =dlopen= =libxtb_engine.so=; set path below |
+
+=GFNMethod= / =XTBConfig= / =XTBDlopenConfig= live in =XTBConfig.hpp= (no
+=#include <xtb.h>=), so hosts can compile against the dlopen frontend without
+pkg-config xtb. Linked =XTBPot.hpp= still includes libxtb and requires
+=-Dwith_xtb=true=.
+
+Default method: *GFN2-xTB* (=GFNMethod::GFN2xTB= / =RGPOT_XTB_METHOD_GFN2=).
+To test and time the backends, see
+[[file:../howto/xtb-backends-tests.org][Run the tests and compare timings]].
+
+* ISO_C_BINDING C API (libxtb)
+libxtb is implemented in Fortran but the public surface used here is the
+*ISO_C_BINDING* C API (=xtb.h=): interoperable types, =bind(c)= procedures,
+and opaque C pointers. Hosts (linked =XTBPot= and =libxtb_engine.so=) only call
+that C contract.
+
+Contract tests care about:
+
+| Call pattern   | C API                                                                         |
+|----------------+-------------------------------------------------------------------------------|
+| Create         | =xtb_newEnvironment= / =newCalculator= / =newResults= (+ =xtb_releaseOutput=) |
+| First geometry | =xtb_newMolecule= + =xtb_loadGFN*xTB=                                         |
+| Updates        | =xtb_updateMolecule= then =xtb_singlepoint=                                   |
+| Destroy        | =xtb_del*= in reverse order                                                   |
+| Units          | host Å/eV; API Bohr/Hartree (converted in pot)                                |
+
+Catch tags: =[xtb][capi]= --- multi-handle lifecycle, warm update, method switch,
+linked↔dlopen parity through the same ISO C semantics.
+
+* Engine selection (=XTBDlopen=)
+Search order for =libxtb_engine.so=:
+
+1. =XTBDlopenConfig::engine_path=
+2. env =RGPOT_XTB_ENGINE=
+3. env =XTB_ENGINE=
+4. bare =libxtb_engine.so= (loader path)
+5. =EON_POTENTIALS_PATH= / =RGPOT_ENGINE_PATH= directory lists
+
+Construct throws if no engine is found (same pattern as =MetatomicDlopen=).
+
+* eOn / thin host ship
+eOn and other thin hosts build with =-Dwith_xtb=false= and still link
+=XTBDlopen=. Provide =libxtb_engine.so= (built once in an xtb-enabled tree or
+install) via =RGPOT_XTB_ENGINE= at runtime. No NEEDED =libxtb= on the host.
+
+eOn's in-tree =client/potentials/XTBPot= with =-Dwith_xtb=true= remains the
+*linked ship* comparison target (same xtb C API + GFN2).
+
+* Periodic boundary conditions
+=XTBPot= and =TBLitePot= derive periodicity from the box. An axis is periodic
+when its lattice vector (a row of the row-major box) has nonzero length; an
+all-zero box is an isolated system. A change of periodic axes between calls
+rebuilds the native molecule and calculator.
+
+- *xtb GFN2-xTB* always runs isolated, because libxtb has no multipoles
+  under periodic boundary conditions. The box only sets the stress volume.
+- *xtb GFN1-xTB and GFN-FF* run periodic. The atoms are centered in the
+  cell and wrapped, which libxtb needs to converge for a molecule near a cell
+  face. libxtb returns a zero virial for periodic cells, so =has_stress= stays
+  clear.
+- *tblite* runs periodic for every method. The GFN1 stress matches the
+  strain derivative of the energy; the GFN2 periodic stress does not.
+
+A vacuum box with a nonzero lattice (for example 100 A) is periodic for
+tblite and for xtb GFN1 and GFN-FF; pass an all-zero box for an isolated
+system.
+
+* Metatomic batching
+=MetatomicPot::forceBatch= evaluates all systems of a batch in one model
+forward and splits the summed-energy gradient into per-system forces
+(=caps().batched=). Orientation averaging (=random_rotation=,
+=n_symmetry_rotations=) and model uncertainty output evaluate one system at
+a time. A model that stacks per-atom outputs may reject systems with unequal
+atom counts in one batch.

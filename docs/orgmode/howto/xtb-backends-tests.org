@@ -1,0 +1,42 @@
+#+TITLE: Test and time the xTB backends
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Run the tests
+#+begin_src bash
+pixi run -e xtbbld meson setup bbdir-xtb -Dwith_xtb=true -Dwith_tests=true \
+  -Dwith_rpc=false -Dwith_cache=false --buildtype=debug
+pixi run -e xtbbld meson compile -C bbdir-xtb
+pixi run -e xtbbld meson test -C bbdir-xtb --suite xtb --print-errorlogs
+#+end_src
+
+Catch tags: =[xtb]=, =[xtb][linked]=, =[xtb][dlopen]=. Dlopen tests set
+=RGPOT_XTB_ENGINE= to the built engine full path.
+
+Thin-host compile check (no libxtb):
+
+#+begin_src bash
+meson setup bbdir-thin -Dwith_xtb=false -Dwith_tests=true \
+  -Dwith_rpc=false -Dwith_cache=false
+meson compile -C bbdir-thin
+# XTBDlopen is linked; constructing it without RGPOT_XTB_ENGINE throws.
+#+end_src
+
+* Compare timings
+rgpot microbench (linked + dlopen, warm SCF state):
+
+#+begin_src bash
+export RGPOT_XTB_ENGINE=$PWD/bbdir-xtb/CppCore/libxtb_engine.so
+./bbdir-xtb/CppCore/xtb_backend_bench --warmup 5 --iters 50 \
+  --json /tmp/rgpot_xtb_internal.json
+#+end_src
+
+Full head-to-head vs eOn ship (subprocess JSON merge):
+
+#+begin_src bash
+bash scripts/run_xtb_backend_bench.sh --out-dir /path/to/scratch
+#+end_src
+
+See =scripts/compare_xtb_backends.py= for flags. Protocol: shared water GFN2
+geometry, warmup force calls, then timed samples; report mean wall ms and
+whether dlopen is as-fast-or-faster than eOn linked ship (5% band).
