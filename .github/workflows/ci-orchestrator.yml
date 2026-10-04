@@ -554,6 +554,44 @@ jobs:
         shell: pixi run -e tbbld bash -e {0}
         run: potctl ci xtb-tblite-test
 
+  potentials_plugins:
+    name: plugins (meson / ${{ matrix.os }})
+    needs: [prepare, ci-tools]
+    if: github.event_name != 'schedule'
+    runs-on: ${{ matrix.os }}
+    env:
+      CCACHE_COMPILERCHECK: content
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - name: Ensure potctl
+        uses: ./.github/actions/ensure-potctl
+        with:
+          artifact-prefix: ci-tools-${{ github.sha }}
+      - uses: prefix-dev/setup-pixi@v0.9.4
+        with:
+          activate-environment: devbld
+          cache: true
+          environments: devbld
+          pixi-version: v0.70.2
+      - name: Restore Compiler Cache
+        uses: actions/cache@v5
+        with:
+          key: ccache-pot-plugins-${{ runner.os }}-${{ github.sha }}
+          path: .ccache
+          restore-keys: ccache-pot-plugins-${{ runner.os }}-
+      - name: Meson build & test (plugin host)
+        shell: pixi run -e devbld bash -e {0}
+        run: potctl ci plugin-test
+
   # --- Single branch-protection target (require this job name in settings) ---
   ci_gate:
     name: CI gate
@@ -572,6 +610,7 @@ jobs:
       - client_bridge_stress
       - potentials_metatomic
       - potentials_tight_binding
+      - potentials_plugins
     runs-on: ubuntu-latest
     steps:
       - name: Aggregate job results
@@ -598,7 +637,8 @@ jobs:
             "rust_tests:${{ needs.rust_tests.result }}" \
             "client_bridge_stress:${{ needs.client_bridge_stress.result }}" \
             "potentials_metatomic:${{ needs.potentials_metatomic.result }}" \
-            "potentials_tight_binding:${{ needs.potentials_tight_binding.result }}"
+            "potentials_tight_binding:${{ needs.potentials_tight_binding.result }}" \
+            "potentials_plugins:${{ needs.potentials_plugins.result }}"
           do
             name="${pair%%:*}"
             res="${pair##*:}"

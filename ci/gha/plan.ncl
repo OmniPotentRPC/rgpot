@@ -105,6 +105,12 @@ let P = S.pins in
       role = "xtb+tblite meson (ubuntu)",
     },
     {
+      id = "potentials_plugins",
+      needs = ["ci-tools"],
+      role = "plugin host meson: PluginTest, PluginContractTest, ExternalPluginTest",
+      matrix = { os = [P.ubuntu, P.macos] },
+    },
+    {
       id = "ci_gate",
       needs = [
         "prepare",
@@ -120,6 +126,7 @@ let P = S.pins in
         "client_bridge_stress",
         "potentials_metatomic",
         "potentials_tight_binding",
+        "potentials_plugins",
       ],
       role = "single required check aggregator (branch protection target)",
     },
