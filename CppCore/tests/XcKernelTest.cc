@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "npy_io.hpp"
+#include "rgpot/XcKernel/xckernel/evaluator.hpp"
 #include "scale_bound.hpp"
 #include "rgpot/Potential.hpp"
 #include "rgpot/XcKernel/XcKernel.hpp"
@@ -683,4 +684,19 @@ TEST_CASE("Closed-shell spin-adapted fxc pins, singlet and triplet",
     auto m = load_npy(root + "/" + fam + "_st_m_fxc_ref.npy");
     REQUIRE(max_abs(p.data, m.data) > 1e-2);
   }
+}
+
+TEST_CASE("The generated kernels run the BLAS stage B wrapper",
+          "[xckernel][blas]") {
+  // xck_gga_r_o1 ends in seven stage_b calls. If the include order or the
+  // generated header changes so that the kernels resolve to the scalar
+  // loop, the wrapper's counter stays at zero.
+  auto geom = load_npz(std::string(kData) +
+                       "/randgrid_s1_nbf4_ng200_operands.npz");
+  auto scal = load_npz(std::string(kData) + "/gga_r_o1_scal.npz");
+  geom.insert(scal.begin(), scal.end());
+  auto &calls = xckernel::blas_stage_b_calls();
+  const unsigned long before = calls.load();
+  run_kernel("xck_gga_r_o1", geom, 4, 200, true);
+  REQUIRE(calls.load() - before == 7);
 }

@@ -17,6 +17,7 @@
 #include "../../../../third_party/libxckernel/include/xckernel/evaluator.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <vector>
 
@@ -34,6 +35,14 @@ void dsyr2k_(const char *uplo, const char *trans, const int *n, const int *k,
 }
 
 namespace xckernel {
+
+/// Calls of the BLAS stage_b in this process. The kernels increment it, so a
+/// test that reads it proves the kernels resolve to this wrapper and not to
+/// the generated scalar loop.
+inline std::atomic<unsigned long> &blas_stage_b_calls() {
+  static std::atomic<unsigned long> n{0};
+  return n;
+}
 
 // Stage A forms the per-point coefficient, a sum of monomials of a few
 // factors. It accumulates in long double and rounds once, which keeps the
@@ -61,6 +70,7 @@ XCK_HD inline void stage_a<double, double>(
 template <>
 inline void stage_b<double>(int64_t npts, int64_t nbf, const double *U,
                             const double *c, const double *V, double *out) {
+  blas_stage_b_calls().fetch_add(1, std::memory_order_relaxed);
   if (npts <= 0 || nbf <= 0) {
     return;
   }
