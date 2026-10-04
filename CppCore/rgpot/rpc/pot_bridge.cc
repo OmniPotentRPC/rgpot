@@ -11,6 +11,7 @@
 
 #include "pot_bridge.h"
 #include "Potentials.capnp.h"
+#include "rgpot/abi/Handshake.hpp"
 #include <algorithm>
 #include <capnp/ez-rpc.h>
 #include <capnp/message.h>
