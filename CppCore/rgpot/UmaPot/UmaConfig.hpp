@@ -18,7 +18,8 @@ struct UmaConfig {
   std::string device = "cpu";
   int charge = 0;
   int spin = 1;
-  /// Cutoff in angstrom. Overridden by the sidecar JSON next to .pt2 when present.
+  /// Cutoff in angstrom. The package's embedded `cutoff` metadata wins
+  /// when present; no sidecar file is read.
   double cutoff = 6.0;
   int max_neighbors = 300;
 };

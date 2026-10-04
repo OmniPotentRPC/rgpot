@@ -12,6 +12,14 @@ Stages:
   3. torch.export
   4. AOTInductor .pt2
   5. Load .pt2 in-process and compare again
+
+torch.export tries dynamic-nonstrict (single system only), static-nonstrict
+and static-strict, then falls back to make_fx(tracing_mode="real") followed by
+a nonstrict export of the traced module. With torch 2.13 and fairchem-core
+2.23 every UMA export takes the fallback. The fallback package is static: it
+accepts only the traced atom count and edge count, so pass --molecular-box
+for anything that moves (every intramolecular pair is then an edge). The path
+taken is embedded as export_path.
 """
 
 from __future__ import annotations
@@ -49,6 +57,23 @@ HCN.info.update({"charge": 0, "spin": 1})
 
 def z_set_of(atoms: Atoms) -> list[int]:
     return sorted({int(z) for z in atoms.get_atomic_numbers()})
+
+
+def counts_of(atoms: Atoms) -> dict[int, int]:
+    """Atom count per atomic number, sorted by atomic number."""
+    counts: dict[int, int] = {}
+    for z in atoms.get_atomic_numbers():
+        counts[int(z)] = counts.get(int(z), 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _dist_version(name: str) -> str:
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version(name)
+    except PackageNotFoundError:
+        return "unknown"
 
 
 def default_label(atoms_path: str | None) -> str:
@@ -639,7 +664,9 @@ def runtime_metadata(
     charge: int = 0,
     spin: int = 1,
     z_set: list[int] | None = None,
+    counts: dict[int, int] | None = None,
     label: str = "hcn",
+    model: str = "",
     molecular_box: float = 0.0,
     batch_max: int = 0,
 ):
@@ -665,7 +692,17 @@ def runtime_metadata(
         "charge": int(charge),
         "spin": int(spin),
         "z_set": [int(z) for z in (z_set or [])],
+        # Per system, not per band: rgpot's UmaPot checks every input
+        # against natoms and counts, so a package for C2H2 refuses C2H4
+        # although both have z_set [1, 6].
+        "natoms": int(sum((counts or {}).values())),
+        "counts": json.dumps(
+            {str(z): int(n) for z, n in sorted((counts or {}).items())}
+        ),
         "label": str(label),
+        "model": str(model),
+        "torch_version": str(torch.__version__),
+        "fairchem_version": _dist_version("fairchem-core"),
         "batch_max": int(batch_max),
         "edge_convention": "fairchem_neighbor_center",
         "inputs": input_names,
@@ -792,13 +829,14 @@ def main() -> int:
         atoms.set_pbc(True)
     task_name = str(args.task)
     z_set = z_set_of(atoms)
+    counts = counts_of(atoms)
     if args.out is None:
         args.out = f"bench_data/uma/{args.model}-{task_name}-{label}.pt2"
     out = Path(args.out)
 
     print(
         f"label={label} task={task_name} charge={charge} spin={spin} "
-        f"z_set={z_set} natoms={len(atoms)}",
+        f"z_set={z_set} counts={counts} natoms={len(atoms)}",
         flush=True,
     )
     print("ASE FAIRChemCalculator reference", args.model, flush=True)
@@ -849,7 +887,9 @@ def main() -> int:
             charge=charge,
             spin=spin,
             z_set=z_set,
+            counts=counts,
             label=label,
+            model=args.model,
             molecular_box=float(args.molecular_box or 0.0),
             batch_max=max(0, int(args.batch_max)),
         )
@@ -904,7 +944,9 @@ def main() -> int:
         charge=charge,
         spin=spin,
         z_set=z_set,
+        counts=counts,
         label=label,
+        model=args.model,
         molecular_box=float(args.molecular_box or 0.0),
         batch_max=max(0, int(args.batch_max)),
     )
@@ -941,16 +983,24 @@ def main() -> int:
         attempts.insert(0, ("dynamic-nonstrict",
                             dict(dynamic_shapes=dyn, strict=False)))
     last = None
+    export_path = ""
     for attempt, kwargs in attempts:
         try:
             print("try export", attempt, flush=True)
             exported = torch.export.export(wrap, example, **kwargs)
             print("export ok", attempt, type(exported), flush=True)
+            export_path = attempt
             break
         except Exception as exc:
             last = exc
             print(f"{attempt} failed: {type(exc).__name__}: {exc}", flush=True)
     if exported is None:
+        # torch 2.13 with fairchem-core 2.23 lands here for every UMA
+        # export: the nonstrict exports fail on a fake tensor in the
+        # exported program's constants and the strict export on
+        # torch.autograd.grad. Real-mode make_fx records the concrete
+        # example shapes, so the package is static: atom count and edge
+        # count are those of the traced geometry.
         print("try make_fx(tracing_mode=real)", flush=True)
         from torch.fx.experimental.proxy_tensor import make_fx
 
@@ -959,12 +1009,23 @@ def main() -> int:
         try:
             exported = torch.export.export(gm, example, strict=False)
             print("export ok make_fx-nonstrict", type(exported), flush=True)
+            export_path = "make_fx-nonstrict"
         except Exception as exc:
             last = exc
             print(f"make_fx export failed: {type(exc).__name__}: {exc}", flush=True)
             raise last from exc
 
     print("export ok", type(exported), flush=True)
+    meta["export_path"] = export_path
+    if export_path == "make_fx-nonstrict" and not (
+        args.molecular_box and args.molecular_box > 0.0
+    ):
+        print(
+            f"WARNING: static package without --molecular-box: every call "
+            f"must produce exactly {example[4].shape[1]} vesin edges, so a "
+            f"geometry that moves a pair across the {cutoff} A cutoff aborts",
+            flush=True,
+        )
     with torch.enable_grad():
         e_x, f_x = exported.module()(*example)
     if not compare_batched("exported", e_x.detach().cpu(), f_x.detach().cpu().numpy(), e_ref, f_ref, len(atoms)):

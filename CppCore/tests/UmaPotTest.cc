@@ -1,5 +1,6 @@
 // MIT License — UmaPot loads an AOTI .pt2, not a metatomic checkpoint.
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -7,11 +8,15 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <map>
+#include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
 
+#include "rgpot/UmaPot/UmaContract.hpp"
 #include "rgpot/UmaPot/UmaPot.hpp"
 #include "rgpot/UmaPot/aoti_execstack.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
@@ -231,6 +236,171 @@ TEST_CASE("UmaPot paramsKey changes with charge and path", "[UmaPot]") {
   REQUIRE(b.paramsKey() != k0);
 }
 
+// Metadata as scripts/export_uma_aoti.py embeds it for Baker HCN.
+static std::unordered_map<std::string, std::string> hcn_metadata() {
+  return {{"task_name", "omol"},       {"charge", "0"},
+          {"spin", "1"},               {"z_set", "[1, 6, 7]"},
+          {"natoms", "3"},             {"counts", R"({"1": 1, "6": 1, "7": 1})"},
+          {"cutoff", "10.0"},          {"label", "hcn"},
+          {"model", "uma-s-1p1"},      {"torch_version", "2.13.0+cpu"}};
+}
+
+static rgpot::UmaConfig hcn_config() {
+  rgpot::UmaConfig cfg;
+  cfg.task_name = "omol";
+  cfg.charge = 0;
+  cfg.spin = 1;
+  return cfg;
+}
+
+template <class F>
+static std::string contract_field(F &&f) {
+  try {
+    f();
+  } catch (const rgpot::UmaContractError &e) {
+    return e.field();
+  }
+  return "";
+}
+
+TEST_CASE("UmaContract parses the exporter metadata", "[UmaPot][contract]") {
+  const auto c = rgpot::UmaContract::fromMetadata(hcn_metadata());
+  REQUIRE(c.task_name == std::optional<std::string>("omol"));
+  REQUIRE(c.charge == std::optional<int64_t>(0));
+  REQUIRE(c.spin == std::optional<int64_t>(1));
+  REQUIRE(c.natoms == std::optional<int64_t>(3));
+  REQUIRE(*c.z_set == std::vector<int64_t>{1, 6, 7});
+  REQUIRE(*c.counts == std::map<int64_t, int64_t>{{1, 1}, {6, 1}, {7, 1}});
+
+  auto anion = hcn_metadata();
+  anion["charge"] = "-1";
+  REQUIRE(rgpot::UmaContract::fromMetadata(anion).charge ==
+          std::optional<int64_t>(-1));
+
+  auto bad = hcn_metadata();
+  bad["spin"] = "1, 2";
+  REQUIRE_THROWS_WITH(rgpot::UmaContract::fromMetadata(bad),
+                      Catch::Matchers::ContainsSubstring("spin"));
+  bad = hcn_metadata();
+  bad["counts"] = "[1, 1, 6]";
+  REQUIRE_THROWS_WITH(rgpot::UmaContract::fromMetadata(bad),
+                      Catch::Matchers::ContainsSubstring("counts"));
+}
+
+TEST_CASE("UmaContract rejects a config the package was not merged for",
+          "[UmaPot][contract]") {
+  const auto c = rgpot::UmaContract::fromMetadata(hcn_metadata());
+  REQUIRE_NOTHROW(c.checkConfig(hcn_config()));
+
+  auto cfg = hcn_config();
+  cfg.charge = 1;
+  REQUIRE(contract_field([&] { c.checkConfig(cfg); }) == "charge");
+  cfg = hcn_config();
+  cfg.spin = 3;
+  REQUIRE(contract_field([&] { c.checkConfig(cfg); }) == "spin");
+  cfg = hcn_config();
+  cfg.task_name = "omat";
+  REQUIRE(contract_field([&] { c.checkConfig(cfg); }) == "task_name");
+
+  cfg = hcn_config();
+  cfg.charge = -1;
+  REQUIRE_THROWS_WITH(
+      c.checkConfig(cfg),
+      Catch::Matchers::Equals(
+          "UmaPot: config charge is -1, the package was exported for 0"));
+}
+
+TEST_CASE("UmaContract rejects an input of another composition",
+          "[UmaPot][contract]") {
+  const auto c = rgpot::UmaContract::fromMetadata(hcn_metadata());
+  const std::vector<int> hcn{6, 7, 1};
+  const std::vector<int> nch{7, 6, 1};
+  REQUIRE_NOTHROW(c.checkSystem(hcn.size(), hcn.data()));
+  REQUIRE_NOTHROW(c.checkSystem(nch.size(), nch.data()));
+
+  const std::vector<int> hnco{1, 7, 6, 8};
+  REQUIRE(contract_field([&] { c.checkSystem(hnco.size(), hnco.data()); }) ==
+          "natoms");
+  const std::vector<int> ccn{6, 7, 6};
+  REQUIRE(contract_field([&] { c.checkSystem(ccn.size(), ccn.data()); }) ==
+          "counts");
+  REQUIRE_THROWS_WITH(
+      c.checkSystem(ccn.size(), ccn.data()),
+      Catch::Matchers::Equals("UmaPot: input counts is {6: 2, 7: 1}, the "
+                              "package was exported for {1: 1, 6: 1, 7: 1}"));
+
+  // Ethylene and acetylene share z_set {1, 6}; only the counts tell
+  // them apart.
+  auto c2h2 = hcn_metadata();
+  c2h2["z_set"] = "[1, 6]";
+  c2h2["natoms"] = "4";
+  c2h2["counts"] = R"({"1": 2, "6": 2})";
+  const auto acetylene = rgpot::UmaContract::fromMetadata(c2h2);
+  const std::vector<int> c2h4{6, 6, 1, 1, 1, 1};
+  const std::vector<int> c3h1{6, 6, 6, 1};
+  REQUIRE(contract_field([&] {
+            acetylene.checkSystem(c2h4.size(), c2h4.data());
+          }) == "natoms");
+  REQUIRE(contract_field([&] {
+            acetylene.checkSystem(c3h1.size(), c3h1.data());
+          }) == "counts");
+}
+
+TEST_CASE("UmaContract checks z_set alone for packages without counts",
+          "[UmaPot][contract]") {
+  auto legacy = hcn_metadata();
+  legacy.erase("counts");
+  legacy.erase("natoms");
+  const auto c = rgpot::UmaContract::fromMetadata(legacy);
+  REQUIRE_FALSE(c.counts.has_value());
+  REQUIRE_FALSE(c.natoms.has_value());
+  const std::vector<int> hcno{6, 7, 1, 8};
+  REQUIRE(contract_field([&] { c.checkSystem(hcno.size(), hcno.data()); }) ==
+          "z_set");
+  // Same element set, other counts: only counts metadata catches it.
+  const std::vector<int> hhcn{1, 6, 7, 1};
+  REQUIRE_NOTHROW(c.checkSystem(hhcn.size(), hhcn.data()));
+
+  const auto none = rgpot::UmaContract::fromMetadata({});
+  REQUIRE_NOTHROW(none.checkConfig(rgpot::UmaConfig{}));
+  REQUIRE_NOTHROW(none.checkSystem(hcno.size(), hcno.data()));
+}
+
+TEST_CASE("UmaPot refuses a charge, spin or composition the package lacks",
+          "[UmaPot][omol][contract]") {
+  const std::string model = resolve_uma_omol_pt2();
+  const AtomMatrix positions{
+      {12.49734736216627162, 12.49892801474515913, 12.54059929828148512},
+      {12.50115413363106498, 12.50036504272228832, 11.38209979880783251},
+      {12.50149850420264563, 12.50069809648255514, 13.61514544631068446},
+  };
+  const std::vector<int> atmtypes{6, 7, 1};
+  const std::array<std::array<double, 3>, 3> box{
+      {{25.0, 0.0, 0.0}, {0.0, 25.0, 0.0}, {0.0, 0.0, 25.0}}};
+
+  rgpot::UmaConfig cfg = hcn_config();
+  cfg.model_path = model;
+  cfg.device = "cpu";
+
+  SECTION("charge") {
+    cfg.charge = 1;
+    rgpot::UmaPot pot(cfg);
+    REQUIRE(contract_field([&] { pot(positions, atmtypes, box); }) ==
+            "charge");
+  }
+  SECTION("spin set after construction") {
+    rgpot::UmaPot pot(cfg);
+    REQUIRE_NOTHROW(pot(positions, atmtypes, box));
+    pot.setChargeSpin(0, 3);
+    REQUIRE(contract_field([&] { pot(positions, atmtypes, box); }) == "spin");
+  }
+  SECTION("composition") {
+    rgpot::UmaPot pot(cfg);
+    const std::vector<int> ccn{6, 7, 6};
+    REQUIRE_THROWS_AS(pot(positions, ccn, box), rgpot::UmaContractError);
+  }
+}
+
 TEST_CASE("UmaPot Baker HCN matches ASE FAIRChem omol", "[UmaPot][omol]") {
   const std::string model = resolve_uma_omol_pt2();
 
@@ -273,6 +443,43 @@ TEST_CASE("UmaPot Baker HCN matches ASE FAIRChem omol", "[UmaPot][omol]") {
 
   REQUIRE_THAT(energy, WithinAbs(kHcnAseOmolEnergy, 1e-4));
   REQUIRE_THAT(max_df, WithinAbs(0.0, 1e-4));
+}
+
+TEST_CASE("UmaPot package accepts its composition in any atom order",
+          "[UmaPot][omol][contract]") {
+  // The contract checks counts, not order: a package merged for HCN
+  // must evaluate N, H, C to the same energy and permuted forces.
+  const std::string model = resolve_uma_omol_pt2();
+  rgpot::UmaConfig cfg = hcn_config();
+  cfg.model_path = model;
+  cfg.device = "cpu";
+  rgpot::UmaPot pot(cfg);
+
+  const AtomMatrix hcn{
+      {12.49734736216627162, 12.49892801474515913, 12.54059929828148512},
+      {12.50115413363106498, 12.50036504272228832, 11.38209979880783251},
+      {12.50149850420264563, 12.50069809648255514, 13.61514544631068446},
+  };
+  const std::array<int, 3> perm{1, 2, 0}; // new row r holds old row perm[r]
+  AtomMatrix nhc(3, 3);
+  std::vector<int> z_nhc(3);
+  const std::vector<int> z_hcn{6, 7, 1};
+  for (int r = 0; r < 3; ++r) {
+    z_nhc[r] = z_hcn[perm[r]];
+    for (int d = 0; d < 3; ++d)
+      nhc(r, d) = hcn(perm[r], d);
+  }
+  const std::array<std::array<double, 3>, 3> box{
+      {{25.0, 0.0, 0.0}, {0.0, 25.0, 0.0}, {0.0, 0.0, 25.0}}};
+
+  auto [e0, f0, v0] = pot(hcn, z_hcn, box);
+  auto [e1, f1, v1] = pot(nhc, z_nhc, box);
+  (void)v0;
+  (void)v1;
+  REQUIRE_THAT(e1, WithinAbs(e0, 1e-4));
+  for (int r = 0; r < 3; ++r)
+    for (int d = 0; d < 3; ++d)
+      REQUIRE_THAT(f1(r, d), WithinAbs(f0(perm[r], d), 1e-4));
 }
 
 TEST_CASE("UmaPot band batch matches per-system evaluation",
@@ -343,10 +550,24 @@ TEST_CASE("UmaPot band batch matches per-system evaluation",
   const rgpot::ForceBatch batch{3, in.data(), out.data()};
   pot.forceBatch(batch);
 
+  // The batched graph is not exactly independent of a system's slot in
+  // the batch: fairchem-core 2.23 eager (uma-s-1p1, omol) gives three
+  // identical HCN copies energies spread over 1.8e-7 eV. The AOTI band
+  // package differs from single calls by up to 1.1e-7 eV in energy and
+  // by one float32 rounding in force, 1.1e-7 relative (1.7e-7 eV/A on a
+  // 1.48 eV/A component, 1.4e-6 eV/A on 12.9 eV/A). Energy is bounded by
+  // 5e-7 eV (2.8x the eager spread); force by 5e-7 relative with a
+  // 5e-7 eV/A floor (4.3x the largest relative difference seen).
+  constexpr double kBandEnergyTol = 5e-7; // eV
+  constexpr double kBandForceRel = 5e-7;  // relative, floor 1 eV/A
+
   for (size_t s = 0; s < 3; ++s) {
-    REQUIRE_THAT(out[s].energy, WithinAbs(e_single[s], 1e-8));
+    REQUIRE_THAT(out[s].energy, WithinAbs(e_single[s], kBandEnergyTol));
     for (size_t k = 0; k < 9; ++k) {
-      REQUIRE_THAT(f_batch[s][k], WithinAbs(f_single[s][k], 1e-7));
+      REQUIRE_THAT(f_batch[s][k],
+                   WithinAbs(f_single[s][k],
+                             kBandForceRel *
+                                 std::max(1.0, std::abs(f_single[s][k]))));
     }
   }
 }

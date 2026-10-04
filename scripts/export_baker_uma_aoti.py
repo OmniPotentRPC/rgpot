@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Export one UMA AOTI .pt2 per unique Baker (z_set, charge, spin).
+"""Export one UMA AOTI .pt2 per unique Baker (composition, charge, spin).
 
 Walks Baker endpoints (reactant.con), applies the same charge/spin table as
 gpr_optim materialize_systems (04_ch3o 0/2, 08_formyloxyethyl 0/2,
 16_h2po4_anion -1/1, 20_hconh3_cation +1/1, else 0/1), and calls
-export_uma_aoti.py once per unique composition. merge_mole stays on.
+export_uma_aoti.py once per unique exact composition (atom count per
+element), charge and spin. merge_mole stays on, so systems that share
+only an element set (C2H2, C2H4) need separate packages.
 
 Example::
 
@@ -22,7 +24,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from export_uma_aoti import load_atoms, z_set_of  # noqa: E402
+from export_uma_aoti import counts_of, load_atoms, z_set_of  # noqa: E402
 
 
 # Same table as gpr_optim bench/elja/workflow/materialize_systems.py
@@ -75,10 +77,10 @@ def collect_jobs(baker_dir: Path) -> list[dict]:
         label = reactant.parent.name
         atoms = load_atoms(reactant)
         charge, spin = baker_charge_spin(label)
-        key = (tuple(z_set_of(atoms)), int(charge), int(spin))
+        key = (tuple(counts_of(atoms).items()), int(charge), int(spin))
         if key in seen:
             print(
-                f"skip {label}: same (z_set, charge, spin) as {seen[key]}",
+                f"skip {label}: same (composition, charge, spin) as {seen[key]}",
                 flush=True,
             )
             continue
@@ -89,7 +91,8 @@ def collect_jobs(baker_dir: Path) -> list[dict]:
                 "atoms": reactant,
                 "charge": int(charge),
                 "spin": int(spin),
-                "z_set": list(key[0]),
+                "z_set": z_set_of(atoms),
+                "counts": dict(key[0]),
             }
         )
     return jobs
@@ -108,7 +111,7 @@ def main() -> int:
     p.add_argument("--eager-only", action="store_true")
     p.add_argument("--skip-aoti", action="store_true")
     # A static-shape package freezes the traced edge count, so a band
-    # that stretches past it aborts. The sidecar makes the intramolecular
+    # that stretches past it aborts. A molecular box makes the intramolecular
     # graph complete and the edge count constant at n(n-1).
     p.add_argument("--molecular-box", type=float, default=0.0)
     args = p.parse_args()
@@ -125,7 +128,7 @@ def main() -> int:
     print(f"baker_dir={baker_dir} n_jobs={len(jobs)}", flush=True)
     for job in jobs:
         print(
-            f"  {job['label']} z_set={job['z_set']} "
+            f"  {job['label']} counts={job['counts']} "
             f"Q={job['charge']} S={job['spin']}",
             flush=True,
         )

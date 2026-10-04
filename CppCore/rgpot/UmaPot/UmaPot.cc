@@ -2,6 +2,7 @@
 
 #include "rgpot/UmaPot/UmaPot.hpp"
 
+#include "rgpot/UmaPot/UmaContract.hpp"
 #include "rgpot/UmaPot/aoti_execstack.hpp"
 #include "rgpot/MetatomicPot/vesin_compat.hpp"
 #include "vesin.h"
@@ -166,6 +167,7 @@ struct UmaPot::Impl {
   double molecular_box{0.0};
   int max_neighbors{300};
   int64_t batch_max{0};
+  UmaContract contract;
   std::unique_ptr<torch::inductor::AOTIModelPackageLoader> loader;
   mutable std::mutex mutex;
 };
@@ -210,6 +212,12 @@ void UmaPot::ensureLoaded() const {
   const auto dt = meta.find("pos_dtype");
   if (dt != meta.end() && dt->second == "float64")
     m_impl->dtype = torch::kFloat64;
+  m_impl->contract = UmaContract::fromMetadata(meta);
+}
+
+void UmaPot::checkContract(const ForceInput &in) const {
+  m_impl->contract.checkConfig(m_config);
+  m_impl->contract.checkSystem(in.nAtoms, in.atmnrs);
 }
 
 UmaPot::UmaPot(const UmaConfig &config)
@@ -247,6 +255,7 @@ void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     ensureLoaded();
   }
+  checkContract(in);
   if (m_impl->batch_max > 1) {
     // A band package carries only the batched (B >= 2) graph; a lone
     // system rides the batch path, which pads it to two.
@@ -256,7 +265,7 @@ void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   }
 
   // Under the molecular-box convention the caller's cell is replaced by
-  // the sidecar's cube and positions re-center into it. Energies and
+  // the package's molecular_box cube and positions re-center into it. Energies and
   // forces are translation invariant, so only the graph changes.
   const bool molecular = m_impl->molecular_box > 0.0;
   std::vector<double> mol_pos;
@@ -397,6 +406,7 @@ void UmaPot::forceBatchImpl(const ForceBatch &batch) const {
     throw std::runtime_error(
         "UmaPot: band package requires one composition per batch");
   }
+  checkContract(batch.in[0]);
 
   const auto n = static_cast<int64_t>(n0);
   const bool molecular = m_impl->molecular_box > 0.0;
