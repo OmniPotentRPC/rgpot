@@ -162,7 +162,7 @@ pixi run -e rpctest pes-double-well
 #+end_src
 
 #+CAPTION: rgpot LJ double well (densely evaluated 2D PES). ASE LBFGS (red) stops in the shallow left basin at -2.0; anneal's global portfolio (orange star) reaches the deep right basin at -3.0.
-[[file:../_static/pes_double_well.png]]
+[[file:../../orgmode/_static/pes_double_well.png]]
 
 Second, for an EON minimization, ``rgpycrumbs eon plt-min`` renders the actual
 trajectory on a gradient-enhanced 2D landscape: progress ``s`` toward the
@@ -177,7 +177,7 @@ pixi run -e eonviz eon-min-landscape
 #+end_src
 
 #+CAPTION: An EON LJ7 minimization on the (s, d) landscape: the path descends from the start (initial) to the global minimum at -16.505 (minimized), and the surface energy, shown relative to that minimum, drops monotonically along progress s.
-[[file:../_static/eon_min_landscape.png]]
+[[file:../../orgmode/_static/eon_min_landscape.png]]
 
 The ``eonviz`` environment is separate from the C++ build env: ``eon`` pins
 ``fmt>=12`` (clashing with rgpot's C++ ``fmt<12``), so it carries no default
