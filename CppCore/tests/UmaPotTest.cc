@@ -1,5 +1,6 @@
 // MIT License — UmaPot loads an AOTI .pt2, not a metatomic checkpoint.
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -566,10 +567,24 @@ TEST_CASE("UmaPot band batch matches per-system evaluation",
     }
   }
 
+  // The batched graph is not exactly independent of a system's slot in
+  // the batch: fairchem-core 2.23 eager (uma-s-1p1, omol) gives three
+  // identical HCN copies energies spread over 1.8e-7 eV. The AOTI band
+  // package differs from single calls by up to 1.1e-7 eV in energy and
+  // by one float32 rounding in force, 1.1e-7 relative (1.7e-7 eV/A on a
+  // 1.48 eV/A component, 1.4e-6 eV/A on 12.9 eV/A). Energy is bounded by
+  // 5e-7 eV (2.8x the eager spread); force by 5e-7 relative with a
+  // 5e-7 eV/A floor (4.3x the largest relative difference seen).
+  constexpr double kBandEnergyTol = 5e-7; // eV
+  constexpr double kBandForceRel = 5e-7;  // relative, floor 1 eV/A
+
   for (size_t s = 0; s < 3; ++s) {
-    REQUIRE_THAT(out[s].energy, WithinAbs(e_single[s], 1e-8));
+    REQUIRE_THAT(out[s].energy, WithinAbs(e_single[s], kBandEnergyTol));
     for (size_t k = 0; k < 9; ++k) {
-      REQUIRE_THAT(f_batch[s][k], WithinAbs(f_single[s][k], 1e-7));
+      REQUIRE_THAT(f_batch[s][k],
+                   WithinAbs(f_single[s][k],
+                             kBandForceRel *
+                                 std::max(1.0, std::abs(f_single[s][k]))));
     }
   }
 }
