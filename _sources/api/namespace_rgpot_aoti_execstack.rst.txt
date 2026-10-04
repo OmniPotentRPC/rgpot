@@ -22,6 +22,7 @@ namespace rgpot::aoti_execstack
 	uint32_t :target:`kPfX<doxid-aoti__execstack_8hpp_1a5fdc1457c6fd596ca125c972199fd3ee>` = 1u;
 	uint32_t :target:`kZipLocal<doxid-aoti__execstack_8hpp_1afd2d25730dd4ee6406f40e8d3093a8ca>` = 0x04034b50u;
 	uint32_t :target:`kZipCentral<doxid-aoti__execstack_8hpp_1afee93b2f6b6832ee675ffedc15559782>` = 0x02014b50u;
+	int :target:`kPublicationAttempts<doxid-aoti__execstack_8hpp_1a5455ea603a166d9c992ff825db5a2afc>` = 400;
 
 	// global functions
 
@@ -33,6 +34,8 @@ namespace rgpot::aoti_execstack
 	bool :target:`clear_elf_gnu_stack<doxid-aoti__execstack_8hpp_1a08b72df13248f3b10c5cd773e16e00d8>`(uint8_t* data, size_t n);
 	bool :target:`elf_needs_gnu_stack_clear<doxid-aoti__execstack_8hpp_1a7d2f980cd872ffc693a9dfc71e9c4251>`(const uint8_t* data, size_t n);
 	bool :target:`scan_or_clear_pt2<doxid-aoti__execstack_8hpp_1abcea08d4153ca3c55ebdddb9a215c596>`(uint8_t* buf, size_t n, bool write);
+	void :target:`publication_backoff<doxid-aoti__execstack_8hpp_1a42a0b63d1e9a77c4cd5fdfdd8cbe02f8>`();
+	bool :target:`publication_retryable<doxid-aoti__execstack_8hpp_1a4c79400b077a179e1b7888d121594db6>`(const std::error_code& ec);
 	std::vector<uint8_t> :target:`read_all<doxid-aoti__execstack_8hpp_1aabc269302bba0c405c89c59c43f196d7>`(const std::string& path);
 	void :target:`write_all<doxid-aoti__execstack_8hpp_1a1790aa8258e3b7e90a5f463cb8eaf980>`(const std::string& path, const std::vector<uint8_t>& buf);
 	std::string :target:`cache_path_for<doxid-aoti__execstack_8hpp_1a97bbf2189aca44af5259ba4e028c6568>`(const std::string& src);

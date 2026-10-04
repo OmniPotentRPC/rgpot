@@ -1,0 +1,20 @@
+.. index:: pair: enum; rgpot_plugin_status_t
+.. _doxid-plugin_8h_1a2c97aed5acd2481502d9f1a54718c2ee:
+
+enum rgpot_plugin_status_t
+==========================
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <plugin.h>
+
+	enum rgpot_plugin_status_t {
+	    :target:`RGPOT_PLUGIN_OK<doxid-plugin_8h_1a2c97aed5acd2481502d9f1a54718c2eea846c407548a0b31aef1de6e332c6062b>`            = 0,
+	    :target:`RGPOT_PLUGIN_INVALID_PARAM<doxid-plugin_8h_1a2c97aed5acd2481502d9f1a54718c2eea8b7b9467c62f430d4d6d058b274a2141>` = 1,
+	    :target:`RGPOT_PLUGIN_ERROR<doxid-plugin_8h_1a2c97aed5acd2481502d9f1a54718c2eea9424624be9f50cc7b2c81e3adf78d8ce>`         = 2,
+	    :target:`RGPOT_PLUGIN_NOT_SUPPORTED<doxid-plugin_8h_1a2c97aed5acd2481502d9f1a54718c2eea80338084789ca4bb69c11635379b83f5>` = 3,
+	};
+

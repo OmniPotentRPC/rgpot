@@ -1,0 +1,31 @@
+.. index:: pair: struct; rgpot_plugin_descriptor_t
+.. _doxid-structrgpot__plugin__descriptor__t:
+
+struct rgpot_plugin_descriptor_t
+================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct rgpot_plugin_descriptor_t {
+		// fields
+	
+		size_t :target:`descriptor_size<doxid-structrgpot__plugin__descriptor__t_1a750ab13c13ae8974db33e28cc683a270>`;
+		uint32_t :target:`api_version<doxid-structrgpot__plugin__descriptor__t_1a7f8c2e311e0faee31731aa1fb40818ad>`;
+		const char* :target:`name<doxid-structrgpot__plugin__descriptor__t_1a18547b430d01a35b2cace765efc8ea79>`;
+		const char* :target:`version<doxid-structrgpot__plugin__descriptor__t_1a7bb0f6b586c7c3cb0f68204d082fcbd0>`;
+		const char* :target:`length_unit<doxid-structrgpot__plugin__descriptor__t_1aa845427d1a606a3e4c439c115dcfe04c>`;
+		const char* :target:`energy_unit<doxid-structrgpot__plugin__descriptor__t_1aaa95a011333b5a20d7ec59db3ddb5c89>`;
+		rgpot_plugin_create_fn :target:`create<doxid-structrgpot__plugin__descriptor__t_1a9ca0fbb3b965f745c81bf1e61668d746>`;
+		rgpot_plugin_destroy_fn :target:`destroy<doxid-structrgpot__plugin__descriptor__t_1aca086f1ee124fcb6081c3cde78ef26f9>`;
+		rgpot_plugin_calculate_fn :target:`calculate<doxid-structrgpot__plugin__descriptor__t_1a060455ffc98cf2d31a94c5baba01f418>`;
+		rgpot_plugin_capabilities_fn :target:`capabilities<doxid-structrgpot__plugin__descriptor__t_1ac14cc5edb3ea9c128ca30885e6264602>`;
+		rgpot_plugin_last_error_fn :target:`last_error<doxid-structrgpot__plugin__descriptor__t_1af248b410328edc2e007593ef484f5484>`;
+	};

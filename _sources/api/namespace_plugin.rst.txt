@@ -1,0 +1,11 @@
+.. index:: pair: namespace; plugin
+.. _doxid-namespacergpot_1_1plugin_1_1_0d200302014144210322064235167275312221164076066310:
+
+namespace plugin
+================
+
+.. toctree::
+	:hidden:
+
+
+

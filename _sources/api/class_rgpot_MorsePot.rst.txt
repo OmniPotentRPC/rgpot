@@ -30,6 +30,7 @@ D_e`, shifted so that :math:`V(r_\mathrm{cut}) = 0`. :ref:`More...<details-class
 	
 		const :ref:`MorseConfig<doxid-structrgpot_1_1_morse_config>`& :target:`config<doxid-classrgpot_1_1_morse_pot_1ad57a07db670a719fa44b94fe220d0881>`() const;
 		double :ref:`energyShift<doxid-classrgpot_1_1_morse_pot_1a4a12503dd2fb3c2ac2efbc86a3ae27c7>`() const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_morse_pot_1a4cabcb6bc3fd65d7237e789087ee723c>`() const;
 		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_morse_pot_1a3efdba266543f10b6b5c18ad0384e4ce>`() const;
 		void :ref:`forceImpl<doxid-classrgpot_1_1_morse_pot_1ad87ad7cbb6c64258f8471c594424e6c9>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
 	};
@@ -61,6 +62,18 @@ Methods
 	double energyShift() const
 
 Energy offset subtracted from every pair term (the unshifted pair energy at the cutoff); 0 when the quintic switch replaces the shift.
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1_morse_pot_1a4cabcb6bc3fd65d7237e789087ee723c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Concurrency and evaluation capabilities of this potential.
+
+Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
 
 .. index:: pair: function; paramsKey
 .. _doxid-classrgpot_1_1_morse_pot_1a3efdba266543f10b6b5c18ad0384e4ce:

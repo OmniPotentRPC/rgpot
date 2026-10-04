@@ -1,0 +1,28 @@
+.. index:: pair: class; rgpot::nlist::MinimumImage
+.. _doxid-classrgpot_1_1nlist_1_1_minimum_image:
+
+class rgpot::nlist::MinimumImage
+================================
+
+.. toctree::
+	:hidden:
+
+Nearest periodic image for row-major lattice vectors: d - n H. The dual-vector bound includes every image shorter than the initial rounded fractional image. No lattice reduction or fixed image radius is assumed. Singular or ill-conditioned cells and unrepresentable search bounds throw.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <MinimumImage.hpp>
+	
+	class MinimumImage {
+	public:
+		// construction
+	
+		:target:`MinimumImage<doxid-classrgpot_1_1nlist_1_1_minimum_image_1a207112b80a53b43a35d9c6804dcd6aa7>`();
+		:target:`MinimumImage<doxid-classrgpot_1_1nlist_1_1_minimum_image_1a91aa7e5a60d6283d79ee48dbacb319a4>`(const double* cell, const std::array<bool, 3>& periodic);
+
+		// methods
+	
+		void :target:`fold<doxid-classrgpot_1_1nlist_1_1_minimum_image_1a7cf94306de65dfd1ccb3fc91e51db9a7>`(double& dx, double& dy, double& dz) const;
+	};

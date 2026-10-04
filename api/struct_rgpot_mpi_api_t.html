@@ -129,20 +129,35 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l2 current"><a class="reference internal" href="global.html">Global Namespace</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="namespace_cache.html">namespace cache</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_fortranpots.html">namespace fortranpots</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_plugin.html">namespace plugin</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_plugin-2.html">namespace plugin</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-2.html">namespace rgpot</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-2.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-3.html">namespace rgpot</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_abi.html">namespace rgpot::abi</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_aoti_execstack.html">namespace rgpot::aoti_execstack</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_details.html">namespace rgpot::details</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_fortranpots.html">namespace rgpot::fortranpots</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_nlist.html">namespace rgpot::nlist</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_plugin.html">namespace rgpot::plugin</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_tools.html">namespace rgpot::tools</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_types.html">namespace rgpot::types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_uma.html">namespace rgpot::uma</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_units.html">namespace rgpot::units</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_vesin_compat.html">namespace rgpot::vesin_compat</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_D3Damping.html">enum rgpot::D3Damping</a></li>
@@ -195,9 +210,6 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_XcKernel.html">class rgpot::XcKernel</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_ZBLPot.html">class rgpot::ZBLPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_registry.html">template class rgpot::registry</a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-3.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-4.html">namespace rgpot</a><ul class="simple">
@@ -305,6 +317,8 @@ data-aria-dark="Switch to auto color mode">
 </li>
 <li class="toctree-l3"><a class="reference internal" href="enum_CPMDCFeatureKind.html">enum CPMDCFeatureKind</a></li>
 <li class="toctree-l3"><a class="reference internal" href="enum_rgpot_engine_acquire_reason.html">enum rgpot_engine_acquire_reason</a></li>
+<li class="toctree-l3"><a class="reference internal" href="enum_rgpot_plugin_caps_t.html">enum rgpot_plugin_caps_t</a></li>
+<li class="toctree-l3"><a class="reference internal" href="enum_rgpot_plugin_status_t.html">enum rgpot_plugin_status_t</a></li>
 <li class="toctree-l3"><a class="reference internal" href="struct_CPMDCFeatureEntry.html">struct CPMDCFeatureEntry</a><ul class="simple">
 </ul>
 </li>
@@ -354,6 +368,15 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="struct_rgpot_mpi_group_t.html">struct rgpot_mpi_group_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_plugin_descriptor_t.html">struct rgpot_plugin_descriptor_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_plugin_input_t.html">struct rgpot_plugin_input_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_plugin_output_t.html">struct rgpot_plugin_output_t</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
@@ -528,7 +551,8 @@ data-aria-dark="Switch to auto color mode">
 <span data-line="10">    <span class="kt">void</span><span class="p">(</span><span class="o">*</span> <span class="doxyrest-code-target target" id="doxid-structrgpot__mpi__api__t_1a2a13430498c2c15fd0e84a665fb035d9"></span><span class="n">finalize_at_exit</span><span class="p">)(</span><span class="kt">int</span><span class="p">(</span><span class="o">*</span><span class="n">abort_requested</span><span class="p">)(</span><span class="kt">void</span><span class="p">));</span></span>
 <span data-line="11">    <span class="kt">int</span><span class="p">(</span><span class="o">*</span> <span class="doxyrest-code-target target" id="doxid-structrgpot__mpi__api__t_1ac99790a7f536d163d57cf0289d1de3b4"></span><span class="n">agree</span><span class="p">)(</span><span class="kt">unsigned</span> <span class="kt">char</span> <span class="o">*</span><span class="n">flags</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">n</span><span class="p">);</span></span>
 <span data-line="12">    <span class="kt">void</span><span class="p">(</span><span class="o">*</span> <span class="doxyrest-code-target target" id="doxid-structrgpot__mpi__api__t_1ab5763010b49f5a447357c8fc36158728"></span><span class="n">publish_error</span><span class="p">)(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">message</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span></span>
-<span data-line="13"><span class="p">};</span></span>
+<span data-line="13">    <span class="kt">int</span><span class="p">(</span><span class="o">*</span> <span class="doxyrest-code-target target" id="doxid-structrgpot__mpi__api__t_1a49a07f5ee8b1c48faa402bf2ab67877a"></span><span class="n">adopt</span><span class="p">)(</span><span class="kt">int</span><span class="p">(</span><span class="o">*</span><span class="n">callback</span><span class="p">)(</span><span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="p">,</span> <span class="kt">size_t</span><span class="p">,</span> <span class="kt">int</span><span class="p">));</span></span>
+<span data-line="14"><span class="p">};</span></span>
 </pre></div>
 </section>
 

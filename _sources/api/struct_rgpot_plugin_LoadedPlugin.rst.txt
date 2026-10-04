@@ -1,0 +1,24 @@
+.. index:: pair: struct; rgpot::plugin::LoadedPlugin
+.. _doxid-structrgpot_1_1plugin_1_1_loaded_plugin:
+
+struct rgpot::plugin::LoadedPlugin
+==================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct LoadedPlugin {
+		// fields
+	
+		void* :target:`handle<doxid-structrgpot_1_1plugin_1_1_loaded_plugin_1af02a03a2eba7fbfcd8f07f26ef7e60bc>`;
+		const :ref:`rgpot_plugin_descriptor_t<doxid-structrgpot__plugin__descriptor__t>`* :target:`desc<doxid-structrgpot_1_1plugin_1_1_loaded_plugin_1a336b304a5fc1e594f6e78e140e434d16>`;
+		std::string :target:`path<doxid-structrgpot_1_1plugin_1_1_loaded_plugin_1a51b6d729f274d8950a3f8573c5bf1e2e>`;
+		std::shared_ptr<void> :target:`library<doxid-structrgpot_1_1plugin_1_1_loaded_plugin_1a994f1f7769720e1362485b40b9bb602e>`;
+	};

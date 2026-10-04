@@ -31,7 +31,10 @@ Caches potential energy and force calculations using RocksDB. :ref:`More...<deta
 		void :ref:`set_db<doxid-classrgpot_1_1cache_1_1_potential_cache_1ab1fb804b926b4c383105e17595658676>`(rocksdb::DB* db);
 		void :ref:`deserialize_hit<doxid-classrgpot_1_1cache_1_1_potential_cache_1ae414402d984323aba6aefe2f83a68018>`(const std::string& value, double& energy, :ref:`rgpot::types::AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& forces);
 		void :ref:`add_serialized<doxid-classrgpot_1_1cache_1_1_potential_cache_1afa65792f6b6ba596dc4852ed802c5d2e>`(const :ref:`KeyHash<doxid-structrgpot_1_1cache_1_1_key_hash>`& key, double energy, const :ref:`rgpot::types::AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& forces);
+		void :target:`deserialize_hit<doxid-classrgpot_1_1cache_1_1_potential_cache_1a7d521450aec6d2fc59fe9510a7c7df3f>`(const std::string& value, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`& out, size_t n_atoms);
+		void :target:`add_serialized<doxid-classrgpot_1_1cache_1_1_potential_cache_1a07c03c78ada067a983e05e760ec004a1>`(const :ref:`KeyHash<doxid-structrgpot_1_1cache_1_1_key_hash>`& key, const :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`& out, size_t n_atoms);
 		std::optional<std::string> :ref:`find<doxid-classrgpot_1_1cache_1_1_potential_cache_1a85bd93690a8a21fcad691472a535f2b8>`(const :ref:`KeyHash<doxid-structrgpot_1_1cache_1_1_key_hash>`& key);
+		static bool :ref:`has_result_metadata<doxid-classrgpot_1_1cache_1_1_potential_cache_1aff5200078b32e4f802bc06647a139f68>`(const std::string& value, size_t n_atoms);
 	};
 .. _details-classrgpot_1_1cache_1_1_potential_cache:
 
@@ -246,4 +249,14 @@ Queries the RocksDB instance for the given key.
 Optional string containing the serialized data.
 
 std::optional containing the serialized string if found, or std::nullopt if the key does not exist or the DB is closed.
+
+.. index:: pair: function; has_result_metadata
+.. _doxid-classrgpot_1_1cache_1_1_potential_cache_1aff5200078b32e4f802bc06647a139f68:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static bool has_result_metadata(const std::string& value, size_t n_atoms)
+
+Result records retain the energy/force prefix and append versioned variance and stress metadata. Energy/force-only records remain readable.
 

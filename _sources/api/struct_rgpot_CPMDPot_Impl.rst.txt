@@ -26,6 +26,8 @@ struct rgpot::CPMDPot::Impl
 		std::string :target:`session_engine_path<doxid-structrgpot_1_1_c_p_m_d_pot_1_1_impl_1af04cf26b16e07e255380516df9f68565>`;
 		uint64_t :target:`params_key<doxid-structrgpot_1_1_c_p_m_d_pot_1_1_impl_1a5f31717f6d2dfad8b2c88bea9687b276>` = 0;
 		std::vector<double> :target:`grad_scratch<doxid-structrgpot_1_1_c_p_m_d_pot_1_1_impl_1a2215963e5a6a4843acfe48cfd093dcc5>`;
+		bool :target:`has_orbital_key<doxid-structrgpot_1_1_c_p_m_d_pot_1_1_impl_1a21d9573a2f0e5961ab290d78c5689afc>` = false;
+		int64_t :target:`orbital_key<doxid-structrgpot_1_1_c_p_m_d_pot_1_1_impl_1aaac271998c679da4aeb3901c94515f94>` = 0;
 
 		// methods
 	

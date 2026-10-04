@@ -1,0 +1,23 @@
+.. index:: pair: namespace; rgpot::plugin::detail
+.. _doxid-namespacergpot_1_1plugin_1_1detail:
+
+namespace rgpot::plugin::detail
+===============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace detail {
+
+	// global functions
+
+	:ref:`rgpot_plugin_descriptor_t<doxid-structrgpot__plugin__descriptor__t>` :target:`checkedDescriptor<doxid-_descriptor_8hpp_1a70b16b5e6fc364ae1f2585d23398099d>`(const :ref:`rgpot_plugin_descriptor_t<doxid-structrgpot__plugin__descriptor__t>`* source);
+
+	} // namespace detail

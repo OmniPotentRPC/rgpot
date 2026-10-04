@@ -63,7 +63,7 @@ Construction
 
 	XcKernel(std::string name)
 
-Resolve a first-slice catalog name, e.g. "xck_gga_r_o2".
+Resolve a catalog name, e.g. "xck_gga_r_o2".
 
 Methods
 -------
@@ -76,7 +76,7 @@ Methods
 
 	int contract(const :ref:`XcGrid<doxid-structrgpot_1_1_xc_grid>`& grid, const std::map<std::string, const double*>& scal, double* out) const
 
-Assemble ``scal`` in <name>_scal_names order and accumulate into out (nbf \* nbf, +=). Returns the C ABI rc (0 on success).
+Assemble ``scal`` in <name>_scal_names order and accumulate into out (nbf \* nbf, +=). Laplacian kernels require lapl_chi. Returns 2 for an incomplete grid, or the C ABI rc (0 on success).
 
 .. index:: pair: function; applyFxc
 .. _doxid-classrgpot_1_1_xc_kernel_1a2a83dda9543d1539f684479519095340:
@@ -116,7 +116,7 @@ RPA sigma with host Coulomb on dm(X,Y). xy/out are 2\*nocc\*nvir.
 
 	static std::vector<std::string> catalog()
 
-Known first-slice contraction names (o1 Fock + o2 fxc). Empty if the translation unit was compiled without -Dwith_xckernel.
+Known contraction names (o1 Fock + o2 fxc). Empty if the translation unit was compiled without -Dwith_xckernel.
 
 .. index:: pair: function; fieldsFromDensity
 .. _doxid-classrgpot_1_1_xc_kernel_1a2d547e17536e6922829ea650685c0084:

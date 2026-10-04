@@ -1,0 +1,22 @@
+.. index:: pair: enum; rgpot_plugin_caps_t
+.. _doxid-plugin_8h_1a7df2183b0ca1d11b867b12962ba06303:
+
+enum rgpot_plugin_caps_t
+========================
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <plugin.h>
+
+	enum rgpot_plugin_caps_t {
+	    :target:`RGPOT_CAP_ENERGY<doxid-plugin_8h_1a7df2183b0ca1d11b867b12962ba06303a247a38c6194a768162a2ae3b4fd72c43>`        =(1<<0),
+	    :target:`RGPOT_CAP_FORCES<doxid-plugin_8h_1a7df2183b0ca1d11b867b12962ba06303a5d37c9a8adfd58b1852a0e6724fea7d4>`        =(1<<1),
+	    :target:`RGPOT_CAP_VARIANCE<doxid-plugin_8h_1a7df2183b0ca1d11b867b12962ba06303acf75d37220068a24bfad62b885715749>`      =(1<<2),
+	    :target:`RGPOT_CAP_STRESS<doxid-plugin_8h_1a7df2183b0ca1d11b867b12962ba06303a49cbab4fc020bf0b3964ba317bfff855>`        =(1<<3),
+	    :target:`RGPOT_CAP_INSTANCE_SAFE<doxid-plugin_8h_1a7df2183b0ca1d11b867b12962ba06303a1b70c3746aaa1bcdced5b57a8b75a8d2>` =(1<<4),
+	    :target:`RGPOT_CAP_PERIODIC<doxid-plugin_8h_1a7df2183b0ca1d11b867b12962ba06303ae5e21bc5b820dcf72d28850abd19b437>`      =(1<<5),
+	};
+

@@ -39,7 +39,7 @@ This is not a geometry PES. Do not subclass Potential. Do not add a PotentialCon
 
 Term ownership is XC-only (rgpot-nkyx). Coulomb, Hartree-Fock exact exchange, and range-separated exchange stay host-owned. libxckernel never evaluates functionals: the host mixes Libxc arrays and passes them in.
 
-First slice (rgpot-chjn): families lda, gga, mgga_tau; max_order 2 (Fock o1 + fxc o2). TDA/RPA sigma assembly uses the singlet spin-adapted o2 kernels (``xck_*_st_o2_p``) plus host Coulomb. LDA TDA/RPA forms wv as w\*rho\*(v2rho2_0+v2rho2_1) and tiles stage B at PySCF BLKSIZE=128. GGA st_o2_p applyFxc uses the generated 7-term monomials via contract() (host long-double stage A/B). Double tiled stage B misses exclusive 1e-17 vs live gen_vind on the sto-3g pin. Dispatch is by kernel name; scalar operand order is read from <name>_scal_names / <name>_n_scal, not hard-coded.
+Families: lda, gga, mgga_tau, mgga_lapl; max_order 2 (Fock o1 + fxc o2). TDA/RPA sigma assembly uses the singlet spin-adapted o2 kernels (``xck_*_st_o2_p``) plus host Coulomb. LDA TDA/RPA forms wv as w\*rho\*(v2rho2_0+v2rho2_1) and tiles stage B at PySCF BLKSIZE=128. GGA st_o2_p applyFxc uses the generated 7-term monomials via contract() (host long-double stage A/B). Double tiled stage B misses exclusive 1e-17 vs live gen_vind on the sto-3g pin. Dispatch is by kernel name; scalar operand order is read from <name>_scal_names / <name>_n_scal, not hard-coded.
 
 Each :ref:`XcKernel <doxid-classrgpot_1_1_xc_kernel>` instance is a name + resolved ABI pointers. The C kernels are reentrant on distinct out/scal buffers. Do not share one ``out`` pointer across threads. Distinct instances may run concurrently.
 

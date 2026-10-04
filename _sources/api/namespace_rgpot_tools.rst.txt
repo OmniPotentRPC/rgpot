@@ -1,0 +1,23 @@
+.. index:: pair: namespace; rgpot::tools
+.. _doxid-namespacergpot_1_1tools:
+
+namespace rgpot::tools
+======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Implementation of the standalone Cap'n Proto potential server. :ref:`More...<details-namespacergpot_1_1tools>`
+
+.. _details-namespacergpot_1_1tools:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Implementation of the standalone Cap'n Proto potential server.
+
+This file implements a basic RPC server which exposes toy potentials over a network interface. It utilizes the ``EzRpcServer`` for handling requests.
+

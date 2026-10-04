@@ -1,0 +1,46 @@
+.. index:: pair: namespace; rgpot::uma
+.. _doxid-namespacergpot_1_1uma:
+
+namespace rgpot::uma
+====================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace uma {
+
+	// global functions
+
+	std::array<double, 9> :ref:`molecularFrame<doxid-_molecular_frame_8hpp_1ac7bb5b60b59d346f348200abfe4f4252>`(std::span<double> positions, double length);
+
+	} // namespace uma
+.. _details-namespacergpot_1_1uma:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Global Functions
+----------------
+
+.. index:: pair: function; molecularFrame
+.. _doxid-_molecular_frame_8hpp_1ac7bb5b60b59d346f348200abfe4f4252:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::array<double, 9> molecularFrame(std::span<double> positions, double length)
+
+Centre molecular inputs at zero before conversion to model precision.
+

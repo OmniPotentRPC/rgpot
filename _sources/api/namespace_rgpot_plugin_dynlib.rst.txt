@@ -1,0 +1,34 @@
+.. index:: pair: namespace; rgpot::plugin::dynlib
+.. _doxid-namespacergpot_1_1plugin_1_1dynlib:
+
+namespace rgpot::plugin::dynlib
+===============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace dynlib {
+
+	// typedefs
+
+	typedef void* :target:`Handle<doxid-plugin_2_dyn_lib_8hpp_1afdec474cf3fc0f70b9a22934507760eb>`;
+
+	// global functions
+
+	Handle :target:`open<doxid-plugin_2_dyn_lib_8hpp_1afaf263919423be05b10ceb9f44e53811>`(const char* name);
+	void* :target:`sym<doxid-plugin_2_dyn_lib_8hpp_1ac06888e6c41e5a7a154f5a2525bbaee5>`(Handle h, const char* name);
+	void :target:`close<doxid-plugin_2_dyn_lib_8hpp_1a68c5dd5775c6e5100a08d2d350e6e651>`(Handle h);
+	std::string :target:`error<doxid-plugin_2_dyn_lib_8hpp_1ab82f1373bb95d48f16fbbf74bb19791e>`();
+	const char* :target:`so_extension<doxid-plugin_2_dyn_lib_8hpp_1a76193d80703d6edd6f279db16d9ebc53>`();
+
+	template <typename Fn>
+	Fn :target:`loadSym<doxid-plugin_2_dyn_lib_8hpp_1a5c669ba71baa5449a60c90de1e2bdf0a>`(Handle h, const char* name);
+
+	} // namespace dynlib

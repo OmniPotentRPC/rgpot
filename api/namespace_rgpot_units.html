@@ -2,7 +2,7 @@
 <html lang="en" data-accent-color="teal" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>namespace rgpot::units - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="enum rgpot::units::DimIndex" href="enum_rgpot_units_DimIndex.html" /><link rel="prev" title="class rgpot::types::AtomMatrix" href="class_rgpot_types_AtomMatrix.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>namespace rgpot::units - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="enum rgpot::units::DimIndex" href="enum_rgpot_units_DimIndex.html" /><link rel="prev" title="namespace rgpot::uma" href="namespace_rgpot_uma.html" />
       <link rel="canonical" href="https://rgpot.rgoswami.me/api/namespace_rgpot_units.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
@@ -129,20 +129,35 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l2 current"><a class="reference internal" href="global.html">Global Namespace</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="namespace_cache.html">namespace cache</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_fortranpots.html">namespace fortranpots</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_plugin.html">namespace plugin</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_plugin-2.html">namespace plugin</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3 current"><a class="reference internal" href="namespace_rgpot-2.html">namespace rgpot</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-2.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3 current"><a class="reference internal" href="namespace_rgpot-3.html">namespace rgpot</a><ul class="current">
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_abi.html">namespace rgpot::abi</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_aoti_execstack.html">namespace rgpot::aoti_execstack</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_details.html">namespace rgpot::details</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_fortranpots.html">namespace rgpot::fortranpots</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_nlist.html">namespace rgpot::nlist</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_plugin.html">namespace rgpot::plugin</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_tools.html">namespace rgpot::tools</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_types.html">namespace rgpot::types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_uma.html">namespace rgpot::uma</a></li>
 <li class="toctree-l4 current"><a class="current reference internal" href="#">namespace rgpot::units</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_vesin_compat.html">namespace rgpot::vesin_compat</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_D3Damping.html">enum rgpot::D3Damping</a></li>
@@ -195,9 +210,6 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_XcKernel.html">class rgpot::XcKernel</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_ZBLPot.html">class rgpot::ZBLPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_registry.html">template class rgpot::registry</a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-3.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-4.html">namespace rgpot</a><ul class="simple">
@@ -305,6 +317,8 @@ data-aria-dark="Switch to auto color mode">
 </li>
 <li class="toctree-l3"><a class="reference internal" href="enum_CPMDCFeatureKind.html">enum CPMDCFeatureKind</a></li>
 <li class="toctree-l3"><a class="reference internal" href="enum_rgpot_engine_acquire_reason.html">enum rgpot_engine_acquire_reason</a></li>
+<li class="toctree-l3"><a class="reference internal" href="enum_rgpot_plugin_caps_t.html">enum rgpot_plugin_caps_t</a></li>
+<li class="toctree-l3"><a class="reference internal" href="enum_rgpot_plugin_status_t.html">enum rgpot_plugin_status_t</a></li>
 <li class="toctree-l3"><a class="reference internal" href="struct_CPMDCFeatureEntry.html">struct CPMDCFeatureEntry</a><ul class="simple">
 </ul>
 </li>
@@ -354,6 +368,15 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="struct_rgpot_mpi_group_t.html">struct rgpot_mpi_group_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_plugin_descriptor_t.html">struct rgpot_plugin_descriptor_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_plugin_input_t.html">struct rgpot_plugin_input_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_plugin_output_t.html">struct rgpot_plugin_output_t</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
@@ -470,7 +493,7 @@ data-aria-dark="Switch to auto color mode">
         <span>/</span>
         <meta itemprop="position" content="3" />
       </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-        <a itemprop="item" href="namespace_rgpot-2.html"><span itemprop="name">namespace rgpot</span></a>
+        <a itemprop="item" href="namespace_rgpot-3.html"><span itemprop="name">namespace rgpot</span></a>
         <span>/</span>
         <meta itemprop="position" content="4" />
       </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
@@ -630,10 +653,10 @@ data-aria-dark="Switch to auto color mode">
   </svg>
   <span>Back to top</span>
 </button><div class="navigation flex print:hidden"><div class="navigation-prev">
-    <a href="class_rgpot_types_AtomMatrix.html">
+    <a href="namespace_rgpot_uma.html">
       <i class="i-lucide chevron-left"></i>
       <div class="page-info">
-        <span>Previous</span><div class="title">class rgpot::types::AtomMatrix</div></div>
+        <span>Previous</span><div class="title">namespace rgpot::uma</div></div>
     </a>
   </div><div class="navigation-next">
     <a href="enum_rgpot_units_DimIndex.html">

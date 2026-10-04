@@ -1,0 +1,101 @@
+.. index:: pair: class; rgpot::plugin::PluginRegistry
+.. _doxid-classrgpot_1_1plugin_1_1_plugin_registry:
+
+class rgpot::plugin::PluginRegistry
+===================================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class PluginRegistry {
+	public:
+		// construction
+	
+		:target:`PluginRegistry<doxid-classrgpot_1_1plugin_1_1_plugin_registry_1a7d0dea89a5a659321a4defa1bb17c174>`(const PluginRegistry&);
+
+		// methods
+	
+		static PluginRegistry& :target:`instance<doxid-classrgpot_1_1plugin_1_1_plugin_registry_1a20102e7c09a2c96e20844d2c86589f38>`();
+		void :ref:`discover<doxid-classrgpot_1_1plugin_1_1_plugin_registry_1a226b693460d760b022367be5cedbe8d4>`();
+		bool :ref:`load_plugin<doxid-classrgpot_1_1plugin_1_1_plugin_registry_1a6103856eb6d4473ee6391d982358191e>`(const std::string& path);
+		void :ref:`register_builtin<doxid-classrgpot_1_1plugin_1_1_plugin_registry_1aa35f6bb477d255d55603b2211b080ad5>`(const :ref:`rgpot_plugin_descriptor_t<doxid-structrgpot__plugin__descriptor__t>`* desc);
+		std::vector<std::string> :target:`list_plugins<doxid-classrgpot_1_1plugin_1_1_plugin_registry_1a031f316f8d460204b154f5285e517402>`() const;
+		const :ref:`LoadedPlugin<doxid-structrgpot_1_1plugin_1_1_loaded_plugin>`* :ref:`find<doxid-classrgpot_1_1plugin_1_1_plugin_registry_1a9d602d93fba0e95c9a94dd203cc87a74>`(const std::string& name) const;
+		std::shared_ptr<void> :ref:`retain_library<doxid-classrgpot_1_1plugin_1_1_plugin_registry_1aae4ed7fd011567b05580a79f248fcb06>`(const :ref:`rgpot_plugin_descriptor_t<doxid-structrgpot__plugin__descriptor__t>`* desc) const;
+		PluginRegistry& :target:`operator=<doxid-classrgpot_1_1plugin_1_1_plugin_registry_1a5d778e2369903346b9cdbf2f58765cb1>`(const PluginRegistry&);
+
+	private:
+		// construction
+	
+		:target:`~PluginRegistry<doxid-classrgpot_1_1plugin_1_1_plugin_registry_1a14e6b328c355de765ea8616ac9353b25>`();
+	};
+.. _details-classrgpot_1_1plugin_1_1_plugin_registry:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Methods
+-------
+
+.. index:: pair: function; discover
+.. _doxid-classrgpot_1_1plugin_1_1_plugin_registry_1a226b693460d760b022367be5cedbe8d4:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void discover()
+
+Load descriptors from the directories named by RGPOT_PLUGIN_PATH.
+
+.. index:: pair: function; load_plugin
+.. _doxid-classrgpot_1_1plugin_1_1_plugin_registry_1a6103856eb6d4473ee6391d982358191e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool load_plugin(const std::string& path)
+
+Return false for an invalid library or an existing plugin name.
+
+.. index:: pair: function; register_builtin
+.. _doxid-classrgpot_1_1plugin_1_1_plugin_registry_1aa35f6bb477d255d55603b2211b080ad5:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void register_builtin(const :ref:`rgpot_plugin_descriptor_t<doxid-structrgpot__plugin__descriptor__t>`* desc)
+
+The descriptor and callbacks must have static lifetime.
+
+.. index:: pair: function; find
+.. _doxid-classrgpot_1_1plugin_1_1_plugin_registry_1a9d602d93fba0e95c9a94dd203cc87a74:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const :ref:`LoadedPlugin<doxid-structrgpot_1_1plugin_1_1_loaded_plugin>`* find(const std::string& name) const
+
+Returned entries remain valid across further registrations.
+
+.. index:: pair: function; retain_library
+.. _doxid-classrgpot_1_1plugin_1_1_plugin_registry_1aae4ed7fd011567b05580a79f248fcb06:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::shared_ptr<void> retain_library(const :ref:`rgpot_plugin_descriptor_t<doxid-structrgpot__plugin__descriptor__t>`* desc) const
+
+Keep a registered descriptor's library mapped for a live instance.
+

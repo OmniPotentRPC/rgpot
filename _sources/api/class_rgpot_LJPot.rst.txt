@@ -28,6 +28,7 @@ Implementation of a shifted 12-6 Lennard-Jones potential. :ref:`More...<details-
 		// methods
 	
 		const :ref:`LJConfig<doxid-structrgpot_1_1_l_j_config>`& :target:`config<doxid-classrgpot_1_1_l_j_pot_1a7b3c522e7a042feb87add918da912033>`() const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_l_j_pot_1a2421f1854cc46c0c467a58c4ebda956a>`() const;
 		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_l_j_pot_1a8c8f6af50485f38472d8f8b82e3b9be5>`() const;
 		void :ref:`forceImpl<doxid-classrgpot_1_1_l_j_pot_1a74c9c2b391a010329a97b272ef1cc776>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
 	};
@@ -38,16 +39,24 @@ Detailed Documentation
 
 Implementation of a shifted 12-6 Lennard-Jones potential.
 
-Pairwise interactions within the cutoff radius, minimum image convention on an orthogonal box. Pairs come from the shared ``rgpot::nlist::PairListCache`` (the eOn PairListCache design): repeated evaluations on nearby geometries reuse a Verlet-skin cached candidate list, and one-shot evaluations run a single fused scan identical in pair content to the historical per-call double loop.
+Pairwise interactions within the cutoff radius, minimum image convention with the full cell. Pairs come from the shared ``rgpot::nlist::PairListCache`` (the eOn PairListCache design): repeated evaluations on nearby geometries reuse a Verlet-skin cached candidate list, and one-shot evaluations run a single fused scan identical in pair content to the historical per-call double loop.
 
 With ``:ref:`LJConfig::switch_width <doxid-structrgpot_1_1_l_j_config_1a967c7adc35528cafea6aabad6541cf9a>``` set, each pair term is the unshifted 12-6 energy times the C^2 quintic switch of :ref:`PairSwitch.hpp <doxid-_pair_switch_8hpp_source>`, so energy, force and curvature reach zero at the cutoff; otherwise the energy is shifted to zero there and the force jumps.
 
-.. warning::
-
-	The box is assumed to be orthogonal.
-
 Methods
 -------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1_l_j_pot_1a2421f1854cc46c0c467a58c4ebda956a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Concurrency and evaluation capabilities of this potential.
+
+Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
 
 .. index:: pair: function; paramsKey
 .. _doxid-classrgpot_1_1_l_j_pot_1a8c8f6af50485f38472d8f8b82e3b9be5:

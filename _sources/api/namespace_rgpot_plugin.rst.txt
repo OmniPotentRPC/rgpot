@@ -1,0 +1,88 @@
+.. index:: pair: namespace; rgpot::plugin
+.. _doxid-namespacergpot_1_1plugin:
+
+namespace rgpot::plugin
+=======================
+
+.. toctree::
+	:hidden:
+
+	namespace_rgpot_plugin_detail.rst
+	namespace_rgpot_plugin_dynlib.rst
+	struct_rgpot_plugin_LoadedPlugin.rst
+	class_rgpot_plugin_PluginRegistry.rst
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace plugin {
+
+	// namespaces
+
+	namespace :ref:`rgpot::plugin::detail<doxid-namespacergpot_1_1plugin_1_1detail>`;
+	namespace :ref:`rgpot::plugin::dynlib<doxid-namespacergpot_1_1plugin_1_1dynlib>`;
+
+	// structs
+
+	struct :ref:`LoadedPlugin<doxid-structrgpot_1_1plugin_1_1_loaded_plugin>`;
+
+	// classes
+
+	class :ref:`PluginRegistry<doxid-classrgpot_1_1plugin_1_1_plugin_registry>`;
+
+	// global functions
+
+	const :ref:`rgpot_plugin_descriptor_t<doxid-structrgpot__plugin__descriptor__t>`* :target:`builtinLennardJones<doxid-lj__plugin_8cpp_1a2ddbd84cb398fd8a5218b221a6d1fb6c>`();
+	std::unique_ptr<:ref:`PotentialBase<doxid-classrgpot_1_1_potential_base>`> :ref:`create_from_plugin<doxid-_plugin_bridge_8cc_1a6d9271414ee0e4553a17e36b766f3aae>`(const :ref:`rgpot_plugin_descriptor_t<doxid-structrgpot__plugin__descriptor__t>`* desc, const std::string& config = "{}");
+
+	} // namespace plugin
+.. _details-namespacergpot_1_1plugin:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Global Functions
+----------------
+
+.. index:: pair: function; create_from_plugin
+.. _doxid-_plugin_bridge_8cc_1a6d9271414ee0e4553a17e36b766f3aae:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::unique_ptr<:ref:`PotentialBase<doxid-classrgpot_1_1_potential_base>`> create_from_plugin(const :ref:`rgpot_plugin_descriptor_t<doxid-structrgpot__plugin__descriptor__t>`* desc, const std::string& config = "{}")
+
+Create a PotentialBase-compatible wrapper from a loaded plugin. The returned object owns the plugin instance and handles unit conversion.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- desc
+
+		- Plugin descriptor (must outlive the returned object).
+
+	*
+		- config
+
+		- JSON config string passed to desc->create().
+
+
+
+.. rubric:: Returns:
+
+A unique_ptr to a :ref:`PotentialBase <doxid-classrgpot_1_1_potential_base>`.
+

@@ -7,7 +7,10 @@ Global Namespace
 .. toctree::
 	:hidden:
 
+	namespace_cache.rst
 	namespace_fortranpots.rst
+	namespace_plugin.rst
+	namespace_plugin-2.rst
 	namespace_rgpot.rst
 	namespace_rgpot-2.rst
 	namespace_rgpot-3.rst
@@ -47,6 +50,8 @@ Global Namespace
 	namespace_xckernel.rst
 	enum_CPMDCFeatureKind.rst
 	enum_rgpot_engine_acquire_reason.rst
+	enum_rgpot_plugin_caps_t.rst
+	enum_rgpot_plugin_status_t.rst
 	struct_CPMDCFeatureEntry.rst
 	struct_CPMDCResult.rst
 	struct_MopacCParams.rst
@@ -64,6 +69,9 @@ Global Namespace
 	struct_eindir_objective_t.rst
 	struct_rgpot_mpi_api_t.rst
 	struct_rgpot_mpi_group_t.rst
+	struct_rgpot_plugin_descriptor_t.rst
+	struct_rgpot_plugin_input_t.rst
+	struct_rgpot_plugin_output_t.rst
 	class_AtomMatrix.rst
 	class_GenericPotImpl.rst
 	class_PotClient.rst
@@ -80,8 +88,12 @@ Overview
 	
 	// namespaces
 
+	namespace :ref:`cache<doxid-namespacergpot_1_1cache_1_1_0d165065365317363373306064030211076062366015242354>`;
 	namespace :ref:`fortranpots<doxid-namespacergpot_1_1fortranpots_1_1_0d165254177354022106360171111037067337336127011041>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d330074065165043016212166146146214025043016253057>`;
+	namespace :ref:`plugin<doxid-namespacergpot_1_1plugin_1_1_0d200302014144210322064235167275312221164076066310>`;
+	namespace :ref:`plugin<doxid-namespacergpot_1_1plugin_1_1_0d217200312004315350013176105016125113373042341353>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d337125225102314171335167206375002356240231265256>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d371345205050316044211301074104100300046352051004>`;
 	namespace :ref:`rgpot<doxid-namespacergpot>`;
 		namespace :ref:`rgpot::abi<doxid-namespacergpot_1_1abi>`;
 		namespace :ref:`rgpot::aoti_execstack<doxid-namespacergpot_1_1aoti__execstack>`;
@@ -89,24 +101,28 @@ Overview
 		namespace :ref:`rgpot::details<doxid-namespacergpot_1_1details>`;
 		namespace :ref:`rgpot::fortranpots<doxid-namespacergpot_1_1fortranpots>`;
 		namespace :ref:`rgpot::nlist<doxid-namespacergpot_1_1nlist>`;
+		namespace :ref:`rgpot::plugin<doxid-namespacergpot_1_1plugin>`;
+			namespace :ref:`rgpot::plugin::detail<doxid-namespacergpot_1_1plugin_1_1detail>`;
+			namespace :ref:`rgpot::plugin::dynlib<doxid-namespacergpot_1_1plugin_1_1dynlib>`;
+		namespace :ref:`rgpot::tools<doxid-namespacergpot_1_1tools>`;
 		namespace :ref:`rgpot::types<doxid-namespacergpot_1_1types>`;
 			namespace :ref:`rgpot::types::adapt<doxid-namespacergpot_1_1types_1_1adapt>`;
 				namespace :ref:`rgpot::types::adapt::capnp<doxid-namespacergpot_1_1types_1_1adapt_1_1capnp>`;
 				namespace :ref:`rgpot::types::adapt::eigen<doxid-namespacergpot_1_1types_1_1adapt_1_1eigen>`;
 				namespace :ref:`rgpot::types::adapt::xtensor<doxid-namespacergpot_1_1types_1_1adapt_1_1xtensor>`;
+		namespace :ref:`rgpot::uma<doxid-namespacergpot_1_1uma>`;
 		namespace :ref:`rgpot::units<doxid-namespacergpot_1_1units>`;
 		namespace :ref:`rgpot::vesin_compat<doxid-namespacergpot_1_1vesin__compat>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d307112313373357257323066107376333004137304370130>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d337125225102314171335167206375002356240231265256>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d371345205050316044211301074104100300046352051004>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d217266233327203303134017362164326260230263145325>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d330074065165043016212166146146214025043016253057>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d305002241363136067011226310027215036350216205241>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d307112313373357257323066107376333004137304370130>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d217266233327203303134017362164326260230263145325>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d122207310312103133225144130321077133074162141334>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d005211301367263113147155070242204034047317366225>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d215115311063156157302310316040026264140105104166>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d164173104033017375130307150113162274222310040315>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d166331164204151220333054351225362033006173021072>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d164173104033017375130307150113162274222310040315>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d171070010102105364072226347021272242150151256304>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d215115311063156157302310316040026264140105104166>`;
 	namespace :ref:`rgpot_cuh2<doxid-namespacergpot__cuh2>`;
 	namespace :ref:`rgpot_cuh2_capi<doxid-namespacergpot__cuh2__capi>`;
 	namespace :ref:`rgpot_eam_al<doxid-namespacergpot__eam__al>`;
@@ -161,6 +177,28 @@ Overview
 	typedef struct RgpotXtbConfig :target:`RgpotXtbConfig<doxid-xtb__c__abi_8h_1a1786d9f1df089ee1d5b41e1389567afe>`;
 	typedef struct eindir_objective_t :target:`eindir_objective_t<doxid-eindir__abi_8hpp_1a2cd0da5d11e8702270a9a1f4ad8e2256>`;
 	typedef struct eindir_abi_stamp_t :target:`eindir_abi_stamp_t<doxid-eindir__abi_8hpp_1af98f5d743d120e3f73a6e524045f6b12>`;
+	typedef enum rgpot_plugin_status_t :target:`rgpot_plugin_status_t<doxid-plugin_8h_1a78f06d449570a1b0a9f4f73f03264e40>`;
+	typedef enum rgpot_plugin_caps_t :target:`rgpot_plugin_caps_t<doxid-plugin_8h_1a8d5b357b452188c5d2d8c49cafafe616>`;
+	typedef struct rgpot_plugin_input_t :target:`rgpot_plugin_input_t<doxid-plugin_8h_1a5dfe8cbd36f6932fcb5ca063233ac420>`;
+	typedef struct rgpot_plugin_output_t :target:`rgpot_plugin_output_t<doxid-plugin_8h_1a784cab91c95849d6def2a6cbed652955>`;
+	typedef struct rgpot_plugin_instance :target:`rgpot_plugin_instance<doxid-plugin_8h_1a1f234b9095072836be99fad25ad3eecc>`;
+
+	typedef rgpot_plugin_status_t (*:target:`rgpot_plugin_create_fn<doxid-plugin_8h_1aa03269493b9cd964d4c0c21e7c913f4f>`)(
+		const char *config_json,
+		rgpot_plugin_instance **out
+		);
+
+	typedef rgpot_plugin_status_t (*:target:`rgpot_plugin_calculate_fn<doxid-plugin_8h_1a3442a4bb46fdeeb71e021d7505136ad1>`)(
+		rgpot_plugin_instance *instance,
+		const rgpot_plugin_input_t *input,
+		rgpot_plugin_output_t *output
+		);
+
+	typedef void (*:target:`rgpot_plugin_destroy_fn<doxid-plugin_8h_1a5f6f43dbeda03521d85e1a7bf904a2d9>`)(rgpot_plugin_instance *instance);
+	typedef uint32_t (*:target:`rgpot_plugin_capabilities_fn<doxid-plugin_8h_1a1b42c3987d883dd92d911f73d1cb107f>`)(const rgpot_plugin_instance *instance);
+	typedef const char* (*:target:`rgpot_plugin_last_error_fn<doxid-plugin_8h_1a9a6c44157d29b55a2bdcf652abe6b4a2>`)(const rgpot_plugin_instance *instance);
+	typedef struct rgpot_plugin_descriptor_t :target:`rgpot_plugin_descriptor_t<doxid-plugin_8h_1af4177f0b4a7e3044f2333b98096fc3b5>`;
+	typedef const :ref:`rgpot_plugin_descriptor_t<doxid-structrgpot__plugin__descriptor__t>`* (*:target:`rgpot_plugin_init_fn<doxid-plugin_8h_1a23a5a0bc30df2871caf2e7739c8465c6>`)(void);
 
 	// enums
 
@@ -173,6 +211,8 @@ Overview
 
 	enum :ref:`CPMDCFeatureKind<doxid-cpmd__c__abi_8h_1af730055345a93286960ba9ef1a3f05b2>`;
 	enum :ref:`rgpot_engine_acquire_reason<doxid-engine__c__abi_8h_1a0de09379b1e277b837472f09146bffef>`;
+	enum :ref:`rgpot_plugin_caps_t<doxid-plugin_8h_1a7df2183b0ca1d11b867b12962ba06303>`;
+	enum :ref:`rgpot_plugin_status_t<doxid-plugin_8h_1a2c97aed5acd2481502d9f1a54718c2ee>`;
 
 	// structs
 
@@ -193,6 +233,9 @@ Overview
 	struct :ref:`eindir_objective_t<doxid-structeindir__objective__t>`;
 	struct :ref:`rgpot_mpi_api_t<doxid-structrgpot__mpi__api__t>`;
 	struct :ref:`rgpot_mpi_group_t<doxid-structrgpot__mpi__group__t>`;
+	struct :ref:`rgpot_plugin_descriptor_t<doxid-structrgpot__plugin__descriptor__t>`;
+	struct :ref:`rgpot_plugin_input_t<doxid-structrgpot__plugin__input__t>`;
+	struct :ref:`rgpot_plugin_output_t<doxid-structrgpot__plugin__output__t>`;
 
 	// classes
 
@@ -256,6 +299,7 @@ Overview
 	:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* :ref:`cpmdc_session_create<doxid-cpmd__c__abi_8h_1a08b6b5b994b9754e6c853d3dd46c7745>`(const void* params_capnp, size_t params_capnp_size_bytes);
 	int :ref:`cpmdc_session_set_params<doxid-cpmd__c__abi_8h_1a0ffb70752daab4a244e5ffd58eaa6db5>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, const void* params_capnp, size_t params_capnp_size_bytes);
 	void :ref:`cpmdc_session_destroy<doxid-cpmd__c__abi_8h_1a6d07b0b1700b5352f1ce33f396a9f578>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session);
+	int :ref:`cpmdc_session_select_orbitals<doxid-cpmd__c__abi_8h_1accf0bce90122cb45d3c3c0b6c9c4e801>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, long long key);
 	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :target:`cpmdc_session_energy_gradient<doxid-cpmd__c__abi_8h_1a6d79318bc9f2eae253d4906376123570>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, int n_atoms, const double* positions_ang, const int* atomic_numbers, double* grad_h_bohr);
 	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :target:`cpmdc_session_energy<doxid-cpmd__c__abi_8h_1a3c36a0c86b25223e47eb139ec2d89a33>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, int n_atoms, const double* positions_ang, const int* atomic_numbers);
 	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :target:`cpmdc_session_energy_forces<doxid-cpmd__c__abi_8h_1ab94170b806559374915fb2510fd46d6b>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, int n_atoms, const double* positions_ang, const int* atomic_numbers, double* forces_h_bohr);
@@ -280,6 +324,7 @@ Overview
 	:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* :ref:`cpmdc_session_create<doxid-cpmd__c__abi__stub_8c_1a08b6b5b994b9754e6c853d3dd46c7745>`(const void* params_capnp, size_t params_capnp_size_bytes);
 	int :ref:`cpmdc_session_set_params<doxid-cpmd__c__abi__stub_8c_1a0ffb70752daab4a244e5ffd58eaa6db5>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, const void* params_capnp, size_t params_capnp_size_bytes);
 	void :ref:`cpmdc_session_destroy<doxid-cpmd__c__abi__stub_8c_1a6d07b0b1700b5352f1ce33f396a9f578>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session);
+	int :ref:`cpmdc_session_select_orbitals<doxid-cpmd__c__abi__stub_8c_1accf0bce90122cb45d3c3c0b6c9c4e801>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, long long key);
 	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :target:`cpmdc_session_energy<doxid-cpmd__c__abi__stub_8c_1a3c36a0c86b25223e47eb139ec2d89a33>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, int n_atoms, const double* positions_ang, const int* atomic_numbers);
 	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :target:`cpmdc_session_energy_gradient<doxid-cpmd__c__abi__stub_8c_1a6d79318bc9f2eae253d4906376123570>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, int n_atoms, const double* positions_ang, const int* atomic_numbers, double* grad_h_bohr);
 	:ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>` :target:`cpmdc_session_energy_forces<doxid-cpmd__c__abi__stub_8c_1ab94170b806559374915fb2510fd46d6b>`(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, int n_atoms, const double* positions_ang, const int* atomic_numbers, double* forces_h_bohr);
@@ -341,7 +386,8 @@ Overview
 	void :ref:`pot_client_free<doxid-pot__bridge_8h_1a605cb8b056e3d895be066472fe1c116e>`(:ref:`PotClient<doxid-struct_pot_client>`* client);
 	int32_t :ref:`pot_calculate<doxid-pot__bridge_8h_1ab471aef52e0227fbb98588e8366ad646>`(:ref:`PotClient<doxid-struct_pot_client>`* client, int32_t natoms, const double* pos, const int32_t* atmnrs, const double* box, double* out_energy, double* out_forces);
 	const char* :ref:`pot_get_last_error<doxid-pot__bridge_8h_1a669a1a1ce89314ebbfec4c91438bd782>`(:ref:`PotClient<doxid-struct_pot_client>`* client);
-	int :ref:`main<doxid-server_8cpp_1a0ddf1224851353fc92bfbff6f499fa97>`(int argc, char* argv[]);
+	int :ref:`runServer<doxid-server_8cpp_1a46b7d52e9feae7b71cb54690fd608c99>`(int argc, char* argv[]);
+	int :target:`main<doxid-server_8cpp_1a3c04138a5bfe5d72780bb7e82a18e627>`(int argc, char** argv);
 	static void :target:`set_err<doxid-_uma_engine_abi_8cc_1a3cbaa0d62282e2faf4f8f8267c065187>`(char* errbuf, size_t errlen, const char* msg);
 	int :target:`rgpot_engine_abi_version<doxid-_uma_engine_abi_8cc_1a98cc4c5e859160b4cc816ee692cef651>`(void);
 	int :target:`rgpot_engine_available<doxid-_uma_engine_abi_8cc_1a6e1e42d077dbc8cbbd1b8299b7f6c04a>`(void);
@@ -389,6 +435,8 @@ Overview
 	#define :target:`RGPOT_MTA_API<doxid-metatomic__c__abi_8h_1a409c918f350af84ff87227c561b27aa3>`
 	#define :target:`RGPOT_MTA_ENGINE_BUILD<doxid-_metatomic_engine_abi_8cc_1a8eaafdf8bea9f6c384cda06d3e8eea42>`
 	#define :target:`RGPOT_NWCHEMC_API<doxid-nwchem__c__abi_8h_1a6ad5679b2111999202bb48844af14a93>`
+	#define :target:`RGPOT_PLUGIN_API_VERSION<doxid-plugin_8h_1a48d5453009a11f3438b43bf0a6e458ae>`
+	#define :target:`RGPOT_PLUGIN_EXPORT<doxid-plugin_8h_1a13213db8b02569a359c573df47689cb8>`
 	#define :ref:`RGPOT_ROCKSDB_UNIQUE_PTR_OPEN<doxid-_potential_cache_8hpp_1a4d2e3dd07b69975ea6e7a022076e0a4b>`
 	#define :target:`RGPOT_XTB_ABI_VERSION<doxid-xtb__c__abi_8h_1aa3b73c6a3161c5d0da0ec0b357f13b8f>`
 	#define :target:`RGPOT_XTB_API<doxid-xtb__c__abi_8h_1a1c2e4e9e5c694894e8e5e08ae2c99479>`
@@ -592,6 +640,18 @@ Replace Cap'n Proto parameters before the session accepts topology.
 	void cpmdc_session_destroy(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session)
 
 Release a persistent evaluation session.
+
+.. index:: pair: function; cpmdc_session_select_orbitals
+.. _doxid-cpmd__c__abi_8h_1accf0bce90122cb45d3c3c0b6c9c4e801:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int cpmdc_session_select_orbitals(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, long long key)
+
+Name the calculation the next evaluations of this session belong to.
+
+The engine keeps the converged orbitals per key, so a calculator that evaluates several images or beads in turn starts each SCF from that image's or bead's own previous orbitals. Optional: an engine without the symbol keeps one stored copy.
 
 .. index:: pair: function; cpmdc_session_calculate_forces
 .. _doxid-cpmd__c__abi_8h_1a9f5e4a955e689dcf3e06b52e68b6adb1:
@@ -799,6 +859,18 @@ Replace Cap'n Proto parameters before the session accepts topology.
 	void cpmdc_session_destroy(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session)
 
 Release a persistent evaluation session.
+
+.. index:: pair: function; cpmdc_session_select_orbitals
+.. _doxid-cpmd__c__abi__stub_8c_1accf0bce90122cb45d3c3c0b6c9c4e801:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int cpmdc_session_select_orbitals(:ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`* session, long long key)
+
+Name the calculation the next evaluations of this session belong to.
+
+The engine keeps the converged orbitals per key, so a calculator that evaluates several images or beads in turn starts each SCF from that image's or bead's own previous orbitals. Optional: an engine without the symbol keeps one stored copy.
 
 .. index:: pair: function; cpmdc_session_calculate_forces
 .. _doxid-cpmd__c__abi__stub_8c_1a9f5e4a955e689dcf3e06b52e68b6adb1:
@@ -1487,19 +1559,19 @@ Checks if a valid client handle is provided and if the ``last_error`` buffer con
 
 String containing the error description.
 
-.. index:: pair: function; main
-.. _doxid-server_8cpp_1a0ddf1224851353fc92bfbff6f499fa97:
+.. index:: pair: function; runServer
+.. _doxid-server_8cpp_1a46b7d52e9feae7b71cb54690fd608c99:
 
 .. ref-code-block:: cpp
 	:class: doxyrest-title-code-block
 
-	int main(int argc, char* argv[])
+	int runServer(int argc, char* argv[])
 
 The main entry point handles command-line arguments to specify the network port and the potential type. It instantiates the requested physics engine and blocks until the server is terminated.
 
 
 
-.. _doxid-server_8cpp_1autotoc_md20:
+.. _doxid-server_8cpp_1autotoc_md21:
 
 Usage
 ~~~~~

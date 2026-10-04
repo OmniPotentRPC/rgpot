@@ -129,20 +129,35 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l2 current"><a class="reference internal" href="global.html">Global Namespace</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="namespace_cache.html">namespace cache</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_fortranpots.html">namespace fortranpots</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_plugin.html">namespace plugin</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_plugin-2.html">namespace plugin</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-2.html">namespace rgpot</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-2.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-3.html">namespace rgpot</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_abi.html">namespace rgpot::abi</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_aoti_execstack.html">namespace rgpot::aoti_execstack</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_details.html">namespace rgpot::details</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_fortranpots.html">namespace rgpot::fortranpots</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_nlist.html">namespace rgpot::nlist</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_plugin.html">namespace rgpot::plugin</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_tools.html">namespace rgpot::tools</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_types.html">namespace rgpot::types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_uma.html">namespace rgpot::uma</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_units.html">namespace rgpot::units</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_vesin_compat.html">namespace rgpot::vesin_compat</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_D3Damping.html">enum rgpot::D3Damping</a></li>
@@ -195,9 +210,6 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_XcKernel.html">class rgpot::XcKernel</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_ZBLPot.html">class rgpot::ZBLPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_registry.html">template class rgpot::registry</a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-3.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-4.html">namespace rgpot</a><ul class="simple">
@@ -305,6 +317,8 @@ data-aria-dark="Switch to auto color mode">
 </li>
 <li class="toctree-l3"><a class="reference internal" href="enum_CPMDCFeatureKind.html">enum CPMDCFeatureKind</a></li>
 <li class="toctree-l3"><a class="reference internal" href="enum_rgpot_engine_acquire_reason.html">enum rgpot_engine_acquire_reason</a></li>
+<li class="toctree-l3"><a class="reference internal" href="enum_rgpot_plugin_caps_t.html">enum rgpot_plugin_caps_t</a></li>
+<li class="toctree-l3"><a class="reference internal" href="enum_rgpot_plugin_status_t.html">enum rgpot_plugin_status_t</a></li>
 <li class="toctree-l3"><a class="reference internal" href="struct_CPMDCFeatureEntry.html">struct CPMDCFeatureEntry</a><ul class="simple">
 </ul>
 </li>
@@ -354,6 +368,15 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="struct_rgpot_mpi_group_t.html">struct rgpot_mpi_group_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_plugin_descriptor_t.html">struct rgpot_plugin_descriptor_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_plugin_input_t.html">struct rgpot_plugin_input_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_plugin_output_t.html">struct rgpot_plugin_output_t</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
@@ -525,15 +548,15 @@ data-aria-dark="Switch to auto color mode">
 </div>
 <section id="overview">
 <h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
-<p>Implementation of the standalone Cap’n Proto potential server. <a class="reference internal" href="#details-class-generic-pot-impl"><span class="std std-ref">More…</span></a></p>
+<p>Server implementation for the Potential RPC interface. <a class="reference internal" href="#details-class-generic-pot-impl"><span class="std std-ref">More…</span></a></p>
 <div class="doxyrest-overview-code-block highlight">
 <pre><span data-line="1"><span class="k">class</span> <span class="nl">GenericPotImpl</span><span class="p">:</span> <span class="k">public</span> <span class="n">Potential</span><span class="o">::</span><span class="n">Server</span> <span class="p">{</span></span>
 <span data-line="2"><span class="k">public</span><span class="o">:</span></span>
 <span data-line="3">    <span class="c1">// construction</span></span>
 <span data-line="4"> </span>
 <span data-line="5">    <a class="doxyrest-code-link reference internal" href="#doxid-class-generic-pot-impl-1ac77d09e5f96610b4c9c590c6cf7c1cac"><span class="std std-ref">GenericPotImpl</span></a><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><a class="doxyrest-code-link reference internal" href="class_rgpot_PotentialBase.html#doxid-classrgpot-1-1-potential-base"><span class="std std-ref">rgpot::PotentialBase</span></a><span class="o">&gt;</span> <span class="n">pot</span><span class="p">);</span></span>
-<span data-line="6">    <a class="doxyrest-code-link reference internal" href="#doxid-class-generic-pot-impl-1ac688b4558b6ba9d25f60efe6273c4ed9"><span class="std std-ref">GenericPotImpl</span></a><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><a class="doxyrest-code-link reference internal" href="class_rgpot_NWChemPot.html#doxid-classrgpot-1-1-n-w-chem-pot"><span class="std std-ref">rgpot::NWChemPot</span></a><span class="o">&gt;</span> <span class="n">pot</span><span class="p">);</span></span>
-<span data-line="7">    <span class="doxyrest-code-target target" id="doxid-class_generic_pot_impl_1aa2b3e7da508312e29d44bac930d5c8fb"></span><span class="n">GenericPotImpl</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><a class="doxyrest-code-link reference internal" href="class_rgpot_CPMDPot.html#doxid-classrgpot-1-1-c-p-m-d-pot"><span class="std std-ref">rgpot::CPMDPot</span></a><span class="o">&gt;</span> <span class="n">pot</span><span class="p">);</span></span>
+<span data-line="6">    <a class="doxyrest-code-link reference internal" href="#doxid-class-generic-pot-impl-1a473b1814b37703887714a8c8a63b3db8"><span class="std std-ref">GenericPotImpl</span></a><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><a class="doxyrest-code-link reference internal" href="class_rgpot_NWChemPot.html#doxid-classrgpot-1-1-n-w-chem-pot"><span class="std std-ref">rgpot::NWChemPot</span></a><span class="o">&gt;</span> <span class="n">pot</span><span class="p">,</span> <span class="n">rgpot</span><span class="o">::</span><span class="n">tools</span><span class="o">::</span><span class="n">MpiPefSession</span><span class="o">*</span> <span class="n">pef</span> <span class="o">=</span> <span class="k">nullptr</span><span class="p">);</span></span>
+<span data-line="7">    <span class="doxyrest-code-target target" id="doxid-class_generic_pot_impl_1a4a98bcf7d34955936e61fce3a32fde9d"></span><span class="n">GenericPotImpl</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><a class="doxyrest-code-link reference internal" href="class_rgpot_CPMDPot.html#doxid-classrgpot-1-1-c-p-m-d-pot"><span class="std std-ref">rgpot::CPMDPot</span></a><span class="o">&gt;</span> <span class="n">pot</span><span class="p">,</span> <span class="n">rgpot</span><span class="o">::</span><span class="n">tools</span><span class="o">::</span><span class="n">MpiPefSession</span><span class="o">*</span> <span class="n">pef</span> <span class="o">=</span> <span class="k">nullptr</span><span class="p">);</span></span>
 <span data-line="8"> </span>
 <span data-line="9">    <span class="c1">// methods</span></span>
 <span data-line="10"> </span>
@@ -544,8 +567,6 @@ data-aria-dark="Switch to auto color mode">
 </section>
 <section id="detailed-documentation">
 <span id="details-class-generic-pot-impl"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
-<p>Implementation of the standalone Cap’n Proto potential server.</p>
-<p>This file implements a basic RPC server which exposes toy potentials over a network interface. It utilizes the <code class="docutils literal notranslate"><span class="pre">EzRpcServer</span></code> for handling requests.</p>
 <p>Server implementation for the Potential RPC interface.</p>
 <p>This class wraps a polymorphic <code class="docutils literal notranslate"><span class="pre">PotentialBase</span></code> instance and dispatches RPC calculate requests to the underlying physics engine.</p>
 <section id="construction">
@@ -568,8 +589,8 @@ data-aria-dark="Switch to auto color mode">
 </tbody>
 </table>
 </div>
-<div class="doxyrest-title-code-block highlight" id="doxid-class-generic-pot-impl-1ac688b4558b6ba9d25f60efe6273c4ed9">
-<span id="index-2"></span><pre><span data-line="1"><span class="n">GenericPotImpl</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><a class="doxyrest-code-link reference internal" href="class_rgpot_NWChemPot.html#doxid-classrgpot-1-1-n-w-chem-pot"><span class="std std-ref">rgpot::NWChemPot</span></a><span class="o">&gt;</span> <span class="n">pot</span><span class="p">)</span></span>
+<div class="doxyrest-title-code-block highlight" id="doxid-class-generic-pot-impl-1a473b1814b37703887714a8c8a63b3db8">
+<span id="index-2"></span><pre><span data-line="1"><span class="n">GenericPotImpl</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><a class="doxyrest-code-link reference internal" href="class_rgpot_NWChemPot.html#doxid-classrgpot-1-1-n-w-chem-pot"><span class="std std-ref">rgpot::NWChemPot</span></a><span class="o">&gt;</span> <span class="n">pot</span><span class="p">,</span> <span class="n">rgpot</span><span class="o">::</span><span class="n">tools</span><span class="o">::</span><span class="n">MpiPefSession</span><span class="o">*</span> <span class="n">pef</span> <span class="o">=</span> <span class="k">nullptr</span><span class="p">)</span></span>
 </pre></div>
 <p>Constructor retaining an NWChemPot pointer for configure(). Members initialize in declaration order (m_potential then m_nwchem).</p>
 </section>

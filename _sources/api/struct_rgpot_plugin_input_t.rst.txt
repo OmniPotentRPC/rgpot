@@ -1,0 +1,24 @@
+.. index:: pair: struct; rgpot_plugin_input_t
+.. _doxid-structrgpot__plugin__input__t:
+
+struct rgpot_plugin_input_t
+===========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct rgpot_plugin_input_t {
+		// fields
+	
+		size_t :target:`n_atoms<doxid-structrgpot__plugin__input__t_1a8cc4f5e4a0eb3307a4aad6a4d1ccdcee>`;
+		const double* :target:`positions<doxid-structrgpot__plugin__input__t_1adb5b969a41bb832c31dc8b332c587c0a>`;
+		const int* :target:`atomic_numbers<doxid-structrgpot__plugin__input__t_1a856ab5f4ae26a2031599592494678bbd>`;
+		const double* :target:`cell<doxid-structrgpot__plugin__input__t_1aa042075ac927deb9c2b2df31e394a1c2>`;
+	};

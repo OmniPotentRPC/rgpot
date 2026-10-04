@@ -26,4 +26,5 @@ struct rgpot_mpi_api_t
 		void(* :target:`finalize_at_exit<doxid-structrgpot__mpi__api__t_1a2a13430498c2c15fd0e84a665fb035d9>`)(int(*abort_requested)(void));
 		int(* :target:`agree<doxid-structrgpot__mpi__api__t_1ac99790a7f536d163d57cf0289d1de3b4>`)(unsigned char *flags, size_t n);
 		void(* :target:`publish_error<doxid-structrgpot__mpi__api__t_1ab5763010b49f5a447357c8fc36158728>`)(const char *message, size_t len);
+		int(* :target:`adopt<doxid-structrgpot__mpi__api__t_1a49a07f5ee8b1c48faa402bf2ab67877a>`)(int(*callback)(const void *, size_t, int));
 	};

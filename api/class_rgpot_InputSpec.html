@@ -129,20 +129,35 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="global.html">Global Namespace</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="namespace_cache.html">namespace cache</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_fortranpots.html">namespace fortranpots</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_plugin.html">namespace plugin</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_plugin-2.html">namespace plugin</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-2.html">namespace rgpot</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-2.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-3.html">namespace rgpot</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_abi.html">namespace rgpot::abi</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_aoti_execstack.html">namespace rgpot::aoti_execstack</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_details.html">namespace rgpot::details</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_fortranpots.html">namespace rgpot::fortranpots</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_nlist.html">namespace rgpot::nlist</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_plugin.html">namespace rgpot::plugin</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_tools.html">namespace rgpot::tools</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_types.html">namespace rgpot::types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_uma.html">namespace rgpot::uma</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_units.html">namespace rgpot::units</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_vesin_compat.html">namespace rgpot::vesin_compat</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_D3Damping.html">enum rgpot::D3Damping</a></li>
@@ -195,9 +210,6 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_XcKernel.html">class rgpot::XcKernel</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_ZBLPot.html">class rgpot::ZBLPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_registry.html">template class rgpot::registry</a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-3.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-4.html">namespace rgpot</a><ul class="simple">
@@ -305,6 +317,8 @@ data-aria-dark="Switch to auto color mode">
 </li>
 <li class="toctree-l3"><a class="reference internal" href="enum_CPMDCFeatureKind.html">enum CPMDCFeatureKind</a></li>
 <li class="toctree-l3"><a class="reference internal" href="enum_rgpot_engine_acquire_reason.html">enum rgpot_engine_acquire_reason</a></li>
+<li class="toctree-l3"><a class="reference internal" href="enum_rgpot_plugin_caps_t.html">enum rgpot_plugin_caps_t</a></li>
+<li class="toctree-l3"><a class="reference internal" href="enum_rgpot_plugin_status_t.html">enum rgpot_plugin_status_t</a></li>
 <li class="toctree-l3"><a class="reference internal" href="struct_CPMDCFeatureEntry.html">struct CPMDCFeatureEntry</a><ul class="simple">
 </ul>
 </li>
@@ -354,6 +368,15 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="struct_rgpot_mpi_group_t.html">struct rgpot_mpi_group_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_plugin_descriptor_t.html">struct rgpot_plugin_descriptor_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_plugin_input_t.html">struct rgpot_plugin_input_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_plugin_output_t.html">struct rgpot_plugin_output_t</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
@@ -555,7 +578,7 @@ data-aria-dark="Switch to auto color mode">
 <p>Wraps <code class="docutils literal notranslate"><span class="pre">rgpot_force_input_t</span></code>. The constructor calls <code class="docutils literal notranslate"><span class="pre">rgpot_force_input_create()</span></code> which creates non-owning DLPack tensors wrapping the caller’s buffers. The destructor calls <code class="docutils literal notranslate"><span class="pre">rgpot_force_input_free()</span></code> to release the tensor metadata (NOT the underlying data).</p>
 </section>
 <section id="example">
-<span id="doxid-classrgpot-1-1-input-spec-1autotoc-md29"></span><h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
+<span id="doxid-classrgpot-1-1-input-spec-1autotoc-md30"></span><h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
 <div class="highlight">
 <pre><span data-line="1"><span class="kt">double</span> <span class="n">pos</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">};</span></span>
 <span data-line="2"><span class="kt">int</span>    <span class="n">atm</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">};</span></span>
