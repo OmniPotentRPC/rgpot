@@ -1962,6 +1962,22 @@ struct MetatomicParams {
     perAtom           @1 :Bool = false;
     explicitGradients @2 :List(Text); # Gradient names, e.g. "positions", "strain".
   }
+
+  # Tensor runtime, applied once when the engine creates the model. A value
+  # below 1 leaves the runtime's own setting alone.
+  intraopThreads @7 :Int32 = 1;  # torch intra-op worker threads.
+  interopThreads @8 :Int32 = 1;  # torch inter-op worker threads (settable once per process).
+
+  # Mirrors rgpot's MetatomicConfig. 0 / false keep the model's own behaviour.
+  nSymmetryRotations @9  :Int64 = 0;  # Rotations averaged per evaluation; 0 disables.
+  randomRotation     @10 :Bool = false; # Draw the averaging rotations at random.
+  so3ProbeScatter    @11 :Bool = false; # Probe the SO(3) scatter path.
+  torchDeterminism   @12 :TorchDeterminism = fast;
+
+  enum TorchDeterminism {
+    fast   @0; # Leave the process-global torch flags alone.
+    strict @1; # Deterministic algorithms, math SDP attention, no TF32.
+  }
 }
 
 # @struct UmaParams
@@ -1977,6 +1993,12 @@ struct UmaParams {
   spin         @4 :Int32 = 1;     # Spin multiplicity.
   cutoff       @5 :Float64 = 0.0; # Angstrom; <=0 keeps UmaConfig/sidecar value.
   maxNeighbors @6 :Int32 = 0;     # <=0 keeps UmaConfig/sidecar value.
+
+  # Tensor runtime, applied once when the engine creates the model. A thread
+  # count below 1 leaves the runtime's own setting alone.
+  intraopThreads          @7 :Int32 = 1; # torch intra-op worker threads.
+  interopThreads          @8 :Int32 = 1; # torch inter-op worker threads (settable once per process).
+  deterministicAlgorithms @9 :Bool = false; # Request deterministic torch algorithms.
 }
 
 # @struct PotentialSpec
