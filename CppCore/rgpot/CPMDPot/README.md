@@ -65,6 +65,14 @@ uses the session-result ABI when available:
 `cpmdc_session_calculate_result`. Older engines can fall back to the one-shot
 energy-gradient ABI if they expose it.
 
+The box passed to a force call is the cell CPMD uses. With a cpmdc newer
+than 0.3.0 a non-zero box replaces the `CELL` and `SYMMETRY` of the deck
+(`SYMMETRY 1` for a cubic deck and box, `SYMMETRY 8` for another
+orthorhombic box, `CELL VECTORS` otherwise). An isolated deck
+(`SYMMETRY 0`) takes only an orthorhombic box. An all-zero box, the
+convention of hosts that pass no cell for a non-periodic system, keeps
+the deck's `CELL`.
+
 `CPMDPot::selectOrbitals(key)` names the calculation the following forces
 belong to, an image of a band or a bead of a ring polymer. When the engine
 exports `cpmdc_session_select_orbitals`, it keeps the converged orbitals per
