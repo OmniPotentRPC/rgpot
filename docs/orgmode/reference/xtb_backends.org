@@ -68,8 +68,9 @@ rebuilds the native molecule and calculator.
   under periodic boundary conditions. The box only sets the stress volume.
 - *xtb GFN1-xTB and GFN-FF* run periodic. The atoms are centered in the
   cell and wrapped, which libxtb needs to converge for a molecule near a cell
-  face. libxtb returns a zero virial for periodic cells, so =has_stress= stays
-  clear.
+  face. =xtb_getVirial= returns exactly zero for a periodic cell (a test calls
+  libxtb directly to check), so =has_stress= stays clear instead of reporting
+  a zero stress.
 - *tblite* runs periodic for every method. The GFN1 stress matches the
   strain derivative of the energy; the GFN2 periodic stress does not.
 

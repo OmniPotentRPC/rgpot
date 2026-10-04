@@ -24,6 +24,7 @@
 
 #include "rgpot/XTBPot/XTBDlopen.hpp"
 #include "rgpot/XTBPot/XTBPot.hpp"
+#include "rgpot/units.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
 using rgpot::types::AtomMatrix;
@@ -358,7 +359,48 @@ TEST_CASE("XTBPot treats a nonzero box as periodic", "[xtb][linked][periodic]") 
   REQUIRE_THAT(shifted.energy, WithinAbs(base.energy, 1e-7));
 }
 
-TEST_CASE("XTBPot does not report a stress libxtb did not compute",
+// libxtb provides no virial under periodic boundary conditions: its
+// xtb_getVirial returns exactly zero for periodic GFN1-xTB. XTBPot therefore
+// reports no stress for a periodic cell (has_stress == 0) instead of a
+// measured zero. The first case calls libxtb directly so the claim does not
+// rest on XTBPot; if a libxtb release fills the virial it fails, and XTBPot
+// should then pass the virial through and be checked against the strain
+// derivative of the energy as the tblite test does.
+TEST_CASE("libxtb returns a zero virial for a periodic cell",
+          "[xtb][capi][periodic][stress]") {
+  PeriodicFixture fx;
+  int natoms = 3;
+  double charge = 0.0;
+  int uhf = 0;
+  double pos_bohr[9];
+  double box_bohr[9];
+  for (int i = 0; i < 9; ++i) {
+    pos_bohr[i] = fx.pos[static_cast<size_t>(i)] * rgpot::units::ANGSTROM_TO_BOHR;
+    box_bohr[i] = fx.box[static_cast<size_t>(i)] * rgpot::units::ANGSTROM_TO_BOHR;
+  }
+  const bool periodic[3] = {true, true, true};
+  xtb_TEnvironment env = xtb_newEnvironment();
+  xtb_TCalculator calc = xtb_newCalculator();
+  xtb_TResults res = xtb_newResults();
+  xtb_setVerbosity(env, XTB_VERBOSITY_MUTED);
+  xtb_TMolecule mol = xtb_newMolecule(env, &natoms, fx.z.data(), pos_bohr,
+                                      &charge, &uhf, box_bohr, periodic);
+  xtb_loadGFN1xTB(env, mol, calc, nullptr);
+  xtb_singlepoint(env, mol, calc, res);
+  REQUIRE(xtb_checkEnvironment(env) == 0);
+  double virial[9];
+  std::fill(virial, virial + 9, 1.0);
+  xtb_getVirial(env, res, virial);
+  for (double v : virial) {
+    REQUIRE(v == 0.0);
+  }
+  xtb_delResults(&res);
+  xtb_delMolecule(&mol);
+  xtb_delCalculator(&calc);
+  xtb_delEnvironment(&env);
+}
+
+TEST_CASE("XTBPot reports no stress for a periodic cell",
           "[xtb][linked][periodic][stress]") {
   PeriodicFixture fx;
   rgpot::XTBPot pot(periodicConfig());
