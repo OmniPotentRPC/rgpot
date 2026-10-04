@@ -48,12 +48,12 @@
 //! The core types use DLPack tensors for device-agnostic data exchange.
 //! See [`tensor`] for helpers to create DLPack tensors from raw pointers.
 
-pub mod types;
-pub mod tensor;
-pub mod status;
-pub mod potential;
-pub mod eindir;
 pub mod c_api;
+pub mod eindir;
+pub mod potential;
+pub mod status;
+pub mod tensor;
+pub mod types;
 pub mod version;
 
 #[cfg(feature = "schema")]
@@ -66,6 +66,9 @@ pub mod version;
 pub mod Potentials_capnp {
     include!(concat!(env!("OUT_DIR"), "/Potentials_capnp.rs"));
 }
+
+#[cfg(feature = "schema")]
+pub mod compat;
 
 #[cfg(feature = "profile")]
 pub mod profile;

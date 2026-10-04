@@ -702,6 +702,10 @@ if get_option('with_tests')
         cpmdc_fake_engine = shared_library(
             'cpmdc_fake_engine',
             sources: ['tests/cpmdc_fake_engine.cc'],
+            cpp_args: [
+                '-DRGPOT_BUILD_VERSION="@0@"'.format(meson.project_version()),
+                '-DRGPOT_BUILD_REVISION="@0@"'.format(_rgpot_source_revision),
+            ],
             dependencies: [ptlrpc_dep],
             include_directories: _incdirs + ['.'] + include_directories(
                 'rgpot/CPMDPot',
@@ -1053,13 +1057,20 @@ if get_option('with_tests')
             ],
             suite: 'nwchem',
         )
+        _schema_sync_args = [
+            meson.current_source_dir() / 'tests/test_rpc_schema_sync.py',
+            meson.project_source_root(),
+            capnp.full_path(),
+            meson.project_build_root(),
+        ]
+        if is_variable('potentials_schema_canonical')
+            _schema_sync_args += [potentials_schema_canonical]
+        endif
         test(
             'RPCSchemaSync',
             find_program('python3'),
-            args: [
-                meson.current_source_dir() / 'tests/test_rpc_schema_sync.py',
-                meson.source_root(),
-            ],
+            args: _schema_sync_args,
+            depends: gen_rpc,
             suite: 'rpc',
         )
     endif

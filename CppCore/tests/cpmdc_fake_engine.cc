@@ -2,6 +2,7 @@
 #define RGPOT_CPMDC_BUILD
 #endif
 #include "rgpot/CPMDPot/cpmd_c_abi.h"
+#include "rgpot/abi/Compat.hpp"
 #include "rgpot/rpc/Potentials.capnp.h"
 
 #include "cpmd_stress_oracle.hpp"
@@ -436,6 +437,7 @@ cpmdc_capabilities_result(void *capabilities_capnp,
     auto kinds = caps.initConfigKinds(1);
     kinds.set(0, "cpmd");
     caps.setSchemaVersion("fake");
+    rgpot::abi::fill_compatibility(caps);
     auto words = ::capnp::messageToFlatArray(msg);
     const auto bytes = words.asBytes();
     *capabilities_capnp_size_bytes = bytes.size();

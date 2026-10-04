@@ -563,6 +563,21 @@ endif
 # Build the Rust crate via Cargo and link the resulting static library.
 # The crate also generates include/rgpot.h via cbindgen.
 
+# Version from the build system. Revision is RGPOT_SOURCE_REVISION, else the
+# git short hash. A tarball, or any non-alphanumeric value, records empty.
+_rgpot_source_revision = run_command(
+    'sh',
+    '-c',
+    'src="$1"; if [ -n "${RGPOT_SOURCE_REVISION-}" ]; then rev="$RGPOT_SOURCE_REVISION"; elif rev=$(git -C "$src" rev-parse --short=12 HEAD 2>/dev/null); then :; else rev=; fi; case "$rev" in *[!0-9A-Za-z]*) rev=;; esac; printf %s "$rev"',
+    'rgpot-revision',
+    meson.project_source_root(),
+    check: false,
+).stdout().strip()
+_args += [
+    '-DRGPOT_BUILD_VERSION="@0@"'.format(meson.project_version()),
+    '-DRGPOT_BUILD_REVISION="@0@"'.format(_rgpot_source_revision),
+]
+
 if get_option('with_rust_core')
     cargo = find_program('cargo', required: true)
 
@@ -595,6 +610,8 @@ if get_option('with_rust_core')
     rgpot_rust_target = custom_target(
         'rgpot_rust_core',
         command: [
+            'env',
+            'RGPOT_SOURCE_REVISION=' + _rgpot_source_revision,
             cargo,
             _cargo_args,
             '--manifest-path',

@@ -56,11 +56,11 @@ pub unsafe extern "C" fn rgpot_potential_new(
             callback,
             user_data,
             free_fn,
-            0,                   // n_atoms = 0
-            std::ptr::null(),    // atomic_numbers
-            std::ptr::null(),    // box_matrix
-            std::ptr::null(),    // bounds_low
-            std::ptr::null(),    // bounds_high
+            0,                // n_atoms = 0
+            std::ptr::null(), // atomic_numbers
+            std::ptr::null(), // box_matrix
+            std::ptr::null(), // bounds_low
+            std::ptr::null(), // bounds_high
         )
     }
 }
@@ -97,6 +97,10 @@ pub unsafe extern "C" fn rgpot_potential_calculate(
             return rgpot_status_t::RGPOT_INVALID_PARAMETER;
         }
         let p = unsafe { &*pot };
+        if let Err(msg) = crate::eindir::refuse_incompatible_peer(p) {
+            set_last_error(&msg);
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        }
         unsafe { (p.callback)(p.pot_user_data, input, output) }
     }))
 }
@@ -176,12 +180,7 @@ mod tests {
         rgpot_status_t::RGPOT_SUCCESS
     }
 
-    fn make_test_input() -> (
-        [f64; 6],
-        [i32; 2],
-        [f64; 9],
-        rgpot_force_input_t,
-    ) {
+    fn make_test_input() -> ([f64; 6], [i32; 2], [f64; 9], rgpot_force_input_t) {
         let mut pos = [0.0_f64, 0.0, 0.0, 1.0, 0.0, 0.0];
         let mut atmnrs = [1_i32, 1];
         let mut box_ = [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0];
@@ -224,9 +223,7 @@ mod tests {
             energy: 0.0,
             variance: 0.0,
         };
-        let status = unsafe {
-            rgpot_potential_calculate(std::ptr::null(), &input, &mut output)
-        };
+        let status = unsafe { rgpot_potential_calculate(std::ptr::null(), &input, &mut output) };
         assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
         unsafe { crate::c_api::types::rgpot_force_input_free(&mut input) };
     }
@@ -239,9 +236,7 @@ mod tests {
             energy: 0.0,
             variance: 0.0,
         };
-        let status = unsafe {
-            rgpot_potential_calculate(pot, std::ptr::null(), &mut output)
-        };
+        let status = unsafe { rgpot_potential_calculate(pot, std::ptr::null(), &mut output) };
         assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
         unsafe { rgpot_potential_free(pot as *mut _) };
     }
@@ -250,9 +245,7 @@ mod tests {
     fn calculate_null_output_returns_invalid_parameter() {
         let pot = unsafe { rgpot_potential_new(sum_callback, std::ptr::null_mut(), None) };
         let (_pos, _atmnrs, _box_, mut input) = make_test_input();
-        let status = unsafe {
-            rgpot_potential_calculate(pot, &input, std::ptr::null_mut())
-        };
+        let status = unsafe { rgpot_potential_calculate(pot, &input, std::ptr::null_mut()) };
         assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
         unsafe {
             crate::c_api::types::rgpot_force_input_free(&mut input);
@@ -281,9 +274,7 @@ mod tests {
 
     #[test]
     fn callback_error_propagates() {
-        let pot = unsafe {
-            rgpot_potential_new(failing_callback, std::ptr::null_mut(), None)
-        };
+        let pot = unsafe { rgpot_potential_new(failing_callback, std::ptr::null_mut(), None) };
         let (_pos, _atmnrs, _box_, mut input) = make_test_input();
         let mut output = rgpot_force_out_t {
             forces: std::ptr::null_mut(),
@@ -304,11 +295,7 @@ mod tests {
     fn user_data_is_forwarded_to_callback() {
         let counter = AtomicU32::new(0);
         let pot = unsafe {
-            rgpot_potential_new(
-                counting_callback,
-                &counter as *const _ as *mut c_void,
-                None,
-            )
+            rgpot_potential_new(counting_callback, &counter as *const _ as *mut c_void, None)
         };
         let (_pos, _atmnrs, _box_, mut input) = make_test_input();
         let mut output = rgpot_force_out_t {
@@ -376,5 +363,48 @@ mod tests {
             unsafe { cleanup(&mut input, &mut output) };
         }
         unsafe { rgpot_potential_free(pot as *mut _) };
+    }
+
+    #[cfg(feature = "schema")]
+    #[test]
+    fn incompatible_peer_is_refused_before_the_callback() {
+        static CALLED: AtomicBool = AtomicBool::new(false);
+        unsafe extern "C" fn flag_callback(
+            _ud: *mut c_void,
+            _input: *const rgpot_force_input_t,
+            _output: *mut rgpot_force_out_t,
+        ) -> rgpot_status_t {
+            CALLED.store(true, Ordering::SeqCst);
+            rgpot_status_t::RGPOT_SUCCESS
+        }
+        CALLED.store(false, Ordering::SeqCst);
+        let pot = unsafe { rgpot_potential_new(flag_callback, std::ptr::null_mut(), None) };
+        let bytes = crate::compat::flat_message(|caps| caps.set_protocol_major(2));
+        crate::eindir::set_peer_capabilities(unsafe { &*pot }, Some(bytes));
+        let (_pos, _atmnrs, _box_, mut input) = make_test_input();
+        let mut output = rgpot_force_out_t {
+            forces: std::ptr::null_mut(),
+            energy: 0.0,
+            variance: 0.0,
+        };
+        let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
+        assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
+        assert!(!CALLED.load(Ordering::SeqCst));
+        let msg = unsafe { std::ffi::CStr::from_ptr(crate::status::rgpot_last_error()) };
+        assert_eq!(
+            msg.to_str().unwrap(),
+            "protocolMajor: required 1, received 2"
+        );
+        crate::eindir::set_peer_capabilities(
+            unsafe { &*pot },
+            Some(crate::compat::flat_message(|_| {})),
+        );
+        let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
+        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+        assert!(CALLED.load(Ordering::SeqCst));
+        unsafe {
+            crate::c_api::types::rgpot_force_input_free(&mut input);
+            rgpot_potential_free(pot as *mut _);
+        }
     }
 }

@@ -546,6 +546,15 @@ void rgpot_rpc_client_free(rgpot_rpc_client_t *client);
 const char *rgpot_version(void);
 
 /**
+ * Source revision the loaded library was built from, or an empty string.
+ *
+ * The value is `RGPOT_SOURCE_REVISION` when that is set, otherwise the git
+ * short hash of the checkout. A tarball build leaves it empty. The pointer
+ * refers to static storage: never free it.
+ */
+const char *rgpot_source_revision(void);
+
+/**
  * Major version of the loaded library.
  */
 uint32_t rgpot_version_major(void);
