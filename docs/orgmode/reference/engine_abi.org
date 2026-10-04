@@ -5,15 +5,48 @@
 * Engine plugin ABI
 
 =CppCore/rgpot/engine_c_abi.h= is the function table a host uses to drive an
-engine shared library (=libuma_engine.so=) without linking its tensor runtime.
+engine shared library without linking the library's tensor runtime or its
+backend.
 Backend selection is which library the host opens with =dlopen=, and the
 configuration is a Cap'n Proto flat-array message whose root is the engine's
-params struct (=UmaParams=).
+params struct.
 Units are Angstrom, eV and eV/Angstrom, and a box is nine doubles in row-major
 order.
 A call returns 0 on success, a positive value when the evaluation failed at this
 input and the caller may back off, and a negative value when the instance is
 unusable.
+The engines in this repository return 1 for an invalid argument, 2 for a failed
+evaluation or setting (the reason is in
+=rgpot_engine_last_error=), 3 when the backend does not support the operation, and for =rgpot_engine_force=
+the transform's own nonzero code.
+
+** One table for every backend
+
+=CppCore/rgpot/engine/EngineTable.cc= exports every =rgpot_engine_*= symbol for
+any =PotentialBase=.
+A backend library adds a small file that builds its potential from the params
+message and defines two functions, =rgpot::engine::create= and
+=rgpot::engine::backend_name=; the table does argument validation, the
+coordinate transform, batching, error text, the thread-safety policy, the
+identity queries and the Python GIL release.
+
+| library | root message | selects |
+|---------+--------------+---------|
+| =libuma_engine= | =UmaParams= | the UMA package |
+| =libmetatomic_engine= | =MetatomicParams= | the metatomic model |
+| =libxtb_engine= | =BuiltinParams= | name =xtb=, GFN2-xTB defaults |
+| =libclassical_engine= | =BuiltinParams= | =lj=, =ljcluster=, =morse=, =zbl= and, with the Fortran kernels, =sw=, =edip=, =lenosky=, =tersoff=, =eamal=, =fehe=, =cuh2=, =waterh=, all with default parameters |
+| =libmopac_engine= | =BuiltinParams= | name =mopac=; =library= is the path of =libmopacc= |
+| =libnwchem_engine= | =NWChemParams= | NWChem through =libnwchemc= |
+| =libskala_engine= | =NWChemParams= | Skala XC on NWChem; reads =basis=, =charge=, =multiplicity=, =enginePath= and =nwchemRoot= |
+
+The Metatomic and XTB engines keep their own tables
+(=rgpot_mta_*=, =rgpot_xtb_*=) beside the generic one.
+NWChem and CPMD also keep the prefix-parameterized profile ABI that =NWChemPot=
+and =CPMDPot= load, and MOPAC keeps =mopac_c_abi.h=.
+The plugin interface in =rgpot/plugin.h= is a separate family.
+The remaining backends (tblite, dftd3, dftd4, ExprPot, XcKernel, CPMD) have no
+engine library.
 
 ** Symbols
 
@@ -26,6 +59,8 @@ Optional, probed with =dlsym=:
 |--------+---------|
 | =rgpot_engine_force_batch= | one composition, system stride =3*nAtoms= and 9 |
 | =rgpot_engine_abi_stamp=, =rgpot_engine_abi_compatible= | major, minor and layout revision |
+| =rgpot_engine_name=, =rgpot_engine_version= | backend name and =<name>/<rgpot version>= |
+| =rgpot_engine_model_digest= | SHA-256 of the loaded model file as 64 hexadecimal digits; 0 when the backend has no model file |
 | =rgpot_engine_caps= | the engine-side =PotCaps=: reentrancy, per-image instances, batching, periodicity, stress |
 | =rgpot_engine_last_error= | message of the last failed call on an instance |
 | =rgpot_engine_set_num_threads= | intra-op and inter-op threads of the tensor runtime |
@@ -33,8 +68,52 @@ Optional, probed with =dlsym=:
 | =rgpot_engine_model_state=, =rgpot_engine_set_callbacks=, =rgpot_engine_hint= | learning engines |
 | =rgpot_engine_neighbor_options= | neighbor lists the host must provision |
 
-The UMA engine exports the required symbols and every optional symbol down to
+Every engine built on the table exports all of them down to
 =rgpot_engine_set_charge_spin=.
+=rgpot_engine_set_num_threads= returns 3 for a backend without a tensor runtime,
+and =rgpot_engine_set_charge_spin= returns 3 for a backend without a charge or
+spin.
+
+** Tensor runtime parameters
+
+=UmaParams= and =MetatomicParams= carry =intraopThreads= and =interopThreads=
+(default 1; a value below 1 leaves the runtime alone), applied once when the
+engine creates the model.
+=UmaParams.deterministicAlgorithms= requests deterministic torch algorithms.
+=MetatomicParams.torchDeterminism= (=fast= or =deterministic=) is the same
+request for that arm, with the attention-backend and TF32 restrictions of
+rgpot's =TorchDeterminismPolicy=, and =nSymmetryRotations=, =randomRotation= and
+=so3ProbeScatter= mirror =MetatomicConfig=.
+The inter-op count can be set once per process before the runtime starts
+parallel work; asking for the value already in force is accepted, and another
+value afterwards fails =create= (or =rgpot_engine_set_num_threads=) with the
+reason.
+The thread counts act on the process's libtorch, so two engines in one process
+share them.
+
+** Thread safety of a handle
+
+Any thread may call =rgpot_engine_force= and =rgpot_engine_force_batch= on any
+handle.
+What happens inside follows the backend's =rgpot_engine_caps().reentrancy=:
+
+- 0, shared instance: calls run concurrently on one handle (UMA, Metatomic and
+  the classical shared-state-free potentials).
+- 1, per instance: the engine admits one call at a time per handle, so a handle
+  is safe from any thread and calls on it are serialized; handles do not wait
+  for each other.
+  A host that wants parallelism creates one handle per worker (XTB and the
+  Fortran potentials).
+- 2, process serial: the engine admits one call at a time in the process across
+  all handles of the library (MOPAC, NWChem, Skala).
+
+=rgpot_engine_set_num_threads=, =rgpot_engine_set_charge_spin=,
+=rgpot_engine_set_callbacks=, =rgpot_engine_hint= and =rgpot_engine_destroy=
+must not run concurrently with a call on the same handle.
+=rgpot_engine_last_error= and =rgpot_engine_model_digest= may run at any time.
+=EngineAdapterTest= checks each policy with a stand-in backend that records how
+many calls are inside it at once; =EngineTableTest= and =UmaEngineTest= run
+eight and four threads on one handle.
 
 ** Version scheme
 
@@ -47,10 +126,14 @@ size or field order.
 A host built against minor N runs against an engine of the same major and layout
 revision whose minor is at least N. An engine without =rgpot_engine_abi_stamp=
 is minor 0, layout 1.
+Minor 1 added the stamp, =caps=,
+=last_error=, =set_num_threads= and =set_charge_spin=; minor 2 added =name=, =version= and =model_digest=
+and the generic table for every backend.
 Structures that grow (=RgpotEngineCaps=) begin with a =size= field, so an older
 host receives the bytes it announced room for.
 The version covers the table and its conventions; it does not cover the Cap'n
-Proto params schema, the tensor runtime the engine links, or the model.
+Proto params schema (versioned by the =potentials-schema= pin), the tensor
+runtime the engine links, or the model.
 
 ** Opening an engine
 
@@ -65,26 +148,21 @@ if (!version || version() != RGPOT_ENGINE_ABI_VERSION) { /* refuse */ }
 Do not =dlclose= an engine: the tensor runtime keeps process-wide state.
 =libuma_engine.so= is linked with =-z nodelete=, so a =dlclose= leaves it
 mapped.
+Destroy every handle before the process exits.
 
-** Engines and other backend interfaces
+** Building and testing the engines
 
-Only UMA implements this table.
-Metatomic and XTB keep their own tables (=rgpot_mta_*=, =rgpot_xtb_*=), NWChem
-and CPMD use the prefix-parameterized profile ABI, MOPAC has =mopac_c_abi.h=,
-and the plugin interface in =rgpot/plugin.h= is a fourth family.
-The classical and Fortran potentials, tblite, dftd3, dftd4, ExprPot and XcKernel
-are available only as compiled classes.
-
-** Building and testing the UMA engine
-
-=libuma_engine.so= needs the metatomic stack and the rpc stack together, which
-the =umaenginebld= pixi environment provides:
+The engine libraries need the rpc stack; UMA and Metatomic also need the
+metatomic stack, which the =umaenginebld= pixi environment provides together
+with xtb:
 
 #+begin_src bash
 pixi run -e umaenginebld potctl ci metatomic-test --rpc --build-dir bbdir-uma-engine
 #+end_src
 
-=UmaEngineTest= opens the engine as a host does.
+=EngineAdapterTest= runs the table over a stand-in backend without rpc or torch,
+=EngineTableTest= opens each backend library, and =UmaEngineTest= opens the UMA
+engine as a host does.
 With
-=RGPOT_UMA_OMOL_PT2= (and =RGPOT_UMA_OMOL_BAND_PT2= for the batch case) it compares the engine with the directly compiled =UmaPot=, and =RGPOT_UMA_REQUIRE_FIXTURES=
+=RGPOT_UMA_OMOL_PT2= (and =RGPOT_UMA_OMOL_BAND_PT2= for the batch case) =UmaEngineTest= compares the engine with the directly compiled =UmaPot=, checks the model digest against the file and the runtime settings against libtorch, and =RGPOT_UMA_REQUIRE_FIXTURES=
 turns a missing fixture into a failure.
