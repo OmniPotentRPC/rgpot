@@ -1,0 +1,1 @@
+The XcKernel C-vs-NumPy goldens are bounded in ulp of the array magnitude (6 ulp, measured worst 3.0) instead of a decimal literal, the NumPy references are regenerated from the NumPy generator, and the C backend output is kept as separate regression pins.

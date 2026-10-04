@@ -89,9 +89,22 @@ named file is missing. Regenerator:
 
     pixi run -e xckerneltest -- python scripts/regen_xckernel_goldens.py
 
-That script refuses to run off rg.terra. Tolerances are the paper/README
-bars: C vs NumPy `1e-16`, Fock vs PySCF exclusive `1e-15`, fxc vs PySCF
-`1e-13`, TDA/RPA sigma vs PySCF exclusive `1e-17`. `--pyscf` Fock compares
+That script refuses to run off rg.terra. The NumPy references
+(`*_ref.npy` outside `pyscf_*`) come from the pinned libxckernel NumPy
+generator through `--s2jz` and `--c-vs-numpy`; set `LIBXCKERNEL_SRC` to a
+checkout at the pinned revision. The C backend's own output is kept apart in
+`c_regression/` (written by `dump_xckernel_goldens`) and is checked by the
+"regression" test, which detects change and validates nothing.
+
+Bars. C vs NumPy is a bound in ulp (`CppCore/tests/ulp_bound.hpp`): the
+largest `|C - NumPy|` over an array, in units of the spacing of doubles at the
+array's largest magnitude, at most `k = 6`. The two sides sum the same terms
+over 60 to 200 grid points, one sequentially in double and the other through
+OpenBLAS dgemm, so they agree to the rounding of that sum; a decimal literal
+fits one architecture's rounding and not another's. Measured on x86_64 across
+the fixtures: 0.25 to 3.0 ulp, worst `xck_gga_r_o2` on the `c_vs_numpy`
+operands. PySCF bars are decimal: Fock `1e-15`, fxc `1e-13`, TDA/RPA sigma
+`1e-17`. `--pyscf` Fock compares
 long-double stage A/B to live `nr_rks` and exits when `rel > 1e-15`.
 `--tda-rpa` (also part of `--pyscf`) pins PySCF to one OpenMP thread,
 replays committed MOs, reports live host-J without overwriting the
