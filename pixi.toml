@@ -140,11 +140,12 @@ rich = "*"
 pip = "*"
 
 [feature.eonviz.pypi-dependencies]
-# Dev branches carry the embedded-metadata minimization-trajectory parser and the
-# (s, d) optimization-landscape plotter (plt-min) the published releases lack.
-chemparseplot = { git = "https://github.com/HaoZeke/chemparseplot.git", branch = "fix/ira-kmax-default-14" }
-rgpycrumbs = { git = "https://github.com/HaoZeke/rgpycrumbs.git", branch = "fix/landscape-defaults-and-sp-marker" }
-readcon = ">=0.7"
+# Released versions carry the embedded-metadata minimization-trajectory parser
+# and the (s, d) optimization-landscape plotter (plt-min). Exact pins keep the
+# lock reproducible; scripts/check_eonviz_pins.sh enforces that.
+chemparseplot = "==1.11.0"
+rgpycrumbs = "==1.11.0"
+readcon = ">=0.14.7"
 jax = "*"
 
 [feature.docs]
@@ -192,6 +193,7 @@ uv = ">=0.6.0"
 [tasks]
 rust-test = { cmd = "cargo nextest run --manifest-path rgpot-core/Cargo.toml", description = "Run Rust core unit tests with nextest" }
 ase-anneal-compare = { cmd = "bash scripts/ase_anneal_compare.sh", description = "ASE local optimizer vs anneal SOTA portfolio on an rgpot LJ potential (run with -e rpctest)" }
+check-eonviz-pins = { cmd = "bash scripts/check_eonviz_pins.sh", description = "Fail unless every eonviz dependency is an immutable pin" }
 eon-min-landscape = { cmd = "python tests/eon_min_landscape.py", description = "Run an EON LJ minimization and render the (s,d) optimization landscape (run with -e eonviz)" }
 pes-double-well = { cmd = "bash scripts/pes_double_well.sh", description = "Render the rgpot LJ double-well 2D PES: ASE local vs anneal global (run with -e rpctest)" }
 rust-test-all = { cmd = "cargo nextest run --manifest-path rgpot-core/Cargo.toml --all-features", description = "Run Rust core tests with all features enabled" }
