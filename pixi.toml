@@ -31,6 +31,7 @@ dftd = { features = ["dftd3", "dftd4"] }
 tblitebld = { features = ["tblite"] }
 tbbld = { features = ["xtb", "tblite"] }
 metatomicbld = { features = ["metatomic"] }
+umaenginebld = { features = ["rpc", "metatomic"] }
 mpibld = { features = ["rpc", "cache", "mpi"] }
 [feature.cache.dependencies]
 rocksdb = ">=10.9.1,<11"

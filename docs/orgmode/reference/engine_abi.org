@@ -1,0 +1,90 @@
+#+TITLE: Engine plugin ABI
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Engine plugin ABI
+
+=CppCore/rgpot/engine_c_abi.h= is the function table a host uses to drive an
+engine shared library (=libuma_engine.so=) without linking its tensor runtime.
+Backend selection is which library the host opens with =dlopen=, and the
+configuration is a Cap'n Proto flat-array message whose root is the engine's
+params struct (=UmaParams=).
+Units are Angstrom, eV and eV/Angstrom, and a box is nine doubles in row-major
+order.
+A call returns 0 on success, a positive value when the evaluation failed at this
+input and the caller may back off, and a negative value when the instance is
+unusable.
+
+** Symbols
+
+Required:
+=rgpot_engine_abi_version=, =rgpot_engine_available=, =rgpot_engine_create=, =rgpot_engine_destroy=, =rgpot_engine_force=.
+
+Optional, probed with =dlsym=:
+
+| symbol | purpose |
+|--------+---------|
+| =rgpot_engine_force_batch= | one composition, system stride =3*nAtoms= and 9 |
+| =rgpot_engine_abi_stamp=, =rgpot_engine_abi_compatible= | major, minor and layout revision |
+| =rgpot_engine_caps= | the engine-side =PotCaps=: reentrancy, per-image instances, batching, periodicity, stress |
+| =rgpot_engine_last_error= | message of the last failed call on an instance |
+| =rgpot_engine_set_num_threads= | intra-op and inter-op threads of the tensor runtime |
+| =rgpot_engine_set_charge_spin= | charge and spin multiplicity of the next calls |
+| =rgpot_engine_model_state=, =rgpot_engine_set_callbacks=, =rgpot_engine_hint= | learning engines |
+| =rgpot_engine_neighbor_options= | neighbor lists the host must provision |
+
+The UMA engine exports the required symbols and every optional symbol down to
+=rgpot_engine_set_charge_spin=.
+
+** Version scheme
+
+=RGPOT_ENGINE_ABI_VERSION= is the major and a host compares it for equality.
+=RGPOT_ENGINE_ABI_MINOR= increments for an addition that leaves every existing
+call valid: a new optional symbol, or a new field at the end of a size-prefixed
+structure.
+=RGPOT_ENGINE_ABI_LAYOUT_REVISION= increments when an existing structure changes
+size or field order.
+A host built against minor N runs against an engine of the same major and layout
+revision whose minor is at least N. An engine without =rgpot_engine_abi_stamp=
+is minor 0, layout 1.
+Structures that grow (=RgpotEngineCaps=) begin with a =size= field, so an older
+host receives the bytes it announced room for.
+The version covers the table and its conventions; it does not cover the Cap'n
+Proto params schema, the tensor runtime the engine links, or the model.
+
+** Opening an engine
+
+The header defines no search path: the host opens the path it was given.
+
+#+begin_src c
+void *h = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+int (*version)(void) = dlsym(h, "rgpot_engine_abi_version");
+if (!version || version() != RGPOT_ENGINE_ABI_VERSION) { /* refuse */ }
+#+end_src
+
+Do not =dlclose= an engine: the tensor runtime keeps process-wide state.
+=libuma_engine.so= is linked with =-z nodelete=, so a =dlclose= leaves it
+mapped.
+
+** Engines and other backend interfaces
+
+Only UMA implements this table.
+Metatomic and XTB keep their own tables (=rgpot_mta_*=, =rgpot_xtb_*=), NWChem
+and CPMD use the prefix-parameterized profile ABI, MOPAC has =mopac_c_abi.h=,
+and the plugin interface in =rgpot/plugin.h= is a fourth family.
+The classical and Fortran potentials, tblite, dftd3, dftd4, ExprPot and XcKernel
+are available only as compiled classes.
+
+** Building and testing the UMA engine
+
+=libuma_engine.so= needs the metatomic stack and the rpc stack together, which
+the =umaenginebld= pixi environment provides:
+
+#+begin_src bash
+pixi run -e umaenginebld potctl ci metatomic-test --rpc --build-dir bbdir-uma-engine
+#+end_src
+
+=UmaEngineTest= opens the engine as a host does.
+With
+=RGPOT_UMA_OMOL_PT2= (and =RGPOT_UMA_OMOL_BAND_PT2= for the batch case) it compares the engine with the directly compiled =UmaPot=, and =RGPOT_UMA_REQUIRE_FIXTURES=
+turns a missing fixture into a failure.

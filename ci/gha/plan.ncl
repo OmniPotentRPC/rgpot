@@ -99,6 +99,12 @@ let P = S.pins in
       role = "metatomic+vesin meson (ubuntu)",
     },
     {
+      id = "potentials_uma_engine",
+      needs = ["ci-tools"],
+      runs_on = P.ubuntu,
+      role = "engine plugins meson (ubuntu)",
+    },
+    {
       id = "potentials_tight_binding",
       needs = ["ci-tools"],
       runs_on = P.ubuntu,
@@ -131,6 +137,7 @@ let P = S.pins in
         "rust_tests",
         "client_bridge_stress",
         "potentials_metatomic",
+        "potentials_uma_engine",
         "potentials_tight_binding",
         "potentials_plugins",
         "eonviz_pins",

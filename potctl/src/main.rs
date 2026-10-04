@@ -177,6 +177,9 @@ enum CiCmd {
     MetatomicTest {
         #[arg(long, default_value = "bbdir-mta")]
         build_dir: String,
+        /// Build with the rpc stack, which turns on the libuma_engine plugin.
+        #[arg(long)]
+        rpc: bool,
     },
     /// Plugin leg: meson build with the plugin host, then PluginTest,
     /// PluginContractTest, ExternalPluginTest and the rest of the plugin suite.
@@ -307,8 +310,8 @@ fn run() -> Result<(), String> {
                 ci::run_towncrier_check(&root, &compare_with)
             }
             CiCmd::EnsureTorchMetatomic => ci::run_ensure_torch_metatomic(&root),
-            CiCmd::MetatomicTest { build_dir } => {
-                ci::run_metatomic_test(&root, &build_dir)
+            CiCmd::MetatomicTest { build_dir, rpc } => {
+                ci::run_metatomic_test(&root, &build_dir, rpc)
             }
             CiCmd::PluginTest { build_dir, no_darwin } => {
                 ci::run_plugin_test(&root, &build_dir, !no_darwin)

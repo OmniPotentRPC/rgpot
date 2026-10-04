@@ -266,7 +266,7 @@ if rpc_enabled and not get_option('with_rpc_client_only')
         'potserv',
         ['rgpot/rpc/server.cpp'],
         link_with: [ptlrpc, _linkto],
-        dependencies: _deps + [capnp_rpc_dep, ptlrpc_hdr_dep, vesin_dep] + fortran_rt_deps,
+        dependencies: _deps + [capnp_rpc_dep, ptlrpc_hdr_dep, vesin_dep] + _mta_engine_deps + fortran_rt_deps,
         cpp_args: _args,
         build_rpath: _metatomic_build_rpath,
         include_directories: _incdirs,
@@ -283,7 +283,7 @@ if rpc_enabled and not get_option('with_rpc_client_only')
                 ptlrpc_hdr_dep,
                 vesin_dep,
                 _mpi_dep,
-            ] + fortran_rt_deps,
+            ] + _mta_engine_deps + fortran_rt_deps,
             cpp_args: _args + ['-DRGPOT_POTSERV_MPI'],
             build_rpath: _metatomic_build_rpath,
             include_directories: _incdirs,
@@ -593,6 +593,38 @@ if get_option('with_tests')
             link_with: _linkto,
             link_language: 'cpp',
         )
+        if _rpc_stack
+            uma_engine_env = environment()
+            uma_engine_env.set('RGPOT_UMA_ENGINE', uma_engine.full_path())
+            uma_engine_test = executable(
+                'uma_engine_test',
+                sources: ['tests/UmaEngineTest.cc'],
+                dependencies: test_deps + [capnp_rpc_dep, ptlrpc_dep],
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+                build_rpath: _metatomic_build_rpath,
+            )
+            test(
+                'UmaEngineTest',
+                uma_engine_test,
+                env: uma_engine_env,
+                depends: [uma_engine],
+                workdir: meson.source_root(),
+            )
+        endif
+        if _rpc_stack
+            executable(
+                'uma_engine_bench',
+                sources: ['tests/uma_engine_bench.cc'],
+                dependencies: test_deps + [capnp_rpc_dep, ptlrpc_dep],
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+            )
+        endif
     endif
     # NWChem/CPMD frontend tests (need ptlrpc + frontends from _rpc_stack)
     if _rpc_stack and not get_option('with_rpc_client_only')
