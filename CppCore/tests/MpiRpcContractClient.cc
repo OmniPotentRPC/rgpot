@@ -1,4 +1,5 @@
 // MIT License
+#include "rgpot/abi/Handshake.hpp"
 #include "rgpot/rpc/Potentials.capnp.h"
 #include "rgpot/units.hpp"
 #include <capnp/ez-rpc.h>
@@ -17,12 +18,32 @@ void require(bool value, const char *message) {
 
 int main(int argc, char **argv) {
   try {
-    require(argc == 4, "need address, backend, and serial or mpi mode");
+    require(argc == 4 || argc == 5,
+            "need address, backend, serial or mpi mode, and optionally refuse");
     const std::string backend = argv[2];
     const bool multi = std::string(argv[3]) == "mpi";
     capnp::EzRpcClient client(argv[1]);
     auto potential = client.getMain<Potential>();
     auto &wait = client.getWaitScope();
+
+    // The handshake comes before any configuration or evaluation. With
+    // "refuse" the client requires a protocol major the server does not
+    // speak and must stop at the handshake, with the reason, on the same
+    // collective server a normal run drives.
+    if (argc == 5) {
+      require(std::string(argv[4]) == "refuse", "the fifth argument is refuse");
+      rgpot::abi::Expectation future;
+      future.protocol_major = rgpot::abi::kProtocolMajor + 1;
+      const std::string reason =
+          rgpot::abi::check_server(potential, wait, future);
+      require(reason.find("protocol major") != std::string::npos,
+              "an incompatible protocol major was not refused by the handshake");
+      std::printf("%s %s handshake refusal: %s\n", backend.c_str(),
+                  multi ? "mpi" : "serial", reason.c_str());
+      return 0;
+    }
+    const std::string reason = rgpot::abi::check_server(potential, wait);
+    require(reason.empty(), reason.c_str());
     auto configure = [&](int charge, const char *title, bool accepted) {
       auto request = potential.configureRequest();
       auto configuration = request.initConfig();
