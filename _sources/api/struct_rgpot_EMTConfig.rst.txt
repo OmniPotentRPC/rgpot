@@ -1,0 +1,22 @@
+.. index:: pair: struct; rgpot::EMTConfig
+.. _doxid-structrgpot_1_1_e_m_t_config:
+
+struct rgpot::EMTConfig
+=======================
+
+.. toctree::
+	:hidden:
+
+Parameters for the Asap effective-medium potential. ``rasmussen`` selects :ref:`EMTRasmussenParameterProvider <doxid-class_e_m_t_rasmussen_parameter_provider>`. The default is the Asap copper parameter set, which is what ``emt_rasmussen = false`` means.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <EMTPot.hpp>
+	
+	struct EMTConfig {
+		// fields
+	
+		bool :target:`rasmussen<doxid-structrgpot_1_1_e_m_t_config_1a6a0bb0b5917c01606a60e7b11e07c125>` = false;
+	};

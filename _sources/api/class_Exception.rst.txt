@@ -1,0 +1,31 @@
+.. index:: pair: class; Exception
+.. _doxid-class_exception:
+
+class Exception
+===============
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class Exception {
+	public:
+		// construction
+	
+		:target:`Exception<doxid-class_exception_1a37300f9b43ff09e6bb3f521b25b877c7>`(char const* m);
+		:target:`Exception<doxid-class_exception_1a832dd48cb8b2f2da191f948aded1a871>`(const Exception& ex);
+		:target:`~Exception<doxid-class_exception_1a6b214cd8627d0968bdeebc1fbb9556b8>`();
+
+		// methods
+	
+		template <class T>
+		Exception& :target:`operator<<<doxid-class_exception_1afede0551bfa5a821e422b3a62428f6bc>`(const T& x);
+	
+		const char* :target:`GetMessage<doxid-class_exception_1a07ddcd4f080fea40c12e115244aaba78>`() const;
+	};

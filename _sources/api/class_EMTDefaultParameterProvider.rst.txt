@@ -1,0 +1,54 @@
+.. index:: pair: class; EMTDefaultParameterProvider
+.. _doxid-class_e_m_t_default_parameter_provider:
+
+class EMTDefaultParameterProvider
+=================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class EMTDefaultParameterProvider: public :ref:`EMTParameterProvider<doxid-class_e_m_t_parameter_provider>` {
+	public:
+		// construction
+	
+		:target:`EMTDefaultParameterProvider<doxid-class_e_m_t_default_parameter_provider_1af5c80d5a12b382c6c92fc5c378f9a6c0>`();
+		virtual :target:`~EMTDefaultParameterProvider<doxid-class_e_m_t_default_parameter_provider_1a4f28bd2cb02e39bab7b2e166035d21ed>`();
+
+		// methods
+	
+		virtual const :ref:`emt_parameters<doxid-structemt__parameters>`* :target:`GetParameters<doxid-class_e_m_t_default_parameter_provider_1ad36f4e48b414e096747ac7b8b4a527ab>`(int element);
+		virtual void :target:`CalcGammaEtc<doxid-class_e_m_t_default_parameter_provider_1a654fb50f3bfecc2b6226efa8cc173959>`();
+		virtual double :target:`GetCutoffDistance<doxid-class_e_m_t_default_parameter_provider_1af43d3adde06ed7b486907870e56d257b>`();
+		virtual double :target:`GetListCutoffDistance<doxid-class_e_m_t_default_parameter_provider_1af68bb0265c506e6e68b1b1b4ec6a6b77>`();
+		virtual double :target:`GetCutoffSlope<doxid-class_e_m_t_default_parameter_provider_1ae259021a29b4a75313f9907dd1c5f223>`();
+		virtual double :target:`GetLengthScale<doxid-class_e_m_t_default_parameter_provider_1ac38aca1c2f229b0c8fd285ed46357749>`();
+		virtual int :target:`GetNumberOfElements<doxid-class_e_m_t_default_parameter_provider_1a3073f96df8be1250ec1d0fd7575c4ada>`();
+		virtual const :ref:`TinyDoubleMatrix<doxid-class_tiny_matrix>`* :target:`GetChi<doxid-class_e_m_t_default_parameter_provider_1adece6455bd17755c1d6589e011fe5a20>`();
+		virtual void :target:`Debug<doxid-class_e_m_t_default_parameter_provider_1a305ea30fcb8c449e2bb2afd30765bc01>`();
+	};
+
+Inherited Members
+-----------------
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-inherited-code-block
+
+	public:
+		// methods
+	
+		virtual const :ref:`emt_parameters<doxid-structemt__parameters>`* :ref:`GetParameters<doxid-class_e_m_t_parameter_provider_1a0cc554101617b3312ba07cdb789cd342>`(int element) = 0;
+		virtual void :ref:`CalcGammaEtc<doxid-class_e_m_t_parameter_provider_1a480b732f57ef448b748ee8dd574eb91a>`() = 0;
+		virtual double :ref:`GetCutoffDistance<doxid-class_e_m_t_parameter_provider_1a068e169af01108b1878635040c5fac83>`() = 0;
+		virtual double :ref:`GetCutoffSlope<doxid-class_e_m_t_parameter_provider_1a46646be9d048a02d45f75f37f095b535>`() = 0;
+		virtual double :ref:`GetListCutoffDistance<doxid-class_e_m_t_parameter_provider_1ad468ad79bac8dc4f9baedcef8d3c2b9c>`() = 0;
+		virtual double :ref:`GetLengthScale<doxid-class_e_m_t_parameter_provider_1a5e3867b53f7f99f23d5123fc294f7477>`() = 0;
+		virtual const :ref:`TinyDoubleMatrix<doxid-class_tiny_matrix>`* :ref:`GetChi<doxid-class_e_m_t_parameter_provider_1afcf50b5e64fe5e1b857c8914017b6af5>`() = 0;
+		virtual int :ref:`GetNumberOfElements<doxid-class_e_m_t_parameter_provider_1ae59c4a141823d0bf27e81e09d30a3327>`() = 0;
+

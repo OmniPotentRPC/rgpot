@@ -1,0 +1,324 @@
+.. index:: pair: class; EMT
+.. _doxid-class_e_m_t:
+
+class EMT
+=========
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+The Effective Medium Theory (:ref:`EMT <doxid-class_e_m_t>`) potential. :ref:`More...<details-class_e_m_t>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <EMT.h>
+	
+	class EMT: public :ref:`AsapPotential<doxid-class_asap_potential>` {
+	public:
+		// fields
+	
+		int :target:`ids<doxid-class_e_m_t_1a4c48e02c242fc9053e4cfff675d5495e>`;
+		int :target:`nblist<doxid-class_e_m_t_1aab3aa1f98d747ec7249f26b0c9d6f127>`;
+		int :target:`sigma1<doxid-class_e_m_t_1a43a92317e0f41f35c5922ff097998a29>`;
+		int :target:`sigma2<doxid-class_e_m_t_1a22bff169dcaafd11e445fe790637eaeb>`;
+		int :target:`beforeforces<doxid-class_e_m_t_1aca2239df41379a2943d6b67a2062fc72>`;
+		int :target:`energies<doxid-class_e_m_t_1a3dc602b95e1118813eeb782b7763f587>`;
+		int :target:`forces<doxid-class_e_m_t_1a5b057973233292a4be5ff82441943a28>`;
+		int :target:`stresses<doxid-class_e_m_t_1a1cf20d970112f19d9d9bc546a7fb4925>`;
+		int :target:`fullstresses<doxid-class_e_m_t_1a20c75707d41618d357c839f9348605f5>`;
+
+		// construction
+	
+		:ref:`EMT<doxid-class_e_m_t_1a867725590570ce05a20e470ef0048edd>`(:ref:`EMTParameterProvider<doxid-class_e_m_t_parameter_provider>`* prov = 0);
+		virtual :ref:`~EMT<doxid-class_e_m_t_1ad96d0a5a6e0ab8eb98d58c3caf65b4d1>`();
+
+		// methods
+	
+		void :target:`SetSubtractE0<doxid-class_e_m_t_1af3668b1918ca65a734adeb85ba5a1599>`(bool subtractE0);
+		virtual void :ref:`SetAtoms<doxid-class_e_m_t_1ab8c4dd2d4a8b635e12d669a68669591c>`(:ref:`Atoms<doxid-class_atoms>`* a);
+		virtual const :ref:`Vec<doxid-class_vec>`* :ref:`GetCartesianForces<doxid-class_e_m_t_1aad0a217cf7b6550153dff97e60bf8e63>`();
+		virtual const double* :ref:`GetPotentialEnergies<doxid-class_e_m_t_1ab76118bca3e57c44950342b5416cb6fd>`();
+		virtual double :ref:`GetPotentialEnergy<doxid-class_e_m_t_1aa5936d9025b42ec188e4b72fac80b43b>`();
+		virtual const symTensor* :ref:`GetStresses<doxid-class_e_m_t_1a63fc87f3fe87c0b3fc179c3c065fb974>`(const :ref:`Vec<doxid-class_vec>`* momenta = 0);
+		virtual void :ref:`GetStress<doxid-class_e_m_t_1a37a79878900dabc6a7071e3e681e68e7>`(double stress[6], const :ref:`Vec<doxid-class_vec>`* momenta = 0);
+		virtual void :ref:`CheckNeighborLists<doxid-class_e_m_t_1aa230c9ca1f2b73a7a8f09c3b47fa28bc>`();
+		virtual double :ref:`GetCutoffRadius<doxid-class_e_m_t_1a78906ddd6632db572e10eff45efb87ae>`() const;
+		virtual double :ref:`GetLatticeConstant<doxid-class_e_m_t_1a485e4510a85cc30d6dcc1f4e11fd7717>`() const;
+		virtual int :ref:`GetNumberOfAtoms<doxid-class_e_m_t_1aeb188d9b3ced4f560461ab36e79ee8f9>`() const;
+		virtual void :ref:`SetContinuumElement<doxid-class_e_m_t_1aaf6d408e4b49b2cda1d86da220651cea>`(int z);
+		virtual void :ref:`UpdateSuperCell<doxid-class_e_m_t_1a77b1b423386968c00a577779c27ce677>`(const :ref:`SuperCell<doxid-class_super_cell>`* newSuperCell);
+		virtual double :ref:`CalculateLatticeEnergy<doxid-class_e_m_t_1afc0d32ca0258ac2993a4a3613712da1d>`(const :ref:`Vec<doxid-class_vec>` a[3]);
+		virtual void :ref:`CalculateDerivatives<doxid-class_e_m_t_1a714134c4513ca56316ef0c7a1c3844b4>`(const :ref:`Vec<doxid-class_vec>` a[3], double dEdaDota[6]);
+		virtual double :ref:`GetData<doxid-class_e_m_t_1adead49a30534236077691e25406351f4>`() const;
+		const double* :ref:`GetSigma1<doxid-class_e_m_t_1ad7f9248a914e4339d41cda2a1786bbd7>`(int n);
+		const double* :ref:`GetSigma2<doxid-class_e_m_t_1aaf539c0723e0c0313103ffd45bd629ad>`(int n);
+		void :ref:`PrintParameters<doxid-class_e_m_t_1acf792495f18b2c5fdde90b8dd1f380d4>`();
+		:ref:`NeighborList<doxid-class_neighbor_list>`* :ref:`GetNeighborList<doxid-class_e_m_t_1a97ffab1cf99a06d645697b9cbd322788>`() const;
+	};
+
+Inherited Members
+-----------------
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-inherited-code-block
+
+	public:
+		// methods
+	
+		virtual void :ref:`SetAtoms<doxid-class_asap_potential_1a9fb053b8707eeaec74bce1a5d8f6c22d>`(:ref:`Atoms<doxid-class_atoms>`* a) = 0;
+		virtual double :ref:`GetPotentialEnergy<doxid-class_asap_potential_1ad54c4d3024c8868a5f6a3c39c00c3bac>`() = 0;
+		virtual const :ref:`Vec<doxid-class_vec>`* :ref:`GetCartesianForces<doxid-class_asap_potential_1afcbf581ef4ea32eb559ea0bd411972f2>`() = 0;
+		virtual const symTensor* :ref:`GetStresses<doxid-class_asap_potential_1af0cc38a6e1f7ce872a206809e33cf634>`(const :ref:`Vec<doxid-class_vec>`* momenta = 0) = 0;
+		virtual void :ref:`GetStress<doxid-class_asap_potential_1afc6f053d5e6753be32a2aebc1bdb19d6>`(double stress[6], const :ref:`Vec<doxid-class_vec>`* momenta = 0) = 0;
+		virtual const double* :ref:`GetPotentialEnergies<doxid-class_asap_potential_1a78f7e578dbbe72d3aa4206f8223f77dd>`() = 0;
+		virtual void :ref:`CheckNeighborLists<doxid-class_asap_potential_1a6aed0f5494109c71c081dcc6d2021bfc>`() = 0;
+		virtual double :ref:`CalculateLatticeEnergy<doxid-class_asap_potential_1a22179b4b16a9ca6c735adf00b9415f57>`(const :ref:`Vec<doxid-class_vec>` a[3]);
+		virtual void :ref:`CalculateDerivatives<doxid-class_asap_potential_1a863d95196ae21dcab173fca5c64f6b49>`(const :ref:`Vec<doxid-class_vec>` a[3], double dEdaDota[6]);
+		virtual double :ref:`GetData<doxid-class_asap_potential_1ad05ff1f1b0d23d108d367ee652150da4>`() const;
+		virtual double :ref:`GetCutoffRadius<doxid-class_asap_potential_1ab5602870b4d2dd2bedbef5d21e2df5c4>`() const = 0;
+		virtual double :ref:`GetLatticeConstant<doxid-class_asap_potential_1aeb5631b291c450ba4344a55f87ee5bdf>`() const = 0;
+		virtual void :ref:`UpdateSuperCell<doxid-class_asap_potential_1aa476373048cae08d073c7320b821a74d>`(const :ref:`SuperCell<doxid-class_super_cell>`* newSuperCell) = 0;
+		virtual int :ref:`GetNumberOfAtoms<doxid-class_asap_potential_1a61edea066684292304cd7c7db2c29526>`() const = 0;
+
+.. _details-class_e_m_t:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+The Effective Medium Theory (:ref:`EMT <doxid-class_e_m_t>`) potential.
+
+The Effective Medium Theory (:ref:`EMT <doxid-class_e_m_t>`) as originally implemented in Per Stoltze's ARTwork program, and documented in
+
+* K. W. Jacobsen, P. Stoltze and J. K. Nørskov, Surf. Sci. vol. 366, p. 394-402 (1996).
+
+Construction
+------------
+
+.. index:: pair: function; EMT
+.. _doxid-class_e_m_t_1a867725590570ce05a20e470ef0048edd:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	EMT(:ref:`EMTParameterProvider<doxid-class_e_m_t_parameter_provider>`* prov = 0)
+
+Create an :ref:`EMT <doxid-class_e_m_t>` potential optionally using a parameter provider.
+
+.. _doxid-class_e_m_t_1ad96d0a5a6e0ab8eb98d58c3caf65b4d1:
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual ~EMT()
+
+Delete the :ref:`EMT <doxid-class_e_m_t>` potential.
+
+If an :ref:`EMTParameterProvider <doxid-class_e_m_t_parameter_provider>` was given when constructing the :ref:`EMT <doxid-class_e_m_t>` object, it will NOT be deleted, but any default parameter provider and the automatically generated neigbor list will be deleted.
+
+Methods
+-------
+
+.. index:: pair: function; SetAtoms
+.. _doxid-class_e_m_t_1ab8c4dd2d4a8b635e12d669a68669591c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void SetAtoms(:ref:`Atoms<doxid-class_atoms>`* a)
+
+Set the atoms belonging to this potential.
+
+This is called automatically by :ref:`Atoms.SetCalculator() <doxid-class_atoms_1a512d83660a322046b4d8b5ce9e4777ff>` and should not be called elsewhere.
+
+.. index:: pair: function; GetCartesianForces
+.. _doxid-class_e_m_t_1aad0a217cf7b6550153dff97e60bf8e63:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual const :ref:`Vec<doxid-class_vec>`* GetCartesianForces()
+
+Calculate the forces on all atoms and return the result.
+
+.. index:: pair: function; GetPotentialEnergies
+.. _doxid-class_e_m_t_1ab76118bca3e57c44950342b5416cb6fd:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual const double* GetPotentialEnergies()
+
+Calculate the energy of all atoms.
+
+.. index:: pair: function; GetPotentialEnergy
+.. _doxid-class_e_m_t_1aa5936d9025b42ec188e4b72fac80b43b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual double GetPotentialEnergy()
+
+Calculate the total energy of the system.
+
+.. index:: pair: function; GetStresses
+.. _doxid-class_e_m_t_1a63fc87f3fe87c0b3fc179c3c065fb974:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual const symTensor* GetStresses(const :ref:`Vec<doxid-class_vec>`* momenta = 0)
+
+Calculate the stress on all atoms.
+
+.. index:: pair: function; GetStress
+.. _doxid-class_e_m_t_1a37a79878900dabc6a7071e3e681e68e7:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void GetStress(double stress[6], const :ref:`Vec<doxid-class_vec>`* momenta = 0)
+
+Calculate the total stress of the system.
+
+Note that the output variable stress is not zeroed first. In quasicontinuum simulations and other situations where there is a contribution to the stress which is not from the atoms, the stress parameter can initially be set to the appropriate derivatives of the energy of that part of the calculation (without the volume normalization, which will be performed by the potential).
+
+.. index:: pair: function; CheckNeighborLists
+.. _doxid-class_e_m_t_1aa230c9ca1f2b73a7a8f09c3b47fa28bc:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void CheckNeighborLists()
+
+Check that neighbor lists are up to date, update them if not.
+
+.. index:: pair: function; GetCutoffRadius
+.. _doxid-class_e_m_t_1a78906ddd6632db572e10eff45efb87ae:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual double GetCutoffRadius() const
+
+Return the cutoff radius used in the potential.
+
+.. index:: pair: function; GetLatticeConstant
+.. _doxid-class_e_m_t_1a485e4510a85cc30d6dcc1f4e11fd7717:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual double GetLatticeConstant() const
+
+Return the lattice constant of the material, if well-defined.
+
+If a lattice constant of the material can be defined, return it in Angstrom, otherwise throw an exception.
+
+.. index:: pair: function; GetNumberOfAtoms
+.. _doxid-class_e_m_t_1aeb188d9b3ced4f560461ab36e79ee8f9:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual int GetNumberOfAtoms() const
+
+Get the number of atoms.
+
+.. index:: pair: function; SetContinuumElement
+.. _doxid-class_e_m_t_1aaf6d408e4b49b2cda1d86da220651cea:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void SetContinuumElement(int z)
+
+Specify the element in the continuum region of a QuasiContinuum simulation.
+
+.. index:: pair: function; UpdateSuperCell
+.. _doxid-class_e_m_t_1a77b1b423386968c00a577779c27ce677:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void UpdateSuperCell(const :ref:`SuperCell<doxid-class_super_cell>`* newSuperCell)
+
+Tell the Potential that a new :ref:`SuperCell <doxid-class_super_cell>` has been assigned to the atoms.
+
+.. index:: pair: function; CalculateLatticeEnergy
+.. _doxid-class_e_m_t_1afc0d32ca0258ac2993a4a3613712da1d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual double CalculateLatticeEnergy(const :ref:`Vec<doxid-class_vec>` a[3])
+
+Calculate the energy of an atom in a regular fcc(?) lattice.
+
+Given the lattice vectors, this function calculates the energy of a single atom in the lattice. Used for the QuasiContinuum method.
+
+.. index:: pair: function; CalculateDerivatives
+.. _doxid-class_e_m_t_1a714134c4513ca56316ef0c7a1c3844b4:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void CalculateDerivatives(const :ref:`Vec<doxid-class_vec>` a[3], double dEdaDota[6])
+
+Calculate derivative of the energy of an atom in a regular lattice.
+
+Used by the QuasiContinuum method.
+
+.. index:: pair: function; GetData
+.. _doxid-class_e_m_t_1adead49a30534236077691e25406351f4:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual double GetData() const
+
+Get data used by the QuasiContinuum method.
+
+.. index:: pair: function; GetSigma1
+.. _doxid-class_e_m_t_1ad7f9248a914e4339d41cda2a1786bbd7:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const double* GetSigma1(int n)
+
+Return a pointer to the :ref:`EMT <doxid-class_e_m_t>` "density" sigma1.
+
+.. index:: pair: function; GetSigma2
+.. _doxid-class_e_m_t_1aaf539c0723e0c0313103ffd45bd629ad:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const double* GetSigma2(int n)
+
+Return a pointer to the :ref:`EMT <doxid-class_e_m_t>` "density" sigma2.
+
+.. index:: pair: function; PrintParameters
+.. _doxid-class_e_m_t_1acf792495f18b2c5fdde90b8dd1f380d4:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void PrintParameters()
+
+Print the :ref:`EMT <doxid-class_e_m_t>` parameters.
+
+.. index:: pair: function; GetNeighborList
+.. _doxid-class_e_m_t_1a97ffab1cf99a06d645697b9cbd322788:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`NeighborList<doxid-class_neighbor_list>`* GetNeighborList() const
+
+Return a pointer to the neighbor list.
+

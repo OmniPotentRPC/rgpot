@@ -37,7 +37,7 @@ Detailed Documentation
 
 Embedded-atom potential for Cu/H systems, in gather form.
 
-The EAM energy splits into a pair sum and an embedding sum, U = sum\_{i<j} phi\_{Z_i Z_j}(r_ij) + sum_i F\_{Z_i}(rho_i),
+The :ref:`EAM <doxid-class_e_a_m>` energy splits into a pair sum and an embedding sum, U = sum\_{i<j} phi\_{Z_i Z_j}(r_ij) + sum_i F\_{Z_i}(rho_i),
 rho_i = sum\_{j /= i} rho\_{Z_j}(r_ij),
 
 so the force on atom ``i`` needs ``dF/drho`` at both ends of every pair. That fixes the shape of the evaluation: densities first, embedding derivatives second, forces third. Each of the three passes writes one slot per atom and runs under ``do concurrent``.

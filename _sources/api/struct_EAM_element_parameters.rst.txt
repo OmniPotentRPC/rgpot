@@ -1,0 +1,28 @@
+.. index:: pair: struct; EAM::element_parameters
+.. _doxid-struct_e_a_m_1_1element__parameters:
+
+struct EAM::element_parameters
+==============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct element_parameters {
+		// fields
+	
+		const int :target:`Z<doxid-struct_e_a_m_1_1element__parameters_1a2f87abd734a4140c030c4fce6a58100b>`;
+		const double :target:`Dm<doxid-struct_e_a_m_1_1element__parameters_1a72a57b9e5b4efd58f7379c85b250420b>`;
+		const double :target:`alphaM<doxid-struct_e_a_m_1_1element__parameters_1a7520f86eea718d28052f2ed446c16df9>`;
+		const double :target:`Rm<doxid-struct_e_a_m_1_1element__parameters_1ae9391fe21045dc6035b19fbd437e3afe>`;
+		const double :target:`beta1<doxid-struct_e_a_m_1_1element__parameters_1a14c8bf12361aec6169e052d9330baad0>`;
+		const double :target:`beta2<doxid-struct_e_a_m_1_1element__parameters_1ae02c8ee6f1ed6cc3c7b7983d102dc561>`;
+		const double :target:`r_cut<doxid-struct_e_a_m_1_1element__parameters_1a4854678a465ac83cad8118d90a4e7ba4>`;
+		const double :target:`func_coeff<doxid-struct_e_a_m_1_1element__parameters_1af58060fedcbbd6402b5a914c759b1020>`[9];
+	};

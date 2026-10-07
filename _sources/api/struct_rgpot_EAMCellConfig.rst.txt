@@ -1,0 +1,11 @@
+.. index:: pair: struct; rgpot::EAMCellConfig
+.. _doxid-structrgpot_1_1_e_a_m_cell_config:
+
+struct rgpot::EAMCellConfig
+===========================
+
+.. toctree::
+	:hidden:
+
+The cell-list :ref:`EAM <doxid-class_e_a_m>` has no free parameters. The element table is the one shipped with the kernel.
+

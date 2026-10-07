@@ -1,0 +1,86 @@
+.. index:: pair: struct; Image
+.. _doxid-struct_image:
+
+struct Image
+============
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Represents atoms seen through the periodic boundaries. :ref:`More...<details-struct_image>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <Image.h>
+	
+	struct Image {
+		// fields
+	
+		int :ref:`number<doxid-struct_image_1a91e84dce048807cc286500afdd925fcf>`;
+		int :ref:`nTranslation<doxid-struct_image_1aedbf3624fd741804eb9b43e15c0fc5a2>`;
+
+		// construction
+	
+		:ref:`Image<doxid-struct_image_1a58edd1c45b4faeb5f789b0d036d02313>`();
+		:ref:`Image<doxid-struct_image_1a700cae707e522ef92e60d43659030fe1>`(int num, int nTrans);
+	};
+.. _details-struct_image:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Represents atoms seen through the periodic boundaries.
+
+The :ref:`Image <doxid-struct_image>` structure is used by :ref:`NeighborList <doxid-class_neighbor_list>` to represent atoms seen through the periodic boundary conditions.
+
+Fields
+------
+
+.. index:: pair: variable; number
+.. _doxid-struct_image_1a91e84dce048807cc286500afdd925fcf:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int number
+
+The number of the real atom.
+
+.. index:: pair: variable; nTranslation
+.. _doxid-struct_image_1aedbf3624fd741804eb9b43e15c0fc5a2:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int nTranslation
+
+The number of the translation to apply to the real atom.
+
+Construction
+------------
+
+.. index:: pair: function; Image
+.. _doxid-struct_image_1a58edd1c45b4faeb5f789b0d036d02313:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	Image()
+
+Dummy constructor needed by some STL containers.
+
+.. index:: pair: function; Image
+.. _doxid-struct_image_1a700cae707e522ef92e60d43659030fe1:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	Image(int num, int nTrans)
+
+Construct an image of atom n translated by translation number nTrans.
+

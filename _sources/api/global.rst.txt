@@ -8,6 +8,7 @@ Global Namespace
 	:hidden:
 
 	namespace_cache.rst
+	namespace_eonc.rst
 	namespace_fortranpots.rst
 	namespace_plugin.rst
 	namespace_plugin-2.rst
@@ -54,6 +55,7 @@ Global Namespace
 	enum_rgpot_plugin_status_t.rst
 	struct_CPMDCFeatureEntry.rst
 	struct_CPMDCResult.rst
+	struct_Image.rst
 	struct_MopacCParams.rst
 	struct_MopacCResult.rst
 	struct_NWChemCResult.rst
@@ -69,15 +71,31 @@ Global Namespace
 	struct_RgpotXtbPot.rst
 	struct_eindir_abi_stamp_t.rst
 	struct_eindir_objective_t.rst
+	struct_emt_parameters.rst
 	struct_rgpot_cxx_layout_stamp_t.rst
 	struct_rgpot_mpi_api_t.rst
 	struct_rgpot_mpi_group_t.rst
 	struct_rgpot_plugin_descriptor_t.rst
 	struct_rgpot_plugin_input_t.rst
 	struct_rgpot_plugin_output_t.rst
+	class_AsapPotential.rst
 	class_AtomMatrix.rst
+	class_Atoms.rst
+	class_CellList.rst
+	class_EAM.rst
+	class_EMT.rst
+	class_EMTDefaultParameterProvider.rst
+	class_EMTParameterProvider.rst
+	class_EMTRasmussenParameterProvider.rst
+	class_Exception.rst
 	class_GenericPotImpl.rst
+	class_GhostAtoms.rst
+	class_GhostPotential.rst
+	class_NeighborList.rst
 	class_PotClient.rst
+	class_SuperCell.rst
+	class_TinyMatrix.rst
+	class_Vec.rst
 
 Overview
 ~~~~~~~~
@@ -92,11 +110,17 @@ Overview
 	// namespaces
 
 	namespace :ref:`cache<doxid-namespacergpot_1_1cache_1_1_0d165065365317363373306064030211076062366015242354>`;
+	namespace :ref:`eonc<doxid-namespaceeonc>`;
 	namespace :ref:`fortranpots<doxid-namespacergpot_1_1fortranpots_1_1_0d165254177354022106360171111037067337336127011041>`;
 	namespace :ref:`plugin<doxid-namespacergpot_1_1plugin_1_1_0d200302014144210322064235167275312221164076066310>`;
 	namespace :ref:`plugin<doxid-namespacergpot_1_1plugin_1_1_0d217200312004315350013176105016125113373042341353>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d337125225102314171335167206375002356240231265256>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d371345205050316044211301074104100300046352051004>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d330074065165043016212166146146214025043016253057>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d307112313373357257323066107376333004137304370130>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d305002241363136067011226310027215036350216205241>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d217266233327203303134017362164326260230263145325>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d005211301367263113147155070242204034047317366225>`;
 	namespace :ref:`rgpot<doxid-namespacergpot>`;
 		namespace :ref:`rgpot::abi<doxid-namespacergpot_1_1abi>`;
 			namespace :ref:`rgpot::abi::detail<doxid-namespacergpot_1_1abi_1_1detail>`;
@@ -118,14 +142,9 @@ Overview
 		namespace :ref:`rgpot::uma<doxid-namespacergpot_1_1uma>`;
 		namespace :ref:`rgpot::units<doxid-namespacergpot_1_1units>`;
 		namespace :ref:`rgpot::vesin_compat<doxid-namespacergpot_1_1vesin__compat>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d330074065165043016212166146146214025043016253057>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d305002241363136067011226310027215036350216205241>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d307112313373357257323066107376333004137304370130>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d217266233327203303134017362164326260230263145325>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d122207310312103133225144130321077133074162141334>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d005211301367263113147155070242204034047317366225>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d166331164204151220333054351225362033006173021072>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d164173104033017375130307150113162274222310040315>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d166331164204151220333054351225362033006173021072>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d171070010102105364072226347021272242150151256304>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d215115311063156157302310316040026264140105104166>`;
 	namespace :ref:`rgpot_cuh2<doxid-namespacergpot__cuh2>`;
@@ -164,6 +183,9 @@ Overview
 	typedef struct :ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>` :ref:`CPMDCSession<doxid-cpmd__c__abi_8h_1a49ff1835247d81d2ea1d2bea854ba239>`;
 	typedef enum CPMDCFeatureKind :target:`CPMDCFeatureKind<doxid-cpmd__c__abi_8h_1ab8efa8b96095d9bcb86951f47cdf3ddd>`;
 	typedef struct CPMDCFeatureEntry :target:`CPMDCFeatureEntry<doxid-cpmd__c__abi_8h_1a78e933e2bdea5d5a752302a384a3137b>`;
+	typedef vector<:ref:`emt_parameters<doxid-structemt__parameters>`*>::iterator :target:`param_p_iter<doxid-_e_m_t_default_parameter_provider_8cpp_1a3b5de6cdf064bd8b6376d6f9cefa96b6>`;
+	typedef double :target:`symTensor<doxid-_potential_8h_1a46c4f0a0c486fad7b2847c30f64a891b>`[6];
+	typedef :ref:`TinyMatrix<doxid-class_tiny_matrix>`<double> :target:`TinyDoubleMatrix<doxid-_tiny_matrix_8h_1a5a43ffc502871015bd20ba69f5bbcd61>`;
 	typedef struct RgpotEnginePot :target:`RgpotEnginePot<doxid-engine__c__abi_8h_1a877587fc7dcf577a3a8d2d44c45672b8>`;
 
 	typedef int (*:ref:`rgpot_engine_coord_transform<doxid-engine__c__abi_8h_1ab4f545283d91eb3fa1a596ecffe36568>`)(
@@ -224,6 +246,7 @@ Overview
 
 	struct :ref:`CPMDCFeatureEntry<doxid-struct_c_p_m_d_c_feature_entry>`;
 	struct :ref:`CPMDCResult<doxid-struct_c_p_m_d_c_result>`;
+	struct :ref:`Image<doxid-struct_image>`;
 	struct :ref:`MopacCParams<doxid-struct_mopac_c_params>`;
 	struct :ref:`MopacCResult<doxid-struct_mopac_c_result>`;
 	struct :ref:`NWChemCResult<doxid-struct_n_w_chem_c_result>`;
@@ -239,6 +262,7 @@ Overview
 	struct :ref:`RgpotXtbPot<doxid-struct_rgpot_xtb_pot>`;
 	struct :ref:`eindir_abi_stamp_t<doxid-structeindir__abi__stamp__t>`;
 	struct :ref:`eindir_objective_t<doxid-structeindir__objective__t>`;
+	struct :ref:`emt_parameters<doxid-structemt__parameters>`;
 	struct :ref:`rgpot_cxx_layout_stamp_t<doxid-structrgpot__cxx__layout__stamp__t>`;
 	struct :ref:`rgpot_mpi_api_t<doxid-structrgpot__mpi__api__t>`;
 	struct :ref:`rgpot_mpi_group_t<doxid-structrgpot__mpi__group__t>`;
@@ -248,13 +272,36 @@ Overview
 
 	// classes
 
+	class :ref:`AsapPotential<doxid-class_asap_potential>`;
 	class :ref:`AtomMatrix<doxid-class_atom_matrix>`;
+	class :ref:`Atoms<doxid-class_atoms>`;
+	class :ref:`CellList<doxid-class_cell_list>`;
+	class :ref:`EAM<doxid-class_e_a_m>`;
+	class :ref:`EMT<doxid-class_e_m_t>`;
+	class :ref:`EMTDefaultParameterProvider<doxid-class_e_m_t_default_parameter_provider>`;
+	class :ref:`EMTParameterProvider<doxid-class_e_m_t_parameter_provider>`;
+	class :ref:`EMTRasmussenParameterProvider<doxid-class_e_m_t_rasmussen_parameter_provider>`;
+	class :ref:`Exception<doxid-class_exception>`;
 	class :ref:`GenericPotImpl<doxid-class_generic_pot_impl>`;
+	class :ref:`GhostAtoms<doxid-class_ghost_atoms>`;
+	class :ref:`GhostPotential<doxid-class_ghost_potential>`;
+	class :ref:`NeighborList<doxid-class_neighbor_list>`;
 	class :ref:`PotClient<doxid-struct_pot_client>`;
+	class :ref:`SuperCell<doxid-class_super_cell>`;
+
+	template <class Type>
+	class :ref:`TinyMatrix<doxid-class_tiny_matrix>`;
+
+	class :ref:`Vec<doxid-class_vec>`;
 
 	// global variables
 
 	static const :ref:`CPMDCFeatureEntry<doxid-struct_c_p_m_d_c_feature_entry>` :target:`g_features<doxid-cpmd__c__abi__stub_8c_1a9cf3ddf52a7a4d9d9c60222bd80ec58c>`[];
+	int :target:`verbose<doxid-_atoms_8cpp_1a0b2caeb4b6f130be43e5a2f0267dd453>`;
+	int :target:`verbose<doxid-_e_m_t_8cpp_1a0b2caeb4b6f130be43e5a2f0267dd453>` = 0;
+	static const int :target:`stresscomp<doxid-_e_m_t_8cpp_1a48047a8d1fd427f59db7987c5bc0546a>`[3][3] = {{0, 5, 4}, {5, 1, 3}, {4, 3, 2}};
+	static const double :target:`Beta<doxid-_e_m_t_parameter_provider_8h_1aafb2a50b28d07a1db4bb58a16e4147c5>` = 1.809;
+	int :target:`verbose<doxid-_neighbor_list_8cpp_1a0b2caeb4b6f130be43e5a2f0267dd453>`;
 	size_t :target:`config_len<doxid-engine__c__abi_8h_1aa6d442e10a4b386c3e022281ed6c7c64>`;
 	size_t char* :target:`errbuf<doxid-engine__c__abi_8h_1ac61ae7506e275306422e8e85edba4952>`;
 	size_t char size_t :target:`errlen<doxid-engine__c__abi_8h_1ab4accd2233c12ab8d91a7bf5c9373152>`;
@@ -355,6 +402,29 @@ Overview
 	size_t :target:`cpmdc_feature_count<doxid-cpmd__c__abi__stub_8c_1a4cf7e2f669806606c1d1293533b3d38e>`(void);
 	const :ref:`CPMDCFeatureEntry<doxid-struct_c_p_m_d_c_feature_entry>`* :target:`cpmdc_feature_table<doxid-cpmd__c__abi__stub_8c_1ae40eb0e96927dc5f3feacc20c3869315>`(void);
 	const :ref:`CPMDCFeatureEntry<doxid-struct_c_p_m_d_c_feature_entry>`* :target:`cpmdc_feature_find<doxid-cpmd__c__abi__stub_8c_1a4d2414cdfa87d867cf1ab1e708dfb4ca>`(const char* feature_id);
+	void :target:`vsqrt<doxid-mass_8h_1af73c78af16c3f2e2f0e8e85aff1a7d2d>`(double res[], const double a[], const int* n);
+	void :target:`vexp<doxid-mass_8h_1a5d10d1713b90599726fa15998fcd06d5>`(double res[], const double a[], const int* n);
+	void :target:`vrec<doxid-mass_8h_1a8060fe92dc9b66b80b4850cb4f3771f0>`(double res[], const double a[], const int* n);
+	void :target:`vlog<doxid-mass_8h_1aef1118659fc2d12173e975b6928c28b7>`(double res[], const double a[], const int* n);
+	ostream& :target:`operator<<<doxid-_vec_8cpp_1a4f9d1f8f5a65ab5cfcef0597b368cecc>`(ostream& out, const :ref:`Vec<doxid-class_vec>`& v);
+	istream& :target:`operator>><doxid-_vec_8cpp_1ab0f9d5874a29f6f13c96633f2a07dfbc>`(istream& in, :ref:`Vec<doxid-class_vec>`& v);
+	:ref:`Vec<doxid-class_vec>` :target:`Cross<doxid-_vec_8h_1a7591e8e3a62e5181e4ec7fcbac6dcadd>`(const :ref:`Vec<doxid-class_vec>`& v1, const :ref:`Vec<doxid-class_vec>`& v2);
+	void :target:`Vaxpy<doxid-_vec_8h_1a5672354a53987c319eb5d9d17de25050>`(double a, const :ref:`Vec<doxid-class_vec>`& x, :ref:`Vec<doxid-class_vec>`& y);
+	double :target:`Length2<doxid-_vec_8h_1a209c719a5c0920e41a26f5e123664e6e>`(const :ref:`Vec<doxid-class_vec>`& v);
+	void :target:`vec_mul_scal_add_scal<doxid-vectools_8h_1a89d3c2a4aa98752f16568bba24b5f095>`(double res[], const double a[], const double b, const double c, int n);
+	void :target:`vec_mul_indir_add_indir<doxid-vectools_8h_1a09d01a9066e85aab72510aac0000909c>`(double res[], const double a[], const double b[], const double c[], const int offset[], int n);
+	void :target:`vec_mul<doxid-vectools_8h_1a29d148a7953a0ec446e4bf1656244a4f>`(double res[], const double a[], const double b[], int n);
+	void :target:`vec_mul_scal<doxid-vectools_8h_1a92738e4547a2e2d8d4cda24b49783000>`(double res[], const double a[], double b, int n);
+	void :target:`vec_mul_indir<doxid-vectools_8h_1abcdc07ce2c6d97da913ff5bf9fb8ae74>`(double res[], const double a[], const double b[], const int offset[], int n);
+	void :target:`vec_eq_self_mul_addscal_mul<doxid-vectools_8h_1aeb7642b91268a379e37a5385ead0d083>`(double res[], const double a[], double b, const double c[], int n);
+	void :target:`vec_self_mul_mul_indir<doxid-vectools_8h_1ac2df66045fd4684e7763da202d123777>`(double res[], const double a[], const double b[], const int offset[], int n);
+	void :target:`vec_diffweight<doxid-vectools_8h_1a1a5dd7afd761299cd915112373af9259>`(double res[], const double a[], double b, int n);
+	void :target:`vec_mul_scal_add_mul<doxid-vectools_8h_1ac69b9ee8408e5d0d7ee3f3babfc73d71>`(double res[], const double a[], double b, const double c[], const double d[], int n);
+	void :target:`vec_mul_indir_add_indir_mul<doxid-vectools_8h_1a00f246dd2bc5a52cedb3078283bd64a8>`(double res[], const double a[], const double b[], const double c[], const double d[], const int offset[], int n);
+	void :target:`vec_dbl_mul_indir_add<doxid-vectools_8h_1adcf1fe5aac78695217059f869c09cdf3>`(double res[], const double a[], const double b[], const double c[], const double d[], const int offset[], int n);
+	void :target:`vec_dEds<doxid-vectools_8h_1a9d27a09ebdab5fbf8766c527ff2f2290>`(double res[], const double a[], const double b[], const double c[], const double d[], const double e[], const double f[], const int offset[], int n);
+	void :target:`vec_df<doxid-vectools_8h_1aa116f2e07c2f586eba1befebd39a27a3>`(double* res, const double* a, const double* b, const double* c, double d, const double* e, double f, const double* g, const double* h, double x, const double* y, double z, int n);
+	void :target:`vec_add_scal<doxid-vectools_8h_1aebf3fb7742edbdc2290ebf767bf82f50>`(double res[], const double a[], double b, int n);
 	int :target:`rgpot_engine_abi_version<doxid-_engine_table_8cc_1a98cc4c5e859160b4cc816ee692cef651>`(void);
 	int :target:`rgpot_engine_available<doxid-_engine_table_8cc_1a6e1e42d077dbc8cbbd1b8299b7f6c04a>`(void);
 	const char* :target:`rgpot_engine_name<doxid-_engine_table_8cc_1a0328d50b230f71b291a08c47721f30dd>`(void);
@@ -433,7 +503,9 @@ Overview
 
 	// macros
 
+	#define :target:`BUFLEN<doxid-_e_m_t_8cpp_1ad974fe981249f5e84fbf1683b012c9f8>`
 	#define :target:`CATCH_AND_REPORT<doxid-pot__bridge_8cc_1a933409e97453f39bfae6d29f0518b341>`(client, default_ret)
+	#define :target:`DEBUGPRINT<doxid-_e_m_t_8cpp_1a0c88a91f0e53a766bb4dd3084727bc7b>`
 	#define :target:`EINDIR_ABI_STAMP_T_DEFINED<doxid-eindir__abi_8hpp_1a8e303a53a9afcdaf08f1f32960b3bdab>`
 	#define :target:`EINDIR_OBJECTIVE_T_DEFINED<doxid-eindir__abi_8hpp_1a55525eed573290331dddbee46c32b516>`
 	#define :target:`MOPACC_MODEL_AM1<doxid-mopac__c__abi_8h_1a344bad1bb031e242114c60e4d6a8db19>`
@@ -442,6 +514,8 @@ Overview
 	#define :target:`MOPACC_MODEL_PM6_ORG<doxid-mopac__c__abi_8h_1abf5e4204bdc49a88ff0297ee9f556493>`
 	#define :target:`MOPACC_MODEL_PM7<doxid-mopac__c__abi_8h_1a09489eaabe28f8c637bc606a2360acf2>`
 	#define :target:`MOPACC_MODEL_RM1<doxid-mopac__c__abi_8h_1ae03a231e9d48a338927aed6b492d0b22>`
+	#define :target:`NMAXELEMENTS<doxid-_e_m_t_8cpp_1ac31bca7ae8637a90139763caf4f76456>`
+	#define :target:`NPARAMS<doxid-_parameters_8h_1ae468832efa6adf5e9a96cabd8f878b47>`
 	#define :ref:`POT_BRIDGE_API<doxid-pot__bridge_8h_1a30ca0aa10367d7a1679284a7ed9969e4>`
 	#define :target:`RGPOT_BUILD_REVISION<doxid-_handshake_8hpp_1a5e60ed30b6a3d29a16c142695d7a5c0d>`
 	#define :target:`RGPOT_BUILD_VERSION<doxid-_handshake_8hpp_1a5d41ef1b9d934d21f189be192110ee09>`
@@ -474,6 +548,8 @@ Overview
 	#define :ref:`RGPOT_ROCKSDB_UNIQUE_PTR_OPEN<doxid-_potential_cache_8hpp_1a4d2e3dd07b69975ea6e7a022076e0a4b>`
 	#define :target:`RGPOT_XTB_ABI_VERSION<doxid-xtb__c__abi_8h_1aa3b73c6a3161c5d0da0ec0b357f13b8f>`
 	#define :target:`RGPOT_XTB_API<doxid-xtb__c__abi_8h_1a1c2e4e9e5c694894e8e5e08ae2c99479>`
+	#define :target:`VERB<doxid-_e_m_t_8cpp_1aada213ebc99d6c8aa948ea8f765d1868>`(x)
+	#define :target:`VERB<doxid-_atoms_8cpp_1aada213ebc99d6c8aa948ea8f765d1868>`(x)
 	#define :target:`XCK_HD<doxid-evaluator_8hpp_1a188c81a8a602db0d56a4447043fab829>`
 
 .. _details-global:

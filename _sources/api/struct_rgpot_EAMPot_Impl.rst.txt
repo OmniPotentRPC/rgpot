@@ -1,0 +1,21 @@
+.. index:: pair: struct; rgpot::EAMPot::Impl
+.. _doxid-structrgpot_1_1_e_a_m_pot_1_1_impl:
+
+struct rgpot::EAMPot::Impl
+==========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Impl {
+		// fields
+	
+		:ref:`EAM<doxid-class_e_a_m>` :target:`kernel<doxid-structrgpot_1_1_e_a_m_pot_1_1_impl_1aeffbedb1acd3358bfe1e416aa6e441f4>`;
+	};

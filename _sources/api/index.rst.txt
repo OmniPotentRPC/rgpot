@@ -11,6 +11,16 @@ API Reference
 |	:ref:`C++ RAII Wrappers<doxid-group__rgpot__cpp>`
 
 
+.. toctree::
+	:hidden:
+
+	page_bug.rst
+
+.. rubric:: Related Pages:
+
+|	:doc:`page_bug`
+
+
 .. rubric:: Reference and Index:
 
 .. toctree::

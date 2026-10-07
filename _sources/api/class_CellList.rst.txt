@@ -1,0 +1,41 @@
+.. index:: pair: class; CellList
+.. _doxid-class_cell_list:
+
+class CellList
+==============
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+:ref:`CellList <doxid-class_cell_list>` is a helper class for :ref:`NeighborList <doxid-class_neighbor_list>` and QCPotential. :ref:`More...<details-class_cell_list>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <CellList.h>
+	
+	class CellList {
+	public:
+		// construction
+	
+		:target:`CellList<doxid-class_cell_list_1ac7897a6b6ff6d0f267a953b3dae8aff6>`(:ref:`Atoms<doxid-class_atoms>`* a, double rMax);
+
+		// methods
+	
+		void :target:`MakeNeighborList<doxid-class_cell_list_1a3faf17fc251a1c6ae0d87d193d253d16>`(int neighborList[], int indices[], int& nMax, vector<:ref:`Image<doxid-struct_image>`>& images);
+		int :target:`GetNeighbors<doxid-class_cell_list_1a5f6601823a131fdaf572eda6aa52b94c>`(:ref:`Vec<doxid-class_vec>` point, int* neighbors, int size) const;
+		bool :target:`AnyNeighbors<doxid-class_cell_list_1a94678324afa0513cd127456f2ec02201>`(:ref:`Vec<doxid-class_vec>` point) const;
+	};
+.. _details-class_cell_list:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+:ref:`CellList <doxid-class_cell_list>` is a helper class for :ref:`NeighborList <doxid-class_neighbor_list>` and QCPotential.
+
+:ref:`CellList(atoms, rMax) <doxid-class_cell_list>` will put the atoms into cells of size minimum rMax (when used by the :ref:`NeighborList <doxid-class_neighbor_list>` class, rMax will be rCut + 2 \* drift). MakeNeighborLists(...) will generate neighbor lists and periodic images. GetNeighbors(...) will return all neighbors of point within a distance of rMax (useful for decoration in QC).
+

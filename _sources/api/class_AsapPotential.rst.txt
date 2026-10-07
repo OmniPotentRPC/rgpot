@@ -1,0 +1,201 @@
+.. index:: pair: class; AsapPotential
+.. _doxid-class_asap_potential:
+
+class AsapPotential
+===================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Abstract base class of all potentials. :ref:`More...<details-class_asap_potential>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <Potential.h>
+	
+	class AsapPotential {
+	public:
+		// construction
+	
+		virtual :target:`~AsapPotential<doxid-class_asap_potential_1a52923f94897249bc3d0f282a7adf5ed8>`();
+
+		// methods
+	
+		virtual void :ref:`SetAtoms<doxid-class_asap_potential_1a9fb053b8707eeaec74bce1a5d8f6c22d>`(:ref:`Atoms<doxid-class_atoms>`* a) = 0;
+		virtual double :ref:`GetPotentialEnergy<doxid-class_asap_potential_1ad54c4d3024c8868a5f6a3c39c00c3bac>`() = 0;
+		virtual const :ref:`Vec<doxid-class_vec>`* :ref:`GetCartesianForces<doxid-class_asap_potential_1afcbf581ef4ea32eb559ea0bd411972f2>`() = 0;
+		virtual const symTensor* :ref:`GetStresses<doxid-class_asap_potential_1af0cc38a6e1f7ce872a206809e33cf634>`(const :ref:`Vec<doxid-class_vec>`* momenta = 0) = 0;
+		virtual void :ref:`GetStress<doxid-class_asap_potential_1afc6f053d5e6753be32a2aebc1bdb19d6>`(double stress[6], const :ref:`Vec<doxid-class_vec>`* momenta = 0) = 0;
+		virtual const double* :ref:`GetPotentialEnergies<doxid-class_asap_potential_1a78f7e578dbbe72d3aa4206f8223f77dd>`() = 0;
+		virtual void :target:`CheckNeighborLists<doxid-class_asap_potential_1a6aed0f5494109c71c081dcc6d2021bfc>`() = 0;
+		virtual double :ref:`CalculateLatticeEnergy<doxid-class_asap_potential_1a22179b4b16a9ca6c735adf00b9415f57>`(const :ref:`Vec<doxid-class_vec>` a[3]);
+		virtual void :ref:`CalculateDerivatives<doxid-class_asap_potential_1a863d95196ae21dcab173fca5c64f6b49>`(const :ref:`Vec<doxid-class_vec>` a[3], double dEdaDota[6]);
+		virtual double :ref:`GetData<doxid-class_asap_potential_1ad05ff1f1b0d23d108d367ee652150da4>`() const;
+		virtual double :ref:`GetCutoffRadius<doxid-class_asap_potential_1ab5602870b4d2dd2bedbef5d21e2df5c4>`() const = 0;
+		virtual double :ref:`GetLatticeConstant<doxid-class_asap_potential_1aeb5631b291c450ba4344a55f87ee5bdf>`() const = 0;
+		virtual void :ref:`UpdateSuperCell<doxid-class_asap_potential_1aa476373048cae08d073c7320b821a74d>`(const :ref:`SuperCell<doxid-class_super_cell>`* newSuperCell) = 0;
+		virtual int :ref:`GetNumberOfAtoms<doxid-class_asap_potential_1a61edea066684292304cd7c7db2c29526>`() const = 0;
+	};
+.. _details-class_asap_potential:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Abstract base class of all potentials.
+
+A Potential calculates forces, energies and stresses for a list of atoms. A given instance of a Potential is associated with a specific :ref:`Atoms <doxid-class_atoms>` object on a one-to-one bases, this is established when :ref:`Atoms.SetCalculator() <doxid-class_atoms_1a512d83660a322046b4d8b5ce9e4777ff>` is called.
+
+Two types of classes are derived from Potential.
+
+* Concrete implementations of potentials, such as :ref:`EMT <doxid-class_e_m_t>` and MoPotential.
+
+* Potentials wrapping concrete implementations, but providing special functionalily, such as ParallelPotential (implementing parallel simulations) or QCPotential (implementing the QuasiContinuum method).
+
+Methods
+-------
+
+.. index:: pair: function; SetAtoms
+.. _doxid-class_asap_potential_1a9fb053b8707eeaec74bce1a5d8f6c22d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void SetAtoms(:ref:`Atoms<doxid-class_atoms>`* a) = 0
+
+Set the atoms belonging to this potential.
+
+This is called automatically by :ref:`Atoms.SetCalculator() <doxid-class_atoms_1a512d83660a322046b4d8b5ce9e4777ff>` and should not be called elsewhere.
+
+.. index:: pair: function; GetPotentialEnergy
+.. _doxid-class_asap_potential_1ad54c4d3024c8868a5f6a3c39c00c3bac:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual double GetPotentialEnergy() = 0
+
+Calculate the total energy of the system.
+
+.. index:: pair: function; GetCartesianForces
+.. _doxid-class_asap_potential_1afcbf581ef4ea32eb559ea0bd411972f2:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual const :ref:`Vec<doxid-class_vec>`* GetCartesianForces() = 0
+
+Calculate the forces on all atoms and return the result.
+
+.. index:: pair: function; GetStresses
+.. _doxid-class_asap_potential_1af0cc38a6e1f7ce872a206809e33cf634:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual const symTensor* GetStresses(const :ref:`Vec<doxid-class_vec>`* momenta = 0) = 0
+
+Calculate the stress on all atoms.
+
+.. index:: pair: function; GetStress
+.. _doxid-class_asap_potential_1afc6f053d5e6753be32a2aebc1bdb19d6:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void GetStress(double stress[6], const :ref:`Vec<doxid-class_vec>`* momenta = 0) = 0
+
+Calculate the total stress of the system.
+
+Note that the output variable stress is not zeroed first. In quasicontinuum simulations and other situations where there is a contribution to the stress which is not from the atoms, the stress parameter can initially be set to the appropriate derivatives of the energy of that part of the calculation (without the volume normalization, which will be performed by the potential).
+
+.. index:: pair: function; GetPotentialEnergies
+.. _doxid-class_asap_potential_1a78f7e578dbbe72d3aa4206f8223f77dd:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual const double* GetPotentialEnergies() = 0
+
+Calculate the energy of all atoms.
+
+.. index:: pair: function; CalculateLatticeEnergy
+.. _doxid-class_asap_potential_1a22179b4b16a9ca6c735adf00b9415f57:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual double CalculateLatticeEnergy(const :ref:`Vec<doxid-class_vec>` a[3])
+
+Calculate the energy of an atom in a regular fcc(?) lattice.
+
+Given the lattice vectors, this function calculates the energy of a single atom in the lattice. Used for the QuasiContinuum method.
+
+.. index:: pair: function; CalculateDerivatives
+.. _doxid-class_asap_potential_1a863d95196ae21dcab173fca5c64f6b49:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void CalculateDerivatives(const :ref:`Vec<doxid-class_vec>` a[3], double dEdaDota[6])
+
+Calculate derivative of the energy of an atom in a regular lattice.
+
+Used by the QuasiContinuum method.
+
+.. index:: pair: function; GetData
+.. _doxid-class_asap_potential_1ad05ff1f1b0d23d108d367ee652150da4:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual double GetData() const
+
+Get data used by the QuasiContinuum method.
+
+.. index:: pair: function; GetCutoffRadius
+.. _doxid-class_asap_potential_1ab5602870b4d2dd2bedbef5d21e2df5c4:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual double GetCutoffRadius() const = 0
+
+Return the cutoff radius used in the potential.
+
+.. index:: pair: function; GetLatticeConstant
+.. _doxid-class_asap_potential_1aeb5631b291c450ba4344a55f87ee5bdf:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual double GetLatticeConstant() const = 0
+
+Return the lattice constant of the material, if well-defined.
+
+If a lattice constant of the material can be defined, return it in Angstrom, otherwise throw an exception.
+
+.. index:: pair: function; UpdateSuperCell
+.. _doxid-class_asap_potential_1aa476373048cae08d073c7320b821a74d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void UpdateSuperCell(const :ref:`SuperCell<doxid-class_super_cell>`* newSuperCell) = 0
+
+Tell the Potential that a new :ref:`SuperCell <doxid-class_super_cell>` has been assigned to the atoms.
+
+.. index:: pair: function; GetNumberOfAtoms
+.. _doxid-class_asap_potential_1a61edea066684292304cd7c7db2c29526:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual int GetNumberOfAtoms() const = 0
+
+Get the number of atoms.
+

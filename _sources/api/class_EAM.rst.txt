@@ -1,0 +1,59 @@
+.. index:: pair: class; EAM
+.. _doxid-class_e_a_m:
+
+class EAM
+=========
+
+.. toctree::
+	:hidden:
+
+	struct_EAM_element_parameters.rst
+
+Overview
+~~~~~~~~
+
+:ref:`EAM <doxid-class_e_a_m>` (Embedded Atom Method) potential with cell list neighbor finding. :ref:`More...<details-class_e_a_m>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <EAM.h>
+	
+	class EAM: public eonc::Potential {
+	public:
+		// structs
+	
+		struct :ref:`element_parameters<doxid-struct_e_a_m_1_1element__parameters>`;
+
+		// construction
+	
+		:target:`EAM<doxid-class_e_a_m_1ab3c567bbb4cc8c86f1b1abd8face6ee5>`(const eonc::Parameters& params);
+		:target:`~EAM<doxid-class_e_a_m_1a281a60486cb275addabc18f69681446d>`();
+
+		// methods
+	
+		void :target:`cleanMemory<doxid-class_e_a_m_1ace6248f3ce70c9e65f9ec59a9cdb8744>`();
+		void :target:`force<doxid-class_e_a_m_1ad3dae1a4f620bc02ea4205ccae927ee6>`(long N, const double* R, const int* atomicNrs, double* F, double* U, double* variance, const double* fullbox);
+		bool :ref:`isSharedInstanceThreadSafe<doxid-class_e_a_m_1abcf5da2c9e16e8367fb1a6ac99495030>`() const;
+	};
+.. _details-class_e_a_m:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+:ref:`EAM <doxid-class_e_a_m>` (Embedded Atom Method) potential with cell list neighbor finding.
+
+Methods
+-------
+
+.. index:: pair: function; isSharedInstanceThreadSafe
+.. _doxid-class_e_a_m_1abcf5da2c9e16e8367fb1a6ac99495030:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool isSharedInstanceThreadSafe() const
+
+Cell lists live on the instance; two threads cannot share one :ref:`EAM <doxid-class_e_a_m>`.
+

@@ -1,0 +1,69 @@
+.. index:: pair: class; GhostAtoms
+.. _doxid-class_ghost_atoms:
+
+class GhostAtoms
+================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class GhostAtoms: public :ref:`Atoms<doxid-class_atoms>` {
+	public:
+		// construction
+	
+		:target:`GhostAtoms<doxid-class_ghost_atoms_1a4209188534f4d8ffd202a098ff7dac24>`(const :ref:`Vec<doxid-class_vec>`* pos, int nAtoms, :ref:`SuperCell<doxid-class_super_cell>`* superCell);
+		virtual :target:`~GhostAtoms<doxid-class_ghost_atoms_1aa1fb9134da89e563fae6afa268f16d39>`();
+
+		// methods
+	
+		:ref:`GhostPotential<doxid-class_ghost_potential>`* :target:`GetGhostPotential<doxid-class_ghost_atoms_1a6a830b61515140d811c1aed126aa7b91>`();
+		void :target:`SetGhostPotential<doxid-class_ghost_atoms_1aa76772a47ad3921d9b0b8aefe09fbcf4>`(:ref:`GhostPotential<doxid-class_ghost_potential>`* g);
+		int :target:`GetNumberOfGhosts<doxid-class_ghost_atoms_1afab24a391eaf23a1b664e67a76eda0d2>`() const;
+		void :target:`SetNumberOfGhosts<doxid-class_ghost_atoms_1afbdd066918185d9aeaaefe099bc2d683>`(int g);
+	};
+
+Inherited Members
+-----------------
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-inherited-code-block
+
+	public:
+		// methods
+	
+		virtual :ref:`SuperCell<doxid-class_super_cell>`* :ref:`GetSuperCell<doxid-class_atoms_1a43bedf6781873746d21d3f4e1b88defa>`() const;
+		virtual const :ref:`Vec<doxid-class_vec>`* :ref:`GetUnitCell<doxid-class_atoms_1aed5903c0ffe1b9aee19c679a8d04b225>`() const;
+		virtual void :ref:`SetUnitCell<doxid-class_atoms_1a837c41d7e886e909fac4ec9651545f10>`(const :ref:`Vec<doxid-class_vec>` newbasis[3], bool fix);
+		virtual void :ref:`SetCalculator<doxid-class_atoms_1a512d83660a322046b4d8b5ce9e4777ff>`(:ref:`AsapPotential<doxid-class_asap_potential>`* potential);
+		:ref:`AsapPotential<doxid-class_asap_potential>`* :ref:`GetPotential<doxid-class_atoms_1a4fbac9c95a2f2864a8a2cca7d8395f5a>`() const;
+		void :ref:`MarkChanged<doxid-class_atoms_1ac1896c340b2fc97e482929a3b19cf89b>`();
+		int :ref:`GetChangeCounter<doxid-class_atoms_1a2773d22154be5032f0b07fa176ebb898>`() const;
+		virtual void :ref:`SetCartesianPositions<doxid-class_atoms_1a045843a431ce829e5e76a6f7dbc09eab>`(const :ref:`Vec<doxid-class_vec>`* p);
+		virtual void :ref:`GetCartesianPositions<doxid-class_atoms_1aed94195322802d8bccbed8f24667e6e2>`(:ref:`Vec<doxid-class_vec>`* p) const;
+		virtual const :ref:`Vec<doxid-class_vec>`* :ref:`GetCartesianPositions<doxid-class_atoms_1a9dffcbfbf258e17dc182a09a1141f7cd>`() const;
+		:ref:`Vec<doxid-class_vec>`* :ref:`GetPositionsPtr<doxid-class_atoms_1a2f59dd531a731e2dd71b4ff650e7ac75>`();
+		virtual void :ref:`GetUnwrappedPositions<doxid-class_atoms_1a78d635cd1c3ebdcefb493bb5748ead17>`(vector<:ref:`Vec<doxid-class_vec>`>& p) const;
+		virtual void :ref:`SetUnwrappedPositions<doxid-class_atoms_1a06f7f90ac8a167d0fec401ba935c097d>`(const :ref:`Vec<doxid-class_vec>`* p);
+		virtual void :ref:`NormalizeDifferences<doxid-class_atoms_1a6d559443167c83cd13a4f956051ecdb0>`(:ref:`Vec<doxid-class_vec>`* diff) const;
+		virtual void :ref:`NormalizeDifference<doxid-class_atoms_1abfb6793bb7c7e5e19fe1b9a02dfbf1bd>`(:ref:`Vec<doxid-class_vec>`& diff) const;
+		virtual void :ref:`NormalizePositions<doxid-class_atoms_1a94ec598d22f3b0322e3e988a03e2ed92>`();
+		virtual void :ref:`NormalizePosition<doxid-class_atoms_1ae23d167e6588a05e3e6a3186ae2158d0>`(:ref:`Vec<doxid-class_vec>`& pos) const;
+		virtual void :ref:`NormalizePosition<doxid-class_atoms_1aecd83cab3cedd222de972956fee58c5a>`(:ref:`Vec<doxid-class_vec>`& pos, :ref:`Vec<doxid-class_vec>`& scaled_translation) const;
+		virtual void :ref:`ReNormalizePosition<doxid-class_atoms_1a191ebc12e48988aca051cc2e4d146ecf>`(:ref:`Vec<doxid-class_vec>`& pos, :ref:`Vec<doxid-class_vec>`& scaled_translation) const;
+		virtual void :ref:`SetAtomicNumbers<doxid-class_atoms_1a338c10b0de970b3d9e5f40dad5a04302>`(const int* z);
+		virtual const int* :ref:`GetAtomicNumbers<doxid-class_atoms_1ab0b9c6618f6a454c07b40bc37717bd07>`() const;
+		int* :ref:`GetAtomicNumbersPtr<doxid-class_atoms_1a3e7dba2fbbe9185cb0cee8cef3a8e5f8>`();
+		virtual void :ref:`GetListOfElements<doxid-class_atoms_1add3e832f686a41f654819df5bfa7d2fa>`(set<int>& elements) const;
+		void :ref:`SetNumberOfImages<doxid-class_atoms_1a938941874463793c2fe86e5b6cc5e2e1>`(int i);
+		int :ref:`GetNumberOfImages<doxid-class_atoms_1a09af7c5c1af57d821413bc5f7bc95da7>`() const;
+		virtual int :ref:`GetNumberOfAtoms<doxid-class_atoms_1a8f27e2814b8e439c193dc4c29789cd92>`() const;
+		int :ref:`GetNumberOfRealAtoms<doxid-class_atoms_1a41b258c4da4a9567f4067825f6cbf517>`() const;
+		virtual void :ref:`SetNumberOfAtoms<doxid-class_atoms_1a6cd319ad4bec43e10eb2c87e99625d2e>`(int n);
+

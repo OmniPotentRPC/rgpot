@@ -1,0 +1,152 @@
+.. index:: pair: class; NeighborList
+.. _doxid-class_neighbor_list:
+
+class NeighborList
+==================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+"Half" neighbor lists for atoms. :ref:`More...<details-class_neighbor_list>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <NeighborList.h>
+	
+	class NeighborList {
+	public:
+		// construction
+	
+		:ref:`NeighborList<doxid-class_neighbor_list_1a174dd1b14858476b97805699a9d16caf>`(:ref:`Atoms<doxid-class_atoms>`* a, double rCut, double driftfactor = 0.05, int defaultNeighborEstimate = 50);
+		:target:`~NeighborList<doxid-class_neighbor_list_1a9f66cfc09ee295ce155310e64cb892c8>`();
+
+		// methods
+	
+		bool :ref:`CheckAndUpdateNeighborList<doxid-class_neighbor_list_1a548d33c02d4f68d9e58844f80f02e600>`();
+		int :ref:`GetNeighbors<doxid-class_neighbor_list_1ad68ec1ece9f8a887c9b2839e2850cf4a>`(int n, int* neighbors, :ref:`Vec<doxid-class_vec>`* diffs, double* diffs2, int& size, double r = -1.0) const;
+		void :ref:`UpdateSuperCell<doxid-class_neighbor_list_1a3ac08e2fc692fe2bf34f998753d9426a>`(const :ref:`SuperCell<doxid-class_super_cell>`* superCell);
+		const int* :ref:`GetList<doxid-class_neighbor_list_1ad069775accaccedb8fe2ce7cd31e8504>`(int a, int& n);
+		const :ref:`Image<doxid-struct_image>`& :ref:`GetImage<doxid-class_neighbor_list_1a7c54811ba5f589a1e9f299fac3245ead>`(int i);
+		int :ref:`MaxNeighborListLength<doxid-class_neighbor_list_1adbbd06b8787b4859195a563262ec1122>`() const;
+		int :ref:`GetNumberOfAtoms<doxid-class_neighbor_list_1a8d0c8001b285b43dbe3bbbbac3b2b861>`() const;
+	};
+.. _details-class_neighbor_list:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+"Half" neighbor lists for atoms.
+
+This implements a *"half neighbor list"*, i.e. if atom a is on atom b's neighbor list, atom b will NOT be on atom a's neighbor list.
+
+GetNeighbors(...) returns "half" of the neighbors inside a sphere of radius rCut. CheckAndUpdateNeighborLists() must be called every time the positions change. If an atom has moved more than "drift", CheckAndUpdateNeighborLists() will call :ref:`MakeList() <doxid-class_neighbor_list_1a9b410cd4e77a25b3dc8e3671330fc26a>`, and a new list is generated.
+
+Construction
+------------
+
+.. index:: pair: function; NeighborList
+.. _doxid-class_neighbor_list_1a174dd1b14858476b97805699a9d16caf:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	NeighborList(:ref:`Atoms<doxid-class_atoms>`* a, double rCut, double driftfactor = 0.05, int defaultNeighborEstimate = 50)
+
+Generate a neighbor list for atoms a with cutoff rCut.
+
+The neighbor list will contain all neighbors within the distance rCut. The neighborlist can be reused until an atom has moved more than rCut\*driftfactor.
+
+Methods
+-------
+
+.. index:: pair: function; CheckAndUpdateNeighborList
+.. _doxid-class_neighbor_list_1a548d33c02d4f68d9e58844f80f02e600:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool CheckAndUpdateNeighborList()
+
+Check if the neighbor list can still be reused, update if not.
+
+.. index:: pair: function; GetNeighbors
+.. _doxid-class_neighbor_list_1ad68ec1ece9f8a887c9b2839e2850cf4a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int GetNeighbors(int n, int* neighbors, :ref:`Vec<doxid-class_vec>`* diffs, double* diffs2, int& size, double r = -1.0) const
+
+Get all neighbors of atom n. The most important method :-)
+
+Input values: n is the number of the atom. r (optional) is a cutoff, must be less than rCut in the constructor (not checked!).
+
+In-out values: size contains the maximum space in the arrays. It is decremented by the number of neighbors placed in the arrays. It is an error to call GetNeighbors with too small a value of size.
+
+Out values: neighbors[] contains the numbers of the atoms, diffs[] contains the *relative* positions of the atoms, diffs2[] contains the norms of the diffs vectors.
+
+Return value: The number of neighbors.
+
+.. index:: pair: function; UpdateSuperCell
+.. _doxid-class_neighbor_list_1a3ac08e2fc692fe2bf34f998753d9426a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void UpdateSuperCell(const :ref:`SuperCell<doxid-class_super_cell>`* superCell)
+
+Inform the neighbor list that the supercell has changed.
+
+Bug Changing the supercell while scaling the atomic positions has little effect on the interatomic distances, but that little effect should be included in the decision to update the neighborlist. That is not done, so currently this function doesn't do anything.
+
+.. index:: pair: function; GetList
+.. _doxid-class_neighbor_list_1ad069775accaccedb8fe2ce7cd31e8504:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const int* GetList(int a, int& n)
+
+*Low-level* interface to the neighbor list.
+
+Returns a const pointer to the internal list of neighbors of atom a, the length of the list is placed in n. The list will contain all neighbors within the cutoff radius, and some neighbors outside the cutoff. Some neighbors will be image atoms instead of real atoms (if they are neighbors thanks to the periodic boundaries), use GetImage to get the number of the real atom.
+
+.. index:: pair: function; GetImage
+.. _doxid-class_neighbor_list_1a7c54811ba5f589a1e9f299fac3245ead:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const :ref:`Image<doxid-struct_image>`& GetImage(int i)
+
+Get the real atom corresponding to an image.
+
+The input argument i is the number of the image counted from the first image. It is thus the number returned by GetList *minus the number of atoms*. The return value is a const reference to an :ref:`Image <doxid-struct_image>`.
+
+.. index:: pair: function; MaxNeighborListLength
+.. _doxid-class_neighbor_list_1adbbd06b8787b4859195a563262ec1122:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int MaxNeighborListLength() const
+
+Return the guaranteed maximal length of a single atom's NB list.
+
+Call this before using :ref:`GetNeighbors() <doxid-class_neighbor_list_1ad68ec1ece9f8a887c9b2839e2850cf4a>` to make sure the arrays are big enough. The value may change when the neighbor list is updated.
+
+.. index:: pair: function; GetNumberOfAtoms
+.. _doxid-class_neighbor_list_1a8d0c8001b285b43dbe3bbbbac3b2b861:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int GetNumberOfAtoms() const
+
+Get the number of atoms in the corresponding list of atoms.
+

@@ -10,7 +10,7 @@ class rgpot::Error
 Overview
 ~~~~~~~~
 
-Exception type for errors originating from the rgpot Rust core. :ref:`More...<details-classrgpot_1_1_error>`
+:ref:`Exception <doxid-class_exception>` type for errors originating from the rgpot Rust core. :ref:`More...<details-classrgpot_1_1_error>`
 
 
 .. ref-code-block:: cpp
@@ -29,7 +29,7 @@ Exception type for errors originating from the rgpot Rust core. :ref:`More...<de
 Detailed Documentation
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Exception type for errors originating from the rgpot Rust core.
+:ref:`Exception <doxid-class_exception>` type for errors originating from the rgpot Rust core.
 
 Thrown by the RAII wrappers when the underlying C API call returns a non-success status code. The ``what()`` string includes both the error category and the human-readable message from ``rgpot_last_error()``.
 

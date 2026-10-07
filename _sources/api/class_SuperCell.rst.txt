@@ -1,0 +1,218 @@
+.. index:: pair: class; SuperCell
+.. _doxid-class_super_cell:
+
+class SuperCell
+===============
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+The :ref:`SuperCell <doxid-class_super_cell>` defines the size, shape and boundary condx of a simulation. :ref:`More...<details-class_super_cell>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <SuperCell.h>
+	
+	class SuperCell {
+	public:
+		// fields
+	
+		bool :ref:`periodic<doxid-class_super_cell_1a0d6bf20f355df1aa29ecb8e6ea537b32>`[3];
+		:ref:`Vec<doxid-class_vec>` :ref:`vectors<doxid-class_super_cell_1affa5638859c2084f5a450d36af59e3d0>`[3];
+		:ref:`Vec<doxid-class_vec>` :ref:`inverse<doxid-class_super_cell_1a77573e78c599ebb8f891ae6f9d85ff6f>`[3];
+		double :ref:`heights<doxid-class_super_cell_1ab4c7d986c2e94dde9f0d58720304d2a1>`[3];
+		:ref:`Vec<doxid-class_vec>` :ref:`translations<doxid-class_super_cell_1af0dc9eb3a0b6f5f0a49f47d850a92305>`[27];
+
+		// construction
+	
+		:ref:`SuperCell<doxid-class_super_cell_1ab0ef5f42969cf74b2deb2e5955bd0347>`(const :ref:`Vec<doxid-class_vec>` v[3], const bool p[3]);
+		:ref:`SuperCell<doxid-class_super_cell_1affe2302533e36eaafb1d1409cfbde8d6>`(const SuperCell* original);
+
+		// methods
+	
+		void :ref:`SetAtoms<doxid-class_super_cell_1a4fe2eaed02cbcdc085c7e284f401822f>`(:ref:`Atoms<doxid-class_atoms>`* a);
+		void :ref:`TransformToScaledSpace<doxid-class_super_cell_1a2bb2250269179109e468d8525d6a331b>`(:ref:`Vec<doxid-class_vec>`* positions, int nAtoms) const;
+		void :ref:`TransformToRealSpace<doxid-class_super_cell_1a48d9131fabb02b140869e850a258c586>`(:ref:`Vec<doxid-class_vec>`* positions, int nAtoms) const;
+		void :ref:`ClosestLatticeSiteIndices<doxid-class_super_cell_1a32a151f35cd7018194a864bb9043c8a2>`(int intVector[3], :ref:`Vec<doxid-class_vec>`& diff) const;
+		double :ref:`GetVolume<doxid-class_super_cell_1a7670c6a88e62fc1faf9b9e321004af99>`() const;
+		void :ref:`SetBasis<doxid-class_super_cell_1a5c441b1a4cbd6b116c78e382821ef285>`(const :ref:`Vec<doxid-class_vec>` v[3]);
+		:ref:`Vec<doxid-class_vec>` :ref:`GetBasis<doxid-class_super_cell_1a7123e525b79c1a645e9be9431e8fef95>`(int a);
+		void :ref:`SetPeriodic<doxid-class_super_cell_1a0b138a7d8c44c535219b186b10135ee8>`(const bool newperiodic[3]);
+	};
+.. _details-class_super_cell:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+The :ref:`SuperCell <doxid-class_super_cell>` defines the size, shape and boundary condx of a simulation.
+
+The :ref:`SuperCell <doxid-class_super_cell>` serves two purposes. The most important is the computational box of a simulation: it defines the size, shape and boundary conditions of the simulation. A second use is for the unit cell of the lattice in the elements of a Quasicontinuum simulation.
+
+Fields
+------
+
+.. index:: pair: variable; periodic
+.. _doxid-class_super_cell_1a0d6bf20f355df1aa29ecb8e6ea537b32:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool periodic[3]
+
+Periodic boundary conditions along the 3 axes?
+
+.. index:: pair: variable; vectors
+.. _doxid-class_super_cell_1affa5638859c2084f5a450d36af59e3d0:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`Vec<doxid-class_vec>` vectors[3]
+
+The basis vectors.
+
+.. index:: pair: variable; inverse
+.. _doxid-class_super_cell_1a77573e78c599ebb8f891ae6f9d85ff6f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`Vec<doxid-class_vec>` inverse[3]
+
+The inverse of the vectors matrix.
+
+.. index:: pair: variable; heights
+.. _doxid-class_super_cell_1ab4c7d986c2e94dde9f0d58720304d2a1:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double heights[3]
+
+The heights of the supercell.
+
+.. index:: pair: variable; translations
+.. _doxid-class_super_cell_1af0dc9eb3a0b6f5f0a49f47d850a92305:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`Vec<doxid-class_vec>` translations[27]
+
+The 27 possible translations due to the periodic boundaries.
+
+Construction
+------------
+
+.. index:: pair: function; SuperCell
+.. _doxid-class_super_cell_1ab0ef5f42969cf74b2deb2e5955bd0347:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	SuperCell(const :ref:`Vec<doxid-class_vec>` v[3], const bool p[3])
+
+Create a new supercell with basis vectors :ref:`Vec <doxid-class_vec>` and periodicity p.
+
+.. index:: pair: function; SuperCell
+.. _doxid-class_super_cell_1affe2302533e36eaafb1d1409cfbde8d6:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	SuperCell(const SuperCell* original)
+
+Copy constructor.
+
+Methods
+-------
+
+.. index:: pair: function; SetAtoms
+.. _doxid-class_super_cell_1a4fe2eaed02cbcdc085c7e284f401822f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void SetAtoms(:ref:`Atoms<doxid-class_atoms>`* a)
+
+Set the atoms associated with the supercell.
+
+.. index:: pair: function; TransformToScaledSpace
+.. _doxid-class_super_cell_1a2bb2250269179109e468d8525d6a331b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void TransformToScaledSpace(:ref:`Vec<doxid-class_vec>`* positions, int nAtoms) const
+
+In-place transformation of positions from real to scaled space.
+
+.. index:: pair: function; TransformToRealSpace
+.. _doxid-class_super_cell_1a48d9131fabb02b140869e850a258c586:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void TransformToRealSpace(:ref:`Vec<doxid-class_vec>`* positions, int nAtoms) const
+
+In-place transformation of positions from scaled to real space.
+
+.. index:: pair: function; ClosestLatticeSiteIndices
+.. _doxid-class_super_cell_1a32a151f35cd7018194a864bb9043c8a2:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void ClosestLatticeSiteIndices(int intVector[3], :ref:`Vec<doxid-class_vec>`& diff) const
+
+Quasicontinuum only: convert position to closest lattice site.
+
+When the supercell is used in a QC simulation to represent the crystal lattice of an element, this function is used to convert the position of an atom into lattice coordinates.
+
+.. index:: pair: function; GetVolume
+.. _doxid-class_super_cell_1a7670c6a88e62fc1faf9b9e321004af99:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double GetVolume() const
+
+Get the volume of the supercell.
+
+.. index:: pair: function; SetBasis
+.. _doxid-class_super_cell_1a5c441b1a4cbd6b116c78e382821ef285:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void SetBasis(const :ref:`Vec<doxid-class_vec>` v[3])
+
+Change the basis. The atoms are not moved. Should only be called from the atoms.
+
+.. index:: pair: function; GetBasis
+.. _doxid-class_super_cell_1a7123e525b79c1a645e9be9431e8fef95:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`Vec<doxid-class_vec>` GetBasis(int a)
+
+Get the basis vectors.
+
+.. index:: pair: function; SetPeriodic
+.. _doxid-class_super_cell_1a0b138a7d8c44c535219b186b10135ee8:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void SetPeriodic(const bool newperiodic[3])
+
+Set the periodicity. USE WITH CAUTION!
+
+Change the periodicity of the supercell. Other classes may not notice that this has happened. This cannot be done after the atoms have been assigned a Potential.
+

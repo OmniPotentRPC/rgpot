@@ -1,0 +1,31 @@
+.. index:: pair: class; TinyMatrix
+.. _doxid-class_tiny_matrix:
+
+template class TinyMatrix
+=========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	template <class Type>
+	class TinyMatrix {
+	public:
+		// construction
+	
+		:target:`TinyMatrix<doxid-class_tiny_matrix_1a6762b84b223a73e4e7b79bccda1e9f0c>`();
+		:target:`TinyMatrix<doxid-class_tiny_matrix_1a7a70993347dc5ead41c0b070bb38bd8d>`(int rows, int columns);
+		:target:`~TinyMatrix<doxid-class_tiny_matrix_1abaa84c6ea0655f9846289003025ad6dd>`();
+
+		// methods
+	
+		void :target:`Allocate<doxid-class_tiny_matrix_1ab484186f3dcdfa3c9aca27bbb8d19d48>`(int rows, int columns);
+		Type* :target:`operator[]<doxid-class_tiny_matrix_1afba855cb2654a2da2f1a3a805bb987a0>`(int row);
+		const Type* :target:`operator[]<doxid-class_tiny_matrix_1a8c717ac1a07a0d8a0de4b609ec88ca7d>`(int row) const;
+	};

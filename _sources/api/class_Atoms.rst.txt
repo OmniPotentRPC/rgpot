@@ -1,0 +1,411 @@
+.. index:: pair: class; Atoms
+.. _doxid-class_atoms:
+
+class Atoms
+===========
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+The main list of atoms class. :ref:`More...<details-class_atoms>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <Atoms.h>
+	
+	class Atoms {
+	public:
+		// construction
+	
+		:ref:`Atoms<doxid-class_atoms_1a3830c2699ced729d323210992563ad52>`(const :ref:`Vec<doxid-class_vec>`* p, int n, :ref:`SuperCell<doxid-class_super_cell>`* s);
+		virtual :ref:`~Atoms<doxid-class_atoms_1acfd53a3f553d84b522e1d018499af19c>`();
+
+		// methods
+	
+		virtual :ref:`SuperCell<doxid-class_super_cell>`* :ref:`GetSuperCell<doxid-class_atoms_1a43bedf6781873746d21d3f4e1b88defa>`() const;
+		virtual const :ref:`Vec<doxid-class_vec>`* :ref:`GetUnitCell<doxid-class_atoms_1aed5903c0ffe1b9aee19c679a8d04b225>`() const;
+		virtual void :ref:`SetUnitCell<doxid-class_atoms_1a837c41d7e886e909fac4ec9651545f10>`(const :ref:`Vec<doxid-class_vec>` newbasis[3], bool fix);
+		virtual void :ref:`SetCalculator<doxid-class_atoms_1a512d83660a322046b4d8b5ce9e4777ff>`(:ref:`AsapPotential<doxid-class_asap_potential>`* potential);
+		:ref:`AsapPotential<doxid-class_asap_potential>`* :ref:`GetPotential<doxid-class_atoms_1a4fbac9c95a2f2864a8a2cca7d8395f5a>`() const;
+		void :ref:`MarkChanged<doxid-class_atoms_1ac1896c340b2fc97e482929a3b19cf89b>`();
+		int :ref:`GetChangeCounter<doxid-class_atoms_1a2773d22154be5032f0b07fa176ebb898>`() const;
+		virtual void :ref:`SetCartesianPositions<doxid-class_atoms_1a045843a431ce829e5e76a6f7dbc09eab>`(const :ref:`Vec<doxid-class_vec>`* p);
+		virtual void :ref:`GetCartesianPositions<doxid-class_atoms_1aed94195322802d8bccbed8f24667e6e2>`(:ref:`Vec<doxid-class_vec>`* p) const;
+		virtual const :ref:`Vec<doxid-class_vec>`* :ref:`GetCartesianPositions<doxid-class_atoms_1a9dffcbfbf258e17dc182a09a1141f7cd>`() const;
+		:ref:`Vec<doxid-class_vec>`* :ref:`GetPositionsPtr<doxid-class_atoms_1a2f59dd531a731e2dd71b4ff650e7ac75>`();
+		virtual void :ref:`GetUnwrappedPositions<doxid-class_atoms_1a78d635cd1c3ebdcefb493bb5748ead17>`(vector<:ref:`Vec<doxid-class_vec>`>& p) const;
+		virtual void :ref:`SetUnwrappedPositions<doxid-class_atoms_1a06f7f90ac8a167d0fec401ba935c097d>`(const :ref:`Vec<doxid-class_vec>`* p);
+		virtual void :ref:`NormalizeDifferences<doxid-class_atoms_1a6d559443167c83cd13a4f956051ecdb0>`(:ref:`Vec<doxid-class_vec>`* diff) const;
+		virtual void :ref:`NormalizeDifference<doxid-class_atoms_1abfb6793bb7c7e5e19fe1b9a02dfbf1bd>`(:ref:`Vec<doxid-class_vec>`& diff) const;
+		virtual void :ref:`NormalizePositions<doxid-class_atoms_1a94ec598d22f3b0322e3e988a03e2ed92>`();
+		virtual void :ref:`NormalizePosition<doxid-class_atoms_1ae23d167e6588a05e3e6a3186ae2158d0>`(:ref:`Vec<doxid-class_vec>`& pos) const;
+		virtual void :ref:`NormalizePosition<doxid-class_atoms_1aecd83cab3cedd222de972956fee58c5a>`(:ref:`Vec<doxid-class_vec>`& pos, :ref:`Vec<doxid-class_vec>`& scaled_translation) const;
+		virtual void :ref:`ReNormalizePosition<doxid-class_atoms_1a191ebc12e48988aca051cc2e4d146ecf>`(:ref:`Vec<doxid-class_vec>`& pos, :ref:`Vec<doxid-class_vec>`& scaled_translation) const;
+		virtual void :ref:`SetAtomicNumbers<doxid-class_atoms_1a338c10b0de970b3d9e5f40dad5a04302>`(const int* z);
+		virtual const int* :ref:`GetAtomicNumbers<doxid-class_atoms_1ab0b9c6618f6a454c07b40bc37717bd07>`() const;
+		int* :ref:`GetAtomicNumbersPtr<doxid-class_atoms_1a3e7dba2fbbe9185cb0cee8cef3a8e5f8>`();
+		virtual void :ref:`GetListOfElements<doxid-class_atoms_1add3e832f686a41f654819df5bfa7d2fa>`(set<int>& elements) const;
+		void :ref:`SetNumberOfImages<doxid-class_atoms_1a938941874463793c2fe86e5b6cc5e2e1>`(int i);
+		int :ref:`GetNumberOfImages<doxid-class_atoms_1a09af7c5c1af57d821413bc5f7bc95da7>`() const;
+		virtual int :ref:`GetNumberOfAtoms<doxid-class_atoms_1a8f27e2814b8e439c193dc4c29789cd92>`() const;
+		int :ref:`GetNumberOfRealAtoms<doxid-class_atoms_1a41b258c4da4a9567f4067825f6cbf517>`() const;
+		virtual void :ref:`SetNumberOfAtoms<doxid-class_atoms_1a6cd319ad4bec43e10eb2c87e99625d2e>`(int n);
+	};
+.. _details-class_atoms:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+The main list of atoms class.
+
+The :ref:`Atoms <doxid-class_atoms>` class stores the coordinates and atomic numbers of the atoms. Coordinates are stored as Cartesian coordinates. :ref:`Atoms <doxid-class_atoms>` has a reference to a :ref:`SuperCell <doxid-class_super_cell>` object containing the unitcell of the simulation, and a pointer to a Potential object responsible of force calculations. Other information about atoms (such as velocities and forces) are not stored in the C++ code but live in Python.
+
+Construction
+------------
+
+.. index:: pair: function; Atoms
+.. _doxid-class_atoms_1a3830c2699ced729d323210992563ad52:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	Atoms(const :ref:`Vec<doxid-class_vec>`* p, int n, :ref:`SuperCell<doxid-class_super_cell>`* s)
+
+Construct :ref:`Atoms <doxid-class_atoms>` from array of positions, number of elements and a :ref:`SuperCell <doxid-class_super_cell>`.
+
+.. _doxid-class_atoms_1acfd53a3f553d84b522e1d018499af19c:
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual ~Atoms()
+
+Deletes the atoms. Does not delete Potential or :ref:`SuperCell <doxid-class_super_cell>`.
+
+Methods
+-------
+
+.. index:: pair: function; GetSuperCell
+.. _doxid-class_atoms_1a43bedf6781873746d21d3f4e1b88defa:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`SuperCell<doxid-class_super_cell>`* GetSuperCell() const
+
+Return a pointer to the :ref:`SuperCell <doxid-class_super_cell>` object.
+
+.. index:: pair: function; GetUnitCell
+.. _doxid-class_atoms_1aed5903c0ffe1b9aee19c679a8d04b225:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual const :ref:`Vec<doxid-class_vec>`* GetUnitCell() const
+
+Return the unitcell vectors.
+
+.. index:: pair: function; SetUnitCell
+.. _doxid-class_atoms_1a837c41d7e886e909fac4ec9651545f10:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void SetUnitCell(const :ref:`Vec<doxid-class_vec>` newbasis[3], bool fix)
+
+Set a new unit cell, rescaling the positions unless fix is true.
+
+.. index:: pair: function; SetCalculator
+.. _doxid-class_atoms_1a512d83660a322046b4d8b5ce9e4777ff:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void SetCalculator(:ref:`AsapPotential<doxid-class_asap_potential>`* potential)
+
+Set a Potential. An eventual old Potential is not deallocated.
+
+.. index:: pair: function; GetPotential
+.. _doxid-class_atoms_1a4fbac9c95a2f2864a8a2cca7d8395f5a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`AsapPotential<doxid-class_asap_potential>`* GetPotential() const
+
+Get a pointer to the Potential.
+
+.. index:: pair: function; MarkChanged
+.. _doxid-class_atoms_1ac1896c340b2fc97e482929a3b19cf89b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void MarkChanged()
+
+Update the change pointer.
+
+The change counter is updated whenever the atoms are changed. It is used to decide if e.g. forces should be recalculated. Methods such as :ref:`SetCartesianPositions() <doxid-class_atoms_1a045843a431ce829e5e76a6f7dbc09eab>` increment the counter.
+
+.. index:: pair: function; GetChangeCounter
+.. _doxid-class_atoms_1a2773d22154be5032f0b07fa176ebb898:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int GetChangeCounter() const
+
+Get the change counter.
+
+.. index:: pair: function; SetCartesianPositions
+.. _doxid-class_atoms_1a045843a431ce829e5e76a6f7dbc09eab:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void SetCartesianPositions(const :ref:`Vec<doxid-class_vec>`* p)
+
+Set the Cartesian positions.
+
+.. warning::
+
+	When atoms.SetCartesianPositions() is called from Python, that is translated into a call to SetUwrappedPositions(), *not* to a call to this method.
+
+The cartesian positions are copied from the array of 3-vectors (:ref:`Vec <doxid-class_vec>`) to the internal array. No length checks are done.
+
+.. index:: pair: function; GetCartesianPositions
+.. _doxid-class_atoms_1aed94195322802d8bccbed8f24667e6e2:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void GetCartesianPositions(:ref:`Vec<doxid-class_vec>`* p) const
+
+Return a copy of the Cartesian positions.
+
+This version returns all degrees of freedom, i.e. both atoms and nodes in a quasicontinuum simulation. It does not return ghost atoms.
+
+.. warning::
+
+	When atoms.GetCartesianPositions() is called from Python, that is translated into a call to GetUwrappedPositions(), *not* to a call to this method.
+
+.. index:: pair: function; GetCartesianPositions
+.. _doxid-class_atoms_1a9dffcbfbf258e17dc182a09a1141f7cd:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual const :ref:`Vec<doxid-class_vec>`* GetCartesianPositions() const
+
+Return a const pointer to the Cartesian positions.
+
+This version returns a pointer to the coordinates of all atoms. If ghost atoms are present, they are at the end of the array. It is up to the caller to know if ghost atoms are present, and to access them (or not) according to the need. Non-atomistic degrees of freedom, such as nodes in QC simulations, are not returned by this version.
+
+Bug The difference in semantics between the two versions of GetCartesianPositions is most unfortunate: one of them should be renamed.
+
+.. index:: pair: function; GetPositionsPtr
+.. _doxid-class_atoms_1a2f59dd531a731e2dd71b4ff650e7ac75:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`Vec<doxid-class_vec>`* GetPositionsPtr()
+
+Return a non-const pointer to the Cartesian positions. DANGEROUS!
+
+GetPositionsPtr returns a pointer allowing modification of the positions. Be sure to call MarkChanged if this is done.
+
+.. index:: pair: function; GetUnwrappedPositions
+.. _doxid-class_atoms_1a78d635cd1c3ebdcefb493bb5748ead17:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void GetUnwrappedPositions(vector<:ref:`Vec<doxid-class_vec>`>& p) const
+
+Return the positions, hiding that they may have been wrapped due to the boundary conditions.
+
+This is the function used by Python when GetCartesianPositions is called.
+
+.. index:: pair: function; SetUnwrappedPositions
+.. _doxid-class_atoms_1a06f7f90ac8a167d0fec401ba935c097d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void SetUnwrappedPositions(const :ref:`Vec<doxid-class_vec>`* p)
+
+Set the positions from an array of positions not taking any wrapping into account.
+
+The already existing offset (caused by wrapping through periodic boundaries) is applied to the atoms. This is the function used by Python when SetCartesianPositions is called.
+
+.. index:: pair: function; NormalizeDifferences
+.. _doxid-class_atoms_1a6d559443167c83cd13a4f956051ecdb0:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void NormalizeDifferences(:ref:`Vec<doxid-class_vec>`* diff) const
+
+Apply periodic boundary conditions to differences in positions.
+
+Normalize an array of vectors containing differences in positions using periodic boundary conditions and the minimum image convention. If there are free boundary conditions in a specific direction, nothing is done to that coordinate of the vectors.
+
+.. index:: pair: function; NormalizeDifference
+.. _doxid-class_atoms_1abfb6793bb7c7e5e19fe1b9a02dfbf1bd:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void NormalizeDifference(:ref:`Vec<doxid-class_vec>`& diff) const
+
+Apply periodic boundary conditions to difference in positions.
+
+.. index:: pair: function; NormalizePositions
+.. _doxid-class_atoms_1a94ec598d22f3b0322e3e988a03e2ed92:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void NormalizePositions()
+
+Apply periodic boundary conditions to the positions. Does NOT call MarkChanged !
+
+Normalize the positions, i.e. translate the atoms back into the supercell if there are periodic boundary conditions. This does not count as changing the atoms, so the change counter is NOT updated. The actual work is done by the :ref:`SuperCell <doxid-class_super_cell>`. This method should be called by the Potential, which may (should?) delegate it to the :ref:`NeighborList <doxid-class_neighbor_list>`.
+
+.. index:: pair: function; NormalizePosition
+.. _doxid-class_atoms_1ae23d167e6588a05e3e6a3186ae2158d0:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void NormalizePosition(:ref:`Vec<doxid-class_vec>`& pos) const
+
+Normalize a position which is not owned by the atoms.
+
+If another object holds a position needing to be normalized, this function should be called. It exists in two versions, one just normalizing the position, and one also returning the scaled space correction applied.
+
+.. index:: pair: function; NormalizePosition
+.. _doxid-class_atoms_1aecd83cab3cedd222de972956fee58c5a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void NormalizePosition(:ref:`Vec<doxid-class_vec>`& pos, :ref:`Vec<doxid-class_vec>`& scaled_translation) const
+
+Normalize a position which is not owned by the atoms.
+
+This version of the call reports the translation in scaled_translation, so the same translation can be obtained later (by calling ReNormalizePosition) without redoing the decision on whether to wrap. This is useful if positions need to be normalized between neighborlist updates, and is currently used by the Quasicontinuum code.
+
+.. index:: pair: function; ReNormalizePosition
+.. _doxid-class_atoms_1a191ebc12e48988aca051cc2e4d146ecf:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void ReNormalizePosition(:ref:`Vec<doxid-class_vec>`& pos, :ref:`Vec<doxid-class_vec>`& scaled_translation) const
+
+Repeat a normalization. See NormalizePosition(a,b).
+
+.. index:: pair: function; SetAtomicNumbers
+.. _doxid-class_atoms_1a338c10b0de970b3d9e5f40dad5a04302:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void SetAtomicNumbers(const int* z)
+
+Set the atomic numbers. Should be done right after construction.
+
+.. index:: pair: function; GetAtomicNumbers
+.. _doxid-class_atoms_1ab0b9c6618f6a454c07b40bc37717bd07:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual const int* GetAtomicNumbers() const
+
+Return a const pointer to the atomic numbers.
+
+.. index:: pair: function; GetAtomicNumbersPtr
+.. _doxid-class_atoms_1a3e7dba2fbbe9185cb0cee8cef3a8e5f8:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int* GetAtomicNumbersPtr()
+
+Return a non-const pointer to the atomic numbers. DANGEROUS!
+
+GetAtomicNumbersPtr returns a pointer allowing modification of the atomic numbers. Use with care, and call MarkChanged manually!
+
+.. index:: pair: function; GetListOfElements
+.. _doxid-class_atoms_1add3e832f686a41f654819df5bfa7d2fa:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void GetListOfElements(set<int>& elements) const
+
+Get a set of all elements present in the simulations.
+
+.. index:: pair: function; SetNumberOfImages
+.. _doxid-class_atoms_1a938941874463793c2fe86e5b6cc5e2e1:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void SetNumberOfImages(int i)
+
+Set the number of images. Used by the neighbor list.
+
+.. index:: pair: function; GetNumberOfImages
+.. _doxid-class_atoms_1a09af7c5c1af57d821413bc5f7bc95da7:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int GetNumberOfImages() const
+
+Get the number of images. Used by the neighbor list.
+
+.. index:: pair: function; GetNumberOfAtoms
+.. _doxid-class_atoms_1a8f27e2814b8e439c193dc4c29789cd92:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual int GetNumberOfAtoms() const
+
+Get the number of atoms (including nodes in a QC simulation).
+
+In a QuasiContinuum calculation we have real atoms and node atoms. :ref:`GetNumberOfAtoms() <doxid-class_atoms_1a8f27e2814b8e439c193dc4c29789cd92>` is a virtual function: For a QCAtoms class it will return the number of real atoms plus the number of node atoms. This number is needed by SWIG to get the size of arrays. The method :ref:`GetNumberOfRealAtoms() <doxid-class_atoms_1a41b258c4da4a9567f4067825f6cbf517>` is needed by potentials and the Neighbor List object (they only deal with the real atoms).
+
+.. index:: pair: function; GetNumberOfRealAtoms
+.. _doxid-class_atoms_1a41b258c4da4a9567f4067825f6cbf517:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int GetNumberOfRealAtoms() const
+
+Get the number of atoms (excluding nodes in a QC simulation).
+
+See also the documentation of :ref:`GetNumberOfAtoms() <doxid-class_atoms_1a8f27e2814b8e439c193dc4c29789cd92>`.
+
+.. index:: pair: function; SetNumberOfAtoms
+.. _doxid-class_atoms_1a6cd319ad4bec43e10eb2c87e99625d2e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual void SetNumberOfAtoms(int n)
+
+Change the number of atoms.
+
+Change the number of atoms, and resize the arrays containing the data. If the number of atoms is increased, the end of the arrays will contain garbage. Call both :ref:`SetCartesianPositions() <doxid-class_atoms_1a045843a431ce829e5e76a6f7dbc09eab>` and :ref:`SetAtomicNumbers() <doxid-class_atoms_1a338c10b0de970b3d9e5f40dad5a04302>` after calling this method, and remember to update any relevent Python arrays. Mainly for use by ParallelAtoms when the atoms migrate between processors.
+

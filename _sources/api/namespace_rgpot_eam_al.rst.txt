@@ -37,7 +37,7 @@ rho_i = sum\_{j /= i} rho(r_ij),
 
 so the force on atom ``i`` couples to F ``evaluated at every neighbour's density as well as at its own. Three passes turn that into a gather: densities first, then`` F ``and`` F' ``for all atoms, then the force. By the time the force loop runs,`` F'(rho_j) ``is a plain array lookup, and atom`` i ``can sum the whole force acting on it while writing only`` f(:, i) : f_i = sum_j [ phi&rsquo;(r_ij) + (F'_i + F'_j) rho'(r_ij) ] rhat_ij,
 
-with ``rhat_ij`` the unit vector from ``i`` towards ``j``. This is where EAM closes and a bond-order gather does not: the neighbour-dependent factor is one scalar per atom, not a sum that has to be rebuilt by walking atom ``j`` 's own neighbour list.
+with ``rhat_ij`` the unit vector from ``i`` towards ``j``. This is where :ref:`EAM <doxid-class_e_a_m>` closes and a bond-order gather does not: the neighbour-dependent factor is one scalar per atom, not a sum that has to be rebuilt by walking atom ``j`` 's own neighbour list.
 
 Global Functions
 ----------------

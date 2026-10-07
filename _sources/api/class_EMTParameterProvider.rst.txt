@@ -1,0 +1,33 @@
+.. index:: pair: class; EMTParameterProvider
+.. _doxid-class_e_m_t_parameter_provider:
+
+class EMTParameterProvider
+==========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class EMTParameterProvider {
+	public:
+		// construction
+	
+		virtual :target:`~EMTParameterProvider<doxid-class_e_m_t_parameter_provider_1a94a1e558579dd73fc91f6aaca17a9e3b>`();
+
+		// methods
+	
+		virtual const :ref:`emt_parameters<doxid-structemt__parameters>`* :target:`GetParameters<doxid-class_e_m_t_parameter_provider_1a0cc554101617b3312ba07cdb789cd342>`(int element) = 0;
+		virtual void :target:`CalcGammaEtc<doxid-class_e_m_t_parameter_provider_1a480b732f57ef448b748ee8dd574eb91a>`() = 0;
+		virtual double :target:`GetCutoffDistance<doxid-class_e_m_t_parameter_provider_1a068e169af01108b1878635040c5fac83>`() = 0;
+		virtual double :target:`GetCutoffSlope<doxid-class_e_m_t_parameter_provider_1a46646be9d048a02d45f75f37f095b535>`() = 0;
+		virtual double :target:`GetListCutoffDistance<doxid-class_e_m_t_parameter_provider_1ad468ad79bac8dc4f9baedcef8d3c2b9c>`() = 0;
+		virtual double :target:`GetLengthScale<doxid-class_e_m_t_parameter_provider_1a5e3867b53f7f99f23d5123fc294f7477>`() = 0;
+		virtual const :ref:`TinyDoubleMatrix<doxid-class_tiny_matrix>`* :target:`GetChi<doxid-class_e_m_t_parameter_provider_1afcf50b5e64fe5e1b857c8914017b6af5>`() = 0;
+		virtual int :target:`GetNumberOfElements<doxid-class_e_m_t_parameter_provider_1ae59c4a141823d0bf27e81e09d30a3327>`() = 0;
+	};

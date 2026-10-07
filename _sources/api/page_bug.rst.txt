@@ -1,0 +1,24 @@
+.. index:: pair: page; Bug List
+.. _doxid-bug:
+
+Bug List
+========
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- Member :ref:`Atoms::GetCartesianPositions <doxid-class_atoms_1a9dffcbfbf258e17dc182a09a1141f7cd>` () const
+
+		- :target:`doxid-bug_1_bug000001` The difference in semantics between the two versions of GetCartesianPositions is most unfortunate: one of them should be renamed.
+
+	*
+		- Member :ref:`GhostPotential::CommunicateData <doxid-class_ghost_potential_1ad1c22d7695ed622bef1b5b8cf2fa35f3>` (double data[], int n)=0
+
+		- :target:`doxid-bug_1_bug000002` This is a primitive extension of CommunicateData(double \*), it does not work with the quasicontinuum method and must be improved.
+
+	*
+		- Member :ref:`NeighborList::UpdateSuperCell <doxid-class_neighbor_list_1a3ac08e2fc692fe2bf34f998753d9426a>` (const :ref:`SuperCell <doxid-class_super_cell>` \*superCell)
+
+		- :target:`doxid-bug_1_bug000003` Changing the supercell while scaling the atomic positions has little effect on the interatomic distances, but that little effect should be included in the decision to update the neighborlist. That is not done, so currently this function doesn't do anything.
+

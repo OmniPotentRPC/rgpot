@@ -1,0 +1,205 @@
+.. index:: pair: class; Vec
+.. _doxid-class_vec:
+
+class Vec
+=========
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+A 3-vector useful for postions etc. :ref:`More...<details-class_vec>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <Vec.h>
+	
+	class Vec {
+	public:
+		// fields
+	
+		double :ref:`x<doxid-class_vec_1af54f549cd159408b4016bc04df93ed54>`[3];
+
+		// construction
+	
+		:ref:`Vec<doxid-class_vec_1aefd6dd5ca241f55cdc5548e4c02dc187>`();
+		:ref:`Vec<doxid-class_vec_1acc3ae4d516a2d93138ed786f4eaeb930>`(double x0, double x1, double x2);
+
+		// methods
+	
+		double :ref:`operator*<doxid-class_vec_1ac10ad8ee317fb23f51c0fb50c86bc9b2>`(const Vec& v) const;
+		Vec :ref:`operator*<doxid-class_vec_1af30cd06ed99adaa071188651cfb136b1>`(const double& s) const;
+		Vec :ref:`operator+<doxid-class_vec_1a4b143c22f6d6bf8118f5b3b3c7cb566a>`(const Vec& v) const;
+		Vec :ref:`operator-<doxid-class_vec_1ac5c54761de41e52ca7fed215b33a5cb3>`(const Vec& v) const;
+		Vec :ref:`operator-<doxid-class_vec_1a7e9cb949e4064d571d95a6795a1d92f1>`() const;
+		Vec& :ref:`operator+=<doxid-class_vec_1a9b086d40379836d0bc5070cbdf7d4506>`(const Vec& v);
+		Vec& :ref:`operator-=<doxid-class_vec_1a28c9b2f65bfc73e588c20d3867f3be83>`(const Vec& v);
+		Vec& :ref:`operator*=<doxid-class_vec_1a5b038d9c1fcf5a14b069f6d975e7405e>`(double s);
+		Vec& :ref:`operator/=<doxid-class_vec_1a7f3be46bb0d4335fb8589249373c9152>`(double s);
+		double :ref:`operator[]<doxid-class_vec_1ab70d5e98495864330304ec4cf7da06b3>`(int n) const;
+		double& :ref:`operator[]<doxid-class_vec_1ac8f18c78ce9c65d5a81db8311f76d25c>`(int n);
+	};
+.. _details-class_vec:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+A 3-vector useful for postions etc.
+
+The only data is the three positions (and there are no virtual functions), so the memory layout of an array of Vecs will be x0, y0, z0, x1, y1, z1, x2, ...
+
+Almost all operations are inline for speed.
+
+Fields
+------
+
+.. index:: pair: variable; x
+.. _doxid-class_vec_1af54f549cd159408b4016bc04df93ed54:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double x[3]
+
+The actual data.
+
+Construction
+------------
+
+.. index:: pair: function; Vec
+.. _doxid-class_vec_1aefd6dd5ca241f55cdc5548e4c02dc187:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	Vec()
+
+Dummy constructor needed by STL containers.
+
+.. index:: pair: function; Vec
+.. _doxid-class_vec_1acc3ae4d516a2d93138ed786f4eaeb930:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	Vec(double x0, double x1, double x2)
+
+Construct a 3-vector from three doubles.
+
+Methods
+-------
+
+.. index:: pair: function; operator*
+.. _doxid-class_vec_1ac10ad8ee317fb23f51c0fb50c86bc9b2:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double operator*(const Vec& v) const
+
+Dot product.
+
+.. index:: pair: function; operator*
+.. _doxid-class_vec_1af30cd06ed99adaa071188651cfb136b1:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	Vec operator*(const double& s) const
+
+Multiplication with scalar.
+
+.. index:: pair: function; operator+
+.. _doxid-class_vec_1a4b143c22f6d6bf8118f5b3b3c7cb566a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	Vec operator+(const Vec& v) const
+
+Add two Vecs.
+
+.. index:: pair: function; operator-
+.. _doxid-class_vec_1ac5c54761de41e52ca7fed215b33a5cb3:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	Vec operator-(const Vec& v) const
+
+Subtract two Vecs.
+
+.. index:: pair: function; operator-
+.. _doxid-class_vec_1a7e9cb949e4064d571d95a6795a1d92f1:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	Vec operator-() const
+
+Unary minus.
+
+.. index:: pair: function; operator+=
+.. _doxid-class_vec_1a9b086d40379836d0bc5070cbdf7d4506:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	Vec& operator+=(const Vec& v)
+
+Add a :ref:`Vec <doxid-class_vec>` to this one.
+
+.. index:: pair: function; operator-=
+.. _doxid-class_vec_1a28c9b2f65bfc73e588c20d3867f3be83:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	Vec& operator-=(const Vec& v)
+
+Subtract a vec from this one.
+
+.. index:: pair: function; operator*=
+.. _doxid-class_vec_1a5b038d9c1fcf5a14b069f6d975e7405e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	Vec& operator*=(double s)
+
+Multiply this vec with a scalar.
+
+.. index:: pair: function; operator/=
+.. _doxid-class_vec_1a7f3be46bb0d4335fb8589249373c9152:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	Vec& operator/=(double s)
+
+Divide this :ref:`Vec <doxid-class_vec>` with a scalar.
+
+.. index:: pair: function; operator[]
+.. _doxid-class_vec_1ab70d5e98495864330304ec4cf7da06b3:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double operator[](int n) const
+
+const indexing
+
+.. index:: pair: function; operator[]
+.. _doxid-class_vec_1ac8f18c78ce9c65d5a81db8311f76d25c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double& operator[](int n)
+
+Non-const indexing.
+
