@@ -23,6 +23,8 @@
 
 #include "rgpot/ForceStructs.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
+#include "rgpot/EAM/EAMPot.hpp"
+#include "rgpot/EMT/EMTPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
@@ -193,6 +195,32 @@ TEST_CASE("Benchmark: LJPot force via operator()",
   BENCHMARK("LJ operator(), 500 atoms, pair list hit") {
     auto [energy, forces, variance] = pot(positions, types, box);
     return energy;
+  };
+}
+
+TEST_CASE("Benchmark: EMTPot force, Cu tetrahedron", "[.][benchmark][emt]") {
+  const std::vector<double> base = {
+      8.1925, 8.1925, 8.1925, 10.0, 10.0, 8.1925,
+      10.0,   8.1925, 10.0,   8.1925, 10.0, 10.0,
+  };
+  const std::vector<int> types(4, 29);
+  const std::array<double, 9> box = {20, 0, 0, 0, 20, 0, 0, 0, 20};
+  std::vector<double> forces(base.size(), 0.0);
+  rgpot::EMTPot pot;
+  BENCHMARK("EMT force, 4 Cu") {
+    return evalPot(pot, base, types, box, forces);
+  };
+}
+
+TEST_CASE("Benchmark: EAMPot force, two aluminium atoms",
+          "[.][benchmark][eam]") {
+  const std::vector<double> base = {0.0, 0.0, 0.0, 2.5, 0.0, 0.0};
+  const std::vector<int> types(2, 13);
+  const std::array<double, 9> box = {20, 0, 0, 0, 20, 0, 0, 0, 20};
+  std::vector<double> forces(base.size(), 0.0);
+  rgpot::EAMPot pot;
+  BENCHMARK("EAM cell-list force, 2 Al") {
+    return evalPot(pot, base, types, box, forces);
   };
 }
 
