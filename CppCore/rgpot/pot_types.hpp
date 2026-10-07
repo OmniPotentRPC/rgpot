@@ -49,7 +49,10 @@ enum class PotType {
   Skala,       //!<  Skala XC on NWChem DFT (libnwchemc).
   MOPAC,       //!<  OpenMOPAC via runtime-loaded mopacc C ABI engine.
   EMT,         //!<  Effective medium theory (Asap). Copper unless rasmussen.
-  EAMCell      //!<  Cell-list embedded-atom potential.
+  EAMCell,     //!<  Cell-list embedded-atom potential.
+  TIP4P,       //!<  Flexible TIP4P water. Built with -Dwith_water=true.
+  SPCE,        //!<  Flexible SPC/E water. Built with -Dwith_water=true.
+  TIP4PPt      //!<  TIP4P water on platinum. Built with -Dwith_water=true.
 };
 
 } // namespace rgpot

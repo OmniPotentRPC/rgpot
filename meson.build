@@ -62,6 +62,12 @@ if has_fortran
     _args += ['-DRGPOT_HAS_FORTRAN_POTS=TRUE']
 endif
 
+# C++ water family. Off unless the consumer asks, same default as eOn.
+has_water = get_option('with_water')
+if has_water
+    _args += ['-DRGPOT_HAS_WATER=TRUE']
+endif
+
 rpc_enabled = get_option('with_rpc') or get_option('with_rpc_client_only')
 
 if get_option('with_rpc_client_only')

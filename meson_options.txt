@@ -68,3 +68,9 @@ option(
     value: 'auto',
     description: 'Fortran-backed potentials (CuH2; grows with the eOn migration). Independent of the RPC options.',
 )
+option(
+    'with_water',
+    type: 'boolean',
+    value: false,
+    description: 'Flexible TIP4P, SPC/E and TIP4P-Pt kernels. Defaults false, matching the eOn with_water option.',
+)
