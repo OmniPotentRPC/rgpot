@@ -9,6 +9,9 @@ Global Namespace
 
 	namespace_cache.rst
 	namespace_eonc.rst
+	namespace_forcefields.rst
+	namespace_forcefields-2.rst
+	namespace_forcefields-3.rst
 	namespace_fortranpots.rst
 	namespace_plugin.rst
 	namespace_plugin-2.rst
@@ -25,6 +28,7 @@ Global Namespace
 	namespace_rgpot-11.rst
 	namespace_rgpot-12.rst
 	namespace_rgpot-13.rst
+	namespace_rgpot-14.rst
 	namespace_rgpot_cuh2.rst
 	namespace_rgpot_cuh2_capi.rst
 	namespace_rgpot_eam_al.rst
@@ -111,16 +115,18 @@ Overview
 
 	namespace :ref:`cache<doxid-namespacergpot_1_1cache_1_1_0d165065365317363373306064030211076062366015242354>`;
 	namespace :ref:`eonc<doxid-namespaceeonc>`;
+	namespace :ref:`forcefields<doxid-namespaceforcefields_1_1_0d176353174343202110305120374345260272001303026222>`;
+	namespace :ref:`forcefields<doxid-namespaceforcefields_1_1_0d314360146326325055152242050354023041051366052365>`;
+	namespace :ref:`forcefields<doxid-namespaceforcefields>`;
+		namespace :ref:`forcefields::unit_system<doxid-namespaceforcefields_1_1unit__system>`;
+		namespace :ref:`forcefields::zhu_philpott_parameters<doxid-namespaceforcefields_1_1zhu__philpott__parameters>`;
 	namespace :ref:`fortranpots<doxid-namespacergpot_1_1fortranpots_1_1_0d165254177354022106360171111037067337336127011041>`;
 	namespace :ref:`plugin<doxid-namespacergpot_1_1plugin_1_1_0d200302014144210322064235167275312221164076066310>`;
 	namespace :ref:`plugin<doxid-namespacergpot_1_1plugin_1_1_0d217200312004315350013176105016125113373042341353>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d164173104033017375130307150113162274222310040315>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d337125225102314171335167206375002356240231265256>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d371345205050316044211301074104100300046352051004>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d330074065165043016212166146146214025043016253057>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d307112313373357257323066107376333004137304370130>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d305002241363136067011226310027215036350216205241>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d217266233327203303134017362164326260230263145325>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d005211301367263113147155070242204034047317366225>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d371345205050316044211301074104100300046352051004>`;
 	namespace :ref:`rgpot<doxid-namespacergpot>`;
 		namespace :ref:`rgpot::abi<doxid-namespacergpot_1_1abi>`;
 			namespace :ref:`rgpot::abi::detail<doxid-namespacergpot_1_1abi_1_1detail>`;
@@ -142,11 +148,15 @@ Overview
 		namespace :ref:`rgpot::uma<doxid-namespacergpot_1_1uma>`;
 		namespace :ref:`rgpot::units<doxid-namespacergpot_1_1units>`;
 		namespace :ref:`rgpot::vesin_compat<doxid-namespacergpot_1_1vesin__compat>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d005211301367263113147155070242204034047317366225>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d122207310312103133225144130321077133074162141334>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d164173104033017375130307150113162274222310040315>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d307112313373357257323066107376333004137304370130>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d217266233327203303134017362164326260230263145325>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d166331164204151220333054351225362033006173021072>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d171070010102105364072226347021272242150151256304>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d305002241363136067011226310027215036350216205241>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d067053250123302137045023230030100136267051145140>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d215115311063156157302310316040026264140105104166>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d171070010102105364072226347021272242150151256304>`;
 	namespace :ref:`rgpot_cuh2<doxid-namespacergpot__cuh2>`;
 	namespace :ref:`rgpot_cuh2_capi<doxid-namespacergpot__cuh2__capi>`;
 	namespace :ref:`rgpot_eam_al<doxid-namespacergpot__eam__al>`;
@@ -506,8 +516,16 @@ Overview
 	#define :target:`BUFLEN<doxid-_e_m_t_8cpp_1ad974fe981249f5e84fbf1683b012c9f8>`
 	#define :target:`CATCH_AND_REPORT<doxid-pot__bridge_8cc_1a933409e97453f39bfae6d29f0518b341>`(client, default_ret)
 	#define :target:`DEBUGPRINT<doxid-_e_m_t_8cpp_1a0c88a91f0e53a766bb4dd3084727bc7b>`
+	#define :target:`DEBUG_LEVEL_RETURN<doxid-zhu__philpott_8cpp_1a51c01b51034d4f9275ed2ee22ebae99f>`(x)
 	#define :target:`EINDIR_ABI_STAMP_T_DEFINED<doxid-eindir__abi_8hpp_1a8e303a53a9afcdaf08f1f32960b3bdab>`
 	#define :target:`EINDIR_OBJECTIVE_T_DEFINED<doxid-eindir__abi_8hpp_1a55525eed573290331dddbee46c32b516>`
+	#define :ref:`FORCEFIELDS_UNIT_SYSTEM_ANGSTROM_GRAMME_PER_MOL_FEMTOSECOND_ECHARGE<doxid-tip4p__unit__system_8hpp_1a6ad4bb5c98f77601ae147f4e50981527>`
+	#define :ref:`FORCEFIELDS_UNIT_SYSTEM_ANGSTROM_KILOGRAMME_PER_MOL_FEMTOSECOND_AMPERE_PER_MOL<doxid-tip4p__unit__system_8hpp_1ab2d83ee83f5c36c3f706df8101d4c720>`
+	#define :ref:`FORCEFIELDS_UNIT_SYSTEM_ELECTRONVOLT_ANGSTROM_FEMTOSECOND_ECHARGE<doxid-tip4p__unit__system_8hpp_1ad2ec3f26648db31dc12c1078a599de0d>`
+	#define :ref:`FORCEFIELDS_UNIT_SYSTEM_HPP<doxid-tip4p__unit__system_8hpp_1a1286742836184cb394390f105218510a>`
+	#define :ref:`FORCEFIELDS_UNIT_SYSTEM_KILOCALORY_PER_MOL_ANGSTROM_FEMTOSECOND_ECHARGE<doxid-tip4p__unit__system_8hpp_1a6d49fd9bb65e21ca5fcb3a44f4b3d6f4>`
+	#define :ref:`FORCEFIELDS_UNIT_SYSTEM_METRE_KILOGRAMME_PER_MOL_SECOND_AMPERE_PER_MOL<doxid-tip4p__unit__system_8hpp_1ad611610e44a7eefac8eaa08168241da3>`
+	#define :ref:`FORCEFIELDS_UNIT_SYSTEM_SI_MKSA<doxid-tip4p__unit__system_8hpp_1a489f5131304a4904be0b8209a740d32a>`
 	#define :target:`MOPACC_MODEL_AM1<doxid-mopac__c__abi_8h_1a344bad1bb031e242114c60e4d6a8db19>`
 	#define :target:`MOPACC_MODEL_PM6<doxid-mopac__c__abi_8h_1a8ec5030ea1bd8a56f22c0417b2adcff9>`
 	#define :target:`MOPACC_MODEL_PM6_D3H4<doxid-mopac__c__abi_8h_1a68c65be559f6a51ac3febccfa30e38b6>`
@@ -548,8 +566,8 @@ Overview
 	#define :ref:`RGPOT_ROCKSDB_UNIQUE_PTR_OPEN<doxid-_potential_cache_8hpp_1a4d2e3dd07b69975ea6e7a022076e0a4b>`
 	#define :target:`RGPOT_XTB_ABI_VERSION<doxid-xtb__c__abi_8h_1aa3b73c6a3161c5d0da0ec0b357f13b8f>`
 	#define :target:`RGPOT_XTB_API<doxid-xtb__c__abi_8h_1a1c2e4e9e5c694894e8e5e08ae2c99479>`
-	#define :target:`VERB<doxid-_e_m_t_8cpp_1aada213ebc99d6c8aa948ea8f765d1868>`(x)
 	#define :target:`VERB<doxid-_atoms_8cpp_1aada213ebc99d6c8aa948ea8f765d1868>`(x)
+	#define :target:`VERB<doxid-_e_m_t_8cpp_1aada213ebc99d6c8aa948ea8f765d1868>`(x)
 	#define :target:`XCK_HD<doxid-evaluator_8hpp_1a188c81a8a602db0d56a4447043fab829>`
 
 .. _details-global:
@@ -1807,6 +1825,76 @@ Energy + forces. Returns 0 on success. variance may be NULL.
 
 Macros
 ------
+
+.. index:: pair: define; FORCEFIELDS_UNIT_SYSTEM_ANGSTROM_GRAMME_PER_MOL_FEMTOSECOND_ECHARGE
+.. _doxid-tip4p__unit__system_8hpp_1a6ad4bb5c98f77601ae147f4e50981527:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	#define FORCEFIELDS_UNIT_SYSTEM_ANGSTROM_GRAMME_PER_MOL_FEMTOSECOND_ECHARGE
+
+Angstrom, gramme/mol, femtosecond, e (proton charge)
+
+.. index:: pair: define; FORCEFIELDS_UNIT_SYSTEM_ANGSTROM_KILOGRAMME_PER_MOL_FEMTOSECOND_AMPERE_PER_MOL
+.. _doxid-tip4p__unit__system_8hpp_1ab2d83ee83f5c36c3f706df8101d4c720:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	#define FORCEFIELDS_UNIT_SYSTEM_ANGSTROM_KILOGRAMME_PER_MOL_FEMTOSECOND_AMPERE_PER_MOL
+
+System based on angstrom, kg/mol, femtosecond, Ampere/mol.
+
+.. index:: pair: define; FORCEFIELDS_UNIT_SYSTEM_ELECTRONVOLT_ANGSTROM_FEMTOSECOND_ECHARGE
+.. _doxid-tip4p__unit__system_8hpp_1ad2ec3f26648db31dc12c1078a599de0d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	#define FORCEFIELDS_UNIT_SYSTEM_ELECTRONVOLT_ANGSTROM_FEMTOSECOND_ECHARGE
+
+Electron volt, angstrom, femtosecond, e (proton charge)
+
+.. index:: pair: define; FORCEFIELDS_UNIT_SYSTEM_HPP
+.. _doxid-tip4p__unit__system_8hpp_1a1286742836184cb394390f105218510a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	#define FORCEFIELDS_UNIT_SYSTEM_HPP
+
+Default system of units.
+
+.. index:: pair: define; FORCEFIELDS_UNIT_SYSTEM_KILOCALORY_PER_MOL_ANGSTROM_FEMTOSECOND_ECHARGE
+.. _doxid-tip4p__unit__system_8hpp_1a6d49fd9bb65e21ca5fcb3a44f4b3d6f4:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	#define FORCEFIELDS_UNIT_SYSTEM_KILOCALORY_PER_MOL_ANGSTROM_FEMTOSECOND_ECHARGE
+
+Kilo calory per mole, angstrom, femtosecond, e (proton charge)
+
+.. index:: pair: define; FORCEFIELDS_UNIT_SYSTEM_METRE_KILOGRAMME_PER_MOL_SECOND_AMPERE_PER_MOL
+.. _doxid-tip4p__unit__system_8hpp_1ad611610e44a7eefac8eaa08168241da3:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	#define FORCEFIELDS_UNIT_SYSTEM_METRE_KILOGRAMME_PER_MOL_SECOND_AMPERE_PER_MOL
+
+System based on Metre, kg/mol, second, Ampere/mol.
+
+.. index:: pair: define; FORCEFIELDS_UNIT_SYSTEM_SI_MKSA
+.. _doxid-tip4p__unit__system_8hpp_1a489f5131304a4904be0b8209a740d32a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	#define FORCEFIELDS_UNIT_SYSTEM_SI_MKSA
+
+Systeme international.
 
 .. index:: pair: define; POT_BRIDGE_API
 .. _doxid-pot__bridge_8h_1a30ca0aa10367d7a1679284a7ed9969e4:

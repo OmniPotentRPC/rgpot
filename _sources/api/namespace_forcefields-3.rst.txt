@@ -1,0 +1,42 @@
+.. index:: pair: namespace; forcefields
+.. _doxid-namespaceforcefields:
+
+namespace forcefields
+=====================
+
+.. toctree::
+	:hidden:
+
+	namespace_forcefields_unit_system.rst
+	namespace_forcefields_zhu_philpott_parameters.rst
+	class_forcefields_Ccl.rst
+	class_forcefields_PotentialBase.rst
+	class_forcefields_SpceCcl.rst
+	class_forcefields_Tip4p.rst
+	class_forcefields_ZhuPhilpott.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace forcefields {
+
+	// namespaces
+
+	namespace :ref:`forcefields::unit_system<doxid-namespaceforcefields_1_1unit__system>`;
+	namespace :ref:`forcefields::zhu_philpott_parameters<doxid-namespaceforcefields_1_1zhu__philpott__parameters>`;
+
+	// classes
+
+	class :ref:`Ccl<doxid-classforcefields_1_1_ccl>`;
+	class :ref:`PotentialBase<doxid-classforcefields_1_1_potential_base>`;
+	class :ref:`SpceCcl<doxid-classforcefields_1_1_spce_ccl>`;
+	class :ref:`Tip4p<doxid-classforcefields_1_1_tip4p>`;
+
+	template <class P = zhu_philpott_parameters::Standard>
+	class :ref:`ZhuPhilpott<doxid-classforcefields_1_1_zhu_philpott>`;
+
+	} // namespace forcefields

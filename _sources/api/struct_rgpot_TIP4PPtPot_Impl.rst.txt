@@ -1,0 +1,25 @@
+.. index:: pair: struct; rgpot::TIP4PPtPot::Impl
+.. _doxid-structrgpot_1_1_t_i_p4_p_pt_pot_1_1_impl:
+
+struct rgpot::TIP4PPtPot::Impl
+==============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Impl {
+		// fields
+	
+		:ref:`forcefields::ZhuPhilpott<doxid-classforcefields_1_1_zhu_philpott>` :target:`kernel<doxid-structrgpot_1_1_t_i_p4_p_pt_pot_1_1_impl_1a2a1ad71046ac458acb955a8b44ecb160>`;
+
+		// construction
+	
+		:target:`Impl<doxid-structrgpot_1_1_t_i_p4_p_pt_pot_1_1_impl_1a88301a5d0e6cee4c6485eeae78be559d>`(const :ref:`WaterConfig<doxid-structrgpot_1_1_water_config>`& config);
+	};

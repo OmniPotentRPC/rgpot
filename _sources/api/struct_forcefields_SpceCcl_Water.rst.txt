@@ -1,0 +1,37 @@
+.. index:: pair: struct; forcefields::SpceCcl::Water
+.. _doxid-structforcefields_1_1_spce_ccl_1_1_water:
+
+struct forcefields::SpceCcl::Water
+==================================
+
+.. toctree::
+	:hidden:
+
+Pointers to molecule of water. Pointers to coordinates and forces of a molecule of water.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <spce_ccl.hpp>
+	
+	struct Water {
+		// fields
+	
+		const double*const :target:`rh1_<doxid-structforcefields_1_1_spce_ccl_1_1_water_1a06ff55439108a8bd74e5ab62ca82f011>`;
+		const double*const :target:`rh2_<doxid-structforcefields_1_1_spce_ccl_1_1_water_1ac3bcbc9704dc04ba51377ce0b6068905>`;
+		const double*const :target:`ro_<doxid-structforcefields_1_1_spce_ccl_1_1_water_1a97c9d3a337b1dd40dc15bf24c014f906>`;
+		const double*const :target:`rc_<doxid-structforcefields_1_1_spce_ccl_1_1_water_1aac2ee3968c4611f74a624f4e715c32fd>`;
+		double*const :target:`fh1_<doxid-structforcefields_1_1_spce_ccl_1_1_water_1a0d0c71bc36dfe81e6809a9d7bb82af84>`;
+		double*const :target:`fh2_<doxid-structforcefields_1_1_spce_ccl_1_1_water_1a654abe9e15b4c2359735b02c784d618d>`;
+		double*const :target:`fo_<doxid-structforcefields_1_1_spce_ccl_1_1_water_1a1a4cdd2e11079e14e9c81e47b602fb51>`;
+
+		// construction
+	
+		:target:`Water<doxid-structforcefields_1_1_spce_ccl_1_1_water_1ad268f177db9d6ed7f29bedcf24294d45>`(double const rh1[], double const rh2[], double const ro[], double const rc[], double fh1[], double fh2[], double fo[]);
+		:target:`Water<doxid-structforcefields_1_1_spce_ccl_1_1_water_1ab13fc45a4c9b449f27ea0023e9cecb1b>`(Water const& w, double fh1[], double fh2[], double fo[]);
+
+		// methods
+	
+		void :target:`addForces<doxid-structforcefields_1_1_spce_ccl_1_1_water_1a2b17023f44bdee3d9fe3380446caef80>`(Water const& w);
+	};

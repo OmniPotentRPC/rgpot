@@ -1,0 +1,155 @@
+.. index:: pair: class; forcefields::PotentialBase
+.. _doxid-classforcefields_1_1_potential_base:
+
+class forcefields::PotentialBase
+================================
+
+.. toctree::
+	:hidden:
+
+	struct_forcefields_PotentialBase_ChargeGroup.rst
+	struct_forcefields_PotentialBase_Vector3.rst
+
+Overview
+~~~~~~~~
+
+Functions and tools commonly used by potentials. Contains functions for quadratic retrainst, Lennard-Jones, Coulomb, to manage the periodic boundaries and interface for cutoff. The system of units used is (eV, Angstrom, fs, e). Rules to combine different Lennard-Jones parameters were taken from:
+
+Unlike Lennard-Jones Parameters for Vapor-Liquid Equilibria, Thorsten Schnabel, Jadran Vrabec , Hans Hasse, Institut fur Technische Thermodynamik und Thermische Verfahrenstechnik, Universitat Stuttgart, D-70550 Stuttgart, Germany, `http://www.itt.uni-stuttgart.de/~schnabel/CR.pdf <http://www.itt.uni-stuttgart.de/~schnabel/CR.pdf>`__. :ref:`More...<details-classforcefields_1_1_potential_base>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class PotentialBase {
+	public:
+		// structs
+	
+		template <int N, class R = double(*const)[N], class F = double(*const)[N]>
+		struct :ref:`ChargeGroup<doxid-structforcefields_1_1_potential_base_1_1_charge_group>`;
+	
+		struct :ref:`Vector3<doxid-structforcefields_1_1_potential_base_1_1_vector3>`;
+
+		// construction
+	
+		:ref:`PotentialBase<doxid-classforcefields_1_1_potential_base_1a84b01bea2511c6580cf59cd9094cd40e>`();
+		:target:`PotentialBase<doxid-classforcefields_1_1_potential_base_1abc1ecfce35510cc457cc649d9a12dba2>`(double cutoff, double switchingWidth);
+		virtual :target:`~PotentialBase<doxid-classforcefields_1_1_potential_base_1ab4a0946f1a33688584a184665c481c94>`();
+
+		// methods
+	
+		double :ref:`getSwitchingWidth<doxid-classforcefields_1_1_potential_base_1a3e28d111b296526628fa0fdffe831eb7>`() const;
+		void :target:`setSwitchingWidth<doxid-classforcefields_1_1_potential_base_1a74e7b9dda7ff3bc45006c00ac388b828>`(double width);
+		double :target:`getCutoff<doxid-classforcefields_1_1_potential_base_1a9f9dba6eb645ccb76d17345338de5dd9>`() const;
+		void :target:`setCutoff<doxid-classforcefields_1_1_potential_base_1a9b5d01c20e7b9127aeca269c9d8f72d0>`(double cutoff);
+		static double :ref:`applyPeriodicity0<doxid-classforcefields_1_1_potential_base_1a8481070b1b338862c8877acf770bf941>`(double r, double const period);
+		static void :ref:`applyPeriodicity0<doxid-classforcefields_1_1_potential_base_1a7f3749ba10ad064f3f38742223012eed>`(double r[], double const periods[]);
+	};
+.. _details-classforcefields_1_1_potential_base:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Functions and tools commonly used by potentials. Contains functions for quadratic retrainst, Lennard-Jones, Coulomb, to manage the periodic boundaries and interface for cutoff. The system of units used is (eV, Angstrom, fs, e). Rules to combine different Lennard-Jones parameters were taken from:
+
+Unlike Lennard-Jones Parameters for Vapor-Liquid Equilibria, Thorsten Schnabel, Jadran Vrabec , Hans Hasse, Institut fur Technische Thermodynamik und Thermische Verfahrenstechnik, Universitat Stuttgart, D-70550 Stuttgart, Germany, `http://www.itt.uni-stuttgart.de/~schnabel/CR.pdf <http://www.itt.uni-stuttgart.de/~schnabel/CR.pdf>`__.
+
+Construction
+------------
+
+.. index:: pair: function; PotentialBase
+.. _doxid-classforcefields_1_1_potential_base_1a84b01bea2511c6580cf59cd9094cd40e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	PotentialBase()
+
+Non bond interaction cutoff. When the distance between two molecules is over getCutoff(), van der Waals and Coulomb interactions between the two molecules are ignored.
+
+
+
+.. rubric:: See also:
+
+:ref:`getSwitchingWidth() <doxid-classforcefields_1_1_potential_base_1a3e28d111b296526628fa0fdffe831eb7>`.
+
+Methods
+-------
+
+.. index:: pair: function; getSwitchingWidth
+.. _doxid-classforcefields_1_1_potential_base_1a3e28d111b296526628fa0fdffe831eb7:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double getSwitchingWidth() const
+
+Width of the switching zone. In the switching zone the potential is replaced by :math:`V=U\times S(x)` where *U* is the real potential *V* the switching potential and *S* the switching function. Variable x=0 at the beginning of the switching zone and x=1 at the end the function S is :math:`S=2x^3-3x^2+1` which has the following properties: S(0)=1, S(1)=0, S'(0)=0 and S'(1)=0. The switching when the distance between the two molecules is getCutoff()- :ref:`getSwitchingWidth() <doxid-classforcefields_1_1_potential_base_1a3e28d111b296526628fa0fdffe831eb7>` and ends when the distance is getCutoff();
+
+
+
+.. rubric:: See also:
+
+getCutoff().
+
+.. index:: pair: function; applyPeriodicity0
+.. _doxid-classforcefields_1_1_potential_base_1a8481070b1b338862c8877acf770bf941:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static double applyPeriodicity0(double r, double const period)
+
+Minimum image representation.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- r
+
+		- Cyclic coordinate.
+
+	*
+		- period
+
+		- Period of the coordinates.
+
+
+
+.. rubric:: Returns:
+
+Minimum image representation of *r*. The value returned is :math:`\frac{-period}{2} \le r \le \frac{period}{2}`
+
+.. index:: pair: function; applyPeriodicity0
+.. _doxid-classforcefields_1_1_potential_base_1a7f3749ba10ad064f3f38742223012eed:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static void applyPeriodicity0(double r[], double const periods[])
+
+Minimum image representation. Writes the minimum image of *r* in place. Each component satisfies :math:`\frac{-period}{2} \le r_i \le \frac{period}{2}`.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- r
+
+		- Three-dimension vector.
+
+	*
+		- periods
+
+		- Three-dimension vector containing periods along each of the axes.
+

@@ -1,0 +1,191 @@
+.. index:: pair: class; forcefields::Ccl
+.. _doxid-classforcefields_1_1_ccl:
+
+class forcefields::Ccl
+======================
+
+.. toctree::
+	:hidden:
+
+	struct_forcefields_Ccl_Dtheta.rst
+	struct_forcefields_Ccl_Rho.rst
+
+Overview
+~~~~~~~~
+
+Quartic intramolecular potential for water. This is a potential to intramolecular interaction in water published by :ref:`Carney, Curtiss and Langhoff <doxid-classforcefields_1_1_ccl_1carney1976>`. The functions and parameters for the potential are in Table II of the publication. :ref:`More...<details-classforcefields_1_1_ccl>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class Ccl: public :ref:`forcefields::PotentialBase<doxid-classforcefields_1_1_potential_base>` {
+	public:
+		// structs
+	
+		struct :ref:`Dtheta<doxid-structforcefields_1_1_ccl_1_1_dtheta>`;
+		struct :ref:`Rho<doxid-structforcefields_1_1_ccl_1_1_rho>`;
+
+		// construction
+	
+		:target:`Ccl<doxid-classforcefields_1_1_ccl_1adaee7339131b9f01b70c2d055d4a099b>`();
+
+		// methods
+	
+		void :ref:`computeHH_O_<doxid-classforcefields_1_1_ccl_1afaddf7e6574e1f5f4aa78d919e6ce9fc>`(const int nAtoms, const double R[], double F[], double& U, const double b[]);
+		void :ref:`computeHH_O_<doxid-classforcefields_1_1_ccl_1a8c5e0067700e1cebea0bc05fa776a210>`(const int nAtoms, const double R[], double F[], double& U, const double b[], const bool fixed[]);
+		char const* :ref:`getName<doxid-classforcefields_1_1_ccl_1a742cf4634c13311e07238d08bce6bce9>`() const;
+	};
+
+Inherited Members
+-----------------
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-inherited-code-block
+
+	public:
+		// structs
+	
+		template <int N, class R = double(*const)[N], class F = double(*const)[N]>
+		struct :ref:`ChargeGroup<doxid-structforcefields_1_1_potential_base_1_1_charge_group>`;
+	
+		struct :ref:`Vector3<doxid-structforcefields_1_1_potential_base_1_1_vector3>`;
+
+		// methods
+	
+		double :ref:`getSwitchingWidth<doxid-classforcefields_1_1_potential_base_1a3e28d111b296526628fa0fdffe831eb7>`() const;
+		void :ref:`setSwitchingWidth<doxid-classforcefields_1_1_potential_base_1a74e7b9dda7ff3bc45006c00ac388b828>`(double width);
+		double :ref:`getCutoff<doxid-classforcefields_1_1_potential_base_1a9f9dba6eb645ccb76d17345338de5dd9>`() const;
+		void :ref:`setCutoff<doxid-classforcefields_1_1_potential_base_1a9b5d01c20e7b9127aeca269c9d8f72d0>`(double cutoff);
+		static double :ref:`applyPeriodicity0<doxid-classforcefields_1_1_potential_base_1a8481070b1b338862c8877acf770bf941>`(double r, double const period);
+		static void :ref:`applyPeriodicity0<doxid-classforcefields_1_1_potential_base_1a7f3749ba10ad064f3f38742223012eed>`(double r[], double const periods[]);
+
+.. _details-classforcefields_1_1_ccl:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Quartic intramolecular potential for water. This is a potential to intramolecular interaction in water published by :ref:`Carney, Curtiss and Langhoff <doxid-classforcefields_1_1_ccl_1carney1976>`. The functions and parameters for the potential are in Table II of the publication.
+
+
+
+.. _doxid-classforcefields_1_1_ccl_1references:
+
+References
+~~~~~~~~~~
+
+:target:`doxid-classforcefields_1_1_ccl_1carney1976` Improved Potential Functions for Bent AB2 Molecules: Water and Ozone. GD Carney, LA Curtiss, SR Langhoff, J. Mol. Spectroscopy **1976**, vol. 61, p. 371-381
+
+Methods
+-------
+
+.. index:: pair: function; computeHH_O_
+.. _doxid-classforcefields_1_1_ccl_1afaddf7e6574e1f5f4aa78d919e6ce9fc:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void computeHH_O_(const int nAtoms, const double R[], double F[], double& U, const double b[])
+
+Compute the forces and the energy. The order of the atoms is very important. For this function the order is H1, H1, H2, H2, etc ... , O1, O2, etc ... The numbers are for the molecules. The suffix HH_O\_ is to reminds the ordering of the atoms. It indicates the position of the atoms of the first molecule, while the underscore marks the locations of other atoms.
+
+.. warning::
+
+	Be careful with the order of the atoms.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- nAtoms
+
+		- Number of :ref:`Atoms <doxid-class_atoms>`.
+
+	*
+		- R
+
+		- coordinates.
+
+	*
+		- F
+
+		- Forces.
+
+	*
+		- U
+
+		- Potential energy.
+
+	*
+		- b
+
+		- Periodic boundaries.
+
+.. index:: pair: function; computeHH_O_
+.. _doxid-classforcefields_1_1_ccl_1a8c5e0067700e1cebea0bc05fa776a210:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void computeHH_O_(const int nAtoms, const double R[], double F[], double& U, const double b[], const bool fixed[])
+
+Compute the forces and the energy (with fixed atom optimisation). In a simulation, some atoms may be fixed (not allowed to move). Computing the interaction between two fixed atoms is useless. When the potential knows which atoms are fixed, it can avoid these useless computations.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- nAtoms
+
+		- Number of :ref:`Atoms <doxid-class_atoms>`.
+
+	*
+		- R
+
+		- coordinates.
+
+	*
+		- F
+
+		- Forces.
+
+	*
+		- U
+
+		- Potential energy.
+
+	*
+		- b
+
+		- Periodic boundaries.
+
+	*
+		- fixed
+
+		- The length of the array must be equal to *nAtoms* in compute(). True when atom is fixed, false otherwise.
+
+
+
+.. rubric:: See also:
+
+Check compute() for the order of the atoms.
+
+.. index:: pair: function; getName
+.. _doxid-classforcefields_1_1_ccl_1a742cf4634c13311e07238d08bce6bce9:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	char const* getName() const
+
+Name of the potential.
+

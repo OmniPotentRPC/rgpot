@@ -1,0 +1,11 @@
+.. index:: pair: group; Common operations 3D vectors.
+.. _doxid-group__vector3d:
+
+Common operations 3D vectors.
+=============================
+
+.. toctree::
+	:hidden:
+
+Implementation is in header file for better optimisaition.
+

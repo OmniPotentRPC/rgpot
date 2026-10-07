@@ -1,0 +1,23 @@
+.. index:: pair: struct; rgpot::WaterConfig
+.. _doxid-structrgpot_1_1_water_config:
+
+struct rgpot::WaterConfig
+=========================
+
+.. toctree::
+	:hidden:
+
+Cutoff and switching width shared by the flexible water kernels. The defaults are the values the eOn wrappers pass.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <WaterPots.hpp>
+	
+	struct WaterConfig {
+		// fields
+	
+		double :target:`cutoff<doxid-structrgpot_1_1_water_config_1abe6e8f3fcec94a2e47c1aa9465625b6d>` = 8.5;
+		double :target:`switching_width<doxid-structrgpot_1_1_water_config_1ac20a34478347b2813311ae2fbd2d1f6f>` = 1.0;
+	};

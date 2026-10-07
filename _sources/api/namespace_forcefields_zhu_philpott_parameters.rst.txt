@@ -1,0 +1,27 @@
+.. index:: pair: namespace; forcefields::zhu_philpott_parameters
+.. _doxid-namespaceforcefields_1_1zhu__philpott__parameters:
+
+namespace forcefields::zhu_philpott_parameters
+==============================================
+
+.. toctree::
+	:hidden:
+
+	struct_forcefields_zhu_philpott_parameters_Iceland.rst
+	struct_forcefields_zhu_philpott_parameters_Standard.rst
+
+Parameters for :ref:`ZhuPhilpott <doxid-classforcefields_1_1_zhu_philpott>`. Parameters for Zhu and Philpott potential for interaction between platinum and water.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace zhu_philpott_parameters {
+
+	// structs
+
+	struct :ref:`Iceland<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_iceland>`;
+	struct :ref:`Standard<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard>`;
+
+	} // namespace zhu_philpott_parameters

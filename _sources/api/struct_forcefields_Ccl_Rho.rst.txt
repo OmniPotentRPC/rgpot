@@ -1,0 +1,94 @@
+.. index:: pair: struct; forcefields::Ccl::Rho
+.. _doxid-structforcefields_1_1_ccl_1_1_rho:
+
+struct forcefields::Ccl::Rho
+============================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+:math:`\rho` parameter in paper. :ref:`More...<details-structforcefields_1_1_ccl_1_1_rho>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <ccl.hpp>
+	
+	struct Rho {
+		// fields
+	
+		double :ref:`_1<doxid-structforcefields_1_1_ccl_1_1_rho_1a685bc9a370cb568f4eb6c2f6ba0c5f1c>`;
+		double :ref:`_2<doxid-structforcefields_1_1_ccl_1_1_rho_1a1e0a995cb153192889b5773a325e12c0>`;
+		double :ref:`_3<doxid-structforcefields_1_1_ccl_1_1_rho_1a2ce33b4273301c4d68eb71157a996f4b>`;
+		double :ref:`n<doxid-structforcefields_1_1_ccl_1_1_rho_1a502a83fc72271bd5281547a1d7b9a199>`[3];
+	};
+.. _details-structforcefields_1_1_ccl_1_1_rho:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+:math:`\rho` parameter in paper.
+
+
+
+.. rubric:: See also:
+
+:ref:`forcefields::Ccl <doxid-classforcefields_1_1_ccl>`
+
+Fields
+------
+
+.. index:: pair: variable; _1
+.. _doxid-structforcefields_1_1_ccl_1_1_rho_1a685bc9a370cb568f4eb6c2f6ba0c5f1c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double _1
+
+rho^1
+
+.. index:: pair: variable; _2
+.. _doxid-structforcefields_1_1_ccl_1_1_rho_1a1e0a995cb153192889b5773a325e12c0:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double _2
+
+rho^2
+
+.. index:: pair: variable; _3
+.. _doxid-structforcefields_1_1_ccl_1_1_rho_1a2ce33b4273301c4d68eb71157a996f4b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double _3
+
+rho^3
+
+.. index:: pair: variable; n
+.. _doxid-structforcefields_1_1_ccl_1_1_rho_1a502a83fc72271bd5281547a1d7b9a199:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double n[3]
+
+Convert derivative to force. Vector *n* is by definition the vector which satisfy the equation:
+
+.. math::
+
+	\mathbf{F}=-\frac{dE}{d\rho}\mathbf{n}
+
+It is equal to:
+
+.. math::
+
+	\mathbf n=\frac{\mathbf{r}}{|\mathbf{r}|}\frac{r_e}{\rho^2}
+

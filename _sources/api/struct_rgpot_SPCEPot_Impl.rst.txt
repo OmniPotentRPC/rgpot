@@ -1,0 +1,25 @@
+.. index:: pair: struct; rgpot::SPCEPot::Impl
+.. _doxid-structrgpot_1_1_s_p_c_e_pot_1_1_impl:
+
+struct rgpot::SPCEPot::Impl
+===========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Impl {
+		// fields
+	
+		:ref:`forcefields::SpceCcl<doxid-classforcefields_1_1_spce_ccl>` :target:`kernel<doxid-structrgpot_1_1_s_p_c_e_pot_1_1_impl_1ab36085172607ebc0ad8f77800ddd2f58>`;
+
+		// construction
+	
+		:target:`Impl<doxid-structrgpot_1_1_s_p_c_e_pot_1_1_impl_1a578cc51b62140a31292948a486362fb4>`(const :ref:`WaterConfig<doxid-structrgpot_1_1_water_config>`& config);
+	};

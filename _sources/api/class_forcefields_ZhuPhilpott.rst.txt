@@ -1,0 +1,277 @@
+.. index:: pair: class; forcefields::ZhuPhilpott
+.. _doxid-classforcefields_1_1_zhu_philpott:
+
+template class forcefields::ZhuPhilpott
+=======================================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Forcefield for water and platinum interactions. This forcefield is the A2 water-platinum potential invented by :ref:`Zhu <doxid-classforcefields_1_1_zhu_philpott_1zhu1994>` and Philpott". It includes the SPC/E+CCL potential for interaction between the
+molecules of water. The SPC/E is a potential for constrained water. This
+implementation includes restraints so it may be used without constraint (see
+class SpceCcl).\n The potential uses Kong's rules to combine the Lennard-Jones
+parameters of platinum with oxygen and hydrogen. A @ref combinationReview
+"review of combination rules" including Kong's rule can be find on the web.
+
+The system of unit used by the class is (eV, Angstrom, fs, e). :ref:`More...<details-classforcefields_1_1_zhu_philpott>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	template <class P = zhu_philpott_parameters::Standard>
+	class ZhuPhilpott:
+	    public :ref:`forcefields::SpceCcl<doxid-classforcefields_1_1_spce_ccl>`,
+	    private :ref:`forcefields::zhu_philpott_parameters::Standard<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard>` {
+	public:
+		// construction
+	
+		:target:`ZhuPhilpott<doxid-classforcefields_1_1_zhu_philpott_1a8ef023094eb4aa3045e44d2904634eb2>`();
+		:target:`ZhuPhilpott<doxid-classforcefields_1_1_zhu_philpott_1af4de725646952043919ecbaf5776c4fe>`(double cutoff, double switchingWidth);
+		:target:`ZhuPhilpott<doxid-classforcefields_1_1_zhu_philpott_1a755be7d4e9991f99970f58d111e4fad4>`(ZhuPhilpott const& zhuPhilpott);
+		:target:`~ZhuPhilpott<doxid-classforcefields_1_1_zhu_philpott_1a6b92744faac856a7ae77631057d66cde>`();
+
+		// methods
+	
+		void :target:`operator=<doxid-classforcefields_1_1_zhu_philpott_1a6b0a83cda9d3e6d3364a48d8f3c75a9e>`(ZhuPhilpott const& zhuPhilpott);
+		void :ref:`computeHH_O_Pt_<doxid-classforcefields_1_1_zhu_philpott_1a803dcfb887567aee516fceb7ddaf80b9>`(const int nWater, const int nPt, const double r[], double f[], double& energy, double const b[], bool const fixed[]);
+		void :ref:`computeHH_O_<doxid-classforcefields_1_1_zhu_philpott_1a5ee9ab5ae2fb66b43eac8d3a5eaf7424>`(const int nWater, const double r[], double f[], double& energy, double const b[], bool const fixed[]);
+		int :ref:`nPlatinum<doxid-classforcefields_1_1_zhu_philpott_1ae50d5d63065340f1dfb61295745a827e>`() const;
+		void :ref:`setPlatinum<doxid-classforcefields_1_1_zhu_philpott_1a85061840564b45f49c5928752f6d2013>`(int nPlatinum, double const positions[]);
+	
+		template <int H, int O, int H3, int O3>
+		void :target:`computeTemplate<doxid-classforcefields_1_1_zhu_philpott_1aecff987bbb62f8a54575aa087c42bb41>`(const int nWater, const double(*) rh1[H3], const double(*) rh2[H3], const double(*) ro[O3], double(*) fh1[H3], double(*) fh2[H3], double(*) fo[O3], const int nPt, const double rPt[][3], double fPt[][3], double& energy, double const b[], bool const(*) xh1[H], bool const(*) xh2[H], bool const(*) xo[O], bool const xPt[]);
+	
+		static char const* :ref:`getName<doxid-classforcefields_1_1_zhu_philpott_1a37f84839a970a6aafb8391895e792753>`();
+	};
+
+Inherited Members
+-----------------
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-inherited-code-block
+
+	public:
+		// structs
+	
+		template <int N, class R = double(*const)[N], class F = double(*const)[N]>
+		struct :ref:`ChargeGroup<doxid-structforcefields_1_1_potential_base_1_1_charge_group>`;
+	
+		struct :ref:`Vector3<doxid-structforcefields_1_1_potential_base_1_1_vector3>`;
+		struct :ref:`Dtheta<doxid-structforcefields_1_1_ccl_1_1_dtheta>`;
+		struct :ref:`Rho<doxid-structforcefields_1_1_ccl_1_1_rho>`;
+		struct :ref:`Water<doxid-structforcefields_1_1_spce_ccl_1_1_water>`;
+
+		// fields
+	
+		static double const :ref:`sigmaO_<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard_1a1503391c4a6a578d8f0af3a7e4bbefd8>` = 2.86;
+		static double const :ref:`epsilonO_<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard_1ae3dc92c26b6ea926439d240090f5586d>` = 0.0023734176137013181;
+		static double const :ref:`sigmaH_<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard_1a8708e6fb4901f01fa666fe806ab2dcd3>` = 2.56;
+		static double const :ref:`epsilonH_<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard_1af801ed048047c8108f186573c93fb84e>` = 0.00087578073518673099;
+		static double const :ref:`C10_O_<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard_1ae03cc5a666bf9bf58ba0da96da0abf51>` = 1.28;
+		static double const :ref:`C10_H_<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard_1ad22283b82b0a183bbc2ac86c6d24e123>` = 1.2;
+		static double const :ref:`alpha_<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard_1abd52a53ab4246218382c40995ce2194c>` = 0.8;
+		static double const :ref:`sigmaHPt_<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard_1acf92a188ebb26b05f805817ae207351e>` = 2.730249677569295;
+		static double const :ref:`sigmaOPt_<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard_1abf2d7d011292a179daf14eeb4bb541f4>` = 2.7735458150747108;
+		static double const :ref:`epsilonHPt_<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard_1a96e5f4a3d107d5abc6644fdabfbc2b7c>` = 0.016217645873043762;
+		static double const :ref:`epsilonOPt_<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard_1a21f8716dca6a5ce23732bdadf32fea28>` = 0.03387330127291549;
+
+		// methods
+	
+		double :ref:`getSwitchingWidth<doxid-classforcefields_1_1_potential_base_1a3e28d111b296526628fa0fdffe831eb7>`() const;
+		void :ref:`setSwitchingWidth<doxid-classforcefields_1_1_potential_base_1a74e7b9dda7ff3bc45006c00ac388b828>`(double width);
+		double :ref:`getCutoff<doxid-classforcefields_1_1_potential_base_1a9f9dba6eb645ccb76d17345338de5dd9>`() const;
+		void :ref:`setCutoff<doxid-classforcefields_1_1_potential_base_1a9b5d01c20e7b9127aeca269c9d8f72d0>`(double cutoff);
+		static double :ref:`applyPeriodicity0<doxid-classforcefields_1_1_potential_base_1a8481070b1b338862c8877acf770bf941>`(double r, double const period);
+		static void :ref:`applyPeriodicity0<doxid-classforcefields_1_1_potential_base_1a7f3749ba10ad064f3f38742223012eed>`(double r[], double const periods[]);
+		void :ref:`computeHH_O_<doxid-classforcefields_1_1_ccl_1afaddf7e6574e1f5f4aa78d919e6ce9fc>`(const int nAtoms, const double R[], double F[], double& U, const double b[]);
+		void :ref:`computeHH_O_<doxid-classforcefields_1_1_ccl_1a8c5e0067700e1cebea0bc05fa776a210>`(const int nAtoms, const double R[], double F[], double& U, const double b[], const bool fixed[]);
+		char const* :ref:`getName<doxid-classforcefields_1_1_ccl_1a742cf4634c13311e07238d08bce6bce9>`() const;
+		void :ref:`computeHH_O_<doxid-classforcefields_1_1_spce_ccl_1a8941045e104c1ad45d5e3bfb8dd3ce9a>`(const int nAtoms, const double R[], double F[], double& U, const double b[]);
+		void :ref:`computeHH_O_<doxid-classforcefields_1_1_spce_ccl_1ae380cc22053e2a6234d3a5785aa3769c>`(const int nAtoms, const double R[], double F[], double& U, const double b[], const bool fixed[]);
+		char const* :ref:`getName<doxid-classforcefields_1_1_spce_ccl_1a0138ffb90405dd123fced6e77cd1d827>`() const;
+
+.. _details-classforcefields_1_1_zhu_philpott:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Forcefield for water and platinum interactions. This forcefield is the A2 water-platinum potential invented by :ref:`Zhu <doxid-classforcefields_1_1_zhu_philpott_1zhu1994>` and Philpott". It includes the SPC/E+CCL potential for interaction between the
+molecules of water. The SPC/E is a potential for constrained water. This
+implementation includes restraints so it may be used without constraint (see
+class SpceCcl).\n The potential uses Kong's rules to combine the Lennard-Jones
+parameters of platinum with oxygen and hydrogen. A @ref combinationReview
+"review of combination rules" including Kong's rule can be find on the web.
+
+The system of unit used by the class is (eV, Angstrom, fs, e).
+
+
+
+.. _doxid-classforcefields_1_1_zhu_philpott_1zhu_philpott_references:
+
+References
+~~~~~~~~~~
+
+:target:`doxid-classforcefields_1_1_zhu_philpott_1zhu1994` Interaction of water with metal surfaces, S.-B. Zhu and M.R. Philpott J. Chem. Phys. (1994) vol. 100, No 9, p. 6961.
+
+:target:`doxid-classforcefields_1_1_zhu_philpott_1kimura2003` A Molecular Dynamics Simulation of :ref:`Water <doxid-structforcefields_1_1_spce_ccl_1_1_water>` Droplet in Contact with a Platinum Surface, T. Kimura and S. Maruyama, University of Tokyo.
+
+:target:`doxid-classforcefields_1_1_zhu_philpott_1combinationreview` Unlike Lennard-Jones Parameters for Vapor-Liquid Equilibria, Thorsten Schnabel, Jadran Vrabec , Hans Hasse, Institut fur Technische Thermodynamik und Thermische Verfahrenstechnik, Universitat Stuttgart, D-70550 Stuttgart, Germany, `http://www.itt.uni-stuttgart.de/~schnabel/CR.pdf <http://www.itt.uni-stuttgart.de/~schnabel/CR.pdf>`__.
+
+Methods
+-------
+
+.. index:: pair: function; computeHH_O_Pt_
+.. _doxid-classforcefields_1_1_zhu_philpott_1a803dcfb887567aee516fceb7ddaf80b9:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void computeHH_O_Pt_(const int nWater, const int nPt, const double r[], double f[], double& energy, double const b[], bool const fixed[])
+
+Compute water-platinum forcefield.
+
+.. warning::
+
+	The conductivity is simulated by interaction a mirror images of charges. The mirror surface is set at z=0, which should correspond to the location of the highest layer of platinum atoms.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- nWater
+
+		- Number of molecules of water.
+
+	*
+		- nPt
+
+		- Number of platinum atoms.
+
+	*
+		- r
+
+		- Positions of the atoms.
+
+	*
+		- f
+
+		- Forces on the atoms.
+
+	*
+		- energy
+
+		- Potential energy.
+
+	*
+		- b
+
+		- Periodic boundaries. Length: 3
+
+	*
+		- fixed
+
+		- True for fixed atoms, false otherwise. The order of the atoms is all hydrogens (hydrogens belonging to the same molecule are next to each others), all oxygen, all platinum. The length of arrays *r* and *f* is :math:`3\times(3 \times nWater+nPt)`. The length of array *fixed* is :math:`3 \times nWater+nPt`. When *fixed* is provided the interaction between two fixed atoms may be skipped to speed up the calculation. The parameter is optional.
+
+.. index:: pair: function; computeHH_O_
+.. _doxid-classforcefields_1_1_zhu_philpott_1a5ee9ab5ae2fb66b43eac8d3a5eaf7424:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void computeHH_O_(const int nWater, const double r[], double f[], double& energy, double const b[], bool const fixed[])
+
+Compute water-platinum interactions, call with water's positions only. This function is called with the coordinates of the atoms of water only. The positions of the platinum atoms must have been previously provided through function :ref:`setPlatinum() <doxid-classforcefields_1_1_zhu_philpott_1a85061840564b45f49c5928752f6d2013>`.
+
+.. note::
+
+	The function does not return the forces on platinum atoms as they as assumed to be fixed.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- nWater
+
+		- Number of molecules of water.
+
+	*
+		- r
+
+		- Positions of atoms in water.
+
+	*
+		- f
+
+		- Forces on the atoms in water.
+
+	*
+		- energy
+
+		- Potential energy.
+
+	*
+		- b
+
+		- Periodic boundaries. Length: 3
+
+	*
+		- fixed
+
+		- True for fixed atoms, false otherwise. The length of arrays *r* and *f* is :math:`9\times nWater`. The length of array *fixed* is :math:`3 \times nWater`.
+
+
+
+.. rubric:: See also:
+
+:ref:`setPlatinum() <doxid-classforcefields_1_1_zhu_philpott_1a85061840564b45f49c5928752f6d2013>` and :ref:`computeHH_O_Pt\_() <doxid-classforcefields_1_1_zhu_philpott_1a803dcfb887567aee516fceb7ddaf80b9>`.
+
+.. index:: pair: function; nPlatinum
+.. _doxid-classforcefields_1_1_zhu_philpott_1ae50d5d63065340f1dfb61295745a827e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int nPlatinum() const
+
+Number of platinum atoms.
+
+
+
+.. rubric:: See also:
+
+:ref:`setPlatinum() <doxid-classforcefields_1_1_zhu_philpott_1a85061840564b45f49c5928752f6d2013>`.
+
+.. index:: pair: function; setPlatinum
+.. _doxid-classforcefields_1_1_zhu_philpott_1a85061840564b45f49c5928752f6d2013:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void setPlatinum(int nPlatinum, double const positions[])
+
+Initialises the positions of the atoms of platinum. Use before calling :ref:`computeHH_O\_() <doxid-classforcefields_1_1_zhu_philpott_1a5ee9ab5ae2fb66b43eac8d3a5eaf7424>`.
+
+.. index:: pair: function; getName
+.. _doxid-classforcefields_1_1_zhu_philpott_1a37f84839a970a6aafb8391895e792753:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static char const* getName()
+
+Name of the potential.
+

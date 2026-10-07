@@ -1,0 +1,66 @@
+.. index:: pair: struct; forcefields::PotentialBase::Vector3
+.. _doxid-structforcefields_1_1_potential_base_1_1_vector3:
+
+struct forcefields::PotentialBase::Vector3
+==========================================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Vector3 {
+		// fields
+	
+		double :ref:`v<doxid-structforcefields_1_1_potential_base_1_1_vector3_1ae966efbbdc5df12a5eb593d76e772466>`[3];
+		double :ref:`_1<doxid-structforcefields_1_1_potential_base_1_1_vector3_1a97ed818459ec875f754cb30c688fa484>`;
+		double :ref:`_2<doxid-structforcefields_1_1_potential_base_1_1_vector3_1a9233bc7ad3a3c74f7518945794e582ac>`;
+	};
+.. _details-structforcefields_1_1_potential_base_1_1_vector3:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Fields
+------
+
+.. index:: pair: variable; v
+.. _doxid-structforcefields_1_1_potential_base_1_1_vector3_1ae966efbbdc5df12a5eb593d76e772466:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double v[3]
+
+Vector.
+
+.. index:: pair: variable; _1
+.. _doxid-structforcefields_1_1_potential_base_1_1_vector3_1a97ed818459ec875f754cb30c688fa484:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double _1
+
+Vector's norm.
+
+.. index:: pair: variable; _2
+.. _doxid-structforcefields_1_1_potential_base_1_1_vector3_1a9233bc7ad3a3c74f7518945794e582ac:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double _2
+
+Vector's norm square.
+

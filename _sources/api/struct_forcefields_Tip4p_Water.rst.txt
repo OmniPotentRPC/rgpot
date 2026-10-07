@@ -1,0 +1,29 @@
+.. index:: pair: struct; forcefields::Tip4p::Water
+.. _doxid-structforcefields_1_1_tip4p_1_1_water:
+
+struct forcefields::Tip4p::Water
+================================
+
+.. toctree::
+	:hidden:
+
+Pointers for one molecule of water.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Water {
+		// fields
+	
+		const double*const :target:`rh1_<doxid-structforcefields_1_1_tip4p_1_1_water_1afe62f24efd08edfd83b77ddc5a2578b8>`;
+		const double*const :target:`rh2_<doxid-structforcefields_1_1_tip4p_1_1_water_1ab6180547b7dbe1ff4b589c89bec7a05f>`;
+		const double*const :target:`ro_<doxid-structforcefields_1_1_tip4p_1_1_water_1a315bdaa119ec5ad7eaa187b43fc9febc>`;
+		const double*const :target:`rn_<doxid-structforcefields_1_1_tip4p_1_1_water_1af380088561cb4f4270e6345304ea97f0>`;
+		const double*const :target:`rc_<doxid-structforcefields_1_1_tip4p_1_1_water_1a10d95db2e74ff0cb0be8f09b56d0b16d>`;
+		double*const :target:`fh1_<doxid-structforcefields_1_1_tip4p_1_1_water_1ad65d32b513f986a4e363ee7d453012c5>`;
+		double*const :target:`fh2_<doxid-structforcefields_1_1_tip4p_1_1_water_1aeca6c2353f7e4e0285ecdcc252598966>`;
+		double*const :target:`fo_<doxid-structforcefields_1_1_tip4p_1_1_water_1a15ce6bdd78f7b29e8ca0ee5622f1b0ef>`;
+		double*const :target:`fn_<doxid-structforcefields_1_1_tip4p_1_1_water_1a62d04ac2f3c3e278fefe83f485967f8d>`;
+	};

@@ -1,5 +1,5 @@
 .. index:: pair: namespace; rgpot
-.. _doxid-namespacergpot_1_1_0d305002241363136067011226310027215036350216205241:
+.. _doxid-namespacergpot:
 
 namespace rgpot
 ===============
@@ -7,5 +7,512 @@ namespace rgpot
 .. toctree::
 	:hidden:
 
+	namespace_rgpot_abi.rst
+	namespace_rgpot_aoti_execstack.rst
+	namespace_rgpot_cache.rst
+	namespace_rgpot_details.rst
+	namespace_rgpot_engine.rst
+	namespace_rgpot_fortranpots.rst
+	namespace_rgpot_nlist.rst
+	namespace_rgpot_plugin.rst
+	namespace_rgpot_tools.rst
+	namespace_rgpot_types.rst
+	namespace_rgpot_uma.rst
+	namespace_rgpot_units.rst
+	namespace_rgpot_vesin_compat.rst
+	enum_rgpot_D3Damping.rst
+	enum_rgpot_GFNMethod.rst
+	enum_rgpot_Reentrancy.rst
+	enum_rgpot_TBLiteMethod.rst
+	enum_rgpot_TorchDeterminismPolicy.rst
+	struct_rgpot_BatchInput.rst
+	struct_rgpot_BatchResult.rst
+	struct_rgpot_CalculatorGroup.rst
+	struct_rgpot_D3Config.rst
+	struct_rgpot_D4Config.rst
+	struct_rgpot_EAMCellConfig.rst
+	struct_rgpot_EMTConfig.rst
+	struct_rgpot_Fnv1a.rst
+	struct_rgpot_ForceBatch.rst
+	struct_rgpot_ForceInput.rst
+	struct_rgpot_ForceOut.rst
+	struct_rgpot_LJClusterConfig.rst
+	struct_rgpot_LJConfig.rst
+	struct_rgpot_MetatomicConfig.rst
+	struct_rgpot_MorseConfig.rst
+	struct_rgpot_PotCaps.rst
+	struct_rgpot_QuinticSwitch.rst
+	struct_rgpot_SkalaConfig.rst
+	struct_rgpot_TBLiteConfig.rst
+	struct_rgpot_UmaConfig.rst
+	struct_rgpot_WaterConfig.rst
+	struct_rgpot_XTBConfig.rst
+	struct_rgpot_XTBDlopenConfig.rst
+	struct_rgpot_XcFields.rst
+	struct_rgpot_XcGrid.rst
+	struct_rgpot_XcMo.rst
+	struct_rgpot_ZBLConfig.rst
+	struct_rgpot_ZblPairCoeffs.rst
+	struct_rgpot_ZblTables.rst
+	class_rgpot_BatchEvaluator.rst
+	class_rgpot_CPMDPot.rst
+	class_rgpot_D3Pot.rst
+	class_rgpot_D4Pot.rst
+	class_rgpot_DynLib.rst
+	class_rgpot_EAMPot.rst
+	class_rgpot_EMTPot.rst
+	class_rgpot_ExprPot.rst
+	class_rgpot_LJClusterPot.rst
+	class_rgpot_LJPot.rst
+	class_rgpot_MOPACPot.rst
+	class_rgpot_MetatomicDlopen.rst
+	class_rgpot_MetatomicPot.rst
+	class_rgpot_MorsePot.rst
+	class_rgpot_NWChemPot.rst
+	class_rgpot_PotentialBase.rst
+	class_rgpot_SPCEPot.rst
+	class_rgpot_SkalaPot.rst
+	class_rgpot_TBLitePot.rst
+	class_rgpot_TIP4PPot.rst
+	class_rgpot_TIP4PPtPot.rst
+	class_rgpot_UmaPot.rst
+	class_rgpot_XTBDlopen.rst
+	class_rgpot_XTBPot.rst
+	class_rgpot_XcKernel.rst
+	class_rgpot_ZBLPot.rst
+	class_rgpot_registry.rst
 
+Overview
+~~~~~~~~
+
+Capability handshake applied while loading a profile backend; the expectation, check and producer helpers live in :ref:`Handshake.hpp <doxid-_handshake_8hpp_source>`. :ref:`More...<details-namespacergpot>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace rgpot {
+
+	// namespaces
+
+	namespace :ref:`rgpot::abi<doxid-namespacergpot_1_1abi>`;
+		namespace :ref:`rgpot::abi::detail<doxid-namespacergpot_1_1abi_1_1detail>`;
+	namespace :ref:`rgpot::aoti_execstack<doxid-namespacergpot_1_1aoti__execstack>`;
+	namespace :ref:`rgpot::cache<doxid-namespacergpot_1_1cache>`;
+	namespace :ref:`rgpot::details<doxid-namespacergpot_1_1details>`;
+	namespace :ref:`rgpot::engine<doxid-namespacergpot_1_1engine>`;
+	namespace :ref:`rgpot::fortranpots<doxid-namespacergpot_1_1fortranpots>`;
+	namespace :ref:`rgpot::nlist<doxid-namespacergpot_1_1nlist>`;
+	namespace :ref:`rgpot::plugin<doxid-namespacergpot_1_1plugin>`;
+		namespace :ref:`rgpot::plugin::detail<doxid-namespacergpot_1_1plugin_1_1detail>`;
+		namespace :ref:`rgpot::plugin::dynlib<doxid-namespacergpot_1_1plugin_1_1dynlib>`;
+	namespace :ref:`rgpot::tools<doxid-namespacergpot_1_1tools>`;
+	namespace :ref:`rgpot::types<doxid-namespacergpot_1_1types>`;
+		namespace :ref:`rgpot::types::adapt<doxid-namespacergpot_1_1types_1_1adapt>`;
+			namespace :ref:`rgpot::types::adapt::capnp<doxid-namespacergpot_1_1types_1_1adapt_1_1capnp>`;
+			namespace :ref:`rgpot::types::adapt::eigen<doxid-namespacergpot_1_1types_1_1adapt_1_1eigen>`;
+			namespace :ref:`rgpot::types::adapt::xtensor<doxid-namespacergpot_1_1types_1_1adapt_1_1xtensor>`;
+	namespace :ref:`rgpot::uma<doxid-namespacergpot_1_1uma>`;
+	namespace :ref:`rgpot::units<doxid-namespacergpot_1_1units>`;
+	namespace :ref:`rgpot::vesin_compat<doxid-namespacergpot_1_1vesin__compat>`;
+
+	// typedefs
+
+	typedef std::function<std::unique_ptr<:ref:`PotentialBase<doxid-classrgpot_1_1_potential_base>`>()> :ref:`PotentialFactory<doxid-namespacergpot_1ae8abfa3d92c0185e23f86252925a2d68>`;
+	typedef int(*)(int ranks_per_calculator) :target:`CalculatorHook<doxid-namespacergpot_1ae8c651a5edee6b369326d372c16a6f45>`;
+	typedef int(*)(const void*, std::size_t, int) :target:`CalculatorCommAdopter<doxid-namespacergpot_1a26176aa23658758479715a8be075b56b>`;
+
+	// enums
+
+	enum :ref:`D3Damping<doxid-namespacergpot_1ad2c0c9f9065c92cae6f5bbe30db75610>`;
+	enum :ref:`GFNMethod<doxid-namespacergpot_1aae57e5e203e816b45fcd9d34745282ec>`;
+	enum :ref:`Reentrancy<doxid-namespacergpot_1afc52f666d5e44be6f4cc73b2009ed9bb>`;
+	enum :ref:`TBLiteMethod<doxid-namespacergpot_1a2f909ccdc3eed1e7f9217e9fbbfa85d8>`;
+	enum :ref:`TorchDeterminismPolicy<doxid-namespacergpot_1a1d14edb973a1e16767ba17002b71ae35>`;
+
+	// structs
+
+	struct :ref:`BatchInput<doxid-structrgpot_1_1_batch_input>`;
+	struct :ref:`BatchResult<doxid-structrgpot_1_1_batch_result>`;
+	struct :ref:`CalculatorGroup<doxid-structrgpot_1_1_calculator_group>`;
+	struct :ref:`D3Config<doxid-structrgpot_1_1_d3_config>`;
+	struct :ref:`D4Config<doxid-structrgpot_1_1_d4_config>`;
+	struct :ref:`EAMCellConfig<doxid-structrgpot_1_1_e_a_m_cell_config>`;
+	struct :ref:`EMTConfig<doxid-structrgpot_1_1_e_m_t_config>`;
+	struct :ref:`Fnv1a<doxid-structrgpot_1_1_fnv1a>`;
+	struct :ref:`ForceBatch<doxid-structrgpot_1_1_force_batch>`;
+	struct :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`;
+	struct :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`;
+	struct :ref:`LJClusterConfig<doxid-structrgpot_1_1_l_j_cluster_config>`;
+	struct :ref:`LJConfig<doxid-structrgpot_1_1_l_j_config>`;
+	struct :ref:`MetatomicConfig<doxid-structrgpot_1_1_metatomic_config>`;
+	struct :ref:`MorseConfig<doxid-structrgpot_1_1_morse_config>`;
+	struct :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>`;
+	struct :ref:`QuinticSwitch<doxid-structrgpot_1_1_quintic_switch>`;
+	struct :ref:`SkalaConfig<doxid-structrgpot_1_1_skala_config>`;
+	struct :ref:`TBLiteConfig<doxid-structrgpot_1_1_t_b_lite_config>`;
+	struct :ref:`UmaConfig<doxid-structrgpot_1_1_uma_config>`;
+	struct :ref:`WaterConfig<doxid-structrgpot_1_1_water_config>`;
+	struct :ref:`XTBConfig<doxid-structrgpot_1_1_x_t_b_config>`;
+	struct :ref:`XTBDlopenConfig<doxid-structrgpot_1_1_x_t_b_dlopen_config>`;
+	struct :ref:`XcFields<doxid-structrgpot_1_1_xc_fields>`;
+	struct :ref:`XcGrid<doxid-structrgpot_1_1_xc_grid>`;
+	struct :ref:`XcMo<doxid-structrgpot_1_1_xc_mo>`;
+	struct :ref:`ZBLConfig<doxid-structrgpot_1_1_z_b_l_config>`;
+	struct :ref:`ZblPairCoeffs<doxid-structrgpot_1_1_zbl_pair_coeffs>`;
+	struct :ref:`ZblTables<doxid-structrgpot_1_1_zbl_tables>`;
+
+	// classes
+
+	class :ref:`BatchEvaluator<doxid-classrgpot_1_1_batch_evaluator>`;
+	class :ref:`CPMDPot<doxid-classrgpot_1_1_c_p_m_d_pot>`;
+	class :ref:`CalcResult<doxid-classrgpot_1_1_calc_result>`;
+	class :ref:`D3Pot<doxid-classrgpot_1_1_d3_pot>`;
+	class :ref:`D4Pot<doxid-classrgpot_1_1_d4_pot>`;
+	class :ref:`DynLib<doxid-classrgpot_1_1_dyn_lib>`;
+	class :ref:`EAMPot<doxid-classrgpot_1_1_e_a_m_pot>`;
+	class :ref:`EMTPot<doxid-classrgpot_1_1_e_m_t_pot>`;
+	class :ref:`Error<doxid-classrgpot_1_1_error>`;
+	class :ref:`ExprPot<doxid-classrgpot_1_1_expr_pot>`;
+	class :ref:`InputSpec<doxid-classrgpot_1_1_input_spec>`;
+	class :ref:`LJClusterPot<doxid-classrgpot_1_1_l_j_cluster_pot>`;
+	class :ref:`LJPot<doxid-classrgpot_1_1_l_j_pot>`;
+	class :ref:`MOPACPot<doxid-classrgpot_1_1_m_o_p_a_c_pot>`;
+	class :ref:`MetatomicDlopen<doxid-classrgpot_1_1_metatomic_dlopen>`;
+	class :ref:`MetatomicPot<doxid-classrgpot_1_1_metatomic_pot>`;
+	class :ref:`MorsePot<doxid-classrgpot_1_1_morse_pot>`;
+	class :ref:`NWChemPot<doxid-classrgpot_1_1_n_w_chem_pot>`;
+	class :ref:`PotentialBase<doxid-classrgpot_1_1_potential_base>`;
+	class :ref:`PotentialHandle<doxid-classrgpot_1_1_potential_handle>`;
+	class :ref:`RpcClient<doxid-classrgpot_1_1_rpc_client>`;
+	class :ref:`SPCEPot<doxid-classrgpot_1_1_s_p_c_e_pot>`;
+	class :ref:`SkalaPot<doxid-classrgpot_1_1_skala_pot>`;
+	class :ref:`TBLitePot<doxid-classrgpot_1_1_t_b_lite_pot>`;
+	class :ref:`TIP4PPot<doxid-classrgpot_1_1_t_i_p4_p_pot>`;
+	class :ref:`TIP4PPtPot<doxid-classrgpot_1_1_t_i_p4_p_pt_pot>`;
+	class :ref:`UmaPot<doxid-classrgpot_1_1_uma_pot>`;
+	class :ref:`XTBDlopen<doxid-classrgpot_1_1_x_t_b_dlopen>`;
+	class :ref:`XTBPot<doxid-classrgpot_1_1_x_t_b_pot>`;
+	class :ref:`XcKernel<doxid-classrgpot_1_1_xc_kernel>`;
+	class :ref:`ZBLPot<doxid-classrgpot_1_1_z_b_l_pot>`;
+
+	template <typename T>
+	class :ref:`registry<doxid-classrgpot_1_1registry>`;
+
+	// global variables
+
+	std::atomic<size_t> :target:`registry< T >::count<doxid-namespacergpot_1a513ab41cec758862407123454d55c430>` {0};
+	std::atomic<size_t> :target:`registry< T >::forceCalls<doxid-namespacergpot_1a8e21670419bd19dd834796be5bbfd343>` {0};
+	T* :target:`registry< T >::head<doxid-namespacergpot_1abd4c9750ac000472e3321df2a5d1fb92>` = nullptr;
+	double :target:`HARTREE_PER_BOHR3_TO_EV_PER_ANGSTROM3<doxid-namespacergpot_1a7c20ce9900df5a3023d291d3afce970e>`;
+	double :target:`KB_HARTREE<doxid-namespacergpot_1a9a742b09aa478149e322c44ad4514736>`;
+	double :target:`ANGSTROM_TO_BOHR<doxid-namespacergpot_1a9c35602c6f75abf12f88a9a9a1c6134d>`;
+	double :target:`HARTREE_TO_EV<doxid-namespacergpot_1abe8557f69bfc3a00e7da3df8bf5eb342>`;
+	double :target:`NEG_GRAD_TO_FORCE<doxid-namespacergpot_1a2d26d3e6d027b6539de0799a4925f541>`;
+
+	// global functions
+
+	int :target:`loadCalculatorMpi<doxid-namespacergpot_1a5b881c52589c8a340fe910b4229b1d64>`(const char* path);
+	std::string :target:`calculatorMpiLoadError<doxid-namespacergpot_1a874b39442ecc805e25f070d719e484be>`();
+	int :target:`calculatorMpiLoaded<doxid-namespacergpot_1a89ae8eab7217a10a6f8b01f01ea500c2>`();
+	void :target:`addCalculatorHook<doxid-namespacergpot_1a60828e4ba2f43f1430625c0564f9aac6>`(CalculatorHook hook);
+	bool :target:`addCalculatorCommAdopter<doxid-namespacergpot_1a8482316defb9b8cf892213622acbedf1>`(CalculatorCommAdopter callback);
+	:ref:`CalculatorGroup<doxid-structrgpot_1_1_calculator_group>` :ref:`bindCalculators<doxid-namespacergpot_1a9cfa05e9b4282c3111dd0507ebce1e32>`(int ranks_per_calculator);
+	const :ref:`CalculatorGroup<doxid-structrgpot_1_1_calculator_group>`& :target:`thisCalculator<doxid-namespacergpot_1a0f6a0947342f9c3086b6d2d746ee2a8e>`();
+	int :target:`calculatorComm<doxid-namespacergpot_1a64038b0d53e8bbed0e9dca37dff843c8>`(void* comm_out, std::size_t comm_bytes);
+	int :target:`adoptCalculatorComm<doxid-namespacergpot_1a02d1b7b87807e847e421e88b11373135>`(CalculatorCommAdopter callback);
+	int :target:`calculatorsUseMpi<doxid-namespacergpot_1a42d9640e720fc06436f7e1fcf725d48a>`();
+	int :target:`calculatorWorldSize<doxid-namespacergpot_1a933137e65c8039384fa082abe199d612>`();
+	int :target:`calculatorCount<doxid-namespacergpot_1ac0164f9e1c56148ac999115063cba8c1>`();
+	int :ref:`shareFromCalculator<doxid-namespacergpot_1a65ecb7719c0fce4862b14e3c395b9e03>`(int owner, void* data, std::size_t bytes);
+	void :target:`finalizeMpiAtExit<doxid-namespacergpot_1a9d26d152de5f5ffad71a120849cc5924>`();
+	void :target:`abortMpiAtExit<doxid-namespacergpot_1a0b51dd0d8f5322440360e67b2f3bfe27>`();
+	bool :target:`mpiAbortRequested<doxid-namespacergpot_1a496f067cecba08cab3f570dda55a11cd>`();
+	int :target:`calculatorAgree<doxid-namespacergpot_1a7e60c7c0a34a6d536918043f6903d936>`(unsigned char* flags, std::size_t n);
+	void :target:`publishCalculatorError<doxid-namespacergpot_1aff7e5000cbff230a8381db3d58b58fb5>`(const std::string& message);
+	void :target:`apply_torch_determinism_policy<doxid-namespacergpot_1ac9c11e28c61a5763d13471a25a96bf5e>`(TorchDeterminismPolicy policy);
+	EngineBundle& :target:`probe_engine_bundle<doxid-namespacergpot_1abaf5e074f00973f6696f820b40b3dd78>`();
+	void :ref:`zeroForceOut<doxid-namespacergpot_1aa8cb0fd12ead45cd35dd0ea5c3b6fb7a>`(const size_t& nAtoms, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* efvd);
+	void :ref:`checkParams<doxid-namespacergpot_1a7a27dd46fdc6dc15479964efd8c8f088>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& params);
+	double :ref:`cellVolume<doxid-namespacergpot_1ac16c5b26e6d9cc553f896bd763a6954e>`(const double* box);
+	void :ref:`accumulatePairStrain<doxid-namespacergpot_1ae96124da638ff69247ed45c2cc192447>`(double acc[6], double fscale, double dx, double dy, double dz);
+	void :ref:`publishCauchyStress<doxid-namespacergpot_1af13ee63dfe0a5a4a7bfea8c2e49f624b>`(:ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out, const double acc[6], double volume);
+
+	} // namespace rgpot
+.. _details-namespacergpot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Capability handshake applied while loading a profile backend; the expectation, check and producer helpers live in :ref:`Handshake.hpp <doxid-_handshake_8hpp_source>`.
+
+Header file for the screened nuclear repulsion (ZBL) potential.
+
+Implementation of the ZBL potential methods.
+
+Definition of the native :ref:`AtomMatrix <doxid-class_atom_matrix>` class.
+
+Conversion utilities between xtensor and native types.
+
+Conversion utilities between Eigen and native types.
+
+Conversion utilities between Cap'n Proto and native types.
+
+Utility templates and functions for potential management.
+
+Implementation of utility functions for potential management.
+
+Base classes and templates for chemical potentials.
+
+Capability descriptors for potential implementations.
+
+Field-by-field FNV-1a hashing for potential parameter sets.
+
+C^2 quintic switch that takes a pair term smoothly to zero at its cutoff.
+
+NWChem potential under rgpot ``PotentialConfig`` user parameters.
+
+Portable dynamic library loader (dlopen / LoadLibrary family).
+
+Header file for the Morse potential class.
+
+Implementation of the Morse potential methods.
+
+OpenMOPAC frontend. Pure consumer of libmopacc.so.
+
+Header file for the Lennard-Jones potential class.
+
+Header file for the free-boundary Lennard-Jones cluster potential.
+
+Implementation of the free-boundary Lennard-Jones cluster potential.
+
+C++ faces for the Fortran 2018 potential kernels.
+
+POD structures for force and energy calculation interfaces.
+
+Named-child PES algebra compiled with OpenMM Lepton.
+
+CPMD potential under rgpot ``PotentialConfig`` user parameters.
+
+Parallel evaluation of independent configurations.
+
+Prefix-parameterized loader for the minimum potential ABI profile.
+
+Capability handshake for backends loaded through the potential profile: decide from a ``Capabilities`` message whether this build can drive the backend before any work is dispatched, and fill the same message from the producing side.
+
+Metadata a backend leaves unset (empty family, zero bridge major) is not a declaration and is not checked. The constants mirror the eindir-core objective ABI stamp that rgpot-core compares against.
+
+Backends (nwchemc, cpmdc, future lammpsc/gromacsc) export the same C symbol set prefix-parameterized on ``<p>`` (see potentials-schema PROFILE.md). This loader resolves that whole set from one dlopen'd shared library, so rgpot drives every conforming backend through identical function pointers with no per-backend loader code. Everything stays native: flat binary Cap'n Proto messages both directions, plain C calls in-process.
+
+A :ref:`BatchEvaluator <doxid-classrgpot_1_1_batch_evaluator>` owns one potential instance per worker, created by a caller-supplied factory, and splits the configurations of one call into contiguous ranges, one range per worker. Instances share nothing, so no potential has to be re-entrant across threads; a potential that reports ``PotCaps::reentrancy`` as process-serial is safe here because each instance is touched by one thread at a time.
+
+.. ref-code-block:: cpp
+
+	:ref:`rgpot::BatchEvaluator <doxid-classrgpot_1_1_batch_evaluator>` eval(
+	    [] { return std::make_unique<rgpot::LJPot>(); }, 4);
+	auto results = eval.:ref:`evaluate <doxid-classrgpot_1_1_batch_evaluator_1ae629254db4618cb98ec298c2dffb1e2a>`(inputs);  // results[i] answers inputs[i]
+
+A worker that throws stops its range; evaluate() rethrows the exception of the lowest-numbered failing worker after every worker has joined.
+
+One independent calculator is one group. A NEB image or a dimer end is that group, and ranks in a group share a subcommunicator. bindCalculators is collective on MPI_COMM_WORLD. Every rank calls it before the first force. shareFromCalculator broadcasts from the first rank of calculator owner onto MPI_COMM_WORLD. forceImpl fills :ref:`ForceOut <doxid-structrgpot_1_1_force_out>` on the rank that calls it.
+
+librgpot never links MPI. The MPI side lives in librgpot_mpi (meson dependency and pkg-config name rgpot-mpi), which bindCalculators and calculatorsUseMpi load with dlopen on first use through the C ABI in :ref:`calculator_mpi_abi.h <doxid-calculator__mpi__abi_8h_source>`. A process that never calls them never maps libmpi; until the library is loaded every call below behaves as in a build without MPI.
+
+``:ref:`ExprPot <doxid-classrgpot_1_1_expr_pot>``` is a ``Potential``. Terms are ``unique_ptr<PotentialBase>`` only.
+
+Defines the core data exchange structures used between the high-level potential wrappers and the low-level physics engines.
+
+Each kernel exposes one ``bind(c)`` entry taking flat buffers and returning a status. Those entries stay inside librgpot: ``forceImpl`` is defined out of line, and the archive holding the Fortran objects is linked with ``--exclude-libs``, so no Fortran symbol reaches the dynamic table and consumers reach the kernels only through these classes.
+
+Each instance owns a Fortran workspace (:ref:`rgpot_workspace.f90 <doxid-rgpot__workspace_8f90_source>`): its own neighbour table, which vesin keeps between calls and rebuilds only when an atom leaves the Verlet skin, and its own error message. The kernels carry no other state, so instances evaluate on separate threads at once (``:ref:`Reentrancy::PerInstance <doxid-namespacergpot_1afc52f666d5e44be6f4cc73b2009ed9bba638926405e39d8cd5227b49fa3156e1a>```), and multi-image callers keep one instance per image (``perImageInstances``) so each table follows one geometry instead of every image rebuilding a shared one.
+
+Ported from eOn (`https://github.com/TheochemUI/eOn <https://github.com/TheochemUI/eOn>`__, client/potentials/LJCluster), BSD-3-Clause licensed, copyright the eOn Development Team.
+
+This file defines the ``:ref:`LJClusterPot <doxid-classrgpot_1_1_l_j_cluster_pot>``` class, a 12-6 Lennard-Jones potential evaluated without periodic boundary conditions. The kernel is ported from eOn (`https://github.com/TheochemUI/eOn <https://github.com/TheochemUI/eOn>`__, client/potentials/LJCluster), BSD-3-Clause licensed, copyright the eOn Development Team.
+
+This file defines the ``:ref:`LJPot <doxid-classrgpot_1_1_l_j_pot>``` class, which implements a standard 12-6 Lennard-Jones potential with a shifted cutoff for use in atomic simulations.
+
+Packed :ref:`MopacCParams <doxid-struct_mopac_c_params>`. Default model is AM1.
+
+Ported from eOn (`https://github.com/TheochemUI/eOn <https://github.com/TheochemUI/eOn>`__, client/potentials/Morse), BSD-3-Clause licensed, copyright the eOn Development Team.
+
+This file defines the ``:ref:`MorsePot <doxid-classrgpot_1_1_morse_pot>``` class, which implements the pairwise Morse potential with a shifted cutoff. The kernel is ported from eOn (`https://github.com/TheochemUI/eOn <https://github.com/TheochemUI/eOn>`__, client/potentials/Morse), BSD-3-Clause licensed, copyright the eOn Development Team; the original attribution names A. Pedersen or G. Henkelman, revised by J.-C. C. Berthet (2010, University of Iceland).
+
+Used by :ref:`NWChemPot <doxid-classrgpot_1_1_n_w_chem_pot>` to resolve libnwchemc at runtime without a build-time link dependency on NWChem.
+
+User path: Cap'n Proto ``PotentialConfig`` / ``NWChemParams`` only. The frontend serializes that message and passes it through C ABI symbols resolved by dlopen.
+
+With :math:`t = (r - r_\mathrm{on}) / (r_c - r_\mathrm{on})` clamped to :math:`[0, 1]`,
+
+.. math::
+
+	S(t) = 1 - 10 t^3 + 15 t^4 - 6 t^5,\qquad
+	S'(t) = -30 t^2 (1 - t)^2 .
+
+The coefficients are the unique quintic with :math:`S(0) = 1`, :math:`S'(0) = S''(0) = 0` and :math:`S(1) = S'(1) = S''(1) = 0`, so :math:`V(r) S(t(r))` and its first two derivatives are continuous at :math:`r_\mathrm{on}` and vanish at :math:`r_c` for any smooth :math:`V`. scripts/validation/pair_kernels.py derives them and checks the C^2 conditions symbolically; scripts/validation/quintic_switch.sollya bounds the binary64 evaluation error of the Horner forms used here.
+
+The clamp is a min/max pair, so evaluation carries no branch: below :math:`r_\mathrm{on}` it returns :math:`S = 1`, :math:`dS/dr = 0` exactly.
+
+Potentials fingerprint their configuration into ``:ref:`PotentialBase::paramsKey() <doxid-classrgpot_1_1_potential_base_1af6ed01a80dc945fcc1f8a0735aa36621>``` so cached results never cross parameter sets. Hash field by field — never memcpy a struct (padding bytes).
+
+Consumers that evaluate potentials from multiple threads (NEB images, dimer endpoints, batched searches) read these instead of maintaining per-potential blocklists.
+
+Provides the abstract interface and CRTP template for all potential energy surfaces. Handles the high-level logic for caching, hashing, and force call registration.
+
+Contains the implementations for global helper functions used to manage and validate the core force and energy data structures.
+
+Defines a static registry for tracking potential instances and global force call counters. It also provides utility functions for structure initialization and validation.
+
+Cauchy stress from a pair force.
+
+sigma = (1/V) dE/dε for the right strain that sends a row of Cartesian coordinates r to r (I+ε). A pair whose force on atom i is fscale \* d, with d = r_i - r_j, contributes -fscale \* d ⊗ d to dE/dε.
+
+This file contains inline adapter functions designed to facilitate the seamless transfer of data between the Cap'n Proto RPC layer and the internal ``Eigen`` based ``:ref:`AtomMatrix <doxid-class_atom_matrix>``` and other STL types.
+
+This file contains inline adapter functions for integrating the Eigen linear algebra library with the native ``:ref:`AtomMatrix <doxid-class_atom_matrix>``` and ``std::vector`` types used in the rgpot library.
+
+This file provides adapters for the ``xtensor`` library, enabling interoperability between multidimensional arrays and rgpot data structures.
+
+This file defines a lightweight, row-major matrix class designed for storing atomic coordinates and forces.
+
+Ported from eOn (`https://github.com/TheochemUI/eOn <https://github.com/TheochemUI/eOn>`__, client/potentials/ZBL), BSD-3-Clause licensed, copyright the eOn Development Team, which adapts the GPL-licensed LAMMPS ``pair_zbl`` kernel. Constants follow LAMMPS ``metal`` units: eV, Angstrom.
+
+This file defines the ``:ref:`ZBLPot <doxid-classrgpot_1_1_z_b_l_pot>``` class, a universal screened Coulomb repulsion with the LAMMPS switching function. Based on J. F. Ziegler, J. P. Biersack and U. Littmark, "The Stopping and Range of Ions in
+Matter", Pergamon (1985). The kernel is ported from eOn (`https://github.com/TheochemUI/eOn <https://github.com/TheochemUI/eOn>`__, client/potentials/ZBL), BSD-3-Clause licensed, copyright the eOn Development Team, which in turn adapts the GPL-licensed LAMMPS ``pair_zbl`` implementation.
+
+Typedefs
+--------
+
+.. index:: pair: typedef; PotentialFactory
+.. _doxid-namespacergpot_1ae8abfa3d92c0185e23f86252925a2d68:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	typedef std::function<std::unique_ptr<:ref:`PotentialBase<doxid-classrgpot_1_1_potential_base>`>()> PotentialFactory
+
+Creates one independent potential instance.
+
+Global Functions
+----------------
+
+.. index:: pair: function; bindCalculators
+.. _doxid-namespacergpot_1a9cfa05e9b4282c3111dd0507ebce1e32:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`CalculatorGroup<doxid-structrgpot_1_1_calculator_group>` bindCalculators(int ranks_per_calculator)
+
+Collective on MPI_COMM_WORLD when the process was started under MPI. ranks_per_calculator <= 0 means one group for the whole world. Returns index -1 when the world cannot be divided that way.
+
+.. index:: pair: function; shareFromCalculator
+.. _doxid-namespacergpot_1a65ecb7719c0fce4862b14e3c395b9e03:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int shareFromCalculator(int owner, void* data, std::size_t bytes)
+
+Broadcasts bytes from the first rank of calculator ``owner`` to every rank of MPI_COMM_WORLD, so all ranks hold that calculator's result. Collective on MPI_COMM_WORLD. When more than one rank is bound, a rank that cannot enter the broadcast aborts the world after every rank prints the error. Returns 0 without MPI, before a split, or for a bad owner in a single process. Returns 1 once the bytes are in place.
+
+.. index:: pair: function; zeroForceOut
+.. _doxid-namespacergpot_1aa8cb0fd12ead45cd35dd0ea5c3b6fb7a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void zeroForceOut(const size_t& nAtoms, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* efvd)
+
+Zeroes the members of a :ref:`ForceOut <doxid-structrgpot_1_1_force_out>` structure.
+
+This function performs a manual reset of the ``:ref:`ForceOut <doxid-structrgpot_1_1_force_out>``` structure. It ensures the energy and variance are set to zero and iterates through the force array to clear components for each atom.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- nAtoms
+
+		- The number of atoms.
+
+	*
+		- efvd
+
+		- The results structure to reset.
+
+
+
+.. rubric:: Returns:
+
+Void.
+
+.. index:: pair: function; checkParams
+.. _doxid-namespacergpot_1a7a27dd46fdc6dc15479964efd8c8f088:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void checkParams(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& params)
+
+Validates the input parameters for a potential calculation.
+
+Verifies that the input parameters represent a physically valid configuration. Currently, it strictly checks that the system contains at least one atom.
+
+.. warning::
+
+	Throws a ``std::runtime_error`` if *nAtoms* is zero or less.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- params
+
+		- The configuration structure to check.
+
+
+
+.. rubric:: Returns:
+
+Void.
+
+.. index:: pair: function; cellVolume
+.. _doxid-namespacergpot_1ac16c5b26e6d9cc553f896bd763a6954e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double cellVolume(const double* box)
+
+Absolute cell volume. The 3×3 box is row-major, index = 3 \* row + column.
+
+.. index:: pair: function; accumulatePairStrain
+.. _doxid-namespacergpot_1ae96124da638ff69247ed45c2cc192447:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void accumulatePairStrain(double acc[6], double fscale, double dx, double dy, double dz)
+
+Add one pair to the six Voigt components of dE/dε: xx, yy, zz, yz, xz, xy.
+
+.. index:: pair: function; publishCauchyStress
+.. _doxid-namespacergpot_1af13ee63dfe0a5a4a7bfea8c2e49f624b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void publishCauchyStress(:ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out, const double acc[6], double volume)
+
+Write acc/volume into the row-major :ref:`ForceOut <doxid-structrgpot_1_1_force_out>` stress. A nonpositive volume leaves has_stress clear.
 

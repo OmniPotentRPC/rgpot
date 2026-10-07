@@ -5,10 +5,12 @@ API Reference
 	:hidden:
 
 	group_rgpot_cpp.rst
+	group_vector3d.rst
 
 .. rubric:: Further Reading:
 
 |	:ref:`C++ RAII Wrappers<doxid-group__rgpot__cpp>`
+|	:ref:`Common operations 3D vectors.<doxid-group__vector3d>`
 
 
 .. toctree::

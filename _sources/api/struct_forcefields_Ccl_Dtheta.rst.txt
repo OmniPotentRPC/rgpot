@@ -1,0 +1,121 @@
+.. index:: pair: struct; forcefields::Ccl::Dtheta
+.. _doxid-structforcefields_1_1_ccl_1_1_dtheta:
+
+struct forcefields::Ccl::Dtheta
+===============================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+:math:`\Delta \theta` parameter in paper. :ref:`More...<details-structforcefields_1_1_ccl_1_1_dtheta>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <ccl.hpp>
+	
+	struct Dtheta {
+		// fields
+	
+		double :ref:`_1<doxid-structforcefields_1_1_ccl_1_1_dtheta_1af1e0ed1c3fb093e3019051131dd423c3>`;
+		double :ref:`_2<doxid-structforcefields_1_1_ccl_1_1_dtheta_1a2a0374de6dd092305df7c273e7b3bb02>`;
+		double :ref:`_3<doxid-structforcefields_1_1_ccl_1_1_dtheta_1a8f31ca9cdb495a066f235ca260336736>`;
+		double :ref:`n1<doxid-structforcefields_1_1_ccl_1_1_dtheta_1a550f4ff988a5b5632739daba5095d76a>`[3];
+		double :ref:`n2<doxid-structforcefields_1_1_ccl_1_1_dtheta_1a0e61ee56593f488e21c2101dd97935f2>`[3];
+	};
+.. _details-structforcefields_1_1_ccl_1_1_dtheta:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+:math:`\Delta \theta` parameter in paper.
+
+
+
+.. rubric:: See also:
+
+:ref:`forcefields::Ccl <doxid-classforcefields_1_1_ccl>`
+
+Fields
+------
+
+.. index:: pair: variable; _1
+.. _doxid-structforcefields_1_1_ccl_1_1_dtheta_1af1e0ed1c3fb093e3019051131dd423c3:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double _1
+
+Delta theta.
+
+.. index:: pair: variable; _2
+.. _doxid-structforcefields_1_1_ccl_1_1_dtheta_1a2a0374de6dd092305df7c273e7b3bb02:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double _2
+
+(Delta theta)^2
+
+.. index:: pair: variable; _3
+.. _doxid-structforcefields_1_1_ccl_1_1_dtheta_1a8f31ca9cdb495a066f235ca260336736:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double _3
+
+(Delta theta)^3
+
+.. index:: pair: variable; n1
+.. _doxid-structforcefields_1_1_ccl_1_1_dtheta_1a550f4ff988a5b5632739daba5095d76a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double n1[3]
+
+Convert derivative to force. The vector has should have direction of the force applied on hydrogen one. The norm of the vector should be :math:`\frac{1}{r_1}`. This way multiplying the vector by the moment gives the force on hydrogen 1.
+
+Reminder:
+
+The moment is the equivalent of the force for angular coordinates:
+
+.. math::
+
+	M=-\frac{dE}{d\theta}
+
+The moment is related to the force:
+
+.. math::
+
+	\mathbf M=\mathbf r \times \mathbf F
+
+The vector *n* is defined as:
+
+.. math::
+
+	\mathbf n=\frac{\mathbf F}{M}
+
+and
+
+.. math::
+
+	|\mathbf n|=\frac{1}{r}
+
+.. index:: pair: variable; n2
+.. _doxid-structforcefields_1_1_ccl_1_1_dtheta_1a0e61ee56593f488e21c2101dd97935f2:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double n2[3]
+
+Same as :ref:`n1 <doxid-structforcefields_1_1_ccl_1_1_dtheta_1a550f4ff988a5b5632739daba5095d76a>` but for hydrogen 2.
+

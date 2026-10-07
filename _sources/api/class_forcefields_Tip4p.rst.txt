@@ -1,0 +1,200 @@
+.. index:: pair: class; forcefields::Tip4p
+.. _doxid-classforcefields_1_1_tip4p:
+
+class forcefields::Tip4p
+========================
+
+.. toctree::
+	:hidden:
+
+	struct_forcefields_Tip4p_Water.rst
+
+Overview
+~~~~~~~~
+
+TIP4P forcefield with fexible molecules and group based cutoff. The function computing the forces and energy is compute(). Parameters for the forcefield were taken from :ref:`Abascal et al. <doxid-classforcefields_1_1_tip4p_1abascal2005>`. The parameters are those of TIP4P (original version). TIP4P is a potential for constrained molecules of water. In this implementation quadratic restraints were added to bonds OH and HH inside molecules of water. So the potential can be used without constraints. The potential has a cutoff for long range interaction. The cutoff can be changed by setCutoff(). There is also and switching zone at the edge of the cutoff to cut off the interactions smoothly. The width of this switching zone is controlled by setSwitchingWidth().
+
+The unit system for this potential is eV (electron volt), Angstrom, e (e charge). :ref:`More...<details-classforcefields_1_1_tip4p>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class Tip4p: public :ref:`forcefields::Ccl<doxid-classforcefields_1_1_ccl>` {
+	public:
+		// structs
+	
+		struct :ref:`Water<doxid-structforcefields_1_1_tip4p_1_1_water>`;
+
+		// construction
+	
+		:target:`Tip4p<doxid-classforcefields_1_1_tip4p_1a9ec6cdc332d0ae7fc638ddfc53a2df11>`();
+		:target:`Tip4p<doxid-classforcefields_1_1_tip4p_1a03e56db31190276508d4a2c1b75c8158>`(double cutoff, double switchingWidth);
+		:target:`~Tip4p<doxid-classforcefields_1_1_tip4p_1a6bdefec32186480c2c2857597a2e115f>`();
+
+		// methods
+	
+		void :ref:`computeHH_O_<doxid-classforcefields_1_1_tip4p_1a02d1db71a3235c3ecc2c84bf28928d76>`(const int nAtoms, const double R[], double F[], double& U, const double b[]);
+		void :ref:`computeHH_O_<doxid-classforcefields_1_1_tip4p_1affc216d83cc6f8812e2306aec624cc4f>`(const int nAtoms, const double R[], double F[], double& U, const double b[], const bool fixed[]);
+		static char const* :ref:`getName<doxid-classforcefields_1_1_tip4p_1a950c9829272d653914cd141834038351>`();
+	};
+
+Inherited Members
+-----------------
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-inherited-code-block
+
+	public:
+		// structs
+	
+		template <int N, class R = double(*const)[N], class F = double(*const)[N]>
+		struct :ref:`ChargeGroup<doxid-structforcefields_1_1_potential_base_1_1_charge_group>`;
+	
+		struct :ref:`Vector3<doxid-structforcefields_1_1_potential_base_1_1_vector3>`;
+		struct :ref:`Dtheta<doxid-structforcefields_1_1_ccl_1_1_dtheta>`;
+		struct :ref:`Rho<doxid-structforcefields_1_1_ccl_1_1_rho>`;
+
+		// methods
+	
+		double :ref:`getSwitchingWidth<doxid-classforcefields_1_1_potential_base_1a3e28d111b296526628fa0fdffe831eb7>`() const;
+		void :ref:`setSwitchingWidth<doxid-classforcefields_1_1_potential_base_1a74e7b9dda7ff3bc45006c00ac388b828>`(double width);
+		double :ref:`getCutoff<doxid-classforcefields_1_1_potential_base_1a9f9dba6eb645ccb76d17345338de5dd9>`() const;
+		void :ref:`setCutoff<doxid-classforcefields_1_1_potential_base_1a9b5d01c20e7b9127aeca269c9d8f72d0>`(double cutoff);
+		static double :ref:`applyPeriodicity0<doxid-classforcefields_1_1_potential_base_1a8481070b1b338862c8877acf770bf941>`(double r, double const period);
+		static void :ref:`applyPeriodicity0<doxid-classforcefields_1_1_potential_base_1a7f3749ba10ad064f3f38742223012eed>`(double r[], double const periods[]);
+		void :ref:`computeHH_O_<doxid-classforcefields_1_1_ccl_1afaddf7e6574e1f5f4aa78d919e6ce9fc>`(const int nAtoms, const double R[], double F[], double& U, const double b[]);
+		void :ref:`computeHH_O_<doxid-classforcefields_1_1_ccl_1a8c5e0067700e1cebea0bc05fa776a210>`(const int nAtoms, const double R[], double F[], double& U, const double b[], const bool fixed[]);
+		char const* :ref:`getName<doxid-classforcefields_1_1_ccl_1a742cf4634c13311e07238d08bce6bce9>`() const;
+
+.. _details-classforcefields_1_1_tip4p:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+TIP4P forcefield with fexible molecules and group based cutoff. The function computing the forces and energy is compute(). Parameters for the forcefield were taken from :ref:`Abascal et al. <doxid-classforcefields_1_1_tip4p_1abascal2005>`. The parameters are those of TIP4P (original version). TIP4P is a potential for constrained molecules of water. In this implementation quadratic restraints were added to bonds OH and HH inside molecules of water. So the potential can be used without constraints. The potential has a cutoff for long range interaction. The cutoff can be changed by setCutoff(). There is also and switching zone at the edge of the cutoff to cut off the interactions smoothly. The width of this switching zone is controlled by setSwitchingWidth().
+
+The unit system for this potential is eV (electron volt), Angstrom, e (e charge).
+
+
+
+.. _doxid-classforcefields_1_1_tip4p_1tip4p_references:
+
+References
+~~~~~~~~~~
+
+:target:`doxid-classforcefields_1_1_tip4p_1abascal2005` A general purpose model for the condensed phases of water: TIP4P/2005, J.L.F. Abascal and C. Vega, J. Chem. Phys. (2005) vol. 123, p. 234505.
+
+Methods
+-------
+
+.. index:: pair: function; computeHH_O_
+.. _doxid-classforcefields_1_1_tip4p_1a02d1db71a3235c3ecc2c84bf28928d76:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void computeHH_O_(const int nAtoms, const double R[], double F[], double& U, const double b[])
+
+Compute the forces and the energy. The order of the atoms is very important. For this function the order is H1, H1, H2, H2, etc ... , O1, O2, etc ... The numbers are for the molecules. The suffix HH_O\_ is to reminds the ordering of the atoms. It indicates the position of the atoms of the first molecule, while the underscore marks the locations of other atoms.
+
+.. warning::
+
+	Be careful with the order of the atoms.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- nAtoms
+
+		- Number of :ref:`Atoms <doxid-class_atoms>`.
+
+	*
+		- R
+
+		- coordinates.
+
+	*
+		- F
+
+		- Forces.
+
+	*
+		- U
+
+		- Potential energy.
+
+	*
+		- b
+
+		- Periodic boundaries.
+
+.. index:: pair: function; computeHH_O_
+.. _doxid-classforcefields_1_1_tip4p_1affc216d83cc6f8812e2306aec624cc4f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void computeHH_O_(const int nAtoms, const double R[], double F[], double& U, const double b[], const bool fixed[])
+
+Compute the forces and the energy (with fixed atom optimisation). In a simulation, some atoms may be fixed (not allowed to move). Computing the interaction between two fixed atoms is useless. When the potential knows which atoms are fixed, it can avoid these useless computations.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- nAtoms
+
+		- Number of :ref:`Atoms <doxid-class_atoms>`.
+
+	*
+		- R
+
+		- coordinates.
+
+	*
+		- F
+
+		- Forces.
+
+	*
+		- U
+
+		- Potential energy.
+
+	*
+		- b
+
+		- Periodic boundaries.
+
+	*
+		- fixed
+
+		- The length of the array must be equal to *nAtoms* in compute(). True when atom is fixed, false otherwise.
+
+
+
+.. rubric:: See also:
+
+Check compute() for the order of the atoms.
+
+.. index:: pair: function; getName
+.. _doxid-classforcefields_1_1_tip4p_1a950c9829272d653914cd141834038351:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static char const* getName()
+
+Name of the potential.
+

@@ -1,0 +1,77 @@
+.. index:: pair: class; rgpot::SPCEPot
+.. _doxid-classrgpot_1_1_s_p_c_e_pot:
+
+class rgpot::SPCEPot
+====================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_SPCEPot_Impl.rst
+
+Overview
+~~~~~~~~
+
+Flexible SPC/E with the CCL intramolecular term. Same atom order as TIP4P. :ref:`More...<details-classrgpot_1_1_s_p_c_e_pot>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <WaterPots.hpp>
+	
+	class SPCEPot: public rgpot::Potential< SPCEPot > {
+	public:
+		// structs
+	
+		struct :ref:`Impl<doxid-structrgpot_1_1_s_p_c_e_pot_1_1_impl>`;
+
+		// construction
+	
+		:target:`SPCEPot<doxid-classrgpot_1_1_s_p_c_e_pot_1a19a8aa1655df652930e9fdceb36946b7>`();
+		:target:`SPCEPot<doxid-classrgpot_1_1_s_p_c_e_pot_1a3f2062ff62896a7a884eceb224a2ded1>`(const :ref:`WaterConfig<doxid-structrgpot_1_1_water_config>`& config);
+		:target:`SPCEPot<doxid-classrgpot_1_1_s_p_c_e_pot_1ab9161b95ee91cc1e574de409ac349682>`(const SPCEPot&);
+		:target:`~SPCEPot<doxid-classrgpot_1_1_s_p_c_e_pot_1a3116377b6e14ee6ebe036af4c16afea6>`();
+
+		// methods
+	
+		SPCEPot& :target:`operator=<doxid-classrgpot_1_1_s_p_c_e_pot_1a06a848845cf63e7396a336070a0c0793>`(const SPCEPot&);
+		const :ref:`WaterConfig<doxid-structrgpot_1_1_water_config>`& :target:`config<doxid-classrgpot_1_1_s_p_c_e_pot_1af98cafd24bbc7358723ddff92af5ceb7>`() const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_s_p_c_e_pot_1a49fddb06599cd8535af1a7f1d526d0f0>`() const;
+		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_s_p_c_e_pot_1a2382444f09cb45ae012ec396831fee6d>`() const;
+		void :target:`forceImpl<doxid-classrgpot_1_1_s_p_c_e_pot_1afa1952301e5daa7a5e5c7536590ef2c2>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+	};
+.. _details-classrgpot_1_1_s_p_c_e_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Flexible SPC/E with the CCL intramolecular term. Same atom order as TIP4P.
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1_s_p_c_e_pot_1a49fddb06599cd8535af1a7f1d526d0f0:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Concurrency and evaluation capabilities of this potential.
+
+Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
+
+.. index:: pair: function; paramsKey
+.. _doxid-classrgpot_1_1_s_p_c_e_pot_1a2382444f09cb45ae012ec396831fee6d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual uint64_t paramsKey() const
+
+Fingerprint of the potential's parameter set.
+
+Mixed into the result-cache key so results never cross parameter sets. Implementations hash their config field by field (see :ref:`ParamHash.hpp <doxid-_param_hash_8hpp_source>`) plus a kernel-version salt that changes whenever the numerics change. The default (0) suits parameter-free potentials whose numerics never changed.
+

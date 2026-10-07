@@ -1,0 +1,32 @@
+.. index:: pair: struct; forcefields::zhu_philpott_parameters::Standard
+.. _doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard:
+
+struct forcefields::zhu_philpott_parameters::Standard
+=====================================================
+
+.. toctree::
+	:hidden:
+
+:ref:`Standard <doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard>` parameters for :ref:`ZhuPhilpott <doxid-classforcefields_1_1_zhu_philpott>`. This is the parameterisation published in the original paper by Zhu and Phillpott. The binding energy of one molecule on a (100) surface is 0.50 eV
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <zhu_philpott_parameters.hpp>
+	
+	struct Standard {
+		// fields
+	
+		static double const :target:`sigmaO_<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard_1a1503391c4a6a578d8f0af3a7e4bbefd8>` = 2.86;
+		static double const :target:`epsilonO_<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard_1ae3dc92c26b6ea926439d240090f5586d>` = 0.0023734176137013181;
+		static double const :target:`sigmaH_<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard_1a8708e6fb4901f01fa666fe806ab2dcd3>` = 2.56;
+		static double const :target:`epsilonH_<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard_1af801ed048047c8108f186573c93fb84e>` = 0.00087578073518673099;
+		static double const :target:`C10_O_<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard_1ae03cc5a666bf9bf58ba0da96da0abf51>` = 1.28;
+		static double const :target:`C10_H_<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard_1ad22283b82b0a183bbc2ac86c6d24e123>` = 1.2;
+		static double const :target:`alpha_<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard_1abd52a53ab4246218382c40995ce2194c>` = 0.8;
+		static double const :target:`sigmaHPt_<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard_1acf92a188ebb26b05f805817ae207351e>` = 2.730249677569295;
+		static double const :target:`sigmaOPt_<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard_1abf2d7d011292a179daf14eeb4bb541f4>` = 2.7735458150747108;
+		static double const :target:`epsilonHPt_<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard_1a96e5f4a3d107d5abc6644fdabfbc2b7c>` = 0.016217645873043762;
+		static double const :target:`epsilonOPt_<doxid-structforcefields_1_1zhu__philpott__parameters_1_1_standard_1a21f8716dca6a5ce23732bdadf32fea28>` = 0.03387330127291549;
+	};

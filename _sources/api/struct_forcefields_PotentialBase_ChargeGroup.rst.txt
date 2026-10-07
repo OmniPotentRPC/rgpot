@@ -1,0 +1,24 @@
+.. index:: pair: struct; forcefields::PotentialBase::ChargeGroup
+.. _doxid-structforcefields_1_1_potential_base_1_1_charge_group:
+
+template struct forcefields::PotentialBase::ChargeGroup
+=======================================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	template <int N, class R = double(*const)[N], class F = double(*const)[N]>
+	struct ChargeGroup {
+		// fields
+	
+		double const*const :target:`centre_<doxid-structforcefields_1_1_potential_base_1_1_charge_group_1ab1ff1acac8726799fea9796b5e1bf786>`;
+		R :target:`position_<doxid-structforcefields_1_1_potential_base_1_1_charge_group_1a8e0034b5d2dd30cea1c9e41b2e34c4a7>`;
+		F :target:`force_<doxid-structforcefields_1_1_potential_base_1_1_charge_group_1a99045838d15e80fdf3c6b272b3992752>`;
+	};

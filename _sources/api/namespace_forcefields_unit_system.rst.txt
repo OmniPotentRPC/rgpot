@@ -1,0 +1,110 @@
+.. index:: pair: namespace; forcefields::unit_system
+.. _doxid-namespaceforcefields_1_1unit__system:
+
+namespace forcefields::unit_system
+==================================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Physical constants and unit conversion. :ref:`More...<details-namespaceforcefields_1_1unit__system>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace unit_system {
+
+	// global variables
+
+	const double :target:`R_gas<doxid-namespaceforcefields_1_1unit__system_1ac762eed5421fcb26bc0b3ccf3701e075>` = 8.314472;
+	const double :target:`k_boltzmann<doxid-namespaceforcefields_1_1unit__system_1a3d69ed059c27e619511efc0427361679>` = 1.3806505e-23;
+	const double :target:`Na_avogadro<doxid-namespaceforcefields_1_1unit__system_1a8692cceaf8e86c91e553b641b8b9aed3>` = 6.0221415e23;
+	const double :target:`calory<doxid-namespaceforcefields_1_1unit__system_1a98ca67724c89677e15a059b6cf61abfe>` = 4.1868;
+	const double :target:`e_charge<doxid-namespaceforcefields_1_1unit__system_1a0d4891b5d9da457ec51356b42909d2db>` = 1.60217653e-19;
+	const double :target:`debye<doxid-namespaceforcefields_1_1unit__system_1a3864e22c85db6cb1e98204f13beb18ca>` =     3.33564e-30;
+	const double :ref:`one_over_4_pi_epsilon0<doxid-namespaceforcefields_1_1unit__system_1a942fdd56ff6b1014b3d43de2301a0579>` =     8.98755178495272255e+09;
+	const double :ref:`sqrt_one_over_4_pi_epsilon0<doxid-namespaceforcefields_1_1unit__system_1a71889d7c431221d4ca1a11f4a8c12188>` = 9.48026992492973368e+04;
+	const double :target:`pi<doxid-namespaceforcefields_1_1unit__system_1ac2157e4d1ee735b7765dae36b1a0a34b>` = 3.14159265358979312;
+	const double :target:`MOL<doxid-namespaceforcefields_1_1unit__system_1adf6de2be75537af23df50b6b37d34465>` = Na_avogadro;
+	const double :target:`DEGREE<doxid-namespaceforcefields_1_1unit__system_1a2b5963942dc6b57c3ec163ea34086860>` = pi / 180;
+	const char :target:`LENGTH<doxid-namespaceforcefields_1_1unit__system_1aef8b583f9417a1e87f4713cda4014177>`[] = "A";
+	const char :target:`TIME<doxid-namespaceforcefields_1_1unit__system_1a29d1166fbfe2c00738753963ddaedb22>`[] = "fs";
+	const char :target:`MASS<doxid-namespaceforcefields_1_1unit__system_1ac233409e2e3787d8411d80d9f0bca373>`[] = "eV A^-2 fs^2";
+	const char :target:`CURRENT<doxid-namespaceforcefields_1_1unit__system_1a91b6942af855a972a2173dfa65da74da>`[] = "e/fs";
+	const char :target:`VELOCITY<doxid-namespaceforcefields_1_1unit__system_1a07c1982234ec2a017ece13ac7dff6e8b>`[] = "A fs^-1";
+	const char :target:`ACCELERATION<doxid-namespaceforcefields_1_1unit__system_1accd0d316ff9ba45455f8d9f52ca64c57>`[] = "A fs^-2";
+	const char :target:`FORCE<doxid-namespaceforcefields_1_1unit__system_1a1a54e9e065ea578bc3c857192217e7e4>`[] = "eV/A";
+	const char :target:`ENERGY<doxid-namespaceforcefields_1_1unit__system_1a97f254493bfc4b6aa10800eafd3e7a6b>`[] = "eV";
+	const char :target:`PRESSURE<doxid-namespaceforcefields_1_1unit__system_1a87e9a8b2b1c5ecc3a6e779a151443722>`[] = "eV A^-3";
+	const char :target:`CHARGE<doxid-namespaceforcefields_1_1unit__system_1a2263b63f86c18f319f6fae29da2fc72b>`[] = "(eV A)^(-1/2)";
+	const double :target:`METRE<doxid-namespaceforcefields_1_1unit__system_1a6790eb34512930d72ac508c14aa512bb>` = 1e10;
+	const double :target:`KG<doxid-namespaceforcefields_1_1unit__system_1a576873962d04d5cea46d59763a77768e>` = 1e10 / e_charge;
+	const double :target:`SECOND<doxid-namespaceforcefields_1_1unit__system_1a3ff6f5f8cb75b9b88b564032587876cf>` = 1e15;
+	const double :target:`AMPERE<doxid-namespaceforcefields_1_1unit__system_1a86e8545fb868ac7121d3bbd6fa6da006>` = 1e-15 / e_charge;
+	const char*const :target:`TEMPERATURE<doxid-namespaceforcefields_1_1unit__system_1acec2e1240b04f063daab2f0c553c087d>` = ENERGY;
+	const double :target:`METRE_PER_SECOND<doxid-namespaceforcefields_1_1unit__system_1a3d722a024459550df09f4c55d8cd9605>` = METRE / SECOND;
+	const double :target:`METRE_PER_SECOND2<doxid-namespaceforcefields_1_1unit__system_1a3d91821c58b48739a7f3759e17515a94>` = METRE_PER_SECOND / SECOND;
+	const double :target:`NEWTON<doxid-namespaceforcefields_1_1unit__system_1a9f65a6e72aa17dbb859356e778ad44d6>` = KG* METRE_PER_SECOND2;
+	const double :target:`JOULE<doxid-namespaceforcefields_1_1unit__system_1a9d9aa2eb894d98a38261315fb4af0d8e>` = NEWTON* METRE;
+	const double :target:`COULOMB<doxid-namespaceforcefields_1_1unit__system_1a4910aa84d0b36db29591db07aa964c2f>` = AMPERE* SECOND;
+	const double :target:`WATT<doxid-namespaceforcefields_1_1unit__system_1a2cc317b090041d0202db3cda0550b7b7>` = JOULE / SECOND;
+	const double :target:`VOLT<doxid-namespaceforcefields_1_1unit__system_1a01b9ef66ff4c5224055fac14361fe614>` = WATT / AMPERE;
+	const double :target:`KELVIN<doxid-namespaceforcefields_1_1unit__system_1ae72ba6b6131e31cb22ab117d3e5a1230>` = k_boltzmann* JOULE;
+	const double :target:`KILO<doxid-namespaceforcefields_1_1unit__system_1a5e02426428780a8c57fa4b47e3a7be8e>` = 1e3;
+	const double :target:`NANO<doxid-namespaceforcefields_1_1unit__system_1a7b1a6c2d9391b72380ff4ef1d9bd859e>` = 1e-9;
+	const double :target:`FEMTO<doxid-namespaceforcefields_1_1unit__system_1ad5ce48de40220efe95a67acdfa6a4546>` = 1e-15;
+	const double :target:`NM<doxid-namespaceforcefields_1_1unit__system_1a85e9a5cc9e628f5df0f7f9e48276711d>` = NANO* METRE;
+	const double :target:`GRAM<doxid-namespaceforcefields_1_1unit__system_1a44785f1fbd2ea379e47a0211e6b273a4>` = KG / KILO;
+	const double :target:`GRAM_PER_MOL<doxid-namespaceforcefields_1_1unit__system_1a286f6446474e402af5a2854536ec89cd>` = GRAM / MOL;
+	const double :target:`G_PER_MOL<doxid-namespaceforcefields_1_1unit__system_1ae91089e8465795f38b5332bf7c18e723>` = GRAM_PER_MOL;
+	const double :target:`KJ_PER_MOL<doxid-namespaceforcefields_1_1unit__system_1a25deb509257137c64f58b68256236bfa>` = KILO* JOULE / MOL;
+	const double :target:`KJ<doxid-namespaceforcefields_1_1unit__system_1a7663bf2402823d73bd35ef9c51adab63>` = KILO* JOULE;
+	const double :target:`FS<doxid-namespaceforcefields_1_1unit__system_1afa33cdd52440d822e20cee5b5337a7b5>` = FEMTO* SECOND;
+	const double :target:`ANGSTROM<doxid-namespaceforcefields_1_1unit__system_1a3adbbde40fce64c131246813d38949e3>` = 1e-10* METRE;
+	const double :target:`ANGSTROM2<doxid-namespaceforcefields_1_1unit__system_1ac517503e9be77555313c1ca87d5574da>` = ANGSTROM* ANGSTROM;
+	const double :target:`ANGSTROM3<doxid-namespaceforcefields_1_1unit__system_1afe6f2d2c73d9a9899b480bb1445a8f45>` = ANGSTROM* ANGSTROM* ANGSTROM;
+	const double :target:`ECHARGE<doxid-namespaceforcefields_1_1unit__system_1a007c5ef384ed755b22dc9a7e300bf2eb>` = e_charge* COULOMB;
+	const double :target:`EV<doxid-namespaceforcefields_1_1unit__system_1a8d080af1998361ce8c39ceccc3130902>` = ECHARGE* VOLT;
+	const double :target:`CALORY<doxid-namespaceforcefields_1_1unit__system_1af74c4d0fab748d2efa936446bac9b694>` = calory* JOULE;
+	const double :target:`KCAL_PER_MOL<doxid-namespaceforcefields_1_1unit__system_1a8525e6bd48901f948196f9099006543c>` = KILO* CALORY / MOL;
+	const double :target:`BOHR<doxid-namespaceforcefields_1_1unit__system_1a950f0ef8b8b26b7a8dc03e91bc21cdc7>` = 5.291772108e-11* METRE;
+	const double :target:`HARTREE<doxid-namespaceforcefields_1_1unit__system_1a149bc12b876481da5e843df9471ecfb6>` = 4.35974417e-18* JOULE;
+	const double :target:`ERGS<doxid-namespaceforcefields_1_1unit__system_1ab6418a5317479f897600b95ea21b7b57>` = 1e-7* JOULE;
+	const double :target:`ONE_OVER_4_PI_EPSILON0<doxid-namespaceforcefields_1_1unit__system_1ad1f22d33892a317f21556b75ff5248c9>` =     :ref:`one_over_4_pi_epsilon0<doxid-namespaceforcefields_1_1unit__system_1a942fdd56ff6b1014b3d43de2301a0579>`* METRE* JOULE / COULOMB / COULOMB;
+
+	} // namespace unit_system
+.. _details-namespaceforcefields_1_1unit__system:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Physical constants and unit conversion.
+
+Global Variables
+----------------
+
+.. index:: pair: variable; one_over_4_pi_epsilon0
+.. _doxid-namespaceforcefields_1_1unit__system_1a942fdd56ff6b1014b3d43de2301a0579:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const double one_over_4_pi_epsilon0 =     8.98755178495272255e+09
+
+This is the quantity 1/(4\*pi\*epsilon0) in SI units.
+
+.. index:: pair: variable; sqrt_one_over_4_pi_epsilon0
+.. _doxid-namespaceforcefields_1_1unit__system_1a71889d7c431221d4ca1a11f4a8c12188:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const double sqrt_one_over_4_pi_epsilon0 = 9.48026992492973368e+04
+
+This is the quantity 1/sqrt(4\*pi\*epsilon0) in SI units.
+

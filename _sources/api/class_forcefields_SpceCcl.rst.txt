@@ -1,0 +1,198 @@
+.. index:: pair: class; forcefields::SpceCcl
+.. _doxid-classforcefields_1_1_spce_ccl:
+
+class forcefields::SpceCcl
+==========================
+
+.. toctree::
+	:hidden:
+
+	struct_forcefields_SpceCcl_Water.rst
+
+Overview
+~~~~~~~~
+
+SPC/E+CCl water potential. :ref:`More...<details-classforcefields_1_1_spce_ccl>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <spce_ccl.hpp>
+	
+	class SpceCcl: public :ref:`forcefields::Ccl<doxid-classforcefields_1_1_ccl>` {
+	public:
+		// structs
+	
+		struct :ref:`Water<doxid-structforcefields_1_1_spce_ccl_1_1_water>`;
+
+		// construction
+	
+		:target:`SpceCcl<doxid-classforcefields_1_1_spce_ccl_1a7158f8abc034c9822469f5f3433fdf0f>`();
+		:target:`SpceCcl<doxid-classforcefields_1_1_spce_ccl_1a0f040f1db07579e149131a1817284993>`(double cutoff, double switchingWidth);
+
+		// methods
+	
+		void :ref:`computeHH_O_<doxid-classforcefields_1_1_spce_ccl_1a8941045e104c1ad45d5e3bfb8dd3ce9a>`(const int nAtoms, const double R[], double F[], double& U, const double b[]);
+		void :ref:`computeHH_O_<doxid-classforcefields_1_1_spce_ccl_1ae380cc22053e2a6234d3a5785aa3769c>`(const int nAtoms, const double R[], double F[], double& U, const double b[], const bool fixed[]);
+		char const* :ref:`getName<doxid-classforcefields_1_1_spce_ccl_1a0138ffb90405dd123fced6e77cd1d827>`() const;
+	};
+
+Inherited Members
+-----------------
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-inherited-code-block
+
+	public:
+		// structs
+	
+		template <int N, class R = double(*const)[N], class F = double(*const)[N]>
+		struct :ref:`ChargeGroup<doxid-structforcefields_1_1_potential_base_1_1_charge_group>`;
+	
+		struct :ref:`Vector3<doxid-structforcefields_1_1_potential_base_1_1_vector3>`;
+		struct :ref:`Dtheta<doxid-structforcefields_1_1_ccl_1_1_dtheta>`;
+		struct :ref:`Rho<doxid-structforcefields_1_1_ccl_1_1_rho>`;
+
+		// methods
+	
+		double :ref:`getSwitchingWidth<doxid-classforcefields_1_1_potential_base_1a3e28d111b296526628fa0fdffe831eb7>`() const;
+		void :ref:`setSwitchingWidth<doxid-classforcefields_1_1_potential_base_1a74e7b9dda7ff3bc45006c00ac388b828>`(double width);
+		double :ref:`getCutoff<doxid-classforcefields_1_1_potential_base_1a9f9dba6eb645ccb76d17345338de5dd9>`() const;
+		void :ref:`setCutoff<doxid-classforcefields_1_1_potential_base_1a9b5d01c20e7b9127aeca269c9d8f72d0>`(double cutoff);
+		static double :ref:`applyPeriodicity0<doxid-classforcefields_1_1_potential_base_1a8481070b1b338862c8877acf770bf941>`(double r, double const period);
+		static void :ref:`applyPeriodicity0<doxid-classforcefields_1_1_potential_base_1a7f3749ba10ad064f3f38742223012eed>`(double r[], double const periods[]);
+		void :ref:`computeHH_O_<doxid-classforcefields_1_1_ccl_1afaddf7e6574e1f5f4aa78d919e6ce9fc>`(const int nAtoms, const double R[], double F[], double& U, const double b[]);
+		void :ref:`computeHH_O_<doxid-classforcefields_1_1_ccl_1a8c5e0067700e1cebea0bc05fa776a210>`(const int nAtoms, const double R[], double F[], double& U, const double b[], const bool fixed[]);
+		char const* :ref:`getName<doxid-classforcefields_1_1_ccl_1a742cf4634c13311e07238d08bce6bce9>`() const;
+
+.. _details-classforcefields_1_1_spce_ccl:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+SPC/E+CCl water potential. This potential combines potential SPC/E (for intermolecular interactions) with potential CCL (for intramolecular interactions). The functions and parameters for the SPC/E are from :ref:`Berendsen, et al. <doxid-classforcefields_1_1_spce_ccl_1berendsen1987>`. References for potential CCL can be found in in class :ref:`Ccl <doxid-classforcefields_1_1_ccl>` 's documentation. The rules used to merge these two potentials were taken from :ref:`Amira, et al <doxid-classforcefields_1_1_spce_ccl_1amira2004>`.
+
+
+
+.. _doxid-classforcefields_1_1_spce_ccl_1spce_ccl_references:
+
+References
+~~~~~~~~~~
+
+:target:`doxid-classforcefields_1_1_spce_ccl_1berendsen1987` The Missing Term in Effective Pair Potentials. HJC Berendsen, JR Grigera et al. J. Phys. Chem. **1987**, vol. 91, p. 6269-6271
+
+:target:`doxid-classforcefields_1_1_spce_ccl_1amira2004` Derivation and evaluation of a flexible SPC model for liquid water. S Amira, D Spangberg, K Hermansson, Chemical Physics, **2004**, vol. 303, p. 327-334
+
+Methods
+-------
+
+.. index:: pair: function; computeHH_O_
+.. _doxid-classforcefields_1_1_spce_ccl_1a8941045e104c1ad45d5e3bfb8dd3ce9a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void computeHH_O_(const int nAtoms, const double R[], double F[], double& U, const double b[])
+
+Compute the forces and the energy. The order of the atoms is very important. For this function the order is H1, H1, H2, H2, etc ... , O1, O2, etc ... The numbers are for the molecules. The suffix HH_O\_ is to reminds the ordering of the atoms. It indicates the position of the atoms of the first molecule, while the underscore marks the locations of other atoms.
+
+.. warning::
+
+	Be careful with the order of the atoms.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- nAtoms
+
+		- Number of :ref:`Atoms <doxid-class_atoms>`.
+
+	*
+		- R
+
+		- coordinates.
+
+	*
+		- F
+
+		- Forces.
+
+	*
+		- U
+
+		- Potential energy.
+
+	*
+		- b
+
+		- Periodic boundaries.
+
+.. index:: pair: function; computeHH_O_
+.. _doxid-classforcefields_1_1_spce_ccl_1ae380cc22053e2a6234d3a5785aa3769c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void computeHH_O_(const int nAtoms, const double R[], double F[], double& U, const double b[], const bool fixed[])
+
+Compute the forces and the energy (with fixed atom optimisation). In a simulation, some atoms may be fixed (not allowed to move). Computing the interaction between two fixed atoms is useless. When the potential knows which atoms are fixed, it can avoid these useless computations.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- nAtoms
+
+		- Number of :ref:`Atoms <doxid-class_atoms>`.
+
+	*
+		- R
+
+		- coordinates.
+
+	*
+		- F
+
+		- Forces.
+
+	*
+		- U
+
+		- Potential energy.
+
+	*
+		- b
+
+		- Periodic boundaries.
+
+	*
+		- fixed
+
+		- The length of the array must be equal to *nAtoms* in compute(). True when atom is fixed, false otherwise.
+
+
+
+.. rubric:: See also:
+
+Check compute() for the order of the atoms.
+
+.. index:: pair: function; getName
+.. _doxid-classforcefields_1_1_spce_ccl_1a0138ffb90405dd123fced6e77cd1d827:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	char const* getName() const
+
+Name of the potential.
+

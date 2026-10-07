@@ -1,0 +1,77 @@
+.. index:: pair: class; rgpot::TIP4PPtPot
+.. _doxid-classrgpot_1_1_t_i_p4_p_pt_pot:
+
+class rgpot::TIP4PPtPot
+=======================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_TIP4PPtPot_Impl.rst
+
+Overview
+~~~~~~~~
+
+TIP4P water on platinum (Zhu-Philpott). :ref:`More...<details-classrgpot_1_1_t_i_p4_p_pt_pot>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <WaterPots.hpp>
+	
+	class TIP4PPtPot: public rgpot::Potential< TIP4PPtPot > {
+	public:
+		// structs
+	
+		struct :ref:`Impl<doxid-structrgpot_1_1_t_i_p4_p_pt_pot_1_1_impl>`;
+
+		// construction
+	
+		:target:`TIP4PPtPot<doxid-classrgpot_1_1_t_i_p4_p_pt_pot_1a7e1b95cc38aba870131d7e65779fbd7f>`();
+		:target:`TIP4PPtPot<doxid-classrgpot_1_1_t_i_p4_p_pt_pot_1a21b983af5a2961d0c6a6c0934a48f89a>`(const :ref:`WaterConfig<doxid-structrgpot_1_1_water_config>`& config);
+		:target:`TIP4PPtPot<doxid-classrgpot_1_1_t_i_p4_p_pt_pot_1aa58b556f6312e96ecc4e07337c77917b>`(const TIP4PPtPot&);
+		:target:`~TIP4PPtPot<doxid-classrgpot_1_1_t_i_p4_p_pt_pot_1a027239d8116da57185123cdb5620e1a3>`();
+
+		// methods
+	
+		TIP4PPtPot& :target:`operator=<doxid-classrgpot_1_1_t_i_p4_p_pt_pot_1a89a1450ac90038bbd5358783b78ba5ba>`(const TIP4PPtPot&);
+		const :ref:`WaterConfig<doxid-structrgpot_1_1_water_config>`& :target:`config<doxid-classrgpot_1_1_t_i_p4_p_pt_pot_1a0172399941693f7abbd568aeb69b7072>`() const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_t_i_p4_p_pt_pot_1a45947c5e16d6c71b1275856ee882fbeb>`() const;
+		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_t_i_p4_p_pt_pot_1a4ade068779069c7d98dc40b3413ba0f2>`() const;
+		void :target:`forceImpl<doxid-classrgpot_1_1_t_i_p4_p_pt_pot_1ac071e284a882564baecf19a0b1414a25>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+	};
+.. _details-classrgpot_1_1_t_i_p4_p_pt_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+TIP4P water on platinum (Zhu-Philpott). Hydrogens come in pairs at the front, then the oxygens, then the platinum atoms.
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1_t_i_p4_p_pt_pot_1a45947c5e16d6c71b1275856ee882fbeb:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Concurrency and evaluation capabilities of this potential.
+
+Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
+
+.. index:: pair: function; paramsKey
+.. _doxid-classrgpot_1_1_t_i_p4_p_pt_pot_1a4ade068779069c7d98dc40b3413ba0f2:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual uint64_t paramsKey() const
+
+Fingerprint of the potential's parameter set.
+
+Mixed into the result-cache key so results never cross parameter sets. Implementations hash their config field by field (see :ref:`ParamHash.hpp <doxid-_param_hash_8hpp_source>`) plus a kernel-version salt that changes whenever the numerics change. The default (0) suits parameter-free potentials whose numerics never changed.
+
