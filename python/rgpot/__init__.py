@@ -75,16 +75,22 @@ def default_metatomic_engine_path() -> str | None:
     candidates: list[Path] = []
     # Multi-ABI layout first (rgpot/lib/torch-X.Y/) — preferred product path
     if maj:
+        candidates.append(here / "lib" / f"torch-{maj}" / "librgpot_metatomic_engine.so")
         candidates.append(here / "lib" / f"torch-{maj}" / "libmetatomic_engine.so")
     lib_root = here / "lib"
     if lib_root.is_dir():
         for d in sorted(lib_root.glob("torch-*")):
+            candidates.append(d / "librgpot_metatomic_engine.so")
             candidates.append(d / "libmetatomic_engine.so")
-    # Legacy single-engine layouts (last resort)
+    # Legacy single-engine layouts (last resort). The librgpot_ name is the
+    # engine. libmetatomic_engine.so remains for one release.
     candidates.extend(
         [
+            here / "lib" / "librgpot_metatomic_engine.so",
             here / "lib" / "libmetatomic_engine.so",
+            here.parent / ".rgpot.mesonpy.libs" / "librgpot_metatomic_engine.so",
             here.parent / ".rgpot.mesonpy.libs" / "libmetatomic_engine.so",
+            here / "librgpot_metatomic_engine.so",
             here / "libmetatomic_engine.so",
         ]
     )
@@ -111,7 +117,9 @@ def available_metatomic_engine_abis() -> list[str]:
     if not here.is_dir():
         return out
     for d in sorted(here.glob("torch-*")):
-        if (d / "libmetatomic_engine.so").is_file():
+        if (d / "librgpot_metatomic_engine.so").is_file() or (
+            d / "libmetatomic_engine.so"
+        ).is_file():
             out.append(d.name.removeprefix("torch-"))
     return out
 
