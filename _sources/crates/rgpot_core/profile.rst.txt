@@ -71,10 +71,6 @@
       :used_name: Expectation
 
 
-   .. rust:use:: rgpot_core::compat::check_capabilities
-      :used_name: check_capabilities
-
-
    .. rust:use:: rgpot_core::Potentials_capnp::force_input
       :used_name: force_input
 

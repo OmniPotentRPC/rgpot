@@ -1110,6 +1110,12 @@ It is refused with a message naming <code class="docutils literal notranslate"><
 an upgrade to an rgpot release whose <code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code> carries it.
 The two eOn callback servers do not implement it yet and gain it in a separate
 change, so an rgpot client built from this revision refuses them until then.</p>
+<p>A callback handle (<code class="docutils literal notranslate"><span class="pre">rgpot_potential_t</span></code>) takes the peer’s message with
+<code class="docutils literal notranslate"><span class="pre">rgpot_potential_set_peer_capabilities</span></code> (built with the <code class="docutils literal notranslate"><span class="pre">schema</span></code> feature).
+When the peer is incompatible, <code class="docutils literal notranslate"><span class="pre">rgpot_potential_calculate</span></code>,
+<code class="docutils literal notranslate"><span class="pre">eindir_objective_eval</span></code> and <code class="docutils literal notranslate"><span class="pre">eindir_objective_grad</span></code> fail before the callback
+runs, with the message <code class="docutils literal notranslate"><span class="pre">peer</span> <span class="pre">refused:</span> <span class="pre">&lt;first</span> <span class="pre">mismatch&gt;</span></code> in <code class="docutils literal notranslate"><span class="pre">rgpot_last_error()</span></code>.
+A handle that never receives a message keeps the plain callback contract.</p>
 </section>
 <section id="adding-a-new-potential">
 <h2>Adding a New Potential<a class="headerlink" href="#adding-a-new-potential" title="Link to this heading">¶</a></h2>

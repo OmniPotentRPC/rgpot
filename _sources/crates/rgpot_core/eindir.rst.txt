@@ -235,6 +235,30 @@
       
       ``pot`` must be NULL or a live pointer from ``rgpot_potential_new_eindir``.
 
+   .. rust:function:: rgpot_core::eindir::rgpot_potential_set_peer_capabilities
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_potential_set_peer_capabilities"},{"type":"punctuation","value":"("},{"type":"name","value":"pot"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"const"},{"type":"space"},{"type":"link","value":"rgpot_potential_t","target":"rgpot_potential_t"},{"type":"punctuation","value":", "},{"type":"name","value":"caps"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"const"},{"type":"space"},{"type":"link","value":"u8","target":"u8"},{"type":"punctuation","value":", "},{"type":"name","value":"size"},{"type":"punctuation","value":": "},{"type":"link","value":"usize","target":"usize"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"rgpot_status_t","target":"rgpot_status_t"}]
+
+      Install the ``Capabilities`` message of the peer behind ``pot``, checked
+      against what this build speaks.
+      
+      A compatible peer is accepted. An incompatible one makes
+      ``rgpot_potential_calculate``, ``eindir_objective_eval`` and
+      ``eindir_objective_grad`` on this handle fail before the callback runs: the
+      first returns ``RGPOT_INVALID_PARAMETER``, the others
+      ``EINDIR_INVALID_PARAMETER``, all with a ``rgpot_last_error()`` message of the
+      form `peer refused: <first mismatch>`. A handle that never receives a
+      message keeps the plain callback contract.
+      
+      ``caps`` points to ``size`` bytes of a flat Cap'n Proto ``Capabilities``
+      message.
+      
+      **Safety**
+      
+      ``pot`` must be NULL or a live handle, and ``caps`` NULL or ``size`` readable
+      bytes.
+
    .. rubric:: Structs and Unions
 
 
@@ -350,6 +374,16 @@
          :layout: [{"type":"name","value":"box_matrix"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"["},{"type":"link","value":"f64","target":"f64"},{"type":"punctuation","value":"; "},{"type":"literal","value":"9"},{"type":"punctuation","value":"]"}]
 
          Box matrix (column-major, 3x3), copied at construction.
+
+      .. rubric:: Implementations
+
+
+      .. rust:impl:: rgpot_core::eindir::rgpot_potential_t
+         :index: -1
+         :vis: pub
+         :layout: [{"type":"keyword","value":"impl"},{"type":"space"},{"type":"link","value":"rgpot_potential_t","target":"rgpot_potential_t"}]
+         :toc: impl rgpot_potential_t
+
 
       .. rubric:: Traits implemented
 

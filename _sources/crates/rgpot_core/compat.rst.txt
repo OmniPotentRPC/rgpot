@@ -82,6 +82,13 @@
 
       Check ``caps`` against ``want``; the error names the first incompatibility.
 
+   .. rust:function:: rgpot_core::compat::check_capabilities_words
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"check_capabilities_words"},{"type":"punctuation","value":"("},{"type":"name","value":"words"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"punctuation","value":"["},{"type":"link","value":"u64","target":"u64"},{"type":"punctuation","value":"]"},{"type":"punctuation","value":", "},{"type":"name","value":"want"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"link","value":"Expectation","target":"Expectation"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"Result","target":"Result"},{"type":"punctuation","value":"<"},{"type":"punctuation","value":"("},{"type":"punctuation","value":")"},{"type":"punctuation","value":", "},{"type":"link","value":"String","target":"String"},{"type":"punctuation","value":">"}]
+
+      Decode a flat ``Capabilities`` message held as aligned words and check it.
+
    .. rust:function:: rgpot_core::compat::check_server
       :index: 0
       :vis: pub

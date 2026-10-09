@@ -49,6 +49,11 @@
       :used_name: crate
 
 
+   .. rust:use:: rgpot_core::eindir::rgpot_potential_set_peer_capabilities
+      :used_name: rgpot_potential_set_peer_capabilities
+      :reexport: rgpot_core::c_api
+
+
    .. rust:use:: rgpot_core::eindir::rgpot_eval_counts_t
       :used_name: rgpot_eval_counts_t
       :reexport: rgpot_core::c_api
@@ -75,6 +80,7 @@
 
    .. rubric:: Re-exports
 
+   * :rust:any:``rgpot_core::eindir::rgpot_potential_set_peer_capabilities``
    * :rust:any:``rgpot_core::eindir::rgpot_eval_counts_t``
    * :rust:any:``rgpot_core::eindir::rgpot_potential_eval_counts``
    * :rust:any:``rgpot_core::eindir::rgpot_potential_free_eindir``

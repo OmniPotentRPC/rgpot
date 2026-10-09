@@ -548,6 +548,7 @@ data-aria-dark="Switch to auto color mode">
 <li><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_free_eindir"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_potential_free_eindir</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_new_eindir"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_potential_new_eindir</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_reset_eval_counts"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_potential_reset_eval_counts</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_set_peer_capabilities"><code class="docutils literal notranslate"><span class="pre">fn</span> <span class="pre">rgpot_potential_set_peer_capabilities</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-eindir-rgpot_eval_counts_t"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">rgpot_eval_counts_t</span></code></a><ul>
 <li><a class="reference internal" href="#rgpot_core-eindir-rgpot_eval_counts_t-computed"><code class="docutils literal notranslate"><span class="pre">computed</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-eindir-rgpot_eval_counts_t-served"><code class="docutils literal notranslate"><span class="pre">served</span></code></a></li>
@@ -565,6 +566,7 @@ data-aria-dark="Switch to auto color mode">
 <li><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_t-n_atoms"><code class="docutils literal notranslate"><span class="pre">n_atoms</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_t-atomic_numbers"><code class="docutils literal notranslate"><span class="pre">atomic_numbers</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_t-box_matrix"><code class="docutils literal notranslate"><span class="pre">box_matrix</span></code></a></li>
+<li><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_t"><code class="docutils literal notranslate"><span class="pre">impl</span> <span class="pre">rgpot_potential_t</span></code></a></li>
 <li><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_t-Send"><code class="docutils literal notranslate"><span class="pre">impl</span> <span class="pre">Send</span> <span class="pre">for</span> <span class="pre">rgpot_potential_t</span></code></a></li>
 </ul>
 </li>
@@ -758,6 +760,25 @@ safe to call with <code class="docutils literal notranslate"><span class="pre">u
 <p><code class="docutils literal notranslate"><span class="pre">pot</span></code> must be NULL or a live pointer from <code class="docutils literal notranslate"><span class="pre">rgpot_potential_new_eindir</span></code>.</p>
 </dd></dl>
 
+<dl class="rust function">
+<dt class="sig sig-object rust" id="rgpot_core-eindir-rgpot_potential_set_peer_capabilities">
+<span class="sig-name descname"><span class="k"><span class="pre">unsafe</span></span><span class="w"> </span><span class="k"><span class="pre">extern</span></span><span class="w"> </span><span class="s"><span class="pre">C</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">rgpot_potential_set_peer_capabilities</span></span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">pot</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_t" title="rgpot_core::eindir::rgpot_potential_t"><span class="n"><span class="pre">rgpot_potential_t</span></span></a><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">caps</span></span><span class="p"><span class="pre">:</span> </span><span class="o"><span class="pre">*</span></span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">u8</span></span><span class="p"><span class="pre">,</span> </span><span class="n"><span class="pre">size</span></span><span class="p"><span class="pre">:</span> </span><span class="n"><span class="pre">usize</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><a class="reference internal" href="status.html#rgpot_core-status-rgpot_status_t" title="rgpot_core::status::rgpot_status_t"><span class="n"><span class="pre">rgpot_status_t</span></span></a></span><a class="headerlink" href="#rgpot_core-eindir-rgpot_potential_set_peer_capabilities" title="Link to this definition">¶</a></dt>
+<dd><p>Install the <code class="docutils literal notranslate"><span class="pre">Capabilities</span></code> message of the peer behind <code class="docutils literal notranslate"><span class="pre">pot</span></code>, checked
+against what this build speaks.</p>
+<p>A compatible peer is accepted. An incompatible one makes
+<code class="docutils literal notranslate"><span class="pre">rgpot_potential_calculate</span></code>, <code class="docutils literal notranslate"><span class="pre">eindir_objective_eval</span></code> and
+<code class="docutils literal notranslate"><span class="pre">eindir_objective_grad</span></code> on this handle fail before the callback runs: the
+first returns <code class="docutils literal notranslate"><span class="pre">RGPOT_INVALID_PARAMETER</span></code>, the others
+<code class="docutils literal notranslate"><span class="pre">EINDIR_INVALID_PARAMETER</span></code>, all with a <code class="docutils literal notranslate"><span class="pre">rgpot_last_error()</span></code> message of the
+form <cite>peer refused: &lt;first mismatch&gt;</cite>. A handle that never receives a
+message keeps the plain callback contract.</p>
+<p><code class="docutils literal notranslate"><span class="pre">caps</span></code> points to <code class="docutils literal notranslate"><span class="pre">size</span></code> bytes of a flat Cap’n Proto <code class="docutils literal notranslate"><span class="pre">Capabilities</span></code>
+message.</p>
+<p><strong>Safety</strong></p>
+<p><code class="docutils literal notranslate"><span class="pre">pot</span></code> must be NULL or a live handle, and <code class="docutils literal notranslate"><span class="pre">caps</span></code> NULL or <code class="docutils literal notranslate"><span class="pre">size</span></code> readable
+bytes.</p>
+</dd></dl>
+
 <p class="rubric">Structs and Unions</p>
 <dl class="rust struct">
 <dt class="sig sig-object rust" id="rgpot_core-eindir-rgpot_eval_counts_t">
@@ -839,6 +860,12 @@ MUST remain the first field.</p>
 <span class="sig-name descname"><span class="n"><span class="pre">box_matrix</span></span><span class="p"><span class="pre">:</span> </span><span class="p"><span class="pre">[</span></span><span class="n"><span class="pre">f64</span></span><span class="p"><span class="pre">;</span> </span><span class="s"><span class="pre">9</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#rgpot_core-eindir-rgpot_potential_t-box_matrix" title="Link to this definition">¶</a></dt>
 <dd><p>Box matrix (column-major, 3x3), copied at construction.</p>
 </dd></dl>
+
+<p class="rubric">Implementations</p>
+<dl class="rust impl">
+<dt class="sig sig-object rust" id="rgpot_core-eindir-rgpot_potential_t">
+<span class="sig-name descname"><span class="k"><span class="pre">impl</span></span><span class="w"> </span><a class="reference internal" href="#rgpot_core-eindir-rgpot_potential_t" title="rgpot_core::eindir::rgpot_potential_t"><span class="n"><span class="pre">rgpot_potential_t</span></span></a></span><a class="headerlink" href="#rgpot_core-eindir-rgpot_potential_t" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
 
 <p class="rubric">Traits implemented</p>
 <dl class="rust impl">
