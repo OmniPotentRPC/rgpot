@@ -522,6 +522,127 @@ void MetatomicPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 }
 
 
+void MetatomicPot::forceBatchImpl(const ForceBatch &batch) const {
+  const bool plain =
+      !m_config.random_rotation && m_config.n_symmetry_rotations <= 0;
+  auto sequential = [&]() {
+    for (size_t i = 0; i < batch.nSystems; ++i) {
+      forceImpl(batch.in[i], &batch.out[i]);
+    }
+  };
+  if (!plain || batch.nSystems < 2) {
+    sequential();
+    return;
+  }
+
+  try {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    auto f64_options =
+        torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU);
+    std::vector<metatomic_torch::System> systems;
+    std::vector<torch::Tensor> pos_tensors;
+    systems.reserve(batch.nSystems);
+    pos_tensors.reserve(batch.nSystems);
+
+    for (size_t s = 0; s < batch.nSystems; ++s) {
+      const ForceInput &in = batch.in[s];
+      const long nAtoms = static_cast<long>(in.nAtoms);
+      if (in.atmnrs == nullptr) {
+        throw std::runtime_error("metatomic batch: atomic numbers are required");
+      }
+      auto torch_positions =
+          torch::from_blob(const_cast<double *>(in.pos), {nAtoms, 3}, f64_options)
+              .to(m_dtype)
+              .to(m_device)
+              .set_requires_grad(true);
+      pos_tensors.push_back(torch_positions);
+      auto torch_cell =
+          torch::from_blob(const_cast<double *>(in.box), {3, 3}, f64_options)
+              .to(m_dtype)
+              .to(m_device);
+      auto cell_norms = torch::norm(torch_cell, 2, /*dim=*/1);
+      auto torch_pbc = cell_norms.abs() > 1e-9;
+      bool periodic[3] = {torch_pbc[0].item<bool>(), torch_pbc[1].item<bool>(),
+                          torch_pbc[2].item<bool>()};
+      std::vector<int32_t> types_vec(in.atmnrs, in.atmnrs + nAtoms);
+      auto atomic_types =
+          torch::tensor(types_vec, torch::TensorOptions().dtype(torch::kInt32))
+              .to(m_device);
+      auto system = torch::make_intrusive<metatomic_torch::SystemHolder>(
+          atomic_types, torch_positions, torch_cell, torch_pbc);
+      if (m_config.attach_system_extras) {
+        system->add_data("rgpot::charge",
+                         scalar_system_data("charge",
+                                            static_cast<double>(m_config.charge),
+                                            m_device, m_dtype));
+        system->add_data(
+            "rgpot::spin_multiplicity",
+            scalar_system_data("spin_multiplicity",
+                               static_cast<double>(m_config.spin), m_device,
+                               m_dtype));
+        system->add_data("rgpot::spin",
+                         scalar_system_data("spin",
+                                            static_cast<double>(m_config.spin),
+                                            m_device, m_dtype));
+      }
+      for (const auto &request : m_nl_requests) {
+        auto neighbors = computeNeighbors(request, nAtoms, in.pos, in.box,
+                                          periodic);
+        metatomic_torch::register_autograd_neighbors(system, neighbors,
+                                                     m_check_consistency);
+        system->add_neighbor_list(request, neighbors);
+      }
+      systems.push_back(system);
+    }
+
+    auto ivalue_output = m_model.forward({
+        systems,
+        m_eval_options,
+        m_check_consistency,
+    });
+    auto dict_output = ivalue_output.toGenericDict();
+    auto output_map = dict_output.at(m_energy_key)
+                          .toCustomClass<metatensor_torch::TensorMapHolder>();
+    auto energy_block =
+        metatensor_torch::TensorMapHolder::block_by_id(output_map, 0);
+    auto energy_values = energy_block->values();
+    auto samples = energy_block->samples();
+    const bool per_atom = samples->size() > 0 && samples->names().size() > 1;
+    if (per_atom) {
+      auto system_col = samples->column("system").to(torch::kCPU);
+      auto flat_energies = energy_values.reshape({-1}).to(torch::kCPU);
+      for (size_t s = 0; s < batch.nSystems; ++s) {
+        auto mask = (system_col == static_cast<int64_t>(s));
+        batch.out[s].energy = flat_energies.index({mask})
+                                  .sum()
+                                  .to(torch::kFloat64)
+                                  .item<double>();
+      }
+      energy_values.sum().backward();
+    } else {
+      auto cpu_energies = energy_values.to(torch::kCPU).to(torch::kFloat64);
+      for (size_t s = 0; s < batch.nSystems; ++s) {
+        batch.out[s].energy = cpu_energies[static_cast<int64_t>(s)].sum().item<double>();
+      }
+      energy_values.backward(torch::ones_like(energy_values));
+    }
+    for (size_t s = 0; s < batch.nSystems; ++s) {
+      auto positions_grad = pos_tensors[s].grad();
+      if (!positions_grad.defined()) {
+        throw std::runtime_error("metatomic batch: a system produced no force");
+      }
+      auto forces_tensor = (-positions_grad).to(torch::kCPU).to(torch::kFloat64);
+      const size_t n = batch.in[s].nAtoms * 3;
+      std::memcpy(batch.out[s].F, forces_tensor.contiguous().data_ptr<double>(),
+                  n * sizeof(double));
+      batch.out[s].variance = 0.0;
+      batch.out[s].has_stress = 0;
+    }
+  } catch (const std::exception &) {
+    sequential();
+  }
+}
+
 metatensor_torch::TensorBlock MetatomicPot::computeNeighbors(
     metatomic_torch::NeighborListOptions request, long nAtoms,
     const double *positions, const double *box, const bool periodic[3]) const {

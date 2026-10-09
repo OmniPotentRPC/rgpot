@@ -111,6 +111,17 @@ if not get_option('with_rpc_client_only')
     subdir('rgpot/Morse')  # 'morse'
     rgpotentials += [morse]
 
+    subdir('rgpot/EMT')  # 'asap_emt'
+    rgpotentials += [asap_emt]
+
+    subdir('rgpot/EAM')  # 'eam_cell'
+    rgpotentials += [eam_cell]
+
+    if has_water
+        subdir('rgpot/Water')  # 'water_pots'
+        rgpotentials += [water_pots]
+    endif
+
     subdir('rgpot/ZBL')  # 'zbl'
     rgpotentials += [zbl]
 
@@ -548,6 +559,8 @@ if get_option('with_tests')
     if not get_option('with_rpc_client_only')
         test_array += [
             ['MorsePotTest', 'morse_pot_test', 'MorsePotTest.cc', ''],
+            ['EMTPotTest', 'emt_pot_test', 'EMTPotTest.cc', ''],
+            ['EAMCellPotTest', 'eam_cell_pot_test', 'EAMCellPotTest.cc', ''],
             ['PairListTest', 'pair_list_test', 'PairListTest.cc', ''],
             [
                 'BatchEvaluatorTest',
@@ -577,6 +590,11 @@ if get_option('with_tests')
             # The dlopen frontend is in librgpot whether or not with_xtb is.
             ['XTBDlopenTest', 'xtb_dlopen_test', 'XTBDlopenTest.cc', ''],
         ]
+        if has_water
+            test_array += [
+                ['WaterPotTest', 'water_pot_test', 'WaterPotTest.cc', ''],
+            ]
+        endif
     endif
     if has_fortran
         test_array += [
@@ -1606,6 +1624,9 @@ if not meson.is_subproject()
         _pc_cflags += ['-DRGPOT_HAS_POTLIB=TRUE']
         if has_fortran
             _pc_cflags += ['-DRGPOT_HAS_FORTRAN_POTS=TRUE']
+        endif
+        if has_water
+            _pc_cflags += ['-DRGPOT_HAS_WATER=TRUE']
         endif
         if has_metatomic
             _pc_cflags += ['-DRGPOT_HAS_METATOMIC_POT=TRUE']
