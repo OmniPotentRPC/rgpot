@@ -18,7 +18,7 @@ use capnp::message::{Builder, ReaderOptions};
 use capnp::serialize;
 use libloading::Library;
 
-use crate::compat::{check_capabilities, Expectation};
+use crate::compat::Expectation;
 use crate::Potentials_capnp::{force_input, potential_result};
 
 /// One atomistic evaluation sent through a profile session.
@@ -450,18 +450,7 @@ pub fn check_capabilities_bytes(
     words: &[u64],
     expectation: &Expectation,
 ) -> ProfileResult<()> {
-    let bytes =
-        unsafe { std::slice::from_raw_parts(words.as_ptr().cast::<u8>(), words.len() * 8) };
-    let mut cursor = bytes;
-    let message = capnp::serialize::read_message_from_flat_slice(
-        &mut cursor,
-        capnp::message::ReaderOptions::new(),
-    )
-    .map_err(|e| ProfileError::new(format!("{prefix} capabilities unreadable: {e}")))?;
-    let caps = message
-        .get_root::<crate::Potentials_capnp::capabilities::Reader>()
-        .map_err(|e| ProfileError::new(format!("{prefix} capabilities unreadable: {e}")))?;
-    check_capabilities(caps, expectation)
+    crate::compat::check_capabilities_words(words, expectation)
         .map_err(|why| ProfileError::new(format!("{prefix} backend refused: {why}")))
 }
 

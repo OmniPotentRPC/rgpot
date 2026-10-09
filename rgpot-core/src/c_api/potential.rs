@@ -97,6 +97,10 @@ pub unsafe extern "C" fn rgpot_potential_calculate(
             return rgpot_status_t::RGPOT_INVALID_PARAMETER;
         }
         let p = unsafe { &*pot };
+        if let Some(why) = p.fused_cache_peer_refusal() {
+            set_last_error(&why);
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        }
         unsafe { (p.callback)(p.pot_user_data, input, output) }
     }))
 }
