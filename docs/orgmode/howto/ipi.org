@@ -9,8 +9,7 @@ It binds a UNIX or TCP socket, accepts one driver, and sends geometries.
 The driver (CP2K, Quantum ESPRESSO, FHI-aims, LAMMPS, or =i-pi-py_driver=)
 connects and returns energy, forces and a virial.
 The protocol is Ceriotti, More and Manolopoulos, Comput Phys Commun 185, 1019
-(2014), https://doi.org/10.1016/j.cpc.2013.10.027, and i-PI 3.0, J Chem Phys
-161, 062504 (2024), https://doi.org/10.1063/5.0215869.
+(2014), and i-PI 3.0, J Chem Phys 161, 062504 (2024).
 
 ** Address
 

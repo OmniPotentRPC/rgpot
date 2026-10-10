@@ -129,8 +129,14 @@ void wait_fd(int fd, short event, const Deadline &deadline, const char *what) {
       }
       fail_errno(what);
     }
-    if ((pfd.revents & (POLLERR | POLLNVAL)) != 0) {
+    if ((pfd.revents & POLLNVAL) != 0) {
       fail(what);
+    }
+    // Linux reports a reset peer as POLLERR. A hangup with no queued bytes
+    // is the same disconnect; POLLIN still queued is handled by recv.
+    if ((pfd.revents & POLLERR) != 0 ||
+        ((pfd.revents & POLLHUP) != 0 && (pfd.revents & event) == 0)) {
+      fail("i-PI driver disconnected");
     }
     return;
   }
