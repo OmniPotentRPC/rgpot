@@ -42,8 +42,8 @@ jobs:
     name: wheel (ubuntu-latest)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c # v3.2.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pypa/cibuildwheel@e090b81e30c4d855ea63bf4b6e59204c09a101ae # v4.2.1
       - name: The kernels must be in the artifact, not just in the flags
         shell: bash
         run: |
@@ -88,7 +88,7 @@ jobs:
           python -m pip install pytest
           python -m pytest -q tests/test_wheel_contents.py
           python tests/check_wheel_contents.py wheelhouse/*.whl
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: wheels-ubuntu-latest
           path: wheelhouse/*.whl
@@ -97,8 +97,8 @@ jobs:
     name: wheel (macos-14)
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c # v3.2.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pypa/cibuildwheel@e090b81e30c4d855ea63bf4b6e59204c09a101ae # v4.2.1
       - name: The kernels must be in the artifact, not just in the flags
         shell: bash
         run: |
@@ -145,7 +145,7 @@ jobs:
           python -m pip install pytest
           python -m pytest -q tests/test_wheel_contents.py
           python tests/check_wheel_contents.py wheelhouse/*.whl
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: wheels-macos-14
           path: wheelhouse/*.whl
@@ -153,7 +153,7 @@ jobs:
   sdist:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # meson-python runs setup for the sdist; -Dwith_dftd4 pulls the
       # wrap, which needs gfortran and OpenBLAS (lapack=openblas).
       - name: OpenBLAS for the dftd4 wrap
@@ -162,7 +162,7 @@ jobs:
         run: pipx run build --sdist
       - name: Check
         run: pipx run twine check dist/*
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sdist
           path: dist/*.tar.gz
@@ -180,7 +180,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: dist
           merge-multiple: true
