@@ -25,10 +25,12 @@ namespace rgpot::nlist {
 /// estimate consumes more than half a double mantissa, but still passes
 /// the long-double guard below, is searched in double-double instead.
 /// A displacement whose fractional coordinates would lose the outward
-/// one-plane margin, or whose cancellation would move the result by
-/// more than 1e-9, is escalated the same way. The folded vector matches
-/// the long-double search to within 1e-9. Cells the guard rejects still
-/// throw.
+/// one-plane margin is escalated the same way. Where long double is
+/// wider than double, a displacement whose cancellation would move the
+/// result by more than 1e-9 is escalated too, so the fold matches that
+/// wider result. Where long double is double, the double search is the
+/// historical path. The folded vector matches the long-double search to
+/// within 1e-9. Cells the guard rejects still throw.
 class MinimumImage {
 public:
   MinimumImage() = default;
@@ -352,16 +354,23 @@ private:
   }
 
   // Escalate when a double fractional coordinate could miss the
-  // one-plane margin, or when cancelling n H from a large displacement
-  // would move the returned vector by more than 1e-9. Ordinary
-  // separations stay on the double path.
+  // one-plane margin. Where long double is wider than double, also
+  // escalate when cancelling n H from a large displacement would move
+  // the result by more than 1e-9, so the fold still matches that
+  // historical result. Where long double is double, the double search
+  // is already the old path.
   bool needsPrecise(double dx, double dy, double dz) const {
     const double r1 = std::abs(dx) + std::abs(dy) + std::abs(dz);
     const double eps = std::numeric_limits<double>::epsilon();
-    const double scale = std::max(1.0, inv_norm_);
     const double df = 8.0 * eps * r1 * inv_norm_;
+    if (!(df <= 0.25))
+      return true;
+    if (std::numeric_limits<long double>::digits <=
+        std::numeric_limits<double>::digits)
+      return false;
+    const double scale = std::max(1.0, inv_norm_);
     const double dpos = 8.0 * eps * r1 * scale;
-    return !(df <= 0.25 && dpos <= 1e-9);
+    return !(dpos <= 1e-9);
   }
 
   template <class Arith>

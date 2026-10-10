@@ -800,12 +800,21 @@ TEST_CASE("Double minimum image agrees with the long-double search",
                           iy * 0.5 * cell[4], iz * 0.5 * cell[8], kTol);
   }
 
-  // Shear just inside the long-double guard (condition about 1e9) and
-  // one still on the double path (condition about 5e7). Displacements
-  // stay near the short lattice vector so the image box stays small.
+  // One shear stays on the double path (condition about 5e7). Where
+  // long double is wider than double, a second shear sits just inside
+  // that guard (condition about 1e9) and takes the double-double search.
+  // Where long double is double, the guard is the double guard, so the
+  // second shear sits just inside it (condition about 6.7e7).
+  // Displacements stay near the short lattice vector so the image box
+  // stays small.
+  const double near_guard =
+      std::numeric_limits<long double>::digits >
+              std::numeric_limits<double>::digits
+          ? 2.0e-9
+          : 3.0e-8;
   const std::array<std::array<double, 9>, 2> shears{{
       {1.0, 1.0, 0.0, 0.0, 4.0e-8, 0.0, 0.0, 0.0, 1.0},
-      {1.0, 1.0, 0.0, 0.0, 2.0e-9, 0.0, 0.0, 0.0, 1.0},
+      {1.0, 1.0, 0.0, 0.0, near_guard, 0.0, 0.0, 0.0, 1.0},
   }};
   std::uniform_real_distribution<double> tiny(-1.0e-8, 1.0e-8);
   const std::array<bool, 3> periodic{true, true, true};
