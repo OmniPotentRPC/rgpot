@@ -186,6 +186,12 @@ One of the Fortran 2018 kernels under =CppCore/rgpot/fortran/=, declared in
 
 **** Feature-gated Potentials
 
+- =IPIPot= (=-Dwith_ipi=auto=, POSIX sockets) :: Listens for one i-PI driver
+on a UNIX or TCP socket.
+The driver connects and returns energy, forces and a virial. rgpot converts
+those to eV, eV/Angstrom and Cauchy stress.
+See =docs/orgmode/howto/ipi.org=.
+
 - =XTBPot= (=-Dwith_xtb=true=) :: GFN tight-binding methods (GFNFF, GFN0-xTB,
 GFN1-xTB, GFN2-xTB) via the [[https://github.com/grimme-lab/xtb][xtb]] C API.
 Configurable via =XTBConfig= struct (method, accuracy, electronic temperature,
