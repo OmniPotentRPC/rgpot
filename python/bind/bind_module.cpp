@@ -40,6 +40,9 @@
 #ifdef RGPOT_HAS_EXPR
 #include "rgpot/ExprPot/ExprPot.hpp"
 #endif
+#ifdef RGPOT_HAS_IPI
+#include "rgpot/IPIPot/IPIPot.hpp"
+#endif
 
 #ifndef RGPOT_PY_VERSION
 #define RGPOT_PY_VERSION "0.0.0"
@@ -352,6 +355,11 @@ NB_MODULE(_core, m) {
 #else
   m.attr("has_xckernel") = false;
 #endif
+#ifdef RGPOT_HAS_IPI
+  m.attr("has_ipi") = true;
+#else
+  m.attr("has_ipi") = false;
+#endif
 
   m.def("evaluate_lj", &evaluate_lj, nb::arg("positions"),
         nb::arg("atom_types"), nb::arg("box"));
@@ -469,6 +477,58 @@ NB_MODULE(_core, m) {
           nb::arg("positions"), nb::arg("atom_types"), nb::arg("box"))
       .def_prop_ro("expression", &rgpot::ExprPot::expression)
       .def("d_energy_d_term", &rgpot::ExprPot::dEnergyDTerm, nb::arg("name"));
+#endif
+
+#ifdef RGPOT_HAS_IPI
+  nb::class_<rgpot::IPIPot>(m, "IPIPot")
+      .def(
+          "__init__",
+          [](rgpot::IPIPot *self, const std::string &address, double timeout_s) {
+            rgpot::IPIConfig cfg;
+            cfg.address = address;
+            cfg.timeout_s = timeout_s;
+            new (self) rgpot::IPIPot(cfg);
+          },
+          nb::arg("address"), nb::arg("timeout_s") = 30.0,
+          "i-PI socket server (Ceriotti, More and Manolopoulos, Comput. Phys. "
+          "Commun. 185, 1019, 2014; i-PI 3.0, J. Chem. Phys. 161, 062504, "
+          "2024). address is unix:/absolute/path, unix:<name> (binds "
+          "/tmp/ipi_<name>), tcp:<host>:<port>, or tcp:<port>. The driver "
+          "connects and returns forces. Wire units are bohr and hartree. "
+          "timeout_s covers connecting and one force exchange.")
+      .def(
+          "__call__",
+          [](rgpot::IPIPot &self, const NpF64 &positions,
+             const NpI32 &atom_types, const NpF64 &box) {
+            auto pos = numpy_to_atom_matrix(positions);
+            auto types = numpy_to_types(atom_types, pos.rows());
+            auto cell = numpy_to_box(box);
+            double energy = 0.0;
+            double variance = 0.0;
+            AtomMatrix forces;
+            {
+              nb::gil_scoped_release release;
+              auto result = self(pos, types, cell);
+              energy = std::get<0>(result);
+              forces = std::move(std::get<1>(result));
+              variance = std::get<2>(result);
+            }
+            return nb::make_tuple(energy, atom_matrix_to_numpy(forces),
+                                  variance);
+          },
+          nb::arg("positions"), nb::arg("atom_types"), nb::arg("box"))
+      .def(
+          "stress",
+          [](const rgpot::IPIPot &self) -> nb::object {
+            double stress[9];
+            if (!self.copyStress(stress)) {
+              return nb::none();
+            }
+            return nb::cast(buffer_to_numpy(stress, 3, 3));
+          },
+          "Cauchy stress from the last call, shape (3, 3), in eV/Angstrom^3. "
+          "None before a successful call.")
+      .def_prop_ro("endpoint", &rgpot::IPIPot::endpoint);
 #endif
 
 #ifdef RGPOT_HAS_XCKERNEL

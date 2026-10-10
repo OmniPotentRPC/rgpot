@@ -125,6 +125,11 @@ if not get_option('with_rpc_client_only')
     subdir('rgpot/ZBL')  # 'zbl'
     rgpotentials += [zbl]
 
+    if has_ipi
+        subdir('rgpot/IPIPot')  # 'ipi'
+        rgpotentials += [ipi]
+    endif
+
     # Pure dlopen consumer of split mopacc (no Cap'n Proto, no OpenMOPAC embed).
     subdir('rgpot/MOPACPot')  # 'mopacpot'
     rgpotentials += [mopacpot]
@@ -593,6 +598,11 @@ if get_option('with_tests')
         if has_water
             test_array += [
                 ['WaterPotTest', 'water_pot_test', 'WaterPotTest.cc', ''],
+            ]
+        endif
+        if has_ipi
+            test_array += [
+                ['IPIPotTest', 'ipi_pot_test', 'IPIPotTest.cc', ''],
             ]
         endif
     endif
@@ -1627,6 +1637,9 @@ if not meson.is_subproject()
         endif
         if has_water
             _pc_cflags += ['-DRGPOT_HAS_WATER=TRUE']
+        endif
+        if has_ipi
+            _pc_cflags += ['-DRGPOT_HAS_IPI=TRUE']
         endif
         if has_metatomic
             _pc_cflags += ['-DRGPOT_HAS_METATOMIC_POT=TRUE']

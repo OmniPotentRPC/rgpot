@@ -36,6 +36,18 @@ else()
   option(RGPOT_WITH_CACHE "Build with RocksDB caching support" ON)
   option(RGPOT_WITH_RPC "Build with Cap'n Proto RPC support" OFF)
   option(RGPOT_BUILD_EXAMPLES "Build examples" ${RGPOT_IS_TOP_LEVEL})
+  if(WIN32)
+    set(_rgpot_ipi_default OFF)
+  else()
+    set(_rgpot_ipi_default ON)
+  endif()
+  option(RGPOT_WITH_IPI
+         "i-PI socket server Potential (POSIX sockets)"
+         ${_rgpot_ipi_default})
+  if(RGPOT_WITH_IPI AND WIN32)
+    message(FATAL_ERROR
+            "RGPOT_WITH_IPI requires POSIX sockets and cannot be enabled on Windows")
+  endif()
 endif()
 
 option(RGPOT_BUILD_TESTS "Build tests" ${RGPOT_IS_TOP_LEVEL})
@@ -173,6 +185,10 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
          CppCore/rgpot/CPMDPot/CPMDPot.cc)
   endif()
 
+  if(RGPOT_WITH_IPI)
+    list(APPEND RGPOT_SOURCES CppCore/rgpot/IPIPot/IPIPot.cc)
+  endif()
+
   if(RGPOT_BUILD_TESTS)
     enable_testing()
   endif()
@@ -237,6 +253,10 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     target_sources(rgpot PRIVATE CppCore/rgpot/PotentialCache.cc)
     target_link_libraries(rgpot PUBLIC RocksDB::rocksdb xxHash::xxhash)
     target_compile_definitions(rgpot PUBLIC RGPOT_HAS_CACHE)
+  endif()
+
+  if(RGPOT_WITH_IPI)
+    target_compile_definitions(rgpot PUBLIC RGPOT_HAS_IPI)
   endif()
 
   if(RGPOT_WITH_RPC)
@@ -430,6 +450,10 @@ if(RGPOT_BUILD_TESTS)
     add_pot_test(FortranPotsTest CppCore/tests/FortranPotsTest.cc)
     target_link_libraries(FortranPotsTest PRIVATE Threads::Threads)
     add_pot_test(CuH2PotTest CppCore/tests/CuH2PotTest.cc)
+    if(RGPOT_WITH_IPI)
+      add_pot_test(IPIPotTest CppCore/tests/IPIPotTest.cc)
+      target_link_libraries(IPIPotTest PRIVATE Threads::Threads)
+    endif()
     if(BUILD_SHARED_LIBS AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
       add_test(NAME FortranSymbolAudit
                COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/scripts/audit_fortran_symbols.sh"
