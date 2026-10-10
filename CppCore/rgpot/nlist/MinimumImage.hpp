@@ -28,9 +28,10 @@ namespace rgpot::nlist {
 /// one-plane margin is escalated the same way. Where long double is
 /// wider than double, a displacement whose cancellation would move the
 /// result by more than 1e-9 is escalated too, so the fold matches that
-/// wider result. Where long double is double, the double search is the
-/// historical path. The folded vector matches the long-double search to
-/// within 1e-9. Cells the guard rejects still throw.
+/// wider result. Where long double is double, the fold uses the
+/// historical expressions, so contracted multiply-adds round the same
+/// way. The folded vector matches the long-double search to within
+/// 1e-9. Cells the guard rejects still throw.
 class MinimumImage {
 public:
   MinimumImage() = default;
@@ -71,6 +72,14 @@ public:
   void fold(double &dx, double &dy, double &dz) const {
     if (!std::isfinite(dx) || !std::isfinite(dy) || !std::isfinite(dz))
       throw std::invalid_argument("pair displacement must be finite");
+    // long double is double on this platform, so the historical
+    // expressions are already the double search. A rewritten search
+    // rounds differently once the compiler contracts multiply-adds.
+    if constexpr (std::numeric_limits<long double>::digits <=
+                  std::numeric_limits<double>::digits) {
+      foldPlain(dx, dy, dz);
+      return;
+    }
     double x = dx;
     double y = dy;
     double z = dz;
@@ -492,6 +501,64 @@ private:
 
   bool foldFast(double &dx, double &dy, double &dz) const {
     return search<DoubleArith>(dx, dy, dz);
+  }
+
+  // Historical search in double. Used where long double is double, so
+  // the contracted form of each expression matches the previous fold.
+  void foldPlain(double &dx, double &dy, double &dz) const {
+    std::array<double, 3> reduced{dx, dy, dz};
+    std::array<double, 3> initial{};
+    for (int k = 0; k < 3; ++k) {
+      if (periodic_[k])
+        initial[k] = std::round(reduced[0] * inverse_[k] +
+                                reduced[1] * inverse_[3 + k] +
+                                reduced[2] * inverse_[6 + k]);
+      checkedIndex(initial[k]);
+    }
+    for (int c = 0; c < 3; ++c)
+      for (int k = 0; k < 3; ++k)
+        reduced[c] -= initial[k] * cell_[3 * k + c];
+    auto best = reduced;
+    double best2 =
+        best[0] * best[0] + best[1] * best[1] + best[2] * best[2];
+    const double radius = std::sqrt(best2);
+    std::array<std::int64_t, 3> low{}, high{};
+    std::uint64_t count = 1;
+    for (int k = 0; k < 3; ++k) {
+      if (periodic_[k]) {
+        const double f = reduced[0] * inverse_[k] +
+                         reduced[1] * inverse_[3 + k] +
+                         reduced[2] * inverse_[6 + k];
+        const double extent = radius * dual_[k];
+        low[k] = checkedIndex(std::floor(f - extent) - 1.0);
+        high[k] = checkedIndex(std::ceil(f + extent) + 1.0);
+      }
+      const auto width = static_cast<std::uint64_t>(high[k]) -
+                         static_cast<std::uint64_t>(low[k]) + 1;
+      if (width == 0 || count > static_cast<std::uint64_t>(
+                                    std::numeric_limits<std::int64_t>::max()) /
+                                    width)
+        throw std::overflow_error("periodic image search count is too large");
+      count *= width;
+    }
+    for (auto i = low[0]; i <= high[0]; ++i)
+      for (auto j = low[1]; j <= high[1]; ++j)
+        for (auto k = low[2]; k <= high[2]; ++k) {
+          std::array<double, 3> candidate{};
+          for (int c = 0; c < 3; ++c)
+            candidate[c] = reduced[c] - i * cell_[c] - j * cell_[3 + c] -
+                           k * cell_[6 + c];
+          const double r2 = candidate[0] * candidate[0] +
+                            candidate[1] * candidate[1] +
+                            candidate[2] * candidate[2];
+          if (r2 < best2) {
+            best = candidate;
+            best2 = r2;
+          }
+        }
+    dx = best[0];
+    dy = best[1];
+    dz = best[2];
   }
 
 #if defined(__GNUC__) || defined(__clang__)
