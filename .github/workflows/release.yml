@@ -6,8 +6,8 @@ jobs:
     - gate
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-    - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
       with:
         activate-environment: true
         cache: true
@@ -36,7 +36,7 @@ jobs:
       version: ${{ steps.meta.outputs.version }}
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         fetch-depth: 0
     - name: Restore potctl from tools job
@@ -59,7 +59,7 @@ jobs:
         echo "--- release notes (head) ---"
         head -25 "${RUNNER_TEMP}/release_notes.md"
     - name: Upload release notes for gh-release job
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: release-notes-${{ github.sha }}
         path: ${{ runner.temp }}/release_notes.md
@@ -90,14 +90,14 @@ jobs:
     - publish-skip-rc
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Download release notes
-      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
         name: release-notes-${{ github.sha }}
         path: ${{ runner.temp }}/release-notes
     - name: Create GitHub Release
-      uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+      uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
       with:
         body_path: ${{ runner.temp }}/release-notes/release_notes.md
         fail_on_unmatched_files: false
@@ -111,7 +111,7 @@ jobs:
     - rust-test
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
       with:
         toolchain: stable
@@ -156,8 +156,8 @@ jobs:
     - gate
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-    - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
       with:
         activate-environment: true
         cache: true
@@ -183,7 +183,7 @@ jobs:
   tools:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Stage portable potctl (Linux musl + upload)
       uses: ./.github/actions/setup-ci-tools
       with:
