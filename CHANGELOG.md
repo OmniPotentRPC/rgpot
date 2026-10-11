@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
+## [3.5.1](https://github.com/OmniPotentRPC/rgpot/tree/v3.5.1) - 2026-10-11
+
+### Breaking
+
+- 3.5.0 changed the C++ layout of PotCaps, LJConfig, LJClusterConfig and
+  MorseConfig and should have bumped the librgpot soversion.
+  It kept soversion 3, so a caller built against 3.4.0 loaded 3.5.0's
+  librgpot.so.3 and crashed.
+  3.5.1 installs that layout as librgpot.so.4.
+  Callers built against 3.4.0 fail to load it.
+  Callers built against 3.5.0 need to relink.
+  The C ABI stamp stays at major 1, minor 0, layout revision 1, because no C
+  struct changed layout and the C API has no shared library of its own.
+  librgpot_mpi stays at soversion 3, because its C ABI did not change.
+
+### Developer
+
+- The rgbind header is the shared nanobind policy for free-threaded extension modules, with reusable py-* workflows for wheels, free-threading, ThreadSanitizer, and typing.
+- py-tsan takes an optional rust-archive input for the Rust staticlib name.
+  The default remains librust_core_demo.a.
+
+### Changed
+
+- The documentation site uses the v2 logo and favicons, explains the RPC model,
+  and lists the surrounding ecosystem in the navigation.
+
 ## [3.5.0](https://github.com/OmniPotentRPC/rgpot/tree/v3.5.0) - 2026-10-11
 
 ### Breaking
