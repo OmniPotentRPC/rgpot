@@ -29,13 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `find_package(rgpot)` finds that directory.
   An `rgpot_DIR` that points at `lib/cmake/pot` does not.
 
-- `CppCore/rgpot/nlist/PairListCache.hpp` is installed.
-  `PairListCache::accumulate` takes a radial kernel that returns a `PairTerm`, and `CachedPairList::FoldMode` gained `General`.
-  The 3.4.0 header exposed `CachedPairList::forEach` instead.
-
 ### Deprecated
 
-- `libmetatomic_engine.so` is kept for one release and removed after it.
+- The wheel's `libmetatomic_engine.so`, a symlink to `librgpot_metatomic_engine.so`, is kept for one release and removed after it.
+  Source builds still install `libmetatomic_engine.so`.
 
 ### Added
 
@@ -63,7 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   xTB and tblite copy the virial the single point already stores.
 
 - Metatomic evaluates a batch in one model forward and reports that capability.
-  The engine file is librgpot_metatomic_engine.so.
+  The pip wheel packs the engine as `librgpot_metatomic_engine.so`.
 
 - TIP4P, SPC/E and TIP4P on platinum compile when `-Dwith_water=true`.
   The option defaults false.
@@ -154,6 +151,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - LJPot, LJClusterPot, MorsePot and ZBLPot search pairs with linked cells once the box holds 64 or more cells of one cutoff plus skin, so a fresh search costs O(n) instead of O(n^2), and fully periodic boxes past 20000 atoms keep their cached pair list.
   The cached force loop runs over a sorted CSR half list with the periodic image recorded at build when cutoff + skin is below half the box, and keeps each atom's force in registers across its row.
   `PairListCache::accumulate` takes a radial kernel returning a `PairTerm` (energy and `-V'(r)/r`) and returns the energy.
+  `PairListCache::evaluate` and `CachedPairList::forEach` keep their 3.4.0 signatures.
 
 - The EAM aluminium kernel evaluates four exponentials per neighbour entry instead of up to eighteen: the density pass keeps rho(r) and rho'(r) for the force pass, the shifts at the cutoff are computed once per call, and integer powers and the embedding polynomial run without `pow`.
   `scripts/validation/eam_al.py` (sympy) checks the rearranged forms and the gather force against the closed form ([#95](https://github.com/OmniPotentRPC/rgpot/issues/95)).
