@@ -1,1 +1,0 @@
-The Python contract tests cover the recursive `ExprParams` / `PotSpec` tree: the schema names the tree, `PotentialConfig` stays a single-backend union, and a nested `0.5*inner + d3` composition survives a Cap'n Proto round trip.

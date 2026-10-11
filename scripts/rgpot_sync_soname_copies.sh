@@ -3,12 +3,13 @@
 # auditwheel repair.
 #
 # Wheels cannot store the ELF soname symlinks, so rgpot_repair_wheel.sh
-# ships librgpot.so.3 and librgpot.so as copies of librgpot.so.X.Y.Z.
-# auditwheel then rewrites NEEDED (libopenblas.so.0 -> the vendored,
-# hash-named copy under rgpot.libs) in librgpot.so.X.Y.Z alone. _core
-# loads librgpot.so.3, which still names libopenblas.so.0, so
-# `import rgpot` fails wherever the host has no system openblas. This
-# copies the repaired file over both names and rewrites RECORD.
+# ships the DT_SONAME (librgpot.so.<kCxxSoversion>) and librgpot.so as
+# copies of librgpot.so.X.Y.Z. auditwheel then rewrites NEEDED
+# (libopenblas.so.0 -> the vendored, hash-named copy under rgpot.libs)
+# in librgpot.so.X.Y.Z alone. _core loads the SONAME, which still names
+# libopenblas.so.0, so `import rgpot` fails wherever the host has no
+# system openblas. This copies the repaired file over both names and
+# rewrites RECORD.
 set -euo pipefail
 WHL="${1:?wheel path}"
 WORK=$(mktemp -d)
@@ -18,10 +19,12 @@ LIBS=$(find "$WORK" -type d -name '.rgpot.mesonpy.libs' -print -quit)
 [[ -n "$LIBS" ]] || { echo "no .rgpot.mesonpy.libs in $WHL" >&2; exit 1; }
 real=$(find "$LIBS" -maxdepth 1 -type f -name 'librgpot.so.*.*.*' | head -1)
 [[ -n "$real" ]] || { echo "no librgpot.so.X.Y.Z in $WHL" >&2; exit 1; }
-for name in librgpot.so.3 librgpot.so; do
+soname=$(readelf -d "$real" | sed -n 's/.*SONAME.*\[\([^]]*\)\].*/\1/p' | head -1)
+[[ -n "$soname" ]] || { echo "no SONAME in $real" >&2; exit 1; }
+for name in "$soname" librgpot.so; do
   cp -f "$real" "$LIBS/$name"
 done
-echo "soname copies refreshed from $(basename "$real")"
+echo "soname copies refreshed from $(basename "$real") -> $soname"
 python3 - "$WORK" "$WHL" <<'PY'
 import base64
 import hashlib

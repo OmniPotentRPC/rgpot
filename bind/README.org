@@ -1,0 +1,108 @@
+#+TITLE: rgbind policy header
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+
+* What this is
+
+=bind/include/rgbind/rgbind.hpp= is a header-only C++17 policy layer for
+nanobind modules.
+It depends only on nanobind (>= 3.1).
+The version macro is =RGBIND_VERSION= (currently 1).
+
+rgpot installs the header with one =install_headers= line in the root
+=meson.build=.
+The =_rgbind_test= extension is not part of the rgpot wheel.
+CI builds it from this directory.
+
+* Thread safety
+
+** Sessions (F3)
+
+Immutable values may be shared.
+A mutable session carries an =rgbind::Busy= flag.
+Every method that mutates the session starts with =rgbind::Claim=.
+The claim is a compare-exchange on =std::atomic<bool>=.
+If another thread already holds it, the call throws =rgbind::InUse=.
+=install_policy= maps that type to
+=RuntimeError("Session is in use by another thread")=, with the session's
+type name in place of =Session=.
+
+Do not take a =std::mutex= while the thread is attached to the interpreter.
+Do not use =nb::lock_self= or =nb::ft_mutex= across a compute region.
+Both are no-ops on a GIL build, and =nb::gil_scoped_release= drops argument
+locks.
+
+rgpot potential objects are not sessions.
+They keep one workspace per calling thread and stay reentrant.
+This header does not change that.
+
+** Callbacks (F5)
+
+Python callables cross into C through =rgbind::trampoline=.
+The trampoline re-attaches with =nb::gil_scoped_acquire=, calls the
+callable, and catches every exception into an =rgbind::CallContext=.
+It returns a non-zero status and does not throw.
+If attach fails because the interpreter is shutting down, the trampoline
+returns =TrampolineStatus::attach_failed=.
+
+After the native call returns, =CallContext::rethrow_if_set= re-attaches
+and re-raises the first stored exception.
+A Python exception does not unwind through C or Rust frames.
+
+On the main thread, pass =check_signals= so the trampoline calls
+=PyErr_CheckSignals= between callbacks.
+
+Rows that share one calculator (=id(calc)=) form one owner group and commit
+in ascending row id.
+Distinct owners may run at the same time.
+An owner with =reentrant= false is one serial chain.
+An owner with =reentrant= true may evaluate rows through the pure protocol
+concurrently, and the driver still writes results in ascending row id.
+
+** Arrays (F6)
+
+Bind inputs as
+=nb::ndarray<const double, nb::c_contig, nb::device::cpu>= with
+=.noconvert()=.
+Wrong dtype or order raises =TypeError=.
+=check_f64_1d=, =check_f64_2d=, and =check_f64_3d= raise =ValueError= and
+name the argument plus both shapes.
+Outputs that the caller owns are new arrays with an =nb::capsule= owner.
+=-0.0=, NaN, and subnormals are copied byte for byte.
+
+** Errors (F7)
+
+=map_status= takes the package status enum (via =status_traits=) and the
+thread-local last-error string.
+
+| Code | Kind |
+|------+------|
+| build, key, preset | =ValueError= |
+| dtype, order | =TypeError= |
+| not converged | =apply_status= returns false |
+| callback | the stored Python exception |
+| numerical | =<module>.NumericalError=, a subclass of =ArithmeticError= |
+| in use | =RuntimeError= |
+| unavailable | =NotImplementedError= |
+| anything else | =RuntimeError= carrying =last_error= |
+
+** Results (F8)
+
+=serialise_by_owner= is a pure function of the rows.
+=n_workers= must be at least 1 and does not change the groups.
+The SHA-256 of =Schedule::canonical()= is the same at 1, 2, 3, and 8
+workers.
+
+* Build the test module
+
+#+begin_src bash
+python -m pip install nanobind scikit-build-core numpy
+python -m pip install ./bind
+python -m pytest bind/tests
+#+end_src
+
+The pure C++ schedule binary does not start an interpreter:
+
+#+begin_src bash
+c++ -std=c++17 -I bind/include bind/tests/src/schedule_test.cpp -o /tmp/schedule_test
+/tmp/schedule_test
+#+end_src

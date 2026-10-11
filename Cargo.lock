@@ -702,7 +702,7 @@ dependencies = [
 
 [[package]]
 name = "rgpot-core"
-version = "3.4.0"
+version = "3.5.1"
 dependencies = [
  "capnp",
  "capnp-rpc",

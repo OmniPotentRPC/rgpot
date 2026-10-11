@@ -596,6 +596,54 @@ jobs:
         shell: pixi run -e tbbld bash -e {0}
         run: potctl ci xtb-tblite-test
 
+  # Compile-only. conda-forge tblite 0.6.0 (gfortran_ha02e54d_0) segfaults in
+  # __dftd4_model_d4_MOD_get_polarizabilities on a GFN2 water single point,
+  # including `tblite run`. The [tblite] tests stay on potentials_tight_binding
+  # (tbbld, tblite 0.4.0), which builds the two-argument calculator call.
+  potentials_tblite_06:
+    name: tblite 0.6.0 compile (meson / ubuntu)
+    needs: [prepare, ci-tools]
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_COMPILERCHECK: content
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - name: Ensure potctl
+        uses: ./.github/actions/ensure-potctl
+        with:
+          artifact-prefix: ci-tools-${{ github.sha }}
+      - uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
+        with:
+          activate-environment: tblite06bld
+          cache: true
+          environments: tblite06bld
+          pixi-version: v0.70.2
+      - name: Restore Compiler Cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          key: ccache-pot-tb06-${{ runner.os }}-${{ github.sha }}
+          path: .ccache
+          restore-keys: ccache-pot-tb06-${{ runner.os }}-
+      - name: Compile TBLitePot against tblite 0.6
+        shell: pixi run -e tblite06bld bash -e {0}
+        run: |
+          set -euo pipefail
+          meson setup bbdir-tb06 \
+            -Dwith_tests=true \
+            -Dwith_examples=false \
+            -Dwith_tblite=true \
+            -Dwith_rpc=false \
+            -Dwith_cache=false \
+            --buildtype=debug
+          grep -E 'tblite found: YES 0\.6' bbdir-tb06/meson-logs/meson-log.txt
+          meson compile -C bbdir-tb06 tblite_test
+
   potentials_plugins:
     name: plugins (meson / ${{ matrix.os }})
     needs: [prepare, ci-tools]
@@ -667,6 +715,7 @@ jobs:
       - potentials_metatomic
       - potentials_uma_engine
       - potentials_tight_binding
+      - potentials_tblite_06
       - potentials_plugins
       - eonviz_pins
     runs-on: ubuntu-latest
@@ -696,6 +745,7 @@ jobs:
             "client_bridge_stress:${{ needs.client_bridge_stress.result }}" \
             "potentials_metatomic:${{ needs.potentials_metatomic.result }}" \
             "potentials_tight_binding:${{ needs.potentials_tight_binding.result }}" \
+            "potentials_tblite_06:${{ needs.potentials_tblite_06.result }}" \
             "potentials_plugins:${{ needs.potentials_plugins.result }}" \
             "eonviz_pins:${{ needs.eonviz_pins.result }}"
           do

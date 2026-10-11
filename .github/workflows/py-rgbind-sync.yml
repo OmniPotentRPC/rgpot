@@ -1,0 +1,42 @@
+name: rgbind header sync
+
+on:
+  workflow_call:
+    inputs:
+      vendored-path:
+        description: Path to the vendored rgbind.hpp, relative to the repository root
+        required: true
+        type: string
+      rgpot-ref:
+        description: OmniPotentRPC/rgpot commit or ref that owns bind/include/rgbind/rgbind.hpp
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: vendored header matches rgpot
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Fail on any byte difference
+        shell: bash
+        env:
+          VENDORED: ${{ inputs.vendored-path }}
+          RGPOT_REF: ${{ inputs.rgpot-ref }}
+        run: |
+          set -euo pipefail
+          test -f "${VENDORED}"
+          curl -fsSL -o /tmp/rgbind.hpp \
+            "https://raw.githubusercontent.com/OmniPotentRPC/rgpot/${RGPOT_REF}/bind/include/rgbind/rgbind.hpp"
+          if cmp -s "${VENDORED}" /tmp/rgbind.hpp; then
+            echo "rgbind.hpp matches ${RGPOT_REF}"
+            exit 0
+          fi
+          diff -u "${VENDORED}" /tmp/rgbind.hpp || true
+          echo "vendored rgbind.hpp differs from ${RGPOT_REF}" >&2
+          exit 1

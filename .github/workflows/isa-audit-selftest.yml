@@ -1,0 +1,81 @@
+name: ISA audit self-test
+
+# Compiles the pass and fail fixtures, then calls the reusable audit
+# workflow on the object that must pass. A second repository calls the
+# same workflow with uses: OmniPotentRPC/rgpot/.github/workflows/isa-audit.yml@<sha>.
+
+on:
+  # main and ci/**, and only when the audit or its workflow changes.
+  # pull_request stays unfiltered so a caller PR still proves the gate.
+  push:
+    branches:
+      - main
+      - "ci/**"
+    paths:
+      - "ci/isa-audit/**"
+      - ".github/workflows/isa-audit.yml"
+      - ".github/workflows/isa-audit-selftest.yml"
+      - "rgpot/isa-allow.toml"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  selftest:
+    name: self-test (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: CPU flags
+        run: |
+          grep -m1 flags /proc/cpuinfo || true
+          lscpu || true
+          echo "runner arch ${{ matrix.arch }}"
+          echo "scalar path exercised by compiling the fallback with the compiler default"
+          echo "avx512 and sve paths are not exercised: this job disassembles them and does not run them"
+      - name: Self-test
+        env:
+          ISA_AUDIT_ARCH: ${{ matrix.arch }}
+          ISA_AUDIT_OUT: isa-ok
+        run: bash ci/isa-audit/tests/run_selftest.sh
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: isa-selftest-ok-${{ matrix.arch }}
+          path: isa-ok/
+
+  prove-call-x86:
+    name: call isa-audit (x86_64)
+    needs: selftest
+    permissions:
+      contents: read
+    uses: ./.github/workflows/isa-audit.yml
+    with:
+      artifact-name: isa-selftest-ok-x86_64
+      allow-file: ci/isa-audit/tests/allow-ok.toml
+      baseline: x86-64
+
+  prove-call-arm:
+    name: call isa-audit (aarch64)
+    needs: selftest
+    permissions:
+      contents: read
+    uses: ./.github/workflows/isa-audit.yml
+    with:
+      artifact-name: isa-selftest-ok-aarch64
+      allow-file: ci/isa-audit/tests/allow-sve.toml
+      baseline: armv8-a

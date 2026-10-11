@@ -1,0 +1,17 @@
+#+TITLE: Explanation
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Explanation
+
+These pages say why the library is shaped the way it is.
+The reference section records the types, the stamps, and the file layout.
+Start with the RPC model, then use the architecture page for the layers.
+
+#+begin_export rst
+.. toctree::
+   :maxdepth: 1
+
+   rpc-model
+   simd
+#+end_export
