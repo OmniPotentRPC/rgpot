@@ -41,8 +41,11 @@ on:
 
 jobs:
   # py-wheels.yml builds cp310, cp311, cp312, cp314t, and cp315t.
-  # Its matrix includes windows-2022 and cannot be filtered from here.
-  # This package has Fortran, so the Windows leg is expected to fail.
+  # windows-2022 stays in the reusable workflow's default matrix for
+  # callers without Fortran. This package's extension is C++ and Fortran.
+  # cibuildwheel on windows-2022 compiles with MSVC. MinGW gfortran or
+  # LLVM flang would be a second CRT and a separate DLL repair path, so
+  # this caller drops that runner instead of adding a toolchain.
   py-wheels:
     uses: ./.github/workflows/py-wheels.yml
     with:
@@ -51,6 +54,7 @@ jobs:
       test-path: tests/python
       extras: ase
       test-requires: pytest-timeout hypothesis
+      os: '["ubuntu-latest","ubuntu-24.04-arm","macos-14"]'
 
   kernel-count:
     name: Fortran kernels in the linux wheel
@@ -99,6 +103,19 @@ jobs:
               exit 1
             fi
           done
+      - name: Committed stub matches stubgen of the linux wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "${RUNNER_TEMP}/stub"
+          . "${RUNNER_TEMP}/stub/bin/activate"
+          python -m pip install -U pip
+          whl=$(ls wheelhouse/*cp312*.whl | head -1)
+          test -n "${whl}"
+          python -m pip install 'nanobind==3.1.0' numpy "${whl}"
+          python -m nanobind.stubgen -m rgpot._core -o /tmp/rgpot._core.pyi
+          diff -u python/rgpot/_core.pyi /tmp/rgpot._core.pyi
+
       - name: No xckernel generator or sympy in the wheel
         shell: bash
         run: |

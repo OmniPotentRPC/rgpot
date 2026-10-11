@@ -63,16 +63,17 @@ class AnnealRunner:
 
     def run(self) -> Atoms:
         """Optimize and write the best geometry back into ``atoms``."""
-        import anneal
+        import anneal  # pyright: ignore[reportMissingImports]
 
         x0 = self.atoms.get_positions().ravel()
         low = x0 - self.pad
         high = x0 + self.pad
         grad = self._gradient if self.use_forces else None
-        self.result = anneal.global_optimize(
+        found: Any = anneal.global_optimize(
             self._energy, low, high, self.budget, seed=self.seed, grad_fn=grad
         )
-        self.atoms.set_positions(np.asarray(self.result["best_pos"]).reshape(-1, 3))
+        self.result = found
+        self.atoms.set_positions(np.asarray(found["best_pos"]).reshape(-1, 3))
         return self.atoms
 
     def get_potential_energy(self) -> float:

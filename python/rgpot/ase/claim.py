@@ -7,6 +7,7 @@ flag update, so a second caller raises instead of waiting.
 from __future__ import annotations
 
 import threading
+from typing import Literal
 
 
 class ConnectionClaim:
@@ -26,7 +27,7 @@ class ConnectionClaim:
             self._busy = True
         return self
 
-    def __exit__(self, *exc: object) -> bool:
+    def __exit__(self, *exc: object) -> Literal[False]:
         with self._mu:
             self._busy = False
         return False

@@ -29,6 +29,16 @@ on:
         required: false
         type: string
         default: ""
+      apt-packages:
+        description: Space-separated apt packages installed before pip install. Empty skips apt.
+        required: false
+        type: string
+        default: ""
+      timeout-minutes:
+        description: Job timeout. The default matches the historical 30 minutes.
+        required: false
+        type: string
+        default: "30"
 
 permissions:
   contents: read
@@ -37,7 +47,7 @@ jobs:
   typing:
     name: stubs, mypy, pyright
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: ${{ fromJSON(inputs.timeout-minutes) }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -55,6 +65,14 @@ jobs:
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
           fi
           echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
+
+      - name: Install apt packages
+        if: inputs.apt-packages != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ${{ inputs.apt-packages }}
 
       - name: Install the package and the type checkers
         shell: bash

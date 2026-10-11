@@ -22,9 +22,9 @@ from ase.calculators.calculator import Calculator, all_changes
 
 from rgpot.ase.claim import ConnectionClaim
 
-def _capnp():
+def _capnp() -> Any:
     """Import capnp on first use so the module imports without the package."""
-    import capnp
+    import capnp  # pyright: ignore[reportMissingImports]
 
     return capnp
 

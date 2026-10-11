@@ -16,11 +16,41 @@ _PYTHON_THREADS = (1, 2, 8)
 _OMP_THREADS = (1, 2, 3, 8)
 
 
+def _pythonpath() -> str:
+    root = Path(__file__).resolve().parents[2]
+    src = str(root / "python")
+    tests = str(root / "tests" / "python")
+    pythonpath = os.environ.get("PYTHONPATH", "")
+    return os.pathsep.join(part for part in (src, tests, pythonpath) if part)
+
+
+def _usable(python: str) -> bool:
+    """True when this interpreter can import the built extension.
+
+    A wheel test container often has another CPython on PATH that does
+    not have numpy or the wheel. Those interpreters are not part of T5.
+    """
+    env = os.environ.copy()
+    env["PYTHONPATH"] = _pythonpath()
+    proc = subprocess.run(
+        [python, "-c", "import numpy, rgpot"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    return proc.returncode == 0
+
+
 def _interpreters() -> list[str]:
-    found = [sys.executable]
+    found: list[str] = []
+    candidates = [sys.executable]
     for name in ("python3.14", "python3.14t"):
         path = shutil.which(name)
-        if path and path not in found:
+        if path:
+            candidates.append(path)
+    for path in candidates:
+        if path not in found and _usable(path):
             found.append(path)
     return found
 
@@ -28,13 +58,7 @@ def _interpreters() -> list[str]:
 def _run(python: str, threads: int, omp: int) -> str:
     worker = Path(__file__).resolve().parent / "invariance_worker.py"
     env = os.environ.copy()
-    root = Path(__file__).resolve().parents[2]
-    src = str(root / "python")
-    tests = str(root / "tests" / "python")
-    pythonpath = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = os.pathsep.join(
-        part for part in (src, tests, pythonpath) if part
-    )
+    env["PYTHONPATH"] = _pythonpath()
     env["OMP_NUM_THREADS"] = str(omp)
     proc = subprocess.run(
         [python, str(worker), str(threads)],
