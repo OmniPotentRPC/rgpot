@@ -282,6 +282,9 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-14.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-15.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot_cuh2.html">namespace rgpot_cuh2</a><ul class="simple">
 </ul>
 </li>
@@ -737,8 +740,8 @@ fragment per user-visible change; see <code class="docutils literal notranslate"
 </span><span data-line="3">uvx<span class="w"> </span>towncrier<span class="w"> </span>create
 </span></pre></div>
 </div>
-<p>Types (see <code class="docutils literal notranslate"><span class="pre">towncrier.toml</span></code>): <code class="docutils literal notranslate"><span class="pre">security</span></code>, <code class="docutils literal notranslate"><span class="pre">removed</span></code>, <code class="docutils literal notranslate"><span class="pre">deprecated</span></code>, <code class="docutils literal notranslate"><span class="pre">added</span></code>,
-<code class="docutils literal notranslate"><span class="pre">dev</span></code>, <code class="docutils literal notranslate"><span class="pre">changed</span></code>, <code class="docutils literal notranslate"><span class="pre">fixed</span></code>, <code class="docutils literal notranslate"><span class="pre">misc</span></code>.
+<p>Types (see <code class="docutils literal notranslate"><span class="pre">towncrier.toml</span></code>): <code class="docutils literal notranslate"><span class="pre">breaking</span></code> (section Breaking, listed first),
+<code class="docutils literal notranslate"><span class="pre">security</span></code>, <code class="docutils literal notranslate"><span class="pre">removed</span></code>, <code class="docutils literal notranslate"><span class="pre">deprecated</span></code>, <code class="docutils literal notranslate"><span class="pre">added</span></code>, <code class="docutils literal notranslate"><span class="pre">dev</span></code>, <code class="docutils literal notranslate"><span class="pre">changed</span></code>, <code class="docutils literal notranslate"><span class="pre">fixed</span></code>, <code class="docutils literal notranslate"><span class="pre">misc</span></code>.
 Preview with <code class="docutils literal notranslate"><span class="pre">uvx</span> <span class="pre">towncrier</span> <span class="pre">build</span> <span class="pre">--draft</span></code> or <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">r</span> <span class="pre">towncrier-draft</span></code> if
 defined.</p>
 <p>CI runs <code class="docutils literal notranslate"><span class="pre">towncrier</span> <span class="pre">check</span></code> on pull requests when shipped paths change

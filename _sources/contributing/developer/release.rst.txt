@@ -86,8 +86,8 @@ fragment per user-visible change; see ``docs/newsfragments/README.md``):
     # or interactive:
     uvx towncrier create
 
-Types (see ``towncrier.toml``): ``security``, ``removed``, ``deprecated``, ``added``,
-``dev``, ``changed``, ``fixed``, ``misc``.
+Types (see ``towncrier.toml``): ``breaking`` (section Breaking, listed first),
+``security``, ``removed``, ``deprecated``, ``added``, ``dev``, ``changed``, ``fixed``, ``misc``.
 Preview with ``uvx towncrier build --draft`` or ``pixi r towncrier-draft`` if
 defined.
 

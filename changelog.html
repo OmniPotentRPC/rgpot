@@ -282,6 +282,9 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="api/namespace_rgpot-14.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="api/namespace_rgpot-15.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="api/namespace_rgpot_cuh2.html">namespace rgpot_cuh2</a><ul class="simple">
 </ul>
 </li>
@@ -544,115 +547,124 @@ data-aria-dark="Switch to auto color mode">
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
 <li><a class="reference internal" href="#changelog">Changelog</a><ul>
-<li><a class="reference internal" href="#id1">3.4.0 - 2026-09-30</a><ul>
+<li><a class="reference internal" href="#id1">3.5.0 - 2026-10-11</a><ul>
+<li><a class="reference internal" href="#breaking">Breaking</a></li>
+<li><a class="reference internal" href="#deprecated">Deprecated</a></li>
 <li><a class="reference internal" href="#added">Added</a></li>
 <li><a class="reference internal" href="#developer">Developer</a></li>
 <li><a class="reference internal" href="#changed">Changed</a></li>
 <li><a class="reference internal" href="#fixed">Fixed</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id2">3.3.0 - 2026-09-28</a><ul>
+<li><a class="reference internal" href="#id2">3.4.0 - 2026-09-30</a><ul>
 <li><a class="reference internal" href="#id3">Added</a></li>
-<li><a class="reference internal" href="#id4">Changed</a></li>
-<li><a class="reference internal" href="#id5">Fixed</a></li>
+<li><a class="reference internal" href="#id4">Developer</a></li>
+<li><a class="reference internal" href="#id5">Changed</a></li>
+<li><a class="reference internal" href="#id6">Fixed</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id7">3.3.0 - 2026-09-28</a><ul>
+<li><a class="reference internal" href="#id8">Added</a></li>
+<li><a class="reference internal" href="#id9">Changed</a></li>
+<li><a class="reference internal" href="#id10">Fixed</a></li>
 <li><a class="reference internal" href="#miscellaneous">Miscellaneous</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id6">3.2.0 - 2026-09-13</a><ul>
-<li><a class="reference internal" href="#id7">Added</a></li>
-<li><a class="reference internal" href="#id8">Fixed</a></li>
-</ul>
-</li>
-<li><a class="reference internal" href="#id9">3.1.2 - 2026-09-04</a><ul>
-<li><a class="reference internal" href="#id10">Fixed</a></li>
-</ul>
-</li>
-<li><a class="reference internal" href="#id11">3.1.1 - 2026-09-04</a><ul>
+<li><a class="reference internal" href="#id11">3.2.0 - 2026-09-13</a><ul>
 <li><a class="reference internal" href="#id12">Added</a></li>
+<li><a class="reference internal" href="#id13">Fixed</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id13">3.1.0 - 2026-09-04</a><ul>
-<li><a class="reference internal" href="#id14">Added</a></li>
-<li><a class="reference internal" href="#id15">Changed</a></li>
-<li><a class="reference internal" href="#id16">Fixed</a></li>
+<li><a class="reference internal" href="#id14">3.1.2 - 2026-09-04</a><ul>
+<li><a class="reference internal" href="#id15">Fixed</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id17">3.0.2 - 2026-08-08</a><ul>
-<li><a class="reference internal" href="#id18">Fixed</a></li>
+<li><a class="reference internal" href="#id16">3.1.1 - 2026-09-04</a><ul>
+<li><a class="reference internal" href="#id17">Added</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id19">3.0.1 - 2026-07-26</a><ul>
-<li><a class="reference internal" href="#id20">Fixed</a></li>
+<li><a class="reference internal" href="#id18">3.1.0 - 2026-09-04</a><ul>
+<li><a class="reference internal" href="#id19">Added</a></li>
+<li><a class="reference internal" href="#id20">Changed</a></li>
+<li><a class="reference internal" href="#id21">Fixed</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id21">3.0.0 - 2026-07-26</a><ul>
-<li><a class="reference internal" href="#id22">Added</a></li>
-<li><a class="reference internal" href="#id23">Changed</a></li>
-<li><a class="reference internal" href="#id24">Fixed</a></li>
+<li><a class="reference internal" href="#id22">3.0.2 - 2026-08-08</a><ul>
+<li><a class="reference internal" href="#id23">Fixed</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id25">2.5.3 - 2026-07-20</a><ul>
-<li><a class="reference internal" href="#id26">Fixed</a></li>
+<li><a class="reference internal" href="#id24">3.0.1 - 2026-07-26</a><ul>
+<li><a class="reference internal" href="#id25">Fixed</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id27">2.5.2 - 2026-07-18</a><ul>
-<li><a class="reference internal" href="#id28">Fixed</a></li>
+<li><a class="reference internal" href="#id26">3.0.0 - 2026-07-26</a><ul>
+<li><a class="reference internal" href="#id27">Added</a></li>
+<li><a class="reference internal" href="#id28">Changed</a></li>
+<li><a class="reference internal" href="#id29">Fixed</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id29">2.5.0 - 2026-07-17</a><ul>
-<li><a class="reference internal" href="#id30">Added</a></li>
+<li><a class="reference internal" href="#id30">2.5.3 - 2026-07-20</a><ul>
 <li><a class="reference internal" href="#id31">Fixed</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id32">2.2.1 - 2026-07-06</a><ul>
+<li><a class="reference internal" href="#id32">2.5.2 - 2026-07-18</a><ul>
 <li><a class="reference internal" href="#id33">Fixed</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id34">2.2.0 - 2026-07-05</a><ul>
+<li><a class="reference internal" href="#id34">2.5.0 - 2026-07-17</a><ul>
 <li><a class="reference internal" href="#id35">Added</a></li>
-<li><a class="reference internal" href="#id36">Changed</a></li>
-<li><a class="reference internal" href="#id37">Fixed</a></li>
+<li><a class="reference internal" href="#id36">Fixed</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id38">2.1.0 - 2026-07-03</a><ul>
-<li><a class="reference internal" href="#id39">Added</a></li>
-<li><a class="reference internal" href="#id40">Changed</a></li>
-<li><a class="reference internal" href="#id41">Fixed</a></li>
+<li><a class="reference internal" href="#id37">2.2.1 - 2026-07-06</a><ul>
+<li><a class="reference internal" href="#id38">Fixed</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id42">2.0.0 - 2026-06-26</a><ul>
-<li><a class="reference internal" href="#id43">Added</a></li>
-<li><a class="reference internal" href="#id44">Developer</a></li>
+<li><a class="reference internal" href="#id39">2.2.0 - 2026-07-05</a><ul>
+<li><a class="reference internal" href="#id40">Added</a></li>
+<li><a class="reference internal" href="#id41">Changed</a></li>
+<li><a class="reference internal" href="#id42">Fixed</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id43">2.1.0 - 2026-07-03</a><ul>
+<li><a class="reference internal" href="#id44">Added</a></li>
 <li><a class="reference internal" href="#id45">Changed</a></li>
+<li><a class="reference internal" href="#id46">Fixed</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id46">1.2.0 - 2026-06-24</a><ul>
-<li><a class="reference internal" href="#id47">Added</a></li>
-<li><a class="reference internal" href="#id48">Developer</a></li>
-<li><a class="reference internal" href="#id49">Fixed</a></li>
+<li><a class="reference internal" href="#id47">2.0.0 - 2026-06-26</a><ul>
+<li><a class="reference internal" href="#id48">Added</a></li>
+<li><a class="reference internal" href="#id49">Developer</a></li>
+<li><a class="reference internal" href="#id50">Changed</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id50">1.1.0 - 2026-03-29</a><ul>
-<li><a class="reference internal" href="#id51">Added</a></li>
+<li><a class="reference internal" href="#id51">1.2.0 - 2026-06-24</a><ul>
+<li><a class="reference internal" href="#id52">Added</a></li>
+<li><a class="reference internal" href="#id53">Developer</a></li>
+<li><a class="reference internal" href="#id54">Fixed</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id52">1.0.3 - 2026-03-01</a><ul>
-<li><a class="reference internal" href="#id53">Fixed</a></li>
+<li><a class="reference internal" href="#id55">1.1.0 - 2026-03-29</a><ul>
+<li><a class="reference internal" href="#id56">Added</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id54">1.0.2 - 2026-03-01</a><ul>
-<li><a class="reference internal" href="#id55">Added</a></li>
-<li><a class="reference internal" href="#id56">Changed</a></li>
+<li><a class="reference internal" href="#id57">1.0.3 - 2026-03-01</a><ul>
+<li><a class="reference internal" href="#id58">Fixed</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id57">1.0.0 - 2026-02-15</a><ul>
-<li><a class="reference internal" href="#id58">Added</a></li>
-<li><a class="reference internal" href="#id59">Changed</a></li>
-<li><a class="reference internal" href="#id60">Fixed</a></li>
+<li><a class="reference internal" href="#id59">1.0.2 - 2026-03-01</a><ul>
+<li><a class="reference internal" href="#id60">Added</a></li>
+<li><a class="reference internal" href="#id61">Changed</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id61">0.0.1 - 2024-01-26</a><ul>
-<li><a class="reference internal" href="#id62">Added</a></li>
+<li><a class="reference internal" href="#id62">1.0.0 - 2026-02-15</a><ul>
+<li><a class="reference internal" href="#id63">Added</a></li>
+<li><a class="reference internal" href="#id64">Changed</a></li>
+<li><a class="reference internal" href="#id65">Fixed</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id66">0.0.1 - 2024-01-26</a><ul>
+<li><a class="reference internal" href="#id67">Added</a></li>
 </ul>
 </li>
 </ul>
@@ -767,29 +779,210 @@ towncrier marker.</p>
 and this project adheres to <a class="reference external" href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <!-- towncrier release notes start -->
 <section id="id1">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/3.4.0">3.4.0</a> - 2026-09-30<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h3>
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/v3.5.0">3.5.0</a> - 2026-10-11<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h3>
+<section id="breaking">
+<h4>Breaking<a class="headerlink" href="#breaking" title="Link to this heading">¶</a></h4>
+<ul class="simple">
+<li><p>An rgpot client from this release calls <code class="docutils literal notranslate"><span class="pre">Potential.getCapabilities</span></code> (ordinal <code class="docutils literal notranslate"><span class="pre">&#64;12</span></code>) before the first <code class="docutils literal notranslate"><span class="pre">calculate</span></code> and refuses a server that does not implement the call or whose capabilities are incompatible.
+A server built on an older <code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code> needs that method before such a client can use it.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">PotCaps</span></code> gained <code class="docutils literal notranslate"><span class="pre">groupCollective</span></code> and <code class="docutils literal notranslate"><span class="pre">stress</span></code>.
+A C++ caller compiled against the 3.4.0 headers has a different <code class="docutils literal notranslate"><span class="pre">PotCaps</span></code> layout from a <code class="docutils literal notranslate"><span class="pre">librgpot</span></code> built from this release.
+<code class="docutils literal notranslate"><span class="pre">rgpot_cxx_layout_stamp()</span></code> reports the loaded layout.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">LJConfig</span></code>, <code class="docutils literal notranslate"><span class="pre">LJClusterConfig</span></code> and <code class="docutils literal notranslate"><span class="pre">MorseConfig</span></code> gained <code class="docutils literal notranslate"><span class="pre">switch_width</span></code>, so their layout changed.
+The C++ layout stamp covers them.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">librgpot</span></code> no longer links MPI.
+Calculator groups need <code class="docutils literal notranslate"><span class="pre">librgpot_mpi</span></code> installed next to <code class="docutils literal notranslate"><span class="pre">librgpot</span></code>, or <code class="docutils literal notranslate"><span class="pre">RGPOT_MPI_LIBRARY</span></code>.
+A consumer that took MPI flags from the <code class="docutils literal notranslate"><span class="pre">rgpot</span></code> meson or pkg-config dependency now asks for <code class="docutils literal notranslate"><span class="pre">rgpot-mpi</span></code> or for MPI itself.</p></li>
+<li><p>The CMake package config moved from <code class="docutils literal notranslate"><span class="pre">lib/cmake/pot</span></code> to <code class="docutils literal notranslate"><span class="pre">lib/cmake/rgpot</span></code>.
+<code class="docutils literal notranslate"><span class="pre">find_package(rgpot)</span></code> finds that directory.
+An <code class="docutils literal notranslate"><span class="pre">rgpot_DIR</span></code> that points at <code class="docutils literal notranslate"><span class="pre">lib/cmake/pot</span></code> does not.</p></li>
+</ul>
+</section>
+<section id="deprecated">
+<h4>Deprecated<a class="headerlink" href="#deprecated" title="Link to this heading">¶</a></h4>
+<ul class="simple">
+<li><p>The wheel’s <code class="docutils literal notranslate"><span class="pre">libmetatomic_engine.so</span></code>, a symlink to <code class="docutils literal notranslate"><span class="pre">librgpot_metatomic_engine.so</span></code>, is kept for one release and removed after it.
+Source builds still install <code class="docutils literal notranslate"><span class="pre">libmetatomic_engine.so</span></code>.</p></li>
+</ul>
+</section>
 <section id="added">
 <h4>Added<a class="headerlink" href="#added" title="Link to this heading">¶</a></h4>
 <ul class="simple">
-<li><p>Calculator groups report how many there are and broadcast a result from one group to every rank; the meson build takes MPI through <code class="docutils literal notranslate"><span class="pre">-Dwith_mpi=enabled</span></code>.</p></li>
+<li><p>A <code class="docutils literal notranslate"><span class="pre">umaexport</span></code> pixi environment pins <code class="docutils literal notranslate"><span class="pre">fairchem-core</span></code> 2.23.0 and <code class="docutils literal notranslate"><span class="pre">torch</span></code> 2.13, so <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">run</span> <span class="pre">-e</span> <span class="pre">umaexport</span> <span class="pre">python</span> <span class="pre">scripts/export_uma_aoti.py</span> <span class="pre">--help</span></code> is reproducible.
+The <code class="docutils literal notranslate"><span class="pre">export-uma-aoti</span></code> task runs the exporter in it.</p></li>
+<li><p>A standalone C plugin ABI (<code class="docutils literal notranslate"><span class="pre">include/rgpot/plugin.h</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_PLUGIN_API_VERSION</span></code> 1) lets a shared library export <code class="docutils literal notranslate"><span class="pre">rgpot_plugin_init()</span></code>.
+The host scans <code class="docutils literal notranslate"><span class="pre">RGPOT_PLUGIN_PATH</span></code>, checks the API version and registers the plugin.
+<code class="docutils literal notranslate"><span class="pre">RGPOT_CAP_INSTANCE_SAFE</span></code> means instances may calculate concurrently; without it the host serializes every instance of that plugin.</p></li>
+<li><p>Backends loaded through the potential profile are checked before dispatch.
+<code class="docutils literal notranslate"><span class="pre">ProfileSession::load</span></code> and <code class="docutils literal notranslate"><span class="pre">rgpot::abi::checked_load</span></code> read the backend’s <code class="docutils literal notranslate"><span class="pre">Capabilities</span></code> and refuse a different protocol family or major, a lower protocol minor than required, another schema identity, an incompatible eindir bridge ABI, layout or feature set, another DLPack revision, or a missing energy or forces operation.
+Metadata a backend leaves unset is not checked.</p></li>
+<li><p>Effective medium theory and the cell-list embedded-atom potential now live in this library.
+EMTConfig.rasmussen selects the Rasmussen parameter set.
+The copper cluster energy remains 5.129167 eV.</p></li>
+<li><p>Every backend gets the generic <code class="docutils literal notranslate"><span class="pre">rgpot_engine_*</span></code> table through one adapter over <code class="docutils literal notranslate"><span class="pre">PotentialBase</span></code> (<code class="docutils literal notranslate"><span class="pre">rgpot/engine/EngineTable.cc</span></code>): new engine libraries <code class="docutils literal notranslate"><span class="pre">classical_engine</span></code> (lj, ljcluster, morse, zbl and the Fortran potentials), <code class="docutils literal notranslate"><span class="pre">mopac_engine</span></code>, <code class="docutils literal notranslate"><span class="pre">nwchem_engine</span></code> and <code class="docutils literal notranslate"><span class="pre">skala_engine</span></code>, and the generic table added to the UMA, Metatomic and XTB engines.
+The table adds <code class="docutils literal notranslate"><span class="pre">rgpot_engine_name</span></code>, <code class="docutils literal notranslate"><span class="pre">rgpot_engine_version</span></code> and <code class="docutils literal notranslate"><span class="pre">rgpot_engine_model_digest</span></code> (SHA-256 of the loaded model file), a stated thread-safety policy per reentrancy class, and engine ABI minor 2.
+<code class="docutils literal notranslate"><span class="pre">UmaParams</span></code> and <code class="docutils literal notranslate"><span class="pre">MetatomicParams</span></code> carry the torch thread counts (default 1) and determinism requests, <code class="docutils literal notranslate"><span class="pre">MetatomicParams</span></code> also the rotation and probe options, and the engine applies them at create.
+<code class="docutils literal notranslate"><span class="pre">potentials-schema</span></code> is repinned to the revision that adds them.</p></li>
+<li><p>Lennard-Jones, Morse, and ZBL write the Cauchy stress from the same pair force.
+xTB and tblite copy the virial the single point already stores.</p></li>
+<li><p>Metatomic evaluates a batch in one model forward and reports that capability.
+The pip wheel packs the engine as <code class="docutils literal notranslate"><span class="pre">librgpot_metatomic_engine.so</span></code>.</p></li>
+<li><p>TIP4P, SPC/E and TIP4P on platinum compile when <code class="docutils literal notranslate"><span class="pre">-Dwith_water=true</span></code>.
+The option defaults false.
+Each kernel keeps the 8.5 angstrom cutoff and the 1.0 angstrom switching width.</p></li>
+<li><p>The C++ classes that cross the library boundary have a layout stamp: <code class="docutils literal notranslate"><span class="pre">rgpot::abi::header_stamp()</span></code> is a <code class="docutils literal notranslate"><span class="pre">constexpr</span></code> of <code class="docutils literal notranslate"><span class="pre">rgpot/abi/CxxLayout.hpp</span></code>, <code class="docutils literal notranslate"><span class="pre">rgpot_cxx_layout_stamp()</span></code> reports the loaded library, and <code class="docutils literal notranslate"><span class="pre">rgpot::abi::layout_compatible()</span></code> compares them.
+It covers the force structures, <code class="docutils literal notranslate"><span class="pre">PotCaps</span></code>, the pair potential classes and their configs, the <code class="docutils literal notranslate"><span class="pre">RGPOT_HAS_CACHE</span></code> bit and the virtual-function counts of <code class="docutils literal notranslate"><span class="pre">Potential</span></code>, and exists in builds without the Rust core.</p></li>
+<li><p>The NWChem multi-rank force host and the collective RPC server own their MPI runtime through <code class="docutils literal notranslate"><span class="pre">MpiHost</span></code>.
+A throw on one rank is reduced across the communicator and rethrown on every rank with that rank’s message, so the ranks leave the call together.</p></li>
+<li><p>The generic engine table gains optional symbols and a minor version: <code class="docutils literal notranslate"><span class="pre">rgpot_engine_abi_stamp</span></code> / <code class="docutils literal notranslate"><span class="pre">rgpot_engine_abi_compatible</span></code> (major, minor, layout revision), <code class="docutils literal notranslate"><span class="pre">rgpot_engine_caps</span></code>, <code class="docutils literal notranslate"><span class="pre">rgpot_engine_last_error</span></code>, <code class="docutils literal notranslate"><span class="pre">rgpot_engine_set_num_threads</span></code> and <code class="docutils literal notranslate"><span class="pre">rgpot_engine_set_charge_spin</span></code>, all exported by <code class="docutils literal notranslate"><span class="pre">libuma_engine.so</span></code>, which is now linked with <code class="docutils literal notranslate"><span class="pre">-z</span> <span class="pre">nodelete</span></code>.
+The <code class="docutils literal notranslate"><span class="pre">umaenginebld</span></code> pixi environment and a CI leg build the engine and run <code class="docutils literal notranslate"><span class="pre">UmaEngineTest</span></code>.
+<code class="docutils literal notranslate"><span class="pre">potserv</span></code> builds when metatomic and rpc are both enabled.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">CPMDPot::selectOrbitals(key)</span></code> names the image or bead the next forces belong to and passes it to <code class="docutils literal notranslate"><span class="pre">cpmdc_session_select_orbitals</span></code>, so an engine that keeps orbitals per key starts each SCF from that image’s or bead’s own previous orbitals.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Capabilities</span></code> carries <code class="docutils literal notranslate"><span class="pre">buildVersion</span></code> and <code class="docutils literal notranslate"><span class="pre">buildRevision</span></code> (appended at <code class="docutils literal notranslate"><span class="pre">&#64;18</span></code> and <code class="docutils literal notranslate"><span class="pre">&#64;19</span></code>), filled by the Rust and C++ producers, and <code class="docutils literal notranslate"><span class="pre">rgpot_source_revision()</span></code> returns the source revision of the loaded library.
+The revision comes from <code class="docutils literal notranslate"><span class="pre">RGPOT_SOURCE_REVISION</span></code> or the git checkout and is empty when neither exists.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">LJConfig</span></code>, <code class="docutils literal notranslate"><span class="pre">LJClusterConfig</span></code> and <code class="docutils literal notranslate"><span class="pre">MorseConfig</span></code> take <code class="docutils literal notranslate"><span class="pre">switch_width</span></code>: a positive width replaces the shifted truncation with the C^2 quintic switch <code class="docutils literal notranslate"><span class="pre">S(t)</span> <span class="pre">=</span> <span class="pre">1</span> <span class="pre">-</span> <span class="pre">10t^3</span> <span class="pre">+</span> <span class="pre">15t^4</span> <span class="pre">-</span> <span class="pre">6t^5</span></code> over the last <code class="docutils literal notranslate"><span class="pre">switch_width</span></code> Angstrom below the cutoff, so the energy, force and curvature reach zero there.
+The default 0 keeps the shifted truncation and its cache keys.
+<code class="docutils literal notranslate"><span class="pre">scripts/validation/pair_kernels.py</span></code> (sympy) checks every pair kernel’s force against <code class="docutils literal notranslate"><span class="pre">-dE/dx</span></code> and the switch’s C^2 conditions; <code class="docutils literal notranslate"><span class="pre">scripts/validation/quintic_switch.sollya</span></code> bounds its binary64 evaluation error.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">PotentialCache</span></code> counts computed and served evaluations per handle (<code class="docutils literal notranslate"><span class="pre">counts()</span></code>, <code class="docutils literal notranslate"><span class="pre">reset_counts()</span></code>).
+The same split is available on eindir potentials through <code class="docutils literal notranslate"><span class="pre">rgpot_potential_eval_counts</span></code> and <code class="docutils literal notranslate"><span class="pre">rgpot_potential_reset_eval_counts</span></code>, and from Python as <code class="docutils literal notranslate"><span class="pre">PotentialCache.counts()</span></code> (bound when built with the cache), so two runs under different cache states report the same computed count.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">XcKernel</span></code> serves the <code class="docutils literal notranslate"><span class="pre">mgga_lapl</span></code> family as well as <code class="docutils literal notranslate"><span class="pre">lda</span></code>, <code class="docutils literal notranslate"><span class="pre">gga</span></code> and <code class="docutils literal notranslate"><span class="pre">mgga_tau</span></code>.
+Laplacian contractions need the AO Laplacians in <code class="docutils literal notranslate"><span class="pre">lapl_chi</span></code> and return 2 when those are missing, leaving the output unchanged.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">run</span> <span class="pre">check-eonviz-pins</span></code> (<code class="docutils literal notranslate"><span class="pre">scripts/check_eonviz_pins.sh</span></code>) fails when an <code class="docutils literal notranslate"><span class="pre">eonviz</span></code> dependency is a git branch or tag, lacks a full commit <code class="docutils literal notranslate"><span class="pre">rev</span></code>, or when <code class="docutils literal notranslate"><span class="pre">chemparseplot</span></code> or <code class="docutils literal notranslate"><span class="pre">rgpycrumbs</span></code> is not an exact <code class="docutils literal notranslate"><span class="pre">==</span></code> pin.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">rgpot.h</span></code> carries <code class="docutils literal notranslate"><span class="pre">RGPOT_ABI_VERSION_MAJOR</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_ABI_VERSION_MINOR</span></code> and <code class="docutils literal notranslate"><span class="pre">RGPOT_ABI_LAYOUT_REVISION</span></code> with an <code class="docutils literal notranslate"><span class="pre">rgpot_abi_stamp_t</span></code> struct, and the library exports <code class="docutils literal notranslate"><span class="pre">rgpot_abi_stamp()</span></code> and <code class="docutils literal notranslate"><span class="pre">rgpot_abi_compatible(const</span> <span class="pre">rgpot_abi_stamp_t</span> <span class="pre">*)</span></code>.
+A loaded <code class="docutils literal notranslate"><span class="pre">librgpot</span></code> is compatible with a caller when the major and layout revision are equal and the library minor is at least the caller’s.
+The C ABI reference page states when each number changes.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">rgpot_potential_set_peer_capabilities</span></code> installs the peer’s <code class="docutils literal notranslate"><span class="pre">Capabilities</span></code> message on a callback handle.
+An incompatible peer makes <code class="docutils literal notranslate"><span class="pre">rgpot_potential_calculate</span></code>, <code class="docutils literal notranslate"><span class="pre">eindir_objective_eval</span></code> and <code class="docutils literal notranslate"><span class="pre">eindir_objective_grad</span></code> fail before the callback runs, with <code class="docutils literal notranslate"><span class="pre">peer</span> <span class="pre">refused:</span> <span class="pre">&lt;first</span> <span class="pre">mismatch&gt;</span></code> in <code class="docutils literal notranslate"><span class="pre">rgpot_last_error()</span></code>.
+A handle that never receives a message keeps the callback contract.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">rgpot_version()</span></code>, <code class="docutils literal notranslate"><span class="pre">rgpot_version_major()</span></code>, <code class="docutils literal notranslate"><span class="pre">rgpot_version_minor()</span></code> and <code class="docutils literal notranslate"><span class="pre">rgpot_version_patch()</span></code> report the version of the loaded library, so a C caller can check it against the <code class="docutils literal notranslate"><span class="pre">RGPOT_VERSION*</span></code> macros of the header it compiled with.
+<code class="docutils literal notranslate"><span class="pre">rgpot.h</span></code> carried 3.3.0 through the 3.4.0 release; <code class="docutils literal notranslate"><span class="pre">potctl</span> <span class="pre">release</span> <span class="pre">sync</span></code> now stamps its macros and <code class="docutils literal notranslate"><span class="pre">potctl</span> <span class="pre">release</span> <span class="pre">assert</span></code> fails when they drift.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">scripts/export_uma_aoti.py</span></code> embeds <code class="docutils literal notranslate"><span class="pre">natoms</span></code>, per-element <code class="docutils literal notranslate"><span class="pre">counts</span></code> and the <code class="docutils literal notranslate"><span class="pre">model</span></code>, <code class="docutils literal notranslate"><span class="pre">torch_version</span></code> and <code class="docutils literal notranslate"><span class="pre">fairchem_version</span></code> that produced the package.
+UmaPot checks <code class="docutils literal notranslate"><span class="pre">natoms</span></code> and <code class="docutils literal notranslate"><span class="pre">counts</span></code> against every input, so a package for C2H2 refuses C2H4 although both share <code class="docutils literal notranslate"><span class="pre">z_set</span></code> <code class="docutils literal notranslate"><span class="pre">[1,</span> <span class="pre">6]</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">scripts/export_uma_aoti.py</span></code> records which export path produced a package (<code class="docutils literal notranslate"><span class="pre">export_path</span></code>), documents that torch 2.13 with fairchem-core 2.23 always takes the static <code class="docutils literal notranslate"><span class="pre">make_fx</span></code> fallback, and warns when that fallback runs without <code class="docutils literal notranslate"><span class="pre">--molecular-box</span></code>.</p></li>
+<li><p>rgpot::BatchEvaluator evaluates many configurations in parallel: it builds one potential per worker from a factory, splits the batch into contiguous ranges and returns results in input order, with no re-entrancy requirement on the potential.
+A worker failure is rethrown after every worker has joined.</p></li>
 </ul>
 </section>
 <section id="developer">
 <h4>Developer<a class="headerlink" href="#developer" title="Link to this heading">¶</a></h4>
+<ul class="simple">
+<li><p>A plugin CI leg (potctl ci plugin-test) runs PluginTest, PluginContractTest and ExternalPluginTest on Ubuntu and macOS and is required by the CI gate.</p></li>
+<li><p>CI runs the check-eonviz-pins pixi task as a blocking job.</p></li>
+<li><p>Coverage generation fails on test failures and lcov errors; only the Codecov upload remains advisory.
+The coverage scripts accept lcov 2.</p></li>
+<li><p>Every GitHub Action reference is pinned to a full commit SHA with the version in a trailing comment; ci/gha/check-drift.sh rejects unpinned references.</p></li>
+<li><p>Pull request CI runs hold read-only permissions: docs deployment and the Codecov OIDC upload run only on pushes, in their own jobs.</p></li>
+<li><p>The MPI contract client runs the capability handshake against the collective RPC server before it configures or evaluates, and a second run requires a protocol major the server does not speak and must stop at the handshake with the reason, for both the serial and the MPI server layouts.</p></li>
+<li><p>The Python contract tests cover the recursive <code class="docutils literal notranslate"><span class="pre">ExprParams</span></code> / <code class="docutils literal notranslate"><span class="pre">PotSpec</span></code> tree: the schema names the tree, <code class="docutils literal notranslate"><span class="pre">PotentialConfig</span></code> stays a single-backend union, and a nested <code class="docutils literal notranslate"><span class="pre">0.5*inner</span> <span class="pre">+</span> <span class="pre">d3</span></code> composition survives a Cap’n Proto round trip.</p></li>
+<li><p>The macOS wheel job is required and validates the wheel contents, and publishing waits for it.</p></li>
+<li><p>The wheel test command runs <code class="docutils literal notranslate"><span class="pre">tests/test_rgpot_pip_core.py</span></code> against each repaired wheel, so the runpath, import and abi3 checks gate the wheel jobs.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">CapabilitiesWire</span></code> decodes <code class="docutils literal notranslate"><span class="pre">Capabilities</span></code> messages across the complete pre-build-identity <code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code> (<code class="docutils literal notranslate"><span class="pre">CppCore/tests/fixtures</span></code>) and requires every member that file declares to exist in the current schema with the same ordinal and type.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">RPCSchemaSync</span></code> regenerates the Cap’n Proto artifacts from both vendored <code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code> copies, requires the output and the code generator request to match, and requires the build’s generated header and source to equal a fresh regeneration.</p></li>
+<li><p>tests/check_wheel_contents.py fails when a built wheel contains the xckernel generator files (catalog.py, cbackend.py) or depends on sympy; both wheel jobs run it.</p></li>
+<li><p>The Ubuntu Meson job passes -Dwith_mpi=enabled and runs calculator_group_test under mpirun with four ranks.</p></li>
+</ul>
+</section>
+<section id="changed">
+<h4>Changed<a class="headerlink" href="#changed" title="Link to this heading">¶</a></h4>
+<ul class="simple">
+<li><p>Every Fortran potential (SW, EDIP, Lenosky, Tersoff, EAM Al, FeHe, CuH2, Water-H) keeps its neighbour table and error message in a per-instance workspace and reports <code class="docutils literal notranslate"><span class="pre">Reentrancy::PerInstance</span></code> with <code class="docutils literal notranslate"><span class="pre">perImageInstances</span></code>, replacing <code class="docutils literal notranslate"><span class="pre">ProcessSerial</span></code>.
+Separate instances evaluate on separate threads, and a NEB that keeps one instance per image no longer rebuilds one shared table as the images alternate (220 of 240 calls rebuilt it in a 601-atom EAM aluminium NEB, 27.5 percent of its samples).
+The C entry points without a workspace remain for the CuH2 plugin and stay process-serial.
+eOn 3.6.0’s EAM_AL needs one instance per image, which this provides (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/95">#95</a>).</p></li>
+<li><p>LJPot, LJClusterPot, MorsePot and ZBLPot search pairs with linked cells once the box holds 64 or more cells of one cutoff plus skin, so a fresh search costs O(n) instead of O(n^2), and fully periodic boxes past 20000 atoms keep their cached pair list.
+The cached force loop runs over a sorted CSR half list with the periodic image recorded at build when cutoff + skin is below half the box, and keeps each atom’s force in registers across its row.
+<code class="docutils literal notranslate"><span class="pre">PairListCache::accumulate</span></code> takes a radial kernel returning a <code class="docutils literal notranslate"><span class="pre">PairTerm</span></code> (energy and <code class="docutils literal notranslate"><span class="pre">-V'(r)/r</span></code>) and returns the energy.
+<code class="docutils literal notranslate"><span class="pre">PairListCache::evaluate</span></code> and <code class="docutils literal notranslate"><span class="pre">CachedPairList::forEach</span></code> keep their 3.4.0 signatures.</p></li>
+<li><p>The EAM aluminium kernel evaluates four exponentials per neighbour entry instead of up to eighteen: the density pass keeps rho(r) and rho’(r) for the force pass, the shifts at the cutoff are computed once per call, and integer powers and the embedding polynomial run without <code class="docutils literal notranslate"><span class="pre">pow</span></code>.
+<code class="docutils literal notranslate"><span class="pre">scripts/validation/eam_al.py</span></code> (sympy) checks the rearranged forms and the gather force against the closed form (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/95">#95</a>).</p></li>
+<li><p>The Fortran potentials ask vesin for unsorted neighbour lists and order each atom’s row by partner index with two linear counting sorts, which replaces vesin’s global sort (10.6 percent of an EAM aluminium NEB) and keeps every force sum in one order whether vesin reused its cached topology or rebuilt it (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/95">#95</a>).</p></li>
+<li><p>The Rust <code class="docutils literal notranslate"><span class="pre">RpcClient</span></code> and the <code class="docutils literal notranslate"><span class="pre">pot_calculate</span></code> bridge call <code class="docutils literal notranslate"><span class="pre">Potential.getCapabilities</span></code> before the first <code class="docutils literal notranslate"><span class="pre">calculate</span></code> and refuse a server with incompatible capabilities.
+A server that does not implement the call is refused with an error naming <code class="docutils literal notranslate"><span class="pre">Potential.getCapabilities</span></code> and the upgrade path; the rgpot servers (<code class="docutils literal notranslate"><span class="pre">potserv</span></code>, <code class="docutils literal notranslate"><span class="pre">rgpot_rpc_server_start</span></code>) implement it.
+Servers built on <code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code> elsewhere need the call before an rgpot client built from this release can use them.</p></li>
+<li><p>The <code class="docutils literal notranslate"><span class="pre">eonviz</span></code> pixi environment pins <code class="docutils literal notranslate"><span class="pre">chemparseplot</span></code> and <code class="docutils literal notranslate"><span class="pre">rgpycrumbs</span></code> to the 1.11.0 releases instead of git branches, and raises the <code class="docutils literal notranslate"><span class="pre">readcon</span></code> floor to 0.14.7.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">librgpot</span></code> no longer links MPI.
+With MPI found, the build adds <code class="docutils literal notranslate"><span class="pre">librgpot_mpi</span></code> (meson dependency and pkg-config name <code class="docutils literal notranslate"><span class="pre">rgpot-mpi</span></code>) holding every MPI call of the calculator groups, and <code class="docutils literal notranslate"><span class="pre">bindCalculators</span></code> or <code class="docutils literal notranslate"><span class="pre">calculatorsUseMpi</span></code> load it with <code class="docutils literal notranslate"><span class="pre">dlopen</span></code> on first use through one C entry point, <code class="docutils literal notranslate"><span class="pre">rgpot_mpi_api_v1</span></code> (<code class="docutils literal notranslate"><span class="pre">rgpot/calculator_mpi_abi.h</span></code>).
+A host that never asks for calculator groups no longer maps libmpi, whose UCX load-time hooks cost 0.4 s per process start.
+<code class="docutils literal notranslate"><span class="pre">loadCalculatorMpi</span></code>, <code class="docutils literal notranslate"><span class="pre">calculatorMpiLoaded</span></code> and <code class="docutils literal notranslate"><span class="pre">calculatorMpiLoadError</span></code> let a host load it from a chosen path (or <code class="docutils literal notranslate"><span class="pre">RGPOT_MPI_LIBRARY</span></code>) and report failures.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">uma_ase_parity</span></code> requires the <code class="docutils literal notranslate"><span class="pre">.pt2</span></code> model path as its argument and prints a usage line without it; the former default was a TorchScript path <code class="docutils literal notranslate"><span class="pre">UmaPot</span></code> rejects.</p></li>
+<li><p>Energies and forces of the pair potentials and the Fortran potentials can differ from 3.4.0 in the last bits, because sums now run in sorted CSR and partner order.</p></li>
+</ul>
+</section>
+<section id="fixed">
+<h4>Fixed<a class="headerlink" href="#fixed" title="Link to this heading">¶</a></h4>
+<ul class="simple">
+<li><p>TBLitePot builds against tblite 0.6.0.
+The GFN calculator constructors take an optional config pointer there, and a null config keeps the previous behaviour.
+Older tblite keeps the two-argument call.</p></li>
+<li><p>The UmaPot README and <code class="docutils literal notranslate"><span class="pre">UmaConfig::cutoff</span></code> described a <code class="docutils literal notranslate"><span class="pre">model.pt2.json</span></code> sidecar that overrides the config.
+UmaPot reads only the metadata the exporter embeds in the <code class="docutils literal notranslate"><span class="pre">.pt2</span></code>; the docs say so and list the keys it uses.</p></li>
+<li><p>The eindir callbacks validate what a force callback returns with <code class="docutils literal notranslate"><span class="pre">RGPOT_SUCCESS</span></code> before reading it: a null forces tensor or data pointer, a wrong dtype, rank or element count, a non-finite force and a non-finite energy are refused with <code class="docutils literal notranslate"><span class="pre">EINDIR_INVALID_PARAMETER</span></code> and a <code class="docutils literal notranslate"><span class="pre">rgpot_last_error()</span></code> message, and the gradient output is left untouched.
+<code class="docutils literal notranslate"><span class="pre">n_atoms</span> <span class="pre">*</span> <span class="pre">3</span></code> overflow is refused at construction.</p></li>
+<li><p>The result cache no longer deadlocks a bound MPI world.
+A potential that reports the new <code class="docutils literal notranslate"><span class="pre">PotCaps::groupCollective</span></code> (<code class="docutils literal notranslate"><span class="pre">CPMDPot</span></code> does) has its cache hit or miss decided jointly over its calculator through the new <code class="docutils literal notranslate"><span class="pre">calculatorAgree</span></code>, so a geometry one rank holds and another misses is computed on every rank of the calculator instead of leaving the missing rank alone in the engine’s collective.</p></li>
+<li><p>UmaPot checks the charge, spin, task and composition embedded in an AOTI package against its <code class="docutils literal notranslate"><span class="pre">UmaConfig</span></code> and the input atoms on every force call, and throws <code class="docutils literal notranslate"><span class="pre">rgpot::UmaContractError</span></code> on a mismatch.
+Without the check, a config whose charge or spin differs from the package’s evaluates a different potential energy surface and reports no error.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">CPMDPot::forceImpl</span></code> exchanges force errors on its calculator’s communicator instead of <code class="docutils literal notranslate"><span class="pre">MPI_COMM_WORLD</span></code>.
+A host that hands calculator groups an uneven batch (two NEB endpoints on four groups) left the computing groups in that world exchange while the idle groups waited in <code class="docutils literal notranslate"><span class="pre">shareFromCalculator</span></code>, and every grouped run hung at its first such batch.
+A failure still prints on every rank of the failing calculator and aborts the whole world.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">UmaPot</span></code> refuses an edge count outside the range recorded in the <code class="docutils literal notranslate"><span class="pre">.pt2</span></code> metadata (<code class="docutils literal notranslate"><span class="pre">nedges_min</span></code>, <code class="docutils literal notranslate"><span class="pre">nedges_max</span></code>) with an <code class="docutils literal notranslate"><span class="pre">UmaContractError</span></code> on field <code class="docutils literal notranslate"><span class="pre">nedges</span></code>, instead of passing the compiled graph a shape it was not exported for.
+<code class="docutils literal notranslate"><span class="pre">scripts/export_uma_aoti.py</span></code> writes both keys: 1 to 65536 for a dynamic export, the traced edge count for a static one.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">scripts/export_baker_uma_aoti.py</span></code> deduplicates Baker systems by exact composition, charge and spin.
+Keying by <code class="docutils literal notranslate"><span class="pre">z_set</span></code> merged systems that share an element set but not their atom counts, and their packages cannot evaluate each other.</p></li>
+<li><p>In 3.4.0 a periodic pair list assumed an orthogonal box, and LJPot warned that the box is assumed to be orthogonal.
+Periodic images now use the full-lattice minimum image, and an ill-conditioned cell throws.
+Energies and forces on a non-orthogonal cell change.</p></li>
+<li><p>A cache hit restores the stored variance and stress.
+Records keep the energy and force prefix and append versioned variance and stress metadata.
+A record from an older build still reads, and a potential that reports stress treats a record without that metadata as a miss.</p></li>
+<li><p>The CMake install exports the neighbor-list library, xxHash, the Fortran runtime, the public Fortran potentials and their kernels, the CuH2 plugin entry points, the calculator schemas, the engine ABI headers, and the optional MPI calculator companion.
+A static core is usable from a shared consumer, and static kernels stay hidden at that link.
+MPI host targets are enabled only when mpi.h compiles.
+On Apple the Fortran Coulomb plugin links its C driver.</p></li>
+<li><p>Core potentials compile with their feature definitions.
+Engine plugins link the core archive on demand.
+potserv takes the torch dependencies when metatomic and rpc are both enabled.</p></li>
+<li><p>The UMA exporter rewrites a strided force-slice write so a snapshot of the base stays independent of later writes.
+Molecular inputs are centred before they are converted to the model’s precision.
+A rewritten AOTI archive is published without clobbering a package another reader still has open.
+An export candidate is kept only when its tensors run and match the reference.
+Package publication and reads retry a transient Windows sharing error.</p></li>
+<li><p>An LDA XcKernel accepts basis values that have no gradients.
+The Python bindings check XC operand arrays and keep them alive for the call.</p></li>
+<li><p>The CPMD engine is given the calculator group’s communicator.
+Communicator adopters are retained and deduplicated across binding orders.
+A refused calculator binding stops the next CPMD force evaluation.
+Registered CPMD callbacks stay on one process-lifetime engine handle.
+NWChem keeps one engine handle for each resolved function table for the life of the process.</p></li>
+<li><p>Pair sums of one geometry now agree bit for bit between a cold scan and a cached CSR list.
+In 3.4.0 those two orders could differ in the last bits, and repeated eOn NEB runs differed at 1e-12 eV.</p></li>
+</ul>
+</section>
+</section>
+<section id="id2">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/3.4.0">3.4.0</a> - 2026-09-30<a class="headerlink" href="#id2" title="Link to this heading">¶</a></h3>
+<section id="id3">
+<h4>Added<a class="headerlink" href="#id3" title="Link to this heading">¶</a></h4>
+<ul class="simple">
+<li><p>Calculator groups report how many there are and broadcast a result from one group to every rank; the meson build takes MPI through <code class="docutils literal notranslate"><span class="pre">-Dwith_mpi=enabled</span></code>.</p></li>
+</ul>
+</section>
+<section id="id4">
+<h4>Developer<a class="headerlink" href="#id4" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>The twelve-rank refused calculator split calls finalizeMpiAtExit, so mpirun can exit 0 after MPI_Init.</p></li>
 <li><p>The two-rank calculator share that matches calls finalizeMpiAtExit, so mpirun can exit 0 after MPI_Init.</p></li>
 <li><p>mpirun -n 4 calculator_group_test checks that rank 3 holds the buffer rank 0 filled. An out-of-range calculator owner aborts every rank.</p></li>
 </ul>
 </section>
-<section id="changed">
-<h4>Changed<a class="headerlink" href="#changed" title="Link to this heading">¶</a></h4>
+<section id="id5">
+<h4>Changed<a class="headerlink" href="#id5" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>Read the engine documentation at https://cpmdc.rgoswami.me.</p></li>
 </ul>
 </section>
-<section id="fixed">
-<h4>Fixed<a class="headerlink" href="#fixed" title="Link to this heading">¶</a></h4>
+<section id="id6">
+<h4>Fixed<a class="headerlink" href="#id6" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>A failed CPMD engine call sets an abort flag, and the exit handler calls <code class="docutils literal notranslate"><span class="pre">MPI_Abort</span></code> instead of a collective <code class="docutils literal notranslate"><span class="pre">MPI_Finalize</span></code> that peers stuck in a broadcast would never reach.</p></li>
 <li><p>A force that throws on one rank is printed on every rank in that call, then MPI_Abort runs on MPI_COMM_WORLD. MPI_Finalize at exit runs only when this library called MPI_Init.</p></li>
@@ -804,23 +997,23 @@ and this project adheres to <a class="reference external" href="https://semver.o
 </ul>
 </section>
 </section>
-<section id="id2">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/3.3.0">3.3.0</a> - 2026-09-28<a class="headerlink" href="#id2" title="Link to this heading">¶</a></h3>
-<section id="id3">
-<h4>Added<a class="headerlink" href="#id3" title="Link to this heading">¶</a></h4>
+<section id="id7">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/3.3.0">3.3.0</a> - 2026-09-28<a class="headerlink" href="#id7" title="Link to this heading">¶</a></h3>
+<section id="id8">
+<h4>Added<a class="headerlink" href="#id8" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>CPMD ranks can be split into one calculator group per image.</p></li>
 <li><p>The new <code class="docutils literal notranslate"><span class="pre">rgpot_eindir_abi_stamp()</span></code> returns the eindir-core ABI stamp of the objective base in <code class="docutils literal notranslate"><span class="pre">rgpot_potential_t</span></code>. The generated <code class="docutils literal notranslate"><span class="pre">rgpot.h</span></code> stays valid C, with the fused evaluation cache behind an opaque pointer.</p></li>
 </ul>
 </section>
-<section id="id4">
-<h4>Changed<a class="headerlink" href="#id4" title="Link to this heading">¶</a></h4>
+<section id="id9">
+<h4>Changed<a class="headerlink" href="#id9" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>Always compile the xTB dlopen frontend (<code class="docutils literal notranslate"><span class="pre">XTBDlopen</span></code>) without <code class="docutils literal notranslate"><span class="pre">-Dwith_xtb</span></code>, matching Metatomic/NWChem: hosts ship without NEEDED <code class="docutils literal notranslate"><span class="pre">libxtb</span></code> and load <code class="docutils literal notranslate"><span class="pre">libxtb_engine.so</span></code> via <code class="docutils literal notranslate"><span class="pre">RGPOT_XTB_ENGINE</span></code> at runtime. Linked <code class="docutils literal notranslate"><span class="pre">XTBPot</span></code> and the engine plugin still require <code class="docutils literal notranslate"><span class="pre">with_xtb</span></code>. Config types moved to <code class="docutils literal notranslate"><span class="pre">XTBConfig.hpp</span></code> (no <code class="docutils literal notranslate"><span class="pre">xtb.h</span></code>). (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/53">#53</a>)</p></li>
 </ul>
 </section>
-<section id="id5">
-<h4>Fixed<a class="headerlink" href="#id5" title="Link to this heading">¶</a></h4>
+<section id="id10">
+<h4>Fixed<a class="headerlink" href="#id10" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">CPMDPot</span></code> copies <code class="docutils literal notranslate"><span class="pre">PotentialResult.stress</span></code> into <code class="docutils literal notranslate"><span class="pre">ForceOut</span></code> when the engine returns nine components.</p></li>
 <li><p>RocksDB 11 builds of the cache work: <code class="docutils literal notranslate"><span class="pre">PotentialCache</span></code> opens the database through the <code class="docutils literal notranslate"><span class="pre">std::unique_ptr</span></code> <code class="docutils literal notranslate"><span class="pre">DB::Open</span></code> overload on RocksDB 10.4 and later. (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/54">#54</a>)</p></li>
@@ -838,10 +1031,10 @@ and this project adheres to <a class="reference external" href="https://semver.o
 </ul>
 </section>
 </section>
-<section id="id6">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/3.2.0">3.2.0</a> - 2026-09-13<a class="headerlink" href="#id6" title="Link to this heading">¶</a></h3>
-<section id="id7">
-<h4>Added<a class="headerlink" href="#id7" title="Link to this heading">¶</a></h4>
+<section id="id11">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/3.2.0">3.2.0</a> - 2026-09-13<a class="headerlink" href="#id11" title="Link to this heading">¶</a></h3>
+<section id="id12">
+<h4>Added<a class="headerlink" href="#id12" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>MOPACPot dlopens the split <a class="reference external" href="https://github.com/OmniPotentRPC/mopacc">mopacc</a>
 engine (<code class="docutils literal notranslate"><span class="pre">libmopacc.so</span></code>, OpenMOPAC). Packed <code class="docutils literal notranslate"><span class="pre">MopacCParams</span></code>.
@@ -854,8 +1047,8 @@ with <code class="docutils literal notranslate"><span class="pre">dft.xc</span><
 <li><p>UmaPot evaluates UMA / OMol from an AOTInductor <code class="docutils literal notranslate"><span class="pre">.pt2</span></code> (<code class="docutils literal notranslate"><span class="pre">scripts/export_uma_aoti.py</span></code>): vesin builds the neighbor list, the compiled graph returns energy and forces. Charge and spin are per-call tensor inputs. One <code class="docutils literal notranslate"><span class="pre">.pt2</span></code> is exported per composition (<code class="docutils literal notranslate"><span class="pre">merge_mole</span></code>); the sidecar records cutoff, neighbors, task, charge, spin, <code class="docutils literal notranslate"><span class="pre">z_set</span></code>, and label. <code class="docutils literal notranslate"><span class="pre">scripts/export_baker_uma_aoti.py</span></code> walks Baker endpoints and deduplicates by <code class="docutils literal notranslate"><span class="pre">(z_set,</span> <span class="pre">charge,</span> <span class="pre">spin)</span></code>. potserv accepts <code class="docutils literal notranslate"><span class="pre">Uma:&lt;model.pt2&gt;</span></code> and <code class="docutils literal notranslate"><span class="pre">Uma:&lt;model.pt2&gt;:&lt;task&gt;</span></code>.</p></li>
 </ul>
 </section>
-<section id="id8">
-<h4>Fixed<a class="headerlink" href="#id8" title="Link to this heading">¶</a></h4>
+<section id="id13">
+<h4>Fixed<a class="headerlink" href="#id13" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>CI pins snapper-fmt to v0.10.0. Latest 0.11.2 panics on UTF-8 in org files.</p></li>
 <li><p>Metatomic-enabled build-tree executables locate Torch and metatomic shared
@@ -864,28 +1057,28 @@ libraries without an <code class="docutils literal notranslate"><span class="pre
 </ul>
 </section>
 </section>
-<section id="id9">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/3.1.2">3.1.2</a> - 2026-09-04<a class="headerlink" href="#id9" title="Link to this heading">¶</a></h3>
-<section id="id10">
-<h4>Fixed<a class="headerlink" href="#id10" title="Link to this heading">¶</a></h4>
+<section id="id14">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/3.1.2">3.1.2</a> - 2026-09-04<a class="headerlink" href="#id14" title="Link to this heading">¶</a></h3>
+<section id="id15">
+<h4>Fixed<a class="headerlink" href="#id15" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>D3/D4 in the wheel are built from pinned meson wraps (static s-dftd3 / dftd4), not a conda prefix. The dftd4 wrap uses OpenBLAS as its LAPACK. <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span></code> no longer needs vendored <code class="docutils literal notranslate"><span class="pre">libblas</span></code> from micromamba.</p></li>
 </ul>
 </section>
 </section>
-<section id="id11">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/3.1.1">3.1.1</a> - 2026-09-04<a class="headerlink" href="#id11" title="Link to this heading">¶</a></h3>
-<section id="id12">
-<h4>Added<a class="headerlink" href="#id12" title="Link to this heading">¶</a></h4>
+<section id="id16">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/3.1.1">3.1.1</a> - 2026-09-04<a class="headerlink" href="#id16" title="Link to this heading">¶</a></h3>
+<section id="id17">
+<h4>Added<a class="headerlink" href="#id17" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>The PyPI wheel compiles ExprPot, D3Pot, D4Pot, and XcKernel and vendors <code class="docutils literal notranslate"><span class="pre">s-dftd3</span></code> / <code class="docutils literal notranslate"><span class="pre">dftd4</span></code>. <code class="docutils literal notranslate"><span class="pre">import</span> <span class="pre">rgpot</span></code> exposes those classes (<code class="docutils literal notranslate"><span class="pre">has_expr</span></code> / <code class="docutils literal notranslate"><span class="pre">has_dftd3</span></code> / <code class="docutils literal notranslate"><span class="pre">has_dftd4</span></code> / <code class="docutils literal notranslate"><span class="pre">has_xckernel</span></code>).</p></li>
 </ul>
 </section>
 </section>
-<section id="id13">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/3.1.0">3.1.0</a> - 2026-09-04<a class="headerlink" href="#id13" title="Link to this heading">¶</a></h3>
-<section id="id14">
-<h4>Added<a class="headerlink" href="#id14" title="Link to this heading">¶</a></h4>
+<section id="id18">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/3.1.0">3.1.0</a> - 2026-09-04<a class="headerlink" href="#id18" title="Link to this heading">¶</a></h3>
+<section id="id19">
+<h4>Added<a class="headerlink" href="#id19" title="Link to this heading">¶</a></h4>
 <ul>
 <li><p>A wheels workflow builds and publishes the Python package. rgpot had none:
 2.5.4 reached PyPI hand-built from a branch, with no tag and no
@@ -919,15 +1112,15 @@ When the result cache is on, hits are served per system and only the misses reac
 <li><p><code class="docutils literal notranslate"><span class="pre">rgpot-core</span></code> can load any minimum-profile backend by prefix, keep one persistent session, and exchange the shared <code class="docutils literal notranslate"><span class="pre">PotentialConfig</span></code>, <code class="docutils literal notranslate"><span class="pre">ForceInput</span></code>, and <code class="docutils literal notranslate"><span class="pre">PotentialResult</span></code> carriers in-process.</p></li>
 </ul>
 </section>
-<section id="id15">
-<h4>Changed<a class="headerlink" href="#id15" title="Link to this heading">¶</a></h4>
+<section id="id20">
+<h4>Changed<a class="headerlink" href="#id20" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>Docs credit Antics and load only <code class="docutils literal notranslate"><span class="pre">antics.js</span></code>; Umami tracker and label are gone.</p></li>
 <li><p>The 1 MiB large-file CI gate now allowlists <code class="docutils literal notranslate"><span class="pre">CppCore/tests/data/</span></code>, <code class="docutils literal notranslate"><span class="pre">third_party/</span></code>, and <code class="docutils literal notranslate"><span class="pre">pixi.lock</span></code> (XcKernel goldens and the lockfile). Other tracked files still fail at 1 MiB.</p></li>
 </ul>
 </section>
-<section id="id16">
-<h4>Fixed<a class="headerlink" href="#id16" title="Link to this heading">¶</a></h4>
+<section id="id21">
+<h4>Fixed<a class="headerlink" href="#id21" title="Link to this heading">¶</a></h4>
 <ul>
 <li><p>D3Pot now passes a sigma buffer to <code class="docutils literal notranslate"><span class="pre">dftd3_get_dispersion</span></code> so s-dftd3 fills the gradient (forces were previously left at zero).</p></li>
 <li><p>GGA TDA/RPA <code class="docutils literal notranslate"><span class="pre">applyFxc</span></code> keeps the generated 7-term monomials on the host long-double evaluator so C matches live <code class="docutils literal notranslate"><span class="pre">gen_vind</span></code> at exclusive 1e-17.</p></li>
@@ -957,10 +1150,10 @@ pin the exclusive 1e-17 C compare uses.</p></li>
 </ul>
 </section>
 </section>
-<section id="id17">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/3.0.2">3.0.2</a> - 2026-08-08<a class="headerlink" href="#id17" title="Link to this heading">¶</a></h3>
-<section id="id18">
-<h4>Fixed<a class="headerlink" href="#id18" title="Link to this heading">¶</a></h4>
+<section id="id22">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/3.0.2">3.0.2</a> - 2026-08-08<a class="headerlink" href="#id22" title="Link to this heading">¶</a></h3>
+<section id="id23">
+<h4>Fixed<a class="headerlink" href="#id23" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>Windows MSVC builds Cap’n Proto with lean windows.h defines, and links Flang pot kernels through MSVC lib.exe archives so llvm-ar no longer triggers LNK1107. (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/61">#61</a>)</p></li>
 <li><p>MetatomicPot no longer fails to load exported PET-MAD (and similar) models on metatensor-torch 0.10.3: scripted modules without <code class="docutils literal notranslate"><span class="pre">_mts_buffer_names</span></code> no longer trip the mixed-dict <code class="docutils literal notranslate"><span class="pre">.to()</span></code> walk.</p></li>
@@ -971,10 +1164,10 @@ plus a RUNPATH into site-packages torch/metatensor/vesin.</p></li>
 </ul>
 </section>
 </section>
-<section id="id19">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/3.0.1">3.0.1</a> - 2026-07-26<a class="headerlink" href="#id19" title="Link to this heading">¶</a></h3>
-<section id="id20">
-<h4>Fixed<a class="headerlink" href="#id20" title="Link to this heading">¶</a></h4>
+<section id="id24">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/3.0.1">3.0.1</a> - 2026-07-26<a class="headerlink" href="#id24" title="Link to this heading">¶</a></h3>
+<section id="id25">
+<h4>Fixed<a class="headerlink" href="#id25" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>The Python wheel builds the Fortran 2018 potentials. <code class="docutils literal notranslate"><span class="pre">[tool.meson-python.args]</span></code>
 never passed <code class="docutils literal notranslate"><span class="pre">-Dwith_fortran_pots</span></code>, so a wheel carried a <code class="docutils literal notranslate"><span class="pre">librgpot</span></code> with no
@@ -986,10 +1179,10 @@ other dependency.</p></li>
 </ul>
 </section>
 </section>
-<section id="id21">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/3.0.0">3.0.0</a> - 2026-07-26<a class="headerlink" href="#id21" title="Link to this heading">¶</a></h3>
-<section id="id22">
-<h4>Added<a class="headerlink" href="#id22" title="Link to this heading">¶</a></h4>
+<section id="id26">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/3.0.0">3.0.0</a> - 2026-07-26<a class="headerlink" href="#id26" title="Link to this heading">¶</a></h3>
+<section id="id27">
+<h4>Added<a class="headerlink" href="#id27" title="Link to this heading">¶</a></h4>
 <ul>
 <li><p>Pot-hosting groundwork for absorbing eOn’s potential kernels:
 <code class="docutils literal notranslate"><span class="pre">PotCaps</span></code> capability descriptors (<code class="docutils literal notranslate"><span class="pre">PotentialBase::caps()</span></code>) replace
@@ -1032,8 +1225,8 @@ fingerprints, and appear in <code class="docutils literal notranslate"><span cla
 <code class="docutils literal notranslate"><span class="pre">LJCluster</span></code> and <code class="docutils literal notranslate"><span class="pre">ZBL</span></code>.</p></li>
 </ul>
 </section>
-<section id="id23">
-<h4>Changed<a class="headerlink" href="#id23" title="Link to this heading">¶</a></h4>
+<section id="id28">
+<h4>Changed<a class="headerlink" href="#id28" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">LJPot</span></code> pair search goes through <code class="docutils literal notranslate"><span class="pre">rgpot::nlist::PairListCache</span></code> (header-only
 port of eOn’s PairListCache): Verlet-skin cached candidate lists in a
@@ -1074,8 +1267,8 @@ unchanged. In-tree sources gate the Fortran pots on
 consumers.</p></li>
 </ul>
 </section>
-<section id="id24">
-<h4>Fixed<a class="headerlink" href="#id24" title="Link to this heading">¶</a></h4>
+<section id="id29">
+<h4>Fixed<a class="headerlink" href="#id29" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">potctl</span></code>’s lockstep check now covers <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>, so the Python
 package version cannot drift away from meson, CMake, cargo, pixi, and
@@ -1136,10 +1329,10 @@ Marked as an upstream candidate alongside the other local vesin patches.</p></li
 </ul>
 </section>
 </section>
-<section id="id25">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/2.5.3">2.5.3</a> - 2026-07-20<a class="headerlink" href="#id25" title="Link to this heading">¶</a></h3>
-<section id="id26">
-<h4>Fixed<a class="headerlink" href="#id26" title="Link to this heading">¶</a></h4>
+<section id="id30">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/2.5.3">2.5.3</a> - 2026-07-20<a class="headerlink" href="#id30" title="Link to this heading">¶</a></h3>
+<section id="id31">
+<h4>Fixed<a class="headerlink" href="#id31" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>Fix <code class="docutils literal notranslate"><span class="pre">-Dwith_rpc_client_only=true</span> <span class="pre">-Dwith_tests=true</span></code>: use <code class="docutils literal notranslate"><span class="pre">pot_bridge_dep</span></code>
 (was undefined <code class="docutils literal notranslate"><span class="pre">rgpot_bridge_dep</span></code>), link <code class="docutils literal notranslate"><span class="pre">units.cc</span></code> into unit tests when
@@ -1149,10 +1342,10 @@ client frontend product without a live server.</p></li>
 </ul>
 </section>
 </section>
-<section id="id27">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/2.5.2">2.5.2</a> - 2026-07-18<a class="headerlink" href="#id27" title="Link to this heading">¶</a></h3>
-<section id="id28">
-<h4>Fixed<a class="headerlink" href="#id28" title="Link to this heading">¶</a></h4>
+<section id="id32">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/2.5.2">2.5.2</a> - 2026-07-18<a class="headerlink" href="#id32" title="Link to this heading">¶</a></h3>
+<section id="id33">
+<h4>Fixed<a class="headerlink" href="#id33" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>Rebuild Metatomic engines against vesin 0.6+ <code class="docutils literal notranslate"><span class="pre">VesinOptions</span></code> (<code class="docutils literal notranslate"><span class="pre">skin</span></code> /
 <code class="docutils literal notranslate"><span class="pre">n_threads</span></code>) so <code class="docutils literal notranslate"><span class="pre">vesin_neighbors</span></code> no longer fails with a bare error when
@@ -1160,10 +1353,10 @@ runtime libvesin is 0.6 and the engine was built for 0.5.</p></li>
 </ul>
 </section>
 </section>
-<section id="id29">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/2.5.0">2.5.0</a> - 2026-07-17<a class="headerlink" href="#id29" title="Link to this heading">¶</a></h3>
-<section id="id30">
-<h4>Added<a class="headerlink" href="#id30" title="Link to this heading">¶</a></h4>
+<section id="id34">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/2.5.0">2.5.0</a> - 2026-07-17<a class="headerlink" href="#id34" title="Link to this heading">¶</a></h3>
+<section id="id35">
+<h4>Added<a class="headerlink" href="#id35" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>Multi-language Codecov coverage (Rust, C++, Python, Fortran) with OIDC uploads. (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/47">#47</a>)</p></li>
 <li><p>Install headers and <code class="docutils literal notranslate"><span class="pre">rgpot.pc</span></code> (<code class="docutils literal notranslate"><span class="pre">nwchempot</span></code> / <code class="docutils literal notranslate"><span class="pre">cpmdpot</span></code> / <code class="docutils literal notranslate"><span class="pre">ptlrpc</span></code>; no
@@ -1201,43 +1394,43 @@ Metatomic multi-ABI engines for <strong>torch 2.7+</strong>.</p></li>
 <code class="docutils literal notranslate"><span class="pre">libxtb_engine.so</span></code> C ABI plugin (same pattern as metatomic engine).</p></li>
 </ul>
 </section>
-<section id="id31">
-<h4>Fixed<a class="headerlink" href="#id31" title="Link to this heading">¶</a></h4>
+<section id="id36">
+<h4>Fixed<a class="headerlink" href="#id36" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>Metatomic C ABI engines soft-release the GIL so pyeonclient Job.run can evaluate forces under torch autograd without a fat metatomic link.</p></li>
 <li><p>SoftGilRelease in the metatomic C ABI only calls PyEval_SaveThread when PyGILState_Check is true, so nested GIL release from pyeonclient Job.run is safe.</p></li>
 </ul>
 </section>
 </section>
-<section id="id32">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/2.2.1">2.2.1</a> - 2026-07-06<a class="headerlink" href="#id32" title="Link to this heading">¶</a></h3>
-<section id="id33">
-<h4>Fixed<a class="headerlink" href="#id33" title="Link to this heading">¶</a></h4>
+<section id="id37">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/2.2.1">2.2.1</a> - 2026-07-06<a class="headerlink" href="#id37" title="Link to this heading">¶</a></h3>
+<section id="id38">
+<h4>Fixed<a class="headerlink" href="#id38" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>Windows/MSVC builds no longer fail on unused <code class="docutils literal notranslate"><span class="pre">cxxabi.h</span></code> includes or nested
 <code class="docutils literal notranslate"><span class="pre">std::array</span></code> box flattening in <code class="docutils literal notranslate"><span class="pre">Potential</span></code> (<code class="docutils literal notranslate"><span class="pre">C1083</span></code> / <code class="docutils literal notranslate"><span class="pre">C2676</span></code>).</p></li>
 </ul>
 </section>
 </section>
-<section id="id34">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/2.2.0">2.2.0</a> - 2026-07-05<a class="headerlink" href="#id34" title="Link to this heading">¶</a></h3>
-<section id="id35">
-<h4>Added<a class="headerlink" href="#id35" title="Link to this heading">¶</a></h4>
+<section id="id39">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/2.2.0">2.2.0</a> - 2026-07-05<a class="headerlink" href="#id39" title="Link to this heading">¶</a></h3>
+<section id="id40">
+<h4>Added<a class="headerlink" href="#id40" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>A profile-driven ABI loader (<code class="docutils literal notranslate"><span class="pre">rgpot::abi::ProfileLoader</span></code>) resolves the minimum
 potential ABI available from a single install prefix.</p></li>
 </ul>
 </section>
-<section id="id36">
-<h4>Changed<a class="headerlink" href="#id36" title="Link to this heading">¶</a></h4>
+<section id="id41">
+<h4>Changed<a class="headerlink" href="#id41" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>The canonical potentials-schema contract is pinned at v1.13.0, adding the
 Capabilities discovery surface; the in-tree <code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code> copies track it
 byte-for-byte.</p></li>
 </ul>
 </section>
-<section id="id37">
-<h4>Fixed<a class="headerlink" href="#id37" title="Link to this heading">¶</a></h4>
+<section id="id42">
+<h4>Fixed<a class="headerlink" href="#id42" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">rgpot-core</span></code> publishes to crates.io again: <code class="docutils literal notranslate"><span class="pre">dlpk</span></code> (0.1.5) and <code class="docutils literal notranslate"><span class="pre">eindir-core</span></code>
 (0.5.0, <code class="docutils literal notranslate"><span class="pre">capi</span></code>) now resolve from the registry instead of git pins, and the
@@ -1245,43 +1438,43 @@ byte-for-byte.</p></li>
 </ul>
 </section>
 </section>
-<section id="id38">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/2.1.0">2.1.0</a> - 2026-07-03<a class="headerlink" href="#id38" title="Link to this heading">¶</a></h3>
-<section id="id39">
-<h4>Added<a class="headerlink" href="#id39" title="Link to this heading">¶</a></h4>
+<section id="id43">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/2.1.0">2.1.0</a> - 2026-07-03<a class="headerlink" href="#id43" title="Link to this heading">¶</a></h3>
+<section id="id44">
+<h4>Added<a class="headerlink" href="#id44" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>eOn integration: eOn ships an in-process <code class="docutils literal notranslate"><span class="pre">RgpotPot</span></code> potential (<code class="docutils literal notranslate"><span class="pre">-Dwith_rgpot=true</span></code>) that consumes rgpot’s <code class="docutils literal notranslate"><span class="pre">NWChemPot</span></code> / <code class="docutils literal notranslate"><span class="pre">CPMDPot</span></code> frontends as a Meson subproject and <code class="docutils literal notranslate"><span class="pre">dlopen</span></code>s <code class="docutils literal notranslate"><span class="pre">libnwchemc</span></code> / <code class="docutils literal notranslate"><span class="pre">libcpmdc</span></code> directly, with <code class="docutils literal notranslate"><span class="pre">potserv</span></code> remaining available for out-of-process RPC. See <code class="docutils literal notranslate"><span class="pre">docs/orgmode/howto/eon-rgpot.org</span></code>.</p></li>
 </ul>
 </section>
-<section id="id40">
-<h4>Changed<a class="headerlink" href="#id40" title="Link to this heading">¶</a></h4>
+<section id="id45">
+<h4>Changed<a class="headerlink" href="#id45" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>The Cap’n Proto schema is pinned to canonical <a class="reference external" href="https://github.com/OmniPotentRPC/potentials-schema">potentials-schema</a> v1.12.0: <code class="docutils literal notranslate"><span class="pre">MetatomicParams</span></code> arm (union ordinal 4) with the upstream requested-outputs surface, typed NWChem and CPMD parity batches (dplot/esp, prop/linres/pimd/path/tddft), <code class="docutils literal notranslate"><span class="pre">CommonMethodSpec</span></code> overlay, and a schema-sync CI gate that fails when the vendored copies diverge from the pinned release.</p></li>
 </ul>
 </section>
-<section id="id41">
-<h4>Fixed<a class="headerlink" href="#id41" title="Link to this heading">¶</a></h4>
+<section id="id46">
+<h4>Fixed<a class="headerlink" href="#id46" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>Release-prepare CI no longer runs <code class="docutils literal notranslate"><span class="pre">cargo</span> <span class="pre">publish</span> <span class="pre">--dry-run</span></code> for <code class="docutils literal notranslate"><span class="pre">rgpot-core</span></code> while it depends on git-only <code class="docutils literal notranslate"><span class="pre">dlpk</span></code> / <code class="docutils literal notranslate"><span class="pre">eindir-core</span></code> (not on crates.io). The job uses <code class="docutils literal notranslate"><span class="pre">cargo</span> <span class="pre">check</span> <span class="pre">-p</span> <span class="pre">rgpot-core</span> <span class="pre">--locked</span></code>, and <code class="docutils literal notranslate"><span class="pre">package.publish</span></code> is <code class="docutils literal notranslate"><span class="pre">false</span></code> until registry deps exist. (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/42">#42</a>)</p></li>
 </ul>
 </section>
 </section>
-<section id="id42">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/2.0.0">2.0.0</a> - 2026-06-26<a class="headerlink" href="#id42" title="Link to this heading">¶</a></h3>
+<section id="id47">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/2.0.0">2.0.0</a> - 2026-06-26<a class="headerlink" href="#id47" title="Link to this heading">¶</a></h3>
 <blockquote>
 <div><p>Channel note: <code class="docutils literal notranslate"><span class="pre">v2.0.0</span></code> was prepared on <code class="docutils literal notranslate"><span class="pre">main</span></code> but never tagged or published;
 the content below first ships in <code class="docutils literal notranslate"><span class="pre">v2.1.0</span></code>.</p>
 </div></blockquote>
-<section id="id43">
-<h4>Added<a class="headerlink" href="#id43" title="Link to this heading">¶</a></h4>
+<section id="id48">
+<h4>Added<a class="headerlink" href="#id48" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>NWChemPot backend: stable message-based C ABI (<code class="docutils literal notranslate"><span class="pre">nwchem_c_abi.h</span></code>), always-built frontend with <code class="docutils literal notranslate"><span class="pre">dlopen</span></code> of optional <code class="docutils literal notranslate"><span class="pre">libnwchemc</span></code>, stub ABI for CI without NWChem, Cap’n Proto <code class="docutils literal notranslate"><span class="pre">NWChemParams</span></code>/<code class="docutils literal notranslate"><span class="pre">configure</span> <span class="pre">&#64;1</span></code>, and <code class="docutils literal notranslate"><span class="pre">potserv</span> <span class="pre">...</span> <span class="pre">NWChem</span></code>.</p></li>
 <li><p>CPMDPot backend: always-built frontend with <code class="docutils literal notranslate"><span class="pre">dlopen</span></code> of optional <code class="docutils literal notranslate"><span class="pre">libcpmdc</span></code> (split <a class="reference external" href="https://github.com/OmniPotentRPC/cpmdc"><code class="docutils literal notranslate"><span class="pre">cpmdc</span></code></a> engine), Cap’n Proto <code class="docutils literal notranslate"><span class="pre">CPMDParams</span></code> / <code class="docutils literal notranslate"><span class="pre">PotentialConfig.cpmd</span></code> / <code class="docutils literal notranslate"><span class="pre">configure</span></code>, structured <code class="docutils literal notranslate"><span class="pre">CPMDInputSection</span></code> arms, in-tree <code class="docutils literal notranslate"><span class="pre">cpmdc_fake_engine</span></code> for CI without CPMD, and <code class="docutils literal notranslate"><span class="pre">potserv</span> <span class="pre">...</span> <span class="pre">CPMD</span></code>. Engine lookup: explicit <code class="docutils literal notranslate"><span class="pre">enginePath</span></code>, then <code class="docutils literal notranslate"><span class="pre">CPMDC_LIBRARY</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_CPMDC_ENGINE</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_CPMD_ENGINE</span></code>, then <code class="docutils literal notranslate"><span class="pre">libcpmdc.so</span></code> and the other default names.</p></li>
 <li><p>rgpot potentials are now eindir objectives: <code class="docutils literal notranslate"><span class="pre">rgpot_potential_t</span></code> embeds eindir’s <code class="docutils literal notranslate"><span class="pre">eindir_objective_t</span></code> as its first member (zero-cost IS-A), with the embedded eval/grad callbacks routed through the rgpot force callback (gradient = -force). rgpot-core consumes <code class="docutils literal notranslate"><span class="pre">eindir-core</span></code> as a shared Cargo crate rather than a prebuilt static lib, so downstream Rust consumers (e.g. <code class="docutils literal notranslate"><span class="pre">anneal-core</span></code>) can minimize an rgpot potential through <code class="docutils literal notranslate"><span class="pre">eindir_core::Objective&lt;f64&gt;</span></code> without a two-Rust-runtime conflict. See <code class="docutils literal notranslate"><span class="pre">docs/orgmode/howto/eindir-anneal.org</span></code>.</p></li>
 </ul>
 </section>
-<section id="id44">
-<h4>Developer<a class="headerlink" href="#id44" title="Link to this heading">¶</a></h4>
+<section id="id49">
+<h4>Developer<a class="headerlink" href="#id49" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>CI authoring uses a Nickel <code class="docutils literal notranslate"><span class="pre">ci/gha/</span></code> library with a single hand-maintained
 <code class="docutils literal notranslate"><span class="pre">ci-orchestrator.yml</span></code> for PR/main jobs (prepare/plan, hygiene, build/rust/bridge,
@@ -1291,17 +1484,17 @@ cosmo potctl, and doc-commenter. Removed redundant <code class="docutils literal
 the orchestrator plus <code class="docutils literal notranslate"><span class="pre">gen-gha</span></code>/<code class="docutils literal notranslate"><span class="pre">gha-drift</span></code> for the remaining exports. (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/40">#40</a>)</p></li>
 </ul>
 </section>
-<section id="id45">
-<h4>Changed<a class="headerlink" href="#id45" title="Link to this heading">¶</a></h4>
+<section id="id50">
+<h4>Changed<a class="headerlink" href="#id50" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>NWChemPot is now a pure consumer of the split <a class="reference external" href="https://github.com/OmniPotentRPC/nwchemc"><code class="docutils literal notranslate"><span class="pre">nwchemc</span></code></a> engine: the in-tree NWChem embed (<code class="docutils literal notranslate"><span class="pre">nwchem_c_abi.c</span></code>, <code class="docutils literal notranslate"><span class="pre">nwchem_embed_c_api.f90</span></code>, <code class="docutils literal notranslate"><span class="pre">nwchem_embed_legacy.F</span></code>) and the <code class="docutils literal notranslate"><span class="pre">-Dwith_nwchem</span></code>/<code class="docutils literal notranslate"><span class="pre">-Dnwchem_root</span></code>/<code class="docutils literal notranslate"><span class="pre">-Dnwchem_target</span></code> build options are removed. The frontend always builds and <code class="docutils literal notranslate"><span class="pre">dlopen</span></code>s <code class="docutils literal notranslate"><span class="pre">libnwchemc.so</span></code>; the capnp schema is synced byte-for-byte to nwchemc’s canonical superset so a flat <code class="docutils literal notranslate"><span class="pre">NWChemParams</span></code> round-trips with no field loss.</p></li>
 </ul>
 </section>
 </section>
-<section id="id46">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.2.0">1.2.0</a> - 2026-06-24<a class="headerlink" href="#id46" title="Link to this heading">¶</a></h3>
-<section id="id47">
-<h4>Added<a class="headerlink" href="#id47" title="Link to this heading">¶</a></h4>
+<section id="id51">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.2.0">1.2.0</a> - 2026-06-24<a class="headerlink" href="#id51" title="Link to this heading">¶</a></h3>
+<section id="id52">
+<h4>Added<a class="headerlink" href="#id52" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>XTBPot: GFN tight-binding via the xtb C API (GFNFF, GFN0/1/2-xTB). Feature-gated with <code class="docutils literal notranslate"><span class="pre">-Dwith_xtb=true</span></code>. RPC names <code class="docutils literal notranslate"><span class="pre">XTB</span></code>, <code class="docutils literal notranslate"><span class="pre">GFNFF</span></code>, <code class="docutils literal notranslate"><span class="pre">GFN0xTB</span></code>, <code class="docutils literal notranslate"><span class="pre">GFN1xTB</span></code>. (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/35">#35</a>)</p></li>
 <li><p>TBLitePot: GFN tight-binding via the tblite C API (GFN1, GFN2, IPEA1). Feature-gated with <code class="docutils literal notranslate"><span class="pre">-Dwith_tblite=true</span></code>. (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/36">#36</a>)</p></li>
@@ -1309,8 +1502,8 @@ the orchestrator plus <code class="docutils literal notranslate"><span class="pr
 <li><p>Units module (<code class="docutils literal notranslate"><span class="pre">rgpot/units.hpp</span></code>): CODATA 2018 constants plus a runtime unit expression parser, with Cap’n Proto <code class="docutils literal notranslate"><span class="pre">lengthUnit</span></code>/<code class="docutils literal notranslate"><span class="pre">energyUnit</span></code> negotiation on the RPC boundary. (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/38">#38</a>)</p></li>
 </ul>
 </section>
-<section id="id48">
-<h4>Developer<a class="headerlink" href="#id48" title="Link to this heading">¶</a></h4>
+<section id="id53">
+<h4>Developer<a class="headerlink" href="#id53" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>Lockstep monorepo release via cocogitto 7 + towncrier + <code class="docutils literal notranslate"><span class="pre">potctl</span></code> (<code class="docutils literal notranslate"><span class="pre">potctl/</span></code>,
 not published): <code class="docutils literal notranslate"><span class="pre">cog</span> <span class="pre">bump</span></code> runs <code class="docutils literal notranslate"><span class="pre">potctl</span> <span class="pre">release</span> <span class="pre">sync</span></code> then towncrier then
@@ -1323,17 +1516,17 @@ writes all surfaces, cargo publish –locked only, RC tags skip crates.io,
 release-prepare cargo dry-run, SECURITY.md and CODEOWNERS for release surfaces.</p></li>
 </ul>
 </section>
-<section id="id49">
-<h4>Fixed<a class="headerlink" href="#id49" title="Link to this heading">¶</a></h4>
+<section id="id54">
+<h4>Fixed<a class="headerlink" href="#id54" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>MetatomicPot: target vesin 0.5+ <code class="docutils literal notranslate"><span class="pre">VesinDevice</span></code> struct (<code class="docutils literal notranslate"><span class="pre">{VesinDeviceKind,</span> <span class="pre">device_id}</span></code>, pass <code class="docutils literal notranslate"><span class="pre">VesinDevice{VesinCPU,</span> <span class="pre">0}</span></code>) and zero-initialized <code class="docutils literal notranslate"><span class="pre">VesinOptions</span></code> (<code class="docutils literal notranslate"><span class="pre">sorted</span></code> / <code class="docutils literal notranslate"><span class="pre">algorithm</span></code>).</p></li>
 </ul>
 </section>
 </section>
-<section id="id50">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.1.0">1.1.0</a> - 2026-03-29<a class="headerlink" href="#id50" title="Link to this heading">¶</a></h3>
-<section id="id51">
-<h4>Added<a class="headerlink" href="#id51" title="Link to this heading">¶</a></h4>
+<section id="id55">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.1.0">1.1.0</a> - 2026-03-29<a class="headerlink" href="#id55" title="Link to this heading">¶</a></h3>
+<section id="id56">
+<h4>Added<a class="headerlink" href="#id56" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>XTBPot: GFN tight-binding potential via xtb (GFNFF, GFN0, GFN1, GFN2). Feature-gated with <code class="docutils literal notranslate"><span class="pre">-Dwith_xtb=true</span></code>. (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/35">#35</a>)</p></li>
 <li><p>TBLitePot: GFN tight-binding potential via tblite (GFN1, GFN2, IPEA1). Feature-gated with <code class="docutils literal notranslate"><span class="pre">-Dwith_tblite=true</span></code>. (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/36">#36</a>)</p></li>
@@ -1342,34 +1535,34 @@ release-prepare cargo dry-run, SECURITY.md and CODEOWNERS for release surfaces.<
 </ul>
 </section>
 </section>
-<section id="id52">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.0.3">1.0.3</a> - 2026-03-01<a class="headerlink" href="#id52" title="Link to this heading">¶</a></h3>
-<section id="id53">
-<h4>Fixed<a class="headerlink" href="#id53" title="Link to this heading">¶</a></h4>
+<section id="id57">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.0.3">1.0.3</a> - 2026-03-01<a class="headerlink" href="#id57" title="Link to this heading">¶</a></h3>
+<section id="id58">
+<h4>Fixed<a class="headerlink" href="#id58" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>MSVC/clang-cl compatibility: use <code class="docutils literal notranslate"><span class="pre">/W3</span></code> instead of GCC/Clang warning flags and skip <code class="docutils literal notranslate"><span class="pre">-lstdc++</span></code> link arg on Windows (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/31">#31</a>)</p></li>
 </ul>
 </section>
 </section>
-<section id="id54">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.0.2">1.0.2</a> - 2026-03-01<a class="headerlink" href="#id54" title="Link to this heading">¶</a></h3>
-<section id="id55">
-<h4>Added<a class="headerlink" href="#id55" title="Link to this heading">¶</a></h4>
+<section id="id59">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.0.2">1.0.2</a> - 2026-03-01<a class="headerlink" href="#id59" title="Link to this heading">¶</a></h3>
+<section id="id60">
+<h4>Added<a class="headerlink" href="#id60" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>External integration guide covering namespace collision mitigation when embedding rgpot as a subproject (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/30">#30</a>)</p></li>
 </ul>
 </section>
-<section id="id56">
-<h4>Changed<a class="headerlink" href="#id56" title="Link to this heading">¶</a></h4>
+<section id="id61">
+<h4>Changed<a class="headerlink" href="#id61" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>CI dependency bumps and cleanup to prevent trailing whitespace in generated headers (<a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/issues/29">#29</a>)</p></li>
 </ul>
 </section>
 </section>
-<section id="id57">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.0.0">1.0.0</a> - 2026-02-15<a class="headerlink" href="#id57" title="Link to this heading">¶</a></h3>
-<section id="id58">
-<h4>Added<a class="headerlink" href="#id58" title="Link to this heading">¶</a></h4>
+<section id="id62">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/1.0.0">1.0.0</a> - 2026-02-15<a class="headerlink" href="#id62" title="Link to this heading">¶</a></h3>
+<section id="id63">
+<h4>Added<a class="headerlink" href="#id63" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>doc(arch): add architecture guide covering layer diagram, error conventions, and how to register new potentials</p></li>
 <li><p>feat(build): add release CI workflow, meson subproject install guards, CMake FetchContent readiness, and package version config</p></li>
@@ -1384,23 +1577,23 @@ release-prepare cargo dry-run, SECURITY.md and CODEOWNERS for release surfaces.<
 <li><p>test(rust): add 39 unit tests covering types, status codes, potential lifecycle, C API, null-pointer handling, error propagation, and <code class="docutils literal notranslate"><span class="pre">free_fn</span></code> invocation</p></li>
 </ul>
 </section>
-<section id="id59">
-<h4>Changed<a class="headerlink" href="#id59" title="Link to this heading">¶</a></h4>
+<section id="id64">
+<h4>Changed<a class="headerlink" href="#id64" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>chore(build): add Meson <code class="docutils literal notranslate"><span class="pre">with_rust_core</span></code> option, <code class="docutils literal notranslate"><span class="pre">rust-test</span></code> / <code class="docutils literal notranslate"><span class="pre">rust-test-all</span></code> pixi tasks, and <code class="docutils literal notranslate"><span class="pre">cargo-nextest</span></code> dependency</p></li>
 </ul>
 </section>
-<section id="id60">
-<h4>Fixed<a class="headerlink" href="#id60" title="Link to this heading">¶</a></h4>
+<section id="id65">
+<h4>Fixed<a class="headerlink" href="#id65" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>fix(cpp): remove incorrect <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">&quot;C&quot;</span></code> trampolines from <code class="docutils literal notranslate"><span class="pre">LJPot.hpp</span></code> and <code class="docutils literal notranslate"><span class="pre">CuH2Pot.hpp</span></code> that used raw <code class="docutils literal notranslate"><span class="pre">int</span></code> returns and <code class="docutils literal notranslate"><span class="pre">void*</span></code> params; use typed <code class="docutils literal notranslate"><span class="pre">PotentialHandle::from_impl&lt;&gt;()</span></code> template instead</p></li>
 </ul>
 </section>
 </section>
-<section id="id61">
-<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/v0.0.1">0.0.1</a> - 2024-01-26<a class="headerlink" href="#id61" title="Link to this heading">¶</a></h3>
-<section id="id62">
-<h4>Added<a class="headerlink" href="#id62" title="Link to this heading">¶</a></h4>
+<section id="id66">
+<h3><a class="reference external" href="https://github.com/OmniPotentRPC/rgpot/tree/v0.0.1">0.0.1</a> - 2024-01-26<a class="headerlink" href="#id66" title="Link to this heading">¶</a></h3>
+<section id="id67">
+<h4>Added<a class="headerlink" href="#id67" title="Link to this heading">¶</a></h4>
 <ul class="simple">
 <li><p>Initial release with C++ core: Lennard-Jones and CuH2 EAM potentials.</p></li>
 <li><p>CRTP-based <code class="docutils literal notranslate"><span class="pre">Potential&lt;Derived&gt;</span></code> template with optional caching.</p></li>
