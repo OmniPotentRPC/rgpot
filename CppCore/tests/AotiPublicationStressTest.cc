@@ -15,11 +15,13 @@
 
 namespace {
 
+// Eight writers publish a 4 MiB payload while one reader samples it.
+// Thirty rounds repeat that race. Each sample is one complete payload.
 constexpr int kWriters = 8;
-constexpr int kReaders = 4;
+constexpr int kReaders = 1;
 constexpr int kIterations = 8;
-constexpr int kRounds = 20;
-constexpr std::size_t kSize = 256 * 1024;
+constexpr int kRounds = 30;
+constexpr std::size_t kSize = 4 * 1024 * 1024;
 
 int run_round(const std::filesystem::path &target, std::string &error) {
   std::atomic<int> failures{0};
