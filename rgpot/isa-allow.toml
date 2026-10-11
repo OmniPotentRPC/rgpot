@@ -170,3 +170,11 @@ reason = "Highway CPUID helpers in libhwy"
 symbol = '^__aarch64_(ldadd|ldclr|ldeor|ldset|swp|cas)'
 features = ["lse"]
 reason = "libgcc outlined LSE atomics linked into the shared library"
+
+# FMA bodies outside a Highway namespace. Each one is entered only after
+# glibc reports that the processor's FMA is usable. The SSE2 kernel that
+# runs when it is not stays free of these instructions.
+[[allow]]
+symbol = '^rgpot::simd::(exact_fma_hw|r2_hw_n|r2_hw|accept_row_hw|exp2_hw_finite|exp2_hw|exp8_hw|exp_hw_n|morse8_hw|eam_fma|lj_hw|morse_hw|eam_hw)\b'
+features = ["avx", "fma", "sse3"]
+reason = "FMA bodies selected when the processor's FMA is usable"
