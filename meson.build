@@ -379,7 +379,8 @@ if get_option('with_tblite')
     _tblite_ver = tblite_dep.version()
     if (
         tblite_dep.type_name() == 'internal'
-        and (_tblite_ver == 'unknown' or _tblite_ver == 'undefined')
+        and (_tblite_ver == 'unknown'
+        or _tblite_ver == 'undefined')
     )
         _tblite_sub = subproject('tblite', required: false)
         if _tblite_sub.found()
