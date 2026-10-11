@@ -51,6 +51,8 @@ Inputs are float64, C contiguous, and CPU, with =.noconvert()=.
 header =include/rgbind/rgbind.hpp=.
 The link line uses hidden visibility, =-Wl,--exclude-libs,ALL= on Linux,
 an export list on macOS, and a =.def= file on Windows.
+The =.def= file does not drop =__declspec(dllexport)= symbols, so a
+post-link step rewrites the export directory.
 Each of those keeps only =PyInit__core= (F9).
 Sub-interpreters are unsupported.
 Compile with =-ffp-contract=off=.

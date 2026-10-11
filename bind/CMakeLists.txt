@@ -57,6 +57,20 @@ if(APPLE)
   target_link_options(_rgbind_test PRIVATE
     "LINKER:-exported_symbols_list,${CMAKE_CURRENT_BINARY_DIR}/rgbind_exports.txt")
 endif()
+# A .def file does not drop __declspec(dllexport) symbols from the static
+# nanobind library. The post-link step leaves only PyInit__rgbind_test (F9).
+if(MSVC)
+  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/rgbind_exports.def" "EXPORTS\n  PyInit__rgbind_test\n")
+  target_link_options(_rgbind_test PRIVATE
+    "/DEF:${CMAKE_CURRENT_BINARY_DIR}/rgbind_exports.def")
+  add_custom_command(
+    TARGET _rgbind_test POST_BUILD
+    COMMAND "${Python_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/ci/limit_pe_exports.py"
+            "$<TARGET_FILE:_rgbind_test>"
+            "PyInit__rgbind_test"
+    VERBATIM)
+endif()
 
 nanobind_add_stub(
   _rgbind_test_stub

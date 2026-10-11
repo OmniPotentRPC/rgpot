@@ -71,9 +71,12 @@ target_link_libraries(_core PRIVATE rust_core_demo)
 set(_core_stage "${CMAKE_CURRENT_BINARY_DIR}/rust_core_demo")
 file(MAKE_DIRECTORY "${_core_stage}")
 file(WRITE "${_core_stage}/__init__.py" "")
+# A generator expression stops the Visual Studio generator from appending
+# a per-configuration directory. Stubgen imports rust_core_demo._core from
+# this directory, so the extension cannot land in Release/.
 set_target_properties(_core PROPERTIES
-  LIBRARY_OUTPUT_DIRECTORY "${_core_stage}"
-  RUNTIME_OUTPUT_DIRECTORY "${_core_stage}")
+  LIBRARY_OUTPUT_DIRECTORY "$<1:${_core_stage}>"
+  RUNTIME_OUTPUT_DIRECTORY "$<1:${_core_stage}>")
 
 if(NOT MSVC)
   target_compile_options(_core PRIVATE -Wall -Wextra -Wpedantic)
@@ -102,10 +105,20 @@ if(APPLE)
 endif()
 # A Rust staticlib exports every public symbol. On Windows the shared
 # library limits that set with a module-definition file (F9).
+# __declspec(dllexport) symbols from the static nanobind library are not
+# removed by the .def file, so the export directory is rewritten after
+# the link.
 if(MSVC)
   file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/core_exports.def" "EXPORTS\n  PyInit__core\n")
   target_link_options(_core PRIVATE
     "/DEF:${CMAKE_CURRENT_BINARY_DIR}/core_exports.def")
+  add_custom_command(
+    TARGET _core POST_BUILD
+    COMMAND "${Python_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/ci/limit_pe_exports.py"
+            "$<TARGET_FILE:_core>"
+            "PyInit__core"
+    VERBATIM)
 endif()
 
 nanobind_add_stub(
