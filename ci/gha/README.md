@@ -124,7 +124,7 @@ prepare (export-plan → ci-plan.json + audit artifact)
 prek ∥ docs_snapper ∥ docs_lychee ∥ towncrier(PR) ∥ ci-tools
     ↓ (after ci-tools; skipped on schedule except docs_*)
 build_and_test ∥ rust_tests ∥ client_bridge_stress
-  ∥ potentials_metatomic ∥ potentials_tight_binding ∥ potentials_plugins
+  ∥ potentials_metatomic ∥ potentials_tight_binding ∥ potentials_tblite_06 ∥ potentials_plugins
   ∥ build_windows_meson ∥ nodownload_rehearsal   (need `prepare` only; no potctl)
   (build_windows_meson: MSVC meson leg, fortran suppressed via
    ci/gha/machines/no-fortran.ini so the flang/MSVC kernel pairing stays out.

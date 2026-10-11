@@ -49,7 +49,7 @@ pub const RGPOT_ABI_LAYOUT_REVISION: u16 = 1;
 
 static VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "\0");
 
-/// Full version string of the loaded library, e.g. `"3.4.0"`.
+/// Full version string of the loaded library, e.g. `"3.5.0"`.
 ///
 /// The pointer refers to static storage: never free it.
 #[no_mangle]

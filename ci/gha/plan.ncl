@@ -111,6 +111,12 @@ let P = S.pins in
       role = "xtb+tblite meson (ubuntu)",
     },
     {
+      id = "potentials_tblite_06",
+      needs = ["ci-tools"],
+      runs_on = P.ubuntu,
+      role = "compile TBLitePot against tblite 0.6.0 (tests stay on tbbld 0.4.0)",
+    },
+    {
       id = "potentials_plugins",
       needs = ["ci-tools"],
       role = "plugin host meson: PluginTest, PluginContractTest, ExternalPluginTest",
@@ -139,6 +145,7 @@ let P = S.pins in
         "potentials_metatomic",
         "potentials_uma_engine",
         "potentials_tight_binding",
+        "potentials_tblite_06",
         "potentials_plugins",
         "eonviz_pins",
       ],

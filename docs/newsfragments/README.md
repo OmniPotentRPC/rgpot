@@ -29,6 +29,7 @@ Preview: `uvx towncrier build --draft` or `pixi r towncrier-draft` if defined.
 
 | `<type>` directory suffix | Section in CHANGELOG |
 |---------------------------|----------------------|
+| `breaking` | Breaking |
 | `security` | Security |
 | `removed` | Removed |
 | `deprecated` | Deprecated |

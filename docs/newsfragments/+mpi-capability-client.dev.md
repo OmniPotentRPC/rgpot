@@ -1,1 +1,0 @@
-The MPI contract client runs the capability handshake against the collective RPC server before it configures or evaluates, and a second run requires a protocol major the server does not speak and must stop at the handshake with the reason, for both the serial and the MPI server layouts.
