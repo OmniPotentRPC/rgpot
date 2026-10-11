@@ -200,6 +200,15 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/vesin>
            $<INSTALL_INTERFACE:include/rgpot/vesin>)
   target_link_libraries(rgpot_vesin PRIVATE Threads::Threads)
+  if(MSVC)
+    set_source_files_properties(
+      CppCore/rgpot/nlist/MinimumImage.cpp PROPERTIES COMPILE_OPTIONS
+                                                      "/fp:precise")
+  else()
+    set_source_files_properties(
+      CppCore/rgpot/nlist/MinimumImage.cpp PROPERTIES COMPILE_OPTIONS
+                                                      "-ffp-contract=off")
+  endif()
   add_subdirectory(CppCore/rgpot/fortran)
   add_library(rgpot ${RGPOT_SOURCES})
   set_target_properties(rgpot PROPERTIES LINKER_LANGUAGE CXX
@@ -424,6 +433,7 @@ if(RGPOT_BUILD_TESTS)
 
     add_pot_test(LJClusterPotTest CppCore/tests/LJClusterPotTest.cc)
     add_pot_test(PairListTest CppCore/tests/PairListTest.cc)
+    add_pot_test(MinImageIsaHash CppCore/tests/MinImageIsaHash.cc)
     add_pot_test(BatchEvaluatorTest CppCore/tests/BatchEvaluatorTest.cc)
     target_link_libraries(BatchEvaluatorTest PRIVATE Threads::Threads)
     add_pot_test(CxxLayoutTest CppCore/tests/CxxLayoutTest.cc)

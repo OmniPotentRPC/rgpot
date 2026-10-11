@@ -83,7 +83,20 @@ endif
 _rgpot_srcs += files('rgpot/PotHelpers.cc')
 _rgpot_srcs += files('rgpot/units.cc')
 _rgpot_srcs += files('rgpot/abi/CxxLayout.cc')
-_rgpot_srcs += files('rgpot/nlist/MinimumImage.cpp')
+# Product-sums in this file are std::fma. Contraction stays off so a
+# multiply that is not written as std::fma is not fused, and the folded
+# bits match on scalar, SSE, AVX2, AVX-512 and NEON.
+_fp_contract_off = cppc.get_supported_arguments(
+    ['-ffp-contract=off', '/fp:precise'],
+)
+rgpot_minimage = static_library(
+    'rgpot_minimage',
+    files('rgpot/nlist/MinimumImage.cpp'),
+    include_directories: _incdirs,
+    cpp_args: _args + _fp_contract_off,
+    pic: true,
+    install: false,
+)
 
 # Cap'n Proto schema + NWChem/CPMD frontends need libcapnp (ptlrpc). Only pull
 # them in when RPC is on (server or client-only); lean -Dwith_rpc=false builds
@@ -111,6 +124,7 @@ if not get_option('with_rpc_client_only')
         dependencies: _deps,
         cpp_args: _args,
         include_directories: _incdirs,
+        link_whole: rgpot_minimage,
         pic: true,
         install: false,
     )
@@ -578,6 +592,12 @@ if get_option('with_tests')
             ['EMTPotTest', 'emt_pot_test', 'EMTPotTest.cc', ''],
             ['EAMCellPotTest', 'eam_cell_pot_test', 'EAMCellPotTest.cc', ''],
             ['PairListTest', 'pair_list_test', 'PairListTest.cc', ''],
+            [
+                'MinImageIsaHash',
+                'minimage_isa_hash',
+                'MinImageIsaHash.cc',
+                '',
+            ],
             [
                 'BatchEvaluatorTest',
                 'batch_evaluator_test',
@@ -1323,6 +1343,76 @@ if get_option('with_tests')
         endif
     endforeach
     if not get_option('with_rpc_client_only')
+        # Same fold, compiled once per instruction set. The driver checks
+        # the CPU and prints skip when the binary cannot run here.
+        _isa_specs = [
+            [
+                'scalar',
+                [
+                    '-ffp-contract=off',
+                    '-fno-tree-vectorize',
+                    '-mno-avx',
+                    '-mno-fma',
+                ],
+            ],
+            ['sse2', ['-ffp-contract=off', '-msse2', '-mno-avx', '-mno-fma']],
+            ['avx2', ['-ffp-contract=off', '-mavx2', '-mfma']],
+            ['avx512', ['-ffp-contract=off', '-mavx512f']],
+            ['neon', ['-ffp-contract=off']],
+        ]
+        _isa_exes = []
+        foreach spec : _isa_specs
+            _isa_args = cppc.get_supported_arguments(spec[1])
+            if spec[0] == 'neon' and host_machine.cpu_family() == 'x86_64'
+                continue
+            endif
+            if spec[0] != 'neon' and host_machine.cpu_family() != 'x86_64'
+                continue
+            endif
+            if spec[0] != 'neon' and _isa_args.length() < spec[1].length()
+                continue
+            endif
+            _isa_lib = static_library(
+                'minimage_' + spec[0],
+                files('rgpot/nlist/MinimumImage.cpp'),
+                include_directories: _incdirs,
+                cpp_args: _args + _isa_args,
+                pic: true,
+                install: false,
+            )
+            _isa_exes += executable(
+                'minimage_hash_' + spec[0],
+                sources: ['tests/minimage_isa_hash_main.cc'],
+                include_directories: _incdirs + ['.'],
+                cpp_args: [
+                    '-ffp-contract=off',
+                    '-DRGPOT_MINIMAGE_ISA_' + spec[0].to_upper(),
+                ],
+                link_whole: _isa_lib,
+                install: false,
+            )
+        endforeach
+        executable(
+            'minimage_bench',
+            sources: ['tests/MinImageBench.cc'],
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            dependencies: test_deps,
+            link_with: _linkto,
+            link_language: 'cpp',
+            install: false,
+        )
+        if _isa_exes.length() > 0
+            test(
+                'MinImageIsaVariants',
+                find_program(
+                    meson.project_source_root() / 'ci/gha/check_minimage_isa.sh',
+                ),
+                args: [
+                    'd6f5cbaa04ac49e6f02ee64c10eb83d44d951756556924dcc17966453dcd8b11',
+                ] + _isa_exes,
+            )
+        endif
         layout_fixture = shared_library(
             'rgpot_layout_fixture',
             sources: ['tests/layout_fixture.cc'],

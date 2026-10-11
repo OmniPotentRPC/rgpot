@@ -9,8 +9,10 @@ namespace rgpot::nlist {
 
 /// Nearest periodic image for row-major lattice vectors: d - n H.
 ///
-/// The working type is double. A cell whose infinity-norm condition
-/// estimate would spend more than half the double significand is
+/// The working type is double. Each product-sum is std::fma, and this
+/// translation unit is compiled with contraction off, so the folded bits
+/// do not depend on the instruction set. A cell whose infinity-norm
+/// condition estimate would spend more than half the double significand is
 /// Minkowski-reduced (Nguyen and Stehlé, ACM Trans. Algorithms 5, 46
 /// (2009), doi:10.1145/1597036.1597050) and the image is taken in that
 /// basis. A reduced basis that is still too ill-conditioned searches the

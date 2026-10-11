@@ -14,46 +14,35 @@ namespace {
 constexpr double kTol = 1e-12;
 constexpr int kMaxIt = 10000;
 
-double dmul(double a, double b) { return a * b; }
+// a*b + c*d + e*f. The last product rounds on its own; each earlier
+// product is fused into the sum. std::fma is correctly rounded, so this
+// matches a hardware fused multiply-add on SSE, AVX2, AVX-512 and NEON.
+double fdot3(double a, double b, double c, double d, double e, double f) {
+  return std::fma(a, b, std::fma(c, d, e * f));
+}
 
-double dadd(double a, double b) { return a + b; }
+double frac_of(double x, double y, double z, const double inv[9], int k) {
+  return fdot3(x, inv[k], y, inv[3 + k], z, inv[6 + k]);
+}
 
-double dsub(double a, double b) { return a - b; }
+// reduced - (i*c0 + j*c1 + k*c2), each product fused into the sum.
+double sub_image(double reduced, double i, double c0, double j, double c1,
+                 double k, double c2) {
+  return std::fma(-i, c0, std::fma(-j, c1, std::fma(-k, c2, reduced)));
+}
 
 double n2(const double v[3]) {
-  const double x = dmul(v[0], v[0]);
-  const double y = dmul(v[1], v[1]);
-  const double z = dmul(v[2], v[2]);
-  return dadd(dadd(x, y), z);
-}
-
-void vadd(const double u[3], const double v[3], double out[3]) {
-  out[0] = dadd(u[0], v[0]);
-  out[1] = dadd(u[1], v[1]);
-  out[2] = dadd(u[2], v[2]);
-}
-
-void vscale(double s, const double v[3], double out[3]) {
-  out[0] = dmul(s, v[0]);
-  out[1] = dmul(s, v[1]);
-  out[2] = dmul(s, v[2]);
+  return fdot3(v[0], v[0], v[1], v[1], v[2], v[2]);
 }
 
 double vdot(const double u[3], const double v[3]) {
-  const double x = dmul(u[0], v[0]);
-  const double y = dmul(u[1], v[1]);
-  const double z = dmul(u[2], v[2]);
-  return dadd(dadd(x, y), z);
+  return fdot3(u[0], v[0], u[1], v[1], u[2], v[2]);
 }
 
 void lin3(const double c[3], const double a[3], const double b[3],
           const double d[3], double out[3]) {
-  double t0[3], t1[3], t2[3], s[3];
-  vscale(c[0], a, t0);
-  vscale(c[1], b, t1);
-  vscale(c[2], d, t2);
-  vadd(t0, t1, s);
-  vadd(s, t2, out);
+  for (int i = 0; i < 3; ++i)
+    out[i] = fdot3(c[0], a[i], c[1], b[i], c[2], d[i]);
 }
 
 void sort_by_length(double basis[3][3]) {
@@ -77,7 +66,7 @@ void sort_by_length(double basis[3][3]) {
 
 void gauss_pair(double u[3], double v[3]) {
   for (int it = 0; it < kMaxIt; ++it) {
-    if (dadd(n2(v), kTol) < n2(u)) {
+    if (n2(v) + kTol < n2(u)) {
       for (int c = 0; c < 3; ++c) {
         const double t = u[c];
         u[c] = v[c];
@@ -92,13 +81,8 @@ void gauss_pair(double u[3], double v[3]) {
     if (n == 0.0) {
       return;
     }
-    double step[3];
-    vscale(-n, u, step);
-    double next[3];
-    vadd(v, step, next);
-    v[0] = next[0];
-    v[1] = next[1];
-    v[2] = next[2];
+    for (int c = 0; c < 3; ++c)
+      v[c] = std::fma(-n, u[c], v[c]);
   }
 }
 
@@ -112,13 +96,12 @@ void subtract_plane(double basis[3][3]) {
     return;
   }
   const double nu = std::round(vdot(w, u) / uu);
-  double su[3], w1[3];
-  vscale(-nu, u, su);
-  vadd(w, su, w1);
+  double w1[3];
+  for (int c = 0; c < 3; ++c)
+    w1[c] = std::fma(-nu, u[c], w[c]);
   const double nv = std::round(vdot(w1, v) / vv);
-  double sv[3];
-  vscale(-nv, v, sv);
-  vadd(w1, sv, w);
+  for (int c = 0; c < 3; ++c)
+    w[c] = std::fma(-nv, v[c], w1[c]);
   double best[3] = {w[0], w[1], w[2]};
   double best2 = n2(w);
   for (int i = -1; i <= 1; ++i) {
@@ -126,11 +109,10 @@ void subtract_plane(double basis[3][3]) {
       if (i == 0 && j == 0) {
         continue;
       }
-      double si[3], sj[3], t0[3], t[3];
-      vscale(static_cast<double>(i), u, si);
-      vscale(static_cast<double>(j), v, sj);
-      vadd(w, si, t0);
-      vadd(t0, sj, t);
+      double t[3];
+      for (int c = 0; c < 3; ++c)
+        t[c] = std::fma(static_cast<double>(i), u[c],
+                        std::fma(static_cast<double>(j), v[c], w[c]));
       const double t2 = n2(t);
       if (t2 < best2) {
         best2 = t2;
@@ -149,7 +131,7 @@ bool is_minkowski_reduced(const double basis[3][3]) {
   const double na = n2(basis[0]);
   const double nb = n2(basis[1]);
   const double nc = n2(basis[2]);
-  if (!(dadd(na, -nb) <= kTol && dadd(nb, -nc) <= kTol)) {
+  if (!(na - nb <= kTol && nb - nc <= kTol)) {
     return false;
   }
   const int rhs_idx[12] = {0, 1, 1, 2, 2, 1, 2, 2, 2, 2, 2, 2};
@@ -161,7 +143,7 @@ bool is_minkowski_reduced(const double basis[3][3]) {
   for (int i = 0; i < 12; ++i) {
     double image[3];
     lin3(rows[i], basis[0], basis[1], basis[2], image);
-    if (dadd(std::sqrt(n2(image)), kTol) < norms[rhs_idx[i]]) {
+    if (std::sqrt(n2(image)) + kTol < norms[rhs_idx[i]]) {
       return false;
     }
   }
@@ -184,19 +166,10 @@ void minkowski_reduce(double basis[3][3]) {
 }
 
 double det_of(const double a[9]) {
-  const double a48 = dmul(a[4], a[8]);
-  const double a57 = dmul(a[5], a[7]);
-  const double m0 = dsub(a48, a57);
-  const double a38 = dmul(a[3], a[8]);
-  const double a56 = dmul(a[5], a[6]);
-  const double m1 = dsub(a38, a56);
-  const double a37 = dmul(a[3], a[7]);
-  const double a46 = dmul(a[4], a[6]);
-  const double m2 = dsub(a37, a46);
-  const double t0 = dmul(a[0], m0);
-  const double t1 = dmul(a[1], m1);
-  const double t2 = dmul(a[2], m2);
-  return dadd(dsub(t0, t1), t2);
+  const double m0 = std::fma(-a[5], a[7], a[4] * a[8]);
+  const double m1 = std::fma(-a[5], a[6], a[3] * a[8]);
+  const double m2 = std::fma(-a[4], a[6], a[3] * a[7]);
+  return fdot3(a[0], m0, -a[1], m1, a[2], m2);
 }
 
 bool invert(const double a[9], double inv[9]) {
@@ -204,33 +177,15 @@ bool invert(const double a[9], double inv[9]) {
   if (!std::isfinite(det) || det == 0.0) {
     return false;
   }
-  const double a48 = dmul(a[4], a[8]);
-  const double a57 = dmul(a[5], a[7]);
-  const double a27 = dmul(a[2], a[7]);
-  const double a18 = dmul(a[1], a[8]);
-  const double a15 = dmul(a[1], a[5]);
-  const double a24 = dmul(a[2], a[4]);
-  const double a56 = dmul(a[5], a[6]);
-  const double a38 = dmul(a[3], a[8]);
-  const double a08 = dmul(a[0], a[8]);
-  const double a26 = dmul(a[2], a[6]);
-  const double a23 = dmul(a[2], a[3]);
-  const double a05 = dmul(a[0], a[5]);
-  const double a37 = dmul(a[3], a[7]);
-  const double a46 = dmul(a[4], a[6]);
-  const double a16 = dmul(a[1], a[6]);
-  const double a07 = dmul(a[0], a[7]);
-  const double a04 = dmul(a[0], a[4]);
-  const double a13 = dmul(a[1], a[3]);
-  inv[0] = dsub(a48, a57) / det;
-  inv[1] = dsub(a27, a18) / det;
-  inv[2] = dsub(a15, a24) / det;
-  inv[3] = dsub(a56, a38) / det;
-  inv[4] = dsub(a08, a26) / det;
-  inv[5] = dsub(a23, a05) / det;
-  inv[6] = dsub(a37, a46) / det;
-  inv[7] = dsub(a16, a07) / det;
-  inv[8] = dsub(a04, a13) / det;
+  inv[0] = std::fma(-a[5], a[7], a[4] * a[8]) / det;
+  inv[1] = std::fma(-a[1], a[8], a[2] * a[7]) / det;
+  inv[2] = std::fma(-a[2], a[4], a[1] * a[5]) / det;
+  inv[3] = std::fma(-a[3], a[8], a[5] * a[6]) / det;
+  inv[4] = std::fma(-a[2], a[6], a[0] * a[8]) / det;
+  inv[5] = std::fma(-a[0], a[5], a[2] * a[3]) / det;
+  inv[6] = std::fma(-a[4], a[6], a[3] * a[7]) / det;
+  inv[7] = std::fma(-a[0], a[7], a[1] * a[6]) / det;
+  inv[8] = std::fma(-a[1], a[3], a[0] * a[4]) / det;
   for (int k = 0; k < 9; ++k) {
     if (!std::isfinite(inv[k])) {
       return false;
@@ -245,7 +200,7 @@ double inf_norm(const double m[9]) {
     const double a = std::abs(m[3 * row]);
     const double b = std::abs(m[3 * row + 1]);
     const double c = std::abs(m[3 * row + 2]);
-    const double sum = dadd(dadd(a, b), c);
+    const double sum = (a + b) + c;
     norm = std::max(norm, sum);
   }
   return norm;
@@ -253,7 +208,7 @@ double inf_norm(const double m[9]) {
 
 bool well_conditioned(const double cell[9], const double inv[9]) {
   const double eps = std::numeric_limits<double>::epsilon();
-  const double cond = dmul(dmul(inf_norm(cell), inf_norm(inv)), eps);
+  const double cond = (inf_norm(cell) * inf_norm(inv)) * eps;
   return cond <= std::sqrt(eps);
 }
 
@@ -266,10 +221,7 @@ std::int64_t checked_index(double value) {
 }
 
 double squared(double x, double y, double z) {
-  const double xx = dmul(x, x);
-  const double yy = dmul(y, y);
-  const double zz = dmul(z, z);
-  return dadd(dadd(xx, yy), zz);
+  return fdot3(x, x, y, y, z, z);
 }
 
 void search_bounds(const double cell[9], const double inv[9],
@@ -281,17 +233,13 @@ void search_bounds(const double cell[9], const double inv[9],
     if (!periodic[k]) {
       continue;
     }
-    const double t0 = dmul(reduced[0], inv[k]);
-    const double t1 = dmul(reduced[1], inv[3 + k]);
-    const double t2 = dmul(reduced[2], inv[6 + k]);
-    initial[k] = std::round(dadd(dadd(t0, t1), t2));
+    initial[k] = std::round(
+        frac_of(reduced[0], reduced[1], reduced[2], inv, k));
     checked_index(initial[k]);
   }
   for (int c = 0; c < 3; ++c) {
-    const double n0 = dmul(initial[0], cell[c]);
-    const double n1 = dmul(initial[1], cell[3 + c]);
-    const double n2 = dmul(initial[2], cell[6 + c]);
-    reduced[c] = dsub(reduced[c], dadd(dadd(n0, n1), n2));
+    reduced[c] = sub_image(reduced[c], initial[0], cell[c], initial[1],
+                           cell[3 + c], initial[2], cell[6 + c]);
   }
   double best[3] = {reduced[0], reduced[1], reduced[2]};
   double best2 = squared(best[0], best[1], best[2]);
@@ -301,13 +249,10 @@ void search_bounds(const double cell[9], const double inv[9],
   std::uint64_t count = 1;
   for (int k = 0; k < 3; ++k) {
     if (periodic[k]) {
-      const double t0 = dmul(reduced[0], inv[k]);
-      const double t1 = dmul(reduced[1], inv[3 + k]);
-      const double t2 = dmul(reduced[2], inv[6 + k]);
-      const double f = dadd(dadd(t0, t1), t2);
-      const double extent = dmul(radius, dual[k]);
-      low[k] = checked_index(std::floor(dsub(f, extent)) - 1.0);
-      high[k] = checked_index(std::ceil(dadd(f, extent)) + 1.0);
+      const double f = frac_of(reduced[0], reduced[1], reduced[2], inv, k);
+      const double extent = radius * dual[k];
+      low[k] = checked_index(std::floor(f - extent) - 1.0);
+      high[k] = checked_index(std::ceil(f + extent) + 1.0);
     }
     const auto width = static_cast<std::uint64_t>(high[k]) -
                        static_cast<std::uint64_t>(low[k]) + 1;
@@ -324,10 +269,9 @@ void search_bounds(const double cell[9], const double inv[9],
       for (auto k = low[2]; k <= high[2]; ++k) {
         double cand[3];
         for (int c = 0; c < 3; ++c) {
-          const double ni = dmul(static_cast<double>(i), cell[c]);
-          const double nj = dmul(static_cast<double>(j), cell[3 + c]);
-          const double nk = dmul(static_cast<double>(k), cell[6 + c]);
-          cand[c] = dsub(reduced[c], dadd(dadd(ni, nj), nk));
+          cand[c] = sub_image(reduced[c], static_cast<double>(i), cell[c],
+                              static_cast<double>(j), cell[3 + c],
+                              static_cast<double>(k), cell[6 + c]);
         }
         const double r2 = squared(cand[0], cand[1], cand[2]);
         if (r2 < best2) {
@@ -352,10 +296,7 @@ void search_narrow(const double cell[9], const double inv[9],
     if (!periodic[k]) {
       continue;
     }
-    const double t0 = dmul(dx, inv[k]);
-    const double t1 = dmul(dy, inv[3 + k]);
-    const double t2 = dmul(dz, inv[6 + k]);
-    const double f = dadd(dadd(t0, t1), t2);
+    const double f = frac_of(dx, dy, dz, inv, k);
     if (!std::isfinite(f)) {
       throw std::overflow_error("periodic image index is out of range");
     }
@@ -363,10 +304,10 @@ void search_narrow(const double cell[9], const double inv[9],
   }
   double reduced[3] = {dx, dy, dz};
   for (int c = 0; c < 3; ++c) {
-    const double n0 = dmul(static_cast<double>(base[0]), cell[c]);
-    const double n1 = dmul(static_cast<double>(base[1]), cell[3 + c]);
-    const double n2 = dmul(static_cast<double>(base[2]), cell[6 + c]);
-    reduced[c] = dsub(reduced[c], dadd(dadd(n0, n1), n2));
+    reduced[c] =
+        sub_image(reduced[c], static_cast<double>(base[0]), cell[c],
+                  static_cast<double>(base[1]), cell[3 + c],
+                  static_cast<double>(base[2]), cell[6 + c]);
   }
   double best[3] = {reduced[0], reduced[1], reduced[2]};
   double best2 = squared(best[0], best[1], best[2]);
@@ -384,10 +325,9 @@ void search_narrow(const double cell[9], const double inv[9],
         }
         double cand[3];
         for (int c = 0; c < 3; ++c) {
-          const double ni = dmul(static_cast<double>(i), cell[c]);
-          const double nj = dmul(static_cast<double>(j), cell[3 + c]);
-          const double nk = dmul(static_cast<double>(k), cell[6 + c]);
-          cand[c] = dsub(reduced[c], dadd(dadd(ni, nj), nk));
+          cand[c] = sub_image(reduced[c], static_cast<double>(i), cell[c],
+                              static_cast<double>(j), cell[3 + c],
+                              static_cast<double>(k), cell[6 + c]);
         }
         const double r2 = squared(cand[0], cand[1], cand[2]);
         if (r2 < best2) {
