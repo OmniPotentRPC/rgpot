@@ -344,10 +344,10 @@ TEST_CASE("SIMD targets match the scalar kernel bit for bit", "[simd][isa]") {
   std::cout << "\n";
 
 #if defined(__x86_64__) || defined(_M_X64)
-  // The portable kernel is a request, not the default on x86-64.
-  if (std::getenv("RGPOT_SIMD") == nullptr) {
+  // Highway is compiled in: an x86-64 host stays off the portable kernel.
+  // A build without Highway has only that kernel, so the check does not apply.
+  if (std::getenv("RGPOT_SIMD") == nullptr && runnable_has("sse2")) {
     REQUIRE(std::strcmp(rgpot::simd::chosen_target_name(), "scalar") != 0);
-    REQUIRE(runnable_has("sse2"));
   }
 #endif
 
