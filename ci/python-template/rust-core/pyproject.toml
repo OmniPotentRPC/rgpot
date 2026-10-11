@@ -41,13 +41,13 @@ ln -sfn "$HOME/.cargo/bin/cargo" /usr/local/bin/cargo
 ln -sfn "$HOME/.cargo/bin/rustc" /usr/local/bin/rustc
 ln -sfn "$HOME/.cargo/bin/rustup" /usr/local/bin/rustup
 """
-environment = { PATH = "/root/.cargo/bin:/usr/local/bin:/usr/bin:/bin" }
+environment = { PATH = "/root/.cargo/bin:$PATH" }
 
 [tool.cibuildwheel.macos]
 archs = ["arm64"]
-environment = { MACOSX_DEPLOYMENT_TARGET = "14.0", PATH = "/Users/runner/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin" }
+environment = { MACOSX_DEPLOYMENT_TARGET = "14.0", PATH = "$HOME/.cargo/bin:$PATH" }
 before-all = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal"
 
 [tool.cibuildwheel.windows]
 before-all = "rustup-init.exe -y --default-toolchain stable --profile minimal"
-environment = { PATH = "C:\\Users\\runneradmin\\.cargo\\bin;%PATH%" }
+environment = { PATH = "$USERPROFILE\\.cargo\\bin;$PATH" }

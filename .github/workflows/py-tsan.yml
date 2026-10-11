@@ -51,46 +51,54 @@ jobs:
           EXTRAS: ${{ inputs.extras }}
         run: |
           set -euo pipefail
+          # numpy-tsan is the cpython_sanity 3.14t image plus a TSan numpy.
+          # Mount the tree at /src. /work holds the image's pyenv install.
           docker run --rm -i \
             -e PKG -e TEST_PATH -e IMPORTS -e EXTRAS \
-            -v "$GITHUB_WORKSPACE":/work -w /work \
-            ghcr.io/nascheme/cpython-tsan:3.14t \
+            -v "$GITHUB_WORKSPACE":/src -w /src \
+            ghcr.io/nascheme/numpy-tsan:3.14t \
             bash -s << 'EOF'
           set -euo pipefail
           if command -v python >/dev/null 2>&1; then
             PY=python
-          elif command -v python3.14t >/dev/null 2>&1; then
-            PY=python3.14t
-          else
+          elif command -v python3 >/dev/null 2>&1; then
             PY=python3
+          else
+            echo "python not on PATH" >&2
+            exit 1
           fi
-          if ! command -v clang++ >/dev/null 2>&1; then
-            if command -v apt-get >/dev/null 2>&1; then
-              apt-get update
-              apt-get install -y clang
-            fi
+          "$PY" -c 'import sys; print(sys.version); print("gil", sys._is_gil_enabled())'
+          if ! command -v "${CXX:-clang++}" >/dev/null 2>&1 && ! command -v clang++ >/dev/null 2>&1; then
+            apt-get update
+            apt-get install -y clang
           fi
-          command -v clang++
-          clang++ --version
-          export CC=clang
-          export CXX=clang++
-          export CFLAGS="-fsanitize=thread -fno-omit-frame-pointer -g -ffp-contract=off"
-          export CXXFLAGS="${CFLAGS}"
-          export LDFLAGS="-fsanitize=thread"
+          export CC="${CC:-clang}"
+          export CXX="${CXX:-clang++}"
+          export CFLAGS="${CFLAGS:-} -fsanitize=thread -fno-omit-frame-pointer -g -ffp-contract=off"
+          export CXXFLAGS="${CXXFLAGS:-} -fsanitize=thread -fno-omit-frame-pointer -g -ffp-contract=off"
+          export LDFLAGS="${LDFLAGS:-} -fsanitize=thread"
           export PIP_BREAK_SYSTEM_PACKAGES=1
           "$PY" -m pip install -U pip
-          "$PY" -m pip install nanobind scikit-build-core ninja numpy pytest pytest-timeout hypothesis
-          spec="/work/${PKG}"
-          if [ -n "${EXTRAS}" ]; then
-            spec="${spec}[${EXTRAS}]"
+          "$PY" -m pip install nanobind scikit-build-core ninja pytest pytest-timeout hypothesis
+          if ! "$PY" -c 'import numpy' >/dev/null 2>&1; then
+            "$PY" -m pip install 'numpy>=1.24'
           fi
-          CMAKE_ARGS="-DRGBIND_TSAN=ON" "$PY" -m pip install "${spec}"
-          curl -fsSL -o /tmp/suppressions_free_threading.txt \
-            https://raw.githubusercontent.com/python/cpython/refs/heads/3.14/Tools/tsan/suppressions_free_threading.txt
+          spec="/src/${PKG}"
+          CMAKE_ARGS="-DRGBIND_TSAN=ON" "$PY" -m pip install --no-build-isolation --no-deps "${spec}"
+          SUP=/tmp/suppressions_free_threading.txt
+          : > "${SUP}"
+          if [ -d /work/tsan_suppressions ]; then
+            cat /work/tsan_suppressions/*.txt >> "${SUP}"
+          fi
+          if [ ! -s "${SUP}" ]; then
+            curl -fsSL -o "${SUP}" \
+              https://raw.githubusercontent.com/python/cpython/refs/heads/3.14/Tools/tsan/suppressions_free_threading.txt
+          fi
           # Upstream suppressions:
           # https://github.com/python/cpython/blob/3.14/Tools/tsan/suppressions_free_threading.txt
-          export TSAN_OPTIONS="halt_on_error=1 allocator_may_return_null=1 suppressions=/tmp/suppressions_free_threading.txt"
-          "$PY" -m pytest -s "/work/${PKG}/${TEST_PATH}" \
+          # https://github.com/numpy/numpy/blob/main/tools/ci/tsan_suppressions.txt
+          export TSAN_OPTIONS="halt_on_error=1 allocator_may_return_null=1 suppressions=${SUP}"
+          "$PY" -m pytest -s "/src/${PKG}/${TEST_PATH}" \
             --timeout=180 \
             -o faulthandler_timeout=120
           EOF

@@ -81,8 +81,9 @@ jobs:
           CIBW_ARCHS_MACOS: arm64
           CIBW_TEST_EXTRAS: ${{ inputs.extras }}
           CIBW_TEST_REQUIRES: pytest pytest-timeout numpy hypothesis
-          CIBW_TEST_SOURCES: ${{ inputs.test-path }} _ci
-          CIBW_TEST_COMMAND: python _ci/check_f1.py && python -m pytest -q ${{ inputs.test-path }} --timeout=180 -o faulthandler_timeout=120
+          # cibuildwheel copies test sources from the repository root, not package-dir.
+          CIBW_TEST_SOURCES: ${{ inputs.package-dir }}/${{ inputs.test-path }} ${{ inputs.package-dir }}/_ci
+          CIBW_TEST_COMMAND: python ${{ inputs.package-dir }}/_ci/check_f1.py && python -m pytest -q ${{ inputs.package-dir }}/${{ inputs.test-path }} --timeout=180 -o faulthandler_timeout=120
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:

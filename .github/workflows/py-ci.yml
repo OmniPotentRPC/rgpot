@@ -77,8 +77,10 @@ jobs:
           output-dir: wheelhouse
         env:
           CIBW_BUILD: cp312-* cp314t-*
-          CIBW_SKIP: pp* *-musllinux* *_i686 *-win32
+          CIBW_SKIP: "*-musllinux* *_i686 *-win32"
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+          CIBW_TEST_SOURCES: ci/python-template/rust-core/tests
+          CIBW_TEST_COMMAND: python -m pytest -q ci/python-template/rust-core/tests
 
       - name: Wheel tags
         shell: bash
