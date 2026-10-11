@@ -1,0 +1,106 @@
+name: Python typing
+
+on:
+  workflow_call:
+    inputs:
+      package-dir:
+        description: Directory that contains the project to install
+        required: true
+        type: string
+      import-names:
+        description: Comma-separated extension modules whose stubs are checked
+        required: true
+        type: string
+      stub-dir:
+        description: Directory of the committed stubs, relative to package-dir. Dotted names map to paths.
+        required: true
+        type: string
+      typecheck-paths:
+        description: Space-separated paths, relative to package-dir, passed to mypy and pyright
+        required: true
+        type: string
+      extras:
+        description: Extras to install with the package
+        required: false
+        type: string
+        default: ""
+      rust-crate-dir:
+        description: Crate directory relative to package-dir. Empty skips the Rust toolchain.
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  typing:
+    name: stubs, mypy, pyright
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Rust when the package has a crate
+        if: inputs.rust-crate-dir != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "${{ inputs.package-dir }}/${{ inputs.rust-crate-dir }}/Cargo.toml"
+          if ! command -v rustc >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+          fi
+          echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
+
+      - name: Install the package and the type checkers
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -U pip
+          python -m pip install 'nanobind==3.1.0' mypy pyright numpy
+          if [ -n "${{ inputs.extras }}" ]; then
+            python -m pip install "./${{ inputs.package-dir }}[${{ inputs.extras }}]"
+          else
+            python -m pip install "./${{ inputs.package-dir }}"
+          fi
+
+      - name: Regenerated stubs match the committed files
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in ${IMPORTS//,/ }; do
+            rel="${name//.//}.pyi"
+            echo "diff -u ${STUB_DIR}/${rel}"
+            python -m nanobind.stubgen -m "${name}" -o "/tmp/${name}.pyi"
+            diff -u "${PKG}/${STUB_DIR}/${rel}" "/tmp/${name}.pyi"
+            if [[ "${name}" == *.* ]]; then
+              typed="${PKG}/${STUB_DIR}/${name%%.*}/py.typed"
+            elif [ -f "${PKG}/${STUB_DIR}/py.typed" ]; then
+              typed="${PKG}/${STUB_DIR}/py.typed"
+            else
+              typed="${PKG}/py.typed"
+            fi
+            if [ ! -f "${typed}" ]; then
+              echo "py.typed missing for ${name} (${typed})" >&2
+              exit 1
+            fi
+            echo "py.typed present"
+          done
+        env:
+          PKG: ${{ inputs.package-dir }}
+          STUB_DIR: ${{ inputs.stub-dir }}
+          IMPORTS: ${{ inputs.import-names }}
+
+      - name: mypy --strict and pyright
+        shell: bash
+        working-directory: ${{ inputs.package-dir }}
+        env:
+          TYPECHECK_PATHS: ${{ inputs.typecheck-paths }}
+        run: |
+          set -euo pipefail
+          python -m mypy --strict ${TYPECHECK_PATHS}
+          pyright ${TYPECHECK_PATHS}

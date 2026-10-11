@@ -10,9 +10,9 @@ sys.path.insert(0, os.path.abspath("../../subprojects/doxyrest/sphinx"))
 project = "rgpot"
 copyright = "2025--present, rgpot developers"
 author = "Rohit Goswami"
-# Navbar falls back to html_logo when light_logo/dark_logo are unset; prefer
-# theme-specific assets below (transparent glyphs readable on each header).
-html_logo = "_static/rgpot_notext_light.webp"
+# Navbar falls back to html_logo when light_logo/dark_logo are unset.
+html_logo = "_static/logo-light.svg"
+html_favicon = "_static/favicons/favicon.svg"
 
 # -- General configuration ---------------------------------------------------
 extensions = [
@@ -64,8 +64,10 @@ html_theme_options = {
     "dark_code": True,
     "globaltoc_expand_depth": 1,
     # Shibuya toggles .light-logo / .dark-logo with color mode (paths via pathto).
-    "light_logo": "_static/rgpot_notext_light.webp",
-    "dark_logo": "_static/rgpot_notext_dark.webp",
+    "light_logo": "_static/logo-light.svg",
+    "dark_logo": "_static/logo-dark.svg",
+    # Shared Ecosystem list. Same order, titles, URLs, and summaries on every
+    # site. A site drops its own row. This copy keeps rgpot so the list is whole.
     "nav_links": [
         {
             "title": "Ecosystem",
@@ -76,9 +78,54 @@ html_theme_options = {
                     "summary": "Saddle point finding on potential energy surfaces",
                 },
                 {
+                    "title": "rgpot",
+                    "url": "https://rgpot.rgoswami.me",
+                    "summary": "Potential-energy library and Cap'n Proto RPC server",
+                },
+                {
+                    "title": "rgmin",
+                    "url": "https://omnipotentrpc.github.io/rgmin",
+                    "summary": "Local minimization over eindir objectives",
+                },
+                {
+                    "title": "rgsaddle",
+                    "url": "https://omnipotentrpc.github.io/rgsaddle",
+                    "summary": "Band and minimum-mode saddle mechanics over rgmin",
+                },
+                {
+                    "title": "cpmdc",
+                    "url": "https://cpmdc.rgoswami.me",
+                    "summary": "C ABI layer for embedding OpenCPMD",
+                },
+                {
                     "title": "rgpycrumbs",
                     "url": "https://rgpycrumbs.rgoswami.me",
-                    "summary": "Python bindings for rgpot",
+                    "summary": "Pure-Python computational library and CLI for chemical physics",
+                },
+                {
+                    "title": "minimage",
+                    "url": "https://lode-org.github.io/minimage",
+                    "summary": "Minimum-image convention on a general parallelepiped",
+                },
+                {
+                    "title": "linkcell",
+                    "url": "https://docs.rs/linkcell",
+                    "summary": "Periodic linked-cell k-nearest neighbour search",
+                },
+                {
+                    "title": "readcon",
+                    "url": "https://lode-org.github.io/readcon-core",
+                    "summary": "Reference implementation of versioned CON checkpoints",
+                },
+                {
+                    "title": "readcon-db",
+                    "url": "https://lode-org.github.io/readcon-db",
+                    "summary": "Mmap-backed CON campaign corpus store",
+                },
+                {
+                    "title": "readcon-ops",
+                    "url": "https://github.com/lode-org/readcon-ops",
+                    "summary": "Comparisons and rigid alignment of coordinate frames",
                 },
             ],
         },
