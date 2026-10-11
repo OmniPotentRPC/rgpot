@@ -13,4 +13,5 @@ Start with the RPC model, then use the architecture page for the layers.
    :maxdepth: 1
 
    rpc-model
+   simd
 #+end_export
