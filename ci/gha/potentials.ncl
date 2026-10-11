@@ -163,6 +163,38 @@ in
         },
       ],
     },
+    # Compile-only. conda-forge tblite 0.6.0 (gfortran_ha02e54d_0) segfaults in
+    # __dftd4_model_d4_MOD_get_polarizabilities on a GFN2 water single point,
+    # including `tblite run`. The [tblite] tests stay on tight_binding
+    # (tbbld, tblite 0.4.0).
+    tblite_06 = {
+      needs = ["ci-tools"],
+      name = "tblite 0.6.0 compile (meson / ubuntu)",
+      "runs-on" = P.ubuntu,
+      env = S.ccache_env,
+      steps = [
+        S.checkout_full,
+        S.ensure_potctl,
+        S.setup_pixi "tblite06bld" "tblite06bld",
+        S.ccache_step "ccache-pot-tb06",
+        {
+          name = "Compile TBLitePot against tblite 0.6",
+          shell = "pixi run -e tblite06bld bash -e {0}",
+          run = m%"
+            set -euo pipefail
+            meson setup bbdir-tb06 \
+              -Dwith_tests=true \
+              -Dwith_examples=false \
+              -Dwith_tblite=true \
+              -Dwith_rpc=false \
+              -Dwith_cache=false \
+              --buildtype=debug
+            grep -E 'tblite found: YES 0\.6' bbdir-tb06/meson-logs/meson-log.txt
+            meson compile -C bbdir-tb06 tblite_test
+          "%,
+        },
+      ],
+    },
     metatomic = {
       needs = ["ci-tools"],
       name = "metatomic+vesin (meson / ubuntu)",
