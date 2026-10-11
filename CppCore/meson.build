@@ -70,9 +70,9 @@ _rgpot_srcs += files('rgpot/units.cc')
 _rgpot_srcs += files('rgpot/abi/CxxLayout.cc')
 _rgpot_srcs += files(
     'rgpot/nlist/MinimumImage.cpp',
+    'rgpot/simd/dispatch.cc',
     'rgpot/simd/exp.cc',
     'rgpot/simd/scalar_kernels.cc',
-    'rgpot/simd/dispatch.cc',
 )
 if have_highway
     _rgpot_srcs += files('rgpot/simd/hwy_kernels.cc')
