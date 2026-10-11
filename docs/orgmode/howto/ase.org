@@ -10,8 +10,8 @@ newer).
 The in-process calculator evaluates a bound potential in this process.
 The Cap'n Proto calculator talks to =potserv=.
 
-ASE itself is described by Hjorth Larsen et al., J. Phys.: Condens. Matter
-29, 273002 (2017), doi:10.1088/1361-648X/aa680e.
+ASE itself is described by Hjorth Larsen et al., J. Phys.: Condens.
+Matter 29, 273002 (2017), doi:10.1088/1361-648X/aa680e.
 
 ** In process
 
@@ -26,18 +26,16 @@ BFGS(atoms, logfile=None).run(fmax=0.05)
 print(atoms.get_potential_energy())
 #+end_src
 
-=RgpotCalculator= accepts an rgpot potential object or a kind string
-(=lj=, =eam_al=, and the other bound names) plus that potential's
-parameters.
+=RgpotCalculator= accepts an rgpot potential object or a kind string (=lj=,
+=eam_al=, and the other bound names) plus that potential's parameters.
 =implemented_properties= is =energy=, =free_energy=, and =forces=.
 =stress= is added only when the potential's caps report it.
-There is no per-atom =energies= flag on those caps, so the calculator
-does not invent one.
-=free_energy= equals =energy=: these potentials have no electronic
-entropy term.
+There is no per-atom =energies= flag on those caps, so the calculator does not
+invent one.
+=free_energy= equals =energy=: these potentials have no electronic entropy term.
 
-Energies are eV, forces are eV/Angstrom, and stress is eV/Angstrom^3 in
-ASE Voigt order (xx, yy, zz, yz, xz, xy) with the ASE sign.
+Energies are eV, forces are eV/Angstrom, and stress is eV/Angstrom^3 in ASE
+Voigt order (xx, yy, zz, yz, xz, xy) with the ASE sign.
 
 =calculate_many= evaluates a list of =Atoms= in one batch.
 The default properties are energy and forces.
@@ -52,12 +50,11 @@ No bound potential has an analytic Hessian.
 One connection belongs to one calculator.
 A second thread that enters =calculate= while the first still holds the
 connection gets =RuntimeError=.
-The old import =ase_calculator.RgpotCalculator= warns and re-exports this
-class.
+The old import =ase_calculator.RgpotCalculator= warns and re-exports this class.
 
 ** Annealing helper
 
-=AnnealRunner= calls =anneal.global_optimize= and writes the best geometry
-back onto the atoms.
+=AnnealRunner= calls =anneal.global_optimize= and writes the best geometry back
+onto the atoms.
 It is not an =ase.optimize.Optimizer=.
 =AnnealOptimizer= is the old name and warns on construction.
