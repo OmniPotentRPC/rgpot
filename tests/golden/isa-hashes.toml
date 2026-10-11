@@ -3,8 +3,9 @@
 # returns them. The same digest is required for every target the CPU can run.
 # Debug builds (-O0, the default meson build) produce these digests.
 # Release builds are compared with each other, not with this file.
-# Product-sums are fused. Scalar and SSE call std::fma. LJ and the fold
-# kept the previous digest on the pinned geometries.
+# Product-sums are fused on every target. A target without hardware FMA
+# calls std::fma. One rounding is the accuracy and the one bit definition.
+# LJ and the fold kept the previous digest on the pinned geometries.
 #
 # lj: LJPot u0=0.0104 cutoff=8.5 psi=3.4, orthorhombic box 18.
 # Four geometries (2, 3, 4, 2 atoms): a pair, a triple with -0 and a
