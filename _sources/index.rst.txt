@@ -74,6 +74,12 @@ See:
 
 .. toctree::
    :maxdepth: 2
+   :caption: Explanation
+
+   explanation/index
+
+.. toctree::
+   :maxdepth: 2
    :caption: Reference
 
    reference/architecture

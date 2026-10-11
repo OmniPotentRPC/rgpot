@@ -2,7 +2,7 @@
 <html lang="en" data-accent-color="teal" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Architecture Overview - rgpot documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="MPI" href="mpi.html" /><link rel="prev" title="eOn Potentials Over rgpot" href="../howto/eon-rgpot.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Architecture Overview - rgpot documentation</title><link rel="shortcut icon" href="../_static/favicon.svg"/><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="MPI" href="mpi.html" /><link rel="prev" title="The RPC Model" href="../explanation/rpc-model.html" />
       <link rel="canonical" href="https://rgpot.rgoswami.me/reference/architecture.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
@@ -25,14 +25,12 @@
   <meta property="og:url" content="https://rgpot.rgoswami.me/reference/architecture.html"/>
   <meta property="og:title" content="Architecture Overview"/>
     <meta name="twitter:card" content="summary"/>
-  <!-- Manual favicon handling with favicon.io -->
-<!-- since sphinx-favicon doesn't work with shibuya -->
+  <!-- Sized PNG icons, apple touch icon, and manifest. html_favicon is favicon.svg. -->
 <link rel="icon" type="image/png" sizes="16x16" href="../_static/favicons/favicon-16x16.png">
 <link rel="icon" type="image/png" sizes="32x32" href="../_static/favicons/favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="../_static/favicons/android-chrome-192x192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="../_static/favicons/android-chrome-512x512.png">
 <link rel="apple-touch-icon" sizes="180x180" href="../_static/favicons/apple-touch-icon.png">
-<link rel="shortcut icon" href="../_static/favicons/favicon.ico">
 <link rel="manifest" href="../_static/favicons/site.webmanifest">
 <!-- Antics analytics -->
 <script defer src="https://antics-api.turtletech.us/antics.js"></script>
@@ -41,8 +39,8 @@
   <div class="sy-head-blur"></div>
   <div class="sy-head-inner sy-container mx-auto">
     <a class="sy-head-brand" href="../index.html">
-      <img class="light-logo" src="../_static/rgpot_notext_light.webp" alt="rgpot" height="28" loading="lazy" />
-      <img class="dark-logo" src="../_static/rgpot_notext_dark.webp" alt="rgpot" height="28" loading="lazy" />
+      <img class="light-logo" src="../_static/logo-light.svg" alt="rgpot" height="28" loading="lazy" />
+      <img class="dark-logo" src="../_static/logo-dark.svg" alt="rgpot" height="28" loading="lazy" />
       <strong>rgpot</strong>
     </a>
     <div class="sy-head-nav" id="head-nav">
@@ -54,9 +52,36 @@
         <ul id="nav-children-1" aria-labelledby="nav-trigger-1"><li><a href="https://eondocs.org">
                 <span>eOn</span>
                 <small>Saddle point finding on potential energy surfaces</small>
+              </a></li><li><a href="https://rgpot.rgoswami.me">
+                <span>rgpot</span>
+                <small>Potential-energy library and Cap'n Proto RPC server</small>
+              </a></li><li><a href="https://omnipotentrpc.github.io/rgmin">
+                <span>rgmin</span>
+                <small>Local minimization over eindir objectives</small>
+              </a></li><li><a href="https://omnipotentrpc.github.io/rgsaddle">
+                <span>rgsaddle</span>
+                <small>Band and minimum-mode saddle mechanics over rgmin</small>
+              </a></li><li><a href="https://cpmdc.rgoswami.me">
+                <span>cpmdc</span>
+                <small>C ABI layer for embedding OpenCPMD</small>
               </a></li><li><a href="https://rgpycrumbs.rgoswami.me">
                 <span>rgpycrumbs</span>
-                <small>Python bindings for rgpot</small>
+                <small>Pure-Python computational library and CLI for chemical physics</small>
+              </a></li><li><a href="https://lode-org.github.io/minimage">
+                <span>minimage</span>
+                <small>Minimum-image convention on a general parallelepiped</small>
+              </a></li><li><a href="https://docs.rs/linkcell">
+                <span>linkcell</span>
+                <small>Periodic linked-cell k-nearest neighbour search</small>
+              </a></li><li><a href="https://lode-org.github.io/readcon-core">
+                <span>readcon</span>
+                <small>Reference implementation of versioned CON checkpoints</small>
+              </a></li><li><a href="https://lode-org.github.io/readcon-db">
+                <span>readcon-db</span>
+                <small>Mmap-backed CON campaign corpus store</small>
+              </a></li><li><a href="https://github.com/lode-org/readcon-ops">
+                <span>readcon-ops</span>
+                <small>Comparisons and rigid alignment of coordinate frames</small>
               </a></li></ul>
       </li></ul></nav>
       <div class="sy-head-extra flex items-center print:hidden"><form class="searchbox flex items-center" action="../search.html" method="get">
@@ -104,6 +129,13 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#landed-work-items">Landed Work Items</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#operator-cheatsheet-rgpot-side">Operator Cheatsheet (rgpot side)</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#related">Related</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Explanation</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../explanation/index.html">Explanation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/rpc-model.html">The RPC Model</a></li>
+</ul>
+</li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -663,6 +695,8 @@ data-aria-dark="Switch to auto color mode">
 </div><article class="yue dark-code" role="main">
           <section id="architecture-overview">
 <h1>Architecture Overview<a class="headerlink" href="#architecture-overview" title="Link to this heading">¶</a></h1>
+<p>Why the wire uses three carriers is explained in</p>
+<p><a class="reference internal" href="../explanation/rpc-model.html"><span class="doc">The RPC Model</span></a></p>
 <p><code class="docutils literal notranslate"><span class="pre">rgpot</span></code> follows a <em>metatensor</em>-style layered architecture: a Rust core defines
 the fundamental types and RPC infrastructure, exposed via a C ABI (generated by
 <code class="docutils literal notranslate"><span class="pre">cbindgen</span></code>), with hand-written C++ RAII wrappers on top.
@@ -1228,10 +1262,10 @@ options.</p>
   </svg>
   <span>Back to top</span>
 </button><div class="navigation flex print:hidden"><div class="navigation-prev">
-    <a href="../howto/eon-rgpot.html">
+    <a href="../explanation/rpc-model.html">
       <i class="i-lucide chevron-left"></i>
       <div class="page-info">
-        <span>Previous</span><div class="title">eOn Potentials Over rgpot</div></div>
+        <span>Previous</span><div class="title">The RPC Model</div></div>
     </a>
   </div><div class="navigation-next">
     <a href="mpi.html">

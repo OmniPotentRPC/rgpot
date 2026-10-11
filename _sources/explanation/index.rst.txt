@@ -1,0 +1,13 @@
+
+
+Explanation
+-----------
+
+These pages say why the library is shaped the way it is.
+The reference section records the types, the stamps, and the file layout.
+Start with the RPC model, then use the architecture page for the layers.
+
+.. toctree::
+   :maxdepth: 1
+
+   rpc-model
