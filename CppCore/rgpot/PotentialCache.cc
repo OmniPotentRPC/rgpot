@@ -10,12 +10,76 @@
  */
 
 #include "rgpot/PotentialCache.hpp"
+#include <algorithm>
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <rocksdb/options.h>
+#include <stdexcept>
 #include <vector>
 
 namespace rgpot::cache {
+
+namespace {
+constexpr char result_marker[] = "RGPOTR1";
+constexpr size_t result_metadata_bytes =
+    sizeof(result_marker) + 10 * sizeof(double) + 1;
+
+size_t energy_force_bytes(size_t n_atoms) {
+  return (1 + 3 * n_atoms) * sizeof(double);
+}
+} // namespace
+
+bool PotentialCache::has_result_metadata(const std::string &value,
+                                         size_t n_atoms) {
+  const size_t prefix = energy_force_bytes(n_atoms);
+  return value.size() == prefix + result_metadata_bytes &&
+         std::memcmp(value.data() + prefix, result_marker,
+                     sizeof(result_marker)) == 0 &&
+         static_cast<unsigned char>(value.back()) <= 1;
+}
+
+void PotentialCache::deserialize_hit(const std::string &value, ForceOut &out,
+                                     size_t n_atoms) {
+  const size_t prefix = energy_force_bytes(n_atoms);
+  if (value.size() < prefix) {
+    throw std::runtime_error("PotentialCache: incomplete energy/force record");
+  }
+  std::memcpy(&out.energy, value.data(), sizeof(double));
+  std::memcpy(out.F, value.data() + sizeof(double),
+              3 * n_atoms * sizeof(double));
+  out.variance = 0.0;
+  out.has_stress = 0;
+  std::fill(out.stress, out.stress + 9, 0.0);
+  if (has_result_metadata(value, n_atoms)) {
+    const char *metadata = value.data() + prefix + sizeof(result_marker);
+    std::memcpy(&out.variance, metadata, sizeof(double));
+    std::memcpy(out.stress, metadata + sizeof(double), sizeof(out.stress));
+    out.has_stress = static_cast<unsigned char>(value.back());
+  }
+}
+
+void PotentialCache::add_serialized(const KeyHash &key, const ForceOut &out,
+                                    size_t n_atoms) {
+  std::lock_guard<std::mutex> lock(db_mu_);
+  if (!db_) {
+    return;
+  }
+  const size_t prefix = energy_force_bytes(n_atoms);
+  std::vector<char> buffer(prefix + result_metadata_bytes, 0);
+  std::memcpy(buffer.data(), &out.energy, sizeof(double));
+  std::memcpy(buffer.data() + sizeof(double), out.F,
+              3 * n_atoms * sizeof(double));
+  std::memcpy(buffer.data() + prefix, result_marker, sizeof(result_marker));
+  char *metadata = buffer.data() + prefix + sizeof(result_marker);
+  std::memcpy(metadata, &out.variance, sizeof(double));
+  if (out.has_stress) {
+    std::memcpy(metadata + sizeof(double), out.stress, sizeof(out.stress));
+    buffer.back() = 1;
+  }
+  db_->Put(rocksdb::WriteOptions(), key.slice(),
+           rocksdb::Slice(buffer.data(), buffer.size()));
+}
 
 /**
  * @details
@@ -28,7 +92,13 @@ PotentialCache::PotentialCache(const std::string &db_path,
                                bool create_if_missing) {
   rocksdb::Options options;
   options.create_if_missing = create_if_missing;
+#if RGPOT_ROCKSDB_UNIQUE_PTR_OPEN
+  std::unique_ptr<rocksdb::DB> db;
+  rocksdb::Status status = rocksdb::DB::Open(options, db_path, &db);
+  db_ = db.release();
+#else
   rocksdb::Status status = rocksdb::DB::Open(options, db_path, &db_);
+#endif
   if (!status.ok()) {
     std::cerr << "Unable to open RocksDB at " << db_path << ": "
               << status.ToString() << std::endl;
@@ -44,8 +114,10 @@ PotentialCache::PotentialCache(const std::string &db_path,
  * `rocksdb::DB` instance to prevent memory leaks.
  */
 PotentialCache::~PotentialCache() {
+  std::lock_guard<std::mutex> lock(db_mu_);
   if (own_db_ && db_) {
     delete db_;
+    db_ = nullptr;
   }
 }
 
@@ -61,6 +133,7 @@ PotentialCache::~PotentialCache() {
  * passed pointer is managed elsewhere.
  */
 void PotentialCache::set_db(rocksdb::DB *db) {
+  std::lock_guard<std::mutex> lock(db_mu_);
   if (own_db_ && db_)
     delete db_;
   db_ = db;
@@ -77,9 +150,9 @@ void PotentialCache::set_db(rocksdb::DB *db) {
  */
 void PotentialCache::deserialize_hit(const std::string &hit, double &energy,
                                      rgpot::types::AtomMatrix &forces) {
-  std::memcpy(&energy, hit.data(), sizeof(double));
-  std::memcpy(forces.data(), hit.data() + sizeof(double),
-              forces.size() * sizeof(double));
+  ForceOut out{.F = forces.data()};
+  deserialize_hit(hit, out, static_cast<size_t>(forces.rows()));
+  energy = out.energy;
 }
 
 /**
@@ -92,6 +165,7 @@ void PotentialCache::deserialize_hit(const std::string &hit, double &energy,
  */
 void PotentialCache::add_serialized(const KeyHash &kv, double energy,
                                     const rgpot::types::AtomMatrix &forces) {
+  std::lock_guard<std::mutex> lock(db_mu_);
   if (!db_)
     return;
   // Calculate total size needed
@@ -116,6 +190,7 @@ void PotentialCache::add_serialized(const KeyHash &kv, double energy,
  * or std::nullopt if the key does not exist or the DB is closed.
  */
 std::optional<std::string> PotentialCache::find(const KeyHash &kv) {
+  std::lock_guard<std::mutex> lock(db_mu_);
   if (!db_)
     return std::nullopt;
   std::string value;

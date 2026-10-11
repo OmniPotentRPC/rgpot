@@ -32,7 +32,11 @@ typedef struct {
   double *F;       //!< Pointer to the array where forces will be stored.
   double energy;   //!< Calculated potential energy of the configuration.
   double variance; //!< Variance or uncertainty of the calculation.
-  // Variance here is 0 when not needed and that's OK
+  // Variance here is 0 when not needed and that's OK.
+  // stress is row-major xx,xy,xz,yx,yy,yz,zx,zy,zz in the result energy
+  // and length units. has_stress is 0 when the engine did not compute it.
+  double stress[9];
+  int has_stress;
 } ForceOut;
 
 /**

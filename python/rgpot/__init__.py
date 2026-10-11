@@ -19,15 +19,27 @@ from pathlib import Path
 
 from rgpot._core import (
     LJPot,
+    NumericalError,
     __version__,
     evaluate_lj,
-    evaluate_metatomic_dlopen,
+    has_cache,
     has_dftd3,
     has_dftd4,
     has_expr,
+    has_fortran_pots,
     has_metatomic_dlopen,
     has_xckernel,
 )
+
+try:
+    from rgpot._core import evaluate_metatomic_dlopen
+except ImportError:  # compiled without MetatomicDlopen
+    evaluate_metatomic_dlopen = None  # type: ignore[misc, assignment]
+
+try:
+    from rgpot._core import PotentialCache
+except ImportError:  # compiled without -Dwith_cache
+    PotentialCache = None  # type: ignore[misc, assignment]
 
 try:
     from rgpot._core import D3Pot
@@ -49,6 +61,22 @@ try:
 except ImportError:
     XcKernel = None  # type: ignore[misc, assignment]
 
+import importlib as _importlib
+
+_core_mod = _importlib.import_module("rgpot._core")
+for _fortran_name in (
+    "SWPot",
+    "EDIPPot",
+    "LenoskyPot",
+    "TersoffPot",
+    "EAMAlPot",
+    "FeHePot",
+    "CuH2Pot",
+    "WaterHPot",
+):
+    globals()[_fortran_name] = getattr(_core_mod, _fortran_name, None)
+del _core_mod, _fortran_name, _importlib
+
 
 def _torch_major() -> str | None:
     """Return installed torch X.Y, or None if torch is not importable."""
@@ -69,16 +97,22 @@ def default_metatomic_engine_path() -> str | None:
     candidates: list[Path] = []
     # Multi-ABI layout first (rgpot/lib/torch-X.Y/) — preferred product path
     if maj:
+        candidates.append(here / "lib" / f"torch-{maj}" / "librgpot_metatomic_engine.so")
         candidates.append(here / "lib" / f"torch-{maj}" / "libmetatomic_engine.so")
     lib_root = here / "lib"
     if lib_root.is_dir():
         for d in sorted(lib_root.glob("torch-*")):
+            candidates.append(d / "librgpot_metatomic_engine.so")
             candidates.append(d / "libmetatomic_engine.so")
-    # Legacy single-engine layouts (last resort)
+    # Legacy single-engine layouts (last resort). The librgpot_ name is the
+    # engine. libmetatomic_engine.so remains for one release.
     candidates.extend(
         [
+            here / "lib" / "librgpot_metatomic_engine.so",
             here / "lib" / "libmetatomic_engine.so",
+            here.parent / ".rgpot.mesonpy.libs" / "librgpot_metatomic_engine.so",
             here.parent / ".rgpot.mesonpy.libs" / "libmetatomic_engine.so",
+            here / "librgpot_metatomic_engine.so",
             here / "libmetatomic_engine.so",
         ]
     )
@@ -105,9 +139,22 @@ def available_metatomic_engine_abis() -> list[str]:
     if not here.is_dir():
         return out
     for d in sorted(here.glob("torch-*")):
-        if (d / "libmetatomic_engine.so").is_file():
+        if (d / "librgpot_metatomic_engine.so").is_file() or (
+            d / "libmetatomic_engine.so"
+        ).is_file():
             out.append(d.name.removeprefix("torch-"))
     return out
+
+
+def __getattr__(name: str):
+    """Lazy exports. ``ase`` is not imported by ``import rgpot``."""
+    if name == "ase":
+        import importlib
+
+        module = importlib.import_module("rgpot.ase")
+        globals()["ase"] = module
+        return module
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def evaluate_metatomic(
@@ -126,6 +173,8 @@ def evaluate_metatomic(
         import torch  # noqa: F401
     except ImportError:
         pass
+    if evaluate_metatomic_dlopen is None:
+        raise RuntimeError("this build has no MetatomicDlopen frontend")
     eng = engine_path or default_metatomic_engine_path() or ""
     return evaluate_metatomic_dlopen(
         positions, atom_types, box, model_path, eng, device
@@ -134,19 +183,32 @@ def evaluate_metatomic(
 
 __all__ = [
     "LJPot",
+    "NumericalError",
     "D3Pot",
     "D4Pot",
     "ExprPot",
     "XcKernel",
+    "PotentialCache",
+    "SWPot",
+    "EDIPPot",
+    "LenoskyPot",
+    "TersoffPot",
+    "EAMAlPot",
+    "FeHePot",
+    "CuH2Pot",
+    "WaterHPot",
     "evaluate_lj",
     "evaluate_metatomic",
     "evaluate_metatomic_dlopen",
     "default_metatomic_engine_path",
     "available_metatomic_engine_abis",
     "has_metatomic_dlopen",
+    "has_cache",
     "has_expr",
     "has_dftd3",
     "has_dftd4",
     "has_xckernel",
+    "has_fortran_pots",
+    "ase",
     "__version__",
 ]

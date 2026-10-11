@@ -8,9 +8,9 @@
 /**
  * @brief Utility templates and functions for potential management.
  *
- * Defines a static registry for tracking potential instances and global force
- * call counters. It also provides utility functions for structure
- * initialization and validation.
+ * Defines a static registry of atomic instance and force-call counters.
+ * It also provides utility functions for structure initialization and
+ * validation.
  */
 
 namespace rgpot {
@@ -19,65 +19,39 @@ namespace rgpot {
  * @class registry
  * @brief Static registry for instance tracking and statistics.
  *
- * The registry uses a linked list to track all active instances
- * of a derived potential class.
+ * The registry counts active instances of a derived potential class
+ * and how many times those instances have been evaluated.
  */
 template <typename T> class registry {
 public:
-  /// Statistics counters are atomic: force evaluations run concurrently
-  /// from NEB image / dimer endpoint threads. The instance linked list is
-  /// NOT concurrency-safe — construct and destroy potentials from one
-  /// thread (setup paths), only evaluate them concurrently.
+  /// Active-instance and force-call counters. Both are atomic so a batch
+  /// worker can construct or evaluate a potential while another worker does
+  /// the same (F2). There is no process-global list of instances: each DSO
+  /// that includes this header would otherwise keep its own `head`, and the
+  /// destructor in librgpot would write through a node freed by the Python
+  /// extension.
   static std::atomic<size_t> count; //!< Total number of active instances.
   static std::atomic<size_t>
-      forceCalls;   //!< Global counter for force evaluations.
-  static T *head;   //!< Pointer to the head of the linked list.
-  T *prev;                  //!< Pointer to the previous instance in the list.
-  T *next;                  //!< Pointer to the next instance in the list.
+      forceCalls; //!< Global counter for force evaluations.
+  T *prev = nullptr; //!< Unused. Kept so the potential object layout stays.
+  T *next = nullptr; //!< Unused. Kept so the potential object layout stays.
 
 protected:
   /**
    * @brief Default constructor.
    */
-  registry() {
-    ++count;
-    prev = nullptr;
-    next = head;
-    head = static_cast<T *>(this);
-    if (next) {
-      next->prev = head;
-    }
-  }
+  registry() { count.fetch_add(1, std::memory_order_relaxed); }
 
   /**
    * @brief Copy constructor.
    * @param other The instance to copy.
    */
-  registry(const registry &) {
-    ++count;
-    prev = nullptr;
-    next = head;
-    head = static_cast<T *>(this);
-    if (next) {
-      next->prev = head;
-    }
-  }
+  registry(const registry &) { count.fetch_add(1, std::memory_order_relaxed); }
 
   /**
    * @brief Destructor.
    */
-  ~registry() {
-    --count;
-    if (prev) {
-      prev->next = next;
-    }
-    if (next) {
-      next->prev = prev;
-    }
-    if (head == this) {
-      head = next;
-    }
-  }
+  ~registry() { count.fetch_sub(1, std::memory_order_relaxed); }
 
 public:
   /**
@@ -91,7 +65,6 @@ public:
 
 template <typename T> std::atomic<size_t> registry<T>::count{0};
 template <typename T> std::atomic<size_t> registry<T>::forceCalls{0};
-template <typename T> T *registry<T>::head = nullptr;
 
 /**
  * @brief Zeroes the members of a ForceOut structure.

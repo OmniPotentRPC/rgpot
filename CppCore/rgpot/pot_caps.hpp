@@ -40,6 +40,16 @@ struct PotCaps {
   bool batched = false;
   /// Kernel supports periodic boundary conditions.
   bool periodic = true;
+  /// Every rank of a calculator group enters each force call together (an
+  /// MPI engine whose call runs collectives on the group's communicator).
+  /// The result cache then takes its hit-or-miss decision jointly over the
+  /// group: a hit on one rank and a miss on another would leave the missing
+  /// rank alone in a collective. Other groups take no part, so a host may
+  /// hand groups uneven batches.
+  bool groupCollective = false;
+  /// forceImpl writes Cauchy stress for a positive cell volume:
+  /// sigma = (1/V) dE/dstrain in energy/length^3, row-major in ForceOut.
+  bool stress = false;
 };
 
 } // namespace rgpot
