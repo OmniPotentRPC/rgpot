@@ -7,6 +7,188 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
+## [3.5.0](https://github.com/OmniPotentRPC/rgpot/tree/3.5.0) - 2026-10-11
+
+### Breaking
+
+- An rgpot client from this release calls `Potential.getCapabilities` (ordinal `@12`) before the first `calculate` and refuses a server that does not implement the call or whose capabilities are incompatible.
+  A server built on an older `Potentials.capnp` needs that method before such a client can use it.
+- `PotCaps` gained `groupCollective` and `stress`.
+  A C++ caller compiled against the 3.4.0 headers has a different `PotCaps` layout from a `librgpot` built from this release.
+  `rgpot_cxx_layout_stamp()` reports the loaded layout.
+
+### Added
+
+- A `umaexport` pixi environment pins `fairchem-core` 2.23.0 and `torch` 2.13, so `pixi run -e umaexport python scripts/export_uma_aoti.py --help` is reproducible. The `export-uma-aoti` task runs the exporter in it.
+- A standalone C plugin ABI (`include/rgpot/plugin.h`, `RGPOT_PLUGIN_API_VERSION` 1) lets a shared library export `rgpot_plugin_init()`.
+  The host scans `RGPOT_PLUGIN_PATH`, checks the API version and registers the plugin.
+  `RGPOT_CAP_INSTANCE_SAFE` means instances may calculate concurrently; without it the host serializes every instance of that plugin.
+- Backends loaded through the potential profile are checked before dispatch.
+  `ProfileSession::load` and `rgpot::abi::checked_load` read the backend's
+  `Capabilities` and refuse a different protocol family or major, a lower
+  protocol minor than required, another schema identity, an incompatible eindir
+  bridge ABI, layout or feature set, another DLPack revision, or a missing
+  energy or forces operation. Metadata a backend leaves unset is not checked.
+- CPMD ranks can be split into one calculator group per image.
+- Effective medium theory and the cell-list embedded-atom potential now live in this library. EMTConfig.rasmussen selects the Rasmussen parameter set. The copper cluster energy remains 5.129167 eV.
+- Every backend gets the generic `rgpot_engine_*` table through one adapter over `PotentialBase` (`rgpot/engine/EngineTable.cc`): new engine libraries `classical_engine` (lj, ljcluster, morse, zbl and the Fortran potentials), `mopac_engine`, `nwchem_engine` and `skala_engine`, and the generic table added to the UMA, Metatomic and XTB engines. The table adds `rgpot_engine_name`, `rgpot_engine_version` and `rgpot_engine_model_digest` (SHA-256 of the loaded model file), a stated thread-safety policy per reentrancy class, and engine ABI minor 2. `UmaParams` and `MetatomicParams` carry the torch thread counts (default 1) and determinism requests, `MetatomicParams` also the rotation and probe options, and the engine applies them at create. `potentials-schema` is repinned to the revision that adds them.
+- Lennard-Jones, Morse, and ZBL write the Cauchy stress from the same pair force. xTB and tblite copy the virial the single point already stores.
+- Metatomic evaluates a batch in one model forward and reports that capability. The engine file is librgpot_metatomic_engine.so, and libmetatomic_engine.so remains for one release.
+- TIP4P, SPC/E and TIP4P on platinum compile when `-Dwith_water=true`. The option defaults false. Each kernel keeps the 8.5 angstrom cutoff and the 1.0 angstrom switching width.
+- The C++ classes that cross the library boundary have a layout stamp: `rgpot::abi::header_stamp()` is a `constexpr` of `rgpot/abi/CxxLayout.hpp`, `rgpot_cxx_layout_stamp()` reports the loaded library, and `rgpot::abi::layout_compatible()` compares them. It covers the force structures, `PotCaps`, the pair potential classes and their configs, the `RGPOT_HAS_CACHE` bit and the virtual-function counts of `Potential`, and exists in builds without the Rust core.
+- The NWChem multi-rank force host and the collective RPC server own their MPI runtime through `MpiHost`.
+  A throw on one rank is reduced across the communicator and rethrown on every rank with that rank's message, so the ranks leave the call together.
+- The generic engine table gains optional symbols and a minor version: `rgpot_engine_abi_stamp` / `rgpot_engine_abi_compatible` (major, minor, layout revision), `rgpot_engine_caps`, `rgpot_engine_last_error`, `rgpot_engine_set_num_threads` and `rgpot_engine_set_charge_spin`, all exported by `libuma_engine.so`, which is now linked with `-z nodelete`. The `umaenginebld` pixi environment and a CI leg build the engine and run `UmaEngineTest`. `potserv` builds when metatomic and rpc are both enabled.
+- `CPMDPot::selectOrbitals(key)` names the image or bead the next forces belong to and passes it to `cpmdc_session_select_orbitals`, so an engine that keeps orbitals per key starts each SCF from that image's or bead's own previous orbitals.
+- `Capabilities` carries `buildVersion` and `buildRevision` (appended at `@18`
+  and `@19`), filled by the Rust and C++ producers, and `rgpot_source_revision()`
+  returns the source revision of the loaded library. The revision comes from
+  `RGPOT_SOURCE_REVISION` or the git checkout and is empty when neither exists.
+- `LJConfig`, `LJClusterConfig` and `MorseConfig` take `switch_width`: a positive
+  width replaces the shifted truncation with the C^2 quintic switch
+  `S(t) = 1 - 10t^3 + 15t^4 - 6t^5` over the last `switch_width` Angstrom below
+  the cutoff, so the energy, force and curvature reach zero there. The default 0
+  keeps the shifted truncation and its cache keys.
+  `scripts/validation/pair_kernels.py` (sympy) checks every pair kernel's force
+  against `-dE/dx` and the switch's C^2 conditions;
+  `scripts/validation/quintic_switch.sollya` bounds its binary64 evaluation error.
+- `PotentialCache` counts computed and served evaluations per handle
+  (`counts()`, `reset_counts()`). The same split is available on eindir
+  potentials through `rgpot_potential_eval_counts` and
+  `rgpot_potential_reset_eval_counts`, and from Python as
+  `PotentialCache.counts()` (bound when built with the cache), so two runs under
+  different cache states report the same computed count.
+- `XcKernel` serves the `mgga_lapl` family as well as `lda`, `gga` and `mgga_tau`.
+  Laplacian contractions need the AO Laplacians in `lapl_chi` and return 2 when those are missing, leaving the output unchanged.
+- `pixi run check-eonviz-pins` (`scripts/check_eonviz_pins.sh`) fails when an `eonviz` dependency is a git branch or tag, lacks a full commit `rev`, or when `chemparseplot` or `rgpycrumbs` is not an exact `==` pin.
+- `rgpot.h` carries `RGPOT_ABI_VERSION_MAJOR`, `RGPOT_ABI_VERSION_MINOR` and `RGPOT_ABI_LAYOUT_REVISION` with an `rgpot_abi_stamp_t` struct, and the library exports `rgpot_abi_stamp()` and `rgpot_abi_compatible(const rgpot_abi_stamp_t *)`. A loaded `librgpot` is compatible with a caller when the major and layout revision are equal and the library minor is at least the caller's. The C ABI reference page states when each number changes.
+- `rgpot_potential_set_peer_capabilities` installs the peer's `Capabilities`
+  message on a callback handle. An incompatible peer makes
+  `rgpot_potential_calculate`, `eindir_objective_eval` and
+  `eindir_objective_grad` fail before the callback runs, with
+  `peer refused: <first mismatch>` in `rgpot_last_error()`. A handle that never
+  receives a message keeps the callback contract.
+- `rgpot_version()`, `rgpot_version_major()`, `rgpot_version_minor()` and
+  `rgpot_version_patch()` report the version of the loaded library, so a C caller
+  can check it against the `RGPOT_VERSION*` macros of the header it compiled
+  with. `rgpot.h` carried 3.3.0 through the 3.4.0 release; `potctl release sync`
+  now stamps its macros and `potctl release assert` fails when they drift.
+- `scripts/export_uma_aoti.py` embeds `natoms`, per-element `counts` and the
+  `model`, `torch_version` and `fairchem_version` that produced the package.
+  UmaPot checks `natoms` and `counts` against every input, so a package for
+  C2H2 refuses C2H4 although both share `z_set` `[1, 6]`.
+- `scripts/export_uma_aoti.py` records which export path produced a package
+  (`export_path`), documents that torch 2.13 with fairchem-core 2.23 always takes
+  the static `make_fx` fallback, and warns when that fallback runs without
+  `--molecular-box`.
+- rgpot::BatchEvaluator evaluates many configurations in parallel: it builds one potential per worker from a factory, splits the batch into contiguous ranges and returns results in input order, with no re-entrancy requirement on the potential. A worker failure is rethrown after every worker has joined.
+
+### Developer
+
+- A plugin CI leg (potctl ci plugin-test) runs PluginTest, PluginContractTest and ExternalPluginTest on Ubuntu and macOS and is required by the CI gate.
+- CI runs the check-eonviz-pins pixi task as a blocking job.
+- Coverage generation fails on test failures and lcov errors; only the Codecov upload remains advisory. The coverage scripts accept lcov 2.
+- Every GitHub Action reference is pinned to a full commit SHA with the version in a trailing comment; ci/gha/check-drift.sh rejects unpinned references.
+- Pull request CI runs hold read-only permissions: docs deployment and the Codecov OIDC upload run only on pushes, in their own jobs.
+- The MPI contract client runs the capability handshake against the collective RPC server before it configures or evaluates, and a second run requires a protocol major the server does not speak and must stop at the handshake with the reason, for both the serial and the MPI server layouts.
+- The Python contract tests cover the recursive `ExprParams` / `PotSpec` tree: the schema names the tree, `PotentialConfig` stays a single-backend union, and a nested `0.5*inner + d3` composition survives a Cap'n Proto round trip.
+- The macOS wheel job is required and validates the wheel contents, and publishing waits for it.
+- The wheel test command runs `tests/test_rgpot_pip_core.py` against each repaired wheel, so the runpath, import and abi3 checks gate the wheel jobs.
+- `CapabilitiesWire` decodes `Capabilities` messages across the complete
+  pre-build-identity `Potentials.capnp` (`CppCore/tests/fixtures`) and requires
+  every member that file declares to exist in the current schema with the same
+  ordinal and type.
+- `RPCSchemaSync` regenerates the Cap'n Proto artifacts from both vendored
+  `Potentials.capnp` copies, requires the output and the code generator request
+  to match, and requires the build's generated header and source to equal a
+  fresh regeneration.
+- tests/check_wheel_contents.py fails when a built wheel contains the xckernel generator files (catalog.py, cbackend.py) or depends on sympy; both wheel jobs run it.
+
+### Changed
+
+- Every Fortran potential (SW, EDIP, Lenosky, Tersoff, EAM Al, FeHe, CuH2,
+  Water-H) keeps its neighbour table and error message in a per-instance
+  workspace and reports `Reentrancy::PerInstance` with `perImageInstances`,
+  replacing `ProcessSerial`. Separate instances evaluate on separate threads,
+  and a NEB that keeps one instance per image no longer rebuilds one shared
+  table as the images alternate (220 of 240 calls rebuilt it in a 601-atom
+  EAM aluminium NEB, 27.5 percent of its samples). The C entry points without
+  a workspace remain for the CuH2 plugin and stay process-serial.
+- LJPot, LJClusterPot, MorsePot and ZBLPot search pairs with linked cells once
+  the box holds 64 or more cells of one cutoff plus skin, so a fresh search
+  costs O(n) instead of O(n^2), and fully periodic boxes past 20000 atoms keep
+  their cached pair list. The cached force loop runs over a sorted CSR half
+  list with the periodic image recorded at build when cutoff + skin is below
+  half the box, and keeps each atom's force in registers across its row.
+  `PairListCache::accumulate` takes a radial kernel returning a `PairTerm`
+  (energy and `-V'(r)/r`) and returns the energy.
+- The EAM aluminium kernel evaluates four exponentials per neighbour entry
+  instead of up to eighteen: the density pass keeps rho(r) and rho'(r) for the
+  force pass, the shifts at the cutoff are computed once per call, and integer
+  powers and the embedding polynomial run without `pow`.
+  `scripts/validation/eam_al.py` (sympy) checks the rearranged forms and the
+  gather force against the closed form.
+- The Fortran potentials ask vesin for unsorted neighbour lists and order each
+  atom's row by partner index with two linear counting sorts, which replaces
+  vesin's global sort (10.6 percent of an EAM aluminium NEB) and keeps every
+  force sum in one order whether vesin reused its cached topology or rebuilt it.
+- The Rust `RpcClient` and the `pot_calculate` bridge call
+  `Potential.getCapabilities` before the first `calculate` and refuse a server
+  with incompatible capabilities. A server that does not implement the call is
+  refused with an error naming `Potential.getCapabilities` and the upgrade path;
+  the rgpot servers (`potserv`, `rgpot_rpc_server_start`) implement it. Servers
+  built on `Potentials.capnp` elsewhere need the call before an rgpot client
+  built from this release can use them.
+- The `eonviz` pixi environment pins `chemparseplot` and `rgpycrumbs` to the 1.11.0 releases instead of git branches, and raises the `readcon` floor to 0.14.7.
+- `librgpot` no longer links MPI. With MPI found, the build adds `librgpot_mpi`
+  (meson dependency and pkg-config name `rgpot-mpi`) holding every MPI call of the
+  calculator groups, and `bindCalculators` or `calculatorsUseMpi` load it with
+  `dlopen` on first use through one C entry point, `rgpot_mpi_api_v1`
+  (`rgpot/calculator_mpi_abi.h`). A host that never asks for calculator groups no
+  longer maps libmpi, whose UCX load-time hooks cost 0.4 s per process start.
+  `loadCalculatorMpi`, `calculatorMpiLoaded` and `calculatorMpiLoadError` let a
+  host load it from a chosen path (or `RGPOT_MPI_LIBRARY`) and report failures.
+- `uma_ase_parity` requires the `.pt2` model path as its argument and prints a usage line without it; the former default was a TorchScript path `UmaPot` rejects.
+
+### Fixed
+
+- TBLitePot builds against tblite 0.6.0.
+  The GFN calculator constructors take an optional config pointer there, and a null config keeps the previous behaviour.
+  Older tblite keeps the two-argument call.
+- The Ubuntu Meson job passes -Dwith_mpi=enabled and runs calculator_group_test under mpirun with four ranks.
+- The UmaPot README and `UmaConfig::cutoff` described a `model.pt2.json`
+  sidecar that overrides the config. UmaPot reads only the metadata the exporter
+  embeds in the `.pt2`; the docs say so and list the keys it uses.
+- The eindir callbacks validate what a force callback returns with
+  `RGPOT_SUCCESS` before reading it: a null forces tensor or data pointer, a
+  wrong dtype, rank or element count, a non-finite force and a non-finite
+  energy are refused with `EINDIR_INVALID_PARAMETER` and a `rgpot_last_error()`
+  message, and the gradient output is left untouched. `n_atoms * 3` overflow is
+  refused at construction.
+- The result cache no longer deadlocks a bound MPI world. A potential that
+  reports the new `PotCaps::groupCollective` (`CPMDPot` does) has its cache
+  hit or miss decided jointly over its calculator through the new
+  `calculatorAgree`, so a geometry one rank holds and another misses is
+  computed on every rank of the calculator instead of leaving the missing
+  rank alone in the engine's collective.
+- UmaPot checks the charge, spin, task and composition embedded in an AOTI
+  package against its `UmaConfig` and the input atoms on every force call, and
+  throws `rgpot::UmaContractError` on a mismatch. Without the check, a config
+  whose charge or spin differs from the package's evaluates a different
+  potential energy surface and reports no error.
+- `CPMDPot::forceImpl` exchanges force errors on its calculator's communicator
+  instead of `MPI_COMM_WORLD`. A host that hands calculator groups an uneven
+  batch (two NEB endpoints on four groups) left the computing groups in that
+  world exchange while the idle groups waited in `shareFromCalculator`, and
+  every grouped run hung at its first such batch. A failure still prints on
+  every rank of the failing calculator and aborts the whole world.
+- `UmaPot` refuses an edge count outside the range recorded in the `.pt2` metadata (`nedges_min`, `nedges_max`) with an `UmaContractError` on field `nedges`, instead of passing the compiled graph a shape it was not exported for. `scripts/export_uma_aoti.py` writes both keys: 1 to 65536 for a dynamic export, the traced edge count for a static one.
+- `scripts/export_baker_uma_aoti.py` deduplicates Baker systems by exact
+  composition, charge and spin. Keying by `z_set` merged systems that share an
+  element set but not their atom counts, and their packages cannot evaluate
+  each other.
+
+
 ## [3.4.0](https://github.com/OmniPotentRPC/rgpot/tree/3.4.0) - 2026-09-30
 
 ### Added
