@@ -657,3 +657,5 @@ if get_option('with_python')
     endif
     subdir('python')
 endif
+
+install_headers('bind/include/rgbind/rgbind.hpp', subdir: 'rgbind')
