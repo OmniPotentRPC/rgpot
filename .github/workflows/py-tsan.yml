@@ -25,6 +25,11 @@ on:
         required: false
         type: string
         default: ""
+      rust-archive:
+        description: Rust staticlib file name counted for __tsan_func_entry when rust-crate-dir is set.
+        required: false
+        type: string
+        default: librust_core_demo.a
       tsan-cmake-args:
         description: CMake arguments for the TSan build. Empty by default.
         required: false
@@ -75,6 +80,7 @@ jobs:
           IMPORTS: ${{ inputs.import-names }}
           EXTRAS: ${{ inputs.extras }}
           RUST_CRATE: ${{ inputs.rust-crate-dir }}
+          RUST_ARCHIVE: ${{ inputs.rust-archive }}
           TSAN_CMAKE_ARGS: ${{ inputs.tsan-cmake-args }}
           RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
           APT_PACKAGES: ${{ inputs.apt-packages }}
@@ -86,7 +92,7 @@ jobs:
           # the image's pyenv install.
           IMAGE=ghcr.io/nascheme/numpy-tsan:3.14t@sha256:f6dd658f1a155be35e27b182cac97c2a77c4b2d62bacb81753beaba725978149
           docker run --rm -i \
-            -e PKG -e TEST_PATH -e IMPORTS -e EXTRAS -e RUST_CRATE -e TSAN_CMAKE_ARGS -e RUST_TOOLCHAIN \
+            -e PKG -e TEST_PATH -e IMPORTS -e EXTRAS -e RUST_CRATE -e RUST_ARCHIVE -e TSAN_CMAKE_ARGS -e RUST_TOOLCHAIN \
             -e APT_PACKAGES -e SETUP_SCRIPT \
             -v "$GITHUB_WORKSPACE":/src -w /src \
             "$IMAGE" \
@@ -181,15 +187,20 @@ jobs:
             fi
             found=0
             total=0
+            if [ -z "${RUST_ARCHIVE}" ]; then
+              echo "rust-archive is empty" >&2
+              exit 1
+            fi
+            echo "Rust staticlib name ${RUST_ARCHIVE}"
             while IFS= read -r archive; do
               [ -n "${archive}" ] || continue
               found=1
               count="$(nm -A "${archive}" | grep -c __tsan_func_entry || true)"
               echo "__tsan_func_entry count ${count} in ${archive}"
               total=$((total + count))
-            done < <(find /tmp/rust-tsan-build -name 'librust_core_demo.a' -type f)
+            done < <(find /tmp/rust-tsan-build -name "${RUST_ARCHIVE}" -type f)
             if [ "${found}" -eq 0 ]; then
-              echo "librust_core_demo.a not found under /tmp/rust-tsan-build" >&2
+              echo "${RUST_ARCHIVE} not found under /tmp/rust-tsan-build" >&2
               find /tmp/rust-tsan-build -name '*.a' -type f >&2 || true
               exit 1
             fi
