@@ -3,6 +3,8 @@
 # returns them. The same digest is required for every target the CPU can run.
 # Debug builds (-O0, the default meson build) produce these digests.
 # Release builds are compared with each other, not with this file.
+# Product-sums are fused. Scalar and SSE call std::fma. LJ and the fold
+# kept the previous digest on the pinned geometries.
 #
 # lj: LJPot u0=0.0104 cutoff=8.5 psi=3.4, orthorhombic box 18.
 # Four geometries (2, 3, 4, 2 atoms): a pair, a triple with -0 and a
@@ -17,6 +19,6 @@
 # including -0, a subnormal, a 1-ulp shift of 3, and NaN.
 
 lj = "7d0d79a18c784052a0d18384014a92fbbd9bdafad0db1e916f87dbbdc584437c"
-morse = "71e8c93e8c03c08e54f70ce0754e4127ddd7d50a9632c5ab6ffa2212559ae562"
-eam = "a9403667c82bddd1a62de10470b4a59f756ae373de153a18b4fe102b2211b119"
+morse = "001a923a8f25bf5136627ace3f15cb38b7bfc9d8f12fa2446778a38f7301fcd3"
+eam = "600ecc7b65a71a4bce5956103bcf4941630bc26ead24c343352a5425d5c683f6"
 fold = "242fbfb234c53670859ad69f7b531e4ada8ee9f476709de0687aa5a0a522e857"

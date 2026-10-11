@@ -14,7 +14,8 @@ __attribute__((noinline, optimize("no-tree-vectorize")))
 #elif defined(__GNUC__)
 __attribute__((noinline))
 #endif
-double exp(double x) {
+double
+exp(double x) {
   std::uint64_t ux = 0;
   std::memcpy(&ux, &x, sizeof(ux));
   std::uint32_t hx = static_cast<std::uint32_t>(ux >> 32);
@@ -51,7 +52,7 @@ double exp(double x) {
       k = 1 - xsb - xsb;
     } else {
       const double half = xsb ? -0.5 : 0.5;
-      const double scaled = kInvLn2 * x + half;
+      const double scaled = mul_add(kInvLn2, x, half);
       k = static_cast<int>(scaled);
       const double tk = static_cast<double>(k);
       const double t_hi = tk * kLn2Hi;
@@ -68,14 +69,10 @@ double exp(double x) {
   }
 
   const double t = x * x;
-  const double tp5 = t * kP5;
-  const double p4 = kP4 + tp5;
-  const double tp4 = t * p4;
-  const double p3 = kP3 + tp4;
-  const double tp3 = t * p3;
-  const double p2 = kP2 + tp3;
-  const double tp2 = t * p2;
-  const double p1 = kP1 + tp2;
+  const double p4 = mul_add(t, kP5, kP4);
+  const double p3 = mul_add(t, p4, kP3);
+  const double p2 = mul_add(t, p3, kP2);
+  const double p1 = mul_add(t, p2, kP1);
   const double poly = t * p1;
   const double c = x - poly;
   if (k == 0) {
