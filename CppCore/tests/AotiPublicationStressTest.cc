@@ -13,6 +13,16 @@
 #include <thread>
 #include <vector>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
 namespace {
 
 // Eight writers publish a 4 MiB payload while one reader samples it.
@@ -95,6 +105,37 @@ int run_round(const std::filesystem::path &target, std::string &error) {
   return failures.load() == 0 ? 0 : 1;
 }
 
+#ifdef _WIN32
+// Delete-pending is the Windows state in which exists() throws
+// "Access is denied" and an open without FILE_SHARE_DELETE fails.
+bool read_while_delete_pending(const std::filesystem::path &target,
+                               const std::vector<uint8_t> &payload,
+                               std::string &error) {
+  HANDLE handle = CreateFileW(
+      target.c_str(), GENERIC_READ,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+      OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_DELETE_ON_CLOSE,
+      nullptr);
+  if (handle == INVALID_HANDLE_VALUE) {
+    error = "cannot hold a delete-pending publication";
+    return false;
+  }
+  bool ok = true;
+  try {
+    const auto data = rgpot::aoti_execstack::read_all(target.string());
+    if (data != payload) {
+      error = "delete-pending read was not the published payload";
+      ok = false;
+    }
+  } catch (const std::exception &ex) {
+    error = ex.what();
+    ok = false;
+  }
+  CloseHandle(handle);
+  return ok;
+}
+#endif
+
 } // namespace
 
 int main() {
@@ -109,10 +150,24 @@ int main() {
   rgpot::aoti_execstack::write_all(target.string(),
                                    std::vector<uint8_t>(kSize, 0));
 
+  const std::vector<uint8_t> seed(kSize, 0);
   int failed_rounds = 0;
   for (int round = 1; round <= kRounds; ++round) {
     std::string error;
-    const int status = run_round(target, error);
+    int status = 0;
+    rgpot::aoti_execstack::write_all(target.string(), seed);
+#ifdef _WIN32
+    if (!read_while_delete_pending(target, seed, error))
+      status = 1;
+    // Closing the delete-on-close handle removes the file.
+    rgpot::aoti_execstack::write_all(target.string(), seed);
+#endif
+    std::string race_error;
+    if (run_round(target, race_error) != 0) {
+      status = 1;
+      if (error.empty())
+        error = race_error;
+    }
     if (status != 0) {
       ++failed_rounds;
       if (!error.empty())
