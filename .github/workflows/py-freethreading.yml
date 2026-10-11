@@ -1,0 +1,84 @@
+name: Python free-threading
+
+on:
+  workflow_call:
+    inputs:
+      package-dir:
+        description: Directory that contains the project to install
+        required: true
+        type: string
+      import-names:
+        description: Comma-separated extension modules for the F1 import test
+        required: true
+        type: string
+      test-path:
+        description: Pytest path relative to package-dir
+        required: true
+        type: string
+      extras:
+        description: Extras to install with the package
+        required: false
+        type: string
+        default: ""
+      iterations:
+        description: pytest-run-parallel iterations for T1
+        required: false
+        type: string
+        default: "50"
+
+permissions:
+  contents: read
+
+jobs:
+  t1:
+    name: T1 (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.14t", "3.15t"]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install the package and the T1 runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -U pip
+          python -m pip install pytest pytest-run-parallel pytest-timeout hypothesis numpy
+          if [ -n "${{ inputs.extras }}" ]; then
+            python -m pip install "./${{ inputs.package-dir }}[${{ inputs.extras }}]"
+          else
+            python -m pip install "./${{ inputs.package-dir }}"
+          fi
+
+      - name: F1 import with the GIL disabled
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -W error::RuntimeWarning -c '
+          import sys, warnings
+          warnings.simplefilter("error", RuntimeWarning)
+          names = """${{ inputs.import-names }}""".replace(",", " ").split()
+          for name in names:
+              __import__(name)
+          enabled = sys._is_gil_enabled()
+          print("F1 sys._is_gil_enabled()", enabled, "modules", names)
+          assert enabled is False
+          '
+
+      - name: T1 pytest-run-parallel
+        shell: bash
+        working-directory: ${{ inputs.package-dir }}
+        run: |
+          set -euo pipefail
+          python -m pytest "${{ inputs.test-path }}" \
+            --parallel-threads=auto \
+            --iterations=${{ inputs.iterations }} \
+            --timeout=180 \
+            -o faulthandler_timeout=120

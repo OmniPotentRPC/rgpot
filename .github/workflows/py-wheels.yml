@@ -1,0 +1,125 @@
+name: Python wheels
+
+on:
+  workflow_call:
+    inputs:
+      package-dir:
+        description: Project directory passed to cibuildwheel
+        required: true
+        type: string
+      import-names:
+        description: Comma-separated extension modules for the F1 import test
+        required: true
+        type: string
+      test-path:
+        description: Pytest path relative to package-dir
+        required: true
+        type: string
+      extras:
+        description: Extras installed into the wheel test environment
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  wheels:
+    name: wheels (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-14, windows-2022]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Stage the F1 import check
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${{ inputs.package-dir }}/_ci"
+          cat > "${{ inputs.package-dir }}/_ci/check_f1.py" << 'PY'
+          import os
+          import sys
+          import sysconfig
+          import warnings
+
+          names = [
+              part
+              for part in os.environ.get(
+                  "RGBIND_IMPORTS", "${{ inputs.import-names }}"
+              ).replace(",", " ").split()
+              if part
+          ]
+          gil = sysconfig.get_config_var("Py_GIL_DISABLED")
+          flags = str(sysconfig.get_config_var("ABIFLAGS") or "")
+          free = str(gil) in {"1", "True"} or "t" in flags
+          print(f"F1 free={free} gil={gil} flags={flags} names={names}")
+          if not free:
+              raise SystemExit(0)
+          warnings.simplefilter("error", RuntimeWarning)
+          for name in names:
+              __import__(name)
+          if sys._is_gil_enabled():
+              raise SystemExit("F1 failed: GIL is enabled")
+          PY
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@056b871b4f3c060ea999c4bf9a7e41202d7d9f21 # v4.3.0
+        with:
+          package-dir: ${{ inputs.package-dir }}
+          output-dir: wheelhouse
+        env:
+          CIBW_BUILD: cp310-* cp311-* cp312-* cp314t-* cp315t-*
+          CIBW_SKIP: pp* *-musllinux* *_i686 *-win32
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
+          CIBW_ARCHS_MACOS: arm64
+          CIBW_TEST_EXTRAS: ${{ inputs.extras }}
+          CIBW_TEST_REQUIRES: pytest pytest-timeout numpy hypothesis
+          CIBW_TEST_SOURCES: ${{ inputs.test-path }} _ci
+          CIBW_TEST_COMMAND: python _ci/check_f1.py && python -m pytest -q ${{ inputs.test-path }} --timeout=180 -o faulthandler_timeout=120
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: abi3audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install abi3audit
+          shopt -s nullglob
+          wheels=(wheelhouse/*abi3*.whl)
+          if [ "${#wheels[@]}" -eq 0 ]; then
+            echo "no abi3 wheel on this runner"
+            exit 0
+          fi
+          python -m abi3audit "${wheels[@]}"
+
+      - name: F9 dynamic symbol check
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for whl in wheelhouse/*.whl; do
+            rm -rf _whlx && mkdir _whlx
+            unzip -qo "$whl" -d _whlx
+            while IFS= read -r so; do
+              echo "== $so"
+              if nm -D --defined-only "$so" | awk '{print $NF}' | grep -E '^(rgmin_|rgsaddle_|rgpot_)'; then
+                echo "F9: forbidden export in $so" >&2
+                exit 1
+              fi
+            done < <(find _whlx -name '*.so')
+          done
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: py-wheels-${{ matrix.os }}
+          path: wheelhouse/*.whl

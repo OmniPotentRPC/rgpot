@@ -1,0 +1,96 @@
+name: Python TSan
+
+on:
+  workflow_call:
+    inputs:
+      package-dir:
+        description: Directory that contains the project to install
+        required: true
+        type: string
+      import-names:
+        description: Comma-separated extension modules
+        required: true
+        type: string
+      test-path:
+        description: Pytest path relative to package-dir
+        required: true
+        type: string
+      extras:
+        description: Extras to install with the package
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  tsan:
+    name: T2 cpython_sanity 3.14t
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Lower vm.mmap_rnd_bits when TSan requires it
+        shell: bash
+        run: |
+          set -euo pipefail
+          bits="$(cat /proc/sys/vm/mmap_rnd_bits || echo 28)"
+          echo "vm.mmap_rnd_bits=${bits}"
+          if [ "${bits}" -gt 28 ]; then
+            sudo sysctl vm.mmap_rnd_bits=28
+          fi
+
+      - name: Pytest under ThreadSanitizer
+        shell: bash
+        env:
+          PKG: ${{ inputs.package-dir }}
+          TEST_PATH: ${{ inputs.test-path }}
+          IMPORTS: ${{ inputs.import-names }}
+          EXTRAS: ${{ inputs.extras }}
+        run: |
+          set -euo pipefail
+          docker run --rm -i \
+            -e PKG -e TEST_PATH -e IMPORTS -e EXTRAS \
+            -v "$GITHUB_WORKSPACE":/work -w /work \
+            ghcr.io/nascheme/cpython-tsan:3.14t \
+            bash -s << 'EOF'
+          set -euo pipefail
+          if command -v python >/dev/null 2>&1; then
+            PY=python
+          elif command -v python3.14t >/dev/null 2>&1; then
+            PY=python3.14t
+          else
+            PY=python3
+          fi
+          if ! command -v clang++ >/dev/null 2>&1; then
+            if command -v apt-get >/dev/null 2>&1; then
+              apt-get update
+              apt-get install -y clang
+            fi
+          fi
+          command -v clang++
+          clang++ --version
+          export CC=clang
+          export CXX=clang++
+          export CFLAGS="-fsanitize=thread -fno-omit-frame-pointer -g -ffp-contract=off"
+          export CXXFLAGS="${CFLAGS}"
+          export LDFLAGS="-fsanitize=thread"
+          export PIP_BREAK_SYSTEM_PACKAGES=1
+          "$PY" -m pip install -U pip
+          "$PY" -m pip install nanobind scikit-build-core ninja numpy pytest pytest-timeout hypothesis
+          spec="/work/${PKG}"
+          if [ -n "${EXTRAS}" ]; then
+            spec="${spec}[${EXTRAS}]"
+          fi
+          CMAKE_ARGS="-DRGBIND_TSAN=ON" "$PY" -m pip install "${spec}"
+          curl -fsSL -o /tmp/suppressions_free_threading.txt \
+            https://raw.githubusercontent.com/python/cpython/refs/heads/3.14/Tools/tsan/suppressions_free_threading.txt
+          # Upstream suppressions:
+          # https://github.com/python/cpython/blob/3.14/Tools/tsan/suppressions_free_threading.txt
+          export TSAN_OPTIONS="halt_on_error=1 allocator_may_return_null=1 suppressions=/tmp/suppressions_free_threading.txt"
+          "$PY" -m pytest -s "/work/${PKG}/${TEST_PATH}" \
+            --timeout=180 \
+            -o faulthandler_timeout=120
+          EOF
