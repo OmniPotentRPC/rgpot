@@ -40,7 +40,10 @@ on:
       - ".github/workflows/wheels.yml"
 
 jobs:
-  # py-wheels.yml builds cp310, cp311, cp312, cp314t, and cp315t.
+  # py-wheels.yml defaults to cp310, cp311, cp312, cp314t, and cp315t.
+  # This package drops cp315t: the isolated build needs torch, and PyPI
+  # has no torch wheel for that free-threaded tag. 3.15t is still tested
+  # by the reduced meson job.
   # windows-2022 stays in the reusable workflow's default matrix for
   # callers without Fortran. This package's extension is C++ and Fortran.
   # cibuildwheel on windows-2022 compiles with MSVC. MinGW gfortran or
@@ -55,6 +58,7 @@ jobs:
       extras: ase
       test-requires: pytest-timeout hypothesis
       os: '["ubuntu-latest","ubuntu-24.04-arm","macos-14"]'
+      build: "cp310-* cp311-* cp312-* cp314t-*"
 
   kernel-count:
     name: Fortran kernels in the linux wheel

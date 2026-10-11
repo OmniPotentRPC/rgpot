@@ -132,7 +132,9 @@ build-frontend = "build"
 # Python >= 3.12, and tool.meson-python.limited-api turns that into a
 # cp312-abi3 tag covering every 3.12+ CPython. cp310/cp311 build native
 # wheels with the limited API switched off via the override below.
-build = "cp310-* cp311-* cp312-* cp314t-* cp315t-*"
+# cp315t is omitted: the isolated build requires torch, and PyPI has no
+# torch wheel for that tag. The reduced meson job still tests 3.15t.
+build = "cp310-* cp311-* cp312-* cp314t-*"
 skip = ["pp*", "*-musllinux*", "*_i686", "*-win32"]
 # Prove the kernels are in the artifact rather than trusting the flag: a
 # wheel whose librgpot has no bind(c) entry points is the bug 3.0.1 fixed.
@@ -141,7 +143,7 @@ test-command = "python -c \"import rgpot; assert rgpot.has_expr and rgpot.has_df
 # meson skips the limited_api kwarg under these interpreters anyway; the
 # explicit -D flag makes meson-python drop the abi3 tag to match.
 # Free-threaded CPython before 3.15 also rejects the limited API, so
-# cp314t is in this list. cp315t keeps it.
+# cp314t is in this list.
 [[tool.cibuildwheel.overrides]]
 select = "cp310-* cp311-* cp314t-*"
 config-settings = "setup-args=-Dpython.allow_limited_api=false"
