@@ -7,7 +7,7 @@ name: CI (orchestrator)
 
 on:
   push:
-    branches: [main, 'perf/**']
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:

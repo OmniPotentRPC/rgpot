@@ -1,7 +1,5 @@
 # ISA dispatch on the two GitHub runner architectures, plus the
 # -march=x86-64-v3 contraction check. This file is hand-maintained.
-# The isa-audit reusable workflow is pinned to the ci/isa-audit commit
-# until that file is on main (rgpot #119). Repin to main when it lands.
 
 name: SIMD ISA
 
@@ -142,7 +140,7 @@ jobs:
     permissions:
       contents: read
       actions: write
-    uses: OmniPotentRPC/rgpot/.github/workflows/isa-audit.yml@8957850fd15005ea460ba336781ed152f7ee3d92 # isa-audit
+    uses: OmniPotentRPC/rgpot/.github/workflows/isa-audit.yml@main
     with:
       artifact-name: unstripped-ubuntu-latest
       allow-file: rgpot/isa-allow.toml
@@ -154,7 +152,7 @@ jobs:
     permissions:
       contents: read
       actions: write
-    uses: OmniPotentRPC/rgpot/.github/workflows/isa-audit.yml@8957850fd15005ea460ba336781ed152f7ee3d92 # isa-audit
+    uses: OmniPotentRPC/rgpot/.github/workflows/isa-audit.yml@main
     with:
       artifact-name: unstripped-ubuntu-24.04-arm
       allow-file: rgpot/isa-allow.toml
