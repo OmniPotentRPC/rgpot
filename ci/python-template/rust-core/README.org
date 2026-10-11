@@ -86,13 +86,31 @@ The =rust-toolchain= input defaults to =nightly-2026-01-20= and the job
 passes that name to CMake as =-DRust_TOOLCHAIN=.
 It installs that toolchain with =rust-src= and fails unless the clang
 and rustc LLVM majors match.
-After the build it counts =__tsan_func_entry= in =librust_core_demo.a=
-and fails if the count is zero.
+After the build it counts =__tsan_func_entry= in the staticlib named by
+the =rust-archive= input.
+The default is =librust_core_demo.a=, the archive this template builds.
+A caller whose crate has another name passes that file name.
+The job fails when the file is missing or the count is zero.
 That nightly is LLVM 21, which is the major in the image above.
 The CPython suppression file is pinned to
 =bf397e272c2bee639c3ba0208c221f7dd9447bb6=, not the floating 3.14 branch.
 A second pytest pass uses =pytest-run-parallel --parallel-threads=4
 --iterations=5=.
+
+A caller passes the archive name like this:
+
+#+begin_src yaml
+jobs:
+  tsan:
+    uses: OmniPotentRPC/rgpot/.github/workflows/py-tsan.yml@main
+    with:
+      package-dir: .
+      import-names: pkg._core
+      test-path: tests
+      extras: test
+      rust-crate-dir: crates/pkg
+      rust-archive: libpkg.a
+#+end_src
 
 * Demo crate
 
