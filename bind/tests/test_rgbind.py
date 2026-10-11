@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
@@ -56,7 +57,7 @@ def test_claim_contention_eight_threads() -> None:
         nonlocal oks
         barrier.wait()
         try:
-            session.work(30)
+            session.work(400)
         except RuntimeError as exc:
             with lock:
                 errors.append(str(exc))
@@ -70,6 +71,7 @@ def test_claim_contention_eight_threads() -> None:
     for thread in threads:
         thread.join()
     assert oks >= 1
+    assert len(errors) >= 1
     assert oks + len(errors) == 8
     for text in errors:
         assert text == "Session is in use by another thread"
@@ -94,12 +96,47 @@ def test_claim_pool_eight() -> None:
         assert item == "ok" or item == "Session is in use by another thread"
 
 
+def test_claim_held_until_release() -> None:
+    session = _rgbind_test.Session()
+    gate = _rgbind_test.HoldGate()
+    holder = threading.Thread(target=session.hold_until, args=(gate,))
+    holder.start()
+    deadline = time.monotonic() + 10
+    while not gate.held():
+        if time.monotonic() > deadline:
+            gate.release()
+            holder.join()
+            raise AssertionError("holder did not claim the session")
+        time.sleep(0.001)
+    with pytest.raises(RuntimeError, match="^Session is in use by another thread$"):
+        session.work(0)
+    gate.release()
+    holder.join()
+    assert session.work(0) == 1
+
+
 def test_worker_exception_is_reraised() -> None:
     def boom() -> None:
         raise ValueError("from-worker")
 
     with pytest.raises(ValueError, match="from-worker"):
         _rgbind_test.call_on_worker(boom)
+
+
+def test_two_workers_second_callback_is_skipped() -> None:
+    seen: list[str] = []
+
+    def first() -> None:
+        seen.append("first")
+        raise ValueError("from-first")
+
+    def second() -> None:
+        seen.append("second")
+        raise ValueError("from-second")
+
+    with pytest.raises(ValueError, match="from-first"):
+        _rgbind_test.call_two_workers(first, second)
+    assert seen == ["first"]
 
 
 def test_worker_success() -> None:
@@ -142,6 +179,30 @@ def test_schedule_order() -> None:
 def test_schedule_rejects_zero_workers() -> None:
     with pytest.raises(ValueError):
         _rgbind_test.schedule_canonical(FIXTURE, 0)
+
+
+def test_schedule_rejects_duplicate_row_id() -> None:
+    rows = list(FIXTURE)
+    rows.append((0, 99, False))
+    with pytest.raises(ValueError, match="duplicate row_id"):
+        _rgbind_test.schedule_canonical(rows, 1)
+
+
+def test_schedule_input_order_permutations() -> None:
+    base = _rgbind_test.schedule_canonical(FIXTURE, 1)
+    rows = list(FIXTURE)
+    permutations = [
+        rows,
+        list(reversed(rows)),
+        rows[2:] + rows[:2],
+        [rows[-1], *rows[1:-1], rows[0]],
+    ]
+    digests = []
+    for perm in permutations:
+        text = _rgbind_test.schedule_canonical(perm, 3)
+        assert text == base
+        digests.append(hashlib.sha256(text.encode("utf-8")).hexdigest())
+    assert len(set(digests)) == 1
 
 
 def test_shape_2d_message() -> None:

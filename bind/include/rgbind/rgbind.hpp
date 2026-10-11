@@ -16,9 +16,9 @@
  *
  * - F1. Extension modules are built FREE_THREADED so nanobind sets
  *   Py_mod_gil = Py_MOD_GIL_NOT_USED.
- * - F2. No global mutable state. This header has none. Immutable data
- *   and call_once init of the exception type are the only process-lifetime
- *   objects, and they are not reachable as shared mutable caches.
+ * - F2. No global mutable state. This header has none. install_policy
+ *   registers the exception type with a temporary nb::exception, which
+ *   does not keep a Python object past that statement.
  * - F3. Mutable sessions take rgbind::Claim on an atomic flag. A second
  *   caller gets InUse, which the module maps to
  *   RuntimeError("<Type> is in use by another thread"). Do not hold a
@@ -62,6 +62,7 @@
 #include <cstdint>
 #include <cstring>
 #include <map>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -126,14 +127,18 @@ struct Schedule {
 /**
  * @brief Group rows by owner and sort each group by ascending row id.
  *
+ * The worker count is not an input to the groups. n_workers is
+ * checked and then ignored (F8). Two different permutations of the
+ * same rows produce the same groups. A repeated row_id is rejected
+ * because the tie-break would otherwise be the owner address.
+ *
  * @param rows Input rows. Order does not affect the result.
- * @param n_workers Caller thread count. Must be >= 1. The value is not
- *        part of the schedule (F8): 1, 2, 3, and 8 workers return the
- *        same groups.
+ * @param n_workers Caller thread count. Must be >= 1. Not an input to
+ *        the groups (F8): 1, 2, 3, and 8 workers return the same groups.
+ * @pre n_workers >= 1. row_id values are unique.
  * @return Owner groups ordered by minimum row id, then owner id.
- * @pre n_workers >= 1.
- * @return The schedule. Throws std::invalid_argument on a bad worker
- *         count or on mixed reentrant flags for one owner.
+ *         Throws std::invalid_argument on a bad worker count, a
+ *         duplicate row_id, or mixed reentrant flags for one owner.
  */
 inline Schedule serialise_by_owner(const std::vector<OwnerRow> &rows,
                                    int n_workers) {
@@ -141,9 +146,9 @@ inline Schedule serialise_by_owner(const std::vector<OwnerRow> &rows,
     throw std::invalid_argument(
         "rgbind::serialise_by_owner: n_workers must be >= 1");
   }
-  // F8: thread count is not configuration. The argument is accepted so
-  // callers record the decomposition they asked for, and so a test can
-  // hash the schedule at 1, 2, 3, and 8 workers.
+  // F8: the worker count is not an input to the groups. The argument
+  // is accepted so a test can hash the schedule at 1, 2, 3, and 8
+  // workers and so callers can record the decomposition they asked for.
 
   struct Acc {
     bool reentrant = false;
@@ -152,7 +157,12 @@ inline Schedule serialise_by_owner(const std::vector<OwnerRow> &rows,
     std::vector<std::int64_t> row_ids;
   };
   std::map<std::uint64_t, Acc> by_owner;
+  std::set<std::int64_t> seen_rows;
   for (const OwnerRow &row : rows) {
+    if (!seen_rows.insert(row.row_id).second) {
+      throw std::invalid_argument(
+          "rgbind::serialise_by_owner: duplicate row_id");
+    }
     Acc &acc = by_owner[row.owner];
     if (acc.have_flag && acc.reentrant != row.reentrant) {
       throw std::invalid_argument(
@@ -452,15 +462,17 @@ public:
   /**
    * @brief Try to claim @a busy.
    * @param busy Session flag.
-   * @param type_name Used in the InUse message.
+   * @param type_name Used in the InUse message. The message string is
+   *        built only when the claim fails.
    * @pre The caller is not holding a std::mutex while attached (F3).
    */
-  Claim(std::atomic<bool> &busy, std::string type_name) : busy_(&busy) {
+  Claim(std::atomic<bool> &busy, const char *type_name) : busy_(&busy) {
     bool expected = false;
     if (!busy.compare_exchange_strong(expected, true, std::memory_order_acq_rel,
                                       std::memory_order_acquire)) {
       busy_ = nullptr;
-      throw InUse(std::move(type_name));
+      const char *name = type_name == nullptr ? "Object" : type_name;
+      throw InUse(name);
     }
   }
 
@@ -531,6 +543,8 @@ public:
                                         std::memory_order_acquire)) {
       return;
     }
+    // F5: other workers see stop and return before calling Python.
+    stop.store(true, std::memory_order_release);
     py_ = new (std::nothrow) nb::python_error(std::move(err));
     if (py_ == nullptr) {
       state_.store(0, std::memory_order_release);
@@ -551,6 +565,7 @@ public:
                                         std::memory_order_acquire)) {
       return;
     }
+    stop.store(true, std::memory_order_release);
     cxx_ = new (std::nothrow) std::exception_ptr(std::move(ptr));
     if (cxx_ == nullptr) {
       state_.store(0, std::memory_order_release);
@@ -754,16 +769,15 @@ inline bool apply_status(const MappedStatus &mapped, CallContext *ctx) {
  * @brief Register F3 and F7 translators on a module.
  *
  * InUse becomes RuntimeError. NumericalError becomes
- * <module>.NumericalError(ArithmeticError). The exception type is
- * created once (F2, call_once via a function-local static).
+ * <module>.NumericalError(ArithmeticError). The nb::exception object
+ * is a temporary: the module keeps the type, and this function does
+ * not hold a refcounted Python object (F2).
  *
  * @param m Module that owns the Python exception type.
  * @return Void.
  */
 inline void install_policy(nb::module_ &m) {
-  static nb::exception<NumericalError> numerical_error(m, "NumericalError",
-                                                       PyExc_ArithmeticError);
-  (void)numerical_error;
+  nb::exception<NumericalError>(m, "NumericalError", PyExc_ArithmeticError);
   nb::register_exception_translator(
       [](const std::exception_ptr &ptr, void *) {
         try {

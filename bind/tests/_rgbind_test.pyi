@@ -12,6 +12,15 @@ RGBIND_VERSION: int = 1
 class NumericalError(ArithmeticError):
     pass
 
+class HoldGate:
+    def __init__(self) -> None: ...
+
+    def release(self) -> None:
+        """Let the holding thread drop the claim."""
+
+    def held(self) -> bool:
+        """True once the holding thread owns the claim."""
+
 class Session:
     def __init__(self) -> None: ...
 
@@ -21,8 +30,14 @@ class Session:
     def work_throw(self) -> None:
         """Claim, throw, and release via RAII (F3)."""
 
+    def hold_until(self, gate: HoldGate) -> None:
+        """Claim and wait, with the GIL released, until gate.release()."""
+
 def call_on_worker(fn: Callable) -> None:
     """Run fn on a foreign thread through the F5 trampoline."""
+
+def call_two_workers(first: Callable, second: Callable) -> int:
+    """Run two workers. The second returns stopped after the first error."""
 
 def call_on_main(fn: Callable, check_signals: bool = False) -> int:
     """Run fn on this thread through the F5 trampoline."""

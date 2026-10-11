@@ -16,11 +16,13 @@
 #endif
 #include "rgbind/rgbind.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -174,6 +176,40 @@ int main() {
     return 1;
   } catch (const std::invalid_argument &) {
   }
+
+  const std::string base = rgbind::serialise_by_owner(rows, 1).canonical();
+  std::vector<rgbind::OwnerRow> reversed = rows;
+  std::reverse(reversed.begin(), reversed.end());
+  std::vector<rgbind::OwnerRow> rotated = rows;
+  std::rotate(rotated.begin(), rotated.begin() + 2, rotated.end());
+  std::vector<rgbind::OwnerRow> swapped = rows;
+  std::swap(swapped.front(), swapped.back());
+  const std::vector<rgbind::OwnerRow> *perms[] = {&rows, &reversed, &rotated, &swapped};
+  const char *names[] = {"identity", "reverse", "rotate-left-2", "swap-ends"};
+  for (int i = 0; i < 4; ++i) {
+    const std::string canonical = rgbind::serialise_by_owner(*perms[i], 3).canonical();
+    const std::string dig = hash_text(canonical);
+    std::cout << "schedule_sha256 permutation=" << names[i] << " " << dig << "\n";
+    if (canonical != base || dig != first) {
+      std::cerr << "permutation " << names[i] << " changed the schedule\n";
+      return 1;
+    }
+  }
+
+  std::vector<rgbind::OwnerRow> duplicated = rows;
+  duplicated.push_back(rows.front());
+  try {
+    (void)rgbind::serialise_by_owner(duplicated, 1);
+    std::cerr << "duplicate row_id did not throw\n";
+    return 1;
+  } catch (const std::invalid_argument &err) {
+    const std::string text = err.what();
+    if (text.find("duplicate row_id") == std::string::npos) {
+      std::cerr << "duplicate row_id message was " << text << "\n";
+      return 1;
+    }
+  }
+
   std::cout << "identical=1\n";
   return 0;
 }

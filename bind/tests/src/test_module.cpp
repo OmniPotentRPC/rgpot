@@ -11,6 +11,7 @@
  * meson build does not compile this file.
  */
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <string>
@@ -29,6 +30,15 @@
 namespace nb = nanobind;
 
 namespace {
+
+struct HoldGate {
+  std::atomic<bool> release_flag{false};
+  std::atomic<bool> held_flag{false};
+
+  void release() { release_flag.store(true, std::memory_order_release); }
+
+  bool held() const { return held_flag.load(std::memory_order_acquire); }
+};
 
 struct Session {
   rgbind::Busy busy;
@@ -49,6 +59,17 @@ struct Session {
     rgbind::Claim claim(busy.flag(), "Session");
     throw std::runtime_error("boom");
   }
+
+  // Claim, publish held, and spin with the GIL released until Python
+  // sets the gate. A second caller must observe InUse for that whole window.
+  void hold_until(HoldGate &gate) {
+    nb::gil_scoped_release rel;
+    rgbind::Claim claim(busy.flag(), "Session");
+    gate.held_flag.store(true, std::memory_order_release);
+    while (!gate.release_flag.load(std::memory_order_acquire)) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+  }
 };
 
 void call_on_worker(nb::callable fn) {
@@ -62,6 +83,33 @@ void call_on_worker(nb::callable fn) {
     worker.join();
   }
   ctx.rethrow_if_set();
+}
+
+int call_two_workers(nb::callable first, nb::callable second) {
+  // Thread A runs to completion and stores the first error, which sets
+  // stop. Thread B is a second worker. It must return stopped and must
+  // not call Python.
+  rgbind::CallContext ctx;
+  rgbind::trampoline<nb::callable> slot_a(first, &ctx, false);
+  rgbind::trampoline<nb::callable> slot_b(second, &ctx, false);
+  using Callback = int (*)(void *);
+  Callback cb = &rgbind::trampoline<nb::callable>::entry<>;
+  std::thread worker_a([cb, &slot_a]() { (void)cb(&slot_a); });
+  {
+    nb::gil_scoped_release rel;
+    worker_a.join();
+  }
+  int rc_b = -1;
+  std::thread worker_b([cb, &slot_b, &rc_b]() { rc_b = cb(&slot_b); });
+  {
+    nb::gil_scoped_release rel;
+    worker_b.join();
+  }
+  if (rc_b != static_cast<int>(rgbind::TrampolineStatus::stopped)) {
+    throw std::runtime_error("second worker was not stopped");
+  }
+  ctx.rethrow_if_set();
+  return rc_b;
 }
 
 int call_on_main(nb::callable fn, bool check_signals) {
@@ -97,15 +145,25 @@ NB_MODULE(_rgbind_test, m) {
   m.attr("RGBIND_VERSION") = RGBIND_VERSION;
   rgbind::install_policy(m);
 
+  nb::class_<HoldGate>(m, "HoldGate")
+      .def(nb::init<>())
+      .def("release", &HoldGate::release, "Let the holding thread drop the claim.")
+      .def("held", &HoldGate::held, "True once the holding thread owns the claim.");
+
   nb::class_<Session>(m, "Session")
       .def(nb::init<>())
       .def("work", &Session::work, nb::arg("hold_ms") = 1,
            "Claim the session, hold, and release (F3, F4).")
       .def("work_throw", &Session::work_throw,
-           "Claim, throw, and release via RAII (F3).");
+           "Claim, throw, and release via RAII (F3).")
+      .def("hold_until", &Session::hold_until, nb::arg("gate"),
+           "Claim and wait, with the GIL released, until gate.release().");
 
   m.def("call_on_worker", &call_on_worker, nb::arg("fn").noconvert(),
         "Run fn on a foreign thread through the F5 trampoline.");
+  m.def("call_two_workers", &call_two_workers, nb::arg("first").noconvert(),
+        nb::arg("second").noconvert(),
+        "Run two workers. The second returns stopped after the first error.");
   m.def("call_on_main", &call_on_main, nb::arg("fn").noconvert(),
         nb::arg("check_signals") = false,
         "Run fn on this thread through the F5 trampoline.");
