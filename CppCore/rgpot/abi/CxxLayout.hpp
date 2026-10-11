@@ -29,6 +29,7 @@
  * @c docs/orgmode/reference/c_abi.org.
  */
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 
@@ -50,6 +51,96 @@
 #define RGPOT_CXX_LAYOUT_API __declspec(dllexport)
 #else
 #define RGPOT_CXX_LAYOUT_API
+#endif
+
+// Compile-time platform tag: os, arch, standard library, data model.
+// kCxxSoversionTable is keyed by the string these pieces form.
+#if defined(_WIN32)
+#define RGPOT_CXX_OS_NAME "windows"
+#define RGPOT_OS_WINDOWS 1
+#elif defined(__APPLE__)
+#define RGPOT_CXX_OS_NAME "macos"
+#define RGPOT_OS_MACOS 1
+#elif defined(__ANDROID__)
+#define RGPOT_CXX_OS_NAME "android"
+#define RGPOT_OS_ANDROID 1
+#elif defined(__linux__) && defined(__GLIBC__)
+#define RGPOT_CXX_OS_NAME "linux"
+#define RGPOT_OS_LINUX 1
+#elif defined(__linux__)
+#define RGPOT_CXX_OS_NAME "linux-musl"
+#define RGPOT_OS_LINUX_MUSL 1
+#else
+#define RGPOT_CXX_OS_NAME "unknown"
+#define RGPOT_OS_UNKNOWN 1
+#endif
+
+#if defined(__x86_64__) || defined(_M_X64)
+#define RGPOT_CXX_ARCH_NAME "x86_64"
+#define RGPOT_ARCH_X86_64 1
+#elif defined(__aarch64__) || defined(_M_ARM64)
+#define RGPOT_CXX_ARCH_NAME "aarch64"
+#define RGPOT_ARCH_AARCH64 1
+#elif defined(__i386__) || defined(_M_IX86)
+#define RGPOT_CXX_ARCH_NAME "i686"
+#define RGPOT_ARCH_I686 1
+#else
+#define RGPOT_CXX_ARCH_NAME "unknown"
+#define RGPOT_ARCH_UNKNOWN 1
+#endif
+
+#if defined(_LIBCPP_VERSION)
+#define RGPOT_CXX_STDLIB_NAME "libc++"
+#define RGPOT_STDLIB_LIBCPP 1
+#elif defined(__GLIBCXX__)
+#define RGPOT_CXX_STDLIB_NAME "libstdc++"
+#define RGPOT_STDLIB_LIBSTDCXX 1
+#elif defined(_MSC_VER)
+#define RGPOT_CXX_STDLIB_NAME "msvc"
+#define RGPOT_STDLIB_MSVC 1
+#else
+#define RGPOT_CXX_STDLIB_NAME "unknown"
+#define RGPOT_STDLIB_UNKNOWN 1
+#endif
+
+#if defined(__LP64__) || defined(_LP64)
+#define RGPOT_CXX_MODEL_NAME "lp64"
+#define RGPOT_MODEL_LP64 1
+#elif defined(_WIN64)
+#define RGPOT_CXX_MODEL_NAME "llp64"
+#define RGPOT_MODEL_LLP64 1
+#else
+#define RGPOT_CXX_MODEL_NAME "ilp32"
+#define RGPOT_MODEL_ILP32 1
+#endif
+
+#define RGPOT_CXX_PLATFORM_TAG                                                 \
+  RGPOT_CXX_OS_NAME "-" RGPOT_CXX_ARCH_NAME "-" RGPOT_CXX_STDLIB_NAME "-"      \
+      RGPOT_CXX_MODEL_NAME
+
+// Listed platforms. Each branch matches one kCxxSoversionTable row.
+// The string is the row's tag. check_cxx_soversion.py requires the two
+// sets to be equal. No branch means every platform is unlisted.
+#if defined(RGPOT_OS_LINUX) && defined(RGPOT_ARCH_X86_64) &&                    \
+    defined(RGPOT_STDLIB_LIBSTDCXX) && defined(RGPOT_MODEL_LP64)
+#define RGPOT_CXX_PLATFORM_LISTED 1
+#define RGPOT_CXX_PLATFORM_LISTED_TAG "linux-x86_64-libstdc++-lp64"
+#elif defined(RGPOT_OS_LINUX) && defined(RGPOT_ARCH_AARCH64) &&                \
+    defined(RGPOT_STDLIB_LIBSTDCXX) && defined(RGPOT_MODEL_LP64)
+#define RGPOT_CXX_PLATFORM_LISTED 1
+#define RGPOT_CXX_PLATFORM_LISTED_TAG "linux-aarch64-libstdc++-lp64"
+#elif defined(RGPOT_OS_MACOS) && defined(RGPOT_ARCH_AARCH64) &&                \
+    defined(RGPOT_STDLIB_LIBCPP) && defined(RGPOT_MODEL_LP64)
+#define RGPOT_CXX_PLATFORM_LISTED 1
+#define RGPOT_CXX_PLATFORM_LISTED_TAG "macos-aarch64-libc++-lp64"
+#elif defined(RGPOT_OS_MACOS) && defined(RGPOT_ARCH_X86_64) &&                 \
+    defined(RGPOT_STDLIB_LIBCPP) && defined(RGPOT_MODEL_LP64)
+#define RGPOT_CXX_PLATFORM_LISTED 1
+#define RGPOT_CXX_PLATFORM_LISTED_TAG "macos-x86_64-libc++-lp64"
+#elif defined(RGPOT_OS_WINDOWS) && defined(RGPOT_ARCH_X86_64) &&               \
+    defined(RGPOT_STDLIB_MSVC) && defined(RGPOT_MODEL_LLP64)
+#define RGPOT_CXX_PLATFORM_LISTED 1
+#define RGPOT_CXX_PLATFORM_LISTED_TAG "windows-x86_64-msvc-llp64"
 #endif
 
 /// Plain-C view of the stamp, returned by the exported function.
@@ -75,6 +166,74 @@ namespace rgpot::abi {
 /// meaning of a field, changing a base class of a covered type. Any change to
 /// size, alignment or a field offset moves the hash by itself.
 inline constexpr std::uint32_t kCxxLayoutRevision = 1;
+
+/// ELF soversion of librgpot (`librgpot.so.N`, `librgpot.N.dylib`).
+/// Meson and CMake read this constant. The SONAME is not the layout hash.
+/// The hash depends on the platform tag and includes the cache feature
+/// bit, so builds of one revision do not share a hash. Bump this when a
+/// recorded hash in `kCxxSoversionTable` changes, and replace that table
+/// from the CI stamp lines in the same edit. `check_cxx_soversion.py`
+/// fails when the fingerprint of the stamp inputs changes and this number
+/// did not increase.
+///
+/// This is not `RGPOT_ABI_LAYOUT_REVISION`. The C ABI stamp in `rgpot.h`
+/// stayed at major 1, minor 0, layout revision 1: no exported C struct
+/// changed layout. The C API is exported from librgpot, so it has no
+/// shared library of its own and rides this SONAME. `librgpot_mpi` stays
+/// at soversion 3 (`RGPOT_MPI_ABI_VERSION` 1, unchanged).
+inline constexpr std::uint32_t kCxxSoversion = 4;
+
+/// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
+struct CxxSoversionEntry {
+  const char *tag;
+  std::uint64_t hash;
+};
+
+/// No-cache `header_stamp().hash` for each platform ABI CI builds.
+/// Rows are copied from `RGPOT_CXX_LAYOUT_STAMP` lines. An unlisted
+/// platform still compiles. How to update the table:
+/// docs/orgmode/reference/c_abi.org.
+inline constexpr std::array<CxxSoversionEntry, 5> kCxxSoversionTable{{
+    {"linux-x86_64-libstdc++-lp64", 0x80bc8962b7808d7aull},
+    {"linux-aarch64-libstdc++-lp64", 0x191f6a916fe32962ull},
+    {"macos-aarch64-libc++-lp64", 0x293e0e103e91a552ull},
+    {"macos-x86_64-libc++-lp64", 0x293e0e103e91a552ull},
+    {"windows-x86_64-msvc-llp64", 0x395cb18f0d402142ull},
+}};
+
+/// This translation unit's platform tag (`os-arch-stdlib-datamodel`).
+inline constexpr char kCxxPlatformTag[] = RGPOT_CXX_PLATFORM_TAG;
+
+constexpr bool cxx_tag_eq(const char *a, const char *b) noexcept {
+  while (*a != '\0' && *a == *b) {
+    ++a;
+    ++b;
+  }
+  return *a == *b;
+}
+
+constexpr const CxxSoversionEntry *
+find_soversion_entry(const char *tag) noexcept {
+  for (const CxxSoversionEntry &row : kCxxSoversionTable) {
+    if (cxx_tag_eq(row.tag, tag)) {
+      return &row;
+    }
+  }
+  return nullptr;
+}
+
+constexpr bool soversion_tags_unique() noexcept {
+  for (std::size_t i = 0; i < kCxxSoversionTable.size(); ++i) {
+    for (std::size_t j = i + 1; j < kCxxSoversionTable.size(); ++j) {
+      if (cxx_tag_eq(kCxxSoversionTable[i].tag, kCxxSoversionTable[j].tag)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+static_assert(soversion_tags_unique(), "kCxxSoversionTable tags must be unique");
 
 /// Virtual functions declared by @c PotentialBase, destructor included.
 /// The cache hook @c set_cache adds one when @c RGPOT_HAS_CACHE is defined.
@@ -213,6 +372,21 @@ constexpr std::uint64_t compute_hash() {
 /// unit (see layout_compatible()).
 inline constexpr rgpot_cxx_layout_stamp_t header_stamp() noexcept {
   return {kCxxLayoutRevision, kFeatures, detail::compute_hash()};
+}
+
+/// Recorded no-cache hash for this platform, or 0 when it has no row.
+constexpr std::uint64_t recorded_layout_hash() noexcept {
+  const CxxSoversionEntry *row = find_soversion_entry(kCxxPlatformTag);
+  return row == nullptr ? 0 : row->hash;
+}
+
+/// True when this platform has no row, or the row matches `header_stamp`.
+constexpr bool platform_soversion_ok() noexcept {
+  const CxxSoversionEntry *row = find_soversion_entry(kCxxPlatformTag);
+  if (row == nullptr) {
+    return true;
+  }
+  return header_stamp().hash == row->hash;
 }
 
 /// What the loaded library was built with.

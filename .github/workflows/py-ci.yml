@@ -78,6 +78,7 @@ jobs:
       rust-crate-dir: examples/rust-core-demo
       rust-toolchain: nightly-2026-01-20
       tsan-cmake-args: -DRUST_CORE_TSAN=ON
+      rust-archive: librust_core_demo.a
 
   typing:
     uses: ./.github/workflows/py-typing.yml

@@ -25,6 +25,10 @@ transport layers.
 The loader tries =loadCalculatorMpi(path)= when the host names a file, then the
 =RGPOT_MPI_LIBRARY= environment variable, then =librgpot_mpi.so.3= next to
 =librgpot=, then the dynamic linker's search path.
+That filename is =librgpot_mpi='s own SONAME (soversion 3).
+It is not =librgpot='s SONAME.
+=RGPOT_MPI_ABI_VERSION= is 1 and did not change with the C++ layouts, so this
+name stays.
 The two libraries meet at one C symbol,
 =rgpot_mpi_api_v1=, which returns the function table of =rgpot/calculator_mpi_abi.h= (=RGPOT_MPI_ABI_VERSION=
 1).
