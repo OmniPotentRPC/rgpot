@@ -10,7 +10,13 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.thread_unsafe
+pytestmark = [
+    pytest.mark.thread_unsafe,
+    # One pass spawns an interpreter per width. Under ThreadSanitizer that
+    # pass is about 90s, so the parallel job's default of five repeats
+    # exceeds the 180s pytest timeout.
+    pytest.mark.iterations(1),
+]
 
 _PYTHON_THREADS = (1, 2, 8)
 _OMP_THREADS = (1, 2, 3, 8)
