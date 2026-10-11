@@ -343,6 +343,14 @@ TEST_CASE("SIMD targets match the scalar kernel bit for bit", "[simd][isa]") {
   }
   std::cout << "\n";
 
+#if defined(__x86_64__) || defined(_M_X64)
+  // The portable kernel is a request, not the default on x86-64.
+  if (std::getenv("RGPOT_SIMD") == nullptr) {
+    REQUIRE(std::strcmp(rgpot::simd::chosen_target_name(), "scalar") != 0);
+    REQUIRE(runnable_has("sse2"));
+  }
+#endif
+
   rgpot::simd::set_target_for_test("scalar");
   const std::string lj0 = lj_hash();
   const std::string mo0 = morse_hash();
@@ -377,6 +385,10 @@ TEST_CASE("SIMD targets match the scalar kernel bit for bit", "[simd][isa]") {
   rgpot::simd::set_target_for_test("rvv");
   if (runnable_has("rvv")) {
     REQUIRE(std::strcmp(rgpot::simd::chosen_target_name(), "rvv") == 0);
+  } else if (nrun > 1) {
+    const char *fell = rgpot::simd::chosen_target_name();
+    REQUIRE(std::strcmp(fell, "scalar") != 0);
+    REQUIRE(runnable_has(fell));
   } else {
     REQUIRE(std::strcmp(rgpot::simd::chosen_target_name(), "scalar") == 0);
   }

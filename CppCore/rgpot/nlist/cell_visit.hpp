@@ -51,7 +51,10 @@ struct CellGrid {
   std::array<int, 3> nc{{1, 1, 1}};
   std::array<bool, 3> wrap{{false, false, false}};
   std::vector<int32_t> start; //!< ncells + 1 row starts into `atoms`.
-  std::vector<int32_t> atoms; //!< Atom indices grouped by cell.
+  std::vector<int32_t> atoms; //!< Atom indices grouped by cell, ascending.
+  std::vector<double> x;      //!< Slot-order coordinates, parallel to `atoms`.
+  std::vector<double> y;
+  std::vector<double> z;
 
   /// Linear index of cell (cx, cy, cz) shifted by stencil offset `o`, or
   /// -1 when the shift leaves a free axis.
@@ -191,6 +194,23 @@ public:
       atoms[static_cast<std::size_t>(fill[static_cast<std::size_t>(cellOf[a])]++)] =
           static_cast<int32_t>(a);
     }
+    // Ascending index inside each cell. The pair set does not change.
+    // finishRebuild sorts each row, so the force sum stays on that order.
+    // The slot arrays below are this cell order, packed SoA for the scan.
+    for (std::size_t c = 0; c < ncells; ++c) {
+      const auto b0 = static_cast<std::ptrdiff_t>(start[c]);
+      const auto b1 = static_cast<std::ptrdiff_t>(start[c + 1]);
+      std::sort(atoms.begin() + b0, atoms.begin() + b1);
+    }
+    x.resize(n);
+    y.resize(n);
+    z.resize(n);
+    for (std::size_t p = 0; p < n; ++p) {
+      const auto a = static_cast<std::size_t>(atoms[p]);
+      x[p] = points[3 * a];
+      y[p] = points[3 * a + 1];
+      z[p] = points[3 * a + 2];
+    }
     return true;
   }
 };
@@ -205,17 +225,22 @@ inline void cell_visit(const CellGrid &g, const double *points,
                        std::vector<int32_t> &pairs, Visitor &&visit) {
   if constexpr (Collect) {
     pairs.clear();
+    if (pairs.capacity() < g.atoms.size() * 64) {
+      pairs.reserve(g.atoms.size() * 256);
+    }
   }
   const double w0 = w[0], w1 = w[1], w2 = w[2];
   const double i0 = inv[0], i1 = inv[1], i2 = inv[2];
   const int nx = g.nc[0], ny = g.nc[1], nz = g.nc[2];
+  (void)points;
 
-  auto test = [&](int32_t i, int32_t j) {
-    const auto ui = static_cast<std::size_t>(i);
-    const auto uj = static_cast<std::size_t>(j);
-    double dx = points[3 * uj] - points[3 * ui];
-    double dy = points[3 * uj + 1] - points[3 * ui + 1];
-    double dz = points[3 * uj + 2] - points[3 * ui + 2];
+  // `sp` and `sq` are slots into the cell-ordered SoA, not atom indices.
+  auto test = [&](int32_t sp, int32_t sq) {
+    int32_t i = g.atoms[static_cast<std::size_t>(sp)];
+    int32_t j = g.atoms[static_cast<std::size_t>(sq)];
+    double dx = g.x[static_cast<std::size_t>(sq)] - g.x[static_cast<std::size_t>(sp)];
+    double dy = g.y[static_cast<std::size_t>(sq)] - g.y[static_cast<std::size_t>(sp)];
+    double dz = g.z[static_cast<std::size_t>(sq)] - g.z[static_cast<std::size_t>(sp)];
     dx -= w0 * vesin::cpu::visit_round(dx * i0);
     dy -= w1 * vesin::cpu::visit_round(dy * i1);
     dz -= w2 * vesin::cpu::visit_round(dz * i2);
@@ -252,9 +277,13 @@ inline void cell_visit(const CellGrid &g, const double *points,
           continue;
         }
         for (int32_t p = b0; p < b1; ++p) {
-          for (int32_t q = p + 1; q < b1; ++q) {
-            test(g.atoms[static_cast<std::size_t>(p)],
-                 g.atoms[static_cast<std::size_t>(q)]);
+          int32_t q = p + 1;
+          for (; q + 1 < b1; q += 2) {
+            test(p, q);
+            test(p, q + 1);
+          }
+          if (q < b1) {
+            test(p, q);
           }
         }
         for (const auto &o : kHalfStencil) {
@@ -266,9 +295,13 @@ inline void cell_visit(const CellGrid &g, const double *points,
           const int32_t e0 = g.start[d];
           const int32_t e1 = g.start[d + 1];
           for (int32_t p = b0; p < b1; ++p) {
-            const int32_t i = g.atoms[static_cast<std::size_t>(p)];
-            for (int32_t q = e0; q < e1; ++q) {
-              test(i, g.atoms[static_cast<std::size_t>(q)]);
+            int32_t q = e0;
+            for (; q + 1 < e1; q += 2) {
+              test(p, q);
+              test(p, q + 1);
+            }
+            if (q < e1) {
+              test(p, q);
             }
           }
         }

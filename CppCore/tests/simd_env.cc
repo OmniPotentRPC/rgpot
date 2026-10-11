@@ -53,9 +53,24 @@ int main(int argc, char **argv) {
       return 2;
     }
     const char *want = argv[2];
-    if (std::strcmp(want, "scalar") == 0 || !runnable(want)) {
+    if (std::strcmp(want, "scalar") == 0) {
       if (std::strcmp(got, "scalar") != 0) {
         std::cerr << "expected scalar, got " << got << "\n";
+        return 1;
+      }
+      return 0;
+    }
+    if (!runnable(want)) {
+      // Best runnable target. Scalar only when nothing else runs.
+      const int n = rgpot::simd::runnable_target_count();
+      bool ok = false;
+      for (int i = 0; i < n; ++i) {
+        if (std::strcmp(rgpot::simd::runnable_target_name(i), got) == 0) {
+          ok = true;
+        }
+      }
+      if (!ok || (n > 1 && std::strcmp(got, "scalar") == 0)) {
+        std::cerr << "unsupported name selected " << got << "\n";
         return 1;
       }
       return 0;

@@ -5,14 +5,16 @@
 // Verlet-skin cached pair lists for classical pair potentials, ported from
 // eOn's eonc::PairListCache (TheochemUI/eOn, fix/vesin-neighbor-perf).
 //
-// Header-only and dependency-free: the MIC regime (orthorhombic box, true
-// cutoff within half the smallest periodic width) searches pairs with the
-// linked-cell scan from cell_visit.hpp once the box holds enough cells
-// (O(n) per search), and with the fused brute-force scan from
-// vesin_visit.hpp below that (O(n^2), cheaper for a handful of cells).
-// Both report the same pair set. Outside the cached regime every call
-// performs a brute-force scan. Nonorthogonal cells use the full lattice
-// minimum image; orthorhombic cells retain the componentwise fold.
+// Header-only and dependency-free. An orthorhombic box caches a nearest-image
+// half list: the linked-cell scan from cell_visit.hpp when the box holds
+// enough cells (O(n) per search), and the fused brute-force scan from
+// vesin_visit.hpp otherwise (O(n^2)). Both report the same pair set. A
+// cutoff past half the box still caches. The cell grid already refuses a
+// periodic axis with fewer than three cells, and image codes stay per-call
+// when the skin reaches a boundary. The list is rebuilt only when an atom
+// moves by more than half the skin, or when the list holds every pair and
+// motion cannot add one. Nonorthogonal cells use the full lattice minimum
+// image and are not cached. Outside the atom cap every call scans.
 //
 // Design invariants (see the eOn failure analysis for the derivation):
 // - Slots are immutable after build and handed out as shared_ptr, so
@@ -375,14 +377,11 @@ private:
     if (general_)
       generalImage_ = MinimumImage(box, opt.periodic);
     // The atom cap bounds the brute-force list build; a fully periodic box
-    // that the linked-cell scan can serve needs no cap.
+    // that the linked-cell scan can serve needs no cap. Cutoff past half
+    // the width used to clear this flag. That made every call rebuild,
+    // including a benchmark that never moves an atom. The nearest image is
+    // still one pair, so the skin check is the rebuild trigger.
     mic_ = orthorhombic && (n <= 20000 || cellGridFits(n, box, opt));
-    for (int k = 0; mic_ && k < 3; ++k) {
-      if (opt.periodic[static_cast<std::size_t>(k)] &&
-          opt.cutoff > 0.5 * box[4 * k]) {
-        mic_ = false;
-      }
-    }
   }
 
   /// True when every axis is periodic and wide enough that CellGrid::build
@@ -464,8 +463,8 @@ private:
         std::sort(nbr_.begin() + rows_[i], nbr_.begin() + rows_[i + 1]);
       }
     }
+    // Keep the allocation. The next rebuild of this slot fills the same buffer.
     pairsIJ_.clear();
-    pairsIJ_.shrink_to_fit();
     if (general_) {
       code_.clear();
       fold_ = FoldMode::General;

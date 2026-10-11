@@ -15,7 +15,8 @@ namespace rgpot::simd {
 const char *chosen_target_name();
 
 /// Test hook. "scalar" forces the portable kernel. A known target the CPU
-/// cannot run falls back to scalar. An unknown name is ignored.
+/// cannot run falls back to the best target it can run. On x86-64 that is
+/// at least SSE2. An unknown name is ignored.
 /// Not for production paths: Highway's chosen target is process-wide.
 void set_target_for_test(const char *name);
 

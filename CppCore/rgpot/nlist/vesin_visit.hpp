@@ -17,6 +17,34 @@
 
 namespace vesin {
 namespace cpu {
+namespace detail {
+
+/// Split interleaved xyz into three unit-stride arrays for the pair scan.
+struct Soa3 {
+  std::vector<double> x;
+  std::vector<double> y;
+  std::vector<double> z;
+};
+
+inline Soa3 split_xyz(const double *points, std::size_t n) {
+  Soa3 s;
+  s.x.resize(n);
+  s.y.resize(n);
+  s.z.resize(n);
+  for (std::size_t a = 0; a < n; ++a) {
+    s.x[a] = points[3 * a];
+    s.y[a] = points[3 * a + 1];
+    s.z[a] = points[3 * a + 2];
+  }
+  return s;
+}
+
+} // namespace detail
+} // namespace cpu
+} // namespace vesin
+
+namespace vesin {
+namespace cpu {
 
 /// Round to nearest via truncate-cast: no libm floor call on -march
 /// targets without roundsd. Half-integer inputs round away from zero.
@@ -44,34 +72,47 @@ inline void brute_force_visit(
     Visitor&& visit
 ) {
     pairs.clear();
-    if (pairs.capacity() == 0) {
-        // First build: skip the push_back growth-realloc ladder. ~100
-        // neighbours per atom covers dense metallic cutoffs; denser systems
-        // grow once.
-        pairs.reserve(n * 200);
+    if (pairs.capacity() < n * 64) {
+        // First build: skip the push_back growth-realloc ladder. Dense
+        // metallic cutoffs hold well under 256 neighbours per atom.
+        pairs.reserve(n * 256);
     }
+    const auto soa = detail::split_xyz(points, n);
+    const double *x = soa.x.data();
+    const double *y = soa.y.data();
+    const double *z = soa.z.data();
     const double w0 = w[0], w1 = w[1], w2 = w[2];
     const double i0 = inv[0], i1 = inv[1], i2 = inv[2];
     for (std::size_t i = 0; i < n; i++) {
-        const double xi = points[3 * i];
-        const double yi = points[3 * i + 1];
-        const double zi = points[3 * i + 2];
-        for (std::size_t j = i + 1; j < n; j++) {
-            double dx = points[3 * j] - xi;
-            double dy = points[3 * j + 1] - yi;
-            double dz = points[3 * j + 2] - zi;
+        const double xi = x[i];
+        const double yi = y[i];
+        const double zi = z[i];
+        // Two partners per step. Each pair is independent, and j stays
+        // ascending so each row is already sorted.
+        std::size_t j = i + 1;
+        auto one = [&](std::size_t jj) {
+            double dx = x[jj] - xi;
+            double dy = y[jj] - yi;
+            double dz = z[jj] - zi;
             dx -= w0 * visit_round(dx * i0);
             dy -= w1 * visit_round(dy * i1);
             dz -= w2 * visit_round(dz * i2);
             const double r2 = dx * dx + dy * dy + dz * dz;
             if (r2 < list_cutoff2) {
                 pairs.push_back(static_cast<int32_t>(i));
-                pairs.push_back(static_cast<int32_t>(j));
+                pairs.push_back(static_cast<int32_t>(jj));
                 if (r2 <= visit_cutoff2) {
-                    visit(static_cast<int32_t>(i), static_cast<int32_t>(j),
+                    visit(static_cast<int32_t>(i), static_cast<int32_t>(jj),
                           dx, dy, dz, r2);
                 }
             }
+        };
+        for (; j + 1 < n; j += 2) {
+            one(j);
+            one(j + 1);
+        }
+        if (j < n) {
+            one(j);
         }
     }
 }
@@ -87,24 +128,36 @@ inline void brute_force_visit_only(
     double visit_cutoff2,
     Visitor&& visit
 ) {
+    const auto soa = detail::split_xyz(points, n);
+    const double *x = soa.x.data();
+    const double *y = soa.y.data();
+    const double *z = soa.z.data();
     const double w0 = w[0], w1 = w[1], w2 = w[2];
     const double i0 = inv[0], i1 = inv[1], i2 = inv[2];
     for (std::size_t i = 0; i < n; i++) {
-        const double xi = points[3 * i];
-        const double yi = points[3 * i + 1];
-        const double zi = points[3 * i + 2];
-        for (std::size_t j = i + 1; j < n; j++) {
-            double dx = points[3 * j] - xi;
-            double dy = points[3 * j + 1] - yi;
-            double dz = points[3 * j + 2] - zi;
+        const double xi = x[i];
+        const double yi = y[i];
+        const double zi = z[i];
+        std::size_t j = i + 1;
+        auto one = [&](std::size_t jj) {
+            double dx = x[jj] - xi;
+            double dy = y[jj] - yi;
+            double dz = z[jj] - zi;
             dx -= w0 * visit_round(dx * i0);
             dy -= w1 * visit_round(dy * i1);
             dz -= w2 * visit_round(dz * i2);
             const double r2 = dx * dx + dy * dy + dz * dz;
             if (r2 <= visit_cutoff2) {
-                visit(static_cast<int32_t>(i), static_cast<int32_t>(j),
+                visit(static_cast<int32_t>(i), static_cast<int32_t>(jj),
                       dx, dy, dz, r2);
             }
+        };
+        for (; j + 1 < n; j += 2) {
+            one(j);
+            one(j + 1);
+        }
+        if (j < n) {
+            one(j);
         }
     }
 }

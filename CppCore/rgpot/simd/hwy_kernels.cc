@@ -342,18 +342,10 @@ HWY_INLINE double pair_run(D d, const PairView &v, double *F, double *strain,
         jb[m] = static_cast<std::int32_t>(j);
         ++m;
       }
-      std::size_t k = 0;
-      for (; k + L <= m; k += L) {
-        const auto dx = hn::LoadU(d, dxb.data() + k);
-        const auto dy = hn::LoadU(d, dyb.data() + k);
-        const auto dz = hn::LoadU(d, dzb.data() + k);
-        const auto r2 = hn::LoadU(d, r2b.data() + k);
-        hn::Vec<D> ev, fsv;
-        if constexpr (kMorse) {
-          morse_vec(d, r2, *mp, ev, fsv);
-        } else {
-          lj_vec(d, r2, *lj, ev, fsv);
-        }
+      // Deposit one evaluated vector into the width-8 tree at nacc, then
+      // advance. Slots are independent, so a vector add matches deposit.
+      auto deposit_vec = [&](std::size_t base, hn::Vec<D> dx, hn::Vec<D> dy,
+                             hn::Vec<D> dz, hn::Vec<D> ev, hn::Vec<D> fsv) {
         const auto fx = hn::Mul(fsv, dx);
         const auto fy = hn::Mul(fsv, dy);
         const auto fz = hn::Mul(fsv, dz);
@@ -380,12 +372,60 @@ HWY_INLINE double pair_run(D d, const PairView &v, double *F, double *strain,
         hn::Store(fy, d, fya);
         hn::Store(fz, d, fza);
         for (std::size_t lane = 0; lane < L; ++lane) {
-          const auto j = static_cast<std::size_t>(jb[k + lane]);
+          const auto j = static_cast<std::size_t>(jb[base + lane]);
           F[3 * j] -= fxa[lane];
           F[3 * j + 1] -= fya[lane];
           F[3 * j + 2] -= fza[lane];
         }
         nacc += static_cast<int>(L);
+      };
+      auto eval_vec = [&](std::size_t base, hn::Vec<D> &dx, hn::Vec<D> &dy,
+                          hn::Vec<D> &dz, hn::Vec<D> &ev, hn::Vec<D> &fsv) {
+        dx = hn::LoadU(d, dxb.data() + base);
+        dy = hn::LoadU(d, dyb.data() + base);
+        dz = hn::LoadU(d, dzb.data() + base);
+        const auto r2 = hn::LoadU(d, r2b.data() + base);
+        if constexpr (kMorse) {
+          morse_vec(d, r2, *mp, ev, fsv);
+        } else {
+          lj_vec(d, r2, *lj, ev, fsv);
+        }
+      };
+      std::size_t k = 0;
+      // A lane's exp and polynomial do not read the lane beside it.
+      // SSE evaluates four vectors, AVX2 two, so eight lanes deposit in
+      // neighbour order before the next group starts.
+      if constexpr (kMorse) {
+        if (L == 2) {
+          for (; k + 8 <= m; k += 8) {
+            hn::Vec<D> dx0, dy0, dz0, ev0, fs0;
+            hn::Vec<D> dx1, dy1, dz1, ev1, fs1;
+            hn::Vec<D> dx2, dy2, dz2, ev2, fs2;
+            hn::Vec<D> dx3, dy3, dz3, ev3, fs3;
+            eval_vec(k, dx0, dy0, dz0, ev0, fs0);
+            eval_vec(k + 2, dx1, dy1, dz1, ev1, fs1);
+            eval_vec(k + 4, dx2, dy2, dz2, ev2, fs2);
+            eval_vec(k + 6, dx3, dy3, dz3, ev3, fs3);
+            deposit_vec(k, dx0, dy0, dz0, ev0, fs0);
+            deposit_vec(k + 2, dx1, dy1, dz1, ev1, fs1);
+            deposit_vec(k + 4, dx2, dy2, dz2, ev2, fs2);
+            deposit_vec(k + 6, dx3, dy3, dz3, ev3, fs3);
+          }
+        } else if (L < 8) {
+          for (; k + 2 * L <= m; k += 2 * L) {
+            hn::Vec<D> dx0, dy0, dz0, ev0, fs0;
+            hn::Vec<D> dx1, dy1, dz1, ev1, fs1;
+            eval_vec(k, dx0, dy0, dz0, ev0, fs0);
+            eval_vec(k + L, dx1, dy1, dz1, ev1, fs1);
+            deposit_vec(k, dx0, dy0, dz0, ev0, fs0);
+            deposit_vec(k + L, dx1, dy1, dz1, ev1, fs1);
+          }
+        }
+      }
+      for (; k + L <= m; k += L) {
+        hn::Vec<D> dx, dy, dz, ev, fsv;
+        eval_vec(k, dx, dy, dz, ev, fsv);
+        deposit_vec(k, dx, dy, dz, ev, fsv);
       }
       for (; k < m; ++k) {
         const double dx = dxb[k];
@@ -616,12 +656,14 @@ void EamRun(long n, const double *R, const EamAtom *atoms, const double *box,
     const auto six = hn::Set(d, 6.0);
     const auto one = hn::Set(d, 1.0);
     const auto two = hn::Set(d, 2.0);
-    long t = 0;
-    for (; t + static_cast<long>(L) <= ns; t += static_cast<long>(L)) {
-      const auto us = static_cast<std::size_t>(t);
-      const auto dx = hn::LoadU(d, dxs.data() + us);
-      const auto dy = hn::LoadU(d, dys.data() + us);
-      const auto dz = hn::LoadU(d, dzs.data() + us);
+    using V = hn::Vec<decltype(d)>;
+    // Locals, not members: SVE and RVV vectors are sizeless.
+    auto eval = [&](std::size_t us, V &dx, V &dy, V &dz, V &dens, V &fx, V &fy,
+                    V &fz, V &phi, V &pfx, V &pfy,
+                    V &pfz) __attribute__((always_inline)) {
+      dx = hn::LoadU(d, dxs.data() + us);
+      dy = hn::LoadU(d, dys.data() + us);
+      dz = hn::LoadU(d, dzs.data() + us);
       const auto r2 = hn::LoadU(d, r2s.data() + us);
       const auto r = hn::Sqrt(r2);
       const auto r2sq = hn::Mul(r2, r2);
@@ -630,7 +672,7 @@ void EamRun(long n, const double *R, const EamAtom *atoms, const double *box,
       const auto eb1 = exp_lanes(d, hn::Mul(hn::Neg(beta1), r));
       const auto eb2 = exp_lanes(d, hn::Mul(vb2, r));
       const auto rho_pair = hn::Add(eb1, hn::Mul(c512, eb2));
-      const auto dens_term = hn::Mul(r6, rho_pair);
+      dens = hn::Mul(r6, rho_pair);
       const auto t_a = hn::Mul(hn::Mul(six, r5), rho_pair);
       const auto neg_b1 = hn::Mul(hn::Neg(beta1), eb1);
       const auto b2_term = hn::Mul(hn::Mul(c1024, beta2), eb2);
@@ -639,23 +681,28 @@ void EamRun(long n, const double *R, const EamAtom *atoms, const double *box,
       const auto mag = hn::Add(t_a, t_b);
       const auto inv_r = hn::Div(one, r);
       const auto fscale = hn::Mul(hn::Neg(mag), inv_r);
-      const auto fx = hn::Mul(fscale, dx);
-      const auto fy = hn::Mul(fscale, dy);
-      const auto fz = hn::Mul(fscale, dz);
+      fx = hn::Mul(fscale, dx);
+      fy = hn::Mul(fscale, dy);
+      fz = hn::Mul(fscale, dz);
       const auto arg = hn::Mul(hn::Neg(alpha), hn::Sub(r, rm));
       const auto ex = exp_lanes(d, arg);
       const auto md = hn::Sub(one, ex);
       const auto dd = hn::Mul(dm, md);
-      const auto phi = hn::Sub(hn::Mul(dd, md), dm);
+      phi = hn::Sub(hn::Mul(dd, md), dm);
       const auto mag_f =
           hn::Mul(hn::Mul(hn::Mul(hn::Mul(two, alpha), dm), md), hn::Sub(md, one));
       const auto fcomp = hn::Mul(mag_f, inv_r);
-      const auto pfx = hn::Mul(fcomp, dx);
-      const auto pfy = hn::Mul(fcomp, dy);
-      const auto pfz = hn::Mul(fcomp, dz);
+      pfx = hn::Mul(fcomp, dx);
+      pfy = hn::Mul(fcomp, dy);
+      pfz = hn::Mul(fcomp, dz);
+    };
+    // Lane order matches the scalar tail: density on every neighbour, the
+    // pair term only when j > i, each into the width-8 tree.
+    auto consume = [&](std::size_t us, V dens, V fx, V fy, V fz, V phi, V pfx,
+                       V pfy, V pfz) __attribute__((always_inline)) {
       alignas(64) double dea[8], dfx[8], dfy[8], dfz[8];
       alignas(64) double pea[8], pfxa[8], pfya[8], pfza[8];
-      hn::Store(dens_term, d, dea);
+      hn::Store(dens, d, dea);
       hn::Store(fx, d, dfx);
       hn::Store(fy, d, dfy);
       hn::Store(fz, d, dfz);
@@ -686,6 +733,47 @@ void EamRun(long n, const double *R, const EamAtom *atoms, const double *box,
           F[3 * j + 2] += pfza[lane];
         }
       }
+    };
+    long t = 0;
+    // SSE is two doubles wide, so four vectors fill the width-8 tree.
+    // AVX2 is four wide, so two vectors fill it.
+    if (L == 2) {
+      for (; t + 8 <= ns; t += 8) {
+        const auto us = static_cast<std::size_t>(t);
+        V dx0, dy0, dz0, dens0, fx0, fy0, fz0, phi0, pfx0, pfy0, pfz0;
+        V dx1, dy1, dz1, dens1, fx1, fy1, fz1, phi1, pfx1, pfy1, pfz1;
+        V dx2, dy2, dz2, dens2, fx2, fy2, fz2, phi2, pfx2, pfy2, pfz2;
+        V dx3, dy3, dz3, dens3, fx3, fy3, fz3, phi3, pfx3, pfy3, pfz3;
+        eval(us, dx0, dy0, dz0, dens0, fx0, fy0, fz0, phi0, pfx0, pfy0, pfz0);
+        eval(us + 2, dx1, dy1, dz1, dens1, fx1, fy1, fz1, phi1, pfx1, pfy1,
+             pfz1);
+        eval(us + 4, dx2, dy2, dz2, dens2, fx2, fy2, fz2, phi2, pfx2, pfy2,
+             pfz2);
+        eval(us + 6, dx3, dy3, dz3, dens3, fx3, fy3, fz3, phi3, pfx3, pfy3,
+             pfz3);
+        consume(us, dens0, fx0, fy0, fz0, phi0, pfx0, pfy0, pfz0);
+        consume(us + 2, dens1, fx1, fy1, fz1, phi1, pfx1, pfy1, pfz1);
+        consume(us + 4, dens2, fx2, fy2, fz2, phi2, pfx2, pfy2, pfz2);
+        consume(us + 6, dens3, fx3, fy3, fz3, phi3, pfx3, pfy3, pfz3);
+      }
+    } else if (L < 8) {
+      const long step = 2 * static_cast<long>(L);
+      for (; t + step <= ns; t += step) {
+        const auto us = static_cast<std::size_t>(t);
+        V dx0, dy0, dz0, dens0, fx0, fy0, fz0, phi0, pfx0, pfy0, pfz0;
+        V dx1, dy1, dz1, dens1, fx1, fy1, fz1, phi1, pfx1, pfy1, pfz1;
+        eval(us, dx0, dy0, dz0, dens0, fx0, fy0, fz0, phi0, pfx0, pfy0, pfz0);
+        eval(us + L, dx1, dy1, dz1, dens1, fx1, fy1, fz1, phi1, pfx1, pfy1,
+             pfz1);
+        consume(us, dens0, fx0, fy0, fz0, phi0, pfx0, pfy0, pfz0);
+        consume(us + L, dens1, fx1, fy1, fz1, phi1, pfx1, pfy1, pfz1);
+      }
+    }
+    for (; t + static_cast<long>(L) <= ns; t += static_cast<long>(L)) {
+      const auto us = static_cast<std::size_t>(t);
+      V dx, dy, dz, dens, fx, fy, fz, phi, pfx, pfy, pfz;
+      eval(us, dx, dy, dz, dens, fx, fy, fz, phi, pfx, pfy, pfz);
+      consume(us, dens, fx, fy, fz, phi, pfx, pfy, pfz);
     }
     for (; t < ns; ++t) {
       const auto us = static_cast<std::size_t>(t);

@@ -46,11 +46,15 @@ void fcc(int ncell, double a, std::vector<double> &R, double box[9]) {
 template <class Pot>
 double calls_per_sec(Pot &pot, const std::vector<double> &R,
                      const std::vector<int> &types, const double box[9],
-                     int ncall) {
+                     int ncall, int nwarm = 1) {
   std::vector<double> F(R.size(), 0.0);
   rgpot::ForceOut out{F.data(), 0.0, 0.0, {}, 0};
   const rgpot::ForceInput in{R.size() / 3, R.data(), types.data(), box};
-  pot.forceImpl(in, &out);
+  // One warm call leaves a cacheable box as a phantom. The next call
+  // captures the list. Two warm calls, and the timed loop only evaluates.
+  for (int i = 0; i < nwarm; ++i) {
+    pot.forceImpl(in, &out);
+  }
   const auto t0 = std::chrono::steady_clock::now();
   for (int i = 0; i < ncall; ++i) {
     pot.forceImpl(in, &out);
@@ -120,6 +124,20 @@ int main(int argc, char **argv) {
   rgpot::MorsePot morse;
   std::cout << "morse_fcc_256 " << calls_per_sec(morse, R, types, box, 20)
             << "\n";
+  // Same 256-atom cell, list already captured: every timed call is force.
+  {
+    rgpot::MorsePot morse_force;
+    std::cout << "morse_fcc_256_force "
+              << calls_per_sec(morse_force, R, types, box, 20, 2) << "\n";
+  }
+  // 8^3 * 4 = 2048 atoms. Cutoff 9.5 sits inside half of the 23.2 A box.
+  fcc(8, 2.9, R, box);
+  types.assign(R.size() / 3, 78);
+  {
+    rgpot::MorsePot morse_large;
+    std::cout << "morse_fcc_2048_force "
+              << calls_per_sec(morse_large, R, types, box, 8, 2) << "\n";
+  }
 
   fcc(4, 4.05, R, box);
   types.assign(R.size() / 3, 13);

@@ -284,6 +284,38 @@ TEST_CASE("Cached force loop matches the reference in every fold mode",
     REQUIRE(mode == Mode::Round);
     requireSame(got, referenceLJ(R, box, rc));
   }
+  SECTION("cutoff past half the box still caches the nearest image") {
+    // Half the box is 10 A. The cutoff is past it, so a second image can
+    // sit inside the cutoff. The scan keeps the nearest one, and that
+    // pair set is cacheable. Skin 1 puts the reach past half the box, so
+    // the fold stays per call.
+    const double side = 20.0;
+    const double wide = 11.0;
+    const std::array<double, 9> box{side, 0, 0, 0, side, 0, 0, 0, side};
+    const auto R0 = randomPositions(80, 0.0, side, 2.5, 29);
+    const auto R = jiggle(R0, 30);
+    const std::size_t n = R0.size() / 3;
+    CachedPairList::Options opt;
+    opt.cutoff = wide;
+    CachedPairList list;
+    auto ignore = [](int32_t, int32_t, double, double, double, double) {};
+    list.visitOnly(R0.data(), n, box.data(), opt, ignore);
+    REQUIRE(list.cacheable());
+    REQUIRE(list.isPhantom());
+    list.rebuildFused(R0.data(), n, box.data(), opt, ignore);
+    REQUIRE(list.foldMode() == Mode::Round);
+    REQUIRE(list.valid(R0.data(), n, box.data(), opt));
+    auto tiny = R0;
+    tiny[0] += 0.1;
+    REQUIRE(list.valid(tiny.data(), n, box.data(), opt));
+    auto far = R0;
+    far[0] += 0.6;
+    REQUIRE_FALSE(list.valid(far.data(), n, box.data(), opt));
+    Mode mode{};
+    const Eval got = cachedLJ(R0, R, box, wide, mode);
+    REQUIRE(mode == Mode::Round);
+    requireSame(got, referenceLJ(R, box, wide));
+  }
   SECTION("unwrapped coordinates fall back to the per-call fold") {
     const double side = 20.0;
     const std::array<double, 9> box{side, 0, 0, 0, side, 0, 0, 0, side};
@@ -312,11 +344,12 @@ TEST_CASE("Cached force loop matches the reference in every fold mode",
 
 TEST_CASE("Pair potentials: warm, cold and cell-grid calls agree",
           "[PairList]") {
-  // A Pt fcc block of 6^3 cells (864 atoms, 23.5 A): the Morse cutoff
+  // A Pt fcc block. m = 4 (256 atoms, 15.7 A) has a cutoff past half the
+  // box and still caches. m = 6 (864 atoms, 23.5 A): the Morse cutoff
   // 9.5 + skin 1.0 gives two cells per axis, so this box runs the brute
-  // scan; the 11^3 block (5324 atoms, 43.1 A) has four cells per axis and
+  // scan. The 11^3 block (5324 atoms, 43.1 A) has four cells per axis and
   // runs the cell grid.
-  for (int m : {6, 11}) {
+  for (int m : {4, 6, 11}) {
     const double a = 3.92;
     std::vector<double> R;
     static const double basis[4][3] = {

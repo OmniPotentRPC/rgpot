@@ -25,7 +25,10 @@ The names are =scalar=, =sse2=, =sse4=, =avx2=, =avx3=,
 target.
 =sse2=, =sve_256=, =rvv=, and =emu128= are accepted as well.
 An unknown name is ignored.
-A known name the CPU cannot run falls back to =scalar=.
+A known name the CPU cannot run falls back to the best target it can run.
+On x86-64 that target is at least SSE2.
+The portable scalar kernel runs when =RGPOT_SIMD=scalar= asks for it.
+The default dispatcher does not select it on an x86-64 host.
 
 Build with =-Dwith_highway=disabled= and every kernel stays on the scalar path.
 =auto= uses libhwy 1.2 or newer when it is installed, and the bundled Highway
@@ -81,9 +84,23 @@ an FMA implementation at run time.
 Matching the in-house bits forbids that call.
 It also forbids contraction.
 The scalar target can sit below the pre-dispatch loop on the exp kernels.
-The two-lane SSE targets can as well.
+It is the portable fallback, and an x86-64 host does not select it unless asked.
+Morse and EAM evaluate two AVX2 vectors, or four SSE vectors, before depositing.
+That is eight lanes, and atom i's sum stays the width-8 tree.
+LJ stays at one vector.
+A second vector there was slower.
 AVX2 and AVX3 run the vector exp.
 Those are the paths that clear that loop.
+
+A Verlet list rebuilds when the farthest atom has moved by more than half the
+skin.
+A cutoff larger than half the box used to mark the list uncacheable, so a
+benchmark that never moved an atom rebuilt on every call.
+The nearest image is still one pair, and that list is cached.
+Image codes stay per call when the skin reaches a boundary.
+The cell scan bins atoms, keeps each cell in index order, and packs the
+coordinates as three unit-stride arrays.
+Partner order is sorted per atom, which is the order the hash sums.
 
 ** What is not dispatched
 

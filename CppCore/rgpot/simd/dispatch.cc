@@ -15,6 +15,7 @@
 namespace rgpot::simd {
 #if defined(RGPOT_WITH_HIGHWAY)
 void rebind_hwy_targets();
+std::int64_t active_hwy_bit();
 #endif
 namespace {
 
@@ -61,6 +62,26 @@ const char *bit_name(std::int64_t bit) {
   return "scalar";
 }
 
+// x86-64 always has SSE2. If Highway's chosen target is the portable
+// scalar kernel, pin SSE2 instead. An explicit scalar request is left alone.
+void clamp_x86_off_scalar() {
+#if defined(__x86_64__) || defined(_M_X64)
+  if (mode == Mode::Scalar) {
+    return;
+  }
+  if (std::strcmp(bit_name(active_hwy_bit()), "scalar") == 0 &&
+      (cpu_targets & HWY_SSE2) != 0) {
+    mode = Mode::Named;
+    hwy::SetSupportedTargetsForTest(0);
+    hwy::DisableTargets(static_cast<std::int64_t>(~HWY_SSE2));
+    hwy::GetChosenTarget().Update(hwy::SupportedTargets());
+    rebind_hwy_targets();
+  }
+#else
+  (void)0;
+#endif
+}
+
 void fill_runnable() {
   nrunnable = 0;
   runnable[nrunnable++] = "scalar";
@@ -85,19 +106,18 @@ void ensure_body() {
         mode = Mode::Scalar;
       } else {
         const std::int64_t bit = name_bit(env);
-        if (bit != 0) {
-          if ((cpu_targets & bit) == 0) {
-            mode = Mode::Scalar;
-          } else {
-            mode = Mode::Named;
-            hwy::DisableTargets(static_cast<std::int64_t>(~bit));
-          }
+        if (bit != 0 && (cpu_targets & bit) != 0) {
+          mode = Mode::Named;
+          hwy::DisableTargets(static_cast<std::int64_t>(~bit));
         }
+        // A known name this CPU cannot run leaves Auto, the best target
+        // it can. On x86-64 that is at least SSE2.
       }
     }
   }
   hwy::GetChosenTarget().Update(hwy::SupportedTargets());
   rebind_hwy_targets();
+  clamp_x86_off_scalar();
 #else
   mode = Mode::Scalar;
   nrunnable = 1;
@@ -160,7 +180,12 @@ void set_target_for_test(const char *name) {
     return;
   }
   if ((cpu_targets & bit) == 0) {
-    mode = Mode::Scalar;
+    mode = Mode::Auto;
+    hwy::DisableTargets(0);
+    hwy::SetSupportedTargetsForTest(0);
+    hwy::GetChosenTarget().Update(hwy::SupportedTargets());
+    rebind_hwy_targets();
+    clamp_x86_off_scalar();
     return;
   }
   mode = Mode::Named;
