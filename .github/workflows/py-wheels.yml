@@ -30,6 +30,11 @@ on:
         required: false
         type: string
         default: '["ubuntu-latest","ubuntu-24.04-arm","macos-14","windows-2022"]'
+      build:
+        description: cibuildwheel selector. The default is cp310, cp311, cp312, cp314t, and cp315t.
+        required: false
+        type: string
+        default: "cp310-* cp311-* cp312-* cp314t-* cp315t-*"
 
 permissions:
   contents: read
@@ -111,7 +116,7 @@ jobs:
           package-dir: ${{ inputs.package-dir }}
           output-dir: wheelhouse
         env:
-          CIBW_BUILD: cp310-* cp311-* cp312-* cp314t-* cp315t-*
+          CIBW_BUILD: ${{ inputs.build }}
           CIBW_SKIP: pp* *-musllinux* *_i686 *-win32
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
           CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28

@@ -28,6 +28,10 @@ pytestmark = [
     pytest.mark.thread_unsafe,
     pytest.mark.iterations(1),
     pytest.mark.skipif(not rgpot.has_fortran_pots, reason="no EAM-Al in this build"),
+    pytest.mark.skipif(
+        "TSAN_OPTIONS" in os.environ,
+        reason="ThreadSanitizer cannot finish this timing run inside the pytest timeout",
+    ),
 ]
 
 _REPEATS = 5
