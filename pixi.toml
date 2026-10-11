@@ -316,5 +316,6 @@ rm -rf source/contributing
 rm -rf source/tutorials
 rm -rf source/howto
 rm -rf source/reference
+rm -rf source/explanation
 rm -rf source/*.rst
 """
