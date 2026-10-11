@@ -160,3 +160,8 @@ reason = "SVE 256-bit dispatch"
 symbol = '^hwy::(Num0BitsBelowLS1Bit_Nonzero64|_GLOBAL__N_1::x86::ReadXCR0)'
 features = ["bmi1", "xsave"]
 reason = "Highway CPUID helpers in libhwy"
+
+[[allow]]
+symbol = '^__aarch64_(ldadd|ldclr|ldeor|ldset|swp|cas)'
+features = ["lse"]
+reason = "libgcc outlined LSE atomics linked into the shared library"
