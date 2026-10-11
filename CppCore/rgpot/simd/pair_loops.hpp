@@ -161,20 +161,40 @@ inline void half_box(double &dx, double &dy, double &dz, double b0, double b1,
   }
 }
 
-template <typename Term>
-double accumulate_pairs(const PairView &v, double *F, double strain[6],
-                        Term &&term) {
+template <int Fold, typename Term>
+double accumulate_folded(const PairView &v, double *F, double strain[6],
+                         Term &&term) {
   double energy = 0.0;
   for (std::size_t i = 0; i < v.n; ++i) {
     Part8 part{};
     int nacc = 0;
     const std::int32_t p0 = v.rows[i];
     const std::int32_t p1 = v.rows[i + 1];
+    const double xi = v.R[3 * i];
+    const double yi = v.R[3 * i + 1];
+    const double zi = v.R[3 * i + 2];
     for (std::int32_t p = p0; p < p1; ++p) {
       const auto up = static_cast<std::size_t>(p);
       const auto j = static_cast<std::size_t>(v.nbr[up]);
-      double dx = 0, dy = 0, dz = 0;
-      fold_one(v, i, j, up, dx, dy, dz);
+      double dx = xi - v.R[3 * j];
+      double dy = yi - v.R[3 * j + 1];
+      double dz = zi - v.R[3 * j + 2];
+      if constexpr (Fold == 1) {
+        dx = dx - v.w[0] * visit_round(dx * v.inv[0]);
+        dy = dy - v.w[1] * visit_round(dy * v.inv[1]);
+        dz = dz - v.w[2] * visit_round(dz * v.inv[2]);
+      } else if constexpr (Fold == 2) {
+        const double *sh = v.shift + 3 * static_cast<std::size_t>(v.code[up]);
+        dx = dx - sh[0];
+        dy = dy - sh[1];
+        dz = dz - sh[2];
+      } else if constexpr (Fold == 3) {
+        if (v.general != nullptr) {
+          const auto *image =
+              static_cast<const nlist::MinimumImage *>(v.general);
+          image->fold(dx, dy, dz);
+        }
+      }
       const double r2 = (dx * dx) + (dy * dy) + (dz * dz);
       if (!(r2 <= v.cutoff2)) {
         continue;
@@ -201,6 +221,21 @@ double accumulate_pairs(const PairView &v, double *F, double strain[6],
     }
   }
   return energy;
+}
+
+template <typename Term>
+double accumulate_pairs(const PairView &v, double *F, double strain[6],
+                        Term &&term) {
+  switch (v.fold) {
+  case 0:
+    return accumulate_folded<0>(v, F, strain, term);
+  case 1:
+    return accumulate_folded<1>(v, F, strain, term);
+  case 2:
+    return accumulate_folded<2>(v, F, strain, term);
+  default:
+    return accumulate_folded<3>(v, F, strain, term);
+  }
 }
 
 inline double lj_scalar(const PairView &v, const LjParams &p, double *F,

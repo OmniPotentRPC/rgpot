@@ -3,6 +3,7 @@
 
 #include "rgpot/simd/hwy_disabled.h"
 
+#include "rgpot/simd/exp.hpp"
 #include "rgpot/simd/pair_loops.hpp"
 
 #undef HWY_TARGET_INCLUDE
@@ -10,12 +11,8 @@
 #include "hwy/foreach_target.h" // IWYU pragma: keep
 #include "hwy/highway.h"
 
-namespace rgpot::simd {
-double morse_scalar_entry(const PairView &view, const MorseParams &params,
-                          double *F, double strain[6]);
-void eam_scalar_entry(long n, const double *R, const EamAtom *atoms,
-                      const double *box, double *F, double *U);
-} // namespace rgpot::simd
+#include <cstdint>
+#include <vector>
 
 HWY_BEFORE_NAMESPACE();
 namespace rgpot::simd {
@@ -44,32 +41,184 @@ HWY_INLINE hn::Vec<D> fold_axis(D d, hn::Vec<D> delta, double width,
   return hn::Sub(delta, shift);
 }
 
-void FoldOrtho(double *x, double *y, double *z, std::size_t n, double w0,
-               double w1, double w2, double i0, double i1, double i2) {
-  const hn::CappedTag<double, 8> d;
-  const std::size_t L = hn::Lanes(d);
-  std::size_t i = 0;
-  for (; i + L <= n; i += L) {
-    auto vx = hn::LoadU(d, x + i);
-    auto vy = hn::LoadU(d, y + i);
-    auto vz = hn::LoadU(d, z + i);
-    vx = fold_axis(d, vx, w0, i0);
-    vy = fold_axis(d, vy, w1, i1);
-    vz = fold_axis(d, vz, w2, i2);
-    hn::StoreU(vx, d, x + i);
-    hn::StoreU(vy, d, y + i);
-    hn::StoreU(vz, d, z + i);
+// fdlibm e_exp, one lane-wise replay of exp() in exp.cc.
+// Multiplies and adds stay separate. Special lanes are selected after the
+// polynomial so a quiet NaN, an infinity, and an overflow keep the scalar bits.
+template <class D>
+HWY_INLINE hn::Vec<D> exp_large(D d, hn::Vec<D> x_in) {
+  // Every lane has already been shown to take fdlibm's large reduction
+  // and the k != 0 reconstruction. Same operations as exp(), no FMA.
+  const hn::Rebind<std::int64_t, D> di;
+  const hn::RebindToUnsigned<D> du;
+  const auto half = hn::CopySign(hn::Set(d, 0.5), x_in);
+  const auto scaled = hn::Add(hn::Mul(hn::Set(d, kInvLn2), x_in), half);
+  const auto k = hn::ConvertTo(di, scaled);
+  const auto tk = hn::ConvertTo(d, k);
+  const auto t_hi = hn::Mul(tk, hn::Set(d, kLn2Hi));
+  const auto t_lo = hn::Mul(tk, hn::Set(d, kLn2Lo));
+  const auto hi = hn::Sub(x_in, t_hi);
+  const auto lo = t_lo;
+  const auto x = hn::Sub(hi, lo);
+  const auto t = hn::Mul(x, x);
+  const auto tp5 = hn::Mul(t, hn::Set(d, kP5));
+  const auto p4 = hn::Add(hn::Set(d, kP4), tp5);
+  const auto tp4 = hn::Mul(t, p4);
+  const auto p3 = hn::Add(hn::Set(d, kP3), tp4);
+  const auto tp3 = hn::Mul(t, p3);
+  const auto p2 = hn::Add(hn::Set(d, kP2), tp3);
+  const auto tp2 = hn::Mul(t, p2);
+  const auto p1 = hn::Add(hn::Set(d, kP1), tp2);
+  const auto poly = hn::Mul(t, p1);
+  const auto c = hn::Sub(x, poly);
+  const auto xc = hn::Mul(x, c);
+  const auto den = hn::Sub(hn::Set(d, 2.0), c);
+  const auto quot = hn::Div(xc, den);
+  const auto loq = hn::Sub(lo, quot);
+  const auto hiq = hn::Sub(loq, hi);
+  const auto y = hn::Sub(hn::Set(d, 1.0), hiq);
+  const auto ybits = hn::BitCast(du, y);
+  const auto yexp = hn::And(hn::ShiftRight<52>(ybits), hn::Set(du, 0x7ff));
+  const auto new_exp = hn::Add(hn::BitCast(di, yexp), k);
+  const auto mant_y = hn::And(ybits, hn::Set(du, 0x800fffffffffffffULL));
+  const auto packed =
+      hn::Or(mant_y, hn::ShiftLeft<52>(hn::BitCast(du, new_exp)));
+  return hn::BitCast(d, packed);
+}
+
+template <class D>
+HWY_INLINE hn::Vec<D> exp_lanes(D d, hn::Vec<D> x_in) {
+  const hn::RebindToUnsigned<D> du;
+  const hn::Rebind<std::int64_t, D> di;
+  const auto bits = hn::BitCast(du, x_in);
+  const auto hx =
+      hn::And(hn::ShiftRight<32>(bits), hn::Set(du, 0x7fffffffu));
+  const auto lx = hn::And(bits, hn::Set(du, 0xffffffffu));
+  const auto neg = hn::Ne(hn::ShiftRight<63>(bits), hn::Zero(du));
+  const auto inf_or_nan = hn::Ge(hx, hn::Set(du, 0x7ff00000u));
+  const auto mant =
+      hn::Or(hn::And(hx, hn::Set(du, 0xfffffu)), lx);
+  const auto is_nan = hn::And(inf_or_nan, hn::Ne(mant, hn::Zero(du)));
+  const auto is_inf = hn::And(inf_or_nan, hn::Eq(mant, hn::Zero(du)));
+  const auto big = hn::Ge(hx, hn::Set(du, 0x40862e42u));
+  const auto finite_big = hn::And(big, hn::Not(inf_or_nan));
+  const auto overflow =
+      hn::And(finite_big, hn::RebindMask(du, hn::Gt(x_in, hn::Set(d, kOverflow))));
+  const auto underflow = hn::And(
+      finite_big, hn::RebindMask(du, hn::Lt(x_in, hn::Set(d, kUnderflow))));
+  const auto special =
+      hn::Or(hn::Or(is_nan, is_inf), hn::Or(overflow, underflow));
+  const auto x_safe =
+      hn::IfThenElse(hn::RebindMask(d, special), hn::Zero(d), x_in);
+
+  const auto do_small = hn::And(hn::Gt(hx, hn::Set(du, 0x3fd62e42u)),
+                                hn::Lt(hx, hn::Set(du, 0x3ff0a2b2u)));
+  const auto do_large = hn::Ge(hx, hn::Set(du, 0x3ff0a2b2u));
+  // Pair arguments are usually past one ln(2). Skip the k == 0 division
+  // when every lane takes the large reduction. A mixed chunk uses both.
+  if (hn::AllTrue(du, do_large) && hn::AllFalse(du, special)) {
+    return exp_large(d, x_in);
   }
-  for (; i < n; ++i) {
-    x[i] = x[i] - w0 * round_reference(x[i] * i0);
-    y[i] = y[i] - w1 * round_reference(y[i] * i1);
-    z[i] = z[i] - w2 * round_reference(z[i] * i2);
-  }
+
+  const auto ln2_hi = hn::IfThenElse(hn::RebindMask(d, neg),
+                                    hn::Neg(hn::Set(d, kLn2Hi)),
+                                    hn::Set(d, kLn2Hi));
+  const auto ln2_lo = hn::IfThenElse(hn::RebindMask(d, neg),
+                                    hn::Neg(hn::Set(d, kLn2Lo)),
+                                    hn::Set(d, kLn2Lo));
+  const auto hi_s = hn::Sub(x_in, ln2_hi);
+  const auto lo_s = ln2_lo;
+  const auto k_s = hn::IfThenElse(hn::RebindMask(di, neg),
+                                 hn::Set(di, std::int64_t{-1}),
+                                 hn::Set(di, std::int64_t{1}));
+
+  const auto half = hn::CopySign(hn::Set(d, 0.5), x_safe);
+  const auto scaled = hn::Add(hn::Mul(hn::Set(d, kInvLn2), x_safe), half);
+  const auto k_l = hn::ConvertTo(di, scaled);
+  const auto tk = hn::ConvertTo(d, k_l);
+  const auto t_hi = hn::Mul(tk, hn::Set(d, kLn2Hi));
+  const auto t_lo = hn::Mul(tk, hn::Set(d, kLn2Lo));
+  const auto hi_l = hn::Sub(x_safe, t_hi);
+  const auto lo_l = t_lo;
+
+  auto hi = hn::Zero(d);
+  auto lo = hn::Zero(d);
+  auto k = hn::Zero(di);
+  hi = hn::IfThenElse(hn::RebindMask(d, do_small), hi_s, hi);
+  lo = hn::IfThenElse(hn::RebindMask(d, do_small), lo_s, lo);
+  k = hn::IfThenElse(hn::RebindMask(di, do_small), k_s, k);
+  hi = hn::IfThenElse(hn::RebindMask(d, do_large), hi_l, hi);
+  lo = hn::IfThenElse(hn::RebindMask(d, do_large), lo_l, lo);
+  k = hn::IfThenElse(hn::RebindMask(di, do_large), k_l, k);
+  const auto reduced = hn::Or(do_small, do_large);
+  const auto x = hn::IfThenElse(hn::RebindMask(d, reduced), hn::Sub(hi, lo), x_in);
+
+  const auto t = hn::Mul(x, x);
+  const auto tp5 = hn::Mul(t, hn::Set(d, kP5));
+  const auto p4 = hn::Add(hn::Set(d, kP4), tp5);
+  const auto tp4 = hn::Mul(t, p4);
+  const auto p3 = hn::Add(hn::Set(d, kP3), tp4);
+  const auto tp3 = hn::Mul(t, p3);
+  const auto p2 = hn::Add(hn::Set(d, kP2), tp3);
+  const auto tp2 = hn::Mul(t, p2);
+  const auto p1 = hn::Add(hn::Set(d, kP1), tp2);
+  const auto poly = hn::Mul(t, p1);
+  const auto c = hn::Sub(x, poly);
+
+  const auto xc = hn::Mul(x, c);
+  const auto den0 = hn::Sub(c, hn::Set(d, 2.0));
+  const auto quot0 = hn::Div(xc, den0);
+  const auto inner0 = hn::Sub(quot0, x);
+  const auto res0 = hn::Sub(hn::Set(d, 1.0), inner0);
+
+  const auto den1 = hn::Sub(hn::Set(d, 2.0), c);
+  const auto quot1 = hn::Div(xc, den1);
+  const auto loq = hn::Sub(lo, quot1);
+  const auto hiq = hn::Sub(loq, hi);
+  const auto y = hn::Sub(hn::Set(d, 1.0), hiq);
+  const auto ybits = hn::BitCast(du, y);
+  const auto yexp = hn::And(hn::ShiftRight<52>(ybits), hn::Set(du, 0x7ff));
+  const auto new_exp = hn::Add(hn::BitCast(di, yexp), k);
+  const auto mant_y =
+      hn::And(ybits, hn::Set(du, 0x800fffffffffffffULL));
+  const auto packed = hn::Or(mant_y, hn::ShiftLeft<52>(hn::BitCast(du, new_exp)));
+  const auto res1 = hn::BitCast(d, packed);
+
+  const auto k0 = hn::Eq(k, hn::Zero(di));
+  auto result = hn::IfThenElse(hn::RebindMask(d, k0), res0, res1);
+
+  const auto tiny_hx = hn::Lt(hx, hn::Set(du, 0x3e300000u));
+  const auto huge = hn::Set(d, 1.0e300);
+  const auto tiny_ok =
+      hn::RebindMask(du, hn::Gt(hn::Add(huge, x_in), hn::Set(d, 1.0)));
+  const auto use_tiny = hn::And(tiny_hx, tiny_ok);
+  result = hn::IfThenElse(hn::RebindMask(d, use_tiny),
+                         hn::Add(hn::Set(d, 1.0), x_in), result);
+
+  const auto tiny = hn::Set(d, 9.33263618503218878990e-302);
+  result = hn::IfThenElse(hn::RebindMask(d, underflow), hn::Mul(tiny, tiny), result);
+  result = hn::IfThenElse(hn::RebindMask(d, overflow), hn::Mul(huge, huge), result);
+  const auto neg_inf = hn::And(is_inf, neg);
+  const auto pos_inf = hn::And(is_inf, hn::Not(neg));
+  result = hn::IfThenElse(hn::RebindMask(d, neg_inf), hn::Zero(d), result);
+  result = hn::IfThenElse(hn::RebindMask(d, pos_inf), x_in, result);
+  result = hn::IfThenElse(hn::RebindMask(d, is_nan), hn::Add(x_in, x_in), result);
+  return result;
+}
+
+template <class D>
+HWY_INLINE void gather_xyz(D d, const double *base,
+                          hn::Vec<hn::Rebind<std::int64_t, D>> ix,
+                          hn::Vec<D> &x, hn::Vec<D> &y, hn::Vec<D> &z) {
+  const hn::Rebind<std::int64_t, D> di;
+  const auto one = hn::Set(di, std::int64_t{1});
+  x = hn::GatherIndex(d, base, ix);
+  y = hn::GatherIndex(d, base, hn::Add(ix, one));
+  z = hn::GatherIndex(d, base, hn::Add(ix, hn::Set(di, std::int64_t{2})));
 }
 
 template <class D>
 HWY_INLINE void lj_vec(D d, hn::Vec<D> r2, const LjParams &p, hn::Vec<D> &energy,
-                       hn::Vec<D> &fscale) {
+                      hn::Vec<D> &fscale) {
   const auto one = hn::Set(d, 1.0);
   const auto inv_r2 = hn::Div(one, r2);
   const auto sr2 = hn::Mul(hn::Set(d, p.psi2), inv_r2);
@@ -108,104 +257,186 @@ HWY_INLINE void lj_vec(D d, hn::Vec<D> r2, const LjParams &p, hn::Vec<D> &energy
   fscale = hn::Sub(switched, slope);
 }
 
-double LjRun(const PairView *view, const LjParams *params, double *F,
-             double *strain) {
-  const PairView &v = *view;
-  const LjParams &p = *params;
-  const hn::CappedTag<double, 8> d;
+template <class D>
+HWY_INLINE void morse_vec(D d, hn::Vec<D> r2, const MorseParams &p,
+                         hn::Vec<D> &energy, hn::Vec<D> &fscale) {
+  const auto one = hn::Set(d, 1.0);
+  const auto r = hn::Sqrt(r2);
+  const auto dr = hn::Sub(r, hn::Set(d, p.r_eq));
+  const auto arg = hn::Mul(hn::Neg(hn::Set(d, p.range)), dr);
+  const auto ex = exp_lanes(d, arg);
+  const auto md = hn::Sub(one, ex);
+  const auto dd = hn::Mul(hn::Set(d, p.depth), md);
+  const auto v = hn::Sub(hn::Mul(dd, md), hn::Set(d, p.depth));
+  const auto d_m1 = hn::Sub(md, one);
+  const auto num = hn::Mul(hn::Mul(hn::Set(d, p.two_de_a), md), d_m1);
+  if (p.use_switch == 0) {
+    energy = hn::Sub(v, hn::Set(d, p.shift));
+    fscale = hn::Div(num, r);
+    return;
+  }
+  const auto t_raw =
+      hn::Mul(hn::Sub(r, hn::Set(d, p.r_on)), hn::Set(d, p.inv_width));
+  const auto t = hn::Min(hn::Max(t_raw, hn::Zero(d)), one);
+  const auto t2 = hn::Mul(t, t);
+  const auto t3 = hn::Mul(t2, t);
+  const auto six_t = hn::Mul(hn::Set(d, 6.0), t);
+  const auto inner = hn::Sub(hn::Set(d, 15.0), six_t);
+  const auto poly = hn::Add(hn::Set(d, -10.0), hn::Mul(t, inner));
+  const auto s = hn::Add(one, hn::Mul(t3, poly));
+  const auto omt = hn::Sub(one, t);
+  const auto m30 = hn::Mul(hn::Set(d, -30.0), t2);
+  const auto ds1 = hn::Mul(m30, omt);
+  const auto ds2 = hn::Mul(ds1, omt);
+  const auto dsdr = hn::Mul(ds2, hn::Set(d, p.inv_width));
+  energy = hn::Mul(v, s);
+  const auto switched = hn::Mul(num, s);
+  const auto slope = hn::Mul(v, dsdr);
+  fscale = hn::Div(hn::Sub(switched, slope), r);
+}
+
+// One scalar pass writes accepted pairs into contiguous buffers. The vector
+// body then sees only those pairs, in the same order, so the width-8 slots
+// stay aligned with the lane index and a vector add matches deposit.
+template <class D, bool kMorse, int Fold>
+HWY_INLINE double pair_run(D d, const PairView &v, double *F, double *strain,
+                          const LjParams *lj, const MorseParams *mp) {
   const std::size_t L = hn::Lanes(d);
+  std::vector<double> dxb(v.n), dyb(v.n), dzb(v.n), r2b(v.n);
+  std::vector<std::int32_t> jb(v.n);
   double energy = 0.0;
   for (std::size_t i = 0; i < v.n; ++i) {
     Part8 part{};
     int nacc = 0;
     const std::int32_t p0 = v.rows[i];
     const std::int32_t p1 = v.rows[i + 1];
-    std::int32_t cursor = p0;
-    // Round and coded folds both feed lj_vec. Coded is the usual list:
-    // cutoff + skin fits in half a box, and each pair stores its image.
-    if (v.fold == 1 || v.fold == 2) {
-      while (cursor + static_cast<std::int32_t>(L) <= p1) {
-        alignas(64) double dxa[8], dya[8], dza[8], r2a[8];
-        alignas(64) double ea[8], fsa[8];
-        alignas(64) double sxa[8], sya[8], sza[8];
-        for (std::size_t lane = 0; lane < L; ++lane) {
-          const auto up = static_cast<std::size_t>(cursor) + lane;
-          const auto j = static_cast<std::size_t>(v.nbr[up]);
-          dxa[lane] = v.R[3 * i] - v.R[3 * j];
-          dya[lane] = v.R[3 * i + 1] - v.R[3 * j + 1];
-          dza[lane] = v.R[3 * i + 2] - v.R[3 * j + 2];
-          if (v.fold == 2) {
-            const double *sh = v.shift + 3 * static_cast<std::size_t>(v.code[up]);
-            sxa[lane] = sh[0];
-            sya[lane] = sh[1];
-            sza[lane] = sh[2];
-          }
+    const double xi = v.R[3 * i];
+    const double yi = v.R[3 * i + 1];
+    const double zi = v.R[3 * i + 2];
+    std::size_t m = 0;
+    if constexpr (Fold != 3) {
+      for (std::int32_t p = p0; p < p1; ++p) {
+        const auto up = static_cast<std::size_t>(p);
+        const auto j = static_cast<std::size_t>(v.nbr[up]);
+        double dx = xi - v.R[3 * j];
+        double dy = yi - v.R[3 * j + 1];
+        double dz = zi - v.R[3 * j + 2];
+        if constexpr (Fold == 1) {
+          dx = dx - v.w[0] * visit_round(dx * v.inv[0]);
+          dy = dy - v.w[1] * visit_round(dy * v.inv[1]);
+          dz = dz - v.w[2] * visit_round(dz * v.inv[2]);
+        } else if constexpr (Fold == 2) {
+          const double *sh = v.shift + 3 * static_cast<std::size_t>(v.code[up]);
+          dx = dx - sh[0];
+          dy = dy - sh[1];
+          dz = dz - sh[2];
         }
-        auto vx = hn::Load(d, dxa);
-        auto vy = hn::Load(d, dya);
-        auto vz = hn::Load(d, dza);
-        if (v.fold == 1) {
-          vx = fold_axis(d, vx, v.w[0], v.inv[0]);
-          vy = fold_axis(d, vy, v.w[1], v.inv[1]);
-          vz = fold_axis(d, vz, v.w[2], v.inv[2]);
+        const double r2 = (dx * dx) + (dy * dy) + (dz * dz);
+        if (!(r2 <= v.cutoff2)) {
+          continue;
+        }
+        dxb[m] = dx;
+        dyb[m] = dy;
+        dzb[m] = dz;
+        r2b[m] = r2;
+        jb[m] = static_cast<std::int32_t>(j);
+        ++m;
+      }
+      std::size_t k = 0;
+      for (; k + L <= m; k += L) {
+        const auto dx = hn::LoadU(d, dxb.data() + k);
+        const auto dy = hn::LoadU(d, dyb.data() + k);
+        const auto dz = hn::LoadU(d, dzb.data() + k);
+        const auto r2 = hn::LoadU(d, r2b.data() + k);
+        hn::Vec<D> ev, fsv;
+        if constexpr (kMorse) {
+          morse_vec(d, r2, *mp, ev, fsv);
         } else {
-          vx = hn::Sub(vx, hn::Load(d, sxa));
-          vy = hn::Sub(vy, hn::Load(d, sya));
-          vz = hn::Sub(vz, hn::Load(d, sza));
+          lj_vec(d, r2, *lj, ev, fsv);
         }
-        const auto r2 = hn::Add(hn::Add(hn::Mul(vx, vx), hn::Mul(vy, vy)),
-                                hn::Mul(vz, vz));
-        hn::Vec<decltype(d)> ev, fsv;
-        lj_vec(d, r2, p, ev, fsv);
-        hn::Store(vx, d, dxa);
-        hn::Store(vy, d, dya);
-        hn::Store(vz, d, dza);
-        hn::Store(r2, d, r2a);
-        hn::Store(ev, d, ea);
-        hn::Store(fsv, d, fsa);
+        const auto fx = hn::Mul(fsv, dx);
+        const auto fy = hn::Mul(fsv, dy);
+        const auto fz = hn::Mul(fsv, dz);
+        const auto neg = hn::Neg(fsv);
+        const auto cx = hn::Mul(neg, dx);
+        const auto cy = hn::Mul(neg, dy);
+        const auto cz = hn::Mul(neg, dz);
+        const int off = nacc & 7;
+        auto add_slot = [&](double *slot, hn::Vec<D> val) {
+          hn::StoreU(hn::Add(hn::LoadU(d, slot + off), val), d, slot + off);
+        };
+        add_slot(part.e, ev);
+        add_slot(part.fx, fx);
+        add_slot(part.fy, fy);
+        add_slot(part.fz, fz);
+        add_slot(part.s[0], hn::Mul(cx, dx));
+        add_slot(part.s[1], hn::Mul(cy, dy));
+        add_slot(part.s[2], hn::Mul(cz, dz));
+        add_slot(part.s[3], hn::Mul(cy, dz));
+        add_slot(part.s[4], hn::Mul(cx, dz));
+        add_slot(part.s[5], hn::Mul(cx, dy));
+        alignas(64) double fxa[8], fya[8], fza[8];
+        hn::Store(fx, d, fxa);
+        hn::Store(fy, d, fya);
+        hn::Store(fz, d, fza);
         for (std::size_t lane = 0; lane < L; ++lane) {
-          if (!(r2a[lane] <= v.cutoff2)) {
-            continue;
-          }
-          const auto up = static_cast<std::size_t>(cursor) + lane;
-          const auto j = static_cast<std::size_t>(v.nbr[up]);
-          const double fx = fsa[lane] * dxa[lane];
-          const double fy = fsa[lane] * dya[lane];
-          const double fz = fsa[lane] * dza[lane];
-          double sxx, syy, szz, syz, sxz, sxy;
-          strain_of(fsa[lane], dxa[lane], dya[lane], dza[lane], sxx, syy, szz,
-                    syz, sxz, sxy);
-          deposit(part, nacc, ea[lane], fx, fy, fz, sxx, syy, szz, syz, sxz,
-                  sxy);
-          F[3 * j] -= fx;
-          F[3 * j + 1] -= fy;
-          F[3 * j + 2] -= fz;
-          ++nacc;
+          const auto j = static_cast<std::size_t>(jb[k + lane]);
+          F[3 * j] -= fxa[lane];
+          F[3 * j + 1] -= fya[lane];
+          F[3 * j + 2] -= fza[lane];
         }
-        cursor += static_cast<std::int32_t>(L);
+        nacc += static_cast<int>(L);
       }
-    }
-    for (std::int32_t pr = cursor; pr < p1; ++pr) {
-      const auto up = static_cast<std::size_t>(pr);
-      const auto j = static_cast<std::size_t>(v.nbr[up]);
-      double dx = 0, dy = 0, dz = 0;
-      fold_one(v, i, j, up, dx, dy, dz);
-      const double r2 = (dx * dx) + (dy * dy) + (dz * dz);
-      if (!(r2 <= v.cutoff2)) {
-        continue;
+      for (; k < m; ++k) {
+        const double dx = dxb[k];
+        const double dy = dyb[k];
+        const double dz = dzb[k];
+        const double r2 = r2b[k];
+        double e = 0, fs = 0;
+        if constexpr (kMorse) {
+          morse_term(r2, *mp, e, fs);
+        } else {
+          lj_term(r2, *lj, e, fs);
+        }
+        const double fx = fs * dx;
+        const double fy = fs * dy;
+        const double fz = fs * dz;
+        double sxx, syy, szz, syz, sxz, sxy;
+        strain_of(fs, dx, dy, dz, sxx, syy, szz, syz, sxz, sxy);
+        deposit(part, nacc, e, fx, fy, fz, sxx, syy, szz, syz, sxz, sxy);
+        const auto j = static_cast<std::size_t>(jb[k]);
+        F[3 * j] -= fx;
+        F[3 * j + 1] -= fy;
+        F[3 * j + 2] -= fz;
+        ++nacc;
       }
-      double e = 0, fs = 0;
-      lj_term(r2, p, e, fs);
-      const double fx = fs * dx;
-      const double fy = fs * dy;
-      const double fz = fs * dz;
-      double sxx, syy, szz, syz, sxz, sxy;
-      strain_of(fs, dx, dy, dz, sxx, syy, szz, syz, sxz, sxy);
-      deposit(part, nacc, e, fx, fy, fz, sxx, syy, szz, syz, sxz, sxy);
-      F[3 * j] -= fx;
-      F[3 * j + 1] -= fy;
-      F[3 * j + 2] -= fz;
-      ++nacc;
+    } else {
+      for (std::int32_t pr = p0; pr < p1; ++pr) {
+        const auto up = static_cast<std::size_t>(pr);
+        const auto j = static_cast<std::size_t>(v.nbr[up]);
+        double dx = 0, dy = 0, dz = 0;
+        fold_one(v, i, j, up, dx, dy, dz);
+        const double r2 = (dx * dx) + (dy * dy) + (dz * dz);
+        if (!(r2 <= v.cutoff2)) {
+          continue;
+        }
+        double e = 0, fs = 0;
+        if constexpr (kMorse) {
+          morse_term(r2, *mp, e, fs);
+        } else {
+          lj_term(r2, *lj, e, fs);
+        }
+        const double fx = fs * dx;
+        const double fy = fs * dy;
+        const double fz = fs * dz;
+        double sxx, syy, szz, syz, sxz, sxy;
+        strain_of(fs, dx, dy, dz, sxx, syy, szz, syz, sxz, sxy);
+        deposit(part, nacc, e, fx, fy, fz, sxx, syy, szz, syz, sxz, sxy);
+        F[3 * j] -= fx;
+        F[3 * j + 1] -= fy;
+        F[3 * j + 2] -= fz;
+        ++nacc;
+      }
     }
     energy += combine8(part.e);
     F[3 * i] += combine8(part.fx);
@@ -218,16 +449,328 @@ double LjRun(const PairView *view, const LjParams *params, double *F,
   return energy;
 }
 
+template <class D, bool kMorse>
+HWY_INLINE double pair_dispatch(D d, const PairView &v, double *F,
+                               double *strain, const LjParams *lj,
+                               const MorseParams *mp) {
+  switch (v.fold) {
+  case 0:
+    return pair_run<D, kMorse, 0>(d, v, F, strain, lj, mp);
+  case 1:
+    return pair_run<D, kMorse, 1>(d, v, F, strain, lj, mp);
+  case 2:
+    return pair_run<D, kMorse, 2>(d, v, F, strain, lj, mp);
+  default:
+    return pair_run<D, kMorse, 3>(d, v, F, strain, lj, mp);
+  }
+}
+
+void FoldOrtho(double *x, double *y, double *z, std::size_t n, double w0,
+               double w1, double w2, double i0, double i1, double i2) {
+  const hn::CappedTag<double, 8> d;
+  const std::size_t L = hn::Lanes(d);
+  std::size_t i = 0;
+  for (; i + L <= n; i += L) {
+    auto vx = hn::LoadU(d, x + i);
+    auto vy = hn::LoadU(d, y + i);
+    auto vz = hn::LoadU(d, z + i);
+    vx = fold_axis(d, vx, w0, i0);
+    vy = fold_axis(d, vy, w1, i1);
+    vz = fold_axis(d, vz, w2, i2);
+    hn::StoreU(vx, d, x + i);
+    hn::StoreU(vy, d, y + i);
+    hn::StoreU(vz, d, z + i);
+  }
+  for (; i < n; ++i) {
+    x[i] = x[i] - w0 * round_reference(x[i] * i0);
+    y[i] = y[i] - w1 * round_reference(y[i] * i1);
+    z[i] = z[i] - w2 * round_reference(z[i] * i2);
+  }
+}
+
+double LjRun(const PairView *view, const LjParams *params, double *F,
+             double *strain) {
+  // Four lanes. Eight-wide LJ uses 512-bit vectors and is slower on this
+  // kernel: the coordinate gather is scalar, and the extra width does not
+  // hide it. Morse and EAM stay at eight because exp does.
+  const hn::CappedTag<double, 4> d;
+  return pair_dispatch<decltype(d), false>(d, *view, F, strain, params,
+                                           nullptr);
+}
+
 double MorseRun(const PairView *view, const MorseParams *params, double *F,
                 double *strain) {
-  // Same out-of-line body as the scalar path, so exp and the W=8 tree are
-  // one function. The LJ round path and FoldOrtho carry the vector code.
-  return morse_scalar_entry(*view, *params, F, strain);
+  const hn::CappedTag<double, 8> d;
+  return pair_dispatch<decltype(d), true>(d, *view, F, strain, nullptr,
+                                          params);
 }
 
 void EamRun(long n, const double *R, const EamAtom *atoms, const double *box,
             double *F, double *U) {
-  eam_scalar_entry(n, R, atoms, box, F, U);
+  const hn::CappedTag<double, 8> d;
+  const hn::Rebind<std::int64_t, decltype(d)> di;
+  const std::size_t L = hn::Lanes(d);
+  const double b0 = box[0];
+  const double b1 = box[1];
+  const double b2 = box[2];
+  const double h0 = b0 * 0.5;
+  const double h1 = b1 * 0.5;
+  const double h2 = b2 * 0.5;
+  std::vector<double> drho(static_cast<std::size_t>(3 * n), 0.0);
+  std::vector<double> dxs(static_cast<std::size_t>(n));
+  std::vector<double> dys(static_cast<std::size_t>(n));
+  std::vector<double> dzs(static_cast<std::size_t>(n));
+  std::vector<double> r2s(static_cast<std::size_t>(n));
+  std::vector<long> js(static_cast<std::size_t>(n));
+  const auto hb0 = hn::Set(d, b0);
+  const auto hb1 = hn::Set(d, b1);
+  const auto hb2 = hn::Set(d, b2);
+  const auto hh0 = hn::Set(d, h0);
+  const auto hh1 = hn::Set(d, h1);
+  const auto hh2 = hn::Set(d, h2);
+  const auto nh0 = hn::Neg(hh0);
+  const auto nh1 = hn::Neg(hh1);
+  const auto nh2 = hn::Neg(hh2);
+
+  for (long i = 0; i < n; ++i) {
+    const EamAtom &a = atoms[i];
+    std::fill(drho.begin(), drho.end(), 0.0);
+    Part8 dens_part{};
+    int nd = 0;
+    Part8 pair_part{};
+    int npair = 0;
+    const double xi = R[3 * i];
+    const double yi = R[3 * i + 1];
+    const double zi = R[3 * i + 2];
+    const auto vxi = hn::Set(d, xi);
+    const auto vyi = hn::Set(d, yi);
+    const auto vzi = hn::Set(d, zi);
+    long ns = 0;
+    for (long j = 0; j + static_cast<long>(L) <= n; j += static_cast<long>(L)) {
+      const auto jv = hn::Iota(di, j);
+      const auto ix = hn::Mul(jv, hn::Set(di, std::int64_t{3}));
+      hn::Vec<decltype(d)> x, y, z;
+      gather_xyz(d, R, ix, x, y, z);
+      auto dx = hn::Sub(vxi, x);
+      auto dy = hn::Sub(vyi, y);
+      auto dz = hn::Sub(vzi, z);
+      dx = hn::IfThenElse(hn::Gt(dx, hh0), hn::Sub(dx, hb0), dx);
+      dx = hn::IfThenElse(hn::Lt(dx, nh0), hn::Add(dx, hb0), dx);
+      dy = hn::IfThenElse(hn::Gt(dy, hh1), hn::Sub(dy, hb1), dy);
+      dy = hn::IfThenElse(hn::Lt(dy, nh1), hn::Add(dy, hb1), dy);
+      dz = hn::IfThenElse(hn::Gt(dz, hh2), hn::Sub(dz, hb2), dz);
+      dz = hn::IfThenElse(hn::Lt(dz, nh2), hn::Add(dz, hb2), dz);
+      const auto r2 = hn::Add(hn::Add(hn::Mul(dx, dx), hn::Mul(dy, dy)),
+                              hn::Mul(dz, dz));
+      alignas(64) std::int64_t jva[8];
+      alignas(64) double r2a[8], dxa[8], dya[8], dza[8];
+      hn::Store(jv, di, jva);
+      hn::Store(r2, d, r2a);
+      hn::Store(dx, d, dxa);
+      hn::Store(dy, d, dya);
+      hn::Store(dz, d, dza);
+      for (std::size_t lane = 0; lane < L; ++lane) {
+        if (jva[lane] == i) {
+          continue;
+        }
+        if (!(r2a[lane] <= a.cutoff2)) {
+          continue;
+        }
+        dxs[static_cast<std::size_t>(ns)] = dxa[lane];
+        dys[static_cast<std::size_t>(ns)] = dya[lane];
+        dzs[static_cast<std::size_t>(ns)] = dza[lane];
+        r2s[static_cast<std::size_t>(ns)] = r2a[lane];
+        js[static_cast<std::size_t>(ns)] = j + static_cast<long>(lane);
+        ++ns;
+      }
+    }
+    for (long j = n - (n % static_cast<long>(L)); j < n; ++j) {
+      if (j == i) {
+        continue;
+      }
+      double dx = xi - R[3 * j];
+      double dy = yi - R[3 * j + 1];
+      double dz = zi - R[3 * j + 2];
+      half_box(dx, dy, dz, b0, b1, b2, h0, h1, h2);
+      const double r2 = (dx * dx) + (dy * dy) + (dz * dz);
+      if (!(r2 <= a.cutoff2)) {
+        continue;
+      }
+      dxs[static_cast<std::size_t>(ns)] = dx;
+      dys[static_cast<std::size_t>(ns)] = dy;
+      dzs[static_cast<std::size_t>(ns)] = dz;
+      r2s[static_cast<std::size_t>(ns)] = r2;
+      js[static_cast<std::size_t>(ns)] = j;
+      ++ns;
+    }
+
+    const double two_b2 = -2.0 * a.beta2;
+    const auto beta1 = hn::Set(d, a.beta1);
+    const auto beta2 = hn::Set(d, a.beta2);
+    const auto vb2 = hn::Set(d, two_b2);
+    const auto alpha = hn::Set(d, a.alpha_m);
+    const auto rm = hn::Set(d, a.r_m);
+    const auto dm = hn::Set(d, a.d_m);
+    const auto c512 = hn::Set(d, 512.0);
+    const auto c1024 = hn::Set(d, 1024.0);
+    const auto six = hn::Set(d, 6.0);
+    const auto one = hn::Set(d, 1.0);
+    const auto two = hn::Set(d, 2.0);
+    long t = 0;
+    for (; t + static_cast<long>(L) <= ns; t += static_cast<long>(L)) {
+      const auto us = static_cast<std::size_t>(t);
+      const auto dx = hn::LoadU(d, dxs.data() + us);
+      const auto dy = hn::LoadU(d, dys.data() + us);
+      const auto dz = hn::LoadU(d, dzs.data() + us);
+      const auto r2 = hn::LoadU(d, r2s.data() + us);
+      const auto r = hn::Sqrt(r2);
+      const auto r2sq = hn::Mul(r2, r2);
+      const auto r6 = hn::Mul(r2sq, r2);
+      const auto r5 = hn::Mul(r2sq, r);
+      const auto eb1 = exp_lanes(d, hn::Mul(hn::Neg(beta1), r));
+      const auto eb2 = exp_lanes(d, hn::Mul(vb2, r));
+      const auto rho_pair = hn::Add(eb1, hn::Mul(c512, eb2));
+      const auto dens_term = hn::Mul(r6, rho_pair);
+      const auto t_a = hn::Mul(hn::Mul(six, r5), rho_pair);
+      const auto neg_b1 = hn::Mul(hn::Neg(beta1), eb1);
+      const auto b2_term = hn::Mul(hn::Mul(c1024, beta2), eb2);
+      const auto inner = hn::Sub(neg_b1, b2_term);
+      const auto t_b = hn::Mul(r6, inner);
+      const auto mag = hn::Add(t_a, t_b);
+      const auto inv_r = hn::Div(one, r);
+      const auto fscale = hn::Mul(hn::Neg(mag), inv_r);
+      const auto fx = hn::Mul(fscale, dx);
+      const auto fy = hn::Mul(fscale, dy);
+      const auto fz = hn::Mul(fscale, dz);
+      const auto arg = hn::Mul(hn::Neg(alpha), hn::Sub(r, rm));
+      const auto ex = exp_lanes(d, arg);
+      const auto md = hn::Sub(one, ex);
+      const auto dd = hn::Mul(dm, md);
+      const auto phi = hn::Sub(hn::Mul(dd, md), dm);
+      const auto mag_f =
+          hn::Mul(hn::Mul(hn::Mul(hn::Mul(two, alpha), dm), md), hn::Sub(md, one));
+      const auto fcomp = hn::Mul(mag_f, inv_r);
+      const auto pfx = hn::Mul(fcomp, dx);
+      const auto pfy = hn::Mul(fcomp, dy);
+      const auto pfz = hn::Mul(fcomp, dz);
+      alignas(64) double dea[8], dfx[8], dfy[8], dfz[8];
+      alignas(64) double pea[8], pfxa[8], pfya[8], pfza[8];
+      hn::Store(dens_term, d, dea);
+      hn::Store(fx, d, dfx);
+      hn::Store(fy, d, dfy);
+      hn::Store(fz, d, dfz);
+      hn::Store(phi, d, pea);
+      hn::Store(pfx, d, pfxa);
+      hn::Store(pfy, d, pfya);
+      hn::Store(pfz, d, pfza);
+      for (std::size_t lane = 0; lane < L; ++lane) {
+        const long j = js[us + lane];
+        const int kd = nd & 7;
+        dens_part.e[kd] += dea[lane];
+        dens_part.fx[kd] += dfx[lane];
+        dens_part.fy[kd] += dfy[lane];
+        dens_part.fz[kd] += dfz[lane];
+        ++nd;
+        drho[static_cast<std::size_t>(3 * j)] -= dfx[lane];
+        drho[static_cast<std::size_t>(3 * j + 1)] -= dfy[lane];
+        drho[static_cast<std::size_t>(3 * j + 2)] -= dfz[lane];
+        if (j > i) {
+          const int kp = npair & 7;
+          pair_part.e[kp] += pea[lane];
+          pair_part.fx[kp] += pfxa[lane];
+          pair_part.fy[kp] += pfya[lane];
+          pair_part.fz[kp] += pfza[lane];
+          ++npair;
+          F[3 * j] += pfxa[lane];
+          F[3 * j + 1] += pfya[lane];
+          F[3 * j + 2] += pfza[lane];
+        }
+      }
+    }
+    for (; t < ns; ++t) {
+      const auto us = static_cast<std::size_t>(t);
+      const double dx = dxs[us];
+      const double dy = dys[us];
+      const double dz = dzs[us];
+      const double r2 = r2s[us];
+      const long j = js[us];
+      const double r = std::sqrt(r2);
+      const double r2sq = r2 * r2;
+      const double r6 = r2sq * r2;
+      const double r4 = r2sq;
+      const double r5 = r4 * r;
+      const double eb1 = exp(-a.beta1 * r);
+      const double eb2 = exp(two_b2 * r);
+      const double rho_pair = eb1 + 512.0 * eb2;
+      const double dens_term = r6 * rho_pair;
+      const double t_a = (6.0 * r5) * rho_pair;
+      const double neg_b1 = -a.beta1 * eb1;
+      const double b2_term = (1024.0 * a.beta2) * eb2;
+      const double inner = neg_b1 - b2_term;
+      const double t_b = r6 * inner;
+      const double mag = t_a + t_b;
+      const double inv_r = 1.0 / r;
+      const double fscale = -mag * inv_r;
+      const double fx = fscale * dx;
+      const double fy = fscale * dy;
+      const double fz = fscale * dz;
+      const int kd = nd & 7;
+      dens_part.e[kd] += dens_term;
+      dens_part.fx[kd] += fx;
+      dens_part.fy[kd] += fy;
+      dens_part.fz[kd] += fz;
+      ++nd;
+      drho[static_cast<std::size_t>(3 * j)] -= fx;
+      drho[static_cast<std::size_t>(3 * j + 1)] -= fy;
+      drho[static_cast<std::size_t>(3 * j + 2)] -= fz;
+      if (j > i) {
+        const double arg = -a.alpha_m * (r - a.r_m);
+        const double ex = exp(arg);
+        const double md = 1.0 - ex;
+        const double dd = a.d_m * md;
+        const double phi = dd * md - a.d_m;
+        const double mag_f = ((2.0 * a.alpha_m) * a.d_m) * md * (md - 1.0);
+        const double fcomp = mag_f * inv_r;
+        const double pfx = fcomp * dx;
+        const double pfy = fcomp * dy;
+        const double pfz = fcomp * dz;
+        const int kp = npair & 7;
+        pair_part.e[kp] += phi;
+        pair_part.fx[kp] += pfx;
+        pair_part.fy[kp] += pfy;
+        pair_part.fz[kp] += pfz;
+        ++npair;
+        F[3 * j] += pfx;
+        F[3 * j + 1] += pfy;
+        F[3 * j + 2] += pfz;
+      }
+    }
+
+    const double dens = combine8(dens_part.e);
+    drho[static_cast<std::size_t>(3 * i)] += combine8(dens_part.fx);
+    drho[static_cast<std::size_t>(3 * i + 1)] += combine8(dens_part.fy);
+    drho[static_cast<std::size_t>(3 * i + 2)] += combine8(dens_part.fz);
+    *U += combine8(pair_part.e);
+    *U += embed_horner(a.coeff, dens);
+    F[3 * i] -= combine8(pair_part.fx);
+    F[3 * i + 1] -= combine8(pair_part.fy);
+    F[3 * i + 2] -= combine8(pair_part.fz);
+    const double dF = embed_force(a.coeff, dens);
+    const auto df = hn::Set(d, dF);
+    long k = 0;
+    const long n3 = 3 * n;
+    for (; k + static_cast<long>(L) <= n3; k += static_cast<long>(L)) {
+      const auto us = static_cast<std::size_t>(k);
+      const auto fv = hn::LoadU(d, F + us);
+      const auto rh = hn::LoadU(d, drho.data() + us);
+      const auto prod = hn::Mul(df, rh);
+      hn::StoreU(hn::Sub(fv, prod), d, F + us);
+    }
+    for (; k < n3; ++k) {
+      const double prod = dF * drho[static_cast<std::size_t>(k)];
+      F[k] -= prod;
+    }
+  }
 }
 
 std::int64_t ActiveBit() { return HWY_TARGET; }
@@ -250,24 +793,44 @@ HWY_EXPORT(MorseRun);
 HWY_EXPORT(EamRun);
 HWY_EXPORT(ActiveBit);
 
+using LjFn = double (*)(const PairView *, const LjParams *, double *, double *);
+using MorseFn = double (*)(const PairView *, const MorseParams *, double *,
+                           double *);
+using EamFn = void (*)(long, const double *, const EamAtom *, const double *,
+                       double *, double *);
+using FoldFn = void (*)(double *, double *, double *, std::size_t, double,
+                        double, double, double, double, double);
+
+LjFn g_lj = nullptr;
+MorseFn g_morse = nullptr;
+EamFn g_eam = nullptr;
+FoldFn g_fold = nullptr;
+
+void rebind_hwy_targets() {
+  g_lj = HWY_DYNAMIC_POINTER(LjRun);
+  g_morse = HWY_DYNAMIC_POINTER(MorseRun);
+  g_eam = HWY_DYNAMIC_POINTER(EamRun);
+  g_fold = HWY_DYNAMIC_POINTER(FoldOrtho);
+}
+
 double lj_hwy_entry(const PairView &view, const LjParams &params, double *F,
                     double strain[6]) {
-  return HWY_DYNAMIC_DISPATCH(LjRun)(&view, &params, F, strain);
+  return g_lj(&view, &params, F, strain);
 }
 
 double morse_hwy_entry(const PairView &view, const MorseParams &params,
                        double *F, double strain[6]) {
-  return HWY_DYNAMIC_DISPATCH(MorseRun)(&view, &params, F, strain);
+  return g_morse(&view, &params, F, strain);
 }
 
 void eam_hwy_entry(long n, const double *R, const EamAtom *atoms,
                    const double *box, double *F, double *U) {
-  HWY_DYNAMIC_DISPATCH(EamRun)(n, R, atoms, box, F, U);
+  g_eam(n, R, atoms, box, F, U);
 }
 
 void fold_hwy_entry(double *x, double *y, double *z, std::size_t n, double w0,
                     double w1, double w2, double i0, double i1, double i2) {
-  HWY_DYNAMIC_DISPATCH(FoldOrtho)(x, y, z, n, w0, w1, w2, i0, i1, i2);
+  g_fold(x, y, z, n, w0, w1, w2, i0, i1, i2);
 }
 
 std::int64_t active_hwy_bit() { return HWY_DYNAMIC_DISPATCH(ActiveBit)(); }

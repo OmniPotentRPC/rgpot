@@ -8,20 +8,6 @@
 #include <cstring>
 
 namespace rgpot::simd {
-namespace {
-
-constexpr double kLn2Hi = 6.93147180369123816490e-01;
-constexpr double kLn2Lo = 1.90821492927058770002e-10;
-constexpr double kInvLn2 = 1.44269504088896338700e+00;
-constexpr double kP1 = 1.66666666666666019037e-01;
-constexpr double kP2 = -2.77777777770155933842e-03;
-constexpr double kP3 = 6.61375632143793436117e-05;
-constexpr double kP4 = -1.65339022054652515390e-06;
-constexpr double kP5 = 4.13813679705723846039e-08;
-constexpr double kOverflow = 7.09782712893383973096e+02;
-constexpr double kUnderflow = -7.45133219101941108420e+02;
-
-} // namespace
 
 #if defined(__GNUC__) && !defined(__clang__)
 __attribute__((noinline, optimize("no-tree-vectorize")))

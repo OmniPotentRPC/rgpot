@@ -13,6 +13,9 @@
 #include <mutex>
 
 namespace rgpot::simd {
+#if defined(RGPOT_WITH_HIGHWAY)
+void rebind_hwy_targets();
+#endif
 namespace {
 
 enum class Mode { Auto, Scalar, Named };
@@ -94,6 +97,7 @@ void ensure_body() {
     }
   }
   hwy::GetChosenTarget().Update(hwy::SupportedTargets());
+  rebind_hwy_targets();
 #else
   mode = Mode::Scalar;
   nrunnable = 1;
@@ -125,6 +129,7 @@ void eam_hwy_entry(long n, const double *R, const EamAtom *atoms,
 void fold_hwy_entry(double *x, double *y, double *z, std::size_t n, double w0,
                     double w1, double w2, double i0, double i1, double i2);
 std::int64_t active_hwy_bit();
+void rebind_hwy_targets();
 #endif
 
 const char *chosen_target_name() {
@@ -162,6 +167,7 @@ void set_target_for_test(const char *name) {
   hwy::DisableTargets(0);
   hwy::SetSupportedTargetsForTest(bit);
   hwy::GetChosenTarget().Update(hwy::SupportedTargets());
+  rebind_hwy_targets();
 #else
   mode = Mode::Scalar;
 #endif
