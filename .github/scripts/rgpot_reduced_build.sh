@@ -25,6 +25,12 @@ python = '${EXE}'
 EOF
 
 BUILD=/tmp/rgpot-reduced-build
+SANITIZE=()
+if printf '%s' "${CFLAGS:-} ${CXXFLAGS:-} ${LDFLAGS:-}" | grep -q 'fsanitize=thread'; then
+  # CFLAGS already instrument the objects. b_sanitize puts libtsan on the
+  # link line. b_lundef would reject the uninstrumented Fortran runtime.
+  SANITIZE+=(-Db_sanitize=thread -Db_lundef=false)
+fi
 "${BIN}/meson" setup "${BUILD}" \
   --native-file /tmp/rgpot-native.ini \
   -Dwith_python=true \
@@ -41,7 +47,8 @@ BUILD=/tmp/rgpot-reduced-build
   -Dwith_eigen=false \
   -Dwith_xtb=false \
   -Dwith_tblite=false \
-  --buildtype=release
+  --buildtype=release \
+  "${SANITIZE[@]}"
 "${BIN}/meson" compile -C "${BUILD}"
 
 shopt -s nullglob

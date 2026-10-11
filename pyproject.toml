@@ -144,8 +144,10 @@ test-sources = ["tests/test_rgpot_pip_core.py"]
 
 # meson skips the limited_api kwarg under these interpreters anyway; the
 # explicit -D flag makes meson-python drop the abi3 tag to match.
+# Free-threaded CPython before 3.15 also rejects the limited API, so
+# cp314t is in this list. cp315t keeps it.
 [[tool.cibuildwheel.overrides]]
-select = "cp310-* cp311-*"
+select = "cp310-* cp311-* cp314t-*"
 config-settings = "setup-args=-Dpython.allow_limited_api=false"
 
 [tool.cibuildwheel.linux]
