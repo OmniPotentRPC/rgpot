@@ -838,6 +838,32 @@ inline void check_f64_nd(const F64Array &arr, const std::size_t *expect,
 } // namespace detail
 
 /**
+ * @brief Reject an array whose rank is not @a rank.
+ *
+ * Call this before reading an extent. A 0-d array has no axis 0, so
+ * shape(0) is not a valid length check.
+ *
+ * @param arr C contiguous float64 array.
+ * @param rank Expected rank. Extents are not read.
+ * @param name Argument name included in the ValueError.
+ * @return Void.
+ */
+inline void check_f64_rank(const F64Array &arr, std::size_t rank,
+                           const char *name) {
+  if (arr.ndim() == rank) {
+    return;
+  }
+  std::vector<std::size_t> got(arr.ndim());
+  for (std::size_t i = 0; i < arr.ndim(); ++i) {
+    got[i] = arr.shape(i);
+  }
+  const std::string expected = "rank " + std::to_string(rank);
+  const std::string got_text = "rank " + std::to_string(arr.ndim()) + " " +
+                               detail::shape_list(got.data(), got.size());
+  detail::raise_shape(name, expected, got_text);
+}
+
+/**
  * @brief F6 shape check for a 1-d float64 vector.
  * @param arr C contiguous float64 array. dtype and order are the
  *        binding's TypeError (noconvert).

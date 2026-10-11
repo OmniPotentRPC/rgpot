@@ -10,18 +10,27 @@ import sysconfig
 import numpy as np
 import pytest
 
-import _core
+import rust_core_demo
 
 
 def test_dot() -> None:
     left = np.array([1.0, 2.0, 3.0])
     right = np.array([4.0, 5.0, 6.0])
-    assert _core.dot(left, right) == 32.0
+    assert rust_core_demo.dot(left, right) == 32.0
 
 
 def test_shape() -> None:
     with pytest.raises(ValueError, match=r"expected shape"):
-        _core.dot(np.array([1.0, 2.0]), np.array([1.0]))
+        rust_core_demo.dot(np.array([1.0, 2.0]), np.array([1.0]))
+
+
+def test_scalar_rank() -> None:
+    vector = np.array([1.0])
+    scalar = np.array(1.0)
+    with pytest.raises(ValueError, match=r"^a:"):
+        rust_core_demo.dot(scalar, vector)
+    with pytest.raises(ValueError, match=r"^b:"):
+        rust_core_demo.dot(vector, scalar)
 
 
 def test_gil_disabled_on_free_threaded() -> None:

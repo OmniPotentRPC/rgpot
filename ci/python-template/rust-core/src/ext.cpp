@@ -29,6 +29,8 @@ NB_MODULE(_core, m) {
   m.def(
       "dot",
       [](rgbind::F64Array a, rgbind::F64Array b) {
+        rgbind::check_f64_rank(a, 1, "a");
+        rgbind::check_f64_rank(b, 1, "b");
         const auto n = static_cast<std::size_t>(b.shape(0));
         rgbind::check_f64_1d(b, n, "b");
         rgbind::check_f64_1d(a, n, "a");
