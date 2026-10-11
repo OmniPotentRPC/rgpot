@@ -76,6 +76,28 @@ namespace rgpot::abi {
 /// size, alignment or a field offset moves the hash by itself.
 inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 
+/// ELF soversion of librgpot (`librgpot.so.N`, `librgpot.N.dylib`).
+/// Meson and CMake read this constant. The SONAME is not the layout hash:
+/// the hash includes pointer width and the cache feature bit, so two
+/// builds of one revision would not share a SONAME. Bump this when
+/// `header_stamp().hash` for the default build (LP64, no
+/// `RGPOT_HAS_CACHE`) changes, and set `kCxxSoversionHash` to that hash
+/// in the same edit. `check_cxx_soversion.py` fails when the recorded
+/// hash or `detail::compute_hash` differs from main and this number did
+/// not increase.
+///
+/// This is not `RGPOT_ABI_LAYOUT_REVISION`. The C ABI stamp in `rgpot.h`
+/// stayed at major 1, minor 0, layout revision 1: no exported C struct
+/// changed layout. The C API is exported from librgpot, so it has no
+/// shared library of its own and rides this SONAME. `librgpot_mpi` stays
+/// at soversion 3 (`RGPOT_MPI_ABI_VERSION` 1, unchanged).
+inline constexpr std::uint32_t kCxxSoversion = 4;
+
+/// `header_stamp().hash` of the default LP64 build without
+/// `RGPOT_HAS_CACHE`. Cache builds fold `kFeatures` into the hash and are
+/// not compared here. `CxxLayout.cc` static_asserts this on LP64.
+inline constexpr std::uint64_t kCxxSoversionHash = 0x80bc8962b7808d7aull;
+
 /// Virtual functions declared by @c PotentialBase, destructor included.
 /// The cache hook @c set_cache adds one when @c RGPOT_HAS_CACHE is defined.
 /// A test counts the @c virtual declarations in Potential.hpp and fails when

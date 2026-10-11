@@ -4,6 +4,12 @@
 #define RGPOT_CXX_LAYOUT_BUILDING
 #include "rgpot/abi/CxxLayout.hpp"
 
+#if !defined(RGPOT_HAS_CACHE) && defined(__LP64__)
+static_assert(
+    rgpot::abi::header_stamp().hash == rgpot::abi::kCxxSoversionHash,
+    "C++ layout hash changed; bump kCxxSoversion and kCxxSoversionHash");
+#endif
+
 namespace {
 // Constant-initialised in this translation unit, so the exported functions
 // never call an inline function another shared object may also define.
