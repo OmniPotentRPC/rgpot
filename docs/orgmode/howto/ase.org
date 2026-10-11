@@ -37,6 +37,12 @@ invent one.
 Energies are eV, forces are eV/Angstrom, and stress is eV/Angstrom^3 in ASE
 Voigt order (xx, yy, zz, yz, xz, xy) with the ASE sign.
 
+The bound kernels are fully periodic.
+A structure with =pbc= false is a cluster: the calculator ignores its cell and
+passes a cubic box whose side is at least 100 Angstrom and at least the cluster
+extent plus twice the kernel cutoff.
+A mixed =pbc= raises =ValueError= and names the non-periodic axes.
+
 =calculate_many= evaluates a list of =Atoms= in one batch.
 The default properties are energy and forces.
 Pass =attach=True= to store a =SinglePointCalculator= on each structure.

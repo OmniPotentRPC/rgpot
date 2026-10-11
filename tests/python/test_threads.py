@@ -97,12 +97,12 @@ def test_connection_claim_raises() -> None:
 
 def test_reentrant_protocol_matches_serial() -> None:
     calc = RgpotCalculator("lj")
-    assert calc.reentrant is True
+    assert calc.protocol_reentrant is True
     frames = [lj_dimer(distance) for distance in (1.1, 1.4, 1.9, 2.4)]
 
-    def run(threads: int, reentrant: bool) -> list[bytes]:
-        calc.reentrant = reentrant
-        if threads == 1 or not calc.reentrant:
+    def run(threads: int, protocol_reentrant: bool) -> list[bytes]:
+        calc.protocol_reentrant = protocol_reentrant
+        if threads == 1 or not calc.protocol_reentrant:
             return [_eval(calc, atoms) for atoms in frames]
         with ThreadPoolExecutor(max_workers=threads) as pool:
             return list(pool.map(lambda atoms: _eval(calc, atoms), frames))
@@ -110,4 +110,4 @@ def test_reentrant_protocol_matches_serial() -> None:
     serial = run(1, True)
     assert run(8, True) == serial
     assert run(8, False) == serial
-    calc.reentrant = True
+    calc.protocol_reentrant = True

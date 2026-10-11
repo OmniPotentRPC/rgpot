@@ -11,10 +11,16 @@ The ASE calculator contract is that of
 Hjorth Larsen et al., J. Phys.: Condens. Matter 29, 273002 (2017),
 doi:10.1088/1361-648X/aa680e.
 
-``reentrant`` is True for :meth:`RgpotCalculator.__rg_evaluate__` only
-(F5). :meth:`calculate` and ``get_property`` mutate ``self.atoms`` and
-``self.results`` and must not run on two threads at once. The potential
-object underneath is reentrant: one workspace per calling thread (F2).
+``protocol_reentrant`` is True for :meth:`RgpotCalculator.__rg_evaluate__`
+only (F5). :meth:`calculate` and ``get_property`` mutate ``self.atoms``
+and ``self.results`` and must not run on two threads at once. The
+potential object underneath keeps one workspace per calling thread (F2).
+
+The bound kernels are fully periodic. A structure with every periodic
+flag false is a cluster: the cell is ignored, and the kernel receives a
+cubic box whose side is at least 100 Angstrom and at least the cluster
+extent plus twice the kernel cutoff. A mixed periodic flag raises
+``ValueError`` and names the non-periodic axes.
 """
 
 from __future__ import annotations
@@ -55,6 +61,20 @@ _KINDS: dict[str, str] = {
 _LJ_KEYS = {"u0", "cutoff", "psi", "switch_width"}
 _D3_KEYS = {"damping", "functional", "atm"}
 _D4_KEYS = {"functional", "charge", "atm"}
+
+# Neighbour cutoffs of the bound kernels, in Angstrom. LJ reads
+# config()["cutoff"] instead. WaterH has no cutoff, so an open cell for
+# it uses the 100 Angstrom floor.
+_KERNEL_CUTOFF_ANGSTROM = {
+    "SWPot": 1.8 * 2.0951,
+    "EDIPPot": 3.1213820,
+    "LenoskyPot": 4.5,
+    "TersoffPot": 3.0,
+    "EAMAlPot": 7.1,
+    "FeHePot": 5.4,
+    "CuH2Pot": 6.1,
+    "WaterHPot": 0.0,
+}
 
 
 def _resolve_potential(potential: Any, params: dict[str, Any]) -> Any:
@@ -110,27 +130,63 @@ def _resolve_potential(potential: Any, params: dict[str, Any]) -> Any:
     return cls()
 
 
-def _box(cell: Any, pbc: Any) -> np.ndarray:
-    """Row-major cell. A zero cell with no periodic axes becomes 100 Angstrom.
+def _kernel_cutoff(potential: Any) -> float:
+    """Cutoff the open-cell box has to clear, in Angstrom."""
+    config = getattr(potential, "config", None)
+    if callable(config):
+        cfg = config()
+        if isinstance(cfg, dict) and "cutoff" in cfg:
+            return float(cfg["cutoff"])
+    return float(_KERNEL_CUTOFF_ANGSTROM.get(type(potential).__name__, 0.0))
 
-    The determinant is three multiplies. ``numpy.linalg.det`` on every
-    frame of a batch costs more than an EAM evaluation of Pt7.
-    """
-    box = np.ascontiguousarray(np.asarray(cell, dtype=np.float64).reshape(3, 3))
+
+def _pbc_flags(pbc: Any) -> np.ndarray:
     flags = np.asarray(pbc, dtype=bool).reshape(-1)
-    if flags.any():
-        return box
-    a = box[0]
-    b = box[1]
-    c = box[2]
-    det = (
-        a[0] * (b[1] * c[2] - b[2] * c[1])
-        - a[1] * (b[0] * c[2] - b[2] * c[0])
-        + a[2] * (b[0] * c[1] - b[1] * c[0])
-    )
-    if abs(float(det)) < 1e-18:
-        return np.eye(3, dtype=np.float64) * 100.0
-    return box
+    if flags.size == 1:
+        flags = np.repeat(flags, 3)
+    if flags.size != 3:
+        raise ValueError(f"pbc must be one flag or three, got {int(flags.size)}")
+    return flags
+
+
+def _cluster_extent(positions: Any) -> float:
+    """Longest cartesian span of the cluster, in Angstrom."""
+    pos = np.asarray(positions, dtype=np.float64).reshape(-1, 3)
+    if pos.shape[0] == 0:
+        return 0.0
+    span = np.max(pos, axis=0) - np.min(pos, axis=0)
+    return float(np.max(span))
+
+
+def _open_box(positions: Any, cutoff: float) -> np.ndarray:
+    """Cubic cell for a non-periodic cluster.
+
+    The side is at least 100 Angstrom and at least the cluster extent
+    plus twice the kernel cutoff. It is also longer than twice the
+    extent, so a fully periodic kernel does not fold the cluster.
+    """
+    extent = _cluster_extent(positions)
+    pad = extent + 2.0 * float(cutoff)
+    side = max(100.0, pad)
+    if side <= 2.0 * extent:
+        side = 2.0 * extent + 2.0 * float(cutoff)
+    return np.eye(3, dtype=np.float64) * side
+
+
+def _box(positions: Any, cell: Any, pbc: Any, cutoff: float) -> np.ndarray:
+    """Row-major cell passed to a fully periodic kernel."""
+    flags = _pbc_flags(pbc)
+    if not bool(flags.any()):
+        return _open_box(positions, cutoff)
+    if not bool(flags.all()):
+        names = [
+            axis for axis, flag in zip(("x", "y", "z"), flags) if not bool(flag)
+        ]
+        joined = ", ".join(names)
+        raise ValueError(
+            f"kernels are fully periodic; non-periodic axes: {joined}"
+        )
+    return np.ascontiguousarray(np.asarray(cell, dtype=np.float64).reshape(3, 3))
 
 
 def _voigt(stress: np.ndarray) -> np.ndarray:
@@ -162,14 +218,16 @@ class RgpotCalculator(Calculator):
     """
 
     implemented_properties = ["energy", "free_energy", "forces"]
-    # F5: this flag is the pure protocol, not calculate(). calculate()
-    # mutates self.atoms and self.results and is not reentrant.
-    reentrant = True
+    # The pure protocol may run concurrently. calculate() writes
+    # self.atoms and self.results, so this name is not "calculate is
+    # reentrant".
+    protocol_reentrant = True
 
     def __init__(self, potential: Any, **kwargs: Any) -> None:
         pot_kw = {k: v for k, v in kwargs.items() if k not in _ASE_KEYS}
         ase_kw = {k: v for k, v in kwargs.items() if k in _ASE_KEYS}
         self._potential = _resolve_potential(potential, pot_kw)
+        self._cutoff = _kernel_cutoff(self._potential)
         Calculator.__init__(self, **ase_kw)
         caps = dict(self._potential.caps())
         props = ["energy", "free_energy", "forces"]
@@ -223,7 +281,7 @@ class RgpotCalculator(Calculator):
         """
         pos = _as_f64(positions, "positions")
         num = np.ascontiguousarray(np.asarray(numbers, dtype=np.int32))
-        box = _box(cell, pbc)
+        box = _box(pos, cell, pbc, self._cutoff)
         raw = self._potential.evaluate(pos, num, box)
         energy = float(raw["energy"])
         forces = np.ascontiguousarray(raw["forces"], dtype=np.float64)
@@ -281,7 +339,9 @@ class RgpotCalculator(Calculator):
             # Atoms objects are not mutated and are not read again.
             positions.append(_as_f64(atoms.positions, "positions"))
             numbers.append(np.ascontiguousarray(atoms.numbers, dtype=np.int32))
-            boxes.append(_box(atoms.cell.array, atoms.pbc))
+            boxes.append(
+                _box(positions[-1], atoms.cell.array, atoms.pbc, self._cutoff)
+            )
         raw_rows = self._potential.evaluate_batch(
             positions, numbers, boxes, int(threads)
         )

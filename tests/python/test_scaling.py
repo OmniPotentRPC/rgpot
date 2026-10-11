@@ -152,7 +152,6 @@ def test_strong_scaling(tmp_path: Path) -> None:
     )
     text = "\n".join(lines) + "\n"
     (tmp_path / "scaling.txt").write_text(text, encoding="utf-8")
-    Path("/tmp/rgpot-b1-scaling.txt").write_text(text, encoding="utf-8")
     print(text)
 
 
