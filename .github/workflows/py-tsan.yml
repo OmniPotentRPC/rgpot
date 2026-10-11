@@ -30,6 +30,11 @@ on:
         required: false
         type: string
         default: ""
+      rust-toolchain:
+        description: Rustup toolchain installed when rust-crate-dir is set.
+        required: false
+        type: string
+        default: nightly-2026-01-20
 
 permissions:
   contents: read
@@ -61,6 +66,7 @@ jobs:
           EXTRAS: ${{ inputs.extras }}
           RUST_CRATE: ${{ inputs.rust-crate-dir }}
           TSAN_CMAKE_ARGS: ${{ inputs.tsan-cmake-args }}
+          RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
         run: |
           set -euo pipefail
           # numpy-tsan is the cpython_sanity 3.14t image plus a TSan numpy.
@@ -68,7 +74,7 @@ jobs:
           # the image's pyenv install.
           IMAGE=ghcr.io/nascheme/numpy-tsan:3.14t@sha256:f6dd658f1a155be35e27b182cac97c2a77c4b2d62bacb81753beaba725978149
           docker run --rm -i \
-            -e PKG -e TEST_PATH -e IMPORTS -e EXTRAS -e RUST_CRATE -e TSAN_CMAKE_ARGS \
+            -e PKG -e TEST_PATH -e IMPORTS -e EXTRAS -e RUST_CRATE -e TSAN_CMAKE_ARGS -e RUST_TOOLCHAIN \
             -v "$GITHUB_WORKSPACE":/src -w /src \
             "$IMAGE" \
             bash -s << 'EOF'
@@ -110,8 +116,8 @@ jobs:
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none --profile minimal
             # shellcheck disable=SC1091
             source "${HOME}/.cargo/env"
-            rustup toolchain install nightly-2026-01-20 --component rust-src --profile minimal
-            rustup default nightly-2026-01-20
+            rustup toolchain install "${RUST_TOOLCHAIN}" --component rust-src --profile minimal
+            rustup default "${RUST_TOOLCHAIN}"
             cxx="${CXX}"
             clang_major="$("$cxx" -dM -E -x c /dev/null | awk '/^#define __clang_major__ / { print $3 }')"
             rust_major="$(rustc -vV | awk '/^LLVM version:/ { split($3, a, "."); print a[1] }')"
@@ -130,10 +136,44 @@ jobs:
             "$PY" -m pip install 'numpy>=1.24'
           fi
           spec="/src/${PKG}"
-          if [ -n "${TSAN_CMAKE_ARGS}" ]; then
-            export CMAKE_ARGS="${TSAN_CMAKE_ARGS}"
+          cmake_args="${TSAN_CMAKE_ARGS}"
+          install_args=(--no-build-isolation --no-deps)
+          if [ -n "${RUST_CRATE}" ]; then
+            if [ -n "${cmake_args}" ]; then
+              cmake_args="${cmake_args} -DRust_TOOLCHAIN=${RUST_TOOLCHAIN}"
+            else
+              cmake_args="-DRust_TOOLCHAIN=${RUST_TOOLCHAIN}"
+            fi
+            install_args+=(--config-settings=build-dir=/tmp/rust-tsan-build)
           fi
-          "$PY" -m pip install --no-build-isolation --no-deps "${spec}"
+          if [ -n "${cmake_args}" ]; then
+            export CMAKE_ARGS="${cmake_args}"
+          fi
+          "$PY" -m pip install "${install_args[@]}" "${spec}"
+          if [ -n "${RUST_CRATE}" ]; then
+            if ! command -v nm >/dev/null 2>&1; then
+              apt-get update
+              apt-get install -y binutils
+            fi
+            found=0
+            total=0
+            while IFS= read -r archive; do
+              [ -n "${archive}" ] || continue
+              found=1
+              count="$(nm -A "${archive}" | grep -c __tsan_func_entry || true)"
+              echo "__tsan_func_entry count ${count} in ${archive}"
+              total=$((total + count))
+            done < <(find /tmp/rust-tsan-build -name 'librust_core_demo.a' -type f)
+            if [ "${found}" -eq 0 ]; then
+              echo "librust_core_demo.a not found under /tmp/rust-tsan-build" >&2
+              find /tmp/rust-tsan-build -name '*.a' -type f >&2 || true
+              exit 1
+            fi
+            if [ "${total}" -eq 0 ]; then
+              echo "Rust staticlib has no __tsan_func_entry" >&2
+              exit 1
+            fi
+          fi
           SUP=/tmp/suppressions_free_threading.txt
           curl -fsSL -o "${SUP}" \
             https://raw.githubusercontent.com/python/cpython/bf397e272c2bee639c3ba0208c221f7dd9447bb6/Tools/tsan/suppressions_free_threading.txt

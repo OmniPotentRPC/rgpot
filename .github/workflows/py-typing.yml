@@ -74,15 +74,22 @@ jobs:
           set -euo pipefail
           for name in ${IMPORTS//,/ }; do
             rel="${name//.//}.pyi"
+            echo "diff -u ${STUB_DIR}/${rel}"
             python -m nanobind.stubgen -m "${name}" -o "/tmp/${name}.pyi"
             diff -u "${PKG}/${STUB_DIR}/${rel}" "/tmp/${name}.pyi"
-          done
-          if [ -f "${PKG}/${STUB_DIR}/py.typed" ] || [ -f "${PKG}/py.typed" ]; then
+            if [[ "${name}" == *.* ]]; then
+              typed="${PKG}/${STUB_DIR}/${name%%.*}/py.typed"
+            elif [ -f "${PKG}/${STUB_DIR}/py.typed" ]; then
+              typed="${PKG}/${STUB_DIR}/py.typed"
+            else
+              typed="${PKG}/py.typed"
+            fi
+            if [ ! -f "${typed}" ]; then
+              echo "py.typed missing for ${name} (${typed})" >&2
+              exit 1
+            fi
             echo "py.typed present"
-          else
-            echo "py.typed missing" >&2
-            exit 1
-          fi
+          done
         env:
           PKG: ${{ inputs.package-dir }}
           STUB_DIR: ${{ inputs.stub-dir }}

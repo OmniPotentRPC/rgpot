@@ -7,9 +7,9 @@ from __future__ import annotations
 import numpy as np
 from numpy.typing import NDArray
 
-import _core
+import rust_core_demo
 
 
 def dot(left: NDArray[np.float64], right: NDArray[np.float64]) -> float:
     """Return the fixed-order dot product."""
-    return float(_core.dot(left, right))
+    return float(rust_core_demo.dot(left, right))

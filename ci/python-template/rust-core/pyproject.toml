@@ -22,7 +22,7 @@ cmake.version = ">=3.15"
 # Free-threaded interpreters ignore the classic abi3 tag and emit
 # cp314-cp314t or cp315-cp315t instead.
 wheel.py-api = "cp312"
-wheel.packages = []
+wheel.packages = ["python/rust_core_demo"]
 
 [tool.cibuildwheel]
 build = "cp310-* cp311-* cp312-* cp314t-* cp315t-*"
@@ -53,15 +53,17 @@ before-all = "curl -sSf -o %TEMP%\\rustup-init.exe https://win.rustup.rs/x86_64 
 environment = { PATH = "$USERPROFILE\\.cargo\\bin;$PATH" }
 
 [tool.mypy]
+mypy_path = "python"
 strict = true
 python_version = "3.10"
 
 [[tool.mypy.overrides]]
-module = "_core"
+module = "rust_core_demo._core"
 disallow_any_generics = false
 
 [tool.pyright]
-include = ["examples", "_core.pyi"]
+include = ["examples", "python/rust_core_demo"]
+extraPaths = ["python"]
 typeCheckingMode = "standard"
 pythonVersion = "3.10"
 reportMissingModuleSource = "none"

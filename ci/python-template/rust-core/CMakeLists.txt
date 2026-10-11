@@ -66,6 +66,15 @@ nanobind_add_module(_core FREE_THREADED STABLE_ABI NB_STATIC src/ext.cpp)
 target_include_directories(_core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(_core PRIVATE rust_core_demo)
 
+# The stub generator imports rust_core_demo._core, so the extension has
+# to sit inside a package directory on PYTHON_PATH.
+set(_core_stage "${CMAKE_CURRENT_BINARY_DIR}/rust_core_demo")
+file(MAKE_DIRECTORY "${_core_stage}")
+file(WRITE "${_core_stage}/__init__.py" "")
+set_target_properties(_core PROPERTIES
+  LIBRARY_OUTPUT_DIRECTORY "${_core_stage}"
+  RUNTIME_OUTPUT_DIRECTORY "${_core_stage}")
+
 if(NOT MSVC)
   target_compile_options(_core PRIVATE -Wall -Wextra -Wpedantic)
 endif()
@@ -91,15 +100,23 @@ if(APPLE)
   target_link_options(_core PRIVATE
     "LINKER:-exported_symbols_list,${CMAKE_CURRENT_BINARY_DIR}/core_exports.txt")
 endif()
+# A Rust staticlib exports every public symbol. On Windows the shared
+# library limits that set with a module-definition file (F9).
+if(MSVC)
+  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/core_exports.def" "EXPORTS\n  PyInit__core\n")
+  target_link_options(_core PRIVATE
+    "/DEF:${CMAKE_CURRENT_BINARY_DIR}/core_exports.def")
+endif()
 
 nanobind_add_stub(
   _core_stub
-  MODULE _core
+  MODULE rust_core_demo._core
   OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/_core.pyi"
-  PYTHON_PATH $<TARGET_FILE_DIR:_core>
+  PYTHON_PATH "${CMAKE_CURRENT_BINARY_DIR}"
   DEPENDS _core
 )
 
-install(TARGETS _core LIBRARY DESTINATION .)
-install(FILES "${CMAKE_CURRENT_BINARY_DIR}/_core.pyi" DESTINATION .)
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/py.typed" DESTINATION .)
+# LIBRARY is the .so on Unix. RUNTIME is the .pyd on Windows.
+install(TARGETS _core
+  LIBRARY DESTINATION rust_core_demo
+  RUNTIME DESTINATION rust_core_demo)

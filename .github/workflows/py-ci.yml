@@ -36,7 +36,7 @@ jobs:
     uses: ./.github/workflows/py-wheels.yml
     with:
       package-dir: ci/python-template/rust-core
-      import-names: _core
+      import-names: rust_core_demo._core
       test-path: tests
       extras: test
 
@@ -53,7 +53,7 @@ jobs:
     uses: ./.github/workflows/py-freethreading.yml
     with:
       package-dir: ci/python-template/rust-core
-      import-names: _core
+      import-names: rust_core_demo._core
       test-path: tests
       extras: test
       iterations: "50"
@@ -72,11 +72,12 @@ jobs:
     uses: ./.github/workflows/py-tsan.yml
     with:
       package-dir: ci/python-template/rust-core
-      import-names: _core
+      import-names: rust_core_demo._core
       test-path: tests
       extras: test
       rust-crate-dir: examples/rust-core-demo
-      tsan-cmake-args: -DRUST_CORE_TSAN=ON -DRust_TOOLCHAIN=nightly-2026-01-20
+      rust-toolchain: nightly-2026-01-20
+      tsan-cmake-args: -DRUST_CORE_TSAN=ON
 
   typing:
     uses: ./.github/workflows/py-typing.yml
@@ -91,9 +92,9 @@ jobs:
     uses: ./.github/workflows/py-typing.yml
     with:
       package-dir: ci/python-template/rust-core
-      import-names: _core
-      stub-dir: .
-      typecheck-paths: examples _core.pyi
+      import-names: rust_core_demo._core
+      stub-dir: python
+      typecheck-paths: python/rust_core_demo examples
       extras: test
       rust-crate-dir: examples/rust-core-demo
 
@@ -155,7 +156,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install wheelhouse/*cp314-cp314t*.whl
-          python -W error::RuntimeWarning -c 'import sys, _core; assert sys._is_gil_enabled() is False; print("F1", sys._is_gil_enabled())'
+          python -W error::RuntimeWarning -c 'import sys, rust_core_demo; assert sys._is_gil_enabled() is False; print("F1", sys._is_gil_enabled())'
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
