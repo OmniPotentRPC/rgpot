@@ -5,9 +5,17 @@ name: ISA audit self-test
 # same workflow with uses: OmniPotentRPC/rgpot/.github/workflows/isa-audit.yml@<sha>.
 
 on:
+  # main and ci/**, and only when the audit or its workflow changes.
+  # pull_request stays unfiltered so a caller PR still proves the gate.
   push:
     branches:
       - main
+      - "ci/**"
+    paths:
+      - "ci/isa-audit/**"
+      - ".github/workflows/isa-audit.yml"
+      - ".github/workflows/isa-audit-selftest.yml"
+      - "rgpot/isa-allow.toml"
   pull_request:
   workflow_dispatch:
 

@@ -22,8 +22,28 @@ on:
           - pypi
         default: testpypi
   push:
+    # v* tags always build. Path filters are not applied to tags.
+    # A branch push starts this workflow only when the wheel or audit
+    # files change, on main and on ci/**.
     tags:
       - "v*"
+    branches:
+      - main
+      - "ci/**"
+    paths:
+      - "pyproject.toml"
+      - "meson.build"
+      - "CppCore/**"
+      - "python/**"
+      - "tests/check_wheel_contents.py"
+      - "tests/test_wheel_contents.py"
+      - "subprojects/*.wrap"
+      - "third_party/lepton/**"
+      - "third_party/libxckernel/**"
+      - ".github/workflows/wheels.yml"
+      - ".github/workflows/isa-audit.yml"
+      - "ci/isa-audit/**"
+      - "rgpot/isa-allow.toml"
   pull_request:
     paths:
       - "pyproject.toml"
