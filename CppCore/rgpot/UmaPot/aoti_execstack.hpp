@@ -15,6 +15,28 @@
 #include <thread>
 #include <vector>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#ifdef small
+#undef small
+#endif
+#ifdef interface
+#undef interface
+#endif
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
+#endif
+
 namespace rgpot {
 namespace aoti_execstack {
 
@@ -255,26 +277,6 @@ inline void publication_backoff(std::chrono::milliseconds &delay) {
 }
 
 #ifdef _WIN32
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#ifdef small
-#undef small
-#endif
-#ifdef interface
-#undef interface
-#endif
-#ifdef min
-#undef min
-#endif
-#ifdef max
-#undef max
-#endif
-
 inline std::error_code win_last_error() {
   return std::error_code(static_cast<int>(GetLastError()),
                          std::system_category());
