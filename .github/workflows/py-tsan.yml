@@ -20,6 +20,16 @@ on:
         required: false
         type: string
         default: ""
+      rust-crate-dir:
+        description: Crate directory relative to package-dir. Empty means no Rust sanitizer build.
+        required: false
+        type: string
+        default: ""
+      tsan-cmake-args:
+        description: CMake arguments for the TSan build. Empty by default.
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -49,14 +59,18 @@ jobs:
           TEST_PATH: ${{ inputs.test-path }}
           IMPORTS: ${{ inputs.import-names }}
           EXTRAS: ${{ inputs.extras }}
+          RUST_CRATE: ${{ inputs.rust-crate-dir }}
+          TSAN_CMAKE_ARGS: ${{ inputs.tsan-cmake-args }}
         run: |
           set -euo pipefail
           # numpy-tsan is the cpython_sanity 3.14t image plus a TSan numpy.
-          # Mount the tree at /src. /work holds the image's pyenv install.
+          # The tag is pinned by digest. Mount the tree at /src. /work holds
+          # the image's pyenv install.
+          IMAGE=ghcr.io/nascheme/numpy-tsan:3.14t@sha256:f6dd658f1a155be35e27b182cac97c2a77c4b2d62bacb81753beaba725978149
           docker run --rm -i \
-            -e PKG -e TEST_PATH -e IMPORTS -e EXTRAS \
+            -e PKG -e TEST_PATH -e IMPORTS -e EXTRAS -e RUST_CRATE -e TSAN_CMAKE_ARGS \
             -v "$GITHUB_WORKSPACE":/src -w /src \
-            ghcr.io/nascheme/numpy-tsan:3.14t \
+            "$IMAGE" \
             bash -s << 'EOF'
           set -euo pipefail
           if command -v python >/dev/null 2>&1; then
@@ -72,33 +86,70 @@ jobs:
             apt-get update
             apt-get install -y clang
           fi
+          if ! command -v curl >/dev/null 2>&1; then
+            apt-get update
+            apt-get install -y ca-certificates curl
+          fi
           export CC="${CC:-clang}"
           export CXX="${CXX:-clang++}"
           export CFLAGS="${CFLAGS:-} -fsanitize=thread -fno-omit-frame-pointer -g -ffp-contract=off"
           export CXXFLAGS="${CXXFLAGS:-} -fsanitize=thread -fno-omit-frame-pointer -g -ffp-contract=off"
           export LDFLAGS="${LDFLAGS:-} -fsanitize=thread"
           export PIP_BREAK_SYSTEM_PACKAGES=1
+          if [ -n "${RUST_CRATE}" ]; then
+            if [ ! -f "/src/${PKG}/${RUST_CRATE}/Cargo.toml" ]; then
+              echo "missing Rust crate /src/${PKG}/${RUST_CRATE}/Cargo.toml" >&2
+              exit 1
+            fi
+            if ! command -v git >/dev/null 2>&1; then
+              apt-get update
+              apt-get install -y git ca-certificates
+            fi
+            # LLVM 21 nightly. rustc moved to LLVM 22 on 2026-01-28, and the
+            # image clang is LLVM 21. The dated toolchain keeps the majors equal.
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none --profile minimal
+            # shellcheck disable=SC1091
+            source "${HOME}/.cargo/env"
+            rustup toolchain install nightly-2026-01-20 --component rust-src --profile minimal
+            rustup default nightly-2026-01-20
+            cxx="${CXX}"
+            clang_major="$("$cxx" -dM -E -x c /dev/null | awk '/^#define __clang_major__ / { print $3 }')"
+            rust_major="$(rustc -vV | awk '/^LLVM version:/ { split($3, a, "."); print a[1] }')"
+            echo "clang version: $("$cxx" --version | head -n 1)"
+            echo "rustc version: $(rustc -vV | awk '/^rustc / { print; exit }')"
+            echo "clang LLVM major ${clang_major}"
+            echo "rustc LLVM major ${rust_major}"
+            if [ -z "${clang_major}" ] || [ -z "${rust_major}" ] || [ "${clang_major}" != "${rust_major}" ]; then
+              echo "clang and rustc LLVM majors differ" >&2
+              exit 1
+            fi
+          fi
           "$PY" -m pip install -U pip
-          "$PY" -m pip install nanobind scikit-build-core cmake ninja pytest pytest-timeout hypothesis
+          "$PY" -m pip install nanobind scikit-build-core cmake ninja pytest pytest-timeout pytest-run-parallel hypothesis
           if ! "$PY" -c 'import numpy' >/dev/null 2>&1; then
             "$PY" -m pip install 'numpy>=1.24'
           fi
           spec="/src/${PKG}"
-          CMAKE_ARGS="-DRGBIND_TSAN=ON" "$PY" -m pip install --no-build-isolation --no-deps "${spec}"
+          if [ -n "${TSAN_CMAKE_ARGS}" ]; then
+            export CMAKE_ARGS="${TSAN_CMAKE_ARGS}"
+          fi
+          "$PY" -m pip install --no-build-isolation --no-deps "${spec}"
           SUP=/tmp/suppressions_free_threading.txt
-          : > "${SUP}"
-          if [ -d /work/tsan_suppressions ]; then
-            cat /work/tsan_suppressions/*.txt >> "${SUP}"
+          curl -fsSL -o "${SUP}" \
+            https://raw.githubusercontent.com/python/cpython/bf397e272c2bee639c3ba0208c221f7dd9447bb6/Tools/tsan/suppressions_free_threading.txt
+          if [ -f /work/tsan_suppressions/numpy.txt ]; then
+            cat /work/tsan_suppressions/numpy.txt >> "${SUP}"
           fi
-          if [ ! -s "${SUP}" ]; then
-            curl -fsSL -o "${SUP}" \
-              https://raw.githubusercontent.com/python/cpython/refs/heads/3.14/Tools/tsan/suppressions_free_threading.txt
-          fi
-          # Upstream suppressions:
-          # https://github.com/python/cpython/blob/3.14/Tools/tsan/suppressions_free_threading.txt
+          # Upstream suppressions, pinned to a commit rather than the 3.14 branch:
+          # https://github.com/python/cpython/blob/bf397e272c2bee639c3ba0208c221f7dd9447bb6/Tools/tsan/suppressions_free_threading.txt
           # https://github.com/numpy/numpy/blob/main/tools/ci/tsan_suppressions.txt
           export TSAN_OPTIONS="halt_on_error=1 allocator_may_return_null=1 suppressions=${SUP}"
           "$PY" -m pytest -s "/src/${PKG}/${TEST_PATH}" \
+            --timeout=180 \
+            -o faulthandler_timeout=120
+          "$PY" -m pytest -s "/src/${PKG}/${TEST_PATH}" \
+            --parallel-threads=4 \
+            --iterations=5 \
             --timeout=180 \
             -o faulthandler_timeout=120
           EOF

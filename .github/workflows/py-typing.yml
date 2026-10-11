@@ -11,12 +11,21 @@ on:
         description: Comma-separated extension modules whose stubs are checked
         required: true
         type: string
-      test-path:
-        description: Directory of the committed stubs, relative to package-dir
+      stub-dir:
+        description: Directory of the committed stubs, relative to package-dir. Dotted names map to paths.
+        required: true
+        type: string
+      typecheck-paths:
+        description: Space-separated paths, relative to package-dir, passed to mypy and pyright
         required: true
         type: string
       extras:
         description: Extras to install with the package
+        required: false
+        type: string
+        default: ""
+      rust-crate-dir:
+        description: Crate directory relative to package-dir. Empty skips the Rust toolchain.
         required: false
         type: string
         default: ""
@@ -36,6 +45,17 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install Rust when the package has a crate
+        if: inputs.rust-crate-dir != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "${{ inputs.package-dir }}/${{ inputs.rust-crate-dir }}/Cargo.toml"
+          if ! command -v rustc >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+          fi
+          echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
+
       - name: Install the package and the type checkers
         shell: bash
         run: |
@@ -53,10 +73,11 @@ jobs:
         run: |
           set -euo pipefail
           for name in ${IMPORTS//,/ }; do
+            rel="${name//.//}.pyi"
             python -m nanobind.stubgen -m "${name}" -o "/tmp/${name}.pyi"
-            diff -u "${PKG}/${TEST_PATH}/${name}.pyi" "/tmp/${name}.pyi"
+            diff -u "${PKG}/${STUB_DIR}/${rel}" "/tmp/${name}.pyi"
           done
-          if [ -f "${PKG}/${TEST_PATH}/py.typed" ] || [ -f "${PKG}/py.typed" ]; then
+          if [ -f "${PKG}/${STUB_DIR}/py.typed" ] || [ -f "${PKG}/py.typed" ]; then
             echo "py.typed present"
           else
             echo "py.typed missing" >&2
@@ -64,17 +85,15 @@ jobs:
           fi
         env:
           PKG: ${{ inputs.package-dir }}
-          TEST_PATH: ${{ inputs.test-path }}
+          STUB_DIR: ${{ inputs.stub-dir }}
           IMPORTS: ${{ inputs.import-names }}
 
       - name: mypy --strict and pyright
         shell: bash
         working-directory: ${{ inputs.package-dir }}
+        env:
+          TYPECHECK_PATHS: ${{ inputs.typecheck-paths }}
         run: |
           set -euo pipefail
-          if [ -d examples ]; then
-            python -m mypy --strict examples
-            pyright examples
-          else
-            echo "no examples/ directory under package-dir"
-          fi
+          python -m mypy --strict ${TYPECHECK_PATHS}
+          pyright ${TYPECHECK_PATHS}

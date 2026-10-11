@@ -20,10 +20,14 @@ on:
         required: false
         type: string
         default: ""
+      test-requires:
+        description: Extra test requirements appended to the package defaults. Empty leaves the package table unchanged.
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
-  actions: write
 
 jobs:
   wheels:
@@ -68,6 +72,34 @@ jobs:
               raise SystemExit("F1 failed: GIL is enabled")
           PY
 
+      - name: Append test requirements
+        if: inputs.test-requires != ''
+        shell: bash
+        env:
+          EXTRA_REQUIRES: ${{ inputs.test-requires }}
+          PKG: ${{ inputs.package-dir }}
+        run: |
+          set -euo pipefail
+          if command -v python3 >/dev/null 2>&1; then
+            PY=python3
+          else
+            PY=python
+          fi
+          "$PY" - << 'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          text = Path(os.environ["PKG"], "pyproject.toml").read_text(encoding="utf-8")
+          match = re.search(r"(?m)^test-requires\s*=\s*\[(.*?)\]", text, re.S)
+          items = re.findall(r'"([^"]+)"', match.group(1)) if match else []
+          extra = [part for part in os.environ["EXTRA_REQUIRES"].split() if part]
+          value = " ".join(items + extra)
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"CIBW_TEST_REQUIRES={value}\n")
+          print(f"CIBW_TEST_REQUIRES={value}")
+          PY
+
       - name: Build wheels
         uses: pypa/cibuildwheel@056b871b4f3c060ea999c4bf9a7e41202d7d9f21 # v4.3.0
         with:
@@ -80,8 +112,9 @@ jobs:
           CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
           CIBW_ARCHS_MACOS: arm64
           CIBW_TEST_EXTRAS: ${{ inputs.extras }}
-          CIBW_TEST_REQUIRES: pytest pytest-timeout numpy hypothesis
           # cibuildwheel copies test sources from the repository root, not package-dir.
+          # An empty test-requires input does not set CIBW_TEST_REQUIRES, so the
+          # package table is used. A non-empty input was appended above.
           CIBW_TEST_SOURCES: ${{ inputs.package-dir }}/${{ inputs.test-path }} ${{ inputs.package-dir }}/_ci
           CIBW_TEST_COMMAND: python ${{ inputs.package-dir }}/_ci/check_f1.py && python -m pytest -q ${{ inputs.package-dir }}/${{ inputs.test-path }} --timeout=180 -o faulthandler_timeout=120
 
@@ -100,27 +133,76 @@ jobs:
             echo "no abi3 wheel on this runner"
             exit 0
           fi
-          python -m abi3audit "${wheels[@]}"
+          python -m abi3audit --strict "${wheels[@]}"
 
       - name: F9 dynamic symbol check
-        if: runner.os == 'Linux'
+        if: runner.os != 'Windows'
         shell: bash
+        env:
+          IMPORTS: ${{ inputs.import-names }}
         run: |
           set -euo pipefail
+          allow=()
+          for name in ${IMPORTS//,/ }; do
+            leaf="${name##*.}"
+            if [ "$(uname)" = "Darwin" ]; then
+              allow+=("_PyInit_${leaf}")
+            else
+              allow+=("PyInit_${leaf}")
+            fi
+          done
+          echo "F9 allowlist: ${allow[*]}"
           shopt -s nullglob
           for whl in wheelhouse/*.whl; do
             rm -rf _whlx && mkdir _whlx
             unzip -qo "$whl" -d _whlx
-            while IFS= read -r so; do
+            objects=()
+            while IFS= read -r path; do
+              [ -n "$path" ] && objects+=("$path")
+            done < <(find _whlx -type f \( -name '*.so' -o -name '*.dylib' \))
+            if [ "${#objects[@]}" -eq 0 ]; then
+              echo "F9: no extension module in $whl" >&2
+              exit 1
+            fi
+            for so in "${objects[@]}"; do
               echo "== $so"
-              if nm -D --defined-only "$so" | awk '{print $NF}' | grep -E '^(rgmin_|rgsaddle_|rgpot_)'; then
-                echo "F9: forbidden export in $so" >&2
+              if [ "$(uname)" = "Darwin" ]; then
+                syms="$(nm -gU "$so" | awk 'NF { print $NF }')"
+              else
+                syms="$(nm -D --defined-only "$so" | awk 'NF { print $NF }')"
+              fi
+              echo "$syms"
+              if [ -z "$syms" ]; then
+                echo "F9: no defined symbols in $so" >&2
                 exit 1
               fi
-            done < <(find _whlx -name '*.so')
+              while IFS= read -r sym; do
+                [ -z "$sym" ] && continue
+                ok=0
+                for exp in "${allow[@]}"; do
+                  if [ "$sym" = "$exp" ]; then
+                    ok=1
+                  fi
+                done
+                if [ "$ok" -ne 1 ]; then
+                  echo "F9: unexpected symbol $sym" >&2
+                  exit 1
+                fi
+              done <<< "$syms"
+              found=0
+              for exp in "${allow[@]}"; do
+                if grep -qx "$exp" <<< "$syms"; then
+                  found=1
+                fi
+              done
+              if [ "$found" -ne 1 ]; then
+                echo "F9: PyInit symbol missing from $so" >&2
+                exit 1
+              fi
+            done
           done
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: py-wheels-${{ matrix.os }}
+          name: py-wheels-${{ matrix.os }}-${{ replace(inputs.package-dir, '/', '-') }}
           path: wheelhouse/*.whl

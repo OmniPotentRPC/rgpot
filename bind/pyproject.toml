@@ -33,9 +33,9 @@ build = "cp310-* cp311-* cp312-* cp314t-* cp315t-*"
 skip = ["pp*", "*-musllinux*", "*_i686", "*-win32"]
 manylinux-x86_64-image = "manylinux_2_28"
 manylinux-aarch64-image = "manylinux_2_28"
-test-requires = ["pytest", "numpy", "hypothesis"]
-test-command = "python ci/check_f1.py && python -m pytest -q tests"
-test-sources = ["tests", "ci", "examples"]
+test-requires = ["pytest", "pytest-timeout", "numpy", "hypothesis"]
+test-command = "python -m pytest -q tests --timeout=180 -o faulthandler_timeout=120"
+test-sources = ["tests", "examples"]
 
 [tool.cibuildwheel.macos]
 archs = ["arm64"]

@@ -13,7 +13,7 @@ authors = [{ name = "Rohit Goswami", email = "rgoswami@ieee.org" }]
 dependencies = ["numpy>=1.24"]
 
 [project.optional-dependencies]
-test = ["pytest>=7", "numpy>=1.24"]
+test = ["pytest>=7", "pytest-timeout>=2", "numpy>=1.24"]
 
 [tool.scikit-build]
 minimum-version = "0.10"
@@ -29,8 +29,8 @@ build = "cp310-* cp311-* cp312-* cp314t-* cp315t-*"
 skip = ["pp*", "*-musllinux*", "*_i686", "*-win32"]
 manylinux-x86_64-image = "manylinux_2_28"
 manylinux-aarch64-image = "manylinux_2_28"
-test-requires = ["pytest", "numpy"]
-test-command = "python -m pytest -q tests"
+test-requires = ["pytest", "pytest-timeout", "numpy"]
+test-command = "python -m pytest -q tests --timeout=180 -o faulthandler_timeout=120"
 test-sources = ["tests"]
 
 [tool.cibuildwheel.linux]
@@ -49,5 +49,19 @@ environment = { MACOSX_DEPLOYMENT_TARGET = "14.0", PATH = "$HOME/.cargo/bin:$PAT
 before-all = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal"
 
 [tool.cibuildwheel.windows]
-before-all = "rustup-init.exe -y --default-toolchain stable --profile minimal"
+before-all = "curl -sSf -o %TEMP%\\rustup-init.exe https://win.rustup.rs/x86_64 && %TEMP%\\rustup-init.exe -y --default-toolchain stable --profile minimal"
 environment = { PATH = "$USERPROFILE\\.cargo\\bin;$PATH" }
+
+[tool.mypy]
+strict = true
+python_version = "3.10"
+
+[[tool.mypy.overrides]]
+module = "_core"
+disallow_any_generics = false
+
+[tool.pyright]
+include = ["examples", "_core.pyi"]
+typeCheckingMode = "standard"
+pythonVersion = "3.10"
+reportMissingModuleSource = "none"

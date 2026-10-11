@@ -2,7 +2,16 @@ name: Python binding CI
 
 on:
   push:
+    branches: [main]
+    paths:
+      - "bind/**"
+      - "ci/python-template/**"
+      - ".github/workflows/py-*.yml"
   pull_request:
+    paths:
+      - "bind/**"
+      - "ci/python-template/**"
+      - ".github/workflows/py-*.yml"
   workflow_dispatch:
 
 concurrency:
@@ -11,7 +20,6 @@ concurrency:
 
 permissions:
   contents: read
-  actions: write
 
 jobs:
   wheels:
@@ -19,6 +27,14 @@ jobs:
     with:
       package-dir: bind
       import-names: _rgbind_test
+      test-path: tests
+      extras: test
+
+  wheels-template:
+    uses: ./.github/workflows/py-wheels.yml
+    with:
+      package-dir: ci/python-template/rust-core
+      import-names: _core
       test-path: tests
       extras: test
 
@@ -31,6 +47,16 @@ jobs:
       extras: test
       iterations: "50"
 
+  freethreading-template:
+    uses: ./.github/workflows/py-freethreading.yml
+    with:
+      package-dir: ci/python-template/rust-core
+      import-names: _core
+      test-path: tests
+      extras: test
+      iterations: "50"
+      rust-crate-dir: examples/rust-core-demo
+
   tsan:
     uses: ./.github/workflows/py-tsan.yml
     with:
@@ -38,14 +64,36 @@ jobs:
       import-names: _rgbind_test
       test-path: tests
       extras: test
+      tsan-cmake-args: -DRGBIND_TSAN=ON
+
+  tsan-template:
+    uses: ./.github/workflows/py-tsan.yml
+    with:
+      package-dir: ci/python-template/rust-core
+      import-names: _core
+      test-path: tests
+      extras: test
+      rust-crate-dir: examples/rust-core-demo
+      tsan-cmake-args: -DRUST_CORE_TSAN=ON -DRust_TOOLCHAIN=nightly-2026-01-20
 
   typing:
     uses: ./.github/workflows/py-typing.yml
     with:
       package-dir: bind
       import-names: _rgbind_test
-      test-path: tests
+      stub-dir: tests
+      typecheck-paths: examples tests/_rgbind_test.pyi
       extras: test
+
+  typing-template:
+    uses: ./.github/workflows/py-typing.yml
+    with:
+      package-dir: ci/python-template/rust-core
+      import-names: _core
+      stub-dir: .
+      typecheck-paths: examples _core.pyi
+      extras: test
+      rust-crate-dir: examples/rust-core-demo
 
   schedule-cpp:
     name: schedule unit (no interpreter)
@@ -80,7 +128,7 @@ jobs:
           CIBW_SKIP: "*-musllinux* *_i686 *-win32"
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
           CIBW_TEST_SOURCES: ci/python-template/rust-core/tests
-          CIBW_TEST_COMMAND: python -m pytest -q ci/python-template/rust-core/tests
+          CIBW_TEST_COMMAND: python -m pytest -q ci/python-template/rust-core/tests --timeout=180 -o faulthandler_timeout=120
 
       - name: Wheel tags
         shell: bash
@@ -111,3 +159,9 @@ jobs:
         with:
           name: rust-core-demo-wheels
           path: wheelhouse/*.whl
+
+  rgbind-sync:
+    uses: ./.github/workflows/py-rgbind-sync.yml
+    with:
+      vendored-path: ci/python-template/rust-core/include/rgbind/rgbind.hpp
+      rgpot-ref: ${{ github.sha }}

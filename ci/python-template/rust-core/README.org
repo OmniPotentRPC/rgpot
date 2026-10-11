@@ -41,25 +41,44 @@ There is no musllinux build.
 
 The Rust function is =extern "C"= and wraps its body in
 =std::panic::catch_unwind= (F9).
-The C++ wrapper checks shapes while attached, then drops the GIL for the
-call (F4).
-Inputs are float64, C contiguous, and CPU, with =.noconvert()= (F6).
+The C++ wrapper checks shapes with =rgbind::check_f64_1d= while
+attached, then drops the GIL for the call (F4, F6).
+Inputs are float64, C contiguous, and CPU, with =.noconvert()=.
+=rgbind::install_policy= registers the translators from the vendored
+header =include/rgbind/rgbind.hpp=.
 The link line uses hidden visibility, =-Wl,--exclude-libs,ALL= on Linux,
 and an export list that keeps only =PyInit__core= (F9).
 Sub-interpreters are unsupported.
 Compile with =-ffp-contract=off=.
 
 This demo has no mutable session, so it does not take an F3 claim.
-A package that adds one uses =rgbind::Claim= from =rgbind.hpp=.
+A package that adds one uses =rgbind::Claim= from that same header.
+
+* Vendored header
+
+=include/rgbind/rgbind.hpp= is a byte copy of
+=bind/include/rgbind/rgbind.hpp= in OmniPotentRPC/rgpot.
+The reusable workflow =py-rgbind-sync= takes the vendored path and an
+rgpot ref, fetches that header, and fails on any byte difference.
+=py-ci= calls it with the commit being built.
+After you edit the upstream header, copy it here again before merging.
 
 * Free-threaded CI
 
-Call the reusable workflows =py-wheels=, =py-freethreading=, =py-tsan=,
-and =py-typing=.
-T2 builds the extension with =-fsanitize=thread= against the
-=cpython_sanity= image =ghcr.io/nascheme/cpython-tsan:3.14t=.
-A Rust staticlib in that job needs a nightly rustc whose LLVM major
-matches the image clang, with =-Zsanitizer=thread -Zbuild-std=.
+=py-ci= calls =py-wheels=, =py-freethreading=, =py-tsan=, and
+=py-typing= on this directory as well as on =bind/=.
+T2 builds the extension with =-fsanitize=thread= against
+=ghcr.io/nascheme/numpy-tsan:3.14t@sha256:f6dd658f1a155be35e27b182cac97c2a77c4b2d62bacb81753beaba725978149=.
+Pass =-DRUST_CORE_TSAN=ON= to build the staticlib with a nightly rustc,
+=-Zsanitizer=thread=, =-Zbuild-std=std,panic_abort=, and an explicit
+target triple (=x86_64-unknown-linux-gnu= or =aarch64-unknown-linux-gnu=).
+The job installs =nightly-2026-01-20= with =rust-src= and fails unless
+the clang and rustc LLVM majors match.
+That nightly is LLVM 21, which is the major in the image above.
+The CPython suppression file is pinned to
+=bf397e272c2bee639c3ba0208c221f7dd9447bb6=, not the floating 3.14 branch.
+A second pytest pass uses =pytest-run-parallel --parallel-threads=4
+--iterations=5=.
 
 * Demo crate
 

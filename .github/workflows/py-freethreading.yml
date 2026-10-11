@@ -25,6 +25,11 @@ on:
         required: false
         type: string
         default: "50"
+      rust-crate-dir:
+        description: Crate directory relative to package-dir. Empty skips the Rust toolchain.
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -44,6 +49,17 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ matrix.python }}
+
+      - name: Install Rust when the package has a crate
+        if: inputs.rust-crate-dir != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "${{ inputs.package-dir }}/${{ inputs.rust-crate-dir }}/Cargo.toml"
+          if ! command -v rustc >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+          fi
+          echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
 
       - name: Install the package and the T1 runner
         shell: bash
