@@ -10,10 +10,9 @@ sys.path.insert(0, os.path.abspath("../../subprojects/doxyrest/sphinx"))
 project = "rgpot"
 copyright = "2025--present, rgpot developers"
 author = "Rohit Goswami"
-# Navbar falls back to html_logo when light_logo/dark_logo are unset; prefer
-# theme-specific assets below (transparent glyphs readable on each header).
-html_logo = "_static/rgpot_notext_light.webp"
-html_favicon = "_static/favicons/favicon.ico"
+# Navbar falls back to html_logo when light_logo/dark_logo are unset.
+html_logo = "_static/logo-light.svg"
+html_favicon = "_static/favicons/favicon.svg"
 
 # -- General configuration ---------------------------------------------------
 extensions = [
@@ -65,8 +64,8 @@ html_theme_options = {
     "dark_code": True,
     "globaltoc_expand_depth": 1,
     # Shibuya toggles .light-logo / .dark-logo with color mode (paths via pathto).
-    "light_logo": "_static/rgpot_notext_light.webp",
-    "dark_logo": "_static/rgpot_notext_dark.webp",
+    "light_logo": "_static/logo-light.svg",
+    "dark_logo": "_static/logo-dark.svg",
     # Shared Ecosystem list. Same order, titles, URLs, and summaries on every
     # site. A site drops its own row. This copy keeps rgpot so the list is whole.
     "nav_links": [

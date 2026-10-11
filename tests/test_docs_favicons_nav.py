@@ -45,16 +45,50 @@ def test_favicon_set_matches_extra_head_links():
         path = FAVICONS / name
         assert path.is_file() and path.stat().st_size > 0
         assert _png_size(path) == size
+    svg = (FAVICONS / "favicon.svg").read_bytes()
+    assert svg.startswith(b"<svg")
+    assert b"base64" not in svg
     ico = (FAVICONS / "favicon.ico").read_bytes()
     assert ico[:4] == b"\x00\x00\x01\x00"
     count = struct.unpack_from("<H", ico, 4)[0]
     assert count >= 3
-    assert "favicon.ico" in extra
+    assert "apple-touch-icon" in extra
+    assert "site.webmanifest" in extra
     manifest = (FAVICONS / "site.webmanifest").read_text()
     assert "android-chrome-192x192.png" in manifest
     assert "android-chrome-512x512.png" in manifest
     conf = CONF.read_text()
-    assert 'html_favicon = "_static/favicons/favicon.ico"' in conf
+    assert 'html_favicon = "_static/favicons/favicon.svg"' in conf
+    assert '"light_logo": "_static/logo-light.svg"' in conf
+    assert '"dark_logo": "_static/logo-dark.svg"' in conf
+
+
+def test_v2_branding_keeps_old_files_and_vector_mascot():
+    logo = ROOT / "branding" / "logo"
+    for name in (
+        "rgpot_logo.webp",
+        "rgpot_logo_light.webp",
+        "rgpot_logo_dark.webp",
+        "rgpot_notext_light.webp",
+        "rgpot_notext_dark.webp",
+        "logo-light.svg",
+        "logo-dark.svg",
+        "mascot-light.svg",
+        "mascot-dark.svg",
+        "mascot-light.webp",
+        "mascot-dark.webp",
+        "icon.svg",
+        "favicon/favicon.svg",
+    ):
+        assert (logo / name).is_file()
+    notext = (logo / "rgpot_notext.svg").read_bytes()
+    assert notext == (logo / "mascot-light.svg").read_bytes()
+    assert b"base64" not in notext
+    assert notext.startswith(b"<svg")
+    static = ROOT / "docs" / "source" / "_static"
+    assert (static / "logo-light.svg").read_bytes() == (logo / "logo-light.svg").read_bytes()
+    assert (static / "logo-dark.svg").read_bytes() == (logo / "logo-dark.svg").read_bytes()
+    assert (FAVICONS / "favicon.svg").read_bytes() == (logo / "favicon" / "favicon.svg").read_bytes()
 
 
 def test_explanation_section_is_org_source():
