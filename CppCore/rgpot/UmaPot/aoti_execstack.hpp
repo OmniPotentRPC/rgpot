@@ -338,6 +338,20 @@ inline bool publication_retryable(const std::error_code &ec) {
 #endif
 }
 
+// Creating or removing a private slot can report not-found while another
+// thread is deleting that directory. That is transient on Windows only.
+inline bool publication_slot_absent(const std::error_code &ec) {
+#ifdef _WIN32
+  if (!ec || ec.category() != std::system_category())
+    return false;
+  return ec.value() == ERROR_FILE_NOT_FOUND ||
+         ec.value() == ERROR_PATH_NOT_FOUND;
+#else
+  (void)ec;
+  return false;
+#endif
+}
+
 inline bool publication_slot_taken(const std::error_code &ec) {
   if (!ec)
     return false;
@@ -380,7 +394,9 @@ inline std::vector<uint8_t> read_all(const std::string &path) {
     auto buf = read_shared(file, ec);
     if (!ec)
       return buf;
-    if (!publication_retryable(ec) || !publication_time_left(start))
+    const bool again =
+        publication_retryable(ec) || publication_slot_absent(ec);
+    if (!again || !publication_time_left(start))
       throw std::runtime_error("UmaPot: cannot read AOTI package " + path +
                                ": " + ec.message());
     publication_backoff(delay);
@@ -452,7 +468,8 @@ inline void write_all(const std::string &path,
       continue;
     }
     // A slot another thread is deleting reports a transient error on Windows.
-    if (publication_retryable(error) && publication_time_left(reserve_start)) {
+    if ((publication_retryable(error) || publication_slot_absent(error)) &&
+        publication_time_left(reserve_start)) {
       publication_backoff(delay);
       continue;
     }
