@@ -75,8 +75,8 @@ inline void lj_term(double r2, const LjParams &p, double &energy,
   const double t3 = t2 * t;
   const double six_t = 6.0 * t;
   const double inner = 15.0 - six_t;
-  const double poly = -10.0 + t * inner;
-  const double s = 1.0 + t3 * poly;
+  const double poly = mul_add(t, inner, -10.0);
+  const double s = mul_add(t3, poly, 1.0);
   const double omt = 1.0 - t;
   const double m30 = -30.0 * t2;
   const double ds1 = m30 * omt;
@@ -96,7 +96,7 @@ inline void morse_term(double r2, const MorseParams &p, double &energy,
   const double ex = exp(arg);
   const double d = 1.0 - ex;
   const double dd = p.depth * d;
-  const double v = dd * d - p.depth;
+  const double v = mul_add(dd, d, -p.depth);
   const double d_m1 = d - 1.0;
   const double num = (p.two_de_a * d) * d_m1;
   if (p.use_switch == 0) {
@@ -110,8 +110,8 @@ inline void morse_term(double r2, const MorseParams &p, double &energy,
   const double t3 = t2 * t;
   const double six_t = 6.0 * t;
   const double inner = 15.0 - six_t;
-  const double poly = -10.0 + t * inner;
-  const double s = 1.0 + t3 * poly;
+  const double poly = mul_add(t, inner, -10.0);
+  const double s = mul_add(t3, poly, 1.0);
   const double omt = 1.0 - t;
   const double m30 = -30.0 * t2;
   const double ds1 = m30 * omt;
@@ -126,8 +126,7 @@ inline void morse_term(double r2, const MorseParams &p, double &energy,
 inline double embed_horner(const double *coeff, double rho) {
   double result = coeff[8];
   for (int i = 7; i >= 0; --i) {
-    const double prod = result * rho;
-    result = prod + coeff[i];
+    result = mul_add(result, rho, coeff[i]);
   }
   return result;
 }
@@ -135,9 +134,8 @@ inline double embed_horner(const double *coeff, double rho) {
 inline double embed_force(const double *coeff, double rho) {
   double result = coeff[8] * 8.0;
   for (int i = 7; i >= 1; --i) {
-    const double prod = result * rho;
     const double term = static_cast<double>(i) * coeff[i];
-    result = prod + term;
+    result = mul_add(result, rho, term);
   }
   return -result;
 }
@@ -195,7 +193,7 @@ double accumulate_folded(const PairView &v, double *F, double strain[6],
           image->fold(dx, dy, dz);
         }
       }
-      const double r2 = (dx * dx) + (dy * dy) + (dz * dz);
+      const double r2 = r2_of(dx, dy, dz);
       if (!(r2 <= v.cutoff2)) {
         continue;
       }
@@ -247,10 +245,9 @@ inline double lj_scalar(const PairView &v, const LjParams &p, double *F,
 
 inline double morse_scalar(const PairView &v, const MorseParams &p, double *F,
                            double strain[6]) {
-  return accumulate_pairs(
-      v, F, strain, [&](double r2, double &e, double &fs) {
-        morse_term(r2, p, e, fs);
-      });
+  return accumulate_pairs(v, F, strain, [&](double r2, double &e, double &fs) {
+    morse_term(r2, p, e, fs);
+  });
 }
 
 inline void eam_scalar(long n, const double *R, const EamAtom *atoms,
@@ -280,7 +277,7 @@ inline void eam_scalar(long n, const double *R, const EamAtom *atoms,
       double dy = yi - R[3 * j + 1];
       double dz = zi - R[3 * j + 2];
       half_box(dx, dy, dz, b0, b1, b2, h0, h1, h2);
-      const double r2 = (dx * dx) + (dy * dy) + (dz * dz);
+      const double r2 = r2_of(dx, dy, dz);
       if (!(r2 <= a.cutoff2)) {
         continue;
       }
@@ -292,14 +289,13 @@ inline void eam_scalar(long n, const double *R, const EamAtom *atoms,
       const double eb1 = exp(-a.beta1 * r);
       const double two_b2 = -2.0 * a.beta2;
       const double eb2 = exp(two_b2 * r);
-      const double rho_pair = eb1 + 512.0 * eb2;
+      const double rho_pair = mul_add(512.0, eb2, eb1);
       const double dens_term = r6 * rho_pair;
       const double t_a = (6.0 * r5) * rho_pair;
       const double neg_b1 = -a.beta1 * eb1;
       const double b2_term = (1024.0 * a.beta2) * eb2;
       const double inner = neg_b1 - b2_term;
-      const double t_b = r6 * inner;
-      const double mag = t_a + t_b;
+      const double mag = mul_add(r6, inner, t_a);
       const double inv_r = 1.0 / r;
       const double fscale = -mag * inv_r;
       const double fx = fscale * dx;
@@ -319,7 +315,7 @@ inline void eam_scalar(long n, const double *R, const EamAtom *atoms,
         const double ex = exp(arg);
         const double d = 1.0 - ex;
         const double dd = a.d_m * d;
-        const double phi = dd * d - a.d_m;
+        const double phi = mul_add(dd, d, -a.d_m);
         const double mag_f = ((2.0 * a.alpha_m) * a.d_m) * d * (d - 1.0);
         const double fcomp = mag_f * inv_r;
         const double pfx = fcomp * dx;

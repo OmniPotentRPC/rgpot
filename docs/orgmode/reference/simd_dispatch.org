@@ -42,17 +42,22 @@ pairs, then the two results.
 The force on atom j is subtracted in neighbour order.
 Morse and EAM evaluate the fdlibm =e_exp= polynomial.
 The scalar target calls =rgpot::simd::exp=.
-Each vector lane replays that function: the same constants, the same multiplies
-and adds, and no fused multiply-add.
+Each vector lane replays that function: the same constants and the same fused
+product-sums.
+The squared distance, the embedding Horner, and the switched pair polynomials
+use that product-sum.
+AVX2, AVX3, and AVX3_ZEN4 issue a hardware fused multiply-add.
+Scalar, SSE2, SSE4, and EMU128 call =std::fma=, which is correctly rounded, so
+those bytes match the hardware instruction.
 The pair loop that consumes those lanes is compiled into the target, so the
 choice of instruction set is one indirect call per force evaluation.
 The LJ loop is vectorized for the round fold and for the coded fold.
 The coded fold is the list used when the cutoff plus the skin fits in half a
 box.
 The orthorhombic fold is a vector loop as well.
-No kernel uses a fused multiply-add.
 The project passes =-ffp-contract=off= (or =/fp:precise=) to C, C++, and
 Fortran, including the vendored vesin and Lepton sources.
+A multiply followed by a separate add is not contracted.
 A CI job builds the same inputs with =-march=x86-64-v3= and checks that the
 SHA-256 of the LJ, Morse, and EAM results matches the default build.
 
@@ -80,9 +85,10 @@ Morse and EAM stay eight wide because the exp does.
 The scalar target is compiled without auto-vectorization.
 A debug build and a release build then hash the same bytes.
 That target calls the in-house exp, not libm. libm on this class of host picks
-an FMA implementation at run time.
+an exp implementation at run time.
 Matching the in-house bits forbids that call.
-It also forbids contraction.
+Separate multiplies and adds stay uncontracted.
+The product-sums inside the polynomial are explicit.
 The scalar target can sit below the pre-dispatch loop on the exp kernels.
 It is the portable fallback, and an x86-64 host does not select it unless asked.
 Morse and EAM evaluate two AVX2 vectors, or four SSE vectors, before depositing.

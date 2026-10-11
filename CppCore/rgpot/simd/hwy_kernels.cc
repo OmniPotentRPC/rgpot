@@ -11,6 +11,7 @@
 #include "hwy/foreach_target.h" // IWYU pragma: keep
 #include "hwy/highway.h"
 
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
@@ -19,22 +20,48 @@ namespace rgpot::simd {
 namespace HWY_NAMESPACE {
 namespace hn = hwy::HWY_NAMESPACE;
 
+// Hardware fused multiply-add where the target has one. Otherwise one
+// std::fma per lane, which rounds the same way.
 template <class D>
-HWY_INLINE hn::Vec<D> round_finite(D d, hn::Vec<D> t) {
+HWY_INLINE hn::Vec<D> fma_lanes(D d, hn::Vec<D> a, hn::Vec<D> b, hn::Vec<D> c) {
+#if HWY_NATIVE_FMA
+  (void)d;
+  return hn::MulAdd(a, b, c);
+#else
+  alignas(64) double as[8];
+  alignas(64) double bs[8];
+  alignas(64) double cs[8];
+  alignas(64) double out[8];
+  hn::Store(a, d, as);
+  hn::Store(b, d, bs);
+  hn::Store(c, d, cs);
+  const std::size_t lanes = hn::Lanes(d);
+  for (std::size_t i = 0; i < lanes; ++i) {
+    out[i] = std::fma(as[i], bs[i], cs[i]);
+  }
+  return hn::Load(d, out);
+#endif
+}
+
+template <class D>
+HWY_INLINE hn::Vec<D> r2_vec(D d, hn::Vec<D> dx, hn::Vec<D> dy, hn::Vec<D> dz) {
+  return fma_lanes(d, dz, dz, fma_lanes(d, dy, dy, hn::Mul(dx, dx)));
+}
+
+template <class D> HWY_INLINE hn::Vec<D> round_finite(D d, hn::Vec<D> t) {
   const auto half = hn::CopySign(hn::Set(d, 0.5), t);
   const auto shifted = hn::Add(t, half);
   const hn::Rebind<std::int64_t, D> di;
   const auto as_i = hn::ConvertTo(di, shifted);
   const auto back = hn::ConvertTo(d, as_i);
   const auto bad = hn::Or(hn::IsNaN(t), hn::IsInf(t));
-  const auto huge =
-      hn::Ge(hn::Abs(shifted), hn::Set(d, 9223372036854775808.0));
+  const auto huge = hn::Ge(hn::Abs(shifted), hn::Set(d, 9223372036854775808.0));
   return hn::IfThenElse(hn::Or(bad, huge), hn::Zero(d), back);
 }
 
 template <class D>
 HWY_INLINE hn::Vec<D> fold_axis(D d, hn::Vec<D> delta, double width,
-                               double inv) {
+                                double inv) {
   const auto scaled = hn::Mul(delta, hn::Set(d, inv));
   const auto nimg = round_finite(d, scaled);
   const auto shift = hn::Mul(hn::Set(d, width), nimg);
@@ -42,16 +69,15 @@ HWY_INLINE hn::Vec<D> fold_axis(D d, hn::Vec<D> delta, double width,
 }
 
 // fdlibm e_exp, one lane-wise replay of exp() in exp.cc.
-// Multiplies and adds stay separate. Special lanes are selected after the
+// Product-sums are fused. Special lanes are selected after the
 // polynomial so a quiet NaN, an infinity, and an overflow keep the scalar bits.
-template <class D>
-HWY_INLINE hn::Vec<D> exp_large(D d, hn::Vec<D> x_in) {
+template <class D> HWY_INLINE hn::Vec<D> exp_large(D d, hn::Vec<D> x_in) {
   // Every lane has already been shown to take fdlibm's large reduction
-  // and the k != 0 reconstruction. Same operations as exp(), no FMA.
+  // and the k != 0 reconstruction. Same operations as exp().
   const hn::Rebind<std::int64_t, D> di;
   const hn::RebindToUnsigned<D> du;
   const auto half = hn::CopySign(hn::Set(d, 0.5), x_in);
-  const auto scaled = hn::Add(hn::Mul(hn::Set(d, kInvLn2), x_in), half);
+  const auto scaled = fma_lanes(d, hn::Set(d, kInvLn2), x_in, half);
   const auto k = hn::ConvertTo(di, scaled);
   const auto tk = hn::ConvertTo(d, k);
   const auto t_hi = hn::Mul(tk, hn::Set(d, kLn2Hi));
@@ -60,14 +86,10 @@ HWY_INLINE hn::Vec<D> exp_large(D d, hn::Vec<D> x_in) {
   const auto lo = t_lo;
   const auto x = hn::Sub(hi, lo);
   const auto t = hn::Mul(x, x);
-  const auto tp5 = hn::Mul(t, hn::Set(d, kP5));
-  const auto p4 = hn::Add(hn::Set(d, kP4), tp5);
-  const auto tp4 = hn::Mul(t, p4);
-  const auto p3 = hn::Add(hn::Set(d, kP3), tp4);
-  const auto tp3 = hn::Mul(t, p3);
-  const auto p2 = hn::Add(hn::Set(d, kP2), tp3);
-  const auto tp2 = hn::Mul(t, p2);
-  const auto p1 = hn::Add(hn::Set(d, kP1), tp2);
+  const auto p4 = fma_lanes(d, t, hn::Set(d, kP5), hn::Set(d, kP4));
+  const auto p3 = fma_lanes(d, t, p4, hn::Set(d, kP3));
+  const auto p2 = fma_lanes(d, t, p3, hn::Set(d, kP2));
+  const auto p1 = fma_lanes(d, t, p2, hn::Set(d, kP1));
   const auto poly = hn::Mul(t, p1);
   const auto c = hn::Sub(x, poly);
   const auto xc = hn::Mul(x, c);
@@ -85,24 +107,21 @@ HWY_INLINE hn::Vec<D> exp_large(D d, hn::Vec<D> x_in) {
   return hn::BitCast(d, packed);
 }
 
-template <class D>
-HWY_INLINE hn::Vec<D> exp_lanes(D d, hn::Vec<D> x_in) {
+template <class D> HWY_INLINE hn::Vec<D> exp_lanes(D d, hn::Vec<D> x_in) {
   const hn::RebindToUnsigned<D> du;
   const hn::Rebind<std::int64_t, D> di;
   const auto bits = hn::BitCast(du, x_in);
-  const auto hx =
-      hn::And(hn::ShiftRight<32>(bits), hn::Set(du, 0x7fffffffu));
+  const auto hx = hn::And(hn::ShiftRight<32>(bits), hn::Set(du, 0x7fffffffu));
   const auto lx = hn::And(bits, hn::Set(du, 0xffffffffu));
   const auto neg = hn::Ne(hn::ShiftRight<63>(bits), hn::Zero(du));
   const auto inf_or_nan = hn::Ge(hx, hn::Set(du, 0x7ff00000u));
-  const auto mant =
-      hn::Or(hn::And(hx, hn::Set(du, 0xfffffu)), lx);
+  const auto mant = hn::Or(hn::And(hx, hn::Set(du, 0xfffffu)), lx);
   const auto is_nan = hn::And(inf_or_nan, hn::Ne(mant, hn::Zero(du)));
   const auto is_inf = hn::And(inf_or_nan, hn::Eq(mant, hn::Zero(du)));
   const auto big = hn::Ge(hx, hn::Set(du, 0x40862e42u));
   const auto finite_big = hn::And(big, hn::Not(inf_or_nan));
-  const auto overflow =
-      hn::And(finite_big, hn::RebindMask(du, hn::Gt(x_in, hn::Set(d, kOverflow))));
+  const auto overflow = hn::And(
+      finite_big, hn::RebindMask(du, hn::Gt(x_in, hn::Set(d, kOverflow))));
   const auto underflow = hn::And(
       finite_big, hn::RebindMask(du, hn::Lt(x_in, hn::Set(d, kUnderflow))));
   const auto special =
@@ -119,20 +138,18 @@ HWY_INLINE hn::Vec<D> exp_lanes(D d, hn::Vec<D> x_in) {
     return exp_large(d, x_in);
   }
 
-  const auto ln2_hi = hn::IfThenElse(hn::RebindMask(d, neg),
-                                    hn::Neg(hn::Set(d, kLn2Hi)),
-                                    hn::Set(d, kLn2Hi));
-  const auto ln2_lo = hn::IfThenElse(hn::RebindMask(d, neg),
-                                    hn::Neg(hn::Set(d, kLn2Lo)),
-                                    hn::Set(d, kLn2Lo));
+  const auto ln2_hi = hn::IfThenElse(
+      hn::RebindMask(d, neg), hn::Neg(hn::Set(d, kLn2Hi)), hn::Set(d, kLn2Hi));
+  const auto ln2_lo = hn::IfThenElse(
+      hn::RebindMask(d, neg), hn::Neg(hn::Set(d, kLn2Lo)), hn::Set(d, kLn2Lo));
   const auto hi_s = hn::Sub(x_in, ln2_hi);
   const auto lo_s = ln2_lo;
-  const auto k_s = hn::IfThenElse(hn::RebindMask(di, neg),
-                                 hn::Set(di, std::int64_t{-1}),
-                                 hn::Set(di, std::int64_t{1}));
+  const auto k_s =
+      hn::IfThenElse(hn::RebindMask(di, neg), hn::Set(di, std::int64_t{-1}),
+                     hn::Set(di, std::int64_t{1}));
 
   const auto half = hn::CopySign(hn::Set(d, 0.5), x_safe);
-  const auto scaled = hn::Add(hn::Mul(hn::Set(d, kInvLn2), x_safe), half);
+  const auto scaled = fma_lanes(d, hn::Set(d, kInvLn2), x_safe, half);
   const auto k_l = hn::ConvertTo(di, scaled);
   const auto tk = hn::ConvertTo(d, k_l);
   const auto t_hi = hn::Mul(tk, hn::Set(d, kLn2Hi));
@@ -150,17 +167,14 @@ HWY_INLINE hn::Vec<D> exp_lanes(D d, hn::Vec<D> x_in) {
   lo = hn::IfThenElse(hn::RebindMask(d, do_large), lo_l, lo);
   k = hn::IfThenElse(hn::RebindMask(di, do_large), k_l, k);
   const auto reduced = hn::Or(do_small, do_large);
-  const auto x = hn::IfThenElse(hn::RebindMask(d, reduced), hn::Sub(hi, lo), x_in);
+  const auto x =
+      hn::IfThenElse(hn::RebindMask(d, reduced), hn::Sub(hi, lo), x_in);
 
   const auto t = hn::Mul(x, x);
-  const auto tp5 = hn::Mul(t, hn::Set(d, kP5));
-  const auto p4 = hn::Add(hn::Set(d, kP4), tp5);
-  const auto tp4 = hn::Mul(t, p4);
-  const auto p3 = hn::Add(hn::Set(d, kP3), tp4);
-  const auto tp3 = hn::Mul(t, p3);
-  const auto p2 = hn::Add(hn::Set(d, kP2), tp3);
-  const auto tp2 = hn::Mul(t, p2);
-  const auto p1 = hn::Add(hn::Set(d, kP1), tp2);
+  const auto p4 = fma_lanes(d, t, hn::Set(d, kP5), hn::Set(d, kP4));
+  const auto p3 = fma_lanes(d, t, p4, hn::Set(d, kP3));
+  const auto p2 = fma_lanes(d, t, p3, hn::Set(d, kP2));
+  const auto p1 = fma_lanes(d, t, p2, hn::Set(d, kP1));
   const auto poly = hn::Mul(t, p1);
   const auto c = hn::Sub(x, poly);
 
@@ -178,9 +192,9 @@ HWY_INLINE hn::Vec<D> exp_lanes(D d, hn::Vec<D> x_in) {
   const auto ybits = hn::BitCast(du, y);
   const auto yexp = hn::And(hn::ShiftRight<52>(ybits), hn::Set(du, 0x7ff));
   const auto new_exp = hn::Add(hn::BitCast(di, yexp), k);
-  const auto mant_y =
-      hn::And(ybits, hn::Set(du, 0x800fffffffffffffULL));
-  const auto packed = hn::Or(mant_y, hn::ShiftLeft<52>(hn::BitCast(du, new_exp)));
+  const auto mant_y = hn::And(ybits, hn::Set(du, 0x800fffffffffffffULL));
+  const auto packed =
+      hn::Or(mant_y, hn::ShiftLeft<52>(hn::BitCast(du, new_exp)));
   const auto res1 = hn::BitCast(d, packed);
 
   const auto k0 = hn::Eq(k, hn::Zero(di));
@@ -192,23 +206,26 @@ HWY_INLINE hn::Vec<D> exp_lanes(D d, hn::Vec<D> x_in) {
       hn::RebindMask(du, hn::Gt(hn::Add(huge, x_in), hn::Set(d, 1.0)));
   const auto use_tiny = hn::And(tiny_hx, tiny_ok);
   result = hn::IfThenElse(hn::RebindMask(d, use_tiny),
-                         hn::Add(hn::Set(d, 1.0), x_in), result);
+                          hn::Add(hn::Set(d, 1.0), x_in), result);
 
   const auto tiny = hn::Set(d, 9.33263618503218878990e-302);
-  result = hn::IfThenElse(hn::RebindMask(d, underflow), hn::Mul(tiny, tiny), result);
-  result = hn::IfThenElse(hn::RebindMask(d, overflow), hn::Mul(huge, huge), result);
+  result =
+      hn::IfThenElse(hn::RebindMask(d, underflow), hn::Mul(tiny, tiny), result);
+  result =
+      hn::IfThenElse(hn::RebindMask(d, overflow), hn::Mul(huge, huge), result);
   const auto neg_inf = hn::And(is_inf, neg);
   const auto pos_inf = hn::And(is_inf, hn::Not(neg));
   result = hn::IfThenElse(hn::RebindMask(d, neg_inf), hn::Zero(d), result);
   result = hn::IfThenElse(hn::RebindMask(d, pos_inf), x_in, result);
-  result = hn::IfThenElse(hn::RebindMask(d, is_nan), hn::Add(x_in, x_in), result);
+  result =
+      hn::IfThenElse(hn::RebindMask(d, is_nan), hn::Add(x_in, x_in), result);
   return result;
 }
 
 template <class D>
 HWY_INLINE void gather_xyz(D d, const double *base,
-                          hn::Vec<hn::Rebind<std::int64_t, D>> ix,
-                          hn::Vec<D> &x, hn::Vec<D> &y, hn::Vec<D> &z) {
+                           hn::Vec<hn::Rebind<std::int64_t, D>> ix,
+                           hn::Vec<D> &x, hn::Vec<D> &y, hn::Vec<D> &z) {
   const hn::Rebind<std::int64_t, D> di;
   const auto one = hn::Set(di, std::int64_t{1});
   x = hn::GatherIndex(d, base, ix);
@@ -217,8 +234,8 @@ HWY_INLINE void gather_xyz(D d, const double *base,
 }
 
 template <class D>
-HWY_INLINE void lj_vec(D d, hn::Vec<D> r2, const LjParams &p, hn::Vec<D> &energy,
-                      hn::Vec<D> &fscale) {
+HWY_INLINE void lj_vec(D d, hn::Vec<D> r2, const LjParams &p,
+                       hn::Vec<D> &energy, hn::Vec<D> &fscale) {
   const auto one = hn::Set(d, 1.0);
   const auto inv_r2 = hn::Div(one, r2);
   const auto sr2 = hn::Mul(hn::Set(d, p.psi2), inv_r2);
@@ -244,8 +261,8 @@ HWY_INLINE void lj_vec(D d, hn::Vec<D> r2, const LjParams &p, hn::Vec<D> &energy
   const auto t3 = hn::Mul(t2, t);
   const auto six_t = hn::Mul(hn::Set(d, 6.0), t);
   const auto inner = hn::Sub(hn::Set(d, 15.0), six_t);
-  const auto poly = hn::Add(hn::Set(d, -10.0), hn::Mul(t, inner));
-  const auto s = hn::Add(one, hn::Mul(t3, poly));
+  const auto poly = fma_lanes(d, t, inner, hn::Set(d, -10.0));
+  const auto s = fma_lanes(d, t3, poly, one);
   const auto omt = hn::Sub(one, t);
   const auto m30 = hn::Mul(hn::Set(d, -30.0), t2);
   const auto ds1 = hn::Mul(m30, omt);
@@ -259,7 +276,7 @@ HWY_INLINE void lj_vec(D d, hn::Vec<D> r2, const LjParams &p, hn::Vec<D> &energy
 
 template <class D>
 HWY_INLINE void morse_vec(D d, hn::Vec<D> r2, const MorseParams &p,
-                         hn::Vec<D> &energy, hn::Vec<D> &fscale) {
+                          hn::Vec<D> &energy, hn::Vec<D> &fscale) {
   const auto one = hn::Set(d, 1.0);
   const auto r = hn::Sqrt(r2);
   const auto dr = hn::Sub(r, hn::Set(d, p.r_eq));
@@ -267,7 +284,7 @@ HWY_INLINE void morse_vec(D d, hn::Vec<D> r2, const MorseParams &p,
   const auto ex = exp_lanes(d, arg);
   const auto md = hn::Sub(one, ex);
   const auto dd = hn::Mul(hn::Set(d, p.depth), md);
-  const auto v = hn::Sub(hn::Mul(dd, md), hn::Set(d, p.depth));
+  const auto v = fma_lanes(d, dd, md, hn::Neg(hn::Set(d, p.depth)));
   const auto d_m1 = hn::Sub(md, one);
   const auto num = hn::Mul(hn::Mul(hn::Set(d, p.two_de_a), md), d_m1);
   if (p.use_switch == 0) {
@@ -282,8 +299,8 @@ HWY_INLINE void morse_vec(D d, hn::Vec<D> r2, const MorseParams &p,
   const auto t3 = hn::Mul(t2, t);
   const auto six_t = hn::Mul(hn::Set(d, 6.0), t);
   const auto inner = hn::Sub(hn::Set(d, 15.0), six_t);
-  const auto poly = hn::Add(hn::Set(d, -10.0), hn::Mul(t, inner));
-  const auto s = hn::Add(one, hn::Mul(t3, poly));
+  const auto poly = fma_lanes(d, t, inner, hn::Set(d, -10.0));
+  const auto s = fma_lanes(d, t3, poly, one);
   const auto omt = hn::Sub(one, t);
   const auto m30 = hn::Mul(hn::Set(d, -30.0), t2);
   const auto ds1 = hn::Mul(m30, omt);
@@ -300,7 +317,7 @@ HWY_INLINE void morse_vec(D d, hn::Vec<D> r2, const MorseParams &p,
 // stay aligned with the lane index and a vector add matches deposit.
 template <class D, bool kMorse, int Fold>
 HWY_INLINE double pair_run(D d, const PairView &v, double *F, double *strain,
-                          const LjParams *lj, const MorseParams *mp) {
+                           const LjParams *lj, const MorseParams *mp) {
   const std::size_t L = hn::Lanes(d);
   std::vector<double> dxb(v.n), dyb(v.n), dzb(v.n), r2b(v.n);
   std::vector<std::int32_t> jb(v.n);
@@ -331,7 +348,7 @@ HWY_INLINE double pair_run(D d, const PairView &v, double *F, double *strain,
           dy = dy - sh[1];
           dz = dz - sh[2];
         }
-        const double r2 = (dx * dx) + (dy * dy) + (dz * dz);
+        const double r2 = r2_of(dx, dy, dz);
         if (!(r2 <= v.cutoff2)) {
           continue;
         }
@@ -456,7 +473,7 @@ HWY_INLINE double pair_run(D d, const PairView &v, double *F, double *strain,
         const auto j = static_cast<std::size_t>(v.nbr[up]);
         double dx = 0, dy = 0, dz = 0;
         fold_one(v, i, j, up, dx, dy, dz);
-        const double r2 = (dx * dx) + (dy * dy) + (dz * dz);
+        const double r2 = r2_of(dx, dy, dz);
         if (!(r2 <= v.cutoff2)) {
           continue;
         }
@@ -491,8 +508,8 @@ HWY_INLINE double pair_run(D d, const PairView &v, double *F, double *strain,
 
 template <class D, bool kMorse>
 HWY_INLINE double pair_dispatch(D d, const PairView &v, double *F,
-                               double *strain, const LjParams *lj,
-                               const MorseParams *mp) {
+                                double *strain, const LjParams *lj,
+                                const MorseParams *mp) {
   switch (v.fold) {
   case 0:
     return pair_run<D, kMorse, 0>(d, v, F, strain, lj, mp);
@@ -541,8 +558,7 @@ double LjRun(const PairView *view, const LjParams *params, double *F,
 double MorseRun(const PairView *view, const MorseParams *params, double *F,
                 double *strain) {
   const hn::CappedTag<double, 8> d;
-  return pair_dispatch<decltype(d), true>(d, *view, F, strain, nullptr,
-                                          params);
+  return pair_dispatch<decltype(d), true>(d, *view, F, strain, nullptr, params);
 }
 
 void EamRun(long n, const double *R, const EamAtom *atoms, const double *box,
@@ -600,8 +616,7 @@ void EamRun(long n, const double *R, const EamAtom *atoms, const double *box,
       dy = hn::IfThenElse(hn::Lt(dy, nh1), hn::Add(dy, hb1), dy);
       dz = hn::IfThenElse(hn::Gt(dz, hh2), hn::Sub(dz, hb2), dz);
       dz = hn::IfThenElse(hn::Lt(dz, nh2), hn::Add(dz, hb2), dz);
-      const auto r2 = hn::Add(hn::Add(hn::Mul(dx, dx), hn::Mul(dy, dy)),
-                              hn::Mul(dz, dz));
+      const auto r2 = r2_vec(d, dx, dy, dz);
       alignas(64) std::int64_t jva[8];
       alignas(64) double r2a[8], dxa[8], dya[8], dza[8];
       hn::Store(jv, di, jva);
@@ -632,7 +647,7 @@ void EamRun(long n, const double *R, const EamAtom *atoms, const double *box,
       double dy = yi - R[3 * j + 1];
       double dz = zi - R[3 * j + 2];
       half_box(dx, dy, dz, b0, b1, b2, h0, h1, h2);
-      const double r2 = (dx * dx) + (dy * dy) + (dz * dz);
+      const double r2 = r2_of(dx, dy, dz);
       if (!(r2 <= a.cutoff2)) {
         continue;
       }
@@ -658,9 +673,9 @@ void EamRun(long n, const double *R, const EamAtom *atoms, const double *box,
     const auto two = hn::Set(d, 2.0);
     using V = hn::Vec<decltype(d)>;
     // Locals, not members: SVE and RVV vectors are sizeless.
-    auto eval = [&](std::size_t us, V &dx, V &dy, V &dz, V &dens, V &fx, V &fy,
-                    V &fz, V &phi, V &pfx, V &pfy,
-                    V &pfz) __attribute__((always_inline)) {
+    auto eval = [&](std::size_t us, V & dx, V & dy, V & dz, V & dens, V & fx,
+                    V & fy, V & fz, V & phi, V & pfx, V & pfy, V & pfz)
+        __attribute__((always_inline)) {
       dx = hn::LoadU(d, dxs.data() + us);
       dy = hn::LoadU(d, dys.data() + us);
       dz = hn::LoadU(d, dzs.data() + us);
@@ -671,14 +686,13 @@ void EamRun(long n, const double *R, const EamAtom *atoms, const double *box,
       const auto r5 = hn::Mul(r2sq, r);
       const auto eb1 = exp_lanes(d, hn::Mul(hn::Neg(beta1), r));
       const auto eb2 = exp_lanes(d, hn::Mul(vb2, r));
-      const auto rho_pair = hn::Add(eb1, hn::Mul(c512, eb2));
+      const auto rho_pair = fma_lanes(d, c512, eb2, eb1);
       dens = hn::Mul(r6, rho_pair);
       const auto t_a = hn::Mul(hn::Mul(six, r5), rho_pair);
       const auto neg_b1 = hn::Mul(hn::Neg(beta1), eb1);
       const auto b2_term = hn::Mul(hn::Mul(c1024, beta2), eb2);
       const auto inner = hn::Sub(neg_b1, b2_term);
-      const auto t_b = hn::Mul(r6, inner);
-      const auto mag = hn::Add(t_a, t_b);
+      const auto mag = fma_lanes(d, r6, inner, t_a);
       const auto inv_r = hn::Div(one, r);
       const auto fscale = hn::Mul(hn::Neg(mag), inv_r);
       fx = hn::Mul(fscale, dx);
@@ -688,9 +702,9 @@ void EamRun(long n, const double *R, const EamAtom *atoms, const double *box,
       const auto ex = exp_lanes(d, arg);
       const auto md = hn::Sub(one, ex);
       const auto dd = hn::Mul(dm, md);
-      phi = hn::Sub(hn::Mul(dd, md), dm);
-      const auto mag_f =
-          hn::Mul(hn::Mul(hn::Mul(hn::Mul(two, alpha), dm), md), hn::Sub(md, one));
+      phi = fma_lanes(d, dd, md, hn::Neg(dm));
+      const auto mag_f = hn::Mul(hn::Mul(hn::Mul(hn::Mul(two, alpha), dm), md),
+                                 hn::Sub(md, one));
       const auto fcomp = hn::Mul(mag_f, inv_r);
       pfx = hn::Mul(fcomp, dx);
       pfy = hn::Mul(fcomp, dy);
@@ -789,14 +803,13 @@ void EamRun(long n, const double *R, const EamAtom *atoms, const double *box,
       const double r5 = r4 * r;
       const double eb1 = exp(-a.beta1 * r);
       const double eb2 = exp(two_b2 * r);
-      const double rho_pair = eb1 + 512.0 * eb2;
+      const double rho_pair = mul_add(512.0, eb2, eb1);
       const double dens_term = r6 * rho_pair;
       const double t_a = (6.0 * r5) * rho_pair;
       const double neg_b1 = -a.beta1 * eb1;
       const double b2_term = (1024.0 * a.beta2) * eb2;
       const double inner = neg_b1 - b2_term;
-      const double t_b = r6 * inner;
-      const double mag = t_a + t_b;
+      const double mag = mul_add(r6, inner, t_a);
       const double inv_r = 1.0 / r;
       const double fscale = -mag * inv_r;
       const double fx = fscale * dx;
@@ -816,7 +829,7 @@ void EamRun(long n, const double *R, const EamAtom *atoms, const double *box,
         const double ex = exp(arg);
         const double md = 1.0 - ex;
         const double dd = a.d_m * md;
-        const double phi = dd * md - a.d_m;
+        const double phi = mul_add(dd, md, -a.d_m);
         const double mag_f = ((2.0 * a.alpha_m) * a.d_m) * md * (md - 1.0);
         const double fcomp = mag_f * inv_r;
         const double pfx = fcomp * dx;
