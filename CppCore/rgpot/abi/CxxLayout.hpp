@@ -121,6 +121,23 @@
 // Listed platforms. Each branch matches one kCxxSoversionTable row.
 // The string is the row's tag. check_cxx_soversion.py requires the two
 // sets to be equal. No branch means every platform is unlisted.
+#if defined(RGPOT_OS_LINUX) && defined(RGPOT_ARCH_X86_64) &&                    \
+    defined(RGPOT_STDLIB_LIBSTDCXX) && defined(RGPOT_MODEL_LP64)
+#define RGPOT_CXX_PLATFORM_LISTED 1
+#define RGPOT_CXX_PLATFORM_LISTED_TAG "linux-x86_64-libstdc++-lp64"
+#elif defined(RGPOT_OS_LINUX) && defined(RGPOT_ARCH_AARCH64) &&                \
+    defined(RGPOT_STDLIB_LIBSTDCXX) && defined(RGPOT_MODEL_LP64)
+#define RGPOT_CXX_PLATFORM_LISTED 1
+#define RGPOT_CXX_PLATFORM_LISTED_TAG "linux-aarch64-libstdc++-lp64"
+#elif defined(RGPOT_OS_MACOS) && defined(RGPOT_ARCH_AARCH64) &&                \
+    defined(RGPOT_STDLIB_LIBCPP) && defined(RGPOT_MODEL_LP64)
+#define RGPOT_CXX_PLATFORM_LISTED 1
+#define RGPOT_CXX_PLATFORM_LISTED_TAG "macos-aarch64-libc++-lp64"
+#elif defined(RGPOT_OS_MACOS) && defined(RGPOT_ARCH_X86_64) &&                 \
+    defined(RGPOT_STDLIB_LIBCPP) && defined(RGPOT_MODEL_LP64)
+#define RGPOT_CXX_PLATFORM_LISTED 1
+#define RGPOT_CXX_PLATFORM_LISTED_TAG "macos-x86_64-libc++-lp64"
+#endif
 
 /// Plain-C view of the stamp, returned by the exported function.
 extern "C" {
@@ -169,10 +186,15 @@ struct CxxSoversionEntry {
 };
 
 /// No-cache `header_stamp().hash` for each platform ABI CI builds.
-/// Rows are filled from `RGPOT_CXX_LAYOUT_STAMP` lines, not by hand.
-/// Empty until those lines exist: an unlisted platform still compiles.
-/// How to fill the table: docs/orgmode/reference/c_abi.org.
-inline constexpr std::array<CxxSoversionEntry, 0> kCxxSoversionTable{};
+/// Rows are copied from `RGPOT_CXX_LAYOUT_STAMP` lines. An unlisted
+/// platform still compiles. How to update the table:
+/// docs/orgmode/reference/c_abi.org.
+inline constexpr std::array<CxxSoversionEntry, 4> kCxxSoversionTable{{
+    {"linux-x86_64-libstdc++-lp64", 0x80bc8962b7808d7aull},
+    {"linux-aarch64-libstdc++-lp64", 0x191f6a916fe32962ull},
+    {"macos-aarch64-libc++-lp64", 0x293e0e103e91a552ull},
+    {"macos-x86_64-libc++-lp64", 0x293e0e103e91a552ull},
+}};
 
 /// This translation unit's platform tag (`os-arch-stdlib-datamodel`).
 inline constexpr char kCxxPlatformTag[] = RGPOT_CXX_PLATFORM_TAG;

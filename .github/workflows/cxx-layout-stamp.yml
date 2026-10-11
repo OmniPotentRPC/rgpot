@@ -65,9 +65,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Git Bash rewrites /I and /nologo into filesystem paths.
+          export MSYS_NO_PATHCONV=1
+          export MSYS2_ARG_CONV_EXCL='*'
           cl /nologo /std:c++20 /EHsc /I CppCore \
-            /Fo"$RUNNER_TEMP/" \
-            /Fe"$RUNNER_TEMP/print_cxx_layout_stamp.exe" \
+            /Fo"${RUNNER_TEMP}/" \
+            /Fe"${RUNNER_TEMP}/print_cxx_layout_stamp.exe" \
             CppCore/tests/print_cxx_layout_stamp.cc
           "$RUNNER_TEMP/print_cxx_layout_stamp.exe"
           py=python3

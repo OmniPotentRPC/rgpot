@@ -75,10 +75,10 @@ the source disagree.
 The ABI numbers do not follow the package version: a release that changes no
 exported symbol leaves them where they are.
 They are also not the ELF soversion of =librgpot=.
-The C API is exported from that library and has no shared library of its own,
-so a C caller relinks when the C++ SONAME moves even if these numbers stay.
-3.5.0 left them at 1, 0 and 1, and they stay there: no exported C struct
-changed layout.
+The C API is exported from that library and has no shared library of its own, so
+a C caller relinks when the C++ SONAME moves even if these numbers stay.
+3.5.0 left them at 1, 0 and 1, and they stay there: no exported C struct changed
+layout.
 
 ** C++ layout stamp
 
@@ -150,8 +150,8 @@ The plugin interface carries
   =CxxLayout.cc= static_asserts the row for the platform it is compiled on.
   A platform with no row does not fail the build.
   The compiler prints that the tag is unlisted.
-  =CppCore/tests/check_cxx_soversion.py= fails a live hash only when that tag
-  is in the table.
+  =CppCore/tests/check_cxx_soversion.py= fails a live hash only when that tag is
+  in the table.
   It fails when the fingerprint differs from
   =CppCore/rgpot/abi/cxx_soversion_ledger.txt=, and when a shipped ledger line
   changes under the same soversion.
@@ -177,46 +177,40 @@ The plugin interface carries
 
 *** Updating the platform table
 
-=kCxxSoversionTable= starts empty when the soversion changes, and is filled
-from CI.
+=kCxxSoversionTable= starts empty when the soversion changes, and is filled from
+CI.
 Do not copy a hash from another platform or from a local build.
 
-Each CI build of the printer prints one line:
-
-: RGPOT_CXX_LAYOUT_STAMP tag=... hash=... hash_dec=...
-: features=0 revision=1
+Each CI build of the printer prints one =RGPOT_CXX_LAYOUT_STAMP= line.
+It carries =tag=, =hash=, =hash_dec=, =features= and =revision=.
 
 =features= is 1 for a cache build.
 Ignore those lines.
 The no-cache hash is the one that goes in the table.
 
 The workflow "C++ layout stamp" compiles
-=CppCore/tests/print_cxx_layout_stamp.cc= on Linux x86_64, Linux aarch64,
-macOS arm64, macOS x86_64 and Windows MSVC.
-The Linux and macOS wheels print the same line from the compiler that
-builds the wheel.
+=CppCore/tests/print_cxx_layout_stamp.cc= on Linux x86_64, Linux aarch64, macOS
+arm64, macOS x86_64 and Windows MSVC.
+The Linux and macOS wheels print the same line from the compiler that builds the
+wheel.
 The Meson =CxxSoversion= test runs the printer too.
-There is no musl row unless a log prints a =linux-musl-= tag.
-librgpot wheels skip musllinux, and the musl potctl build does not compile
-this header.
+There is no musl row unless a log prints a =linux-musl-= tag. librgpot wheels
+skip musllinux, and the musl potctl build does not compile this header.
 
 When the soversion is bumped:
 
 1. Increment =kCxxSoversion=.
-2. Leave =kCxxSoversionTable= empty and delete the listed-platform guards,
-   so every platform builds and the printers run.
+2. Leave =kCxxSoversionTable= empty and delete the listed-platform guards, so
+   every platform builds and the printers run.
 3. Read each =RGPOT_CXX_LAYOUT_STAMP= line whose =features= is 0.
 4. Add one table row per distinct tag, using that line's =hash= as
    =0x<hash>ull=.
    Add a matching guard.
    The guard is an =#if=, then =#elif=, on =RGPOT_OS_*=, =RGPOT_ARCH_*=,
    =RGPOT_STDLIB_*= and =RGPOT_MODEL_*=.
-   Inside it:
-
-   : #define RGPOT_CXX_PLATFORM_LISTED 1
-   : #define RGPOT_CXX_PLATFORM_LISTED_TAG "os-arch-stdlib-datamodel"
-
-   The string must equal the row's tag.
+   Inside the branch, define
+   =RGPOT_CXX_PLATFORM_LISTED= as 1 and =RGPOT_CXX_PLATFORM_LISTED_TAG= as that
+   same tag string.
 5. Append one ledger line: the new soversion and the fingerprint the check
    prints.
    Do not edit a shipped line.
@@ -230,15 +224,15 @@ stamp differs and that its compatibility check refuses the real stamp.
 =kCxxSoversion= applies to =librgpot= only.
 =librgpot_mpi= stays at soversion 3: its C ABI is =RGPOT_MPI_ABI_VERSION= 1.
 The engine plugins (=libclassical_engine.so=, =libmopac_engine.so=,
-=libnwchem_engine.so=, =libskala_engine.so=, =libxtb_engine.so=,
-=libmetatomic_engine.so=, =libuma_engine.so=) are opened by those unversioned
-names and keep =RGPOT_ENGINE_ABI_VERSION= 1.
+=libnwchem_engine.so=, =libskala_engine.so=,
+=libxtb_engine.so=, =libmetatomic_engine.so=,
+=libuma_engine.so=) are opened by those unversioned names and keep =RGPOT_ENGINE_ABI_VERSION= 1.
 The =libpot_client_bridge= header did not change.
 =librgpot_cuh2= only added =rgpot_cuh2_force_ws=.
 The pair-potential types whose layouts changed are static objects inside
 =librgpot=, so they have no SONAME of their own.
-CMake's =libptlrpc= is the same: the schema it carries is the 3.5.0 schema,
-and Meson does not install it as a separate shared library.
+CMake's =libptlrpc= is the same: the schema it carries is the 3.5.0 schema, and
+Meson does not install it as a separate shared library.
 
 ** Scope
 
