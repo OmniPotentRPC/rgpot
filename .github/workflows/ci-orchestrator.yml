@@ -7,7 +7,7 @@ name: CI (orchestrator)
 
 on:
   push:
-    branches: [main]
+    branches: [main, "fix/windows-publication-race"]
   pull_request:
     branches: [main]
   workflow_dispatch:
