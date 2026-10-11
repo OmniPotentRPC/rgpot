@@ -1,7 +1,7 @@
-# rgpot has no runtime-dispatched kernels. An above-baseline instruction
-# in librgpot or _core is a violation. These entries cover libraries that
-# auditwheel or delocate copy into the wheel and that select kernels at
-# run time. A feature not listed here still fails the audit.
+# Above-baseline instructions in librgpot are allowed only in the Highway
+# namespaces named below. Vendored libraries that auditwheel or delocate
+# copy into a wheel are listed separately. A feature not listed for that
+# symbol or path still fails.
 
 baseline = "x86-64"
 
@@ -117,3 +117,56 @@ features = [
   "xsave",
 ]
 reason = "libquadmath, vendored beside libgfortran"
+
+# Runtime ISA dispatch. Only these namespaces may hold instructions above
+# the baseline. A feature not listed for that namespace still fails.
+
+[[allow]]
+symbol = '(hwy|rgpot::simd)::N_SSE4::'
+features = ["sse4_1", "sse4_2", "popcnt", "sse3", "ssse3"]
+reason = "SSE4 dispatch"
+
+[[allow]]
+symbol = '(hwy|rgpot::simd)::N_AVX2::'
+features = ["avx", "avx2", "fma", "f16c", "bmi1", "bmi2"]
+reason = "AVX2 dispatch"
+
+[[allow]]
+symbol = '(hwy|rgpot::simd)::N_AVX3::'
+features = ["avx", "avx2", "fma", "avx512f", "avx512dq", "avx512vl", "avx512bw", "avx512cd"]
+reason = "AVX3 dispatch"
+
+[[allow]]
+symbol = '(hwy|rgpot::simd)::N_AVX3_ZEN4::'
+features = ["avx", "avx2", "fma", "avx512f", "avx512dq", "avx512vl", "avx512bw", "avx512cd"]
+reason = "AVX3_ZEN4 dispatch"
+
+[[allow]]
+symbol = '(hwy|rgpot::simd)::N_NEON::'
+features = ["aes", "pmull", "sha1", "sha2", "crc32", "fp16", "rdm", "fcma", "dotprod", "lse"]
+reason = "NEON dispatch"
+
+[[allow]]
+symbol = '(hwy|rgpot::simd)::N_SVE::'
+features = ["sve", "aes", "pmull", "sha1", "sha2", "fp16", "dotprod"]
+reason = "SVE dispatch"
+
+[[allow]]
+symbol = '(hwy|rgpot::simd)::N_SVE2::'
+features = ["sve", "sve2", "aes", "pmull", "sha1", "sha2", "fp16", "dotprod"]
+reason = "SVE2 dispatch"
+
+[[allow]]
+symbol = '(hwy|rgpot::simd)::N_SVE_256::'
+features = ["sve", "sve2", "aes", "pmull", "sha1", "sha2", "fp16"]
+reason = "SVE 256-bit dispatch"
+
+[[allow]]
+symbol = '^hwy::(Num0BitsBelowLS1Bit_Nonzero64|_GLOBAL__N_1::x86::ReadXCR0)'
+features = ["bmi1", "xsave"]
+reason = "Highway CPUID helpers in libhwy"
+
+[[allow]]
+symbol = '^__aarch64_(ldadd|ldclr|ldeor|ldset|swp|cas)'
+features = ["lse"]
+reason = "libgcc outlined LSE atomics linked into the shared library"

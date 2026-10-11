@@ -74,3 +74,9 @@ option(
     value: false,
     description: 'Flexible TIP4P, SPC/E and TIP4P-Pt kernels. Defaults false, matching the eOn with_water option.',
 )
+option(
+    'with_highway',
+    type: 'feature',
+    value: 'auto',
+    description: 'Google Highway runtime ISA dispatch for LJ, Morse, EAM and the orthorhombic fold. auto uses libhwy >= 1.2 or the wrap. disabled keeps the scalar kernels.',
+)

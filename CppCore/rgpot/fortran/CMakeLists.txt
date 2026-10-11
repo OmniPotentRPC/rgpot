@@ -3,7 +3,8 @@ find_package(Threads REQUIRED)
 include(CheckFortranCompilerFlag)
 set(_rgpot_fortran_options)
 foreach(flag IN ITEMS -std=f2018 -fimplicit-none -Wall
-                      -Wno-unused-dummy-argument -fvisibility=hidden)
+                      -Wno-unused-dummy-argument -fvisibility=hidden
+                      -ffp-contract=off)
   string(MAKE_C_IDENTIFIER "RGPOT_FORTRAN_${flag}" supported)
   check_fortran_compiler_flag("${flag}" ${supported})
   if(${supported})

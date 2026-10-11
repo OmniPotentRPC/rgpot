@@ -1,0 +1,140 @@
+#+TITLE: SIMD paths and dispatch
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* SIMD paths and dispatch
+
+LJ, Morse, EAM, and the orthorhombic periodic fold select an instruction set at
+run time through Google Highway.
+The same source is compiled for SSE2, SSE4, AVX2, AVX3,
+AVX3_ZEN4, NEON, SVE, SVE2, SVE_256, RVV, and Highway's EMU128.
+SSE2 is the static baseline on x86-64.
+A machine runs the best target it supports.
+A target the CPU cannot execute is not a pass.
+It was not exercised.
+
+** Selection
+
+=rgpot::simd::chosen_target_name()= returns the name of the target this process
+will use.
+The names are =scalar=, =sse2=, =sse4=, =avx2=, =avx3=,
+=avx3_zen4=, =neon=, =sve=, =sve2=, =sve_256=, =rvv=, and =emu128=.
+=RGPOT_SIMD= is read once, inside the call that caches the choice.
+=scalar= forces the portable kernel.
+=sse4=, =avx2=, =avx3=, =avx3_zen4=, =neon=, =sve=, and =sve2= request that
+target.
+=sse2=, =sve_256=, =rvv=, and =emu128= are accepted as well.
+An unknown name is ignored.
+A known name the CPU cannot run falls back to the best target it can run.
+On x86-64 that target is at least SSE2.
+The portable scalar kernel runs when =RGPOT_SIMD=scalar= asks for it.
+The default dispatcher does not select it on an x86-64 host.
+
+Build with =-Dwith_highway=disabled= and every kernel stays on the scalar path.
+=auto= uses libhwy 1.2 or newer when it is installed, and the bundled Highway
+1.2 wrap otherwise.
+
+** Bit identity
+
+Atom i's energy, force, and virial go through a fixed width of 8.
+Eight partial sums are added as (p0+p4), (p1+p5), (p2+p6), (p3+p7), then those
+pairs, then the two results.
+The force on atom j is subtracted in neighbour order.
+Morse and EAM evaluate the fdlibm =e_exp= polynomial.
+The scalar target calls =rgpot::simd::exp=.
+Each vector lane replays that function, with the same constants.
+Every product-sum is a fused multiply-add on every target.
+One rounding is the accuracy of that operation, and it is the one bit definition
+of these kernels.
+The squared distance, the exp scale, the embedding Horner, and the switched pair
+polynomials use that product-sum.
+A target with hardware FMA issues that instruction.
+AVX2, AVX3, AVX3_ZEN4, AArch64 NEON, SVE, SVE2, SVE_256, and RVV do.
+A target without hardware FMA calls =std::fma=.
+Scalar, SSE2, SSE4, and EMU128 take that call.
+=std::fma= is correctly rounded, so those bytes match the hardware instruction.
+The pair loop that consumes those lanes is compiled into the target, so the
+choice of instruction set is one indirect call per force evaluation.
+The LJ loop is vectorized for the round fold and for the coded fold.
+The coded fold is the list used when the cutoff plus the skin fits in half a
+box.
+The orthorhombic fold is a vector loop as well.
+The project passes =-ffp-contract=off= (or =/fp:precise=) to C, C++, and
+Fortran, including the vendored vesin and Lepton sources.
+A multiply followed by a separate add is not contracted.
+A CI job builds the same inputs with =-march=x86-64-v3= and checks that the
+SHA-256 of the LJ, Morse, and EAM results matches the default build.
+The dispatch job prints the targets it exercised.
+When that runner's flags include =avx512f=, the list must include =avx3= or
+=avx3_zen4=.
+Per-microarchitecture builds are the EESSI bot.
+
+The orthorhombic fold matches =visit_round= for finite in-range values: half
+away from zero.
+A non-finite lane contributes a zero image index so the conversion to an integer
+is defined.
+=MinimumImage= folds a general cell.
+The search works in long double.
+A cell whose condition estimate would spend more than half the significand
+throws.
+Singular and non-finite cells throw.
+An image index that does not fit in a 64-bit integer throws.
+
+** Speed
+
+LJ uses four lanes.
+Eight-wide LJ was slower where it was timed.
+The neighbour coordinates are not a contiguous vector load.
+A 512-bit polynomial did not hide that load.
+Morse and EAM stay eight wide because the exp does.
+The scalar target is compiled without auto-vectorization.
+A debug build and a release build then hash the same bytes.
+That target calls the in-house exp, not libm. libm on this class of host picks
+an exp implementation at run time.
+Matching the in-house bits forbids that call.
+The compiler flag leaves a separate multiply and add uncontracted.
+The product-sums inside the polynomial are an explicit fused multiply-add.
+The scalar target can sit below the pre-dispatch loop on the exp kernels.
+It is the portable fallback, and an x86-64 host does not select it unless asked.
+Morse and EAM evaluate two AVX2 vectors, or four SSE vectors, before depositing.
+That is eight lanes, and atom i's sum stays the width-8 tree.
+LJ stays at one vector.
+A second vector there was slower.
+AVX2 and AVX3 run the vector exp.
+Those are the paths that clear that loop.
+
+A Verlet list rebuilds when the farthest atom has moved by more than half the
+skin.
+A cutoff larger than half the box used to mark the list uncacheable, so a
+benchmark that never moved an atom rebuilt on every call.
+The nearest image is still one pair, and that list is cached.
+Image codes stay per call when the skin reaches a boundary.
+The cell scan bins atoms, keeps each cell in index order, and packs the
+coordinates as three unit-stride arrays.
+Partner order is sorted per atom, which is the order the hash sums.
+
+** What is not dispatched
+
+The Eigen adapter only copies layouts.
+BLAS and LAPACK stay in their own libraries.
+Fortran pots are compiled for the build machine's baseline and are not
+multi-compiled.
+Machine-learning engines are external.
+Vendored Lepton is built without =LEPTON_USE_JIT=.
+
+Highway's AVX3_DL, AVX3_SPR, and the reserved AVX10.2 bit are not compiled.
+This change has no benchmark that would justify adding them.
+
+** chosen_target_name
+
+=rgpot::simd::chosen_target_name()= takes no arguments and returns a C string.
+The pointer stays valid for the life of the process.
+It names the target selected for this process, after =RGPOT_SIMD= has been
+applied.
+
+** References
+
+- Páll and Hess, Computer Physics Communications 184, 2641 (2013),
+  doi:10.1016/j.cpc.2013.06.003.
+- Dröge et al., Software: Practice and Experience 53, 176 (2023),
+  doi:10.1002/spe.3075.

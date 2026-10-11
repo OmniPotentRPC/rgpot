@@ -1,0 +1,34 @@
+# SHA-256 of raw little-endian f64 bytes.
+# Order is energy, forces, then the six stress components where the kernel
+# returns them. The same digest is required for every target the CPU can run.
+# Debug builds (-O0, the default meson build) produce these digests.
+# Release builds are compared with each other, not with this file.
+# Product-sums are fused on every target. A target without hardware FMA
+# calls std::fma. One rounding is the accuracy and the one bit definition.
+# LJ and the fold kept the previous digest on the pinned geometries.
+#
+# lj: LJPot u0=0.0104 cutoff=8.5 psi=3.4, orthorhombic box 18.
+# Four geometries (2, 3, 4, 2 atoms): a pair, a triple with -0 and a
+# subnormal, a quadruple with a 1-ulp shift of 2.5, and a NaN coordinate.
+# morse: default MorsePot, box 20. Three geometries (2, 3, 2 atoms):
+# a pair near re, a triple with -0, a subnormal and a 1-ulp shift of 2.9,
+# and a NaN coordinate.
+# eam: EAMPot aluminium pair at 2.5 in a box of 20, then three direct
+# eam_force calls (2, 3, 2 atoms) in a 12 box, including -0, a subnormal,
+# a 1-ulp shift of 2.5, and a NaN coordinate.
+# fold: eight components per axis, widths 10, 10, 0 (z unfolded),
+# including -0, a subnormal, a 1-ulp shift of 3, and NaN.
+
+# lj_fcc: LJPot u0=0.0104 cutoff=8.5 psi=3.4, FCC 6^3 cells, a=5.26, 864 atoms.
+# morse_fcc: default MorsePot, FCC 4^3 cells, a=2.9, 256 atoms.
+# eam_fcc: EAMPot aluminium, FCC 4^3 cells, a=4.05, 256 atoms.
+# Those cells fill the width-8 tree past one round. Morse and EAM also
+# cover the two-AVX2 and four-SSE schedules and both exp paths.
+
+lj = "7d0d79a18c784052a0d18384014a92fbbd9bdafad0db1e916f87dbbdc584437c"
+morse = "001a923a8f25bf5136627ace3f15cb38b7bfc9d8f12fa2446778a38f7301fcd3"
+eam = "600ecc7b65a71a4bce5956103bcf4941630bc26ead24c343352a5425d5c683f6"
+fold = "242fbfb234c53670859ad69f7b531e4ada8ee9f476709de0687aa5a0a522e857"
+lj_fcc = "f20c238dfddc3f55eec91ff315b1ee1157b8d6aded1d731ee8985421fde1d54d"
+morse_fcc = "072c5f445b5897d4ef8865c0da30613ff1996f8fd16a70bcad5e0ce85100ad4d"
+eam_fcc = "defae2664bcbf536032c89eb37f54104c48f245bc443e16b5f94a951e8b76aad"

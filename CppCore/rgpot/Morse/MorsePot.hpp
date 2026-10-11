@@ -20,6 +20,7 @@
 #include "rgpot/PairSwitch.hpp"
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/Potential.hpp"
+#include "rgpot/simd/exp.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
 namespace rgpot {
@@ -54,10 +55,10 @@ public:
   explicit MorsePot(const MorseConfig &c)
       : Potential(PotType::Morse), De{c.De}, a{c.a}, re{c.re},
         cuttOffR{c.cutoff}, m_config{c} {
-    // Shift so U(cuttOffR) = 0, evaluating the same closed form as the
-    // pair kernel below.
-    const double d = 1.0 - std::exp(-a * (cuttOffR - re));
-    energyCutoff = De * d * d - De;
+    // Shift so U(cuttOffR) = 0, with the same product-sum as the pair kernel.
+    const double d = 1.0 - simd::exp(-a * (cuttOffR - re));
+    const double dd = De * d;
+    energyCutoff = simd::mul_add(dd, d, -De);
     if (c.switch_width != 0.0) {
       m_switch = QuinticSwitch::endingAt(c.cutoff, c.switch_width);
     }
@@ -100,7 +101,7 @@ public:
 
 private:
   /// Bump when the kernel numerics change, so stale cache entries die.
-  static constexpr uint64_t kKernelVersion = 1;
+  static constexpr uint64_t kKernelVersion = 3;
 
   double De;           //!< Well depth parameter.
   double a;            //!< Range parameter.
