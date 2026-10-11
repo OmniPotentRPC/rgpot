@@ -53,7 +53,7 @@ WaterHPot: Any = getattr(_core, "WaterHPot", None)
 def _torch_major() -> str | None:
     """Return installed torch X.Y, or None if torch is not importable."""
     try:
-        import torch
+        import torch  # pyright: ignore[reportMissingImports]
 
         v = torch.__version__.split("+", 1)[0]
         parts = v.split(".")
@@ -142,7 +142,7 @@ def evaluate_metatomic(
     # Load torch via the Python extension first so the engine's DT_NEEDED
     # libtorch resolves to the same process image (avoids dual-load races).
     try:
-        import torch  # noqa: F401
+        import torch  # noqa: F401  # pyright: ignore[reportMissingImports]
     except ImportError:
         pass
     if evaluate_metatomic_dlopen is None:

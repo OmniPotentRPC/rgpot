@@ -69,7 +69,7 @@ class AnnealRunner:
         low = x0 - self.pad
         high = x0 + self.pad
         grad = self._gradient if self.use_forces else None
-        found: Any = anneal.global_optimize(
+        found: Any = anneal.global_optimize(  # pyright: ignore[reportAttributeAccessIssue]
             self._energy, low, high, self.budget, seed=self.seed, grad_fn=grad
         )
         self.result = found

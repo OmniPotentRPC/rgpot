@@ -9,8 +9,9 @@ ASE relaxes structures with L-BFGS and FIRE; eOn
 (TheochemUI/eOn on GitHub) runs its own L-BFGS and conjugate-gradient minimizers at the end of every min-mode and nudged-elastic-band search, over structures stored as EON =.con= files and driven by a potential rgpot serves over RPC. The atomistic-cookbook example lab- cosmo/atomistic-cookbook
 runs exactly this stack: a PET-MAD model, a NEB path, eOn's saddle search.
 
-Saddle searches on this stack are described by Goswami, Gunde, and
-Jónsson, Front. Chem. (2026), doi:10.3389/fchem.2026.1807063.
+Saddle searches on this stack are described by Goswami, Gunde, and Jónsson,
+Front.
+Chem. (2026), doi:10.3389/fchem.2026.1807063.
 
 All of these minimizers are /local/: they walk downhill to the nearest minimum.
 The nearest minimum is often not the one you want.
@@ -69,8 +70,8 @@ atoms.calc = calc
 print("start energy:", atoms.get_potential_energy())   # about +20
 #+end_src
 
-Use =spawn= as a context manager (~with RgpotRpcCalculator.spawn(...) as calc:~) to
-stop the managed server on exit.
+Use =spawn= as a context manager (~with RgpotRpcCalculator.spawn(...) as calc:~)
+to stop the managed server on exit.
 
 ** Step 2: local relaxation stops at the nearest minimum
 
@@ -90,10 +91,10 @@ of the product state.
 
 ** Step 3: find the global minimum
 
-=AnnealRunner= wraps =anneal='s portfolio optimizer (the method of the
-INFORMS Journal on Computing paper: Thompson-allocated basin hopping,
-differential evolution, generalized simulated annealing, parallel tempering,
-GLE-Langevin) behind =run()=.
+=AnnealRunner= wraps =anneal='s portfolio optimizer (the method of the INFORMS
+Journal on Computing paper: Thompson-allocated basin hopping, differential
+evolution, generalized simulated annealing, parallel tempering, GLE-Langevin)
+behind =run()=.
 It is not an =ase.optimize.Optimizer=.
 =AnnealOptimizer= is the deprecated name.
 It uses the rgpot forces as the gradient:
@@ -119,8 +120,7 @@ returns.
 - Local L-BFGS / FIRE / conjugate gradient (ASE or eOn): refine a structure
 inside the basin you want -- an eOn saddle endpoint, a perturbed crystal, an MD
 snapshot.
-- ~AnnealRunner~: find the minimum when the basin is unknown -- cluster
-  ground
+- ~AnnealRunner~: find the minimum when the basin is unknown -- cluster ground
 states, conformer search, potential-parameter fitting.
 
 Chain them: an =anneal= search to locate the basin, then a local polish.

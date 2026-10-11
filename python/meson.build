@@ -189,20 +189,20 @@ endif
 py.install_sources(
     files(
         'rgpot/__init__.py',
-        'rgpot/py.typed',
         'rgpot/_core.pyi',
+        'rgpot/py.typed',
     ),
     pure: false,
     subdir: 'rgpot',
 )
 py.install_sources(
     files(
-        'rgpot/ase/__init__.py',
-        'rgpot/ase/calculator.py',
-        'rgpot/ase/rpc.py',
-        'rgpot/ase/anneal.py',
-        'rgpot/ase/claim.py',
         '../CppCore/rgpot/rpc/Potentials.capnp',
+        'rgpot/ase/__init__.py',
+        'rgpot/ase/anneal.py',
+        'rgpot/ase/calculator.py',
+        'rgpot/ase/claim.py',
+        'rgpot/ase/rpc.py',
     ),
     pure: false,
     subdir: 'rgpot/ase',
