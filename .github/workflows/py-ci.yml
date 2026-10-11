@@ -2,7 +2,9 @@ name: Python binding CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - "ci/**"
     paths:
       - "bind/**"
       - "ci/python-template/**"
