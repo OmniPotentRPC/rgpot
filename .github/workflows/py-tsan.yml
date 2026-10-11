@@ -79,7 +79,7 @@ jobs:
           export LDFLAGS="${LDFLAGS:-} -fsanitize=thread"
           export PIP_BREAK_SYSTEM_PACKAGES=1
           "$PY" -m pip install -U pip
-          "$PY" -m pip install nanobind scikit-build-core ninja pytest pytest-timeout hypothesis
+          "$PY" -m pip install nanobind scikit-build-core cmake ninja pytest pytest-timeout hypothesis
           if ! "$PY" -c 'import numpy' >/dev/null 2>&1; then
             "$PY" -m pip install 'numpy>=1.24'
           fi
