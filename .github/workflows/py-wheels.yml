@@ -136,71 +136,158 @@ jobs:
           python -m abi3audit --strict "${wheels[@]}"
 
       - name: F9 dynamic symbol check
-        if: runner.os != 'Windows'
         shell: bash
         env:
           IMPORTS: ${{ inputs.import-names }}
         run: |
           set -euo pipefail
-          allow=()
-          for name in ${IMPORTS//,/ }; do
-            leaf="${name##*.}"
-            if [ "$(uname)" = "Darwin" ]; then
-              allow+=("_PyInit_${leaf}")
-            else
-              allow+=("PyInit_${leaf}")
-            fi
-          done
-          echo "F9 allowlist: ${allow[*]}"
-          shopt -s nullglob
-          for whl in wheelhouse/*.whl; do
-            rm -rf _whlx && mkdir _whlx
-            unzip -qo "$whl" -d _whlx
-            objects=()
-            while IFS= read -r path; do
-              [ -n "$path" ] && objects+=("$path")
-            done < <(find _whlx -type f \( -name '*.so' -o -name '*.dylib' \))
-            if [ "${#objects[@]}" -eq 0 ]; then
-              echo "F9: no extension module in $whl" >&2
-              exit 1
-            fi
-            for so in "${objects[@]}"; do
-              echo "== $so"
-              if [ "$(uname)" = "Darwin" ]; then
-                syms="$(nm -gU "$so" | awk 'NF { print $NF }')"
-              else
-                syms="$(nm -D --defined-only "$so" | awk 'NF { print $NF }')"
-              fi
-              echo "$syms"
-              if [ -z "$syms" ]; then
-                echo "F9: no defined symbols in $so" >&2
-                exit 1
-              fi
-              while IFS= read -r sym; do
-                [ -z "$sym" ] && continue
-                ok=0
-                for exp in "${allow[@]}"; do
-                  if [ "$sym" = "$exp" ]; then
-                    ok=1
-                  fi
-                done
-                if [ "$ok" -ne 1 ]; then
-                  echo "F9: unexpected symbol $sym" >&2
-                  exit 1
-                fi
-              done <<< "$syms"
-              found=0
-              for exp in "${allow[@]}"; do
-                if grep -qx "$exp" <<< "$syms"; then
-                  found=1
-                fi
-              done
-              if [ "$found" -ne 1 ]; then
-                echo "F9: PyInit symbol missing from $so" >&2
-                exit 1
-              fi
-            done
-          done
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            python -m pip install pefile
+          fi
+          script="${RUNNER_TEMP}/f9_check.py"
+          cat > "${script}" << 'PY'
+          import os
+          import platform
+          import shutil
+          import subprocess
+          import zipfile
+          from pathlib import Path
+
+          imports = [
+              part for part in os.environ.get("IMPORTS", "").replace(",", " ").split() if part
+          ]
+          if not imports:
+              raise SystemExit("F9: import-names is empty")
+
+
+          def expected_symbol(leaf: str) -> str:
+              if platform.system() == "Darwin":
+                  return f"_PyInit_{leaf}"
+              return f"PyInit_{leaf}"
+
+
+          def is_shared(path: Path) -> bool:
+              name = path.name
+              return name.endswith((".so", ".dylib", ".pyd", ".dll"))
+
+
+          def exports_nm(path: Path) -> list[str]:
+              if platform.system() == "Darwin":
+                  cmd = ["nm", "-gU", str(path)]
+              else:
+                  cmd = ["nm", "-D", "--defined-only", str(path)]
+              proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
+              if proc.returncode != 0:
+                  raise RuntimeError(proc.stderr.strip() or f"nm failed on {path}")
+              symbols = []
+              for line in proc.stdout.splitlines():
+                  parts = line.split()
+                  if parts:
+                      symbols.append(parts[-1])
+              return symbols
+
+
+          def exports_pe(path: Path) -> list[str]:
+              import pefile
+
+              pe = pefile.PE(str(path))
+              table = getattr(pe, "DIRECTORY_ENTRY_EXPORT", None)
+              if table is None:
+                  return []
+              symbols = []
+              for exp in table.symbols:
+                  if exp.name:
+                      raw = exp.name
+                      symbols.append(raw.decode("ascii", "replace") if isinstance(raw, bytes) else str(raw))
+                  else:
+                      symbols.append(f"ordinal:{exp.ordinal}")
+              return symbols
+
+
+          def exports_of(path: Path) -> list[str]:
+              if platform.system() == "Windows" or path.suffix.lower() in {".pyd", ".dll"}:
+                  return exports_pe(path)
+              return exports_nm(path)
+
+
+          def module_files(root: Path, name: str) -> list[Path]:
+              parts = name.split(".")
+              leaf = parts[-1]
+              base = root.joinpath(*parts[:-1]) if len(parts) > 1 else root
+              patterns = (
+                  f"{leaf}.cpython-*.so",
+                  f"{leaf}.abi3.so",
+                  f"{leaf}.cpython-*.dylib",
+                  f"{leaf}.abi3.dylib",
+                  f"{leaf}.*.pyd",
+                  f"{leaf}.pyd",
+              )
+              found: list[Path] = []
+              if not base.is_dir():
+                  return found
+              for pattern in patterns:
+                  found.extend(base.rglob(pattern))
+              unique = sorted({path.resolve() for path in found})
+              return unique
+
+
+          allow = [expected_symbol(name.split(".")[-1]) for name in imports]
+          print("F9 allowlist:", " ".join(allow))
+          wheels = sorted(Path("wheelhouse").glob("*.whl"))
+          if not wheels:
+              raise SystemExit("F9: no wheels")
+          failed = False
+          for wheel in wheels:
+              print(f"== wheel {wheel.name}")
+              root = Path(os.environ["RUNNER_TEMP"]) / "f9whl" / wheel.stem
+              if root.exists():
+                  shutil.rmtree(root)
+              root.mkdir(parents=True)
+              root = root.resolve()
+              with zipfile.ZipFile(wheel) as archive:
+                  archive.extractall(root)
+              checked: set[Path] = set()
+              for name in imports:
+                  leaf = name.split(".")[-1]
+                  expected = expected_symbol(leaf)
+                  files = module_files(root, name)
+                  if not files:
+                      print(f"F9: {name} not found in {wheel.name}", flush=True)
+                      failed = True
+                      continue
+                  for path in files:
+                      checked.add(path)
+                      rel = path.relative_to(root)
+                      try:
+                          symbols = exports_of(path)
+                      except Exception as exc:
+                          print(f"F9: cannot read exports of {rel}: {exc}", flush=True)
+                          failed = True
+                          continue
+                      print(f"== {rel}")
+                      for symbol in symbols:
+                          print(symbol)
+                      if set(symbols) != {expected}:
+                          print(
+                              f"F9: {rel} exports {symbols or ['<empty>']}, expected exactly {expected}",
+                              flush=True,
+                          )
+                          failed = True
+              for path in sorted(root.rglob("*")):
+                  if not path.is_file() or path.resolve() in checked or not is_shared(path):
+                      continue
+                  if any(part.endswith(".dist-info") for part in path.parts):
+                      continue
+                  rel = path.relative_to(root)
+                  try:
+                      count = len(exports_of(path))
+                      print(f"other {rel} exports={count}")
+                  except Exception as exc:
+                      print(f"other {rel} exports=unknown ({exc})")
+          if failed:
+              raise SystemExit(1)
+          PY
+          python "${script}"
 
       - name: Artifact name
         id: artifact
