@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstdint>
+#include <mutex>
 #include <new>
 #include <stdexcept>
 #include <string>
@@ -44,6 +45,33 @@ int rgpot_cuh2_force_ws(void *ws, int32_t natoms, const double *positions,
 int rgpot_water_h_force_ws(void *ws, int32_t natoms, const double *positions,
                            const int32_t *atomic_numbers, const double *cell,
                            double *forces, double *energy);
+
+// F2: the saved parameter block in each *_capi module is written once
+// under std::call_once and read-only afterwards. Python binds only the
+// _ws entries (one workspace per potential instance).
+void rgpot_sw_ensure_params();
+void rgpot_edip_ensure_params();
+void rgpot_lenosky_ensure_params();
+void rgpot_tersoff_ensure_params();
+void rgpot_eam_al_ensure_params();
+void rgpot_fehe_ensure_params();
+void rgpot_cuh2_ensure_params();
+void rgpot_water_h_ensure_params();
+}
+
+/// F2: one initialisation for every kernel's saved parameter block.
+void ensure_fortran_params() {
+  static std::once_flag once;
+  std::call_once(once, [] {
+    rgpot_sw_ensure_params();
+    rgpot_edip_ensure_params();
+    rgpot_lenosky_ensure_params();
+    rgpot_tersoff_ensure_params();
+    rgpot_eam_al_ensure_params();
+    rgpot_fehe_ensure_params();
+    rgpot_cuh2_ensure_params();
+    rgpot_water_h_ensure_params();
+  });
 }
 
 /// Throw carrying the kernel's own message.
@@ -82,6 +110,7 @@ FortranWorkspace &FortranWorkspace::operator=(const FortranWorkspace &) {
 
 #define RGPOT_FORTRAN_POT_IMPL(ClassName, Entry, Label)                        \
   void ClassName::forceImpl(const ForceInput &in, ForceOut *out) const {       \
+    ensure_fortran_params();                                                   \
     const int status = Entry(m_ws.get(), static_cast<int32_t>(in.nAtoms),       \
                              in.pos, in.box, out->F, &out->energy);            \
     if (status != 0) {                                                         \
@@ -100,6 +129,7 @@ RGPOT_FORTRAN_POT_IMPL(EAMAlPot, rgpot_eam_al_force_ws, "EAM-Al")
 
 #define RGPOT_FORTRAN_SPECIES_POT_IMPL(ClassName, Entry, Label)                \
   void ClassName::forceImpl(const ForceInput &in, ForceOut *out) const {       \
+    ensure_fortran_params();                                                   \
     const int status =                                                         \
         Entry(m_ws.get(), static_cast<int32_t>(in.nAtoms), in.pos, in.atmnrs,  \
               in.box, out->F, &out->energy);                                   \

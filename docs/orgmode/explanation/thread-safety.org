@@ -1,0 +1,44 @@
+#+TITLE: Thread safety
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Thread safety
+
+The extension is built free-threaded when the interpreter is
+(=Py_GIL_DISABLED=).
+On that interpreter =import rgpot= and =import rgpot.ase= leave the GIL
+disabled.
+Sub-interpreters are not supported.
+
+** One workspace per calling thread
+
+A potential object is not a session.
+The first call on a thread creates that thread's workspace, under a
+per-object mutex that is taken only while the interpreter is detached.
+The workspace is freed with the object.
+Two threads may call one Lennard-Jones potential at the same time.
+Fortran potentials keep one neighbour table per instance, so a batch
+gives each worker its own instance.
+
+The saved parameter block in each Fortran =_capi= module is written once,
+from C++ =std::call_once=, and is read-only after that.
+The handle-free entry's legacy workspace is not used by Python.
+
+** What is not reentrant (F5)
+
+The ASE =calculate= path writes =self.atoms= and =self.results=.
+Do not call =get_potential_energy= or =get_forces= on one calculator from
+two threads.
+The pure protocol =__rg_evaluate__= does not mutate the calculator, and
+that protocol is the reentrant path.
+=calculate_many= builds one batch and does not mutate the input atoms.
+An exception raised on the protocol path is the caller's; the calculator
+object is left as it was.
+
+** One connection at a time (F3)
+
+The RPC calculator's connection is the exception to the per-thread
+workspace rule.
+It is in use by one thread at a time.
+A second thread gets =RuntimeError= naming the calculator type, rather
+than sharing the socket.

@@ -13,6 +13,9 @@ wheels with:
 
 This is separate from the Cap'n Proto RPC path (=potserv=).
 LJ needs only =numpy=; Metatomic needs the optional dependency stack below.
+=pip install 'rgpot[ase]'= adds ASE 3.23 or newer for =rgpot.ase=.
+Free-threaded wheels (=cp314t=, =cp315t=) import with the GIL disabled.
+The =cp312= wheel is the stable-ABI build for the GIL interpreters.
 
 ** Install
 

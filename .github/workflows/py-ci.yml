@@ -5,15 +5,32 @@ on:
     branches:
       - main
       - "ci/**"
+      - "feat/**"
     paths:
       - "bind/**"
       - "ci/python-template/**"
       - ".github/workflows/py-*.yml"
+      - "python/**"
+      - "tests/python/**"
+      - "pyproject.toml"
+      - "CppCore/rgpot/fortran/**"
+      - "CppCore/rgpot/PotHelpers.hpp"
+      - "CppCore/rgpot/PotentialCache.hpp"
+      - "CppCore/rgpot/PotentialCache.cc"
+      - "CppCore/rgpot/BatchEvaluator.hpp"
   pull_request:
     paths:
       - "bind/**"
       - "ci/python-template/**"
       - ".github/workflows/py-*.yml"
+      - "python/**"
+      - "tests/python/**"
+      - "pyproject.toml"
+      - "CppCore/rgpot/fortran/**"
+      - "CppCore/rgpot/PotHelpers.hpp"
+      - "CppCore/rgpot/PotentialCache.hpp"
+      - "CppCore/rgpot/PotentialCache.cc"
+      - "CppCore/rgpot/BatchEvaluator.hpp"
   workflow_dispatch:
 
 concurrency:
@@ -168,3 +185,72 @@ jobs:
     with:
       vendored-path: ci/python-template/rust-core/include/rgbind/rgbind.hpp
       rgpot-ref: ${{ github.sha }}
+
+  rgpot-freethreading:
+    uses: ./.github/workflows/py-freethreading.yml
+    with:
+      package-dir: .
+      import-names: rgpot._core
+      test-path: tests/python
+      extras: ase
+      iterations: "20"
+
+  rgpot-tsan:
+    uses: ./.github/workflows/py-tsan.yml
+    with:
+      package-dir: .
+      import-names: rgpot._core
+      test-path: tests/python
+      extras: ase
+
+  rgpot-typing:
+    uses: ./.github/workflows/py-typing.yml
+    with:
+      package-dir: .
+      import-names: rgpot._core
+      stub-dir: python
+      typecheck-paths: python/rgpot
+      extras: ase
+
+  rgpot-pytest:
+    name: rgpot python (meson)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Fortran toolchain and test packages
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y gfortran g++ pkg-config ninja-build meson \
+            python3-dev python3-venv libopenblas-dev
+      - name: Reduced-feature build and pytest
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/rgpot-ci
+          /tmp/rgpot-ci/bin/pip install -U pip
+          /tmp/rgpot-ci/bin/pip install 'nanobind==3.1.0' 'numpy' 'ase>=3.23' \
+            pytest pytest-timeout hypothesis
+          site=$(/tmp/rgpot-ci/bin/python -c 'import site; print(site.getsitepackages()[0])')
+          export PYTHONPATH="${site}:${PWD}/python:${PWD}/tests/python"
+          meson setup /tmp/rgpot-ci-build \
+            -Dwith_python=true \
+            -Dwith_fortran_pots=enabled \
+            -Dwith_metatomic=false \
+            -Dwith_rpc=false \
+            -Dwith_tests=false \
+            -Dwith_examples=false \
+            -Dwith_dftd3=false \
+            -Dwith_dftd4=false \
+            -Dwith_expr=false \
+            -Dwith_xckernel=false \
+            -Dwith_cache=false \
+            -Dwith_eigen=false \
+            -Dwith_xtb=false \
+            -Dwith_tblite=false \
+            --buildtype=release
+          meson compile -C /tmp/rgpot-ci-build
+          ln -sfn /tmp/rgpot-ci-build/python/_core*.so python/rgpot/
+          export LD_LIBRARY_PATH="/tmp/rgpot-ci-build/CppCore${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          /tmp/rgpot-ci/bin/python -m pytest -q tests/python \
+            --timeout=180 -o faulthandler_timeout=120

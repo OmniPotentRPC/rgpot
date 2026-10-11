@@ -19,16 +19,22 @@ from pathlib import Path
 
 from rgpot._core import (
     LJPot,
+    NumericalError,
     __version__,
     evaluate_lj,
-    evaluate_metatomic_dlopen,
     has_cache,
     has_dftd3,
     has_dftd4,
     has_expr,
+    has_fortran_pots,
     has_metatomic_dlopen,
     has_xckernel,
 )
+
+try:
+    from rgpot._core import evaluate_metatomic_dlopen
+except ImportError:  # compiled without MetatomicDlopen
+    evaluate_metatomic_dlopen = None  # type: ignore[misc, assignment]
 
 try:
     from rgpot._core import PotentialCache
@@ -54,6 +60,22 @@ try:
     from rgpot._core import XcKernel
 except ImportError:
     XcKernel = None  # type: ignore[misc, assignment]
+
+import importlib as _importlib
+
+_core_mod = _importlib.import_module("rgpot._core")
+for _fortran_name in (
+    "SWPot",
+    "EDIPPot",
+    "LenoskyPot",
+    "TersoffPot",
+    "EAMAlPot",
+    "FeHePot",
+    "CuH2Pot",
+    "WaterHPot",
+):
+    globals()[_fortran_name] = getattr(_core_mod, _fortran_name, None)
+del _core_mod, _fortran_name, _importlib
 
 
 def _torch_major() -> str | None:
@@ -124,6 +146,17 @@ def available_metatomic_engine_abis() -> list[str]:
     return out
 
 
+def __getattr__(name: str):
+    """Lazy exports. ``ase`` is not imported by ``import rgpot``."""
+    if name == "ase":
+        import importlib
+
+        module = importlib.import_module("rgpot.ase")
+        globals()["ase"] = module
+        return module
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 def evaluate_metatomic(
     positions,
     atom_types,
@@ -140,6 +173,8 @@ def evaluate_metatomic(
         import torch  # noqa: F401
     except ImportError:
         pass
+    if evaluate_metatomic_dlopen is None:
+        raise RuntimeError("this build has no MetatomicDlopen frontend")
     eng = engine_path or default_metatomic_engine_path() or ""
     return evaluate_metatomic_dlopen(
         positions, atom_types, box, model_path, eng, device
@@ -148,11 +183,20 @@ def evaluate_metatomic(
 
 __all__ = [
     "LJPot",
+    "NumericalError",
     "D3Pot",
     "D4Pot",
     "ExprPot",
     "XcKernel",
     "PotentialCache",
+    "SWPot",
+    "EDIPPot",
+    "LenoskyPot",
+    "TersoffPot",
+    "EAMAlPot",
+    "FeHePot",
+    "CuH2Pot",
+    "WaterHPot",
     "evaluate_lj",
     "evaluate_metatomic",
     "evaluate_metatomic_dlopen",
@@ -164,5 +208,7 @@ __all__ = [
     "has_dftd3",
     "has_dftd4",
     "has_xckernel",
+    "has_fortran_pots",
+    "ase",
     "__version__",
 ]

@@ -1927,6 +1927,9 @@ void cpu::VerletList::rebuild(
     build_options.return_distances = false;
     build_options.return_vectors = false;
     build_options.skin = 0.0;
+    // Honour the calculator's thread count. A default of zero would follow
+    // OMP_NUM_THREADS inside other entry points and change pair order.
+    build_options.n_threads = options_.n_threads > 0 ? options_.n_threads : 1;
 
     candidates_.device = {VesinCPU, 0};
 
