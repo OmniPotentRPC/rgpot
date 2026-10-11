@@ -11,12 +11,7 @@
  */
 
 // The adapter copies layouts. It does not evaluate a potential.
-// Vectorizing that copy measured well under 5% of an LJ force call,
-// so Eigen's own kernels stay off. See docs/orgmode/reference/simd_dispatch.org.
-// clang-format off
-#define EIGEN_DONT_VECTORIZE 1
 #include <Eigen/Dense>
-// clang-format on
 #include <array>
 #include <cstring>
 #include <vector>

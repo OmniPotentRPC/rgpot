@@ -1,1 +1,1 @@
-LJ, Morse, EAM, and the orthorhombic fold dispatch through Highway. `rgpot::simd::chosen_target_name()` reports the target. `RGPOT_SIMD` selects it. LJ, LJ cluster, Morse, and EAM result-cache keys moved with the new sums.
+LJ, Morse, EAM, and the orthorhombic fold dispatch through Highway. `rgpot::simd::chosen_target_name()` reports the target. `RGPOT_SIMD` selects it. Results differ from 3.5 in the last bits. EAM is slower on non-AVX2 x86, on the SSE targets and on the scalar target. LJ, LJ cluster, Morse, and EAM result-cache keys moved with the new sums.

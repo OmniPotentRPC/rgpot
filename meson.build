@@ -680,7 +680,7 @@ endif
 # System libhwy >= 1.2 when it is installed. Otherwise the wrap, and only
 # when that tree is already on disk or the feature is enabled. auto must
 # not download: the nodownload rehearsal archives the wrap file without the
-# extracted sources. The wrap builds the I3 target set. Kernel TUs include
+# extracted sources. The wrap builds the compiled target set. Kernel TUs include
 # hwy_disabled.h so a system libhwy and the wrap agree on the mask the
 # dispatch table uses (GetIndex is per translation unit).
 fs_hwy = import('fs')
@@ -702,7 +702,6 @@ if not highway_opt.disabled()
     endif
     if highway_dep.found()
         _deps += highway_dep
-        _args += ['-DRGPOT_WITH_HIGHWAY']
         have_highway = true
         message('highway: enabled')
     else

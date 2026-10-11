@@ -272,6 +272,68 @@ std::string eam_hash() {
   return sha.hex();
 }
 
+void fill_fcc(int ncell, double a, std::vector<double> &R, double box[9]) {
+  static const double basis[4][3] = {
+      {0, 0, 0}, {0, 0.5, 0.5}, {0.5, 0, 0.5}, {0.5, 0.5, 0}};
+  R.clear();
+  for (int i = 0; i < ncell; ++i) {
+    for (int j = 0; j < ncell; ++j) {
+      for (int k = 0; k < ncell; ++k) {
+        for (int b = 0; b < 4; ++b) {
+          R.push_back(a * (static_cast<double>(i) + basis[b][0]));
+          R.push_back(a * (static_cast<double>(j) + basis[b][1]));
+          R.push_back(a * (static_cast<double>(k) + basis[b][2]));
+        }
+      }
+    }
+  }
+  for (int i = 0; i < 9; ++i) {
+    box[i] = 0;
+  }
+  const double L = a * static_cast<double>(ncell);
+  box[0] = box[4] = box[8] = L;
+}
+
+template <class Pot>
+std::string fcc_hash(Pot &pot, int ncell, double a, int atom_type) {
+  std::vector<double> R;
+  double box[9];
+  fill_fcc(ncell, a, R, box);
+  const std::size_t n = R.size() / 3;
+  std::vector<int> types(n, atom_type);
+  std::vector<double> F(3 * n, 0.0);
+  rgpot::ForceOut out{F.data(), 0.0, 0.0, {}, 0};
+  pot.forceImpl(rgpot::ForceInput{n, R.data(), types.data(), box}, &out);
+  Sha256 sha;
+  sha.f64(out.energy);
+  for (double v : F) {
+    sha.f64(v);
+  }
+  for (int k = 0; k < 6; ++k) {
+    sha.f64(out.stress[k]);
+  }
+  return sha.hex();
+}
+
+// FCC shells past one width-8 round. Morse and EAM run two AVX2 vectors
+// or four SSE vectors, and a sorted neighbour row mixes a near-equilibrium
+// pair (the tiny exp path) with a nearest-neighbour pair (the large
+// reduction), so one chunk takes the all-lanes path and another takes both.
+std::string lj_fcc_hash() {
+  rgpot::LJPot pot{rgpot::LJConfig{.u0 = 0.0104, .cutoff = 8.5, .psi = 3.4}};
+  return fcc_hash(pot, 6, 5.26, 18);
+}
+
+std::string morse_fcc_hash() {
+  rgpot::MorsePot pot;
+  return fcc_hash(pot, 4, 2.9, 78);
+}
+
+std::string eam_fcc_hash() {
+  rgpot::EAMPot pot;
+  return fcc_hash(pot, 4, 4.05, 13);
+}
+
 std::string fold_hash() {
   const double neg0 = std::copysign(0.0, -1.0);
   const double sub = std::numeric_limits<double>::denorm_min();
@@ -356,15 +418,24 @@ TEST_CASE("SIMD targets match the scalar kernel bit for bit", "[simd][isa]") {
   const std::string mo0 = morse_hash();
   const std::string ea0 = eam_hash();
   const std::string fo0 = fold_hash();
+  const std::string lj_fcc0 = lj_fcc_hash();
+  const std::string mo_fcc0 = morse_fcc_hash();
+  const std::string ea_fcc0 = eam_fcc_hash();
   std::cout << "golden lj=" << lj0 << "\n";
   std::cout << "golden morse=" << mo0 << "\n";
   std::cout << "golden eam=" << ea0 << "\n";
   std::cout << "golden fold=" << fo0 << "\n";
+  std::cout << "golden lj_fcc=" << lj_fcc0 << "\n";
+  std::cout << "golden morse_fcc=" << mo_fcc0 << "\n";
+  std::cout << "golden eam_fcc=" << ea_fcc0 << "\n";
   if (std::getenv("RGPOT_ISA_SKIP_GOLDEN") == nullptr) {
     REQUIRE(lj0 == golden_value("lj"));
     REQUIRE(mo0 == golden_value("morse"));
     REQUIRE(ea0 == golden_value("eam"));
     REQUIRE(fo0 == golden_value("fold"));
+    REQUIRE(lj_fcc0 == golden_value("lj_fcc"));
+    REQUIRE(mo_fcc0 == golden_value("morse_fcc"));
+    REQUIRE(ea_fcc0 == golden_value("eam_fcc"));
   }
 
   for (int i = 0; i < nrun; ++i) {
@@ -375,6 +446,9 @@ TEST_CASE("SIMD targets match the scalar kernel bit for bit", "[simd][isa]") {
     REQUIRE(morse_hash() == mo0);
     REQUIRE(eam_hash() == ea0);
     REQUIRE(fold_hash() == fo0);
+    REQUIRE(lj_fcc_hash() == lj_fcc0);
+    REQUIRE(morse_fcc_hash() == mo_fcc0);
+    REQUIRE(eam_fcc_hash() == ea_fcc0);
   }
 
   const char *before = rgpot::simd::chosen_target_name();

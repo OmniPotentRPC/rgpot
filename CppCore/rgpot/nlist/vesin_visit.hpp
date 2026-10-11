@@ -52,6 +52,34 @@ inline double visit_round(double t) {
     return static_cast<double>(static_cast<long long>(t + std::copysign(0.5, t)));
 }
 
+/// Half-list length from the number density times the sphere of radius
+/// sqrt(list_cutoff2). Each unordered pair is stored once. A zero box
+/// volume uses a small default. The pad covers a shell on the sphere.
+inline std::size_t half_list_reserve(std::size_t n, const double w[3],
+                                    double list_cutoff2) {
+    constexpr double kPi = 3.14159265358979323846;
+    const double rc2 = list_cutoff2 > 0.0 ? list_cutoff2 : 0.0;
+    const double rc = std::sqrt(rc2);
+    const double sphere = (4.0 / 3.0) * kPi * rc * rc * rc;
+    const double vol = w[0] * w[1] * w[2];
+    double neigh = 16.0;
+    if (n > 0 && vol > 0.0 && sphere > 0.0) {
+        neigh = (static_cast<double>(n) / vol) * sphere;
+    }
+    if (!(neigh >= 1.0)) {
+        neigh = 1.0;
+    }
+    const double all = static_cast<double>(n) * static_cast<double>(n > 0 ? n - 1 : 0) / 2.0;
+    double pairs = 0.5 * static_cast<double>(n) * neigh * 1.5 + static_cast<double>(n);
+    if (pairs > all) {
+        pairs = all;
+    }
+    if (pairs < 0.0) {
+        pairs = 0.0;
+    }
+    return static_cast<std::size_t>(pairs);
+}
+
 /// Scan all i < j pairs of `points` (interleaved x,y,z, `n` atoms), folding
 /// each dimension by width `w[k]` when `inv[k] = 1/w[k]` is nonzero
 /// (`inv[k] == 0` disables the fold for that dimension).
@@ -72,10 +100,9 @@ inline void brute_force_visit(
     Visitor&& visit
 ) {
     pairs.clear();
-    if (pairs.capacity() < n * 64) {
-        // First build: skip the push_back growth-realloc ladder. Dense
-        // metallic cutoffs hold well under 256 neighbours per atom.
-        pairs.reserve(n * 256);
+    const std::size_t ints = half_list_reserve(n, w, list_cutoff2) * 2;
+    if (pairs.capacity() < ints) {
+        pairs.reserve(ints);
     }
     const auto soa = detail::split_xyz(points, n);
     const double *x = soa.x.data();

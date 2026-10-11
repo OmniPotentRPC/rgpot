@@ -25,11 +25,14 @@ libhwy = static_library(
     ),
     include_directories: include_directories('.'),
     cpp_args: fp + [disabled],
+    gnu_symbol_visibility: 'hidden',
     pic: true,
 )
 
 libhwy_dep = declare_dependency(
     link_with: libhwy,
     include_directories: include_directories('.'),
-    compile_args: fp + [disabled],
+    # The mask stays on this static library. Kernel TUs include
+    # hwy_disabled.h. Consumers of the dependency do not inherit it.
+    compile_args: fp,
 )

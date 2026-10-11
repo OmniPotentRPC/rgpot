@@ -106,6 +106,14 @@ public:
 
   [[nodiscard]] bool isPhantom() const { return phantom_; }
 
+  /// Scan buffer after the CSR list is built. A stored slot releases it.
+  [[nodiscard]] std::size_t scanCapacity() const { return pairsIJ_.capacity(); }
+
+  /// Partner slots kept on the slot. This is the neighbour list, not the scan.
+  [[nodiscard]] std::size_t neighborCapacity() const {
+    return nbr_.capacity();
+  }
+
   /// First sighting: fused eval-only scan plus a phantom stamp (MIC
   /// regime), or just the scan when caching is unsafe for this box.
   template <typename Fn>
@@ -463,8 +471,10 @@ private:
         std::sort(nbr_.begin() + rows_[i], nbr_.begin() + rows_[i + 1]);
       }
     }
-    // Keep the allocation. The next rebuild of this slot fills the same buffer.
+    // The next call builds a new slot, so a kept scan allocation would sit
+    // on this one until the pool drops it. Release it once the CSR exists.
     pairsIJ_.clear();
+    pairsIJ_.shrink_to_fit();
     if (general_) {
       code_.clear();
       fold_ = FoldMode::General;

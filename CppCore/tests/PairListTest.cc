@@ -10,6 +10,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <iostream>
 #include <limits>
 #include <random>
 #include <stdexcept>
@@ -646,18 +647,63 @@ TEST_CASE("Full-cell image search rejects invalid and unrepresentable cells",
                     std::invalid_argument);
   const double ill_conditioned[9] = {1.0, 1.0, 0.0, 1.0, 1.0 + 1e-12,
                                      0.0, 0.0, 0.0, 1.0};
-  rgpot::nlist::MinimumImage ill(ill_conditioned, periodic);
-  double ix = 0.2, iy = -0.3, iz = 0.4;
-  ill.fold(ix, iy, iz);
-  REQUIRE(std::isfinite(ix));
-  REQUIRE(std::isfinite(iy));
-  REQUIRE(std::isfinite(iz));
-  REQUIRE(ix * ix + iy * iy + iz * iz <=
-          0.2 * 0.2 + 0.3 * 0.3 + 0.4 * 0.4 + 1e-9);
+  REQUIRE_THROWS_AS(rgpot::nlist::MinimumImage(ill_conditioned, periodic),
+                    std::invalid_argument);
   const double cell[9] = {1.0, 0.1, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
   const rgpot::nlist::MinimumImage image(cell, periodic);
   double dx = 1e30, dy = 0.0, dz = 0.0;
   REQUIRE_THROWS_AS(image.fold(dx, dy, dz), std::overflow_error);
   dx = std::numeric_limits<double>::quiet_NaN();
   REQUIRE_THROWS_AS(image.fold(dx, dy, dz), std::invalid_argument);
+}
+
+TEST_CASE("pair list memory stays bounded at 100k atoms", "[PairList][memory]") {
+  constexpr int nx = 50;
+  constexpr int ny = 50;
+  constexpr int nz = 40;
+  constexpr std::size_t n = static_cast<std::size_t>(nx * ny * nz);
+  static_assert(n == 100000);
+  constexpr double spacing = 2.5;
+  std::vector<double> R(3 * n);
+  std::size_t a = 0;
+  for (int i = 0; i < nx; ++i) {
+    for (int j = 0; j < ny; ++j) {
+      for (int k = 0; k < nz; ++k) {
+        R[3 * a] = spacing * static_cast<double>(i);
+        R[3 * a + 1] = spacing * static_cast<double>(j);
+        R[3 * a + 2] = spacing * static_cast<double>(k);
+        ++a;
+      }
+    }
+  }
+  const double box[9] = {nx * spacing, 0, 0, 0, ny * spacing, 0, 0, 0, nz * spacing};
+  const double w[3] = {box[0], box[4], box[8]};
+  const double inv[3] = {1.0 / w[0], 1.0 / w[1], 1.0 / w[2]};
+  const double cutoff = 4.0;
+  const double skin = 0.5;
+  const double list_r = cutoff + skin;
+  CellGrid grid;
+  REQUIRE(grid.build(R.data(), n, w, inv, list_r));
+  std::vector<int32_t> pairs;
+  rgpot::nlist::cell_visit<true>(
+      grid, R.data(), w, inv, list_r * list_r, -1.0, pairs,
+      [](int32_t, int32_t, double, double, double, double) {});
+  // A flat 256 neighbours per atom is 256 * n int32 pairs, two indices each.
+  REQUIRE(pairs.capacity() < n * 64 * 2);
+
+  CachedPairList::Options opt;
+  opt.cutoff = cutoff;
+  opt.skin = skin;
+  CachedPairList list;
+  list.rebuild(R.data(), n, box, opt);
+  REQUIRE(list.scanCapacity() == 0);
+  REQUIRE(list.neighborCapacity() < n * 64);
+  std::cout << "pair_list_100k neighbor_capacity=" << list.neighborCapacity()
+            << " scan_capacity=" << list.scanCapacity()
+            << " scan_reserve_ints=" << pairs.capacity() << "\n";
+
+  R[0] += 0.01;
+  list.rebuild(R.data(), n, box, opt);
+  REQUIRE(list.scanCapacity() == 0);
+  REQUIRE(list.neighborCapacity() < n * 64);
 }

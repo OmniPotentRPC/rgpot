@@ -225,8 +225,10 @@ inline void cell_visit(const CellGrid &g, const double *points,
                        std::vector<int32_t> &pairs, Visitor &&visit) {
   if constexpr (Collect) {
     pairs.clear();
-    if (pairs.capacity() < g.atoms.size() * 64) {
-      pairs.reserve(g.atoms.size() * 256);
+    const std::size_t ints =
+        vesin::cpu::half_list_reserve(g.atoms.size(), w, list_cutoff2) * 2;
+    if (pairs.capacity() < ints) {
+      pairs.reserve(ints);
     }
   }
   const double w0 = w[0], w1 = w[1], w2 = w[2];

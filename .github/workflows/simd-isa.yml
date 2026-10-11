@@ -1,13 +1,15 @@
 # ISA dispatch on the two GitHub runner architectures, plus the
 # -march=x86-64-v3 contraction check. This file is hand-maintained.
-# TODO: repin the isa-audit reusable workflow to main once ci/isa-audit
-# is merged. Until then it is called at the I0 commit below.
+# The isa-audit reusable workflow is pinned to the ci/isa-audit commit
+# until that file is on main (rgpot #119). Repin to main when it lands.
 
 name: SIMD ISA
 
 on:
   push:
-    branches: ['perf/**']
+    branches: [main, 'perf/**']
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -69,10 +71,20 @@ jobs:
           meson test -C bbdir --print-errorlogs
           isa=$(find bbdir -name isa_dispatch_test -type f | head -1)
           test -n "${isa}"
+          isa_log=$(mktemp)
           for threads in 1 2 3 8; do
             echo "OMP_NUM_THREADS=${threads}"
-            OMP_NUM_THREADS="${threads}" "${isa}"
+            OMP_NUM_THREADS="${threads}" "${isa}" | tee -a "${isa_log}"
           done
+          # ubuntu-latest is not an AVX-512 label. If the CPU advertises
+          # AVX-512, the run must have exercised that target. Later
+          # per-microarchitecture coverage is the EESSI bot.
+          if grep -m1 '^flags' /proc/cpuinfo | grep -Eq '(^|[[:space:]])avx512f([[:space:]]|$)'; then
+            if ! grep '^exercised:' "${isa_log}" | grep -Eq '(^|[[:space:]])avx3(_zen4)?([[:space:]]|$)'; then
+              echo "runner flags include avx512f but avx3 was not exercised" >&2
+              exit 1
+            fi
+          fi
 
       - name: Upload unstripped library
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

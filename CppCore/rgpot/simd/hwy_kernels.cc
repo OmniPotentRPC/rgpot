@@ -906,12 +906,30 @@ LjFn g_lj = nullptr;
 MorseFn g_morse = nullptr;
 EamFn g_eam = nullptr;
 FoldFn g_fold = nullptr;
+std::int64_t (*g_active)() = nullptr;
 
-void rebind_hwy_targets() {
-  g_lj = HWY_DYNAMIC_POINTER(LjRun);
-  g_morse = HWY_DYNAMIC_POINTER(MorseRun);
-  g_eam = HWY_DYNAMIC_POINTER(EamRun);
-  g_fold = HWY_DYNAMIC_POINTER(FoldOrtho);
+// Same index Highway would store in ChosenTarget, computed from a mask
+// this process owns. The global ChosenTarget is left alone.
+size_t local_dispatch_index(std::int64_t targets) {
+  const auto shifted = static_cast<std::uint64_t>(
+      HWY_CHOSEN_TARGET_SHIFT(targets) | HWY_CHOSEN_TARGET_MASK_SCALAR);
+  const auto masked =
+      shifted & static_cast<std::uint64_t>(HWY_CHOSEN_TARGET_MASK_TARGETS);
+  return hwy::Num0BitsBelowLS1Bit_Nonzero64(masked);
+}
+
+bool bind_hwy_pointers(std::int64_t targets) {
+  if (targets == 0) {
+    targets = hwy::SupportedTargets() & static_cast<std::int64_t>(HWY_TARGETS);
+  }
+  const size_t index = local_dispatch_index(targets);
+  g_lj = HWY_DISPATCH_TABLE(LjRun)[index];
+  g_morse = HWY_DISPATCH_TABLE(MorseRun)[index];
+  g_eam = HWY_DISPATCH_TABLE(EamRun)[index];
+  g_fold = HWY_DISPATCH_TABLE(FoldOrtho)[index];
+  g_active = HWY_DISPATCH_TABLE(ActiveBit)[index];
+  return g_lj != nullptr && g_morse != nullptr && g_eam != nullptr &&
+         g_fold != nullptr && g_active != nullptr;
 }
 
 double lj_hwy_entry(const PairView &view, const LjParams &params, double *F,
@@ -934,7 +952,7 @@ void fold_hwy_entry(double *x, double *y, double *z, std::size_t n, double w0,
   g_fold(x, y, z, n, w0, w1, w2, i0, i1, i2);
 }
 
-std::int64_t active_hwy_bit() { return HWY_DYNAMIC_DISPATCH(ActiveBit)(); }
+std::int64_t active_hwy_bit() { return g_active(); }
 
 } // namespace rgpot::simd
 #endif

@@ -84,7 +84,6 @@ _rgpot_srcs += files('rgpot/PotHelpers.cc')
 _rgpot_srcs += files('rgpot/units.cc')
 _rgpot_srcs += files('rgpot/abi/CxxLayout.cc')
 _rgpot_srcs += files(
-    'rgpot/nlist/MinimumImage.cpp',
     'rgpot/simd/dispatch.cc',
     'rgpot/simd/exp.cc',
     'rgpot/simd/scalar_kernels.cc',
@@ -113,11 +112,17 @@ if not get_option('with_rpc_client_only')
         'rgpot/plugin/PluginRegistry.cc',
         'rgpot/plugin/builtins/lj_plugin.cpp',
     )
+    # RGPOT_WITH_HIGHWAY stays on this archive. The installed dependency
+    # does not pass it on, so a consumer's own Highway headers are untouched.
+    _core_args = _args
+    if have_highway
+        _core_args += ['-DRGPOT_WITH_HIGHWAY']
+    endif
     rgpot_core = static_library(
         'rgpot_core',
         sources: _rgpot_srcs,
         dependencies: _deps,
-        cpp_args: _args,
+        cpp_args: _core_args,
         include_directories: _incdirs,
         pic: true,
         install: false,
