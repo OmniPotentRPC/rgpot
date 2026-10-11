@@ -48,11 +48,19 @@ One rounding is the accuracy of that operation, and it is the one bit definition
 of these kernels.
 The squared distance, the exp scale, the embedding Horner, and the switched pair
 polynomials use that product-sum.
-A target with hardware FMA issues that instruction.
+A translation unit compiled with hardware FMA issues that instruction.
 AVX2, AVX3, AVX3_ZEN4, AArch64 NEON, SVE, SVE2, SVE_256, and RVV do.
-A target without hardware FMA calls =std::fma=.
-Scalar, SSE2, SSE4, and EMU128 take that call.
-=std::fma= is correctly rounded, so those bytes match the hardware instruction.
+On x86-64, SSE2, SSE4, and the scalar request do as well when glibc reports
+that the processor's FMA is usable.
+The body that issues the instruction is compiled for that feature.
+The rest of the kernel stays on the target.
+When that instruction is not available, the product-sum is an inlined
+Veltkamp split, a Dekker TwoProd, and a TwoSum chain, vectorized under SSE2
+and SSE4.
+The exp polynomial and a squared distance return the rounded sum of that chain.
+A general product-sum also repairs an exact half-ulp tie.
+A zero, a subnormal, an overflow, or a non-finite value uses =std::fma=.
+Those bytes match the hardware instruction.
 The pair loop that consumes those lanes is compiled into the target, so the
 choice of instruction set is one indirect call per force evaluation.
 The LJ loop is vectorized for the round fold and for the coded fold.
@@ -87,15 +95,18 @@ Eight-wide LJ was slower where it was timed.
 The neighbour coordinates are not a contiguous vector load.
 A 512-bit polynomial did not hide that load.
 Morse and EAM stay eight wide because the exp does.
-The scalar target is compiled without auto-vectorization.
+The scalar translation unit is compiled without auto-vectorization.
 A debug build and a release build then hash the same bytes.
 That target calls the in-house exp, not libm. libm on this class of host picks
 an exp implementation at run time.
 Matching the in-house bits forbids that call.
 The compiler flag leaves a separate multiply and add uncontracted.
 The product-sums inside the polynomial are an explicit fused multiply-add.
-The scalar target can sit below the pre-dispatch loop on the exp kernels.
-It is the portable fallback, and an x86-64 host does not select it unless asked.
+On x86-64, =RGPOT_SIMD=scalar= runs the SSE2 kernel for LJ, Morse, and EAM.
+That request then has the SSE2 bytes and the SSE2 throughput.
+The reference loop remains the path on a host without that kernel, and on a
+Highway-off build.
+An x86-64 host does not select the scalar request unless asked.
 Morse and EAM evaluate two AVX2 vectors, or four SSE vectors, before depositing.
 That is eight lanes, and atom i's sum stays the width-8 tree.
 LJ stays at one vector.

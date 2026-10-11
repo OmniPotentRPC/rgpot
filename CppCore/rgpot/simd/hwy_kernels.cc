@@ -15,36 +15,182 @@
 #include <cstdint>
 #include <vector>
 
+#if defined(__x86_64__)
+namespace rgpot::simd {
+__m128d exp2_hw(__m128d x);
+void morse8_hw(const double *r2, const MorseParams &params, double *energy,
+               double *fscale);
+void morse8_soft(const double *r2, const MorseParams &params, double *energy,
+                 double *fscale);
+std::size_t accept_row_hw(const PairView &v, std::size_t i, double *dxb,
+                          double *dyb, double *dzb, double *r2b,
+                          std::int32_t *jb);
+}
+#endif
+
 HWY_BEFORE_NAMESPACE();
 namespace rgpot::simd {
 namespace HWY_NAMESPACE {
 namespace hn = hwy::HWY_NAMESPACE;
 
-// Hardware fused multiply-add where the target has one. Otherwise one
-// std::fma per lane, which rounds the same way.
+#if defined(__x86_64__) && (HWY_TARGET == HWY_SSE2 || HWY_TARGET == HWY_SSE4)
+#include "rgpot/simd/sse_soft.hpp"
+#endif
+
+// Hardware fused multiply-add where the target has one. Otherwise the
+// same Dekker product and rounded sum as exact_fma, on the whole vector.
+// A lane outside that domain, or a tie the fast sum cannot close, drops
+// to exact_fma so the bits stay those of the hardware instruction.
+#if !HWY_NATIVE_FMA
+template <class V>
+HWY_INLINE void two_sum_lanes(V a, V b, V &s, V &e) {
+  s = hn::Add(a, b);
+  const auto z = hn::Sub(s, a);
+  e = hn::Add(hn::Sub(a, hn::Sub(s, z)), hn::Sub(b, z));
+}
+
+template <class D>
+HWY_INLINE void two_prod_lanes(D d, hn::Vec<D> a, hn::Vec<D> b, hn::Vec<D> &p,
+                               hn::Vec<D> &e) {
+  const auto split = hn::Set(d, detail::kFmaSplit);
+  p = hn::Mul(a, b);
+  const auto ca = hn::Mul(split, a);
+  const auto ah = hn::Sub(ca, hn::Sub(ca, a));
+  const auto al = hn::Sub(a, ah);
+  const auto cb = hn::Mul(split, b);
+  const auto bh = hn::Sub(cb, hn::Sub(cb, b));
+  const auto bl = hn::Sub(b, bh);
+  const auto t1 = hn::Add(hn::Sub(hn::Mul(ah, bh), p), hn::Mul(ah, bl));
+  e = hn::Add(hn::Add(t1, hn::Mul(al, bh)), hn::Mul(al, bl));
+}
+
+template <class D>
+HWY_INLINE bool lanes_in_fma_domain(D d, hn::Vec<D> a, hn::Vec<D> b,
+                                    hn::Vec<D> c) {
+  const auto finite = hn::And(hn::IsFinite(a), hn::And(hn::IsFinite(b), hn::IsFinite(c)));
+  auto in_mag = [&](hn::Vec<D> v, double lo, double hi) {
+    const auto ax = hn::Abs(v);
+    const auto zero = hn::Eq(ax, hn::Zero(d));
+    return hn::And(hn::Le(ax, hn::Set(d, hi)),
+                   hn::Or(zero, hn::Ge(ax, hn::Set(d, lo))));
+  };
+  const auto mag = hn::And(in_mag(a, 0x1p-480, 0x1p480),
+                           hn::And(in_mag(b, 0x1p-480, 0x1p480),
+                                   in_mag(c, 0x1p-900, 0x1p900)));
+  return hn::AllTrue(d, hn::And(finite, mag));
+}
+#endif
+
+#if !HWY_NATIVE_FMA
+// Branchless Dekker product and correctly rounded sum. Inputs are finite
+// normals inside fma_dekker_domain. A zero, a subnormal, or a non-finite
+// lane is not meaningful here; FmaArray repairs those.
+template <class D>
+HWY_INLINE hn::Vec<D> fma_rounded(D d, hn::Vec<D> a, hn::Vec<D> b, hn::Vec<D> c) {
+  using V = hn::Vec<D>;
+  const hn::RebindToUnsigned<D> du;
+  V pe, t, z, h, u, err, sl, e2;
+  V p, s, v, r, rem, pred, sh, d2;
+  two_prod_lanes(d, a, b, p, pe);
+  two_sum_lanes(p, c, s, t);
+  two_sum_lanes(t, pe, v, z);
+  two_sum_lanes(s, v, r, h);
+  two_sum_lanes(h, z, rem, u);
+  two_sum_lanes(r, rem, pred, err);
+  two_sum_lanes(err, u, sh, sl);
+
+  const auto ub = hn::BitCast(du, pred);
+  const auto be = hn::And(hn::ShiftRight<52>(ub), hn::Set(du, std::uint64_t{0x7ff}));
+  const auto mant = hn::And(ub, hn::Set(du, std::uint64_t{0xfffffffffffffULL}));
+  const auto pow2 = hn::Eq(mant, hn::Zero(du));
+  const auto sign = hn::Set(du, std::uint64_t{0x8000000000000000ULL});
+  const auto sh_bits = hn::BitCast(du, sh);
+  const auto same = hn::Eq(hn::Xor(hn::And(sh_bits, sign), hn::And(ub, sign)),
+                           hn::Zero(du));
+  const auto adj = hn::And(pow2, hn::Not(same));
+  auto mid_be = hn::Sub(be, hn::Set(du, std::uint64_t{53}));
+  mid_be = hn::Sub(mid_be, hn::IfThenElseZero(adj, hn::Set(du, std::uint64_t{1})));
+  auto mb = hn::ShiftLeft<52>(mid_be);
+  mb = hn::Or(mb, hn::And(sh_bits, sign));
+  const auto mid = hn::BitCast(d, mb);
+
+  const auto diff = hn::Sub(sh, mid);
+  two_sum_lanes(diff, sl, d2, e2);
+  const auto zero_d = hn::Zero(d);
+  const auto d2_0 = hn::Eq(d2, zero_d);
+  const auto e2_0 = hn::Eq(e2, zero_d);
+  const auto tie = hn::And(d2_0, e2_0);
+  const auto d2_bits = hn::BitCast(du, d2);
+  const auto e2_bits = hn::BitCast(du, e2);
+  const auto d2_same =
+      hn::Eq(hn::Xor(hn::And(d2_bits, sign), hn::And(mb, sign)), hn::Zero(du));
+  const auto e2_same =
+      hn::Eq(hn::Xor(hn::And(e2_bits, sign), hn::And(mb, sign)), hn::Zero(du));
+  const auto d2_same_d = hn::RebindMask(d, d2_same);
+  const auto e2_same_d = hn::RebindMask(d, e2_same);
+  const auto up_d = hn::And(d2_same_d, hn::Not(d2_0));
+  const auto up_e = hn::And(d2_0, hn::And(e2_same_d, hn::Not(e2_0)));
+  const auto up = hn::And(hn::Not(tie), hn::Or(up_d, up_e));
+
+  const auto nb_up = hn::Add(ub, hn::Set(du, std::uint64_t{1}));
+  const auto nb_dn = hn::Sub(ub, hn::Set(du, std::uint64_t{1}));
+  const auto nxt = hn::BitCast(d, hn::IfThenElse(same, nb_up, nb_dn));
+
+  V result = pred;
+  result = hn::IfThenElse(hn::RebindMask(d, tie), hn::Add(pred, mid), result);
+  result = hn::IfThenElse(hn::RebindMask(d, up), nxt, result);
+  const auto sh0 = hn::Eq(sh, zero_d);
+  const auto pred0 = hn::Eq(pred, zero_d);
+  const auto bad = hn::Or(hn::Or(sh0, pred0), hn::Or(hn::IsNaN(pred), hn::IsNaN(sh)));
+  const auto simple = hn::Add(pred, hn::Add(sh, sl));
+  return hn::IfThenElse(bad, simple, result);
+}
+#endif
+
 template <class D>
 HWY_INLINE hn::Vec<D> fma_lanes(D d, hn::Vec<D> a, hn::Vec<D> b, hn::Vec<D> c) {
 #if HWY_NATIVE_FMA
   (void)d;
   return hn::MulAdd(a, b, c);
+#elif defined(__x86_64__) && (HWY_TARGET == HWY_SSE2 || HWY_TARGET == HWY_SSE4)
+  (void)d;
+  hn::Vec<D> out;
+  out.raw = fma2(a.raw, b.raw, c.raw);
+  return out;
 #else
-  alignas(64) double as[8];
-  alignas(64) double bs[8];
-  alignas(64) double cs[8];
-  alignas(64) double out[8];
-  hn::Store(a, d, as);
-  hn::Store(b, d, bs);
-  hn::Store(c, d, cs);
-  const std::size_t lanes = hn::Lanes(d);
-  for (std::size_t i = 0; i < lanes; ++i) {
-    out[i] = std::fma(as[i], bs[i], cs[i]);
+  return fma_rounded(d, a, b, c);
+#endif
+}
+
+// __FMA__ follows the command line, not a Highway target pragma. On an AVX
+// clone the pragma still enables the instruction, so the builtin is the
+// instruction. A glibc ifunc would follow the hwcaps mask.
+HWY_INLINE double r2_scalar(double dx, double dy, double dz) {
+#if HWY_NATIVE_FMA
+  return __builtin_fma(dz, dz, __builtin_fma(dy, dy, dx * dx));
+#elif defined(__x86_64__)
+  if (detail::glibc_fma_active()) {
+    return r2_hw(dx, dy, dz);
   }
-  return hn::Load(d, out);
+  return fma_trunc(dz, dz, fma_trunc(dy, dy, dx * dx));
+#else
+  return r2_of(dx, dy, dz);
 #endif
 }
 
 template <class D>
 HWY_INLINE hn::Vec<D> r2_vec(D d, hn::Vec<D> dx, hn::Vec<D> dy, hn::Vec<D> dz) {
+#if !HWY_NATIVE_FMA
+  if (detail::glibc_fma_active()) {
+    alignas(64) double dxa[8], dya[8], dza[8], out[8];
+    hn::Store(dx, d, dxa);
+    hn::Store(dy, d, dya);
+    hn::Store(dz, d, dza);
+    const std::size_t lanes = hn::Lanes(d);
+    r2_hw_n(dxa, dya, dza, out, lanes);
+    return hn::Load(d, out);
+  }
+#endif
   return fma_lanes(d, dz, dz, fma_lanes(d, dy, dy, hn::Mul(dx, dx)));
 }
 
@@ -108,6 +254,28 @@ template <class D> HWY_INLINE hn::Vec<D> exp_large(D d, hn::Vec<D> x_in) {
 }
 
 template <class D> HWY_INLINE hn::Vec<D> exp_lanes(D d, hn::Vec<D> x_in) {
+#if !HWY_NATIVE_FMA
+  // One call holds every fused product of this exp, so the SSE kernel does
+  // not pay a libcall per Horner step when the processor's FMA is usable.
+  if (detail::glibc_fma_active()) {
+#if defined(__x86_64__) && (HWY_TARGET == HWY_SSE2 || HWY_TARGET == HWY_SSE4)
+    hn::Vec<D> fast;
+    fast.raw = exp2_hw(x_in.raw);
+    return fast;
+#else
+    alignas(64) double in[8], out[8];
+    hn::Store(x_in, d, in);
+    const std::size_t lanes = hn::Lanes(d);
+    exp_hw_n(in, out, lanes);
+    return hn::Load(d, out);
+#endif
+  }
+#if defined(__x86_64__) && (HWY_TARGET == HWY_SSE2 || HWY_TARGET == HWY_SSE4)
+  hn::Vec<D> fast;
+  fast.raw = exp2(x_in.raw);
+  return fast;
+#endif
+#endif
   const hn::RebindToUnsigned<D> du;
   const hn::Rebind<std::int64_t, D> di;
   const auto bits = hn::BitCast(du, x_in);
@@ -319,8 +487,23 @@ template <class D, bool kMorse, int Fold>
 HWY_INLINE double pair_run(D d, const PairView &v, double *F, double *strain,
                            const LjParams *lj, const MorseParams *mp) {
   const std::size_t L = hn::Lanes(d);
-  std::vector<double> dxb(v.n), dyb(v.n), dzb(v.n), r2b(v.n);
-  std::vector<std::int32_t> jb(v.n);
+  struct Scratch {
+    std::vector<double> dxb, dyb, dzb, r2b;
+    std::vector<std::int32_t> jb;
+  };
+  thread_local Scratch scratch;
+  if (scratch.dxb.size() < v.n) {
+    scratch.dxb.resize(v.n);
+    scratch.dyb.resize(v.n);
+    scratch.dzb.resize(v.n);
+    scratch.r2b.resize(v.n);
+    scratch.jb.resize(v.n);
+  }
+  double *dxb = scratch.dxb.data();
+  double *dyb = scratch.dyb.data();
+  double *dzb = scratch.dzb.data();
+  double *r2b = scratch.r2b.data();
+  std::int32_t *jb = scratch.jb.data();
   double energy = 0.0;
   for (std::size_t i = 0; i < v.n; ++i) {
     Part8 part{};
@@ -332,6 +515,14 @@ HWY_INLINE double pair_run(D d, const PairView &v, double *F, double *strain,
     const double zi = v.R[3 * i + 2];
     std::size_t m = 0;
     if constexpr (Fold != 3) {
+#if !HWY_NATIVE_FMA && defined(__x86_64__)
+      if (detail::glibc_fma_active()) {
+        m = accept_row_hw(v, i, dxb, dyb, dzb, r2b, jb);
+      } else
+#endif
+#if !HWY_NATIVE_FMA
+      {
+      std::size_t raw = 0;
       for (std::int32_t p = p0; p < p1; ++p) {
         const auto up = static_cast<std::size_t>(p);
         const auto j = static_cast<std::size_t>(v.nbr[up]);
@@ -348,7 +539,64 @@ HWY_INLINE double pair_run(D d, const PairView &v, double *F, double *strain,
           dy = dy - sh[1];
           dz = dz - sh[2];
         }
-        const double r2 = r2_of(dx, dy, dz);
+        dxb[raw] = dx;
+        dyb[raw] = dy;
+        dzb[raw] = dz;
+        jb[raw] = static_cast<std::int32_t>(j);
+        ++raw;
+      }
+#if defined(__x86_64__) && (HWY_TARGET == HWY_SSE2 || HWY_TARGET == HWY_SSE4)
+      std::size_t t = 0;
+      for (; t + 8 <= raw; t += 8) {
+        r2_8_trunc(dxb + t, dyb + t, dzb + t, r2b + t);
+      }
+      for (; t + 2 <= raw; t += 2) {
+        const __m128d x = _mm_loadu_pd(dxb + t);
+        const __m128d y = _mm_loadu_pd(dyb + t);
+        const __m128d z = _mm_loadu_pd(dzb + t);
+        const __m128d r2 = fma2_trunc(z, z, fma2_trunc(y, y, _mm_mul_pd(x, x)));
+        _mm_storeu_pd(r2b + t, r2);
+      }
+      for (; t < raw; ++t) {
+        r2b[t] = fma_trunc(dzb[t], dzb[t], fma_trunc(dyb[t], dyb[t], dxb[t] * dxb[t]));
+      }
+#else
+      for (std::size_t t = 0; t < raw; ++t) {
+        r2b[t] = fma_trunc(dzb[t], dzb[t], fma_trunc(dyb[t], dyb[t], dxb[t] * dxb[t]));
+      }
+#endif
+      for (std::size_t t = 0; t < raw; ++t) {
+        if (!(r2b[t] <= v.cutoff2)) {
+          continue;
+        }
+        if (m != t) {
+          dxb[m] = dxb[t];
+          dyb[m] = dyb[t];
+          dzb[m] = dzb[t];
+          r2b[m] = r2b[t];
+          jb[m] = jb[t];
+        }
+        ++m;
+      }
+      }
+#else
+      for (std::int32_t p = p0; p < p1; ++p) {
+        const auto up = static_cast<std::size_t>(p);
+        const auto j = static_cast<std::size_t>(v.nbr[up]);
+        double dx = xi - v.R[3 * j];
+        double dy = yi - v.R[3 * j + 1];
+        double dz = zi - v.R[3 * j + 2];
+        if constexpr (Fold == 1) {
+          dx = dx - v.w[0] * visit_round(dx * v.inv[0]);
+          dy = dy - v.w[1] * visit_round(dy * v.inv[1]);
+          dz = dz - v.w[2] * visit_round(dz * v.inv[2]);
+        } else if constexpr (Fold == 2) {
+          const double *sh = v.shift + 3 * static_cast<std::size_t>(v.code[up]);
+          dx = dx - sh[0];
+          dy = dy - sh[1];
+          dz = dz - sh[2];
+        }
+        const double r2 = r2_scalar(dx, dy, dz);
         if (!(r2 <= v.cutoff2)) {
           continue;
         }
@@ -359,6 +607,7 @@ HWY_INLINE double pair_run(D d, const PairView &v, double *F, double *strain,
         jb[m] = static_cast<std::int32_t>(j);
         ++m;
       }
+#endif
       // Deposit one evaluated vector into the width-8 tree at nacc, then
       // advance. Slots are independent, so a vector add matches deposit.
       auto deposit_vec = [&](std::size_t base, hn::Vec<D> dx, hn::Vec<D> dy,
@@ -398,10 +647,10 @@ HWY_INLINE double pair_run(D d, const PairView &v, double *F, double *strain,
       };
       auto eval_vec = [&](std::size_t base, hn::Vec<D> &dx, hn::Vec<D> &dy,
                           hn::Vec<D> &dz, hn::Vec<D> &ev, hn::Vec<D> &fsv) {
-        dx = hn::LoadU(d, dxb.data() + base);
-        dy = hn::LoadU(d, dyb.data() + base);
-        dz = hn::LoadU(d, dzb.data() + base);
-        const auto r2 = hn::LoadU(d, r2b.data() + base);
+        dx = hn::LoadU(d, dxb + base);
+        dy = hn::LoadU(d, dyb + base);
+        dz = hn::LoadU(d, dzb + base);
+        const auto r2 = hn::LoadU(d, r2b + base);
         if constexpr (kMorse) {
           morse_vec(d, r2, *mp, ev, fsv);
         } else {
@@ -414,6 +663,32 @@ HWY_INLINE double pair_run(D d, const PairView &v, double *F, double *strain,
       // neighbour order before the next group starts.
       if constexpr (kMorse) {
         if (L == 2) {
+#if defined(__x86_64__)
+          const bool hw_fma = detail::glibc_fma_active();
+          for (; k + 8 <= m; k += 8) {
+            alignas(16) double r2s[8], es[8], fs[8];
+            for (int t = 0; t < 8; ++t) {
+              r2s[t] = r2b[k + static_cast<std::size_t>(t)];
+            }
+            if (hw_fma) {
+              morse8_hw(r2s, *mp, es, fs);
+            } else {
+              morse8_soft(r2s, *mp, es, fs);
+            }
+            auto take = [&](std::size_t base) {
+              hn::Vec<D> dx = hn::LoadU(d, dxb + base);
+              hn::Vec<D> dy = hn::LoadU(d, dyb + base);
+              hn::Vec<D> dz = hn::LoadU(d, dzb + base);
+              hn::Vec<D> ev = hn::LoadU(d, es + (base - k));
+              hn::Vec<D> fsv = hn::LoadU(d, fs + (base - k));
+              deposit_vec(base, dx, dy, dz, ev, fsv);
+            };
+            take(k);
+            take(k + 2);
+            take(k + 4);
+            take(k + 6);
+          }
+#else
           for (; k + 8 <= m; k += 8) {
             hn::Vec<D> dx0, dy0, dz0, ev0, fs0;
             hn::Vec<D> dx1, dy1, dz1, ev1, fs1;
@@ -428,6 +703,7 @@ HWY_INLINE double pair_run(D d, const PairView &v, double *F, double *strain,
             deposit_vec(k + 4, dx2, dy2, dz2, ev2, fs2);
             deposit_vec(k + 6, dx3, dy3, dz3, ev3, fs3);
           }
+#endif
         } else if (L < 8) {
           for (; k + 2 * L <= m; k += 2 * L) {
             hn::Vec<D> dx0, dy0, dz0, ev0, fs0;
@@ -451,9 +727,9 @@ HWY_INLINE double pair_run(D d, const PairView &v, double *F, double *strain,
         const double r2 = r2b[k];
         double e = 0, fs = 0;
         if constexpr (kMorse) {
-          morse_term(r2, *mp, e, fs);
+          morse_term<false>(r2, *mp, e, fs);
         } else {
-          lj_term(r2, *lj, e, fs);
+          lj_term<false>(r2, *lj, e, fs);
         }
         const double fx = fs * dx;
         const double fy = fs * dy;
@@ -473,15 +749,15 @@ HWY_INLINE double pair_run(D d, const PairView &v, double *F, double *strain,
         const auto j = static_cast<std::size_t>(v.nbr[up]);
         double dx = 0, dy = 0, dz = 0;
         fold_one(v, i, j, up, dx, dy, dz);
-        const double r2 = r2_of(dx, dy, dz);
+        const double r2 = r2_scalar(dx, dy, dz);
         if (!(r2 <= v.cutoff2)) {
           continue;
         }
         double e = 0, fs = 0;
         if constexpr (kMorse) {
-          morse_term(r2, *mp, e, fs);
+          morse_term<false>(r2, *mp, e, fs);
         } else {
-          lj_term(r2, *lj, e, fs);
+          lj_term<false>(r2, *lj, e, fs);
         }
         const double fx = fs * dx;
         const double fy = fs * dy;
@@ -563,6 +839,17 @@ double MorseRun(const PairView *view, const MorseParams *params, double *F,
 
 void EamRun(long n, const double *R, const EamAtom *atoms, const double *box,
             double *F, double *U) {
+#if !HWY_NATIVE_FMA && defined(__x86_64__) &&                                          \
+    (HWY_TARGET == HWY_SSE2 || HWY_TARGET == HWY_SSE4)
+  eam_sse(n, R, atoms, box, F, U);
+  return;
+#endif
+#if !HWY_NATIVE_FMA
+  if (detail::glibc_fma_active()) {
+    eam_hw(n, R, atoms, box, F, U);
+    return;
+  }
+#endif
   const hn::CappedTag<double, 8> d;
   const hn::Rebind<std::int64_t, decltype(d)> di;
   const std::size_t L = hn::Lanes(d);
@@ -572,12 +859,34 @@ void EamRun(long n, const double *R, const EamAtom *atoms, const double *box,
   const double h0 = b0 * 0.5;
   const double h1 = b1 * 0.5;
   const double h2 = b2 * 0.5;
-  std::vector<double> drho(static_cast<std::size_t>(3 * n), 0.0);
-  std::vector<double> dxs(static_cast<std::size_t>(n));
-  std::vector<double> dys(static_cast<std::size_t>(n));
-  std::vector<double> dzs(static_cast<std::size_t>(n));
-  std::vector<double> r2s(static_cast<std::size_t>(n));
-  std::vector<long> js(static_cast<std::size_t>(n));
+  // Scratch lives for the thread. The timed calls after the first do not
+  // allocate, and drho stays zero except on atoms this atom actually touches.
+  struct Scratch {
+    std::vector<double> drho;
+    std::vector<double> dxs;
+    std::vector<double> dys;
+    std::vector<double> dzs;
+    std::vector<double> r2s;
+    std::vector<long> js;
+  };
+  thread_local Scratch scratch;
+  const auto nn = static_cast<std::size_t>(n);
+  if (scratch.drho.size() != nn * 3) {
+    scratch.drho.assign(nn * 3, 0.0);
+  }
+  if (scratch.dxs.size() != nn) {
+    scratch.dxs.resize(nn);
+    scratch.dys.resize(nn);
+    scratch.dzs.resize(nn);
+    scratch.r2s.resize(nn);
+    scratch.js.resize(nn);
+  }
+  std::vector<double> &drho = scratch.drho;
+  std::vector<double> &dxs = scratch.dxs;
+  std::vector<double> &dys = scratch.dys;
+  std::vector<double> &dzs = scratch.dzs;
+  std::vector<double> &r2s = scratch.r2s;
+  std::vector<long> &js = scratch.js;
   const auto hb0 = hn::Set(d, b0);
   const auto hb1 = hn::Set(d, b1);
   const auto hb2 = hn::Set(d, b2);
@@ -590,7 +899,6 @@ void EamRun(long n, const double *R, const EamAtom *atoms, const double *box,
 
   for (long i = 0; i < n; ++i) {
     const EamAtom &a = atoms[i];
-    std::fill(drho.begin(), drho.end(), 0.0);
     Part8 dens_part{};
     int nd = 0;
     Part8 pair_part{};
@@ -647,7 +955,7 @@ void EamRun(long n, const double *R, const EamAtom *atoms, const double *box,
       double dy = yi - R[3 * j + 1];
       double dz = zi - R[3 * j + 2];
       half_box(dx, dy, dz, b0, b1, b2, h0, h1, h2);
-      const double r2 = r2_of(dx, dy, dz);
+      const double r2 = r2_scalar(dx, dy, dz);
       if (!(r2 <= a.cutoff2)) {
         continue;
       }
@@ -852,25 +1160,62 @@ void EamRun(long n, const double *R, const EamAtom *atoms, const double *box,
     drho[static_cast<std::size_t>(3 * i + 1)] += combine8(dens_part.fy);
     drho[static_cast<std::size_t>(3 * i + 2)] += combine8(dens_part.fz);
     *U += combine8(pair_part.e);
-    *U += embed_horner(a.coeff, dens);
+    *U += embed_horner<false>(a.coeff, dens);
     F[3 * i] -= combine8(pair_part.fx);
     F[3 * i + 1] -= combine8(pair_part.fy);
     F[3 * i + 2] -= combine8(pair_part.fz);
-    const double dF = embed_force(a.coeff, dens);
-    const auto df = hn::Set(d, dF);
-    long k = 0;
-    const long n3 = 3 * n;
-    for (; k + static_cast<long>(L) <= n3; k += static_cast<long>(L)) {
-      const auto us = static_cast<std::size_t>(k);
-      const auto fv = hn::LoadU(d, F + us);
-      const auto rh = hn::LoadU(d, drho.data() + us);
-      const auto prod = hn::Mul(df, rh);
-      hn::StoreU(hn::Sub(fv, prod), d, F + us);
+    const double dF = embed_force<false>(a.coeff, dens);
+    // Each component is independent, so touching only i and the neighbours
+    // matches subtracting dF times a zero density derivative everywhere else.
+    auto apply_rho = [&](long atom) {
+      const std::size_t base = static_cast<std::size_t>(3 * atom);
+      F[base] -= dF * drho[base];
+      F[base + 1] -= dF * drho[base + 1];
+      F[base + 2] -= dF * drho[base + 2];
+      drho[base] = 0.0;
+      drho[base + 1] = 0.0;
+      drho[base + 2] = 0.0;
+    };
+    apply_rho(i);
+    for (long t = 0; t < ns; ++t) {
+      apply_rho(js[static_cast<std::size_t>(t)]);
     }
-    for (; k < n3; ++k) {
-      const double prod = dF * drho[static_cast<std::size_t>(k)];
-      F[k] -= prod;
+  }
+}
+
+void FmaArray(const double *a, const double *b, const double *c, double *out,
+              std::size_t n) {
+  const hn::CappedTag<double, 8> d;
+  const std::size_t L = hn::Lanes(d);
+  std::size_t i = 0;
+  for (; i + L <= n; i += L) {
+    const auto va = hn::LoadU(d, a + i);
+    const auto vb = hn::LoadU(d, b + i);
+    const auto vc = hn::LoadU(d, c + i);
+#if HWY_NATIVE_FMA
+    hn::StoreU(hn::MulAdd(va, vb, vc), d, out + i);
+#else
+    if (!lanes_in_fma_domain(d, va, vb, vc)) {
+      for (std::size_t lane = 0; lane < L; ++lane) {
+        out[i + lane] = exact_fma(a[i + lane], b[i + lane], c[i + lane]);
+      }
+      continue;
     }
+    const auto y = fma_lanes(d, va, vb, vc);
+    alignas(64) double ys[8];
+    hn::Store(y, d, ys);
+    for (std::size_t lane = 0; lane < L; ++lane) {
+      const double yi = ys[lane];
+      if (yi == 0.0 || !std::isfinite(yi) || std::fabs(yi) < 0x1p-1022) {
+        out[i + lane] = exact_fma(a[i + lane], b[i + lane], c[i + lane]);
+      } else {
+        out[i + lane] = yi;
+      }
+    }
+#endif
+  }
+  for (; i < n; ++i) {
+    out[i] = exact_fma(a[i], b[i], c[i]);
   }
 }
 
@@ -892,6 +1237,7 @@ HWY_EXPORT(FoldOrtho);
 HWY_EXPORT(LjRun);
 HWY_EXPORT(MorseRun);
 HWY_EXPORT(EamRun);
+HWY_EXPORT(FmaArray);
 HWY_EXPORT(ActiveBit);
 
 using LjFn = double (*)(const PairView *, const LjParams *, double *, double *);
@@ -899,12 +1245,15 @@ using MorseFn = double (*)(const PairView *, const MorseParams *, double *,
                            double *);
 using EamFn = void (*)(long, const double *, const EamAtom *, const double *,
                        double *, double *);
+using FmaFn = void (*)(const double *, const double *, const double *, double *,
+                       std::size_t);
 using FoldFn = void (*)(double *, double *, double *, std::size_t, double,
                         double, double, double, double, double);
 
 LjFn g_lj = nullptr;
 MorseFn g_morse = nullptr;
 EamFn g_eam = nullptr;
+FmaFn g_fma = nullptr;
 FoldFn g_fold = nullptr;
 std::int64_t (*g_active)() = nullptr;
 
@@ -926,10 +1275,16 @@ bool bind_hwy_pointers(std::int64_t targets) {
   g_lj = HWY_DISPATCH_TABLE(LjRun)[index];
   g_morse = HWY_DISPATCH_TABLE(MorseRun)[index];
   g_eam = HWY_DISPATCH_TABLE(EamRun)[index];
+  g_fma = HWY_DISPATCH_TABLE(FmaArray)[index];
   g_fold = HWY_DISPATCH_TABLE(FoldOrtho)[index];
   g_active = HWY_DISPATCH_TABLE(ActiveBit)[index];
   return g_lj != nullptr && g_morse != nullptr && g_eam != nullptr &&
-         g_fold != nullptr && g_active != nullptr;
+         g_fma != nullptr && g_fold != nullptr && g_active != nullptr;
+}
+
+void fma_hwy_entry(const double *a, const double *b, const double *c,
+                   double *out, std::size_t n) {
+  g_fma(a, b, c, out, n);
 }
 
 double lj_hwy_entry(const PairView &view, const LjParams &params, double *F,
@@ -946,6 +1301,25 @@ void eam_hwy_entry(long n, const double *R, const EamAtom *atoms,
                    const double *box, double *F, double *U) {
   g_eam(n, R, atoms, box, F, U);
 }
+
+#if defined(__x86_64__)
+double lj_sse2_entry(const PairView &view, const LjParams &params, double *F,
+                     double strain[6]) {
+  return HWY_DISPATCH_TABLE(LjRun)[local_dispatch_index(HWY_SSE2)](&view, &params, F,
+                                                                   strain);
+}
+
+double morse_sse2_entry(const PairView &view, const MorseParams &params, double *F,
+                        double strain[6]) {
+  return HWY_DISPATCH_TABLE(MorseRun)[local_dispatch_index(HWY_SSE2)](
+      &view, &params, F, strain);
+}
+
+void eam_sse2_entry(long n, const double *R, const EamAtom *atoms, const double *box,
+                    double *F, double *U) {
+  HWY_DISPATCH_TABLE(EamRun)[local_dispatch_index(HWY_SSE2)](n, R, atoms, box, F, U);
+}
+#endif
 
 void fold_hwy_entry(double *x, double *y, double *z, std::size_t n, double w0,
                     double w1, double w2, double i0, double i1, double i2) {

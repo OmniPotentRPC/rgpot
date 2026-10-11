@@ -7,7 +7,6 @@
 #include "rgpot/simd/pods.hpp"
 #include "rgpot/simd/reduce.hpp"
 
-#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <vector>
@@ -49,6 +48,7 @@ inline void fold_one(const PairView &v, std::size_t i, std::size_t j,
   }
 }
 
+template <bool Hw>
 inline void lj_term(double r2, const LjParams &p, double &energy,
                     double &fscale) {
   const double inv_r2 = 1.0 / r2;
@@ -75,8 +75,8 @@ inline void lj_term(double r2, const LjParams &p, double &energy,
   const double t3 = t2 * t;
   const double six_t = 6.0 * t;
   const double inner = 15.0 - six_t;
-  const double poly = mul_add(t, inner, -10.0);
-  const double s = mul_add(t3, poly, 1.0);
+  const double poly = fad<Hw>(t, inner, -10.0);
+  const double s = fad<Hw>(t3, poly, 1.0);
   const double omt = 1.0 - t;
   const double m30 = -30.0 * t2;
   const double ds1 = m30 * omt;
@@ -88,15 +88,16 @@ inline void lj_term(double r2, const LjParams &p, double &energy,
   fscale = switched - slope;
 }
 
+template <bool Hw>
 inline void morse_term(double r2, const MorseParams &p, double &energy,
                        double &fscale) {
   const double r = std::sqrt(r2);
   const double dr = r - p.r_eq;
   const double arg = -p.range * dr;
-  const double ex = exp(arg);
+  const double ex = exp_fast<Hw>(arg);
   const double d = 1.0 - ex;
   const double dd = p.depth * d;
-  const double v = mul_add(dd, d, -p.depth);
+  const double v = fad<Hw>(dd, d, -p.depth);
   const double d_m1 = d - 1.0;
   const double num = (p.two_de_a * d) * d_m1;
   if (p.use_switch == 0) {
@@ -110,8 +111,8 @@ inline void morse_term(double r2, const MorseParams &p, double &energy,
   const double t3 = t2 * t;
   const double six_t = 6.0 * t;
   const double inner = 15.0 - six_t;
-  const double poly = mul_add(t, inner, -10.0);
-  const double s = mul_add(t3, poly, 1.0);
+  const double poly = fad<Hw>(t, inner, -10.0);
+  const double s = fad<Hw>(t3, poly, 1.0);
   const double omt = 1.0 - t;
   const double m30 = -30.0 * t2;
   const double ds1 = m30 * omt;
@@ -123,19 +124,19 @@ inline void morse_term(double r2, const MorseParams &p, double &energy,
   fscale = (switched - slope) / r;
 }
 
-inline double embed_horner(const double *coeff, double rho) {
+template <bool Hw> inline double embed_horner(const double *coeff, double rho) {
   double result = coeff[8];
   for (int i = 7; i >= 0; --i) {
-    result = mul_add(result, rho, coeff[i]);
+    result = fad<Hw>(result, rho, coeff[i]);
   }
   return result;
 }
 
-inline double embed_force(const double *coeff, double rho) {
+template <bool Hw> inline double embed_force(const double *coeff, double rho) {
   double result = coeff[8] * 8.0;
   for (int i = 7; i >= 1; --i) {
     const double term = static_cast<double>(i) * coeff[i];
-    result = mul_add(result, rho, term);
+    result = fad<Hw>(result, rho, term);
   }
   return -result;
 }
@@ -159,7 +160,7 @@ inline void half_box(double &dx, double &dy, double &dz, double b0, double b1,
   }
 }
 
-template <int Fold, typename Term>
+template <bool Hw, int Fold, typename Term>
 double accumulate_folded(const PairView &v, double *F, double strain[6],
                          Term &&term) {
   double energy = 0.0;
@@ -193,7 +194,7 @@ double accumulate_folded(const PairView &v, double *F, double strain[6],
           image->fold(dx, dy, dz);
         }
       }
-      const double r2 = r2_of(dx, dy, dz);
+      const double r2 = r2_fast<Hw>(dx, dy, dz);
       if (!(r2 <= v.cutoff2)) {
         continue;
       }
@@ -221,35 +222,38 @@ double accumulate_folded(const PairView &v, double *F, double strain[6],
   return energy;
 }
 
-template <typename Term>
+template <bool Hw, typename Term>
 double accumulate_pairs(const PairView &v, double *F, double strain[6],
                         Term &&term) {
   switch (v.fold) {
   case 0:
-    return accumulate_folded<0>(v, F, strain, term);
+    return accumulate_folded<Hw, 0>(v, F, strain, term);
   case 1:
-    return accumulate_folded<1>(v, F, strain, term);
+    return accumulate_folded<Hw, 1>(v, F, strain, term);
   case 2:
-    return accumulate_folded<2>(v, F, strain, term);
+    return accumulate_folded<Hw, 2>(v, F, strain, term);
   default:
-    return accumulate_folded<3>(v, F, strain, term);
+    return accumulate_folded<Hw, 3>(v, F, strain, term);
   }
 }
 
+template <bool Hw>
 inline double lj_scalar(const PairView &v, const LjParams &p, double *F,
                         double strain[6]) {
-  return accumulate_pairs(v, F, strain, [&](double r2, double &e, double &fs) {
-    lj_term(r2, p, e, fs);
+  return accumulate_pairs<Hw>(v, F, strain, [&](double r2, double &e, double &fs) {
+    lj_term<Hw>(r2, p, e, fs);
   });
 }
 
+template <bool Hw>
 inline double morse_scalar(const PairView &v, const MorseParams &p, double *F,
                            double strain[6]) {
-  return accumulate_pairs(v, F, strain, [&](double r2, double &e, double &fs) {
-    morse_term(r2, p, e, fs);
+  return accumulate_pairs<Hw>(v, F, strain, [&](double r2, double &e, double &fs) {
+    morse_term<Hw>(r2, p, e, fs);
   });
 }
 
+template <bool Hw>
 inline void eam_scalar(long n, const double *R, const EamAtom *atoms,
                        const double *box, double *F, double *U) {
   const double b0 = box[0];
@@ -258,11 +262,24 @@ inline void eam_scalar(long n, const double *R, const EamAtom *atoms,
   const double h0 = b0 * 0.5;
   const double h1 = b1 * 0.5;
   const double h2 = b2 * 0.5;
-  std::vector<double> drho(static_cast<std::size_t>(3 * n), 0.0);
+  struct Scratch {
+    std::vector<double> drho;
+    std::vector<long> js;
+  };
+  thread_local Scratch scratch;
+  const auto nn = static_cast<std::size_t>(n);
+  if (scratch.drho.size() != nn * 3) {
+    scratch.drho.assign(nn * 3, 0.0);
+  }
+  if (scratch.js.size() != nn) {
+    scratch.js.resize(nn);
+  }
+  std::vector<double> &drho = scratch.drho;
+  std::vector<long> &js = scratch.js;
   for (long i = 0; i < n; ++i) {
     const EamAtom &a = atoms[i];
-    std::fill(drho.begin(), drho.end(), 0.0);
     Part8 dens_part{};
+    long ns = 0;
     int nd = 0;
     Part8 pair_part{};
     int npair = 0;
@@ -277,7 +294,7 @@ inline void eam_scalar(long n, const double *R, const EamAtom *atoms,
       double dy = yi - R[3 * j + 1];
       double dz = zi - R[3 * j + 2];
       half_box(dx, dy, dz, b0, b1, b2, h0, h1, h2);
-      const double r2 = r2_of(dx, dy, dz);
+      const double r2 = r2_fast<Hw>(dx, dy, dz);
       if (!(r2 <= a.cutoff2)) {
         continue;
       }
@@ -286,16 +303,16 @@ inline void eam_scalar(long n, const double *R, const EamAtom *atoms,
       const double r6 = r2sq * r2;
       const double r4 = r2sq;
       const double r5 = r4 * r;
-      const double eb1 = exp(-a.beta1 * r);
+      const double eb1 = exp_fast<Hw>(-a.beta1 * r);
       const double two_b2 = -2.0 * a.beta2;
-      const double eb2 = exp(two_b2 * r);
-      const double rho_pair = mul_add(512.0, eb2, eb1);
+      const double eb2 = exp_fast<Hw>(two_b2 * r);
+      const double rho_pair = fad<Hw>(512.0, eb2, eb1);
       const double dens_term = r6 * rho_pair;
       const double t_a = (6.0 * r5) * rho_pair;
       const double neg_b1 = -a.beta1 * eb1;
       const double b2_term = (1024.0 * a.beta2) * eb2;
       const double inner = neg_b1 - b2_term;
-      const double mag = mul_add(r6, inner, t_a);
+      const double mag = fad<Hw>(r6, inner, t_a);
       const double inv_r = 1.0 / r;
       const double fscale = -mag * inv_r;
       const double fx = fscale * dx;
@@ -310,12 +327,14 @@ inline void eam_scalar(long n, const double *R, const EamAtom *atoms,
       drho[static_cast<std::size_t>(3 * j)] -= fx;
       drho[static_cast<std::size_t>(3 * j + 1)] -= fy;
       drho[static_cast<std::size_t>(3 * j + 2)] -= fz;
+      js[static_cast<std::size_t>(ns)] = j;
+      ++ns;
       if (j > i) {
         const double arg = -a.alpha_m * (r - a.r_m);
-        const double ex = exp(arg);
+        const double ex = exp_fast<Hw>(arg);
         const double d = 1.0 - ex;
         const double dd = a.d_m * d;
-        const double phi = mul_add(dd, d, -a.d_m);
+        const double phi = fad<Hw>(dd, d, -a.d_m);
         const double mag_f = ((2.0 * a.alpha_m) * a.d_m) * d * (d - 1.0);
         const double fcomp = mag_f * inv_r;
         const double pfx = fcomp * dx;
@@ -337,14 +356,25 @@ inline void eam_scalar(long n, const double *R, const EamAtom *atoms,
     drho[static_cast<std::size_t>(3 * i + 1)] += combine8(dens_part.fy);
     drho[static_cast<std::size_t>(3 * i + 2)] += combine8(dens_part.fz);
     *U += combine8(pair_part.e);
-    *U += embed_horner(a.coeff, dens);
+    *U += embed_horner<Hw>(a.coeff, dens);
     F[3 * i] -= combine8(pair_part.fx);
     F[3 * i + 1] -= combine8(pair_part.fy);
     F[3 * i + 2] -= combine8(pair_part.fz);
-    const double dF = embed_force(a.coeff, dens);
-    for (long k = 0; k < 3 * n; ++k) {
-      const double prod = dF * drho[static_cast<std::size_t>(k)];
-      F[k] -= prod;
+    const double dF = embed_force<Hw>(a.coeff, dens);
+    // Same atoms as the vector kernel: i and each neighbour, then those
+    // slots are cleared so the next atom sees a zero density derivative.
+    auto apply_rho = [&](long atom) {
+      const std::size_t base = static_cast<std::size_t>(3 * atom);
+      F[base] -= dF * drho[base];
+      F[base + 1] -= dF * drho[base + 1];
+      F[base + 2] -= dF * drho[base + 2];
+      drho[base] = 0.0;
+      drho[base + 1] = 0.0;
+      drho[base + 2] = 0.0;
+    };
+    apply_rho(i);
+    for (long t = 0; t < ns; ++t) {
+      apply_rho(js[static_cast<std::size_t>(t)]);
     }
   }
 }
@@ -353,19 +383,27 @@ inline void eam_scalar(long n, const double *R, const EamAtom *atoms,
 
 inline double lj_reference(const PairView &v, const LjParams &p, double *F,
                            double strain[6]) {
-  return lj_scalar(v, p, F, strain);
+  return lj_scalar<false>(v, p, F, strain);
 }
 
 inline double morse_reference(const PairView &v, const MorseParams &p,
                               double *F, double strain[6]) {
-  return morse_scalar(v, p, F, strain);
+  return morse_scalar<false>(v, p, F, strain);
 }
 
 inline void eam_reference(long n, const double *R, const EamAtom *atoms,
                           const double *box, double *F, double *U) {
-  eam_scalar(n, R, atoms, box, F, U);
+  eam_scalar<false>(n, R, atoms, box, F, U);
 }
 
 inline double round_reference(double t) { return visit_round(t); }
+
+#if defined(__x86_64__)
+double lj_hw(const PairView &v, const LjParams &p, double *F, double strain[6]);
+double morse_hw(const PairView &v, const MorseParams &p, double *F,
+                double strain[6]);
+void eam_hw(long n, const double *R, const EamAtom *atoms, const double *box,
+            double *F, double *U);
+#endif
 
 } // namespace rgpot::simd

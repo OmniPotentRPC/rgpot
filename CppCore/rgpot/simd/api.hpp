@@ -32,6 +32,10 @@ double morse_force(const PairView &view, const MorseParams &params, double *F,
 void eam_force(long n, const double *R, const EamAtom *atoms, const double *box,
                double *F, double *U);
 
+/// Test hook. Each output is a*b+c rounded once, on the selected target.
+void fma_array(const double *a, const double *b, const double *c, double *out,
+               std::size_t n);
+
 /// In-place orthorhombic minimum image, one component array per axis.
 /// inv == 0 leaves that axis unfolded.
 void fold_orthorhombic(double *x, double *y, double *z, std::size_t n,

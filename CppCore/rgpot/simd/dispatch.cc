@@ -139,6 +139,8 @@ double morse_scalar_entry(const PairView &view, const MorseParams &params,
                           double *F, double strain[6]);
 void eam_scalar_entry(long n, const double *R, const EamAtom *atoms,
                       const double *box, double *F, double *U);
+void fma_scalar_entry(const double *a, const double *b, const double *c,
+                      double *out, std::size_t n);
 void fold_scalar_entry(double *x, double *y, double *z, std::size_t n,
                        double w0, double w1, double w2, double i0, double i1,
                        double i2);
@@ -150,6 +152,8 @@ double morse_hwy_entry(const PairView &view, const MorseParams &params,
                        double *F, double strain[6]);
 void eam_hwy_entry(long n, const double *R, const EamAtom *atoms,
                    const double *box, double *F, double *U);
+void fma_hwy_entry(const double *a, const double *b, const double *c,
+                   double *out, std::size_t n);
 void fold_hwy_entry(double *x, double *y, double *z, std::size_t n, double w0,
                     double w1, double w2, double i0, double i1, double i2);
 #endif
@@ -234,6 +238,18 @@ double morse_force(const PairView &view, const MorseParams &params, double *F,
   }
 #endif
   return morse_scalar_entry(view, params, F, strain);
+}
+
+void fma_array(const double *a, const double *b, const double *c, double *out,
+               std::size_t n) {
+  ensure();
+#if defined(RGPOT_WITH_HIGHWAY)
+  if (mode != Mode::Scalar) {
+    fma_hwy_entry(a, b, c, out, n);
+    return;
+  }
+#endif
+  fma_scalar_entry(a, b, c, out, n);
 }
 
 void eam_force(long n, const double *R, const EamAtom *atoms, const double *box,

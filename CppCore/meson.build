@@ -596,6 +596,7 @@ if get_option('with_tests')
             ['EAMCellPotTest', 'eam_cell_pot_test', 'EAMCellPotTest.cc', ''],
             ['PairListTest', 'pair_list_test', 'PairListTest.cc', ''],
             ['IsaDispatchTest', 'isa_dispatch_test', 'IsaDispatchTest.cc', ''],
+            ['FmaExactTest', 'fma_exact_test', 'FmaExactTest.cc', ''],
             [
                 'BatchEvaluatorTest',
                 'batch_evaluator_test',
