@@ -19,6 +19,13 @@ The workspace is freed with the object.
 Two threads may call one Lennard-Jones potential at the same time.
 Fortran potentials keep one neighbour table per instance, so a batch gives each
 worker its own instance.
+The per-thread map keeps one workspace for every caller thread id other than the
+thread that constructed the object.
+A finished thread does not drop its entry.
+The map grows with the number of distinct threads that have called the object,
+and it is freed when the object is destroyed.
+A batch does not use that map.
+It builds one instance per worker.
 
 The saved parameter block in each Fortran
 =_capi= module is written once, from C++ =std::call_once=, and is read-only

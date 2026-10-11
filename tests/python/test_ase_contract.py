@@ -64,7 +64,7 @@ def test_implemented_properties_follow_caps() -> None:
         pytest.skip("this build has no Fortran potentials")
     eam = RgpotCalculator("eam_al")
     assert eam.implemented_properties == ["energy", "free_energy", "forces"]
-    assert eam.reentrant is True
+    assert eam.protocol_reentrant is True
 
 
 def test_free_energy_equals_energy() -> None:
@@ -179,6 +179,32 @@ def test_bfgs_two_calculators_agree(tmp_path: Path) -> None:
     first = relax(tmp_path / "a")
     second = relax(tmp_path / "b")
     assert abs(first - second) < 1e-8
+
+
+@pytest.mark.skipif(not rgpot.has_fortran_pots, reason="no EAM-Al in this build")
+def test_nonperiodic_pt7_ignores_cell() -> None:
+    """A 10 Angstrom cell with pbc false matches the same cluster with no cell."""
+    from ase import Atoms
+
+    cluster = pt7()
+    cluster.set_cell([10.0, 10.0, 10.0])
+    cluster.set_pbc(False)
+    bare = Atoms(
+        numbers=cluster.get_atomic_numbers(),
+        positions=cluster.get_positions().copy(),
+        pbc=False,
+    )
+    calc = RgpotCalculator("eam_al")
+    cluster.calc = calc
+    confined = raw_bytes(cluster.get_potential_energy(), cluster.get_forces())
+    bare.calc = calc
+    free = raw_bytes(bare.get_potential_energy(), bare.get_forces())
+    assert confined == free
+    mixed = cluster.copy()
+    mixed.set_pbc([True, False, True])
+    mixed.calc = calc
+    with pytest.raises(ValueError, match="non-periodic axes: y"):
+        mixed.get_potential_energy()
 
 
 def test_rpc_bfgs_when_potserv_exists(tmp_path: Path) -> None:

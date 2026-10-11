@@ -221,6 +221,13 @@ inline nb::dict result_dict(const FullResult &result) {
  *
  * The Calculator path does not use this as a session claim. Only the
  * RPC client claims its connection.
+ *
+ * extra_ keeps one instance per caller thread id other than the
+ * constructing thread. A thread that has exited does not remove its
+ * entry, so the map grows with the number of distinct threads that have
+ * called this object and is released in clear() when the object is
+ * destroyed. BatchEvaluator does not use the map. It builds a fixed
+ * set of instances, one per worker.
  */
 template <typename Pot> class PotHolder {
 public:
@@ -340,6 +347,9 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
             positions.size() != boxes.size()) {
           throw nb::value_error(
               "evaluate_batch: positions, atom_types, and box lengths differ");
+        }
+        if (positions.size() == 0) {
+          return nb::list();
         }
         std::vector<BatchInput> inputs;
         inputs.reserve(positions.size());
