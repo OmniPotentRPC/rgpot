@@ -47,18 +47,35 @@ TBLitePot::~TBLitePot() {
     tblite_delete_context(&m_ctx);
 }
 
-void TBLitePot::createCalculator() const {
-  switch (m_config.method) {
+namespace {
+
+// tblite 0.6 adds an optional xtb config. Null keeps the 0.5 defaults.
+tblite_calculator newGfnCalculator(tblite_context ctx, tblite_structure mol,
+                                   TBLiteMethod method) {
+#ifdef RGPOT_TBLITE_XTB_CONFIG
+  auto call = [](auto make, tblite_context c, tblite_structure m) {
+    return make(c, m, nullptr);
+  };
+#else
+  auto call = [](auto make, tblite_context c, tblite_structure m) {
+    return make(c, m);
+  };
+#endif
+  switch (method) {
   case TBLiteMethod::GFN1:
-    m_calc = tblite_new_gfn1_calculator(m_ctx, m_mol);
-    break;
+    return call(tblite_new_gfn1_calculator, ctx, mol);
   case TBLiteMethod::GFN2:
-    m_calc = tblite_new_gfn2_calculator(m_ctx, m_mol);
-    break;
+    return call(tblite_new_gfn2_calculator, ctx, mol);
   case TBLiteMethod::IPEA1:
-    m_calc = tblite_new_ipea1_calculator(m_ctx, m_mol);
-    break;
+    return call(tblite_new_ipea1_calculator, ctx, mol);
   }
+  throw std::logic_error("unknown tblite method");
+}
+
+} // namespace
+
+void TBLitePot::createCalculator() const {
+  m_calc = newGfnCalculator(m_ctx, m_mol, m_config.method);
 
   if (tblite_check_context(m_ctx) != 0) {
     char err_msg[512];

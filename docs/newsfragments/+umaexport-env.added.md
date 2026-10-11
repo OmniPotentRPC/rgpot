@@ -1,1 +1,0 @@
-A `umaexport` pixi environment pins `fairchem-core` 2.23.0 and `torch` 2.13, so `pixi run -e umaexport python scripts/export_uma_aoti.py --help` is reproducible. The `export-uma-aoti` task runs the exporter in it.
