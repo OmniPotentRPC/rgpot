@@ -48,6 +48,7 @@
 //! The core types use DLPack tensors for device-agnostic data exchange.
 //! See [`tensor`] for helpers to create DLPack tensors from raw pointers.
 
+pub mod fp_constants;
 pub mod types;
 pub mod tensor;
 pub mod status;

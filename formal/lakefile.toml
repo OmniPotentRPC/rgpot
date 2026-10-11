@@ -1,0 +1,15 @@
+name = "rgpot"
+version = "0.1.0"
+defaultTargets = ["Rpot"]
+
+[leanOptions]
+autoImplicit = false
+pp.unicode.fun = true
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+rev = "f2916a54665af851fc9a4da901cfc242c47a8922"
+
+[[lean_lib]]
+name = "Rpot"

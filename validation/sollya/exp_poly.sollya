@@ -1,0 +1,16 @@
+prec = 165;
+ln2 = log(2);
+half = ln2 / 2;
+P1 = 1.66666666666666019037e-01;
+P2 = -2.77777777770155933842e-03;
+P3 = 6.61375632143793436117e-05;
+P4 = -1.65339022054652515390e-06;
+P5 = 4.13813679705723846039e-08;
+P = P1 + x * (P2 + x * (P3 + x * (P4 + x * P5)));
+R1 = x - (x * x) * P(x * x);
+approx = 1 + x + (x * R1) / (2 - R1);
+babs = dirtyinfnorm(abs(approx - exp(x)), [-half, half]);
+brel = dirtyinfnorm(abs(approx - exp(x)) / exp(x), [-half, half]);
+print("approx_abs", babs);
+print("approx_rel", brel);
+if (babs <= 1b-60 && brel <= 1b-60) then { print("OK"); } else { print("FAIL"); };

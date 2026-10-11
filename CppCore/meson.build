@@ -629,6 +629,26 @@ if get_option('with_tests')
                 ['WaterPotTest', 'water_pot_test', 'WaterPotTest.cc', ''],
             ]
         endif
+        invariance_hash = executable(
+            'invariance_hash',
+            sources: files('../tests/invariance/hash_classical.cc'),
+            dependencies: test_deps,
+            include_directories: _incdirs,
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+        )
+        test(
+            'InvarianceHashes',
+            find_program('bash'),
+            args: [
+                files('../tests/invariance/run_hashes.sh'),
+                invariance_hash,
+            ],
+            timeout: 7200,
+            is_parallel: false,
+            suite: 'invariance',
+        )
     endif
     if has_fortran
         test_array += [

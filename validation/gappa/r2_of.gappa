@@ -1,0 +1,22 @@
+# Forward error of rgpot::simd::r2_of.
+# z2 = fma(dz, dz, fma(dy, dy, dx * dx)), each fma one rounding.
+# Domain: folded displacements from 2^-8 to 64 angstrom.
+
+@rnd = float<ieee_64, ne>;
+
+t0 = dx * dx;
+z0 = rnd(t0);
+e0 = z0 - t0;
+t1 = dy * dy + z0;
+z1 = rnd(t1);
+e1 = z1 - t1;
+t2 = dz * dz + z1;
+z2 = rnd(t2);
+e2 = z2 - t2;
+
+{
+  dx in [1b-8, 64] /\ dy in [1b-8, 64] /\ dz in [1b-8, 64] ->
+  e0 in [-1b-42, 1b-42] /\
+  e1 in [-1b-41, 1b-41] /\
+  e2 in [-1b-40, 1b-40]
+}

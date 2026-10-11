@@ -1,0 +1,12 @@
+{
+  "LN2_HI_BITS": "3fe62e42fee00000",
+  "LN2_LO_BITS": "3dea39ef35793c76",
+  "INV_LN2_BITS": "3ff71547652b82fe",
+  "P1_BITS": "3fc555555555553e",
+  "P2_BITS": "bf66c16c16bebd93",
+  "P3_BITS": "3f11566aaf25de2c",
+  "P4_BITS": "bebbbd41c5d26bf1",
+  "P5_BITS": "3e66376972bea4d0",
+  "OVERFLOW_BITS": "40862e42fefa39ef",
+  "UNDERFLOW_BITS": "c0874910d52d3051"
+}

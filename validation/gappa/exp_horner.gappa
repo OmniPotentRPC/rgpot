@@ -1,0 +1,32 @@
+# Rounding error of each fused step of the fdlibm degree-5 exp polynomial.
+# p4 = fma(t, P5, P4) and so on, then poly = t * p1.
+# t = r^2 for a Cody-Waite reduced argument, so t is at most (ln 2 / 2)^2.
+
+@rnd = float<ieee_64, ne>;
+
+P1 = 1.66666666666666019037e-01;
+P2 = -2.77777777770155933842e-03;
+P3 = 6.61375632143793436117e-05;
+P4 = -1.65339022054652515390e-06;
+P5 = 4.13813679705723846039e-08;
+
+p4 = rnd(t * P5 + P4);
+p3 = rnd(t * p4 + P3);
+p2 = rnd(t * p3 + P2);
+p1 = rnd(t * p2 + P1);
+poly = rnd(t * p1);
+
+e4 = p4 - (t * P5 + P4);
+e3 = p3 - (t * p4 + P3);
+e2 = p2 - (t * p3 + P2);
+e1 = p1 - (t * p2 + P1);
+ep = poly - (t * p1);
+
+{
+  t in [0, 0.125] ->
+  e4 in [-1b-73, 1b-73] /\
+  e3 in [-1b-67, 1b-67] /\
+  e2 in [-1b-62, 1b-62] /\
+  e1 in [-1b-56, 1b-56] /\
+  ep in [-1b-59, 1b-59]
+}

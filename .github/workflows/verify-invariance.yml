@@ -1,0 +1,166 @@
+name: Verification
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "20 6 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  bounds:
+    name: bounds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Install provers
+        run: sudo apt-get update && sudo apt-get install -y gappa sollya g++ libquadmath0
+      - name: Run bounds and the error-free transformation test
+        run: bash validation/check.sh
+
+  formal:
+    name: formal
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Install Lean
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --default-toolchain leanprover/lean4:v4.34.0-rc2
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: formal/.lake
+          key: lean-${{ hashFiles('formal/lake-manifest.json') }}
+      - name: Cache and check
+        working-directory: formal
+        run: |
+          lake exe cache get
+          ./check.sh
+
+  fp-contract:
+    name: fp-contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
+        with:
+          pixi-version: v0.70.2
+          cache: true
+          environments: devbld
+          activate-environment: true
+      - name: Configure and grep compile commands
+        run: |
+          meson setup build-fp \
+            -Dwith_tests=true \
+            -Dwith_fortran_pots=disabled \
+            -Dwith_examples=false \
+            -Dwith_rpc=false \
+            -Dwith_cache=false \
+            -Dwith_eigen=false \
+            -Dwith_xtensor=false \
+            -Dpure_lib=true \
+            --native-file ci/gha/machines/fp-contract.ini
+          python3 ci/gha/check_fp_contract.py build-fp/compile_commands.json
+
+  c-api-asan:
+    name: c-api asan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: AddressSanitizer on the C ABI stubs
+        run: bash ci/gha/asan_c_api.sh
+
+  invariance:
+    name: invariance hashes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
+        with:
+          pixi-version: v0.70.2
+          cache: true
+          environments: devbld
+          activate-environment: true
+      - name: Build the hash driver
+        run: |
+          sudo apt-get update && sudo apt-get install -y libopenmpi-dev
+          meson setup build-inv \
+            -Dwith_tests=true \
+            -Dwith_fortran_pots=disabled \
+            -Dwith_examples=false \
+            -Dwith_rpc=false \
+            -Dwith_cache=false \
+            -Dwith_eigen=false \
+            -Dwith_xtensor=false \
+            -Dpure_lib=true \
+            --native-file ci/gha/machines/fp-contract.ini
+          meson compile -C build-inv invariance_hash
+      - name: Hash 4000 and 32000 atoms
+        run: |
+          bash tests/invariance/run_hashes.sh build-inv/CppCore/invariance_hash | tee invariance-table.txt
+        timeout-minutes: 180
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: invariance-table
+          path: invariance-table.txt
+
+  sanitizers:
+    name: thread and undefined sanitizers
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/verify/invariance'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
+        with:
+          pixi-version: v0.70.2
+          cache: true
+          environments: devbld
+          activate-environment: true
+      - name: UBSan on the threaded neighbour path
+        run: |
+          meson setup build-ubsan \
+            -Dwith_tests=true \
+            -Dwith_fortran_pots=disabled \
+            -Dwith_examples=false \
+            -Dwith_rpc=false \
+            -Dwith_cache=false \
+            -Dwith_eigen=false \
+            -Dwith_xtensor=false \
+            -Dpure_lib=true \
+            -Db_sanitize=undefined \
+            --native-file ci/gha/machines/sanitize.ini
+          meson compile -C build-ubsan invariance_hash
+          OMP_NUM_THREADS=2 ./build-ubsan/CppCore/invariance_hash --n 64 --bench
+      - name: TSan on the threaded neighbour path
+        run: |
+          meson setup build-tsan \
+            -Dwith_tests=true \
+            -Dwith_fortran_pots=disabled \
+            -Dwith_examples=false \
+            -Dwith_rpc=false \
+            -Dwith_cache=false \
+            -Dwith_eigen=false \
+            -Dwith_xtensor=false \
+            -Dpure_lib=true \
+            -Db_sanitize=thread \
+            --native-file ci/gha/machines/sanitize.ini
+          meson compile -C build-tsan invariance_hash
+          OMP_NUM_THREADS=2 ./build-tsan/CppCore/invariance_hash --n 64 --bench
+
+  verificarlo:
+    name: verificarlo
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    container: verificarlo/verificarlo:latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: MCA samples of the classical kernels
+        run: bash tests/invariance/verificarlo.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: verificarlo-digits
+          path: verificarlo-digits.txt

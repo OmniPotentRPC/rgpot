@@ -1,0 +1,16 @@
+# Fused product-sums of the Morse pair energy.
+# dd = De * d, v = fma(dd, d, -De).
+# De is the well depth in eV and d = 1 - exp(-a*(r-re)).
+
+@rnd = float<ieee_64, ne>;
+
+dd = rnd(De * d);
+dd_err = dd - (De * d);
+v = rnd(dd * d + -De);
+e = v - (dd * d + -De);
+
+{
+  De in [0.1, 4] /\ d in [0, 2] ->
+  dd_err in [-1b-51, 1b-51] /\
+  e in [-1b-48, 1b-48]
+}

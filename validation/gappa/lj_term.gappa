@@ -1,0 +1,31 @@
+# Per-rounding error of the unswitched Lennard-Jones pair term
+# evaluated as in rgpot::simd::lj_term with psi^2 = 1 and 4*u0 = 4.
+# r2 is the squared pair distance in angstrom^2.
+
+@rnd = float<ieee_64, ne>;
+
+inv = rnd(1 / r2);
+e_inv = inv - (1 / r2);
+sr2 = rnd(inv);
+e_sr2 = sr2 - inv;
+sr4 = rnd(sr2 * sr2);
+e_sr4 = sr4 - (sr2 * sr2);
+a = rnd(sr4 * sr2);
+e_a = a - (sr4 * sr2);
+b = rnd(4 * a);
+e_b = b - (4 * a);
+am1 = rnd(a - 1);
+e_am1 = am1 - (a - 1);
+v = rnd(b * am1);
+e_v = v - (b * am1);
+
+{
+  r2 in [0.25, 36] ->
+  e_inv in [-1b-52, 1b-52] /\
+  e_sr2 in [0, 0] /\
+  e_sr4 in [-1b-50, 1b-50] /\
+  e_a in [-1b-48, 1b-48] /\
+  e_b in [0, 0] /\
+  e_am1 in [-1b-48, 1b-48] /\
+  e_v in [-1b-40, 1b-40]
+}

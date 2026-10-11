@@ -1,0 +1,26 @@
+#+TITLE: Invariance hashes
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+
+* What the hashes record
+
+A classical energy, the force vector and the stress are a function of the
+geometry and the potential parameters.
+They are not supposed to be a function of the thread count or the rank count.
+~tests/invariance/hash_classical~ writes SHA-256 of the raw little-endian bytes
+for Lennard-Jones, Morse and the embedded-atom potential.
+The run uses 4000 atoms and 32000 atoms, with one coordinate at ~-0.0~ and one
+at ~+0.0~.
+~OMP_NUM_THREADS~ is 1, 2, 3 and 8.
+Where ~mpirun~ is available the same binary is launched with 1, 2 and 3 ranks.
+The comparison prints how many entries differ.
+It does not change the kernels.
+
+The neighbour list sizes its pool from ~OMP_NUM_THREADS~.
+There is no OpenMP pragma in the first-party sources.
+The embedded-atom stress is not computed, so that hash is of nine zeroes and
+~has_stress~ is 0.
+
+Product-sums that reach an output are explicit fused multiply-adds.
+Other translation units are compiled with contraction off.
+Goswami, Gunde and Jónsson, Front.
+Chem. (2026), doi:10.3389/fchem.2026.1807063.

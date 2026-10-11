@@ -1,0 +1,28 @@
+# Rounding error of the C^2 quintic switch product-sums.
+# s = fma(t^3, fma(t, 15 - 6*t, -10), 1), t in [0, 1].
+# inner stands for the rounded 15 - 6*t, which lies in [9, 15].
+
+@rnd = float<ieee_64, ne>;
+
+t2 = rnd(t * t);
+e_t2 = t2 - (t * t);
+t3 = rnd(t2 * t);
+e_t3 = t3 - (t2 * t);
+six_t = rnd(6 * t);
+e_six = six_t - (6 * t);
+inner = rnd(15 - six_t);
+e_inner = inner - (15 - six_t);
+poly = rnd(t * inner + -10);
+e_poly = poly - (t * inner + -10);
+s = rnd(t3 * poly + 1);
+e_s = s - (t3 * poly + 1);
+
+{
+  t in [0, 1] /\ inner in [9, 15] ->
+  e_t2 in [-1b-54, 1b-54] /\
+  e_t3 in [-1b-54, 1b-54] /\
+  e_six in [-1b-51, 1b-51] /\
+  e_inner in [-1b-50, 1b-50] /\
+  e_poly in [-1b-50, 1b-50] /\
+  e_s in [-1b-50, 1b-50]
+}
