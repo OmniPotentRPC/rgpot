@@ -1,0 +1,23 @@
+.. index:: pair: struct; rgpot::abi::CxxSoversionEntry
+.. _doxid-structrgpot_1_1abi_1_1_cxx_soversion_entry:
+
+struct rgpot::abi::CxxSoversionEntry
+====================================
+
+.. toctree::
+	:hidden:
+
+One recorded no-cache layout hash. ``tag`` is ``kCxxPlatformTag``.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <CxxLayout.hpp>
+	
+	struct CxxSoversionEntry {
+		// fields
+	
+		const char* :target:`tag<doxid-structrgpot_1_1abi_1_1_cxx_soversion_entry_1a466ae8ca2759c679d7db557735c4e020>`;
+		std::uint64_t :target:`hash<doxid-structrgpot_1_1abi_1_1_cxx_soversion_entry_1a45d5401530c5f5713d4603d2f774fdd3>`;
+	};

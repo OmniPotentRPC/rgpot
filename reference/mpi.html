@@ -684,6 +684,10 @@ transport layers.
 The loader tries <code class="docutils literal notranslate"><span class="pre">loadCalculatorMpi(path)</span></code> when the host names a file, then the
 <code class="docutils literal notranslate"><span class="pre">RGPOT_MPI_LIBRARY</span></code> environment variable, then <code class="docutils literal notranslate"><span class="pre">librgpot_mpi.so.3</span></code> next to
 <code class="docutils literal notranslate"><span class="pre">librgpot</span></code>, then the dynamic linker’s search path.
+That filename is <code class="docutils literal notranslate"><span class="pre">librgpot_mpi</span></code>’s own SONAME (soversion 3).
+It is not <code class="docutils literal notranslate"><span class="pre">librgpot</span></code>’s SONAME.
+<code class="docutils literal notranslate"><span class="pre">RGPOT_MPI_ABI_VERSION</span></code> is 1 and did not change with the C++ layouts, so this
+name stays.
 The two libraries meet at one C symbol,
 <code class="docutils literal notranslate"><span class="pre">rgpot_mpi_api_v1</span></code>, which returns the function table of <code class="docutils literal notranslate"><span class="pre">rgpot/calculator_mpi_abi.h</span></code> (<code class="docutils literal notranslate"><span class="pre">RGPOT_MPI_ABI_VERSION</span></code>
 1).

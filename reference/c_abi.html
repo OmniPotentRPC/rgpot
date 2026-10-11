@@ -582,6 +582,7 @@ data-aria-dark="Switch to auto color mode">
 <li><a class="reference internal" href="#bumping-the-numbers">Bumping the numbers</a></li>
 <li><a class="reference internal" href="#c-layout-stamp">C++ layout stamp</a><ul>
 <li><a class="reference internal" href="#bumping">Bumping</a></li>
+<li><a class="reference internal" href="#updating-the-platform-table">Updating the platform table</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#scope">Scope</a></li>
@@ -741,7 +742,12 @@ A caller and a library with different layout revisions never match, whatever
 their minors.</p></li>
 </ul>
 <p>The ABI numbers do not follow the package version: a release that changes no
-exported symbol leaves them where they are.</p>
+exported symbol leaves them where they are.
+They are also not the ELF soversion of <code class="docutils literal notranslate"><span class="pre">librgpot</span></code>.
+The C API is exported from that library and has no shared library of its own, so
+a C caller relinks when the C++ SONAME moves even if these numbers stay.
+3.5.0 left them at 1, 0 and 1, and they stay there: no exported C struct changed
+layout.</p>
 </section>
 <section id="c-layout-stamp">
 <h2>C++ layout stamp<a class="headerlink" href="#c-layout-stamp" title="Link to this heading">¶</a></h2>
@@ -798,11 +804,34 @@ The plugin interface carries
 <ul class="simple">
 <li><p>A change to the size, alignment or a field offset of a covered type moves the
 hash by itself.
-Commit it with the change; no number to edit.</p></li>
+Bump <code class="docutils literal notranslate"><span class="pre">kCxxSoversion</span></code> in the same change.
+That constant is the ELF soversion of <code class="docutils literal notranslate"><span class="pre">librgpot</span></code> (<code class="docutils literal notranslate"><span class="pre">librgpot.so.N</span></code>).
+Meson and CMake read it, so the SONAME is not written down anywhere else.
+The hash is not the SONAME.
+It depends on the platform tag (<code class="docutils literal notranslate"><span class="pre">kCxxPlatformTag</span></code>): operating system,
+architecture, standard library and data model.
+It also folds pointer width and the cache feature bit, so two builds of one
+revision do not share a hash.
+Record each no-cache hash in <code class="docutils literal notranslate"><span class="pre">kCxxSoversionTable</span></code> in
+<code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/abi/CxxLayout.hpp</span></code>.
+<code class="docutils literal notranslate"><span class="pre">CxxLayout.cc</span></code> static<sub>asserts</sub>the row for the platform it is compiled on.
+A platform with no row does not fail the build.
+The compiler prints that the tag is unlisted.
+<code class="docutils literal notranslate"><span class="pre">CppCore/tests/check_cxx_soversion.py</span></code> fails a live hash only when that tag is
+in the table.
+It fails when the fingerprint differs from
+<code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/abi/cxx_soversion_ledger.txt</span></code>, and when a shipped ledger line
+changes under the same soversion.
+Append a line to that ledger with the new soversion and the fingerprint the
+check prints.
+The fingerprint is platform-independent.
+Do not edit a shipped line.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">kCxxLayoutRevision</span></code> in <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/abi/CxxLayout.hpp</span></code>: increment when a
 change keeps every size and offset and still alters the ABI.
 Reordering virtual functions, changing the meaning of a field, changing a base
-class, changing a default member initializer a consumer inlines.</p></li>
+class, changing a default member initializer a consumer inlines.
+Bump <code class="docutils literal notranslate"><span class="pre">kCxxSoversion</span></code> in that change as well: the revision is an input of the
+hash.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">kPotentialBaseVirtuals</span></code>, <code class="docutils literal notranslate"><span class="pre">kPotentialBaseCacheVirtuals</span></code> and
 <code class="docutils literal notranslate"><span class="pre">kPotentialVirtuals</span></code> count the virtual functions of the polymorphic classes,
 because the compiler hides a vtable change from <code class="docutils literal notranslate"><span class="pre">sizeof</span></code>.
@@ -810,11 +839,63 @@ because the compiler hides a vtable change from <code class="docutils literal no
 <code class="docutils literal notranslate"><span class="pre">Potential.hpp</span></code> and fails when a count is stale.
 Update the constant and increment <code class="docutils literal notranslate"><span class="pre">kCxxLayoutRevision</span></code> together.</p></li>
 <li><p>Adding a covered type changes the hash, so it needs no revision bump.
-Add it to <code class="docutils literal notranslate"><span class="pre">detail::compute_hash()</span></code> in the same commit.</p></li>
+Add it to <code class="docutils literal notranslate"><span class="pre">detail::compute_hash()</span></code> in the same commit, and bump
+<code class="docutils literal notranslate"><span class="pre">kCxxSoversion</span></code> with the hash.</p></li>
 </ul>
+</section>
+<section id="updating-the-platform-table">
+<h3>Updating the platform table<a class="headerlink" href="#updating-the-platform-table" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">kCxxSoversionTable</span></code> starts empty when the soversion changes, and is filled from
+CI.
+Do not copy a hash from another platform or from a local build.</p>
+<p>Each CI build of the printer prints one <code class="docutils literal notranslate"><span class="pre">RGPOT_CXX_LAYOUT_STAMP</span></code> line.
+It carries <code class="docutils literal notranslate"><span class="pre">tag</span></code>, <code class="docutils literal notranslate"><span class="pre">hash</span></code>, <code class="docutils literal notranslate"><span class="pre">hash_dec</span></code>, <code class="docutils literal notranslate"><span class="pre">features</span></code> and <code class="docutils literal notranslate"><span class="pre">revision</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">features</span></code> is 1 for a cache build.
+Ignore those lines.
+The no-cache hash is the one that goes in the table.</p>
+<p>The workflow “C++ layout stamp” compiles
+<code class="docutils literal notranslate"><span class="pre">CppCore/tests/print_cxx_layout_stamp.cc</span></code> on Linux x86<sub>64</sub>, Linux aarch64, macOS
+arm64, macOS x86<sub>64</sub>and Windows MSVC.
+The Linux and macOS wheels print the same line from the compiler that builds the
+wheel.
+The Meson <code class="docutils literal notranslate"><span class="pre">CxxSoversion</span></code> test runs the printer too.
+There is no musl row unless a log prints a <code class="docutils literal notranslate"><span class="pre">linux-musl-</span></code> tag. librgpot wheels
+skip musllinux, and the musl potctl build does not compile this header.</p>
+<p>When the soversion is bumped:</p>
+<ol class="arabic simple">
+<li><p>Increment <code class="docutils literal notranslate"><span class="pre">kCxxSoversion</span></code>.</p></li>
+<li><p>Leave <code class="docutils literal notranslate"><span class="pre">kCxxSoversionTable</span></code> empty and delete the listed-platform guards, so
+every platform builds and the printers run.</p></li>
+<li><p>Read each <code class="docutils literal notranslate"><span class="pre">RGPOT_CXX_LAYOUT_STAMP</span></code> line whose <code class="docutils literal notranslate"><span class="pre">features</span></code> is 0.</p></li>
+<li><p>Add one table row per distinct tag, using that line’s <code class="docutils literal notranslate"><span class="pre">hash</span></code> as
+<code class="docutils literal notranslate"><span class="pre">0x&lt;hash&gt;ull</span></code>.
+Add a matching guard.
+The guard is an <code class="docutils literal notranslate"><span class="pre">#if</span></code>, then <code class="docutils literal notranslate"><span class="pre">#elif</span></code>, on <code class="docutils literal notranslate"><span class="pre">RGPOT_OS_*</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_ARCH_*</span></code>,
+<code class="docutils literal notranslate"><span class="pre">RGPOT_STDLIB_*</span></code> and <code class="docutils literal notranslate"><span class="pre">RGPOT_MODEL_*</span></code>.
+Inside the branch, define
+<code class="docutils literal notranslate"><span class="pre">RGPOT_CXX_PLATFORM_LISTED</span></code> as 1 and <code class="docutils literal notranslate"><span class="pre">RGPOT_CXX_PLATFORM_LISTED_TAG</span></code> as that
+same tag string.</p></li>
+<li><p>Append one ledger line: the new soversion and the fingerprint the check
+prints.
+Do not edit a shipped line.</p></li>
+<li><p>Push and wait until the jobs that printed the hashes are green.
+A listed tag whose live hash differs fails the build.</p></li>
+</ol>
 <p>The fixture <code class="docutils literal notranslate"><span class="pre">CppCore/tests/layout_fixture.cc</span></code> is a shared object built from a
 header in which <code class="docutils literal notranslate"><span class="pre">ForceOut</span></code> gained a field; <code class="docutils literal notranslate"><span class="pre">CxxLayoutTest</span></code> requires that its
 stamp differs and that its compatibility check refuses the real stamp.</p>
+<p><code class="docutils literal notranslate"><span class="pre">kCxxSoversion</span></code> applies to <code class="docutils literal notranslate"><span class="pre">librgpot</span></code> only.
+<code class="docutils literal notranslate"><span class="pre">librgpot_mpi</span></code> stays at soversion 3: its C ABI is <code class="docutils literal notranslate"><span class="pre">RGPOT_MPI_ABI_VERSION</span></code> 1.
+The engine plugins (<code class="docutils literal notranslate"><span class="pre">libclassical_engine.so</span></code>, <code class="docutils literal notranslate"><span class="pre">libmopac_engine.so</span></code>,
+<code class="docutils literal notranslate"><span class="pre">libnwchem_engine.so</span></code>, <code class="docutils literal notranslate"><span class="pre">libskala_engine.so</span></code>,
+<code class="docutils literal notranslate"><span class="pre">libxtb_engine.so</span></code>, <code class="docutils literal notranslate"><span class="pre">libmetatomic_engine.so</span></code>,
+<code class="docutils literal notranslate"><span class="pre">libuma_engine.so</span></code>) are opened by those unversioned names and keep <code class="docutils literal notranslate"><span class="pre">RGPOT_ENGINE_ABI_VERSION</span></code> 1.
+The <code class="docutils literal notranslate"><span class="pre">libpot_client_bridge</span></code> header did not change.
+<code class="docutils literal notranslate"><span class="pre">librgpot_cuh2</span></code> only added <code class="docutils literal notranslate"><span class="pre">rgpot_cuh2_force_ws</span></code>.
+The pair-potential types whose layouts changed are static objects inside
+<code class="docutils literal notranslate"><span class="pre">librgpot</span></code>, so they have no SONAME of their own.
+CMake’s <code class="docutils literal notranslate"><span class="pre">libptlrpc</span></code> is the same: the schema it carries is the 3.5.0 schema, and
+Meson does not install it as a separate shared library.</p>
 </section>
 </section>
 <section id="scope">

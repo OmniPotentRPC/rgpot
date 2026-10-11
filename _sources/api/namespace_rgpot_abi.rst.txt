@@ -8,6 +8,7 @@ namespace rgpot::abi
 	:hidden:
 
 	namespace_rgpot_abi_detail.rst
+	struct_rgpot_abi_CxxSoversionEntry.rst
 	struct_rgpot_abi_Expectation.rst
 	struct_rgpot_abi_ProfileResult.rst
 	class_rgpot_abi_ProfileLoader.rst
@@ -30,6 +31,7 @@ Overview
 
 	// structs
 
+	struct :ref:`CxxSoversionEntry<doxid-structrgpot_1_1abi_1_1_cxx_soversion_entry>`;
 	struct :ref:`Expectation<doxid-structrgpot_1_1abi_1_1_expectation>`;
 	struct :ref:`ProfileResult<doxid-structrgpot_1_1abi_1_1_profile_result>`;
 
@@ -40,6 +42,9 @@ Overview
 	// global variables
 
 	std::uint32_t :ref:`kCxxLayoutRevision<doxid-_cxx_layout_8hpp_1ac7b4d4e345fba7e766ff7bd887f854b5>` = 1;
+	std::uint32_t :ref:`kCxxSoversion<doxid-_cxx_layout_8hpp_1a0c75c1c32154159824631e3ca3f6f3c4>` = 4;
+	std::array<:ref:`CxxSoversionEntry<doxid-structrgpot_1_1abi_1_1_cxx_soversion_entry>`, 5> :ref:`kCxxSoversionTable<doxid-_cxx_layout_8hpp_1a595fc2a64125c29b2313cb49ae864b19>` {{     {"linux-x86_64-libstdc++-lp64", 0x80bc8962b7808d7aull},     {"linux-aarch64-libstdc++-lp64", 0x191f6a916fe32962ull},     {"macos-aarch64-libc++-lp64", 0x293e0e103e91a552ull},     {"macos-x86_64-libc++-lp64", 0x293e0e103e91a552ull},     {"windows-x86_64-msvc-llp64", 0x395cb18f0d402142ull}, }};
+	char :ref:`kCxxPlatformTag<doxid-_cxx_layout_8hpp_1a027a3a25245f771ac31ced57e1ba965f>`[] = "unknown" "-" "unknown" "-" "unknown" "-"   "ilp32";
 	std::uint32_t :ref:`kPotentialBaseVirtuals<doxid-_cxx_layout_8hpp_1a658bcb7d732752d499f279c25b1008a5>` = 5;
 	std::uint32_t :target:`kPotentialBaseCacheVirtuals<doxid-_cxx_layout_8hpp_1a8aaa3a0c52ecc55915755ef12588a420>` = 1;
 	std::uint32_t :ref:`kPotentialVirtuals<doxid-_cxx_layout_8hpp_1a732c22e957eb2e1632aa0b440d610768>` = 2;
@@ -52,7 +57,12 @@ Overview
 	// global functions
 
 	void :ref:`checked_load<doxid-_compat_8hpp_1af4b62919113952b0df48f4b4ed837b36>`(:ref:`ProfileLoader<doxid-classrgpot_1_1abi_1_1_profile_loader>`& loader, const std::string& prefix, const std::string& explicit_path = "", const :ref:`Expectation<doxid-structrgpot_1_1abi_1_1_expectation>`& want = {});
+	bool :target:`cxx_tag_eq<doxid-_cxx_layout_8hpp_1a7124277ff0319e7c8e3bec2d9f69fffb>`(const char* a, const char* b);
+	const :ref:`CxxSoversionEntry<doxid-structrgpot_1_1abi_1_1_cxx_soversion_entry>`* :target:`find_soversion_entry<doxid-_cxx_layout_8hpp_1a5705e20a63ce98b8923a7e2753812050>`(const char* tag);
+	bool :target:`soversion_tags_unique<doxid-_cxx_layout_8hpp_1a3e2b42b0e2ae4112253e07f7c40c38d1>`();
 	:ref:`rgpot_cxx_layout_stamp_t<doxid-structrgpot__cxx__layout__stamp__t>` :ref:`header_stamp<doxid-_cxx_layout_8hpp_1a5b7b7e5fb73bbcf0ebb3d6bbf5f0ab44>`();
+	std::uint64_t :ref:`recorded_layout_hash<doxid-_cxx_layout_8hpp_1a12a73f213a194b0d0665920895a06309>`();
+	bool :ref:`platform_soversion_ok<doxid-_cxx_layout_8hpp_1aef754f2d6b965a12ae58daa919e2ebcc>`();
 	:ref:`rgpot_cxx_layout_stamp_t<doxid-structrgpot__cxx__layout__stamp__t>` :ref:`library_stamp<doxid-_cxx_layout_8hpp_1acb57c9e8e468242a18092915e267c949>`();
 	bool :ref:`layout_compatible<doxid-_cxx_layout_8hpp_1a82944f1ad802513342c545d067ea8821>`();
 	std::string :ref:`check_capabilities<doxid-_handshake_8hpp_1a6cdab4c79683cd2f731ab6d0f3ba3e28>`(::Capabilities::Reader caps, const :ref:`Expectation<doxid-structrgpot_1_1abi_1_1_expectation>`& want = {});
@@ -79,6 +89,38 @@ Global Variables
 	std::uint32_t kCxxLayoutRevision = 1
 
 Hand-maintained. Increment when a change the hash cannot see alters the C++ ABI: reordering virtuals without changing their count, changing the meaning of a field, changing a base class of a covered type. Any change to size, alignment or a field offset moves the hash by itself.
+
+.. index:: pair: variable; kCxxSoversion
+.. _doxid-_cxx_layout_8hpp_1a0c75c1c32154159824631e3ca3f6f3c4:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::uint32_t kCxxSoversion = 4
+
+ELF soversion of librgpot (``librgpot.so.N``, ``librgpot.N.dylib``). Meson and CMake read this constant. The SONAME is not the layout hash. The hash depends on the platform tag and includes the cache feature bit, so builds of one revision do not share a hash. Bump this when a recorded hash in ``kCxxSoversionTable`` changes, and replace that table from the CI stamp lines in the same edit. ``check_cxx_soversion.py`` fails when the fingerprint of the stamp inputs changes and this number did not increase.
+
+This is not ``RGPOT_ABI_LAYOUT_REVISION``. The C ABI stamp in ``rgpot.h`` stayed at major 1, minor 0, layout revision 1: no exported C struct changed layout. The C API is exported from librgpot, so it has no shared library of its own and rides this SONAME. ``librgpot_mpi`` stays at soversion 3 (``RGPOT_MPI_ABI_VERSION`` 1, unchanged).
+
+.. index:: pair: variable; kCxxSoversionTable
+.. _doxid-_cxx_layout_8hpp_1a595fc2a64125c29b2313cb49ae864b19:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::array<:ref:`CxxSoversionEntry<doxid-structrgpot_1_1abi_1_1_cxx_soversion_entry>`, 5> kCxxSoversionTable {{     {"linux-x86_64-libstdc++-lp64", 0x80bc8962b7808d7aull},     {"linux-aarch64-libstdc++-lp64", 0x191f6a916fe32962ull},     {"macos-aarch64-libc++-lp64", 0x293e0e103e91a552ull},     {"macos-x86_64-libc++-lp64", 0x293e0e103e91a552ull},     {"windows-x86_64-msvc-llp64", 0x395cb18f0d402142ull}, }}
+
+No-cache ``:ref:`header_stamp() <doxid-_cxx_layout_8hpp_1a5b7b7e5fb73bbcf0ebb3d6bbf5f0ab44>`.hash`` for each platform ABI CI builds. Rows are copied from ``RGPOT_CXX_LAYOUT_STAMP`` lines. An unlisted platform still compiles. How to update the table: docs/orgmode/reference/c_abi.org.
+
+.. index:: pair: variable; kCxxPlatformTag
+.. _doxid-_cxx_layout_8hpp_1a027a3a25245f771ac31ced57e1ba965f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	char kCxxPlatformTag[] = "unknown" "-" "unknown" "-" "unknown" "-"   "ilp32"
+
+This translation unit's platform tag (``os-arch-stdlib-datamodel``).
 
 .. index:: pair: variable; kPotentialBaseVirtuals
 .. _doxid-_cxx_layout_8hpp_1a658bcb7d732752d499f279c25b1008a5:
@@ -122,6 +164,26 @@ Load a profile backend and refuse it before dispatch when its ``Capabilities`` a
 	:ref:`rgpot_cxx_layout_stamp_t<doxid-structrgpot__cxx__layout__stamp__t>` header_stamp()
 
 What the consumer compiled against. Initialise a ``constexpr`` variable with it; a call evaluated at run time is not tied to this translation unit (see :ref:`layout_compatible() <doxid-_cxx_layout_8hpp_1a82944f1ad802513342c545d067ea8821>`).
+
+.. index:: pair: function; recorded_layout_hash
+.. _doxid-_cxx_layout_8hpp_1a12a73f213a194b0d0665920895a06309:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::uint64_t recorded_layout_hash()
+
+Recorded no-cache hash for this platform, or 0 when it has no row.
+
+.. index:: pair: function; platform_soversion_ok
+.. _doxid-_cxx_layout_8hpp_1aef754f2d6b965a12ae58daa919e2ebcc:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool platform_soversion_ok()
+
+True when this platform has no row, or the row matches ``header_stamp``.
 
 .. index:: pair: function; library_stamp
 .. _doxid-_cxx_layout_8hpp_1acb57c9e8e468242a18092915e267c949:
