@@ -5,37 +5,33 @@
 * SIMD paths and dispatch
 
 rgpot does not select an instruction set at run time.
-Code outside a future dispatched function is compiled for the compiler
-default, which this repository keeps at x86-64 and armv8-a.
-There is no =RGPOT_SIMD= variable, because there is no dispatched
-kernel to select.
+Code outside a future dispatched function is compiled for the compiler default,
+which this repository keeps at x86-64 and armv8-a.
+There is no =RGPOT_SIMD= variable, because there is no dispatched kernel to
+select.
 The scalar path is that default build.
 It is the only path a process runs.
 
-The static gate in =ci/isa-audit= is what stops a later =-march=native=,
-a stray =-mavx2=, or an intrinsic outside a dispatched function from
-shipping.
-An instruction above the baseline is allowed only when
-=rgpot/isa-allow.toml= names the function and the feature, or names
-the vendored file that contains a third-party dispatcher.
-On a macOS arm64 slice, ~lse~ and ~rcpc~ are baseline: they are the
-platform atomics, and no other CPU can load that binary.
+The static gate in =ci/isa-audit= is what stops a later =-march=native=, a stray
+=-mavx2=, or an intrinsic outside a dispatched function from shipping.
+An instruction above the baseline is allowed only when =rgpot/isa-allow.toml=
+names the function and the feature, or names the vendored file that contains a
+third-party dispatcher.
+On a macOS arm64 slice, ~lse~ and ~rcpc~ are baseline: they are the platform
+atomics, and no other CPU can load that binary.
 The gate does not execute the instruction.
-A runtime test reports a path as not exercised when this machine
-cannot execute it.
-See =ci/isa-audit/README.org= for the allowlist format and for the
-reusable workflow other repositories call by commit SHA.
+A runtime test reports a path as not exercised when this machine cannot execute
+it.
+See =ci/isa-audit/README.org= for the allowlist format and for the reusable
+workflow other repositories call by commit SHA.
 
-A kernel added later has to keep the same bits on every path, every
-thread count and every rank count, down to the sign of zero and the
-NaN payload class.
-Reductions use a fixed width of eight partial sums in a fixed lane
-order, the order of ndarray 0.17 =unrolled_dot=.
+A kernel added later has to keep the same bits on every path, every thread count
+and every rank count, down to the sign of zero and the NaN payload class.
+Reductions use a fixed width of eight partial sums in a fixed lane order, the
+order of ndarray 0.17 =unrolled_dot=.
 No fused multiply-add is used for a value that reaches an output.
-The cluster-pair layout for such kernels is the one in
-Páll and Hess, Comput. Phys. Commun. 184, 2641 (2013),
-doi:10.1016/j.cpc.2013.06.003.
-Per-microarchitecture builds of the surrounding stack are the EESSI
-model in Dröge et al., Softw. Pract. Exp. 53, 176 (2023),
-doi:10.1002/spe.3075.
+The cluster-pair layout for such kernels is the one in Páll and Hess, Comput.
+Phys.
+Commun. 184, 2641 (2013),
+doi:10.1016/j.cpc.2013.06.003. Per-microarchitecture builds of the surrounding stack are the EESSI model in Dröge et al., Softw. Pract. Exp. 53, 176 (2023), doi:10.1002/spe.3075.
 Those runs are on real nodes, not under emulation in this CI.
