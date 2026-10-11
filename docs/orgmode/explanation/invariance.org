@@ -22,5 +22,3 @@ The embedded-atom stress is not computed, so that hash is of nine zeroes and
 
 Product-sums that reach an output are explicit fused multiply-adds.
 Other translation units are compiled with contraction off.
-Goswami, Gunde and Jónsson, Front.
-Chem. (2026), doi:10.3389/fchem.2026.1807063.

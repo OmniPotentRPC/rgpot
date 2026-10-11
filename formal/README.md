@@ -15,6 +15,5 @@ The split is not claimed for subnormals or for results that overflow.
 The constants of the fused exp live in `rgpot-core/src/fp_constants.rs`.
 `scripts/export_constants.py --check` compares them with `CppCore/rgpot/simd/exp.hpp` and `validation/golden/exp_constants.json`.
 
-Goswami, Gunde and Jónsson, Front. Chem. (2026), doi:10.3389/fchem.2026.1807063.
 Ogita, Rump and Oishi, SIAM J. Sci. Comput. 26, 1955 (2005), doi:10.1137/030601818.
 Boldo and Muller, IEEE Trans. Comput. 60, 176 (2011), doi:10.1109/tc.2010.139.
