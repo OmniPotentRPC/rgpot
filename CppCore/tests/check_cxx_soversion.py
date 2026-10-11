@@ -271,11 +271,27 @@ def check_against_base(rows: list[tuple[int, str]], layout_text: str) -> None:
 def check_soname(lib: Path, soversion: int) -> None:
     if not lib.is_file():
         fail(f"librgpot not found: {lib}")
-    readelf = subprocess.run(
-        ["readelf", "-d", str(lib)],
-        capture_output=True,
-        text=True,
-    )
+    # macOS meson passes -Ddefault_library=static, so the artifact is
+    # librgpot.a and the runner has no readelf. A static archive has no
+    # SONAME. Windows import libs are the same kind of file.
+    if lib.suffix in {".a", ".lib"}:
+        print(f"soversion: {lib.name} is a static archive, skipped SONAME check")
+        return
+    if lib.suffix == ".dll":
+        print(f"soversion: {lib.name} is a Windows DLL, skipped ELF SONAME check")
+        return
+    if lib.suffix == ".dylib":
+        check_install_name(lib, soversion)
+        return
+    try:
+        readelf = subprocess.run(
+            ["readelf", "-d", str(lib)],
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        print(f"soversion: readelf is not on PATH, skipped SONAME check for {lib.name}")
+        return
     if readelf.returncode != 0:
         print(f"soversion: {lib} is not an ELF object, skipped SONAME check")
         return
@@ -286,6 +302,32 @@ def check_soname(lib: Path, soversion: int) -> None:
     if match.group(1) != want:
         fail(f"SONAME is {match.group(1)}, expected {want}")
     print(f"SONAME {match.group(1)}")
+
+
+def check_install_name(lib: Path, soversion: int) -> None:
+    try:
+        otool = subprocess.run(
+            ["otool", "-D", str(lib)],
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        print(f"soversion: otool is not on PATH, skipped install-name check for {lib.name}")
+        return
+    if otool.returncode != 0:
+        fail(f"otool -D failed for {lib}: {otool.stderr.strip()}")
+    names = [
+        line.strip()
+        for line in otool.stdout.splitlines()
+        if line.strip() and not line.strip().endswith(":")
+    ]
+    if not names:
+        fail(f"no install name in {lib}")
+    want = f"librgpot.{soversion}.dylib"
+    got = Path(names[0]).name
+    if got != want:
+        fail(f"install name is {names[0]}, expected {want}")
+    print(f"install name {want}")
 
 
 def check_build_files(soversion: int) -> None:
