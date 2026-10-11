@@ -83,6 +83,7 @@ endif
 _rgpot_srcs += files('rgpot/PotHelpers.cc')
 _rgpot_srcs += files('rgpot/units.cc')
 _rgpot_srcs += files('rgpot/abi/CxxLayout.cc')
+_rgpot_srcs += files('rgpot/nlist/MinimumImage.cpp')
 
 # Cap'n Proto schema + NWChem/CPMD frontends need libcapnp (ptlrpc). Only pull
 # them in when RPC is on (server or client-only); lean -Dwith_rpc=false builds

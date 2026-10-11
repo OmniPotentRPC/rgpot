@@ -1,0 +1,1 @@
+The general-cell minimum image is computed in double. An ill-conditioned cell is Minkowski-reduced (Nguyen and Stehlé, ACM Trans. Algorithms 5, 46 (2009), doi:10.1145/1597036.1597050). A reduced basis that is still too ill-conditioned searches the 27 images with coefficients in {-1, 0, 1}.
