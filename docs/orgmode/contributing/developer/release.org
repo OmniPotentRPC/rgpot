@@ -69,8 +69,7 @@ uvx towncrier create
 #+end_src
 
 Types (see =towncrier.toml=): =breaking= (section Breaking, listed first),
-=security=, =removed=, =deprecated=, =added=,
-=dev=, =changed=, =fixed=, =misc=.
+=security=, =removed=, =deprecated=, =added=, =dev=, =changed=, =fixed=, =misc=.
 Preview with =uvx towncrier build --draft= or =pixi r towncrier-draft= if
 defined.
 
