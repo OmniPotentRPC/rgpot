@@ -160,11 +160,12 @@ before-all = "yum install -y gcc-gfortran openblas-devel || dnf install -y gcc-g
 # auditwheel leaves those NEEDED entries for the installed torch stack.
 repair-wheel-command = """
   set -eu
-  # mesonpy zip drops ELF soversion links; _core NEEDs librgpot.so.3.
+  # mesonpy zip drops ELF soversion links; _core NEEDs librgpot.so.N
+  # (N is kCxxSoversion). rgpot_repair_wheel.sh copies that SONAME.
   bash scripts/rgpot_repair_wheel.sh "{wheel}"
   tmp=$(mktemp -d)
   unzip -q "{wheel}" -d "$tmp"
-  libdir=$(dirname "$(find "$tmp" -name 'librgpot.so.3' | head -1)")
+  libdir=$(dirname "$(find "$tmp" -name 'librgpot.so*' | head -1)")
   test -n "$libdir"
   LD_LIBRARY_PATH="$libdir:${LD_LIBRARY_PATH:-}" \
     auditwheel repair -w {dest_dir} "{wheel}" \
