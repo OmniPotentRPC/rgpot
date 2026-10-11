@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import bisect
 import hashlib
+import io
 import json
 import os
 import re
@@ -27,7 +28,18 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from capstone import CS_ARCH_ARM64, CS_MODE_LITTLE_ENDIAN, Cs
+from elftools.elf.elffile import ELFFile
+
 from demangle import demangle
+
+try:
+    from iced_x86 import CpuidFeature, Decoder, Formatter, FormatterSyntax
+except ImportError:  # aarch64 runners have no iced-x86 wheel
+    CpuidFeature = None  # type: ignore[misc, assignment]
+    Decoder = None  # type: ignore[misc, assignment]
+    Formatter = None  # type: ignore[misc, assignment]
+    FormatterSyntax = None  # type: ignore[misc, assignment]
 
 try:
     import tomllib
@@ -55,6 +67,10 @@ _ALIASES = {
 # x86-64 v1, using iced-x86 CpuidFeature names in lower case.
 # CX16 is CMPXCHG16B. LAHF/SAHF decode as the 8086 class.
 # ENDBR is CET_IBT and is a NOP on CPUs without CET.
+# Legacy TZCNT (F3 0F BC, REX form F3 48 0F BC) is BMI1 in the opcode
+# map and BSF when the F3 prefix is ignored. LLVM emits it for ctz on
+# baseline x86-64 (D130956, D132520). It is filtered in the decoder.
+# ANDN is a different BMI1 encoding and stays above the baseline.
 _X86_64_V1 = {
     "intel8086",
     "intel8086_only",
@@ -240,11 +256,17 @@ _SVE2_MNEMONICS = {
     "sqrdcmlah",
 }
 
+# Ordering precedes the size suffix. Loads take a, l, or al. Stores take l.
+_LSE_OP = r"add|clr|eor|set|smax|smin|umax|umin"
 _LSE = re.compile(
-    r"^(?:cas(?:p?[abhl]{0,3})?|"
-    r"ld(?:add|clr|eor|set)(?:[abhl]{0,3})?|"
-    r"swp(?:[abhl]{0,3})?|"
-    r"st(?:add|clr|eor|set)(?:[abhl]{0,2})?)$"
+    rf"^(?:cas(?:p)?(?:a|l|al)?(?:b|h)?|"
+    rf"ld(?:{_LSE_OP})(?:a|l|al)?(?:b|h)?|"
+    rf"swp(?:a|l|al)?(?:b|h)?|"
+    rf"st(?:{_LSE_OP})l?(?:b|h)?)$"
+)
+# libgcc and compiler-builtins hide LSE behind these names and a runtime check.
+_OUTLINE_ATOMICS = re.compile(
+    r"^__aarch64_(?:cas|ldadd|swp|ldclr|ldeor|ldset)"
 )
 _ZREG = re.compile(r"(?:^|[^A-Za-z0-9_])z\d+")
 _PREG = re.compile(r"(?:^|[^A-Za-z0-9_])p\d+")
@@ -259,7 +281,6 @@ _FP16_MNEMONICS = {
     "fcmp",
     "fcmpe",
     "fcsel",
-    "fcvt",
     "fcvtas",
     "fcvtau",
     "fcvtms",
@@ -456,17 +477,25 @@ def _is_unwinder(func: Func | None) -> bool:
     return bool(_UNWINDER.search(func.demangled) or _UNWINDER.search(func.name))
 
 
-def _lookup(funcs: list[Func], ip: int) -> Func | None:
-    if not funcs:
+class FuncIndex:
+    """Function starts for one section, sorted once and then bisected."""
+
+    __slots__ = ("funcs", "starts")
+
+    def __init__(self, funcs: list[Func]) -> None:
+        self.funcs = funcs
+        self.starts = [item.start for item in funcs]
+
+    def lookup(self, ip: int) -> Func | None:
+        if not self.starts:
+            return None
+        index = bisect.bisect_right(self.starts, ip) - 1
+        if index < 0:
+            return None
+        func = self.funcs[index]
+        if func.start <= ip < func.end:
+            return func
         return None
-    starts = [item.start for item in funcs]
-    index = bisect.bisect_right(starts, ip) - 1
-    if index < 0:
-        return None
-    func = funcs[index]
-    if func.start <= ip < func.end:
-        return func
-    return None
 
 
 def _finish_ranges(funcs: list[Func], section_end: int) -> list[Func]:
@@ -480,6 +509,14 @@ def _finish_ranges(funcs: list[Func], section_end: int) -> list[Func]:
     return ordered
 
 
+def _outline_atomic(func: Func | None, feature: str) -> bool:
+    if feature != "lse" or func is None:
+        return False
+    return bool(
+        _OUTLINE_ATOMICS.match(func.name) or _OUTLINE_ATOMICS.match(func.demangled)
+    )
+
+
 def _record(
     stats: AuditStats,
     allow: Allowlist,
@@ -489,21 +526,26 @@ def _record(
     mnemonic: str,
     features: list[str],
     has_symbols: bool,
-    vendored_ok: bool,
 ) -> None:
     for feature in features:
         feature = canonical_feature(feature)
         if feature == "cet_ss" and _is_unwinder(func):
             continue
-        if vendored_ok and _rules_allow(allow.vendored, path, feature):
+        if _outline_atomic(func, feature):
+            stats.allow(feature)
+            continue
+        if _rules_allow(allow.vendored, path, feature):
             stats.allow(feature)
             continue
         if _function_allows(allow, func, feature):
             stats.allow(feature)
             continue
-        symbol = func.demangled if func is not None else ("no symbols" if not has_symbols else "unknown")
         if not has_symbols:
             symbol = "no symbols"
+        elif func is not None:
+            symbol = func.demangled
+        else:
+            symbol = "unknown"
         stats.violations.append(
             Violation(
                 file=path,
@@ -516,8 +558,8 @@ def _record(
 
 
 def _x86_feature_table() -> dict[int, str]:
-    from iced_x86 import CpuidFeature
-
+    if CpuidFeature is None:
+        raise SystemExit("iced-x86 is required to decode x86_64")
     table: dict[int, str] = {}
     for name in dir(CpuidFeature):
         if name.startswith("_") or name in {"CpuidFeature", "typing"}:
@@ -538,9 +580,10 @@ def _decode_x86(
     has_symbols: bool,
     baseline: set[str],
 ) -> None:
-    from iced_x86 import Decoder, Formatter, FormatterSyntax
-
+    if Decoder is None or Formatter is None or FormatterSyntax is None:
+        raise SystemExit("iced-x86 is required to decode x86_64")
     names = _x86_feature_table()
+    index = FuncIndex(funcs)
     formatter = Formatter(FormatterSyntax.INTEL)
     decoder = Decoder(64, data, ip=base)
     for ins in decoder:
@@ -548,24 +591,27 @@ def _decode_x86(
             stats.undecoded += 1
             continue
         stats.instructions_decoded += 1
+        mnemonic = formatter.format_mnemonic(ins)
         above = []
         for raw in ins.cpuid_features():
             feature = names.get(int(raw), f"feature_{int(raw)}")
+            # Legacy TZCNT is REP BSF (F3 0F BC). See the baseline comment.
+            if feature == "bmi1" and mnemonic == "tzcnt":
+                continue
             if feature not in baseline:
                 above.append(feature)
         if not above:
             continue
-        func = _lookup(funcs, ins.ip)
+        func = index.lookup(ins.ip)
         _record(
             stats,
             allow,
             path,
             func,
             ins.ip,
-            formatter.format_mnemonic(ins),
+            mnemonic,
             above,
             has_symbols,
-            True,
         )
 
 
@@ -652,17 +698,19 @@ def _decode_aarch64(
     has_symbols: bool,
     platform_baseline: frozenset[str] = frozenset(),
 ) -> None:
-    from capstone import CS_ARCH_ARM64, CS_MODE_LITTLE_ENDIAN, Cs
-
     decoder = Cs(CS_ARCH_ARM64, CS_MODE_LITTLE_ENDIAN)
+    index = FuncIndex(funcs)
     # Capstone stops at the first word it cannot decode. OpenBLAS puts a
     # constant pool in the text segment and SVE kernels after it, so a
     # stop must resume at the next word.
+    # A bytes slice is copied on every resume. One writable buffer is not.
+    buf = bytearray(data)
+    view = memoryview(buf)
     offset = 0
-    total = len(data)
+    total = len(buf)
     while offset < total:
         start = offset
-        for ins in decoder.disasm(data[offset:], base + offset):
+        for ins in decoder.disasm(view[offset:], base + offset):
             stats.instructions_decoded += 1
             features = [
                 feature
@@ -670,7 +718,7 @@ def _decode_aarch64(
                 if feature not in platform_baseline
             ]
             if features:
-                func = _lookup(funcs, ins.address)
+                func = index.lookup(ins.address)
                 _record(
                     stats,
                     allow,
@@ -680,7 +728,6 @@ def _decode_aarch64(
                     ins.mnemonic,
                     features,
                     has_symbols,
-                    True,
                 )
             offset = ins.address - base + ins.size
         if offset == start:
@@ -688,10 +735,7 @@ def _decode_aarch64(
             offset += 4
 
 
-def _elf_file_has_functions(elf: object) -> bool:
-    from elftools.elf.elffile import ELFFile
-
-    assert isinstance(elf, ELFFile)
+def _elf_file_has_functions(elf: ELFFile) -> bool:
     for name in (".symtab", ".dynsym"):
         section = elf.get_section_by_name(name)
         if section is None:
@@ -702,10 +746,7 @@ def _elf_file_has_functions(elf: object) -> bool:
     return False
 
 
-def _elf_funcs(elf: object, section_index: int, base: int, reloc: bool) -> list[Func]:
-    from elftools.elf.elffile import ELFFile
-
-    assert isinstance(elf, ELFFile)
+def _elf_funcs(elf: ELFFile, section_index: int, base: int, reloc: bool) -> list[Func]:
     chosen = None
     for name in (".symtab", ".dynsym"):
         section = elf.get_section_by_name(name)
@@ -747,9 +788,6 @@ def _audit_elf(
     allow: Allowlist,
     override: str | None,
 ) -> None:
-    from elftools.elf.elffile import ELFFile
-    import io
-
     elf = ELFFile(io.BytesIO(blob))
     machine = elf.header["e_machine"]
     if machine == "EM_X86_64":
@@ -851,10 +889,17 @@ def _parse_macho(
         elif cmd == _LC_VERSION_MIN_MACOSX and cmdsize >= 16 and arch == "aarch64":
             platform_baseline.update(_MACOS_ARM64_BASELINE)
         elif cmd == _LC_SEGMENT_64 and cmdsize >= 72:
-            segname, vmaddr, _vmsize, _fileoff, _filesize, _maxprot, _initprot, nsects, _segflags = (
-                struct.unpack_from("<16sQQQQIIIi", blob, offset + 8)
-            )
-            del segname, _vmsize, _fileoff, _filesize, _maxprot, _initprot, _segflags
+            (
+                _segname,
+                _vmaddr,
+                _vmsize,
+                _fileoff,
+                _filesize,
+                _maxprot,
+                _initprot,
+                nsects,
+                _segflags,
+            ) = struct.unpack_from("<16sQQQQIIIi", blob, offset + 8)
             sec_off = offset + 72
             for _ in range(nsects):
                 if sec_off + 80 > len(blob):
@@ -868,7 +913,6 @@ def _parse_macho(
             sym_off, sym_count, str_off, str_size = struct.unpack_from("<IIII", blob, offset + 8)
         offset += cmdsize
     code_sections = []
-    symbols_by_sect: dict[int, list[Func]] = {}
     raw_syms: list[tuple[int, int, str]] = []
     if sym_count and str_off + str_size <= len(blob):
         string_table = blob[str_off : str_off + str_size]
@@ -905,7 +949,6 @@ def _parse_macho(
                 Func(name=name, demangled=demangle(plain), start=value, end=value)
             )
         funcs = _finish_ranges(funcs, addr + size)
-        symbols_by_sect[sect_index] = funcs
         code_sections.append((addr, blob[fileoff : fileoff + size], funcs))
     return arch, code_sections, frozenset(platform_baseline)
 

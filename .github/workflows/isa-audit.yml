@@ -8,7 +8,6 @@ name: ISA audit
 #       needs: build
 #       permissions:
 #         contents: read
-#         actions: write
 #       uses: OmniPotentRPC/rgpot/.github/workflows/isa-audit.yml@<commit-sha>
 #       with:
 #         artifact-name: unstripped-libs
@@ -37,7 +36,6 @@ on:
 
 permissions:
   contents: read
-  actions: write
 
 jobs:
   audit:
@@ -47,6 +45,7 @@ jobs:
       - name: Checkout caller
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          persist-credentials: false
           path: caller
 
       - name: Checkout auditor
@@ -54,6 +53,7 @@ jobs:
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
+          persist-credentials: false
           path: auditor
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5

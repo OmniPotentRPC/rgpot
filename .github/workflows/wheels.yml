@@ -22,8 +22,6 @@ on:
           - pypi
         default: testpypi
   push:
-    branches:
-      - ci/isa-audit
     tags:
       - "v*"
   pull_request:
@@ -48,6 +46,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       - uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c # v3.2.1
       - name: The kernels must be in the artifact, not just in the flags
         shell: bash
@@ -152,6 +152,8 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       - uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c # v3.2.1
       - name: The kernels must be in the artifact, not just in the flags
         shell: bash
@@ -251,6 +253,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       # meson-python runs setup for the sdist; -Dwith_dftd4 pulls the
       # wrap, which needs gfortran and OpenBLAS (lapack=openblas).
       - name: OpenBLAS for the dftd4 wrap
@@ -269,7 +273,6 @@ jobs:
     needs: wheels-linux
     permissions:
       contents: read
-      actions: write
     uses: ./.github/workflows/isa-audit.yml
     with:
       artifact-name: isa-audit-linux-x86_64
@@ -281,7 +284,6 @@ jobs:
     needs: wheels-macos
     permissions:
       contents: read
-      actions: write
     uses: ./.github/workflows/isa-audit.yml
     with:
       artifact-name: isa-audit-macos-arm64

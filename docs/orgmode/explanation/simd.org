@@ -21,7 +21,8 @@ the vendored file that contains a third-party dispatcher.
 On a macOS arm64 slice, ~lse~ and ~rcpc~ are baseline: they are the
 platform atomics, and no other CPU can load that binary.
 The gate does not execute the instruction.
-A path this machine cannot run is not exercised.
+A runtime test reports a path as not exercised when this machine
+cannot execute it.
 See =ci/isa-audit/README.org= for the allowlist format and for the
 reusable workflow other repositories call by commit SHA.
 

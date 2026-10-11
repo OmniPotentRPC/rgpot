@@ -100,6 +100,21 @@ class MachOTest(unittest.TestCase):
         self.assertTrue(any(item.feature == "sve" for item in stats.violations))
         self.assertFalse(any(item.feature == "lse" for item in stats.violations))
 
+    def test_outline_atomic_helper_is_allowed(self) -> None:
+        allow = load_allowlist(Path(__file__).with_name("allow-none.toml"))
+        stats = AuditStats()
+        blob = _macho(_LDADDAL + _RET, "___aarch64_ldadd4_relax")
+        audit_bytes(blob, "libgcc.o", stats, allow, "armv8-a")
+        self.assertEqual(stats.violations, [])
+        self.assertGreater(stats.allowed_feature_counts.get("lse", 0), 0)
+
+    def test_lse_in_a_caller_is_not_the_helper_allow(self) -> None:
+        allow = load_allowlist(Path(__file__).with_name("allow-none.toml"))
+        stats = AuditStats()
+        blob = _macho(_LDADDAL + _RET, "_not__aarch64_ldadd")
+        audit_bytes(blob, "caller.o", stats, allow, "armv8-a")
+        self.assertTrue(any(item.feature == "lse" for item in stats.violations))
+
     def test_decode_resumes_after_a_constant_pool(self) -> None:
         allow = load_allowlist(Path(__file__).with_name("allow-sve.toml"))
         stats = AuditStats()

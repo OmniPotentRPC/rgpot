@@ -92,6 +92,12 @@ PY
   expect_fail "popcnt" "$work/v2.o" --allow "$TESTS/allow-ok.toml" --baseline x86-64
   expect_ok "$work/v2.o" --allow "$TESTS/allow-ok.toml" --baseline x86-64-v2
 
+  "$cc" -c -O2 "$TESTS/ctz.c" -o "$work/ctz.o"
+  "$cc" -c -O2 -mbmi "$TESTS/andn.c" -o "$work/andn.o"
+  expect_ok "$work/ctz.o" --allow "$TESTS/allow-ok.toml"
+  expect_fail "andn_bits" "$work/andn.o" --allow "$TESTS/allow-ok.toml"
+  expect_fail "bmi1" "$work/andn.o" --allow "$TESTS/allow-ok.toml"
+
   rm -f "$work/ok.whl"
   python3 - "$work" <<'PY'
 import sys, zipfile
@@ -133,9 +139,38 @@ print("json ok:", report["allowed_feature_counts"])
 PY
   expect_fail "other_sve" "$work/bad_sve.o" --allow "$TESTS/allow-sve.toml" --baseline armv8-a
   expect_fail "sve" "$work/bad_sve.o" --allow "$TESTS/allow-sve.toml" --baseline armv8-a
+
+  "$cc" -shared -fPIC -O2 -moutline-atomics -static-libgcc \
+    "$TESTS/outline.c" -o "$work/outline.so"
+  outline_ok=0
+  if ! nm "$work/outline.so" | grep -q '__aarch64_ldadd'; then
+    echo "aarch64 outline-atomics fixture not exercised: linked so has no __aarch64_ldadd"
+  else
+    for prefix in __aarch64_cas __aarch64_ldadd __aarch64_swp __aarch64_ldclr __aarch64_ldeor __aarch64_ldset; do
+      nm "$work/outline.so" | grep -q "$prefix" || fail "linked so missing $prefix"
+    done
+    expect_ok "$work/outline.so" --allow "$TESTS/allow-none.toml" --baseline armv8-a \
+      --json "$work/outline.json"
+    python3 - "$work/outline.json" <<'PY'
+import json, sys
+report = json.load(open(sys.argv[1]))
+assert report["violations"] == [], report["violations"]
+assert report["allowed_feature_counts"].get("lse", 0) > 0, report
+print("outline atomics ok:", report["allowed_feature_counts"])
+PY
+    outline_ok=1
+  fi
+  "$cc" -c -O2 -march=armv8.1-a -mno-outline-atomics \
+    "$TESTS/inline_lse.c" -o "$work/inline_lse.o"
+  expect_fail "bump_inline" "$work/inline_lse.o" --allow "$TESTS/allow-none.toml" --baseline armv8-a
+  expect_fail "lse" "$work/inline_lse.o" --allow "$TESTS/allow-none.toml" --baseline armv8-a
+
   if [[ -n "${ISA_AUDIT_OUT:-}" ]]; then
     mkdir -p "$ISA_AUDIT_OUT"
     cp "$work/ok_sve.o" "$ISA_AUDIT_OUT/ok_sve.o"
+    if [[ "$outline_ok" -eq 1 ]]; then
+      cp "$work/outline.so" "$ISA_AUDIT_OUT/outline.so"
+    fi
   fi
 }
 
