@@ -30,6 +30,16 @@ on:
         required: false
         type: string
         default: ""
+      apt-packages:
+        description: Space-separated apt packages installed before the build. Empty skips apt.
+        required: false
+        type: string
+        default: ""
+      setup-script:
+        description: Repo-relative script to source instead of pip install of the package. Empty keeps pip install.
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -61,16 +71,31 @@ jobs:
           fi
           echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
 
+      - name: Install apt packages
+        if: inputs.apt-packages != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ${{ inputs.apt-packages }}
+
       - name: Install the package and the T1 runner
         shell: bash
+        env:
+          SETUP_SCRIPT: ${{ inputs.setup-script }}
+          PKG: ${{ inputs.package-dir }}
+          EXTRAS: ${{ inputs.extras }}
         run: |
           set -euo pipefail
           python -m pip install -U pip
           python -m pip install pytest pytest-run-parallel pytest-timeout hypothesis numpy
-          if [ -n "${{ inputs.extras }}" ]; then
-            python -m pip install "./${{ inputs.package-dir }}[${{ inputs.extras }}]"
+          if [ -n "${SETUP_SCRIPT}" ]; then
+            # shellcheck disable=SC1090
+            source "${SETUP_SCRIPT}"
+          elif [ -n "${EXTRAS}" ]; then
+            python -m pip install "./${PKG}[${EXTRAS}]"
           else
-            python -m pip install "./${{ inputs.package-dir }}"
+            python -m pip install "./${PKG}"
           fi
 
       - name: F1 import with the GIL disabled

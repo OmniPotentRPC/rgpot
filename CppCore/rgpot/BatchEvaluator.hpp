@@ -107,6 +107,20 @@ public:
       }
     };
 
+    // One configuration, or one requested worker: run on this thread.
+    // Spawning a std::thread and joining it is the whole cost when the
+    // kernel is short.
+    if (workers == 1) {
+      run(0, 0, inputs.size());
+      if (errors[0]) {
+        std::rethrow_exception(errors[0]);
+      }
+      for (std::size_t k = 0; k < local[0].size(); ++k) {
+        results[k] = std::move(local[0][k]);
+      }
+      return results;
+    }
+
     std::vector<std::thread> threads;
     threads.reserve(workers);
     const std::size_t base = inputs.size() / workers;

@@ -35,6 +35,16 @@ on:
         required: false
         type: string
         default: nightly-2026-01-20
+      apt-packages:
+        description: Space-separated apt packages installed inside the TSan image. Empty skips apt.
+        required: false
+        type: string
+        default: ""
+      setup-script:
+        description: Repo-relative script to source instead of pip install of the package. Empty keeps pip install.
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -67,6 +77,8 @@ jobs:
           RUST_CRATE: ${{ inputs.rust-crate-dir }}
           TSAN_CMAKE_ARGS: ${{ inputs.tsan-cmake-args }}
           RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+          SETUP_SCRIPT: ${{ inputs.setup-script }}
         run: |
           set -euo pipefail
           # numpy-tsan is the cpython_sanity 3.14t image plus a TSan numpy.
@@ -75,6 +87,7 @@ jobs:
           IMAGE=ghcr.io/nascheme/numpy-tsan:3.14t@sha256:f6dd658f1a155be35e27b182cac97c2a77c4b2d62bacb81753beaba725978149
           docker run --rm -i \
             -e PKG -e TEST_PATH -e IMPORTS -e EXTRAS -e RUST_CRATE -e TSAN_CMAKE_ARGS -e RUST_TOOLCHAIN \
+            -e APT_PACKAGES -e SETUP_SCRIPT \
             -v "$GITHUB_WORKSPACE":/src -w /src \
             "$IMAGE" \
             bash -s << 'EOF'
@@ -102,6 +115,11 @@ jobs:
           export CXXFLAGS="${CXXFLAGS:-} -fsanitize=thread -fno-omit-frame-pointer -g -ffp-contract=off"
           export LDFLAGS="${LDFLAGS:-} -fsanitize=thread"
           export PIP_BREAK_SYSTEM_PACKAGES=1
+          if [ -n "${APT_PACKAGES}" ]; then
+            apt-get update
+            # shellcheck disable=SC2086
+            apt-get install -y ${APT_PACKAGES}
+          fi
           if [ -n "${RUST_CRATE}" ]; then
             if [ ! -f "/src/${PKG}/${RUST_CRATE}/Cargo.toml" ]; then
               echo "missing Rust crate /src/${PKG}/${RUST_CRATE}/Cargo.toml" >&2
@@ -149,7 +167,13 @@ jobs:
           if [ -n "${cmake_args}" ]; then
             export CMAKE_ARGS="${cmake_args}"
           fi
-          "$PY" -m pip install "${install_args[@]}" "${spec}"
+          if [ -n "${SETUP_SCRIPT}" ]; then
+            export ROOT=/src
+            # shellcheck disable=SC1090
+            source "/src/${SETUP_SCRIPT}"
+          else
+            "$PY" -m pip install "${install_args[@]}" "${spec}"
+          fi
           if [ -n "${RUST_CRATE}" ]; then
             if ! command -v nm >/dev/null 2>&1; then
               apt-get update

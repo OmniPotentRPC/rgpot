@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -356,8 +357,16 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
         std::vector<BatchResult> results;
         {
           // F4. One BatchEvaluator call. Each worker owns one instance.
+          // Do not construct more instances than there are configurations:
+          // a single large cell would otherwise pay for unused workspaces.
+          unsigned width = n_threads == 0
+                               ? std::max(1u, std::thread::hardware_concurrency())
+                               : n_threads;
+          if (width > inputs.size()) {
+            width = static_cast<unsigned>(inputs.size());
+          }
           nb::gil_scoped_release release;
-          BatchEvaluator eval([&] { return self.make(); }, n_threads);
+          BatchEvaluator eval([&] { return self.make(); }, width);
           results = eval.evaluate(inputs);
         }
         nb::list out;

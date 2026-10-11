@@ -111,13 +111,26 @@ def _resolve_potential(potential: Any, params: dict[str, Any]) -> Any:
 
 
 def _box(cell: Any, pbc: Any) -> np.ndarray:
-    """Row-major cell. A zero cell with no periodic axes becomes 100 Angstrom."""
+    """Row-major cell. A zero cell with no periodic axes becomes 100 Angstrom.
+
+    The determinant is three multiplies. ``numpy.linalg.det`` on every
+    frame of a batch costs more than an EAM evaluation of Pt7.
+    """
     box = np.ascontiguousarray(np.asarray(cell, dtype=np.float64).reshape(3, 3))
-    flags = np.atleast_1d(np.asarray(pbc, dtype=bool)).reshape(-1)
-    periodic = bool(np.any(flags))
-    if (not periodic) and abs(float(np.linalg.det(box))) < 1e-18:
-        box = np.eye(3, dtype=np.float64) * 100.0
-    return np.ascontiguousarray(box, dtype=np.float64)
+    flags = np.asarray(pbc, dtype=bool).reshape(-1)
+    if flags.any():
+        return box
+    a = box[0]
+    b = box[1]
+    c = box[2]
+    det = (
+        a[0] * (b[1] * c[2] - b[2] * c[1])
+        - a[1] * (b[0] * c[2] - b[2] * c[0])
+        + a[2] * (b[0] * c[1] - b[1] * c[0])
+    )
+    if abs(float(det)) < 1e-18:
+        return np.eye(3, dtype=np.float64) * 100.0
+    return box
 
 
 def _voigt(stress: np.ndarray) -> np.ndarray:
@@ -262,18 +275,20 @@ class RgpotCalculator(Calculator):
         numbers: list[np.ndarray] = []
         boxes: list[np.ndarray] = []
         for atoms in frames_list:
-            positions.append(_as_f64(atoms.get_positions(), "positions").copy())
-            numbers.append(
-                np.ascontiguousarray(atoms.get_atomic_numbers(), dtype=np.int32).copy()
-            )
-            boxes.append(_box(np.asarray(atoms.cell.array), atoms.pbc).copy())
+            # Read the arrays ASE stores. get_positions copies, and that
+            # copy was comparable to an EAM evaluation of Pt7. The C++
+            # batch copies into BatchInput before it detaches, so the
+            # Atoms objects are not mutated and are not read again.
+            positions.append(_as_f64(atoms.positions, "positions"))
+            numbers.append(np.ascontiguousarray(atoms.numbers, dtype=np.int32))
+            boxes.append(_box(atoms.cell.array, atoms.pbc))
         raw_rows = self._potential.evaluate_batch(
             positions, numbers, boxes, int(threads)
         )
         rows: list[dict[str, Any]] = []
         for index, (atoms, raw) in enumerate(zip(frames_list, raw_rows)):
             energy = float(raw["energy"])
-            forces = np.ascontiguousarray(raw["forces"], dtype=np.float64).copy()
+            forces = np.ascontiguousarray(raw["forces"], dtype=np.float64)
             row: dict[str, Any] = {}
             if "energy" in wanted or "free_energy" in wanted:
                 row["energy"] = energy

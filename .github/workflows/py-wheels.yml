@@ -25,6 +25,11 @@ on:
         required: false
         type: string
         default: ""
+      os:
+        description: JSON array of runner labels. The default is ubuntu-latest, ubuntu-24.04-arm, macos-14, and windows-2022.
+        required: false
+        type: string
+        default: '["ubuntu-latest","ubuntu-24.04-arm","macos-14","windows-2022"]'
 
 permissions:
   contents: read
@@ -37,7 +42,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-14, windows-2022]
+        os: ${{ fromJSON(inputs.os) }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 

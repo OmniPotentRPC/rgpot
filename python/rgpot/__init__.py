@@ -16,66 +16,38 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
-from rgpot._core import (
-    LJPot,
-    NumericalError,
-    __version__,
-    evaluate_lj,
-    has_cache,
-    has_dftd3,
-    has_dftd4,
-    has_expr,
-    has_fortran_pots,
-    has_metatomic_dlopen,
-    has_xckernel,
-)
+import rgpot._core as _core
 
-try:
-    from rgpot._core import evaluate_metatomic_dlopen
-except ImportError:  # compiled without MetatomicDlopen
-    evaluate_metatomic_dlopen = None  # type: ignore[misc, assignment]
+__version__: str = str(getattr(_core, "__version__", "0"))
+LJPot = _core.LJPot
+NumericalError = _core.NumericalError
+evaluate_lj = _core.evaluate_lj
+has_cache = _core.has_cache
+has_dftd3 = _core.has_dftd3
+has_dftd4 = _core.has_dftd4
+has_expr = _core.has_expr
+has_fortran_pots = _core.has_fortran_pots
+has_metatomic_dlopen = _core.has_metatomic_dlopen
+has_xckernel = _core.has_xckernel
 
-try:
-    from rgpot._core import PotentialCache
-except ImportError:  # compiled without -Dwith_cache
-    PotentialCache = None  # type: ignore[misc, assignment]
-
-try:
-    from rgpot._core import D3Pot
-except ImportError:  # compiled without -Dwith_dftd3
-    D3Pot = None  # type: ignore[misc, assignment]
-
-try:
-    from rgpot._core import D4Pot
-except ImportError:
-    D4Pot = None  # type: ignore[misc, assignment]
-
-try:
-    from rgpot._core import ExprPot
-except ImportError:
-    ExprPot = None  # type: ignore[misc, assignment]
-
-try:
-    from rgpot._core import XcKernel
-except ImportError:
-    XcKernel = None  # type: ignore[misc, assignment]
-
-import importlib as _importlib
-
-_core_mod = _importlib.import_module("rgpot._core")
-for _fortran_name in (
-    "SWPot",
-    "EDIPPot",
-    "LenoskyPot",
-    "TersoffPot",
-    "EAMAlPot",
-    "FeHePot",
-    "CuH2Pot",
-    "WaterHPot",
-):
-    globals()[_fortran_name] = getattr(_core_mod, _fortran_name, None)
-del _core_mod, _fortran_name, _importlib
+# Absent when the matching meson flag was off. getattr keeps import rgpot
+# working for a reduced build and for the full wheel.
+evaluate_metatomic_dlopen: Any = getattr(_core, "evaluate_metatomic_dlopen", None)
+PotentialCache: Any = getattr(_core, "PotentialCache", None)
+D3Pot: Any = getattr(_core, "D3Pot", None)
+D4Pot: Any = getattr(_core, "D4Pot", None)
+ExprPot: Any = getattr(_core, "ExprPot", None)
+XcKernel: Any = getattr(_core, "XcKernel", None)
+SWPot: Any = getattr(_core, "SWPot", None)
+EDIPPot: Any = getattr(_core, "EDIPPot", None)
+LenoskyPot: Any = getattr(_core, "LenoskyPot", None)
+TersoffPot: Any = getattr(_core, "TersoffPot", None)
+EAMAlPot: Any = getattr(_core, "EAMAlPot", None)
+FeHePot: Any = getattr(_core, "FeHePot", None)
+CuH2Pot: Any = getattr(_core, "CuH2Pot", None)
+WaterHPot: Any = getattr(_core, "WaterHPot", None)
 
 
 def _torch_major() -> str | None:
@@ -146,7 +118,7 @@ def available_metatomic_engine_abis() -> list[str]:
     return out
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
     """Lazy exports. ``ase`` is not imported by ``import rgpot``."""
     if name == "ase":
         import importlib
@@ -158,14 +130,14 @@ def __getattr__(name: str):
 
 
 def evaluate_metatomic(
-    positions,
-    atom_types,
-    box,
+    positions: Any,
+    atom_types: Any,
+    box: Any,
     *,
     model_path: str,
     engine_path: str | None = None,
     device: str = "cpu",
-):
+) -> Any:
     """Force evaluation through MetatomicDlopen (real engine plugin)."""
     # Load torch via the Python extension first so the engine's DT_NEEDED
     # libtorch resolves to the same process image (avoids dual-load races).

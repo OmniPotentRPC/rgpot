@@ -105,11 +105,24 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 markers = [
   "thread_unsafe: mutates process-wide thread state (OpenMP or a pool)",
+  "iterations: pytest-run-parallel repeat count for one test",
 ]
 
 [[tool.mypy.overrides]]
 module = ["ase.*", "capnp", "anneal", "readcon", "torch", "torch.*"]
 ignore_missing_imports = true
+
+# nanobind.stubgen writes tuple and dict without parameters. The file is
+# checked by diff against a fresh stubgen, so it is not hand-edited.
+[[tool.mypy.overrides]]
+module = ["rgpot._core"]
+ignore_errors = true
+
+# ASE's own methods are untyped. The calculator still has to call them.
+[[tool.mypy.overrides]]
+module = ["rgpot.ase", "rgpot.ase.*"]
+disallow_untyped_calls = false
+warn_return_any = false
 
 [tool.cibuildwheel]
 # manylinux images carry gcc/g++ but not gfortran, and the Fortran kernels

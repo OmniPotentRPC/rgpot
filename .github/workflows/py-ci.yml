@@ -194,6 +194,8 @@ jobs:
       test-path: tests/python
       extras: ase
       iterations: "20"
+      apt-packages: gfortran g++ pkg-config
+      setup-script: .github/scripts/rgpot_reduced_build.sh
 
   rgpot-tsan:
     uses: ./.github/workflows/py-tsan.yml
@@ -202,6 +204,8 @@ jobs:
       import-names: rgpot._core
       test-path: tests/python
       extras: ase
+      apt-packages: gfortran
+      setup-script: .github/scripts/rgpot_reduced_build.sh
 
   rgpot-typing:
     uses: ./.github/workflows/py-typing.yml
@@ -211,6 +215,8 @@ jobs:
       stub-dir: python
       typecheck-paths: python/rgpot
       extras: ase
+      apt-packages: gfortran g++ pkg-config libopenblas-dev
+      timeout-minutes: "90"
 
   rgpot-pytest:
     name: rgpot python (meson)

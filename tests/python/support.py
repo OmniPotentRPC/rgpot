@@ -59,6 +59,23 @@ def pt7(side: float = 2.7, z: int = 13, jitter: float = 0.0, seed: int = 0) -> A
     )
 
 
+def eam_bulk(min_atoms: int = 10_000, a: float = 4.05, z: int = 13) -> Atoms:
+    """Periodic FCC aluminium cell with at least ``min_atoms`` sites.
+
+    The conventional cubic cell has four atoms. ``n`` is the smallest
+    repeat that reaches ``min_atoms``. EAM-Al is single species, so the
+    atomic number is aluminium.
+    """
+    from ase.build import bulk
+
+    repeat = 1
+    while 4 * repeat * repeat * repeat < min_atoms:
+        repeat += 1
+    atoms = bulk("Al", "fcc", a=a, cubic=True).repeat((repeat, repeat, repeat))
+    atoms.set_atomic_numbers([z] * len(atoms))
+    return atoms
+
+
 def raw_bytes(energy: float, forces: np.ndarray) -> bytes:
     """SHA input: one float64 energy followed by the force array bytes."""
     energy_bytes = np.array([energy], dtype=np.float64).tobytes()
