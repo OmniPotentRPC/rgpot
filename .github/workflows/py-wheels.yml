@@ -202,7 +202,17 @@ jobs:
             done
           done
 
+      - name: Artifact name
+        id: artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          safe="${PKG//\//-}"
+          echo "name=py-wheels-${{ matrix.os }}-${safe}" >> "$GITHUB_OUTPUT"
+        env:
+          PKG: ${{ inputs.package-dir }}
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: py-wheels-${{ matrix.os }}-${{ replace(inputs.package-dir, '/', '-') }}
+          name: ${{ steps.artifact.outputs.name }}
           path: wheelhouse/*.whl
