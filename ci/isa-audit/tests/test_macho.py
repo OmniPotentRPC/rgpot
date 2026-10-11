@@ -17,6 +17,8 @@ _RET = bytes.fromhex("c0035fd6")
 # ldaddal x0, x1, [x2] and ldapr x3, [x4], armv8.4-a.
 _LDADDAL = bytes.fromhex("4100e0f8")
 _LDAPR = bytes.fromhex("83c0bff8")
+# A word capstone will not decode. A constant pool uses the same stop.
+_BAD = bytes.fromhex("ffffffff")
 
 
 def _macho(code: bytes, name: str | None, macos: bool = False) -> bytes:
@@ -97,6 +99,15 @@ class MachOTest(unittest.TestCase):
         audit_bytes(blob, "other.dylib", stats, allow, "armv8-a")
         self.assertTrue(any(item.feature == "sve" for item in stats.violations))
         self.assertFalse(any(item.feature == "lse" for item in stats.violations))
+
+    def test_decode_resumes_after_a_constant_pool(self) -> None:
+        allow = load_allowlist(Path(__file__).with_name("allow-sve.toml"))
+        stats = AuditStats()
+        blob = _macho(_RET + _BAD + _CNTW_X5 + _RET, "_kern_sve")
+        audit_bytes(blob, "pool.o", stats, allow, "armv8-a")
+        self.assertGreater(stats.allowed_feature_counts.get("sve", 0), 0)
+        self.assertEqual(stats.violations, [])
+        self.assertEqual(stats.undecoded, 1)
 
 
 if __name__ == "__main__":

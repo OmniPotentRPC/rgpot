@@ -655,34 +655,37 @@ def _decode_aarch64(
     from capstone import CS_ARCH_ARM64, CS_MODE_LITTLE_ENDIAN, Cs
 
     decoder = Cs(CS_ARCH_ARM64, CS_MODE_LITTLE_ENDIAN)
-    cursor = base
-    end = base + len(data)
-    for ins in decoder.disasm(data, base):
-        if ins.address > cursor:
-            stats.undecoded += (ins.address - cursor) // 4
-        cursor = ins.address + ins.size
-        stats.instructions_decoded += 1
-        features = [
-            feature
-            for feature in classify_aarch64(ins.mnemonic, ins.op_str)
-            if feature not in platform_baseline
-        ]
-        if not features:
-            continue
-        func = _lookup(funcs, ins.address)
-        _record(
-            stats,
-            allow,
-            path,
-            func,
-            ins.address,
-            ins.mnemonic,
-            features,
-            has_symbols,
-            True,
-        )
-    if cursor < end:
-        stats.undecoded += (end - cursor) // 4
+    # Capstone stops at the first word it cannot decode. OpenBLAS puts a
+    # constant pool in the text segment and SVE kernels after it, so a
+    # stop must resume at the next word.
+    offset = 0
+    total = len(data)
+    while offset < total:
+        start = offset
+        for ins in decoder.disasm(data[offset:], base + offset):
+            stats.instructions_decoded += 1
+            features = [
+                feature
+                for feature in classify_aarch64(ins.mnemonic, ins.op_str)
+                if feature not in platform_baseline
+            ]
+            if features:
+                func = _lookup(funcs, ins.address)
+                _record(
+                    stats,
+                    allow,
+                    path,
+                    func,
+                    ins.address,
+                    ins.mnemonic,
+                    features,
+                    has_symbols,
+                    True,
+                )
+            offset = ins.address - base + ins.size
+        if offset == start:
+            stats.undecoded += 1
+            offset += 4
 
 
 def _elf_file_has_functions(elf: object) -> bool:

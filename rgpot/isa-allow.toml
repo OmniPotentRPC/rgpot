@@ -44,6 +44,7 @@ features = [
   "fcma",
   "sve",
   "sve2",
+  "sme",
   "crc32",
   "aes",
   "sha1",
