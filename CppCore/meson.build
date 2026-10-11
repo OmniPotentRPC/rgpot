@@ -36,6 +36,18 @@ if get_option('with_cache') and not get_option('with_rpc_client_only')
     _rgpot_srcs += files('rgpot/PotentialCache.cc')
 endif
 
+# ELF soversion of librgpot. The single assignment is kCxxSoversion in
+# rgpot/abi/CxxLayout.hpp, next to the C++ layout stamp. A layout edit
+# that bumps the constant moves every build system's SONAME with it.
+_cxx_layout_hpp = _fs.read('rgpot/abi/CxxLayout.hpp')
+_cxx_so_parts = _cxx_layout_hpp.split('kCxxSoversion = ')
+if _cxx_so_parts.length() != 2
+    error(
+        'CxxLayout.hpp must contain exactly one "kCxxSoversion = " assignment',
+    )
+endif
+rgpot_cxx_soversion = _cxx_so_parts[1].split(';')[0].strip()
+
 # Calculator groups split MPI_COMM_WORLD and broadcast results between
 # groups. librgpot itself never links MPI: the MPI side is librgpot_mpi,
 # which CalculatorGroup.cc loads with dlopen when a host asks for groups
@@ -54,6 +66,9 @@ if _mpi_dep.found()
         include_directories: include_directories('.'),
         gnu_symbol_visibility: 'hidden',
         version: meson.project_version(),
+        # Own SONAME. RGPOT_MPI_ABI_VERSION is still 1, and 3.4.0 did not
+        # ship this library, so librgpot_mpi.so.3 does not name two layouts.
+        # The loader opens RGPOT_MPI_LIBRARY_NAME, which is that filename.
         soversion: '3',
         install: not meson.is_subproject(),
     )
@@ -252,7 +267,7 @@ if not get_option('with_rpc_client_only')
         include_directories: _incdirs,
         link_whole: [rgpot_core] + _linkto + _rpc_whole,
         version: meson.project_version(),
-        soversion: '3',
+        soversion: rgpot_cxx_soversion,
         install: not meson.is_subproject(),
     )
 
@@ -1490,6 +1505,24 @@ if get_option('with_tests')
                 'CxxLayoutVirtualCounts',
                 python3_prog,
                 args: [files('tests/check_virtual_counts.py')],
+            )
+            cxx_layout_stamp = executable(
+                'print_cxx_layout_stamp',
+                sources: ['tests/print_cxx_layout_stamp.cc'],
+                include_directories: _incdirs + ['.'],
+                cpp_args: _args,
+                link_language: 'cpp',
+            )
+            test(
+                'CxxSoversion',
+                python3_prog,
+                args: [
+                    files('tests/check_cxx_soversion.py'),
+                    rgpot_cxx_soversion,
+                    rgpot.full_path(),
+                    cxx_layout_stamp.full_path(),
+                ],
+                depends: [rgpot, cxx_layout_stamp],
             )
         endif
     endif

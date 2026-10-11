@@ -52,6 +52,18 @@ endif()
 option(RGPOT_BUILD_TESTS "Build tests" ${RGPOT_IS_TOP_LEVEL})
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# librgpot's ELF soversion is kCxxSoversion in CxxLayout.hpp, the same
+# constant Meson reads. The C ABI macros in rgpot.h are a different stamp
+# and did not change. They have no shared library of their own.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/CppCore/rgpot/abi/CxxLayout.hpp"
+     _rgpot_cxx_layout_hpp)
+string(REGEX MATCH "kCxxSoversion = ([0-9]+)" _rgpot_cxx_so_match
+             "${_rgpot_cxx_layout_hpp}")
+if(NOT CMAKE_MATCH_1)
+  message(FATAL_ERROR "kCxxSoversion missing from CxxLayout.hpp")
+endif()
+set(RGPOT_CXX_SOVERSION "${CMAKE_MATCH_1}")
+
 # --- Dependencies ---
 include(FetchContent)
 
@@ -227,7 +239,9 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     target_compile_definitions(rgpot PUBLIC RGPOT_WITH_HIGHWAY)
   endif()
   set_target_properties(rgpot PROPERTIES LINKER_LANGUAGE CXX
-                                        POSITION_INDEPENDENT_CODE ON)
+                                        POSITION_INDEPENDENT_CODE ON
+                                        VERSION ${PROJECT_VERSION}
+                                        SOVERSION ${RGPOT_CXX_SOVERSION})
   target_link_libraries(rgpot PRIVATE rgpot_fortran_kernels Threads::Threads)
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_options(
@@ -266,6 +280,8 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     target_include_directories(rgpot_mpi
                                PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/CppCore)
     target_link_libraries(rgpot_mpi PRIVATE MPI::MPI_CXX)
+    # soversion 3 is librgpot_mpi's own SONAME. RGPOT_MPI_ABI_VERSION is
+    # still 1, so this name does not move with librgpot's kCxxSoversion.
     set_target_properties(rgpot_mpi PROPERTIES CXX_VISIBILITY_PRESET hidden
                                                SOVERSION 3)
   endif()
