@@ -32,14 +32,20 @@ TEST_CASE("the header stamp is a compile-time constant", "[abi][layout]") {
   REQUIRE(stamp.hash == abi::header_stamp().hash);
 }
 
-TEST_CASE("the recorded soversion hash is the default layout",
+TEST_CASE("the recorded soversion hash matches this platform",
           "[abi][layout]") {
   REQUIRE(abi::kCxxSoversion > 0u);
-#if !defined(RGPOT_HAS_CACHE) && defined(__LP64__)
+#ifndef RGPOT_HAS_CACHE
   constexpr auto stamp = abi::header_stamp();
   REQUIRE(stamp.features == 0u);
   REQUIRE(stamp.revision == abi::kCxxLayoutRevision);
-  REQUIRE(stamp.hash == abi::kCxxSoversionHash);
+  constexpr auto recorded = abi::recorded_layout_hash();
+  if (recorded == 0u) {
+    WARN("no kCxxSoversionTable entry for "
+         << abi::kCxxPlatformTag << " hash " << stamp.hash);
+  } else {
+    REQUIRE(stamp.hash == recorded);
+  }
 #endif
 }
 

@@ -1447,6 +1447,13 @@ if get_option('with_tests')
                 python3_prog,
                 args: [files('tests/check_virtual_counts.py')],
             )
+            cxx_layout_stamp = executable(
+                'print_cxx_layout_stamp',
+                sources: ['tests/print_cxx_layout_stamp.cc'],
+                include_directories: _incdirs + ['.'],
+                cpp_args: _args,
+                link_language: 'cpp',
+            )
             test(
                 'CxxSoversion',
                 python3_prog,
@@ -1454,8 +1461,9 @@ if get_option('with_tests')
                     files('tests/check_cxx_soversion.py'),
                     rgpot_cxx_soversion,
                     rgpot.full_path(),
+                    cxx_layout_stamp.full_path(),
                 ],
-                depends: [rgpot],
+                depends: [rgpot, cxx_layout_stamp],
             )
         endif
     endif

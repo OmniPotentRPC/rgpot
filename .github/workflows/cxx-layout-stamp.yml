@@ -1,0 +1,78 @@
+name: C++ layout stamp
+
+# Prints header_stamp().hash for each platform that does not already come
+# from a librgpot wheel. Fill kCxxSoversionTable from these lines.
+# docs/orgmode/reference/c_abi.org describes the update.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  stamp:
+    name: layout stamp (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm, macos-14, windows-2022]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Print stamp (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cxx=c++
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            cxx=g++
+          fi
+          "$cxx" -std=c++20 -ICppCore \
+            CppCore/tests/print_cxx_layout_stamp.cc \
+            -o "$RUNNER_TEMP/print_cxx_layout_stamp"
+          "$RUNNER_TEMP/print_cxx_layout_stamp"
+          python3 CppCore/tests/check_cxx_soversion.py 4 - \
+            "$RUNNER_TEMP/print_cxx_layout_stamp"
+
+      - name: Print stamp (macOS x86_64)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          c++ -std=c++20 -arch x86_64 -ICppCore \
+            CppCore/tests/print_cxx_layout_stamp.cc \
+            -o "$RUNNER_TEMP/print_cxx_layout_stamp_x86_64"
+          if ! arch -x86_64 "$RUNNER_TEMP/print_cxx_layout_stamp_x86_64"; then
+            softwareupdate --install-rosetta --agree-to-license
+            arch -x86_64 "$RUNNER_TEMP/print_cxx_layout_stamp_x86_64"
+          fi
+          python3 CppCore/tests/check_cxx_soversion.py 4 - \
+            "$RUNNER_TEMP/print_cxx_layout_stamp_x86_64"
+
+      - name: Activate MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        with:
+          arch: x64
+          vsversion: "2022"
+
+      - name: Print stamp (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cl /nologo /std:c++20 /EHsc /I CppCore \
+            /Fo"$RUNNER_TEMP/" \
+            /Fe"$RUNNER_TEMP/print_cxx_layout_stamp.exe" \
+            CppCore/tests/print_cxx_layout_stamp.cc
+          "$RUNNER_TEMP/print_cxx_layout_stamp.exe"
+          py=python3
+          if ! command -v python3 >/dev/null 2>&1; then
+            py=python
+          fi
+          "$py" CppCore/tests/check_cxx_soversion.py 4 - \
+            "$RUNNER_TEMP/print_cxx_layout_stamp.exe"

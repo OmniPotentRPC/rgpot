@@ -1,7 +1,9 @@
 # librgpot ELF soversion ledger.
-# Append a line when the C++ layout stamp changes. Do not edit a shipped line.
-# Columns: soversion, header_stamp().hash of the default LP64 build without
-# RGPOT_HAS_CACHE (16 hex digits), fingerprint of the stamp inputs.
+# Append a line when the C++ layout stamp inputs change. Do not edit a
+# shipped line. Platform hashes are not in this file: they differ by
+# platform and live in kCxxSoversionTable (CxxLayout.hpp). This file
+# records the platform-independent fingerprint of the stamp inputs.
+# Columns: soversion fingerprint
 # soversion 3 was the 3.4.0 layout. 3.5.0 reused it after the layout break.
 # 4 is that 3.5.0 layout, shipped from 3.5.1.
-4 80bc8962b7808d7a 1d6abff8d738918d24408595cbbcf09a5c97cf1e92687a2336b7f43f9b790c26
+4 1d6abff8d738918d24408595cbbcf09a5c97cf1e92687a2336b7f43f9b790c26

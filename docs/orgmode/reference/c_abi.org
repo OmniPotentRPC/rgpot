@@ -137,19 +137,28 @@ The plugin interface carries
 
 - A change to the size, alignment or a field offset of a covered type moves the
   hash by itself.
-  Bump =kCxxSoversion= in the same change and set =kCxxSoversionHash= to the new
-  =header_stamp().hash= of the default LP64 build without =RGPOT_HAS_CACHE=.
+  Bump =kCxxSoversion= in the same change.
   That constant is the ELF soversion of =librgpot= (=librgpot.so.N=).
   Meson and CMake read it, so the SONAME is not written down anywhere else.
-  The hash includes pointer width and the cache feature bit, so it is not
-  itself the SONAME: two builds of one revision would not share a name.
-  Append a line to =CppCore/rgpot/abi/cxx_soversion_ledger.txt= with the new
-  soversion, that hash, and the fingerprint the check prints.
+  The hash is not the SONAME.
+  It depends on the platform tag (=kCxxPlatformTag=): operating system,
+  architecture, standard library and data model.
+  It also folds pointer width and the cache feature bit, so two builds of one
+  revision do not share a hash.
+  Record each no-cache hash in =kCxxSoversionTable= in
+  =CppCore/rgpot/abi/CxxLayout.hpp=.
+  =CxxLayout.cc= static_asserts the row for the platform it is compiled on.
+  A platform with no row does not fail the build.
+  The compiler prints that the tag is unlisted.
+  =CppCore/tests/check_cxx_soversion.py= fails a live hash only when that tag
+  is in the table.
+  It fails when the fingerprint differs from
+  =CppCore/rgpot/abi/cxx_soversion_ledger.txt=, and when a shipped ledger line
+  changes under the same soversion.
+  Append a line to that ledger with the new soversion and the fingerprint the
+  check prints.
+  The fingerprint is platform-independent.
   Do not edit a shipped line.
-  =CppCore/tests/check_cxx_soversion.py= fails when the fingerprint or the hash
-  differs from the ledger, and when a shipped ledger line changes under the
-  same soversion.
-  =CxxLayout.cc= static_asserts the recorded hash on that default build.
 - =kCxxLayoutRevision= in =CppCore/rgpot/abi/CxxLayout.hpp=: increment when a
   change keeps every size and offset and still alters the ABI.
   Reordering virtual functions, changing the meaning of a field, changing a base
@@ -165,6 +174,54 @@ The plugin interface carries
 - Adding a covered type changes the hash, so it needs no revision bump.
   Add it to =detail::compute_hash()= in the same commit, and bump
   =kCxxSoversion= with the hash.
+
+*** Updating the platform table
+
+=kCxxSoversionTable= starts empty when the soversion changes, and is filled
+from CI.
+Do not copy a hash from another platform or from a local build.
+
+Each CI build of the printer prints one line:
+
+: RGPOT_CXX_LAYOUT_STAMP tag=... hash=... hash_dec=...
+: features=0 revision=1
+
+=features= is 1 for a cache build.
+Ignore those lines.
+The no-cache hash is the one that goes in the table.
+
+The workflow "C++ layout stamp" compiles
+=CppCore/tests/print_cxx_layout_stamp.cc= on Linux x86_64, Linux aarch64,
+macOS arm64, macOS x86_64 and Windows MSVC.
+The Linux and macOS wheels print the same line from the compiler that
+builds the wheel.
+The Meson =CxxSoversion= test runs the printer too.
+There is no musl row unless a log prints a =linux-musl-= tag.
+librgpot wheels skip musllinux, and the musl potctl build does not compile
+this header.
+
+When the soversion is bumped:
+
+1. Increment =kCxxSoversion=.
+2. Leave =kCxxSoversionTable= empty and delete the listed-platform guards,
+   so every platform builds and the printers run.
+3. Read each =RGPOT_CXX_LAYOUT_STAMP= line whose =features= is 0.
+4. Add one table row per distinct tag, using that line's =hash= as
+   =0x<hash>ull=.
+   Add a matching guard.
+   The guard is an =#if=, then =#elif=, on =RGPOT_OS_*=, =RGPOT_ARCH_*=,
+   =RGPOT_STDLIB_*= and =RGPOT_MODEL_*=.
+   Inside it:
+
+   : #define RGPOT_CXX_PLATFORM_LISTED 1
+   : #define RGPOT_CXX_PLATFORM_LISTED_TAG "os-arch-stdlib-datamodel"
+
+   The string must equal the row's tag.
+5. Append one ledger line: the new soversion and the fingerprint the check
+   prints.
+   Do not edit a shipped line.
+6. Push and wait until the jobs that printed the hashes are green.
+   A listed tag whose live hash differs fails the build.
 
 The fixture =CppCore/tests/layout_fixture.cc= is a shared object built from a
 header in which =ForceOut= gained a field; =CxxLayoutTest= requires that its

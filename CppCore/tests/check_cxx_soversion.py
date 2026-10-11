@@ -2,16 +2,23 @@
 """Fail when the C++ layout stamp moves without a librgpot soversion bump.
 
 kCxxSoversion in rgpot/abi/CxxLayout.hpp is the ELF soversion of librgpot.
-Meson and CMake read that constant. kCxxSoversionHash is header_stamp().hash
-for the default LP64 build without RGPOT_HAS_CACHE. The ledger records the
-soversion, that hash, and a fingerprint of the stamp's inputs. Shipped
-ledger lines are immutable: a layout change appends a higher soversion.
+Meson and CMake read that constant. kCxxSoversionTable records
+header_stamp().hash for each platform tag, without RGPOT_HAS_CACHE.
+The ledger records the soversion and a fingerprint of the stamp's inputs.
+The fingerprint is platform-independent. Shipped ledger lines are
+immutable: a layout change appends a higher soversion.
+
+A live stamp is checked only when its tag is in the table and features
+is 0. An unlisted platform prints the stamp and passes. Cache builds
+(features != 0) are not compared to the no-cache table.
 
 The C ABI stamp (RGPOT_ABI_*) is not this number. It did not change, and
 the C API is exported from librgpot, so it has no soversion of its own.
 librgpot_mpi stays at soversion 3 (RGPOT_MPI_ABI_VERSION 1).
 
-Usage: check_cxx_soversion.py [soversion-from-meson] [path-to-librgpot]
+Usage:
+  check_cxx_soversion.py [soversion-from-meson] [path-to-librgpot|-]
+                         [print_cxx_layout_stamp]
 """
 from __future__ import annotations
 
@@ -130,29 +137,54 @@ def fingerprint(layout_text: str) -> str:
     return digest
 
 
-def parse_header(text: str) -> tuple[int, int]:
-    so = re.search(r"\bkCxxSoversion\s*=\s*(\d+)", text)
-    hashed = re.search(r"\bkCxxSoversionHash\s*=\s*(0x[0-9a-fA-F]+)ull", text)
-    if not so or not hashed:
-        fail("kCxxSoversion and kCxxSoversionHash must both be assigned")
-    return int(so.group(1)), int(hashed.group(1), 16)
+def parse_soversion(text: str) -> int:
+    if re.search(r"\bkCxxSoversionHash\b", text):
+        fail("kCxxSoversionHash is removed; hashes belong in kCxxSoversionTable")
+    found = re.findall(r"\bkCxxSoversion\s*=\s*(\d+)", text)
+    if len(found) != 1:
+        fail("kCxxSoversion must be assigned exactly once")
+    return int(found[0])
 
 
-def parse_ledger(text: str) -> list[tuple[int, int, str]]:
+def parse_table(text: str) -> list[tuple[str, int]]:
+    rows = re.findall(
+        r'\{\s*"([^"]+)"\s*,\s*(0x[0-9a-fA-F]+)ull\s*\}',
+        text,
+    )
+    seen = set()
+    parsed = []
+    for tag, hashed in rows:
+        if tag in seen:
+            fail(f"kCxxSoversionTable repeats {tag}")
+        seen.add(tag)
+        parsed.append((tag, int(hashed, 16)))
+    listed = re.findall(
+        r'#define RGPOT_CXX_PLATFORM_LISTED_TAG "([^"]+)"',
+        text,
+    )
+    if set(listed) != {tag for tag, _ in parsed}:
+        fail(
+            "kCxxSoversionTable tags and RGPOT_CXX_PLATFORM_LISTED_TAG guards "
+            f"differ: table={sorted(tag for tag, _ in parsed)} listed={sorted(set(listed))}"
+        )
+    if len(listed) != len(set(listed)):
+        fail("RGPOT_CXX_PLATFORM_LISTED_TAG repeats a tag")
+    return parsed
+
+
+def parse_ledger(text: str) -> list[tuple[int, str]]:
     rows = []
     for raw in text.splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
         parts = line.split()
-        if len(parts) != 3:
-            fail(f"ledger line must be 'soversion hash fingerprint': {raw}")
-        so, hashed, digest = parts
-        if not re.fullmatch(r"[0-9a-f]{16}", hashed):
-            fail(f"ledger hash must be 16 hex digits: {raw}")
+        if len(parts) != 2:
+            fail(f"ledger line must be 'soversion fingerprint': {raw}")
+        so, digest = parts
         if not re.fullmatch(r"[0-9a-f]{64}", digest):
             fail(f"ledger fingerprint must be 64 hex digits: {raw}")
-        rows.append((int(so), int(hashed, 16), digest))
+        rows.append((int(so), digest))
     if not rows:
         fail("cxx_soversion_ledger.txt has no entries")
     return rows
@@ -206,7 +238,7 @@ def base_rev() -> str | None:
     return None
 
 
-def check_against_base(rows: list[tuple[int, int, str]], layout_text: str) -> None:
+def check_against_base(rows: list[tuple[int, str]], layout_text: str) -> None:
     rev = base_rev()
     if rev is None:
         print("soversion ledger: no main ref, skipped the history check")
@@ -222,8 +254,7 @@ def check_against_base(rows: list[tuple[int, int, str]], layout_text: str) -> No
         if rows[index] != previous:
             fail(
                 "layout stamp changed under soversion "
-                f"{previous[0]} ({rev} {previous[1]:016x} -> "
-                f"{rows[index][1]:016x}). Append a new soversion line and "
+                f"{previous[0]} ({rev}). Append a new soversion line and "
                 "bump kCxxSoversion. Do not edit a shipped line."
             )
     if len(rows) == len(old_rows):
@@ -283,9 +314,53 @@ def check_build_files(soversion: int) -> None:
     print(f"soversion {soversion}: meson, cmake, and wheel scripts agree")
 
 
+STAMP_RE = re.compile(
+    r"RGPOT_CXX_LAYOUT_STAMP tag=(\S+) hash=([0-9a-fA-F]+)"
+    r" hash_dec=(\d+) features=(\d+)"
+)
+
+
+def check_stamp(binary: Path, table: list[tuple[str, int]]) -> None:
+    if not binary.is_file():
+        fail(f"layout stamp printer not found: {binary}")
+    run = subprocess.run(
+        [str(binary)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    output = (run.stdout or "") + (run.stderr or "")
+    print(output.strip())
+    if run.returncode != 0:
+        fail(f"layout stamp printer exited {run.returncode}")
+    match = STAMP_RE.search(output)
+    if not match:
+        fail("layout stamp printer did not print RGPOT_CXX_LAYOUT_STAMP")
+    tag, hashed, decimal, features = match.groups()
+    if int(hashed, 16) != int(decimal):
+        fail(f"stamp hash {hashed} does not match hash_dec {decimal}")
+    if int(features) != 0:
+        print(f"cxx layout stamp {tag} features={features}; cache build, hash not enforced")
+        return
+    known = {row_tag: row_hash for row_tag, row_hash in table}
+    if tag not in known:
+        print(
+            f"cxx layout stamp {tag} hash {hashed} is not in "
+            "kCxxSoversionTable; not enforced"
+        )
+        return
+    if known[tag] != int(hashed, 16):
+        fail(
+            f"layout hash for {tag} is {hashed}, table has {known[tag]:016x}. "
+            "Bump kCxxSoversion and record the new hash."
+        )
+    print(f"cxx layout stamp {tag} hash {hashed} matches the table")
+
+
 def main() -> None:
     layout_text = LAYOUT.read_text()
-    soversion, hashed = parse_header(layout_text)
+    soversion = parse_soversion(layout_text)
+    table = parse_table(layout_text)
     if len(sys.argv) > 1 and int(sys.argv[1]) != soversion:
         fail(
             f"meson parsed soversion {sys.argv[1]} but kCxxSoversion is {soversion}"
@@ -300,24 +375,21 @@ def main() -> None:
         fail(
             f"ledger soversion {current[0]} does not match kCxxSoversion {soversion}"
         )
-    if current[1] != hashed:
-        fail(
-            f"ledger hash {current[1]:016x} does not match "
-            f"kCxxSoversionHash {hashed:016x}"
-        )
-    if current[2] != live:
+    if current[1] != live:
         fail(
             "C++ layout stamp inputs changed and the soversion ledger does not "
             f"record them.\nLive fingerprint {live}\n"
-            "Bump kCxxSoversion, set kCxxSoversionHash to the default LP64 "
-            "header_stamp().hash, and append a ledger line. Do not edit a "
-            "shipped line."
+            "Bump kCxxSoversion, replace kCxxSoversionTable from the CI "
+            "stamp lines, and append a ledger line. Do not edit a shipped line."
         )
     check_against_base(rows, layout_text)
     check_build_files(soversion)
-    if len(sys.argv) > 2:
+    if len(sys.argv) > 2 and sys.argv[2] != "-":
         check_soname(Path(sys.argv[2]), soversion)
-    print(f"cxx soversion {soversion} hash {hashed:016x}")
+    if len(sys.argv) > 3:
+        check_stamp(Path(sys.argv[3]), table)
+    tags = ", ".join(tag for tag, _ in table) or "none yet"
+    print(f"cxx soversion {soversion} platforms [{tags}]")
 
 
 if __name__ == "__main__":

@@ -130,7 +130,7 @@ config-settings = "setup-args=-Dpython.allow_limited_api=false"
 
 [tool.cibuildwheel.linux]
 # openblas-devel is libopenblas; dftd4 is configured with lapack=openblas.
-before-all = "yum install -y gcc-gfortran openblas-devel || dnf install -y gcc-gfortran openblas-devel"
+before-all = "yum install -y gcc-gfortran openblas-devel || dnf install -y gcc-gfortran openblas-devel; g++ -std=c++20 -ICppCore CppCore/tests/print_cxx_layout_stamp.cc -o /tmp/print_cxx_layout_stamp && /tmp/print_cxx_layout_stamp"
 # meson-python vendors librgpot into .rgpot.mesonpy.libs and rewrites RPATHs,
 # but auditwheel still resolves NEEDED against the filesystem. Unpack the
 # wheel and put that directory on LD_LIBRARY_PATH.
@@ -174,6 +174,7 @@ environment = { MACOSX_DEPLOYMENT_TARGET = "14.0", PKG_CONFIG_PATH = "/opt/homeb
 before-all = """
 brew list gcc >/dev/null 2>&1 || brew install gcc
 brew list openblas >/dev/null 2>&1 || brew install openblas
+c++ -std=c++20 -ICppCore CppCore/tests/print_cxx_layout_stamp.cc -o /tmp/print_cxx_layout_stamp && /tmp/print_cxx_layout_stamp
 """
 # Same librgpot search-path story as Linux. Exclude torch/metatomic dylibs:
 # they ship with the pip torch / metatomic-torch wheels, not inside rgpot.
