@@ -1,0 +1,6 @@
+baseline = "x86-64"
+
+[[vendored]]
+path = '.*libopenblas.*'
+features = ["avx512f", "avx", "avx2"]
+reason = "DYNAMIC_ARCH"

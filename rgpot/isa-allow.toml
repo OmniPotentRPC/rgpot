@@ -1,0 +1,119 @@
+# rgpot has no runtime-dispatched kernels. An above-baseline instruction
+# in librgpot or _core is a violation. These entries cover libraries that
+# auditwheel or delocate copy into the wheel and that select kernels at
+# run time. A feature not listed here still fails the audit.
+
+baseline = "x86-64"
+
+[[vendored]]
+path = ".*libopenblas.*"
+features = [
+  "sse3",
+  "ssse3",
+  "sse4_1",
+  "sse4_2",
+  "popcnt",
+  "avx",
+  "avx2",
+  "fma",
+  "f16c",
+  "bmi1",
+  "bmi2",
+  "lzcnt",
+  "avx512f",
+  "avx512vl",
+  "avx512dq",
+  "avx512bw",
+  "avx512cd",
+  "avx512_vnni",
+  "avx512_bf16",
+  "avx512_vpopcntdq",
+  "avx512_ifma",
+  "avx512_vbmi",
+  "avx512_vbmi2",
+  "fma4",
+  "xop",
+  "sse4a",
+  "prefetchw",
+  "d3now",
+  "xsave",
+  "lse",
+  "dotprod",
+  "i8mm",
+  "bf16",
+  "fcma",
+  "sve",
+  "sve2",
+  "sme",
+  "crc32",
+  "aes",
+  "sha1",
+  "sha2",
+  "pmull",
+  "fp16",
+  "rdm",
+  "rcpc",
+]
+reason = "DYNAMIC_ARCH"
+
+[[vendored]]
+path = ".*libgfortran.*"
+features = [
+  "sse3",
+  "ssse3",
+  "sse4_1",
+  "sse4_2",
+  "popcnt",
+  "avx",
+  "avx2",
+  "fma",
+  "avx512f",
+  "avx512vl",
+  "avx512dq",
+  "avx512bw",
+  "fma4",
+  "xsave",
+  "lse",
+  "dotprod",
+  "sve",
+  "sve2",
+  "fp16",
+  "rcpc",
+]
+reason = "gfortran matmul runtime variants"
+
+[[vendored]]
+path = ".*libgomp.*"
+features = [
+  "sse3",
+  "ssse3",
+  "sse4_1",
+  "sse4_2",
+  "popcnt",
+  "avx",
+  "avx2",
+  "fma",
+  "rtm",
+  "hle",
+  "xsave",
+  "lse",
+]
+reason = "libgomp runtime"
+
+[[vendored]]
+path = ".*libquadmath.*"
+features = [
+  "sse3",
+  "ssse3",
+  "sse4_1",
+  "sse4_2",
+  "popcnt",
+  "avx",
+  "avx2",
+  "fma",
+  "bmi1",
+  "bmi2",
+  "lzcnt",
+  "xsave",
+]
+reason = "libquadmath, vendored beside libgfortran"
