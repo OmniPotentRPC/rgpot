@@ -1,0 +1,69 @@
+#+TITLE: rust-core nanobind template
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+
+* Copy this directory
+
+The template is a scikit-build-core project.
+It builds a Rust crate as a =staticlib= with Corrosion, then a nanobind
+module =_core=.
+Python never calls a symbol that the C ABI does not export.
+
+Replace these three names when you copy the directory:
+
+- crate name =rust_core_demo= in =examples/rust-core-demo/Cargo.toml=
+- =MANIFEST_PATH= and =CRATES= in =CMakeLists.txt=
+- the =extern "C"= entry declared in =src/ext.cpp=
+
+Keep =nanobind_add_module(_core FREE_THREADED STABLE_ABI NB_STATIC ...)=.
+Keep =nanobind_add_stub=.
+Keep =wheel.py-api = "cp312"= so GIL builds are tagged =cp312-abi3=.
+Free-threaded interpreters ignore that classic abi3 tag and emit
+=cp314-cp314t= or =cp315-cp315t=.
+
+* Steps
+
+1. Install a C++17 compiler, CMake, Ninja, and Rust (stable).
+2. Install nanobind >= 3.1 and scikit-build-core >= 1.1.
+3. From this directory run =python -m pip install .=.
+4. Import =_core=.
+   On a free-threaded build, =sys._is_gil_enabled()= is =False= (F1).
+5. Regenerate the stub with =python -m nanobind.stubgen -m _core= and
+   commit it next to =py.typed=.
+
+The cibuildwheel table builds =cp310-*=, =cp311-*=, =cp312-*=,
+=cp314t-*=, and =cp315t-*=.
+Platforms are manylinux_2_28 (x86_64 and aarch64), macOS 14 arm64, and
+Windows AMD64.
+There is no musllinux build.
+=abi3audit= runs as the cibuildwheel default on the abi3 wheel.
+
+* Thread safety
+
+The Rust function is =extern "C"= and wraps its body in
+=std::panic::catch_unwind= (F9).
+The C++ wrapper checks shapes while attached, then drops the GIL for the
+call (F4).
+Inputs are float64, C contiguous, and CPU, with =.noconvert()= (F6).
+The link line uses hidden visibility, =-Wl,--exclude-libs,ALL= on Linux,
+and an export list that keeps only =PyInit__core= (F9).
+Sub-interpreters are unsupported.
+Compile with =-ffp-contract=off=.
+
+This demo has no mutable session, so it does not take an F3 claim.
+A package that adds one uses =rgbind::Claim= from =rgbind.hpp=.
+
+* Free-threaded CI
+
+Call the reusable workflows =py-wheels=, =py-freethreading=, =py-tsan=,
+and =py-typing=.
+T2 builds the extension with =-fsanitize=thread= against the
+=cpython_sanity= image =ghcr.io/nascheme/cpython-tsan:3.14t=.
+A Rust staticlib in that job needs a nightly rustc whose LLVM major
+matches the image clang, with =-Zsanitizer=thread -Zbuild-std=.
+
+* Demo crate
+
+=examples/rust-core-demo= is a twenty-line =extern "C" fn dot=.
+The sum walks indices in order.
+CI builds it into a wheel on cp312 (=cp312-abi3=) and cp314t
+(=cp314-cp314t=).
