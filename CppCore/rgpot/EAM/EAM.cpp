@@ -12,6 +12,8 @@
 #include "EAM.h"
 #include "Parameters.h"
 
+#include "rgpot/simd/api.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -129,105 +131,29 @@ EAM::element_parameters EAM::get_element_parameters(int atomic_number) {
 
 void EAM::calc_force(long N, double *R, const int *atomicNrs, double *F,
                      double *U, const double *box) {
-  std::vector<double> drho_dr(3 * N);
+  // Analytical Zhou density and Morse pair, not a spline table. The W=8
+  // tree and the in-house exp live in rgpot::simd. The cell list above is
+  // unchanged and is not the neighbour loop this kernel walks.
   for (long k = 0; k < 3 * N; k++) {
     F[k] = 0.0;
   }
   *U = 0;
-
-  // Pre-compute half-box for PBC
-  const double halfBox0 = box[0] * 0.5;
-  const double halfBox1 = box[1] * 0.5;
-  const double halfBox2 = box[2] * 0.5;
-
+  std::vector<rgpot::simd::EamAtom> atoms(static_cast<std::size_t>(N));
   for (long i = 0; i < N; i++) {
-    std::fill(drho_dr.begin(), drho_dr.end(), 0.0);
-    element_parameters epar = get_element_parameters(atomicNrs[i]);
-    const double cutoff2 = epar.r_cut * epar.r_cut;
-
-    double dens = 0.0;
-    const double xi = R[3 * i];
-    const double yi = R[3 * i + 1];
-    const double zi = R[3 * i + 2];
-
-    for (long j = 0; j < N; j++) {
-      if (i == j)
-        continue;
-
-      double dx = xi - R[3 * j];
-      double dy = yi - R[3 * j + 1];
-      double dz = zi - R[3 * j + 2];
-
-      // Minimum image convention
-      if (dx > halfBox0)
-        dx -= box[0];
-      else if (dx < -halfBox0)
-        dx += box[0];
-      if (dy > halfBox1)
-        dy -= box[1];
-      else if (dy < -halfBox1)
-        dy += box[1];
-      if (dz > halfBox2)
-        dz -= box[2];
-      else if (dz < -halfBox2)
-        dz += box[2];
-
-      double r2 = dx * dx + dy * dy + dz * dz;
-      // r^2 cutoff avoids sqrt for far pairs
-      if (r2 > cutoff2)
-        continue;
-
-      double r = std::sqrt(r2);
-
-      // r^6 = (r^2)^3 instead of pow(r, 6)
-      double r6 = r2 * r2 * r2;
-      double exp_b1 = std::exp(-epar.beta1 * r);
-      double exp_b2 = std::exp(-2.0 * epar.beta2 * r);
-      double rho_pair = exp_b1 + 512.0 * exp_b2;
-
-      dens += r6 * rho_pair;
-
-      // r^5 = r^4 * r = (r^2)^2 * r instead of pow(r, 5)
-      double r5 = r2 * r2 * r;
-      double mag_force_den =
-          6.0 * r5 * rho_pair +
-          r6 * (-epar.beta1 * exp_b1 - 1024.0 * epar.beta2 * exp_b2);
-
-      double invR = 1.0 / r;
-      double fscale = -mag_force_den * invR;
-      drho_dr[3 * i] += fscale * dx;
-      drho_dr[3 * i + 1] += fscale * dy;
-      drho_dr[3 * i + 2] += fscale * dz;
-      drho_dr[3 * j] -= fscale * dx;
-      drho_dr[3 * j + 1] -= fscale * dy;
-      drho_dr[3 * j + 2] -= fscale * dz;
-
-      if (j > i) {
-        // Morse pair portion: simplify exp chain
-        double expArg = std::exp(-epar.alphaM * (r - epar.Rm));
-        double d = 1.0 - expArg;
-        double phi_r = epar.Dm * d * d - epar.Dm;
-        // Force: 2*Dm*alpha*d*(d-1) =
-        // 2*Dm*alpha*exp(-a*(r-re))*(1-exp(-a*(r-re)))
-        double mag_force = 2.0 * epar.alphaM * epar.Dm * d * (d - 1.0);
-
-        double fcomp_scale = mag_force * invR;
-        F[3 * i] -= fcomp_scale * dx;
-        F[3 * i + 1] -= fcomp_scale * dy;
-        F[3 * i + 2] -= fcomp_scale * dz;
-        F[3 * j] += fcomp_scale * dx;
-        F[3 * j + 1] += fcomp_scale * dy;
-        F[3 * j + 2] += fcomp_scale * dz;
-        *U += phi_r;
-      }
-    }
-
-    *U += embedding_function(epar.func_coeff, dens);
-    double dF_drho = embedding_force(epar.func_coeff, dens);
-    for (long k = 0; k < 3 * N; k++) {
-      F[k] -= dF_drho * drho_dr[k];
+    const element_parameters epar = get_element_parameters(atomicNrs[i]);
+    rgpot::simd::EamAtom &atom = atoms[static_cast<std::size_t>(i)];
+    atom.beta1 = epar.beta1;
+    atom.beta2 = epar.beta2;
+    atom.alpha_m = epar.alphaM;
+    atom.r_m = epar.Rm;
+    atom.d_m = epar.Dm;
+    atom.cutoff2 = epar.r_cut * epar.r_cut;
+    for (int c = 0; c < 9; ++c) {
+      atom.coeff[c] = epar.func_coeff[c];
     }
   }
+  const double lengths[3] = {box[0], box[1], box[2]};
+  rgpot::simd::eam_force(N, R, atoms.data(), lengths, F, U);
 }
 
 void EAM::new_celllist(long N, const double * /*box*/, long *num_axis,

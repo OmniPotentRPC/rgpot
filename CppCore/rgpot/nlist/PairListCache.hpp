@@ -210,6 +210,33 @@ public:
   /// Fold the evaluation loops use for this slot.
   [[nodiscard]] FoldMode foldMode() const { return fold_; }
 
+  /// CSR view of the candidate list. Valid while this slot still holds pairs.
+  struct EvalView {
+    const std::int32_t *rows;
+    const std::int32_t *nbr;
+    std::size_t n;
+    double cutoff2;
+    FoldMode fold;
+    double w[3];
+    double inv[3];
+    const std::uint8_t *code;
+    const double *shift;
+    const MinimumImage *general;
+  };
+
+  [[nodiscard]] EvalView evalView() const {
+    return EvalView{rows_.data(),
+                    nbr_.data(),
+                    n_,
+                    opt_.cutoff * opt_.cutoff,
+                    fold_,
+                    {boxref_[0], boxref_[4], boxref_[8]},
+                    {micInv_[0], micInv_[1], micInv_[2]},
+                    code_.data(),
+                    shift_.data(),
+                    &generalImage_};
+  }
+
   /// Candidate pairs held (within cutoff + skin at the build).
   [[nodiscard]] std::size_t size() const { return nbr_.size(); }
 
@@ -621,6 +648,32 @@ public:
     }
     store(fresh, hit);
     return energy;
+  }
+
+  /// Build or reuse the CSR list, then hand it to ``fn`` while the pairs
+  /// are still present. A first sighting of a cacheable box is dropped to
+  /// a phantom after ``fn`` returns, matching accumulate.
+  template <typename Fn>
+  void withList(const double *R, std::size_t n, const double *box,
+                const CachedPairList::Options &opt, Fn &&fn) {
+    std::shared_ptr<const CachedPairList> hit = lookup(R, n, box, opt);
+    if (hit && !hit->isPhantom()) {
+      fn(*hit);
+      return;
+    }
+    auto fresh = std::make_shared<CachedPairList>();
+    if (hit) {
+      fresh->rebuild(R, n, box, opt);
+      fn(*fresh);
+    } else {
+      fresh->buildForEval(R, n, box, opt);
+      fn(*fresh);
+      if (!fresh->cacheable()) {
+        return;
+      }
+      fresh->dropPairs();
+    }
+    store(fresh, hit);
   }
 
   static PairListCache &global() {

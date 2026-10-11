@@ -1,0 +1,230 @@
+// MIT License
+// Copyright 2023--present rgpot developers
+
+#include "rgpot/simd/api.hpp"
+
+#if defined(RGPOT_WITH_HIGHWAY)
+#include "rgpot/simd/hwy_disabled.h"
+#include "hwy/highway.h"
+#endif
+
+#include <cstdlib>
+#include <cstring>
+#include <mutex>
+
+namespace rgpot::simd {
+namespace {
+
+enum class Mode { Auto, Scalar, Named };
+
+std::once_flag once;
+Mode mode = Mode::Auto;
+bool test_override = false;
+const char *runnable[16] = {"scalar"};
+int nrunnable = 1;
+
+#if defined(RGPOT_WITH_HIGHWAY)
+std::int64_t cpu_targets = 0;
+
+struct NamedBit {
+  const char *name;
+  std::int64_t bit;
+};
+
+const NamedBit kBits[] = {
+    {"sse2", HWY_SSE2},     {"sse4", HWY_SSE4},
+    {"avx2", HWY_AVX2},     {"avx3", HWY_AVX3},
+    {"avx3_zen4", HWY_AVX3_ZEN4},
+    {"neon", HWY_NEON},     {"sve", HWY_SVE},
+    {"sve2", HWY_SVE2},     {"sve_256", HWY_SVE_256},
+    {"rvv", HWY_RVV},       {"emu128", HWY_EMU128},
+};
+
+std::int64_t name_bit(const char *name) {
+  for (const NamedBit &item : kBits) {
+    if (std::strcmp(name, item.name) == 0) {
+      return item.bit;
+    }
+  }
+  return 0;
+}
+
+const char *bit_name(std::int64_t bit) {
+  for (const NamedBit &item : kBits) {
+    if (item.bit == bit) {
+      return item.name;
+    }
+  }
+  return "scalar";
+}
+
+void fill_runnable() {
+  nrunnable = 0;
+  runnable[nrunnable++] = "scalar";
+  for (const NamedBit &item : kBits) {
+    if ((cpu_targets & item.bit) != 0) {
+      runnable[nrunnable++] = item.name;
+    }
+  }
+}
+#endif
+
+void ensure_body() {
+#if defined(RGPOT_WITH_HIGHWAY)
+  hwy::DisableTargets(0);
+  hwy::SetSupportedTargetsForTest(0);
+  cpu_targets = hwy::SupportedTargets() & HWY_TARGETS;
+  fill_runnable();
+  if (!test_override) {
+    const char *env = std::getenv("RGPOT_SIMD");
+    if (env != nullptr && env[0] != '\0') {
+      if (std::strcmp(env, "scalar") == 0) {
+        mode = Mode::Scalar;
+      } else {
+        const std::int64_t bit = name_bit(env);
+        if (bit != 0) {
+          if ((cpu_targets & bit) == 0) {
+            mode = Mode::Scalar;
+          } else {
+            mode = Mode::Named;
+            hwy::DisableTargets(static_cast<std::int64_t>(~bit));
+          }
+        }
+      }
+    }
+  }
+  hwy::GetChosenTarget().Update(hwy::SupportedTargets());
+#else
+  mode = Mode::Scalar;
+  nrunnable = 1;
+  runnable[0] = "scalar";
+#endif
+}
+
+void ensure() { std::call_once(once, ensure_body); }
+
+} // namespace
+
+double lj_scalar_entry(const PairView &view, const LjParams &params, double *F,
+                       double strain[6]);
+double morse_scalar_entry(const PairView &view, const MorseParams &params,
+                          double *F, double strain[6]);
+void eam_scalar_entry(long n, const double *R, const EamAtom *atoms,
+                      const double *box, double *F, double *U);
+void fold_scalar_entry(double *x, double *y, double *z, std::size_t n,
+                       double w0, double w1, double w2, double i0, double i1,
+                       double i2);
+
+#if defined(RGPOT_WITH_HIGHWAY)
+double lj_hwy_entry(const PairView &view, const LjParams &params, double *F,
+                    double strain[6]);
+double morse_hwy_entry(const PairView &view, const MorseParams &params,
+                       double *F, double strain[6]);
+void eam_hwy_entry(long n, const double *R, const EamAtom *atoms,
+                   const double *box, double *F, double *U);
+void fold_hwy_entry(double *x, double *y, double *z, std::size_t n, double w0,
+                    double w1, double w2, double i0, double i1, double i2);
+std::int64_t active_hwy_bit();
+#endif
+
+const char *chosen_target_name() {
+  ensure();
+#if defined(RGPOT_WITH_HIGHWAY)
+  if (mode == Mode::Scalar) {
+    return "scalar";
+  }
+  return bit_name(active_hwy_bit());
+#else
+  return "scalar";
+#endif
+}
+
+void set_target_for_test(const char *name) {
+  ensure();
+  if (name == nullptr || name[0] == '\0') {
+    return;
+  }
+  test_override = true;
+  if (std::strcmp(name, "scalar") == 0) {
+    mode = Mode::Scalar;
+    return;
+  }
+#if defined(RGPOT_WITH_HIGHWAY)
+  const std::int64_t bit = name_bit(name);
+  if (bit == 0) {
+    return;
+  }
+  if ((cpu_targets & bit) == 0) {
+    mode = Mode::Scalar;
+    return;
+  }
+  mode = Mode::Named;
+  hwy::DisableTargets(0);
+  hwy::SetSupportedTargetsForTest(bit);
+  hwy::GetChosenTarget().Update(hwy::SupportedTargets());
+#else
+  mode = Mode::Scalar;
+#endif
+}
+
+int runnable_target_count() {
+  ensure();
+  return nrunnable;
+}
+
+const char *runnable_target_name(int index) {
+  ensure();
+  if (index < 0 || index >= nrunnable) {
+    return "scalar";
+  }
+  return runnable[index];
+}
+
+double lj_force(const PairView &view, const LjParams &params, double *F,
+                double strain[6]) {
+  ensure();
+#if defined(RGPOT_WITH_HIGHWAY)
+  if (mode != Mode::Scalar) {
+    return lj_hwy_entry(view, params, F, strain);
+  }
+#endif
+  return lj_scalar_entry(view, params, F, strain);
+}
+
+double morse_force(const PairView &view, const MorseParams &params, double *F,
+                   double strain[6]) {
+  ensure();
+#if defined(RGPOT_WITH_HIGHWAY)
+  if (mode != Mode::Scalar) {
+    return morse_hwy_entry(view, params, F, strain);
+  }
+#endif
+  return morse_scalar_entry(view, params, F, strain);
+}
+
+void eam_force(long n, const double *R, const EamAtom *atoms, const double *box,
+               double *F, double *U) {
+  ensure();
+#if defined(RGPOT_WITH_HIGHWAY)
+  if (mode != Mode::Scalar) {
+    eam_hwy_entry(n, R, atoms, box, F, U);
+    return;
+  }
+#endif
+  eam_scalar_entry(n, R, atoms, box, F, U);
+}
+
+void fold_orthorhombic(double *x, double *y, double *z, std::size_t n,
+                       double w0, double w1, double w2, double i0, double i1,
+                       double i2) {
+  ensure();
+#if defined(RGPOT_WITH_HIGHWAY)
+  if (mode != Mode::Scalar) {
+    fold_hwy_entry(x, y, z, n, w0, w1, w2, i0, i1, i2);
+    return;
+  }
+#endif
+  fold_scalar_entry(x, y, z, n, w0, w1, w2, i0, i1, i2);
+}
+
+} // namespace rgpot::simd

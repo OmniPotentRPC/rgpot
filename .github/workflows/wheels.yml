@@ -71,6 +71,8 @@ jobs:
               || { echo "wheel missing D4Pot; -Dwith_dftd4 lost" >&2; exit 1; }
             grep -q 'rgpot::XcKernel' _syms \
               || { echo "wheel missing XcKernel; -Dwith_xckernel lost" >&2; exit 1; }
+            grep -q 'rgpot::simd::chosen_target_name' _syms \
+              || { echo "wheel missing chosen_target_name; -Dwith_highway lost" >&2; exit 1; }
             core=$(find _whlx -name '_core*.so' | head -1)
             test -n "${core}" || { echo "no _core in wheel" >&2; exit 1; }
             if grep -q 'libtorch' < <(readelf -d "${core}"); then
@@ -127,6 +129,8 @@ jobs:
               || { echo "wheel missing D4Pot; -Dwith_dftd4 lost" >&2; exit 1; }
             grep -q 'rgpot::XcKernel' _syms \
               || { echo "wheel missing XcKernel; -Dwith_xckernel lost" >&2; exit 1; }
+            grep -q 'rgpot::simd::chosen_target_name' _syms \
+              || { echo "wheel missing chosen_target_name; -Dwith_highway lost" >&2; exit 1; }
             core=$(find _whlx -name '_core*.so' | head -1)
             test -n "${core}" || { echo "no _core in wheel" >&2; exit 1; }
             otool -L "${core}" > _deps

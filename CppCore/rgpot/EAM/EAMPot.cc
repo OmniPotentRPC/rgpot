@@ -13,7 +13,7 @@ EAMPot::EAMPot() : EAMPot(EAMCellConfig{}) {}
 EAMPot::EAMPot(const EAMCellConfig &)
     : Potential(PotType::EAMCell), m_impl(new Impl) {
   Fnv1a fp;
-  fp.u64(1);
+  fp.u64(2);
   m_paramsKey = fp.h;
 }
 

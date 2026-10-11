@@ -68,6 +68,15 @@ endif
 _rgpot_srcs += files('rgpot/PotHelpers.cc')
 _rgpot_srcs += files('rgpot/units.cc')
 _rgpot_srcs += files('rgpot/abi/CxxLayout.cc')
+_rgpot_srcs += files(
+    'rgpot/nlist/MinimumImage.cpp',
+    'rgpot/simd/exp.cc',
+    'rgpot/simd/scalar_kernels.cc',
+    'rgpot/simd/dispatch.cc',
+)
+if have_highway
+    _rgpot_srcs += files('rgpot/simd/hwy_kernels.cc')
+endif
 
 # Cap'n Proto schema + NWChem/CPMD frontends need libcapnp (ptlrpc). Only pull
 # them in when RPC is on (server or client-only); lean -Dwith_rpc=false builds
@@ -450,7 +459,6 @@ if get_option('with_examples') and not get_option('with_rpc_client_only')
         link_with: _linkto,
         cpp_args: _args,
     )
-    # Not a meson test: scripts/bench_pair_scaling.sh drives this.
     executable(
         'time_pair_scaling',
         sources: ['examples/time_pair_scaling.cc'],
@@ -527,6 +535,11 @@ if get_option('with_tests')
     )
     test_args = _args
     test_args += ['-DRGPOTTEST']
+    test_args += [
+        '-DRGPOT_ISA_GOLDEN="@0@"'.format(
+            meson.project_source_root() / 'tests/golden/isa-hashes.toml',
+        ),
+    ]
     if _mpi_dep.found()
         # Tests expect librgpot_mpi next to them (it builds in this
         # directory), whether or not they link MPI themselves.
@@ -562,6 +575,7 @@ if get_option('with_tests')
             ['EMTPotTest', 'emt_pot_test', 'EMTPotTest.cc', ''],
             ['EAMCellPotTest', 'eam_cell_pot_test', 'EAMCellPotTest.cc', ''],
             ['PairListTest', 'pair_list_test', 'PairListTest.cc', ''],
+            ['IsaDispatchTest', 'isa_dispatch_test', 'IsaDispatchTest.cc', ''],
             [
                 'BatchEvaluatorTest',
                 'batch_evaluator_test',
@@ -1306,6 +1320,51 @@ if get_option('with_tests')
             calculator_group_test_exe = _test_exe
         endif
     endforeach
+    if not get_option('with_rpc_client_only')
+        simd_env = executable(
+            'simd_env',
+            sources: ['tests/simd_env.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+        )
+        test(
+            'simd-env-scalar',
+            simd_env,
+            args: ['known', 'scalar'],
+            env: ['RGPOT_SIMD=scalar'],
+        )
+        test(
+            'simd-env-unknown',
+            simd_env,
+            args: ['unknown'],
+            env: ['RGPOT_SIMD=not_a_target'],
+        )
+        test(
+            'simd-env-rvv',
+            simd_env,
+            args: ['known', 'rvv'],
+            env: ['RGPOT_SIMD=rvv'],
+        )
+        test(
+            'simd-env-avx2',
+            simd_env,
+            args: ['known', 'avx2'],
+            env: ['RGPOT_SIMD=avx2'],
+        )
+        # Not a meson test. A release build times force calls per target.
+        executable(
+            'bench_simd',
+            sources: ['examples/bench_simd.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+        )
+    endif
     if not get_option('with_rpc_client_only')
         layout_fixture = shared_library(
             'rgpot_layout_fixture',

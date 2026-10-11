@@ -1,0 +1,22 @@
+# SHA-256 of raw little-endian f64 bytes.
+# Order is energy, forces, then the six stress components where the kernel
+# returns them. The same digest is required for every target the CPU can run.
+# Debug builds (-O0, the default meson build) produce these digests.
+# Release builds are compared with each other, not with this file.
+#
+# lj: LJPot u0=0.0104 cutoff=8.5 psi=3.4, orthorhombic box 18.
+# Four geometries (2, 3, 4, 2 atoms): a pair, a triple with -0 and a
+# subnormal, a quadruple with a 1-ulp shift of 2.5, and a NaN coordinate.
+# morse: default MorsePot, box 20. Three geometries (2, 3, 2 atoms):
+# a pair near re, a triple with -0, a subnormal and a 1-ulp shift of 2.9,
+# and a NaN coordinate.
+# eam: EAMPot aluminium pair at 2.5 in a box of 20, then three direct
+# eam_force calls (2, 3, 2 atoms) in a 12 box, including -0, a subnormal,
+# a 1-ulp shift of 2.5, and a NaN coordinate.
+# fold: eight components per axis, widths 10, 10, 0 (z unfolded),
+# including -0, a subnormal, a 1-ulp shift of 3, and NaN.
+
+lj = "7d0d79a18c784052a0d18384014a92fbbd9bdafad0db1e916f87dbbdc584437c"
+morse = "71e8c93e8c03c08e54f70ce0754e4127ddd7d50a9632c5ab6ffa2212559ae562"
+eam = "a9403667c82bddd1a62de10470b4a59f756ae373de153a18b4fe102b2211b119"
+fold = "242fbfb234c53670859ad69f7b531e4ada8ee9f476709de0687aa5a0a522e857"

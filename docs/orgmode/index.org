@@ -85,6 +85,7 @@ meson compile -C bbdir && meson test -C bbdir
    :caption: Reference
 
    reference/architecture
+   reference/simd_dispatch
    reference/mpi
    reference/c_abi
    reference/engine_abi

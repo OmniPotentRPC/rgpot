@@ -1,0 +1,1 @@
+LJ, Morse, EAM, and the orthorhombic fold dispatch through Highway. `rgpot::simd::chosen_target_name()` reports the target. `RGPOT_SIMD` selects it. LJ, LJ cluster, Morse, and EAM result-cache keys moved with the new sums.

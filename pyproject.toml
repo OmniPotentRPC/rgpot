@@ -95,6 +95,7 @@ setup = [
   "-Dwith_rust_core=false",
   "-Dwith_cache=false",
   "-Dwith_eigen=false",
+  "-Dwith_highway=enabled",
   "-Db_lto=false",
 ]
 install = ["--skip-subprojects"]

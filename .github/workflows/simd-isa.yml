@@ -1,0 +1,143 @@
+# ISA dispatch on the two GitHub runner architectures, plus the
+# -march=x86-64-v3 contraction check. This file is hand-maintained.
+# TODO: repin the isa-audit reusable workflow to main once ci/isa-audit
+# is merged. Until then it is called at the I0 commit below.
+
+name: SIMD ISA
+
+on:
+  push:
+    branches: ['perf/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: simd-isa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dispatch:
+    name: dispatch ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Compilers and Catch2
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential gfortran ninja-build pkg-config cmake \
+            python3 libcatch2-dev nlohmann-json3-dev
+
+      - name: CPU flags
+        run: |
+          grep -m1 flags /proc/cpuinfo || true
+          lscpu || true
+
+      - name: Configure and build
+        env:
+          CC: gcc
+          CXX: g++
+        run: |
+          set -euo pipefail
+          meson setup bbdir \
+            -Dwith_tests=true \
+            -Dwith_highway=enabled \
+            -Dwith_examples=false \
+            -Dwith_rpc=false \
+            -Dwith_cache=false \
+            -Dwith_eigen=false \
+            -Dpure_lib=true
+          meson compile -C bbdir
+
+      - name: Test, including four thread counts
+        env:
+          CC: gcc
+          CXX: g++
+        run: |
+          set -euo pipefail
+          meson test -C bbdir --print-errorlogs
+          isa=$(find bbdir -name isa_dispatch_test -type f | head -1)
+          test -n "${isa}"
+          for threads in 1 2 3 8; do
+            echo "OMP_NUM_THREADS=${threads}"
+            OMP_NUM_THREADS="${threads}" "${isa}"
+          done
+
+      - name: Upload unstripped library
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unstripped-${{ matrix.os }}
+          path: bbdir/CppCore/librgpot.so*
+          if-no-files-found: error
+
+  fp-contract:
+    name: fp-contract v3
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Compilers and Catch2
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential gfortran ninja-build pkg-config cmake \
+            python3 libcatch2-dev nlohmann-json3-dev
+
+      - name: Default build and v3 build
+        env:
+          CC: gcc
+          CXX: g++
+        run: |
+          set -euo pipefail
+          # -march=x86-64-v3 is only this proof job. It is not a project flag.
+          meson setup bb-default --buildtype=release \
+            -Dwith_tests=true -Dwith_highway=enabled \
+            -Dwith_examples=false -Dwith_rpc=false -Dwith_cache=false \
+            -Dwith_eigen=false -Dpure_lib=true
+          meson setup bb-v3 --buildtype=release \
+            -Dwith_tests=true -Dwith_highway=enabled \
+            -Dwith_examples=false -Dwith_rpc=false -Dwith_cache=false \
+            -Dwith_eigen=false -Dpure_lib=true \
+            -Dcpp_args=-march=x86-64-v3 -Dc_args=-march=x86-64-v3
+          meson compile -C bb-default CppCore/isa_dispatch_test
+          meson compile -C bb-v3 CppCore/isa_dispatch_test
+          RGPOT_ISA_SKIP_GOLDEN=1 bb-default/CppCore/isa_dispatch_test \
+            | tee /tmp/hash-default.txt
+          RGPOT_ISA_SKIP_GOLDEN=1 bb-v3/CppCore/isa_dispatch_test \
+            | tee /tmp/hash-v3.txt
+          diff -u \
+            <(grep '^golden ' /tmp/hash-default.txt) \
+            <(grep '^golden ' /tmp/hash-v3.txt)
+
+  audit-x86:
+    name: isa audit x86-64
+    needs: [dispatch]
+    permissions:
+      contents: read
+      actions: write
+    uses: OmniPotentRPC/rgpot/.github/workflows/isa-audit.yml@8957850fd15005ea460ba336781ed152f7ee3d92 # isa-audit
+    with:
+      artifact-name: unstripped-ubuntu-latest
+      allow-file: rgpot/isa-allow.toml
+      baseline: x86-64
+
+  audit-arm:
+    name: isa audit armv8-a
+    needs: [dispatch]
+    permissions:
+      contents: read
+      actions: write
+    uses: OmniPotentRPC/rgpot/.github/workflows/isa-audit.yml@8957850fd15005ea460ba336781ed152f7ee3d92 # isa-audit
+    with:
+      artifact-name: unstripped-ubuntu-24.04-arm
+      allow-file: rgpot/isa-allow.toml
+      baseline: armv8-a
