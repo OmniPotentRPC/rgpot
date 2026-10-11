@@ -366,9 +366,32 @@ endif
 
 has_tblite = false
 if get_option('with_tblite')
-    tblite_dep = dependency('tblite', required: true)
+    # Installed pkg-config or cmake, or a wrap/subproject that exports
+    # tblite_dep. declare_dependency() in tblite defaults its version to
+    # the project version, so the same comparison covers both.
+    tblite_dep = dependency(
+        'tblite',
+        required: true,
+        fallback: ['tblite', 'tblite_dep'],
+    )
     _deps += tblite_dep
     _args += ['-DRGPOT_HAS_TBLITE=TRUE']
+    _tblite_ver = tblite_dep.version()
+    if (
+        tblite_dep.type_name() == 'internal'
+        and (_tblite_ver == 'unknown' or _tblite_ver == 'undefined')
+    )
+        _tblite_sub = subproject('tblite', required: false)
+        if _tblite_sub.found()
+            _tblite_sub_ver = _tblite_sub.get_variable('tblite_dep').version()
+            if _tblite_sub_ver != 'unknown' and _tblite_sub_ver != 'undefined'
+                _tblite_ver = _tblite_sub_ver
+            endif
+        endif
+    endif
+    if _tblite_ver.version_compare('>=0.6.0')
+        _args += ['-DRGPOT_TBLITE_XTB_CONFIG=1']
+    endif
     has_tblite = true
 endif
 
