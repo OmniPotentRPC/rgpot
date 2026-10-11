@@ -681,3 +681,9 @@ if get_option('with_python')
     endif
     subdir('python')
 endif
+
+# Wheel builds set with_python. meson-python maps {includedir} onto the
+# wheel headers scheme, so this header stays out of those wheels.
+if not get_option('with_python')
+    install_headers('bind/include/rgbind/rgbind.hpp', subdir: 'rgbind')
+endif

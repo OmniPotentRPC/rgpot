@@ -1,0 +1,69 @@
+[build-system]
+requires = ["scikit-build-core>=1.1", "nanobind>=3.1"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "rust-core-demo"
+version = "0.1.0"
+description = "Copy-ready nanobind wheel around a Rust staticlib."
+readme = { file = "README.org", content-type = "text/plain" }
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Rohit Goswami", email = "rgoswami@ieee.org" }]
+dependencies = ["numpy>=1.24"]
+
+[project.optional-dependencies]
+test = ["pytest>=7", "pytest-timeout>=2", "numpy>=1.24"]
+
+[tool.scikit-build]
+minimum-version = "0.10"
+cmake.version = ">=3.15"
+# GIL builds: cp312-abi3 covers CPython 3.12 through 3.15.
+# Free-threaded interpreters ignore the classic abi3 tag and emit
+# cp314-cp314t or cp315-cp315t instead.
+wheel.py-api = "cp312"
+wheel.packages = ["python/rust_core_demo"]
+
+[tool.cibuildwheel]
+build = "cp310-* cp311-* cp312-* cp314t-* cp315t-*"
+skip = ["pp*", "*-musllinux*", "*_i686", "*-win32"]
+manylinux-x86_64-image = "manylinux_2_28"
+manylinux-aarch64-image = "manylinux_2_28"
+test-requires = ["pytest", "pytest-timeout", "numpy"]
+test-command = "python -m pytest -q tests --timeout=180 -o faulthandler_timeout=120"
+test-sources = ["tests"]
+
+[tool.cibuildwheel.linux]
+before-all = """
+yum install -y git || dnf install -y git
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+ln -sfn "$HOME/.cargo/bin/cargo" /usr/local/bin/cargo
+ln -sfn "$HOME/.cargo/bin/rustc" /usr/local/bin/rustc
+ln -sfn "$HOME/.cargo/bin/rustup" /usr/local/bin/rustup
+"""
+environment = { PATH = "/root/.cargo/bin:$PATH" }
+
+[tool.cibuildwheel.macos]
+archs = ["arm64"]
+environment = { MACOSX_DEPLOYMENT_TARGET = "14.0", PATH = "$HOME/.cargo/bin:$PATH" }
+before-all = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal"
+
+[tool.cibuildwheel.windows]
+before-all = "curl -sSf -o %TEMP%\\rustup-init.exe https://win.rustup.rs/x86_64 && %TEMP%\\rustup-init.exe -y --default-toolchain stable --profile minimal"
+environment = { PATH = "$USERPROFILE\\.cargo\\bin;$PATH" }
+
+[tool.mypy]
+mypy_path = "python"
+strict = true
+python_version = "3.10"
+
+[[tool.mypy.overrides]]
+module = "rust_core_demo._core"
+disallow_any_generics = false
+
+[tool.pyright]
+include = ["examples", "python/rust_core_demo"]
+extraPaths = ["python"]
+typeCheckingMode = "standard"
+pythonVersion = "3.10"
+reportMissingModuleSource = "none"
