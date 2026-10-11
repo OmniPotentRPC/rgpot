@@ -2,6 +2,7 @@
 // Copyright 2023--present rgpot developers
 
 #include "rgpot/nlist/MinimumImage.hpp"
+#include "rgpot/simd/exact_fma.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -11,14 +12,17 @@
 namespace rgpot::nlist {
 namespace {
 
+using rgpot::simd::mul_add;
+
 constexpr double kTol = 1e-12;
 constexpr int kMaxIt = 10000;
 
 // a*b + c*d + e*f. The last product rounds on its own; each earlier
-// product is fused into the sum. std::fma is correctly rounded, so this
-// matches a hardware fused multiply-add on SSE, AVX2, AVX-512 and NEON.
+// product is fused into the sum. mul_add is a hardware fused multiply-add
+// when glibc reports FMA, and the Dekker product otherwise. Both match
+// std::fma, so the folded bits match on SSE, AVX2, AVX-512 and NEON.
 double fdot3(double a, double b, double c, double d, double e, double f) {
-  return std::fma(a, b, std::fma(c, d, e * f));
+  return mul_add(a, b, mul_add(c, d, e * f));
 }
 
 double frac_of(double x, double y, double z, const double inv[9], int k) {
@@ -28,7 +32,7 @@ double frac_of(double x, double y, double z, const double inv[9], int k) {
 // reduced - (i*c0 + j*c1 + k*c2), each product fused into the sum.
 double sub_image(double reduced, double i, double c0, double j, double c1,
                  double k, double c2) {
-  return std::fma(-i, c0, std::fma(-j, c1, std::fma(-k, c2, reduced)));
+  return mul_add(-i, c0, mul_add(-j, c1, mul_add(-k, c2, reduced)));
 }
 
 double n2(const double v[3]) {
@@ -82,7 +86,7 @@ void gauss_pair(double u[3], double v[3]) {
       return;
     }
     for (int c = 0; c < 3; ++c)
-      v[c] = std::fma(-n, u[c], v[c]);
+      v[c] = mul_add(-n, u[c], v[c]);
   }
 }
 
@@ -98,10 +102,10 @@ void subtract_plane(double basis[3][3]) {
   const double nu = std::round(vdot(w, u) / uu);
   double w1[3];
   for (int c = 0; c < 3; ++c)
-    w1[c] = std::fma(-nu, u[c], w[c]);
+    w1[c] = mul_add(-nu, u[c], w[c]);
   const double nv = std::round(vdot(w1, v) / vv);
   for (int c = 0; c < 3; ++c)
-    w[c] = std::fma(-nv, v[c], w1[c]);
+    w[c] = mul_add(-nv, v[c], w1[c]);
   double best[3] = {w[0], w[1], w[2]};
   double best2 = n2(w);
   for (int i = -1; i <= 1; ++i) {
@@ -111,8 +115,8 @@ void subtract_plane(double basis[3][3]) {
       }
       double t[3];
       for (int c = 0; c < 3; ++c)
-        t[c] = std::fma(static_cast<double>(i), u[c],
-                        std::fma(static_cast<double>(j), v[c], w[c]));
+        t[c] = mul_add(static_cast<double>(i), u[c],
+                        mul_add(static_cast<double>(j), v[c], w[c]));
       const double t2 = n2(t);
       if (t2 < best2) {
         best2 = t2;
@@ -166,9 +170,9 @@ void minkowski_reduce(double basis[3][3]) {
 }
 
 double det_of(const double a[9]) {
-  const double m0 = std::fma(-a[5], a[7], a[4] * a[8]);
-  const double m1 = std::fma(-a[5], a[6], a[3] * a[8]);
-  const double m2 = std::fma(-a[4], a[6], a[3] * a[7]);
+  const double m0 = mul_add(-a[5], a[7], a[4] * a[8]);
+  const double m1 = mul_add(-a[5], a[6], a[3] * a[8]);
+  const double m2 = mul_add(-a[4], a[6], a[3] * a[7]);
   return fdot3(a[0], m0, -a[1], m1, a[2], m2);
 }
 
@@ -177,15 +181,15 @@ bool invert(const double a[9], double inv[9]) {
   if (!std::isfinite(det) || det == 0.0) {
     return false;
   }
-  inv[0] = std::fma(-a[5], a[7], a[4] * a[8]) / det;
-  inv[1] = std::fma(-a[1], a[8], a[2] * a[7]) / det;
-  inv[2] = std::fma(-a[2], a[4], a[1] * a[5]) / det;
-  inv[3] = std::fma(-a[3], a[8], a[5] * a[6]) / det;
-  inv[4] = std::fma(-a[2], a[6], a[0] * a[8]) / det;
-  inv[5] = std::fma(-a[0], a[5], a[2] * a[3]) / det;
-  inv[6] = std::fma(-a[4], a[6], a[3] * a[7]) / det;
-  inv[7] = std::fma(-a[0], a[7], a[1] * a[6]) / det;
-  inv[8] = std::fma(-a[1], a[3], a[0] * a[4]) / det;
+  inv[0] = mul_add(-a[5], a[7], a[4] * a[8]) / det;
+  inv[1] = mul_add(-a[1], a[8], a[2] * a[7]) / det;
+  inv[2] = mul_add(-a[2], a[4], a[1] * a[5]) / det;
+  inv[3] = mul_add(-a[3], a[8], a[5] * a[6]) / det;
+  inv[4] = mul_add(-a[2], a[6], a[0] * a[8]) / det;
+  inv[5] = mul_add(-a[0], a[5], a[2] * a[3]) / det;
+  inv[6] = mul_add(-a[4], a[6], a[3] * a[7]) / det;
+  inv[7] = mul_add(-a[0], a[7], a[1] * a[6]) / det;
+  inv[8] = mul_add(-a[1], a[3], a[0] * a[4]) / det;
   for (int k = 0; k < 9; ++k) {
     if (!std::isfinite(inv[k])) {
       return false;

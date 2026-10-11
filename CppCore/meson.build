@@ -83,11 +83,21 @@ endif
 _rgpot_srcs += files('rgpot/PotHelpers.cc')
 _rgpot_srcs += files('rgpot/units.cc')
 _rgpot_srcs += files('rgpot/abi/CxxLayout.cc')
-# Product-sums in this file are std::fma. Contraction stays off so a
-# multiply that is not written as std::fma is not fused, and the folded
-# bits match on scalar, SSE, AVX2, AVX-512 and NEON.
+# Product-sums in this file go through rgpot::simd::mul_add. Contraction
+# stays off so a multiply that is not written as mul_add is not fused, and
+# the folded bits match on scalar, SSE, AVX2, AVX-512 and NEON.
+# exact_fma_hw is a separate object: the ISA variants below recompile
+# MinimumImage.cpp with -mno-fma and still need this hardware definition.
 _fp_contract_off = cppc.get_supported_arguments(
     ['-ffp-contract=off', '/fp:precise'],
+)
+rgpot_exact_fma = static_library(
+    'rgpot_exact_fma',
+    files('rgpot/simd/exact_fma_hw.cc'),
+    include_directories: _incdirs,
+    cpp_args: _args + _fp_contract_off,
+    pic: true,
+    install: false,
 )
 rgpot_minimage = static_library(
     'rgpot_minimage',
@@ -124,7 +134,7 @@ if not get_option('with_rpc_client_only')
         dependencies: _deps,
         cpp_args: _args,
         include_directories: _incdirs,
-        link_whole: rgpot_minimage,
+        link_whole: [rgpot_minimage, rgpot_exact_fma],
         pic: true,
         install: false,
     )
@@ -1388,7 +1398,7 @@ if get_option('with_tests')
                     '-ffp-contract=off',
                     '-DRGPOT_MINIMAGE_ISA_' + spec[0].to_upper(),
                 ],
-                link_whole: _isa_lib,
+                link_whole: [_isa_lib, rgpot_exact_fma],
                 install: false,
             )
         endforeach
@@ -1413,6 +1423,17 @@ if get_option('with_tests')
                 ] + _isa_exes,
             )
         endif
+        test(
+            'ExactFmaEq',
+            executable(
+                'exact_fma_eq',
+                sources: ['tests/exact_fma_eq.cc'],
+                include_directories: _incdirs,
+                cpp_args: _args + _fp_contract_off,
+                link_whole: rgpot_exact_fma,
+                install: false,
+            ),
+        )
         layout_fixture = shared_library(
             'rgpot_layout_fixture',
             sources: ['tests/layout_fixture.cc'],

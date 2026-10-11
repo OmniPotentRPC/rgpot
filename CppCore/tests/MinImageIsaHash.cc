@@ -8,7 +8,8 @@
 
 // SHA-256 of the raw little-endian f64 bytes from folded_displacement_hash.
 // scalar, SSE2, AVX2 and AVX-512 on this host, and NEON in CI, match it.
-// Product-sums are std::fma and the file is built with contraction off.
+// Product-sums are rgpot::simd::mul_add and the file is built with
+// contraction off.
 static constexpr const char *kFoldHash =
     "d6f5cbaa04ac49e6f02ee64c10eb83d44d951756556924dcc17966453dcd8b11";
 
