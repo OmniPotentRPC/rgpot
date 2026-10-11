@@ -75,6 +75,8 @@ python ci/isa-audit/isa_audit.py wheel.whl --allow isa-allow.toml --json report.
 
 =PATH= may be an ELF, a Mach-O, a directory, or a =.whl= (unzipped to a
 temporary directory).
+A later file with the same bytes is not decoded again.
+The report counts those duplicates.
 The text report lists files audited, instructions decoded, per-feature
 counts inside allowed functions, and one line per violation:
 

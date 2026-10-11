@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import bisect
+import hashlib
 import json
 import os
 import re
@@ -374,6 +375,7 @@ class AuditStats:
     violations: list[Violation] = field(default_factory=list)
     not_audited: list[dict[str, str]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    duplicates: int = 0
 
     def allow(self, feature: str) -> None:
         self.allowed_feature_counts[feature] = (
@@ -990,7 +992,10 @@ def _audit_whl(
     stats: AuditStats,
     allow: Allowlist,
     override: str | None,
+    seen: set[str] | None = None,
 ) -> None:
+    if seen is None:
+        seen = set()
     with tempfile.TemporaryDirectory(prefix="isa-audit-") as tmp:
         root = Path(tmp)
         with zipfile.ZipFile(path) as archive:
@@ -1003,6 +1008,11 @@ def _audit_whl(
                 if _sniff(blob) is None:
                     continue
                 found = True
+                digest = hashlib.sha256(blob).hexdigest()
+                if digest in seen:
+                    stats.duplicates += 1
+                    continue
+                seen.add(digest)
                 rel = file_path.relative_to(root).as_posix()
                 audit_bytes(blob, f"{display}:{rel}", stats, allow, override)
         if not found:
@@ -1015,24 +1025,32 @@ def audit_path(
     allow: Allowlist,
     override: str | None,
     explicit: bool,
+    seen: set[str] | None = None,
 ) -> None:
+    if seen is None:
+        seen = set()
     if path.is_dir():
         for dirpath, _dirnames, filenames in os.walk(path):
             for name in filenames:
-                audit_path(Path(dirpath) / name, stats, allow, override, False)
+                audit_path(Path(dirpath) / name, stats, allow, override, False, seen)
         return
     if not path.is_file():
         if explicit:
             stats.not_audited.append({"file": str(path), "reason": "not a file"})
         return
     if path.suffix == ".whl":
-        _audit_whl(path, str(path), stats, allow, override)
+        _audit_whl(path, str(path), stats, allow, override, seen)
         return
     blob = path.read_bytes()
     if _sniff(blob) is None:
         if explicit:
             stats.not_audited.append({"file": str(path), "reason": "not an ELF, Mach-O, or wheel"})
         return
+    digest = hashlib.sha256(blob).hexdigest()
+    if digest in seen:
+        stats.duplicates += 1
+        return
+    seen.add(digest)
     audit_bytes(blob, str(path), stats, allow, override)
 
 
@@ -1048,6 +1066,8 @@ def render_text(stats: AuditStats) -> str:
             lines.append(f"  {name}: {stats.allowed_feature_counts[name]}")
     else:
         lines.append("  (none)")
+    if stats.duplicates:
+        lines.append(f"duplicate files skipped: {stats.duplicates}")
     if stats.notes:
         lines.append("notes:")
         for note in stats.notes:
@@ -1080,6 +1100,7 @@ def render_json(stats: AuditStats) -> dict[str, object]:
         ],
         "not_audited": stats.not_audited,
         "notes": stats.notes,
+        "duplicate_files_skipped": stats.duplicates,
     }
 
 
