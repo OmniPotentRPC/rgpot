@@ -18,6 +18,8 @@ shipping.
 An instruction above the baseline is allowed only when
 =rgpot/isa-allow.toml= names the function and the feature, or names
 the vendored file that contains a third-party dispatcher.
+On a macOS arm64 slice, ~lse~ and ~rcpc~ are baseline: they are the
+platform atomics, and no other CPU can load that binary.
 The gate does not execute the instruction.
 A path this machine cannot run is not exercised.
 See =ci/isa-audit/README.org= for the allowlist format and for the

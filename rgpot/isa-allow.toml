@@ -75,6 +75,7 @@ features = [
   "sve",
   "sve2",
   "fp16",
+  "rcpc",
 ]
 reason = "gfortran matmul runtime variants"
 

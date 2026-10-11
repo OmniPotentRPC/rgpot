@@ -21,6 +21,13 @@ the other pointer-authentication hints) are baseline for the same
 reason: they do not trap on armv8.0.
 SVE, SVE2, SME, LSE atomics, FCMA, dot-product, I8MM, BF16 and the
 other named extensions are not baseline.
+A macOS arm64 Mach-O slice is the exception for ~lse~ and ~rcpc~.
+Apple Silicon is the only CPU that can load that slice, and both
+features are architectural there.
+The compiler lowers C++ atomics to ~ldadd~ and ~ldapr~ in ordinary
+functions, so those two names are baseline for that slice and are
+printed in the report.
+An ELF built for armv8-a still treats them as above the baseline.
 
 There is no emulation.
 The gate does not run the instructions.

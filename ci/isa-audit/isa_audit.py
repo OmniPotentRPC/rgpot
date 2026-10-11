@@ -312,8 +312,14 @@ _CPU_ARM64 = 0x0100000C
 _CPU_X86_64 = 0x01000007
 _LC_SEGMENT_64 = 0x19
 _LC_SYMTAB = 0x02
+_LC_VERSION_MIN_MACOSX = 0x24
+_LC_BUILD_VERSION = 0x32
+_PLATFORM_MACOS = 1
 _S_ATTR_PURE_INSTRUCTIONS = 0x80000000
 _S_ATTR_SOME_INSTRUCTIONS = 0x00000400
+# Apple Silicon is the only CPU that can map a macOS arm64 slice, and it
+# implements both. These are the compiler's atomics, not a dispatched kernel.
+_MACOS_ARM64_BASELINE = frozenset({"lse", "rcpc"})
 
 
 def canonical_feature(name: str) -> str:
@@ -367,6 +373,7 @@ class AuditStats:
     allowed_feature_counts: dict[str, int] = field(default_factory=dict)
     violations: list[Violation] = field(default_factory=list)
     not_audited: list[dict[str, str]] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
     def allow(self, feature: str) -> None:
         self.allowed_feature_counts[feature] = (
@@ -641,6 +648,7 @@ def _decode_aarch64(
     path: str,
     funcs: list[Func],
     has_symbols: bool,
+    platform_baseline: frozenset[str] = frozenset(),
 ) -> None:
     from capstone import CS_ARCH_ARM64, CS_MODE_LITTLE_ENDIAN, Cs
 
@@ -652,7 +660,11 @@ def _decode_aarch64(
             stats.undecoded += (ins.address - cursor) // 4
         cursor = ins.address + ins.size
         stats.instructions_decoded += 1
-        features = classify_aarch64(ins.mnemonic, ins.op_str)
+        features = [
+            feature
+            for feature in classify_aarch64(ins.mnemonic, ins.op_str)
+            if feature not in platform_baseline
+        ]
         if not features:
             continue
         func = _lookup(funcs, ins.address)
@@ -802,7 +814,9 @@ def _macho_slices(blob: bytes) -> list[tuple[str, bytes]]:
     return []
 
 
-def _parse_macho(blob: bytes) -> tuple[str, list[tuple[int, bytes, list[Func]]]] | None:
+def _parse_macho(
+    blob: bytes,
+) -> tuple[str, list[tuple[int, bytes, list[Func]]], frozenset[str]] | None:
     if len(blob) < 32:
         return None
     magic, cputype, _subtype, _filetype, ncmds, sizeofcmds, _flags, _reserved = (
@@ -820,11 +834,18 @@ def _parse_macho(blob: bytes) -> tuple[str, list[tuple[int, bytes, list[Func]]]]
     end = 32 + sizeofcmds
     sections: list[tuple[int, int, int, int, int]] = []
     sym_off = sym_count = str_off = str_size = 0
+    platform_baseline: set[str] = set()
     while offset + 8 <= min(end, len(blob)):
         cmd, cmdsize = struct.unpack_from("<II", blob, offset)
         if cmdsize < 8 or offset + cmdsize > len(blob):
             return None
-        if cmd == _LC_SEGMENT_64 and cmdsize >= 72:
+        if cmd == _LC_BUILD_VERSION and cmdsize >= 24 and arch == "aarch64":
+            platform, _minos, _sdk, _ntools = struct.unpack_from("<IIII", blob, offset + 8)
+            if platform == _PLATFORM_MACOS:
+                platform_baseline.update(_MACOS_ARM64_BASELINE)
+        elif cmd == _LC_VERSION_MIN_MACOSX and cmdsize >= 16 and arch == "aarch64":
+            platform_baseline.update(_MACOS_ARM64_BASELINE)
+        elif cmd == _LC_SEGMENT_64 and cmdsize >= 72:
             segname, vmaddr, _vmsize, _fileoff, _filesize, _maxprot, _initprot, nsects, _segflags = (
                 struct.unpack_from("<16sQQQQIIIi", blob, offset + 8)
             )
@@ -881,7 +902,7 @@ def _parse_macho(blob: bytes) -> tuple[str, list[tuple[int, bytes, list[Func]]]]
         funcs = _finish_ranges(funcs, addr + size)
         symbols_by_sect[sect_index] = funcs
         code_sections.append((addr, blob[fileoff : fileoff + size], funcs))
-    return arch, code_sections
+    return arch, code_sections, frozenset(platform_baseline)
 
 
 def _audit_macho(
@@ -903,18 +924,35 @@ def _audit_macho(
                 {"file": path, "reason": "Mach-O not audited: slice is not a 64-bit arm64 or x86_64 image"}
             )
             continue
-        arch, sections = parsed
+        arch, sections, platform_baseline = parsed
         baseline_name = _file_baseline(arch, override, allow)
         baseline = _baseline_features(baseline_name)
         has_symbols = any(funcs for _addr, _data, funcs in sections)
         if not sections:
             stats.not_audited.append({"file": path, "reason": "Mach-O has no executable section"})
             continue
+        if platform_baseline:
+            note = (
+                "platform baseline macOS arm64: "
+                + ", ".join(sorted(platform_baseline))
+                + " (architectural on every CPU that can load this binary)"
+            )
+            if note not in stats.notes:
+                stats.notes.append(note)
         for addr, data, funcs in sections:
             if arch == "x86_64":
                 _decode_x86(data, addr, stats, allow, path, funcs, has_symbols, baseline)
             else:
-                _decode_aarch64(data, addr, stats, allow, path, funcs, has_symbols)
+                _decode_aarch64(
+                    data,
+                    addr,
+                    stats,
+                    allow,
+                    path,
+                    funcs,
+                    has_symbols,
+                    platform_baseline,
+                )
         audited = True
     if audited:
         stats.files_audited += 1
@@ -1010,6 +1048,10 @@ def render_text(stats: AuditStats) -> str:
             lines.append(f"  {name}: {stats.allowed_feature_counts[name]}")
     else:
         lines.append("  (none)")
+    if stats.notes:
+        lines.append("notes:")
+        for note in stats.notes:
+            lines.append(f"  {note}")
     lines.append(f"violations: {len(stats.violations)}")
     for item in stats.violations:
         lines.append(item.line())
@@ -1037,6 +1079,7 @@ def render_json(stats: AuditStats) -> dict[str, object]:
             for item in stats.violations
         ],
         "not_audited": stats.not_audited,
+        "notes": stats.notes,
     }
 
 

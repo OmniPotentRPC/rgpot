@@ -121,12 +121,22 @@ jobs:
           test "$(ls -A isa-audit-libs)" || { echo "no libraries extracted" >&2; exit 1; }
           ls -la isa-audit-libs
           for f in isa-audit-libs/*; do
-            if readelf -S "${f}" | grep -q '\.symtab'; then
-              echo "symtab: ${f}"
-            else
-              echo "NO SYMTAB: ${f}" >&2
-              exit 1
-            fi
+            name="${f##*--}"
+            case "${name}" in
+              librgpot*|_core*)
+                if readelf -S "${f}" | grep -q '\.symtab'; then
+                  echo "symtab: ${f}"
+                else
+                  echo "NO SYMTAB: ${f}" >&2
+                  exit 1
+                fi
+                ;;
+              *)
+                # auditwheel strips vendored copies. The path allowlist
+                # still applies, and a feature it does not name fails.
+                echo "vendored: ${f}"
+                ;;
+            esac
           done
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -213,12 +223,20 @@ jobs:
           test "$(ls -A isa-audit-libs)" || { echo "no libraries extracted" >&2; exit 1; }
           ls -la isa-audit-libs
           for f in isa-audit-libs/*; do
-            if nm "${f}" >/dev/null 2>&1; then
-              echo "symbols: ${f}"
-            else
-              echo "NO SYMBOLS: ${f}" >&2
-              exit 1
-            fi
+            name="${f##*--}"
+            case "${name}" in
+              librgpot*|_core*)
+                if nm "${f}" >/dev/null 2>&1; then
+                  echo "symbols: ${f}"
+                else
+                  echo "NO SYMBOLS: ${f}" >&2
+                  exit 1
+                fi
+                ;;
+              *)
+                echo "vendored: ${f}"
+                ;;
+            esac
           done
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
