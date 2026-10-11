@@ -4,6 +4,24 @@
 #define RGPOT_CXX_LAYOUT_BUILDING
 #include "rgpot/abi/CxxLayout.hpp"
 
+#if !defined(RGPOT_HAS_CACHE)
+#if defined(RGPOT_CXX_PLATFORM_LISTED)
+static_assert(rgpot::abi::find_soversion_entry(rgpot::abi::kCxxPlatformTag) !=
+                  nullptr,
+              "platform marked listed but missing from kCxxSoversionTable");
+static_assert(rgpot::abi::platform_soversion_ok(),
+              "C++ layout hash changed for this platform; bump kCxxSoversion "
+              "and kCxxSoversionTable");
+#else
+static_assert(rgpot::abi::find_soversion_entry(rgpot::abi::kCxxPlatformTag) ==
+                  nullptr,
+              "kCxxSoversionTable has this platform; add its listed guard");
+#pragma message(                                                           \
+    "rgpot: no kCxxSoversionTable entry for " RGPOT_CXX_PLATFORM_TAG        \
+    "; build continues. Record the stamp hash.")
+#endif
+#endif
+
 namespace {
 // Constant-initialised in this translation unit, so the exported functions
 // never call an inline function another shared object may also define.
