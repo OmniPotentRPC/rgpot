@@ -180,7 +180,7 @@ HWY_INLINE double r2_scalar(double dx, double dy, double dz) {
 
 template <class D>
 HWY_INLINE hn::Vec<D> r2_vec(D d, hn::Vec<D> dx, hn::Vec<D> dy, hn::Vec<D> dz) {
-#if !HWY_NATIVE_FMA
+#if !HWY_NATIVE_FMA && defined(__x86_64__)
   if (detail::glibc_fma_active()) {
     alignas(64) double dxa[8], dya[8], dza[8], out[8];
     hn::Store(dx, d, dxa);
@@ -254,11 +254,11 @@ template <class D> HWY_INLINE hn::Vec<D> exp_large(D d, hn::Vec<D> x_in) {
 }
 
 template <class D> HWY_INLINE hn::Vec<D> exp_lanes(D d, hn::Vec<D> x_in) {
-#if !HWY_NATIVE_FMA
+#if !HWY_NATIVE_FMA && defined(__x86_64__)
   // One call holds every fused product of this exp, so the SSE kernel does
   // not pay a libcall per Horner step when the processor's FMA is usable.
   if (detail::glibc_fma_active()) {
-#if defined(__x86_64__) && (HWY_TARGET == HWY_SSE2 || HWY_TARGET == HWY_SSE4)
+#if HWY_TARGET == HWY_SSE2 || HWY_TARGET == HWY_SSE4
     hn::Vec<D> fast;
     fast.raw = exp2_hw(x_in.raw);
     return fast;
@@ -844,7 +844,7 @@ void EamRun(long n, const double *R, const EamAtom *atoms, const double *box,
   eam_sse(n, R, atoms, box, F, U);
   return;
 #endif
-#if !HWY_NATIVE_FMA
+#if !HWY_NATIVE_FMA && defined(__x86_64__)
   if (detail::glibc_fma_active()) {
     eam_hw(n, R, atoms, box, F, U);
     return;
