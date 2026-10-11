@@ -1,6 +1,7 @@
-# Above-baseline instructions are allowed only in the Highway namespaces
-# named below, and in the libraries auditwheel or delocate copy into a
-# wheel. A feature not listed for that symbol or path still fails.
+# Above-baseline instructions in librgpot are allowed only in the Highway
+# namespaces named below. Vendored libraries that auditwheel or delocate
+# copy into a wheel are listed separately. A feature not listed for that
+# symbol or path still fails.
 
 baseline = "x86-64"
 
@@ -33,6 +34,8 @@ features = [
   "fma4",
   "xop",
   "sse4a",
+  "prefetchw",
+  "d3now",
   "xsave",
   "lse",
   "dotprod",
@@ -41,6 +44,7 @@ features = [
   "fcma",
   "sve",
   "sve2",
+  "sme",
   "crc32",
   "aes",
   "sha1",
@@ -74,6 +78,7 @@ features = [
   "sve",
   "sve2",
   "fp16",
+  "rcpc",
 ]
 reason = "gfortran matmul runtime variants"
 

@@ -107,6 +107,8 @@ Until `orchestrator.ncl` exists, edit the orchestrator directly but **prefer add
 | `ci_docs.yml` | Nickel `ci_docs.ncl` | docs build/deploy (write + gh-pages) |
 | `ci_doc_commenter.yml` | Nickel `ci_doc_commenter.ncl` | `workflow_run` after docs |
 | `cosmo-potctl.yml` | Nickel `cosmo_potctl.ncl` | path-filtered cosmo potctl |
+| `isa-audit.yml` | Hand-maintained reusable workflow | `workflow_call` from a build job |
+| `isa-audit-selftest.yml` | Hand-maintained | push to main and ci/** when the audit files change, and pull request; calls `isa-audit.yml` |
 
 **Removed** (folded into orchestrator): `build.yml`, `potentials.yml`, `prek.yml`,
 `docs_quality.yml`, `towncrier.yml`, `cosmo-potctl-spike.yml`.
