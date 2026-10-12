@@ -17,36 +17,52 @@ using rgpot::simd::mul_add;
 constexpr double kTol = 1e-12;
 constexpr int kMaxIt = 10000;
 
-// a*b + c*d + e*f. The last product rounds on its own; each earlier
-// product is fused into the sum. mul_add is a hardware fused multiply-add
-// when glibc reports FMA, and the Dekker product otherwise. Both match
-// std::fma, so the folded bits match on SSE, AVX2, AVX-512 and NEON.
-double fdot3(double a, double b, double c, double d, double e, double f) {
-  return mul_add(a, b, mul_add(c, d, e * f));
+// Hardware instantiations are compiled inside a target("fma") function, so
+// __builtin_fma becomes vfmadd there. The other instantiation is mul_add:
+// the same instruction when this unit was built with FMA, and the Dekker
+// TwoProduct plus TwoSum otherwise.
+template <bool Hardware>
+double product_add(double a, double b, double c) {
+  if constexpr (Hardware) {
+    return __builtin_fma(a, b, c);
+  } else {
+    return mul_add(a, b, c);
+  }
 }
 
+// a*b + c*d + e*f. The last product rounds on its own; each earlier
+// product is fused into the sum. Both forms match std::fma.
+template <bool Hardware>
+double fdot3(double a, double b, double c, double d, double e, double f) {
+  return product_add<Hardware>(a, b, product_add<Hardware>(c, d, e * f));
+}
+
+template <bool Hardware>
 double frac_of(double x, double y, double z, const double inv[9], int k) {
-  return fdot3(x, inv[k], y, inv[3 + k], z, inv[6 + k]);
+  return fdot3<Hardware>(x, inv[k], y, inv[3 + k], z, inv[6 + k]);
 }
 
 // reduced - (i*c0 + j*c1 + k*c2), each product fused into the sum.
+template <bool Hardware>
 double sub_image(double reduced, double i, double c0, double j, double c1,
                  double k, double c2) {
-  return mul_add(-i, c0, mul_add(-j, c1, mul_add(-k, c2, reduced)));
+  return product_add<Hardware>(
+      -i, c0,
+      product_add<Hardware>(-j, c1, product_add<Hardware>(-k, c2, reduced)));
 }
 
 double n2(const double v[3]) {
-  return fdot3(v[0], v[0], v[1], v[1], v[2], v[2]);
+  return fdot3<false>(v[0], v[0], v[1], v[1], v[2], v[2]);
 }
 
 double vdot(const double u[3], const double v[3]) {
-  return fdot3(u[0], v[0], u[1], v[1], u[2], v[2]);
+  return fdot3<false>(u[0], v[0], u[1], v[1], u[2], v[2]);
 }
 
 void lin3(const double c[3], const double a[3], const double b[3],
           const double d[3], double out[3]) {
   for (int i = 0; i < 3; ++i)
-    out[i] = fdot3(c[0], a[i], c[1], b[i], c[2], d[i]);
+    out[i] = fdot3<false>(c[0], a[i], c[1], b[i], c[2], d[i]);
 }
 
 void sort_by_length(double basis[3][3]) {
@@ -173,7 +189,7 @@ double det_of(const double a[9]) {
   const double m0 = mul_add(-a[5], a[7], a[4] * a[8]);
   const double m1 = mul_add(-a[5], a[6], a[3] * a[8]);
   const double m2 = mul_add(-a[4], a[6], a[3] * a[7]);
-  return fdot3(a[0], m0, -a[1], m1, a[2], m2);
+  return fdot3<false>(a[0], m0, -a[1], m1, a[2], m2);
 }
 
 bool invert(const double a[9], double inv[9]) {
@@ -224,10 +240,12 @@ std::int64_t checked_index(double value) {
   return static_cast<std::int64_t>(value);
 }
 
+template <bool Hardware>
 double squared(double x, double y, double z) {
-  return fdot3(x, x, y, y, z, z);
+  return fdot3<Hardware>(x, x, y, y, z, z);
 }
 
+template <bool Hardware>
 void search_bounds(const double cell[9], const double inv[9],
                    const double dual[3], const bool periodic[3], double &dx,
                    double &dy, double &dz) {
@@ -238,22 +256,22 @@ void search_bounds(const double cell[9], const double inv[9],
       continue;
     }
     initial[k] = std::round(
-        frac_of(reduced[0], reduced[1], reduced[2], inv, k));
+        frac_of<Hardware>(reduced[0], reduced[1], reduced[2], inv, k));
     checked_index(initial[k]);
   }
   for (int c = 0; c < 3; ++c) {
-    reduced[c] = sub_image(reduced[c], initial[0], cell[c], initial[1],
-                           cell[3 + c], initial[2], cell[6 + c]);
+    reduced[c] = sub_image<Hardware>(reduced[c], initial[0], cell[c], initial[1],
+                                    cell[3 + c], initial[2], cell[6 + c]);
   }
   double best[3] = {reduced[0], reduced[1], reduced[2]};
-  double best2 = squared(best[0], best[1], best[2]);
+  double best2 = squared<Hardware>(best[0], best[1], best[2]);
   const double radius = std::sqrt(best2);
   std::int64_t low[3] = {};
   std::int64_t high[3] = {};
   std::uint64_t count = 1;
   for (int k = 0; k < 3; ++k) {
     if (periodic[k]) {
-      const double f = frac_of(reduced[0], reduced[1], reduced[2], inv, k);
+      const double f = frac_of<Hardware>(reduced[0], reduced[1], reduced[2], inv, k);
       const double extent = radius * dual[k];
       low[k] = checked_index(std::floor(f - extent) - 1.0);
       high[k] = checked_index(std::ceil(f + extent) + 1.0);
@@ -273,11 +291,11 @@ void search_bounds(const double cell[9], const double inv[9],
       for (auto k = low[2]; k <= high[2]; ++k) {
         double cand[3];
         for (int c = 0; c < 3; ++c) {
-          cand[c] = sub_image(reduced[c], static_cast<double>(i), cell[c],
-                              static_cast<double>(j), cell[3 + c],
-                              static_cast<double>(k), cell[6 + c]);
+          cand[c] = sub_image<Hardware>(reduced[c], static_cast<double>(i), cell[c],
+                                       static_cast<double>(j), cell[3 + c],
+                                       static_cast<double>(k), cell[6 + c]);
         }
-        const double r2 = squared(cand[0], cand[1], cand[2]);
+        const double r2 = squared<Hardware>(cand[0], cand[1], cand[2]);
         if (r2 < best2) {
           best[0] = cand[0];
           best[1] = cand[1];
@@ -292,6 +310,7 @@ void search_bounds(const double cell[9], const double inv[9],
   dz = best[2];
 }
 
+template <bool Hardware>
 void search_narrow(const double cell[9], const double inv[9],
                    const bool periodic[3], double &dx, double &dy,
                    double &dz) {
@@ -300,7 +319,7 @@ void search_narrow(const double cell[9], const double inv[9],
     if (!periodic[k]) {
       continue;
     }
-    const double f = frac_of(dx, dy, dz, inv, k);
+    const double f = frac_of<Hardware>(dx, dy, dz, inv, k);
     if (!std::isfinite(f)) {
       throw std::overflow_error("periodic image index is out of range");
     }
@@ -309,12 +328,12 @@ void search_narrow(const double cell[9], const double inv[9],
   double reduced[3] = {dx, dy, dz};
   for (int c = 0; c < 3; ++c) {
     reduced[c] =
-        sub_image(reduced[c], static_cast<double>(base[0]), cell[c],
-                  static_cast<double>(base[1]), cell[3 + c],
-                  static_cast<double>(base[2]), cell[6 + c]);
+        sub_image<Hardware>(reduced[c], static_cast<double>(base[0]), cell[c],
+                            static_cast<double>(base[1]), cell[3 + c],
+                            static_cast<double>(base[2]), cell[6 + c]);
   }
   double best[3] = {reduced[0], reduced[1], reduced[2]};
-  double best2 = squared(best[0], best[1], best[2]);
+  double best2 = squared<Hardware>(best[0], best[1], best[2]);
   for (int i = -1; i <= 1; ++i) {
     if (!periodic[0] && i != 0) {
       continue;
@@ -329,11 +348,11 @@ void search_narrow(const double cell[9], const double inv[9],
         }
         double cand[3];
         for (int c = 0; c < 3; ++c) {
-          cand[c] = sub_image(reduced[c], static_cast<double>(i), cell[c],
-                              static_cast<double>(j), cell[3 + c],
-                              static_cast<double>(k), cell[6 + c]);
+          cand[c] = sub_image<Hardware>(reduced[c], static_cast<double>(i), cell[c],
+                                       static_cast<double>(j), cell[3 + c],
+                                       static_cast<double>(k), cell[6 + c]);
         }
-        const double r2 = squared(cand[0], cand[1], cand[2]);
+        const double r2 = squared<Hardware>(cand[0], cand[1], cand[2]);
         if (r2 < best2) {
           best2 = r2;
           best[0] = cand[0];
@@ -411,6 +430,28 @@ MinimumImage::MinimumImage(const double *cell,
   narrow_ = narrow;
 }
 
+namespace {
+
+template <bool Hardware>
+void fold_search(bool narrow, const double cell[9], const double inv[9],
+                 const double dual[3], const bool periodic[3], double &dx,
+                 double &dy, double &dz) {
+  if (narrow) {
+    search_narrow<Hardware>(cell, inv, periodic, dx, dy, dz);
+    return;
+  }
+  search_bounds<Hardware>(cell, inv, dual, periodic, dx, dy, dz);
+}
+
+__attribute__((target("fma"), noinline, flatten)) void
+fold_hardware(bool narrow, const double cell[9], const double inv[9],
+              const double dual[3], const bool periodic[3], double &dx,
+              double &dy, double &dz) {
+  fold_search<true>(narrow, cell, inv, dual, periodic, dx, dy, dz);
+}
+
+} // namespace
+
 void MinimumImage::fold(double &dx, double &dy, double &dz) const {
   if (!std::isfinite(dx) || !std::isfinite(dy) || !std::isfinite(dz)) {
     throw std::invalid_argument("pair displacement must be finite");
@@ -422,12 +463,12 @@ void MinimumImage::fold(double &dx, double &dy, double &dz) const {
     cell[k] = cell_[static_cast<std::size_t>(k)];
     inv[k] = inverse_[static_cast<std::size_t>(k)];
   }
-  if (narrow_) {
-    search_narrow(cell, inv, periodic, dx, dy, dz);
+  double dual[3] = {dual_norm_[0], dual_norm_[1], dual_norm_[2]};
+  if (rgpot::simd::detail::glibc_fma_active()) {
+    fold_hardware(narrow_, cell, inv, dual, periodic, dx, dy, dz);
     return;
   }
-  double dual[3] = {dual_norm_[0], dual_norm_[1], dual_norm_[2]};
-  search_bounds(cell, inv, dual, periodic, dx, dy, dz);
+  fold_search<false>(narrow_, cell, inv, dual, periodic, dx, dy, dz);
 }
 
 } // namespace rgpot::nlist
