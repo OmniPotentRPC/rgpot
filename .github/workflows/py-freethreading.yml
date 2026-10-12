@@ -94,12 +94,12 @@ jobs:
           set -euo pipefail
           python -m pip install -U pip
           python -m pip install pytest pytest-run-parallel pytest-timeout
-          # Free-threaded 3.13 has no wheel for current NumPy, SciPy, or
-          # Hypothesis. Hypothesis 6.156+ is a PyO3 extension, and PyO3
-          # does not build on 3.13t. NumPy 2.4 and SciPy 1.16 do publish
-          # cp313t wheels, and Hypothesis 6.155 is still pure Python.
+          # Free-threaded 3.13 has no wheel for current NumPy, SciPy, Pillow,
+          # or Hypothesis. Hypothesis 6.156+ is a PyO3 extension, and PyO3
+          # does not build on 3.13t. NumPy 2.4, SciPy 1.16, and Pillow 12.2
+          # do publish cp313t wheels. Hypothesis 6.155 is still pure Python.
           if python -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 13) else 1)'; then
-            python -m pip install 'numpy>=2.2,<2.5' 'scipy>=1.15,<1.17' 'hypothesis>=6,<6.156'
+            python -m pip install 'numpy>=2.2,<2.5' 'scipy>=1.15,<1.17' 'pillow>=11,<12.3' 'hypothesis>=6,<6.156'
           else
             python -m pip install numpy hypothesis
           fi
