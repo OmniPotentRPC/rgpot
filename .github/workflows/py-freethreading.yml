@@ -40,6 +40,11 @@ on:
         required: false
         type: string
         default: ""
+      python:
+        description: JSON array of free-threaded version tags. The default is 3.14t and 3.15t.
+        required: false
+        type: string
+        default: '["3.14t","3.15t"]'
 
 permissions:
   contents: read
@@ -52,7 +57,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.14t", "3.15t"]
+        python: ${{ fromJSON(inputs.python) }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
