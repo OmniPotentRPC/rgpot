@@ -63,7 +63,7 @@ jobs:
   tsan:
     name: T2 cpython_sanity ${{ matrix.target.name }}
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -96,6 +96,7 @@ jobs:
           SETUP_SCRIPT: ${{ inputs.setup-script }}
           IMAGE: ${{ matrix.target.image }}
           BUILD_NUMPY: ${{ matrix.target.build_numpy }}
+          BOOTSTRAP_CPYTHON: ${{ matrix.target.bootstrap }}
         run: |
           set -euo pipefail
           # The image tag is pinned by digest. Mount the tree at /src.
@@ -108,11 +109,33 @@ jobs:
           fi
           docker run --rm -i \
             -e PKG -e TEST_PATH -e IMPORTS -e EXTRAS -e RUST_CRATE -e RUST_ARCHIVE -e TSAN_CMAKE_ARGS -e RUST_TOOLCHAIN \
-            -e APT_PACKAGES -e SETUP_SCRIPT -e BUILD_NUMPY \
+            -e APT_PACKAGES -e SETUP_SCRIPT -e BUILD_NUMPY -e BOOTSTRAP_CPYTHON \
             -v "$GITHUB_WORKSPACE":/src -w /src \
             "$IMAGE" \
             bash -s << 'EOF'
           set -euo pipefail
+          if [ -n "${BOOTSTRAP_CPYTHON:-}" ]; then
+            # cpython-tsan:3.13t lists an amd64 manifest the registry does
+            # not serve. Build that interpreter here instead.
+            apt-get update
+            apt-get install -y build-essential clang pkg-config libffi-dev libssl-dev zlib1g-dev \
+              libsqlite3-dev libbz2-dev liblzma-dev libreadline-dev ca-certificates curl xz-utils
+            curl -fsSL -o /tmp/cpython.tar.gz \
+              "https://github.com/python/cpython/archive/refs/tags/v${BOOTSTRAP_CPYTHON}.tar.gz"
+            rm -rf "/tmp/cpython-${BOOTSTRAP_CPYTHON}"
+            tar -C /tmp -xzf /tmp/cpython.tar.gz
+            (
+              cd "/tmp/cpython-${BOOTSTRAP_CPYTHON}"
+              CC=clang CXX=clang++ ./configure \
+                --prefix=/opt/python-tsan \
+                --disable-gil \
+                --with-thread-sanitizer \
+                --with-ensurepip=install
+              make -j"$(nproc)"
+              make install
+            )
+            export PATH="/opt/python-tsan/bin:${PATH}"
+          fi
           if command -v python >/dev/null 2>&1; then
             PY=python
           elif command -v python3 >/dev/null 2>&1; then
@@ -171,10 +194,10 @@ jobs:
           fi
           "$PY" -m pip install -U pip
           "$PY" -m pip install nanobind scikit-build-core cmake ninja pytest pytest-timeout pytest-run-parallel
-          # Hypothesis 6.160+ is a PyO3 extension. PyO3 does not build on
+          # Hypothesis 6.156+ is a PyO3 extension. PyO3 does not build on
           # free-threaded 3.13, and that tag has no cp313t wheel.
           if "$PY" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 13) else 1)'; then
-            "$PY" -m pip install 'hypothesis>=6,<6.160'
+            "$PY" -m pip install 'hypothesis>=6,<6.156'
           else
             "$PY" -m pip install hypothesis
           fi

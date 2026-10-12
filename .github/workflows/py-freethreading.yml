@@ -94,10 +94,10 @@ jobs:
           set -euo pipefail
           python -m pip install -U pip
           python -m pip install pytest pytest-run-parallel pytest-timeout numpy
-          # Hypothesis 6.160+ is a PyO3 extension. PyO3 does not build on
+          # Hypothesis 6.156+ is a PyO3 extension. PyO3 does not build on
           # free-threaded 3.13, and that tag has no cp313t wheel.
           if python -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 13) else 1)'; then
-            python -m pip install 'hypothesis>=6,<6.160'
+            python -m pip install 'hypothesis>=6,<6.156'
           else
             python -m pip install hypothesis
           fi
