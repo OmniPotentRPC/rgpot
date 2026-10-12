@@ -50,15 +50,24 @@ on:
         required: false
         type: string
         default: ""
+      images:
+        description: JSON list of TSan images. Each object has name, image, and build_numpy. The default is numpy-tsan 3.14t, which already contains NumPy.
+        required: false
+        type: string
+        default: '[{"name":"3.14t","image":"ghcr.io/nascheme/numpy-tsan:3.14t@sha256:f6dd658f1a155be35e27b182cac97c2a77c4b2d62bacb81753beaba725978149","build_numpy":"false"}]'
 
 permissions:
   contents: read
 
 jobs:
   tsan:
-    name: T2 cpython_sanity 3.14t
+    name: T2 cpython_sanity ${{ matrix.target.name }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(inputs.images) }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -85,15 +94,21 @@ jobs:
           RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
           APT_PACKAGES: ${{ inputs.apt-packages }}
           SETUP_SCRIPT: ${{ inputs.setup-script }}
+          IMAGE: ${{ matrix.target.image }}
+          BUILD_NUMPY: ${{ matrix.target.build_numpy }}
         run: |
           set -euo pipefail
-          # numpy-tsan is the cpython_sanity 3.14t image plus a TSan numpy.
-          # The tag is pinned by digest. Mount the tree at /src. /work holds
-          # the image's pyenv install.
-          IMAGE=ghcr.io/nascheme/numpy-tsan:3.14t@sha256:f6dd658f1a155be35e27b182cac97c2a77c4b2d62bacb81753beaba725978149
+          # The image tag is pinned by digest. Mount the tree at /src.
+          # /work holds the image's pyenv install. numpy-tsan already
+          # contains NumPy. cpython-tsan does not, so build_numpy compiles
+          # it with the same sanitizer flags as the extension.
+          if [ -z "${IMAGE}" ]; then
+            echo "TSan image is empty" >&2
+            exit 1
+          fi
           docker run --rm -i \
             -e PKG -e TEST_PATH -e IMPORTS -e EXTRAS -e RUST_CRATE -e RUST_ARCHIVE -e TSAN_CMAKE_ARGS -e RUST_TOOLCHAIN \
-            -e APT_PACKAGES -e SETUP_SCRIPT \
+            -e APT_PACKAGES -e SETUP_SCRIPT -e BUILD_NUMPY \
             -v "$GITHUB_WORKSPACE":/src -w /src \
             "$IMAGE" \
             bash -s << 'EOF'
@@ -156,7 +171,11 @@ jobs:
           fi
           "$PY" -m pip install -U pip
           "$PY" -m pip install nanobind scikit-build-core cmake ninja pytest pytest-timeout pytest-run-parallel hypothesis
-          if ! "$PY" -c 'import numpy' >/dev/null 2>&1; then
+          if [ "${BUILD_NUMPY:-false}" = "true" ]; then
+            apt-get update
+            apt-get install -y pkg-config libopenblas-dev
+            "$PY" -m pip install 'numpy>=2' --no-binary=numpy
+          elif ! "$PY" -c 'import numpy' >/dev/null 2>&1; then
             "$PY" -m pip install 'numpy>=1.24'
           fi
           spec="/src/${PKG}"
