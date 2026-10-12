@@ -170,7 +170,14 @@ jobs:
             fi
           fi
           "$PY" -m pip install -U pip
-          "$PY" -m pip install nanobind scikit-build-core cmake ninja pytest pytest-timeout pytest-run-parallel hypothesis
+          "$PY" -m pip install nanobind scikit-build-core cmake ninja pytest pytest-timeout pytest-run-parallel
+          # Hypothesis 6.160+ is a PyO3 extension. PyO3 does not build on
+          # free-threaded 3.13, and that tag has no cp313t wheel.
+          if "$PY" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 13) else 1)'; then
+            "$PY" -m pip install 'hypothesis>=6,<6.160'
+          else
+            "$PY" -m pip install hypothesis
+          fi
           if [ "${BUILD_NUMPY:-false}" = "true" ]; then
             apt-get update
             apt-get install -y pkg-config libopenblas-dev
