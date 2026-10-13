@@ -34,13 +34,19 @@ constexpr int kLllCap = 100000;
 constexpr std::uint64_t kPartialCap = 256;
 
 // Hardware instantiations are compiled inside a target("fma") function, so
-// __builtin_fma becomes vfmadd there. The other instantiation is mul_add:
-// the same instruction when this unit was built with FMA, and the Dekker
-// TwoProduct plus TwoSum otherwise.
+// __builtin_fma becomes vfmadd there. That builtin and the target attribute
+// are GCC and Clang. MSVC uses std::fma in the same instantiation. The other
+// instantiation is mul_add: the same instruction when this unit was built
+// with FMA, and the Dekker TwoProduct plus TwoSum otherwise. Both match
+// std::fma.
 template <bool Hardware>
 double product_add(double a, double b, double c) {
   if constexpr (Hardware) {
+#if defined(__GNUC__) || defined(__clang__)
     return __builtin_fma(a, b, c);
+#else
+    return std::fma(a, b, c);
+#endif
   } else {
     return mul_add(a, b, c);
   }
@@ -746,10 +752,16 @@ void fold_search(bool narrow, const double cell[9], const double inv[9],
   search_bounds<Hardware>(cell, inv, dual, periodic, dx, dy, dz);
 }
 
-__attribute__((target("fma"), noinline, flatten)) void
-fold_hardware(bool narrow, const double cell[9], const double inv[9],
-              const double dual[3], const bool periodic[3], double &dx,
-              double &dy, double &dz) {
+// The attribute keeps vfmadd in this body. The caller enters it only after
+// glibc reports that the processor's FMA is usable. MSVC has no target
+// attribute; this body then calls std::fma, and the caller keeps the
+// portable path unless a runtime check selects it.
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((target("fma"), noinline, flatten))
+#endif
+void fold_hardware(bool narrow, const double cell[9], const double inv[9],
+                   const double dual[3], const bool periodic[3], double &dx,
+                   double &dy, double &dz) {
   fold_search<true>(narrow, cell, inv, dual, periodic, dx, dy, dz);
 }
 
