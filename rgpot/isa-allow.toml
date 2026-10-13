@@ -1,7 +1,7 @@
-# rgpot has no runtime-dispatched kernels. An above-baseline instruction
-# in librgpot or _core is a violation. These entries cover libraries that
-# auditwheel or delocate copy into the wheel and that select kernels at
-# run time. A feature not listed here still fails the audit.
+# Above-baseline instructions in librgpot belong to the [[allow]] symbols.
+# Those bodies run only after a runtime check. The vendored entries cover
+# libraries that auditwheel or delocate copy into the wheel and that select
+# kernels at run time. A feature not listed here still fails the audit.
 
 baseline = "x86-64"
 
@@ -117,3 +117,11 @@ features = [
   "xsave",
 ]
 reason = "libquadmath, vendored beside libgfortran"
+
+# FMA bodies outside a dispatched namespace. Each one is entered only after
+# glibc reports that the processor's FMA is usable. The portable path stays
+# free of these instructions.
+[[allow]]
+symbol = '^(rgpot::simd::exact_fma_hw|rgpot::nlist::_GLOBAL__N_[0-9]+::fold_hardware)\b'
+features = ["avx", "fma", "sse3"]
+reason = "FMA bodies selected when the processor's FMA is usable"

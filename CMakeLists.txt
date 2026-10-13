@@ -174,6 +174,8 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/LennardJones/LJClusterPot.cc
       CppCore/rgpot/Morse/MorsePot.cc
       CppCore/rgpot/ZBL/ZBLPot.cc
+      CppCore/rgpot/nlist/MinimumImage.cpp
+      CppCore/rgpot/simd/exact_fma_hw.cc
       CppCore/rgpot/CuH2/cuh2Utils.cc
       CppCore/rgpot/fortran/FortranPots.cc)
 
@@ -199,6 +201,15 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/vesin>
            $<INSTALL_INTERFACE:include/rgpot/vesin>)
   target_link_libraries(rgpot_vesin PRIVATE Threads::Threads)
+  if(MSVC)
+    set_source_files_properties(
+      CppCore/rgpot/nlist/MinimumImage.cpp CppCore/rgpot/simd/exact_fma_hw.cc
+      PROPERTIES COMPILE_OPTIONS "/fp:precise")
+  else()
+    set_source_files_properties(
+      CppCore/rgpot/nlist/MinimumImage.cpp CppCore/rgpot/simd/exact_fma_hw.cc
+      PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+  endif()
   add_subdirectory(CppCore/rgpot/fortran)
   add_library(rgpot ${RGPOT_SOURCES})
   set_target_properties(rgpot PROPERTIES LINKER_LANGUAGE CXX
@@ -423,6 +434,17 @@ if(RGPOT_BUILD_TESTS)
 
     add_pot_test(LJClusterPotTest CppCore/tests/LJClusterPotTest.cc)
     add_pot_test(PairListTest CppCore/tests/PairListTest.cc)
+    add_pot_test(MinImageIsaHash CppCore/tests/MinImageIsaHash.cc)
+    add_pot_test(FoldDegenerateTest CppCore/tests/FoldDegenerateTest.cc)
+    set_tests_properties(FoldDegenerateTest PROPERTIES TIMEOUT 60)
+    add_executable(ExactFmaEq CppCore/tests/exact_fma_eq.cc)
+    target_link_libraries(ExactFmaEq PRIVATE rgpot::rgpot)
+    target_include_directories(ExactFmaEq PRIVATE CppCore)
+    target_compile_features(ExactFmaEq PRIVATE cxx_std_20)
+    if(NOT MSVC)
+      target_compile_options(ExactFmaEq PRIVATE -ffp-contract=off)
+    endif()
+    add_test(NAME ExactFmaEq COMMAND ExactFmaEq)
     add_pot_test(BatchEvaluatorTest CppCore/tests/BatchEvaluatorTest.cc)
     target_link_libraries(BatchEvaluatorTest PRIVATE Threads::Threads)
     add_pot_test(CxxLayoutTest CppCore/tests/CxxLayoutTest.cc)

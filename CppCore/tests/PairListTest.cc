@@ -613,12 +613,121 @@ TEST_CASE("Full-cell image search rejects invalid and unrepresentable cells",
                     std::invalid_argument);
   const double ill_conditioned[9] = {1.0, 1.0, 0.0, 1.0, 1.0 + 1e-12,
                                      0.0, 0.0, 0.0, 1.0};
-  REQUIRE_THROWS_AS(rgpot::nlist::MinimumImage(ill_conditioned, periodic),
-                    std::invalid_argument);
+  rgpot::nlist::MinimumImage ill(ill_conditioned, periodic);
+  double ix = 0.2, iy = -0.3, iz = 0.4;
+  ill.fold(ix, iy, iz);
+  REQUIRE(std::isfinite(ix));
+  REQUIRE(std::isfinite(iy));
+  REQUIRE(std::isfinite(iz));
+  REQUIRE(ix * ix + iy * iy + iz * iz <=
+          0.2 * 0.2 + 0.3 * 0.3 + 0.4 * 0.4 + 1e-9);
   const double cell[9] = {1.0, 0.1, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
   const rgpot::nlist::MinimumImage image(cell, periodic);
   double dx = 1e30, dy = 0.0, dz = 0.0;
   REQUIRE_THROWS_AS(image.fold(dx, dy, dz), std::overflow_error);
   dx = std::numeric_limits<double>::quiet_NaN();
   REQUIRE_THROWS_AS(image.fold(dx, dy, dz), std::invalid_argument);
+}
+
+namespace {
+
+void brute_shortest(const double cell[9], const std::array<bool, 3> &periodic,
+                    double dx, double dy, double dz, int span, double &ox,
+                    double &oy, double &oz) {
+  double best2 = std::numeric_limits<double>::infinity();
+  double bx = dx, by = dy, bz = dz;
+  for (int i = -span; i <= span; ++i) {
+    if (!periodic[0] && i != 0) {
+      continue;
+    }
+    for (int j = -span; j <= span; ++j) {
+      if (!periodic[1] && j != 0) {
+        continue;
+      }
+      for (int k = -span; k <= span; ++k) {
+        if (!periodic[2] && k != 0) {
+          continue;
+        }
+        const double x = dx - (i * cell[0] + j * cell[3] + k * cell[6]);
+        const double y = dy - (i * cell[1] + j * cell[4] + k * cell[7]);
+        const double z = dz - (i * cell[2] + j * cell[5] + k * cell[8]);
+        const double r2 = x * x + y * y + z * z;
+        if (r2 < best2) {
+          best2 = r2;
+          bx = x;
+          by = y;
+          bz = z;
+        }
+      }
+    }
+  }
+  ox = bx;
+  oy = by;
+  oz = bz;
+}
+
+void require_matches_brute(const double cell[9],
+                           const std::array<bool, 3> &periodic, double dx,
+                           double dy, double dz, int span) {
+  rgpot::nlist::MinimumImage image(cell, periodic);
+  double gx = dx, gy = dy, gz = dz;
+  image.fold(gx, gy, gz);
+  double bx = 0, by = 0, bz = 0;
+  brute_shortest(cell, periodic, dx, dy, dz, span, bx, by, bz);
+  const double gr2 = gx * gx + gy * gy + gz * gz;
+  const double br2 = bx * bx + by * by + bz * bz;
+  INFO("dx=" << dx << " dy=" << dy << " dz=" << dz << " gr2=" << gr2
+            << " br2=" << br2);
+  INFO("dx=" << dx << " dy=" << dy << " dz=" << dz << " gr2=" << gr2
+            << " br2=" << br2);
+  REQUIRE(std::isfinite(gr2));
+  REQUIRE(gr2 <= br2 + 1e-8);
+  REQUIRE(std::abs(gr2 - br2) <= 1e-8 * std::max(1.0, br2));
+}
+
+void require_not_longer(const double cell[9],
+                        const std::array<bool, 3> &periodic, double dx,
+                        double dy, double dz, int span) {
+  rgpot::nlist::MinimumImage image(cell, periodic);
+  double gx = dx, gy = dy, gz = dz;
+  image.fold(gx, gy, gz);
+  double bx = 0, by = 0, bz = 0;
+  brute_shortest(cell, periodic, dx, dy, dz, span, bx, by, bz);
+  const double gr2 = gx * gx + gy * gy + gz * gz;
+  const double br2 = bx * bx + by * by + bz * bz;
+  // A 1e-12 cell leaves a double residual after reduction. The folded
+  // length stays next to the shortest image in the brute window.
+  REQUIRE(std::isfinite(gr2));
+  REQUIRE(gr2 <= br2 + 1e-2);
+}
+
+} // namespace
+
+TEST_CASE("Minimum image matches a brute-force search on skewed cells",
+          "[PairList][triclinic]") {
+  const std::array<bool, 3> periodic{true, true, true};
+  const double cells[][9] = {
+      {10.0, 1.0, 0.4, 0.3, 8.0, 0.5, 0.2, 0.6, 12.0},
+      {6.0, 4.5, 0.2, 0.1, 2.0, 0.3, 0.4, 0.2, 7.0},
+      {5.0, 4.8, 0.1, 0.2, 1.5, 0.05, 0.1, 0.2, 4.0},
+      {8.0, 3.0, 1.0, 0.5, 7.0, 2.5, 1.2, 0.4, 9.0},
+  };
+  const double samples[][3] = {
+      {0.2, -0.3, 0.4}, {1.5, 2.5, -1.0}, {12.0, -9.0, 4.0},
+      {-20.0, 7.5, 15.0}, {3.2, -0.4, 0.1}, {0.6, 0.04, 0.2},
+  };
+  for (const auto &cell : cells) {
+    for (const auto &sample : samples) {
+      require_matches_brute(cell, periodic, sample[0], sample[1], sample[2],
+                            24);
+    }
+  }
+  const std::array<bool, 3> open_z{true, true, false};
+  const double shear[9] = {9.0, 2.0, 0.0, 0.4, 6.0, 0.0, 1.0, 0.5, 8.0};
+  require_matches_brute(shear, open_z, 14.0, -11.0, 3.5, 24);
+  require_matches_brute(shear, open_z, 0.3, 5.5, -2.0, 24);
+
+  const double ill[9] = {1.0, 1.0, 0.0, 1.0, 1.0 + 1e-12, 0.0, 0.0, 0.0, 1.0};
+  require_not_longer(ill, periodic, 0.2, -0.3, 0.4, 8);
+  require_not_longer(ill, periodic, 1.7, -0.4, 0.8, 8);
 }
