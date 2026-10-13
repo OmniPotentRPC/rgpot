@@ -16,6 +16,13 @@ using rgpot::simd::mul_add;
 
 constexpr double kTol = 1e-12;
 constexpr int kMaxIt = 10000;
+// search_bounds enumerates its box only up to this many candidates.
+constexpr double kExhaustiveCap = 4096.0;
+// Guard on the reduced-basis box. A reduced basis of at most three rows
+// keeps it far below this; reaching it means the input left double range.
+constexpr double kReducedCap = 1048576.0;
+// Guard on LLL steps for at most three rows.
+constexpr int kLllCap = 100000;
 
 // Hardware instantiations are compiled inside a target("fma") function, so
 // __builtin_fma becomes vfmadd there. The other instantiation is mul_add:
@@ -245,6 +252,207 @@ double squared(double x, double y, double z) {
   return fdot3<Hardware>(x, x, y, y, z, z);
 }
 
+// Periodic rows of the cell, LLL-reduced. b holds the reduced rows and
+// u the integer change of basis, b[r] = sum_j u[r][j] * cell row rows[j].
+struct ReducedRows {
+  int n = 0;
+  int rows[3] = {};
+  double b[3][3] = {};
+  double u[3][3] = {};
+};
+
+double dot3(const double x[3], const double y[3]) {
+  return fdot3<false>(x[0], y[0], x[1], y[1], x[2], y[2]);
+}
+
+// Gram-Schmidt of the first n rows: bstar and the squared norms.
+void gram_schmidt(const ReducedRows &r, double bstar[3][3], double norm2[3],
+                  double mu[3][3]) {
+  for (int i = 0; i < r.n; ++i) {
+    for (int c = 0; c < 3; ++c)
+      bstar[i][c] = r.b[i][c];
+    for (int j = 0; j < i; ++j) {
+      mu[i][j] = dot3(r.b[i], bstar[j]) / norm2[j];
+      for (int c = 0; c < 3; ++c)
+        bstar[i][c] = mul_add(-mu[i][j], bstar[j][c], bstar[i][c]);
+    }
+    norm2[i] = dot3(bstar[i], bstar[i]);
+  }
+}
+
+// LLL with delta = 0.99 on at most three rows. Each swap multiplies the
+// potential prod_i |b*_i|^(2(n-i)) by less than delta, and the potential is
+// bounded below by the lattice, so the loop terminates. kLllCap is a guard
+// on top of that argument, not a substitute: it throws instead of spinning.
+ReducedRows lll_rows(const double cell[9], const bool periodic[3]) {
+  ReducedRows r;
+  for (int k = 0; k < 3; ++k) {
+    if (!periodic[k]) {
+      continue;
+    }
+    r.rows[r.n] = k;
+    for (int c = 0; c < 3; ++c)
+      r.b[r.n][c] = cell[3 * k + c];
+    r.u[r.n][r.n] = 1.0;
+    ++r.n;
+  }
+  double bstar[3][3] = {};
+  double norm2[3] = {};
+  double mu[3][3] = {};
+  gram_schmidt(r, bstar, norm2, mu);
+  int i = 1;
+  int steps = 0;
+  while (i < r.n) {
+    if (++steps > kLllCap) {
+      throw std::overflow_error("periodic cell reduction did not converge");
+    }
+    for (int j = i - 1; j >= 0; --j) {
+      const double q = std::round(mu[i][j]);
+      if (q == 0.0) {
+        continue;
+      }
+      if (!(std::fabs(q) < 0x1p52)) {
+        throw std::overflow_error("periodic cell reduction is out of range");
+      }
+      for (int c = 0; c < 3; ++c) {
+        r.b[i][c] = mul_add(-q, r.b[j][c], r.b[i][c]);
+        r.u[i][c] = mul_add(-q, r.u[j][c], r.u[i][c]);
+      }
+      gram_schmidt(r, bstar, norm2, mu);
+    }
+    if (norm2[i] >= (0.99 - mu[i][i - 1] * mu[i][i - 1]) * norm2[i - 1]) {
+      ++i;
+      continue;
+    }
+    for (int c = 0; c < 3; ++c) {
+      std::swap(r.b[i][c], r.b[i - 1][c]);
+      std::swap(r.u[i][c], r.u[i - 1][c]);
+    }
+    gram_schmidt(r, bstar, norm2, mu);
+    i = std::max(i - 1, 1);
+  }
+  return r;
+}
+
+// Minimum image over the periodic rows through an LLL-reduced basis. A
+// lattice point v within distance R of the in-span part of the target has
+// reduced coordinates m_i = d_i . v, so |m_i - d_i . p| <= |d_i| R, where
+// d_i are the dual rows inside the span. For a reduced basis that box has
+// a small constant size. Candidates are evaluated with the same sub_image
+// and squared as search_bounds, in cell-row coordinates, and ties go to the
+// lexicographically smallest index triple, the one search_bounds keeps.
+template <bool Hardware>
+void search_reduced(const double cell[9], const bool periodic[3],
+                    const double reduced[3], double &dx, double &dy,
+                    double &dz) {
+  const ReducedRows r = lll_rows(cell, periodic);
+  const int n = r.n;
+  double g[3][3] = {};
+  for (int a = 0; a < n; ++a)
+    for (int b = 0; b < n; ++b)
+      g[a][b] = dot3(r.b[a], r.b[b]);
+  double gi[3][3] = {};
+  if (n == 1) {
+    gi[0][0] = 1.0 / g[0][0];
+  } else if (n == 2) {
+    const double det = mul_add(-g[0][1], g[1][0], g[0][0] * g[1][1]);
+    gi[0][0] = g[1][1] / det;
+    gi[1][1] = g[0][0] / det;
+    gi[0][1] = -g[0][1] / det;
+    gi[1][0] = -g[1][0] / det;
+  } else {
+    double flat[9];
+    for (int a = 0; a < 3; ++a)
+      for (int b = 0; b < 3; ++b)
+        flat[3 * a + b] = g[a][b];
+    double finv[9];
+    if (!invert(flat, finv)) {
+      throw std::invalid_argument("periodic cell must be nonsingular");
+    }
+    for (int a = 0; a < 3; ++a)
+      for (int b = 0; b < 3; ++b)
+        gi[a][b] = finv[3 * a + b];
+  }
+  double dual_rows[3][3] = {};
+  double f[3] = {};
+  for (int a = 0; a < n; ++a) {
+    for (int c = 0; c < 3; ++c) {
+      double acc = 0.0;
+      for (int b = 0; b < n; ++b)
+        acc = mul_add(gi[a][b], r.b[b][c], acc);
+      dual_rows[a][c] = acc;
+    }
+    f[a] = dot3(dual_rows[a], reduced);
+  }
+  // In-span residual of the rounded (Babai) point bounds the search radius.
+  double e[3] = {};
+  for (int c = 0; c < 3; ++c) {
+    double acc = 0.0;
+    for (int a = 0; a < n; ++a)
+      acc = mul_add(f[a] - std::round(f[a]), r.b[a][c], acc);
+    e[c] = acc;
+  }
+  const double rin = std::sqrt(dot3(e, e)) * (1.0 + 0x1p-20);
+  double lo[3] = {};
+  double hi[3] = {};
+  double box = 1.0;
+  for (int a = 0; a < n; ++a) {
+    const double ext = rin * std::sqrt(dot3(dual_rows[a], dual_rows[a]));
+    lo[a] = std::floor(f[a] - ext) - 1.0;
+    hi[a] = std::ceil(f[a] + ext) + 1.0;
+    box *= hi[a] - lo[a] + 1.0;
+  }
+  if (!(box <= kReducedCap)) {
+    throw std::overflow_error("periodic image search count is too large");
+  }
+  double best[3] = {reduced[0], reduced[1], reduced[2]};
+  double best2 = squared<Hardware>(best[0], best[1], best[2]);
+  double best_idx[3] = {0.0, 0.0, 0.0};
+  bool have = false;
+  double m[3] = {};
+  const auto visit = [&] {
+    double idx[3] = {0.0, 0.0, 0.0};
+    for (int a = 0; a < n; ++a)
+      for (int j = 0; j < n; ++j)
+        idx[r.rows[j]] = mul_add(m[a], r.u[a][j], idx[r.rows[j]]);
+    double cand[3];
+    for (int c = 0; c < 3; ++c)
+      cand[c] = sub_image<Hardware>(reduced[c], idx[0], cell[c], idx[1],
+                                    cell[3 + c], idx[2], cell[6 + c]);
+    const double r2 = squared<Hardware>(cand[0], cand[1], cand[2]);
+    const bool lex_first =
+        idx[0] < best_idx[0] ||
+        (idx[0] == best_idx[0] &&
+         (idx[1] < best_idx[1] ||
+          (idx[1] == best_idx[1] && idx[2] < best_idx[2])));
+    if (!have || r2 < best2 || (r2 == best2 && lex_first)) {
+      have = true;
+      best2 = r2;
+      for (int c = 0; c < 3; ++c) {
+        best[c] = cand[c];
+        best_idx[c] = idx[c];
+      }
+    }
+  };
+  for (m[0] = lo[0]; m[0] <= hi[0]; m[0] += 1.0) {
+    if (n == 1) {
+      visit();
+      continue;
+    }
+    for (m[1] = lo[1]; m[1] <= hi[1]; m[1] += 1.0) {
+      if (n == 2) {
+        visit();
+        continue;
+      }
+      for (m[2] = lo[2]; m[2] <= hi[2]; m[2] += 1.0)
+        visit();
+    }
+  }
+  dx = best[0];
+  dy = best[1];
+  dz = best[2];
+}
+
 template <bool Hardware>
 void search_bounds(const double cell[9], const double inv[9],
                    const double dual[3], const bool periodic[3], double &dx,
@@ -268,13 +476,30 @@ void search_bounds(const double cell[9], const double inv[9],
   const double radius = std::sqrt(best2);
   std::int64_t low[3] = {};
   std::int64_t high[3] = {};
-  std::uint64_t count = 1;
+  double span[3][2] = {};
+  double box = 1.0;
   for (int k = 0; k < 3; ++k) {
     if (periodic[k]) {
       const double f = frac_of<Hardware>(reduced[0], reduced[1], reduced[2], inv, k);
       const double extent = radius * dual[k];
-      low[k] = checked_index(std::floor(f - extent) - 1.0);
-      high[k] = checked_index(std::ceil(f + extent) + 1.0);
+      span[k][0] = std::floor(f - extent) - 1.0;
+      span[k][1] = std::ceil(f + extent) + 1.0;
+      box *= span[k][1] - span[k][0] + 1.0;
+    }
+  }
+  // The box comes from the dual norms of the full cell and the whole
+  // displacement length. A thin or strongly sheared cell, or a long
+  // displacement along an open direction, makes it astronomically large.
+  // Those cases go to a reduced-basis search over the periodic rows.
+  if (!(box <= kExhaustiveCap)) {
+    search_reduced<Hardware>(cell, periodic, reduced, dx, dy, dz);
+    return;
+  }
+  std::uint64_t count = 1;
+  for (int k = 0; k < 3; ++k) {
+    if (periodic[k]) {
+      low[k] = checked_index(span[k][0]);
+      high[k] = checked_index(span[k][1]);
     }
     const auto width = static_cast<std::uint64_t>(high[k]) -
                        static_cast<std::uint64_t>(low[k]) + 1;

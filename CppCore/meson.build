@@ -675,6 +675,21 @@ if get_option('with_tests')
             ['D4test', 'd4_test', 'D4PotTest.cc', ''],
         ]
     endif
+    if not get_option('with_rpc_client_only')
+        test(
+            'FoldDegenerateTest',
+            executable(
+                'fold_degenerate_test',
+                sources: ['tests/FoldDegenerateTest.cc'],
+                dependencies: test_deps,
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+            ),
+            timeout: 60,
+        )
+    endif
     if has_expr and not get_option('with_rpc_client_only')
         test(
             'ExprPotTest',
