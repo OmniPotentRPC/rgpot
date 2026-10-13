@@ -10,9 +10,8 @@
  * types used in the rgpot library.
  */
 
-// clang-format off
+// The adapter copies layouts. It does not evaluate a potential.
 #include <Eigen/Dense>
-// clang-format on
 #include <array>
 #include <cstring>
 #include <vector>

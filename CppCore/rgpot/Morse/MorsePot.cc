@@ -15,6 +15,8 @@
 
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/nlist/PairListCache.hpp"
+#include "rgpot/simd/api.hpp"
+#include "rgpot/simd/from_nlist.hpp"
 #include "rgpot/stress.hpp"
 
 namespace rgpot {
@@ -44,9 +46,6 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   double strain[6] = {};
   const double volume = cellVolume(in.box);
   publishCauchyStress(out, strain, volume);
-  const auto observe = [&](double fscale, double dx, double dy, double dz) {
-    accumulatePairStrain(strain, fscale, dx, dy, dz);
-  };
   *U = 0.0;
   for (long k = 0; k < 3 * N; k++) {
     F[k] = 0.0;
@@ -58,39 +57,22 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   nlist::CachedPairList::Options opt;
   opt.cutoff = cuttOffR;
 
-  const double twoDeA = 2.0 * De * a;
-  const double depth = De;
-  const double range = a;
-  const double rEq = re;
-  const double shiftU = energyCutoff;
+  simd::MorseParams params;
+  params.depth = De;
+  params.range = a;
+  params.r_eq = re;
+  params.two_de_a = 2.0 * De * a;
+  params.shift = energyCutoff;
+  params.use_switch = m_config.switch_width != 0.0 ? 1 : 0;
+  params.r_on = m_switch.r_on;
+  params.inv_width = m_switch.inv_width;
   auto &pool = nlist::PairListCache::global();
-  if (m_config.switch_width != 0.0) {
-    // Unshifted pair term times the C^2 switch S; fscale = -(V S)' / r.
-    const QuinticSwitch sw = m_switch;
-    *U = pool.accumulate(
-        R, static_cast<std::size_t>(N), box, opt, F,
-        [=](int32_t, int32_t, double r2) noexcept {
-          const double r = std::sqrt(r2);
-          const double d = 1.0 - std::exp(-range * (r - rEq));
-          const double v = depth * d * d - depth;
-          const auto s = sw(r);
-          return nlist::PairTerm{
-              v * s.s, (twoDeA * d * (d - 1.0) * s.s - v * s.dsdr) / r};
-        },
-        observe);
-    publishCauchyStress(out, strain, volume);
-    return;
-  }
-  *U = pool.accumulate(
-      R, static_cast<std::size_t>(N), box, opt, F,
-      [=](int32_t, int32_t, double r2) noexcept {
-        const double r = std::sqrt(r2);
-        const double d = 1.0 - std::exp(-range * (r - rEq));
-        // -dU/dr / r: the force on i is fscale * (r_i - r_j).
-        return nlist::PairTerm{depth * d * d - depth - shiftU,
-                               twoDeA * d * (d - 1.0) / r};
-      },
-      observe);
+  pool.withList(R, static_cast<std::size_t>(N), box, opt,
+                [&](const nlist::CachedPairList &list) {
+                  const simd::PairView view =
+                      simd::view_from(list.evalView(), R);
+                  *U = simd::morse_force(view, params, F, strain);
+                });
   publishCauchyStress(out, strain, volume);
 }
 
