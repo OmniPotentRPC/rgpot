@@ -9,10 +9,20 @@
 
 namespace rgpot::simd {
 
-#if defined(__GNUC__)
+// GCC will not inline across a differing optimize attribute, which turned
+// every software fma into an out-of-line call. An x86-64 unit without
+// __FMA__ has no fused instruction to contract into, so the attribute is
+// only needed where contraction is possible.
+#if defined(__GNUC__) && !defined(__clang__) &&                                 \
+    (!defined(__x86_64__) || defined(__FMA__))
 #define RGPOT_NO_FP_CONTRACT __attribute__((optimize("-ffp-contract=off")))
+#define RGPOT_FMA_INLINE
+#elif defined(__GNUC__)
+#define RGPOT_NO_FP_CONTRACT
+#define RGPOT_FMA_INLINE __attribute__((always_inline))
 #else
 #define RGPOT_NO_FP_CONTRACT
+#define RGPOT_FMA_INLINE
 #endif
 
 namespace detail {
@@ -36,134 +46,6 @@ RGPOT_NO_FP_CONTRACT inline void two_prod(double a, double b, double &p, double 
   const double bh = cb - (cb - b);
   const double bl = b - bh;
   e = ((ah * bh - p) + ah * bl + al * bh) + al * bl;
-}
-
-// True when TwoProd and the following sums stay inside the normal range,
-// so the split factor cannot overflow and the product cannot underflow.
-inline bool fma_dekker_domain(double a, double b, double c) {
-  if (!std::isfinite(a) || !std::isfinite(b) || !std::isfinite(c)) {
-    return false;
-  }
-  const double aa = std::fabs(a);
-  const double bb = std::fabs(b);
-  const double cc = std::fabs(c);
-  if (aa > 0x1p480 || bb > 0x1p480 || cc > 0x1p900) {
-    return false;
-  }
-  if ((aa != 0.0 && aa < 0x1p-480) || (bb != 0.0 && bb < 0x1p-480) ||
-      (cc != 0.0 && cc < 0x1p-900)) {
-    return false;
-  }
-  return true;
-}
-
-// Next representable value from pred toward the sign of sh.
-RGPOT_NO_FP_CONTRACT inline double next_toward(double pred, double sh) {
-  std::uint64_t ub = 0;
-  std::memcpy(&ub, &pred, sizeof(ub));
-  if (std::signbit(sh) == std::signbit(pred)) {
-    ub += 1;
-  } else {
-    ub -= 1;
-  }
-  double out = 0;
-  std::memcpy(&out, &ub, sizeof(out));
-  return out;
-}
-
-// pred + (sh + sl) rounded to nearest, ties to even. pred is the high part.
-RGPOT_NO_FP_CONTRACT inline double round_residual(double pred, double sh, double sl) {
-  if (sh == 0.0 || pred == 0.0 || !std::isfinite(pred)) {
-    return pred + (sh + sl);
-  }
-  std::uint64_t ub = 0;
-  std::memcpy(&ub, &pred, sizeof(ub));
-  const int be = static_cast<int>((ub >> 52) & 0x7ff);
-  if (be == 0 || be == 0x7ff) {
-    return pred + (sh + sl);
-  }
-  const bool pow2 = (ub & 0xfffffffffffffULL) == 0;
-  const bool down = std::signbit(sh) != std::signbit(pred);
-  const int ulp_exp = be - 1023 - 52 - ((pow2 && down) ? 1 : 0);
-  const int mid_be = ulp_exp - 1 + 1023;
-  double mid = 0;
-  if (mid_be <= 0 || mid_be >= 0x7ff) {
-    mid = std::copysign(std::ldexp(1.0, ulp_exp - 1), sh);
-  } else {
-    std::uint64_t mb = static_cast<std::uint64_t>(mid_be) << 52;
-    if (std::signbit(sh)) {
-      mb |= 0x8000000000000000ULL;
-    }
-    std::memcpy(&mid, &mb, sizeof(mid));
-  }
-  const double diff = sh - mid;
-  double d2 = 0;
-  double e2 = 0;
-  two_sum(diff, sl, d2, e2);
-  if (d2 == 0.0 && e2 == 0.0) {
-    return pred + mid;
-  }
-  const bool up = (d2 > 0.0 && mid > 0.0) || (d2 < 0.0 && mid < 0.0) ||
-                  (d2 == 0.0 && ((e2 > 0.0 && mid > 0.0) || (e2 < 0.0 && mid < 0.0)));
-  if (!up) {
-    return pred;
-  }
-  return next_toward(pred, sh);
-}
-
-// Dekker TwoProd plus a TwoSum chain. The residual's sticky bit breaks
-// ties, including the tie just below a power of two. The caller rejects
-// a zero, a subnormal, or a non-finite result and uses std::fma there.
-RGPOT_NO_FP_CONTRACT inline double fma_dekker(double a, double b, double c) {
-  double p = 0;
-  double pe = 0;
-  two_prod(a, b, p, pe);
-  double s = 0;
-  double t = 0;
-  two_sum(p, c, s, t);
-  double v = 0;
-  double z = 0;
-  two_sum(t, pe, v, z);
-  double r = 0;
-  double h = 0;
-  two_sum(s, v, r, h);
-  double rem = 0;
-  double u = 0;
-  two_sum(h, z, rem, u);
-  if (u == 0.0) {
-    return r + rem;
-  }
-  double pred = 0;
-  double err = 0;
-  two_sum(r, rem, pred, err);
-  double sh = 0;
-  double sl = 0;
-  two_sum(err, u, sh, sl);
-  return round_residual(pred, sh, sl);
-}
-
-// True when rem is exactly half an ulp of pred, the case where r+rem can
-// round the tie the wrong way and the sticky bit has to decide.
-RGPOT_NO_FP_CONTRACT inline bool rem_is_half_ulp(double pred, double rem) {
-  std::uint64_t ub = 0;
-  std::memcpy(&ub, &pred, sizeof(ub));
-  const int be = static_cast<int>((ub >> 52) & 0x7ff);
-  if (be == 0 || be == 0x7ff) {
-    return true;
-  }
-  const bool pow2 = (ub & 0xfffffffffffffULL) == 0;
-  const bool down = std::signbit(rem) != std::signbit(pred);
-  const int mid_be = be - 53 - ((pow2 && down) ? 1 : 0);
-  if (mid_be <= 0 || mid_be >= 0x7ff) {
-    return true;
-  }
-  std::uint64_t mb = static_cast<std::uint64_t>(mid_be) << 52;
-  if (std::signbit(rem)) {
-    mb |= 0x8000000000000000ULL;
-  }
-  double half = 0;
-  std::memcpy(&half, &mb, sizeof(half));
-  return std::fabs(rem) == std::fabs(half);
 }
 
 // glibc's usable-FMA bit follows the hwcaps tunable. CPUID stays set when
@@ -211,16 +93,88 @@ void r2_hw_n(const double *dx, const double *dy, const double *dz, double *out,
              std::size_t n);
 #endif
 
+namespace detail {
+
+inline std::uint64_t bits_of(double x) {
+  std::uint64_t u = 0;
+  std::memcpy(&u, &x, sizeof(u));
+  return u;
+}
+
+inline double from_bits(std::uint64_t u) {
+  double x = 0;
+  std::memcpy(&x, &u, sizeof(x));
+  return x;
+}
+
+// Biased exponent in [lo, hi], or a signed zero.
+inline bool exp_in_band(std::uint64_t u, unsigned lo, unsigned hi) {
+  const unsigned e = static_cast<unsigned>(u >> 52) & 0x7ffu;
+  return ((u << 1) == 0) | (e - lo <= hi - lo);
+}
+
+// True when the Dekker product and the sums after it stay inside the normal
+// range, so the split factor cannot overflow and the product cannot
+// underflow. Integer compares on the exponent bits only.
+inline bool fma_ro_domain(double a, double b, double c) {
+  return exp_in_band(bits_of(a), 1023u - 479u, 1023u + 479u) &
+         exp_in_band(bits_of(b), 1023u - 479u, 1023u + 479u) &
+         exp_in_band(bits_of(c), 1023u - 899u, 1023u + 899u);
+}
+
+// Boldo and Melquiond, "Emulation of FMA and correctly rounded sums: proved
+// algorithms using rounding to odd" (IEEE TC 57(4), 2008), Algorithm 5.4.
+// The exact product p+pe comes from Dekker, then TwoSum(c, p) gives s+t.
+// t+pe is rounded to odd from its TwoSum error: an inexact even result
+// steps one ulp toward the error. A single round to nearest of s plus that
+// odd value is the correctly rounded a*b+c, ties included, with no branch
+// on the tie. Inside fma_ro_domain nothing overflows and every partial is
+// normal, so only a zero or subnormal result needs another path.
+RGPOT_NO_FP_CONTRACT RGPOT_FMA_INLINE inline double fma_ro(double a, double b, double c,
+                                          bool &exact_ok) {
+  const double p = a * b;
+  const double ca = kFmaSplit * a;
+  const double ah = ca - (ca - a);
+  const double al = a - ah;
+  const double cb = kFmaSplit * b;
+  const double bh = cb - (cb - b);
+  const double bl = b - bh;
+  const double pe = ((ah * bh - p) + ah * bl + al * bh) + al * bl;
+  const double s = c + p;
+  const double sz = s - c;
+  const double t = (c - (s - sz)) + (p - sz);
+  const double v = t + pe;
+  const double vz = v - t;
+  const double ve = (t - (v - vz)) + (pe - vz);
+  std::uint64_t uv = bits_of(v);
+  const bool inexact_even = (ve != 0.0) & ((uv & 1u) == 0u);
+  const std::uint64_t toward = ((uv ^ bits_of(ve)) >> 63) != 0 ? ~0ULL : 1ULL;
+  uv += inexact_even ? toward : 0ULL;
+  const double y = s + from_bits(uv);
+  const unsigned ey = static_cast<unsigned>(bits_of(y) >> 52) & 0x7ffu;
+  exact_ok = ey != 0u;
+  // A zero here is an exact zero: c is exactly -a*b, or a*b and c are both
+  // zeros. Then p is exact and p+c carries the IEEE sign of the zero.
+  if (y == 0.0) {
+    exact_ok = true;
+    return p + c;
+  }
+  return y;
+}
+
+} // namespace detail
+
 /// a*b+c with one rounding, the same bits as a hardware fused multiply-add.
-/// Normals in range use a Dekker product and a correctly rounded sum of the
-/// three exact parts. Zeros, subnormals, overflows, and non-finite values
+/// Normals in range use a Dekker product and a round-to-odd sum
+/// (Boldo and Melquiond). Inputs outside that range and subnormal results
 /// use std::fma.
-RGPOT_NO_FP_CONTRACT inline double exact_fma(double a, double b, double c) {
-  if (!detail::fma_dekker_domain(a, b, c)) {
+RGPOT_NO_FP_CONTRACT RGPOT_FMA_INLINE inline double exact_fma(double a, double b, double c) {
+  if (__builtin_expect(!detail::fma_ro_domain(a, b, c), 0)) {
     return std::fma(a, b, c);
   }
-  const double y = detail::fma_dekker(a, b, c);
-  if (y == 0.0 || !std::isfinite(y) || std::fabs(y) < 0x1p-1022) {
+  bool ok = true;
+  const double y = detail::fma_ro(a, b, c, ok);
+  if (__builtin_expect(!ok, 0)) {
     return std::fma(a, b, c);
   }
   return y;
@@ -249,40 +203,80 @@ RGPOT_NO_FP_CONTRACT inline double fma_trunc(double a, double b, double c) {
   return r + rem;
 }
 
-// Same bits as exact_fma. The rounded sum r+rem matches a hardware fma except
-// when the residual is exactly half an ulp (a tie) or the result is zero,
-// subnormal, or non-finite. Those lanes use exact_fma.
-RGPOT_NO_FP_CONTRACT inline double fma_quick(double a, double b, double c) {
-  if (!detail::fma_dekker_domain(a, b, c)) {
-    return exact_fma(a, b, c);
-  }
-  double p = 0;
-  double pe = 0;
-  detail::two_prod(a, b, p, pe);
-  double s = 0;
-  double t = 0;
-  detail::two_sum(p, c, s, t);
-  double v = 0;
-  double z = 0;
-  detail::two_sum(t, pe, v, z);
-  double r = 0;
-  double h = 0;
-  detail::two_sum(s, v, r, h);
-  double rem = 0;
-  double u = 0;
-  detail::two_sum(h, z, rem, u);
-  (void)u;
-  const double y = r + rem;
-  if (y == 0.0 || !std::isfinite(y) || std::fabs(y) < 0x1p-1022 ||
-      detail::rem_is_half_ulp(r, rem)) {
-    return exact_fma(a, b, c);
+// Same bits as exact_fma. Kept as a name for callers of the earlier
+// two-stage path; the round-to-odd sum has no tie case left to filter.
+RGPOT_NO_FP_CONTRACT RGPOT_FMA_INLINE inline double fma_quick(double a, double b, double c) {
+  return exact_fma(a, b, c);
+}
+
+#if defined(__GNUC__)
+/// Two doubles in one register, for the software path.
+typedef double f64x2 __attribute__((vector_size(16)));
+
+namespace detail {
+typedef long long i64x2 __attribute__((vector_size(16)));
+typedef unsigned long long u64x2 __attribute__((vector_size(16)));
+
+// |x| in [lo, hi) or x a signed zero, from packed double compares. SSE2 has
+// these natively, unlike 64-bit integer compares.
+RGPOT_FMA_INLINE inline i64x2 lane_in_band(f64x2 x, double lo, double hi) {
+  const f64x2 ax = reinterpret_cast<f64x2>(reinterpret_cast<u64x2>(x) &
+                                           0x7fffffffffffffffULL);
+  return ((ax >= lo) & (ax < hi)) | (x == 0.0);
+}
+} // namespace detail
+
+/// exact_fma on both lanes. The lanes run the same round-to-odd sequence
+/// as exact_fma, element by element, so each lane has the bits of std::fma.
+/// When either lane leaves the domain or lands on a zero or a subnormal,
+/// both lanes go through the scalar exact_fma.
+RGPOT_NO_FP_CONTRACT RGPOT_FMA_INLINE inline f64x2 exact_fma_x2(f64x2 a,
+                                                                 f64x2 b,
+                                                                 f64x2 c) {
+  using detail::i64x2;
+  using detail::u64x2;
+  const i64x2 dom = detail::lane_in_band(a, 0x1p-479, 0x1p480) &
+                    detail::lane_in_band(b, 0x1p-479, 0x1p480) &
+                    detail::lane_in_band(c, 0x1p-899, 0x1p900);
+  const f64x2 split = {detail::kFmaSplit, detail::kFmaSplit};
+  const f64x2 p = a * b;
+  const f64x2 ca = split * a;
+  const f64x2 ah = ca - (ca - a);
+  const f64x2 al = a - ah;
+  const f64x2 cb = split * b;
+  const f64x2 bh = cb - (cb - b);
+  const f64x2 bl = b - bh;
+  const f64x2 pe = ((ah * bh - p) + ah * bl + al * bh) + al * bl;
+  const f64x2 s = c + p;
+  const f64x2 sz = s - c;
+  const f64x2 t = (c - (s - sz)) + (p - sz);
+  const f64x2 v = t + pe;
+  const f64x2 vz = v - t;
+  const f64x2 ve = (t - (v - vz)) + (pe - vz);
+  const i64x2 iv = reinterpret_cast<i64x2>(v);
+  const i64x2 ie = reinterpret_cast<i64x2>(ve);
+  // Round to odd without 64-bit compares or arithmetic shifts, which SSE2
+  // lacks: (iv & 1) - 1 is all ones for an even v, and the sign of iv ^ ie
+  // picks a step of +1 or -1 on the bit pattern.
+  const i64x2 even = (iv & 1) - 1;
+  const i64x2 flip = reinterpret_cast<i64x2>(reinterpret_cast<u64x2>(iv ^ ie) >> 63);
+  const i64x2 toward = 1 - (flip << 1);
+  const i64x2 inexact = (ve != 0.0);
+  const f64x2 vo = reinterpret_cast<f64x2>(iv + (inexact & even & toward));
+  const f64x2 y = s + vo;
+  const f64x2 ay = reinterpret_cast<f64x2>(reinterpret_cast<u64x2>(y) &
+                                           0x7fffffffffffffffULL);
+  const i64x2 ok = dom & (ay >= 0x1p-1022);
+  if (__builtin_expect((ok[0] & ok[1]) == 0, 0)) {
+    return f64x2{exact_fma(a[0], b[0], c[0]), exact_fma(a[1], b[1], c[1])};
   }
   return y;
 }
+#endif
 
 /// a*b+c, one rounding. A hardware instruction when this translation unit
 /// has one, or when glibc reports FMA usable. Otherwise fma_quick.
-RGPOT_NO_FP_CONTRACT inline double mul_add(double a, double b, double c) {
+RGPOT_NO_FP_CONTRACT RGPOT_FMA_INLINE inline double mul_add(double a, double b, double c) {
 #if defined(__FMA__) || defined(__ARM_FEATURE_FMA)
   // The instruction, not std::fma: a glibc ifunc follows the hwcaps tunable
   // and would run the software path while this unit can still emit FMA.
@@ -308,5 +302,6 @@ RGPOT_NO_FP_CONTRACT inline double r2_of(double dx, double dy, double dz) {
 }
 
 #undef RGPOT_NO_FP_CONTRACT
+#undef RGPOT_FMA_INLINE
 
 } // namespace rgpot::simd
