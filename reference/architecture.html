@@ -2,7 +2,7 @@
 <html lang="en" data-accent-color="teal" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Architecture Overview - rgpot documentation</title><link rel="shortcut icon" href="../_static/favicon.svg"/><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="MPI" href="mpi.html" /><link rel="prev" title="The RPC Model" href="../explanation/rpc-model.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Architecture Overview - rgpot documentation</title><link rel="shortcut icon" href="../_static/favicon.svg"/><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="MPI" href="mpi.html" /><link rel="prev" title="SIMD paths and dispatch" href="../explanation/simd.html" />
       <link rel="canonical" href="https://rgpot.rgoswami.me/reference/architecture.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
@@ -134,6 +134,7 @@ data-aria-dark="Switch to auto color mode">
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../explanation/index.html">Explanation</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="../explanation/rpc-model.html">The RPC Model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/simd.html">SIMD paths and dispatch</a></li>
 </ul>
 </li>
 </ul>
@@ -176,10 +177,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_forcefields.html">namespace forcefields</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="../api/namespace_forcefields-2.html">namespace forcefields</a><ul class="simple">
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="../api/namespace_forcefields-3.html">namespace forcefields</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_forcefields-2.html">namespace forcefields</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_forcefields_unit_system.html">namespace forcefields::unit_system</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_forcefields_zhu_philpott_parameters.html">namespace forcefields::zhu_philpott_parameters</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_forcefields_Ccl.html">class forcefields::Ccl</a></li>
@@ -189,7 +187,13 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../api/class_forcefields_ZhuPhilpott.html">template class forcefields::ZhuPhilpott</a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_forcefields-3.html">namespace forcefields</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_fortranpots.html">namespace fortranpots</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_nlist.html">namespace nlist</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_plugin.html">namespace plugin</a><ul class="simple">
@@ -210,7 +214,13 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-4.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-5.html">namespace rgpot</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-5.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-6.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-7.html">namespace rgpot</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_abi.html">namespace rgpot::abi</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_aoti_execstack.html">namespace rgpot::aoti_execstack</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
@@ -219,6 +229,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_fortranpots.html">namespace rgpot::fortranpots</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_nlist.html">namespace rgpot::nlist</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_plugin.html">namespace rgpot::plugin</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_simd.html">namespace rgpot::simd</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_tools.html">namespace rgpot::tools</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_types.html">namespace rgpot::types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_uma.html">namespace rgpot::uma</a></li>
@@ -285,12 +296,6 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_XcKernel.html">class rgpot::XcKernel</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_ZBLPot.html">class rgpot::ZBLPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_registry.html">template class rgpot::registry</a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-6.html">namespace rgpot</a><ul class="simple">
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-7.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-8.html">namespace rgpot</a><ul class="simple">
@@ -1262,10 +1267,10 @@ options.</p>
   </svg>
   <span>Back to top</span>
 </button><div class="navigation flex print:hidden"><div class="navigation-prev">
-    <a href="../explanation/rpc-model.html">
+    <a href="../explanation/simd.html">
       <i class="i-lucide chevron-left"></i>
       <div class="page-info">
-        <span>Previous</span><div class="title">The RPC Model</div></div>
+        <span>Previous</span><div class="title">SIMD paths and dispatch</div></div>
     </a>
   </div><div class="navigation-next">
     <a href="mpi.html">

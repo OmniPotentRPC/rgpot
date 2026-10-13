@@ -13,6 +13,7 @@ Global Namespace
 	namespace_forcefields-2.rst
 	namespace_forcefields-3.rst
 	namespace_fortranpots.rst
+	namespace_nlist.rst
 	namespace_plugin.rst
 	namespace_plugin-2.rst
 	namespace_rgpot.rst
@@ -117,17 +118,20 @@ Overview
 	namespace :ref:`cache<doxid-namespacergpot_1_1cache_1_1_0d165065365317363373306064030211076062366015242354>`;
 	namespace :ref:`eonc<doxid-namespaceeonc>`;
 	namespace :ref:`forcefields<doxid-namespaceforcefields_1_1_0d176353174343202110305120374345260272001303026222>`;
-	namespace :ref:`forcefields<doxid-namespaceforcefields_1_1_0d314360146326325055152242050354023041051366052365>`;
 	namespace :ref:`forcefields<doxid-namespaceforcefields>`;
 		namespace :ref:`forcefields::unit_system<doxid-namespaceforcefields_1_1unit__system>`;
 		namespace :ref:`forcefields::zhu_philpott_parameters<doxid-namespaceforcefields_1_1zhu__philpott__parameters>`;
+	namespace :ref:`forcefields<doxid-namespaceforcefields_1_1_0d314360146326325055152242050354023041051366052365>`;
 	namespace :ref:`fortranpots<doxid-namespacergpot_1_1fortranpots_1_1_0d165254177354022106360171111037067337336127011041>`;
+	namespace :ref:`nlist<doxid-namespacergpot_1_1nlist_1_1_0d044361067343243250071164353064172043254036135104>`;
 	namespace :ref:`plugin<doxid-namespacergpot_1_1plugin_1_1_0d200302014144210322064235167275312221164076066310>`;
 	namespace :ref:`plugin<doxid-namespacergpot_1_1plugin_1_1_0d217200312004315350013176105016125113373042341353>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d122321331164001007033202315161271040322074162255>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d164173104033017375130307150113162274222310040315>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d067053250123302137045023230030100136267051145140>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d122207310312103133225144130321077133074162141334>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d337125225102314171335167206375002356240231265256>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d330074065165043016212166146146214025043016253057>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d371345205050316044211301074104100300046352051004>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d005211301367263113147155070242204034047317366225>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d122321331164001007033202315161271040322074162255>`;
 	namespace :ref:`rgpot<doxid-namespacergpot>`;
 		namespace :ref:`rgpot::abi<doxid-namespacergpot_1_1abi>`;
 			namespace :ref:`rgpot::abi::detail<doxid-namespacergpot_1_1abi_1_1detail>`;
@@ -140,6 +144,8 @@ Overview
 		namespace :ref:`rgpot::plugin<doxid-namespacergpot_1_1plugin>`;
 			namespace :ref:`rgpot::plugin::detail<doxid-namespacergpot_1_1plugin_1_1detail>`;
 			namespace :ref:`rgpot::plugin::dynlib<doxid-namespacergpot_1_1plugin_1_1dynlib>`;
+		namespace :ref:`rgpot::simd<doxid-namespacergpot_1_1simd>`;
+			namespace :ref:`rgpot::simd::detail<doxid-namespacergpot_1_1simd_1_1detail>`;
 		namespace :ref:`rgpot::tools<doxid-namespacergpot_1_1tools>`;
 		namespace :ref:`rgpot::types<doxid-namespacergpot_1_1types>`;
 			namespace :ref:`rgpot::types::adapt<doxid-namespacergpot_1_1types_1_1adapt>`;
@@ -149,16 +155,14 @@ Overview
 		namespace :ref:`rgpot::uma<doxid-namespacergpot_1_1uma>`;
 		namespace :ref:`rgpot::units<doxid-namespacergpot_1_1units>`;
 		namespace :ref:`rgpot::vesin_compat<doxid-namespacergpot_1_1vesin__compat>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d005211301367263113147155070242204034047317366225>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d122207310312103133225144130321077133074162141334>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d307112313373357257323066107376333004137304370130>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d217266233327203303134017362164326260230263145325>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d164173104033017375130307150113162274222310040315>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d305002241363136067011226310027215036350216205241>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d166331164204151220333054351225362033006173021072>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d215115311063156157302310316040026264140105104166>`;
-	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d067053250123302137045023230030100136267051145140>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d330074065165043016212166146146214025043016253057>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d371345205050316044211301074104100300046352051004>`;
 	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d171070010102105364072226347021272242150151256304>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d166331164204151220333054351225362033006173021072>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d307112313373357257323066107376333004137304370130>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d215115311063156157302310316040026264140105104166>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d217266233327203303134017362164326260230263145325>`;
+	namespace :ref:`rgpot<doxid-namespacergpot_1_1_0d305002241363136067011226310027215036350216205241>`;
 	namespace :ref:`rgpot_cuh2<doxid-namespacergpot__cuh2>`;
 	namespace :ref:`rgpot_cuh2_capi<doxid-namespacergpot__cuh2__capi>`;
 	namespace :ref:`rgpot_eam_al<doxid-namespacergpot__eam__al>`;
@@ -569,6 +573,7 @@ Overview
 	#define :target:`RGPOT_MTA_ABI_VERSION<doxid-metatomic__c__abi_8h_1a2108b4728d818bb75e88ace00bcd11d3>`
 	#define :target:`RGPOT_MTA_API<doxid-metatomic__c__abi_8h_1a409c918f350af84ff87227c561b27aa3>`
 	#define :target:`RGPOT_MTA_ENGINE_BUILD<doxid-_metatomic_engine_abi_8cc_1a8eaafdf8bea9f6c384cda06d3e8eea42>`
+	#define :target:`RGPOT_NO_FP_CONTRACT<doxid-exact__fma_8hpp_1adeadf980bc461f58bcb38393ce4449cb>`
 	#define :target:`RGPOT_NWCHEMC_API<doxid-nwchem__c__abi_8h_1a6ad5679b2111999202bb48844af14a93>`
 	#define :target:`RGPOT_OS_UNKNOWN<doxid-_cxx_layout_8hpp_1a2072a8a3b3ac1dc6a9e3365aa63146b2>`
 	#define :target:`RGPOT_PLUGIN_API_VERSION<doxid-plugin_8h_1a48d5453009a11f3438b43bf0a6e458ae>`

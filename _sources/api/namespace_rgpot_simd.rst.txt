@@ -1,0 +1,76 @@
+.. index:: pair: namespace; rgpot::simd
+.. _doxid-namespacergpot_1_1simd:
+
+namespace rgpot::simd
+=====================
+
+.. toctree::
+	:hidden:
+
+	namespace_rgpot_simd_detail.rst
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace simd {
+
+	// namespaces
+
+	namespace :ref:`rgpot::simd::detail<doxid-namespacergpot_1_1simd_1_1detail>`;
+
+	// global functions
+
+	double :ref:`exact_fma<doxid-exact__fma_8hpp_1a0ec343a5f4a0560c589ebc170d4eb1ca>`(double a, double b, double c);
+	double :target:`fma_trunc<doxid-exact__fma_8hpp_1a189fbb77dbdcc92c88ae4331c966616c>`(double a, double b, double c);
+	double :target:`fma_quick<doxid-exact__fma_8hpp_1ae9371c811aa36d48483ed35b0efd12d4>`(double a, double b, double c);
+	double :ref:`mul_add<doxid-exact__fma_8hpp_1a6400dc19dfc6964f5daa7da968fc9e12>`(double a, double b, double c);
+	double :ref:`r2_of<doxid-exact__fma_8hpp_1a894a4d861296108dba7ed726b526790c>`(double dx, double dy, double dz);
+
+	} // namespace simd
+.. _details-namespacergpot_1_1simd:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Global Functions
+----------------
+
+.. index:: pair: function; exact_fma
+.. _doxid-exact__fma_8hpp_1a0ec343a5f4a0560c589ebc170d4eb1ca:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double exact_fma(double a, double b, double c)
+
+a\*b+c with one rounding, the same bits as a hardware fused multiply-add. Normals in range use a Dekker product and a correctly rounded sum of the three exact parts. Zeros, subnormals, overflows, and non-finite values use std::fma.
+
+.. index:: pair: function; mul_add
+.. _doxid-exact__fma_8hpp_1a6400dc19dfc6964f5daa7da968fc9e12:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double mul_add(double a, double b, double c)
+
+a\*b+c, one rounding. A hardware instruction when this translation unit has one, or when glibc reports FMA usable. Otherwise fma_quick.
+
+.. index:: pair: function; r2_of
+.. _doxid-exact__fma_8hpp_1a894a4d861296108dba7ed726b526790c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double r2_of(double dx, double dy, double dz)
+
+dx^2 + dy^2 + dz^2. The first square is a multiply. The two sums fuse.
+

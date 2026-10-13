@@ -134,6 +134,7 @@ data-aria-dark="Switch to auto color mode">
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../explanation/index.html">Explanation</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="../explanation/rpc-model.html">The RPC Model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/simd.html">SIMD paths and dispatch</a></li>
 </ul>
 </li>
 </ul>
@@ -176,10 +177,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="namespace_forcefields.html">namespace forcefields</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_forcefields-2.html">namespace forcefields</a><ul class="simple">
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_forcefields-3.html">namespace forcefields</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="namespace_forcefields-2.html">namespace forcefields</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="namespace_forcefields_unit_system.html">namespace forcefields::unit_system</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_forcefields_zhu_philpott_parameters.html">namespace forcefields::zhu_philpott_parameters</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_forcefields_Ccl.html">class forcefields::Ccl</a></li>
@@ -189,7 +187,13 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="class_forcefields_ZhuPhilpott.html">template class forcefields::ZhuPhilpott</a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_forcefields-3.html">namespace forcefields</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_fortranpots.html">namespace fortranpots</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_nlist.html">namespace nlist</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_plugin.html">namespace plugin</a><ul class="simple">
@@ -210,7 +214,13 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-4.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3 current"><a class="reference internal" href="namespace_rgpot-5.html">namespace rgpot</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-5.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-6.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3 current"><a class="reference internal" href="namespace_rgpot-7.html">namespace rgpot</a><ul class="current">
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_abi.html">namespace rgpot::abi</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_aoti_execstack.html">namespace rgpot::aoti_execstack</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
@@ -219,6 +229,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_fortranpots.html">namespace rgpot::fortranpots</a></li>
 <li class="toctree-l4 current"><a class="current reference internal" href="#">namespace rgpot::nlist</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_plugin.html">namespace rgpot::plugin</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_simd.html">namespace rgpot::simd</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_tools.html">namespace rgpot::tools</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_types.html">namespace rgpot::types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_uma.html">namespace rgpot::uma</a></li>
@@ -285,12 +296,6 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_XcKernel.html">class rgpot::XcKernel</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_ZBLPot.html">class rgpot::ZBLPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_registry.html">template class rgpot::registry</a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-6.html">namespace rgpot</a><ul class="simple">
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-7.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-8.html">namespace rgpot</a><ul class="simple">
@@ -632,7 +637,7 @@ data-aria-dark="Switch to auto color mode">
         <span>/</span>
         <meta itemprop="position" content="3" />
       </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-        <a itemprop="item" href="namespace_rgpot-5.html"><span itemprop="name">namespace rgpot</span></a>
+        <a itemprop="item" href="namespace_rgpot-7.html"><span itemprop="name">namespace rgpot</span></a>
         <span>/</span>
         <meta itemprop="position" content="4" />
       </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
@@ -716,7 +721,9 @@ data-aria-dark="Switch to auto color mode">
 <span data-line="23"><span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="n">Scan</span><span class="p">,</span> <span class="k">typename</span> <span class="n">OnHit</span><span class="o">&gt;</span></span>
 <span data-line="24"><span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-pair-list-cache-8hpp-1ab87ece71f82845b3adfd58d3e57129c8"><span class="std std-ref">run</span></a><span class="p">(</span><span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">R</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">box</span><span class="p">,</span> <span class="k">const</span> <span class="n">CachedPairList</span><span class="o">::</span><span class="n">Options</span><span class="o">&amp;</span> <span class="n">opt</span><span class="p">,</span> <span class="n">Scan</span><span class="o">&amp;</span> <span class="n">scan</span><span class="p">,</span> <span class="n">OnHit</span><span class="o">&amp;&amp;</span> <span class="n">onHit</span><span class="p">);</span></span>
 <span data-line="25"> </span>
-<span data-line="26"><span class="p">}</span> <span class="c1">// namespace nlist</span></span>
+<span data-line="26"><span class="kt">double</span> <a class="doxyrest-code-link reference internal" href="#doxid-minimum-image-8cpp-1a6400dc19dfc6964f5daa7da968fc9e12"><span class="std std-ref">mul_add</span></a><span class="p">(</span><span class="kt">double</span> <span class="n">a</span><span class="p">,</span> <span class="kt">double</span> <span class="n">b</span><span class="p">,</span> <span class="kt">double</span> <span class="n">c</span><span class="p">);</span></span>
+<span data-line="27"> </span>
+<span data-line="28"><span class="p">}</span> <span class="c1">// namespace nlist</span></span>
 </pre></div>
 </section>
 <section id="detailed-documentation">
@@ -810,6 +817,10 @@ data-aria-dark="Switch to auto color mode">
 </dd>
 </dl>
 <p>/ Pool lookup for evaluate: <code class="docutils literal notranslate"><span class="pre">onHit</span></code> runs on a captured slot, <code class="docutils literal notranslate"><span class="pre">scan</span></code></p>
+<div class="doxyrest-title-code-block highlight" id="doxid-minimum-image-8cpp-1a6400dc19dfc6964f5daa7da968fc9e12">
+<span id="index-5"></span><pre><span data-line="1"><span class="kt">double</span> <span class="n">mul_add</span><span class="p">(</span><span class="kt">double</span> <span class="n">a</span><span class="p">,</span> <span class="kt">double</span> <span class="n">b</span><span class="p">,</span> <span class="kt">double</span> <span class="n">c</span><span class="p">)</span></span>
+</pre></div>
+<p>a*b+c, one rounding. A hardware instruction when this translation unit has one, or when glibc reports FMA usable. Otherwise fma_quick.</p>
 </section>
 </section>
 </section>

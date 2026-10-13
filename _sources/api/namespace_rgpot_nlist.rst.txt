@@ -45,6 +45,8 @@ Overview
 	template <typename Scan, typename OnHit>
 	void :ref:`run<doxid-_pair_list_cache_8hpp_1ab87ece71f82845b3adfd58d3e57129c8>`(const double* R, std::size_t n, const double* box, const CachedPairList::Options& opt, Scan& scan, OnHit&& onHit);
 
+	double :ref:`mul_add<doxid-_minimum_image_8cpp_1a6400dc19dfc6964f5daa7da968fc9e12>`(double a, double b, double c);
+
 	} // namespace nlist
 .. _details-namespacergpot_1_1nlist:
 
@@ -189,4 +191,14 @@ private: / Most recently used slot valid for ``R``, moved to the front. std::sha
              const std::shared_ptr<const CachedPairList> &hit) { std::lock_guard<std::mutex> lock(mu\_); if (hit) { for (std::size_t s = 0; s < slots\_.size(); ++s) { if (slots\_[s] == hit) { slots\_.erase(slots\_.begin() + static_cast<std::ptrdiff_t>(s)); break; } } } slots\_.insert(slots\_.begin(), std::move(fresh)); if (slots\_.size() > kMaxSlots) { slots\_.pop_back(); } }
 
 / Pool lookup for evaluate: ``onHit`` runs on a captured slot, ``scan``
+
+.. index:: pair: function; mul_add
+.. _doxid-_minimum_image_8cpp_1a6400dc19dfc6964f5daa7da968fc9e12:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double mul_add(double a, double b, double c)
+
+a\*b+c, one rounding. A hardware instruction when this translation unit has one, or when glibc reports FMA usable. Otherwise fma_quick.
 

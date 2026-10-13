@@ -7,7 +7,9 @@ class rgpot::nlist::MinimumImage
 .. toctree::
 	:hidden:
 
-Nearest periodic image for row-major lattice vectors: d - n H. The dual-vector bound includes every image shorter than the initial rounded fractional image. No lattice reduction or fixed image radius is assumed. Singular or ill-conditioned cells and unrepresentable search bounds throw.
+Nearest periodic image for row-major lattice vectors: d - n H.
+
+The working type is double. Each product-sum is rgpot::simd::mul_add: a hardware fused multiply-add when the processor has one, and the exactly rounded TwoProduct/TwoSum emulation otherwise. This translation unit is compiled with contraction off, so the folded bits do not depend on the instruction set. A cell whose infinity-norm condition estimate would spend more than half the double significand is Minkowski-reduced (Nguyen and Stehlé, ACM Trans. Algorithms 5, 46 (2009), doi:10.1145/1597036.1597050) and the image is taken in that basis. A reduced basis that is still too ill-conditioned searches the 27 images of coefficients in {-1, 0, 1}. Singular or non-finite cells throw. An index that does not fit in an int64 throws.
 
 
 .. ref-code-block:: cpp

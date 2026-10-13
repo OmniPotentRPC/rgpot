@@ -134,6 +134,7 @@ data-aria-dark="Switch to auto color mode">
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../explanation/index.html">Explanation</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="../explanation/rpc-model.html">The RPC Model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/simd.html">SIMD paths and dispatch</a></li>
 </ul>
 </li>
 </ul>
@@ -176,10 +177,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="namespace_forcefields.html">namespace forcefields</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_forcefields-2.html">namespace forcefields</a><ul class="simple">
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_forcefields-3.html">namespace forcefields</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="namespace_forcefields-2.html">namespace forcefields</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="namespace_forcefields_unit_system.html">namespace forcefields::unit_system</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_forcefields_zhu_philpott_parameters.html">namespace forcefields::zhu_philpott_parameters</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_forcefields_Ccl.html">class forcefields::Ccl</a></li>
@@ -189,7 +187,13 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="class_forcefields_ZhuPhilpott.html">template class forcefields::ZhuPhilpott</a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_forcefields-3.html">namespace forcefields</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_fortranpots.html">namespace fortranpots</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_nlist.html">namespace nlist</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_plugin.html">namespace plugin</a><ul class="simple">
@@ -210,7 +214,13 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-4.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3 current"><a class="reference internal" href="namespace_rgpot-5.html">namespace rgpot</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-5.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-6.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3 current"><a class="reference internal" href="namespace_rgpot-7.html">namespace rgpot</a><ul class="current">
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_abi.html">namespace rgpot::abi</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_aoti_execstack.html">namespace rgpot::aoti_execstack</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
@@ -219,6 +229,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_fortranpots.html">namespace rgpot::fortranpots</a></li>
 <li class="toctree-l4 current"><a class="reference internal" href="namespace_rgpot_nlist.html">namespace rgpot::nlist</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_plugin.html">namespace rgpot::plugin</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_simd.html">namespace rgpot::simd</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_tools.html">namespace rgpot::tools</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_types.html">namespace rgpot::types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_uma.html">namespace rgpot::uma</a></li>
@@ -285,12 +296,6 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_XcKernel.html">class rgpot::XcKernel</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_ZBLPot.html">class rgpot::ZBLPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_registry.html">template class rgpot::registry</a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-6.html">namespace rgpot</a><ul class="simple">
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-7.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-8.html">namespace rgpot</a><ul class="simple">
@@ -624,7 +629,7 @@ data-aria-dark="Switch to auto color mode">
         <span>/</span>
         <meta itemprop="position" content="3" />
       </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-        <a itemprop="item" href="namespace_rgpot-5.html"><span itemprop="name">namespace rgpot</span></a>
+        <a itemprop="item" href="namespace_rgpot-7.html"><span itemprop="name">namespace rgpot</span></a>
         <span>/</span>
         <meta itemprop="position" content="4" />
       </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
@@ -684,7 +689,8 @@ data-aria-dark="Switch to auto color mode">
 <span id="doxid-classrgpot-1-1nlist-1-1-minimum-image"></span><span id="index-0"></span><h1>class rgpot::nlist::MinimumImage<a class="headerlink" href="#class-rgpot-nlist-minimumimage" title="Link to this heading">¶</a></h1>
 <div class="toctree-wrapper compound">
 </div>
-<p>Nearest periodic image for row-major lattice vectors: d - n H. The dual-vector bound includes every image shorter than the initial rounded fractional image. No lattice reduction or fixed image radius is assumed. Singular or ill-conditioned cells and unrepresentable search bounds throw.</p>
+<p>Nearest periodic image for row-major lattice vectors: d - n H.</p>
+<p>The working type is double. Each product-sum is rgpot::simd::mul_add: a hardware fused multiply-add when the processor has one, and the exactly rounded TwoProduct/TwoSum emulation otherwise. This translation unit is compiled with contraction off, so the folded bits do not depend on the instruction set. A cell whose infinity-norm condition estimate would spend more than half the double significand is Minkowski-reduced (Nguyen and Stehlé, ACM Trans. Algorithms 5, 46 (2009), doi:10.1145/1597036.1597050) and the image is taken in that basis. A reduced basis that is still too ill-conditioned searches the 27 images of coefficients in {-1, 0, 1}. Singular or non-finite cells throw. An index that does not fit in an int64 throws.</p>
 <div class="doxyrest-overview-code-block highlight">
 <pre><span data-line="1"><span class="cp">#include</span> <span class="cpf">&lt;MinimumImage.hpp&gt;</span></span>
 <span data-line="2"> </span>

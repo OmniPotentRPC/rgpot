@@ -1,0 +1,34 @@
+.. index:: pair: namespace; rgpot::simd::detail
+.. _doxid-namespacergpot_1_1simd_1_1detail:
+
+namespace rgpot::simd::detail
+=============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace detail {
+
+	// global variables
+
+	double :target:`kFmaSplit<doxid-exact__fma_8hpp_1a7ecbf17e28558e69e2a862bd111fe16b>` = 134217729.0;
+
+	// global functions
+
+	void :target:`two_sum<doxid-exact__fma_8hpp_1a6864502789945b9958c61a44b4fbe382>`(double a, double b, double& s, double& e);
+	void :target:`two_prod<doxid-exact__fma_8hpp_1a1ef6a2dd9bfcd9910c259e28f4e63a6c>`(double a, double b, double& p, double& e);
+	bool :target:`fma_dekker_domain<doxid-exact__fma_8hpp_1a6bd4941122f7e0c03309a3d15a3eb147>`(double a, double b, double c);
+	double :target:`next_toward<doxid-exact__fma_8hpp_1a46c7cb98317e7b75cce7d8dea5311198>`(double pred, double sh);
+	double :target:`round_residual<doxid-exact__fma_8hpp_1aafedc62539c80950a71ff7e367b87288>`(double pred, double sh, double sl);
+	double :target:`fma_dekker<doxid-exact__fma_8hpp_1a85402ef2c83c331bfe6e5665eea6421f>`(double a, double b, double c);
+	bool :target:`rem_is_half_ulp<doxid-exact__fma_8hpp_1a35472b3be89c74f1a0d12c64c7631b33>`(double pred, double rem);
+	bool :target:`glibc_fma_active<doxid-exact__fma_8hpp_1a06f11ad3f971e82b95a89c26d9da26aa>`();
+
+	} // namespace detail
