@@ -560,6 +560,8 @@ Overview
 	#define :ref:`RGPOT_ENGINE_GPR_GATE_MAGIC<doxid-engine__c__abi_8h_1a3b2742f085d2fcaeedae33b380a6dc73>`
 	#define :target:`RGPOT_ENGINE_GPR_GATE_VERSION<doxid-engine__c__abi_8h_1a7e55bdef6b0891b7e205c94dfa764dcf>`
 	#define :target:`RGPOT_ENGINE_PROJECT_VERSION<doxid-_engine_table_8cc_1a08c473aa9bec40c30c594441a4131f8a>`
+	#define :target:`RGPOT_FMA_INLINE<doxid-exact__fma_8hpp_1a4385f7b9f27d101a70be9df328afb999>`
+	#define :target:`RGPOT_FOLD_X2<doxid-_minimum_image_8cpp_1abb5cbdc1a51c5d05c0676d977d3e5c26>`
 	#define :target:`RGPOT_FORTRAN_POT_CLASS<doxid-_fortran_pots_8hpp_1a158452799fad368ca2afc583b2406ca7>`(ClassName, PotTypeValue)
 	#define :target:`RGPOT_FORTRAN_POT_IMPL<doxid-_fortran_pots_8cc_1ae0c8728579e5d29f83c2c9a20b525944>`(ClassName, Entry, Label)
 	#define :target:`RGPOT_FORTRAN_SPECIES_POT_IMPL<doxid-_fortran_pots_8cc_1aeeec8475d493e2cb38640dc234e04688>`(ClassName, Entry, Label)
@@ -580,10 +582,11 @@ Overview
 	#define :target:`RGPOT_PLUGIN_EXPORT<doxid-plugin_8h_1a13213db8b02569a359c573df47689cb8>`
 	#define :ref:`RGPOT_ROCKSDB_UNIQUE_PTR_OPEN<doxid-_potential_cache_8hpp_1a4d2e3dd07b69975ea6e7a022076e0a4b>`
 	#define :target:`RGPOT_STDLIB_UNKNOWN<doxid-_cxx_layout_8hpp_1a8f13f4512ed6a0ad62d6bc388a378bb4>`
+	#define :target:`RGPOT_UNLIKELY<doxid-exact__fma_8hpp_1a61dccf3cb9662bb63cafa533c3582db0>`(cond)
 	#define :target:`RGPOT_XTB_ABI_VERSION<doxid-xtb__c__abi_8h_1aa3b73c6a3161c5d0da0ec0b357f13b8f>`
 	#define :target:`RGPOT_XTB_API<doxid-xtb__c__abi_8h_1a1c2e4e9e5c694894e8e5e08ae2c99479>`
-	#define :target:`VERB<doxid-_e_m_t_8cpp_1aada213ebc99d6c8aa948ea8f765d1868>`(x)
 	#define :target:`VERB<doxid-_atoms_8cpp_1aada213ebc99d6c8aa948ea8f765d1868>`(x)
+	#define :target:`VERB<doxid-_e_m_t_8cpp_1aada213ebc99d6c8aa948ea8f765d1868>`(x)
 	#define :target:`XCK_HD<doxid-evaluator_8hpp_1a188c81a8a602db0d56a4447043fab829>`
 
 .. _details-global:

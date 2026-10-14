@@ -52,7 +52,7 @@ Global Functions
 
 	double exact_fma(double a, double b, double c)
 
-a\*b+c with one rounding, the same bits as a hardware fused multiply-add. Normals in range use a Dekker product and a correctly rounded sum of the three exact parts. Zeros, subnormals, overflows, and non-finite values use std::fma.
+a\*b+c with one rounding, the same bits as a hardware fused multiply-add. Normals in range use a Dekker product and a round-to-odd sum (Boldo and Melquiond). Inputs outside that range and subnormal results use std::fma.
 
 .. index:: pair: function; mul_add
 .. _doxid-exact__fma_8hpp_1a6400dc19dfc6964f5daa7da968fc9e12:

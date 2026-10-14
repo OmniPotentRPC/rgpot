@@ -24,11 +24,11 @@ namespace rgpot::simd::detail
 
 	void :target:`two_sum<doxid-exact__fma_8hpp_1a6864502789945b9958c61a44b4fbe382>`(double a, double b, double& s, double& e);
 	void :target:`two_prod<doxid-exact__fma_8hpp_1a1ef6a2dd9bfcd9910c259e28f4e63a6c>`(double a, double b, double& p, double& e);
-	bool :target:`fma_dekker_domain<doxid-exact__fma_8hpp_1a6bd4941122f7e0c03309a3d15a3eb147>`(double a, double b, double c);
-	double :target:`next_toward<doxid-exact__fma_8hpp_1a46c7cb98317e7b75cce7d8dea5311198>`(double pred, double sh);
-	double :target:`round_residual<doxid-exact__fma_8hpp_1aafedc62539c80950a71ff7e367b87288>`(double pred, double sh, double sl);
-	double :target:`fma_dekker<doxid-exact__fma_8hpp_1a85402ef2c83c331bfe6e5665eea6421f>`(double a, double b, double c);
-	bool :target:`rem_is_half_ulp<doxid-exact__fma_8hpp_1a35472b3be89c74f1a0d12c64c7631b33>`(double pred, double rem);
 	bool :target:`glibc_fma_active<doxid-exact__fma_8hpp_1a06f11ad3f971e82b95a89c26d9da26aa>`();
+	std::uint64_t :target:`bits_of<doxid-exact__fma_8hpp_1a1998ea45bb49ed97512ff52905ce5977>`(double x);
+	double :target:`from_bits<doxid-exact__fma_8hpp_1afaafaaa5005059f39e6bc9352c6816b3>`(std::uint64_t u);
+	bool :target:`exp_in_band<doxid-exact__fma_8hpp_1a2f97b1d2da3a57c991ce885c8534530f>`(std::uint64_t u, unsigned lo, unsigned hi);
+	bool :target:`fma_ro_domain<doxid-exact__fma_8hpp_1a3acc72ca3b6012633fd90fe69a80f99f>`(double a, double b, double c);
+	double :target:`fma_ro<doxid-exact__fma_8hpp_1a0d0e53d9d38546882dacd9eccf15552d>`(double a, double b, double c, bool& exact_ok);
 
 	} // namespace detail

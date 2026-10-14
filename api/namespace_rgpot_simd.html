@@ -719,7 +719,7 @@ data-aria-dark="Switch to auto color mode">
 <div class="doxyrest-title-code-block highlight" id="doxid-exact-fma-8hpp-1a0ec343a5f4a0560c589ebc170d4eb1ca">
 <span id="index-1"></span><pre><span data-line="1"><span class="kt">double</span> <span class="n">exact_fma</span><span class="p">(</span><span class="kt">double</span> <span class="n">a</span><span class="p">,</span> <span class="kt">double</span> <span class="n">b</span><span class="p">,</span> <span class="kt">double</span> <span class="n">c</span><span class="p">)</span></span>
 </pre></div>
-<p>a*b+c with one rounding, the same bits as a hardware fused multiply-add. Normals in range use a Dekker product and a correctly rounded sum of the three exact parts. Zeros, subnormals, overflows, and non-finite values use std::fma.</p>
+<p>a*b+c with one rounding, the same bits as a hardware fused multiply-add. Normals in range use a Dekker product and a round-to-odd sum (Boldo and Melquiond). Inputs outside that range and subnormal results use std::fma.</p>
 <div class="doxyrest-title-code-block highlight" id="doxid-exact-fma-8hpp-1a6400dc19dfc6964f5daa7da968fc9e12">
 <span id="index-2"></span><pre><span data-line="1"><span class="kt">double</span> <span class="n">mul_add</span><span class="p">(</span><span class="kt">double</span> <span class="n">a</span><span class="p">,</span> <span class="kt">double</span> <span class="n">b</span><span class="p">,</span> <span class="kt">double</span> <span class="n">c</span><span class="p">)</span></span>
 </pre></div>
