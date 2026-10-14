@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Compare report-only classical dumps. Exit 0 when the dumps are readable."""
+"""Compare classical dumps across threads and ranks.
+
+With --strict, any moved entry, missing reference or throw exits 1.
+"""
 
 import pathlib
 import statistics
@@ -7,6 +10,11 @@ import struct
 import sys
 
 MAGIC = 0x52504749
+FAILURES: list[str] = []
+
+
+def fail(msg: str) -> None:
+    FAILURES.append(msg)
 
 
 def load_bin(path: pathlib.Path):
@@ -51,12 +59,13 @@ def report_inside(directory: pathlib.Path, label: str) -> None:
         energy, stress, forces, _has = load_bin(bins[0])
         for other in bins[1:]:
             e2, s2, f2, _h2 = load_bin(other)
+            de, df, ds = one_diff(energy, e2), n_diff(forces, f2), n_diff(stress, s2)
             print(
                 f"{label} {pot} {bins[0].name} vs {other.name}: "
-                f"energy_entries {one_diff(energy, e2)} "
-                f"force_entries {n_diff(forces, f2)} "
-                f"stress_entries {n_diff(stress, s2)}"
+                f"energy_entries {de} force_entries {df} stress_entries {ds}"
             )
+            if de or df or ds:
+                fail(f"{label} {pot} {other.name}")
 
 
 def report_group(label: str, directories: list[pathlib.Path]) -> None:
@@ -66,10 +75,12 @@ def report_group(label: str, directories: list[pathlib.Path]) -> None:
         ref_files = ranks(base, pot)
         if not ref_files:
             print(f"{label} {pot}: missing")
+            fail(f"{label} {pot} missing")
             continue
         ref = ref_files[0]
         if ref.suffix == ".err":
             print(f"{label} {pot}: threw ({ref.read_text()[:80]})")
+            fail(f"{label} {pot} threw")
             continue
         energy, stress, forces, has = load_bin(ref)
         print(
@@ -84,13 +95,16 @@ def report_group(label: str, directories: list[pathlib.Path]) -> None:
             got = got_files[0]
             if got.suffix == ".err":
                 print(f"  vs {other_dir.name}: threw")
+                fail(f"{label} {pot} {other_dir.name} threw")
                 continue
             e2, s2, f2, _h2 = load_bin(got)
+            de, df, ds = one_diff(energy, e2), n_diff(forces, f2), n_diff(stress, s2)
             print(
-                f"  vs {other_dir.name}: energy_entries {one_diff(energy, e2)} "
-                f"force_entries {n_diff(forces, f2)} "
-                f"stress_entries {n_diff(stress, s2)}"
+                f"  vs {other_dir.name}: energy_entries {de} "
+                f"force_entries {df} stress_entries {ds}"
             )
+            if de or df or ds:
+                fail(f"{label} {pot} {other_dir.name}")
 
 
 def medians(path: pathlib.Path) -> None:
@@ -113,7 +127,12 @@ def medians(path: pathlib.Path) -> None:
 
 
 def main() -> None:
-    root = pathlib.Path(sys.argv[1])
+    args = sys.argv[1:]
+    strict = "--strict" in args
+    args = [a for a in args if a != "--strict"]
+    if len(args) != 1:
+        raise SystemExit("usage: compare_hashes.py [--strict] DUMP_ROOT")
+    root = pathlib.Path(args[0])
     for n in (4000, 32000):
         thread_dirs = [root / f"n{n}_t{t}" for t in (1, 2, 3, 8)]
         thread_dirs = [d for d in thread_dirs if d.is_dir()]
@@ -146,6 +165,11 @@ def main() -> None:
                     f"force_nan {nan_f}"
                 )
     medians(root / "bench.txt")
+    print(f"mismatches {len(FAILURES)}")
+    for msg in FAILURES:
+        print(f"  {msg}")
+    if strict and FAILURES:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

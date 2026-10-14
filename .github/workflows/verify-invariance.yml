@@ -101,7 +101,7 @@ jobs:
           meson compile -C build-inv invariance_hash
       - name: Hash 4000 and 32000 atoms
         run: |
-          bash tests/invariance/run_hashes.sh build-inv/CppCore/invariance_hash | tee invariance-table.txt
+          INVARIANCE_STRICT=1 bash tests/invariance/run_hashes.sh build-inv/CppCore/invariance_hash | tee invariance-table.txt
         timeout-minutes: 180
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

@@ -1,6 +1,7 @@
 #!/bin/bash
-# Report-only. A hash that moves is printed, and the script still exits 0
-# unless the binary itself fails.
+# Prints every comparison. With INVARIANCE_STRICT=1 a moved entry, a missing
+# reference or a throw makes the script exit 1. The default stays report-only.
+# INVARIANCE_BENCH=0 skips the timing loop.
 set -euo pipefail
 BIN=$1
 ROOT=$(mktemp -d)
@@ -58,8 +59,13 @@ else
   echo "mpi: not available"
 fi
 
+strict=()
+if [ "${INVARIANCE_STRICT:-0}" = 1 ]; then
+  strict=(--strict)
+fi
+
 : >"$ROOT/bench.txt"
-for rep in 1 2 3 4 5; do
+[ "${INVARIANCE_BENCH:-1}" = 1 ] && for rep in 1 2 3 4 5; do
   for t in 1 2 4 8; do
     OMP_NUM_THREADS=$t "$BIN" --n 4000 --pots lj,morse,eam --bench | while read -r kind pot sec; do
       printf '%s %s %s %s\n' "$kind" "$pot" "$t" "$sec"
@@ -67,4 +73,4 @@ for rep in 1 2 3 4 5; do
   done
 done
 
-python3 "$HERE/compare_hashes.py" "$ROOT"
+python3 "$HERE/compare_hashes.py" "${strict[@]}" "$ROOT"
