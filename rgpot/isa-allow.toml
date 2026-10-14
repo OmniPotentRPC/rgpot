@@ -120,8 +120,9 @@ reason = "libquadmath, vendored beside libgfortran"
 
 # FMA bodies outside a dispatched namespace. Each one is entered only after
 # glibc reports that the processor's FMA is usable. The portable path stays
-# free of these instructions.
+# free of these instructions. accumulateHw is the target("fma") pair-list
+# loop; -mfma also selects AVX encodings in that body.
 [[allow]]
-symbol = '^(rgpot::simd::exact_fma_hw|rgpot::nlist::_GLOBAL__N_[0-9]+::fold_hardware)\b'
+symbol = '^(rgpot::simd::exact_fma_hw|rgpot::nlist::_GLOBAL__N_[0-9]+::fold_hardware)\b|rgpot::nlist::CachedPairList::accumulateHw<'
 features = ["avx", "fma", "sse3"]
 reason = "FMA bodies selected when the processor's FMA is usable"
