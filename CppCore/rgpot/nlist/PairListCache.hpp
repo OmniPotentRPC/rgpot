@@ -42,6 +42,7 @@
 #include "rgpot/nlist/MinimumImage.hpp"
 #include "rgpot/nlist/cell_visit.hpp"
 #include "rgpot/nlist/vesin_visit.hpp"
+#include "rgpot/simd/exact_fma.hpp"
 
 namespace rgpot {
 namespace nlist {
@@ -300,15 +301,16 @@ private:
           const PairTerm t =
               kernel(static_cast<int32_t>(i), static_cast<int32_t>(j), r2);
           energy += t.energy;
-          const double fx = t.fscale * dx;
-          const double fy = t.fscale * dy;
-          const double fz = t.fscale * dz;
-          fxi += fx;
-          fyi += fy;
-          fzi += fz;
-          F[3 * j] -= fx;
-          F[3 * j + 1] -= fy;
-          F[3 * j + 2] -= fz;
+          // Explicit fused updates: left to -ffp-contract, GCC 15 fuses
+          // these differently in the Round and Coded instantiations, and a
+          // cold call then differs in the last bit from a captured one.
+          const double nf = -t.fscale;
+          fxi = simd::mul_add(t.fscale, dx, fxi);
+          fyi = simd::mul_add(t.fscale, dy, fyi);
+          fzi = simd::mul_add(t.fscale, dz, fzi);
+          F[3 * j] = simd::mul_add(nf, dx, F[3 * j]);
+          F[3 * j + 1] = simd::mul_add(nf, dy, F[3 * j + 1]);
+          F[3 * j + 2] = simd::mul_add(nf, dz, F[3 * j + 2]);
           observe(t.fscale, dx, dy, dz);
         }
       }
