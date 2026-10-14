@@ -307,7 +307,8 @@ private:
 #if RGPOT_PL_FMA_DISPATCH
   // The whole loop, kernel included, is compiled for FMA here so the fused
   // updates are single vfmadd instructions. Contraction stays off so the
-  // kernel rounds as it does on the baseline path.
+  // kernel rounds as it does on the baseline path. This symbol is named in
+  // rgpot/isa-allow.toml; the caller enters it only after glibc reports FMA.
   template <typename Kernel, typename Observer>
   __attribute__((target("fma"), optimize("-ffp-contract=off"), noinline))
   double accumulateHw(const double *R, double *F, Kernel &kernel,
