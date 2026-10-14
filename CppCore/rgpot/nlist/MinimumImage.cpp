@@ -9,6 +9,13 @@
 #include <limits>
 #include <stdexcept>
 
+// The paired software fma is used where the unit has no fused instruction.
+#if defined(__GNUC__) && !defined(__FMA__) && !defined(__ARM_FEATURE_FMA)
+#define RGPOT_FOLD_X2 1
+#else
+#define RGPOT_FOLD_X2 0
+#endif
+
 namespace rgpot::nlist {
 namespace {
 
@@ -23,6 +30,8 @@ constexpr double kExhaustiveCap = 4096.0;
 constexpr double kReducedCap = 1048576.0;
 // Guard on LLL steps for at most three rows.
 constexpr int kLllCap = 100000;
+// Largest j by k slab of cached partial images kept on the stack.
+constexpr std::uint64_t kPartialCap = 256;
 
 // Hardware instantiations are compiled inside a target("fma") function, so
 // __builtin_fma becomes vfmadd there. That builtin and the target attribute
@@ -516,6 +525,75 @@ void search_bounds(const double cell[9], const double inv[9],
       throw std::overflow_error("periodic image search count is too large");
     }
     count *= width;
+  }
+  // sub_image fuses k first, then j, then i. The k and j partials do not
+  // depend on i, so they are computed once and reused for every i. The
+  // operations and the visiting order are unchanged, so the bits are too.
+  const auto wj = static_cast<std::uint64_t>(high[1] - low[1]) + 1;
+  const auto wk = static_cast<std::uint64_t>(high[2] - low[2]) + 1;
+  if (wj * wk <= kPartialCap) {
+    double qk[kPartialCap][3];
+    for (std::uint64_t kk = 0; kk < wk; ++kk) {
+      const double k = static_cast<double>(low[2] + static_cast<std::int64_t>(kk));
+      for (int c = 0; c < 3; ++c)
+        qk[kk][c] = product_add<Hardware>(-k, cell[6 + c], reduced[c]);
+    }
+    double qjk[kPartialCap][3];
+    for (std::uint64_t jj = 0; jj < wj; ++jj) {
+      const double j = static_cast<double>(low[1] + static_cast<std::int64_t>(jj));
+      for (std::uint64_t kk = 0; kk < wk; ++kk) {
+        for (int c = 0; c < 3; ++c)
+          qjk[jj * wk + kk][c] = product_add<Hardware>(-j, cell[3 + c], qk[kk][c]);
+      }
+    }
+    const std::uint64_t njk = wj * wk;
+    for (auto i = low[0]; i <= high[0]; ++i) {
+      const double ni = -static_cast<double>(i);
+      std::uint64_t q = 0;
+#if RGPOT_FOLD_X2
+      if constexpr (!Hardware) {
+        // Two candidates per step through the paired software fma. Lane 0
+        // is compared before lane 1, which keeps the scalar visiting order.
+        using rgpot::simd::exact_fma_x2;
+        using rgpot::simd::f64x2;
+        const f64x2 vni = {ni, ni};
+        for (; q + 1 < njk; q += 2) {
+          f64x2 cand[3];
+          for (int c = 0; c < 3; ++c) {
+            const f64x2 base = {qjk[q][c], qjk[q + 1][c]};
+            const f64x2 cc = {cell[c], cell[c]};
+            cand[c] = exact_fma_x2(vni, cc, base);
+          }
+          const f64x2 r2 = exact_fma_x2(
+              cand[0], cand[0], exact_fma_x2(cand[1], cand[1], cand[2] * cand[2]));
+          for (int lane = 0; lane < 2; ++lane) {
+            if (r2[lane] < best2) {
+              best[0] = cand[0][lane];
+              best[1] = cand[1][lane];
+              best[2] = cand[2][lane];
+              best2 = r2[lane];
+            }
+          }
+        }
+      }
+#endif
+      for (; q < njk; ++q) {
+        double cand[3];
+        for (int c = 0; c < 3; ++c)
+          cand[c] = product_add<Hardware>(ni, cell[c], qjk[q][c]);
+        const double r2 = squared<Hardware>(cand[0], cand[1], cand[2]);
+        if (r2 < best2) {
+          best[0] = cand[0];
+          best[1] = cand[1];
+          best[2] = cand[2];
+          best2 = r2;
+        }
+      }
+    }
+    dx = best[0];
+    dy = best[1];
+    dz = best[2];
+    return;
   }
   for (auto i = low[0]; i <= high[0]; ++i) {
     for (auto j = low[1]; j <= high[1]; ++j) {
