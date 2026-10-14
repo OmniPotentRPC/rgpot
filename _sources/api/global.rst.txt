@@ -580,6 +580,9 @@ Overview
 	#define :target:`RGPOT_OS_UNKNOWN<doxid-_cxx_layout_8hpp_1a2072a8a3b3ac1dc6a9e3365aa63146b2>`
 	#define :target:`RGPOT_PLUGIN_API_VERSION<doxid-plugin_8h_1a48d5453009a11f3438b43bf0a6e458ae>`
 	#define :target:`RGPOT_PLUGIN_EXPORT<doxid-plugin_8h_1a13213db8b02569a359c573df47689cb8>`
+	#define :target:`RGPOT_PL_FMA_DISPATCH<doxid-_pair_list_cache_8hpp_1abe3124bdf79b72a9f4738276315533f6>`
+	#define :target:`RGPOT_PL_INLINE<doxid-_pair_list_cache_8hpp_1a196f684a440ea2c284d7cd7cd560346a>`
+	#define :target:`RGPOT_PL_LOOP<doxid-_pair_list_cache_8hpp_1a30e80ac6539e495b2643c032e55db1c3>`
 	#define :ref:`RGPOT_ROCKSDB_UNIQUE_PTR_OPEN<doxid-_potential_cache_8hpp_1a4d2e3dd07b69975ea6e7a022076e0a4b>`
 	#define :target:`RGPOT_STDLIB_UNKNOWN<doxid-_cxx_layout_8hpp_1a8f13f4512ed6a0ad62d6bc388a378bb4>`
 	#define :target:`RGPOT_UNLIKELY<doxid-exact__fma_8hpp_1a61dccf3cb9662bb63cafa533c3582db0>`(cond)
