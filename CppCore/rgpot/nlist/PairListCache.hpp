@@ -44,8 +44,42 @@
 #include "rgpot/nlist/vesin_visit.hpp"
 #include "rgpot/simd/exact_fma.hpp"
 
+#if defined(__GNUC__)
+#define RGPOT_PL_INLINE __attribute__((always_inline)) inline
+#else
+#define RGPOT_PL_INLINE inline
+#endif
+#if defined(__GNUC__) && defined(__x86_64__) && !defined(__FMA__)
+#define RGPOT_PL_FMA_DISPATCH 1
+// The loops must inline into the target("fma") clone to get vfmadd.
+#define RGPOT_PL_LOOP RGPOT_PL_INLINE
+#else
+#define RGPOT_PL_FMA_DISPATCH 0
+// One function per fold mode, as before: merging them costs registers.
+#define RGPOT_PL_LOOP inline
+#endif
+
 namespace rgpot {
 namespace nlist {
+
+/// One fused multiply-add for the pair force updates, always inlined so the
+/// loop keeps its registers. ``Hw``: the caller runs with FMA enabled (the
+/// unit's own ISA or a target("fma") clone); otherwise the exact software
+/// form, which only a CPU without FMA reaches.
+template <bool Hw>
+RGPOT_PL_INLINE double pairFma(double a, double b, double c) {
+#if defined(__GNUC__) && (defined(__FMA__) || defined(__ARM_FEATURE_FMA))
+  return __builtin_fma(a, b, c);
+#elif RGPOT_PL_FMA_DISPATCH
+  if constexpr (Hw) {
+    return __builtin_fma(a, b, c);
+  } else {
+    return simd::fma_quick(a, b, c);
+  }
+#else
+  return simd::mul_add(a, b, c);
+#endif
+}
 
 /// One pair's contribution, as a radial kernel returns it: the energy and
 /// ``fscale = -V'(r) / r``, so the force on atom i is ``fscale * (r_i - r_j)``.
@@ -243,20 +277,45 @@ public:
   template <typename Kernel, typename Observer = IgnorePairContribution>
   [[nodiscard]] double accumulate(const double *R, double *F, Kernel &&kernel,
                                   Observer &&observe = {}) const {
+#if RGPOT_PL_FMA_DISPATCH
+    // Baseline x86-64 unit: pick the fused-update variant once per call.
+    if (simd::detail::glibc_fma_active()) {
+      return accumulateHw(R, F, kernel, observe);
+    }
+#endif
+    return accumulateFold<false>(R, F, kernel, observe);
+  }
+
+private:
+  template <bool Hw, typename Kernel, typename Observer>
+  RGPOT_PL_LOOP double accumulateFold(const double *R, double *F,
+                                      Kernel &kernel,
+                                      Observer &observe) const {
     switch (fold_) {
     case FoldMode::None:
-      return accumulateImpl<FoldMode::None>(R, F, kernel, observe);
+      return accumulateImpl<FoldMode::None, Hw>(R, F, kernel, observe);
     case FoldMode::Round:
-      return accumulateImpl<FoldMode::Round>(R, F, kernel, observe);
+      return accumulateImpl<FoldMode::Round, Hw>(R, F, kernel, observe);
     case FoldMode::Coded:
-      return accumulateImpl<FoldMode::Coded>(R, F, kernel, observe);
+      return accumulateImpl<FoldMode::Coded, Hw>(R, F, kernel, observe);
     case FoldMode::General:
-      return accumulateImpl<FoldMode::General>(R, F, kernel, observe);
+      return accumulateImpl<FoldMode::General, Hw>(R, F, kernel, observe);
     }
     return 0.0;
   }
 
-private:
+#if RGPOT_PL_FMA_DISPATCH
+  // The whole loop, kernel included, is compiled for FMA here so the fused
+  // updates are single vfmadd instructions. Contraction stays off so the
+  // kernel rounds as it does on the baseline path.
+  template <typename Kernel, typename Observer>
+  __attribute__((target("fma"), optimize("-ffp-contract=off"), noinline))
+  double accumulateHw(const double *R, double *F, Kernel &kernel,
+                      Observer &observe) const {
+    return accumulateFold<true>(R, F, kernel, observe);
+  }
+#endif
+
   template <FoldMode M, typename Fn>
   void forEachImpl(const double *R, Fn &fn) const {
     const double cutoff2 = opt_.cutoff * opt_.cutoff;
@@ -278,9 +337,10 @@ private:
     }
   }
 
-  template <FoldMode M, typename Kernel, typename Observer>
-  [[nodiscard]] double accumulateImpl(const double *R, double *F,
-                                      Kernel &kernel, Observer &observe) const {
+  template <FoldMode M, bool Hw, typename Kernel, typename Observer>
+  [[nodiscard]] RGPOT_PL_LOOP double
+  accumulateImpl(const double *R, double *F, Kernel &kernel,
+                 Observer &observe) const {
     const double cutoff2 = opt_.cutoff * opt_.cutoff;
     const Fold fold = makeFold();
     double energy = 0.0;
@@ -304,13 +364,12 @@ private:
           // Explicit fused updates: left to -ffp-contract, GCC 15 fuses
           // these differently in the Round and Coded instantiations, and a
           // cold call then differs in the last bit from a captured one.
-          const double nf = -t.fscale;
-          fxi = simd::mul_add(t.fscale, dx, fxi);
-          fyi = simd::mul_add(t.fscale, dy, fyi);
-          fzi = simd::mul_add(t.fscale, dz, fzi);
-          F[3 * j] = simd::mul_add(nf, dx, F[3 * j]);
-          F[3 * j + 1] = simd::mul_add(nf, dy, F[3 * j + 1]);
-          F[3 * j + 2] = simd::mul_add(nf, dz, F[3 * j + 2]);
+          fxi = pairFma<Hw>(t.fscale, dx, fxi);
+          fyi = pairFma<Hw>(t.fscale, dy, fyi);
+          fzi = pairFma<Hw>(t.fscale, dz, fzi);
+          F[3 * j] = pairFma<Hw>(-t.fscale, dx, F[3 * j]);
+          F[3 * j + 1] = pairFma<Hw>(-t.fscale, dy, F[3 * j + 1]);
+          F[3 * j + 2] = pairFma<Hw>(-t.fscale, dz, F[3 * j + 2]);
           observe(t.fscale, dx, dy, dz);
         }
       }
