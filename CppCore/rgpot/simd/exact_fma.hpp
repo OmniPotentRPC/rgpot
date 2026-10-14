@@ -24,6 +24,11 @@ namespace rgpot::simd {
 #define RGPOT_NO_FP_CONTRACT
 #define RGPOT_FMA_INLINE
 #endif
+#if defined(__GNUC__)
+#define RGPOT_UNLIKELY(cond) __builtin_expect(static_cast<bool>(cond), 0)
+#else
+#define RGPOT_UNLIKELY(cond) (static_cast<bool>(cond))
+#endif
 
 namespace detail {
 
@@ -169,12 +174,12 @@ RGPOT_NO_FP_CONTRACT RGPOT_FMA_INLINE inline double fma_ro(double a, double b, d
 /// (Boldo and Melquiond). Inputs outside that range and subnormal results
 /// use std::fma.
 RGPOT_NO_FP_CONTRACT RGPOT_FMA_INLINE inline double exact_fma(double a, double b, double c) {
-  if (__builtin_expect(!detail::fma_ro_domain(a, b, c), 0)) {
+  if (RGPOT_UNLIKELY(!detail::fma_ro_domain(a, b, c))) {
     return std::fma(a, b, c);
   }
   bool ok = true;
   const double y = detail::fma_ro(a, b, c, ok);
-  if (__builtin_expect(!ok, 0)) {
+  if (RGPOT_UNLIKELY(!ok)) {
     return std::fma(a, b, c);
   }
   return y;
@@ -267,7 +272,7 @@ RGPOT_NO_FP_CONTRACT RGPOT_FMA_INLINE inline f64x2 exact_fma_x2(f64x2 a,
   const f64x2 ay = reinterpret_cast<f64x2>(reinterpret_cast<u64x2>(y) &
                                            0x7fffffffffffffffULL);
   const i64x2 ok = dom & (ay >= 0x1p-1022);
-  if (__builtin_expect((ok[0] & ok[1]) == 0, 0)) {
+  if (RGPOT_UNLIKELY((ok[0] & ok[1]) == 0)) {
     return f64x2{exact_fma(a[0], b[0], c[0]), exact_fma(a[1], b[1], c[1])};
   }
   return y;
@@ -303,5 +308,6 @@ RGPOT_NO_FP_CONTRACT inline double r2_of(double dx, double dy, double dz) {
 
 #undef RGPOT_NO_FP_CONTRACT
 #undef RGPOT_FMA_INLINE
+#undef RGPOT_UNLIKELY
 
 } // namespace rgpot::simd
