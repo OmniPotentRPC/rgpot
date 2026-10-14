@@ -1,0 +1,8 @@
+# Pinned auditor dependencies. iced-x86 publishes an x86_64 wheel only;
+# aarch64 hosts install the rest and decode ARM with capstone. The
+# reusable workflow runs on ubuntu-latest (x86_64) and audits both ISAs.
+iced-x86==1.21.0; platform_machine == "x86_64" or platform_machine == "AMD64"
+pyelftools==0.32
+capstone==5.0.6
+cxxfilt==0.3.0
+tomli==2.2.1; python_version < "3.11"

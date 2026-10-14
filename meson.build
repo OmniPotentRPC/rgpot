@@ -1,7 +1,7 @@
 project(
     'rgpot',
     'cpp',
-    version: '3.5.0',
+    version: '3.5.1',
     default_options: ['warning_level=2', 'cpp_std=c++20'],
 )
 # IMPORTANT!! warning_level=3 passes -fimplicit-none
@@ -680,4 +680,10 @@ if get_option('with_python')
         )
     endif
     subdir('python')
+endif
+
+# Wheel builds set with_python. meson-python maps {includedir} onto the
+# wheel headers scheme, so this header stays out of those wheels.
+if not get_option('with_python')
+    install_headers('bind/include/rgbind/rgbind.hpp', subdir: 'rgbind')
 endif

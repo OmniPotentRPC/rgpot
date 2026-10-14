@@ -22,8 +22,28 @@ on:
           - pypi
         default: testpypi
   push:
+    # v* tags always build. Path filters are not applied to tags.
+    # A branch push starts this workflow only when the wheel or audit
+    # files change, on main and on ci/**.
     tags:
       - "v*"
+    branches:
+      - main
+      - "ci/**"
+    paths:
+      - "pyproject.toml"
+      - "meson.build"
+      - "CppCore/**"
+      - "python/**"
+      - "tests/check_wheel_contents.py"
+      - "tests/test_wheel_contents.py"
+      - "subprojects/*.wrap"
+      - "third_party/lepton/**"
+      - "third_party/libxckernel/**"
+      - ".github/workflows/wheels.yml"
+      - ".github/workflows/isa-audit.yml"
+      - "ci/isa-audit/**"
+      - "rgpot/isa-allow.toml"
   pull_request:
     paths:
       - "pyproject.toml"
@@ -36,6 +56,9 @@ on:
       - "third_party/lepton/**"
       - "third_party/libxckernel/**"
       - ".github/workflows/wheels.yml"
+      - ".github/workflows/isa-audit.yml"
+      - "ci/isa-audit/**"
+      - "rgpot/isa-allow.toml"
 
 jobs:
   wheels-linux:
@@ -43,6 +66,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       - uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c # v3.2.1
       - name: The kernels must be in the artifact, not just in the flags
         shell: bash
@@ -88,6 +113,55 @@ jobs:
           python -m pip install pytest
           python -m pytest -q tests/test_wheel_contents.py
           python tests/check_wheel_contents.py wheelhouse/*.whl
+      - name: Keep unstripped libraries for the ISA audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf isa-audit-libs
+          mkdir -p isa-audit-libs
+          shopt -s nullglob
+          for whl in wheelhouse/*.whl; do
+            case "${whl}" in
+              *x86_64*|*amd64*) ;;
+              *) echo "skip non-x86_64 ${whl}"; continue ;;
+            esac
+            tmp=$(mktemp -d)
+            unzip -qo "${whl}" -d "${tmp}"
+            tag=$(basename "${whl}" .whl)
+            while IFS= read -r f; do
+              if file "${f}" | grep -q ELF; then
+                cp -a "${f}" "isa-audit-libs/${tag}--$(basename "${f}")"
+              fi
+            done < <(find "${tmp}" -type f \( \
+              -name 'librgpot*' -o -name '_core*' -o \
+              -name 'libopenblas*' -o -name 'libgfortran*' -o \
+              -name 'libgomp*' -o -name 'libquadmath*' \))
+            rm -rf "${tmp}"
+          done
+          test "$(ls -A isa-audit-libs)" || { echo "no libraries extracted" >&2; exit 1; }
+          ls -la isa-audit-libs
+          for f in isa-audit-libs/*; do
+            name="${f##*--}"
+            case "${name}" in
+              librgpot*|_core*)
+                if readelf -S "${f}" | grep -q '\.symtab'; then
+                  echo "symtab: ${f}"
+                else
+                  echo "NO SYMTAB: ${f}" >&2
+                  exit 1
+                fi
+                ;;
+              *)
+                # auditwheel strips vendored copies. The path allowlist
+                # still applies, and a feature it does not name fails.
+                echo "vendored: ${f}"
+                ;;
+            esac
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: isa-audit-linux-x86_64
+          path: isa-audit-libs/
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: wheels-ubuntu-latest
@@ -98,6 +172,8 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       - uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c # v3.2.1
       - name: The kernels must be in the artifact, not just in the flags
         shell: bash
@@ -145,6 +221,49 @@ jobs:
           python -m pip install pytest
           python -m pytest -q tests/test_wheel_contents.py
           python tests/check_wheel_contents.py wheelhouse/*.whl
+      - name: Keep unstripped libraries for the ISA audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf isa-audit-libs
+          mkdir -p isa-audit-libs
+          shopt -s nullglob
+          for whl in wheelhouse/*.whl; do
+            tmp=$(mktemp -d)
+            unzip -qo "${whl}" -d "${tmp}"
+            tag=$(basename "${whl}" .whl)
+            while IFS= read -r f; do
+              if file "${f}" | grep -Eq 'Mach-O|ELF'; then
+                cp -a "${f}" "isa-audit-libs/${tag}--$(basename "${f}")"
+              fi
+            done < <(find "${tmp}" -type f \( \
+              -name 'librgpot*' -o -name '_core*' -o \
+              -name 'libopenblas*' -o -name 'libgfortran*' -o \
+              -name 'libgomp*' -o -name 'libquadmath*' \))
+            rm -rf "${tmp}"
+          done
+          test "$(ls -A isa-audit-libs)" || { echo "no libraries extracted" >&2; exit 1; }
+          ls -la isa-audit-libs
+          for f in isa-audit-libs/*; do
+            name="${f##*--}"
+            case "${name}" in
+              librgpot*|_core*)
+                if nm "${f}" >/dev/null 2>&1; then
+                  echo "symbols: ${f}"
+                else
+                  echo "NO SYMBOLS: ${f}" >&2
+                  exit 1
+                fi
+                ;;
+              *)
+                echo "vendored: ${f}"
+                ;;
+            esac
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: isa-audit-macos-arm64
+          path: isa-audit-libs/
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: wheels-macos-14
@@ -154,6 +273,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       # meson-python runs setup for the sdist; -Dwith_dftd4 pulls the
       # wrap, which needs gfortran and OpenBLAS (lapack=openblas).
       - name: OpenBLAS for the dftd4 wrap
@@ -167,8 +288,30 @@ jobs:
           name: sdist
           path: dist/*.tar.gz
 
+  isa-audit-linux:
+    name: isa audit (linux x86_64)
+    needs: wheels-linux
+    permissions:
+      contents: read
+    uses: ./.github/workflows/isa-audit.yml
+    with:
+      artifact-name: isa-audit-linux-x86_64
+      allow-file: rgpot/isa-allow.toml
+      baseline: x86-64
+
+  isa-audit-macos:
+    name: isa audit (macos arm64)
+    needs: wheels-macos
+    permissions:
+      contents: read
+    uses: ./.github/workflows/isa-audit.yml
+    with:
+      artifact-name: isa-audit-macos-arm64
+      allow-file: rgpot/isa-allow.toml
+      baseline: armv8-a
+
   publish:
-    needs: [wheels-linux, wheels-macos, sdist]
+    needs: [wheels-linux, wheels-macos, sdist, isa-audit-linux, isa-audit-macos]
     if: >-
       github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
       || (github.event_name == 'workflow_dispatch' && inputs.publish)

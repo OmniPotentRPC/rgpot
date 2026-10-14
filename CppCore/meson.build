@@ -36,6 +36,18 @@ if get_option('with_cache') and not get_option('with_rpc_client_only')
     _rgpot_srcs += files('rgpot/PotentialCache.cc')
 endif
 
+# ELF soversion of librgpot. The single assignment is kCxxSoversion in
+# rgpot/abi/CxxLayout.hpp, next to the C++ layout stamp. A layout edit
+# that bumps the constant moves every build system's SONAME with it.
+_cxx_layout_hpp = _fs.read('rgpot/abi/CxxLayout.hpp')
+_cxx_so_parts = _cxx_layout_hpp.split('kCxxSoversion = ')
+if _cxx_so_parts.length() != 2
+    error(
+        'CxxLayout.hpp must contain exactly one "kCxxSoversion = " assignment',
+    )
+endif
+rgpot_cxx_soversion = _cxx_so_parts[1].split(';')[0].strip()
+
 # Calculator groups split MPI_COMM_WORLD and broadcast results between
 # groups. librgpot itself never links MPI: the MPI side is librgpot_mpi,
 # which CalculatorGroup.cc loads with dlopen when a host asks for groups
@@ -54,6 +66,9 @@ if _mpi_dep.found()
         include_directories: include_directories('.'),
         gnu_symbol_visibility: 'hidden',
         version: meson.project_version(),
+        # Own SONAME. RGPOT_MPI_ABI_VERSION is still 1, and 3.4.0 did not
+        # ship this library, so librgpot_mpi.so.3 does not name two layouts.
+        # The loader opens RGPOT_MPI_LIBRARY_NAME, which is that filename.
         soversion: '3',
         install: not meson.is_subproject(),
     )
@@ -68,6 +83,30 @@ endif
 _rgpot_srcs += files('rgpot/PotHelpers.cc')
 _rgpot_srcs += files('rgpot/units.cc')
 _rgpot_srcs += files('rgpot/abi/CxxLayout.cc')
+# Product-sums in this file go through rgpot::simd::mul_add. Contraction
+# stays off so a multiply that is not written as mul_add is not fused, and
+# the folded bits match on scalar, SSE, AVX2, AVX-512 and NEON.
+# exact_fma_hw is a separate object: the ISA variants below recompile
+# MinimumImage.cpp with -mno-fma and still need this hardware definition.
+_fp_contract_off = cppc.get_supported_arguments(
+    ['-ffp-contract=off', '/fp:precise'],
+)
+rgpot_exact_fma = static_library(
+    'rgpot_exact_fma',
+    files('rgpot/simd/exact_fma_hw.cc'),
+    include_directories: _incdirs,
+    cpp_args: _args + _fp_contract_off,
+    pic: true,
+    install: false,
+)
+rgpot_minimage = static_library(
+    'rgpot_minimage',
+    files('rgpot/nlist/MinimumImage.cpp'),
+    include_directories: _incdirs,
+    cpp_args: _args + _fp_contract_off,
+    pic: true,
+    install: false,
+)
 
 # Cap'n Proto schema + NWChem/CPMD frontends need libcapnp (ptlrpc). Only pull
 # them in when RPC is on (server or client-only); lean -Dwith_rpc=false builds
@@ -95,6 +134,7 @@ if not get_option('with_rpc_client_only')
         dependencies: _deps,
         cpp_args: _args,
         include_directories: _incdirs,
+        link_whole: [rgpot_minimage, rgpot_exact_fma],
         pic: true,
         install: false,
     )
@@ -243,7 +283,7 @@ if not get_option('with_rpc_client_only')
         include_directories: _incdirs,
         link_whole: [rgpot_core] + _linkto + _rpc_whole,
         version: meson.project_version(),
-        soversion: '3',
+        soversion: rgpot_cxx_soversion,
         install: not meson.is_subproject(),
     )
 
@@ -574,6 +614,12 @@ if get_option('with_tests')
             ['EAMCellPotTest', 'eam_cell_pot_test', 'EAMCellPotTest.cc', ''],
             ['PairListTest', 'pair_list_test', 'PairListTest.cc', ''],
             [
+                'MinImageIsaHash',
+                'minimage_isa_hash',
+                'MinImageIsaHash.cc',
+                '',
+            ],
+            [
                 'BatchEvaluatorTest',
                 'batch_evaluator_test',
                 'BatchEvaluatorTest.cc',
@@ -639,6 +685,21 @@ if get_option('with_tests')
         test_array += [
             ['D4test', 'd4_test', 'D4PotTest.cc', ''],
         ]
+    endif
+    if not get_option('with_rpc_client_only')
+        test(
+            'FoldDegenerateTest',
+            executable(
+                'fold_degenerate_test',
+                sources: ['tests/FoldDegenerateTest.cc'],
+                dependencies: test_deps,
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+            ),
+            timeout: 60,
+        )
     endif
     if has_expr and not get_option('with_rpc_client_only')
         test(
@@ -1318,6 +1379,87 @@ if get_option('with_tests')
         endif
     endforeach
     if not get_option('with_rpc_client_only')
+        # Same fold, compiled once per instruction set. The driver checks
+        # the CPU and prints skip when the binary cannot run here.
+        _isa_specs = [
+            [
+                'scalar',
+                [
+                    '-ffp-contract=off',
+                    '-fno-tree-vectorize',
+                    '-mno-avx',
+                    '-mno-fma',
+                ],
+            ],
+            ['sse2', ['-ffp-contract=off', '-msse2', '-mno-avx', '-mno-fma']],
+            ['avx2', ['-ffp-contract=off', '-mavx2', '-mfma']],
+            ['avx512', ['-ffp-contract=off', '-mavx512f']],
+            ['neon', ['-ffp-contract=off']],
+        ]
+        _isa_exes = []
+        foreach spec : _isa_specs
+            _isa_args = cppc.get_supported_arguments(spec[1])
+            if spec[0] == 'neon' and host_machine.cpu_family() == 'x86_64'
+                continue
+            endif
+            if spec[0] != 'neon' and host_machine.cpu_family() != 'x86_64'
+                continue
+            endif
+            if spec[0] != 'neon' and _isa_args.length() < spec[1].length()
+                continue
+            endif
+            _isa_lib = static_library(
+                'minimage_' + spec[0],
+                files('rgpot/nlist/MinimumImage.cpp'),
+                include_directories: _incdirs,
+                cpp_args: _args + _isa_args,
+                pic: true,
+                install: false,
+            )
+            _isa_exes += executable(
+                'minimage_hash_' + spec[0],
+                sources: ['tests/minimage_isa_hash_main.cc'],
+                include_directories: _incdirs + ['.'],
+                cpp_args: [
+                    '-ffp-contract=off',
+                    '-DRGPOT_MINIMAGE_ISA_' + spec[0].to_upper(),
+                ],
+                link_whole: [_isa_lib, rgpot_exact_fma],
+                install: false,
+            )
+        endforeach
+        executable(
+            'minimage_bench',
+            sources: ['tests/MinImageBench.cc'],
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            dependencies: test_deps,
+            link_with: _linkto,
+            link_language: 'cpp',
+            install: false,
+        )
+        if _isa_exes.length() > 0
+            test(
+                'MinImageIsaVariants',
+                find_program(
+                    meson.project_source_root() / 'ci/gha/check_minimage_isa.sh',
+                ),
+                args: [
+                    'd6f5cbaa04ac49e6f02ee64c10eb83d44d951756556924dcc17966453dcd8b11',
+                ] + _isa_exes,
+            )
+        endif
+        test(
+            'ExactFmaEq',
+            executable(
+                'exact_fma_eq',
+                sources: ['tests/exact_fma_eq.cc'],
+                include_directories: _incdirs,
+                cpp_args: _args + _fp_contract_off,
+                link_whole: rgpot_exact_fma,
+                install: false,
+            ),
+        )
         layout_fixture = shared_library(
             'rgpot_layout_fixture',
             sources: ['tests/layout_fixture.cc'],
@@ -1442,6 +1584,24 @@ if get_option('with_tests')
                 'CxxLayoutVirtualCounts',
                 python3_prog,
                 args: [files('tests/check_virtual_counts.py')],
+            )
+            cxx_layout_stamp = executable(
+                'print_cxx_layout_stamp',
+                sources: ['tests/print_cxx_layout_stamp.cc'],
+                include_directories: _incdirs + ['.'],
+                cpp_args: _args,
+                link_language: 'cpp',
+            )
+            test(
+                'CxxSoversion',
+                python3_prog,
+                args: [
+                    files('tests/check_cxx_soversion.py'),
+                    rgpot_cxx_soversion,
+                    rgpot.full_path(),
+                    cxx_layout_stamp.full_path(),
+                ],
+                depends: [rgpot, cxx_layout_stamp],
             )
         endif
     endif

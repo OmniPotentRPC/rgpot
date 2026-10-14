@@ -34,6 +34,8 @@ extern "C" {
 
 #define RGPOT_MPI_ABI_VERSION 1u
 #define RGPOT_MPI_API_SYMBOL "rgpot_mpi_api_v1"
+/* SONAME of librgpot_mpi. Independent of librgpot's kCxxSoversion:
+ * this C ABI is still version 1, so the filename stays .3 / .so.3. */
 #if defined(__APPLE__)
 #define RGPOT_MPI_LIBRARY_NAME "librgpot_mpi.3.dylib"
 #else

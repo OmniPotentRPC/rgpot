@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 project(
   rgpot
-  VERSION 3.5.0
+  VERSION 3.5.1
   DESCRIPTION "Cpp core for potential energy surface functionality"
   HOMEPAGE_URL "https://github.com/OmniPotentRPC/rgpot"
   LANGUAGES C CXX)
@@ -40,6 +40,18 @@ endif()
 
 option(RGPOT_BUILD_TESTS "Build tests" ${RGPOT_IS_TOP_LEVEL})
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# librgpot's ELF soversion is kCxxSoversion in CxxLayout.hpp, the same
+# constant Meson reads. The C ABI macros in rgpot.h are a different stamp
+# and did not change. They have no shared library of their own.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/CppCore/rgpot/abi/CxxLayout.hpp"
+     _rgpot_cxx_layout_hpp)
+string(REGEX MATCH "kCxxSoversion = ([0-9]+)" _rgpot_cxx_so_match
+             "${_rgpot_cxx_layout_hpp}")
+if(NOT CMAKE_MATCH_1)
+  message(FATAL_ERROR "kCxxSoversion missing from CxxLayout.hpp")
+endif()
+set(RGPOT_CXX_SOVERSION "${CMAKE_MATCH_1}")
 
 # --- Dependencies ---
 include(FetchContent)
@@ -162,6 +174,8 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/LennardJones/LJClusterPot.cc
       CppCore/rgpot/Morse/MorsePot.cc
       CppCore/rgpot/ZBL/ZBLPot.cc
+      CppCore/rgpot/nlist/MinimumImage.cpp
+      CppCore/rgpot/simd/exact_fma_hw.cc
       CppCore/rgpot/CuH2/cuh2Utils.cc
       CppCore/rgpot/fortran/FortranPots.cc)
 
@@ -187,10 +201,21 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/vesin>
            $<INSTALL_INTERFACE:include/rgpot/vesin>)
   target_link_libraries(rgpot_vesin PRIVATE Threads::Threads)
+  if(MSVC)
+    set_source_files_properties(
+      CppCore/rgpot/nlist/MinimumImage.cpp CppCore/rgpot/simd/exact_fma_hw.cc
+      PROPERTIES COMPILE_OPTIONS "/fp:precise")
+  else()
+    set_source_files_properties(
+      CppCore/rgpot/nlist/MinimumImage.cpp CppCore/rgpot/simd/exact_fma_hw.cc
+      PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+  endif()
   add_subdirectory(CppCore/rgpot/fortran)
   add_library(rgpot ${RGPOT_SOURCES})
   set_target_properties(rgpot PROPERTIES LINKER_LANGUAGE CXX
-                                        POSITION_INDEPENDENT_CODE ON)
+                                        POSITION_INDEPENDENT_CODE ON
+                                        VERSION ${PROJECT_VERSION}
+                                        SOVERSION ${RGPOT_CXX_SOVERSION})
   target_link_libraries(rgpot PRIVATE rgpot_fortran_kernels Threads::Threads)
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_options(
@@ -229,6 +254,8 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     target_include_directories(rgpot_mpi
                                PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/CppCore)
     target_link_libraries(rgpot_mpi PRIVATE MPI::MPI_CXX)
+    # soversion 3 is librgpot_mpi's own SONAME. RGPOT_MPI_ABI_VERSION is
+    # still 1, so this name does not move with librgpot's kCxxSoversion.
     set_target_properties(rgpot_mpi PROPERTIES CXX_VISIBILITY_PRESET hidden
                                                SOVERSION 3)
   endif()
@@ -414,6 +441,17 @@ if(RGPOT_BUILD_TESTS)
 
     add_pot_test(LJClusterPotTest CppCore/tests/LJClusterPotTest.cc)
     add_pot_test(PairListTest CppCore/tests/PairListTest.cc)
+    add_pot_test(MinImageIsaHash CppCore/tests/MinImageIsaHash.cc)
+    add_pot_test(FoldDegenerateTest CppCore/tests/FoldDegenerateTest.cc)
+    set_tests_properties(FoldDegenerateTest PROPERTIES TIMEOUT 60)
+    add_executable(ExactFmaEq CppCore/tests/exact_fma_eq.cc)
+    target_link_libraries(ExactFmaEq PRIVATE rgpot::rgpot)
+    target_include_directories(ExactFmaEq PRIVATE CppCore)
+    target_compile_features(ExactFmaEq PRIVATE cxx_std_20)
+    if(NOT MSVC)
+      target_compile_options(ExactFmaEq PRIVATE -ffp-contract=off)
+    endif()
+    add_test(NAME ExactFmaEq COMMAND ExactFmaEq)
     add_pot_test(BatchEvaluatorTest CppCore/tests/BatchEvaluatorTest.cc)
     target_link_libraries(BatchEvaluatorTest PRIVATE Threads::Threads)
     add_pot_test(CxxLayoutTest CppCore/tests/CxxLayoutTest.cc)
