@@ -82,6 +82,8 @@ if _rpc_stack
 endif
 
 # ------------------------ Main library
+have_krs = false
+krs_deps = []
 if not get_option('with_rpc_client_only')
     _deps += dependency('threads')
     _rgpot_srcs += files(
@@ -105,6 +107,18 @@ if not get_option('with_rpc_client_only')
     _deps += declare_dependency(link_with: rgpot_core)
 
     # Implemented rgpotentials
+    have_krs = get_option('with_kokkos_rs')
+    krs_deps = []
+    if have_krs
+        if get_option('kokkos_rs_lib') == '' or get_option('kokkos_rs_include') == ''
+            error('with_kokkos_rs needs kokkos_rs_lib and kokkos_rs_include')
+        endif
+        _args += ['-DRGPOT_HAS_KOKKOS_RS']
+        krs_deps += declare_dependency(
+            include_directories: include_directories(get_option('kokkos_rs_include')),
+            link_args: [get_option('kokkos_rs_lib'), '-ldl', '-lm'],
+        )
+    endif
     subdir('rgpot/LennardJones')  # 'lennard_jones': LJPot + LJClusterPot
     rgpotentials = [lennard_jones]
 
@@ -458,6 +472,15 @@ if get_option('with_examples') and not get_option('with_rpc_client_only')
         link_with: _linkto,
         cpp_args: _args,
     )
+    if have_krs
+        executable(
+            'time_lj_kokkos',
+            sources: ['examples/time_lj_kokkos.cc'],
+            dependencies: _deps + [vesin_dep] + fortran_rt_deps + krs_deps,
+            link_with: _linkto,
+            cpp_args: _args,
+        )
+    endif
     if rpc_enabled
         # Not a meson test: needs a running potserv (see the file header).
         executable(

@@ -1,0 +1,1 @@
+`-Dwith_kokkos_rs=true` links the shifted 12-6 Lennard-Jones force entry in `LJKokkos`. The option is off unless `kokkos_rs_lib` and `kokkos_rs_include` are set. `LJPot` and `LJClusterPot` stay the default kernels.

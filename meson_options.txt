@@ -74,3 +74,21 @@ option(
     value: false,
     description: 'Flexible TIP4P, SPC/E and TIP4P-Pt kernels. Defaults false, matching the eOn with_water option.',
 )
+option(
+    'with_kokkos_rs',
+    type: 'boolean',
+    value: false,
+    description: 'Link the kokkos-rs Lennard-Jones force entry. Requires kokkos_rs_lib and kokkos_rs_include.',
+)
+option(
+    'kokkos_rs_lib',
+    type: 'string',
+    value: '',
+    description: 'Path to libkokkos_rs.a, used when with_kokkos_rs is true.',
+)
+option(
+    'kokkos_rs_include',
+    type: 'string',
+    value: '',
+    description: 'Directory containing kokkos_rs.h, used when with_kokkos_rs is true.',
+)

@@ -16,9 +16,20 @@ if [ "${#sizes[@]}" -eq 0 ]; then
   sizes=(7 100 1000 10000)
 fi
 exe="$bdir/CppCore/time_pair_scaling"
+kokkos=0
+if [ "${KRS_KERNEL:-}" = "kokkos" ]; then
+  exe="$bdir/CppCore/time_lj_kokkos"
+  kokkos=1
+fi
 
 header_done=0
 for sys in pt-np ar-np ar-cl pt-bulk al-bulk; do
+  if [ "$kokkos" -eq 1 ]; then
+    case "$sys" in
+      ar-np|ar-cl) ;;
+      *) continue ;;
+    esac
+  fi
   for n in "${sizes[@]}"; do
     # Bulk cells need at least two cutoffs across, so tiny bulk sizes are
     # not physical systems; skip them.
@@ -37,7 +48,11 @@ for sys in pt-np ar-np ar-cl pt-bulk al-bulk; do
         printf '%s\n' "$out" | head -n 1
         header_done=1
       fi
-      printf '%s\n' "$out" | tail -n 1
+      if [ "$kokkos" -eq 1 ]; then
+        printf '%s\n' "$out" | tail -n +2
+      else
+        printf '%s\n' "$out" | tail -n 1
+      fi
     done
   done
 done
