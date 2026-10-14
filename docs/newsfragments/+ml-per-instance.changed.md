@@ -1,0 +1,1 @@
+Metatomic and UMA report per-instance reentrancy and no longer hold a mutex around each call. Concurrent callers keep one instance per thread or image, the engine C ABI admits one call at a time per handle, and a direct second entry into a busy instance throws.

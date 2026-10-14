@@ -39,8 +39,11 @@ public:
   /// the batched graph, so a lone system is padded to two.
   void forceBatchImpl(const ForceBatch &batch) const override;
 
+  /// The AOTI session and the Verlet pair caches are per instance and
+  /// unlocked: concurrent callers keep one instance per thread or image.
+  /// Entering one instance from two threads throws (ExclusiveCall).
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.reentrancy = Reentrancy::SharedInstance,
+    return {.reentrancy = Reentrancy::PerInstance,
             .perImageInstances = true};
   }
 

@@ -1,6 +1,7 @@
 // MIT License — UmaPot: vesin neighbor list + AOTInductor .pt2
 
 #include "rgpot/UmaPot/UmaPot.hpp"
+#include "rgpot/ExclusiveCall.hpp"
 #include "rgpot/UmaPot/MolecularFrame.hpp"
 
 #include "rgpot/MetatomicPot/vesin_compat.hpp"
@@ -20,7 +21,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
-#include <mutex>
+#include <atomic>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -145,15 +146,14 @@ struct UmaPot::Impl {
   int64_t batch_max{0};
   UmaContract contract;
   std::unique_ptr<torch::inductor::AOTIModelPackageLoader> loader;
-  mutable std::mutex mutex;
+  /// Set while a call is inside this instance (ExclusiveCall).
+  mutable std::atomic<bool> busy{false};
   /// Verlet caches: slot 0 for the single-system path, slot s + 1 for
-  /// system s of a batch. Guarded by nl_mutex, not by the model mutex.
-  mutable std::mutex nl_mutex;
+  /// system s of a batch.
   mutable std::map<size_t, nlist::VerletPairCache> nl_caches;
   double skin_fraction{0.1};
 
   EdgeList edges(size_t slot, const ForceInput &in) const {
-    std::lock_guard<std::mutex> lock(nl_mutex);
     auto it = nl_caches.find(slot);
     if (it == nl_caches.end())
       it = nl_caches
@@ -164,7 +164,7 @@ struct UmaPot::Impl {
 };
 
 std::pair<uint64_t, uint64_t> UmaPot::neighborCacheStats() const {
-  std::lock_guard<std::mutex> lock(m_impl->nl_mutex);
+  const ExclusiveCall exclusive(m_impl->busy, "UmaPot");
   uint64_t rebuilds = 0, calls = 0;
   for (const auto &kv : m_impl->nl_caches) {
     rebuilds += kv.second.rebuilds();
@@ -253,10 +253,8 @@ void UmaPot::setChargeSpin(int charge, int spin) {
 void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   if (in.nAtoms == 0)
     throw std::runtime_error("UmaPot: nAtoms == 0");
-  {
-    std::lock_guard<std::mutex> lock(m_impl->mutex);
-    ensureLoaded();
-  }
+  const ExclusiveCall exclusive(m_impl->busy, "UmaPot");
+  ensureLoaded();
   checkContract(in);
   if (m_impl->batch_max > 1) {
     // A band package carries only the batched (B >= 2) graph; a lone
@@ -346,8 +344,6 @@ void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
                                        edge_index, cell_offsets,   charge, spin,
                                        batch,      natoms};
 
-  std::lock_guard<std::mutex> lock(m_impl->mutex);
-  ensureLoaded();
   c10::InferenceMode guard;
   auto outputs = m_impl->loader->run(inputs);
   if (outputs.size() < 2)
@@ -375,16 +371,16 @@ void UmaPot::forceBatchImpl(const ForceBatch &batch) const {
   };
   if (batch.nSystems == 0)
     return;
-  {
-    std::lock_guard<std::mutex> lock(m_impl->mutex);
-    ensureLoaded();
-  }
+  ensureLoaded();
   const int64_t bmax = m_impl->batch_max;
   if (bmax <= 1) {
     // Single-system package: the plain graph is the only one there is.
     fallback(0, batch.nSystems);
     return;
   }
+  // The per-system fallback above enters forceImpl, which holds its own
+  // guard; the batched path holds one from here on.
+  const ExclusiveCall exclusive(m_impl->busy, "UmaPot");
   const size_t n0 = batch.in[0].nAtoms;
   bool uniform = true;
   for (size_t i = 0; uniform && i < batch.nSystems; ++i) {
@@ -526,7 +522,6 @@ void UmaPot::forceBatchImpl(const ForceBatch &batch) const {
         pos,    atomic_numbers, cell,      pbc,    edge_index, cell_offsets_f,
         charge, spin,           batch_vec, natoms, nedges_t};
 
-    std::lock_guard<std::mutex> lock(m_impl->mutex);
     c10::InferenceMode guard;
     auto outputs = m_impl->loader->run(inputs);
     if (outputs.size() < 2)

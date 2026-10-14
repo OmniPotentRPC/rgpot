@@ -2,6 +2,7 @@
 // Copyright 2023--present rgpot developers
 
 #include "rgpot/MetatomicPot/MetatomicPot.hpp"
+#include "rgpot/ExclusiveCall.hpp"
 #include "rgpot/MetatomicPot/vesin_compat.hpp"
 #include <ATen/CPUGeneratorImpl.h>
 #include "vesin.h"
@@ -300,7 +301,7 @@ MetatomicPot::MetatomicPot(const MetatomicConfig &config)
 
 
 void MetatomicPot::forceImpl(const ForceInput &in, ForceOut *out) const {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  const ExclusiveCall exclusive(m_busy, "MetatomicPot");
 
   long nAtoms = static_cast<long>(in.nAtoms);
   const bool use_rotation =
@@ -538,7 +539,7 @@ void MetatomicPot::forceBatchImpl(const ForceBatch &batch) const {
   }
 
   try {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    const ExclusiveCall exclusive(m_busy, "MetatomicPot");
     auto f64_options =
         torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU);
     std::vector<metatomic_torch::System> systems;
@@ -663,7 +664,7 @@ nlist::VerletPairCache &MetatomicPot::neighborCache(size_t slot,
 }
 
 std::pair<uint64_t, uint64_t> MetatomicPot::neighborCacheStats() const {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  const ExclusiveCall exclusive(m_busy, "MetatomicPot");
   uint64_t rebuilds = 0, calls = 0;
   for (const auto &kv : m_nl_caches) {
     rebuilds += kv.second.rebuilds();

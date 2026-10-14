@@ -6,8 +6,8 @@
 // (enum VesinDevice, no Options.algorithm) and 0.5+ (struct VesinDevice
 // {type, device_id}, Options.algorithm) via type traits in vesin_compat.hpp.
 
+#include <atomic>
 #include <map>
-#include <mutex>
 #include <utility>
 
 #include "rgpot/nlist/VerletPairs.hpp"
@@ -54,10 +54,11 @@ public:
     m_config.spin = spin;
   }
 
-  /// Internal mutex serializes the torch session, so a shared instance is
-  /// safe; multi-image callers still prefer clones for throughput.
+  /// The torch session and the Verlet pair caches are per instance and
+  /// unlocked: concurrent callers keep one instance per thread or image.
+  /// Entering one instance from two threads throws (ExclusiveCall).
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.reentrancy = Reentrancy::SharedInstance,
+    return {.reentrancy = Reentrancy::PerInstance,
             .perImageInstances = true,
             .batched = true};
   }
@@ -78,7 +79,7 @@ private:
   std::string m_energy_uncertainty_key;
   double m_uncertainty_threshold = -1.0;
 
-  mutable std::mutex m_mutex;
+  mutable std::atomic<bool> m_busy{false};
   /// One Verlet cache per (system slot, neighbor request): slot 0 for the
   /// single-system path, slot s + 1 for system s of a batch.
   mutable std::map<std::pair<size_t, size_t>, nlist::VerletPairCache>

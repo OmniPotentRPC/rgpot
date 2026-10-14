@@ -206,7 +206,7 @@ TEST_CASE("an instance reports capabilities and rejects bad calls",
   caps.size = sizeof(caps);
   REQUIRE(e.caps(pot, &caps) == 0);
   REQUIRE(caps.size == sizeof(caps));
-  REQUIRE(caps.reentrancy == 0); // shared instance
+  REQUIRE(caps.reentrancy == 1); // per instance
   REQUIRE(caps.per_image_instances == 1);
   REQUIRE(caps.periodic == 1);
   REQUIRE(caps.stress == 0);
@@ -216,7 +216,7 @@ TEST_CASE("an instance reports capabilities and rejects bad calls",
   unsigned small[2] = {sizeof(small), 0xdeadbeefu};
   REQUIRE(e.caps(pot, reinterpret_cast<RgpotEngineCaps *>(small)) == 0);
   REQUIRE(small[0] == sizeof(small));
-  REQUIRE(small[1] == 0u); // reentrancy: shared instance
+  REQUIRE(small[1] == 1u); // reentrancy: per instance
   REQUIRE(e.caps(pot, nullptr) == 1);
 
   REQUIRE(last_error(e, pot).empty());
@@ -400,7 +400,10 @@ TEST_CASE("one UMA handle serves several threads", "[uma][engine][fixture]") {
   RgpotEngineCaps caps;
   caps.size = sizeof(caps);
   REQUIRE(e.caps(pot, &caps) == 0);
-  REQUIRE(caps.reentrancy == 0); // shared instance: no serialization inside
+  // Per instance: the engine admits one call at a time per handle, so the
+  // threads below share the handle safely and parallelism needs one handle
+  // per worker.
+  REQUIRE(caps.reentrancy == 1);
 
   std::vector<double> ref(9, 0.0);
   double ref_e = 0.0;
