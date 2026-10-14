@@ -230,23 +230,18 @@ int main(int argc, char **argv) {
                s.types.size());
 
   const Forces reference = ljpotOnce(s, cluster);
-  rgpot::LJKokkos serial(kU0, kPsi, kCut, !cluster, 1, 0);
-  rgpot::LJKokkos host(kU0, kPsi, kCut, !cluster, threads, 0);
-  const Forces serialF = krsOnce(serial, s);
-  const Forces hostF = krsOnce(host, s);
+  // One Kokkos runtime per process. The thread count is this invocation's.
+  rgpot::LJKokkos kokkos(kU0, kPsi, kCut, !cluster, threads, 0);
+  const Forces got = krsOnce(kokkos, s);
   const double eref = std::max(1.0, std::abs(reference.energy));
-  const double serialRel = std::abs(reference.energy - serialF.energy) / eref;
-  const double serialFmax = maxAbsDiff(reference.f, serialF.f);
-  const double hostRel = std::abs(reference.energy - hostF.energy) / eref;
-  const double hostFmax = maxAbsDiff(reference.f, hostF.f);
-  std::fprintf(stderr,
-               "check serial_rel=%.3e serial_force=%.3e host_rel=%.3e "
-               "host_force=%.3e pairs=%llu\n",
-               serialRel, serialFmax, hostRel, hostFmax,
-               static_cast<unsigned long long>(serial.pairCount()));
-  if (serialRel > 1e-8 || serialFmax > 1e-6 || hostRel > 1e-5 ||
-      hostFmax > 1e-4) {
-    std::fprintf(stderr, "force entry does not match LJPot/LJClusterPot\n");
+  const double rel = std::abs(reference.energy - got.energy) / eref;
+  const double fmax = maxAbsDiff(reference.f, got.f);
+  std::fprintf(stderr, "check rel=%.3e force=%.3e pairs=%llu threads=%zu\n", rel,
+               fmax, static_cast<unsigned long long>(kokkos.pairCount()), threads);
+  const double rel_lim = threads <= 1 ? 1e-8 : 1e-5;
+  const double force_lim = threads <= 1 ? 1e-6 : 1e-4;
+  if (rel > rel_lim || fmax > force_lim) {
+    std::fprintf(stderr, "Kokkos force entry does not match LJPot/LJClusterPot\n");
     return 3;
   }
 
@@ -304,14 +299,13 @@ int main(int argc, char **argv) {
   };
   // threadsUsed() before any parallel evaluate may be 0. Time first, then
   // the row records the last call.
-  Row krs1 = invokeKrs(serial, "krs-serial");
-  Row krsN = invokeKrs(host, "krs-host");
+  Row krs = invokeKrs(kokkos, "kokkos");
 
   std::printf(
       "system,mode,natoms,calls,repeats,us_per_call_median,us_per_call_min,"
       "us_per_call_max,energy_last,kernel,force_calls,pairs,tile_bytes,"
       "threads_used,parallel_cost_us\n");
-  const Row rows[3] = {lj, krs1, krsN};
+  const Row rows[2] = {lj, krs};
   for (const Row &row : rows) {
     std::printf("%s,%s,%zu,%ld,%d,%.3f,%.3f,%.3f,%.12g,%s,%llu,%llu,%llu,%u,"
                 "%.3f\n",
