@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <utility>
 
 namespace rgpot {
 
@@ -46,6 +47,9 @@ public:
   [[nodiscard]] const UmaConfig &config() const noexcept { return m_config; }
 
   void setChargeSpin(int charge, int spin);
+
+  /// Candidate rebuilds and calls summed over every neighbor cache.
+  [[nodiscard]] std::pair<uint64_t, uint64_t> neighborCacheStats() const;
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
     return m_paramsKey;

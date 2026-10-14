@@ -423,9 +423,11 @@ void MetatomicPot::forceImpl(const ForceInput &in, ForceOut *out) const {
                                           m_device, m_dtype));
     }
 
-    for (const auto &request : m_nl_requests) {
-      auto neighbors = computeNeighbors(request, nAtoms, pos_buf.data(),
-                                        cell_buf.data(), periodic);
+    for (size_t r = 0; r < m_nl_requests.size(); ++r) {
+      const auto &request = m_nl_requests[r];
+      auto neighbors =
+          computeNeighbors(request, neighborCache(0, r), nAtoms,
+                           pos_buf.data(), cell_buf.data(), periodic);
       metatomic_torch::register_autograd_neighbors(system, neighbors,
                                                    m_check_consistency);
       system->add_neighbor_list(request, neighbors);
@@ -585,9 +587,10 @@ void MetatomicPot::forceBatchImpl(const ForceBatch &batch) const {
                                             static_cast<double>(m_config.spin),
                                             m_device, m_dtype));
       }
-      for (const auto &request : m_nl_requests) {
-        auto neighbors = computeNeighbors(request, nAtoms, in.pos, in.box,
-                                          periodic);
+      for (size_t r = 0; r < m_nl_requests.size(); ++r) {
+        const auto &request = m_nl_requests[r];
+        auto neighbors = computeNeighbors(request, neighborCache(s + 1, r),
+                                          nAtoms, in.pos, in.box, periodic);
         metatomic_torch::register_autograd_neighbors(system, neighbors,
                                                      m_check_consistency);
         system->add_neighbor_list(request, neighbors);
@@ -643,68 +646,64 @@ void MetatomicPot::forceBatchImpl(const ForceBatch &batch) const {
   }
 }
 
+nlist::VerletPairCache &MetatomicPot::neighborCache(size_t slot,
+                                                    size_t request) const {
+  auto it = m_nl_caches.find({slot, request});
+  if (it == m_nl_caches.end()) {
+    // The skin is fixed per cache; the cutoff of a request does not change.
+    const double cutoff =
+        m_nl_requests[request]->engine_cutoff(m_config.length_unit);
+    it = m_nl_caches
+             .emplace(std::make_pair(slot, request),
+                      nlist::VerletPairCache(m_config.neighbor_skin_fraction *
+                                             cutoff))
+             .first;
+  }
+  return it->second;
+}
+
+std::pair<uint64_t, uint64_t> MetatomicPot::neighborCacheStats() const {
+  std::lock_guard<std::mutex> lock(m_mutex);
+  uint64_t rebuilds = 0, calls = 0;
+  for (const auto &kv : m_nl_caches) {
+    rebuilds += kv.second.rebuilds();
+    calls += kv.second.calls();
+  }
+  return {rebuilds, calls};
+}
+
 metatensor_torch::TensorBlock MetatomicPot::computeNeighbors(
-    metatomic_torch::NeighborListOptions request, long nAtoms,
-    const double *positions, const double *box, const bool periodic[3]) const {
+    metatomic_torch::NeighborListOptions request,
+    nlist::VerletPairCache &cache, long nAtoms, const double *positions,
+    const double *box, const bool periodic[3]) const {
 
   auto cutoff = request->engine_cutoff(m_config.length_unit);
 
-  // VesinOptions layout must match the linked libvesin (0.5 vs 0.6 diverge
-  // on skin/n_threads). fill_neighbor_options zero-inits and sets fields
-  // via vesin_compat traits for the headers we compile against.
-  VesinOptions options{};
-  vesin_compat::fill_neighbor_options(options, cutoff, request->full_list());
+  // Canonical pairs (see VerletPairs.hpp): the same list whether or not the
+  // cached candidates were reused, so the skin never changes the result.
+  const nlist::VerletPairList nl = cache.compute(
+      positions, static_cast<size_t>(nAtoms), box, periodic, cutoff,
+      request->full_list());
 
-  VesinNeighborList *vesin_nl = new VesinNeighborList();
-
-  // enum VesinDevice (0.3.x) vs struct VesinDevice (0.5+) — type traits.
-  VesinDevice cpu = vesin_compat::make_cpu_device();
-  const char *error_message = nullptr;
-  int status = vesin_neighbors(
-      reinterpret_cast<const double (*)[3]>(positions),
-      static_cast<size_t>(nAtoms), reinterpret_cast<const double (*)[3]>(box),
-      const_cast<bool *>(periodic), cpu, options, vesin_nl, &error_message);
-
-  if (status != EXIT_SUCCESS) {
-    std::string err_str = "vesin_neighbors failed";
-    if (error_message != nullptr) {
-      err_str += ": " + std::string(error_message);
-    } else {
-      // Bare failure is the usual symptom of a VesinOptions ABI mismatch
-      // (engine built against a different vesin minor than libvesin.so).
-      err_str +=
-          " (no message; check vesin header/lib major match — need "
-          "vesin>=0.6 for current engines)";
-    }
-    err_str += " cutoff=" + std::to_string(cutoff) +
-               " nAtoms=" + std::to_string(nAtoms) +
-               " full=" + std::to_string(static_cast<int>(options.full));
-    delete vesin_nl;
-    throw std::runtime_error(err_str);
-  }
-
-  auto n_pairs = static_cast<int64_t>(vesin_nl->length);
+  auto n_pairs = static_cast<int64_t>(nl.size());
   auto labels_options_cpu =
       torch::TensorOptions().dtype(torch::kInt32).device(torch::kCPU);
 
   auto pair_samples_values = torch::empty({n_pairs, 5}, labels_options_cpu);
   auto pair_samples_values_ptr = pair_samples_values.accessor<int32_t, 2>();
-  for (int64_t i = 0; i < n_pairs; i++) {
-    pair_samples_values_ptr[i][0] = static_cast<int32_t>(vesin_nl->pairs[i][0]);
-    pair_samples_values_ptr[i][1] = static_cast<int32_t>(vesin_nl->pairs[i][1]);
-    pair_samples_values_ptr[i][2] = vesin_nl->shifts[i][0];
-    pair_samples_values_ptr[i][3] = vesin_nl->shifts[i][1];
-    pair_samples_values_ptr[i][4] = vesin_nl->shifts[i][2];
-  }
-
-  auto deleter = [=](void *) {
-    vesin_free(vesin_nl);
-    delete vesin_nl;
-  };
-
-  auto pair_vectors = torch::from_blob(
-      vesin_nl->vectors, {n_pairs, 3, 1}, deleter,
+  auto pair_vectors = torch::empty(
+      {n_pairs, 3, 1},
       torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU));
+  auto vec_ptr = pair_vectors.accessor<double, 3>();
+  for (int64_t i = 0; i < n_pairs; i++) {
+    pair_samples_values_ptr[i][0] = static_cast<int32_t>(nl.pairs[i][0]);
+    pair_samples_values_ptr[i][1] = static_cast<int32_t>(nl.pairs[i][1]);
+    pair_samples_values_ptr[i][2] = nl.shifts[i][0];
+    pair_samples_values_ptr[i][3] = nl.shifts[i][1];
+    pair_samples_values_ptr[i][4] = nl.shifts[i][2];
+    for (int d = 0; d < 3; ++d)
+      vec_ptr[i][d][0] = nl.vectors[i][d];
+  }
 
   auto neighbor_samples = torch::make_intrusive<metatensor_torch::LabelsHolder>(
       std::vector<std::string>{"first_atom", "second_atom", "cell_shift_a",

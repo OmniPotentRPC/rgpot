@@ -1,0 +1,1 @@
+Metatomic and UMA keep one Verlet pair cache per instance with a skin of 0.1 times each cutoff and rebuild it only when an atom moves more than half the skin. Pairs are recomputed and sorted canonically, so a cached call returns the same list, bit for bit, as a rebuild.

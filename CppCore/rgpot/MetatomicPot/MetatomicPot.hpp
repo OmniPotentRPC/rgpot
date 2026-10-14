@@ -6,7 +6,11 @@
 // (enum VesinDevice, no Options.algorithm) and 0.5+ (struct VesinDevice
 // {type, device_id}, Options.algorithm) via type traits in vesin_compat.hpp.
 
+#include <map>
 #include <mutex>
+#include <utility>
+
+#include "rgpot/nlist/VerletPairs.hpp"
 #include <string>
 #include <vector>
 
@@ -75,11 +79,23 @@ private:
   double m_uncertainty_threshold = -1.0;
 
   mutable std::mutex m_mutex;
+  /// One Verlet cache per (system slot, neighbor request): slot 0 for the
+  /// single-system path, slot s + 1 for system s of a batch.
+  mutable std::map<std::pair<size_t, size_t>, nlist::VerletPairCache>
+      m_nl_caches;
+  nlist::VerletPairCache &neighborCache(size_t slot, size_t request) const;
+
+public:
+  /// Candidate rebuilds and calls summed over every neighbor cache.
+  [[nodiscard]] std::pair<uint64_t, uint64_t> neighborCacheStats() const;
+
+private:
   mutable torch::Tensor m_cached_types;
   mutable size_t m_cached_natoms = 0;
 
   metatensor_torch::TensorBlock
-  computeNeighbors(metatomic_torch::NeighborListOptions request, long nAtoms,
+  computeNeighbors(metatomic_torch::NeighborListOptions request,
+                   nlist::VerletPairCache &cache, long nAtoms,
                    const double *positions, const double *box,
                    const bool periodic[3]) const;
 };

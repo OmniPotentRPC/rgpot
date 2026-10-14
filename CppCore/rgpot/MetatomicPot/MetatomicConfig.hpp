@@ -30,6 +30,10 @@ struct MetatomicConfig {
   int spin = 1;
   /** Attach charge/spin TensorMaps on every System (UMA omol). */
   bool attach_system_extras = false;
+  /** Verlet skin as a fraction of each neighbor-list cutoff. The list is
+   *  rebuilt only when an atom moves more than half the skin; 0 rebuilds on
+   *  every call. The pairs handed to the model do not depend on it. */
+  double neighbor_skin_fraction = 0.1;
 };
 
 void apply_torch_determinism_policy(TorchDeterminismPolicy policy);

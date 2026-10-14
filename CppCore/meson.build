@@ -602,6 +602,7 @@ if get_option('with_tests')
             ['EMTPotTest', 'emt_pot_test', 'EMTPotTest.cc', ''],
             ['EAMCellPotTest', 'eam_cell_pot_test', 'EAMCellPotTest.cc', ''],
             ['PairListTest', 'pair_list_test', 'PairListTest.cc', ''],
+            ['VerletPairsTest', 'verlet_pairs_test', 'VerletPairsTest.cc', ''],
             [
                 'MinImageIsaHash',
                 'minimage_isa_hash',

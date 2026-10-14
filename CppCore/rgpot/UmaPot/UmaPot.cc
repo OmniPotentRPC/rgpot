@@ -6,7 +6,10 @@
 #include "rgpot/MetatomicPot/vesin_compat.hpp"
 #include "rgpot/UmaPot/UmaContract.hpp"
 #include "rgpot/UmaPot/aoti_execstack.hpp"
+#include "rgpot/nlist/VerletPairs.hpp"
 #include "vesin.h"
+
+#include <map>
 
 #include <array>
 #include <vector>
@@ -47,28 +50,14 @@ struct EdgeList {
 };
 
 EdgeList vesin_fairchem_edges(const ForceInput &in, double cutoff,
-                              int max_neighbors) {
-  VesinOptions options{};
-  vesin_compat::fill_neighbor_options(options, cutoff, /*full_list=*/true);
-  // One neighbor-list thread: the pair order then depends on the input alone.
-  vesin_compat::set_n_threads(options, 1);
-  options.return_distances = true;
-
-  VesinNeighborList nl{};
-  VesinDevice cpu = vesin_compat::make_cpu_device();
-  const char *err = nullptr;
-  bool pbc[3] = {true, true, true};
-  const int status =
-      vesin_neighbors(reinterpret_cast<const double(*)[3]>(in.pos), in.nAtoms,
-                      reinterpret_cast<const double(*)[3]>(in.box), pbc, cpu,
-                      options, &nl, &err);
-  if (status != EXIT_SUCCESS) {
-    std::string msg = "UmaPot: vesin_neighbors failed";
-    if (err)
-      msg += ": " + std::string(err);
-    vesin_free(&nl);
-    throw std::runtime_error(msg);
-  }
+                              int max_neighbors,
+                              nlist::VerletPairCache &cache) {
+  // Canonical pairs from the Verlet cache (see VerletPairs.hpp): reusing
+  // the candidates never changes the list, so the skin never changes the
+  // edges handed to the model.
+  const bool pbc[3] = {true, true, true};
+  const nlist::VerletPairList nl =
+      cache.compute(in.pos, in.nAtoms, in.box, pbc, cutoff, /*full=*/true);
 
   struct Cand {
     int64_t n{0};
@@ -79,38 +68,21 @@ EdgeList vesin_fairchem_edges(const ForceInput &in, double cutoff,
     double dist{0};
   };
   std::vector<Cand> keep;
-  keep.reserve(nl.length);
-  const double *box = in.box;
-  for (size_t k = 0; k < nl.length; ++k) {
-    const int64_t i = static_cast<int64_t>(nl.pairs[k][0]);
-    const int64_t j = static_cast<int64_t>(nl.pairs[k][1]);
-    double dist = 0.0;
-    if (nl.distances != nullptr) {
-      dist = nl.distances[k];
-    } else {
-      const double sx = static_cast<double>(nl.shifts[k][0]);
-      const double sy = static_cast<double>(nl.shifts[k][1]);
-      const double sz = static_cast<double>(nl.shifts[k][2]);
-      const double dx = in.pos[3 * j] - in.pos[3 * i] + sx * box[0] +
-                        sy * box[3] + sz * box[6];
-      const double dy = in.pos[3 * j + 1] - in.pos[3 * i + 1] + sx * box[1] +
-                        sy * box[4] + sz * box[7];
-      const double dz = in.pos[3 * j + 2] - in.pos[3 * i + 2] + sx * box[2] +
-                        sy * box[5] + sz * box[8];
-      dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-    }
+  keep.reserve(nl.size());
+  for (size_t k = 0; k < nl.size(); ++k) {
+    const auto &v = nl.vectors[k];
+    const double dist = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
     if (dist < 1e-8)
       continue;
     Cand c;
-    c.n = j;
-    c.c = i;
+    c.n = nl.pairs[k][1];
+    c.c = nl.pairs[k][0];
     c.s0 = static_cast<float>(nl.shifts[k][0]);
     c.s1 = static_cast<float>(nl.shifts[k][1]);
     c.s2 = static_cast<float>(nl.shifts[k][2]);
     c.dist = dist;
     keep.push_back(c);
   }
-  vesin_free(&nl);
 
   // Canonical edge order: the neighbor list may be assembled by several
   // threads, so its pair order is not a function of the input. The model's
@@ -174,7 +146,32 @@ struct UmaPot::Impl {
   UmaContract contract;
   std::unique_ptr<torch::inductor::AOTIModelPackageLoader> loader;
   mutable std::mutex mutex;
+  /// Verlet caches: slot 0 for the single-system path, slot s + 1 for
+  /// system s of a batch. Guarded by nl_mutex, not by the model mutex.
+  mutable std::mutex nl_mutex;
+  mutable std::map<size_t, nlist::VerletPairCache> nl_caches;
+  double skin_fraction{0.1};
+
+  EdgeList edges(size_t slot, const ForceInput &in) const {
+    std::lock_guard<std::mutex> lock(nl_mutex);
+    auto it = nl_caches.find(slot);
+    if (it == nl_caches.end())
+      it = nl_caches
+               .emplace(slot, nlist::VerletPairCache(skin_fraction * cutoff))
+               .first;
+    return vesin_fairchem_edges(in, cutoff, max_neighbors, it->second);
+  }
 };
+
+std::pair<uint64_t, uint64_t> UmaPot::neighborCacheStats() const {
+  std::lock_guard<std::mutex> lock(m_impl->nl_mutex);
+  uint64_t rebuilds = 0, calls = 0;
+  for (const auto &kv : m_impl->nl_caches) {
+    rebuilds += kv.second.rebuilds();
+    calls += kv.second.calls();
+  }
+  return {rebuilds, calls};
+}
 
 void UmaPot::recomputeParamsKey() {
   Fnv1a fp;
@@ -240,6 +237,7 @@ UmaPot::UmaPot(const UmaConfig &config)
   m_impl->device = parse_device(m_config.device);
   m_impl->max_neighbors = m_config.max_neighbors;
   m_impl->cutoff = m_config.cutoff;
+  m_impl->skin_fraction = m_config.neighbor_skin_fraction;
   if (!(m_impl->cutoff > 0.0) || !std::isfinite(m_impl->cutoff))
     m_impl->cutoff = 6.0;
 }
@@ -282,8 +280,7 @@ void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const ForceInput local{in.nAtoms, molecular ? mol_pos.data() : in.pos,
                          in.atmnrs, molecular ? mol_box.data() : in.box};
 
-  const EdgeList edges =
-      vesin_fairchem_edges(local, m_impl->cutoff, m_impl->max_neighbors);
+  const EdgeList edges = m_impl->edges(0, local);
   const auto n = static_cast<int64_t>(local.nAtoms);
   const auto nedges = static_cast<int64_t>(edges.neighbor.size());
   if (nedges == 0)
@@ -438,8 +435,9 @@ void UmaPot::forceBatchImpl(const ForceBatch &batch) const {
       }
       const ForceInput local{static_cast<size_t>(n), pos_b.data(), in.atmnrs,
                              box_b.data()};
-      sys_edges[static_cast<size_t>(b)] =
-          vesin_fairchem_edges(local, m_impl->cutoff, m_impl->max_neighbors);
+      const size_t slot =
+          start + static_cast<size_t>(b < B_real ? b : B_real - 1) + 1;
+      sys_edges[static_cast<size_t>(b)] = m_impl->edges(slot, local);
       nedges_total += static_cast<int64_t>(
           sys_edges[static_cast<size_t>(b)].neighbor.size());
     }

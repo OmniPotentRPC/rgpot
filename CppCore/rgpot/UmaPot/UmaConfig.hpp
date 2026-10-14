@@ -21,6 +21,10 @@ struct UmaConfig {
   /// Cutoff in angstrom. The package's embedded `cutoff` metadata wins
   /// when present; no sidecar file is read.
   double cutoff = 6.0;
+  /// Verlet skin as a fraction of the cutoff; the edge list is rebuilt only
+  /// when an atom moves more than half the skin, 0 rebuilds every call.
+  /// The edges handed to the model do not depend on it.
+  double neighbor_skin_fraction = 0.1;
   int max_neighbors = 300;
 };
 
