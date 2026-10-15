@@ -126,7 +126,7 @@ let P = S.pins in
       id = "eonviz_pins",
       needs = ["prepare"],
       runs_on = P.ubuntu,
-      role = "pixi task check-eonviz-pins (blocking)",
+      role = "pixi task check-eonviz-pins and the byte-exact restart golden (blocking)",
     },
     {
       id = "ci_gate",
