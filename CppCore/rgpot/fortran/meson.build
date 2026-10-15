@@ -15,6 +15,10 @@ _fpot_args = fc.get_supported_arguments(
         '-Wall',
         '-Wno-unused-dummy-argument',
         '-fvisibility=hidden',
+        # F2: gfortran keeps some procedure locals in static storage unless
+        # this is set, and those locals are then shared by every thread.
+        # The _ws entries are one workspace per caller and must be reentrant.
+        '-frecursive',
     ],
 )
 

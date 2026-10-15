@@ -1,0 +1,28 @@
+#+TITLE: Python API
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Python API
+
+The extension module is =rgpot._core=.
+Stubs live in =rgpot/_core.pyi= and the package ships =py.typed=.
+Wrong dtype or order on a float64 argument raises =TypeError=.
+A wrong shape raises =ValueError= naming the argument and both shapes.
+A non-finite energy raises =rgpot.NumericalError=.
+
+** Calculators
+
+| Symbol                  | Role                                      |
+|-------------------------+-------------------------------------------|
+| =rgpot.ase.RgpotCalculator= | In-process ASE calculator            |
+| =rgpot.ase.RgpotRpcCalculator= | Cap'n Proto ASE calculator      |
+| =rgpot.ase.AnnealRunner= | Portfolio relaxation, not an ASE optimizer |
+| =rgpot.ase.AnnealOptimizer= | Deprecated alias of =AnnealRunner=   |
+
+=RgpotCalculator.calculate_many(frames)= returns one dict per frame.
+=threads= selects the worker count; 0 uses the hardware concurrency.
+Results for energy and forces match one call per frame, bit for bit.
+The worker count is not part of the result.
+
+See the [[file:../howto/ase.org][ASE how-to]] and the
+[[file:../explanation/thread-safety.org][thread-safety]] page.

@@ -21,9 +21,16 @@ module rgpot_water_h_capi
    implicit none
    private
 
-   public :: rgpot_water_h_force, rgpot_water_h_force_ws
+   public :: rgpot_water_h_force, rgpot_water_h_force_ws, rgpot_water_h_ensure_params
 
    type(water_h_params_t), save :: params
+
+   !> F2: set by the C++ wrapper under std::call_once.
+   !! After that call the block is read-only. Kernels take it
+   !! intent(in). The handle-free entry's legacy workspace, when
+   !! this module has one, stays process-serial and is not used
+   !! by the Python binding.
+   logical, save :: params_ready = .false.
 
 contains
 
@@ -120,5 +127,16 @@ contains
          status = int(eval_status, c_int)
       end if
    end function rgpot_water_h_force_ws
+
+
+   !> F2: default-initialise the saved parameter block once.
+   !! The C++ face calls this under std::call_once before any _ws
+   !! evaluation. A second call does not write.
+   subroutine rgpot_water_h_ensure_params() bind(c, name="rgpot_water_h_ensure_params")
+      if (.not. params_ready) then
+         params = water_h_params_t()
+         params_ready = .true.
+      end if
+   end subroutine rgpot_water_h_ensure_params
 
 end module rgpot_water_h_capi

@@ -24,12 +24,13 @@ on:
   push:
     # v* tags always build. Path filters are not applied to tags.
     # A branch push starts this workflow only when the wheel or audit
-    # files change, on main and on ci/**.
+    # files change. feat/** is included so this branch runs the same jobs.
     tags:
       - "v*"
     branches:
       - main
       - "ci/**"
+      - "feat/**"
     paths:
       - "pyproject.toml"
       - "meson.build"
@@ -42,6 +43,7 @@ on:
       - "third_party/libxckernel/**"
       - ".github/workflows/wheels.yml"
       - ".github/workflows/isa-audit.yml"
+      - ".github/scripts/rgpot_installed_wheel_check.sh"
       - "ci/isa-audit/**"
       - "rgpot/isa-allow.toml"
   pull_request:
@@ -57,23 +59,52 @@ on:
       - "third_party/libxckernel/**"
       - ".github/workflows/wheels.yml"
       - ".github/workflows/isa-audit.yml"
+      - ".github/scripts/rgpot_installed_wheel_check.sh"
       - "ci/isa-audit/**"
       - "rgpot/isa-allow.toml"
 
 jobs:
-  wheels-linux:
-    name: wheel (ubuntu-latest)
+  # py-wheels.yml defaults to cp310, cp311, cp312, cp314t, and cp315t.
+  # This package drops cp315t: the isolated build needs torch, and PyPI
+  # has no torch wheel for that free-threaded tag. 3.15t is still tested
+  # by the reduced meson job.
+  # windows-2022 stays in the reusable workflow's default matrix for
+  # callers without Fortran. This package's extension is C++ and Fortran.
+  # cibuildwheel on windows-2022 compiles with MSVC. MinGW gfortran or
+  # LLVM flang would be a second CRT and a separate DLL repair path, so
+  # this caller drops that runner instead of adding a toolchain.
+  py-wheels:
+    uses: ./.github/workflows/py-wheels.yml
+    with:
+      package-dir: .
+      import-names: rgpot._core
+      test-path: tests/python
+      extras: ase
+      test-requires: pytest-timeout hypothesis
+      os: '["ubuntu-latest","ubuntu-24.04-arm","macos-14"]'
+      build: "cp310-* cp311-* cp312-* cp314t-*"
+
+  kernel-count:
+    name: Fortran kernels in the linux wheel
+    needs: py-wheels
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c # v3.2.1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: py-wheels-ubuntu-latest-.
+          path: wheelhouse
       - name: The kernels must be in the artifact, not just in the flags
         shell: bash
         run: |
           set -euo pipefail
-          for whl in wheelhouse/*.whl; do
+          shopt -s nullglob
+          wheels=(wheelhouse/*.whl)
+          test "${#wheels[@]}" -gt 0 || { echo "no linux wheels" >&2; exit 1; }
+          for whl in "${wheels[@]}"; do
             echo "== ${whl}"
             rm -rf _whlx && mkdir _whlx && unzip -qo "${whl}" -d _whlx
             lib=$(find _whlx -name 'librgpot*' | head -1)
@@ -104,6 +135,18 @@ jobs:
               exit 1
             fi
           done
+      - name: Committed stub matches stubgen of the linux wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "${RUNNER_TEMP}/stub"
+          . "${RUNNER_TEMP}/stub/bin/activate"
+          python -m pip install -U pip
+          whl=$(ls wheelhouse/*cp312*.whl | head -1)
+          test -n "${whl}"
+          python -m pip install 'nanobind==3.1.0' numpy "${whl}"
+          python -m nanobind.stubgen -m rgpot._core -o /tmp/rgpot._core.pyi
+          diff -u python/rgpot/_core.pyi /tmp/rgpot._core.pyi
       - name: No xckernel generator or sympy in the wheel
         shell: bash
         run: |
@@ -113,6 +156,32 @@ jobs:
           python -m pip install pytest
           python -m pytest -q tests/test_wheel_contents.py
           python tests/check_wheel_contents.py wheelhouse/*.whl
+      # py-wheels.yml replaces CIBW_TEST_COMMAND, so the repaired wheel is
+      # installed here, with the library path unset.
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        id: py310
+        with:
+          python-version: "3.10"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        id: py311
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        id: py312
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        id: py314t
+        with:
+          python-version: "3.14t"
+      - name: Import each repaired linux wheel without LD_LIBRARY_PATH
+        shell: bash
+        env:
+          PY_310: ${{ steps.py310.outputs.python-path }}
+          PY_311: ${{ steps.py311.outputs.python-path }}
+          PY_312: ${{ steps.py312.outputs.python-path }}
+          PY_314T: ${{ steps.py314t.outputs.python-path }}
+        run: bash .github/scripts/rgpot_installed_wheel_check.sh wheelhouse
       - name: Keep unstripped libraries for the ISA audit
         shell: bash
         run: |
@@ -162,26 +231,26 @@ jobs:
         with:
           name: isa-audit-linux-x86_64
           path: isa-audit-libs/
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: wheels-ubuntu-latest
-          path: wheelhouse/*.whl
 
-  wheels-macos:
-    name: wheel (macos-14)
+  isa-libs-macos:
+    name: macOS libraries for the ISA audit
+    needs: py-wheels
     runs-on: macos-14
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c # v3.2.1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: py-wheels-macos-14-.
+          path: wheelhouse
       - name: The kernels must be in the artifact, not just in the flags
         shell: bash
         run: |
           set -euo pipefail
           shopt -s nullglob
           wheels=(wheelhouse/*.whl)
-          test "${#wheels[@]}" -gt 0 || { echo "no wheels built" >&2; exit 1; }
+          test "${#wheels[@]}" -gt 0 || { echo "no macos wheels" >&2; exit 1; }
           for whl in "${wheels[@]}"; do
             echo "== ${whl}"
             rm -rf _whlx && mkdir _whlx && unzip -qo "${whl}" -d _whlx
@@ -221,6 +290,30 @@ jobs:
           python -m pip install pytest
           python -m pytest -q tests/test_wheel_contents.py
           python tests/check_wheel_contents.py wheelhouse/*.whl
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        id: py310
+        with:
+          python-version: "3.10"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        id: py311
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        id: py312
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        id: py314t
+        with:
+          python-version: "3.14t"
+      - name: Import each repaired macOS wheel without DYLD_LIBRARY_PATH
+        shell: bash
+        env:
+          PY_310: ${{ steps.py310.outputs.python-path }}
+          PY_311: ${{ steps.py311.outputs.python-path }}
+          PY_312: ${{ steps.py312.outputs.python-path }}
+          PY_314T: ${{ steps.py314t.outputs.python-path }}
+        run: bash .github/scripts/rgpot_installed_wheel_check.sh wheelhouse
       - name: Keep unstripped libraries for the ISA audit
         shell: bash
         run: |
@@ -228,7 +321,9 @@ jobs:
           rm -rf isa-audit-libs
           mkdir -p isa-audit-libs
           shopt -s nullglob
-          for whl in wheelhouse/*.whl; do
+          wheels=(wheelhouse/*.whl)
+          test "${#wheels[@]}" -gt 0 || { echo "no macos wheels" >&2; exit 1; }
+          for whl in "${wheels[@]}"; do
             tmp=$(mktemp -d)
             unzip -qo "${whl}" -d "${tmp}"
             tag=$(basename "${whl}" .whl)
@@ -264,10 +359,43 @@ jobs:
         with:
           name: isa-audit-macos-arm64
           path: isa-audit-libs/
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+
+  wheel-import-arm:
+    name: Import each repaired arm wheel without LD_LIBRARY_PATH
+    needs: py-wheels
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          name: wheels-macos-14
-          path: wheelhouse/*.whl
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: py-wheels-ubuntu-24.04-arm-.
+          path: wheelhouse
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        id: py310
+        with:
+          python-version: "3.10"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        id: py311
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        id: py312
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        id: py314t
+        with:
+          python-version: "3.14t"
+      - name: Import each repaired wheel
+        shell: bash
+        env:
+          PY_310: ${{ steps.py310.outputs.python-path }}
+          PY_311: ${{ steps.py311.outputs.python-path }}
+          PY_312: ${{ steps.py312.outputs.python-path }}
+          PY_314T: ${{ steps.py314t.outputs.python-path }}
+        run: bash .github/scripts/rgpot_installed_wheel_check.sh wheelhouse
 
   sdist:
     runs-on: ubuntu-latest
@@ -290,7 +418,7 @@ jobs:
 
   isa-audit-linux:
     name: isa audit (linux x86_64)
-    needs: wheels-linux
+    needs: kernel-count
     permissions:
       contents: read
     uses: ./.github/workflows/isa-audit.yml
@@ -301,7 +429,7 @@ jobs:
 
   isa-audit-macos:
     name: isa audit (macos arm64)
-    needs: wheels-macos
+    needs: isa-libs-macos
     permissions:
       contents: read
     uses: ./.github/workflows/isa-audit.yml
@@ -311,7 +439,7 @@ jobs:
       baseline: armv8-a
 
   publish:
-    needs: [wheels-linux, wheels-macos, sdist, isa-audit-linux, isa-audit-macos]
+    needs: [kernel-count, wheel-import-arm, sdist, isa-audit-linux, isa-audit-macos]
     if: >-
       github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
       || (github.event_name == 'workflow_dispatch' && inputs.publish)

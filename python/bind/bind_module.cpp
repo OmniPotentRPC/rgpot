@@ -1,10 +1,12 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 //
-// Python surface: nanobind (stable ABI / abi3 when Python >= 3.12).
-// LJ + MetatomicDlopen + optional ExprPot / D3Pot / D4Pot / XcKernel.
+// Python surface: nanobind. F1 free-threaded when the interpreter is
+// built that way (see python/meson.build). F4 releases the thread
+// around every potential evaluation. F9 exports only PyInit__core.
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <map>
@@ -12,6 +14,7 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include <nanobind/nanobind.h>
@@ -20,12 +23,19 @@
 #include <nanobind/stl/tuple.h>
 #include <nanobind/stl/vector.h>
 
+#include "rgbind/rgbind.hpp"
+
+#include "pot_holder.hpp"
+
 #include "rgpot/LennardJones/LJPot.hpp"
-#include "rgpot/MetatomicPot/MetatomicConfig.hpp"
-#include "rgpot/MetatomicPot/MetatomicDlopen.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 #include "rgpot/XcKernel/XcKernel.hpp"
+
+#ifdef RGPOT_HAS_METATOMIC
+#include "rgpot/MetatomicPot/MetatomicConfig.hpp"
+#include "rgpot/MetatomicPot/MetatomicDlopen.hpp"
+#endif
 
 #ifdef RGPOT_HAS_CACHE
 #include "rgpot/PotentialCache.hpp"
@@ -40,137 +50,40 @@
 #ifdef RGPOT_HAS_EXPR
 #include "rgpot/ExprPot/ExprPot.hpp"
 #endif
+#ifdef RGPOT_HAS_FORTRAN_POTS
+#include "rgpot/fortran/FortranPots.hpp"
+#endif
 
 #ifndef RGPOT_PY_VERSION
 #define RGPOT_PY_VERSION "0.0.0"
 #endif
 
 namespace nb = nanobind;
+using rgpot::pybind::F64;
+using rgpot::pybind::I32;
+using rgpot::pybind::PotHolder;
 using rgpot::types::AtomMatrix;
-
-using NpF64 = nb::ndarray<nb::numpy, double, nb::c_contig, nb::device::cpu>;
-using NpI32 = nb::ndarray<nb::numpy, int32_t, nb::c_contig, nb::device::cpu>;
 
 namespace {
 
-AtomMatrix numpy_to_atom_matrix(const NpF64 &arr) {
-  if (arr.ndim() != 2 || arr.shape(1) != 3) {
-    throw std::invalid_argument("positions must have shape (n_atoms, 3)");
+void translate_invalid_argument(const std::exception_ptr &ptr, void *) {
+  try {
+    std::rethrow_exception(ptr);
+  } catch (const std::invalid_argument &err) {
+    PyErr_SetString(PyExc_ValueError, err.what());
   }
-  const auto n = static_cast<size_t>(arr.shape(0));
-  AtomMatrix mat(n, 3);
-  std::memcpy(mat.data(), arr.data(), n * 3 * sizeof(double));
-  return mat;
-}
-
-std::vector<int> numpy_to_types(const NpI32 &arr, size_t n_atoms) {
-  if (arr.ndim() != 1 || static_cast<size_t>(arr.shape(0)) != n_atoms) {
-    throw std::invalid_argument("atom_types length must match n_atoms");
-  }
-  std::vector<int> types(n_atoms);
-  for (size_t i = 0; i < n_atoms; ++i) {
-    types[i] = static_cast<int>(arr.data()[i]);
-  }
-  return types;
-}
-
-std::array<std::array<double, 3>, 3> numpy_to_box(const NpF64 &arr) {
-  if (arr.ndim() != 2 || arr.shape(0) != 3 || arr.shape(1) != 3) {
-    throw std::invalid_argument("box must have shape (3, 3)");
-  }
-  std::array<std::array<double, 3>, 3> box{};
-  const double *p = arr.data();
-  for (size_t i = 0; i < 3; ++i)
-    for (size_t j = 0; j < 3; ++j)
-      box[i][j] = p[i * 3 + j];
-  return box;
-}
-
-nb::ndarray<nb::numpy, double, nb::c_contig>
-atom_matrix_to_numpy(const AtomMatrix &mat) {
-  const size_t rows = mat.rows();
-  const size_t cols = mat.cols();
-  double *buf = new double[rows * cols];
-  std::memcpy(buf, mat.data(), rows * cols * sizeof(double));
-  nb::capsule owner(buf, [](void *p) noexcept {
-    delete[] static_cast<double *>(p);
-  });
-  return nb::ndarray<nb::numpy, double, nb::c_contig>(buf, {rows, cols}, owner);
-}
-
-nb::ndarray<nb::numpy, double, nb::c_contig>
-buffer_to_numpy(const double *src, size_t rows, size_t cols) {
-  double *buf = new double[rows * cols];
-  std::memcpy(buf, src, rows * cols * sizeof(double));
-  nb::capsule owner(buf, [](void *p) noexcept {
-    delete[] static_cast<double *>(p);
-  });
-  return nb::ndarray<nb::numpy, double, nb::c_contig>(buf, {rows, cols}, owner);
-}
-
-void flat_box(const std::array<std::array<double, 3>, 3> &box, double out[9]) {
-  for (int i = 0; i < 3; ++i)
-    for (int j = 0; j < 3; ++j)
-      out[i * 3 + j] = box[i][j];
-}
-
-template <typename Pot>
-nb::tuple call_pot(Pot &pot, const NpF64 &positions, const NpI32 &atom_types,
-                   const NpF64 &box) {
-  auto pos = numpy_to_atom_matrix(positions);
-  auto types = numpy_to_types(atom_types, pos.rows());
-  auto cell = numpy_to_box(box);
-  auto [energy, forces, variance] = pot(pos, types, cell);
-  return nb::make_tuple(energy, atom_matrix_to_numpy(forces), variance);
-}
-
-nb::tuple evaluate_lj(const NpF64 &positions, const NpI32 &atom_types,
-                      const NpF64 &box) {
-  rgpot::LJPot pot;
-  return call_pot(pot, positions, atom_types, box);
-}
-
-nb::tuple evaluate_metatomic_dlopen(const NpF64 &positions,
-                                    const NpI32 &atom_types, const NpF64 &box,
-                                    const std::string &model_path,
-                                    const std::string &engine_path,
-                                    const std::string &device) {
-  if (positions.ndim() != 2 || atom_types.ndim() != 1 || box.ndim() != 2) {
-    throw std::invalid_argument(
-        "evaluate_metatomic_dlopen expects positions (n,3), atom_types (n,), "
-        "box (3,3)");
-  }
-  if (model_path.empty()) {
-    throw std::invalid_argument("model_path is required");
-  }
-  auto pos = numpy_to_atom_matrix(positions);
-  auto types = numpy_to_types(atom_types, pos.rows());
-  auto cell = numpy_to_box(box);
-
-  rgpot::MetatomicConfig cfg;
-  cfg.model_path = model_path;
-  cfg.engine_path = engine_path;
-  cfg.device = device.empty() ? "cpu" : device;
-
-  rgpot::MetatomicDlopen front(cfg);
-  if (!front.available()) {
-    throw std::runtime_error("MetatomicDlopen: engine not available");
-  }
-
-  const size_t n = pos.rows();
-  AtomMatrix forces = AtomMatrix::Zero(n, 3);
-  double flat[9];
-  flat_box(cell, flat);
-  rgpot::ForceInput in{n, pos.data(), types.data(), flat};
-  rgpot::ForceOut out{forces.data(), 0.0, 0.0};
-  {
-    nb::gil_scoped_release release;
-    front.forceImpl(in, &out);
-  }
-  return nb::make_tuple(out.energy, atom_matrix_to_numpy(forces), out.variance);
 }
 
 #ifdef RGPOT_HAS_EXPR
+struct ChildSpec {
+  std::string name;
+  std::string kind;
+  std::string functional = "pbe";
+  std::string damping = "bj";
+  bool atm = true;
+  double charge = 0.0;
+};
+
 std::string child_kind(nb::handle spec) {
   if (nb::isinstance<nb::str>(spec)) {
     return nb::cast<std::string>(spec);
@@ -184,67 +97,69 @@ std::string child_kind(nb::handle spec) {
       return nb::cast<std::string>(d["type"]);
     }
   }
-  throw std::invalid_argument(
+  throw nb::value_error(
       "ExprPot child spec must be a kind string or a dict with 'kind'");
 }
 
-std::unique_ptr<rgpot::PotentialBase> make_expr_child(nb::handle spec) {
-  const std::string kind = child_kind(spec);
-  if (kind == "lj") {
+ChildSpec child_spec_from(const std::string &name, nb::handle spec) {
+  ChildSpec out;
+  out.name = name;
+  out.kind = child_kind(spec);
+  if (nb::isinstance<nb::dict>(spec)) {
+    auto d = nb::cast<nb::dict>(spec);
+    if (d.contains("functional")) {
+      out.functional = nb::cast<std::string>(d["functional"]);
+    }
+    if (d.contains("atm")) {
+      out.atm = nb::cast<bool>(d["atm"]);
+    }
+    if (d.contains("damping")) {
+      out.damping = nb::cast<std::string>(d["damping"]);
+    }
+    if (d.contains("charge")) {
+      out.charge = nb::cast<double>(d["charge"]);
+    }
+  }
+  return out;
+}
+
+std::unique_ptr<rgpot::PotentialBase> child_from_spec(const ChildSpec &spec) {
+  if (spec.kind == "lj") {
     return std::make_unique<rgpot::LJPot>();
   }
-  if (kind == "morse") {
+  if (spec.kind == "morse") {
     return std::make_unique<rgpot::MorsePot>();
   }
 #ifdef RGPOT_HAS_DFTD3
-  if (kind == "d3") {
+  if (spec.kind == "d3") {
     rgpot::D3Config cfg;
-    if (nb::isinstance<nb::dict>(spec)) {
-      auto d = nb::cast<nb::dict>(spec);
-      if (d.contains("functional")) {
-        cfg.functional = nb::cast<std::string>(d["functional"]);
-      }
-      if (d.contains("atm")) {
-        cfg.atm = nb::cast<bool>(d["atm"]);
-      }
-      if (d.contains("damping")) {
-        const auto damp = nb::cast<std::string>(d["damping"]);
-        cfg.damping = (damp == "zero" || damp == "Zero")
-                          ? rgpot::D3Damping::Zero
-                          : rgpot::D3Damping::BJ;
-      }
-    }
+    cfg.functional = spec.functional;
+    cfg.atm = spec.atm;
+    cfg.damping = (spec.damping == "zero" || spec.damping == "Zero")
+                      ? rgpot::D3Damping::Zero
+                      : rgpot::D3Damping::BJ;
     return std::make_unique<rgpot::D3Pot>(cfg);
   }
 #endif
 #ifdef RGPOT_HAS_DFTD4
-  if (kind == "d4") {
+  if (spec.kind == "d4") {
     rgpot::D4Config cfg;
-    if (nb::isinstance<nb::dict>(spec)) {
-      auto d = nb::cast<nb::dict>(spec);
-      if (d.contains("functional")) {
-        cfg.functional = nb::cast<std::string>(d["functional"]);
-      }
-      if (d.contains("atm")) {
-        cfg.atm = nb::cast<bool>(d["atm"]);
-      }
-      if (d.contains("charge")) {
-        cfg.charge = nb::cast<double>(d["charge"]);
-      }
-    }
+    cfg.functional = spec.functional;
+    cfg.charge = spec.charge;
+    cfg.atm = spec.atm;
     return std::make_unique<rgpot::D4Pot>(cfg);
   }
 #endif
-  throw std::invalid_argument("unknown ExprPot child kind: " + kind);
+  throw std::invalid_argument("unknown ExprPot child kind: " + spec.kind);
 }
 
-std::unique_ptr<rgpot::ExprPot> make_expr_pot(const std::string &expression,
-                                              const nb::dict &terms) {
+std::unique_ptr<rgpot::ExprPot>
+expr_from_specs(const std::string &expression,
+                const std::vector<ChildSpec> &specs) {
   std::vector<rgpot::ExprPot::Term> children;
-  children.reserve(terms.size());
-  for (auto item : terms) {
-    auto name = nb::cast<std::string>(item.first);
-    children.emplace_back(std::move(name), make_expr_child(item.second));
+  children.reserve(specs.size());
+  for (const ChildSpec &spec : specs) {
+    children.emplace_back(spec.name, child_from_spec(spec));
   }
   return std::make_unique<rgpot::ExprPot>(expression, std::move(children));
 }
@@ -253,43 +168,41 @@ std::unique_ptr<rgpot::ExprPot> make_expr_pot(const std::string &expression,
 #ifdef RGPOT_HAS_XCKERNEL
 struct NumpyXcGrid {
   rgpot::XcGrid grid;
-  NpF64 dchi, lapl, hess;
+  F64 dchi, lapl, hess;
 };
 
-NumpyXcGrid grid_from_numpy(const NpF64 &chi, nb::handle dchi_obj,
+NumpyXcGrid grid_from_numpy(const F64 &chi, nb::handle dchi_obj,
                             nb::handle lapl_obj, nb::handle hess_obj) {
-  if (chi.ndim() != 2) {
-    throw std::invalid_argument("chi must have shape (nbf, npts)");
-  }
+  rgbind::check_f64_rank(chi, 2, "chi");
   NumpyXcGrid storage;
   auto &grid = storage.grid;
   grid.nbf = static_cast<std::int64_t>(chi.shape(0));
   grid.npts = static_cast<std::int64_t>(chi.shape(1));
   grid.chi = chi.data();
   if (!dchi_obj.is_none()) {
-    storage.dchi = nb::cast<NpF64>(dchi_obj);
+    storage.dchi = nb::cast<F64>(dchi_obj, false);
     const auto &dchi = storage.dchi;
     if (dchi.ndim() != 3 || dchi.shape(0) != 3 ||
         dchi.shape(1) != chi.shape(0) || dchi.shape(2) != chi.shape(1)) {
-      throw std::invalid_argument("dchi must have shape (3, nbf, npts)");
+      throw nb::value_error("dchi: expected shape (3, nbf, npts)");
     }
     grid.dchi = dchi.data();
   }
   if (!lapl_obj.is_none()) {
-    storage.lapl = nb::cast<NpF64>(lapl_obj);
+    storage.lapl = nb::cast<F64>(lapl_obj, false);
     const auto &lapl = storage.lapl;
     if (lapl.ndim() != 2 || lapl.shape(0) != chi.shape(0) ||
         lapl.shape(1) != chi.shape(1)) {
-      throw std::invalid_argument("lapl_chi must have shape (nbf, npts)");
+      throw nb::value_error("lapl_chi: expected shape (nbf, npts)");
     }
     grid.lapl_chi = lapl.data();
   }
   if (!hess_obj.is_none()) {
-    storage.hess = nb::cast<NpF64>(hess_obj);
+    storage.hess = nb::cast<F64>(hess_obj, false);
     const auto &hess = storage.hess;
     if (hess.ndim() != 3 || hess.shape(0) != 6 ||
         hess.shape(1) != chi.shape(0) || hess.shape(2) != chi.shape(1)) {
-      throw std::invalid_argument("hess_chi must have shape (6, nbf, npts)");
+      throw nb::value_error("hess_chi: expected shape (6, nbf, npts)");
     }
     grid.hess_chi = hess.data();
   }
@@ -298,7 +211,7 @@ NumpyXcGrid grid_from_numpy(const NpF64 &chi, nb::handle dchi_obj,
 
 struct NumpyXcScalars {
   std::map<std::string, const double *> pointers;
-  std::vector<NpF64> arrays;
+  std::vector<F64> arrays;
 };
 
 NumpyXcScalars scal_from_dict(const nb::dict &scal, std::size_t npts) {
@@ -306,11 +219,11 @@ NumpyXcScalars scal_from_dict(const nb::dict &scal, std::size_t npts) {
   storage.arrays.reserve(scal.size());
   for (auto item : scal) {
     auto name = nb::cast<std::string>(item.first);
-    auto arr = nb::cast<NpF64>(item.second);
+    auto arr = nb::cast<F64>(item.second, false);
     if (!((arr.ndim() == 1 && arr.shape(0) == npts) ||
           (arr.ndim() == 2 && arr.shape(0) == npts && arr.shape(1) == 1))) {
-      throw std::invalid_argument("scalar " + name +
-                                  " must have shape (npts,) or (npts, 1)");
+      throw nb::value_error(
+          ("scalar " + name + ": expected shape (npts,) or (npts, 1)").c_str());
     }
     storage.pointers.emplace(std::move(name), arr.data());
     storage.arrays.push_back(std::move(arr));
@@ -319,14 +232,49 @@ NumpyXcScalars scal_from_dict(const nb::dict &scal, std::size_t npts) {
 }
 #endif
 
+#ifdef RGPOT_HAS_XCKERNEL
+nb::ndarray<nb::numpy, double, nb::c_contig>
+buffer_to_numpy(const double *src, size_t rows, size_t cols) {
+  const size_t n = rows * cols;
+  double *buf = new double[n == 0 ? 1 : n];
+  if (n != 0 && src != nullptr) {
+    std::memcpy(buf, src, n * sizeof(double));
+  }
+  nb::capsule owner(buf, [](void *p) noexcept { delete[] static_cast<double *>(p); });
+  return nb::ndarray<nb::numpy, double, nb::c_contig>(buf, {rows, cols}, owner);
+}
+#endif
+
+#ifdef RGPOT_HAS_FORTRAN_POTS
+template <typename Pot>
+void bind_default_pot(nb::module_ &m, const char *name) {
+  auto cls = nb::class_<PotHolder<Pot>>(m, name);
+  cls.def("__init__", [](PotHolder<Pot> *self) {
+    new (self) PotHolder<Pot>([] { return std::make_unique<Pot>(); });
+  });
+  rgpot::pybind::bind_calls(cls);
+}
+#endif
+
 } // namespace
 
 NB_MODULE(_core, m) {
+  // F1, F3, F7. install_policy registers NumericalError and the
+  // in-use translator. A second translator maps invalid_argument to
+  // ValueError (F7).
+  rgbind::install_policy(m);
+  nb::register_exception_translator(translate_invalid_argument);
+
   m.doc() =
-      "rgpot Python bindings (nanobind): LJ, Metatomic dlopen, ExprPot, "
-      "D3Pot, D4Pot, and XcKernel when the wheel/meson flags are on.";
+      "rgpot Python bindings (nanobind): LJ, Fortran kernels, Metatomic "
+      "dlopen, ExprPot, D3Pot, D4Pot, and XcKernel when the build flags "
+      "are on. Evaluations release the thread (F4).";
   m.attr("__version__") = RGPOT_PY_VERSION;
+#ifdef RGPOT_HAS_METATOMIC
   m.attr("has_metatomic_dlopen") = true;
+#else
+  m.attr("has_metatomic_dlopen") = false;
+#endif
 #ifdef RGPOT_HAS_CACHE
   m.attr("has_cache") = true;
 #else
@@ -352,17 +300,87 @@ NB_MODULE(_core, m) {
 #else
   m.attr("has_xckernel") = false;
 #endif
+#ifdef RGPOT_HAS_FORTRAN_POTS
+  m.attr("has_fortran_pots") = true;
+#else
+  m.attr("has_fortran_pots") = false;
+#endif
 
-  m.def("evaluate_lj", &evaluate_lj, nb::arg("positions"),
-        nb::arg("atom_types"), nb::arg("box"));
+  // F6 round trip. -0.0, NaN, and subnormals are copied unchanged.
+  m.def(
+      "echo_f64",
+      [](const F64 &values) { return rgbind::echo_f64(values); },
+      nb::arg("values").noconvert());
 
-  m.def("evaluate_metatomic_dlopen", &evaluate_metatomic_dlopen,
-        nb::arg("positions"), nb::arg("atom_types"), nb::arg("box"),
-        nb::arg("model_path"), nb::arg("engine_path") = "",
-        nb::arg("device") = "cpu",
-        "Evaluate forces via MetatomicDlopen (dlopen libmetatomic_engine.so). "
-        "engine_path may be empty to use RGPOT_METATOMIC_ENGINE / "
-        "package-bundled multi-ABI engine under rgpot/lib/torch-X.Y/.");
+  m.def(
+      "evaluate_lj",
+      [](const F64 &positions, const I32 &atom_types, const F64 &box) {
+        auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
+        rgpot::LJPot pot;
+        double energy = 0.0;
+        double variance = 0.0;
+        AtomMatrix forces;
+        {
+          nb::gil_scoped_release release;
+          std::tie(energy, forces, variance) =
+              pot(geom.pos, geom.types, geom.box);
+        }
+        if (!std::isfinite(energy)) {
+          throw rgbind::NumericalError("energy is not finite");
+        }
+        return nb::make_tuple(energy, rgpot::pybind::matrix_to_numpy(forces),
+                              variance);
+      },
+      nb::arg("positions").noconvert(), nb::arg("atom_types").noconvert(),
+      nb::arg("box").noconvert());
+
+#ifdef RGPOT_HAS_METATOMIC
+  m.def(
+      "evaluate_metatomic_dlopen",
+      [](const F64 &positions, const I32 &atom_types, const F64 &box,
+         const std::string &model_path, const std::string &engine_path,
+         const std::string &device) {
+        if (model_path.empty()) {
+          throw nb::value_error("model_path is required");
+        }
+        auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
+        rgpot::MetatomicConfig cfg;
+        cfg.model_path = model_path;
+        cfg.engine_path = engine_path;
+        cfg.device = device.empty() ? "cpu" : device;
+        rgpot::MetatomicDlopen front(cfg);
+        if (!front.available()) {
+          throw std::runtime_error("MetatomicDlopen: engine not available");
+        }
+        const size_t n = geom.pos.rows();
+        AtomMatrix forces = AtomMatrix::Zero(n, 3);
+        double flat[9];
+        for (int i = 0; i < 3; ++i) {
+          for (int j = 0; j < 3; ++j) {
+            flat[i * 3 + j] =
+                geom.box[static_cast<size_t>(i)][static_cast<size_t>(j)];
+          }
+        }
+        rgpot::ForceInput in{n, geom.pos.data(), geom.types.data(), flat};
+        rgpot::ForceOut out{forces.data(), 0.0, 0.0, {}, 0};
+        {
+          nb::gil_scoped_release release;
+          front.forceImpl(in, &out);
+        }
+        if (!std::isfinite(out.energy)) {
+          throw rgbind::NumericalError("energy is not finite");
+        }
+        return nb::make_tuple(out.energy, rgpot::pybind::matrix_to_numpy(forces),
+                              out.variance);
+      },
+      nb::arg("positions").noconvert(), nb::arg("atom_types").noconvert(),
+      nb::arg("box").noconvert(), nb::arg("model_path"),
+      nb::arg("engine_path") = "", nb::arg("device") = "cpu",
+      "Evaluate forces via MetatomicDlopen (dlopen libmetatomic_engine.so). "
+      "engine_path may be empty to use RGPOT_METATOMIC_ENGINE / "
+      "package-bundled multi-ABI engine under rgpot/lib/torch-X.Y/. "
+      "Each call builds its own frontend (F4).");
+#endif
 
 #ifdef RGPOT_HAS_CACHE
   nb::class_<rgpot::cache::PotentialCache>(m, "PotentialCache")
@@ -380,95 +398,122 @@ NB_MODULE(_core, m) {
       .def("reset_counts", &rgpot::cache::PotentialCache::reset_counts);
 #endif
 
-  nb::class_<rgpot::LJPot>(m, "LJPot")
-      .def(nb::init<>())
+  auto lj = nb::class_<PotHolder<rgpot::LJPot>>(m, "LJPot");
+  lj.def(
+      "__init__",
+      [](PotHolder<rgpot::LJPot> *self, double u0, double cutoff, double psi,
+         double switch_width) {
+        new (self) PotHolder<rgpot::LJPot>([=] {
+          rgpot::LJConfig cfg;
+          cfg.u0 = u0;
+          cfg.cutoff = cutoff;
+          cfg.psi = psi;
+          cfg.switch_width = switch_width;
+          return std::make_unique<rgpot::LJPot>(cfg);
+        });
+      },
+      nb::arg("u0") = 1.0, nb::arg("cutoff") = 15.0, nb::arg("psi") = 1.0,
+      nb::arg("switch_width") = 0.0);
+  lj.def("config", [](const PotHolder<rgpot::LJPot> &self) {
+    const rgpot::LJConfig &cfg = self.primary().config();
+    nb::dict out;
+    out["u0"] = cfg.u0;
+    out["cutoff"] = cfg.cutoff;
+    out["psi"] = cfg.psi;
+    out["switch_width"] = cfg.switch_width;
+    return out;
+  });
 #ifdef RGPOT_HAS_CACHE
-      .def(
-          "set_cache",
-          [](rgpot::LJPot &self, rgpot::cache::PotentialCache *cache) {
-            self.set_cache(cache);
-          },
-          nb::arg("cache").none(), nb::keep_alive<1, 2>())
+  lj.def(
+      "set_cache",
+      [](PotHolder<rgpot::LJPot> &self, rgpot::cache::PotentialCache *cache) {
+        self.primary().set_cache(cache);
+      },
+      nb::arg("cache").none(), nb::keep_alive<1, 2>());
 #endif
-      .def(
-          "__call__",
-          [](rgpot::LJPot &self, const NpF64 &positions,
-             const NpI32 &atom_types, const NpF64 &box) {
-            return call_pot(self, positions, atom_types, box);
-          },
-          nb::arg("positions"), nb::arg("atom_types"), nb::arg("box"));
+  rgpot::pybind::bind_calls(lj);
+
+#ifdef RGPOT_HAS_FORTRAN_POTS
+  bind_default_pot<rgpot::fortranpots::SWPot>(m, "SWPot");
+  bind_default_pot<rgpot::fortranpots::EDIPPot>(m, "EDIPPot");
+  bind_default_pot<rgpot::fortranpots::LenoskyPot>(m, "LenoskyPot");
+  bind_default_pot<rgpot::fortranpots::TersoffPot>(m, "TersoffPot");
+  bind_default_pot<rgpot::fortranpots::EAMAlPot>(m, "EAMAlPot");
+  bind_default_pot<rgpot::fortranpots::FeHePot>(m, "FeHePot");
+  bind_default_pot<rgpot::fortranpots::CuH2Pot>(m, "CuH2Pot");
+  bind_default_pot<rgpot::fortranpots::WaterHPot>(m, "WaterHPot");
+#endif
 
 #ifdef RGPOT_HAS_DFTD3
-  nb::class_<rgpot::D3Pot>(m, "D3Pot")
-      .def(nb::init<>())
-      .def(
-          "__init__",
-          [](rgpot::D3Pot *self, const std::string &damping,
-             const std::string &functional, bool atm) {
-            rgpot::D3Config cfg;
-            cfg.functional = functional;
-            cfg.atm = atm;
-            cfg.damping = (damping == "zero" || damping == "Zero")
-                              ? rgpot::D3Damping::Zero
-                              : rgpot::D3Damping::BJ;
-            new (self) rgpot::D3Pot(cfg);
-          },
-          nb::arg("damping") = "bj", nb::arg("functional") = "pbe",
-          nb::arg("atm") = true)
-      .def(
-          "__call__",
-          [](rgpot::D3Pot &self, const NpF64 &positions,
-             const NpI32 &atom_types, const NpF64 &box) {
-            return call_pot(self, positions, atom_types, box);
-          },
-          nb::arg("positions"), nb::arg("atom_types"), nb::arg("box"));
+  auto d3 = nb::class_<PotHolder<rgpot::D3Pot>>(m, "D3Pot");
+  d3.def(
+      "__init__",
+      [](PotHolder<rgpot::D3Pot> *self, const std::string &damping,
+         const std::string &functional, bool atm) {
+        new (self) PotHolder<rgpot::D3Pot>([=] {
+          rgpot::D3Config cfg;
+          cfg.functional = functional;
+          cfg.atm = atm;
+          cfg.damping = (damping == "zero" || damping == "Zero")
+                            ? rgpot::D3Damping::Zero
+                            : rgpot::D3Damping::BJ;
+          return std::make_unique<rgpot::D3Pot>(cfg);
+        });
+      },
+      nb::arg("damping") = "bj", nb::arg("functional") = "pbe",
+      nb::arg("atm") = true);
+  rgpot::pybind::bind_calls(d3);
 #endif
 
 #ifdef RGPOT_HAS_DFTD4
-  nb::class_<rgpot::D4Pot>(m, "D4Pot")
-      .def(nb::init<>())
-      .def(
-          "__init__",
-          [](rgpot::D4Pot *self, const std::string &functional, double charge,
-             bool atm) {
-            rgpot::D4Config cfg;
-            cfg.functional = functional;
-            cfg.charge = charge;
-            cfg.atm = atm;
-            new (self) rgpot::D4Pot(cfg);
-          },
-          nb::arg("functional") = "pbe", nb::arg("charge") = 0.0,
-          nb::arg("atm") = true)
-      .def(
-          "__call__",
-          [](rgpot::D4Pot &self, const NpF64 &positions,
-             const NpI32 &atom_types, const NpF64 &box) {
-            return call_pot(self, positions, atom_types, box);
-          },
-          nb::arg("positions"), nb::arg("atom_types"), nb::arg("box"));
+  auto d4 = nb::class_<PotHolder<rgpot::D4Pot>>(m, "D4Pot");
+  d4.def(
+      "__init__",
+      [](PotHolder<rgpot::D4Pot> *self, const std::string &functional,
+         double charge, bool atm) {
+        new (self) PotHolder<rgpot::D4Pot>([=] {
+          rgpot::D4Config cfg;
+          cfg.functional = functional;
+          cfg.charge = charge;
+          cfg.atm = atm;
+          return std::make_unique<rgpot::D4Pot>(cfg);
+        });
+      },
+      nb::arg("functional") = "pbe", nb::arg("charge") = 0.0,
+      nb::arg("atm") = true);
+  rgpot::pybind::bind_calls(d4);
 #endif
 
 #ifdef RGPOT_HAS_EXPR
-  nb::class_<rgpot::ExprPot>(m, "ExprPot")
-      .def(
-          "__init__",
-          [](rgpot::ExprPot *self, const std::string &expression,
-             const nb::dict &terms) {
-            auto pot = make_expr_pot(expression, terms);
-            new (self) rgpot::ExprPot(std::move(*pot));
-          },
-          nb::arg("expression"), nb::arg("terms"),
-          "expression is a Lepton string; terms maps names to 'lj'/'morse'/"
-          "'d3'/'d4' or a dict with kind plus D3/D4 fields.")
-      .def(
-          "__call__",
-          [](rgpot::ExprPot &self, const NpF64 &positions,
-             const NpI32 &atom_types, const NpF64 &box) {
-            return call_pot(self, positions, atom_types, box);
-          },
-          nb::arg("positions"), nb::arg("atom_types"), nb::arg("box"))
-      .def_prop_ro("expression", &rgpot::ExprPot::expression)
-      .def("d_energy_d_term", &rgpot::ExprPot::dEnergyDTerm, nb::arg("name"));
+  auto expr = nb::class_<PotHolder<rgpot::ExprPot>>(m, "ExprPot");
+  expr.def(
+      "__init__",
+      [](PotHolder<rgpot::ExprPot> *self, const std::string &expression,
+         const nb::dict &terms) {
+        std::vector<ChildSpec> specs;
+        specs.reserve(terms.size());
+        for (auto item : terms) {
+          auto name = nb::cast<std::string>(item.first);
+          specs.push_back(child_spec_from(name, item.second));
+        }
+        new (self) PotHolder<rgpot::ExprPot>([=] {
+          return expr_from_specs(expression, specs);
+        });
+      },
+      nb::arg("expression"), nb::arg("terms"),
+      "expression is a Lepton string; terms maps names to 'lj'/'morse'/"
+      "'d3'/'d4' or a dict with kind plus D3/D4 fields.");
+  expr.def_prop_ro("expression", [](const PotHolder<rgpot::ExprPot> &self) {
+    return self.primary().expression();
+  });
+  expr.def(
+      "d_energy_d_term",
+      [](PotHolder<rgpot::ExprPot> &self, const std::string &name) {
+        nb::gil_scoped_release release;
+        return self.slot().dEnergyDTerm(name);
+      },
+      nb::arg("name"));
+  rgpot::pybind::bind_calls(expr);
 #endif
 
 #ifdef RGPOT_HAS_XCKERNEL
@@ -479,34 +524,43 @@ NB_MODULE(_core, m) {
       .def("scal_names", &rgpot::XcKernel::scalNames)
       .def(
           "contract",
-          [](const rgpot::XcKernel &self, const NpF64 &chi, nb::handle dchi,
+          [](const rgpot::XcKernel &self, const F64 &chi, nb::handle dchi,
              const nb::dict &scal, nb::handle lapl_chi, nb::handle hess_chi) {
             auto storage = grid_from_numpy(chi, dchi, lapl_chi, hess_chi);
             const auto &grid = storage.grid;
             auto scalars = scal_from_dict(scal, static_cast<size_t>(grid.npts));
             const auto nbf = static_cast<size_t>(grid.nbf);
             std::vector<double> out(nbf * nbf, 0.0);
-            const int rc = self.contract(grid, scalars.pointers, out.data());
+            int rc = 0;
+            {
+              nb::gil_scoped_release release;
+              rc = self.contract(grid, scalars.pointers, out.data());
+            }
             if (rc != 0) {
               throw std::runtime_error("XcKernel.contract rc=" +
                                        std::to_string(rc));
             }
             return buffer_to_numpy(out.data(), nbf, nbf);
           },
-          nb::arg("chi"), nb::arg("dchi") = nb::none(), nb::arg("scal"),
-          nb::arg("lapl_chi") = nb::none(), nb::arg("hess_chi") = nb::none())
+          nb::arg("chi").noconvert(), nb::arg("dchi"), nb::arg("scal"),
+          nb::arg("lapl_chi") = nb::none(),
+          nb::arg("hess_chi") = nb::none())
       .def_static(
           "fields_from_density",
-          [](const NpF64 &chi, nb::handle dchi, const NpF64 &density,
+          [](const F64 &chi, nb::handle dchi, const F64 &density,
              nb::handle lapl_chi, nb::handle hess_chi) {
             auto storage = grid_from_numpy(chi, dchi, lapl_chi, hess_chi);
             const auto &grid = storage.grid;
-            if (density.ndim() != 2 ||
-                density.shape(0) != chi.shape(0) ||
-                density.shape(1) != chi.shape(0)) {
-              throw std::invalid_argument("density must have shape (nbf, nbf)");
+            rgbind::check_f64_2d(density, static_cast<size_t>(chi.shape(0)),
+                                 static_cast<size_t>(chi.shape(0)), "density");
+            std::vector<double> density_copy(
+                density.data(), density.data() + density.size());
+            rgpot::XcFields fields;
+            {
+              nb::gil_scoped_release release;
+              fields = rgpot::XcKernel::fieldsFromDensity(grid,
+                                                         density_copy.data());
             }
-            auto fields = rgpot::XcKernel::fieldsFromDensity(grid, density.data());
             nb::dict out;
             auto vec1 = [](const std::vector<double> &v, size_t n) {
               return buffer_to_numpy(v.data(), n, 1);
@@ -521,7 +575,8 @@ NB_MODULE(_core, m) {
             }
             return out;
           },
-          nb::arg("chi"), nb::arg("dchi"), nb::arg("density"),
-          nb::arg("lapl_chi") = nb::none(), nb::arg("hess_chi") = nb::none());
+          nb::arg("chi").noconvert(), nb::arg("dchi"),
+          nb::arg("density").noconvert(), nb::arg("lapl_chi") = nb::none(),
+          nb::arg("hess_chi") = nb::none());
 #endif
 }

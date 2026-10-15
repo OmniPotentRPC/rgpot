@@ -30,6 +30,21 @@ on:
         required: false
         type: string
         default: ""
+      apt-packages:
+        description: Space-separated apt packages installed before the build. Empty skips apt.
+        required: false
+        type: string
+        default: ""
+      setup-script:
+        description: Repo-relative script to source instead of pip install of the package. Empty keeps pip install.
+        required: false
+        type: string
+        default: ""
+      python:
+        description: JSON array of free-threaded version tags. The default is 3.14t and 3.15t.
+        required: false
+        type: string
+        default: '["3.14t","3.15t"]'
 
 permissions:
   contents: read
@@ -42,7 +57,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.14t", "3.15t"]
+        python: ${{ fromJSON(inputs.python) }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -61,16 +76,40 @@ jobs:
           fi
           echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
 
-      - name: Install the package and the T1 runner
+      - name: Install apt packages
+        if: inputs.apt-packages != ''
         shell: bash
         run: |
           set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ${{ inputs.apt-packages }}
+
+      - name: Install the package and the T1 runner
+        shell: bash
+        env:
+          SETUP_SCRIPT: ${{ inputs.setup-script }}
+          PKG: ${{ inputs.package-dir }}
+          EXTRAS: ${{ inputs.extras }}
+        run: |
+          set -euo pipefail
           python -m pip install -U pip
-          python -m pip install pytest pytest-run-parallel pytest-timeout hypothesis numpy
-          if [ -n "${{ inputs.extras }}" ]; then
-            python -m pip install "./${{ inputs.package-dir }}[${{ inputs.extras }}]"
+          python -m pip install pytest pytest-run-parallel pytest-timeout
+          # Free-threaded 3.13 has no wheel for current NumPy, SciPy, Pillow,
+          # or Hypothesis. Hypothesis 6.156+ is a PyO3 extension, and PyO3
+          # does not build on 3.13t. NumPy 2.4, SciPy 1.16, and Pillow 12.2
+          # do publish cp313t wheels. Hypothesis 6.155 is still pure Python.
+          if python -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 13) else 1)'; then
+            python -m pip install 'numpy>=2.2,<2.5' 'scipy>=1.15,<1.17' 'pillow>=11,<12.3' 'hypothesis>=6,<6.156'
           else
-            python -m pip install "./${{ inputs.package-dir }}"
+            python -m pip install numpy hypothesis
+          fi
+          if [ -n "${SETUP_SCRIPT}" ]; then
+            # shellcheck disable=SC1090
+            source "${SETUP_SCRIPT}"
+          elif [ -n "${EXTRAS}" ]; then
+            python -m pip install "./${PKG}[${EXTRAS}]"
+          else
+            python -m pip install "./${PKG}"
           fi
 
       - name: F1 import with the GIL disabled

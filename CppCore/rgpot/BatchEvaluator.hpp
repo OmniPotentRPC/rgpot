@@ -89,31 +89,57 @@ public:
     }
     const std::size_t workers =
         std::min<std::size_t>(m_n_threads, inputs.size());
+    // Each worker writes a private vector. After the join those vectors
+    // are moved into results in index order, so results[i] answers
+    // inputs[i] and workers never assign into the same BatchResult.
+    std::vector<std::vector<BatchResult>> local(workers);
     std::vector<std::exception_ptr> errors(workers);
     auto run = [&](std::size_t w, std::size_t first, std::size_t last) {
       try {
+        local[w].reserve(last - first);
         for (std::size_t i = first; i < last; ++i) {
           auto [energy, forces, variance] = (*m_potentials[w])(
               inputs[i].positions, inputs[i].atomic_numbers, inputs[i].box);
-          results[i] = BatchResult{energy, std::move(forces), variance};
+          local[w].push_back(BatchResult{energy, std::move(forces), variance});
         }
       } catch (...) {
         errors[w] = std::current_exception();
       }
     };
 
+    // One configuration, or one requested worker: run on this thread.
+    // Spawning a std::thread and joining it is the whole cost when the
+    // kernel is short.
+    if (workers == 1) {
+      run(0, 0, inputs.size());
+      if (errors[0]) {
+        std::rethrow_exception(errors[0]);
+      }
+      for (std::size_t k = 0; k < local[0].size(); ++k) {
+        results[k] = std::move(local[0][k]);
+      }
+      return results;
+    }
+
     std::vector<std::thread> threads;
     threads.reserve(workers);
     const std::size_t base = inputs.size() / workers;
     const std::size_t extra = inputs.size() % workers;
     std::size_t first = 0;
+    std::vector<std::size_t> starts(workers);
     for (std::size_t w = 0; w < workers; ++w) {
+      starts[w] = first;
       const std::size_t last = first + base + (w < extra ? 1 : 0);
       threads.emplace_back(run, w, first, last);
       first = last;
     }
     for (auto &t : threads) {
       t.join();
+    }
+    for (std::size_t w = 0; w < workers; ++w) {
+      for (std::size_t k = 0; k < local[w].size(); ++k) {
+        results[starts[w] + k] = std::move(local[w][k]);
+      }
     }
     for (auto &e : errors) {
       if (e) {

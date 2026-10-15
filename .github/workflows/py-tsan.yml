@@ -40,15 +40,34 @@ on:
         required: false
         type: string
         default: nightly-2026-01-20
+      apt-packages:
+        description: Space-separated apt packages installed inside the TSan image. Empty skips apt.
+        required: false
+        type: string
+        default: ""
+      setup-script:
+        description: Repo-relative script to source instead of pip install of the package. Empty keeps pip install.
+        required: false
+        type: string
+        default: ""
+      images:
+        description: JSON list of TSan images. Each object has name, image, and build_numpy. The default is numpy-tsan 3.14t, which already contains NumPy.
+        required: false
+        type: string
+        default: '[{"name":"3.14t","image":"ghcr.io/nascheme/numpy-tsan:3.14t@sha256:f6dd658f1a155be35e27b182cac97c2a77c4b2d62bacb81753beaba725978149","build_numpy":"false"}]'
 
 permissions:
   contents: read
 
 jobs:
   tsan:
-    name: T2 cpython_sanity 3.14t
+    name: T2 cpython_sanity ${{ matrix.target.name }}
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(inputs.images) }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -73,18 +92,50 @@ jobs:
           RUST_ARCHIVE: ${{ inputs.rust-archive }}
           TSAN_CMAKE_ARGS: ${{ inputs.tsan-cmake-args }}
           RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+          SETUP_SCRIPT: ${{ inputs.setup-script }}
+          IMAGE: ${{ matrix.target.image }}
+          BUILD_NUMPY: ${{ matrix.target.build_numpy }}
+          BOOTSTRAP_CPYTHON: ${{ matrix.target.bootstrap }}
         run: |
           set -euo pipefail
-          # numpy-tsan is the cpython_sanity 3.14t image plus a TSan numpy.
-          # The tag is pinned by digest. Mount the tree at /src. /work holds
-          # the image's pyenv install.
-          IMAGE=ghcr.io/nascheme/numpy-tsan:3.14t@sha256:f6dd658f1a155be35e27b182cac97c2a77c4b2d62bacb81753beaba725978149
+          # The image tag is pinned by digest. Mount the tree at /src.
+          # /work holds the image's pyenv install. numpy-tsan already
+          # contains NumPy. cpython-tsan does not, so build_numpy compiles
+          # it with the same sanitizer flags as the extension.
+          if [ -z "${IMAGE}" ]; then
+            echo "TSan image is empty" >&2
+            exit 1
+          fi
           docker run --rm -i \
             -e PKG -e TEST_PATH -e IMPORTS -e EXTRAS -e RUST_CRATE -e RUST_ARCHIVE -e TSAN_CMAKE_ARGS -e RUST_TOOLCHAIN \
+            -e APT_PACKAGES -e SETUP_SCRIPT -e BUILD_NUMPY -e BOOTSTRAP_CPYTHON \
             -v "$GITHUB_WORKSPACE":/src -w /src \
             "$IMAGE" \
             bash -s << 'EOF'
           set -euo pipefail
+          if [ -n "${BOOTSTRAP_CPYTHON:-}" ]; then
+            # cpython-tsan:3.13t lists an amd64 manifest the registry does
+            # not serve. Build that interpreter here instead.
+            apt-get update
+            apt-get install -y build-essential clang pkg-config libffi-dev libssl-dev zlib1g-dev \
+              libsqlite3-dev libbz2-dev liblzma-dev libreadline-dev ca-certificates curl xz-utils
+            curl -fsSL -o /tmp/cpython.tar.gz \
+              "https://github.com/python/cpython/archive/refs/tags/v${BOOTSTRAP_CPYTHON}.tar.gz"
+            rm -rf "/tmp/cpython-${BOOTSTRAP_CPYTHON}"
+            tar -C /tmp -xzf /tmp/cpython.tar.gz
+            (
+              cd "/tmp/cpython-${BOOTSTRAP_CPYTHON}"
+              CC=clang CXX=clang++ ./configure \
+                --prefix=/opt/python-tsan \
+                --disable-gil \
+                --with-thread-sanitizer \
+                --with-ensurepip=install
+              make -j"$(nproc)"
+              make install
+            )
+            export PATH="/opt/python-tsan/bin:${PATH}"
+          fi
           if command -v python >/dev/null 2>&1; then
             PY=python
           elif command -v python3 >/dev/null 2>&1; then
@@ -108,6 +159,11 @@ jobs:
           export CXXFLAGS="${CXXFLAGS:-} -fsanitize=thread -fno-omit-frame-pointer -g -ffp-contract=off"
           export LDFLAGS="${LDFLAGS:-} -fsanitize=thread"
           export PIP_BREAK_SYSTEM_PACKAGES=1
+          if [ -n "${APT_PACKAGES}" ]; then
+            apt-get update
+            # shellcheck disable=SC2086
+            apt-get install -y ${APT_PACKAGES}
+          fi
           if [ -n "${RUST_CRATE}" ]; then
             if [ ! -f "/src/${PKG}/${RUST_CRATE}/Cargo.toml" ]; then
               echo "missing Rust crate /src/${PKG}/${RUST_CRATE}/Cargo.toml" >&2
@@ -137,8 +193,19 @@ jobs:
             fi
           fi
           "$PY" -m pip install -U pip
-          "$PY" -m pip install nanobind scikit-build-core cmake ninja pytest pytest-timeout pytest-run-parallel hypothesis
-          if ! "$PY" -c 'import numpy' >/dev/null 2>&1; then
+          "$PY" -m pip install nanobind scikit-build-core cmake ninja pytest pytest-timeout pytest-run-parallel
+          # Hypothesis 6.156+ is a PyO3 extension. PyO3 does not build on
+          # free-threaded 3.13, and that tag has no cp313t wheel.
+          if "$PY" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 13) else 1)'; then
+            "$PY" -m pip install 'hypothesis>=6,<6.156'
+          else
+            "$PY" -m pip install hypothesis
+          fi
+          if [ "${BUILD_NUMPY:-false}" = "true" ]; then
+            apt-get update
+            apt-get install -y pkg-config libopenblas-dev
+            "$PY" -m pip install 'numpy>=2' --no-binary=numpy
+          elif ! "$PY" -c 'import numpy' >/dev/null 2>&1; then
             "$PY" -m pip install 'numpy>=1.24'
           fi
           spec="/src/${PKG}"
@@ -155,7 +222,13 @@ jobs:
           if [ -n "${cmake_args}" ]; then
             export CMAKE_ARGS="${cmake_args}"
           fi
-          "$PY" -m pip install "${install_args[@]}" "${spec}"
+          if [ -n "${SETUP_SCRIPT}" ]; then
+            export ROOT=/src
+            # shellcheck disable=SC1090
+            source "/src/${SETUP_SCRIPT}"
+          else
+            "$PY" -m pip install "${install_args[@]}" "${spec}"
+          fi
           if [ -n "${RUST_CRATE}" ]; then
             if ! command -v nm >/dev/null 2>&1; then
               apt-get update
