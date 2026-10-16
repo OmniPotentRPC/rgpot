@@ -21,7 +21,11 @@ struct XTBConfig {
   int uhf = 0;
 };
 
-/** Optional engine path for the dlopen frontend (also RGPOT_XTB_ENGINE). */
+/**
+ * Engine library for the dlopen frontend.
+ * A non-empty path is the only candidate. An empty path uses
+ * ``RGPOT_XTB_ENGINE`` and the other discovery routes.
+ */
 struct XTBDlopenConfig {
   XTBConfig xtb{};
   std::string engine_path;

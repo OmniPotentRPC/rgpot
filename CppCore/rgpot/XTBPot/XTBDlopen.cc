@@ -67,8 +67,13 @@ int method_to_c(GFNMethod m) {
 
 std::vector<std::string> candidate_paths(const XTBDlopenConfig &config) {
   std::vector<std::string> out;
-  if (!config.engine_path.empty())
+  // An explicit path is exclusive. Falling through to the bare soname lets
+  // the loader (LD_LIBRARY_PATH / DYLD_LIBRARY_PATH / PATH) or an env/dir
+  // candidate satisfy a request for a different library.
+  if (!config.engine_path.empty()) {
     out.push_back(config.engine_path);
+    return out;
+  }
   if (const char *e = std::getenv("RGPOT_XTB_ENGINE"))
     if (e && *e)
       out.emplace_back(e);
@@ -142,6 +147,9 @@ XTBDlopen::XTBDlopen(const XTBDlopenConfig &config) {
   if (!abi || !m_create || !m_destroy || !m_force) {
     close_lib(m_lib);
     m_lib = nullptr;
+    // The opened library is the one we selected. Do not resume the
+    // candidate list: an explicit path (or the first discovery hit) that
+    // lacks the ABI must not silently load a different engine.
     throw std::runtime_error(
         "XTBDlopen: missing C ABI symbols in engine library");
   }
