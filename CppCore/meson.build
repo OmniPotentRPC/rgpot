@@ -548,6 +548,17 @@ if get_option('with_tests')
         ),
     )
     test(
+        'AotiPublicationStressTest',
+        executable(
+            'aoti_publication_stress_test',
+            'tests/AotiPublicationStressTest.cc',
+            include_directories: ['.'],
+            dependencies: dependency('threads'),
+            override_options: ['cpp_std=c++20'],
+        ),
+        timeout: 600,
+    )
+    test(
         'MolecularFrameTest',
         executable(
             'molecular_frame_test',
