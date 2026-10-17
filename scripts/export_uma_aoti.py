@@ -91,48 +91,6 @@ def default_label(atoms_path: str | None) -> str:
     return path.stem
 
 
-def _cellpar_to_cell(lengths, angles):
-    from ase.geometry import cellpar_to_cell
-
-    return cellpar_to_cell(list(lengths) + list(angles))
-
-
-def _read_eon_con(path: Path) -> Atoms:
-    """Read an eOn .con (ASE has no built-in eOn reader)."""
-    lines = Path(path).read_text().splitlines()
-    if len(lines) < 9:
-        raise ValueError(f"{path}: too short for eOn .con")
-    lengths = [float(x) for x in lines[2].split()[:3]]
-    angles = [float(x) for x in lines[3].split()[:3]]
-    ntypes = int(lines[6].split()[0])
-    counts = [int(x) for x in lines[7].split()[:ntypes]]
-    if len(counts) < ntypes:
-        raise ValueError(f"{path}: expected {ntypes} type counts")
-    symbols: list[str] = []
-    positions: list[list[float]] = []
-    i = 9
-    for n_at in counts:
-        if i >= len(lines):
-            raise ValueError(f"{path}: truncated type header")
-        sym = lines[i].strip().split()[0]
-        i += 1
-        if i < len(lines) and lines[i].lower().startswith("coordinates"):
-            i += 1
-        for _ in range(n_at):
-            if i >= len(lines):
-                raise ValueError(f"{path}: truncated coordinates")
-            parts = lines[i].split()
-            positions.append([float(parts[0]), float(parts[1]), float(parts[2])])
-            symbols.append(sym)
-            i += 1
-    return Atoms(
-        symbols=symbols,
-        positions=positions,
-        cell=_cellpar_to_cell(lengths, angles),
-        pbc=True,
-    )
-
-
 def _ensure_box(atoms: Atoms) -> Atoms:
     cell = atoms.get_cell()
     if cell is None or float(cell.volume) < 1e-8:
@@ -144,19 +102,19 @@ def _ensure_box(atoms: Atoms) -> Atoms:
 
 
 def load_atoms(path: str | os.PathLike | None) -> Atoms:
-    """Load .xyz/.con via ASE, then an eOn .con fallback. Default is Baker HCN."""
+    """Load a structure. ``.con`` goes through ``atoms_from_con``. Default is Baker HCN."""
     if path is None:
         return HCN.copy()
     path = Path(path)
     if not path.is_file():
         raise SystemExit(f"--atoms not found: {path}")
     if path.suffix.lower() == ".con":
-        try:
-            return _ensure_box(_read_eon_con(path))
-        except Exception:
-            from ase.io import read
+        rpc = Path(__file__).resolve().parents[1] / "CppCore" / "rgpot" / "rpc"
+        if str(rpc) not in sys.path:
+            sys.path.insert(0, str(rpc))
+        from ase_helpers import atoms_from_con
 
-            return _ensure_box(read(str(path)))
+        return _ensure_box(atoms_from_con(path))
     from ase.io import read
 
     return _ensure_box(read(str(path)))

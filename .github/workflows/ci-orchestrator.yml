@@ -695,6 +695,8 @@ jobs:
           cache: true
       - name: Check eonviz pins
         run: pixi run check-eonviz-pins
+      - name: Byte-exact restart golden
+        run: pixi run bash scripts/check_readcon_golden.sh
 
   # --- Single branch-protection target (require this job name in settings) ---
   ci_gate:

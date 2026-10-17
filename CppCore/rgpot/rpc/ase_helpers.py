@@ -9,9 +9,12 @@ These wrap the lower-level pieces so a user works in plain ASE terms:
   Journal on Computing method) using the calculator's energy and forces. The API
   mirrors ``ase.optimize`` optimizers (``opt = AnnealOptimizer(atoms); opt.run()``).
 
-* :func:`atoms_from_con` / :func:`atoms_to_calc` -- load atomic structures from
-  EON ``.con`` files via ``readcon`` (readcon-core's Python module) straight into
-  an :class:`ase.Atoms`, optionally attaching a calculator.
+* :func:`atoms_from_con` / :func:`atoms_to_con` / :func:`atoms_to_calc` --
+  load and write atomic structures as EON ``.con`` files via ``readcon``
+  (readcon-core's Python module). Loading keeps the
+  ``SinglePointCalculator`` that ``to_ase`` attached unless the caller passes
+  ``calc``. Writing uses ``ConFrame.from_ase`` and ``write_con`` with
+  precision omitted and canonical left off, and does not open a corpus.
 
 The heavy dependencies (``anneal``, ``readcon``) are imported lazily so importing
 this module only needs ASE + numpy.
@@ -99,6 +102,10 @@ def atoms_from_con(path, index: int = -1, *, calc=None, cell=None, pbc=None) -> 
     you. ``cell`` / ``pbc`` override those defaults when given -- handy when the
     ``.con`` cell is absent, or when a cluster needs a large non-periodic box.
 
+    A frame that stored forces comes back with the ``SinglePointCalculator``
+    ``to_ase`` attached, including the frame energy when that calculator
+    carries one. That calculator stays unless ``calc`` is passed.
+
     Parameters
     ----------
     path:
@@ -122,6 +129,18 @@ def atoms_from_con(path, index: int = -1, *, calc=None, cell=None, pbc=None) -> 
     if calc is not None:
         atoms.calc = calc
     return atoms
+
+
+def atoms_to_con(path, atoms: Atoms) -> None:
+    """Write ``atoms`` as one EON ``.con`` frame.
+
+    ``ConFrame.from_ase`` then ``write_con`` with precision omitted and
+    canonical left off. No corpus.
+    """
+    import readcon  # lazy: readcon-core's Python module
+
+    frame = readcon.ConFrame.from_ase(atoms)
+    readcon.write_con(str(path), [frame])
 
 
 def atoms_to_calc(atoms: Atoms, calc) -> Atoms:

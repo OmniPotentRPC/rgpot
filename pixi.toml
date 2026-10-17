@@ -157,9 +157,13 @@ pip = "*"
 # Released versions carry the embedded-metadata minimization-trajectory parser
 # and the (s, d) optimization-landscape plotter (plt-min). Exact pins keep the
 # lock reproducible; scripts/check_eonviz_pins.sh enforces that.
+# readcon 0.17.1 is not on PyPI (the published wheel is 0.17.0). Until that
+# release, install readcon-core main at 694e808 or a later descendant.
+# Pixi rejects a version key next to git, so scripts/check_eonviz_pins.sh
+# parses `version` from that commit's pyproject.toml and requires >=0.17.1.
 chemparseplot = "==1.11.0"
 rgpycrumbs = "==1.11.0"
-readcon = ">=0.14.7"
+readcon = { git = "https://github.com/lode-org/readcon-core.git", rev = "694e808080c49979ee3099afcfa18e5420c40433" }
 jax = "*"
 
 # UMA AOTI exporter (scripts/export_uma_aoti.py). fairchem-core 2.23 requires
