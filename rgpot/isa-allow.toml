@@ -1,7 +1,7 @@
-# Above-baseline instructions in librgpot are allowed only in the Highway
-# namespaces named below. Vendored libraries that auditwheel or delocate
-# copy into a wheel are listed separately. A feature not listed for that
-# symbol or path still fails.
+# Above-baseline instructions in librgpot belong to the [[allow]] symbols.
+# Highway namespaces and the FMA bodies run only after a runtime check.
+# Vendored libraries that auditwheel or delocate copy into the wheel are
+# listed separately. A feature not listed for that symbol or path still fails.
 
 baseline = "x86-64"
 
@@ -173,8 +173,10 @@ reason = "libgcc outlined LSE atomics linked into the shared library"
 
 # FMA bodies outside a Highway namespace. Each one is entered only after
 # glibc reports that the processor's FMA is usable. The SSE2 kernel that
-# runs when it is not stays free of these instructions.
+# runs when it is not stays free of these instructions. accumulateHw is the
+# target("fma") pair-list loop; -mfma also selects AVX encodings in that
+# body. fold_hardware is the minimum-image fold.
 [[allow]]
-symbol = '^rgpot::simd::(exact_fma_hw|r2_hw_n|r2_hw|accept_row_hw|exp2_hw_finite|exp2_hw|exp8_hw|exp_hw_n|morse8_hw|eam_fma|lj_hw|morse_hw|eam_hw)\b'
+symbol = '^(rgpot::simd::(exact_fma_hw|r2_hw_n|r2_hw|accept_row_hw|exp2_hw_finite|exp2_hw|exp8_hw|exp_hw_n|morse8_hw|eam_fma|lj_hw|morse_hw|eam_hw)|rgpot::nlist::_GLOBAL__N_[0-9]+::fold_hardware)\b|rgpot::nlist::CachedPairList::accumulateHw<'
 features = ["avx", "fma", "sse3"]
 reason = "FMA bodies selected when the processor's FMA is usable"

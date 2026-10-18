@@ -15,6 +15,28 @@
 #include <thread>
 #include <vector>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#ifdef small
+#undef small
+#endif
+#ifdef interface
+#undef interface
+#endif
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
+#endif
+
 namespace rgpot {
 namespace aoti_execstack {
 
@@ -233,50 +255,189 @@ inline bool scan_or_clear_pt2(uint8_t *buf, size_t n, bool write) {
   return needed;
 }
 
-// Windows refuses to open or replace a file while another handle is in the
-// middle of replacing it. A short bounded retry rides out that window; other
-// platforms succeed on the first attempt.
-inline constexpr int kPublicationAttempts = 400;
+// Publication writes a private complete file, then replaces the destination.
+// A reader therefore observes one full payload, whichever writer landed last.
+// On Windows, exists, status, and replace can return access denied (5) or
+// sharing violation (32) while another replace of that path is in flight.
+// Those two errors are retried with exponential backoff until the deadline.
+// Readers open with delete sharing so an open read does not refuse the
+// replace. POSIX still uses rename, and only permission_denied is transient.
+inline constexpr std::chrono::milliseconds kPublicationInitialBackoff{1};
+inline constexpr std::chrono::milliseconds kPublicationMaxBackoff{32};
+inline constexpr std::chrono::milliseconds kPublicationDeadline{2000};
 
-inline void publication_backoff() {
-  std::this_thread::sleep_for(std::chrono::milliseconds(2));
+inline bool publication_time_left(std::chrono::steady_clock::time_point start) {
+  return std::chrono::steady_clock::now() - start < kPublicationDeadline;
 }
 
-inline bool publication_retryable(const std::error_code &ec) {
+inline void publication_backoff(std::chrono::milliseconds &delay) {
+  std::this_thread::sleep_for(delay);
+  const auto doubled = delay * 2;
+  delay = doubled < kPublicationMaxBackoff ? doubled : kPublicationMaxBackoff;
+}
+
 #ifdef _WIN32
-  return static_cast<bool>(ec);
+inline std::error_code win_last_error() {
+  return std::error_code(static_cast<int>(GetLastError()),
+                         std::system_category());
+}
+
+inline std::vector<uint8_t> read_shared(const std::filesystem::path &path,
+                                       std::error_code &ec) {
+  ec.clear();
+  HANDLE handle = CreateFileW(
+      path.c_str(), GENERIC_READ,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+      OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (handle == INVALID_HANDLE_VALUE) {
+    ec = win_last_error();
+    return {};
+  }
+  LARGE_INTEGER size{};
+  if (!GetFileSizeEx(handle, &size) || size.QuadPart < 0) {
+    ec = win_last_error();
+    CloseHandle(handle);
+    return {};
+  }
+  std::vector<uint8_t> buf(static_cast<std::size_t>(size.QuadPart));
+  std::size_t got = 0;
+  while (got < buf.size()) {
+    DWORD n = 0;
+    std::size_t chunk = buf.size() - got;
+    if (chunk > (1u << 20))
+      chunk = 1u << 20;
+    if (!ReadFile(handle, buf.data() + got, static_cast<DWORD>(chunk), &n,
+                  nullptr)) {
+      ec = win_last_error();
+      CloseHandle(handle);
+      return {};
+    }
+    if (n == 0)
+      break;
+    got += static_cast<std::size_t>(n);
+  }
+  CloseHandle(handle);
+  if (got != buf.size()) {
+    ec = std::make_error_code(std::errc::io_error);
+    return {};
+  }
+  return buf;
+}
+#endif
+
+inline bool publication_retryable(const std::error_code &ec) {
+  if (!ec)
+    return false;
+#ifdef _WIN32
+  if (ec.category() == std::system_category())
+    return ec.value() == ERROR_ACCESS_DENIED ||
+           ec.value() == ERROR_SHARING_VIOLATION;
+  return ec.default_error_condition() == std::errc::permission_denied;
 #else
   return ec == std::errc::permission_denied;
 #endif
 }
 
+// Creating or removing a private slot can report not-found while another
+// thread is deleting that directory. That is transient on Windows only.
+inline bool publication_slot_absent(const std::error_code &ec) {
+#ifdef _WIN32
+  if (!ec || ec.category() != std::system_category())
+    return false;
+  return ec.value() == ERROR_FILE_NOT_FOUND ||
+         ec.value() == ERROR_PATH_NOT_FOUND;
+#else
+  (void)ec;
+  return false;
+#endif
+}
+
+inline bool publication_slot_taken(const std::error_code &ec) {
+  if (!ec)
+    return false;
+  if (ec == std::errc::file_exists)
+    return true;
+#ifdef _WIN32
+  if (ec.category() == std::system_category() &&
+      (ec.value() == ERROR_ALREADY_EXISTS || ec.value() == ERROR_FILE_EXISTS))
+    return true;
+#endif
+  return ec.default_error_condition() == std::errc::file_exists;
+}
+
+inline std::error_code publish_replace(const std::filesystem::path &from,
+                                       const std::filesystem::path &to) {
+#ifdef _WIN32
+  std::error_code ec;
+  const auto dest = std::filesystem::symlink_status(to, ec);
+  if (publication_retryable(ec))
+    return ec;
+  if (!ec && std::filesystem::is_directory(dest))
+    return std::error_code(ERROR_DIRECTORY, std::system_category());
+  if (MoveFileExW(from.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING))
+    return {};
+  return win_last_error();
+#else
+  std::error_code ec;
+  std::filesystem::rename(from, to, ec);
+  return ec;
+#endif
+}
+
 inline std::vector<uint8_t> read_all(const std::string &path) {
-  std::ifstream in(path, std::ios::binary);
-  for (int attempt = 1; !in && attempt < kPublicationAttempts &&
-                        std::filesystem::exists(path);
-       ++attempt) {
-    publication_backoff();
-    in.clear();
-    in.open(path, std::ios::binary);
-  }
-  if (!in)
+  const auto start = std::chrono::steady_clock::now();
+  auto delay = kPublicationInitialBackoff;
+  const std::filesystem::path file(path);
+  for (;;) {
+#ifdef _WIN32
+    std::error_code ec;
+    auto buf = read_shared(file, ec);
+    if (!ec)
+      return buf;
+    const bool again =
+        publication_retryable(ec) || publication_slot_absent(ec);
+    if (!again || !publication_time_left(start))
+      throw std::runtime_error("UmaPot: cannot read AOTI package " + path +
+                               ": " + ec.message());
+    publication_backoff(delay);
+#else
+    std::ifstream in(path, std::ios::binary);
+    if (in) {
+      in.seekg(0, std::ios::end);
+      const auto sz = static_cast<size_t>(in.tellg());
+      in.seekg(0);
+      std::vector<uint8_t> buf(sz);
+      if (sz && !in.read(reinterpret_cast<char *>(buf.data()),
+                         static_cast<std::streamsize>(sz)))
+        throw std::runtime_error("UmaPot: short read of AOTI package " + path);
+      return buf;
+    }
+    std::error_code ec;
+    const bool present = std::filesystem::exists(file, ec);
+    if ((publication_retryable(ec) || present) &&
+        publication_time_left(start)) {
+      publication_backoff(delay);
+      continue;
+    }
     throw std::runtime_error("UmaPot: cannot read AOTI package " + path);
-  in.seekg(0, std::ios::end);
-  const auto sz = static_cast<size_t>(in.tellg());
-  in.seekg(0);
-  std::vector<uint8_t> buf(sz);
-  if (sz && !in.read(reinterpret_cast<char *>(buf.data()),
-                     static_cast<std::streamsize>(sz)))
-    throw std::runtime_error("UmaPot: short read of AOTI package " + path);
-  return buf;
+#endif
+  }
 }
 
 inline void write_all(const std::string &path,
                       const std::vector<uint8_t> &buf) {
   namespace fs = std::filesystem;
   const auto parent = fs::path(path).parent_path();
-  if (!parent.empty())
-    fs::create_directories(parent);
+  if (!parent.empty()) {
+    std::error_code created;
+    fs::create_directories(parent, created);
+    if (created) {
+      std::error_code st;
+      if (!fs::is_directory(parent, st))
+        throw std::runtime_error("UmaPot: cannot create " + parent.string() +
+                                 ": " + created.message());
+    }
+  }
   struct Publication {
     fs::path directory;
     fs::path payload;
@@ -291,22 +452,29 @@ inline void write_all(const std::string &path,
   } publication;
   // Directory creation reserves a private publication slot across processes
   // and threads. Only a closed, complete file is renamed to the shared path.
-  int reservation_failures = 0;
-  for (std::size_t slot = 0; !publication.owned; ++slot) {
+  const auto reserve_start = std::chrono::steady_clock::now();
+  auto delay = kPublicationInitialBackoff;
+  for (std::size_t slot = 0; !publication.owned;) {
     publication.directory = path + ".tmp." + std::to_string(slot);
     publication.payload = publication.directory / "payload.pt2";
     std::error_code error;
     publication.owned = fs::create_directory(publication.directory, error);
-    // A slot another thread is deleting reports a transient error on Windows.
-    if (error && error != std::errc::file_exists &&
-        publication_retryable(error) &&
-        ++reservation_failures < kPublicationAttempts) {
-      publication_backoff();
+    if (publication.owned)
+      break;
+    // libstdc++ reports an existing directory with a clear error_code.
+    // MSVC reports ERROR_ALREADY_EXISTS. Either way the slot is taken.
+    if (!error || publication_slot_taken(error)) {
+      ++slot;
       continue;
     }
-    if (error && error != std::errc::file_exists)
-      throw std::runtime_error("UmaPot: cannot reserve publication for " +
-                               path + ": " + error.message());
+    // A slot another thread is deleting reports a transient error on Windows.
+    if ((publication_retryable(error) || publication_slot_absent(error)) &&
+        publication_time_left(reserve_start)) {
+      publication_backoff(delay);
+      continue;
+    }
+    throw std::runtime_error("UmaPot: cannot reserve publication for " + path +
+                             ": " + error.message());
   }
   const std::string tmp = publication.payload.string();
   {
@@ -320,14 +488,14 @@ inline void write_all(const std::string &path,
     if (!out)
       throw std::runtime_error("UmaPot: cannot close " + tmp);
   }
-  std::error_code ec;
-  std::filesystem::rename(tmp, path, ec);
-  for (int attempt = 1; publication_retryable(ec) &&
-                        attempt < kPublicationAttempts;
-       ++attempt) {
-    publication_backoff();
-    ec.clear();
-    std::filesystem::rename(tmp, path, ec);
+  const auto publish_start = std::chrono::steady_clock::now();
+  delay = kPublicationInitialBackoff;
+  std::error_code ec = publish_replace(publication.payload, path);
+  while (publication_retryable(ec) && publication_time_left(publish_start)) {
+    publication_backoff(delay);
+    if (!publication_time_left(publish_start))
+      break;
+    ec = publish_replace(publication.payload, path);
   }
   if (ec)
     throw std::runtime_error("UmaPot: cannot publish " + path + ": " +
@@ -337,10 +505,21 @@ inline void write_all(const std::string &path,
 inline std::string cache_path_for(const std::string &src) {
   namespace fs = std::filesystem;
   const fs::path p(src);
-  const auto st = fs::status(p);
+  std::error_code ec;
+  const auto st = fs::status(p, ec);
+  if (ec)
+    throw std::runtime_error("UmaPot: cannot stat AOTI package " + src + ": " +
+                             ec.message());
   (void)st;
-  const auto mtime = fs::last_write_time(p).time_since_epoch().count();
-  const auto sz = fs::file_size(p);
+  const auto mtime_tp = fs::last_write_time(p, ec);
+  if (ec)
+    throw std::runtime_error("UmaPot: cannot stat AOTI package " + src + ": " +
+                             ec.message());
+  const auto mtime = mtime_tp.time_since_epoch().count();
+  const auto sz = fs::file_size(p, ec);
+  if (ec)
+    throw std::runtime_error("UmaPot: cannot stat AOTI package " + src + ": " +
+                             ec.message());
   const std::string key = "zipcd1-" + p.filename().string() + "-" +
                           std::to_string(sz) + "-" +
                           std::to_string(static_cast<long long>(mtime));
@@ -360,8 +539,9 @@ inline std::string prepare_pt2_for_load(const std::string &src) {
   if (!scan_or_clear_pt2(buf.data(), buf.size(), /*write=*/false))
     return src;
   const std::string dst = cache_path_for(src);
-  if (std::filesystem::exists(dst) &&
-      std::filesystem::file_size(dst) == buf.size()) {
+  std::error_code ec;
+  const auto cached_size = std::filesystem::file_size(dst, ec);
+  if (!ec && cached_size == buf.size()) {
     auto cached = read_all(dst);
     if (!scan_or_clear_pt2(cached.data(), cached.size(), /*write=*/false))
       return dst;

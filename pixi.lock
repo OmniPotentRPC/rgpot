@@ -1,25 +1,9 @@
 version: 7
 platforms:
 - name: linux-64
-  virtual-packages:
-  - __unix=0=0
-  - __linux=4.18
-  - __glibc=2.28
-  - __archspec=0=x86_64
 - name: osx-64
-  virtual-packages:
-  - __unix=0=0
-  - __osx=13.0
-  - __archspec=0=x86_64
 - name: osx-arm64
-  virtual-packages:
-  - __unix=0=0
-  - __osx=13.0
-  - __archspec=0=m1
 - name: win-64
-  virtual-packages:
-  - __win=10.0
-  - __archspec=0=x86_64
 environments:
   cigen:
     channels:
@@ -2761,7 +2745,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/tzdata-2025c-hc9c84f9_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/wheel-0.47.0-pyhd8ed1ab_0.conda
       - conda: https://repo.prefix.dev/rg-forge/linux-64/ira-2.2.0-fc313f34_0.conda
-      - pypi: https://files.pythonhosted.org/packages/22/9d/13a80403d17af3112895e6790163b3c1c34388e057be3756553c23070ab4/readcon-0.16.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+      - pypi: git+https://github.com/lode-org/readcon-core.git?rev=694e808080c49979ee3099afcfa18e5420c40433#694e808080c49979ee3099afcfa18e5420c40433
       - pypi: https://files.pythonhosted.org/packages/23/cd/066e86230ae37ed0be70aae89aabf03ca8d9f39c8aea0dec8029455b5540/opt_einsum-3.4.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/3a/cb/28ce52eb94390dda42599c98ea0204d74799e4d8047a0eb559b6fd648056/ml_dtypes-0.5.4-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/48/17/38b718af2353dba7753300871e83fbb64a88a772e12727ae27373ab675ce/jaxlib-0.10.2-cp312-cp312-manylinux_2_27_x86_64.whl
@@ -29567,6 +29551,12 @@ packages:
   run_exports: {}
   size: 222934
   timestamp: 1761607871513
+- pypi: git+https://github.com/lode-org/readcon-core.git?rev=694e808080c49979ee3099afcfa18e5420c40433#694e808080c49979ee3099afcfa18e5420c40433
+  name: readcon
+  version: 0.17.1
+  requires_dist:
+  - readcon-chemfiles==0.17.1 ; extra == 'chemfiles'
+  requires_python: '>=3.10'
 - pypi: https://files.pythonhosted.org/packages/03/c0/a6d8be9c43e4456fb9597fdf8b5e0ce1f0a5df41503acce6d869536e4e23/websockets-17.2-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl
   name: websockets
   version: '17.2'
@@ -29670,13 +29660,6 @@ packages:
   - pytest ; extra == 'dev'
   - pre-commit ; extra == 'dev'
   requires_python: '>=3.8'
-- pypi: https://files.pythonhosted.org/packages/22/9d/13a80403d17af3112895e6790163b3c1c34388e057be3756553c23070ab4/readcon-0.16.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
-  name: readcon
-  version: 0.16.1
-  sha256: 0c514f63282f82c5ad4956d13525614fe32427cc9e917c748a28b24d06422e71
-  requires_dist:
-  - readcon-chemfiles==0.16.1 ; extra == 'chemfiles'
-  requires_python: '>=3.10'
 - pypi: https://files.pythonhosted.org/packages/23/cd/066e86230ae37ed0be70aae89aabf03ca8d9f39c8aea0dec8029455b5540/opt_einsum-3.4.0-py3-none-any.whl
   name: opt-einsum
   version: 3.4.0

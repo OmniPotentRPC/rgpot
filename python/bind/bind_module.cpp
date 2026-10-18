@@ -188,13 +188,35 @@ std::string child_kind(nb::handle spec) {
       "ExprPot child spec must be a kind string or a dict with 'kind'");
 }
 
+// Overwrite `out` with spec[key] when a dict spec carries that key.
+template <class T>
+void read_spec_key(nb::handle spec, const char *key, T &out) {
+  if (nb::isinstance<nb::dict>(spec)) {
+    auto d = nb::cast<nb::dict>(spec);
+    if (d.contains(key)) {
+      out = nb::cast<T>(d[key]);
+    }
+  }
+}
+
 std::unique_ptr<rgpot::PotentialBase> make_expr_child(nb::handle spec) {
   const std::string kind = child_kind(spec);
   if (kind == "lj") {
-    return std::make_unique<rgpot::LJPot>();
+    rgpot::LJConfig cfg;
+    read_spec_key(spec, "u0", cfg.u0);
+    read_spec_key(spec, "cutoff", cfg.cutoff);
+    read_spec_key(spec, "psi", cfg.psi);
+    read_spec_key(spec, "switch_width", cfg.switch_width);
+    return std::make_unique<rgpot::LJPot>(cfg);
   }
   if (kind == "morse") {
-    return std::make_unique<rgpot::MorsePot>();
+    rgpot::MorseConfig cfg;
+    read_spec_key(spec, "De", cfg.De);
+    read_spec_key(spec, "a", cfg.a);
+    read_spec_key(spec, "re", cfg.re);
+    read_spec_key(spec, "cutoff", cfg.cutoff);
+    read_spec_key(spec, "switch_width", cfg.switch_width);
+    return std::make_unique<rgpot::MorsePot>(cfg);
   }
 #ifdef RGPOT_HAS_DFTD3
   if (kind == "d3") {
@@ -380,8 +402,26 @@ NB_MODULE(_core, m) {
       .def("reset_counts", &rgpot::cache::PotentialCache::reset_counts);
 #endif
 
+  const rgpot::LJConfig lj_defaults{};
   nb::class_<rgpot::LJPot>(m, "LJPot")
-      .def(nb::init<>())
+      .def(
+          "__init__",
+          [](rgpot::LJPot *self, double u0, double cutoff, double psi,
+             double switch_width) {
+            new (self) rgpot::LJPot(rgpot::LJConfig{.u0 = u0,
+                                                    .cutoff = cutoff,
+                                                    .psi = psi,
+                                                    .switch_width =
+                                                        switch_width});
+          },
+          nb::arg("u0") = lj_defaults.u0,
+          nb::arg("cutoff") = lj_defaults.cutoff,
+          nb::arg("psi") = lj_defaults.psi,
+          nb::arg("switch_width") = lj_defaults.switch_width,
+          "Shifted 12-6 Lennard-Jones. u0 is the well depth (eV), cutoff "
+          "and psi are Angstrom. A positive switch_width (Angstrom) "
+          "replaces the shift with the C^2 quintic switch over "
+          "[cutoff - switch_width, cutoff]; it must not exceed cutoff.")
 #ifdef RGPOT_HAS_CACHE
       .def(
           "set_cache",
@@ -459,7 +499,9 @@ NB_MODULE(_core, m) {
           },
           nb::arg("expression"), nb::arg("terms"),
           "expression is a Lepton string; terms maps names to 'lj'/'morse'/"
-          "'d3'/'d4' or a dict with kind plus D3/D4 fields.")
+          "'d3'/'d4' or a dict with kind plus that kind's fields: u0, "
+          "cutoff, psi, switch_width (lj); De, a, re, cutoff, switch_width "
+          "(morse); the D3/D4 fields.")
       .def(
           "__call__",
           [](rgpot::ExprPot &self, const NpF64 &positions,

@@ -188,6 +188,8 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/simd/exp.cc
       CppCore/rgpot/simd/scalar_kernels.cc
       CppCore/rgpot/simd/dispatch.cc
+      CppCore/rgpot/nlist/MinimumImage.cpp
+      CppCore/rgpot/simd/exact_fma_hw.cc
       CppCore/rgpot/CuH2/cuh2Utils.cc
       CppCore/rgpot/fortran/FortranPots.cc)
 
@@ -216,6 +218,15 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/vesin>
            $<INSTALL_INTERFACE:include/rgpot/vesin>)
   target_link_libraries(rgpot_vesin PRIVATE Threads::Threads)
+  if(MSVC)
+    set_source_files_properties(
+      CppCore/rgpot/nlist/MinimumImage.cpp CppCore/rgpot/simd/exact_fma_hw.cc
+      PROPERTIES COMPILE_OPTIONS "/fp:precise")
+  else()
+    set_source_files_properties(
+      CppCore/rgpot/nlist/MinimumImage.cpp CppCore/rgpot/simd/exact_fma_hw.cc
+      PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+  endif()
   add_subdirectory(CppCore/rgpot/fortran)
   if(RGPOT_WITH_HIGHWAY)
     # Distro and offline builds use the installed package. The download is
@@ -439,6 +450,13 @@ if(RGPOT_BUILD_TESTS)
   target_compile_features(AotiPublicationTest PRIVATE cxx_std_20)
   target_link_libraries(AotiPublicationTest PRIVATE Threads::Threads)
   add_test(NAME AotiPublicationTest COMMAND AotiPublicationTest)
+  add_executable(AotiPublicationStressTest
+                 CppCore/tests/AotiPublicationStressTest.cc)
+  target_include_directories(AotiPublicationStressTest PRIVATE CppCore)
+  target_compile_features(AotiPublicationStressTest PRIVATE cxx_std_20)
+  target_link_libraries(AotiPublicationStressTest PRIVATE Threads::Threads)
+  add_test(NAME AotiPublicationStressTest COMMAND AotiPublicationStressTest)
+  set_tests_properties(AotiPublicationStressTest PROPERTIES TIMEOUT 600)
   add_executable(MolecularFrameTest CppCore/tests/MolecularFrameTest.cc)
   target_include_directories(MolecularFrameTest PRIVATE CppCore)
   target_compile_features(MolecularFrameTest PRIVATE cxx_std_20)
@@ -465,6 +483,17 @@ if(RGPOT_BUILD_TESTS)
 
     add_pot_test(LJClusterPotTest CppCore/tests/LJClusterPotTest.cc)
     add_pot_test(PairListTest CppCore/tests/PairListTest.cc)
+    add_pot_test(MinImageIsaHash CppCore/tests/MinImageIsaHash.cc)
+    add_pot_test(FoldDegenerateTest CppCore/tests/FoldDegenerateTest.cc)
+    set_tests_properties(FoldDegenerateTest PROPERTIES TIMEOUT 60)
+    add_executable(ExactFmaEq CppCore/tests/exact_fma_eq.cc)
+    target_link_libraries(ExactFmaEq PRIVATE rgpot::rgpot)
+    target_include_directories(ExactFmaEq PRIVATE CppCore)
+    target_compile_features(ExactFmaEq PRIVATE cxx_std_20)
+    if(NOT MSVC)
+      target_compile_options(ExactFmaEq PRIVATE -ffp-contract=off)
+    endif()
+    add_test(NAME ExactFmaEq COMMAND ExactFmaEq)
     add_pot_test(BatchEvaluatorTest CppCore/tests/BatchEvaluatorTest.cc)
     target_link_libraries(BatchEvaluatorTest PRIVATE Threads::Threads)
     add_pot_test(CxxLayoutTest CppCore/tests/CxxLayoutTest.cc)
