@@ -213,9 +213,10 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/simd/exp.cc CppCore/rgpot/Morse/MorsePot.cc
       PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
     # Value-safe: lets the exp clamps if-convert and sqrt use sqrtpd, so
-    # the exp and Morse row loops vectorise.
+    # the exp and Morse row loops vectorise, also at -O2.
     set_property(SOURCE CppCore/rgpot/simd/exp.cc CppCore/rgpot/Morse/MorsePot.cc
-      APPEND PROPERTY COMPILE_OPTIONS -fno-trapping-math -fno-math-errno)
+      APPEND PROPERTY COMPILE_OPTIONS -fno-trapping-math -fno-math-errno
+      -ftree-vectorize -fvect-cost-model=dynamic)
   endif()
   add_subdirectory(CppCore/rgpot/fortran)
   add_library(rgpot ${RGPOT_SOURCES})

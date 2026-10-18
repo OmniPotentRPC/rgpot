@@ -95,9 +95,16 @@ _fp_contract_off = cppc.get_supported_arguments(
 )
 # Lets GCC if-convert the exp clamps and use sqrtpd: neither flag changes a
 # computed value (no errno from sqrt, no FP traps assumed), and the vector
-# loops then run the scalar body's operations lane by lane.
+# loops then run the scalar body's operations lane by lane. GCC's -O2 cost
+# model (very-cheap) refuses loops that need an epilogue, so the dynamic
+# model is asked for here too.
 _vector_loops = cppc.get_supported_arguments(
-    ['-fno-trapping-math', '-fno-math-errno'],
+    [
+        '-fno-trapping-math',
+        '-fno-math-errno',
+        '-ftree-vectorize',
+        '-fvect-cost-model=dynamic',
+    ],
 )
 rgpot_exact_fma = static_library(
     'rgpot_exact_fma',
