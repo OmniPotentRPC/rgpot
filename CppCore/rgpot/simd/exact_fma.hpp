@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 
@@ -54,7 +55,7 @@ RGPOT_NO_FP_CONTRACT inline void two_prod(double a, double b, double &p, double 
 }
 
 // glibc's usable-FMA bit follows the hwcaps tunable. CPUID stays set when
-// that tunable masks FMA, so this is the bit that selects the software path.
+// that tunable masks FMA, so where glibc offers the bit it has the last word.
 // The index is x86_cpu_FMA from <sys/platform/x86.h> (leaf 1, ECX, bit 12).
 // The reader is weak: a sysroot whose libc stub lacks GLIBC_2.33 still links,
 // and a runtime older than 2.33 leaves the symbol null.
@@ -67,22 +68,71 @@ extern "C" const glibc_cpuid_leaf *__x86_get_cpuid_feature_leaf(unsigned int)
     __attribute__((weak, pure));
 #endif
 
-inline bool glibc_fma_active() {
-#if defined(__x86_64__) && defined(__GLIBC__)
-  static const bool active = [] {
-    if (__x86_get_cpuid_feature_leaf == nullptr) {
-      return false;
-    }
-    constexpr unsigned int kFma =
-        2u * 8u * static_cast<unsigned int>(sizeof(unsigned int)) + 12u;
-    constexpr unsigned int kLeafSpan =
-        8u * static_cast<unsigned int>(sizeof(unsigned int)) * 4u;
-    const glibc_cpuid_leaf *leaf = __x86_get_cpuid_feature_leaf(kFma / kLeafSpan);
-    const unsigned int reg = kFma & (kLeafSpan - 1u);
-    const unsigned int bit = reg & (8u * sizeof(unsigned int) - 1u);
-    const unsigned int word = reg / (8u * sizeof(unsigned int));
-    return (leaf->active_array[word] & (1u << bit)) != 0;
-  }();
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+/// FMA3 from CPUID leaf 1 (ECX bit 12), with the OS saving the YMM state
+/// (OSXSAVE and AVX set, XCR0 bits 1 and 2), the conditions Intel's manual
+/// gives for executing VEX-encoded FMA. Needs no C library support.
+inline bool cpuid_fma_usable() {
+  unsigned int eax = 0;
+  unsigned int ebx = 0;
+  unsigned int ecx = 0;
+  unsigned int edx = 0;
+  __asm__("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx) : "a"(0u), "c"(0u));
+  if (eax < 1u) {
+    return false;
+  }
+  __asm__("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx) : "a"(1u), "c"(0u));
+  constexpr unsigned int kFma = 1u << 12;
+  constexpr unsigned int kOsxsave = 1u << 27;
+  constexpr unsigned int kAvx = 1u << 28;
+  if ((ecx & (kFma | kOsxsave | kAvx)) != (kFma | kOsxsave | kAvx)) {
+    return false;
+  }
+  unsigned int xlo = 0;
+  unsigned int xhi = 0;
+  __asm__("xgetbv" : "=a"(xlo), "=d"(xhi) : "c"(0u));
+  (void)xhi;
+  return (xlo & 6u) == 6u;
+}
+
+/// glibc's verdict on FMA where the C library has one (2.33 and newer), so
+/// GLIBC_TUNABLES=glibc.cpu.hwcaps=-FMA also selects the software path.
+/// True when there is no such reader.
+inline bool glibc_allows_fma() {
+#if defined(__GLIBC__)
+  if (__x86_get_cpuid_feature_leaf == nullptr) {
+    return true;
+  }
+  constexpr unsigned int kFma =
+      2u * 8u * static_cast<unsigned int>(sizeof(unsigned int)) + 12u;
+  constexpr unsigned int kLeafSpan =
+      8u * static_cast<unsigned int>(sizeof(unsigned int)) * 4u;
+  const glibc_cpuid_leaf *leaf = __x86_get_cpuid_feature_leaf(kFma / kLeafSpan);
+  const unsigned int reg = kFma & (kLeafSpan - 1u);
+  const unsigned int bit = reg & (8u * sizeof(unsigned int) - 1u);
+  const unsigned int word = reg / (8u * sizeof(unsigned int));
+  return (leaf->active_array[word] & (1u << bit)) != 0;
+#else
+  return true;
+#endif
+}
+
+/// RGPOT_FMA=software in the environment selects the software path.
+inline bool fma_env_software() {
+  const char *v = std::getenv("RGPOT_FMA");
+  return v != nullptr && std::strcmp(v, "software") == 0;
+}
+#endif
+
+/// True when the hardware fused multiply-add may run: the CPU has FMA3 and
+/// the OS saves its registers (CPUID), glibc 2.33 or newer does not mask it,
+/// and RGPOT_FMA is not ``software``. Read once per process. The hardware
+/// instruction and the software path return the same bits, so this decides
+/// speed only.
+inline bool fma_hw_active() {
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+  static const bool active =
+      !fma_env_software() && cpuid_fma_usable() && glibc_allows_fma();
   return active;
 #else
   return false;
@@ -280,14 +330,14 @@ RGPOT_NO_FP_CONTRACT RGPOT_FMA_INLINE inline f64x2 exact_fma_x2(f64x2 a,
 #endif
 
 /// a*b+c, one rounding. A hardware instruction when this translation unit
-/// has one, or when glibc reports FMA usable. Otherwise fma_quick.
+/// has one, or when fma_hw_active(). Otherwise fma_quick.
 RGPOT_NO_FP_CONTRACT RGPOT_FMA_INLINE inline double mul_add(double a, double b, double c) {
 #if defined(__FMA__) || defined(__ARM_FEATURE_FMA)
   // The instruction, not std::fma: a glibc ifunc follows the hwcaps tunable
   // and would run the software path while this unit can still emit FMA.
   return __builtin_fma(a, b, c);
 #elif defined(__x86_64__)
-  if (detail::glibc_fma_active()) {
+  if (detail::fma_hw_active()) {
     return exact_fma_hw(a, b, c);
   }
   return fma_quick(a, b, c);
@@ -299,7 +349,7 @@ RGPOT_NO_FP_CONTRACT RGPOT_FMA_INLINE inline double mul_add(double a, double b, 
 /// dx^2 + dy^2 + dz^2. The first square is a multiply. The two sums fuse.
 RGPOT_NO_FP_CONTRACT inline double r2_of(double dx, double dy, double dz) {
 #if defined(__x86_64__) && !defined(__FMA__) && !defined(__ARM_FEATURE_FMA)
-  if (detail::glibc_fma_active()) {
+  if (detail::fma_hw_active()) {
     return r2_hw(dx, dy, dz);
   }
 #endif
