@@ -1,0 +1,1 @@
+The pair-list loops and the minimum-image fold use the hardware fused multiply-add on any CPU with FMA, detected from CPUID, where they took the software path on C libraries older than glibc 2.33 (Enterprise Linux 8). `RGPOT_FMA=software` selects the software path, which returns the same bits.

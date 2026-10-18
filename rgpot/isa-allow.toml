@@ -119,10 +119,25 @@ features = [
 reason = "libquadmath, vendored beside libgfortran"
 
 # FMA bodies outside a dispatched namespace. Each one is entered only after
-# glibc reports that the processor's FMA is usable. The portable path stays
+# simd::detail::fma_hw_active() finds a usable FMA. The portable path stays
 # free of these instructions. accumulateHw is the target("fma") pair-list
 # loop; -mfma also selects AVX encodings in that body.
 [[allow]]
 symbol = '^(rgpot::simd::exact_fma_hw|rgpot::nlist::_GLOBAL__N_[0-9]+::fold_hardware)\b|rgpot::nlist::CachedPairList::accumulateHw<'
 features = ["avx", "fma", "sse3"]
 reason = "FMA bodies selected when the processor's FMA is usable"
+
+# Vector-width clones (target_clones) of loops that use no FMA. The loader
+# picks a clone from libgcc's own CPU check; each clone returns the bits of
+# the baseline one.
+[[allow]]
+symbol = '^rgpot::(simd::exp_fixed_n|detail::morse_row)\(.*\) \[clone \.(avx2|avx512f)[^\]]*\]|^_ZN5rgpot(4simd11exp_fixed_n|6detail9morse_row)E\S*\.(avx2|avx512f)$'
+features = ["avx", "avx2", "avx512f", "sse3", "ssse3", "sse4_1", "sse4_2", "popcnt"]
+reason = "vector-width clones selected by the CPU check of function multiversioning"
+
+# The FMA probe and libgcc's CPU model (linked in for the target_clones
+# resolvers) read XCR0 after CPUID reports OSXSAVE.
+[[allow]]
+symbol = '^(rgpot::simd::detail::cpuid_fma_usable(\(\))?|__cpu_indicator_init)$'
+features = ["xsave"]
+reason = "xgetbv in CPU feature probes, run after the OSXSAVE bit"

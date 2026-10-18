@@ -37,6 +37,8 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "rgpot/nlist/MinimumImage.hpp"
@@ -91,6 +93,18 @@ struct PairTerm {
 struct IgnorePairContribution {
   void operator()(double, double, double, double) const noexcept {}
 };
+
+/// True for a kernel that evaluates a whole row at once:
+/// ``kernel.row(r2, energy, fscale, m)`` fills the pair energies and force
+/// scales of the ``m`` squared distances in ``r2``. Each output may depend
+/// only on its own ``r2`` entry, so the pair gets the bits it would get
+/// from a per-pair call.
+template <typename K, typename = void> struct HasRowKernel : std::false_type {};
+template <typename K>
+struct HasRowKernel<K, std::void_t<decltype(std::declval<const K &>().row(
+                           std::declval<const double *>(),
+                           std::declval<double *>(), std::declval<double *>(),
+                           std::declval<std::size_t>()))>> : std::true_type {};
 
 class CachedPairList {
 public:
@@ -269,7 +283,8 @@ public:
   }
 
   /// Fused force loop over the cached pairs: ``kernel(i, j, r2)`` returns
-  /// the pair energy and ``fscale = -V'(r) / r``; the loop adds
+  /// the pair energy and ``fscale = -V'(r) / r`` (or a row kernel, see
+  /// HasRowKernel, fills them for a row of accepted pairs); the loop adds
   /// ``fscale * d`` to atom i and subtracts it from atom j (``d = r_i -
   /// r_j``, minimum image applied) and returns the summed energy. Atom i's
   /// force stays in registers across its row. The optional observer receives
@@ -279,7 +294,7 @@ public:
                                   Observer &&observe = {}) const {
 #if RGPOT_PL_FMA_DISPATCH
     // Baseline x86-64 unit: pick the fused-update variant once per call.
-    if (simd::detail::glibc_fma_active()) {
+    if (simd::detail::fma_hw_active()) {
       return accumulateHw(R, F, kernel, observe);
     }
 #endif
@@ -291,15 +306,28 @@ private:
   RGPOT_PL_LOOP double accumulateFold(const double *R, double *F,
                                       Kernel &kernel,
                                       Observer &observe) const {
-    switch (fold_) {
-    case FoldMode::None:
-      return accumulateImpl<FoldMode::None, Hw>(R, F, kernel, observe);
-    case FoldMode::Round:
-      return accumulateImpl<FoldMode::Round, Hw>(R, F, kernel, observe);
-    case FoldMode::Coded:
-      return accumulateImpl<FoldMode::Coded, Hw>(R, F, kernel, observe);
-    case FoldMode::General:
-      return accumulateImpl<FoldMode::General, Hw>(R, F, kernel, observe);
+    if constexpr (HasRowKernel<Kernel>::value) {
+      switch (fold_) {
+      case FoldMode::None:
+        return accumulateRows<FoldMode::None, Hw>(R, F, kernel, observe);
+      case FoldMode::Round:
+        return accumulateRows<FoldMode::Round, Hw>(R, F, kernel, observe);
+      case FoldMode::Coded:
+        return accumulateRows<FoldMode::Coded, Hw>(R, F, kernel, observe);
+      case FoldMode::General:
+        return accumulateRows<FoldMode::General, Hw>(R, F, kernel, observe);
+      }
+    } else {
+      switch (fold_) {
+      case FoldMode::None:
+        return accumulateImpl<FoldMode::None, Hw>(R, F, kernel, observe);
+      case FoldMode::Round:
+        return accumulateImpl<FoldMode::Round, Hw>(R, F, kernel, observe);
+      case FoldMode::Coded:
+        return accumulateImpl<FoldMode::Coded, Hw>(R, F, kernel, observe);
+      case FoldMode::General:
+        return accumulateImpl<FoldMode::General, Hw>(R, F, kernel, observe);
+      }
     }
     return 0.0;
   }
@@ -308,7 +336,7 @@ private:
   // The whole loop, kernel included, is compiled for FMA here so the fused
   // updates are single vfmadd instructions. Contraction stays off so the
   // kernel rounds as it does on the baseline path. This symbol is named in
-  // rgpot/isa-allow.toml; the caller enters it only after glibc reports FMA.
+  // rgpot/isa-allow.toml; the caller enters it only after fma_hw_active().
   template <typename Kernel, typename Observer>
   __attribute__((target("fma"), optimize("-ffp-contract=off"), noinline))
   double accumulateHw(const double *R, double *F, Kernel &kernel,
@@ -373,6 +401,69 @@ private:
           F[3 * j + 2] = pairFma<Hw>(-t.fscale, dz, F[3 * j + 2]);
           observe(t.fscale, dx, dy, dz);
         }
+      }
+      F[3 * i] += fxi;
+      F[3 * i + 1] += fyi;
+      F[3 * i + 2] += fzi;
+    }
+    return energy;
+  }
+
+  /// accumulateImpl for a row kernel: the accepted pairs of row i are
+  /// gathered, the kernel evaluates them together, and the updates then run
+  /// in the order accumulateImpl would run them, so the sums round the same.
+  template <FoldMode M, bool Hw, typename Kernel, typename Observer>
+  [[nodiscard]] RGPOT_PL_LOOP double
+  accumulateRows(const double *R, double *F, Kernel &kernel,
+                 Observer &observe) const {
+    const double cutoff2 = opt_.cutoff * opt_.cutoff;
+    const Fold fold = makeFold();
+    std::size_t widest = 0;
+    for (std::size_t i = 0; i < n_; ++i) {
+      widest = std::max(widest, static_cast<std::size_t>(rows_[i + 1] - rows_[i]));
+    }
+    // dx, dy, dz, r2, energy, fscale per accepted pair.
+    std::vector<double> buf(6 * widest);
+    std::vector<std::size_t> partner(widest);
+    double *bx = buf.data();
+    double *by = bx + widest;
+    double *bz = by + widest;
+    double *br2 = bz + widest;
+    double *be = br2 + widest;
+    double *bf = be + widest;
+    double energy = 0.0;
+    for (std::size_t i = 0; i < n_; ++i) {
+      const int32_t p0 = rows_[i];
+      const int32_t p1 = rows_[i + 1];
+      std::size_t m = 0;
+      for (int32_t p = p0; p < p1; ++p) {
+        const auto up = static_cast<std::size_t>(p);
+        const auto j = static_cast<std::size_t>(nbr_[up]);
+        double dx, dy, dz;
+        fold.template apply<M>(R, i, j, up, dx, dy, dz);
+        const double r2 = dx * dx + dy * dy + dz * dz;
+        if (r2 <= cutoff2) {
+          bx[m] = dx;
+          by[m] = dy;
+          bz[m] = dz;
+          br2[m] = r2;
+          partner[m] = j;
+          ++m;
+        }
+      }
+      kernel.row(br2, be, bf, m);
+      double fxi = 0.0, fyi = 0.0, fzi = 0.0;
+      for (std::size_t q = 0; q < m; ++q) {
+        const std::size_t j = partner[q];
+        const double fs = bf[q];
+        energy += be[q];
+        fxi = pairFma<Hw>(fs, bx[q], fxi);
+        fyi = pairFma<Hw>(fs, by[q], fyi);
+        fzi = pairFma<Hw>(fs, bz[q], fzi);
+        F[3 * j] = pairFma<Hw>(-fs, bx[q], F[3 * j]);
+        F[3 * j + 1] = pairFma<Hw>(-fs, by[q], F[3 * j + 1]);
+        F[3 * j + 2] = pairFma<Hw>(-fs, bz[q], F[3 * j + 2]);
+        observe(fs, bx[q], by[q], bz[q]);
       }
       F[3 * i] += fxi;
       F[3 * i + 1] += fyi;

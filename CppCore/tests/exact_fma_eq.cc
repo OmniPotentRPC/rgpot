@@ -2,7 +2,9 @@
 // Copyright 2023--present rgpot developers
 //
 // exact_fma and mul_add against std::fma, including subnormals, signed
-// zero, overflow and ties.
+// zero, overflow and ties. On a CPU with FMA every case is also checked
+// against the hardware instruction (exact_fma_hw), so the software path and
+// the hardware path are shown to return the same bits.
 
 #include "rgpot/simd/exact_fma.hpp"
 
@@ -25,7 +27,21 @@ std::uint64_t bits_of(double x) {
 int g_fail = 0;
 int g_checked = 0;
 
-void check_one(double a, double b, double c, const char *where) {
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+// The CPU's own answer, not fma_hw_active(): RGPOT_FMA=software must not
+// switch the hardware comparison off.
+const bool g_hw = rgpot::simd::detail::cpuid_fma_usable();
+#endif
+
+// nan_any: any NaN matches any NaN. Only the uniform bit patterns use it,
+// since their NaN inputs carry payloads that fma implementations propagate
+// differently; every other bit stays part of the comparison.
+void check_one(double a, double b, double c, const char *where,
+               bool nan_any = false) {
+  const auto same = [nan_any](double x, double y) {
+    return bits_of(x) == bits_of(y) ||
+           (nan_any && std::isnan(x) && std::isnan(y));
+  };
   const double ref = std::fma(a, b, c);
   const double got = rgpot::simd::exact_fma(a, b, c);
   const double via = rgpot::simd::mul_add(a, b, c);
@@ -39,22 +55,28 @@ void check_one(double a, double b, double c, const char *where) {
   const rgpot::simd::f64x2 px = rgpot::simd::exact_fma_x2(pa, pb, pc);
   const rgpot::simd::f64x2 qx = rgpot::simd::exact_fma_x2(
       rgpot::simd::f64x2{a, a}, rgpot::simd::f64x2{b, b}, rgpot::simd::f64x2{c, c});
-  const bool pair_ok = bits_of(px[0]) == bits_of(ref) &&
+  const bool pair_ok = same(px[0], ref) &&
                        bits_of(px[1]) == bits_of(std::fma(1.5, -3.25, 0.125)) &&
-                       bits_of(qx[0]) == bits_of(ref) && bits_of(qx[1]) == bits_of(ref);
+                       same(qx[0], ref) && same(qx[1], ref);
 #else
   const bool pair_ok = true;
 #endif
+  double hw = ref;
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+  if (g_hw) {
+    hw = rgpot::simd::exact_fma_hw(a, b, c);
+  }
+#endif
   ++g_checked;
-  if (pair_ok && bits_of(got) == bits_of(ref) && bits_of(via) == bits_of(ref) &&
-      bits_of(quick) == bits_of(ref)) {
+  if (pair_ok && same(got, ref) && same(via, ref) && same(quick, ref) &&
+      same(hw, got)) {
     return;
   }
   if (g_fail < 8) {
     std::cerr << where << " a=" << bits_of(a) << " b=" << bits_of(b)
               << " c=" << bits_of(c) << " ref=" << bits_of(ref)
               << " exact=" << bits_of(got) << " mul_add=" << bits_of(via)
-              << " quick=" << bits_of(quick) << '\n';
+              << " quick=" << bits_of(quick) << " hw=" << bits_of(hw) << '\n';
   }
   ++g_fail;
 }
@@ -172,6 +194,13 @@ int main() {
     }
     check_one(a, b, c, "shaped");
   }
+  // Uniform bit patterns: every exponent, subnormals, infinities and NaNs.
+  for (int i = 0; i < 1000000; ++i) {
+    std::uint64_t u[3] = {rng(), rng(), rng()};
+    double x[3];
+    std::memcpy(x, u, sizeof(x));
+    check_one(x[0], x[1], x[2], "bits", true);
+  }
   // Edges of the fast-path domain, where the scalar fallback takes over.
   const double band[] = {0x1p-480, 0x1p-479, 0x1.fffffffffffffp-480,
                          0x1p479,  0x1p480,  0x1.fffffffffffffp479,
@@ -206,6 +235,10 @@ int main() {
     std::cerr << "fail " << g_fail << " of " << g_checked << '\n';
     return 1;
   }
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+  std::cout << "hardware fma compared: " << (g_hw ? "yes" : "no (CPU has none)")
+            << '\n';
+#endif
   std::cout << "ok " << g_checked << '\n';
   return 0;
 }

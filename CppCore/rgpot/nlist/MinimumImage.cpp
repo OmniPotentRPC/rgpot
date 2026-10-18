@@ -753,7 +753,7 @@ void fold_search(bool narrow, const double cell[9], const double inv[9],
 }
 
 // The attribute keeps vfmadd in this body. The caller enters it only after
-// glibc reports that the processor's FMA is usable. MSVC has no target
+// simd::detail::fma_hw_active() finds a usable FMA. MSVC has no target
 // attribute; this body then calls std::fma, and the caller keeps the
 // portable path unless a runtime check selects it.
 #if defined(__GNUC__) || defined(__clang__)
@@ -779,7 +779,7 @@ void MinimumImage::fold(double &dx, double &dy, double &dz) const {
     inv[k] = inverse_[static_cast<std::size_t>(k)];
   }
   double dual[3] = {dual_norm_[0], dual_norm_[1], dual_norm_[2]};
-  if (rgpot::simd::detail::glibc_fma_active()) {
+  if (rgpot::simd::detail::fma_hw_active()) {
     fold_hardware(narrow_, cell, inv, dual, periodic, dx, dy, dz);
     return;
   }
