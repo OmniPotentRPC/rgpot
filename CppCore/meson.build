@@ -1392,10 +1392,15 @@ if get_option('with_tests')
             link_language: 'cpp',
             build_rpath: _metatomic_build_rpath,
         )
+        # The 5324-atom cell grid in PairListTest takes about 30s in a
+        # debug macOS build. That is the meson default, so a busy runner
+        # kills a test that is still making progress.
+        _timeout = test.get(0) == 'PairListTest' ? 90 : 30
         test(
             test.get(0),
             _test_exe,
             workdir: meson.source_root() + test.get(3),
+            timeout: _timeout,
         )
         if test.get(1) == 'calculator_group_test'
             calculator_group_test_exe = _test_exe
