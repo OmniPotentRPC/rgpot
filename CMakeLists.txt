@@ -176,6 +176,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/ZBL/ZBLPot.cc
       CppCore/rgpot/nlist/MinimumImage.cpp
       CppCore/rgpot/simd/exact_fma_hw.cc
+      CppCore/rgpot/simd/exp.cc
       CppCore/rgpot/CuH2/cuh2Utils.cc
       CppCore/rgpot/fortran/FortranPots.cc)
 
@@ -204,10 +205,12 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
   if(MSVC)
     set_source_files_properties(
       CppCore/rgpot/nlist/MinimumImage.cpp CppCore/rgpot/simd/exact_fma_hw.cc
+      CppCore/rgpot/simd/exp.cc CppCore/rgpot/Morse/MorsePot.cc
       PROPERTIES COMPILE_OPTIONS "/fp:precise")
   else()
     set_source_files_properties(
       CppCore/rgpot/nlist/MinimumImage.cpp CppCore/rgpot/simd/exact_fma_hw.cc
+      CppCore/rgpot/simd/exp.cc CppCore/rgpot/Morse/MorsePot.cc
       PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
   endif()
   add_subdirectory(CppCore/rgpot/fortran)

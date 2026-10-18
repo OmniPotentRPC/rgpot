@@ -119,10 +119,18 @@ features = [
 reason = "libquadmath, vendored beside libgfortran"
 
 # FMA bodies outside a dispatched namespace. Each one is entered only after
-# glibc reports that the processor's FMA is usable. The portable path stays
+# simd::detail::fma_hw_active() finds a usable FMA. The portable path stays
 # free of these instructions. accumulateHw is the target("fma") pair-list
 # loop; -mfma also selects AVX encodings in that body.
 [[allow]]
 symbol = '^(rgpot::simd::exact_fma_hw|rgpot::nlist::_GLOBAL__N_[0-9]+::fold_hardware)\b|rgpot::nlist::CachedPairList::accumulateHw<'
 features = ["avx", "fma", "sse3"]
 reason = "FMA bodies selected when the processor's FMA is usable"
+
+# Vector-width clones (target_clones) of loops that use no FMA. The loader
+# picks a clone from libgcc's own CPU check; each clone returns the bits of
+# the baseline one.
+[[allow]]
+symbol = '^rgpot::(simd::exp_fixed_n|detail::morse_row)\(.*\) \[clone \.(avx2|avx512f)\.[0-9]+\]'
+features = ["avx", "avx2", "avx512f", "sse3", "ssse3", "sse4_1", "sse4_2", "popcnt"]
+reason = "vector-width clones selected by the CPU check of function multiversioning"

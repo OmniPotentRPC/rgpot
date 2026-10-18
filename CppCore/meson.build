@@ -88,12 +88,14 @@ _rgpot_srcs += files('rgpot/abi/CxxLayout.cc')
 # the folded bits match on scalar, SSE, AVX2, AVX-512 and NEON.
 # exact_fma_hw is a separate object: the ISA variants below recompile
 # MinimumImage.cpp with -mno-fma and still need this hardware definition.
+# exp.cc holds the fixed-sequence exp, whose bits must not depend on
+# contraction either.
 _fp_contract_off = cppc.get_supported_arguments(
     ['-ffp-contract=off', '/fp:precise'],
 )
 rgpot_exact_fma = static_library(
     'rgpot_exact_fma',
-    files('rgpot/simd/exact_fma_hw.cc'),
+    files('rgpot/simd/exact_fma_hw.cc', 'rgpot/simd/exp.cc'),
     include_directories: _incdirs,
     cpp_args: _args + _fp_contract_off,
     pic: true,
@@ -1457,6 +1459,30 @@ if get_option('with_tests')
                 include_directories: _incdirs,
                 cpp_args: _args + _fp_contract_off,
                 link_whole: rgpot_exact_fma,
+                install: false,
+            ),
+        )
+        test(
+            'ExpFixedEq',
+            executable(
+                'exp_fixed_eq',
+                sources: ['tests/exp_fixed_eq.cc'],
+                include_directories: _incdirs,
+                cpp_args: _args + _fp_contract_off,
+                link_whole: rgpot_exact_fma,
+                install: false,
+            ),
+        )
+        test(
+            'FmaPathEq',
+            executable(
+                'fma_path_eq',
+                sources: ['tests/fma_path_eq.cc'],
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args + _fp_contract_off,
+                dependencies: test_deps,
+                link_with: _linkto,
+                link_language: 'cpp',
                 install: false,
             ),
         )

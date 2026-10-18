@@ -15,9 +15,50 @@
 
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/nlist/PairListCache.hpp"
+#include "rgpot/simd/clones.hpp"
+#include "rgpot/simd/exp.hpp"
 #include "rgpot/stress.hpp"
 
 namespace rgpot {
+
+namespace detail {
+
+/// The shifted Morse pair term over one row of accepted pairs, vectorised.
+/// Lane k sees only r2[k], so each pair gets the bits it would get alone.
+struct MorseRow {
+  double depth;
+  double range;
+  double rEq;
+  double shiftU;
+  double twoDeA;
+
+  void row(const double *r2, double *energy, double *fscale,
+           std::size_t m) const;
+};
+
+RGPOT_SIMD_CLONES void morse_row(const MorseRow &k, const double *r2,
+                                 double *energy, double *fscale,
+                                 std::size_t m) {
+  const double depth = k.depth;
+  const double range = k.range;
+  const double rEq = k.rEq;
+  const double shiftU = k.shiftU;
+  const double twoDeA = k.twoDeA;
+  for (std::size_t q = 0; q < m; ++q) {
+    const double r = std::sqrt(r2[q]);
+    const double d = 1.0 - simd::detail::exp_fixed_lane(-range * (r - rEq));
+    energy[q] = depth * d * d - depth - shiftU;
+    // -dU/dr / r: the force on i is fscale * (r_i - r_j).
+    fscale[q] = twoDeA * d * (d - 1.0) / r;
+  }
+}
+
+void MorseRow::row(const double *r2, double *energy, double *fscale,
+                   std::size_t m) const {
+  morse_row(*this, r2, energy, fscale, m);
+}
+
+} // namespace detail
 
 /**
  * @class MorsePot
@@ -71,7 +112,7 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
         R, static_cast<std::size_t>(N), box, opt, F,
         [=](int32_t, int32_t, double r2) noexcept {
           const double r = std::sqrt(r2);
-          const double d = 1.0 - std::exp(-range * (r - rEq));
+          const double d = 1.0 - simd::exp_fixed(-range * (r - rEq));
           const double v = depth * d * d - depth;
           const auto s = sw(r);
           return nlist::PairTerm{
@@ -81,16 +122,9 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
     publishCauchyStress(out, strain, volume);
     return;
   }
-  *U = pool.accumulate(
-      R, static_cast<std::size_t>(N), box, opt, F,
-      [=](int32_t, int32_t, double r2) noexcept {
-        const double r = std::sqrt(r2);
-        const double d = 1.0 - std::exp(-range * (r - rEq));
-        // -dU/dr / r: the force on i is fscale * (r_i - r_j).
-        return nlist::PairTerm{depth * d * d - depth - shiftU,
-                               twoDeA * d * (d - 1.0) / r};
-      },
-      observe);
+  const detail::MorseRow kernel{depth, range, rEq, shiftU, twoDeA};
+  *U = pool.accumulate(R, static_cast<std::size_t>(N), box, opt, F, kernel,
+                       observe);
   publishCauchyStress(out, strain, volume);
 }
 
