@@ -4,14 +4,13 @@
 
 * FMA dispatch and exp
 
-The classical pair kernels return the same bits on every x86-64 instruction
-set, on AArch64, and with any C library.
+The classical pair kernels return the same bits on every x86-64 instruction set,
+on AArch64, and with any C library.
 This page lists what that rests on.
 
 ** Fused multiply-add
 
-The pair-list force updates and the minimum-image fold use a fused
-multiply-add.
+The pair-list force updates and the minimum-image fold use a fused multiply-add.
 A build for the x86-64 baseline picks the path once per process:
 
 - the hardware instruction, in functions compiled with =target("fma")=, when
@@ -19,26 +18,26 @@ A build for the x86-64 baseline picks the path once per process:
 - otherwise =simd::exact_fma=, a Dekker product and a round-to-odd sum (Boldo
   and Melquiond, IEEE Trans. Comput. 57(4), 2008).
 
-=fma_hw_active()= reads CPUID leaf 1 (FMA, OSXSAVE and AVX) and XCR0 itself,
-so it needs no support from the C library.
+=fma_hw_active()= reads CPUID leaf 1 (FMA, OSXSAVE and AVX) and XCR0 itself, so
+it needs no support from the C library.
 On glibc 2.33 and newer it also asks glibc, so
 =GLIBC_TUNABLES=glibc.cpu.hwcaps=-FMA= selects the software path.
 =RGPOT_FMA=software= selects it on any C library.
 
 Both paths compute =a*b+c= with one rounding, so they return the same bits.
-=ExactFmaEq= checks this against the hardware instruction on 1.5 million
-cases: edge values, ties, near cancellation, the whole exponent range, and a
-million uniform bit patterns.
-=FmaPathEq= hashes LJ and Morse energies and forces on both paths, the
-software one through =RGPOT_FMA=software=.
+=ExactFmaEq= checks this against the hardware instruction on 1.5 million cases:
+edge values, ties, near cancellation, the whole exponent range, and a million
+uniform bit patterns.
+=FmaPathEq= hashes LJ and Morse energies and forces on both paths, the software
+one through =RGPOT_FMA=software=.
 
 ** exp
 
 =simd::exp_fixed= replaces the C library's =exp= in the Morse kernel.
-The C library's =exp= has variants for each instruction set, and its last
-bit can change between them and between library versions.
-=exp_fixed= uses only IEEE additions, multiplications and bit operations,
-with no table and no fused multiply-add:
+The C library's =exp= has variants for each instruction set, and its last bit
+can change between them and between library versions.
+=exp_fixed= uses only IEEE additions, multiplications and bit operations, with
+no table and no fused multiply-add:
 
 1. Clamp =x= to [-746, 710], keeping overflow and underflow.
 2. Reduce =x = k ln2 + r= by the Cody-Waite split of fdlibm.
@@ -51,8 +50,8 @@ The scalar function and the vector loops run this body, and their bits match.
 =exp_fixed_n= and the Morse row kernel are compiled as =target_clones= for the
 baseline, AVX2 and AVX-512F.
 The loader picks one clone from libgcc's own CPU check.
-Contraction is off in these files, and =-fno-trapping-math -fno-math-errno=
-let GCC vectorise them without changing a value.
+Contraction is off in these files, and =-fno-trapping-math -fno-math-errno= let
+GCC vectorise them without changing a value.
 
 Error bounds:
 
