@@ -63,6 +63,9 @@ class MpiPefSession;
 #include "rgpot/Potential.hpp"
 #include "rgpot/abi/Handshake.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
+#ifdef RGPOT_HAS_IPI
+#include "rgpot/IPIPot/IPIPot.hpp"
+#endif
 #include "rgpot/types/AtomMatrix.hpp"
 #include "rgpot/types/adapters/capnp/capnp_adapter.hpp"
 #include "rgpot/units.hpp"
@@ -83,6 +86,11 @@ private:
   /// Optional typed handle when backend is CPMD (for configure()).
   rgpot::CPMDPot *m_cpmd = nullptr;
   rgpot::tools::MpiPefSession *m_pef = nullptr;
+#ifdef RGPOT_HAS_IPI
+  /// Set when the backend is the i-PI socket server. calculate copies the
+  /// Cauchy stress stashed by the last force call.
+  rgpot::IPIPot *m_ipi = nullptr;
+#endif
 
 public:
   /**
@@ -90,7 +98,13 @@ public:
    * @param pot Ownership of a PotentialBase derived object.
    */
   GenericPotImpl(std::unique_ptr<rgpot::PotentialBase> pot)
-      : m_potential(std::move(pot)) {}
+      : m_potential(std::move(pot))
+#ifdef RGPOT_HAS_IPI
+        ,
+        m_ipi(dynamic_cast<rgpot::IPIPot *>(m_potential.get()))
+#endif
+  {
+  }
 
   /**
    * @brief Constructor retaining an NWChemPot pointer for configure().
@@ -115,9 +129,20 @@ public:
     caps.setBackendName("rgpot");
     caps.setBackendVersion(RGPOT_BUILD_VERSION);
     caps.setAvailable(true);
-    auto ops = caps.initOperations(2);
+    unsigned int opCount = 2;
+#ifdef RGPOT_HAS_IPI
+    if (m_ipi != nullptr) {
+      opCount = 3;
+    }
+#endif
+    auto ops = caps.initOperations(opCount);
     ops.set(0, ::Capabilities::Operation::ENERGY);
     ops.set(1, ::Capabilities::Operation::FORCES);
+#ifdef RGPOT_HAS_IPI
+    if (m_ipi != nullptr) {
+      ops.set(2, ::Capabilities::Operation::STRESS);
+    }
+#endif
     rgpot::abi::fill_compatibility(caps);
     return kj::READY_NOW;
   }
@@ -200,6 +225,21 @@ public:
     }
     rgpot::types::adapt::capnp::populateForcesToCapnp(forcesList, forces);
 
+#ifdef RGPOT_HAS_IPI
+    if (m_ipi != nullptr) {
+      double stress[9];
+      if (m_ipi->copyStress(stress)) {
+        // sigma_caller = sigma_eV/A^3 * (eV -> caller) * (A -> caller length)^3
+        const double stress_to_caller = ev_to_caller * len_to_angstrom *
+                                        len_to_angstrom * len_to_angstrom;
+        auto stressList = pres.initStress(9);
+        for (unsigned int i = 0; i < 9; ++i) {
+          stressList.set(i, stress[i] * stress_to_caller);
+        }
+      }
+    }
+#endif
+
     return kj::READY_NOW;
   }
 
@@ -254,6 +294,9 @@ int runServer(int argc, char *argv[]
   if (argc < 3) {
     std::cerr << "Usage: " << argv[0] << " <port> <PotentialType>" << std::endl;
     std::cerr << "  Available PotentialTypes: CuH2, LJ, LJCluster, Morse, ZBL"
+#ifdef RGPOT_HAS_IPI
+              << ", IPI:unix:<path>, IPI:tcp:<host>:<port>"
+#endif
 #ifdef RGPOT_HAS_XTB
               << ", XTB, GFNFF, GFN0xTB, GFN1xTB"
 #endif
@@ -319,6 +362,20 @@ int runServer(int argc, char *argv[]
   } else if (pot_type == "ZBL") {
     std::cout << "Loading ZBL potential..." << std::endl;
     potential_to_use = std::make_unique<rgpot::ZBLPot>();
+#ifdef RGPOT_HAS_IPI
+  } else if (pot_type == "IPI" || pot_type.rfind("IPI:", 0) == 0) {
+    if (pot_type.size() < 5) {
+      std::cerr << "Error: IPI requires an address, for example "
+                   "IPI:unix:/tmp/ipi_rgpot or IPI:tcp:127.0.0.1:31415"
+                << std::endl;
+      return 1;
+    }
+    rgpot::IPIConfig cfg;
+    cfg.address = pot_type.substr(4);
+    std::cout << "Loading IPI socket server at " << cfg.address << "..."
+              << std::endl;
+    potential_to_use = std::make_unique<rgpot::IPIPot>(cfg);
+#endif
 #ifdef RGPOT_HAS_XTB
   } else if (pot_type == "XTB") {
     std::cout << "Loading XTB potential (GFN2-xTB)..." << std::endl;
