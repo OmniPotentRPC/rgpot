@@ -94,9 +94,11 @@ endif
 # Product-sums in this file go through rgpot::simd::mul_add. Contraction
 # stays off so a multiply that is not written as mul_add is not fused, and
 # the folded bits match on scalar, SSE, AVX2, AVX-512 and NEON.
-# exact_fma_hw is a separate object: the ISA variants below recompile
-# MinimumImage.cpp with -mno-fma and still need this hardware definition.
-# The dispatch object defines the same symbol; this copy is weak.
+# exact_fma_hw is a separate object for the ISA hash binaries below. They
+# recompile MinimumImage.cpp with -mno-fma and do not link exp.cc, which
+# holds the strong definition. This copy is weak. It stays out of
+# rgpot_core: --whole-archive keeps the weak body's bytes after the strong
+# symbol wins, and the ISA auditor then sees an unsymbolized vfmadd.
 _fp_contract_off = cppc.get_supported_arguments(
     ['-ffp-contract=off', '/fp:precise'],
 )
@@ -149,7 +151,7 @@ if not get_option('with_rpc_client_only')
         dependencies: _deps,
         cpp_args: _core_args,
         include_directories: _incdirs,
-        link_whole: [rgpot_minimage, rgpot_exact_fma],
+        link_whole: [rgpot_minimage],
         pic: true,
         install: false,
     )

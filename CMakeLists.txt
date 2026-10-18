@@ -189,7 +189,6 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/simd/scalar_kernels.cc
       CppCore/rgpot/simd/dispatch.cc
       CppCore/rgpot/nlist/MinimumImage.cpp
-      CppCore/rgpot/simd/exact_fma_hw.cc
       CppCore/rgpot/CuH2/cuh2Utils.cc
       CppCore/rgpot/fortran/FortranPots.cc)
 
@@ -218,13 +217,17 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/vesin>
            $<INSTALL_INTERFACE:include/rgpot/vesin>)
   target_link_libraries(rgpot_vesin PRIVATE Threads::Threads)
+  # exp.cc defines the strong exact_fma_hw. The weak translation unit is
+  # linked only by the meson ISA hash binaries, which do not contain exp.cc.
+  # Compiling both into this library leaves the weak body with no symbol
+  # after the strong one wins.
   if(MSVC)
     set_source_files_properties(
-      CppCore/rgpot/nlist/MinimumImage.cpp CppCore/rgpot/simd/exact_fma_hw.cc
+      CppCore/rgpot/nlist/MinimumImage.cpp
       PROPERTIES COMPILE_OPTIONS "/fp:precise")
   else()
     set_source_files_properties(
-      CppCore/rgpot/nlist/MinimumImage.cpp CppCore/rgpot/simd/exact_fma_hw.cc
+      CppCore/rgpot/nlist/MinimumImage.cpp
       PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
   endif()
   add_subdirectory(CppCore/rgpot/fortran)
