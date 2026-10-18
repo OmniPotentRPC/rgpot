@@ -37,25 +37,37 @@ void expect_bits(double x, double got, double want, const char *what) {
   ++g_fail;
 }
 
+/// A double in [lo, hi) from the top 53 bits of one generator output. The
+/// standard fixes mt19937_64's sequence but not what uniform_real_distribution
+/// or uniform_int_distribution make of it, so the digest's inputs are drawn
+/// here, the same on every C++ library.
+double uniform(std::mt19937_64 &rng, double lo, double hi) {
+  return lo + static_cast<double>(rng() >> 11) * 0x1p-53 * (hi - lo);
+}
+
+/// An integer in [lo, hi] from one generator output.
+int uniform_int(std::mt19937_64 &rng, int lo, int hi) {
+  const std::uint64_t span = static_cast<std::uint64_t>(hi - lo) + 1;
+  return lo + static_cast<int>(rng() % span);
+}
+
 /// Inputs spread over the whole domain, the reduction boundaries
 /// (k ln2 +- ln2/2), and the overflow and underflow edges.
 std::vector<double> inputs(std::size_t n) {
   std::mt19937_64 rng(7);
-  std::uniform_real_distribution<double> wide(-750.0, 712.0);
-  std::uniform_real_distribution<double> narrow(-20.0, 5.0);
-  std::uniform_int_distribution<int> kk(-1075, 1024);
   std::vector<double> x;
   x.reserve(n);
   while (x.size() < n) {
     switch (x.size() % 4) {
     case 0:
-      x.push_back(wide(rng));
+      x.push_back(uniform(rng, -750.0, 712.0));
       break;
     case 1:
-      x.push_back(narrow(rng));
+      x.push_back(uniform(rng, -20.0, 5.0));
       break;
     case 2: {
-      const double mid = (kk(rng) + 0.5) * 0x1.62e42fefa39efp-1;
+      const double mid =
+          (uniform_int(rng, -1075, 1024) + 0.5) * 0x1.62e42fefa39efp-1;
       x.push_back(std::nextafter(mid, (rng() & 1) ? 1e300 : -1e300));
       break;
     }
@@ -103,7 +115,7 @@ int main() {
       h *= 1099511628211ULL;
     }
   }
-  const std::uint64_t kDigest = 0x20985494c67de07cULL;
+  const std::uint64_t kDigest = 0x13afb36416db71bdULL;
   if (h != kDigest) {
     std::cerr << "digest " << std::hex << h << " expected " << kDigest
               << std::dec << '\n';
