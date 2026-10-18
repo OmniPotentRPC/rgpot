@@ -213,10 +213,21 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/simd/exp.cc CppCore/rgpot/Morse/MorsePot.cc
       PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
     # Value-safe: lets the exp clamps if-convert and sqrt use sqrtpd, so
-    # the exp and Morse row loops vectorise, also at -O2.
+    # the exp and Morse row loops vectorise, also at -O2. Each flag is kept
+    # only where the compiler accepts it (clang has no -fvect-cost-model),
+    # as the Meson build does with get_supported_arguments.
+    include(CheckCXXCompilerFlag)
+    set(RGPOT_VECTOR_LOOP_FLAGS)
+    foreach(flag -fno-trapping-math -fno-math-errno -ftree-vectorize
+                 -fvect-cost-model=dynamic)
+      string(MAKE_C_IDENTIFIER "RGPOT_HAS${flag}" flag_var)
+      check_cxx_compiler_flag(${flag} ${flag_var})
+      if(${flag_var})
+        list(APPEND RGPOT_VECTOR_LOOP_FLAGS ${flag})
+      endif()
+    endforeach()
     set_property(SOURCE CppCore/rgpot/simd/exp.cc CppCore/rgpot/Morse/MorsePot.cc
-      APPEND PROPERTY COMPILE_OPTIONS -fno-trapping-math -fno-math-errno
-      -ftree-vectorize -fvect-cost-model=dynamic)
+      APPEND PROPERTY COMPILE_OPTIONS ${RGPOT_VECTOR_LOOP_FLAGS})
   endif()
   add_subdirectory(CppCore/rgpot/fortran)
   add_library(rgpot ${RGPOT_SOURCES})
