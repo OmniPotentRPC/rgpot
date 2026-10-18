@@ -71,29 +71,9 @@ extern "C" const glibc_cpuid_leaf *__x86_get_cpuid_feature_leaf(unsigned int)
 #if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
 /// FMA3 from CPUID leaf 1 (ECX bit 12), with the OS saving the YMM state
 /// (OSXSAVE and AVX set, XCR0 bits 1 and 2), the conditions Intel's manual
-/// gives for executing VEX-encoded FMA. Needs no C library support.
-inline bool cpuid_fma_usable() {
-  unsigned int eax = 0;
-  unsigned int ebx = 0;
-  unsigned int ecx = 0;
-  unsigned int edx = 0;
-  __asm__("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx) : "a"(0u), "c"(0u));
-  if (eax < 1u) {
-    return false;
-  }
-  __asm__("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx) : "a"(1u), "c"(0u));
-  constexpr unsigned int kFma = 1u << 12;
-  constexpr unsigned int kOsxsave = 1u << 27;
-  constexpr unsigned int kAvx = 1u << 28;
-  if ((ecx & (kFma | kOsxsave | kAvx)) != (kFma | kOsxsave | kAvx)) {
-    return false;
-  }
-  unsigned int xlo = 0;
-  unsigned int xhi = 0;
-  __asm__("xgetbv" : "=a"(xlo), "=d"(xhi) : "c"(0u));
-  (void)xhi;
-  return (xlo & 6u) == 6u;
-}
+/// gives for executing VEX-encoded FMA. Needs no C library support. Out of
+/// line in exact_fma_hw.cc, so xgetbv sits in one allowlisted function.
+bool cpuid_fma_usable();
 
 /// glibc's verdict on FMA where the C library has one (2.33 and newer), so
 /// GLIBC_TUNABLES=glibc.cpu.hwcaps=-FMA also selects the software path.
