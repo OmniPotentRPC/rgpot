@@ -26,7 +26,13 @@ inline constexpr double kUnderflow = -7.45133219101941108420e+02;
 
 template <bool Hw> inline double fad(double a, double b, double c) {
   if constexpr (Hw) {
+    // MSVC has no __builtin_fma. The hardware bodies that pass Hw are
+    // GCC and Clang, compiled with target("fma").
+#if defined(__GNUC__) || defined(__clang__)
     return __builtin_fma(a, b, c);
+#else
+    return mul_add(a, b, c);
+#endif
   } else {
     return fma_quick(a, b, c);
   }
@@ -78,7 +84,11 @@ template <bool Hw> inline double exp_fast(double x) {
       const double half = xsb ? -0.5 : 0.5;
       double scaled = 0;
       if constexpr (Hw) {
+#if defined(__GNUC__) || defined(__clang__)
         scaled = __builtin_fma(kInvLn2, x, half);
+#else
+        scaled = fma_trunc(kInvLn2, x, half);
+#endif
       } else {
         scaled = fma_trunc(kInvLn2, x, half);
       }
@@ -101,10 +111,17 @@ template <bool Hw> inline double exp_fast(double x) {
   double p2 = 0;
   double p1 = 0;
   if constexpr (Hw) {
+#if defined(__GNUC__) || defined(__clang__)
     p4 = __builtin_fma(t, kP5, kP4);
     p3 = __builtin_fma(t, p4, kP3);
     p2 = __builtin_fma(t, p3, kP2);
     p1 = __builtin_fma(t, p2, kP1);
+#else
+    p4 = fma_trunc(t, kP5, kP4);
+    p3 = fma_trunc(t, p4, kP3);
+    p2 = fma_trunc(t, p3, kP2);
+    p1 = fma_trunc(t, p2, kP1);
+#endif
   } else {
     p4 = fma_trunc(t, kP5, kP4);
     p3 = fma_trunc(t, p4, kP3);
