@@ -93,11 +93,17 @@ _rgpot_srcs += files('rgpot/abi/CxxLayout.cc')
 _fp_contract_off = cppc.get_supported_arguments(
     ['-ffp-contract=off', '/fp:precise'],
 )
+# Lets GCC if-convert the exp clamps and use sqrtpd: neither flag changes a
+# computed value (no errno from sqrt, no FP traps assumed), and the vector
+# loops then run the scalar body's operations lane by lane.
+_vector_loops = cppc.get_supported_arguments(
+    ['-fno-trapping-math', '-fno-math-errno'],
+)
 rgpot_exact_fma = static_library(
     'rgpot_exact_fma',
     files('rgpot/simd/exact_fma_hw.cc', 'rgpot/simd/exp.cc'),
     include_directories: _incdirs,
-    cpp_args: _args + _fp_contract_off,
+    cpp_args: _args + _fp_contract_off + _vector_loops,
     pic: true,
     install: false,
 )

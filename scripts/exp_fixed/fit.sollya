@@ -1,0 +1,11 @@
+// Coefficients of rgpot::simd::exp_fixed (CppCore/rgpot/simd/exp.hpp).
+// exp(r) ~ 1 + r + sum_{n=2}^{11} c_n r^n on |r| <= 0.3466, double
+// coefficients, relative error. Run: sollya scripts/exp_fixed/fit.sollya
+prec = 300;
+I = [-0.3466; 0.3466];
+p = fpminimax(exp(x), [|2,...,11|], [|D...|], I, floating, relative, 1 + x);
+display = hexadecimal;
+for i from 2 to 11 do print(coeff(p, i));
+display = decimal;
+e = supnorm(p, exp(x), I, relative, 2^-40);
+print("relative approximation error <=", sup(e));

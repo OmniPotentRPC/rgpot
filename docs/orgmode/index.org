@@ -94,6 +94,7 @@ meson compile -C bbdir && meson test -C bbdir
    reference/mpi
    reference/c_abi
    reference/engine_abi
+   reference/simd_exp
    api/index
    changelog
 

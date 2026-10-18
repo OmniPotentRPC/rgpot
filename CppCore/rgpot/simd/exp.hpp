@@ -7,7 +7,8 @@
 // fused multiply-add and no libm call, so scalar code, SSE2, AVX2, AVX-512
 // and NEON lanes agree, and the result does not depend on the C library.
 // The translation units that include this header build with contraction
-// off (-ffp-contract=off); clang also gets a pragma in the body.
+// off (-ffp-contract=off); clang also gets a pragma in the body. With
+// -fno-trapping-math the clamps if-convert and loops over the body vectorise.
 
 #include <cstddef>
 #include <cstdint>
@@ -96,7 +97,7 @@ inline double exp_fixed_lane(double x) {
 } // namespace detail
 
 /// e^x with the same bits on every instruction set and C library. Within
-/// 1 ulp for normal results (see docs/orgmode/reference/simd_exp.org).
+/// 1.24 ulp for normal results (see docs/orgmode/reference/simd_exp.org).
 double exp_fixed(double x);
 
 /// out[i] = exp_fixed(x[i]) for i < n. Vectorised and dispatched on the CPU
