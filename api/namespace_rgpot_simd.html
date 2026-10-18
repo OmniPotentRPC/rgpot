@@ -144,6 +144,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l1 _expand"><a class="reference internal" href="../reference/mpi.html">MPI</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../reference/c_abi.html">C ABI of rgpot-core</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../reference/engine_abi.html">Engine plugin ABI</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../reference/simd_exp.html">FMA dispatch and exp</a></li>
 <li class="toctree-l1 current"><a class="reference internal" href="index.html">API Reference</a><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="group_rgpot_cpp.html">C++ RAII Wrappers</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="class_rgpot_CalcResult.html">class rgpot::CalcResult</a><ul class="simple">
@@ -224,6 +225,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_abi.html">namespace rgpot::abi</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_aoti_execstack.html">namespace rgpot::aoti_execstack</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_detail.html">namespace rgpot::detail</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_details.html">namespace rgpot::details</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_engine.html">namespace rgpot::engine</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_fortranpots.html">namespace rgpot::fortranpots</a></li>
@@ -708,8 +710,10 @@ data-aria-dark="Switch to auto color mode">
 <span data-line="11"><span class="kt">double</span> <span class="doxyrest-code-target target" id="doxid-exact__fma_8hpp_1ae9371c811aa36d48483ed35b0efd12d4"></span><span class="n">fma_quick</span><span class="p">(</span><span class="kt">double</span> <span class="n">a</span><span class="p">,</span> <span class="kt">double</span> <span class="n">b</span><span class="p">,</span> <span class="kt">double</span> <span class="n">c</span><span class="p">);</span></span>
 <span data-line="12"><span class="kt">double</span> <a class="doxyrest-code-link reference internal" href="#doxid-exact-fma-8hpp-1a6400dc19dfc6964f5daa7da968fc9e12"><span class="std std-ref">mul_add</span></a><span class="p">(</span><span class="kt">double</span> <span class="n">a</span><span class="p">,</span> <span class="kt">double</span> <span class="n">b</span><span class="p">,</span> <span class="kt">double</span> <span class="n">c</span><span class="p">);</span></span>
 <span data-line="13"><span class="kt">double</span> <a class="doxyrest-code-link reference internal" href="#doxid-exact-fma-8hpp-1a894a4d861296108dba7ed726b526790c"><span class="std std-ref">r2_of</span></a><span class="p">(</span><span class="kt">double</span> <span class="n">dx</span><span class="p">,</span> <span class="kt">double</span> <span class="n">dy</span><span class="p">,</span> <span class="kt">double</span> <span class="n">dz</span><span class="p">);</span></span>
-<span data-line="14"> </span>
-<span data-line="15"><span class="p">}</span> <span class="c1">// namespace simd</span></span>
+<span data-line="14"><span class="kt">double</span> <a class="doxyrest-code-link reference internal" href="#doxid-exp-8cc-1a3b98ce20e45a2530b231bb9d1911f83b"><span class="std std-ref">exp_fixed</span></a><span class="p">(</span><span class="kt">double</span> <span class="n">x</span><span class="p">);</span></span>
+<span data-line="15"><span class="n">RGPOT_SIMD_CLONES</span> <span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-exp-8cc-1a350d02044999bf40739e4c634df3484b"><span class="std std-ref">exp_fixed_n</span></a><span class="p">(</span><span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">x</span><span class="p">,</span> <span class="kt">double</span><span class="o">*</span> <span class="n">out</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">size_t</span> <span class="n">n</span><span class="p">);</span></span>
+<span data-line="16"> </span>
+<span data-line="17"><span class="p">}</span> <span class="c1">// namespace simd</span></span>
 </pre></div>
 </section>
 <section id="detailed-documentation">
@@ -723,11 +727,19 @@ data-aria-dark="Switch to auto color mode">
 <div class="doxyrest-title-code-block highlight" id="doxid-exact-fma-8hpp-1a6400dc19dfc6964f5daa7da968fc9e12">
 <span id="index-2"></span><pre><span data-line="1"><span class="kt">double</span> <span class="n">mul_add</span><span class="p">(</span><span class="kt">double</span> <span class="n">a</span><span class="p">,</span> <span class="kt">double</span> <span class="n">b</span><span class="p">,</span> <span class="kt">double</span> <span class="n">c</span><span class="p">)</span></span>
 </pre></div>
-<p>a*b+c, one rounding. A hardware instruction when this translation unit has one, or when glibc reports FMA usable. Otherwise fma_quick.</p>
+<p>a*b+c, one rounding. A hardware instruction when this translation unit has one, or when fma_hw_active(). Otherwise fma_quick.</p>
 <div class="doxyrest-title-code-block highlight" id="doxid-exact-fma-8hpp-1a894a4d861296108dba7ed726b526790c">
 <span id="index-3"></span><pre><span data-line="1"><span class="kt">double</span> <span class="n">r2_of</span><span class="p">(</span><span class="kt">double</span> <span class="n">dx</span><span class="p">,</span> <span class="kt">double</span> <span class="n">dy</span><span class="p">,</span> <span class="kt">double</span> <span class="n">dz</span><span class="p">)</span></span>
 </pre></div>
 <p>dx^2 + dy^2 + dz^2. The first square is a multiply. The two sums fuse.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-exp-8cc-1a3b98ce20e45a2530b231bb9d1911f83b">
+<span id="index-4"></span><pre><span data-line="1"><span class="kt">double</span> <span class="n">exp_fixed</span><span class="p">(</span><span class="kt">double</span> <span class="n">x</span><span class="p">)</span></span>
+</pre></div>
+<p>e^x with the same bits on every instruction set and C library. Within 1.24 ulp for normal results (see docs/orgmode/reference/simd_exp.org).</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-exp-8cc-1a350d02044999bf40739e4c634df3484b">
+<span id="index-5"></span><pre><span data-line="1"><span class="n">RGPOT_SIMD_CLONES</span> <span class="kt">void</span> <span class="n">exp_fixed_n</span><span class="p">(</span><span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">x</span><span class="p">,</span> <span class="kt">double</span><span class="o">*</span> <span class="n">out</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">size_t</span> <span class="n">n</span><span class="p">)</span></span>
+</pre></div>
+<p>out[i] = exp_fixed(x[i]) for i &lt; n. Vectorised and dispatched on the CPU at run time; every variant returns the bits of exp_fixed.</p>
 </section>
 </section>
 </section>

@@ -1,0 +1,29 @@
+.. index:: pair: namespace; rgpot::detail
+.. _doxid-namespacergpot_1_1detail:
+
+namespace rgpot::detail
+=======================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_detail_MorseRow.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace detail {
+
+	// structs
+
+	struct :ref:`MorseRow<doxid-structrgpot_1_1detail_1_1_morse_row>`;
+
+	// global functions
+
+	void :target:`morse_row<doxid-_morse_pot_8cc_1acf9ff4d4bb2206a96b990bdb84e91739>`(const :ref:`MorseRow<doxid-structrgpot_1_1detail_1_1_morse_row>`& k, const double* r2, double* energy, double* fscale, std::size_t m);
+
+	} // namespace detail

@@ -144,6 +144,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/mpi.html">MPI</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/c_abi.html">C ABI of rgpot-core</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/engine_abi.html">Engine plugin ABI</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/simd_exp.html">FMA dispatch and exp</a></li>
 <li class="toctree-l1 current"><a class="reference internal" href="../../api/index.html">API Reference</a><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="../../api/group_rgpot_cpp.html">C++ RAII Wrappers</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../../api/class_rgpot_CalcResult.html">class rgpot::CalcResult</a><ul class="simple">
@@ -224,6 +225,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_abi.html">namespace rgpot::abi</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_aoti_execstack.html">namespace rgpot::aoti_execstack</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_detail.html">namespace rgpot::detail</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_details.html">namespace rgpot::details</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_engine.html">namespace rgpot::engine</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_fortranpots.html">namespace rgpot::fortranpots</a></li>
@@ -789,7 +791,7 @@ keep them alive for the lifetime of this struct.</p>
 <dd><p class="rubric">Functions</p>
 <dl class="rust function">
 <dt class="sig sig-object rust" id="rgpot_core-types-rgpot_force_input_t-n_atoms">
-<span class="sig-name descname"><span class="k"><span class="pre">unsafe</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">n_atoms</span></span><span class="p"><span class="pre">(</span></span><span class="p"><span class="pre">&amp;</span></span><span class="k"><span class="pre">self</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><span class="n"><span class="pre">Option</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">usize</span></span><span class="p"><span class="pre">&gt;</span></span></span><a class="headerlink" href="#rgpot_core-types-rgpot_force_input_t-n_atoms" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="k"><span class="pre">unsafe</span></span><span class="w"> </span><span class="k"><span class="pre">fn</span></span><span class="w"> </span><span class="n"><span class="pre">n_atoms</span></span><span class="p"><span class="pre">(</span></span><span class="o"><span class="pre">&amp;</span></span><span class="k"><span class="pre">self</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-&gt;</span></span><span class="w"> </span><span class="n"><span class="pre">Option</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">usize</span></span><span class="p"><span class="pre">&gt;</span></span></span><a class="headerlink" href="#rgpot_core-types-rgpot_force_input_t-n_atoms" title="Link to this definition">¶</a></dt>
 <dd><p>Extract <code class="docutils literal notranslate"><span class="pre">n_atoms</span></code> from the positions tensor’s <code class="docutils literal notranslate"><span class="pre">shape[0]</span></code>.</p>
 <p>Returns <code class="docutils literal notranslate"><span class="pre">None</span></code> if <code class="docutils literal notranslate"><span class="pre">positions</span></code> is null or has no shape.</p>
 <p><strong>Safety</strong></p>

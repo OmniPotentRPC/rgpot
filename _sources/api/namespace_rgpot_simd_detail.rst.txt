@@ -7,6 +7,9 @@ namespace rgpot::simd::detail
 .. toctree::
 	:hidden:
 
+Overview
+~~~~~~~~
+
 
 
 
@@ -19,16 +22,76 @@ namespace rgpot::simd::detail
 	// global variables
 
 	double :target:`kFmaSplit<doxid-exact__fma_8hpp_1a7ecbf17e28558e69e2a862bd111fe16b>` = 134217729.0;
+	double :target:`kExpInvLn2<doxid-exp_8hpp_1adfaff79169b535da63d9f8912e5ee84d>` = 0x1.71547652b82fep0;
+	double :target:`kExpLn2Hi<doxid-exp_8hpp_1a24222a90541ec5724a2b78ec8c29055d>` = 0x1.62e42feep-1;
+	double :target:`kExpLn2Lo<doxid-exp_8hpp_1ab55a2405f45d3ec265afccc95f746517>` = 0x1.a39ef35793c76p-33;
+	double :target:`kExpShift<doxid-exp_8hpp_1a042fa867b5f11e3bfbe928aba340b692>` = 0x1.8p52;
+	double :target:`kExpMax<doxid-exp_8hpp_1a921206a71a221b4910a800e0fcaa2c5e>` = 710.0;
+	double :target:`kExpMin<doxid-exp_8hpp_1a9fdc13cc0c88e70c5c8d8178db452f07>` = -746.0;
+	double :target:`kExpC2<doxid-exp_8hpp_1a06a6b467e8d5f4956ac137b4427aea41>` = 0x1.000000000000ap-1;
+	double :target:`kExpC3<doxid-exp_8hpp_1a38de289a2a4943253b5c07ef04545a6d>` = 0x1.55555555554fep-3;
+	double :target:`kExpC4<doxid-exp_8hpp_1aff0d08529472b8c9353532e655ba0a84>` = 0x1.55555555506bcp-5;
+	double :target:`kExpC5<doxid-exp_8hpp_1ac40ab8ecf320f501707f682dfd8f028b>` = 0x1.1111111126b36p-7;
+	double :target:`kExpC6<doxid-exp_8hpp_1a233b3bc6ce2d46a31bfd6b888514e646>` = 0x1.6c16c18477083p-10;
+	double :target:`kExpC7<doxid-exp_8hpp_1a0c3aca160613021f8c90ac6f55d51b18>` = 0x1.a01a012fee99cp-13;
+	double :target:`kExpC8<doxid-exp_8hpp_1a313cf39b4441ef84c7a78fb10e1daa47>` = 0x1.a019995efb00fp-16;
+	double :target:`kExpC9<doxid-exp_8hpp_1a2b228820e255b7438f888996e679b847>` = 0x1.71df18ef76144p-19;
+	double :target:`kExpC10<doxid-exp_8hpp_1a82bb56c54fe9e0686eea6aac575c2b5f>` = 0x1.28adfccb26cd8p-22;
+	double :target:`kExpC11<doxid-exp_8hpp_1ab7aafb908bab3a490f52a20db1969851>` = 0x1.ad92e899366cbp-26;
 
 	// global functions
 
 	void :target:`two_sum<doxid-exact__fma_8hpp_1a6864502789945b9958c61a44b4fbe382>`(double a, double b, double& s, double& e);
 	void :target:`two_prod<doxid-exact__fma_8hpp_1a1ef6a2dd9bfcd9910c259e28f4e63a6c>`(double a, double b, double& p, double& e);
-	bool :target:`glibc_fma_active<doxid-exact__fma_8hpp_1a06f11ad3f971e82b95a89c26d9da26aa>`();
+	bool :ref:`fma_hw_active<doxid-exact__fma_8hpp_1ae1626b918b0040fead63049028827091>`();
 	std::uint64_t :target:`bits_of<doxid-exact__fma_8hpp_1a1998ea45bb49ed97512ff52905ce5977>`(double x);
 	double :target:`from_bits<doxid-exact__fma_8hpp_1afaafaaa5005059f39e6bc9352c6816b3>`(std::uint64_t u);
 	bool :target:`exp_in_band<doxid-exact__fma_8hpp_1a2f97b1d2da3a57c991ce885c8534530f>`(std::uint64_t u, unsigned lo, unsigned hi);
 	bool :target:`fma_ro_domain<doxid-exact__fma_8hpp_1a3acc72ca3b6012633fd90fe69a80f99f>`(double a, double b, double c);
 	double :target:`fma_ro<doxid-exact__fma_8hpp_1a0d0e53d9d38546882dacd9eccf15552d>`(double a, double b, double c, bool& exact_ok);
+	std::uint64_t :target:`exp_bits<doxid-exp_8hpp_1aee97f764d36cf9e34ce08ee079684b3d>`(double x);
+	double :target:`exp_from_bits<doxid-exp_8hpp_1af87bbe05978cdab16d72d5f7b89983f6>`(std::uint64_t u);
+	double :ref:`exp_pow2<doxid-exp_8hpp_1a59657a2b90be37f7535edb25baffa676>`(double m);
+	double :ref:`exp_fixed_lane<doxid-exp_8hpp_1a0a7fba2c8a94dbcdd4e54fe8f1f4499a>`(double x);
 
 	} // namespace detail
+.. _details-namespacergpot_1_1simd_1_1detail:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Global Functions
+----------------
+
+.. index:: pair: function; fma_hw_active
+.. _doxid-exact__fma_8hpp_1ae1626b918b0040fead63049028827091:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool fma_hw_active()
+
+True when the hardware fused multiply-add may run: the CPU has FMA3 and the OS saves its registers (CPUID), glibc 2.33 or newer does not mask it, and RGPOT_FMA is not ``software``. Read once per process. The hardware instruction and the software path return the same bits, so this decides speed only.
+
+.. index:: pair: function; exp_pow2
+.. _doxid-exp_8hpp_1a59657a2b90be37f7535edb25baffa676:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double exp_pow2(double m)
+
+2^m for an integer-valued m in [-1022, 1023], built in the exponent field. m + 1023 lands in the low bits of the shifted sum.
+
+.. index:: pair: function; exp_fixed_lane
+.. _doxid-exp_8hpp_1a0a7fba2c8a94dbcdd4e54fe8f1f4499a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double exp_fixed_lane(double x)
+
+The body every exp in rgpot runs, scalar or as a vector lane. Branch free: GCC and clang vectorise a loop over it. NaN propagates, +inf gives +inf and -inf gives +0.
+

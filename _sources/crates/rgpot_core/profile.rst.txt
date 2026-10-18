@@ -261,21 +261,21 @@
          .. rust:function:: rgpot_core::profile::ProfileSession::abi_version
             :index: -1
             :vis: pub
-            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"abi_version"},{"type":"punctuation","value":"("},{"type":"punctuation","value":"&"},{"type":"keyword","value":"self"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"i32","target":"i32"}]
+            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"abi_version"},{"type":"punctuation","value":"("},{"type":"operator","value":"&"},{"type":"keyword","value":"self"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"i32","target":"i32"}]
 
             Numeric ABI generation reported by the backend.
 
          .. rust:function:: rgpot_core::profile::ProfileSession::evaluate
             :index: -1
             :vis: pub
-            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"evaluate"},{"type":"punctuation","value":"("},{"type":"punctuation","value":"&"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"keyword","value":"self"},{"type":"punctuation","value":", "},{"type":"name","value":"request"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"link","value":"ProfileRequest","target":"ProfileRequest"},{"type":"punctuation","value":"<"},{"type":"lifetime","value":"'_"},{"type":"punctuation","value":">"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"ProfileResult","target":"ProfileResult"},{"type":"punctuation","value":"<"},{"type":"link","value":"ProfileEvaluation","target":"ProfileEvaluation"},{"type":"punctuation","value":">"}]
+            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"evaluate"},{"type":"punctuation","value":"("},{"type":"operator","value":"&"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"keyword","value":"self"},{"type":"punctuation","value":", "},{"type":"name","value":"request"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"link","value":"ProfileRequest","target":"ProfileRequest"},{"type":"punctuation","value":"<"},{"type":"lifetime","value":"'_"},{"type":"punctuation","value":">"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"ProfileResult","target":"ProfileResult"},{"type":"punctuation","value":"<"},{"type":"link","value":"ProfileEvaluation","target":"ProfileEvaluation"},{"type":"punctuation","value":">"}]
 
             Evaluate one geometry through the persistent session.
 
          .. rust:function:: rgpot_core::profile::ProfileSession::library_path
             :index: -1
             :vis: pub
-            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"library_path"},{"type":"punctuation","value":"("},{"type":"punctuation","value":"&"},{"type":"keyword","value":"self"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"punctuation","value":"&"},{"type":"link","value":"str","target":"str"}]
+            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"library_path"},{"type":"punctuation","value":"("},{"type":"operator","value":"&"},{"type":"keyword","value":"self"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"punctuation","value":"&"},{"type":"link","value":"str","target":"str"}]
 
             Path of the shared library selected by the candidate search.
 
@@ -307,13 +307,13 @@
          .. rust:function:: rgpot_core::profile::ProfileSession::prefix
             :index: -1
             :vis: pub
-            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"prefix"},{"type":"punctuation","value":"("},{"type":"punctuation","value":"&"},{"type":"keyword","value":"self"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"punctuation","value":"&"},{"type":"link","value":"str","target":"str"}]
+            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"prefix"},{"type":"punctuation","value":"("},{"type":"operator","value":"&"},{"type":"keyword","value":"self"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"punctuation","value":"&"},{"type":"link","value":"str","target":"str"}]
 
             Backend prefix used to resolve the profile symbols.
 
          .. rust:function:: rgpot_core::profile::ProfileSession::version
             :index: -1
             :vis: pub
-            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"version"},{"type":"punctuation","value":"("},{"type":"punctuation","value":"&"},{"type":"keyword","value":"self"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"punctuation","value":"&"},{"type":"link","value":"str","target":"str"}]
+            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"version"},{"type":"punctuation","value":"("},{"type":"operator","value":"&"},{"type":"keyword","value":"self"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"punctuation","value":"&"},{"type":"link","value":"str","target":"str"}]
 
             Human-readable backend version string.

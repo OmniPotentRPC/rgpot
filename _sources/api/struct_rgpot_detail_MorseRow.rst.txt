@@ -1,0 +1,29 @@
+.. index:: pair: struct; rgpot::detail::MorseRow
+.. _doxid-structrgpot_1_1detail_1_1_morse_row:
+
+struct rgpot::detail::MorseRow
+==============================
+
+.. toctree::
+	:hidden:
+
+The shifted Morse pair term over one row of accepted pairs, vectorised. Lane k sees only r2[k], so each pair gets the bits it would get alone.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct MorseRow {
+		// fields
+	
+		double :target:`depth<doxid-structrgpot_1_1detail_1_1_morse_row_1a1843aaaa219fd9aac84e9f170b7ca67f>`;
+		double :target:`range<doxid-structrgpot_1_1detail_1_1_morse_row_1aeef8979eb550117052efce41dbd68261>`;
+		double :target:`rEq<doxid-structrgpot_1_1detail_1_1_morse_row_1a5e348eec8681fbb9082b03360583c3eb>`;
+		double :target:`shiftU<doxid-structrgpot_1_1detail_1_1_morse_row_1a4209ade4108401be1c0f76b32a36a68e>`;
+		double :target:`twoDeA<doxid-structrgpot_1_1detail_1_1_morse_row_1a10245ab7215b01ed046017ee160dc933>`;
+
+		// methods
+	
+		void :target:`row<doxid-structrgpot_1_1detail_1_1_morse_row_1a678fbf6ccaf6320464b45877e46ddb48>`(const double* r2, double* energy, double* fscale, std::size_t m) const;
+	};

@@ -32,6 +32,8 @@ Overview
 	double :target:`fma_quick<doxid-exact__fma_8hpp_1ae9371c811aa36d48483ed35b0efd12d4>`(double a, double b, double c);
 	double :ref:`mul_add<doxid-exact__fma_8hpp_1a6400dc19dfc6964f5daa7da968fc9e12>`(double a, double b, double c);
 	double :ref:`r2_of<doxid-exact__fma_8hpp_1a894a4d861296108dba7ed726b526790c>`(double dx, double dy, double dz);
+	double :ref:`exp_fixed<doxid-exp_8cc_1a3b98ce20e45a2530b231bb9d1911f83b>`(double x);
+	RGPOT_SIMD_CLONES void :ref:`exp_fixed_n<doxid-exp_8cc_1a350d02044999bf40739e4c634df3484b>`(const double* x, double* out, std::size_t n);
 
 	} // namespace simd
 .. _details-namespacergpot_1_1simd:
@@ -62,7 +64,7 @@ a\*b+c with one rounding, the same bits as a hardware fused multiply-add. Normal
 
 	double mul_add(double a, double b, double c)
 
-a\*b+c, one rounding. A hardware instruction when this translation unit has one, or when glibc reports FMA usable. Otherwise fma_quick.
+a\*b+c, one rounding. A hardware instruction when this translation unit has one, or when fma_hw_active(). Otherwise fma_quick.
 
 .. index:: pair: function; r2_of
 .. _doxid-exact__fma_8hpp_1a894a4d861296108dba7ed726b526790c:
@@ -73,4 +75,24 @@ a\*b+c, one rounding. A hardware instruction when this translation unit has one,
 	double r2_of(double dx, double dy, double dz)
 
 dx^2 + dy^2 + dz^2. The first square is a multiply. The two sums fuse.
+
+.. index:: pair: function; exp_fixed
+.. _doxid-exp_8cc_1a3b98ce20e45a2530b231bb9d1911f83b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double exp_fixed(double x)
+
+e^x with the same bits on every instruction set and C library. Within 1.24 ulp for normal results (see docs/orgmode/reference/simd_exp.org).
+
+.. index:: pair: function; exp_fixed_n
+.. _doxid-exp_8cc_1a350d02044999bf40739e4c634df3484b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	RGPOT_SIMD_CLONES void exp_fixed_n(const double* x, double* out, std::size_t n)
+
+out[i] = exp_fixed(x[i]) for i < n. Vectorised and dispatched on the CPU at run time; every variant returns the bits of exp_fixed.
 
