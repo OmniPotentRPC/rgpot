@@ -752,10 +752,12 @@ void fold_search(bool narrow, const double cell[9], const double inv[9],
   search_bounds<Hardware>(cell, inv, dual, periodic, dx, dy, dz);
 }
 
-// The attribute keeps vfmadd in this body. The caller enters it only after
-// glibc reports that the processor's FMA is usable. MSVC has no target
-// attribute; this body then calls std::fma, and the caller keeps the
-// portable path unless a runtime check selects it.
+// x86-64 baseline has no FMA, so this clone is compiled with target("fma")
+// and the caller enters it only after glibc reports FMA. That string is an
+// x86 feature name: AArch64 rejects it, and AArch64 FMA is already in the
+// base ISA, so mul_add emits it when __ARM_FEATURE_FMA is set. MSVC has no
+// target attribute; this body then calls std::fma.
+#if defined(__x86_64__) || defined(_M_X64)
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((target("fma"), noinline, flatten))
 #endif
@@ -764,6 +766,7 @@ void fold_hardware(bool narrow, const double cell[9], const double inv[9],
                    double &dy, double &dz) {
   fold_search<true>(narrow, cell, inv, dual, periodic, dx, dy, dz);
 }
+#endif
 
 } // namespace
 
@@ -779,10 +782,12 @@ void MinimumImage::fold(double &dx, double &dy, double &dz) const {
     inv[k] = inverse_[static_cast<std::size_t>(k)];
   }
   double dual[3] = {dual_norm_[0], dual_norm_[1], dual_norm_[2]};
+#if defined(__x86_64__) || defined(_M_X64)
   if (rgpot::simd::detail::glibc_fma_active()) {
     fold_hardware(narrow_, cell, inv, dual, periodic, dx, dy, dz);
     return;
   }
+#endif
   fold_search<false>(narrow_, cell, inv, dual, periodic, dx, dy, dz);
 }
 

@@ -1,7 +1,7 @@
 # Above-baseline instructions in librgpot belong to the [[allow]] symbols.
-# Those bodies run only after a runtime check. The vendored entries cover
-# libraries that auditwheel or delocate copy into the wheel and that select
-# kernels at run time. A feature not listed here still fails the audit.
+# Highway namespaces and the FMA bodies run only after a runtime check.
+# Vendored libraries that auditwheel or delocate copy into the wheel are
+# listed separately. A feature not listed for that symbol or path still fails.
 
 baseline = "x86-64"
 
@@ -118,11 +118,68 @@ features = [
 ]
 reason = "libquadmath, vendored beside libgfortran"
 
-# FMA bodies outside a dispatched namespace. Each one is entered only after
-# glibc reports that the processor's FMA is usable. The portable path stays
-# free of these instructions. accumulateHw is the target("fma") pair-list
-# loop; -mfma also selects AVX encodings in that body.
+# Runtime ISA dispatch. Only these namespaces may hold instructions above
+# the baseline. A feature not listed for that namespace still fails.
+
 [[allow]]
-symbol = '^(rgpot::simd::exact_fma_hw|rgpot::nlist::_GLOBAL__N_[0-9]+::fold_hardware)\b|rgpot::nlist::CachedPairList::accumulateHw<'
+symbol = '(hwy|rgpot::simd)::N_SSE4::'
+features = ["sse4_1", "sse4_2", "popcnt", "sse3", "ssse3"]
+reason = "SSE4 dispatch"
+
+[[allow]]
+symbol = '(hwy|rgpot::simd)::N_AVX2::'
+features = ["avx", "avx2", "fma", "f16c", "bmi1", "bmi2"]
+reason = "AVX2 dispatch"
+
+# AVX3's target string is the AVX2 string plus the AVX-512 features, so
+# the compiler is also given bmi and bmi2. -O3 emits ANDN in these kernels.
+[[allow]]
+symbol = '(hwy|rgpot::simd)::N_AVX3::'
+features = ["avx", "avx2", "fma", "bmi1", "bmi2", "avx512f", "avx512dq", "avx512vl", "avx512bw", "avx512cd"]
+reason = "AVX3 dispatch"
+
+[[allow]]
+symbol = '(hwy|rgpot::simd)::N_AVX3_ZEN4::'
+features = ["avx", "avx2", "fma", "bmi1", "bmi2", "avx512f", "avx512dq", "avx512vl", "avx512bw", "avx512cd"]
+reason = "AVX3_ZEN4 dispatch"
+
+[[allow]]
+symbol = '(hwy|rgpot::simd)::N_NEON::'
+features = ["aes", "pmull", "sha1", "sha2", "crc32", "fp16", "rdm", "fcma", "dotprod", "lse"]
+reason = "NEON dispatch"
+
+[[allow]]
+symbol = '(hwy|rgpot::simd)::N_SVE::'
+features = ["sve", "aes", "pmull", "sha1", "sha2", "fp16", "dotprod"]
+reason = "SVE dispatch"
+
+[[allow]]
+symbol = '(hwy|rgpot::simd)::N_SVE2::'
+features = ["sve", "sve2", "aes", "pmull", "sha1", "sha2", "fp16", "dotprod"]
+reason = "SVE2 dispatch"
+
+[[allow]]
+symbol = '(hwy|rgpot::simd)::N_SVE_256::'
+features = ["sve", "sve2", "aes", "pmull", "sha1", "sha2", "fp16"]
+reason = "SVE 256-bit dispatch"
+
+# ReadXCR0 is the xgetbv helper. -O2 and -O3 inline it into SupportedTargets.
+[[allow]]
+symbol = '^hwy::(Num0BitsBelowLS1Bit_Nonzero64|_GLOBAL__N_1::x86::ReadXCR0|SupportedTargets\b)'
+features = ["bmi1", "xsave"]
+reason = "Highway CPUID helpers in libhwy"
+
+[[allow]]
+symbol = '^__aarch64_(ldadd|ldclr|ldeor|ldset|swp|cas)'
+features = ["lse"]
+reason = "libgcc outlined LSE atomics linked into the shared library"
+
+# FMA bodies outside a Highway namespace. Each one is entered only after
+# glibc reports that the processor's FMA is usable. The SSE2 kernel that
+# runs when it is not stays free of these instructions. accumulateHw is the
+# target("fma") pair-list loop; -mfma also selects AVX encodings in that
+# body. fold_hardware is the minimum-image fold.
+[[allow]]
+symbol = '^(rgpot::simd::(exact_fma_hw|r2_hw_n|r2_hw|accept_row_hw|exp2_hw_finite|exp2_hw|exp8_hw|exp_hw_n|morse8_hw|eam_fma|lj_hw|morse_hw|eam_hw)|rgpot::nlist::_GLOBAL__N_[0-9]+::fold_hardware)\b|rgpot::nlist::CachedPairList::accumulateHw<'
 features = ["avx", "fma", "sse3"]
 reason = "FMA bodies selected when the processor's FMA is usable"

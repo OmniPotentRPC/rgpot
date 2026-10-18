@@ -1,0 +1,159 @@
+# ISA dispatch on the two GitHub runner architectures, plus the
+# -march=x86-64-v3 contraction check. This file is hand-maintained.
+
+name: SIMD ISA
+
+on:
+  push:
+    branches: [main, 'perf/**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: simd-isa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dispatch:
+    name: dispatch ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Compilers, Meson, and Catch2
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential gfortran ninja-build pkg-config cmake \
+            python3 python3-pip python3-venv catch2 nlohmann-json3-dev
+          python3 -m venv "$HOME/meson-venv"
+          "$HOME/meson-venv/bin/pip" install 'meson==1.10.1'
+          echo "$HOME/meson-venv/bin" >> "$GITHUB_PATH"
+
+      - name: CPU flags
+        run: |
+          grep -m1 flags /proc/cpuinfo || true
+          lscpu || true
+
+      - name: Configure and build
+        env:
+          CC: gcc
+          CXX: g++
+        run: |
+          set -euo pipefail
+          meson setup bbdir \
+            -Dwith_tests=true \
+            -Dwith_highway=enabled \
+            -Dwith_examples=false \
+            -Dwith_rpc=false \
+            -Dwith_cache=false \
+            -Dwith_eigen=false \
+            -Dpure_lib=true
+          meson compile -C bbdir
+
+      - name: Test, including four thread counts
+        env:
+          CC: gcc
+          CXX: g++
+        run: |
+          set -euo pipefail
+          meson test -C bbdir --print-errorlogs
+          isa=$(find bbdir -name isa_dispatch_test -type f | head -1)
+          test -n "${isa}"
+          isa_log=$(mktemp)
+          for threads in 1 2 3 8; do
+            echo "OMP_NUM_THREADS=${threads}"
+            OMP_NUM_THREADS="${threads}" "${isa}" | tee -a "${isa_log}"
+          done
+          # ubuntu-latest is not an AVX-512 label. If the CPU advertises
+          # AVX-512, the run must have exercised that target. Later
+          # per-microarchitecture coverage is the EESSI bot.
+          if grep -m1 '^flags' /proc/cpuinfo | grep -Eq '(^|[[:space:]])avx512f([[:space:]]|$)'; then
+            if ! grep '^exercised:' "${isa_log}" | grep -Eq '(^|[[:space:]])avx3(_zen4)?([[:space:]]|$)'; then
+              echo "runner flags include avx512f but avx3 was not exercised" >&2
+              exit 1
+            fi
+          fi
+
+      - name: Upload unstripped library
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unstripped-${{ matrix.os }}
+          path: bbdir/CppCore/librgpot.so*
+          if-no-files-found: error
+
+  fp-contract:
+    name: fp-contract v3
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Compilers, Meson, and Catch2
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential gfortran ninja-build pkg-config cmake \
+            python3 python3-pip python3-venv catch2 nlohmann-json3-dev
+          python3 -m venv "$HOME/meson-venv"
+          "$HOME/meson-venv/bin/pip" install 'meson==1.10.1'
+          echo "$HOME/meson-venv/bin" >> "$GITHUB_PATH"
+
+      - name: Default build and v3 build
+        env:
+          CC: gcc
+          CXX: g++
+        run: |
+          set -euo pipefail
+          # -march=x86-64-v3 is only this proof job. It is not a project flag.
+          meson setup bb-default --buildtype=release \
+            -Dwith_tests=true -Dwith_highway=enabled \
+            -Dwith_examples=false -Dwith_rpc=false -Dwith_cache=false \
+            -Dwith_eigen=false -Dpure_lib=true
+          meson setup bb-v3 --buildtype=release \
+            -Dwith_tests=true -Dwith_highway=enabled \
+            -Dwith_examples=false -Dwith_rpc=false -Dwith_cache=false \
+            -Dwith_eigen=false -Dpure_lib=true \
+            -Dcpp_args=-march=x86-64-v3 -Dc_args=-march=x86-64-v3
+          meson compile -C bb-default CppCore/isa_dispatch_test
+          meson compile -C bb-v3 CppCore/isa_dispatch_test
+          RGPOT_ISA_SKIP_GOLDEN=1 bb-default/CppCore/isa_dispatch_test \
+            | tee /tmp/hash-default.txt
+          RGPOT_ISA_SKIP_GOLDEN=1 bb-v3/CppCore/isa_dispatch_test \
+            | tee /tmp/hash-v3.txt
+          diff -u \
+            <(grep '^golden ' /tmp/hash-default.txt) \
+            <(grep '^golden ' /tmp/hash-v3.txt)
+
+  audit-x86:
+    name: isa audit x86-64
+    needs: [dispatch]
+    permissions:
+      contents: read
+      actions: write
+    uses: OmniPotentRPC/rgpot/.github/workflows/isa-audit.yml@main
+    with:
+      artifact-name: unstripped-ubuntu-latest
+      allow-file: rgpot/isa-allow.toml
+      baseline: x86-64
+
+  audit-arm:
+    name: isa audit armv8-a
+    needs: [dispatch]
+    permissions:
+      contents: read
+      actions: write
+    uses: OmniPotentRPC/rgpot/.github/workflows/isa-audit.yml@main
+    with:
+      artifact-name: unstripped-ubuntu-24.04-arm
+      allow-file: rgpot/isa-allow.toml
+      baseline: armv8-a

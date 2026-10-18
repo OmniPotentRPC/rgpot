@@ -101,7 +101,7 @@ public:
 
 private:
   /// Bump when the kernel numerics change, so stale cache entries die.
-  static constexpr uint64_t kKernelVersion = 1;
+  static constexpr uint64_t kKernelVersion = 3;
 
   double u0;       //!< Well depth parameter.
   double cuttOffR; //!< Distance beyond which potential is truncated.

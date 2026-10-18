@@ -83,11 +83,22 @@ endif
 _rgpot_srcs += files('rgpot/PotHelpers.cc')
 _rgpot_srcs += files('rgpot/units.cc')
 _rgpot_srcs += files('rgpot/abi/CxxLayout.cc')
+_rgpot_srcs += files(
+    'rgpot/simd/dispatch.cc',
+    'rgpot/simd/exp.cc',
+    'rgpot/simd/scalar_kernels.cc',
+)
+if have_highway
+    _rgpot_srcs += files('rgpot/simd/hwy_kernels.cc')
+endif
 # Product-sums in this file go through rgpot::simd::mul_add. Contraction
 # stays off so a multiply that is not written as mul_add is not fused, and
 # the folded bits match on scalar, SSE, AVX2, AVX-512 and NEON.
-# exact_fma_hw is a separate object: the ISA variants below recompile
-# MinimumImage.cpp with -mno-fma and still need this hardware definition.
+# exact_fma_hw is a separate object for the ISA hash binaries below. They
+# recompile MinimumImage.cpp with -mno-fma and do not link exp.cc, which
+# holds the strong definition. This copy is weak. It stays out of
+# rgpot_core: --whole-archive keeps the weak body's bytes after the strong
+# symbol wins, and the ISA auditor then sees an unsymbolized vfmadd.
 _fp_contract_off = cppc.get_supported_arguments(
     ['-ffp-contract=off', '/fp:precise'],
 )
@@ -128,13 +139,19 @@ if not get_option('with_rpc_client_only')
         'rgpot/plugin/PluginRegistry.cc',
         'rgpot/plugin/builtins/lj_plugin.cpp',
     )
+    # RGPOT_WITH_HIGHWAY stays on this archive. The installed dependency
+    # does not pass it on, so a consumer's own Highway headers are untouched.
+    _core_args = _args
+    if have_highway
+        _core_args += ['-DRGPOT_WITH_HIGHWAY']
+    endif
     rgpot_core = static_library(
         'rgpot_core',
         sources: _rgpot_srcs,
         dependencies: _deps,
-        cpp_args: _args,
+        cpp_args: _core_args,
         include_directories: _incdirs,
-        link_whole: [rgpot_minimage, rgpot_exact_fma],
+        link_whole: [rgpot_minimage],
         pic: true,
         install: false,
     )
@@ -490,7 +507,6 @@ if get_option('with_examples') and not get_option('with_rpc_client_only')
         link_with: _linkto,
         cpp_args: _args,
     )
-    # Not a meson test: scripts/bench_pair_scaling.sh drives this.
     executable(
         'time_pair_scaling',
         sources: ['examples/time_pair_scaling.cc'],
@@ -578,6 +594,11 @@ if get_option('with_tests')
     )
     test_args = _args
     test_args += ['-DRGPOTTEST']
+    test_args += [
+        '-DRGPOT_ISA_GOLDEN="@0@"'.format(
+            meson.project_source_root() / 'tests/golden/isa-hashes.toml',
+        ),
+    ]
     if _mpi_dep.found()
         # Tests expect librgpot_mpi next to them (it builds in this
         # directory), whether or not they link MPI themselves.
@@ -613,6 +634,8 @@ if get_option('with_tests')
             ['EMTPotTest', 'emt_pot_test', 'EMTPotTest.cc', ''],
             ['EAMCellPotTest', 'eam_cell_pot_test', 'EAMCellPotTest.cc', ''],
             ['PairListTest', 'pair_list_test', 'PairListTest.cc', ''],
+            ['IsaDispatchTest', 'isa_dispatch_test', 'IsaDispatchTest.cc', ''],
+            ['FmaExactTest', 'fma_exact_test', 'FmaExactTest.cc', ''],
             [
                 'MinImageIsaHash',
                 'minimage_isa_hash',
@@ -1369,16 +1392,64 @@ if get_option('with_tests')
             link_language: 'cpp',
             build_rpath: _metatomic_build_rpath,
         )
+        # The 5324-atom cell grid in PairListTest takes about 30s in a
+        # debug macOS build. That is the meson default, so a busy runner
+        # kills a test that is still making progress.
+        _timeout = test.get(0) == 'PairListTest' ? 90 : 30
         test(
             test.get(0),
             _test_exe,
             workdir: meson.source_root() + test.get(3),
+            timeout: _timeout,
         )
         if test.get(1) == 'calculator_group_test'
             calculator_group_test_exe = _test_exe
         endif
     endforeach
     if not get_option('with_rpc_client_only')
+        simd_env = executable(
+            'simd_env',
+            sources: ['tests/simd_env.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+        )
+        test(
+            'simd-env-scalar',
+            simd_env,
+            args: ['known', 'scalar'],
+            env: ['RGPOT_SIMD=scalar'],
+        )
+        test(
+            'simd-env-unknown',
+            simd_env,
+            args: ['unknown'],
+            env: ['RGPOT_SIMD=not_a_target'],
+        )
+        test(
+            'simd-env-rvv',
+            simd_env,
+            args: ['known', 'rvv'],
+            env: ['RGPOT_SIMD=rvv'],
+        )
+        test(
+            'simd-env-avx2',
+            simd_env,
+            args: ['known', 'avx2'],
+            env: ['RGPOT_SIMD=avx2'],
+        )
+        # Not a meson test. A release build times force calls per target.
+        executable(
+            'bench_simd',
+            sources: ['examples/bench_simd.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+        )
         # Same fold, compiled once per instruction set. The driver checks
         # the CPU and prints skip when the binary cannot run here.
         _isa_specs = [

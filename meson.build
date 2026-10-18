@@ -77,6 +77,23 @@ endif
 cc = meson.get_compiler('c')
 cppc = meson.get_compiler('cpp')
 
+# No fused contraction in any value that reaches an output. GCC's default
+# -ffp-contract=fast would make an EESSI -march=native build disagree with
+# the generic build. MSVC /fp:precise does not contract. get_supported_arguments
+# drops the flag the active compiler does not know.
+_fp_flags = cc.get_supported_arguments(['-ffp-contract=off', '/fp:precise'])
+_fp_flags_cxx = cppc.get_supported_arguments(
+    ['-ffp-contract=off', '/fp:precise'],
+)
+add_project_arguments(_fp_flags, language: 'c')
+add_project_arguments(_fp_flags_cxx, language: 'cpp')
+if has_fortran
+    _fp_flags_f = fc.get_supported_arguments(
+        ['-ffp-contract=off', '/fp:precise'],
+    )
+    add_project_arguments(_fp_flags_f, language: 'fortran')
+endif
+
 # Dependencies
 # libm for Unix systems
 m_dep = cppc.find_library('m', required: false)
@@ -657,6 +674,41 @@ if get_option('with_rust_core')
         include_directories('rgpot-core' / 'include'),  # rgpot.h (cbindgen)
         include_directories('include'),  # rgpot/*.hpp (C++ RAII)
     ]
+endif
+
+# ------------------------ Highway (runtime ISA dispatch)
+# System libhwy >= 1.2 when it is installed. Otherwise the wrap, and only
+# when that tree is already on disk or the feature is enabled. auto must
+# not download: the nodownload rehearsal archives the wrap file without the
+# extracted sources. The wrap builds the compiled target set. Kernel TUs include
+# hwy_disabled.h so a system libhwy and the wrap agree on the mask the
+# dispatch table uses (GetIndex is per translation unit).
+fs_hwy = import('fs')
+highway_opt = get_option('with_highway')
+have_highway = false
+if not highway_opt.disabled()
+    highway_dep = dependency('libhwy', version: '>=1.2', required: false)
+    if not highway_dep.found()
+        _hwy_tree = meson.project_source_root() / 'subprojects' / 'highway-1.2.0'
+        _hwy_ready = fs_hwy.exists(_hwy_tree / 'hwy' / 'highway.h')
+        if _hwy_ready or highway_opt.enabled()
+            highway_dep = dependency(
+                'libhwy',
+                version: '>=1.2',
+                fallback: ['highway', 'libhwy_dep'],
+                required: highway_opt,
+            )
+        endif
+    endif
+    if highway_dep.found()
+        _deps += highway_dep
+        have_highway = true
+        message('highway: enabled')
+    else
+        message('highway: scalar kernels only')
+    endif
+else
+    message('highway: scalar kernels only')
 endif
 
 # --------------------- Projects

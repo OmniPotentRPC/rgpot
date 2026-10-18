@@ -58,6 +58,8 @@ bld  = { changelog_title = "Buildsystem" }
 gen  = { changelog_title = "Generated" }
 # Cosmo potctl spike commit on feat/direct-metatomic-export (before promotion to feat/ci).
 experiment = { changelog_title = "Experiments" }
+# Three commits on perf/highway-dispatch used this type. History is not rewritten.
+simd = { changelog_title = "SIMD" }
 
 [changelog]
 path = "CHANGELOG.md"
