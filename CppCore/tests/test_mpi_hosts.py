@@ -85,42 +85,78 @@ def main() -> None:
         env.pop(key, None)
     env["RGPOT_NWCHEM_ENGINE"] = engine
     env["RGPOT_CPMD_ENGINE"] = engine
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        port = probe.getsockname()[1]
-    command = [server, str(port), backend]
+    # The probe port is closed before potserv binds it. A parallel test can
+    # take that port and accept a connection that is not this server. Wait
+    # for this process to print its own ready line, and try another port
+    # when it exits first.
+    process = None
+    output = None
+    port = None
+    last_log = ""
+    launch = [server]
     if layout == "mpi":
-        command = [*mpi_command(mpiexec, 2, env), *command]
-    with tempfile.TemporaryFile(mode="w+") as output:
-        process = subprocess.Popen(command, env=env, stdout=output, stderr=subprocess.STDOUT,
-                                   start_new_session=True)
-        try:
-            deadline = time.monotonic() + 15
-            while True:
-                if process.poll() is not None:
-                    raise AssertionError(f"server exited before accepting requests: {process.returncode}")
-                try:
-                    with socket.create_connection(("localhost", port), timeout=0.2):
-                        break
-                except OSError:
-                    if time.monotonic() >= deadline:
-                        raise AssertionError("server did not accept a connection")
-                    time.sleep(0.05)
-            run([client, f"localhost:{port}", backend, layout], env)
-            # The handshake refuses an incompatible protocol before any call.
-            refusal = run([client, f"localhost:{port}", backend, layout, "refuse"], env)
-            if "handshake refusal" not in refusal:
-                raise AssertionError("the client did not report the handshake refusal")
-        finally:
-            if process.poll() is None:
-                os.killpg(process.pid, signal.SIGTERM)
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    os.killpg(process.pid, signal.SIGKILL)
-                    process.wait(timeout=5)
+        launch = [*mpi_command(mpiexec, 2, env), server]
+    for _attempt in range(8):
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        output = tempfile.TemporaryFile(mode="w+")
+        process = subprocess.Popen(
+            [*launch, str(port), backend],
+            env=env,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        ready = f"Server running on port {port} "
+        deadline = time.monotonic() + 15
+        started = False
+        while True:
             output.seek(0)
-            print(output.read(), end="")
+            text = output.read()
+            if ready in text:
+                started = True
+                break
+            if process.poll() is not None:
+                last_log = text
+                break
+            if time.monotonic() >= deadline:
+                last_log = text
+                break
+            time.sleep(0.05)
+        if started:
+            break
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGTERM)
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait(timeout=5)
+        output.close()
+        process = None
+        output = None
+    if process is None or output is None:
+        raise AssertionError(
+            "server did not report the bound port\n" + last_log
+        )
+    try:
+        run([client, f"localhost:{port}", backend, layout], env)
+        # The handshake refuses an incompatible protocol before any call.
+        refusal = run([client, f"localhost:{port}", backend, layout, "refuse"], env)
+        if "handshake refusal" not in refusal:
+            raise AssertionError("the client did not report the handshake refusal")
+    finally:
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGTERM)
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait(timeout=5)
+        output.seek(0)
+        print(output.read(), end="")
+        output.close()
 
 
 if __name__ == "__main__":
