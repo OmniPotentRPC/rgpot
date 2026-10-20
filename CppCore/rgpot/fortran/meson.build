@@ -77,7 +77,7 @@ fortran_pots_dep = declare_dependency(
 # headers-only view the convenience archives use.
 fortran_kernels_dep = declare_dependency(
     link_with: fortran_kernels,
-    dependencies: [vesin_f_dep, vesin_dep],
+    dependencies: [vesin_f_dep, vesin_dep, fastnlist_dep],
 )
 
 # Plugin anneal dlopens as RGPOT_CUH2_LIBRARY. The umbrella librgpot hides

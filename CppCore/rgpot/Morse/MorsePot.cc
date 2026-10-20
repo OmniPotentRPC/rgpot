@@ -24,9 +24,9 @@ namespace rgpot {
  *
  * Pairwise interactions within the cutoff radius, minimum image convention
  * on an orthogonal box. Pairs come from the shared
- * ``rgpot::nlist::PairListCache``, so repeated evaluations on nearby
- * geometries (NEB images, dimer rotations) reuse a Verlet-skin cached
- * candidate list.
+ * ``rgpot::nlist::PairListCache``: an orthorhombic cell takes candidates
+ * from the fast list (linkcell when the cell is several cutoffs wide,
+ * otherwise every unordered pair) and folds them with minimage.
  *
  * @warning The box is assumed to be orthogonal.
  */

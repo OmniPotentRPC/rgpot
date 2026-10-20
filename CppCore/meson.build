@@ -134,7 +134,7 @@ if not get_option('with_rpc_client_only')
     # librgpot itself references them (consumers do).
     # vesin objects and the Fortran runtime enter here, once, rather than
     # through the convenience archives (see the vesin_hdr_dep note).
-    rgpot_deps = _deps_sans_core + [vesin_dep] + fortran_rt_deps
+    rgpot_deps = _deps_sans_core + [vesin_dep, fastnlist_dep] + fortran_rt_deps
     _rpc_whole = []
     if _rpc_stack
         # link_whole, not link_with: the RPC entry points are called by
@@ -298,7 +298,7 @@ if get_option('with_tests')
             include_directories: ['.'],
         ),
     )
-    test_deps = _deps + [vesin_dep] + fortran_rt_deps
+    test_deps = _deps + [vesin_dep, fastnlist_dep] + fortran_rt_deps
     if has_metatomic
         test_deps += _mta_engine_deps
     endif
@@ -340,6 +340,7 @@ if get_option('with_tests')
                 '',
             ],
             ['ZBLPotTest', 'zbl_pot_test', 'ZBLPotTest.cc', ''],
+            ['FastNlistTest', 'fast_nlist_test', 'FastNlistTest.cc', ''],
         ]
     endif
     if has_fortran
@@ -674,6 +675,24 @@ if get_option('with_tests')
                 meson.source_root(),
             ],
             suite: 'mopac',
+        )
+    endif
+
+    # asv loads this shared library and times one force call per method.
+    # Built with the tests because it links the same pot archives.
+    if has_fortran
+        asv_fastpath = shared_library(
+            'asv_fastpath',
+            sources: [files('../benchmarks/asv_fastpath.cc')],
+            dependencies: rgpot_deps,
+            include_directories: _incdirs,
+            link_with: [rgpot_core, lennard_jones, morse, fortran_kernels],
+            cpp_args: [
+                '-DRGPOT_ASV_DATA="@0@"'.format(
+                    meson.project_source_root() / 'benchmarks' / 'data',
+                ),
+            ],
+            install: false,
         )
     endif
 

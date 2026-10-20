@@ -1,0 +1,22 @@
+[workspace]
+
+[package]
+name = "rgpot_fastnlist"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+description = "linkcell pair lists and minimage wraps for rgpot classical pots"
+
+[lib]
+name = "rgpot_fastnlist"
+crate-type = ["staticlib"]
+
+[dependencies]
+linkcell = { version = "0.3.11", default-features = false }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+opt-level = 3
+panic = "abort"

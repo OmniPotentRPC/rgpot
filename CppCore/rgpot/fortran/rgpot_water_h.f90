@@ -42,7 +42,7 @@
 !! that way. `energy_scale` converts the result to the eV/Angstrom that
 !! every rgpot entry point reports.
 module rgpot_water_h
-   use rgpot_kinds, only: wp, ip
+   use rgpot_kinds, only: wp, ip, c_double, c_int, c_size_t
    implicit none
    private
 
@@ -51,6 +51,20 @@ module rgpot_water_h
    !> Atomic numbers this potential accepts.
    integer(ip), parameter, public :: z_hydrogen = 1_ip
    integer(ip), parameter, public :: z_oxygen = 8_ip
+
+   interface
+      !> Minimum-image wrap from the minimage static library.
+      function rgpot_fast_wrap(cell, diffs, n, out) bind(c, name="rgpot_fast_wrap") &
+         result(status)
+         import :: c_double, c_int, c_size_t
+         implicit none
+         real(c_double), intent(in) :: cell(*)
+         real(c_double), intent(in) :: diffs(*)
+         integer(c_size_t), value :: n
+         real(c_double), intent(out) :: out(*)
+         integer(c_int) :: status
+      end function rgpot_fast_wrap
+   end interface
 
    !> potH-H2O parameters. Defaults are the published set, carried over
    !! from the legacy `BLOCK DATA` and the quantities `setup()` derived
@@ -221,66 +235,25 @@ contains
       end if
    end subroutine invert_cell
 
-   !> Shortest periodic image of the separation `d`.
-   !!
-   !! Rounding the fractional coordinates lands in the primitive cell; the
-   !! surrounding shell of 26 images is then scanned because for a skewed
-   !! cell the rounded image need not be the closest one. On the diagonal
-   !! cells the legacy kernel supported, the rounding alone already gives
-   !! the minimum and the scan leaves it untouched.
-   pure function nearest_image(cell, inv_cell, periodic, d) result(shortest)
-      real(wp), intent(in) :: cell(3, 3), inv_cell(3, 3)
-      logical, intent(in) :: periodic
-      real(wp), intent(in) :: d(3)
-      real(wp) :: shortest(3)
-
-      real(wp) :: s(3), trial(3), best, span
-      integer :: a, b, c
-
-      shortest = d
-      if (.not. periodic) return
-
-      s = matmul(inv_cell, d)
-      s = s - anint(s)
-      shortest = matmul(cell, s)
-      best = dot_product(shortest, shortest)
-
-      do a = -1, 1
-         do b = -1, 1
-            do c = -1, 1
-               trial = matmul(cell, s + real([a, b, c], wp))
-               span = dot_product(trial, trial)
-               if (span < best) then
-                  best = span
-                  shortest = trial
-               end if
-            end do
-         end do
-      end do
-   end function nearest_image
-
    !> One leg: the energy it contributes and the force it puts on the site.
    !!
-   !! `force` acts on the site; the lone H receives its negative. `usable`
-   !! is false when the site sits on top of the lone H, where the radial
-   !! derivative has no direction.
-   pure subroutine site_leg(par, cell, inv_cell, periodic, r_lone, r_site, &
-                            oxygen, energy, force, usable)
+   !! `d` is the separation already reduced to the minimum image when the
+   !! cell is periodic. `force` acts on the site; the lone H receives its
+   !! negative. `usable` is false when the site sits on top of the lone H,
+   !! where the radial derivative has no direction.
+   pure subroutine site_leg(par, d, oxygen, energy, force, usable)
       type(water_h_params_t), intent(in) :: par
-      real(wp), intent(in) :: cell(3, 3), inv_cell(3, 3)
-      logical, intent(in) :: periodic
-      real(wp), intent(in) :: r_lone(3), r_site(3)
+      real(wp), intent(in) :: d(3)
       logical, intent(in) :: oxygen
       real(wp), intent(out) :: energy
       real(wp), intent(out) :: force(3)
       logical, intent(out) :: usable
 
-      real(wp) :: d(3), r, dedr
+      real(wp) :: r, dedr
 
       energy = 0.0_wp
       force = 0.0_wp
 
-      d = nearest_image(cell, inv_cell, periodic, r_site - r_lone)
       r = norm2(d)
 
       usable = r > min_separation
@@ -374,11 +347,14 @@ contains
       integer, intent(out) :: status
       character(len=:), allocatable, intent(out) :: errmsg
 
-      integer(ip) :: natoms, i, lone_h
+      integer(ip) :: natoms, i, lone_h, slot, nleg
+      integer(c_int) :: wstatus
       real(wp) :: inv_cell(3, 3)
       logical :: periodic
       logical, allocatable :: is_oxygen(:), usable(:)
       real(wp), allocatable :: e_site(:), leg_force(:, :)
+      real(wp), allocatable :: raw(:, :), wrapped(:, :)
+      integer(ip), allocatable :: leg_of(:)
 
       status = 0
       errmsg = ""
@@ -413,15 +389,36 @@ contains
       allocate (leg_force(3, natoms), source=0.0_wp)
       allocate (usable(natoms), source=.true.)
 
+      nleg = natoms - 1_ip
+      allocate (raw(3, nleg), wrapped(3, nleg), leg_of(nleg))
+      slot = 0_ip
+      do i = 1_ip, natoms
+         if (i == lone_h) cycle
+         slot = slot + 1_ip
+         leg_of(slot) = i
+         raw(:, slot) = positions(:, i) - positions(:, lone_h)
+      end do
+      if (periodic) then
+         ! One minimage batch for every leg. A failure stays a failure:
+         ! the scalar image scan is not a second path.
+         wstatus = rgpot_fast_wrap(cell, raw, int(slot, c_size_t), wrapped)
+         if (wstatus /= 0_c_int) then
+            status = 4
+            errmsg = "rgpot_water_h: minimum image wrap failed"
+            return
+         end if
+      else
+         wrapped = raw
+      end if
+
       ! Every site owns one leg and writes only its own column, so the
       ! iterations touch disjoint memory. The lone H's force is the one
       ! quantity that reduces across sites, and it is summed below rather
       ! than accumulated here, because `do concurrent` gained reduction
       ! clauses only in Fortran 2023.
-      do concurrent(i=1:natoms, i /= lone_h)
-         call site_leg(par, cell, inv_cell, periodic, positions(:, lone_h), &
-                       positions(:, i), is_oxygen(i), e_site(i), &
-                       leg_force(:, i), usable(i))
+      do concurrent(i=1:slot)
+         call site_leg(par, wrapped(:, i), is_oxygen(leg_of(i)), e_site(leg_of(i)), &
+                       leg_force(:, leg_of(i)), usable(leg_of(i)))
       end do
 
       if (.not. all(usable)) then

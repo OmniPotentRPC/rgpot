@@ -25,10 +25,12 @@ namespace rgpot {
  *
  * Every pair within the cutoff contributes, with vectors taken straight
  * from the coordinates: ``opt.periodic`` is off in all three directions,
- * so the pair scan never folds a separation into the cell. A degenerate
+ * so the pair list never folds a separation into the cell. A cluster that
+ * sits inside the cutoff keeps every unordered pair and walks ``i < j``
+ * directly. A larger open system goes through linkcell, with each open
+ * axis padded so a periodic image stays outside the cutoff. A degenerate
  * input cell (any non-positive diagonal entry) is replaced by a 1e6
- * Angstrom cube, which keeps the pair list cacheable for callers that hand
- * over a cluster without a box.
+ * Angstrom cube.
  */
 void LJClusterPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const auto N = static_cast<long>(in.nAtoms);

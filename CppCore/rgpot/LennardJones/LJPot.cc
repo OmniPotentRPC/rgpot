@@ -27,10 +27,9 @@ namespace rgpot {
  *
  * Pairwise interactions within the cutoff radius, minimum image convention
  * on an orthogonal box. Pairs come from the shared
- * ``rgpot::nlist::PairListCache`` (the eOn PairListCache design): repeated
- * evaluations on nearby geometries reuse a Verlet-skin cached candidate
- * list, and one-shot evaluations run a single fused scan identical in pair
- * content to the historical per-call double loop.
+ * ``rgpot::nlist::PairListCache``: an orthorhombic cell takes candidates
+ * from the fast list (linkcell when the cell is several cutoffs wide,
+ * otherwise every unordered pair) and folds them with minimage.
  *
  * @warning The box is assumed to be orthogonal.
  *

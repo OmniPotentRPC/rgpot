@@ -628,6 +628,35 @@ if get_option('with_rust_core')
     ]
 endif
 
+# --------------------- linkcell / minimage pair list
+# Orthorhombic classical pots call this staticlib. It is not part of the
+# optional Rust core: the pair kernels need it in every build.
+_fastnlist_cargo = find_program('cargo', required: true)
+_fastnlist_src = meson.current_source_dir() / 'CppCore/rgpot/nlist/fastnlist'
+_fastnlist_tgt = custom_target(
+    'rgpot_fastnlist',
+    command: [
+        find_program('python3'),
+        files('scripts/build_fastnlist.py'),
+        _fastnlist_cargo.full_path(),
+        _fastnlist_src / 'Cargo.toml',
+        meson.current_build_dir() / 'fastnlist-cargo',
+        '@OUTPUT@',
+    ],
+    input: files(
+        'CppCore/rgpot/nlist/fastnlist/Cargo.toml',
+        'CppCore/rgpot/nlist/fastnlist/Cargo.lock',
+        'CppCore/rgpot/nlist/fastnlist/src/lib.rs',
+    ),
+    output: 'librgpot_fastnlist.a',
+    build_by_default: true,
+    console: true,
+)
+fastnlist_dep = declare_dependency(
+    sources: [_fastnlist_tgt],
+    link_args: [_fastnlist_tgt.full_path(), '-pthread', '-ldl', '-lm'],
+)
+
 # --------------------- Projects
 _incdirs += [include_directories('CppCore')]
 subdir('CppCore')
