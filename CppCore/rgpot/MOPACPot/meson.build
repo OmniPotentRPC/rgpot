@@ -19,10 +19,13 @@ if not mopac_dl_dep.found()
     mopac_dl_dep = meson.get_compiler('cpp').find_library('dl', required: false)
 endif
 
+# _deps links rgpot_core. An installed static library copies those objects
+# in, and the umbrella then defines them twice. Compile flags stay; the
+# core objects stay in librgpot_core.
 mopacpot = static_library(
     'mopacpot',
     'MOPACPot.cc',
-    dependencies: _deps + [mopac_dl_dep],
+    dependencies: _deps_sans_core + [mopac_dl_dep],
     cpp_args: _args + mopac_frontend_cpp_args,
     include_directories: _incdirs + [mopac_inc],
     pic: true,
