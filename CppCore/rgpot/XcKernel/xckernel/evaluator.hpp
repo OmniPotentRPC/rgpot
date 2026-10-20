@@ -23,8 +23,8 @@
 #include <limits>
 #include <vector>
 
-// Fortran BLAS interface (LP64), resolved by FlexiBLAS or the generic blas
-// the build links. Character arguments are single letters.
+// Fortran BLAS interface (LP64), resolved by FlexiBLAS, pkg-config blas, or
+// OpenBLAS. Character arguments are single letters.
 extern "C" {
 void dgemm_(const char *transa, const char *transb, const int *m, const int *n,
             const int *k, const double *alpha, const double *a, const int *lda,

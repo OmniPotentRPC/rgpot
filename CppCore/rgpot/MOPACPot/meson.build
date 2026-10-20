@@ -26,6 +26,10 @@ mopacpot = static_library(
     cpp_args: _args + mopac_frontend_cpp_args,
     include_directories: ['../../'],
     pic: true,
+    # Convenience archive only. librgpot link_wholes this next to rgpot_core.
+    # An installed static library makes Meson promote link_with of the
+    # uninstalled core to link_whole, which copies PotHelpers.cc and units.cc
+    # into this archive. The umbrella link then fails with duplicate symbols.
     install: false,
 )
 
