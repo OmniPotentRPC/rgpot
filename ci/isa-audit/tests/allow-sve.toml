@@ -1,0 +1,6 @@
+baseline = "armv8-a"
+
+[[allow]]
+symbol = '^kern_sve$'
+features = ["sve"]
+reason = "self-test SVE kernel"

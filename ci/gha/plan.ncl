@@ -111,6 +111,12 @@ let P = S.pins in
       role = "xtb+tblite meson (ubuntu)",
     },
     {
+      id = "xckernel_goldens",
+      needs = ["ci-tools"],
+      runs_on = P.ubuntu,
+      role = "xckernel meson goldens (ubuntu, -Dwith_xckernel=true)",
+    },
+    {
       id = "ci_gate",
       needs = [
         "prepare",
@@ -127,6 +133,7 @@ let P = S.pins in
         "client_bridge_stress",
         "potentials_metatomic",
         "potentials_tight_binding",
+        "xckernel_goldens",
       ],
       role = "single required check aggregator (branch protection target)",
     },

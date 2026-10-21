@@ -158,6 +158,7 @@ enum CiCmd {
     },
     /// Release-prepare: cog check + conventional subject fallback for PR range.
     /// Thin GHA: `potctl ci cog-check --from ${{ github.event.pull_request.base.sha }}`
+    /// (`--from` is potctl's; cog 7 receives a positional `<base>..HEAD` range).
     CogCheck {
         /// PR base SHA (`github.event.pull_request.base.sha`); omit for advisory full-repo check.
         #[arg(long)]
@@ -182,6 +183,12 @@ enum CiCmd {
     /// Thin GHA: `potctl ci xtb-tblite-test`
     XtbTbliteTest {
         #[arg(long, default_value = "bbdir-tb")]
+        build_dir: String,
+    },
+    /// XcKernel golden leg. The default meson matrix leaves with_xckernel off.
+    /// Thin GHA: `potctl ci xckernel-test`
+    XckernelTest {
+        #[arg(long, default_value = "bbdir-xck")]
         build_dir: String,
     },
     /// RPC integration (`tests/rpc_integ.py`).
@@ -302,6 +309,9 @@ fn run() -> Result<(), String> {
             }
             CiCmd::XtbTbliteTest { build_dir } => {
                 ci::run_xtb_tblite_test(&root, &build_dir)
+            }
+            CiCmd::XckernelTest { build_dir } => {
+                ci::run_xckernel_test(&root, &build_dir)
             }
             CiCmd::RpcInteg { server_bin } => ci::run_rpc_integ(&root, &server_bin),
             CiCmd::BridgeServerBuild { build_dir } => {

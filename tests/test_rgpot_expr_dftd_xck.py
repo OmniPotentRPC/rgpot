@@ -101,3 +101,11 @@ def test_xckernel_catalog_and_lda_contract():
     out = k.contract(chi, None, scal)
     assert out.shape == (nbf, nbf)
     assert np.all(np.isfinite(out))
+    # dchi defaults to None, so an LDA call can omit it.
+    omitted = k.contract(chi, scal=scal)
+    np.testing.assert_array_equal(omitted, out)
+    # scal is required. The stub default is None only so dchi can be omitted.
+    with pytest.raises(TypeError):
+        k.contract(chi)
+    with pytest.raises(TypeError):
+        k.contract(chi, None)

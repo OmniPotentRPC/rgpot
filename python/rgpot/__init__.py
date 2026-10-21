@@ -16,39 +16,39 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
-from rgpot._core import (
-    LJPot,
-    __version__,
-    evaluate_lj,
-    evaluate_metatomic_dlopen,
-    has_dftd3,
-    has_dftd4,
-    has_expr,
-    has_ipi,
-    has_metatomic_dlopen,
-    has_xckernel,
-)
+import rgpot._core as _core
 
-try:
-    from rgpot._core import D3Pot
-except ImportError:  # compiled without -Dwith_dftd3
-    D3Pot = None  # type: ignore[misc, assignment]
+__version__: str = str(getattr(_core, "__version__", "0"))
+LJPot = _core.LJPot
+NumericalError = _core.NumericalError
+evaluate_lj = _core.evaluate_lj
+has_cache = _core.has_cache
+has_dftd3 = _core.has_dftd3
+has_dftd4 = _core.has_dftd4
+has_expr = _core.has_expr
+has_fortran_pots = _core.has_fortran_pots
+has_metatomic_dlopen = _core.has_metatomic_dlopen
+has_xckernel = _core.has_xckernel
+has_ipi = _core.has_ipi
 
-try:
-    from rgpot._core import D4Pot
-except ImportError:
-    D4Pot = None  # type: ignore[misc, assignment]
-
-try:
-    from rgpot._core import ExprPot
-except ImportError:
-    ExprPot = None  # type: ignore[misc, assignment]
-
-try:
-    from rgpot._core import XcKernel
-except ImportError:
-    XcKernel = None  # type: ignore[misc, assignment]
+# Absent when the matching meson flag was off. getattr keeps import rgpot
+# working for a reduced build and for the full wheel.
+evaluate_metatomic_dlopen: Any = getattr(_core, "evaluate_metatomic_dlopen", None)
+PotentialCache: Any = getattr(_core, "PotentialCache", None)
+D3Pot: Any = getattr(_core, "D3Pot", None)
+D4Pot: Any = getattr(_core, "D4Pot", None)
+ExprPot: Any = getattr(_core, "ExprPot", None)
+XcKernel: Any = getattr(_core, "XcKernel", None)
+SWPot: Any = getattr(_core, "SWPot", None)
+EDIPPot: Any = getattr(_core, "EDIPPot", None)
+LenoskyPot: Any = getattr(_core, "LenoskyPot", None)
+TersoffPot: Any = getattr(_core, "TersoffPot", None)
+EAMAlPot: Any = getattr(_core, "EAMAlPot", None)
+FeHePot: Any = getattr(_core, "FeHePot", None)
+CuH2Pot: Any = getattr(_core, "CuH2Pot", None)
+WaterHPot: Any = getattr(_core, "WaterHPot", None)
 
 try:
     from rgpot._core import IPIPot
@@ -59,7 +59,7 @@ except ImportError:  # compiled without -DRGPOT_HAS_IPI
 def _torch_major() -> str | None:
     """Return installed torch X.Y, or None if torch is not importable."""
     try:
-        import torch
+        import torch  # pyright: ignore[reportMissingImports]
 
         v = torch.__version__.split("+", 1)[0]
         parts = v.split(".")
@@ -75,16 +75,22 @@ def default_metatomic_engine_path() -> str | None:
     candidates: list[Path] = []
     # Multi-ABI layout first (rgpot/lib/torch-X.Y/) — preferred product path
     if maj:
+        candidates.append(here / "lib" / f"torch-{maj}" / "librgpot_metatomic_engine.so")
         candidates.append(here / "lib" / f"torch-{maj}" / "libmetatomic_engine.so")
     lib_root = here / "lib"
     if lib_root.is_dir():
         for d in sorted(lib_root.glob("torch-*")):
+            candidates.append(d / "librgpot_metatomic_engine.so")
             candidates.append(d / "libmetatomic_engine.so")
-    # Legacy single-engine layouts (last resort)
+    # Legacy single-engine layouts (last resort). The librgpot_ name is the
+    # engine. libmetatomic_engine.so remains for one release.
     candidates.extend(
         [
+            here / "lib" / "librgpot_metatomic_engine.so",
             here / "lib" / "libmetatomic_engine.so",
+            here.parent / ".rgpot.mesonpy.libs" / "librgpot_metatomic_engine.so",
             here.parent / ".rgpot.mesonpy.libs" / "libmetatomic_engine.so",
+            here / "librgpot_metatomic_engine.so",
             here / "libmetatomic_engine.so",
         ]
     )
@@ -111,27 +117,42 @@ def available_metatomic_engine_abis() -> list[str]:
     if not here.is_dir():
         return out
     for d in sorted(here.glob("torch-*")):
-        if (d / "libmetatomic_engine.so").is_file():
+        if (d / "librgpot_metatomic_engine.so").is_file() or (
+            d / "libmetatomic_engine.so"
+        ).is_file():
             out.append(d.name.removeprefix("torch-"))
     return out
 
 
+def __getattr__(name: str) -> Any:
+    """Lazy exports. ``ase`` is not imported by ``import rgpot``."""
+    if name == "ase":
+        import importlib
+
+        module = importlib.import_module("rgpot.ase")
+        globals()["ase"] = module
+        return module
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 def evaluate_metatomic(
-    positions,
-    atom_types,
-    box,
+    positions: Any,
+    atom_types: Any,
+    box: Any,
     *,
     model_path: str,
     engine_path: str | None = None,
     device: str = "cpu",
-):
+) -> Any:
     """Force evaluation through MetatomicDlopen (real engine plugin)."""
     # Load torch via the Python extension first so the engine's DT_NEEDED
     # libtorch resolves to the same process image (avoids dual-load races).
     try:
-        import torch  # noqa: F401
+        import torch  # noqa: F401  # pyright: ignore[reportMissingImports]
     except ImportError:
         pass
+    if evaluate_metatomic_dlopen is None:
+        raise RuntimeError("this build has no MetatomicDlopen frontend")
     eng = engine_path or default_metatomic_engine_path() or ""
     return evaluate_metatomic_dlopen(
         positions, atom_types, box, model_path, eng, device
@@ -140,21 +161,34 @@ def evaluate_metatomic(
 
 __all__ = [
     "LJPot",
+    "NumericalError",
     "D3Pot",
     "D4Pot",
     "ExprPot",
     "IPIPot",
     "XcKernel",
+    "PotentialCache",
+    "SWPot",
+    "EDIPPot",
+    "LenoskyPot",
+    "TersoffPot",
+    "EAMAlPot",
+    "FeHePot",
+    "CuH2Pot",
+    "WaterHPot",
     "evaluate_lj",
     "evaluate_metatomic",
     "evaluate_metatomic_dlopen",
     "default_metatomic_engine_path",
     "available_metatomic_engine_abis",
     "has_metatomic_dlopen",
+    "has_cache",
     "has_expr",
     "has_ipi",
     "has_dftd3",
     "has_dftd4",
     "has_xckernel",
+    "has_fortran_pots",
+    "ase",
     "__version__",
 ]

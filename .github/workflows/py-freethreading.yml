@@ -1,0 +1,139 @@
+name: Python free-threading
+
+on:
+  workflow_call:
+    inputs:
+      package-dir:
+        description: Directory that contains the project to install
+        required: true
+        type: string
+      import-names:
+        description: Comma-separated extension modules for the F1 import test
+        required: true
+        type: string
+      test-path:
+        description: Pytest path relative to package-dir
+        required: true
+        type: string
+      extras:
+        description: Extras to install with the package
+        required: false
+        type: string
+        default: ""
+      iterations:
+        description: pytest-run-parallel iterations for T1
+        required: false
+        type: string
+        default: "50"
+      rust-crate-dir:
+        description: Crate directory relative to package-dir. Empty skips the Rust toolchain.
+        required: false
+        type: string
+        default: ""
+      apt-packages:
+        description: Space-separated apt packages installed before the build. Empty skips apt.
+        required: false
+        type: string
+        default: ""
+      setup-script:
+        description: Repo-relative script to source instead of pip install of the package. Empty keeps pip install.
+        required: false
+        type: string
+        default: ""
+      python:
+        description: JSON array of free-threaded version tags. The default is 3.14t and 3.15t.
+        required: false
+        type: string
+        default: '["3.14t","3.15t"]'
+
+permissions:
+  contents: read
+
+jobs:
+  t1:
+    name: T1 (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ${{ fromJSON(inputs.python) }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install Rust when the package has a crate
+        if: inputs.rust-crate-dir != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "${{ inputs.package-dir }}/${{ inputs.rust-crate-dir }}/Cargo.toml"
+          if ! command -v rustc >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+          fi
+          echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
+
+      - name: Install apt packages
+        if: inputs.apt-packages != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ${{ inputs.apt-packages }}
+
+      - name: Install the package and the T1 runner
+        shell: bash
+        env:
+          SETUP_SCRIPT: ${{ inputs.setup-script }}
+          PKG: ${{ inputs.package-dir }}
+          EXTRAS: ${{ inputs.extras }}
+        run: |
+          set -euo pipefail
+          python -m pip install -U pip
+          python -m pip install pytest pytest-run-parallel pytest-timeout
+          # Free-threaded 3.13 has no wheel for current NumPy, SciPy, Pillow,
+          # or Hypothesis. Hypothesis 6.156+ is a PyO3 extension, and PyO3
+          # does not build on 3.13t. NumPy 2.4, SciPy 1.16, and Pillow 12.2
+          # do publish cp313t wheels. Hypothesis 6.155 is still pure Python.
+          if python -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 13) else 1)'; then
+            python -m pip install 'numpy>=2.2,<2.5' 'scipy>=1.15,<1.17' 'pillow>=11,<12.3' 'hypothesis>=6,<6.156'
+          else
+            python -m pip install numpy hypothesis
+          fi
+          if [ -n "${SETUP_SCRIPT}" ]; then
+            # shellcheck disable=SC1090
+            source "${SETUP_SCRIPT}"
+          elif [ -n "${EXTRAS}" ]; then
+            python -m pip install "./${PKG}[${EXTRAS}]"
+          else
+            python -m pip install "./${PKG}"
+          fi
+
+      - name: F1 import with the GIL disabled
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -W error::RuntimeWarning -c '
+          import sys, warnings
+          warnings.simplefilter("error", RuntimeWarning)
+          names = """${{ inputs.import-names }}""".replace(",", " ").split()
+          for name in names:
+              __import__(name)
+          enabled = sys._is_gil_enabled()
+          print("F1 sys._is_gil_enabled()", enabled, "modules", names)
+          assert enabled is False
+          '
+
+      - name: T1 pytest-run-parallel
+        shell: bash
+        working-directory: ${{ inputs.package-dir }}
+        run: |
+          set -euo pipefail
+          python -m pytest "${{ inputs.test-path }}" \
+            --parallel-threads=auto \
+            --iterations=${{ inputs.iterations }} \
+            --timeout=180 \
+            -o faulthandler_timeout=120

@@ -1,0 +1,179 @@
+#+TITLE: Static ISA audit
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* What it checks
+
+A binary built on an AVX-512 host, or with a stray ~-mavx2~ or
+~-march=native~, dies with SIGILL on a machine that lacks that
+instruction set.
+This gate decodes every executable section and rejects an instruction
+outside the baseline unless the instruction sits in a function the
+allowlist names for that feature.
+
+The baseline is x86-64 on x86_64 files and armv8-a on aarch64 files.
+~--baseline x86-64-v2~ also accepts SSE3, SSSE3, SSE4.1, SSE4.2 and
+POPCNT.
+ENDBR (~cet_ibt~) is baseline because it is a NOP on CPUs without CET.
+TZCNT is baseline for the same reason.
+Its encoding is ~F3 0F BC~ (with REX, ~F3 48 0F BC~), which is REP BSF.
+LLVM emits that form for count-trailing-zeros on x86-64 with no ~-mbmi~
+(LLVM D130956 and D132520).
+It does not trap.
+~andn~ is a different BMI1 encoding and stays above the baseline.
+~rdssp~ and ~incssp~ (~cet_ss~) are baseline only in unwinder code.
+On aarch64, hint-space instructions (~bti~, ~paciasp~, ~autiasp~ and
+the other pointer-authentication hints) are baseline for the same
+reason: they do not trap on armv8.0.
+SVE, SVE2, SME, LSE atomics, FCMA, dot-product, I8MM, BF16 and the
+other named extensions are not baseline.
+A macOS arm64 Mach-O slice is the exception for ~lse~ and ~rcpc~.
+Apple Silicon is the only CPU that can load that slice, and both
+features are architectural there.
+The compiler lowers C++ atomics to ~ldadd~ and ~ldapr~ in ordinary
+functions, so those two names are baseline for that slice and are
+printed in the report.
+An ELF built for armv8-a still treats them as above the baseline.
+Linux libgcc and Rust compiler-builtins outline LSE behind a runtime
+check.
+The helpers ~__aarch64_cas*~, ~__aarch64_ldadd*~, ~__aarch64_swp*~,
+~__aarch64_ldclr*~, ~__aarch64_ldeor*~ and ~__aarch64_ldset*~ are
+allowed for ~lse~ with no allowlist entry.
+The match is anchored at the start of the symbol.
+An LSE instruction in any other function is still a violation.
+
+There is no emulation.
+The gate does not run the instructions.
+Runtime path tests belong in each repository, and per-microarchitecture
+runs belong on real nodes through EESSI
+(Dröge et al., Softw. Pract. Exp. 53, 176 (2023),
+doi:10.1002/spe.3075).
+
+* Why the allowlist is per function
+
+A package-level allowlist, as in the EESSI auditor, says that some
+object in the package may use AVX-512.
+That does not say which object.
+A kernel compiled with ~-march=native~ would pass as long as one
+dispatched file in the same package was allowed to.
+
+Our dispatched kernels are known functions
+(Páll and Hess, Comput. Phys. Commun. 184, 2641 (2013),
+doi:10.1016/j.cpc.2013.06.003, is the cluster-pair layout those kernels
+follow).
+An above-baseline instruction passes only when the demangled name of
+the enclosing function matches a regex whose feature list contains
+that feature.
+Third-party code that dispatches inside its own binary, and does not
+expose one symbol per kernel, is allowed by file path.
+The path and the reason are written in the allowlist.
+Nothing is skipped silently.
+
+A file with no function symbols fails closed (~no symbols~).
+Release jobs must audit unstripped artefacts.
+~.symtab~ is used when it contains functions, otherwise ~.dynsym~.
+
+* Running it
+
+Python 3.10 or newer.
+Dependencies are pinned in =requirements.txt= (iced-x86 for x86_64,
+capstone for aarch64 and for Mach-O, pyelftools, cxxfilt).
+The audit job itself runs on an x86_64 runner and decodes both
+architectures there.
+
+#+begin_src bash
+python ci/isa-audit/isa_audit.py PATH --allow rgpot/isa-allow.toml
+python ci/isa-audit/isa_audit.py wheel.whl --allow isa-allow.toml --json report.json
+#+end_src
+
+=PATH= may be an ELF, a Mach-O, a directory, or a =.whl= (unzipped to a
+temporary directory).
+A later file with the same bytes is not decoded again.
+The report counts those duplicates.
+The text report lists files audited, instructions decoded, per-feature
+counts inside allowed functions, and one line per violation:
+
+: VIOLATION file symbol address mnemonic feature
+
+The process exits 1 when any violation is printed.
+A Mach-O slice this parser cannot read is printed as =not audited= and
+fails the run.
+
+* Allowlist
+
+#+begin_src toml
+baseline = "x86-64"
+
+[[allow]]
+symbol = '^hwy::N_AVX3(_ZEN4|_SPR|_DL)?::'
+features = ["avx512f", "avx512vl", "avx512dq", "avx512bw", "avx2", "fma", "bmi1", "bmi2", "f16c", "popcnt", "lzcnt"]
+reason = "Highway dynamic dispatch target"
+
+[[vendored]]
+path = ".*libopenblas.*"
+features = ["avx512f", "avx2", "fma"]
+reason = "DYNAMIC_ARCH"
+#+end_src
+
+=symbol= and =path= are Python regular expressions.
+A pattern matches anywhere in the demangled name, the raw symbol, or
+the file path.
+Anchor a pattern with =^= when it must start at the beginning of the
+name.
+Feature names are the iced-x86 CPUID names in lower case
+(=avx512f=, =avx2=, =cmpxchg16b=) or the aarch64 names this tool prints
+(=sve=, =sve2=, =sme=, =lse=, =fcma=, =dotprod=, =i8mm=, =bf16=).
+Rust v0 and legacy names and Itanium C++ names are demangled before
+the match.
+Crate disambiguators are omitted.
+
+=rgpot/isa-allow.toml= names two kinds of exception.
+Vendored libraries that auditwheel or delocate copy into the wheel
+(OpenBLAS with =DYNAMIC_ARCH=, libgfortran matmul variants, libgomp,
+and libquadmath copied in with libgfortran) select kernels inside
+their own binary.
+The glibc-gated FMA helpers in =librgpot= (=eam_fma=, =lj_hw=,
+=morse_hw=, =eam_hw=, =exact_fma_hw=, =r2_hw=, =r2_hw_n=,
+=accept_row_hw=, =exp2_hw=, =exp_hw_n=, and =morse8_hw=) are compiled
+with =target("fma")=.
+That attribute also emits AVX encodings.
+Each helper is entered only after
+=rgpot::simd::detail::glibc_fma_active()= reports a usable FMA, which
+follows glibc's hwcaps mask.
+An above-baseline instruction in any other =librgpot= or =_core=
+function is a violation.
+
+* Calling the workflow from another repository
+
+Pin the reusable workflow by commit SHA.
+Upload an unstripped artefact from the build job, then:
+
+#+begin_src yaml
+jobs:
+  audit:
+    needs: build
+    permissions:
+      contents: read
+    uses: OmniPotentRPC/rgpot/.github/workflows/isa-audit.yml@<commit-sha>
+    with:
+      artifact-name: unstripped-libs
+      allow-file: isa-allow.toml
+      baseline: x86-64
+#+end_src
+
+The script is checked out from the pinned workflow commit.
+The allowlist is checked out from the caller.
+Inside rgpot, =isa-audit-selftest.yml= calls
+=uses: ./.github/workflows/isa-audit.yml= on the fixture that must pass.
+The negative fixtures (global =-mavx2=, an unlisted target attribute,
+a stripped object, an ~-mbmi~ ~andn~, an inlined LSE atomic, an
+unlisted SVE function) are compiled and checked in that same workflow,
+on =ubuntu-latest= and =ubuntu-24.04-arm=.
+The arm job also links an outline-atomics shared object and requires
+the libgcc helper names to pass.
+
+* Self-test
+
+#+begin_src bash
+bash ci/isa-audit/tests/run_selftest.sh
+#+end_src

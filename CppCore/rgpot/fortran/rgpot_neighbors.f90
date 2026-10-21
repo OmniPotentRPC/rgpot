@@ -46,6 +46,7 @@ module rgpot_neighbors
    contains
       procedure :: build => neighbor_table_build
       procedure :: count_for => neighbor_table_count_for
+      procedure :: release => neighbor_table_release
    end type neighbor_table_t
 
 contains
@@ -70,9 +71,9 @@ contains
 
       logical :: pbc(3)
       real(wp) :: use_skin
-      integer :: vstatus, p, np
+      integer :: vstatus, p, np, q, nkept
       integer(ip) :: i, j, natoms
-      integer(ip), allocatable :: fill(:)
+      integer(ip), allocatable :: fill(:), by_j(:), jstart(:)
 
       status = 0
       errmsg = ""
@@ -99,9 +100,14 @@ contains
          ! Release the previous calculator's C buffers before replacing it;
          ! within one cutoff the calculator is reused so vesin recycles them.
          if (self%nl_ready) call self%nl%free()
-         self%nl = NeighborList(cutoff=cutoff, full=.true., sorted=.true., &
-                                skin=use_skin, return_distances=.true., &
-                                return_vectors=.true.)
+         ! Unsorted: the CSR passes below order every row by partner index
+         ! in linear time, which vesin's global sort would do in n log n.
+         ! F2, F8: pin vesin to one thread. The default (zero) follows
+         ! OMP_NUM_THREADS and a process-global pool, so the candidate
+         ! list would depend on how many threads the process has.
+         self%nl = NeighborList(cutoff=cutoff, full=.true., sorted=.false., &
+                                skin=use_skin, n_threads=1, &
+                                return_distances=.true., return_vectors=.true.)
          self%nl_ready = .true.
          self%cutoff = cutoff
          self%skin = use_skin
@@ -123,17 +129,34 @@ contains
       if (.not. allocated(self%row)) allocate (self%row(natoms + 1))
       allocate (fill(natoms), source=0_ip)
 
-      ! Pass one: how many entries each atom owns. Self-image pairs carry
-      ! no direction usable by a gather kernel and are dropped.
+      ! Two stable counting sorts give rows ordered by partner: first the
+      ! pairs by j, then that order scattered by i. Each row then lists its
+      ! partners in ascending j whatever order vesin produced (a cached
+      ! topology or a rebuild), so the force sums run in one order for a
+      ! given geometry. Self-image pairs carry no direction usable by a
+      ! gather kernel and are dropped.
+      allocate (by_j(np), jstart(natoms + 1))
+      jstart = 0_ip
       self%row = 0_ip
       do p = 1, np
          i = int(self%nl%pairs(1, p), ip) + 1_ip
          j = int(self%nl%pairs(2, p), ip) + 1_ip
          if (i == j) cycle
          self%row(i) = self%row(i) + 1_ip
+         jstart(j) = jstart(j) + 1_ip
       end do
 
       call prefix_sum(self%row)
+      call prefix_sum(jstart)
+
+      nkept = int(self%row(natoms + 1) - 1_ip)
+      do p = 1, np
+         i = int(self%nl%pairs(1, p), ip) + 1_ip
+         j = int(self%nl%pairs(2, p), ip) + 1_ip
+         if (i == j) cycle
+         by_j(jstart(j)) = p
+         jstart(j) = jstart(j) + 1_ip
+      end do
 
       if (allocated(self%idx)) then
          if (size(self%idx) < self%row(natoms + 1) - 1_ip) then
@@ -146,11 +169,11 @@ contains
          allocate (self%dist(max(int(self%row(natoms + 1)) - 1, 1)))
       end if
 
-      ! Pass two: scatter each pair into its owner's slice.
-      do p = 1, np
+      ! Scatter each pair, taken in ascending j, into its owner's slice.
+      do q = 1, nkept
+         p = int(by_j(q))
          i = int(self%nl%pairs(1, p), ip) + 1_ip
          j = int(self%nl%pairs(2, p), ip) + 1_ip
-         if (i == j) cycle
          associate (slot => self%row(i) + fill(i))
             self%idx(slot) = j
             self%vec(:, slot) = self%nl%vectors(:, p)
@@ -159,6 +182,16 @@ contains
          fill(i) = fill(i) + 1_ip
       end do
    end subroutine neighbor_table_build
+
+   !> Free vesin's buffers; the table can be built again afterwards.
+   subroutine neighbor_table_release(self)
+      class(neighbor_table_t), intent(inout) :: self
+
+      if (self%nl_ready) call self%nl%free()
+      self%nl_ready = .false.
+      self%cutoff = -1.0_wp
+      self%skin = -1.0_wp
+   end subroutine neighbor_table_release
 
    !> Number of neighbours atom `i` owns.
    pure function neighbor_table_count_for(self, i) result(n)

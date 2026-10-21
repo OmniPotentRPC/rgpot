@@ -88,7 +88,7 @@ Nix flake *and* ad-hoc Janet — strictly worse.
 ```
 
 **Shipped orchestrator thin bodies:** `meson-test` / `cmake-test`, `ensure-torch-metatomic` +
-`metatomic-test`, `xtb-tblite-test`, `rpc-integ`, `towncrier-check` (auto-installs towncrier via
+`metatomic-test`, `xtb-tblite-test`, `xckernel-test`, `rpc-integ`, `towncrier-check` (auto-installs towncrier via
 pipx/pip --user if missing), `bridge-stress-full`. Release-prepare: `release-assert` /
 `towncrier-draft` / `cog-bump-dry-run` / `cog-check`. Still multi-line (honest): prepare export-plan,
 prek/snapper installer curls+apt, rust nextest one-liner block, CI gate `needs.*.result` aggregator.
@@ -101,12 +101,14 @@ Until `orchestrator.ncl` exists, edit the orchestrator directly but **prefer add
 
 | File | How maintained | Trigger |
 |------|----------------|---------|
-| **`ci-orchestrator.yml`** | **Hand-maintained** (primary PR CI; should become nickel-exported) | `push` `main`, `PR` `main` and `develop`, `workflow_dispatch`, weekly `schedule` (docs hygiene only) |
+| **`ci-orchestrator.yml`** | **Hand-maintained** (primary PR CI; should become nickel-exported) | `push` `main` and `feat/**`, `PR` `main` and `develop`, `workflow_dispatch`, weekly `schedule` (docs hygiene only) |
 | `release.yml` | Nickel `release.ncl` → `gen-gha` | `v*` tags |
 | `release-prepare.yml` | Nickel `release_prepare.ncl` | path-filtered PR + `workflow_dispatch` |
 | `ci_docs.yml` | Nickel `ci_docs.ncl` | docs build/deploy (write + gh-pages) |
 | `ci_doc_commenter.yml` | Nickel `ci_doc_commenter.ncl` | `workflow_run` after docs |
 | `cosmo-potctl.yml` | Nickel `cosmo_potctl.ncl` | path-filtered cosmo potctl |
+| `isa-audit.yml` | Hand-maintained reusable workflow | `workflow_call` from a build job |
+| `isa-audit-selftest.yml` | Hand-maintained | push to main and ci/** when the audit files change, and pull request; calls `isa-audit.yml` |
 | `xtb.yml` | Hand-maintained | Linux `-Dwith_xtb=true`, `meson test --suite xtb` on every PR |
 
 **Removed** (folded into orchestrator): `build.yml`, `potentials.yml`, `prek.yml`,
@@ -125,7 +127,7 @@ prepare (export-plan → ci-plan.json + audit artifact)
 prek ∥ docs_snapper ∥ docs_lychee ∥ towncrier(PR) ∥ ci-tools
     ↓ (after ci-tools; skipped on schedule except docs_*)
 build_and_test ∥ rust_tests ∥ client_bridge_stress
-  ∥ potentials_metatomic ∥ potentials_tight_binding
+  ∥ potentials_metatomic ∥ potentials_tight_binding ∥ xckernel_goldens
   ∥ build_windows_meson ∥ nodownload_rehearsal   (need `prepare` only; no potctl)
   (build_windows_meson: MSVC meson leg, fortran suppressed via
    ci/gha/machines/no-fortran.ini so the flang/MSVC kernel pairing stays out.
