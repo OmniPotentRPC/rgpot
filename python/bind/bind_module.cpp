@@ -594,8 +594,12 @@ NB_MODULE(_core, m) {
             }
             return buffer_to_numpy(out.data(), nbf, nbf);
           },
-          nb::arg("chi").noconvert(), nb::arg("dchi") = nb::none(), nb::arg("scal"),
-          nb::arg("lapl_chi") = nb::none(),
+          // dchi defaults to None so an LDA call can omit it. scal stays
+          // required, but it also defaults to None: a non-default parameter
+          // cannot follow a default in the stub, and nanobind rejects None
+          // when casting to dict.
+          nb::arg("chi").noconvert(), nb::arg("dchi") = nb::none(),
+          nb::arg("scal") = nb::none(), nb::arg("lapl_chi") = nb::none(),
           nb::arg("hess_chi") = nb::none())
       .def_static(
           "fields_from_density",
