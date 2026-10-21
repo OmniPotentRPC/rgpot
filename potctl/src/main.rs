@@ -184,6 +184,12 @@ enum CiCmd {
         #[arg(long, default_value = "bbdir-tb")]
         build_dir: String,
     },
+    /// XcKernel golden leg. The default meson matrix leaves with_xckernel off.
+    /// Thin GHA: `potctl ci xckernel-test`
+    XckernelTest {
+        #[arg(long, default_value = "bbdir-xck")]
+        build_dir: String,
+    },
     /// RPC integration (`tests/rpc_integ.py`).
     /// Thin GHA: `potctl ci rpc-integ --server-bin bbdir/CppCore/potserv`
     RpcInteg {
@@ -302,6 +308,9 @@ fn run() -> Result<(), String> {
             }
             CiCmd::XtbTbliteTest { build_dir } => {
                 ci::run_xtb_tblite_test(&root, &build_dir)
+            }
+            CiCmd::XckernelTest { build_dir } => {
+                ci::run_xckernel_test(&root, &build_dir)
             }
             CiCmd::RpcInteg { server_bin } => ci::run_rpc_integ(&root, &server_bin),
             CiCmd::BridgeServerBuild { build_dir } => {

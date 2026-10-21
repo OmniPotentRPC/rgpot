@@ -912,6 +912,75 @@ pub fn run_xtb_tblite_test(root: &Path, build_dir: &str) -> Result<()> {
     Ok(())
 }
 
+/// Pure: meson argv for the XcKernel golden leg (`-Dwith_xckernel=true`).
+pub fn xckernel_meson_setup_args(build_dir: &str) -> Vec<String> {
+    vec![
+        "setup".into(),
+        build_dir.into(),
+        "-Dwith_tests=true".into(),
+        "-Dwith_examples=false".into(),
+        "-Dwith_xckernel=true".into(),
+        "-Dwith_rpc=false".into(),
+        "-Dwith_cache=false".into(),
+        "-Dwith_xtensor=false".into(),
+        "-Dwith_eigen=false".into(),
+        "--buildtype=debug".into(),
+    ]
+}
+
+fn command_stdout(bin: &str, args: &[&str], cwd: &Path) -> Result<String> {
+    let out = Command::new(bin)
+        .args(args)
+        .current_dir(cwd)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("failed to spawn {bin}: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "{bin} {} failed with {}",
+            args.join(" "),
+            out.status
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// `potctl ci xckernel-test` — meson setup/compile and the xckernel suite.
+///
+/// The default matrix leaves `with_xckernel` off, so `XcKernelGoldens` never
+/// runs there. This leg fails if that test is not registered.
+pub fn run_xckernel_test(root: &Path, build_dir: &str) -> Result<()> {
+    let setup = xckernel_meson_setup_args(build_dir);
+    let refs: Vec<&str> = setup.iter().map(String::as_str).collect();
+    run_cmd("meson", &refs, root)?;
+    run_cmd("meson", &["compile", "-C", build_dir], root)?;
+    run_cmd(
+        "meson",
+        &[
+            "test",
+            "-C",
+            build_dir,
+            "--suite",
+            "xckernel",
+            "--print-errorlogs",
+        ],
+        root,
+    )?;
+    let listed = command_stdout(
+        "meson",
+        &["introspect", "--tests", build_dir],
+        root,
+    )?;
+    if !listed.contains("XcKernelGoldens") {
+        return Err(
+            "meson tests are missing XcKernelGoldens; -Dwith_xckernel did not register the golden suite"
+                .into(),
+        );
+    }
+    maybe_ccache_stats();
+    Ok(())
+}
+
 /// `potctl ci towncrier-check --compare-with SHA`
 pub fn run_towncrier_check(root: &Path, compare_with: &str) -> Result<()> {
     if compare_with.is_empty() {
@@ -1493,6 +1562,16 @@ mod tests {
             select_towncrier_invoke(true, true),
             Some(TowncrierInvoke::Bin)
         );
+    }
+
+    #[test]
+    fn xckernel_setup_enables_the_golden_suite() {
+        let a = xckernel_meson_setup_args("bbdir-xck");
+        assert_eq!(a[0], "setup");
+        assert_eq!(a[1], "bbdir-xck");
+        assert!(a.iter().any(|x| x == "-Dwith_xckernel=true"));
+        assert!(a.iter().any(|x| x == "-Dwith_tests=true"));
+        assert!(a.iter().any(|x| x == "-Dwith_rpc=false"));
     }
 
     #[test]

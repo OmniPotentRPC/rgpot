@@ -1,0 +1,1 @@
+XcKernel golden pins for the C-versus-NumPy and random-grid Fock contractions use the stage-B bound `k*eps*|a|^T|b|` (k is the grid-block length, at most 256) plus half an ulp of the pin. A fixed 1e-16 cutoff rejected a correct dsyr2k sum. CI runs XcKernelGoldens with `-Dwith_xckernel=true`.
