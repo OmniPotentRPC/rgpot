@@ -300,8 +300,9 @@ private:
         fast_ = false;
       }
     }
-    // Above this count the candidate buffer is left uncached. The search
-    // itself still goes through linkcell.
+    // Above this count the candidate buffer is left uncached. A wide cell
+    // still searches with linkcell; a narrow cell walks every unordered
+    // pair in small batches.
     mic_ = fast_ && n <= 20000;
 #endif
   }
@@ -329,7 +330,7 @@ private:
   template <typename Fn>
   bool fillNarrow(const double *R, std::size_t n, const double *box,
                   const Options &opt, double list_cut, double search, Fn &&fn) {
-    if (n > 4096 || n < 2) {
+    if (n < 2) {
       return false;
     }
     double mins[3] = {R[0], R[1], R[2]};

@@ -212,9 +212,11 @@ fn collect_pairs(
     };
     // One bin, or a cutoff that reaches the neighbouring image, makes the
     // linked-cell stencil revisit every pair. Emitting i < j and letting
-    // the caller fold with minimage is the shorter walk. Wider cells still
-    // go through linkcell.
-    if xyz.len() <= 4096 && !linkcell_helps(&widths, &periodic, &mins, &maxs, list_cutoff) {
+    // the caller fold with minimage is the shorter walk, at any atom
+    // count. The 10k-atom bridge cell is narrower than three cutoffs;
+    // asking linkcell for that stencil allocates tens of gigabytes.
+    // Wider cells still go through linkcell.
+    if !linkcell_helps(&widths, &periodic, &mins, &maxs, list_cutoff) {
         let mut pairs = Vec::with_capacity(xyz.len() * (xyz.len() - 1) / 2);
         for i in 0..xyz.len() {
             for j in (i + 1)..xyz.len() {
@@ -412,6 +414,27 @@ mod tests {
         // subset the caller keeps.
         assert!(expect.iter().all(|pair| got.contains(pair)));
         assert_eq!(got.len(), xyz.len() * (xyz.len() - 1) / 2);
+    }
+
+    #[test]
+    fn narrow_cell_above_the_old_cap_is_every_pair() {
+        // Just past the old 4096 guard. A 10 A box with cutoff 15 A is the
+        // bridge stress cell; linkcell must not see it.
+        let n = 4100;
+        let mut xyz = Vec::with_capacity(n);
+        for i in 0..n {
+            let t = i as f64;
+            xyz.push([
+                (t * 0.37).rem_euclid(10.0),
+                (t * 0.53).rem_euclid(10.0),
+                (t * 0.71).rem_euclid(10.0),
+            ]);
+        }
+        let cell = [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]];
+        let got = collect_pairs(&xyz, &cell, [true, true, true], 15.0).unwrap();
+        assert_eq!(got.len(), n * (n - 1) / 2);
+        assert_eq!(got.first().copied(), Some((0, 1)));
+        assert_eq!(got.last().copied(), Some((n as i32 - 2, n as i32 - 1)));
     }
 
     #[test]

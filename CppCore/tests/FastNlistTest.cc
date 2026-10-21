@@ -436,6 +436,33 @@ TEST_CASE("A narrow cell is every unordered pair", "[fastnlist]") {
   // the full pair set and the caller filters.
   REQUIRE(pair_count(pos, box, periodic, 7.0) == n * (n - 1) / 2);
 }
+
+TEST_CASE("A narrow cell past the old pair cap is every unordered pair", "[fastnlist]") {
+  // The client bridge places 10k atoms in a 10 A box under the default
+  // Lennard-Jones cutoff of 15 A. A count just above the old 4096 guard
+  // is enough: that cell is one bin, and linkcell must not build its stencil.
+  constexpr int n = 4100;
+  std::vector<double> pos;
+  pos.reserve(static_cast<std::size_t>(n) * 3);
+  for (int i = 0; i < n; ++i) {
+    const double t = static_cast<double>(i);
+    pos.push_back(std::fmod(t * 0.37, 10.0));
+    pos.push_back(std::fmod(t * 0.53, 10.0));
+    pos.push_back(std::fmod(t * 0.71, 10.0));
+  }
+  const double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+  const int32_t periodic[3] = {1, 1, 1};
+  REQUIRE(pair_count(pos, box, periodic, 15.0) ==
+          static_cast<std::size_t>(n) * static_cast<std::size_t>(n - 1) / 2);
+
+  rgpot::nlist::CachedPairList::Options opt;
+  opt.cutoff = 15.0;
+  std::size_t visited = 0;
+  rgpot::nlist::PairListCache::global().evaluate(
+      pos.data(), static_cast<std::size_t>(n), box, opt,
+      [&](int32_t, int32_t, double, double, double, double) { ++visited; });
+  REQUIRE(visited == static_cast<std::size_t>(n) * static_cast<std::size_t>(n - 1) / 2);
+}
 #endif
 
 TEST_CASE("Optbench LJ clusters and the Pt island match the fused scan", "[fastnlist][optbench]") {
