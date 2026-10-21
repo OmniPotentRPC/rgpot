@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -172,6 +173,10 @@ struct Reply {
 };
 
 struct Capture {
+  // The mock thread writes this while the test reads it. The socket
+  // exchange does not synchronize those C++ objects, and a torn vector
+  // on macOS is SIGBUS or SIGSEGV.
+  std::mutex mu;
   std::vector<std::string> headers;
   std::vector<double> cell;
   std::vector<double> icell;
@@ -179,6 +184,20 @@ struct Capture {
   int32_t nat = -1;
   std::string error;
 };
+
+struct CapView {
+  std::vector<std::string> headers;
+  std::vector<double> cell;
+  std::vector<double> icell;
+  std::vector<double> pos;
+  int32_t nat = -1;
+  std::string error;
+};
+
+CapView view(Capture &cap) {
+  std::lock_guard<std::mutex> lock(cap.mu);
+  return CapView{cap.headers, cap.cell, cap.icell, cap.pos, cap.nat, cap.error};
+}
 
 void run_mock(const std::string &endpoint, Behavior behavior,
               const Reply &reply, Capture *cap) {
@@ -196,7 +215,10 @@ void run_mock(const std::string &endpoint, Behavior behavior,
       char raw[kHeader];
       read_full(fd, raw, kHeader);
       const std::string hdr = trim_header(raw);
-      cap->headers.push_back(hdr);
+      {
+        std::lock_guard<std::mutex> lock(cap->mu);
+        cap->headers.push_back(hdr);
+      }
       if (hdr == "STATUS") {
         if (behavior == Behavior::BadHeader) {
           const auto bad = header("BROKEN");
@@ -222,18 +244,32 @@ void run_mock(const std::string &endpoint, Behavior behavior,
         }
         inited = true;
       } else if (hdr == "POSDATA") {
-        cap->cell.resize(9);
-        cap->icell.resize(9);
-        read_full(fd, cap->cell.data(), 9 * sizeof(double));
-        read_full(fd, cap->icell.data(), 9 * sizeof(double));
-        read_full(fd, &cap->nat, sizeof(cap->nat));
-        cap->pos.resize(static_cast<size_t>(cap->nat) * 3);
-        read_full(fd, cap->pos.data(), cap->pos.size() * sizeof(double));
+        std::vector<double> cell(9);
+        std::vector<double> icell(9);
+        int32_t nat = 0;
+        read_full(fd, cell.data(), 9 * sizeof(double));
+        read_full(fd, icell.data(), 9 * sizeof(double));
+        read_full(fd, &nat, sizeof(nat));
+        if (nat < 0 || nat > 1'000'000) {
+          throw std::runtime_error("mock atom count");
+        }
+        std::vector<double> pos(static_cast<size_t>(nat) * 3);
+        read_full(fd, pos.data(), pos.size() * sizeof(double));
+        std::lock_guard<std::mutex> lock(cap->mu);
+        cap->cell = std::move(cell);
+        cap->icell = std::move(icell);
+        cap->nat = nat;
+        cap->pos = std::move(pos);
       } else if (hdr == "GETFORCE") {
         const auto msg = header("FORCEREADY");
         write_full(fd, msg.data(), msg.size());
         write_full(fd, &reply.energy, sizeof(reply.energy));
-        const int32_t nat = cap->nat + reply.nat_delta;
+        int32_t seen_nat = 0;
+        {
+          std::lock_guard<std::mutex> lock(cap->mu);
+          seen_nat = cap->nat;
+        }
+        const int32_t nat = seen_nat + reply.nat_delta;
         write_full(fd, &nat, sizeof(nat));
         if (reply.nat_delta == 0) {
           write_full(fd, reply.force.data(),
@@ -255,6 +291,7 @@ void run_mock(const std::string &endpoint, Behavior behavior,
     ::close(fd);
   } catch (const std::exception &ex) {
     if (behavior == Behavior::Ok) {
+      std::lock_guard<std::mutex> lock(cap->mu);
       cap->error = ex.what();
     }
   }
@@ -351,15 +388,19 @@ TEST_CASE("IPIPot unix driver sequence, units and triclinic cell", "[ipi]") {
     pot.forceImpl(
         {positions.rows(), positions.data(), types.data(), box.data()}, &out);
 
-    REQUIRE(cap.error.empty());
-    REQUIRE(cap.nat == 2);
-    expect_cell(cap.cell, box.data());
-    expect_inverse(cap.cell, cap.icell);
-    REQUIRE(cap.pos.size() == 6);
-    for (size_t i = 0; i < 6; ++i) {
-      REQUIRE_THAT(cap.pos[i], WithinAbs(positions.data()[i] *
-                                             rgpot::units::ANGSTROM_TO_BOHR,
-                                         1e-12));
+    {
+      const CapView snap = view(cap);
+      REQUIRE(snap.error.empty());
+      REQUIRE(snap.nat == 2);
+      expect_cell(snap.cell, box.data());
+      expect_inverse(snap.cell, snap.icell);
+      REQUIRE(snap.pos.size() == 6);
+      for (size_t i = 0; i < 6; ++i) {
+        REQUIRE_THAT(snap.pos[i],
+                     WithinAbs(positions.data()[i] *
+                                   rgpot::units::ANGSTROM_TO_BOHR,
+                               1e-12));
+      }
     }
     REQUIRE_THAT(out.energy,
                  WithinAbs(reply.energy * rgpot::units::HARTREE_TO_EV, 1e-12));
@@ -380,22 +421,26 @@ TEST_CASE("IPIPot unix driver sequence, units and triclinic cell", "[ipi]") {
           WithinAbs(reply.virial[static_cast<size_t>(i)] * scale, 1e-9));
     }
 
-    cap.cell.clear();
-    cap.pos.clear();
+    {
+      std::lock_guard<std::mutex> lock(cap.mu);
+      cap.cell.clear();
+      cap.pos.clear();
+    }
     pot.forceImpl(
         {positions.rows(), positions.data(), types.data(), box.data()}, &out);
-    REQUIRE(cap.error.empty());
+    REQUIRE(view(cap).error.empty());
     REQUIRE_THAT(out.energy,
                  WithinAbs(reply.energy * rgpot::units::HARTREE_TO_EV, 1e-12));
   }
   if (worker.joinable()) {
     worker.join();
   }
-  REQUIRE(cap.error.empty());
+  const CapView done = view(cap);
+  REQUIRE(done.error.empty());
   const std::vector<std::string> want = {"STATUS",  "INIT",     "STATUS",
                                          "POSDATA", "GETFORCE", "STATUS",
                                          "POSDATA", "GETFORCE", "EXIT"};
-  REQUIRE(cap.headers == want);
+  REQUIRE(done.headers == want);
 }
 
 TEST_CASE("IPIPot tcp transport", "[ipi]") {
@@ -415,16 +460,20 @@ TEST_CASE("IPIPot tcp transport", "[ipi]") {
     AtomMatrix forces(2, 3);
     rgpot::ForceOut out{forces.data(), 0.0, 0.0};
     pot.forceImpl({2, positions.data(), nullptr, box.data()}, &out);
-    REQUIRE(cap.error.empty());
-    expect_cell(cap.cell, box.data());
-    expect_inverse(cap.cell, cap.icell);
+    {
+      const CapView snap = view(cap);
+      REQUIRE(snap.error.empty());
+      expect_cell(snap.cell, box.data());
+      expect_inverse(snap.cell, snap.icell);
+    }
     REQUIRE(pot.hasStress());
   }
   if (worker.joinable()) {
     worker.join();
   }
-  REQUIRE(cap.error.empty());
-  REQUIRE(cap.headers.back() == "EXIT");
+  const CapView done = view(cap);
+  REQUIRE(done.error.empty());
+  REQUIRE(done.headers.back() == "EXIT");
 }
 
 TEST_CASE("IPIPot rejects a bad address before listening", "[ipi]") {
@@ -564,7 +613,7 @@ TEST_CASE("IPIPot accepts a new driver after the first disconnects", "[ipi]") {
     rgpot::ForceOut out2{forces2.data(), 0.0, 0.0};
     const auto triclinic = triclinic_box();
     pot.forceImpl({2, two.data(), nullptr, triclinic.data()}, &out2);
-    REQUIRE(second.error.empty());
+    REQUIRE(view(second).error.empty());
     REQUIRE_THAT(out2.energy,
                  WithinAbs(0.25 * rgpot::units::HARTREE_TO_EV, 1e-12));
     REQUIRE(pot.hasStress());
