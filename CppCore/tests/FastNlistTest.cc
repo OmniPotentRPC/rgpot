@@ -14,7 +14,9 @@
 #include <string>
 #include <vector>
 
+#ifdef RGPOT_HAS_FAST_NLIST
 #include "rgpot/nlist/fastnlist.h"
+#endif
 
 #include <catch2/catch_all.hpp>
 
@@ -183,6 +185,7 @@ bool load_xyz(const std::string &path, std::vector<double> &pos) {
   return !pos.empty() && pos.size() % 3 == 0;
 }
 
+#ifdef RGPOT_HAS_FAST_NLIST
 std::size_t pair_count(const std::vector<double> &pos, const double *box,
                        const int32_t periodic[3], double list_cutoff) {
   const std::size_t n = pos.size() / 3;
@@ -193,6 +196,67 @@ std::size_t pair_count(const std::vector<double> &pos, const double *box,
                                   &count);
   REQUIRE(rc == 0);
   return count;
+}
+#endif
+
+/// Nearest integer, half away from zero. Adding 0.5 and taking ``floor``
+/// is not this operation: a value one ulp under a half rounds the sum up.
+double anint_away(double x) {
+  const double ax = std::abs(x);
+  const double whole = std::trunc(ax);
+  const double frac = ax - whole;
+  const double mag = frac < 0.5 ? whole : whole + 1.0;
+  return std::copysign(mag, x);
+}
+
+/// Shortest of the rounded fractional image and the 26 neighbours.
+/// The inverse matches the cofactor layout in ``rgpot_water_h``. Ties keep
+/// the rounded image.
+void image26(const double cell[9], const double d[3], double out[3]) {
+  auto at = [&](int row, int col) { return cell[col * 3 + row]; };
+  double inv[9];
+  inv[0] = at(1, 1) * at(2, 2) - at(1, 2) * at(2, 1);
+  inv[1] = at(1, 2) * at(2, 0) - at(1, 0) * at(2, 2);
+  inv[2] = at(1, 0) * at(2, 1) - at(1, 1) * at(2, 0);
+  inv[3] = at(0, 2) * at(2, 1) - at(0, 1) * at(2, 2);
+  inv[4] = at(0, 0) * at(2, 2) - at(0, 2) * at(2, 0);
+  inv[5] = at(0, 1) * at(2, 0) - at(0, 0) * at(2, 1);
+  inv[6] = at(0, 1) * at(1, 2) - at(0, 2) * at(1, 1);
+  inv[7] = at(0, 2) * at(1, 0) - at(0, 0) * at(1, 2);
+  inv[8] = at(0, 0) * at(1, 1) - at(0, 1) * at(1, 0);
+  const double det = at(0, 0) * inv[0] + at(0, 1) * inv[1] + at(0, 2) * inv[2];
+  for (double &v : inv) {
+    v /= det;
+  }
+  double s[3];
+  for (int row = 0; row < 3; ++row) {
+    s[row] = inv[row] * d[0] + inv[3 + row] * d[1] + inv[6 + row] * d[2];
+    s[row] -= anint_away(s[row]);
+  }
+  auto apply = [&](int a, int b, int c, double dest[3]) {
+    const double f[3] = {s[0] + static_cast<double>(a), s[1] + static_cast<double>(b),
+                         s[2] + static_cast<double>(c)};
+    for (int row = 0; row < 3; ++row) {
+      dest[row] = at(row, 0) * f[0] + at(row, 1) * f[1] + at(row, 2) * f[2];
+    }
+  };
+  apply(0, 0, 0, out);
+  double best = out[0] * out[0] + out[1] * out[1] + out[2] * out[2];
+  for (int a = -1; a <= 1; ++a) {
+    for (int b = -1; b <= 1; ++b) {
+      for (int c = -1; c <= 1; ++c) {
+        double trial[3];
+        apply(a, b, c, trial);
+        const double span = trial[0] * trial[0] + trial[1] * trial[1] + trial[2] * trial[2];
+        if (span < best) {
+          best = span;
+          out[0] = trial[0];
+          out[1] = trial[1];
+          out[2] = trial[2];
+        }
+      }
+    }
+  }
 }
 
 } // namespace
@@ -332,11 +396,13 @@ TEST_CASE("A wide cell returns a short linkcell list", "[fastnlist][linkcell]") 
     }
   }
   const double box[9] = {25, 0, 0, 0, 25, 0, 0, 0, 25};
-  const int32_t periodic[3] = {1, 1, 1};
   const std::size_t n = pos.size() / 3;
+#ifdef RGPOT_HAS_FAST_NLIST
+  const int32_t periodic[3] = {1, 1, 1};
   const std::size_t count = pair_count(pos, box, periodic, 7.0);
   REQUIRE(count > 0);
   REQUIRE(count < n * (n - 1) / 2);
+#endif
 
   rgpot::LJPot pot(rgpot::LJConfig{.cutoff = 6.0});
   const std::vector<int> types(n, 1);
@@ -360,6 +426,7 @@ TEST_CASE("A wide cell returns a short linkcell list", "[fastnlist][linkcell]") 
   require_close(out.energy, forces, moved_ref);
 }
 
+#ifdef RGPOT_HAS_FAST_NLIST
 TEST_CASE("A narrow cell is every unordered pair", "[fastnlist]") {
   const auto pos = slab();
   const double box[9] = {18, 0, 0, 0, 18, 0, 0, 0, 30};
@@ -369,6 +436,7 @@ TEST_CASE("A narrow cell is every unordered pair", "[fastnlist]") {
   // the full pair set and the caller filters.
   REQUIRE(pair_count(pos, box, periodic, 7.0) == n * (n - 1) / 2);
 }
+#endif
 
 TEST_CASE("Optbench LJ clusters and the Pt island match the fused scan", "[fastnlist][optbench]") {
   std::vector<double> lj38;
@@ -521,4 +589,91 @@ TEST_CASE("A rigid shift keeps the Pt list", "[fastnlist][morse]") {
                             .box = box};
   pot.forceImpl(in_pull, &out);
   require_close(out.energy, forces, morse_oracle(pulled, box, 9.5));
+}
+
+TEST_CASE("A non-rigid move inside the skin matches a fresh scan", "[fastnlist][lj]") {
+  // Skin is 1 A. Atom 0 moves 0.6 A, past half a skin, and atom 1 moves
+  // the other way. The displacement cloud's diagonal stays under the skin,
+  // so a cached list is still the right pair set.
+  const double box[9] = {36, 0, 0, 0, 36, 0, 0, 0, 36};
+  std::vector<double> base = {0, 0, 0, 5.5, 0, 0, 0, 5.5, 0, 10, 10, 10, 20, 1, 1, 1, 20, 2};
+  rgpot::LJPot pot(rgpot::LJConfig{.cutoff = 6.0});
+  const std::vector<int> types(base.size() / 3, 1);
+  std::vector<double> forces(base.size(), 0.0);
+  rgpot::ForceInput in{.nAtoms = base.size() / 3,
+                       .pos = base.data(),
+                       .atmnrs = types.data(),
+                       .box = box};
+  rgpot::ForceOut out{.F = forces.data(), .energy = 0.0, .variance = 0.0};
+  pot.forceImpl(in, &out);
+  require_close(out.energy, forces, lj_oracle(base, box, {{true, true, true}}, 6.0));
+
+  std::vector<double> moved = base;
+  const double shift[18] = {0.6, 0, 0, -0.2, 0, 0, 0, 0.1, 0, 0, 0, -0.1, 0.05, 0, 0, 0, -0.05, 0};
+  for (std::size_t k = 0; k < moved.size(); ++k) {
+    moved[k] += shift[k];
+  }
+  double minx = shift[0];
+  double maxx = shift[0];
+  double miny = shift[1];
+  double maxy = shift[1];
+  double minz = shift[2];
+  double maxz = shift[2];
+  for (std::size_t a = 1; a < moved.size() / 3; ++a) {
+    minx = std::min(minx, shift[3 * a]);
+    maxx = std::max(maxx, shift[3 * a]);
+    miny = std::min(miny, shift[3 * a + 1]);
+    maxy = std::max(maxy, shift[3 * a + 1]);
+    minz = std::min(minz, shift[3 * a + 2]);
+    maxz = std::max(maxz, shift[3 * a + 2]);
+  }
+  const double ex = maxx - minx;
+  const double ey = maxy - miny;
+  const double ez = maxz - minz;
+  REQUIRE(ex * ex + ey * ey + ez * ez < 1.0);
+  REQUIRE(std::abs(shift[0]) > 0.5);
+
+  rgpot::ForceInput in_moved{.nAtoms = moved.size() / 3,
+                             .pos = moved.data(),
+                             .atmnrs = types.data(),
+                             .box = box};
+  pot.forceImpl(in_moved, &out);
+  require_close(out.energy, forces, lj_oracle(moved, box, {{true, true, true}}, 6.0));
+}
+
+TEST_CASE("Skewed WaterH matches the 26-image oracle", "[fastnlist][water]") {
+  // a = (8, 0, 0), b = (7.2, 0.8, 0), c = (0, 0, 8). The oxygen at
+  // (4, 0.3, 1) has fractional length squared 17.09. A neighbour in the
+  // shell of 26 has length squared 11.49.
+  const double cell[9] = {8, 0, 0, 7.2, 0.8, 0, 0, 0, 8};
+  const int nat = 4;
+  std::vector<double> pos = {8.36, 0.99, 0.2, 6.84, 0.99, -0.1, 4.0, 0.3, 1.0, 0, 0, 0};
+  const std::vector<int> z = {1, 1, 8, 1};
+  double oxygen[3];
+  image26(cell, pos.data() + 6, oxygen);
+  const double raw2 = pos[6] * pos[6] + pos[7] * pos[7] + pos[8] * pos[8];
+  const double near2 = oxygen[0] * oxygen[0] + oxygen[1] * oxygen[1] + oxygen[2] * oxygen[2];
+  REQUIRE(near2 < raw2);
+
+  std::vector<double> forces(pos.size(), 0.0);
+  double energy = 0.0;
+  REQUIRE(rgpot_water_h_force(nat, pos.data(), z.data(), cell, forces.data(), &energy) == 0);
+
+  std::vector<double> open = pos;
+  for (int site = 0; site < nat - 1; ++site) {
+    double image[3];
+    const double d[3] = {pos[3 * site] - pos[9], pos[3 * site + 1] - pos[10],
+                         pos[3 * site + 2] - pos[11]};
+    image26(cell, d, image);
+    open[3 * site] = pos[9] + image[0];
+    open[3 * site + 1] = pos[10] + image[1];
+    open[3 * site + 2] = pos[11] + image[2];
+  }
+  const double zero[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+  std::vector<double> open_forces(pos.size(), 0.0);
+  double open_energy = 0.0;
+  REQUIRE(rgpot_water_h_force(nat, open.data(), z.data(), zero, open_forces.data(), &open_energy) ==
+          0);
+  REQUIRE_THAT(energy - open_energy, WithinAbs(0.0, 0.0));
+  REQUIRE_THAT(max_abs(forces, open_forces), WithinAbs(0.0, 0.0));
 }

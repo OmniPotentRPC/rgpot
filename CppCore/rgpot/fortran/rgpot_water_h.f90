@@ -48,12 +48,14 @@ module rgpot_water_h
 
    public :: water_h_params_t, water_h_energy_forces, water_h_classify
 
-   !> Atomic numbers this potential accepts.
-   integer(ip), parameter, public :: z_hydrogen = 1_ip
-   integer(ip), parameter, public :: z_oxygen = 8_ip
-
+#ifdef RGPOT_HAS_FAST_NLIST
    interface
       !> Minimum-image wrap from the minimage static library.
+      !!
+      !! Fractional rounding. Exact for an orthorhombic cell, and for a
+      !! skewed cell when the wrapped length sits strictly inside half
+      !! the smallest face altitude (Smith, CCP5, 1989). Outside that
+      !! bound the 26-image scan below is the nearest image.
       function rgpot_fast_wrap(cell, diffs, n, out) bind(c, name="rgpot_fast_wrap") &
          result(status)
          import :: c_double, c_int, c_size_t
@@ -65,6 +67,11 @@ module rgpot_water_h
          integer(c_int) :: status
       end function rgpot_fast_wrap
    end interface
+#endif
+
+   !> Atomic numbers this potential accepts.
+   integer(ip), parameter, public :: z_hydrogen = 1_ip
+   integer(ip), parameter, public :: z_oxygen = 8_ip
 
    !> potH-H2O parameters. Defaults are the published set, carried over
    !! from the legacy `BLOCK DATA` and the quantities `setup()` derived
@@ -235,6 +242,114 @@ contains
       end if
    end subroutine invert_cell
 
+   !> Shortest of the central image and the surrounding shell of 26.
+   !!
+   !! Rounding the fractional coordinates lands in the primitive cell.
+   !! On a skewed cell that image can be longer than a neighbour, so the
+   !! shell is scanned and the shortest vector is kept.
+   pure function nearest_image(cell, inv_cell, d) result(shortest)
+      real(wp), intent(in) :: cell(3, 3), inv_cell(3, 3), d(3)
+      real(wp) :: shortest(3)
+
+      real(wp) :: s(3), trial(3), best, span
+      integer :: a, b, c
+
+      s = matmul(inv_cell, d)
+      s = s - anint(s)
+      shortest = matmul(cell, s)
+      best = dot_product(shortest, shortest)
+
+      do a = -1, 1
+         do b = -1, 1
+            do c = -1, 1
+               trial = matmul(cell, s + real([a, b, c], wp))
+               span = dot_product(trial, trial)
+               if (span < best) then
+                  best = span
+                  shortest = trial
+               end if
+            end do
+         end do
+      end do
+   end function nearest_image
+
+#ifdef RGPOT_HAS_FAST_NLIST
+   !> Perpendicular face altitudes, and whether the cell is orthorhombic.
+   pure subroutine face_widths(cell, widths, ortho)
+      real(wp), intent(in) :: cell(3, 3)
+      real(wp), intent(out) :: widths(3)
+      logical, intent(out) :: ortho
+
+      real(wp) :: a(3), b(3), cvec(3), bc(3), ca(3), ab(3)
+      real(wp) :: det, nb, nc, na
+
+      a = cell(:, 1)
+      b = cell(:, 2)
+      cvec = cell(:, 3)
+      bc(1) = b(2)*cvec(3) - b(3)*cvec(2)
+      bc(2) = b(3)*cvec(1) - b(1)*cvec(3)
+      bc(3) = b(1)*cvec(2) - b(2)*cvec(1)
+      ca(1) = cvec(2)*a(3) - cvec(3)*a(2)
+      ca(2) = cvec(3)*a(1) - cvec(1)*a(3)
+      ca(3) = cvec(1)*a(2) - cvec(2)*a(1)
+      ab(1) = a(2)*b(3) - a(3)*b(2)
+      ab(2) = a(3)*b(1) - a(1)*b(3)
+      ab(3) = a(1)*b(2) - a(2)*b(1)
+      det = dot_product(a, bc)
+      nb = norm2(bc)
+      nc = norm2(ca)
+      na = norm2(ab)
+      if (nb > 0.0_wp .and. nc > 0.0_wp .and. na > 0.0_wp) then
+         widths(1) = abs(det)/nb
+         widths(2) = abs(det)/nc
+         widths(3) = abs(det)/na
+      else
+         widths = 0.0_wp
+      end if
+      ortho = cell(1, 2) == 0.0_wp .and. cell(1, 3) == 0.0_wp .and. &
+              cell(2, 1) == 0.0_wp .and. cell(2, 3) == 0.0_wp .and. &
+              cell(3, 1) == 0.0_wp .and. cell(3, 2) == 0.0_wp
+   end subroutine face_widths
+
+   !> Batch wrap. Orthorhombic cells, and skewed legs inside the Smith
+   !! bound, take ``rgpot_fast_wrap``. Every other leg takes the 26-image
+   !! scan, which is also the path when the batch wrap fails.
+   subroutine wrap_legs(cell, inv_cell, n, raw, wrapped)
+      real(wp), intent(in) :: cell(3, 3), inv_cell(3, 3)
+      integer(ip), intent(in) :: n
+      real(wp), intent(in) :: raw(:, :)
+      real(wp), intent(out) :: wrapped(:, :)
+
+      integer(c_int) :: wstatus
+      integer(ip) :: i
+      real(wp) :: widths(3), room, span
+      logical :: ortho
+
+      call face_widths(cell, widths, ortho)
+      if (ortho) then
+         wstatus = rgpot_fast_wrap(cell, raw, int(n, c_size_t), wrapped)
+         if (wstatus == 0_c_int) return
+      else
+         room = 0.5_wp*minval(widths) - 1.0e-12_wp
+         if (room > 0.0_wp) then
+            wstatus = rgpot_fast_wrap(cell, raw, int(n, c_size_t), wrapped)
+            if (wstatus == 0_c_int) then
+               do i = 1_ip, n
+                  span = dot_product(wrapped(:, i), wrapped(:, i))
+                  if (.not. (span < room*room)) then
+                     wrapped(:, i) = nearest_image(cell, inv_cell, raw(:, i))
+                  end if
+               end do
+               return
+            end if
+         end if
+      end if
+      do i = 1_ip, n
+         wrapped(:, i) = nearest_image(cell, inv_cell, raw(:, i))
+      end do
+   end subroutine wrap_legs
+#endif
+
    !> One leg: the energy it contributes and the force it puts on the site.
    !!
    !! `d` is the separation already reduced to the minimum image when the
@@ -348,7 +463,6 @@ contains
       character(len=:), allocatable, intent(out) :: errmsg
 
       integer(ip) :: natoms, i, lone_h, slot, nleg
-      integer(c_int) :: wstatus
       real(wp) :: inv_cell(3, 3)
       logical :: periodic
       logical, allocatable :: is_oxygen(:), usable(:)
@@ -399,14 +513,13 @@ contains
          raw(:, slot) = positions(:, i) - positions(:, lone_h)
       end do
       if (periodic) then
-         ! One minimage batch for every leg. A failure stays a failure:
-         ! the scalar image scan is not a second path.
-         wstatus = rgpot_fast_wrap(cell, raw, int(slot, c_size_t), wrapped)
-         if (wstatus /= 0_c_int) then
-            status = 4
-            errmsg = "rgpot_water_h: minimum image wrap failed"
-            return
-         end if
+#ifdef RGPOT_HAS_FAST_NLIST
+         call wrap_legs(cell, inv_cell, slot, raw, wrapped)
+#else
+         do i = 1_ip, slot
+            wrapped(:, i) = nearest_image(cell, inv_cell, raw(:, i))
+         end do
+#endif
       else
          wrapped = raw
       end if
