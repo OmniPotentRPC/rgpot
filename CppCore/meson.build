@@ -9,6 +9,14 @@ endif
 
 _rgpot_srcs += files('rgpot/PotHelpers.cc')
 _rgpot_srcs += files('rgpot/units.cc')
+_rgpot_srcs += files(
+    'rgpot/simd/dispatch.cc',
+    'rgpot/simd/exp.cc',
+    'rgpot/simd/scalar_kernels.cc',
+)
+if have_highway
+    _rgpot_srcs += files('rgpot/simd/hwy_kernels.cc')
+endif
 
 # Cap'n Proto schema + NWChem/CPMD frontends need libcapnp (ptlrpc). Only pull
 # them in when RPC is on (server or client-only); lean -Dwith_rpc=false builds
@@ -24,10 +32,26 @@ endif
 
 # ------------------------ Main library
 if not get_option('with_rpc_client_only')
+    # RGPOT_WITH_HIGHWAY stays on this archive. The installed dependency
+    # does not pass it on, so a consumer's own Highway headers are untouched.
+    # Product-sums in the simd sources are explicit. Contraction stays off
+    # in this archive so a multiply that is not written as mul_add is not fused.
+    _fp_contract_off = cppc.get_supported_arguments(
+        ['-ffp-contract=off', '/fp:precise'],
+    )
+    _core_args = _fp_contract_off
+    if have_highway
+        _core_args += ['-DRGPOT_WITH_HIGHWAY']
+    endif
+    _core_deps = _deps
+    if have_highway
+        _core_deps += highway_dep
+    endif
     rgpot_core = static_library(
         'rgpot_core',
         sources: _rgpot_srcs,
-        dependencies: _deps,
+        dependencies: _core_deps,
+        cpp_args: _core_args,
         include_directories: _incdirs,
         pic: true,
         install: false,
@@ -340,6 +364,8 @@ if get_option('with_tests')
                 '',
             ],
             ['ZBLPotTest', 'zbl_pot_test', 'ZBLPotTest.cc', ''],
+            ['IsaDispatchTest', 'isa_dispatch_test', 'IsaDispatchTest.cc', ''],
+            ['FmaExactTest', 'fma_exact_test', 'FmaExactTest.cc', ''],
         ]
     endif
     if has_fortran
@@ -693,6 +719,41 @@ if get_option('with_tests')
             workdir: meson.source_root() + test.get(3),
         )
     endforeach
+    if not get_option('with_rpc_client_only')
+        simd_env = executable(
+            'simd_env',
+            sources: ['tests/simd_env.cc'],
+            dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: _args,
+            link_with: _linkto,
+            link_language: 'cpp',
+        )
+        test(
+            'simd-env-scalar',
+            simd_env,
+            args: ['known', 'scalar'],
+            env: ['RGPOT_SIMD=scalar'],
+        )
+        test(
+            'simd-env-unknown',
+            simd_env,
+            args: ['unknown'],
+            env: ['RGPOT_SIMD=not_a_target'],
+        )
+        test(
+            'simd-env-rvv',
+            simd_env,
+            args: ['known', 'rvv'],
+            env: ['RGPOT_SIMD=rvv'],
+        )
+        test(
+            'simd-env-avx2',
+            simd_env,
+            args: ['known', 'avx2'],
+            env: ['RGPOT_SIMD=avx2'],
+        )
+    endif
 
     if has_dftd3 or has_dftd4
         test(

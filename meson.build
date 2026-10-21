@@ -628,6 +628,42 @@ if get_option('with_rust_core')
     ]
 endif
 
+# ------------------------ Highway (runtime ISA dispatch)
+# System libhwy >= 1.2 when it is installed. Otherwise the wrap, and only
+# when that tree is already on disk or the feature is enabled. auto must
+# not download: a nodownload rehearsal can archive the wrap file without
+# the extracted sources. Kernel TUs include hwy_disabled.h so a system
+# libhwy and the wrap agree on the mask the dispatch table uses.
+fs_hwy = import('fs')
+highway_opt = get_option('with_highway')
+have_highway = false
+if not highway_opt.disabled()
+    highway_dep = dependency('libhwy', version: '>=1.2', required: false)
+    if not highway_dep.found()
+        _hwy_tree = meson.project_source_root() / 'subprojects' / 'highway-1.2.0'
+        _hwy_ready = fs_hwy.exists(_hwy_tree / 'hwy' / 'highway.h')
+        if _hwy_ready or highway_opt.enabled()
+            highway_dep = dependency(
+                'libhwy',
+                version: '>=1.2',
+                fallback: ['highway', 'libhwy_dep'],
+                required: highway_opt,
+            )
+        endif
+    endif
+    if highway_dep.found()
+        # Not added to _deps. An installed static library copies objects from
+        # a link_with dependency, and several pot archives install. Highway
+        # stays on rgpot_core, which does not install.
+        have_highway = true
+        message('highway: enabled')
+    else
+        message('highway: scalar kernels only')
+    endif
+else
+    message('highway: scalar kernels only')
+endif
+
 # --------------------- Projects
 _incdirs += [include_directories('CppCore')]
 subdir('CppCore')
