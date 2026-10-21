@@ -101,7 +101,7 @@ Until `orchestrator.ncl` exists, edit the orchestrator directly but **prefer add
 
 | File | How maintained | Trigger |
 |------|----------------|---------|
-| **`ci-orchestrator.yml`** | **Hand-maintained** (primary PR/main CI; should become nickel-exported) | `push`/`PR` `main`, `workflow_dispatch`, weekly `schedule` (docs hygiene only) |
+| **`ci-orchestrator.yml`** | **Hand-maintained** (primary PR CI; should become nickel-exported) | `push` `main` and `feat/**`, `PR` `main` and `develop`, `workflow_dispatch`, weekly `schedule` (docs hygiene only) |
 | `release.yml` | Nickel `release.ncl` → `gen-gha` | `v*` tags |
 | `release-prepare.yml` | Nickel `release_prepare.ncl` | path-filtered PR + `workflow_dispatch` |
 | `ci_docs.yml` | Nickel `ci_docs.ncl` | docs build/deploy (write + gh-pages) |
