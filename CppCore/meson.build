@@ -72,6 +72,11 @@ if not get_option('with_rpc_client_only')
     subdir('rgpot/ZBL')  # 'zbl'
     rgpotentials += [zbl]
 
+    if has_ipi
+        subdir('rgpot/IPIPot')  # 'ipi'
+        rgpotentials += [ipi]
+    endif
+
     # Pure dlopen consumer of split mopacc (no Cap'n Proto, no OpenMOPAC embed).
     subdir('rgpot/MOPACPot')  # 'mopacpot'
     rgpotentials += [mopacpot]
@@ -366,7 +371,18 @@ if get_option('with_tests')
             ['ZBLPotTest', 'zbl_pot_test', 'ZBLPotTest.cc', ''],
             ['IsaDispatchTest', 'isa_dispatch_test', 'IsaDispatchTest.cc', ''],
             ['FmaExactTest', 'fma_exact_test', 'FmaExactTest.cc', ''],
+            [
+                'MinimumImageTest',
+                'minimum_image_test',
+                'MinimumImageTest.cc',
+                '',
+            ],
         ]
+        if has_ipi
+            test_array += [
+                ['IPIPotTest', 'ipi_pot_test', 'IPIPotTest.cc', ''],
+            ]
+        endif
     endif
     if has_fortran
         test_array += [
@@ -962,6 +978,9 @@ if not meson.is_subproject()
         _pc_cflags += ['-DRGPOT_HAS_POTLIB=TRUE']
         if has_fortran
             _pc_cflags += ['-DRGPOT_HAS_FORTRAN_POTS=TRUE']
+        endif
+        if has_ipi
+            _pc_cflags += ['-DRGPOT_HAS_IPI=TRUE']
         endif
         if has_metatomic
             _pc_cflags += ['-DRGPOT_HAS_METATOMIC_POT=TRUE']

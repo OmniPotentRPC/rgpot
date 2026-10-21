@@ -40,6 +40,10 @@ struct PotCaps {
   bool batched = false;
   /// Kernel supports periodic boundary conditions.
   bool periodic = true;
+  /// The potential publishes Cauchy stress for a positive cell volume.
+  /// Develop's ForceOut has no stress slot, so the tensor is read from the
+  /// potential (IPIPot::copyStress) and from the RPC result.
+  bool stress = false;
 };
 
 } // namespace rgpot
