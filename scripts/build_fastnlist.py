@@ -12,6 +12,13 @@ Cargo names the archive ``librgpot_fastnlist.a`` on Unix and MinGW, and
 libraries from ``rustc --print native-static-libs``, one token per line,
 so meson can pass them as link arguments. ``--copy`` rebuilds that
 archive and copies it to the meson output.
+
+On Darwin the cargo subprocess uses ``/usr/bin/ar`` and
+``/usr/bin/ranlib``. Pixi exports ``AR`` as the conda archiver
+(``arm64-apple-darwin20.0.0-ar``), rustc honours that variable when it
+writes a staticlib, and Apple ld rejects the result
+(``malformed archive, member exceeds file size``). The rest of the
+meson build keeps the pixi archiver.
 """
 
 import os
@@ -89,12 +96,33 @@ def cargo_cmd(cargo: str, sub: str, manifest: str, target_dir: str) -> list[str]
     ]
 
 
+def cargo_env() -> dict[str, str] | None:
+    """Environment for the cargo subprocess.
+
+    ``None`` inherits the parent environment. Darwin overrides only the
+    archiver rustc uses for this staticlib.
+    """
+    if sys.platform != "darwin":
+        return None
+    ar = "/usr/bin/ar"
+    ranlib = "/usr/bin/ranlib"
+    if not (os.path.isfile(ar) and os.access(ar, os.X_OK)):
+        return None
+    if not (os.path.isfile(ranlib) and os.access(ranlib, os.X_OK)):
+        return None
+    env = os.environ.copy()
+    env["AR"] = ar
+    env["RANLIB"] = ranlib
+    return env
+
+
 def print_native_libs(cargo: str, manifest: str, target_dir: str) -> list[str]:
     proc = subprocess.run(
         cargo_cmd(cargo, "rustc", manifest, target_dir)
         + ["--", "--print", "native-static-libs"],
         text=True,
         capture_output=True,
+        env=cargo_env(),
     )
     sys.stderr.write(proc.stdout)
     sys.stderr.write(proc.stderr)
@@ -113,6 +141,7 @@ def copy_archive(cargo: str, manifest: str, target_dir: str, lib_out: str) -> No
     proc = subprocess.run(
         cargo_cmd(cargo, "build", manifest, target_dir),
         text=True,
+        env=cargo_env(),
     )
     if proc.returncode != 0:
         sys.exit(proc.returncode)
