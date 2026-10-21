@@ -7,6 +7,9 @@
 #include <cstdlib>
 #include <new>
 
+#if defined(_WIN32)
+#include <malloc.h>
+#endif
 #if defined(__x86_64__)
 #include <immintrin.h>
 #endif
@@ -17,6 +20,24 @@
 namespace rgpot {
 namespace {
 
+// MSVC does not provide std::aligned_alloc. The CRT pair is
+// _aligned_malloc / _aligned_free; free() cannot release that pointer.
+void *alloc_aligned(std::size_t alignment, std::size_t bytes) {
+#if defined(_WIN32)
+  return _aligned_malloc(bytes, alignment);
+#else
+  return std::aligned_alloc(alignment, bytes);
+#endif
+}
+
+void free_aligned(void *mem) {
+#if defined(_WIN32)
+  _aligned_free(mem);
+#else
+  std::free(mem);
+#endif
+}
+
 struct Soa {
   double *x{nullptr};
   double *y{nullptr};
@@ -26,7 +47,7 @@ struct Soa {
   Soa() = default;
   Soa(const Soa &) = delete;
   Soa &operator=(const Soa &) = delete;
-  ~Soa() { std::free(x); }
+  ~Soa() { free_aligned(x); }
 
   void ensure(std::size_t n) {
     if (n <= cap) {
@@ -38,11 +59,11 @@ struct Soa {
     }
     nc = (nc + 7u) & ~std::size_t{7};
     const std::size_t bytes = nc * 3 * sizeof(double);
-    void *mem = std::aligned_alloc(64, bytes);
+    void *mem = alloc_aligned(64, bytes);
     if (mem == nullptr) {
       throw std::bad_alloc();
     }
-    std::free(x);
+    free_aligned(x);
     x = static_cast<double *>(mem);
     y = x + nc;
     z = y + nc;
