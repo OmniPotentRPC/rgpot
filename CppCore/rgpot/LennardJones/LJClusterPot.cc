@@ -11,9 +11,11 @@
  */
 
 // clang-format off
+#include <algorithm>
 #include <cmath>
 // clang-format on
 
+#include "rgpot/LennardJones/LJClusterKernel.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/nlist/PairListCache.hpp"
 
@@ -25,12 +27,11 @@ namespace rgpot {
  *
  * Every pair within the cutoff contributes, with vectors taken straight
  * from the coordinates: ``opt.periodic`` is off in all three directions,
- * so the pair list never folds a separation into the cell. A cluster that
- * sits inside the cutoff keeps every unordered pair and walks ``i < j``
- * directly. A larger open system goes through linkcell, with each open
- * axis padded so a periodic image stays outside the cutoff. A degenerate
- * input cell (any non-positive diagonal entry) is replaced by a 1e6
- * Angstrom cube.
+ * so the pair list never folds a separation into the cell. A cluster
+ * whose bounding box fits inside the cutoff walks ``i < j`` in SoA form,
+ * AVX2 or NEON on the inner loop. A larger open system goes through the
+ * pair cache. A degenerate input cell (any non-positive diagonal entry)
+ * is replaced by a 1e6 Angstrom cube.
  */
 void LJClusterPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const auto N = static_cast<long>(in.nAtoms);
@@ -56,6 +57,37 @@ void LJClusterPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const bool box_ok = in.box != nullptr && in.box[0] > 0.0 && in.box[4] > 0.0 &&
                       in.box[8] > 0.0;
   const double *box_use = box_ok ? in.box : free_box;
+
+  double minx = R[0];
+  double maxx = minx;
+  double miny = R[1];
+  double maxy = miny;
+  double minz = R[2];
+  double maxz = minz;
+  for (long i = 1; i < N; ++i) {
+    const double x = R[3 * i];
+    const double y = R[3 * i + 1];
+    const double z = R[3 * i + 2];
+    minx = std::min(minx, x);
+    maxx = std::max(maxx, x);
+    miny = std::min(miny, y);
+    maxy = std::max(maxy, y);
+    minz = std::min(minz, z);
+    maxz = std::max(maxz, z);
+  }
+  const double ex = maxx - minx;
+  const double ey = maxy - miny;
+  const double ez = maxz - minz;
+  const double cutoff = opt.cutoff;
+  // Every pair is at most the box diagonal. When that diagonal sits on
+  // the cutoff, the direct walk and the cutoff test agree on the set.
+  if ((ex * ex + ey * ey) + ez * ez <= cutoff * cutoff) {
+    double energyAcc = 0.0;
+    lj_cluster_direct(R, static_cast<std::size_t>(N), cutoff, u0, psi, cuttOffU, F,
+                      &energyAcc);
+    *U = energyAcc;
+    return;
+  }
 
   const double psi2 = psi * psi;
   double energyAcc = 0.0;

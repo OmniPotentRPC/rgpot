@@ -484,3 +484,41 @@ TEST_CASE("Water plus H wraps every leg with minimage", "[fastnlist][water]") {
   REQUIRE_THAT(isolated_again - isolated, WithinAbs(0.0, 0.0));
   REQUIRE(std::isfinite(isolated));
 }
+
+TEST_CASE("A rigid shift keeps the Pt list", "[fastnlist][morse]") {
+  std::vector<double> base;
+  double box[9]{};
+  REQUIRE(load_con("benchmarks/data/pt-island.con", base, box));
+  rgpot::MorsePot pot;
+  const std::vector<int> z(base.size() / 3, 78);
+  std::vector<double> forces(base.size(), 0.0);
+  rgpot::ForceInput in{.nAtoms = base.size() / 3,
+                       .pos = base.data(),
+                       .atmnrs = z.data(),
+                       .box = box};
+  rgpot::ForceOut out{.F = forces.data(), .energy = 0.0, .variance = 0.0};
+  pot.forceImpl(in, &out);
+  const double built = out.energy;
+
+  std::vector<double> shifted = base;
+  for (std::size_t k = 0; k < shifted.size(); k += 3) {
+    shifted[k] += 2.0;
+  }
+  rgpot::ForceInput in_shift{.nAtoms = shifted.size() / 3,
+                             .pos = shifted.data(),
+                             .atmnrs = z.data(),
+                             .box = box};
+  pot.forceImpl(in_shift, &out);
+  require_close(out.energy, forces, morse_oracle(shifted, box, 9.5));
+  REQUIRE_THAT(out.energy - built, WithinAbs(0.0, 0.0));
+
+  std::vector<double> pulled = base;
+  pulled[0] += 2.0;
+  pulled[1] -= 1.5;
+  rgpot::ForceInput in_pull{.nAtoms = pulled.size() / 3,
+                            .pos = pulled.data(),
+                            .atmnrs = z.data(),
+                            .box = box};
+  pot.forceImpl(in_pull, &out);
+  require_close(out.energy, forces, morse_oracle(pulled, box, 9.5));
+}

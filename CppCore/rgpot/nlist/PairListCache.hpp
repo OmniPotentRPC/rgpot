@@ -21,8 +21,10 @@
 //   proximity match, never the physics.
 // - Evaluation always re-derives vectors from the positions of that call. Periodic
 //   axes go through one minimage wrap of the cached index pairs, filtered
-//   at the true cutoff. Pair content matches a fresh scan while every
-//   atom stays within skin/2 of the build positions.
+//   at the true cutoff. Pair content matches a fresh scan while the
+//   displacement vectors themselves stay inside a box whose diagonal is
+//   shorter than the skin. A rigid translation has a zero diagonal, so
+//   the list is kept.
 // - The first sighting captures the list and evaluates it. Later calls
 //   inside the skin walk the stored pairs.
 
@@ -77,8 +79,10 @@ public:
   };
 
   /// True while the cached pair set is valid for positions ``R``: same
-  /// atom count, options and box as the build, and max displacement
-  /// below skin/2.
+  /// atom count, options and box as the build, and the cloud of
+  /// displacement vectors has a bounding-box diagonal shorter than the
+  /// skin. That is the Verlet condition on relative motion. A shared
+  /// translation drops out of the diagonal.
   [[nodiscard]] bool valid(const double *R, std::size_t n, const double *box,
                            const Options &opt) const {
     if (!built_ || n != n_ || !(opt == opt_)) {
@@ -89,20 +93,39 @@ public:
         return false;
       }
     }
-    if (complete_) {
+    if (complete_ || n == 0) {
       return true; // all pairs are candidates; motion cannot invalidate
     }
-    const double thr2 = 0.25 * opt_.skin * opt_.skin;
     const double *ref = Rref_.data();
-    for (std::size_t a = 0; a < n; ++a) {
+    double minx = R[0] - ref[0];
+    double maxx = minx;
+    double miny = R[1] - ref[1];
+    double maxy = miny;
+    double minz = R[2] - ref[2];
+    double maxz = minz;
+    for (std::size_t a = 1; a < n; ++a) {
       const double dx = R[3 * a] - ref[3 * a];
       const double dy = R[3 * a + 1] - ref[3 * a + 1];
       const double dz = R[3 * a + 2] - ref[3 * a + 2];
-      if (dx * dx + dy * dy + dz * dz > thr2) {
-        return false;
-      }
+      minx = std::min(minx, dx);
+      maxx = std::max(maxx, dx);
+      miny = std::min(miny, dy);
+      maxy = std::max(maxy, dy);
+      minz = std::min(minz, dz);
+      maxz = std::max(maxz, dz);
     }
-    return true;
+    const double ex = maxx - minx;
+    const double ey = maxy - miny;
+    const double ez = maxz - minz;
+    const double diag2 = ex * ex + ey * ey + ez * ez;
+    const double skin = opt_.skin;
+    if (!(skin > 0.0)) {
+      return diag2 == 0.0;
+    }
+    // A non-listed pair sits at or beyond cutoff+skin. It can reach the
+    // inclusive cutoff only by shrinking by a full skin. A shorter
+    // diagonal cannot do that.
+    return diag2 < skin * skin;
   }
 
   [[nodiscard]] bool isPhantom() const { return phantom_; }
@@ -262,6 +285,97 @@ private:
     }
   }
 
+  /// Every unordered pair, wrapped in small batches. Used when linkcell
+  /// would not visit fewer images than this walk. The stored subset and
+  /// the visited subset use the same inequalities as the fused scan.
+  template <typename Fn>
+  bool fillNarrow(const double *R, std::size_t n, const double *box,
+                  const Options &opt, double list_cut, double search, Fn &&fn) {
+    if (n > 4096 || n < 2) {
+      return false;
+    }
+    double mins[3] = {R[0], R[1], R[2]};
+    double maxs[3] = {mins[0], mins[1], mins[2]};
+    for (std::size_t a = 1; a < n; ++a) {
+      for (int k = 0; k < 3; ++k) {
+        const double v = R[3 * a + static_cast<std::size_t>(k)];
+        mins[k] = std::min(mins[k], v);
+        maxs[k] = std::max(maxs[k], v);
+      }
+    }
+    bool helps = true;
+    for (int k = 0; k < 3; ++k) {
+      if (opt.periodic[static_cast<std::size_t>(k)]) {
+        if (box[4 * k] < 3.0 * search) {
+          helps = false;
+        }
+      } else if (maxs[k] - mins[k] <= search) {
+        helps = false;
+      }
+    }
+    if (helps) {
+      return false;
+    }
+    auto &scratch = fast_scratch();
+    periodic_flags(opt, scratch.periodic);
+    constexpr std::size_t batch = 128;
+    scratch.ij.resize(batch * 2);
+    scratch.diff.resize(batch * 3);
+    scratch.wrapped.resize(batch * 3);
+    const double list2 = list_cut * list_cut;
+    const double cut2 = opt.cutoff * opt.cutoff;
+    const bool skin0 = opt.skin == 0.0;
+    const bool any_periodic = scratch.periodic[0] != 0 || scratch.periodic[1] != 0 ||
+                              scratch.periodic[2] != 0;
+    pairsIJ_.clear();
+    std::size_t filled = 0;
+    auto flush = [&]() {
+      if (filled == 0) {
+        return;
+      }
+      const double *vec = scratch.diff.data();
+      if (any_periodic) {
+        if (rgpot_fast_wrap_axes(box, scratch.periodic, scratch.diff.data(), filled,
+                                 scratch.wrapped.data()) != 0) {
+          fast_fail("rgpot minimage wrap failed: ");
+        }
+        vec = scratch.wrapped.data();
+      }
+      for (std::size_t p = 0; p < filled; ++p) {
+        const double dx = vec[3 * p];
+        const double dy = vec[3 * p + 1];
+        const double dz = vec[3 * p + 2];
+        const double r2 = dx * dx + dy * dy + dz * dz;
+        if (r2 < list2 || (skin0 && r2 <= cut2)) {
+          pairsIJ_.push_back(scratch.ij[2 * p]);
+          pairsIJ_.push_back(scratch.ij[2 * p + 1]);
+          if (r2 <= cut2) {
+            fn(scratch.ij[2 * p], scratch.ij[2 * p + 1], dx, dy, dz, r2);
+          }
+        }
+      }
+      filled = 0;
+    };
+    for (std::size_t i = 0; i < n; ++i) {
+      const double ix = R[3 * i];
+      const double iy = R[3 * i + 1];
+      const double iz = R[3 * i + 2];
+      for (std::size_t j = i + 1; j < n; ++j) {
+        if (filled == batch) {
+          flush();
+        }
+        scratch.ij[2 * filled] = static_cast<int32_t>(i);
+        scratch.ij[2 * filled + 1] = static_cast<int32_t>(j);
+        scratch.diff[3 * filled] = ix - R[3 * j];
+        scratch.diff[3 * filled + 1] = iy - R[3 * j + 1];
+        scratch.diff[3 * filled + 2] = iz - R[3 * j + 2];
+        ++filled;
+      }
+    }
+    flush();
+    return true;
+  }
+
   /// linkcell candidates at cutoff+skin, minimage vectors, true-cutoff visit.
   template <typename Fn>
   void fillFast(const double *R, std::size_t n, const double *box,
@@ -273,6 +387,9 @@ private:
     // scan.
     const double search =
         list_cut + 1e-8 * std::max(1.0, std::abs(list_cut));
+    if (fillNarrow(R, n, box, opt, list_cut, search, fn)) {
+      return;
+    }
     auto &scratch = fast_scratch();
     periodic_flags(opt, scratch.periodic);
     std::size_t cap = n < 2 ? 0 : n * 256;
