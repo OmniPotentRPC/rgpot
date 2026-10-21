@@ -33,10 +33,12 @@ namespace rgpot {
  * ``rgpot::nlist::PairListCache`` (the eOn PairListCache design): repeated
  * evaluations on nearby geometries reuse a Verlet-skin cached candidate
  * list, and one-shot evaluations run a single fused scan identical in pair
- * content to the historical per-call double loop. The pair term itself is
- * the Highway kernel selected for this process. A nonzero switch width uses
- * that kernel's quintic switch. Cauchy stress is published from the kernel's
- * strain accumulator.
+ * content to the historical per-call double loop. An orthorhombic cell
+ * takes those candidates from the fast list (linkcell when the cell is
+ * several cutoffs wide, otherwise every unordered pair) and folds them
+ * with minimage. The pair term is the Highway kernel selected for this
+ * process. A nonzero switch width uses that kernel's quintic switch.
+ * Cauchy stress is published from the kernel's strain accumulator.
  *
  * @warning The box is assumed to be orthogonal.
  *

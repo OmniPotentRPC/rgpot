@@ -1,6 +1,8 @@
 # Added
 build
 build_client
+.asv/
+results/asv/
 /compile_commands.json
 *.tmp
 subprojects/*

@@ -23,6 +23,15 @@ moves, because the fused instruction is VEX-encoded.
 =r2_hw=, =r2_hw_n=, =accept_row_hw=, =exp2_hw=, =exp_hw_n=, and =morse8_hw=.
 The baseline caller does not contain those instructions.
 
+A Lennard-Jones cluster whose bounding-box diagonal sits on the cutoff uses
+=lj_cluster_direct= instead of the Highway kernel.
+On x86-64 that walk calls =lj_avx2= only after =__builtin_cpu_supports("avx2")=.
+=lj_avx2=, =eval_quad=, and =acc_quad= are =target("avx2")=, and the allowlist
+names them for =avx= and =avx2=.
+The same builtin's initializer, =__cpu_indicator_init=, is named for =xsave=
+because it reads XCR0 with =xgetbv=.
+A larger cluster stays on =simd::lj_force=.
+
 The static gate in =ci/isa-audit= is what stops a later =-march=native=, a stray
 =-mavx2=, or an intrinsic outside a dispatched function from shipping.
 An instruction above the baseline is allowed only when =rgpot/isa-allow.toml=

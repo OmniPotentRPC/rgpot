@@ -159,6 +159,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/units.cc
       CppCore/rgpot/LennardJones/LJPot.cc
       CppCore/rgpot/LennardJones/LJClusterPot.cc
+      CppCore/rgpot/LennardJones/LJClusterKernel.cc
       CppCore/rgpot/Morse/MorsePot.cc
       CppCore/rgpot/ZBL/ZBLPot.cc
       CppCore/rgpot/simd/dispatch.cc

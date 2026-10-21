@@ -42,11 +42,32 @@
 !! that way. `energy_scale` converts the result to the eV/Angstrom that
 !! every rgpot entry point reports.
 module rgpot_water_h
-   use rgpot_kinds, only: wp, ip
+   use rgpot_kinds, only: wp, ip, c_double, c_int, c_size_t
    implicit none
    private
 
    public :: water_h_params_t, water_h_energy_forces, water_h_classify
+
+#ifdef RGPOT_HAS_FAST_NLIST
+   interface
+      !> Minimum-image wrap from the minimage static library.
+      !!
+      !! Fractional rounding. Exact for an orthorhombic cell, and for a
+      !! skewed cell when the wrapped length sits strictly inside half
+      !! the smallest face altitude (Smith, CCP5, 1989). Outside that
+      !! bound the 26-image scan below is the nearest image.
+      function rgpot_fast_wrap(cell, diffs, n, out) bind(c, name="rgpot_fast_wrap") &
+         result(status)
+         import :: c_double, c_int, c_size_t
+         implicit none
+         real(c_double), intent(in) :: cell(*)
+         real(c_double), intent(in) :: diffs(*)
+         integer(c_size_t), value :: n
+         real(c_double), intent(out) :: out(*)
+         integer(c_int) :: status
+      end function rgpot_fast_wrap
+   end interface
+#endif
 
    !> Atomic numbers this potential accepts.
    integer(ip), parameter, public :: z_hydrogen = 1_ip
@@ -221,66 +242,129 @@ contains
       end if
    end subroutine invert_cell
 
-   !> Shortest periodic image of the separation `d`.
+   !> Shortest of the central image and the surrounding shell of 26.
    !!
-   !! Rounding the fractional coordinates lands in the primitive cell; the
-   !! surrounding shell of 26 images is then scanned because for a skewed
-   !! cell the rounded image need not be the closest one. On the diagonal
-   !! cells the legacy kernel supported, the rounding alone already gives
-   !! the minimum and the scan leaves it untouched.
-   pure function nearest_image(cell, inv_cell, periodic, d) result(shortest)
-      real(wp), intent(in) :: cell(3, 3), inv_cell(3, 3)
-      logical, intent(in) :: periodic
-      real(wp), intent(in) :: d(3)
+   !! The scan itself is `rgpot_water_h_image`. Rounding the fractional
+   !! coordinates lands in the primitive cell, and on a skewed cell that
+   !! image can be longer than a neighbour, so the shell is scanned and
+   !! the shortest vector is kept. One routine serves the kernel and the
+   !! tests: a Fortran matmul and a second C++ copy are not the same
+   !! rounding on every compiler.
+   function nearest_image(cell, inv_cell, d) result(shortest)
+      real(wp), intent(in) :: cell(3, 3), inv_cell(3, 3), d(3)
       real(wp) :: shortest(3)
 
-      real(wp) :: s(3), trial(3), best, span
-      integer :: a, b, c
+      interface
+         subroutine rgpot_water_h_image(cell, d, out) &
+            bind(c, name="rgpot_water_h_image")
+            import :: c_double
+            real(c_double), intent(in) :: cell(3, 3)
+            real(c_double), intent(in) :: d(3)
+            real(c_double), intent(out) :: out(3)
+         end subroutine rgpot_water_h_image
+      end interface
 
-      shortest = d
-      if (.not. periodic) return
-
-      s = matmul(inv_cell, d)
-      s = s - anint(s)
-      shortest = matmul(cell, s)
-      best = dot_product(shortest, shortest)
-
-      do a = -1, 1
-         do b = -1, 1
-            do c = -1, 1
-               trial = matmul(cell, s + real([a, b, c], wp))
-               span = dot_product(trial, trial)
-               if (span < best) then
-                  best = span
-                  shortest = trial
-               end if
-            end do
-         end do
-      end do
+      ! The inverse is formed inside the C++ scan. `inv_cell` stays so the
+      ! callers that already computed one do not grow a second argument list.
+      call rgpot_water_h_image(cell, d, shortest)
    end function nearest_image
+
+#ifdef RGPOT_HAS_FAST_NLIST
+   !> Perpendicular face altitudes, and whether the cell is orthorhombic.
+   pure subroutine face_widths(cell, widths, ortho)
+      real(wp), intent(in) :: cell(3, 3)
+      real(wp), intent(out) :: widths(3)
+      logical, intent(out) :: ortho
+
+      real(wp) :: a(3), b(3), cvec(3), bc(3), ca(3), ab(3)
+      real(wp) :: det, nb, nc, na
+
+      a = cell(:, 1)
+      b = cell(:, 2)
+      cvec = cell(:, 3)
+      bc(1) = b(2)*cvec(3) - b(3)*cvec(2)
+      bc(2) = b(3)*cvec(1) - b(1)*cvec(3)
+      bc(3) = b(1)*cvec(2) - b(2)*cvec(1)
+      ca(1) = cvec(2)*a(3) - cvec(3)*a(2)
+      ca(2) = cvec(3)*a(1) - cvec(1)*a(3)
+      ca(3) = cvec(1)*a(2) - cvec(2)*a(1)
+      ab(1) = a(2)*b(3) - a(3)*b(2)
+      ab(2) = a(3)*b(1) - a(1)*b(3)
+      ab(3) = a(1)*b(2) - a(2)*b(1)
+      det = dot_product(a, bc)
+      nb = norm2(bc)
+      nc = norm2(ca)
+      na = norm2(ab)
+      if (nb > 0.0_wp .and. nc > 0.0_wp .and. na > 0.0_wp) then
+         widths(1) = abs(det)/nb
+         widths(2) = abs(det)/nc
+         widths(3) = abs(det)/na
+      else
+         widths = 0.0_wp
+      end if
+      ortho = cell(1, 2) == 0.0_wp .and. cell(1, 3) == 0.0_wp .and. &
+              cell(2, 1) == 0.0_wp .and. cell(2, 3) == 0.0_wp .and. &
+              cell(3, 1) == 0.0_wp .and. cell(3, 2) == 0.0_wp
+   end subroutine face_widths
+
+   !> Batch wrap. Orthorhombic cells, and skewed legs inside the Smith
+   !! bound, take ``rgpot_fast_wrap``. Every other leg takes the 26-image
+   !! scan, which is also the path when the batch wrap fails.
+   subroutine wrap_legs(cell, inv_cell, n, raw, wrapped)
+      real(wp), intent(in) :: cell(3, 3), inv_cell(3, 3)
+      integer(ip), intent(in) :: n
+      real(wp), intent(in) :: raw(:, :)
+      real(wp), intent(out) :: wrapped(:, :)
+
+      integer(c_int) :: wstatus
+      integer(ip) :: i
+      real(wp) :: widths(3), room, span
+      logical :: ortho
+
+      call face_widths(cell, widths, ortho)
+      if (ortho) then
+         wstatus = rgpot_fast_wrap(cell, raw, int(n, c_size_t), wrapped)
+         if (wstatus == 0_c_int) return
+      else
+         room = 0.5_wp*minval(widths) - 1.0e-12_wp
+         if (room > 0.0_wp) then
+            wstatus = rgpot_fast_wrap(cell, raw, int(n, c_size_t), wrapped)
+            if (wstatus == 0_c_int) then
+               do i = 1_ip, n
+                  span = dot_product(wrapped(:, i), wrapped(:, i))
+                  if (.not. (span < room*room)) then
+                     wrapped(:, i) = nearest_image(cell, inv_cell, raw(:, i))
+                  end if
+               end do
+               return
+            end if
+         end if
+      end if
+      do i = 1_ip, n
+         wrapped(:, i) = nearest_image(cell, inv_cell, raw(:, i))
+      end do
+   end subroutine wrap_legs
+#endif
 
    !> One leg: the energy it contributes and the force it puts on the site.
    !!
-   !! `force` acts on the site; the lone H receives its negative. `usable`
-   !! is false when the site sits on top of the lone H, where the radial
-   !! derivative has no direction.
-   pure subroutine site_leg(par, cell, inv_cell, periodic, r_lone, r_site, &
-                            oxygen, energy, force, usable)
+   !! `d` is the separation already reduced to the minimum image when the
+   !! cell is periodic. `force` acts on the site; the lone H receives its
+   !! negative. `usable` is false when the site sits on top of the lone H,
+   !! where the radial derivative has no direction.
+   pure subroutine site_leg(par, d, oxygen, energy, force, usable)
       type(water_h_params_t), intent(in) :: par
-      real(wp), intent(in) :: cell(3, 3), inv_cell(3, 3)
-      logical, intent(in) :: periodic
-      real(wp), intent(in) :: r_lone(3), r_site(3)
+      real(wp), intent(in) :: d(3)
       logical, intent(in) :: oxygen
       real(wp), intent(out) :: energy
       real(wp), intent(out) :: force(3)
       logical, intent(out) :: usable
 
-      real(wp) :: d(3), r, dedr
+      real(wp) :: r, dedr
 
       energy = 0.0_wp
       force = 0.0_wp
 
-      d = nearest_image(cell, inv_cell, periodic, r_site - r_lone)
       r = norm2(d)
 
       usable = r > min_separation
@@ -374,11 +458,13 @@ contains
       integer, intent(out) :: status
       character(len=:), allocatable, intent(out) :: errmsg
 
-      integer(ip) :: natoms, i, lone_h
+      integer(ip) :: natoms, i, lone_h, slot, nleg
       real(wp) :: inv_cell(3, 3)
       logical :: periodic
       logical, allocatable :: is_oxygen(:), usable(:)
       real(wp), allocatable :: e_site(:), leg_force(:, :)
+      real(wp), allocatable :: raw(:, :), wrapped(:, :)
+      integer(ip), allocatable :: leg_of(:)
 
       status = 0
       errmsg = ""
@@ -413,15 +499,35 @@ contains
       allocate (leg_force(3, natoms), source=0.0_wp)
       allocate (usable(natoms), source=.true.)
 
+      nleg = natoms - 1_ip
+      allocate (raw(3, nleg), wrapped(3, nleg), leg_of(nleg))
+      slot = 0_ip
+      do i = 1_ip, natoms
+         if (i == lone_h) cycle
+         slot = slot + 1_ip
+         leg_of(slot) = i
+         raw(:, slot) = positions(:, i) - positions(:, lone_h)
+      end do
+      if (periodic) then
+#ifdef RGPOT_HAS_FAST_NLIST
+         call wrap_legs(cell, inv_cell, slot, raw, wrapped)
+#else
+         do i = 1_ip, slot
+            wrapped(:, i) = nearest_image(cell, inv_cell, raw(:, i))
+         end do
+#endif
+      else
+         wrapped = raw
+      end if
+
       ! Every site owns one leg and writes only its own column, so the
       ! iterations touch disjoint memory. The lone H's force is the one
       ! quantity that reduces across sites, and it is summed below rather
       ! than accumulated here, because `do concurrent` gained reduction
       ! clauses only in Fortran 2023.
-      do concurrent(i=1:natoms, i /= lone_h)
-         call site_leg(par, cell, inv_cell, periodic, positions(:, lone_h), &
-                       positions(:, i), is_oxygen(i), e_site(i), &
-                       leg_force(:, i), usable(i))
+      do concurrent(i=1:slot)
+         call site_leg(par, wrapped(:, i), is_oxygen(leg_of(i)), e_site(leg_of(i)), &
+                       leg_force(:, leg_of(i)), usable(leg_of(i)))
       end do
 
       if (.not. all(usable)) then

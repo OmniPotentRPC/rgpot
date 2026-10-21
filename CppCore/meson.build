@@ -163,7 +163,7 @@ if not get_option('with_rpc_client_only')
     # librgpot itself references them (consumers do).
     # vesin objects and the Fortran runtime enter here, once, rather than
     # through the convenience archives (see the vesin_hdr_dep note).
-    rgpot_deps = _deps_sans_core + [vesin_dep] + fortran_rt_deps
+    rgpot_deps = _deps_sans_core + [vesin_dep, fastnlist_dep] + fortran_rt_deps
     _rpc_whole = []
     if _rpc_stack
         # link_whole, not link_with: the RPC entry points are called by
@@ -201,9 +201,19 @@ if not get_option('with_rpc_client_only')
     # Subproject consumers (eOn's wrap fallback) take the umbrella through
     # this variable; pkg-config consumers get the same surface from
     # rgpot.pc.
+    # The static umbrella already contains the relocatable fast-list
+    # object. Repeating that object through rgpot_dep defines it twice.
+    # Shared builds keep the archive on the consumer link line.
+    _rgpot_consumer_deps = _deps_sans_core + [
+        vesin_dep,
+        fastnlist_native_dep,
+    ] + fortran_rt_deps
+    if _rpc_stack
+        _rgpot_consumer_deps += [ptlrpc_hdr_dep]
+    endif
     rgpot_dep = declare_dependency(
         link_with: rgpot,
-        dependencies: rgpot_deps,
+        dependencies: _rgpot_consumer_deps,
         include_directories: _incdirs,
         compile_args: _args,
     )
@@ -244,7 +254,12 @@ if rpc_enabled and not get_option('with_rpc_client_only')
         'potserv',
         ['rgpot/rpc/server.cpp'],
         link_with: [ptlrpc, _linkto],
-        dependencies: _deps + [capnp_rpc_dep, ptlrpc_hdr_dep, vesin_dep] + fortran_rt_deps,
+        dependencies: _deps + [
+            capnp_rpc_dep,
+            ptlrpc_hdr_dep,
+            vesin_dep,
+            fastnlist_dep,
+        ] + fortran_rt_deps,
         cpp_args: _args,
         build_rpath: _metatomic_build_rpath,
         include_directories: _incdirs,
@@ -287,7 +302,7 @@ if get_option('with_examples') and not get_option('with_rpc_client_only')
     executable(
         'time_lj_force',
         sources: ['examples/time_lj_force.cc'],
-        dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+        dependencies: _deps + [vesin_dep, fastnlist_dep] + fortran_rt_deps,
         link_with: _linkto,
         cpp_args: _args,
     )
@@ -297,7 +312,7 @@ if get_option('with_examples') and not get_option('with_rpc_client_only')
             executable(
                 example.get(1),
                 sources: ['examples/' + example.get(2)],
-                dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+                dependencies: _deps + [vesin_dep, fastnlist_dep] + fortran_rt_deps,
                 link_with: _linkto,
                 cpp_args: _args,
                 build_rpath: _metatomic_build_rpath,
@@ -327,7 +342,7 @@ if get_option('with_tests')
             include_directories: ['.'],
         ),
     )
-    test_deps = _deps + [vesin_dep] + fortran_rt_deps
+    test_deps = _deps + [vesin_dep, fastnlist_dep] + fortran_rt_deps
     if has_metatomic
         test_deps += _mta_engine_deps
     endif
@@ -369,6 +384,7 @@ if get_option('with_tests')
                 '',
             ],
             ['ZBLPotTest', 'zbl_pot_test', 'ZBLPotTest.cc', ''],
+            ['FastNlistTest', 'fast_nlist_test', 'FastNlistTest.cc', ''],
             ['IsaDispatchTest', 'isa_dispatch_test', 'IsaDispatchTest.cc', ''],
             ['FmaExactTest', 'fma_exact_test', 'FmaExactTest.cc', ''],
             [
@@ -719,7 +735,35 @@ if get_option('with_tests')
         )
     endif
 
+    # asv loads this shared library and times one force call per method.
+    # Built with the tests because it links the same pot archives.
+    if has_fortran
+        asv_fastpath = shared_library(
+            'asv_fastpath',
+            sources: [files('../benchmarks/asv_fastpath.cc')],
+            dependencies: rgpot_deps,
+            include_directories: _incdirs,
+            link_with: [rgpot_core, lennard_jones, morse, fortran_kernels],
+            cpp_args: [
+                '-DRGPOT_ASV_DATA="@0@"'.format(
+                    meson.project_source_root() / 'benchmarks' / 'data',
+                ),
+            ],
+            install: false,
+        )
+    endif
+
     foreach test : test_array
+        # The fused-scan oracles are plain multiplies and adds, the same
+        # form as the cluster kernel and the Fortran 26-image wrap. Apple
+        # Clang fuses those products unless contraction is off, and the
+        # sums then miss by an ulp.
+        case_args = test_args
+        if test.get(2) == 'FastNlistTest.cc'
+            case_args += cppc.get_supported_arguments(
+                ['-ffp-contract=off', '/fp:precise'],
+            )
+        endif
         test(
             test.get(0),
             executable(
@@ -727,7 +771,7 @@ if get_option('with_tests')
                 sources: ['tests/' + test.get(2)],
                 dependencies: test_deps,
                 include_directories: _incdirs + ['.'],
-                cpp_args: test_args,
+                cpp_args: case_args,
                 link_with: _linkto,
                 link_language: 'cpp',
                 build_rpath: _metatomic_build_rpath,
