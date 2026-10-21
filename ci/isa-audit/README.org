@@ -140,6 +140,13 @@ That attribute also emits AVX encodings.
 Each helper is entered only after
 =rgpot::simd::detail::glibc_fma_active()= reports a usable FMA, which
 follows glibc's hwcaps mask.
+The tight Lennard-Jones cluster kernel's =target("avx2")= bodies
+(=lj_avx2=, =eval_quad=, and =acc_quad=) are named for =avx= and
+=avx2=.
+=lj_cluster_direct= calls =lj_avx2= only after
+=__builtin_cpu_supports("avx2")=.
+That builtin pulls in GCC's =__cpu_indicator_init=, which reads XCR0
+with =xgetbv= and is named for =xsave=.
 An above-baseline instruction in any other =librgpot= or =_core=
 function is a violation.
 

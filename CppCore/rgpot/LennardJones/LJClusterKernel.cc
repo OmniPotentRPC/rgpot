@@ -124,6 +124,10 @@ void lj_scalar(const double *x, const double *y, const double *z, std::size_t n,
 }
 
 #if defined(__x86_64__)
+// target("avx2") also emits AVX encodings. rgpot/isa-allow.toml names
+// lj_avx2, eval_quad, and acc_quad. lj_cluster_direct calls lj_avx2 only
+// after __builtin_cpu_supports("avx2"). The target attribute keeps that
+// body out of the baseline caller.
 struct Quad {
   alignas(32) double r2[4];
   alignas(32) double e[4];
