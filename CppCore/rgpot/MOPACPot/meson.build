@@ -19,17 +19,18 @@ if not mopac_dl_dep.found()
     mopac_dl_dep = meson.get_compiler('cpp').find_library('dl', required: false)
 endif
 
-# _deps links rgpot_core. An installed static library copies those objects
-# in, and the umbrella then defines them twice. Compile flags stay; the
-# core objects stay in librgpot_core.
 mopacpot = static_library(
     'mopacpot',
     'MOPACPot.cc',
-    dependencies: _deps_sans_core + [mopac_dl_dep],
+    dependencies: _deps + [mopac_dl_dep],
     cpp_args: _args + mopac_frontend_cpp_args,
     include_directories: _incdirs + [mopac_inc],
     pic: true,
-    install: not meson.is_subproject(),
+    # Convenience archive only. librgpot link_wholes this next to rgpot_core.
+    # An installed static library makes Meson promote link_with of the
+    # uninstalled core to link_whole, which copies PotHelpers.cc and units.cc
+    # into this archive. The umbrella link then fails with duplicate symbols.
+    install: false,
 )
 
 mopacpot_dep = declare_dependency(
