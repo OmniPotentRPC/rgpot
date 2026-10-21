@@ -73,7 +73,7 @@ import numpy as np
 import rgpot
 
 print(rgpot.__version__)
-print(rgpot.has_expr, rgpot.has_dftd3, rgpot.has_dftd4, rgpot.has_xckernel)
+print(rgpot.has_expr, rgpot.has_dftd3, rgpot.has_dftd4, rgpot.has_xckernel, rgpot.has_ipi)
 print(rgpot.available_metatomic_engine_abis())  # e.g. 2.7 .. 2.13
 # energy, forces, variance = rgpot.LJPot()(positions, atom_types, box)
 # energy, forces, variance = rgpot.D3Pot()(positions, atom_types, box)
@@ -221,6 +221,12 @@ RPC client types:
 <td class="org-left"><code>MOPAC</code></td>
 <td class="org-left">Frontend always builds; load <code>libmopacc</code> from the split <a href="https://github.com/OmniPotentRPC/mopacc">mopacc</a> project at runtime (OpenMOPAC). Packed params. Default model AM1.</td>
 </tr>
+
+<tr>
+<td class="org-left"><code>IPIPot</code></td>
+<td class="org-left"><code>IPI:unix:&lt;path&gt;</code>, <code>IPI:tcp:&lt;host&gt;:&lt;port&gt;</code></td>
+<td class="org-left">POSIX socket server for an i-PI force driver. <code>-Dwith_ipi=auto</code> (off on Windows). See <code>docs/orgmode/howto/ipi.org</code>.</td>
+</tr>
 </tbody>
 </table>
 
@@ -262,6 +268,7 @@ When the build also has `-Dwith_dftd3=true`, swap the Morse child for
 Example server commands:
 
     ./bbdir/CppCore/potserv 12345 LJ
+    ./bbdir/CppCore/potserv 12345 IPI:unix:/tmp/ipi_rgpot
     ./bbdir/CppCore/potserv 12345 Metatomic:CppCore/tests/data/lj38/lennard-jones.pt
     CPMDC_LIBRARY=/path/to/libcpmdc.so ./bbdir/CppCore/potserv 12345 CPMD
     NWCHEMC_LIBRARY=/path/to/libnwchemc.so ./bbdir/CppCore/potserv 12345 NWChem
