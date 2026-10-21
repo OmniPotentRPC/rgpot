@@ -46,6 +46,17 @@ kernels: four energy helpers, 12 Fock kernels, and 20 response kernels.
 derivative order two. Laplacian kernels require the AO Laplacians in
 `lapl_chi`; missing Laplacians return error code 2 without changing the output.
 
+## Stage B
+
+`CppCore/rgpot/XcKernel/xckernel/evaluator.hpp` specializes `stage_b<double>`.
+Each block of 256 grid points is one `dgemm`, or one `dsyr2k` when `U` and `V` are the same array, and the block results are added in long double.
+`stage_a` still accumulates in long double.
+The build links FlexiBLAS when pkg-config finds it, then pkg-config blas, then OpenBLAS (`openblas.pc` or `libopenblas`).
+On a release build linked to OpenBLAS 0.3.34 pthreads, with one thread bound to its own core, the random grid (nbf 200, 100000 points) median for `xck_gga_r_o1` was 859.8 ms against 35554.2 ms for the long-double loop.
+Four threads on four distinct cores brought that median to 515.0 ms.
+On the H2O grid, nbf is 7, and four threads are slower than one.
+`xckernel_bench` prints the median, minimum, and maximum over its repetitions.
+
 ## Dependencies
 
 Libxc implements the functional-derivative tower. Numerical evaluation needs

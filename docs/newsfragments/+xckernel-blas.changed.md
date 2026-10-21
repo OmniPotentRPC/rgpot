@@ -1,0 +1,1 @@
+The XcKernel stage-B contraction runs on dgemm and dsyr2k, blocked over the grid, linked through FlexiBLAS, a pkg-config file named blas, or OpenBLAS. manylinux openblas-devel and Homebrew publish openblas.pc.

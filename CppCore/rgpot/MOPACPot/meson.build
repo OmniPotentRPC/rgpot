@@ -24,15 +24,18 @@ mopacpot = static_library(
     'MOPACPot.cc',
     dependencies: _deps + [mopac_dl_dep],
     cpp_args: _args + mopac_frontend_cpp_args,
-    include_directories: ['../../'],
+    include_directories: _incdirs + [mopac_inc],
     pic: true,
+    # Convenience archive only. librgpot link_wholes this next to rgpot_core.
+    # An installed static library makes Meson copy the uninstalled core into
+    # this archive, and the umbrella link then fails with duplicate symbols.
     install: false,
 )
 
 mopacpot_dep = declare_dependency(
     link_with: [mopacpot],
     dependencies: [mopac_dl_dep],
-    include_directories: ['../../'],
+    include_directories: _incdirs + [mopac_inc],
     compile_args: mopac_frontend_cpp_args,
 )
 
