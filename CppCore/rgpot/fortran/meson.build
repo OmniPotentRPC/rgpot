@@ -17,6 +17,15 @@ _fpot_args = fc.get_supported_arguments(
         '-fvisibility=hidden',
     ],
 )
+# rgpot_water_h.f90 selects the minimage wrap with the preprocessor.
+if fc.get_id() == 'intel' or fc.get_id() == 'intel-cl'
+    _fpot_args += ['-fpp']
+else
+    _fpot_args += ['-cpp']
+endif
+if has_fast_nlist
+    _fpot_args += ['-DRGPOT_HAS_FAST_NLIST']
+endif
 
 fortran_pots_sources = files(
     'rgpot_cuh2.f90',

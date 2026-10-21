@@ -117,11 +117,29 @@ let nodownload_build_test =
     -Dwith_eigen=false \
     -Dwith_rpc=false \
     -Dwith_cache=false \
+    -Dwith_fast_nlist=disabled \
     -Dpure_lib=true
   meson compile -C bb
   meson test -C bb --print-errorlogs
 "%
   & { name = "Configure + build + test with --wrap-mode=nodownload" }
+in
+
+let fast_nlist_off_build_test =
+  S.run_pixi m%"
+  meson setup bbdir \
+    -Dwith_tests=true \
+    -Dwith_examples=false \
+    -Dwith_xtensor=false \
+    -Dwith_eigen=false \
+    -Dwith_rpc=false \
+    -Dwith_cache=false \
+    -Dwith_fast_nlist=disabled \
+    -Dpure_lib=true
+  meson compile -C bbdir
+  meson test -C bbdir --print-errorlogs
+"%
+  & { name = "Build and test without the fast pair list" }
 in
 
 {
@@ -187,6 +205,17 @@ in
         S.setup_pixi_default "default",
         nodownload_export,
         nodownload_build_test,
+      ],
+    },
+    # Cargo is present on this runner. The option still has to build and
+    # test the C++ pair scan, which is what wheels and conda get.
+    build_fast_nlist_off = {
+      name = "meson / ubuntu [fast nlist off]",
+      "runs-on" = P.ubuntu,
+      steps = [
+        S.checkout_minimal,
+        S.setup_pixi "devbld" "devbld",
+        fast_nlist_off_build_test,
       ],
     },
     rust_tests = {

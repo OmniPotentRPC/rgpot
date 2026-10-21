@@ -629,33 +629,123 @@ if get_option('with_rust_core')
 endif
 
 # --------------------- linkcell / minimage pair list
-# Orthorhombic classical pots call this staticlib. It is not part of the
-# optional Rust core: the pair kernels need it in every build.
-_fastnlist_cargo = find_program('cargo', required: true)
-_fastnlist_src = meson.current_source_dir() / 'CppCore/rgpot/nlist/fastnlist'
-_fastnlist_tgt = custom_target(
-    'rgpot_fastnlist',
-    command: [
-        find_program('python3'),
+# Optional. Auto builds it when cargo and rustc 1.89 (or rustup's 1.89.0)
+# are available. Otherwise the classical pots stay on the C++ pair scan.
+# MSVC cargo writes rgpot_fastnlist.lib; Unix and MinGW write
+# librgpot_fastnlist.a. Link arguments are the system libraries rustc
+# printed for this toolchain, not a fixed -pthread -ldl -lm list.
+_fast_opt = get_option('with_fast_nlist')
+_fast_cargo = find_program('cargo', required: _fast_opt.enabled())
+_fast_rustc = find_program('rustc', required: false)
+_fast_rustup = find_program('rustup', required: false)
+
+_fast_minor = 0
+if _fast_rustc.found()
+    _vv = run_command(_fast_rustc, '-vV', check: false)
+    if _vv.returncode() == 0
+        foreach _line : _vv.stdout().split('\n')
+            if _line.startswith('release:')
+                _ver = _line.split()[1].split('-')[0]
+                _parts = _ver.split('.')
+                if _parts.length() >= 2 and _parts[0] == '1'
+                    _fast_minor = _parts[1].to_int()
+                endif
+            endif
+        endforeach
+    endif
+endif
+if _fast_minor < 89 and _fast_rustup.found()
+    _vv = run_command(_fast_rustup, 'run', '1.89.0', 'rustc', '-vV', check: false)
+    if _vv.returncode() == 0
+        foreach _line : _vv.stdout().split('\n')
+            if _line.startswith('release:')
+                _ver = _line.split()[1].split('-')[0]
+                _parts = _ver.split('.')
+                if _parts.length() >= 2 and _parts[0] == '1'
+                    _fast_minor = _parts[1].to_int()
+                endif
+            endif
+        endforeach
+    endif
+endif
+
+if _fast_opt.disabled()
+    has_fast_nlist = false
+elif _fast_minor >= 89 and _fast_cargo.found()
+    has_fast_nlist = true
+elif _fast_opt.enabled()
+    error('with_fast_nlist=enabled needs cargo and rustc 1.89 or newer')
+else
+    has_fast_nlist = false
+endif
+
+if has_fast_nlist
+    _fast_lib_name = 'librgpot_fastnlist.a'
+    if host_system == 'windows' and (
+        cppc.get_id() == 'msvc' or cppc.get_id() == 'clang-cl'
+    )
+        _fast_lib_name = 'rgpot_fastnlist.lib'
+    endif
+    _fastnlist_src = meson.current_source_dir() / 'CppCore/rgpot/nlist/fastnlist'
+    _fast_target_dir = meson.current_build_dir() / 'fastnlist-cargo'
+    _fast_py = find_program('python3')
+    _fast_probe = run_command(
+        _fast_py,
         files('scripts/build_fastnlist.py'),
-        _fastnlist_cargo.full_path(),
+        '--native-libs',
+        _fast_cargo.full_path(),
         _fastnlist_src / 'Cargo.toml',
-        meson.current_build_dir() / 'fastnlist-cargo',
-        '@OUTPUT@',
-    ],
-    input: files(
-        'CppCore/rgpot/nlist/fastnlist/Cargo.toml',
-        'CppCore/rgpot/nlist/fastnlist/Cargo.lock',
-        'CppCore/rgpot/nlist/fastnlist/src/lib.rs',
-    ),
-    output: 'librgpot_fastnlist.a',
-    build_by_default: true,
-    console: true,
-)
-fastnlist_dep = declare_dependency(
-    sources: [_fastnlist_tgt],
-    link_args: [_fastnlist_tgt.full_path(), '-pthread', '-ldl', '-lm'],
-)
+        _fast_target_dir,
+        check: false,
+    )
+    if _fast_probe.returncode() != 0
+        message(_fast_probe.stderr())
+        error('fast pair list: rustc did not print native-static-libs')
+    endif
+    _fast_native = []
+    foreach _line : _fast_probe.stdout().split('\n')
+        _lib = _line.strip()
+        if _lib != ''
+            _fast_native += [_lib]
+        endif
+    endforeach
+    if _fast_native.length() == 0
+        error('fast pair list: rustc printed no native-static-libs')
+    endif
+    _fastnlist_tgt = custom_target(
+        'rgpot_fastnlist',
+        command: [
+            _fast_py,
+            files('scripts/build_fastnlist.py'),
+            '--copy',
+            _fast_cargo.full_path(),
+            _fastnlist_src / 'Cargo.toml',
+            _fast_target_dir,
+            '@OUTPUT@',
+        ],
+        input: files(
+            'CppCore/rgpot/nlist/fastnlist/Cargo.toml',
+            'CppCore/rgpot/nlist/fastnlist/Cargo.lock',
+            'CppCore/rgpot/nlist/fastnlist/src/lib.rs',
+        ),
+        output: _fast_lib_name,
+        build_by_default: true,
+        console: true,
+    )
+    _args += ['-DRGPOT_HAS_FAST_NLIST']
+    # Archive first, then the system libraries rustc named. The generated
+    # source is what ninja builds; repeating its path here keeps that
+    # order on a single-pass link. A response file is not used: gcc leaves
+    # a nested @file for ld, which then searches for a file of that name.
+    fastnlist_dep = declare_dependency(
+        sources: [_fastnlist_tgt],
+        link_args: [_fastnlist_tgt.full_path()] + _fast_native,
+    )
+    message('fast pair list: enabled (rustc minor ' + _fast_minor.to_string() + ')')
+else
+    fastnlist_dep = declare_dependency()
+    message('fast pair list: disabled, classical pots use the C++ scan')
+endif
 
 # --------------------- Projects
 _incdirs += [include_directories('CppCore')]

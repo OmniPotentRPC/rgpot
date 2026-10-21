@@ -81,6 +81,12 @@ let P = S.pins in
       role = "git archive tree built with --wrap-mode=nodownload (conda-forge parity)",
     },
     {
+      id = "build_fast_nlist_off",
+      runs_on = P.ubuntu,
+      needs = ["prepare"],
+      role = "meson build with the linkcell/minimage pair list disabled",
+    },
+    {
       id = "rust_tests",
       needs = ["ci-tools"],
       role = "rgpot-core + potctl tests",
@@ -116,6 +122,7 @@ let P = S.pins in
         "build_and_test",
         "build_windows_meson",
         "nodownload_rehearsal",
+        "build_fast_nlist_off",
         "rust_tests",
         "client_bridge_stress",
         "potentials_metatomic",

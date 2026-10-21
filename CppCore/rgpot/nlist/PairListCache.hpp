@@ -39,7 +39,9 @@
 #include <string>
 #include <vector>
 
+#ifdef RGPOT_HAS_FAST_NLIST
 #include "rgpot/nlist/fastnlist.h"
+#endif
 #include "rgpot/nlist/vesin_visit.hpp"
 
 namespace rgpot {
@@ -59,10 +61,12 @@ inline FastScratch &fast_scratch() {
   return scratch;
 }
 
+#ifdef RGPOT_HAS_FAST_NLIST
 [[noreturn]] inline void fast_fail(const char *what) {
   const char *msg = rgpot_fast_last_error();
   throw std::runtime_error(std::string(what) + (msg != nullptr ? msg : ""));
 }
+#endif
 
 } // namespace
 
@@ -138,11 +142,13 @@ public:
                  const Options &opt, Fn &&fn) {
     setup(n, box, opt);
     if (fast_) {
+#ifdef RGPOT_HAS_FAST_NLIST
       fillFast(R, n, box, opt, fn);
       if (mic_) {
         finishRebuild(R, n, box, opt);
         phantom_ = false;
       }
+#endif
       return;
     }
     double w[3];
@@ -165,9 +171,11 @@ public:
                     const Options &opt, Fn &&fn) {
     setup(n, box, opt);
     if (fast_) {
+#ifdef RGPOT_HAS_FAST_NLIST
       fillFast(R, n, box, opt, fn);
       finishRebuild(R, n, box, opt);
       phantom_ = false;
+#endif
       return;
     }
     double w[3];
@@ -238,11 +246,31 @@ public:
       scratch.diff[3 * p + 2] = R[3 * i + 2] - R[3 * j + 2];
     }
     periodic_flags(opt_, scratch.periodic);
+#ifdef RGPOT_HAS_FAST_NLIST
     if (np > 0 &&
         rgpot_fast_wrap_axes(boxref_.data(), scratch.periodic, scratch.diff.data(),
                              np, scratch.wrapped.data()) != 0) {
       fast_fail("rgpot minimage wrap failed: ");
     }
+#else
+    const double w0 = boxref_[0];
+    const double w1 = boxref_[4];
+    const double w2 = boxref_[8];
+    const double i0 = micInv_[0];
+    const double i1 = micInv_[1];
+    const double i2 = micInv_[2];
+    for (std::size_t p = 0; p < np; ++p) {
+      double dx = scratch.diff[3 * p];
+      double dy = scratch.diff[3 * p + 1];
+      double dz = scratch.diff[3 * p + 2];
+      dx -= w0 * vesin::cpu::visit_round(dx * i0);
+      dy -= w1 * vesin::cpu::visit_round(dy * i1);
+      dz -= w2 * vesin::cpu::visit_round(dz * i2);
+      scratch.wrapped[3 * p] = dx;
+      scratch.wrapped[3 * p + 1] = dy;
+      scratch.wrapped[3 * p + 2] = dz;
+    }
+#endif
     for (std::size_t p = 0; p < np; ++p) {
       const double dx = scratch.wrapped[3 * p];
       const double dy = scratch.wrapped[3 * p + 1];
@@ -256,6 +284,14 @@ public:
 
 private:
   void setup(std::size_t n, const double *box, const Options &opt) {
+#ifndef RGPOT_HAS_FAST_NLIST
+    (void)n;
+    (void)box;
+    (void)opt;
+    fast_ = false;
+    mic_ = false;
+    return;
+#else
     const bool orthorhombic = box[1] == 0.0 && box[2] == 0.0 && box[3] == 0.0 &&
                               box[5] == 0.0 && box[6] == 0.0 && box[7] == 0.0;
     fast_ = orthorhombic;
@@ -267,6 +303,7 @@ private:
     // Above this count the candidate buffer is left uncached. The search
     // itself still goes through linkcell.
     mic_ = fast_ && n <= 20000;
+#endif
   }
 
   static void periodic_flags(const Options &opt, int32_t out[3]) {
@@ -285,6 +322,7 @@ private:
     }
   }
 
+#ifdef RGPOT_HAS_FAST_NLIST
   /// Every unordered pair, wrapped in small batches. Used when linkcell
   /// would not visit fewer images than this walk. The stored subset and
   /// the visited subset use the same inequalities as the fused scan.
@@ -447,6 +485,7 @@ private:
       }
     }
   }
+#endif
 
   void finishRebuild(const double *R, std::size_t n, const double *box,
                      const Options &opt) {

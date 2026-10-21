@@ -382,9 +382,42 @@ jobs:
             -Dwith_eigen=false \
             -Dwith_rpc=false \
             -Dwith_cache=false \
+            -Dwith_fast_nlist=disabled \
             -Dpure_lib=true
           meson compile -C bb
           meson test -C bb --print-errorlogs
+
+  # --- Stage 2a''': classical pair scan, no cargo ---
+  # manylinux wheels, conda and the eOn subproject configure without cargo.
+  # This leg forces that fallback on a runner that does have cargo, so the
+  # C++ scan is what the tests exercise.
+  build_fast_nlist_off:
+    name: meson / ubuntu [fast nlist off]
+    needs: [prepare]
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: prefix-dev/setup-pixi@v0.9.4
+        with:
+          pixi-version: v0.70.2
+          cache: true
+          environments: devbld
+          activate-environment: true
+      - name: Build and test without the fast pair list
+        shell: pixi run bash -e {0}
+        run: |
+          meson setup bbdir \
+            -Dwith_tests=true \
+            -Dwith_examples=false \
+            -Dwith_xtensor=false \
+            -Dwith_eigen=false \
+            -Dwith_rpc=false \
+            -Dwith_cache=false \
+            -Dwith_fast_nlist=disabled \
+            -Dpure_lib=true
+          meson compile -C bbdir
+          meson test -C bbdir --print-errorlogs
 
   # --- Stage 2b: rust ---
   rust_tests:
@@ -553,6 +586,7 @@ jobs:
       - build_and_test
       - build_windows_meson
       - nodownload_rehearsal
+      - build_fast_nlist_off
       - rust_tests
       - client_bridge_stress
       - potentials_metatomic
@@ -580,6 +614,7 @@ jobs:
             "build_and_test:${{ needs.build_and_test.result }}" \
             "build_windows_meson:${{ needs.build_windows_meson.result }}" \
             "nodownload_rehearsal:${{ needs.nodownload_rehearsal.result }}" \
+            "build_fast_nlist_off:${{ needs.build_fast_nlist_off.result }}" \
             "rust_tests:${{ needs.rust_tests.result }}" \
             "client_bridge_stress:${{ needs.client_bridge_stress.result }}" \
             "potentials_metatomic:${{ needs.potentials_metatomic.result }}" \

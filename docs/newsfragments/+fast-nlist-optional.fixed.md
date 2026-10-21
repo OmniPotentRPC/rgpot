@@ -1,0 +1,1 @@
+The linkcell and minimage pair list builds only when cargo and rustc 1.89 or newer are available, and the MSVC archive is `rgpot_fastnlist.lib` with the system libraries that compiler prints. WaterH keeps the 26-image nearest vector on a skewed cell whose fractional wrap is longer.
