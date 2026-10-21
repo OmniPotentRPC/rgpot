@@ -92,6 +92,29 @@ def test_eam_forces_match_finite_difference() -> None:
     np.testing.assert_allclose(analytic, numeric, atol=1e-6, rtol=0.0)
 
 
+def test_atom_types_accept_int64_and_python_list() -> None:
+    atoms = lj_dimer()
+    positions = np.asarray(atoms.positions, dtype=np.float64)
+    box = np.asarray(atoms.cell.array, dtype=np.float64)
+    types32 = np.asarray(atoms.numbers, dtype=np.int32)
+    pot = rgpot.LJPot()
+    reference = pot.evaluate(positions, types32, box)
+
+    types64 = np.asarray(atoms.numbers, dtype=np.int64)
+    from_i64 = pot.evaluate(positions, types64, box)
+    from_list = pot.evaluate(positions, atoms.numbers.tolist(), box)
+    np.testing.assert_array_equal(from_i64["forces"], reference["forces"])
+    assert from_i64["energy"] == reference["energy"]
+    np.testing.assert_array_equal(from_list["forces"], reference["forces"])
+    assert from_list["energy"] == reference["energy"]
+
+    huge = np.array([2**40, 1], dtype=np.int64)
+    with pytest.raises(ValueError, match="internal integer dtype"):
+        pot.evaluate(positions, huge, box)
+    with pytest.raises(TypeError, match="atom_types"):
+        pot.evaluate(positions, [1.5, 1], box)
+
+
 def test_lj_stress_matches_finite_difference() -> None:
     atoms = lj_crystal()
     atoms.calc = RgpotCalculator("lj", cutoff=8.0)

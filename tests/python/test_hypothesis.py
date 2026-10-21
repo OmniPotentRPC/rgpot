@@ -52,10 +52,12 @@ def test_wrong_dtype_and_order_are_type_errors() -> None:
     fortran = np.asfortranarray(np.zeros((2, 3), dtype=np.float64))
     with pytest.raises(TypeError):
         pot.evaluate(fortran, types, box)
-    int64 = np.ones(2, dtype=np.int64)
+    # int64 atom types are accepted. A floating-point type array is not.
     positions = np.zeros((2, 3), dtype=np.float64)
+    positions[1, 0] = 1.0
+    pot.evaluate(positions, np.ones(2, dtype=np.int64), box)
     with pytest.raises(TypeError):
-        pot.evaluate(positions, int64, box)
+        pot.evaluate(positions, np.ones(2, dtype=np.float64), box)
 
 
 def test_wrong_shape_names_both_shapes() -> None:

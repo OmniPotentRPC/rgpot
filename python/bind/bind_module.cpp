@@ -60,7 +60,6 @@
 
 namespace nb = nanobind;
 using rgpot::pybind::F64;
-using rgpot::pybind::I32;
 using rgpot::pybind::PotHolder;
 using rgpot::types::AtomMatrix;
 
@@ -314,7 +313,7 @@ NB_MODULE(_core, m) {
 
   m.def(
       "evaluate_lj",
-      [](const F64 &positions, const I32 &atom_types, const F64 &box) {
+      [](const F64 &positions, nb::handle atom_types, const F64 &box) {
         auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
         rgpot::LJPot pot;
         double energy = 0.0;
@@ -331,13 +330,13 @@ NB_MODULE(_core, m) {
         return nb::make_tuple(energy, rgpot::pybind::matrix_to_numpy(forces),
                               variance);
       },
-      nb::arg("positions").noconvert(), nb::arg("atom_types").noconvert(),
+      nb::arg("positions").noconvert(), nb::arg("atom_types"),
       nb::arg("box").noconvert());
 
 #ifdef RGPOT_HAS_METATOMIC
   m.def(
       "evaluate_metatomic_dlopen",
-      [](const F64 &positions, const I32 &atom_types, const F64 &box,
+      [](const F64 &positions, nb::handle atom_types, const F64 &box,
          const std::string &model_path, const std::string &engine_path,
          const std::string &device) {
         if (model_path.empty()) {
@@ -373,7 +372,7 @@ NB_MODULE(_core, m) {
         return nb::make_tuple(out.energy, rgpot::pybind::matrix_to_numpy(forces),
                               out.variance);
       },
-      nb::arg("positions").noconvert(), nb::arg("atom_types").noconvert(),
+      nb::arg("positions").noconvert(), nb::arg("atom_types"),
       nb::arg("box").noconvert(), nb::arg("model_path"),
       nb::arg("engine_path") = "", nb::arg("device") = "cpu",
       "Evaluate forces via MetatomicDlopen (dlopen libmetatomic_engine.so). "

@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -38,6 +39,7 @@ namespace rgpot::pybind {
 
 using F64 = rgbind::F64Array;
 using I32 = nb::ndarray<const int32_t, nb::c_contig, nb::device::cpu>;
+using I64 = nb::ndarray<const int64_t, nb::c_contig, nb::device::cpu>;
 using AtomMatrix = types::AtomMatrix;
 
 /// One geometry copied out of NumPy before the caller detaches (F4, F6).
@@ -62,21 +64,6 @@ inline std::string shape_of(const F64 &arr) {
   return text;
 }
 
-inline std::string shape_of_i(const I32 &arr) {
-  std::string text = "(";
-  for (size_t i = 0; i < arr.ndim(); ++i) {
-    if (i != 0) {
-      text += ", ";
-    }
-    text += std::to_string(arr.shape(i));
-  }
-  if (arr.ndim() == 1) {
-    text += ",";
-  }
-  text += ")";
-  return text;
-}
-
 /// F6: positions are (N, 3) float64, C contiguous. N is not fixed.
 inline void check_positions(const F64 &arr) {
   rgbind::check_f64_rank(arr, 2, "positions");
@@ -87,28 +74,84 @@ inline void check_positions(const F64 &arr) {
   }
 }
 
-inline void check_types(const I32 &arr, size_t n) {
-  if (arr.ndim() == 1 && static_cast<size_t>(arr.shape(0)) == n) {
-    return;
+inline void append_atom_type(std::vector<int> &types, long long value) {
+  if (value < static_cast<long long>(std::numeric_limits<int>::min()) ||
+      value > static_cast<long long>(std::numeric_limits<int>::max())) {
+    throw nb::value_error(
+        "atom_types: value does not fit in the internal integer dtype");
   }
-  const std::string msg = "atom_types: expected shape (" + std::to_string(n) +
-                          ",), got " + shape_of_i(arr);
-  throw nb::value_error(msg.c_str());
+  types.push_back(static_cast<int>(value));
 }
 
-inline Geom read_geom(const F64 &positions, const I32 &atom_types,
+inline std::string atom_types_shape_message(size_t n, size_t got) {
+  return "atom_types: expected shape (" + std::to_string(n) + ",), got (" +
+         std::to_string(got) + ",)";
+}
+
+/// int32 is the internal dtype. int64 arrays and plain integer lists are
+/// copied in after a range check. noconvert still rejects other dtypes.
+inline std::vector<int> read_types(nb::handle atom_types, size_t n) {
+  std::vector<int> types;
+  types.reserve(n);
+  if (nb::isinstance<nb::list>(atom_types) ||
+      nb::isinstance<nb::tuple>(atom_types)) {
+    const size_t got = static_cast<size_t>(nb::len(atom_types));
+    if (got != n) {
+      throw nb::value_error(atom_types_shape_message(n, got).c_str());
+    }
+    for (nb::handle item : atom_types) {
+      if (nb::isinstance<nb::bool_>(item) || !nb::isinstance<nb::int_>(item)) {
+        throw nb::type_error("atom_types: expected a sequence of integers");
+      }
+      append_atom_type(types, nb::cast<long long>(item));
+    }
+    return types;
+  }
+
+  try {
+    const I32 arr = nb::cast<I32>(atom_types, false);
+    if (arr.ndim() != 1 || static_cast<size_t>(arr.shape(0)) != n) {
+      const size_t got =
+          arr.ndim() == 1 ? static_cast<size_t>(arr.shape(0)) : 0;
+      throw nb::value_error(atom_types_shape_message(n, got).c_str());
+    }
+    for (size_t i = 0; i < n; ++i) {
+      append_atom_type(types, static_cast<long long>(arr.data()[i]));
+    }
+    return types;
+  } catch (const nb::cast_error &) {
+    PyErr_Clear();
+  }
+
+  try {
+    const I64 arr = nb::cast<I64>(atom_types, false);
+    if (arr.ndim() != 1 || static_cast<size_t>(arr.shape(0)) != n) {
+      const size_t got =
+          arr.ndim() == 1 ? static_cast<size_t>(arr.shape(0)) : 0;
+      throw nb::value_error(atom_types_shape_message(n, got).c_str());
+    }
+    for (size_t i = 0; i < n; ++i) {
+      append_atom_type(types, static_cast<long long>(arr.data()[i]));
+    }
+    return types;
+  } catch (const nb::cast_error &) {
+    PyErr_Clear();
+  }
+
+  throw nb::type_error(
+      "atom_types: expected a C-contiguous int32 or int64 array, or a list "
+      "of integers");
+}
+
+inline Geom read_geom(const F64 &positions, nb::handle atom_types,
                       const F64 &box) {
   check_positions(positions);
   const size_t n = static_cast<size_t>(positions.shape(0));
-  check_types(atom_types, n);
   rgbind::check_f64_2d(box, 3, 3, "box");
   Geom g;
   g.pos = AtomMatrix(n, 3);
   std::memcpy(g.pos.data(), positions.data(), n * 3 * sizeof(double));
-  g.types.resize(n);
-  for (size_t i = 0; i < n; ++i) {
-    g.types[i] = static_cast<int>(atom_types.data()[i]);
-  }
+  g.types = read_types(atom_types, n);
   const double *p = box.data();
   for (size_t i = 0; i < 3; ++i) {
     for (size_t j = 0; j < 3; ++j) {
@@ -304,7 +347,7 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
   });
   cls.def(
       "__call__",
-      [](PotHolder<Pot> &self, const F64 &positions, const I32 &atom_types,
+      [](PotHolder<Pot> &self, const F64 &positions, nb::handle atom_types,
          const F64 &box) {
         Geom geom = read_geom(positions, atom_types, box);
         double energy = 0.0;
@@ -321,11 +364,11 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
         }
         return nb::make_tuple(energy, matrix_to_numpy(forces), variance);
       },
-      nb::arg("positions").noconvert(), nb::arg("atom_types").noconvert(),
+      nb::arg("positions").noconvert(), nb::arg("atom_types"),
       nb::arg("box").noconvert());
   cls.def(
       "evaluate",
-      [](PotHolder<Pot> &self, const F64 &positions, const I32 &atom_types,
+      [](PotHolder<Pot> &self, const F64 &positions, nb::handle atom_types,
          const F64 &box) {
         Geom geom = read_geom(positions, atom_types, box);
         FullResult result;
@@ -335,7 +378,7 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
         }
         return result_dict(result);
       },
-      nb::arg("positions").noconvert(), nb::arg("atom_types").noconvert(),
+      nb::arg("positions").noconvert(), nb::arg("atom_types"),
       nb::arg("box").noconvert(),
       "Energy, forces, variance, and stress when the kernel writes it. "
       "F4: the kernel runs detached.");
@@ -355,9 +398,8 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
         inputs.reserve(positions.size());
         for (size_t i = 0; i < positions.size(); ++i) {
           auto pos = nb::cast<F64>(positions[i], false);
-          auto types = nb::cast<I32>(atom_types[i], false);
           auto box = nb::cast<F64>(boxes[i], false);
-          Geom geom = read_geom(pos, types, box);
+          Geom geom = read_geom(pos, atom_types[i], box);
           BatchInput item;
           item.positions = std::move(geom.pos);
           item.atomic_numbers = std::move(geom.types);

@@ -27,9 +27,9 @@ has_fortran_pots: bool = True
 
 def echo_f64(values: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> NDArray[numpy.float64]: ...
 
-def evaluate_lj(positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
+def evaluate_lj(positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-def evaluate_metatomic_dlopen(positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], model_path: str, engine_path: str = '', device: str = 'cpu') -> tuple:
+def evaluate_metatomic_dlopen(positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], model_path: str, engine_path: str = '', device: str = 'cpu') -> tuple:
     """
     Evaluate forces via MetatomicDlopen (dlopen libmetatomic_engine.so). engine_path may be empty to use RGPOT_METATOMIC_ENGINE / package-bundled multi-ABI engine under rgpot/lib/torch-X.Y/. Each call builds its own frontend (F4).
     """
@@ -41,9 +41,9 @@ class LJPot:
 
     def caps(self) -> dict: ...
 
-    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
         """
         Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
         """
@@ -58,9 +58,9 @@ class SWPot:
 
     def caps(self) -> dict: ...
 
-    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
         """
         Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
         """
@@ -75,9 +75,9 @@ class EDIPPot:
 
     def caps(self) -> dict: ...
 
-    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
         """
         Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
         """
@@ -92,9 +92,9 @@ class LenoskyPot:
 
     def caps(self) -> dict: ...
 
-    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
         """
         Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
         """
@@ -109,9 +109,9 @@ class TersoffPot:
 
     def caps(self) -> dict: ...
 
-    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
         """
         Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
         """
@@ -126,9 +126,9 @@ class EAMAlPot:
 
     def caps(self) -> dict: ...
 
-    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
         """
         Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
         """
@@ -143,9 +143,9 @@ class FeHePot:
 
     def caps(self) -> dict: ...
 
-    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
         """
         Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
         """
@@ -160,9 +160,9 @@ class CuH2Pot:
 
     def caps(self) -> dict: ...
 
-    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
         """
         Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
         """
@@ -177,9 +177,9 @@ class WaterHPot:
 
     def caps(self) -> dict: ...
 
-    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
         """
         Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
         """
@@ -194,9 +194,9 @@ class D3Pot:
 
     def caps(self) -> dict: ...
 
-    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
         """
         Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
         """
@@ -211,9 +211,9 @@ class D4Pot:
 
     def caps(self) -> dict: ...
 
-    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
         """
         Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
         """
@@ -236,9 +236,9 @@ class ExprPot:
 
     def caps(self) -> dict: ...
 
-    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: Annotated[NDArray[numpy.int32], dict(order='C', device='cpu', writable=False)], box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
         """
         Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
         """
