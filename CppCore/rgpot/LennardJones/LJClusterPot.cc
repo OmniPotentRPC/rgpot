@@ -18,6 +18,8 @@
 #include "rgpot/LennardJones/LJClusterKernel.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/nlist/PairListCache.hpp"
+#include "rgpot/simd/api.hpp"
+#include "rgpot/simd/from_cache.hpp"
 
 namespace rgpot {
 
@@ -30,7 +32,8 @@ namespace rgpot {
  * so the pair list never folds a separation into the cell. A cluster
  * whose bounding box fits inside the cutoff walks ``i < j`` in SoA form,
  * AVX2 or NEON on the inner loop. A larger open system goes through the
- * pair cache. A degenerate input cell (any non-positive diagonal entry)
+ * pair cache, and that pair term is the Highway kernel. A degenerate
+ * input cell (any non-positive diagonal entry)
  * is replaced by a 1e6 Angstrom cube.
  */
 void LJClusterPot::forceImpl(const ForceInput &in, ForceOut *out) const {
@@ -89,31 +92,15 @@ void LJClusterPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     return;
   }
 
-  const double psi2 = psi * psi;
-  double energyAcc = 0.0;
-  nlist::PairListCache::global().evaluate(
-      R, static_cast<std::size_t>(N), box_use, opt,
-      [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
-        const double invR2 = 1.0 / r2;
-        const double sr2 = psi2 * invR2;
-        const double a = sr2 * sr2 * sr2; // (psi/r)^6 without pow()
-        const double b = 4.0 * u0 * a;
-        energyAcc += b * (a - 1.0) - cuttOffU;
-
-        // -dU/dr / r along d = r_i - r_j.
-        const double fscale = 6.0 * b * invR2 * (2.0 * a - 1.0);
-        const double fx = fscale * dx;
-        const double fy = fscale * dy;
-        const double fz = fscale * dz;
-
-        F[3 * i] += fx;
-        F[3 * i + 1] += fy;
-        F[3 * i + 2] += fz;
-        F[3 * j] -= fx;
-        F[3 * j + 1] -= fy;
-        F[3 * j + 2] -= fz;
-      });
-  *U = energyAcc;
+  simd::LjParams params{};
+  params.psi2 = psi * psi;
+  params.four_u0 = 4.0 * u0;
+  params.shift = cuttOffU;
+  params.use_switch = 0;
+  simd::CachedPairs pairs;
+  simd::fill_view(pairs, R, static_cast<std::size_t>(N), box_use, opt);
+  double strain[6] = {};
+  *U = simd::lj_force(pairs.view, params, F, strain);
 }
 
 } // namespace rgpot

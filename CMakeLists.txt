@@ -36,6 +36,7 @@ else()
   option(RGPOT_WITH_CACHE "Build with RocksDB caching support" ON)
   option(RGPOT_WITH_RPC "Build with Cap'n Proto RPC support" OFF)
   option(RGPOT_BUILD_EXAMPLES "Build examples" ${RGPOT_IS_TOP_LEVEL})
+  option(RGPOT_WITH_HIGHWAY "Google Highway runtime ISA dispatch" ON)
   if(WIN32)
     set(_rgpot_ipi_default OFF)
   else()
@@ -161,7 +162,14 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/LennardJones/LJClusterKernel.cc
       CppCore/rgpot/Morse/MorsePot.cc
       CppCore/rgpot/ZBL/ZBLPot.cc
+      CppCore/rgpot/simd/dispatch.cc
+      CppCore/rgpot/simd/exp.cc
+      CppCore/rgpot/simd/scalar_kernels.cc
       CppCore/rgpot/CuH2/cuh2Utils.cc)
+
+  if(RGPOT_WITH_HIGHWAY)
+    list(APPEND RGPOT_SOURCES CppCore/rgpot/simd/hwy_kernels.cc)
+  endif()
 
   # NWChemPot / CPMDPot are pure dlopen consumers of the split nwchemc / cpmdc
   # engines (parity with meson). Cap'n Proto params live in the generated schema,
@@ -171,11 +179,41 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
          CppCore/rgpot/CPMDPot/CPMDPot.cc)
   endif()
 
+  if(RGPOT_WITH_HIGHWAY)
+    find_package(hwy 1.2 QUIET CONFIG)
+    if(NOT TARGET hwy)
+      set(HWY_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+      set(HWY_ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
+      set(HWY_ENABLE_CONTRIB OFF CACHE BOOL "" FORCE)
+      set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+      FetchContent_Declare(
+        highway
+        URL https://github.com/google/highway/archive/refs/tags/1.2.0.tar.gz
+        URL_HASH SHA256=7e0be78b8318e8bdbf6fa545d2ecb4c90f947df03f7aadc42c1967f019e63343)
+      FetchContent_MakeAvailable(highway)
+      if(TARGET hwy)
+        set_target_properties(hwy PROPERTIES CXX_VISIBILITY_PRESET hidden)
+        target_compile_definitions(
+          hwy PRIVATE HWY_DISABLED_TARGETS=0xC0F800024041090)
+      endif()
+    endif()
+  endif()
+
   if(RGPOT_WITH_IPI)
     list(APPEND RGPOT_SOURCES CppCore/rgpot/IPIPot/IPIPot.cc)
   endif()
 
   add_library(rgpot ${RGPOT_SOURCES})
+  if(NOT MSVC)
+    set_source_files_properties(
+      CppCore/rgpot/simd/dispatch.cc CppCore/rgpot/simd/exp.cc
+      CppCore/rgpot/simd/scalar_kernels.cc CppCore/rgpot/simd/hwy_kernels.cc
+      PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+  endif()
+  if(RGPOT_WITH_HIGHWAY)
+    target_link_libraries(rgpot PRIVATE hwy)
+    target_compile_definitions(rgpot PRIVATE RGPOT_WITH_HIGHWAY)
+  endif()
   set_target_properties(rgpot PROPERTIES LINKER_LANGUAGE CXX)
 
   if(RGPOT_WITH_CACHE)

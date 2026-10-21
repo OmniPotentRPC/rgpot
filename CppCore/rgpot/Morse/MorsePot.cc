@@ -15,6 +15,8 @@
 
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/nlist/PairListCache.hpp"
+#include "rgpot/simd/api.hpp"
+#include "rgpot/simd/from_cache.hpp"
 
 namespace rgpot {
 
@@ -47,29 +49,17 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   nlist::CachedPairList::Options opt;
   opt.cutoff = cuttOffR;
 
-  const double twoDeA = 2.0 * De * a;
-  double energyAcc = 0.0;
-  nlist::PairListCache::global().evaluate(
-      R, static_cast<std::size_t>(N), box, opt,
-      [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
-        const double r = std::sqrt(r2);
-        const double d = 1.0 - std::exp(-a * (r - re));
-        energyAcc += De * d * d - De - energyCutoff;
-
-        // -dU/dr / r along d = r_i - r_j.
-        const double fscale = twoDeA * d * (d - 1.0) / r;
-        const double fx = fscale * dx;
-        const double fy = fscale * dy;
-        const double fz = fscale * dz;
-
-        F[3 * i] += fx;
-        F[3 * i + 1] += fy;
-        F[3 * i + 2] += fz;
-        F[3 * j] -= fx;
-        F[3 * j + 1] -= fy;
-        F[3 * j + 2] -= fz;
-      });
-  *U = energyAcc;
+  simd::MorseParams params{};
+  params.depth = De;
+  params.range = a;
+  params.r_eq = re;
+  params.two_de_a = 2.0 * De * a;
+  params.shift = energyCutoff;
+  params.use_switch = 0;
+  simd::CachedPairs pairs;
+  simd::fill_view(pairs, R, static_cast<std::size_t>(N), box, opt);
+  double strain[6] = {};
+  *U = simd::morse_force(pairs.view, params, F, strain);
 }
 
 } // namespace rgpot

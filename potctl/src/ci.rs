@@ -544,7 +544,7 @@ pub fn is_conventional_commit_subject(subj: &str) -> bool {
     // type(scope): or type:
     let types = [
         "feat", "fix", "perf", "bench", "refactor", "docs", "test", "build", "ci", "chore",
-        "style", "revert", "enh", "bug", "maint", "doc", "tst", "bld", "gen",
+        "style", "revert", "enh", "bug", "maint", "doc", "tst", "bld", "gen", "simd",
     ];
     for t in types {
         if s.starts_with(&format!("{t}(")) || s.starts_with(&format!("{t}:")) {
@@ -1458,6 +1458,9 @@ mod tests {
         assert!(is_conventional_commit_subject("chore: bump"));
         assert!(is_conventional_commit_subject("bench: time one force call"));
         assert!(is_conventional_commit_subject("Merge branch 'main'"));
+        assert!(is_conventional_commit_subject(
+            "simd: keep vfmadd behind the runtime ISA check"
+        ));
         assert!(!is_conventional_commit_subject("wip stuff"));
         assert!(!is_conventional_commit_subject(""));
     }
