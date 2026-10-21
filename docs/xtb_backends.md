@@ -38,11 +38,13 @@ linked↔dlopen parity through the same ISO C semantics.
 ## Engine selection (`XTBDlopen`)
 
 A non-empty `XTBDlopenConfig::engine_path` is exclusive: that path is the only
-candidate. If it does not open, or the library does not export the C ABI,
-construction throws. `RGPOT_XTB_ENGINE`, the bare soname, and the directory
-lists are not consulted, so a loader path (`LD_LIBRARY_PATH`,
-`DYLD_LIBRARY_PATH`, or `PATH`) cannot substitute a different
-`libxtb_engine`.
+candidate, and it must contain a directory separator (`/` or `\`). A bare
+soname such as `libxtb_engine.so` is rejected. The loader would resolve it
+through `LD_LIBRARY_PATH`, `DYLD_LIBRARY_PATH`, or `PATH`, and could open a
+different `libxtb_engine`. If the path does not open, or the library does not
+export the C ABI, construction throws. The error names that path and the
+loader diagnostic (`dlerror` on POSIX). `RGPOT_XTB_ENGINE`, the bare soname,
+and the directory lists are not consulted.
 
 When `engine_path` is empty, search order is:
 
