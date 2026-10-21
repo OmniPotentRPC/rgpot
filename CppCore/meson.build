@@ -345,6 +345,12 @@ if get_option('with_tests')
                 '',
             ],
             ['ZBLPotTest', 'zbl_pot_test', 'ZBLPotTest.cc', ''],
+            [
+                'MinimumImageTest',
+                'minimum_image_test',
+                'MinimumImageTest.cc',
+                '',
+            ],
         ]
         if has_ipi
             test_array += [
