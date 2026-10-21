@@ -1,0 +1,315 @@
+name: Python wheels
+
+on:
+  workflow_call:
+    inputs:
+      package-dir:
+        description: Project directory passed to cibuildwheel
+        required: true
+        type: string
+      import-names:
+        description: Comma-separated extension modules for the F1 import test
+        required: true
+        type: string
+      test-path:
+        description: Pytest path relative to package-dir
+        required: true
+        type: string
+      extras:
+        description: Extras installed into the wheel test environment
+        required: false
+        type: string
+        default: ""
+      test-requires:
+        description: Extra test requirements appended to the package defaults. Empty leaves the package table unchanged.
+        required: false
+        type: string
+        default: ""
+      os:
+        description: JSON array of runner labels. The default is ubuntu-latest, ubuntu-24.04-arm, macos-14, and windows-2022.
+        required: false
+        type: string
+        default: '["ubuntu-latest","ubuntu-24.04-arm","macos-14","windows-2022"]'
+      build:
+        description: cibuildwheel selector. The default is cp310, cp311, cp312, cp314t, and cp315t.
+        required: false
+        type: string
+        default: "cp310-* cp311-* cp312-* cp314t-* cp315t-*"
+
+permissions:
+  contents: read
+
+jobs:
+  wheels:
+    name: wheels (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.os) }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Stage the F1 import check
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${{ inputs.package-dir }}/_ci"
+          cat > "${{ inputs.package-dir }}/_ci/check_f1.py" << 'PY'
+          import os
+          import sys
+          import sysconfig
+          import warnings
+
+          names = [
+              part
+              for part in os.environ.get(
+                  "RGBIND_IMPORTS", "${{ inputs.import-names }}"
+              ).replace(",", " ").split()
+              if part
+          ]
+          gil = sysconfig.get_config_var("Py_GIL_DISABLED")
+          flags = str(sysconfig.get_config_var("ABIFLAGS") or "")
+          free = str(gil) in {"1", "True"} or "t" in flags
+          print(f"F1 free={free} gil={gil} flags={flags} names={names}")
+          if not free:
+              raise SystemExit(0)
+          warnings.simplefilter("error", RuntimeWarning)
+          for name in names:
+              __import__(name)
+          if sys._is_gil_enabled():
+              raise SystemExit("F1 failed: GIL is enabled")
+          PY
+
+      - name: Append test requirements
+        if: inputs.test-requires != ''
+        shell: bash
+        env:
+          EXTRA_REQUIRES: ${{ inputs.test-requires }}
+          PKG: ${{ inputs.package-dir }}
+        run: |
+          set -euo pipefail
+          if command -v python3 >/dev/null 2>&1; then
+            PY=python3
+          else
+            PY=python
+          fi
+          "$PY" - << 'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          text = Path(os.environ["PKG"], "pyproject.toml").read_text(encoding="utf-8")
+          match = re.search(r"(?m)^test-requires\s*=\s*\[(.*?)\]", text, re.S)
+          items = re.findall(r'"([^"]+)"', match.group(1)) if match else []
+          extra = [part for part in os.environ["EXTRA_REQUIRES"].split() if part]
+          value = " ".join(items + extra)
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"CIBW_TEST_REQUIRES={value}\n")
+          print(f"CIBW_TEST_REQUIRES={value}")
+          PY
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@056b871b4f3c060ea999c4bf9a7e41202d7d9f21 # v4.3.0
+        with:
+          package-dir: ${{ inputs.package-dir }}
+          output-dir: wheelhouse
+        env:
+          CIBW_BUILD: ${{ inputs.build }}
+          CIBW_SKIP: pp* *-musllinux* *_i686 *-win32
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
+          CIBW_ARCHS_MACOS: arm64
+          CIBW_TEST_EXTRAS: ${{ inputs.extras }}
+          # cibuildwheel copies test sources from the repository root, not package-dir.
+          # An empty test-requires input does not set CIBW_TEST_REQUIRES, so the
+          # package table is used. A non-empty input was appended above.
+          CIBW_TEST_SOURCES: ${{ inputs.package-dir }}/${{ inputs.test-path }} ${{ inputs.package-dir }}/_ci
+          CIBW_TEST_COMMAND: python ${{ inputs.package-dir }}/_ci/check_f1.py && python -m pytest -q ${{ inputs.package-dir }}/${{ inputs.test-path }} --timeout=180 -o faulthandler_timeout=120
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: abi3audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install abi3audit
+          shopt -s nullglob
+          wheels=(wheelhouse/*abi3*.whl)
+          if [ "${#wheels[@]}" -eq 0 ]; then
+            echo "no abi3 wheel on this runner"
+            exit 0
+          fi
+          python -m abi3audit --strict "${wheels[@]}"
+
+      - name: F9 dynamic symbol check
+        shell: bash
+        env:
+          IMPORTS: ${{ inputs.import-names }}
+        run: |
+          set -euo pipefail
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            python -m pip install pefile
+          fi
+          script="${RUNNER_TEMP}/f9_check.py"
+          cat > "${script}" << 'PY'
+          import os
+          import platform
+          import shutil
+          import subprocess
+          import zipfile
+          from pathlib import Path
+
+          imports = [
+              part for part in os.environ.get("IMPORTS", "").replace(",", " ").split() if part
+          ]
+          if not imports:
+              raise SystemExit("F9: import-names is empty")
+
+
+          def expected_symbol(leaf: str) -> str:
+              if platform.system() == "Darwin":
+                  return f"_PyInit_{leaf}"
+              return f"PyInit_{leaf}"
+
+
+          def is_shared(path: Path) -> bool:
+              name = path.name
+              return name.endswith((".so", ".dylib", ".pyd", ".dll"))
+
+
+          def exports_nm(path: Path) -> list[str]:
+              if platform.system() == "Darwin":
+                  cmd = ["nm", "-gU", str(path)]
+              else:
+                  cmd = ["nm", "-D", "--defined-only", str(path)]
+              proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
+              if proc.returncode != 0:
+                  raise RuntimeError(proc.stderr.strip() or f"nm failed on {path}")
+              symbols = []
+              for line in proc.stdout.splitlines():
+                  parts = line.split()
+                  if parts:
+                      symbols.append(parts[-1])
+              return symbols
+
+
+          def exports_pe(path: Path) -> list[str]:
+              import pefile
+
+              pe = pefile.PE(str(path))
+              table = getattr(pe, "DIRECTORY_ENTRY_EXPORT", None)
+              if table is None:
+                  return []
+              symbols = []
+              for exp in table.symbols:
+                  if exp.name:
+                      raw = exp.name
+                      symbols.append(raw.decode("ascii", "replace") if isinstance(raw, bytes) else str(raw))
+                  else:
+                      symbols.append(f"ordinal:{exp.ordinal}")
+              return symbols
+
+
+          def exports_of(path: Path) -> list[str]:
+              if platform.system() == "Windows" or path.suffix.lower() in {".pyd", ".dll"}:
+                  return exports_pe(path)
+              return exports_nm(path)
+
+
+          def module_files(root: Path, name: str) -> list[Path]:
+              parts = name.split(".")
+              leaf = parts[-1]
+              base = root.joinpath(*parts[:-1]) if len(parts) > 1 else root
+              patterns = (
+                  f"{leaf}.cpython-*.so",
+                  f"{leaf}.abi3.so",
+                  f"{leaf}.cpython-*.dylib",
+                  f"{leaf}.abi3.dylib",
+                  f"{leaf}.*.pyd",
+                  f"{leaf}.pyd",
+              )
+              found: list[Path] = []
+              if not base.is_dir():
+                  return found
+              for pattern in patterns:
+                  found.extend(base.rglob(pattern))
+              unique = sorted({path.resolve() for path in found})
+              return unique
+
+
+          allow = [expected_symbol(name.split(".")[-1]) for name in imports]
+          print("F9 allowlist:", " ".join(allow))
+          wheels = sorted(Path("wheelhouse").glob("*.whl"))
+          if not wheels:
+              raise SystemExit("F9: no wheels")
+          failed = False
+          for wheel in wheels:
+              print(f"== wheel {wheel.name}")
+              root = Path(os.environ["RUNNER_TEMP"]) / "f9whl" / wheel.stem
+              if root.exists():
+                  shutil.rmtree(root)
+              root.mkdir(parents=True)
+              root = root.resolve()
+              with zipfile.ZipFile(wheel) as archive:
+                  archive.extractall(root)
+              checked: set[Path] = set()
+              for name in imports:
+                  leaf = name.split(".")[-1]
+                  expected = expected_symbol(leaf)
+                  files = module_files(root, name)
+                  if not files:
+                      print(f"F9: {name} not found in {wheel.name}", flush=True)
+                      failed = True
+                      continue
+                  for path in files:
+                      checked.add(path)
+                      rel = path.relative_to(root)
+                      try:
+                          symbols = exports_of(path)
+                      except Exception as exc:
+                          print(f"F9: cannot read exports of {rel}: {exc}", flush=True)
+                          failed = True
+                          continue
+                      print(f"== {rel}")
+                      for symbol in symbols:
+                          print(symbol)
+                      if set(symbols) != {expected}:
+                          print(
+                              f"F9: {rel} exports {symbols or ['<empty>']}, expected exactly {expected}",
+                              flush=True,
+                          )
+                          failed = True
+              for path in sorted(root.rglob("*")):
+                  if not path.is_file() or path.resolve() in checked or not is_shared(path):
+                      continue
+                  if any(part.endswith(".dist-info") for part in path.parts):
+                      continue
+                  rel = path.relative_to(root)
+                  try:
+                      count = len(exports_of(path))
+                      print(f"other {rel} exports={count}")
+                  except Exception as exc:
+                      print(f"other {rel} exports=unknown ({exc})")
+          if failed:
+              raise SystemExit(1)
+          PY
+          python "${script}"
+
+      - name: Artifact name
+        id: artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          safe="${PKG//\//-}"
+          echo "name=py-wheels-${{ matrix.os }}-${safe}" >> "$GITHUB_OUTPUT"
+        env:
+          PKG: ${{ inputs.package-dir }}
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ steps.artifact.outputs.name }}
+          path: wheelhouse/*.whl

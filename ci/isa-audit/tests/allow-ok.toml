@@ -1,0 +1,6 @@
+baseline = "x86-64"
+
+[[allow]]
+symbol = '^kern_avx512$'
+features = ["avx512f", "avx"]
+reason = "self-test dispatched kernel; compilers emit vzeroupper"

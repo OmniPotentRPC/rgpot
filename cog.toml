@@ -7,6 +7,11 @@
 # [monorepo] unset so `cog bump` produces one vX.Y.Z for the whole tree.
 
 from_latest_tag = true
+# Cog 7 reads this during `cog check` and skips commits with more than one
+# parent. The CLI is `cog check --ignore-merge-commits <base>..HEAD`.
+# There is no `--from` flag (`--from-latest-tag` is a boolean and shares a
+# clap group with the positional range). Single-parent `merge:` sync commits
+# are not git merges; `potctl ci cog-check` ignores that subject.
 ignore_merge_commits = true
 # Towncrier owns CHANGELOG.md; cog still creates the version commit + tag.
 disable_changelog = true

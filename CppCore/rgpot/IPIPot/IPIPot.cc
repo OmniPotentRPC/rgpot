@@ -306,6 +306,10 @@ int listen_unix(const std::string &path, std::string *endpoint) {
   addr.sun_family = AF_UNIX;
   std::memcpy(addr.sun_path, path.c_str(), path.size());
   addr.sun_path[path.size()] = '\0';
+  // Darwin reads sa_len. A zero length makes later accept/connect fault.
+#ifdef __APPLE__
+  addr.sun_len = sizeof(addr);
+#endif
   if (::bind(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0) {
     const int saved = errno;
     ::close(fd);

@@ -84,8 +84,10 @@ int XcKernel::contract(const XcGrid &grid,
   if (m_fn == nullptr || out == nullptr) {
     return 1;
   }
+  // LDA kernels do not read dchi. A null pointer is the omitted-gradient
+  // case (Python ``dchi=None``), which the binding leaves unset.
   if (grid.npts <= 0 || grid.nbf <= 0 || grid.chi == nullptr ||
-      grid.dchi == nullptr) {
+      (grid.dchi == nullptr && m_name.rfind("xck_lda_", 0) != 0)) {
     return 2;
   }
   std::vector<const double *> ptrs(static_cast<std::size_t>(m_n_scal), nullptr);

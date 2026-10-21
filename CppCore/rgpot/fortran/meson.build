@@ -15,6 +15,10 @@ _fpot_args = fc.get_supported_arguments(
         '-Wall',
         '-Wno-unused-dummy-argument',
         '-fvisibility=hidden',
+        # F2: gfortran keeps some procedure locals in static storage unless
+        # this is set, and those locals are then shared by every thread.
+        # The _ws entries are one workspace per caller and must be reentrant.
+        '-frecursive',
     ],
 )
 
@@ -38,6 +42,7 @@ fortran_pots_sources = files(
     'rgpot_tersoff_capi.f90',
     'rgpot_water_h.f90',
     'rgpot_water_h_capi.f90',
+    'rgpot_workspace.f90',
 )
 
 # C++ faces over the bind(c) entries.
@@ -88,6 +93,7 @@ _cuh2_plugin_args = fc.get_supported_arguments(
         '-fimplicit-none',
         '-Wall',
         '-Wno-unused-dummy-argument',
+        '-frecursive',
     ],
 )
 rgpot_cuh2 = library(
@@ -96,6 +102,7 @@ rgpot_cuh2 = library(
         'rgpot_kinds.f90',
         'rgpot_ferror.f90',
         'rgpot_neighbors.f90',
+        'rgpot_workspace.f90',
         'rgpot_cuh2.f90',
         'rgpot_cuh2_capi.f90',
     ],

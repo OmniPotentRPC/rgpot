@@ -101,12 +101,14 @@ Until `orchestrator.ncl` exists, edit the orchestrator directly but **prefer add
 
 | File | How maintained | Trigger |
 |------|----------------|---------|
-| **`ci-orchestrator.yml`** | **Hand-maintained** (primary PR CI; should become nickel-exported) | `push` `main`, `PR` `main` and `develop`, `workflow_dispatch`, weekly `schedule` (docs hygiene only) |
+| **`ci-orchestrator.yml`** | **Hand-maintained** (primary PR CI; should become nickel-exported) | `push` `main` and `feat/**`, `PR` `main` and `develop`, `workflow_dispatch`, weekly `schedule` (docs hygiene only) |
 | `release.yml` | Nickel `release.ncl` → `gen-gha` | `v*` tags |
 | `release-prepare.yml` | Nickel `release_prepare.ncl` | path-filtered PR + `workflow_dispatch` |
 | `ci_docs.yml` | Nickel `ci_docs.ncl` | docs build/deploy (write + gh-pages) |
 | `ci_doc_commenter.yml` | Nickel `ci_doc_commenter.ncl` | `workflow_run` after docs |
 | `cosmo-potctl.yml` | Nickel `cosmo_potctl.ncl` | path-filtered cosmo potctl |
+| `isa-audit.yml` | Hand-maintained reusable workflow | `workflow_call` from a build job |
+| `isa-audit-selftest.yml` | Hand-maintained | push to main and ci/** when the audit files change, and pull request; calls `isa-audit.yml` |
 | `xtb.yml` | Hand-maintained | Linux `-Dwith_xtb=true`, `meson test --suite xtb` on every PR |
 
 **Removed** (folded into orchestrator): `build.yml`, `potentials.yml`, `prek.yml`,

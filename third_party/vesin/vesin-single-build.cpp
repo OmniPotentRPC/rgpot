@@ -632,18 +632,21 @@ public:
             return;
         }
 
-        auto run_lock = std::unique_lock<std::mutex>(run_mutex_);
-
         active_threads = std::max<size_t>(1, active_threads);
         active_threads = std::min(active_threads, n_threads_);
         active_threads = std::min(active_threads, n_tasks);
 
+        // A one-thread run does not touch the shared pool context. Fortran
+        // neighbour lists pass n_threads=1, and a batch has one list per
+        // worker. Taking run_mutex_ here would serialise those workers.
         if (active_threads <= 1 || n_tasks <= 1) {
             for (size_t task_i = 0; task_i < n_tasks; task_i++) {
                 task(task_i, 0);
             }
             return;
         }
+
+        auto run_lock = std::unique_lock<std::mutex>(run_mutex_);
 
         // Lazy worker spawn (see constructor). Workers start with
         // seen_generation = 0, so any worker that begins after the
@@ -1927,6 +1930,9 @@ void cpu::VerletList::rebuild(
     build_options.return_distances = false;
     build_options.return_vectors = false;
     build_options.skin = 0.0;
+    // Honour the calculator's thread count. A default of zero would follow
+    // OMP_NUM_THREADS inside other entry points and change pair order.
+    build_options.n_threads = options_.n_threads > 0 ? options_.n_threads : 1;
 
     candidates_.device = {VesinCPU, 0};
 

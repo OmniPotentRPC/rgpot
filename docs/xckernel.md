@@ -10,6 +10,9 @@ It is **not** a geometry PES.
 - New C++ type under `CppCore/rgpot/XcKernel/`.
 - Inputs: AO collocation (`chi`, `dchi`, optional `lapl_chi` / `hess_chi`),
   grid weights, named Libxc derivative arrays, and (for fxc) perturbed fields.
+- Python `XcKernel.contract(chi, dchi=None, scal=None, ...)`: `dchi` may be
+  omitted. `scal` is required; `None` raises `TypeError`. The stub default
+  exists so a defaulted `dchi` is not followed by a required parameter.
 - Outputs: AO matrices accumulated `+=` (XC Fock at order 1, fxc contraction
   at order 2).
 - Term ownership is XC-only. Coulomb, Hartree-Fock exact exchange, and

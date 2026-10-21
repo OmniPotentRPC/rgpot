@@ -1,0 +1,48 @@
+#+TITLE: SIMD paths and dispatch
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* SIMD paths and dispatch
+
+LJ, Morse, the analytical EAM kernel, and the orthorhombic fold select an
+instruction set at run time when the build links Google Highway.
+=RGPOT_SIMD= names that target, and =rgpot::simd::chosen_target_name()= reports
+the one in use.
+A build without Highway keeps the scalar kernels.
+
+A product-sum uses a hardware fused multiply-add only on a target that has the
+instruction.
+On x86-64 the scalar kernel and the SSE2 and SSE4 kernels call a =target("fma")=
+body only after =detail::glibc_fma_active()= reports a usable FMA.
+That bit follows glibc's hwcaps mask, so a masked FMA stays on the Dekker
+product.
+=target("fma")= compiles the whole body with AVX encodings, including ordinary
+moves, because the fused instruction is VEX-encoded.
+=rgpot/isa-allow.toml= names those functions for =avx= and =fma=:
+=eam_fma=, =lj_hw=, =morse_hw=, =eam_hw=, =exact_fma_hw=,
+=r2_hw=, =r2_hw_n=, =accept_row_hw=, =exp2_hw=, =exp_hw_n=, and =morse8_hw=.
+The baseline caller does not contain those instructions.
+
+The static gate in =ci/isa-audit= is what stops a later =-march=native=, a stray
+=-mavx2=, or an intrinsic outside a dispatched function from shipping.
+An instruction above the baseline is allowed only when =rgpot/isa-allow.toml=
+names the function and the feature, or names the vendored file that contains a
+third-party dispatcher.
+On a macOS arm64 slice, ~lse~ and ~rcpc~ are baseline: they are the platform
+atomics, and no other CPU can load that binary.
+The gate does not execute the instruction.
+A runtime test reports a path as not exercised when this machine cannot execute
+it.
+See =ci/isa-audit/README.org= for the allowlist format and for the reusable
+workflow other repositories call by commit SHA.
+
+A kernel added later has to keep the same bits on every path, every thread count
+and every rank count, down to the sign of zero and the NaN payload class.
+Reductions use a fixed width of eight partial sums in a fixed lane order, the
+order of ndarray 0.17 =unrolled_dot=.
+The hardware fused multiply-add and the Dekker product return the same bits.
+The cluster-pair layout for such kernels is the one in Páll and Hess, Comput.
+Phys.
+Commun. 184, 2641 (2013),
+doi:10.1016/j.cpc.2013.06.003. Per-microarchitecture builds of the surrounding stack are the EESSI model in Dröge et al., Softw. Pract. Exp. 53, 176 (2023), doi:10.1002/spe.3075.
+Those runs are on real nodes, not under emulation in this CI.

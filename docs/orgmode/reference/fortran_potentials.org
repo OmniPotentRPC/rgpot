@@ -27,6 +27,10 @@ The module asserts ~wp == c_double~ at compile time.
 with defaults; scratch lives in local automatic arrays.
 Saved state is allowed only in the ~_capi~ module (the neighbour table and the
 parameter set), never in a kernel.
+~params_ready~ is written once, under C++ ~std::call_once~, and the parameter
+block is read-only after that.
+The handle-free entry's legacy workspace is process-serial and is not on the
+Python path.
 4. *Every dummy argument gets ~intent~*, and arrays that cross into kernels are
 ~contiguous~ where the caller can guarantee it.
 5. *No ~goto~, no arithmetic ~if~, no labelled ~do~.* Structured control flow

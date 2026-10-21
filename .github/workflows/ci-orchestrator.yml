@@ -1,4 +1,4 @@
-# Single PR CI workflow (main and develop) plus main pushes:
+# Single PR CI workflow (main and develop) plus pushes to main and feat/**:
 # prepare (Nickel plan) → ordered stages.
 # Remaining separate workflows (different triggers/secrets/permissions):
 #   release.yml, release-prepare.yml, ci_docs.yml, ci_doc_commenter.yml, cosmo-potctl.yml
@@ -8,7 +8,7 @@ name: CI (orchestrator)
 
 on:
   push:
-    branches: [main]
+    branches: [main, "feat/**"]
   pull_request:
     branches: [main, develop]
   workflow_dispatch:
