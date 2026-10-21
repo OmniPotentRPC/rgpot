@@ -1,4 +1,5 @@
-# Single PR/main CI workflow: prepare (Nickel plan) → ordered stages.
+# Single PR CI workflow (main and develop) plus main pushes:
+# prepare (Nickel plan) → ordered stages.
 # Remaining separate workflows (different triggers/secrets/permissions):
 #   release.yml, release-prepare.yml, ci_docs.yml, ci_doc_commenter.yml, cosmo-potctl.yml
 # Nickel modules under ci/gha/ still document job bodies; only the files above are
@@ -9,7 +10,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
   workflow_dispatch:
   # was docs_quality.yml weekly; keep link/prose hygiene on a schedule
   schedule:
