@@ -107,6 +107,7 @@ Until `orchestrator.ncl` exists, edit the orchestrator directly but **prefer add
 | `ci_docs.yml` | Nickel `ci_docs.ncl` | docs build/deploy (write + gh-pages) |
 | `ci_doc_commenter.yml` | Nickel `ci_doc_commenter.ncl` | `workflow_run` after docs |
 | `cosmo-potctl.yml` | Nickel `cosmo_potctl.ncl` | path-filtered cosmo potctl |
+| `xtb.yml` | Hand-maintained | Linux `-Dwith_xtb=true`, `meson test --suite xtb` on every PR |
 
 **Removed** (folded into orchestrator): `build.yml`, `potentials.yml`, `prek.yml`,
 `docs_quality.yml`, `towncrier.yml`, `cosmo-potctl-spike.yml`.
