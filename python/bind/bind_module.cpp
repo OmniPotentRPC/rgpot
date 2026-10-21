@@ -541,7 +541,7 @@ NB_MODULE(_core, m) {
             }
             return buffer_to_numpy(out.data(), nbf, nbf);
           },
-          nb::arg("chi").noconvert(), nb::arg("dchi"), nb::arg("scal"),
+          nb::arg("chi").noconvert(), nb::arg("dchi") = nb::none(), nb::arg("scal"),
           nb::arg("lapl_chi") = nb::none(),
           nb::arg("hess_chi") = nb::none())
       .def_static(
