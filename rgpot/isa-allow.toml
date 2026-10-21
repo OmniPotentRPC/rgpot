@@ -1,0 +1,130 @@
+# An above-baseline instruction in librgpot or _core is a violation
+# unless an [[allow]] names that symbol. The symbol rule below is the
+# target("fma") bodies in CppCore/rgpot/simd/exp.cc. That attribute also
+# emits AVX encodings (vmovsd, vmovapd) for ordinary moves, because the
+# fused instruction is VEX-encoded. Each body is entered only after
+# detail::glibc_fma_active(), which reads glibc's usable FMA bit and
+# therefore follows the hwcaps tunable. The baseline caller stays on
+# SSE2 or the Dekker product. Vendored entries cover libraries that
+# auditwheel or delocate copy into the wheel and that select kernels at
+# run time. A feature not listed here still fails the audit.
+
+baseline = "x86-64"
+
+[[allow]]
+symbol = "^rgpot::simd::(?:accept_row_hw|eam_fma|eam_hw|exact_fma_hw|exp2_hw|exp_hw_n|lj_hw|morse8_hw|morse_hw|r2_hw_n|r2_hw)(?:\\(|$)"
+features = ["avx", "fma"]
+reason = "target(\"fma\") bodies, entered only after glibc_fma_active()"
+
+[[vendored]]
+path = ".*libopenblas.*"
+features = [
+  "sse3",
+  "ssse3",
+  "sse4_1",
+  "sse4_2",
+  "popcnt",
+  "avx",
+  "avx2",
+  "fma",
+  "f16c",
+  "bmi1",
+  "bmi2",
+  "lzcnt",
+  "avx512f",
+  "avx512vl",
+  "avx512dq",
+  "avx512bw",
+  "avx512cd",
+  "avx512_vnni",
+  "avx512_bf16",
+  "avx512_vpopcntdq",
+  "avx512_ifma",
+  "avx512_vbmi",
+  "avx512_vbmi2",
+  "fma4",
+  "xop",
+  "sse4a",
+  "prefetchw",
+  "d3now",
+  "xsave",
+  "lse",
+  "dotprod",
+  "i8mm",
+  "bf16",
+  "fcma",
+  "sve",
+  "sve2",
+  "sme",
+  "crc32",
+  "aes",
+  "sha1",
+  "sha2",
+  "pmull",
+  "fp16",
+  "rdm",
+  "rcpc",
+]
+reason = "DYNAMIC_ARCH"
+
+[[vendored]]
+path = ".*libgfortran.*"
+features = [
+  "sse3",
+  "ssse3",
+  "sse4_1",
+  "sse4_2",
+  "popcnt",
+  "avx",
+  "avx2",
+  "fma",
+  "avx512f",
+  "avx512vl",
+  "avx512dq",
+  "avx512bw",
+  "fma4",
+  "xsave",
+  "lse",
+  "dotprod",
+  "sve",
+  "sve2",
+  "fp16",
+  "rcpc",
+]
+reason = "gfortran matmul runtime variants"
+
+[[vendored]]
+path = ".*libgomp.*"
+features = [
+  "sse3",
+  "ssse3",
+  "sse4_1",
+  "sse4_2",
+  "popcnt",
+  "avx",
+  "avx2",
+  "fma",
+  "rtm",
+  "hle",
+  "xsave",
+  "lse",
+]
+reason = "libgomp runtime"
+
+[[vendored]]
+path = ".*libquadmath.*"
+features = [
+  "sse3",
+  "ssse3",
+  "sse4_1",
+  "sse4_2",
+  "popcnt",
+  "avx",
+  "avx2",
+  "fma",
+  "bmi1",
+  "bmi2",
+  "lzcnt",
+  "xsave",
+]
+reason = "libquadmath, vendored beside libgfortran"
