@@ -58,8 +58,14 @@ fortran_pots_cpp_sources = files('FortranPots.cc')
 fortran_kernels = static_library(
     'rgpot_fortran_kernels',
     fortran_pots_sources,
+    'water_h_image.cc',
     dependencies: [vesin_f_dep],
     fortran_args: _fpot_args,
+    # Same uncontracted products as the cluster kernel. The scan is the
+    # only copy; fusing a product here would move the H-water image.
+    cpp_args: cppc.get_supported_arguments(
+        ['-ffp-contract=off', '/fp:precise', '-fvisibility=hidden'],
+    ),
     pic: true,
     install: false,
 )

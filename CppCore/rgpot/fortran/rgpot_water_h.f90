@@ -244,33 +244,29 @@ contains
 
    !> Shortest of the central image and the surrounding shell of 26.
    !!
-   !! Rounding the fractional coordinates lands in the primitive cell.
-   !! On a skewed cell that image can be longer than a neighbour, so the
-   !! shell is scanned and the shortest vector is kept.
-   pure function nearest_image(cell, inv_cell, d) result(shortest)
+   !! The scan itself is `rgpot_water_h_image`. Rounding the fractional
+   !! coordinates lands in the primitive cell, and on a skewed cell that
+   !! image can be longer than a neighbour, so the shell is scanned and
+   !! the shortest vector is kept. One routine serves the kernel and the
+   !! tests: a Fortran matmul and a second C++ copy are not the same
+   !! rounding on every compiler.
+   function nearest_image(cell, inv_cell, d) result(shortest)
       real(wp), intent(in) :: cell(3, 3), inv_cell(3, 3), d(3)
       real(wp) :: shortest(3)
 
-      real(wp) :: s(3), trial(3), best, span
-      integer :: a, b, c
+      interface
+         subroutine rgpot_water_h_image(cell, d, out) &
+            bind(c, name="rgpot_water_h_image")
+            import :: c_double
+            real(c_double), intent(in) :: cell(3, 3)
+            real(c_double), intent(in) :: d(3)
+            real(c_double), intent(out) :: out(3)
+         end subroutine rgpot_water_h_image
+      end interface
 
-      s = matmul(inv_cell, d)
-      s = s - anint(s)
-      shortest = matmul(cell, s)
-      best = dot_product(shortest, shortest)
-
-      do a = -1, 1
-         do b = -1, 1
-            do c = -1, 1
-               trial = matmul(cell, s + real([a, b, c], wp))
-               span = dot_product(trial, trial)
-               if (span < best) then
-                  best = span
-                  shortest = trial
-               end if
-            end do
-         end do
-      end do
+      ! The inverse is formed inside the C++ scan. `inv_cell` stays so the
+      ! callers that already computed one do not grow a second argument list.
+      call rgpot_water_h_image(cell, d, shortest)
    end function nearest_image
 
 #ifdef RGPOT_HAS_FAST_NLIST

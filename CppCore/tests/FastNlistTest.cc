@@ -211,71 +211,16 @@ std::size_t pair_count(const std::vector<double> &pos, const double *box,
 }
 #endif
 
-/// Nearest integer, half away from zero. Adding 0.5 and taking ``floor``
-/// is not this operation: a value one ulp under a half rounds the sum up.
-double anint_away(double x) {
-  const double ax = std::abs(x);
-  const double whole = std::trunc(ax);
-  const double frac = ax - whole;
-  const double mag = frac < 0.5 ? whole : whole + 1.0;
-  return std::copysign(mag, x);
-}
-
-/// Shortest of the rounded fractional image and the 26 neighbours.
-/// The inverse matches the cofactor layout in ``rgpot_water_h``. Ties keep
-/// the rounded image.
-void image26(const double cell[9], const double d[3], double out[3]) {
-  auto at = [&](int row, int col) { return cell[col * 3 + row]; };
-  double inv[9];
-  inv[0] = at(1, 1) * at(2, 2) - at(1, 2) * at(2, 1);
-  inv[1] = at(1, 2) * at(2, 0) - at(1, 0) * at(2, 2);
-  inv[2] = at(1, 0) * at(2, 1) - at(1, 1) * at(2, 0);
-  inv[3] = at(0, 2) * at(2, 1) - at(0, 1) * at(2, 2);
-  inv[4] = at(0, 0) * at(2, 2) - at(0, 2) * at(2, 0);
-  inv[5] = at(0, 1) * at(2, 0) - at(0, 0) * at(2, 1);
-  inv[6] = at(0, 1) * at(1, 2) - at(0, 2) * at(1, 1);
-  inv[7] = at(0, 2) * at(1, 0) - at(0, 0) * at(1, 2);
-  inv[8] = at(0, 0) * at(1, 1) - at(0, 1) * at(1, 0);
-  const double det = at(0, 0) * inv[0] + at(0, 1) * inv[1] + at(0, 2) * inv[2];
-  for (double &v : inv) {
-    v /= det;
-  }
-  double s[3];
-  for (int row = 0; row < 3; ++row) {
-    s[row] = inv[row] * d[0] + inv[3 + row] * d[1] + inv[6 + row] * d[2];
-    s[row] -= anint_away(s[row]);
-  }
-  auto apply = [&](int a, int b, int c, double dest[3]) {
-    const double f[3] = {s[0] + static_cast<double>(a), s[1] + static_cast<double>(b),
-                         s[2] + static_cast<double>(c)};
-    for (int row = 0; row < 3; ++row) {
-      dest[row] = at(row, 0) * f[0] + at(row, 1) * f[1] + at(row, 2) * f[2];
-    }
-  };
-  apply(0, 0, 0, out);
-  double best = out[0] * out[0] + out[1] * out[1] + out[2] * out[2];
-  for (int a = -1; a <= 1; ++a) {
-    for (int b = -1; b <= 1; ++b) {
-      for (int c = -1; c <= 1; ++c) {
-        double trial[3];
-        apply(a, b, c, trial);
-        const double span = trial[0] * trial[0] + trial[1] * trial[1] + trial[2] * trial[2];
-        if (span < best) {
-          best = span;
-          out[0] = trial[0];
-          out[1] = trial[1];
-          out[2] = trial[2];
-        }
-      }
-    }
-  }
-}
-
 } // namespace
 
 extern "C" int rgpot_water_h_force(int natoms, const double *positions,
                                    const int *atomic_numbers, const double *cell,
                                    double *forces, double *energy);
+
+// The kernel's 26-image scan. The open cluster in the skewed-cell case is
+// folded with this routine, so it is the same displacement the periodic
+// evaluation uses.
+extern "C" void rgpot_water_h_image(const double *cell, const double *d, double *out);
 
 TEST_CASE("LJPot matches the fused scan on a wrapping slab", "[fastnlist][lj]") {
   const auto base = slab();
@@ -689,7 +634,7 @@ TEST_CASE("Skewed WaterH matches the 26-image oracle", "[fastnlist][water]") {
   std::vector<double> pos = {8.36, 0.99, 0.2, 6.84, 0.99, -0.1, 4.0, 0.3, 1.0, 0, 0, 0};
   const std::vector<int> z = {1, 1, 8, 1};
   double oxygen[3];
-  image26(cell, pos.data() + 6, oxygen);
+  rgpot_water_h_image(cell, pos.data() + 6, oxygen);
   const double raw2 = pos[6] * pos[6] + pos[7] * pos[7] + pos[8] * pos[8];
   const double near2 = oxygen[0] * oxygen[0] + oxygen[1] * oxygen[1] + oxygen[2] * oxygen[2];
   REQUIRE(near2 < raw2);
@@ -703,7 +648,7 @@ TEST_CASE("Skewed WaterH matches the 26-image oracle", "[fastnlist][water]") {
     double image[3];
     const double d[3] = {pos[3 * site] - pos[9], pos[3 * site + 1] - pos[10],
                          pos[3 * site + 2] - pos[11]};
-    image26(cell, d, image);
+    rgpot_water_h_image(cell, d, image);
     open[3 * site] = pos[9] + image[0];
     open[3 * site + 1] = pos[10] + image[1];
     open[3 * site + 2] = pos[11] + image[2];
