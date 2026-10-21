@@ -780,6 +780,25 @@ if get_option('with_tests')
     if has_xtb
         xtb_test_env = environment()
         xtb_test_env.set('RGPOT_XTB_ENGINE', xtb_engine.full_path())
+        # Tells XTBDlopenTest to require that the bare soname resolves, so a
+        # broken loader path cannot skip the module-load regression.
+        xtb_test_env.set('RGPOT_XTB_EXPECT_BARE_SONAME', '1')
+        # Glibc and dyld snapshot the loader path at exec. setenv inside a
+        # Catch process does not make the bare soname visible, so the test
+        # environment (and the binary rpath below) publish xtb_engine_dir
+        # before XTBDlopenTest starts.
+        if host_system == 'windows'
+            xtb_test_env.prepend('PATH', xtb_engine_dir, separator: ';')
+        elif host_system == 'darwin'
+            xtb_test_env.prepend('DYLD_LIBRARY_PATH', xtb_engine_dir)
+            xtb_test_env.prepend('DYLD_FALLBACK_LIBRARY_PATH', xtb_engine_dir)
+        else
+            xtb_test_env.prepend('LD_LIBRARY_PATH', xtb_engine_dir)
+        endif
+        _xtb_test_rpath = xtb_engine_dir
+        if _metatomic_build_rpath != ''
+            _xtb_test_rpath = ':'.join([_metatomic_build_rpath, xtb_engine_dir])
+        endif
         test(
             'XTBtest',
             executable(
@@ -790,7 +809,24 @@ if get_option('with_tests')
                 cpp_args: test_args,
                 link_with: _linkto,
                 link_language: 'cpp',
-                build_rpath: _metatomic_build_rpath,
+                build_rpath: _xtb_test_rpath,
+            ),
+            env: xtb_test_env,
+            depends: [xtb_engine],
+            workdir: meson.source_root(),
+            suite: 'xtb',
+        )
+        test(
+            'XTBDlopenTest',
+            executable(
+                'xtb_dlopen_test',
+                sources: ['tests/XTBDlopenTest.cc'],
+                dependencies: test_deps,
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+                build_rpath: _xtb_test_rpath,
             ),
             env: xtb_test_env,
             depends: [xtb_engine],
