@@ -158,6 +158,7 @@ enum CiCmd {
     },
     /// Release-prepare: cog check + conventional subject fallback for PR range.
     /// Thin GHA: `potctl ci cog-check --from ${{ github.event.pull_request.base.sha }}`
+    /// (`--from` is potctl's; cog 7 receives a positional `<base>..HEAD` range).
     CogCheck {
         /// PR base SHA (`github.event.pull_request.base.sha`); omit for advisory full-repo check.
         #[arg(long)]

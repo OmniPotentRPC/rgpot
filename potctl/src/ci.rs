@@ -532,13 +532,84 @@ fn run_cmd_status_ok(bin: &str, args: &[&str], cwd: &Path) -> Result<()> {
     }
 }
 
+/// True when `help` lists `flag` as its own token.
+///
+/// Cog 7's `cog check --help` documents `--from-latest-tag`, which is not
+/// a `--from` option. A substring search treats that boolean as `--from`
+/// and then invokes a flag the binary rejects.
+pub fn cog_help_has_flag(help: &str, flag: &str) -> bool {
+    help.split(|c: char| {
+        c.is_whitespace()
+            || matches!(
+                c,
+                ',' | '[' | ']' | '(' | ')' | '|' | '=' | '{' | '}'
+            )
+    })
+    .any(|tok| tok == flag)
+}
+
+/// Arguments for `cog check` over `base..HEAD` on the installed cog.
+///
+/// Cog 7 takes a positional range and `--ignore-merge-commits`.
+/// `--from-latest-tag` is a boolean in the same clap group as the range,
+/// so it is not passed together with `base..HEAD`.
+pub fn cog_check_argv(help: &str, base: &str) -> Vec<String> {
+    let mut args = vec!["check".to_string()];
+    if cog_help_has_flag(help, "--ignore-merge-commits") {
+        args.push("--ignore-merge-commits".to_string());
+    }
+    if cog_help_has_flag(help, "--from") {
+        args.push("--from".to_string());
+        args.push(base.to_string());
+    } else {
+        args.push(format!("{base}..HEAD"));
+    }
+    args
+}
+
+/// Git merge subjects, plus this repo's single-parent `merge:` sync commits.
+///
+/// `ignore_merge_commits` in cog 7 skips commits with more than one parent.
+/// Develop syncs such as `merge: take the 3.5.1 release from main` have one
+/// parent, so cog still reports `Commit type merge not allowed`.
+pub fn is_ignored_merge_commit_subject(subj: &str) -> bool {
+    let s = subj.trim();
+    let lower = s.to_ascii_lowercase();
+    lower.starts_with("merge ")
+        || lower.starts_with("merge:")
+        || lower.starts_with("merge(")
+        || lower.starts_with("pull request")
+}
+
+/// Cog's failure text lists only `Commit type merge not allowed` errors.
+///
+/// Cog prefixes the report with a bare `Error:` line. That header is not a
+/// commit-type failure.
+pub fn cog_failure_is_only_merge_types(report: &str) -> bool {
+    let mut saw_error = false;
+    for line in report.lines() {
+        let Some(rest) = line.trim().strip_prefix("Error:") else {
+            continue;
+        };
+        let rest = rest.trim();
+        if rest.is_empty() {
+            continue;
+        }
+        saw_error = true;
+        if !rest.starts_with("Commit type `merge` not allowed") {
+            return false;
+        }
+    }
+    saw_error
+}
+
 /// Conventional-commit subject prefixes accepted by release-prepare cog-check fallback.
 pub fn is_conventional_commit_subject(subj: &str) -> bool {
     let s = subj.trim();
     if s.is_empty() {
         return false;
     }
-    if s.starts_with("Merge ") || s.starts_with("merge ") {
+    if is_ignored_merge_commit_subject(s) {
         return true;
     }
     // type(scope): or type:
@@ -1048,80 +1119,77 @@ pub fn run_rpc_integ(root: &Path, server_bin: &str) -> Result<()> {
     }
 }
 
+fn enforce_pr_commit_subjects(root: &Path, base: &str) -> Result<()> {
+    let log = Command::new("git")
+        .args(["log", "--format=%s", &format!("{base}..HEAD")])
+        .current_dir(root)
+        .output()
+        .map_err(|e| format!("git log: {e}"))?;
+    let text = String::from_utf8_lossy(&log.stdout);
+    let mut bad = false;
+    for subj in text.lines() {
+        if is_ignored_merge_commit_subject(subj) {
+            println!("ignored merge commit: {subj}");
+            continue;
+        }
+        if !is_conventional_commit_subject(subj) {
+            eprintln!("non-conventional subject: {subj}");
+            bad = true;
+        }
+    }
+    if bad {
+        Err("PR introduces non-conventional commit subjects".into())
+    } else {
+        Ok(())
+    }
+}
+
 /// `potctl ci cog-check [--from SHA]` — conventional commits (PR base..HEAD or full cog check).
+///
+/// The `--from` flag is potctl's. Cog 7 does not have `cog check --from`;
+/// this passes a positional range and `--ignore-merge-commits` when the
+/// installed help text lists that option.
 pub fn run_cog_check(root: &Path, from_sha: Option<&str>) -> Result<()> {
     let from = from_sha.filter(|s| !s.is_empty());
     if let Some(base) = from {
-        // Prefer cog check --from when available.
-        let help = Command::new("cog")
-            .arg("check")
-            .arg("--help")
-            .output()
-            .ok();
-        let has_from = help
+        let help_out = Command::new("cog").args(["check", "--help"]).output().ok();
+        let help = help_out
             .as_ref()
-            .map(|o| String::from_utf8_lossy(&o.stdout).contains("--from")
-                || String::from_utf8_lossy(&o.stderr).contains("--from"))
-            .unwrap_or(false);
-        if has_from {
-            let st = Command::new("cog")
-                .args(["check", "--from", base])
-                .current_dir(root)
-                .status();
-            if let Ok(s) = st {
-                if s.success() {
-                    return Ok(());
+            .map(|o| {
+                format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&o.stdout),
+                    String::from_utf8_lossy(&o.stderr)
+                )
+            })
+            .unwrap_or_default();
+        let args = cog_check_argv(&help, base);
+        let argv: Vec<&str> = args.iter().map(String::as_str).collect();
+        match Command::new("cog").args(&argv).current_dir(root).output() {
+            Ok(out) if out.status.success() => return Ok(()),
+            Ok(out) => {
+                let text = format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&out.stdout),
+                    String::from_utf8_lossy(&out.stderr)
+                );
+                // Multi-parent merges are skipped by cog when
+                // ignore_merge_commits is set. Single-parent `merge:`
+                // subjects are ignored here.
+                if !cog_failure_is_only_merge_types(&text) {
+                    eprint!("{text}");
+                    if !text.ends_with('\n') {
+                        eprintln!();
+                    }
+                    enforce_pr_commit_subjects(root, base)?;
+                    return Err("cog check failed".into());
                 }
             }
-            let st2 = Command::new("cog")
-                .arg("check")
-                .current_dir(root)
-                .status();
-            if let Ok(s) = st2 {
-                if s.success() {
-                    return Ok(());
-                }
-            }
-        } else {
-            println!("Checking commits not in base...");
-            let _ = Command::new("git")
-                .args(["log", "--oneline", &format!("{base}..HEAD")])
-                .current_dir(root)
-                .status();
-            let cog_ok = Command::new("cog")
-                .arg("check")
-                .current_dir(root)
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false);
-            if cog_ok {
-                return Ok(());
-            }
-            eprintln!("::warning::cog check reported issues (often pre-existing history).");
-            eprintln!("New commits on this PR should use conventional prefixes (feat/fix/chore/...).");
-        }
-        // Enforce conventional subjects on commits introduced by the PR.
-        let log = Command::new("git")
-            .args(["log", "--format=%h %s", &format!("{base}..HEAD")])
-            .current_dir(root)
-            .output()
-            .map_err(|e| format!("git log: {e}"))?;
-        let text = String::from_utf8_lossy(&log.stdout);
-        let mut bad = false;
-        for line in text.lines() {
-            let subj = line
-                .split_once(' ')
-                .map(|(_, s)| s)
-                .unwrap_or(line);
-            if !is_conventional_commit_subject(subj) {
-                eprintln!("non-conventional subject: {subj}");
-                bad = true;
+            Err(e) => {
+                eprintln!("::warning::spawn cog check: {e}");
             }
         }
-        if bad {
-            return Err("PR introduces non-conventional commit subjects".into());
-        }
-        Ok(())
+        enforce_pr_commit_subjects(root, base)
     } else {
         let status = Command::new("cog")
             .arg("check")
@@ -1457,8 +1525,60 @@ mod tests {
         assert!(is_conventional_commit_subject("fix: waitid stub"));
         assert!(is_conventional_commit_subject("chore: bump"));
         assert!(is_conventional_commit_subject("Merge branch 'main'"));
+        assert!(is_conventional_commit_subject(
+            "merge: take the wheel ISA audit from main"
+        ));
+        assert!(is_ignored_merge_commit_subject(
+            "merge: take the 3.5.1 release from main"
+        ));
         assert!(!is_conventional_commit_subject("wip stuff"));
         assert!(!is_conventional_commit_subject(""));
+    }
+
+    #[test]
+    fn cog7_check_uses_positional_range_not_from() {
+        let cog7 = "\
+Usage: cog check [OPTIONS] [RANGE]
+
+Options:
+  -l, --from-latest-tag
+          Check commit history, starting from the latest tag to HEAD
+  -i, --ignore-merge-commits
+          Ignore merge commits messages
+";
+        assert!(!cog_help_has_flag(cog7, "--from"));
+        assert!(cog_help_has_flag(cog7, "--from-latest-tag"));
+        assert!(cog_help_has_flag(cog7, "--ignore-merge-commits"));
+        assert_eq!(
+            cog_check_argv(cog7, "67ba594"),
+            vec![
+                "check".to_string(),
+                "--ignore-merge-commits".to_string(),
+                "67ba594..HEAD".to_string(),
+            ]
+        );
+        let legacy = "Options:\n      --from <REV>\n";
+        assert!(cog_help_has_flag(legacy, "--from"));
+        assert_eq!(
+            cog_check_argv(legacy, "abc"),
+            vec![
+                "check".to_string(),
+                "--from".to_string(),
+                "abc".to_string(),
+            ]
+        );
+        assert!(cog_failure_is_only_merge_types(
+            "Error: \nFound 4 non compliant commits in abc..HEAD:\n\tError:Commit type `merge` not allowed\n"
+        ));
+        assert!(cog_failure_is_only_merge_types(
+            "\tError:Commit type `merge` not allowed\n"
+        ));
+        assert!(!cog_failure_is_only_merge_types(
+            "error: unexpected argument '--from' found\n"
+        ));
+        assert!(!cog_failure_is_only_merge_types(
+            "\tError:Commit type `merge` not allowed\n\tError:Commit type `wip` not allowed\n"
+        ));
     }
 
     #[test]

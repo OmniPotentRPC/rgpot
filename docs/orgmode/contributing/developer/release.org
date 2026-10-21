@@ -35,7 +35,7 @@ Tooling:
 | =.github/actions/setup-ci-tools= | Build =potctl= (+ optional =cog=) once with =Swatinem/rust-cache=; optional artifact upload |
 | =.github/actions/restore-ci-tools= | Later jobs/runners: download =ci-tools= artifact, put =bin/= on =PATH= (no second cargo build) |
 | =.github/workflows/release.yml= | Staged on =v*=: =tools= → =gate= → (=cpp-smoke= ∥ =rust-test=) → =publish= → =gh-release= |
-| =.github/workflows/release-prepare.yml= | Staged: =tools= (=potctl=+=cog= artifact) → =prepare= (lockstep, towncrier, cog dry-run) |
+| =.github/workflows/release-prepare.yml= | Staged: =tools= (=potctl=+=cog= artifact) → =prepare= (lockstep, towncrier, cog dry-run, cog check) |
 | =CI (orchestrator)= / =towncrier= | =towncrier check= on PRs (orchestrator job) |
 | =CI (orchestrator)= / potentials | Feature-gated C++ backends (xtb+tblite, metatomic/vesin) on PRs |
 | =SECURITY.md= | Supported versions + private report path |
@@ -79,6 +79,24 @@ CI runs =towncrier check= on pull requests when shipped paths change
 scripts, etc.).
 Pure =docs= / =ci= / =chore= commits may omit fragments if they avoid those
 paths.
+
+** Commit check
+
+=release-prepare.yml= runs =potctl ci cog-check= on the commits a pull
+request adds.
+Cocogitto 7 checks a positional range:
+
+#+begin_src bash
+cog check --ignore-merge-commits <base>..HEAD
+#+end_src
+
+There is no =cog check --from=.
+=--from-latest-tag= is a boolean, and it shares a group with that range.
+=cog.toml= sets =ignore_merge_commits = true=, which skips a commit with
+more than one parent (a =Merge branch= commit).
+A develop sync whose subject is =merge:= has one parent, so cog still
+reports =Commit type `merge` not allowed=.
+The prepare check ignores that subject as well.
 
 ** Preparing a release (maintainer) — run as soon as this lands on =main=
 
