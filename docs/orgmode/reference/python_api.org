@@ -29,10 +29,10 @@ See the [[file:../howto/ase.org][ASE how-to]] and the
 
 ** XcKernel
 
-=XcKernel.contract= takes =chi=, an optional =dchi= (default =None=),
-and a required =scal= dict.
+=XcKernel.contract= takes =chi=, an optional =dchi= (default =None=), and a
+required =scal= dict.
 The stub writes =scal= as =None= so =dchi= can be omitted.
 Passing =None= for =scal= raises =TypeError=.
-=k.contract(chi, None, scal)= and =k.contract(chi, scal=scal)= both
-leave =dchi= null.
+=k.contract(chi, None, scal)= and =k.contract(chi, scal=scal)= both leave =dchi=
+null.
 =lapl_chi= and =hess_chi= default to =None=.

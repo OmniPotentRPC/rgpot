@@ -82,8 +82,8 @@ paths.
 
 ** Commit check
 
-=release-prepare.yml= runs =potctl ci cog-check= on the commits a pull
-request adds.
+=release-prepare.yml= runs =potctl ci cog-check= on the commits a pull request
+adds.
 Cocogitto 7 checks a positional range:
 
 #+begin_src bash
@@ -92,10 +92,10 @@ cog check --ignore-merge-commits <base>..HEAD
 
 There is no =cog check --from=.
 =--from-latest-tag= is a boolean, and it shares a group with that range.
-=cog.toml= sets =ignore_merge_commits = true=, which skips a commit with
-more than one parent (a =Merge branch= commit).
-A develop sync whose subject is =merge:= has one parent, so cog still
-reports =Commit type `merge` not allowed=.
+=cog.toml= sets =ignore_merge_commits = true=, which skips a commit with more
+than one parent (a =Merge branch= commit).
+A develop sync whose subject is =merge:= has one parent, so cog still reports
+=Commit type `merge` not allowed=.
 The prepare check ignores that subject as well.
 
 ** Preparing a release (maintainer) — run as soon as this lands on =main=
