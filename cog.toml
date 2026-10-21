@@ -48,6 +48,7 @@ style    = { changelog_title = "Style" }
 revert   = { changelog_title = "Reverts" }
 
 # Map common legacy / project-specific prefixes used in this monorepo history.
+simd = { changelog_title = "SIMD" }
 enh  = { changelog_title = "Enhancements" }
 bug  = { changelog_title = "Bugfixes" }
 maint = { changelog_title = "Maintenance" }
