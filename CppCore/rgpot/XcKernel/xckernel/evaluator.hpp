@@ -18,7 +18,9 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 // Fortran BLAS interface (LP64), resolved by FlexiBLAS or the generic blas
@@ -42,6 +44,15 @@ namespace xckernel {
 inline std::atomic<unsigned long> &blas_stage_b_calls() {
   static std::atomic<unsigned long> n{0};
   return n;
+}
+
+// Per-entry accumulator for the stage-B absolute bound. Null on the
+// contraction path (one relaxed load per block). The golden test installs
+// an nbf*nbf buffer so each dsyr2k/dgemm entry is checked against
+// k*eps*|a|^T|b| instead of a fixed cutoff. Not for concurrent contracts.
+inline std::atomic<double *> &stage_b_entry_bound() {
+  static std::atomic<double *> slot{nullptr};
+  return slot;
 }
 
 // Stage A forms the per-point coefficient, a sum of monomials of a few
@@ -99,6 +110,28 @@ inline void stage_b<double>(int64_t npts, int64_t nbf, const double *U,
       }
     }
     const int ldv = static_cast<int>(npts);
+    // |fl(a^T b) - a^T b| <= k*eps*|a|^T|b| for this block (eps = 2^{-52}).
+    // gamma_k ≈ k*eps/2 bounds one dot product; dsyr2k averages two of
+    // them, and the NumPy pin is a second double contraction, so one
+    // factor of k*eps covers the gap. Block sums stay in long double, so
+    // k is the block length. See XcKernelTest.
+    if (double *bound = stage_b_entry_bound().load(std::memory_order_relaxed)) {
+      const double scale =
+          static_cast<double>(k) * std::numeric_limits<double>::epsilon();
+      for (int64_t u = 0; u < nbf; ++u) {
+        const double *ag = uc.data() + static_cast<std::size_t>(u * k);
+        for (int64_t v = 0; v < nbf; ++v) {
+          const double *bg = V + static_cast<std::size_t>(v * npts + g0);
+          long double sab = 0.0L;
+          for (int g = 0; g < k; ++g) {
+            sab += std::fabs(static_cast<long double>(ag[g]) *
+                             static_cast<long double>(bg[g]));
+          }
+          bound[static_cast<std::size_t>(u * nbf + v)] +=
+              scale * static_cast<double>(sab);
+        }
+      }
+    }
     // Column-major views: uc is k x nbf (ld k) and V is k x nbf (ld npts).
     // The row-major out(u,v) is the column-major (v,u) element, so
     // part = V-view^T * uc-view holds out^T.
