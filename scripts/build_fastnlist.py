@@ -19,6 +19,12 @@ On Darwin the cargo subprocess uses ``/usr/bin/ar`` and
 writes a staticlib, and Apple ld rejects the result
 (``malformed archive, member exceeds file size``). The rest of the
 meson build keeps the pixi archiver.
+
+A static meson library then partial-links that archive to one
+relocatable ``.o``. Apple ar places link arguments before the output
+archive, and a custom-target ``.a`` lands in those arguments, so ar
+tries to write the rust archive and looks for ``librgpot.a`` as a
+member.
 """
 
 import os
@@ -137,6 +143,37 @@ def print_native_libs(cargo: str, manifest: str, target_dir: str) -> list[str]:
     return libs
 
 
+def relocatable_object(archive: str, obj_out: str) -> None:
+    """Partial-link every member of ``archive`` into one relocatable object."""
+    if sys.platform == "darwin":
+        cmd = [
+            "/usr/bin/clang",
+            "-r",
+            "-nostdlib",
+            "-Wl,-force_load," + os.path.abspath(archive),
+            "-o",
+            obj_out,
+        ]
+    elif sys.platform == "win32":
+        sys.exit(
+            "the fast pair list relocatable object is only built for a "
+            "static Unix library"
+        )
+    else:
+        cmd = [
+            "ld",
+            "-r",
+            "-o",
+            obj_out,
+            "--whole-archive",
+            archive,
+            "--no-whole-archive",
+        ]
+    proc = subprocess.run(cmd, text=True)
+    if proc.returncode != 0:
+        sys.exit(proc.returncode)
+
+
 def copy_archive(cargo: str, manifest: str, target_dir: str, lib_out: str) -> None:
     proc = subprocess.run(
         cargo_cmd(cargo, "build", manifest, target_dir),
@@ -145,7 +182,15 @@ def copy_archive(cargo: str, manifest: str, target_dir: str, lib_out: str) -> No
     )
     if proc.returncode != 0:
         sys.exit(proc.returncode)
-    built = find_artifact(target_dir, artifact_name(lib_out))
+    # The meson output is a relocatable object when the umbrella is a
+    # static library. Cargo still writes the archive under target_dir.
+    cargo_name = "rgpot_fastnlist.lib" if sys.platform == "win32" else "librgpot_fastnlist.a"
+    if lib_out.lower().endswith(".lib"):
+        cargo_name = "rgpot_fastnlist.lib"
+    built = find_artifact(target_dir, cargo_name)
+    if lib_out.endswith(".o"):
+        relocatable_object(built, lib_out)
+        return
     shutil.copyfile(built, lib_out)
 
 

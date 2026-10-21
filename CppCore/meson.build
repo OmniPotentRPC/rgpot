@@ -177,9 +177,19 @@ if not get_option('with_rpc_client_only')
     # Subproject consumers (eOn's wrap fallback) take the umbrella through
     # this variable; pkg-config consumers get the same surface from
     # rgpot.pc.
+    # The static umbrella already contains the relocatable fast-list
+    # object. Repeating that object through rgpot_dep defines it twice.
+    # Shared builds keep the archive on the consumer link line.
+    _rgpot_consumer_deps = _deps_sans_core + [
+        vesin_dep,
+        fastnlist_native_dep,
+    ] + fortran_rt_deps
+    if _rpc_stack
+        _rgpot_consumer_deps += [ptlrpc_hdr_dep]
+    endif
     rgpot_dep = declare_dependency(
         link_with: rgpot,
-        dependencies: rgpot_deps,
+        dependencies: _rgpot_consumer_deps,
         include_directories: _incdirs,
         compile_args: _args,
     )

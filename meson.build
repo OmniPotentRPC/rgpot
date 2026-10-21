@@ -703,8 +703,18 @@ else
 endif
 
 if has_fast_nlist
+    # A static umbrella cannot take the rust archive as a generated
+    # source. Meson appends a custom-target library to the static link
+    # arguments, and Apple ar (also GNU ar) reads the first file name as
+    # the archive it writes. One relocatable object is a normal member.
+    _fast_as_object = (
+        get_option('default_library') == 'static'
+        and host_system != 'windows'
+    )
     _fast_lib_name = 'librgpot_fastnlist.a'
-    if host_system == 'windows' and (
+    if _fast_as_object
+        _fast_lib_name = 'rgpot_fastnlist.o'
+    elif host_system == 'windows' and (
         cppc.get_id() == 'msvc'
         or cppc.get_id() == 'clang-cl'
     )
@@ -761,15 +771,31 @@ if has_fast_nlist
     # source is what ninja builds; repeating its path here keeps that
     # order on a single-pass link. A response file is not used: gcc leaves
     # a nested @file for ld, which then searches for a file of that name.
-    fastnlist_dep = declare_dependency(
-        sources: [_fastnlist_tgt],
-        link_args: [_fastnlist_tgt.full_path()] + _fast_native,
-    )
+    # The static case passes the relocatable object as a source and keeps
+    # only the native libraries in link_args, so ar is not handed a second
+    # archive name. Consumers of the umbrella then take those libraries
+    # without linking the object a second time.
+    if _fast_as_object
+        fastnlist_dep = declare_dependency(
+            sources: [_fastnlist_tgt],
+            link_args: _fast_native,
+        )
+        fastnlist_native_dep = declare_dependency(
+            link_args: _fast_native,
+        )
+    else
+        fastnlist_dep = declare_dependency(
+            sources: [_fastnlist_tgt],
+            link_args: [_fastnlist_tgt.full_path()] + _fast_native,
+        )
+        fastnlist_native_dep = fastnlist_dep
+    endif
     message(
         'fast pair list: enabled (rustc minor ' + _fast_minor.to_string() + ')',
     )
 else
     fastnlist_dep = declare_dependency()
+    fastnlist_native_dep = fastnlist_dep
     message('fast pair list: disabled, classical pots use the C++ scan')
 endif
 
