@@ -155,6 +155,12 @@ such an error can leave the energy correct.
 
 Pinned reference energies from the pre-port kernels live in the Catch2 tests, at
 the tolerances the original suites used.
+~eam_al~ is the exception on the digits, not on the geometry.
+EON r2549 ~potinit.f~ writes the aluminium parameters as default-real literals,
+so a double-precision build stores the single-precision rounding.
+The four-atom ~al_fcc~ cluster is pinned to that Fortran energy,
+-5.217864006173226 eV, tighter than the historical relative 1e-4.
+Keeping the extra printed digits moves the same geometry by 1.76e-6 eV.
 
 ** Compilers
 
