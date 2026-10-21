@@ -1,9 +1,18 @@
-# rgpot has no runtime-dispatched kernels. An above-baseline instruction
-# in librgpot or _core is a violation. These entries cover libraries that
-# auditwheel or delocate copy into the wheel and that select kernels at
-# run time. A feature not listed here still fails the audit.
+# An above-baseline instruction in librgpot or _core is a violation
+# unless an [[allow]] names that symbol. The symbol rule below is the
+# target("fma") clones in CppCore/rgpot/simd. Callers enter them only
+# after glibc_fma_active(), which reads glibc's hwcaps-masked FMA bit
+# rather than raw CPUID. -mfma implies AVX, so vzeroupper and vmov*
+# count as avx. Vendored entries cover libraries that auditwheel or
+# delocate copy into the wheel and that select kernels at run time.
+# A feature not listed here still fails the audit.
 
 baseline = "x86-64"
+
+[[allow]]
+symbol = "^rgpot::simd::(?:accept_row_hw|eam_fma|eam_hw|exact_fma_hw|exp2_hw|exp_hw_n|lj_hw|morse8_hw|morse_hw|r2_hw_n|r2_hw)(?:\\(|$)"
+features = ["avx", "fma"]
+reason = "target(\"fma\") clones, entered only after glibc_fma_active()"
 
 [[vendored]]
 path = ".*libopenblas.*"

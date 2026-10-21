@@ -127,10 +127,13 @@ Rust v0 and legacy names and Itanium C++ names are demangled before
 the match.
 Crate disambiguators are omitted.
 
-rgpot ships no dispatched kernel, so =rgpot/isa-allow.toml= has only
-vendored entries: OpenBLAS (=DYNAMIC_ARCH=), libgfortran matmul
-variants, libgomp, and libquadmath which is copied in with libgfortran.
-An above-baseline instruction in =librgpot= or =_core= is a violation.
+=rgpot/isa-allow.toml= allows =avx= and =fma= on the =rgpot::simd=
+=target("fma")= clones (=lj_hw=, =morse_hw=, =eam_hw=, =eam_fma=, and the
+=exp= / =r2= helpers). Callers enter those functions only after
+=glibc_fma_active()=. Vendored entries cover OpenBLAS (=DYNAMIC_ARCH=),
+libgfortran matmul variants, libgomp, and libquadmath, which is copied
+in with libgfortran. Any other above-baseline instruction in =librgpot=
+or =_core= is a violation.
 
 * Calling the workflow from another repository
 
