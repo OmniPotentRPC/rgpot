@@ -16,6 +16,8 @@
 
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/nlist/PairListCache.hpp"
+#include "rgpot/simd/api.hpp"
+#include "rgpot/simd/from_cache.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 using rgpot::types::AtomMatrix;
 
@@ -30,7 +32,8 @@ namespace rgpot {
  * ``rgpot::nlist::PairListCache`` (the eOn PairListCache design): repeated
  * evaluations on nearby geometries reuse a Verlet-skin cached candidate
  * list, and one-shot evaluations run a single fused scan identical in pair
- * content to the historical per-call double loop.
+ * content to the historical per-call double loop. The pair term itself is
+ * the Highway kernel selected for this process.
  *
  * @warning The box is assumed to be orthogonal.
  *
@@ -54,33 +57,15 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   nlist::CachedPairList::Options opt;
   opt.cutoff = cuttOffR;
 
-  const double psi2 = psi * psi;
-  double energyAcc = 0.0;
-  nlist::PairListCache::global().evaluate(
-      R, static_cast<std::size_t>(N), box, opt,
-      [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
-        const double invR2 = 1.0 / r2;
-        const double sr2 = psi2 * invR2;
-        const double a = sr2 * sr2 * sr2; // (psi/r)^6 without pow()
-        const double b = 4.0 * u0 * a;
-        energyAcc += b * (a - 1.0) - cuttOffU;
-
-        // -dU/dr / r along d = r_i - r_j, matching the historical loop's
-        // sign convention.
-        const double fscale = 6.0 * b * invR2 * (2.0 * a - 1.0);
-        const double fx = fscale * dx;
-        const double fy = fscale * dy;
-        const double fz = fscale * dz;
-
-        F[3 * i] += fx;
-        F[3 * i + 1] += fy;
-        F[3 * i + 2] += fz;
-        F[3 * j] -= fx;
-        F[3 * j + 1] -= fy;
-        F[3 * j + 2] -= fz;
-      });
-  *U = energyAcc;
-  return;
+  simd::LjParams params{};
+  params.psi2 = psi * psi;
+  params.four_u0 = 4.0 * u0;
+  params.shift = cuttOffU;
+  params.use_switch = 0;
+  simd::CachedPairs pairs;
+  simd::fill_view(pairs, R, static_cast<std::size_t>(N), box, opt);
+  double strain[6] = {};
+  *U = simd::lj_force(pairs.view, params, F, strain);
 }
 
 } // namespace rgpot
