@@ -29,7 +29,7 @@ meson setup "$BUILD" \
   --buildtype=debug
 
 meson compile -C "$BUILD"
-meson test -C "$BUILD" --print-errorlogs || true
+meson test -C "$BUILD" --print-errorlogs
 
 echo "==> lcov capture"
 lcov --directory "$BUILD" --capture --output-file "$OUT" \

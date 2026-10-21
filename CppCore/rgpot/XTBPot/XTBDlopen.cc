@@ -65,11 +65,31 @@ int method_to_c(GFNMethod m) {
   }
 }
 
+// A name with no directory separator is a loader search key, not a file.
+// dlopen / LoadLibraryA would walk LD_LIBRARY_PATH, DYLD_LIBRARY_PATH, PATH,
+// and the ld cache, which can substitute a different libxtb_engine.
+bool has_directory_separator(const std::string &path) {
+  return path.find_first_of("/\\") != std::string::npos;
+}
+
+void append_loader_error(std::string &msg, bool explicit_path) {
+#ifndef _WIN32
+  if (const char *e = dlerror()) {
+    if (*e != '\0') {
+      msg += explicit_path ? "; dlerror: " : "; last dlerror: ";
+      msg += e;
+    }
+  }
+#else
+  (void)explicit_path;
+#endif
+}
+
 std::vector<std::string> candidate_paths(const XTBDlopenConfig &config) {
   std::vector<std::string> out;
-  // An explicit path is exclusive. Falling through to the bare soname lets
-  // the loader (LD_LIBRARY_PATH / DYLD_LIBRARY_PATH / PATH) or an env/dir
-  // candidate satisfy a request for a different library.
+  // An explicit path is exclusive. The constructor rejects a slash-less
+  // name before this search. Falling through to the bare soname lets the
+  // loader or an env/dir candidate satisfy a request for a different library.
   if (!config.engine_path.empty()) {
     out.push_back(config.engine_path);
     return out;
@@ -121,21 +141,29 @@ XTBDlopen::XTBDlopen(const XTBConfig &xtb)
     : XTBDlopen(XTBDlopenConfig{xtb, {}}) {}
 
 XTBDlopen::XTBDlopen(const XTBDlopenConfig &config) {
+  const bool explicit_path = !config.engine_path.empty();
+  if (explicit_path && !has_directory_separator(config.engine_path)) {
+    throw std::runtime_error(
+        "XTBDlopen: engine_path \"" + config.engine_path +
+        "\" has no directory separator; a bare name is resolved through "
+        "the loader search path. Pass an absolute or relative path");
+  }
   for (const auto &path : candidate_paths(config)) {
     m_lib = open_lib(path.c_str());
     if (m_lib)
       break;
   }
   if (!m_lib) {
-    std::string msg =
-        "XTBDlopen: libxtb_engine.so not found "
-        "(set RGPOT_XTB_ENGINE / engine_path / EON_POTENTIALS_PATH)";
-#ifndef _WIN32
-    if (const char *e = dlerror()) {
-      msg += "; last dlerror: ";
-      msg += e;
+    std::string msg;
+    if (explicit_path) {
+      // Discovery env vars are ignored once engine_path is set, so naming
+      // them here points at a variable that was not consulted.
+      msg = "XTBDlopen: libxtb_engine.so not found: " + config.engine_path;
+    } else {
+      msg = "XTBDlopen: libxtb_engine.so not found "
+            "(set RGPOT_XTB_ENGINE / engine_path / EON_POTENTIALS_PATH)";
     }
-#endif
+    append_loader_error(msg, explicit_path);
     throw std::runtime_error(msg);
   }
 

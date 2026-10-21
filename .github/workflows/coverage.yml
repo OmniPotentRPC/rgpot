@@ -3,8 +3,10 @@
 # Live dashboard: https://app.codecov.io/gh/OmniPotentRPC/rgpot
 #
 # Auth: Codecov GitHub App OIDC (use_oidc: true). Optional CODECOV_TOKEN for
-# accounts that still use upload tokens. fail_ci_if_error: false soft-fails
-# upload so generation still greens the job.
+# accounts that still use upload tokens. fail_ci_if_error only covers the
+# uploader CLI. The action's OIDC token step throws before that, so a token
+# request timeout fails the job after coverage was generated. The upload
+# steps continue on error, then retry with the repository token.
 
 name: Coverage
 
@@ -81,12 +83,27 @@ jobs:
           if-no-files-found: error
 
       - name: Upload rust coverage to Codecov
+        id: codecov-rust
+        continue-on-error: true
         uses: codecov/codecov-action@v5
         with:
           files: lcov.info,rust_codecov.json
           flags: rust
           name: rgpot-rust
           use_oidc: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+          verbose: true
+
+      - name: Upload rust coverage with the repository token
+        if: steps.codecov-rust.outcome == 'failure'
+        continue-on-error: true
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info,rust_codecov.json
+          flags: rust
+          name: rgpot-rust
+          use_oidc: false
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
           verbose: true
@@ -131,6 +148,8 @@ jobs:
           if-no-files-found: error
 
       - name: Upload cpp coverage to Codecov
+        id: codecov-cpp
+        continue-on-error: true
         uses: codecov/codecov-action@v5
         with:
           files: cpp_lcov.info
@@ -141,14 +160,42 @@ jobs:
           fail_ci_if_error: false
           verbose: true
 
+      - name: Upload cpp coverage with the repository token
+        if: steps.codecov-cpp.outcome == 'failure'
+        continue-on-error: true
+        uses: codecov/codecov-action@v5
+        with:
+          files: cpp_lcov.info
+          flags: cpp
+          name: rgpot-cpp
+          use_oidc: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+          verbose: true
+
       - name: Upload fortran coverage to Codecov
+        id: codecov-cpp-fortran
         if: hashFiles('fortran_lcov.info') != ''
+        continue-on-error: true
         uses: codecov/codecov-action@v5
         with:
           files: fortran_lcov.info
           flags: fortran
           name: rgpot-fortran
           use_oidc: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+          verbose: true
+
+      - name: Upload fortran coverage with the repository token
+        if: hashFiles('fortran_lcov.info') != '' && steps.codecov-cpp-fortran.outcome == 'failure'
+        continue-on-error: true
+        uses: codecov/codecov-action@v5
+        with:
+          files: fortran_lcov.info
+          flags: fortran
+          name: rgpot-fortran
+          use_oidc: false
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
           verbose: true
@@ -184,12 +231,27 @@ jobs:
           if-no-files-found: error
 
       - name: Upload python coverage to Codecov
+        id: codecov-python
+        continue-on-error: true
         uses: codecov/codecov-action@v5
         with:
           files: python_coverage.xml
           flags: python
           name: rgpot-python
           use_oidc: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+          verbose: true
+
+      - name: Upload python coverage with the repository token
+        if: steps.codecov-python.outcome == 'failure'
+        continue-on-error: true
+        uses: codecov/codecov-action@v5
+        with:
+          files: python_coverage.xml
+          flags: python
+          name: rgpot-python
+          use_oidc: false
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
           verbose: true
@@ -233,12 +295,27 @@ jobs:
           if-no-files-found: error
 
       - name: Upload fortran coverage to Codecov
+        id: codecov-fortran
+        continue-on-error: true
         uses: codecov/codecov-action@v5
         with:
           files: fortran_lcov.info
           flags: fortran
           name: rgpot-fortran
           use_oidc: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+          verbose: true
+
+      - name: Upload fortran coverage with the repository token
+        if: steps.codecov-fortran.outcome == 'failure'
+        continue-on-error: true
+        uses: codecov/codecov-action@v5
+        with:
+          files: fortran_lcov.info
+          flags: fortran
+          name: rgpot-fortran
+          use_oidc: false
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
           verbose: true
