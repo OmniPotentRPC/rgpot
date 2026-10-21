@@ -1,9 +1,20 @@
-# Above-baseline instructions in librgpot belong to the [[allow]] symbols.
-# Those bodies run only after a runtime check. The vendored entries cover
-# libraries that auditwheel or delocate copy into the wheel and that select
-# kernels at run time. A feature not listed here still fails the audit.
+# An above-baseline instruction in librgpot or _core is a violation
+# unless an [[allow]] names that symbol. The symbol rule below is the
+# target("fma") bodies in CppCore/rgpot/simd/exp.cc. That attribute also
+# emits AVX encodings (vmovsd, vmovapd) for ordinary moves, because the
+# fused instruction is VEX-encoded. Each body is entered only after
+# detail::glibc_fma_active(), which reads glibc's usable FMA bit and
+# therefore follows the hwcaps tunable. The baseline caller stays on
+# SSE2 or the Dekker product. Vendored entries cover libraries that
+# auditwheel or delocate copy into the wheel and that select kernels at
+# run time. A feature not listed here still fails the audit.
 
 baseline = "x86-64"
+
+[[allow]]
+symbol = "^rgpot::simd::(?:accept_row_hw|eam_fma|eam_hw|exact_fma_hw|exp2_hw|exp_hw_n|lj_hw|morse8_hw|morse_hw|r2_hw_n|r2_hw)(?:\\(|$)"
+features = ["avx", "fma"]
+reason = "target(\"fma\") bodies, entered only after glibc_fma_active()"
 
 [[vendored]]
 path = ".*libopenblas.*"
@@ -117,13 +128,3 @@ features = [
   "xsave",
 ]
 reason = "libquadmath, vendored beside libgfortran"
-
-# target("fma") also selects AVX encodings (vmovsd, vmovapd) for ordinary
-# moves, because the fused instruction is VEX-encoded. Each body below is
-# entered only after detail::glibc_fma_active(), which reads glibc's usable
-# FMA bit and therefore follows the hwcaps tunable. The baseline caller
-# (eam_sse and the scalar entries) stays on SSE2 or the Dekker product.
-[[allow]]
-symbol = '^rgpot::simd::(?:accept_row_hw|eam_fma|eam_hw|exact_fma_hw|exp2_hw|exp_hw_n|lj_hw|morse8_hw|morse_hw|r2_hw_n|r2_hw)\b'
-features = ["avx", "fma"]
-reason = "FMA bodies selected when glibc reports a usable FMA"
