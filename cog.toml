@@ -38,6 +38,7 @@ post_bump_hooks = [
 feat     = { changelog_title = "Features" }
 fix      = { changelog_title = "Bug Fixes" }
 perf     = { changelog_title = "Performance" }
+bench    = { changelog_title = "Benchmarks" }
 refactor = { changelog_title = "Refactoring" }
 docs     = { changelog_title = "Documentation" }
 test     = { changelog_title = "Tests" }

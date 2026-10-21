@@ -756,7 +756,7 @@ if get_option('with_rpc_client_only')
         include_directories: _incdirs,
         link_with: _linkto,
         compile_args: _args,
-        dependencies: _deps + [ptlrpc_dep],
+        dependencies: _deps + [ptlrpc_dep, fastnlist_dep],
     )
 endif
 

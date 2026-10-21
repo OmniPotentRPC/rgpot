@@ -215,7 +215,7 @@ if rpc_enabled and not get_option('with_rpc_client_only')
         'potserv',
         ['rgpot/rpc/server.cpp'],
         link_with: [ptlrpc, _linkto],
-        dependencies: _deps + [capnp_rpc_dep, ptlrpc_hdr_dep, vesin_dep] + fortran_rt_deps,
+        dependencies: _deps + [capnp_rpc_dep, ptlrpc_hdr_dep, vesin_dep, fastnlist_dep] + fortran_rt_deps,
         cpp_args: _args,
         build_rpath: _metatomic_build_rpath,
         include_directories: _incdirs,
@@ -258,7 +258,7 @@ if get_option('with_examples') and not get_option('with_rpc_client_only')
     executable(
         'time_lj_force',
         sources: ['examples/time_lj_force.cc'],
-        dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+        dependencies: _deps + [vesin_dep, fastnlist_dep] + fortran_rt_deps,
         link_with: _linkto,
         cpp_args: _args,
     )
@@ -268,7 +268,7 @@ if get_option('with_examples') and not get_option('with_rpc_client_only')
             executable(
                 example.get(1),
                 sources: ['examples/' + example.get(2)],
-                dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+                dependencies: _deps + [vesin_dep, fastnlist_dep] + fortran_rt_deps,
                 link_with: _linkto,
                 cpp_args: _args,
                 build_rpath: _metatomic_build_rpath,
