@@ -15,6 +15,8 @@
   upload_artifact_v4 = "actions/upload-artifact@v4",
   upload_artifact_v6 = "actions/upload-artifact@v6",
   download_artifact = "actions/download-artifact@v4",
+  # Pair with upload-artifact@v6. v4 cannot download v6 artifacts.
+  download_artifact_v6 = "actions/download-artifact@v6",
   gh_release = "softprops/action-gh-release@v2",
   gh_pages = "peaceiris/actions-gh-pages@v4",
   lychee = "lycheeverse/lychee-action@v2",

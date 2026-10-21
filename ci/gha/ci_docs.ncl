@@ -3,7 +3,6 @@ let S = import "lib/steps.ncl" in
 let P = S.pins in
 {
   name = "Build and Deploy Documentation",
-  concurrency = { group = "pages", "cancel-in-progress" = true },
   on = {
     push = { branches = ["main"], tags = ["*"] },
     pull_request = {},
@@ -13,7 +12,13 @@ let P = S.pins in
     build_docs = {
       name = "Build documentation",
       "runs-on" = P.ubuntu,
-      permissions = { contents = "write" },
+      permissions = { contents = "read" },
+      # One group per ref, so parallel pull requests do not cancel each other
+      # or a pages deploy. A new push to the same ref still cancels its build.
+      concurrency = {
+        group = "docs-${{ github.workflow }}-${{ github.ref }}",
+        "cancel-in-progress" = true,
+      },
       steps = [
         {
           name = "Checkout repository",
@@ -30,9 +35,27 @@ let P = S.pins in
           uses = P.upload_artifact_v6,
           with = { name = "documentation", path = "docs/build" },
         },
+      ],
+    },
+    deploy = {
+      name = "Deploy documentation",
+      needs = ["build_docs"],
+      "if" = "github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
+      "runs-on" = P.ubuntu,
+      permissions = { contents = "write" },
+      # Shared pages group, and a running deploy is left to finish.
+      concurrency = {
+        group = "pages",
+        "cancel-in-progress" = false,
+      },
+      steps = [
+        {
+          name = "Download documentation",
+          uses = P.download_artifact_v6,
+          with = { name = "documentation", path = "docs/build" },
+        },
         {
           name = "Deploy",
-          "if" = "github.event_name == 'push'",
           uses = P.gh_pages,
           with = {
             github_token = "${{ secrets.GITHUB_TOKEN }}",
