@@ -134,6 +134,9 @@ int connect_endpoint(const std::string &endpoint) {
       sockaddr_un addr{};
       addr.sun_family = AF_UNIX;
       std::snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", path.c_str());
+#ifdef __APPLE__
+      addr.sun_len = sizeof(addr);
+#endif
       if (fd >= 0 && ::connect(fd, reinterpret_cast<sockaddr *>(&addr),
                                sizeof(addr)) == 0) {
         return fd;
@@ -367,9 +370,10 @@ TEST_CASE("IPIPot unix driver sequence, units and triclinic cell", "[ipi]") {
   rgpot::IPIConfig cfg;
   cfg.address = "unix:rgp" + tag();
   cfg.timeout_s = 2.0;
+  // Capture outlives the join. The driver writes it until the thread returns.
+  Capture cap;
   std::thread worker;
   Join join{worker};
-  Capture cap;
   const Reply reply;
   {
     rgpot::IPIPot pot(cfg);
@@ -447,9 +451,9 @@ TEST_CASE("IPIPot tcp transport", "[ipi]") {
   rgpot::IPIConfig cfg;
   cfg.address = "tcp:127.0.0.1:0";
   cfg.timeout_s = 2.0;
+  Capture cap;
   std::thread worker;
   Join join{worker};
-  Capture cap;
   {
     rgpot::IPIPot pot(cfg);
     REQUIRE(pot.endpoint().rfind("tcp:127.0.0.1:", 0) == 0);
@@ -523,9 +527,9 @@ TEST_CASE("IPIPot times out when the driver stays silent", "[ipi]") {
   rgpot::IPIConfig cfg;
   cfg.address = "unix:rgp" + tag();
   cfg.timeout_s = 0.2;
+  Capture cap;
   std::thread worker;
   Join join{worker};
-  Capture cap;
   {
     rgpot::IPIPot pot(cfg);
     worker =
@@ -545,9 +549,9 @@ TEST_CASE("IPIPot reports an unexpected header and a broken atom count",
   rgpot::IPIConfig cfg;
   cfg.address = "unix:rgp" + tag();
   cfg.timeout_s = 2.0;
+  Capture cap;
   std::thread worker;
   Join join{worker};
-  Capture cap;
   {
     rgpot::IPIPot pot(cfg);
     worker = std::thread(run_mock, pot.endpoint(), Behavior::BadHeader, Reply{},
@@ -564,9 +568,9 @@ TEST_CASE("IPIPot reports an unexpected header and a broken atom count",
   worker = std::thread();
 
   cfg.address = "unix:rgp" + tag();
+  Capture cap2;
   std::thread worker2;
   Join join2{worker2};
-  Capture cap2;
   Reply mismatch;
   mismatch.nat_delta = 3;
   {
@@ -587,14 +591,14 @@ TEST_CASE("IPIPot accepts a new driver after the first disconnects", "[ipi]") {
   rgpot::IPIConfig cfg;
   cfg.address = "unix:rgp" + tag();
   cfg.timeout_s = 2.0;
+  Capture first;
+  Capture second;
   std::thread worker;
   Join join{worker};
   std::thread again;
   Join join_again{again};
-  Capture second;
   {
     rgpot::IPIPot pot(cfg);
-    Capture first;
     worker = std::thread(run_mock, pot.endpoint(), Behavior::Disconnect,
                          Reply{}, &first);
     const AtomMatrix positions{{0.0, 0.0, 0.0}};

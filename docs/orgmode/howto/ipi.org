@@ -20,6 +20,7 @@ The constructor takes =IPIConfig::address= and =timeout_s= (default 30).
 - =unix:<name>= binds
   =/tmp/ipi_<name>=, the i-PI default prefix, so =i-pi-py_driver -u -a <name>=
   connects.
+  On macOS the address length is set, which the kernel requires.
 - =tcp:<host>:<port>= listens on that IPv4 host and port.
 - =tcp:<port>= listens on 127.0.0.1.
 - Port 0 asks the kernel for a free port.
