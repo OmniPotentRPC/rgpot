@@ -112,8 +112,18 @@ Oracle morse_oracle(const std::vector<double> &pos, const double *box, double cu
   return out;
 }
 
-void require_close(double energy, const std::vector<double> &forces, const Oracle &ref) {
-  REQUIRE_THAT(energy - ref.energy, WithinAbs(0.0, 1e-12));
+// Pair energies are reduced in eight partial sums per atom, the same
+// tree on every instruction set. The 343-atom Pt island contributes
+// about 3e4 Morse terms. That blocked total differs from this
+// sequential scan by about 2e-11, on both the hardware-FMA path and
+// the software product, while the forces still agree to 1e-14. A
+// missing neighbour is a few tenths of an eV, so the wider energy
+// bound still rejects a wrong list.
+constexpr double kPtMorseEnergy = 1e-9;
+
+void require_close(double energy, const std::vector<double> &forces, const Oracle &ref,
+                   double energy_abs = 1e-12) {
+  REQUIRE_THAT(energy - ref.energy, WithinAbs(0.0, energy_abs));
   REQUIRE_THAT(max_abs(forces, ref.forces), WithinAbs(0.0, 1e-12));
 }
 
@@ -525,8 +535,8 @@ TEST_CASE("Optbench LJ clusters and the Pt island match the fused scan", "[fastn
                          .box = boxpt};
   out.F = forces.data();
   morse.forceImpl(inpt, &out);
-  require_close(out.energy, forces, morse_oracle(pt, boxpt, 9.5));
-  REQUIRE_THAT(out.energy, WithinAbs(-1775.7911601735484, 0.0));
+  require_close(out.energy, forces, morse_oracle(pt, boxpt, 9.5), kPtMorseEnergy);
+  REQUIRE_THAT(out.energy, WithinAbs(-1775.7911601735484, kPtMorseEnergy));
   rgpot::ForceOut again{.F = forces.data(), .energy = 0.0, .variance = 0.0};
   morse.forceImpl(inpt, &again);
   REQUIRE_THAT(again.energy - out.energy, WithinAbs(0.0, 0.0));
@@ -604,7 +614,7 @@ TEST_CASE("A rigid shift keeps the Pt list", "[fastnlist][morse]") {
                              .atmnrs = z.data(),
                              .box = box};
   pot.forceImpl(in_shift, &out);
-  require_close(out.energy, forces, morse_oracle(shifted, box, 9.5));
+  require_close(out.energy, forces, morse_oracle(shifted, box, 9.5), kPtMorseEnergy);
   REQUIRE_THAT(out.energy - built, WithinAbs(0.0, 0.0));
 
   std::vector<double> pulled = base;
@@ -615,7 +625,7 @@ TEST_CASE("A rigid shift keeps the Pt list", "[fastnlist][morse]") {
                             .atmnrs = z.data(),
                             .box = box};
   pot.forceImpl(in_pull, &out);
-  require_close(out.energy, forces, morse_oracle(pulled, box, 9.5));
+  require_close(out.energy, forces, morse_oracle(pulled, box, 9.5), kPtMorseEnergy);
 }
 
 TEST_CASE("A non-rigid move inside the skin matches a fresh scan", "[fastnlist][lj]") {
