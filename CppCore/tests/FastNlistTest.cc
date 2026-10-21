@@ -4,6 +4,8 @@
 // The orthorhombic pair list must match the fused scan's pair content.
 // Energies and forces of LJ and Morse go through that list; a minimizer
 // that saw a different force would take a different number of steps.
+// The scan is plain multiplies and adds. This file is built with
+// contraction off so those products stay in that form.
 
 #include <algorithm>
 #include <array>

@@ -754,6 +754,16 @@ if get_option('with_tests')
     endif
 
     foreach test : test_array
+        # The fused-scan oracles are plain multiplies and adds, the same
+        # form as the cluster kernel and the Fortran 26-image wrap. Apple
+        # Clang fuses those products unless contraction is off, and the
+        # sums then miss by an ulp.
+        case_args = test_args
+        if test.get(2) == 'FastNlistTest.cc'
+            case_args += cppc.get_supported_arguments(
+                ['-ffp-contract=off', '/fp:precise'],
+            )
+        endif
         test(
             test.get(0),
             executable(
@@ -761,7 +771,7 @@ if get_option('with_tests')
                 sources: ['tests/' + test.get(2)],
                 dependencies: test_deps,
                 include_directories: _incdirs + ['.'],
-                cpp_args: test_args,
+                cpp_args: case_args,
                 link_with: _linkto,
                 link_language: 'cpp',
                 build_rpath: _metatomic_build_rpath,
