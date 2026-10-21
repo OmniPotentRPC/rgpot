@@ -124,7 +124,7 @@ in
   name = "Potentials matrix",
   on = {
     push = { branches = ["main"] },
-    pull_request = { branches = ["main"] },
+    pull_request = { branches = ["main", "develop"] },
     workflow_dispatch = {},
   },
   concurrency = S.concurrency_ref "potentials",
