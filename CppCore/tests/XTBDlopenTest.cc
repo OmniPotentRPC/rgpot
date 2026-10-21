@@ -1,10 +1,11 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 //
-// A non-empty XTBDlopenConfig::engine_path is the only candidate. A missing
-// file must throw even when the process loader would resolve the bare soname
-// (LD_LIBRARY_PATH / DYLD_LIBRARY_PATH / PATH, captured at process start) and
-// even when RGPOT_XTB_ENGINE names a real engine. An empty engine_path still
+// A non-empty XTBDlopenConfig::engine_path is the only candidate, and a
+// slash-less name is rejected. A missing file must throw even when the
+// process loader would resolve the bare soname (LD_LIBRARY_PATH /
+// DYLD_LIBRARY_PATH / PATH, captured at process start) and even when
+// RGPOT_XTB_ENGINE names a real engine. An empty engine_path still
 // discovers via those routes.
 //
 // setenv("LD_LIBRARY_PATH") after startup does not affect glibc dlopen, so
@@ -16,6 +17,7 @@
 
 #include <cstdlib>
 #include <iterator>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -145,9 +147,25 @@ bool bare_soname_visible() {
 }
 
 void require_missing_engine(const rgpot::XTBDlopenConfig &cfg) {
-  REQUIRE_THROWS_WITH(rgpot::XTBDlopen(cfg),
-                      Catch::Matchers::ContainsSubstring(
+  try {
+    rgpot::XTBDlopen pot(cfg);
+    (void)pot;
+    FAIL("XTBDlopen opened an engine that should be missing");
+  } catch (const std::runtime_error &ex) {
+    const std::string msg = ex.what();
+    REQUIRE_THAT(msg, Catch::Matchers::ContainsSubstring(
                           "XTBDlopen: libxtb_engine.so not found"));
+    if (!cfg.engine_path.empty()) {
+      REQUIRE_THAT(msg, Catch::Matchers::ContainsSubstring(cfg.engine_path));
+      REQUIRE_THAT(msg,
+                   !Catch::Matchers::ContainsSubstring("RGPOT_XTB_ENGINE"));
+      REQUIRE_THAT(msg,
+                   !Catch::Matchers::ContainsSubstring("EON_POTENTIALS_PATH"));
+#ifndef _WIN32
+      REQUIRE_THAT(msg, Catch::Matchers::ContainsSubstring("dlerror:"));
+#endif
+    }
+  }
 }
 
 bool expect_bare_soname() {
@@ -174,6 +192,29 @@ TEST_CASE("XTBDlopen explicit engine_path does not fall back",
   clear_discovery_env();
   // Directory lists and the bare soname must not rescue it either.
   require_missing_engine(cfg);
+}
+
+TEST_CASE("XTBDlopen slash-less engine_path is rejected", "[xtb][dlopen]") {
+  // The meson environment puts the real engine on the loader path. A bare
+  // name must still throw, otherwise dlopen substitutes that library.
+  if (expect_bare_soname())
+    REQUIRE(bare_soname_visible());
+
+  rgpot::XTBDlopenConfig cfg;
+  cfg.engine_path = "libxtb_engine.so";
+  try {
+    rgpot::XTBDlopen pot(cfg);
+    (void)pot;
+    FAIL("slash-less engine_path must not be opened through the loader path");
+  } catch (const std::runtime_error &ex) {
+    const std::string msg = ex.what();
+    REQUIRE_THAT(msg, Catch::Matchers::ContainsSubstring("libxtb_engine.so"));
+    REQUIRE_THAT(msg,
+                 Catch::Matchers::ContainsSubstring("directory separator"));
+    REQUIRE_THAT(msg, !Catch::Matchers::ContainsSubstring("RGPOT_XTB_ENGINE"));
+    REQUIRE_THAT(msg,
+                 !Catch::Matchers::ContainsSubstring("EON_POTENTIALS_PATH"));
+  }
 }
 
 TEST_CASE("XTBDlopen empty engine_path discovers RGPOT_XTB_ENGINE",

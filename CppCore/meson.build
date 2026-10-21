@@ -945,7 +945,12 @@ if not meson.is_subproject()
         endif
     endif
     if _rpc_stack
-        _pc_libs += [nwchempot, cpmdpot]
+        # Umbrella builds keep these symbols inside librgpot. The archives
+        # are not installed, so they cannot appear on the link line.
+        # Client-only builds have no umbrella; the archives are the product.
+        if get_option('with_rpc_client_only')
+            _pc_libs += [nwchempot, cpmdpot]
+        endif
         _pc_requires += ['capnp-rpc']
         _pc_cflags += [
             '-DRGPOT_HAS_NWCHEM_FRONTEND=TRUE',
