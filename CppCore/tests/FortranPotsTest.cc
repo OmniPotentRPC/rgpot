@@ -137,14 +137,21 @@ TEST_CASE("Lenosky silicon matches the eOn reference", "[fortran][lenosky]") {
   requireNoNetForce(forces);
 }
 
-TEST_CASE("EAM aluminium matches the eOn reference", "[fortran][eamal]") {
+TEST_CASE("EAM aluminium matches the EON r2549 Fortran energy",
+          "[fortran][eamal]") {
   rgpot::fortranpots::EAMAlPot pot;
   const std::vector<int> types(4, 13);
+  // eOn client/unit_tests/data/systems/al_fcc/pos.con: four atoms in a
+  // 20 Angstrom cube. EON r2549 `eonclient` point job, potential eam_al,
+  // prints UTOT -5.217864006173226.
   auto [energy, forces, variance] = pot(alFcc(), types, cube20());
   (void)variance;
 
   REQUIRE_THAT(energy, WithinRel(-5.217864, 1e-4));
   REQUIRE_THAT(maxForceNorm(forces), WithinRel(0.968647, 1e-3));
+  // The relative pin above still passes if the parameters keep the extra
+  // printed digits. Those digits lower this energy by 1.76e-6 eV.
+  REQUIRE(energy == Catch::Approx(-5.217864006173226).margin(1e-12));
   requireNoNetForce(forces);
 }
 
