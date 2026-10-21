@@ -36,6 +36,10 @@ exp(double x) {
 
 #if defined(__x86_64__)
 
+// target("fma") also emits AVX encodings. rgpot/isa-allow.toml names these
+// functions. Every call site is behind detail::glibc_fma_active(), which
+// follows glibc's hwcaps mask. noinline keeps that body out of the baseline
+// caller, which stays on SSE2 or the Dekker product.
 __attribute__((target("fma"), flatten, noinline)) double lj_hw(const PairView &v,
                                                       const LjParams &p,
                                                       double *F,
