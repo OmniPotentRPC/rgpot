@@ -251,7 +251,7 @@ if get_option('with_eigen') or (
     get_option('with_examples')
     and not get_option(
     'with_rpc_client_only',
-    )
+            )
 )
     eigen_dep = dependency('eigen3', required: false)
     if not eigen_dep.found()
@@ -280,7 +280,7 @@ if not get_option('pure_lib') or (
     get_option('with_examples')
     and not get_option(
     'with_rpc_client_only',
-    )
+            )
 )
     _args += ['-DNOT_PURE_LIB=TRUE']
     fmt_dep = dependency('fmt', required: true)
@@ -671,7 +671,14 @@ if _fast_rustc.found()
     endif
 endif
 if _fast_minor < 89 and _fast_rustup.found()
-    _vv = run_command(_fast_rustup, 'run', '1.89.0', 'rustc', '-vV', check: false)
+    _vv = run_command(
+        _fast_rustup,
+        'run',
+        '1.89.0',
+        'rustc',
+        '-vV',
+        check: false,
+    )
     if _vv.returncode() == 0
         foreach _line : _vv.stdout().split('\n')
             if _line.startswith('release:')
@@ -698,7 +705,8 @@ endif
 if has_fast_nlist
     _fast_lib_name = 'librgpot_fastnlist.a'
     if host_system == 'windows' and (
-        cppc.get_id() == 'msvc' or cppc.get_id() == 'clang-cl'
+        cppc.get_id() == 'msvc'
+        or cppc.get_id() == 'clang-cl'
     )
         _fast_lib_name = 'rgpot_fastnlist.lib'
     endif
@@ -740,8 +748,8 @@ if has_fast_nlist
             '@OUTPUT@',
         ],
         input: files(
-            'CppCore/rgpot/nlist/fastnlist/Cargo.toml',
             'CppCore/rgpot/nlist/fastnlist/Cargo.lock',
+            'CppCore/rgpot/nlist/fastnlist/Cargo.toml',
             'CppCore/rgpot/nlist/fastnlist/src/lib.rs',
         ),
         output: _fast_lib_name,
@@ -757,7 +765,9 @@ if has_fast_nlist
         sources: [_fastnlist_tgt],
         link_args: [_fastnlist_tgt.full_path()] + _fast_native,
     )
-    message('fast pair list: enabled (rustc minor ' + _fast_minor.to_string() + ')')
+    message(
+        'fast pair list: enabled (rustc minor ' + _fast_minor.to_string() + ')',
+    )
 else
     fastnlist_dep = declare_dependency()
     message('fast pair list: disabled, classical pots use the C++ scan')

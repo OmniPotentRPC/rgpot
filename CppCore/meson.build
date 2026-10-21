@@ -220,7 +220,12 @@ if rpc_enabled and not get_option('with_rpc_client_only')
         'potserv',
         ['rgpot/rpc/server.cpp'],
         link_with: [ptlrpc, _linkto],
-        dependencies: _deps + [capnp_rpc_dep, ptlrpc_hdr_dep, vesin_dep, fastnlist_dep] + fortran_rt_deps,
+        dependencies: _deps + [
+            capnp_rpc_dep,
+            ptlrpc_hdr_dep,
+            vesin_dep,
+            fastnlist_dep,
+        ] + fortran_rt_deps,
         cpp_args: _args,
         build_rpath: _metatomic_build_rpath,
         include_directories: _incdirs,
