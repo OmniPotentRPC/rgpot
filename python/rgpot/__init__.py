@@ -31,6 +31,7 @@ has_expr = _core.has_expr
 has_fortran_pots = _core.has_fortran_pots
 has_metatomic_dlopen = _core.has_metatomic_dlopen
 has_xckernel = _core.has_xckernel
+has_ipi = _core.has_ipi
 
 # Absent when the matching meson flag was off. getattr keeps import rgpot
 # working for a reduced build and for the full wheel.
@@ -48,6 +49,11 @@ EAMAlPot: Any = getattr(_core, "EAMAlPot", None)
 FeHePot: Any = getattr(_core, "FeHePot", None)
 CuH2Pot: Any = getattr(_core, "CuH2Pot", None)
 WaterHPot: Any = getattr(_core, "WaterHPot", None)
+
+try:
+    from rgpot._core import IPIPot
+except ImportError:  # compiled without -DRGPOT_HAS_IPI
+    IPIPot = None  # type: ignore[misc, assignment]
 
 
 def _torch_major() -> str | None:
@@ -159,6 +165,7 @@ __all__ = [
     "D3Pot",
     "D4Pot",
     "ExprPot",
+    "IPIPot",
     "XcKernel",
     "PotentialCache",
     "SWPot",
@@ -177,6 +184,7 @@ __all__ = [
     "has_metatomic_dlopen",
     "has_cache",
     "has_expr",
+    "has_ipi",
     "has_dftd3",
     "has_dftd4",
     "has_xckernel",

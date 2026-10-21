@@ -25,6 +25,8 @@ has_xckernel: bool = True
 
 has_fortran_pots: bool = True
 
+has_ipi: bool = True
+
 def echo_f64(values: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> NDArray[numpy.float64]: ...
 
 def evaluate_lj(positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
@@ -247,6 +249,22 @@ class ExprPot:
         """
         One detached BatchEvaluator call. results[i] matches a serial call on inputs[i], bit for bit. n_threads 0 uses the hardware concurrency.
         """
+
+class IPIPot:
+    def __init__(self, address: str, timeout_s: float = 30.0) -> None:
+        """
+        i-PI socket server. address is unix:/absolute/path, unix:<name> (binds /tmp/ipi_<name>), tcp:<host>:<port>, or tcp:<port>. The driver connects and returns forces. Wire units are bohr and hartree. timeout_s covers connecting and one force exchange.
+        """
+
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
+
+    def stress(self) -> object:
+        """
+        Cauchy stress from the last call, shape (3, 3), in eV/Angstrom^3. None before a successful call.
+        """
+
+    @property
+    def endpoint(self) -> str: ...
 
 class XcKernel:
     def __init__(self, name: str) -> None: ...

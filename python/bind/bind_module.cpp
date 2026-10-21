@@ -53,6 +53,9 @@
 #ifdef RGPOT_HAS_FORTRAN_POTS
 #include "rgpot/fortran/FortranPots.hpp"
 #endif
+#ifdef RGPOT_HAS_IPI
+#include "rgpot/IPIPot/IPIPot.hpp"
+#endif
 
 #ifndef RGPOT_PY_VERSION
 #define RGPOT_PY_VERSION "0.0.0"
@@ -231,7 +234,6 @@ NumpyXcScalars scal_from_dict(const nb::dict &scal, std::size_t npts) {
 }
 #endif
 
-#ifdef RGPOT_HAS_XCKERNEL
 nb::ndarray<nb::numpy, double, nb::c_contig>
 buffer_to_numpy(const double *src, size_t rows, size_t cols) {
   const size_t n = rows * cols;
@@ -242,7 +244,6 @@ buffer_to_numpy(const double *src, size_t rows, size_t cols) {
   nb::capsule owner(buf, [](void *p) noexcept { delete[] static_cast<double *>(p); });
   return nb::ndarray<nb::numpy, double, nb::c_contig>(buf, {rows, cols}, owner);
 }
-#endif
 
 #ifdef RGPOT_HAS_FORTRAN_POTS
 template <typename Pot>
@@ -303,6 +304,11 @@ NB_MODULE(_core, m) {
   m.attr("has_fortran_pots") = true;
 #else
   m.attr("has_fortran_pots") = false;
+#endif
+#ifdef RGPOT_HAS_IPI
+  m.attr("has_ipi") = true;
+#else
+  m.attr("has_ipi") = false;
 #endif
 
   // F6 round trip. -0.0, NaN, and subnormals are copied unchanged.
@@ -513,6 +519,53 @@ NB_MODULE(_core, m) {
       },
       nb::arg("name"));
   rgpot::pybind::bind_calls(expr);
+#endif
+
+#ifdef RGPOT_HAS_IPI
+  nb::class_<rgpot::IPIPot>(m, "IPIPot")
+      .def(
+          "__init__",
+          [](rgpot::IPIPot *self, const std::string &address, double timeout_s) {
+            rgpot::IPIConfig cfg;
+            cfg.address = address;
+            cfg.timeout_s = timeout_s;
+            new (self) rgpot::IPIPot(cfg);
+          },
+          nb::arg("address"), nb::arg("timeout_s") = 30.0,
+          "i-PI socket server. address is unix:/absolute/path, unix:<name> "
+          "(binds /tmp/ipi_<name>), tcp:<host>:<port>, or tcp:<port>. The "
+          "driver connects and returns forces. Wire units are bohr and "
+          "hartree. timeout_s covers connecting and one force exchange.")
+      .def(
+          "__call__",
+          [](rgpot::IPIPot &self, const F64 &positions, nb::handle atom_types,
+             const F64 &box) {
+            auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
+            double energy = 0.0;
+            double variance = 0.0;
+            AtomMatrix forces;
+            {
+              nb::gil_scoped_release release;
+              std::tie(energy, forces, variance) =
+                  self(geom.pos, geom.types, geom.box);
+            }
+            return nb::make_tuple(energy, rgpot::pybind::matrix_to_numpy(forces),
+                                  variance);
+          },
+          nb::arg("positions").noconvert(), nb::arg("atom_types"),
+          nb::arg("box").noconvert())
+      .def(
+          "stress",
+          [](const rgpot::IPIPot &self) -> nb::object {
+            double stress[9];
+            if (!self.copyStress(stress)) {
+              return nb::none();
+            }
+            return nb::cast(buffer_to_numpy(stress, 3, 3));
+          },
+          "Cauchy stress from the last call, shape (3, 3), in eV/Angstrom^3. "
+          "None before a successful call.")
+      .def_prop_ro("endpoint", &rgpot::IPIPot::endpoint);
 #endif
 
 #ifdef RGPOT_HAS_XCKERNEL

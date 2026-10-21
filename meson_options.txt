@@ -62,3 +62,9 @@ option(
     value: 'auto',
     description: 'Fortran-backed potentials (CuH2; grows with the eOn migration). Independent of the RPC options.',
 )
+option(
+    'with_ipi',
+    type: 'feature',
+    value: 'auto',
+    description: 'i-PI socket server Potential (POSIX sockets). auto is on except on Windows.',
+)
