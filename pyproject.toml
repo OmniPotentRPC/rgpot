@@ -179,6 +179,11 @@ repair-wheel-command = """
       --exclude libmetatensor.so \
       --exclude libgomp.so.1
   rm -rf "$tmp"
+  # auditwheel rewrites NEEDED on librgpot.so.<version> only. Recopy that
+  # file onto librgpot.so.<soversion>, which _core actually loads.
+  repaired=$(find {dest_dir} -name '*.whl' -print -quit)
+  test -n "$repaired"
+  bash scripts/rgpot_repair_wheel.sh --refresh-soname "$repaired"
 """
 
 [tool.cibuildwheel.macos]

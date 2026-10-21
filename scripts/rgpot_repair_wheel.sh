@@ -6,8 +6,20 @@
 #   rgpot/lib/torch-X.Y/libmetatomic_engine.so          (multi-ABI)
 # Each engine gets RUNPATH for *its* torch-X.Y only (never list all ABIs).
 set -euo pipefail
+# --refresh-soname recopies librgpot.so.<version> onto the SONAME aliases
+# after auditwheel. The pre-auditwheel copy lets ldd resolve librgpot.so.N,
+# but auditwheel rewrites NEEDED only on the versioned file. _core loads the
+# alias, which would still NEEDED libopenblas.so.0.
+REFRESH=0
+if [[ "${1:-}" == "--refresh-soname" ]]; then
+  REFRESH=1
+  shift
+fi
 WHL="${1:?wheel path}"
-command -v patchelf >/dev/null
+command -v readelf >/dev/null
+if [[ "$REFRESH" -eq 0 ]]; then
+  command -v patchelf >/dev/null
+fi
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 python3 -m zipfile -e "$WHL" "$WORK"
@@ -31,6 +43,7 @@ if [[ -n "$_maj" ]]; then
   UMBRELLA_RPATH+=":\$ORIGIN/../metatensor/torch/torch-${_maj}/lib"
 fi
 
+if [[ "$REFRESH" -eq 0 ]]; then
 while IFS= read -r -d '' so; do
   base=$(basename "$so")
   rel=${so#"$WORK/"}
@@ -65,6 +78,7 @@ while IFS= read -r -d '' so; do
     patchelf --set-rpath '$ORIGIN' "$so" 2>/dev/null || true
   fi
 done < <(find "$WORK" -type f \( -name '*.so' -o -name '*.so.*' \) -print0)
+fi
 
 # zip/pip cannot store ELF soname symlinks. meson installs
 # librgpot.so.<version> whose DT_SONAME is librgpot.so.<soversion>
@@ -93,10 +107,22 @@ done < <(find "$WORK" -type f -name '*.so' -print0)
 [[ $bad -eq 0 ]] || exit 1
 
 python3 - <<PY
-import zipfile
+import base64, hashlib, zipfile
 from pathlib import Path
 root = Path("$WORK")
 out = Path("$WHL")
+records = list(root.glob("*.dist-info/RECORD"))
+if records:
+    rec = records[0]
+    lines = []
+    for p in sorted(root.rglob("*")):
+        if p.is_file() and p.name != "RECORD":
+            rel = p.relative_to(root).as_posix()
+            data = p.read_bytes()
+            digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode()
+            lines.append(f"{rel},sha256={digest},{len(data)}")
+    lines.append(f"{rec.relative_to(root).as_posix()},,")
+    rec.write_text("\n".join(lines) + "\n")
 tmp = out.with_suffix(".whl.tmp")
 with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED) as z:
     for p in sorted(root.rglob("*")):
