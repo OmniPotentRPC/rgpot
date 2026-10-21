@@ -154,14 +154,15 @@ TEST_CASE("FeHe iron matches the eOn reference", "[fortran][fehe]") {
   requireNoNetForce(forces);
 }
 
-TEST_CASE("Fortran potentials report process-serial reentrancy",
+TEST_CASE("Fortran potentials report per-instance reentrancy",
           "[fortran][caps]") {
-  // Each kernel keeps its neighbour table in module storage, so callers
-  // must not evaluate them concurrently.
-  REQUIRE(rgpot::fortranpots::SWPot{}.caps().reentrancy ==
-          rgpot::Reentrancy::ProcessSerial);
-  REQUIRE(rgpot::fortranpots::EAMAlPot{}.caps().reentrancy ==
-          rgpot::Reentrancy::ProcessSerial);
-  REQUIRE(rgpot::fortranpots::FeHePot{}.caps().reentrancy ==
-          rgpot::Reentrancy::ProcessSerial);
+  // Each instance owns its neighbour table, so separate instances evaluate
+  // concurrently and multi-image callers keep one per image.
+  for (const rgpot::PotCaps caps :
+       {rgpot::fortranpots::SWPot{}.caps(), rgpot::fortranpots::EAMAlPot{}.caps(),
+        rgpot::fortranpots::FeHePot{}.caps(),
+        rgpot::fortranpots::CuH2Pot{}.caps()}) {
+    REQUIRE(caps.reentrancy == rgpot::Reentrancy::PerInstance);
+    REQUIRE(caps.perImageInstances);
+  }
 }
