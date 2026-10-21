@@ -52,3 +52,7 @@ xtb_engine_dep = declare_dependency(
     link_with: [xtb_engine],
     include_directories: _incdirs + [xtb_inc],
 )
+
+# Shared library directory. Tests put this on the process-start loader path
+# so a bad explicit engine_path cannot be rescued by the bare soname.
+xtb_engine_dir = meson.current_build_dir()
