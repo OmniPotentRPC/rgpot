@@ -287,7 +287,8 @@ jobs:
           "$RUNNER_TEMP/sdist-env/bin/python" -m pip install --quiet build twine
           "$RUNNER_TEMP/sdist-env/bin/python" -m build --sdist
       - name: Check
-        run: "$RUNNER_TEMP/sdist-env/bin/python" -m twine check dist/*
+        run: |
+          "$RUNNER_TEMP/sdist-env/bin/python" -m twine check dist/*
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sdist
