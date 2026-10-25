@@ -56,11 +56,16 @@ run_x86() {
     return
   fi
   echo "== x86_64 fixtures ($cc) =="
-  "$cc" -c -O2 "$TESTS/ok.c" -o "$work/ok.o"
-  "$cc" -c -O3 -mavx2 "$TESTS/bad_global.c" -o "$work/bad_global.o"
-  "$cc" -c -O2 "$TESTS/bad_unlisted.c" -o "$work/bad_unlisted.o"
-  "$cc" -c -O2 -mpopcnt "$TESTS/v2_popcnt.c" -o "$work/v2.o"
-  "$cc" -shared -fPIC -O2 "$TESTS/ok_dyn.c" -o "$work/ok.so"
+  # The fixtures assume the x86-64 baseline outside their dispatched
+  # kernels. A distribution compiler whose default -march is higher
+  # (Ubuntu 26.04's gcc emits VEX scalar moves in plain -O2 code) would
+  # fail the clean cases for the wrong reason, so pin the baseline.
+  local base=(-march=x86-64)
+  "$cc" -c -O2 "${base[@]}" "$TESTS/ok.c" -o "$work/ok.o"
+  "$cc" -c -O3 "${base[@]}" -mavx2 "$TESTS/bad_global.c" -o "$work/bad_global.o"
+  "$cc" -c -O2 "${base[@]}" "$TESTS/bad_unlisted.c" -o "$work/bad_unlisted.o"
+  "$cc" -c -O2 "${base[@]}" -mpopcnt "$TESTS/v2_popcnt.c" -o "$work/v2.o"
+  "$cc" -shared -fPIC -O2 "${base[@]}" "$TESTS/ok_dyn.c" -o "$work/ok.so"
 
   expect_ok "$work/ok.o" --allow "$TESTS/allow-ok.toml" --json "$work/ok.json"
   python3 - "$work/ok.json" <<'PY'
@@ -92,8 +97,8 @@ PY
   expect_fail "popcnt" "$work/v2.o" --allow "$TESTS/allow-ok.toml" --baseline x86-64
   expect_ok "$work/v2.o" --allow "$TESTS/allow-ok.toml" --baseline x86-64-v2
 
-  "$cc" -c -O2 "$TESTS/ctz.c" -o "$work/ctz.o"
-  "$cc" -c -O2 -mbmi "$TESTS/andn.c" -o "$work/andn.o"
+  "$cc" -c -O2 "${base[@]}" "$TESTS/ctz.c" -o "$work/ctz.o"
+  "$cc" -c -O2 "${base[@]}" -mbmi "$TESTS/andn.c" -o "$work/andn.o"
   expect_ok "$work/ctz.o" --allow "$TESTS/allow-ok.toml"
   expect_fail "andn_bits" "$work/andn.o" --allow "$TESTS/allow-ok.toml"
   expect_fail "bmi1" "$work/andn.o" --allow "$TESTS/allow-ok.toml"
