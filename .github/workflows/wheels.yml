@@ -76,7 +76,10 @@ jobs:
           for whl in wheelhouse/*.whl; do
             echo "== ${whl}"
             rm -rf _whlx && mkdir _whlx && unzip -qo "${whl}" -d _whlx
-            lib=$(find _whlx -name 'librgpot*' | head -1)
+            # The wheel also carries one library per Fortran kernel
+            # (librgpot_cuh2.so, ...); find order put one of those first on
+            # the Ubuntu 26.04 runner. Take the versioned main library.
+            lib=$(find _whlx -name 'librgpot.so*' ! -name 'librgpot_*' | sort -V | tail -1)
             test -n "${lib}" || { echo "no librgpot in wheel" >&2; exit 1; }
             n=$(nm "${lib}" 2>/dev/null \
               | grep -cE 'rgpot_(sw|edip|lenosky|tersoff|eam_al|fehe|cuh2|water_h)_force' || true)
@@ -185,7 +188,7 @@ jobs:
           for whl in "${wheels[@]}"; do
             echo "== ${whl}"
             rm -rf _whlx && mkdir _whlx && unzip -qo "${whl}" -d _whlx
-            lib=$(find _whlx -name 'librgpot*.dylib' | head -1)
+            lib=$(find _whlx -name 'librgpot*.dylib' ! -name 'librgpot_*' | sort -V | tail -1)
             test -n "${lib}" || { echo "no librgpot in wheel" >&2; exit 1; }
             nm -g "${lib}" > _syms_raw
             n=$(grep -cE 'rgpot_(sw|edip|lenosky|tersoff|eam_al|fehe|cuh2|water_h)_force' _syms_raw || true)
