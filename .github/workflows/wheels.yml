@@ -279,10 +279,15 @@ jobs:
       # wrap, which needs gfortran and OpenBLAS (lapack=openblas).
       - name: OpenBLAS for the dftd4 wrap
         run: sudo apt-get update && sudo apt-get install -y gfortran libopenblas-dev pkg-config
+      # pipx's cache under /opt hits the runner's disk quota on the
+      # Ubuntu 26.04 image; a venv in the runner's temp dir does not.
       - name: Build sdist
-        run: pipx run build --sdist
+        run: |
+          python3 -m venv "$RUNNER_TEMP/sdist-env"
+          "$RUNNER_TEMP/sdist-env/bin/python" -m pip install --quiet build twine
+          "$RUNNER_TEMP/sdist-env/bin/python" -m build --sdist
       - name: Check
-        run: pipx run twine check dist/*
+        run: "$RUNNER_TEMP/sdist-env/bin/python" -m twine check dist/*
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sdist
