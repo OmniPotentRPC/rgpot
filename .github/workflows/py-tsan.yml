@@ -52,15 +52,16 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - name: Lower vm.mmap_rnd_bits when TSan requires it
+      - name: Lower vm.mmap_rnd_bits for TSan
         shell: bash
         run: |
           set -euo pipefail
-          bits="$(cat /proc/sys/vm/mmap_rnd_bits || echo 28)"
-          echo "vm.mmap_rnd_bits=${bits}"
-          if [ "${bits}" -gt 28 ]; then
-            sudo sysctl vm.mmap_rnd_bits=28
-          fi
+          # /proc/sys/vm/mmap_rnd_bits is root-only on the Ubuntu 26.04
+          # runner, so an unprivileged read cannot decide whether the
+          # sysctl is needed. TSan's shadow layout needs at most 28 bits;
+          # set it unconditionally and print what the kernel reports.
+          sudo sysctl -w vm.mmap_rnd_bits=28
+          sudo sysctl -n vm.mmap_rnd_bits
 
       - name: Pytest under ThreadSanitizer
         shell: bash
@@ -79,7 +80,11 @@ jobs:
           # The tag is pinned by digest. Mount the tree at /src. /work holds
           # the image's pyenv install.
           IMAGE=ghcr.io/nascheme/numpy-tsan:3.14t@sha256:f6dd658f1a155be35e27b182cac97c2a77c4b2d62bacb81753beaba725978149
+          # TSan re-executes with ASLR disabled when the layout still
+          # clashes; the default seccomp profile blocks that personality
+          # call inside the container.
           docker run --rm -i \
+            --security-opt seccomp=unconfined \
             -e PKG -e TEST_PATH -e IMPORTS -e EXTRAS -e RUST_CRATE -e RUST_ARCHIVE -e TSAN_CMAKE_ARGS -e RUST_TOOLCHAIN \
             -v "$GITHUB_WORKSPACE":/src -w /src \
             "$IMAGE" \
