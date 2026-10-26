@@ -1,7 +1,7 @@
 # Cargo workspace: library (rgpot-core) + repo tooling (potctl).
 # Release lockstep / project CLI lives in potctl, not in the published core crate.
 [workspace]
-members = ["rgpot-core", "potctl"]
+members = ["rgpot-core", "rgpot-pair", "potctl"]
 resolver = "2"
 
 [workspace.package]
