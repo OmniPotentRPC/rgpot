@@ -129,6 +129,14 @@ rgpot_minimage = static_library(
     pic: true,
     install: false,
 )
+rgpot_halfshell = static_library(
+    'rgpot_halfshell',
+    files('rgpot/nlist/HalfShellWalk.cc'),
+    include_directories: _incdirs,
+    cpp_args: _args,
+    pic: true,
+    install: false,
+)
 
 # Cap'n Proto schema + NWChem/CPMD frontends need libcapnp (ptlrpc). Only pull
 # them in when RPC is on (server or client-only); lean -Dwith_rpc=false builds
@@ -180,7 +188,7 @@ if not get_option('with_rpc_client_only')
 
     # Implemented rgpotentials
     subdir('rgpot/LennardJones')  # 'lennard_jones': LJPot + LJClusterPot
-    rgpotentials = [lennard_jones]
+    rgpotentials = [lennard_jones, rgpot_halfshell]
 
     subdir('rgpot/Morse')  # 'morse'
     rgpotentials += [morse]
@@ -699,6 +707,7 @@ if get_option('with_tests')
     if not get_option('with_rpc_client_only')
         test_array += [
             ['MorsePotTest', 'morse_pot_test', 'MorsePotTest.cc', ''],
+            ['HalfShellScanTest', 'half_shell_scan_test', 'HalfShellScanTest.cc', ''],
             ['SuttonChenPotTest', 'sutton_chen_pot_test', 'SuttonChenPotTest.cc', ''],
             ['ReducedPairTest', 'reduced_pair_test', 'ReducedPairTest.cc', ''],
             ['EMTPotTest', 'emt_pot_test', 'EMTPotTest.cc', ''],
