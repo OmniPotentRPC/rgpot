@@ -42,6 +42,7 @@ D4Pot: Any = getattr(_core, "D4Pot", None)
 ExprPot: Any = getattr(_core, "ExprPot", None)
 XcKernel: Any = getattr(_core, "XcKernel", None)
 StillingerWeberSi: Any = getattr(_core, "StillingerWeberSi", None)
+TersoffSiC: Any = getattr(_core, "TersoffSiC", None)
 SWPot: Any = getattr(_core, "SWPot", None)
 EDIPPot: Any = getattr(_core, "EDIPPot", None)
 LenoskyPot: Any = getattr(_core, "LenoskyPot", None)
@@ -164,6 +165,7 @@ __all__ = [
     "LJPot",
     "NumericalError",
     "StillingerWeberSi",
+    "TersoffSiC",
     "D3Pot",
     "D4Pot",
     "ExprPot",
