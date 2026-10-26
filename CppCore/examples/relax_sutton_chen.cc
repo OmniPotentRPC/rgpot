@@ -81,14 +81,22 @@ int main(int argc, char **argv) {
     return 1;
   }
   const double initial = energy;
+  // A compressed start has a huge force. Cap the atom move at a
+  // fraction of the lattice parameter so the step cannot jump the well.
   double step = 1.0e-3 * cfg.a;
-  for (int iter = 0; iter < 4000; ++iter) {
-    if (max_abs(forces) < 1.0e-8) {
+  const double move_cap = 0.05 * cfg.a;
+  for (int iter = 0; iter < 20000; ++iter) {
+    const double mf = max_abs(forces);
+    if (mf < 1.0e-8) {
       break;
+    }
+    double disp = step;
+    if (disp * mf > move_cap) {
+      disp = move_cap / mf;
     }
     std::vector<double> trial = points.x;
     for (std::size_t i = 0; i < trial.size(); ++i) {
-      trial[i] += step * forces[i];
+      trial[i] += disp * forces[i];
     }
     double next = 0.0;
     std::vector<double> next_forces(trial.size(), 0.0);
@@ -100,9 +108,12 @@ int main(int argc, char **argv) {
       points.x.swap(trial);
       forces.swap(next_forces);
       energy = next;
-      step *= 1.2;
+      step = disp * 1.2;
     } else {
-      step *= 0.5;
+      step = disp * 0.5;
+    }
+    if (!(step > 0.0)) {
+      break;
     }
   }
   std::cout.setf(std::ios::fixed);

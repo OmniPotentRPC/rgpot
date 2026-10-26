@@ -271,3 +271,74 @@ TEST_CASE("Sutton-Chen bulk scales and the gold and platinum rows",
   REQUIRE_THAT(exported.well_depth, WithinAbs(scales.well_depth, 0.0));
   REQUIRE(rgpot_sutton_chen_scales(nullptr, &exported) == 1);
 }
+
+TEST_CASE("gold clusters relax from the rescaled platinum geometries",
+          "[SuttonChen]") {
+  const auto pt = rgpot::sutton_chen_platinum();
+  const auto au = rgpot::sutton_chen_gold();
+  const char *files[] = {"CppCore/tests/data/sc108/pt38",
+                         "CppCore/tests/data/sc108/pt75"};
+  for (const char *file : files) {
+    double epsilon = 0.0;
+    double c = 0.0;
+    double a = 0.0;
+    int nexp = 0;
+    int mexp = 0;
+    const AtomMatrix deposited =
+        load_points(file, &epsilon, &c, &a, &nexp, &mexp);
+    const std::vector<int> types(deposited.rows(), 79);
+    rgpot::SuttonChenPot reduced(rgpot::SuttonChenConfig{
+        .epsilon = epsilon, .c = c, .a = a, .n = nexp, .m = mexp, .cutoff = 0.0});
+    const double e_reduced = std::get<0>(reduced(deposited, types, cube(200.0)));
+
+    // The deposited file is in units of a = 1. Platinum in Angstrom is
+    // that file times a_Pt, and the gold copy is that geometry times
+    // a_Au / a_Pt.
+    const double factor = au.a / pt.a;
+    AtomMatrix pos = deposited;
+    for (size_t i = 0; i < pos.rows(); ++i) {
+      for (size_t k = 0; k < 3; ++k) {
+        pos(i, k) *= factor;
+      }
+    }
+    rgpot::SuttonChenConfig cfg = au;
+    cfg.cutoff = 0.0;
+    rgpot::SuttonChenPot pot(cfg);
+    auto [energy, forces, variance] = pot(pos, types, cube(200.0));
+    (void)variance;
+    const double move_cap = 0.05 * cfg.a;
+    double step = 1.0e-3 * cfg.a;
+    for (int iter = 0; iter < 2000; ++iter) {
+      double mf = 0.0;
+      for (size_t i = 0; i < forces.rows(); ++i) {
+        for (size_t k = 0; k < 3; ++k) {
+          mf = std::max(mf, std::abs(forces(i, k)));
+        }
+      }
+      if (mf < 1.0e-8) {
+        break;
+      }
+      double disp = step;
+      if (disp * mf > move_cap) {
+        disp = move_cap / mf;
+      }
+      AtomMatrix trial = pos;
+      for (size_t i = 0; i < trial.rows(); ++i) {
+        for (size_t k = 0; k < 3; ++k) {
+          trial(i, k) += disp * forces(i, k);
+        }
+      }
+      auto [next, next_forces, next_variance] = pot(trial, types, cube(200.0));
+      (void)next_variance;
+      if (next < energy) {
+        pos = trial;
+        forces = next_forces;
+        energy = next;
+        step = disp * 1.2;
+      } else {
+        step = disp * 0.5;
+      }
+    }
+    REQUIRE_THAT(energy, WithinAbs(au.epsilon * e_reduced, 1e-6));
+  }
+}
