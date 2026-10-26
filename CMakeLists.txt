@@ -201,7 +201,8 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/SuttonChen/SuttonChenScales.cc
       CppCore/rgpot/nlist/HalfShellWalk.cc
       CppCore/rgpot/nlist/HalfShell.cc
-      CppCore/rgpot/StillingerWeber/SWSi.cc)
+      CppCore/rgpot/StillingerWeber/SWSi.cc
+      CppCore/rgpot/Tersoff/TersoffSiC.cc)
 
   if(RGPOT_WITH_HIGHWAY)
     list(APPEND RGPOT_SOURCES CppCore/rgpot/simd/hwy_kernels.cc)

@@ -55,7 +55,8 @@ enum class PotType {
   TIP4PPt,     //!<  TIP4P water on platinum. Built with -Dwith_water=true.
   IPI,         //!<  i-PI socket server. Built with -Dwith_ipi (POSIX).
   SuttonChen,  //!<  Sutton-Chen 10-8. Reduced units by default.
-  SWSi1985     //!<  Stillinger-Weber silicon, 1985 parameters.
+  SWSi1985,    //!<  Stillinger-Weber silicon, 1985 parameters.
+  TersoffSiC   //!<  Tersoff silicon-carbon, 1989 parameters.
 };
 
 } // namespace rgpot
