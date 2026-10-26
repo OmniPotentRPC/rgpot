@@ -63,4 +63,11 @@ int rgpot_morse_gradient(double epsilon, double rho, double re, double cutoff,
                          int32_t natoms, const double *positions,
                          double *energy, double *gradient);
 
+/// Species A is the first `n_a` atoms, species B the rest.
+/// `eps` and `sig` are ordered AA, AB, BB.
+int rgpot_binary_lj_gradient(int32_t n_a, const double *eps, const double *sig,
+                             double cutoff, int32_t natoms,
+                             const double *positions, double *energy,
+                             double *gradient);
+
 } // extern "C"

@@ -127,6 +127,23 @@ TEST_CASE("Morse dimer sits at depth 1 with no force", "[ReducedPair]") {
   REQUIRE_THAT(curv, WithinAbs(2.0 * 36.0 * (2.0 * a * a - a), 0.0));
 }
 
+TEST_CASE("equal binary parameters match the unit cluster", "[ReducedPair]") {
+  const double pos[12] = {0.2,  0.0, 0.1, 1.1, -0.3, 0.2,
+                          -0.4, 0.8, 0.5, 0.6, -0.7, 1.2};
+  const double eps[3] = {1.0, 1.0, 1.0};
+  const double sig[3] = {1.0, 1.0, 1.0};
+  double binary = 0.0;
+  double unit = 0.0;
+  double gb[12] = {};
+  double gu[12] = {};
+  REQUIRE(rgpot_binary_lj_gradient(2, eps, sig, 0.0, 4, pos, &binary, gb) == 0);
+  REQUIRE(rgpot_lj_gradient(1.0, 1.0, 0.0, 4, pos, &unit, gu) == 0);
+  REQUIRE_THAT(binary, WithinAbs(unit, 0.0));
+  for (int i = 0; i < 12; ++i) {
+    REQUIRE_THAT(gb[i], WithinAbs(gu[i], 0.0));
+  }
+}
+
 TEST_CASE("atom energies sum to twice the cluster energy", "[ReducedPair]") {
   const double pos[9] = {0.0, 0.0, 0.0, 1.3, 0.1, -0.2, -0.4, 1.2, 0.3};
   double energy = 0.0;

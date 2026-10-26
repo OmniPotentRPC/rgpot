@@ -337,3 +337,43 @@ rgpot_morse_gradient(double epsilon, double rho, double re, double cutoff,
   return 0;
 }
 
+extern "C" RGPOT_PAIR_API int
+rgpot_binary_lj_gradient(int32_t n_a, const double *eps, const double *sig,
+                         double cutoff, int32_t natoms, const double *positions,
+                         double *energy, double *gradient) {
+  if (bad_cluster(natoms, positions, energy, gradient) || n_a < 0 ||
+      n_a > natoms || eps == nullptr || sig == nullptr) {
+    return 1;
+  }
+  if (eps[0] == 1.0 && eps[1] == 1.0 && eps[2] == 1.0 && sig[0] == 1.0 &&
+      sig[1] == 1.0 && sig[2] == 1.0 && !(cutoff > 0.0)) {
+    return rgpot_lj_gradient(1.0, 1.0, 0.0, natoms, positions, energy,
+                             gradient);
+  }
+  zero_gradient(natoms, gradient);
+  double e = 0.0;
+  for (int32_t i = 0; i < natoms; ++i) {
+    for (int32_t j = i + 1; j < natoms; ++j) {
+      double d[3];
+      double r2 = 0.0;
+      for (int k = 0; k < 3; ++k) {
+        d[k] = positions[3 * i + k] - positions[3 * j + k];
+        r2 += d[k] * d[k];
+      }
+      if (!inside(r2, cutoff)) {
+        continue;
+      }
+      const int kind = (i < n_a ? 0 : 2) + (j < n_a ? 0 : 1);
+      const int index = kind == 0 ? 0 : (kind == 3 ? 2 : 1);
+      const double a = (sig[index] * sig[index]) / r2;
+      const double a3 = a * a * a;
+      const double a6 = a3 * a3;
+      e += 4.0 * eps[index] * (a6 - a3);
+      const double coef = 4.0 * eps[index] * (-12.0 * a6 + 6.0 * a3) / r2;
+      add_pair(gradient, i, j, d, coef);
+    }
+  }
+  *energy = e;
+  return 0;
+}
+
