@@ -37,13 +37,23 @@ linked↔dlopen parity through the same ISO C semantics.
 
 ## Engine selection (`XTBDlopen`)
 
-Search order for `libxtb_engine.so`:
+A non-empty `XTBDlopenConfig::engine_path` is exclusive: that path is the only
+candidate, and it must contain a directory separator (`/` or `\`). A bare
+soname such as `libxtb_engine.so` is rejected. The loader would resolve it
+through `LD_LIBRARY_PATH`, `DYLD_LIBRARY_PATH`, or `PATH`, and could open a
+different `libxtb_engine`. If the path does not open, or the library does not
+export the C ABI, construction throws. The error names that path and the
+loader diagnostic (`dlerror` on POSIX). `RGPOT_XTB_ENGINE`, the bare soname,
+and the directory lists are not consulted.
 
-1. `XTBDlopenConfig::engine_path`
-2. env `RGPOT_XTB_ENGINE`
-3. env `XTB_ENGINE`
-4. bare `libxtb_engine.so` (loader path)
-5. `EON_POTENTIALS_PATH` / `RGPOT_ENGINE_PATH` directory lists
+When `engine_path` is empty, search order is:
+
+1. env `RGPOT_XTB_ENGINE`
+2. env `XTB_ENGINE`
+3. bare soname on the loader path (`libxtb_engine.so` on Linux,
+   `libxtb_engine.dylib` then `libxtb_engine.so` on Apple,
+   `xtb_engine.dll` then `libxtb_engine.dll` on Windows)
+4. `EON_POTENTIALS_PATH` / `RGPOT_ENGINE_PATH` directory lists
 
 Construct throws if no engine is found (same pattern as `MetatomicDlopen`).
 
@@ -66,7 +76,9 @@ pixi run -e xtbbld meson test -C bbdir-xtb --suite xtb --print-errorlogs
 ```
 
 Catch tags: `[xtb]`, `[xtb][linked]`, `[xtb][dlopen]`. Dlopen tests set
-`RGPOT_XTB_ENGINE` to the built engine full path.
+`RGPOT_XTB_ENGINE` to the built engine full path. `XTBDlopenTest` also puts
+that engine on the process loader path and requires a missing explicit
+`engine_path` to throw anyway.
 
 Thin-host compile check (no libxtb):
 

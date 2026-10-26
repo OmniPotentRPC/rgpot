@@ -1,0 +1,70 @@
+# Linux XTB build. with_xtb defaults to false and the wheels pass
+# -Dwith_xtb=false, so XTBDlopenTest and XTBtest do not run there.
+# This job builds them and fails when the suite fails.
+
+name: XTB
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: xtb-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  PIXi_VERSION: v0.70.2
+
+jobs:
+  xtb-linux:
+    runs-on: ubuntu-22.04
+    name: xtb (linux)
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          submodules: recursive
+
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
+        with:
+          pixi-version: ${{ env.PIXi_VERSION }}
+          cache: true
+          environments: xtbbld
+          activate-environment: true
+
+      - name: Meson test suite xtb
+        run: |
+          set -euo pipefail
+          meson setup bbdir-xtb \
+            -Dwith_xtb=true \
+            -Dwith_tests=true \
+            -Dwith_examples=false \
+            -Dwith_rpc=false \
+            -Dwith_cache=false \
+            --buildtype=debug
+          meson compile -C bbdir-xtb
+          meson test -C bbdir-xtb --suite xtb --print-errorlogs
+          meson introspect --tests bbdir-xtb > xtb-tests.json
+          python3 - <<'PY'
+          import json
+          tests = json.load(open("xtb-tests.json", encoding="utf-8"))
+
+          def in_xtb(test):
+              return any(
+                  suite == "xtb" or suite.endswith(":xtb")
+                  for suite in test.get("suite") or []
+              )
+
+          names = {test["name"] for test in tests if in_xtb(test)}
+          need = {"XTBDlopenEngineTest", "XTBtest"}
+          missing = sorted(need - names)
+          if missing:
+              raise SystemExit(
+                  "meson suite xtb is missing: " + ", ".join(missing)
+              )
+          print("suite xtb:", ", ".join(sorted(names)))
+          PY
