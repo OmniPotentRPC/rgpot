@@ -90,6 +90,26 @@ TersoffSiC::Pair mixPair(const Homo &a, const Homo &b, double chi) {
   return p;
 }
 
+void angular(const TersoffSiC::Species &sp, double cth, double &g, double &dg) {
+  const double gap = sp.h - cth;
+  const double den = sp.d2 + gap * gap;
+  g = sp.gamma * (1.0 + sp.c2 / sp.d2 - sp.c2 / den);
+  dg = sp.gamma * (-2.0 * sp.c2 * gap) / (den * den);
+}
+
+void bondOrder(const TersoffSiC::Species &sp, double zeta, double &b,
+               double &db) {
+  if (zeta == 0.0) {
+    b = 1.0;
+    db = 0.0;
+    return;
+  }
+  const double base = 1.0 + sp.beta_n * std::pow(zeta, sp.n);
+  b = std::pow(base, -0.5 / sp.n);
+  db = -0.5 * std::pow(base, -0.5 / sp.n - 1.0) * sp.beta_n *
+       std::pow(zeta, sp.n - 1.0);
+}
+
 void radial(const TersoffSiC::Pair &p, double r, Bond &b) {
   if (r <= p.rin) {
     b.fc = 1.0;
@@ -137,6 +157,17 @@ void resetRows(Scratch &s, std::size_t n) {
       s.rows[i].reserve(32);
     }
   }
+}
+
+double cosine(const Bond &a, const Bond &b) {
+  const double inv = 1.0 / (a.r * b.r);
+  double c = (a.x * b.x + a.y * b.y + a.z * b.z) * inv;
+  if (c > 1.0) {
+    c = 1.0;
+  } else if (c < -1.0) {
+    c = -1.0;
+  }
+  return c;
 }
 
 } // namespace
@@ -299,11 +330,27 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
   }
 
   for (int i = 0; i < n; ++i) {
+    const Species &sp = m_species[sc.kind[static_cast<std::size_t>(i)]];
     const std::vector<Bond> &nb = sc.rows[static_cast<std::size_t>(i)];
-    for (const Bond &bj : nb) {
-      *energy += 0.5 * bj.fc * (bj.f_r + bj.f_a);
-      const double dedr =
-          0.5 * (bj.dfc * (bj.f_r + bj.f_a) + bj.fc * (bj.df_r + bj.df_a));
+    const int m = static_cast<int>(nb.size());
+    for (int a = 0; a < m; ++a) {
+      const Bond &bj = nb[static_cast<std::size_t>(a)];
+      double zeta = 0.0;
+      for (int k = 0; k < m; ++k) {
+        if (k == a) {
+          continue;
+        }
+        double g = 0.0;
+        double dg = 0.0;
+        angular(sp, cosine(bj, nb[static_cast<std::size_t>(k)]), g, dg);
+        zeta += nb[static_cast<std::size_t>(k)].fc * g;
+      }
+      double bij = 0.0;
+      double db = 0.0;
+      bondOrder(sp, zeta, bij, db);
+      *energy += 0.5 * bj.fc * (bj.f_r + bij * bj.f_a);
+      const double dedr = 0.5 * (bj.dfc * (bj.f_r + bij * bj.f_a) +
+                                 bj.fc * (bj.df_r + bij * bj.df_a));
       const double inv_r = 1.0 / bj.r;
       const double sx = scale * dedr * bj.x * inv_r;
       const double sy = scale * dedr * bj.y * inv_r;
@@ -314,6 +361,49 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
       acc[3 * bj.j] -= sx;
       acc[3 * bj.j + 1] -= sy;
       acc[3 * bj.j + 2] -= sz;
+      const double dedz = 0.5 * bj.fc * bj.f_a * db;
+      if (dedz == 0.0) {
+        continue;
+      }
+      for (int k = 0; k < m; ++k) {
+        if (k == a) {
+          continue;
+        }
+        const Bond &bk = nb[static_cast<std::size_t>(k)];
+        const double cth = cosine(bj, bk);
+        double g = 0.0;
+        double dg = 0.0;
+        angular(sp, cth, g, dg);
+        const double inv_r1 = inv_r;
+        const double inv_r2 = 1.0 / bk.r;
+        const double inv = inv_r1 * inv_r2;
+        const double d_edcth = dedz * bk.fc * dg;
+        const double d_edr2 = dedz * bk.dfc * g;
+        const double g1x =
+            d_edcth * (bk.x * inv - cth * bj.x * inv_r1 * inv_r1);
+        const double g1y =
+            d_edcth * (bk.y * inv - cth * bj.y * inv_r1 * inv_r1);
+        const double g1z =
+            d_edcth * (bk.z * inv - cth * bj.z * inv_r1 * inv_r1);
+        const double g2x =
+            d_edr2 * bk.x * inv_r2 +
+            d_edcth * (bj.x * inv - cth * bk.x * inv_r2 * inv_r2);
+        const double g2y =
+            d_edr2 * bk.y * inv_r2 +
+            d_edcth * (bj.y * inv - cth * bk.y * inv_r2 * inv_r2);
+        const double g2z =
+            d_edr2 * bk.z * inv_r2 +
+            d_edcth * (bj.z * inv - cth * bk.z * inv_r2 * inv_r2);
+        acc[3 * bj.j] -= scale * g1x;
+        acc[3 * bj.j + 1] -= scale * g1y;
+        acc[3 * bj.j + 2] -= scale * g1z;
+        acc[3 * bk.j] -= scale * g2x;
+        acc[3 * bk.j + 1] -= scale * g2y;
+        acc[3 * bk.j + 2] -= scale * g2z;
+        acc[3 * i] += scale * (g1x + g2x);
+        acc[3 * i + 1] += scale * (g1y + g2y);
+        acc[3 * i + 2] += scale * (g1z + g2z);
+      }
     }
   }
 }
