@@ -54,7 +54,8 @@ enum class PotType {
   SPCE,        //!<  Flexible SPC/E water. Built with -Dwith_water=true.
   TIP4PPt,     //!<  TIP4P water on platinum. Built with -Dwith_water=true.
   IPI,         //!<  i-PI socket server. Built with -Dwith_ipi (POSIX).
-  SuttonChen   //!<  Sutton-Chen 10-8. Reduced units by default.
+  SuttonChen,  //!<  Sutton-Chen 10-8. Reduced units by default.
+  SWSi1985     //!<  Stillinger-Weber silicon, 1985 parameters.
 };
 
 } // namespace rgpot

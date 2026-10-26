@@ -193,6 +193,9 @@ if not get_option('with_rpc_client_only')
     subdir('rgpot/Morse')  # 'morse'
     rgpotentials += [morse]
 
+    subdir('rgpot/StillingerWeber')  # 'sw_si': 1985 Stillinger-Weber silicon
+    rgpotentials += [sw_si]
+
     subdir('rgpot/EMT')  # 'asap_emt'
     rgpotentials += [asap_emt]
 
