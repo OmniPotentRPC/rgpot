@@ -143,12 +143,22 @@ void expectSameImage(const LongDoubleMinimumImage &old_image,
   old_image.fold(ox, oy, oz);
   image.fold(nx, ny, nz);
   CAPTURE(x, y, z, ox, oy, oz, nx, ny, nz);
-  REQUIRE_THAT(nx, WithinAbs(ox, tol));
-  REQUIRE_THAT(ny, WithinAbs(oy, tol));
-  REQUIRE_THAT(nz, WithinAbs(oz, tol));
-  const double ro = std::sqrt(ox * ox + oy * oy + oz * oz);
-  const double rn = std::sqrt(nx * nx + ny * ny + nz * nz);
-  REQUIRE(rn <= ro + tol);
+  const double ro2 = ox * ox + oy * oy + oz * oz;
+  const double rn2 = nx * nx + ny * ny + nz * nz;
+  const double ro = std::sqrt(ro2);
+  const double rn = std::sqrt(rn2);
+  const double comp = std::max(
+      {std::abs(nx - ox), std::abs(ny - oy), std::abs(nz - oz)});
+  if (comp <= tol) {
+    // Same lattice image. Its length is the minimum-image contract.
+    REQUIRE(rn <= ro + tol);
+    return;
+  }
+  // A second lattice image of the same length sits on the boundary of
+  // the Wigner-Seitz cell. Either vector is a minimum image. Accept it
+  // only when the lengths match to the ordinary contract, so a longer
+  // image cannot hide inside the looser tolerance used for far inputs.
+  REQUIRE_THAT(rn2, WithinAbs(ro2, 1e-9 * std::max(1.0, ro2)));
 }
 
 } // namespace
@@ -178,9 +188,17 @@ TEST_CASE("Double minimum image agrees with the long-double search",
         expectSameImage(old_image, image, local(rng), local(rng), local(rng),
                         kTol);
       if (mask == 7) {
-        for (int n = 0; n < 8; ++n)
-          expectSameImage(old_image, image, far(rng), far(rng), far(rng),
-                          kTol);
+        // Far inputs are near 1e8. The double fold tracks the long-double
+        // image to a few dozen units in the last place of that input.
+        for (int n = 0; n < 8; ++n) {
+          const double x = far(rng);
+          const double y = far(rng);
+          const double z = far(rng);
+          const double mag = std::max({std::abs(x), std::abs(y), std::abs(z), 1.0});
+          const double far_tol = std::max(
+              kTol, 64.0 * std::numeric_limits<double>::epsilon() * mag);
+          expectSameImage(old_image, image, x, y, z, far_tol);
+        }
       }
     }
     const std::array<bool, 3> periodic{true, true, true};
@@ -220,8 +238,16 @@ TEST_CASE("Double minimum image agrees with the long-double search",
   }
   const double past_guard[9] = {1.0, 1.0, 0.0, 0.0, 5.0e-10, 0.0, 0.0, 0.0,
                                 1.0};
-  REQUIRE_THROWS_AS(rgpot::nlist::MinimumImage(past_guard, periodic),
-                    std::invalid_argument);
+  // Non-singular. The released fold Minkowski-reduces a cell this thin
+  // and still returns an image, instead of rejecting the search.
+  rgpot::nlist::MinimumImage thin(past_guard, periodic);
+  double tx = 1.0e-12;
+  double ty = 1.0e-12;
+  double tz = 1.0e-12;
+  thin.fold(tx, ty, tz);
+  REQUIRE(std::isfinite(tx));
+  REQUIRE(std::isfinite(ty));
+  REQUIRE(std::isfinite(tz));
 }
 
 TEST_CASE("Benchmark minimum image fold", "[.][benchmark]") {
