@@ -2018,6 +2018,23 @@ if get_option('with_tests')
             workdir: meson.source_root(),
             timeout: 300,
         )
+        sw_si_bench = executable(
+            'sw_si_bench',
+            sources: ['tests/sw_si_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'sw_si_bench',
+            sw_si_bench,
+            workdir: meson.source_root(),
+            timeout: 120,
+        )
     endif
 endif
 
