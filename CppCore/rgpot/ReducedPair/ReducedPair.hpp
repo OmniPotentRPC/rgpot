@@ -54,4 +54,13 @@ int rgpot_lj_arithmetic_gradient(const double *sigma, double cutoff,
                                  int32_t natoms, const double *positions,
                                  double *energy, double *gradient);
 
+/// Morse pair. `re` is the pair minimum. `r2 <= 0` writes zeros.
+int rgpot_morse_pair(double epsilon, double rho, double re, double r2,
+                     double *energy, double *dvdr_over_r, double *d2vdr2);
+
+/// Morse cluster. `cutoff <= 0` keeps every pair.
+int rgpot_morse_gradient(double epsilon, double rho, double re, double cutoff,
+                         int32_t natoms, const double *positions,
+                         double *energy, double *gradient);
+
 } // extern "C"

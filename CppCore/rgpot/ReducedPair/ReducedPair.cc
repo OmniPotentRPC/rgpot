@@ -92,6 +92,30 @@ void add_pair(double *gradient, int32_t i, int32_t j, const double d[3],
   }
 }
 
+void morse_unit(double rho, double r2, double *energy, double *coef,
+                double *curv) {
+  const double r = std::sqrt(r2);
+  const double a = std::exp(rho * (1.0 - r));
+  *energy = a * (a - 2.0);
+  *coef = 2.0 * rho * (a - a * a) / r;
+  if (curv != nullptr) {
+    *curv = 2.0 * rho * rho * (2.0 * a * a - a);
+  }
+}
+
+void morse_general(double epsilon, double rho, double re, double r2,
+                   double *energy, double *coef, double *curv) {
+  const double r = std::sqrt(r2);
+  const double b = std::exp(rho * (1.0 - r / re));
+  *energy = epsilon * b * (b - 2.0);
+  *coef = epsilon * 2.0 * rho / re * b * (1.0 - b) / r;
+  if (curv != nullptr) {
+    const double db = -b * rho / re;
+    const double d2b = b * (rho / re) * (rho / re);
+    *curv = epsilon * (2.0 * db * db + 2.0 * (b - 1.0) * d2b);
+  }
+}
+
 #if defined(_WIN32)
 #define RGPOT_PAIR_API __declspec(dllexport)
 #else
@@ -258,6 +282,58 @@ rgpot_lj_arithmetic_gradient(const double *sigma, double cutoff, int32_t natoms,
     }
   }
   *energy = 4.0 * e;
+  return 0;
+}
+
+extern "C" RGPOT_PAIR_API int
+rgpot_morse_pair(double epsilon, double rho, double re, double r2,
+                 double *energy, double *dvdr_over_r, double *d2vdr2) {
+  if (energy == nullptr || dvdr_over_r == nullptr || d2vdr2 == nullptr) {
+    return 1;
+  }
+  if (!(r2 > 0.0) || !(re > 0.0)) {
+    *energy = 0.0;
+    *dvdr_over_r = 0.0;
+    *d2vdr2 = 0.0;
+    return 0;
+  }
+  if (epsilon == 1.0 && re == 1.0) {
+    morse_unit(rho, r2, energy, dvdr_over_r, d2vdr2);
+    return 0;
+  }
+  morse_general(epsilon, rho, re, r2, energy, dvdr_over_r, d2vdr2);
+  return 0;
+}
+
+extern "C" RGPOT_PAIR_API int
+rgpot_morse_gradient(double epsilon, double rho, double re, double cutoff,
+                     int32_t natoms, const double *positions, double *energy,
+                     double *gradient) {
+  if (bad_cluster(natoms, positions, energy, gradient) || !(re > 0.0)) {
+    return 1;
+  }
+  zero_gradient(natoms, gradient);
+  double e = 0.0;
+  for (int32_t i = 0; i < natoms; ++i) {
+    for (int32_t j = i + 1; j < natoms; ++j) {
+      double d[3];
+      double r2 = 0.0;
+      for (int k = 0; k < 3; ++k) {
+        d[k] = positions[3 * i + k] - positions[3 * j + k];
+        r2 += d[k] * d[k];
+      }
+      if (!inside(r2, cutoff)) {
+        continue;
+      }
+      double v = 0.0;
+      double coef = 0.0;
+      double curv = 0.0;
+      rgpot_morse_pair(epsilon, rho, re, r2, &v, &coef, &curv);
+      e += v;
+      add_pair(gradient, i, j, d, coef);
+    }
+  }
+  *energy = e;
   return 0;
 }
 

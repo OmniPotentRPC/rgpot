@@ -108,6 +108,25 @@ TEST_CASE("a cutoff drops the distant pair", "[ReducedPair]") {
   REQUIRE(energy != 0.0);
 }
 
+TEST_CASE("Morse dimer sits at depth 1 with no force", "[ReducedPair]") {
+  const double pos[6] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0};
+  double energy = 0.0;
+  double gradient[6] = {};
+  REQUIRE(rgpot_morse_gradient(1.0, 6.0, 1.0, 0.0, 2, pos, &energy, gradient) ==
+          0);
+  REQUIRE_THAT(energy, WithinAbs(-1.0, 0.0));
+  REQUIRE_THAT(gradient[0], WithinAbs(0.0, 0.0));
+  double pair_e = 0.0;
+  double coef = 0.0;
+  double curv = 0.0;
+  REQUIRE(rgpot_morse_pair(1.0, 6.0, 1.0, 0.64, &pair_e, &coef, &curv) == 0);
+  const double r = 0.8;
+  const double a = std::exp(6.0 * (1.0 - r));
+  REQUIRE_THAT(pair_e, WithinAbs(a * (a - 2.0), 0.0));
+  REQUIRE_THAT(coef, WithinAbs(2.0 * 6.0 * (a - a * a) / r, 0.0));
+  REQUIRE_THAT(curv, WithinAbs(2.0 * 36.0 * (2.0 * a * a - a), 0.0));
+}
+
 TEST_CASE("atom energies sum to twice the cluster energy", "[ReducedPair]") {
   const double pos[9] = {0.0, 0.0, 0.0, 1.3, 0.1, -0.2, -0.4, 1.2, 0.3};
   double energy = 0.0;
@@ -121,4 +140,6 @@ TEST_CASE("atom energies sum to twice the cluster energy", "[ReducedPair]") {
 TEST_CASE("bad arguments are rejected", "[ReducedPair]") {
   double energy = 0.0;
   REQUIRE(rgpot_lj_gradient(1.0, 1.0, 0.0, 2, nullptr, &energy, nullptr) == 1);
+  REQUIRE(rgpot_morse_gradient(1.0, 6.0, 0.0, 0.0, 0, nullptr, &energy,
+                               nullptr) == 1);
 }
