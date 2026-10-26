@@ -249,3 +249,58 @@ pub fn morse_gradient(epsilon: f64, rho: f64, re: f64, cutoff: f64, positions: &
     }
     energy
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn shell(n: usize) -> Vec<f64> {
+        let mut x = vec![0.0; 3 * n];
+        let golden = std::f64::consts::PI * (3.0 - 5.0_f64.sqrt());
+        for i in 0..n {
+            let z = 1.0 - 2.0 * (i as f64 + 0.5) / n as f64;
+            let radius = (1.0 - z * z).max(0.0).sqrt();
+            let theta = golden * i as f64;
+            let shell = 2.5;
+            x[3 * i] = shell * radius * theta.cos();
+            x[3 * i + 1] = shell * radius * theta.sin();
+            x[3 * i + 2] = shell * z;
+        }
+        x
+    }
+
+    #[test]
+    fn unit_lj38_shell_matches_the_anneal_bits() {
+        let x = shell(38);
+        let mut g = vec![0.0; x.len()];
+        let energy = lj_gradient(1.0, 1.0, 0.0, &x, &mut g);
+        assert_eq!(energy.to_bits(), 0xc043_0d64_cf22_d516);
+        let bits = g.iter().fold(0u64, |acc, value| {
+            acc.wrapping_mul(0x9E37_79B1_85EB_CA87)
+                .wrapping_add(value.to_bits())
+        });
+        assert_eq!(bits, 0x5294_11a1_48ae_0660);
+        let mut pair_energy = 0.0;
+        for i in 0..38 {
+            for j in (i + 1)..38 {
+                let mut r2 = 0.0;
+                for k in 0..3 {
+                    let d = x[3 * i + k] - x[3 * j + k];
+                    r2 += d * d;
+                }
+                pair_energy += lj_pair(1.0, 1.0, r2).0;
+            }
+        }
+        assert_eq!(pair_energy.to_bits(), energy.to_bits());
+    }
+
+    #[test]
+    fn dimer_at_one_is_zero_with_gradient_24() {
+        let x = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+        let mut g = [0.0; 6];
+        let energy = lj_gradient(1.0, 1.0, 0.0, &x, &mut g);
+        assert_eq!(energy, 0.0);
+        assert_eq!(g[0], 24.0);
+        assert_eq!(g[3], -24.0);
+    }
+}
