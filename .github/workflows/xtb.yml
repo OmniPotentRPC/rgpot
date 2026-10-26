@@ -60,7 +60,7 @@ jobs:
               )
 
           names = {test["name"] for test in tests if in_xtb(test)}
-          need = {"XTBDlopenTest", "XTBtest"}
+          need = {"XTBDlopenEngineTest", "XTBtest"}
           missing = sorted(need - names)
           if missing:
               raise SystemExit(
