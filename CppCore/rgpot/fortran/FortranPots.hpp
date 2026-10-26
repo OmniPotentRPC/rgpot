@@ -58,6 +58,10 @@ private:
     FortranWorkspace m_ws;                                                     \
   }
 
+/// Stillinger-Weber silicon (PotType::SWSi). Epsilon is eOn's
+/// 2.16826 * 1.06767385 = 2.3149945 eV, not the published 2.16723920 eV
+/// of PotType::SWSi1985. Their ratio is 1.068176741337. The factor
+/// 1.06767385 is untraced; see rgpot_sw.f90.
 RGPOT_FORTRAN_POT_CLASS(SWPot, SWSi);
 RGPOT_FORTRAN_POT_CLASS(EDIPPot, EDIP);
 RGPOT_FORTRAN_POT_CLASS(LenoskyPot, LenoskySi);

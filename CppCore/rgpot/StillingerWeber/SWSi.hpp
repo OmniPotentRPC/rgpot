@@ -9,8 +9,10 @@
  * @brief Stillinger-Weber silicon, 1985 parameters.
  *
  * F. H. Stillinger and T. A. Weber, Phys. Rev. B 31, 5262 (1985),
- * doi:10.1103/PhysRevB.31.5262. Equations (2.7) and (2.9). This is not
- * the rescaled epsilon compiled into the Fortran SWSi kernel.
+ * doi:10.1103/PhysRevB.31.5262. Equations (2.7) and (2.9).
+ * Epsilon is 3.4723e-12 erg, 2.16723920 eV. PotType::SWSi uses eOn's
+ * rescaled epsilon, 2.16826 * 1.06767385 = 2.3149945 eV. The ratio of
+ * the eOn value to this one is 1.068176741337. The factor is untraced.
  */
 
 #include <cstddef>
@@ -32,8 +34,9 @@ namespace rgpot {
  */
 class StillingerWeberSi : public Potential<StillingerWeberSi> {
 public:
-  /// Eq. (2.9) prints 3.4723e-12 erg per atom pair.
+  /// Eq. (2.9) prints 3.4723e-12 erg per atom pair, 2.16723920 eV.
   /// 1 erg = 1e-7 J. The CODATA electron-volt is 1.602176634e-19 J.
+  /// PotType::SWSi is 2.3149945 eV, larger by 1.068176741337.
   static constexpr double kEpsilon = 3.4723e-12 * 1.0e-7 / 1.602176634e-19;
   static constexpr double kSigma = 2.0951; //!< 0.20951 nm, Eq. (2.9).
   static constexpr double kA = 7.049556277;

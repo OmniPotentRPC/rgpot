@@ -11,10 +11,24 @@ doi:10.1103/PhysRevB.31.5262.
 The two-body and three-body parameters are equation (2.7).
 Sigma is 0.20951 nm.
 Epsilon is the value equation (2.9) prints, 3.4723e-12 erg per atom
-pair, converted with 1 erg = 1e-7 J and the CODATA electron-volt
-(1.602176634e-19 J).
-The Fortran =SWPot= class keeps eOn's rescaled epsilon and is not this
-potential.
+pair. With 1 erg = 1e-7 J and the CODATA electron-volt
+(1.602176634e-19 J) that is 2.16723920 eV.
+=PotType::SWSi=, the Fortran =SWPot= kernel, is not this potential.
+It uses eOn's rescaled epsilon, 2.16826 × 1.06767385 = 2.3149945 eV.
+The ratio of that epsilon to the published value is 1.068176741337.
+
+The product is copied from =client/potentials/SW/SWFortran.f90= in
+TheochemUI/eOn. The file header says "Last change: AA 3 Apr 2002",
+and the same lines are present at tags =svn-Dec16_2020= and =v2.8.0=:
+
+#+BEGIN_EXAMPLE
+  EPSILON = 2.16826D0 * 1.06767385d0, &  !* 1.07d0
+  LAMBDA  = 21.0d0,                   &  !* 1.07d0
+#+END_EXAMPLE
+
+Lambda stays 21 and is not multiplied. Neither that file nor the
+rgpot port (commit 7a3b5016) derives 1.06767385. The factor is
+untraced.
 
 ** Calls
 

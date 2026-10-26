@@ -183,11 +183,16 @@ cutoff plus skin, and an all-pairs scan below that.
 The cached list is a CSR half list, and the force loop subtracts the periodic
 image recorded at build whenever cutoff plus skin is below half the box.
 - =StillingerWeberSi= :: Stillinger-Weber silicon with the 1985 parameters
-(Phys. Rev. B 31, 5262).
+(Phys. Rev. B 31, 5262), equation (2.9).
+Epsilon is 3.4723e-12 erg, 2.16723920 eV.
 =energyAndGradient= and =energyAndGradientBatch= evaluate a whole
 configuration, and a batch that shares a cell and a species list.
 A =nlist::NeighborList= reuses the pairs across calls.
-The Fortran =SWPot= kernel is a different parameter set.
+The Fortran =SWPot= kernel (=PotType::SWSi=) uses eOn's rescaled
+epsilon, 2.16826 × 1.06767385 = 2.3149945 eV.
+The ratio of that epsilon to the published value is 1.068176741337.
+The factor 1.06767385 is copied from eOn's =SWFortran.f90= and is
+untraced.
 - =ZBLPot= :: Screened nuclear repulsion (Ziegler-Biersack-Littmark) with the
 LAMMPS switching function, on free boundaries.
 Configurable via =ZBLConfig= (=cut_inner=, =cut_global=); the constructor throws

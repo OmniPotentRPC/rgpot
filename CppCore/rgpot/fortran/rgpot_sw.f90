@@ -4,6 +4,23 @@
 ! Stillinger-Weber silicon. The kernel descends from eOn
 ! (https://github.com/TheochemUI/eOn, client/potentials/SW), BSD-3-Clause,
 ! copyright the eOn Development Team.
+!
+! PotType::SWSi uses eOn's rescaled epsilon, 2.16826 * 1.06767385
+! = 2.3149945 eV. The product is copied from
+! client/potentials/SW/SWFortran.f90 (file header "Last change:
+! AA 3 Apr 2002"), which is the same at tags svn-Dec16_2020 and
+! v2.8.0:
+!
+!   EPSILON = 2.16826D0 * 1.06767385d0, &  !* 1.07d0
+!   LAMBDA  = 21.0d0,                   &  !* 1.07d0
+!
+! Lambda stays 21 and is not multiplied. Neither that file nor the
+! rgpot port (7a3b5016) derives 1.06767385. The factor is untraced.
+! PotType::SWSi1985 is equation (2.9) of Phys. Rev. B 31, 5262 (1985),
+! doi:10.1103/PhysRevB.31.5262: 3.4723e-12 erg. With 1 erg = 1e-7 J
+! and the CODATA electron-volt (1.602176634e-19 J) that is
+! 2.16723920 eV. The ratio of this epsilon to that published value
+! is 1.068176741337.
 
 !> Stillinger-Weber potential in gather form.
 !!
@@ -34,7 +51,9 @@ module rgpot_sw
    type :: sw_params_t
       real(wp) :: sigma = 2.0951_wp        !< Length scale (Angstrom).
       real(wp) :: alpha = 1.8_wp           !< Cutoff in units of sigma.
-      real(wp) :: epsilon = 2.16826_wp*1.06767385_wp !< Energy scale (eV).
+      !> eOn rescaled energy scale, 2.3149945 eV. Not the published
+      !! 2.16723920 eV. See the module comment.
+      real(wp) :: epsilon = 2.16826_wp*1.06767385_wp
       real(wp) :: lambda = 21.0_wp         !< Three-body strength.
       real(wp) :: a = 7.049556277_wp       !< Two-body prefactor.
       real(wp) :: beta = 0.6022245584_wp   !< Two-body repulsion weight.

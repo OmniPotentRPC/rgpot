@@ -35,7 +35,7 @@ enum class PotType {
   Morse,       //!<  Pairwise Morse potential (platinum parameters).
   LJCluster,   //!<  Free-boundary 12-6 Lennard-Jones for clusters.
   ZBL,         //!<  Screened nuclear repulsion (Ziegler-Biersack-Littmark).
-  SWSi,        //!<  Stillinger-Weber silicon.
+  SWSi,        //!<  Stillinger-Weber silicon. eOn epsilon, 2.3149945 eV.
   EDIP,        //!<  Environment-dependent interatomic potential (silicon).
   LenoskySi,   //!<  Lenosky tight-binding-fit silicon.
   TersoffSi,   //!<  Tersoff bond-order silicon.

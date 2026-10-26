@@ -585,8 +585,9 @@ NB_MODULE(_core, m) {
   nb::class_<rgpot::StillingerWeberSi>(m, "StillingerWeberSi")
       .def(nb::init<>(),
            "Stillinger-Weber silicon, Stillinger and Weber, Phys. Rev. B "
-           "31, 5262 (1985). Energy is eV, lengths are Angstrom. The "
-           "gradient is dE/dx.")
+           "31, 5262 (1985). Epsilon is the published 2.16723920 eV, "
+           "not eOn's 2.3149945 eV (ratio 1.068176741337). Energy is "
+           "eV, lengths are Angstrom. The gradient is dE/dx.")
       .def(
           "__call__",
           [](rgpot::StillingerWeberSi &self, const F64 &positions,
