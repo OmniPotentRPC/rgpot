@@ -1,0 +1,49 @@
+#+TITLE: Sutton-Chen potential
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+
+* Sutton-Chen potential
+
+=SuttonChenPot= evaluates
+
+#+begin_example
+E = epsilon * [ 1/2 sum_i sum_{j != i} (a / r_ij)^n
+                - c * sum_i sqrt(rho_i) ]
+rho_i = sum_{j != i} (a / r_ij)^m
+#+end_example
+
+The form is Sutton and Chen, Philosophical Magazine Letters 61, 139 (1990).
+The default parameters are the reduced gold and platinum set: =n = 10=,
+=m = 8=, =c = 34.408=, =epsilon = 1=, =a = 1=.
+Doye and Wales use that set for the 10-8 cluster tables and write it on the
+first line of each deposited point file.
+The deposited Pt38 Oh geometry gives -10117.2454 and the Pt75 D5h geometry
+gives -20431.3452, in units of epsilon, to the four digits printed in the
+10-8 table.
+
+van der Walt, Terblans, and Swart reprint a parameter table and cite the
+1990 paper as their reference 4. The platinum row in that table is
+epsilon = 1.9833e-2 eV, a = 3.92 Angstrom, c = 34.408, n = 10, m = 8.
+The table has no gold row. Gold's physical epsilon and a were not verified
+from the 1990 table, so no physical preset is compiled in.
+Set epsilon and a on =SuttonChenConfig= when a calculation needs eV and
+Angstrom.
+
+The default cutoff is 40 in the coordinate unit, with no energy shift.
+=cutoff = 0= keeps every pair.
+Cluster evaluation does not fold the cell. Periodic evaluation uses the
+minimum image and needs a positive cutoff.
+The neighbor list is =PairListCache::evaluate=: one pass builds the
+densities and a second pass writes the forces.
+
+=rgpot_sutton_chen_energy_forces= is the C entry point. It takes an
+=rgpot_sc_config= and writes one energy and one force array.
+
+* Reduced cluster pairs
+
+=rgpot_lj_gradient= and =rgpot_morse_gradient= return the energy gradient
+of an unshifted cluster. =rgpot_lj_curvature_pairs= fills energy, slope,
+and curvature for a list of squared distances in one call.
+The =rgpot-pair= crate exposes the same trees as =lj_unit= and
+=morse_unit=, which a Rust caller can inline.
+The unit Lennard-Jones branch is the direct inverse-power tree, with
+contraction off, so a search sees the same rounding as that expression.

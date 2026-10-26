@@ -1,0 +1,1 @@
+Sutton-Chen potential, with the reduced platinum and gold 10-8 parameters as the default. Energy and analytic forces, cluster and periodic evaluation, and `rgpot_sutton_chen_energy_forces` for callers that load the library. Physical epsilon and a are not compiled in.

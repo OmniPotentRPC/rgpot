@@ -1,0 +1,1 @@
+Unshifted Lennard-Jones and Morse cluster calls, binary Lennard-Jones, and TIP4P site energy. `rgpot_lj_gradient` returns the energy gradient. `rgpot_lj_curvature_pairs` evaluates a pair list in one call. The `rgpot-pair` crate inlines the same unit trees.
