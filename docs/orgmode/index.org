@@ -95,6 +95,7 @@ meson compile -C bbdir && meson test -C bbdir
    reference/architecture
    reference/python_api
    reference/sw_si
+   reference/tersoff_sic
    reference/mpi
    reference/c_abi
    reference/engine_abi

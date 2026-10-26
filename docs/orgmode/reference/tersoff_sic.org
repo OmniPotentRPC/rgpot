@@ -1,0 +1,55 @@
+#+TITLE: Tersoff silicon-carbon (1989)
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Tersoff silicon-carbon (1989)
+
+=TersoffSiC= evaluates the silicon, carbon, and silicon-carbide potential
+of J. Tersoff, Phys. Rev. B 39, 5566 (1989),
+doi:10.1103/PhysRevB.39.5566.
+The erratum, Phys. Rev. B 41, 3248 (1990),
+doi:10.1103/PhysRevB.41.3248.2, sets carbon B to 346.74 eV and d to 4.3484.
+Carbon beta is 1.5724e-7 and is dimensionless. It is the Table I value
+in the NIST and LAMMPS transcriptions. The erratum does not print it.
+The Fortran =TersoffPot= class is eOn's silicon set and is not this
+potential.
+
+Atomic number 14 is silicon and 6 is carbon.
+Any other species is rejected.
+lambda3 is zero for both elements, so the factor
+exp(lambda3^m (rij - rik)^m) is identically one and is not evaluated.
+The cross term uses chi = 0.9776.
+lambda and the repulsive amplitude are arithmetic and geometric means.
+The attractive amplitude is chi times the geometric mean.
+The inner cutoffs are averaged with each other, and the outer cutoffs
+are averaged with each other.
+
+** Calls
+
+Lengths are Angstrom and the energy is eV.
+The cell is periodic in each direction.
+=forceImpl= writes the force, which is minus the gradient.
+=energyAndGradient= writes the energy and dE/dx for one configuration.
+=energyAndGradientBatch= writes both for several configurations that
+share one cell and one species list, so a caller enters the library
+once per batch.
+The Python method =energy_gradient= accepts positions of shape
+=(n_atoms, 3)= or =(n_config, n_atoms, 3)= and uses that entry.
+
+An orthogonal cell that holds at least three cutoff-lengths on each
+edge builds the bond list once per call.
+The cell edge is the silicon outer cutoff, the longest in this set, or
+that cutoff plus the skin of a =nlist::NeighborList=.
+A null list rebuilds on every call.
+A held list is reused while each atom has moved by at most half the skin.
+Any other cell uses the minimum-image fold.
+
+** Diamond energies
+
+At a0 = 5.432 Angstrom the silicon diamond energy is -4.629595 eV/atom.
+At a0 = 3.5656 Angstrom the carbon diamond energy is -7.370514 eV/atom.
+Those are the closed forms of this parameter set at the lattice
+constants that reproduce the fitted cohesive energies, 4.63 eV and
+7.37 eV.
+=TersoffSiCTest= pins both and checks the analytic gradient against a
+finite difference.

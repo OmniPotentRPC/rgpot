@@ -193,6 +193,12 @@ epsilon, 2.16826 × 1.06767385 = 2.3149945 eV.
 The ratio of that epsilon to the published value is 1.068176741337.
 The factor 1.06767385 is copied from eOn's =SWFortran.f90= and is
 untraced.
+- =TersoffSiC= :: Tersoff potential for silicon, carbon, and silicon-carbide
+(Phys. Rev. B 39, 5566 (1989) and the 1990 erratum).
+=energyAndGradient= and =energyAndGradientBatch= evaluate a whole
+configuration, and a batch that shares a cell and a species list.
+A =nlist::NeighborList= reuses the pairs across calls.
+The Fortran =TersoffPot= kernel is the eOn silicon set, not this one.
 - =ZBLPot= :: Screened nuclear repulsion (Ziegler-Biersack-Littmark) with the
 LAMMPS switching function, on free boundaries.
 Configurable via =ZBLConfig= (=cut_inner=, =cut_global=); the constructor throws
