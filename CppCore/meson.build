@@ -674,6 +674,7 @@ if get_option('with_tests')
     if not get_option('with_rpc_client_only')
         test_array += [
             ['MorsePotTest', 'morse_pot_test', 'MorsePotTest.cc', ''],
+            ['SuttonChenPotTest', 'sutton_chen_pot_test', 'SuttonChenPotTest.cc', ''],
             ['EMTPotTest', 'emt_pot_test', 'EMTPotTest.cc', ''],
             ['EAMCellPotTest', 'eam_cell_pot_test', 'EAMCellPotTest.cc', ''],
             ['PairListTest', 'pair_list_test', 'PairListTest.cc', ''],
