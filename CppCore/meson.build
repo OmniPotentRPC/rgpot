@@ -204,6 +204,11 @@ if not get_option('with_rpc_client_only')
         rgpotentials += [ipi]
     endif
 
+    # Sutton-Chen. Own directory so a Stillinger-Weber or Tersoff
+    # series can land beside it.
+    subdir('rgpot/SuttonChen')  # 'sutton_chen'
+    rgpotentials += [sutton_chen]
+
     # Pure dlopen consumer of split mopacc (no Cap'n Proto, no OpenMOPAC embed).
     subdir('rgpot/MOPACPot')  # 'mopacpot'
     rgpotentials += [mopacpot]

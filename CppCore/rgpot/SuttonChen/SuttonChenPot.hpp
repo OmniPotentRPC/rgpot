@@ -1,0 +1,115 @@
+#pragma once
+// MIT License
+// Copyright 2023--present rgpot developers
+
+/**
+ * @brief Sutton-Chen potential.
+ *
+ * Sutton and Chen, Philosophical Magazine Letters 61, 139 (1990):
+ *
+ *   E = epsilon * [ 1/2 sum_i sum_{j != i} (a / r_ij)^n
+ *                   - c * sum_i sqrt(rho_i) ]
+ *   rho_i = sum_{j != i} (a / r_ij)^m
+ *
+ * Gold and platinum use n = 10, m = 8, c = 34.408. The cluster
+ * references are in the reduced units epsilon = 1, a = 1 written on
+ * the first line of the Doye and Wales point files
+ * (doye.chem.ox.ac.uk/jon/structures/SC/10-8/). Those files are the
+ * deposited Pt38 Oh and Pt75 D5h geometries. Doye and Wales attribute
+ * n, m and c to the 1990 paper. Physical epsilon and a are not
+ * compiled in. A later reprint of the 1990 table lists platinum, and
+ * gold's pair from that table was not verified, so there is no
+ * physical preset.
+ *
+ * optbench's globalopt Lennard-Jones problems truncate at cutoff 40
+ * in the coordinate unit (problems/globalopt/lj75.toml). The same
+ * truncation, with no energy shift, is the default. cutoff <= 0 keeps
+ * every pair. On the deposited clusters every pair sits inside r = 3,
+ * so the default and the full sum agree past the published digits.
+ */
+
+// clang-format off
+#include <cstdint>
+// clang-format on
+#include "rgpot/ParamHash.hpp"
+#include "rgpot/Potential.hpp"
+#include "rgpot/types/AtomMatrix.hpp"
+
+extern "C" {
+
+/// Plain parameter block for @c rgpot_sutton_chen_energy_forces.
+/// Field order is part of the ABI.
+struct rgpot_sc_config {
+  double epsilon;
+  double c;
+  double a;
+  int32_t n;
+  int32_t m;
+  double cutoff;
+  int32_t periodic;
+};
+
+/// Energy and forces. Returns 0 on success, 1 on a bad argument.
+/// The exported name is rgpot_sutton_chen_energy_forces. A trailing
+/// `_force` is the Fortran bind(c) shape the symbol audit hides.
+/// @a box may be null when @c periodic is 0. @a forces has room for
+/// @c 3 * natoms doubles.
+int rgpot_sutton_chen_energy_forces(const rgpot_sc_config *cfg, int32_t natoms,
+                            const double *positions, const double *box,
+                            double *energy, double *forces);
+
+} // extern "C"
+
+namespace rgpot {
+
+/**
+ * @brief Parameters for the Sutton-Chen potential.
+ *
+ * Plain aggregate. Defaults are the reduced Pt/Au 10-8 potential.
+ */
+struct SuttonChenConfig {
+  double epsilon = 1.0; //!< Energy unit. 1 in the cluster references.
+  double c = 34.408;    //!< Dimensionless density coefficient (Pt, Au).
+  double a = 1.0;       //!< Length scale. 1 in the cluster references.
+  int n = 10;           //!< Repulsive exponent. 10 for Pt and Au.
+  int m = 8;            //!< Density exponent. 8 for Pt and Au.
+  /// Truncation distance in the coordinate unit. 0 keeps every pair.
+  /// 40 matches the optbench globalopt Lennard-Jones cutoff.
+  double cutoff = 40.0;
+  /// Minimum image convention. Cluster references leave this false.
+  bool periodic = false;
+};
+
+/**
+ * @class SuttonChenPot
+ * @brief Sutton-Chen energy and analytic forces.
+ * @ingroup rgpot_potentials
+ */
+class SuttonChenPot : public Potential<SuttonChenPot> {
+public:
+  SuttonChenPot() : SuttonChenPot(SuttonChenConfig{}) {}
+
+  explicit SuttonChenPot(const SuttonChenConfig &c);
+
+  [[nodiscard]] const SuttonChenConfig &config() const noexcept {
+    return m_config;
+  }
+
+  [[nodiscard]] PotCaps caps() const noexcept override {
+    return {.periodic = m_config.periodic};
+  }
+
+  [[nodiscard]] uint64_t paramsKey() const noexcept override {
+    return m_paramsKey;
+  }
+
+  void forceImpl(const ForceInput &in, ForceOut *out) const override;
+
+private:
+  static constexpr uint64_t kKernelVersion = 1;
+
+  SuttonChenConfig m_config;
+  uint64_t m_paramsKey{0};
+};
+
+} // namespace rgpot

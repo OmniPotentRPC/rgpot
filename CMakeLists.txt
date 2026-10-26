@@ -195,7 +195,8 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/simd/exact_fma_hw.cc
       CppCore/rgpot/simd/exp.cc
       CppCore/rgpot/CuH2/cuh2Utils.cc
-      CppCore/rgpot/fortran/FortranPots.cc)
+      CppCore/rgpot/fortran/FortranPots.cc
+      CppCore/rgpot/SuttonChen/SuttonChenPot.cc)
 
   if(RGPOT_WITH_HIGHWAY)
     list(APPEND RGPOT_SOURCES CppCore/rgpot/simd/hwy_kernels.cc)
