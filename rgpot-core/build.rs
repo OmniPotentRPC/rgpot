@@ -43,9 +43,27 @@ fn generate_c_header(crate_dir: &str) {
     std::fs::write(&path, format!("{}\n", content.trim_end())).unwrap();
 }
 
+/// Source revision of the build: `RGPOT_SOURCE_REVISION`, else the git
+/// short hash of the checkout, else empty.
+fn source_revision(crate_dir: &str) -> String {
+    if let Ok(rev) = env::var("RGPOT_SOURCE_REVISION") {
+        return rev.trim().to_owned();
+    }
+    std::process::Command::new("git")
+        .args(["-C", crate_dir, "rev-parse", "--short=12", "HEAD"])
+        .output()
+        .ok()
+        .filter(|out| out.status.success())
+        .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_owned())
+        .unwrap_or_default()
+}
+
 fn main() {
     #[allow(unused_variables)]
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+
+    println!("cargo::rerun-if-env-changed=RGPOT_SOURCE_REVISION");
+    println!("cargo::rustc-env=RGPOT_SOURCE_REVISION={}", source_revision(&crate_dir));
 
     // eindir-core is a normal Cargo dependency now; its capi #[no_mangle] symbols
     // resolve through the shared crate, so no prebuilt static lib link is needed.
@@ -93,6 +111,17 @@ fn compile_capnp_schema(crate_dir: &str) {
         .expect("Failed to write Cap'n Proto stub");
         return;
     };
+
+    // The build-identity fields exist only in schema revisions that carry
+    // them; the producer code is compiled in when they are present.
+    println!("cargo::rustc-check-cfg=cfg(rgpot_schema_build_identity)");
+    if std::fs::read_to_string(&capnp_schema)
+        .map(|text| text.contains("buildVersion"))
+        .unwrap_or(false)
+    {
+        println!("cargo::rustc-cfg=rgpot_schema_build_identity");
+    }
+    println!("cargo::rerun-if-changed={}", capnp_schema.display());
 
     capnpc::CompilerCommand::new()
         .src_prefix(&capnp_dir)

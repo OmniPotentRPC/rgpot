@@ -40,6 +40,7 @@ The C++ server hosts built-in potentials such as Lennard-Jones and CuH2,
 optional xTB / tblite / metatomic backends, and runtime-loaded quantum engines.
 ~NWChemPot~ loads ~libnwchemc~ from the split ~nwchemc~ project.
 ~CPMDPot~ loads ~libcpmdc~ from the split ~cpmdc~ project.
+Its documentation is at [[https://cpmdc.rgoswami.me][cpmdc.rgoswami.me]].
 Both quantum frontends keep geometry on ~ForceInput~ and carry method options in
 the matching ~PotentialConfig~ arm.
 
@@ -65,6 +66,7 @@ meson compile -C bbdir && meson test -C bbdir
    :caption: Tutorials
 
    tutorials/quickstart
+   tutorials/cpmd
    tutorials/molecular-global-optimization
 
 .. toctree::
@@ -82,10 +84,20 @@ meson compile -C bbdir && meson test -C bbdir
 
 .. toctree::
    :maxdepth: 2
+   :caption: Explanation
+
+   explanation/index
+
+.. toctree::
+   :maxdepth: 2
    :caption: Reference
 
    reference/architecture
    reference/python_api
+   reference/mpi
+   reference/c_abi
+   reference/engine_abi
+   reference/simd_exp
    api/index
    changelog
 

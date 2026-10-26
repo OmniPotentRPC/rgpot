@@ -1,0 +1,78 @@
+// MIT License
+// Copyright 2023--present rgpot developers
+//
+// Rigorous bounds for the quintic switch of CppCore/rgpot/PairSwitch.hpp.
+// Run: sollya scripts/validation/quintic_switch.sollya
+//
+// PairSwitch.hpp evaluates, for t in [0, 1],
+//   S(t)  = 1 + t^3 (-10 + t (15 - 6 t))     (t^3 as (t*t)*t)
+//   S'(t) = -30 t^2 (1 - t)^2
+// in binary64 with round-to-nearest. This script checks the polynomial
+// identities exactly and bounds, with infnorm (interval arithmetic, so the
+// bounds are upper bounds, not samples):
+//   1. sup |S'| and sup |S''| on [0, 1] (conditioning: how far an error in
+//      t moves S and the force);
+//   2. the first-order rounding error of each Horner form above, in units
+//      of u = 2^-53, from the standard model fl(a op b) = (a op b)(1 + d),
+//      |d| <= u, propagated operation by operation.
+
+verbosity = 0;
+prec = 165;
+display = decimal;
+I = [0; 1];
+
+S = 1 + x^3 * (-10 + x * (15 - 6 * x));
+Sref = 1 - 10 * x^3 + 15 * x^4 - 6 * x^5;
+dS = -30 * x^2 * (1 - x)^2;
+
+// Exact identities (rational arithmetic on the expanded forms).
+print("S(0) =", evaluate(S, 0), " S(1) =", evaluate(S, 1));
+print("S'(0) =", evaluate(diff(S), 0), " S'(1) =", evaluate(diff(S), 1));
+print("S''(0) =", evaluate(diff(diff(S)), 0), " S''(1) =", evaluate(diff(diff(S)), 1));
+print("Horner form minus monomial form, sup on [0,1]:", infnorm(S - Sref, I));
+print("dS minus diff(S), sup on [0,1]:", infnorm(dS - diff(S), I));
+
+// 1. Conditioning.
+print("sup |S'|  on [0,1] (exact 15/8 = 1.875):", infnorm(diff(S), I));
+print("sup |S''| on [0,1] (exact 10/sqrt(3) = 5.7735...):", infnorm(diff(diff(S)), I));
+
+// 2. First-order rounding error of S, in units of u. Operations as the
+// C++ evaluates them:
+//   s1 = 6 t, s2 = 15 - s1, s3 = t s2, s4 = -10 + s3,
+//   t2 = t t, t3 = t2 t, s5 = t3 s4, S = 1 + s5.
+s1 = 6 * x;
+s2 = 15 - s1;
+s3 = x * s2;
+s4 = -10 + s3;
+t3 = x^3;
+s5 = t3 * s4;
+e1 = abs(s1);
+e2 = abs(s2) + e1;
+e3 = abs(s3) + x * e2;
+e4 = abs(s4) + e3;
+et3 = 2 * t3;
+e5 = abs(s5) + t3 * e4 + abs(s4) * et3;
+eS = abs(S) + e5;
+bS = sup(infnorm(eS, I));
+print("first-order |fl(S) - S| / u, sup on [0,1]:", bS);
+
+// S'(t) as evaluated: omt = 1 - t, q = -30 * t2 * omt * omt, left to right:
+//   m1 = -30 t2, m2 = m1 omt, q = m2 omt; t2 and omt rounded once each.
+omt = 1 - x;
+m1 = -30 * x^2;
+m2 = m1 * omt;
+q = m2 * omt;
+f_t2 = 30 * x^2;
+f_m1 = abs(m1) + f_t2;
+f_m2 = abs(m2) + f_m1 * omt + abs(m1) * abs(omt);
+f_q = abs(q) + f_m2 * omt + abs(m2) * abs(omt);
+bdS = sup(infnorm(f_q, I));
+print("first-order |fl(S') - S'| / u, sup on [0,1]:", bdS);
+
+// The 2^-53 unit makes the absolute bounds below; the neglected terms are
+// O(u^2) and below 8 u relative to these.
+u = 2^(-53);
+print("absolute bound |fl(S) - S|  <=", bS * u);
+print("absolute bound |fl(S') - S'| <=", bdS * u);
+
+quit;

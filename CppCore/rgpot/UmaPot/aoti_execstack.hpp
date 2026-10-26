@@ -82,8 +82,8 @@ inline bool clear_elf_gnu_stack(uint8_t *data, size_t n) {
     return false;
   if (data[4] != 2 || data[5] != 1)
     return false;
-  const uint64_t phoff = uint64_t(rd32(data + 32)) |
-                         (uint64_t(rd32(data + 36)) << 32);
+  const uint64_t phoff =
+      uint64_t(rd32(data + 32)) | (uint64_t(rd32(data + 36)) << 32);
   const uint16_t phentsize = rd16(data + 54);
   const uint16_t phnum = rd16(data + 56);
   if (phentsize < 8 || phnum == 0)
@@ -110,8 +110,8 @@ inline bool elf_needs_gnu_stack_clear(const uint8_t *data, size_t n) {
     return false;
   if (data[4] != 2 || data[5] != 1)
     return false;
-  const uint64_t phoff = uint64_t(rd32(data + 32)) |
-                         (uint64_t(rd32(data + 36)) << 32);
+  const uint64_t phoff =
+      uint64_t(rd32(data + 32)) | (uint64_t(rd32(data + 36)) << 32);
   const uint16_t phentsize = rd16(data + 54);
   const uint16_t phnum = rd16(data + 56);
   if (phentsize < 8 || phnum == 0)
@@ -159,8 +159,8 @@ inline bool scan_or_clear_pt2(uint8_t *buf, size_t n, bool write) {
       throw std::runtime_error("UmaPot: missing AOTI ZIP64 locator");
     const uint64_t zip64 = rd64(buf + eocd - 12);
     require_region(zip64, 56);
-    if (rd32(buf + zip64) != 0x06064b50u ||
-        rd32(buf + zip64 + 16) != 0 || rd32(buf + zip64 + 20) != 0)
+    if (rd32(buf + zip64) != 0x06064b50u || rd32(buf + zip64 + 16) != 0 ||
+        rd32(buf + zip64 + 20) != 0)
       throw std::runtime_error("UmaPot: invalid AOTI ZIP64 directory");
     entries = rd64(buf + zip64 + 32);
     central_size = rd64(buf + zip64 + 40);
@@ -188,8 +188,7 @@ inline bool scan_or_clear_pt2(uint8_t *buf, size_t n, bool write) {
     if (record_len > central_end - pos)
       throw std::runtime_error("UmaPot: truncated AOTI ZIP central entry");
 
-    if (usize == 0xffffffffu || csize == 0xffffffffu ||
-        local == 0xffffffffu) {
+    if (usize == 0xffffffffu || csize == 0xffffffffu || local == 0xffffffffu) {
       const size_t extra_end = name_off + namelen + extralen;
       size_t extra = name_off + namelen;
       bool found = false;
@@ -221,17 +220,17 @@ inline bool scan_or_clear_pt2(uint8_t *buf, size_t n, bool write) {
         throw std::runtime_error("UmaPot: missing AOTI ZIP64 sizes");
     }
 
-    const bool is_so =
-        namelen >= 3 &&
-        std::memcmp(buf + name_off + namelen - 3, ".so", 3) == 0;
+    const bool is_so = namelen >= 3 &&
+                       std::memcmp(buf + name_off + namelen - 3, ".so", 3) == 0;
     if (is_so) {
       if (method != 0 || (flags & 1u))
-        throw std::runtime_error("UmaPot: AOTI libraries must use stored ZIP records");
+        throw std::runtime_error(
+            "UmaPot: AOTI libraries must use stored ZIP records");
       require_region(local, 30);
       if (rd32(buf + local) != kZipLocal || csize != usize)
         throw std::runtime_error("UmaPot: invalid stored AOTI ZIP library");
-      const uint64_t data_off = local + 30 + rd16(buf + local + 26) +
-                                rd16(buf + local + 28);
+      const uint64_t data_off =
+          local + 30 + rd16(buf + local + 26) + rd16(buf + local + 28);
       require_region(data_off, csize);
       if (elf_needs_gnu_stack_clear(buf + data_off, csize)) {
         needed = true;

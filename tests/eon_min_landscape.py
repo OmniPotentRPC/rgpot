@@ -27,10 +27,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-import ase.io as aseio
 import numpy as np
 import readcon
 from ase import Atoms
+
+_RPC = Path(__file__).resolve().parents[1] / "CppCore" / "rgpot" / "rpc"
+if str(_RPC) not in sys.path:
+    sys.path.insert(0, str(_RPC))
+from ase_helpers import atoms_to_con  # noqa: E402
 
 MIN_CONFIG = """[Main]
 job = minimization
@@ -56,7 +60,7 @@ def _minimize(job_dir: Path, seed: int) -> float:
     atoms = Atoms(symbols=["H"] * 7,
                   positions=rng.uniform(-1.7, 1.7, size=(7, 3)),
                   cell=[30, 30, 30])
-    aseio.write(job_dir / "pos.con", atoms, format="eon")
+    atoms_to_con(job_dir / "pos.con", atoms)
     (job_dir / "config.ini").write_text(MIN_CONFIG)
     subprocess.run(["eonclient"], cwd=job_dir, check=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -88,6 +92,7 @@ def main() -> int:
     cmd = [
         sys.executable, "-m", "rgpycrumbs.eon.plt_min",
         "--job-dir", str(best[1]),
+        "--label", "LJ7",
         "--plot-type", "landscape",
         "--energy-cap-window", "12",
         "-o", str(out),

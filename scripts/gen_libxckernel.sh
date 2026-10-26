@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Generate the first-slice libxckernel C package on rg.terra only.
-# Families: lda,gga,mgga_tau ; max_order 2.
+# Generate the libxckernel C package on rg.terra only.
+# Families: lda,gga,mgga_tau,mgga_lapl ; max_order 2.
 # Pin: d6a9d57ba3fe0f2763667ce168d0c0ef21cff4a4
 set -euo pipefail
 
@@ -35,19 +35,19 @@ if [[ -e "${dest}" ]]; then
   rtrash -rf "${dest}"
 fi
 mkdir -p "${dest}"
-python3 -m xckernel.catalog "${dest}" "lda,gga,mgga_tau" 2 c
+python3 -m xckernel.catalog "${dest}" "lda,gga,mgga_tau,mgga_lapl" 2 c
 
 cat > "${dest}/PIN" <<EOF
 libxckernel ${pin}
-families lda,gga,mgga_tau
+families lda,gga,mgga_tau,mgga_lapl
 max_order 2
-command python3 -m xckernel.catalog third_party/libxckernel lda,gga,mgga_tau 2 c
+command python3 -m xckernel.catalog third_party/libxckernel lda,gga,mgga_tau,mgga_lapl 2 c
 host ${host}
 EOF
 
 # Reject later-slice objects in the compiled TUs (manifest may mention GIAO skips).
-if ls "${dest}/src" | grep -E '_o[34]|_giao|cmgga|hmgga|mgga_lapl'; then
-  echo "first-slice vendor tree contains later-slice kernels" >&2
+if rg --files "${dest}/src" | rg '_o[34]|_giao|cmgga|hmgga'; then
+  echo "vendor tree contains later-slice kernels" >&2
   exit 3
 fi
 

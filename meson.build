@@ -1,7 +1,7 @@
 project(
     'rgpot',
     'cpp',
-    version: '3.2.0',
+    version: '3.5.1',
     default_options: ['warning_level=2', 'cpp_std=c++20'],
 )
 # IMPORTANT!! warning_level=3 passes -fimplicit-none
@@ -36,7 +36,7 @@ if host_system == 'darwin'
 endif
 
 # Languages
-add_languages('c', required: true)
+add_languages('c', required: true, native: false)
 # Fortran pot kernels on all hosts where a compiler is available. On
 # Darwin/CI, pair with system clang++ (not conda arm64-apple-darwin20 clang)
 # so C++ targets link the host SDK.
@@ -51,6 +51,7 @@ else
     has_fortran = add_languages(
         'fortran',
         required: _fortran_pots_opt.enabled(),
+        native: false,
     )
 endif
 fc = disabler()
@@ -75,6 +76,12 @@ elif not _ipi_opt.disabled()
 endif
 if has_ipi
     _args += ['-DRGPOT_HAS_IPI=TRUE']
+endif
+
+# C++ water family. Off unless the consumer asks, same default as eOn.
+has_water = get_option('with_water')
+if has_water
+    _args += ['-DRGPOT_HAS_WATER=TRUE']
 endif
 
 rpc_enabled = get_option('with_rpc') or get_option('with_rpc_client_only')
@@ -375,9 +382,33 @@ endif
 
 has_tblite = false
 if get_option('with_tblite')
-    tblite_dep = dependency('tblite', required: true)
+    # Installed pkg-config or cmake, or a wrap/subproject that exports
+    # tblite_dep. declare_dependency() in tblite defaults its version to
+    # the project version, so the same comparison covers both.
+    tblite_dep = dependency(
+        'tblite',
+        required: true,
+        fallback: ['tblite', 'tblite_dep'],
+    )
     _deps += tblite_dep
     _args += ['-DRGPOT_HAS_TBLITE=TRUE']
+    _tblite_ver = tblite_dep.version()
+    if (
+        tblite_dep.type_name() == 'internal'
+        and (_tblite_ver == 'unknown'
+        or _tblite_ver == 'undefined')
+    )
+        _tblite_sub = subproject('tblite', required: false)
+        if _tblite_sub.found()
+            _tblite_sub_ver = _tblite_sub.get_variable('tblite_dep').version()
+            if _tblite_sub_ver != 'unknown' and _tblite_sub_ver != 'undefined'
+                _tblite_ver = _tblite_sub_ver
+            endif
+        endif
+    endif
+    if _tblite_ver.version_compare('>=0.6.0')
+        _args += ['-DRGPOT_TBLITE_XTB_CONFIG=1']
+    endif
     has_tblite = true
 endif
 
@@ -836,7 +867,7 @@ else
 endif
 
 # --------------------- Projects
-_incdirs += [include_directories('CppCore')]
+_incdirs += [include_directories('CppCore'), include_directories('include')]
 subdir('CppCore')
 rgpot_has_rpc = _rpc_stack
 if get_option('with_rpc_client_only')
@@ -856,4 +887,10 @@ if get_option('with_python')
         )
     endif
     subdir('python')
+endif
+
+# Wheel builds set with_python. meson-python maps {includedir} onto the
+# wheel headers scheme, so this header stays out of those wheels.
+if not get_option('with_python')
+    install_headers('bind/include/rgbind/rgbind.hpp', subdir: 'rgbind')
 endif

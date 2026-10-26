@@ -210,6 +210,65 @@ pub fn read_pyproject_version(root: &Path) -> Result<String> {
     read_toml_section_version(root, "pyproject.toml", "project")
 }
 
+/// Generated C header whose RGPOT_VERSION macros stamp the ABI.
+const HEADER_REL: &str = "rgpot-core/include/rgpot.h";
+
+/// RGPOT_VERSION from the generated C header, or None when the tree has
+/// no header (a scratch root in tests).
+pub fn read_header_version(root: &Path) -> Result<Option<String>> {
+    let p = root.join(HEADER_REL);
+    if !p.is_file() {
+        return Ok(None);
+    }
+    for line in read_text(&p)?.lines() {
+        if let Some(rest) = line.trim_start().strip_prefix("#define RGPOT_VERSION ") {
+            if let Some(v) = between_quotes(rest) {
+                return Ok(Some(v.to_string()));
+            }
+        }
+    }
+    Err(format!("{HEADER_REL}: no #define RGPOT_VERSION line"))
+}
+
+/// Rewrite the four RGPOT_VERSION macros. cbindgen writes them from
+/// CARGO_PKG_VERSION, but only when the header is regenerated, so a bump
+/// must stamp them too or the header keeps the previous release.
+fn replace_header_versions(text: &str, version: &str) -> String {
+    let core = version.split(['-', '+']).next().unwrap_or(version);
+    let mut parts = core.split('.');
+    let major = parts.next().unwrap_or("0");
+    let minor = parts.next().unwrap_or("0");
+    let patch = parts.next().unwrap_or("0");
+    let mut out = String::with_capacity(text.len());
+    for line in text.split_inclusive('\n') {
+        let eol = line_eol(line);
+        let body = &line[..line.len() - eol.len()];
+        let replaced = match body.trim_start() {
+            l if l.starts_with("#define RGPOT_VERSION_MAJOR ") => {
+                Some(format!("#define RGPOT_VERSION_MAJOR {major}"))
+            }
+            l if l.starts_with("#define RGPOT_VERSION_MINOR ") => {
+                Some(format!("#define RGPOT_VERSION_MINOR {minor}"))
+            }
+            l if l.starts_with("#define RGPOT_VERSION_PATCH ") => {
+                Some(format!("#define RGPOT_VERSION_PATCH {patch}"))
+            }
+            l if l.starts_with("#define RGPOT_VERSION ") => {
+                Some(format!("#define RGPOT_VERSION \"{version}\""))
+            }
+            _ => None,
+        };
+        match replaced {
+            Some(r) => {
+                out.push_str(&r);
+                out.push_str(eol);
+            }
+            None => out.push_str(line),
+        }
+    }
+    out
+}
+
 pub fn changelog_section(root: &Path, ver: &str) -> Result<String> {
     let path = root.join("CHANGELOG.md");
     if !path.is_file() {
@@ -356,9 +415,15 @@ pub fn sync_versions(root: &Path, version: &str) -> Result<()> {
         }
     }
 
+    let header_p = root.join(HEADER_REL);
+    if header_p.is_file() {
+        let t = read_text(&header_p)?;
+        write_text(&header_p, &replace_header_versions(&t, version))?;
+    }
+
     println!("synced lockstep version -> {version}");
     println!(
-        "  meson.build / CMakeLists.txt / towncrier.toml / rgpot-core/Cargo.toml / pixi.toml [workspace] / pyproject.toml [project]"
+        "  meson.build / CMakeLists.txt / towncrier.toml / rgpot-core/Cargo.toml / pixi.toml [workspace] / pyproject.toml [project] / rgpot.h"
     );
     Ok(())
 }
@@ -370,6 +435,7 @@ pub fn assert_lockstep(root: &Path, expected: Option<&str>, require_changelog: b
     let town_v = read_towncrier_version(root)?;
     let pixi_v = read_pixi_workspace_version(root)?;
     let pyproj_v = read_pyproject_version(root)?;
+    let header_v = read_header_version(root)?;
     let exp = expected.map(strip_v).filter(|s| !s.is_empty());
 
     println!("lockstep surfaces:");
@@ -379,6 +445,9 @@ pub fn assert_lockstep(root: &Path, expected: Option<&str>, require_changelog: b
     println!("  towncrier.toml   = {town_v}");
     println!("  pixi.toml[ws]    = {pixi_v}");
     println!("  pyproject[proj]  = {pyproj_v}");
+    if let Some(h) = &header_v {
+        println!("  rgpot.h          = {h}");
+    }
 
     let refv = &meson_v;
     for (name, val) in [
@@ -390,6 +459,11 @@ pub fn assert_lockstep(root: &Path, expected: Option<&str>, require_changelog: b
     ] {
         if val != refv {
             return Err(format!("{name} version ({val}) != meson ({refv})"));
+        }
+    }
+    if let Some(h) = &header_v {
+        if h != refv {
+            return Err(format!("rgpot.h version ({h}) != meson ({refv})"));
         }
     }
 
@@ -545,6 +619,44 @@ mod tests {
         assert!(text.contains("\"vesin>=0.6.0\""));
         assert!(text.contains("[tool.some-plugin]\nversion = \"9.9.9\""));
         assert_lockstep(&root, Some("3.1.4"), false).unwrap();
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    const HEADER: &str = concat!(
+        "#include <stdint.h>\n",
+        "\n",
+        "#define RGPOT_VERSION \"2.5.3\"\n",
+        "#define RGPOT_VERSION_MAJOR 2\n",
+        "#define RGPOT_VERSION_MINOR 5\n",
+        "#define RGPOT_VERSION_PATCH 3\n",
+        "\n",
+        "const char *rgpot_version(void);\n",
+    );
+
+    #[test]
+    fn sync_stamps_the_header_macros() {
+        let root = scratch_root("header");
+        fs::create_dir_all(root.join("rgpot-core/include")).unwrap();
+        fs::write(root.join(HEADER_REL), HEADER).unwrap();
+        sync_versions(&root, "4.0.1-rc.2").unwrap();
+        let text = fs::read_to_string(root.join(HEADER_REL)).unwrap();
+        assert!(text.contains("#define RGPOT_VERSION \"4.0.1-rc.2\"\n"));
+        assert!(text.contains("#define RGPOT_VERSION_MAJOR 4\n"));
+        assert!(text.contains("#define RGPOT_VERSION_MINOR 0\n"));
+        assert!(text.contains("#define RGPOT_VERSION_PATCH 1\n"));
+        assert!(text.contains("const char *rgpot_version(void);\n"));
+        assert_eq!(read_header_version(&root).unwrap().as_deref(), Some("4.0.1-rc.2"));
+        assert_lockstep(&root, Some("4.0.1-rc.2"), false).unwrap();
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn assert_catches_header_drift() {
+        let root = scratch_root("header-drift");
+        fs::create_dir_all(root.join("rgpot-core/include")).unwrap();
+        fs::write(root.join(HEADER_REL), HEADER.replace("\"2.5.3\"", "\"2.5.2\"")).unwrap();
+        let err = assert_lockstep(&root, None, false).unwrap_err();
+        assert!(err.contains("rgpot.h"), "{err}");
         fs::remove_dir_all(&root).unwrap();
     }
 

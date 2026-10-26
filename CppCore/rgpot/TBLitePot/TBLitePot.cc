@@ -2,6 +2,7 @@
 // Copyright 2023--present rgpot developers
 
 #include "rgpot/TBLitePot/TBLitePot.hpp"
+#include "rgpot/stress.hpp"
 #include "rgpot/units.hpp"
 
 #include <stdexcept>
@@ -46,18 +47,35 @@ TBLitePot::~TBLitePot() {
     tblite_delete_context(&m_ctx);
 }
 
-void TBLitePot::createCalculator() const {
-  switch (m_config.method) {
+namespace {
+
+// tblite 0.6 adds an optional xtb config. Null keeps the 0.5 defaults.
+tblite_calculator newGfnCalculator(tblite_context ctx, tblite_structure mol,
+                                   TBLiteMethod method) {
+#ifdef RGPOT_TBLITE_XTB_CONFIG
+  auto call = [](auto make, tblite_context c, tblite_structure m) {
+    return make(c, m, nullptr);
+  };
+#else
+  auto call = [](auto make, tblite_context c, tblite_structure m) {
+    return make(c, m);
+  };
+#endif
+  switch (method) {
   case TBLiteMethod::GFN1:
-    m_calc = tblite_new_gfn1_calculator(m_ctx, m_mol);
-    break;
+    return call(tblite_new_gfn1_calculator, ctx, mol);
   case TBLiteMethod::GFN2:
-    m_calc = tblite_new_gfn2_calculator(m_ctx, m_mol);
-    break;
+    return call(tblite_new_gfn2_calculator, ctx, mol);
   case TBLiteMethod::IPEA1:
-    m_calc = tblite_new_ipea1_calculator(m_ctx, m_mol);
-    break;
+    return call(tblite_new_ipea1_calculator, ctx, mol);
   }
+  throw std::logic_error("unknown tblite method");
+}
+
+} // namespace
+
+void TBLitePot::createCalculator() const {
+  m_calc = newGfnCalculator(m_ctx, m_mol, m_config.method);
 
   if (tblite_check_context(m_ctx) != 0) {
     char err_msg[512];
@@ -133,6 +151,22 @@ void TBLitePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   tblite_get_result_gradient(err, m_res, out->F);
   for (size_t i = 0; i < n3; ++i) {
     out->F[i] *= NEG_GRAD_TO_FORCE;
+  }
+
+  // tblite stores dE/dε in Hartree, column-major. sigma = virial / V.
+  double virial[9] = {};
+  tblite_get_result_virial(err, m_res, virial);
+  const double volume = cellVolume(in.box);
+  if (volume > 0.0 && tblite_check_error(err) == 0) {
+    const double scale = units::HARTREE_TO_EV / volume;
+    for (int col = 0; col < 3; ++col) {
+      for (int row = 0; row < 3; ++row) {
+        out->stress[row * 3 + col] = virial[row + 3 * col] * scale;
+      }
+    }
+    out->has_stress = 1;
+  } else {
+    out->has_stress = 0;
   }
 
   out->variance = 0.0;

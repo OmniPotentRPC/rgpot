@@ -22,7 +22,7 @@ RGPOT_SCALAR double lj_scalar_entry(const PairView &view, const LjParams &params
   // truncating product otherwise. Same bits as the scalar reference.
   return lj_sse2_entry(view, params, F, strain);
 #elif defined(__x86_64__)
-  if (detail::glibc_fma_active()) {
+  if (detail::fma_hw_active()) {
     return lj_hw(view, params, F, strain);
   }
 #endif
@@ -35,7 +35,7 @@ RGPOT_SCALAR double morse_scalar_entry(const PairView &view,
 #if defined(__x86_64__) && defined(RGPOT_WITH_HIGHWAY)
   return morse_sse2_entry(view, params, F, strain);
 #elif defined(__x86_64__)
-  if (detail::glibc_fma_active()) {
+  if (detail::fma_hw_active()) {
     return morse_hw(view, params, F, strain);
   }
 #endif

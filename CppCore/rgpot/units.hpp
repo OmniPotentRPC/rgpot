@@ -36,6 +36,10 @@ inline constexpr double HARTREE_BOHR_TO_EV_ANGSTROM =
     HARTREE_TO_EV / BOHR_TO_ANGSTROM;
 // Fused: negate gradient and convert to forces in eV/Angstrom
 inline constexpr double NEG_GRAD_TO_FORCE = -HARTREE_BOHR_TO_EV_ANGSTROM;
+// Stress: Hartree/Bohr^3 to eV/Angstrom^3. Matches a ForceInput that
+// asks for eV and Angstrom (energy factor over length scale cubed).
+inline constexpr double HARTREE_PER_BOHR3_TO_EV_PER_ANGSTROM3 =
+    HARTREE_TO_EV / (BOHR_TO_ANGSTROM * BOHR_TO_ANGSTROM * BOHR_TO_ANGSTROM);
 
 // Temperature / Boltzmann
 inline constexpr double KB_HARTREE = 3.1668115634556e-6; // k_B in Hartree/K

@@ -235,7 +235,11 @@ XTBDlopen::operator()(const types::AtomMatrix &positions,
                 .pos = positions.data(),
                 .atmnrs = atmtypes.data(),
                 .box = flatBox};
-  ForceOut fo{.F = forces.data(), .energy = 0.0, .variance = 0.0};
+  ForceOut fo{.F = forces.data(),
+              .energy = 0.0,
+              .variance = 0.0,
+              .stress = {},
+              .has_stress = 0};
   forceImpl(fi, &fo);
   return {fo.energy, std::move(forces), fo.variance};
 }

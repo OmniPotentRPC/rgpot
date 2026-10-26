@@ -16,6 +16,14 @@
 #include <capnp/message.h>
 #include <kj/debug.h>
 
+#ifdef RGPOT_POTSERV_MPI
+#include "tools/MpiPefSession.hpp"
+#endif
+
+namespace rgpot::tools {
+class MpiPefSession;
+}
+
 #ifdef RGPOT_HAS_FORTRAN_POTS
 #include "rgpot/fortran/FortranPots.hpp"
 #endif // RGPOT_HAS_FORTRAN_POTS
@@ -53,6 +61,7 @@
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/NWChemPot/NWChemPot.hpp"
 #include "rgpot/Potential.hpp"
+#include "rgpot/abi/Handshake.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
 #ifdef RGPOT_HAS_IPI
 #include "rgpot/IPIPot/IPIPot.hpp"
@@ -81,6 +90,7 @@ private:
   /// Cauchy stress stashed by the last force call.
   rgpot::IPIPot *m_ipi = nullptr;
 #endif
+  rgpot::tools::MpiPefSession *m_pef = nullptr;
 
 public:
   /**
@@ -100,13 +110,31 @@ public:
    * @brief Constructor retaining an NWChemPot pointer for configure().
    * Members initialize in declaration order (m_potential then m_nwchem).
    */
-  GenericPotImpl(std::unique_ptr<rgpot::NWChemPot> pot)
+  GenericPotImpl(std::unique_ptr<rgpot::NWChemPot> pot,
+                 rgpot::tools::MpiPefSession *pef = nullptr)
       : m_potential(std::move(pot)),
-        m_nwchem(static_cast<rgpot::NWChemPot *>(m_potential.get())) {}
+        m_nwchem(static_cast<rgpot::NWChemPot *>(m_potential.get())), m_pef(pef) {}
 
-  GenericPotImpl(std::unique_ptr<rgpot::CPMDPot> pot)
+  GenericPotImpl(std::unique_ptr<rgpot::CPMDPot> pot,
+                 rgpot::tools::MpiPefSession *pef = nullptr)
       : m_potential(std::move(pot)),
-        m_cpmd(static_cast<rgpot::CPMDPot *>(m_potential.get())) {}
+        m_cpmd(static_cast<rgpot::CPMDPot *>(m_potential.get())), m_pef(pef) {}
+
+  /**
+   * @brief Reports what this server speaks, so a client can refuse an
+   * incompatible peer before the first calculate call.
+   */
+  kj::Promise<void> getCapabilities(GetCapabilitiesContext context) override {
+    auto caps = context.getResults().initCapabilities();
+    caps.setBackendName("rgpot");
+    caps.setBackendVersion(RGPOT_BUILD_VERSION);
+    caps.setAvailable(true);
+    auto ops = caps.initOperations(2);
+    ops.set(0, ::Capabilities::Operation::ENERGY);
+    ops.set(1, ::Capabilities::Operation::FORCES);
+    rgpot::abi::fill_compatibility(caps);
+    return kj::READY_NOW;
+  }
 
   /**
    * @details
@@ -158,8 +186,19 @@ public:
     }
 
     // Potential always computes in eV/angstrom
-    auto [energy, forces, variance] =
-        (*m_potential)(nativePositions, nativeAtomTypes, nativeBoxMatrix);
+    auto evaluate = [&]() {
+#ifdef RGPOT_POTSERV_MPI
+      if (m_pef) {
+        try {
+          return m_pef->calculate(nativePositions, nativeAtomTypes, nativeBoxMatrix);
+        } catch (const std::exception &error) {
+          throw KJ_EXCEPTION(FAILED, error.what());
+        }
+      }
+#endif
+      return (*m_potential)(nativePositions, nativeAtomTypes, nativeBoxMatrix);
+    };
+    auto [energy, forces, variance] = evaluate();
     (void)variance;
 
     // Convert results to caller's units
@@ -202,8 +241,21 @@ public:
       return kj::READY_NOW;
     }
     std::string msg;
-    bool ok = m_nwchem ? m_nwchem->setPotentialConfig(cfg, &msg)
-                       : m_cpmd->setPotentialConfig(cfg, &msg);
+    bool ok = false;
+#ifdef RGPOT_POTSERV_MPI
+    if (m_pef) {
+      try {
+        msg = m_pef->configure(cfg);
+        ok = true;
+      } catch (const std::exception &error) {
+        msg = error.what();
+      }
+    } else
+#endif
+    {
+      ok = m_nwchem ? m_nwchem->setPotentialConfig(cfg, &msg)
+                   : m_cpmd->setPotentialConfig(cfg, &msg);
+    }
     results.setOk(ok);
     results.setMessage(msg);
     return kj::READY_NOW;
@@ -223,7 +275,11 @@ public:
  * @param argv Argument vector.
  * @return 0 on success, 1 on initialization failure.
  */
-int main(int argc, char *argv[]) {
+int runServer(int argc, char *argv[]
+#ifdef RGPOT_POTSERV_MPI
+              , const rgpot::tools::MpiHost &host
+#endif
+) {
   if (argc < 3) {
     std::cerr << "Usage: " << argv[0] << " <port> <PotentialType>" << std::endl;
     std::cerr << "  Available PotentialTypes: CuH2, LJ, LJCluster, Morse, ZBL"
@@ -266,6 +322,14 @@ int main(int argc, char *argv[]) {
   }
 
   std::string pot_type = argv[2];
+#ifdef RGPOT_POTSERV_MPI
+  host.collective([&] {
+    const bool collective_backend = pot_type == "NWChem" ||
+        pot_type.rfind("NWChem:", 0) == 0 || pot_type == "CPMD";
+    if (host.size() > 1 && !collective_backend)
+      throw std::runtime_error("multi-rank RPC requires NWChem or CPMD");
+  });
+#endif
   std::unique_ptr<rgpot::PotentialBase> potential_to_use;
 
 #ifdef RGPOT_HAS_FORTRAN_POTS
@@ -414,6 +478,7 @@ int main(int argc, char *argv[]) {
       std::replace(nw_xc.begin(), nw_xc.end(), ',', ' ');
     }
     std::unique_ptr<rgpot::NWChemPot> nw;
+    auto construct = [&] {
     if (nw_basis.empty() && nw_theory.empty() && nw_xc.empty()) {
       nw = std::make_unique<rgpot::NWChemPot>();
     } else {
@@ -437,13 +502,32 @@ int main(int argc, char *argv[]) {
                 << "' xc='" << nw_xc << "'" << std::endl;
       nw = std::make_unique<rgpot::NWChemPot>(nw_params.asReader());
     }
+    };
+#ifdef RGPOT_POTSERV_MPI
+    host.collective([&] {
+      if (!rgpot::NWChemPot::probe_available())
+        throw std::runtime_error("NWChem engine is not available on every rank");
+    });
+    host.collective(construct);
+#else
+    construct();
+#endif
     if (!nw->available()) {
       std::cerr << "Warning: libnwchemc not loaded; calculate() will fail "
                    "until engine is available (configure() still accepted)."
                 << std::endl;
     }
     potential_to_use = nullptr; // use dedicated path below
-    capnp::EzRpcServer server(kj::heap<GenericPotImpl>(std::move(nw)),
+    rgpot::tools::MpiPefSession *channel = nullptr;
+#ifdef RGPOT_POTSERV_MPI
+    rgpot::tools::MpiPefSession session(host, *nw);
+    if (host.rank() != 0) {
+      session.work();
+      return 0;
+    }
+    channel = &session;
+#endif
+    capnp::EzRpcServer server(kj::heap<GenericPotImpl>(std::move(nw), channel),
                               "localhost", port);
     auto &waitScope = server.getWaitScope();
     std::cout << "Server running on port " << port << " with " << pot_type
@@ -452,14 +536,32 @@ int main(int argc, char *argv[]) {
     return 0;
   } else if (pot_type == "CPMD") {
     std::cout << "Loading CPMD potential (dlopen libcpmdc)..." << std::endl;
-    auto cp = std::make_unique<rgpot::CPMDPot>();
+    std::unique_ptr<rgpot::CPMDPot> cp;
+#ifdef RGPOT_POTSERV_MPI
+    host.collective([&] {
+      if (!rgpot::CPMDPot::probe_available())
+        throw std::runtime_error("CPMD engine is not available on every rank");
+    });
+    host.collective([&] { cp = std::make_unique<rgpot::CPMDPot>(); });
+#else
+    cp = std::make_unique<rgpot::CPMDPot>();
+#endif
     if (!cp->available()) {
       std::cerr << "Warning: libcpmdc not loaded; calculate() will fail "
                    "until engine is available (configure() still accepted)."
                 << std::endl;
     }
     potential_to_use = nullptr;
-    capnp::EzRpcServer server(kj::heap<GenericPotImpl>(std::move(cp)),
+    rgpot::tools::MpiPefSession *channel = nullptr;
+#ifdef RGPOT_POTSERV_MPI
+    rgpot::tools::MpiPefSession session(host, *cp);
+    if (host.rank() != 0) {
+      session.work();
+      return 0;
+    }
+    channel = &session;
+#endif
+    capnp::EzRpcServer server(kj::heap<GenericPotImpl>(std::move(cp), channel),
                               "localhost", port);
     auto &waitScope = server.getWaitScope();
     std::cout << "Server running on port " << port << " with " << pot_type
@@ -486,4 +588,20 @@ int main(int argc, char *argv[]) {
   kj::NEVER_DONE.wait(waitScope);
 
   return 0;
+}
+
+int main(int argc, char **argv) {
+  try {
+#ifdef RGPOT_POTSERV_MPI
+    rgpot::tools::MpiHost host(argc, argv);
+    return runServer(argc, argv, host);
+#else
+    return runServer(argc, argv);
+#endif
+  } catch (const kj::Exception &error) {
+    std::cerr << error.getDescription().cStr() << std::endl;
+  } catch (const std::exception &error) {
+    std::cerr << error.what() << std::endl;
+  }
+  return 1;
 }

@@ -18,6 +18,11 @@
  */
 
 #include <catch2/catch_all.hpp>
+#include "rgpot/ForceStructs.hpp"
+#include <thread>
+#include <functional>
+#include <atomic>
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -171,5 +176,103 @@ TEST_CASE("Fortran potentials report per-instance reentrancy",
         rgpot::fortranpots::CuH2Pot{}.caps()}) {
     REQUIRE(caps.reentrancy == rgpot::Reentrancy::PerInstance);
     REQUIRE(caps.perImageInstances);
+  }
+}
+
+namespace {
+
+/// 4 x 4 x 4 fcc aluminium cells (256 atoms) with a deterministic wobble,
+/// periodic in a cube of 4 lattice constants.
+std::vector<double> alBlock(double phase) {
+  const double a = 4.05;
+  static const double basis[4][3] = {
+      {0.0, 0.0, 0.0}, {0.0, 0.5, 0.5}, {0.5, 0.0, 0.5}, {0.5, 0.5, 0.0}};
+  std::vector<double> R;
+  for (int ix = 0; ix < 4; ++ix)
+    for (int iy = 0; iy < 4; ++iy)
+      for (int iz = 0; iz < 4; ++iz)
+        for (const auto &b : basis) {
+          const auto k = static_cast<double>(R.size());
+          R.push_back((ix + b[0]) * a + 0.08 * std::sin(1.3 * k + phase));
+          R.push_back((iy + b[1]) * a + 0.08 * std::sin(1.7 * k + phase));
+          R.push_back((iz + b[2]) * a + 0.08 * std::sin(2.9 * k + phase));
+        }
+  return R;
+}
+
+struct Result {
+  double energy = 0.0;
+  std::vector<double> F;
+};
+
+Result evalEam(const rgpot::fortranpots::EAMAlPot &pot,
+               const std::vector<double> &R) {
+  static const double box[9] = {16.2, 0, 0, 0, 16.2, 0, 0, 0, 16.2};
+  const std::vector<int> types(R.size() / 3, 13);
+  Result out;
+  out.F.assign(R.size(), 0.0);
+  rgpot::ForceInput in{.nAtoms = R.size() / 3,
+                       .pos = R.data(),
+                       .atmnrs = types.data(),
+                       .box = box};
+  rgpot::ForceOut fo{.F = out.F.data(),
+                     .energy = 0.0,
+                     .variance = 0.0,
+                     .stress = {},
+                     .has_stress = 0};
+  pot.forceImpl(in, &fo);
+  out.energy = fo.energy;
+  return out;
+}
+
+} // namespace
+
+TEST_CASE("EAM aluminium instances evaluate concurrently", "[fortran][eamal]") {
+  // Serial reference for two geometry families.
+  const auto ra = alBlock(0.0);
+  const auto rb = alBlock(1.0);
+  rgpot::fortranpots::EAMAlPot ref;
+  const Result wantA = evalEam(ref, ra);
+  const Result wantB = evalEam(ref, rb);
+
+  // Two instances, one per family, on two threads at once, many times;
+  // each table follows its own family. Results agree to the bit with the
+  // serial ones: rows are ordered by partner whatever the table's history.
+  rgpot::fortranpots::EAMAlPot potA;
+  rgpot::fortranpots::EAMAlPot potB;
+  std::atomic<int> mismatches{0};
+  auto worker = [&](const rgpot::fortranpots::EAMAlPot &pot,
+                    const std::vector<double> &R, const Result &want) {
+    for (int k = 0; k < 40; ++k) {
+      const Result got = evalEam(pot, R);
+      if (got.energy != want.energy || got.F != want.F) {
+        ++mismatches;
+      }
+    }
+  };
+  std::thread ta(worker, std::cref(potA), std::cref(ra), std::cref(wantA));
+  std::thread tb(worker, std::cref(potB), std::cref(rb), std::cref(wantB));
+  ta.join();
+  tb.join();
+  REQUIRE(mismatches.load() == 0);
+}
+
+TEST_CASE("EAM aluminium forces equal minus the energy gradient",
+          "[fortran][eamal]") {
+  rgpot::fortranpots::EAMAlPot pot;
+  auto R = alBlock(0.4);
+  const Result base = evalEam(pot, R);
+  const double h = 1e-5;
+  // Every coordinate of the first eight atoms, against central differences.
+  for (std::size_t k = 0; k < 24; ++k) {
+    const double x0 = R[k];
+    R[k] = x0 + h;
+    const double ep = evalEam(pot, R).energy;
+    R[k] = x0 - h;
+    const double em = evalEam(pot, R).energy;
+    R[k] = x0;
+    const double fd = -(ep - em) / (2.0 * h);
+    REQUIRE_THAT(base.F[k], Catch::Matchers::WithinAbs(
+                                fd, 1e-6 * std::max(1.0, std::abs(fd))));
   }
 }

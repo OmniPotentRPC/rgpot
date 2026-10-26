@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
@@ -64,10 +65,15 @@ TEST_CASE("MorsePot two-atom well depth", "[MorsePot]") {
   const auto cfg = pot.config();
 
   // Cutoff shift: the pair term at the minimum is -De, shifted by the
-  // unshifted energy at the cutoff.
+  // unshifted energy at the cutoff. Two terms near De cancel to 3.6e-5, so
+  // the comparison is absolute at the operands' rounding scale: a relative
+  // pin on the cancelled result asks for agreement below one ulp of De, and
+  // exp() and multiply-add contraction differ by that much between an x86
+  // and an aarch64 build of the same expression.
   const double d = 1.0 - std::exp(-cfg.a * (cfg.cutoff - cfg.re));
   const double shift = cfg.De * d * d - cfg.De;
-  REQUIRE_THAT(pot.energyShift(), WithinRel(shift, 1e-14));
+  REQUIRE_THAT(pot.energyShift(),
+               WithinAbs(shift, 8 * std::numeric_limits<double>::epsilon()));
   REQUIRE_THAT(pot.energyShift(), WithinAbs(-3.5537997279178057e-05, 1e-14));
 
   const AtomMatrix positions{{10.0, 10.0, 10.0}, {10.0 + cfg.re, 10.0, 10.0}};

@@ -1,7 +1,1 @@
-The minimum-image fold for non-orthogonal cells runs in double precision.
-Where long double is wider than double, cells that fail the double
-condition test and displacements large enough to lose the image margin
-use a double-double search. Where long double is double, the fold keeps
-the historical arithmetic. The folded vector stays within 1e-9 of the
-previous long-double result, and cells that were rejected as
-ill-conditioned still throw.
+The general-cell minimum image is computed in double. An ill-conditioned cell is Minkowski-reduced (Nguyen and Stehlé, ACM Trans. Algorithms 5, 46 (2009), doi:10.1145/1597036.1597050). A reduced basis that is still too ill-conditioned searches the 27 images with coefficients in {-1, 0, 1}. Each product-sum is a hardware fused multiply-add when glibc reports FMA, inlined in the fold, and the exactly rounded TwoProduct and TwoSum emulation otherwise (Boldo and Muller, IEEE Trans. Comput. 60, 157 (2011), doi:10.1109/tc.2010.139). That file is compiled with contraction off, so the folded bits do not depend on the instruction set.

@@ -48,10 +48,7 @@ public:
   LJPot() : LJPot(LJConfig{}) {}
 
   explicit LJPot(const LJConfig &c)
-      : Potential(PotType::LJ),
-        u0{c.u0},
-        cuttOffR{c.cutoff},
-        psi{c.psi},
+      : Potential(PotType::LJ), u0{c.u0}, cuttOffR{c.cutoff}, psi{c.psi},
         m_config{c} {
     // Shift so U(cuttOffR) = 0 (standard shifted 12-6 LJ).
     const double a = std::pow(psi / cuttOffR, 6.0);

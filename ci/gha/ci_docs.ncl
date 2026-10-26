@@ -8,11 +8,12 @@ let P = S.pins in
     pull_request = {},
     schedule = [{ cron = "0 8 * * 1" }],
   },
+  # Workflow stays read-only. The deploy job opts into contents: write.
+  permissions = { contents = "read" },
   jobs = {
     build_docs = {
       name = "Build documentation",
       "runs-on" = P.ubuntu,
-      permissions = { contents = "read" },
       # One group per ref, so parallel pull requests do not cancel each other
       # or a pages deploy. A new push to the same ref still cancels its build.
       concurrency = {
@@ -49,6 +50,7 @@ let P = S.pins in
         "cancel-in-progress" = false,
       },
       steps = [
+        { uses = P.checkout, with = { "persist-credentials" = false } },
         {
           name = "Download documentation",
           uses = P.download_artifact_v6,

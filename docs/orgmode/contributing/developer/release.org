@@ -68,8 +68,8 @@ uvx towncrier create --content "Short user-facing note." 42.added.md
 uvx towncrier create
 #+end_src
 
-Types (see =towncrier.toml=): =security=, =removed=, =deprecated=, =added=,
-=dev=, =changed=, =fixed=, =misc=.
+Types (see =towncrier.toml=): =breaking= (section Breaking, listed first),
+=security=, =removed=, =deprecated=, =added=, =dev=, =changed=, =fixed=, =misc=.
 Preview with =uvx towncrier build --draft= or =pixi r towncrier-draft= if
 defined.
 

@@ -66,8 +66,10 @@ See =CppCore/ rgpot/NWChemPot/README.md=.
 
 =CPMDPot= follows the same split-engine pattern: the frontend is always compiled
 and =dlopen=s =libcpmdc.so= from [[https://github.com/OmniPotentRPC/cpmdc]
-[cpmdc]]. rgpot builds no in-process OpenCPMD embed of its own and has no
-=-Dwith_cpmd= option.
+[cpmdc]].
+The engine is documented at [[https://cpmdc.rgoswami.me][cpmdc.rgoswami.me]].
+rgpot builds no in-process OpenCPMD embed of its own and has no =-Dwith_cpmd=
+option.
 Build =libcpmdc.so= from the =cpmdc= project, then set
 =CPMDC_LIBRARY=, =RGPOT_CPMDC_ENGINE=, or =RGPOT_CPMD_ENGINE=.
 See =CppCore/rgpot/CPMDPot/README.md=.
@@ -138,3 +140,7 @@ support the =-o= flag)
 - Generated =.c++= files are renamed to =.cpp= (MSVC does not recognize the =.c+
 += extension)
 - =ws2_32= is linked for Cap'n Proto's async networking layer
+
+#+begin_export rst
+See :doc:`../reference/mpi` for the ``with_mpi`` values ``auto``, ``enabled``, and ``disabled``.
+#+end_export

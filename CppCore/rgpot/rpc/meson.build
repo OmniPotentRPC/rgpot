@@ -4,32 +4,36 @@ capnp = find_program('capnp')
 python = find_program('python3', 'python')
 
 # Canonical contract pinned via subprojects/potentials-schema.wrap; the two
-# vendored Potentials.capnp copies must stay byte-identical to it.
-potentials_schema_proj = subproject('potentials-schema')
-potentials_schema_canonical = potentials_schema_proj.get_variable(
-    'potentials_capnp_file',
-)
-schema_sync_check = files('schema_sync_check.py')
-test(
-    'schema-sync-canonical-rpc',
-    python,
-    args: [
-        schema_sync_check,
-        meson.current_source_dir() / 'Potentials.capnp',
-        potentials_schema_canonical,
-    ],
-    suite: 'schema',
-)
-test(
-    'schema-sync-canonical-core',
-    python,
-    args: [
-        schema_sync_check,
-        meson.project_source_root() / 'rgpot-core/schema/Potentials.capnp',
-        potentials_schema_canonical,
-    ],
-    suite: 'schema',
-)
+# vendored Potentials.capnp copies must stay byte-identical to it. The build
+# compiles the vendored copies, so the canonical one only feeds the sync
+# tests, and an offline build (--wrap-mode=nodownload) skips them.
+potentials_schema_proj = subproject('potentials-schema', required: false)
+if potentials_schema_proj.found()
+    potentials_schema_canonical = potentials_schema_proj.get_variable(
+        'potentials_capnp_file',
+    )
+    schema_sync_check = files('schema_sync_check.py')
+    test(
+        'schema-sync-canonical-rpc',
+        python,
+        args: [
+            schema_sync_check,
+            meson.current_source_dir() / 'Potentials.capnp',
+            potentials_schema_canonical,
+        ],
+        suite: 'schema',
+    )
+    test(
+        'schema-sync-canonical-core',
+        python,
+        args: [
+            schema_sync_check,
+            meson.project_source_root() / 'rgpot-core/schema/Potentials.capnp',
+            potentials_schema_canonical,
+        ],
+        suite: 'schema',
+    )
+endif
 
 gen_rpc = custom_target(
     'gen_rpc',

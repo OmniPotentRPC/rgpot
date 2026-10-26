@@ -13,6 +13,8 @@
 
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
+#include "rgpot/Morse/MorsePot.hpp"
+#include "rgpot/ZBL/ZBLPot.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
 using Catch::Matchers::WithinAbs;
@@ -123,4 +125,151 @@ TEST_CASE("LJClusterPot parameter fingerprint tracks the config",
   // Identical numbers hash identically; the result cache keeps the two
   // kernels apart through PotType, not through paramsKey.
   REQUIRE(defaults.paramsKey() == rgpot::LJPot{}.paramsKey());
+}
+
+TEST_CASE("LJPot stress matches a coordinate difference", "[LJPot]") {
+  rgpot::LJPot pot;
+  REQUIRE(pot.caps().stress);
+
+  AtomMatrix pos{{0.0, 0.0, 0.0}, {1.3, 0.4, -0.25}};
+  const std::vector<int> types{1, 1};
+  // Row-major cell, large enough that the pair is the minimum image.
+  const double box[9] = {12.0, 0.0, 0.0, 0.4, 11.0, 0.0, -0.2, 0.3, 10.0};
+  double forces[6] = {};
+  rgpot::ForceOut out{forces, 0.0, 0.0, {}, 0};
+  pot.forceImpl(rgpot::ForceInput{2, pos.data(), types.data(), box}, &out);
+  REQUIRE(out.has_stress == 1);
+
+  const double volume = std::abs(box[0] * (box[4] * box[8] - box[5] * box[7]) -
+                                 box[1] * (box[3] * box[8] - box[5] * box[6]) +
+                                 box[2] * (box[3] * box[7] - box[4] * box[6]));
+  constexpr double step = 1e-6;
+  const int rows[6] = {0, 1, 2, 1, 0, 0};
+  const int cols[6] = {0, 1, 2, 2, 2, 1};
+  for (int comp = 0; comp < 6; ++comp) {
+    const int row = rows[comp];
+    const int col = cols[comp];
+    auto energyAt = [&](double eps) {
+      AtomMatrix shifted = pos;
+      double strained[9];
+      std::copy(box, box + 9, strained);
+      for (int atom = 0; atom < 2; ++atom) {
+        shifted(atom, col) += pos(atom, row) * eps;
+      }
+      for (int k = 0; k < 3; ++k) {
+        strained[k * 3 + col] += box[k * 3 + row] * eps;
+      }
+      double f2[6] = {};
+      rgpot::ForceOut sample{f2, 0.0, 0.0, {}, 0};
+      pot.forceImpl(
+          rgpot::ForceInput{2, shifted.data(), types.data(), strained},
+          &sample);
+      return sample.energy;
+    };
+    const double derivative = (energyAt(step) - energyAt(-step)) / (2.0 * step);
+    const double expected = derivative / volume;
+    const double got = out.stress[row * 3 + col];
+    REQUIRE_THAT(got, WithinAbs(expected, 1e-6));
+  }
+}
+
+namespace {
+template <class Potential>
+void checkPairStressByStrain(const Potential &pot, const AtomMatrix &positions,
+                             const std::vector<int> &types) {
+  REQUIRE(pot.caps().stress);
+  const std::array<double, 9> box{20.0, 0.0, 0.0, 0.0, 21.0,
+                                  0.0,  0.0, 0.0, 22.0};
+  constexpr double volume = 20.0 * 21.0 * 22.0;
+  constexpr double step = 1e-6;
+  AtomMatrix forces(positions.rows(), 3);
+  rgpot::ForceOut result{forces.data(), 0.0, 0.0, {}, 0};
+  const rgpot::ForceInput input{static_cast<size_t>(positions.rows()),
+                                positions.data(), types.data(), box.data()};
+  pot.forceImpl(input, &result);
+  REQUIRE(result.has_stress == 1);
+  for (int row = 0; row < 3; ++row) {
+    for (int col = 0; col < 3; ++col) {
+      const auto energyAt = [&](double strain) {
+        AtomMatrix moved = positions;
+        auto cell = box;
+        for (int atom = 0; atom < positions.rows(); ++atom) {
+          moved(atom, col) += strain * positions(atom, row);
+        }
+        for (int axis = 0; axis < 3; ++axis) {
+          cell[3 * axis + col] += strain * box[3 * axis + row];
+        }
+        AtomMatrix sample_forces(positions.rows(), 3);
+        rgpot::ForceOut sample{sample_forces.data(), 0.0, 0.0, {}, 0};
+        pot.forceImpl({static_cast<size_t>(positions.rows()), moved.data(),
+                       types.data(), cell.data()},
+                      &sample);
+        return sample.energy;
+      };
+      const double expected =
+          (energyAt(step) - energyAt(-step)) / (2.0 * step * volume);
+      CAPTURE(row, col, expected);
+      REQUIRE_THAT(result.stress[3 * row + col], WithinAbs(expected, 1e-8));
+    }
+  }
+  rgpot::ForceOut repeated{forces.data(), 0.0, 0.0, {}, 0};
+  pot.forceImpl(input, &repeated);
+  REQUIRE(repeated.energy == result.energy);
+  REQUIRE(repeated.has_stress == 1);
+  for (size_t i = 0; i < 9; ++i) {
+    REQUIRE(repeated.stress[i] == result.stress[i]);
+  }
+}
+} // namespace
+
+TEST_CASE(
+    "Pair stresses differentiate the actual truncated and switched energy",
+    "[stress][LJPot][MorsePot][ZBLPot]") {
+  const std::vector<int> types{6, 8};
+  SECTION("periodic Lennard-Jones pair crosses the cell boundary") {
+    rgpot::LJPot pot;
+    AtomMatrix positions{{19.1, 0.1, -0.2}, {0.5, 0.4, 0.3}};
+    checkPairStressByStrain(pot, positions, types);
+  }
+  SECTION("Lennard-Jones switch contributes to stress") {
+    rgpot::LJPot pot(rgpot::LJConfig{.cutoff = 3.0, .switch_width = 0.8});
+    AtomMatrix positions{{0.0, 0.0, 0.0}, {2.6, 0.2, -0.1}};
+    checkPairStressByStrain(pot, positions, types);
+  }
+  SECTION("Morse shifted energy") {
+    rgpot::MorsePot pot;
+    AtomMatrix positions{{0.0, 0.0, 0.0}, {3.1, 0.3, -0.2}};
+    checkPairStressByStrain(pot, positions, types);
+  }
+  SECTION("Morse switch contributes to stress") {
+    rgpot::MorsePot pot(rgpot::MorseConfig{.cutoff = 5.0, .switch_width = 1.0});
+    AtomMatrix positions{{0.0, 0.0, 0.0}, {4.3, 0.3, -0.2}};
+    checkPairStressByStrain(pot, positions, types);
+  }
+  SECTION("ZBL screened pair") {
+    rgpot::ZBLPot pot;
+    AtomMatrix positions{{0.0, 0.0, 0.0}, {1.3, 0.3, -0.2}};
+    checkPairStressByStrain(pot, positions, types);
+  }
+}
+
+TEST_CASE("Pair stress is cleared when the configuration has no pair",
+          "[stress][LJPot][MorsePot][ZBLPot]") {
+  const int type = 6;
+  const double position[3] = {0.0, 0.0, 0.0};
+  const double box[9] = {20.0, 0.0, 0.0, 0.0, 21.0, 0.0, 0.0, 0.0, 22.0};
+  double forces[3] = {};
+  const auto check = [&](const auto &pot) {
+    rgpot::ForceOut out{
+        forces, 1.0, 0.0, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0}, 0};
+    pot.forceImpl({1, position, &type, box}, &out);
+    REQUIRE(out.has_stress == 1);
+    REQUIRE(out.energy == 0.0);
+    for (double component : out.stress) {
+      REQUIRE(component == 0.0);
+    }
+  };
+  check(rgpot::LJPot{});
+  check(rgpot::MorsePot{});
+  check(rgpot::ZBLPot{});
 }

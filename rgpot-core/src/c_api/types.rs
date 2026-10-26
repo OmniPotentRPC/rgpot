@@ -75,6 +75,12 @@ pub unsafe extern "C" fn rgpot_force_input_free(input: *mut rgpot_force_input_t)
 ///
 /// The `forces` field starts as NULL — the potential callback is responsible
 /// for setting it to a valid DLPack tensor.
+///
+/// # Safety
+///
+/// The function reads no memory. It stays `unsafe` because the C ABI
+/// declares it so; the caller owns the `forces` tensor once the callback
+/// sets it.
 #[no_mangle]
 pub unsafe extern "C" fn rgpot_force_out_create() -> rgpot_force_out_t {
     rgpot_force_out_t {

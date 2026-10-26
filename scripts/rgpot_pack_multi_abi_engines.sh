@@ -92,15 +92,16 @@ build_one() {
       echo "FAIL no engine for $maj" >&2
       return 1
     fi
-    cp -a "$SO" "$engdir/libmetatomic_engine.so"
+    cp -a "$SO" "$engdir/librgpot_metatomic_engine.so"
+    ln -sfn librgpot_metatomic_engine.so "$engdir/libmetatomic_engine.so"
     # RPATH for multi-ABI layout under rgpot/lib/torch-X.Y/
     peer='$ORIGIN/../../../'
     rpath="\$ORIGIN:${peer}torch/lib:${peer}metatensor/lib:${peer}vesin/lib"
     rpath+=":${peer}metatensor_torch/torch-${maj}/lib"
     rpath+=":${peer}metatomic/torch/torch-${maj}/lib"
     rpath+=":${peer}metatensor/torch/torch-${maj}/lib"
-    patchelf --set-rpath "$rpath" "$engdir/libmetatomic_engine.so"
-    echo "OK torch-$maj -> $engdir/libmetatomic_engine.so"
+    patchelf --set-rpath "$rpath" "$engdir/librgpot_metatomic_engine.so"
+    echo "OK torch-$maj -> $engdir/librgpot_metatomic_engine.so"
   )
 }
 
@@ -117,14 +118,16 @@ if [[ -n "$PRIMARY" ]]; then
   fi
   pmaj=${pmaj:-2.9}
   mkdir -p "$WORK/rgpot/lib/torch-$pmaj"
-  if [[ ! -f "$WORK/rgpot/lib/torch-$pmaj/libmetatomic_engine.so" ]]; then
-    cp -a "$PRIMARY" "$WORK/rgpot/lib/torch-$pmaj/libmetatomic_engine.so"
+  if [[ ! -f "$WORK/rgpot/lib/torch-$pmaj/librgpot_metatomic_engine.so" ]]; then
+    cp -a "$PRIMARY" "$WORK/rgpot/lib/torch-$pmaj/librgpot_metatomic_engine.so"
+    ln -sfn librgpot_metatomic_engine.so \
+      "$WORK/rgpot/lib/torch-$pmaj/libmetatomic_engine.so"
     peer='$ORIGIN/../../../'
     rpath="\$ORIGIN:${peer}torch/lib:${peer}metatensor/lib:${peer}vesin/lib"
     rpath+=":${peer}metatensor_torch/torch-${pmaj}/lib"
     rpath+=":${peer}metatomic/torch/torch-${pmaj}/lib"
     rpath+=":${peer}metatensor/torch/torch-${pmaj}/lib"
-    patchelf --set-rpath "$rpath" "$WORK/rgpot/lib/torch-$pmaj/libmetatomic_engine.so"
+    patchelf --set-rpath "$rpath" "$WORK/rgpot/lib/torch-$pmaj/librgpot_metatomic_engine.so"
     echo "copied primary engine to torch-$pmaj"
   fi
 fi

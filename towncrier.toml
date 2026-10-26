@@ -1,12 +1,17 @@
 [tool.towncrier]
 name = "rgpot"
-version = "3.2.0"
+version = "3.5.1"
 directory = "docs/newsfragments"
 filename = "CHANGELOG.md"
 start_string = "<!-- towncrier release notes start -->\n"
 underlines = ["", "", ""]
-title_format = "## [{version}](https://github.com/OmniPotentRPC/rgpot/tree/{version}) - {project_date}"
+title_format = "## [{version}](https://github.com/OmniPotentRPC/rgpot/tree/v{version}) - {project_date}"
 issue_format = "[#{issue}](https://github.com/OmniPotentRPC/rgpot/issues/{issue})"
+
+[[tool.towncrier.type]]
+directory = "breaking"
+name = "Breaking"
+showcontent = true
 
 [[tool.towncrier.type]]
 directory = "security"

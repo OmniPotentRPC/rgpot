@@ -4,6 +4,7 @@
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/Potential.hpp"
 #include "rgpot/UmaPot/UmaConfig.hpp"
+#include "rgpot/UmaPot/UmaContract.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -16,6 +17,11 @@ namespace rgpot {
  * Loads an AOTInductor ``.pt2`` exported by ``scripts/export_uma_aoti.py``.
  * Each force call builds a fairchem-convention edge list with vesin and
  * runs the compiled graph. Charge and spin are per-call tensor inputs.
+ *
+ * The package was merged for one composition, charge, spin and task.
+ * Every force call checks the config and the input against the
+ * metadata embedded in the package and throws UmaContractError on a
+ * mismatch (see UmaContract).
  */
 class UmaPot : public Potential<UmaPot> {
 public:
@@ -56,6 +62,9 @@ private:
 
   void recomputeParamsKey();
   void ensureLoaded() const;
+  /// Throws UmaContractError when the package's embedded charge, spin,
+  /// task or composition disagrees with the config or this input.
+  void checkContract(const ForceInput &in) const;
 };
 
 } // namespace rgpot

@@ -34,9 +34,9 @@ jobs:
     outputs:
       plan_sha: ${{ steps.plan.outputs.plan_sha }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           pixi-version: v0.70.2
           cache: true
@@ -64,7 +64,7 @@ jobs:
           PY
 
       - name: Upload plan + audit workflows
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ci-plan-${{ github.sha }}
           path: |
@@ -80,11 +80,11 @@ jobs:
     # schedule runs are docs-only hygiene; skip full prek (slow, needs apt hooks)
     if: github.event_name != 'schedule'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
       - name: Install environment
-        uses: prefix-dev/setup-pixi@v0.9.4
+        uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           activate-environment: true
           cache: true
@@ -130,7 +130,7 @@ jobs:
     needs: [prepare]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Install snapper-fmt
         run: |
           curl --proto '=https' --tlsv1.2 -LsSf \
@@ -165,15 +165,15 @@ jobs:
     needs: [prepare]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Restore lychee cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           key: lychee-${{ runner.os }}-${{ hashFiles('.lychee.toml', 'README.md', 'docs/**/*.org', 'docs/**/*.md') }}
           path: .lycheecache
           restore-keys: lychee-${{ runner.os }}-
       - name: Link check
-        uses: lycheeverse/lychee-action@v2
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -199,7 +199,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
       - name: Ensure potctl
@@ -220,7 +220,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Stage portable/fat potctl
         uses: ./.github/actions/setup-ci-tools
         with:
@@ -245,7 +245,7 @@ jobs:
         rpc: ["true", "false"]
         cache: ["true", "false"]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           submodules: recursive
@@ -253,23 +253,38 @@ jobs:
         uses: ./.github/actions/ensure-potctl
         with:
           artifact-prefix: ci-tools-${{ github.sha }}
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           pixi-version: v0.70.2
           cache: true
           environments: devbld rpctest
           activate-environment: devbld
       - name: Restore ccache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: .ccache
           key: ccache-orch-${{ runner.os }}-${{ matrix.sys }}-${{ github.sha }}
           restore-keys: ccache-orch-${{ runner.os }}-${{ matrix.sys }}-
       # potctl owns step logic (darwin-env + configure/build/test); nickel/GHA owns matrix only
+      - if: matrix.sys == 'meson' && matrix.os == 'ubuntu-latest'
+        name: Install MPI build environment
+        run: pixi install -e mpibld
       - if: matrix.sys == 'meson'
         name: Build & Test (Meson)
-        shell: pixi run bash -e {0}
-        run: potctl ci meson-test --rpc ${{ matrix.rpc }} --cache ${{ matrix.cache }}
+        shell: bash
+        env:
+          # ubuntu: -Dwith_mpi=enabled via POTCTL_WITH_MPI. Other OS values stay off.
+          POTCTL_WITH_MPI: ${{ matrix.os == 'ubuntu-latest' && 'enabled' || 'disabled' }}
+        run: |
+          set -euo pipefail
+          if [ "${POTCTL_WITH_MPI}" = "enabled" ]; then
+            pixi run -e mpibld potctl ci meson-test --rpc ${{ matrix.rpc }} --cache ${{ matrix.cache }}
+          else
+            pixi run -e devbld potctl ci meson-test --rpc ${{ matrix.rpc }} --cache ${{ matrix.cache }}
+          fi
+      - if: matrix.sys == 'meson' && matrix.os == 'ubuntu-latest'
+        name: mpirun calculator_group_test
+        run: pixi run -e mpibld mpirun --oversubscribe -n 4 ./bbdir/CppCore/calculator_group_test
       - if: matrix.sys == 'cmake'
         name: Build & Test (CMake)
         shell: pixi run bash -e {0}
@@ -294,13 +309,13 @@ jobs:
     # params on 18, "VS not found" when pinned to 2022).
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       # No activate-environment here: the default env carries
       # vs2022_win-64 and vswhere, whose activation rewrites PATH instead of
       # appending, and setup-pixi refuses that ("Unable to handle environment
       # activation which does not only append to PATH"). The build step runs
       # through `pixi run`, which activates per command anyway.
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           pixi-version: v0.70.2
           cache: true
@@ -310,7 +325,7 @@ jobs:
       # cl.exe still has to be on PATH for meson's compiler detection inside
       # `pixi run`; without this it reports Unknown compiler(s): [['cl.exe']].
       - name: Activate MSVC
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
         with:
           arch: x64
           vsversion: "2022"
@@ -356,8 +371,8 @@ jobs:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           pixi-version: v0.70.2
           cache: true
@@ -398,8 +413,8 @@ jobs:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           pixi-version: v0.70.2
           cache: true
@@ -431,7 +446,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           submodules: recursive
@@ -439,14 +454,14 @@ jobs:
         uses: ./.github/actions/ensure-potctl
         with:
           artifact-prefix: ci-tools-${{ github.sha }}
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           pixi-version: v0.70.2
           cache: true
           environments: devbld
           activate-environment: devbld
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@861a07ce7084f55488e375df125cdc99bba60eb7 # v2
         with:
           tool: cargo-nextest
       - name: potctl unit tests
@@ -470,7 +485,7 @@ jobs:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_COMPILERCHECK: content
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           submodules: recursive
@@ -478,14 +493,14 @@ jobs:
         uses: ./.github/actions/ensure-potctl
         with:
           artifact-prefix: ci-tools-${{ github.sha }}
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           pixi-version: v0.70.2
           cache: true
           environments: devbld rpctest
           activate-environment: devbld
       - name: Restore ccache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: .ccache
           key: ccache-orch-bridge-${{ runner.os }}-${{ github.sha }}
@@ -507,7 +522,7 @@ jobs:
       CCACHE_MAXSIZE: 800M
       TORCH_DEVICE: cpu
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           submodules: recursive
@@ -515,14 +530,14 @@ jobs:
         uses: ./.github/actions/ensure-potctl
         with:
           artifact-prefix: ci-tools-${{ github.sha }}
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           activate-environment: metatomicbld
           cache: true
           environments: metatomicbld
           pixi-version: v0.70.2
       - name: Restore Compiler Cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           key: ccache-pot-mta-${{ runner.os }}-${{ github.sha }}
           path: .ccache
@@ -534,6 +549,48 @@ jobs:
       - name: Meson build & test (metatomic)
         shell: pixi run -e metatomicbld bash -e {0}
         run: potctl ci metatomic-test
+
+  # Own job, not a second step of potentials_metatomic: ensure-torch-metatomic
+  # exports the metatomicbld torch and cmake paths through GITHUB_ENV, and a
+  # build in umaenginebld that inherits them mixes the two environments'
+  # Catch2 headers and libraries.
+  potentials_uma_engine:
+    name: engine plugins (meson / ubuntu)
+    needs: [prepare, ci-tools]
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_COMPILERCHECK: content
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 800M
+      TORCH_DEVICE: cpu
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - name: Ensure potctl
+        uses: ./.github/actions/ensure-potctl
+        with:
+          artifact-prefix: ci-tools-${{ github.sha }}
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
+        with:
+          activate-environment: umaenginebld
+          cache: true
+          environments: umaenginebld
+          pixi-version: v0.70.2
+      - name: Restore Compiler Cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          key: ccache-pot-engine-${{ runner.os }}-${{ github.sha }}
+          path: .ccache
+          restore-keys: ccache-pot-engine-${{ runner.os }}-
+      - name: Ensure torch + metatomic C++ layout
+        shell: pixi run -e umaenginebld bash -e {0}
+        run: potctl ci ensure-torch-metatomic
+      - name: Meson build & test (engine plugins)
+        shell: pixi run -e umaenginebld bash -e {0}
+        run: potctl ci metatomic-test --rpc --build-dir bbdir-uma-engine
 
   potentials_tight_binding:
     name: xtb+tblite (meson / ${{ matrix.os }})
@@ -549,7 +606,7 @@ jobs:
       matrix:
         os: [ubuntu-latest]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           submodules: recursive
@@ -557,14 +614,14 @@ jobs:
         uses: ./.github/actions/ensure-potctl
         with:
           artifact-prefix: ci-tools-${{ github.sha }}
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           activate-environment: tbbld
           cache: true
           environments: tbbld
           pixi-version: v0.70.2
       - name: Restore Compiler Cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           key: ccache-pot-tb-${{ runner.os }}-${{ github.sha }}
           path: .ccache
@@ -582,7 +639,7 @@ jobs:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           submodules: recursive
@@ -590,7 +647,7 @@ jobs:
         uses: ./.github/actions/ensure-potctl
         with:
           artifact-prefix: ci-tools-${{ github.sha }}
-      - uses: prefix-dev/setup-pixi@v0.9.4
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           activate-environment: true
           cache: true
@@ -599,6 +656,108 @@ jobs:
       - name: Meson build & test (xckernel goldens)
         shell: pixi run bash -e {0}
         run: potctl ci xckernel-test
+
+  # Compile-only. conda-forge tblite 0.6.0 (gfortran_ha02e54d_0) segfaults in
+  # __dftd4_model_d4_MOD_get_polarizabilities on a GFN2 water single point,
+  # including `tblite run`. The [tblite] tests stay on potentials_tight_binding
+  # (tbbld, tblite 0.4.0), which builds the two-argument calculator call.
+  potentials_tblite_06:
+    name: tblite 0.6.0 compile (meson / ubuntu)
+    needs: [prepare, ci-tools]
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_COMPILERCHECK: content
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - name: Ensure potctl
+        uses: ./.github/actions/ensure-potctl
+        with:
+          artifact-prefix: ci-tools-${{ github.sha }}
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
+        with:
+          activate-environment: tblite06bld
+          cache: true
+          environments: tblite06bld
+          pixi-version: v0.70.2
+      - name: Restore Compiler Cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          key: ccache-pot-tb06-${{ runner.os }}-${{ github.sha }}
+          path: .ccache
+          restore-keys: ccache-pot-tb06-${{ runner.os }}-
+      - name: Compile TBLitePot against tblite 0.6
+        shell: pixi run -e tblite06bld bash -e {0}
+        run: |
+          set -euo pipefail
+          meson setup bbdir-tb06 \
+            -Dwith_tests=true \
+            -Dwith_examples=false \
+            -Dwith_tblite=true \
+            -Dwith_rpc=false \
+            -Dwith_cache=false \
+            --buildtype=debug
+          grep -E 'tblite found: YES 0\.6' bbdir-tb06/meson-logs/meson-log.txt
+          meson compile -C bbdir-tb06 tblite_test
+
+  potentials_plugins:
+    name: plugins (meson / ${{ matrix.os }})
+    needs: [prepare, ci-tools]
+    if: github.event_name != 'schedule'
+    runs-on: ${{ matrix.os }}
+    env:
+      CCACHE_COMPILERCHECK: content
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - name: Ensure potctl
+        uses: ./.github/actions/ensure-potctl
+        with:
+          artifact-prefix: ci-tools-${{ github.sha }}
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
+        with:
+          activate-environment: devbld
+          cache: true
+          environments: devbld
+          pixi-version: v0.70.2
+      - name: Restore Compiler Cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          key: ccache-pot-plugins-${{ runner.os }}-${{ github.sha }}
+          path: .ccache
+          restore-keys: ccache-pot-plugins-${{ runner.os }}-
+      - name: Meson build & test (plugin host)
+        shell: pixi run -e devbld bash -e {0}
+        run: potctl ci plugin-test
+
+  eonviz_pins:
+    name: eonviz pins
+    needs: [prepare]
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
+        with:
+          pixi-version: v0.70.2
+          cache: true
+      - name: Check eonviz pins
+        run: pixi run check-eonviz-pins
+      - name: Byte-exact restart golden
+        run: pixi run bash scripts/check_readcon_golden.sh
 
   # --- Single branch-protection target (require this job name in settings) ---
   ci_gate:
@@ -618,8 +777,12 @@ jobs:
       - rust_tests
       - client_bridge_stress
       - potentials_metatomic
+      - potentials_uma_engine
       - potentials_tight_binding
       - xckernel_goldens
+      - potentials_tblite_06
+      - potentials_plugins
+      - eonviz_pins
     runs-on: ubuntu-latest
     steps:
       - name: Aggregate job results
@@ -647,8 +810,12 @@ jobs:
             "rust_tests:${{ needs.rust_tests.result }}" \
             "client_bridge_stress:${{ needs.client_bridge_stress.result }}" \
             "potentials_metatomic:${{ needs.potentials_metatomic.result }}" \
+            "potentials_uma_engine:${{ needs.potentials_uma_engine.result }}" \
             "potentials_tight_binding:${{ needs.potentials_tight_binding.result }}" \
-            "xckernel_goldens:${{ needs.xckernel_goldens.result }}"
+            "xckernel_goldens:${{ needs.xckernel_goldens.result }}" \
+            "potentials_tblite_06:${{ needs.potentials_tblite_06.result }}" \
+            "potentials_plugins:${{ needs.potentials_plugins.result }}" \
+            "eonviz_pins:${{ needs.eonviz_pins.result }}"
           do
             name="${pair%%:*}"
             res="${pair##*:}"

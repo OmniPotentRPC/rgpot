@@ -9,14 +9,14 @@ jobs:
     - tools
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       with:
         fetch-depth: 0
     - name: Restore potctl + cog from tools job
       uses: ./.github/actions/restore-ci-tools
       with:
         artifact-name: ${{ env.CI_TOOLS_ARTIFACT }}
-    - uses: prefix-dev/setup-pixi@v0.9.4
+    - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
       with:
         activate-environment: true
         cache: true
@@ -39,7 +39,7 @@ jobs:
   tools:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
     - name: Stage portable potctl + cog (Linux musl + upload)
       uses: ./.github/actions/setup-ci-tools
       with:

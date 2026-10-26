@@ -32,7 +32,9 @@ namespace rgpot {
  * so the pair list never folds a separation into the cell. A cluster
  * whose bounding box fits inside the cutoff walks ``i < j`` in SoA form,
  * AVX2 or NEON on the inner loop. A larger open system goes through the
- * pair cache, and that pair term is the Highway kernel. A degenerate
+ * pair cache, and that pair term is the Highway kernel. A nonzero
+ * ``LJClusterConfig::switch_width`` selects that kernel's C^2 quintic
+ * switch and skips the direct walk, which has no switch. A degenerate
  * input cell (any non-positive diagonal entry)
  * is replaced by a 1e6 Angstrom cube.
  */
@@ -82,9 +84,12 @@ void LJClusterPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const double ey = maxy - miny;
   const double ez = maxz - minz;
   const double cutoff = opt.cutoff;
+  const bool switched = m_config.switch_width != 0.0;
   // Every pair is at most the box diagonal. When that diagonal sits on
   // the cutoff, the direct walk and the cutoff test agree on the set.
-  if ((ex * ex + ey * ey) + ez * ez <= cutoff * cutoff) {
+  // The direct walk is the shifted pair term, so a quintic switch stays
+  // on the Highway kernel.
+  if (!switched && ((ex * ex + ey * ey) + ez * ez <= cutoff * cutoff)) {
     double energyAcc = 0.0;
     lj_cluster_direct(R, static_cast<std::size_t>(N), cutoff, u0, psi, cuttOffU, F,
                       &energyAcc);
@@ -97,6 +102,11 @@ void LJClusterPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   params.four_u0 = 4.0 * u0;
   params.shift = cuttOffU;
   params.use_switch = 0;
+  if (switched) {
+    params.use_switch = 1;
+    params.r_on = m_switch.r_on;
+    params.inv_width = m_switch.inv_width;
+  }
   simd::CachedPairs pairs;
   simd::fill_view(pairs, R, static_cast<std::size_t>(N), box_use, opt);
   double strain[6] = {};

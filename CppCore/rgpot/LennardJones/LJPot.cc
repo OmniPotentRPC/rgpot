@@ -58,7 +58,7 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     F[3 * i + 2] = 0;
   }
   if (N < 2 || cuttOffR <= 0.0) {
-    publishCauchyStress(out, strain, 0.0);
+    publishCauchyStress(out, strain, volume);
     return;
   }
 

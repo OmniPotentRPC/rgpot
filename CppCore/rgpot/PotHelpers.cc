@@ -22,6 +22,9 @@ namespace rgpot {
 void zeroForceOut(const size_t &nAtoms, ForceOut *efvd) {
   efvd->energy = 0;
   efvd->variance = 0;
+  efvd->has_stress = 0;
+  for (int s = 0; s < 9; ++s)
+    efvd->stress[s] = 0;
   for (size_t idx{0}; idx < nAtoms; idx++) {
     efvd->F[3 * idx] = 0;
     efvd->F[3 * idx + 1] = 0;

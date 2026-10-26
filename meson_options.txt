@@ -14,6 +14,12 @@ option(
     value: 'auto',
     description: 'linkcell/minimage pair list. Auto when cargo and rustc 1.89 or newer are found; otherwise the C++ pair scan is used.',
 )
+option(
+    'with_mpi',
+    type: 'feature',
+    value: 'disabled',
+    description: 'Link MPI so calculator groups can split and share across ranks',
+)
 option('with_xtb', type: 'boolean', value: false)
 option(
     'with_xckernel',
@@ -79,4 +85,10 @@ option(
     type: 'feature',
     value: 'auto',
     description: 'i-PI socket server Potential (POSIX sockets). auto is on except on Windows.',
+)
+option(
+    'with_water',
+    type: 'boolean',
+    value: false,
+    description: 'Flexible TIP4P, SPC/E and TIP4P-Pt kernels. Defaults false, matching the eOn with_water option.',
 )

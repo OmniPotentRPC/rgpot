@@ -169,7 +169,7 @@ HWY_INLINE double r2_scalar(double dx, double dy, double dz) {
 #if HWY_NATIVE_FMA
   return __builtin_fma(dz, dz, __builtin_fma(dy, dy, dx * dx));
 #elif defined(__x86_64__)
-  if (detail::glibc_fma_active()) {
+  if (detail::fma_hw_active()) {
     return r2_hw(dx, dy, dz);
   }
   return fma_trunc(dz, dz, fma_trunc(dy, dy, dx * dx));
@@ -181,7 +181,7 @@ HWY_INLINE double r2_scalar(double dx, double dy, double dz) {
 template <class D>
 HWY_INLINE hn::Vec<D> r2_vec(D d, hn::Vec<D> dx, hn::Vec<D> dy, hn::Vec<D> dz) {
 #if !HWY_NATIVE_FMA && defined(__x86_64__)
-  if (detail::glibc_fma_active()) {
+  if (detail::fma_hw_active()) {
     alignas(64) double dxa[8], dya[8], dza[8], out[8];
     hn::Store(dx, d, dxa);
     hn::Store(dy, d, dya);
@@ -257,7 +257,7 @@ template <class D> HWY_INLINE hn::Vec<D> exp_lanes(D d, hn::Vec<D> x_in) {
 #if !HWY_NATIVE_FMA && defined(__x86_64__)
   // One call holds every fused product of this exp, so the SSE kernel does
   // not pay a libcall per Horner step when the processor's FMA is usable.
-  if (detail::glibc_fma_active()) {
+  if (detail::fma_hw_active()) {
 #if HWY_TARGET == HWY_SSE2 || HWY_TARGET == HWY_SSE4
     hn::Vec<D> fast;
     fast.raw = exp2_hw(x_in.raw);
@@ -516,7 +516,7 @@ HWY_INLINE double pair_run(D d, const PairView &v, double *F, double *strain,
     std::size_t m = 0;
     if constexpr (Fold != 3) {
 #if !HWY_NATIVE_FMA && defined(__x86_64__)
-      if (detail::glibc_fma_active()) {
+      if (detail::fma_hw_active()) {
         m = accept_row_hw(v, i, dxb, dyb, dzb, r2b, jb);
       } else
 #endif
@@ -664,7 +664,7 @@ HWY_INLINE double pair_run(D d, const PairView &v, double *F, double *strain,
       if constexpr (kMorse) {
         if (L == 2) {
 #if defined(__x86_64__)
-          const bool hw_fma = detail::glibc_fma_active();
+          const bool hw_fma = detail::fma_hw_active();
           for (; k + 8 <= m; k += 8) {
             alignas(16) double r2s[8], es[8], fs[8];
             for (int t = 0; t < 8; ++t) {
@@ -845,7 +845,7 @@ void EamRun(long n, const double *R, const EamAtom *atoms, const double *box,
   return;
 #endif
 #if !HWY_NATIVE_FMA && defined(__x86_64__)
-  if (detail::glibc_fma_active()) {
+  if (detail::fma_hw_active()) {
     eam_hw(n, R, atoms, box, F, U);
     return;
   }

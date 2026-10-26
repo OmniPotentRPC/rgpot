@@ -16,6 +16,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace rgpot {
@@ -78,6 +79,36 @@ struct EngineBundle {
   bool loaded = false;
 };
 
+// NWChem/GA/MA session state and engine-owned exit handlers have process
+// lifetime. Keep one owning handle for each resolved function table, so
+// destroying a calculator neither finalizes a live peer nor reloads the engine.
+void retain_engine(EngineBundle &bundle) {
+  struct RetainedEngine {
+    EnergyGradientFn energy_gradient;
+    SetParamsFn set_params;
+    VersionFn version;
+    AvailableFn available;
+    DynLib library;
+  };
+  static std::mutex mutex;
+  // The registry has no static destructor: the engine owns finalization and
+  // its callbacks require the library mapping through process teardown.
+  static auto *engines = new std::vector<RetainedEngine>;
+  std::lock_guard<std::mutex> lock(mutex);
+  for (const auto &engine : *engines) {
+    if (engine.energy_gradient == bundle.energy_gradient &&
+        engine.set_params == bundle.set_params &&
+        engine.version == bundle.version &&
+        engine.available == bundle.available) {
+      bundle.engine_lib.close();
+      return;
+    }
+  }
+  engines->push_back({bundle.energy_gradient, bundle.set_params,
+                      bundle.version, bundle.available,
+                      std::move(bundle.engine_lib)});
+}
+
 bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
   b.load_error.clear();
   b.loaded = false;
@@ -116,6 +147,7 @@ bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
     b.load_error = "engine missing nwchemc_set_params";
     return false;
   }
+  retain_engine(b);
   b.loaded = true;
   return true;
 }

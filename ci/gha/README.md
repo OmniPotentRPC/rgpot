@@ -88,7 +88,7 @@ Nix flake *and* ad-hoc Janet — strictly worse.
 ```
 
 **Shipped orchestrator thin bodies:** `meson-test` / `cmake-test`, `ensure-torch-metatomic` +
-`metatomic-test`, `xtb-tblite-test`, `xckernel-test`, `rpc-integ`, `towncrier-check` (auto-installs towncrier via
+`metatomic-test`, `xtb-tblite-test`, `xckernel-test`, `plugin-test`, `rpc-integ`, `towncrier-check` (auto-installs towncrier via
 pipx/pip --user if missing), `bridge-stress-full`. Release-prepare: `release-assert` /
 `towncrier-draft` / `cog-bump-dry-run` / `cog-check`. Still multi-line (honest): prepare export-plan,
 prek/snapper installer curls+apt, rust nextest one-liner block, CI gate `needs.*.result` aggregator.
@@ -127,13 +127,16 @@ prepare (export-plan → ci-plan.json + audit artifact)
 prek ∥ docs_snapper ∥ docs_lychee ∥ towncrier(PR) ∥ ci-tools
     ↓ (after ci-tools; skipped on schedule except docs_*)
 build_and_test ∥ rust_tests ∥ client_bridge_stress
-  ∥ potentials_metatomic ∥ potentials_tight_binding ∥ xckernel_goldens
-  ∥ build_windows_meson ∥ nodownload_rehearsal   (need `prepare` only; no potctl)
+  ∥ potentials_metatomic ∥ potentials_uma_engine ∥ potentials_tight_binding
+  ∥ potentials_tblite_06 ∥ potentials_plugins (plugin-test) ∥ xckernel_goldens
+  ∥ build_windows_meson ∥ nodownload_rehearsal ∥ build_fast_nlist_off ∥ eonviz_pins   (need `prepare` only; no potctl)
   (build_windows_meson: MSVC meson leg, fortran suppressed via
    ci/gha/machines/no-fortran.ini so the flang/MSVC kernel pairing stays out.
    nodownload_rehearsal: `git archive` tree built with --wrap-mode=nodownload,
    the conda-forge source-build rehearsal; fortran kernels included, since
-   they are in-tree and pull no wrap.)
+   they are in-tree and pull no wrap.
+   build_fast_nlist_off: meson with the linkcell/minimage pair list disabled.
+   eonviz_pins: pixi task check-eonviz-pins and the byte-exact restart golden.)
   (NWChemPot frontend/stub always; energy/grad need an external libnwchemc engine.)
     ↓
 ci_gate   ← single required-check aggregator

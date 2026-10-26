@@ -38,6 +38,15 @@ unsafe impl Send for PotentialServer {}
 unsafe impl Sync for PotentialServer {}
 
 impl potential::Server for PotentialServer {
+    fn get_capabilities(
+        &mut self,
+        _params: potential::GetCapabilitiesParams,
+        mut results: potential::GetCapabilitiesResults,
+    ) -> capnp::capability::Promise<(), CapnpError> {
+        crate::compat::describe_server(results.get().init_capabilities());
+        capnp::capability::Promise::ok(())
+    }
+
     fn calculate(
         &mut self,
         params: potential::CalculateParams,

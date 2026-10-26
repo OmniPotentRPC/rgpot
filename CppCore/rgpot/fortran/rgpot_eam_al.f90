@@ -122,108 +122,55 @@ contains
             + par%density_weight_b*exp(-par%density_decay_b*r))
    end function density_shape
 
-   !> Electron density a neighbour at distance `r` puts at an atom's site.
-   !!
-   !! Shifted so it vanishes at `rcut`, then scaled.
-   elemental function density(par, r) result(rho)
-      type(eam_al_params_t), intent(in) :: par
-      real(wp), intent(in) :: r
-      real(wp) :: rho
+   !> `x**n` for a small non-negative integer `n` by repeated squaring, so
+   !! no libgcc `__powidf2` call sits in the pair loops.
+   pure function ipow(x, n) result(y)
+      real(wp), intent(in) :: x
+      integer, intent(in) :: n
+      real(wp) :: y
 
-      rho = 0.0_wp
-      if (r >= truncation_radius(par)) return
+      real(wp) :: base
+      integer :: e
 
-      rho = par%density_scale &
-            *(density_shape(par, r) - density_shape(par, par%rcut))
-   end function density
+      y = 1.0_wp
+      base = x
+      e = n
+      do while (e > 0)
+         if (iand(e, 1) == 1) y = y*base
+         base = base*base
+         e = ishft(e, -1)
+      end do
+   end function ipow
 
-   !> Radial derivative of `density`.
-   !!
-   !! `d/dr [r^eta (e^{-beta_a r} + w e^{-beta_b r})]` splits into the term
-   !! from the power and the term from the two exponentials; the constant
-   !! shift drops out. The expression also covers `eta == 0`, where the
-   !! first term vanishes on its own.
-   elemental function density_deriv(par, r) result(drho)
-      type(eam_al_params_t), intent(in) :: par
-      real(wp), intent(in) :: r
-      real(wp) :: drho
-
-      real(wp) :: decay_a, decay_b, sum_exp, sum_decayed_exp
-
-      drho = 0.0_wp
-      if (r >= truncation_radius(par)) return
-
-      decay_a = exp(-par%density_decay_a*r)
-      decay_b = par%density_weight_b*exp(-par%density_decay_b*r)
-      sum_exp = decay_a + decay_b
-      sum_decayed_exp = par%density_decay_a*decay_a &
-                        + par%density_decay_b*decay_b
-
-      drho = par%density_scale &
-             *(real(par%density_power, wp)*r**(par%density_power - 1)*sum_exp &
-               - r**par%density_power*sum_decayed_exp)
-   end function density_deriv
-
-   !> Pair energy of one bond of length `r`.
-   !!
-   !! The `-2 g rho(r)` term is the gauge partner of the `+g rho_i` term in
-   !! `F`; each unordered pair carries it once and each atom's embedding
-   !! picks it up twice, so the two cancel over the whole cell.
-   elemental function pair_energy(par, r) result(phi)
-      type(eam_al_params_t), intent(in) :: par
-      real(wp), intent(in) :: r
-      real(wp) :: phi
-
-      phi = 0.0_wp
-      if (r >= truncation_radius(par)) return
-
-      phi = pair_shape(par, r) - pair_shape(par, par%rcut) &
-            - 2.0_wp*par%g_transform*density(par, r)
-   end function pair_energy
-
-   !> Radial derivative of `pair_energy`.
-   elemental function pair_deriv(par, r) result(dphi)
-      type(eam_al_params_t), intent(in) :: par
-      real(wp), intent(in) :: r
-      real(wp) :: dphi
-
-      dphi = 0.0_wp
-      if (r >= truncation_radius(par)) return
-
-      dphi = -(par%pair_amp_a*par%pair_decay_a*exp(-par%pair_decay_a*r) &
-               + par%pair_amp_b*par%pair_decay_b*exp(-par%pair_decay_b*r)) &
-             - 2.0_wp*par%g_transform*density_deriv(par, r)
-   end function pair_deriv
-
-   !> Embedding energy `F(rho) = g rho + sum_k c_k rho^k`.
-   elemental function embedding(par, rho) result(e)
+   !> `F(rho)` and `F'(rho)` in Horner form,
+   !! `F = rho (g + c_1 + rho (c_2 + rho (c_3 + ...)))`.
+   pure subroutine embed_horner(par, rho, f, dfdrho)
       type(eam_al_params_t), intent(in) :: par
       real(wp), intent(in) :: rho
-      real(wp) :: e
+      real(wp), intent(out) :: f, dfdrho
 
       integer :: k
+      real(wp) :: p, dp
 
-      e = par%g_transform*rho
-      do k = 1, embed_order
-         e = e + par%embed_coeff(k)*rho**k
+      ! p(rho) = sum_k c_k rho^(k-1); F = g rho + rho p; F' = g + p + rho p'.
+      p = par%embed_coeff(embed_order)
+      dp = 0.0_wp
+      do k = embed_order - 1, 1, -1
+         dp = dp*rho + p
+         p = p*rho + par%embed_coeff(k)
       end do
-   end function embedding
-
-   !> Derivative of the embedding function with respect to the density.
-   elemental function embedding_deriv(par, rho) result(dfdrho)
-      type(eam_al_params_t), intent(in) :: par
-      real(wp), intent(in) :: rho
-      real(wp) :: dfdrho
-
-      integer :: k
-
-      dfdrho = par%g_transform + par%embed_coeff(1)
-      do k = 2, embed_order
-         dfdrho = dfdrho + par%embed_coeff(k)*real(k, wp)*rho**(k - 1)
-      end do
-   end function embedding_deriv
+      f = rho*(par%g_transform + p)
+      dfdrho = par%g_transform + p + rho*dp
+   end subroutine embed_horner
 
    !> Energy and forces for `positions` (3 x natoms) in `cell`.
+   !!
+   !! Per ordered neighbour entry the density pass evaluates the two
+   !! density exponentials once and keeps `rho(r)` and `rho'(r)`; the force
+   !! pass adds the two pair exponentials. The shifts at `rcut` are
+   !! evaluated once per call. scripts/validation/eam_al.py checks these
+   !! forms, the Horner embedding and the gather force against the closed
+   !! form in the module header.
    subroutine eam_al_energy_forces(positions, cell, par, table, energy, &
                                    forces, status, errmsg)
       real(wp), intent(in), contiguous :: positions(:, :)
@@ -235,8 +182,10 @@ contains
       integer, intent(out) :: status
       character(len=:), allocatable, intent(out) :: errmsg
 
-      integer(ip) :: natoms, i
-      real(wp), allocatable :: rho(:), dembed(:), e_pair(:)
+      integer(ip) :: natoms, i, nent
+      real(wp), allocatable :: rho(:), dembed(:), e_pair(:), e_embed(:)
+      real(wp), allocatable :: dens(:), ddens(:)
+      real(wp) :: rt, pair_shift, dens_shift
 
       natoms = int(size(positions, 2), ip)
       energy = 0.0_wp
@@ -245,72 +194,109 @@ contains
       call table%build(positions, cell, par%cutoff(), status, errmsg)
       if (status /= 0) return
 
-      allocate (rho(natoms), dembed(natoms), e_pair(natoms))
+      rt = truncation_radius(par)
+      pair_shift = pair_shape(par, par%rcut)
+      dens_shift = density_shape(par, par%rcut)
+
+      nent = max(table%row(natoms + 1_ip) - 1_ip, 1_ip)
+      allocate (rho(natoms), dembed(natoms), e_pair(natoms), e_embed(natoms))
+      allocate (dens(nent), ddens(nent))
 
       ! Pass one: each atom sums the density its own neighbours put at its
-      ! site, so the iterations write disjoint slots.
+      ! site, keeping rho(r) and rho'(r) of every entry for pass three.
       do concurrent(i=1:natoms)
-         rho(i) = atom_density(par, table, i)
+         call atom_density(par, table, i, rt, dens_shift, dens, ddens, rho(i))
       end do
 
-      ! Pass two: the embedding derivative for every atom. It stands as its
-      ! own pass because the force loop reads `F'` of the neighbours, not
-      ! only of the atom it is summing for.
-      dembed = embedding_deriv(par, rho)
+      ! Pass two: F and F' for every atom. F' stands as its own pass
+      ! because the force loop reads F' of the neighbours, not only of the
+      ! atom it is summing for.
+      do concurrent(i=1:natoms)
+         call embed_horner(par, rho(i), e_embed(i), dembed(i))
+      end do
 
       ! Pass three: each atom sums the whole force acting on it and writes
       ! only its own column.
       do concurrent(i=1:natoms)
-         call atom_contribution(par, table, i, dembed, e_pair(i), forces(:, i))
+         call atom_contribution(par, table, i, rt, pair_shift, dens, ddens, &
+                                dembed, e_pair(i), forces(:, i))
       end do
 
-      energy = sum(e_pair) + sum(embedding(par, rho))
+      energy = sum(e_pair) + sum(e_embed)
    end subroutine eam_al_energy_forces
 
-   !> Total electron density at atom `i`.
-   pure function atom_density(par, table, i) result(rho_i)
+   !> Total electron density at atom `i`; stores `rho(r)` and `rho'(r)` of
+   !! each of its entries (zero past the truncation radius).
+   pure subroutine atom_density(par, table, i, rt, dens_shift, dens, ddens, &
+                                rho_i)
       type(eam_al_params_t), intent(in) :: par
       type(neighbor_table_t), intent(in) :: table
       integer(ip), intent(in) :: i
-      real(wp) :: rho_i
+      real(wp), intent(in) :: rt, dens_shift
+      real(wp), intent(inout) :: dens(:), ddens(:)
+      real(wp), intent(out) :: rho_i
 
       integer(ip) :: s
+      real(wp) :: r, ea, eb, rpm1, rp
 
       rho_i = 0.0_wp
       do s = table%row(i), table%row(i + 1_ip) - 1_ip
-         rho_i = rho_i + density(par, table%dist(s))
+         r = table%dist(s)
+         if (r >= rt) then
+            dens(s) = 0.0_wp
+            ddens(s) = 0.0_wp
+            cycle
+         end if
+         ea = exp(-par%density_decay_a*r)
+         eb = par%density_weight_b*exp(-par%density_decay_b*r)
+         rpm1 = ipow(r, par%density_power - 1)
+         rp = rpm1*r
+         dens(s) = par%density_scale*(rp*(ea + eb) - dens_shift)
+         ddens(s) = par%density_scale &
+                    *(real(par%density_power, wp)*rpm1*(ea + eb) &
+                      - rp*(par%density_decay_a*ea + par%density_decay_b*eb))
+         rho_i = rho_i + dens(s)
       end do
-   end function atom_density
+   end subroutine atom_density
 
    !> Atom `i`'s half of the pair energy and the total force acting on it.
-   pure subroutine atom_contribution(par, table, i, dembed, e_i, f_i)
+   pure subroutine atom_contribution(par, table, i, rt, pair_shift, dens, &
+                                     ddens, dembed, e_i, f_i)
       type(eam_al_params_t), intent(in) :: par
       type(neighbor_table_t), intent(in) :: table
       integer(ip), intent(in) :: i
-      real(wp), intent(in) :: dembed(:)
+      real(wp), intent(in) :: rt, pair_shift
+      real(wp), intent(in) :: dens(:), ddens(:), dembed(:)
       real(wp), intent(out) :: e_i
       real(wp), intent(out) :: f_i(3)
 
       integer(ip) :: s, j
-      real(wp) :: r, rhat(3), dedr
+      real(wp) :: r, rhat(3), dedr, pa, pb, phi, dphi
 
       e_i = 0.0_wp
       f_i = 0.0_wp
 
       do s = table%row(i), table%row(i + 1_ip) - 1_ip
-         j = table%idx(s)
          r = table%dist(s)
+         if (r >= rt) cycle
+         j = table%idx(s)
          rhat = table%vec(:, s)/r
+         pa = par%pair_amp_a*exp(-par%pair_decay_a*r)
+         pb = par%pair_amp_b*exp(-par%pair_decay_b*r)
+
+         ! Pair energy with the -2 g rho(r) gauge term, and its slope.
+         phi = pa + pb - pair_shift - 2.0_wp*par%g_transform*dens(s)
+         dphi = -(par%pair_decay_a*pa + par%pair_decay_b*pb) &
+                - 2.0_wp*par%g_transform*ddens(s)
 
          ! Half the bond energy, since the neighbour's own pass takes the
          ! other half.
-         e_i = e_i + 0.5_wp*pair_energy(par, r)
+         e_i = e_i + 0.5_wp*phi
 
          ! The whole radial force this bond exerts on i: the pair slope
          ! plus the density slope weighted by both ends' embedding
          ! derivatives.
-         dedr = pair_deriv(par, r) &
-                + (dembed(i) + dembed(j))*density_deriv(par, r)
+         dedr = dphi + (dembed(i) + dembed(j))*ddens(s)
          f_i = f_i + dedr*rhat
       end do
    end subroutine atom_contribution

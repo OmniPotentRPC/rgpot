@@ -24,6 +24,23 @@
  * - Return values are three-valued: 0 success, positive recoverable
  *   (the evaluation failed at this input, the caller may back off or
  *   evaluate elsewhere), negative fatal (the instance is unusable).
+ * - Codes the engines in this repository return: 1 invalid argument, 2 the
+ *   evaluation or the setting failed (the reason is in
+ *   rgpot_engine_last_error), 3 the backend does not support the operation,
+ *   and for force the host transform's own nonzero code.
+ *
+ * Thread safety of a handle. Any thread may call force and force_batch on any
+ * handle. What happens inside depends on the backend's capabilities
+ * (rgpot_engine_caps().reentrancy): 0 shared instance, calls run
+ * concurrently on one handle; 1 per instance, the engine admits one call at a
+ * time per handle; 2 process serial, the engine admits one call at a time in
+ * the process across all handles of the library. A host that wants
+ * parallelism from a backend that reports 1 or 2 creates one handle per
+ * worker (1 only). rgpot_engine_set_num_threads,
+ * rgpot_engine_set_charge_spin, rgpot_engine_set_callbacks,
+ * rgpot_engine_hint and rgpot_engine_destroy must not run concurrently with
+ * a call on the same handle. rgpot_engine_last_error and
+ * rgpot_engine_model_digest may run at any time.
  * - Capability discovery is by symbol presence: entry points marked
  *   optional are probed with dlsym. An absent symbol means the engine
  *   does not support the operation; a static (non-learning) engine
@@ -67,7 +84,19 @@ typedef struct RgpotEnginePot RgpotEnginePot;
 typedef int (*rgpot_engine_coord_transform)(void *user, long nAtoms,
                                             double *positions, double *box);
 
+/**
+ * ABI identity. `RGPOT_ENGINE_ABI_VERSION` is the major: an incompatible change
+ * increments it, and a host compares it for equality. Additions that leave
+ * every existing call valid (a new optional symbol, a new field at the end of
+ * a size-prefixed struct) increment `RGPOT_ENGINE_ABI_MINOR`. The layout
+ * revision increments when an existing struct changes size or field order.
+ * Hosts that read only `rgpot_engine_abi_version()` keep working across minor
+ * bumps; `rgpot_engine_abi_stamp()` is optional and an engine without it is
+ * minor 0, layout 1.
+ */
 #define RGPOT_ENGINE_ABI_VERSION 1
+#define RGPOT_ENGINE_ABI_MINOR 2
+#define RGPOT_ENGINE_ABI_LAYOUT_REVISION 1
 
 RGPOT_ENGINE_API int rgpot_engine_abi_version(void);
 
@@ -207,6 +236,92 @@ RGPOT_ENGINE_API int rgpot_engine_set_callbacks(
 RGPOT_ENGINE_API int rgpot_engine_hint(RgpotEnginePot *pot, const void *msg,
                                        size_t msg_len, char *errbuf,
                                        size_t errlen);
+
+/** Compatibility identity of the loaded engine (see RGPOT_ENGINE_ABI_MINOR). */
+typedef struct {
+  unsigned short abi_major;
+  unsigned short abi_minor;
+  unsigned short layout_revision;
+} RgpotEngineAbiStamp;
+
+/** The loaded engine's identity. */
+RGPOT_ENGINE_API RgpotEngineAbiStamp rgpot_engine_abi_stamp(void);
+
+/**
+ * Nonzero when the loaded engine serves a host built against `stamp`: equal
+ * major, equal layout revision, engine minor at least the host's. NULL
+ * returns 0.
+ */
+RGPOT_ENGINE_API int rgpot_engine_abi_compatible(
+    const RgpotEngineAbiStamp *stamp);
+
+/**
+ * Concurrency and evaluation capabilities, the engine-side image of rgpot's
+ * PotCaps. `size` is sizeof(RgpotEngineCaps) on the host; the engine fills
+ * the fields that fit and sets `size` to the size it wrote.
+ * reentrancy: 0 one instance may be called from many threads, 1 one instance
+ * per thread, 2 every evaluation in the process is serialized.
+ */
+typedef struct {
+  unsigned size;
+  int reentrancy;
+  int per_image_instances; /**< clone one instance per NEB image */
+  int batched;             /**< force_batch is served natively */
+  int periodic;            /**< periodic boundary conditions supported */
+  int stress;              /**< cell stress is available */
+  int group_collective;    /**< every rank of a group enters each call */
+} RgpotEngineCaps;
+
+RGPOT_ENGINE_API int rgpot_engine_caps(const RgpotEnginePot *pot,
+                                       RgpotEngineCaps *out);
+
+/**
+ * Message of the last failed call on this instance (create errors go to its
+ * errbuf). Copies at most `len - 1` bytes and NUL-terminates; returns the
+ * full message length, 0 when there is none. Reading does not clear it; the
+ * next successful call does.
+ */
+RGPOT_ENGINE_API size_t rgpot_engine_last_error(const RgpotEnginePot *pot,
+                                                char *buf, size_t len);
+
+/** Short name of the backend the library serves, for example "uma". */
+RGPOT_ENGINE_API const char *rgpot_engine_name(void);
+
+/**
+ * Version of the engine build: "<name>/<rgpot version>". The pointer refers to
+ * static storage.
+ */
+RGPOT_ENGINE_API const char *rgpot_engine_version(void);
+
+/**
+ * SHA-256 of the model file or archive the instance loaded, as 64 lowercase
+ * hexadecimal digits. Copies at most `len - 1` bytes and NUL-terminates;
+ * returns the digest length (64), or 0 when the backend has no model file or
+ * the file cannot be read. The digest is computed on first request and kept.
+ */
+RGPOT_ENGINE_API size_t rgpot_engine_model_digest(const RgpotEnginePot *pot,
+                                                  char *buf, size_t len);
+
+/**
+ * Backend thread settings: intra-op and inter-op worker threads of the
+ * engine's tensor runtime. A value below 1 leaves that setting alone. Process
+ * wide in effect, and the inter-op count can be set once before the first
+ * evaluation; a refused setting returns a positive code with the reason in
+ * last_error. Returns 0 on success and 3 for a backend without a tensor
+ * runtime. UmaParams and MetatomicParams carry the same two counts and apply
+ * them at create.
+ */
+RGPOT_ENGINE_API int rgpot_engine_set_num_threads(RgpotEnginePot *pot,
+                                                  int intra_op, int inter_op);
+
+/**
+ * Change the total charge and spin multiplicity the next evaluations assume.
+ * The package was exported for one charge and spin; a mismatch is reported by
+ * the next force call. Returns 0 on success and 3 for a backend without a
+ * charge or spin.
+ */
+RGPOT_ENGINE_API int rgpot_engine_set_charge_spin(RgpotEnginePot *pot,
+                                                  int charge, int spin);
 
 /**
  * Neighbor-list declaration. An engine exporting this symbol expects

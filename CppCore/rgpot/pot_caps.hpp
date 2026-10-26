@@ -47,9 +47,9 @@ struct PotCaps {
   /// rank alone in a collective. Other groups take no part, so a host may
   /// hand groups uneven batches.
   bool groupCollective = false;
-  /// Cauchy stress for a positive cell volume, sigma = (1/V) dE/dstrain
-  /// in energy/length^3. Kernels that fill ForceOut write it row-major
-  /// there. IPIPot also keeps the tensor for copyStress.
+  /// forceImpl writes Cauchy stress for a positive cell volume:
+  /// sigma = (1/V) dE/dstrain in energy/length^3, row-major in ForceOut.
+  /// IPIPot also keeps the tensor for copyStress.
   bool stress = false;
 };
 

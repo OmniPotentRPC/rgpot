@@ -43,7 +43,7 @@ TEST_CASE("SkalaPot writes skala XC into NWChemParams", "[SkalaPot]") {
   REQUIRE(out.getCharge() == 0);
   REQUIRE(out.getMultiplicity() == 1);
   REQUIRE(out.getInputStanzas().size() >= 1);
-  const auto stanza = out.getInputStanzas()[0];
+  auto stanza = out.getInputStanzas()[0];
   REQUIRE(stanza.getKind() == ::NWChemInputStanza::Kind::DFT);
   REQUIRE(std::string(stanza.getDft().getXc().cStr()) == "skala-1.1");
 }

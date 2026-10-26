@@ -11,6 +11,7 @@
 
 #include "pot_bridge.h"
 #include "Potentials.capnp.h"
+#include "rgpot/abi/Handshake.hpp"
 #include <algorithm>
 #include <capnp/ez-rpc.h>
 #include <capnp/message.h>
@@ -31,6 +32,7 @@ struct PotClient {
   Potential::Client capability; //!< The RPC capability for potential calls.
   kj::WaitScope *wait_scope;    //!< Reference to the client wait scope.
   std::string last_error;       //!< Buffer for the most recent error message.
+  bool server_checked = false;  //!< True once the server passed the handshake.
 
   /**
    * @brief Constructor for PotClient.
@@ -120,6 +122,15 @@ int32_t pot_calculate(PotClient *client, int32_t natoms, const double *pos,
 
   try {
     auto &waitScope = *client->wait_scope;
+    if (!client->server_checked) {
+      const std::string why =
+          rgpot::abi::check_server(client->capability, waitScope);
+      if (!why.empty()) {
+        client->last_error = "server refused: " + why;
+        return -3;
+      }
+      client->server_checked = true;
+    }
     auto req = client->capability.calculateRequest();
     auto fip = req.initFip();
 

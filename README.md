@@ -8,6 +8,7 @@
 
 `rgpot` is a potential-energy library and Cap'n Proto RPC server for atomistic
 simulation codes.
+Documentation: [rgpot.rgoswami.me](https://rgpot.rgoswami.me).
 It gives clients one geometry carrier, one result carrier, and one extensible
 backend-configuration carrier:
 

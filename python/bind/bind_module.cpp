@@ -84,6 +84,22 @@ struct ChildSpec {
   std::string damping = "bj";
   bool atm = true;
   double charge = 0.0;
+  // LJ and Morse dict fields. Absent keys keep the C++ config defaults,
+  // which differ (LJ cutoff is 15 A, Morse cutoff is 9.5 A).
+  bool has_u0 = false;
+  double u0 = 0.0;
+  bool has_cutoff = false;
+  double cutoff = 0.0;
+  bool has_psi = false;
+  double psi = 0.0;
+  bool has_switch_width = false;
+  double switch_width = 0.0;
+  bool has_De = false;
+  double De = 0.0;
+  bool has_a = false;
+  double a = 0.0;
+  bool has_re = false;
+  double re = 0.0;
 };
 
 std::string child_kind(nb::handle spec) {
@@ -121,16 +137,73 @@ ChildSpec child_spec_from(const std::string &name, nb::handle spec) {
     if (d.contains("charge")) {
       out.charge = nb::cast<double>(d["charge"]);
     }
+    if (d.contains("u0")) {
+      out.has_u0 = true;
+      out.u0 = nb::cast<double>(d["u0"]);
+    }
+    if (d.contains("cutoff")) {
+      out.has_cutoff = true;
+      out.cutoff = nb::cast<double>(d["cutoff"]);
+    }
+    if (d.contains("psi")) {
+      out.has_psi = true;
+      out.psi = nb::cast<double>(d["psi"]);
+    }
+    if (d.contains("switch_width")) {
+      out.has_switch_width = true;
+      out.switch_width = nb::cast<double>(d["switch_width"]);
+    }
+    if (d.contains("De")) {
+      out.has_De = true;
+      out.De = nb::cast<double>(d["De"]);
+    }
+    if (d.contains("a")) {
+      out.has_a = true;
+      out.a = nb::cast<double>(d["a"]);
+    }
+    if (d.contains("re")) {
+      out.has_re = true;
+      out.re = nb::cast<double>(d["re"]);
+    }
   }
   return out;
 }
 
 std::unique_ptr<rgpot::PotentialBase> child_from_spec(const ChildSpec &spec) {
   if (spec.kind == "lj") {
-    return std::make_unique<rgpot::LJPot>();
+    rgpot::LJConfig cfg;
+    if (spec.has_u0) {
+      cfg.u0 = spec.u0;
+    }
+    if (spec.has_cutoff) {
+      cfg.cutoff = spec.cutoff;
+    }
+    if (spec.has_psi) {
+      cfg.psi = spec.psi;
+    }
+    if (spec.has_switch_width) {
+      cfg.switch_width = spec.switch_width;
+    }
+    return std::make_unique<rgpot::LJPot>(cfg);
   }
   if (spec.kind == "morse") {
-    return std::make_unique<rgpot::MorsePot>();
+    rgpot::MorseConfig cfg;
+    if (spec.has_De) {
+      cfg.De = spec.De;
+    }
+    if (spec.has_a) {
+      cfg.a = spec.a;
+    }
+    if (spec.has_re) {
+      cfg.re = spec.re;
+    }
+    if (spec.has_cutoff) {
+      cfg.cutoff = spec.cutoff;
+    }
+    if (spec.has_switch_width) {
+      cfg.switch_width = spec.switch_width;
+    }
+    return std::make_unique<rgpot::MorsePot>(cfg);
   }
 #ifdef RGPOT_HAS_DFTD3
   if (spec.kind == "d3") {
@@ -418,7 +491,11 @@ NB_MODULE(_core, m) {
         });
       },
       nb::arg("u0") = 1.0, nb::arg("cutoff") = 15.0, nb::arg("psi") = 1.0,
-      nb::arg("switch_width") = 0.0);
+      nb::arg("switch_width") = 0.0,
+      "Shifted 12-6 Lennard-Jones. u0 is the well depth (eV), cutoff "
+      "and psi are Angstrom. A positive switch_width (Angstrom) "
+      "replaces the shift with the C^2 quintic switch over "
+      "[cutoff - switch_width, cutoff]; it must not exceed cutoff.");
   lj.def("config", [](const PotHolder<rgpot::LJPot> &self) {
     const rgpot::LJConfig &cfg = self.primary().config();
     nb::dict out;
@@ -507,7 +584,9 @@ NB_MODULE(_core, m) {
       },
       nb::arg("expression"), nb::arg("terms"),
       "expression is a Lepton string; terms maps names to 'lj'/'morse'/"
-      "'d3'/'d4' or a dict with kind plus D3/D4 fields.");
+      "'d3'/'d4' or a dict with kind plus that kind's fields: u0, "
+      "cutoff, psi, switch_width (lj); De, a, re, cutoff, switch_width "
+      "(morse); the D3/D4 fields.");
   expr.def_prop_ro("expression", [](const PotHolder<rgpot::ExprPot> &self) {
     return self.primary().expression();
   });

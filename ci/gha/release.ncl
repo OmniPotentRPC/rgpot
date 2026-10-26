@@ -92,7 +92,7 @@ let P = S.pins in
       steps = [
         S.checkout_minimal,
         S.setup_pixi_default "devbld",
-        { uses = P.rust_toolchain },
+        { uses = P.rust_toolchain, with = { toolchain = "stable" } },
         {
           uses = P.rust_cache,
           with = {
@@ -119,7 +119,7 @@ let P = S.pins in
       "runs-on" = P.ubuntu,
       steps = [
         S.checkout_minimal,
-        { uses = P.rust_toolchain },
+        { uses = P.rust_toolchain, with = { toolchain = "stable" } },
         {
           uses = P.rust_cache,
           with = {
@@ -136,6 +136,15 @@ let P = S.pins in
             if grep -qE '^publish\s*=\s*false' rgpot-core/Cargo.toml; then
               echo "rgpot-core has publish = false; skipping crates.io upload."
               echo "Re-enable publish and switch git deps to registry versions first."
+              exit 0
+            fi
+            # publish.yml (OIDC) uploads the same tag; whichever finishes
+            # second must not fail the release and skip gh-release.
+            version=$(cargo metadata --no-deps --format-version 1 \
+              | jq -r '.packages[] | select(.name == "rgpot-core") | .version')
+            if curl -fsS -A "rgpot-release (github.com/OmniPotentRPC/rgpot)" \
+                "https://crates.io/api/v1/crates/rgpot-core/${version}" >/dev/null; then
+              echo "rgpot-core ${version} is already on crates.io; skipping cargo publish."
               exit 0
             fi
             cargo publish -p rgpot-core --locked

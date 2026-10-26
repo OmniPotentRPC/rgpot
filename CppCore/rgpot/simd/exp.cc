@@ -2,6 +2,7 @@
 // Copyright 2023--present rgpot developers
 
 #include "rgpot/simd/exp.hpp"
+#include "rgpot/simd/clones.hpp"
 #include "rgpot/simd/pair_loops.hpp"
 
 #include <cstdint>
@@ -23,7 +24,7 @@ exp(double x) {
 #if defined(__FMA__) || defined(__ARM_FEATURE_FMA)
   return exp_fast<true>(x);
 #elif defined(__x86_64__)
-  if (detail::glibc_fma_active()) {
+  if (detail::fma_hw_active()) {
     double y = 0;
     exp_hw_n(&x, &y, 1);
     return y;
@@ -37,7 +38,7 @@ exp(double x) {
 #if defined(__x86_64__)
 
 // target("fma") also emits AVX encodings. rgpot/isa-allow.toml names these
-// functions. Every call site is behind detail::glibc_fma_active(), which
+// functions. Every call site is behind detail::fma_hw_active(), which
 // follows glibc's hwcaps mask. noinline keeps that body out of the baseline
 // caller, which stays on SSE2 or the Dekker product.
 __attribute__((target("fma"), flatten, noinline)) double lj_hw(const PairView &v,
@@ -377,7 +378,7 @@ __attribute__((target("sse2"), noinline)) void eam_sse(long n, const double *R,
                                                        const EamAtom *atoms,
                                                        const double *box, double *F,
                                                        double *U) {
-  if (detail::glibc_fma_active()) {
+  if (detail::fma_hw_active()) {
     eam_fma(n, R, atoms, box, F, U);
     return;
   }
@@ -402,5 +403,13 @@ __attribute__((target("fma"), noinline)) void exp_hw_n(const double *in,
 }
 
 #endif
+
+double exp_fixed(double x) { return detail::exp_fixed_lane(x); }
+
+RGPOT_SIMD_CLONES void exp_fixed_n(const double *x, double *out, std::size_t n) {
+  for (std::size_t i = 0; i < n; ++i) {
+    out[i] = detail::exp_fixed_lane(x[i]);
+  }
+}
 
 } // namespace rgpot::simd

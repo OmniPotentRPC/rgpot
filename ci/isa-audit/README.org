@@ -147,6 +147,14 @@ The tight Lennard-Jones cluster kernel's =target("avx2")= bodies
 =__builtin_cpu_supports("avx2")=.
 That builtin pulls in GCC's =__cpu_indicator_init=, which reads XCR0
 with =xgetbv= and is named for =xsave=.
+The same allowlist names the minimum-image and pair-list FMA bodies
+=fold_hardware= and =accumulateHw=.
+Those bodies run only when a usable FMA is reported.
+=exp_fixed_n= and =morse_row= clones for AVX2 and AVX-512F are named
+because function multiversioning emits them, and each clone returns the
+baseline bits.
+=cpuid_fma_usable= reads XCR0 with =xgetbv= after CPUID reports OSXSAVE,
+and is named for =xsave= together with =__cpu_indicator_init=.
 An above-baseline instruction in any other =librgpot= or =_core=
 function is a violation.
 

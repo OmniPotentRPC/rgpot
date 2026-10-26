@@ -9,7 +9,7 @@
  * Morse potential with a shifted cutoff. The kernel is ported from eOn
  * (https://github.com/TheochemUI/eOn, client/potentials/Morse), BSD-3-Clause
  * licensed, copyright the eOn Development Team; the original attribution
- * names A. Pedersen or G. Henkelman, revised by Jean Claude C. Berthet
+ * names A. Pedersen or G. Henkelman, revised by J.-C. C. Berthet
  * (2010, University of Iceland).
  */
 
@@ -17,8 +17,10 @@
 #include <cmath>
 #include <cstdint>
 // clang-format on
+#include "rgpot/PairSwitch.hpp"
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/Potential.hpp"
+#include "rgpot/simd/exp.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
 namespace rgpot {
@@ -34,6 +36,10 @@ struct MorseConfig {
   double a = 1.6047;   //!< Range parameter (1/Angstrom).
   double re = 2.8970;  //!< Equilibrium pair distance (Angstrom).
   double cutoff = 9.5; //!< Truncation distance (Angstrom).
+  /// Width (Angstrom) of the C^2 quintic switch (PairSwitch.hpp) that
+  /// takes each pair term to zero over [cutoff - switch_width, cutoff].
+  /// 0 keeps the shifted truncation, whose force jumps at the cutoff.
+  double switch_width = 0.0;
 };
 
 /**
@@ -47,30 +53,39 @@ public:
   MorsePot() : MorsePot(MorseConfig{}) {}
 
   explicit MorsePot(const MorseConfig &c)
-      : Potential(PotType::Morse),
-        De{c.De},
-        a{c.a},
-        re{c.re},
-        cuttOffR{c.cutoff},
-        m_config{c} {
-    // Shift so U(cuttOffR) = 0, evaluating the same closed form as the
-    // pair kernel below.
-    const double d = 1.0 - std::exp(-a * (cuttOffR - re));
+      : Potential(PotType::Morse), De{c.De}, a{c.a}, re{c.re},
+        cuttOffR{c.cutoff}, m_config{c} {
+    // Shift so U(cuttOffR) = 0, evaluating the same closed form and the
+    // same exp as the pair kernel.
+    const double d = 1.0 - simd::exp_fixed(-a * (cuttOffR - re));
     energyCutoff = De * d * d - De;
+    if (c.switch_width != 0.0) {
+      m_switch = QuinticSwitch::endingAt(c.cutoff, c.switch_width);
+    }
     Fnv1a fp;
     fp.u64(kKernelVersion);
     fp.f64(c.De);
     fp.f64(c.a);
     fp.f64(c.re);
     fp.f64(c.cutoff);
+    // Hashed only when set, so unswitched configs keep their cache keys.
+    if (c.switch_width != 0.0) {
+      fp.f64(c.switch_width);
+    }
     m_paramsKey = fp.h;
   }
 
   [[nodiscard]] const MorseConfig &config() const noexcept { return m_config; }
 
-  /// Energy offset subtracted from every pair term (the unshifted well
-  /// depth at the cutoff).
-  [[nodiscard]] double energyShift() const noexcept { return energyCutoff; }
+  /// Energy offset subtracted from every pair term (the unshifted pair
+  /// energy at the cutoff); 0 when the quintic switch replaces the shift.
+  [[nodiscard]] double energyShift() const noexcept {
+    return m_config.switch_width != 0.0 ? 0.0 : energyCutoff;
+  }
+
+  [[nodiscard]] PotCaps caps() const noexcept override {
+    return {.stress = true};
+  }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
     return m_paramsKey;
@@ -94,6 +109,7 @@ private:
   double cuttOffR;     //!< Distance beyond which the potential is truncated.
   double energyCutoff; //!< Potential energy value at the cutoff distance.
   MorseConfig m_config;
+  QuinticSwitch m_switch{}; //!< In use when m_config.switch_width != 0.
   uint64_t m_paramsKey{0};
 };
 

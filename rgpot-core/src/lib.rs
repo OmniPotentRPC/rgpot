@@ -22,6 +22,7 @@
 //! | [`status`] | Status codes, thread-local error message, panic safety |
 //! | [`potential`] | Callback-based potential dispatch (opaque handle) |
 //! | [`c_api`] | `extern "C"` entry points collected by cbindgen |
+//! | [`version`] | Loaded library version, to check against `rgpot.h` |
 //! | [`rpc`] | Cap'n Proto RPC client and server (feature-gated) |
 //!
 //! ## Design Principles
@@ -53,6 +54,7 @@ pub mod status;
 pub mod potential;
 pub mod eindir;
 pub mod c_api;
+pub mod version;
 
 #[cfg(feature = "schema")]
 #[allow(dead_code, non_snake_case, unused_parens, clippy::all)]
@@ -64,6 +66,9 @@ pub mod c_api;
 pub mod Potentials_capnp {
     include!(concat!(env!("OUT_DIR"), "/Potentials_capnp.rs"));
 }
+
+#[cfg(feature = "schema")]
+pub mod compat;
 
 #[cfg(feature = "profile")]
 pub mod profile;

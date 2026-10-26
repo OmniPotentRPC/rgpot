@@ -24,7 +24,7 @@ namespace rgpot {
  * exchange, and range-separated exchange stay host-owned. libxckernel never
  * evaluates functionals: the host mixes Libxc arrays and passes them in.
  *
- * First slice (rgpot-chjn): families lda, gga, mgga_tau; max_order 2
+ * Families: lda, gga, mgga_tau, mgga_lapl; max_order 2
  * (Fock o1 + fxc o2). TDA/RPA sigma assembly uses the singlet
  * spin-adapted o2 kernels (`xck_*_st_o2_p`) plus host Coulomb.
  * LDA TDA/RPA forms wv as w*rho*(v2rho2_0+v2rho2_1) and tiles
@@ -75,7 +75,7 @@ public:
                            const double *lapl_chi, const double *hess_chi,
                            const double *const *scal, double *out);
 
-  /// Resolve a first-slice catalog name, e.g. "xck_gga_r_o2".
+  /// Resolve a catalog name, e.g. "xck_gga_r_o2".
   explicit XcKernel(std::string name);
 
   [[nodiscard]] const std::string &name() const noexcept { return m_name; }
@@ -83,12 +83,13 @@ public:
   [[nodiscard]] int nScal() const noexcept { return m_n_scal; }
   [[nodiscard]] int nFields() const noexcept { return m_n_fields; }
 
-  /// Known first-slice contraction names (o1 Fock + o2 fxc). Empty if
+  /// Known contraction names (o1 Fock + o2 fxc). Empty if
   /// the translation unit was compiled without -Dwith_xckernel.
   [[nodiscard]] static std::vector<std::string> catalog();
 
   /// Assemble `scal` in <name>_scal_names order and accumulate into out
-  /// (nbf * nbf, +=). Returns the C ABI rc (0 on success).
+  /// (nbf * nbf, +=). Laplacian kernels require lapl_chi.
+  /// Returns 2 for an incomplete grid, or the C ABI rc (0 on success).
   int contract(const XcGrid &grid,
                const std::map<std::string, const double *> &scal,
                double *out) const;

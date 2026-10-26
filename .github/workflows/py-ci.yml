@@ -21,6 +21,8 @@ on:
       - "CppCore/rgpot/PotentialCache.hpp"
       - "CppCore/rgpot/PotentialCache.cc"
       - "CppCore/rgpot/BatchEvaluator.hpp"
+      - "bind/**"
+      - "ci/python-template/**"
   pull_request:
     paths:
       - ".github/workflows/py-*.yml"
@@ -36,6 +38,8 @@ on:
       - "CppCore/rgpot/PotentialCache.hpp"
       - "CppCore/rgpot/PotentialCache.cc"
       - "CppCore/rgpot/BatchEvaluator.hpp"
+      - "bind/**"
+      - "ci/python-template/**"
   workflow_dispatch:
 
 concurrency:
@@ -123,3 +127,149 @@ jobs:
           export LD_LIBRARY_PATH="/tmp/rgpot-ci-build/CppCore${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           /tmp/rgpot-ci/bin/python -m pytest -q tests/python \
             --timeout=180 -o faulthandler_timeout=120
+
+  wheels:
+    uses: ./.github/workflows/py-wheels.yml
+    with:
+      package-dir: bind
+      import-names: _rgbind_test
+      test-path: tests
+      extras: test
+
+  wheels-template:
+    uses: ./.github/workflows/py-wheels.yml
+    with:
+      package-dir: ci/python-template/rust-core
+      import-names: rust_core_demo._core
+      test-path: tests
+      extras: test
+
+  freethreading:
+    uses: ./.github/workflows/py-freethreading.yml
+    with:
+      package-dir: bind
+      import-names: _rgbind_test
+      test-path: tests
+      extras: test
+      iterations: "50"
+
+  freethreading-template:
+    uses: ./.github/workflows/py-freethreading.yml
+    with:
+      package-dir: ci/python-template/rust-core
+      import-names: rust_core_demo._core
+      test-path: tests
+      extras: test
+      iterations: "50"
+      rust-crate-dir: examples/rust-core-demo
+
+  tsan:
+    uses: ./.github/workflows/py-tsan.yml
+    with:
+      package-dir: bind
+      import-names: _rgbind_test
+      test-path: tests
+      extras: test
+      tsan-cmake-args: -DRGBIND_TSAN=ON
+
+  tsan-template:
+    uses: ./.github/workflows/py-tsan.yml
+    with:
+      package-dir: ci/python-template/rust-core
+      import-names: rust_core_demo._core
+      test-path: tests
+      extras: test
+      rust-crate-dir: examples/rust-core-demo
+      rust-toolchain: nightly-2026-01-20
+      tsan-cmake-args: -DRUST_CORE_TSAN=ON
+      rust-archive: librust_core_demo.a
+
+  typing:
+    uses: ./.github/workflows/py-typing.yml
+    with:
+      package-dir: bind
+      import-names: _rgbind_test
+      stub-dir: tests
+      typecheck-paths: examples tests/_rgbind_test.pyi
+      extras: test
+
+  typing-template:
+    uses: ./.github/workflows/py-typing.yml
+    with:
+      package-dir: ci/python-template/rust-core
+      import-names: rust_core_demo._core
+      stub-dir: python
+      typecheck-paths: python/rust_core_demo examples
+      extras: test
+      rust-crate-dir: examples/rust-core-demo
+
+  schedule-cpp:
+    name: schedule unit (no interpreter)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Hash the schedule at 1, 2, 3, and 8 workers
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y g++
+          g++ -std=c++17 -Wall -Wextra -Wpedantic \
+            -I bind/include bind/tests/src/schedule_test.cpp -o schedule_test
+          ./schedule_test
+
+  rust-demo:
+    name: rust-core demo wheel
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Build cp312 and cp314t wheels
+        uses: pypa/cibuildwheel@056b871b4f3c060ea999c4bf9a7e41202d7d9f21 # v4.3.0
+        with:
+          package-dir: ci/python-template/rust-core
+          output-dir: wheelhouse
+        env:
+          CIBW_BUILD: cp312-* cp314t-*
+          CIBW_SKIP: "*-musllinux* *_i686 *-win32"
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+          CIBW_TEST_SOURCES: ci/python-template/rust-core/tests
+          CIBW_TEST_COMMAND: python -m pytest -q ci/python-template/rust-core/tests --timeout=180 -o faulthandler_timeout=120
+
+      - name: Wheel tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - << 'PY'
+          import glob
+          names = sorted(path.rsplit("/", 1)[-1] for path in glob.glob("wheelhouse/*.whl"))
+          print("\n".join(names))
+          if not any("cp312-abi3" in name for name in names):
+              raise SystemExit("missing cp312-abi3 wheel")
+          if not any("cp314-cp314t" in name for name in names):
+              raise SystemExit("missing cp314-cp314t wheel")
+          PY
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.14t"
+
+      - name: F1 on the cp314t wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install wheelhouse/*cp314-cp314t*.whl
+          python -W error::RuntimeWarning -c 'import sys, rust_core_demo; assert sys._is_gil_enabled() is False; print("F1", sys._is_gil_enabled())'
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rust-core-demo-wheels
+          path: wheelhouse/*.whl
+
+  rgbind-sync:
+    uses: ./.github/workflows/py-rgbind-sync.yml
+    with:
+      vendored-path: ci/python-template/rust-core/include/rgbind/rgbind.hpp
+      rgpot-ref: ${{ github.sha }}

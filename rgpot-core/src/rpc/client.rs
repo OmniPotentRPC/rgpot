@@ -90,6 +90,10 @@ impl RpcClient {
 
         tokio::task::spawn_local(rpc_system);
 
+        // --- Refuse an incompatible or outdated server before any work ---
+        crate::compat::check_server(&potential_client, &crate::compat::Expectation::default())
+            .await?;
+
         // --- Build capnp request ---
         let mut request = potential_client.calculate_request();
         {

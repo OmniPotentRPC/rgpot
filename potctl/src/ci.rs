@@ -92,7 +92,12 @@ fn try_xcrun_sdkroot() -> Option<String> {
 }
 
 /// Pure: meson configure argv (after `meson setup <builddir>`).
-pub fn meson_configure_args(rpc: bool, cache: bool, meson_extra: &str) -> Vec<String> {
+pub fn meson_configure_args(
+    rpc: bool,
+    cache: bool,
+    with_mpi: bool,
+    meson_extra: &str,
+) -> Vec<String> {
     let mut args = vec![
         "-Dwith_tests=True".into(),
         "-Dwith_examples=False".into(),
@@ -102,6 +107,9 @@ pub fn meson_configure_args(rpc: bool, cache: bool, meson_extra: &str) -> Vec<St
         format!("-Dwith_cache={}", if cache { "true" } else { "false" }),
         "-Dpure_lib=False".into(),
     ];
+    if with_mpi {
+        args.push("-Dwith_mpi=enabled".into());
+    }
     for tok in meson_extra.split_whitespace() {
         if !tok.is_empty() {
             args.push(tok.to_string());
@@ -193,8 +201,9 @@ pub fn run_meson_test(
         apply_darwin_env_to_process(false)?;
     }
     let meson_extra = env::var("POTCTL_MESON_EXTRA").unwrap_or_default();
+    let with_mpi = env::var("POTCTL_WITH_MPI").ok().as_deref() == Some("enabled");
     let mut setup_args: Vec<String> = vec!["setup".into(), build_dir.into()];
-    setup_args.extend(meson_configure_args(rpc, cache, &meson_extra));
+    setup_args.extend(meson_configure_args(rpc, cache, with_mpi, &meson_extra));
     let setup_refs: Vec<&str> = setup_args.iter().map(String::as_str).collect();
     run_cmd("meson", &setup_refs, root)?;
     run_cmd("meson", &["compile", "-C", build_dir], root)?;
@@ -935,24 +944,91 @@ fn apply_torch_env_from_github_or_purelib() -> Result<()> {
     Ok(())
 }
 
-/// `potctl ci metatomic-test` — meson setup/compile/test with metatomic+vesin (orchestrator leg).
-pub fn run_metatomic_test(root: &Path, build_dir: &str) -> Result<()> {
-    apply_torch_env_from_github_or_purelib()?;
-    let setup = [
-        "setup",
-        build_dir,
-        "-Dwith_tests=true",
-        "-Dwith_examples=false",
-        "-Dwith_metatomic=true",
-        "-Dwith_rpc=false",
-        "-Dwith_cache=false",
-        "--buildtype=debug",
+/// Meson setup argv of the metatomic leg. With `rpc` the rpc stack is on, which
+/// builds every engine plugin (UMA, Metatomic, XTB and the classical, MOPAC and
+/// NWChem ones) and their tests.
+pub fn metatomic_meson_setup_args(build_dir: &str, rpc: bool) -> Vec<String> {
+    let mut args: Vec<String> = vec![
+        "setup".into(),
+        build_dir.into(),
+        "-Dwith_tests=true".into(),
+        "-Dwith_examples=false".into(),
+        "-Dwith_metatomic=true".into(),
+        format!("-Dwith_rpc={rpc}"),
+        "-Dwith_cache=false".into(),
+        "--buildtype=debug".into(),
     ];
+    if rpc {
+        // The engine leg builds every engine plugin, xtb's and Skala's
+        // included, and the Skala tests.
+        args.push("-Dwith_xtb=true".into());
+        args.push("-Dwith_skala=true".into());
+    }
+    args
+}
+
+/// `potctl ci metatomic-test` — meson setup/compile/test with metatomic+vesin (orchestrator leg).
+pub fn run_metatomic_test(root: &Path, build_dir: &str, rpc: bool) -> Result<()> {
+    apply_torch_env_from_github_or_purelib()?;
+    let setup = metatomic_meson_setup_args(build_dir, rpc);
+    let setup: Vec<&str> = setup.iter().map(String::as_str).collect();
     run_cmd("meson", &setup, root)?;
     run_cmd("meson", &["compile", "-C", build_dir], root)?;
     run_cmd(
         "meson",
         &["test", "-C", build_dir, "--print-errorlogs"],
+        root,
+    )?;
+    maybe_ccache_stats();
+    Ok(())
+}
+
+/// Plugin ABI tests that must exist and pass in the plugin leg.
+pub const PLUGIN_TESTS: [&str; 3] = ["PluginTest", "PluginContractTest", "ExternalPluginTest"];
+
+/// Meson setup argv for the plugin leg: tests on, plugin host built (the
+/// default; only `with_rpc_client_only` drops it), no optional engines.
+pub fn plugin_meson_setup_args(build_dir: &str) -> Vec<String> {
+    vec![
+        "setup".into(),
+        build_dir.into(),
+        "-Dwith_tests=true".into(),
+        "-Dwith_examples=false".into(),
+        "-Dwith_rpc=false".into(),
+        "-Dwith_rpc_client_only=false".into(),
+        "-Dwith_cache=false".into(),
+        "--buildtype=debug".into(),
+    ]
+}
+
+/// Meson test argv naming the plugin tests; meson errors on an unknown name,
+/// so a test dropped from the build fails the leg instead of vanishing.
+pub fn plugin_meson_test_args(build_dir: &str) -> Vec<String> {
+    let mut args: Vec<String> = vec![
+        "test".into(),
+        "-C".into(),
+        build_dir.into(),
+        "--print-errorlogs".into(),
+    ];
+    args.extend(PLUGIN_TESTS.iter().map(|t| t.to_string()));
+    args
+}
+
+/// `potctl ci plugin-test` — meson build with the plugin host, then the plugin suite.
+pub fn run_plugin_test(root: &Path, build_dir: &str, apply_darwin: bool) -> Result<()> {
+    if apply_darwin {
+        apply_darwin_env_to_process(false)?;
+    }
+    let setup = plugin_meson_setup_args(build_dir);
+    let setup_refs: Vec<&str> = setup.iter().map(String::as_str).collect();
+    run_cmd("meson", &setup_refs, root)?;
+    run_cmd("meson", &["compile", "-C", build_dir], root)?;
+    let named = plugin_meson_test_args(build_dir);
+    let named_refs: Vec<&str> = named.iter().map(String::as_str).collect();
+    run_cmd("meson", &named_refs, root)?;
+    run_cmd(
+        "meson",
+        &["test", "-C", build_dir, "--print-errorlogs", "--suite", "plugin"],
         root,
     )?;
     maybe_ccache_stats();
@@ -1557,11 +1633,14 @@ mod tests {
 
     #[test]
     fn meson_configure_args_include_rpc_cache_and_extra() {
-        let a = meson_configure_args(true, false, "-Ddefault_library=static");
+        let a = meson_configure_args(true, false, true, "-Ddefault_library=static");
         assert!(a.iter().any(|x| x == "-Dwith_rpc=true"));
         assert!(a.iter().any(|x| x == "-Dwith_cache=false"));
         assert!(a.iter().any(|x| x == "-Dwith_tests=True"));
+        assert!(a.iter().any(|x| x == "-Dwith_mpi=enabled"));
         assert!(a.iter().any(|x| x == "-Ddefault_library=static"));
+        let off = meson_configure_args(true, false, false, "");
+        assert!(!off.iter().any(|x| x.contains("with_mpi")));
     }
 
     #[test]
@@ -1693,6 +1772,33 @@ Options:
         assert!(a.iter().any(|x| x == "-Dwith_xckernel=true"));
         assert!(a.iter().any(|x| x == "-Dwith_tests=true"));
         assert!(a.iter().any(|x| x == "-Dwith_rpc=false"));
+    }
+
+    #[test]
+    fn metatomic_argv_follows_the_rpc_flag() {
+        let off = metatomic_meson_setup_args("bbdir-mta", false);
+        assert!(off.iter().any(|x| x == "-Dwith_rpc=false"));
+        let on = metatomic_meson_setup_args("bbdir-uma-engine", true);
+        assert_eq!(on[1], "bbdir-uma-engine");
+        assert!(on.iter().any(|x| x == "-Dwith_rpc=true"));
+        assert!(on.iter().any(|x| x == "-Dwith_metatomic=true"));
+        assert!(on.iter().any(|x| x == "-Dwith_xtb=true"));
+        assert!(on.iter().any(|x| x == "-Dwith_skala=true"));
+        assert!(!off.iter().any(|x| x == "-Dwith_xtb=true"));
+        assert!(!off.iter().any(|x| x == "-Dwith_skala=true"));
+    }
+
+    #[test]
+    fn plugin_argv_builders() {
+        let s = plugin_meson_setup_args("bbdir-plugin");
+        assert_eq!(s[0], "setup");
+        assert_eq!(s[1], "bbdir-plugin");
+        assert!(s.iter().any(|x| x == "-Dwith_tests=true"));
+        assert!(s.iter().any(|x| x == "-Dwith_rpc_client_only=false"));
+        let t = plugin_meson_test_args("bbdir-plugin");
+        for name in PLUGIN_TESTS {
+            assert!(t.iter().any(|x| x == name), "missing {name}");
+        }
     }
 
     #[test]

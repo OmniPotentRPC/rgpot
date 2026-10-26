@@ -36,7 +36,8 @@ typedef struct CPMDCResult {
   char message[512];
 } CPMDCResult;
 
-/** Opaque handle for repeated evaluations with one Cap'n Proto parameter set. */
+/** Opaque handle for repeated evaluations with one Cap'n Proto parameter set.
+ */
 typedef struct CPMDCSession CPMDCSession;
 
 typedef enum CPMDCFeatureKind {
@@ -60,7 +61,8 @@ typedef struct CPMDCFeatureEntry {
  * @param params_capnp_size_bytes Size of `params_capnp` in bytes.
  * @return 0 on success, -1 on parse or configuration failure.
  */
-RGPOT_CPMDC_API int cpmdc_set_params(const void *params_capnp, size_t params_capnp_size_bytes);
+RGPOT_CPMDC_API int cpmdc_set_params(const void *params_capnp,
+                                     size_t params_capnp_size_bytes);
 
 /**
  * @brief Compute energy and nuclear gradient for an atomic configuration.
@@ -68,27 +70,29 @@ RGPOT_CPMDC_API int cpmdc_set_params(const void *params_capnp, size_t params_cap
  * Positions are Angstrom; gradient is Hartree/Bohr (CPMD ionic forces are
  * negated into a nuclear gradient for API symmetry with nwchemc).
  */
-RGPOT_CPMDC_API CPMDCResult cpmdc_energy_gradient(int n_atoms, const double *positions_ang,
-                                  const int *atomic_numbers,
-                                  const void *params_capnp,
-                                  size_t params_capnp_size_bytes,
-                                  double *grad_h_bohr);
+RGPOT_CPMDC_API CPMDCResult
+cpmdc_energy_gradient(int n_atoms, const double *positions_ang,
+                      const int *atomic_numbers, const void *params_capnp,
+                      size_t params_capnp_size_bytes, double *grad_h_bohr);
 
 /**
  * @brief Compute total energy only (no gradient allocation).
  */
-RGPOT_CPMDC_API CPMDCResult cpmdc_energy(int n_atoms, const double *positions_ang,
-                         const int *atomic_numbers, const void *params_capnp,
-                         size_t params_capnp_size_bytes);
+RGPOT_CPMDC_API CPMDCResult cpmdc_energy(int n_atoms,
+                                         const double *positions_ang,
+                                         const int *atomic_numbers,
+                                         const void *params_capnp,
+                                         size_t params_capnp_size_bytes);
 
 /**
  * @brief Compute energy and nuclear forces (negative gradient, Hartree/Bohr).
  */
-RGPOT_CPMDC_API CPMDCResult cpmdc_energy_forces(int n_atoms, const double *positions_ang,
-                                const int *atomic_numbers,
-                                const void *params_capnp,
-                                size_t params_capnp_size_bytes,
-                                double *forces_h_bohr);
+RGPOT_CPMDC_API CPMDCResult cpmdc_energy_forces(int n_atoms,
+                                                const double *positions_ang,
+                                                const int *atomic_numbers,
+                                                const void *params_capnp,
+                                                size_t params_capnp_size_bytes,
+                                                double *forces_h_bohr);
 
 /**
  * @brief Create a persistent evaluation session from a Cap'n Proto message.
@@ -96,31 +100,42 @@ RGPOT_CPMDC_API CPMDCResult cpmdc_energy_forces(int n_atoms, const double *posit
  * The session owns a copy of the serialized message so callers may release the
  * input buffer after this call returns.
  */
-RGPOT_CPMDC_API CPMDCSession *cpmdc_session_create(const void *params_capnp,
-                                   size_t params_capnp_size_bytes);
+RGPOT_CPMDC_API CPMDCSession *
+cpmdc_session_create(const void *params_capnp, size_t params_capnp_size_bytes);
 
 /**
  * @brief Replace Cap'n Proto parameters before the session accepts topology.
  */
-RGPOT_CPMDC_API int cpmdc_session_set_params(CPMDCSession *session, const void *params_capnp,
-                             size_t params_capnp_size_bytes);
+RGPOT_CPMDC_API int cpmdc_session_set_params(CPMDCSession *session,
+                                             const void *params_capnp,
+                                             size_t params_capnp_size_bytes);
 
 /** @brief Release a persistent evaluation session. */
 RGPOT_CPMDC_API void cpmdc_session_destroy(CPMDCSession *session);
 
-RGPOT_CPMDC_API CPMDCResult cpmdc_session_energy_gradient(CPMDCSession *session, int n_atoms,
-                                          const double *positions_ang,
-                                          const int *atomic_numbers,
-                                          double *grad_h_bohr);
+/**
+ * @brief Name the calculation the next evaluations of this session belong to.
+ *
+ * The engine keeps the converged orbitals per key, so a calculator that
+ * evaluates several images or beads in turn starts each SCF from that
+ * image's or bead's own previous orbitals. Optional: an engine without the
+ * symbol keeps one stored copy.
+ */
+RGPOT_CPMDC_API int cpmdc_session_select_orbitals(CPMDCSession *session,
+                                                  long long key);
 
-RGPOT_CPMDC_API CPMDCResult cpmdc_session_energy(CPMDCSession *session, int n_atoms,
-                                 const double *positions_ang,
-                                 const int *atomic_numbers);
+RGPOT_CPMDC_API CPMDCResult cpmdc_session_energy_gradient(
+    CPMDCSession *session, int n_atoms, const double *positions_ang,
+    const int *atomic_numbers, double *grad_h_bohr);
 
-RGPOT_CPMDC_API CPMDCResult cpmdc_session_energy_forces(CPMDCSession *session, int n_atoms,
-                                        const double *positions_ang,
-                                        const int *atomic_numbers,
-                                        double *forces_h_bohr);
+RGPOT_CPMDC_API CPMDCResult cpmdc_session_energy(CPMDCSession *session,
+                                                 int n_atoms,
+                                                 const double *positions_ang,
+                                                 const int *atomic_numbers);
+
+RGPOT_CPMDC_API CPMDCResult cpmdc_session_energy_forces(
+    CPMDCSession *session, int n_atoms, const double *positions_ang,
+    const int *atomic_numbers, double *forces_h_bohr);
 
 /**
  * @brief Compute energy and forces for one Cap'n Proto `ForceInput` step.
@@ -151,18 +166,17 @@ RGPOT_CPMDC_API CPMDCResult cpmdc_session_calculate_result(
     size_t *potential_result_capnp_size_bytes);
 
 /**
- * @brief One-shot Cap'n Proto entry point (params + ForceInput -> PotentialResult).
+ * @brief One-shot Cap'n Proto entry point (params + ForceInput ->
+ * PotentialResult).
  *
  * Multi-step callers should create one session and call
  * `cpmdc_session_calculate_result()` per step.
  */
-RGPOT_CPMDC_API CPMDCResult cpmdc_calculate_result(const void *params_capnp,
-                                   size_t params_capnp_size_bytes,
-                                   const void *force_input_capnp,
-                                   size_t force_input_capnp_size_bytes,
-                                   void *potential_result_capnp,
-                                   size_t potential_result_capnp_capacity_bytes,
-                                   size_t *potential_result_capnp_size_bytes);
+RGPOT_CPMDC_API CPMDCResult cpmdc_calculate_result(
+    const void *params_capnp, size_t params_capnp_size_bytes,
+    const void *force_input_capnp, size_t force_input_capnp_size_bytes,
+    void *potential_result_capnp, size_t potential_result_capnp_capacity_bytes,
+    size_t *potential_result_capnp_size_bytes);
 
 /**
  * @brief Byte count needed for a `PotentialResult` for the given `ForceInput`.
@@ -184,7 +198,8 @@ RGPOT_CPMDC_API void cpmdc_finalize(void);
 
 RGPOT_CPMDC_API size_t cpmdc_feature_count(void);
 RGPOT_CPMDC_API const CPMDCFeatureEntry *cpmdc_feature_table(void);
-RGPOT_CPMDC_API const CPMDCFeatureEntry *cpmdc_feature_find(const char *feature_id);
+RGPOT_CPMDC_API const CPMDCFeatureEntry *
+cpmdc_feature_find(const char *feature_id);
 
 #ifdef __cplusplus
 }

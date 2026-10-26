@@ -2,31 +2,33 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 //
-// Verlet-skin cached pair lists for classical pair potentials.
+// Verlet-skin cached pair lists for classical pair potentials, ported from
+// eOn's eonc::PairListCache (TheochemUI/eOn, fix/vesin-neighbor-perf).
 //
-// An orthorhombic cell gets its candidates from the fast list. A cell
-// wide enough to split into several bins uses linkcell (`pairs_within`,
-// half list, self images dropped). A cell only a few cutoffs wide, and a
-// small open cluster, is handed back as every unordered pair; the caller
-// keeps the in-cutoff subset. Periodic axes fold with minimage
-// (`wrap_many`, AVX where that crate built it). An open axis is padded
-// inside the pair search so its periodic images stay outside the cutoff,
-// then left unwrapped. A non-orthogonal cell, or a periodic axis with a
-// non-positive width, stays on the fused scan in vesin_visit.hpp: those
-// boxes are outside the cell the fast list accepts.
+// Header-only and dependency-free: the MIC regime (orthorhombic box, true
+// cutoff within half the smallest periodic width) searches pairs with the
+// linked-cell scan from cell_visit.hpp once the box holds enough cells
+// (O(n) per search), and with the fused brute-force scan from
+// vesin_visit.hpp below that (O(n^2), cheaper for a handful of cells).
+// Both report the same pair set. Outside the cached regime every call
+// performs a brute-force scan. Nonorthogonal cells use the full lattice
+// minimum image; orthorhombic cells retain the componentwise fold.
 //
-// Design invariants:
+// Design invariants (see the eOn failure analysis for the derivation):
 // - Slots are immutable after build and handed out as shared_ptr, so
 //   readers never race eviction; the pool mutex covers only the
 //   proximity match, never the physics.
-// - Evaluation always re-derives vectors from the positions of that call. Periodic
-//   axes go through one minimage wrap of the cached index pairs, filtered
-//   at the true cutoff. Pair content matches a fresh scan while the
-//   displacement vectors themselves stay inside a box whose diagonal is
-//   shorter than the skin. A rigid translation has a zero diagonal, so
-//   the list is kept.
-// - The first sighting captures the list and evaluates it. Later calls
-//   inside the skin walk the stored pairs.
+// - Evaluation always re-derives vectors from current positions, folded
+//   by a per-call MIC rounding or by the periodic image recorded at build
+//   (when cutoff + skin < w/2 makes the two agree), filtered at the true
+//   cutoff: the pair content matches a fresh scan while every atom stays
+//   within skin/2 of the build positions (Verlet guarantee).
+// - The cached list is a CSR half list (partners j > i per atom, sorted),
+//   so the force loop keeps atom i's force in registers across its row.
+// - Lazy capture: the first sighting of a geometry family runs the fused
+//   eval-only scan and records a phantom reference stamp; a second
+//   sighting within skin/2 proves reuse and captures the list. One-shot
+//   evaluations never pay list capture.
 
 #include <algorithm>
 #include <array>
@@ -35,43 +37,81 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
-#include <stdexcept>
-#include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
-#ifdef RGPOT_HAS_FAST_NLIST
-#include "rgpot/nlist/fastnlist.h"
-#endif
+#include "rgpot/nlist/MinimumImage.hpp"
+#include "rgpot/nlist/cell_visit.hpp"
 #include "rgpot/nlist/vesin_visit.hpp"
+#include "rgpot/simd/exact_fma.hpp"
+
+#if defined(__GNUC__)
+#define RGPOT_PL_INLINE __attribute__((always_inline)) inline
+#else
+#define RGPOT_PL_INLINE inline
+#endif
+#if defined(__GNUC__) && defined(__x86_64__) && !defined(__FMA__)
+#define RGPOT_PL_FMA_DISPATCH 1
+// The loops must inline into the target("fma") clone to get vfmadd.
+#define RGPOT_PL_LOOP RGPOT_PL_INLINE
+#else
+#define RGPOT_PL_FMA_DISPATCH 0
+// One function per fold mode, as before: merging them costs registers.
+#define RGPOT_PL_LOOP inline
+#endif
 
 namespace rgpot {
 namespace nlist {
 
-namespace {
+/// One fused multiply-add for the pair force updates, always inlined so the
+/// loop keeps its registers. ``Hw``: the caller runs with FMA enabled (the
+/// unit's own ISA or a target("fma") clone); otherwise the exact software
+/// form, which only a CPU without FMA reaches.
+template <bool Hw>
+RGPOT_PL_INLINE double pairFma(double a, double b, double c) {
+#if defined(__GNUC__) && (defined(__FMA__) || defined(__ARM_FEATURE_FMA))
+  return __builtin_fma(a, b, c);
+#elif RGPOT_PL_FMA_DISPATCH
+  if constexpr (Hw) {
+    return __builtin_fma(a, b, c);
+  } else {
+    return simd::fma_quick(a, b, c);
+  }
+#else
+  return simd::mul_add(a, b, c);
+#endif
+}
 
-struct FastScratch {
-  std::vector<int32_t> ij;
-  std::vector<double> diff;
-  std::vector<double> wrapped;
-  int32_t periodic[3]{};
+/// One pair's contribution, as a radial kernel returns it: the energy and
+/// ``fscale = -V'(r) / r``, so the force on atom i is ``fscale * (r_i - r_j)``.
+struct PairTerm {
+  double energy;
+  double fscale;
 };
 
-inline FastScratch &fast_scratch() {
-  thread_local FastScratch scratch;
-  return scratch;
-}
+struct IgnorePairContribution {
+  void operator()(double, double, double, double) const noexcept {}
+};
 
-#ifdef RGPOT_HAS_FAST_NLIST
-[[noreturn]] inline void fast_fail(const char *what) {
-  const char *msg = rgpot_fast_last_error();
-  throw std::runtime_error(std::string(what) + (msg != nullptr ? msg : ""));
-}
-#endif
-
-} // namespace
+/// True for a kernel that evaluates a whole row at once:
+/// ``kernel.row(r2, energy, fscale, m)`` fills the pair energies and force
+/// scales of the ``m`` squared distances in ``r2``. Each output may depend
+/// only on its own ``r2`` entry, so the pair gets the bits it would get
+/// from a per-pair call.
+template <typename K, typename = void> struct HasRowKernel : std::false_type {};
+template <typename K>
+struct HasRowKernel<K, std::void_t<decltype(std::declval<const K &>().row(
+                           std::declval<const double *>(),
+                           std::declval<double *>(), std::declval<double *>(),
+                           std::declval<std::size_t>()))>> : std::true_type {};
 
 class CachedPairList {
 public:
+  /// How evaluation turns r_i - r_j into the minimum image: no fold (free
+  /// boundaries), a per-call rounding fold, or a shift recorded at build.
+  enum class FoldMode : uint8_t { None, Round, Coded, General };
+
   struct Options {
     double cutoff{0.0};
     double skin{1.0};
@@ -83,10 +123,8 @@ public:
   };
 
   /// True while the cached pair set is valid for positions ``R``: same
-  /// atom count, options and box as the build, and the cloud of
-  /// displacement vectors has a bounding-box diagonal shorter than the
-  /// skin. That is the Verlet condition on relative motion. A shared
-  /// translation drops out of the diagonal.
+  /// atom count, options and box as the build, and max displacement
+  /// below skin/2.
   [[nodiscard]] bool valid(const double *R, std::size_t n, const double *box,
                            const Options &opt) const {
     if (!built_ || n != n_ || !(opt == opt_)) {
@@ -97,220 +135,399 @@ public:
         return false;
       }
     }
-    if (complete_ || n == 0) {
+    if (complete_) {
       return true; // all pairs are candidates; motion cannot invalidate
     }
+    const double thr2 = 0.25 * opt_.skin * opt_.skin;
     const double *ref = Rref_.data();
-    double minx = R[0] - ref[0];
-    double maxx = minx;
-    double miny = R[1] - ref[1];
-    double maxy = miny;
-    double minz = R[2] - ref[2];
-    double maxz = minz;
-    for (std::size_t a = 1; a < n; ++a) {
+    for (std::size_t a = 0; a < n; ++a) {
       const double dx = R[3 * a] - ref[3 * a];
       const double dy = R[3 * a + 1] - ref[3 * a + 1];
       const double dz = R[3 * a + 2] - ref[3 * a + 2];
-      minx = std::min(minx, dx);
-      maxx = std::max(maxx, dx);
-      miny = std::min(miny, dy);
-      maxy = std::max(maxy, dy);
-      minz = std::min(minz, dz);
-      maxz = std::max(maxz, dz);
+      if (dx * dx + dy * dy + dz * dz > thr2) {
+        return false;
+      }
     }
-    const double ex = maxx - minx;
-    const double ey = maxy - miny;
-    const double ez = maxz - minz;
-    const double diag2 = ex * ex + ey * ey + ez * ez;
-    const double skin = opt_.skin;
-    if (!(skin > 0.0)) {
-      return diag2 == 0.0;
-    }
-    // A non-listed pair sits at or beyond cutoff+skin. It can reach the
-    // inclusive cutoff only by shrinking by a full skin. A shorter
-    // diagonal cannot do that.
-    return diag2 < skin * skin;
+    return true;
   }
 
   [[nodiscard]] bool isPhantom() const { return phantom_; }
 
-  /// First sighting. An orthorhombic cell captures the linkcell list in
-  /// the same call. Anything else runs the fused scan and, when that box
-  /// can be cached, a phantom stamp.
+  /// First sighting: fused eval-only scan plus a phantom stamp (MIC
+  /// regime), or just the scan when caching is unsafe for this box.
   template <typename Fn>
   void visitOnly(const double *R, std::size_t n, const double *box,
                  const Options &opt, Fn &&fn) {
     setup(n, box, opt);
-    if (fast_) {
-#ifdef RGPOT_HAS_FAST_NLIST
-      fillFast(R, n, box, opt, fn);
-      if (mic_) {
-        finishRebuild(R, n, box, opt);
-        phantom_ = false;
-      }
-#endif
-      return;
-    }
     double w[3];
     double inv[3];
     fold_params(box, opt, w, inv);
-    vesin::cpu::brute_force_visit_only(
-        R, n, w, inv, opt.cutoff * opt.cutoff,
-        [&](int32_t i, int32_t j, double dx, double dy, double dz,
-            double r2) { fn(i, j, -dx, -dy, -dz, r2); });
+    auto flip = [&](int32_t i, int32_t j, double dx, double dy, double dz,
+                    double r2) { fn(i, j, -dx, -dy, -dz, r2); };
+    CellGrid grid;
+    if (general_) {
+      generalVisit(R, n, -1.0, opt.cutoff * opt.cutoff, flip);
+    } else if (mic_ && grid.build(R, n, w, inv, opt.cutoff)) {
+      cell_visit<false>(grid, R, w, inv, HUGE_VAL, opt.cutoff * opt.cutoff,
+                        pairsIJ_, flip);
+    } else {
+      vesin::cpu::brute_force_visit_only(R, n, w, inv, opt.cutoff * opt.cutoff,
+                                         flip);
+    }
     if (mic_) {
       pairsIJ_.clear();
-      finishRebuild(R, n, box, opt);
+      finishRebuild(R, n, box, opt, true, false);
       phantom_ = true;
     }
   }
 
-  /// Second sighting of a phantom slot: capture candidates at cutoff+skin.
+  /// Second sighting: capture the candidate list at cutoff+skin while
+  /// evaluating ``fn`` in the same scan.
   template <typename Fn>
   void rebuildFused(const double *R, std::size_t n, const double *box,
                     const Options &opt, Fn &&fn) {
     setup(n, box, opt);
-    if (fast_) {
-#ifdef RGPOT_HAS_FAST_NLIST
-      fillFast(R, n, box, opt, fn);
-      finishRebuild(R, n, box, opt);
-      phantom_ = false;
-#endif
-      return;
-    }
     double w[3];
     double inv[3];
     fold_params(box, opt, w, inv);
     const double bc = opt.cutoff + opt.skin;
-    vesin::cpu::brute_force_visit(
-        R, n, w, inv, bc * bc, opt.cutoff * opt.cutoff, pairsIJ_,
-        [&](int32_t i, int32_t j, double dx, double dy, double dz,
-            double r2) { fn(i, j, -dx, -dy, -dz, r2); });
-    finishRebuild(R, n, box, opt);
+    auto flip = [&](int32_t i, int32_t j, double dx, double dy, double dz,
+                    double r2) { fn(i, j, -dx, -dy, -dz, r2); };
+    CellGrid grid;
+    const bool cells = mic_ && grid.build(R, n, w, inv, bc);
+    if (general_) {
+      generalVisit(R, n, bc * bc, opt.cutoff * opt.cutoff, flip);
+    } else if (cells) {
+      cell_visit<true>(grid, R, w, inv, bc * bc, opt.cutoff * opt.cutoff,
+                       pairsIJ_, flip);
+    } else {
+      vesin::cpu::brute_force_visit(R, n, w, inv, bc * bc,
+                                    opt.cutoff * opt.cutoff, pairsIJ_, flip);
+    }
+    finishRebuild(R, n, box, opt, !cells, true);
+  }
+
+  /// Build the candidate list at cutoff + skin for positions ``R``, the
+  /// list a later call reuses while the Verlet guarantee holds.
+  void rebuild(const double *R, std::size_t n, const double *box,
+               const Options &opt) {
+    rebuildFused(R, n, box, opt,
+                 [](int32_t, int32_t, double, double, double, double) {});
+  }
+
+  /// Build a list holding exactly the pairs within the cutoff of ``R``,
+  /// for one evaluation through accumulate. When the box is cacheable the
+  /// slot then becomes a phantom (dropPairs) that only stamps the
+  /// geometry, as visitOnly leaves it.
+  void buildForEval(const double *R, std::size_t n, const double *box,
+                    const Options &opt) {
+    setup(n, box, opt);
+    double w[3];
+    double inv[3];
+    fold_params(box, opt, w, inv);
+    const double c2 = opt.cutoff * opt.cutoff;
+    auto none = [](int32_t, int32_t, double, double, double, double) {};
+    CellGrid grid;
+    const bool cells = mic_ && grid.build(R, n, w, inv, opt.cutoff);
+    if (general_) {
+      generalVisit(R, n, std::nextafter(c2, HUGE_VAL), -1.0, none);
+    } else if (cells) {
+      cell_visit<true>(grid, R, w, inv, std::nextafter(c2, HUGE_VAL), -1.0,
+                       pairsIJ_, none);
+    } else {
+      vesin::cpu::brute_force_visit(R, n, w, inv, std::nextafter(c2, HUGE_VAL),
+                                    -1.0, pairsIJ_, none);
+    }
+    // One evaluation: the rounding fold costs what recording the images
+    // would, and gives the same vectors bit for bit.
+    finishRebuild(R, n, box, opt, !cells, false);
+  }
+
+  /// Turn an evaluated slot into a phantom: keep the stamp, drop the pairs.
+  void dropPairs() {
+    nbr_.clear();
+    nbr_.shrink_to_fit();
+    code_.clear();
+    code_.shrink_to_fit();
+    std::fill(rows_.begin(), rows_.end(), 0);
+    phantom_ = true;
   }
 
   /// True when caching applies to this box (decided by the last build).
   [[nodiscard]] bool cacheable() const { return mic_; }
 
-  /// Visit every cached pair within the true cutoff of these positions.
-  /// ``fn(i, j, dx, dy, dz, r2)`` uses ``d = r_i - r_j`` with the minimum
-  /// image applied.
+  /// Fold the evaluation loops use for this slot.
+  [[nodiscard]] FoldMode foldMode() const { return fold_; }
+
+  /// Candidate pairs held (within cutoff + skin at the build).
+  [[nodiscard]] std::size_t size() const { return nbr_.size(); }
+
+  /// Visit every cached pair within the true cutoff of the current
+  /// positions; ``fn(i, j, dx, dy, dz, r2)`` uses ``d = r_i - r_j`` with
+  /// the minimum image applied.
   template <typename Fn> void forEach(const double *R, Fn &&fn) const {
-    const double cutoff2 = opt_.cutoff * opt_.cutoff;
-    const bool open = micInv_[0] == 0.0 && micInv_[1] == 0.0 && micInv_[2] == 0.0;
-    // A complete open list is every i < j. Walking the coordinates
-    // directly keeps that loop as tight as the fused scan; an index
-    // vector of the same pairs only adds loads.
-    if (open && complete_) {
-      for (std::size_t i = 0; i < n_; ++i) {
-        const double ix = R[3 * i];
-        const double iy = R[3 * i + 1];
-        const double iz = R[3 * i + 2];
-        for (std::size_t j = i + 1; j < n_; ++j) {
-          const double dx = ix - R[3 * j];
-          const double dy = iy - R[3 * j + 1];
-          const double dz = iz - R[3 * j + 2];
-          const double r2 = dx * dx + dy * dy + dz * dz;
-          if (r2 <= cutoff2) {
-            fn(static_cast<int32_t>(i), static_cast<int32_t>(j), dx, dy, dz, r2);
-          }
-        }
-      }
-      return;
+    switch (fold_) {
+    case FoldMode::None:
+      forEachImpl<FoldMode::None>(R, fn);
+      break;
+    case FoldMode::Round:
+      forEachImpl<FoldMode::Round>(R, fn);
+      break;
+    case FoldMode::Coded:
+      forEachImpl<FoldMode::Coded>(R, fn);
+      break;
+    case FoldMode::General:
+      forEachImpl<FoldMode::General>(R, fn);
+      break;
     }
-    const std::size_t nint = pairsIJ_.size();
-    const int32_t *ij = pairsIJ_.data();
-    if (open) {
-      for (std::size_t p = 0; p < nint; p += 2) {
-        const int32_t i = ij[p];
-        const int32_t j = ij[p + 1];
-        const double dx = R[3 * i] - R[3 * j];
-        const double dy = R[3 * i + 1] - R[3 * j + 1];
-        const double dz = R[3 * i + 2] - R[3 * j + 2];
-        const double r2 = dx * dx + dy * dy + dz * dz;
-        if (r2 <= cutoff2) {
-          fn(i, j, dx, dy, dz, r2);
-        }
-      }
-      return;
-    }
-    const std::size_t np = nint / 2;
-    auto &scratch = fast_scratch();
-    scratch.diff.resize(np * 3);
-    scratch.wrapped.resize(np * 3);
-    for (std::size_t p = 0; p < np; ++p) {
-      const int32_t i = ij[2 * p];
-      const int32_t j = ij[2 * p + 1];
-      scratch.diff[3 * p] = R[3 * i] - R[3 * j];
-      scratch.diff[3 * p + 1] = R[3 * i + 1] - R[3 * j + 1];
-      scratch.diff[3 * p + 2] = R[3 * i + 2] - R[3 * j + 2];
-    }
-    periodic_flags(opt_, scratch.periodic);
-#ifdef RGPOT_HAS_FAST_NLIST
-    if (np > 0 &&
-        rgpot_fast_wrap_axes(boxref_.data(), scratch.periodic, scratch.diff.data(),
-                             np, scratch.wrapped.data()) != 0) {
-      fast_fail("rgpot minimage wrap failed: ");
-    }
-#else
-    const double w0 = boxref_[0];
-    const double w1 = boxref_[4];
-    const double w2 = boxref_[8];
-    const double i0 = micInv_[0];
-    const double i1 = micInv_[1];
-    const double i2 = micInv_[2];
-    for (std::size_t p = 0; p < np; ++p) {
-      double dx = scratch.diff[3 * p];
-      double dy = scratch.diff[3 * p + 1];
-      double dz = scratch.diff[3 * p + 2];
-      dx -= w0 * vesin::cpu::visit_round(dx * i0);
-      dy -= w1 * vesin::cpu::visit_round(dy * i1);
-      dz -= w2 * vesin::cpu::visit_round(dz * i2);
-      scratch.wrapped[3 * p] = dx;
-      scratch.wrapped[3 * p + 1] = dy;
-      scratch.wrapped[3 * p + 2] = dz;
+  }
+
+  /// Fused force loop over the cached pairs: ``kernel(i, j, r2)`` returns
+  /// the pair energy and ``fscale = -V'(r) / r`` (or a row kernel, see
+  /// HasRowKernel, fills them for a row of accepted pairs); the loop adds
+  /// ``fscale * d`` to atom i and subtracts it from atom j (``d = r_i -
+  /// r_j``, minimum image applied) and returns the summed energy. Atom i's
+  /// force stays in registers across its row. The optional observer receives
+  /// the same force scale and displacement once per accepted pair.
+  template <typename Kernel, typename Observer = IgnorePairContribution>
+  [[nodiscard]] double accumulate(const double *R, double *F, Kernel &&kernel,
+                                  Observer &&observe = {}) const {
+#if RGPOT_PL_FMA_DISPATCH
+    // Baseline x86-64 unit: pick the fused-update variant once per call.
+    if (simd::detail::fma_hw_active()) {
+      return accumulateHw(R, F, kernel, observe);
     }
 #endif
-    for (std::size_t p = 0; p < np; ++p) {
-      const double dx = scratch.wrapped[3 * p];
-      const double dy = scratch.wrapped[3 * p + 1];
-      const double dz = scratch.wrapped[3 * p + 2];
-      const double r2 = dx * dx + dy * dy + dz * dz;
-      if (r2 <= cutoff2) {
-        fn(ij[2 * p], ij[2 * p + 1], dx, dy, dz, r2);
-      }
-    }
+    return accumulateFold<false>(R, F, kernel, observe);
   }
 
 private:
-  void setup(std::size_t n, const double *box, const Options &opt) {
-#ifndef RGPOT_HAS_FAST_NLIST
-    (void)n;
-    (void)box;
-    (void)opt;
-    fast_ = false;
-    mic_ = false;
-    return;
-#else
-    const bool orthorhombic = box[1] == 0.0 && box[2] == 0.0 && box[3] == 0.0 &&
-                              box[5] == 0.0 && box[6] == 0.0 && box[7] == 0.0;
-    fast_ = orthorhombic;
-    for (int k = 0; fast_ && k < 3; ++k) {
-      if (opt.periodic[static_cast<std::size_t>(k)] && !(box[4 * k] > 0.0)) {
-        fast_ = false;
+  template <bool Hw, typename Kernel, typename Observer>
+  RGPOT_PL_LOOP double accumulateFold(const double *R, double *F,
+                                      Kernel &kernel,
+                                      Observer &observe) const {
+    if constexpr (HasRowKernel<Kernel>::value) {
+      switch (fold_) {
+      case FoldMode::None:
+        return accumulateRows<FoldMode::None, Hw>(R, F, kernel, observe);
+      case FoldMode::Round:
+        return accumulateRows<FoldMode::Round, Hw>(R, F, kernel, observe);
+      case FoldMode::Coded:
+        return accumulateRows<FoldMode::Coded, Hw>(R, F, kernel, observe);
+      case FoldMode::General:
+        return accumulateRows<FoldMode::General, Hw>(R, F, kernel, observe);
+      }
+    } else {
+      switch (fold_) {
+      case FoldMode::None:
+        return accumulateImpl<FoldMode::None, Hw>(R, F, kernel, observe);
+      case FoldMode::Round:
+        return accumulateImpl<FoldMode::Round, Hw>(R, F, kernel, observe);
+      case FoldMode::Coded:
+        return accumulateImpl<FoldMode::Coded, Hw>(R, F, kernel, observe);
+      case FoldMode::General:
+        return accumulateImpl<FoldMode::General, Hw>(R, F, kernel, observe);
       }
     }
-    // Above this count the candidate buffer is left uncached. A wide cell
-    // still searches with linkcell; a narrow cell walks every unordered
-    // pair in small batches.
-    mic_ = fast_ && n <= 20000;
-#endif
+    return 0.0;
   }
 
-  static void periodic_flags(const Options &opt, int32_t out[3]) {
-    for (int k = 0; k < 3; ++k) {
-      out[k] = opt.periodic[static_cast<std::size_t>(k)] ? 1 : 0;
+#if RGPOT_PL_FMA_DISPATCH
+  // The whole loop, kernel included, is compiled for FMA here so the fused
+  // updates are single vfmadd instructions. Contraction stays off so the
+  // kernel rounds as it does on the baseline path. This symbol is named in
+  // rgpot/isa-allow.toml; the caller enters it only after fma_hw_active().
+  template <typename Kernel, typename Observer>
+  __attribute__((target("fma"), optimize("-ffp-contract=off"), noinline))
+  double accumulateHw(const double *R, double *F, Kernel &kernel,
+                      Observer &observe) const {
+    return accumulateFold<true>(R, F, kernel, observe);
+  }
+#endif
+
+  template <FoldMode M, typename Fn>
+  void forEachImpl(const double *R, Fn &fn) const {
+    const double cutoff2 = opt_.cutoff * opt_.cutoff;
+    const Fold fold = makeFold();
+    for (std::size_t i = 0; i < n_; ++i) {
+      const int32_t p0 = rows_[i];
+      const int32_t p1 = rows_[i + 1];
+      for (int32_t p = p0; p < p1; ++p) {
+        const auto up = static_cast<std::size_t>(p);
+        const int32_t j = nbr_[up];
+        double dx, dy, dz;
+        fold.template apply<M>(R, i, static_cast<std::size_t>(j), up, dx, dy,
+                               dz);
+        const double r2 = dx * dx + dy * dy + dz * dz;
+        if (r2 <= cutoff2) {
+          fn(static_cast<int32_t>(i), j, dx, dy, dz, r2);
+        }
+      }
     }
+  }
+
+  template <FoldMode M, bool Hw, typename Kernel, typename Observer>
+  [[nodiscard]] RGPOT_PL_LOOP double
+  accumulateImpl(const double *R, double *F, Kernel &kernel,
+                 Observer &observe) const {
+    const double cutoff2 = opt_.cutoff * opt_.cutoff;
+    const Fold fold = makeFold();
+    double energy = 0.0;
+    for (std::size_t i = 0; i < n_; ++i) {
+      const int32_t p0 = rows_[i];
+      const int32_t p1 = rows_[i + 1];
+      double fxi = 0.0, fyi = 0.0, fzi = 0.0;
+      for (int32_t p = p0; p < p1; ++p) {
+        const auto up = static_cast<std::size_t>(p);
+        const auto j = static_cast<std::size_t>(nbr_[up]);
+        double dx, dy, dz;
+        fold.template apply<M>(R, i, j, up, dx, dy, dz);
+        const double r2 = dx * dx + dy * dy + dz * dz;
+        // A branch, not a mask: masking evaluates the kernel (an exp for
+        // Morse) for every candidate past the cutoff, and measures slower
+        // for Morse at every size and no faster for LJ.
+        if (r2 <= cutoff2) {
+          const PairTerm t =
+              kernel(static_cast<int32_t>(i), static_cast<int32_t>(j), r2);
+          energy += t.energy;
+          // Explicit fused updates: left to -ffp-contract, GCC 15 fuses
+          // these differently in the Round and Coded instantiations, and a
+          // cold call then differs in the last bit from a captured one.
+          fxi = pairFma<Hw>(t.fscale, dx, fxi);
+          fyi = pairFma<Hw>(t.fscale, dy, fyi);
+          fzi = pairFma<Hw>(t.fscale, dz, fzi);
+          F[3 * j] = pairFma<Hw>(-t.fscale, dx, F[3 * j]);
+          F[3 * j + 1] = pairFma<Hw>(-t.fscale, dy, F[3 * j + 1]);
+          F[3 * j + 2] = pairFma<Hw>(-t.fscale, dz, F[3 * j + 2]);
+          observe(t.fscale, dx, dy, dz);
+        }
+      }
+      F[3 * i] += fxi;
+      F[3 * i + 1] += fyi;
+      F[3 * i + 2] += fzi;
+    }
+    return energy;
+  }
+
+  /// accumulateImpl for a row kernel: the accepted pairs of row i are
+  /// gathered, the kernel evaluates them together, and the updates then run
+  /// in the order accumulateImpl would run them, so the sums round the same.
+  template <FoldMode M, bool Hw, typename Kernel, typename Observer>
+  [[nodiscard]] RGPOT_PL_LOOP double
+  accumulateRows(const double *R, double *F, Kernel &kernel,
+                 Observer &observe) const {
+    const double cutoff2 = opt_.cutoff * opt_.cutoff;
+    const Fold fold = makeFold();
+    std::size_t widest = 0;
+    for (std::size_t i = 0; i < n_; ++i) {
+      widest = std::max(widest, static_cast<std::size_t>(rows_[i + 1] - rows_[i]));
+    }
+    // dx, dy, dz, r2, energy, fscale per accepted pair.
+    std::vector<double> buf(6 * widest);
+    std::vector<std::size_t> partner(widest);
+    double *bx = buf.data();
+    double *by = bx + widest;
+    double *bz = by + widest;
+    double *br2 = bz + widest;
+    double *be = br2 + widest;
+    double *bf = be + widest;
+    double energy = 0.0;
+    for (std::size_t i = 0; i < n_; ++i) {
+      const int32_t p0 = rows_[i];
+      const int32_t p1 = rows_[i + 1];
+      std::size_t m = 0;
+      for (int32_t p = p0; p < p1; ++p) {
+        const auto up = static_cast<std::size_t>(p);
+        const auto j = static_cast<std::size_t>(nbr_[up]);
+        double dx, dy, dz;
+        fold.template apply<M>(R, i, j, up, dx, dy, dz);
+        const double r2 = dx * dx + dy * dy + dz * dz;
+        if (r2 <= cutoff2) {
+          bx[m] = dx;
+          by[m] = dy;
+          bz[m] = dz;
+          br2[m] = r2;
+          partner[m] = j;
+          ++m;
+        }
+      }
+      kernel.row(br2, be, bf, m);
+      double fxi = 0.0, fyi = 0.0, fzi = 0.0;
+      for (std::size_t q = 0; q < m; ++q) {
+        const std::size_t j = partner[q];
+        const double fs = bf[q];
+        energy += be[q];
+        fxi = pairFma<Hw>(fs, bx[q], fxi);
+        fyi = pairFma<Hw>(fs, by[q], fyi);
+        fzi = pairFma<Hw>(fs, bz[q], fzi);
+        F[3 * j] = pairFma<Hw>(-fs, bx[q], F[3 * j]);
+        F[3 * j + 1] = pairFma<Hw>(-fs, by[q], F[3 * j + 1]);
+        F[3 * j + 2] = pairFma<Hw>(-fs, bz[q], F[3 * j + 2]);
+        observe(fs, bx[q], by[q], bz[q]);
+      }
+      F[3 * i] += fxi;
+      F[3 * i + 1] += fyi;
+      F[3 * i + 2] += fzi;
+    }
+    return energy;
+  }
+
+  template <typename Fn>
+  void generalVisit(const double *R, std::size_t n, double listCutoff2,
+                    double visitCutoff2, Fn &fn) {
+    pairsIJ_.clear();
+    for (std::size_t i = 0; i < n; ++i) {
+      for (std::size_t j = i + 1; j < n; ++j) {
+        double dx = R[3 * j] - R[3 * i];
+        double dy = R[3 * j + 1] - R[3 * i + 1];
+        double dz = R[3 * j + 2] - R[3 * i + 2];
+        generalImage_.fold(dx, dy, dz);
+        const double r2 = dx * dx + dy * dy + dz * dz;
+        if (r2 < listCutoff2) {
+          pairsIJ_.push_back(static_cast<int32_t>(i));
+          pairsIJ_.push_back(static_cast<int32_t>(j));
+        }
+        if (r2 <= visitCutoff2)
+          fn(static_cast<int32_t>(i), static_cast<int32_t>(j), dx, dy, dz, r2);
+      }
+    }
+  }
+
+  void setup(std::size_t n, const double *box, const Options &opt) {
+    const bool orthorhombic = box[1] == 0.0 && box[2] == 0.0 && box[3] == 0.0 &&
+                              box[5] == 0.0 && box[6] == 0.0 && box[7] == 0.0;
+    general_ = !orthorhombic &&
+               (opt.periodic[0] || opt.periodic[1] || opt.periodic[2]);
+    if (general_)
+      generalImage_ = MinimumImage(box, opt.periodic);
+    // The atom cap bounds the brute-force list build; a fully periodic box
+    // that the linked-cell scan can serve needs no cap.
+    mic_ = orthorhombic && (n <= 20000 || cellGridFits(n, box, opt));
+    for (int k = 0; mic_ && k < 3; ++k) {
+      if (opt.periodic[static_cast<std::size_t>(k)] &&
+          opt.cutoff > 0.5 * box[4 * k]) {
+        mic_ = false;
+      }
+    }
+  }
+
+  /// True when every axis is periodic and wide enough that CellGrid::build
+  /// accepts the box at the list cutoff for any atom positions.
+  static bool cellGridFits(std::size_t n, const double *box,
+                           const Options &opt) {
+    const double rl = opt.cutoff + opt.skin;
+    std::size_t ncells = 1;
+    for (int k = 0; k < 3; ++k) {
+      if (!opt.periodic[static_cast<std::size_t>(k)] || !(rl > 0.0)) {
+        return false;
+      }
+      const double fit = std::floor(box[4 * k] / rl);
+      if (fit < 3.0) {
+        return false;
+      }
+      ncells *= static_cast<std::size_t>(std::min(fit, 1024.0));
+    }
+    return ncells >= kMinCellsForGrid && ncells <= 8 * n + 64;
   }
 
   static void fold_params(const double *box, const Options &opt, double w[3],
@@ -323,177 +540,20 @@ private:
     }
   }
 
-#ifdef RGPOT_HAS_FAST_NLIST
-  /// Every unordered pair, wrapped in small batches. Used when linkcell
-  /// would not visit fewer images than this walk. The stored subset and
-  /// the visited subset use the same inequalities as the fused scan.
-  template <typename Fn>
-  bool fillNarrow(const double *R, std::size_t n, const double *box,
-                  const Options &opt, double list_cut, double search, Fn &&fn) {
-    if (n < 2) {
-      return false;
-    }
-    double mins[3] = {R[0], R[1], R[2]};
-    double maxs[3] = {mins[0], mins[1], mins[2]};
-    for (std::size_t a = 1; a < n; ++a) {
-      for (int k = 0; k < 3; ++k) {
-        const double v = R[3 * a + static_cast<std::size_t>(k)];
-        mins[k] = std::min(mins[k], v);
-        maxs[k] = std::max(maxs[k], v);
-      }
-    }
-    bool helps = true;
-    for (int k = 0; k < 3; ++k) {
-      if (opt.periodic[static_cast<std::size_t>(k)]) {
-        if (box[4 * k] < 3.0 * search) {
-          helps = false;
-        }
-      } else if (maxs[k] - mins[k] <= search) {
-        helps = false;
-      }
-    }
-    if (helps) {
-      return false;
-    }
-    auto &scratch = fast_scratch();
-    periodic_flags(opt, scratch.periodic);
-    constexpr std::size_t batch = 128;
-    scratch.ij.resize(batch * 2);
-    scratch.diff.resize(batch * 3);
-    scratch.wrapped.resize(batch * 3);
-    const double list2 = list_cut * list_cut;
-    const double cut2 = opt.cutoff * opt.cutoff;
-    const bool skin0 = opt.skin == 0.0;
-    const bool any_periodic = scratch.periodic[0] != 0 || scratch.periodic[1] != 0 ||
-                              scratch.periodic[2] != 0;
-    pairsIJ_.clear();
-    std::size_t filled = 0;
-    auto flush = [&]() {
-      if (filled == 0) {
-        return;
-      }
-      const double *vec = scratch.diff.data();
-      if (any_periodic) {
-        if (rgpot_fast_wrap_axes(box, scratch.periodic, scratch.diff.data(), filled,
-                                 scratch.wrapped.data()) != 0) {
-          fast_fail("rgpot minimage wrap failed: ");
-        }
-        vec = scratch.wrapped.data();
-      }
-      for (std::size_t p = 0; p < filled; ++p) {
-        const double dx = vec[3 * p];
-        const double dy = vec[3 * p + 1];
-        const double dz = vec[3 * p + 2];
-        const double r2 = dx * dx + dy * dy + dz * dz;
-        if (r2 < list2 || (skin0 && r2 <= cut2)) {
-          pairsIJ_.push_back(scratch.ij[2 * p]);
-          pairsIJ_.push_back(scratch.ij[2 * p + 1]);
-          if (r2 <= cut2) {
-            fn(scratch.ij[2 * p], scratch.ij[2 * p + 1], dx, dy, dz, r2);
-          }
-        }
-      }
-      filled = 0;
-    };
-    for (std::size_t i = 0; i < n; ++i) {
-      const double ix = R[3 * i];
-      const double iy = R[3 * i + 1];
-      const double iz = R[3 * i + 2];
-      for (std::size_t j = i + 1; j < n; ++j) {
-        if (filled == batch) {
-          flush();
-        }
-        scratch.ij[2 * filled] = static_cast<int32_t>(i);
-        scratch.ij[2 * filled + 1] = static_cast<int32_t>(j);
-        scratch.diff[3 * filled] = ix - R[3 * j];
-        scratch.diff[3 * filled + 1] = iy - R[3 * j + 1];
-        scratch.diff[3 * filled + 2] = iz - R[3 * j + 2];
-        ++filled;
-      }
-    }
-    flush();
-    return true;
-  }
-
-  /// linkcell candidates at cutoff+skin, minimage vectors, true-cutoff visit.
-  template <typename Fn>
-  void fillFast(const double *R, std::size_t n, const double *box,
-                const Options &opt, Fn &&fn) {
-    const double list_cut = opt.cutoff + opt.skin;
-    // linkcell keeps dist2 strictly below cutoff^2. The extra sliver
-    // keeps a pair that lands on the skin boundary inside the filter
-    // below; the filter then applies the same inequalities as the fused
-    // scan.
-    const double search =
-        list_cut + 1e-8 * std::max(1.0, std::abs(list_cut));
-    if (fillNarrow(R, n, box, opt, list_cut, search, fn)) {
-      return;
-    }
-    auto &scratch = fast_scratch();
-    periodic_flags(opt, scratch.periodic);
-    std::size_t cap = n < 2 ? 0 : n * 256;
-    const std::size_t all_pairs = n < 2 ? 0 : n * (n - 1) / 2;
-    if (n <= 512) {
-      cap = all_pairs;
-    }
-    scratch.ij.resize(std::max<std::size_t>(cap, 1) * 2);
-    std::size_t count = 0;
-    int rc = rgpot_fast_pairs(R, n, box, scratch.periodic, search,
-                              scratch.ij.data(), cap, &count);
-    if (rc == 1) {
-      scratch.ij.resize(count * 2);
-      rc = rgpot_fast_pairs(R, n, box, scratch.periodic, search,
-                            scratch.ij.data(), count, &count);
-    }
-    if (rc != 0) {
-      fast_fail("rgpot linkcell pair list failed: ");
-    }
-    const double list2 = list_cut * list_cut;
-    const double cut2 = opt.cutoff * opt.cutoff;
-    const bool skin0 = opt.skin == 0.0;
-    const bool any_periodic = scratch.periodic[0] != 0 || scratch.periodic[1] != 0 ||
-                              scratch.periodic[2] != 0;
-    scratch.diff.resize(count * 3);
-    scratch.wrapped.resize(count * 3);
-    for (std::size_t p = 0; p < count; ++p) {
-      const int32_t i = scratch.ij[2 * p];
-      const int32_t j = scratch.ij[2 * p + 1];
-      scratch.diff[3 * p] = R[3 * i] - R[3 * j];
-      scratch.diff[3 * p + 1] = R[3 * i + 1] - R[3 * j + 1];
-      scratch.diff[3 * p + 2] = R[3 * i + 2] - R[3 * j + 2];
-    }
-    const double *vec = scratch.diff.data();
-    if (any_periodic && count > 0) {
-      if (rgpot_fast_wrap_axes(box, scratch.periodic, scratch.diff.data(), count,
-                               scratch.wrapped.data()) != 0) {
-        fast_fail("rgpot minimage wrap failed: ");
-      }
-      vec = scratch.wrapped.data();
-    }
-    pairsIJ_.clear();
-    pairsIJ_.reserve(count * 2);
-    for (std::size_t p = 0; p < count; ++p) {
-      const double dx = vec[3 * p];
-      const double dy = vec[3 * p + 1];
-      const double dz = vec[3 * p + 2];
-      const double r2 = dx * dx + dy * dy + dz * dz;
-      if (r2 < list2 || (skin0 && r2 <= cut2)) {
-        pairsIJ_.push_back(scratch.ij[2 * p]);
-        pairsIJ_.push_back(scratch.ij[2 * p + 1]);
-        if (r2 <= cut2) {
-          fn(scratch.ij[2 * p], scratch.ij[2 * p + 1], dx, dy, dz, r2);
-        }
-      }
-    }
-  }
-#endif
-
+  /// ``rowsSorted``: the scan already emitted each row in ascending
+  /// partner order (the brute-force scan does). ``codes``: record image
+  /// codes for a list later calls reuse.
   void finishRebuild(const double *R, std::size_t n, const double *box,
-                     const Options &opt) {
-    for (int k = 0; k < 3; ++k) {
-      micInv_[static_cast<std::size_t>(k)] =
-          (mic_ && opt.periodic[static_cast<std::size_t>(k)]) ? 1.0 / box[4 * k]
-                                                              : 0.0;
+                     const Options &opt, bool rowsSorted, bool codes) {
+    // The fold of the historical per-call loop: diagonal widths along the
+    // periodic axes, also for a box the pool will not cache.
+    {
+      double w[3];
+      double inv[3];
+      fold_params(box, opt, w, inv);
+      for (int k = 0; k < 3; ++k) {
+        micInv_[static_cast<std::size_t>(k)] = inv[k];
+      }
     }
     Rref_.assign(R, R + 3 * n);
     for (int k = 0; k < 9; ++k) {
@@ -501,18 +561,163 @@ private:
     }
     opt_ = opt;
     n_ = n;
-    complete_ = mic_ && pairsIJ_.size() / 2 == n * (n - 1) / 2;
+    const std::size_t np = pairsIJ_.size() / 2;
+    complete_ = mic_ && np == n * (n - 1) / 2;
+
+    // Row-major (CSR) half list: atom i owns its partners j > i. The scans
+    // report each pair as (a, b) with a < b, so a counting sort on a is
+    // all it takes.
+    rows_.assign(n + 1, 0);
+    for (std::size_t p = 0; p < np; ++p) {
+      ++rows_[static_cast<std::size_t>(pairsIJ_[2 * p]) + 1];
+    }
+    for (std::size_t i = 0; i < n; ++i) {
+      rows_[i + 1] += rows_[i];
+    }
+    nbr_.resize(np);
+    {
+      std::vector<int32_t> fill(rows_.begin(), rows_.end() - 1);
+      for (std::size_t p = 0; p < np; ++p) {
+        const auto i = static_cast<std::size_t>(pairsIJ_[2 * p]);
+        nbr_[static_cast<std::size_t>(fill[i]++)] = pairsIJ_[2 * p + 1];
+      }
+    }
+    // Rows from the cell scan arrive in cell order; sorting each row keeps
+    // the partner order, and so the summation order, independent of the
+    // scan that built the list.
+    if (!rowsSorted) {
+      for (std::size_t i = 0; i < n; ++i) {
+        std::sort(nbr_.begin() + rows_[i], nbr_.begin() + rows_[i + 1]);
+      }
+    }
+    pairsIJ_.clear();
+    pairsIJ_.shrink_to_fit();
+    if (general_) {
+      code_.clear();
+      fold_ = FoldMode::General;
+    } else if (codes) {
+      buildImageCodes();
+    } else {
+      code_.clear();
+      const bool fold =
+          micInv_[0] != 0.0 || micInv_[1] != 0.0 || micInv_[2] != 0.0;
+      fold_ = fold ? FoldMode::Round : FoldMode::None;
+    }
     built_ = true;
   }
 
-  std::vector<int32_t> pairsIJ_;
+  /// Record each candidate's periodic image at build time, so evaluation
+  /// subtracts a stored shift instead of rounding three quotients per pair.
+  ///
+  /// Sound only when cutoff + skin < w / 2 along every periodic axis: a
+  /// pair inside the cutoff now moved less than one skin since the build,
+  /// so its build-time separation already sat within w / 2 of the image
+  /// it has now, and that image is the one the build folded to. With a
+  /// complete list motion never invalidates the slot, so the image can
+  /// change and the fold stays per call. Partners more than one box width
+  /// apart (unwrapped coordinates) fall back to the fold too.
+  void buildImageCodes() {
+    code_.clear();
+    fold_ = FoldMode::None;
+    if (micInv_[0] == 0.0 && micInv_[1] == 0.0 && micInv_[2] == 0.0) {
+      return;
+    }
+    fold_ = FoldMode::Round;
+    if (complete_) {
+      return;
+    }
+    const double reach = opt_.cutoff + opt_.skin;
+    for (int k = 0; k < 3; ++k) {
+      if (micInv_[static_cast<std::size_t>(k)] != 0.0 &&
+          !(reach < 0.5 * boxref_[4 * k])) {
+        return;
+      }
+    }
+    for (int c = 0; c < 27; ++c) {
+      const int kk[3] = {c % 3 - 1, (c / 3) % 3 - 1, c / 9 - 1};
+      for (int k = 0; k < 3; ++k) {
+        shift_[static_cast<std::size_t>(3 * c + k)] =
+            static_cast<double>(kk[k]) * boxref_[4 * k];
+      }
+    }
+    code_.resize(nbr_.size());
+    const double *ref = Rref_.data();
+    for (std::size_t i = 0; i < n_; ++i) {
+      for (int32_t p = rows_[i]; p < rows_[i + 1]; ++p) {
+        const auto up = static_cast<std::size_t>(p);
+        const auto j = static_cast<std::size_t>(nbr_[up]);
+        int c = 0;
+        int stride = 1;
+        for (int k = 0; k < 3; ++k) {
+          const auto uk = static_cast<std::size_t>(k);
+          const double d = ref[3 * i + uk] - ref[3 * j + uk];
+          const double m = vesin::cpu::visit_round(d * micInv_[uk]);
+          if (m < -1.0 || m > 1.0) {
+            code_.clear();
+            return;
+          }
+          c += (static_cast<int>(m) + 1) * stride;
+          stride *= 3;
+        }
+        code_[up] = static_cast<uint8_t>(c);
+      }
+    }
+    fold_ = FoldMode::Coded;
+  }
+
+  /// How the evaluation loops turn r_i - r_j into the minimum image.
+  struct Fold {
+    FoldMode mode;
+    double w[3];
+    double inv[3];
+    const uint8_t *code;
+    const double *shift;
+    const MinimumImage *general;
+
+    template <FoldMode M>
+    void apply(const double *R, std::size_t i, std::size_t j, std::size_t p,
+               double &dx, double &dy, double &dz) const {
+      dx = R[3 * i] - R[3 * j];
+      dy = R[3 * i + 1] - R[3 * j + 1];
+      dz = R[3 * i + 2] - R[3 * j + 2];
+      if constexpr (M == FoldMode::General) {
+        general->fold(dx, dy, dz);
+      } else if constexpr (M == FoldMode::Coded) {
+        const double *sh = shift + 3 * static_cast<std::size_t>(code[p]);
+        dx -= sh[0];
+        dy -= sh[1];
+        dz -= sh[2];
+      } else if constexpr (M == FoldMode::Round) {
+        dx -= w[0] * vesin::cpu::visit_round(dx * inv[0]);
+        dy -= w[1] * vesin::cpu::visit_round(dy * inv[1]);
+        dz -= w[2] * vesin::cpu::visit_round(dz * inv[2]);
+      }
+    }
+  };
+
+  [[nodiscard]] Fold makeFold() const {
+    return Fold{fold_,
+                {boxref_[0], boxref_[4], boxref_[8]},
+                {micInv_[0], micInv_[1], micInv_[2]},
+                code_.data(),
+                shift_.data(),
+                &generalImage_};
+  }
+
+  std::vector<int32_t> pairsIJ_;   //!< Scan output, (a, b) flat; build only.
+  std::vector<int32_t> rows_;      //!< CSR row starts, n + 1 entries.
+  std::vector<int32_t> nbr_;       //!< Partner j > i of each candidate.
+  std::vector<uint8_t> code_;      //!< Image code per candidate (Coded fold).
+  std::array<double, 81> shift_{}; //!< 27 image shifts, three doubles each.
   std::vector<double> Rref_;
   std::array<double, 9> boxref_{};
   std::array<double, 3> micInv_{};
   Options opt_{};
   std::size_t n_{0};
+  FoldMode fold_{FoldMode::None};
+  MinimumImage generalImage_;
+  bool general_{false};
   bool mic_{false};
-  bool fast_{false};
   bool phantom_{false};
   bool complete_{false};
   bool built_{false};
@@ -525,42 +730,80 @@ class PairListCache {
 public:
   static constexpr std::size_t kMaxSlots = 8;
 
-  /// Single-pass evaluation. Orthorhombic cells capture a linkcell list
-  /// on the first sighting and reuse it inside the skin.
+  /// Single-pass evaluation with lazy list capture (see file header).
+  /// ``fn(i, j, dx, dy, dz, r2)`` sees every pair within the cutoff once,
+  /// with ``d = r_i - r_j`` (minimum image applied).
   template <typename Fn>
   void evaluate(const double *R, std::size_t n, const double *box,
                 const CachedPairList::Options &opt, Fn &&fn) {
-    std::shared_ptr<const CachedPairList> hit;
-    {
-      std::lock_guard<std::mutex> lock(mu_);
-      for (std::size_t s = 0; s < slots_.size(); ++s) {
-        if (slots_[s]->valid(R, n, box, opt)) {
-          if (s != 0) {
-            auto slot = std::move(slots_[s]);
-            slots_.erase(slots_.begin() + static_cast<std::ptrdiff_t>(s));
-            slots_.insert(slots_.begin(), std::move(slot));
-          }
-          hit = slots_.front();
-          break;
-        }
-      }
-    }
+    run(R, n, box, opt, fn,
+        [&](const CachedPairList &list) { list.forEach(R, fn); });
+  }
 
+  /// Energy and forces of a radial pair potential. ``kernel(i, j, r2)``
+  /// returns the pair's PairTerm; the forces are added into ``F`` (3 n
+  /// doubles, interleaved) and the total energy is returned.
+  ///
+  /// Every call, cached or not, runs CachedPairList::accumulate over a
+  /// sorted CSR list: a fresh geometry first gets a list (at the cutoff for
+  /// a first sighting, at cutoff + skin when it is captured). The pairs
+  /// inside the cutoff and their summation order are then the same whichever
+  /// slot or scan served the call, so a result does not depend on the pool's
+  /// history or on which thread reached it first.
+  template <typename Kernel, typename Observer = IgnorePairContribution>
+  [[nodiscard]] double accumulate(const double *R, std::size_t n,
+                                  const double *box,
+                                  const CachedPairList::Options &opt, double *F,
+                                  Kernel &&kernel, Observer &&observe = {}) {
+    std::shared_ptr<const CachedPairList> hit = lookup(R, n, box, opt);
     if (hit && !hit->isPhantom()) {
-      hit->forEach(R, std::forward<Fn>(fn));
-      return;
+      return hit->accumulate(R, F, kernel, observe);
     }
-
     auto fresh = std::make_shared<CachedPairList>();
+    double energy;
     if (hit) {
-      fresh->rebuildFused(R, n, box, opt, fn);
+      fresh->rebuild(R, n, box, opt);
+      energy = fresh->accumulate(R, F, kernel, observe);
     } else {
-      fresh->visitOnly(R, n, box, opt, fn);
+      fresh->buildForEval(R, n, box, opt);
+      energy = fresh->accumulate(R, F, kernel, observe);
       if (!fresh->cacheable()) {
-        return;
+        return energy;
+      }
+      fresh->dropPairs();
+    }
+    store(fresh, hit);
+    return energy;
+  }
+
+  static PairListCache &global() {
+    static PairListCache cache;
+    return cache;
+  }
+
+private:
+  /// Most recently used slot valid for ``R``, moved to the front.
+  std::shared_ptr<const CachedPairList>
+  lookup(const double *R, std::size_t n, const double *box,
+         const CachedPairList::Options &opt) {
+    std::lock_guard<std::mutex> lock(mu_);
+    for (std::size_t s = 0; s < slots_.size(); ++s) {
+      if (slots_[s]->valid(R, n, box, opt)) {
+        if (s != 0) {
+          auto slot = std::move(slots_[s]);
+          slots_.erase(slots_.begin() + static_cast<std::ptrdiff_t>(s));
+          slots_.insert(slots_.begin(), std::move(slot));
+        }
+        return slots_.front();
       }
     }
+    return nullptr;
+  }
 
+  /// Put ``fresh`` at the front, replacing the phantom ``hit`` it grew
+  /// from, and evict the least recently used slot past kMaxSlots.
+  void store(std::shared_ptr<CachedPairList> fresh,
+             const std::shared_ptr<const CachedPairList> &hit) {
     std::lock_guard<std::mutex> lock(mu_);
     if (hit) {
       for (std::size_t s = 0; s < slots_.size(); ++s) {
@@ -570,18 +813,34 @@ public:
         }
       }
     }
-    slots_.insert(slots_.begin(), fresh);
+    slots_.insert(slots_.begin(), std::move(fresh));
     if (slots_.size() > kMaxSlots) {
       slots_.pop_back();
     }
   }
 
-  static PairListCache &global() {
-    static PairListCache cache;
-    return cache;
+  /// Pool lookup for evaluate: ``onHit`` runs on a captured slot, ``scan``
+  /// is the visitor for a fresh search.
+  template <typename Scan, typename OnHit>
+  void run(const double *R, std::size_t n, const double *box,
+           const CachedPairList::Options &opt, Scan &scan, OnHit &&onHit) {
+    std::shared_ptr<const CachedPairList> hit = lookup(R, n, box, opt);
+    if (hit && !hit->isPhantom()) {
+      onHit(*hit);
+      return;
+    }
+    auto fresh = std::make_shared<CachedPairList>();
+    if (hit) {
+      fresh->rebuildFused(R, n, box, opt, scan);
+    } else {
+      fresh->visitOnly(R, n, box, opt, scan);
+      if (!fresh->cacheable()) {
+        return; // box unsafe for caching; behave exactly like the old loop
+      }
+    }
+    store(std::move(fresh), hit);
   }
 
-private:
   std::mutex mu_;
   std::vector<std::shared_ptr<CachedPairList>> slots_;
 };

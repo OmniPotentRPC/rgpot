@@ -55,6 +55,75 @@ def test_ljpot_class_matches_evaluate_lj():
     assert abs(v1 - v2) < 1e-12
 
 
+def _switch(t: float) -> tuple[float, float]:
+    """S(t) and dS/dt of the C^2 quintic switch."""
+    return 1 - 10 * t**3 + 15 * t**4 - 6 * t**5, -30 * t**2 * (1 - t) ** 2
+
+
+def test_ljpot_switch_width_matches_closed_form():
+    """LJPot(switch_width=w) is the unshifted 12-6 energy times S(t)."""
+    u0, psi, cutoff, width, r = 1.0, 1.0, 2.5, 0.5, 2.25
+    positions = np.array([[0.0, 0.0, 0.0], [r, 0.0, 0.0]], dtype=np.float64)
+    atom_types = np.zeros(2, dtype=np.int32)
+    box = np.eye(3, dtype=np.float64) * 30.0
+
+    pot = rgpot.LJPot(u0=u0, cutoff=cutoff, psi=psi, switch_width=width)
+    energy, forces, _ = pot(positions, atom_types, box)
+
+    v = 4 * u0 * ((psi / r) ** 12 - (psi / r) ** 6)
+    dv = 4 * u0 * (-12 * psi**12 / r**13 + 6 * psi**6 / r**7)
+    s, ds_dt = _switch((r - (cutoff - width)) / width)
+    assert energy == pytest.approx(v * s, rel=1e-12)
+    # Atom 0 sits at x = 0, atom 1 at x = r: F_0 = dE/dr.
+    assert forces[0, 0] == pytest.approx(dv * s + v * ds_dt / width, rel=1e-10)
+    assert forces[1, 0] == pytest.approx(-forces[0, 0], rel=1e-12)
+
+    shifted, _, _ = rgpot.LJPot(u0=u0, cutoff=cutoff, psi=psi)(
+        positions, atom_types, box
+    )
+    assert shifted != pytest.approx(energy, rel=1e-6)
+    with pytest.raises(ValueError):
+        rgpot.LJPot(cutoff=2.5, switch_width=3.0)
+
+
+def test_ljpot_defaults_are_the_cpp_config():
+    positions = np.array([[0.0, 0.0, 0.0], [1.3, 0.0, 0.0]], dtype=np.float64)
+    atom_types = np.zeros(2, dtype=np.int32)
+    box = np.eye(3, dtype=np.float64) * 40.0
+    e_default, _, _ = rgpot.LJPot()(positions, atom_types, box)
+    e_explicit, _, _ = rgpot.LJPot(u0=1.0, cutoff=15.0, psi=1.0, switch_width=0.0)(
+        positions, atom_types, box
+    )
+    assert e_default == e_explicit
+
+
+@pytest.mark.skipif(
+    getattr(rgpot, "ExprPot", None) is None, reason="built without -Dwith_expr"
+)
+def test_expr_children_take_pair_config_keys():
+    positions = np.array([[0.0, 0.0, 0.0], [2.25, 0.0, 0.0]], dtype=np.float64)
+    atom_types = np.zeros(2, dtype=np.int32)
+    box = np.eye(3, dtype=np.float64) * 30.0
+    direct, _, _ = rgpot.LJPot(cutoff=2.5, switch_width=0.5)(
+        positions, atom_types, box
+    )
+    expr = rgpot.ExprPot(
+        "lj", {"lj": {"kind": "lj", "cutoff": 2.5, "switch_width": 0.5}}
+    )
+    via_expr, _, _ = expr(positions, atom_types, box)
+    assert via_expr == pytest.approx(direct, rel=1e-12)
+
+    r, De, a, re, cutoff, width = 5.0, 0.7102, 1.6047, 2.8970, 6.0, 2.0
+    positions[1, 0] = r
+    morse = rgpot.ExprPot(
+        "m", {"m": {"kind": "morse", "cutoff": cutoff, "switch_width": width}}
+    )
+    energy, _, _ = morse(positions, atom_types, box)
+    d = 1 - math.exp(-a * (r - re))
+    s, _ = _switch((r - (cutoff - width)) / width)
+    assert energy == pytest.approx((De * d * d - De) * s, rel=1e-12)
+
+
 def test_extension_rpath_has_no_host_build_tree():
     """Installed _core must not embed absolute build-host RUNPATH entries."""
     parent = Path(rgpot.__file__).resolve().parent
@@ -116,3 +185,30 @@ def test_core_is_abi3_or_free_threaded():
     gil_disabled = bool(sysconfig.get_config_var("Py_GIL_DISABLED"))
     if sys.version_info >= (3, 12) and not gil_disabled:
         assert "abi3" in name, f"expected abi3 extension, got {name}"
+
+
+@pytest.mark.skipif(not rgpot.has_cache, reason="built without -Dwith_cache")
+def test_cache_counts_split_computed_from_served(tmp_path):
+    """Cold run computes, warm run on the same store is served."""
+    positions = np.array([[0.0, 0.0, 0.0], [1.5, 0.0, 0.0]], dtype=np.float64)
+    atom_types = np.array([0, 0], dtype=np.int32)
+    box = np.eye(3, dtype=np.float64) * 20.0
+    store = str(tmp_path / "cache")
+
+    cold = rgpot.PotentialCache(store)
+    pot = rgpot.LJPot()
+    pot.set_cache(cold)
+    assert cold.counts() == (0, 0)
+    first = pot(positions, atom_types, box)
+    pot(positions, atom_types, box)
+    assert cold.counts() == (1, 1)
+    del pot, cold
+
+    warm = rgpot.PotentialCache(store)
+    pot = rgpot.LJPot()
+    pot.set_cache(warm)
+    again = pot(positions, atom_types, box)
+    assert warm.counts() == (0, 1)
+    assert float(again[0]) == float(first[0])
+    warm.reset_counts()
+    assert warm.counts() == (0, 0)

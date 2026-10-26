@@ -231,6 +231,73 @@ extern const char* xck_mgga_tau_st_o2_m_scal_names[];
 extern const int xck_mgga_tau_st_o2_m_n_scal;
 extern const int xck_mgga_tau_st_o2_m_n_fields;
 
+double xck_mgga_lapl_r_o0(int64_t npts, const double* w,
+              const double* rho, const double* zk);
+
+int xck_mgga_lapl_r_o1(int64_t npts, int64_t nbf,
+           const double* chi, const double* dchi,
+           const double* lapl_chi, const double* hess_chi,
+           const double* const* scal, double* out);
+extern const char* xck_mgga_lapl_r_o1_scal_names[];
+extern const int xck_mgga_lapl_r_o1_n_scal;
+extern const int xck_mgga_lapl_r_o1_n_fields;
+
+int xck_mgga_lapl_r_o2(int64_t npts, int64_t nbf,
+           const double* chi, const double* dchi,
+           const double* lapl_chi, const double* hess_chi,
+           const double* const* scal, double* out);
+extern const char* xck_mgga_lapl_r_o2_scal_names[];
+extern const int xck_mgga_lapl_r_o2_n_scal;
+extern const int xck_mgga_lapl_r_o2_n_fields;
+
+int xck_mgga_lapl_ua_o1(int64_t npts, int64_t nbf,
+           const double* chi, const double* dchi,
+           const double* lapl_chi, const double* hess_chi,
+           const double* const* scal, double* out);
+extern const char* xck_mgga_lapl_ua_o1_scal_names[];
+extern const int xck_mgga_lapl_ua_o1_n_scal;
+extern const int xck_mgga_lapl_ua_o1_n_fields;
+
+int xck_mgga_lapl_ua_o2(int64_t npts, int64_t nbf,
+           const double* chi, const double* dchi,
+           const double* lapl_chi, const double* hess_chi,
+           const double* const* scal, double* out);
+extern const char* xck_mgga_lapl_ua_o2_scal_names[];
+extern const int xck_mgga_lapl_ua_o2_n_scal;
+extern const int xck_mgga_lapl_ua_o2_n_fields;
+
+int xck_mgga_lapl_ub_o1(int64_t npts, int64_t nbf,
+           const double* chi, const double* dchi,
+           const double* lapl_chi, const double* hess_chi,
+           const double* const* scal, double* out);
+extern const char* xck_mgga_lapl_ub_o1_scal_names[];
+extern const int xck_mgga_lapl_ub_o1_n_scal;
+extern const int xck_mgga_lapl_ub_o1_n_fields;
+
+int xck_mgga_lapl_ub_o2(int64_t npts, int64_t nbf,
+           const double* chi, const double* dchi,
+           const double* lapl_chi, const double* hess_chi,
+           const double* const* scal, double* out);
+extern const char* xck_mgga_lapl_ub_o2_scal_names[];
+extern const int xck_mgga_lapl_ub_o2_n_scal;
+extern const int xck_mgga_lapl_ub_o2_n_fields;
+
+int xck_mgga_lapl_st_o2_p(int64_t npts, int64_t nbf,
+           const double* chi, const double* dchi,
+           const double* lapl_chi, const double* hess_chi,
+           const double* const* scal, double* out);
+extern const char* xck_mgga_lapl_st_o2_p_scal_names[];
+extern const int xck_mgga_lapl_st_o2_p_n_scal;
+extern const int xck_mgga_lapl_st_o2_p_n_fields;
+
+int xck_mgga_lapl_st_o2_m(int64_t npts, int64_t nbf,
+           const double* chi, const double* dchi,
+           const double* lapl_chi, const double* hess_chi,
+           const double* const* scal, double* out);
+extern const char* xck_mgga_lapl_st_o2_m_scal_names[];
+extern const int xck_mgga_lapl_st_o2_m_n_scal;
+extern const int xck_mgga_lapl_st_o2_m_n_fields;
+
 #ifdef __cplusplus
 }
 #endif

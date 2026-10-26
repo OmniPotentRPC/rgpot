@@ -12,6 +12,14 @@ Stages:
   3. torch.export
   4. AOTInductor .pt2
   5. Load .pt2 in-process and compare again
+
+torch.export tries dynamic-nonstrict (single system only), static-nonstrict
+and static-strict, then falls back to make_fx(tracing_mode="real") followed by
+a nonstrict export of the traced module. With torch 2.13 and fairchem-core
+2.23 every UMA export takes the fallback. The fallback package is static: it
+accepts only the traced atom count and edge count, so pass --molecular-box
+for anything that moves (every intramolecular pair is then an edge). The path
+taken is embedded as export_path.
 """
 
 from __future__ import annotations
@@ -27,6 +35,7 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 from aoti_execstack import clear_pt2_execstack  # noqa: E402
+from aoti_graph import canonicalize_strided_slices  # noqa: E402
 
 import numpy as np
 import torch
@@ -51,6 +60,23 @@ def z_set_of(atoms: Atoms) -> list[int]:
     return sorted({int(z) for z in atoms.get_atomic_numbers()})
 
 
+def counts_of(atoms: Atoms) -> dict[int, int]:
+    """Atom count per atomic number, sorted by atomic number."""
+    counts: dict[int, int] = {}
+    for z in atoms.get_atomic_numbers():
+        counts[int(z)] = counts.get(int(z), 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _dist_version(name: str) -> str:
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version(name)
+    except PackageNotFoundError:
+        return "unknown"
+
+
 def default_label(atoms_path: str | None) -> str:
     if not atoms_path:
         return "hcn"
@@ -65,48 +91,6 @@ def default_label(atoms_path: str | None) -> str:
     return path.stem
 
 
-def _cellpar_to_cell(lengths, angles):
-    from ase.geometry import cellpar_to_cell
-
-    return cellpar_to_cell(list(lengths) + list(angles))
-
-
-def _read_eon_con(path: Path) -> Atoms:
-    """Read an eOn .con (ASE has no built-in eOn reader)."""
-    lines = Path(path).read_text().splitlines()
-    if len(lines) < 9:
-        raise ValueError(f"{path}: too short for eOn .con")
-    lengths = [float(x) for x in lines[2].split()[:3]]
-    angles = [float(x) for x in lines[3].split()[:3]]
-    ntypes = int(lines[6].split()[0])
-    counts = [int(x) for x in lines[7].split()[:ntypes]]
-    if len(counts) < ntypes:
-        raise ValueError(f"{path}: expected {ntypes} type counts")
-    symbols: list[str] = []
-    positions: list[list[float]] = []
-    i = 9
-    for n_at in counts:
-        if i >= len(lines):
-            raise ValueError(f"{path}: truncated type header")
-        sym = lines[i].strip().split()[0]
-        i += 1
-        if i < len(lines) and lines[i].lower().startswith("coordinates"):
-            i += 1
-        for _ in range(n_at):
-            if i >= len(lines):
-                raise ValueError(f"{path}: truncated coordinates")
-            parts = lines[i].split()
-            positions.append([float(parts[0]), float(parts[1]), float(parts[2])])
-            symbols.append(sym)
-            i += 1
-    return Atoms(
-        symbols=symbols,
-        positions=positions,
-        cell=_cellpar_to_cell(lengths, angles),
-        pbc=True,
-    )
-
-
 def _ensure_box(atoms: Atoms) -> Atoms:
     cell = atoms.get_cell()
     if cell is None or float(cell.volume) < 1e-8:
@@ -118,19 +102,19 @@ def _ensure_box(atoms: Atoms) -> Atoms:
 
 
 def load_atoms(path: str | os.PathLike | None) -> Atoms:
-    """Load .xyz/.con via ASE, then an eOn .con fallback. Default is Baker HCN."""
+    """Load a structure. ``.con`` goes through ``atoms_from_con``. Default is Baker HCN."""
     if path is None:
         return HCN.copy()
     path = Path(path)
     if not path.is_file():
         raise SystemExit(f"--atoms not found: {path}")
     if path.suffix.lower() == ".con":
-        try:
-            return _ensure_box(_read_eon_con(path))
-        except Exception:
-            from ase.io import read
+        rpc = Path(__file__).resolve().parents[1] / "CppCore" / "rgpot" / "rpc"
+        if str(rpc) not in sys.path:
+            sys.path.insert(0, str(rpc))
+        from ase_helpers import atoms_from_con
 
-            return _ensure_box(read(str(path)))
+        return _ensure_box(atoms_from_con(path))
     from ase.io import read
 
     return _ensure_box(read(str(path)))
@@ -639,7 +623,9 @@ def runtime_metadata(
     charge: int = 0,
     spin: int = 1,
     z_set: list[int] | None = None,
+    counts: dict[int, int] | None = None,
     label: str = "hcn",
+    model: str = "",
     molecular_box: float = 0.0,
     batch_max: int = 0,
 ):
@@ -665,7 +651,17 @@ def runtime_metadata(
         "charge": int(charge),
         "spin": int(spin),
         "z_set": [int(z) for z in (z_set or [])],
+        # Per system, not per band: rgpot's UmaPot checks every input
+        # against natoms and counts, so a package for C2H2 refuses C2H4
+        # although both have z_set [1, 6].
+        "natoms": int(sum((counts or {}).values())),
+        "counts": json.dumps(
+            {str(z): int(n) for z, n in sorted((counts or {}).items())}
+        ),
         "label": str(label),
+        "model": str(model),
+        "torch_version": str(torch.__version__),
+        "fairchem_version": _dist_version("fairchem-core"),
         "batch_max": int(batch_max),
         "edge_convention": "fairchem_neighbor_center",
         "inputs": input_names,
@@ -710,7 +706,7 @@ def aoti_package(exported, path: Path, metadata=None):
                 str(k): str(v) for k, v in metadata.items()
             }
         }
-    fn(exported, **kwargs)
+    fn(canonicalize_strided_slices(exported), **kwargs)
     clear_pt2_execstack(path)
     return path
 
@@ -792,13 +788,14 @@ def main() -> int:
         atoms.set_pbc(True)
     task_name = str(args.task)
     z_set = z_set_of(atoms)
+    counts = counts_of(atoms)
     if args.out is None:
         args.out = f"bench_data/uma/{args.model}-{task_name}-{label}.pt2"
     out = Path(args.out)
 
     print(
         f"label={label} task={task_name} charge={charge} spin={spin} "
-        f"z_set={z_set} natoms={len(atoms)}",
+        f"z_set={z_set} counts={counts} natoms={len(atoms)}",
         flush=True,
     )
     print("ASE FAIRChemCalculator reference", args.model, flush=True)
@@ -849,7 +846,9 @@ def main() -> int:
             charge=charge,
             spin=spin,
             z_set=z_set,
+            counts=counts,
             label=label,
+            model=args.model,
             molecular_box=float(args.molecular_box or 0.0),
             batch_max=max(0, int(args.batch_max)),
         )
@@ -904,7 +903,9 @@ def main() -> int:
         charge=charge,
         spin=spin,
         z_set=z_set,
+        counts=counts,
         label=label,
+        model=args.model,
         molecular_box=float(args.molecular_box or 0.0),
         batch_max=max(0, int(args.batch_max)),
     )
@@ -914,7 +915,8 @@ def main() -> int:
     patch_export_ops()
     print("torch.export", flush=True)
     natoms_dim = torch.export.Dim("natoms", min=1, max=256)
-    nedges_dim = torch.export.Dim("nedges", min=1, max=65536)
+    nedges_min, nedges_max = 1, 65536
+    nedges_dim = torch.export.Dim("nedges", min=nedges_min, max=nedges_max)
     dyn = {
         "pos": {0: natoms_dim},
         "atomic_numbers": {0: natoms_dim},
@@ -941,16 +943,34 @@ def main() -> int:
         attempts.insert(0, ("dynamic-nonstrict",
                             dict(dynamic_shapes=dyn, strict=False)))
     last = None
+    export_path = ""
     for attempt, kwargs in attempts:
         try:
             print("try export", attempt, flush=True)
-            exported = torch.export.export(wrap, example, **kwargs)
+            candidate = torch.export.export(wrap, example, **kwargs)
+            # Export acceptance requires executable tensors and the same
+            # reference comparison as the packaged model.
+            with torch.enable_grad():
+                e_trial, f_trial = candidate.module()(*example)
+            if not compare_batched(
+                f"exported-{attempt}", e_trial.detach().cpu(),
+                f_trial.detach().cpu().numpy(), e_ref, f_ref, len(atoms)
+            ):
+                raise RuntimeError("exported program does not match ASE")
+            exported = candidate
             print("export ok", attempt, type(exported), flush=True)
+            export_path = attempt
             break
         except Exception as exc:
             last = exc
             print(f"{attempt} failed: {type(exc).__name__}: {exc}", flush=True)
     if exported is None:
+        # torch 2.13 with fairchem-core 2.23 lands here for every UMA
+        # export: the nonstrict exports fail on a fake tensor in the
+        # exported program's constants and the strict export on
+        # torch.autograd.grad. Real-mode make_fx records the concrete
+        # example shapes, so the package is static: atom count and edge
+        # count are those of the traced geometry.
         print("try make_fx(tracing_mode=real)", flush=True)
         from torch.fx.experimental.proxy_tensor import make_fx
 
@@ -959,12 +979,30 @@ def main() -> int:
         try:
             exported = torch.export.export(gm, example, strict=False)
             print("export ok make_fx-nonstrict", type(exported), flush=True)
+            export_path = "make_fx-nonstrict"
         except Exception as exc:
             last = exc
             print(f"make_fx export failed: {type(exc).__name__}: {exc}", flush=True)
             raise last from exc
 
     print("export ok", type(exported), flush=True)
+    meta["export_path"] = export_path
+    # UmaPot refuses an edge count outside this range instead of feeding
+    # the compiled graph a shape it was not traced for.
+    if export_path == "dynamic-nonstrict":
+        meta["nedges_min"] = nedges_min
+        meta["nedges_max"] = nedges_max
+    else:
+        meta["nedges_min"] = meta["nedges_max"] = int(example[4].shape[1])
+    if export_path == "make_fx-nonstrict" and not (
+        args.molecular_box and args.molecular_box > 0.0
+    ):
+        print(
+            f"WARNING: static package without --molecular-box: every call "
+            f"must produce exactly {example[4].shape[1]} vesin edges, so a "
+            f"geometry that moves a pair across the {cutoff} A cutoff aborts",
+            flush=True,
+        )
     with torch.enable_grad():
         e_x, f_x = exported.module()(*example)
     if not compare_batched("exported", e_x.detach().cpu(), f_x.detach().cpu().numpy(), e_ref, f_ref, len(atoms)):

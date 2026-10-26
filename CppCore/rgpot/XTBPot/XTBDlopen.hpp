@@ -1,10 +1,15 @@
 #pragma once
 // MIT License — thin XTB frontend: dlopen libxtb_engine.so
+// No libxtb headers; safe for hosts built without -Dwith_xtb.
 #include "rgpot/ForceStructs.hpp"
-#include "rgpot/XTBPot/XTBPot.hpp"
+#include "rgpot/XTBPot/XTBConfig.hpp"
 #include "rgpot/XTBPot/xtb_c_abi.h"
+#include "rgpot/types/AtomMatrix.hpp"
 
+#include <array>
 #include <string>
+#include <tuple>
+#include <vector>
 
 namespace rgpot {
 
@@ -26,12 +31,10 @@ namespace rgpot {
  * ``libxtb_engine.dylib`` then ``.so`` on Apple, ``xtb_engine.dll`` then
  * ``libxtb_engine.dll`` on Windows), then ``EON_POTENTIALS_PATH`` /
  * ``RGPOT_ENGINE_PATH``.
+ *
+ * Always compiled (no NEEDED libxtb). Linked ``XTBPot`` remains optional via
+ * ``-Dwith_xtb=true``.
  */
-struct XTBDlopenConfig {
-  XTBConfig xtb{};
-  std::string engine_path;
-};
-
 class XTBDlopen {
 public:
   explicit XTBDlopen(const XTBDlopenConfig &config);

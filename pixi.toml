@@ -4,7 +4,7 @@ channels = ["conda-forge"]
 description = "RPC based core for potential energy surface functionality."
 name = "rgpot"
 platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
-version = "3.2.0"
+version = "3.5.1"
 
 [feature.cigen.tasks]
 # Export every ci/gha/*.ncl workflow (shared pins/steps in ci/gha/lib/).
@@ -18,6 +18,7 @@ export-plan = { cmd = "bash ci/gha/export-plan.sh" }
 [environments]
 rpctest = {features = ["rpc", "itests"]}
 eonviz = { features = ["eonviz"], no-default-feature = true }
+umaexport = { features = ["umaexport"], no-default-feature = true }
 cigen = {features = ["cigen"]}
 devbld = { features = ["rpc", "cache"] }
 docs = { features = ["docs"]}
@@ -28,8 +29,11 @@ dftd3 = { features = ["dftd3"] }
 dftd4 = { features = ["dftd4"] }
 dftd = { features = ["dftd3", "dftd4"] }
 tblitebld = { features = ["tblite"] }
+tblite06bld = { features = ["tblite06"] }
 tbbld = { features = ["xtb", "tblite"] }
 metatomicbld = { features = ["metatomic"] }
+umaenginebld = { features = ["rpc", "metatomic", "xtb"] }
+mpibld = { features = ["rpc", "cache", "mpi"] }
 [feature.cache.dependencies]
 rocksdb = ">=10.9.1,<11"
 xxhash = ">=0.8.3,<0.9"
@@ -75,6 +79,17 @@ scipy = ">=1.13,<2"
 [feature.tblite.dependencies]
 tblite = ">=0.3.0,<1"
 
+# conda-forge tblite 0.6.0 (build gfortran_ha02e54d_0) segfaults in
+# __dftd4_model_d4_MOD_get_polarizabilities during a GFN2 single point,
+# including the tblite CLI. The tblite06bld environment exists so CI can
+# compile TBLitePot against that API. The [tblite] tests stay on tbbld,
+# which locks tblite 0.4.0.
+[feature.tblite06]
+platforms = ["linux-64"]
+
+[feature.tblite06.dependencies]
+tblite = "0.6.*"
+
 [feature.metatomic]
 platforms = ["linux-64"]
 
@@ -93,6 +108,14 @@ vesin = ">=0.6.0, <0.7"
 
 [feature.rpc.dependencies]
 capnproto = ">=1.0.2,<2"
+
+# conda-forge Open MPI matches the pixi compilers. Ubuntu CI installs mpibld.
+# rpctest does not include this feature.
+[feature.mpi]
+platforms = ["linux-64", "osx-64", "osx-arm64"]
+
+[feature.mpi.dependencies]
+openmpi = ">=5.0.0,<6"
 
 [feature.cigen]
 platforms = ["linux-64"]
@@ -132,12 +155,34 @@ rich = "*"
 pip = "*"
 
 [feature.eonviz.pypi-dependencies]
-# Dev branches carry the embedded-metadata minimization-trajectory parser and the
-# (s, d) optimization-landscape plotter (plt-min) the published releases lack.
-chemparseplot = { git = "https://github.com/HaoZeke/chemparseplot.git", branch = "fix/ira-kmax-default-14" }
-rgpycrumbs = { git = "https://github.com/HaoZeke/rgpycrumbs.git", branch = "fix/landscape-defaults-and-sp-marker" }
-readcon = ">=0.7"
+# Released versions carry the embedded-metadata minimization-trajectory parser
+# and the (s, d) optimization-landscape plotter (plt-min). Exact pins keep the
+# lock reproducible; scripts/check_eonviz_pins.sh enforces that.
+# readcon 0.17.1 is not on PyPI (the published wheel is 0.17.0). Until that
+# release, install readcon-core main at 694e808 or a later descendant.
+# Pixi rejects a version key next to git, so scripts/check_eonviz_pins.sh
+# parses `version` from that commit's pyproject.toml and requires >=0.17.1.
+chemparseplot = "==1.11.0"
+rgpycrumbs = "==1.11.0"
+readcon = { git = "https://github.com/lode-org/readcon-core.git", rev = "694e808080c49979ee3099afcfa18e5420c40433" }
 jax = "*"
+
+# UMA AOTI exporter (scripts/export_uma_aoti.py). fairchem-core 2.23 requires
+# torch 2.13, which conflicts with the metatomic feature's torch line, so this
+# environment carries no default feature.
+[feature.umaexport]
+platforms = ["linux-64"]
+
+[feature.umaexport.dependencies]
+python = ">=3.11,<3.13"
+ase = ">=3.26"
+numpy = ">=2.0,<2.5"
+pytest = "*"
+
+[feature.umaexport.pypi-dependencies]
+fairchem-core = "==2.23.0"
+torch = "==2.13.*"
+vesin = ">=0.6.0,<0.7"
 
 [feature.docs]
 # doxyrest only works on linux
@@ -184,6 +229,8 @@ uv = ">=0.6.0"
 [tasks]
 rust-test = { cmd = "cargo nextest run --manifest-path rgpot-core/Cargo.toml", description = "Run Rust core unit tests with nextest" }
 ase-anneal-compare = { cmd = "bash scripts/ase_anneal_compare.sh", description = "ASE local optimizer vs anneal SOTA portfolio on an rgpot LJ potential (run with -e rpctest)" }
+export-uma-aoti = { cmd = "python scripts/export_uma_aoti.py", description = "Export a UMA AOTI .pt2 package (run with -e umaexport; --help lists the options)" }
+check-eonviz-pins = { cmd = "bash scripts/check_eonviz_pins.sh", description = "Fail unless every eonviz dependency is an immutable pin" }
 eon-min-landscape = { cmd = "python tests/eon_min_landscape.py", description = "Run an EON LJ minimization and render the (s,d) optimization landscape (run with -e eonviz)" }
 pes-double-well = { cmd = "bash scripts/pes_double_well.sh", description = "Render the rgpot LJ double-well 2D PES: ASE local vs anneal global (run with -e rpctest)" }
 rust-test-all = { cmd = "cargo nextest run --manifest-path rgpot-core/Cargo.toml --all-features", description = "Run Rust core tests with all features enabled" }
@@ -274,5 +321,6 @@ rm -rf source/contributing
 rm -rf source/tutorials
 rm -rf source/howto
 rm -rf source/reference
+rm -rf source/explanation
 rm -rf source/*.rst
 """

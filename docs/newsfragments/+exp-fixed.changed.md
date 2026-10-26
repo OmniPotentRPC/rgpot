@@ -1,0 +1,1 @@
+The Morse kernel computes `exp` with `rgpot::simd::exp_fixed`, a fixed sequence of IEEE operations that returns the same bits on every instruction set and C library (within 1.24 ulp), and evaluates each pair-list row in vector clones for AVX2 and AVX-512F. Morse energies and forces can move in the last bits, and the Morse cache key changes.

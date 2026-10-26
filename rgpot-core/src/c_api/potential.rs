@@ -38,6 +38,11 @@ use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
 ///
 /// Returns a heap-allocated `rgpot_potential_t*`, or `NULL` on failure.
 /// The caller must eventually pass the returned pointer to `rgpot_potential_free`.
+///
+/// # Safety
+///
+/// `callback` and `free_fn` must be safe to call with `user_data` for as
+/// long as the handle lives.
 #[no_mangle]
 pub unsafe extern "C" fn rgpot_potential_new(
     callback: PotentialCallback,
@@ -64,6 +69,14 @@ pub unsafe extern "C" fn rgpot_potential_new(
 ///
 /// Routes through the direct rgpot callback (`pot.callback`), bypassing the
 /// eindir evaluation path.
+///
+/// # Safety
+///
+/// A NULL `pot`, `input` or `output` returns `RGPOT_INVALID_PARAMETER`.
+/// Otherwise `pot` must be a live handle from `rgpot_potential_new` or
+/// `rgpot_potential_new_eindir`, `input` must point to a valid
+/// `rgpot_force_input_t` whose tensors stay alive for the call, and `output`
+/// must point to writable `rgpot_force_out_t` storage.
 #[no_mangle]
 pub unsafe extern "C" fn rgpot_potential_calculate(
     pot: *const rgpot_potential_t,
@@ -84,6 +97,10 @@ pub unsafe extern "C" fn rgpot_potential_calculate(
             return rgpot_status_t::RGPOT_INVALID_PARAMETER;
         }
         let p = unsafe { &*pot };
+        if let Some(why) = p.fused_cache_peer_refusal() {
+            set_last_error(&why);
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        }
         unsafe { (p.callback)(p.pot_user_data, input, output) }
     }))
 }
@@ -93,6 +110,11 @@ pub unsafe extern "C" fn rgpot_potential_calculate(
 ///
 /// Calls `pot_free_fn(pot_user_data)` if provided, frees all owned arrays,
 /// then frees the struct.
+///
+/// # Safety
+///
+/// `pot` must be NULL or a pointer returned by one of those constructors
+/// that has not been freed yet. The pointer is invalid after the call.
 #[no_mangle]
 pub unsafe extern "C" fn rgpot_potential_free(pot: *mut rgpot_potential_t) {
     if pot.is_null() {
