@@ -12,12 +12,17 @@
 #include "rgpot/Tersoff/TersoffSiC.hpp"
 
 #include "rgpot/ParamHash.hpp"
+#include "rgpot/nlist/MinimumImage.hpp"
+
 #include <cmath>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace rgpot {
 namespace {
+
+constexpr double kPi = 3.14159265358979323846;
 
 // Homoatomic columns. R and D in the LAMMPS file are the taper midpoint
 // and half-width; Rin = R - D and Rout = R + D.
@@ -29,6 +34,24 @@ constexpr Homo kSi = {1830.8, 471.18, 2.4799,   1.7322, 1.1e-6, 0.78734,
                       100390, 16.217, -0.59825, 2.7,    3.0,    1.0};
 constexpr Homo kC = {1393.6, 346.74, 3.4879,   2.2119, 1.5724e-7, 0.72751,
                      38049,  4.3484, -0.57058, 1.8,    2.1,       1.0};
+constexpr double kMaxCut = kSi.rout;
+
+struct Bond {
+  int j;
+  double x, y, z, r;
+  double fc, dfc, f_r, f_a, df_r, df_a;
+};
+
+struct Scratch {
+  std::vector<std::vector<Bond>> rows;
+  std::vector<int> kind;
+};
+
+Scratch &scratch() {
+  thread_local Scratch s;
+  return s;
+}
+
 int kindOf(int z) {
   if (z == 6) {
     return 0;
@@ -65,6 +88,55 @@ TersoffSiC::Pair mixPair(const Homo &a, const Homo &b, double chi) {
   p.rin = std::sqrt(a.rin * b.rin);
   p.rout = std::sqrt(a.rout * b.rout);
   return p;
+}
+
+void radial(const TersoffSiC::Pair &p, double r, Bond &b) {
+  if (r <= p.rin) {
+    b.fc = 1.0;
+    b.dfc = 0.0;
+  } else {
+    const double width = p.rout - p.rin;
+    const double phase = kPi * (r - p.rin) / width;
+    b.fc = 0.5 + 0.5 * std::cos(phase);
+    b.dfc = -0.5 * kPi / width * std::sin(phase);
+  }
+  const double e1 = std::exp(-p.lambda1 * r);
+  const double e2 = std::exp(-p.lambda2 * r);
+  b.f_r = p.big_a * e1;
+  b.df_r = -p.lambda1 * b.f_r;
+  b.f_a = -p.big_b * e2;
+  b.df_a = -p.lambda2 * b.f_a;
+}
+
+bool orthogonal(const double *box, double &lx, double &ly, double &lz) {
+  if (box[1] != 0.0 || box[2] != 0.0 || box[3] != 0.0 || box[5] != 0.0 ||
+      box[6] != 0.0 || box[7] != 0.0) {
+    return false;
+  }
+  lx = box[0];
+  ly = box[4];
+  lz = box[8];
+  return lx > 0.0 && ly > 0.0 && lz > 0.0 && std::isfinite(lx) &&
+         std::isfinite(ly) && std::isfinite(lz);
+}
+
+void foldOrtho(double &dx, double &dy, double &dz, double lx, double ly,
+               double lz) {
+  dx -= lx * std::round(dx / lx);
+  dy -= ly * std::round(dy / ly);
+  dz -= lz * std::round(dz / lz);
+}
+
+void resetRows(Scratch &s, std::size_t n) {
+  if (s.rows.size() < n) {
+    s.rows.resize(n);
+  }
+  for (std::size_t i = 0; i < n; ++i) {
+    s.rows[i].clear();
+    if (s.rows[i].capacity() < 32) {
+      s.rows[i].reserve(32);
+    }
+  }
 }
 
 } // namespace
@@ -160,12 +232,89 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
   for (std::size_t i = 0; i < n_atoms * 3; ++i) {
     acc[i] = 0.0;
   }
-  (void)positions;
-  (void)box;
-  (void)scale;
-  (void)neighbors;
+  if (n_atoms < 2) {
+    if (n_atoms == 1) {
+      kindOf(atomic_numbers[0]);
+    }
+    return;
+  }
+
+  double lx = 0.0;
+  double ly = 0.0;
+  double lz = 0.0;
+  const bool ortho = orthogonal(box, lx, ly, lz);
+  nlist::MinimumImage image;
+  if (!ortho) {
+    image = nlist::MinimumImage(box, {true, true, true});
+  }
+
+  Scratch &sc = scratch();
+  resetRows(sc, n_atoms);
+  sc.kind.resize(n_atoms);
   for (std::size_t i = 0; i < n_atoms; ++i) {
-    kindOf(atomic_numbers[i]);
+    sc.kind[i] = kindOf(atomic_numbers[i]);
+  }
+  const int n = static_cast<int>(n_atoms);
+  const double cut2 = kMaxCut * kMaxCut;
+
+  auto consider = [&](int i, int j, double dx, double dy, double dz) {
+    const double r2 = dx * dx + dy * dy + dz * dz;
+    if (!(r2 > 0.0) || r2 >= cut2) {
+      return;
+    }
+    const double r = std::sqrt(r2);
+    const Pair &pij = m_pair[sc.kind[static_cast<std::size_t>(i)]]
+                            [sc.kind[static_cast<std::size_t>(j)]];
+    if (r >= pij.rout) {
+      return;
+    }
+    Bond forth{j, dx, dy, dz, r, 0, 0, 0, 0, 0, 0};
+    radial(pij, r, forth);
+    Bond back{i,         -dx,       -dy,       -dz,        r,         forth.fc,
+              forth.dfc, forth.f_r, forth.f_a, forth.df_r, forth.df_a};
+    sc.rows[static_cast<std::size_t>(i)].push_back(forth);
+    sc.rows[static_cast<std::size_t>(j)].push_back(back);
+  };
+
+  const nlist::NeighborList &pairs =
+      nlist::orderedPairs(positions, box, n_atoms, kMaxCut, neighbors);
+  if (pairs.use_stored) {
+    for (std::size_t p = 0; p < pairs.lo.size(); ++p) {
+      consider(pairs.lo[p], pairs.hi[p], pairs.dx[p], pairs.dy[p], pairs.dz[p]);
+    }
+  } else {
+    for (std::size_t p = 0; p < pairs.lo.size(); ++p) {
+      const int i = pairs.lo[p];
+      const int j = pairs.hi[p];
+      double dx = positions[3 * j] - positions[3 * i];
+      double dy = positions[3 * j + 1] - positions[3 * i + 1];
+      double dz = positions[3 * j + 2] - positions[3 * i + 2];
+      if (ortho) {
+        foldOrtho(dx, dy, dz, lx, ly, lz);
+      } else {
+        image.fold(dx, dy, dz);
+      }
+      consider(i, j, dx, dy, dz);
+    }
+  }
+
+  for (int i = 0; i < n; ++i) {
+    const std::vector<Bond> &nb = sc.rows[static_cast<std::size_t>(i)];
+    for (const Bond &bj : nb) {
+      *energy += 0.5 * bj.fc * (bj.f_r + bj.f_a);
+      const double dedr =
+          0.5 * (bj.dfc * (bj.f_r + bj.f_a) + bj.fc * (bj.df_r + bj.df_a));
+      const double inv_r = 1.0 / bj.r;
+      const double sx = scale * dedr * bj.x * inv_r;
+      const double sy = scale * dedr * bj.y * inv_r;
+      const double sz = scale * dedr * bj.z * inv_r;
+      acc[3 * i] += sx;
+      acc[3 * i + 1] += sy;
+      acc[3 * i + 2] += sz;
+      acc[3 * bj.j] -= sx;
+      acc[3 * bj.j + 1] -= sy;
+      acc[3 * bj.j + 2] -= sz;
+    }
   }
 }
 
