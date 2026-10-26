@@ -193,6 +193,7 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
 
   const double cut = kCut * kSigma;
   const double cut2 = cut * cut;
+  const int n = static_cast<int>(n_atoms);
 
   auto consider = [&](int i, int j, double dx, double dy, double dz) {
     if (!std::isfinite(dx) || !std::isfinite(dy) || !std::isfinite(dz)) {
@@ -246,6 +247,60 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
     }
   }
 
+  for (int i = 0; i < n; ++i) {
+    const std::vector<Bond> &nb = sc.rows[static_cast<std::size_t>(i)];
+    const int m = static_cast<int>(nb.size());
+    for (int a = 0; a < m; ++a) {
+      const Bond &bj = nb[static_cast<std::size_t>(a)];
+      for (int b = a + 1; b < m; ++b) {
+        const Bond &bk = nb[static_cast<std::size_t>(b)];
+        const double inv_r1 = 1.0 / bj.r;
+        const double inv_r2 = 1.0 / bk.r;
+        const double inv = inv_r1 * inv_r2;
+        double cth = (bj.x * bk.x + bj.y * bk.y + bj.z * bk.z) * inv;
+        if (cth > 1.0) {
+          cth = 1.0;
+        } else if (cth < -1.0) {
+          cth = -1.0;
+        }
+        const double ang = cth + (1.0 / 3.0);
+        const double ang2 = ang * ang;
+        *energy += kEpsilon * kLambda * bj.gexp * bk.gexp * ang2;
+        const double pref = kEpsilon * kLambda;
+        const double d_edcth = pref * bj.gexp * bk.gexp * 2.0 * ang;
+        const double d_edr1 = pref * bj.dgdr * bk.gexp * ang2;
+        const double d_edr2 = pref * bj.gexp * bk.dgdr * ang2;
+        const double g1x =
+            d_edr1 * bj.x * inv_r1 +
+            d_edcth * (bk.x * inv - cth * bj.x * inv_r1 * inv_r1);
+        const double g1y =
+            d_edr1 * bj.y * inv_r1 +
+            d_edcth * (bk.y * inv - cth * bj.y * inv_r1 * inv_r1);
+        const double g1z =
+            d_edr1 * bj.z * inv_r1 +
+            d_edcth * (bk.z * inv - cth * bj.z * inv_r1 * inv_r1);
+        const double g2x =
+            d_edr2 * bk.x * inv_r2 +
+            d_edcth * (bj.x * inv - cth * bk.x * inv_r2 * inv_r2);
+        const double g2y =
+            d_edr2 * bk.y * inv_r2 +
+            d_edcth * (bj.y * inv - cth * bk.y * inv_r2 * inv_r2);
+        const double g2z =
+            d_edr2 * bk.z * inv_r2 +
+            d_edcth * (bj.z * inv - cth * bk.z * inv_r2 * inv_r2);
+        // g is dE/d(neighbor). Force on that atom is -g.
+        acc[3 * bj.j] -= scale * g1x;
+        acc[3 * bj.j + 1] -= scale * g1y;
+        acc[3 * bj.j + 2] -= scale * g1z;
+        acc[3 * bk.j] -= scale * g2x;
+        acc[3 * bk.j + 1] -= scale * g2y;
+        acc[3 * bk.j + 2] -= scale * g2z;
+        acc[3 * i] += scale * (g1x + g2x);
+        acc[3 * i + 1] += scale * (g1y + g2y);
+        acc[3 * i + 2] += scale * (g1z + g2z);
+      }
+    }
+  }
 }
 
 } // namespace rgpot
