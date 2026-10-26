@@ -41,6 +41,7 @@ D3Pot: Any = getattr(_core, "D3Pot", None)
 D4Pot: Any = getattr(_core, "D4Pot", None)
 ExprPot: Any = getattr(_core, "ExprPot", None)
 XcKernel: Any = getattr(_core, "XcKernel", None)
+StillingerWeberSi: Any = getattr(_core, "StillingerWeberSi", None)
 SWPot: Any = getattr(_core, "SWPot", None)
 EDIPPot: Any = getattr(_core, "EDIPPot", None)
 LenoskyPot: Any = getattr(_core, "LenoskyPot", None)
@@ -162,6 +163,7 @@ def evaluate_metatomic(
 __all__ = [
     "LJPot",
     "NumericalError",
+    "StillingerWeberSi",
     "D3Pot",
     "D4Pot",
     "ExprPot",

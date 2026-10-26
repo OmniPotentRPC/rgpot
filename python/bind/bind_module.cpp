@@ -5,6 +5,7 @@
 // built that way (see python/meson.build). F4 releases the thread
 // around every potential evaluation. F9 exports only PyInit__core.
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -28,6 +29,7 @@
 #include "pot_holder.hpp"
 
 #include "rgpot/LennardJones/LJPot.hpp"
+#include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 #include "rgpot/XcKernel/XcKernel.hpp"
@@ -329,6 +331,60 @@ void bind_default_pot(nb::module_ &m, const char *name) {
 }
 #endif
 
+nb::tuple stillinger_weber_energy_gradient(rgpot::StillingerWeberSi &self,
+                                           const F64 &positions,
+                                           nb::handle atom_types,
+                                           const F64 &box) {
+  if (box.ndim() != 2 || box.shape(0) != 3 || box.shape(1) != 3) {
+    throw std::invalid_argument("box must have shape (3, 3)");
+  }
+  const double *cell = box.data();
+  auto own = [](double *buf) {
+    return nb::capsule(
+        buf, [](void *p) noexcept { delete[] static_cast<double *>(p); });
+  };
+  if (positions.ndim() == 2) {
+    if (positions.shape(1) != 3) {
+      throw std::invalid_argument("positions must have shape (n_atoms, 3)");
+    }
+    const auto n = static_cast<std::size_t>(positions.shape(0));
+    const std::vector<int> species = rgpot::pybind::read_types(atom_types, n);
+    auto *grad = new double[std::max<std::size_t>(n * 3, 1)]();
+    double energy = 0.0;
+    {
+      nb::gil_scoped_release release;
+      self.energyAndGradient(positions.data(), species.data(), cell, n, &energy,
+                             grad);
+    }
+    auto arr = nb::ndarray<nb::numpy, double, nb::c_contig>(grad, {n, 3},
+                                                            own(grad));
+    return nb::make_tuple(energy, arr);
+  }
+  if (positions.ndim() == 3) {
+    if (positions.shape(2) != 3) {
+      throw std::invalid_argument(
+          "positions must have shape (n_config, n_atoms, 3)");
+    }
+    const auto n_config = static_cast<std::size_t>(positions.shape(0));
+    const auto n = static_cast<std::size_t>(positions.shape(1));
+    const std::vector<int> species = rgpot::pybind::read_types(atom_types, n);
+    auto *energies = new double[std::max<std::size_t>(n_config, 1)]();
+    auto *grads = new double[std::max<std::size_t>(n_config * n * 3, 1)]();
+    {
+      nb::gil_scoped_release release;
+      self.energyAndGradientBatch(n_config, positions.data(), species.data(),
+                                  cell, n, energies, grads);
+    }
+    auto earr = nb::ndarray<nb::numpy, double, nb::c_contig>(
+        energies, {n_config}, own(energies));
+    auto garr = nb::ndarray<nb::numpy, double, nb::c_contig>(
+        grads, {n_config, n, 3}, own(grads));
+    return nb::make_tuple(earr, garr);
+  }
+  throw std::invalid_argument(
+      "positions must have shape (n_atoms, 3) or (n_config, n_atoms, 3)");
+}
+
 } // namespace
 
 NB_MODULE(_core, m) {
@@ -525,6 +581,33 @@ NB_MODULE(_core, m) {
   bind_default_pot<rgpot::fortranpots::CuH2Pot>(m, "CuH2Pot");
   bind_default_pot<rgpot::fortranpots::WaterHPot>(m, "WaterHPot");
 #endif
+
+  nb::class_<rgpot::StillingerWeberSi>(m, "StillingerWeberSi")
+      .def(nb::init<>(),
+           "Stillinger-Weber silicon, Stillinger and Weber, Phys. Rev. B "
+           "31, 5262 (1985). Energy is eV, lengths are Angstrom. The "
+           "gradient is dE/dx.")
+      .def(
+          "__call__",
+          [](rgpot::StillingerWeberSi &self, const F64 &positions,
+             nb::handle atom_types, const F64 &box) {
+            auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
+            const auto [energy, forces, variance] =
+                self(geom.pos, geom.types, geom.box);
+            return nb::make_tuple(energy,
+                                  rgpot::pybind::matrix_to_numpy(forces),
+                                  variance);
+          },
+          nb::arg("positions").noconvert(), nb::arg("atom_types"),
+          nb::arg("box").noconvert(),
+          "Return (energy, forces, variance) for one configuration. "
+          "Forces are -dE/dx.")
+      .def("energy_gradient", &stillinger_weber_energy_gradient,
+           nb::arg("positions").noconvert(), nb::arg("atom_types"),
+           nb::arg("box").noconvert(),
+           "Energy and dE/dx. positions is (n_atoms, 3) or "
+           "(n_config, n_atoms, 3). A batch shares atom_types and box, "
+           "and crosses into the library once.");
 
 #ifdef RGPOT_HAS_DFTD3
   auto d3 = nb::class_<PotHolder<rgpot::D3Pot>>(m, "D3Pot");
