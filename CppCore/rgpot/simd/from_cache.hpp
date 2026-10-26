@@ -5,17 +5,19 @@
 #include "rgpot/nlist/PairListCache.hpp"
 #include "rgpot/simd/pods.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
 
 namespace rgpot::simd {
 
-/// Indices from one PairListCache evaluation, in the order the scan
-/// reported them. The view points into this object.
+/// Indices from one PairListCache evaluation. The view points into this
+/// object. image is the general-cell fold when the box is not orthorhombic.
 struct CachedPairs {
   std::vector<std::int32_t> rows;
   std::vector<std::int32_t> nbr;
+  nlist::MinimumImage image{};
   PairView view{};
 };
 
@@ -45,21 +47,35 @@ inline void fill_view(CachedPairs &out, const double *R, std::size_t n,
     const auto i = static_cast<std::size_t>(ij[p]);
     out.nbr[static_cast<std::size_t>(cursor[i]++)] = ij[p + 1];
   }
+  // The cache sorts each row so a rebuild and a hit sum in the same order.
+  for (std::size_t i = 0; i < n; ++i) {
+    std::sort(out.nbr.begin() + out.rows[i], out.nbr.begin() + out.rows[i + 1]);
+  }
   PairView v{};
   v.R = R;
   v.rows = out.rows.data();
   v.nbr = out.nbr.data();
   v.n = n;
   v.cutoff2 = opt.cutoff * opt.cutoff;
-  v.fold = 1;
-  v.w[0] = box[0];
-  v.w[1] = box[4];
-  v.w[2] = box[8];
-  for (int k = 0; k < 3; ++k) {
-    const double w = v.w[k];
-    v.inv[k] = (opt.periodic[static_cast<std::size_t>(k)] && w != 0.0)
-                   ? 1.0 / w
-                   : 0.0;
+  const bool ortho = box[1] == 0.0 && box[2] == 0.0 && box[3] == 0.0 &&
+                     box[5] == 0.0 && box[6] == 0.0 && box[7] == 0.0;
+  if (ortho) {
+    v.fold = 1;
+    v.w[0] = box[0];
+    v.w[1] = box[4];
+    v.w[2] = box[8];
+    for (int k = 0; k < 3; ++k) {
+      const double w = v.w[k];
+      v.inv[k] = (opt.periodic[static_cast<std::size_t>(k)] && w != 0.0)
+                     ? 1.0 / w
+                     : 0.0;
+    }
+  } else {
+    // A sheared cell, including the infinitesimal shear of a stress
+    // difference, takes the same minimum image as the pair list.
+    out.image = nlist::MinimumImage(box, opt.periodic);
+    v.fold = 3;
+    v.general = &out.image;
   }
   out.view = v;
 }

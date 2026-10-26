@@ -25,6 +25,7 @@
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
+#include "rgpot/nlist/MinimumImage.hpp"
 #include "rgpot/nlist/PairListCache.hpp"
 #include "rgpot/nlist/vesin_visit.hpp"
 
@@ -321,7 +322,7 @@ TEST_CASE("Partial periodic list matches the fused scan", "[fastnlist]") {
   run(moved);
 }
 
-TEST_CASE("A skewed cell stays on the fused scan", "[fastnlist]") {
+TEST_CASE("A skewed cell uses the general minimum image", "[fastnlist]") {
   const auto pos = slab();
   const double box[9] = {18, 0.4, 0, 0, 18, 0, 0, 0.2, 30};
   rgpot::LJPot pot(rgpot::LJConfig{.cutoff = 6.0});
@@ -333,9 +334,29 @@ TEST_CASE("A skewed cell stays on the fused scan", "[fastnlist]") {
                        .box = box};
   rgpot::ForceOut out{.F = forces.data(), .energy = 0.0, .variance = 0.0};
   pot.forceImpl(in, &out);
-  // Diagonal fold, which is what the fused scan applies when the cell
-  // is not orthorhombic.
-  const auto ref = lj_oracle(pos, box, {{true, true, true}}, 6.0);
+  // Off-diagonal box entries take MinimumImage, the same fold the pair
+  // list uses. The diagonal fused scan is the orthorhombic path.
+  Oracle ref;
+  ref.forces.assign(pos.size(), 0.0);
+  const double cutoff = 6.0;
+  const double a6 = std::pow(1.0 / cutoff, 6.0);
+  const double shift = 4.0 * a6 * (a6 - 1.0);
+  const rgpot::nlist::MinimumImage image(box, {{true, true, true}});
+  const std::size_t n = pos.size() / 3;
+  const double cutoff2 = cutoff * cutoff;
+  for (std::size_t i = 0; i < n; ++i) {
+    for (std::size_t j = i + 1; j < n; ++j) {
+      double dx = pos[3 * i] - pos[3 * j];
+      double dy = pos[3 * i + 1] - pos[3 * j + 1];
+      double dz = pos[3 * i + 2] - pos[3 * j + 2];
+      image.fold(dx, dy, dz);
+      const double r2 = (dx * dx + dy * dy) + dz * dz;
+      if (r2 <= cutoff2 && r2 > 0.0) {
+        lj_accumulate(static_cast<int32_t>(i), static_cast<int32_t>(j), dx, dy,
+                      dz, r2, 1.0, 1.0, shift, ref.forces, ref.energy);
+      }
+    }
+  }
   require_close(out.energy, forces, ref);
 }
 
