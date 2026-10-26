@@ -710,6 +710,7 @@ if get_option('with_tests')
     if not get_option('with_rpc_client_only')
         test_array += [
             ['MorsePotTest', 'morse_pot_test', 'MorsePotTest.cc', ''],
+            ['SWSiTest', 'sw_si_test', 'SWSiTest.cc', ''],
             ['HalfShellScanTest', 'half_shell_scan_test', 'HalfShellScanTest.cc', ''],
             ['HalfShellTest', 'half_shell_test', 'HalfShellTest.cc', ''],
             ['SuttonChenPotTest', 'sutton_chen_pot_test', 'SuttonChenPotTest.cc', ''],
