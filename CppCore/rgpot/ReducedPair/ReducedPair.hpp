@@ -70,4 +70,22 @@ int rgpot_binary_lj_gradient(int32_t n_a, const double *eps, const double *sig,
                              const double *positions, double *energy,
                              double *gradient);
 
+/// Oxygen Lennard-Jones plus Coulomb on rigid TIP4P sites.
+/// `sites` and `gradient` are molecule-major O, H, H, M, three
+/// coordinates each. `use_epsilon == 0` uses `c6` and `c12`.
+/// `use_epsilon != 0` uses `epsilon` and `sigma`.
+struct rgpot_tip4p_sites_config {
+  double c6;
+  double c12;
+  double epsilon;
+  double sigma;
+  int32_t use_epsilon;
+  double coulomb;
+  double q_h;
+  double q_m;
+};
+
+int rgpot_tip4p_sites(const rgpot_tip4p_sites_config *cfg, int32_t n_molecules,
+                      const double *sites, double *energy, double *gradient);
+
 } // extern "C"

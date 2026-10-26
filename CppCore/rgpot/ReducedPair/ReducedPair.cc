@@ -377,3 +377,82 @@ rgpot_binary_lj_gradient(int32_t n_a, const double *eps, const double *sig,
   return 0;
 }
 
+extern "C" RGPOT_PAIR_API int
+rgpot_tip4p_sites(const rgpot_tip4p_sites_config *cfg, int32_t n_molecules,
+                  const double *sites, double *energy, double *gradient) {
+  if (cfg == nullptr || n_molecules < 0 || energy == nullptr ||
+      (n_molecules > 0 && (sites == nullptr || gradient == nullptr))) {
+    return 1;
+  }
+  const int32_t ncoord = 12 * n_molecules;
+  for (int32_t i = 0; i < ncoord; ++i) {
+    gradient[i] = 0.0;
+  }
+  const double charges[4] = {0.0, cfg->q_h, cfg->q_h, cfg->q_m};
+  double e = 0.0;
+  for (int32_t left = 0; left < n_molecules; ++left) {
+    for (int32_t right = left + 1; right < n_molecules; ++right) {
+      const double *ol = sites + 12 * left;
+      const double *orr = sites + 12 * right;
+      double d[3];
+      double r2 = 0.0;
+      for (int k = 0; k < 3; ++k) {
+        d[k] = ol[k] - orr[k];
+        r2 += d[k] * d[k];
+      }
+      if (r2 > 0.0) {
+        double coef = 0.0;
+        if (cfg->use_epsilon) {
+          const double inv_r2 = 1.0 / r2;
+          const double scaled = (cfg->sigma * cfg->sigma) * inv_r2;
+          const double inv6 = scaled * scaled * scaled;
+          const double inv12 = inv6 * inv6;
+          e += 4.0 * cfg->epsilon * (inv12 - inv6);
+          coef = -24.0 * cfg->epsilon * inv_r2 * (2.0 * inv12 - inv6);
+        } else {
+          const double inverse = 1.0 / r2;
+          const double r6 = inverse * inverse * inverse;
+          const double r12 = r6 * r6;
+          e += cfg->c12 * r12 - cfg->c6 * r6;
+          coef = (-12.0 * cfg->c12 * r12 + 6.0 * cfg->c6 * r6) * inverse;
+        }
+        for (int k = 0; k < 3; ++k) {
+          gradient[12 * left + k] += coef * d[k];
+          gradient[12 * right + k] -= coef * d[k];
+        }
+      }
+      for (int a = 1; a < 4; ++a) {
+        for (int b = 1; b < 4; ++b) {
+          double cd[3];
+          double cr2 = 0.0;
+          for (int k = 0; k < 3; ++k) {
+            cd[k] =
+                sites[12 * left + 3 * a + k] - sites[12 * right + 3 * b + k];
+            cr2 += cd[k] * cd[k];
+          }
+          if (!(cr2 > 0.0)) {
+            continue;
+          }
+          const double distance = std::sqrt(cr2);
+          double pair = 0.0;
+          double slope = 0.0;
+          if (cfg->use_epsilon) {
+            const double qq = cfg->coulomb * charges[a] * charges[b];
+            pair = qq / distance;
+            slope = -qq / (cr2 * distance);
+          } else {
+            pair = cfg->coulomb * charges[a] * charges[b] / distance;
+            slope = -pair / cr2;
+          }
+          e += pair;
+          for (int k = 0; k < 3; ++k) {
+            gradient[12 * left + 3 * a + k] += slope * cd[k];
+            gradient[12 * right + 3 * b + k] -= slope * cd[k];
+          }
+        }
+      }
+    }
+  }
+  *energy = e;
+  return 0;
+}

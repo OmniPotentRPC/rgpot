@@ -154,9 +154,34 @@ TEST_CASE("atom energies sum to twice the cluster energy", "[ReducedPair]") {
   REQUIRE_THAT(atoms[0] + atoms[1] + atoms[2], WithinAbs(2.0 * energy, 0.0));
 }
 
+TEST_CASE("GMIN TIP4P oxygen pair matches C12 r^-12 - C6 r^-6",
+          "[ReducedPair]") {
+  rgpot_tip4p_sites_config cfg{};
+  cfg.c6 = 2552.24;
+  cfg.c12 = 2510.4e3;
+  cfg.use_epsilon = 0;
+  cfg.coulomb = 1389.354848;
+  cfg.q_h = 0.0;
+  cfg.q_m = 0.0;
+  double sites[24] = {};
+  sites[12 + 0] = 2.0;
+  double energy = 0.0;
+  double gradient[24] = {};
+  REQUIRE(rgpot_tip4p_sites(&cfg, 2, sites, &energy, gradient) == 0);
+  const double inverse = 1.0 / 4.0;
+  const double r6 = inverse * inverse * inverse;
+  const double r12 = r6 * r6;
+  const double expected = cfg.c12 * r12 - cfg.c6 * r6;
+  REQUIRE_THAT(energy, WithinAbs(expected, 0.0));
+  const double slope = (-12.0 * cfg.c12 * r12 + 6.0 * cfg.c6 * r6) * inverse;
+  REQUIRE_THAT(gradient[0], WithinAbs(slope * -2.0, 0.0));
+  REQUIRE_THAT(gradient[12], WithinAbs(-slope * -2.0, 0.0));
+}
+
 TEST_CASE("bad arguments are rejected", "[ReducedPair]") {
   double energy = 0.0;
   REQUIRE(rgpot_lj_gradient(1.0, 1.0, 0.0, 2, nullptr, &energy, nullptr) == 1);
   REQUIRE(rgpot_morse_gradient(1.0, 6.0, 0.0, 0.0, 0, nullptr, &energy,
                                nullptr) == 1);
+  REQUIRE(rgpot_tip4p_sites(nullptr, 0, nullptr, &energy, nullptr) == 1);
 }
