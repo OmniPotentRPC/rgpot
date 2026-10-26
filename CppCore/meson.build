@@ -209,6 +209,10 @@ if not get_option('with_rpc_client_only')
     subdir('rgpot/SuttonChen')  # 'sutton_chen'
     rgpotentials += [sutton_chen]
 
+    # Unshifted cluster pairs. Separate from LJCluster, which is shifted.
+    subdir('rgpot/ReducedPair')  # 'reduced_pair'
+    rgpotentials += [reduced_pair]
+
     # Pure dlopen consumer of split mopacc (no Cap'n Proto, no OpenMOPAC embed).
     subdir('rgpot/MOPACPot')  # 'mopacpot'
     rgpotentials += [mopacpot]

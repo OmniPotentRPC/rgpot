@@ -1,0 +1,263 @@
+// MIT License
+// Copyright 2023--present rgpot developers
+
+/**
+ * @brief Unshifted cluster pair kernels.
+ *
+ * The unit Lennard-Jones branch copies the expression tree of anneal's
+ * reduced 12-6 pair: inverse powers of r^2, energy 4 (r^-12 - r^-6),
+ * and (dV/dr)/r = -24 r^-2 (2 r^-12 - r^-6). Morse at epsilon = 1 and
+ * re = 1 copies exp(rho (1 - r)) (exp(...) - 2).
+ */
+
+// clang-format off
+#include <cmath>
+#include <cstdint>
+// clang-format on
+
+#include "rgpot/ReducedPair/ReducedPair.hpp"
+
+namespace {
+
+bool bad_cluster(int32_t natoms, const double *positions, double *energy,
+                 double *gradient) {
+  return natoms < 0 || energy == nullptr ||
+         (natoms > 0 && (positions == nullptr || gradient == nullptr));
+}
+
+void zero_gradient(int32_t natoms, double *gradient) {
+  for (int32_t i = 0; i < 3 * natoms; ++i) {
+    gradient[i] = 0.0;
+  }
+}
+
+bool inside(double r2, double cutoff) {
+  if (!(r2 > 0.0)) {
+    return false;
+  }
+  if (!(cutoff > 0.0)) {
+    return true;
+  }
+  const double cut2 = cutoff * cutoff;
+  return r2 < cut2;
+}
+
+void lj_unit(double r2, double *energy, double *coef, double *curv) {
+  const double inv2 = 1.0 / r2;
+  const double inv6 = inv2 * inv2 * inv2;
+  const double inv12 = inv6 * inv6;
+  *energy = 4.0 * (inv12 - inv6);
+  *coef = -24.0 * inv2 * (2.0 * inv12 - inv6);
+  if (curv != nullptr) {
+    *curv = inv2 * (624.0 * inv12 - 168.0 * inv6);
+  }
+}
+
+void lj_general(double epsilon, double sigma, double r2, double *energy,
+                double *coef, double *curv) {
+  const double inv2 = 1.0 / r2;
+  const double scaled = (sigma * sigma) * inv2;
+  const double s6 = scaled * scaled * scaled;
+  const double s12 = s6 * s6;
+  *energy = 4.0 * epsilon * (s12 - s6);
+  *coef = -24.0 * epsilon * inv2 * (2.0 * s12 - s6);
+  if (curv != nullptr) {
+    *curv = epsilon * inv2 * (624.0 * s12 - 168.0 * s6);
+  }
+}
+
+void lj_terms(double epsilon, double sigma, double r2, double *energy,
+              double *coef, double *curv) {
+  if (!(r2 > 0.0) || !std::isfinite(r2)) {
+    *energy = 0.0;
+    *coef = 0.0;
+    if (curv != nullptr) {
+      *curv = 0.0;
+    }
+    return;
+  }
+  if (epsilon == 1.0 && sigma == 1.0) {
+    lj_unit(r2, energy, coef, curv);
+    return;
+  }
+  lj_general(epsilon, sigma, r2, energy, coef, curv);
+}
+
+void add_pair(double *gradient, int32_t i, int32_t j, const double d[3],
+              double coef) {
+  for (int k = 0; k < 3; ++k) {
+    const double term = coef * d[k];
+    gradient[3 * i + k] += term;
+    gradient[3 * j + k] -= term;
+  }
+}
+
+#if defined(_WIN32)
+#define RGPOT_PAIR_API __declspec(dllexport)
+#else
+#define RGPOT_PAIR_API __attribute__((visibility("default")))
+#endif
+
+} // namespace
+
+extern "C" RGPOT_PAIR_API int rgpot_lj_pair(double epsilon, double sigma,
+                                            double r2, double *energy,
+                                            double *dvdr_over_r,
+                                            double *d2vdr2) {
+  if (energy == nullptr || dvdr_over_r == nullptr || d2vdr2 == nullptr) {
+    return 1;
+  }
+  lj_terms(epsilon, sigma, r2, energy, dvdr_over_r, d2vdr2);
+  return 0;
+}
+
+extern "C" RGPOT_PAIR_API int
+rgpot_lj_curvature_pairs(double epsilon, double sigma, int32_t npairs,
+                         const double *r2, double *energy, double *dvdr_over_r,
+                         double *d2vdr2) {
+  if (npairs < 0 ||
+      (npairs > 0 && (r2 == nullptr || energy == nullptr ||
+                      dvdr_over_r == nullptr || d2vdr2 == nullptr))) {
+    return 1;
+  }
+  for (int32_t i = 0; i < npairs; ++i) {
+    lj_terms(epsilon, sigma, r2[i], &energy[i], &dvdr_over_r[i], &d2vdr2[i]);
+  }
+  return 0;
+}
+
+extern "C" RGPOT_PAIR_API int
+rgpot_lj_gradient(double epsilon, double sigma, double cutoff, int32_t natoms,
+                  const double *positions, double *energy, double *gradient) {
+  if (bad_cluster(natoms, positions, energy, gradient)) {
+    return 1;
+  }
+  zero_gradient(natoms, gradient);
+  double e = 0.0;
+  for (int32_t i = 0; i < natoms; ++i) {
+    for (int32_t j = i + 1; j < natoms; ++j) {
+      double d[3];
+      double r2 = 0.0;
+      for (int k = 0; k < 3; ++k) {
+        d[k] = positions[3 * i + k] - positions[3 * j + k];
+        r2 += d[k] * d[k];
+      }
+      if (!inside(r2, cutoff)) {
+        continue;
+      }
+      double v = 0.0;
+      double coef = 0.0;
+      lj_terms(epsilon, sigma, r2, &v, &coef, nullptr);
+      e += v;
+      add_pair(gradient, i, j, d, coef);
+    }
+  }
+  *energy = e;
+  return 0;
+}
+
+extern "C" RGPOT_PAIR_API int
+rgpot_lj_atom_energies(double epsilon, double sigma, int32_t natoms,
+                       const double *positions, double *atom_energy) {
+  if (natoms < 0 || atom_energy == nullptr ||
+      (natoms > 0 && positions == nullptr)) {
+    return 1;
+  }
+  for (int32_t i = 0; i < natoms; ++i) {
+    atom_energy[i] = 0.0;
+  }
+  for (int32_t i = 0; i < natoms; ++i) {
+    for (int32_t j = i + 1; j < natoms; ++j) {
+      double r2 = 0.0;
+      for (int k = 0; k < 3; ++k) {
+        const double d = positions[3 * i + k] - positions[3 * j + k];
+        r2 += d * d;
+      }
+      if (!(r2 > 0.0)) {
+        continue;
+      }
+      const double scaled = (sigma * sigma) / r2;
+      const double s6 = scaled * scaled * scaled;
+      const double v = 4.0 * epsilon * (s6 * s6 - s6);
+      atom_energy[i] += v;
+      atom_energy[j] += v;
+    }
+  }
+  return 0;
+}
+
+extern "C" RGPOT_PAIR_API int
+rgpot_lj_partial_gradient(double epsilon, double sigma, int32_t natoms,
+                          const double *positions, int32_t n_moved,
+                          const int32_t *moved, double *gradient) {
+  if (natoms < 0 || gradient == nullptr || n_moved < 0 ||
+      (natoms > 0 && positions == nullptr) ||
+      (n_moved > 0 && moved == nullptr)) {
+    return 1;
+  }
+  zero_gradient(natoms, gradient);
+  for (int32_t m = 0; m < n_moved; ++m) {
+    const int32_t i = moved[m];
+    if (i < 0 || i >= natoms) {
+      return 1;
+    }
+    for (int32_t j = 0; j < natoms; ++j) {
+      if (j == i) {
+        continue;
+      }
+      double d[3];
+      double r2 = 0.0;
+      for (int k = 0; k < 3; ++k) {
+        d[k] = positions[3 * i + k] - positions[3 * j + k];
+        r2 += d[k] * d[k];
+      }
+      if (!(r2 > 0.0)) {
+        continue;
+      }
+      double v = 0.0;
+      double coef = 0.0;
+      lj_terms(epsilon, sigma, r2, &v, &coef, nullptr);
+      for (int k = 0; k < 3; ++k) {
+        gradient[3 * i + k] += coef * d[k];
+      }
+    }
+  }
+  return 0;
+}
+
+extern "C" RGPOT_PAIR_API int
+rgpot_lj_arithmetic_gradient(const double *sigma, double cutoff, int32_t natoms,
+                             const double *positions, double *energy,
+                             double *gradient) {
+  if (bad_cluster(natoms, positions, energy, gradient) ||
+      (natoms > 0 && sigma == nullptr)) {
+    return 1;
+  }
+  zero_gradient(natoms, gradient);
+  double e = 0.0;
+  for (int32_t i = 0; i < natoms; ++i) {
+    for (int32_t j = i + 1; j < natoms; ++j) {
+      double d[3];
+      double r2 = 0.0;
+      for (int k = 0; k < 3; ++k) {
+        d[k] = positions[3 * i + k] - positions[3 * j + k];
+        r2 += d[k] * d[k];
+      }
+      if (!inside(r2, cutoff)) {
+        continue;
+      }
+      const double sum = sigma[i] + sigma[j];
+      const double s2 = 0.25 * sum * sum;
+      const double inv = 1.0 / r2;
+      const double sr2 = s2 * inv;
+      const double sr6 = sr2 * sr2 * sr2;
+      const double sr12 = sr6 * sr6;
+      e += sr12 - sr6;
+      const double slope = 24.0 * (sr6 - 2.0 * sr12) * inv;
+      add_pair(gradient, i, j, d, slope);
+    }
+  }
+  *energy = 4.0 * e;
+  return 0;
+}
+
