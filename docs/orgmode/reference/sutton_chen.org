@@ -20,13 +20,15 @@ The deposited Pt38 Oh geometry gives -10117.2454 and the Pt75 D5h geometry
 gives -20431.3452, in units of epsilon, to the four digits printed in the
 10-8 table.
 
-van der Walt, Terblans, and Swart reprint a parameter table and cite the
-1990 paper as their reference 4. The platinum row in that table is
-epsilon = 1.9833e-2 eV, a = 3.92 Angstrom, c = 34.408, n = 10, m = 8.
-The table has no gold row. Gold's physical epsilon and a were not verified
-from the 1990 table, so no physical preset is compiled in.
-Set epsilon and a on =SuttonChenConfig= when a calculation needs eV and
-Angstrom.
+Cagin, Dereli, Uludogan, and Tomak, arXiv:cond-mat/9709114, Table I,
+reprint the Sutton-Chen rows and cite Sutton and Chen 1990 as their
+reference 1. Platinum is epsilon = 1.98330e-2 eV, a = 3.92 Angstrom,
+c = 34.408, m = 8, n = 10. Gold on the same row is epsilon = 1.27930e-2 eV,
+a = 4.08 Angstrom, with the same c, m, and n. Those two rows are
+=sutton_chen_platinum= and =sutton_chen_gold=.
+The bulk nearest-neighbor distance and the cohesive well depth are
+=sutton_chen_scales=. The length is the static fcc minimum. The depth
+is minus the energy per atom there.
 
 The default cutoff is 40 in the coordinate unit, with no energy shift.
 =cutoff = 0= keeps every pair.
