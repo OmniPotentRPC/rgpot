@@ -131,7 +131,7 @@ rgpot_minimage = static_library(
 )
 rgpot_halfshell = static_library(
     'rgpot_halfshell',
-    files('rgpot/nlist/HalfShellWalk.cc'),
+    files('rgpot/nlist/HalfShell.cc', 'rgpot/nlist/HalfShellWalk.cc'),
     include_directories: _incdirs,
     cpp_args: _args,
     pic: true,
