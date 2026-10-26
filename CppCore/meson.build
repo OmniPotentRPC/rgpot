@@ -566,6 +566,20 @@ if get_option('with_examples') and not get_option('with_rpc_client_only')
         link_with: _linkto,
         cpp_args: _args,
     )
+    executable(
+        'time_sutton_chen',
+        sources: ['examples/time_sutton_chen.cc'],
+        dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+        link_with: _linkto,
+        cpp_args: _args,
+    )
+    executable(
+        'time_reduced_lj',
+        sources: ['examples/time_reduced_lj.cc'],
+        dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+        link_with: _linkto,
+        cpp_args: _args + _fp_contract_off,
+    )
     if rpc_enabled
         # Not a meson test: needs a running potserv (see the file header).
         executable(
