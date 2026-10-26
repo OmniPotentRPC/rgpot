@@ -65,6 +65,9 @@ private:
 RGPOT_FORTRAN_POT_CLASS(SWPot, SWSi);
 RGPOT_FORTRAN_POT_CLASS(EDIPPot, EDIP);
 RGPOT_FORTRAN_POT_CLASS(LenoskyPot, LenoskySi);
+/// Tersoff silicon (PotType::TersoffSi). All-silicon calls, and a null
+/// species pointer, use the Fortran gather. Any other atomic number
+/// uses the 1989 silicon-carbon kernel. There is no second PotType.
 RGPOT_FORTRAN_POT_CLASS(TersoffPot, TersoffSi);
 RGPOT_FORTRAN_POT_CLASS(EAMAlPot, EAMAl);
 RGPOT_FORTRAN_POT_CLASS(FeHePot, FeHe);

@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "rgpot/Tersoff/TersoffSiC.hpp"
 #include "rgpot/fortran/FortranPots.hpp"
 
 namespace rgpot {
@@ -89,6 +90,25 @@ void ensure_fortran_params() {
   throw std::runtime_error(message);
 }
 
+/// True when the Fortran silicon gather is the right kernel. A null
+/// species pointer is the historical silicon call.
+bool siliconOnly(const ForceInput &in) {
+  if (in.atmnrs == nullptr) {
+    return true;
+  }
+  for (size_t i = 0; i < in.nAtoms; ++i) {
+    if (in.atmnrs[i] != 14) {
+      return false;
+    }
+  }
+  return true;
+}
+
+const TersoffSiC &sicKernel() {
+  static const TersoffSiC kernel;
+  return kernel;
+}
+
 } // namespace
 
 FortranWorkspace::FortranWorkspace() : m_handle(rgpot_fortran_workspace_new()) {
@@ -122,10 +142,28 @@ FortranWorkspace &FortranWorkspace::operator=(const FortranWorkspace &) {
 RGPOT_FORTRAN_POT_IMPL(SWPot, rgpot_sw_force_ws, "SW")
 RGPOT_FORTRAN_POT_IMPL(EDIPPot, rgpot_edip_force_ws, "EDIP")
 RGPOT_FORTRAN_POT_IMPL(LenoskyPot, rgpot_lenosky_force_ws, "Lenosky")
-RGPOT_FORTRAN_POT_IMPL(TersoffPot, rgpot_tersoff_force_ws, "Tersoff")
 RGPOT_FORTRAN_POT_IMPL(EAMAlPot, rgpot_eam_al_force_ws, "EAM-Al")
 
 #undef RGPOT_FORTRAN_POT_IMPL
+
+void TersoffPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  // The C++ kernel rebuilds its neighbour list on this call. On periodic
+  // cells of 512 and 4096 atoms that is slower than the warm Fortran
+  // gather, so all-silicon stays there. Any other Z needs the 1989
+  // silicon-carbon parameters, which the gather does not have.
+  if (siliconOnly(in)) {
+    ensure_fortran_params();
+    const int status = rgpot_tersoff_force_ws(
+        m_ws.get(), static_cast<int32_t>(in.nAtoms), in.pos, in.box, out->F,
+        &out->energy);
+    if (status != 0) {
+      raise("Tersoff", status, m_ws.get());
+    }
+    out->variance = 0.0;
+    return;
+  }
+  sicKernel().forceImpl(in, out);
+}
 
 #define RGPOT_FORTRAN_SPECIES_POT_IMPL(ClassName, Entry, Label)                \
   void ClassName::forceImpl(const ForceInput &in, ForceOut *out) const {       \

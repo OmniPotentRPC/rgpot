@@ -12,8 +12,11 @@
  * doi:10.1103/PhysRevB.39.5566, and the erratum Phys. Rev. B 41, 3248
  * (1990), doi:10.1103/PhysRevB.41.3248.2. The erratum sets carbon B to
  * 3.4674e2 eV (346.74 eV) and d to 4.3484. Carbon beta is dimensionless
- * and is the Table I value, not an erratum correction. This is not the
- * Fortran Tersoff silicon kernel.
+ * and is the Table I value, not an erratum correction.
+ * This class is the 1989 kernel behind PotType::TersoffSi. TersoffPot
+ * calls it when any atomic number is not 14. An all-silicon call on
+ * this class still evaluates the silicon column, which matches the
+ * Fortran gather. There is no PotType::TersoffSiC.
  */
 
 #include <cstddef>

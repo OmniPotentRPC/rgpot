@@ -38,7 +38,7 @@ enum class PotType {
   SWSi,        //!<  Stillinger-Weber silicon. eOn epsilon, 2.3149945 eV.
   EDIP,        //!<  Environment-dependent interatomic potential (silicon).
   LenoskySi,   //!<  Lenosky tight-binding-fit silicon.
-  TersoffSi,   //!<  Tersoff bond-order silicon.
+  TersoffSi,   //!<  Tersoff silicon; 1989 Si-C when any Z is not 14.
   EAMAl,       //!<  Double-exponential EAM aluminium.
   FeHe,        //!<  Fe-He embedded atom with species-dependent terms.
   WaterH,      //!<  TIP4P water with an interacting hydrogen atom.
@@ -55,8 +55,7 @@ enum class PotType {
   TIP4PPt,     //!<  TIP4P water on platinum. Built with -Dwith_water=true.
   IPI,         //!<  i-PI socket server. Built with -Dwith_ipi (POSIX).
   SuttonChen,  //!<  Sutton-Chen 10-8. Reduced units by default.
-  SWSi1985,    //!<  Stillinger-Weber silicon, 1985 parameters.
-  TersoffSiC   //!<  Tersoff silicon-carbon, 1989 parameters.
+  SWSi1985     //!<  Stillinger-Weber silicon, 1985 parameters.
 };
 
 } // namespace rgpot

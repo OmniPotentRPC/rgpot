@@ -82,7 +82,7 @@ fortran_pots = static_library(
     dependencies: _deps,
     cpp_args: _args,
     include_directories: _incdirs,
-    link_with: fortran_kernels,
+    link_with: [fortran_kernels, tersoff_sic, rgpot_halfshell],
     pic: true,
     install: false,
 )

@@ -666,10 +666,13 @@ NB_MODULE(_core, m) {
 
   nb::class_<rgpot::TersoffSiC>(m, "TersoffSiC")
       .def(nb::init<>(),
-           "Tersoff silicon-carbon, Tersoff, Phys. Rev. B 39, 5566 (1989). "
-           "The 1990 erratum sets carbon B to 346.74 eV and d to 4.3484. "
-           "Carbon beta is dimensionless. Atomic numbers 14 and 6. "
-           "Energy is eV, lengths are Angstrom. The gradient is dE/dx.")
+           "Tersoff silicon-carbon kernel, Tersoff, Phys. Rev. B 39, 5566 "
+           "(1989). The 1990 erratum sets carbon B to 346.74 eV and d to "
+           "4.3484. Carbon beta is dimensionless. Atomic numbers 14 and "
+           "6. This class always evaluates the 1989 kernel. The engine "
+           "name tersoff uses the Fortran silicon gather when every atom "
+           "is silicon. Energy is eV, lengths are Angstrom. The gradient "
+           "is dE/dx.")
       .def(
           "__call__",
           [](rgpot::TersoffSiC &self, const F64 &positions,

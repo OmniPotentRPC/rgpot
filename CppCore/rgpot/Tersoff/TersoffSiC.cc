@@ -172,7 +172,7 @@ double cosine(const Bond &a, const Bond &b) {
 
 } // namespace
 
-TersoffSiC::TersoffSiC() : Potential(PotType::TersoffSiC) {
+TersoffSiC::TersoffSiC() : Potential(PotType::TersoffSi) {
   m_species[0] = makeSpecies(kC);
   m_species[1] = makeSpecies(kSi);
   const Homo homo[2] = {kC, kSi};

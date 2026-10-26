@@ -4,15 +4,21 @@
 
 * Tersoff silicon-carbon (1989)
 
-=TersoffSiC= evaluates the silicon, carbon, and silicon-carbide potential
+=TersoffSiC= is the 1989 silicon, carbon, and silicon-carbide kernel
 of J. Tersoff, Phys. Rev. B 39, 5566 (1989),
 doi:10.1103/PhysRevB.39.5566.
 The erratum, Phys. Rev. B 41, 3248 (1990),
 doi:10.1103/PhysRevB.41.3248.2, sets carbon B to 346.74 eV and d to 4.3484.
 Carbon beta is 1.5724e-7 and is dimensionless. It is the Table I value
 in the NIST and LAMMPS transcriptions. The erratum does not print it.
-The Fortran =TersoffPot= class is eOn's silicon set and is not this
-potential.
+
+=PotType::TersoffSi= and the engine name =tersoff= are one potential.
+There is no =PotType::TersoffSiC=.
+An all-silicon configuration, and a null species pointer, use the
+Fortran gather in =TersoffPot=.
+Any atomic number other than 14 uses this kernel.
+Calling =TersoffSiC= directly always evaluates the 1989 form, including
+an all-silicon cell, whose silicon column matches that gather.
 
 Atomic number 14 is silicon and 6 is carbon.
 Any other species is rejected.

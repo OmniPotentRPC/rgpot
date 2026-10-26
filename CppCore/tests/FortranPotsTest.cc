@@ -26,9 +26,13 @@
 #include <cmath>
 #include <vector>
 
+#include "rgpot/Tersoff/TersoffSiC.hpp"
 #include "rgpot/fortran/FortranPots.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
+#include <stdexcept>
+
+using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
 using rgpot::types::AtomMatrix;
 
@@ -113,6 +117,65 @@ TEST_CASE("Tersoff silicon matches the eOn reference", "[fortran][tersoff]") {
   REQUIRE_THAT(energy, WithinRel(-17.440266, 1e-4));
   REQUIRE_THAT(maxForceNorm(forces), WithinRel(1.082719, 1e-3));
   requireNoNetForce(forces);
+}
+
+TEST_CASE("Tersoff dispatches silicon-carbide to the 1989 kernel",
+          "[fortran][tersoff]") {
+  const AtomMatrix pos{{0.0, 0.0, 0.0},
+                       {2.30, 0.15, 0.05},
+                       {0.40, 2.25, 0.20},
+                       {1.15, 0.90, 1.40}};
+  const std::vector<int> sic{14, 14, 14, 6};
+  rgpot::fortranpots::TersoffPot face;
+  rgpot::TersoffSiC kernel;
+  auto [e_face, f_face, v_face] = face(pos, sic, cube20());
+  auto [e_kern, f_kern, v_kern] = kernel(pos, sic, cube20());
+  (void)v_face;
+  (void)v_kern;
+  REQUIRE_THAT(e_face, WithinAbs(-6.437125564429529, 1e-12));
+  REQUIRE(e_face == e_kern);
+  REQUIRE(f_face.size() == f_kern.size());
+  for (size_t i = 0; i < f_face.size(); ++i) {
+    REQUIRE(f_face.data()[i] == f_kern.data()[i]);
+  }
+
+  // The same coordinates with every Z = 14 stay on the silicon gather,
+  // which does not reproduce the carbide energy.
+  const std::vector<int> silicon(4, 14);
+  auto [e_si, f_si, v_si] = face(pos, silicon, cube20());
+  (void)f_si;
+  (void)v_si;
+  REQUIRE(e_si != e_face);
+
+  std::vector<int> oxygen = silicon;
+  oxygen[3] = 8;
+  REQUIRE_THROWS_AS(face(pos, oxygen, cube20()), std::invalid_argument);
+}
+
+TEST_CASE("Tersoff null species stays on the silicon kernel",
+          "[fortran][tersoff]") {
+  rgpot::fortranpots::TersoffPot pot;
+  const AtomMatrix pos = siDiamond();
+  const std::vector<int> types(8, 14);
+  auto [energy, forces, variance] = pot(pos, types, cube20());
+  (void)variance;
+
+  std::vector<double> got(pos.size(), 0.0);
+  const double box[9] = {20, 0, 0, 0, 20, 0, 0, 0, 20};
+  rgpot::ForceInput in{.nAtoms = pos.rows(),
+                       .pos = pos.data(),
+                       .atmnrs = nullptr,
+                       .box = box};
+  rgpot::ForceOut fo{.F = got.data(),
+                     .energy = 0.0,
+                     .variance = 0.0,
+                     .stress = {},
+                     .has_stress = 0};
+  pot.forceImpl(in, &fo);
+  REQUIRE(fo.energy == energy);
+  for (size_t i = 0; i < got.size(); ++i) {
+    REQUIRE(got[i] == forces.data()[i]);
+  }
 }
 
 TEST_CASE("EDIP silicon matches the eOn reference", "[fortran][edip]") {
