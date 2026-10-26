@@ -8,6 +8,12 @@
 //! per pair. The same tree is in `rgpot_lj_pair`. Gradients are
 //! derivatives of the energy.
 
+mod scales;
+pub use scales::{
+    SuttonChenMetal, fcc_power_sum, lennard_jones_scales, morse_scales, sutton_chen_fcc_energy,
+    sutton_chen_gold, sutton_chen_platinum, sutton_chen_scales,
+};
+
 /// Unit Lennard-Jones tree. `r2` must be finite and positive.
 ///
 /// Inverse powers of `r^2`, energy `4 (r^-12 - r^-6)`, and
