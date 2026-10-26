@@ -15,6 +15,7 @@
 #include <catch2/catch_all.hpp>
 
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
+#include "rgpot/SuttonChen/SuttonChenScales.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
 using Catch::Matchers::WithinAbs;
@@ -226,4 +227,47 @@ TEST_CASE("Sutton-Chen parameter fingerprint tracks the config",
   REQUIRE(defaults.get_type() == rgpot::PotType::SuttonChen);
   REQUIRE_THROWS(rgpot::SuttonChenPot(
       rgpot::SuttonChenConfig{.cutoff = 0.0, .periodic = true}));
+}
+
+TEST_CASE("Sutton-Chen bulk scales and the gold and platinum rows",
+          "[SuttonChen]") {
+  const rgpot::SuttonChenConfig reduced;
+  const auto scales = rgpot::sutton_chen_scales(reduced);
+  REQUIRE(scales.nearest_neighbor > 0.5);
+  REQUIRE(scales.nearest_neighbor < 0.6);
+  REQUIRE(scales.well_depth > 200.0);
+  const double here =
+      rgpot::sutton_chen_fcc_energy(reduced, scales.nearest_neighbor);
+  const double left = rgpot::sutton_chen_fcc_energy(
+      reduced, scales.nearest_neighbor * (1.0 - 1.0e-4));
+  const double right = rgpot::sutton_chen_fcc_energy(
+      reduced, scales.nearest_neighbor * (1.0 + 1.0e-4));
+  REQUIRE(here < left);
+  REQUIRE(here < right);
+  REQUIRE_THAT(here, WithinAbs(-scales.well_depth, 1e-9));
+
+  const auto pt = rgpot::sutton_chen_platinum();
+  const auto au = rgpot::sutton_chen_gold();
+  REQUIRE(pt.epsilon == 1.98330e-2);
+  REQUIRE(pt.a == 3.92);
+  REQUIRE(pt.c == 34.408);
+  REQUIRE(pt.n == 10);
+  REQUIRE(pt.m == 8);
+  REQUIRE(au.epsilon == 1.27930e-2);
+  REQUIRE(au.a == 4.08);
+  REQUIRE(au.c == 34.408);
+  REQUIRE(au.n == 10);
+  REQUIRE(au.m == 8);
+  const auto pt_scales = rgpot::sutton_chen_scales(pt);
+  const auto au_scales = rgpot::sutton_chen_scales(au);
+  REQUIRE_THAT(au_scales.nearest_neighbor / pt_scales.nearest_neighbor,
+               WithinAbs(au.a / pt.a, 1e-12));
+
+  rgpot_sc_config raw{1.0, 34.408, 1.0, 10, 8, 40.0, 0};
+  rgpot_sc_scales exported{};
+  REQUIRE(rgpot_sutton_chen_scales(&raw, &exported) == 0);
+  REQUIRE_THAT(exported.nearest_neighbor,
+               WithinAbs(scales.nearest_neighbor, 0.0));
+  REQUIRE_THAT(exported.well_depth, WithinAbs(scales.well_depth, 0.0));
+  REQUIRE(rgpot_sutton_chen_scales(nullptr, &exported) == 1);
 }

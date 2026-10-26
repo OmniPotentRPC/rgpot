@@ -16,10 +16,8 @@
  * the first line of the Doye and Wales point files
  * (doye.chem.ox.ac.uk/jon/structures/SC/10-8/). Those files are the
  * deposited Pt38 Oh and Pt75 D5h geometries. Doye and Wales attribute
- * n, m and c to the 1990 paper. Physical epsilon and a are not
- * compiled in. A later reprint of the 1990 table lists platinum, and
- * gold's pair from that table was not verified, so there is no
- * physical preset.
+ * n, m and c to the 1990 paper. Physical epsilon and a for both metals
+ * are the presets in SuttonChenScales.hpp.
  *
  * optbench's globalopt Lennard-Jones problems truncate at cutoff 40
  * in the coordinate unit (problems/globalopt/lj75.toml). The same

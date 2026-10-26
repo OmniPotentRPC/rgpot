@@ -2,6 +2,7 @@
 sutton_chen = static_library(
     'sutton_chen',
     'SuttonChenPot.cc',
+    'SuttonChenScales.cc',
     dependencies: _deps,
     cpp_args: _args,
     include_directories: ['../../'],
