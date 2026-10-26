@@ -250,6 +250,119 @@ pub fn morse_gradient(epsilon: f64, rho: f64, re: f64, cutoff: f64, positions: &
     energy
 }
 
+/// Binary Lennard-Jones. Species A is the first `n_a` atoms.
+/// `eps` and `sig` are ordered AA, AB, BB.
+#[inline(always)]
+pub fn binary_lj(n_a: usize, eps: [f64; 3], sig: [f64; 3], cutoff: f64, positions: &[f64], gradient: &mut [f64]) -> f64 {
+    if eps == [1.0, 1.0, 1.0] && sig == [1.0, 1.0, 1.0] && !(cutoff > 0.0) {
+        return lj_gradient(1.0, 1.0, 0.0, positions, gradient);
+    }
+    let n = positions.len() / 3;
+    for g in gradient.iter_mut().take(3 * n) {
+        *g = 0.0;
+    }
+    let mut energy = 0.0;
+    for i in 0..n {
+        for j in (i + 1)..n {
+            let mut d = [0.0; 3];
+            let mut r2 = 0.0;
+            for k in 0..3 {
+                d[k] = positions[3 * i + k] - positions[3 * j + k];
+                r2 += d[k] * d[k];
+            }
+            if !inside(r2, cutoff) {
+                continue;
+            }
+            let index = if i < n_a && j < n_a {
+                0
+            } else if i >= n_a && j >= n_a {
+                2
+            } else {
+                1
+            };
+            let a = (sig[index] * sig[index]) / r2;
+            let a3 = a * a * a;
+            let a6 = a3 * a3;
+            energy += 4.0 * eps[index] * (a6 - a3);
+            let coef = 4.0 * eps[index] * (-12.0 * a6 + 6.0 * a3) / r2;
+            for k in 0..3 {
+                let term = coef * d[k];
+                gradient[3 * i + k] += term;
+                gradient[3 * j + k] -= term;
+            }
+        }
+    }
+    energy
+}
+
+/// TIP4P site energy. Sites are molecule-major O, H, H, M.
+#[inline(always)]
+pub fn tip4p_sites(use_epsilon: bool, c6: f64, c12: f64, epsilon: f64, sigma: f64, coulomb: f64, q_h: f64, q_m: f64, sites: &[f64], gradient: &mut [f64]) -> f64 {
+    let n_molecules = sites.len() / 12;
+    for g in gradient.iter_mut().take(12 * n_molecules) {
+        *g = 0.0;
+    }
+    let charges = [0.0, q_h, q_h, q_m];
+    let mut energy = 0.0;
+    for left in 0..n_molecules {
+        for right in (left + 1)..n_molecules {
+            let mut d = [0.0; 3];
+            let mut r2 = 0.0;
+            for k in 0..3 {
+                d[k] = sites[12 * left + k] - sites[12 * right + k];
+                r2 += d[k] * d[k];
+            }
+            if r2 > 0.0 {
+                let coef = if use_epsilon {
+                    let inv_r2 = 1.0 / r2;
+                    let scaled = (sigma * sigma) * inv_r2;
+                    let inv6 = scaled * scaled * scaled;
+                    let inv12 = inv6 * inv6;
+                    energy += 4.0 * epsilon * (inv12 - inv6);
+                    -24.0 * epsilon * inv_r2 * (2.0 * inv12 - inv6)
+                } else {
+                    let inverse = 1.0 / r2;
+                    let r6 = inverse * inverse * inverse;
+                    let r12 = r6 * r6;
+                    energy += c12 * r12 - c6 * r6;
+                    (-12.0 * c12 * r12 + 6.0 * c6 * r6) * inverse
+                };
+                for k in 0..3 {
+                    gradient[12 * left + k] += coef * d[k];
+                    gradient[12 * right + k] -= coef * d[k];
+                }
+            }
+            for a in 1..4 {
+                for b in 1..4 {
+                    let mut cd = [0.0; 3];
+                    let mut cr2 = 0.0;
+                    for k in 0..3 {
+                        cd[k] = sites[12 * left + 3 * a + k] - sites[12 * right + 3 * b + k];
+                        cr2 += cd[k] * cd[k];
+                    }
+                    if !(cr2 > 0.0) {
+                        continue;
+                    }
+                    let distance = cr2.sqrt();
+                    let (pair, slope) = if use_epsilon {
+                        let qq = coulomb * charges[a] * charges[b];
+                        (qq / distance, -qq / (cr2 * distance))
+                    } else {
+                        let pair = coulomb * charges[a] * charges[b] / distance;
+                        (pair, -pair / cr2)
+                    };
+                    energy += pair;
+                    for k in 0..3 {
+                        gradient[12 * left + 3 * a + k] += slope * cd[k];
+                        gradient[12 * right + 3 * b + k] -= slope * cd[k];
+                    }
+                }
+            }
+        }
+    }
+    energy
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
