@@ -558,6 +558,7 @@ if(RGPOT_BUILD_TESTS)
     add_pot_test(MorsePotTest CppCore/tests/MorsePotTest.cc)
     add_pot_test(FortranPotsTest CppCore/tests/FortranPotsTest.cc)
     target_link_libraries(FortranPotsTest PRIVATE Threads::Threads)
+    add_pot_test(TersoffSiCTest CppCore/tests/TersoffSiCTest.cc)
     add_pot_test(CuH2PotTest CppCore/tests/CuH2PotTest.cc)
     if(BUILD_SHARED_LIBS AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
       add_test(NAME FortranSymbolAudit

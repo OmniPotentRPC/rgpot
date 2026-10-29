@@ -13,7 +13,10 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
+#include <limits>
+#include <random>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
@@ -243,4 +246,172 @@ TEST_CASE("Tersoff 1989 held list matches a rebuild", "[TersoffSiC]") {
                         &held);
   REQUIRE(std::memcmp(&e0, &e1, sizeof(double)) == 0);
   REQUIRE(std::memcmp(g0.data(), g1.data(), g0.size() * sizeof(double)) == 0);
+}
+
+namespace {
+
+struct Eval {
+  double energy = 0.0;
+  std::vector<double> force;
+};
+
+Eval forceOf(const TersoffSiC &pot, const std::vector<double> &pos,
+             const double *box) {
+  const std::size_t n = pos.size() / 3;
+  const std::vector<int> types(n, 14);
+  Eval r;
+  r.force.assign(pos.size(), 0.0);
+  rgpot::ForceInput in{
+      .nAtoms = n, .pos = pos.data(), .atmnrs = types.data(), .box = box};
+  rgpot::ForceOut out{.F = r.force.data(),
+                      .energy = 0.0,
+                      .variance = 0.0,
+                      .stress = {},
+                      .has_stress = 0};
+  pot.forceImpl(in, &out);
+  r.energy = out.energy;
+  return r;
+}
+
+bool sameBits(const Eval &a, const Eval &b) {
+  return a.force.size() == b.force.size() &&
+         std::memcmp(&a.energy, &b.energy, sizeof(double)) == 0 &&
+         std::memcmp(a.force.data(), b.force.data(),
+                     a.force.size() * sizeof(double)) == 0;
+}
+
+/// Uniform in [-amp, amp] per coordinate, from the raw mt19937 stream so
+/// every standard library draws the same numbers.
+std::vector<double> jitter(const std::vector<double> &pos, double amp,
+                           std::uint32_t seed) {
+  std::mt19937 gen(seed);
+  std::vector<double> out = pos;
+  for (double &x : out) {
+    const double u = static_cast<double>(gen()) / 4294967295.0;
+    x += amp * (2.0 * u - 1.0);
+  }
+  return out;
+}
+
+/// Cell of each atom on the cutoff-edged grid that orders the pairs. A
+/// held list keeps the order of its build, so it repeats a rebuild bit for
+/// bit while no atom changes cell.
+std::vector<int> orderCells(const std::vector<double> &pos, double len) {
+  const int nc = static_cast<int>(std::floor(len / 3.0));
+  std::vector<int> cells(pos.size() / 3);
+  for (std::size_t i = 0; i < cells.size(); ++i) {
+    int c = 0;
+    for (int k = 0; k < 3; ++k) {
+      double x = std::fmod(pos[3 * i + static_cast<std::size_t>(k)], len);
+      if (x < 0.0) {
+        x += len;
+      }
+      c = c * nc + std::min(nc - 1, static_cast<int>(x / len * nc));
+    }
+    cells[i] = c;
+  }
+  return cells;
+}
+
+void heldSequence(int nrep) {
+  constexpr double kA0 = 5.432;
+  constexpr double kSkin = 0.4;
+  const double len = nrep * kA0;
+  double box[9] = {len, 0, 0, 0, len, 0, 0, 0, len};
+  // Atoms sit on every a0/28 plane and the order grid has edge 4 a0 / 7,
+  // so half a plane spacing keeps each atom 0.097 A from a cell face.
+  std::vector<double> pos0 = diamond(nrep, kA0);
+  for (double &x : pos0) {
+    x += 0.5 * kA0 / 28.0;
+  }
+  const auto cells0 = orderCells(pos0, len);
+
+  TersoffSiC fresh;
+  TersoffSiC held;
+  held.setHeldSkin(kSkin);
+  REQUIRE(fresh.caps().reentrancy == rgpot::Reentrancy::SharedInstance);
+  REQUIRE(held.caps().reentrancy == rgpot::Reentrancy::PerInstance);
+  REQUIRE_FALSE(held.heldList().built);
+
+  // First call builds.
+  REQUIRE(sameBits(forceOf(held, pos0, box), forceOf(fresh, pos0, box)));
+  REQUIRE(held.heldList().built);
+  REQUIRE(held.heldList().ref == pos0);
+
+  // Same coordinates reuse the stored displacements.
+  REQUIRE(sameBits(forceOf(held, pos0, box), forceOf(fresh, pos0, box)));
+  REQUIRE(held.heldList().ref == pos0);
+
+  // Inside half the skin and inside every cell: reuse, same bits.
+  for (std::uint32_t seed : {11u, 12u, 13u}) {
+    const auto pos = jitter(pos0, 0.05, seed);
+    REQUIRE(orderCells(pos, len) == cells0);
+    REQUIRE(sameBits(forceOf(held, pos, box), forceOf(fresh, pos, box)));
+    REQUIRE(held.heldList().ref == pos0);
+  }
+
+  // Inside half the skin (|d| < 0.11 sqrt 3 < 0.2) but across cell faces:
+  // reuse, and the bonds of a centre may be summed in another order.
+  {
+    const auto pos = jitter(pos0, 0.11, 21u);
+    REQUIRE(orderCells(pos, len) != cells0);
+    const Eval a = forceOf(held, pos, box);
+    const Eval b = forceOf(fresh, pos, box);
+    REQUIRE(held.heldList().ref == pos0);
+    REQUIRE_THAT(a.energy, WithinAbs(b.energy, 1e-12 * std::fabs(b.energy)));
+    for (std::size_t i = 0; i < a.force.size(); ++i) {
+      REQUIRE_THAT(a.force[i], WithinAbs(b.force[i], 1e-12));
+    }
+  }
+
+  // A random move past half the skin rebuilds at the new coordinates.
+  {
+    const auto pos = jitter(pos0, 0.3, 31u);
+    REQUIRE(sameBits(forceOf(held, pos, box), forceOf(fresh, pos, box)));
+    REQUIRE(held.heldList().ref == pos);
+  }
+
+  // One atom moved by 0.21 A, the rest still: rebuild.
+  auto one = pos0;
+  one[3 * 5] += 0.21;
+  REQUIRE(sameBits(forceOf(held, one, box), forceOf(fresh, one, box)));
+  REQUIRE(held.heldList().ref == one);
+  // Back by 0.19 A from that build: reuse.
+  auto back = one;
+  back[3 * 5] -= 0.19;
+  REQUIRE(orderCells(back, len) == orderCells(one, len));
+  REQUIRE(sameBits(forceOf(held, back, box), forceOf(fresh, back, box)));
+  REQUIRE(held.heldList().ref == one);
+
+  // A new cell rebuilds even when no atom moved.
+  box[0] *= 1.001;
+  REQUIRE(sameBits(forceOf(held, back, box), forceOf(fresh, back, box)));
+  REQUIRE(held.heldList().ref == back);
+  REQUIRE(held.heldList().box[0] == box[0]);
+
+  // A new atom count rebuilds.
+  std::vector<double> fewer(back.begin(), back.end() - 3);
+  REQUIRE(sameBits(forceOf(held, fewer, box), forceOf(fresh, fewer, box)));
+  REQUIRE(held.heldList().n == fewer.size() / 3);
+  box[0] = len;
+
+  // Skin 0 goes back to a rebuild per call.
+  held.setHeldSkin(0.0);
+  REQUIRE(held.caps().reentrancy == rgpot::Reentrancy::SharedInstance);
+  REQUIRE(sameBits(forceOf(held, pos0, box), forceOf(fresh, pos0, box)));
+  REQUIRE_FALSE(held.heldList().built);
+}
+
+} // namespace
+
+TEST_CASE("Tersoff 1989 forceImpl keeps a skinned list on request",
+          "[TersoffSiC]") {
+  SECTION("512 atoms") { heldSequence(4); }
+  SECTION("4096 atoms") { heldSequence(8); }
+  TersoffSiC pot;
+  REQUIRE_THROWS_AS(pot.setHeldSkin(-0.1), std::invalid_argument);
+  REQUIRE_THROWS_AS(pot.setHeldSkin(std::numeric_limits<double>::quiet_NaN()),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pot.setHeldSkin(std::numeric_limits<double>::infinity()),
+                    std::invalid_argument);
 }

@@ -178,6 +178,41 @@ TEST_CASE("Tersoff null species stays on the silicon kernel",
   }
 }
 
+TEST_CASE("Tersoff held skin reaches the 1989 kernel only",
+          "[fortran][tersoff]") {
+  AtomMatrix pos{{0.0, 0.0, 0.0},
+                 {2.30, 0.15, 0.05},
+                 {0.40, 2.25, 0.20},
+                 {1.15, 0.90, 1.40}};
+  const std::vector<int> sic{14, 14, 14, 6};
+  rgpot::fortranpots::TersoffPot plain;
+  rgpot::fortranpots::TersoffPot held;
+  held.setHeldSkin(0.4);
+  REQUIRE(held.caps().reentrancy == rgpot::Reentrancy::PerInstance);
+  for (int step = 0; step < 3; ++step) {
+    auto [e_plain, f_plain, v_plain] = plain(pos, sic, cube20());
+    auto [e_held, f_held, v_held] = held(pos, sic, cube20());
+    (void)v_plain;
+    (void)v_held;
+    REQUIRE(e_held == e_plain);
+    for (size_t i = 0; i < f_plain.size(); ++i) {
+      REQUIRE(f_held.data()[i] == f_plain.data()[i]);
+    }
+    pos(1, 0) += 0.05;
+  }
+
+  const std::vector<int> silicon(8, 14);
+  auto [e_plain, f_plain, v_plain] = plain(siDiamond(), silicon, cube20());
+  auto [e_held, f_held, v_held] = held(siDiamond(), silicon, cube20());
+  (void)v_plain;
+  (void)v_held;
+  REQUIRE(e_held == e_plain);
+  for (size_t i = 0; i < f_plain.size(); ++i) {
+    REQUIRE(f_held.data()[i] == f_plain.data()[i]);
+  }
+  REQUIRE_THROWS_AS(held.setHeldSkin(-1.0), std::invalid_argument);
+}
+
 TEST_CASE("EDIP silicon matches the eOn reference", "[fortran][edip]") {
   rgpot::fortranpots::EDIPPot pot;
   const std::vector<int> types(8, 14);
