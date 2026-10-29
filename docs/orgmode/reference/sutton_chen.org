@@ -29,6 +29,9 @@ a = 4.08 Angstrom, with the same c, m, and n. Those two rows are
 The bulk nearest-neighbor distance and the cohesive well depth are
 =sutton_chen_scales=. The length is the static fcc minimum. The depth
 is minus the energy per atom there.
+c is fitted to zero pressure at the lattice parameter, so the minimum is
+a / sqrt(2) for every row of the Cagin table. The reduced 10-8 well
+is 295.4645 epsilon, which is 5.860 eV for platinum and 3.780 eV for gold.
 
 The default cutoff is 40 in the coordinate unit, with no energy shift.
 =cutoff = 0= keeps every pair.
