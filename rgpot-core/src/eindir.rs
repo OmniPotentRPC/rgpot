@@ -255,8 +255,14 @@ pub unsafe extern "C" fn rgpot_potential_reset_eval_counts(pot: *const rgpot_pot
 }
 
 struct FusedEvaluation {
-    positions: Vec<f64>,
+    /// `f64::to_bits` of each coordinate. Float equality would let `-0.0`
+    /// be served the result computed at `+0.0`.
+    positions: Vec<u64>,
     gradient: Vec<f64>,
+}
+
+fn position_bits(x: &[f64]) -> Vec<u64> {
+    x.iter().map(|v| v.to_bits()).collect()
 }
 
 // Safety: user pointers are opaque; caller guarantees thread safety.
@@ -332,7 +338,7 @@ unsafe extern "C" fn rgpot_eval_cb(
         Err(String::new())
     };
     let fused = forces.as_ref().ok().map(|forces| FusedEvaluation {
-        positions: x_data.clone(),
+        positions: position_bits(&x_data),
         gradient: forces.iter().map(|force| -*force).collect(),
     });
     unsafe {
@@ -390,7 +396,7 @@ unsafe extern "C" fn rgpot_grad_cb(
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .take();
     if let Some(cached) = cached {
-        if cached.positions == x_data {
+        if cached.positions == position_bits(&x_data) {
             let dst = unsafe { std::slice::from_raw_parts_mut(dst_ptr, n) };
             dst.copy_from_slice(&cached.gradient);
             pot.fused_cache.served.fetch_add(1, Ordering::Relaxed);
@@ -1333,11 +1339,19 @@ mod tests {
     }
 
     fn cell_handle(edge: f64, calls: &mut usize) -> *mut rgpot_potential_t {
+        handle_with(cell_energy_callback, edge, calls)
+    }
+
+    fn handle_with(
+        callback: PotentialCallback,
+        edge: f64,
+        calls: &mut usize,
+    ) -> *mut rgpot_potential_t {
         let atmnrs = [1i32, 1];
         let cell = [edge, 0.0, 0.0, 0.0, edge, 0.0, 0.0, 0.0, edge];
         let pot = unsafe {
             rgpot_potential_new_eindir(
-                cell_energy_callback,
+                callback,
                 (calls as *mut usize).cast(),
                 None,
                 2,
@@ -1483,6 +1497,58 @@ mod tests {
             for pot in [a, b, ref_a, ref_b] {
                 rgpot_potential_free_eindir(pot);
             }
+        }
+    }
+
+    /// Forces that read the sign bit of each coordinate, so `+0.0` and
+    /// `-0.0` have other gradients although they compare equal.
+    unsafe extern "C" fn sign_bit_callback(
+        user_data: *mut c_void,
+        input: *const rgpot_force_input_t,
+        output: *mut rgpot_force_out_t,
+    ) -> rgpot_status_t {
+        let calls = unsafe { &mut *(user_data as *mut usize) };
+        *calls += 1;
+        let inp = unsafe { &*input };
+        let out = unsafe { &mut *output };
+        let n = unsafe { inp.n_atoms() }.unwrap_or(0);
+        let pt = unsafe { &(*inp.positions).dl_tensor };
+        let pos = unsafe { std::slice::from_raw_parts(pt.data as *const f64, n * 3) };
+        let forces: Vec<f64> = pos
+            .iter()
+            .map(|x| if x.is_sign_negative() { -1.0 } else { 1.0 })
+            .collect();
+        out.energy = pos.iter().sum();
+        out.variance = 0.0;
+        out.forces = create_owned_f64_tensor(forces, vec![n as i64, 3]);
+        rgpot_status_t::RGPOT_SUCCESS
+    }
+
+    #[test]
+    fn a_negative_zero_is_computed_not_served() {
+        let (mut calls, mut ref_calls) = (0usize, 0usize);
+        let pot = handle_with(sign_bit_callback, 10.0, &mut calls);
+        let reference = handle_with(sign_bit_callback, 10.0, &mut ref_calls);
+
+        let plus = [0.0, 1.0, 1.0, 1.0, 1.0, 1.0];
+        let mut minus = plus;
+        minus[0] = -0.0;
+        assert!(plus == minus);
+
+        eval_at(pot, &plus);
+        let g_minus = grad_at(pot, &minus);
+        assert_eq!(counts(pot), rgpot_eval_counts_t { computed: 2, served: 0 });
+        assert_eq!(g_minus[0], 1.0);
+        assert_eq!(bits(&g_minus), bits(&grad_at(reference, &minus)));
+
+        eval_at(pot, &minus);
+        let g_same = grad_at(pot, &minus);
+        assert_eq!(counts(pot), rgpot_eval_counts_t { computed: 3, served: 1 });
+        assert_eq!(bits(&g_same), bits(&g_minus));
+
+        unsafe {
+            rgpot_potential_free_eindir(pot);
+            rgpot_potential_free_eindir(reference);
         }
     }
 }

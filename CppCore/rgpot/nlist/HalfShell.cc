@@ -108,10 +108,10 @@ Hit reuse(const NeighborList &cache, const double *pos, const double *box,
       cache.skin_used != cache.skin) {
     return Hit::Miss;
   }
-  for (int k = 0; k < 9; ++k) {
-    if (cache.box[k] != box[k]) {
-      return Hit::Miss;
-    }
+  // Bitwise, like the positions: a box that differs only in the sign of a
+  // zero still gets its own build.
+  if (std::memcmp(cache.box, box, sizeof(cache.box)) != 0) {
+    return Hit::Miss;
   }
   if (std::memcmp(cache.ref.data(), pos, n * 3 * sizeof(double)) == 0) {
     return Hit::Same;

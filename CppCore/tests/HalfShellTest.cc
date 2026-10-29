@@ -6,6 +6,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <utility>
 #include <vector>
 
@@ -213,4 +214,22 @@ TEST_CASE("half-shell all-pairs order below three cells", "[HalfShell]") {
   std::vector<double> pos = {0.2, 0.2, 0.2, 1.4, 0.3, 0.2,
                              0.4, 1.5, 0.3, 2.2, 2.1, 0.4};
   expectSame(pos, 6.0, 3.0);
+}
+
+TEST_CASE("half-shell rebuilds for a box that differs in the sign of a zero",
+          "[HalfShell]") {
+  std::vector<double> pos = {0.2, 0.2, 0.2, 1.4, 0.3, 0.2,
+                             0.4, 1.5, 0.3, 2.2, 2.1, 0.4};
+  const double box[9] = {6.0, 0, 0, 0, 6.0, 0, 0, 0, 6.0};
+  double flipped[9];
+  std::memcpy(flipped, box, sizeof(box));
+  flipped[1] = -0.0;
+  REQUIRE(flipped[1] == box[1]);
+  NeighborList held;
+  held.skin = 0.5;
+  orderedPairs(pos.data(), box, pos.size() / 3, 3.0, &held);
+  REQUIRE(std::memcmp(held.box, box, sizeof(box)) == 0);
+  const auto &got =
+      orderedPairs(pos.data(), flipped, pos.size() / 3, 3.0, &held);
+  REQUIRE(std::memcmp(got.box, flipped, sizeof(flipped)) == 0);
 }
