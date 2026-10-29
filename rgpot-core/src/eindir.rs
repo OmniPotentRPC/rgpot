@@ -1302,4 +1302,187 @@ mod tests {
             assert_eq!(ours, core, "{name}");
         }
     }
+
+    /// Energy and forces that depend on every coordinate and on the cell
+    /// diagonal, so a gradient answered for other positions or another cell
+    /// has other bits.
+    unsafe extern "C" fn cell_energy_callback(
+        user_data: *mut c_void,
+        input: *const rgpot_force_input_t,
+        output: *mut rgpot_force_out_t,
+    ) -> rgpot_status_t {
+        let calls = unsafe { &mut *(user_data as *mut usize) };
+        *calls += 1;
+        let inp = unsafe { &*input };
+        let out = unsafe { &mut *output };
+        let n = unsafe { inp.n_atoms() }.unwrap_or(0);
+        let pt = unsafe { &(*inp.positions).dl_tensor };
+        let pos = unsafe { std::slice::from_raw_parts(pt.data as *const f64, n * 3) };
+        let bt = unsafe { &(*inp.box_matrix).dl_tensor };
+        let cell = unsafe { std::slice::from_raw_parts(bt.data as *const f64, 9) };
+        let mut forces = vec![0.0f64; n * 3];
+        out.energy = 0.0;
+        for (i, (&x, f)) in pos.iter().zip(forces.iter_mut()).enumerate() {
+            let k = std::f64::consts::TAU / cell[(i % 3) * 4];
+            out.energy += 0.5 * x * x + (k * x).sin() / k;
+            *f = -(x + (k * x).cos());
+        }
+        out.variance = 0.0;
+        out.forces = create_owned_f64_tensor(forces, vec![n as i64, 3]);
+        rgpot_status_t::RGPOT_SUCCESS
+    }
+
+    fn cell_handle(edge: f64, calls: &mut usize) -> *mut rgpot_potential_t {
+        let atmnrs = [1i32, 1];
+        let cell = [edge, 0.0, 0.0, 0.0, edge, 0.0, 0.0, 0.0, edge];
+        let pot = unsafe {
+            rgpot_potential_new_eindir(
+                cell_energy_callback,
+                (calls as *mut usize).cast(),
+                None,
+                2,
+                atmnrs.as_ptr(),
+                cell.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+            )
+        };
+        assert!(!pot.is_null());
+        pot
+    }
+
+    fn eval_at(pot: *mut rgpot_potential_t, x: &[f64]) -> f64 {
+        let mut xv = x.to_vec();
+        let x_t = make_1d(xv.as_mut_ptr(), xv.len());
+        let mut value = 0.0f64;
+        let status = unsafe { eindir_objective_eval(pot.cast(), x_t, &mut value) };
+        unsafe { del1d(x_t) };
+        assert_eq!(status, eindir_status_t::EINDIR_SUCCESS);
+        value
+    }
+
+    fn grad_at(pot: *mut rgpot_potential_t, x: &[f64]) -> Vec<f64> {
+        let mut xv = x.to_vec();
+        let mut g = vec![0.0f64; x.len()];
+        let x_t = make_1d(xv.as_mut_ptr(), xv.len());
+        let g_t = make_1d(g.as_mut_ptr(), g.len());
+        let status = unsafe { eindir_objective_grad(pot.cast(), x_t, g_t) };
+        unsafe {
+            del1d(x_t);
+            del1d(g_t);
+        }
+        assert_eq!(status, eindir_status_t::EINDIR_SUCCESS);
+        g
+    }
+
+    fn counts(pot: *mut rgpot_potential_t) -> rgpot_eval_counts_t {
+        let mut c = rgpot_eval_counts_t::default();
+        assert_eq!(
+            unsafe { rgpot_potential_eval_counts(pot, &mut c) },
+            rgpot_status_t::RGPOT_SUCCESS
+        );
+        c
+    }
+
+    fn bits(v: &[f64]) -> Vec<u64> {
+        v.iter().map(|x| x.to_bits()).collect()
+    }
+
+    const X: [f64; 6] = [0.3, -1.7, 2.9, 4.1, -0.05, 7.3];
+
+    #[test]
+    fn served_gradient_has_the_bits_of_a_separate_call() {
+        let (mut fused_calls, mut split_calls) = (0usize, 0usize);
+        let fused = cell_handle(10.0, &mut fused_calls);
+        let split = cell_handle(10.0, &mut split_calls);
+
+        let e_fused = eval_at(fused, &X);
+        let g_fused = grad_at(fused, &X);
+        assert_eq!(counts(fused), rgpot_eval_counts_t { computed: 1, served: 1 });
+
+        let g_split = grad_at(split, &X);
+        let e_split = eval_at(split, &X);
+        assert_eq!(counts(split), rgpot_eval_counts_t { computed: 2, served: 0 });
+
+        assert_eq!(e_fused.to_bits(), e_split.to_bits());
+        assert_eq!(bits(&g_fused), bits(&g_split));
+
+        let objective = unsafe { EindirObjectiveWrapper::new(&(*fused).base) };
+        let (e_pair, g_pair) = objective.value_and_gradient(Array1::from(X.to_vec()).view());
+        assert_eq!(e_pair.to_bits(), e_split.to_bits());
+        assert_eq!(bits(g_pair.as_slice().unwrap()), bits(&g_split));
+        assert_eq!(counts(fused), rgpot_eval_counts_t { computed: 2, served: 2 });
+        assert_eq!((fused_calls, split_calls), (2, 2));
+
+        unsafe {
+            rgpot_potential_free_eindir(fused);
+            rgpot_potential_free_eindir(split);
+        }
+    }
+
+    #[test]
+    fn a_moved_geometry_is_computed_not_served() {
+        let (mut calls, mut ref_calls) = (0usize, 0usize);
+        let pot = cell_handle(10.0, &mut calls);
+        let reference = cell_handle(10.0, &mut ref_calls);
+        let g_x = grad_at(reference, &X);
+
+        let mut far = X;
+        far[0] += 0.25;
+        eval_at(pot, &X);
+        let g_far = grad_at(pot, &far);
+        assert_eq!(counts(pot), rgpot_eval_counts_t { computed: 2, served: 0 });
+        assert_eq!(bits(&g_far), bits(&grad_at(reference, &far)));
+        assert_ne!(bits(&g_far), bits(&g_x));
+
+        let mut ulp = X;
+        ulp[4] = f64::from_bits(ulp[4].to_bits() + 1);
+        eval_at(pot, &X);
+        let g_ulp = grad_at(pot, &ulp);
+        assert_eq!(counts(pot), rgpot_eval_counts_t { computed: 4, served: 0 });
+        assert_eq!(bits(&g_ulp), bits(&grad_at(reference, &ulp)));
+
+        // A mismatched gradient drops the stored result, so the energy at X
+        // no longer answers a later gradient at X.
+        let g_again = grad_at(pot, &X);
+        assert_eq!(counts(pot), rgpot_eval_counts_t { computed: 5, served: 0 });
+        assert_eq!(bits(&g_again), bits(&g_x));
+
+        unsafe {
+            rgpot_potential_free_eindir(pot);
+            rgpot_potential_free_eindir(reference);
+        }
+    }
+
+    /// The cell is copied when the handle is built and has no setter, so
+    /// another cell is another handle, with its own cache.
+    #[test]
+    fn handles_with_other_cells_never_share_a_result() {
+        let mut calls = [0usize; 4];
+        let [ca, cb, cra, crb] = &mut calls;
+        let a = cell_handle(10.0, ca);
+        let b = cell_handle(12.5, cb);
+        let ref_a = cell_handle(10.0, cra);
+        let ref_b = cell_handle(12.5, crb);
+
+        let e_a = eval_at(a, &X);
+        let e_b = eval_at(b, &X);
+        let g_a = grad_at(a, &X);
+        let g_b = grad_at(b, &X);
+        assert_eq!(counts(a), rgpot_eval_counts_t { computed: 1, served: 1 });
+        assert_eq!(counts(b), rgpot_eval_counts_t { computed: 1, served: 1 });
+
+        assert_ne!(bits(&g_a), bits(&g_b));
+        assert_eq!(bits(&g_a), bits(&grad_at(ref_a, &X)));
+        assert_eq!(bits(&g_b), bits(&grad_at(ref_b, &X)));
+        assert_eq!(e_a.to_bits(), eval_at(ref_a, &X).to_bits());
+        assert_eq!(e_b.to_bits(), eval_at(ref_b, &X).to_bits());
+        assert_eq!(counts(ref_a), rgpot_eval_counts_t { computed: 2, served: 0 });
+
+        unsafe {
+            for pot in [a, b, ref_a, ref_b] {
+                rgpot_potential_free_eindir(pot);
+            }
+        }
+    }
 }
