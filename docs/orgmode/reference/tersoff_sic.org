@@ -50,6 +50,33 @@ A null list rebuilds on every call.
 A held list is reused while each atom has moved by at most half the skin.
 Any other cell uses the minimum-image fold.
 
+** Held list on the force path
+
+=forceImpl= rebuilds the pairs on every call by default.
+=setHeldSkin(skin)= with a positive skin in Angstrom makes the instance
+keep one =nlist::NeighborList= across =forceImpl= calls.
+The list is rebuilt when any atom has moved by more than half the skin
+since the last build, or when the cell or the atom count changes.
+=setHeldSkin(0)= drops the list and goes back to a rebuild per call.
+A negative or non-finite skin throws =std::invalid_argument=.
+=heldList()= returns the list, so a caller can see when it was last built.
+
+With a positive skin the instance reports =Reentrancy::PerInstance= and
+=perImageInstances=, since a call writes the list.
+=TersoffPot::setHeldSkin= passes the skin to its own 1989 kernel.
+All-silicon calls through =TersoffPot= stay on the Fortran gather, which
+keeps its own vesin table with a skin of 0.3 Angstrom.
+
+On the call that builds the list, and on a call with the coordinates of
+that build, a held list returns the same bits as a rebuild.
+After a move inside the skin the bits also match while every atom stays
+in its cell of the cutoff-edged grid that orders the pairs.
+An atom that crosses a cell face keeps the pair order of the last build,
+so the bonds of a centre can be summed in another order.
+=TersoffSiCTest= bounds that difference by 1e-12 on 512 and 4096 atoms.
+=tersoff_held_bench= reports the largest difference it sees and the time
+per atom of a rebuild, a held list, and the Fortran gather.
+
 ** Diamond energies
 
 At a0 = 5.432 Angstrom the silicon diamond energy is -4.629595 eV/atom.

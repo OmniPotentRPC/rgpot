@@ -202,6 +202,8 @@ rejects the rest.
 =energyAndGradient= and =energyAndGradientBatch= on =TersoffSiC= always
 evaluate the 1989 form, including an all-silicon cell.
 A =nlist::NeighborList= reuses the pairs across those calls.
+=setHeldSkin= keeps one such list for =forceImpl=; skin 0, the default,
+rebuilds on every call.
 - =ZBLPot= :: Screened nuclear repulsion (Ziegler-Biersack-Littmark) with the
 LAMMPS switching function, on free boundaries.
 Configurable via =ZBLConfig= (=cut_inner=, =cut_global=); the constructor throws
