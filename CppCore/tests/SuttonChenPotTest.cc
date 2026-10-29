@@ -65,6 +65,37 @@ void dimer_oracle(double r, double epsilon, double c, double a, int nexp,
           epsilon * c * mexp * std::sqrt(phi) / r;
 }
 
+/// Energy per atom of an fcc crystal at nearest-neighbor `radius`. The
+/// sites are the conventional cubic cell and its four-site basis within
+/// a sphere of 12 cells. Not fcc_power_sum.
+double direct_fcc_energy(const rgpot::SuttonChenConfig &cfg, double radius) {
+  constexpr int kCells = 12;
+  const double basis[4][3] = {
+      {0.0, 0.0, 0.0}, {0.5, 0.5, 0.0}, {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5}};
+  const double cell = radius * std::sqrt(2.0);
+  double pair = 0.0;
+  double rho = 0.0;
+  for (int i = -kCells; i <= kCells; ++i) {
+    for (int j = -kCells; j <= kCells; ++j) {
+      for (int k = -kCells; k <= kCells; ++k) {
+        for (const auto &b : basis) {
+          const double x = i + b[0];
+          const double y = j + b[1];
+          const double z = k + b[2];
+          const double d2 = x * x + y * y + z * z;
+          if (d2 == 0.0 || d2 > kCells * kCells) {
+            continue;
+          }
+          const double s = cfg.a / (cell * std::sqrt(d2));
+          pair += std::pow(s, cfg.n);
+          rho += std::pow(s, cfg.m);
+        }
+      }
+    }
+  }
+  return cfg.epsilon * (0.5 * pair - cfg.c * std::sqrt(rho));
+}
+
 } // namespace
 
 TEST_CASE("Sutton-Chen dimer matches an independent derivative",
@@ -233,9 +264,6 @@ TEST_CASE("Sutton-Chen bulk scales and the gold and platinum rows",
           "[SuttonChen]") {
   const rgpot::SuttonChenConfig reduced;
   const auto scales = rgpot::sutton_chen_scales(reduced);
-  REQUIRE(scales.nearest_neighbor > 0.5);
-  REQUIRE(scales.nearest_neighbor < 0.6);
-  REQUIRE(scales.well_depth > 200.0);
   const double here =
       rgpot::sutton_chen_fcc_energy(reduced, scales.nearest_neighbor);
   const double left = rgpot::sutton_chen_fcc_energy(
@@ -270,6 +298,30 @@ TEST_CASE("Sutton-Chen bulk scales and the gold and platinum rows",
                WithinAbs(scales.nearest_neighbor, 0.0));
   REQUIRE_THAT(exported.well_depth, WithinAbs(scales.well_depth, 0.0));
   REQUIRE(rgpot_sutton_chen_scales(nullptr, &exported) == 1);
+}
+
+TEST_CASE("Sutton-Chen bulk scales match a direct fcc lattice sum",
+          "[SuttonChen]") {
+  // c was fitted for zero pressure at the lattice parameter a, so the
+  // minimum sits at a / sqrt(2) to the digits c is printed with.
+  const rgpot::SuttonChenConfig rows[] = {
+      rgpot::SuttonChenConfig{}, rgpot::sutton_chen_platinum(),
+      rgpot::sutton_chen_gold()};
+  for (const auto &cfg : rows) {
+    const auto scales = rgpot::sutton_chen_scales(cfg);
+    REQUIRE_THAT(scales.nearest_neighbor / cfg.a,
+                 WithinAbs(1.0 / std::sqrt(2.0), 1.0e-5));
+    const double here = direct_fcc_energy(cfg, scales.nearest_neighbor);
+    REQUIRE_THAT(here / cfg.epsilon,
+                 WithinAbs(-scales.well_depth / cfg.epsilon, 1.0e-4));
+    for (double step : {1.0e-3, -1.0e-3, 2.0e-2, -2.0e-2}) {
+      REQUIRE(direct_fcc_energy(cfg, scales.nearest_neighbor * (1.0 + step)) >
+              here);
+    }
+  }
+  const double reduced =
+      direct_fcc_energy(rgpot::SuttonChenConfig{}, 1.0 / std::sqrt(2.0));
+  REQUIRE_THAT(reduced, WithinAbs(-295.4645, 1.0e-3));
 }
 
 TEST_CASE("gold clusters relax from the rescaled platinum geometries",

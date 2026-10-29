@@ -29,7 +29,7 @@ double fcc_power_sum(int power) {
   for (int i = -kFccLimit; i <= kFccLimit; ++i) {
     for (int j = -kFccLimit; j <= kFccLimit; ++j) {
       for (int k = -kFccLimit; k <= kFccLimit; ++k) {
-        if ((i & 1) != (j & 1) || (j & 1) != (k & 1)) {
+        if (((i + j + k) & 1) != 0) {
           continue;
         }
         if (i == 0 && j == 0 && k == 0) {

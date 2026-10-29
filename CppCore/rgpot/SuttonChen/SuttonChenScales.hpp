@@ -6,7 +6,8 @@
 
 namespace rgpot {
 
-/// FCC sum of (r_nn / r)^power through cubic index 32.
+/// FCC sum of (r_nn / r)^power through cubic index 32. The sites are
+/// (i, j, k) * a / 2 with i + j + k even, and r_nn = a / sqrt(2).
 double fcc_power_sum(int power);
 
 /// Energy per atom of the static fcc crystal at nearest-neighbor `radius`.

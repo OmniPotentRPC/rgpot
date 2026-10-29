@@ -1,0 +1,1 @@
+`sutton_chen_scales` summed a bcc lattice. The nearest-neighbor distance is now the fcc value a / sqrt(2), not 0.5634 a, and the reduced 10-8 well is 295.4645 epsilon, not 292.9794. `fcc_power_sum` in C++ and `rgpot-pair` changes the same way.
