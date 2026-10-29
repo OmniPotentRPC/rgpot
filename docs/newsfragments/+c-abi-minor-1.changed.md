@@ -1,0 +1,1 @@
+The rgpot-core C ABI stamp reports minor 1 (`RGPOT_ABI_VERSION_MINOR`) for the new `rgpot_eindir_abi_compatible`. A caller built against minor 0 still passes `rgpot_abi_compatible`. The ABI major, the layout revision and the `librgpot` SONAME do not change.

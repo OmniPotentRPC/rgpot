@@ -22,7 +22,7 @@ typedef struct rgpot_abi_stamp_t {
 } rgpot_abi_stamp_t;
 
 #define RGPOT_ABI_VERSION_MAJOR 1
-#define RGPOT_ABI_VERSION_MINOR 0
+#define RGPOT_ABI_VERSION_MINOR 1
 #define RGPOT_ABI_LAYOUT_REVISION 1
 
 rgpot_abi_stamp_t rgpot_abi_stamp(void);
@@ -77,8 +77,11 @@ exported symbol leaves them where they are.
 They are also not the ELF soversion of =librgpot=.
 The C API is exported from that library and has no shared library of its own, so
 a C caller relinks when the C++ SONAME moves even if these numbers stay.
-3.5.0 left them at 1, 0 and 1, and they stay there: no exported C struct changed
-layout.
+3.5.0 left them at 1, 0 and 1.
+=rgpot_eindir_abi_compatible= is a new exported function, so the next release
+carries 1, 1 and 1: a caller built against minor 0 still matches, and a caller
+that needs the new function is refused by a 3.5 library.
+No exported C struct changed layout.
 
 ** C++ layout stamp
 
