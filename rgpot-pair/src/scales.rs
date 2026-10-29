@@ -8,8 +8,8 @@
 
 /// FCC lattice sum of `(r_nn / r)^power` through cubic index 32.
 ///
-/// Sites are the fcc translations `(i, j, k) * a / 2` with `i, j, k`
-/// all even or all odd. `r_nn = a / sqrt(2)`.
+/// Sites are the fcc translations `(i, j, k) * a / 2` with `i + j + k`
+/// even. `r_nn = a / sqrt(2)`. All even or all odd would be bcc.
 pub fn fcc_power_sum(power: i32) -> f64 {
     const LIMIT: i32 = 32;
     let mut sum = 0.0;
@@ -17,7 +17,7 @@ pub fn fcc_power_sum(power: i32) -> f64 {
     for i in -LIMIT..=LIMIT {
         for j in -LIMIT..=LIMIT {
             for k in -LIMIT..=LIMIT {
-                if (i & 1) != (j & 1) || (j & 1) != (k & 1) {
+                if (i + j + k) & 1 != 0 {
                     continue;
                 }
                 if i == 0 && j == 0 && k == 0 {
@@ -118,11 +118,64 @@ mod tests {
         assert!(coef.abs() < 1e-10);
     }
 
+    /// Conventional cubic cell and its four-site basis within a sphere
+    /// of 12 cells. Independent of `fcc_power_sum`.
+    fn direct_fcc_energy(m: &SuttonChenMetal, radius: f64) -> f64 {
+        const CELLS: i32 = 12;
+        let basis = [
+            [0.0, 0.0, 0.0],
+            [0.5, 0.5, 0.0],
+            [0.5, 0.0, 0.5],
+            [0.0, 0.5, 0.5],
+        ];
+        let cell = radius * 2.0_f64.sqrt();
+        let (mut pair, mut rho) = (0.0, 0.0);
+        for i in -CELLS..=CELLS {
+            for j in -CELLS..=CELLS {
+                for k in -CELLS..=CELLS {
+                    for b in &basis {
+                        let x = f64::from(i) + b[0];
+                        let y = f64::from(j) + b[1];
+                        let z = f64::from(k) + b[2];
+                        let d2 = x * x + y * y + z * z;
+                        if d2 == 0.0 || d2 > f64::from(CELLS * CELLS) {
+                            continue;
+                        }
+                        let s = m.a / (cell * d2.sqrt());
+                        pair += s.powi(m.n);
+                        rho += s.powi(m.m);
+                    }
+                }
+            }
+        }
+        m.epsilon * (0.5 * pair - m.c * rho.sqrt())
+    }
+
+    #[test]
+    fn bulk_scales_match_a_direct_fcc_sum() {
+        let reduced = SuttonChenMetal {
+            epsilon: 1.0,
+            c: 34.408,
+            a: 1.0,
+            n: 10,
+            m: 8,
+        };
+        for m in [reduced, sutton_chen_platinum(), sutton_chen_gold()] {
+            let (radius, depth) = sutton_chen_scales(m.epsilon, m.c, m.a, m.n, m.m);
+            assert!((radius / m.a - 0.5_f64.sqrt()).abs() < 1e-5, "{radius}");
+            let here = direct_fcc_energy(&m, radius);
+            assert!((here + depth).abs() / m.epsilon < 1e-4, "{here} {depth}");
+            for step in [1e-3, -1e-3, 2e-2, -2e-2] {
+                assert!(direct_fcc_energy(&m, radius * (1.0 + step)) > here);
+            }
+        }
+        let unit = direct_fcc_energy(&reduced, 0.5_f64.sqrt());
+        assert!((unit + 295.4645).abs() < 1e-3, "{unit}");
+    }
+
     #[test]
     fn reduced_10_8_neighbor_is_stationary() {
         let (radius, depth) = sutton_chen_scales(1.0, 34.408, 1.0, 10, 8);
-        assert!(radius > 0.5 && radius < 0.6, "{radius}");
-        assert!(depth > 200.0, "{depth}");
         let here = sutton_chen_fcc_energy(1.0, 34.408, 1.0, 10, 8, radius);
         let left = sutton_chen_fcc_energy(1.0, 34.408, 1.0, 10, 8, radius * (1.0 - 1e-4));
         let right = sutton_chen_fcc_energy(1.0, 34.408, 1.0, 10, 8, radius * (1.0 + 1e-4));
