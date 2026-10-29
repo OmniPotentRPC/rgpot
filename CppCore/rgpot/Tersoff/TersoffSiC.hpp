@@ -51,13 +51,34 @@ public:
 
   TersoffSiC();
 
-  [[nodiscard]] PotCaps caps() const noexcept override { return {}; }
+  [[nodiscard]] PotCaps caps() const noexcept override {
+    if (m_held.skin > 0.0) {
+      return {.reentrancy = Reentrancy::PerInstance,
+              .perImageInstances = true};
+    }
+    return {};
+  }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
     return m_paramsKey;
   }
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
+
+  /**
+   * @brief Keep one Verlet list across forceImpl calls.
+   * @param skin Extra search distance, Angstrom. Zero, the default,
+   *        rebuilds the pairs on every call. A positive skin reuses them
+   *        until an atom has moved by more than skin/2 since the last
+   *        build, or the cell or the atom count changes. The instance then
+   *        reports Reentrancy::PerInstance.
+   */
+  void setHeldSkin(double skin);
+
+  /// The list forceImpl keeps. Not built until a call with a positive skin.
+  [[nodiscard]] const nlist::NeighborList &heldList() const noexcept {
+    return m_held;
+  }
 
   /**
    * @brief Energy and dE/dx for one configuration.
@@ -100,6 +121,7 @@ private:
   Species m_species[2]{};
   Pair m_pair[2][2]{};
   uint64_t m_paramsKey{0};
+  mutable nlist::NeighborList m_held;
 };
 
 } // namespace rgpot

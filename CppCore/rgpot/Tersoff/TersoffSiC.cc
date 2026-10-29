@@ -217,7 +217,15 @@ void TersoffSiC::forceImpl(const ForceInput &in, ForceOut *out) const {
     throw std::invalid_argument("TersoffSiC: null force buffer");
   }
   evaluate(in.pos, in.atmnrs, in.box, in.nAtoms, &out->energy, out->F, 1.0,
-           nullptr);
+           m_held.skin > 0.0 ? &m_held : nullptr);
+}
+
+void TersoffSiC::setHeldSkin(double skin) {
+  if (!(skin >= 0.0) || !std::isfinite(skin)) {
+    throw std::invalid_argument("TersoffSiC: skin must be finite and >= 0");
+  }
+  m_held = nlist::NeighborList{};
+  m_held.skin = skin;
 }
 
 void TersoffSiC::energyAndGradient(const double *positions,

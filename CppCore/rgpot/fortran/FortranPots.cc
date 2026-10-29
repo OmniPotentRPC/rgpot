@@ -104,11 +104,6 @@ bool siliconOnly(const ForceInput &in) {
   return true;
 }
 
-const TersoffSiC &sicKernel() {
-  static const TersoffSiC kernel;
-  return kernel;
-}
-
 } // namespace
 
 FortranWorkspace::FortranWorkspace() : m_handle(rgpot_fortran_workspace_new()) {
@@ -147,10 +142,11 @@ RGPOT_FORTRAN_POT_IMPL(EAMAlPot, rgpot_eam_al_force_ws, "EAM-Al")
 #undef RGPOT_FORTRAN_POT_IMPL
 
 void TersoffPot::forceImpl(const ForceInput &in, ForceOut *out) const {
-  // The C++ kernel rebuilds its neighbour list on this call. On periodic
-  // cells of 512 and 4096 atoms that is slower than the warm Fortran
-  // gather, so all-silicon stays there. Any other Z needs the 1989
-  // silicon-carbon parameters, which the gather does not have.
+  // The C++ kernel rebuilds its neighbour list on this call unless
+  // setHeldSkin was given a skin. On periodic cells of 512 and 4096 atoms
+  // a rebuild is slower than the warm Fortran gather, so all-silicon stays
+  // there. Any other Z needs the 1989 silicon-carbon parameters, which the
+  // gather does not have.
   if (siliconOnly(in)) {
     ensure_fortran_params();
     const int status = rgpot_tersoff_force_ws(
@@ -162,7 +158,7 @@ void TersoffPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     out->variance = 0.0;
     return;
   }
-  sicKernel().forceImpl(in, out);
+  m_sic.forceImpl(in, out);
 }
 
 #define RGPOT_FORTRAN_SPECIES_POT_IMPL(ClassName, Entry, Label)                \
