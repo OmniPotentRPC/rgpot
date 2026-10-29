@@ -352,6 +352,20 @@ const char *rgpot_last_error(void);
 eindir_abi_stamp_t rgpot_eindir_abi_stamp(void);
 
 /**
+ * Return nonzero when the eindir-core compiled into this library can
+ * consume an objective described by `stamp`.
+ *
+ * This is `eindir_core_abi_compatible` reached through rgpot, so a caller
+ * that links only rgpot checks the stamp against the same eindir-core that
+ * built the `eindir_objective_t` base. A null `stamp` is not compatible.
+ *
+ * # Safety
+ *
+ * `stamp` must be null or point to a readable `eindir_abi_stamp_t`.
+ */
+int32_t rgpot_eindir_abi_compatible(const eindir_abi_stamp_t *stamp);
+
+/**
  * Install the `Capabilities` message of the peer behind `pot`, checked
  * against what this build speaks.
  *

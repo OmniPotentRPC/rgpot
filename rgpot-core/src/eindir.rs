@@ -61,6 +61,21 @@ pub extern "C" fn rgpot_eindir_abi_stamp() -> eindir_abi_stamp_t {
     eindir_core::ffi::eindir_core_abi_stamp()
 }
 
+/// Return nonzero when the eindir-core compiled into this library can
+/// consume an objective described by `stamp`.
+///
+/// This is `eindir_core_abi_compatible` reached through rgpot, so a caller
+/// that links only rgpot checks the stamp against the same eindir-core that
+/// built the `eindir_objective_t` base. A null `stamp` is not compatible.
+///
+/// # Safety
+///
+/// `stamp` must be null or point to a readable `eindir_abi_stamp_t`.
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_eindir_abi_compatible(stamp: *const eindir_abi_stamp_t) -> i32 {
+    unsafe { eindir_core::ffi::eindir_core_abi_compatible(stamp) }
+}
+
 // ---------------------------------------------------------------------------
 // rgpot_potential_t: rgpot_potential_t* IS-A eindir_objective_t*
 // ---------------------------------------------------------------------------
@@ -1260,5 +1275,31 @@ mod tests {
         let stamp = rgpot_eindir_abi_stamp();
         assert_eq!(stamp.objective_size, std::mem::size_of::<eindir_objective_t>());
         assert_eq!(unsafe { eindir_core::ffi::eindir_core_abi_compatible(&stamp) }, 1);
+    }
+
+    #[test]
+    fn eindir_abi_compatible_matches_eindir_core() {
+        let stamp = rgpot_eindir_abi_stamp();
+        assert_eq!(stamp.abi_major, 1);
+        assert_eq!(stamp.objective_layout, 1);
+        assert_eq!(unsafe { rgpot_eindir_abi_compatible(&stamp) }, 1);
+        assert_eq!(unsafe { rgpot_eindir_abi_compatible(std::ptr::null()) }, 0);
+
+        let edits: [(&str, fn(&mut eindir_abi_stamp_t)); 6] = [
+            ("major", |s| s.abi_major += 1),
+            ("minor", |s| s.abi_minor += 1),
+            ("layout", |s| s.objective_layout += 1),
+            ("size", |s| s.objective_size += 8),
+            ("dlpack major", |s| s.dlpack_major += 1),
+            ("features", |s| s.features |= 1 << 40),
+        ];
+        for (name, edit) in edits {
+            let mut other = stamp;
+            edit(&mut other);
+            let ours = unsafe { rgpot_eindir_abi_compatible(&other) };
+            let core = unsafe { eindir_core::ffi::eindir_core_abi_compatible(&other) };
+            assert_eq!(ours, 0, "{name}");
+            assert_eq!(ours, core, "{name}");
+        }
     }
 }

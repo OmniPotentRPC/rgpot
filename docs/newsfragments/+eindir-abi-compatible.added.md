@@ -1,0 +1,1 @@
+`rgpot_eindir_abi_compatible(&stamp)` checks an `eindir_abi_stamp_t` against the eindir-core compiled into `librgpot`, so a caller that takes an rgpot potential as an eindir objective needs no second link to eindir-core. It returns what `eindir_core_abi_compatible` returns for the same stamp. Existing calls do not change.

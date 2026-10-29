@@ -241,4 +241,19 @@ The C++ and Python packages do not re-export it; the C++ classes have the layout
 stamp above.
 The engine plugins carry their own number, =rgpot_engine_abi_version()=.
 The eindir objective keeps =rgpot_eindir_abi_stamp()=, which reports the stamp
-of =eindir-core=.
+of =eindir-core=, and =rgpot_eindir_abi_compatible()=, which checks a stamp
+against the =eindir-core= compiled into the loaded library.
+
+#+begin_src c
+eindir_abi_stamp_t rgpot_eindir_abi_stamp(void);
+int32_t rgpot_eindir_abi_compatible(const eindir_abi_stamp_t *stamp);
+#+end_src
+
+=rgpot_eindir_abi_compatible= returns what =eindir_core_abi_compatible= returns
+for the same stamp: nonzero for an equal =abi_major=, =objective_layout=,
+=objective_size=, =objective_align= and =dlpack_major=, an =abi_minor= and a
+=dlpack_minor= no newer than the library's, and no feature bit the library
+lacks.
+A null pointer returns 0.
+A caller that links only =librgpot= uses it instead of resolving
+=eindir_core_abi_compatible= itself.
