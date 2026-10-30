@@ -110,7 +110,7 @@ markers = [
 ]
 
 [[tool.mypy.overrides]]
-module = ["ase.*", "capnp", "anneal", "readcon", "torch", "torch.*"]
+module = ["ase.*", "capnp", "anneal", "torch", "torch.*"]
 ignore_missing_imports = true
 
 # nanobind.stubgen writes tuple and dict without parameters. The file is
