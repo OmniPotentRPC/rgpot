@@ -67,6 +67,7 @@ meson compile -C bbdir && meson test -C bbdir
 
    tutorials/quickstart
    tutorials/cpmd
+   tutorials/cp2k
    tutorials/molecular-global-optimization
 
 .. toctree::
