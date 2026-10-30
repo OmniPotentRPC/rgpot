@@ -22,11 +22,15 @@ namespace {
 
 // MSVC does not provide std::aligned_alloc. The CRT pair is
 // _aligned_malloc / _aligned_free; free() cannot release that pointer.
+// Elsewhere posix_memalign, not aligned_alloc: a malloc linked ahead of libc,
+// such as the jemalloc that conda's RocksDB pulls in, can replace free and
+// posix_memalign but not aligned_alloc. free then gets a foreign pointer.
 void *alloc_aligned(std::size_t alignment, std::size_t bytes) {
 #if defined(_WIN32)
   return _aligned_malloc(bytes, alignment);
 #else
-  return std::aligned_alloc(alignment, bytes);
+  void *mem = nullptr;
+  return posix_memalign(&mem, alignment, bytes) == 0 ? mem : nullptr;
 #endif
 }
 
