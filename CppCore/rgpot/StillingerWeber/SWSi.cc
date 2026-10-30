@@ -214,8 +214,9 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
       force[3 * bj.j + 1] -= sy;
       force[3 * bj.j + 2] -= sz;
       if (local_strain != nullptr) {
-        // dE/d(bj) is (dedr / r) bj. The pair term is quadratic in bj,
-        // so the stored sign does not change the stress.
+        // dE/d(bj) is (dedr / r) bj. bj is the negative of the d in
+        // stress.hpp when the walk stores r_i - r_j. The term is
+        // quadratic in that vector, so the sign does not change it.
         accumulatePairStrain(local_strain, -t.dedr * inv_r, bj.x, bj.y, bj.z);
       }
     }
