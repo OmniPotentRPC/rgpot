@@ -31,7 +31,15 @@ _python = Path(__file__).resolve().parents[3] / "python"
 if _python.is_dir() and str(_python) not in sys.path:
     sys.path.insert(0, str(_python))
 
-from rgpot.ase.anneal import AnnealOptimizer, AnnealRunner  # noqa: E402
+
+def __getattr__(name: str):
+    # The rgpot package imports its compiled _core, which the CON helpers
+    # do not need.
+    if name in ("AnnealOptimizer", "AnnealRunner"):
+        from rgpot.ase import anneal
+
+        return getattr(anneal, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def atoms_from_con(path, index: int = -1, *, calc=None, cell=None, pbc=None) -> Atoms:
