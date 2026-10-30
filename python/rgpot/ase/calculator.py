@@ -67,6 +67,7 @@ _D4_KEYS = {"functional", "charge", "atm"}
 # it uses the 100 Angstrom floor.
 _KERNEL_CUTOFF_ANGSTROM = {
     "SWPot": 1.8 * 2.0951,
+    "StillingerWeberSi": 1.8 * 2.0951,
     "EDIPPot": 3.1213820,
     "LenoskyPot": 4.5,
     "TersoffPot": 3.0,

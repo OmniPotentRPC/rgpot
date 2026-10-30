@@ -657,6 +657,26 @@ NB_MODULE(_core, m) {
           nb::arg("box").noconvert(),
           "Return (energy, forces, variance) for one configuration. "
           "Forces are -dE/dx.")
+      .def("caps",
+           [](const rgpot::StillingerWeberSi &self) {
+             return rgpot::pybind::caps_dict(self.caps());
+           })
+      .def(
+          "evaluate",
+          [](rgpot::StillingerWeberSi &self, const F64 &positions,
+             nb::handle atom_types, const F64 &box) {
+            auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
+            rgpot::pybind::FullResult result;
+            {
+              nb::gil_scoped_release release;
+              result = rgpot::pybind::run_force(self, geom);
+            }
+            return rgpot::pybind::result_dict(result);
+          },
+          nb::arg("positions").noconvert(), nb::arg("atom_types"),
+          nb::arg("box").noconvert(),
+          "Energy, forces, variance, and the Cauchy stress, shape (3, 3), "
+          "in eV/Angstrom^3. The kernel runs detached.")
       .def("energy_gradient", &stillinger_weber_energy_gradient,
            nb::arg("positions").noconvert(), nb::arg("atom_types"),
            nb::arg("box").noconvert(),
