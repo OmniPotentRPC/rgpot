@@ -3,6 +3,7 @@
 #pragma once
 
 #include "MpiHost.hpp"
+#include "rgpot/CP2KPot/CP2KPot.hpp"
 #include "rgpot/CPMDPot/CPMDPot.hpp"
 #include "rgpot/NWChemPot/NWChemPot.hpp"
 
@@ -31,6 +32,8 @@ public:
       : host_(host), potential_(potential), nwchem_(&potential) {}
   MpiPefSession(const MpiHost &host, CPMDPot &potential)
       : host_(host), potential_(potential), cpmd_(&potential) {}
+  MpiPefSession(const MpiHost &host, CP2KPot &potential)
+      : host_(host), potential_(potential), cp2k_(&potential) {}
 
   ~MpiPefSession() {
     if (host_.rank() == 0 && !stopped_) {
@@ -113,7 +116,7 @@ private:
           coordinates.size() != numbers.size() * 3 || cell.size() != 9)
         throw std::runtime_error("invalid collective force geometry");
       if ((nwchem_ && !nwchem_->available()) ||
-          (cpmd_ && !cpmd_->available()))
+          (cpmd_ && !cpmd_->available()) || (cp2k_ && !cp2k_->available()))
         throw std::runtime_error("collective engine is unavailable");
       positions.emplace(numbers.size(), 3);
       std::memcpy(positions->data(), coordinates.data(),
@@ -135,7 +138,8 @@ private:
       auto parameters = reader.getRoot<::PotentialConfig>();
       const bool accepted = nwchem_
           ? nwchem_->setPotentialConfig(parameters, &response)
-          : cpmd_->setPotentialConfig(parameters, &response);
+          : cpmd_ ? cpmd_->setPotentialConfig(parameters, &response)
+                  : cp2k_->setPotentialConfig(parameters, &response);
       if (!accepted)
         throw std::runtime_error(response.empty()
                                      ? "engine rejected collective configuration"
@@ -148,6 +152,7 @@ private:
   PotentialBase &potential_;
   NWChemPot *nwchem_ = nullptr;
   CPMDPot *cpmd_ = nullptr;
+  CP2KPot *cp2k_ = nullptr;
   bool stopped_ = false;
 };
 

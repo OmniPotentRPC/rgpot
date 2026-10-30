@@ -55,6 +55,7 @@ class MpiPefSession;
 #include "rgpot/SkalaPot/SkalaPot.hpp"
 #endif // RGPOT_HAS_UMA
 
+#include "rgpot/CP2KPot/CP2KPot.hpp"
 #include "rgpot/CPMDPot/CPMDPot.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
@@ -82,6 +83,8 @@ private:
   rgpot::NWChemPot *m_nwchem = nullptr;
   /// Optional typed handle when backend is CPMD (for configure()).
   rgpot::CPMDPot *m_cpmd = nullptr;
+  /// Optional typed handle when backend is CP2K (for configure()).
+  rgpot::CP2KPot *m_cp2k = nullptr;
   rgpot::tools::MpiPefSession *m_pef = nullptr;
 
 public:
@@ -105,6 +108,11 @@ public:
                  rgpot::tools::MpiPefSession *pef = nullptr)
       : m_potential(std::move(pot)),
         m_cpmd(static_cast<rgpot::CPMDPot *>(m_potential.get())), m_pef(pef) {}
+
+  GenericPotImpl(std::unique_ptr<rgpot::CP2KPot> pot,
+                 rgpot::tools::MpiPefSession *pef = nullptr)
+      : m_potential(std::move(pot)),
+        m_cp2k(static_cast<rgpot::CP2KPot *>(m_potential.get())), m_pef(pef) {}
 
   /**
    * @brief Reports what this server speaks, so a client can refuse an
@@ -206,9 +214,10 @@ public:
   kj::Promise<void> configure(ConfigureContext context) override {
     auto cfg = context.getParams().getConfig();
     auto results = context.getResults();
-    if (!m_nwchem && !m_cpmd) {
+    if (!m_nwchem && !m_cpmd && !m_cp2k) {
       results.setOk(false);
-      results.setMessage("configure() only supported for NWChem or CPMD backend");
+      results.setMessage(
+          "configure() only supported for NWChem, CPMD or CP2K backend");
       return kj::READY_NOW;
     }
     std::string msg;
@@ -225,7 +234,8 @@ public:
 #endif
     {
       ok = m_nwchem ? m_nwchem->setPotentialConfig(cfg, &msg)
-                   : m_cpmd->setPotentialConfig(cfg, &msg);
+           : m_cpmd   ? m_cpmd->setPotentialConfig(cfg, &msg)
+                      : m_cp2k->setPotentialConfig(cfg, &msg);
     }
     results.setOk(ok);
     results.setMessage(msg);
@@ -276,7 +286,7 @@ int runServer(int argc, char *argv[]
               << ", Skala, Skala:<basis>"
 #endif
               << ", NWChem[:basis[:theory[:xc]]]"
-              << ", CPMD"
+              << ", CPMD, CP2K"
               << std::endl;
     return 1;
   }
@@ -293,9 +303,10 @@ int runServer(int argc, char *argv[]
 #ifdef RGPOT_POTSERV_MPI
   host.collective([&] {
     const bool collective_backend = pot_type == "NWChem" ||
-        pot_type.rfind("NWChem:", 0) == 0 || pot_type == "CPMD";
+        pot_type.rfind("NWChem:", 0) == 0 || pot_type == "CPMD" ||
+        pot_type == "CP2K";
     if (host.size() > 1 && !collective_backend)
-      throw std::runtime_error("multi-rank RPC requires NWChem or CPMD");
+      throw std::runtime_error("multi-rank RPC requires NWChem, CPMD or CP2K");
   });
 #endif
   std::unique_ptr<rgpot::PotentialBase> potential_to_use;
@@ -482,6 +493,40 @@ int runServer(int argc, char *argv[]
     channel = &session;
 #endif
     capnp::EzRpcServer server(kj::heap<GenericPotImpl>(std::move(nw), channel),
+                              "localhost", port);
+    auto &waitScope = server.getWaitScope();
+    std::cout << "Server running on port " << port << " with " << pot_type
+              << " potential." << std::endl;
+    kj::NEVER_DONE.wait(waitScope);
+    return 0;
+  } else if (pot_type == "CP2K") {
+    std::cout << "Loading CP2K potential (dlopen libcp2kc_rgpot)..."
+              << std::endl;
+    std::unique_ptr<rgpot::CP2KPot> cp;
+#ifdef RGPOT_POTSERV_MPI
+    host.collective([&] {
+      if (!rgpot::CP2KPot::probe_available())
+        throw std::runtime_error("CP2K shim is not available on every rank");
+    });
+    host.collective([&] { cp = std::make_unique<rgpot::CP2KPot>(); });
+#else
+    cp = std::make_unique<rgpot::CP2KPot>();
+#endif
+    if (!cp->available()) {
+      std::cerr << "Warning: libcp2kc_rgpot not loaded; calculate() will fail "
+                   "until the shim is available (configure() still accepted)."
+                << std::endl;
+    }
+    rgpot::tools::MpiPefSession *channel = nullptr;
+#ifdef RGPOT_POTSERV_MPI
+    rgpot::tools::MpiPefSession session(host, *cp);
+    if (host.rank() != 0) {
+      session.work();
+      return 0;
+    }
+    channel = &session;
+#endif
+    capnp::EzRpcServer server(kj::heap<GenericPotImpl>(std::move(cp), channel),
                               "localhost", port);
     auto &waitScope = server.getWaitScope();
     std::cout << "Server running on port " << port << " with " << pot_type

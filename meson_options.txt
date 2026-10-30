@@ -9,6 +9,12 @@ option('with_cache', type: 'boolean', value: false)
 option('pure_lib', type: 'boolean', value: true)
 option('with_rust_core', type: 'boolean', value: false)
 option(
+    'with_cp2k',
+    type: 'feature',
+    value: 'disabled',
+    description: 'Build libcp2kc_rgpot.so against libcp2k (pkg-config libcp2k) and register the real-CP2K smoke test',
+)
+option(
     'with_mpi',
     type: 'feature',
     value: 'disabled',

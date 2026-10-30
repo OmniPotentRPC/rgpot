@@ -39,6 +39,8 @@ else()
 endif()
 
 option(RGPOT_BUILD_TESTS "Build tests" ${RGPOT_IS_TOP_LEVEL})
+option(RGPOT_WITH_CP2K
+       "Build libcp2kc_rgpot against libcp2k (pkg-config libcp2k)" OFF)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # librgpot's ELF soversion is kCxxSoversion in CxxLayout.hpp, the same
@@ -180,12 +182,16 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/CuH2/cuh2Utils.cc
       CppCore/rgpot/fortran/FortranPots.cc)
 
-  # NWChemPot / CPMDPot are pure dlopen consumers of the split nwchemc / cpmdc
-  # engines (parity with meson). Cap'n Proto params live in the generated schema,
-  # so the frontends are only compiled when RGPOT_WITH_RPC enables ptlrpc.
+  # NWChemPot / CPMDPot / CP2KPot are pure dlopen consumers of the split
+  # nwchemc / cpmdc engines and the libcp2k shim (parity with meson). Cap'n
+  # Proto params live in the generated schema, so the frontends are only
+  # compiled when RGPOT_WITH_RPC enables ptlrpc.
   if(RGPOT_WITH_RPC)
     list(APPEND RGPOT_SOURCES CppCore/rgpot/NWChemPot/NWChemPot.cc
-         CppCore/rgpot/CPMDPot/CPMDPot.cc)
+         CppCore/rgpot/CPMDPot/CPMDPot.cc CppCore/rgpot/CP2KPot/CP2KPot.cc
+         CppCore/rgpot/CP2KPot/CP2KDeck.cc)
+  elseif(RGPOT_WITH_CP2K)
+    message(FATAL_ERROR "RGPOT_WITH_CP2K requires RGPOT_WITH_RPC")
   endif()
 
   if(RGPOT_BUILD_TESTS)
@@ -288,7 +294,8 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
   if(RGPOT_WITH_RPC)
     target_link_libraries(rgpot PUBLIC ptlrpc)
     target_compile_definitions(rgpot PUBLIC RGPOT_HAS_NWCHEM_FRONTEND
-                                            RGPOT_HAS_CPMD_FRONTEND)
+                                            RGPOT_HAS_CPMD_FRONTEND
+                                            RGPOT_HAS_CP2K_FRONTEND)
     # DynLib / dlopen for libnwchemc.so / libcpmdc.so at runtime
     if(UNIX AND NOT APPLE)
       target_link_libraries(rgpot PUBLIC ${CMAKE_DL_LIBS})
@@ -298,6 +305,21 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
   endif()
 
   add_library(rgpot::rgpot ALIAS rgpot)
+
+  # The libcp2k shim is the only target linking libcp2k and MPI; CP2KPot
+  # dlopens it.
+  if(RGPOT_WITH_CP2K)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(LIBCP2K REQUIRED IMPORTED_TARGET libcp2k)
+    find_package(MPI REQUIRED COMPONENTS C)
+    add_library(cp2kc_rgpot SHARED CppCore/rgpot/CP2KPot/cp2kc_shim.c)
+    target_include_directories(cp2kc_rgpot
+                               PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/CppCore/rgpot/CP2KPot)
+    target_link_libraries(cp2kc_rgpot PRIVATE PkgConfig::LIBCP2K MPI::MPI_C)
+    set_target_properties(cp2kc_rgpot PROPERTIES BUILD_RPATH "${LIBCP2K_LIBDIR}"
+                                                 INSTALL_RPATH "${LIBCP2K_LIBDIR}")
+    install(TARGETS cp2kc_rgpot LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+  endif()
 
   target_include_directories(
     rgpot PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/CppCore>
@@ -541,7 +563,7 @@ if(RGPOT_BUILD_TESTS)
                          "${MPIEXEC_EXECUTABLE}" $<TARGET_FILE:nwchem_mpi_force_host>
                          $<TARGET_FILE:collective_engine>)
         set_tests_properties(NWChemMpiForceHost PROPERTIES TIMEOUT 60 PROCESSORS 2)
-        foreach(_backend NWChem CPMD)
+        foreach(_backend NWChem CPMD CP2K)
           foreach(_layout serial mpi)
             set(_rpc_server potserv)
             if(_layout STREQUAL "mpi")

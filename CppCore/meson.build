@@ -128,11 +128,15 @@ rgpot_minimage = static_library(
 # (xtb/tblite/metatomic CI) must not require pkg-config 'capnp-rpc'.
 _rpc_stack = rpc_enabled or get_option('with_rpc_client_only')
 _metatomic_build_rpath = ''
+if get_option('with_cp2k').enabled() and not _rpc_stack
+    error('with_cp2k requires with_rpc or with_rpc_client_only')
+endif
 if _rpc_stack
     subdir('rgpot/rpc')
     # Pure dlopen consumers of split nwchemc / cpmdc; need generated schema only.
     subdir('rgpot/NWChemPot')  # 'nwchempot' frontend + no-op ABI stub
     subdir('rgpot/CPMDPot')    # 'cpmdpot' frontend + no-op ABI stub
+    subdir('rgpot/CP2KPot')    # 'cp2kpot' frontend; libcp2k shim with with_cp2k
 endif
 
 # ------------------------ Main library
@@ -254,6 +258,7 @@ if not get_option('with_rpc_client_only')
     if _rpc_stack
         rgpotentials += [nwchempot]
         rgpotentials += [cpmdpot]
+        rgpotentials += [cp2kpot]
         if has_skala
             subdir('rgpot/SkalaPot')
             rgpotentials += [skala]
