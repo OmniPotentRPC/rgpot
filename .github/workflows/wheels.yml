@@ -81,7 +81,7 @@ jobs:
       test-path: tests/python
       extras: ase
       test-requires: pytest-timeout hypothesis
-      os: '["ubuntu-latest","ubuntu-24.04-arm","macos-14"]'
+      os: '["ubuntu-latest","ubuntu-24.04-arm","macos-15"]'
       build: "cp310-* cp311-* cp312-* cp314t-*"
 
   kernel-count:
@@ -238,14 +238,14 @@ jobs:
   isa-libs-macos:
     name: macOS libraries for the ISA audit
     needs: py-wheels
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: py-wheels-macos-14-.
+          name: py-wheels-macos-15-.
           path: wheelhouse
       - name: The kernels must be in the artifact, not just in the flags
         shell: bash

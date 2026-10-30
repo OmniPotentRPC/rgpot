@@ -193,9 +193,10 @@ repair-wheel-command = """
 """
 
 [tool.cibuildwheel.macos]
-# The brew gcc gfortran runtime (libgfortran/libquadmath) is built for
-# macOS 14; delocate refuses to stamp an 11.0 wheel around it.
-environment = { MACOSX_DEPLOYMENT_TARGET = "14.0", PKG_CONFIG_PATH = "/opt/homebrew/opt/openblas/lib/pkgconfig" }
+# The brew gcc gfortran runtime (libgfortran/libquadmath) is built for the
+# runner's macOS, 15 on macos-15; delocate refuses to stamp an older wheel
+# around it.
+environment = { MACOSX_DEPLOYMENT_TARGET = "15.0", PKG_CONFIG_PATH = "/opt/homebrew/opt/openblas/lib/pkgconfig" }
 before-all = """
 brew list gcc >/dev/null 2>&1 || brew install gcc
 brew list openblas >/dev/null 2>&1 || brew install openblas
