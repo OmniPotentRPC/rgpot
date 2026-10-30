@@ -135,7 +135,7 @@ if _rpc_stack
     subdir('rgpot/rpc')
     # Pure dlopen consumers of split nwchemc / cpmdc; need generated schema only.
     subdir('rgpot/NWChemPot')  # 'nwchempot' frontend + no-op ABI stub
-    subdir('rgpot/CPMDPot')    # 'cpmdpot' frontend + no-op ABI stub
+    subdir('rgpot/CPMDPot')  # 'cpmdpot' frontend + no-op ABI stub
     subdir('rgpot/CP2KPot')    # 'cp2kpot' frontend; libcp2k shim with with_cp2k
 endif
 
@@ -1001,7 +1001,105 @@ if get_option('with_tests')
             workdir: meson.source_root(),
             suite: 'cpmd',
         )
+        cp2kc_fake_engine = shared_library(
+            'cp2kc_fake_engine',
+            sources: ['tests/cp2kc_fake_engine.cc'],
+            include_directories: _incdirs + ['.'],
+            install: false,
+        )
+        cp2kc_fake_env = environment()
+        cp2kc_fake_env.set('RGPOT_CP2K_ENGINE', cp2kc_fake_engine.full_path())
+        cp2kc_fake_env.set('CP2KC_LIBRARY', cp2kc_fake_engine.full_path())
+        test(
+            'CP2KPotFakeEngineTest',
+            executable(
+                'cp2k_pot_fake_engine_test',
+                sources: ['tests/CP2KPotFakeEngineTest.cc'],
+                dependencies: test_deps + [ptlrpc_dep],
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+                build_rpath: _metatomic_build_rpath,
+            ),
+            env: cp2kc_fake_env,
+            depends: cp2kc_fake_engine,
+            workdir: meson.source_root(),
+            suite: 'cp2k',
+        )
+        test(
+            'CP2KDeckTest',
+            executable(
+                'cp2k_deck_test',
+                sources: ['tests/CP2KDeckTest.cc'],
+                dependencies: test_deps + [ptlrpc_dep],
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+                build_rpath: _metatomic_build_rpath,
+            ),
+            suite: 'cp2k',
+        )
         mpiexec = find_program('mpirun', 'mpiexec', required: false)
+        # Real libcp2k: only with -Dwith_cp2k, which builds the shim.
+        if cp2k_lib_dep.found()
+            cp2k_smoke_env = environment()
+            cp2k_smoke_env.set('RGPOT_CP2K_ENGINE', cp2kc_shim.full_path())
+            cp2k_smoke_env.set('OMP_NUM_THREADS', '2')
+            _cp2k_prefix = cp2k_lib_dep.get_variable(
+                pkgconfig: 'prefix',
+                default_value: '',
+            )
+            if _cp2k_prefix != ''
+                cp2k_smoke_env.set(
+                    'CP2K_DATA_DIR',
+                    _cp2k_prefix / 'share' / 'cp2k' / 'data',
+                )
+            endif
+            cp2k_smoke = executable(
+                'cp2k_pot_smoke_test',
+                sources: ['tests/CP2KPotSmokeTest.cc'],
+                dependencies: test_deps + [ptlrpc_dep],
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+                build_rpath: _metatomic_build_rpath,
+            )
+            test(
+                'CP2KPotSmokeTest',
+                cp2k_smoke,
+                env: cp2k_smoke_env,
+                depends: cp2kc_shim,
+                timeout: 900,
+                is_parallel: false,
+                suite: 'cp2k',
+            )
+            if mpiexec.found()
+                _cp2k_mpi_args = ['-n', '2']
+                _mpiexec_version = run_command(
+                    mpiexec,
+                    '--version',
+                    check: false,
+                ).stdout()
+                if _mpiexec_version.contains('Open MPI') or _mpiexec_version.contains(
+                    'OpenRTE',
+                )
+                    _cp2k_mpi_args = ['--oversubscribe'] + _cp2k_mpi_args
+                endif
+                test(
+                    'CP2KPotSmokeMpi',
+                    mpiexec,
+                    args: _cp2k_mpi_args + [cp2k_smoke.full_path()],
+                    env: cp2k_smoke_env,
+                    depends: [cp2kc_shim, cp2k_smoke],
+                    timeout: 900,
+                    is_parallel: false,
+                    suite: 'cp2k',
+                )
+            endif
+        endif
         if _mpi_dep.found() and mpiexec.found()
             mpi_host_contract = executable(
                 'mpi_host_contract',
@@ -1055,7 +1153,7 @@ if get_option('with_tests')
                 timeout: 60,
                 suite: 'mpi-host',
             )
-            foreach backend : ['NWChem', 'CPMD']
+            foreach backend : ['NWChem', 'CPMD', 'CP2K']
                 foreach layout : ['serial', 'mpi']
                     rpc_server = layout == 'mpi' ? mpi_server : server
                     test(
@@ -1181,6 +1279,13 @@ if get_option('with_tests')
                 ),
                 install: false,
             )
+            cp2kc_adopt_engine = shared_library(
+                'cp2kc_adopt_engine',
+                sources: ['tests/cp2kc_adopt_engine.cc'],
+                dependencies: [_mpi_dep],
+                include_directories: _incdirs + ['.'],
+                install: false,
+            )
             mpi_split_profile = shared_library(
                 'mpi_split_profile',
                 sources: ['tests/mpi_split_profile.c'],
@@ -1209,6 +1314,7 @@ if get_option('with_tests')
                 ['AdoptCommBoundStatic', 'bound-static', cpmdc_adopt_engine],
                 ['AdoptCommBoundInstance', 'bound-instance', cpmdc_adopt_engine],
                 ['AdoptCommRefusedForce', 'refused-force', cpmdc_adopt_engine],
+                ['AdoptCommCP2K', 'cp2k-split', cp2kc_adopt_engine],
             ]
                 test(
                     entry[0],
@@ -1222,7 +1328,7 @@ if get_option('with_tests')
                     depends: [adopt_comm, entry[2], mpi_split_profile],
                     timeout: 60,
                     is_parallel: false,
-                    suite: 'cpmd',
+                    suite: entry[1].startswith('cp2k') ? 'cp2k' : 'cpmd',
                 )
             endforeach
             if get_option('with_cache')
