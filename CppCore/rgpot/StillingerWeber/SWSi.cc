@@ -225,7 +225,9 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
     acc[3 * j + 1] -= sy;
     acc[3 * j + 2] -= sz;
     if (strain != nullptr) {
-      // The force on i is -(dedr / r) (r_i - r_j).
+      // The force on i is -(dedr / r) (r_i - r_j). (dx, dy, dz) is
+      // r_j - r_i, the negative of the d in stress.hpp. The term is
+      // quadratic in d, so the sign does not change it.
       accumulatePairStrain(strain, -t.dedr * inv_r, dx, dy, dz);
     }
     sc.rows[static_cast<std::size_t>(i)].push_back(
