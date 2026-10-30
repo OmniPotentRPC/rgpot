@@ -1091,7 +1091,13 @@ if get_option('with_tests')
                 test(
                     'CP2KPotSmokeMpi',
                     mpiexec,
-                    args: _cp2k_mpi_args + [cp2k_smoke.full_path()],
+                    # Every rank runs the test cases in declaration order:
+                    # their CP2K calls are collectives.
+                    args: _cp2k_mpi_args + [
+                        cp2k_smoke.full_path(),
+                        '--order',
+                        'decl',
+                    ],
                     env: cp2k_smoke_env,
                     depends: [cp2kc_shim, cp2k_smoke],
                     timeout: 900,

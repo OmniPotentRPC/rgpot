@@ -53,6 +53,9 @@ void reduced_cutoff(::CP2KParams::Builder p) {
   p.setEpsScf(1.0e-9);
   p.setMaxScf(30);
   p.setOuterMaxScf(10);
+  // Tighter Gaussian screening than CP2K's default 1e-10, so a rigid
+  // rotation of the cell changes the energy by less than 1e-6 eV.
+  p.initExtraDftSections(1).set(0, "    &QS\n      EPS_DEFAULT 1.0E-14\n    &END QS");
 }
 
 const std::vector<int> kZ(8, 14);
