@@ -21,7 +21,7 @@ from ase.optimize import BFGS
 import rgpot
 from rgpot.ase import AnnealOptimizer, AnnealRunner, RgpotCalculator
 
-from support import lj_crystal, lj_dimer, pt7, raw_bytes
+from support import lj_crystal, lj_dimer, pt7, raw_bytes, si_crystal
 
 
 def test_import_rgpot_does_not_import_ase() -> None:
@@ -121,6 +121,40 @@ def test_lj_stress_matches_finite_difference() -> None:
     analytic = atoms.get_stress()
     numeric = calculate_numerical_stress(atoms, eps=1e-6, voigt=True)
     np.testing.assert_allclose(analytic, numeric, atol=1e-6, rtol=0.0)
+
+
+def test_stillinger_weber_si_stress_matches_finite_difference() -> None:
+    pot = rgpot.StillingerWeberSi()
+    assert pot.caps()["stress"] is True
+    atoms = si_crystal()
+    atoms.calc = RgpotCalculator(pot)
+    assert "stress" in atoms.calc.implemented_properties
+    analytic = atoms.get_stress()
+    numeric = calculate_numerical_stress(atoms, eps=1e-6, voigt=True)
+    np.testing.assert_allclose(analytic, numeric, atol=1e-6, rtol=0.0)
+
+
+@pytest.mark.skipif(not rgpot.has_fortran_pots, reason="no SWPot in this build")
+def test_sw_stress_matches_finite_difference() -> None:
+    atoms = si_crystal()
+    atoms.calc = RgpotCalculator("sw")
+    assert "stress" in atoms.calc.implemented_properties
+    analytic = atoms.get_stress()
+    numeric = calculate_numerical_stress(atoms, eps=1e-6, voigt=True)
+    np.testing.assert_allclose(analytic, numeric, atol=1e-6, rtol=0.0)
+
+
+@pytest.mark.skipif(not rgpot.has_fortran_pots, reason="no SWPot in this build")
+def test_sw_stress_is_the_1985_stress_scaled_by_epsilon() -> None:
+    atoms = si_crystal()
+    args = (atoms.positions, atoms.numbers, np.ascontiguousarray(atoms.cell.array))
+    eon = rgpot.SWPot().evaluate(*args)
+    published = rgpot.StillingerWeberSi().evaluate(*args)
+    ratio = 2.16826 * 1.06767385 / (3.4723e-12 * 1.0e-7 / 1.602176634e-19)
+    assert eon["energy"] == pytest.approx(ratio * published["energy"], rel=1e-13)
+    np.testing.assert_allclose(
+        eon["stress"], ratio * published["stress"], atol=1e-14, rtol=0.0
+    )
 
 
 def test_single_point_round_trip() -> None:

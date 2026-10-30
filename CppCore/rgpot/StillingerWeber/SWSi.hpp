@@ -48,12 +48,17 @@ public:
 
   StillingerWeberSi();
 
-  [[nodiscard]] PotCaps caps() const noexcept override { return {}; }
+  [[nodiscard]] PotCaps caps() const noexcept override {
+    return {.stress = true};
+  }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
     return m_paramsKey;
   }
 
+  /// Forces, energy and the Cauchy stress sigma = (1/V) dE/dε in
+  /// eV/Angstrom^3, the convention of stress.hpp. The virial sums each
+  /// folded bond vector times the energy gradient with respect to it.
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
   /**
@@ -92,10 +97,11 @@ public:
                               double *gradients) const;
 
 private:
-  /// scale +1 writes forces, scale -1 writes dE/dx.
+  /// scale +1 writes forces, scale -1 writes dE/dx. A non-null strain
+  /// gains dE/dε in eV, in the Voigt order of stress.hpp.
   void evaluate(const double *positions, const double *box, std::size_t n_atoms,
                 double *energy, double *acc, double scale,
-                nlist::NeighborList *neighbors) const;
+                nlist::NeighborList *neighbors, double *strain) const;
 
   uint64_t m_paramsKey{0};
 };

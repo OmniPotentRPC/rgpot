@@ -67,6 +67,11 @@ target_compile_options(rgpot_fortran_kernels PRIVATE
   "$<$<COMPILE_LANGUAGE:Fortran>:${_rgpot_fortran_pp}>")
 rgpot_fortran_target(rgpot_fortran_kernels "${CMAKE_CURRENT_BINARY_DIR}/modules" TRUE)
 set_target_properties(rgpot_fortran_kernels PROPERTIES CXX_VISIBILITY_PRESET hidden)
+# rgpot_sw.f90 includes sw_centred_body.inc. The Ninja generator scans a
+# preprocessed copy in the build tree, and finds the include, and so the
+# dependency on it, only through an include directory.
+target_include_directories(rgpot_fortran_kernels PRIVATE
+  "$<$<COMPILE_LANGUAGE:Fortran>:${CMAKE_CURRENT_SOURCE_DIR}>")
 
 # A C++-only installed consumer does not initialize CMake's Fortran
 # runtime discovery. Carry the additional runtime libraries in the
