@@ -296,7 +296,7 @@ TEST_CASE("SW 1985 skewed cell still sees one pair", "[SWSi]") {
 
 namespace {
 
-// The worst error seen on these cells was 5e-11 eV/Angstrom^3.
+// The worst error seen on these cells was 2.1e-11 eV/Angstrom^3.
 constexpr double kStressTol = 5e-10; // eV/Angstrom^3
 
 /// (1/V) dE/d(eps_row,col) by the fourth-order central difference. The
@@ -325,10 +325,13 @@ double strainDifference(const std::vector<double> &pos,
          (12.0 * h * rgpot::cellVolume(box.data()));
 }
 
-/// Checks forceImpl stress against strainDifference for all nine entries
-/// and returns the differences, row-major.
+/// Checks forceImpl stress on (pos, box) against strainDifference on
+/// (fdPos, fdBox) for all nine entries and returns the differences,
+/// row-major. When the two cells differ, they are cells of one crystal.
 std::array<double, 9> checkStressByStrain(const std::vector<double> &pos,
-                                          const std::array<double, 9> &box) {
+                                          const std::array<double, 9> &box,
+                                          const std::vector<double> &fdPos,
+                                          const std::array<double, 9> &fdBox) {
   const std::size_t n = pos.size() / 3;
   const StillingerWeberSi pot;
   REQUIRE(pot.caps().stress);
@@ -340,13 +343,18 @@ std::array<double, 9> checkStressByStrain(const std::vector<double> &pos,
   std::array<double, 9> fd{};
   for (int row = 0; row < 3; ++row) {
     for (int col = 0; col < 3; ++col) {
-      fd[3 * row + col] = strainDifference(pos, box, row, col);
+      fd[3 * row + col] = strainDifference(fdPos, fdBox, row, col);
       CAPTURE(row, col, fd[3 * row + col]);
       REQUIRE_THAT(out.stress[3 * row + col],
                    WithinAbs(fd[3 * row + col], kStressTol));
     }
   }
   return fd;
+}
+
+std::array<double, 9> checkStressByStrain(const std::vector<double> &pos,
+                                          const std::array<double, 9> &box) {
+  return checkStressByStrain(pos, box, pos, box);
 }
 
 double diamondA0() {
@@ -361,16 +369,23 @@ TEST_CASE("SW 1985 stress matches a strain difference", "[SWSi][stress]") {
     std::vector<double> pos;
     appendDiamond(pos, 3, a);
     const std::array<double, 9> box{3 * a, 0, 0, 0, 3 * a, 0, 0, 0, 3 * a};
-    const auto fd = checkStressByStrain(pos, box);
+    // Edges of three cutoffs put forceImpl on the half-shell list. A
+    // strained 216-atom cell is not orthogonal and takes the all-pairs
+    // fold, so the strain difference uses the 64-atom cell of the same
+    // crystal. The stress is per volume and does not change.
+    std::vector<double> fdPos;
+    appendDiamond(fdPos, 2, a);
+    const std::array<double, 9> fdBox{2 * a, 0, 0, 0, 2 * a, 0, 0, 0, 2 * a};
+    const auto fd = checkStressByStrain(pos, box, fdPos, fdBox);
     // Compression lowers the energy on expansion, so sigma is negative.
     for (int k : {0, 4, 8}) {
       REQUIRE(fd[k] < -1e-2);
     }
   }
-  SECTION("sheared diamond, 216 atoms") {
-    const double l = 3 * diamondA0();
+  SECTION("sheared diamond, 64 atoms") {
+    const double l = 2 * diamondA0();
     std::vector<double> cubicPos;
-    appendDiamond(cubicPos, 3, diamondA0());
+    appendDiamond(cubicPos, 2, diamondA0());
     const std::array<double, 9> box{l, 0,        0,         0.10 * l, l,
                                     0, 0.05 * l, -0.07 * l, l};
     std::vector<double> pos(cubicPos.size());
