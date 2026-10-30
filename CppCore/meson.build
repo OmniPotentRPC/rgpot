@@ -1502,9 +1502,10 @@ if get_option('with_tests')
         # The fused-scan oracles are plain multiplies and adds, the same
         # form as the cluster kernel and the Fortran 26-image wrap. Apple
         # Clang fuses those products unless contraction is off, and the
-        # sums then miss by an ulp.
+        # sums then miss by an ulp. ReducedPair.cc is built unfused, and
+        # its test compares exactly against the same expressions.
         case_args = test_args
-        if test.get(2) == 'FastNlistTest.cc'
+        if test.get(2) in ['FastNlistTest.cc', 'ReducedPairTest.cc']
             case_args += cppc.get_supported_arguments(
                 ['-ffp-contract=off', '/fp:precise'],
             )
