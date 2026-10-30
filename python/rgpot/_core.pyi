@@ -37,7 +37,10 @@ def evaluate_metatomic_dlopen(positions: Annotated[NDArray[numpy.float64], dict(
     """
 
 class LJPot:
-    def __init__(self, u0: float = 1.0, cutoff: float = 15.0, psi: float = 1.0, switch_width: float = 0.0) -> None: ...
+    def __init__(self, u0: float = 1.0, cutoff: float = 15.0, psi: float = 1.0, switch_width: float = 0.0) -> None:
+        """
+        Shifted 12-6 Lennard-Jones. u0 is the well depth (eV), cutoff and psi are Angstrom. A positive switch_width (Angstrom) replaces the shift with the C^2 quintic switch over [cutoff - switch_width, cutoff]; it must not exceed cutoff.
+        """
 
     def config(self) -> dict: ...
 
@@ -191,6 +194,45 @@ class WaterHPot:
         One detached BatchEvaluator call. results[i] matches a serial call on inputs[i], bit for bit. n_threads 0 uses the hardware concurrency.
         """
 
+class StillingerWeberSi:
+    def __init__(self) -> None:
+        """
+        Stillinger-Weber silicon, Stillinger and Weber, Phys. Rev. B 31, 5262 (1985). Epsilon is the published 2.16723920 eV, not eOn's 2.3149945 eV (ratio 1.068176741337). Energy is eV, lengths are Angstrom. The gradient is dE/dx.
+        """
+
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
+        """
+        Return (energy, forces, variance) for one configuration. Forces are -dE/dx.
+        """
+
+    def caps(self) -> dict: ...
+
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+        """
+        Energy, forces, variance, and the Cauchy stress, shape (3, 3), in eV/Angstrom^3. The kernel runs detached.
+        """
+
+    def energy_gradient(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
+        """
+        Energy and dE/dx. positions is (n_atoms, 3) or (n_config, n_atoms, 3). A batch shares atom_types and box, and crosses into the library once.
+        """
+
+class TersoffSiC:
+    def __init__(self) -> None:
+        """
+        Tersoff silicon-carbon kernel, Tersoff, Phys. Rev. B 39, 5566 (1989). The 1990 erratum sets carbon B to 346.74 eV and d to 4.3484. Carbon beta is dimensionless. Atomic numbers 14 and 6. This class always evaluates the 1989 kernel. The engine name tersoff uses the Fortran silicon gather when every atom is silicon. Energy is eV, lengths are Angstrom. The gradient is dE/dx.
+        """
+
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
+        """
+        Return (energy, forces, variance) for one configuration. Forces are -dE/dx.
+        """
+
+    def energy_gradient(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
+        """
+        Energy and dE/dx. positions is (n_atoms, 3) or (n_config, n_atoms, 3). A batch shares atom_types and box, and crosses into the library once.
+        """
+
 class D3Pot:
     def __init__(self, damping: str = 'bj', functional: str = 'pbe', atm: bool = True) -> None: ...
 
@@ -228,7 +270,7 @@ class D4Pot:
 class ExprPot:
     def __init__(self, expression: str, terms: dict) -> None:
         """
-        expression is a Lepton string; terms maps names to 'lj'/'morse'/'d3'/'d4' or a dict with kind plus D3/D4 fields.
+        expression is a Lepton string; terms maps names to 'lj'/'morse'/'d3'/'d4' or a dict with kind plus that kind's fields: u0, cutoff, psi, switch_width (lj); De, a, re, cutoff, switch_width (morse); the D3/D4 fields.
         """
 
     @property
