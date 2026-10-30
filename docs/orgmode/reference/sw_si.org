@@ -53,42 +53,42 @@ Any other cell uses the minimum-image fold.
 
 ** Stress
 
-=forceImpl= writes the Cauchy stress, sets =has_stress=, and
-=caps().stress= is true.
+=forceImpl= writes the Cauchy stress, sets =has_stress=, and =caps().stress= is
+true.
 The convention is the one of =LJPot=, =MorsePot= and =ZBLPot=, set in
 =stress.hpp=.
-The stress is sigma = (1/V) dE/dε for the strain that sends every
-position and every cell row r to r (I + ε).
+The stress is sigma = dE/dε / V for the strain that sends every position and
+every cell row r to r (I + ε).
 It is row-major and symmetric, in eV/Angstrom^3.
 A compressed cell has negative diagonal entries, the sign ASE uses.
-For the LAMMPS virial W, sigma = -W/V.
+For the LAMMPS virial W, sigma = -W / V.
 
-The virial adds d ⊗ dE/dd for the folded bond vector d of each pair term
-and for both bonds of each three-body term.
-That sum is the many-body virial of Thompson, Plimpton and Mattson,
-J. Chem. Phys. 131, 154107 (2009), doi:10.1063/1.3245303.
+The virial adds d ⊗ g for the folded bond vector d of each pair term and for
+both bonds of each three-body term, where g is the energy gradient with respect
+to d.
+That sum is the many-body virial of Thompson, Plimpton and Mattson, J. Chem.
+Phys. 131, 154107 (2009), doi:10.1063/1.3245303.
 =energyAndGradient= and the batch call skip the virial.
 
-=SWSiTest= checks all nine entries against a fourth-order central
-difference of the energy in the strain, step 2e-4.
-The cells are compressed cubic diamond, a sheared diamond cell and a
-rattled cubic cell.
+=SWSiTest= checks all nine entries against a fourth-order central difference of
+the energy in the strain, step 2e-4.
+The cells are compressed cubic diamond, a sheared diamond cell and a rattled
+cubic cell.
 The tolerance is 5e-10 eV/Angstrom^3.
 
-The Fortran =SWPot= writes the same stress from the folded vectors of
-its own neighbour table, and its =caps().stress= is true.
+The Fortran =SWPot= writes the same stress from the folded vectors of its own
+neighbour table, and its =caps().stress= is true.
 Both kernels are linear in epsilon, so the =SWPot= stress is the
 =StillingerWeberSi= stress times 1.068176741337.
-=FortranPotsTest= checks that ratio to 1e-14 eV/Angstrom^3, and the
-strain difference to 5e-10, on a compressed cubic cell and a sheared,
-rattled cell.
-=SWPot::forceBatch=, the call eOn's engine makes, skips the virial and
-leaves =has_stress= at 0.
+=FortranPotsTest= checks that ratio to 1e-14 eV/Angstrom^3, and the strain
+difference to 5e-10, on a compressed cubic cell and a sheared, rattled cell.
+=SWPot::forceBatch=, the call eOn's engine makes, skips the virial and leaves
+=has_stress= at 0.
 =FortranPotsTest= checks that its energies and forces equal those of
 =forceImpl=.
 
-In Python, =evaluate= on =StillingerWeberSi= or =SWPot= returns the
-stress as a 3 × 3 array, and =caps()= reports it.
+In Python, =evaluate= on =StillingerWeberSi= or =SWPot= returns the stress as a
+3 × 3 array, and =caps()= reports it.
 =RgpotCalculator= then gives the ASE stress for either potential.
 
 ** Diamond energy
