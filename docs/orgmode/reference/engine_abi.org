@@ -4,28 +4,28 @@
 
 * Engine plugin ABI
 
-=CppCore/rgpot/engine_c_abi.h= is the function table a host uses to drive an
-engine shared library without linking the library's tensor runtime or its
+=CppCore/rgpot/engine_c_abi.h= is the function table a host uses to drive
+an engine shared library without linking the library's tensor runtime or its
 backend.
 Backend selection is which library the host opens with =dlopen=, and the
 configuration is a Cap'n Proto flat-array message whose root is the engine's
 params struct.
 Units are Angstrom, eV and eV/Angstrom, and a box is nine doubles in row-major
 order.
-A call returns 0 on success, a positive value when the evaluation failed at this
-input and the caller may back off, and a negative value when the instance is
-unusable.
+A call returns 0 on success, a positive value when the evaluation failed at
+this input and the caller may back off, and a negative value when the instance
+is unusable.
 The engines in this repository return 1 for an invalid argument, 2 for a failed
-evaluation or setting (the reason is in
-=rgpot_engine_last_error=), 3 when the backend does not support the operation, and for =rgpot_engine_force=
-the transform's own nonzero code.
+evaluation or setting (the reason is in =rgpot_engine_last_error=), 3 when
+the backend does not support the operation, and for =rgpot_engine_force= the
+transform's own nonzero code.
 
 ** One table for every backend
 
 =CppCore/rgpot/engine/EngineTable.cc= exports every =rgpot_engine_*= symbol for
 any =PotentialBase=.
-A backend library adds a small file that builds its potential from the params
-message and defines two functions, =rgpot::engine::create= and
+A backend library adds a small file that builds its potential from the
+params message and defines two functions, =rgpot::engine::create= and
 =rgpot::engine::backend_name=; the table does argument validation, the
 coordinate transform, batching, error text, the thread-safety policy, the
 identity queries and the Python GIL release.
@@ -40,8 +40,8 @@ identity queries and the Python GIL release.
 | =libnwchem_engine= | =NWChemParams= | NWChem through =libnwchemc= |
 | =libskala_engine= | =NWChemParams= | Skala XC on NWChem; reads =basis=, =charge=, =multiplicity=, =enginePath= and =nwchemRoot= |
 
-The Metatomic and XTB engines keep their own tables
-(=rgpot_mta_*=, =rgpot_xtb_*=) beside the generic one.
+The Metatomic and XTB engines keep their own tables (=rgpot_mta_*=,
+=rgpot_xtb_*=) beside the generic one.
 NWChem and CPMD also keep the prefix-parameterized profile ABI that =NWChemPot=
 and =CPMDPot= load, and MOPAC keeps =mopac_c_abi.h=.
 The plugin interface in =rgpot/plugin.h= is a separate family.
@@ -50,8 +50,8 @@ engine library.
 
 ** Symbols
 
-Required:
-=rgpot_engine_abi_version=, =rgpot_engine_available=, =rgpot_engine_create=, =rgpot_engine_destroy=, =rgpot_engine_force=.
+Required: =rgpot_engine_abi_version=, =rgpot_engine_available=,
+=rgpot_engine_create=, =rgpot_engine_destroy=, =rgpot_engine_force=.
 
 Optional, probed with =dlsym=:
 
@@ -71,8 +71,8 @@ Optional, probed with =dlsym=:
 Every engine built on the table exports all of them down to
 =rgpot_engine_set_charge_spin=.
 =rgpot_engine_set_num_threads= returns 3 for a backend without a tensor runtime,
-and =rgpot_engine_set_charge_spin= returns 3 for a backend without a charge or
-spin.
+and =rgpot_engine_set_charge_spin= returns 3 for a backend without a charge
+or spin.
 
 ** Tensor runtime parameters
 
@@ -97,22 +97,22 @@ Any thread may call =rgpot_engine_force= and =rgpot_engine_force_batch= on any
 handle.
 What happens inside follows the backend's =rgpot_engine_caps().reentrancy=:
 
-- 0, shared instance: calls run concurrently on one handle (UMA, Metatomic and
-  the classical shared-state-free potentials).
+- 0, shared instance: calls run concurrently on one handle (UMA, Metatomic and the
+classical shared-state-free potentials).
 - 1, per instance: the engine admits one call at a time per handle, so a handle
-  is safe from any thread and calls on it are serialized; handles do not wait
-  for each other.
-  A host that wants parallelism creates one handle per worker (XTB and the
-  Fortran potentials).
+is safe from any thread and calls on it are serialized; handles do not wait for
+each other.
+A host that wants parallelism creates one handle per worker (XTB and the Fortran
+potentials).
 - 2, process serial: the engine admits one call at a time in the process across
-  all handles of the library (MOPAC, NWChem, Skala).
+all handles of the library (MOPAC, NWChem, Skala).
 
 =rgpot_engine_set_num_threads=, =rgpot_engine_set_charge_spin=,
 =rgpot_engine_set_callbacks=, =rgpot_engine_hint= and =rgpot_engine_destroy=
 must not run concurrently with a call on the same handle.
 =rgpot_engine_last_error= and =rgpot_engine_model_digest= may run at any time.
-=EngineAdapterTest= checks each policy with a stand-in backend that records how
-many calls are inside it at once; =EngineTableTest= and =UmaEngineTest= run
+=EngineAdapterTest= checks each policy with a stand-in backend that records
+how many calls are inside it at once; =EngineTableTest= and =UmaEngineTest= run
 eight and four threads on one handle.
 
 ** Version scheme
@@ -126,9 +126,9 @@ size or field order.
 A host built against minor N runs against an engine of the same major and layout
 revision whose minor is at least N. An engine without =rgpot_engine_abi_stamp=
 is minor 0, layout 1.
-Minor 1 added the stamp, =caps=,
-=last_error=, =set_num_threads= and =set_charge_spin=; minor 2 added =name=, =version= and =model_digest=
-and the generic table for every backend.
+Minor 1 added the stamp, =caps=, =last_error=, =set_num_threads= and
+=set_charge_spin=; minor 2 added =name=, =version= and =model_digest= and the
+generic table for every backend.
 Structures that grow (=RgpotEngineCaps=) begin with a =size= field, so an older
 host receives the bytes it announced room for.
 The version covers the table and its conventions; it does not cover the Cap'n
@@ -163,6 +163,7 @@ pixi run -e umaenginebld potctl ci metatomic-test --rpc --build-dir bbdir-uma-en
 =EngineAdapterTest= runs the table over a stand-in backend without rpc or torch,
 =EngineTableTest= opens each backend library, and =UmaEngineTest= opens the UMA
 engine as a host does.
-With
-=RGPOT_UMA_OMOL_PT2= (and =RGPOT_UMA_OMOL_BAND_PT2= for the batch case) =UmaEngineTest= compares the engine with the directly compiled =UmaPot=, checks the model digest against the file and the runtime settings against libtorch, and =RGPOT_UMA_REQUIRE_FIXTURES=
-turns a missing fixture into a failure.
+With =RGPOT_UMA_OMOL_PT2= (and =RGPOT_UMA_OMOL_BAND_PT2= for the batch case)
+=UmaEngineTest= compares the engine with the directly compiled =UmaPot=, checks
+the model digest against the file and the runtime settings against libtorch, and
+=RGPOT_UMA_REQUIRE_FIXTURES= turns a missing fixture into a failure.

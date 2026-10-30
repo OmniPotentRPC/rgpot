@@ -19,25 +19,23 @@ meson setup bbdir -Dwith_tests=true -Dwith_rpc=true -Dwith_mpi=enabled
 =librgpot= never links MPI.
 With MPI found, the build adds =librgpot_mpi= (meson dependency and pkg-config
 name =rgpot-mpi=), which holds every MPI call of the calculator groups.
-=bindCalculators= and =calculatorsUseMpi= load it with =dlopen= on first use, so
-a host that never asks for calculator groups never maps =libmpi= or its
+=bindCalculators= and =calculatorsUseMpi= load it with =dlopen= on first use,
+so a host that never asks for calculator groups never maps =libmpi= or its
 transport layers.
-The loader tries =loadCalculatorMpi(path)= when the host names a file, then the
-=RGPOT_MPI_LIBRARY= environment variable, then =librgpot_mpi.so.3= next to
+The loader tries =loadCalculatorMpi(path)= when the host names a file, then
+the =RGPOT_MPI_LIBRARY= environment variable, then =librgpot_mpi.so.3= next to
 =librgpot=, then the dynamic linker's search path.
 That filename is =librgpot_mpi='s own SONAME (soversion 3).
 It is not =librgpot='s SONAME.
 =RGPOT_MPI_ABI_VERSION= is 1 and did not change with the C++ layouts, so this
 name stays.
-The two libraries meet at one C symbol,
-=rgpot_mpi_api_v1=, which returns the function table of =rgpot/calculator_mpi_abi.h= (=RGPOT_MPI_ABI_VERSION=
-1).
+The two libraries meet at one C symbol, =rgpot_mpi_api_v1=, which returns the
+function table of =rgpot/calculator_mpi_abi.h= (=RGPOT_MPI_ABI_VERSION= 1).
 Until the library is loaded every calculator call behaves as in a build without
 MPI.
 
-A process with
-=librgpot_mpi= loaded can call =bindCalculators= to split =MPI_COMM_WORLD= into
-calculator groups.
+A process with =librgpot_mpi= loaded can call =bindCalculators= to split
+=MPI_COMM_WORLD= into calculator groups.
 =shareFromCalculator= broadcasts one group's bytes to every rank.
 When more than one rank is bound, a rank that cannot enter that broadcast prints
 the error on every rank and calls =MPI_Abort= on =MPI_COMM_WORLD=.
