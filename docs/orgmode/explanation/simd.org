@@ -86,8 +86,10 @@ and every rank count, down to the sign of zero and the NaN payload class.
 Reductions use a fixed width of eight partial sums in a fixed lane order, the
 order of ndarray 0.17 =unrolled_dot=.
 The hardware fused multiply-add and the Dekker product return the same bits.
-The cluster-pair layout for such kernels is the one in Páll and Hess, Comput.
-Phys.
-Commun. 184, 2641 (2013),
-doi:10.1016/j.cpc.2013.06.003. Per-microarchitecture builds of the surrounding stack are the EESSI model in Dröge et al., Softw. Pract. Exp. 53, 176 (2023), doi:10.1002/spe.3075.
+The cluster-pair layout for such kernels is the one in Páll and Hess, Computer
+Physics Communications 184, 2641 (2013), doi:10.1016/j.cpc.2013.06.003.
+
+The stack around such kernels is built per microarchitecture as in the European
+Environment for Scientific Software Installations (EESSI), Dröge et al.,
+Software: Practice and Experience 53, 176 (2023), doi:10.1002/spe.3075.
 Those runs are on real nodes, not under emulation in this CI.
