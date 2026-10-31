@@ -54,15 +54,19 @@ public:
   [[nodiscard]] PotCaps caps() const noexcept override {
     if (m_held.skin > 0.0) {
       return {.reentrancy = Reentrancy::PerInstance,
-              .perImageInstances = true};
+              .perImageInstances = true,
+              .stress = true};
     }
-    return {};
+    return {.stress = true};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
     return m_paramsKey;
   }
 
+  /// Forces, energy and the Cauchy stress sigma = (1/V) dE/dε in
+  /// eV/Angstrom^3, the convention of stress.hpp. The virial sums each
+  /// folded bond vector times the energy gradient with respect to it.
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
   /**
@@ -113,10 +117,12 @@ public:
                               double *gradients) const;
 
 private:
+  /// scale +1 writes forces, scale -1 writes dE/dx. A non-null strain
+  /// gains dE/dε in eV, in the Voigt order of stress.hpp.
   void evaluate(const double *positions, const int *atomic_numbers,
                 const double *box, std::size_t n_atoms, double *energy,
-                double *acc, double scale,
-                nlist::NeighborList *neighbors) const;
+                double *acc, double scale, nlist::NeighborList *neighbors,
+                double *strain) const;
 
   Species m_species[2]{};
   Pair m_pair[2][2]{};
