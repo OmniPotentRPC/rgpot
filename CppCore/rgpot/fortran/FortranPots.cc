@@ -1,6 +1,7 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <mutex>
@@ -156,9 +157,13 @@ void TersoffPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       raise("Tersoff", status, m_ws.get());
     }
     out->variance = 0.0;
-    return;
+  } else {
+    m_sic.forceImpl(in, out);
   }
-  m_sic.forceImpl(in, out);
+  // The gather writes no stress and caps().stress is false, so no call
+  // reports one, and a reused output keeps no earlier tensor.
+  out->has_stress = 0;
+  std::fill(out->stress, out->stress + 9, 0.0);
 }
 
 #define RGPOT_FORTRAN_SPECIES_POT_IMPL(ClassName, Entry, Label)                \
