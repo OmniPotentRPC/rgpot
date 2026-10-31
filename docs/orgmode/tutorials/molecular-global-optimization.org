@@ -15,37 +15,46 @@ doi:10.3389/fchem.2026.1807063, is the enhanced climbing-image NEB paper for sad
 
 All of these minimizers are /local/: they walk downhill to the nearest minimum.
 The nearest minimum is often not the one you want.
-This tutorial finds the minimum a local search misses, and shows that =anneal=
-reaches it where ASE's optimizer and scipy's simulated annealing do not improve
-on it.
-The numbers you will reproduce, from one disordered start on a 7-atom Lennard-
-Jones cluster (reduced units, global minimum =-16.505384=):
+This tutorial runs one local search and two global searches from the same
+disordered start on a 7-atom Lennard-Jones cluster (reduced units, global
+minimum =-16.505384=) and compares where they end.
+These numbers come from the locked =rpctest= stack: ASE 3.29.0, numpy 2.4.1 with
+MKL, scipy 1.18.0, and anneal 0.11.1:
 
-| Minimizer                       | Final energy | Evaluations |
-|---------------------------------+--------------+-------------|
-| local L-BFGS (ASE, eOn)         |        -3.13 | 500         |
-| scipy ~dual_annealing~ (global) |   -16.505384 | 17006       |
-| ~anneal~ portfolio (global)     |   -16.505384 | 14920       |
+| Minimizer                       | Run                      | Final energy | Evaluations |
+|---------------------------------+--------------------------+--------------+-------------|
+| local L-BFGS (ASE)              | Step 2                   |   -15.533053 | 532 steps   |
+| ~AnnealRunner~ (anneal)         | Step 3                   |   -15.533053 | 13381       |
+| scipy ~dual_annealing~ (global) | =tests/ase_vs_anneal.py= |   -16.505377 | 17004       |
 
-Local L-BFGS stops at the nearest minimum.
-Both global methods reach the ground state; =anneal= reaches it in fewer
-evaluations than scipy.
+Local L-BFGS stops in a local minimum 0.972331 above the global one.
+Dual annealing from scipy reaches the global minimum.
+With this seed and budget, the =anneal= portfolio ends in the same minimum as
+L-BFGS.
 
 ** What you will need
 
 - [[https://pixi.sh][pixi]] (manages the toolchain)
-- The =rgpot=, =anneal=, and =readcon-core= checkouts side by side
+- The =anneal= and =readcon= Python modules, installed below from PyPI
 - About 10 minutes
 
-One command builds everything and runs the comparison:
+From the rgpot checkout, build the Python extension into =python/rgpot/= and run
+the comparison:
 
 #+begin_src bash
-cd rgpot
+pixi run -e rpctest pip install nanobind 'anneal==0.11.1' readcon
+pixi run -e rpctest meson setup build-py -Dwith_python=true --buildtype=release
+pixi run -e rpctest meson compile -C build-py
+ln -sfn "$PWD"/build-py/python/_core*.so python/rgpot/
+export LD_LIBRARY_PATH="$PWD/build-py/CppCore" PYTHONPATH="$PWD/python"
 pixi run -e rpctest ase-anneal-compare
 #+end_src
 
-It builds the =potserv= potential server, builds the =anneal= and =readcon=
-Python modules, and runs the two scripts below.
+The last command builds the =potserv= potential server in =build-rpc= and runs
+=tests/ase_vs_anneal.py=.
+With anneal 0.11.1 that script prints =RESULT: FAIL= and exits 1, so the second
+script, =tests/con_relax_demo.py=, does not run.
+The Python steps below use the same environment and the same exports.
 
 ** Step 1: drive an rgpot potential from Python
 
@@ -61,7 +70,7 @@ import numpy as np
 from ase import Atoms
 from rgpot.ase import RgpotRpcCalculator
 
-calc = RgpotRpcCalculator.spawn(server_bin="path/to/potserv", potential="LJ")
+calc = RgpotRpcCalculator.spawn(server_bin="build-rpc/CppCore/potserv", potential="LJ")
 
 start = np.random.RandomState(1).uniform(-2.3, 2.3, size=(7, 3))
 atoms = Atoms(numbers=[0] * 7, positions=start, cell=[40, 40, 40])
@@ -79,17 +88,22 @@ to stop the managed server on exit.
 from ase.optimize import LBFGS
 
 LBFGS(atoms).run(fmax=1e-3)
-print("local L-BFGS energy:", atoms.get_potential_energy())   # about -3.13
+print("local L-BFGS energy:", atoms.get_potential_energy())   # -15.533053
 #+end_src
 
 L-BFGS converges to a minimum, just not the global one.
+From a start where the largest force on an atom is 381.8, the end point depends
+on the BLAS/LAPACK build.
+The locked =rpctest= stack, numpy 2.4.1 with MKL, ends at -15.533053 after 532
+steps.
+PyPI numpy wheels, 2.4.1 and 2.5.4 alike, end at -12.712057 after 1446 steps.
 The LJ7 global minimum, the pentagonal bipyramid at =-16.505384=, sits in a
 different basin; from a random start a local minimizer cannot cross into it.
 eOn's L-BFGS, run on the same surface, stops in the same place -- this is the
 wall a local search hits when a relaxation lands in a metastable basin instead
 of the product state.
 
-** Step 3: find the global minimum
+** Step 3: search for the global minimum
 
 =AnnealRunner= wraps =anneal='s portfolio optimizer (the method of the INFORMS
 Journal on Computing paper: Thompson-allocated basin hopping, differential
@@ -105,15 +119,21 @@ from rgpot.ase import AnnealRunner
 atoms.set_positions(start)              # back to the disordered start
 opt = AnnealRunner(atoms, budget=15000, seed=11, pad=3.0)
 opt.run()
-print("anneal energy:", opt.get_potential_energy())   # -16.505384
-print("evaluations:", opt.nevals)
+print("anneal energy:", opt.get_potential_energy())   # -15.533053
+print("evaluations:", opt.nevals)                     # 13381
 #+end_src
 
-The geometry ends at the global minimum.
-=scipy.optimize.dual_annealing= reaches the same value on this surface; =anneal=
-reaches it in fewer evaluations, and both pass the value the local search
-returns.
-=tests/ase_vs_anneal.py= runs all three side by side.
+With anneal 0.11.1 and seed 11 the geometry ends at -15.533053, the minimum
+L-BFGS found.
+The result depends on the seed.
+Of seeds 1 to 12 at this budget, seeds 5 and 9 reach -16.505377, and the others
+stop at -15.935036, -15.593204 or -15.533053.
+
+=tests/ase_vs_anneal.py= runs L-BFGS, =scipy.optimize.dual_annealing= and the
+portfolio side by side.
+It stops L-BFGS after 500 steps, at -13.935643.
+Dual annealing reaches -16.505377 in 17004 evaluations.
+The portfolio ends at -15.533053, so the script reports a failure.
 
 *** Which minimizer for which job
 
