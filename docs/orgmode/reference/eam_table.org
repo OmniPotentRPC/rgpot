@@ -1,0 +1,41 @@
+#+TITLE: Tabulated EAM
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+
+* Tabulated EAM
+
+=EAMTablePot= (=PotType::EAMTable=) evaluates an embedded-atom potential
+from a DYNAMO setfl file, the =eam/alloy= format of LAMMPS, or from the
+Finnis-Sinclair variant read by =eam/fs=.
+
+#+begin_example
+E = sum_i F_a(rho_i) + sum_{i<j} phi_ab(r_ij)
+rho_i = sum_{j != i} rho_ba(r_ij)
+#+end_example
+
+The method is Daw and Baskes, Phys. Rev. B 29, 6443 (1984).
+Setfl files hold F and rho per element and r phi per pair of elements, the
+alloy form of Foiles, Baskes and Daw, Phys. Rev. B 33, 7983 (1986).
+In the Finnis-Sinclair variant, after Finnis and Sinclair, Phil. Mag. A 50,
+45 (1984), each ordered pair of elements has its own density.
+
+The tables become cubic splines as in LAMMPS =PairEAM::array2spline=.
+Knot slopes are five-point differences, and a density past the end of the F
+table extends F linearly.
+Units are those of the file: eV and Angstrom for LAMMPS =metal= files.
+
+=EAMTableConfig= names the file and its format.
+=atomic_numbers= maps the file elements to atomic numbers in file order.
+When it is empty, the numbers on the element lines of the file are used.
+Evaluation uses =PairListCache::evaluate= with the table cutoff: one pass
+sums the densities and a second pass adds the pair and embedding forces.
+The pair list keeps one image per pair, so each periodic cell width must
+exceed twice the cutoff.
+=periodic = false= evaluates a free cluster.
+
+A pair past the last r knot keeps the values of that knot, as in LAMMPS.
+
+=CppCore/tests/data/eam_table= contains two OpenKIM setfl files under
+CDDL-1.0 and =synth.eam.fs=, a small eam/fs table written by =synth_fs.py=.
+Its grids are short, so the test cells reach the r and density limits.
+Energies and forces come from LAMMPS 30 Sep 2026, Update 1.
+=MANIFEST.json= lists the sources, checksums, LAMMPS build and input deck.
