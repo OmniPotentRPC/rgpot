@@ -3,14 +3,18 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/plugin/PluginBridge.hpp"
 #include "rgpot/plugin/PluginRegistry.hpp"
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
 #include <deque>
+#include <iterator>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -18,14 +22,16 @@
 namespace {
 using Catch::Matchers::WithinAbs;
 using rgpot::types::AtomMatrix;
-struct State { bool fail; };
+struct State { bool fail; bool nanEnergy; bool nanForce; };
 int created = 0;
 int destroyed = 0;
 int optional_calls = 0;
 rgpot_plugin_status_t create(const char *config, rgpot_plugin_instance **output) {
   ++created;
   *output = reinterpret_cast<rgpot_plugin_instance *>(new State{
-      std::strcmp(config, "{\"fail\":true}") == 0});
+      std::strcmp(config, "{\"fail\":true}") == 0,
+      std::strcmp(config, "{\"nan_energy\":true}") == 0,
+      std::strcmp(config, "{\"nan_force\":true}") == 0});
   if (std::strcmp(config, "{\"partial\":true}") == 0)
     return RGPOT_PLUGIN_ERROR;
   if (std::strcmp(config, "{\"throw\":true}") == 0)
@@ -39,7 +45,8 @@ void destroy(rgpot_plugin_instance *instance) {
 rgpot_plugin_status_t calculate(rgpot_plugin_instance *instance,
                                 const rgpot_plugin_input_t *input,
                                 rgpot_plugin_output_t *output) {
-  if (reinterpret_cast<State *>(instance)->fail)
+  const State &state = *reinterpret_cast<State *>(instance);
+  if (state.fail)
     return RGPOT_PLUGIN_ERROR;
   output->energy = 0.125 * input->cell[0];
   output->variance = 0.25;
@@ -47,6 +54,10 @@ rgpot_plugin_status_t calculate(rgpot_plugin_instance *instance,
     output->energy += 0.5 * input->positions[i] * input->positions[i];
     output->forces[i] = -input->positions[i];
   }
+  if (state.nanEnergy)
+    output->energy = std::numeric_limits<double>::quiet_NaN();
+  if (state.nanForce && input->n_atoms)
+    output->forces[0] = std::numeric_limits<double>::quiet_NaN();
   return RGPOT_PLUGIN_OK;
 }
 uint32_t unsupportedCaps(const rgpot_plugin_instance *) {
@@ -103,6 +114,37 @@ TEST_CASE("Plugin short descriptors omit optional callbacks", "[plugin][contract
   auto pot=rgpot::plugin::create_from_plugin(&desc,"{\"fail\":true}");
   REQUIRE_THROWS_WITH((*pot)(coordinates(),{1},box),"plugin calculate failed");
   REQUIRE(optional_calls==0);
+}
+
+TEST_CASE("Plugin forceBatch failures leave no earlier results in a reused buffer", "[plugin][contract]") {
+  const double cell[9]={4,0,0,0,4,0,0,0,4};
+  const std::vector<double> pos={0,0,0,1.1,0,0};
+  const std::vector<int> types={18,18};
+  std::vector<double> forces(6,0.0);
+  const rgpot::ForceInput periodic{.nAtoms=2,.pos=pos.data(),.atmnrs=types.data(),.box=cell};
+  rgpot::ForceOut out{.F=forces.data(),.energy=0.0,.variance=0.0,.stress={},.has_stress=0};
+  const auto nonzero=[](double value) { return value!=0.0; };
+  rgpot::LJPot lj;
+  lj.forceBatch({1,&periodic,&out});
+  REQUIRE(out.energy!=0.0);
+  REQUIRE(std::any_of(forces.begin(),forces.end(),nonzero));
+  REQUIRE(out.has_stress==1);
+  REQUIRE(std::any_of(std::begin(out.stress),std::end(out.stress),nonzero));
+  const char *config="{\"fail\":true}";
+  const double *box=cell;
+  SECTION("invalid buffers") { box=nullptr; }
+  SECTION("calculate status") {}
+  SECTION("non-finite energy") { config="{\"nan_energy\":true}"; }
+  SECTION("non-finite forces") { config="{\"nan_force\":true}"; }
+  auto desc=descriptor();
+  auto pot=rgpot::plugin::create_from_plugin(&desc,config);
+  const rgpot::ForceInput request{.nAtoms=2,.pos=pos.data(),.atmnrs=types.data(),.box=box};
+  const rgpot::ForceBatch batch{.nSystems=1,.in=&request,.out=&out};
+  REQUIRE_THROWS(pot->forceBatch(batch));
+  CHECK(out.energy==0.0);
+  CHECK_FALSE(std::any_of(forces.begin(),forces.end(),nonzero));
+  CHECK(out.has_stress==0);
+  CHECK_FALSE(std::any_of(std::begin(out.stress),std::end(out.stress),nonzero));
 }
 
 TEST_CASE("Plugin invalid descriptors fail before creating an instance", "[plugin][contract]") {
