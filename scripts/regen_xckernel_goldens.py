@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Regenerate committed libxckernel golden masters. rg.terra only.
+"""Regenerate committed libxckernel golden masters on a regen host.
+
+Runs only on a host listed in RGPOT_REGEN_HOSTS (comma-separated),
+unless XCKERNEL_ALLOW_REGEN=1.
 
 Do not invoke from meson test. Do not invent looser tolerances.
 """
@@ -27,16 +30,22 @@ for _thr in (
 import numpy as np
 
 PIN = "d6a9d57ba3fe0f2763667ce168d0c0ef21cff4a4"
-TERRA_HOSTS = {"rgam5terra", "rg.terra"}
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "CppCore" / "tests" / "data" / "xckernel"
 H6 = ("xx", "xy", "xz", "yy", "yz", "zz")
 
 
-def _require_terra() -> None:
-    host = socket.gethostname().split(".")[0]
-    if host not in TERRA_HOSTS and os.environ.get("XCKERNEL_ALLOW_REGEN") != "1":
-        sys.exit(f"regen_xckernel_goldens.py runs on rg.terra only (got {host})")
+def _require_regen_host() -> None:
+    raw = os.environ.get("RGPOT_REGEN_HOSTS", "")
+    allowed = {h.strip() for h in raw.split(",")} - {""}
+    host = socket.gethostname()
+    override = os.environ.get("XCKERNEL_ALLOW_REGEN") == "1"
+    if override or allowed & {host, host.split(".")[0]}:
+        return
+    sys.exit(
+        f"regen_xckernel_goldens.py runs only on a host listed in RGPOT_REGEN_HOSTS "
+        f"(got {host}; XCKERNEL_ALLOW_REGEN=1 overrides)"
+    )
 
 
 def _ensure_xckernel() -> None:
@@ -660,7 +669,7 @@ def write_manifest() -> None:
     man = {
         "libxckernel_rev": PIN,
         "regen": "scripts/regen_xckernel_goldens.py",
-        "host_only": "rg.terra",
+        "host_only": "workstation-a",
         "tolerances": {
             # Not a fixed 1e-16. Stage B is a blocked dsyr2k/dgemm:
             # |fl(a^T b) - a^T b| <= k*eps*|a|^T|b|, k = min(npts, 256),
@@ -693,7 +702,7 @@ def write_manifest() -> None:
 
 
 def main(argv=None) -> int:
-    _require_terra()
+    _require_regen_host()
     p = argparse.ArgumentParser()
     p.add_argument("--s2jz", action="store_true")
     p.add_argument("--c-vs-numpy", action="store_true")
