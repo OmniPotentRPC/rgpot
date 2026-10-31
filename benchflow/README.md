@@ -19,7 +19,7 @@ python -m unittest benchflow.test_gate
 
 This section explains how the suite turns measured noise into an upper bound.
 `benchflow/config.yaml` sets `rounds` (10) and `runs` (10).
-Those runs of `main` on one process measure the noise.
+Those runs of `develop` on one process measure the noise.
 Each run uses `--interleave-rounds` without `--quick` or `--skip-existing`.
 Two runs of the same commit give a calibration ratio.
 That ratio is the median of the second run over the median of the first.
