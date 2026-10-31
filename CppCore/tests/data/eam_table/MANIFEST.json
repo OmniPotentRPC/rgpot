@@ -1,0 +1,87 @@
+{
+  "potentials": {
+    "Al_EA.eam.alloy": {
+      "openkim_id": "EAM_Dynamo_ErcolessiAdams_1994_Al__MO_123629422045_006",
+      "openkim_doi": "10.25950/6ab99cd5",
+      "source": "https://openkim.org/download/EAM_Dynamo_ErcolessiAdams_1994_Al__MO_123629422045_006.txz",
+      "citation": "Ercolessi and Adams, Europhys. Lett. 26, 583 (1994)",
+      "doi": "10.1209/0295-5075/26/8/005",
+      "license": "CDDL-1.0",
+      "license_file": "LICENSE.CDDL",
+      "sha256": "9e7db1f84415b6065d7c7791eaf829375dd3ea591526dcd4970d5497ad509062",
+      "bytes": 36499
+    },
+    "alpb-setfl.eam.alloy": {
+      "openkim_id": "EAM_Dynamo_LandaWynblattSiegel_2000_AlPb__MO_699137396381_006",
+      "openkim_doi": "10.25950/5995bdbb",
+      "source": "https://openkim.org/download/EAM_Dynamo_LandaWynblattSiegel_2000_AlPb__MO_699137396381_006.txz",
+      "citation": "Landa, Wynblatt, Siegel, Adams, Mryasov and Liu, Acta Mater. 48, 1753 (2000)",
+      "doi": "10.1016/S1359-6454(00)00002-1",
+      "license": "CDDL-1.0",
+      "license_file": "LICENSE.CDDL",
+      "sha256": "b442ecb2f256e17410e84f95cca3fb80897cf4766e958d85f5cfc23ad45251ab",
+      "bytes": 85126
+    },
+    "synth.eam.fs": {
+      "generator": "synth_fs.py",
+      "command": "python3 synth_fs.py synth.eam.fs",
+      "description": "Synthetic two-element eam/fs table, not a fitted model. nrho = nr = 8, drho = 0.6, dr = 0.7, cutoff 5.3, so the cutoff lies past the last r knot 4.9 and rhomax is 4.2. The four density columns differ.",
+      "license": "MIT, as rgpot",
+      "sha256": "4ceeaaa978a3ccb0ec9af03238031d66805fe17152edc4448dd335225c3614a2",
+      "bytes": 1639
+    }
+  },
+  "lammps": {
+    "version": "30 Sep 2026 - Update 1",
+    "tag": "stable_30Sep2026_update1",
+    "commit": "098ffdefa525cabc82272925de02e9884f58c657",
+    "configure": "cmake -S cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_MPI=no -DBUILD_OMP=no -DPKG_MANYBODY=yes -DLAMMPS_EXCEPTIONS=yes",
+    "compiler": "conda-forge gcc 14.3.0",
+    "command": "lmp -in {name}.in -log none",
+    "deck": [
+      "units metal",
+      "atom_style atomic",
+      "boundary p p p",
+      "read_data {name}.data",
+      "pair_style eam/alloy",
+      "pair_coeff * * Al_EA.eam.alloy Al",
+      "neighbor 1.0 bin",
+      "thermo_style custom pe",
+      "run 0",
+      "print \"ENERGY $(pe:%.17g)\"",
+      "write_dump all custom {name}.dump id type x y z fx fy fz modify sort id format float %.17g"
+    ],
+    "boundary": "p p p, or s s s for al_cluster, al_dense and fs_clamp"
+  },
+  "references": {
+    "al_cluster": {
+      "sha256": "fa501591cd05f12c9946d612fbc4acc2706e4e8186bea9ee88cb465d24134d18",
+      "bytes": 7218
+    },
+    "al_dense": {
+      "sha256": "1c8c13c869458ecdf5629417b2eadd1dc1173dca52a3be3db97d889abc96ca8d",
+      "bytes": 2812
+    },
+    "al_fcc": {
+      "sha256": "4f30b6e214b8da529092ebf15a32a08003508d513054069988e572c6e5370051",
+      "bytes": 13689
+    },
+    "alpb_fcc": {
+      "sha256": "6d180da38e88165fe4a21597f8f8dddca460400cae0d3e3c21ad385fe497f691",
+      "bytes": 13464
+    },
+    "alpb_tri": {
+      "sha256": "02dc834240273d8e790c6aaedff4c8958508af6f554de0500917d4d70b6cc467",
+      "bytes": 30888
+    },
+    "fs_clamp": {
+      "sha256": "36d925c7ffc8c5dfa933e1ca225045e56f5adb4298167bc0faea5f06ab15f78f",
+      "bytes": 1639
+    }
+  },
+  "reference_format": "potential FILE setfl|fs PERIODIC; box (cell rows, zero when free); energy (eV); atoms N; then per atom Z x y z fx fy fz from the LAMMPS dump (Angstrom, eV/Angstrom)",
+  "configurations": "Positions are lattice sites plus a seeded uniform displacement (random.Random(20261030)). al_fcc: 3x3x3 Al, a=4.05. al_cluster: the 55 sites within 6 A of a 5x5x5 Al site, free. alpb_fcc: 3x3x3, a=4.10, a quarter Pb. alpb_tri: 4x4x4, a=4.05, half Pb, tilts xy=3, xz=1.5, yz=-2. al_dense: an Al site and its 18 nearest fcc sites at a=3.3, free, so the centre density passes rhomax. fs_clamp: a free body-centred Cu-Ag cube of edge 2.9 on synth.eam.fs, whose body diagonals pass the last r knot and whose densities pass rhomax.",
+  "license": {
+    "LICENSE.CDDL": "23696e1040ff4878ee674d41e2b606f8017fd77e5a98bdb82691ef675261a9ef"
+  }
+}
