@@ -33,6 +33,12 @@
 #include "rgpot/Potential.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
+#if defined(_WIN32)
+#define RGPOT_SC_API __declspec(dllexport)
+#else
+#define RGPOT_SC_API __attribute__((visibility("default")))
+#endif
+
 extern "C" {
 
 /// Plain parameter block for @c rgpot_sutton_chen_energy_forces.
@@ -52,9 +58,10 @@ struct rgpot_sc_config {
 /// `_force` is the Fortran bind(c) shape the symbol audit hides.
 /// @a box may be null when @c periodic is 0. @a forces has room for
 /// @c 3 * natoms doubles.
-int rgpot_sutton_chen_energy_forces(const rgpot_sc_config *cfg, int32_t natoms,
-                            const double *positions, const double *box,
-                            double *energy, double *forces);
+RGPOT_SC_API int
+rgpot_sutton_chen_energy_forces(const rgpot_sc_config *cfg, int32_t natoms,
+                                const double *positions, const double *box,
+                                double *energy, double *forces);
 
 } // extern "C"
 
