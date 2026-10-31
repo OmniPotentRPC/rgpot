@@ -6,3 +6,6 @@ max_width = 80
 
 # Extensions handled in this repo (org is the source of truth for Sphinx pages).
 # CLI globs still drive which files are visited; this documents intent for `snapper init`.
+
+# Pinned requirements are not prose.
+ignore = ["benchflow/requirements.txt"]
