@@ -196,6 +196,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/simd/exp.cc
       CppCore/rgpot/CuH2/cuh2Utils.cc
       CppCore/rgpot/fortran/FortranPots.cc
+      CppCore/rgpot/EAM/EAMTable.cc
       CppCore/rgpot/SuttonChen/SuttonChenPot.cc
       CppCore/rgpot/ReducedPair/ReducedPair.cc
       CppCore/rgpot/SuttonChen/SuttonChenScales.cc
