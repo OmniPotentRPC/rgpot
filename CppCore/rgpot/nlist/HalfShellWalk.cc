@@ -8,17 +8,31 @@
 #include <cmath>
 #include <cstring>
 
+#if defined(__GNUC__) || defined(__clang__)
+#define RGPOT_HS_INLINE __attribute__((always_inline)) inline
+#define RGPOT_HS_COLD __attribute__((noinline, cold))
+#define RGPOT_HS_UNLIKELY(cond) __builtin_expect(static_cast<bool>(cond), 0)
+#elif defined(_MSC_VER)
+#define RGPOT_HS_INLINE __forceinline
+#define RGPOT_HS_COLD __declspec(noinline)
+#define RGPOT_HS_UNLIKELY(cond) (static_cast<bool>(cond))
+#else
+#define RGPOT_HS_INLINE inline
+#define RGPOT_HS_COLD
+#define RGPOT_HS_UNLIKELY(cond) (static_cast<bool>(cond))
+#endif
+
 namespace rgpot::nlist::detail {
 // Half-away rounding. The pair walk uses the branchless form. It matches
 // std::round for every pair the cell list can keep: that list is built
 // only when the box is at least three cutoffs wide, so a neighbour lies
 // strictly inside the half-box, where multiplying by the reciprocal
 // cannot cross a half-integer boundary.
-__attribute__((always_inline)) inline double roundHalf(double t) {
+RGPOT_HS_INLINE double roundHalf(double t) {
   return static_cast<double>(static_cast<long long>(t + std::copysign(0.5, t)));
 }
 
-__attribute__((noinline, cold)) double foldExact(double delta, double len) {
+RGPOT_HS_COLD double foldExact(double delta, double len) {
   return delta - len * std::round(delta / len);
 }
 
@@ -221,9 +235,8 @@ void halfShell(const double *pos, std::size_t n, const Grid &g,
               double fx = dx - lx * roundHalf(dx * invx);
               double fy = dy - ly * roundHalf(dy * invy);
               double fz = dz - lz * roundHalf(dz * invz);
-              if (__builtin_expect(std::fabs(fx) > hx || std::fabs(fy) > hy ||
-                                       std::fabs(fz) > hz,
-                                   0)) {
+              if (RGPOT_HS_UNLIKELY(std::fabs(fx) > hx || std::fabs(fy) > hy ||
+                                    std::fabs(fz) > hz)) {
                 fx = foldExact(dx, lx);
                 fy = foldExact(dy, ly);
                 fz = foldExact(dz, lz);

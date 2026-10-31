@@ -755,8 +755,10 @@ void fold_search(bool narrow, const double cell[9], const double inv[9],
 // The attribute keeps vfmadd in this body. The caller enters it only after
 // simd::detail::fma_hw_active() finds a usable FMA. MSVC has no target
 // attribute; this body then calls std::fma, and the caller keeps the
-// portable path unless a runtime check selects it.
-#if defined(__GNUC__) || defined(__clang__)
+// portable path unless a runtime check selects it. fma is an x86 target
+// option only: GCC for aarch64 rejects it, and FMA is in the armv8-a base.
+#if (defined(__GNUC__) || defined(__clang__)) &&                               \
+    (defined(__x86_64__) || defined(__i386__))
 __attribute__((target("fma"), noinline, flatten))
 #endif
 void fold_hardware(bool narrow, const double cell[9], const double inv[9],
