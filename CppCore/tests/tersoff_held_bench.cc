@@ -206,7 +206,11 @@ void report(const char *mode, int n, const std::string &scenario,
 int main(int argc, char **argv) {
   const Opts o = parse(argc, argv);
   std::cout.precision(6);
+#if defined(__VERSION__)
   std::cout << "compiler: " << __VERSION__ << "\n";
+#elif defined(_MSC_FULL_VER)
+  std::cout << "compiler: MSVC " << _MSC_FULL_VER << "\n";
+#endif
   std::cout << "skin: " << o.skin << " amp: " << o.amp << " step: " << o.step
             << " seed: " << o.seed << " warm: " << o.warm << "\n";
   for (int nrep : o.nrep) {
