@@ -8,6 +8,10 @@
  * sigma = (1/V) dE/dε for the right strain that sends a row of Cartesian
  * coordinates r to r (I+ε). A pair whose force on atom i is fscale * d,
  * with d = r_i - r_j, contributes -fscale * d ⊗ d to dE/dε.
+ *
+ * A many-body term that depends on folded bond vectors d_k contributes
+ * the sum over k of d_k ⊗ dE/dd_k (Thompson, Plimpton and Mattson, J. Chem.
+ * Phys. 131, 154107 (2009), doi:10.1063/1.3245303).
  */
 
 #include "rgpot/ForceStructs.hpp"
@@ -46,6 +50,18 @@ inline void accumulatePairStrain(double acc[6], double fscale, double dx,
   acc[3] += c * dy * dz;
   acc[4] += c * dx * dz;
   acc[5] += c * dx * dy;
+}
+
+/// Add d ⊗ g to the six Voigt components of dE/dε, where d is a bond vector
+/// and g is dE/dd. Off-diagonal slots take the upper triangle, d_a g_b, a < b.
+inline void accumulateBondStrain(double acc[6], double dx, double dy, double dz,
+                                 double gx, double gy, double gz) {
+  acc[0] += dx * gx;
+  acc[1] += dy * gy;
+  acc[2] += dz * gz;
+  acc[3] += dy * gz;
+  acc[4] += dx * gz;
+  acc[5] += dx * gy;
 }
 
 /// Write acc/volume into the row-major ForceOut stress. A nonpositive
