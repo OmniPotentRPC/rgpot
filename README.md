@@ -64,19 +64,23 @@ is required at `pip install` time. Lennard-Jones needs only `numpy`.
 Metatomic uses **dlopen** of a bundled
 engine:
 
--   layout: `rgpot/lib/torch-X.Y/libmetatomic_engine.so`
--   picker: installed `torch` major (same multi-ABI idea as metatomic-torch)
--   **supported torch majors: 2.7 and newer** (wheels ship 2.7–2.13 engines)
--   torch 2.6 and older are not supported for Metatomic dlopen
+The 3.5.1 wheels ship one `libmetatomic_engine` under `.rgpot.mesonpy.libs/`.
+They have no `rgpot/lib/torch-X.Y` engine layout.
+`available_metatomic_engine_abis()` lists `rgpot/lib/torch-*` directories, so on
+these wheels it returns an empty list.
 
 ```python
 import numpy as np
 import rgpot
 
 print(rgpot.__version__)
-print(rgpot.has_expr, rgpot.has_dftd3, rgpot.has_dftd4, rgpot.has_xckernel, rgpot.has_ipi)
-print(rgpot.available_metatomic_engine_abis())  # e.g. 2.7 .. 2.13
-# energy, forces, variance = rgpot.LJPot()(positions, atom_types, box)
+print(rgpot.has_expr, rgpot.has_dftd3, rgpot.has_dftd4, rgpot.has_xckernel)
+print(rgpot.available_metatomic_engine_abis())
+positions = np.array([[0.0, 0.0, 0.0], [1.1, 0.0, 0.0]])
+atom_types = np.array([1, 1], dtype=np.int32)
+box = np.eye(3) * 10.0
+energy, forces, variance = rgpot.LJPot()(positions, atom_types, box)
+print(energy)
 # energy, forces, variance = rgpot.D3Pot()(positions, atom_types, box)
 # energy, forces, variance = rgpot.ExprPot(
 #     "0.5*lj + d3", {"lj": "lj", "d3": "d3"})(positions, atom_types, box)
@@ -84,6 +88,17 @@ print(rgpot.available_metatomic_engine_abis())  # e.g. 2.7 .. 2.13
 # energy, forces, variance = rgpot.evaluate_metatomic(
 #     positions, atom_types, box, model_path="model.pt")
 ```
+
+With the 3.5.1 wheel it prints:
+
+    3.5.1
+    True True True True
+    []
+    -0.9833720982077326
+
+The list is empty because the 3.5.1 wheels have no `rgpot/lib/torch-X.Y`
+directory, as above.
+Builds of the develop branch also export `rgpot.has_ipi`, which 3.5.1 lacks.
 
 See <https://pypi.org/project/rgpot/>.
 
@@ -219,8 +234,8 @@ RPC client types:
 
 <tr>
 <td class="org-left"><code>MOPACPot</code></td>
-<td class="org-left"><code>MOPAC</code></td>
-<td class="org-left">Frontend always builds; load <code>libmopacc</code> from the split <a href="https://github.com/OmniPotentRPC/mopacc">mopacc</a> project at runtime (OpenMOPAC). Packed params. Default model AM1.</td>
+<td class="org-left">none</td>
+<td class="org-left">No <code>potserv</code> selector; use it in process or through the <code>libmopac_engine</code> plugin (<code>docs/orgmode/reference/engine_abi.org</code>). Frontend always builds; load <code>libmopacc</code> from the split <a href="https://github.com/OmniPotentRPC/mopacc">mopacc</a> project at runtime (OpenMOPAC). Packed params. Default model AM1.</td>
 </tr>
 
 <tr>
@@ -241,6 +256,7 @@ one `ExprPot` as one eindir objective for rgmin, rgsaddle, and anneal.
     #include "rgpot/types/AtomMatrix.hpp"
 
     #include <array>
+    #include <iostream>
     #include <memory>
     #include <vector>
 
@@ -260,8 +276,16 @@ one `ExprPot` as one eindir objective for rgmin, rgsaddle, and anneal.
       auto [energy, forces, variance] = pot(positions, atomTypes, box);
       (void)forces;
       (void)variance;
-      (void)energy;
+      std::cout << energy << '\n';
     }
+
+Compile it against an rgpot installed with `-Dwith_expr=true`:
+
+    c++ -std=c++20 exprpot_demo.cc $(pkg-config --cflags --libs rgpot) -o exprpot_demo
+
+The `pkg-config` flags include `-DRGPOT_HAS_EXPR=TRUE`.
+Without that define `ExprPot.hpp` stops with an `#error`.
+The program prints `450.593`.
 
 When the build also has `-Dwith_dftd3=true`, swap the Morse child for
 `D3Pot` and the string `"0.5*lj + d3"`.
