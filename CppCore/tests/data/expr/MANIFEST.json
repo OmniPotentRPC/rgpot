@@ -1,5 +1,5 @@
 {
-  "host_only": "rg.terra",
+  "host_only": "workstation-a",
   "regen": "scripts/regen_expr_goldens.py",
   "fixture": "two_atom_ar",
   "units": {

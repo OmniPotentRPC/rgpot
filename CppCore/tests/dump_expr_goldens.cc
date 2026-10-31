@@ -1,6 +1,7 @@
 // Dump independent LJ / Morse / optional D3 sums for ExprPot goldens.
 // Pins are eV and eV/A. Run from the source root via
-// scripts/regen_expr_goldens.py on rg.terra. Do not invoke from meson test.
+// scripts/regen_expr_goldens.py on a host listed in RGPOT_REGEN_HOSTS.
+// Do not invoke from meson test.
 
 #include <array>
 #include <cmath>

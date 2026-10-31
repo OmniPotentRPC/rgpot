@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Time in-process rgpot LJPot vs pyeonclient Matter on one LJ fixture.
 
-Required race (rg.terra, repo defaults, no invented cheaper pot settings):
+Required race (workstation-a, repo defaults, no invented cheaper pot settings):
 
   A  rgpot LJPot operator() (C++ time_lj_force, else Python rgpot.LJPot)
   B  pyeonclient Matter with PotType.LJ (in-process, not potserv RPC)
@@ -12,6 +12,9 @@ Fixture: ExprPotTest two-atom Ar (1.5 A, Z=18, 40 A box), default LJConfig.
 Does not time XcKernel. XcKernel is not a Potential. Does not seed numbers.
 
 Prints parseable KEY=value lines including A_ns_per_call and B_ns_per_call.
+
+Runs only on a host listed in RGPOT_REGEN_HOSTS (comma-separated),
+unless TIME_LJ_ALLOW=1.
 """
 
 from __future__ import annotations
@@ -24,7 +27,6 @@ import sys
 import time
 from pathlib import Path
 
-TERRA_HOSTS = {"rgam5terra", "rg.terra"}
 ROOT = Path(__file__).resolve().parents[1]
 
 # ExprPotTest identity fixture (Angstrom, eV).
@@ -33,12 +35,17 @@ NUMBERS = [18, 18]
 BOX = [[40.0, 0.0, 0.0], [0.0, 40.0, 0.0], [0.0, 0.0, 40.0]]
 
 
-def _require_terra() -> None:
-    host = socket.gethostname().split(".")[0]
-    if host not in TERRA_HOSTS and os.environ.get("TIME_LJ_ALLOW") != "1":
-        sys.exit(
-            f"time_lj_rgpot_vs_pyeonclient.py runs on rg.terra only (got {host})"
-        )
+def _require_regen_host() -> None:
+    raw = os.environ.get("RGPOT_REGEN_HOSTS", "")
+    allowed = {h.strip() for h in raw.split(",")} - {""}
+    host = socket.gethostname()
+    override = os.environ.get("TIME_LJ_ALLOW") == "1"
+    if override or allowed & {host, host.split(".")[0]}:
+        return
+    sys.exit(
+        "time_lj_rgpot_vs_pyeonclient.py runs only on a host listed in "
+        f"RGPOT_REGEN_HOSTS (got {host}; TIME_LJ_ALLOW=1 overrides)"
+    )
 
 
 def _parse_kv(text: str) -> dict[str, str]:
@@ -205,7 +212,7 @@ def main() -> int:
     if args.n <= 0 or args.warmup <= 0:
         sys.exit("--n and --warmup must be positive")
 
-    _require_terra()
+    _require_regen_host()
 
     print(f"host={socket.gethostname()}")
     print("fixture=exprpot_two_atom")
