@@ -1,5 +1,5 @@
 {
-  "host_only": "rg.terra",
+  "host_only": "workstation-a",
   "regen": "scripts/regen_dftd_goldens.py",
   "functional": "pbe",
   "fixture": "water_octamer_cube",

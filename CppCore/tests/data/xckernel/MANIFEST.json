@@ -1,7 +1,7 @@
 {
   "libxckernel_rev": "d6a9d57ba3fe0f2763667ce168d0c0ef21cff4a4",
   "regen": "scripts/regen_xckernel_goldens.py",
-  "host_only": "rg.terra",
+  "host_only": "workstation-a",
   "tolerances": {
     "c_vs_numpy": "k*eps*|a|^T|b| per stage-B block, plus half an ulp",
     "fock_vs_pyscf": 1e-15,
