@@ -157,7 +157,10 @@ config-settings = "setup-args=-Dpython.allow_limited_api=false"
 # openblas-devel is libopenblas; dftd4 is configured with lapack=openblas.
 # An AlmaLinux mirror can serve an empty repomd.xml, so the install retries
 # on fresh metadata and stops the job if it never succeeds; otherwise the
-# build ran on and failed later on a missing openblas.
+# build ran on and failed later on a missing openblas. The mirrorlist can
+# hand the runner the same broken mirror on every attempt, so the retries
+# read the primary repo.almalinux.org that each repo file names in its
+# commented baseurl.
 before-all = """
 set -eu
 pm=$(command -v dnf || command -v yum)
@@ -167,6 +170,10 @@ for attempt in 1 2 3; do
     echo "gcc-gfortran and openblas-devel did not install after 3 attempts" >&2
     exit 1
   fi
+  for repo in /etc/yum.repos.d/almalinux*.repo; do
+    [ -f "$repo" ] || continue
+    sed -i -e 's|^mirrorlist=|#mirrorlist=|' -e 's|^# *baseurl=https://repo.almalinux.org/|baseurl=https://repo.almalinux.org/|' "$repo"
+  done
   "$pm" clean metadata
   sleep $((attempt * 20))
 done
