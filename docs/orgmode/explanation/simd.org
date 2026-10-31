@@ -45,6 +45,20 @@ AVX2, and AVX-512F.
 The loader picks one clone from libgcc's own CPU check, and each clone returns
 the bits of the baseline one.
 
+=target("fma")= is an x86 target name, so the fold carries it only on x86-64
+under GCC or Clang, the one target where =fma_hw_active()= can be true.
+On aarch64 and under MSVC the fold always runs the portable path through
+=simd::mul_add=, which returns the same bits.
+
+A compiler with contraction on may fuse a product and a sum into one fused
+multiply-add, and the result can then move by an ulp.
+Clang contracts by default and emits the instruction where the target has it,
+which is every macOS arm64 build.
+The Meson build compiles the kernels that keep fixed bits with
+=-ffp-contract=off=, or =/fp:precise= under MSVC, as per-target arguments.
+Meson places those after =cpp_args=, so a global =-ffp-contract=fast= does not
+reach them.
+
 A Lennard-Jones cluster whose bounding-box diagonal sits on the cutoff uses
 =lj_cluster_direct= instead of the Highway kernel.
 On x86-64 that walk calls =lj_avx2= only after =__builtin_cpu_supports("avx2")=.
