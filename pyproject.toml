@@ -155,7 +155,25 @@ config-settings = "setup-args=-Dpython.allow_limited_api=false"
 
 [tool.cibuildwheel.linux]
 # openblas-devel is libopenblas; dftd4 is configured with lapack=openblas.
-before-all = "yum install -y gcc-gfortran openblas-devel || dnf install -y gcc-gfortran openblas-devel; g++ -std=c++20 -ICppCore CppCore/tests/print_cxx_layout_stamp.cc -o /tmp/print_cxx_layout_stamp && /tmp/print_cxx_layout_stamp"
+# An AlmaLinux mirror can serve an empty repomd.xml, so the install retries
+# on fresh metadata and stops the job if it never succeeds; otherwise the
+# build ran on and failed later on a missing openblas.
+before-all = """
+set -eu
+pm=$(command -v dnf || command -v yum)
+for attempt in 1 2 3; do
+  "$pm" install -y gcc-gfortran openblas-devel && break
+  if [ "$attempt" -eq 3 ]; then
+    echo "gcc-gfortran and openblas-devel did not install after 3 attempts" >&2
+    exit 1
+  fi
+  "$pm" clean metadata
+  sleep $((attempt * 20))
+done
+rpm -q gcc-gfortran openblas-devel
+g++ -std=c++20 -ICppCore CppCore/tests/print_cxx_layout_stamp.cc -o /tmp/print_cxx_layout_stamp
+/tmp/print_cxx_layout_stamp
+"""
 # meson-python vendors librgpot into .rgpot.mesonpy.libs and rewrites RPATHs,
 # but auditwheel still resolves NEEDED against the filesystem. Unpack the
 # wheel and put that directory on LD_LIBRARY_PATH.
