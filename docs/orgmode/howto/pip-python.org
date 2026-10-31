@@ -31,21 +31,13 @@ pip install 'rgpot[metatomic]'
 # pip install torch metatomic-torch metatensor-torch metatensor-core vesin
 #+end_src
 
-** Multi-ABI engines and torch floor
+** Engines in the 3.5.1 wheel
 
-Engines live in the wheel as:
-
-#+begin_example
-rgpot/lib/torch-X.Y/libmetatomic_engine.so
-#+end_example
-
-At import time, =rgpot.default_metatomic_engine_path()= picks the directory that
-matches the installed =torch= major (same multi-ABI idea as metatomic-torch).
-
-| Torch major | Bundled engine (typical wheel) |
-|-------------+--------------------------------|
-| 2.7 and newer | Supported (wheels ship 2.7–2.13) |
-| 2.6 and older | Not supported for Metatomic dlopen |
+The 3.5.1 wheels ship one =libmetatomic_engine= under =.rgpot.mesonpy.libs/=.
+They have no =rgpot/lib/torch-X.Y= engine layout.
+=available_metatomic_engine_abis()= lists =rgpot/lib/torch-*= directories, so on
+these wheels it returns =[]=.
+=default_metatomic_engine_path()= returns that =.so=.
 
 Optional dependency pins match the floor (=torch>=2.7=).
 List what the installed wheel actually contains:
@@ -66,11 +58,19 @@ import rgpot
 pos = np.ascontiguousarray([[0.0, 0.0, 0.0], [1.1, 0.0, 0.0]], dtype=np.float64)
 types = np.ascontiguousarray([1, 1], dtype=np.int32)
 box = np.ascontiguousarray(np.eye(3) * 10.0, dtype=np.float64)
-energy, forces, virial = rgpot.evaluate_lj(pos, types, box)
+energy, forces, variance = rgpot.evaluate_lj(pos, types, box)
 print(energy, forces.shape)
 #+end_src
 
+#+begin_example
+-0.9833720982077326 (2, 3)
+#+end_example
+
 ** Pair parameters and the cutoff switch
+
+This section needs a build of the develop branch.
+In the 3.5.1 wheel =rgpot.LJPot()= takes no arguments, and =ExprPot= ignores the
+parameters in a child dict.
 
 =rgpot.LJPot= takes the =LJConfig= fields as keywords.
 =u0= is in eV; =cutoff=, =psi= and =switch_width= are in Angstrom.

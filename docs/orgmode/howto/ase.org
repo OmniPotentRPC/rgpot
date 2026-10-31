@@ -6,6 +6,8 @@
 
 =rgpot.ase= is an optional extra (=pip install 'rgpot[ase]'=, ASE 3.23 or
 newer).
+It is on the develop branch and not in the 3.5.1 wheel on PyPI, where
+=from rgpot.ase import RgpotCalculator= raises =ModuleNotFoundError=.
 =import rgpot= does not import ASE.
 The in-process calculator evaluates a bound potential in this process.
 The Cap'n Proto calculator talks to =potserv=.
@@ -20,11 +22,23 @@ from ase import Atoms
 from ase.optimize import BFGS
 from rgpot.ase import RgpotCalculator
 
-atoms = Atoms("Al7", positions=[[0, 0, 0]] * 7, cell=[30, 30, 30])
+d = 2.86  # Al nearest-neighbour distance, Angstrom
+positions = [[0, 0, 0], [d, 0, 0], [-d, 0, 0], [0, d, 0], [0, -d, 0],
+             [0, 0, d], [0, 0, -d]]
+atoms = Atoms("Al7", positions=positions, cell=[30, 30, 30])
 atoms.calc = RgpotCalculator("eam_al")
+print(atoms.get_potential_energy())
 BFGS(atoms, logfile=None).run(fmax=0.05)
 print(atoms.get_potential_energy())
 #+end_src
+
+The seven atoms start as a centred octahedron.
+The script prints the energy in eV before and after the relaxation:
+
+#+begin_example
+-8.47888331847719
+-9.887473662396616
+#+end_example
 
 =RgpotCalculator= accepts an rgpot potential object or a kind string (=lj=,
 =eam_al=, and the other bound names) plus that potential's parameters.
