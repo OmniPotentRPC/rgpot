@@ -721,6 +721,7 @@ if get_option('with_tests')
             ['ReducedPairTest', 'reduced_pair_test', 'ReducedPairTest.cc', ''],
             ['EMTPotTest', 'emt_pot_test', 'EMTPotTest.cc', ''],
             ['EAMCellPotTest', 'eam_cell_pot_test', 'EAMCellPotTest.cc', ''],
+            ['EAMTableTest', 'eam_table_test', 'EAMTableTest.cc', ''],
             ['PairListTest', 'pair_list_test', 'PairListTest.cc', ''],
             [
                 'MinImageIsaHash',
