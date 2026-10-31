@@ -214,6 +214,8 @@ std::size_t pair_count(const std::vector<double> &pos, const double *box,
 
 } // namespace
 
+// The water-H entry points are part of the Fortran kernels.
+#ifdef RGPOT_HAS_FORTRAN_POTS
 extern "C" int rgpot_water_h_force(int natoms, const double *positions,
                                    const int *atomic_numbers, const double *cell,
                                    double *forces, double *energy);
@@ -222,6 +224,7 @@ extern "C" int rgpot_water_h_force(int natoms, const double *positions,
 // folded with this routine, so it is the same displacement the periodic
 // evaluation uses.
 extern "C" void rgpot_water_h_image(const double *cell, const double *d, double *out);
+#endif
 
 TEST_CASE("LJPot matches the fused scan on a wrapping slab", "[fastnlist][lj]") {
   const auto base = slab();
@@ -510,6 +513,7 @@ TEST_CASE("Optbench LJ clusters and the Pt island match the fused scan", "[fastn
   REQUIRE_THAT(again.energy - out.energy, WithinAbs(0.0, 0.0));
 }
 
+#ifdef RGPOT_HAS_FORTRAN_POTS
 TEST_CASE("Water plus H wraps every leg with minimage", "[fastnlist][water]") {
   constexpr int nmol = 2;
   constexpr int nat = 3 * nmol + 1;
@@ -557,6 +561,7 @@ TEST_CASE("Water plus H wraps every leg with minimage", "[fastnlist][water]") {
   REQUIRE_THAT(isolated_again - isolated, WithinAbs(0.0, 0.0));
   REQUIRE(std::isfinite(isolated));
 }
+#endif
 
 TEST_CASE("A rigid shift keeps the Pt list", "[fastnlist][morse]") {
   std::vector<double> base;
@@ -646,6 +651,7 @@ TEST_CASE("A non-rigid move inside the skin matches a fresh scan", "[fastnlist][
   require_close(out.energy, forces, lj_oracle(moved, box, {{true, true, true}}, 6.0));
 }
 
+#ifdef RGPOT_HAS_FORTRAN_POTS
 TEST_CASE("Skewed WaterH matches the 26-image oracle", "[fastnlist][water]") {
   // a = (8, 0, 0), b = (7.2, 0.8, 0), c = (0, 0, 8). The oxygen at
   // (4, 0.3, 1) has fractional length squared 17.09. A neighbour in the
@@ -682,3 +688,4 @@ TEST_CASE("Skewed WaterH matches the 26-image oracle", "[fastnlist][water]") {
   REQUIRE_THAT(energy - open_energy, WithinAbs(0.0, 0.0));
   REQUIRE_THAT(max_abs(forces, open_forces), WithinAbs(0.0, 0.0));
 }
+#endif

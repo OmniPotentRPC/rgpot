@@ -24,6 +24,9 @@
 #include <catch2/catch_all.hpp>
 
 #include "rgpot/LennardJones/LJPot.hpp"
+#ifdef RGPOT_HAS_WATER
+#include "rgpot/Water/WaterPots.hpp"
+#endif
 #include "rgpot/engine_c_abi.h"
 #include "rgpot/rpc/Potentials.capnp.h"
 #include "rgpot/types/AtomMatrix.hpp"
@@ -267,6 +270,64 @@ TEST_CASE("classical engine names its potentials", "[engine][classical]") {
     }
   }
 }
+
+#ifdef RGPOT_HAS_WATER
+namespace {
+
+template <typename Pot>
+void check_water(const Engine &e, const std::string &name,
+                 const std::vector<double> &pos, const std::vector<int> &z) {
+  INFO(name);
+  std::string error;
+  RgpotEnginePot *pot = create(e, builtin_params(name), &error);
+  INFO(error);
+  REQUIRE(pot != nullptr);
+  const long n = static_cast<long>(z.size());
+  std::vector<double> forces(3 * n, 0.0);
+  double energy = 0.0;
+  REQUIRE(e.force(pot, n, pos.data(), z.data(), forces.data(), &energy, nullptr,
+                  kBox.data(), nullptr, nullptr) == 0);
+  e.destroy(pot);
+
+  Pot direct;
+  rgpot::types::AtomMatrix positions(n, 3);
+  for (long i = 0; i < n; ++i) {
+    for (int d = 0; d < 3; ++d) {
+      positions(i, d) = pos[3 * i + d];
+    }
+  }
+  const std::array<std::array<double, 3>, 3> box = {
+      {{40, 0, 0}, {0, 40, 0}, {0, 0, 40}}};
+  auto [ref_e, ref_f, ref_v] = direct(positions, z, box);
+  (void)ref_v;
+  REQUIRE(energy == Catch::Approx(ref_e).margin(1e-12));
+  for (long i = 0; i < n; ++i) {
+    for (int d = 0; d < 3; ++d) {
+      REQUIRE(forces[3 * i + d] == Catch::Approx(ref_f(i, d)).margin(1e-12));
+    }
+  }
+}
+
+} // namespace
+
+TEST_CASE("classical engine serves the water potentials",
+          "[engine][classical][water]") {
+  Engine e;
+  if (!open_engine("CLASSICAL", e)) {
+    SKIP("no classical engine in this build");
+  }
+  // One distorted water, Angstrom. Order is H, H, O.
+  const std::vector<double> water = {0.80, 0.10, 0.50, -0.70, 0.05,
+                                     0.55, 0.0,  0.0,  0.0};
+  check_water<rgpot::TIP4PPot>(e, "tip4p", water, {1, 1, 8});
+  check_water<rgpot::SPCEPot>(e, "spce", water, {1, 1, 8});
+  // TIP4P-Pt mirrors the charges in z = 0, so the water sits above the
+  // platinum atom.
+  const std::vector<double> on_pt = {0.80, 0.10, 2.50, -0.70, 0.05, 2.55,
+                                     0.0,  0.0,  2.0,  0.0,   0.0,  0.0};
+  check_water<rgpot::TIP4PPtPot>(e, "tip4p_pt", on_pt, {1, 1, 8, 78});
+}
+#endif
 
 namespace {
 
