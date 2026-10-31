@@ -101,6 +101,7 @@ meson compile -C bbdir && meson test -C bbdir
    reference/engine_abi
    reference/simd_exp
    reference/sutton_chen
+   reference/eam_table
    api/index
    changelog
 

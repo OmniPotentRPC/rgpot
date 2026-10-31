@@ -196,6 +196,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/simd/exp.cc
       CppCore/rgpot/CuH2/cuh2Utils.cc
       CppCore/rgpot/fortran/FortranPots.cc
+      CppCore/rgpot/EAM/EAMTable.cc
       CppCore/rgpot/SuttonChen/SuttonChenPot.cc
       CppCore/rgpot/ReducedPair/ReducedPair.cc
       CppCore/rgpot/SuttonChen/SuttonChenScales.cc
@@ -560,6 +561,9 @@ if(RGPOT_BUILD_TESTS)
     target_link_libraries(FortranPotsTest PRIVATE Threads::Threads)
     add_pot_test(TersoffSiCTest CppCore/tests/TersoffSiCTest.cc)
     add_pot_test(CuH2PotTest CppCore/tests/CuH2PotTest.cc)
+    add_pot_test(EAMTableTest CppCore/tests/EAMTableTest.cc)
+    set_tests_properties(EAMTableTest PROPERTIES WORKING_DIRECTORY
+                                                 ${CMAKE_CURRENT_SOURCE_DIR})
     if(BUILD_SHARED_LIBS AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
       add_test(NAME FortranSymbolAudit
                COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/scripts/audit_fortran_symbols.sh"
