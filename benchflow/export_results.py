@@ -732,13 +732,13 @@ def command_gate(args: argparse.Namespace) -> None:
         lines.append(log_text.rstrip())
         lines.append(">>")
     status = decide_status(args.base, args.head, failures, results_ready)
+    if args.asv_status:
+        status = args.asv_status
     lines.append(f"gate_status={status}")
     report = Path(args.report)
     status_path = Path(args.status)
     report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text("\n".join(lines) + "\n")
-    if args.asv_status:
-        status = args.asv_status
     status_path.write_text(f"{status}\n")
 
 
