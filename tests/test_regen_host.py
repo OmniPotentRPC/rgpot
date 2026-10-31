@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import shutil
 import socket
 import subprocess
 from pathlib import Path
@@ -69,21 +70,26 @@ def test_override_still_works(name, monkeypatch):
         _load(name)._require_regen_host()
 
 
-def _run_gen_libxckernel(tmp_path: Path, **env_extra: str):
-    # A failing python3 stub stops the script at its sympy probe, before it
-    # replaces third_party/libxckernel.
+def _run_gen_libxckernel(
+    tmp_path: Path,
+    script: Path = SCRIPTS / "gen_libxckernel.sh",
+    python3: str = "#!/bin/sh\nexit 1\n",
+    **env_extra: str,
+):
+    # The default python3 stub fails, so the script stops at its sympy probe,
+    # before it replaces third_party/libxckernel.
     stub = tmp_path / "bin"
     stub.mkdir()
-    (stub / "python3").write_text("#!/bin/sh\nexit 1\n")
+    (stub / "python3").write_text(python3)
     (stub / "python3").chmod(0o755)
     env = dict(os.environ)
-    env.pop("RGPOT_REGEN_HOSTS", None)
-    env.pop("XCKERNEL_ALLOW_REGEN", None)
+    for var in ("RGPOT_REGEN_HOSTS", "XCKERNEL_ALLOW_REGEN", "RGPOT_HOST_LABEL"):
+        env.pop(var, None)
     env["PATH"] = f"{stub}{os.pathsep}{env['PATH']}"
     env["LIBXCKERNEL_SRC"] = str(tmp_path)
     env.update(env_extra)
     return subprocess.run(
-        ["bash", str(SCRIPTS / "gen_libxckernel.sh")],
+        ["bash", str(script)],
         env=env,
         capture_output=True,
         text=True,
@@ -111,3 +117,36 @@ def test_gen_libxckernel_override_still_works(tmp_path):
     assert out.returncode == 2
     assert "RGPOT_REGEN_HOSTS" not in out.stderr
     assert "need sympy+numpy" in out.stderr
+
+
+@pytest.mark.parametrize(
+    ("label", "expected"),
+    [
+        ("workstation-a", "workstation-a"),
+        ("  lab box 7 ", "lab box 7"),
+        (None, "unspecified"),
+        ("", "unspecified"),
+        (" \t ", "unspecified"),
+    ],
+)
+def test_gen_libxckernel_pin_host_label(tmp_path, label, expected):
+    # A copy of the script under tmp_path writes its PIN there, and the stub
+    # stands in for the sympy probe and xckernel.catalog.
+    repo = tmp_path / "repo"
+    (repo / "scripts").mkdir(parents=True)
+    script = repo / "scripts" / "gen_libxckernel.sh"
+    shutil.copy(SCRIPTS / "gen_libxckernel.sh", script)
+    stub = '#!/bin/sh\nif [ "$1" = "-m" ]; then mkdir -p "$3/src"; fi\n'
+    extra = {} if label is None else {"RGPOT_HOST_LABEL": label}
+    out = _run_gen_libxckernel(
+        tmp_path, script, stub, XCKERNEL_ALLOW_REGEN="1", **extra
+    )
+    assert out.returncode == 0, out.stderr
+    pin = (repo / "third_party" / "libxckernel" / "PIN").read_text()
+    committed = (SCRIPTS.parent / "third_party" / "libxckernel" / "PIN").read_text()
+    assert pin.splitlines()[:-1] == committed.splitlines()[:-1]
+    assert pin.splitlines()[-1] == f"host {expected}"
+    full = socket.gethostname()
+    for name in {full, full.split(".")[0]}:
+        assert name not in pin.split()
+        assert f"host {name}" not in pin
