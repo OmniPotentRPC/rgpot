@@ -142,7 +142,8 @@ it never linked against the potential code.
 Swapping =LJ= for =Morse= or =CuH2= changed only the name given to the server.
 Any other selector the server was built with, such as an extended tight-binding
 (xTB) or metatomic model, answers the same client.
-@@rst::doc:`../explanation/rpc-model`@@ explains why the wire is split this way.
+@@rst::doc:`../explanation/rpc-model`@@ explains why the wire is split this way
+and draws the client, server and backend layout.
 
 ** Next steps
 

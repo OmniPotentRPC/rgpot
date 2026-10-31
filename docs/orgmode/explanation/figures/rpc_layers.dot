@@ -1,0 +1,37 @@
+// RPC clients, the Cap'n Proto wire, potserv, and the backends it can host.
+// eOn's RgpotPot links the same engine frontends in process, without potserv.
+// Render with docs/orgmode/explanation/figures/render.sh.
+digraph rpc_layers {
+  graph [rankdir=LR, fontname="Helvetica", fontsize=11, nodesep=0.25, ranksep=0.6, bgcolor="white"];
+  node [shape=box, style="rounded,filled", fillcolor="#f4f4f4", color="#555555", fontname="Helvetica", fontsize=10];
+  edge [color="#555555", fontname="Helvetica", fontsize=9];
+
+  subgraph cluster_clients {
+    label="RPC clients"; color="#999999"; style="rounded";
+    python [label="Python\npycapnp, rgpot.ase.RgpotRpcCalculator"];
+    rust [label="Rust and C\nrgpot-core RpcClient, rgpot_rpc_client_new"];
+    cxx [label="C++\nPotClient from pot_client_init\n(Cap'n Proto EzRpcClient)"];
+  }
+
+  wire [shape=note, fillcolor="#fff7e0", label="Cap'n Proto RPC over TCP\nconfigure(PotentialConfig), once\ncalculate(ForceInput) returns PotentialResult"];
+
+  server [label="potserv <port> <selector>\none backend per process\nunit conversion to eV and Angstrom", fillcolor="#dbe8f6"];
+
+  subgraph cluster_backends {
+    label="Backends, picked by the selector"; color="#999999"; style="rounded";
+    optional [label="Only with a meson option\n-Dwith_xtb: XTB, GFNFF, GFN0xTB, GFN1xTB\n-Dwith_tblite: TBLite, TBLiteGFN1, TBLiteIPEA1\n-Dwith_dftd3, -Dwith_dftd4: D3, D4\n-Dwith_metatomic: Metatomic:<model>[:<device>],\nUma:<model>[:<task>]\n-Dwith_skala: Skala[:<basis>] (libnwchemc)"];
+    subgraph cluster_default {
+      label="In the Quickstart build"; color="#bbbbbb"; style="rounded,dashed";
+      builtin [label="Built in\nLJ, LJCluster, Morse, ZBL, CuH2 (EAM)"];
+      ipi [label="External driver\nIPI:unix:<path>, IPI:tcp:<host>:<port>"];
+      dlopen [label="Frontends always built, engine loaded at run time\nNWChem[:basis[:theory[:xc]]] (libnwchemc)\nCPMD (libcpmdc)"];
+    }
+  }
+
+  eon [label="eOn RgpotPot\nlinks NWChemPot and CPMDPot in process\nno RPC, no potserv", fillcolor="#eef3e2"];
+
+  {python rust cxx} -> wire [dir=both, arrowtail=none];
+  wire -> server [dir=both];
+  server -> {optional builtin ipi dlopen};
+  eon -> dlopen [style=dashed];
+}
