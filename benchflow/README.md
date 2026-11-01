@@ -12,7 +12,7 @@ The suite uses three commands:
 ```sh
 python -m pip install -r benchflow/requirements.txt
 snakemake -c 1
-python -m unittest benchflow.test_gate
+python -m unittest discover -s benchflow
 ```
 
 ## Noise calibration
@@ -30,9 +30,9 @@ The threshold is the largest of these four values:
 max(0.05, 3 * MAD, the 99th percentile of |ratio - 1|, the maximum |ratio - 1|)
 ```
 
-Each benchmark keeps its own `factor`.
-That `factor` is `1 + relative_threshold`.
-So each `factor` is at least the widest calibration ratio.
+Each benchmark's upper bound is one plus that threshold.
+So the upper bound is at least the widest calibration ratio.
+It is also at least five percent above one.
 
 ## Run output and the machine record
 
@@ -50,12 +50,15 @@ It ignores every other record in that file.
 ## Revision comparison
 
 This section explains how the suite compares revisions and reports a slowdown.
-`snakemake -c 1 pr_gate` compares two distinct revisions, `base` and `head`.
+`snakemake -c 1 pr_compare` compares two distinct revisions, `base` and `head`.
 It runs one `asv continuous --interleave-rounds` for them.
 It writes the table to `benchflow/out/pr_compare.txt`.
-A table row fails when its head/base median ratio is above its own `factor`.
-`pr_gate` then exits with the result for each benchmark.
-Equal revisions do not run a comparison.
+A table row fails when its head/base median ratio is above its own upper bound.
+The result goes to `benchflow/out/pr_compare.status`.
+`pr_compare` itself exits zero.
+Equal revisions do not run a comparison, and their status is non-zero.
+`pr_gate` exits with that status, so it fails on a slowdown.
+Continuous integration should run `pr_gate`.
 
 ## Warm calls
 
