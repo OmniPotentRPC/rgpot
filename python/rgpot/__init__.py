@@ -26,6 +26,7 @@ from rgpot._core import (
     has_dftd3,
     has_dftd4,
     has_expr,
+    has_ipi,
     has_metatomic_dlopen,
     has_xckernel,
 )
@@ -54,6 +55,11 @@ try:
     from rgpot._core import XcKernel
 except ImportError:
     XcKernel = None  # type: ignore[misc, assignment]
+
+try:
+    from rgpot._core import IPIPot
+except ImportError:  # compiled without -DRGPOT_HAS_IPI
+    IPIPot = None  # type: ignore[misc, assignment]
 
 
 def _torch_major() -> str | None:
@@ -151,6 +157,7 @@ __all__ = [
     "D3Pot",
     "D4Pot",
     "ExprPot",
+    "IPIPot",
     "XcKernel",
     "PotentialCache",
     "evaluate_lj",
@@ -161,6 +168,7 @@ __all__ = [
     "has_metatomic_dlopen",
     "has_cache",
     "has_expr",
+    "has_ipi",
     "has_dftd3",
     "has_dftd4",
     "has_xckernel",
