@@ -361,3 +361,12 @@ LocalError-*.log
 /python_coverage.xml
 /bbdir-cov/
 *.profraw
+
+# asv results and the local machine file
+.asv/
+benchflow/out/
+.asv-run-*.conf.json
+
+.snakemake/
+__pycache__/
+*.pyc

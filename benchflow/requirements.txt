@@ -1,0 +1,13 @@
+asv==0.6.6
+asv-runner==0.3.2
+asv_bench_memray==0.1.2
+build==1.6.1
+memray==1.20.0
+meson==1.12.1
+meson-python==0.22.1
+nanobind==3.1.0
+ninja==1.13.2
+numpy==2.5.4
+packaging==25.0
+snakemake==9.27.1
+virtualenv==21.14.5

@@ -28,6 +28,7 @@
 
 #include "pot_holder.hpp"
 
+#include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/Tersoff/TersoffSiC.hpp"
@@ -624,6 +625,74 @@ NB_MODULE(_core, m) {
       nb::arg("cache").none(), nb::keep_alive<1, 2>());
 #endif
   rgpot::pybind::bind_calls(lj);
+
+  // Same call surface as LJPot. Both classes are already in librgpot;
+  // this is the binding a caller of the wheel uses.
+  auto cluster = nb::class_<PotHolder<rgpot::LJClusterPot>>(m, "LJClusterPot");
+  cluster.def(
+      "__init__",
+      [](PotHolder<rgpot::LJClusterPot> *self, double u0, double cutoff,
+         double psi, double switch_width) {
+        new (self) PotHolder<rgpot::LJClusterPot>([=] {
+          rgpot::LJClusterConfig cfg;
+          cfg.u0 = u0;
+          cfg.cutoff = cutoff;
+          cfg.psi = psi;
+          cfg.switch_width = switch_width;
+          return std::make_unique<rgpot::LJClusterPot>(cfg);
+        });
+      },
+      nb::arg("u0") = 1.0, nb::arg("cutoff") = 15.0, nb::arg("psi") = 1.0,
+      nb::arg("switch_width") = 0.0,
+      "Free-boundary shifted 12-6 Lennard-Jones. u0 is the well depth "
+      "(eV), cutoff and psi are Angstrom. An input cell does not fold "
+      "pair vectors. A positive switch_width (Angstrom) replaces the "
+      "shift with the C^2 quintic switch over "
+      "[cutoff - switch_width, cutoff]; it must not exceed cutoff.");
+  cluster.def("config", [](const PotHolder<rgpot::LJClusterPot> &self) {
+    const rgpot::LJClusterConfig &cfg = self.primary().config();
+    nb::dict out;
+    out["u0"] = cfg.u0;
+    out["cutoff"] = cfg.cutoff;
+    out["psi"] = cfg.psi;
+    out["switch_width"] = cfg.switch_width;
+    return out;
+  });
+  rgpot::pybind::bind_calls(cluster);
+
+  auto morse_cls = nb::class_<PotHolder<rgpot::MorsePot>>(m, "MorsePot");
+  morse_cls.def(
+      "__init__",
+      [](PotHolder<rgpot::MorsePot> *self, double De, double a, double re,
+         double cutoff, double switch_width) {
+        new (self) PotHolder<rgpot::MorsePot>([=] {
+          rgpot::MorseConfig cfg;
+          cfg.De = De;
+          cfg.a = a;
+          cfg.re = re;
+          cfg.cutoff = cutoff;
+          cfg.switch_width = switch_width;
+          return std::make_unique<rgpot::MorsePot>(cfg);
+        });
+      },
+      nb::arg("De") = 0.7102, nb::arg("a") = 1.6047, nb::arg("re") = 2.8970,
+      nb::arg("cutoff") = 9.5, nb::arg("switch_width") = 0.0,
+      "Shifted Morse pair potential. De is the well depth (eV), a is "
+      "1/Angstrom, re and cutoff are Angstrom. Defaults are the platinum "
+      "parameters. A positive switch_width (Angstrom) replaces the shift "
+      "with the C^2 quintic switch over [cutoff - switch_width, cutoff]; "
+      "it must not exceed cutoff.");
+  morse_cls.def("config", [](const PotHolder<rgpot::MorsePot> &self) {
+    const rgpot::MorseConfig &cfg = self.primary().config();
+    nb::dict out;
+    out["De"] = cfg.De;
+    out["a"] = cfg.a;
+    out["re"] = cfg.re;
+    out["cutoff"] = cfg.cutoff;
+    out["switch_width"] = cfg.switch_width;
+    return out;
+  });
+  rgpot::pybind::bind_calls(morse_cls);
 
 #ifdef RGPOT_HAS_FORTRAN_POTS
   bind_default_pot<rgpot::fortranpots::SWPot>(m, "SWPot");
