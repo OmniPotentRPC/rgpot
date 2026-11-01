@@ -698,6 +698,33 @@ jobs:
       - name: Byte-exact restart golden
         run: pixi run bash scripts/check_readcon_golden.sh
 
+  # with_xckernel defaults off, so the build matrix never registers
+  # XcKernelGoldens. This leg builds the BLAS dsyr2k path and fails if
+  # that test is missing or red.
+  xckernel_goldens:
+    name: xckernel goldens (meson / ubuntu)
+    needs: [prepare, ci-tools]
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - name: Ensure potctl
+        uses: ./.github/actions/ensure-potctl
+        with:
+          artifact-prefix: ci-tools-${{ github.sha }}
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
+        with:
+          activate-environment: true
+          cache: true
+          environments: default
+          pixi-version: v0.70.2
+      - name: Meson build & test (xckernel goldens)
+        shell: pixi run bash -e {0}
+        run: potctl ci xckernel-test
+
   # --- Single branch-protection target (require this job name in settings) ---
   ci_gate:
     name: CI gate
@@ -720,6 +747,7 @@ jobs:
       - potentials_tblite_06
       - potentials_plugins
       - eonviz_pins
+      - xckernel_goldens
     runs-on: ubuntu-latest
     steps:
       - name: Aggregate job results
@@ -749,7 +777,8 @@ jobs:
             "potentials_tight_binding:${{ needs.potentials_tight_binding.result }}" \
             "potentials_tblite_06:${{ needs.potentials_tblite_06.result }}" \
             "potentials_plugins:${{ needs.potentials_plugins.result }}" \
-            "eonviz_pins:${{ needs.eonviz_pins.result }}"
+            "eonviz_pins:${{ needs.eonviz_pins.result }}" \
+            "xckernel_goldens:${{ needs.xckernel_goldens.result }}"
           do
             name="${pair%%:*}"
             res="${pair##*:}"

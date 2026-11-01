@@ -62,6 +62,7 @@ graph and matrices only; GHA steps should be thin `potctl ci …` lines.
 | `meson-test --rpc … --cache …` | Meson setup + compile + test (orchestrator matrix leg) |
 | `cmake-test --rpc … --cache …` | CMake configure + build + ctest |
 | `build-test --sys meson\|cmake …` | Same as above via `matrix.sys` |
+| `xckernel-test` | Meson `-Dwith_xckernel=true` and suite `xckernel` (`XcKernelGoldens`) |
 
 Meson/cmake/pixi still execute the real builds; potctl only orchestrates argv + env.
 

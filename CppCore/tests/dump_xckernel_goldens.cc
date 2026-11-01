@@ -1,6 +1,6 @@
 // Dump XcKernel C matrices over committed operands. Overwrites *_ref.npy
-// so the exclusive 1e-16 C pin is the host long-double evaluator, not a
-// stale NumPy einsum that sits a few ulp away.
+// so the C pin is the host evaluator, not a stale NumPy einsum. The
+// golden test allows the dsyr2k gap k*eps*|a|^T|b|, not a fixed 1e-16.
 
 #include <cstdio>
 #include <cstdlib>
