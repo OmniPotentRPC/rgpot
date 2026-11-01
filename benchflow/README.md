@@ -71,13 +71,19 @@ The arrays from setup are not replaced.
 ## The wheel
 
 This section describes how the wheel is built.
-The rgpot wheel is the Lennard-Jones binding.
-`benchflow/build_wheel.py` passes meson `setup-args` after the pyproject list.
-Those arguments keep the optional Fortran kernels off.
-They also keep dispersion corrections and the metatomic engine off.
+The wheel is the installed package the timings call.
+The force classes call into that wheel's `librgpot`.
+Those classes are `LJClusterPot`, `MorsePot`, `WaterHPot`, and `LJPot`.
+`benchflow/build_wheel.py` passes `-Dbuildtype=release`.
+It enables the Fortran kernels with `-Dwith_fortran_pots=enabled`.
+Dispersion corrections and the metatomic engine stay off.
+Meson's default buildtype is debug.
+A configure without the release flag would time a different build.
+The build keeps its meson tree.
+It writes the output of `meson introspect --buildoptions` beside the wheel.
 
 The wheel build also needs a few tools in place.
 `patchelf` must be on `PATH`, because meson-python calls it.
 It rewrites the run-time search path (RPATH).
 `CC` and `CXX` are pinned to `gcc` and `g++`.
-The build needs Python's development headers.
+The build needs Python's development headers and a Fortran compiler.

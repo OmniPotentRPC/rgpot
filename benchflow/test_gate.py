@@ -507,8 +507,16 @@ class TestSnakefile(unittest.TestCase):
         self.assertNotIn("git rev-parse main", text)
         self.assertIn("base: develop", (ROOT / "benchflow" / "config.yaml").read_text())
         fast = (ROOT / "benchmarks" / "fast_paths.py").read_text()
-        self.assertNotIn("--buildtype=release", fast)
-        self.assertIn("does not produce this file", fast)
+        self.assertNotIn("libasv_fastpath", fast)
+        self.assertNotIn("ctypes", fast)
+        self.assertIn("LJClusterPot", fast)
+        self.assertIn("MorsePot", fast)
+        self.assertIn("WaterHPot", fast)
+        self.assertIn("LJPot", fast)
+        wheel_text = (ROOT / "benchflow" / "build_wheel.py").read_text()
+        self.assertIn('"-Dwith_fortran_pots=enabled"', wheel_text)
+        self.assertIn('"-Dbuildtype=release"', wheel_text)
+        self.assertIn("meson introspect", wheel_text)
         node = platform.node()
         if node and len(node) >= 3:
             for relative in (
@@ -524,6 +532,30 @@ class TestSnakefile(unittest.TestCase):
                 path = ROOT / relative
                 if path.is_file():
                     self.assertNotIn(node, path.read_text(errors="replace"), relative)
+
+
+class TestInstalledForceLoad(unittest.TestCase):
+    def test_load_is_recorded_once_per_process(self):
+        import benchmarks.fast_paths as fast_paths
+
+        fast_paths._RECORDED = False
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            blob = root / "librgpot.so.3"
+            blob.write_bytes(b"not a real library")
+            os.environ["ASV_ENV_DIR"] = str(root)
+            os.environ["ASV_COMMIT"] = "a" * 40
+            try:
+                fast_paths._record(blob)
+                fast_paths._record(blob)
+                lines = (root / "lib-load.log").read_text(encoding="utf-8").splitlines()
+            finally:
+                fast_paths._RECORDED = False
+                os.environ.pop("ASV_ENV_DIR", None)
+                os.environ.pop("ASV_COMMIT", None)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("a" * 40, lines[0])
+        self.assertIn(blob.name, lines[0])
 
 
 if __name__ == "__main__":
