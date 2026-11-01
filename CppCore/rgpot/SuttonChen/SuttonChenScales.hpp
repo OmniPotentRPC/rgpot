@@ -37,6 +37,7 @@ struct rgpot_sc_scales {
 };
 
 /// Bulk scales. Returns 0 on success, 1 on a bad argument.
-int rgpot_sutton_chen_scales(const rgpot_sc_config *cfg, rgpot_sc_scales *out);
+RGPOT_SC_API int rgpot_sutton_chen_scales(const rgpot_sc_config *cfg,
+                                          rgpot_sc_scales *out);
 
 } // extern "C"
