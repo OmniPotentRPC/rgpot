@@ -58,6 +58,50 @@ class LJPot:
         One detached BatchEvaluator call. results[i] matches a serial call on inputs[i], bit for bit. n_threads 0 uses the hardware concurrency.
         """
 
+class LJClusterPot:
+    def __init__(self, u0: float = 1.0, cutoff: float = 15.0, psi: float = 1.0, switch_width: float = 0.0) -> None:
+        """
+        Free-boundary shifted 12-6 Lennard-Jones. u0 is the well depth (eV), cutoff and psi are Angstrom. An input cell does not fold pair vectors. A positive switch_width (Angstrom) replaces the shift with the C^2 quintic switch over [cutoff - switch_width, cutoff]; it must not exceed cutoff.
+        """
+
+    def config(self) -> dict: ...
+
+    def caps(self) -> dict: ...
+
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
+
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+        """
+        Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
+        """
+
+    def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
+        """
+        One detached BatchEvaluator call. results[i] matches a serial call on inputs[i], bit for bit. n_threads 0 uses the hardware concurrency.
+        """
+
+class MorsePot:
+    def __init__(self, De: float = 0.7102, a: float = 1.6047, re: float = 2.897, cutoff: float = 9.5, switch_width: float = 0.0) -> None:
+        """
+        Shifted Morse pair potential. De is the well depth (eV), a is 1/Angstrom, re and cutoff are Angstrom. Defaults are the platinum parameters. A positive switch_width (Angstrom) replaces the shift with the C^2 quintic switch over [cutoff - switch_width, cutoff]; it must not exceed cutoff.
+        """
+
+    def config(self) -> dict: ...
+
+    def caps(self) -> dict: ...
+
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
+
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+        """
+        Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
+        """
+
+    def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
+        """
+        One detached BatchEvaluator call. results[i] matches a serial call on inputs[i], bit for bit. n_threads 0 uses the hardware concurrency.
+        """
+
 class SWPot:
     def __init__(self) -> None: ...
 
