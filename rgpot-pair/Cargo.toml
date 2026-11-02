@@ -1,6 +1,6 @@
 [package]
 name = "rgpot-pair"
-version = "3.5.1"
+version.workspace = true
 edition = "2021"
 description = "Inlinable unshifted cluster pair kernels for rgpot"
 license = "MIT"

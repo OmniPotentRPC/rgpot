@@ -24,7 +24,7 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Release / version lockstep (meson, CMake, cargo, towncrier, pixi workspace, pyproject).
+    /// Release version: write it in Cargo.toml, check the generated copies, print notes.
     Release {
         #[command(subcommand)]
         action: ReleaseCmd,
@@ -56,16 +56,16 @@ enum CosmoCmd {
 
 #[derive(Subcommand, Debug)]
 enum ReleaseCmd {
-    /// Write the same semver into all lockstep surfaces.
+    /// Write the release version into Cargo.toml [workspace.package] (then run cogapp).
     Sync {
         /// Semver (optional leading v), e.g. 1.2.3 or v1.2.3-rc.1
         version: String,
     },
-    /// Assert lockstep surfaces agree; optionally require CHANGELOG section.
+    /// Assert every version copy matches Cargo.toml; optionally require CHANGELOG section.
     Assert {
         /// Expected semver (optional; often the git tag without v).
         version: Option<String>,
-        /// Require CHANGELOG.md to contain ## [version] (or meson version if omitted).
+        /// Require CHANGELOG.md to contain ## [version] (or the workspace version if omitted).
         #[arg(long, env = "REQUIRE_CHANGELOG")]
         require_changelog: bool,
     },
