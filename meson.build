@@ -2,7 +2,7 @@ project(
     'rgpot',
     'cpp',
     # [[[cog import rgpot_version as v; cog.outl(f"    version: '{v.VERSION}',")]]]
-    version: '3.5.1',
+    version: '3.6.0',
     # [[[end]]]
     default_options: ['warning_level=2', 'cpp_std=c++20'],
 )
