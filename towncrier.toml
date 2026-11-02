@@ -1,6 +1,8 @@
 [tool.towncrier]
 name = "rgpot"
+# [[[cog import rgpot_version as v; cog.outl(f'version = "{v.VERSION}"')]]]
 version = "3.5.1"
+# [[[end]]]
 directory = "docs/newsfragments"
 filename = "CHANGELOG.md"
 start_string = "<!-- towncrier release notes start -->\n"
