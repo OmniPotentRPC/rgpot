@@ -35,6 +35,11 @@ Meson option, same shape as `with_xtb`:
 
     meson setup bbdir-xck -Dwith_xckernel=true -Dwith_tests=true
 
+CI runs that configuration on Ubuntu (`potctl ci xckernel-test`, suite
+`xckernel`, which includes `XcKernelGoldens`). The default meson matrix
+leaves `with_xckernel` off, so this job is what keeps the BLAS pins from
+regressing in silence.
+
 Generate the C package **on rg.terra only**:
 
     pixi install -e xckernel
@@ -45,6 +50,17 @@ kernels: four energy helpers, 12 Fock kernels, and 20 response kernels.
 `XcKernel::catalog()` exposes the 32 Fock and response contractions through
 derivative order two. Laplacian kernels require the AO Laplacians in
 `lapl_chi`; missing Laplacians return error code 2 without changing the output.
+
+## Stage B
+
+`CppCore/rgpot/XcKernel/xckernel/evaluator.hpp` specializes `stage_b<double>`.
+Each block of 256 grid points is one `dgemm`, or one `dsyr2k` when `U` and `V` are the same array, and the block results are added in long double.
+`stage_a` still accumulates in long double.
+The build links FlexiBLAS when pkg-config finds it, and otherwise the generic blas dependency.
+On a release build linked to OpenBLAS 0.3.34 pthreads, with one thread bound to its own core, the random grid (nbf 200, 100000 points) median for `xck_gga_r_o1` was 859.8 ms against 35554.2 ms for the long-double loop.
+Four threads on four distinct cores brought that median to 515.0 ms.
+On the H2O grid, nbf is 7, and four threads are slower than one.
+`xckernel_bench` prints the median, minimum, and maximum over its repetitions.
 
 ## Dependencies
 
@@ -69,9 +85,21 @@ named file is missing. Regenerator:
 
     pixi run -e xckerneltest -- python scripts/regen_xckernel_goldens.py
 
-That script refuses to run off rg.terra. Tolerances are the paper/README
-bars: C vs NumPy `1e-16`, Fock vs PySCF exclusive `1e-15`, fxc vs PySCF
-`1e-13`, TDA/RPA sigma vs PySCF exclusive `1e-17`. `--pyscf` Fock compares
+That script refuses to run off rg.terra. Fock vs PySCF stays exclusive
+`1e-15`, fxc vs PySCF `1e-13`, TDA/RPA sigma vs PySCF exclusive `1e-17`.
+The C-versus-NumPy and random-grid Fock pins are not a fixed `1e-16`.
+Stage B contracts each grid block with `dsyr2k` when the two factors are
+the same array, and with `dgemm` otherwise. A length-k dot product in
+double, and the `dsyr2k` average of the two products, satisfies
+`|fl(a^T b) - a^T b| <= k*eps*|a|^T|b|`, where `eps` is machine epsilon
+(`2^{-52}`) and `|a|^T|b|` is the sum of absolute products. `k` is the
+block length, `min(npts, 256)`, not the whole grid: block results are
+added in long double and rounded once, so the double-precision sum does
+not grow with `npts`. Each stage-B term adds its own bound. The
+committed pin is a rounded double, so the comparison also allows half an
+ulp of that pin. A fixed `1e-16` is below one ulp of these matrices and
+rejects a correct OpenBLAS sum. Do not replace this bound with a looser
+constant. `--pyscf` Fock compares
 long-double stage A/B to live `nr_rks` and exits when `rel > 1e-15`.
 `--tda-rpa` (also part of `--pyscf`) pins PySCF to one OpenMP thread,
 replays committed MOs, reports live host-J without overwriting the

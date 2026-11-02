@@ -129,6 +129,12 @@ let P = S.pins in
       role = "pixi task check-eonviz-pins and the byte-exact restart golden (blocking)",
     },
     {
+      id = "xckernel_goldens",
+      needs = ["ci-tools"],
+      runs_on = P.ubuntu,
+      role = "xckernel meson goldens (ubuntu, -Dwith_xckernel=true)",
+    },
+    {
       id = "ci_gate",
       needs = [
         "prepare",
@@ -148,6 +154,7 @@ let P = S.pins in
         "potentials_tblite_06",
         "potentials_plugins",
         "eonviz_pins",
+        "xckernel_goldens",
       ],
       role = "single required check aggregator (branch protection target)",
     },

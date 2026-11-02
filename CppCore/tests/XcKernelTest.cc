@@ -7,6 +7,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <map>
 #include <sstream>
 #include <string>
@@ -16,6 +17,7 @@
 #include "npy_io.hpp"
 #include "rgpot/Potential.hpp"
 #include "rgpot/XcKernel/XcKernel.hpp"
+#include "rgpot/XcKernel/xckernel/evaluator.hpp"
 
 using rgpot::XcGrid;
 using rgpot::XcKernel;
@@ -27,9 +29,10 @@ using rgpot::testio::load_npz;
 namespace {
 
 constexpr const char *kData = "CppCore/tests/data/xckernel";
-// Paper/README bars. Exclusive: C vs NumPy 1e-16, Fock vs PySCF 1e-15,
-// fxc vs PySCF 1e-13. Do not invent looser values.
-constexpr double kCVsNumpy = 1e-16;
+// Paper/README bars that are not a BLAS contraction: Fock vs PySCF 1e-15,
+// fxc vs PySCF 1e-13. Do not invent looser values. C vs NumPy used to be
+// a fixed 1e-16; that is below one ulp of these pins. The comparison is
+// the dsyr2k bound accumulated by stage_b (see require_stage_b_pin).
 constexpr double kFockVsPyscf = 1e-15;
 constexpr double kFxcVsPyscf = 1e-13;
 constexpr double kTdaRpaVsPyscf = 1e-17;
@@ -57,6 +60,51 @@ double max_abs(const std::vector<double> &a, const std::vector<double> &b) {
     m = std::max(m, std::abs(a[i] - b[i]));
   }
   return m;
+}
+
+// Round-to-nearest error of a stored double is at most half the spacing
+// of its binade. The committed pin carries that rounding; the contraction
+// bound does not.
+double half_ulp(double x) {
+  const double ax = std::abs(x);
+  if (!(ax > 0.0) || !std::isfinite(ax)) {
+    return 0.0;
+  }
+  return std::scalbn(0.5, std::ilogb(ax) - 52);
+}
+
+// Holds the per-entry stage-B bound for one contract. stage_b adds
+// k*eps*|a|^T|b| on every block (k <= 256) of every dsyr2k/dgemm.
+class StageBBound {
+public:
+  explicit StageBBound(std::size_t n) : m_bound(n, 0.0) {
+    xckernel::stage_b_entry_bound().store(m_bound.data(),
+                                          std::memory_order_relaxed);
+  }
+  StageBBound(const StageBBound &) = delete;
+  StageBBound &operator=(const StageBBound &) = delete;
+  ~StageBBound() {
+    xckernel::stage_b_entry_bound().store(nullptr, std::memory_order_relaxed);
+  }
+  const std::vector<double> &bound() const { return m_bound; }
+
+private:
+  std::vector<double> m_bound;
+};
+
+void require_stage_b_pin(const std::vector<double> &got,
+                         const std::vector<double> &ref,
+                         const std::vector<double> &bound) {
+  REQUIRE(got.size() == ref.size());
+  REQUIRE(bound.size() == got.size());
+  for (std::size_t i = 0; i < got.size(); ++i) {
+    const double diff = std::abs(got[i] - ref[i]);
+    const double pin = half_ulp(ref[i]);
+    const double tol = bound[i] + pin;
+    INFO("i=" << i << " |diff|=" << diff << " tol=" << tol
+              << " contraction=" << bound[i] << " half_ulp=" << pin);
+    REQUIRE(diff <= tol);
+  }
 }
 
 double max_rel(const std::vector<double> &got, const std::vector<double> &ref) {
@@ -247,8 +295,9 @@ TEST_CASE("random-grid Fock pins (s2jz)", "[xckernel][golden][fock]") {
     auto op = geom;
     op.insert(scal.begin(), scal.end());
     auto ref = load_npy(std::string(kData) + "/" + c.ref);
+    StageBBound acc(static_cast<std::size_t>(4 * 4));
     auto got = run_kernel(c.kernel, op, 4, 200, true);
-    REQUIRE(max_rel(got, ref.data) <= kCVsNumpy);
+    require_stage_b_pin(got, ref.data, acc.bound());
   }
 }
 
@@ -261,7 +310,8 @@ TEST_CASE("H2O GGA fxc pin (s2jz)", "[xckernel][golden][fxc]") {
   REQUIRE(max_rel(got, ref.data) <= kFxcVsPyscf);
 }
 
-TEST_CASE("C backend vs NumPy pin at 1e-16 (2520)", "[xckernel][golden][cnp]") {
+TEST_CASE("C backend vs NumPy pin within the dsyr2k bound (2520)",
+          "[xckernel][golden][cnp]") {
   struct Case {
     const char *kernel;
   };
@@ -278,8 +328,9 @@ TEST_CASE("C backend vs NumPy pin at 1e-16 (2520)", "[xckernel][golden][cnp]") {
     require_file(base + "_ref.npy");
     auto op = load_npz(base + "_operands.npz");
     auto ref = load_npy(base + "_ref.npy");
+    StageBBound acc(static_cast<std::size_t>(4 * 4));
     auto got = run_kernel(c.kernel, op, 4, 60, false);
-    REQUIRE(max_rel(got, ref.data) <= kCVsNumpy);
+    require_stage_b_pin(got, ref.data, acc.bound());
   }
 }
 
@@ -537,4 +588,18 @@ TEST_CASE("Every Laplacian host kernel rejects missing AO Laplacians",
     REQUIRE(kernel.contract(incomplete, {}, output.data()) == 2);
     REQUIRE(output == sentinel);
   }
+}
+
+TEST_CASE("The generated kernels run the BLAS stage B wrapper",
+          "[xckernel][blas]") {
+  // xck_gga_r_o1 ends in seven stage_b calls. A scalar stage_b leaves the
+  // counter unchanged.
+  auto geom = load_npz(std::string(kData) +
+                       "/randgrid_s1_nbf4_ng200_operands.npz");
+  auto scal = load_npz(std::string(kData) + "/gga_r_o1_scal.npz");
+  geom.insert(scal.begin(), scal.end());
+  auto &calls = xckernel::blas_stage_b_calls();
+  const unsigned long before = calls.load();
+  run_kernel("xck_gga_r_o1", geom, 4, 200, true);
+  REQUIRE(calls.load() - before == 7);
 }
