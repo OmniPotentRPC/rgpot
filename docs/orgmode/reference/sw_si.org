@@ -4,31 +4,32 @@
 
 * Stillinger-Weber silicon (1985)
 
-=StillingerWeberSi= evaluates the silicon potential of F. H. Stillinger
-and T. A. Weber, Phys. Rev. B 31, 5262 (1985),
-doi:10.1103/PhysRevB.31.5262.
+=StillingerWeberSi= evaluates the silicon potential of F. H. Stillinger and T.
+A. Weber, Phys.
+Rev. B 31, 5262 (1985), doi:10.1103/PhysRevB.31.5262.
 
 The two-body and three-body parameters are equation (2.7).
 Sigma is 0.20951 nm.
-Epsilon is the value equation (2.9) prints, 3.4723e-12 erg per atom
-pair. With 1 erg = 1e-7 J and the CODATA electron-volt
-(1.602176634e-19 J) that is 2.16723920 eV.
+Epsilon is the value equation (2.9) prints, 3.4723e-12 erg per atom pair.
+With 1 erg = 1e-7 J and the CODATA electron-volt (1.602176634e-19 J) that is
+2.16723920 eV.
 =PotType::SWSi=, the Fortran =SWPot= kernel, is not this potential.
 It uses eOn's rescaled epsilon, 2.16826 × 1.06767385 = 2.3149945 eV.
 The ratio of that epsilon to the published value is 1.068176741337.
 
-The product is copied from =client/potentials/SW/SWFortran.f90= in
-TheochemUI/eOn. The file header says "Last change: AA 3 Apr 2002",
-and the same lines are present at tags =svn-Dec16_2020= and =v2.8.0=:
+The product is copied from
+=client/potentials/SW/SWFortran.f90= in TheochemUI/eOn.
+The file header says "Last change: AA 3 Apr 2002", and the same lines are
+present at tags =svn-Dec16_2020= and =v2.8.0=:
 
 #+BEGIN_EXAMPLE
   EPSILON = 2.16826D0 * 1.06767385d0, &  !* 1.07d0
   LAMBDA  = 21.0d0,                   &  !* 1.07d0
 #+END_EXAMPLE
 
-Lambda stays 21 and is not multiplied. Neither that file nor the
-rgpot port (commit 7a3b5016) derives 1.06767385. The factor is
-untraced.
+Lambda stays 21 and is not multiplied.
+Neither that file nor the rgpot port (commit 7a3b5016) derives 1.06767385.
+The factor is untraced.
 
 ** Calls
 
@@ -36,28 +37,26 @@ Lengths are Angstrom and the energy is eV.
 The cell is periodic in each direction.
 =forceImpl= writes the force, which is minus the gradient.
 =energyAndGradient= writes the energy and dE/dx for one configuration.
-=energyAndGradientBatch= writes both for several configurations that
-share one cell and one species list, so a caller enters the library
-once per batch.
-The Python method =energy_gradient= accepts positions of shape
-=(n_atoms, 3)= or =(n_config, n_atoms, 3)= and uses that entry.
+=energyAndGradientBatch= writes both for several configurations that share one
+cell and one species list, so a caller enters the library once per batch.
+The Python method =energy_gradient= accepts positions of shape =(n_atoms, 3)= or
+=(n_config, n_atoms, 3)= and uses that entry.
 
-An orthogonal cell that holds at least three cutoff-lengths on each
-edge builds one half-shell pair list per call.
+An orthogonal cell that holds at least three cutoff-lengths on each edge builds
+one half-shell pair list per call.
 The cell edge is the cutoff, or the cutoff plus the skin of a
 =nlist::NeighborList= passed to =energyAndGradient=.
-The list is reused while every atom has moved by at most half that
-skin.
+The list is reused while every atom has moved by at most half that skin.
 A null list rebuilds every call.
 Any other cell uses the minimum-image fold.
 
 ** Diamond energy
 
-At the tetrahedral angle the three-body term is zero, and the diamond
-minimum puts every nearest neighbour at the minimum of the pair term,
-where that term equals -1.
+At the tetrahedral angle the three-body term is zero, and the diamond minimum
+puts every nearest neighbour at the minimum of the pair term, where that term
+equals -1.
 Each atom then has two bonds, so the energy per atom is -2 epsilon.
-Equation (2.8) prints -1.999993 epsilon for the lattice sum at the
-density quoted there.
-=SWSiTest= checks both figures, and checks the analytic gradient
-against a finite difference.
+Equation (2.8) prints -1.999993 epsilon for the lattice sum at the density
+quoted there.
+=SWSiTest= checks both figures, and checks the analytic gradient against a
+finite difference.

@@ -4,31 +4,31 @@
 
 * Tersoff silicon-carbon (1989)
 
-=TersoffSiC= is the 1989 silicon, carbon, and silicon-carbide kernel
-of J. Tersoff, Phys. Rev. B 39, 5566 (1989),
-doi:10.1103/PhysRevB.39.5566.
-The erratum, Phys. Rev. B 41, 3248 (1990),
-doi:10.1103/PhysRevB.41.3248.2, sets carbon B to 346.74 eV and d to 4.3484.
-Carbon beta is 1.5724e-7 and is dimensionless. It is the Table I value
-in the NIST and LAMMPS transcriptions. The erratum does not print it.
+=TersoffSiC= is the 1989 silicon, carbon, and silicon-carbide kernel of J.
+Tersoff, Phys.
+Rev. B 39, 5566 (1989),
+doi:10.1103/PhysRevB.39.5566. The erratum, Phys. Rev. B 41, 3248 (1990), doi:10.1103/PhysRevB.41.3248.2,
+sets carbon B to 346.74 eV and d to 4.3484.
+Carbon beta is 1.5724e-7 and is dimensionless.
+It is the Table I value in the NIST and LAMMPS transcriptions.
+The erratum does not print it.
 
 =PotType::TersoffSi= and the engine name =tersoff= are one potential.
 There is no =PotType::TersoffSiC=.
-An all-silicon configuration, and a null species pointer, use the
-Fortran gather in =TersoffPot=.
+An all-silicon configuration, and a null species pointer, use the Fortran gather
+in =TersoffPot=.
 Any atomic number other than 14 uses this kernel.
-Calling =TersoffSiC= directly always evaluates the 1989 form, including
-an all-silicon cell, whose silicon column matches that gather.
+Calling =TersoffSiC= directly always evaluates the 1989 form, including an
+all-silicon cell, whose silicon column matches that gather.
 
 Atomic number 14 is silicon and 6 is carbon.
-Any other species is rejected.
-lambda3 is zero for both elements, so the factor
+Any other species is rejected. lambda3 is zero for both elements, so the factor
 exp(lambda3^m (rij - rik)^m) is identically one and is not evaluated.
-The cross term uses chi = 0.9776.
-lambda and the repulsive amplitude are arithmetic and geometric means.
+The cross term uses chi = 0.9776. lambda and the repulsive amplitude are
+arithmetic and geometric means.
 The attractive amplitude is chi times the geometric mean.
-The inner cutoffs are averaged with each other, and the outer cutoffs
-are averaged with each other.
+The inner cutoffs are averaged with each other, and the outer cutoffs are
+averaged with each other.
 
 ** Calls
 
@@ -36,16 +36,15 @@ Lengths are Angstrom and the energy is eV.
 The cell is periodic in each direction.
 =forceImpl= writes the force, which is minus the gradient.
 =energyAndGradient= writes the energy and dE/dx for one configuration.
-=energyAndGradientBatch= writes both for several configurations that
-share one cell and one species list, so a caller enters the library
-once per batch.
-The Python method =energy_gradient= accepts positions of shape
-=(n_atoms, 3)= or =(n_config, n_atoms, 3)= and uses that entry.
+=energyAndGradientBatch= writes both for several configurations that share one
+cell and one species list, so a caller enters the library once per batch.
+The Python method =energy_gradient= accepts positions of shape =(n_atoms, 3)= or
+=(n_config, n_atoms, 3)= and uses that entry.
 
-An orthogonal cell that holds at least three cutoff-lengths on each
-edge builds the bond list once per call.
-The cell edge is the silicon outer cutoff, the longest in this set, or
-that cutoff plus the skin of a =nlist::NeighborList=.
+An orthogonal cell that holds at least three cutoff-lengths on each edge builds
+the bond list once per call.
+The cell edge is the silicon outer cutoff, the longest in this set, or that
+cutoff plus the skin of a =nlist::NeighborList=.
 A null list rebuilds on every call.
 A held list is reused while each atom has moved by at most half the skin.
 Any other cell uses the minimum-image fold.
@@ -53,10 +52,10 @@ Any other cell uses the minimum-image fold.
 ** Held list on the force path
 
 =forceImpl= rebuilds the pairs on every call by default.
-=setHeldSkin(skin)= with a positive skin in Angstrom makes the instance
-keep one =nlist::NeighborList= across =forceImpl= calls.
-The list is rebuilt when any atom has moved by more than half the skin
-since the last build, or when the cell or the atom count changes.
+=setHeldSkin(skin)= with a positive skin in Angstrom makes the instance keep one
+=nlist::NeighborList= across =forceImpl= calls.
+The list is rebuilt when any atom has moved by more than half the skin since the
+last build, or when the cell or the atom count changes.
 =setHeldSkin(0)= drops the list and goes back to a rebuild per call.
 A negative or non-finite skin throws =std::invalid_argument=.
 =heldList()= returns the list, so a caller can see when it was last built.
@@ -64,25 +63,24 @@ A negative or non-finite skin throws =std::invalid_argument=.
 With a positive skin the instance reports =Reentrancy::PerInstance= and
 =perImageInstances=, since a call writes the list.
 =TersoffPot::setHeldSkin= passes the skin to its own 1989 kernel.
-All-silicon calls through =TersoffPot= stay on the Fortran gather, which
-keeps its own vesin table with a skin of 0.3 Angstrom.
+All-silicon calls through =TersoffPot= stay on the Fortran gather, which keeps
+its own vesin table with a skin of 0.3 Angstrom.
 
-On the call that builds the list, and on a call with the coordinates of
-that build, a held list returns the same bits as a rebuild.
-After a move inside the skin the bits also match while every atom stays
-in its cell of the cutoff-edged grid that orders the pairs.
-An atom that crosses a cell face keeps the pair order of the last build,
-so the bonds of a centre can be summed in another order.
+On the call that builds the list, and on a call with the coordinates of that
+build, a held list returns the same bits as a rebuild.
+After a move inside the skin the bits also match while every atom stays in its
+cell of the cutoff-edged grid that orders the pairs.
+An atom that crosses a cell face keeps the pair order of the last build, so the
+bonds of a centre can be summed in another order.
 =TersoffSiCTest= bounds that difference by 1e-12 on 512 and 4096 atoms.
-=tersoff_held_bench= reports the largest difference it sees and the time
-per atom of a rebuild, a held list, and the Fortran gather.
+=tersoff_held_bench= reports the largest difference it sees and the time per
+atom of a rebuild, a held list, and the Fortran gather.
 
 ** Diamond energies
 
-At a0 = 5.432 Angstrom the silicon diamond energy is -4.629595 eV/atom.
-At a0 = 3.5656 Angstrom the carbon diamond energy is -7.370514 eV/atom.
-Those are the closed forms of this parameter set at the lattice
-constants that reproduce the fitted cohesive energies, 4.63 eV and
-7.37 eV.
-=TersoffSiCTest= pins both and checks the analytic gradient against a
-finite difference.
+At a0 = 5.432 Angstrom the silicon diamond energy is -4.629595
+eV/atom. At a0 = 3.5656 Angstrom the carbon diamond energy is -7.370514 eV/atom.
+Those are the closed forms of this parameter set at the lattice constants that
+reproduce the fitted cohesive energies, 4.63 eV and 7.37 eV.
+=TersoffSiCTest= pins both and checks the analytic gradient against a finite
+difference.

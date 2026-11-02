@@ -45,8 +45,8 @@ let pot = rgpot_potential_new_eindir(
 let objective = pot as *mut eindir_objective_t; // zero-cost IS-A cast
 #+end_src
 
-Check the embedded base against the eindir-core of the loaded library before
-the cast is read as an objective:
+Check the embedded base against the eindir-core of the loaded library before the
+cast is read as an objective:
 
 #+begin_src rust
 let stamp = rgpot_eindir_abi_stamp();

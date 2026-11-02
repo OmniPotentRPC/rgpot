@@ -243,9 +243,9 @@ The first stamp covers the C surface of =rgpot-core=.
 The C++ and Python packages do not re-export it; the C++ classes have the layout
 stamp above.
 The engine plugins carry their own number, =rgpot_engine_abi_version()=.
-The eindir objective keeps =rgpot_eindir_abi_stamp()=, which reports the stamp
-of =eindir-core=, and =rgpot_eindir_abi_compatible()=, which checks a stamp
-against the =eindir-core= compiled into the loaded library.
+The eindir objective keeps
+=rgpot_eindir_abi_stamp()=, which reports the stamp of =eindir-core=, and =rgpot_eindir_abi_compatible()=,
+which checks a stamp against the =eindir-core= compiled into the loaded library.
 
 #+begin_src c
 eindir_abi_stamp_t rgpot_eindir_abi_stamp(void);
