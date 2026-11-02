@@ -1,0 +1,71 @@
+#+TITLE: i-PI socket server
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* i-PI socket server
+
+=IPIPot= is the i-PI socket *server*.
+It binds a UNIX or TCP socket, accepts one driver, and sends geometries.
+The driver (CP2K, Quantum ESPRESSO, FHI-aims, LAMMPS, or =i-pi-py_driver=)
+connects and returns energy, forces and a virial.
+The protocol is Ceriotti, More and Manolopoulos, Comput Phys Commun 185, 1019
+(2014), and i-PI 3.0, J Chem Phys 161, 062504 (2024).
+
+** Address
+
+The constructor takes =IPIConfig::address= and =timeout_s= (default 30).
+=timeout_s= is one budget for the driver to connect and for one force exchange.
+
+- =unix:/absolute/path= binds that path.
+- =unix:<name>= binds
+  =/tmp/ipi_<name>=, the i-PI default prefix, so =i-pi-py_driver -u -a <name>=
+  connects.
+- =tcp:<host>:<port>= listens on that IPv4 host and port.
+- =tcp:<port>= listens on 127.0.0.1.
+- Port 0 asks the kernel for a free port.
+  =endpoint()= reports the chosen port.
+
+=potserv= uses the same strings after an =IPI:= prefix:
+
+#+begin_src bash
+./bbdir/CppCore/potserv 12345 IPI:unix:/tmp/ipi_rgpot
+./bbdir/CppCore/potserv 12345 IPI:tcp:127.0.0.1:31415
+#+end_src
+
+** Wire contract
+
+Headers are 12-byte space-padded ASCII.
+Integers are int32 and floats are float64, in the host endianness used by the
+i-PI C wrappers and =driver.py=.
+Lengths are bohr, energies are hartree, and forces are hartree/bohr. The cell
+and its inverse are 3x3, with lattice vectors in the columns. rgpot stores
+lattice vectors as rows, and the server transposes on the way out. A singular
+cell throws
+=std::invalid_argument= before a driver is accepted. The virial is the extensive tensor in hartree, =W_ij = sum_a F_a,i * r_a,j=.
+That tensor is left undivided by the cell volume. rgpot returns the Cauchy
+stress =sigma = -W / V= in eV/Angstrom^3.
+The driver keeps its own species list.
+The destructor sends =EXIT=.
+
+A force call sends =STATUS= until the driver reports =READY=.
+=NEEDINIT= is answered with =INIT= (bead id 0, empty init string).
+The server then writes =POSDATA= and =GETFORCE= in one payload and reads
+=FORCEREADY=.
+
+** Build
+
+Meson =with_ipi= is a feature option.
+=auto= compiles the server on POSIX hosts and leaves it out on Windows.
+=-Dwith_ipi=enabled= is an error on Windows.
+CMake =RGPOT_WITH_IPI= defaults on except on Windows, and =ON= there is a fatal
+error.
+The compile definition is =RGPOT_HAS_IPI=.
+
+** Python
+
+When the extension is built with =RGPOT_HAS_IPI=, =rgpot.IPIPot(address)=
+follows the same address forms.
+=__call__= returns energy, forces and variance in Angstrom and eV.
+=stress()= returns the Cauchy tensor from that call, shape =(3, 3)=, or =None=
+before a successful call.
+=has_ipi= is always present.

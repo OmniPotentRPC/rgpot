@@ -68,6 +68,22 @@ if has_water
     _args += ['-DRGPOT_HAS_WATER=TRUE']
 endif
 
+# i-PI socket server. POSIX sockets only; auto skips Windows.
+_ipi_opt = get_option('with_ipi')
+has_ipi = false
+if host_system == 'windows'
+    if _ipi_opt.enabled()
+        error(
+            'with_ipi requires POSIX sockets and cannot be enabled on Windows',
+        )
+    endif
+elif not _ipi_opt.disabled()
+    has_ipi = true
+endif
+if has_ipi
+    _args += ['-DRGPOT_HAS_IPI=TRUE']
+endif
+
 rpc_enabled = get_option('with_rpc') or get_option('with_rpc_client_only')
 
 if get_option('with_rpc_client_only')

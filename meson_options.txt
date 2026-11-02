@@ -74,3 +74,9 @@ option(
     value: false,
     description: 'Flexible TIP4P, SPC/E and TIP4P-Pt kernels. Defaults false, matching the eOn with_water option.',
 )
+option(
+    'with_ipi',
+    type: 'feature',
+    value: 'auto',
+    description: 'i-PI socket server Potential (POSIX sockets). auto is on except on Windows.',
+)
