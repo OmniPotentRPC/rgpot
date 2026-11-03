@@ -1,1 +1,0 @@
-UmaPot clears PT_GNU_STACK PF_X on AOTI wrapper.so before dlopen, so Elja-traced ``.pt2`` packages load on hosts that refuse an executable stack. ``scripts/export_uma_aoti.py`` applies the same rewrite at mint time.

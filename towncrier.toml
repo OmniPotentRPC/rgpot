@@ -7,7 +7,8 @@ directory = "docs/newsfragments"
 filename = "CHANGELOG.md"
 start_string = "<!-- towncrier release notes start -->\n"
 underlines = ["", "", ""]
-title_format = "## [{version}](https://github.com/OmniPotentRPC/rgpot/tree/v{version}) - {project_date}"
+# The heading stays under 72 columns for snapper; the link is a reference.
+title_format = "## [{version}] - {project_date}\n\n[{version}]: https://github.com/OmniPotentRPC/rgpot/tree/v{version}"
 issue_format = "[#{issue}](https://github.com/OmniPotentRPC/rgpot/issues/{issue})"
 
 [[tool.towncrier.type]]

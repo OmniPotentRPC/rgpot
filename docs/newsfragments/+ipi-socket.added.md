@@ -1,1 +1,0 @@
-`IPIPot` listens for an i-PI driver on a UNIX or TCP socket and returns energy, forces, and Cauchy stress. `potserv` selects it with `IPI:unix:<path>` or `IPI:tcp:<host>:<port>`. Meson `with_ipi` defaults to auto and stays off on Windows. CMake `RGPOT_WITH_IPI` follows the same rule.
