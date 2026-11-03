@@ -3,6 +3,10 @@ use std::env;
 #[cfg(any(feature = "gen-header", feature = "schema"))]
 use std::path::PathBuf;
 
+#[cfg(feature = "gen-header")]
+#[path = "version_macros.rs"]
+mod version_macros;
+
 /// Generate C header via cbindgen (only when `gen-header` feature is active).
 /// Run `cargo build --features gen-header` or `pixi r gen-header` to regenerate.
 #[cfg(feature = "gen-header")]
@@ -14,16 +18,22 @@ fn generate_c_header(crate_dir: &str) {
         .expect("Unable to find cbindgen.toml");
 
     let version = env::var("CARGO_PKG_VERSION").unwrap();
-    let parts: Vec<&str> = version.split('.').collect();
+    let cargo_core = ["MAJOR", "MINOR", "PATCH"]
+        .map(|part| env::var(format!("CARGO_PKG_VERSION_{part}")).unwrap());
+    let ours = version_macros::numeric_core(&version)
+        .map(|(major, minor, patch)| [major, minor, patch].map(|n| n.to_string()));
+    assert_eq!(
+        ours,
+        Some(cargo_core),
+        "version_macros.rs parses {version:?} differently from cargo"
+    );
+    // The cog markers let the cogapp check see the same block
+    // that ci/version/rgpot_version.py writes, so neither copy can drift.
     let version_block = format!(
-        "#define RGPOT_VERSION \"{version}\"\n\
-         #define RGPOT_VERSION_MAJOR {major}\n\
-         #define RGPOT_VERSION_MINOR {minor}\n\
-         #define RGPOT_VERSION_PATCH {patch}",
-        version = version,
-        major = parts[0],
-        minor = parts[1],
-        patch = parts[2],
+        "/* [[[cog import rgpot_version as v; cog.outl(v.header_macros())]]] */\n\
+         {macros}\n\
+         /* [[[end]]] */",
+        macros = version_macros::header_macros(&version),
     );
     config.after_includes = Some(match config.after_includes {
         Some(existing) => format!("{existing}\n\n{version_block}"),

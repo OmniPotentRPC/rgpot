@@ -4,10 +4,35 @@
 
 * Release Process
 
-rgpot uses a *lockstep monorepo version*: the same SemVer appears in
-=meson.build=, =CMakeLists.txt= (=project(VERSION ...)=),
-=rgpot-core/ Cargo.toml=, =towncrier.toml=, and =pixi.toml= (workspace key only
-— not dependency pins such as nickel).
+rgpot has one release version, written by hand in one place: the
+=[workspace.package] version= key of the root =Cargo.toml=.
+=rgpot-core= and =rgpot-pair= inherit it with =version.workspace = true=, and
+cargo writes it into =Cargo.lock=.
+Every other copy sits between cogapp markers in a file listed in
+=ci/version/files.txt=: =meson.build=, =CMakeLists.txt=, =pyproject.toml=,
+=pixi.toml= (the workspace key only), =towncrier.toml=, the =RGPOT_VERSION=
+macros of =rgpot-core/include/rgpot.h= and the dependency snippets of the
+=rgpot-core= README.
+=ci/version/rgpot_version.py= reads the version from =Cargo.toml= for those
+snippets.
+Regenerate the copies, or check them, with the cogapp tasks of the =version=
+pixi environment, which pins cogapp 3.6.0:
+
+#+begin_src bash
+pixi r -e version release-cog
+pixi r -e version version-drift
+#+end_src
+
+The tasks call =python -m cogapp=.
+cogapp also installs a =cog= script, which is not cocogitto, so cogapp lives in
+its own environment and nothing calls it as =cog=.
+The =version-drift= prek hook runs the check on every pull request, and
+=potctl release assert= compares each copy, the numeric =RGPOT_VERSION= macros
+and the lock entries with =Cargo.toml=.
+=RGPOT_VERSION= keeps a pre-release whole, as in =3.6.0-rc.1=, and =RGPOT_VERSION_PATCH=
+is its numeric patch, =0=.
+=rgpot-core/build.rs= and =ci/version/rgpot_version.py= both write that block,
+and a =potctl= test fails when they disagree.
 Git tags are =vX.Y.Z= (see =cog.toml= =tag_prefix=).
 Pre-release tags such as =v1.2.0-rc.1= are allowed; =release.yml= marks the
 GitHub Release as prerelease and *skips* =cargo publish= (stable crates.io
@@ -134,9 +159,10 @@ itself — the tag workflow does):
 
 Hooks (=cog.toml= =pre_bump_hooks=):
 
-   - =cargo run -q -p potctl -- release sync {{version}}= — lockstep write
-     (meson,
-CMake, towncrier, Cargo, pixi workspace)
+   - =cargo run -q -p potctl -- release sync {{version}}= writes
+     =[workspace.package] version= in =Cargo.toml= and nothing else
+   - =pixi r -e version release-cog= regenerates the copies
+   - =cargo update --workspace --offline= rewrites the =Cargo.lock= entries
    - =uvx towncrier build --yes --version {{version}}= — update =CHANGELOG.md=,
      clear
 fragments
@@ -180,9 +206,11 @@ crates.io (avoid yanking/stable pollution).
 
 ** Version policy
 
-- *Lockstep*: C++ (meson + CMake), Rust crate (=rgpot-core=), docs towncrier
-stamp, and pixi workspace version share one semver (optionally with
-=-[a-z0- 9.]+= suffix for RCs).
+- *One source*: C++ (meson + CMake), the Rust crates (=rgpot-core=,
+  =rgpot-pair=), the Python package, the towncrier stamp and the pixi workspace
+  share the semver in =Cargo.toml= (optionally with a =-[a-z0-9.]+= suffix for
+  RCs).
+  =potctl= keeps its own version, because it does not publish.
 - *One global tag*: =vX.Y.Z= or =vX.Y.Z-rc.N= (not =rgpot-core-v…=).
 - *Crate publish* ships =rgpot-core= only on *stable* tags; C++ consumers track
 the git tag / source tarball, not crates.io.
@@ -208,9 +236,10 @@ pixi r prek
 uvx towncrier build --draft
 cargo run -q -p potctl -- release assert
 cargo run -q -p potctl -- release sync 9.9.9   # ok semver; use real target in dry tests
+pixi r -e version version-drift   # must fail now
 # refuse garbage:
 cargo run -q -p potctl -- release sync not-a-version   # must error
-# restore if you ran a fake version: git checkout -- meson.build CMakeLists.txt ...
+# restore if you ran a fake version: git checkout -- Cargo.toml
 cargo publish --manifest-path rgpot-core/Cargo.toml --locked --dry-run
 pixi r lychee-check   # optional link hygiene
 #+end_src

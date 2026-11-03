@@ -1,10 +1,17 @@
-//! Lockstep semver surfaces for the rgpot monorepo
-//! (meson / CMake / cargo / towncrier / pixi / pyproject).
+//! Release version surfaces for the rgpot monorepo.
+//!
+//! `[workspace.package] version` in the root Cargo.toml is the only
+//! hand-written copy. The Cargo members inherit it, cargo writes it into
+//! Cargo.lock, and cogapp regenerates the files in ci/version/files.txt
+//! from it. `sync` writes the canonical copy; `assert` checks the rest.
 
 use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+
+#[path = "../../rgpot-core/version_macros.rs"]
+mod version_macros;
 
 pub type Result<T> = std::result::Result<T, String>;
 
@@ -194,8 +201,57 @@ fn read_toml_section_version(root: &Path, rel: &str, section: &str) -> Result<St
         .ok_or_else(|| format!("{rel}: no version = \"...\" under [{section}]"))
 }
 
-pub fn read_cargo_version(root: &Path) -> Result<String> {
-    read_first_toml_version(root, "rgpot-core/Cargo.toml")
+/// Workspace members whose `[package]` inherits the release version.
+const MEMBERS: [&str; 2] = ["rgpot-core", "rgpot-pair"];
+
+/// The canonical release version, `[workspace.package]` in the root Cargo.toml.
+pub fn read_workspace_version(root: &Path) -> Result<String> {
+    read_toml_section_version(root, "Cargo.toml", "workspace.package")
+}
+
+/// Error unless `[package]` of a member says `version.workspace = true`.
+fn check_member_inherits(root: &Path, member: &str) -> Result<()> {
+    let rel = format!("{member}/Cargo.toml");
+    let text = read_text(&root.join(&rel))?;
+    let mut here = false;
+    for line in text.lines() {
+        if let Some(name) = toml_table_name(line) {
+            here = name == "package";
+            continue;
+        }
+        let s: String = line.chars().filter(|c| !c.is_whitespace()).collect();
+        if here && s == "version.workspace=true" {
+            return Ok(());
+        }
+        if here && s.starts_with("version=") {
+            return Err(format!(
+                "{rel}: [package] writes its own version; use version.workspace = true"
+            ));
+        }
+    }
+    Err(format!("{rel}: [package] has no version.workspace = true"))
+}
+
+/// Version that Cargo.lock records for `name`, or None when the tree has
+/// no Cargo.lock or the lock has no entry for it.
+fn read_lock_version(root: &Path, name: &str) -> Result<Option<String>> {
+    let p = root.join("Cargo.lock");
+    if !p.is_file() {
+        return Ok(None);
+    }
+    let needle = format!("name = \"{name}\"");
+    let text = read_text(&p)?;
+    let mut lines = text.lines();
+    while let Some(line) = lines.next() {
+        if line.trim() == needle {
+            if let Some(next) = lines.next() {
+                if next.trim().starts_with("version = \"") {
+                    return Ok(between_quotes(next.trim()).map(str::to_owned));
+                }
+            }
+        }
+    }
+    Ok(None)
 }
 
 pub fn read_towncrier_version(root: &Path) -> Result<String> {
@@ -209,6 +265,9 @@ pub fn read_pixi_workspace_version(root: &Path) -> Result<String> {
 pub fn read_pyproject_version(root: &Path) -> Result<String> {
     read_toml_section_version(root, "pyproject.toml", "project")
 }
+
+/// How to bring every generated copy back in step with Cargo.toml.
+const REGENERATE: &str = "run pixi r -e version release-cog and cargo update --workspace";
 
 /// Generated C header whose RGPOT_VERSION macros stamp the ABI.
 const HEADER_REL: &str = "rgpot-core/include/rgpot.h";
@@ -230,43 +289,34 @@ pub fn read_header_version(root: &Path) -> Result<Option<String>> {
     Err(format!("{HEADER_REL}: no #define RGPOT_VERSION line"))
 }
 
-/// Rewrite the four RGPOT_VERSION macros. cbindgen writes them from
-/// CARGO_PKG_VERSION, but only when the header is regenerated, so a bump
-/// must stamp them too or the header keeps the previous release.
-fn replace_header_versions(text: &str, version: &str) -> String {
-    let core = version.split(['-', '+']).next().unwrap_or(version);
-    let mut parts = core.split('.');
-    let major = parts.next().unwrap_or("0");
-    let minor = parts.next().unwrap_or("0");
-    let patch = parts.next().unwrap_or("0");
-    let mut out = String::with_capacity(text.len());
-    for line in text.split_inclusive('\n') {
-        let eol = line_eol(line);
-        let body = &line[..line.len() - eol.len()];
-        let replaced = match body.trim_start() {
-            l if l.starts_with("#define RGPOT_VERSION_MAJOR ") => {
-                Some(format!("#define RGPOT_VERSION_MAJOR {major}"))
+/// Error unless the four RGPOT_VERSION macros of the C header are the
+/// block that rgpot-core/build.rs and cogapp write for `canon`.
+fn check_header_macros(root: &Path, canon: &str) -> Result<()> {
+    let p = root.join(HEADER_REL);
+    if !p.is_file() {
+        return Ok(());
+    }
+    if version_macros::numeric_core(canon).is_none() {
+        return Err(format!("release version is not semver: {canon}"));
+    }
+    let text = read_text(&p)?;
+    for want in version_macros::header_macros(canon).lines() {
+        let name: Vec<&str> = want.split_whitespace().take(2).collect();
+        let found = text
+            .lines()
+            .map(str::trim)
+            .find(|line| line.split_whitespace().take(2).eq(name.iter().copied()));
+        match found {
+            Some(line) if line == want => {}
+            Some(line) => {
+                return Err(format!(
+                    "{HEADER_REL}: `{line}` should be `{want}`; {REGENERATE}"
+                ))
             }
-            l if l.starts_with("#define RGPOT_VERSION_MINOR ") => {
-                Some(format!("#define RGPOT_VERSION_MINOR {minor}"))
-            }
-            l if l.starts_with("#define RGPOT_VERSION_PATCH ") => {
-                Some(format!("#define RGPOT_VERSION_PATCH {patch}"))
-            }
-            l if l.starts_with("#define RGPOT_VERSION ") => {
-                Some(format!("#define RGPOT_VERSION \"{version}\""))
-            }
-            _ => None,
-        };
-        match replaced {
-            Some(r) => {
-                out.push_str(&r);
-                out.push_str(eol);
-            }
-            None => out.push_str(line),
+            None => return Err(format!("{HEADER_REL}: no {} line", name.join(" "))),
         }
     }
-    out
+    Ok(())
 }
 
 pub fn changelog_section(root: &Path, ver: &str) -> Result<String> {
@@ -297,67 +347,6 @@ pub fn changelog_section(root: &Path, ver: &str) -> Result<String> {
     Ok(out)
 }
 
-fn replace_first_meson_version(text: &str, version: &str) -> String {
-    let mut done = false;
-    let mut out = String::with_capacity(text.len() + 8);
-    for line in text.split_inclusive('\n') {
-        let s = line.trim_start_matches([' ', '\t']);
-        if !done && s.starts_with("version:") {
-            let ind = line_indent(line.trim_end_matches(['\r', '\n']));
-            let eol = line_eol(line);
-            out.push_str(ind);
-            out.push_str(&format!("version: '{version}',"));
-            out.push_str(eol);
-            done = true;
-        } else {
-            out.push_str(line);
-        }
-    }
-    out
-}
-
-fn replace_first_cmake_version(text: &str, version: &str) -> String {
-    let mut done = false;
-    let mut out = String::with_capacity(text.len() + 8);
-    for line in text.split_inclusive('\n') {
-        let trimmed = line.trim_start_matches([' ', '\t']);
-        if !done && trimmed.starts_with("VERSION ") {
-            let rest = &trimmed["VERSION ".len()..];
-            let tok = rest.split_whitespace().next().unwrap_or("");
-            if tok.starts_with(|c: char| c.is_ascii_digit()) {
-                let ind = line_indent(line.trim_end_matches(['\r', '\n']));
-                let eol = line_eol(line);
-                out.push_str(ind);
-                out.push_str("VERSION ");
-                out.push_str(version);
-                out.push_str(eol);
-                done = true;
-                continue;
-            }
-        }
-        out.push_str(line);
-    }
-    out
-}
-
-fn replace_first_toml_version_line(text: &str, version: &str) -> String {
-    let mut done = false;
-    let mut out = String::with_capacity(text.len() + 8);
-    for line in text.split_inclusive('\n') {
-        if !done && line.trim().starts_with("version = \"") {
-            let ind = line_indent(line.trim_end_matches(['\r', '\n']));
-            let eol = line_eol(line);
-            out.push_str(ind);
-            out.push_str(&format!("version = \"{version}\""));
-            out.push_str(eol);
-            done = true;
-        } else {
-            out.push_str(line);
-        }
-    }
-    out
-}
-
 fn replace_toml_section_version_line(text: &str, section: &str, version: &str) -> String {
     let mut done = false;
     let mut here = false;
@@ -386,106 +375,76 @@ pub fn sync_versions(root: &Path, version: &str) -> Result<()> {
     if !semver_ok(version) {
         return Err(format!("refusing non-semver version: {version}"));
     }
-
-    let meson_p = root.join("meson.build");
-    if meson_p.is_file() {
-        let t = read_text(&meson_p)?;
-        write_text(&meson_p, &replace_first_meson_version(&t, version))?;
+    let p = root.join("Cargo.toml");
+    let t = read_text(&p)?;
+    if toml_section_version(&t, "workspace.package").is_none() {
+        return Err("Cargo.toml: no version = \"...\" under [workspace.package]".into());
     }
-
-    let cmake_p = root.join("CMakeLists.txt");
-    if cmake_p.is_file() {
-        let t = read_text(&cmake_p)?;
-        write_text(&cmake_p, &replace_first_cmake_version(&t, version))?;
-    }
-
-    for rel in ["towncrier.toml", "rgpot-core/Cargo.toml"] {
-        let p = root.join(rel);
-        if p.is_file() {
-            let t = read_text(&p)?;
-            write_text(&p, &replace_first_toml_version_line(&t, version))?;
-        }
-    }
-
-    for (rel, section) in [("pixi.toml", "workspace"), ("pyproject.toml", "project")] {
-        let p = root.join(rel);
-        if p.is_file() {
-            let t = read_text(&p)?;
-            write_text(&p, &replace_toml_section_version_line(&t, section, version))?;
-        }
-    }
-
-    let header_p = root.join(HEADER_REL);
-    if header_p.is_file() {
-        let t = read_text(&header_p)?;
-        write_text(&header_p, &replace_header_versions(&t, version))?;
-    }
-
-    println!("synced lockstep version -> {version}");
-    println!(
-        "  meson.build / CMakeLists.txt / towncrier.toml / rgpot-core/Cargo.toml / pixi.toml [workspace] / pyproject.toml [project] / rgpot.h"
-    );
+    write_text(
+        &p,
+        &replace_toml_section_version_line(&t, "workspace.package", version),
+    )?;
+    println!("wrote [workspace.package] version = {version} in Cargo.toml");
+    println!("  regenerate the copies: pixi r -e version release-cog");
     Ok(())
 }
 
 pub fn assert_lockstep(root: &Path, expected: Option<&str>, require_changelog: bool) -> Result<()> {
-    let meson_v = read_meson_version(root)?;
-    let cmake_v = read_cmake_version(root)?;
-    let cargo_v = read_cargo_version(root)?;
-    let town_v = read_towncrier_version(root)?;
-    let pixi_v = read_pixi_workspace_version(root)?;
-    let pyproj_v = read_pyproject_version(root)?;
-    let header_v = read_header_version(root)?;
+    let canon = read_workspace_version(root)?;
     let exp = expected.map(strip_v).filter(|s| !s.is_empty());
 
-    println!("lockstep surfaces:");
-    println!("  meson.build      = {meson_v}");
-    println!("  CMakeLists.txt   = {cmake_v}");
-    println!("  Cargo.toml       = {cargo_v}");
-    println!("  towncrier.toml   = {town_v}");
-    println!("  pixi.toml[ws]    = {pixi_v}");
-    println!("  pyproject[proj]  = {pyproj_v}");
-    if let Some(h) = &header_v {
-        println!("  rgpot.h          = {h}");
+    println!("release version (Cargo.toml [workspace.package]) = {canon}");
+    for member in MEMBERS {
+        if root.join(member).join("Cargo.toml").is_file() {
+            check_member_inherits(root, member)?;
+            println!("  {member:<26} = inherited");
+        }
     }
 
-    let refv = &meson_v;
-    for (name, val) in [
-        ("cmake", &cmake_v),
-        ("cargo", &cargo_v),
-        ("towncrier", &town_v),
-        ("pixi", &pixi_v),
-        ("pyproject", &pyproj_v),
-    ] {
-        if val != refv {
-            return Err(format!("{name} version ({val}) != meson ({refv})"));
+    let mut copies = vec![
+        ("meson.build".to_owned(), read_meson_version(root)?),
+        ("CMakeLists.txt".to_owned(), read_cmake_version(root)?),
+        ("towncrier.toml".to_owned(), read_towncrier_version(root)?),
+        ("pixi.toml".to_owned(), read_pixi_workspace_version(root)?),
+        ("pyproject.toml".to_owned(), read_pyproject_version(root)?),
+    ];
+    if let Some(h) = read_header_version(root)? {
+        copies.push((HEADER_REL.to_owned(), h));
+    }
+    for member in MEMBERS {
+        if let Some(v) = read_lock_version(root, member)? {
+            copies.push((format!("Cargo.lock {member}"), v));
         }
     }
-    if let Some(h) = &header_v {
-        if h != refv {
-            return Err(format!("rgpot.h version ({h}) != meson ({refv})"));
+    for (name, val) in &copies {
+        println!("  {name:<26} = {val}");
+        if val != &canon {
+            return Err(format!(
+                "{name} version ({val}) != Cargo.toml [workspace.package] ({canon}); {REGENERATE}"
+            ));
         }
     }
+    check_header_macros(root, &canon)?;
 
     if let Some(e) = exp {
-        println!("  expected (tag)   = {e}");
-        if refv != e {
-            return Err(format!("lockstep version ({refv}) != expected ({e})"));
+        println!("  {:<26} = {e}", "expected (tag)");
+        if canon != e {
+            return Err(format!("release version ({canon}) != expected ({e})"));
         }
     }
 
     if require_changelog {
-        let ver = exp.unwrap_or(refv.as_str());
+        let ver = exp.unwrap_or(canon.as_str());
         let section = changelog_section(root, ver)?;
         if section.trim().is_empty() {
             return Err(format!(
                 "no CHANGELOG.md section for {ver} (run towncrier build via cog bump first)"
             ));
         }
-        println!("  CHANGELOG.md     = section present for {ver}");
+        println!("  {:<26} = section present for {ver}", "CHANGELOG.md");
     }
 
-    println!("lockstep ok ({refv})");
+    println!("lockstep ok ({canon})");
     Ok(())
 }
 
@@ -535,6 +494,11 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(root.join("rgpot-core")).unwrap();
         fs::write(
+            root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"rgpot-core\"]\n\n[workspace.package]\nversion = \"2.5.3\"\n",
+        )
+        .unwrap();
+        fs::write(
             root.join("meson.build"),
             "project(\n    'rgpot',\n    'cpp',\n    version: '2.5.3',\n)\n",
         )
@@ -546,7 +510,7 @@ mod tests {
         .unwrap();
         fs::write(
             root.join("rgpot-core/Cargo.toml"),
-            "[package]\nname = \"rgpot-core\"\nversion = \"2.5.3\"\n",
+            "[package]\nname = \"rgpot-core\"\nversion.workspace = true\n",
         )
         .unwrap();
         fs::write(
@@ -609,16 +573,58 @@ mod tests {
     }
 
     #[test]
-    fn sync_writes_pyproject_project_version() {
+    fn sync_writes_only_the_workspace_version() {
         let root = scratch_root("sync");
         sync_versions(&root, "v3.1.4").unwrap();
-        assert_eq!(read_pyproject_version(&root).unwrap(), "3.1.4");
-        assert_eq!(read_pixi_workspace_version(&root).unwrap(), "3.1.4");
-        assert_eq!(read_meson_version(&root).unwrap(), "3.1.4");
-        let text = fs::read_to_string(root.join("pyproject.toml")).unwrap();
-        assert!(text.contains("\"vesin>=0.6.0\""));
-        assert!(text.contains("[tool.some-plugin]\nversion = \"9.9.9\""));
-        assert_lockstep(&root, Some("3.1.4"), false).unwrap();
+        assert_eq!(read_workspace_version(&root).unwrap(), "3.1.4");
+        assert_eq!(read_pyproject_version(&root).unwrap(), "2.5.3");
+        assert_eq!(read_meson_version(&root).unwrap(), "2.5.3");
+        let text = fs::read_to_string(root.join("rgpot-core/Cargo.toml")).unwrap();
+        assert!(text.contains("version.workspace = true"));
+        let err = assert_lockstep(&root, Some("3.1.4"), false).unwrap_err();
+        assert!(err.contains("meson.build"), "{err}");
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn sync_refuses_a_tree_without_a_workspace_version() {
+        let root = scratch_root("no-canon");
+        fs::write(root.join("Cargo.toml"), "[workspace]\nmembers = []\n").unwrap();
+        let err = sync_versions(&root, "3.1.4").unwrap_err();
+        assert!(err.contains("[workspace.package]"), "{err}");
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn assert_accepts_a_tree_in_step() {
+        let root = scratch_root("in-step");
+        assert_lockstep(&root, Some("2.5.3"), false).unwrap();
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn assert_rejects_a_member_with_its_own_version() {
+        let root = scratch_root("member");
+        fs::write(
+            root.join("rgpot-core/Cargo.toml"),
+            "[package]\nname = \"rgpot-core\"\nversion = \"2.5.3\"\n",
+        )
+        .unwrap();
+        let err = assert_lockstep(&root, None, false).unwrap_err();
+        assert!(err.contains("version.workspace"), "{err}");
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn assert_catches_lockfile_drift() {
+        let root = scratch_root("lock");
+        fs::write(
+            root.join("Cargo.lock"),
+            "[[package]]\nname = \"rgpot-core\"\nversion = \"2.5.2\"\n",
+        )
+        .unwrap();
+        let err = assert_lockstep(&root, None, false).unwrap_err();
+        assert!(err.contains("Cargo.lock"), "{err}");
         fs::remove_dir_all(&root).unwrap();
     }
 
@@ -634,30 +640,91 @@ mod tests {
     );
 
     #[test]
-    fn sync_stamps_the_header_macros() {
-        let root = scratch_root("header");
+    fn assert_catches_header_drift() {
+        let root = scratch_root("header-drift");
         fs::create_dir_all(root.join("rgpot-core/include")).unwrap();
-        fs::write(root.join(HEADER_REL), HEADER).unwrap();
-        sync_versions(&root, "4.0.1-rc.2").unwrap();
-        let text = fs::read_to_string(root.join(HEADER_REL)).unwrap();
-        assert!(text.contains("#define RGPOT_VERSION \"4.0.1-rc.2\"\n"));
-        assert!(text.contains("#define RGPOT_VERSION_MAJOR 4\n"));
-        assert!(text.contains("#define RGPOT_VERSION_MINOR 0\n"));
-        assert!(text.contains("#define RGPOT_VERSION_PATCH 1\n"));
-        assert!(text.contains("const char *rgpot_version(void);\n"));
-        assert_eq!(read_header_version(&root).unwrap().as_deref(), Some("4.0.1-rc.2"));
-        assert_lockstep(&root, Some("4.0.1-rc.2"), false).unwrap();
+        fs::write(
+            root.join(HEADER_REL),
+            HEADER.replace("\"2.5.3\"", "\"2.5.2\""),
+        )
+        .unwrap();
+        let err = assert_lockstep(&root, None, false).unwrap_err();
+        assert!(err.contains("rgpot.h"), "{err}");
         fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
-    fn assert_catches_header_drift() {
-        let root = scratch_root("header-drift");
+    fn assert_catches_a_wrong_numeric_header_macro() {
+        let root = scratch_root("header-patch");
         fs::create_dir_all(root.join("rgpot-core/include")).unwrap();
-        fs::write(root.join(HEADER_REL), HEADER.replace("\"2.5.3\"", "\"2.5.2\"")).unwrap();
+        fs::write(root.join(HEADER_REL), HEADER).unwrap();
+        assert_lockstep(&root, None, false).unwrap();
+        fs::write(
+            root.join(HEADER_REL),
+            HEADER.replace("RGPOT_VERSION_PATCH 3", "RGPOT_VERSION_PATCH 3-rc"),
+        )
+        .unwrap();
         let err = assert_lockstep(&root, None, false).unwrap_err();
-        assert!(err.contains("rgpot.h"), "{err}");
+        assert!(err.contains("RGPOT_VERSION_PATCH 3-rc"), "{err}");
         fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn header_macros_take_the_numeric_patch_of_a_pre_release() {
+        assert_eq!(version_macros::numeric_core("3.6.0-rc.1"), Some((3, 6, 0)));
+        assert_eq!(
+            version_macros::numeric_core("3.6.0+build.7"),
+            Some((3, 6, 0))
+        );
+        assert_eq!(version_macros::numeric_core("3.6"), None);
+        assert!(
+            version_macros::header_macros("3.6.0-rc.1").ends_with("#define RGPOT_VERSION_PATCH 0")
+        );
+    }
+
+    /// Versions on which the cbindgen and cogapp writers must agree.
+    const HEADER_CASES: [&str; 6] = [
+        "3.6.0",
+        "3.6.0-rc.1",
+        "3.6.0-rc.1+build.7",
+        "10.20.30+meta",
+        "1.0.0-0.3.7",
+        "1.0.0-x-y-z.--",
+    ];
+
+    fn cogapp_header_macros(version: Option<&str>) -> String {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let script = root.join("ci/version/rgpot_version.py");
+        let python = env::var("PYTHON").unwrap_or_else(|_| "python3".into());
+        let out = std::process::Command::new(&python)
+            .arg(&script)
+            .arg("header-macros")
+            .args(version)
+            .output()
+            .unwrap_or_else(|e| panic!("run {python} {}: {e}", script.display()));
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8(out.stdout).unwrap().trim_end().to_owned()
+    }
+
+    #[test]
+    fn header_macros_match_the_cogapp_writer() {
+        for version in HEADER_CASES {
+            assert_eq!(
+                cogapp_header_macros(Some(version)),
+                version_macros::header_macros(version),
+                "{version}"
+            );
+        }
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let canon = read_workspace_version(root).unwrap();
+        assert_eq!(
+            cogapp_header_macros(None),
+            version_macros::header_macros(&canon)
+        );
     }
 
     #[test]
