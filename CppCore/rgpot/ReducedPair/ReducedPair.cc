@@ -116,12 +116,6 @@ void morse_general(double epsilon, double rho, double re, double r2,
   }
 }
 
-#if defined(_WIN32)
-#define RGPOT_PAIR_API __declspec(dllexport)
-#else
-#define RGPOT_PAIR_API __attribute__((visibility("default")))
-#endif
-
 } // namespace
 
 extern "C" RGPOT_PAIR_API int rgpot_lj_pair(double epsilon, double sigma,

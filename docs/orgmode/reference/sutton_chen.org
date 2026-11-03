@@ -12,43 +12,45 @@ rho_i = sum_{j != i} (a / r_ij)^m
 #+end_example
 
 The form is Sutton and Chen, Philosophical Magazine Letters 61, 139 (1990).
-The default parameters are the reduced gold and platinum set: =n = 10=,
-=m = 8=, =c = 34.408=, =epsilon = 1=, =a = 1=.
+The default parameters are the reduced gold and platinum set: =n = 10=, =m = 8=,
+=c = 34.408=, =epsilon = 1=, =a = 1=.
 Doye and Wales use that set for the 10-8 cluster tables and write it on the
 first line of each deposited point file.
-The deposited Pt38 Oh geometry gives -10117.2454 and the Pt75 D5h geometry
-gives -20431.3452, in units of epsilon, to the four digits printed in the
-10-8 table.
+The deposited Pt38 Oh geometry gives -10117.2454 and the Pt75 D5h geometry gives
+-20431.3452, in units of epsilon, to the four digits printed in the 10-8 table.
 
-Cagin, Dereli, Uludogan, and Tomak, arXiv:cond-mat/9709114, Table I,
-reprint the Sutton-Chen rows and cite Sutton and Chen 1990 as their
-reference 1. Platinum is epsilon = 1.98330e-2 eV, a = 3.92 Angstrom,
-c = 34.408, m = 8, n = 10. Gold on the same row is epsilon = 1.27930e-2 eV,
-a = 4.08 Angstrom, with the same c, m, and n. Those two rows are
-=sutton_chen_platinum= and =sutton_chen_gold=.
+Cagin, Dereli, Uludogan, and Tomak, arXiv:cond-mat/9709114, Table I, reprint the
+Sutton-Chen rows and cite Sutton and Chen 1990 as their reference 1.
+Platinum is epsilon = 1.98330e-2 eV, a = 3.92 Angstrom, c = 34.408, m = 8, n = 10.
+Gold on the same row is epsilon = 1.27930e-2 eV, a = 4.08 Angstrom, with the
+same c, m, and n.
+Those two rows are =sutton_chen_platinum= and =sutton_chen_gold=.
 The bulk nearest-neighbor distance and the cohesive well depth are
-=sutton_chen_scales=. The length is the static fcc minimum. The depth
-is minus the energy per atom there.
-c is fitted to zero pressure at the lattice parameter, so the minimum is
-a / sqrt(2) for every row of the Cagin table. The reduced 10-8 well
-is 295.4645 epsilon, which is 5.860 eV for platinum and 3.780 eV for gold.
+=sutton_chen_scales=.
+The length is the static fcc minimum.
+The depth is minus the energy per atom there. c is fitted to zero pressure at
+the lattice parameter, so the minimum is a / sqrt(2) for every row of the Cagin
+table.
+The reduced 10-8 well is 295.4645 epsilon, which is 5.860 eV for platinum and
+3.780 eV for gold.
 
 The default cutoff is 40 in the coordinate unit, with no energy shift.
 =cutoff = 0= keeps every pair.
-Cluster evaluation does not fold the cell. Periodic evaluation uses the
-minimum image and needs a positive cutoff.
-The neighbor list is =PairListCache::evaluate=: one pass builds the
-densities and a second pass writes the forces.
+Cluster evaluation does not fold the cell.
+Periodic evaluation uses the minimum image and needs a positive cutoff.
+The neighbor list is =PairListCache::evaluate=: one pass builds the densities
+and a second pass writes the forces.
 
-=rgpot_sutton_chen_energy_forces= is the C entry point. It takes an
-=rgpot_sc_config= and writes one energy and one force array.
+=rgpot_sutton_chen_energy_forces= is the C entry point.
+It takes an =rgpot_sc_config= and writes one energy and one force array.
 
 * Reduced cluster pairs
 
-=rgpot_lj_gradient= and =rgpot_morse_gradient= return the energy gradient
-of an unshifted cluster. =rgpot_lj_curvature_pairs= fills energy, slope,
-and curvature for a list of squared distances in one call.
-The =rgpot-pair= crate exposes the same trees as =lj_unit= and
-=morse_unit=, which a Rust caller can inline.
-The unit Lennard-Jones branch is the direct inverse-power tree, with
-contraction off, so a search sees the same rounding as that expression.
+=rgpot_lj_gradient= and =rgpot_morse_gradient= return the energy gradient of an
+unshifted cluster.
+=rgpot_lj_curvature_pairs= fills energy, slope, and curvature for a list of
+squared distances in one call.
+The =rgpot-pair= crate exposes the same trees as =lj_unit= and =morse_unit=,
+which a Rust caller can inline.
+The unit Lennard-Jones branch is the direct inverse-power tree, with contraction
+off, so a search sees the same rounding as that expression.

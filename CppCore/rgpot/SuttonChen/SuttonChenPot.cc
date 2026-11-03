@@ -210,12 +210,6 @@ int export_force(const rgpot_sc_config *cfg, int32_t natoms,
 
 } // namespace
 
-#if defined(_WIN32)
-#define RGPOT_SC_API __declspec(dllexport)
-#else
-#define RGPOT_SC_API __attribute__((visibility("default")))
-#endif
-
 extern "C" RGPOT_SC_API int
 rgpot_sutton_chen_energy_forces(const rgpot_sc_config *cfg, int32_t natoms,
                         const double *positions, const double *box,
