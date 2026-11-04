@@ -4,8 +4,9 @@
 ``setup``. Each ``time_force_call`` is one ``forceImpl``.
 
 The shared library is the meson target ``asv_fastpath``, built with
-``-Dwith_tests=true``. Set ``RGPOT_ASV_LIB`` to ``libasv_fastpath.so``
-when the build directory is not ``build/``.
+``-Dwith_tests=true --buildtype=release``. Meson's default buildtype
+is debug, and these timings are not that build. Set ``RGPOT_ASV_LIB``
+to ``libasv_fastpath.so`` when the build directory is not ``build/``.
 
 LJ38, LJ75 and LJ150 sit inside the cutoff, so the warm walk is every
 pair. The periodic lattice is wide enough that linkcell returns a short
