@@ -341,6 +341,20 @@ The root README is generated from `readme_src.org`.
 Project documentation sources live under `docs/orgmode/`.
 
 
+## Contact
+
+Ask questions, report bugs and suggest features on the [issue tracker][issues].
+Report security vulnerabilities privately, following [SECURITY.md][security].
+Do not open a public issue for them.
+The development setup is on the [contributing pages][contributing].
+Every contributor follows the [Code of Conduct][conduct].
+
+[issues]: https://github.com/OmniPotentRPC/rgpot/issues
+[security]: https://github.com/OmniPotentRPC/rgpot/blob/main/SECURITY.md
+[contributing]: https://rgpot.rgoswami.me/contributing/index.html
+[conduct]: https://github.com/OmniPotentRPC/rgpot/blob/main/CODE_OF_CONDUCT.md
+
+
 # License
 
 MIT, with backend-specific notes:
