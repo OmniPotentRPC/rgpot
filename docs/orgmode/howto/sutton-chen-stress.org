@@ -1,0 +1,84 @@
+#+TITLE: Read the stress of a periodic Sutton-Chen cell
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+
+* Read the stress of a periodic Sutton-Chen cell
+
+=SuttonChenPot= writes the Cauchy stress only when =SuttonChenConfig::stress= is set.
+This guide turns it on for a platinum crystal and reads the pressure.
+The convention and the checks are in the [[file:../reference/sutton_chen.org][Sutton-Chen reference]].
+
+** Set up the potential
+
+Start from a parameter row, make it periodic, and set the flag.
+Keep the cutoff under half the smallest face spacing of the cell, since periodic evaluation keeps one image of each partner.
+
+#+begin_src cpp
+#include "rgpot/SuttonChen/SuttonChenPot.hpp"
+#include "rgpot/SuttonChen/SuttonChenScales.hpp"
+
+rgpot::SuttonChenConfig cfg = rgpot::sutton_chen_platinum();
+cfg.periodic = true;
+cfg.cutoff = 7.5;
+cfg.stress = true;
+const rgpot::SuttonChenPot pot(cfg);
+#+end_src
+
+** Build a cell
+
+The box is row-major, one lattice vector per row.
+This cell has four conventional face-centered cubic (fcc) cells along each edge, built at 0.99 of the lattice parameter, so 256 atoms in a compressed crystal.
+
+#+begin_src cpp
+const double lattice = 0.99 * cfg.a;
+const double basis[4][3] = {
+    {0.0, 0.0, 0.0}, {0.5, 0.5, 0.0}, {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5}};
+std::vector<double> pos;
+for (int i = 0; i < 4; ++i)
+  for (int j = 0; j < 4; ++j)
+    for (int k = 0; k < 4; ++k)
+      for (const auto &b : basis) {
+        pos.push_back((i + b[0]) * lattice);
+        pos.push_back((j + b[1]) * lattice);
+        pos.push_back((k + b[2]) * lattice);
+      }
+const double L = 4 * lattice;
+const double box[9] = {L, 0.0, 0.0, 0.0, L, 0.0, 0.0, 0.0, L};
+#+end_src
+
+The cell edge is 15.52 Angstrom, more than twice the cutoff.
+
+** Call forceImpl and read the tensor
+
+A potential's call operator returns energy, forces and variance only.
+Call =forceImpl= with a =ForceOut= to get the stress as well.
+
+#+begin_src cpp
+std::vector<double> forces(pos.size());
+rgpot::ForceOut out{};
+out.F = forces.data();
+const rgpot::ForceInput in{pos.size() / 3, pos.data(), nullptr, box};
+pot.forceImpl(in, &out);
+
+const double gpa = 160.2176634; // eV/Angstrom^3 to GPa
+std::printf("energy %.6f eV, has_stress %d\n", out.energy, out.has_stress);
+std::printf("sigma_xx %.4f GPa\n", out.stress[0] * gpa);
+std::printf("pressure %.4f GPa\n",
+            -(out.stress[0] + out.stress[4] + out.stress[8]) / 3.0 * gpa);
+#+end_src
+
+After the call, =out.has_stress= is 1 when the stress tensor was written.
+It stays 0 when the flag is clear or the cell has no positive volume.
+
+** What to expect
+
+The three blocks print these lines when they sit in one =main= that also includes =<cstdio>= and =<vector>=.
+
+#+begin_example
+energy -1495.168516 eV, has_stress 1
+sigma_xx -9.3308 GPa
+pressure 9.3308 GPa
+#+end_example
+
+The crystal is compressed, so the diagonal entries are negative and the pressure is positive.
+The pressure at the lattice parameter itself falls toward about 0.0015 GPa as the cutoff grows, not toward zero.
+Sutton and Chen's ~c = 34.408~ is the zero-pressure value rounded to three decimals, and the reference gives the lattice sum and the table.
