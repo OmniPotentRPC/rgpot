@@ -95,8 +95,8 @@ the PES.
 A claim that =ExprPot= or =XcKernel= beats pyeonclient is a category error
 unless the race is the same geometry, same pot, and the same host job.
 
-=scripts/time_lj_rgpot_vs_pyeonclient.py= times that race on workstation-a with repo
-defaults (no invented cheaper pot settings):
+=scripts/time_lj_rgpot_vs_pyeonclient.py= times that race on workstation-a with
+repo defaults (no invented cheaper pot settings):
 
 - Fixture: the =ExprPotTest= two-atom Ar pair (1.5 A, Z=18, 40 A box), default
   =LJConfig= (=u0= 1 eV, cutoff 15 A, =psi= 1 A).
