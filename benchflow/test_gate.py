@@ -515,6 +515,8 @@ class TestSnakefile(unittest.TestCase):
         self.assertIn("LJPot", fast)
         self.assertIn("outside", fast)
         self.assertIn("ASV_ENV_DIR", fast)
+        timed = fast.split("def time_force_call", 1)[1]
+        self.assertNotIn("_wobble", timed)
         wheel_text = (ROOT / "benchflow" / "build_wheel.py").read_text()
         self.assertIn('"-Dwith_fortran_pots=enabled"', wheel_text)
         self.assertIn('"-Dbuildtype=release"', wheel_text)

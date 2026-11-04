@@ -8,9 +8,10 @@ Those classes call the force implementations in the installed
 
 LJ38, LJ75 and LJ150 sit inside the cutoff, so the warm walk is every
 pair. The periodic lattice is wide enough that linkcell returns a short
-list. Pt warm folds the cached list with minimage. Pt cold moves the
-island by 1 Angstrom on each call so the list is built again. Water plus
-H wraps every leg with minimage.
+list. Pt warm folds the cached list with minimage. Pt cold writes a
+one-angstrom shift. Setup clears the step before every repeat, so the
+shift repeats and the pair cache hits. The list is not built again on
+each call. Water plus H wraps every leg with minimage.
 """
 
 from __future__ import annotations
@@ -175,7 +176,10 @@ class _ForceCall:
         self.box = box
         self.cold = cold
         self.step = 0
-        self.pos = base
+        # One buffer for every sample. The warm wobble is the same
+        # coordinates each call, so it is filled here. The cold row
+        # overwrites that buffer in place.
+        self.pos = base.copy()
         self.pot(self.pos, self.types, self.box)
         if not cold:
             self.pos = _wobble(self.base, 1.0)
@@ -185,11 +189,8 @@ class _ForceCall:
     def time_force_call(self) -> None:
         if self.cold:
             self.step += 1
-            self.pos = self.base.copy()
+            self.pos[:, :] = self.base
             self.pos[:, 0] += float(self.step)
-            self.pot(self.pos, self.types, self.box)
-            return
-        self.pos = _wobble(self.base, 1.0)
         self.pot(self.pos, self.types, self.box)
 
 
