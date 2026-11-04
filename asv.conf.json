@@ -3,11 +3,30 @@
     "project": "rgpot",
     "project_url": "https://github.com/OmniPotentRPC/rgpot",
     "repo": ".",
-    "environment_type": "existing",
+    "environment_type": "virtualenv",
+    "pythons": ["3.12"],
+    "launch_method": "spawn",
+    "install_timeout": 3600,
+    "default_benchmark_timeout": 180,
     "benchmark_dir": "benchmarks",
     "results_dir": ".asv/results",
     "html_dir": ".asv/html",
     "branches": ["HEAD"],
-    "build_command": [],
-    "install_command": []
+    "matrix": {
+        "req": {
+            "numpy": ["2.5.4"],
+            "asv_bench_memray": ["0.1.2"],
+            "memray": ["1.20.0"]
+        }
+    },
+    "build_command": [
+        "python -m pip install asv-runner==0.3.2 build==1.6.1 meson==1.12.1 meson-python==0.22.1 nanobind==3.1.0 ninja==1.13.2 numpy==2.5.4",
+        "python {conf_dir}/benchflow/build_wheel.py {build_cache_dir} {build_dir}"
+    ],
+    "install_command": [
+        "in-dir={env_dir} python -m pip install {wheel_file}"
+    ],
+    "uninstall_command": [
+        "return-code=any python -m pip uninstall -y {project}"
+    ]
 }

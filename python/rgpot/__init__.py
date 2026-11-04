@@ -22,6 +22,8 @@ import rgpot._core as _core
 
 __version__: str = str(getattr(_core, "__version__", "0"))
 LJPot = _core.LJPot
+LJClusterPot = _core.LJClusterPot
+MorsePot = _core.MorsePot
 NumericalError = _core.NumericalError
 evaluate_lj = _core.evaluate_lj
 has_cache = _core.has_cache
@@ -163,6 +165,8 @@ def evaluate_metatomic(
 
 __all__ = [
     "LJPot",
+    "LJClusterPot",
+    "MorsePot",
     "NumericalError",
     "StillingerWeberSi",
     "TersoffSiC",
