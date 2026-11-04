@@ -5,17 +5,15 @@ version = 4
 [[package]]
 name = "linkcell"
 version = "0.3.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c3dda532d851012acca8717b8635166fe9e99d73a4af2e3e95d958995616f17"
+source = "git+https://github.com/d-SEAMS/linkcell?rev=74a513cc41c2730815bcd9110a96286f53ccf353#74a513cc41c2730815bcd9110a96286f53ccf353"
 dependencies = [
  "minimage",
 ]
 
 [[package]]
 name = "minimage"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e0c930112bcf7c3606a5e4dd67c90522432cb536a250d879967d094f1803abe"
+version = "0.2.0"
+source = "git+https://github.com/lode-org/minimage.git?rev=3abded515f2e3d0af40d8816a533a2941b1a36cf#3abded515f2e3d0af40d8816a533a2941b1a36cf"
 
 [[package]]
 name = "rgpot_fastnlist"
