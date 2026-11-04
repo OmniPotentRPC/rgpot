@@ -8,7 +8,7 @@ Tool versions are pinned in `benchflow/requirements.txt` and repeated in `asv.co
 ```sh
 python -m pip install -r benchflow/requirements.txt
 snakemake -c 1
-python -m unittest benchflow.test_gate
+python -m unittest discover -s benchflow
 ```
 
 `benchflow/config.yaml` sets `rounds` (10) and `runs` (10).
@@ -21,9 +21,9 @@ With MAD for the median absolute deviation of the calibration ratios, the relati
 max(0.05, 3 * MAD, the 99th percentile of |ratio - 1|, the maximum |ratio - 1|)
 ```
 
-so the gate is at least as wide as every calibration ratio.
-`factor` is `1 + relative_threshold`.
-Each benchmark keeps its own factor.
+so the upper bound is at least the widest calibration ratio.
+It is also at least five percent above one.
+Each benchmark keeps its own upper bound.
 
 Each run writes asv results under `benchflow/out/results/<run>`.
 From those results, the exporter takes the one result for the run's commit, machine, and environment.
@@ -34,11 +34,13 @@ Its `os`, `arch`, `cpu`, `num_cpu`, and `ram` fields are fixed generic values.
 That record is in `benchflow/out/home/.asv-machine.json`, the asv machine file.
 The machine check reads only the `bench-runner` record and ignores every other record in that file.
 
-`snakemake -c 1 pr_gate` is the PR gate.
-`base` and `head` must be distinct revisions.
-The gate runs one `asv continuous --interleave-rounds` for those revisions, writes `benchflow/out/pr_compare.txt`, and exits with the per-benchmark result.
-A row fails when its head/base median ratio is above its own factor.
-Equal revisions do not run a comparison.
+`snakemake -c 1 pr_compare` compares two distinct revisions, `base` and `head`.
+It runs one `asv continuous --interleave-rounds` for them and writes the table to `benchflow/out/pr_compare.txt`.
+A row in that table fails when its head/base median ratio is above its own upper bound.
+The result goes to `benchflow/out/pr_compare.status`, and `pr_compare` itself exits zero.
+Equal revisions do not run a comparison, and their status is non-zero.
+`pr_gate` exits with that status, so it fails on a slowdown.
+Continuous integration should run `pr_gate`.
 
 `warmup_time` drops calls before the first sample.
 Those warm calls leave the timed geometry alone.
