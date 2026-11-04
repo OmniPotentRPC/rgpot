@@ -12,7 +12,7 @@ python -m unittest benchflow.test_gate
 ```
 
 `benchflow/config.yaml` sets `rounds` (10) and `runs` (10).
-Those runs of `main` on one process measure the noise.
+Those runs of `develop` on one process measure the noise.
 Each run uses `--interleave-rounds` and does not pass `--quick` or `--skip-existing`.
 Two runs of the same commit give a calibration ratio: the median of the second run over the median of the first.
 With MAD for the median absolute deviation of the calibration ratios, the relative threshold is

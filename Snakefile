@@ -41,7 +41,7 @@ rule time_run:
         . benchflow/env.sh
         mkdir -p benchflow/out/runs benchflow/out/results
         rm -f benchflow/out/runs/*.json
-        main=$(git rev-parse main)
+        main=$(git rev-parse develop)
         printf '%s\n' "$main" > benchflow/out/commits.txt
         i=1
         while [ "$i" -le {params.runs} ]; do
