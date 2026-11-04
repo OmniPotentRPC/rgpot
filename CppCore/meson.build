@@ -370,6 +370,9 @@ if not get_option('with_rpc_client_only')
             ptlrpc_dep,
         ] + fortran_rt_deps
         _classical_whole = [lennard_jones, morse, zbl]
+        if has_water
+            _classical_whole += [water_pots]
+        endif
         if has_fortran
             _classical_whole += [cuh2, fortran_pots, fortran_kernels]
         endif
