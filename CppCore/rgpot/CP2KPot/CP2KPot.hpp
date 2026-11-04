@@ -6,6 +6,7 @@
  * @brief CP2K Quickstep potential through the dlopen'd libcp2k shim.
  */
 
+#include "rgpot/CalculatorGroup.hpp"
 #include "rgpot/Potential.hpp"
 #include "rgpot/rpc/Potentials.capnp.h"
 
