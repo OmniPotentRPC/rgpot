@@ -213,6 +213,61 @@ TEST_CASE("Tersoff held skin reaches the 1989 kernel only",
   REQUIRE_THROWS_AS(held.setHeldSkin(-1.0), std::invalid_argument);
 }
 
+TEST_CASE("Tersoff writes no stress into a reused output",
+          "[fortran][tersoff][stress]") {
+  const double pos[6] = {0.0, 0.0, 0.0, 2.0, 0.0, 0.0};
+  const double box[9] = {20, 0, 0, 0, 20, 0, 0, 0, 20};
+  const int sic[2] = {14, 6};
+  const int si[2] = {14, 14};
+  const rgpot::ForceInput in_sic{
+      .nAtoms = 2, .pos = pos, .atmnrs = sic, .box = box};
+  const rgpot::ForceInput in_si{
+      .nAtoms = 2, .pos = pos, .atmnrs = si, .box = box};
+
+  // Fresh outputs give the reference energies and forces of each call.
+  auto fresh = [](const auto &pot, const rgpot::ForceInput &in, double *f) {
+    rgpot::ForceOut o{
+        .F = f, .energy = 0.0, .variance = 0.0, .stress = {}, .has_stress = 0};
+    pot.forceImpl(in, &o);
+    return o.energy;
+  };
+  double f_sic[6];
+  double f_si[6];
+  rgpot::TersoffSiC kernel;
+  const double e_sic = fresh(kernel, in_sic, f_sic);
+  const double e_si = fresh(rgpot::fortranpots::TersoffPot{}, in_si, f_si);
+  REQUIRE_THAT(e_sic, WithinAbs(-3.565, 1e-3));
+  REQUIRE_THAT(e_si, WithinAbs(-1.902, 1e-3));
+
+  auto check = [](const rgpot::ForceOut &o, const double *f, double e) {
+    REQUIRE(o.has_stress == 0);
+    for (const double s : o.stress) {
+      REQUIRE(s == 0.0);
+    }
+    REQUIRE(o.energy == e);
+    for (int i = 0; i < 6; ++i) {
+      REQUIRE(o.F[i] == f[i]);
+    }
+  };
+
+  rgpot::fortranpots::TersoffPot pot;
+  REQUIRE_FALSE(pot.caps().stress);
+  const rgpot::ForceInput *order[2][2] = {{&in_sic, &in_si}, {&in_si, &in_sic}};
+  for (const auto &seq : order) {
+    double got[6];
+    rgpot::ForceOut out{.F = got,
+                        .energy = 0.0,
+                        .variance = 0.0,
+                        .stress = {},
+                        .has_stress = 0};
+    for (const rgpot::ForceInput *in : seq) {
+      pot.forceImpl(*in, &out);
+      const bool carbide = in == &in_sic;
+      check(out, carbide ? f_sic : f_si, carbide ? e_sic : e_si);
+    }
+  }
+}
+
 TEST_CASE("EDIP silicon matches the eOn reference", "[fortran][edip]") {
   rgpot::fortranpots::EDIPPot pot;
   const std::vector<int> types(8, 14);
