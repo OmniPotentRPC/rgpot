@@ -3,14 +3,17 @@
 
 * Read the stress of a periodic Sutton-Chen cell
 
-=SuttonChenPot= writes the Cauchy stress only when =SuttonChenConfig::stress= is set.
+=SuttonChenPot= writes the Cauchy stress only when =SuttonChenConfig::stress= is
+set.
 This guide turns it on for a platinum crystal and reads the pressure.
-The convention and the checks are in the [[file:../reference/sutton_chen.org][Sutton-Chen reference]].
+The convention and the checks are in the
+[[file:../reference/sutton_chen.org][Sutton-Chen reference]].
 
 ** Set up the potential
 
 Start from a parameter row, make it periodic, and set the flag.
-Keep the cutoff under half the smallest face spacing of the cell, since periodic evaluation keeps one image of each partner.
+Keep the cutoff under half the smallest face spacing of the cell, since periodic
+evaluation keeps one image of each partner.
 
 #+begin_src cpp
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
@@ -26,7 +29,8 @@ const rgpot::SuttonChenPot pot(cfg);
 ** Build a cell
 
 The box is row-major, one lattice vector per row.
-This cell has four conventional face-centered cubic (fcc) cells along each edge, built at 0.99 of the lattice parameter, so 256 atoms in a compressed crystal.
+This cell has four conventional face-centered cubic (fcc) cells along each edge,
+built at 0.99 of the lattice parameter, so 256 atoms in a compressed crystal.
 
 #+begin_src cpp
 const double lattice = 0.99 * cfg.a;
@@ -71,7 +75,8 @@ It stays 0 when the flag is clear or the cell has no positive volume.
 
 ** What to expect
 
-The three blocks print these lines when they sit in one =main= that also includes =<cstdio>= and =<vector>=.
+The three blocks print these lines when they sit in one =main= that also
+includes =<cstdio>= and =<vector>=.
 
 #+begin_example
 energy -1495.168516 eV, has_stress 1
@@ -79,6 +84,9 @@ sigma_xx -9.3308 GPa
 pressure 9.3308 GPa
 #+end_example
 
-The crystal is compressed, so the diagonal entries are negative and the pressure is positive.
-The pressure at the lattice parameter itself falls toward about 0.0015 GPa as the cutoff grows, not toward zero.
-Sutton and Chen's ~c = 34.408~ is the zero-pressure value rounded to three decimals, and the reference gives the lattice sum and the table.
+The crystal is compressed, so the diagonal entries are negative and the pressure
+is positive.
+The pressure at the lattice parameter itself falls toward about 0.0015 GPa as
+the cutoff grows, not toward zero.
+Sutton and Chen's ~c = 34.408~ is the zero-pressure value rounded to three
+decimals, and the reference gives the lattice sum and the table.
