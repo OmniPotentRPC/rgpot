@@ -513,6 +513,8 @@ class TestSnakefile(unittest.TestCase):
         self.assertIn("MorsePot", fast)
         self.assertIn("WaterHPot", fast)
         self.assertIn("LJPot", fast)
+        self.assertIn("outside", fast)
+        self.assertIn("ASV_ENV_DIR", fast)
         wheel_text = (ROOT / "benchflow" / "build_wheel.py").read_text()
         self.assertIn('"-Dwith_fortran_pots=enabled"', wheel_text)
         self.assertIn('"-Dbuildtype=release"', wheel_text)

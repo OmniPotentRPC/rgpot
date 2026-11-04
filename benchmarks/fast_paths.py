@@ -47,13 +47,23 @@ def _record(path: Path) -> None:
 
 
 def _mapped_librgpot() -> Path:
+    env = os.environ.get("ASV_ENV_DIR")
+    if not env:
+        raise RuntimeError("ASV_ENV_DIR is unset")
+    root = Path(env).resolve()
     needle = "librgpot.so"
     for line in Path("/proc/self/maps").read_text(encoding="utf-8", errors="replace").splitlines():
         if needle not in line:
             continue
-        path = line.rsplit(" ", 1)[-1]
-        if path.startswith("/") and Path(path).is_file():
-            return Path(path)
+        text = line.rsplit(" ", 1)[-1]
+        if not text.startswith("/"):
+            continue
+        path = Path(text).resolve()
+        if not path.is_file():
+            continue
+        if path != root and root not in path.parents:
+            raise RuntimeError(f"mapped {path} is outside {root}")
+        return path
     raise RuntimeError("librgpot.so is not mapped after importing rgpot")
 
 
