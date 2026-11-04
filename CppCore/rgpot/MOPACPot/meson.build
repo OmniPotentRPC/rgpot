@@ -22,17 +22,24 @@ endif
 mopacpot = static_library(
     'mopacpot',
     'MOPACPot.cc',
-    dependencies: _deps + [mopac_dl_dep],
+    # _deps_sans_core: this archive must not absorb PotHelpers/units objects.
+    # The umbrella link_wholes rgpot_core itself; copying them here makes
+    # the shared library fail with duplicate symbols.
+    dependencies: _deps_sans_core + [mopac_dl_dep],
     cpp_args: _args + mopac_frontend_cpp_args,
-    include_directories: ['../../'],
+    include_directories: _incdirs + [mopac_inc],
     pic: true,
+    # Convenience archive only. librgpot link_wholes this next to rgpot_core.
+    # An installed static library makes Meson promote link_with of the
+    # uninstalled core to link_whole, which copies PotHelpers.cc and units.cc
+    # into this archive. The umbrella link then fails with duplicate symbols.
     install: false,
 )
 
 mopacpot_dep = declare_dependency(
     link_with: [mopacpot],
     dependencies: [mopac_dl_dep],
-    include_directories: ['../../'],
+    include_directories: _incdirs + [mopac_inc],
     compile_args: mopac_frontend_cpp_args,
 )
 

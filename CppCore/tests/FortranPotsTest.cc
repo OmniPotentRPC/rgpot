@@ -18,17 +18,21 @@
  */
 
 #include <catch2/catch_all.hpp>
-#include <algorithm>
-#include <atomic>
-#include <cmath>
-#include <functional>
+#include "rgpot/ForceStructs.hpp"
 #include <thread>
+#include <functional>
+#include <atomic>
+#include <algorithm>
+#include <cmath>
 #include <vector>
 
-#include "rgpot/ForceStructs.hpp"
+#include "rgpot/Tersoff/TersoffSiC.hpp"
 #include "rgpot/fortran/FortranPots.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
+#include <stdexcept>
+
+using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
 using rgpot::types::AtomMatrix;
 
@@ -115,6 +119,100 @@ TEST_CASE("Tersoff silicon matches the eOn reference", "[fortran][tersoff]") {
   requireNoNetForce(forces);
 }
 
+TEST_CASE("Tersoff dispatches silicon-carbide to the 1989 kernel",
+          "[fortran][tersoff]") {
+  const AtomMatrix pos{{0.0, 0.0, 0.0},
+                       {2.30, 0.15, 0.05},
+                       {0.40, 2.25, 0.20},
+                       {1.15, 0.90, 1.40}};
+  const std::vector<int> sic{14, 14, 14, 6};
+  rgpot::fortranpots::TersoffPot face;
+  rgpot::TersoffSiC kernel;
+  auto [e_face, f_face, v_face] = face(pos, sic, cube20());
+  auto [e_kern, f_kern, v_kern] = kernel(pos, sic, cube20());
+  (void)v_face;
+  (void)v_kern;
+  REQUIRE_THAT(e_face, WithinAbs(-6.437125564429529, 1e-12));
+  REQUIRE(e_face == e_kern);
+  REQUIRE(f_face.size() == f_kern.size());
+  for (size_t i = 0; i < f_face.size(); ++i) {
+    REQUIRE(f_face.data()[i] == f_kern.data()[i]);
+  }
+
+  // The same coordinates with every Z = 14 stay on the silicon gather,
+  // which does not reproduce the carbide energy.
+  const std::vector<int> silicon(4, 14);
+  auto [e_si, f_si, v_si] = face(pos, silicon, cube20());
+  (void)f_si;
+  (void)v_si;
+  REQUIRE(e_si != e_face);
+
+  std::vector<int> oxygen = silicon;
+  oxygen[3] = 8;
+  REQUIRE_THROWS_AS(face(pos, oxygen, cube20()), std::invalid_argument);
+}
+
+TEST_CASE("Tersoff null species stays on the silicon kernel",
+          "[fortran][tersoff]") {
+  rgpot::fortranpots::TersoffPot pot;
+  const AtomMatrix pos = siDiamond();
+  const std::vector<int> types(8, 14);
+  auto [energy, forces, variance] = pot(pos, types, cube20());
+  (void)variance;
+
+  std::vector<double> got(pos.size(), 0.0);
+  const double box[9] = {20, 0, 0, 0, 20, 0, 0, 0, 20};
+  rgpot::ForceInput in{.nAtoms = pos.rows(),
+                       .pos = pos.data(),
+                       .atmnrs = nullptr,
+                       .box = box};
+  rgpot::ForceOut fo{.F = got.data(),
+                     .energy = 0.0,
+                     .variance = 0.0,
+                     .stress = {},
+                     .has_stress = 0};
+  pot.forceImpl(in, &fo);
+  REQUIRE(fo.energy == energy);
+  for (size_t i = 0; i < got.size(); ++i) {
+    REQUIRE(got[i] == forces.data()[i]);
+  }
+}
+
+TEST_CASE("Tersoff held skin reaches the 1989 kernel only",
+          "[fortran][tersoff]") {
+  AtomMatrix pos{{0.0, 0.0, 0.0},
+                 {2.30, 0.15, 0.05},
+                 {0.40, 2.25, 0.20},
+                 {1.15, 0.90, 1.40}};
+  const std::vector<int> sic{14, 14, 14, 6};
+  rgpot::fortranpots::TersoffPot plain;
+  rgpot::fortranpots::TersoffPot held;
+  held.setHeldSkin(0.4);
+  REQUIRE(held.caps().reentrancy == rgpot::Reentrancy::PerInstance);
+  for (int step = 0; step < 3; ++step) {
+    auto [e_plain, f_plain, v_plain] = plain(pos, sic, cube20());
+    auto [e_held, f_held, v_held] = held(pos, sic, cube20());
+    (void)v_plain;
+    (void)v_held;
+    REQUIRE(e_held == e_plain);
+    for (size_t i = 0; i < f_plain.size(); ++i) {
+      REQUIRE(f_held.data()[i] == f_plain.data()[i]);
+    }
+    pos(1, 0) += 0.05;
+  }
+
+  const std::vector<int> silicon(8, 14);
+  auto [e_plain, f_plain, v_plain] = plain(siDiamond(), silicon, cube20());
+  auto [e_held, f_held, v_held] = held(siDiamond(), silicon, cube20());
+  (void)v_plain;
+  (void)v_held;
+  REQUIRE(e_held == e_plain);
+  for (size_t i = 0; i < f_plain.size(); ++i) {
+    REQUIRE(f_held.data()[i] == f_plain.data()[i]);
+  }
+  REQUIRE_THROWS_AS(held.setHeldSkin(-1.0), std::invalid_argument);
+}
+
 TEST_CASE("EDIP silicon matches the eOn reference", "[fortran][edip]") {
   rgpot::fortranpots::EDIPPot pot;
   const std::vector<int> types(8, 14);
@@ -137,14 +235,21 @@ TEST_CASE("Lenosky silicon matches the eOn reference", "[fortran][lenosky]") {
   requireNoNetForce(forces);
 }
 
-TEST_CASE("EAM aluminium matches the eOn reference", "[fortran][eamal]") {
+TEST_CASE("EAM aluminium matches the EON r2549 Fortran energy",
+          "[fortran][eamal]") {
   rgpot::fortranpots::EAMAlPot pot;
   const std::vector<int> types(4, 13);
+  // eOn client/unit_tests/data/systems/al_fcc/pos.con: four atoms in a
+  // 20 Angstrom cube. EON r2549 `eonclient` point job, potential eam_al,
+  // prints UTOT -5.217864006173226.
   auto [energy, forces, variance] = pot(alFcc(), types, cube20());
   (void)variance;
 
   REQUIRE_THAT(energy, WithinRel(-5.217864, 1e-4));
   REQUIRE_THAT(maxForceNorm(forces), WithinRel(0.968647, 1e-3));
+  // The relative pin above still passes if the parameters keep the extra
+  // printed digits. Those digits lower this energy by 1.76e-6 eV.
+  REQUIRE(energy == Catch::Approx(-5.217864006173226).margin(1e-12));
   requireNoNetForce(forces);
 }
 

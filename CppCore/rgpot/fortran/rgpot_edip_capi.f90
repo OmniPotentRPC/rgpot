@@ -19,11 +19,18 @@ module rgpot_edip_capi
    implicit none
    private
 
-   public :: rgpot_edip_force, rgpot_edip_force_ws
+   public :: rgpot_edip_force, rgpot_edip_force_ws, rgpot_edip_ensure_params
 
    !> Workspace of the entry point without a handle (process-serial).
    type(rgpot_workspace_t), save, target :: legacy
    type(edip_params_t), save :: params
+
+   !> F2: set by the C++ wrapper under std::call_once.
+   !! After that call the block is read-only. Kernels take it
+   !! intent(in). The handle-free entry's legacy workspace, when
+   !! this module has one, stays process-serial and is not used
+   !! by the Python binding.
+   logical, save :: params_ready = .false.
 
 contains
 
@@ -101,5 +108,16 @@ contains
          status = int(kernel_status, c_int)
       end if
    end function rgpot_edip_force_ws
+
+
+   !> F2: default-initialise the saved parameter block once.
+   !! The C++ face calls this under std::call_once before any _ws
+   !! evaluation. A second call does not write.
+   subroutine rgpot_edip_ensure_params() bind(c, name="rgpot_edip_ensure_params")
+      if (.not. params_ready) then
+         params = edip_params_t()
+         params_ready = .true.
+      end if
+   end subroutine rgpot_edip_ensure_params
 
 end module rgpot_edip_capi

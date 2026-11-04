@@ -4,7 +4,9 @@ channels = ["conda-forge"]
 description = "RPC based core for potential energy surface functionality."
 name = "rgpot"
 platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
-version = "3.5.1"
+# [[[cog import rgpot_version as v; cog.outl(f'version = "{v.VERSION}"')]]]
+version = "3.6.0"
+# [[[end]]]
 
 [feature.cigen.tasks]
 # Export every ci/gha/*.ncl workflow (shared pins/steps in ci/gha/lib/).
@@ -20,6 +22,7 @@ rpctest = {features = ["rpc", "itests"]}
 eonviz = { features = ["eonviz"], no-default-feature = true }
 umaexport = { features = ["umaexport"], no-default-feature = true }
 cigen = {features = ["cigen"]}
+version = { features = ["version"], no-default-feature = true }
 devbld = { features = ["rpc", "cache"] }
 docs = { features = ["docs"]}
 xtbbld = { features = ["xtb"] }
@@ -63,6 +66,7 @@ platforms = ["linux-64"]
 [feature.xckernel.dependencies]
 python = ">=3.11,<3.14"
 libxc = ">=6.2.2,<8"
+libblas = "*"
 pylibxc = ">=6.2.2,<8"
 sympy = ">=1.12,<2"
 numpy = ">=1.26,<3"
@@ -115,6 +119,19 @@ platforms = ["linux-64", "osx-64", "osx-arm64"]
 
 [feature.mpi.dependencies]
 openmpi = ">=5.0.0,<6"
+
+# cogapp regenerates and checks the version copies (ci/version/files.txt).
+# Its own environment, because the cogapp wheel installs a `cog` script that
+# would shadow cocogitto's `cog` in any environment that also runs cog bump.
+[feature.version.dependencies]
+python = ">=3.11,<3.14"
+
+[feature.version.pypi-dependencies]
+cogapp = "==3.6.0"
+
+[feature.version.tasks]
+release-cog = { cmd = "python -m cogapp -I ci/version -r @ci/version/files.txt", description = "Regenerate every version copy from Cargo.toml (ci/version/files.txt)" }
+version-drift = { cmd = "python -m cogapp -I ci/version --check @ci/version/files.txt", description = "Fail if a version copy differs from Cargo.toml (prek version-drift hook)" }
 
 [feature.cigen]
 platforms = ["linux-64"]
@@ -250,8 +267,8 @@ prek-validate = { cmd = "prek validate-config prek.toml", description = "Validat
 
 # potctl: cargo workspace member at potctl/; project CLI (release + CI helpers).
 release-potctl = { cmd = "cargo run -q -p potctl --", description = "rgpot project CLI. Usage: pixi r release-potctl -- release assert | ci preflight" }
-release-sync-versions = { cmd = "cargo run -q -p potctl -- release sync", description = "Lockstep version write. Usage: pixi r release-sync-versions -- 1.2.3" }
-release-assert-lockstep = { cmd = "cargo run -q -p potctl -- release assert", description = "Assert meson/cmake/cargo/towncrier/pixi/pyproject agree. Optional version; --require-changelog" }
+release-sync-versions = { cmd = "cargo run -q -p potctl -- release sync", description = "Write the version in Cargo.toml [workspace.package]. Usage: pixi r release-sync-versions -- 1.2.3, then pixi r -e version release-cog" }
+release-assert-lockstep = { cmd = "cargo run -q -p potctl -- release assert", description = "Assert every version copy matches Cargo.toml. Optional version; --require-changelog" }
 release-extract-changelog = { cmd = "cargo run -q -p potctl -- release notes", description = "Print CHANGELOG section. Usage: pixi r release-extract-changelog -- 1.2.0 -o /tmp/notes.md" }
 ci-preflight = { cmd = "cargo run -q -p potctl -- ci preflight", description = "Repo sanity + lockstep (CI first step parity)" }
 

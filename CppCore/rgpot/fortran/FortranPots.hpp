@@ -22,6 +22,7 @@
 
 #include "rgpot/ForceStructs.hpp"
 #include "rgpot/Potential.hpp"
+#include "rgpot/Tersoff/TersoffSiC.hpp"
 #include "rgpot/pot_caps.hpp"
 #include "rgpot/pot_types.hpp"
 
@@ -58,16 +59,39 @@ private:
     FortranWorkspace m_ws;                                                     \
   }
 
+/// Stillinger-Weber silicon (PotType::SWSi). Epsilon is eOn's
+/// 2.16826 * 1.06767385 = 2.3149945 eV, not the published 2.16723920 eV
+/// of PotType::SWSi1985. Their ratio is 1.068176741337. The factor
+/// 1.06767385 is untraced; see rgpot_sw.f90.
 RGPOT_FORTRAN_POT_CLASS(SWPot, SWSi);
 RGPOT_FORTRAN_POT_CLASS(EDIPPot, EDIP);
 RGPOT_FORTRAN_POT_CLASS(LenoskyPot, LenoskySi);
-RGPOT_FORTRAN_POT_CLASS(TersoffPot, TersoffSi);
 RGPOT_FORTRAN_POT_CLASS(EAMAlPot, EAMAl);
 RGPOT_FORTRAN_POT_CLASS(FeHePot, FeHe);
 RGPOT_FORTRAN_POT_CLASS(CuH2Pot, CuH2);
 RGPOT_FORTRAN_POT_CLASS(WaterHPot, WaterH);
 
 #undef RGPOT_FORTRAN_POT_CLASS
+
+/// Tersoff silicon (PotType::TersoffSi). All-silicon calls, and a null
+/// species pointer, use the Fortran gather. Any other atomic number
+/// uses the 1989 silicon-carbon kernel. There is no second PotType.
+class TersoffPot : public Potential<TersoffPot> {
+public:
+  TersoffPot() : Potential(PotType::TersoffSi) {}
+  void forceImpl(const ForceInput &in, ForceOut *out) const override;
+  [[nodiscard]] PotCaps caps() const noexcept override {
+    return {.reentrancy = Reentrancy::PerInstance, .perImageInstances = true};
+  }
+
+  /// Held list for the calls that reach the 1989 kernel, as
+  /// TersoffSiC::setHeldSkin. The gather keeps its own vesin table.
+  void setHeldSkin(double skin) { m_sic.setHeldSkin(skin); }
+
+private:
+  FortranWorkspace m_ws;
+  TersoffSiC m_sic;
+};
 
 } // namespace fortranpots
 } // namespace rgpot

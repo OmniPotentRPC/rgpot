@@ -182,6 +182,27 @@ A search for pairs uses linked cells once the box holds 64 or more cells of one
 cutoff plus skin, and an all-pairs scan below that.
 The cached list is a CSR half list, and the force loop subtracts the periodic
 image recorded at build whenever cutoff plus skin is below half the box.
+- =StillingerWeberSi= :: Stillinger-Weber silicon with the 1985 parameters
+(Phys. Rev. B 31, 5262), equation (2.9).
+Epsilon is 3.4723e-12 erg, 2.16723920 eV.
+=energyAndGradient= and =energyAndGradientBatch= evaluate a whole configuration,
+and a batch that shares a cell and a species list.
+A =nlist::NeighborList= reuses the pairs across calls.
+The Fortran =SWPot= kernel (=PotType::SWSi=) uses eOn's rescaled epsilon,
+2.16826 × 1.06767385 = 2.3149945 eV.
+The ratio of that epsilon to the published value is 1.068176741337.
+The factor 1.06767385 is copied from eOn's =SWFortran.f90= and is untraced.
+- =TersoffSiC= :: 1989 Tersoff kernel for silicon, carbon, and
+silicon-carbide (Phys. Rev. B 39, 5566, and the 1990 erratum).
+=PotType::TersoffSi= and the engine name =tersoff= are this potential.
+All-silicon calls, and a null species pointer, use the Fortran gather.
+Any other atomic number uses this kernel, which accepts 14 and 6 and rejects the
+rest.
+=energyAndGradient= and =energyAndGradientBatch= on =TersoffSiC= always evaluate
+the 1989 form, including an all-silicon cell.
+A =nlist::NeighborList= reuses the pairs across those calls.
+=setHeldSkin= keeps one such list for =forceImpl=; skin 0, the default, rebuilds
+on every call.
 - =ZBLPot= :: Screened nuclear repulsion (Ziegler-Biersack-Littmark) with the
 LAMMPS switching function, on free boundaries.
 Configurable via =ZBLConfig= (=cut_inner=, =cut_global=); the constructor throws
@@ -191,6 +212,12 @@ One of the Fortran 2018 kernels under =CppCore/rgpot/fortran/=, declared in
 =FortranPots.hpp= and built when =with_fortran_pots= finds a Fortran compiler.
 
 **** Feature-gated Potentials
+
+- =IPIPot= (=-Dwith_ipi=auto=, POSIX sockets) :: Listens for one i-PI driver
+on a UNIX or TCP socket.
+The driver connects and returns energy, forces and a virial. rgpot converts
+those to eV, eV/Angstrom and Cauchy stress.
+See =docs/orgmode/howto/ipi.org=.
 
 - =XTBPot= (=-Dwith_xtb=true=) :: GFN tight-binding methods (GFNFF, GFN0-xTB,
 GFN1-xTB, GFN2-xTB) via the [[https://github.com/grimme-lab/xtb][xtb]] C API.

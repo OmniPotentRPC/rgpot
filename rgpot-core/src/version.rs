@@ -43,13 +43,13 @@ pub struct rgpot_abi_stamp_t {
 /// ABI major of this build.
 pub const RGPOT_ABI_VERSION_MAJOR: u16 = 1;
 /// ABI minor of this build.
-pub const RGPOT_ABI_VERSION_MINOR: u16 = 0;
+pub const RGPOT_ABI_VERSION_MINOR: u16 = 1;
 /// Layout revision of this build.
 pub const RGPOT_ABI_LAYOUT_REVISION: u16 = 1;
 
 static VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "\0");
 
-/// Full version string of the loaded library, e.g. `"3.5.1"`.
+/// Full version string of the loaded library, as `MAJOR.MINOR.PATCH`.
 ///
 /// The pointer refers to static storage: never free it.
 #[no_mangle]

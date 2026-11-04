@@ -310,6 +310,23 @@ TEST_CASE("Cached force loop matches the reference in every fold mode",
   }
 }
 
+TEST_CASE("A box that differs in the sign of a zero is another box",
+          "[PairList]") {
+  const double side = 20.0;
+  const std::array<double, 9> box{side, 0, 0, 0, side, 0, 0, 0, side};
+  auto flipped = box;
+  flipped[1] = -0.0;
+  REQUIRE(flipped[1] == box[1]);
+  const auto R = randomPositions(64, 0.0, side, 2.5, 29);
+  const std::size_t n = R.size() / 3;
+  CachedPairList::Options opt;
+  opt.cutoff = 8.5;
+  CachedPairList list;
+  list.rebuild(R.data(), n, box.data(), opt);
+  REQUIRE(list.valid(R.data(), n, box.data(), opt));
+  REQUIRE_FALSE(list.valid(R.data(), n, flipped.data(), opt));
+}
+
 TEST_CASE("Pair potentials: warm, cold and cell-grid calls agree",
           "[PairList]") {
   // A Pt fcc block of 6^3 cells (864 atoms, 23.5 A): the Morse cutoff

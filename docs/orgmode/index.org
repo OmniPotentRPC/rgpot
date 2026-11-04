@@ -75,8 +75,10 @@ meson compile -C bbdir && meson test -C bbdir
    :caption: How-To Guides
 
    howto/pip-python
+   howto/ase
    howto/embedding
    howto/exprpot
+   howto/ipi
    howto/integration
    howto/eindir-anneal
    howto/eon-rgpot
@@ -92,10 +94,14 @@ meson compile -C bbdir && meson test -C bbdir
    :caption: Reference
 
    reference/architecture
+   reference/python_api
+   reference/sw_si
+   reference/tersoff_sic
    reference/mpi
    reference/c_abi
    reference/engine_abi
    reference/simd_exp
+   reference/sutton_chen
    api/index
    changelog
 

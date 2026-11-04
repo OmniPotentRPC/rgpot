@@ -35,6 +35,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <mutex>
 #include <type_traits>
@@ -130,10 +131,11 @@ public:
     if (!built_ || n != n_ || !(opt == opt_)) {
       return false;
     }
-    for (int k = 0; k < 9; ++k) {
-      if (box[k] != boxref_[k]) {
-        return false;
-      }
+    // Bitwise: the fold and the minimum image are built from these bits,
+    // so a box that differs only in the sign of a zero is another box.
+    if (std::memcmp(box, boxref_.data(), sizeof(double) * boxref_.size()) !=
+        0) {
+      return false;
     }
     if (complete_) {
       return true; // all pairs are candidates; motion cannot invalidate

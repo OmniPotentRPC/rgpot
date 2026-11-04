@@ -662,7 +662,11 @@ def write_manifest() -> None:
         "regen": "scripts/regen_xckernel_goldens.py",
         "host_only": "rg.terra",
         "tolerances": {
-            "c_vs_numpy": 1e-16,
+            # Not a fixed 1e-16. Stage B is a blocked dsyr2k/dgemm:
+            # |fl(a^T b) - a^T b| <= k*eps*|a|^T|b|, k = min(npts, 256),
+            # summed over blocks and stage-B terms, plus half an ulp of
+            # the rounded pin. See docs/xckernel.md.
+            "c_vs_numpy": "k*eps*|a|^T|b| per stage-B block, plus half an ulp",
             "fock_vs_pyscf": 1e-15,
             "fxc_vs_pyscf": 1e-13,
             "tda_rpa_vs_pyscf": 1e-17,

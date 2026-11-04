@@ -146,9 +146,10 @@ let P = import "pins.ncl" in
       "cancel-in-progress" = true,
     },
 
+  # Push stays on main. Pull requests also target develop, the integration branch.
   on_main_pr = {
     push = { branches = ["main"] },
-    pull_request = { branches = ["main"] },
+    pull_request = { branches = ["main", "develop"] },
   },
 
   on_main_pr_any = {

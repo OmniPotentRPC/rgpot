@@ -73,6 +73,8 @@ void MorseRow::row(const double *r2, double *energy, double *fscale,
  * With ``MorseConfig::switch_width`` set, each pair term is the unshifted
  * Morse energy times the C^2 quintic switch of PairSwitch.hpp; otherwise
  * the energy is shifted to zero at the cutoff and the force jumps there.
+ * The pair term is ``simd::exp_fixed``, so a per-pair accumulation and this
+ * row return the same bits. Cauchy stress is the derivative of that energy.
  *
  * @warning The box is assumed to be orthogonal.
  */

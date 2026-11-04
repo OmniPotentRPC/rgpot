@@ -10,11 +10,9 @@
 
 int main() {
   namespace fs = std::filesystem;
-  const auto root =
-      fs::temp_directory_path() /
-      ("rgpot-publication-" +
-       std::to_string(
-           std::chrono::steady_clock::now().time_since_epoch().count()));
+  const auto root = fs::temp_directory_path() /
+                    ("rgpot-publication-" + std::to_string(
+                        std::chrono::steady_clock::now().time_since_epoch().count()));
   const auto target = root / "model.pt2";
   constexpr int writers = 8;
   constexpr int iterations = 8;
@@ -24,13 +22,11 @@ int main() {
   std::atomic<int> reads{0};
   std::barrier start(writers + 1);
   std::vector<std::string> errors(writers);
-  rgpot::aoti_execstack::write_all(target.string(),
-                                   std::vector<uint8_t>(size, 0));
+  rgpot::aoti_execstack::write_all(target.string(), std::vector<uint8_t>(size, 0));
   std::vector<std::thread> threads;
   for (int writer = 0; writer < writers; ++writer) {
     threads.emplace_back([&, writer] {
-      const std::vector<uint8_t> payload(size,
-                                         static_cast<uint8_t>(writer + 1));
+      const std::vector<uint8_t> payload(size, static_cast<uint8_t>(writer + 1));
       start.arrive_and_wait();
       try {
         for (int iteration = 0; iteration < iterations; ++iteration)
@@ -58,13 +54,10 @@ int main() {
       ++failures;
     }
   }
-  for (auto &thread : threads)
-    thread.join();
+  for (auto &thread : threads) thread.join();
   for (const auto &error : errors)
-    if (!error.empty())
-      std::cerr << error << '\n';
-  if (reads == 0)
-    ++failures;
+    if (!error.empty()) std::cerr << error << '\n';
+  if (reads == 0) ++failures;
 
   const auto blocked = root / "blocked.pt2";
   fs::create_directory(blocked);
@@ -74,8 +67,7 @@ int main() {
   } catch (const std::exception &) {
     refused = true;
   }
-  if (!refused || !fs::is_directory(blocked))
-    ++failures;
+  if (!refused || !fs::is_directory(blocked)) ++failures;
   for (const auto &entry : fs::directory_iterator(root)) {
     if (entry.path() != target && entry.path() != blocked) {
       std::cerr << "Unowned temporary remains: " << entry.path() << '\n';

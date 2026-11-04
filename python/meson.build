@@ -73,7 +73,7 @@ if not is_variable('metatomic_dlopen')
     error('with_python requires MetatomicDlopen (rgpot/MetatomicPot)')
 endif
 
-_py_incs = _incdirs
+_py_incs = [_incdirs, include_directories('../bind/include')]
 _py_rpath = '$ORIGIN:$ORIGIN/../.rgpot.mesonpy.libs:$ORIGIN/lib'
 # The umbrella librgpot link_wholes every pot and the dlopen frontends;
 # linking the static convenience libs again would just duplicate symbols
@@ -108,6 +108,24 @@ _nb_cpp_args = _args + [
     '-Wno-unused-parameter',
     '-DRGPOT_PY_VERSION="@0@"'.format(meson.project_version()),
 ]
+# F9 and the binding contract: no fused multiply-adds in this translation
+# unit. The kernel libraries keep their own flags.
+_nb_cpp_args += meson.get_compiler('cpp').get_supported_arguments(
+    ['-ffp-contract=off'],
+)
+
+# F9: the extension exports PyInit__core and nothing else.
+_core_link_args = []
+if host_machine.system() == 'linux'
+    _core_link_args = [
+        '-Wl,--exclude-libs,ALL',
+        '-Wl,--version-script,' + meson.current_source_dir() / 'core_exports.map',
+    ]
+elif host_machine.system() == 'darwin'
+    _core_link_args = [
+        '-Wl,-exported_symbols_list,' + meson.current_source_dir() / 'core_exports.txt',
+    ]
+endif
 
 _core_sources = files('bind/bind_module.cpp') + [_nb_combined]
 
@@ -121,6 +139,7 @@ if _nb_free_threaded
         include_directories: _py_incs,
         link_with: _py_link,
         cpp_args: _nb_cpp_args,
+        link_args: _core_link_args,
         install: true,
         install_rpath: _py_rpath,
         build_rpath: _py_rpath,
@@ -138,6 +157,7 @@ else
             include_directories: _py_incs,
             link_with: _py_link,
             cpp_args: _nb_cpp_args,
+            link_args: _core_link_args,
             install: true,
             install_rpath: _py_rpath,
             build_rpath: _py_rpath,
@@ -156,6 +176,7 @@ else
             include_directories: _py_incs,
             link_with: _py_link,
             cpp_args: _nb_cpp_args,
+            link_args: _core_link_args,
             install: true,
             install_rpath: _py_rpath,
             build_rpath: _py_rpath,
@@ -166,9 +187,25 @@ else
 endif
 
 py.install_sources(
-    files('rgpot/__init__.py'),
+    files(
+        'rgpot/__init__.py',
+        'rgpot/_core.pyi',
+        'rgpot/py.typed',
+    ),
     pure: false,
     subdir: 'rgpot',
+)
+py.install_sources(
+    files(
+        '../CppCore/rgpot/rpc/Potentials.capnp',
+        'rgpot/ase/__init__.py',
+        'rgpot/ase/anneal.py',
+        'rgpot/ase/calculator.py',
+        'rgpot/ase/claim.py',
+        'rgpot/ase/rpc.py',
+    ),
+    pure: false,
+    subdir: 'rgpot/ase',
 )
 
 if is_variable('metatomic_engine')

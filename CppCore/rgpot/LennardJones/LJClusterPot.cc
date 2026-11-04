@@ -11,11 +11,15 @@
  */
 
 // clang-format off
+#include <algorithm>
 #include <cmath>
 // clang-format on
 
+#include "rgpot/LennardJones/LJClusterKernel.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/nlist/PairListCache.hpp"
+#include "rgpot/simd/api.hpp"
+#include "rgpot/simd/from_cache.hpp"
 
 namespace rgpot {
 
@@ -25,11 +29,14 @@ namespace rgpot {
  *
  * Every pair within the cutoff contributes, with vectors taken straight
  * from the coordinates: ``opt.periodic`` is off in all three directions,
- * so the pair scan never folds a separation into the cell. A degenerate
- * input cell (any non-positive diagonal entry) is replaced by a 1e6
- * Angstrom cube, which keeps the pair list cacheable for callers that hand
- * over a cluster without a box. ``LJClusterConfig::switch_width`` selects
- * the C^2 quintic switch as for LJPot.
+ * so the pair list never folds a separation into the cell. A cluster
+ * whose bounding box fits inside the cutoff walks ``i < j`` in SoA form,
+ * AVX2 or NEON on the inner loop. A larger open system goes through the
+ * pair cache, and that pair term is the Highway kernel. A nonzero
+ * ``LJClusterConfig::switch_width`` selects that kernel's C^2 quintic
+ * switch and skips the direct walk, which has no switch. A degenerate
+ * input cell (any non-positive diagonal entry)
+ * is replaced by a 1e6 Angstrom cube.
  */
 void LJClusterPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const auto N = static_cast<long>(in.nAtoms);
@@ -56,39 +63,54 @@ void LJClusterPot::forceImpl(const ForceInput &in, ForceOut *out) const {
                       in.box[8] > 0.0;
   const double *box_use = box_ok ? in.box : free_box;
 
-  const double psi2 = psi * psi;
-  const double fourU0 = 4.0 * u0;
-  const double shiftU = cuttOffU;
-  auto &pool = nlist::PairListCache::global();
-  if (m_config.switch_width != 0.0) {
-    // Unshifted pair term times the C^2 switch S; fscale = -(V S)' / r.
-    const QuinticSwitch sw = m_switch;
-    *U = pool.accumulate(
-        R, static_cast<std::size_t>(N), box_use, opt, F,
-        [=](int32_t, int32_t, double r2) noexcept {
-          const double invR2 = 1.0 / r2;
-          const double sr2 = psi2 * invR2;
-          const double a = sr2 * sr2 * sr2;
-          const double b = fourU0 * a;
-          const double v = b * (a - 1.0);
-          const double r = std::sqrt(r2);
-          const auto s = sw(r);
-          return nlist::PairTerm{
-              v * s.s, 6.0 * b * invR2 * (2.0 * a - 1.0) * s.s - v * s.dsdr / r};
-        });
+  double minx = R[0];
+  double maxx = minx;
+  double miny = R[1];
+  double maxy = miny;
+  double minz = R[2];
+  double maxz = minz;
+  for (long i = 1; i < N; ++i) {
+    const double x = R[3 * i];
+    const double y = R[3 * i + 1];
+    const double z = R[3 * i + 2];
+    minx = std::min(minx, x);
+    maxx = std::max(maxx, x);
+    miny = std::min(miny, y);
+    maxy = std::max(maxy, y);
+    minz = std::min(minz, z);
+    maxz = std::max(maxz, z);
+  }
+  const double ex = maxx - minx;
+  const double ey = maxy - miny;
+  const double ez = maxz - minz;
+  const double cutoff = opt.cutoff;
+  const bool switched = m_config.switch_width != 0.0;
+  // Every pair is at most the box diagonal. When that diagonal sits on
+  // the cutoff, the direct walk and the cutoff test agree on the set.
+  // The direct walk is the shifted pair term, so a quintic switch stays
+  // on the Highway kernel.
+  if (!switched && ((ex * ex + ey * ey) + ez * ez <= cutoff * cutoff)) {
+    double energyAcc = 0.0;
+    lj_cluster_direct(R, static_cast<std::size_t>(N), cutoff, u0, psi, cuttOffU, F,
+                      &energyAcc);
+    *U = energyAcc;
     return;
   }
-  *U = pool.accumulate(
-      R, static_cast<std::size_t>(N), box_use, opt, F,
-      [=](int32_t, int32_t, double r2) noexcept {
-        const double invR2 = 1.0 / r2;
-        const double sr2 = psi2 * invR2;
-        const double a = sr2 * sr2 * sr2; // (psi/r)^6 without pow()
-        const double b = fourU0 * a;
-        // -dU/dr / r: the force on i is fscale * (r_i - r_j).
-        return nlist::PairTerm{b * (a - 1.0) - shiftU,
-                               6.0 * b * invR2 * (2.0 * a - 1.0)};
-      });
+
+  simd::LjParams params{};
+  params.psi2 = psi * psi;
+  params.four_u0 = 4.0 * u0;
+  params.shift = cuttOffU;
+  params.use_switch = 0;
+  if (switched) {
+    params.use_switch = 1;
+    params.r_on = m_switch.r_on;
+    params.inv_width = m_switch.inv_width;
+  }
+  simd::CachedPairs pairs;
+  simd::fill_view(pairs, R, static_cast<std::size_t>(N), box_use, opt);
+  double strain[6] = {};
+  *U = simd::lj_force(pairs.view, params, F, strain);
 }
 
 } // namespace rgpot

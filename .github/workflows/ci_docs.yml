@@ -1,8 +1,8 @@
-concurrency:
-  cancel-in-progress: true
-  group: pages
 jobs:
   build_docs:
+    concurrency:
+      cancel-in-progress: true
+      group: docs-${{ github.workflow }}-${{ github.ref }}
     name: Build documentation
     runs-on: ubuntu-latest
     steps:
@@ -25,8 +25,11 @@ jobs:
       with:
         name: documentation
         path: docs/build
-  deploy_docs:
-    if: github.event_name == 'push'
+  deploy:
+    concurrency:
+      cancel-in-progress: false
+      group: pages
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
     name: Deploy documentation
     needs:
     - build_docs

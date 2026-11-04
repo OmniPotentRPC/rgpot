@@ -1,9 +1,30 @@
-# Above-baseline instructions in librgpot belong to the [[allow]] symbols.
-# Those bodies run only after a runtime check. The vendored entries cover
-# libraries that auditwheel or delocate copy into the wheel and that select
-# kernels at run time. A feature not listed here still fails the audit.
+# An above-baseline instruction in librgpot or _core is a violation
+# unless an [[allow]] names that symbol.
+#
+# Highway target("fma") bodies and the target("avx2") Lennard-Jones
+# cluster kernel are entered only after a runtime check. The FMA fold
+# and the fixed-sequence exp clones are entered only after
+# fma_hw_active() or the CPU check of function multiversioning.
+# Vendored entries cover libraries that auditwheel or delocate copy into
+# the wheel and that select kernels at run time. A feature not listed
+# here still fails the audit.
 
 baseline = "x86-64"
+
+[[allow]]
+symbol = "^rgpot::simd::(?:accept_row_hw|eam_fma|eam_hw|exact_fma_hw|exp2_hw|exp_hw_n|lj_hw|morse8_hw|morse_hw|r2_hw_n|r2_hw)(?:\\(|$)"
+features = ["avx", "fma"]
+reason = "target(\"fma\") bodies, entered only after glibc_fma_active()"
+
+[[allow]]
+symbol = "^rgpot::(?:_GLOBAL__N_[0-9]+::|\\(anonymous namespace\\)::)(?:lj_avx2|eval_quad|acc_quad)(?:\\(|$)"
+features = ["avx", "avx2"]
+reason = "target(\"avx2\") LJ cluster bodies, entered only after __builtin_cpu_supports(\"avx2\")"
+
+[[allow]]
+symbol = "^__cpu_indicator_init(?:\\(|$)"
+features = ["xsave"]
+reason = "GCC __builtin_cpu_supports initializer; xgetbv reads XCR0"
 
 [[vendored]]
 path = ".*libopenblas.*"
@@ -118,10 +139,6 @@ features = [
 ]
 reason = "libquadmath, vendored beside libgfortran"
 
-# FMA bodies outside a dispatched namespace. Each one is entered only after
-# simd::detail::fma_hw_active() finds a usable FMA. The portable path stays
-# free of these instructions. accumulateHw is the target("fma") pair-list
-# loop; -mfma also selects AVX encodings in that body.
 [[allow]]
 symbol = '^(rgpot::simd::exact_fma_hw|rgpot::nlist::_GLOBAL__N_[0-9]+::fold_hardware)\b|rgpot::nlist::CachedPairList::accumulateHw<'
 features = ["avx", "fma", "sse3"]

@@ -102,9 +102,12 @@ contains
          if (self%nl_ready) call self%nl%free()
          ! Unsorted: the CSR passes below order every row by partner index
          ! in linear time, which vesin's global sort would do in n log n.
+         ! F2, F8: pin vesin to one thread. The default (zero) follows
+         ! OMP_NUM_THREADS and a process-global pool, so the candidate
+         ! list would depend on how many threads the process has.
          self%nl = NeighborList(cutoff=cutoff, full=.true., sorted=.false., &
-                                skin=use_skin, return_distances=.true., &
-                                return_vectors=.true.)
+                                skin=use_skin, n_threads=1, &
+                                return_distances=.true., return_vectors=.true.)
          self%nl_ready = .true.
          self%cutoff = cutoff
          self%skin = use_skin

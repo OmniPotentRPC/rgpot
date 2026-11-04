@@ -22,7 +22,15 @@ cpmdpot = static_library(
     dependencies: _deps + [cpmd_dl_dep, ptlrpc_hdr_dep],
     cpp_args: _args + cpmd_frontend_cpp_args,
     include_directories: _incdirs + [cpmd_inc],
-    install: not meson.is_subproject(),
+    pic: true,
+    # Convenience archive. librgpot link_wholes this next to rgpot_core.
+    # Installing it makes Meson promote link_with of the uninstalled core
+    # to link_whole, which copies PotHelpers.cc and units.cc into this
+    # archive. The umbrella link then fails with duplicate symbols. That
+    # stays true if this subdir moves to after the core dep is added.
+    # Client-only builds have no umbrella and no core archive, so the
+    # static library is the installed product.
+    install: get_option('with_rpc_client_only') and not meson.is_subproject(),
 )
 
 cpmdpot_dep = declare_dependency(

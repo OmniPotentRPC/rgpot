@@ -15,8 +15,21 @@ _fpot_args = fc.get_supported_arguments(
         '-Wall',
         '-Wno-unused-dummy-argument',
         '-fvisibility=hidden',
+        # F2: gfortran keeps some procedure locals in static storage unless
+        # this is set, and those locals are then shared by every thread.
+        # The _ws entries are one workspace per caller and must be reentrant.
+        '-frecursive',
     ],
 )
+# rgpot_water_h.f90 selects the minimage wrap with the preprocessor.
+if fc.get_id() == 'intel' or fc.get_id() == 'intel-cl'
+    _fpot_args += ['-fpp']
+else
+    _fpot_args += ['-cpp']
+endif
+if has_fast_nlist
+    _fpot_args += ['-DRGPOT_HAS_FAST_NLIST']
+endif
 
 fortran_pots_sources = files(
     'rgpot_cuh2.f90',
@@ -50,8 +63,14 @@ fortran_pots_cpp_sources = files('FortranPots.cc')
 fortran_kernels = static_library(
     'rgpot_fortran_kernels',
     fortran_pots_sources,
+    'water_h_image.cc',
     dependencies: [vesin_f_dep],
     fortran_args: _fpot_args,
+    # Same uncontracted products as the cluster kernel. The scan is the
+    # only copy; fusing a product here would move the H-water image.
+    cpp_args: cppc.get_supported_arguments(
+        ['-ffp-contract=off', '/fp:precise', '-fvisibility=hidden'],
+    ),
     pic: true,
     install: false,
 )
@@ -63,7 +82,7 @@ fortran_pots = static_library(
     dependencies: _deps,
     cpp_args: _args,
     include_directories: _incdirs,
-    link_with: fortran_kernels,
+    link_with: [fortran_kernels, tersoff_sic, rgpot_halfshell],
     pic: true,
     install: false,
 )
@@ -78,7 +97,7 @@ fortran_pots_dep = declare_dependency(
 # headers-only view the convenience archives use.
 fortran_kernels_dep = declare_dependency(
     link_with: fortran_kernels,
-    dependencies: [vesin_f_dep, vesin_dep],
+    dependencies: [vesin_f_dep, vesin_dep, fastnlist_dep],
 )
 
 # Plugin anneal dlopens as RGPOT_CUH2_LIBRARY. The umbrella librgpot hides
@@ -89,6 +108,7 @@ _cuh2_plugin_args = fc.get_supported_arguments(
         '-fimplicit-none',
         '-Wall',
         '-Wno-unused-dummy-argument',
+        '-frecursive',
     ],
 )
 rgpot_cuh2 = library(

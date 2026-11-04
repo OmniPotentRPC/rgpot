@@ -49,6 +49,7 @@ struct PotCaps {
   bool groupCollective = false;
   /// forceImpl writes Cauchy stress for a positive cell volume:
   /// sigma = (1/V) dE/dstrain in energy/length^3, row-major in ForceOut.
+  /// IPIPot also keeps the tensor for copyStress.
   bool stress = false;
 };
 

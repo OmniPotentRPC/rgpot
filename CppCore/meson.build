@@ -83,13 +83,20 @@ endif
 _rgpot_srcs += files('rgpot/PotHelpers.cc')
 _rgpot_srcs += files('rgpot/units.cc')
 _rgpot_srcs += files('rgpot/abi/CxxLayout.cc')
-# Product-sums in this file go through rgpot::simd::mul_add. Contraction
+_rgpot_srcs += files(
+    'rgpot/simd/dispatch.cc',
+    'rgpot/simd/scalar_kernels.cc',
+)
+if have_highway
+    _rgpot_srcs += files('rgpot/simd/hwy_kernels.cc')
+endif
+# Product-sums in MinimumImage go through rgpot::simd::mul_add. Contraction
 # stays off so a multiply that is not written as mul_add is not fused, and
 # the folded bits match on scalar, SSE, AVX2, AVX-512 and NEON.
 # exact_fma_hw is a separate object: the ISA variants below recompile
 # MinimumImage.cpp with -mno-fma and still need this hardware definition.
-# exp.cc holds the fixed-sequence exp, whose bits must not depend on
-# contraction either.
+# exp.cc is compiled once, here: the fixed-sequence exp bits must not depend
+# on contraction, and ExpFixedEq links this archive alone.
 _fp_contract_off = cppc.get_supported_arguments(
     ['-ffp-contract=off', '/fp:precise'],
 )
@@ -122,6 +129,14 @@ rgpot_minimage = static_library(
     pic: true,
     install: false,
 )
+rgpot_halfshell = static_library(
+    'rgpot_halfshell',
+    files('rgpot/nlist/HalfShell.cc', 'rgpot/nlist/HalfShellWalk.cc'),
+    include_directories: _incdirs,
+    cpp_args: _args,
+    pic: true,
+    install: false,
+)
 
 # Cap'n Proto schema + NWChem/CPMD frontends need libcapnp (ptlrpc). Only pull
 # them in when RPC is on (server or client-only); lean -Dwith_rpc=false builds
@@ -141,17 +156,29 @@ endif
 
 # ------------------------ Main library
 if not get_option('with_rpc_client_only')
+    # RGPOT_WITH_HIGHWAY stays on this archive. The installed dependency
+    # does not pass it on, so a consumer's own Highway headers are untouched.
+    # Product-sums in the simd sources are explicit. Contraction stays off
+    # in this archive so a multiply that is not written as mul_add is not fused.
     _deps += dependency('threads')
     _rgpot_srcs += files(
         'rgpot/plugin/PluginBridge.cc',
         'rgpot/plugin/PluginRegistry.cc',
         'rgpot/plugin/builtins/lj_plugin.cpp',
     )
+    _core_args = _args + _fp_contract_off
+    if have_highway
+        _core_args += ['-DRGPOT_WITH_HIGHWAY']
+    endif
+    _core_deps = _deps
+    if have_highway
+        _core_deps += highway_dep
+    endif
     rgpot_core = static_library(
         'rgpot_core',
         sources: _rgpot_srcs,
-        dependencies: _deps,
-        cpp_args: _args,
+        dependencies: _core_deps,
+        cpp_args: _core_args,
         include_directories: _incdirs,
         link_whole: [rgpot_minimage, rgpot_exact_fma],
         pic: true,
@@ -165,10 +192,16 @@ if not get_option('with_rpc_client_only')
 
     # Implemented rgpotentials
     subdir('rgpot/LennardJones')  # 'lennard_jones': LJPot + LJClusterPot
-    rgpotentials = [lennard_jones]
+    rgpotentials = [lennard_jones, rgpot_halfshell]
 
     subdir('rgpot/Morse')  # 'morse'
     rgpotentials += [morse]
+
+    subdir('rgpot/StillingerWeber')  # 'sw_si': 1985 Stillinger-Weber silicon
+    rgpotentials += [sw_si]
+
+    subdir('rgpot/Tersoff')  # 'tersoff_sic': 1989 Tersoff Si-C
+    rgpotentials += [tersoff_sic]
 
     subdir('rgpot/EMT')  # 'asap_emt'
     rgpotentials += [asap_emt]
@@ -183,6 +216,20 @@ if not get_option('with_rpc_client_only')
 
     subdir('rgpot/ZBL')  # 'zbl'
     rgpotentials += [zbl]
+
+    if has_ipi
+        subdir('rgpot/IPIPot')  # 'ipi'
+        rgpotentials += [ipi]
+    endif
+
+    # Sutton-Chen. Own directory so a Stillinger-Weber or Tersoff
+    # series can land beside it.
+    subdir('rgpot/SuttonChen')  # 'sutton_chen'
+    rgpotentials += [sutton_chen]
+
+    # Unshifted cluster pairs. Separate from LJCluster, which is shifted.
+    subdir('rgpot/ReducedPair')  # 'reduced_pair'
+    rgpotentials += [reduced_pair]
 
     # Pure dlopen consumer of split mopacc (no Cap'n Proto, no OpenMOPAC embed).
     subdir('rgpot/MOPACPot')  # 'mopacpot'
@@ -272,7 +319,7 @@ if not get_option('with_rpc_client_only')
     # librgpot itself references them (consumers do).
     # vesin objects and the Fortran runtime enter here, once, rather than
     # through the convenience archives (see the vesin_hdr_dep note).
-    rgpot_deps = _deps_sans_core + [vesin_dep] + fortran_rt_deps
+    rgpot_deps = _deps_sans_core + [vesin_dep, fastnlist_dep] + fortran_rt_deps
     _rpc_whole = []
     if _rpc_stack
         # link_whole, not link_with: the RPC entry points are called by
@@ -319,8 +366,11 @@ if not get_option('with_rpc_client_only')
                 meson.project_version(),
             ),
         ]
+        # Fortran water-H calls rgpot_fast_wrap when the fast list is on.
+        # The umbrella links that archive; this plugin has to as well.
         _engine_deps = _deps_sans_core + [
             vesin_dep,
+            fastnlist_dep,
             capnp_rpc_dep,
             ptlrpc_dep,
         ] + fortran_rt_deps
@@ -379,9 +429,19 @@ if not get_option('with_rpc_client_only')
     # Subproject consumers (eOn's wrap fallback) take the umbrella through
     # this variable; pkg-config consumers get the same surface from
     # rgpot.pc.
+    # The static umbrella already contains the relocatable fast-list
+    # object. Repeating that object through rgpot_dep defines it twice.
+    # Shared builds keep the archive on the consumer link line.
+    _rgpot_consumer_deps = _deps_sans_core + [
+        vesin_dep,
+        fastnlist_native_dep,
+    ] + fortran_rt_deps
+    if _rpc_stack
+        _rgpot_consumer_deps += [ptlrpc_hdr_dep]
+    endif
     rgpot_dep = declare_dependency(
         link_with: rgpot,
-        dependencies: rgpot_deps,
+        dependencies: _rgpot_consumer_deps,
         include_directories: _incdirs,
         compile_args: _args,
     )
@@ -423,6 +483,7 @@ endif
 # engine, whose optional libmetatomic_engine.so holds torch.
 if get_option('with_rpc_client_only')
     subdir('rgpot/XTBPot')
+    _linkto += [xtb_dlopen]
     if has_metatomic
         subdir('rgpot/MetatomicPot')
         _metatomic_build_rpath = _engine_build_rpath
@@ -435,7 +496,12 @@ if rpc_enabled and not get_option('with_rpc_client_only')
         'potserv',
         ['rgpot/rpc/server.cpp'],
         link_with: [ptlrpc, _linkto],
-        dependencies: _deps + [capnp_rpc_dep, ptlrpc_hdr_dep, vesin_dep] + _mta_engine_deps + fortran_rt_deps,
+        dependencies: _deps + [
+            capnp_rpc_dep,
+            ptlrpc_hdr_dep,
+            vesin_dep,
+            fastnlist_dep,
+        ] + _mta_engine_deps + fortran_rt_deps,
         cpp_args: _args,
         build_rpath: _metatomic_build_rpath,
         include_directories: _incdirs,
@@ -451,6 +517,7 @@ if rpc_enabled and not get_option('with_rpc_client_only')
                 capnp_rpc_dep,
                 ptlrpc_hdr_dep,
                 vesin_dep,
+                fastnlist_dep,
                 _mpi_dep,
             ] + _mta_engine_deps + fortran_rt_deps,
             cpp_args: _args + ['-DRGPOT_POTSERV_MPI'],
@@ -506,7 +573,7 @@ if get_option('with_examples') and not get_option('with_rpc_client_only')
     executable(
         'time_lj_force',
         sources: ['examples/time_lj_force.cc'],
-        dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+        dependencies: _deps + [vesin_dep, fastnlist_dep] + fortran_rt_deps,
         link_with: _linkto,
         cpp_args: _args,
     )
@@ -514,6 +581,27 @@ if get_option('with_examples') and not get_option('with_rpc_client_only')
     executable(
         'time_pair_scaling',
         sources: ['examples/time_pair_scaling.cc'],
+        dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+        link_with: _linkto,
+        cpp_args: _args,
+    )
+    executable(
+        'time_sutton_chen',
+        sources: ['examples/time_sutton_chen.cc'],
+        dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+        link_with: _linkto,
+        cpp_args: _args,
+    )
+    executable(
+        'time_reduced_lj',
+        sources: ['examples/time_reduced_lj.cc'],
+        dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+        link_with: _linkto,
+        cpp_args: _args + _fp_contract_off,
+    )
+    executable(
+        'relax_sutton_chen',
+        sources: ['examples/relax_sutton_chen.cc'],
         dependencies: _deps + [vesin_dep] + fortran_rt_deps,
         link_with: _linkto,
         cpp_args: _args,
@@ -544,7 +632,7 @@ if get_option('with_examples') and not get_option('with_rpc_client_only')
             executable(
                 example.get(1),
                 sources: ['examples/' + example.get(2)],
-                dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+                dependencies: _deps + [vesin_dep, fastnlist_dep] + fortran_rt_deps,
                 link_with: _linkto,
                 cpp_args: _args,
                 build_rpath: _metatomic_build_rpath,
@@ -587,7 +675,7 @@ if get_option('with_tests')
             override_options: ['cpp_std=c++20'],
         ),
     )
-    test_deps = _deps + [vesin_dep] + fortran_rt_deps
+    test_deps = _deps + [vesin_dep, fastnlist_dep] + fortran_rt_deps
     if has_metatomic
         test_deps += _mta_engine_deps
     endif
@@ -630,6 +718,22 @@ if get_option('with_tests')
     if not get_option('with_rpc_client_only')
         test_array += [
             ['MorsePotTest', 'morse_pot_test', 'MorsePotTest.cc', ''],
+            ['SWSiTest', 'sw_si_test', 'SWSiTest.cc', ''],
+            ['TersoffSiCTest', 'tersoff_sic_test', 'TersoffSiCTest.cc', ''],
+            [
+                'HalfShellScanTest',
+                'half_shell_scan_test',
+                'HalfShellScanTest.cc',
+                '',
+            ],
+            ['HalfShellTest', 'half_shell_test', 'HalfShellTest.cc', ''],
+            [
+                'SuttonChenPotTest',
+                'sutton_chen_pot_test',
+                'SuttonChenPotTest.cc',
+                '',
+            ],
+            ['ReducedPairTest', 'reduced_pair_test', 'ReducedPairTest.cc', ''],
             ['EMTPotTest', 'emt_pot_test', 'EMTPotTest.cc', ''],
             ['EAMCellPotTest', 'eam_cell_pot_test', 'EAMCellPotTest.cc', ''],
             ['PairListTest', 'pair_list_test', 'PairListTest.cc', ''],
@@ -664,9 +768,21 @@ if get_option('with_tests')
                 '',
             ],
             ['ZBLPotTest', 'zbl_pot_test', 'ZBLPotTest.cc', ''],
-            # The dlopen frontend is in librgpot whether or not with_xtb is.
-            ['XTBDlopenTest', 'xtb_dlopen_test', 'XTBDlopenTest.cc', ''],
+            ['FastNlistTest', 'fast_nlist_test', 'FastNlistTest.cc', ''],
+            ['IsaDispatchTest', 'isa_dispatch_test', 'IsaDispatchTest.cc', ''],
+            ['FmaExactTest', 'fma_exact_test', 'FmaExactTest.cc', ''],
+            [
+                'MinimumImageTest',
+                'minimum_image_test',
+                'MinimumImageTest.cc',
+                '',
+            ],
         ]
+        if has_ipi
+            test_array += [
+                ['IPIPotTest', 'ipi_pot_test', 'IPIPotTest.cc', ''],
+            ]
+        endif
         if has_water
             test_array += [
                 ['WaterPotTest', 'water_pot_test', 'WaterPotTest.cc', ''],
@@ -1489,14 +1605,44 @@ if get_option('with_tests')
         )
     endif
 
+    # asv loads this shared library and times one force call per method.
+    # Built with the tests because it links the same pot archives.
+    # Client-only builds never define rgpot_core or the pot archives.
+    if has_fortran and not get_option('with_rpc_client_only')
+        asv_fastpath = shared_library(
+            'asv_fastpath',
+            sources: [files('../benchmarks/asv_fastpath.cc')],
+            dependencies: rgpot_deps,
+            include_directories: _incdirs,
+            link_with: [rgpot_core, lennard_jones, morse, fortran_kernels],
+            cpp_args: [
+                '-DRGPOT_ASV_DATA="@0@"'.format(
+                    meson.project_source_root() / 'benchmarks' / 'data',
+                ),
+            ],
+            install: false,
+        )
+    endif
+
     calculator_group_test_exe = disabler()
     foreach test : test_array
+        # The fused-scan oracles are plain multiplies and adds, the same
+        # form as the cluster kernel and the Fortran 26-image wrap. Apple
+        # Clang fuses those products unless contraction is off, and the
+        # sums then miss by an ulp. ReducedPair.cc is built unfused, and
+        # its test compares exactly against the same expressions.
+        case_args = test_args
+        if test.get(2) in ['FastNlistTest.cc', 'ReducedPairTest.cc']
+            case_args += cppc.get_supported_arguments(
+                ['-ffp-contract=off', '/fp:precise'],
+            )
+        endif
         _test_exe = executable(
             test.get(1),
             sources: ['tests/' + test.get(2)],
             dependencies: test_deps,
             include_directories: _incdirs + ['.'],
-            cpp_args: test_args,
+            cpp_args: case_args,
             link_with: _linkto,
             link_language: 'cpp',
             build_rpath: _metatomic_build_rpath,
@@ -1588,7 +1734,8 @@ if get_option('with_tests')
                 sources: ['tests/exact_fma_eq.cc'],
                 include_directories: _incdirs,
                 cpp_args: _args + _fp_contract_off,
-                link_whole: rgpot_exact_fma,
+                # exp.cc's pair loops call MinimumImage::fold.
+                link_whole: [rgpot_exact_fma, rgpot_minimage],
                 install: false,
             ),
         )
@@ -1599,7 +1746,7 @@ if get_option('with_tests')
                 sources: ['tests/exp_fixed_eq.cc'],
                 include_directories: _incdirs,
                 cpp_args: _args + _fp_contract_off,
-                link_whole: rgpot_exact_fma,
+                link_whole: [rgpot_exact_fma, rgpot_minimage],
                 install: false,
             ),
         )
@@ -1638,6 +1785,39 @@ if get_option('with_tests')
             env: {'RGPOT_LAYOUT_FIXTURE': layout_fixture.full_path()},
             depends: [layout_fixture],
             workdir: meson.source_root(),
+        )
+        simd_env = executable(
+            'simd_env',
+            sources: ['tests/simd_env.cc'],
+            dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: _args,
+            link_with: _linkto,
+            link_language: 'cpp',
+        )
+        test(
+            'simd-env-scalar',
+            simd_env,
+            args: ['known', 'scalar'],
+            env: ['RGPOT_SIMD=scalar'],
+        )
+        test(
+            'simd-env-unknown',
+            simd_env,
+            args: ['unknown'],
+            env: ['RGPOT_SIMD=not_a_target'],
+        )
+        test(
+            'simd-env-rvv',
+            simd_env,
+            args: ['known', 'rvv'],
+            env: ['RGPOT_SIMD=rvv'],
+        )
+        test(
+            'simd-env-avx2',
+            simd_env,
+            args: ['known', 'avx2'],
+            env: ['RGPOT_SIMD=avx2'],
         )
         if host_system != 'windows'
             # The generic engine table over a stand-in backend: no rpc stack,
@@ -1831,6 +2011,16 @@ if get_option('with_tests')
             suite: 'xckernel',
         )
         executable(
+            'xckernel_bench',
+            sources: ['tests/xckernel_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            install: false,
+        )
+        executable(
             'dump_xckernel_goldens',
             sources: ['tests/dump_xckernel_goldens.cc'],
             dependencies: test_deps,
@@ -1845,6 +2035,25 @@ if get_option('with_tests')
     if has_xtb
         xtb_test_env = environment()
         xtb_test_env.set('RGPOT_XTB_ENGINE', xtb_engine.full_path())
+        # Tells XTBDlopenTest to require that the bare soname resolves, so a
+        # broken loader path cannot skip the module-load regression.
+        xtb_test_env.set('RGPOT_XTB_EXPECT_BARE_SONAME', '1')
+        # Glibc and dyld snapshot the loader path at exec. setenv inside a
+        # Catch process does not make the bare soname visible, so the test
+        # environment (and the binary rpath below) publish xtb_engine_dir
+        # before XTBDlopenTest starts.
+        if host_system == 'windows'
+            xtb_test_env.prepend('PATH', xtb_engine_dir, separator: ';')
+        elif host_system == 'darwin'
+            xtb_test_env.prepend('DYLD_LIBRARY_PATH', xtb_engine_dir)
+            xtb_test_env.prepend('DYLD_FALLBACK_LIBRARY_PATH', xtb_engine_dir)
+        else
+            xtb_test_env.prepend('LD_LIBRARY_PATH', xtb_engine_dir)
+        endif
+        _xtb_test_rpath = xtb_engine_dir
+        if _metatomic_build_rpath != ''
+            _xtb_test_rpath = ':'.join([_metatomic_build_rpath, xtb_engine_dir])
+        endif
         test(
             'XTBtest',
             executable(
@@ -1855,7 +2064,24 @@ if get_option('with_tests')
                 cpp_args: test_args,
                 link_with: _linkto,
                 link_language: 'cpp',
-                build_rpath: _metatomic_build_rpath,
+                build_rpath: _xtb_test_rpath,
+            ),
+            env: xtb_test_env,
+            depends: [xtb_engine],
+            workdir: meson.source_root(),
+            suite: 'xtb',
+        )
+        test(
+            'XTBDlopenTest',
+            executable(
+                'xtb_dlopen_test',
+                sources: ['tests/XTBDlopenTest.cc'],
+                dependencies: test_deps,
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+                build_rpath: _xtb_test_rpath,
             ),
             env: xtb_test_env,
             depends: [xtb_engine],
@@ -1874,6 +2100,27 @@ if get_option('with_tests')
             build_rpath: _metatomic_build_rpath,
             install: false,
         )
+    else
+        if not get_option('with_rpc_client_only')
+            # The dlopen frontend is in librgpot whether or not with_xtb
+            # built an engine. Without an engine directory the bare-soname
+            # checks skip themselves.
+            test(
+                'XTBDlopenTest',
+                executable(
+                    'xtb_dlopen_test',
+                    sources: ['tests/XTBDlopenTest.cc'],
+                    dependencies: test_deps,
+                    include_directories: _incdirs + ['.'],
+                    cpp_args: test_args,
+                    link_with: _linkto,
+                    link_language: 'cpp',
+                    build_rpath: _metatomic_build_rpath,
+                ),
+                workdir: meson.source_root(),
+                suite: 'xtb',
+            )
+        endif
     endif
 
     # Pot microbenchmarks. Own binary, outside the default suite: the cases
@@ -1900,6 +2147,58 @@ if get_option('with_tests')
             'pot_bench',
             pot_bench,
             args: ['[benchmark]'],
+            workdir: meson.source_root(),
+            timeout: 300,
+        )
+        sw_si_bench = executable(
+            'sw_si_bench',
+            sources: ['tests/sw_si_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'sw_si_bench',
+            sw_si_bench,
+            workdir: meson.source_root(),
+            timeout: 120,
+        )
+        tersoff_sic_bench = executable(
+            'tersoff_sic_bench',
+            sources: ['tests/tersoff_sic_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'tersoff_sic_bench',
+            tersoff_sic_bench,
+            workdir: meson.source_root(),
+            timeout: 120,
+        )
+        tersoff_held_bench = executable(
+            'tersoff_held_bench',
+            sources: ['tests/tersoff_held_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'tersoff_held_bench',
+            tersoff_held_bench,
+            args: ['--runs', '3', '--calls', '50'],
             workdir: meson.source_root(),
             timeout: 300,
         )
@@ -1952,6 +2251,9 @@ if not meson.is_subproject()
         if has_fortran
             _pc_cflags += ['-DRGPOT_HAS_FORTRAN_POTS=TRUE']
         endif
+        if has_ipi
+            _pc_cflags += ['-DRGPOT_HAS_IPI=TRUE']
+        endif
         if has_water
             _pc_cflags += ['-DRGPOT_HAS_WATER=TRUE']
         endif
@@ -1984,7 +2286,12 @@ if not meson.is_subproject()
         endif
     endif
     if _rpc_stack
-        _pc_libs += [nwchempot, cpmdpot]
+        # Umbrella builds keep these symbols inside librgpot. The archives
+        # are not installed, so they cannot appear on the link line.
+        # Client-only builds have no umbrella; the archives are the product.
+        if get_option('with_rpc_client_only')
+            _pc_libs += [nwchempot, cpmdpot]
+        endif
         _pc_requires += ['capnp-rpc']
         _pc_cflags += [
             '-DRGPOT_HAS_NWCHEM_FRONTEND=TRUE',

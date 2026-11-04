@@ -16,8 +16,21 @@ namespace rgpot {
 /**
  * Plugin path: ``dlopen`` ``libxtb_engine.so``, which implements the same
  * ISO_C_BINDING singlepoint as linked ``XTBPot`` behind ``xtb_c_abi.h``.
- * Search: ``engine_path``, ``RGPOT_XTB_ENGINE``, ``XTB_ENGINE``, bare
- * ``libxtb_engine.so``, then ``EON_POTENTIALS_PATH`` / ``RGPOT_ENGINE_PATH``.
+ *
+ * A non-empty ``engine_path`` is the only candidate, and it must contain a
+ * directory separator (``/`` or ``\``). A bare soname such as
+ * ``libxtb_engine.so`` is rejected: the loader would resolve it through
+ * ``LD_LIBRARY_PATH``, ``DYLD_LIBRARY_PATH``, or ``PATH`` and could open a
+ * different library. If the path does not open, or the library lacks the C
+ * ABI, construction throws. The error names that path and, on POSIX, the
+ * ``dlerror`` text. Environment variables, the bare soname, and directory
+ * lists are not consulted.
+ *
+ * When ``engine_path`` is empty, search ``RGPOT_XTB_ENGINE``, ``XTB_ENGINE``,
+ * the platform bare soname (``libxtb_engine.so`` on Linux,
+ * ``libxtb_engine.dylib`` then ``.so`` on Apple, ``xtb_engine.dll`` then
+ * ``libxtb_engine.dll`` on Windows), then ``EON_POTENTIALS_PATH`` /
+ * ``RGPOT_ENGINE_PATH``.
  *
  * Always compiled (no NEEDED libxtb). Linked ``XTBPot`` remains optional via
  * ``-Dwith_xtb=true``.

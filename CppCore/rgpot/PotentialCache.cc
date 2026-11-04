@@ -61,6 +61,7 @@ void PotentialCache::deserialize_hit(const std::string &value, ForceOut &out,
 
 void PotentialCache::add_serialized(const KeyHash &key, const ForceOut &out,
                                     size_t n_atoms) {
+  std::lock_guard<std::mutex> lock(db_mu_);
   if (!db_) {
     return;
   }
@@ -113,8 +114,10 @@ PotentialCache::PotentialCache(const std::string &db_path,
  * `rocksdb::DB` instance to prevent memory leaks.
  */
 PotentialCache::~PotentialCache() {
+  std::lock_guard<std::mutex> lock(db_mu_);
   if (own_db_ && db_) {
     delete db_;
+    db_ = nullptr;
   }
 }
 
@@ -130,6 +133,7 @@ PotentialCache::~PotentialCache() {
  * passed pointer is managed elsewhere.
  */
 void PotentialCache::set_db(rocksdb::DB *db) {
+  std::lock_guard<std::mutex> lock(db_mu_);
   if (own_db_ && db_)
     delete db_;
   db_ = db;
@@ -161,6 +165,7 @@ void PotentialCache::deserialize_hit(const std::string &hit, double &energy,
  */
 void PotentialCache::add_serialized(const KeyHash &kv, double energy,
                                     const rgpot::types::AtomMatrix &forces) {
+  std::lock_guard<std::mutex> lock(db_mu_);
   if (!db_)
     return;
   // Calculate total size needed
@@ -185,6 +190,7 @@ void PotentialCache::add_serialized(const KeyHash &kv, double energy,
  * or std::nullopt if the key does not exist or the DB is closed.
  */
 std::optional<std::string> PotentialCache::find(const KeyHash &kv) {
+  std::lock_guard<std::mutex> lock(db_mu_);
   if (!db_)
     return std::nullopt;
   std::string value;

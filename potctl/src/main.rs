@@ -24,7 +24,7 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Release / version lockstep (meson, CMake, cargo, towncrier, pixi workspace, pyproject).
+    /// Release version: write it in Cargo.toml, check the generated copies, print notes.
     Release {
         #[command(subcommand)]
         action: ReleaseCmd,
@@ -56,16 +56,16 @@ enum CosmoCmd {
 
 #[derive(Subcommand, Debug)]
 enum ReleaseCmd {
-    /// Write the same semver into all lockstep surfaces.
+    /// Write the release version into Cargo.toml [workspace.package] (then run cogapp).
     Sync {
         /// Semver (optional leading v), e.g. 1.2.3 or v1.2.3-rc.1
         version: String,
     },
-    /// Assert lockstep surfaces agree; optionally require CHANGELOG section.
+    /// Assert every version copy matches Cargo.toml; optionally require CHANGELOG section.
     Assert {
         /// Expected semver (optional; often the git tag without v).
         version: Option<String>,
-        /// Require CHANGELOG.md to contain ## [version] (or meson version if omitted).
+        /// Require CHANGELOG.md to contain ## [version] (or the workspace version if omitted).
         #[arg(long, env = "REQUIRE_CHANGELOG")]
         require_changelog: bool,
     },
@@ -158,6 +158,7 @@ enum CiCmd {
     },
     /// Release-prepare: cog check + conventional subject fallback for PR range.
     /// Thin GHA: `potctl ci cog-check --from ${{ github.event.pull_request.base.sha }}`
+    /// (`--from` is potctl's; cog 7 receives a positional `<base>..HEAD` range).
     CogCheck {
         /// PR base SHA (`github.event.pull_request.base.sha`); omit for advisory full-repo check.
         #[arg(long)]
@@ -195,6 +196,12 @@ enum CiCmd {
     /// Thin GHA: `potctl ci xtb-tblite-test`
     XtbTbliteTest {
         #[arg(long, default_value = "bbdir-tb")]
+        build_dir: String,
+    },
+    /// XcKernel golden leg. The default meson matrix leaves with_xckernel off.
+    /// Thin GHA: `potctl ci xckernel-test`
+    XckernelTest {
+        #[arg(long, default_value = "bbdir-xck")]
         build_dir: String,
     },
     /// RPC integration (`tests/rpc_integ.py`).
@@ -318,6 +325,9 @@ fn run() -> Result<(), String> {
             }
             CiCmd::XtbTbliteTest { build_dir } => {
                 ci::run_xtb_tblite_test(&root, &build_dir)
+            }
+            CiCmd::XckernelTest { build_dir } => {
+                ci::run_xckernel_test(&root, &build_dir)
             }
             CiCmd::RpcInteg { server_bin } => ci::run_rpc_integ(&root, &server_bin),
             CiCmd::BridgeServerBuild { build_dir } => {

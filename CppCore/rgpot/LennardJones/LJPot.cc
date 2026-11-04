@@ -16,6 +16,8 @@
 
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/nlist/PairListCache.hpp"
+#include "rgpot/simd/api.hpp"
+#include "rgpot/simd/from_cache.hpp"
 #include "rgpot/stress.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 using rgpot::types::AtomMatrix;
@@ -27,16 +29,18 @@ namespace rgpot {
  * @details
  *
  * Pairwise interactions within the cutoff radius, minimum image convention
- * with the full cell. Pairs come from the shared
+ * on an orthogonal box. Pairs come from the shared
  * ``rgpot::nlist::PairListCache`` (the eOn PairListCache design): repeated
  * evaluations on nearby geometries reuse a Verlet-skin cached candidate
  * list, and one-shot evaluations run a single fused scan identical in pair
- * content to the historical per-call double loop.
+ * content to the historical per-call double loop. An orthorhombic cell
+ * takes those candidates from the fast list (linkcell when the cell is
+ * several cutoffs wide, otherwise every unordered pair) and folds them
+ * with minimage. The pair term is the Highway kernel selected for this
+ * process. A nonzero switch width uses that kernel's quintic switch.
+ * Cauchy stress is published from the kernel's strain accumulator.
  *
- * With ``LJConfig::switch_width`` set, each pair term is the unshifted
- * 12-6 energy times the C^2 quintic switch of PairSwitch.hpp, so energy,
- * force and curvature reach zero at the cutoff; otherwise the energy is
- * shifted to zero there and the force jumps.
+ * @warning The box is assumed to be orthogonal.
  *
  */
 void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
@@ -46,11 +50,7 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   double *F = out->F;
   double *U = &out->energy;
   double strain[6] = {};
-  const double volume = cellVolume(in.box);
-  publishCauchyStress(out, strain, volume);
-  const auto observe = [&](double fscale, double dx, double dy, double dz) {
-    accumulatePairStrain(strain, fscale, dx, dy, dz);
-  };
+  const double volume = cellVolume(box);
   *U = 0;
   for (long i = 0; i < N; i++) {
     F[3 * i] = 0;
@@ -58,51 +58,27 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     F[3 * i + 2] = 0;
   }
   if (N < 2 || cuttOffR <= 0.0) {
+    publishCauchyStress(out, strain, volume);
     return;
   }
 
   nlist::CachedPairList::Options opt;
   opt.cutoff = cuttOffR;
 
-  const double psi2 = psi * psi;
-  const double fourU0 = 4.0 * u0;
-  const double shiftU = cuttOffU;
-  auto &pool = nlist::PairListCache::global();
+  simd::LjParams params{};
+  params.psi2 = psi * psi;
+  params.four_u0 = 4.0 * u0;
+  params.shift = cuttOffU;
+  params.use_switch = 0;
   if (m_config.switch_width != 0.0) {
-    // Unshifted pair term times the C^2 switch S; fscale = -(V S)' / r.
-    const QuinticSwitch sw = m_switch;
-    *U = pool.accumulate(
-        R, static_cast<std::size_t>(N), box, opt, F,
-        [=](int32_t, int32_t, double r2) noexcept {
-          const double invR2 = 1.0 / r2;
-          const double sr2 = psi2 * invR2;
-          const double a = sr2 * sr2 * sr2;
-          const double b = fourU0 * a;
-          const double v = b * (a - 1.0);
-          const double r = std::sqrt(r2);
-          const auto s = sw(r);
-          return nlist::PairTerm{v * s.s,
-                                 6.0 * b * invR2 * (2.0 * a - 1.0) * s.s -
-                                     v * s.dsdr / r};
-        },
-        observe);
-    publishCauchyStress(out, strain, volume);
-    return;
+    params.use_switch = 1;
+    params.r_on = m_switch.r_on;
+    params.inv_width = m_switch.inv_width;
   }
-  *U = pool.accumulate(
-      R, static_cast<std::size_t>(N), box, opt, F,
-      [=](int32_t, int32_t, double r2) noexcept {
-        const double invR2 = 1.0 / r2;
-        const double sr2 = psi2 * invR2;
-        const double a = sr2 * sr2 * sr2; // (psi/r)^6 without pow()
-        const double b = fourU0 * a;
-        // -dU/dr / r: the force on i is fscale * (r_i - r_j).
-        return nlist::PairTerm{b * (a - 1.0) - shiftU,
-                               6.0 * b * invR2 * (2.0 * a - 1.0)};
-      },
-      observe);
+  simd::CachedPairs pairs;
+  simd::fill_view(pairs, R, static_cast<std::size_t>(N), box, opt);
+  *U = simd::lj_force(pairs.view, params, F, strain);
   publishCauchyStress(out, strain, volume);
-  return;
 }
 
 } // namespace rgpot

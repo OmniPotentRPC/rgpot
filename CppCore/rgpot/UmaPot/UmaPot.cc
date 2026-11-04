@@ -268,7 +268,7 @@ void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     return;
   }
 
-  // Molecular inputs use the package's cube and an origin-centred frame.
+  // Molecular inputs use the sidecar's cube and an origin-centred frame.
   // A common translation preserves all relative vectors and cell offsets;
   // avoiding a large coordinate offset retains precision in float32 models.
   const bool molecular = m_impl->molecular_box > 0.0;

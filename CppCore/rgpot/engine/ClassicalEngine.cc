@@ -52,6 +52,8 @@ Created create(const void *config, std::size_t config_len) {
     } else if (n == "lenosky") {
       pot = std::make_unique<fortranpots::LenoskyPot>();
     } else if (n == "tersoff") {
+      // All-silicon stays on the Fortran gather. Any other Z is the
+      // 1989 kernel, inside TersoffPot::forceImpl.
       pot = std::make_unique<fortranpots::TersoffPot>();
     } else if (n == "eamal") {
       pot = std::make_unique<fortranpots::EAMAlPot>();
