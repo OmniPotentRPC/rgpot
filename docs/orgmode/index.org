@@ -66,6 +66,7 @@ meson compile -C bbdir && meson test -C bbdir
    :caption: Tutorials
 
    tutorials/quickstart
+   tutorials/pes-scan
    tutorials/cpmd
    tutorials/molecular-global-optimization
 
