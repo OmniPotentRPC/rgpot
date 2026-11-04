@@ -46,8 +46,12 @@ Each `evaluate_lj` call builds a new calculator and does not write the coordinat
 `LJPot` is one object, and setup evaluates it once to fill the pair list.
 The timed calls then repeat that same geometry, and the arrays from setup are not replaced.
 
-The rgpot wheel is the Lennard-Jones binding.
-`benchflow/build_wheel.py` passes meson `setup-args` after the pyproject list so the optional Fortran kernels, dispersion corrections, and metatomic engine stay off.
+The wheel is the installed package the timings call.
+`LJClusterPot`, `MorsePot`, `WaterHPot`, and `LJPot` run the force implementations in that wheel's `librgpot`.
+`benchflow/build_wheel.py` passes `-Dbuildtype=release` and `-Dwith_fortran_pots=enabled`.
+Dispersion corrections and the metatomic engine stay off.
+Meson's default buildtype is debug, so a configure that omits the flag is not this result.
+The build keeps its meson tree and writes `meson introspect --buildoptions` beside the wheel.
 `patchelf` must be on `PATH`, because meson-python uses it to rewrite the run-time search path (RPATH).
 `CC` and `CXX` are pinned to `gcc` and `g++`.
-The build needs Python's development headers.
+The build needs Python's development headers and a Fortran compiler.
