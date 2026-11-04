@@ -8,6 +8,10 @@
  * 1/2 sum_i sum_{j != i} term. The density sum has no 1/2. The force
  * on atom i along d = r_i - r_j is fscale * d, with
  * fscale = -(dE/dr) / r.
+ *
+ * The energy depends on positions only through pair distances, so with
+ * SuttonChenConfig::stress the force pass also sums -fscale * d (x) d,
+ * which is dE/dstrain for the embedding and pair terms together.
  */
 
 // clang-format off
@@ -20,6 +24,7 @@
 
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
 #include "rgpot/nlist/PairListCache.hpp"
+#include "rgpot/stress.hpp"
 
 namespace {
 
@@ -82,6 +87,10 @@ SuttonChenPot::SuttonChenPot(const SuttonChenConfig &c)
   fp.u64(static_cast<uint64_t>(c.m));
   fp.f64(c.cutoff);
   fp.u64(c.periodic ? 1 : 0);
+  if (c.stress) {
+    // Mixed in only when set, so the default key keeps its old value.
+    fp.u64(1);
+  }
   m_paramsKey = fp.h;
 }
 
@@ -96,11 +105,15 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     F[3 * i + 1] = 0.0;
     F[3 * i + 2] = 0.0;
   }
+  const SuttonChenConfig cfg = m_config;
+  double strain[6] = {};
   if (n_atoms < 2) {
+    if (cfg.stress) {
+      publishCauchyStress(out, strain, cellVolume(in.box));
+    }
     return;
   }
 
-  const SuttonChenConfig cfg = m_config;
   nlist::CachedPairList::Options opt;
   opt.cutoff = (cfg.cutoff > 0.0) ? cfg.cutoff : 1.0e6;
   opt.periodic = cfg.periodic ? std::array<bool, 3>{true, true, true}
@@ -175,9 +188,15 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
         F[3 * j] -= fx;
         F[3 * j + 1] -= fy;
         F[3 * j + 2] -= fz;
+        if (cfg.stress) {
+          accumulatePairStrain(strain, fscale, dx, dy, dz);
+        }
       });
 
   out->energy = epair + eemb;
+  if (cfg.stress) {
+    publishCauchyStress(out, strain, cellVolume(in.box));
+  }
 }
 
 } // namespace rgpot

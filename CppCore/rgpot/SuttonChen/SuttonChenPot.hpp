@@ -83,6 +83,11 @@ struct SuttonChenConfig {
   double cutoff = 40.0;
   /// Minimum image convention. Cluster references leave this false.
   bool periodic = false;
+  /// Write the Cauchy stress sigma = (1/V) dE/dstrain of stress.hpp when the
+  /// cell volume is positive.
+  /// Off by default: has_stress and the tensor are left as the caller set
+  /// them, and energy and forces are the same bits either way.
+  bool stress = false;
 };
 
 /**
@@ -101,7 +106,7 @@ public:
   }
 
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.periodic = m_config.periodic};
+    return {.periodic = m_config.periodic, .stress = m_config.stress};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
