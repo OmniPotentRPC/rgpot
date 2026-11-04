@@ -12,6 +12,7 @@ import json
 import os
 import platform
 import shutil
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -32,8 +33,10 @@ from benchflow.export_results import (  # noqa: E402
     derive_conf,
     format_gate_lines,
     gate_rows,
+    pair_ratio,
     prepare_machine,
     relative_threshold,
+    save_pair,
     select_result,
 )
 
@@ -140,7 +143,9 @@ class TestAsvStatus(unittest.TestCase):
                 )
             )
             self.assertTrue(report.is_file())
-            self.assertIn("asv_status=2", report.read_text())
+            text = report.read_text()
+            self.assertIn("asv_status=2", text)
+            self.assertIn("gate_status=2\n", text)
             self.assertEqual(status.read_text(), "2\n")
 
     def _write_result(self, results: Path, commit: str, samples: list[float]) -> None:
@@ -361,6 +366,62 @@ class TestMachineRecord(unittest.TestCase):
             self.assertNotIn(node, json.dumps(saved[MACHINE_NAME]))
 
 
+class TestTwoRuns(unittest.TestCase):
+    def test_pair_ratio_is_not_the_halves_of_one_run(self):
+        earlier = [1.0, 1.0, 4.0, 4.0]
+        later = [2.0, 2.0, 2.0, 2.0]
+        stats = pair_ratio(earlier, later)
+        half = len(earlier) // 2
+        halved = statistics.median(earlier[half:]) / statistics.median(earlier[:half])
+        self.assertAlmostEqual(halved, 4.0)
+        self.assertAlmostEqual(stats["ratio"], 2.0 / 2.5)
+        self.assertNotAlmostEqual(stats["ratio"], halved)
+        self.assertEqual(stats["earlier_median"], 2.5)
+        self.assertEqual(stats["later_median"], 2.0)
+
+    def test_save_pair_reads_two_result_directories(self):
+        import statistics as stats_mod
+
+        earlier = [1.0, 1.0, 4.0, 4.0]
+        later = [2.0, 2.0, 2.0, 2.0]
+        commit = "c" * 40
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            earlier_dir = root / "earlier"
+            later_dir = root / "later"
+            self._write_pair_result(earlier_dir, commit, earlier)
+            self._write_pair_result(later_dir, commit, later)
+            previous = os.getcwd()
+            os.chdir(root)
+            try:
+                save_pair(1, earlier_dir, later_dir, commit, MACHINE_NAME)
+                saved = json.loads((root / "benchflow" / "out" / "runs" / "01.json").read_text())
+            finally:
+                os.chdir(previous)
+        self.assertEqual(len(saved), 1)
+        self.assertAlmostEqual(saved[0]["ratio"], 2.0 / 2.5)
+        half = len(earlier) // 2
+        halved = stats_mod.median(earlier[half:]) / stats_mod.median(earlier[:half])
+        self.assertNotAlmostEqual(saved[0]["ratio"], halved)
+
+    def _write_pair_result(self, results: Path, commit: str, samples: list[float]) -> None:
+        folder = results / MACHINE_NAME
+        folder.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "commit_hash": commit,
+            "date": 1,
+            "env_name": "virtualenv-py3.12",
+            "env_vars": {},
+            "params": dict(CANONICAL),
+            "python": "3.12",
+            "requirements": {},
+            "result_columns": ["result", "params", "samples"],
+            "results": {"bench.time_work": [[1.0], [], samples]},
+            "version": 2,
+        }
+        (folder / f"{commit[:8]}-virtualenv-py3.12.json").write_text(json.dumps(payload))
+
+
 class TestThresholdCovers(unittest.TestCase):
     def test_gate_covers_every_calibration_ratio(self):
         ratios = [1.0, 1.01, 0.99, 1.02, 0.98, 1.0, 1.015, 0.99, 1.005, 1.0646]
@@ -413,7 +474,9 @@ class TestPins(unittest.TestCase):
         self.assertNotIn(">=", config_text)
         wheel = ROOT / "benchflow" / "build_wheel.py"
         if wheel.is_file():
-            self.assertNotIn(">=", wheel.read_text())
+            wheel_text = wheel.read_text()
+            self.assertNotIn(">=", wheel_text)
+            self.assertIn('"-Dbuildtype=release"', wheel_text)
 
     def test_derive_conf_points_at_the_requested_results_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -440,6 +503,12 @@ class TestSnakefile(unittest.TestCase):
         self.assertIn("benchflow/out/results/pr", text)
         self.assertIn(". benchflow/env.sh", text)
         self.assertIn("bench-runner", (ROOT / "benchflow" / "config.yaml").read_text())
+        self.assertIn("git rev-parse develop", text)
+        self.assertNotIn("git rev-parse main", text)
+        self.assertIn("base: develop", (ROOT / "benchflow" / "config.yaml").read_text())
+        fast = (ROOT / "benchmarks" / "fast_paths.py").read_text()
+        self.assertNotIn("--buildtype=release", fast)
+        self.assertIn("does not produce this file", fast)
         node = platform.node()
         if node and len(node) >= 3:
             for relative in (
