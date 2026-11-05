@@ -131,25 +131,67 @@ pub unsafe extern "C" fn rgpot_fast_pairs(
         Ok(v) => v,
         Err(code) => return code,
     };
-    match collect_pairs(points, &cell, periodic, list_cutoff) {
-        Ok(pairs) => {
-            unsafe { *out_count = pairs.len() };
-            if pairs.len() > cap {
-                return 1;
-            }
-            if !pairs.is_empty() && out_ij.is_null() {
-                return fail("null out_ij");
-            }
-            for (k, (i, j)) in pairs.iter().enumerate() {
-                unsafe {
-                    *out_ij.add(2 * k) = *i;
-                    *out_ij.add(2 * k + 1) = *j;
+    let found = match collect_pairs(points, &cell, periodic, list_cutoff) {
+        Ok(found) => found,
+        Err(code) => return code,
+    };
+    let Some(count) = found.count() else {
+        return fail("pair count does not fit in size_t");
+    };
+    unsafe { *out_count = count };
+    if count > cap {
+        clear_error();
+        return 1;
+    }
+    if count > 0 {
+        if out_ij.is_null() {
+            return fail("null out_ij");
+        }
+        found.write(unsafe { std::slice::from_raw_parts_mut(out_ij as *mut [i32; 2], count) });
+    }
+    clear_error();
+    0
+}
+
+/// Pair candidates from `collect_pairs`.
+enum Candidates {
+    /// Every unordered pair of this many atoms, `(0, 1), (0, 2), ...,
+    /// (n - 2, n - 1)`. Held as the count so a short buffer is answered
+    /// without building the list.
+    Every(usize),
+    /// Unique pairs with `i < j`, sorted.
+    Listed(Vec<(i32, i32)>),
+}
+
+impl Candidates {
+    /// Number of pairs, or `None` when it overflows `usize`.
+    fn count(&self) -> Option<usize> {
+        match self {
+            Candidates::Every(n) => n.checked_mul(n.saturating_sub(1)).map(|m| m / 2),
+            Candidates::Listed(pairs) => Some(pairs.len()),
+        }
+    }
+
+    /// Writes `[i, j]` for each pair into `out`, which holds `count()`
+    /// slots.
+    fn write(&self, out: &mut [[i32; 2]]) {
+        match self {
+            Candidates::Every(n) => {
+                let mut slots = out.iter_mut();
+                for i in 0..*n {
+                    for j in (i + 1)..*n {
+                        if let Some(slot) = slots.next() {
+                            *slot = [i as i32, j as i32];
+                        }
+                    }
                 }
             }
-            clear_error();
-            0
+            Candidates::Listed(pairs) => {
+                for (slot, (i, j)) in out.iter_mut().zip(pairs) {
+                    *slot = [*i, *j];
+                }
+            }
         }
-        Err(code) => code,
     }
 }
 
@@ -181,9 +223,9 @@ fn collect_pairs(
     cell: &[[f64; 3]; 3],
     periodic: [bool; 3],
     list_cutoff: f64,
-) -> Result<Vec<(i32, i32)>, i32> {
+) -> Result<Candidates, i32> {
     if xyz.len() < 2 || !positive(list_cutoff) || !list_cutoff.is_finite() {
-        return Ok(Vec::new());
+        return Ok(Candidates::Listed(Vec::new()));
     }
     if !orthorhombic(cell) {
         return Err(fail("pair list requires an orthorhombic cell"));
@@ -217,6 +259,16 @@ fn collect_pairs(
             shift[k] = list_cutoff + 0.5 * OPEN_AXIS_MARGIN - mins[k];
         }
     }
+    // One bin, or a cutoff that reaches the neighbouring image, makes the
+    // linked-cell stencil revisit every pair. Emitting i < j and letting
+    // the caller fold with minimage is the shorter walk, at any atom
+    // count. The 10k-atom bridge cell is narrower than three cutoffs;
+    // asking linkcell for that stencil allocates tens of gigabytes, and
+    // even its n(n-1)/2 pairs are 400 MB, so they go straight into the
+    // caller's buffer. Wider cells still go through linkcell.
+    if !linkcell_helps(&widths, &periodic, &mins, &maxs, list_cutoff) {
+        return Ok(Candidates::Every(xyz.len()));
+    }
     let owned;
     let pts: &[[f64; 3]] = if any_open {
         let mut moved = xyz.to_vec();
@@ -232,21 +284,6 @@ fn collect_pairs(
     } else {
         xyz
     };
-    // One bin, or a cutoff that reaches the neighbouring image, makes the
-    // linked-cell stencil revisit every pair. Emitting i < j and letting
-    // the caller fold with minimage is the shorter walk, at any atom
-    // count. The 10k-atom bridge cell is narrower than three cutoffs;
-    // asking linkcell for that stencil allocates tens of gigabytes.
-    // Wider cells still go through linkcell.
-    if !linkcell_helps(&widths, &periodic, &mins, &maxs, list_cutoff) {
-        let mut pairs = Vec::with_capacity(xyz.len() * (xyz.len() - 1) / 2);
-        for i in 0..xyz.len() {
-            for j in (i + 1)..xyz.len() {
-                pairs.push((i as i32, j as i32));
-            }
-        }
-        return Ok(pairs);
-    }
     let sim = match Cell::ortho(widths[0], widths[1], widths[2]) {
         Ok(c) => c,
         Err(err) => return Err(fail(&err.to_string())),
@@ -269,7 +306,7 @@ fn collect_pairs(
     }
     pairs.sort_unstable();
     pairs.dedup();
-    Ok(pairs)
+    Ok(Candidates::Listed(pairs))
 }
 
 fn wrap_into(cell: &Cell, diffs: &[[f64; 3]], out: &mut [[f64; 3]]) -> Result<(), i32> {
@@ -382,6 +419,66 @@ pub unsafe extern "C" fn rgpot_fast_wrap_axes(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::alloc::{GlobalAlloc, Layout, System};
+
+    /// Counts the bytes each thread asks for, so a test can bound what one
+    /// call allocates while other tests run on their own threads.
+    struct Counting;
+
+    thread_local! {
+        static REQUESTED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    }
+
+    unsafe impl GlobalAlloc for Counting {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            let _ = REQUESTED.try_with(|b| b.set(b.get().saturating_add(layout.size())));
+            unsafe { System.alloc(layout) }
+        }
+
+        unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+            unsafe { System.dealloc(ptr, layout) }
+        }
+    }
+
+    #[global_allocator]
+    static COUNTING: Counting = Counting;
+
+    fn requested_during<R>(f: impl FnOnce() -> R) -> (R, usize) {
+        let before = REQUESTED.with(|b| b.get());
+        let out = f();
+        (out, REQUESTED.with(|b| b.get()) - before)
+    }
+
+    fn pairs_of(
+        xyz: &[[f64; 3]],
+        cell: &[[f64; 3]; 3],
+        periodic: [bool; 3],
+        list_cutoff: f64,
+    ) -> Vec<(i32, i32)> {
+        let found = collect_pairs(xyz, cell, periodic, list_cutoff).unwrap();
+        let mut slots = vec![[0; 2]; found.count().unwrap()];
+        found.write(&mut slots);
+        slots.iter().map(|&[i, j]| (i, j)).collect()
+    }
+
+    /// The client bridge stress cell: a 10 A box under the default
+    /// Lennard-Jones cutoff of 15 A, one bin per axis.
+    fn bridge_cell(n: usize) -> (Vec<[f64; 3]>, [f64; 9]) {
+        let xyz = (0..n)
+            .map(|i| {
+                let t = i as f64;
+                [
+                    (t * 0.37).rem_euclid(10.0),
+                    (t * 0.53).rem_euclid(10.0),
+                    (t * 0.71).rem_euclid(10.0),
+                ]
+            })
+            .collect();
+        (xyz, [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0])
+    }
+
+    const BRIDGE_CUTOFF: f64 = 15.0;
+    const ALL_PERIODIC: [i32; 3] = [1, 1, 1];
 
     fn round_away(t: f64) -> f64 {
         (t + 0.5_f64.copysign(t)) as i64 as f64
@@ -429,7 +526,7 @@ mod tests {
         let cell = [[18.0, 0.0, 0.0], [0.0, 18.0, 0.0], [0.0, 0.0, 30.0]];
         let periodic = [true, true, true];
         let cutoff = 6.0;
-        let got = collect_pairs(&xyz, &cell, periodic, cutoff + 1.0).unwrap();
+        let got = pairs_of(&xyz, &cell, periodic, cutoff + 1.0);
         let expect = scalar_pairs(&xyz, [18.0, 18.0, 30.0], periodic, cutoff + 1.0);
         // The box is only a couple of cutoffs wide, so the candidate
         // buffer is every unordered pair. The scalar set is the in-cutoff
@@ -453,7 +550,7 @@ mod tests {
             ]);
         }
         let cell = [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]];
-        let got = collect_pairs(&xyz, &cell, [true, true, true], 15.0).unwrap();
+        let got = pairs_of(&xyz, &cell, [true, true, true], 15.0);
         assert_eq!(got.len(), n * (n - 1) / 2);
         assert_eq!(got.first().copied(), Some((0, 1)));
         assert_eq!(got.last().copied(), Some((n as i32 - 2, n as i32 - 1)));
@@ -469,7 +566,7 @@ mod tests {
         let cell = [[40.0, 0.0, 0.0], [0.0, 40.0, 0.0], [0.0, 0.0, 40.0]];
         let periodic = [true, true, true];
         let cutoff = 6.0;
-        let got = collect_pairs(&xyz, &cell, periodic, cutoff).unwrap();
+        let got = pairs_of(&xyz, &cell, periodic, cutoff);
         let expect = scalar_pairs(&xyz, [40.0, 40.0, 40.0], periodic, cutoff);
         assert_eq!(got, expect);
         assert!(got.len() < xyz.len() * (xyz.len() - 1) / 2);
@@ -484,7 +581,7 @@ mod tests {
             [0.0, 0.0, 8.0],
         ];
         let cell = [[1.0e6, 0.0, 0.0], [0.0, 1.0e6, 0.0], [0.0, 0.0, 1.0e6]];
-        let got = collect_pairs(&xyz, &cell, [false, false, false], 3.5).unwrap();
+        let got = pairs_of(&xyz, &cell, [false, false, false], 3.5);
         let expect = scalar_pairs(&xyz, [1.0e6, 1.0e6, 1.0e6], [false, false, false], 3.5);
         assert_eq!(expect, vec![(0, 1), (0, 2), (1, 2)]);
         assert!(expect.iter().all(|pair| got.contains(pair)));
@@ -504,5 +601,97 @@ mod tests {
                 assert!((w[k] - folded).abs() < 1e-12, "{} vs {}", w[k], folded);
             }
         }
+    }
+
+    fn fast_pairs(
+        xyz: &[[f64; 3]],
+        cell: &[f64; 9],
+        list_cutoff: f64,
+        out_ij: &mut [[i32; 2]],
+        count: &mut usize,
+    ) -> i32 {
+        let out = if out_ij.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            out_ij.as_mut_ptr() as *mut i32
+        };
+        unsafe {
+            rgpot_fast_pairs(
+                xyz.as_ptr() as *const f64,
+                xyz.len(),
+                cell.as_ptr(),
+                ALL_PERIODIC.as_ptr(),
+                list_cutoff,
+                out,
+                out_ij.len(),
+                count,
+            )
+        }
+    }
+
+    #[test]
+    fn short_buffer_on_the_bridge_cell_is_answered_without_the_list() {
+        let n = 10_000;
+        let (xyz, cell) = bridge_cell(n);
+        let mut count = 0;
+        let (rc, bytes) =
+            requested_during(|| fast_pairs(&xyz, &cell, BRIDGE_CUTOFF, &mut [], &mut count));
+        assert_eq!(rc, 1);
+        assert_eq!(count, n * (n - 1) / 2);
+        assert!(unsafe { rgpot_fast_last_error() }.is_null());
+        // A built list is about 400 MB here. The probe allocates less than
+        // one copy of the coordinates.
+        let coords = std::mem::size_of_val(&xyz[..]);
+        assert!(bytes < coords, "{bytes} bytes");
+    }
+
+    #[test]
+    fn fill_on_a_narrow_cell_writes_only_the_callers_buffer() {
+        let n = 4100;
+        let (xyz, cell) = bridge_cell(n);
+        let cap = n * (n - 1) / 2;
+        let mut ij = vec![[-1; 2]; cap];
+        let mut count = 0;
+        let (rc, bytes) =
+            requested_during(|| fast_pairs(&xyz, &cell, BRIDGE_CUTOFF, &mut ij, &mut count));
+        assert_eq!(rc, 0);
+        assert_eq!(count, cap);
+        let coords = std::mem::size_of_val(&xyz[..]);
+        assert!(bytes < coords, "{bytes} bytes");
+        let expect = (0..n as i32).flat_map(|i| ((i + 1)..n as i32).map(move |j| (i, j)));
+        assert!(ij.iter().map(|&[i, j]| (i, j)).eq(expect));
+    }
+
+    #[test]
+    fn short_buffer_clears_an_earlier_error() {
+        let (xyz, cell) = bridge_cell(3);
+        let skewed = [10.0, 0.0, 0.0, 1.0, 10.0, 0.0, 0.0, 0.0, 10.0];
+        let mut count = 0;
+        assert!(fast_pairs(&xyz, &skewed, BRIDGE_CUTOFF, &mut [], &mut count) < 0);
+        assert!(!unsafe { rgpot_fast_last_error() }.is_null());
+        let rc = fast_pairs(&xyz, &cell, BRIDGE_CUTOFF, &mut [], &mut count);
+        assert_eq!(rc, 1);
+        assert_eq!(count, 3);
+        assert!(unsafe { rgpot_fast_last_error() }.is_null());
+    }
+
+    #[test]
+    fn linkcell_probe_then_fill_matches_the_builder() {
+        // 5 x 5 x 5 sites 5 A apart in a 25 A box. A 7 A list cutoff fits
+        // three bins per axis, so this is the linkcell path.
+        let xyz: Vec<[f64; 3]> = (0..125)
+            .map(|s| [s / 25, s / 5 % 5, s % 5].map(|c| (c as f64 + 0.5) * 5.0))
+            .collect();
+        let cell = [25.0, 0.0, 0.0, 0.0, 25.0, 0.0, 0.0, 0.0, 25.0];
+        let rows = [[25.0, 0.0, 0.0], [0.0, 25.0, 0.0], [0.0, 0.0, 25.0]];
+        let mut count = 0;
+        assert_eq!(fast_pairs(&xyz, &cell, 7.0, &mut [], &mut count), 1);
+        assert!(count > 0 && count < xyz.len() * (xyz.len() - 1) / 2);
+        let mut ij = vec![[-1; 2]; count];
+        let mut filled = 0;
+        assert_eq!(fast_pairs(&xyz, &cell, 7.0, &mut ij, &mut filled), 0);
+        assert_eq!(filled, count);
+        let got: Vec<(i32, i32)> = ij.iter().map(|&[i, j]| (i, j)).collect();
+        assert_eq!(got, pairs_of(&xyz, &rows, [true, true, true], 7.0));
     }
 }
