@@ -52,6 +52,8 @@ else()
   endif()
 endif()
 
+option(RGPOT_WITH_EAM_TABLE
+       "EAM and Finnis-Sinclair potentials read from LAMMPS tables" OFF)
 option(RGPOT_BUILD_TESTS "Build tests" ${RGPOT_IS_TOP_LEVEL})
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -240,6 +242,10 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     list(APPEND RGPOT_SOURCES CppCore/rgpot/IPIPot/IPIPot.cc)
   endif()
 
+  if(RGPOT_WITH_EAM_TABLE)
+    list(APPEND RGPOT_SOURCES CppCore/rgpot/EAMTable/EAMTablePot.cc)
+  endif()
+
   if(RGPOT_BUILD_TESTS)
     enable_testing()
   endif()
@@ -347,6 +353,10 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
 
   if(RGPOT_WITH_IPI)
     target_compile_definitions(rgpot PUBLIC RGPOT_HAS_IPI)
+  endif()
+
+  if(RGPOT_WITH_EAM_TABLE)
+    target_compile_definitions(rgpot PUBLIC RGPOT_HAS_EAM_TABLE)
   endif()
 
   if(RGPOT_WITH_RPC)
