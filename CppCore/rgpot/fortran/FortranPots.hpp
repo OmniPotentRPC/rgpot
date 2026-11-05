@@ -76,6 +76,8 @@ RGPOT_FORTRAN_POT_CLASS(WaterHPot, WaterH);
 /// Tersoff silicon (PotType::TersoffSi). All-silicon calls, and a null
 /// species pointer, use the Fortran gather. Any other atomic number
 /// uses the 1989 silicon-carbon kernel. There is no second PotType.
+/// No call writes a stress: has_stress is 0 and the tensor is zero on
+/// both paths until the gather computes one.
 class TersoffPot : public Potential<TersoffPot> {
 public:
   TersoffPot() : Potential(PotType::TersoffSi) {}

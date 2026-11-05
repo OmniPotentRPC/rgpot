@@ -13,6 +13,7 @@
 
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/nlist/MinimumImage.hpp"
+#include "rgpot/stress.hpp"
 
 #include <cmath>
 #include <stdexcept>
@@ -216,8 +217,10 @@ void TersoffSiC::forceImpl(const ForceInput &in, ForceOut *out) const {
                         in.atmnrs == nullptr || out->F == nullptr)) {
     throw std::invalid_argument("TersoffSiC: null force buffer");
   }
+  double strain[6] = {};
   evaluate(in.pos, in.atmnrs, in.box, in.nAtoms, &out->energy, out->F, 1.0,
-           m_held.skin > 0.0 ? &m_held : nullptr);
+           m_held.skin > 0.0 ? &m_held : nullptr, strain);
+  publishCauchyStress(out, strain, cellVolume(in.box));
 }
 
 void TersoffSiC::setHeldSkin(double skin) {
@@ -239,7 +242,7 @@ void TersoffSiC::energyAndGradient(const double *positions,
     throw std::invalid_argument("TersoffSiC: null energy buffer");
   }
   evaluate(positions, atomic_numbers, box, n_atoms, energy, gradient, -1.0,
-           neighbors);
+           neighbors, nullptr);
 }
 
 void TersoffSiC::energyAndGradientBatch(std::size_t n_config,
@@ -266,7 +269,8 @@ void TersoffSiC::energyAndGradientBatch(std::size_t n_config,
 void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
                           const double *box, std::size_t n_atoms,
                           double *energy, double *acc, double scale,
-                          nlist::NeighborList *neighbors) const {
+                          nlist::NeighborList *neighbors,
+                          double *strain) const {
   *energy = 0.0;
   for (std::size_t i = 0; i < n_atoms * 3; ++i) {
     acc[i] = 0.0;
@@ -369,6 +373,10 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
       acc[3 * bj.j] -= sx;
       acc[3 * bj.j + 1] -= sy;
       acc[3 * bj.j + 2] -= sz;
+      if (strain != nullptr) {
+        // dE/d(bj) is (dedr / r) bj, the gradient along the folded bond.
+        accumulatePairStrain(strain, -dedr * inv_r, bj.x, bj.y, bj.z);
+      }
       const double dedz = 0.5 * bj.fc * bj.f_a * db;
       if (dedz == 0.0) {
         continue;
@@ -411,6 +419,10 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
         acc[3 * i] += scale * (g1x + g2x);
         acc[3 * i + 1] += scale * (g1y + g2y);
         acc[3 * i + 2] += scale * (g1z + g2z);
+        if (strain != nullptr) {
+          accumulateBondStrain(strain, bj.x, bj.y, bj.z, g1x, g1y, g1z);
+          accumulateBondStrain(strain, bk.x, bk.y, bk.z, g2x, g2y, g2z);
+        }
       }
     }
   }
