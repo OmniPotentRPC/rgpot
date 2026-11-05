@@ -205,6 +205,11 @@ if not get_option('with_rpc_client_only')
     subdir('rgpot/EAM')  # 'eam_cell'
     rgpotentials += [eam_cell]
 
+    if has_eam_table
+        subdir('rgpot/EAMTable')  # 'eam_table'
+        rgpotentials += [eam_table]
+    endif
+
     if has_water
         subdir('rgpot/Water')  # 'water_pots'
         rgpotentials += [water_pots]
@@ -2142,6 +2147,9 @@ if not meson.is_subproject()
         endif
         if has_water
             _pc_cflags += ['-DRGPOT_HAS_WATER=TRUE']
+        endif
+        if has_eam_table
+            _pc_cflags += ['-DRGPOT_HAS_EAM_TABLE=TRUE']
         endif
         if has_metatomic
             _pc_cflags += ['-DRGPOT_HAS_METATOMIC_POT=TRUE']
