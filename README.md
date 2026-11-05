@@ -35,7 +35,8 @@ named child `Potential` objects. The parser is vendored OpenMM Lepton;
 there is no pixi muparser feature and no `PotentialConfig.expr` arm.
 
 In-process `LJPot` vs pyeonclient `Matter` on the same LJ fixture is
-`scripts/time_lj_rgpot_vs_pyeonclient.py` (rg.terra). On rg.terra
+`scripts/time_lj_rgpot_vs_pyeonclient.py` (on a host listed in
+`RGPOT_REGEN_HOSTS`). On workstation-a
 (2026-09-04, 1e6 calls) A (`LJPot::operator()`) was 31-33 ns/call and
 B (in-process pyeonclient `Matter.forces`, not potserv) was 687 to 791
 ns/call. `XcKernel` is not a `Potential` and is not part of that race.
