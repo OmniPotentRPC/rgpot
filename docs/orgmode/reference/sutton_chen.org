@@ -54,3 +54,87 @@ The =rgpot-pair= crate exposes the same trees as =lj_unit= and =morse_unit=,
 which a Rust caller can inline.
 The unit Lennard-Jones branch is the direct inverse-power tree, with contraction
 off, so a search sees the same rounding as that expression.
+
+* Stress
+
+=SuttonChenConfig::stress= is off by default.
+When it is set, =forceImpl= writes the Cauchy stress ~sigma = (1/V) dE/dstrain~
+into =ForceOut::stress= in row-major order.
+It also sets =has_stress= to 1, and =caps().stress= is true.
+The units are energy over length cubed, eV/Angstrom^3 for the
+=sutton_chen_platinum= and =sutton_chen_gold= rows.
+The sign is that of =stress.hpp=: a compressed crystal has negative diagonal
+entries, and the pressure is minus a third of the trace.
+A cell with no positive volume, such as a cluster with a null box, leaves
+=has_stress= at 0.
+
+The force pass writes the stress as well, because the energy depends on
+positions only through pair distances.
+With ~d = r_i - r_j~ and a force ~fscale * d~ on atom i, each pair adds
+~-fscale * d d^T~ to dE/dstrain.
+That fscale already includes the embedding term, so the stress needs no third
+loop.
+Thompson, Plimpton and Mattson give the many-body virial under periodic
+boundaries.
+Their paper is in the Journal of Chemical Physics 131, 154107 (2009).
+
+With the flag clear, =forceImpl= leaves the stress slots and =has_stress= as the
+caller set them.
+=caps()=, =paramsKey()=, the energy and the forces are then the same bits as
+before the flag existed.
+Setting the flag changes =paramsKey()=, so a cached result without stress is not
+served to a caller that asked for one.
+The C entry point =rgpot_sutton_chen_energy_forces= and =rgpot_sc_config= do not
+carry the flag.
+
+Periodic evaluation keeps one image of each partner.
+The stress, like the energy, is the whole sum only while the cutoff is under
+half the smallest face spacing of the cell.
+
+** Checks
+
+=SuttonChenPotTest= compares the platinum row with the Large-scale
+Atomic/Molecular Massively Parallel Simulator (LAMMPS), version 22 Jul 2025.
+LAMMPS runs the potential as =pair_style eam/fs=, the embedded atom method (EAM)
+style for Finnis-Sinclair tables.
+=CppCore/tests/data/sutton_chen/make_lammps_ref.py= writes the table and the two
+108-atom references, with a cutoff of 5.5 Angstrom.
+
+| Cell    | energy gap (eV) | largest force gap (eV/Angstrom) | largest stress gap (eV/Angstrom^3) |
+|---------+-----------------+---------------------------------+------------------------------------|
+| cubic   |         3.4e-13 |                         2.0e-11 |                            8.3e-14 |
+| sheared |         2.2e-12 |                         2.8e-11 |                            2.0e-13 |
+
+Tables of 12501, 25001 and 50001 points move the LAMMPS stress by at most
+5.8e-13 eV/Angstrom^3, so the gaps above are not set by the table.
+The test also takes each Voigt component as a central difference of the energy
+under a symmetric strain of 1e-6.
+
+The last test takes the pressure of the perfect face-centered cubic (fcc)
+platinum crystal at the lattice parameter ~a = 3.92~ Angstrom.
+Sutton and Chen fit c to zero pressure of the infinite crystal at a.
+Their ~c = 34.408~ is that zero-pressure value rounded to three decimals.
+The fcc lattice sum with ~n = 10~ and ~m = 8~ gives ~c = 34.408374~.
+The published c therefore leaves about 0.0015 GPa in the infinite crystal at a.
+With the cutoff at 0.49 of the cell edge, rgpot gives
+
+| Atoms | Cutoff (Angstrom) | Pressure at a (GPa) | Pressure at 0.99 a (GPa) |
+|-------+-------------------+---------------------+--------------------------|
+|   256 |            7.6832 |              0.0864 |                   9.3308 |
+|   864 |           11.5248 |              0.0155 |                   9.2560 |
+|  2048 |           15.3664 |              0.0053 |                   9.2446 |
+|  4000 |           19.2080 |              0.0027 |                   9.2423 |
+
+The pressure at a falls toward that 0.0015 GPa as the cutoff grows, not toward
+zero.
+The test asks it to shrink from 256 to 2048 atoms and to stay under 1e-3 of the
+stress at 0.99 a, about 0.009 GPa.
+
+** Cost
+
+Pinned to one core, the flag adds 5.9 to 8.5 percent to a call.
+A jittered 864-atom cell at a cutoff of 7 Angstrom takes about 880 ns per atom
+without the stress and 930 with it.
+A 4000-atom cell with a cutoff of 19 Angstrom takes about 25800 and 27500.
+With the flag clear, six cases from 108 to 4000 atoms take the same time as
+before the flag existed, to within 4 percent.
