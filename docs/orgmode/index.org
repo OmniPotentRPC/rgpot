@@ -100,6 +100,7 @@ meson compile -C bbdir && meson test -C bbdir
    reference/tersoff_sic
    reference/mpi
    reference/c_abi
+   reference/fast_nlist
    reference/engine_abi
    reference/simd_exp
    reference/sutton_chen
