@@ -1,5 +1,5 @@
 #+TITLE: Contributing to ~rgpot~
-#+OPTIONS: toc:nil todo:nil num:nil author:t title:t
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:t
 #+STARTUP: content
 
 We welcome all contributions and contributors to ~rgpot~.
@@ -9,7 +9,7 @@ the tools better for everyone.
 * Communication and Conduct
 We value a respectful and inclusive community.
 All contributors must follow our
-[[https://rgpycrumbs.rgoswami.me/ code_of_conduct.html][Code of Conduct]].
+[[file:../code_of_conduct.org][Code of Conduct]].
 
 * Getting Started
 Please review the technical requirements before submitting a Pull Request:
@@ -22,11 +22,12 @@ See [[file:developer/faq.org][Developer FAQ]] for documentation workflow
 details.
 
 * Reporting Issues
-Use the [[https://github.com/HaoZeke/rgpycrumbs/issues][GitHub issue tracker]]
-to report bugs or suggest enhancements.
+Ask questions, report bugs and suggest enhancements on the
+[[https://github.com/OmniPotentRPC/rgpot/issues][rgpot issue tracker]].
 Please provide a minimal reproducible example for all bug reports.
-User facing comments may be directed also to the [[https://matsci.org/c/eon/72]
-[EON materials science section]].
+Report security vulnerabilities privately, following
+[[https://github.com/OmniPotentRPC/rgpot/blob/main/SECURITY.md][SECURITY.md]].
+Do not open a public issue for them.
 
 * Contributing
 For details on the dispatcher architecture or internal API:

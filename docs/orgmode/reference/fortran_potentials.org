@@ -1,4 +1,5 @@
 #+TITLE: Fortran potentials: porting rules
+#+OPTIONS: author:nil
 #+DESCRIPTION: How legacy potential kernels become Fortran 2018 modules in rgpot.
 
 * Why a port and not a wrapper

@@ -30,8 +30,8 @@
 #+end_export
 
 * Overview
-~rgpot~ provides a unified Cap'n Proto schema and RPC server for potential
-energy calculations.
+~rgpot~ provides a unified Cap'n Proto schema for potential energy calculations.
+It also provides a remote procedure call (RPC) server for that schema.
 Clients send ~ForceInput~ messages containing geometry and units, receive
 ~PotentialResult~ messages containing energy and forces, and use
 ~PotentialConfig~ only for backend setup.
@@ -41,8 +41,8 @@ optional xTB / tblite / metatomic backends, and runtime-loaded quantum engines.
 ~NWChemPot~ loads ~libnwchemc~ from the split ~nwchemc~ project.
 ~CPMDPot~ loads ~libcpmdc~ from the split ~cpmdc~ project.
 Its documentation is at [[https://cpmdc.rgoswami.me][cpmdc.rgoswami.me]].
-Both quantum frontends keep geometry on ~ForceInput~ and carry method options in
-the matching ~PotentialConfig~ arm.
+Both quantum frontends keep geometry on ~ForceInput~.
+They carry method options in the matching ~PotentialConfig~ arm.
 
 The pip package (~pip install rgpot~) ships nanobind abi3 bindings and multi-ABI
 Metatomic engines for *torch 2.7+*.
@@ -102,6 +102,7 @@ meson compile -C bbdir && meson test -C bbdir
    reference/engine_abi
    reference/simd_exp
    reference/sutton_chen
+   reference/fortran_potentials
    api/index
    changelog
 
@@ -114,5 +115,5 @@ meson compile -C bbdir && meson test -C bbdir
 #+end_export
 
 * License
-MIT, however note that some of the potentials are adapted from eOn which is
-under a BSD 3-Clause License.
+~rgpot~ is under the Massachusetts Institute of Technology (MIT) License.
+Some potentials are adapted from eOn, which is under a BSD 3-Clause License.

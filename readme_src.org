@@ -251,6 +251,14 @@ pixi r -e rpctest python tests/rpc_integ.py \
 The root README is generated from =readme_src.org=.
 Project documentation sources live under =docs/orgmode/=.
 
+** Contact
+
+Ask questions, report bugs and suggest features on the [[https://github.com/OmniPotentRPC/rgpot/issues][issue tracker]].
+Report security vulnerabilities privately, following [[https://github.com/OmniPotentRPC/rgpot/blob/main/SECURITY.md][SECURITY.md]].
+Do not open a public issue for them.
+The development setup is on the [[https://rgpot.rgoswami.me/contributing/index.html][contributing pages]].
+Every contributor follows the [[https://github.com/OmniPotentRPC/rgpot/blob/main/CODE_OF_CONDUCT.md][Code of Conduct]].
+
 * License
 
 MIT, with backend-specific notes:
