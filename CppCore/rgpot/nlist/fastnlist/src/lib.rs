@@ -10,6 +10,23 @@ use std::os::raw::c_char;
 
 use linkcell::{pairs_within, wrap_many, Cell};
 
+/// Bins of at least one cutoff that a periodic axis needs before a
+/// linked-cell walk pays. Each bin is checked against itself and its 26
+/// neighbours. With one or two bins along an axis, the neighbours on
+/// either side are the same bin, and the walk visits a pair more than
+/// once. Allen and Tildesley, Computer Simulation of Liquids, 2nd ed.
+/// (2017), section 5.3.2, stop their cell-list codes below three.
+const MIN_BINS_PER_PERIODIC_AXIS: f64 = 3.0;
+
+/// Width added to an open axis beyond its extent plus two cutoffs, half
+/// on each side. An atom's image across the padded axis is then more
+/// than one cutoff away, for any positive margin.
+const OPEN_AXIS_MARGIN: f64 = 1.0;
+
+/// Width given to an open axis in the axis wrap. A component folds only
+/// once its magnitude reaches half this width.
+const OPEN_AXIS_WRAP_WIDTH: f64 = 1.0e16;
+
 thread_local! {
     static LAST_ERROR: RefCell<Option<CString>> = const { RefCell::new(None) };
 }
@@ -149,7 +166,7 @@ fn linkcell_helps(
 ) -> bool {
     for k in 0..3 {
         if periodic[k] {
-            if widths[k] < 3.0 * list_cutoff {
+            if widths[k] < MIN_BINS_PER_PERIODIC_AXIS * list_cutoff {
                 return false;
             }
         } else if maxs[k] - mins[k] <= list_cutoff {
@@ -193,11 +210,11 @@ fn collect_pairs(
         } else {
             any_open = true;
             let extent = maxs[k] - mins[k];
-            widths[k] = extent + 2.0 * list_cutoff + 1.0;
+            widths[k] = extent + 2.0 * list_cutoff + OPEN_AXIS_MARGIN;
             if !positive(widths[k]) || !widths[k].is_finite() {
                 return Err(fail("open axis padding is not finite"));
             }
-            shift[k] = list_cutoff + 0.5 - mins[k];
+            shift[k] = list_cutoff + 0.5 * OPEN_AXIS_MARGIN - mins[k];
         }
     }
     let owned;
@@ -341,7 +358,7 @@ pub unsafe extern "C" fn rgpot_fast_wrap_axes(
                 return fail("periodic axis has a non-positive width");
             }
         } else {
-            widths[k] = 1.0e16;
+            widths[k] = OPEN_AXIS_WRAP_WIDTH;
         }
     }
     let sim = match Cell::ortho(widths[0], widths[1], widths[2]) {
