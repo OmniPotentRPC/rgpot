@@ -791,6 +791,16 @@ if get_option('with_tests')
                 ['WaterPotTest', 'water_pot_test', 'WaterPotTest.cc', ''],
             ]
         endif
+        if has_eam_table
+            test_array += [
+                [
+                    'EAMTablePotTest',
+                    'eam_table_pot_test',
+                    'EAMTablePotTest.cc',
+                    '',
+                ],
+            ]
+        endif
     endif
     if has_fortran
         test_array += [
