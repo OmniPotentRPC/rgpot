@@ -1,0 +1,78 @@
+#+TITLE: Fast pair list C ABI
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Fast pair list C ABI
+
+=CppCore/rgpot/nlist/fastnlist.h= is the C ABI of a Rust static library.
+The library is built on =linkcell= and =minimage=.
+Meson builds it when it finds cargo and a new enough rustc.
+The floor is the =rust-version= in its =Cargo.toml=.
+That is the default, =-Dwith_fast_nlist=auto=.
+The build then defines =RGPOT_HAS_FAST_NLIST=.
+CMake does not build it.
+
+** Callers
+
+The Fortran water-H kernel folds its legs with =rgpot_fast_wrap=.
+=rgpot_fast_pairs= has no caller inside the potentials yet.
+=LJPot=, =MorsePot= and =LJClusterPot= use =PairListCache= instead.
+That cache runs its own cell scan.
+=LJClusterPot= walks all pairs directly on a compact cluster.
+=FastNlistTest= checks the counts from =rgpot_fast_pairs=.
+It also checks the potentials against a brute-force scan.
+
+** Pair candidates
+
+Pairs are unique, have =i < j=, and come sorted.
+Self images are never included.
+Which set comes back depends on the cell.
+
+| Cell                                      | Candidates                       |
+|-------------------------------------------+----------------------------------|
+| periodic axis narrower than three cutoffs | all pairs, =(0, 1), (0, 2), ...= |
+| open axis spanning at most one cutoff     | all pairs                        |
+| otherwise                                 | linkcell pairs inside the cutoff |
+
+Each linkcell bin is checked against itself and its 26 neighbours.
+Below three bins on an axis, the bins on either side are the same.
+Allen and Tildesley stop their cell-list codes below three bins.
+See /Computer Simulation of Liquids/, 2nd ed. (2017), section 5.3.2.
+On those cells the caller folds every pair with the minimum image.
+It then drops the pairs outside the cutoff.
+
+** Probe and fill
+
+The caller owns the buffer.
+A probe with no buffer returns the count, and a second call fills it.
+
+#+begin_src c
+size_t count = 0;
+int rc = rgpot_fast_pairs(xyz, n, cell9, periodic, list_cutoff,
+                          NULL, 0, &count);
+/* rc is 1 here, or 0 when there are no pairs. */
+int32_t *ij = malloc(2 * count * sizeof *ij);
+rc = rgpot_fast_pairs(xyz, n, cell9, periodic, list_cutoff,
+                      ij, count, &count);
+#+end_src
+
+When every unordered pair is the answer, the count is =n * (n - 1) / 2=.
+The probe returns that count without building a list.
+The fill writes the pairs straight into =ij=.
+That list is about 400 MB for the 10k-atom bridge cell.
+The bridge cell is a 10 Å box under a 15 Å cutoff.
+On the linkcell path, each call runs the search.
+A probe followed by a fill searches twice.
+
+** Return codes
+
+| Return   | Meaning                                                  |
+|----------+----------------------------------------------------------|
+| 0        | =ij= holds =*out_count= pairs                            |
+| 1        | =ij= is short and untouched; =*out_count= is the count   |
+| negative | failure; =rgpot_fast_last_error()= points at the message |
+
+Both 0 and 1 clear that message.
+On a probe, =ij= may be NULL.
+A pair list needs an orthorhombic cell.
+=rgpot_fast_wrap= takes any cell.
