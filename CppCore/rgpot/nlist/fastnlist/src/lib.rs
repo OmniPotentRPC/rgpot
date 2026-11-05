@@ -68,6 +68,11 @@ fn periodic3(periodic: *const i32) -> Result<[bool; 3], i32> {
     Ok([s[0] != 0, s[1] != 0, s[2] != 0])
 }
 
+/// False for zero, negatives and NaN.
+fn positive(x: f64) -> bool {
+    x > 0.0
+}
+
 fn orthorhombic(cell: &[[f64; 3]; 3]) -> bool {
     cell[0][1] == 0.0
         && cell[0][2] == 0.0
@@ -115,7 +120,7 @@ pub unsafe extern "C" fn rgpot_fast_pairs(
             if pairs.len() > cap {
                 return 1;
             }
-            if pairs.len() > 0 && out_ij.is_null() {
+            if !pairs.is_empty() && out_ij.is_null() {
                 return fail("null out_ij");
             }
             for (k, (i, j)) in pairs.iter().enumerate() {
@@ -160,7 +165,7 @@ fn collect_pairs(
     periodic: [bool; 3],
     list_cutoff: f64,
 ) -> Result<Vec<(i32, i32)>, i32> {
-    if xyz.len() < 2 || !(list_cutoff > 0.0) || !list_cutoff.is_finite() {
+    if xyz.len() < 2 || !positive(list_cutoff) || !list_cutoff.is_finite() {
         return Ok(Vec::new());
     }
     if !orthorhombic(cell) {
@@ -182,14 +187,14 @@ fn collect_pairs(
     }
     for k in 0..3 {
         if periodic[k] {
-            if !(widths[k] > 0.0) {
+            if !positive(widths[k]) {
                 return Err(fail("periodic axis has a non-positive width"));
             }
         } else {
             any_open = true;
             let extent = maxs[k] - mins[k];
             widths[k] = extent + 2.0 * list_cutoff + 1.0;
-            if !(widths[k] > 0.0) || !widths[k].is_finite() {
+            if !positive(widths[k]) || !widths[k].is_finite() {
                 return Err(fail("open axis padding is not finite"));
             }
             shift[k] = list_cutoff + 0.5 - mins[k];
@@ -332,7 +337,7 @@ pub unsafe extern "C" fn rgpot_fast_wrap_axes(
     let mut widths = [cell[0][0], cell[1][1], cell[2][2]];
     for k in 0..3 {
         if periodic[k] {
-            if !(widths[k] > 0.0) {
+            if !positive(widths[k]) {
                 return fail("periodic axis has a non-positive width");
             }
         } else {
