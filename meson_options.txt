@@ -74,3 +74,21 @@ option(
     value: false,
     description: 'Flexible TIP4P, SPC/E and TIP4P-Pt kernels. Defaults false, matching the eOn with_water option.',
 )
+option(
+    'with_long_range',
+    type: 'boolean',
+    value: false,
+    description: 'Ewald, PME, dispersion and NLH summands. Needs linkcell.',
+)
+option(
+    'linkcell_libdir',
+    type: 'string',
+    value: '',
+    description: 'Directory of liblinkcell when pkg-config is not installed.',
+)
+option(
+    'linkcell_incdir',
+    type: 'string',
+    value: '',
+    description: 'Directory of linkcell.hpp when pkg-config is not installed.',
+)

@@ -92,6 +92,12 @@ public:
     throw std::runtime_error("PotentialBase::forceBatch called directly");
   }
 
+  // Flat ForceInput evaluation, including stress. Sums of potentials call
+  // this so a backend and a long-range summand share one interface.
+  virtual void evaluateFlat(const ForceInput & /*in*/, ForceOut * /*out*/) const {
+    throw std::runtime_error("PotentialBase::evaluateFlat called directly");
+  }
+
   /**
    * @brief Fingerprint of the potential's parameter set.
    *
@@ -233,6 +239,10 @@ public:
    * @return Void.
    */
   virtual void forceImpl(const ForceInput &in, ForceOut *out) const = 0;
+
+  void evaluateFlat(const ForceInput &in, ForceOut *out) const override {
+    static_cast<const Derived *>(this)->forceImpl(in, out);
+  }
 
   /**
    * @brief Batched counterpart of @c forceImpl.

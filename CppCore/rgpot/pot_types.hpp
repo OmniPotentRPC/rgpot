@@ -52,7 +52,11 @@ enum class PotType {
   EAMCell,     //!<  Cell-list embedded-atom potential.
   TIP4P,       //!<  Flexible TIP4P water. Built with -Dwith_water=true.
   SPCE,        //!<  Flexible SPC/E water. Built with -Dwith_water=true.
-  TIP4PPt      //!<  TIP4P water on platinum. Built with -Dwith_water=true.
+  TIP4PPt,     //!<  TIP4P water on platinum. Built with -Dwith_water=true.
+  LrCoulomb,   //!<  Ewald, smooth PME, or damped shifted force.
+  LrDispersion, //!<  D3(BJ), D4, MBD, or SO3LR QDO dispersion.
+  LrNlh,       //!<  SO3LR NLH short-range repulsion.
+  LrSum        //!<  Sum of potential summands.
 };
 
 } // namespace rgpot
