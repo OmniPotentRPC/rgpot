@@ -13,6 +13,7 @@
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/nlist/HalfShell.hpp"
 #include "rgpot/nlist/MinimumImage.hpp"
+#include "rgpot/stress.hpp"
 
 #include <cmath>
 #include <stdexcept>
@@ -130,7 +131,10 @@ void StillingerWeberSi::forceImpl(const ForceInput &in, ForceOut *out) const {
       (in.pos == nullptr || in.box == nullptr || out->F == nullptr)) {
     throw std::invalid_argument("StillingerWeberSi: null force buffer");
   }
-  evaluate(in.pos, in.box, in.nAtoms, &out->energy, out->F, 1.0, nullptr);
+  double strain[6] = {};
+  evaluate(in.pos, in.box, in.nAtoms, &out->energy, out->F, 1.0, nullptr,
+           strain);
+  publishCauchyStress(out, strain, cellVolume(in.box));
 }
 
 void StillingerWeberSi::energyAndGradient(
@@ -144,7 +148,7 @@ void StillingerWeberSi::energyAndGradient(
     throw std::invalid_argument("StillingerWeberSi: null energy buffer");
   }
   // Gradient is dE/dx, the negation of the force written by forceImpl.
-  evaluate(positions, box, n_atoms, energy, gradient, -1.0, neighbors);
+  evaluate(positions, box, n_atoms, energy, gradient, -1.0, neighbors, nullptr);
 }
 
 void StillingerWeberSi::energyAndGradientBatch(
@@ -169,7 +173,8 @@ void StillingerWeberSi::energyAndGradientBatch(
 void StillingerWeberSi::evaluate(const double *positions, const double *box,
                                  std::size_t n_atoms, double *energy,
                                  double *acc, double scale,
-                                 nlist::NeighborList *neighbors) const {
+                                 nlist::NeighborList *neighbors,
+                                 double *strain) const {
   *energy = 0.0;
   const std::size_t n3 = n_atoms * 3;
   for (std::size_t i = 0; i < n3; ++i) {
@@ -219,6 +224,12 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
     acc[3 * j] -= sx;
     acc[3 * j + 1] -= sy;
     acc[3 * j + 2] -= sz;
+    if (strain != nullptr) {
+      // The force on i is -(dedr / r) (r_i - r_j). (dx, dy, dz) is
+      // r_j - r_i, the negative of the d in stress.hpp. The term is
+      // quadratic in d, so the sign does not change it.
+      accumulatePairStrain(strain, -t.dedr * inv_r, dx, dy, dz);
+    }
     sc.rows[static_cast<std::size_t>(i)].push_back(
         Bond{j, dx, dy, dz, r, t.gexp, t.dgdr});
     sc.rows[static_cast<std::size_t>(j)].push_back(
@@ -298,6 +309,10 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
         acc[3 * i] += scale * (g1x + g2x);
         acc[3 * i + 1] += scale * (g1y + g2y);
         acc[3 * i + 2] += scale * (g1z + g2z);
+        if (strain != nullptr) {
+          accumulateBondStrain(strain, bj.x, bj.y, bj.z, g1x, g1y, g1z);
+          accumulateBondStrain(strain, bk.x, bk.y, bk.z, g2x, g2y, g2z);
+        }
       }
     }
   }

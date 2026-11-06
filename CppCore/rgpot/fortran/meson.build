@@ -45,13 +45,31 @@ fortran_pots_sources = files(
     'rgpot_lenosky.f90',
     'rgpot_lenosky_capi.f90',
     'rgpot_neighbors.f90',
-    'rgpot_sw.f90',
     'rgpot_sw_capi.f90',
     'rgpot_tersoff.f90',
     'rgpot_tersoff_capi.f90',
     'rgpot_water_h.f90',
     'rgpot_water_h_capi.f90',
     'rgpot_workspace.f90',
+)
+
+# meson passes gfortran no depfile flags, and its scanner reads `include`
+# lines only to find modules, so an edit of sw_centred_body.inc would leave
+# the rgpot_sw object stale. The kernel compiles from a copy that depends
+# on the include. gfortran then finds the include through the -I of this
+# source directory.
+fortran_pots_sources += custom_target(
+    'rgpot_sw_f90',
+    input: 'rgpot_sw.f90',
+    output: 'rgpot_sw.f90',
+    command: [
+        find_program('python3', 'python'),
+        '-c',
+        'import shutil, sys; shutil.copyfile(sys.argv[1], sys.argv[2])',
+        '@INPUT@',
+        '@OUTPUT@',
+    ],
+    depend_files: files('sw_centred_body.inc'),
 )
 
 # C++ faces over the bind(c) entries.
