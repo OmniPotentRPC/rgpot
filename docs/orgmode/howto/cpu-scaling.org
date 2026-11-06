@@ -56,7 +56,7 @@ That is the throughput ratio.
 ** The constants
 
 - The cells are Pt fcc with a lattice parameter of 3.92 Angstrom.
-  It is in Kittel, Introduction to Solid State Physics, 8th ed., ch. 1.
+  It is in Kittel, Introduction to Solid State Physics, 8th ed., chapter 1.
   The =pt-bulk= system of =time_pair_scaling= uses the same value.
 - The potential is =MorsePot= with its platinum defaults.
   So the call takes the linkcell and minimage pair list.
