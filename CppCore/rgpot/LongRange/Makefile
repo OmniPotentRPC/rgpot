@@ -18,7 +18,7 @@ DFTD3_SO ?= /home/ubuntu/.local/lib/python3.12/site-packages/dftd3/_libdftd3.cpy
 DFTD4_SO ?= /home/ubuntu/.local/lib/python3.12/site-packages/dftd4/_libdftd4.cpython-312-x86_64-linux-gnu.so
 PYLIB := -L/usr/lib/python3.12/config-3.12-x86_64-linux-gnu -lpython3.12
 
-SRCS := Pairs.cc Electro.cc Dispersion.cc Nlh.cc SumPot.cc CudaPath.cc
+SRCS := Pairs.cc Electro.cc Dispersion.cc FastD3.cc FastD4.cc Nlh.cc SumPot.cc CudaPath.cc
 OBJS := $(SRCS:.cc=.o)
 
 .PHONY: test bench sets cuda clean linkcell
