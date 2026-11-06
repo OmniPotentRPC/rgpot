@@ -59,7 +59,11 @@ enum class PotType {
   EAMTable,    //!<  EAM / Finnis-Sinclair tables. -Dwith_eam_table=true.
   Lammps,      //!<  Shifted Lennard-Jones via the engine plugin.
   Gromacs,     //!<  Shifted Lennard-Jones; nm and kJ/mol stored once.
-  OpenMM       //!<  Shifted Lennard-Jones; nm and kJ/mol stored once.
+  OpenMM,      //!<  Shifted Lennard-Jones; nm and kJ/mol stored once.
+  LrCoulomb,   //!<  Ewald, smooth PME, or damped shifted force.
+  LrDispersion, //!<  D3(BJ), D4, MBD, or SO3LR QDO dispersion.
+  LrNlh,       //!<  SO3LR NLH short-range repulsion.
+  LrSum        //!<  Sum of potential summands.
 };
 
 } // namespace rgpot
