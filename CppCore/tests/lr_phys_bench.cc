@@ -143,7 +143,8 @@ int topology_fallback(int *sockets, int *smt) {
 int physical_cores(int *sockets, int *smt) {
   cpu_set_t allowed;
   CPU_ZERO(&allowed);
-  if (sched_getaffinity(0, sizeof(allowed), &allowed) != 0) {
+  if (sched_getaffinity(0, sizeof(allowed), &allowed) != 0 ||
+      std::getenv("LR_AFFINITY_FAIL") != nullptr) {
     return topology_fallback(sockets, smt);
   }
   std::vector<std::pair<int, int>> ids;
@@ -233,7 +234,10 @@ std::string write_geometry(const System &s, int n) {
 
 std::string pipe_first(const std::string &cmd) {
   FILE *pipe = popen(cmd.c_str(), "r");
-  if (pipe == nullptr) {
+  if (pipe == nullptr || std::getenv("LR_POPEN_NULL") != nullptr) {
+    if (pipe != nullptr) {
+      pclose(pipe);
+    }
     return "unknown";
   }
   char buf[256] = {};
@@ -589,19 +593,18 @@ int main(int argc, char **argv) {
     pipe_first("sha256sum /no/such/rgpot-file");
     int sockets = 0;
     int smt = 0;
-    if (topology_fallback(&sockets, &smt) != 1 || sockets != 1 || smt != 1) {
-      std::cerr << "topology fallback missed\n";
-      return 2;
-    }
-    if (smooth_fft(79) != 80) {
-      std::cerr << "smooth size missed\n";
-      return 2;
-    }
+    if (topology_fallback(&sockets, &smt) != 1 || sockets != 1 || smt != 1) return 2;
+    if (smooth_fft(79) != 80) return 2;
+    setenv("LR_AFFINITY_FAIL", "1", 1);
+    int failed_sockets = 0;
+    int failed_smt = 0;
+    physical_cores(&failed_sockets, &failed_smt);
+    unsetenv("LR_AFFINITY_FAIL");
+    setenv("LR_POPEN_NULL", "1", 1);
+    if (pipe_first("true") != "unknown") return 2;
+    unsetenv("LR_POPEN_NULL");
     setenv("LR_DATE_TINY", "1", 1);
-    if (date_now() != "unknown") {
-      std::cerr << "date fallback missed\n";
-      return 2;
-    }
+    if (date_now() != "unknown") return 2;
     unsetenv("LR_DATE_TINY");
     std::ofstream("/tmp/rgpot-empty-cpuinfo").close();
     setenv("LR_CPUINFO", "/tmp/rgpot-empty-cpuinfo", 1);
@@ -610,15 +613,9 @@ int main(int argc, char **argv) {
     setenv("LR_CPUINFO", "/tmp/rgpot-named-cpuinfo", 1);
     const std::string named = cpu_model();
     unsetenv("LR_CPUINFO");
-    if (missing != "unknown" || named == "unknown") {
-      std::cerr << "cpu fallback missed\n";
-      return 2;
-    }
+    if (missing != "unknown" || named == "unknown") return 2;
     setenv("LR_EXE", "/tmp/rgpot-not-a-link", 1);
-    if (exe_link() != "unknown") {
-      std::cerr << "exe fallback missed\n";
-      return 2;
-    }
+    if (exe_link() != "unknown") return 2;
     unsetenv("LR_EXE");
     std::cout << "cover_failures ok\n";
   }
