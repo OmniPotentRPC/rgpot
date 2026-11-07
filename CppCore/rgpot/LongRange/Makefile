@@ -9,7 +9,7 @@ ROOT := ../../..
 LC ?= /tmp/linkcell-src
 CXX ?= g++
 NVCC ?= nvcc
-CXXFLAGS := -std=c++20 -O2 -g -fopenmp -Wall -Wextra
+CXXFLAGS := -std=c++20 -O3 -march=native -g -fopenmp -Wall -Wextra
 CXXFLAGS += -I$(ROOT)/CppCore -I$(ROOT)/include -I$(LC)/include
 CXXFLAGS += -I/tmp -DRGPOT_HAS_DFTD3 -DRGPOT_HAS_DFTD4
 LIBS := -Wl,--whole-archive $(LC)/target/release/liblinkcell.a -Wl,--no-whole-archive
