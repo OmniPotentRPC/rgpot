@@ -13,7 +13,7 @@ CXXFLAGS := -std=c++20 -O2 -g -fopenmp -Wall -Wextra
 CXXFLAGS += -I$(ROOT)/CppCore -I$(ROOT)/include -I$(LC)/include
 CXXFLAGS += -I/tmp -DRGPOT_HAS_DFTD3 -DRGPOT_HAS_DFTD4
 LIBS := -Wl,--whole-archive $(LC)/target/release/liblinkcell.a -Wl,--no-whole-archive
-LIBS += -pthread -ldl -lm -lcudart
+LIBS += -pthread -ldl -lm -lcudart /lib/x86_64-linux-gnu/libfftw3.so.3
 DFTD3_SO ?= /home/ubuntu/.local/lib/python3.12/site-packages/dftd3/_libdftd3.cpython-312-x86_64-linux-gnu.so
 DFTD4_SO ?= /home/ubuntu/.local/lib/python3.12/site-packages/dftd4/_libdftd4.cpython-312-x86_64-linux-gnu.so
 PYLIB := -L/usr/lib/python3.12/config-3.12-x86_64-linux-gnu -lpython3.12
