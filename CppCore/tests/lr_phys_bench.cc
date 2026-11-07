@@ -236,16 +236,20 @@ std::string pipe_first(const std::string &cmd) {
   return text;
 }
 
+std::string exe_link() {
+  char path[4096];
+  const char *exe = std::getenv("LR_EXE");
+  const ssize_t n = ::readlink(exe != nullptr && exe[0] != '\0' ? exe : "/proc/self/exe", path,
+                               sizeof(path) - 1);
+  if (n <= 0) {
+    return "unknown";
+  }
+  path[n] = '\0';
+  return pipe_first(std::string("sha256sum ") + path);
+}
+
 const std::string &binary_sha() {
-  static const std::string value = [] {
-    char path[4096];
-    const ssize_t n = ::readlink("/proc/self/exe", path, sizeof(path) - 1);
-    if (n <= 0) {
-      return std::string("unknown");
-    }
-    path[n] = '\0';
-    return pipe_first(std::string("sha256sum ") + path);
-  }();
+  static const std::string value = exe_link();
   return value;
 }
 
@@ -527,13 +531,23 @@ int main(int argc, char **argv) {
   if (std::getenv("LR_COVER_FAILURES") != nullptr) {
     quantile7(std::vector<double>{1.0, 1.0, 1.0}, 0.0);
     pipe_first("sha256sum /no/such/rgpot-file");
-    setenv("LR_CPUINFO", "/tmp/rgpot-empty-cpuinfo", 1);
     std::ofstream("/tmp/rgpot-empty-cpuinfo").close();
-    if (cpu_model() != "unknown") {
+    setenv("LR_CPUINFO", "/tmp/rgpot-empty-cpuinfo", 1);
+    const std::string missing = cpu_model();
+    std::ofstream("/tmp/rgpot-named-cpuinfo") << "model name : Test CPU\n";
+    setenv("LR_CPUINFO", "/tmp/rgpot-named-cpuinfo", 1);
+    const std::string named = cpu_model();
+    unsetenv("LR_CPUINFO");
+    if (missing != "unknown" || named == "unknown") {
       std::cerr << "cpu fallback missed\n";
       return 2;
     }
-    unsetenv("LR_CPUINFO");
+    setenv("LR_EXE", "/tmp/rgpot-not-a-link", 1);
+    if (exe_link() != "unknown") {
+      std::cerr << "exe fallback missed\n";
+      return 2;
+    }
+    unsetenv("LR_EXE");
     std::cout << "cover_failures ok\n";
   }
   const int nrep = argc > 1 ? std::atoi(argv[1]) : 6;
