@@ -17,12 +17,13 @@ Stages:
 the trace and records ``pos_dtype`` and ``model_dtype`` as ``float64``.
 ``--dtype float32`` calls ``hydra.float()`` and records ``float32``.
 
-torch.export tries dynamic-nonstrict (single system only), static-nonstrict
-and static-strict, then falls back to make_fx(tracing_mode="real") followed by
-a nonstrict export of the traced module. With torch 2.13 and fairchem-core
-2.23 every UMA export takes the fallback. The fallback package is static: it
-accepts only the traced atom count and edge count, so pass --molecular-box
-for anything that moves (every intramolecular pair is then an edge). The path
+The edge count is exported as a symbol: integer-array gathers are
+replaced by index_select, the module is traced with
+make_fx(tracing_mode="symbolic"), and a second geometry has to match a
+same-dtype reference before that package is kept. The atom count stays
+the traced size. If the symbolic trace cannot be checked, the script
+falls back to a static make_fx(tracing_mode="real") package, and the
+runtime names both shapes instead of reading past the buffer. The path
 taken is embedded as export_path.
 """
 
@@ -354,9 +355,15 @@ class TensorUma(nn.Module):
         batch: torch.Tensor,
         natoms: torch.Tensor,
     ):
+        # Gradients stay inside this function. The returned energy and
+        # forces are detached so the exported graph does not hand a
+        # requires-grad tensor back to the caller.
         pos = pos.clone().requires_grad_(True)
+        cell = cell.clone().requires_grad_(True)
+        # The single-system branch does not read nedges. Writing the
+        # symbolic edge count into a tensor specialises that dimension,
+        # so the placeholder stays zero.
         nedges = edge_index.new_zeros(1)
-        nedges[0] = edge_index.shape[1]
         z = atomic_numbers.long()
         b = batch.long()
         data = TensorData(
@@ -393,7 +400,7 @@ class TensorUma(nn.Module):
         )
         (g,) = torch.autograd.grad(energy_raw, pos, create_graph=False)
         forces = (-g).to(torch.float64) * self.f_rmsd + self.f_mean
-        return energy, forces
+        return energy.detach(), forces.detach()
 
 
 class TensorUmaBatched(TensorUma):
@@ -651,6 +658,42 @@ def patch_export_ops():
             return torch.zeros(*shape, **kwargs)
     wdh.torch = _FixedRollTorch()
     print("patched axis_angle_wigner_hybrid: fixed roll gauge", flush=True)
+    # Integer-array indexing specialises the edge count to the traced
+    # example. index_select keeps that dimension symbolic and is the
+    # same gather.
+    import inspect
+    import textwrap
+
+    import fairchem.core.models.uma.escn_md as escn_index
+    import fairchem.core.models.uma.nn.execution_backends as backends
+
+    src = textwrap.dedent(inspect.getsource(escn_index.eSCNMDBackbone._generate_graph))
+    src = src.replace(
+        'data_dict["pos"][data_dict["edge_index"][0]]',
+        'data_dict["pos"].index_select(0, data_dict["edge_index"][0])',
+    )
+    src = src.replace(
+        'data_dict["pos"][data_dict["edge_index"][1]]',
+        'data_dict["pos"].index_select(0, data_dict["edge_index"][1])',
+    )
+    namespace: dict = {}
+    exec(src, escn_index.__dict__, namespace)  # noqa: S102
+    escn_index.eSCNMDBackbone._generate_graph = namespace["_generate_graph"]
+
+    def _node_to_edge(x_full, edge_index, wigner):
+        gathered = torch.cat(
+            (
+                x_full.index_select(0, edge_index[0]),
+                x_full.index_select(0, edge_index[1]),
+            ),
+            dim=2,
+        )
+        return torch.bmm(wigner, gathered)
+
+    backends.UMASFastPytorchBackend.node_to_edge_wigner_permute = staticmethod(
+        _node_to_edge
+    )
+    print("patched edge gathers: index_select", flush=True)
 
 
 def dtype_name(dtype) -> str:
@@ -842,6 +885,63 @@ def run_aoti(pkg, args):
     if callable(pkg):
         return pkg(*args)
     raise TypeError(type(pkg))
+
+
+def _separated(atoms: Atoms, cutoff: float) -> Atoms:
+    """Move the last atom just past the cutoff from the others.
+
+    The neighbour list of a molecule that started fully connected then
+    loses every edge that touched that atom.
+    """
+    out = atoms.copy()
+    pos = np.array(out.get_positions(), dtype=np.float64, copy=True)
+    if len(pos) < 2:
+        return out
+    origin = pos[:-1].mean(axis=0)
+    pos[-1] = origin + np.array([0.0, 0.0, float(cutoff) + 2.0])
+    out.set_positions(pos)
+    return out
+
+
+def try_symbolic_edges(wrap: nn.Module, example):
+    """Export one graph whose edge count is symbolic.
+
+    Returns the program, or None when the trace or the export cannot
+    keep that dimension. The caller still has to score a second geometry
+    against the same-dtype reference before trusting it.
+    """
+    from torch.fx.experimental.proxy_tensor import make_fx
+
+    traced = tuple(tensor.clone() for tensor in example)
+    torch._dynamo.mark_dynamic(traced[4], 1)
+    torch._dynamo.mark_dynamic(traced[5], 0)
+    print("try make_fx(tracing_mode=symbolic)", flush=True)
+    try:
+        graph = make_fx(
+            wrap,
+            tracing_mode="symbolic",
+            _allow_non_fake_inputs=True,
+            _allow_fake_constant=True,
+        )(*traced)
+    except Exception as exc:
+        print(f"symbolic make_fx failed: {type(exc).__name__}: {exc}", flush=True)
+        return None
+    print("symbolic nodes", len(graph.graph.nodes), flush=True)
+    placeholders = [node.name for node in graph.graph.nodes if node.op == "placeholder"]
+    if len(placeholders) < 6:
+        print("symbolic graph has no edge inputs", flush=True)
+        return None
+    nedges_dim = torch.export.Dim("nedges", min=1, max=65536)
+    dynamic = {name: None for name in placeholders}
+    dynamic[placeholders[4]] = {1: nedges_dim}
+    dynamic[placeholders[5]] = {0: nedges_dim}
+    try:
+        return torch.export.export(
+            graph, example, dynamic_shapes=dynamic, strict=False
+        )
+    except Exception as exc:
+        print(f"symbolic export failed: {type(exc).__name__}: {exc}", flush=True)
+        return None
 
 
 def main() -> int:
@@ -1082,6 +1182,68 @@ def main() -> int:
         # keeps the edge count at B * n * (n-1) for every geometry.
         dyn = None
     exported = None
+    export_path = ""
+    example_alt = None
+    e_alt_ref = None
+    f_alt_ref = None
+    # Atom count stays fixed: a three-atom trace unifies that count with
+    # the trailing 3 of the coordinates, so natoms is not a free symbol.
+    # The edge count is free. A second geometry, scored against a
+    # same-dtype reference, is what makes the package eligible.
+    if dyn is not None and int(example[4].shape[1]) > 1:
+        alt_atoms = _separated(atoms, cutoff)
+        example_alt = pack_example(alt_atoms, cutoff, device, dtype, max_n)
+        if int(example_alt[4].shape[1]) != int(example[4].shape[1]):
+            print(
+                f"alt edges={int(example_alt[4].shape[1])} "
+                f"(traced {int(example[4].shape[1])})",
+                flush=True,
+            )
+            e_alt_ref, f_alt_ref, _alt_pred = ase_reference(
+                alt_atoms, args.model, args.device, task_name, dtype_name=args.dtype
+            )
+            with torch.enable_grad():
+                e_eager_alt, f_eager_alt = wrap(*example_alt)
+            if not compare(
+                "eager-alt",
+                e_eager_alt.detach().cpu(),
+                f_eager_alt.detach().cpu().numpy(),
+                e_alt_ref,
+                f_alt_ref,
+            ):
+                print(
+                    "FAIL: eager tensor wrapper does not match the "
+                    "same-dtype reference on the second graph",
+                    file=sys.stderr,
+                )
+                return 2
+            candidate = try_symbolic_edges(wrap, example)
+            if candidate is not None:
+                with torch.no_grad():
+                    e_sym, f_sym = candidate.module()(*example)
+                    e_sym_alt, f_sym_alt = candidate.module()(*example_alt)
+                ok_sym = compare_batched(
+                    "symbolic", e_sym.detach().cpu(),
+                    f_sym.detach().cpu().numpy(), e_ref, f_ref, len(atoms),
+                )
+                ok_alt = compare(
+                    "symbolic-alt",
+                    e_sym_alt.detach().cpu(),
+                    f_sym_alt.detach().cpu().numpy(),
+                    e_alt_ref,
+                    f_alt_ref,
+                )
+                if ok_sym and ok_alt:
+                    exported = candidate
+                    export_path = "symbolic-nedges"
+                    print("export ok symbolic-nedges", flush=True)
+                else:
+                    print(
+                        "symbolic graph does not match the same-dtype "
+                        "reference; keeping a static package",
+                        flush=True,
+                    )
+                    example_alt = None
     attempts = [
         ("static-nonstrict", dict(strict=False)),
         ("static-strict", dict(strict=True)),
@@ -1090,8 +1252,8 @@ def main() -> int:
         attempts.insert(0, ("dynamic-nonstrict",
                             dict(dynamic_shapes=dyn, strict=False)))
     last = None
-    export_path = ""
-    for attempt, kwargs in attempts:
+    if exported is None:
+      for attempt, kwargs in attempts:
         try:
             print("try export", attempt, flush=True)
             candidate = torch.export.export(wrap, example, **kwargs)
@@ -1136,11 +1298,18 @@ def main() -> int:
     meta["export_path"] = export_path
     # UmaPot refuses an edge count outside this range instead of feeding
     # the compiled graph a shape it was not traced for.
-    if export_path == "dynamic-nonstrict":
+    if export_path == "symbolic-nedges":
+        meta["nedges_min"] = nedges_min
+        meta["nedges_max"] = nedges_max
+        meta["edge_index_shape"] = "2,nedges"
+        meta["pos_shape"] = f"{len(atoms)},3"
+    elif export_path == "dynamic-nonstrict":
         meta["nedges_min"] = nedges_min
         meta["nedges_max"] = nedges_max
     else:
         meta["nedges_min"] = meta["nedges_max"] = int(example[4].shape[1])
+        meta["edge_index_shape"] = f"2,{int(example[4].shape[1])}"
+        meta["pos_shape"] = f"{len(atoms)},3"
     if export_path == "make_fx-nonstrict" and not (
         args.molecular_box and args.molecular_box > 0.0
     ):
@@ -1169,6 +1338,17 @@ def main() -> int:
     if not compare_batched("aoti", e_a, f_a, e_ref, f_ref, len(atoms)):
         print("FAIL: AOTI package does not match ASE", file=sys.stderr)
         return 4
+    if export_path == "symbolic-nedges" and example_alt is not None:
+        e_b, f_b = run_aoti(pkg, example_alt)
+        e_b = torch.as_tensor(e_b).detach().cpu()
+        f_b = torch.as_tensor(f_b).detach().cpu().numpy()
+        if not compare("aoti-alt", e_b, f_b, e_alt_ref, f_alt_ref):
+            print(
+                "FAIL: AOTI package does not match the same-dtype "
+                "reference on the second graph",
+                file=sys.stderr,
+            )
+            return 4
     # The band contract is exact-B: every call carries batch_max
     # systems (padded by the caller); the per-subsystem comparison
     # above already exercised the packaged graph at that size.

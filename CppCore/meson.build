@@ -986,6 +986,48 @@ if get_option('with_tests')
         )
         _uma_fix_pkgs += [_uma_batch]
         _uma_fix_env.set('UMA_FLOAT64_BATCH_PT2', _uma_batch.full_path())
+        _uma_gather_static = custom_target(
+            'uma-gather-static',
+            output: 'gather-static.pt2',
+            command: [
+                _uma_py, _uma_export,
+                '--kind', 'gather',
+                '--dtype', 'float64',
+                '--out', '@OUTPUT@',
+            ],
+            build_by_default: false,
+        )
+        _uma_gather_dynamic = custom_target(
+            'uma-gather-dynamic',
+            output: 'gather-dynamic.pt2',
+            command: [
+                _uma_py, _uma_export,
+                '--kind', 'gather',
+                '--dtype', 'float64',
+                '--dynamic',
+                '--out', '@OUTPUT@',
+            ],
+            build_by_default: false,
+        )
+        _uma_fix_pkgs += [_uma_gather_static, _uma_gather_dynamic]
+        _uma_fix_env.set('UMA_GATHER_STATIC_PT2', _uma_gather_static.full_path())
+        _uma_fix_env.set('UMA_GATHER_DYNAMIC_PT2', _uma_gather_dynamic.full_path())
+        test(
+            'UmaGraphSizeTest',
+            executable(
+                'uma_graph_size_test',
+                sources: ['tests/UmaGraphSizeTest.cc'],
+                dependencies: test_deps,
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+                build_rpath: _metatomic_build_rpath,
+            ),
+            env: _uma_fix_env,
+            depends: _uma_fix_pkgs,
+            workdir: meson.source_root(),
+        )
         test(
             'UmaFloat64Test',
             executable(

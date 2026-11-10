@@ -68,6 +68,36 @@ class SumEnergyBatch(nn.Module):
         return energy, -torch.ones_like(pos)
 
 
+class GatherEnergy(nn.Module):
+    """Energy is the sum of (pos[neighbor] - pos[center]) over edges.
+
+    The value changes when the neighbour list changes, so a static graph
+    and a dynamic graph disagree on a stretched geometry.
+    """
+
+    def forward(
+        self,
+        pos,
+        atomic_numbers,
+        cell,
+        pbc,
+        edge_index,
+        cell_offsets,
+        charge,
+        spin,
+        batch,
+        natoms,
+    ):
+        # Neighbour positions only. A complete graph of n atoms then
+        # has energy (n - 1) times the sum of coordinates, so dropping
+        # edges changes the energy. The reversed difference cancels.
+        src = pos.index_select(0, edge_index[0])
+        energy = src.sum()
+        forces = torch.zeros_like(pos)
+        forces.index_add_(0, edge_index[0], torch.ones_like(src))
+        return energy, forces
+
+
 class CostEnergy(nn.Module):
     def __init__(self):
         super().__init__()
@@ -325,6 +355,117 @@ def export_batch(path: Path, dtype_name: str) -> None:
     aoti_package(exported, path, metadata=meta)
 
 
+def _cluster(dtype, n: int):
+    pos = torch.zeros((n, 3), dtype=dtype)
+    pos[:, 0] = 12.5
+    pos[:, 1] = 12.5
+    pos[:, 2] = 12.5 + torch.arange(n, dtype=dtype)
+    numbers = torch.full((n,), 6, dtype=torch.long)
+    return pos, numbers
+
+
+def _cluster_example(dtype, n: int, nedges: int):
+    pos, numbers = _cluster(dtype, n)
+    cell = torch.eye(3, dtype=dtype).reshape(1, 3, 3) * 40
+    pbc = torch.tensor([[True, True, True]])
+    # A complete directed graph, self excluded, truncated to nedges.
+    neighbor = []
+    center = []
+    for c in range(n):
+        for nbr in range(n):
+            if nbr == c:
+                continue
+            neighbor.append(nbr)
+            center.append(c)
+    neighbor = neighbor[:nedges]
+    center = center[:nedges]
+    edge_index = torch.tensor([neighbor, center], dtype=torch.long)
+    offsets = torch.zeros((nedges, 3), dtype=dtype)
+    charge = torch.tensor([0], dtype=torch.long)
+    spin = torch.tensor([1], dtype=torch.long)
+    batch = torch.zeros(n, dtype=torch.long)
+    natoms = torch.tensor([n], dtype=torch.long)
+    return (
+        pos,
+        numbers,
+        cell,
+        pbc,
+        edge_index,
+        offsets,
+        charge,
+        spin,
+        batch,
+        natoms,
+    )
+
+
+def export_gather(path: Path, dtype_name: str, dynamic: bool) -> None:
+    """Gather graph. ``dynamic`` traces a symbolic edge count and atom count.
+
+    The static package is eight atoms and 56 edges, the fixed graph that
+    a tetrazine export bakes in. The dynamic package accepts other sizes.
+    """
+    dtype = torch.float64 if dtype_name == "float64" else torch.float32
+    if dynamic:
+        example = _cluster_example(dtype, 4, 12)
+    else:
+        example = _cluster_example(dtype, 8, 56)
+    module = apply_export_dtype(GatherEnergy().eval(), dtype_name)
+    nedges_dim = torch.export.Dim("nedges", min=1, max=4096)
+    natoms_dim = torch.export.Dim("natoms", min=1, max=64)
+    shapes = None
+    if dynamic:
+        shapes = {
+            "pos": {0: natoms_dim},
+            "atomic_numbers": {0: natoms_dim},
+            "cell": None,
+            "pbc": None,
+            "edge_index": {1: nedges_dim},
+            "cell_offsets": {0: nedges_dim},
+            "charge": None,
+            "spin": None,
+            "batch": {0: natoms_dim},
+            "natoms": None,
+        }
+    exported = torch.export.export(
+        module, example, dynamic_shapes=shapes, strict=False
+    )
+    meta = runtime_metadata(
+        path,
+        6.0,
+        300,
+        example,
+        dtype,
+        model_dtype=dtype,
+        task_name="omol",
+        charge=0,
+        spin=1,
+        z_set=None,
+        counts=None,
+        label="cluster",
+        model="tiny-gather",
+    )
+    if dynamic:
+        meta["nedges_min"] = 1
+        meta["nedges_max"] = 4096
+        meta["natoms_min"] = 1
+        meta["natoms_max"] = 64
+        meta["pos_shape"] = "natoms,3"
+        meta["edge_index_shape"] = "2,nedges"
+        meta["export_path"] = "tiny-gather-dynamic"
+    else:
+        meta["natoms"] = 8
+        meta["nedges_min"] = 56
+        meta["nedges_max"] = 56
+        meta["pos_shape"] = "8,3"
+        meta["edge_index_shape"] = "2,56"
+        meta["export_path"] = "tiny-gather-static"
+        meta["z_set"] = [6]
+        meta["counts"] = '{"6": 8}'
+    aoti_package(exported, path, metadata=meta)
+    _enforce_metadata(path, meta)
+
+
 def export_cost(path: Path, dtype_name: str) -> None:
     dtype = torch.float64 if dtype_name == "float64" else torch.float32
     example = _cost_example(dtype)
@@ -371,7 +512,16 @@ def export_cost(path: Path, dtype_name: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--kind", choices=("precision", "batch", "cost"), required=True)
+    parser.add_argument(
+        "--kind",
+        choices=("precision", "batch", "cost", "gather"),
+        required=True,
+    )
+    parser.add_argument(
+        "--dynamic",
+        action="store_true",
+        help="gather only: symbolic atom count and edge count",
+    )
     parser.add_argument("--dtype", choices=("float32", "float64"), required=True)
     parser.add_argument(
         "--meta",
@@ -383,6 +533,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.kind == "precision":
         export_precision(args.out, args.dtype, args.meta)
+    elif args.kind == "gather":
+        export_gather(args.out, args.dtype, args.dynamic)
     elif args.kind == "batch":
         if args.meta != "both":
             raise SystemExit("batch packages always record both dtype keys")

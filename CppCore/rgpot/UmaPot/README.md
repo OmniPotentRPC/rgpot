@@ -51,7 +51,18 @@ input against the embedded keys and throws `rgpot::UmaContractError`
 ```
 UmaPot: config charge is -1, the package was exported for 0
 UmaPot: input counts is {1: 4, 6: 2}, the package was exported for {1: 2, 6: 2}
+UmaPot: edge_index shape is [2, 42], the package was exported for [2, 56]
 ```
+
+Positions and the edge list are checked against the shape the package
+declares before the compiled graph is called. A static package names
+the traced sizes (`[8, 3]` and `[2, 56]` for an eight-atom complete
+graph). A package that was exported with a symbolic edge count names
+that axis and its range. A mismatch throws `rgpot::UmaShapeError`.
+An edge index outside the position buffer throws the same error and
+is not gathered. `pos_shape` and `edge_index_shape` record the
+declaration; when they are absent the atom count and the edge range
+are used.
 
 `natoms` and `counts` exist only in packages from the current
 exporter. Older packages get the `z_set` check, which cannot tell
@@ -63,15 +74,21 @@ and spin.
 
 ## Export path
 
-`export_uma_aoti.py` tries `torch.export` (dynamic nonstrict, static
-nonstrict, static strict) and falls back to
-`make_fx(tracing_mode="real")` plus a nonstrict export of the traced
-module. With torch 2.13 and fairchem-core 2.23 every UMA export takes
-the fallback, and `export_path` reads `make_fx-nonstrict`. That
-package is static in atom count and edge count, so export with
-`--molecular-box` (complete intramolecular graph, `n(n-1)` edges at
-every geometry). Without it the exporter warns: a geometry that moves
-a pair across the cutoff changes the edge count and the call fails.
+`export_uma_aoti.py` traces with `make_fx(tracing_mode="symbolic")`
+after replacing integer-array gathers by `index_select`, then exports
+that graph with a symbolic edge count. A second geometry, whose
+neighbour list is a different length, has to match a same-dtype
+reference before the package is kept. `export_path` then reads
+`symbolic-nedges`, and the edge range is 1 to 65536. The atom count
+stays the traced size: a three-atom example unifies that count with
+the trailing 3 of the coordinates, so the atom count is not a free
+symbol. A call with a different atom count throws `UmaShapeError` and
+names both position shapes.
+
+When the symbolic trace cannot be checked, the exporter falls back to
+`make_fx(tracing_mode="real")`. That package is static. A later call
+whose edge list changed size throws `UmaShapeError` naming both edge
+shapes, instead of reading past the end of the buffer.
 
 ## potserv
 
