@@ -478,11 +478,31 @@ def load_predictor(name: str, device: str):
     )
 
 
-def ase_reference(atoms: Atoms, model: str, device: str, task_name: str = "omol"):
-    """Official ASE path: internal graph gen, no pymatgen."""
+def ase_reference(
+    atoms: Atoms,
+    model: str,
+    device: str,
+    task_name: str = "omol",
+    dtype_name: str = "float32",
+):
+    """ASE FAIRChemCalculator in ``dtype_name``, internal graph gen.
+
+    float64 sets ``base_precision_dtype`` so the checkpoint is built in
+    float64 and the calculator feeds float64 positions, then calls
+    ``hydra.double()``. float32 does the same with ``hydra.float()``.
+    The 1e-4 gate compares an export only to this same-dtype result.
+    """
     from fairchem.core import FAIRChemCalculator, pretrained_mlip
     from fairchem.core.units.mlip_unit.api.inference import InferenceSettings
 
+    if dtype_name == "float64":
+        precision = torch.float64
+    elif dtype_name == "float32":
+        precision = torch.float32
+    else:
+        raise ValueError(
+            f"dtype_name must be float32 or float64, not {dtype_name}"
+        )
     settings = InferenceSettings(
         tf32=False,
         activation_checkpointing=False,
@@ -490,10 +510,12 @@ def ase_reference(atoms: Atoms, model: str, device: str, task_name: str = "omol"
         compile=False,
         external_graph_gen=False,
         execution_mode="general",
+        base_precision_dtype=precision,
     )
     pred = pretrained_mlip.get_predict_unit(
         model, device=device, inference_settings=settings
     )
+    apply_export_dtype(pred.model, dtype_name)
     a = atoms.copy()
     a.calc = FAIRChemCalculator(pred, task_name=task_name)
     e = float(a.get_potential_energy())
@@ -559,6 +581,21 @@ def compare(tag: str, e, f, e_ref, f_ref, e_tol=1e-4, f_tol=1e-4) -> bool:
     df = np.max(np.abs(np.asarray(f, dtype=np.float64) - f_ref))
     print(f"{tag}: E={float(e):.17g}  dE={de:.3e}  max|dF|={df:.3e}", flush=True)
     return abs(de) <= e_tol and df <= f_tol
+
+
+def reference_for_dtype(export_dtype, float32_ref, float64_ref):
+    """(energy, forces) of the reference that matches ``export_dtype``.
+
+    The 1e-4 gate must not score a float64 evaluation against a float32
+    reference. ``float32_ref`` and ``float64_ref`` are those pairs.
+    """
+    if export_dtype == "float64":
+        return float64_ref
+    if export_dtype == "float32":
+        return float32_ref
+    raise ValueError(
+        f"export dtype must be float32 or float64, not {export_dtype}"
+    )
 
 
 def patch_export_ops():
@@ -627,18 +664,53 @@ def dtype_name(dtype) -> str:
     return name
 
 
-def apply_export_dtype(module: nn.Module, dtype_name: str) -> nn.Module:
+def floating_dtype(module: nn.Module):
+    """The single floating dtype of every parameter and buffer.
+
+    ``None`` when the module has no floating tensor. Raises when two
+    floating tensors disagree, instead of trusting the first parameter.
+    """
+    found: dict[torch.dtype, str] = {}
+    groups = (
+        ("parameter", module.named_parameters()),
+        ("buffer", module.named_buffers()),
+    )
+    for kind, tensors in groups:
+        for name, tensor in tensors:
+            if tensor.is_floating_point():
+                found.setdefault(tensor.dtype, f"{kind} {name}")
+    if not found:
+        return None
+    if len(found) != 1:
+        detail = "; ".join(
+            f"{dtype_name(dt)} ({where})" for dt, where in found.items()
+        )
+        raise RuntimeError(
+            "parameters and buffers do not share one floating dtype: " + detail
+        )
+    return next(iter(found))
+
+
+def apply_export_dtype(module: nn.Module, wanted: str) -> nn.Module:
     """Convert ``module`` before the AOTI trace.
 
     float64 calls ``Module.double()`` so the weights the tracer sees are
     float64. float32 calls ``Module.float()`` and is the explicit
-    checkpoint dtype, not an implicit default.
+    checkpoint dtype, not an implicit default. Every floating parameter
+    and buffer must agree afterwards.
     """
-    if dtype_name == "float64":
-        return module.double()
-    if dtype_name == "float32":
-        return module.float()
-    raise SystemExit(f"--dtype must be float32 or float64, not {dtype_name}")
+    if wanted == "float64":
+        converted = module.double()
+    elif wanted == "float32":
+        converted = module.float()
+    else:
+        raise SystemExit(f"--dtype must be float32 or float64, not {wanted}")
+    actual = floating_dtype(converted)
+    if actual is not None and dtype_name(actual) != wanted:
+        raise RuntimeError(
+            f"after {wanted} conversion the module is {dtype_name(actual)}"
+        )
+    return converted
 
 
 def runtime_metadata(
@@ -847,9 +919,14 @@ def main() -> int:
         f"z_set={z_set} counts={counts} natoms={len(atoms)}",
         flush=True,
     )
-    print("ASE FAIRChemCalculator reference", args.model, flush=True)
-    e_ref, f_ref, pred = ase_reference(atoms, args.model, args.device, task_name)
-    print(f"ASE FAIRChemCalculator E={e_ref:.17g}", flush=True)
+    print(
+        f"ASE FAIRChemCalculator reference {args.model} dtype={args.dtype}",
+        flush=True,
+    )
+    e_ref, f_ref, pred = ase_reference(
+        atoms, args.model, args.device, task_name, dtype_name=args.dtype
+    )
+    print(f"ASE FAIRChemCalculator dtype={args.dtype} E={e_ref:.17g}", flush=True)
     for i, row in enumerate(f_ref):
         print(f"  F[{i}] {row[0]:.17g} {row[1]:.17g} {row[2]:.17g}")
 
@@ -878,16 +955,20 @@ def main() -> int:
         )
 
     device = torch.device(args.device)
-    # The ASE and AtomicData comparisons stay on the checkpoint dtype.
-    # The exported graph is converted afterwards.
-    native_dtype = next(hydra.parameters()).dtype
+    # ASE already ran in args.dtype (hydra.double()/float() and matching
+    # inputs). AtomicData and the eager wrapper stay on that dtype.
+    native = floating_dtype(hydra)
+    native_dtype = native if native is not None else torch.float32
 
     if args.compare_only:
         if not out.is_file():
             print(f"FAIL: --compare-only needs an existing .pt2: {out}", file=sys.stderr)
             return 4
         apply_export_dtype(hydra, args.dtype)
-        dtype = next(hydra.parameters()).dtype
+        found = floating_dtype(hydra)
+        dtype = found if found is not None else (
+            torch.float64 if args.dtype == "float64" else torch.float32
+        )
         example = pack_example(atoms, cutoff, device, dtype, max_n)
         meta = runtime_metadata(
             out,
@@ -930,7 +1011,10 @@ def main() -> int:
 
     # float64: hydra.double() before the trace. float32: hydra.float().
     apply_export_dtype(hydra, args.dtype)
-    dtype = next(hydra.parameters()).dtype
+    found = floating_dtype(hydra)
+    dtype = found if found is not None else (
+        torch.float64 if args.dtype == "float64" else torch.float32
+    )
     print(
         f"export pos_dtype={dtype_name(dtype)} model_dtype={dtype_name(dtype)}",
         flush=True,

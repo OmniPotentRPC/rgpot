@@ -83,12 +83,53 @@ def test_float64_metadata_names_both_dtypes():
     assert meta["model_dtype"] == "float64"
 
 
+def test_floating_dtype_rejects_a_mixed_parameter_and_buffer():
+    class Mixed(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.linear = torch.nn.Linear(2, 2)
+            self.register_buffer("wide", torch.zeros(2, dtype=torch.float64))
+
+        def forward(self, values):
+            return self.linear(values)
+
+    with pytest.raises(RuntimeError, match="floating dtype"):
+        exp.floating_dtype(Mixed())
+
+
 def test_apply_export_dtype_uses_double_and_float():
     module = torch.nn.Linear(3, 4)
     exp.apply_export_dtype(module, "float64")
     assert next(module.parameters()).dtype == torch.float64
     exp.apply_export_dtype(module, "float32")
     assert next(module.parameters()).dtype == torch.float32
+
+
+def test_export_gate_compares_each_dtype_to_its_own_reference():
+    """A 1.2e-4 eV/A force gap fails the 1e-4 gate across dtypes.
+
+    The same eager forces pass when the reference is the float64 one.
+    That is the HCN case: float64 versus a float32 ASE result sits just
+    outside 1e-4, and versus a float64 ASE result it does not.
+    """
+    float32_forces = np.zeros((2, 3))
+    float64_forces = np.array([[1.2e-4, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    eager = float64_forces.copy()
+    assert not exp.compare("cross", 0.0, eager, 0.0, float32_forces)
+    energy, forces = exp.reference_for_dtype(
+        "float64",
+        (0.0, float32_forces),
+        (-1.5, float64_forces),
+    )
+    assert energy == -1.5
+    assert exp.compare("float64", -1.5, eager, energy, forces)
+    energy32, forces32 = exp.reference_for_dtype(
+        "float32",
+        (0.25, float32_forces),
+        (-1.5, float64_forces),
+    )
+    assert energy32 == 0.25
+    assert exp.compare("float32", 0.25, float32_forces, energy32, forces32)
 
 
 def test_dynamic_package_omits_natoms_when_counts_are_absent():
