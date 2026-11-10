@@ -1,4 +1,4 @@
-# UmaPot: UMA / OMol AOTI frontend
+# UmaPot: universal model for atoms (UMA) / OMol AOTI frontend
 
 `UmaPot` loads an AOTI (AOTInductor, PyTorch ahead-of-time
 compiled) package (`.pt2`) that `scripts/export_uma_aoti.py`
@@ -31,8 +31,8 @@ package is read.
 `UmaConfig.cutoff` / `max_neighbors` are defaults. The embedded
 values win when present.
 
-`scripts/export_uma_aoti.py --dtype float64` converts the model with
-`hydra.double()` before the AOTI trace and records both dtype keys as
+The exporter converts the model with `hydra.double()` before the
+AOTI trace for `--dtype float64` and records both dtype keys as
 `float64`. `--dtype float32` calls `hydra.float()` and records
 `float32`. A package with neither key falls back to float32, and the
 load line keeps a missing key as `unset` rather than inventing it.
