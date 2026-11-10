@@ -10,6 +10,8 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
+#include <fstream>
 #include <limits>
 #include <random>
 #include <stdexcept>
@@ -28,6 +30,8 @@
 #include "rgpot/nlist/PairListCache.hpp"
 #include "rgpot/nlist/cell_visit.hpp"
 #include "rgpot/nlist/vesin_visit.hpp"
+#include "rgpot/simd/api.hpp"
+#include "rgpot/simd/from_cache.hpp"
 
 using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
@@ -944,6 +948,86 @@ Eval scPot(const rgpot::SuttonChenPot &pot, const std::vector<double> &R) {
   return e;
 }
 
+std::vector<double> loadXyz(const std::string &path) {
+  std::ifstream in(path);
+  REQUIRE(in.good());
+  std::vector<double> R;
+  double x = 0.0;
+  double y = 0.0;
+  double z = 0.0;
+  while (in >> x >> y >> z) {
+    R.insert(R.end(), {x, y, z});
+  }
+  REQUIRE(R.size() % 3 == 0);
+  REQUIRE(!R.empty());
+  return R;
+}
+
+std::vector<double> unitCube(std::size_t n, std::uint64_t seed) {
+  std::mt19937_64 rng(seed);
+  std::uniform_real_distribution<double> u(0.0, 10.0);
+  std::vector<double> R(3 * n);
+  for (double &x : R) {
+    x = u(rng);
+  }
+  return R;
+}
+
+rgpot::simd::LjParams ljParams(double u0, double psi, double cutoff,
+                               double switch_width) {
+  const double a = std::pow(psi / cutoff, 6.0);
+  rgpot::simd::LjParams p{};
+  p.psi2 = psi * psi;
+  p.four_u0 = 4.0 * u0;
+  p.shift = 4.0 * u0 * a * (a - 1.0);
+  p.use_switch = 0;
+  if (switch_width != 0.0) {
+    const auto sw = rgpot::QuinticSwitch::endingAt(cutoff, switch_width);
+    p.use_switch = 1;
+    p.r_on = sw.r_on;
+    p.inv_width = sw.inv_width;
+  }
+  return p;
+}
+
+struct BitRun {
+  double energy;
+  std::vector<double> F;
+};
+
+BitRun runFill(const std::vector<double> &R, const std::array<double, 9> &box,
+               const CachedPairList::Options &opt,
+               const rgpot::simd::LjParams &params) {
+  const std::size_t n = R.size() / 3;
+  rgpot::simd::CachedPairs pairs;
+  rgpot::simd::fill_view(pairs, R.data(), n, box.data(), opt);
+  BitRun out{0.0, std::vector<double>(3 * n, 0.0)};
+  double strain[6] = {};
+  out.energy = rgpot::simd::lj_force(pairs.view, params, out.F.data(), strain);
+  return out;
+}
+
+BitRun runView(const std::vector<double> &R, const std::array<double, 9> &box,
+               const CachedPairList::Options &opt,
+               const rgpot::simd::LjParams &params) {
+  const std::size_t n = R.size() / 3;
+  BitRun out{0.0, std::vector<double>(3 * n, 0.0)};
+  double strain[6] = {};
+  rgpot::nlist::PairListCache::global().withView(
+      R.data(), n, box.data(), opt, [&](const rgpot::simd::PairView &view) {
+        out.energy =
+            rgpot::simd::lj_force(view, params, out.F.data(), strain);
+      });
+  return out;
+}
+
+void requireBits(const BitRun &a, const BitRun &b) {
+  REQUIRE(std::memcmp(&a.energy, &b.energy, sizeof(double)) == 0);
+  REQUIRE(a.F.size() == b.F.size());
+  REQUIRE(std::memcmp(a.F.data(), b.F.data(), a.F.size() * sizeof(double)) ==
+          0);
+}
+
 } // namespace
 
 TEST_CASE("Free clusters: the cell grid and the cache match brute force",
@@ -995,3 +1079,75 @@ TEST_CASE("Free clusters: the cell grid and the cache match brute force",
   }
 }
 
+TEST_CASE("Pair view matches the collected list to the bit",
+          "[PairList][pair-view]") {
+  auto check = [](const std::vector<double> &R, const std::array<double, 9> &box,
+                  const CachedPairList::Options &opt, double u0, double psi,
+                  double switch_width) {
+    const auto params = ljParams(u0, psi, opt.cutoff, switch_width);
+    const BitRun legacy = runFill(R, box, opt, params);
+    const BitRun viewed = runView(R, box, opt, params);
+    const BitRun viewed_again = runView(R, box, opt, params);
+    const BitRun legacy_again = runFill(R, box, opt, params);
+    requireBits(viewed, legacy);
+    requireBits(viewed_again, legacy);
+    requireBits(legacy_again, legacy);
+  };
+
+  const std::array<double, 9> box40{40, 0, 0, 0, 40, 0, 0, 0, 40};
+  CachedPairList::Options periodic;
+  periodic.cutoff = 15.0;
+  check(unitCube(128, 128), box40, periodic, 1.0, 1.0, 0.0);
+  check(unitCube(512, 512), box40, periodic, 1.0, 1.0, 0.0);
+  check(unitCube(128, 129), box40, periodic, 1.0, 1.0, 2.0);
+
+  const auto lj150 = loadXyz("benchmarks/data/lj150.xyz");
+  REQUIRE(lj150.size() == 3 * 150);
+  const std::array<double, 9> box100{100, 0, 0, 0, 100, 0, 0, 0, 100};
+  CachedPairList::Options free;
+  free.cutoff = 15.0;
+  free.periodic = {{false, false, false}};
+  check(lj150, box100, free, 1.0, 1.0, 0.0);
+  check(lj150, box100, free, 1.0, 1.0, 1.5);
+
+  std::vector<double> lattice;
+  lattice.reserve(3 * 125);
+  for (int i = 0; i < 5; ++i) {
+    for (int j = 0; j < 5; ++j) {
+      for (int k = 0; k < 5; ++k) {
+        lattice.push_back((i + 0.5) * 5.0);
+        lattice.push_back((j + 0.5) * 5.0);
+        lattice.push_back((k + 0.5) * 5.0);
+      }
+    }
+  }
+  const std::array<double, 9> box25{25, 0, 0, 0, 25, 0, 0, 0, 25};
+  CachedPairList::Options link;
+  link.cutoff = 6.0;
+  check(lattice, box25, link, 1.0, 1.0, 0.0);
+
+  const rgpot::LJPot switched{rgpot::LJConfig{
+      .u0 = 1.0, .cutoff = 15.0, .psi = 1.0, .switch_width = 2.0}};
+  const auto pos = unitCube(64, 64);
+  const std::vector<int> types(64, 1);
+  auto call = [&](const std::vector<double> &X) {
+    Eval e{0.0, std::vector<double>(X.size(), 0.0)};
+    rgpot::ForceInput fi{.nAtoms = X.size() / 3,
+                         .pos = X.data(),
+                         .atmnrs = types.data(),
+                         .box = box40.data()};
+    rgpot::ForceOut fo{.F = e.F.data(),
+                       .energy = 0.0,
+                       .variance = 0.0,
+                       .stress = {},
+                       .has_stress = 0};
+    switched.forceImpl(fi, &fo);
+    e.energy = fo.energy;
+    return e;
+  };
+  const Eval first = call(pos);
+  const Eval second = call(pos);
+  REQUIRE(std::memcmp(&first.energy, &second.energy, sizeof(double)) == 0);
+  REQUIRE(std::memcmp(first.F.data(), second.F.data(),
+                      first.F.size() * sizeof(double)) == 0);
+}

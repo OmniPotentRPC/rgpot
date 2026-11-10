@@ -17,7 +17,6 @@
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/nlist/PairListCache.hpp"
 #include "rgpot/simd/api.hpp"
-#include "rgpot/simd/from_cache.hpp"
 #include "rgpot/stress.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 using rgpot::types::AtomMatrix;
@@ -75,9 +74,11 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     params.r_on = m_switch.r_on;
     params.inv_width = m_switch.inv_width;
   }
-  simd::CachedPairs pairs;
-  simd::fill_view(pairs, R, static_cast<std::size_t>(N), box, opt);
-  *U = simd::lj_force(pairs.view, params, F, strain);
+  nlist::PairListCache::global().withView(
+      R, static_cast<std::size_t>(N), box, opt,
+      [&](const simd::PairView &view) {
+        *U = simd::lj_force(view, params, F, strain);
+      });
   publishCauchyStress(out, strain, volume);
 }
 

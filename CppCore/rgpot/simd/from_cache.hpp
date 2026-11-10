@@ -28,6 +28,10 @@ inline void fill_view(CachedPairs &out, const double *R, std::size_t n,
                       const double *box,
                       const nlist::CachedPairList::Options &opt) {
   std::vector<std::int32_t> ij;
+  if (n > 1) {
+    const std::size_t per = n > 8192 ? 32 : (n < 64 ? n : 64);
+    ij.reserve(std::min(n * per, n * (n - 1)));
+  }
   nlist::PairListCache::global().evaluate(
       R, n, box, opt,
       [&](std::int32_t i, std::int32_t j, double, double, double, double) {
@@ -47,9 +51,14 @@ inline void fill_view(CachedPairs &out, const double *R, std::size_t n,
     const auto i = static_cast<std::size_t>(ij[p]);
     out.nbr[static_cast<std::size_t>(cursor[i]++)] = ij[p + 1];
   }
-  // The cache sorts each row so a rebuild and a hit sum in the same order.
+  // finishRebuild sorts a cell-scan row. A brute-force scan already
+  // emits partners in ascending order, so that row is left as it is.
   for (std::size_t i = 0; i < n; ++i) {
-    std::sort(out.nbr.begin() + out.rows[i], out.nbr.begin() + out.rows[i + 1]);
+    const auto b = out.nbr.begin() + out.rows[i];
+    const auto e = out.nbr.begin() + out.rows[i + 1];
+    if (!std::is_sorted(b, e)) {
+      std::sort(b, e);
+    }
   }
   PairView v{};
   v.R = R;

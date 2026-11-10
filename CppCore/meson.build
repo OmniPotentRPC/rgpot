@@ -474,6 +474,15 @@ if not get_option('with_rpc_client_only')
             suite: 'expr',
         )
     endif
+    # Not a meson test. The free-cluster scaling driver.
+    executable(
+        'time_free_cluster',
+        sources: ['examples/time_free_cluster.cc'],
+        dependencies: _deps + [vesin_dep, fastnlist_dep] + fortran_rt_deps,
+        link_with: _linkto,
+        cpp_args: _args,
+        include_directories: _incdirs,
+    )
 endif
 
 # Client-only (eOn with_rgpot): thin dlopen frontends without fat link deps.

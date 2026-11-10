@@ -19,7 +19,6 @@
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/nlist/PairListCache.hpp"
 #include "rgpot/simd/api.hpp"
-#include "rgpot/simd/from_cache.hpp"
 
 namespace rgpot {
 
@@ -107,10 +106,12 @@ void LJClusterPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     params.r_on = m_switch.r_on;
     params.inv_width = m_switch.inv_width;
   }
-  simd::CachedPairs pairs;
-  simd::fill_view(pairs, R, static_cast<std::size_t>(N), box_use, opt);
   double strain[6] = {};
-  *U = simd::lj_force(pairs.view, params, F, strain);
+  nlist::PairListCache::global().withView(
+      R, static_cast<std::size_t>(N), box_use, opt,
+      [&](const simd::PairView &view) {
+        *U = simd::lj_force(view, params, F, strain);
+      });
 }
 
 } // namespace rgpot

@@ -50,6 +50,7 @@
 #include "rgpot/nlist/cell_visit.hpp"
 #include "rgpot/nlist/vesin_visit.hpp"
 #include "rgpot/simd/exact_fma.hpp"
+#include "rgpot/simd/pods.hpp"
 
 #if defined(__GNUC__)
 #define RGPOT_PL_INLINE __attribute__((always_inline)) inline
@@ -267,6 +268,37 @@ public:
 
   /// Candidate pairs held (within cutoff + skin at the build).
   [[nodiscard]] std::size_t size() const { return nbr_.size(); }
+
+  /// Point ``v`` at this slot's CSR. The view lives as long as the slot.
+  /// The fold matches the orthorhombic round ``simd::fill_view`` applies,
+  /// including a zero inverse on an axis the options leave unfolded, so a
+  /// kernel that filters at ``cutoff`` sees the same vectors.
+  void bindView(rgpot::simd::PairView &v, const double *R, const double *box,
+                const Options &opt) const {
+    v = {};
+    v.R = R;
+    v.rows = rows_.data();
+    v.nbr = nbr_.data();
+    v.n = n_;
+    v.cutoff2 = opt.cutoff * opt.cutoff;
+    const bool ortho = box[1] == 0.0 && box[2] == 0.0 && box[3] == 0.0 &&
+                       box[5] == 0.0 && box[6] == 0.0 && box[7] == 0.0;
+    if (ortho) {
+      v.fold = 1;
+      v.w[0] = box[0];
+      v.w[1] = box[4];
+      v.w[2] = box[8];
+      for (int k = 0; k < 3; ++k) {
+        const double w = v.w[k];
+        v.inv[k] = (opt.periodic[static_cast<std::size_t>(k)] && w != 0.0)
+                       ? 1.0 / w
+                       : 0.0;
+      }
+    } else {
+      v.fold = 3;
+      v.general = &generalImage_;
+    }
+  }
 
   /// Visit every cached pair within the true cutoff of the current
   /// positions; ``fn(i, j, dx, dy, dz, r2)`` uses ``d = r_i - r_j`` with
@@ -814,6 +846,40 @@ public:
     }
     store(fresh, hit);
     return energy;
+  }
+
+  /// Run ``fn`` on a PairView over a slot's CSR. A hit keeps the
+  /// shared_ptr alive for the call, so the view's rows and partners stay
+  /// valid. A miss builds the same list accumulate builds, then views it.
+  /// finishRebuild has already sorted each row, so the caller does not.
+  template <typename Fn>
+  void withView(const double *R, std::size_t n, const double *box,
+                const CachedPairList::Options &opt, Fn &&fn) {
+    std::shared_ptr<const CachedPairList> hit = lookup(R, n, box, opt);
+    if (hit && !hit->isPhantom()) {
+      rgpot::simd::PairView view{};
+      hit->bindView(view, R, box, opt);
+      fn(view);
+      return;
+    }
+    auto fresh = std::make_shared<CachedPairList>();
+    if (hit) {
+      fresh->rebuild(R, n, box, opt);
+    } else {
+      fresh->buildForEval(R, n, box, opt);
+    }
+    {
+      rgpot::simd::PairView view{};
+      fresh->bindView(view, R, box, opt);
+      fn(view);
+    }
+    if (!hit && !fresh->cacheable()) {
+      return;
+    }
+    if (!hit) {
+      fresh->dropPairs();
+    }
+    store(fresh, hit);
   }
 
   static PairListCache &global() {
