@@ -21,7 +21,8 @@ package is read.
 | `cutoff`, `max_neighbors` | vesin neighbor list |
 | `molecular_box` | cube side length; molecular positions are centred at zero (0: caller's cell) |
 | `batch_max` | band graph size (0 or 1: single system) |
-| `pos_dtype` | `float64` switches the input dtype |
+| `pos_dtype` | input dtype of positions, the cell and cell offsets (`float32` or `float64`) |
+| `model_dtype` | weight dtype recorded by the exporter (`float32` or `float64`) |
 | `task_name`, `charge`, `spin` | must equal `UmaConfig` |
 | `z_set`, `natoms`, `counts` | must match the input atoms |
 | `label`, `shapes`, `inputs`, `outputs` | recorded |
@@ -29,6 +30,12 @@ package is read.
 
 `UmaConfig.cutoff` / `max_neighbors` are defaults. The embedded
 values win when present.
+
+`scripts/export_uma_aoti.py --dtype float64` converts the model with
+`hydra.double()` before the AOTI trace and records both dtype keys as
+`float64`. `--dtype float32` calls `hydra.float()` and records
+`float32`. A package with neither key is float32, and UmaPot logs that
+fallback. The load line is `UmaPot: pos_dtype=<dtype> model_dtype=<dtype>`.
 
 ## Contract checks
 

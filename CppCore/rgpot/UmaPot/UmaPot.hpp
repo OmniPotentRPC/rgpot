@@ -47,6 +47,13 @@ public:
 
   void setChargeSpin(int charge, int spin);
 
+  /// Input dtype used for positions, the cell and cell offsets.
+  /// ``float32`` or ``float64``. Loads the package on the first call.
+  [[nodiscard]] const char *posDtypeName() const;
+  /// Weight dtype recorded in the package. Same lifetime rules as
+  /// posDtypeName().
+  [[nodiscard]] const char *modelDtypeName() const;
+
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
     return m_paramsKey;
   }

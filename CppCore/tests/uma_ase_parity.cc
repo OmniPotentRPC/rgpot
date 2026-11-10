@@ -37,6 +37,8 @@ int main(int argc, char **argv) {
   auto [energy, forces, variance] = pot(positions, atmtypes, box);
   (void)variance;
   std::printf("backend=UmaPot\n");
+  std::printf("pos_dtype=%s model_dtype=%s\n", pot.posDtypeName(),
+              pot.modelDtypeName());
   std::printf("model=%s\n", model);
   std::printf("energy=%.17g\n", energy);
   for (size_t i = 0; i < forces.rows(); ++i) {

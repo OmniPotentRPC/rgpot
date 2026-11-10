@@ -471,6 +471,8 @@ TEST_CASE("UmaPot Baker HCN matches ASE FAIRChem omol", "[UmaPot][omol]") {
   (void)variance;
 
   std::printf("backend=UmaPot\n");
+  std::printf("pos_dtype=%s model_dtype=%s\n", pot.posDtypeName(),
+              pot.modelDtypeName());
   std::printf("model=%s\n", model.c_str());
   std::printf("energy=%.17g\n", energy);
   double max_df = 0.0;
