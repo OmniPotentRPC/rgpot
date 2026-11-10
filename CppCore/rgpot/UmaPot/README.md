@@ -34,8 +34,10 @@ values win when present.
 `scripts/export_uma_aoti.py --dtype float64` converts the model with
 `hydra.double()` before the AOTI trace and records both dtype keys as
 `float64`. `--dtype float32` calls `hydra.float()` and records
-`float32`. A package with neither key is float32, and UmaPot logs that
-fallback. The load line is `UmaPot: pos_dtype=<dtype> model_dtype=<dtype>`.
+`float32`. A package with neither key falls back to float32, and the
+load line keeps a missing key as `unset` rather than inventing it.
+`pos_dtype` and `model_dtype` must name the same dtype; a disagreement
+throws before any force call.
 
 ## Contract checks
 

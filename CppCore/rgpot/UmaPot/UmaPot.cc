@@ -269,24 +269,22 @@ void UmaPot::ensureLoaded() const {
   };
   const auto pos = named("pos_dtype");
   const auto model = named("model_dtype");
+  // Log only keys the package recorded. "unset" is not a guessed dtype.
+  m_impl->pos_dtype_name = pos ? dtype_token(*pos) : "unset";
+  m_impl->model_dtype_name = model ? dtype_token(*model) : "unset";
+  if (pos && model && *pos != *model) {
+    throw std::runtime_error(
+        std::string("UmaPot: pos_dtype is ") + m_impl->pos_dtype_name +
+        " and model_dtype is " + m_impl->model_dtype_name +
+        "; refusing to feed one dtype into a graph recorded as the other");
+  }
   if (!pos && !model) {
     m_impl->dtype = torch::kFloat32;
-    m_impl->pos_dtype_name = "float32";
-    m_impl->model_dtype_name = "float32";
     std::fprintf(stderr,
                  "UmaPot: package metadata has no pos_dtype or model_dtype; "
                  "falling back to float32\n");
   } else {
-    if (pos && model && *pos != *model) {
-      std::fprintf(stderr,
-                   "UmaPot: pos_dtype is %s and model_dtype is %s; "
-                   "inputs use pos_dtype\n",
-                   dtype_token(*pos), dtype_token(*model));
-    }
-    const torch::ScalarType input = pos ? *pos : *model;
-    m_impl->dtype = input;
-    m_impl->pos_dtype_name = dtype_token(input);
-    m_impl->model_dtype_name = dtype_token(model ? *model : input);
+    m_impl->dtype = pos ? *pos : *model;
   }
   std::fprintf(stderr, "UmaPot: pos_dtype=%s model_dtype=%s\n",
                m_impl->pos_dtype_name.c_str(),
