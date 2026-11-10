@@ -270,9 +270,8 @@ public:
   [[nodiscard]] std::size_t size() const { return nbr_.size(); }
 
   /// Point ``v`` at this slot's CSR. The view lives as long as the slot.
-  /// The fold matches the orthorhombic round ``simd::fill_view`` applies,
-  /// including a zero inverse on an axis the options leave unfolded, so a
-  /// kernel that filters at ``cutoff`` sees the same vectors.
+  /// An orthorhombic cell uses the component round, with a zero inverse
+  /// on a direction the options leave unfolded.
   void bindView(rgpot::simd::PairView &v, const double *R, const double *box,
                 const Options &opt) const {
     v = {};
@@ -532,75 +531,11 @@ private:
   }
 
   void setup(const double *R, std::size_t n, const double *box,
-             const Options &opt) {
-    const bool orthorhombic = box[1] == 0.0 && box[2] == 0.0 && box[3] == 0.0 &&
-                              box[5] == 0.0 && box[6] == 0.0 && box[7] == 0.0;
-    general_ = !orthorhombic &&
-               (opt.periodic[0] || opt.periodic[1] || opt.periodic[2]);
-    if (general_)
-      generalImage_ = MinimumImage(box, opt.periodic);
-    // The atom cap bounds a brute-force list. A free cluster is not under
-    // that cap when the bounding-box grid can serve the cutoff:
-    // CellGrid::build bins that box, and pays() still refuses a grid that
-    // would not beat the brute scan. A free cluster the grid cannot bin
-    // keeps the cap, so a cutoff-free system does not store every pair.
-    const bool free = !opt.periodic[0] && !opt.periodic[1] && !opt.periodic[2];
-    const bool grid = cellGridFits(R, n, box, opt);
-    bool admit = grid;
-    if (free) {
-      if (!grid) {
-        admit = n <= 20000;
-      }
-    } else {
-      admit = grid || n <= 20000;
-    }
-    mic_ = orthorhombic && admit;
-    for (int k = 0; mic_ && k < 3; ++k) {
-      if (opt.periodic[static_cast<std::size_t>(k)] &&
-          opt.cutoff > 0.5 * box[4 * k]) {
-        mic_ = false;
-      }
-    }
-  }
+             const Options &opt);
 
-  /// True when CellGrid::build can cut this box at the list radius
-  /// (cutoff + skin). A periodic axis needs three or more cells. A free
-  /// axis is measured on the coordinates' bounding box, the same extent
-  /// CellGrid::build uses, and is not wrapped. pays() is not repeated
-  /// here: build still declines a grid that would not beat the brute scan.
-  static bool cellGridFits(const double *R, std::size_t n, const double *box,
-                           const Options &opt) {
-    const double rl = opt.cutoff + opt.skin;
-    if (!(rl > 0.0) || n < 2 || R == nullptr) {
-      return false;
-    }
-    std::size_t ncells = 1;
-    for (int k = 0; k < 3; ++k) {
-      const auto uk = static_cast<std::size_t>(k);
-      const bool wrap = opt.periodic[uk];
-      double extent;
-      if (wrap) {
-        extent = box[4 * k];
-      } else {
-        double mn = R[k];
-        double mx = R[k];
-        for (std::size_t a = 1; a < n; ++a) {
-          const double t = R[3 * a + uk];
-          mn = std::min(mn, t);
-          mx = std::max(mx, t);
-        }
-        extent = mx - mn;
-      }
-      const double fit = std::floor(extent / rl);
-      const int cells =
-          fit >= 1.0 ? static_cast<int>(std::min(fit, 1024.0)) : 1;
-      if (wrap && cells < 3) {
-        return false;
-      }
-      ncells *= static_cast<std::size_t>(cells);
-    }
-    return ncells >= kMinCellsForGrid && ncells <= 8 * n + 64;
-  }
+  /// True when the linked-cell counts fit this box at cutoff + skin.
+  bool cellGridFits(const double *R, std::size_t n, const double *box,
+                    const Options &opt);
 
   static void fold_params(const double *box, const Options &opt, double w[3],
                           double inv[3]) {

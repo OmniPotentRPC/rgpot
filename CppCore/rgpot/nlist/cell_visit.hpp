@@ -101,98 +101,15 @@ private:
 
 public:
 
-  /// Bin `points` into cells no narrower than `rl`. `w[k]` is the periodic
-  /// width and `inv[k]` its inverse, zero for a free axis. Returns false
-  /// when a grid cannot serve (fewer than three cells along a periodic
-  /// axis, or fewer than kMinCellsForGrid cells in all) or would not pay
-  /// (the cell scan's pair tests for this occupancy, plus the stencil walk,
-  /// above half the brute-force scan's n (n - 1) / 2: a cluster in a mostly
-  /// empty box crowds a few cells), in which case the caller uses the
-  /// brute-force scan.
+  /// Bin `points` into cells strictly wider than `rl`, except a direction
+  /// whose span is shorter than `rl`, which gets one cell. `w[k]` is the
+  /// periodic width and `inv[k]` its inverse, zero for a free direction.
+  /// Returns false when a grid cannot serve (fewer than three cells along
+  /// a periodic direction, or fewer than kMinCellsForGrid cells in all)
+  /// or would not pay (the cell scan's pair tests for this occupancy,
+  /// plus the stencil walk, above half the brute-force scan).
   bool build(const double *points, std::size_t n, const double w[3],
-             const double inv[3], double rl) {
-    if (!(rl > 0.0) || n < 2) {
-      return false;
-    }
-    std::array<double, 3> lo{};
-    std::array<double, 3> scale{};
-    std::size_t ncells = 1;
-    for (int k = 0; k < 3; ++k) {
-      const auto uk = static_cast<std::size_t>(k);
-      wrap[uk] = inv[k] != 0.0;
-      double extent;
-      if (wrap[uk]) {
-        extent = w[k];
-        lo[uk] = 0.0;
-      } else {
-        double mn = points[k];
-        double mx = points[k];
-        for (std::size_t a = 1; a < n; ++a) {
-          mn = std::min(mn, points[3 * a + static_cast<std::size_t>(k)]);
-          mx = std::max(mx, points[3 * a + static_cast<std::size_t>(k)]);
-        }
-        lo[uk] = mn;
-        extent = mx - mn;
-      }
-      // Cells per axis: as many as fit at width >= rl, bounded so a dilute
-      // free axis cannot ask for more cells than there are atoms.
-      const double fit = std::floor(extent / rl);
-      int c = fit >= 1.0 ? static_cast<int>(std::min(fit, 1024.0)) : 1;
-      if (wrap[uk] && c < 3) {
-        return false;
-      }
-      nc[uk] = c;
-      scale[uk] = static_cast<double>(c) / (extent > 0.0 ? extent : 1.0);
-      ncells *= static_cast<std::size_t>(c);
-    }
-    if (ncells < kMinCellsForGrid || ncells > 8 * n + 64) {
-      return false;
-    }
-
-    std::vector<int32_t> cellOf(n);
-    start.assign(ncells + 1, 0);
-    for (std::size_t a = 0; a < n; ++a) {
-      std::array<int, 3> c{};
-      for (int k = 0; k < 3; ++k) {
-        const auto uk = static_cast<std::size_t>(k);
-        double t = points[3 * a + uk];
-        if (wrap[uk]) {
-          t *= inv[k];
-          t -= std::floor(t); // fractional coordinate in [0, 1)
-          t *= static_cast<double>(nc[uk]);
-        } else {
-          t = (t - lo[uk]) * scale[uk];
-        }
-        // Written so a NaN coordinate lands in cell 0 instead of reaching
-        // an undefined float-to-int conversion.
-        const int last = nc[uk] - 1;
-        c[uk] = t >= 0.0 ? (t < static_cast<double>(last)
-                                ? static_cast<int>(t)
-                                : last)
-                         : 0;
-      }
-      const auto id = static_cast<int32_t>(
-          (static_cast<std::size_t>(c[2]) * static_cast<std::size_t>(nc[1]) +
-           static_cast<std::size_t>(c[1])) *
-              static_cast<std::size_t>(nc[0]) +
-          static_cast<std::size_t>(c[0]));
-      cellOf[a] = id;
-      ++start[static_cast<std::size_t>(id) + 1];
-    }
-    if (!pays(n, ncells)) {
-      return false;
-    }
-    for (std::size_t c = 0; c < ncells; ++c) {
-      start[c + 1] += start[c];
-    }
-    atoms.resize(n);
-    std::vector<int32_t> fill(start.begin(), start.end() - 1);
-    for (std::size_t a = 0; a < n; ++a) {
-      atoms[static_cast<std::size_t>(fill[static_cast<std::size_t>(cellOf[a])]++)] =
-          static_cast<int32_t>(a);
-    }
-    return true;
-  }
+             const double inv[3], double rl);
 };
 
 /// Linked-cell counterpart of vesin::cpu::brute_force_visit over a built

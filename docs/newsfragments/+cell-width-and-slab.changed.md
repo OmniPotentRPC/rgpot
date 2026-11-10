@@ -1,0 +1,1 @@
+A free direction whose span is an exact multiple of the list radius no longer gets a cell as wide as that radius, so a pair on the boundary stays in the neighbour stencil. A slab with one free direction and more than 20000 atoms uses the same grid when the cells fit.

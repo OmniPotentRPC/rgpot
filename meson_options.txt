@@ -1,5 +1,11 @@
 # Booleans
 option('with_tests', type: 'boolean', value: false)
+option(
+    'with_benchmarks',
+    type: 'boolean',
+    value: false,
+    description: 'Build the free-cluster timing driver',
+)
 option('with_examples', type: 'boolean', value: false)
 option('with_xtensor', type: 'boolean', value: false)
 option('with_eigen', type: 'boolean', value: false)

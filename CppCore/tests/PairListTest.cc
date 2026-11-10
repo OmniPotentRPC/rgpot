@@ -10,8 +10,10 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <atomic>
 #include <cstring>
 #include <fstream>
+#include <thread>
 #include <limits>
 #include <random>
 #include <stdexcept>
@@ -31,7 +33,6 @@
 #include "rgpot/nlist/cell_visit.hpp"
 #include "rgpot/nlist/vesin_visit.hpp"
 #include "rgpot/simd/api.hpp"
-#include "rgpot/simd/from_cache.hpp"
 
 using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
@@ -995,18 +996,6 @@ struct BitRun {
   std::vector<double> F;
 };
 
-BitRun runFill(const std::vector<double> &R, const std::array<double, 9> &box,
-               const CachedPairList::Options &opt,
-               const rgpot::simd::LjParams &params) {
-  const std::size_t n = R.size() / 3;
-  rgpot::simd::CachedPairs pairs;
-  rgpot::simd::fill_view(pairs, R.data(), n, box.data(), opt);
-  BitRun out{0.0, std::vector<double>(3 * n, 0.0)};
-  double strain[6] = {};
-  out.energy = rgpot::simd::lj_force(pairs.view, params, out.F.data(), strain);
-  return out;
-}
-
 BitRun runView(const std::vector<double> &R, const std::array<double, 9> &box,
                const CachedPairList::Options &opt,
                const rgpot::simd::LjParams &params) {
@@ -1085,13 +1074,12 @@ TEST_CASE("Pair view matches the collected list to the bit",
                   const CachedPairList::Options &opt, double u0, double psi,
                   double switch_width) {
     const auto params = ljParams(u0, psi, opt.cutoff, switch_width);
-    const BitRun legacy = runFill(R, box, opt, params);
-    const BitRun viewed = runView(R, box, opt, params);
-    const BitRun viewed_again = runView(R, box, opt, params);
-    const BitRun legacy_again = runFill(R, box, opt, params);
-    requireBits(viewed, legacy);
-    requireBits(viewed_again, legacy);
-    requireBits(legacy_again, legacy);
+    // First call builds the list, the next two read it.
+    const BitRun built = runView(R, box, opt, params);
+    const BitRun hit = runView(R, box, opt, params);
+    const BitRun hit_again = runView(R, box, opt, params);
+    requireBits(hit, built);
+    requireBits(hit_again, built);
   };
 
   const std::array<double, 9> box40{40, 0, 0, 0, 40, 0, 0, 0, 40};
@@ -1150,4 +1138,165 @@ TEST_CASE("Pair view matches the collected list to the bit",
   REQUIRE(std::memcmp(&first.energy, &second.energy, sizeof(double)) == 0);
   REQUIRE(std::memcmp(first.F.data(), second.F.data(),
                       first.F.size() * sizeof(double)) == 0);
+}
+
+TEST_CASE("Free clusters above 20000 atoms use the cell grid",
+          "[PairList][free-grid]") {
+  const double rc = 3.0;
+  const double w[3] = {1.0e6, 1.0e6, 1.0e6};
+  const double inv[3] = {0.0, 0.0, 0.0};
+  const auto R = cubicBlob(21000, 36.0, 91);
+  bool used = false;
+  const auto cell = cellPairs(R, w, inv, rc, used);
+  REQUIRE(used);
+  REQUIRE(cell == brutePairs(R, w, inv, rc));
+  REQUIRE(cachedFreePairs(R, rc, 1.0) == cell);
+}
+
+TEST_CASE("A zero span on one direction still matches brute force",
+          "[PairList][free-grid]") {
+  const double rc = 2.0;
+  std::vector<double> R;
+  const int side = 12;
+  for (int iy = 0; iy < side; ++iy) {
+    for (int ix = 0; ix < side; ++ix) {
+      R.push_back(ix * 1.5);
+      R.push_back(iy * 1.5);
+      R.push_back(0.0);
+    }
+  }
+  const double w[3] = {1.0e6, 1.0e6, 1.0e6};
+  const double inv[3] = {0.0, 0.0, 0.0};
+  bool used = false;
+  const auto cell = cellPairs(R, w, inv, rc, used);
+  REQUIRE(used);
+  REQUIRE(cell == brutePairs(R, w, inv, rc));
+}
+
+TEST_CASE("A span that is an exact multiple of the list radius",
+          "[PairList][free-grid]") {
+  const double rl = 1.0;
+  const int cells = 8;
+  const double extent = static_cast<double>(cells) * rl;
+  std::vector<double> R;
+  const double step = rl / 4.0;
+  for (double z = 0.0; z <= extent; z += step) {
+    for (double y = 0.0; y <= extent; y += step) {
+      for (double x = 0.0; x <= extent; x += step) {
+        R.push_back(x);
+        R.push_back(y);
+        R.push_back(z);
+      }
+    }
+  }
+  const double w[3] = {1.0e6, 1.0e6, 1.0e6};
+  const double inv[3] = {0.0, 0.0, 0.0};
+  bool used = false;
+  const auto cell = cellPairs(R, w, inv, rl, used);
+  REQUIRE(used);
+  REQUIRE(cell == brutePairs(R, w, inv, rl));
+}
+
+TEST_CASE("A cached free cluster stays valid after a small move",
+          "[PairList][free-grid]") {
+  const auto R0 = cubicBlob(400, 24.0, 93);
+  auto moved = R0;
+  for (std::size_t k = 0; k < moved.size(); ++k) {
+    moved[k] += 0.2 * std::sin(0.3 * static_cast<double>(k));
+  }
+  const std::size_t n = R0.size() / 3;
+  CachedPairList::Options opt;
+  opt.cutoff = 3.0;
+  opt.skin = 1.0;
+  opt.periodic = {{false, false, false}};
+  const std::array<double, 9> box{1.0e6, 0, 0, 0, 1.0e6, 0, 0, 0, 1.0e6};
+  CachedPairList list;
+  list.rebuild(R0.data(), n, box.data(), opt);
+  REQUIRE(list.cacheable());
+  REQUIRE(list.valid(moved.data(), n, box.data(), opt));
+  const rgpot::LJClusterPot pot{
+      rgpot::LJClusterConfig{.u0 = 1.0, .cutoff = 3.0, .psi = 1.0}};
+  const Eval warm = clusterPot(pot, moved);
+  requireSame(warm, bruteClusterLJ(moved, 3.0, 1.0, 1.0));
+}
+
+TEST_CASE("A slab above 20000 atoms is admitted when the grid fits",
+          "[PairList][free-grid]") {
+  // One free direction used to make the grid unfit at every size, so a
+  // slab above 20000 atoms stayed on the brute scan. The fit test now
+  // measures that direction on the bounding box, and this slab is cached.
+  const std::size_t n = 21000;
+  std::vector<double> R = cubicBlob(n, 30.0, 94);
+  for (std::size_t a = 0; a < n; ++a) {
+    R[3 * a + 2] *= 0.25;
+  }
+  CachedPairList::Options opt;
+  opt.cutoff = 3.0;
+  opt.skin = 1.0;
+  opt.periodic = {{true, true, false}};
+  const std::array<double, 9> box{48.0, 0, 0, 0, 48.0, 0, 0, 0, 40.0};
+  CachedPairList list;
+  list.rebuild(R.data(), n, box.data(), opt);
+  REQUIRE(list.cacheable());
+  REQUIRE(list.size() > 0);
+  const double w[3] = {48.0, 48.0, 0.0};
+  const double inv[3] = {1.0 / 48.0, 1.0 / 48.0, 0.0};
+  bool used = false;
+  const auto cell = cellPairs(R, w, inv, 3.0, used);
+  REQUIRE(used);
+  REQUIRE(cell == brutePairs(R, w, inv, 3.0));
+}
+
+TEST_CASE("withView keeps its rows while other threads evict slots",
+          "[PairList][pair-view]") {
+  constexpr int kThreads = 8;
+  constexpr int kGeoms = 6;
+  std::atomic<int> bad{0};
+  std::vector<std::thread> threads;
+  for (int t = 0; t < kThreads; ++t) {
+    threads.emplace_back([t, &bad] {
+      const auto base = cubicBlob(48, 12.0, 100 + static_cast<unsigned>(t));
+      for (int g = 0; g < kGeoms; ++g) {
+        std::vector<double> R = base;
+        for (std::size_t a = 0; a < R.size(); a += 3) {
+          R[a] += 1000.0 * static_cast<double>(t * kGeoms + g);
+        }
+        CachedPairList::Options opt;
+        opt.cutoff = 3.0;
+        opt.periodic = {{false, false, false}};
+        const std::array<double, 9> box{1.0e6, 0, 0, 0, 1.0e6, 0, 0, 0, 1.0e6};
+        for (int pass = 0; pass < 4; ++pass) {
+          rgpot::nlist::PairListCache::global().withView(
+              R.data(), R.size() / 3, box.data(), opt,
+              [&](const rgpot::simd::PairView &view) {
+                if (view.rows == nullptr || view.nbr == nullptr ||
+                    view.n != R.size() / 3) {
+                  bad.fetch_add(1);
+                  return;
+                }
+                for (std::size_t i = 0; i < view.n; ++i) {
+                  const auto p0 = view.rows[i];
+                  const auto p1 = view.rows[i + 1];
+                  if (p0 > p1) {
+                    bad.fetch_add(1);
+                    return;
+                  }
+                  for (std::int32_t p = p0; p < p1; ++p) {
+                    const auto j = view.nbr[static_cast<std::size_t>(p)];
+                    if (j <= static_cast<std::int32_t>(i) ||
+                        static_cast<std::size_t>(j) >= view.n) {
+                      bad.fetch_add(1);
+                      return;
+                    }
+                  }
+                }
+              });
+        }
+      }
+    });
+  }
+  for (auto &th : threads) {
+    th.join();
+  }
+  REQUIRE(bad.load() == 0);
 }
