@@ -24,6 +24,32 @@ namespace rgpot {
  * the graph (composition) or silently returns a different potential
  * energy surface (charge, spin, task), so UmaPot refuses instead.
  */
+/**
+ * @brief The positions or the edge list are not the shape this package
+ * was compiled for.
+ *
+ * The message names both shapes. Callers can match ``shape is``.
+ */
+class UmaShapeError : public std::runtime_error {
+public:
+  UmaShapeError(std::string field, std::string actual, std::string package)
+      : std::runtime_error("UmaPot: " + field + " shape is " + actual +
+                           ", the package was exported for " + package),
+        m_field(std::move(field)), m_actual(std::move(actual)),
+        m_package(std::move(package)) {}
+
+  [[nodiscard]] const std::string &field() const noexcept { return m_field; }
+  [[nodiscard]] const std::string &actual() const noexcept { return m_actual; }
+  [[nodiscard]] const std::string &package() const noexcept {
+    return m_package;
+  }
+
+private:
+  std::string m_field;
+  std::string m_actual;
+  std::string m_package;
+};
+
 class UmaContractError : public std::runtime_error {
 public:
   UmaContractError(std::string field, std::string package, std::string actual,
@@ -69,8 +95,30 @@ struct UmaContract {
   std::optional<std::vector<int64_t>> z_set;
   std::optional<std::map<int64_t, int64_t>> counts;
   std::optional<int64_t> natoms;
+  std::optional<int64_t> natoms_min;
+  std::optional<int64_t> natoms_max;
   std::optional<int64_t> nedges_min;
   std::optional<int64_t> nedges_max;
+
+  /// One axis of a declared tensor shape. A symbolic axis is a name
+  /// such as ``nedges`` with an inclusive range; a fixed axis is one
+  /// integer.
+  struct Axis {
+    bool symbolic{false};
+    int64_t fixed{0};
+    int64_t lo{0};
+    int64_t hi{0};
+    std::string name;
+  };
+
+  struct ShapeDecl {
+    bool known{false};
+    std::vector<Axis> axes;
+    std::string text;
+  };
+
+  ShapeDecl pos_decl;
+  ShapeDecl edge_decl;
 
   /// Signed decimal integers in order of appearance; anything else
   /// separates them.
@@ -118,6 +166,31 @@ struct UmaContract {
     c.natoms = one_int("natoms");
     c.nedges_min = one_int("nedges_min");
     c.nedges_max = one_int("nedges_max");
+    c.natoms_min = one_int("natoms_min");
+    c.natoms_max = one_int("natoms_max");
+    c.pos_decl = c.parseShape(get("pos_shape"));
+    c.edge_decl = c.parseShape(get("edge_index_shape"));
+    if (!c.pos_decl.known && c.natoms) {
+      c.pos_decl.known = true;
+      c.pos_decl.axes.push_back(Axis{false, *c.natoms, 0, 0, {}});
+      c.pos_decl.axes.push_back(Axis{false, 3, 0, 0, {}});
+      c.pos_decl.text = "[" + std::to_string(*c.natoms) + ", 3]";
+    }
+    if (!c.edge_decl.known && (c.nedges_min || c.nedges_max)) {
+      const int64_t lo = c.nedges_min ? *c.nedges_min : 0;
+      const int64_t hi = c.nedges_max ? *c.nedges_max : lo;
+      c.edge_decl.known = true;
+      c.edge_decl.axes.push_back(Axis{false, 2, 0, 0, {}});
+      if (c.nedges_min && c.nedges_max && lo == hi) {
+        c.edge_decl.axes.push_back(Axis{false, lo, 0, 0, {}});
+        c.edge_decl.text = "[2, " + std::to_string(lo) + "]";
+      } else {
+        c.edge_decl.axes.push_back(Axis{true, 0, lo, hi, "nedges"});
+        c.edge_decl.text = "[2, nedges] with nedges in [" +
+                           std::to_string(lo) + ", " + std::to_string(hi) +
+                           "]";
+      }
+    }
     if (const std::string *raw = get("z_set")) {
       auto zs = integers(*raw);
       std::sort(zs.begin(), zs.end());
@@ -163,6 +236,98 @@ struct UmaContract {
     if (spin && *spin != cfg.spin)
       throw UmaContractError("spin", std::to_string(*spin),
                              std::to_string(cfg.spin), "config");
+  }
+
+  /// ``spec`` is ``2,6`` or ``2,nedges`` (brackets and spaces allowed).
+  ShapeDecl parseShape(const std::string *spec) const {
+    ShapeDecl decl;
+    if (spec == nullptr)
+      return decl;
+    std::string token;
+    std::vector<std::string> tokens;
+    auto flush = [&]() {
+      if (!token.empty()) {
+        tokens.push_back(token);
+        token.clear();
+      }
+    };
+    for (char ch : *spec) {
+      if (ch == ',' || ch == '[' || ch == ']' || ch == ' ')
+        flush();
+      else
+        token.push_back(ch);
+    }
+    flush();
+    if (tokens.empty())
+      throw std::runtime_error("UmaPot: package shape is empty: " + *spec);
+    decl.known = true;
+    decl.text = "[";
+    for (size_t i = 0; i < tokens.size(); ++i) {
+      const std::string &tok = tokens[i];
+      const bool number =
+          !tok.empty() &&
+          std::all_of(tok.begin(), tok.end(),
+                      [](char ch) { return ch >= '0' && ch <= '9'; });
+      Axis axis;
+      if (number) {
+        axis.fixed = std::stoll(tok);
+      } else {
+        axis.symbolic = true;
+        axis.name = tok;
+        if (tok == "nedges") {
+          axis.lo = nedges_min ? *nedges_min : 0;
+          axis.hi = nedges_max ? *nedges_max : axis.lo;
+        } else if (tok == "natoms") {
+          axis.lo = natoms_min ? *natoms_min : (natoms ? *natoms : 1);
+          axis.hi = natoms_max ? *natoms_max : (natoms ? *natoms : axis.lo);
+        } else {
+          throw std::runtime_error(
+              "UmaPot: package shape has an unknown dimension " + tok);
+        }
+      }
+      decl.axes.push_back(axis);
+      decl.text += (i ? ", " : "") + tok;
+    }
+    decl.text += "]";
+    for (const Axis &axis : decl.axes) {
+      if (!axis.symbolic)
+        continue;
+      decl.text += " with " + axis.name + " in [" + std::to_string(axis.lo) +
+                   ", " + std::to_string(axis.hi) + "]";
+    }
+    return decl;
+  }
+
+  static std::string shapeText(const std::vector<int64_t> &dims) {
+    std::string s = "[";
+    for (size_t i = 0; i < dims.size(); ++i)
+      s += (i ? ", " : "") + std::to_string(dims[i]);
+    return s + "]";
+  }
+
+  void matchShape(const std::string &field, const ShapeDecl &decl,
+                  const std::vector<int64_t> &actual) const {
+    if (!decl.known)
+      return;
+    bool ok = actual.size() == decl.axes.size();
+    for (size_t i = 0; ok && i < actual.size(); ++i) {
+      const Axis &axis = decl.axes[i];
+      if (axis.symbolic)
+        ok = actual[i] >= axis.lo && actual[i] <= axis.hi;
+      else
+        ok = actual[i] == axis.fixed;
+    }
+    if (!ok)
+      throw UmaShapeError(field, shapeText(actual), decl.text);
+  }
+
+  /// Positions are ``[natoms, 3]`` and the edge list is ``[2, nedges]``.
+  /// A static package names the traced sizes. A dynamic package names
+  /// the symbolic axis and its range. Either way the message carries
+  /// both shapes.
+  void checkCallShapes(int64_t nAtoms, int64_t nedges) const {
+    matchShape("pos", pos_decl, {nAtoms, 3});
+    matchShape("edge_index", edge_decl, {2, nedges});
   }
 
   /// Edge count of one call (the whole band for a batched package)

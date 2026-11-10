@@ -179,6 +179,25 @@ std::optional<torch::ScalarType> dtype_from_name(const std::string &raw) {
   return std::nullopt;
 }
 
+// Every edge index must land inside the position buffer. The compiled
+// graph gathers by this index, so a value past the last atom would
+// read off the end of that buffer.
+void check_edge_indices(const torch::Tensor &edge_index, int64_t npos) {
+  const auto ei = edge_index.accessor<int64_t, 2>();
+  const int64_t nedges = edge_index.size(1);
+  for (int64_t e = 0; e < nedges; ++e) {
+    for (int row = 0; row < 2; ++row) {
+      const int64_t v = ei[row][e];
+      if (v < 0 || v >= npos) {
+        throw UmaShapeError(
+            "edge_index", "[2, " + std::to_string(nedges) + "]",
+            "pos [" + std::to_string(npos) + ", 3] (index " +
+                std::to_string(v) + " is outside it)");
+      }
+    }
+  }
+}
+
 // Write host doubles into a tensor that already has the package dtype.
 void store_rows(torch::Tensor dst, const double *src, int64_t rows,
                 int64_t cols) {
@@ -361,7 +380,13 @@ void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const auto nedges = static_cast<int64_t>(edges.neighbor.size());
   if (nedges == 0)
     throw std::runtime_error("UmaPot: vesin produced no edges");
-  m_impl->contract.checkEdges(nedges);
+  // Name both shapes before the graph runs. A static package says
+  // [2, 56]; a dynamic one says the symbolic range. Either mismatch
+  // is UmaShapeError, not a read past the buffer.
+  if (m_impl->contract.pos_decl.known || m_impl->contract.edge_decl.known)
+    m_impl->contract.checkCallShapes(n, nedges);
+  else
+    m_impl->contract.checkEdges(nedges);
 
   auto opts_f = torch::TensorOptions().dtype(m_impl->dtype).device(torch::kCPU);
   auto opts_l = torch::TensorOptions().dtype(torch::kLong).device(torch::kCPU);
@@ -386,6 +411,7 @@ void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     ei[0][e] = edges.neighbor[static_cast<size_t>(e)];
     ei[1][e] = edges.center[static_cast<size_t>(e)];
   }
+  check_edge_indices(edge_index, n);
   auto cell_offsets = torch::empty({nedges, 3}, opts_f);
   store_rows(cell_offsets, edges.offsets.data(), nedges, 3);
   auto charge = torch::tensor({static_cast<int64_t>(m_config.charge)}, opts_l);
@@ -506,7 +532,10 @@ void UmaPot::forceBatchImpl(const ForceBatch &batch) const {
     }
     if (nedges_total == 0)
       throw std::runtime_error("UmaPot: vesin produced no edges (batch)");
-    m_impl->contract.checkEdges(nedges_total);
+    if (m_impl->contract.pos_decl.known || m_impl->contract.edge_decl.known)
+      m_impl->contract.checkCallShapes(n, nedges_total);
+    else
+      m_impl->contract.checkEdges(nedges_total);
 
     auto opts_f =
         torch::TensorOptions().dtype(m_impl->dtype).device(torch::kCPU);
@@ -559,6 +588,7 @@ void UmaPot::forceBatchImpl(const ForceBatch &batch) const {
         e_at += ne;
       }
     }
+    check_edge_indices(edge_index, B * n);
     auto cell_offsets_f = cell_offsets;
 
     if (m_impl->device != torch::kCPU) {
