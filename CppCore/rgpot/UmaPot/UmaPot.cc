@@ -390,8 +390,17 @@ void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const auto nedges = static_cast<int64_t>(edges.neighbor.size());
   if (nedges == 0)
     throw std::runtime_error("UmaPot: vesin produced no edges");
-  if (molecular)
+  if (molecular) {
     reject_periodic_images(edges.offsets);
+    // A molecular package is traced on every ordered pair. Any other
+    // count is a different graph, including a walk past the cutoff.
+    const int64_t complete = n * (n - 1);
+    if (nedges != complete) {
+      throw UmaShapeError("edge_index",
+                          "[2, " + std::to_string(nedges) + "]",
+                          "[2, " + std::to_string(complete) + "]");
+    }
+  }
   // Name both shapes before the graph runs. A static package says
   // [2, 56]; a dynamic one says the symbolic range. Either mismatch
   // is UmaShapeError, not a read past the buffer.

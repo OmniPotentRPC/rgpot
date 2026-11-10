@@ -540,6 +540,46 @@ def export_cost(path: Path, dtype_name: str) -> None:
     aoti_package(exported, path, metadata=meta)
 
 
+def export_tetrazine_keyless(path: Path, dtype_name: str) -> None:
+    """Eight-atom complete graph with the edge keys removed.
+
+    Cutoff 10 angstrom and a 25 angstrom box match the control packages.
+    The compiled graph is still 56 edges. A package from before the edge
+    keys were written looks like this.
+    """
+    dtype = torch.float64 if dtype_name == "float64" else torch.float32
+    example = _cluster_example(dtype, 8, 56)
+    module = apply_export_dtype(GatherEnergy().eval(), dtype_name)
+    exported = torch.export.export(module, example, strict=False)
+    meta = runtime_metadata(
+        path,
+        10.0,
+        300,
+        example,
+        dtype,
+        model_dtype=dtype,
+        task_name="omol",
+        charge=0,
+        spin=1,
+        z_set=None,
+        counts=None,
+        label="tetrazine",
+        model="tiny-gather-keyless",
+        molecular_box=25.0,
+    )
+    meta["natoms"] = 8
+    meta["export_path"] = "make_fx-nonstrict"
+    # The control packages omit both keys. Drop them after packaging so
+    # the fixture is keyless even if a later packager inserts defaults.
+    meta.pop("nedges_min", None)
+    meta.pop("nedges_max", None)
+    aoti_package(exported, path, metadata=meta)
+    _drop_metadata_keys(
+        path,
+        ("nedges_min", "nedges_max", "edge_index_shape", "pos_shape"),
+    )
+
+
 def export_no_edges(path: Path, dtype_name: str) -> None:
     export_precision(path, dtype_name, "both")
     _drop_metadata_keys(
@@ -579,7 +619,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--kind",
-        choices=("precision", "batch", "cost", "gather", "no-edges", "box"),
+        choices=(
+            "precision",
+            "batch",
+            "cost",
+            "gather",
+            "no-edges",
+            "box",
+            "tetrazine-keyless",
+        ),
         required=True,
     )
     parser.add_argument(
@@ -613,6 +661,8 @@ def main() -> int:
         export_no_edges(args.out, args.dtype)
     elif args.kind == "box":
         export_box(args.out, args.dtype)
+    elif args.kind == "tetrazine-keyless":
+        export_tetrazine_keyless(args.out, args.dtype)
     else:
         if args.meta != "both":
             raise SystemExit("cost packages always record both dtype keys")

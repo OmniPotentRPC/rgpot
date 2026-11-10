@@ -1050,6 +1050,19 @@ if get_option('with_tests')
         _uma_fix_env.set('UMA_NO_EDGES_PT2', _uma_no_edges.full_path())
         _uma_fix_env.set('UMA_MOLECULAR_BOX_PT2', _uma_box.full_path())
         _uma_fix_env.set('UMA_BATCH_STATIC_PT2', _uma_batch_static.full_path())
+        _uma_tetrazine_keyless = custom_target(
+            'uma-tetrazine-keyless',
+            output: 'tetrazine-keyless.pt2',
+            command: [
+                _uma_py, _uma_export,
+                '--kind', 'tetrazine-keyless',
+                '--dtype', 'float64',
+                '--out', '@OUTPUT@',
+            ],
+            build_by_default: false,
+        )
+        _uma_fix_pkgs += [_uma_tetrazine_keyless]
+        _uma_fix_env.set('UMA_TETRAZINE_KEYLESS_PT2', _uma_tetrazine_keyless.full_path())
         test(
             'UmaGraphSizeTest',
             executable(

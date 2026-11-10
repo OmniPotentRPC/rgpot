@@ -66,11 +66,12 @@ are used. A package that records neither `nedges_min` nor
 `nedges_max` is refused: there is no range to check, and a static
 graph would otherwise return a finite force.
 
-A molecular box recenters the atoms in a cube. Any nonzero cell
-offset is a periodic image, so the call throws `UmaContractError`
-on `cell_offsets` instead of evaluating that image. A band package
-checks each system's edge count, not only the sum: one system can
-lose edges while another gains images and still match the total.
+A molecular box recenters the atoms in a cube and is traced on every
+ordered pair, `n(n-1)`. Any other edge count throws `UmaShapeError`
+before the compiled graph runs. Any nonzero cell offset is a
+periodic image, so the call throws `UmaContractError` on
+`cell_offsets` (`nonzero`). A band package checks each system's
+edge count, not only the sum.
 
 `natoms` and `counts` exist only in packages from the current
 exporter. Older packages get the `z_set` check, which cannot tell

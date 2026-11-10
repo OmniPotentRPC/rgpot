@@ -140,6 +140,30 @@ TEST_CASE("a molecular box rejects a periodic image", "[uma][graph]") {
           Catch::Matchers::ContainsSubstring("nonzero"));
 }
 
+TEST_CASE("tetrazine past the 10 angstrom cutoff names the missing edge range",
+          "[uma][graph]") {
+  // Control packages omit nedges_min and nedges_max. They were traced
+  // on the complete pair list, cutoff 10 angstrom. Moving one hydrogen
+  // by 12 angstroms crosses that cutoff. The named error is raised
+  // before the compiled graph runs.
+  std::vector<double> pos = {
+      12.5, 13.83, 12.5, 12.5, 11.17, 12.5, 13.65, 13.165, 12.5,
+      13.65, 11.835, 12.5, 11.35, 13.165, 12.5, 11.35, 11.835, 12.5,
+      12.5, 14.91, 12.5, 12.5, 10.09, 12.5,
+  };
+  pos[7 * 3 + 1] += 12.0;
+  const std::vector<int> z = {6, 6, 7, 7, 7, 7, 1, 1};
+  const double box[9] = {25, 0, 0, 0, 25, 0, 0, 0, 25};
+  rgpot::UmaPot pot = open_pot(package_path("UMA_TETRAZINE_KEYLESS_PT2"));
+  std::vector<double> force(pos.size(), 0.0);
+  rgpot::ForceOut slot{force.data(), 0.0, 0.0};
+  const rgpot::ForceInput in{8, pos.data(), z.data(), box};
+  REQUIRE_THROWS_WITH(
+      pot.forceImpl(in, &slot),
+      Catch::Matchers::ContainsSubstring("nedges") &&
+          Catch::Matchers::ContainsSubstring("absent"));
+}
+
 TEST_CASE("a package with no edge range is refused", "[uma][graph]") {
   rgpot::UmaPot pot = open_pot(package_path("UMA_NO_EDGES_PT2"));
   REQUIRE_THROWS_WITH(run(pot, line(3, 1.0)),
