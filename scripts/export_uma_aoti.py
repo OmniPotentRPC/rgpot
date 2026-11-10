@@ -702,6 +702,14 @@ def runtime_metadata(
             name: list(t.shape) for name, t in zip(input_names, example)
         },
     }
+    # natoms and counts are optional. A dynamic package (several atom
+    # counts, one trace) leaves them out so UmaPot does not pin the
+    # example size. z_set still limits the elements when it is passed.
+    if counts is None:
+        meta.pop("natoms", None)
+        meta.pop("counts", None)
+    if z_set is None:
+        meta.pop("z_set", None)
     return meta
 
 

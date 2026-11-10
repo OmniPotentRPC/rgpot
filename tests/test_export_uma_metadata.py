@@ -91,6 +91,24 @@ def test_apply_export_dtype_uses_double_and_float():
     assert next(module.parameters()).dtype == torch.float32
 
 
+def test_dynamic_package_omits_natoms_when_counts_are_absent():
+    example = [torch.zeros(4, 3), torch.zeros(4, dtype=torch.long)]
+    meta = exp.runtime_metadata(
+        Path("dyn.pt2"),
+        6.0,
+        300,
+        example,
+        torch.float32,
+        model_dtype=torch.float32,
+        z_set=[6],
+        counts=None,
+        label="dyn",
+        model="tiny",
+    )
+    assert "natoms" not in meta
+    assert "counts" not in meta
+    assert meta["z_set"] == [6]
+
 
 def test_baker_dedup_keeps_compositions_that_share_an_element_set(
     tmp_path, monkeypatch
