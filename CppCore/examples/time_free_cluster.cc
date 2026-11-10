@@ -356,7 +356,8 @@ int main(int argc, char **argv) {
   std::array<double, 9> box{1.0e6, 0, 0, 0, 1.0e6, 0, 0, 0, 1.0e6};
   const double *box_ptr = nullptr;
   double used_cutoff = cutoff;
-  if (kind == "ljcluster" || kind == "ljpot" || kind == "sutton") {
+  if (kind == "ljcluster" || kind == "ljpot" || kind == "sutton" ||
+      kind == "admit") {
     R = blob(n, 1.1, 42);
   } else if (kind == "ljpot_asv") {
     R = unitCube(n, 1);
