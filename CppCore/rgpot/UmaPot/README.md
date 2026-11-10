@@ -1,7 +1,8 @@
-# UmaPot: UMA / OMol AOTInductor frontend
+# UmaPot: UMA / OMol AOTI frontend
 
-`UmaPot` loads a compiled AOTInductor package (`.pt2`) that
-`scripts/export_uma_aoti.py` wrote from a UMA checkpoint.
+`UmaPot` loads an AOTI (AOTInductor, PyTorch ahead-of-time
+compiled) package (`.pt2`) that `scripts/export_uma_aoti.py`
+wrote from a UMA checkpoint.
 
 vesin builds the neighbor list. The graph returns energy and forces.
 Charge and spin are per-call tensors. The compiled graph does not

@@ -55,9 +55,41 @@ def test_runtime_metadata_carries_the_contract():
     # C++ side reads it back as {Z: n} pairs.
     assert json.loads(meta["counts"]) == {"1": 1, "6": 1, "7": 1}
     assert meta["model"] == "uma-s-1p1"
+    assert meta["pos_dtype"] == "float32"
+    assert meta["model_dtype"] == "float32"
     assert meta["torch_version"] == torch.__version__
     assert isinstance(meta["fairchem_version"], str)
     assert meta["fairchem_version"]
+
+
+def test_float64_metadata_names_both_dtypes():
+    atoms = _hcn()
+    n = len(atoms)
+    example = [torch.zeros(n, 3), torch.zeros(n, dtype=torch.long)]
+    meta = exp.runtime_metadata(
+        Path("hcn.pt2"),
+        10.0,
+        300,
+        example,
+        torch.float64,
+        model_dtype=torch.float64,
+        task_name="omol",
+        z_set=exp.z_set_of(atoms),
+        counts=exp.counts_of(atoms),
+        label="hcn",
+        model="uma-s-1p1",
+    )
+    assert meta["pos_dtype"] == "float64"
+    assert meta["model_dtype"] == "float64"
+
+
+def test_apply_export_dtype_uses_double_and_float():
+    module = torch.nn.Linear(3, 4)
+    exp.apply_export_dtype(module, "float64")
+    assert next(module.parameters()).dtype == torch.float64
+    exp.apply_export_dtype(module, "float32")
+    assert next(module.parameters()).dtype == torch.float32
+
 
 
 def test_baker_dedup_keeps_compositions_that_share_an_element_set(

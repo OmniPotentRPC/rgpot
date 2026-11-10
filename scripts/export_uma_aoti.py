@@ -13,6 +13,10 @@ Stages:
   4. AOTInductor .pt2
   5. Load .pt2 in-process and compare again
 
+``--dtype float64`` converts the loaded model with ``hydra.double()`` before
+the trace and records ``pos_dtype`` and ``model_dtype`` as ``float64``.
+``--dtype float32`` calls ``hydra.float()`` and records ``float32``.
+
 torch.export tries dynamic-nonstrict (single system only), static-nonstrict
 and static-strict, then falls back to make_fx(tracing_mode="real") followed by
 a nonstrict export of the traced module. With torch 2.13 and fairchem-core
@@ -612,6 +616,31 @@ def patch_export_ops():
     print("patched axis_angle_wigner_hybrid: fixed roll gauge", flush=True)
 
 
+def dtype_name(dtype) -> str:
+    """``float32`` or ``float64``. Accepts a torch dtype or that name."""
+    if isinstance(dtype, str):
+        name = dtype.replace("torch.", "")
+    else:
+        name = str(dtype).replace("torch.", "")
+    if name not in ("float32", "float64"):
+        raise ValueError(f"unsupported export dtype {dtype}")
+    return name
+
+
+def apply_export_dtype(module: nn.Module, dtype_name: str) -> nn.Module:
+    """Convert ``module`` before the AOTI trace.
+
+    float64 calls ``Module.double()`` so the weights the tracer sees are
+    float64. float32 calls ``Module.float()`` and is the explicit
+    checkpoint dtype, not an implicit default.
+    """
+    if dtype_name == "float64":
+        return module.double()
+    if dtype_name == "float32":
+        return module.float()
+    raise SystemExit(f"--dtype must be float32 or float64, not {dtype_name}")
+
+
 def runtime_metadata(
     path: Path,
     cutoff: float,
@@ -628,6 +657,7 @@ def runtime_metadata(
     model: str = "",
     molecular_box: float = 0.0,
     batch_max: int = 0,
+    model_dtype=None,
 ):
     input_names = [
         "pos",
@@ -666,7 +696,8 @@ def runtime_metadata(
         "edge_convention": "fairchem_neighbor_center",
         "inputs": input_names,
         "outputs": ["energy", "forces"],
-        "pos_dtype": str(dtype).replace("torch.", ""),
+        "pos_dtype": dtype_name(dtype),
+        "model_dtype": dtype_name(model_dtype if model_dtype is not None else dtype),
         "shapes": {
             name: list(t.shape) for name, t in zip(input_names, example)
         },
@@ -742,6 +773,16 @@ def main() -> int:
     p.add_argument("--spin", type=int, default=None, help="Spin multiplicity (default: atoms.info or 1)")
     p.add_argument("--label", default=None, help="Metadata / filename label (default: hcn or atoms path)")
     p.add_argument("--task", default="omol", help="FAIRChem task_name (default: omol)")
+    p.add_argument(
+        "--dtype",
+        choices=("float32", "float64"),
+        default="float32",
+        help=(
+            "Floating dtype of the exported graph. float64 converts the "
+            "model with hydra.double() before the AOTI trace. float32 "
+            "converts with hydra.float() and is an explicit option."
+        ),
+    )
     p.add_argument("--out", default=None, help="Output .pt2 path")
     p.add_argument(
         "--molecular-box",
@@ -829,12 +870,16 @@ def main() -> int:
         )
 
     device = torch.device(args.device)
-    dtype = next(hydra.parameters()).dtype
+    # The ASE and AtomicData comparisons stay on the checkpoint dtype.
+    # The exported graph is converted afterwards.
+    native_dtype = next(hydra.parameters()).dtype
 
     if args.compare_only:
         if not out.is_file():
             print(f"FAIL: --compare-only needs an existing .pt2: {out}", file=sys.stderr)
             return 4
+        apply_export_dtype(hydra, args.dtype)
+        dtype = next(hydra.parameters()).dtype
         example = pack_example(atoms, cutoff, device, dtype, max_n)
         meta = runtime_metadata(
             out,
@@ -842,6 +887,7 @@ def main() -> int:
             max_n,
             example,
             dtype,
+            model_dtype=dtype,
             task_name=task_name,
             charge=charge,
             spin=spin,
@@ -863,7 +909,7 @@ def main() -> int:
         return 0
 
     data_v = vesin_atomic_data(
-        atoms, cutoff, dtype, device, max_n, task_name=task_name, sid=label
+        atoms, cutoff, native_dtype, device, max_n, task_name=task_name, sid=label
     )
     print(f"vesin AtomicData edges={int(data_v.nedges.item())}", flush=True)
     pred_v = pred.predict(data_v)
@@ -873,6 +919,14 @@ def main() -> int:
     if not ok_ad:
         print("FAIL: vesin AtomicData via MLIPPredictUnit does not match ASE", file=sys.stderr)
         return 2
+
+    # float64: hydra.double() before the trace. float32: hydra.float().
+    apply_export_dtype(hydra, args.dtype)
+    dtype = next(hydra.parameters()).dtype
+    print(
+        f"export pos_dtype={dtype_name(dtype)} model_dtype={dtype_name(dtype)}",
+        flush=True,
+    )
 
     batch_max = max(0, int(args.batch_max))
     # merge_mole freezes per-atom expert buffers at the traced total, so
@@ -899,6 +953,7 @@ def main() -> int:
         max_n,
         example,
         dtype,
+        model_dtype=dtype,
         task_name=task_name,
         charge=charge,
         spin=spin,
