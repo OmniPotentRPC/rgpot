@@ -79,7 +79,9 @@ struct SuttonChenConfig {
   int n = 10;           //!< Repulsive exponent. 10 for Pt and Au.
   int m = 8;            //!< Density exponent. 8 for Pt and Au.
   /// Truncation distance in the coordinate unit. 0 keeps every pair.
-  /// 40 matches the optbench globalopt Lennard-Jones cutoff.
+  /// A positive cutoff on a free cluster is binned over the bounding box,
+  /// including clusters above 20000 atoms. 40 matches the optbench
+  /// globalopt Lennard-Jones cutoff.
   double cutoff = 40.0;
   /// Minimum image convention. Cluster references leave this false.
   bool periodic = false;

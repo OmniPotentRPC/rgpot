@@ -6,13 +6,17 @@
 // eOn's eonc::PairListCache (TheochemUI/eOn, fix/vesin-neighbor-perf).
 //
 // Header-only and dependency-free: the MIC regime (orthorhombic box, true
-// cutoff within half the smallest periodic width) searches pairs with the
-// linked-cell scan from cell_visit.hpp once the box holds enough cells
+// cutoff within half the smallest periodic width, or a free cluster whose
+// bounding box bins into enough cells) searches pairs with the linked-cell
+// scan from cell_visit.hpp once that decomposition holds enough cells
 // (O(n) per search), and with the fused brute-force scan from
 // vesin_visit.hpp below that (O(n^2), cheaper for a handful of cells).
 // Both report the same pair set. Outside the cached regime every call
 // performs a brute-force scan. Nonorthogonal cells use the full lattice
 // minimum image; orthorhombic cells retain the componentwise fold.
+// Free axes are binned over the coordinates' bounding box, the same
+// decomposition CellGrid::build uses, and pays() still declines a grid
+// that would not beat the brute scan.
 //
 // Design invariants (see the eOn failure analysis for the derivation):
 // - Slots are immutable after build and handed out as shared_ptr, so
@@ -160,7 +164,7 @@ public:
   template <typename Fn>
   void visitOnly(const double *R, std::size_t n, const double *box,
                  const Options &opt, Fn &&fn) {
-    setup(n, box, opt);
+    setup(R, n, box, opt);
     double w[3];
     double inv[3];
     fold_params(box, opt, w, inv);
@@ -188,7 +192,7 @@ public:
   template <typename Fn>
   void rebuildFused(const double *R, std::size_t n, const double *box,
                     const Options &opt, Fn &&fn) {
-    setup(n, box, opt);
+    setup(R, n, box, opt);
     double w[3];
     double inv[3];
     fold_params(box, opt, w, inv);
@@ -223,7 +227,7 @@ public:
   /// geometry, as visitOnly leaves it.
   void buildForEval(const double *R, std::size_t n, const double *box,
                     const Options &opt) {
-    setup(n, box, opt);
+    setup(R, n, box, opt);
     double w[3];
     double inv[3];
     fold_params(box, opt, w, inv);
@@ -495,16 +499,30 @@ private:
     }
   }
 
-  void setup(std::size_t n, const double *box, const Options &opt) {
+  void setup(const double *R, std::size_t n, const double *box,
+             const Options &opt) {
     const bool orthorhombic = box[1] == 0.0 && box[2] == 0.0 && box[3] == 0.0 &&
                               box[5] == 0.0 && box[6] == 0.0 && box[7] == 0.0;
     general_ = !orthorhombic &&
                (opt.periodic[0] || opt.periodic[1] || opt.periodic[2]);
     if (general_)
       generalImage_ = MinimumImage(box, opt.periodic);
-    // The atom cap bounds the brute-force list build; a fully periodic box
-    // that the linked-cell scan can serve needs no cap.
-    mic_ = orthorhombic && (n <= 20000 || cellGridFits(n, box, opt));
+    // The atom cap bounds a brute-force list. A free cluster is not under
+    // that cap when the bounding-box grid can serve the cutoff:
+    // CellGrid::build bins that box, and pays() still refuses a grid that
+    // would not beat the brute scan. A free cluster the grid cannot bin
+    // keeps the cap, so a cutoff-free system does not store every pair.
+    const bool free = !opt.periodic[0] && !opt.periodic[1] && !opt.periodic[2];
+    const bool grid = cellGridFits(R, n, box, opt);
+    bool admit = grid;
+    if (free) {
+      if (!grid) {
+        admit = n <= 20000;
+      }
+    } else {
+      admit = grid || n <= 20000;
+    }
+    mic_ = orthorhombic && admit;
     for (int k = 0; mic_ && k < 3; ++k) {
       if (opt.periodic[static_cast<std::size_t>(k)] &&
           opt.cutoff > 0.5 * box[4 * k]) {
@@ -513,21 +531,41 @@ private:
     }
   }
 
-  /// True when every axis is periodic and wide enough that CellGrid::build
-  /// accepts the box at the list cutoff for any atom positions.
-  static bool cellGridFits(std::size_t n, const double *box,
+  /// True when CellGrid::build can cut this box at the list radius
+  /// (cutoff + skin). A periodic axis needs three or more cells. A free
+  /// axis is measured on the coordinates' bounding box, the same extent
+  /// CellGrid::build uses, and is not wrapped. pays() is not repeated
+  /// here: build still declines a grid that would not beat the brute scan.
+  static bool cellGridFits(const double *R, std::size_t n, const double *box,
                            const Options &opt) {
     const double rl = opt.cutoff + opt.skin;
+    if (!(rl > 0.0) || n < 2 || R == nullptr) {
+      return false;
+    }
     std::size_t ncells = 1;
     for (int k = 0; k < 3; ++k) {
-      if (!opt.periodic[static_cast<std::size_t>(k)] || !(rl > 0.0)) {
+      const auto uk = static_cast<std::size_t>(k);
+      const bool wrap = opt.periodic[uk];
+      double extent;
+      if (wrap) {
+        extent = box[4 * k];
+      } else {
+        double mn = R[k];
+        double mx = R[k];
+        for (std::size_t a = 1; a < n; ++a) {
+          const double t = R[3 * a + uk];
+          mn = std::min(mn, t);
+          mx = std::max(mx, t);
+        }
+        extent = mx - mn;
+      }
+      const double fit = std::floor(extent / rl);
+      const int cells =
+          fit >= 1.0 ? static_cast<int>(std::min(fit, 1024.0)) : 1;
+      if (wrap && cells < 3) {
         return false;
       }
-      const double fit = std::floor(box[4 * k] / rl);
-      if (fit < 3.0) {
-        return false;
-      }
-      ncells *= static_cast<std::size_t>(std::min(fit, 1024.0));
+      ncells *= static_cast<std::size_t>(cells);
     }
     return ncells >= kMinCellsForGrid && ncells <= 8 * n + 64;
   }

@@ -36,7 +36,23 @@ The reduced 10-8 well is 295.4645 epsilon, which is 5.860 eV for platinum and
 
 The default cutoff is 40 in the coordinate unit, with no energy shift.
 =cutoff = 0= keeps every pair.
+A positive cutoff on a free cluster is binned over the bounding box, including
+clusters larger than 20000 atoms.
 Cluster evaluation does not fold the cell.
+
+The truncation below was measured with =time_free_cluster --kind truncate=
+against the full sum (=cutoff = 0=).
+Pt38 is the deposited 10-8 point file.
+Pt147 is a Mackay icosahedron of 147 atoms with nearest-neighbour spacing 1,
+not a deposited minimum, so its forces are large.
+The 1000-atom cluster is a jittered simple-cubic blob at spacing 1.1.
+At cutoff 3 the relative energy errors are 0 for Pt38 (every pair is inside
+r = 3), -1.3308535421796238e-4 for the Mackay cluster, and
+-7.7220740652257213e-4 for the 1000-atom blob.
+The largest absolute change in a force component at cutoff 3 is 0 for Pt38,
+7.0261176384633472e-2 for the Mackay cluster, and 8.5633081259345545e-2 for
+the blob.
+Cutoff 40 matches the full sum on all three, energy and forces.
 Periodic evaluation uses the minimum image and needs a positive cutoff.
 The neighbor list is =PairListCache::evaluate=: one pass builds the densities
 and a second pass writes the forces.

@@ -1,0 +1,1 @@
+A free cluster with a positive cutoff is searched on a cell grid over its bounding box, including clusters larger than 20000 atoms. The grid is still declined when it would not be cheaper than the full pair scan. Sutton-Chen with a positive cutoff uses that grid. A cutoff of zero still keeps every pair.

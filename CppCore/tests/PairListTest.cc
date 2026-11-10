@@ -23,6 +23,7 @@
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
+#include "rgpot/SuttonChen/SuttonChenPot.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
 #include "rgpot/nlist/PairListCache.hpp"
 #include "rgpot/nlist/cell_visit.hpp"
@@ -748,3 +749,249 @@ TEST_CASE("Minimum image matches a brute-force search on skewed cells",
   require_not_longer(ill, periodic, 0.2, -0.3, 0.4, 8);
   require_not_longer(ill, periodic, 1.7, -0.4, 0.8, 8);
 }
+
+namespace {
+
+/// Jittered cubic blob filling ``side``. The bounding box is about ``side``
+/// on each free axis, so a cutoff of 3 with the default skin bins it.
+std::vector<double> cubicBlob(std::size_t n, double side, std::uint64_t seed) {
+  const auto m = static_cast<int>(std::ceil(std::cbrt(static_cast<double>(n))));
+  std::mt19937_64 rng(seed);
+  std::uniform_real_distribution<double> jitter(-0.02, 0.02);
+  std::vector<double> R;
+  R.reserve(3 * n);
+  const double step = side / static_cast<double>(m);
+  for (int iz = 0; iz < m && R.size() < 3 * n; ++iz) {
+    for (int iy = 0; iy < m && R.size() < 3 * n; ++iy) {
+      for (int ix = 0; ix < m && R.size() < 3 * n; ++ix) {
+        R.push_back((static_cast<double>(ix) + 0.5) * step + jitter(rng));
+        R.push_back((static_cast<double>(iy) + 0.5) * step + jitter(rng));
+        R.push_back((static_cast<double>(iz) + 0.5) * step + jitter(rng));
+      }
+    }
+  }
+  return R;
+}
+
+std::vector<PairRecord> cachedFreePairs(const std::vector<double> &R, double rc,
+                                        double skin) {
+  const std::size_t n = R.size() / 3;
+  CachedPairList::Options opt;
+  opt.cutoff = rc;
+  opt.skin = skin;
+  opt.periodic = {{false, false, false}};
+  const std::array<double, 9> box{1.0e6, 0, 0, 0, 1.0e6, 0, 0, 0, 1.0e6};
+  CachedPairList list;
+  list.rebuild(R.data(), n, box.data(), opt);
+  REQUIRE(list.cacheable());
+  std::vector<PairRecord> out;
+  list.forEach(R.data(), [&](int32_t i, int32_t j, double dx, double dy,
+                             double dz, double) {
+    out.emplace_back(i, j, -dx, -dy, -dz);
+  });
+  std::sort(out.begin(), out.end());
+  return out;
+}
+
+Eval bruteClusterLJ(const std::vector<double> &R, double rc, double u0,
+                    double psi) {
+  const std::size_t n = R.size() / 3;
+  const double a6 = std::pow(psi / rc, 6.0);
+  const double shift = 4.0 * u0 * a6 * (a6 - 1.0);
+  const double rc2 = rc * rc;
+  Eval e{0.0, std::vector<double>(3 * n, 0.0)};
+  for (std::size_t i = 0; i < n; ++i) {
+    for (std::size_t j = i + 1; j < n; ++j) {
+      const double dx = R[3 * i] - R[3 * j];
+      const double dy = R[3 * i + 1] - R[3 * j + 1];
+      const double dz = R[3 * i + 2] - R[3 * j + 2];
+      const double r2 = dx * dx + dy * dy + dz * dz;
+      if (!(r2 <= rc2) || !(r2 > 0.0)) {
+        continue;
+      }
+      const double inv = 1.0 / r2;
+      const double sr2 = psi * psi * inv;
+      const double a = sr2 * sr2 * sr2;
+      const double b = 4.0 * u0 * a;
+      const double fscale = 6.0 * b * inv * (2.0 * a - 1.0);
+      e.energy += b * (a - 1.0) - shift;
+      e.F[3 * i] += fscale * dx;
+      e.F[3 * i + 1] += fscale * dy;
+      e.F[3 * i + 2] += fscale * dz;
+      e.F[3 * j] -= fscale * dx;
+      e.F[3 * j + 1] -= fscale * dy;
+      e.F[3 * j + 2] -= fscale * dz;
+    }
+  }
+  return e;
+}
+
+Eval clusterPot(const rgpot::LJClusterPot &pot, const std::vector<double> &R) {
+  const std::size_t n = R.size() / 3;
+  Eval e{0.0, std::vector<double>(3 * n, 0.0)};
+  const std::vector<int> types(n, 1);
+  const std::array<double, 9> box{1.0e6, 0, 0, 0, 1.0e6, 0, 0, 0, 1.0e6};
+  rgpot::ForceInput fi{.nAtoms = n,
+                       .pos = R.data(),
+                       .atmnrs = types.data(),
+                       .box = box.data()};
+  rgpot::ForceOut fo{.F = e.F.data(),
+                     .energy = 0.0,
+                     .variance = 0.0,
+                     .stress = {},
+                     .has_stress = 0};
+  pot.forceImpl(fi, &fo);
+  e.energy = fo.energy;
+  return e;
+}
+
+double ipow_ref(double base, int exp) {
+  double result = 1.0;
+  while (exp > 0) {
+    if ((exp & 1) != 0) {
+      result *= base;
+    }
+    base *= base;
+    exp >>= 1;
+  }
+  return result;
+}
+
+double pow_ar_ref(double ar2, int exp) {
+  double p = ipow_ref(ar2, exp / 2);
+  if ((exp % 2) != 0) {
+    p *= std::sqrt(ar2);
+  }
+  return p;
+}
+
+Eval bruteSC(const std::vector<double> &R, double cutoff, double epsilon,
+             double c_coef, double lattice, int n_exp, int m_exp) {
+  const std::size_t n = R.size() / 3;
+  const double rc2 = cutoff > 0.0 ? cutoff * cutoff : 1.0e300;
+  std::vector<double> rho(n, 0.0);
+  double epair = 0.0;
+  struct Disp {
+    std::size_t j;
+    double dx, dy, dz, r2;
+  };
+  std::vector<std::vector<Disp>> rows(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    for (std::size_t j = i + 1; j < n; ++j) {
+      const double dx = R[3 * i] - R[3 * j];
+      const double dy = R[3 * i + 1] - R[3 * j + 1];
+      const double dz = R[3 * i + 2] - R[3 * j + 2];
+      const double r2 = dx * dx + dy * dy + dz * dz;
+      if (!(r2 > 0.0) || !(r2 <= rc2)) {
+        continue;
+      }
+      const double ar2 = (lattice * lattice) / r2;
+      const double phi = pow_ar_ref(ar2, m_exp);
+      const double rep = pow_ar_ref(ar2, n_exp);
+      rho[i] += phi;
+      rho[j] += phi;
+      epair += epsilon * rep;
+      rows[i].push_back(Disp{j, dx, dy, dz, r2});
+    }
+  }
+  std::vector<double> weight(n, 0.0);
+  double eemb = 0.0;
+  for (std::size_t i = 0; i < n; ++i) {
+    if (!(rho[i] > 0.0)) {
+      continue;
+    }
+    const double root = std::sqrt(rho[i]);
+    eemb -= epsilon * c_coef * root;
+    weight[i] = epsilon * c_coef / (2.0 * root);
+  }
+  Eval e{epair + eemb, std::vector<double>(3 * n, 0.0)};
+  for (std::size_t i = 0; i < n; ++i) {
+    for (const Disp &p : rows[i]) {
+      const double inv_r2 = 1.0 / p.r2;
+      const double ar2 = (lattice * lattice) * inv_r2;
+      const double phi = pow_ar_ref(ar2, m_exp);
+      const double rep = pow_ar_ref(ar2, n_exp);
+      const double fscale =
+          (epsilon * static_cast<double>(n_exp) * rep -
+           static_cast<double>(m_exp) * phi * (weight[i] + weight[p.j])) *
+          inv_r2;
+      e.F[3 * i] += fscale * p.dx;
+      e.F[3 * i + 1] += fscale * p.dy;
+      e.F[3 * i + 2] += fscale * p.dz;
+      e.F[3 * p.j] -= fscale * p.dx;
+      e.F[3 * p.j + 1] -= fscale * p.dy;
+      e.F[3 * p.j + 2] -= fscale * p.dz;
+    }
+  }
+  return e;
+}
+
+Eval scPot(const rgpot::SuttonChenPot &pot, const std::vector<double> &R) {
+  const std::size_t n = R.size() / 3;
+  Eval e{0.0, std::vector<double>(3 * n, 0.0)};
+  const std::vector<int> types(n, 78);
+  rgpot::ForceInput fi{.nAtoms = n,
+                       .pos = R.data(),
+                       .atmnrs = types.data(),
+                       .box = nullptr};
+  rgpot::ForceOut fo{.F = e.F.data(),
+                     .energy = 0.0,
+                     .variance = 0.0,
+                     .stress = {},
+                     .has_stress = 0};
+  pot.forceImpl(fi, &fo);
+  e.energy = fo.energy;
+  return e;
+}
+
+} // namespace
+
+TEST_CASE("Free clusters: the cell grid and the cache match brute force",
+          "[PairList][free-grid]") {
+  const double rc = 3.0;
+  const double w[3] = {1.0e6, 1.0e6, 1.0e6};
+  const double inv[3] = {0.0, 0.0, 0.0};
+  const rgpot::LJClusterPot lj{
+      rgpot::LJClusterConfig{.u0 = 1.0, .cutoff = rc, .psi = 1.0}};
+  const rgpot::SuttonChenConfig sc_cfg{.cutoff = rc};
+  const rgpot::SuttonChenPot sc{sc_cfg};
+  struct Row {
+    std::size_t n;
+    double side;
+    std::uint64_t seed;
+    bool check_sc;
+  };
+  const Row rows[] = {{50, 28.0, 71, true},
+                      {500, 30.0, 72, true},
+                      {25000, 40.0, 73, false}};
+  for (const Row &row : rows) {
+    CAPTURE(row.n);
+    const auto R = cubicBlob(row.n, row.side, row.seed);
+    bool used = false;
+    const auto cell = cellPairs(R, w, inv, rc, used);
+    const auto brute = brutePairs(R, w, inv, rc);
+    // pays() counts 14 tests per cell before any pair. At N = 50 that
+    // stencil walk already exceeds half the brute scan, so the grid
+    // declines and the cache keeps the brute list. From N = 500 the
+    // same blob is dense enough for the grid.
+    if (row.n >= 500) {
+      REQUIRE(used);
+      REQUIRE(cell == brute);
+    } else {
+      REQUIRE_FALSE(used);
+    }
+    REQUIRE(cachedFreePairs(R, rc, 1.0) == brute);
+    const Eval got = clusterPot(lj, R);
+    const Eval again = clusterPot(lj, R);
+    requireSame(got, bruteClusterLJ(R, rc, 1.0, 1.0));
+    REQUIRE(again.energy == got.energy);
+    REQUIRE(again.F == got.F);
+    if (row.check_sc) {
+      (void)scPot(sc, R);
+      const Eval warm = scPot(sc, R);
+      requireSame(warm, bruteSC(R, rc, sc_cfg.epsilon, sc_cfg.c, sc_cfg.a,
+                                sc_cfg.n, sc_cfg.m));
+    }
+  }
+}
+
