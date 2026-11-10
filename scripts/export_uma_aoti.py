@@ -944,6 +944,65 @@ def try_symbolic_edges(wrap: nn.Module, example):
         return None
 
 
+class ExportRefusal(RuntimeError):
+    """This export path would ship an edge count it did not trace."""
+
+
+# Paths whose old metadata was the symbolic window 1..65536. That window
+# accepts a neighbour list the trace never saw.
+_WIDE_EXPORT_PATHS = ("symbolic-nedges", "dynamic-nonstrict")
+
+
+def edge_export_record(export_path, traced_nedges, molecular_box, alt_nedges=None):
+    """Metadata every export path must write, or a refusal.
+
+    A molecular box pins the traced edge count: ``nedges_min`` and
+    ``nedges_max`` are that count, and ``molecular`` is true. A static
+    path with no box records the same exact count and ``molecular``
+    false, so a later change is refused at call time. ``symbolic-nedges``,
+    ``dynamic-nonstrict`` and ``make_fx-nonstrict`` with no box are
+    refused, the same way ``make_fx-nonstrict`` already was. None of
+    these paths records 1..65536.
+    """
+    known = _WIDE_EXPORT_PATHS + (
+        "static-nonstrict",
+        "static-strict",
+        "make_fx-nonstrict",
+    )
+    if export_path not in known:
+        raise ExportRefusal(f"unknown export path {export_path}")
+    traced = int(traced_nedges)
+    if traced < 1:
+        raise ExportRefusal("traced edge count must be positive")
+    box = float(molecular_box or 0.0)
+    if box > 0.0:
+        if alt_nedges is not None and int(alt_nedges) != traced:
+            raise ExportRefusal(
+                f"{export_path} with a molecular box changed the edge "
+                f"count from {traced} to {int(alt_nedges)}"
+            )
+        return {
+            "molecular_box": box,
+            "molecular": True,
+            "nedges_min": traced,
+            "nedges_max": traced,
+            "edge_index_shape": f"2,{traced}",
+        }
+    if export_path in _WIDE_EXPORT_PATHS or export_path == "make_fx-nonstrict":
+        raise ExportRefusal(
+            f"{export_path} without a molecular box: the traced graph "
+            f"has {traced} edges, and a later geometry can have another "
+            f"count"
+        )
+    return {
+        "molecular_box": 0.0,
+        "molecular": False,
+        "nedges_min": traced,
+        "nedges_max": traced,
+        "edge_index_shape": f"2,{traced}",
+    }
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--model", default="uma-s-1p1")
@@ -1183,6 +1242,7 @@ def main() -> int:
         dyn = None
     exported = None
     export_path = ""
+    edge_record = None
     example_alt = None
     e_alt_ref = None
     f_alt_ref = None
@@ -1234,9 +1294,20 @@ def main() -> int:
                     f_alt_ref,
                 )
                 if ok_sym and ok_alt:
-                    exported = candidate
-                    export_path = "symbolic-nedges"
-                    print("export ok symbolic-nedges", flush=True)
+                    try:
+                        edge_record = edge_export_record(
+                            "symbolic-nedges",
+                            int(example[4].shape[1]),
+                            float(args.molecular_box or 0.0),
+                            int(example_alt[4].shape[1]),
+                        )
+                    except ExportRefusal as exc:
+                        print(f"symbolic-nedges refused: {exc}", flush=True)
+                        example_alt = None
+                    else:
+                        exported = candidate
+                        export_path = "symbolic-nedges"
+                        print("export ok symbolic-nedges", flush=True)
                 else:
                     print(
                         "symbolic graph does not match the same-dtype "
@@ -1266,6 +1337,15 @@ def main() -> int:
                 f_trial.detach().cpu().numpy(), e_ref, f_ref, len(atoms)
             ):
                 raise RuntimeError("exported program does not match ASE")
+            try:
+                edge_record = edge_export_record(
+                    attempt,
+                    int(example[4].shape[1]),
+                    float(args.molecular_box or 0.0),
+                )
+            except ExportRefusal as exc:
+                print(f"{attempt} refused: {exc}", flush=True)
+                continue
             exported = candidate
             print("export ok", attempt, type(exported), flush=True)
             export_path = attempt
@@ -1289,38 +1369,30 @@ def main() -> int:
             exported = torch.export.export(gm, example, strict=False)
             print("export ok make_fx-nonstrict", type(exported), flush=True)
             export_path = "make_fx-nonstrict"
+            edge_record = edge_export_record(
+                export_path,
+                int(example[4].shape[1]),
+                float(args.molecular_box or 0.0),
+            )
+        except ExportRefusal as exc:
+            print(f"FAIL: {exc}", file=sys.stderr)
+            return 5
         except Exception as exc:
             last = exc
             print(f"make_fx export failed: {type(exc).__name__}: {exc}", flush=True)
             raise last from exc
 
     print("export ok", type(exported), flush=True)
-    meta["export_path"] = export_path
-    # UmaPot refuses an edge count outside this range instead of feeding
-    # the compiled graph a shape it was not traced for.
-    if export_path == "symbolic-nedges":
-        meta["nedges_min"] = nedges_min
-        meta["nedges_max"] = nedges_max
-        meta["edge_index_shape"] = "2,nedges"
-        meta["pos_shape"] = f"{len(atoms)},3"
-    elif export_path == "dynamic-nonstrict":
-        meta["nedges_min"] = nedges_min
-        meta["nedges_max"] = nedges_max
-    else:
-        meta["nedges_min"] = meta["nedges_max"] = int(example[4].shape[1])
-        meta["edge_index_shape"] = f"2,{int(example[4].shape[1])}"
-        meta["pos_shape"] = f"{len(atoms)},3"
-    if export_path == "make_fx-nonstrict" and not (
-        args.molecular_box and args.molecular_box > 0.0
-    ):
+    if edge_record is None:
         print(
-            f"FAIL: static package without --molecular-box: every call "
-            f"must produce exactly {example[4].shape[1]} vesin edges, so a "
-            f"geometry that moves a pair across the {cutoff} A cutoff "
-            f"would return a finite force for the wrong graph",
+            f"FAIL: {export_path} produced no edge record",
             file=sys.stderr,
         )
         return 5
+    meta["export_path"] = export_path
+    meta["pos_shape"] = f"{len(atoms)},3"
+    # Exact traced bounds. A count outside them is refused at call time.
+    meta.update(edge_record)
     with torch.enable_grad():
         e_x, f_x = exported.module()(*example)
     if not compare_batched("exported", e_x.detach().cpu(), f_x.detach().cpu().numpy(), e_ref, f_ref, len(atoms)):

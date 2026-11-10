@@ -337,26 +337,49 @@ struct UmaContract {
     matchShape("edge_index", edge_decl, {2, nedges});
   }
 
-  /// A static band package freezes one edge count per system. Checking
-  /// only the sum lets one system lose edges while another gains
-  /// periodic images and still look valid.
-  void checkEachSystem(int64_t systems, const int64_t *counts) const {
-    if (systems <= 1 || counts == nullptr)
+  /// Every system, on the single path and on the band path.
+  ///
+  /// An exact package stores the traced total, so each system must
+  /// hold an equal share. A range package checks each system's own
+  /// count against ``[nedges_min, nedges_max]`` instead of skipping
+  /// the band. A molecular package is traced on every ordered pair,
+  /// so each system must also have ``natoms * (natoms - 1)`` edges.
+  void checkEachSystem(int64_t systems, const int64_t *counts,
+                       int64_t natoms = 0, bool molecular = false) const {
+    if (systems <= 0 || counts == nullptr)
       return;
-    if (!nedges_min || !nedges_max || *nedges_min != *nedges_max)
+    if (!nedges_min || !nedges_max)
       return;
-    const int64_t total = *nedges_min;
-    if (total % systems != 0) {
-      throw UmaContractError("nedges", std::to_string(total),
-                             "not divisible by the band", "package");
+    const bool exact = *nedges_min == *nedges_max;
+    int64_t each_exact = 0;
+    if (exact) {
+      if (*nedges_min % systems != 0) {
+        throw UmaContractError("nedges", std::to_string(*nedges_min),
+                               "not divisible by the band", "package");
+      }
+      each_exact = *nedges_min / systems;
     }
-    const int64_t each = total / systems;
+    const int64_t complete = natoms > 1 ? natoms * (natoms - 1) : 0;
     for (int64_t s = 0; s < systems; ++s) {
-      if (counts[s] == each)
-        continue;
-      throw UmaShapeError("edge_index",
-                          "[2, " + std::to_string(counts[s]) + "]",
-                          "[2, " + std::to_string(each) + "]");
+      const int64_t count = counts[s];
+      if (molecular && count != complete) {
+        throw UmaShapeError("edge_index",
+                            "[2, " + std::to_string(count) + "]",
+                            "[2, " + std::to_string(complete) + "]");
+      }
+      if (exact) {
+        if (count == each_exact)
+          continue;
+        throw UmaShapeError("edge_index",
+                            "[2, " + std::to_string(count) + "]",
+                            "[2, " + std::to_string(each_exact) + "]");
+      }
+      if (count < *nedges_min || count > *nedges_max) {
+        throw UmaShapeError(
+            "edge_index", "[2, " + std::to_string(count) + "]",
+            "[2, nedges] with nedges in [" + std::to_string(*nedges_min) +
+                ", " + std::to_string(*nedges_max) + "]");
+      }
     }
   }
 

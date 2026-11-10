@@ -236,3 +236,62 @@ TEST_CASE("each system of a static band is accepted", "[uma][contract]") {
   const int64_t uneven[2] = {4, 8};
   REQUIRE_THROWS_AS(contract.checkEachSystem(2, uneven), rgpot::UmaShapeError);
 }
+
+TEST_CASE("a band range checks each system's edge count", "[uma][contract]") {
+  auto meta = std::unordered_map<std::string, std::string>{
+      {"nedges_min", "1"},
+      {"nedges_max", "8"},
+  };
+  const auto contract = rgpot::UmaContract::fromMetadata(meta);
+  const int64_t inside[2] = {6, 2};
+  REQUIRE_NOTHROW(contract.checkEachSystem(2, inside));
+  const int64_t outside[2] = {6, 9};
+  REQUIRE_THROWS_AS(contract.checkEachSystem(2, outside), rgpot::UmaShapeError);
+}
+
+TEST_CASE("a molecular band requires the complete pair list", "[uma][contract]") {
+  auto meta = std::unordered_map<std::string, std::string>{
+      {"nedges_min", "1"},
+      {"nedges_max", "100"},
+  };
+  const auto contract = rgpot::UmaContract::fromMetadata(meta);
+  const int64_t complete[2] = {6, 6};
+  REQUIRE_NOTHROW(contract.checkEachSystem(2, complete, 3, true));
+  const int64_t dropped[2] = {6, 4};
+  REQUIRE_THROWS_WITH(contract.checkEachSystem(2, dropped, 3, true),
+                      Catch::Matchers::ContainsSubstring("[2, 4]") &&
+                          Catch::Matchers::ContainsSubstring("[2, 6]"));
+}
+
+TEST_CASE("a molecular band refuses a changed edge count", "[uma][graph]") {
+  // batch_max > 1 used to enter the band path before the n*(n-1)
+  // check, and a range package skipped the per-system check. One
+  // system of this pair has left the cutoff. The named error is
+  // raised from forceImpl, which is the call that used to miss it.
+  rgpot::UmaPot pot = open_pot(package_path("UMA_BATCH_MOLECULAR_PT2"));
+  const std::vector<int> z = {6, 7, 1};
+  const double box[9] = {80, 0, 0, 0, 80, 0, 0, 0, 80};
+  std::vector<double> compact = {12.5, 12.5, 12.5, 12.5, 12.5, 13.5, 12.5, 12.5,
+                                 11.5};
+  std::vector<double> stretched = compact;
+  stretched.back() = 40.0;
+  std::vector<double> f0(9, 0.0), f1(9, 0.0);
+  rgpot::ForceInput in[2] = {
+      {3, compact.data(), z.data(), box},
+      {3, stretched.data(), z.data(), box},
+  };
+  rgpot::ForceOut out[2] = {
+      {f0.data(), 0.0, 0.0},
+      {f1.data(), 0.0, 0.0},
+  };
+  REQUIRE_THROWS_WITH(
+      pot.forceImpl(in[1], &out[1]),
+      Catch::Matchers::ContainsSubstring("edge_index shape is") &&
+          Catch::Matchers::ContainsSubstring("[2, 6]"));
+  const rgpot::ForceBatch batch{2, in, out};
+  REQUIRE_THROWS_WITH(
+      pot.forceBatchImpl(batch),
+      Catch::Matchers::ContainsSubstring("edge_index shape is") &&
+          Catch::Matchers::ContainsSubstring("[2, 2]") &&
+          Catch::Matchers::ContainsSubstring("[2, 6]"));
+}

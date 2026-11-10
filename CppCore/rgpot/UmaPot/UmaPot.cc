@@ -192,6 +192,18 @@ void reject_periodic_images(const std::vector<double> &offsets) {
   }
 }
 
+// One edge-count contract for a single system and for every system in
+// a band. The compiled graph is not called when this throws.
+void apply_edge_contract(const UmaContract &contract, bool molecular,
+                         int64_t natoms, int64_t systems, const int64_t *counts,
+                         int64_t nedges_total) {
+  contract.checkEachSystem(systems, counts, natoms, molecular);
+  if (contract.pos_decl.known || contract.edge_decl.known)
+    contract.checkCallShapes(natoms, nedges_total);
+  else
+    contract.checkEdges(nedges_total);
+}
+
 void check_edge_indices(const torch::Tensor &edge_index, int64_t npos) {
   const auto ei = edge_index.accessor<int64_t, 2>();
   const int64_t nedges = edge_index.size(1);
@@ -390,24 +402,12 @@ void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const auto nedges = static_cast<int64_t>(edges.neighbor.size());
   if (nedges == 0)
     throw std::runtime_error("UmaPot: vesin produced no edges");
-  if (molecular) {
+  if (molecular)
     reject_periodic_images(edges.offsets);
-    // A molecular package is traced on every ordered pair. Any other
-    // count is a different graph, including a walk past the cutoff.
-    const int64_t complete = n * (n - 1);
-    if (nedges != complete) {
-      throw UmaShapeError("edge_index",
-                          "[2, " + std::to_string(nedges) + "]",
-                          "[2, " + std::to_string(complete) + "]");
-    }
-  }
-  // Name both shapes before the graph runs. A static package says
-  // [2, 56]; a dynamic one says the symbolic range. Either mismatch
-  // is UmaShapeError, not a read past the buffer.
-  if (m_impl->contract.pos_decl.known || m_impl->contract.edge_decl.known)
-    m_impl->contract.checkCallShapes(n, nedges);
-  else
-    m_impl->contract.checkEdges(nedges);
+  // The same check the band path uses. A molecular count other than
+  // n*(n-1), or a count outside the traced range, is named here.
+  const int64_t one_count = nedges;
+  apply_edge_contract(m_impl->contract, molecular, n, 1, &one_count, nedges);
 
   auto opts_f = torch::TensorOptions().dtype(m_impl->dtype).device(torch::kCPU);
   auto opts_l = torch::TensorOptions().dtype(torch::kLong).device(torch::kCPU);
@@ -560,11 +560,10 @@ void UmaPot::forceBatchImpl(const ForceBatch &batch) const {
       if (molecular)
         reject_periodic_images(sys_edges[static_cast<size_t>(b)].offsets);
     }
-    m_impl->contract.checkEachSystem(B, per_system.data());
-    if (m_impl->contract.pos_decl.known || m_impl->contract.edge_decl.known)
-      m_impl->contract.checkCallShapes(n, nedges_total);
-    else
-      m_impl->contract.checkEdges(nedges_total);
+    // Same edge contract as a single system, including a molecular
+    // band. forceImpl sends batch_max > 1 here before any other check.
+    apply_edge_contract(m_impl->contract, molecular, n, B, per_system.data(),
+                        nedges_total);
 
     auto opts_f =
         torch::TensorOptions().dtype(m_impl->dtype).device(torch::kCPU);

@@ -1063,6 +1063,19 @@ if get_option('with_tests')
         )
         _uma_fix_pkgs += [_uma_tetrazine_keyless]
         _uma_fix_env.set('UMA_TETRAZINE_KEYLESS_PT2', _uma_tetrazine_keyless.full_path())
+        _uma_batch_molecular = custom_target(
+            'uma-batch-molecular',
+            output: 'line-batch-molecular.pt2',
+            command: [
+                _uma_py, _uma_export,
+                '--kind', 'batch-molecular',
+                '--dtype', 'float64',
+                '--out', '@OUTPUT@',
+            ],
+            build_by_default: false,
+        )
+        _uma_fix_pkgs += [_uma_batch_molecular]
+        _uma_fix_env.set('UMA_BATCH_MOLECULAR_PT2', _uma_batch_molecular.full_path())
         test(
             'UmaGraphSizeTest',
             executable(
@@ -1079,6 +1092,14 @@ if get_option('with_tests')
             depends: _uma_fix_pkgs,
             workdir: meson.source_root(),
         )
+        test(
+            'UmaExportBounds',
+            _uma_py,
+            args: [
+                meson.project_source_root() / 'tests' / 'test_uma_export_bounds.py',
+            ],
+            workdir: meson.source_root(),
+        )
         if _rpc_stack
             _uma_harness_env = environment()
             _uma_harness_env.prepend('LD_LIBRARY_PATH', _torch_libdir)
@@ -1092,6 +1113,21 @@ if get_option('with_tests')
                     meson.project_source_root() / 'CppCore' / 'rgpot' / 'rpc' / 'Potentials.capnp',
                 ],
                 depends: [_uma_gather_static, uma_engine],
+                env: _uma_harness_env,
+                workdir: meson.source_root(),
+            )
+            test(
+                'UmaOffReference',
+                _uma_py,
+                args: [
+                    meson.project_source_root() / 'scripts' / 'uma_off_reference.py',
+                    '--tap',
+                    uma_engine.full_path(),
+                    'uma-off-reference-package-absent.pt2',
+                    meson.project_source_root() / 'CppCore' / 'rgpot' / 'rpc' / 'Potentials.capnp',
+                ],
+                protocol: 'tap',
+                depends: [uma_engine],
                 env: _uma_harness_env,
                 workdir: meson.source_root(),
             )

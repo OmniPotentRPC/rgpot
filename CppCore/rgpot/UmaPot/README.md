@@ -68,10 +68,11 @@ graph would otherwise return a finite force.
 
 A molecular box recenters the atoms in a cube and is traced on every
 ordered pair, `n(n-1)`. Any other edge count throws `UmaShapeError`
-before the compiled graph runs. Any nonzero cell offset is a
-periodic image, so the call throws `UmaContractError` on
-`cell_offsets` (`nonzero`). A band package checks each system's
-edge count, not only the sum.
+before the compiled graph runs. The single path and the band path
+use that same check. A band whose edge range is not a single number
+still checks each system against the range. Any nonzero cell offset
+is a periodic image, so the call throws `UmaContractError` on
+`cell_offsets` (`nonzero`).
 
 `natoms` and `counts` exist only in packages from the current
 exporter. Older packages get the `z_set` check, which cannot tell
@@ -83,23 +84,16 @@ and spin.
 
 ## Export path
 
-`export_uma_aoti.py` traces with `make_fx(tracing_mode="symbolic")`
-after replacing integer-array gathers by `index_select`, then exports
-that graph with a symbolic edge count. A second geometry, whose
-neighbour list is a different length, has to match a same-dtype
-reference before the package is kept. `export_path` then reads
-`symbolic-nedges`, and the edge range is 1 to 65536. The atom count
-stays the traced size: a three-atom example unifies that count with
-the trailing 3 of the coordinates, so the atom count is not a free
-symbol. A call with a different atom count throws `UmaShapeError` and
-names both position shapes.
-
-When the symbolic trace cannot be checked, the exporter falls back to
-`make_fx(tracing_mode="real")`. That package is static. A molecular
-export that lands on this fallback without `--molecular-box` is an
-error and writes no package. A later call whose edge list changed
-size throws `UmaShapeError` naming both edge shapes, instead of
-reading past the end of the buffer.
+`export_uma_aoti.py` tries a symbolic edge count, then a dynamic
+export, then a static one, then `make_fx(tracing_mode="real")`.
+Every path that is kept records the traced edge count as both
+`nedges_min` and `nedges_max`, plus the molecular box and a
+molecular flag. A path does not record 1 to 65536. `symbolic-nedges`,
+`dynamic-nonstrict` and `make_fx-nonstrict` without a molecular box
+are refused and write no package. A static path with no box records
+the traced count, so a later call whose edge list changed size
+throws `UmaShapeError` and names both shapes. The atom count stays
+the traced size.
 
 ## potserv
 

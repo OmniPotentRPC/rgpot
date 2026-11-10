@@ -387,6 +387,125 @@ def export_batch(path: Path, dtype_name: str, static: bool = False) -> None:
     aoti_package(exported, path, metadata=meta)
 
 
+def export_guard(path: Path, dtype_name: str, mode: str) -> None:
+    """Packages used to time the edge guard. The kernel is a sum.
+
+    ``single`` and ``batch`` carry a molecular box and a wide edge
+    range so several atom counts stay inside the traced window while
+    the runtime still requires the complete pair list. ``periodic``
+    has no box. The real UMA exporter does not emit the wide range.
+    """
+    dtype = torch.float64 if dtype_name == "float64" else torch.float32
+    molecular = mode != "periodic"
+    batch = mode == "batch"
+    example = _batch_example(dtype, 6) if batch else _cluster_example(dtype, 4, 12)
+    module = apply_export_dtype(
+        (SumEnergyBatch() if batch else SumEnergy()).eval(), dtype_name
+    )
+    natoms_dim = torch.export.Dim("natoms", min=1, max=8192)
+    nedges_dim = torch.export.Dim("nedges", min=1, max=40_000_000)
+    shapes = {
+        "pos": {0: natoms_dim},
+        "atomic_numbers": {0: natoms_dim},
+        "cell": None,
+        "pbc": None,
+        "edge_index": {1: nedges_dim},
+        "cell_offsets": {0: nedges_dim},
+        "charge": None,
+        "spin": None,
+        "batch": {0: natoms_dim},
+        "natoms": None,
+    }
+    if batch:
+        shapes["nedges"] = None
+        shapes["cell"] = {0: torch.export.Dim("nsys", min=1, max=8)}
+        shapes["pbc"] = {0: torch.export.Dim("nsys2", min=1, max=8)}
+        shapes["charge"] = {0: torch.export.Dim("nsys3", min=1, max=8)}
+        shapes["spin"] = {0: torch.export.Dim("nsys4", min=1, max=8)}
+    exported = torch.export.export(module, example, dynamic_shapes=shapes, strict=False)
+    meta = runtime_metadata(
+        path,
+        80.0 if molecular else 6.0,
+        300,
+        example,
+        dtype,
+        model_dtype=dtype,
+        task_name="omol",
+        charge=0,
+        spin=1,
+        z_set=None,
+        counts=None,
+        label="guard",
+        model="tiny-guard-" + mode,
+        molecular_box=200.0 if molecular else 0.0,
+        batch_max=2 if batch else 0,
+    )
+    meta["max_neighbors"] = 8192 if molecular else 300
+    meta["nedges_min"] = 1
+    meta["nedges_max"] = 40_000_000
+    meta["natoms_min"] = 1
+    meta["natoms_max"] = 8192
+    meta["edge_index_shape"] = "2,nedges"
+    meta["pos_shape"] = "natoms,3"
+    meta["molecular"] = molecular
+    meta["export_path"] = "tiny-guard-" + mode
+    aoti_package(exported, path, metadata=meta)
+
+
+def export_batch_molecular(path: Path, dtype_name: str) -> None:
+    """Two-system sum with a molecular box and a wide edge range.
+
+    The range is what a package looked like before export paths pinned
+    the traced count. The runtime must still refuse a system that is
+    not the complete pair list.
+    """
+    dtype = torch.float64 if dtype_name == "float64" else torch.float32
+    example = _batch_example(dtype, 6)
+    module = apply_export_dtype(SumEnergyBatch().eval(), dtype_name)
+    nedges_dim = torch.export.Dim("nedges", min=1, max=100000)
+    exported = torch.export.export(
+        module,
+        example,
+        dynamic_shapes={
+            "pos": None,
+            "atomic_numbers": None,
+            "cell": None,
+            "pbc": None,
+            "edge_index": {1: nedges_dim},
+            "cell_offsets": {0: nedges_dim},
+            "charge": None,
+            "spin": None,
+            "batch": None,
+            "natoms": None,
+            "nedges": None,
+        },
+        strict=False,
+    )
+    meta = runtime_metadata(
+        path,
+        6.0,
+        300,
+        example,
+        dtype,
+        model_dtype=dtype,
+        task_name="omol",
+        charge=0,
+        spin=1,
+        z_set=[1, 6, 7],
+        counts={1: 1, 6: 1, 7: 1},
+        label="line",
+        model="tiny-sum-batch-molecular",
+        molecular_box=80.0,
+        batch_max=2,
+    )
+    meta["nedges_min"] = 1
+    meta["nedges_max"] = 100000
+    meta["edge_index_shape"] = "2,nedges"
+    meta["molecular"] = True
+    meta["export_path"] = "tiny-sum-batch-molecular"
+    aoti_package(exported, path, metadata=meta)
+
+
 def _cluster(dtype, n: int):
     pos = torch.zeros((n, 3), dtype=dtype)
     pos[:, 0] = 12.5
@@ -627,6 +746,10 @@ def main() -> int:
             "no-edges",
             "box",
             "tetrazine-keyless",
+            "batch-molecular",
+            "guard-single",
+            "guard-batch",
+            "guard-periodic",
         ),
         required=True,
     )
@@ -663,6 +786,14 @@ def main() -> int:
         export_box(args.out, args.dtype)
     elif args.kind == "tetrazine-keyless":
         export_tetrazine_keyless(args.out, args.dtype)
+    elif args.kind == "batch-molecular":
+        export_batch_molecular(args.out, args.dtype)
+    elif args.kind == "guard-single":
+        export_guard(args.out, args.dtype, "single")
+    elif args.kind == "guard-batch":
+        export_guard(args.out, args.dtype, "batch")
+    elif args.kind == "guard-periodic":
+        export_guard(args.out, args.dtype, "periodic")
     else:
         if args.meta != "both":
             raise SystemExit("cost packages always record both dtype keys")

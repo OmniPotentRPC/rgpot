@@ -45,11 +45,47 @@ def _flat(pos: np.ndarray) -> list[float]:
     return [float(v) for v in np.asarray(pos, dtype=np.float64).reshape(-1)]
 
 
+def _fairchem_reason() -> str | None:
+    try:
+        import fairchem.core  # noqa: F401
+    except Exception:
+        return "fairchem is absent"
+    return None
+
+
+def _tap(ok: bool, skip: str | None = None) -> int:
+    print("1..1")
+    if skip:
+        print(f"ok 1 - uma off reference # SKIP {skip}")
+        return 0
+    if ok:
+        print("ok 1 - uma off reference")
+        return 0
+    print("not ok 1 - uma off reference")
+    return 1
+
+
 def main() -> int:
-    if len(sys.argv) != 4:
-        print("usage: uma_off_reference.py LIB MODEL SCHEMA", file=sys.stderr)
+    tap = "--tap" in sys.argv
+    args = [arg for arg in sys.argv[1:] if arg != "--tap"]
+    reason = _fairchem_reason()
+    if reason:
+        print(reason, file=sys.stderr)
+        return _tap(False, reason) if tap else 77
+    if len(args) != 3:
+        print(
+            "usage: uma_off_reference.py [--tap] LIB MODEL SCHEMA",
+            file=sys.stderr,
+        )
         return 2
-    library, model, schema = sys.argv[1:]
+    library, model, schema = args
+    if not Path(model).is_file():
+        text = "AOTI package is absent"
+        print(text, file=sys.stderr)
+        return _tap(False, text) if tap else 77
+    def note(text: str) -> None:
+        print(text, file=sys.stderr if tap else sys.stdout, flush=True)
+
     base = np.array(_TETRAZINE, dtype=np.float64)
     # 0.2 angstrom walks. The molecule is about 5 angstroms across and
     # the cutoff is 6, so every pair stays a neighbour.
@@ -75,13 +111,12 @@ def main() -> int:
             df = float(np.max(np.abs(np.array(forces).reshape(-1, 3) - f_ref)))
             worst_e = max(worst_e, de)
             worst_f = max(worst_f, df)
-            print(
-                f"walk {index}: dE={de:.3e} max|dF|={df:.3e} E={energy:.17g}",
-                flush=True,
+            note(
+                f"walk {index}: dE={de:.3e} max|dF|={df:.3e} E={energy:.17g}"
             )
             if de > 1e-4 or df > 1e-4:
                 print("FAIL: AOTI does not match fairchem", file=sys.stderr)
-                return 3
+                return _tap(False) if tap else 3
         step = 1e-3
         e0, f0 = engine.force(_flat(base), _Z, _BOX)
         # Central difference. A one-sided step of 1e-3 on this bond
@@ -95,17 +130,17 @@ def main() -> int:
         e_minus, _ = engine.force(_flat(minus), _Z, _BOX)
         finite = (e_minus - e_plus) / (2.0 * step)
         gap = abs(finite - f0[component])
-        print(
+        note(
             f"finite-difference: component={component} -dE/dx={finite:.8g} "
             f"force={f0[component]:.8g} gap={gap:.3e}"
         )
         if gap > 1e-3:
             print("FAIL: finite difference does not match the force", file=sys.stderr)
-            return 4
+            return _tap(False) if tap else 4
     finally:
         engine.close()
-    print(f"worst dE={worst_e:.3e} worst max|dF|={worst_f:.3e} ref0={e_ref0:.17g}")
-    return 0
+    note(f"worst dE={worst_e:.3e} worst max|dF|={worst_f:.3e} ref0={e_ref0:.17g}")
+    return _tap(True) if tap else 0
 
 
 if __name__ == "__main__":
