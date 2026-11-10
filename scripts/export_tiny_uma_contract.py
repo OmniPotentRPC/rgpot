@@ -204,8 +204,15 @@ def _apply_meta(meta: dict, mode: str) -> dict:
     elif mode == "none":
         meta.pop("pos_dtype", None)
         meta.pop("model_dtype", None)
+    elif mode == "mismatch":
+        # Float32 positions recorded against a float64 graph. UmaPot
+        # must refuse this instead of running it.
+        meta["pos_dtype"] = "float32"
+        meta["model_dtype"] = "float64"
     else:
-        raise SystemExit(f"--meta must be both, model, pos or none, not {mode}")
+        raise SystemExit(
+            "--meta must be both, model, pos, none or mismatch, not " + mode
+        )
     return meta
 
 
@@ -330,7 +337,7 @@ def main() -> int:
     parser.add_argument("--dtype", choices=("float32", "float64"), required=True)
     parser.add_argument(
         "--meta",
-        choices=("both", "model", "pos", "none"),
+        choices=("both", "model", "pos", "none", "mismatch"),
         default="both",
         help="Which dtype keys to embed. precision only.",
     )

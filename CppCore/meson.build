@@ -947,24 +947,61 @@ if get_option('with_tests')
                 link_language: 'cpp',
             )
         endif
-        _gtest_dep = dependency('gtest', required: false)
-        _gtest_main_dep = dependency('gtest_main', required: false)
-        if _gtest_dep.found() and _gtest_main_dep.found()
-            test(
-                'UmaFloat64Test',
-                executable(
-                    'uma_float64_test',
-                    sources: ['tests/UmaFloat64Test.cc'],
-                    dependencies: test_deps + [_gtest_dep, _gtest_main_dep],
-                    include_directories: _incdirs + ['.'],
-                    cpp_args: test_args,
-                    link_with: _linkto,
-                    link_language: 'cpp',
-                    build_rpath: _metatomic_build_rpath,
-                ),
-                workdir: meson.source_root(),
+        _uma_py = find_program('python3', required: true)
+        _uma_export = meson.project_source_root() / 'scripts' / 'export_tiny_uma_contract.py'
+        _uma_fix_pkgs = []
+        _uma_fix_env = environment()
+        foreach _spec : [
+            ['float64', 'both', 'UMA_FLOAT64_PT2', 'line-float64.pt2'],
+            ['float32', 'both', 'UMA_FLOAT32_PT2', 'line-float32.pt2'],
+            ['float64', 'model', 'UMA_FLOAT64_MODEL_ONLY_PT2', 'line-model.pt2'],
+            ['float32', 'none', 'UMA_FLOAT32_NOMETA_PT2', 'line-nometa.pt2'],
+            ['float64', 'mismatch', 'UMA_DTYPE_MISMATCH_PT2', 'line-mismatch.pt2'],
+        ]
+            _pkg = custom_target(
+                'uma-' + _spec[2],
+                output: _spec[3],
+                command: [
+                    _uma_py, _uma_export,
+                    '--kind', 'precision',
+                    '--dtype', _spec[0],
+                    '--meta', _spec[1],
+                    '--out', '@OUTPUT@',
+                ],
+                build_by_default: false,
             )
-        endif
+            _uma_fix_pkgs += [_pkg]
+            _uma_fix_env.set(_spec[2], _pkg.full_path())
+        endforeach
+        _uma_batch = custom_target(
+            'uma-line-batch',
+            output: 'line-float64-batch.pt2',
+            command: [
+                _uma_py, _uma_export,
+                '--kind', 'batch',
+                '--dtype', 'float64',
+                '--out', '@OUTPUT@',
+            ],
+            build_by_default: false,
+        )
+        _uma_fix_pkgs += [_uma_batch]
+        _uma_fix_env.set('UMA_FLOAT64_BATCH_PT2', _uma_batch.full_path())
+        test(
+            'UmaFloat64Test',
+            executable(
+                'uma_float64_test',
+                sources: ['tests/UmaFloat64Test.cc'],
+                dependencies: test_deps,
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+                build_rpath: _metatomic_build_rpath,
+            ),
+            env: _uma_fix_env,
+            depends: _uma_fix_pkgs,
+            workdir: meson.source_root(),
+        )
     endif
     # NWChem/CPMD frontend tests (need ptlrpc + frontends from _rpc_stack)
     if _rpc_stack and not get_option('with_rpc_client_only')
