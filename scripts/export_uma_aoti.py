@@ -18,8 +18,9 @@ and static-strict, then falls back to make_fx(tracing_mode="real") followed by
 a nonstrict export of the traced module. With torch 2.13 and fairchem-core
 2.23 every UMA export takes the fallback. The fallback package is static: it
 accepts only the traced atom count and edge count, so pass --molecular-box
-for anything that moves (every intramolecular pair is then an edge). The path
-taken is embedded as export_path.
+for anything that moves. The trace then uses every ordered pair, n(n-1)
+edges, rather than a widened neighbor cutoff. The path taken is embedded
+as export_path.
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 from aoti_execstack import clear_pt2_execstack  # noqa: E402
 from aoti_graph import canonicalize_strided_slices  # noqa: E402
+from uma_edges import complete_ordered_edges  # noqa: E402
 
 import numpy as np
 import torch
@@ -156,6 +158,17 @@ def _vesin_edges(
     return edge_index, shifts
 
 
+def _edges_for_atoms(pos_np, cell_np, cutoff, max_neighbors, complete: bool):
+    if complete:
+        neighbor, center, shifts = complete_ordered_edges(pos_np)
+        edge_index = np.stack(
+            [np.asarray(neighbor, dtype=np.int64), np.asarray(center, dtype=np.int64)],
+            axis=0,
+        )
+        return edge_index, np.asarray(shifts, dtype=np.float64)
+    return _vesin_edges(pos_np, cell_np, cutoff, max_neighbors=max_neighbors)
+
+
 def vesin_atomic_data(
     atoms: Atoms,
     cutoff: float,
@@ -165,13 +178,16 @@ def vesin_atomic_data(
     *,
     task_name: str = "omol",
     sid: str = "hcn",
+    complete: bool = False,
 ):
     """Official AtomicData carrying vesin edges (otf_graph=False path)."""
     from fairchem.core.datasets.atomic_data import AtomicData
 
     pos_np = np.asarray(atoms.get_positions(), dtype=np.float64)
     cell_np = np.asarray(atoms.get_cell(), dtype=np.float64)
-    edge_index, shifts = _vesin_edges(pos_np, cell_np, cutoff, max_neighbors=max_neighbors)
+    edge_index, shifts = _edges_for_atoms(
+        pos_np, cell_np, cutoff, max_neighbors, complete
+    )
     pos = torch.tensor(pos_np, dtype=dtype)
     data = AtomicData(
         pos=pos,
@@ -498,7 +514,7 @@ def ase_reference(atoms: Atoms, model: str, device: str, task_name: str = "omol"
 
 
 def pack_example(atoms: Atoms, cutoff: float, device, dtype, max_neighbors: int | None = None,
-                 n_systems: int = 1):
+                 n_systems: int = 1, complete: bool = False):
     """Pack one geometry as a fairchem-convention input tuple.
 
     n_systems > 1 replicates the geometry into a batch of independent
@@ -507,7 +523,9 @@ def pack_example(atoms: Atoms, cutoff: float, device, dtype, max_neighbors: int 
     """
     pos_np = np.asarray(atoms.get_positions(), dtype=np.float64)
     cell_np = np.asarray(atoms.get_cell(), dtype=np.float64)
-    edge_index, shifts = _vesin_edges(pos_np, cell_np, cutoff, max_neighbors=max_neighbors)
+    edge_index, shifts = _edges_for_atoms(
+        pos_np, cell_np, cutoff, max_neighbors, complete
+    )
     n = pos_np.shape[0]
     B = max(1, int(n_systems))
     pos = torch.tensor(np.tile(pos_np, (B, 1)), dtype=dtype, device=device)
@@ -628,6 +646,7 @@ def runtime_metadata(
     model: str = "",
     molecular_box: float = 0.0,
     batch_max: int = 0,
+    model_cutoff: float | None = None,
 ):
     input_names = [
         "pos",
@@ -645,6 +664,7 @@ def runtime_metadata(
         input_names.append("nedges")
     meta = {
         "cutoff": float(cutoff),
+        "model_cutoff": float(cutoff if model_cutoff is None else model_cutoff),
         "molecular_box": float(molecular_box),
         "max_neighbors": int(max_neighbors),
         "task_name": str(task_name),
@@ -749,10 +769,10 @@ def main() -> int:
         default=0.0,
         help=(
             "Trace with the molecule re-centered in this synthetic cube and "
-            "a cutoff of 0.4*L: every intramolecular pair is an edge, no "
-            "periodic image ever is, so the vesin edge count is n(n-1) at "
-            "every geometry (what a static-shape AOTI graph requires). "
-            "The runtime reads molecular_box back from the package metadata."
+            "every ordered intramolecular pair as an edge (n(n-1) at every "
+            "geometry, which a static-shape AOTI graph requires). The "
+            "package cutoff stays the backbone interaction range. The "
+            "runtime reads molecular_box back from the package metadata."
         ),
     )
     p.add_argument(
@@ -809,15 +829,17 @@ def main() -> int:
     # ASE used internal graph gen. The exported module takes vesin edges.
     backbone.otf_graph = False
     cutoff = float(backbone.cutoff)
+    model_cutoff = cutoff
     max_n = int(getattr(backbone, "max_neighbors", 300) or 300)
-    if args.molecular_box and args.molecular_box > 0.0:
-        # Complete-graph tracing: the model envelope zeroes pairs beyond
-        # its own cutoff, so widening the graph cutoff only fixes the
-        # edge count (validated on claisen reactant + 1.35x stretch:
-        # dE <= 3.0e-4 eV, dF <= 8.7e-4 eV/A vs the internal graph).
-        cutoff = 0.4 * float(args.molecular_box)
-        max_n = 100000
-    print(f"cutoff={cutoff} max_neighbors={max_n}", flush=True)
+    molecular = bool(args.molecular_box and args.molecular_box > 0.0)
+    if molecular:
+        # The compiled graph is static. Every ordered pair is an edge, so
+        # a later geometry whose longest contact exceeds the old 0.4*L
+        # trace cutoff does not change the edge count. The envelope zeroes
+        # pairs past model_cutoff.
+        max_n = max(max_n, len(atoms) - 1)
+    print(f"cutoff={cutoff} model_cutoff={model_cutoff} max_neighbors={max_n}",
+          flush=True)
     tasks = pred.dataset_to_tasks.get(task_name, [])
     for task in tasks:
         mean = float(task.normalizer.mean)
@@ -835,7 +857,7 @@ def main() -> int:
         if not out.is_file():
             print(f"FAIL: --compare-only needs an existing .pt2: {out}", file=sys.stderr)
             return 4
-        example = pack_example(atoms, cutoff, device, dtype, max_n)
+        example = pack_example(atoms, cutoff, device, dtype, max_n, complete=molecular)
         meta = runtime_metadata(
             out,
             cutoff,
@@ -851,6 +873,7 @@ def main() -> int:
             model=args.model,
             molecular_box=float(args.molecular_box or 0.0),
             batch_max=max(0, int(args.batch_max)),
+            model_cutoff=model_cutoff,
         )
         pkg = load_aoti(out)
         e_a, f_a = run_aoti(pkg, example)
@@ -863,7 +886,8 @@ def main() -> int:
         return 0
 
     data_v = vesin_atomic_data(
-        atoms, cutoff, dtype, device, max_n, task_name=task_name, sid=label
+        atoms, cutoff, dtype, device, max_n, task_name=task_name, sid=label,
+        complete=molecular,
     )
     print(f"vesin AtomicData edges={int(data_v.nedges.item())}", flush=True)
     pred_v = pred.predict(data_v)
@@ -881,7 +905,7 @@ def main() -> int:
     # band has a fixed image count, so nothing is lost.
     trace_systems = batch_max if batch_max > 1 else 1
     example = pack_example(atoms, cutoff, device, dtype, max_n,
-                           n_systems=trace_systems)
+                           n_systems=trace_systems, complete=molecular)
     print(f"vesin edges={example[4].shape[1]} systems={trace_systems}",
           flush=True)
 
@@ -908,6 +932,7 @@ def main() -> int:
         model=args.model,
         molecular_box=float(args.molecular_box or 0.0),
         batch_max=max(0, int(args.batch_max)),
+        model_cutoff=model_cutoff,
     )
     if args.eager_only:
         return 0
@@ -994,9 +1019,7 @@ def main() -> int:
         meta["nedges_max"] = nedges_max
     else:
         meta["nedges_min"] = meta["nedges_max"] = int(example[4].shape[1])
-    if export_path == "make_fx-nonstrict" and not (
-        args.molecular_box and args.molecular_box > 0.0
-    ):
+    if export_path == "make_fx-nonstrict" and not molecular:
         print(
             f"WARNING: static package without --molecular-box: every call "
             f"must produce exactly {example[4].shape[1]} vesin edges, so a "

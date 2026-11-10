@@ -17,8 +17,10 @@ package is read.
 
 | Key | Use at runtime |
 | --- | --- |
-| `cutoff`, `max_neighbors` | vesin neighbor list |
-| `molecular_box` | cube side length; molecular positions are centred at zero (0: caller's cell) |
+| `cutoff` | Model interaction range when `model_cutoff` is absent. Vesin radius for a package that was not traced as every ordered pair. |
+| `model_cutoff` | Backbone interaction range. Pairs past it do not change the energy. Older packages omit the key. |
+| `max_neighbors` | Vesin cap per atom, on a list that is not the full ordered pair list |
+| `molecular_box` | Cube side length; positions are centred at zero (0: caller's cell). A positive value with a full-pair edge count (or with no recorded edge count) builds every ordered pair, not a cutoff truncation. |
 | `batch_max` | band graph size (0 or 1: single system) |
 | `pos_dtype` | `float64` switches the input dtype |
 | `task_name`, `charge`, `spin` | must equal `UmaConfig` |
@@ -27,7 +29,9 @@ package is read.
 | `model`, `torch_version`, `fairchem_version`, `export_path` | recorded |
 
 `UmaConfig.cutoff` / `max_neighbors` are defaults. The embedded
-values win when present.
+values win when present. A molecular package traced at `n(n-1)`
+edges keeps that count for every geometry. The envelope, not a
+10 angstrom neighbor cutoff, drops pairs past the model range.
 
 ## Contract checks
 
@@ -59,9 +63,11 @@ nonstrict, static strict) and falls back to
 module. With torch 2.13 and fairchem-core 2.23 every UMA export takes
 the fallback, and `export_path` reads `make_fx-nonstrict`. That
 package is static in atom count and edge count, so export with
-`--molecular-box` (complete intramolecular graph, `n(n-1)` edges at
-every geometry). Without it the exporter warns: a geometry that moves
-a pair across the cutoff changes the edge count and the call fails.
+`--molecular-box` (every ordered pair, `n(n-1)` edges at every
+geometry). The trace does not widen the neighbor cutoff to `0.4*L`.
+Without the molecular box the exporter warns: a geometry that moves
+a pair across the model cutoff changes the edge count and the call
+fails unless the list is padded back to the compiled count.
 
 ## potserv
 

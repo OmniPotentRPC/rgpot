@@ -52,7 +52,7 @@ public:
   }
 
 private:
-  static constexpr uint64_t kKernelVersion = 2;
+  static constexpr uint64_t kKernelVersion = 3;
 
   struct Impl;
 
