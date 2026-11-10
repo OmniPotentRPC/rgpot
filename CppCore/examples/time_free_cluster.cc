@@ -1,5 +1,5 @@
 // MIT License
-// Copyright 2023--present rgpot developers
+// Copyright (c) rgpot developers
 //
 // Wall time of one warm force call. Kinds:
 //   ljcluster   free LJClusterPot, cutoff from --cutoff (default 2.5)
