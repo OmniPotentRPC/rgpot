@@ -31,6 +31,7 @@
 #include <vector>
 
 #include "rgpot/ForceStructs.hpp"
+#include "rgpot/nlist/PairListCache.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
@@ -72,7 +73,7 @@ std::vector<double> unitCube(std::size_t n, std::uint64_t seed) {
 std::vector<double> loadCoords(const std::string &path) {
   std::ifstream in(path);
   if (!in) {
-    std::fprintf(stderr, "cannot open %s\n", path.c_str());
+    std::fprintf(stderr, "cannot open coordinates\n");
     std::exit(2);
   }
   std::vector<double> R;
@@ -93,7 +94,7 @@ std::vector<double> loadCoords(const std::string &path) {
       nums.push_back(word);
     }
     if (nums.size() < 8) {
-      std::fprintf(stderr, "%s has a short header\n", path.c_str());
+      std::fprintf(stderr, "coordinate header is short\n");
       std::exit(2);
     }
     const auto nat = static_cast<std::size_t>(std::atof(nums[7].c_str()));
@@ -140,7 +141,7 @@ std::vector<double> loadCoords(const std::string &path) {
     }
   }
   if (R.size() < 6 || R.size() % 3 != 0) {
-    std::fprintf(stderr, "%s has no coordinates\n", path.c_str());
+    std::fprintf(stderr, "coordinate file is empty\n");
     std::exit(2);
   }
   return R;
@@ -187,19 +188,24 @@ double once(const Pot &pot, const std::vector<double> &R,
   return fo.energy;
 }
 
-void timeCalls(const char *kind, std::size_t n, int threads, double cutoff,
-               int warmup, int reps, const std::function<double()> &call) {
+void timeCalls(const char *kind, const char *phase, std::size_t n, int threads,
+               double cutoff, int warmup, int reps,
+               const std::function<void(int)> &prepare,
+               const std::function<double()> &call) {
   for (int i = 0; i < warmup; ++i) {
+    prepare(-1);
     (void)call();
   }
   for (int i = 0; i < reps; ++i) {
+    prepare(i);
     const auto t0 = clock_type::now();
     const double energy = call();
     const auto t1 = clock_type::now();
     const double seconds = std::chrono::duration<double>(t1 - t0).count();
     std::printf(
-        "kind=%s n=%zu threads=%d cutoff=%.8g rep=%d seconds=%.9f energy=%.16e\n",
-        kind, n, threads, cutoff, i, seconds, energy);
+        "kind=%s phase=%s n=%zu threads=%d cutoff=%.8g rep=%d seconds=%.9f "
+        "energy=%.16e\n",
+        kind, phase, n, threads, cutoff, i, seconds, energy);
     std::fflush(stdout);
   }
 }
@@ -336,6 +342,7 @@ int main(int argc, char **argv) {
   const double cutoff = std::atof(arg(argc, argv, "--cutoff", "2.5"));
   const int warmup = std::atoi(arg(argc, argv, "--warmup", "2"));
   const int reps = std::atoi(arg(argc, argv, "--reps", "1"));
+  const char *phase = arg(argc, argv, "--phase", "warm");
   const char *file = arg(argc, argv, "--file", "");
 
   if (kind == "truncate") {
@@ -383,6 +390,33 @@ int main(int argc, char **argv) {
   const std::vector<int> types(nat, kind == "sutton" ? 78 : 1);
   std::vector<double> F(3 * nat, 0.0);
   std::vector<double> shifted;
+  const int warm_n = std::strcmp(phase, "cold") == 0 ? 0 : warmup;
+  auto prepare = [&](int rep) {
+    if (rep < 0) {
+      return;
+    }
+    if (std::strcmp(phase, "cold") == 0 && rep > 0) {
+      for (std::size_t a = 0; a < R.size(); a += 3) {
+        R[a] += 10000.0;
+      }
+    } else if (std::strcmp(phase, "rebuild") == 0) {
+      for (std::size_t a = 0; a < R.size(); a += 3) {
+        R[a] += 2.0;
+      }
+    }
+  };
+
+  if (kind == "admit") {
+    rgpot::nlist::CachedPairList::Options opt;
+    opt.cutoff = used_cutoff;
+    opt.periodic = {{false, false, false}};
+    const double wide[9] = {1.0e6, 0, 0, 0, 1.0e6, 0, 0, 0, 1.0e6};
+    rgpot::nlist::CachedPairList list;
+    list.rebuild(R.data(), nat, wide, opt);
+    std::printf("kind=admit n=%zu cacheable=%d\n", nat,
+                list.cacheable() ? 1 : 0);
+    return 0;
+  }
 
   if (kind == "ljpot") {
     box = paddedCell(R, used_cutoff, shifted);
@@ -390,19 +424,21 @@ int main(int argc, char **argv) {
     R.swap(shifted);
     const rgpot::LJPot pot(
         rgpot::LJConfig{.u0 = 1.0, .cutoff = used_cutoff, .psi = 1.0});
-    timeCalls(kind.c_str(), nat, threads, used_cutoff, warmup, reps, [&] {
-      std::fill(F.begin(), F.end(), 0.0);
-      return once(pot, R, types, box_ptr, F);
-    });
+    timeCalls(kind.c_str(), phase, nat, threads, used_cutoff, warm_n, reps,
+              prepare, [&] {
+                std::fill(F.begin(), F.end(), 0.0);
+                return once(pot, R, types, box_ptr, F);
+              });
     return 0;
   }
   if (kind == "ljpot_asv" || kind == "linkcell") {
     const rgpot::LJPot pot(
         rgpot::LJConfig{.u0 = 1.0, .cutoff = used_cutoff, .psi = 1.0});
-    timeCalls(kind.c_str(), nat, threads, used_cutoff, warmup, reps, [&] {
-      std::fill(F.begin(), F.end(), 0.0);
-      return once(pot, R, types, box_ptr, F);
-    });
+    timeCalls(kind.c_str(), phase, nat, threads, used_cutoff, warm_n, reps,
+              prepare, [&] {
+                std::fill(F.begin(), F.end(), 0.0);
+                return once(pot, R, types, box_ptr, F);
+              });
     return 0;
   }
   if (kind == "morse") {
@@ -418,8 +454,8 @@ int main(int argc, char **argv) {
         bx > 0.0 && by > 0.0 && bz > 0.0) {
       cell = {bx, 0, 0, 0, by, 0, 0, 0, bz};
     }
-    timeCalls(kind.c_str(), nat, threads, pot.config().cutoff, warmup, reps,
-              [&] {
+    timeCalls(kind.c_str(), phase, nat, threads, pot.config().cutoff, warm_n,
+              reps, prepare, [&] {
                 std::fill(F.begin(), F.end(), 0.0);
                 return once(pot, R, z, cell.data(), F);
               });
@@ -429,10 +465,11 @@ int main(int argc, char **argv) {
     rgpot::SuttonChenConfig cfg;
     cfg.cutoff = used_cutoff > 0.0 ? used_cutoff : 3.0;
     const rgpot::SuttonChenPot pot(cfg);
-    timeCalls(kind.c_str(), nat, threads, cfg.cutoff, warmup, reps, [&] {
-      std::fill(F.begin(), F.end(), 0.0);
-      return once(pot, R, types, nullptr, F);
-    });
+    timeCalls(kind.c_str(), phase, nat, threads, cfg.cutoff, warm_n, reps,
+              prepare, [&] {
+                std::fill(F.begin(), F.end(), 0.0);
+                return once(pot, R, types, nullptr, F);
+              });
     return 0;
   }
   const rgpot::LJClusterPot pot(
@@ -440,9 +477,10 @@ int main(int argc, char **argv) {
   if (kind == "ljfile") {
     box_ptr = box.data();
   }
-  timeCalls(kind.c_str(), nat, threads, used_cutoff, warmup, reps, [&] {
-    std::fill(F.begin(), F.end(), 0.0);
-    return once(pot, R, types, box_ptr, F);
-  });
+  timeCalls(kind.c_str(), phase, nat, threads, used_cutoff, warm_n, reps,
+            prepare, [&] {
+              std::fill(F.begin(), F.end(), 0.0);
+              return once(pot, R, types, box_ptr, F);
+            });
   return 0;
 }
