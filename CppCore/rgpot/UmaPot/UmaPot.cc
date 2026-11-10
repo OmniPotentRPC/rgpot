@@ -182,6 +182,16 @@ std::optional<torch::ScalarType> dtype_from_name(const std::string &raw) {
 // Every edge index must land inside the position buffer. The compiled
 // graph gathers by this index, so a value past the last atom would
 // read off the end of that buffer.
+void reject_periodic_images(const std::vector<double> &offsets) {
+  for (double shift : offsets) {
+    if (shift == 0.0)
+      continue;
+    throw UmaContractError(
+        "cell_offsets", "a molecular box with no periodic image", "nonzero",
+        "input");
+  }
+}
+
 void check_edge_indices(const torch::Tensor &edge_index, int64_t npos) {
   const auto ei = edge_index.accessor<int64_t, 2>();
   const int64_t nedges = edge_index.size(1);
@@ -380,6 +390,8 @@ void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const auto nedges = static_cast<int64_t>(edges.neighbor.size());
   if (nedges == 0)
     throw std::runtime_error("UmaPot: vesin produced no edges");
+  if (molecular)
+    reject_periodic_images(edges.offsets);
   // Name both shapes before the graph runs. A static package says
   // [2, 56]; a dynamic one says the symbolic range. Either mismatch
   // is UmaShapeError, not a read past the buffer.
@@ -532,6 +544,14 @@ void UmaPot::forceBatchImpl(const ForceBatch &batch) const {
     }
     if (nedges_total == 0)
       throw std::runtime_error("UmaPot: vesin produced no edges (batch)");
+    std::vector<int64_t> per_system(static_cast<size_t>(B));
+    for (int64_t b = 0; b < B; ++b) {
+      per_system[static_cast<size_t>(b)] = static_cast<int64_t>(
+          sys_edges[static_cast<size_t>(b)].neighbor.size());
+      if (molecular)
+        reject_periodic_images(sys_edges[static_cast<size_t>(b)].offsets);
+    }
+    m_impl->contract.checkEachSystem(B, per_system.data());
     if (m_impl->contract.pos_decl.known || m_impl->contract.edge_decl.known)
       m_impl->contract.checkCallShapes(n, nedges_total);
     else

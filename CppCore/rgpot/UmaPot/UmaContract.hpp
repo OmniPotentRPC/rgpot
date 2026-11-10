@@ -166,6 +166,13 @@ struct UmaContract {
     c.natoms = one_int("natoms");
     c.nedges_min = one_int("nedges_min");
     c.nedges_max = one_int("nedges_max");
+    // A package with no edge range used to skip the check and then run
+    // a static graph. That returns a finite force for the wrong
+    // neighbour list. Both keys are required.
+    if (!c.nedges_min || !c.nedges_max) {
+      throw UmaContractError("nedges", "nedges_min and nedges_max", "absent",
+                             "package");
+    }
     c.natoms_min = one_int("natoms_min");
     c.natoms_max = one_int("natoms_max");
     c.pos_decl = c.parseShape(get("pos_shape"));
@@ -328,6 +335,29 @@ struct UmaContract {
   void checkCallShapes(int64_t nAtoms, int64_t nedges) const {
     matchShape("pos", pos_decl, {nAtoms, 3});
     matchShape("edge_index", edge_decl, {2, nedges});
+  }
+
+  /// A static band package freezes one edge count per system. Checking
+  /// only the sum lets one system lose edges while another gains
+  /// periodic images and still look valid.
+  void checkEachSystem(int64_t systems, const int64_t *counts) const {
+    if (systems <= 1 || counts == nullptr)
+      return;
+    if (!nedges_min || !nedges_max || *nedges_min != *nedges_max)
+      return;
+    const int64_t total = *nedges_min;
+    if (total % systems != 0) {
+      throw UmaContractError("nedges", std::to_string(total),
+                             "not divisible by the band", "package");
+    }
+    const int64_t each = total / systems;
+    for (int64_t s = 0; s < systems; ++s) {
+      if (counts[s] == each)
+        continue;
+      throw UmaShapeError("edge_index",
+                          "[2, " + std::to_string(counts[s]) + "]",
+                          "[2, " + std::to_string(each) + "]");
+    }
   }
 
   /// Edge count of one call (the whole band for a batched package)
