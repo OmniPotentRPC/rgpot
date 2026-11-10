@@ -1314,11 +1314,13 @@ def main() -> int:
         args.molecular_box and args.molecular_box > 0.0
     ):
         print(
-            f"WARNING: static package without --molecular-box: every call "
+            f"FAIL: static package without --molecular-box: every call "
             f"must produce exactly {example[4].shape[1]} vesin edges, so a "
-            f"geometry that moves a pair across the {cutoff} A cutoff aborts",
-            flush=True,
+            f"geometry that moves a pair across the {cutoff} A cutoff "
+            f"would return a finite force for the wrong graph",
+            file=sys.stderr,
         )
+        return 5
     with torch.enable_grad():
         e_x, f_x = exported.module()(*example)
     if not compare_batched("exported", e_x.detach().cpu(), f_x.detach().cpu().numpy(), e_ref, f_ref, len(atoms)):

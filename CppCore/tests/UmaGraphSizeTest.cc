@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
@@ -102,13 +103,112 @@ TEST_CASE("dynamic gather matches eager forces when the neighbour list changes",
   for (int i = 0; i < 4; ++i) {
     for (int k = 0; k < 3; ++k) {
       REQUIRE_THAT(compact.force[static_cast<size_t>(3 * i + k)],
-                   Catch::Matchers::WithinAbs(3.0, 1e-6));
+                   Catch::Matchers::WithinAbs(-3.0, 1e-6));
     }
   }
   for (int k = 0; k < 3; ++k) {
     REQUIRE_THAT(far.force[static_cast<size_t>(k)],
-                 Catch::Matchers::WithinAbs(2.0, 1e-6));
+                 Catch::Matchers::WithinAbs(-2.0, 1e-6));
     REQUIRE_THAT(far.force[9 + static_cast<size_t>(k)],
                  Catch::Matchers::WithinAbs(0.0, 1e-6));
   }
+
+  // A 1e-4 angstrom step does not cross the cutoff, so the compiled
+  // edge count stays put. The reported force is minus dE/dx.
+  std::vector<double> nudged = line(4, 1.0);
+  const double step = 1e-4;
+  nudged[0] += step;
+  const Eval after = run(pot, nudged);
+  const double finite = -(after.energy - compact.energy) / step;
+  REQUIRE_THAT(finite, Catch::Matchers::WithinAbs(compact.force[0], 1e-3));
+}
+
+TEST_CASE("a molecular box rejects a periodic image", "[uma][graph]") {
+  // After recentering, these three atoms span more than the 6 angstrom
+  // cutoff and less than the 15 angstrom box, so the missing pair comes
+  // back as a periodic image.
+  rgpot::UmaPot pot = open_pot(package_path("UMA_MOLECULAR_BOX_PT2"));
+  const std::vector<double> pos = {0, 0, 0, 0, 0, 1, 0, 0, 10};
+  const std::vector<int> z = {6, 7, 1};
+  const double box[9] = {15, 0, 0, 0, 15, 0, 0, 0, 15};
+  std::vector<double> force(9, 0.0);
+  rgpot::ForceOut slot{force.data(), 0.0, 0.0};
+  const rgpot::ForceInput in{3, pos.data(), z.data(), box};
+  REQUIRE_THROWS_WITH(
+      pot.forceImpl(in, &slot),
+      Catch::Matchers::ContainsSubstring("cell_offsets") &&
+          Catch::Matchers::ContainsSubstring("nonzero"));
+}
+
+TEST_CASE("a package with no edge range is refused", "[uma][graph]") {
+  rgpot::UmaPot pot = open_pot(package_path("UMA_NO_EDGES_PT2"));
+  REQUIRE_THROWS_WITH(run(pot, line(3, 1.0)),
+                      Catch::Matchers::ContainsSubstring("nedges") &&
+                          Catch::Matchers::ContainsSubstring("absent"));
+}
+
+TEST_CASE("tetrazine walked past 10 angstroms names the edge count",
+          "[uma][graph]") {
+  // s-tetrazine, eight atoms. The static package was traced at 56
+  // edges. Moving one hydrogen by 12 angstroms changes that count.
+  std::vector<double> pos = {
+      12.5, 13.83, 12.5, 12.5, 11.17, 12.5, 13.65, 13.165, 12.5,
+      13.65, 11.835, 12.5, 11.35, 13.165, 12.5, 11.35, 11.835, 12.5,
+      12.5, 14.91, 12.5, 12.5, 10.09, 12.5,
+  };
+  pos[7 * 3 + 1] += 12.0;
+  const std::vector<int> z = {6, 6, 7, 7, 7, 7, 1, 1};
+  const double box[9] = {40, 0, 0, 0, 40, 0, 0, 0, 40};
+  rgpot::UmaPot pot = open_pot(package_path("UMA_GATHER_STATIC_PT2"));
+  std::vector<double> force(pos.size(), 0.0);
+  rgpot::ForceOut slot{force.data(), 0.0, 0.0};
+  const rgpot::ForceInput in{8, pos.data(), z.data(), box};
+  try {
+    pot.forceImpl(in, &slot);
+    FAIL("the static package returned a force");
+  } catch (const rgpot::UmaShapeError &err) {
+    const std::string message = err.what();
+    REQUIRE(err.field() == "edge_index");
+    REQUIRE_THAT(message,
+                 Catch::Matchers::ContainsSubstring("edge_index shape is"));
+    REQUIRE_THAT(message, Catch::Matchers::ContainsSubstring("[2, 56]"));
+    REQUIRE_THAT(message, !Catch::Matchers::ContainsSubstring("returned 2"));
+  }
+}
+
+TEST_CASE("a band checks each system's edge count", "[uma][graph]") {
+  rgpot::UmaPot pot = open_pot(package_path("UMA_BATCH_STATIC_PT2"));
+  const std::vector<int> z = {6, 7, 1};
+  const double box[9] = {80, 0, 0, 0, 80, 0, 0, 0, 80};
+  std::vector<double> compact = {12.5, 12.5, 12.5, 12.5, 12.5, 13.5, 12.5, 12.5,
+                                 11.5};
+  std::vector<double> stretched = compact;
+  stretched.back() = 40.0;
+  std::vector<double> f0(9, 0.0), f1(9, 0.0);
+  rgpot::ForceInput in[2] = {
+      {3, compact.data(), z.data(), box},
+      {3, stretched.data(), z.data(), box},
+  };
+  rgpot::ForceOut out[2] = {
+      {f0.data(), 0.0, 0.0},
+      {f1.data(), 0.0, 0.0},
+  };
+  const rgpot::ForceBatch batch{2, in, out};
+  REQUIRE_THROWS_WITH(
+      pot.forceBatchImpl(batch),
+      Catch::Matchers::ContainsSubstring("edge_index shape is") &&
+          Catch::Matchers::ContainsSubstring("[2, 2]") &&
+          Catch::Matchers::ContainsSubstring("[2, 6]"));
+}
+
+TEST_CASE("each system of a static band is accepted", "[uma][contract]") {
+  auto meta = std::unordered_map<std::string, std::string>{
+      {"nedges_min", "12"},
+      {"nedges_max", "12"},
+  };
+  const auto contract = rgpot::UmaContract::fromMetadata(meta);
+  const int64_t even[2] = {6, 6};
+  REQUIRE_NOTHROW(contract.checkEachSystem(2, even));
+  const int64_t uneven[2] = {4, 8};
+  REQUIRE_THROWS_AS(contract.checkEachSystem(2, uneven), rgpot::UmaShapeError);
 }

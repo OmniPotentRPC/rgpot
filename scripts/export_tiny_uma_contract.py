@@ -94,7 +94,8 @@ class GatherEnergy(nn.Module):
         src = pos.index_select(0, edge_index[0])
         energy = src.sum()
         forces = torch.zeros_like(pos)
-        forces.index_add_(0, edge_index[0], torch.ones_like(src))
+        # The host force is minus the derivative of the energy.
+        forces.index_add_(0, edge_index[0], -torch.ones_like(src))
         return energy, forces
 
 
@@ -310,7 +311,31 @@ def export_precision(path: Path, dtype_name: str, meta_mode: str) -> None:
     _enforce_metadata(path, wanted)
 
 
-def export_batch(path: Path, dtype_name: str) -> None:
+def _drop_metadata_keys(path: Path, keys: tuple[str, ...]) -> None:
+    import json
+    import zipfile
+    from io import BytesIO
+
+    blob = path.read_bytes()
+    source = zipfile.ZipFile(BytesIO(blob))
+    out = BytesIO()
+    with zipfile.ZipFile(out, "w") as dest:
+        for info in source.infolist():
+            data = source.read(info.filename)
+            if info.filename.endswith(".json"):
+                try:
+                    payload = json.loads(data)
+                except json.JSONDecodeError:
+                    payload = None
+                if isinstance(payload, dict):
+                    for key in keys:
+                        payload.pop(key, None)
+                    data = json.dumps(payload).encode()
+            dest.writestr(info, data)
+    path.write_bytes(out.getvalue())
+
+
+def export_batch(path: Path, dtype_name: str, static: bool = False) -> None:
     dtype = torch.float64 if dtype_name == "float64" else torch.float32
     example = _batch_example(dtype, 6)
     module = apply_export_dtype(SumEnergyBatch().eval(), dtype_name)
@@ -349,9 +374,16 @@ def export_batch(path: Path, dtype_name: str) -> None:
         model="tiny-sum-batch",
         batch_max=2,
     )
-    meta["nedges_min"] = 1
-    meta["nedges_max"] = 100000
-    meta["export_path"] = "tiny-sum-batch"
+    if static:
+        exported = torch.export.export(module, example, strict=False)
+        meta["nedges_min"] = int(example[4].shape[1])
+        meta["nedges_max"] = int(example[4].shape[1])
+        meta["edge_index_shape"] = f"2,{int(example[4].shape[1])}"
+        meta["export_path"] = "tiny-sum-batch-static"
+    else:
+        meta["nedges_min"] = 1
+        meta["nedges_max"] = 100000
+        meta["export_path"] = "tiny-sum-batch"
     aoti_package(exported, path, metadata=meta)
 
 
@@ -460,8 +492,6 @@ def export_gather(path: Path, dtype_name: str, dynamic: bool) -> None:
         meta["pos_shape"] = "8,3"
         meta["edge_index_shape"] = "2,56"
         meta["export_path"] = "tiny-gather-static"
-        meta["z_set"] = [6]
-        meta["counts"] = '{"6": 8}'
     aoti_package(exported, path, metadata=meta)
     _enforce_metadata(path, meta)
 
@@ -510,17 +540,57 @@ def export_cost(path: Path, dtype_name: str) -> None:
     aoti_package(exported, path, metadata=meta)
 
 
+def export_no_edges(path: Path, dtype_name: str) -> None:
+    export_precision(path, dtype_name, "both")
+    _drop_metadata_keys(
+        path, ("nedges_min", "nedges_max", "edge_index_shape", "pos_shape")
+    )
+
+
+def export_box(path: Path, dtype_name: str) -> None:
+    """Line package recorded with a 15 angstrom molecular box."""
+    dtype = torch.float64 if dtype_name == "float64" else torch.float32
+    example = _single_example(dtype, 6)
+    module = apply_export_dtype(SumEnergy().eval(), dtype_name)
+    exported = torch.export.export(module, example, strict=False)
+    meta = runtime_metadata(
+        path,
+        6.0,
+        300,
+        example,
+        dtype,
+        model_dtype=dtype,
+        task_name="omol",
+        charge=0,
+        spin=1,
+        z_set=[1, 6, 7],
+        counts={1: 1, 6: 1, 7: 1},
+        label="line",
+        model="tiny-sum-box",
+        molecular_box=15.0,
+    )
+    meta["nedges_min"] = 6
+    meta["nedges_max"] = 6
+    meta["export_path"] = "tiny-sum-box"
+    aoti_package(exported, path, metadata=meta)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--kind",
-        choices=("precision", "batch", "cost", "gather"),
+        choices=("precision", "batch", "cost", "gather", "no-edges", "box"),
         required=True,
     )
     parser.add_argument(
         "--dynamic",
         action="store_true",
         help="gather only: symbolic atom count and edge count",
+    )
+    parser.add_argument(
+        "--static",
+        action="store_true",
+        help="batch only: freeze the traced edge count",
     )
     parser.add_argument("--dtype", choices=("float32", "float64"), required=True)
     parser.add_argument(
@@ -538,7 +608,11 @@ def main() -> int:
     elif args.kind == "batch":
         if args.meta != "both":
             raise SystemExit("batch packages always record both dtype keys")
-        export_batch(args.out, args.dtype)
+        export_batch(args.out, args.dtype, static=args.static)
+    elif args.kind == "no-edges":
+        export_no_edges(args.out, args.dtype)
+    elif args.kind == "box":
+        export_box(args.out, args.dtype)
     else:
         if args.meta != "both":
             raise SystemExit("cost packages always record both dtype keys")

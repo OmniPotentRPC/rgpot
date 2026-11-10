@@ -62,7 +62,15 @@ that axis and its range. A mismatch throws `rgpot::UmaShapeError`.
 An edge index outside the position buffer throws the same error and
 is not gathered. `pos_shape` and `edge_index_shape` record the
 declaration; when they are absent the atom count and the edge range
-are used.
+are used. A package that records neither `nedges_min` nor
+`nedges_max` is refused: there is no range to check, and a static
+graph would otherwise return a finite force.
+
+A molecular box recenters the atoms in a cube. Any nonzero cell
+offset is a periodic image, so the call throws `UmaContractError`
+on `cell_offsets` instead of evaluating that image. A band package
+checks each system's edge count, not only the sum: one system can
+lose edges while another gains images and still match the total.
 
 `natoms` and `counts` exist only in packages from the current
 exporter. Older packages get the `z_set` check, which cannot tell
@@ -86,9 +94,11 @@ symbol. A call with a different atom count throws `UmaShapeError` and
 names both position shapes.
 
 When the symbolic trace cannot be checked, the exporter falls back to
-`make_fx(tracing_mode="real")`. That package is static. A later call
-whose edge list changed size throws `UmaShapeError` naming both edge
-shapes, instead of reading past the end of the buffer.
+`make_fx(tracing_mode="real")`. That package is static. A molecular
+export that lands on this fallback without `--molecular-box` is an
+error and writes no package. A later call whose edge list changed
+size throws `UmaShapeError` naming both edge shapes, instead of
+reading past the end of the buffer.
 
 ## potserv
 

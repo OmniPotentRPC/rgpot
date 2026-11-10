@@ -1012,6 +1012,44 @@ if get_option('with_tests')
         _uma_fix_pkgs += [_uma_gather_static, _uma_gather_dynamic]
         _uma_fix_env.set('UMA_GATHER_STATIC_PT2', _uma_gather_static.full_path())
         _uma_fix_env.set('UMA_GATHER_DYNAMIC_PT2', _uma_gather_dynamic.full_path())
+        _uma_no_edges = custom_target(
+            'uma-no-edges',
+            output: 'line-no-edges.pt2',
+            command: [
+                _uma_py, _uma_export,
+                '--kind', 'no-edges',
+                '--dtype', 'float64',
+                '--out', '@OUTPUT@',
+            ],
+            build_by_default: false,
+        )
+        _uma_box = custom_target(
+            'uma-molecular-box',
+            output: 'line-box.pt2',
+            command: [
+                _uma_py, _uma_export,
+                '--kind', 'box',
+                '--dtype', 'float64',
+                '--out', '@OUTPUT@',
+            ],
+            build_by_default: false,
+        )
+        _uma_batch_static = custom_target(
+            'uma-batch-static',
+            output: 'line-batch-static.pt2',
+            command: [
+                _uma_py, _uma_export,
+                '--kind', 'batch',
+                '--dtype', 'float64',
+                '--static',
+                '--out', '@OUTPUT@',
+            ],
+            build_by_default: false,
+        )
+        _uma_fix_pkgs += [_uma_no_edges, _uma_box, _uma_batch_static]
+        _uma_fix_env.set('UMA_NO_EDGES_PT2', _uma_no_edges.full_path())
+        _uma_fix_env.set('UMA_MOLECULAR_BOX_PT2', _uma_box.full_path())
+        _uma_fix_env.set('UMA_BATCH_STATIC_PT2', _uma_batch_static.full_path())
         test(
             'UmaGraphSizeTest',
             executable(
@@ -1028,6 +1066,23 @@ if get_option('with_tests')
             depends: _uma_fix_pkgs,
             workdir: meson.source_root(),
         )
+        if _rpc_stack
+            _uma_harness_env = environment()
+            _uma_harness_env.prepend('LD_LIBRARY_PATH', _torch_libdir)
+            test(
+                'UmaEngineHarness',
+                _uma_py,
+                args: [
+                    meson.project_source_root() / 'scripts' / 'uma_engine.py',
+                    uma_engine.full_path(),
+                    _uma_gather_static.full_path(),
+                    meson.project_source_root() / 'CppCore' / 'rgpot' / 'rpc' / 'Potentials.capnp',
+                ],
+                depends: [_uma_gather_static, uma_engine],
+                env: _uma_harness_env,
+                workdir: meson.source_root(),
+            )
+        endif
         test(
             'UmaFloat64Test',
             executable(
