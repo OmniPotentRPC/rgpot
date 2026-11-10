@@ -216,6 +216,42 @@ def _apply_meta(meta: dict, mode: str) -> dict:
     return meta
 
 
+def _enforce_metadata(path: Path, meta: dict) -> None:
+    """Rewrite dtype keys after packaging.
+
+    The packager fills a missing pos_dtype with float32. The fixture
+    needs the keys it asked for, including a package that records only
+    model_dtype.
+    """
+    import json
+    import zipfile
+    from io import BytesIO
+
+    blob = path.read_bytes()
+    source = zipfile.ZipFile(BytesIO(blob))
+    out = BytesIO()
+    with zipfile.ZipFile(out, "w") as dest:
+        for info in source.infolist():
+            data = source.read(info.filename)
+            if info.filename.endswith(".json"):
+                try:
+                    payload = json.loads(data)
+                except json.JSONDecodeError:
+                    payload = None
+                if isinstance(payload, dict) and (
+                    "pos_dtype" in payload or "model_dtype" in payload
+                ):
+                    payload.pop("pos_dtype", None)
+                    payload.pop("model_dtype", None)
+                    if "pos_dtype" in meta:
+                        payload["pos_dtype"] = meta["pos_dtype"]
+                    if "model_dtype" in meta:
+                        payload["model_dtype"] = meta["model_dtype"]
+                    data = json.dumps(payload).encode()
+            dest.writestr(info, data)
+    path.write_bytes(out.getvalue())
+
+
 def export_precision(path: Path, dtype_name: str, meta_mode: str) -> None:
     dtype = torch.float64 if dtype_name == "float64" else torch.float32
     example = _single_example(dtype, 6)
@@ -239,7 +275,9 @@ def export_precision(path: Path, dtype_name: str, meta_mode: str) -> None:
     meta["nedges_min"] = 6
     meta["nedges_max"] = 6
     meta["export_path"] = "tiny-sum"
-    aoti_package(exported, path, metadata=_apply_meta(meta, meta_mode))
+    wanted = _apply_meta(meta, meta_mode)
+    aoti_package(exported, path, metadata=wanted)
+    _enforce_metadata(path, wanted)
 
 
 def export_batch(path: Path, dtype_name: str) -> None:
