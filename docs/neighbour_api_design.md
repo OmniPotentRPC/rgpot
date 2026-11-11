@@ -698,3 +698,119 @@ One million atoms, streaming:
 The resident set is the fresh-process figure from `classical_scaling_bench rss`.
 The pair walk those potentials use is `rgpot::nlist::Neighbours`.
 The public query uses that same walk.
+
+## Pair types and a callback
+
+The surface above had one cutoff. A Tersoff pair and a Lennard-Jones pair
+do not share it, and a C caller who did not want the whole list stored
+had to pull chunks into arrays. Three passes closed that. Each pass was
+compiled: a half-list pair sum, a three-body angle, `nlist_c.c`, and the
+metatomic label copy.
+
+### Pass 1
+
+`Query` grew `types` and `pair_cutoff` pointers, and one callback returned
+the public vector and a square root.
+
+```cpp
+query.cutoff = 2.5;
+query.types = types;
+query.pair_cutoff = matrix;
+query.ntypes = 2;
+rgpot::nlist::each(pos, n, box, query, [&](int i, int j, int, int, int,
+                                           double x, double y, double z, double r) {
+  const double r2 = r * r;
+  energy += 4.0 * (std::pow(1.0 / r, 12) - std::pow(1.0 / r, 6));
+  (void)i; (void)j; (void)x; (void)y; (void)z; (void)r2;
+});
+```
+
+The three-body term had to negate `(x, y, z)` to recover the bond the
+Stillinger-Weber kernel already had. The square root was not free. A
+`Query` copied out of a temporary kept the pointers, so a builder that
+stored the query dangled. A zeroed C request still failed the abi check,
+which was right, but the matrix lived in the same struct as the shell,
+so a half list and a type matrix were easy to half-initialise.
+
+### Pass 2
+
+`PairCutoffs` is a separate argument. `Cells` walks with
+`(i, j, dx, dy, dz, r2)` and `dx` is `r_i - r_j`, the bits the kernels
+already use. `build` filters with the public strict or loose rule.
+
+```cpp
+rgpot::nlist::Cells cells;
+cells.update(pos, n, box, 2.5, 1.0, rgpot::nlist::Image::Round,
+             rgpot::nlist::Mode::Stored, {true, true, true});
+cells.forHalf(0, n, [&](int i, int j, double dx, double dy, double dz, double r2) {
+  if (!(i < j) || r2 > cutoff2) return;
+  // same pair term as LJPot
+});
+```
+
+The type test was compiled into that walk. On 16,384 Lennard-Jones atoms,
+one thread, median of seven calls after two discarded calls, the stored
+list went from 0.022012640 s to 0.026103294 s. The stream stayed near
+0.0136 s. The filter was the difference: it was instantiated beside the
+pair term and the stored loop stopped inlining. The builder also ignored
+a later change to the matrix and reused the old pairs. Metatomic still
+copied the five label columns by hand, and C still had no callback.
+
+### Pass 3
+
+The untyped walk is the cell list and nothing else. The type filter is a
+separate function, called only when a matrix was passed, so a potential
+that does not pass one does not instantiate it. `Builder` copies the
+matrix and rebuilds when the values change. `rgpot_nlist_each` is the C
+callback. `adapt.hpp` builds the metatomic query and copies the five
+labels. Cap'n Proto adds `ntypes`, `types` and `pairCutoff` at ordinals
+12, 13 and 14.
+
+```cpp
+rgpot::nlist::PairCutoffs cuts;
+cuts.types = types;
+cuts.cutoff = matrix; // row-major ntypes * ntypes
+cuts.ntypes = 2;
+rgpot::nlist::build(table, pos, n, box, query, cuts);
+```
+
+```c
+request.types = types;
+request.pair_cutoff = matrix;
+request.ntypes = 2;
+rgpot_nlist_each(pos, n, box, &request, on_pair, &user);
+```
+
+A positive matrix entry is the cutoff of that pair type. Zero drops the
+type. The search radius is the widest entry, or `Query::cutoff` when that
+is wider. `Cells` keeps candidates out to cutoff + skin
+(`r2 <= (cutoff + skin)^2`). `build` and `each` use the public strict or
+loose test. The vector from `each` is `r_j - r_i + S H`. The vector from
+`Cells` is the negation, which is what the force kernels multiply.
+
+Lennard-Jones, Morse, ZBL, EAM, Sutton-Chen, Stillinger-Weber and Tersoff
+call `Cells::update` and `forHalf`, `forDirected`, `forAtom` or
+`forCellTeam`. With no matrix that is the previous cell walk.
+
+`NeighbourListTest`, 595 assertions in 17 cases, passed. The compiled
+callers passed: the half-list dimer, the three-body angle through `each`,
+the metatomic label copy, the C build and `rgpot_nlist_each`, the C
+Verlet builder, and the two-system batch. The Cap'n Proto text for
+`ntypes`, `types` and `pairCutoff` round-trips.
+
+Energies match the internal path to the printed digit. g++ -O3 -DNDEBUG
+-std=c++20 -fopenmp -ffp-contract=off, `OMP_NUM_THREADS=1`, median of
+seven calls after two discarded calls. 16,384 atoms is a 16-cube FCC
+cell. 55,296 atoms is a 24-cube.
+
+| atoms | mode | before (s) | after (s) | energy |
+| --- | --- | ---: | ---: | --- |
+| 16384 | stream | 0.013583210 | 0.013687229 | -119947.789583689 |
+| 16384 | stored | 0.022081530 | 0.022065304 | -119947.7895836867 |
+| 55296 | stream | 0.043208580 | 0.043488226 | -404823.7898522943 |
+| 55296 | stored | 0.074310586 | 0.074580574 | -404823.7898523315 |
+
+The before column is the same driver linked against the previous walk.
+The two stored energies differ from the two stream energies in the last
+digit, and they did before this change. The after column is the same
+driver after the potentials moved onto `Cells`.
