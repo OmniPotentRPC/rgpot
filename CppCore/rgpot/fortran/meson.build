@@ -95,7 +95,12 @@ fortran_pots_dep = declare_dependency(
 # Fortran-only test programs link the kernels and the neighbour query.
 _fortran_nlist_omp = dependency('openmp', language: 'cpp', required: false)
 fortran_kernels_dep = declare_dependency(
-    link_with: [fortran_kernels, rgpot_halfshell, rgpot_minimage, rgpot_exact_fma],
+    link_with: [
+        fortran_kernels,
+        rgpot_halfshell,
+        rgpot_minimage,
+        rgpot_exact_fma,
+    ],
     dependencies: [fastnlist_dep, _fortran_nlist_omp],
 )
 
