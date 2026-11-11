@@ -29,6 +29,7 @@
 #include "pot_holder.hpp"
 
 #include "rgpot/LennardJones/LJClusterPot.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/Tersoff/TersoffSiC.hpp"
@@ -952,4 +953,52 @@ NB_MODULE(_core, m) {
           nb::arg("density").noconvert(), nb::arg("lapl_chi") = nb::none(),
           nb::arg("hess_chi") = nb::none());
 #endif
+
+  m.def(
+      "neighbor_list",
+      [](const F64 &positions, const F64 &cell, double cutoff, bool full) {
+        if (positions.ndim() != 2 || positions.shape(1) != 3) {
+          throw std::invalid_argument("positions must have shape (natoms, 3)");
+        }
+        if (cell.ndim() != 2 || cell.shape(0) != 3 || cell.shape(1) != 3) {
+          throw std::invalid_argument("cell must have shape (3, 3)");
+        }
+        rgpot::nlist::Query query;
+        query.cutoff = cutoff;
+        query.shape = rgpot::nlist::Pairs{full ? rgpot::nlist::Shell::Full
+                                               : rgpot::nlist::Shell::Half};
+        const auto n = static_cast<std::size_t>(positions.shape(0));
+        rgpot::nlist::Table table;
+        try {
+          nb::gil_scoped_release release;
+          rgpot::nlist::build(table, positions.data(), n, cell.data(), query);
+        } catch (const rgpot::nlist::Error &err) {
+          throw std::invalid_argument(err.what());
+        }
+        std::vector<std::int32_t> first(table.first.begin(), table.first.end());
+        std::vector<std::int32_t> second(table.second.begin(), table.second.end());
+        std::vector<double> distance(table.distance.begin(), table.distance.end());
+        auto as_i32 = [](std::vector<std::int32_t> values) {
+          const auto n = values.size();
+          auto *data = new std::vector<std::int32_t>(std::move(values));
+          return nb::ndarray<nb::numpy, std::int32_t>(
+              data->data(), {n}, nb::capsule(data, [](void *p) noexcept {
+                               delete static_cast<std::vector<std::int32_t> *>(p);
+                             }));
+        };
+        auto as_f64 = [](std::vector<double> values) {
+          const auto n = values.size();
+          auto *data = new std::vector<double>(std::move(values));
+          return nb::ndarray<nb::numpy, double>(
+              data->data(), {n}, nb::capsule(data, [](void *p) noexcept {
+                               delete static_cast<std::vector<double> *>(p);
+                             }));
+        };
+        return nb::make_tuple(as_i32(std::move(first)), as_i32(std::move(second)),
+                              as_f64(std::move(distance)));
+      },
+      nb::arg("positions").noconvert(), nb::arg("cell").noconvert(), nb::arg("cutoff"),
+      nb::arg("full") = false,
+      "Half-list neighbour indices and distances. "
+      "`i, j, d = rgpot.neighbor_list(positions, cell, cutoff)`.");
 }

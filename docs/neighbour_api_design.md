@@ -564,18 +564,18 @@ atoms held about 30 GB and was stopped. matscipy has no half list.
 
 | system | list | threads | rgpot s | rgpot MB | vesin s | vesin MB | ASE s | matscipy s |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| tri | half | 1 | 0.000278 | 4.4 | 0.000410 | 33.5 | 0.00532 |  |
-| tri | half | 8 | 0.000292 | 4.4 | 0.000408 | 33.4 | 0.00513 |  |
-| tri | full | 1 | 0.000491 | 4.7 | 0.000627 | 34.2 | 0.0369 | 0.00172 |
-| tri | full | 8 | 0.000491 | 4.9 | 0.000642 | 34.1 | 0.0357 | 0.00174 |
-| 108000 | half | 1 | 0.128 | 139 | 0.143 | 316 | 2.51 |  |
-| 108000 | half | 8 | 0.0509 | 182 | 0.0794 | 428 | 2.46 |  |
-| 108000 | full | 1 | 0.218 | 256 | 0.230 | 591 | 8.45 | 0.632 |
-| 108000 | full | 8 | 0.0923 | 341 | 0.165 | 807 | 8.32 | 0.638 |
+| tri | half | 1 | 0.000270 | 4.4 | 0.000410 | 33.5 | 0.00532 |  |
+| tri | half | 8 | 0.000271 | 4.4 | 0.000408 | 33.4 | 0.00513 |  |
+| tri | full | 1 | 0.000478 | 4.8 | 0.000627 | 34.2 | 0.0369 | 0.00172 |
+| tri | full | 8 | 0.000472 | 4.7 | 0.000642 | 34.1 | 0.0357 | 0.00174 |
+| 108000 | half | 1 | 0.118 | 139 | 0.143 | 316 | 2.51 |  |
+| 108000 | half | 8 | 0.0523 | 182 | 0.0794 | 428 | 2.46 |  |
+| 108000 | full | 1 | 0.219 | 256 | 0.230 | 591 | 8.45 | 0.632 |
+| 108000 | full | 8 | 0.0947 | 341 | 0.165 | 807 | 8.32 | 0.638 |
 | 1048576 | half | 1 | 1.26 | 1317 | 1.39 | 2787 | 25.2 |  |
-| 1048576 | half | 8 | 0.574 | 1634 | 0.751 | 3565 | 24.8 |  |
+| 1048576 | half | 8 | 0.589 | 1634 | 0.751 | 3565 | 24.8 |  |
 | 1048576 | full | 1 | 2.21 | 2457 | 2.39 | 5453 |  | 6.17 |
-| 1048576 | full | 8 | 1.02 | 3192 | 1.64 | 6668 |  | 5.95 |
+| 1048576 | full | 8 | 1.00 | 3192 | 1.64 | 6668 |  | 5.95 |
 
 A system of fewer than 8192 atoms stays on the calling thread, so the
 64-atom list costs the same with `OMP_NUM_THREADS=8` as with one
@@ -617,9 +617,47 @@ positive skin needs a loose cut; a strict cut stores no buffer".
 when every atom is still within half the skin. `nlist_verlet.c`
 moves one atom inside the skin, then past it.
 
+## Pass 7: one walk for the potentials, and three lines of Python
+
+Lennard-Jones, Morse, EAM, Sutton-Chen, Stillinger-Weber and Tersoff
+were each calling `Neighbours::update` and `forDirected` with their
+own `Spec`. Metatomic and UMA already called `build`. The six
+potentials now call `updateCells`, `visitDirected` and `visitHalf`.
+Those functions are the cell list `build` walks, so a kernel and a
+stored table are two uses of one walk. `dx` in a visit is
+`r_i - r_j` after the image, which is the negation of the vector the
+table stores. EAM still asks for `Image::Half` because it wraps
+coordinates into the cell first.
+
+```python
+i, j, d = rgpot.neighbor_list(positions, cell, cutoff)
+```
+
+`positions` is `(natoms, 3)` and `cell` is `(3, 3)`, the ASE layout.
+`full=True` asks for both directions. The binding is nanobind, in
+`python/bind/bind_module.cpp`, and `rgpot.neighbor_list` re-exports it.
+
+The names line up. C++ `Shape` / `Shell` is C `shape` / `shell` and
+Cap'n Proto `format` (0 half, 1 full, 2 cluster). C++ `Cut` is C `cut`
+and Cap'n Proto `cut`. `Code::Skin` is `RGPOT_NLIST_SKIN`. A batch is
+`Systems` and `Batch` in C++, `rgpot_nlist_build_systems` in C, and
+`NeighborRequest.systems` plus `NeighborList.system` on the wire.
+`first` and `second` index the same positions in all three.
+
+## A device kernel, checked on the host
+
+No CUDA or HIP device is attached here. The launch that would run is
+one atom per thread: thread `i` walks the 27 cells around atom `i`,
+which is `visitDirected(cells, i, i + 1)`. `buildByAtom` does that
+walk on the host and must return the same pairs as `build`. A device
+port replaces the loop over atoms with a grid of the same body and
+keeps `build` as the check. A sheared cell, a cluster, or fewer than
+512 atoms stays on the host `build`, which is also what a device
+runtime would do when the grid degenerates.
+
 ## Re-run
 
-`NeighbourListTest` passed, 558 assertions in 12 cases. The compiled
+`NeighbourListTest` passed, 560 assertions in 13 cases. The compiled
 callers passed: Lennard-Jones, the three-body angle, the metatomic
 label copy, the C caller, the batch of two systems, the C Verlet
 builder, the Rust caller, and the two-process stream.

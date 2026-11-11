@@ -14,6 +14,7 @@
 // clang-format on
 
 #include "rgpot/Morse/MorsePot.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/simd/exp.hpp"
 #include "rgpot/stress.hpp"
 
@@ -86,9 +87,8 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   simd::PairSpec opt;
   opt.cutoff = cuttOffR;
   const auto n_atoms = static_cast<std::size_t>(N);
-  neighbours_.update(R, n_atoms, box,
-                     nlist::Spec{opt.cutoff, opt.skin, opt.periodic,
-                                 nlist::Image::Round, mode_});
+  nlist::updateCells(neighbours_, R, n_atoms, box, opt.cutoff, opt.skin,
+                     nlist::Image::Round, mode_, opt.periodic);
   const bool reuse_pairs = have_cache_ && !neighbours_.streaming() &&
                            neighbours_.builds() == list_stamp_ &&
                            cached_.view.n == n_atoms;

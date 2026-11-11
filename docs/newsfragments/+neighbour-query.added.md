@@ -10,4 +10,6 @@ every pair. Fewer than 8192 atoms stay on the calling thread. A larger
 build writes one table from the shared cell list. Several systems that
 do not interact are one `Systems` / `rgpot_nlist_build_systems` call.
 `rgpot_nlist_builder_update` keeps a Verlet list, and a positive skin
-with a strict cut returns `RGPOT_NLIST_SKIN`.
+with a strict cut returns `RGPOT_NLIST_SKIN`. The classical potentials
+call `updateCells` and `visitDirected`, the same walk `build` uses.
+`rgpot.neighbor_list(positions, cell, cutoff)` is the Python half list.

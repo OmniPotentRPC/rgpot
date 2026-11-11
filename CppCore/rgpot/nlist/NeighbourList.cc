@@ -1017,6 +1017,27 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
   store_records(table, query, rows);
 }
 
+void buildByAtom(Table &table, const double *positions, std::size_t n, const double *box9,
+                 const Query &query) {
+  check_geometry(positions, n, box9, query);
+  table = Table{};
+  if (n == 0 || !(query.cutoff > 0.0) || n < 512 || clustered(query)) {
+    build(table, positions, n, box9, query);
+    return;
+  }
+  int nmax[3];
+  const double search = search_radius(query);
+  shift_bounds(box9, query.periodic, search, nmax);
+  const bool one_image = one_minimum_image(box9, query, search);
+  const Neighbours cells = prepare_cells(positions, n, box9, query);
+  std::vector<Rec> rows;
+  rows.reserve(n * 8);
+  for (std::size_t i = 0; i < n; ++i) {
+    collect(cells, positions, n, box9, query, nmax, one_image, i, i + 1, rows);
+  }
+  store_records(table, query, rows);
+}
+
 void build(Batch &batch, const Systems &systems, const Query &query) {
   if (systems.systems > 0 &&
       (systems.positions == nullptr || systems.count == nullptr || systems.box9 == nullptr)) {

@@ -2,11 +2,11 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 //
-// Public neighbour query. The classical potentials keep using Neighbours
-// for a minimum-image walk. This type is the stable list: structure of
-// arrays, a pair shell or a cluster of four, triclinic and partial
-// periodic boundaries, a skin rebuild, and a chunked walk that does not
-// store the pairs.
+// Public neighbour query. Potentials and this query share updateCells and
+// visitDirected. Neighbours is the cell list those calls walk. The stable
+// list is a structure of arrays: a pair shell or a cluster of four,
+// triclinic and partial periodic boundaries, a skin rebuild, and a chunked
+// walk that does not store the pairs.
 //
 // Distinct Table, Builder and Walk objects may be used from different
 // threads. One object is not shared. build() may start an OpenMP team
@@ -23,6 +23,7 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -215,6 +216,12 @@ private:
 void build(Table &table, const double *positions, std::size_t n,
            const double *box9, const Query &query);
 
+/// The same pairs as `build`, gathered one atom at a time. A CUDA, HIP
+/// or Kokkos launch gives one thread one atom and runs this walk. The
+/// host `build` remains the source of truth.
+void buildByAtom(Table &table, const double *positions, std::size_t n,
+                 const double *box9, const Query &query);
+
 /// Several systems that do not interact. `positions` is the concatenation
 /// of every system, `count` atoms each. `box9` holds nine lattice values
 /// per system, in the same order. `count[s] == 0` is an empty system.
@@ -235,5 +242,36 @@ struct Batch {
 /// One query for every system. The systems do not see each other's atoms.
 /// A rejected system throws before `batch` is cleared.
 void build(Batch &batch, const Systems &systems, const Query &query);
+
+/// Bind `cells` to this geometry. `cutoff` is the pair cutoff and `skin`
+/// is the Verlet buffer the kernels drop inside the cutoff. `image` is
+/// Round for an orthorhombic cell, Half after coordinates have been
+/// wrapped, and General for a sheared cell. `mode` stores the index when
+/// it fits and streams otherwise, unless the caller asks.
+inline void updateCells(Neighbours &cells, const double *positions, std::size_t n,
+                        const double *box9, double cutoff, double skin, Image image, Mode mode,
+                        const std::array<bool, 3> &periodic) {
+  Spec spec;
+  spec.cutoff = cutoff;
+  spec.skin = skin;
+  spec.image = image;
+  spec.mode = mode;
+  spec.periodic = periodic;
+  cells.update(positions, n, box9, spec);
+}
+
+/// Pairs for atoms in `[begin, end)`. `dx` is `r_i - r_j` after the image,
+/// the negation of the vector a stored table holds for the minimum image.
+template <typename Fn>
+inline void visitDirected(const Neighbours &cells, std::int64_t begin, std::int64_t end,
+                          Fn &&fn) {
+  cells.forDirected(begin, end, std::forward<Fn>(fn));
+}
+
+/// The pairs of `visitDirected` with `j > i` only.
+template <typename Fn>
+inline void visitHalf(const Neighbours &cells, std::int64_t begin, std::int64_t end, Fn &&fn) {
+  cells.forHalf(begin, end, std::forward<Fn>(fn));
+}
 
 } // namespace rgpot::nlist

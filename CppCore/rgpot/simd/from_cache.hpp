@@ -2,7 +2,7 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 
-#include "rgpot/nlist/Neighbours.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/simd/pods.hpp"
 
 #include <algorithm>
@@ -57,18 +57,13 @@ inline void fill_view(CachedPairs &out, const double *R, std::size_t n,
                       nlist::Neighbours *reuse = nullptr) {
   nlist::Neighbours local;
   nlist::Neighbours &found = reuse != nullptr ? *reuse : local;
-  nlist::Spec spec;
-  spec.cutoff = opt.cutoff;
-  spec.skin = opt.skin;
-  spec.periodic = opt.periodic;
-  spec.image = nlist::Image::Round;
-  spec.mode = mode;
-  found.update(R, n, box, spec);
+  nlist::updateCells(found, R, n, box, opt.cutoff, opt.skin, nlist::Image::Round, mode,
+                     opt.periodic);
   const double cutoff2 = opt.cutoff * opt.cutoff;
   const int nt = n > 1 ? nlist::threadsRequested() : 1;
   std::vector<std::int32_t> ij;
   if (nt <= 1) {
-    found.forDirected(0, static_cast<std::int64_t>(n),
+    nlist::visitDirected(found, 0, static_cast<std::int64_t>(n),
                       [&](std::int32_t i, std::int32_t j, double, double, double,
                           double r2) {
                         detail_fill::append_half(ij, i, j, r2, cutoff2);
@@ -86,7 +81,7 @@ inline void fill_view(CachedPairs &out, const double *R, std::size_t n,
 #endif
       const auto range = nlist::partition(static_cast<std::int64_t>(n), t, nt);
       auto &mine = part[static_cast<std::size_t>(t)];
-      found.forDirected(range.begin, range.end,
+      nlist::visitDirected(found, range.begin, range.end,
                         [&](std::int32_t i, std::int32_t j, double, double,
                             double, double r2) {
                           detail_fill::append_half(mine, i, j, r2, cutoff2);

@@ -23,7 +23,7 @@
 // clang-format on
 
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
-#include "rgpot/nlist/Neighbours.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/stress.hpp"
 
 #if defined(_OPENMP)
@@ -142,13 +142,8 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
   std::vector<double> rho(n_size, 0.0);
   double epair = 0.0;
-  nlist::Spec spec;
-  spec.cutoff = cutoff;
-  spec.skin = cutoff / 5.0;
-  spec.periodic = periodic;
-  spec.image = nlist::Image::Round;
-  spec.mode = mode_;
-  neighbours_.update(R, n_size, box_use, spec);
+  nlist::updateCells(neighbours_, R, n_size, box_use, cutoff, cutoff / 5.0,
+                     nlist::Image::Round, mode_, periodic);
   const int nt = nlist::threadsRequested();
   const bool stream = neighbours_.streaming();
   auto pair_term = [&](double r2, double &phi, double &rep) {
@@ -169,9 +164,9 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       epair += epsilon * rep;
     };
     if (stream) {
-      neighbours_.forHalf(0, n_atoms, density);
+      nlist::visitHalf(neighbours_, 0, n_atoms, density);
     } else {
-      neighbours_.forDirected(
+      nlist::visitDirected(neighbours_, 
           0, n_atoms, [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
             if (!(j > i)) {
               return;
@@ -196,7 +191,7 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 #endif
       const auto range = parts[static_cast<std::size_t>(t)];
       double local = 0.0;
-      neighbours_.forDirected(
+      nlist::visitDirected(neighbours_, 
           range.begin, range.end,
           [&](int32_t i, int32_t j, double, double, double, double r2) {
             if (!(r2 > 0.0) || r2 > cutoff2) {
@@ -259,13 +254,13 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   };
   if (nt == 1) {
     if (stream) {
-      neighbours_.forHalf(
+      nlist::visitHalf(neighbours_, 
           0, n_atoms,
           [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
             apply(i, j, dx, dy, dz, r2, F, cfg.stress ? strain : nullptr, true);
           });
     } else {
-      neighbours_.forDirected(
+      nlist::visitDirected(neighbours_, 
           0, n_atoms,
           [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
             if (!(j > i)) {
@@ -294,7 +289,7 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       double *force = owned.data() + static_cast<std::size_t>(t) * n_size * 3;
       double *virial = cfg.stress ? vir.data() + static_cast<std::size_t>(t) * 6
                                  : nullptr;
-      neighbours_.forDirected(
+      nlist::visitDirected(neighbours_, 
           range.begin, range.end,
           [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
             apply(i, j, dx, dy, dz, r2, force, virial, false);

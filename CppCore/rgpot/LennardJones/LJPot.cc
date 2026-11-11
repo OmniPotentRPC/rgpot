@@ -20,6 +20,7 @@
 #endif
 
 #include "rgpot/LennardJones/LJPot.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/simd/api.hpp"
 #include "rgpot/simd/exact_fma.hpp"
 #include "rgpot/simd/from_cache.hpp"
@@ -115,9 +116,8 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     params.inv_width = m_switch.inv_width;
   }
   const auto n_atoms = static_cast<std::size_t>(N);
-  neighbours_.update(R, n_atoms, box,
-                     nlist::Spec{opt.cutoff, opt.skin, opt.periodic,
-                                 nlist::Image::Round, mode_});
+  nlist::updateCells(neighbours_, R, n_atoms, box, opt.cutoff, opt.skin,
+                     nlist::Image::Round, mode_, opt.periodic);
   if (neighbours_.streaming()) {
     cached_.rows.clear();
     cached_.rows.shrink_to_fit();
@@ -148,7 +148,7 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       accumulatePairStrain(virial, fscale, dx, dy, dz);
     };
     if (nt <= 1) {
-      neighbours_.forDirected(
+      nlist::visitDirected(neighbours_, 
           0, N, [&](std::int32_t i, std::int32_t j, double dx, double dy,
                     double dz, double r2) {
             accept(i, j, dx, dy, dz, r2, F, *U, strain);
@@ -170,7 +170,7 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
         double *local = owned.data() + static_cast<std::size_t>(t) * n_atoms * 3;
         double *st = virial.data() + static_cast<std::size_t>(t) * 6;
         double local_e = 0.0;
-        neighbours_.forDirected(
+        nlist::visitDirected(neighbours_, 
             range.begin, range.end,
             [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
                 double r2) {

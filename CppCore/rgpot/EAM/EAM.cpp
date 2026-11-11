@@ -10,6 +10,7 @@
 ** https://github.com/TheochemUI/eOn
 */
 #include "EAM.h"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include "Parameters.h"
 
 #include <algorithm>
@@ -97,14 +98,10 @@ void EAM::buildList(long N) {
   for (int i = 0; i < NPARAMS; i++) {
     widest = std::max(widest, el_params[i].r_cut);
   }
-  rgpot::nlist::Spec spec;
-  spec.cutoff = widest;
-  spec.skin = kEamSkinOverCutoff * widest;
-  spec.periodic = {true, true, true};
-  spec.image = rgpot::nlist::Image::Half;
-  spec.mode = mode_;
   double box9[9] = {box_len_[0], 0, 0, 0, box_len_[1], 0, 0, 0, box_len_[2]};
-  neighbours_.update(wrapped_.data(), static_cast<std::size_t>(N), box9, spec);
+  rgpot::nlist::updateCells(neighbours_, wrapped_.data(), static_cast<std::size_t>(N), box9,
+                            widest, kEamSkinOverCutoff * widest, rgpot::nlist::Image::Half,
+                            mode_, {true, true, true});
   n_atoms_ = N;
   if (neighbours_.streaming()) {
     rev_.clear();
@@ -457,7 +454,7 @@ void EAM::evaluateStreamParallel(long N, const int *atomicNrs, double *F,
     double *local = owned.data() + static_cast<std::size_t>(t) * n3;
     for (std::int64_t i = range.begin; i < range.end; ++i) {
       ids.clear();
-      neighbours_.forDirected(
+      rgpot::nlist::visitDirected(neighbours_, 
           i, i + 1,
           [&](std::int32_t, std::int32_t j, double, double, double, double) {
             ids.push_back(j);
@@ -485,7 +482,7 @@ void EAM::evaluate(long N, const int *atomicNrs, double *F, double *U) {
     for (long i = 0; i < N; ++i) {
       if (neighbours_.streaming()) {
         js_.clear();
-        neighbours_.forDirected(
+        rgpot::nlist::visitDirected(neighbours_, 
             i, i + 1,
             [&](std::int32_t, std::int32_t j, double, double, double, double) {
               js_.push_back(j);
@@ -515,7 +512,7 @@ void EAM::evaluate(long N, const int *atomicNrs, double *F, double *U) {
   for (long i = 0; i < N; ++i) {
     if (neighbours_.streaming()) {
       js_.clear();
-      neighbours_.forDirected(
+      rgpot::nlist::visitDirected(neighbours_, 
           i, i + 1,
           [&](std::int32_t, std::int32_t j, double, double, double, double) {
             js_.push_back(j);

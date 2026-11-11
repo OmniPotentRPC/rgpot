@@ -11,7 +11,7 @@
 #include "rgpot/StillingerWeber/SWSi.hpp"
 
 #include "rgpot/ParamHash.hpp"
-#include "rgpot/nlist/Neighbours.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -146,16 +146,12 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
   const double cut2 = cut * cut;
   const int n = static_cast<int>(n_atoms);
 
-  nlist::Spec spec;
-  spec.cutoff = cut;
-  spec.skin = (neighbors != nullptr && neighbors->skin > 0.0)
-                  ? neighbors->skin
-                  : (mode_ == nlist::Mode::Stream ? 0.0 : cut / 5.0);
-  spec.image = nlist::Image::Round;
-  spec.mode = mode_;
-  spec.periodic = {true, true, true};
+  const double skin = (neighbors != nullptr && neighbors->skin > 0.0)
+                          ? neighbors->skin
+                          : (mode_ == nlist::Mode::Stream ? 0.0 : cut / 5.0);
   const auto before = neighbours_.builds();
-  neighbours_.update(positions, n_atoms, box, spec);
+  nlist::updateCells(neighbours_, positions, n_atoms, box, cut, skin, nlist::Image::Round,
+                     mode_, {true, true, true});
   if (neighbors != nullptr && neighbors->skin > 0.0 &&
       (neighbours_.builds() != before || !neighbors->built)) {
     neighbors->ref.assign(positions, positions + 3 * n_atoms);
@@ -168,7 +164,7 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
 
   auto load = [&](int i, std::vector<Bond> &nb) {
     nb.clear();
-    neighbours_.forDirected(
+    nlist::visitDirected(neighbours_, 
         i, static_cast<std::int64_t>(i) + 1,
         [&](std::int32_t, std::int32_t j, double dx, double dy, double dz,
             double r2) {

@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Fewer than 8192 atoms stay on the calling thread. A larger build writes
   one shared table. Several independent systems are one batch, and the C
   builder keeps a Verlet list. A positive skin with a strict cut is rejected.
+  The classical potentials call that same walk. `rgpot.neighbor_list` is the
+  Python half list.
 
 ## [3.5.1](https://github.com/OmniPotentRPC/rgpot/tree/v3.5.1) - 2026-10-11
 
