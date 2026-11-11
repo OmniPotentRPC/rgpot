@@ -957,7 +957,7 @@ NB_MODULE(_core, m) {
   m.def(
       "neighbor_list",
       [](const F64 &positions, const F64 &cell, double cutoff, const std::string &quantities,
-         bool full, bool offsets) {
+         bool full, bool offsets, nb::handle types_obj, nb::handle pair_cutoff_obj) {
         if (positions.ndim() != 2 || positions.shape(1) != 3) {
           throw std::invalid_argument("positions must have shape (natoms, 3)");
         }
@@ -988,7 +988,28 @@ NB_MODULE(_core, m) {
         auto owned = std::make_shared<Owned>();
         try {
           nb::gil_scoped_release release;
-          rgpot::nlist::build(owned->table, positions.data(), natoms, cell.data(), query);
+          rgpot::nlist::PairCutoffs cuts;
+          nb::ndarray<nb::numpy, std::int32_t, nb::ndim<1>> types;
+          nb::ndarray<nb::numpy, double, nb::ndim<1>> pair_cutoff;
+          if (!types_obj.is_none() || !pair_cutoff_obj.is_none()) {
+            if (types_obj.is_none() || pair_cutoff_obj.is_none()) {
+              throw std::invalid_argument("types and pair_cutoff are set together");
+            }
+            types = nb::cast<nb::ndarray<nb::numpy, std::int32_t, nb::ndim<1>>>(types_obj);
+            pair_cutoff = nb::cast<nb::ndarray<nb::numpy, double, nb::ndim<1>>>(pair_cutoff_obj);
+            if (static_cast<std::size_t>(types.shape(0)) != natoms) {
+              throw std::invalid_argument("types must have one id per atom");
+            }
+            const auto n2 = static_cast<std::size_t>(pair_cutoff.shape(0));
+            const auto side = static_cast<std::int32_t>(std::lround(std::sqrt(static_cast<double>(n2))));
+            if (static_cast<std::size_t>(side) * static_cast<std::size_t>(side) != n2 || side < 1) {
+              throw std::invalid_argument("pair_cutoff must be a square matrix, flattened");
+            }
+            cuts.types = types.data();
+            cuts.cutoff = pair_cutoff.data();
+            cuts.ntypes = side;
+          }
+          rgpot::nlist::build(owned->table, positions.data(), natoms, cell.data(), query, cuts);
         } catch (const rgpot::nlist::Error &err) {
           throw std::invalid_argument(err.what());
         }
@@ -1090,6 +1111,7 @@ NB_MODULE(_core, m) {
       },
       nb::arg("positions").noconvert(), nb::arg("cell").noconvert(), nb::arg("cutoff"),
       nb::arg("quantities") = "ijd", nb::arg("full") = false, nb::arg("offsets") = false,
+      nb::arg("types") = nb::none(), nb::arg("pair_cutoff") = nb::none(),
       "Neighbour arrays selected by quantities. i and j are indices, d is the "
       "distance, D is r_j - r_i with shape (npairs, 3), S is the integer shift "
       "with that shape. offsets=True appends a CSR row pointer of length "

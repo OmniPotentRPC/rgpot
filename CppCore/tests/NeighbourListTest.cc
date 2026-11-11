@@ -587,3 +587,141 @@ TEST_CASE("eight threads match the serial list", "[nlist][api]") {
   REQUIRE(serial.size() == threaded.size());
   REQUIRE(from_table(serial) == from_table(threaded));
 }
+
+TEST_CASE("a pair-type cutoff drops the long pair and keeps the short one", "[nlist][api]") {
+  const double pos[] = {0, 0, 0, 1, 0, 0, 3, 0, 0};
+  const double box[9] = {20, 0, 0, 0, 20, 0, 0, 0, 20};
+  const std::int32_t types[] = {0, 1, 0};
+  const double matrix[] = {3.5, 1.5, 1.5, 3.5};
+  rgpot::nlist::Query query;
+  query.cutoff = 3.5;
+  query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Half};
+  rgpot::nlist::PairCutoffs cuts;
+  cuts.types = types;
+  cuts.cutoff = matrix;
+  cuts.ntypes = 2;
+  rgpot::nlist::Table typed;
+  rgpot::nlist::build(typed, pos, 3, box, query, cuts);
+  const auto got = from_table(typed);
+  REQUIRE(got.count(Key{0, 1, 0, 0, 0}) == 1);
+  REQUIRE(got.count(Key{0, 2, 0, 0, 0}) == 1);
+  REQUIRE(got.count(Key{1, 2, 0, 0, 0}) == 0);
+  REQUIRE(got.size() == 2);
+  rgpot::nlist::Table scalar;
+  rgpot::nlist::build(scalar, pos, 3, box, query);
+  REQUIRE(from_table(scalar).count(Key{1, 2, 0, 0, 0}) == 1);
+
+  const double same[] = {3.5, 3.5, 3.5, 3.5};
+  cuts.cutoff = same;
+  rgpot::nlist::Table uniform;
+  rgpot::nlist::build(uniform, pos, 3, box, query, cuts);
+  REQUIRE(from_table(uniform) == from_table(scalar));
+  for (std::size_t p = 0; p < scalar.size(); ++p) {
+    REQUIRE(uniform.distance[p] == scalar.distance[p]);
+    REQUIRE(uniform.vector[3 * p] == scalar.vector[3 * p]);
+  }
+
+  std::set<Key> streamed;
+  rgpot::nlist::each(pos, 3, box, query,
+                     [&](std::int32_t i, std::int32_t j, int sa, int sb, int sc, double, double,
+                         double, double) { streamed.insert(Key{i, j, sa, sb, sc}); },
+                     cuts);
+  REQUIRE(streamed == from_table(uniform));
+
+  rgpot::nlist::Builder builder;
+  builder.update(pos, 3, box, query, cuts);
+  REQUIRE(builder.reused() == false);
+  builder.update(pos, 3, box, query, cuts);
+  REQUIRE(builder.reused() == true);
+  const double tighter[] = {3.5, 0.5, 0.5, 3.5};
+  cuts.cutoff = tighter;
+  builder.update(pos, 3, box, query, cuts);
+  REQUIRE(builder.reused() == false);
+  REQUIRE(from_table(builder.table()).count(Key{0, 1, 0, 0, 0}) == 0);
+}
+
+TEST_CASE("the kernel callback matches the internal cell walk", "[nlist][api]") {
+  const double pos[] = {0.1, 0.2, 0.3, 1.4, 0.2, 0.4, 0.2, 1.6, 0.5, 2.2, 1.1, 0.4};
+  const double box[9] = {6, 0, 0, 0, 6, 0, 0, 0, 6};
+  const std::array<bool, 3> periodic{{true, true, true}};
+  rgpot::nlist::Neighbours raw;
+  rgpot::nlist::updateCells(raw, pos, 4, box, 2.5, 0.4, rgpot::nlist::Image::Round,
+                            rgpot::nlist::Mode::Stream, periodic);
+  rgpot::nlist::Cells cells;
+  cells.update(pos, 4, box, 2.5, 0.4, rgpot::nlist::Image::Round, rgpot::nlist::Mode::Stream,
+               periodic);
+  struct Hit {
+    std::int32_t i;
+    std::int32_t j;
+    double dx, dy, dz, r2;
+    bool operator==(const Hit &o) const {
+      return i == o.i && j == o.j && dx == o.dx && dy == o.dy && dz == o.dz && r2 == o.r2;
+    }
+  };
+  std::vector<Hit> a;
+  std::vector<Hit> b;
+  auto take = [](std::vector<Hit> &out) {
+    return [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2) {
+      out.push_back(Hit{i, j, dx, dy, dz, r2});
+    };
+  };
+  rgpot::nlist::visitHalf(raw, 0, 4, take(a));
+  cells.forHalf(0, 4, take(b));
+  REQUIRE(a == b);
+  REQUIRE(!a.empty());
+
+  const std::int32_t types[] = {0, 0, 0, 0};
+  const double one[] = {1.0};
+  rgpot::nlist::PairCutoffs cuts;
+  cuts.types = types;
+  cuts.cutoff = one;
+  cuts.ntypes = 1;
+  rgpot::nlist::Neighbours wide;
+  rgpot::nlist::updateCells(wide, pos, 4, box, 2.5, 0.0, rgpot::nlist::Image::Round,
+                            rgpot::nlist::Mode::Stream, periodic);
+  rgpot::nlist::Cells narrow;
+  narrow.update(pos, 4, box, 2.5, 0.0, rgpot::nlist::Image::Round, rgpot::nlist::Mode::Stream,
+                periodic, cuts);
+  std::vector<Hit> wide_hits;
+  std::vector<Hit> narrow_hits;
+  rgpot::nlist::visitHalf(wide, 0, 4, take(wide_hits));
+  narrow.forHalf(0, 4, take(narrow_hits));
+  std::vector<Hit> kept;
+  for (const Hit &hit : wide_hits) {
+    if (hit.r2 <= 1.0) {
+      kept.push_back(hit);
+    }
+  }
+  REQUIRE(narrow_hits == kept);
+  REQUIRE(narrow_hits.size() < wide_hits.size());
+}
+
+TEST_CASE("the C callback and the pair matrix agree with build", "[nlist][api]") {
+  const double pos[] = {0, 0, 0, 1, 0, 0, 3, 0, 0};
+  const double box[9] = {20, 0, 0, 0, 20, 0, 0, 0, 20};
+  const std::int32_t types[] = {0, 1, 0};
+  const double matrix[] = {3.5, 1.5, 1.5, 3.5};
+  rgpot_nlist_request request;
+  rgpot_nlist_request_init(&request);
+  request.cutoff = 3.5;
+  request.want_shifts = 1;
+  request.want_vectors = 0;
+  request.want_distances = 1;
+  request.types = types;
+  request.pair_cutoff = matrix;
+  request.ntypes = 2;
+  size_t needed = 0;
+  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, nullptr, nullptr, &needed) == RGPOT_NLIST_OK);
+  REQUIRE(needed == 2);
+  struct Tally {
+    int n;
+  } tally{0};
+  const auto rc = rgpot_nlist_each(
+      pos, 3, box, &request,
+      [](void *user, int32_t, int32_t, int32_t, int32_t, int32_t, double, double, double, double) {
+        static_cast<Tally *>(user)->n += 1;
+      },
+      &tally);
+  REQUIRE(rc == RGPOT_NLIST_OK);
+  REQUIRE(tally.n == 2);
+}

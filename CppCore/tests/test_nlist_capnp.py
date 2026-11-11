@@ -87,6 +87,15 @@ def main() -> int:
     decoded_tagged = run(capnp, "decode", schema, "NeighborList", data=encoded_tagged).decode()
     if "system = [0, 1]" not in decoded_tagged:
         raise SystemExit(f"chunk lost the system ids: {decoded_tagged}")
+    typed = (
+        "(cutoff = 2.5, ntypes = 2, types = [0, 1, 0], "
+        "pairCutoff = [2.5, 1.1, 1.1, 2.0])"
+    )
+    encoded_typed = run(capnp, "encode", schema, "NeighborRequest", typed)
+    decoded_typed = run(capnp, "decode", schema, "NeighborRequest", data=encoded_typed).decode()
+    for piece in ("ntypes = 2", "types = [0, 1, 0]", "pairCutoff = [2.5, 1.1, 1.1, 2]"):
+        if piece not in decoded_typed:
+            raise SystemExit(f"pair cutoffs lost {piece}: {decoded_typed}")
     print("nlist capnp round-trip ok")
     return 0
 

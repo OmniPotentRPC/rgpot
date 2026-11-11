@@ -2653,6 +2653,13 @@ struct NeighborRequest {
   # NeighborList.first indexes that concatenation. NeighborList.system
   # is the system of each pair.
   systems @11 :List(NeighborSystem);
+  # Pair-type cutoffs. ntypes 0 means every pair uses cutoff.
+  # types has one id per atom, in [0, ntypes). pairCutoff is row-major
+  # and holds ntypes * ntypes entries. A non-positive entry drops that
+  # pair type. types index the concatenated positions when systems is set.
+  ntypes @12 :UInt16 = 0;
+  types @13 :List(Int32);
+  pairCutoff @14 :List(Float64);
 }
 
 struct NeighborSystem {
