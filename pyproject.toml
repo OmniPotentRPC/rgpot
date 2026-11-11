@@ -193,9 +193,12 @@ repair-wheel-command = """
 """
 
 [tool.cibuildwheel.macos]
-# The brew gcc gfortran runtime (libgfortran/libquadmath) is built for
-# macOS 14; delocate refuses to stamp an 11.0 wheel around it.
-environment = { MACOSX_DEPLOYMENT_TARGET = "14.0", PKG_CONFIG_PATH = "/opt/homebrew/opt/openblas/lib/pkgconfig" }
+# Homebrew on the macos-15 runner builds libgfortran, libquadmath,
+# OpenBLAS and libomp for macOS 15.0. delocate 0.13 rejects those
+# libraries under a 14.0 target, and the wheel tag follows the target
+# (macosx_15_0). The bind and rust-core template wheels stay at 14.0:
+# they do not vendor those runtimes.
+environment = { MACOSX_DEPLOYMENT_TARGET = "15.0", PKG_CONFIG_PATH = "/opt/homebrew/opt/openblas/lib/pkgconfig" }
 before-all = """
 brew list gcc >/dev/null 2>&1 || brew install gcc
 brew list openblas >/dev/null 2>&1 || brew install openblas
