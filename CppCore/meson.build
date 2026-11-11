@@ -1809,6 +1809,8 @@ if get_option('with_tests')
         ['nlist_lj', 'examples/nlist_lj.cc'],
         ['nlist_threebody', 'examples/nlist_threebody.cc'],
         ['nlist_metatomic', 'examples/nlist_metatomic.cc'],
+        ['nlist_metatomic_sweep', 'examples/nlist_metatomic_sweep.cc'],
+        ['nlist_manybody', 'examples/nlist_manybody.cc'],
         ['nlist_batch', 'examples/nlist_batch.cc'],
     ]
     foreach example : _nlist_examples
@@ -1828,6 +1830,17 @@ if get_option('with_tests')
         executable(
             'nlist_c',
             sources: ['examples/nlist_c.c'],
+            include_directories: _incdirs + ['.'],
+            c_args: _args,
+            link_with: _nlist_link,
+            link_language: 'cpp',
+        ),
+    )
+    test(
+        'nlist_slab',
+        executable(
+            'nlist_slab',
+            sources: ['examples/nlist_slab.c'],
             include_directories: _incdirs + ['.'],
             c_args: _args,
             link_with: _nlist_link,

@@ -814,3 +814,75 @@ The before column is the same driver linked against the previous walk.
 The two stored energies differ from the two stream energies in the last
 digit, and they did before this change. The after column is the same
 driver after the potentials moved onto `Cells`.
+
+## A sweep for both shells
+
+`each` rebuilt the bins on every call, on one thread, for one shell.
+A many-body step wants the half list and the full list, a skin, and a
+thread index. Two more passes added `Sweep`.
+
+### Pass 4
+
+The shell was fixed when the sweep was updated. The angle loop updated
+again with `Shell::Full`. On a warm geometry that second update reused
+the half-list bins and the angle saw each bond once, so the dot product
+was never formed. The C slab could set mixed periodicity, but the
+callback had no thread argument, so a private sum per thread had nowhere
+to land. The metatomic copy still read a stored table, which is the
+vectors a second time.
+
+```cpp
+rgpot::nlist::Query full = query;
+full.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Full};
+sweep.update(pos, n, box, full); // rebuild, or the half list again
+```
+
+```c
+/* periodic = {1, 1, 0}. The callback cannot name its thread. */
+rgpot_nlist_each(pos, n, box, &request, on_pair, &tally);
+```
+
+### Pass 5
+
+`each` and `eachTeam` take the shell. One `update` feeds both. The team
+callback receives the thread index. On a wide orthorhombic cell a
+positive skin keeps the candidate index while every atom stays within
+half the skin, and the vectors are recomputed. A narrow or sheared cell
+rebuilds unless the coordinates match, because the shift stencil is not
+a stored index. `metatomicPairs` reads the five label columns and the
+vector `r_j - r_i + S H` from the sweep. `rgpot_nlist_sweep_each` is the
+C call. `threads` is at least 1.
+
+```cpp
+sweep.update(pos, 3, box, query); // loose cut, skin 0.4
+sweep.each(rgpot::nlist::Shell::Half, pair_term);
+sweep.each(rgpot::nlist::Shell::Full, angle_term);
+sweep.eachTeam(rgpot::nlist::Shell::Full, 4, threaded_angle);
+```
+
+```c
+request.periodic[0] = 1;
+request.periodic[1] = 1;
+request.periodic[2] = 0;
+rgpot_nlist_sweep_each(sweep, pos, n, box, &request, on_pair, &tally,
+                       1, 1, &reused);
+```
+
+`NeighbourListTest` passed, 601 assertions in 18 cases. The new sweep
+case checks the half set, the full set, a four-thread half set, and a
+move inside and past the skin. `nlist_manybody`, `nlist_slab` and
+`nlist_metatomic_sweep` passed. `test_nlist_capnp.py` printed
+`nlist capnp round-trip ok`.
+
+The callback benchmark is `CppCore/tests/nlist_callback_bench.cc`.
+g++ -O3 -DNDEBUG -std=c++20 -fopenmp -ffp-contract=off, one thread.
+FCC, lattice 3.615, strict half list, cutoff 5. The walk is
+`updateCells` and `visitHalf`. The callback is `each`. Each figure is
+the median of seven calls after two discarded calls, in a fresh
+process. `rss_kb` is VmHWM. The walk sums `r2`. The callback sums `r`.
+
+| atoms | walk (s) | walk RSS (kB) | callback (s) | callback RSS (kB) |
+| --- | ---: | ---: | ---: | ---: |
+| 10976 | 0.005232939 | 6152 | 0.008163649 | 6572 |
+| 108000 | 0.038710421 | 23764 | 0.069547707 | 24152 |
+| 1048576 | 0.383691586 | 201656 | 0.697787257 | 201980 |

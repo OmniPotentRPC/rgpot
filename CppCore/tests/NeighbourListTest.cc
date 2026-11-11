@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <map>
+#include <mutex>
 #include <set>
 #include <string>
 #include <tuple>
@@ -724,4 +725,47 @@ TEST_CASE("the C callback and the pair matrix agree with build", "[nlist][api]")
       &tally);
   REQUIRE(rc == RGPOT_NLIST_OK);
   REQUIRE(tally.n == 2);
+}
+
+TEST_CASE("a sweep serves half and full from one skin", "[nlist][api]") {
+  const double box[9] = {12, 0, 0, 0, 12, 0, 0, 0, 12};
+  const std::vector<double> pos = {0.4, 0.5, 0.6, 1.5, 0.4, 0.5, 0.3, 1.7, 0.4, 2.4, 1.2, 0.5};
+  rgpot::nlist::Query query;
+  query.cutoff = 2.2;
+  query.skin = 0.3;
+  query.cut = rgpot::nlist::Cut::Loose;
+  rgpot::nlist::Table half_table;
+  rgpot::nlist::Table full_table;
+  query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Half};
+  rgpot::nlist::build(half_table, pos.data(), pos.size() / 3, box, query);
+  query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Full};
+  rgpot::nlist::build(full_table, pos.data(), pos.size() / 3, box, query);
+  query.shape = rgpot::nlist::Pairs{};
+  rgpot::nlist::Sweep sweep;
+  sweep.update(pos.data(), pos.size() / 3, box, query);
+  REQUIRE(sweep.reused() == false);
+  auto collect = [](rgpot::nlist::Sweep &list, rgpot::nlist::Shell shell) {
+    std::set<Key> keys;
+    list.each(shell, [&](std::int32_t i, std::int32_t j, int sa, int sb, int sc, double, double,
+                         double, double) { keys.insert(Key{i, j, sa, sb, sc}); });
+    return keys;
+  };
+  REQUIRE(collect(sweep, rgpot::nlist::Shell::Half) == from_table(half_table));
+  REQUIRE(collect(sweep, rgpot::nlist::Shell::Full) == from_table(full_table));
+  std::set<Key> threaded;
+  std::mutex gate;
+  sweep.eachTeam(rgpot::nlist::Shell::Half, 4,
+                 [&](int, std::int32_t i, std::int32_t j, int sa, int sb, int sc, double, double,
+                     double, double) {
+                   std::lock_guard<std::mutex> lock(gate);
+                   threaded.insert(Key{i, j, sa, sb, sc});
+                 });
+  REQUIRE(threaded == from_table(half_table));
+  std::vector<double> nudged = pos;
+  nudged[0] += 0.05;
+  sweep.update(nudged.data(), nudged.size() / 3, box, query);
+  REQUIRE(sweep.reused() == true);
+  nudged[0] += 1.0;
+  sweep.update(nudged.data(), nudged.size() / 3, box, query);
+  REQUIRE(sweep.reused() == false);
 }
