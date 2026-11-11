@@ -771,6 +771,12 @@ if get_option('with_tests')
                 '',
             ],
             [
+                'SkinPairTest',
+                'skin_pair_test',
+                'SkinPairTest.cc',
+                '',
+            ],
+            [
                 'MinImageIsaHash',
                 'minimage_isa_hash',
                 'MinImageIsaHash.cc',
