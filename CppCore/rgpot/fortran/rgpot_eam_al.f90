@@ -182,7 +182,8 @@ contains
       integer, intent(out) :: status
       character(len=:), allocatable, intent(out) :: errmsg
 
-      integer(ip) :: natoms, i
+      integer(ip) :: natoms, i, k, norder
+      integer(ip), allocatable :: order(:)
       real(wp), allocatable :: rho(:), dembed(:), e_pair(:), e_embed(:)
       real(wp) :: rt, pair_shift, dens_shift
 
@@ -199,11 +200,28 @@ contains
 
       allocate (rho(natoms), dembed(natoms), e_pair(natoms), e_embed(natoms))
 
+      ! Two walks of each x-plane. Density, then force. The plane buffer is
+      ! reused and nothing is stored per atom.
+      if (table%streaming) then
+         call eam_stream(par, table, natoms, rt, pair_shift, dens_shift, rho, &
+                         dembed, e_pair, e_embed, energy, forces, status)
+         return
+      end if
+
       ! Pass one: each atom sums the density its own neighbours put at its
       ! site. The force pass evaluates rho(r) again from the same distance.
-      do i = 1_ip, natoms
-         call atom_density(par, table, i, rt, dens_shift, rho(i))
-      end do
+      call table%visit_order(order, norder)
+      if (norder > 0_ip) then
+         do k = 1_ip, norder
+            i = order(k)
+            call table%note_center(i)
+            call atom_density(par, table, i, rt, dens_shift, rho(i))
+         end do
+      else
+         do i = 1_ip, natoms
+            call atom_density(par, table, i, rt, dens_shift, rho(i))
+         end do
+      end if
 
       ! Pass two: F and F' for every atom. F' stands as its own pass
       ! because the force loop reads F' of the neighbours, not only of the
@@ -214,19 +232,106 @@ contains
 
       ! Pass three: each atom sums the whole force acting on it and writes
       ! only its own column.
-      do i = 1_ip, natoms
-         call atom_contribution(par, table, i, rt, pair_shift, dens_shift, &
-                                dembed, e_pair(i), forces(:, i))
-      end do
+      if (norder > 0_ip) then
+         do k = 1_ip, norder
+            i = order(k)
+            call table%note_center(i)
+            call atom_contribution(par, table, i, rt, pair_shift, dens_shift, &
+                                   dembed, e_pair(i), forces(:, i))
+         end do
+      else
+         do i = 1_ip, natoms
+            call atom_contribution(par, table, i, rt, pair_shift, dens_shift, &
+                                   dembed, e_pair(i), forces(:, i))
+         end do
+      end if
 
       energy = sum(e_pair) + sum(e_embed)
    end subroutine eam_al_energy_forces
+
+   !> Density from every directed pair, then the force from those same pairs.
+   !! Each x-plane is visited once per pass. The plane buffer is reused and
+   !! freed with the call; no system-wide pair index is kept.
+   subroutine eam_stream(par, table, natoms, rt, pair_shift, dens_shift, rho, &
+                         dembed, e_pair, e_embed, energy, forces, status)
+      type(eam_al_params_t), intent(in) :: par
+      type(neighbor_table_t), intent(in) :: table
+      integer(ip), intent(in) :: natoms
+      real(wp), intent(in) :: rt, pair_shift, dens_shift
+      real(wp), intent(inout) :: rho(:)
+      real(wp), intent(inout) :: dembed(:)
+      real(wp), intent(inout) :: e_pair(:)
+      real(wp), intent(inout) :: e_embed(:)
+      real(wp), intent(out) :: energy
+      real(wp), intent(inout) :: forces(:, :)
+      integer, intent(out) :: status
+
+      integer :: nx, ny, nz, ix, stat
+      integer(ip) :: n, q, i, j
+      integer(ip), allocatable :: ia(:), ja(:)
+      real(wp), allocatable :: vec(:, :), dist(:)
+      real(wp) :: r, rho_r, drho, rhat(3), dedr, pa, pb, phi, dphi
+
+      status = 0
+      call table%grid(nx, ny, nz, stat)
+      if (stat /= 0) then
+         status = stat
+         return
+      end if
+
+      rho = 0.0_wp
+      do ix = 0, nx - 1
+         call table%plane_pairs(ix, ia, ja, vec, dist, n, stat)
+         if (stat /= 0) then
+            status = stat
+            return
+         end if
+         do q = 1_ip, n
+            i = ia(q)
+            if (i < 1_ip .or. i > natoms) cycle
+            call density_terms(par, dist(q), rt, dens_shift, rho_r, drho)
+            rho(i) = rho(i) + rho_r
+         end do
+      end do
+
+      do i = 1_ip, natoms
+         call embed_horner(par, rho(i), e_embed(i), dembed(i))
+      end do
+
+      e_pair = 0.0_wp
+      forces = 0.0_wp
+      do ix = 0, nx - 1
+         call table%plane_pairs(ix, ia, ja, vec, dist, n, stat)
+         if (stat /= 0) then
+            status = stat
+            return
+         end if
+         do q = 1_ip, n
+            r = dist(q)
+            if (r >= rt) cycle
+            i = ia(q)
+            j = ja(q)
+            if (i < 1_ip .or. i > natoms .or. j < 1_ip .or. j > natoms) cycle
+            rhat = vec(:, q)/r
+            call density_terms(par, r, rt, dens_shift, rho_r, drho)
+            pa = par%pair_amp_a*exp(-par%pair_decay_a*r)
+            pb = par%pair_amp_b*exp(-par%pair_decay_b*r)
+            phi = pa + pb - pair_shift - 2.0_wp*par%g_transform*rho_r
+            dphi = -(par%pair_decay_a*pa + par%pair_decay_b*pb) &
+                   - 2.0_wp*par%g_transform*drho
+            e_pair(i) = e_pair(i) + 0.5_wp*phi
+            dedr = dphi + (dembed(i) + dembed(j))*drho
+            forces(:, i) = forces(:, i) + dedr*rhat
+         end do
+      end do
+      energy = sum(e_pair) + sum(e_embed)
+   end subroutine eam_stream
 
    !> Total electron density at atom `i`; stores `rho(r)` and `rho'(r)` of
    !! each of its entries (zero past the truncation radius).
    subroutine atom_density(par, table, i, rt, dens_shift, rho_i)
       type(eam_al_params_t), intent(in) :: par
-      type(neighbor_table_t), intent(in) :: table
+      type(neighbor_table_t), intent(inout) :: table
       integer(ip), intent(in) :: i
       real(wp), intent(in) :: rt, dens_shift
       real(wp), intent(out) :: rho_i
@@ -269,7 +374,7 @@ contains
    subroutine atom_contribution(par, table, i, rt, pair_shift, dens_shift, &
                                 dembed, e_i, f_i)
       type(eam_al_params_t), intent(in) :: par
-      type(neighbor_table_t), intent(in) :: table
+      type(neighbor_table_t), intent(inout) :: table
       integer(ip), intent(in) :: i
       real(wp), intent(in) :: rt, pair_shift, dens_shift
       real(wp), intent(in) :: dembed(:)
