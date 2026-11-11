@@ -135,6 +135,7 @@ rgpot_halfshell = static_library(
         'rgpot/nlist/HalfShell.cc',
         'rgpot/nlist/HalfShellWalk.cc',
         'rgpot/nlist/Neighbours.cc',
+        'rgpot/nlist/NeighbourList.cc',
     ),
     include_directories: _incdirs,
     cpp_args: _args,
@@ -749,6 +750,12 @@ if get_option('with_tests')
                 'NeighbourLayerTest',
                 'neighbour_layer_test',
                 'NeighbourLayerTest.cc',
+                '',
+            ],
+            [
+                'NeighbourListTest',
+                'neighbour_list_test',
+                'NeighbourListTest.cc',
                 '',
             ],
             [
