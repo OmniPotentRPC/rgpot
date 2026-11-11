@@ -2280,6 +2280,23 @@ if get_option('with_tests')
             workdir: meson.source_root(),
             timeout: 120,
         )
+        eam_cell_bench = executable(
+            'eam_cell_bench',
+            sources: ['tests/eam_cell_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'eam_cell_bench',
+            eam_cell_bench,
+            workdir: meson.source_root(),
+            timeout: 300,
+        )
         tersoff_held_bench = executable(
             'tersoff_held_bench',
             sources: ['tests/tersoff_held_bench.cc'],
