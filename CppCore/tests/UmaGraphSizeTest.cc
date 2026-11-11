@@ -1,10 +1,9 @@
 // Copyright (c) rgpot developers
 //
-// A universal model for atoms package compiled for one neighbour list
-// must not return a force when that list changes size. The error names
-// the shape that was passed and the shape the package was exported for.
-// A package exported with a symbolic edge count returns finite forces
-// that match the eager gather.
+// A package traced at n(n-1) edges keeps every ordered pair when a
+// contact grows, so the compiled shape does not change. A symbolic
+// edge count still follows the neighbour list and matches the eager
+// gather. A package with no recorded edge range is refused.
 
 #include <cmath>
 #include <cstdlib>
@@ -65,27 +64,19 @@ std::vector<double> line(int n, double spacing) {
 
 } // namespace
 
-TEST_CASE("tetrazine-sized static graph names both edge shapes",
+TEST_CASE("a complete static graph keeps every ordered pair",
           "[uma][graph]") {
-  // Eight atoms, every pair inside the cutoff: 8 * 7 = 56 edges.
-  // Moving one atom past the cutoff changes the neighbour list.
+  // Eight atoms were traced at 8 * 7 = 56 edges. Moving one atom
+  // past the old cutoff keeps that count. Each atom is a neighbour
+  // seven times, so the energy is seven times the coordinate sum.
   rgpot::UmaPot pot = open_pot(package_path("UMA_GATHER_STATIC_PT2"));
   std::vector<double> pos = line(8, 0.5);
   pos.back() = 40.0;
-  bool threw = false;
-  try {
-    run(pot, pos);
-  } catch (const rgpot::UmaShapeError &err) {
-    threw = true;
-    const std::string message = err.what();
-    REQUIRE(err.field() == "edge_index");
-    REQUIRE_THAT(message,
-                 Catch::Matchers::ContainsSubstring("edge_index shape is"));
-    REQUIRE_THAT(message, Catch::Matchers::ContainsSubstring("[2, 42]"));
-    REQUIRE_THAT(message, Catch::Matchers::ContainsSubstring(
-                              "the package was exported for [2, 56]"));
-  }
-  REQUIRE(threw);
+  const Eval got = run(pot, pos);
+  double sum = 0.0;
+  for (double value : pos)
+    sum += value;
+  REQUIRE_THAT(got.energy, Catch::Matchers::WithinAbs(7.0 * sum, 1e-6));
 }
 
 TEST_CASE("dynamic gather matches eager forces when the neighbour list changes",
@@ -123,10 +114,11 @@ TEST_CASE("dynamic gather matches eager forces when the neighbour list changes",
   REQUIRE_THAT(finite, Catch::Matchers::WithinAbs(compact.force[0], 1e-3));
 }
 
-TEST_CASE("a molecular box rejects a periodic image", "[uma][graph]") {
-  // After recentering, these three atoms span more than the 6 angstrom
-  // cutoff and less than the 15 angstrom box, so the missing pair comes
-  // back as a periodic image.
+TEST_CASE("a molecular box keeps a long contact at shift zero",
+          "[uma][graph]") {
+  // The three atoms span more than a 6 angstrom cutoff and less than
+  // the 15 angstrom box. The list is every ordered pair at shift 0,
+  // so the call does not report a periodic image.
   rgpot::UmaPot pot = open_pot(package_path("UMA_MOLECULAR_BOX_PT2"));
   const std::vector<double> pos = {0, 0, 0, 0, 0, 1, 0, 0, 10};
   const std::vector<int> z = {6, 7, 1};
@@ -134,10 +126,8 @@ TEST_CASE("a molecular box rejects a periodic image", "[uma][graph]") {
   std::vector<double> force(9, 0.0);
   rgpot::ForceOut slot{force.data(), 0.0, 0.0};
   const rgpot::ForceInput in{3, pos.data(), z.data(), box};
-  REQUIRE_THROWS_WITH(
-      pot.forceImpl(in, &slot),
-      Catch::Matchers::ContainsSubstring("cell_offsets") &&
-          Catch::Matchers::ContainsSubstring("nonzero"));
+  pot.forceImpl(in, &slot);
+  REQUIRE(std::isfinite(slot.energy));
 }
 
 TEST_CASE("tetrazine past the 10 angstrom cutoff names the missing edge range",
@@ -171,10 +161,12 @@ TEST_CASE("a package with no edge range is refused", "[uma][graph]") {
                           Catch::Matchers::ContainsSubstring("absent"));
 }
 
-TEST_CASE("tetrazine walked past 10 angstroms names the edge count",
+TEST_CASE("tetrazine walked past 10 angstroms keeps 56 edges",
           "[uma][graph]") {
   // s-tetrazine, eight atoms. The static package was traced at 56
-  // edges. Moving one hydrogen by 12 angstroms changes that count.
+  // edges. Moving one hydrogen by 12 angstroms used to shrink the
+  // vesin list. The complete count stays, and each atom is a
+  // neighbour seven times.
   std::vector<double> pos = {
       12.5, 13.83, 12.5, 12.5, 11.17, 12.5, 13.65, 13.165, 12.5,
       13.65, 11.835, 12.5, 11.35, 13.165, 12.5, 11.35, 11.835, 12.5,
@@ -187,20 +179,17 @@ TEST_CASE("tetrazine walked past 10 angstroms names the edge count",
   std::vector<double> force(pos.size(), 0.0);
   rgpot::ForceOut slot{force.data(), 0.0, 0.0};
   const rgpot::ForceInput in{8, pos.data(), z.data(), box};
-  try {
-    pot.forceImpl(in, &slot);
-    FAIL("the static package returned a force");
-  } catch (const rgpot::UmaShapeError &err) {
-    const std::string message = err.what();
-    REQUIRE(err.field() == "edge_index");
-    REQUIRE_THAT(message,
-                 Catch::Matchers::ContainsSubstring("edge_index shape is"));
-    REQUIRE_THAT(message, Catch::Matchers::ContainsSubstring("[2, 56]"));
-    REQUIRE_THAT(message, !Catch::Matchers::ContainsSubstring("returned 2"));
-  }
+  pot.forceImpl(in, &slot);
+  double sum = 0.0;
+  for (double value : pos)
+    sum += value;
+  REQUIRE_THAT(slot.energy, Catch::Matchers::WithinAbs(7.0 * sum, 1e-6));
 }
 
-TEST_CASE("a band checks each system's edge count", "[uma][graph]") {
+TEST_CASE("a static band keeps six edges when one system stretches",
+          "[uma][graph]") {
+  // Three atoms were traced at six edges. The stretched system used
+  // to drop to two. Both systems stay on the complete list.
   rgpot::UmaPot pot = open_pot(package_path("UMA_BATCH_STATIC_PT2"));
   const std::vector<int> z = {6, 7, 1};
   const double box[9] = {80, 0, 0, 0, 80, 0, 0, 0, 80};
@@ -218,11 +207,9 @@ TEST_CASE("a band checks each system's edge count", "[uma][graph]") {
       {f1.data(), 0.0, 0.0},
   };
   const rgpot::ForceBatch batch{2, in, out};
-  REQUIRE_THROWS_WITH(
-      pot.forceBatchImpl(batch),
-      Catch::Matchers::ContainsSubstring("edge_index shape is") &&
-          Catch::Matchers::ContainsSubstring("[2, 2]") &&
-          Catch::Matchers::ContainsSubstring("[2, 6]"));
+  pot.forceBatchImpl(batch);
+  REQUIRE(std::isfinite(out[0].energy));
+  REQUIRE(std::isfinite(out[1].energy));
 }
 
 TEST_CASE("each system of a static band is accepted", "[uma][contract]") {
@@ -263,11 +250,9 @@ TEST_CASE("a molecular band requires the complete pair list", "[uma][contract]")
                           Catch::Matchers::ContainsSubstring("[2, 6]"));
 }
 
-TEST_CASE("a molecular band refuses a changed edge count", "[uma][graph]") {
-  // batch_max > 1 used to enter the band path before the n*(n-1)
-  // check, and a range package skipped the per-system check. One
-  // system of this pair has left the cutoff. The named error is
-  // raised from forceImpl, which is the call that used to miss it.
+TEST_CASE("a molecular band keeps a complete pair list", "[uma][graph]") {
+  // One system has left the old cutoff. The traced count is n(n-1),
+  // so both the single call and the band keep six edges per system.
   rgpot::UmaPot pot = open_pot(package_path("UMA_BATCH_MOLECULAR_PT2"));
   const std::vector<int> z = {6, 7, 1};
   const double box[9] = {80, 0, 0, 0, 80, 0, 0, 0, 80};
@@ -284,14 +269,10 @@ TEST_CASE("a molecular band refuses a changed edge count", "[uma][graph]") {
       {f0.data(), 0.0, 0.0},
       {f1.data(), 0.0, 0.0},
   };
-  REQUIRE_THROWS_WITH(
-      pot.forceImpl(in[1], &out[1]),
-      Catch::Matchers::ContainsSubstring("edge_index shape is") &&
-          Catch::Matchers::ContainsSubstring("[2, 6]"));
+  pot.forceImpl(in[1], &out[1]);
+  REQUIRE(std::isfinite(out[1].energy));
   const rgpot::ForceBatch batch{2, in, out};
-  REQUIRE_THROWS_WITH(
-      pot.forceBatchImpl(batch),
-      Catch::Matchers::ContainsSubstring("edge_index shape is") &&
-          Catch::Matchers::ContainsSubstring("[2, 2]") &&
-          Catch::Matchers::ContainsSubstring("[2, 6]"));
+  pot.forceBatchImpl(batch);
+  REQUIRE(std::isfinite(out[0].energy));
+  REQUIRE(std::isfinite(out[1].energy));
 }

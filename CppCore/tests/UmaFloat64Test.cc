@@ -134,29 +134,16 @@ TEST_CASE("finite difference step of 1e-6 matches the sum", "[uma][float64]") {
   REQUIRE_THAT(slope, Catch::Matchers::WithinAbs(1.0, 1e-6));
 }
 
-TEST_CASE("a changed neighbour list names both edge shapes",
-          "[uma][graph]") {
-  // The three-atom line at 6 Å has six edges. Moving one atom past
-  // the cutoff changes that count. A static package must not return
-  // a force; the error names the shape we passed and the shape the
-  // package was exported for.
+TEST_CASE("a complete float64 list keeps the moved atom",
+          "[uma][float64]") {
+  // The three-atom line was traced at six edges. Moving one atom
+  // past the old cutoff keeps that count. The energy is the sum of
+  // the coordinates, so the moved atom is still in the result.
   rgpot::UmaPot pot = open_pot(package_path("UMA_FLOAT64_PT2"));
   std::vector<double> pos = line_geometry();
   pos.back() = 30.0;
-  bool threw = false;
-  try {
-    run(pot, pos);
-  } catch (const std::exception &err) {
-    threw = true;
-    const std::string message = err.what();
-    REQUIRE_THAT(message,
-                 Catch::Matchers::ContainsSubstring("edge_index shape is"));
-    REQUIRE_THAT(message, Catch::Matchers::ContainsSubstring("[2, 2]"));
-    REQUIRE_THAT(message, Catch::Matchers::ContainsSubstring(
-                              "the package was exported for"));
-    REQUIRE_THAT(message, Catch::Matchers::ContainsSubstring("[2, 6]"));
-  }
-  REQUIRE(threw);
+  const Eval got = run(pot, pos);
+  REQUIRE_THAT(got.energy, Catch::Matchers::WithinAbs(131.0, 1e-9));
 }
 
 TEST_CASE("batch path resolves a 1e-7 angstrom shift", "[uma][float64]") {
