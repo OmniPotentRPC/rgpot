@@ -1514,6 +1514,11 @@ void rgpot_nlist_builder_close(rgpot_nlist_builder *builder) { delete builder; }
 
 struct rgpot_nlist_fortran_list {
   rgpot::nlist::Builder builder;
+  rgpot::nlist::Neighbours cells;
+  bool streaming = false;
+  double cutoff = 0;
+  const double *positions = nullptr;
+  size_t natoms = 0;
 };
 
 rgpot_nlist_fortran_list *rgpot_nlist_fortran_open(void) {
@@ -1521,6 +1526,104 @@ rgpot_nlist_fortran_list *rgpot_nlist_fortran_open(void) {
 }
 
 void rgpot_nlist_fortran_close(rgpot_nlist_fortran_list *list) { delete list; }
+
+int32_t rgpot_nlist_fortran_stream(rgpot_nlist_fortran_list *list, const double *positions,
+                                   size_t natoms, const double *box9, double cutoff,
+                                   const int32_t periodic[3]) {
+  if (list == nullptr || positions == nullptr || box9 == nullptr || periodic == nullptr) {
+    return RGPOT_NLIST_NULL;
+  }
+  if (!(cutoff > 0.0) || !std::isfinite(cutoff)) {
+    return RGPOT_NLIST_CUTOFF;
+  }
+  try {
+    std::array<bool, 3> pbc{{periodic[0] != 0, periodic[1] != 0, periodic[2] != 0}};
+    rgpot::nlist::updateCells(list->cells, positions, natoms, box9, cutoff, 0.0,
+                              rgpot::nlist::Image::Round, rgpot::nlist::Mode::Stream, pbc);
+    list->streaming = true;
+    list->cutoff = cutoff;
+    list->positions = positions;
+    list->natoms = natoms;
+    return RGPOT_NLIST_OK;
+  } catch (const rgpot::nlist::Error &err) {
+    return static_cast<int32_t>(err.code());
+  } catch (const std::bad_alloc &) {
+    return RGPOT_NLIST_NOMEM;
+  }
+}
+
+int32_t rgpot_nlist_fortran_atom(rgpot_nlist_fortran_list *list, int32_t atom, int32_t *idx,
+                                 double *vector, double *distance, size_t cap, size_t *count) {
+  if (list == nullptr || !list->streaming) {
+    if (count != nullptr) {
+      *count = 0;
+    }
+    return RGPOT_NLIST_NULL;
+  }
+  if (atom < 0 || static_cast<size_t>(atom) >= list->natoms) {
+    if (count != nullptr) {
+      *count = 0;
+    }
+    return RGPOT_NLIST_SHAPE;
+  }
+  struct Bond {
+    int32_t j;
+    double x;
+    double y;
+    double z;
+    double r;
+    bool operator<(const Bond &o) const {
+      if (j != o.j) {
+        return j < o.j;
+      }
+      if (x != o.x) {
+        return x < o.x;
+      }
+      if (y != o.y) {
+        return y < o.y;
+      }
+      return z < o.z;
+    }
+  };
+  try {
+    std::vector<Bond> bonds;
+    const double cut2 = list->cutoff * list->cutoff;
+    list->cells.forAtom(atom, [&](std::int32_t, std::int32_t j, double dx, double dy, double dz,
+                                  double r2) {
+      if (!(r2 > 0.0) || !(r2 < cut2)) {
+        return;
+      }
+      bonds.push_back(Bond{j, -dx, -dy, -dz, std::sqrt(r2)});
+    });
+    std::sort(bonds.begin(), bonds.end());
+    if (count != nullptr) {
+      *count = bonds.size();
+    }
+    if (idx == nullptr) {
+      return RGPOT_NLIST_OK;
+    }
+    if (vector == nullptr || distance == nullptr) {
+      return RGPOT_NLIST_NULL;
+    }
+    const size_t nwrite = std::min(cap, bonds.size());
+    for (size_t p = 0; p < nwrite; ++p) {
+      idx[p] = bonds[p].j;
+      vector[3 * p] = bonds[p].x;
+      vector[3 * p + 1] = bonds[p].y;
+      vector[3 * p + 2] = bonds[p].z;
+      distance[p] = bonds[p].r;
+    }
+    if (nwrite < bonds.size()) {
+      return RGPOT_NLIST_SHORT;
+    }
+    return RGPOT_NLIST_OK;
+  } catch (const std::bad_alloc &) {
+    if (count != nullptr) {
+      *count = 0;
+    }
+    return RGPOT_NLIST_NOMEM;
+  }
+}
 
 int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *positions,
                                   size_t natoms, const double *box9, double cutoff, double skin,
@@ -1534,6 +1637,7 @@ int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *
     return RGPOT_NLIST_NULL;
   }
   try {
+    list->streaming = false;
     rgpot::nlist::Query query;
     query.cutoff = cutoff;
     query.skin = skin;

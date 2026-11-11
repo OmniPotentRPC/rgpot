@@ -136,8 +136,6 @@ _halfshell_omp = dependency('openmp', language: 'cpp', required: false)
 rgpot_halfshell = static_library(
     'rgpot_halfshell',
     files(
-        'rgpot/nlist/HalfShell.cc',
-        'rgpot/nlist/HalfShellWalk.cc',
         'rgpot/nlist/Neighbours.cc',
         'rgpot/nlist/NeighbourList.cc',
     ),
@@ -736,19 +734,13 @@ if get_option('with_tests')
             ['SWSiTest', 'sw_si_test', 'SWSiTest.cc', ''],
             ['TersoffSiCTest', 'tersoff_sic_test', 'TersoffSiCTest.cc', ''],
             [
-                'HalfShellScanTest',
-                'half_shell_scan_test',
-                'HalfShellScanTest.cc',
-                '',
-            ],
-            ['HalfShellTest', 'half_shell_test', 'HalfShellTest.cc', ''],
-            [
                 'SuttonChenPotTest',
                 'sutton_chen_pot_test',
                 'SuttonChenPotTest.cc',
                 '',
             ],
             ['ReducedPairTest', 'reduced_pair_test', 'ReducedPairTest.cc', ''],
+            ['StreamRestTest', 'stream_rest_test', 'StreamRestTest.cc', ''],
             ['EMTPotTest', 'emt_pot_test', 'EMTPotTest.cc', ''],
             ['EAMCellPotTest', 'eam_cell_pot_test', 'EAMCellPotTest.cc', ''],
             [
@@ -2452,6 +2444,23 @@ if get_option('with_tests')
         benchmark(
             'stream_scale_bench',
             stream_scale_bench,
+            workdir: meson.source_root(),
+            timeout: 0,
+        )
+        rest_stream_bench = executable(
+            'rest_stream_bench',
+            sources: ['tests/rest_stream_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'rest_stream_bench',
+            rest_stream_bench,
             workdir: meson.source_root(),
             timeout: 0,
         )

@@ -179,6 +179,20 @@ int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list,
                                   int32_t *second, double *vector, double *distance,
                                   size_t cap, size_t *count, int32_t *reused);
 
+/* Bins for one geometry and no pair index. `positions` stays live until
+ * the next stream or build on this list. `periodic` is three ints. */
+int32_t rgpot_nlist_fortran_stream(rgpot_nlist_fortran_list *list,
+                                   const double *positions, size_t natoms,
+                                   const double *box9, double cutoff,
+                                   const int32_t periodic[3]);
+
+/* Neighbours of `atom` (zero-based) inside the streamed cutoff.
+ * `vector` is r_j - r_i, three values per neighbour, Fortran order.
+ * A null `idx` only sets *count. Partners are ordered by atom index. */
+int32_t rgpot_nlist_fortran_atom(rgpot_nlist_fortran_list *list, int32_t atom,
+                                 int32_t *idx, double *vector, double *distance,
+                                 size_t cap, size_t *count);
+
 #ifdef __cplusplus
 }
 #endif
