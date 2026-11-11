@@ -30,6 +30,26 @@ module rgpot_neighbors
 
    public :: neighbor_table_t
 
+   !> One x-plane of directed pairs. Indices stay zero-based so a reused
+   !! plane is not shifted twice.
+   type :: plane_dump
+      integer :: ix = -2
+      integer(ip) :: n = 0_ip
+      ! Pointers so the C walk can write the buffer in place. Allocatable
+      ! components cannot carry the target attribute.
+      integer(ip), pointer :: ia(:) => null()
+      integer(ip), pointer :: ja(:) => null()
+      real(wp), pointer :: vec(:, :) => null()
+      real(wp), pointer :: dist(:) => null()
+      !> Atoms that own a row in this plane, and that row in CSR order.
+      integer(ip) :: nown = 0_ip
+      integer(ip), pointer :: atoms(:) => null()
+      integer(ip), pointer :: off(:) => null()
+      integer(ip), pointer :: nbr(:) => null()
+      real(wp), pointer :: gvec(:, :) => null()
+      real(wp), pointer :: gdist(:) => null()
+   end type plane_dump
+
    !> Full neighbour list: for atom `i`, entries `row(i) : row(i+1) - 1`
    !! index into `idx`, `vec`, and `dist`.
    type :: neighbor_table_t
@@ -51,6 +71,20 @@ module rgpot_neighbors
       type(c_ptr), private :: builder = c_null_ptr
       !> When true, build keeps the cell bins and load asks for one atom.
       logical :: streaming = .false.
+      !> x-plane whose three-plane row cache is current. -2 means empty.
+      integer, private :: hold_ix = -2
+      !> Grid width the row cache was filled against.
+      integer, private :: hold_nx = 0
+      !> Up to three x-planes. A slide reuses the two that are still needed.
+      type(plane_dump), private :: hold_raw(3)
+      !> Positions and cell the stored rows were written for. An unchanged
+      !! geometry keeps those rows instead of writing them again.
+      real(wp), allocatable, private :: held_pos(:, :)
+      real(wp), private :: held_cell(3, 3) = 0.0_wp
+      !> Which of the three plane buffers holds atom i's row. 0 if none.
+      integer(ip), allocatable, private :: hold_home(:)
+      !> x-plane of atom i, or -1 until that plane has been fetched.
+      integer, allocatable, private :: hold_plane(:)
    contains
       procedure :: build => neighbor_table_build
       procedure :: count_for => neighbor_table_count_for
@@ -58,6 +92,10 @@ module rgpot_neighbors
       procedure :: load => neighbor_load
       procedure :: set_stream => neighbor_table_set_stream
       procedure :: pair_slots => neighbor_table_slots
+      procedure :: visit_order => neighbor_visit_order
+      procedure :: note_center => neighbor_note_center
+      procedure :: grid => neighbor_grid
+      procedure :: plane_pairs => neighbor_plane_pairs
    end type neighbor_table_t
 
    interface
@@ -125,6 +163,56 @@ module rgpot_neighbors
          integer(c_size_t), intent(out) :: count
          integer(c_int32_t) :: rgpot_nlist_fortran_atom
       end function rgpot_nlist_fortran_atom
+
+      function rgpot_nlist_fortran_order(list, atoms, cap, count) &
+         bind(C, name="rgpot_nlist_fortran_order")
+         import :: c_ptr, c_size_t, c_int32_t
+         implicit none
+         type(c_ptr), value :: list
+         type(c_ptr), value :: atoms
+         integer(c_size_t), value :: cap
+         integer(c_size_t), intent(out) :: count
+         integer(c_int32_t) :: rgpot_nlist_fortran_order
+      end function rgpot_nlist_fortran_order
+
+      function rgpot_nlist_fortran_center(list, atom) &
+         bind(C, name="rgpot_nlist_fortran_center")
+         import :: c_ptr, c_int32_t
+         implicit none
+         type(c_ptr), value :: list
+         integer(c_int32_t), value :: atom
+         integer(c_int32_t) :: rgpot_nlist_fortran_center
+      end function rgpot_nlist_fortran_center
+
+      function rgpot_nlist_fortran_grid(list, nx, ny, nz) &
+         bind(C, name="rgpot_nlist_fortran_grid")
+         import :: c_ptr, c_int32_t
+         implicit none
+         type(c_ptr), value :: list
+         integer(c_int32_t), intent(out) :: nx, ny, nz
+         integer(c_int32_t) :: rgpot_nlist_fortran_grid
+      end function rgpot_nlist_fortran_grid
+
+      function rgpot_nlist_fortran_plane_of(list, atom) &
+         bind(C, name="rgpot_nlist_fortran_plane_of")
+         import :: c_ptr, c_int32_t
+         implicit none
+         type(c_ptr), value :: list
+         integer(c_int32_t), value :: atom
+         integer(c_int32_t) :: rgpot_nlist_fortran_plane_of
+      end function rgpot_nlist_fortran_plane_of
+
+      function rgpot_nlist_fortran_plane(list, ix, first, second, vector, distance, cap, count) &
+         bind(C, name="rgpot_nlist_fortran_plane")
+         import :: c_ptr, c_int32_t, c_size_t
+         implicit none
+         type(c_ptr), value :: list
+         integer(c_int32_t), value :: ix
+         type(c_ptr), value :: first, second, vector, distance
+         integer(c_size_t), value :: cap
+         integer(c_size_t), intent(out) :: count
+         integer(c_int32_t) :: rgpot_nlist_fortran_plane
+      end function rgpot_nlist_fortran_plane
    end interface
 
 contains
@@ -197,6 +285,12 @@ contains
          self%cutoff = cutoff
          if (allocated(self%idx)) deallocate (self%idx, self%vec, self%dist)
          if (allocated(self%row)) deallocate (self%row)
+         self%hold_ix = -2
+         self%hold_nx = 0
+         self%hold_raw%ix = -2
+         self%hold_raw%n = 0_ip
+         if (allocated(self%hold_home)) self%hold_home = 0_ip
+         if (allocated(self%hold_plane)) self%hold_plane = -1
          return
       end if
       needed = 0_c_size_t
@@ -212,6 +306,11 @@ contains
       end if
 
       np = int(needed)
+      if (reused /= 0_c_int32_t .and. allocated(self%idx) .and. allocated(self%held_pos) .and. &
+          self%natoms == natoms .and. self%cutoff == cutoff .and. &
+          same_geometry(self%held_pos, positions, self%held_cell, cell)) then
+         return
+      end if
       self%natoms = natoms
       self%cutoff = cutoff
       self%skin = use_skin
@@ -285,7 +384,31 @@ contains
          end associate
          fill(i) = fill(i) + 1_ip
       end do
+      self%held_pos = positions
+      self%held_cell = cell
    end subroutine neighbor_table_build
+
+   !> True when `a` and `b` and the two cells are the same numbers.
+   pure function same_geometry(a, b, ca, cb) result(yes)
+      real(wp), intent(in) :: a(:, :), b(:, :), ca(3, 3), cb(3, 3)
+      logical :: yes
+
+      integer :: i, k
+
+      yes = .false.
+      if (size(a, 1) /= size(b, 1) .or. size(a, 2) /= size(b, 2)) return
+      do i = 1, size(a, 2)
+         do k = 1, size(a, 1)
+            if (a(k, i) /= b(k, i)) return
+         end do
+      end do
+      do i = 1, 3
+         do k = 1, 3
+            if (ca(k, i) /= cb(k, i)) return
+         end do
+      end do
+      yes = .true.
+   end function same_geometry
 
    !> Free the builder; the table can be built again afterwards.
    subroutine neighbor_table_release(self)
@@ -318,59 +441,57 @@ contains
 
    !> Neighbours of atom `i` (one-based), partner index then geometry.
    !!
-   !! A stored table copies its row. A stream asks the shared bins and
-   !! does not keep the row afterwards.
+   !! A stored table copies its row. A stream copies the row from the
+   !! x-plane cache, which a centre slides by one plane at a time.
    subroutine neighbor_load(self, atom, idx, vec, dist, n)
-      class(neighbor_table_t), intent(in) :: self
+      class(neighbor_table_t), intent(inout) :: self
       integer(ip), intent(in) :: atom
       integer(ip), allocatable, intent(inout), target :: idx(:)
       real(wp), allocatable, intent(inout), target :: vec(:, :)
       real(wp), allocatable, intent(inout), target :: dist(:)
       integer(ip), intent(out) :: n
 
-      integer(c_int32_t) :: rc
-      integer(c_size_t) :: needed, cap
-      integer(ip) :: s, slot
-      integer :: have
+      integer(ip) :: s, slot, at
 
       n = 0_ip
       if (atom < 1_ip .or. atom > self%natoms) return
 
-      if (.not. self%streaming) then
-         if (.not. allocated(self%row)) return
-         n = self%row(atom + 1_ip) - self%row(atom)
+      if (self%streaming) then
+         if (self%hold_ix < 0 .or. .not. allocated(self%hold_home)) then
+            call neighbor_note_center(self, atom)
+         end if
+         if (.not. allocated(self%hold_home)) return
+         slot = self%hold_home(atom)
+         if (slot == 0_ip) then
+            if (.not. plane_covered(self%hold_ix, &
+                                    int(rgpot_nlist_fortran_plane_of(self%builder, &
+                                                                     int(atom - 1_ip, c_int32_t))), &
+                                    self%hold_nx)) then
+               call neighbor_note_center(self, atom)
+            end if
+            slot = self%hold_home(atom)
+         end if
+         if (slot < 1_ip .or. slot > 3_ip) return
+         if (.not. associated(self%hold_raw(slot)%off)) return
+         n = self%hold_raw(slot)%off(atom + 1_ip) - self%hold_raw(slot)%off(atom)
          call grow_load(idx, vec, dist, n)
          do s = 1_ip, n
-            slot = self%row(atom) + s - 1_ip
-            idx(s) = self%idx(slot)
-            vec(:, s) = self%vec(:, slot)
-            dist(s) = self%dist(slot)
+            at = self%hold_raw(slot)%off(atom) + s - 1_ip
+            idx(s) = self%hold_raw(slot)%nbr(at)
+            vec(:, s) = self%hold_raw(slot)%gvec(:, at)
+            dist(s) = self%hold_raw(slot)%gdist(at)
          end do
          return
       end if
 
-      needed = 0_c_size_t
-      rc = rgpot_nlist_fortran_atom(self%builder, int(atom - 1_ip, c_int32_t), &
-                                    c_null_ptr, c_null_ptr, c_null_ptr, 0_c_size_t, needed)
-      if (rc /= 0_c_int32_t) then
-         n = 0_ip
-         return
-      end if
-      n = int(needed, ip)
+      if (.not. allocated(self%row)) return
+      n = self%row(atom + 1_ip) - self%row(atom)
       call grow_load(idx, vec, dist, n)
-      if (n == 0_ip) return
-      cap = int(n, c_size_t)
-      have = size(idx)
-      if (have < n) return
-      rc = rgpot_nlist_fortran_atom(self%builder, int(atom - 1_ip, c_int32_t), &
-                                    c_loc(idx), c_loc(vec), c_loc(dist), cap, needed)
-      if (rc /= 0_c_int32_t) then
-         n = 0_ip
-         return
-      end if
-      ! The C walk is zero-based. The stored table is one-based.
       do s = 1_ip, n
-         idx(s) = idx(s) + 1_ip
+         slot = self%row(atom) + s - 1_ip
+         idx(s) = self%idx(slot)
+         vec(:, s) = self%vec(:, slot)
+         dist(s) = self%dist(slot)
       end do
    end subroutine neighbor_load
 
@@ -390,6 +511,323 @@ contains
          allocate (idx(need), vec(3, need), dist(need))
       end if
    end subroutine grow_load
+
+   !> Cell-major atom indices when streaming. `norder` is 0 for a stored table,
+   !! and the caller then walks atoms `1 .. natoms` in index order.
+   subroutine neighbor_visit_order(self, order, norder)
+      class(neighbor_table_t), intent(in) :: self
+      integer(ip), allocatable, intent(inout) :: order(:)
+      integer(ip), intent(out) :: norder
+
+      integer(c_int32_t) :: rc
+      integer(c_size_t) :: needed, cap
+      integer(ip), allocatable, target :: raw(:)
+      integer(ip) :: k
+
+      norder = 0_ip
+      if (.not. self%streaming .or. .not. c_associated(self%builder)) return
+      needed = 0_c_size_t
+      rc = rgpot_nlist_fortran_order(self%builder, c_null_ptr, 0_c_size_t, needed)
+      if (rc /= 0_c_int32_t) return
+      norder = int(needed, ip)
+      if (norder < 1_ip) return
+      allocate (raw(norder))
+      cap = int(norder, c_size_t)
+      rc = rgpot_nlist_fortran_order(self%builder, c_loc(raw), cap, needed)
+      if (rc /= 0_c_int32_t) then
+         norder = 0_ip
+         return
+      end if
+      if (allocated(order)) then
+         if (size(order) < norder) deallocate (order)
+      end if
+      if (.not. allocated(order)) allocate (order(norder))
+      do k = 1_ip, norder
+         order(k) = raw(k) + 1_ip
+      end do
+   end subroutine neighbor_visit_order
+
+   !> Slide the stream window onto the cells around `atom`.
+   subroutine neighbor_note_center(self, atom)
+      class(neighbor_table_t), intent(inout) :: self
+      integer(ip), intent(in) :: atom
+
+      integer(c_int32_t) :: ix
+
+      ix = -1_c_int32_t
+      if (.not. self%streaming .or. atom < 1_ip) return
+      if (.not. c_associated(self%builder)) return
+      if (allocated(self%hold_plane)) then
+         if (atom <= size(self%hold_plane)) ix = int(self%hold_plane(atom), c_int32_t)
+      end if
+      if (ix < 0_c_int32_t) then
+         ix = rgpot_nlist_fortran_plane_of(self%builder, int(atom - 1_ip, c_int32_t))
+      end if
+      if (ix < 0_c_int32_t .or. int(ix) == self%hold_ix) return
+      call hold_refill(self, int(ix))
+   end subroutine neighbor_note_center
+
+   !> True when `ix` is one of the three planes cached around `center`.
+   pure function plane_covered(center, ix, nx) result(yes)
+      integer, intent(in) :: center, ix, nx
+      logical :: yes
+
+      integer :: d, p
+
+      yes = .false.
+      if (center < 0 .or. nx < 1 .or. ix < 0) return
+      do d = -1, 1
+         p = center + d
+         if (p < 0) p = p + nx
+         if (p >= nx) p = p - nx
+         if (p == ix) yes = .true.
+      end do
+   end function plane_covered
+
+   !> Pull one x-plane into `dump`. A buffer that is already large enough
+   !! is filled in one call; a short one is grown and filled once more.
+   subroutine fetch_raw(self, ix, dump)
+      class(neighbor_table_t), intent(in) :: self
+      integer, intent(in) :: ix
+      type(plane_dump), intent(inout) :: dump
+
+      integer(c_int32_t) :: rc
+      integer(c_size_t) :: needed, cap
+      integer(ip) :: n, room
+
+      dump%ix = -2
+      dump%n = 0_ip
+      if (.not. associated(dump%ia)) then
+         allocate (dump%ia(64), dump%ja(64), dump%vec(3, 64), dump%dist(64))
+      end if
+      do
+         room = int(size(dump%ia), ip)
+         cap = int(room, c_size_t)
+         needed = 0_c_size_t
+         rc = rgpot_nlist_fortran_plane(self%builder, int(ix, c_int32_t), &
+                                        c_loc(dump%ia), c_loc(dump%ja), c_loc(dump%vec), &
+                                        c_loc(dump%dist), cap, needed)
+         n = int(needed, ip)
+         if (n < 0_ip) return
+         if (n <= room) exit
+         deallocate (dump%ia, dump%ja, dump%vec, dump%dist)
+         allocate (dump%ia(n), dump%ja(n), dump%vec(3, n), dump%dist(n))
+      end do
+      if (rc /= 0_c_int32_t) return
+      dump%n = n
+      dump%ix = ix
+      call group_plane(self%natoms, dump)
+   end subroutine fetch_raw
+
+   !> One plane's pairs, grouped by the central atom. Done once per plane.
+   subroutine group_plane(natoms, dump)
+      integer(ip), intent(in) :: natoms
+      type(plane_dump), intent(inout) :: dump
+
+      integer(ip), allocatable :: cnt(:)
+      integer(ip) :: q, i, base, k, n
+
+      n = dump%n
+      dump%nown = 0_ip
+      allocate (cnt(natoms), source=0_ip)
+      do q = 1_ip, n
+         i = dump%ia(q) + 1_ip
+         if (i >= 1_ip .and. i <= natoms) cnt(i) = cnt(i) + 1_ip
+      end do
+      k = 0_ip
+      do i = 1_ip, natoms
+         if (cnt(i) > 0_ip) k = k + 1_ip
+      end do
+      if (associated(dump%atoms)) then
+         if (size(dump%atoms) < max(k, 1_ip)) deallocate (dump%atoms)
+      end if
+      if (.not. associated(dump%atoms)) allocate (dump%atoms(max(k, 1_ip)))
+      if (associated(dump%off)) then
+         if (size(dump%off) /= natoms + 1_ip) deallocate (dump%off)
+      end if
+      if (.not. associated(dump%off)) allocate (dump%off(natoms + 1_ip))
+      dump%off(1) = 1_ip
+      base = 0_ip
+      do i = 1_ip, natoms
+         dump%off(i + 1_ip) = dump%off(i) + cnt(i)
+         if (cnt(i) > 0_ip) then
+            base = base + 1_ip
+            dump%atoms(base) = i
+         end if
+      end do
+      dump%nown = base
+      if (associated(dump%nbr)) then
+         if (size(dump%nbr) < max(n, 1_ip)) deallocate (dump%nbr, dump%gvec, dump%gdist)
+      end if
+      if (.not. associated(dump%nbr)) then
+         allocate (dump%nbr(max(n, 1_ip)), dump%gvec(3, max(n, 1_ip)), dump%gdist(max(n, 1_ip)))
+      end if
+      cnt = dump%off(1:natoms)
+      do q = 1_ip, n
+         i = dump%ia(q) + 1_ip
+         if (i < 1_ip .or. i > natoms) cycle
+         base = cnt(i)
+         dump%nbr(base) = dump%ja(q) + 1_ip
+         dump%gvec(:, base) = dump%vec(:, q)
+         dump%gdist(base) = dump%dist(q)
+         cnt(i) = base + 1_ip
+      end do
+   end subroutine group_plane
+
+   subroutine drop_home(self, s)
+      class(neighbor_table_t), intent(inout) :: self
+      integer, intent(in) :: s
+
+      integer(ip) :: k, i
+
+      if (.not. allocated(self%hold_home)) return
+      if (.not. associated(self%hold_raw(s)%atoms)) return
+      do k = 1_ip, self%hold_raw(s)%nown
+         i = self%hold_raw(s)%atoms(k)
+         if (i >= 1_ip .and. i <= self%natoms) then
+            if (self%hold_home(i) == int(s, ip)) self%hold_home(i) = 0_ip
+            if (allocated(self%hold_plane)) self%hold_plane(i) = -1
+         end if
+      end do
+   end subroutine drop_home
+
+   !> Rows for the three x-planes around `ix`, so a three-body term can
+   !! read a neighbour without another cell walk. Planes already held are
+   !! not fetched again.
+   subroutine hold_refill(self, ix)
+      class(neighbor_table_t), intent(inout) :: self
+      integer, intent(in) :: ix
+
+      integer(c_int32_t) :: cnx, cny, cnz, rc
+      integer :: d, p, np, s, t, planes(3), slot_of(3)
+      integer(ip) :: i, k
+      logical :: keep(3), seen
+
+      rc = rgpot_nlist_fortran_grid(self%builder, cnx, cny, cnz)
+      if (rc /= 0_c_int32_t) return
+      self%hold_nx = int(cnx)
+      np = 0
+      do d = -1, 1
+         p = ix + d
+         if (p < 0) p = p + self%hold_nx
+         if (p >= self%hold_nx) p = p - self%hold_nx
+         if (p < 0 .or. p >= self%hold_nx) cycle
+         seen = .false.
+         if (np > 0) seen = any(planes(1:np) == p)
+         if (.not. seen) then
+            np = np + 1
+            planes(np) = p
+         end if
+      end do
+
+      if (allocated(self%hold_home)) then
+         if (size(self%hold_home) /= self%natoms) deallocate (self%hold_home)
+      end if
+      if (.not. allocated(self%hold_home)) allocate (self%hold_home(self%natoms), source=0_ip)
+      if (allocated(self%hold_plane)) then
+         if (size(self%hold_plane) /= self%natoms) deallocate (self%hold_plane)
+      end if
+      if (.not. allocated(self%hold_plane)) allocate (self%hold_plane(self%natoms), source=-1)
+
+      keep = .false.
+      slot_of = 0
+      do p = 1, np
+         do s = 1, 3
+            if (self%hold_raw(s)%ix == planes(p)) then
+               slot_of(p) = s
+               keep(s) = .true.
+               exit
+            end if
+         end do
+      end do
+      do p = 1, np
+         if (slot_of(p) /= 0) cycle
+         s = 0
+         do t = 1, 3
+            if (.not. keep(t)) then
+               s = t
+               exit
+            end if
+         end do
+         if (s == 0) return
+         call drop_home(self, s)
+         call fetch_raw(self, planes(p), self%hold_raw(s))
+         if (self%hold_raw(s)%ix /= planes(p)) return
+         do k = 1_ip, self%hold_raw(s)%nown
+            i = self%hold_raw(s)%atoms(k)
+            self%hold_home(i) = int(s, ip)
+            self%hold_plane(i) = self%hold_raw(s)%ix
+         end do
+         keep(s) = .true.
+         slot_of(p) = s
+      end do
+      self%hold_ix = ix
+   end subroutine hold_refill
+
+   subroutine neighbor_grid(self, nx, ny, nz, stat)
+      class(neighbor_table_t), intent(in) :: self
+      integer, intent(out) :: nx, ny, nz, stat
+
+      integer(c_int32_t) :: cnx, cny, cnz, rc
+
+      nx = 0
+      ny = 0
+      nz = 0
+      stat = 1
+      if (.not. c_associated(self%builder)) return
+      rc = rgpot_nlist_fortran_grid(self%builder, cnx, cny, cnz)
+      stat = int(rc)
+      if (rc /= 0_c_int32_t) return
+      nx = int(cnx)
+      ny = int(cny)
+      nz = int(cnz)
+   end subroutine neighbor_grid
+
+   !> Directed pairs whose central atom lies in x-plane `ix`. Indices are
+   !! one-based. The same arrays are grown and reused by the caller.
+   subroutine neighbor_plane_pairs(self, ix, ia, ja, vec, dist, n, stat)
+      class(neighbor_table_t), intent(in) :: self
+      integer, intent(in) :: ix
+      integer(ip), allocatable, intent(inout), target :: ia(:), ja(:)
+      real(wp), allocatable, intent(inout), target :: vec(:, :), dist(:)
+      integer(ip), intent(out) :: n
+      integer, intent(out) :: stat
+
+      integer(c_int32_t) :: rc
+      integer(c_size_t) :: needed, cap
+      integer(ip) :: q, room
+
+      n = 0_ip
+      stat = 1
+      if (.not. c_associated(self%builder)) return
+      if (.not. allocated(ia)) allocate (ia(64), ja(64), vec(3, 64), dist(64))
+      do
+         room = int(size(ia), ip)
+         cap = int(room, c_size_t)
+         needed = 0_c_size_t
+         rc = rgpot_nlist_fortran_plane(self%builder, int(ix, c_int32_t), &
+                                        c_loc(ia), c_loc(ja), c_loc(vec), c_loc(dist), &
+                                        cap, needed)
+         n = int(needed, ip)
+         if (n < 0_ip) then
+            n = 0_ip
+            stat = 1
+            return
+         end if
+         if (n <= room) exit
+         deallocate (ia, ja, vec, dist)
+         allocate (ia(max(n, 1_ip)), ja(max(n, 1_ip)), vec(3, max(n, 1_ip)), dist(max(n, 1_ip)))
+      end do
+      stat = int(rc)
+      if (rc /= 0_c_int32_t) then
+         n = 0_ip
+         return
+      end if
+      do q = 1_ip, n
+         ia(q) = ia(q) + 1_ip
+         ja(q) = ja(q) + 1_ip
+      end do
+   end subroutine neighbor_plane_pairs
 
    !> Number of neighbours atom `i` owns.
    pure function neighbor_table_count_for(self, i) result(n)
