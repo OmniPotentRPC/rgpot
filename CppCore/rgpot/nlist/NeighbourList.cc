@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <new>
 #include <string>
 #include <utility>
@@ -1512,6 +1513,14 @@ int32_t rgpot_nlist_builder_update(rgpot_nlist_builder *builder, const double *p
 
 void rgpot_nlist_builder_close(rgpot_nlist_builder *builder) { delete builder; }
 
+struct rgpot_nlist_cell_rows {
+  std::vector<int32_t> atoms;
+  std::vector<int32_t> off;
+  std::vector<int32_t> nbr;
+  std::vector<double> vec;
+  std::vector<double> dist;
+};
+
 struct rgpot_nlist_fortran_list {
   rgpot::nlist::Builder builder;
   rgpot::nlist::Neighbours cells;
@@ -1519,7 +1528,281 @@ struct rgpot_nlist_fortran_list {
   double cutoff = 0;
   const double *positions = nullptr;
   size_t natoms = 0;
+  int center = -2;
+  int plane = -2;
+  std::vector<int32_t> place;
+  std::vector<int> lookup;
+  std::vector<std::unique_ptr<rgpot_nlist_cell_rows>> cached;
 };
+
+namespace {
+
+void clear_window(rgpot_nlist_fortran_list *list) {
+  list->center = -2;
+  list->plane = -2;
+  list->place.assign(list->natoms, -1);
+  list->lookup.assign(list->natoms, -1);
+  list->cached.clear();
+}
+
+void fill_cell(rgpot_nlist_fortran_list *list, int cell) {
+  if (cell < 0) {
+    return;
+  }
+  const auto ncells = static_cast<std::size_t>(list->cells.gridCells());
+  if (list->cached.size() != ncells) {
+    list->cached.clear();
+    list->cached.resize(ncells);
+  }
+  if (list->cached[static_cast<std::size_t>(cell)] != nullptr) {
+    return;
+  }
+  const std::int32_t *ids = nullptr;
+  int n = 0;
+  list->cells.cellAtoms(cell, ids, n);
+  auto rows = std::make_unique<rgpot_nlist_cell_rows>();
+  rows->atoms.assign(ids, ids + n);
+  rows->off.assign(static_cast<std::size_t>(n) + 1, 0);
+  if (list->lookup.size() != list->natoms) {
+    list->lookup.assign(list->natoms, -1);
+  }
+  for (int k = 0; k < n; ++k) {
+    list->lookup[static_cast<std::size_t>(ids[k])] = k;
+  }
+  const double cut2 = list->cutoff * list->cutoff;
+  struct Item {
+    int32_t j;
+    double x, y, z, r;
+  };
+  std::vector<std::vector<Item>> bonds(static_cast<std::size_t>(std::max(n, 0)));
+  list->cells.forCell(cell, [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                                double r2) {
+    if (!(r2 > 0.0) || !(r2 < cut2)) {
+      return;
+    }
+    const int slot = list->lookup[static_cast<std::size_t>(i)];
+    if (slot < 0) {
+      return;
+    }
+    bonds[static_cast<std::size_t>(slot)].push_back(Item{j, -dx, -dy, -dz, std::sqrt(r2)});
+  });
+  for (int k = 0; k < n; ++k) {
+    auto &row = bonds[static_cast<std::size_t>(k)];
+    std::sort(row.begin(), row.end(), [](const Item &a, const Item &b) {
+      if (a.j != b.j) {
+        return a.j < b.j;
+      }
+      if (a.x != b.x) {
+        return a.x < b.x;
+      }
+      if (a.y != b.y) {
+        return a.y < b.y;
+      }
+      return a.z < b.z;
+    });
+    rows->off[static_cast<std::size_t>(k)] = static_cast<int32_t>(rows->nbr.size());
+    for (const Item &it : row) {
+      rows->nbr.push_back(it.j);
+      rows->vec.push_back(it.x);
+      rows->vec.push_back(it.y);
+      rows->vec.push_back(it.z);
+      rows->dist.push_back(it.r);
+    }
+  }
+  if (n >= 0) {
+    rows->off[static_cast<std::size_t>(n)] = static_cast<int32_t>(rows->nbr.size());
+  }
+  for (int k = 0; k < n; ++k) {
+    list->lookup[static_cast<std::size_t>(ids[k])] = -1;
+    list->place[static_cast<std::size_t>(ids[k])] = k;
+  }
+  list->cached[static_cast<std::size_t>(cell)] = std::move(rows);
+}
+
+void drop_cell(rgpot_nlist_fortran_list *list, int cell) {
+  if (cell < 0 || static_cast<std::size_t>(cell) >= list->cached.size()) {
+    return;
+  }
+  auto &rows = list->cached[static_cast<std::size_t>(cell)];
+  if (rows == nullptr) {
+    return;
+  }
+  for (int32_t atom : rows->atoms) {
+    if (atom >= 0 && static_cast<std::size_t>(atom) < list->place.size()) {
+      list->place[static_cast<std::size_t>(atom)] = -1;
+    }
+  }
+  rows.reset();
+}
+
+void fill_plane(rgpot_nlist_fortran_list *list, int ix) {
+  const int ny = list->cells.gridY();
+  const int nz = list->cells.gridZ();
+  if (ny < 1 || nz < 1 || ix < 0) {
+    return;
+  }
+  const int c0 = ix * ny * nz;
+  const int c1 = c0 + ny * nz;
+  const auto ncells = static_cast<std::size_t>(list->cells.gridCells());
+  if (list->cached.size() != ncells) {
+    list->cached.clear();
+    list->cached.resize(ncells);
+  }
+  if (list->lookup.size() != list->natoms) {
+    list->lookup.assign(list->natoms, -1);
+  }
+  std::vector<int32_t> atoms;
+  for (int c = c0; c < c1; ++c) {
+    const std::int32_t *ids = nullptr;
+    int n = 0;
+    list->cells.cellAtoms(c, ids, n);
+    for (int k = 0; k < n; ++k) {
+      list->lookup[static_cast<std::size_t>(ids[k])] = static_cast<int>(atoms.size());
+      atoms.push_back(ids[k]);
+    }
+  }
+  struct Item {
+    int32_t j;
+    double x, y, z, r;
+  };
+  std::vector<std::vector<Item>> bonds(atoms.size());
+  const double cut2 = list->cutoff * list->cutoff;
+  list->cells.forCellRange(c0, c1, [&](std::int32_t i, std::int32_t j, double dx, double dy,
+                                       double dz, double r2) {
+    if (!(r2 > 0.0) || !(r2 < cut2) || i < 0 || static_cast<std::size_t>(i) >= list->lookup.size()) {
+      return;
+    }
+    const int slot = list->lookup[static_cast<std::size_t>(i)];
+    if (slot < 0) {
+      return;
+    }
+    bonds[static_cast<std::size_t>(slot)].push_back(Item{j, -dx, -dy, -dz, std::sqrt(r2)});
+  });
+  std::vector<std::unique_ptr<rgpot_nlist_cell_rows>> built(static_cast<std::size_t>(c1 - c0));
+  for (int c = c0; c < c1; ++c) {
+    const std::int32_t *ids = nullptr;
+    int n = 0;
+    list->cells.cellAtoms(c, ids, n);
+    auto rows = std::make_unique<rgpot_nlist_cell_rows>();
+    rows->atoms.assign(ids, ids + n);
+    rows->off.assign(static_cast<std::size_t>(n) + 1, 0);
+    built[static_cast<std::size_t>(c - c0)] = std::move(rows);
+  }
+  for (std::size_t s = 0; s < atoms.size(); ++s) {
+    auto &row = bonds[s];
+    std::sort(row.begin(), row.end(), [](const Item &a, const Item &b) {
+      if (a.j != b.j) {
+        return a.j < b.j;
+      }
+      if (a.x != b.x) {
+        return a.x < b.x;
+      }
+      if (a.y != b.y) {
+        return a.y < b.y;
+      }
+      return a.z < b.z;
+    });
+  }
+  for (int c = c0; c < c1; ++c) {
+    auto &rows = *built[static_cast<std::size_t>(c - c0)];
+    for (std::size_t li = 0; li < rows.atoms.size(); ++li) {
+      const auto atom = rows.atoms[li];
+      const int slot = list->lookup[static_cast<std::size_t>(atom)];
+      rows.off[li] = static_cast<int32_t>(rows.nbr.size());
+      if (slot >= 0) {
+        for (const Item &it : bonds[static_cast<std::size_t>(slot)]) {
+          rows.nbr.push_back(it.j);
+          rows.vec.push_back(it.x);
+          rows.vec.push_back(it.y);
+          rows.vec.push_back(it.z);
+          rows.dist.push_back(it.r);
+        }
+      }
+      list->place[static_cast<std::size_t>(atom)] = static_cast<int32_t>(li);
+    }
+    rows.off[rows.atoms.size()] = static_cast<int32_t>(rows.nbr.size());
+    list->cached[static_cast<std::size_t>(c)] = std::move(built[static_cast<std::size_t>(c - c0)]);
+  }
+  for (int32_t atom : atoms) {
+    list->lookup[static_cast<std::size_t>(atom)] = -1;
+  }
+}
+
+void begin_cell(rgpot_nlist_fortran_list *list, int cell) {
+  if (cell < 0) {
+    return;
+  }
+  const int ny = list->cells.gridY();
+  const int nz = list->cells.gridZ();
+  const int nx = list->cells.gridX();
+  const int span = ny * nz;
+  if (span < 1 || nx < 1) {
+    return;
+  }
+  const int ix = cell / span;
+  if (ix == list->plane) {
+    return;
+  }
+  auto wrap = [&](int x) {
+    if (x < 0 || x >= nx) {
+      if (!list->cells.axisPeriodic(0)) {
+        return -1;
+      }
+      x %= nx;
+      if (x < 0) {
+        x += nx;
+      }
+    }
+    return x;
+  };
+  int want[3];
+  int nwant = 0;
+  for (int d = -1; d <= 1; ++d) {
+    const int p = wrap(ix + d);
+    if (p < 0) {
+      continue;
+    }
+    bool seen = false;
+    for (int k = 0; k < nwant; ++k) {
+      if (want[k] == p) {
+        seen = true;
+      }
+    }
+    if (!seen) {
+      want[nwant++] = p;
+    }
+  }
+  if (list->cached.size() == static_cast<std::size_t>(list->cells.gridCells())) {
+    for (int p = 0; p < nx; ++p) {
+      bool still = false;
+      for (int k = 0; k < nwant; ++k) {
+        if (want[k] == p) {
+          still = true;
+        }
+      }
+      if (still) {
+        continue;
+      }
+      const int a = p * span;
+      const int b = a + span;
+      for (int c = a; c < b; ++c) {
+        drop_cell(list, c);
+      }
+    }
+  }
+  for (int k = 0; k < nwant; ++k) {
+    const int p = want[k];
+    const int c = p * span;
+    if (static_cast<std::size_t>(c) < list->cached.size() && list->cached[static_cast<std::size_t>(c)] != nullptr) {
+      continue;
+    }
+    fill_plane(list, p);
+  }
+  list->plane = ix;
+  list->center = cell;
+}
+
+} // namespace
 
 rgpot_nlist_fortran_list *rgpot_nlist_fortran_open(void) {
   return new (std::nothrow) rgpot_nlist_fortran_list;
@@ -1544,12 +1827,149 @@ int32_t rgpot_nlist_fortran_stream(rgpot_nlist_fortran_list *list, const double 
     list->cutoff = cutoff;
     list->positions = positions;
     list->natoms = natoms;
+    clear_window(list);
     return RGPOT_NLIST_OK;
   } catch (const rgpot::nlist::Error &err) {
     return static_cast<int32_t>(err.code());
   } catch (const std::bad_alloc &) {
     return RGPOT_NLIST_NOMEM;
   }
+}
+
+int32_t rgpot_nlist_fortran_grid(rgpot_nlist_fortran_list *list, int32_t *nx, int32_t *ny,
+                                 int32_t *nz) {
+  if (list == nullptr || !list->streaming || nx == nullptr || ny == nullptr || nz == nullptr) {
+    return RGPOT_NLIST_NULL;
+  }
+  *nx = list->cells.gridX();
+  *ny = list->cells.gridY();
+  *nz = list->cells.gridZ();
+  return RGPOT_NLIST_OK;
+}
+
+int32_t rgpot_nlist_fortran_plane_of(rgpot_nlist_fortran_list *list, int32_t atom) {
+  if (list == nullptr || !list->streaming) {
+    return -1;
+  }
+  const int cell = list->cells.cellOf(atom);
+  const int span = list->cells.gridY() * list->cells.gridZ();
+  if (cell < 0 || span < 1) {
+    return -1;
+  }
+  return cell / span;
+}
+
+int32_t rgpot_nlist_fortran_plane(rgpot_nlist_fortran_list *list, int32_t ix, int32_t *first,
+                                  int32_t *second, double *vector, double *distance, size_t cap,
+                                  size_t *count) {
+  if (list == nullptr || !list->streaming) {
+    if (count != nullptr) {
+      *count = 0;
+    }
+    return RGPOT_NLIST_NULL;
+  }
+  const int nx = list->cells.gridX();
+  const int ny = list->cells.gridY();
+  const int nz = list->cells.gridZ();
+  if (ix < 0 || ix >= nx || ny < 1 || nz < 1) {
+    if (count != nullptr) {
+      *count = 0;
+    }
+    return RGPOT_NLIST_SHAPE;
+  }
+  try {
+    const int c0 = ix * ny * nz;
+    const int c1 = c0 + ny * nz;
+    const double cut2 = list->cutoff * list->cutoff;
+    const bool counting = first == nullptr;
+    if (!counting && (second == nullptr || vector == nullptr || distance == nullptr)) {
+      if (count != nullptr) {
+        *count = 0;
+      }
+      return RGPOT_NLIST_NULL;
+    }
+    size_t n = 0;
+    bool short_buf = false;
+    list->cells.forCellRange(c0, c1, [&](std::int32_t i, std::int32_t j, double dx, double dy,
+                                         double dz, double r2) {
+      if (!(r2 > 0.0) || !(r2 < cut2)) {
+        return;
+      }
+      if (!counting && n < cap) {
+        first[n] = i;
+        second[n] = j;
+        vector[3 * n] = -dx;
+        vector[3 * n + 1] = -dy;
+        vector[3 * n + 2] = -dz;
+        distance[n] = std::sqrt(r2);
+      } else if (!counting) {
+        short_buf = true;
+      }
+      ++n;
+    });
+    if (count != nullptr) {
+      *count = n;
+    }
+    if (short_buf) {
+      return RGPOT_NLIST_SHORT;
+    }
+    return RGPOT_NLIST_OK;
+  } catch (const std::bad_alloc &) {
+    if (count != nullptr) {
+      *count = 0;
+    }
+    return RGPOT_NLIST_NOMEM;
+  }
+}
+
+int32_t rgpot_nlist_fortran_center(rgpot_nlist_fortran_list *list, int32_t atom) {
+  if (list == nullptr || !list->streaming) {
+    return RGPOT_NLIST_NULL;
+  }
+  if (atom < 0 || static_cast<size_t>(atom) >= list->natoms) {
+    return RGPOT_NLIST_SHAPE;
+  }
+  try {
+    begin_cell(list, list->cells.cellOf(atom));
+    return RGPOT_NLIST_OK;
+  } catch (const std::bad_alloc &) {
+    return RGPOT_NLIST_NOMEM;
+  }
+}
+
+int32_t rgpot_nlist_fortran_order(rgpot_nlist_fortran_list *list, int32_t *atoms, size_t cap,
+                                  size_t *count) {
+  if (list == nullptr || !list->streaming) {
+    if (count != nullptr) {
+      *count = 0;
+    }
+    return RGPOT_NLIST_NULL;
+  }
+  std::vector<int32_t> order;
+  order.reserve(list->natoms);
+  const int ncells = list->cells.gridCells();
+  for (int c = 0; c < ncells; ++c) {
+    const std::int32_t *ids = nullptr;
+    int n = 0;
+    list->cells.cellAtoms(c, ids, n);
+    for (int k = 0; k < n; ++k) {
+      order.push_back(ids[k]);
+    }
+  }
+  if (count != nullptr) {
+    *count = order.size();
+  }
+  if (atoms == nullptr) {
+    return RGPOT_NLIST_OK;
+  }
+  const size_t nwrite = std::min(cap, order.size());
+  for (size_t i = 0; i < nwrite; ++i) {
+    atoms[i] = order[i];
+  }
+  if (nwrite < order.size()) {
+    return RGPOT_NLIST_SHORT;
+  }
+  return RGPOT_NLIST_OK;
 }
 
 int32_t rgpot_nlist_fortran_atom(rgpot_nlist_fortran_list *list, int32_t atom, int32_t *idx,
@@ -1566,38 +1986,28 @@ int32_t rgpot_nlist_fortran_atom(rgpot_nlist_fortran_list *list, int32_t atom, i
     }
     return RGPOT_NLIST_SHAPE;
   }
-  struct Bond {
-    int32_t j;
-    double x;
-    double y;
-    double z;
-    double r;
-    bool operator<(const Bond &o) const {
-      if (j != o.j) {
-        return j < o.j;
-      }
-      if (x != o.x) {
-        return x < o.x;
-      }
-      if (y != o.y) {
-        return y < o.y;
-      }
-      return z < o.z;
-    }
-  };
   try {
-    std::vector<Bond> bonds;
-    const double cut2 = list->cutoff * list->cutoff;
-    list->cells.forAtom(atom, [&](std::int32_t, std::int32_t j, double dx, double dy, double dz,
-                                  double r2) {
-      if (!(r2 > 0.0) || !(r2 < cut2)) {
-        return;
+    if (list->place.size() != list->natoms) {
+      list->place.assign(list->natoms, -1);
+    }
+    const int cell = list->cells.cellOf(atom);
+    if (list->place[static_cast<std::size_t>(atom)] < 0) {
+      begin_cell(list, cell);
+    }
+    const int slot = list->place[static_cast<std::size_t>(atom)];
+    if (slot < 0 || cell < 0 || static_cast<std::size_t>(cell) >= list->cached.size() ||
+        list->cached[static_cast<std::size_t>(cell)] == nullptr) {
+      if (count != nullptr) {
+        *count = 0;
       }
-      bonds.push_back(Bond{j, -dx, -dy, -dz, std::sqrt(r2)});
-    });
-    std::sort(bonds.begin(), bonds.end());
+      return RGPOT_NLIST_OK;
+    }
+    const auto &rows = *list->cached[static_cast<std::size_t>(cell)];
+    const auto b = static_cast<std::size_t>(rows.off[static_cast<std::size_t>(slot)]);
+    const auto e = static_cast<std::size_t>(rows.off[static_cast<std::size_t>(slot) + 1]);
+    const size_t nfound = e - b;
     if (count != nullptr) {
-      *count = bonds.size();
+      *count = nfound;
     }
     if (idx == nullptr) {
       return RGPOT_NLIST_OK;
@@ -1605,15 +2015,15 @@ int32_t rgpot_nlist_fortran_atom(rgpot_nlist_fortran_list *list, int32_t atom, i
     if (vector == nullptr || distance == nullptr) {
       return RGPOT_NLIST_NULL;
     }
-    const size_t nwrite = std::min(cap, bonds.size());
+    const size_t nwrite = std::min(cap, nfound);
     for (size_t p = 0; p < nwrite; ++p) {
-      idx[p] = bonds[p].j;
-      vector[3 * p] = bonds[p].x;
-      vector[3 * p + 1] = bonds[p].y;
-      vector[3 * p + 2] = bonds[p].z;
-      distance[p] = bonds[p].r;
+      idx[p] = rows.nbr[b + p];
+      vector[3 * p] = rows.vec[3 * (b + p)];
+      vector[3 * p + 1] = rows.vec[3 * (b + p) + 1];
+      vector[3 * p + 2] = rows.vec[3 * (b + p) + 2];
+      distance[p] = rows.dist[b + p];
     }
-    if (nwrite < bonds.size()) {
+    if (nwrite < nfound) {
       return RGPOT_NLIST_SHORT;
     }
     return RGPOT_NLIST_OK;

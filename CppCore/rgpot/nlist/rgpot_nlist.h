@@ -193,6 +193,26 @@ int32_t rgpot_nlist_fortran_atom(rgpot_nlist_fortran_list *list, int32_t atom,
                                  int32_t *idx, double *vector, double *distance,
                                  size_t cap, size_t *count);
 
+/* Atoms in cell order, zero-based. A null `atoms` only sets *count. */
+int32_t rgpot_nlist_fortran_order(rgpot_nlist_fortran_list *list, int32_t *atoms,
+                                  size_t cap, size_t *count);
+
+/* Keep the rows of the cells around `atom` and drop the rest. */
+int32_t rgpot_nlist_fortran_center(rgpot_nlist_fortran_list *list, int32_t atom);
+
+/* Cell counts. Planes are slices of constant x index. */
+int32_t rgpot_nlist_fortran_grid(rgpot_nlist_fortran_list *list, int32_t *nx,
+                                 int32_t *ny, int32_t *nz);
+
+/* x-plane of `atom`, or -1. */
+int32_t rgpot_nlist_fortran_plane_of(rgpot_nlist_fortran_list *list, int32_t atom);
+
+/* Pairs whose central atom lies in x-plane `ix`. Indices are zero-based.
+ * `vector` is r_j - r_i. A null `first` only sets *count. */
+int32_t rgpot_nlist_fortran_plane(rgpot_nlist_fortran_list *list, int32_t ix,
+                                  int32_t *first, int32_t *second, double *vector,
+                                  double *distance, size_t cap, size_t *count);
+
 #ifdef __cplusplus
 }
 #endif
