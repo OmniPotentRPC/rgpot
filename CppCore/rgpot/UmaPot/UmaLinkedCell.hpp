@@ -154,8 +154,7 @@ inline bool build(const double *pos, std::size_t n, const double *box, double se
       int bin = static_cast<int>(std::floor(f * static_cast<double>(ncell[a])));
       if (bin >= ncell[a])
         bin = ncell[a] - 1;
-      if (bin < 0)
-        bin = 0;
+      // The wrap puts the fraction in [0, 1], so the bin is not negative.
       ix[a] = bin;
     }
     const int cell = ix[0] + ncell[0] * (ix[1] + ncell[1] * ix[2]);
@@ -272,7 +271,7 @@ inline bool build(const double *pos, std::size_t n, const double *box, double se
     for (auto &worker : pool)
       worker.join();
   }
-  scratch.stable = scratch.parts.empty() ? nullptr : scratch.parts[0].data();
+  scratch.stable = scratch.parts[0].data();
   scratch.stable_n = 0;
   for (const auto &part : scratch.parts)
     scratch.stable_n += part.size();

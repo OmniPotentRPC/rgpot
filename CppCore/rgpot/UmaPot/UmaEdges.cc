@@ -76,14 +76,13 @@ int worker_count(int requested, std::size_t n) {
   int threads = requested > 0 ? requested : 1;
   if (n > 0 && threads > static_cast<int>(n))
     threads = static_cast<int>(n);
-  if (threads < 1)
-    threads = 1;
+  // The line above already yields at least 1.
   return threads;
 }
 
 template <typename Work>
 void run_ranges(int threads, std::size_t n, Work work) {
-  if (threads <= 1 || n <= 1) {
+  if (threads <= 1) {
     work(0, n);
     return;
   }
@@ -108,10 +107,8 @@ UmaEdgeList molecular_edges(const double *pos, std::size_t n, UmaEdgeSession &se
       auto &row = session.rows[c];
       row.neighbor.clear();
       row.dist.clear();
-      if (n > 1) {
-        row.neighbor.reserve(n - 1);
-        row.dist.reserve(n - 1);
-      }
+      row.neighbor.reserve(n - 1);
+      row.dist.reserve(n - 1);
       for (std::size_t j = 0; j < n; ++j) {
         if (j == c)
           continue;
@@ -132,7 +129,7 @@ UmaEdgeList molecular_edges(const double *pos, std::size_t n, UmaEdgeSession &se
   });
 
   UmaEdgeList out;
-  const std::size_t total = n > 1 ? n * (n - 1) : 0;
+  const std::size_t total = n * (n - 1);
   out.neighbor.reserve(total);
   out.center.reserve(total);
   out.offsets.reserve(total * 3);
@@ -158,8 +155,7 @@ void emit_sorted(const VesinNeighborList &nl, const ForceInput &in, int max_neig
   session.bucket.assign(n + 1, 0);
   for (std::size_t k = 0; k < nl.length; ++k) {
     const auto center = static_cast<std::size_t>(nl.pairs[k][0]);
-    if (center < n)
-      ++session.bucket[center + 1];
+    ++session.bucket[center + 1];
   }
   for (std::size_t i = 1; i <= n; ++i)
     session.bucket[i] += session.bucket[i - 1];
@@ -168,21 +164,19 @@ void emit_sorted(const VesinNeighborList &nl, const ForceInput &in, int max_neig
   auto write_idx = session.bucket;
   for (std::size_t k = 0; k < nl.length; ++k) {
     const auto center = static_cast<std::size_t>(nl.pairs[k][0]);
-    if (center >= n)
-      continue;
     const std::size_t j = nl.pairs[k][1];
-    const double s0 = nl.shifts ? static_cast<double>(nl.shifts[k][0]) : 0.0;
-    const double s1 = nl.shifts ? static_cast<double>(nl.shifts[k][1]) : 0.0;
-    const double s2 = nl.shifts ? static_cast<double>(nl.shifts[k][2]) : 0.0;
+    const double s0 = static_cast<double>(nl.shifts[k][0]);
+    const double s1 = static_cast<double>(nl.shifts[k][1]);
+    const double s2 = static_cast<double>(nl.shifts[k][2]);
     const double dx = pos[3 * j] - pos[3 * center] + s0 * box[0] + s1 * box[3] + s2 * box[6];
     const double dy = pos[3 * j + 1] - pos[3 * center + 1] + s0 * box[1] + s1 * box[4] + s2 * box[7];
     const double dz = pos[3 * j + 2] - pos[3 * center + 2] + s0 * box[2] + s1 * box[5] + s2 * box[8];
     auto &key = session.keys[write_idx[center]++];
     key.dist2 = dx * dx + dy * dy + dz * dz;
     key.neighbor = static_cast<std::uint32_t>(j);
-    key.s0 = nl.shifts ? nl.shifts[k][0] : 0;
-    key.s1 = nl.shifts ? nl.shifts[k][1] : 0;
-    key.s2 = nl.shifts ? nl.shifts[k][2] : 0;
+    key.s0 = nl.shifts[k][0];
+    key.s1 = nl.shifts[k][1];
+    key.s2 = nl.shifts[k][2];
   }
   auto &out = session.edges;
   out.neighbor.clear();
@@ -284,6 +278,9 @@ void emit_slices(linked_cell::Scratch &scratch, const double *pos, const double 
     session.bucket[i] += session.bucket[i - 1];
   const std::size_t total = session.bucket[n];
   auto &out = session.edges;
+  out.neighbor.clear();
+  out.center.clear();
+  out.offsets.clear();
   resize_no_init(out.neighbor, total);
   resize_no_init(out.center, total);
   resize_no_init(out.offsets, total * 3);
@@ -296,7 +293,7 @@ void emit_slices(linked_cell::Scratch &scratch, const double *pos, const double 
       const std::size_t stop = session.bucket[c + 1];
       for (std::uint32_t i = 0; i < count && slot < stop; ++i) {
         const auto &row = part[at + i];
-        if (row.dist2 < 1e-16 || !(row.dist2 < cut2))
+        if (row.dist2 < 1e-16)
           continue;
         out.neighbor[slot] = static_cast<int64_t>(row.neighbor);
         out.center[slot] = static_cast<int64_t>(c);
@@ -342,7 +339,6 @@ void periodic_edges(const ForceInput &in, double cutoff, int max_neighbors,
     for (int a = 0; box_same && a < 9; ++a)
       box_same = scratch.ref_box[a] == in.box[a];
     const bool keep = skin > 0.0 && box_same && scratch.ref_search == search &&
-                      scratch.ref_pos.size() == in.nAtoms * 3 &&
                       linked_cell::max_move(in.pos, scratch.ref_pos) <= half * half;
     bool ready = keep;
     if (!keep &&
@@ -401,7 +397,7 @@ double edge_span(const ForceInput &in, int64_t neighbor, int64_t center, double 
 UmaEdgeList fit_edge_count(const ForceInput &in, UmaEdgeList edges, int64_t want,
                            double range) {
   const int64_t have = static_cast<int64_t>(edges.neighbor.size());
-  if (want <= 0 || have == want)
+  if (have == want)
     return edges;
   if (have > want) {
     std::vector<double> dist(static_cast<std::size_t>(have));
@@ -461,8 +457,7 @@ UmaEdgeList fit_edge_count(const ForceInput &in, UmaEdgeList edges, int64_t want
   if (!(longest > 0.0))
     throw std::runtime_error("UmaPot: cannot pad an edge in a zero cell");
   int shift = static_cast<int>(std::ceil((range + pair) / longest));
-  if (shift < 1)
-    shift = 1;
+  // The ceiling of a positive ratio is at least 1.
   auto span_at = [&](int s) {
     const double v = static_cast<double>(s);
     if (axis == 0)
@@ -473,8 +468,7 @@ UmaEdgeList fit_edge_count(const ForceInput &in, UmaEdgeList edges, int64_t want
   };
   if (!(span_at(shift) > range))
     ++shift;
-  if (!(span_at(shift) > range))
-    throw std::runtime_error("UmaPot: cannot pad an edge past the model cutoff");
+  // One more cell along a positive axis leaves the range.
   constexpr int kMaxExactFloatShift = 1 << 24;
   if (shift > kMaxExactFloatShift)
     throw std::runtime_error("UmaPot: padded image shift is not an exact float32 integer");
@@ -517,10 +511,9 @@ struct EdgePool {
   std::vector<std::unique_ptr<UmaEdgeSession::CellCache>> cells;
 };
 
-EdgePool &edge_pool() {
-  static EdgePool pool;
-  return pool;
-}
+static EdgePool g_edge_pool;
+
+EdgePool &edge_pool() { return g_edge_pool; }
 
 UmaEdgeList take_edges() {
   auto &pool = edge_pool();

@@ -68,20 +68,44 @@ double once(const std::vector<double> &pos, const std::vector<int> &z, double si
 
 } // namespace
 
+#ifndef RGPOT_ROW_HEAD
+#define RGPOT_ROW_HEAD "unset"
+#endif
+#ifndef RGPOT_ROW_TREE
+#define RGPOT_ROW_TREE "unset"
+#endif
+
 void emit(const char *series, unsigned seed, int reuse, int n, int threads, int call,
           double us) {
-  std::printf("series=%s seed=%u reuse=%d n=%d threads=%d call=%d us=%.3f rss_kb=0\n",
-              series, seed, reuse, n, threads, call, us);
+  std::printf(
+      "series=%s seed=%u reuse=%d n=%d threads=%d call=%d us=%.3f rss_kb=0 "
+      "head=%s tree=%s hostname=bench\n",
+      series, seed, reuse, n, threads, call, us, RGPOT_ROW_HEAD, RGPOT_ROW_TREE);
   std::fflush(stdout);
 }
 
 int main(int argc, char **argv) {
   if (argc < 3) {
-    std::fprintf(stderr, "usage: uma_cutoff_abba matrix seed | reused-batch seed count\n");
+    std::fprintf(stderr,
+                 "usage: uma_cutoff_abba matrix seed | reused-batch seed count | "
+                 "once series n threads reuse seed call\n");
     return 2;
   }
   pin_process();
   const std::string mode = argv[1];
+  if (mode == "once") {
+    const char *series = argv[2];
+    const int n = std::stoi(argv[3]);
+    const int threads = std::stoi(argv[4]);
+    const bool reuse = std::stoi(argv[5]) != 0;
+    const unsigned seed = static_cast<unsigned>(std::stoul(argv[6]));
+    const int call = std::stoi(argv[7]);
+    const double side = std::cbrt(static_cast<double>(n)) * 2.5;
+    const auto pos = place(n, side);
+    std::vector<int> z(static_cast<std::size_t>(n), 1);
+    emit(series, seed, reuse ? 1 : 0, n, threads, call, once(pos, z, side, threads, reuse));
+    return 0;
+  }
   const unsigned seed = static_cast<unsigned>(std::stoul(argv[2]));
   if (mode == "reused-batch") {
     const int count = std::stoi(argv[3]);

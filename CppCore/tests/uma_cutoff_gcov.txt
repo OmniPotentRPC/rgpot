@@ -1,7 +1,8 @@
-UmaLinkedCell.hpp.gcov lines 208/209 99.52% branches 106/130 81.54%
-UmaEdges.cc.gcov lines 456/461 98.92% branches 320/440 72.73%
-combined lines 664/670 99.10% branches 426/570 74.74%
-UmaLinkedCell.hpp.gcov missed_lines 158
-UmaLinkedCell.hpp.gcov untaken_throw 22 untaken_code 2 code_lines 157 275
-UmaEdges.cc.gcov missed_lines 80 172 405 465 477
-UmaEdges.cc.gcov untaken_throw 83 untaken_code 37 code_lines 47 77 79 86 111 135 161 166 171 174 175 176 183 184 185 191 193 195 221 252 266 299 345 346 366 378 404 464 476 498 499 521 594 597 601
+UmaLinkedCell.hpp.gcov lines 207/207 100.00% raw_branches 104/126 82.54% branches 104/104 100.00% excluded_compiler_throw 22
+UmaEdges.cc.gcov lines 450/451 99.78% raw_branches 317/402 78.86% branches 314/320 98.12% excluded_compiler_throw 82
+combined lines 657/658 99.85% branches 418/424 98.58%
+scored branches omit compiler throw edges on calls that are not throw statements
+UmaLinkedCell.hpp.gcov missed_lines 
+UmaLinkedCell.hpp.gcov untaken_throw 22 untaken_code 0 code_lines 
+UmaEdges.cc.gcov missed_lines 147
+UmaEdges.cc.gcov untaken_throw 83 untaken_code 2 code_lines 77 374

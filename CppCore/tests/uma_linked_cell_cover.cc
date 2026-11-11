@@ -410,7 +410,8 @@ void test_huge_shift_refused() {
   expect(refused, "huge shift refused");
 }
 
-// A complete list of 80 atoms is large enough to recycle the edge buffer.
+// A large list goes back into the pool. The next small periodic list
+// keeps that capacity.
 void test_pool_reuses_large_list() {
   constexpr int n = 80;
   auto pos = grid(n, 1.2, 1, 1, 1);
@@ -424,13 +425,14 @@ void test_pool_reuses_large_list() {
     const auto &list = rgpot::build_system_edges(in, 6, 6, side, 300, contract, 1, first);
     expect(list.neighbor.size() == static_cast<std::size_t>(n * (n - 1)), "large complete count");
   }
+  double pair[6] = {0, 0, 0, 2, 0, 0};
+  int zpair[2] = {1, 1};
+  const double wide[9] = {30, 0, 0, 0, 30, 0, 0, 0, 30};
+  const rgpot::ForceInput small{2, pair, zpair, wide};
   rgpot::UmaEdgeSession second;
-  const auto &again = rgpot::build_system_edges(in, 6, 6, side, 300, contract, 1, second);
-  expect(again.neighbor.size() == static_cast<std::size_t>(n * (n - 1)), "recycled complete count");
-  bool zero = true;
-  for (float s : again.offsets)
-    zero = zero && s == 0.f;
-  expect(zero, "recycled shifts stay zero");
+  const auto &again = rgpot::build_system_edges(small, 6, 6, 0, 300, contract, 1, second);
+  expect(again.neighbor.size() == 2, "small periodic count");
+  expect(again.neighbor.capacity() >= 4096, "buffer came back from the pool");
 }
 
 // The recycle list keeps four buffers and drops the fifth.
@@ -442,14 +444,119 @@ void test_pool_stops_at_four() {
   const double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
   rgpot::UmaContract contract;
   const rgpot::ForceInput in{static_cast<std::size_t>(n), pos.data(), z.data(), box};
+  {
+    std::vector<std::unique_ptr<rgpot::UmaEdgeSession>> big;
+    for (int i = 0; i < 5; ++i) {
+      auto session = std::make_unique<rgpot::UmaEdgeSession>();
+      const auto &list = rgpot::build_system_edges(in, 6, 6, side, 300, contract, 1, *session);
+      expect(list.neighbor.size() == static_cast<std::size_t>(n * (n - 1)), "pool cap count");
+      big.push_back(std::move(session));
+    }
+  }
+  double pair[6] = {0, 0, 0, 2, 0, 0};
+  int zpair[2] = {1, 1};
+  const double wide[9] = {30, 0, 0, 0, 30, 0, 0, 0, 30};
+  const rgpot::ForceInput small{2, pair, zpair, wide};
   std::vector<std::unique_ptr<rgpot::UmaEdgeSession>> held;
   for (int i = 0; i < 5; ++i) {
     auto session = std::make_unique<rgpot::UmaEdgeSession>();
-    const auto &list = rgpot::build_system_edges(in, 6, 6, side, 300, contract, 1, *session);
-    expect(list.neighbor.size() == static_cast<std::size_t>(n * (n - 1)), "pool cap count");
+    const auto &list = rgpot::build_system_edges(small, 6, 6, 0, 300, contract, 1, *session);
+    if (i < 4)
+      expect(list.neighbor.capacity() >= 4096, "stored buffer");
+    else
+      expect(list.neighbor.capacity() < 4096, "fifth buffer was dropped");
     held.push_back(std::move(session));
   }
-  held.clear();
+}
+
+// Arms the main cover leaves out.
+void test_remaining_arms() {
+  const double wide[9] = {40, 0, 0, 0, 40, 0, 0, 0, 40};
+  auto pos4 = grid(4, 1.2, 1, 1, 1);
+  std::vector<int> z4(4, 1);
+  rgpot::UmaContract open;
+  rgpot::UmaEdgeSession rows;
+  const rgpot::ForceInput in4{4, pos4.data(), z4.data(), wide};
+  const auto &once = rgpot::build_system_edges(in4, 6, 6, 40, 300, open, 1, rows);
+  expect(once.neighbor.size() == 12, "four atom molecule");
+  const auto &twice = rgpot::build_system_edges(in4, 6, 6, 40, 300, open, 1, rows);
+  expect(twice.neighbor.size() == 12, "row buffer reused");
+  auto pos20 = grid(20, 1.2, 1, 1, 1);
+  std::vector<int> z20(20, 1);
+  const rgpot::ForceInput in20{20, pos20.data(), z20.data(), wide};
+  const auto &grown = rgpot::build_system_edges(in20, 6, 6, 40, 300, open, 1, rows);
+  expect(grown.neighbor.size() == 20 * 19, "rows grew");
+
+  const double box[9] = {30, 0, 0, 0, 30, 0, 0, 0, 30};
+  double pair[6] = {0, 0, 0, 2, 0, 0};
+  int zpair[2] = {1, 1};
+  const rgpot::ForceInput near_in{2, pair, zpair, box};
+  rgpot::UmaEdgeSession near;
+  near.threads = 2;
+  const auto &uncapped = rgpot::build_system_edges(near_in, 6, 6, 0, 0, open, 1, near);
+  expect(uncapped.neighbor.size() == 2, "uncapped pair");
+
+  double far[6] = {0, 0, 0, 6.2, 0, 0};
+  const rgpot::ForceInput far_in{2, far, zpair, box};
+  rgpot::UmaEdgeSession skin;
+  expect(rgpot::build_system_edges(far_in, 6, 6, 0, 300, open, 1, skin).neighbor.empty(),
+         "pair starts past the cutoff");
+  expect(rgpot::build_system_edges(far_in, 6, 6, 0, 300, open, 1, skin).neighbor.empty(),
+         "skin still drops the pair");
+  far[4] = 0.6;
+  expect(rgpot::build_system_edges(far_in, 6, 6, 0, 300, open, 1, skin).neighbor.empty(),
+         "a large move rebuilds");
+
+  const double skew[9] = {30, 1, 0, 0, 30, 0, 0, 0, 30};
+  auto skew_pos = grid(4, 2.5, 1, 1, 1);
+  std::vector<int> zskew(4, 1);
+  const rgpot::ForceInput skew_in{4, skew_pos.data(), zskew.data(), skew};
+  rgpot::UmaEdgeSession vesin;
+  const auto &vesin_a = rgpot::build_system_edges(skew_in, 6, 6, 0, 300, open, 1, vesin);
+  const auto &vesin_b = rgpot::build_system_edges(skew_in, 6, 6, 0, 0, open, 1, vesin);
+  expect(vesin_a.neighbor.size() == vesin_b.neighbor.size(), "vesin list stays uncapped");
+
+  double square[12] = {0, 0, 0, 5, 0, 0, 0, 5, 0, 5, 5, 0};
+  int zsq[4] = {1, 1, 1, 1};
+  const rgpot::ForceInput square_in{4, square, zsq, box};
+  auto eight = rgpot::UmaContract::fromMetadata({{"nedges_min", "8"}, {"nedges_max", "8"}});
+  rgpot::UmaEdgeSession exact;
+  const auto &exact_list = rgpot::build_system_edges(square_in, 6, 6, 0, 300, eight, 1, exact);
+  expect(exact_list.neighbor.size() == 8, "built count already matches");
+
+  const double inf = std::numeric_limits<double>::infinity();
+  rgpot::UmaEdgeSession inf_session;
+  expect(rgpot::build_system_edges(near_in, 6, inf, 0, 300, open, 1, inf_session).neighbor.size() == 2,
+         "infinite cutoff falls back");
+
+  rgpot::UmaContract only_min;
+  only_min.nedges_min = 2;
+  rgpot::UmaEdgeSession min_only;
+  rgpot::build_system_edges(near_in, 6, 6, 0, 300, only_min, 1, min_only);
+  auto unequal = rgpot::UmaContract::fromMetadata({{"nedges_min", "2"}, {"nedges_max", "4"}});
+  rgpot::UmaEdgeSession uneven;
+  rgpot::build_system_edges(near_in, 6, 6, 0, 300, unequal, 1, uneven);
+  rgpot::UmaEdgeSession none;
+  rgpot::build_system_edges(near_in, 6, 6, 0, 300, eight, 0, none);
+  auto recorded = rgpot::UmaContract::fromMetadata({{"nedges_min", "4"}, {"nedges_max", "4"}});
+  rgpot::UmaEdgeSession mol;
+  expect(rgpot::build_system_edges(near_in, 6, 6, 30, 300, recorded, 1, mol).neighbor.size() == 4,
+         "recorded molecular count is padded");
+
+  const double zero[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+  const rgpot::ForceInput match_in{2, pair, zpair, zero};
+  rgpot::UmaEdgeList kept;
+  kept.neighbor = {1};
+  kept.center = {0};
+  kept.offsets = {0.f, 0.f, 0.f};
+  const auto same = rgpot::fit_recorded_edges(match_in, std::move(kept), 1, 6.0);
+  expect(same.neighbor.size() == 1, "matching count kept");
+
+  rgpot::UmaEdgeSession kept_session;
+  rgpot::build_system_edges(near_in, 6, 6, 0, 300, open, 1, kept_session);
+  rgpot::build_system_edges(near_in, 6, 6, 0, 300, open, 1, kept_session);
+  expect(rgpot::build_system_edges(near_in, 6, 6, 0, 300, open, 1, kept_session).neighbor.size() == 2,
+         "third call keeps the pair");
 }
 
 } // namespace
@@ -478,6 +585,8 @@ int main(int argc, char **argv) {
     test_pool_reuses_large_list();
   if (which == "all" || which == "pool-cap")
     test_pool_stops_at_four();
+  if (which == "all" || which == "rest")
+    test_remaining_arms();
   if (g_fails != 0) {
     std::fprintf(stderr, "FAIL checks=%d\n", g_fails);
     return 1;

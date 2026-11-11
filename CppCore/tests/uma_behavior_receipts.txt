@@ -1,16 +1,35 @@
 The complete-list edge count passes on parent 62a298d6.
 That builder already returns every ordered pair at shift 0.
-Those assertions guard the complete list, not the page recycle.
+Those assertions guard the complete list.
+They are not a fail-before check of the page recycle.
 
-Each later row breaks one line and reruns one test.
+Each row below breaks one line and reruns one named test.
 status 0 means the assertion still passed.
-A nonzero status means the test failed or aborted.
+A nonzero status means the test failed.
+The patches for the pool checks are in uma_mutations.
 
-prefix-one status=1 blocked fill no longer accumulates
-bin-clamp status=1 high bin left past the last cell
-equal-image status=1 shift tie-break reversed
-trim-far status=1 edges at or beyond the range kept
-pad-step status=aborted on-range image not stepped, then the pad throws
-pad-zero status=1 zero cell not refused
-huge-shift status=1 inexact float32 shift accepted
-pool-reuse status=0 pool store removed, complete count unchanged
+prefix-one status is 1.
+The blocked fill no longer accumulates.
+
+bin-clamp status is 1.
+The high bin is left past the last cell.
+
+equal-image status is 1.
+The shift tie-break is reversed.
+
+pad-step status is 1.
+An image on the range is left in place.
+
+pad-zero status is 1.
+A zero cell is not refused.
+
+huge-shift status is 1.
+An inexact float32 shift is accepted.
+
+pool-reuse status is 1.
+The patch is uma_mutations/pool-reuse.patch.
+The recycled buffer does not come back.
+
+pool-cap status is 1.
+The patch is uma_mutations/pool-cap.patch.
+The fifth buffer is stored.

@@ -1,0 +1,19 @@
+Each sha256 is the raw file in this tree and in the v1.8.3 kit.
+uma_cutoff_calls.txt sha256 is
+4050075df28e9b7203b56e8235c5e8d35da94857bf3c1d660905d817499f7955.
+The v1.8.3 kit copy has the same sha256.
+uma_cutoff_calls_20261121.txt sha256 is
+cb7cfd0a89dfa2116250402bb5f3688374617940467bf4b72b55f66e08838cf3.
+The v1.8.3 kit copy has the same sha256.
+uma_cutoff_calls_20261122.txt sha256 is
+43a5122fd9957649b9e918f3a33e4606d9d9393a69a29a14f6741d18ce9fdb12.
+The v1.8.3 kit copy has the same sha256.
+uma_cutoff_calls_20261124.txt sha256 is
+987c803ddf1dfb33bac9ea914a3c978d95ae93afc2d29360a35aea51badd21b8.
+The v1.8.3 kit copy has the same sha256.
+uma_cutoff_calls_20261125.txt sha256 is
+76e1af002a4abfb0276af18c8e0eb29956e84a462e007633a1a9d80351f92e29.
+The v1.8.3 kit copy has the same sha256.
+uma_cutoff_abba_20261126.txt sha256 is
+9a891a13abd71fc6138fae2e0bf334bf8ded8891b217c00313968f87a74ab1f0.
+The v1.8.3 kit copy has the same sha256.

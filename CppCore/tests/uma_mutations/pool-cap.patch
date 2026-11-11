@@ -1,0 +1,11 @@
+--- a/CppCore/rgpot/UmaPot/UmaEdges.cc
++++ b/CppCore/rgpot/UmaPot/UmaEdges.cc
+@@ -530,7 +530,7 @@
+     return;
+   auto &pool = edge_pool();
+   std::lock_guard<std::mutex> lock(pool.mu);
+-  if (pool.lists.size() >= 4)
++  if (false && pool.lists.size() >= 4)
+     return;
+   pool.lists.push_back(std::move(edges));
+ }
