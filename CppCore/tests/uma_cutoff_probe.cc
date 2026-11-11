@@ -189,20 +189,24 @@ bool close_eval(const Eval &got, const Eval &want, double e_tol, double f_tol,
 } // namespace
 
 int main(int argc, char **argv) {
-  const std::string pt2 = [&] {
-    if (const char *env = std::getenv("RGPOT_UMA_CUTOFF_PT2"))
-      if (*env)
-        return std::string(env);
-    const char *out = argc > 1 ? argv[1] : "/tmp/rgpot-uma-cutoff-probe.pt2";
+  // Package path: RGPOT_UMA_CUTOFF_PT2, or the first argument. The meson
+  // test passes a file under the build directory.
+  std::string pt2;
+  if (const char *env = std::getenv("RGPOT_UMA_CUTOFF_PT2")) {
+    if (*env)
+      pt2 = env;
+  }
+  if (pt2.empty()) {
+    if (argc < 2) {
+      std::cerr << "usage: uma_cutoff_probe PACKAGE.pt2\n";
+      return 1;
+    }
+    pt2 = argv[1];
     const std::string cmd =
-        "python3 scripts/export_cutoff_probe.py --out '" + std::string(out) +
-        "'";
+        "python3 scripts/export_cutoff_probe.py --out '" + pt2 + "'";
     if (std::system(cmd.c_str()) != 0)
-      return std::string();
-    return std::string(out);
-  }();
-  if (pt2.empty())
-    return fail("could not build the cutoff probe package");
+      return fail("could not build the cutoff probe package");
+  }
 
   const double nn = [&] {
     double best = 1e300;

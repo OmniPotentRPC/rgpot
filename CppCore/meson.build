@@ -949,6 +949,7 @@ if get_option('with_tests')
         test(
             'UmaCutoffProbe',
             uma_cutoff_probe,
+            args: [join_paths(meson.current_build_dir(), 'uma-cutoff-probe.pt2')],
             timeout: 600,
             workdir: meson.source_root(),
         )
