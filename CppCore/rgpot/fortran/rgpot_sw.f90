@@ -185,9 +185,10 @@ contains
       integer, intent(out) :: status
       character(len=:), allocatable, intent(out) :: errmsg
 
-      integer(ip) :: natoms, i
+      integer(ip) :: natoms, i, k, norder
       real(wp) :: rcut
       real(wp), allocatable :: e_atom(:)
+      integer(ip), allocatable :: order(:)
 
       natoms = int(size(positions, 2), ip)
       energy = 0.0_wp
@@ -199,11 +200,20 @@ contains
 
       allocate (e_atom(natoms), source=0.0_wp)
 
-      ! Each atom loads its own neighbours. A stream keeps that scratch
-      ! and the bins, not a pair index for the whole cell.
-      do i = 1_ip, natoms
-         call atom_contribution(par, table, i, e_atom(i), forces(:, i))
-      end do
+      ! A stream walks atoms in cell order and keeps only the rows of the
+      ! cells around the one being evaluated.
+      call table%visit_order(order, norder)
+      if (norder > 0_ip) then
+         do k = 1_ip, norder
+            i = order(k)
+            call table%note_center(i)
+            call atom_contribution(par, table, i, e_atom(i), forces(:, i))
+         end do
+      else
+         do i = 1_ip, natoms
+            call atom_contribution(par, table, i, e_atom(i), forces(:, i))
+         end do
+      end if
 
       energy = sum(e_atom)
    end subroutine sw_energy_forces
@@ -212,7 +222,7 @@ contains
    !! centres) and the total force acting on it.
    subroutine atom_contribution(par, table, i, e_i, f_i)
       type(sw_params_t), intent(in) :: par
-      type(neighbor_table_t), intent(in) :: table
+      type(neighbor_table_t), intent(inout) :: table
       integer(ip), intent(in) :: i
       real(wp), intent(out) :: e_i
       real(wp), intent(out) :: f_i(3)

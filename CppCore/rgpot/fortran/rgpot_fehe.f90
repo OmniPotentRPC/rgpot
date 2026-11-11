@@ -470,7 +470,7 @@ contains
    !> Pass one: both densities seen by atom `i`.
    subroutine atom_densities(par, table, species, i, rho_d, rho_s)
       type(fehe_params_t), intent(in) :: par
-      type(neighbor_table_t), intent(in) :: table
+      type(neighbor_table_t), intent(inout) :: table
       integer(ip), intent(in) :: species(:)
       integer(ip), intent(in) :: i
       real(wp), intent(out) :: rho_d, rho_s
@@ -501,7 +501,7 @@ contains
    !! along the unit vector pointing from `i` towards `j`.
    subroutine atom_contribution(par, table, species, dfd, dfs, i, e_i, f_i)
       type(fehe_params_t), intent(in) :: par
-      type(neighbor_table_t), intent(in) :: table
+      type(neighbor_table_t), intent(inout) :: table
       integer(ip), intent(in) :: species(:)
       real(wp), intent(in) :: dfd(:), dfs(:)
       integer(ip), intent(in) :: i
@@ -576,7 +576,8 @@ contains
       integer, intent(out) :: status
       character(len=:), allocatable, intent(out) :: errmsg
 
-      integer(ip) :: natoms, i
+      integer(ip) :: natoms, i, k, norder
+      integer(ip), allocatable :: order(:)
       integer(ip), allocatable :: species(:)
       real(wp), allocatable :: rho_d(:), rho_s(:), dfd(:), dfs(:)
       real(wp), allocatable :: e_embed(:), e_pair(:)
@@ -604,9 +605,18 @@ contains
       allocate (rho_d(natoms), rho_s(natoms), dfd(natoms), dfs(natoms))
       allocate (e_embed(natoms), e_pair(natoms))
 
-      do i = 1_ip, natoms
-         call atom_densities(par, table, species, i, rho_d(i), rho_s(i))
-      end do
+      call table%visit_order(order, norder)
+      if (norder > 0_ip) then
+         do k = 1_ip, norder
+            i = order(k)
+            call table%note_center(i)
+            call atom_densities(par, table, species, i, rho_d(i), rho_s(i))
+         end do
+      else
+         do i = 1_ip, natoms
+            call atom_densities(par, table, species, i, rho_d(i), rho_s(i))
+         end do
+      end if
 
       do concurrent(i=1:natoms)
          e_embed(i) = embed_dband(par, species(i), rho_d(i)) &
@@ -615,10 +625,19 @@ contains
          dfs(i) = dembed_sband(par, rho_s(i))
       end do
 
-      do i = 1_ip, natoms
-         call atom_contribution(par, table, species, dfd, dfs, i, e_pair(i), &
-                                forces(:, i))
-      end do
+      if (norder > 0_ip) then
+         do k = 1_ip, norder
+            i = order(k)
+            call table%note_center(i)
+            call atom_contribution(par, table, species, dfd, dfs, i, e_pair(i), &
+                                   forces(:, i))
+         end do
+      else
+         do i = 1_ip, natoms
+            call atom_contribution(par, table, species, dfd, dfs, i, e_pair(i), &
+                                   forces(:, i))
+         end do
+      end if
 
       energy = sum(e_pair) + sum(e_embed)
    end subroutine fehe_energy_forces

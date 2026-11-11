@@ -397,14 +397,15 @@ contains
    !> Same gather as the stored table, one atom of bonds at a time.
    subroutine tersoff_stream(par, table, natoms, energy, forces, status, errmsg)
       type(tersoff_params_t), intent(in) :: par
-      type(neighbor_table_t), intent(in) :: table
+      type(neighbor_table_t), intent(inout) :: table
       integer(ip), intent(in) :: natoms
       real(wp), intent(inout) :: energy
       real(wp), intent(inout) :: forces(:, :)
       integer, intent(out) :: status
       character(len=:), allocatable, intent(out) :: errmsg
 
-      integer(ip) :: i, a, b, m, ni, nj, back, st
+      integer(ip) :: i, a, b, m, ni, nj, back, st, k, norder
+      integer(ip), allocatable :: order(:)
       integer(ip), allocatable :: idx(:), jdx(:)
       real(wp), allocatable :: vec(:, :), jvec(:, :), dist(:), jdist(:)
       real(wp), allocatable :: zeta_i(:), e_pair(:), f_rad(:), c_zeta(:)
@@ -419,7 +420,10 @@ contains
       energy = 0.0_wp
       forces = 0.0_wp
 
-      do i = 1_ip, natoms
+      call table%visit_order(order, norder)
+      do k = 1_ip, norder
+         i = order(k)
+         call table%note_center(i)
          call table%load(i, idx, vec, dist, ni)
          if (allocated(zeta_i)) then
             if (size(zeta_i) < ni) deallocate (zeta_i, e_pair, f_rad, c_zeta)

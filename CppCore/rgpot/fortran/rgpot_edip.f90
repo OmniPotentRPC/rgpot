@@ -246,7 +246,7 @@ contains
                            g, dg, u, rinv, who)
       type(edip_params_t), intent(in) :: par
       type(edip_const_t), intent(in) :: cst
-      type(neighbor_table_t), intent(in) :: table
+      type(neighbor_table_t), intent(inout) :: table
       integer(ip), intent(in) :: i, maxnbr
       integer(ip), intent(out) :: nleg
       real(wp), intent(out) :: g(maxnbr), dg(maxnbr), u(3, maxnbr), rinv(maxnbr)
@@ -278,7 +278,7 @@ contains
    subroutine atom_terms(par, cst, table, i, maxnbr, z, e_i, dedz)
       type(edip_params_t), intent(in) :: par
       type(edip_const_t), intent(in) :: cst
-      type(neighbor_table_t), intent(in) :: table
+      type(neighbor_table_t), intent(inout) :: table
       integer(ip), intent(in) :: i, maxnbr
       real(wp), intent(out) :: z, e_i, dedz
 
@@ -332,7 +332,7 @@ contains
    subroutine atom_force(par, cst, table, i, maxnbr, z, dedz, f_i)
       type(edip_params_t), intent(in) :: par
       type(edip_const_t), intent(in) :: cst
-      type(neighbor_table_t), intent(in) :: table
+      type(neighbor_table_t), intent(inout) :: table
       integer(ip), intent(in) :: i, maxnbr
       real(wp), intent(in) :: z(:), dedz(:)
       real(wp), intent(out) :: f_i(3)
@@ -457,7 +457,8 @@ contains
       character(len=:), allocatable, intent(out) :: errmsg
 
       type(edip_const_t) :: cst
-      integer(ip) :: natoms, i, maxnbr
+      integer(ip) :: natoms, i, maxnbr, k, norder
+      integer(ip), allocatable :: order(:)
       real(wp) :: rcut, widths(3)
       real(wp), allocatable :: e_atom(:), z(:), dedz(:)
 
@@ -483,13 +484,15 @@ contains
       cst = edip_constants(par)
 
       maxnbr = 1_ip
-      if (table%streaming) then
+      call table%visit_order(order, norder)
+      if (norder > 0_ip) then
          block
             integer(ip) :: ni
             integer(ip), allocatable :: idx(:)
             real(wp), allocatable :: vec(:, :), dist(:)
-            do i = 1_ip, natoms
-               call table%load(i, idx, vec, dist, ni)
+            do k = 1_ip, norder
+               call table%note_center(order(k))
+               call table%load(order(k), idx, vec, dist, ni)
                maxnbr = max(maxnbr, ni)
             end do
          end block
@@ -505,15 +508,31 @@ contains
 
       ! Pass one: per-atom scalars. Each iteration reads its own
       ! neighbourhood and writes its own slots.
-      do i = 1_ip, natoms
-         call atom_terms(par, cst, table, i, maxnbr, z(i), e_atom(i), dedz(i))
-      end do
+      if (norder > 0_ip) then
+         do k = 1_ip, norder
+            i = order(k)
+            call table%note_center(i)
+            call atom_terms(par, cst, table, i, maxnbr, z(i), e_atom(i), dedz(i))
+         end do
+      else
+         do i = 1_ip, natoms
+            call atom_terms(par, cst, table, i, maxnbr, z(i), e_atom(i), dedz(i))
+         end do
+      end if
 
       ! Pass two: forces. Each iteration reads the pass-one arrays and
       ! writes only its own force column.
-      do i = 1_ip, natoms
-         call atom_force(par, cst, table, i, maxnbr, z, dedz, forces(:, i))
-      end do
+      if (norder > 0_ip) then
+         do k = 1_ip, norder
+            i = order(k)
+            call table%note_center(i)
+            call atom_force(par, cst, table, i, maxnbr, z, dedz, forces(:, i))
+         end do
+      else
+         do i = 1_ip, natoms
+            call atom_force(par, cst, table, i, maxnbr, z, dedz, forces(:, i))
+         end do
+      end if
 
       energy = sum(e_atom)
    end subroutine edip_energy_forces

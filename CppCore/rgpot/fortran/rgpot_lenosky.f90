@@ -173,7 +173,7 @@ contains
    !> Local density of atom `i`: two-body `rho` plus the three-body
    !! `f f g` sum over unordered neighbour pairs.
    function atom_density(table, i) result(dens)
-      type(neighbor_table_t), intent(in) :: table
+      type(neighbor_table_t), intent(inout) :: table
       integer(ip), intent(in) :: i
       real(wp) :: dens
 
@@ -237,7 +237,7 @@ contains
    !! the point of use. Cosines are unaffected, which is why the energy
    !! survives the convention but the forces do not.
    subroutine atom_contribution(table, dudens, i, e_i, f_i)
-      type(neighbor_table_t), intent(in) :: table
+      type(neighbor_table_t), intent(inout) :: table
       real(wp), intent(in) :: dudens(:)
       integer(ip), intent(in) :: i
       real(wp), intent(out) :: e_i
@@ -308,7 +308,8 @@ contains
       integer, intent(out) :: status
       character(len=:), allocatable, intent(out) :: errmsg
 
-      integer(ip) :: natoms, i
+      integer(ip) :: natoms, i, k, norder
+      integer(ip), allocatable :: order(:)
       real(wp), allocatable :: dens(:), dudens(:), e_embed(:), e_pair(:)
 
       natoms = int(size(positions, 2), ip)
@@ -321,9 +322,18 @@ contains
       allocate (dens(natoms), dudens(natoms), e_embed(natoms), e_pair(natoms))
 
       ! Pass one: local density of every atom.
-      do i = 1_ip, natoms
-         dens(i) = atom_density(table, i)
-      end do
+      call table%visit_order(order, norder)
+      if (norder > 0_ip) then
+         do k = 1_ip, norder
+            i = order(k)
+            call table%note_center(i)
+            dens(i) = atom_density(table, i)
+         end do
+      else
+         do i = 1_ip, natoms
+            dens(i) = atom_density(table, i)
+         end do
+      end if
 
       ! Pass two: embedding energy and its derivative. Pass three needs
       ! the derivative at both ends of every pair, which is why the force
@@ -333,9 +343,17 @@ contains
       end do
 
       ! Pass three: pair energy and the force gather.
-      do i = 1_ip, natoms
-         call atom_contribution(table, dudens, i, e_pair(i), forces(:, i))
-      end do
+      if (norder > 0_ip) then
+         do k = 1_ip, norder
+            i = order(k)
+            call table%note_center(i)
+            call atom_contribution(table, dudens, i, e_pair(i), forces(:, i))
+         end do
+      else
+         do i = 1_ip, natoms
+            call atom_contribution(table, dudens, i, e_pair(i), forces(:, i))
+         end do
+      end if
 
       energy = sum(e_pair) + sum(e_embed)
    end subroutine lenosky_energy_forces

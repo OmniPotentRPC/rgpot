@@ -391,7 +391,8 @@ contains
       character(len=:), allocatable, intent(out) :: errmsg
 
       type(cuh2_params_t) :: shifted
-      integer(ip) :: natoms, i, nentries
+      integer(ip) :: natoms, i, nentries, k, norder
+      integer(ip), allocatable :: order(:)
       integer(ip), allocatable :: species(:)
       real(wp), allocatable :: rho(:), dfdrho(:), e_pair(:), e_embed(:)
 
@@ -419,12 +420,15 @@ contains
 
       ! Every radial term divides by the pair distance, so a coincident
       ! pair is reported rather than left to seed a NaN in the forces.
+      call table%visit_order(order, norder)
       if (table%streaming) then
          block
             integer(ip) :: ni, s
             integer(ip), allocatable :: idx(:)
             real(wp), allocatable :: vec(:, :), dist(:)
-            do i = 1_ip, natoms
+            do k = 1_ip, norder
+               i = order(k)
+               call table%note_center(i)
                call table%load(i, idx, vec, dist, ni)
                do s = 1_ip, ni
                   if (dist(s) <= 0.0_wp) then
@@ -451,9 +455,17 @@ contains
 
       ! Pass one: the density each atom sits in. Reads the table, writes
       ! one slot.
-      do i = 1_ip, natoms
-         rho(i) = atom_density(shifted, table, species, i)
-      end do
+      if (norder > 0_ip) then
+         do k = 1_ip, norder
+            i = order(k)
+            call table%note_center(i)
+            rho(i) = atom_density(shifted, table, species, i)
+         end do
+      else
+         do i = 1_ip, natoms
+            rho(i) = atom_density(shifted, table, species, i)
+         end do
+      end if
 
       ! Pass two: embedding energy and its derivative, per atom. The
       ! derivative feeds pass three at both ends of every pair, which is
@@ -469,10 +481,19 @@ contains
       end do
 
       ! Pass three: pair energy and the whole force on each atom.
-      do i = 1_ip, natoms
-         call atom_force(shifted, table, species, dfdrho, i, e_pair(i), &
-                         forces(:, i))
-      end do
+      if (norder > 0_ip) then
+         do k = 1_ip, norder
+            i = order(k)
+            call table%note_center(i)
+            call atom_force(shifted, table, species, dfdrho, i, e_pair(i), &
+                            forces(:, i))
+         end do
+      else
+         do i = 1_ip, natoms
+            call atom_force(shifted, table, species, dfdrho, i, e_pair(i), &
+                            forces(:, i))
+         end do
+      end if
 
       energy = sum(e_pair) + sum(e_embed)
    end subroutine cuh2_energy_forces
@@ -523,7 +544,7 @@ contains
    !! atom surrounded by H accumulates `rho_H`.
    function atom_density(par, table, species, i) result(rho_i)
       type(cuh2_params_t), intent(in) :: par
-      type(neighbor_table_t), intent(in) :: table
+      type(neighbor_table_t), intent(inout) :: table
       integer(ip), intent(in) :: species(:)
       integer(ip), intent(in) :: i
       real(wp) :: rho_i
@@ -556,7 +577,7 @@ contains
    !! each pair from both ends.
    subroutine atom_force(par, table, species, dfdrho, i, e_i, f_i)
       type(cuh2_params_t), intent(in) :: par
-      type(neighbor_table_t), intent(in) :: table
+      type(neighbor_table_t), intent(inout) :: table
       integer(ip), intent(in) :: species(:)
       real(wp), intent(in) :: dfdrho(:)
       integer(ip), intent(in) :: i
