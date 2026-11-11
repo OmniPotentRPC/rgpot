@@ -489,8 +489,36 @@ void EMT::CalculateSigmas(int calculatesigma2) {
     for (int j = 0; j < nelements; j++)
       nbatch[i][j] = 0;
 
-  // Loop over atoms
-  for (int atom = 0; atom < nAtoms; atom++) {
+  // A one-element stream walks each half pair once into the same batch
+  // the stored list uses. No pair index is kept.
+  if (nblist->streaming() && nelements == 1) {
+    struct Ctx {
+      int n;
+      int *self;
+      int *other;
+      Vec *rnb;
+      double *sq;
+      EMT *pot;
+      int calc2;
+    } ctx{0, self[0][0], other[0][0], rnb[0][0], sqdist[0][0], this, calculatesigma2};
+    nblist->forHalf([&](int i, int j, double x, double y, double z, double r2) {
+      ctx.self[ctx.n] = i;
+      ctx.other[ctx.n] = j;
+      ctx.rnb[ctx.n] = Vec(x, y, z);
+      ctx.sq[ctx.n] = r2;
+      ctx.n++;
+      if (ctx.n == BUFLEN) {
+        ctx.pot->sigma_batch(ctx.self, ctx.other, ctx.rnb, ctx.sq, 0, 0, ctx.n, ctx.calc2);
+        ctx.n = 0;
+      }
+    });
+    if (ctx.n != 0) {
+      sigma_batch(ctx.self, ctx.other, ctx.rnb, ctx.sq, 0, 0, ctx.n, calculatesigma2);
+    }
+  } else {
+  const int *ord = nblist->streaming() ? nblist->cellOrder() : nullptr;
+  for (int seq = 0; seq < nAtoms; seq++) {
+    const int atom = ord != nullptr ? ord[seq] : seq;
     int zself = id[atom];
     // Get neighbors and loop over them.  Simplest if only one element
     if (nelements == 1) {
@@ -533,6 +561,7 @@ void EMT::CalculateSigmas(int calculatesigma2) {
       if (nbatch[zs][zo])
         sigma_batch(self[zs][zo], other[zs][zo], rnb[zs][zo], sqdist[zs][zo],
                     zs, zo, nbatch[zs][zo], calculatesigma2);
+  }
 
   sigma2isvalid = calculatesigma2; /* Remember if it was calculated. */
   DEBUGPRINT;
@@ -850,8 +879,9 @@ void EMT::CalculateForcesAfterEnergies(Vec forces[], double stresses[][6]) {
     for (int j = 0; j < nelements; j++)
       nbatch[i][j] = 0;
 
-  // Loop over atoms
-  for (int atom = 0; atom < nAtoms; atom++) {
+  const int *ord = nblist->streaming() ? nblist->cellOrder() : nullptr;
+  for (int seq = 0; seq < nAtoms; seq++) {
+    const int atom = ord != nullptr ? ord[seq] : seq;
     int zself = id[atom];
     // Get neighbors and loop over them.
     int size = BUFLEN;
@@ -934,6 +964,39 @@ void EMT::CalculateForcesAfterEnergiesSingle(Vec forces[],
   DEBUGPRINT;
   nbatch = 0;
 
+  if (nblist->streaming()) {
+    struct Ctx {
+      int n;
+      int *self;
+      int *other;
+      Vec *rnb;
+      double *sq;
+      double *dEdss;
+      double *dEdso;
+      const double *dEds;
+      EMT *pot;
+      Vec *forces;
+      double (*stresses)[6];
+    } ctx{0, self, other, rnb, sqdist, dEdss, dEdso, &dEds[0], this, forces, stresses};
+    nblist->replayHalf([&](int i, int j, double x, double y, double z, double r2) {
+      ctx.self[ctx.n] = i;
+      ctx.other[ctx.n] = j;
+      ctx.rnb[ctx.n] = Vec(x, y, z);
+      ctx.sq[ctx.n] = r2;
+      ctx.dEdss[ctx.n] = ctx.dEds[i];
+      ctx.dEdso[ctx.n] = ctx.dEds[j];
+      ctx.n++;
+      if (ctx.n == BUFLEN) {
+        ctx.pot->force_batch(ctx.self, ctx.other, ctx.rnb, ctx.sq, ctx.dEdss, ctx.dEdso, 0, 0, ctx.n,
+                             ctx.forces, ctx.stresses);
+        ctx.n = 0;
+      }
+    });
+    if (ctx.n != 0) {
+      force_batch(ctx.self, ctx.other, ctx.rnb, ctx.sq, ctx.dEdss, ctx.dEdso, 0, 0, ctx.n,
+                  forces, stresses);
+    }
+  } else {
   // Loop over atoms
   DEBUGPRINT;
   for (int atom = 0; atom < nAtoms; atom++) {
@@ -966,6 +1029,7 @@ void EMT::CalculateForcesAfterEnergiesSingle(Vec forces[],
     force_batch(self, other, rnb, sqdist, dEdss, dEdso, 0, 0, nbatch, forces,
                 stresses);
   DEBUGPRINT;
+  }
 }
 
 void EMT::force_batch(int *self, int *other, Vec rnb[BUFLEN], double *sq_dist,
