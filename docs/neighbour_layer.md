@@ -165,14 +165,31 @@ separate process per potential, one million-atom streaming call:
 | --- | ---: | ---: |
 | EAM | 1048576 | 139796 |
 | Lennard-Jones | 1048576 | 115204 |
-| Sutton-Chen | 1048576 | 917768 |
+| Sutton-Chen | 1048576 | 131268 |
 | Stillinger-Weber | 1000000 | 112596 |
 | Tersoff | 1000000 | 119472 |
 
 Lennard-Jones streaming applies the pair term inside the cell walk and
-does not store a half-list. Sutton-Chen streaming keeps the accepted
-partner indices from the density walk and does not walk the cells again
-for the forces; that index array is why its resident set is larger.
+does not store a half-list. Sutton-Chen streaming keeps the per-atom
+density between two cell walks and does not store partner indices. The
+walk emits each unordered pair once.
+
+Three stream layouts were timed in one process each, cutoff 3, FCC with
+lattice `sqrt(2)`. The time is the median of seven calls after one
+discarded call.
+
+| layout | 108000 atoms (s) | RSS (kB) | 1048576 atoms (s) | RSS (kB) |
+| --- | ---: | ---: | ---: | ---: |
+| partner indices from the density walk | 0.985956 | 134360 | 9.392517 | 917680 |
+| second walk, indices kept for 4096 atoms | 1.131455 | 21868 | 10.056180 | 135956 |
+| second walk, density only | 1.024955 | 17320 | 9.365840 | 131268 |
+
+The density-only walk matches the index store's time and stays with the
+atom and cell arrays. The 4096-atom tile is a little slower. The index
+store is the 918 MB resident set. In the serial stream table, the
+Sutton-Chen entries at 108,000 and 1,048,576 atoms are this density-only
+remeasurement. The smaller Sutton-Chen stream rows, and the
+strong-scaling row for that stream, are the earlier index-store run.
 
 ### Serial, stored list
 
@@ -194,8 +211,8 @@ for the forces; that index array is why its resident set is larger.
 | 2048 | 0.013226 | 0.040806 | 0.085449 | 1000 | 0.001137 | 0.001294 |
 | 6912 | 0.038887 | 0.106809 | 0.369985 | 4096 | 0.004749 | 0.005300 |
 | 32000 | 0.161625 | 0.408769 | 1.577800 | 13824 | 0.015888 | 0.017356 |
-| 108000 | 0.501919 | 1.443270 | 2.516584 |  |  |  |
-| 1048576 | 4.919678 | 12.503108 | 20.824924 | 1000000 | 1.081986 | 1.141701 |
+| 108000 | 0.501919 | 1.443270 | 1.024955 |  |  |  |
+| 1048576 | 4.919678 | 12.503108 | 9.365840 | 1000000 | 1.081986 | 1.141701 |
 
 Lennard-Jones and Sutton-Chen at one million atoms are an FCC crystal of
 64 repeats (1,048,576 atoms). Stillinger-Weber and Tersoff are a diamond
@@ -250,6 +267,68 @@ Diamond repeats are 4, 5, 6 and 8 (512, 1,000, 1,728 and 4,096 atoms).
 | Tersoff | stream | 0.000672 | 0.000769 | 0.000833 | 0.002062 |
 
 ## Reproduce
+
+`benches/neighbour_api_bench.py` times the public query against vesin
+0.6.2, ASE 3.29.0 and matscipy 1.3.1. FCC copper uses lattice 3.615 and
+a strict cutoff of 5. A 30-cube cell is 108,000 atoms and a 64-cube
+cell is 1,048,576. The triclinic cell is a 4×4×4 grid in
+
+```
+[[6.0, 0.0, 0.0], [1.2, 5.4, 0.0], [0.3, 0.7, 5.8]]
+```
+
+Skin is zero. Each library is a fresh process. The time is the median
+of seven calls after two discarded calls, and the resident set is
+`VmHWM`. vesin is `NeighborList.compute` with `n_threads` set and
+`quantities="ijSDd"`. ASE's full list is `neighbor_list("ijSD")`. ASE's
+half list is a new `NeighborList(..., bothways=False)` on every call.
+matscipy's `neighbour_list("ijSD")` is a full list and has no half
+switch. ASE and matscipy take no thread count; both thread columns were
+still run.
+
+On the triclinic cell the half list is 5,952 pairs and the full list is
+11,904, in rgpot, vesin and ASE. At 108,000 atoms the half list is
+2,268,000 pairs and the full list is 4,536,000. At 1,048,576 atoms the
+half list is 22,020,096 pairs and the full list is 44,040,192.
+
+| system | list | threads | rgpot (s) | vesin (s) | ASE (s) | matscipy (s) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| triclinic | half | 1 | 0.000545 | 0.000414 | 0.005154 |  |
+| triclinic | half | 8 | 0.000400 | 0.000415 | 0.005157 |  |
+| triclinic | full | 1 | 0.001044 | 0.000641 | 0.035869 | 0.001769 |
+| triclinic | full | 8 | 0.000625 | 0.000622 | 0.036025 | 0.001730 |
+| 108000 | half | 1 |  | 0.145285 | 2.537847 |  |
+| 108000 | half | 8 |  | 0.081414 | 2.509724 |  |
+| 108000 | full | 1 |  | 0.235651 | 8.686973 | 0.634442 |
+| 108000 | full | 8 |  | 0.158852 | 8.548236 | 0.637582 |
+| 1048576 | half | 1 |  | 1.487588 | 25.746639 |  |
+| 1048576 | half | 8 |  | 0.794806 | 25.911394 |  |
+| 1048576 | full | 1 |  | 2.507937 |  | 6.392880 |
+| 1048576 | full | 8 |  | 1.463148 |  | 6.618861 |
+
+The public query visits every atom pair. One half-list build at
+108,000 atoms was still inside its first call when 180 seconds
+elapsed, so the larger rgpot cells were not started. ASE's full list
+at 1,048,576 atoms was killed by the kernel at 48,137,444 kB and
+48,142,196 kB anonymous resident set, once per thread column, before
+it printed a time.
+
+Resident set, kB, for the runs that printed one:
+
+| system | list | threads | rgpot | vesin | ASE | matscipy |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| triclinic | half | 1 | 5144 | 33408 | 70252 |  |
+| triclinic | half | 8 | 6060 | 33460 | 70388 |  |
+| triclinic | full | 1 | 6192 | 34220 | 89840 | 31760 |
+| triclinic | full | 8 | 7356 | 34180 | 89980 | 31696 |
+| 108000 | half | 1 |  | 316020 | 485528 |  |
+| 108000 | half | 8 |  | 426784 | 485776 |  |
+| 108000 | full | 1 |  | 590764 | 5947312 | 529248 |
+| 108000 | full | 8 |  | 802128 | 5947412 | 529368 |
+| 1048576 | half | 1 |  | 2786588 | 4144192 |  |
+| 1048576 | half | 8 |  | 3524116 | 4144092 |  |
+| 1048576 | full | 1 |  | 5452884 |  | 4872420 |
+| 1048576 | full | 8 |  | 6641784 |  | 4872272 |
 
 `classical_scaling_bench` prints the serial, strong and weak tables.
 `classical_scaling_bench rss EAM` (and `LJ`, `SuttonChen`, `SW`,
