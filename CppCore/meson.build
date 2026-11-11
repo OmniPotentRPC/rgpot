@@ -1811,6 +1811,8 @@ if get_option('with_tests')
         ['nlist_metatomic', 'examples/nlist_metatomic.cc'],
         ['nlist_metatomic_sweep', 'examples/nlist_metatomic_sweep.cc'],
         ['nlist_manybody', 'examples/nlist_manybody.cc'],
+        ['nlist_team', 'examples/nlist_team.cc'],
+        ['nlist_skin', 'examples/nlist_skin.cc'],
         ['nlist_batch', 'examples/nlist_batch.cc'],
     ]
     foreach example : _nlist_examples

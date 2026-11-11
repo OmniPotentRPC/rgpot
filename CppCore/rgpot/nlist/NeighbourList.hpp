@@ -503,28 +503,47 @@ inline void visitHalf(const Neighbours &cells, std::int64_t begin, std::int64_t 
   cells.forHalf(begin, end, std::forward<Fn>(fn));
 }
 
-/// Half-list r² callback. Call it as
-/// `each(cells, pos, n, box, cutoff, periodic)(fn)`.
-/// `each` reuses `cells` the way `updateCells` does, then `fn` is built and
-/// inlined into `visitHalf`. `fn` is
+/// Half-list r² callback. Call it as `each(...)(fn)` or `each(...).team(n)(fn)`.
+/// `each` reuses `cells` the way `updateCells` does, then the functor is
+/// built. `fn` for the serial call is
 /// `void(int32_t i, int32_t j, double dx, double dy, double dz, double r2)`.
-/// `dx` is `r_i - r_j`. There is no square root and no shift. The call is
-/// split so the functor is not constructed before the cell update: a capture
-/// created earlier has its address taken across that call, and the sum is
-/// then reloaded on every pair.
+/// `team` uses `forCellTeam`: one thread owns each cell, and `fn` is
+/// `void(int thread, int32_t i, int32_t j, double dx, double dy, double dz, double r2)`.
+/// `dx` is `r_i - r_j`. There is no square root and no shift. A positive
+/// `skin` stores the candidate index and keeps it while every atom stays
+/// within half the skin. Skin 0 streams and keeps the bins only when the
+/// coordinates match. The functor is built after that update, so a captured
+/// accumulator is not address-taken across the call.
+struct HalfTeam {
+  Neighbours *cells = nullptr;
+  int threads = 1;
+
+  template <typename Fn>
+  void operator()(Fn &&fn) const {
+    cells->forCellTeam(true, threads, std::forward<Fn>(fn));
+  }
+};
+
 struct HalfEach {
   Neighbours *cells = nullptr;
   std::int64_t n = 0;
+
+  [[nodiscard]] bool reused() const noexcept { return cells->reused(); }
 
   template <typename Fn>
   void operator()(Fn &&fn) const {
     visitHalf(*cells, 0, n, std::forward<Fn>(fn));
   }
+
+  [[nodiscard]] HalfTeam team(int threads) const {
+    return HalfTeam{cells, threads < 1 ? 1 : threads};
+  }
 };
 
 inline HalfEach each(Neighbours &cells, const double *positions, std::size_t n, const double *box9,
-                     double cutoff, const std::array<bool, 3> &periodic) {
-  updateCells(cells, positions, n, box9, cutoff, 0.0, Image::Round, Mode::Stream, periodic);
+                     double cutoff, const std::array<bool, 3> &periodic, double skin = 0.0) {
+  const Mode mode = skin > 0.0 ? Mode::Stored : Mode::Stream;
+  updateCells(cells, positions, n, box9, cutoff, skin, Image::Round, mode, periodic);
   return HalfEach{&cells, static_cast<std::int64_t>(n)};
 }
 

@@ -921,3 +921,26 @@ the walk adds. One thread, the same driver as above.
 
 The checksum is 3442484.102410, 33872839.198321 and 328872650.382774 on
 both arms.
+
+## Threads and a skin on each
+
+`each(...).team(n)` walks the half list with `forCellTeam`. Thread `t`
+owns a slice of the cells and adds into its own accumulator. A positive
+skin stores the candidate index and `reused()` is true while every atom
+stays within half that skin. `nlist_team` checks the four-thread sum
+against one thread. `nlist_skin` moves one atom inside the skin, then
+past it.
+
+At 1,048,576 atoms, cutoff 5, skin 0, median of seven calls after two
+discarded calls. The stored arm is `updateCells` in `Mode::Stored` and
+`forCellTeam`. `each` streams and uses the same team. Both sum `r²`.
+`rss_kb` is VmHWM.
+
+| threads | stored (s) | stored RSS (kB) | each (s) | each RSS (kB) |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 0.470524854 | 353348 | 0.446456263 | 201860 |
+| 4 | 0.278534376 | 353472 | 0.238807538 | 201912 |
+| 8 | 0.181990814 | 353500 | 0.149719635 | 202016 |
+
+The checksums agree at each thread count: 328872650.382774,
+328872650.319305 and 328872650.329224.
