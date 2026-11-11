@@ -1780,6 +1780,66 @@ if get_option('with_tests')
             calculator_group_test_exe = _test_exe
         endif
     endforeach
+    _nlist_link = [rgpot_halfshell, rgpot_minimage, rgpot_exact_fma]
+    _nlist_examples = [
+        ['nlist_lj', 'examples/nlist_lj.cc'],
+        ['nlist_threebody', 'examples/nlist_threebody.cc'],
+        ['nlist_metatomic', 'examples/nlist_metatomic.cc'],
+    ]
+    foreach example : _nlist_examples
+        test(
+            example.get(0),
+            executable(
+                example.get(0),
+                sources: [example.get(1)],
+                include_directories: _incdirs + ['.'],
+                cpp_args: _args,
+                link_with: _nlist_link,
+            ),
+        )
+    endforeach
+    test(
+        'nlist_c',
+        executable(
+            'nlist_c',
+            sources: ['examples/nlist_c.c'],
+            include_directories: _incdirs + ['.'],
+            c_args: _args,
+            link_with: _nlist_link,
+            link_language: 'cpp',
+        ),
+    )
+    _capnp_dep = dependency('capnp', required: false)
+    _capnpc_dep = dependency('capnpc', required: false)
+    if _capnp_dep.found() and _capnpc_dep.found()
+        test(
+            'nlist_stream',
+            executable(
+                'nlist_stream',
+                sources: ['examples/nlist_stream.cc'],
+                include_directories: _incdirs + ['.'],
+                cpp_args: _args,
+                dependencies: [_capnp_dep, _capnpc_dep],
+                link_with: _nlist_link,
+            ),
+            args: [
+                meson.project_source_root() / 'CppCore' / 'rgpot' / 'rpc' / 'Potentials.capnp',
+            ],
+        )
+    endif
+    _rustc = find_program('rustc', required: false)
+    if _rustc.found()
+        test(
+            'nlist_rust',
+            find_program('sh'),
+            args: [
+                meson.current_source_dir() / 'examples' / 'nlist_rust_test.sh',
+                meson.project_source_root(),
+                meson.current_build_dir(),
+            ],
+            depends: _nlist_link,
+        )
+    endif
     if not get_option('with_rpc_client_only')
         # Same fold, compiled once per instruction set. The driver checks
         # the CPU and prints skip when the binary cannot run here.

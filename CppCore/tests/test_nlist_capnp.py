@@ -36,20 +36,34 @@ def main() -> int:
     request = (
         "(cutoff = 3.5, skin = 0.2, format = 1, cut = 0, "
         "periodic = [true, true, false], shifts = true, vectors = true, "
-        "distances = false, mode = 2)"
+        "distances = false, mode = 2, cursor = 4, limit = 2)"
     )
     encoded = run(capnp, "encode", schema, "NeighborRequest", request)
     decoded = run(capnp, "decode", schema, "NeighborRequest", data=encoded).decode()
-    for piece in ("cutoff = 3.5", "format = 1", "mode = 2", "periodic = [true, true, false]"):
+    for piece in (
+        "cutoff = 3.5",
+        "format = 1",
+        "mode = 2",
+        "periodic = [true, true, false]",
+        "cursor = 4",
+        "limit = 2",
+    ):
         if piece not in decoded:
             raise SystemExit(f"request lost {piece}: {decoded}")
     chunk = (
         "(first = [0, 1], second = [1, 0], shift = [0, 0, 1, 0, 0, -1], "
-        "vector = [1, 0, 0, -1, 0, 0], distance = [1, 1], mask = [255, 255], more = true)"
+        "vector = [1, 0, 0, -1, 0, 0], distance = [1, 1], mask = [255, 255], "
+        "more = true, next = 6, message = \"ok\")"
     )
     encoded_chunk = run(capnp, "encode", schema, "NeighborList", chunk)
     decoded_chunk = run(capnp, "decode", schema, "NeighborList", data=encoded_chunk).decode()
-    for piece in ("first = [0, 1]", "more = true", "shift = [0, 0, 1, 0, 0, -1]"):
+    for piece in (
+        "first = [0, 1]",
+        "more = true",
+        "shift = [0, 0, 1, 0, 0, -1]",
+        "next = 6",
+        'message = "ok"',
+    ):
         if piece not in decoded_chunk:
             raise SystemExit(f"chunk lost {piece}: {decoded_chunk}")
     # A ForceInput that does not mention neighbors still encodes.

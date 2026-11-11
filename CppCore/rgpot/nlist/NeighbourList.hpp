@@ -4,9 +4,16 @@
 //
 // Public neighbour query. The classical potentials keep using Neighbours
 // for a minimum-image walk. This type is the stable list: structure of
-// arrays, half / full / cluster-of-four layouts, triclinic and partial
+// arrays, a pair shell or a cluster of four, triclinic and partial
 // periodic boundaries, a skin rebuild, and a chunked walk that does not
 // store the pairs.
+//
+// Distinct Table, Builder and Walk objects may be used from different
+// threads. One object is not shared. build() may start an OpenMP team
+// when OMP_NUM_THREADS is set, so do not call it from inside an OpenMP
+// region. There is no mutable global. A Walk borrows positions and the
+// box until it is destroyed. A View is invalidated by the next update
+// of the table that owns it.
 
 #include "rgpot/nlist/Neighbours.hpp"
 

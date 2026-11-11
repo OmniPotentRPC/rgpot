@@ -2621,14 +2621,21 @@ interface Potential {
   # buildVersion and buildRevision are empty when the build does not know them.
   getCapabilities @12 () -> (capabilities :Capabilities);
 
-  # One chunk of a neighbour query. The whole list is not required on the wire:
-  # a stream sets NeighborList.more and the client repeats the call.
+  # One chunk of a neighbour query. The whole list is not required on the wire.
+  # The client sends NeighborRequest.cursor and repeats the call while
+  # NeighborList.more is true, passing NeighborList.next back as the next cursor.
   neighbours @13 (fip :ForceInput, request :NeighborRequest) -> (neighbors :NeighborList);
 }
 
-# Neighbour query. format: 0 half, 1 full, 2 cluster of four.
-# cut: 0 strict (distance < cutoff), 1 loose (distance < cutoff + skin).
-# mode: 0 auto, 1 stored, 2 stream.
+# Neighbour query. The same columns as rgpot::nlist::Query and rgpot_nlist_soa.
+# format: 0 half pairs, 1 full pairs, 2 cluster of four. A cluster is the full
+# interaction set. There is no half cluster, because format is one field.
+# cut: 0 strict (distance < cutoff), 1 loose (distance < cutoff + skin,
+# or distance <= cutoff when skin is 0).
+# mode: 1 one stored chunk, 2 a stream that honours cursor and limit.
+# 0 is not a mode. cursor is the pair index this chunk starts at.
+# limit is the maximum pairs in the reply. 0 means 4096 on a stream.
+# periodic empty means every axis is periodic. Box rows are the lattice vectors.
 struct NeighborRequest {
   cutoff @0 :Float64;
   skin @1 :Float64 = 0;
@@ -2639,11 +2646,16 @@ struct NeighborRequest {
   vectors @6 :Bool = true;
   distances @7 :Bool = true;
   mode @8 :UInt8 = 1;
+  cursor @9 :UInt64 = 0;
+  limit @10 :UInt32 = 0;
 }
 
-# One chunk. first and second have length count. shift has 3*count when
-# shifts were requested, vector has 3*count, distance has count.
-# mask is one byte per pair, 0xff except for a cluster of four.
+# One chunk. first and second have the same length. shift has 3 times that
+# length when shifts were requested, vector has 3 times that length, distance
+# has that length. mask is one byte per pair, 0xff for a pair list and the
+# low four bits for a cluster. more is true when a later chunk exists.
+# next is the cursor to send for that chunk. status 0 is success. message
+# is a sentence when status is not 0. The lists are empty in that case.
 struct NeighborList {
   first @0 :List(Int32);
   second @1 :List(Int32);
@@ -2652,4 +2664,7 @@ struct NeighborList {
   distance @4 :List(Float64);
   mask @5 :List(UInt8);
   more @6 :Bool = false;
+  next @7 :UInt64 = 0;
+  status @8 :Int32 = 0;
+  message @9 :Text;
 }

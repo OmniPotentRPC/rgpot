@@ -496,3 +496,46 @@ and returns `RGPOT_NLIST_OK` with `needed` set. A positive `cap` that
 is still short returns `RGPOT_NLIST_SHORT` after filling that many
 pairs. A column the request asked for, whose pointer is null, returns
 `RGPOT_NLIST_NULL` and writes nothing.
+
+## Pass 4: the wire has a cursor, and the examples compile
+
+A Cap'n Proto client that set `more` had to repeat the whole call, and
+a stateless server could not know which chunk was next. `NeighborRequest`
+now has `cursor` and `limit`. `NeighborList` returns `next`, `status`
+and `message`. The client sends `next` back as `cursor` until `more` is
+false. `format` stays one field, so a half cluster is still not a value
+on the wire. Mode 0 is not a mode.
+
+`CppCore/examples/nlist_stream.cc` is that client and a server in two
+processes on one socket. The server slices a stored list. The client
+checks each chunk against a build of the same geometry. The other
+examples are the calls from the passes, compiled as tests:
+`nlist_lj.cc` (half-list Lennard-Jones, energy -1),
+`nlist_threebody.cc` (a right angle from a full list),
+`nlist_metatomic.cc` (the five label columns), `nlist_c.c` (no C++),
+and `nlist_rust/main.rs` (the C ABI, hand-written).
+
+Thread safety is in the headers. Distinct tables, builders and walks
+may run at the same time. One object is not shared. `build` may start
+an OpenMP team, so it is not called from inside an OpenMP region.
+`rgpot_nlist_strerror` returns a literal. A walk borrows the positions
+until it is closed. A view dies at the next update of its table.
+
+The tutorial is `docs/orgmode/tutorials/neighbour-list.org`.
+
+## What the final surface is
+
+C++: `Query` holds a cutoff, a skin, a `Shape` (`Pairs` with `Shell`,
+or `Cluster4`), a `Cut`, periodicity and `Fields`. `build` fills a
+`Table`. `Table::view` is spans. `Builder::update` rebuilds when an
+atom moves more than half the skin. `Walk::pull` fills `Buffers`.
+Failure throws `Error`, whose `code()` matches the C integer.
+
+C: `rgpot_nlist_request_init`, `rgpot_nlist_build`, `rgpot_nlist_walk_open`,
+`rgpot_nlist_walk_pull`, `rgpot_nlist_walk_close`, `rgpot_nlist_strerror`,
+`rgpot_nlist_abi_version`. ABI 4. `bytes` leads the request and the
+buffer struct. Columns are `first`, `second`, `shift`, `vector`,
+`distance`, `mask`.
+
+Cap'n Proto: `NeighborRequest` and `NeighborList` use those columns.
+`cursor`, `limit`, `next`, `status` and `message` are the stream.

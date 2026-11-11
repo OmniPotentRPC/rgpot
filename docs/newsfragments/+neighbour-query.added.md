@@ -1,4 +1,7 @@
 A public neighbour query returns a structure-of-arrays table or a chunk
-of a walk, with a half list, a full list, or clusters of four. Metatomic
-and UMA read that table. The C ABI is version 1, and Potentials.capnp
-carries an optional request and a chunk that need not be the whole list.
+of a walk. A pair list is a half shell or a full shell. A cluster of four
+is a separate shape and stores every neighbour. Metatomic and UMA read
+that table. The C ABI is version 4: `rgpot_nlist_request_init` sets the
+defaults, `bytes` is the struct size, and `rgpot_nlist_strerror` names a
+code. Potentials.capnp carries the same columns, plus a cursor so a client
+can stream one chunk at a time.

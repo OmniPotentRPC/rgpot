@@ -1,9 +1,11 @@
 # Shared neighbour layer
 
 The public query is `rgpot::nlist::Query`, `Builder`, `Table` and `Walk`.
-Classical potentials still use `rgpot::nlist::Neighbours` for a
-minimum-image force walk. Metatomic and UMA are adapters: they ask this
-query for pairs and then copy into the layout their model expects.
+A query is either a pair shell or a cluster of four. `build` stores the
+pairs. `Walk` streams them. Classical potentials still use
+`rgpot::nlist::Neighbours` for a minimum-image force walk. Metatomic and
+UMA are adapters: they ask this query for pairs and then copy into the
+layout their model expects. The calls are in `docs/orgmode/tutorials/neighbour-list.org`.
 
 ## What was taken, and why
 
@@ -96,10 +98,12 @@ columns. UMA's edge list does the same and keeps its own sort.
 
 ## C ABI and Cap'n Proto
 
-`rgpot_nlist.h` is version 1 (`rgpot_nlist_abi_version`). The request and
-the pair struct grow only at the end. `rgpot_nlist_build` writes a stored
-list. `rgpot_nlist_walk_open` / `rgpot_nlist_walk_pull` / `rgpot_nlist_walk_close`
-are the chunked walk.
+`rgpot_nlist.h` is version 4 (`rgpot_nlist_abi_version`). Every
+caller-allocated struct starts with `bytes`. `rgpot_nlist_request_init`
+fills a half pair list, periodic boundaries and every geometry column.
+`rgpot_nlist_build` and `rgpot_nlist_walk_pull` write caller-owned
+structure-of-arrays buffers. `rgpot_nlist_strerror` names a code. A
+cluster with a half shell is `RGPOT_NLIST_SHAPE`.
 
 `Potentials.capnp` adds `NeighborRequest`, `NeighborList`, an optional
 `ForceInput.neighbors` at ordinal 9, an optional `PotentialResult.neighborList`
@@ -111,12 +115,11 @@ call instead of receiving every pair in one message.
 rgpot::nlist::Query query;
 query.cutoff = 5.0;
 query.skin = 0.5;
-query.format = rgpot::nlist::Format::Half;
+query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Half};
 query.cut = rgpot::nlist::Cut::Loose;
-query.mode = rgpot::nlist::Mode::Stored;
 rgpot::nlist::Builder builder;
 builder.update(positions, n, box, query);
-rgpot::nlist::SoA pairs = builder.table().view();
+rgpot::nlist::View pairs = builder.table().view();
 // pairs.first[k], pairs.second[k], pairs.shift[3 * k + axis]
 ```
 

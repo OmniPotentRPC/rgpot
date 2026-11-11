@@ -15,8 +15,9 @@
  *
  * rgpot_nlist_build and rgpot_nlist_walk_pull may be called on different
  * objects at the same time. One walk, and the buffers of one build, are
- * used by one thread. There is no mutable global. rgpot_nlist_strerror
- * returns a literal.
+ * used by one thread. build may start an OpenMP team when OMP_NUM_THREADS
+ * is set; do not call it from inside an OpenMP region. There is no
+ * mutable global. rgpot_nlist_strerror returns a literal.
  *
  * The walk borrows positions and box9 until rgpot_nlist_walk_close.
  * The caller keeps those arrays alive and does not write them from
