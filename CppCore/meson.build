@@ -674,10 +674,11 @@ if get_option('with_tests')
         ),
     )
     test(
-        'UmaCutoffBench',
+        'UmaEdgeIdentity',
         executable(
-            'uma_cutoff_bench',
-            'tests/uma_cutoff_bench.cc',
+            'uma_edge_identity',
+            'tests/uma_edge_identity.cc',
+            'rgpot/UmaPot/UmaEdges.cc',
             include_directories: ['.'],
             dependencies: [vesin_dep],
             override_options: ['cpp_std=c++20'],
@@ -2315,6 +2316,24 @@ if get_option('with_tests')
             args: ['--runs', '3', '--calls', '50'],
             workdir: meson.source_root(),
             timeout: 300,
+        )
+        uma_cutoff_bench = executable(
+            'uma_cutoff_bench',
+            sources: [
+                'tests/uma_cutoff_bench.cc',
+                'rgpot/UmaPot/UmaEdges.cc',
+            ],
+            include_directories: ['.'],
+            dependencies: [vesin_dep],
+            override_options: ['cpp_std=c++20'],
+            install: false,
+        )
+        # benchmark() is omitted from `meson test` and runs one at a time.
+        benchmark(
+            'uma_cutoff_bench',
+            uma_cutoff_bench,
+            workdir: meson.source_root(),
+            timeout: 1800,
         )
     endif
 endif

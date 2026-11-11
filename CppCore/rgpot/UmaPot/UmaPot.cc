@@ -1,12 +1,11 @@
 // MIT License — UmaPot: vesin neighbor list + AOTInductor .pt2
 
 #include "rgpot/UmaPot/UmaPot.hpp"
+#include "rgpot/UmaPot/UmaEdges.hpp"
 #include "rgpot/UmaPot/MolecularFrame.hpp"
 
-#include "rgpot/MetatomicPot/vesin_compat.hpp"
 #include "rgpot/UmaPot/UmaContract.hpp"
 #include "rgpot/UmaPot/aoti_execstack.hpp"
-#include "vesin.h"
 
 #include <array>
 #include <vector>
@@ -23,6 +22,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -40,127 +40,6 @@ torch::Device parse_device(const std::string &name) {
   if (name.rfind("cuda", 0) == 0)
     return torch::Device(name);
   return torch::kCPU;
-}
-
-struct EdgeList {
-  std::vector<int64_t> neighbor;
-  std::vector<int64_t> center;
-  std::vector<double> offsets; // nedges * 3, cell shifts
-};
-
-EdgeList vesin_fairchem_edges(const ForceInput &in, double cutoff,
-                              int max_neighbors) {
-  VesinOptions options{};
-  vesin_compat::fill_neighbor_options(options, cutoff, /*full_list=*/true);
-  // One neighbor-list thread: the pair order then depends on the input alone.
-  vesin_compat::set_n_threads(options, 1);
-  options.return_distances = true;
-
-  VesinNeighborList nl{};
-  VesinDevice cpu = vesin_compat::make_cpu_device();
-  const char *err = nullptr;
-  bool pbc[3] = {true, true, true};
-  const int status =
-      vesin_neighbors(reinterpret_cast<const double(*)[3]>(in.pos), in.nAtoms,
-                      reinterpret_cast<const double(*)[3]>(in.box), pbc, cpu,
-                      options, &nl, &err);
-  if (status != EXIT_SUCCESS) {
-    std::string msg = "UmaPot: vesin_neighbors failed";
-    if (err)
-      msg += ": " + std::string(err);
-    vesin_free(&nl);
-    throw std::runtime_error(msg);
-  }
-
-  struct Cand {
-    int64_t n{0};
-    int64_t c{0};
-    double s0{0};
-    double s1{0};
-    double s2{0};
-    double dist{0};
-  };
-  std::vector<Cand> keep;
-  keep.reserve(nl.length);
-  const double *box = in.box;
-  for (size_t k = 0; k < nl.length; ++k) {
-    const int64_t i = static_cast<int64_t>(nl.pairs[k][0]);
-    const int64_t j = static_cast<int64_t>(nl.pairs[k][1]);
-    double dist = 0.0;
-    if (nl.distances != nullptr) {
-      dist = nl.distances[k];
-    } else {
-      const double sx = static_cast<double>(nl.shifts[k][0]);
-      const double sy = static_cast<double>(nl.shifts[k][1]);
-      const double sz = static_cast<double>(nl.shifts[k][2]);
-      const double dx = in.pos[3 * j] - in.pos[3 * i] + sx * box[0] +
-                        sy * box[3] + sz * box[6];
-      const double dy = in.pos[3 * j + 1] - in.pos[3 * i + 1] + sx * box[1] +
-                        sy * box[4] + sz * box[7];
-      const double dz = in.pos[3 * j + 2] - in.pos[3 * i + 2] + sx * box[2] +
-                        sy * box[5] + sz * box[8];
-      dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-    }
-    if (dist < 1e-8)
-      continue;
-    Cand c;
-    c.n = j;
-    c.c = i;
-    c.s0 = static_cast<double>(nl.shifts[k][0]);
-    c.s1 = static_cast<double>(nl.shifts[k][1]);
-    c.s2 = static_cast<double>(nl.shifts[k][2]);
-    c.dist = dist;
-    keep.push_back(c);
-  }
-  vesin_free(&nl);
-
-  // Canonical edge order: the neighbor list may be assembled by several
-  // threads, so its pair order is not a function of the input. Message
-  // passing sums follow the edge order, so a run is reproducible only if
-  // this order is. Total order on (center, distance, neighbor, shift).
-  std::sort(keep.begin(), keep.end(), [](const Cand &a, const Cand &b) {
-    if (a.c != b.c)
-      return a.c < b.c;
-    if (a.dist != b.dist)
-      return a.dist < b.dist;
-    if (a.n != b.n)
-      return a.n < b.n;
-    if (a.s0 != b.s0)
-      return a.s0 < b.s0;
-    if (a.s1 != b.s1)
-      return a.s1 < b.s1;
-    return a.s2 < b.s2;
-  });
-  if (max_neighbors > 0) {
-    std::vector<std::vector<size_t>> by_center(in.nAtoms);
-    for (size_t k = 0; k < keep.size(); ++k)
-      by_center[static_cast<size_t>(keep[k].c)].push_back(k);
-    std::vector<Cand> trimmed;
-    trimmed.reserve(keep.size());
-    for (auto &idxs : by_center) {
-      std::sort(idxs.begin(), idxs.end(), [&](size_t a, size_t b) {
-        return keep[a].dist < keep[b].dist;
-      });
-      if (static_cast<int>(idxs.size()) > max_neighbors)
-        idxs.resize(static_cast<size_t>(max_neighbors));
-      for (size_t id : idxs)
-        trimmed.push_back(keep[id]);
-    }
-    keep.swap(trimmed);
-  }
-
-  EdgeList out;
-  out.neighbor.reserve(keep.size());
-  out.center.reserve(keep.size());
-  out.offsets.reserve(keep.size() * 3);
-  for (const auto &c : keep) {
-    out.neighbor.push_back(c.n);
-    out.center.push_back(c.c);
-    out.offsets.push_back(c.s0);
-    out.offsets.push_back(c.s1);
-    out.offsets.push_back(c.s2);
-  }
-  return out;
 }
 
 const char *dtype_token(torch::ScalarType dt) {
@@ -182,9 +61,9 @@ std::optional<torch::ScalarType> dtype_from_name(const std::string &raw) {
 // Every edge index must land inside the position buffer. The compiled
 // graph gathers by this index, so a value past the last atom would
 // read off the end of that buffer.
-void reject_periodic_images(const std::vector<double> &offsets) {
-  for (double shift : offsets) {
-    if (shift == 0.0)
+void reject_periodic_images(const std::vector<float> &offsets) {
+  for (float shift : offsets) {
+    if (shift == 0.f)
       continue;
     throw UmaContractError(
         "cell_offsets", "a molecular box with no periodic image", "nonzero",
@@ -220,235 +99,26 @@ void check_edge_indices(const torch::Tensor &edge_index, int64_t npos) {
   }
 }
 
-// Write host doubles into a tensor that already has the package dtype.
-void store_rows(torch::Tensor dst, const double *src, int64_t rows,
-                int64_t cols) {
+// Write host values into a tensor that already has the package dtype.
+// Positions and the cell are doubles. Cell shifts arrive as floats.
+template <typename T>
+void store_rows(torch::Tensor dst, const T *src, int64_t rows, int64_t cols) {
   if (dst.scalar_type() == torch::kFloat64) {
     auto a = dst.accessor<double, 2>();
     for (int64_t i = 0; i < rows; ++i)
       for (int64_t c = 0; c < cols; ++c)
-        a[i][c] = src[static_cast<size_t>(i * cols + c)];
+        a[i][c] = static_cast<double>(src[static_cast<size_t>(i * cols + c)]);
     return;
   }
   if (dst.scalar_type() == torch::kFloat32) {
     auto a = dst.accessor<float, 2>();
     for (int64_t i = 0; i < rows; ++i)
       for (int64_t c = 0; c < cols; ++c)
-        a[i][c] =
-            static_cast<float>(src[static_cast<size_t>(i * cols + c)]);
+        a[i][c] = static_cast<float>(src[static_cast<size_t>(i * cols + c)]);
     return;
   }
   throw std::runtime_error(
       "UmaPot: floating input dtype is not float32 or float64");
-}
-
-double edge_span(const ForceInput &in, int64_t neighbor, int64_t center,
-                 double s0, double s1, double s2) {
-  const double *box = in.box;
-  const double dx = in.pos[3 * neighbor] - in.pos[3 * center] + s0 * box[0] +
-                    s1 * box[3] + s2 * box[6];
-  const double dy = in.pos[3 * neighbor + 1] - in.pos[3 * center + 1] +
-                    s0 * box[1] + s1 * box[4] + s2 * box[7];
-  const double dz = in.pos[3 * neighbor + 2] - in.pos[3 * center + 2] +
-                    s0 * box[2] + s1 * box[5] + s2 * box[8];
-  return std::sqrt(dx * dx + dy * dy + dz * dz);
-}
-
-// Every ordered pair, shift 0, ordered by (center, distance, neighbor).
-// A molecular package is traced at this count. The metadata cutoff is the
-// device that was supposed to produce it (0.4 of the box, 10 angstrom when
-// the box is 25) and drops a longer pair.
-EdgeList complete_ordered_edges(const double *pos, size_t n) {
-  struct Cand {
-    int64_t neighbor;
-    int64_t center;
-    double dist;
-  };
-  std::vector<Cand> keep;
-  if (n > 1)
-    keep.reserve(n * (n - 1));
-  for (size_t c = 0; c < n; ++c) {
-    for (size_t j = 0; j < n; ++j) {
-      if (c == j)
-        continue;
-      const double dx = pos[3 * j] - pos[3 * c];
-      const double dy = pos[3 * j + 1] - pos[3 * c + 1];
-      const double dz = pos[3 * j + 2] - pos[3 * c + 2];
-      Cand row;
-      row.neighbor = static_cast<int64_t>(j);
-      row.center = static_cast<int64_t>(c);
-      row.dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-      keep.push_back(row);
-    }
-  }
-  std::sort(keep.begin(), keep.end(), [](const Cand &a, const Cand &b) {
-    if (a.center != b.center)
-      return a.center < b.center;
-    if (a.dist != b.dist)
-      return a.dist < b.dist;
-    return a.neighbor < b.neighbor;
-  });
-  EdgeList out;
-  out.neighbor.reserve(keep.size());
-  out.center.reserve(keep.size());
-  out.offsets.reserve(keep.size() * 3);
-  for (const auto &row : keep) {
-    out.neighbor.push_back(row.neighbor);
-    out.center.push_back(row.center);
-    out.offsets.push_back(0.f);
-    out.offsets.push_back(0.f);
-    out.offsets.push_back(0.f);
-  }
-  return out;
-}
-
-// Static packages record one edge count. A short list is filled with an
-// image of atoms 0 and 1 whose distance sits past `range`, so the model
-// envelope contributes nothing. Edges already past `range` are dropped
-// when the list is long; an in-range overflow is left for checkEdges.
-EdgeList fit_edge_count(const ForceInput &in, EdgeList edges, int64_t want,
-                        double range) {
-  const int64_t have = static_cast<int64_t>(edges.neighbor.size());
-  if (want <= 0 || have == want)
-    return edges;
-  if (have > want) {
-    std::vector<double> dist(static_cast<size_t>(have));
-    std::vector<size_t> order(static_cast<size_t>(have));
-    for (int64_t e = 0; e < have; ++e) {
-      dist[static_cast<size_t>(e)] = edge_span(
-          in, edges.neighbor[static_cast<size_t>(e)],
-          edges.center[static_cast<size_t>(e)],
-          edges.offsets[static_cast<size_t>(3 * e)],
-          edges.offsets[static_cast<size_t>(3 * e + 1)],
-          edges.offsets[static_cast<size_t>(3 * e + 2)]);
-      order[static_cast<size_t>(e)] = static_cast<size_t>(e);
-    }
-    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
-      return dist[a] > dist[b];
-    });
-    std::vector<char> drop(static_cast<size_t>(have), 0);
-    int64_t kept = have;
-    for (size_t idx : order) {
-      if (kept <= want)
-        break;
-      if (dist[idx] >= range) {
-        drop[idx] = 1;
-        --kept;
-      }
-    }
-    EdgeList trimmed;
-    trimmed.neighbor.reserve(static_cast<size_t>(kept));
-    trimmed.center.reserve(static_cast<size_t>(kept));
-    trimmed.offsets.reserve(static_cast<size_t>(kept) * 3);
-    for (int64_t e = 0; e < have; ++e) {
-      if (drop[static_cast<size_t>(e)])
-        continue;
-      trimmed.neighbor.push_back(edges.neighbor[static_cast<size_t>(e)]);
-      trimmed.center.push_back(edges.center[static_cast<size_t>(e)]);
-      trimmed.offsets.push_back(edges.offsets[static_cast<size_t>(3 * e)]);
-      trimmed.offsets.push_back(edges.offsets[static_cast<size_t>(3 * e + 1)]);
-      trimmed.offsets.push_back(edges.offsets[static_cast<size_t>(3 * e + 2)]);
-    }
-    return trimmed;
-  }
-  if (in.nAtoms < 2)
-    throw std::runtime_error(
-        "UmaPot: static edge count needs at least two atoms to pad");
-  // One periodic image of atoms 0 and 1. Along a cell edge of length L,
-  // |s*a + d| >= s*L - |d|, so the image lies past `range` once
-  // s > (range + |d|) / L. The longest edge keeps s small. ceil can
-  // land on equality, and one further step clears that boundary.
-  const double pair = edge_span(in, 1, 0, 0.0, 0.0, 0.0);
-  const int column[3] = {0, 3, 6};
-  int axis = -1;
-  double longest = 0.0;
-  for (int a = 0; a < 3; ++a) {
-    const double x = in.box[column[a]];
-    const double y = in.box[column[a] + 1];
-    const double z = in.box[column[a] + 2];
-    const double len = std::sqrt(x * x + y * y + z * z);
-    if (len > longest) {
-      longest = len;
-      axis = a;
-    }
-  }
-  if (!(longest > 0.0))
-    throw std::runtime_error("UmaPot: cannot pad an edge in a zero cell");
-  int shift = static_cast<int>(std::ceil((range + pair) / longest));
-  if (shift < 1)
-    shift = 1;
-  auto span_at = [&](int s) {
-    const double v = static_cast<double>(s);
-    if (axis == 0)
-      return edge_span(in, 1, 0, v, 0.0, 0.0);
-    if (axis == 1)
-      return edge_span(in, 1, 0, 0.0, v, 0.0);
-    return edge_span(in, 1, 0, 0.0, 0.0, v);
-  };
-  if (!(span_at(shift) > range))
-    ++shift;
-  if (!(span_at(shift) > range))
-    throw std::runtime_error(
-        "UmaPot: cannot pad an edge past the model cutoff");
-  // cell_offsets are float32. Integers through 2^24 stay exact.
-  constexpr int kMaxExactFloatShift = 1 << 24;
-  if (shift > kMaxExactFloatShift)
-    throw std::runtime_error(
-        "UmaPot: padded image shift is not an exact float32 integer");
-  const float s0 = axis == 0 ? static_cast<float>(shift) : 0.f;
-  const float s1 = axis == 1 ? static_cast<float>(shift) : 0.f;
-  const float s2 = axis == 2 ? static_cast<float>(shift) : 0.f;
-  edges.neighbor.reserve(static_cast<size_t>(want));
-  edges.center.reserve(static_cast<size_t>(want));
-  edges.offsets.reserve(static_cast<size_t>(want) * 3);
-  while (static_cast<int64_t>(edges.neighbor.size()) < want) {
-    edges.neighbor.push_back(1);
-    edges.center.push_back(0);
-    edges.offsets.push_back(s0);
-    edges.offsets.push_back(s1);
-    edges.offsets.push_back(s2);
-  }
-  return edges;
-}
-
-// Equal nedges_min and nedges_max are one compiled count. A band package
-// records the total, so the per-system count is that total divided by the
-// system count. A range, or a missing key, returns 0.
-int64_t static_edges_per_system(const UmaContract &contract,
-                                int64_t n_systems) {
-  if (!contract.nedges_min || !contract.nedges_max ||
-      *contract.nedges_min != *contract.nedges_max || n_systems < 1)
-    return 0;
-  const int64_t total = *contract.nedges_max;
-  if (n_systems == 1)
-    return total;
-  if (total % n_systems != 0)
-    return total;
-  return total / n_systems;
-}
-
-EdgeList build_system_edges(const ForceInput &local, double cutoff,
-                            double model_cutoff, double molecular_box,
-                            int max_neighbors, const UmaContract &contract,
-                            int64_t n_systems) {
-  const int64_t n = static_cast<int64_t>(local.nAtoms);
-  const int64_t complete = n > 1 ? n * (n - 1) : 0;
-  const int64_t want = static_edges_per_system(contract, n_systems);
-  const bool molecular = molecular_box > 0.0;
-  // The compiled shape is every ordered pair: either the recorded count
-  // says so, or a molecular package left the count unrecorded (the trace
-  // contract is n(n-1)). The package cutoff is not applied. Pairs past
-  // the model's own range stay in the list and the envelope zeroes them.
-  if (complete > 0 && (want == complete || (molecular && want == 0)))
-    return complete_ordered_edges(local.pos, local.nAtoms);
-
-  const double range = (model_cutoff > 0.0 && std::isfinite(model_cutoff))
-                           ? model_cutoff
-                           : cutoff;
-  EdgeList edges = vesin_fairchem_edges(local, range, max_neighbors);
-  if (want > 0 && static_cast<int64_t>(edges.neighbor.size()) != want)
-    edges = fit_edge_count(local, std::move(edges), want, range);
-  return edges;
 }
 
 } // namespace
@@ -470,6 +140,7 @@ struct UmaPot::Impl {
   UmaContract contract;
   std::unique_ptr<torch::inductor::AOTIModelPackageLoader> loader;
   mutable std::mutex mutex;
+  mutable UmaEdgeSession edges;
 };
 
 void UmaPot::recomputeParamsKey() {
@@ -566,6 +237,10 @@ UmaPot::UmaPot(const UmaConfig &config)
   }
   recomputeParamsKey();
   m_impl = std::make_unique<Impl>();
+  m_impl->edges.threads =
+      static_cast<int>(std::thread::hardware_concurrency());
+  if (m_impl->edges.threads < 1)
+    m_impl->edges.threads = 1;
   m_impl->device = parse_device(m_config.device);
   m_impl->max_neighbors = m_config.max_neighbors;
   m_impl->cutoff = m_config.cutoff;
@@ -611,9 +286,10 @@ void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const ForceInput local{in.nAtoms, molecular ? mol_pos.data() : in.pos,
                          in.atmnrs, molecular ? mol_box.data() : in.box};
 
-  const EdgeList edges = build_system_edges(
+  const UmaEdgeList edges = build_system_edges(
       local, m_impl->cutoff, m_impl->model_cutoff, m_impl->molecular_box,
-      m_impl->max_neighbors, m_impl->contract, /*n_systems=*/1);
+      m_impl->max_neighbors, m_impl->contract, /*n_systems=*/1,
+      m_impl->edges);
   const auto n = static_cast<int64_t>(local.nAtoms);
   const auto nedges = static_cast<int64_t>(edges.neighbor.size());
   if (nedges == 0)
@@ -748,7 +424,7 @@ void UmaPot::forceBatchImpl(const ForceBatch &batch) const {
     // concatenated atom range.
     std::vector<std::vector<double>> sys_pos(static_cast<size_t>(B));
     std::vector<std::array<double, 9>> sys_box(static_cast<size_t>(B));
-    std::vector<EdgeList> sys_edges(static_cast<size_t>(B));
+    std::vector<UmaEdgeList> sys_edges(static_cast<size_t>(B));
     int64_t nedges_total = 0;
     for (int64_t b = 0; b < B; ++b) {
       const ForceInput &in = in_at(b);
@@ -764,7 +440,7 @@ void UmaPot::forceBatchImpl(const ForceBatch &batch) const {
                              box_b.data()};
       sys_edges[static_cast<size_t>(b)] = build_system_edges(
           local, m_impl->cutoff, m_impl->model_cutoff, m_impl->molecular_box,
-          m_impl->max_neighbors, m_impl->contract, B);
+          m_impl->max_neighbors, m_impl->contract, B, m_impl->edges);
       nedges_total += static_cast<int64_t>(
           sys_edges[static_cast<size_t>(b)].neighbor.size());
     }

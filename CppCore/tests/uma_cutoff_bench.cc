@@ -1,141 +1,237 @@
 // Copyright (c) rgpot developers
 //
-// Microseconds per call for a cutoff neighbor list and for every
-// ordered pair, across atom counts, and for 1, 2, 4, and 8 threads.
+// Times rgpot::build_system_edges, the list UmaPot hands to the graph.
+// Molecular rows are every ordered pair. Periodic rows are the vesin
+// list at a 6 angstrom cutoff, trimmed at 300 neighbors.
+// Each sample is 11 calls. The report gives the minimum, the median,
+// and the interquartile range of those calls.
+// CppCore/meson.build registers the binary with benchmark().
+// That target stays out of meson test and runs one at a time.
 
+#include "rgpot/UmaPot/UmaEdges.hpp"
+
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <fstream>
+#include <string>
+#include <thread>
 #include <vector>
-
-#include "rgpot/MetatomicPot/vesin_compat.hpp"
-#include "vesin.h"
 
 namespace {
 
 constexpr double kCutoff = 6.0;
+constexpr double kSpacing = 2.5;
+constexpr int kRepeats = 11;
+constexpr int kMaxNeighbors = 300;
 
-struct Sample {
-  double us = 0.0;
-  std::size_t edges = 0;
+struct Stats {
+  double min = 0;
+  double q1 = 0;
+  double median = 0;
+  double q3 = 0;
+  double iqr = 0;
 };
+
+Stats summarize(std::vector<double> v) {
+  std::sort(v.begin(), v.end());
+  Stats s;
+  const std::size_t n = v.size();
+  s.min = v.front();
+  s.q1 = v[n / 4];
+  s.median = v[n / 2];
+  s.q3 = v[(3 * n) / 4];
+  s.iqr = s.q3 - s.q1;
+  return s;
+}
+
+std::string cpu_model() {
+  std::ifstream in("/proc/cpuinfo");
+  std::string line;
+  while (std::getline(in, line)) {
+    if (line.rfind("model name", 0) != 0)
+      continue;
+    const auto pos = line.find(':');
+    if (pos == std::string::npos)
+      continue;
+    std::string value = line.substr(pos + 1);
+    while (!value.empty() && value.front() == ' ')
+      value.erase(value.begin());
+    return value;
+  }
+  return "unknown";
+}
+
+int logical_cpus() {
+  std::ifstream in("/proc/cpuinfo");
+  int n = 0;
+  std::string line;
+  while (std::getline(in, line)) {
+    if (line.rfind("processor", 0) == 0)
+      ++n;
+  }
+  return n;
+}
 
 std::vector<double> place(int n, double side, std::uint32_t seed) {
   std::vector<double> pos(static_cast<std::size_t>(n) * 3);
   std::uint32_t state = seed;
   for (int i = 0; i < n * 3; ++i) {
     state = state * 1664525u + 1013904223u;
-    pos[static_cast<std::size_t>(i)] = (state >> 8) * (1.0 / 16777216.0) * side;
+    pos[static_cast<std::size_t>(i)] =
+        (state >> 8) * (1.0 / 16777216.0) * side;
   }
   return pos;
 }
 
-double side_for(int n) {
-  const double reach = std::cbrt(static_cast<double>(n)) * 2.5;
-  return reach > 14.0 ? reach : 14.0;
+double side_for(int n) { return std::cbrt(static_cast<double>(n)) * kSpacing; }
+
+int cell_count(double side) {
+  const int per = static_cast<int>(std::floor(side / kCutoff));
+  const int cells = per > 0 ? per : 1;
+  return cells * cells * cells;
 }
 
-Sample time_cutoff(const std::vector<double> &pos, int n, double side, int threads) {
+struct Sample {
+  Stats stats;
+  std::size_t edges = 0;
+};
+
+Sample time_calls(int n, double side, double molecular_box, int threads,
+                  bool reuse) {
+  const auto pos = place(n, side, 7u);
   double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
-  bool pbc[3] = {true, true, true};
-  VesinOptions options{};
-  rgpot::vesin_compat::fill_neighbor_options(options, kCutoff, true);
-  rgpot::vesin_compat::set_n_threads(options, threads);
-  const auto cpu = rgpot::vesin_compat::make_cpu_device();
-  auto once = [&](std::size_t *edges) {
-    VesinNeighborList list{};
-    const char *err = nullptr;
-    const int status = vesin_neighbors(
-        reinterpret_cast<const double(*)[3]>(pos.data()), static_cast<std::size_t>(n),
-        reinterpret_cast<const double(*)[3]>(box), pbc, cpu, options, &list, &err);
-    if (status != 0) {
-      std::fprintf(stderr, "vesin failed: %s\n", err ? err : "");
-      vesin_free(&list);
-      return false;
-    }
-    if (edges)
-      *edges = list.length;
-    vesin_free(&list);
-    return true;
-  };
-  for (int i = 0; i < 3; ++i)
-    once(nullptr);
+  std::vector<int> z(static_cast<std::size_t>(n), 1);
+  rgpot::UmaContract contract;
+  std::vector<double> samples;
+  samples.reserve(static_cast<std::size_t>(kRepeats));
   std::size_t edges = 0;
-  const auto t0 = std::chrono::steady_clock::now();
-  int calls = 0;
-  do {
-    if (!once(&edges))
-      return {};
-    ++calls;
-  } while (calls < 20 ||
-           std::chrono::steady_clock::now() - t0 < std::chrono::milliseconds(40));
-  const auto t1 = std::chrono::steady_clock::now();
-  const double us =
-      std::chrono::duration<double, std::micro>(t1 - t0).count() / calls;
-  return {us, edges};
+  rgpot::UmaEdgeSession kept;
+  kept.threads = threads;
+  auto once = [&](rgpot::UmaEdgeSession &session) {
+    rgpot::ForceInput in{static_cast<std::size_t>(n), pos.data(), z.data(),
+                         box};
+    const auto list = rgpot::build_system_edges(
+        in, kCutoff, kCutoff, molecular_box, kMaxNeighbors, contract,
+        /*n_systems=*/1, session);
+    edges = list.neighbor.size();
+  };
+  if (reuse) {
+    once(kept);
+    for (int i = 0; i < kRepeats; ++i) {
+      const auto t0 = std::chrono::steady_clock::now();
+      once(kept);
+      const auto t1 = std::chrono::steady_clock::now();
+      samples.push_back(
+          std::chrono::duration<double, std::micro>(t1 - t0).count());
+    }
+  } else {
+    for (int i = 0; i < kRepeats; ++i) {
+      rgpot::UmaEdgeSession session;
+      session.threads = threads;
+      const auto t0 = std::chrono::steady_clock::now();
+      once(session);
+      const auto t1 = std::chrono::steady_clock::now();
+      samples.push_back(
+          std::chrono::duration<double, std::micro>(t1 - t0).count());
+    }
+  }
+  return {summarize(samples), edges};
 }
 
-Sample time_full(const std::vector<double> &pos, int n) {
-  auto once = [&](std::size_t *edges) {
-    std::size_t count = 0;
-    for (int i = 0; i < n; ++i) {
-      for (int j = 0; j < n; ++j) {
-        if (i == j)
-          continue;
-        const double dx = pos[3 * j] - pos[3 * i];
-        const double dy = pos[3 * j + 1] - pos[3 * i + 1];
-        const double dz = pos[3 * j + 2] - pos[3 * i + 2];
-        const double r2 = dx * dx + dy * dy + dz * dz;
-        if (r2 == r2)
-          ++count;
-      }
-    }
-    if (edges)
-      *edges = count;
-  };
-  for (int i = 0; i < 3; ++i)
-    once(nullptr);
-  std::size_t edges = 0;
-  const auto t0 = std::chrono::steady_clock::now();
-  int calls = 0;
-  do {
-    once(&edges);
-    ++calls;
-  } while (calls < 20 ||
-           std::chrono::steady_clock::now() - t0 < std::chrono::milliseconds(40));
-  const auto t1 = std::chrono::steady_clock::now();
-  const double us =
-      std::chrono::duration<double, std::micro>(t1 - t0).count() / calls;
-  return {us, edges};
+void report(const char *path, int n, int threads, double side, const Sample &s) {
+  std::printf(
+      "%s n=%d threads=%d median_us=%.3f min_us=%.3f iqr_us=%.3f edges=%zu cells=%d\n",
+      path, n, threads, s.stats.median, s.stats.min, s.stats.iqr, s.edges,
+      cell_count(side));
+}
+
+double exponent(const std::vector<double> &x, const std::vector<double> &y) {
+  const double n = static_cast<double>(x.size());
+  double sx = 0, sy = 0, sxx = 0, sxy = 0;
+  for (std::size_t i = 0; i < x.size(); ++i) {
+    const double lx = std::log(x[i]);
+    const double ly = std::log(y[i]);
+    sx += lx;
+    sy += ly;
+    sxx += lx * lx;
+    sxy += lx * ly;
+  }
+  const double den = n * sxx - sx * sx;
+  if (den == 0.0)
+    return 0.0;
+  return (n * sxy - sx * sy) / den;
 }
 
 } // namespace
 
 int main() {
-  std::printf("us_per_call cutoff_A=%.1f\n", kCutoff);
-  std::printf("n threads cutoff_us nocutoff_us cutoff_edges full_edges\n");
-  const int sizes[] = {16, 32, 64, 128, 256, 512};
-  for (int n : sizes) {
+  std::printf("cpu_model=%s\n", cpu_model().c_str());
+  std::printf("logical_cpus=%d\n", logical_cpus());
+  std::printf("hardware_concurrency=%u\n",
+              std::thread::hardware_concurrency());
+  std::printf("repeats=%d cutoff_A=%.1f spacing_A=%.1f max_neighbors=%d\n",
+              kRepeats, kCutoff, kSpacing, kMaxNeighbors);
+  std::printf("iqr is s[3n/4] minus s[n/4] on the sorted sample of 11\n");
+
+  std::printf("molecular\n");
+  const int mol_n[] = {32, 64, 128, 256};
+  for (int n : mol_n) {
     const double side = side_for(n);
-    const auto pos = place(n, side, 7u);
-    const Sample cut = time_cutoff(pos, n, side, 1);
-    const Sample full = time_full(pos, n);
-    std::printf("n=%d threads=1 cutoff_us=%.3f nocutoff_us=%.3f cutoff_edges=%zu full_edges=%zu\n",
-                n, cut.us, full.us, cut.edges, full.edges);
-  }
-  std::printf("thread_scaling n=256\n");
-  {
-    constexpr int n = 256;
-    const double side = side_for(n);
-    const auto pos = place(n, side, 7u);
-    const Sample full = time_full(pos, n);
-    const int threads[] = {1, 2, 4, 8};
-    for (int t : threads) {
-      const Sample cut = time_cutoff(pos, n, side, t);
-      std::printf("n=%d threads=%d cutoff_us=%.3f nocutoff_us=%.3f cutoff_edges=%zu full_edges=%zu\n",
-                  n, t, cut.us, full.us, cut.edges, full.edges);
+    for (int threads : {1, 4}) {
+      const Sample s = time_calls(n, side, /*molecular_box=*/side, threads,
+                                  /*reuse=*/false);
+      report("molecular", n, threads, side, s);
     }
+  }
+
+  std::printf("periodic_build\n");
+  const int weak_n[] = {1024, 4096, 16384, 65536};
+  std::vector<double> weak_x;
+  std::vector<double> weak_y;
+  for (int n : weak_n) {
+    const double side = side_for(n);
+    const Sample s =
+        time_calls(n, side, /*molecular_box=*/0.0, /*threads=*/1, false);
+    report("periodic_build", n, 1, side, s);
+    weak_x.push_back(static_cast<double>(n));
+    weak_y.push_back(s.stats.median);
+  }
+  std::printf("weak_exponent=%.6f\n", exponent(weak_x, weak_y));
+
+  std::printf("periodic_reuse\n");
+  {
+    constexpr int n = 8192;
+    const double side = side_for(n);
+    const Sample s =
+        time_calls(n, side, 0.0, /*threads=*/1, /*reuse=*/true);
+    report("periodic_reuse", n, 1, side, s);
+  }
+
+  std::printf("strong_scaling\n");
+  std::vector<double> strong_x;
+  std::vector<double> strong_y;
+  {
+    constexpr int n = 8192;
+    const double side = side_for(n);
+    std::printf("strong_cells=%d\n", cell_count(side));
+    for (int threads : {1, 2, 4, 8}) {
+      const Sample s = time_calls(n, side, 0.0, threads, false);
+      report("strong", n, threads, side, s);
+      strong_x.push_back(static_cast<double>(threads));
+      strong_y.push_back(s.stats.median);
+    }
+  }
+  std::printf("strong_exponent=%.6f\n", exponent(strong_x, strong_y));
+
+  std::printf("small_box\n");
+  {
+    const double side = 2.5 * kCutoff;
+    const int n = static_cast<int>(std::lround(std::pow(side / kSpacing, 3.0)));
+    const Sample s = time_calls(n, side, 0.0, 1, false);
+    report("small_box", n, 1, side, s);
   }
   return 0;
 }

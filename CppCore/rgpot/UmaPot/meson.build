@@ -1,7 +1,10 @@
 # UMA / OMol: vesin neighbor list + AOTInductor .pt2 via the Torch dependency.
 uma = static_library(
     'uma',
-    'UmaPot.cc',
+    [
+        'UmaPot.cc',
+        'UmaEdges.cc',
+    ],
     dependencies: _deps + [torch_dep, vesin_dep],
     cpp_args: _args,
     include_directories: ['../../'],
@@ -20,6 +23,7 @@ if _rpc_stack
         'uma_engine',
         [
             'UmaPot.cc',
+            'UmaEdges.cc',
             'UmaEngineAbi.cc',
             '../engine/EngineTable.cc',
         ],
