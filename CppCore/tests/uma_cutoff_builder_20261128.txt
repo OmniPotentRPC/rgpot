@@ -1,0 +1,16 @@
+# start 2026-11-10T18:08:58-0600
+# loadavg_before 0.38 0.24 0.28 1/302 168012
+# nproc 8
+# cpu Intel(R) Xeon(R) Processor
+# v183 1202f65625c9adeaf7216510b3e34188886a7cf9 f8913d7e034d0c810e9e320593f70e9dc4d1b7fa
+# v185 37770fadbcedb32b00781241447045091be8f813 de7be79798780630040da9d57a1a5fb62f5136ef
+series=builder_v183 seed=20261128 reuse=0 n=65536 threads=8 call=0 us=73930.513 rss_kb=0 head=1202f65625c9adeaf7216510b3e34188886a7cf9 tree=f8913d7e034d0c810e9e320593f70e9dc4d1b7fa hostname=bench
+series=builder_v185 seed=20261128 reuse=0 n=65536 threads=8 call=0 us=72270.836 rss_kb=0 head=37770fadbcedb32b00781241447045091be8f813 tree=de7be79798780630040da9d57a1a5fb62f5136ef hostname=bench
+series=builder_v183 seed=20261128 reuse=0 n=65536 threads=8 call=1 us=70377.086 rss_kb=0 head=1202f65625c9adeaf7216510b3e34188886a7cf9 tree=f8913d7e034d0c810e9e320593f70e9dc4d1b7fa hostname=bench
+series=builder_v185 seed=20261128 reuse=0 n=65536 threads=8 call=1 us=66883.347 rss_kb=0 head=37770fadbcedb32b00781241447045091be8f813 tree=de7be79798780630040da9d57a1a5fb62f5136ef hostname=bench
+series=builder_v183 seed=20261128 reuse=0 n=65536 threads=8 call=2 us=67258.145 rss_kb=0 head=1202f65625c9adeaf7216510b3e34188886a7cf9 tree=f8913d7e034d0c810e9e320593f70e9dc4d1b7fa hostname=bench
+series=builder_v185 seed=20261128 reuse=0 n=65536 threads=8 call=2 us=66228.580 rss_kb=0 head=37770fadbcedb32b00781241447045091be8f813 tree=de7be79798780630040da9d57a1a5fb62f5136ef hostname=bench
+series=builder_v183 seed=20261128 reuse=0 n=65536 threads=8 call=3 us=69795.380 rss_kb=0 head=1202f65625c9adeaf7216510b3e34188886a7cf9 tree=f8913d7e034d0c810e9e320593f70e9dc4d1b7fa hostname=bench
+series=builder_v185 seed=20261128 reuse=0 n=65536 threads=8 call=3 us=66109.107 rss_kb=0 head=37770fadbcedb32b00781241447045091be8f813 tree=de7be79798780630040da9d57a1a5fb62f5136ef hostname=bench
+# end 2026-11-10T18:09:34-0600
+# loadavg_after 1.50 0.55 0.38 1/302 171227

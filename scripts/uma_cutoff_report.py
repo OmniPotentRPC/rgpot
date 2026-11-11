@@ -69,6 +69,8 @@ def ols(xs, ys):
 
 
 def slope(groups, seed):
+    if len(groups) < 2:
+        return None
     point = ols([g[0] for g in groups], [median(g[1]) for g in groups])
     boots = []
     state = seed
@@ -116,11 +118,14 @@ def report_file(rows, role: str) -> tuple[float, float]:
             f"{role} weak_atoms n={n} threads={threads} "
             f"median={median(samples):.3f} iqr={iqr(samples):.3f}"
         )
-    point, lo, hi = slope(weak, seed)
-    print(
-        f"{role} weak_atoms seed={seed} exponent={point:.6f} "
-        f"lo={lo:.6f} hi={hi:.6f}"
-    )
+    fitted = slope(weak, seed)
+    point = 0.0
+    if fitted is not None:
+        point, lo, hi = fitted
+        print(
+            f"{role} weak_atoms seed={seed} exponent={point:.6f} "
+            f"lo={lo:.6f} hi={hi:.6f}"
+        )
     by_size = grouped(rows, "by_size")
     bpoint = 0.0
     if by_size:
@@ -133,6 +138,22 @@ def report_file(rows, role: str) -> tuple[float, float]:
         print(
             f"{role} by_size seed={seed} exponent={bpoint:.6f} "
             f"lo={blo:.6f} hi={bhi:.6f}"
+        )
+    known = {"reused65536", "weak_atoms", "by_size", "abba_v17", "abba_now"}
+    seen = []
+    for row in rows:
+        key = (row["series"], row.get("n", ""), row.get("threads", ""))
+        if row["series"] in known or key in seen:
+            continue
+        seen.append(key)
+        samples = [
+            r["us"]
+            for r in rows
+            if r["series"] == key[0] and r.get("n") == key[1] and r.get("threads") == key[2]
+        ]
+        print(
+            f"{role} {key[0]} n={key[1]} threads={key[2]} "
+            f"median={median(samples):.3f} iqr={iqr(samples):.3f} n={len(samples)}"
         )
     for series in ("abba_v17", "abba_now"):
         samples = [r["us"] for r in rows if r["series"] == series]
@@ -157,8 +178,10 @@ def main() -> int:
     )
     points = []
     for arg in sys.argv[1:]:
-        point, _by = report_file(load(Path(arg)), "run")
-        points.append(point)
+        rows = load(Path(arg))
+        point, _by = report_file(rows, "run")
+        if len(grouped(rows, "weak_atoms")) >= 2:
+            points.append(point)
     print(
         "fixed_atoms_spread "
         f"min={min(points):.6f} max={max(points):.6f} "
