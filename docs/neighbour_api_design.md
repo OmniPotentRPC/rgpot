@@ -539,3 +539,23 @@ buffer struct. Columns are `first`, `second`, `shift`, `vector`,
 
 Cap'n Proto: `NeighborRequest` and `NeighborList` use those columns.
 `cursor`, `limit`, `next`, `status` and `message` are the stream.
+
+## Re-run
+
+`NeighbourListTest` passed, 111 assertions in 6 cases. The compiled
+callers passed: Lennard-Jones, the three-body angle, the metatomic
+label copy, the C caller, the Rust caller, and the two-process stream.
+Morse, Stillinger-Weber, Tersoff, the EAM cell, Sutton-Chen, ZBL, the
+LJ cluster, EMT, the half shell and the neighbour layer passed with
+them.
+
+`classical_scaling_bench`, one thread, median of seven warm calls.
+One million atoms, streaming:
+
+| potential | this run (s) | recorded (s) | isolated RSS (kB) | recorded RSS (kB) |
+| --- | ---: | ---: | ---: | ---: |
+| EAM | 5.163 | 4.920 | 139848 | 139796 |
+| Lennard-Jones | 12.459 | 12.503 | 115108 | 115204 |
+
+The resident set is the fresh-process figure from `classical_scaling_bench rss`.
+The pair walk those potentials use is `rgpot::nlist::Neighbours`.
