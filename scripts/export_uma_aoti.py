@@ -17,6 +17,11 @@ Stages:
 the trace and records ``pos_dtype`` and ``model_dtype`` as ``float64``.
 ``--dtype float32`` calls ``hydra.float()`` and records ``float32``.
 
+``--reexport`` retraces a package the runtime now refuses. The inputs
+are the model weights and the original export config, not the refused
+``.pt2``. The new package is float64 and records both dtype keys and
+the traced edge count. The refused file is left in place.
+
 The edge count is exported as a symbol: integer-array gathers are
 replaced by index_select, the module is traced with
 make_fx(tracing_mode="symbolic"), and a second geometry has to match a
@@ -491,6 +496,7 @@ def ase_reference(
     device: str,
     task_name: str = "omol",
     dtype_name: str = "float32",
+    checkpoint=None,
 ):
     """ASE FAIRChemCalculator in ``dtype_name``, internal graph gen.
 
@@ -498,8 +504,10 @@ def ase_reference(
     float64 and the calculator feeds float64 positions, then calls
     ``hydra.double()``. float32 does the same with ``hydra.float()``.
     The 1e-4 gate compares an export only to this same-dtype result.
+    ``checkpoint`` is a weights file. Without it the pretrained name
+    is loaded.
     """
-    from fairchem.core import FAIRChemCalculator, pretrained_mlip
+    from fairchem.core import FAIRChemCalculator
     from fairchem.core.units.mlip_unit.api.inference import InferenceSettings
 
     if dtype_name == "float64":
@@ -519,9 +527,20 @@ def ase_reference(
         execution_mode="general",
         base_precision_dtype=precision,
     )
-    pred = pretrained_mlip.get_predict_unit(
-        model, device=device, inference_settings=settings
-    )
+    if checkpoint:
+        from fairchem.core.units.mlip_unit import load_predict_unit
+
+        pred = load_predict_unit(
+            path=str(checkpoint),
+            device=device,
+            inference_settings=settings,
+        )
+    else:
+        from fairchem.core import pretrained_mlip
+
+        pred = pretrained_mlip.get_predict_unit(
+            model, device=device, inference_settings=settings
+        )
     apply_export_dtype(pred.model, dtype_name)
     a = atoms.copy()
     a.calc = FAIRChemCalculator(pred, task_name=task_name)
@@ -1003,56 +1022,260 @@ def edge_export_record(export_path, traced_nedges, molecular_box, alt_nedges=Non
     }
 
 
-def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--model", default="uma-s-1p1")
-    p.add_argument("--device", default="cpu")
-    p.add_argument("--atoms", default=None, help="Structure (.xyz/.con). Default: Baker HCN.")
-    p.add_argument("--charge", type=int, default=None, help="Total charge (default: atoms.info or 0)")
-    p.add_argument("--spin", type=int, default=None, help="Spin multiplicity (default: atoms.info or 1)")
-    p.add_argument("--label", default=None, help="Metadata / filename label (default: hcn or atoms path)")
-    p.add_argument("--task", default="omol", help="FAIRChem task_name (default: omol)")
-    p.add_argument(
-        "--dtype",
-        choices=("float32", "float64"),
-        default="float32",
-        help=(
-            "Floating dtype of the exported graph. float64 converts the "
-            "model with hydra.double() before the AOTI trace. float32 "
-            "converts with hydra.float() and is an explicit option."
-        ),
+# The re-export test and the probe share this line. Every coordinate
+# is exact in float32, so a 1e-7 angstrom shift is a float64 change.
+LINE_NUMBERS = [6, 7, 1]
+LINE_POSITIONS = [
+    [12.5, 12.5, 12.5],
+    [12.5, 12.5, 13.5],
+    [12.5, 12.5, 11.5],
+]
+LINE_CELL = [[25.0, 0.0, 0.0], [0.0, 25.0, 0.0], [0.0, 0.0, 25.0]]
+
+
+class TinyWeightedEnergy(nn.Module):
+    """Scale times the sum of coordinates.
+
+    The state dict is one parameter, so a re-export has to load the
+    weights. The edge list stays an input. A 1e-7 angstrom shift of
+    one coordinate changes the energy by ``scale`` times that shift
+    when the positions stay float64.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.scale = nn.Parameter(torch.ones(()))
+
+    def forward(
+        self,
+        pos,
+        atomic_numbers,
+        cell,
+        pbc,
+        edge_index,
+        cell_offsets,
+        charge,
+        spin,
+        batch,
+        natoms,
+    ):
+        energy = self.scale * pos.reshape(-1).sum()
+        forces = -self.scale * torch.ones_like(pos)
+        return energy, forces
+
+
+def read_package_dtypes(path: Path):
+    """``(pos_dtype, model_dtype)`` stored in an AOTI package.
+
+    Every JSON object that records either key has to agree. A key
+    the package omitted is ``None``.
+    """
+    import zipfile
+    from io import BytesIO
+
+    found = []
+    with zipfile.ZipFile(BytesIO(Path(path).read_bytes())) as source:
+        for info in source.infolist():
+            if not info.filename.endswith(".json"):
+                continue
+            try:
+                payload = json.loads(source.read(info.filename))
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            if "pos_dtype" not in payload and "model_dtype" not in payload:
+                continue
+            found.append(
+                (payload.get("pos_dtype"), payload.get("model_dtype"))
+            )
+    if not found:
+        return None, None
+    first = found[0]
+    for item in found[1:]:
+        if item != first:
+            raise RuntimeError(
+                f"{path} dtype keys disagree: {first} and {item}"
+            )
+    return first
+
+
+def load_export_config(path: Path) -> dict:
+    """Original export config: geometry, charge, spin, task, cutoff."""
+    raw = json.loads(Path(path).read_text())
+    if not isinstance(raw, dict):
+        raise ValueError(f"{path} is not a JSON object")
+    kind = raw.get("kind")
+    if kind not in ("tiny-weighted", "uma"):
+        raise ValueError(
+            f"{path} kind must be tiny-weighted or uma, not {kind!r}"
+        )
+    for key in ("charge", "spin", "task"):
+        if key not in raw:
+            raise ValueError(f"{path} is missing {key}")
+    if kind == "uma" and not raw.get("atoms"):
+        raise ValueError(f"{path} is missing atoms")
+    if kind == "tiny-weighted":
+        for key in ("numbers", "positions", "cell", "cutoff"):
+            if key not in raw:
+                raise ValueError(f"{path} is missing {key}")
+    return raw
+
+
+def _checked_float64(path: Path) -> dict:
+    pos, model = read_package_dtypes(path)
+    if pos != "float64" or model != "float64":
+        raise RuntimeError(
+            f"{path} recorded pos_dtype={pos} model_dtype={model}"
+        )
+    return {"pos_dtype": pos, "model_dtype": model}
+
+
+def _complete_pairs(n: int):
+    neighbor = []
+    center = []
+    for c in range(n):
+        for nbr in range(n):
+            if nbr == c:
+                continue
+            neighbor.append(nbr)
+            center.append(c)
+    return neighbor, center
+
+
+def _example_from_config(config: dict, dtype, nedges: int):
+    pos = torch.tensor(config["positions"], dtype=dtype)
+    numbers = torch.tensor(
+        [int(z) for z in config["numbers"]], dtype=torch.long
     )
-    p.add_argument("--out", default=None, help="Output .pt2 path")
-    p.add_argument(
-        "--molecular-box",
-        type=float,
-        default=0.0,
-        help=(
-            "Trace with the molecule re-centered in this synthetic cube and "
-            "a cutoff of 0.4*L: every intramolecular pair is an edge, no "
-            "periodic image ever is, so the vesin edge count is n(n-1) at "
-            "every geometry (what a static-shape AOTI graph requires). "
-            "The runtime reads molecular_box back from the package metadata."
-        ),
+    cell = torch.tensor(config["cell"], dtype=dtype).reshape(1, 3, 3)
+    pbc = torch.tensor([[True, True, True]])
+    neighbor, center = _complete_pairs(int(pos.shape[0]))
+    edge_index = torch.tensor(
+        [neighbor[:nedges], center[:nedges]], dtype=torch.long
     )
-    p.add_argument(
-        "--batch-max",
-        type=int,
-        default=0,
-        help=(
-            "Trace with a dynamic system dimension so one AOTI call "
-            "evaluates up to this many same-composition geometries (a NEB "
-            "band in one graph call). 0 keeps the single-system export."
-        ),
+    offsets = torch.zeros((nedges, 3), dtype=dtype)
+    charge = torch.tensor([int(config["charge"])], dtype=torch.long)
+    spin = torch.tensor([int(config["spin"])], dtype=torch.long)
+    batch = torch.zeros(pos.shape[0], dtype=torch.long)
+    natoms = torch.tensor([pos.shape[0]], dtype=torch.long)
+    return (
+        pos,
+        numbers,
+        cell,
+        pbc,
+        edge_index,
+        offsets,
+        charge,
+        spin,
+        batch,
+        natoms,
     )
-    p.add_argument("--skip-aoti", action="store_true")
-    p.add_argument("--eager-only", action="store_true")
-    p.add_argument(
-        "--compare-only",
-        action="store_true",
-        help="Load an existing .pt2 and compare to ASE; do not export.",
+
+
+def _reexport_tiny(weights: Path, config: dict, out: Path) -> dict:
+    """Retrace a synthetic state dict at float64.
+
+    The edge count is the complete pair list. ``edge_export_record``
+    writes that count as both bounds, so the runtime check has a
+    range. A molecular box or a band belongs on the uma path.
+    """
+    box = float(config.get("molecular_box") or 0.0)
+    batch = int(config.get("batch_max") or 0)
+    if box != 0.0 or batch > 1:
+        raise RuntimeError(
+            "tiny-weighted re-export traces one system and no molecular "
+            "box; kind uma carries a molecular box and a band"
+        )
+    numbers = [int(z) for z in config["numbers"]]
+    n = len(numbers)
+    nedges = n * (n - 1)
+    if nedges < 1:
+        raise RuntimeError("tiny-weighted re-export needs at least two atoms")
+    module = TinyWeightedEnergy()
+    state = torch.load(weights, map_location="cpu", weights_only=True)
+    module.load_state_dict(state)
+    module = apply_export_dtype(module.eval(), "float64")
+    dtype = torch.float64
+    example = _example_from_config(config, dtype, nedges)
+    exported = torch.export.export(module, example, strict=False)
+    counts: dict[int, int] = {}
+    for z in numbers:
+        counts[z] = counts.get(z, 0) + 1
+    meta = runtime_metadata(
+        out,
+        float(config["cutoff"]),
+        int(config.get("max_neighbors") or 300),
+        example,
+        dtype,
+        model_dtype=dtype,
+        task_name=str(config["task"]),
+        charge=int(config["charge"]),
+        spin=int(config["spin"]),
+        z_set=sorted(counts),
+        counts=dict(sorted(counts.items())),
+        label=str(config.get("label") or "line"),
+        model=str(config.get("model") or "tiny-weighted"),
     )
-    args = p.parse_args()
+    record = edge_export_record("static-nonstrict", nedges, 0.0)
+    meta["export_path"] = "static-nonstrict"
+    meta["pos_shape"] = f"{n},3"
+    meta.update(record)
+    aoti_package(exported, out, metadata=meta)
+    return _checked_float64(out)
+
+
+def _reexport_uma(weights: Path, config: dict, out: Path) -> dict:
+    """Retrace a UMA checkpoint with the original export config."""
+    args = argparse.Namespace(
+        model=str(config.get("model") or "uma-s-1p1"),
+        device=str(config.get("device") or "cpu"),
+        atoms=str(config["atoms"]),
+        charge=int(config["charge"]),
+        spin=int(config["spin"]),
+        label=config.get("label"),
+        task=str(config["task"]),
+        dtype="float64",
+        out=str(out),
+        molecular_box=float(config.get("molecular_box") or 0.0),
+        batch_max=int(config.get("batch_max") or 0),
+        skip_aoti=False,
+        eager_only=False,
+        compare_only=False,
+        weights=str(weights),
+        reexport=False,
+        config=None,
+    )
+    rc = run_export(args)
+    if rc != 0:
+        raise RuntimeError(f"uma re-export exited {rc}")
+    return _checked_float64(out)
+
+
+def reexport_float64(weights, config, out) -> dict:
+    """Write a float64 package from weights and the original config.
+
+    ``kind`` in the config selects the module. ``tiny-weighted`` loads
+    a ``TinyWeightedEnergy`` state dict. ``uma`` loads a fairchem
+    checkpoint from ``weights`` and retraces it with the atoms file,
+    charge, spin, task and molecular box from the config. Both kinds
+    record ``pos_dtype`` and ``model_dtype`` as ``float64`` and pin
+    ``nedges_min`` and ``nedges_max`` to the traced edge count.
+    """
+    weights = Path(weights)
+    parsed = load_export_config(config)
+    out = Path(out)
+    if not weights.is_file():
+        raise FileNotFoundError(f"weights not found: {weights}")
+    if parsed["kind"] == "tiny-weighted":
+        return _reexport_tiny(weights, parsed, out)
+    return _reexport_uma(weights, parsed, out)
+
+
+def run_export(args) -> int:
+    if args.weights and not Path(args.weights).is_file():
+        print(f"FAIL: --weights is not a file: {args.weights}", file=sys.stderr)
+        return 2
 
     atoms = load_atoms(args.atoms)
     label = args.label or default_label(args.atoms)
@@ -1083,7 +1306,8 @@ def main() -> int:
         flush=True,
     )
     e_ref, f_ref, pred = ase_reference(
-        atoms, args.model, args.device, task_name, dtype_name=args.dtype
+        atoms, args.model, args.device, task_name, dtype_name=args.dtype,
+        checkpoint=args.weights or None,
     )
     print(f"ASE FAIRChemCalculator dtype={args.dtype} E={e_ref:.17g}", flush=True)
     for i, row in enumerate(f_ref):
@@ -1260,7 +1484,8 @@ def main() -> int:
                 flush=True,
             )
             e_alt_ref, f_alt_ref, _alt_pred = ase_reference(
-                alt_atoms, args.model, args.device, task_name, dtype_name=args.dtype
+                alt_atoms, args.model, args.device, task_name,
+                dtype_name=args.dtype, checkpoint=args.weights or None,
             )
             with torch.enable_grad():
                 e_eager_alt, f_eager_alt = wrap(*example_alt)
@@ -1428,6 +1653,82 @@ def main() -> int:
     # above already exercised the packaged graph at that size.
     print("WROTE", out.resolve())
     return 0
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--model", default="uma-s-1p1")
+    p.add_argument("--device", default="cpu")
+    p.add_argument("--atoms", default=None, help="Structure (.xyz/.con). Default: Baker HCN.")
+    p.add_argument("--charge", type=int, default=None, help="Total charge (default: atoms.info or 0)")
+    p.add_argument("--spin", type=int, default=None, help="Spin multiplicity (default: atoms.info or 1)")
+    p.add_argument("--label", default=None, help="Metadata / filename label (default: hcn or atoms path)")
+    p.add_argument("--task", default="omol", help="FAIRChem task_name (default: omol)")
+    p.add_argument(
+        "--dtype",
+        choices=("float32", "float64"),
+        default="float32",
+        help=(
+            "Floating dtype of the exported graph. float64 converts the "
+            "model with hydra.double() before the AOTI trace. float32 "
+            "converts with hydra.float() and is an explicit option."
+        ),
+    )
+    p.add_argument("--out", default=None, help="Output .pt2 path")
+    p.add_argument(
+        "--molecular-box",
+        type=float,
+        default=0.0,
+        help=(
+            "Trace with the molecule re-centered in this synthetic cube and "
+            "a cutoff of 0.4*L: every intramolecular pair is an edge, no "
+            "periodic image ever is, so the vesin edge count is n(n-1) at "
+            "every geometry (what a static-shape AOTI graph requires). "
+            "The runtime reads molecular_box back from the package metadata."
+        ),
+    )
+    p.add_argument(
+        "--batch-max",
+        type=int,
+        default=0,
+        help=(
+            "Trace with a dynamic system dimension so one AOTI call "
+            "evaluates up to this many same-composition geometries (a NEB "
+            "band in one graph call). 0 keeps the single-system export."
+        ),
+    )
+    p.add_argument("--skip-aoti", action="store_true")
+    p.add_argument("--eager-only", action="store_true")
+    p.add_argument(
+        "--compare-only",
+        action="store_true",
+        help="Load an existing .pt2 and compare to ASE; do not export.",
+    )
+    p.add_argument(
+        "--reexport",
+        action="store_true",
+        help=(
+            "Retrace --weights with --config as float64 and write --out."
+        ),
+    )
+    p.add_argument("--weights", default=None, help="Checkpoint or state dict")
+    p.add_argument("--config", default=None, help="Original export config JSON")
+    args = p.parse_args()
+    if args.reexport:
+        if not args.weights or not args.config or not args.out:
+            print(
+                "FAIL: --reexport needs --weights, --config and --out",
+                file=sys.stderr,
+            )
+            return 2
+        info = reexport_float64(args.weights, args.config, args.out)
+        print(
+            f"pos_dtype={info['pos_dtype']} model_dtype={info['model_dtype']}",
+            flush=True,
+        )
+        print("WROTE", Path(args.out).resolve(), flush=True)
+        return 0
+    return run_export(args)
 
 
 if __name__ == "__main__":

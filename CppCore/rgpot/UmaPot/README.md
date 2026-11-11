@@ -95,6 +95,18 @@ the traced count, so a later call whose edge list changed size
 throws `UmaShapeError` and names both shapes. The atom count stays
 the traced size.
 
+## Re-export
+
+A package from before those checks has no edge range, so every
+force call throws `UmaContractError` on `nedges` (`absent`).
+Rewriting the compiled file does not make the graph float64.
+`scripts/reexport_uma_float64.sh` walks a directory of those
+packages and retraces each one from its weights and the original
+export config. The new package records `pos_dtype` and
+`model_dtype` as `float64`, and `nedges_min` and `nedges_max` as
+the traced edge count. The receipt lists the input sha256, the
+output sha256 and the dtype.
+
 ## potserv
 
 ```

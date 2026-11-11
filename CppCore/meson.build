@@ -1148,6 +1148,30 @@ if get_option('with_tests')
             depends: _uma_fix_pkgs,
             workdir: meson.source_root(),
         )
+        _uma_reexport_probe = executable(
+            'uma_reexport_probe',
+            sources: ['tests/uma_reexport_probe.cc'],
+            dependencies: _deps
+                + [vesin_dep, fastnlist_dep]
+                + fortran_rt_deps
+                + _mta_engine_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+        )
+        test(
+            'UmaReexportFloat64',
+            _uma_py,
+            args: [
+                meson.project_source_root() / 'tests' / 'test_uma_reexport_float64.py',
+                _uma_reexport_probe.full_path(),
+            ],
+            depends: [_uma_reexport_probe],
+            timeout: 180,
+            workdir: meson.source_root(),
+        )
     endif
     # NWChem/CPMD frontend tests (need ptlrpc + frontends from _rpc_stack)
     if _rpc_stack and not get_option('with_rpc_client_only')
