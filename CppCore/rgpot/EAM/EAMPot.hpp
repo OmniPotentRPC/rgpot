@@ -42,6 +42,13 @@ public:
   /// Stored neighbour indices after the last build.
   [[nodiscard]] std::size_t neighborSlots() const noexcept;
 
+  /// True when the last force call reused the Verlet list.
+  [[nodiscard]] bool listReused() const noexcept;
+
+  /// Partner indices kept between EAM stream passes. The density-only
+  /// stream keeps none.
+  [[nodiscard]] std::size_t streamPartners() const noexcept;
+
   /// Threads used by the most recent force call.
   [[nodiscard]] int threadsUsed() const noexcept;
 

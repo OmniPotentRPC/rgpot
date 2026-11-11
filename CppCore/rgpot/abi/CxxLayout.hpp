@@ -173,7 +173,10 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// Soversion 4 hashed those classes at 120 and 136 bytes. They are 1016
 /// and 1032 bytes with the members. The ledger of soversion 4 fingerprinted
 /// the POD configs only, so the class members did not force a bump.
-inline constexpr std::uint32_t kCxxSoversion = 5;
+/// 6 drops the copied half-list from LJ and Morse, and gives ZBL and the
+/// open Lennard-Jones cluster a neighbour member. The pair term runs on
+/// the shared walk, so CachedPairs is no longer part of those objects.
+inline constexpr std::uint32_t kCxxSoversion = 6;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
 struct CxxSoversionEntry {
@@ -186,7 +189,7 @@ struct CxxSoversionEntry {
 /// platform still compiles. How to update the table:
 /// docs/orgmode/reference/c_abi.org.
 inline constexpr std::array<CxxSoversionEntry, 1> kCxxSoversionTable{{
-    {"linux-x86_64-libstdc++-lp64", 0x396c419ef3ae0c83ull},
+    {"linux-x86_64-libstdc++-lp64", 0x0bba2f6c8fb3f542ull},
 }};
 
 /// This translation unit's platform tag (`os-arch-stdlib-datamodel`).

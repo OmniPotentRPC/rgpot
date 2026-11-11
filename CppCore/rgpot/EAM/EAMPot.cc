@@ -27,6 +27,12 @@ std::size_t EAMPot::neighborSlots() const noexcept {
   return m_impl->kernel.neighborSlots();
 }
 
+bool EAMPot::listReused() const noexcept { return m_impl->kernel.listReused(); }
+
+std::size_t EAMPot::streamPartners() const noexcept {
+  return m_impl->kernel.streamPartners();
+}
+
 int EAMPot::threadsUsed() const noexcept {
   return m_impl->kernel.threadsUsed();
 }
