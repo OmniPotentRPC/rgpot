@@ -88,7 +88,8 @@ rgpot::UmaEdgeList reference_periodic(const rgpot::ForceInput &in, double cutoff
   VesinOptions options{};
   rgpot::vesin_compat::fill_neighbor_options(options, cutoff, true);
   rgpot::vesin_compat::set_n_threads(options, 1);
-  options.return_distances = true;
+  options.return_distances = false;
+  options.return_vectors = false;
   VesinNeighborList nl{};
   const char *err = nullptr;
   bool pbc[3] = {true, true, true};
@@ -111,14 +112,22 @@ rgpot::UmaEdgeList reference_periodic(const rgpot::ForceInput &in, double cutoff
   std::vector<Cand> keep;
   keep.reserve(nl.length);
   for (std::size_t k = 0; k < nl.length; ++k) {
-    const double dist = nl.distances[k];
-    if (dist < 1e-8)
+    const double s0 = static_cast<double>(nl.shifts[k][0]);
+    const double s1 = static_cast<double>(nl.shifts[k][1]);
+    const double s2 = static_cast<double>(nl.shifts[k][2]);
+    const int64_t center = static_cast<int64_t>(nl.pairs[k][0]);
+    const int64_t neighbor = static_cast<int64_t>(nl.pairs[k][1]);
+    const double dx = in.pos[3 * neighbor] - in.pos[3 * center] + s0 * in.box[0] +
+                      s1 * in.box[3] + s2 * in.box[6];
+    const double dy = in.pos[3 * neighbor + 1] - in.pos[3 * center + 1] + s0 * in.box[1] +
+                      s1 * in.box[4] + s2 * in.box[7];
+    const double dz = in.pos[3 * neighbor + 2] - in.pos[3 * center + 2] + s0 * in.box[2] +
+                      s1 * in.box[5] + s2 * in.box[8];
+    const double dist2 = dx * dx + dy * dy + dz * dz;
+    if (dist2 < 1e-16)
       continue;
-    keep.push_back({static_cast<int64_t>(nl.pairs[k][1]),
-                    static_cast<int64_t>(nl.pairs[k][0]),
-                    static_cast<float>(nl.shifts[k][0]),
-                    static_cast<float>(nl.shifts[k][1]),
-                    static_cast<float>(nl.shifts[k][2]), dist});
+    keep.push_back({neighbor, center, static_cast<float>(s0), static_cast<float>(s1),
+                    static_cast<float>(s2), dist2});
   }
   vesin_free(&nl);
   std::sort(keep.begin(), keep.end(), [](const Cand &a, const Cand &b) {
@@ -349,11 +358,35 @@ void check_verlet_forces() {
 
 } // namespace
 
+void check_filter_matches_serial() {
+  const auto base = lattice(8, 3.0);
+  const std::size_t n = base.size() / 3;
+  const double side = 8 * 3.0;
+  double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  std::vector<int> z(n, 1);
+  rgpot::ForceInput in{n, base.data(), z.data(), box};
+  auto warm = [&](rgpot::UmaEdgeSession &session, int threads) {
+    session.threads = threads;
+    call_edges(in, 6.0, 0.0, 300, threads, session);
+    return call_edges(in, 6.0, 0.0, 300, threads, session);
+  };
+  rgpot::UmaEdgeSession serial;
+  rgpot::UmaEdgeSession parallel;
+  const auto one = warm(serial, 1);
+  const auto eight = warm(parallel, 8);
+  expect(serial.last_skin == 1.0, "serial reuse has the skin on");
+  expect(parallel.last_skin == 1.0, "parallel reuse has the skin on");
+  expect(same_edges(one, eight), "parallel filter matches the serial edge list");
+  const auto eight_again = call_edges(in, 6.0, 0.0, 300, 8, parallel);
+  expect(same_edges(eight, eight_again), "parallel filter repeats the same edges");
+}
+
 int main() {
   check_molecular();
   check_periodic_threads();
   check_trim();
   check_fresh_cutoff_and_reuse();
+  check_filter_matches_serial();
   check_verlet_forces();
   if (g_fails != 0) {
     std::fprintf(stderr, "FAIL checks=%d\n", g_fails);

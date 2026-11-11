@@ -37,6 +37,17 @@ struct UmaEdgeSession {
     std::vector<std::size_t> order;
   };
   std::vector<Row> rows;
+  /// Reused across calls. clear() keeps the allocation.
+  UmaEdgeList edges;
+  struct EdgeKey {
+    double dist2 = 0;
+    std::uint32_t neighbor = 0;
+    std::int32_t s0 = 0;
+    std::int32_t s1 = 0;
+    std::int32_t s2 = 0;
+  };
+  std::vector<EdgeKey> keys;
+  std::vector<std::size_t> bucket;
 
   UmaEdgeSession();
   ~UmaEdgeSession();
@@ -47,9 +58,9 @@ struct UmaEdgeSession {
 /// The edge list UmaPot passes to the compiled graph.
 /// A molecular package lists every ordered pair. Any other package
 /// builds a periodic vesin list at the model cutoff.
-UmaEdgeList build_system_edges(const ForceInput &local, double cutoff,
-                               double model_cutoff, double molecular_box,
-                               int max_neighbors, const UmaContract &contract,
-                               int64_t n_systems, UmaEdgeSession &session);
+const UmaEdgeList &build_system_edges(const ForceInput &local, double cutoff,
+                                      double model_cutoff, double molecular_box,
+                                      int max_neighbors, const UmaContract &contract,
+                                      int64_t n_systems, UmaEdgeSession &session);
 
 } // namespace rgpot

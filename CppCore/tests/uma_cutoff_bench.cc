@@ -20,6 +20,8 @@
 #include <thread>
 #include <vector>
 
+#include <sched.h>
+
 namespace {
 
 constexpr double kCutoff = 6.0;
@@ -113,7 +115,7 @@ Sample time_calls(int n, double side, double molecular_box, int threads,
   auto once = [&](rgpot::UmaEdgeSession &session) {
     rgpot::ForceInput in{static_cast<std::size_t>(n), pos.data(), z.data(),
                          box};
-    const auto list = rgpot::build_system_edges(
+    const auto &list = rgpot::build_system_edges(
         in, kCutoff, kCutoff, molecular_box, kMaxNeighbors, contract,
         /*n_systems=*/1, session);
     edges = list.neighbor.size();
@@ -242,7 +244,7 @@ double time_one(const std::vector<double> &pos, const std::vector<int> &z, doubl
   rgpot::UmaContract contract;
   rgpot::ForceInput in{pos.size() / 3, pos.data(), z.data(), box};
   const auto t0 = std::chrono::steady_clock::now();
-  const auto list = rgpot::build_system_edges(in, kCutoff, kCutoff, 0.0, kMaxNeighbors,
+  const auto &list = rgpot::build_system_edges(in, kCutoff, kCutoff, 0.0, kMaxNeighbors,
                                               contract, 1, session);
   const auto t1 = std::chrono::steady_clock::now();
   if (list.neighbor.empty())
@@ -257,90 +259,150 @@ void warm_session(const std::vector<double> &pos, const std::vector<int> &z, dou
     time_one(pos, z, side, threads, policy, session);
 }
 
+long peak_rss_kb() {
+  std::ifstream in("/proc/self/status");
+  std::string line;
+  while (std::getline(in, line)) {
+    if (line.rfind("VmHWM:", 0) == 0) {
+      long kb = 0;
+      std::sscanf(line.c_str(), "VmHWM: %ld", &kb);
+      return kb;
+    }
+  }
+  return 0;
+}
+
+void pin_process() {
+  cpu_set_t set;
+  CPU_ZERO(&set);
+  const int n = logical_cpus() > 0 ? logical_cpus() : 1;
+  for (int cpu = 0; cpu < n; ++cpu)
+    CPU_SET(cpu, &set);
+  sched_setaffinity(0, sizeof(set), &set);
+}
+
 int run_abba() {
   constexpr int kLeg = 21;
-  // Ends are skin 0, then v1.6, with the tip in the center, then the reverse.
-  const int policies[] = {1, 0, 2, 2, 0, 1};
-  const char *names[] = {"", "skin0", "tip", "v16"};
-  const int sizes[] = {8192, 65536};
-  const int thread_choices[] = {1, static_cast<int>(std::thread::hardware_concurrency())};
+  pin_process();
   std::printf("cpu_model=%s\n", cpu_model().c_str());
   std::printf("logical_cpus=%d\n", logical_cpus());
   std::printf("hardware_concurrency=%u\n", std::thread::hardware_concurrency());
-  std::printf("design=ABBA legs=skin0,v16,tip,tip,v16,skin0 calls_per_leg=%d\n", kLeg);
+  std::printf("pinned=1 serial=1 calls_per_leg=%d policy=v16\n", kLeg);
   std::printf("ci=bootstrap median percentile 2.5 and 97.5 over 10000 resamples\n");
-  std::printf("policy 0 is v1.6, policy 1 is skin 0, policy 2 is the previous tip\n");
+  std::printf("peak_rss_kb=%ld\n", peak_rss_kb());
+  std::fflush(stdout);
 
-  std::vector<double> weak_left;
-  std::vector<double> weak_right;
-  std::vector<double> strong_left;
-  std::vector<double> strong_right;
+  auto leg = [&](const std::vector<double> &pos, const std::vector<int> &z, double side,
+                 int threads, bool reuse) {
+    std::vector<double> out;
+    out.reserve(static_cast<std::size_t>(kLeg));
+    if (reuse) {
+      rgpot::UmaEdgeSession session;
+      warm_session(pos, z, side, threads, /*policy=*/0, session);
+      for (int i = 0; i < kLeg; ++i)
+        out.push_back(time_one(pos, z, side, threads, 0, session));
+    } else {
+      for (int i = 0; i < kLeg; ++i) {
+        rgpot::UmaEdgeSession session;
+        out.push_back(time_one(pos, z, side, threads, 0, session));
+      }
+    }
+    return out;
+  };
+  auto report_pool = [&](const char *mode, int n, int threads, const std::vector<double> &samples) {
+    const Band band = bootstrap_median(samples, 20261110u + static_cast<unsigned>(n) + threads);
+    std::printf(
+        "%s n=%d threads=%d median_us=%.3f ci95_lo=%.3f ci95_hi=%.3f n_calls=%zu peak_rss_kb=%ld\n",
+        mode, n, threads, band.median, band.lo, band.hi, samples.size(), peak_rss_kb());
+    std::fflush(stdout);
+  };
 
+  const int strong_n[] = {8192, 65536};
+  const int strong_threads[] = {1, 2, 4, 8, 8, 4, 2, 1};
   for (int reuse = 0; reuse < 2; ++reuse) {
     const char *mode = reuse ? "reused" : "oneshot";
-    for (int n : sizes) {
+    for (int n : strong_n) {
       const double side = side_for(n);
       const auto pos = place(n, side, 7u);
       std::vector<int> z(static_cast<std::size_t>(n), 1);
-      for (int threads : thread_choices) {
-        std::vector<double> samples[3];
-        int leg_i = 0;
-        for (int policy : policies) {
-          const std::size_t before = samples[policy].size();
-          if (reuse) {
-            rgpot::UmaEdgeSession session;
-            warm_session(pos, z, side, threads, policy, session);
-            for (int i = 0; i < kLeg; ++i)
-              samples[policy].push_back(time_one(pos, z, side, threads, policy, session));
-          } else {
-            for (int i = 0; i < kLeg; ++i) {
-              rgpot::UmaEdgeSession session;
-              samples[policy].push_back(time_one(pos, z, side, threads, policy, session));
-            }
-          }
-          const double leg_median = median_of(std::vector<double>(
-              samples[policy].begin() + static_cast<std::ptrdiff_t>(before), samples[policy].end()));
-          std::printf("leg %s n=%d threads=%d reuse=%d policy=%s median_us=%.3f\n", mode, n,
-                      threads, reuse, policy == 0 ? "v16" : names[policy], leg_median);
-          std::fflush(stdout);
-          ++leg_i;
-          (void)leg_i;
-        }
-        for (int policy : {1, 2, 0}) {
-          const Band band = bootstrap_median(samples[policy], 20261110u + policy + n + threads);
-          std::printf(
-              "%s n=%d threads=%d policy=%s median_us=%.3f ci95_lo=%.3f ci95_hi=%.3f n_calls=%zu\n",
-              mode, n, threads, policy == 0 ? "v16" : names[policy], band.median, band.lo,
-              band.hi, samples[policy].size());
-        }
-        if (!reuse && threads == 1) {
-          if (n == 8192)
-            weak_left = samples[0];
-          if (n == 65536)
-            weak_right = samples[0];
-        }
-        if (!reuse && n == 8192) {
-          if (threads == 1)
-            strong_left = samples[0];
-          else
-            strong_right = samples[0];
-        }
+      std::vector<double> by_thread[9];
+      for (int threads : strong_threads) {
+        auto part = leg(pos, z, side, threads, reuse != 0);
+        std::printf("leg %s n=%d threads=%d median_us=%.3f\n", mode, n, threads,
+                    median_of(part));
+        std::fflush(stdout);
+        by_thread[threads].insert(by_thread[threads].end(), part.begin(), part.end());
       }
+      for (int threads : {1, 2, 4, 8})
+        report_pool(mode, n, threads, by_thread[threads]);
     }
   }
 
-  const Band weak = bootstrap_slope(weak_left, 8192, weak_right, 65536, 20261111u);
-  const Band strong =
-      bootstrap_slope(strong_left, 1, strong_right,
-                      static_cast<double>(std::thread::hardware_concurrency()), 20261112u);
-  std::printf("exponent_host=%s logical_cpus=%d\n", cpu_model().c_str(), logical_cpus());
+  const int weak_n[] = {8192, 16384, 32768, 65536, 65536, 32768, 16384, 8192};
+  std::vector<double> weak_samples[4];
+  const int weak_index[] = {8192, 16384, 32768, 65536};
+  {
+    std::printf("weak_oneshot threads=1\n");
+    for (int n : weak_n) {
+      const double side = side_for(n);
+      const auto pos = place(n, side, 7u);
+      std::vector<int> z(static_cast<std::size_t>(n), 1);
+      auto part = leg(pos, z, side, 1, false);
+      std::printf("leg oneshot n=%d threads=1 median_us=%.3f\n", n, median_of(part));
+      std::fflush(stdout);
+      int slot = 0;
+      for (int i = 0; i < 4; ++i)
+        if (weak_index[i] == n)
+          slot = i;
+      weak_samples[slot].insert(weak_samples[slot].end(), part.begin(), part.end());
+    }
+    for (int i = 0; i < 4; ++i)
+      report_pool("weak", weak_index[i], 1, weak_samples[i]);
+  }
+
+  auto slope_of = [](const std::vector<double> &x, const std::vector<double> &y) {
+    const double n = static_cast<double>(x.size());
+    double sx = 0, sy = 0, sxx = 0, sxy = 0;
+    for (std::size_t i = 0; i < x.size(); ++i) {
+      const double lx = std::log(x[i]);
+      const double ly = std::log(y[i]);
+      sx += lx;
+      sy += ly;
+      sxx += lx * lx;
+      sxy += lx * ly;
+    }
+    const double den = n * sxx - sx * sx;
+    return den == 0.0 ? 0.0 : (n * sxy - sx * sy) / den;
+  };
+  std::vector<double> weak_x;
+  std::vector<double> weak_y;
+  for (int i = 0; i < 4; ++i) {
+    weak_x.push_back(static_cast<double>(weak_index[i]));
+    weak_y.push_back(median_of(weak_samples[i]));
+  }
+  const double weak_point = slope_of(weak_x, weak_y);
+  std::vector<double> weak_boots;
+  weak_boots.reserve(10000);
+  std::uint32_t state = 20261113u;
+  for (int b = 0; b < 10000; ++b) {
+    std::vector<double> ys;
+    for (int i = 0; i < 4; ++i) {
+      std::vector<double> draw(weak_samples[i].size());
+      for (double &v : draw) {
+        state = state * 1664525u + 1013904223u;
+        v = weak_samples[i][(state >> 8) % weak_samples[i].size()];
+      }
+      ys.push_back(median_of(draw));
+    }
+    weak_boots.push_back(slope_of(weak_x, ys));
+  }
+  std::sort(weak_boots.begin(), weak_boots.end());
+  std::printf("exponent_host=%s logical_cpus=%d peak_rss_kb=%ld\n", cpu_model().c_str(),
+              logical_cpus(), peak_rss_kb());
   std::printf(
-      "weak_exponent=%.6f ci95_lo=%.6f ci95_hi=%.6f sample=oneshot v16 n=8192,65536 threads=1\n",
-      weak.median, weak.lo, weak.hi);
-  std::printf(
-      "strong_exponent=%.6f ci95_lo=%.6f ci95_hi=%.6f sample=oneshot v16 n=8192 threads=1,%d\n",
-      strong.median, strong.lo, strong.hi,
-      static_cast<int>(std::thread::hardware_concurrency()));
+      "weak_exponent=%.6f ci95_lo=%.6f ci95_hi=%.6f sample=oneshot v16 n=8192,16384,32768,65536 threads=1\n",
+      weak_point, weak_boots[250], weak_boots[9749]);
+  std::fflush(stdout);
   return 0;
 }
 

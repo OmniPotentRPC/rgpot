@@ -21,27 +21,6 @@ namespace {
 // Vesin rebuilds the cached list after an atom moves more than half of this.
 constexpr double kVerletSkin = 1.0;
 
-struct Cand {
-  int64_t n{0};
-  int64_t c{0};
-  float s0{0};
-  float s1{0};
-  float s2{0};
-  double dist{0};
-};
-
-bool closer(const Cand &a, const Cand &b) {
-  if (a.dist != b.dist)
-    return a.dist < b.dist;
-  if (a.n != b.n)
-    return a.n < b.n;
-  if (a.s0 != b.s0)
-    return a.s0 < b.s0;
-  if (a.s1 != b.s1)
-    return a.s1 < b.s1;
-  return a.s2 < b.s2;
-}
-
 double axis_length(const double *box, int axis) {
   const double x = box[3 * axis];
   const double y = box[3 * axis + 1];
@@ -140,58 +119,89 @@ UmaEdgeList molecular_edges(const double *pos, std::size_t n, UmaEdgeSession &se
   return out;
 }
 
-UmaEdgeList emit_sorted(std::vector<Cand> keep, std::size_t n_atoms, int max_neighbors, int threads) {
-  const std::size_t n = n_atoms;
-  std::vector<std::size_t> counts(n + 1, 0);
-  for (const auto &cand : keep) {
-    const auto center = static_cast<std::size_t>(cand.c);
+void emit_sorted(const VesinNeighborList &nl, const ForceInput &in, int max_neighbors,
+                 int threads, UmaEdgeSession &session) {
+  const std::size_t n = in.nAtoms;
+  (void)threads;
+  const double *pos = in.pos;
+  const double *box = in.box;
+  session.bucket.assign(n + 1, 0);
+  for (std::size_t k = 0; k < nl.length; ++k) {
+    const auto center = static_cast<std::size_t>(nl.pairs[k][0]);
     if (center < n)
-      ++counts[center + 1];
+      ++session.bucket[center + 1];
   }
   for (std::size_t i = 1; i <= n; ++i)
-    counts[i] += counts[i - 1];
-  std::vector<Cand> grouped(counts[n]);
-  auto write_idx = counts;
-  for (const auto &cand : keep) {
-    const auto center = static_cast<std::size_t>(cand.c);
-    if (center < n)
-      grouped[write_idx[center]++] = cand;
+    session.bucket[i] += session.bucket[i - 1];
+  if (session.keys.size() < session.bucket[n])
+    session.keys.resize(session.bucket[n]);
+  auto write_idx = session.bucket;
+  for (std::size_t k = 0; k < nl.length; ++k) {
+    const auto center = static_cast<std::size_t>(nl.pairs[k][0]);
+    if (center >= n)
+      continue;
+    const std::size_t j = nl.pairs[k][1];
+    const double s0 = nl.shifts ? static_cast<double>(nl.shifts[k][0]) : 0.0;
+    const double s1 = nl.shifts ? static_cast<double>(nl.shifts[k][1]) : 0.0;
+    const double s2 = nl.shifts ? static_cast<double>(nl.shifts[k][2]) : 0.0;
+    const double dx = pos[3 * j] - pos[3 * center] + s0 * box[0] + s1 * box[3] + s2 * box[6];
+    const double dy = pos[3 * j + 1] - pos[3 * center + 1] + s0 * box[1] + s1 * box[4] + s2 * box[7];
+    const double dz = pos[3 * j + 2] - pos[3 * center + 2] + s0 * box[2] + s1 * box[5] + s2 * box[8];
+    auto &key = session.keys[write_idx[center]++];
+    key.dist2 = dx * dx + dy * dy + dz * dz;
+    key.neighbor = static_cast<std::uint32_t>(j);
+    key.s0 = nl.shifts ? nl.shifts[k][0] : 0;
+    key.s1 = nl.shifts ? nl.shifts[k][1] : 0;
+    key.s2 = nl.shifts ? nl.shifts[k][2] : 0;
   }
-
+  auto &out = session.edges;
+  out.neighbor.clear();
+  out.center.clear();
+  out.offsets.clear();
+  if (out.neighbor.capacity() < session.bucket[n])
+    out.neighbor.reserve(session.bucket[n]);
+  if (out.center.capacity() < session.bucket[n])
+    out.center.reserve(session.bucket[n]);
+  if (out.offsets.capacity() < session.bucket[n] * 3)
+    out.offsets.reserve(session.bucket[n] * 3);
   const int workers = worker_count(threads, n);
   run_ranges(workers, n, [&](std::size_t begin, std::size_t end) {
     for (std::size_t c = begin; c < end; ++c) {
-      auto first = grouped.begin() + static_cast<std::ptrdiff_t>(counts[c]);
-      auto last = grouped.begin() + static_cast<std::ptrdiff_t>(counts[c + 1]);
-      std::sort(first, last, closer);
+      auto first = session.keys.begin() + static_cast<std::ptrdiff_t>(session.bucket[c]);
+      auto last = session.keys.begin() + static_cast<std::ptrdiff_t>(session.bucket[c + 1]);
+      std::sort(first, last, [](const UmaEdgeSession::EdgeKey &a, const UmaEdgeSession::EdgeKey &b) {
+        if (a.dist2 != b.dist2)
+          return a.dist2 < b.dist2;
+        if (a.neighbor != b.neighbor)
+          return a.neighbor < b.neighbor;
+        if (a.s0 != b.s0)
+          return a.s0 < b.s0;
+        if (a.s1 != b.s1)
+          return a.s1 < b.s1;
+        return a.s2 < b.s2;
+      });
     }
   });
-
-  UmaEdgeList out;
-  out.neighbor.reserve(grouped.size());
-  out.center.reserve(grouped.size());
-  out.offsets.reserve(grouped.size() * 3);
   for (std::size_t c = 0; c < n; ++c) {
-    const std::size_t begin = counts[c];
-    std::size_t end = counts[c + 1];
-    if (max_neighbors > 0) {
-      const std::size_t cap = begin + static_cast<std::size_t>(max_neighbors);
-      if (end > cap)
-        end = cap;
-    }
-    for (std::size_t k = begin; k < end; ++k) {
-      out.neighbor.push_back(grouped[k].n);
-      out.center.push_back(grouped[k].c);
-      out.offsets.push_back(grouped[k].s0);
-      out.offsets.push_back(grouped[k].s1);
-      out.offsets.push_back(grouped[k].s2);
+    std::size_t written = 0;
+    for (std::size_t k = session.bucket[c]; k < session.bucket[c + 1]; ++k) {
+      const auto &key = session.keys[k];
+      if (key.dist2 < 1e-16)
+        continue;
+      if (max_neighbors > 0 && written >= static_cast<std::size_t>(max_neighbors))
+        break;
+      out.neighbor.push_back(static_cast<int64_t>(key.neighbor));
+      out.center.push_back(static_cast<int64_t>(c));
+      out.offsets.push_back(static_cast<float>(key.s0));
+      out.offsets.push_back(static_cast<float>(key.s1));
+      out.offsets.push_back(static_cast<float>(key.s2));
+      ++written;
     }
   }
-  return out;
 }
 
-UmaEdgeList periodic_edges(const ForceInput &in, double cutoff, int max_neighbors,
-                           UmaEdgeSession &session) {
+void periodic_edges(const ForceInput &in, double cutoff, int max_neighbors,
+                     UmaEdgeSession &session) {
   VesinOptions options{};
   vesin_compat::fill_neighbor_options(options, cutoff, /*full_list=*/true);
   vesin_compat::set_n_threads(options, session.threads > 0 ? session.threads : 1);
@@ -210,7 +220,8 @@ UmaEdgeList periodic_edges(const ForceInput &in, double cutoff, int max_neighbor
   }
   vesin_compat::set_skin(options, skin);
   session.last_skin = skin;
-  options.return_distances = true;
+  options.return_distances = false;
+  options.return_vectors = false;
 
   if (!session.held_live) {
     session.held = VesinNeighborList{};
@@ -232,39 +243,7 @@ UmaEdgeList periodic_edges(const ForceInput &in, double cutoff, int max_neighbor
     throw std::runtime_error(msg);
   }
 
-  std::vector<Cand> keep;
-  keep.reserve(session.held.length);
-  const double *box = in.box;
-  for (std::size_t k = 0; k < session.held.length; ++k) {
-    const int64_t i = static_cast<int64_t>(session.held.pairs[k][0]);
-    const int64_t j = static_cast<int64_t>(session.held.pairs[k][1]);
-    double dist = 0.0;
-    if (session.held.distances != nullptr) {
-      dist = session.held.distances[k];
-    } else {
-      const double sx = static_cast<double>(session.held.shifts[k][0]);
-      const double sy = static_cast<double>(session.held.shifts[k][1]);
-      const double sz = static_cast<double>(session.held.shifts[k][2]);
-      const double dx = in.pos[3 * j] - in.pos[3 * i] + sx * box[0] + sy * box[3] +
-                        sz * box[6];
-      const double dy = in.pos[3 * j + 1] - in.pos[3 * i + 1] + sx * box[1] +
-                        sy * box[4] + sz * box[7];
-      const double dz = in.pos[3 * j + 2] - in.pos[3 * i + 2] + sx * box[2] +
-                        sy * box[5] + sz * box[8];
-      dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-    }
-    if (dist < 1e-8)
-      continue;
-    Cand cand;
-    cand.n = j;
-    cand.c = i;
-    cand.s0 = static_cast<float>(session.held.shifts[k][0]);
-    cand.s1 = static_cast<float>(session.held.shifts[k][1]);
-    cand.s2 = static_cast<float>(session.held.shifts[k][2]);
-    cand.dist = dist;
-    keep.push_back(cand);
-  }
-  return emit_sorted(std::move(keep), in.nAtoms, max_neighbors, session.threads);
+  emit_sorted(session.held, in, max_neighbors, session.threads, session);
 }
 
 double edge_span(const ForceInput &in, int64_t neighbor, int64_t center, double s0,
@@ -396,28 +375,27 @@ UmaEdgeSession::~UmaEdgeSession() {
     vesin_free(&held);
 }
 
-UmaEdgeList build_system_edges(const ForceInput &local, double cutoff,
-                               double model_cutoff, double molecular_box,
-                               int max_neighbors, const UmaContract &contract,
-                               int64_t n_systems, UmaEdgeSession &session) {
+const UmaEdgeList &build_system_edges(const ForceInput &local, double cutoff,
+                                      double model_cutoff, double molecular_box,
+                                      int max_neighbors, const UmaContract &contract,
+                                      int64_t n_systems, UmaEdgeSession &session) {
   std::lock_guard<std::mutex> lock(session.mutex);
   const int64_t n = static_cast<int64_t>(local.nAtoms);
   const int64_t complete = n > 1 ? n * (n - 1) : 0;
   const int64_t want = static_edges_per_system(contract, n_systems);
   const bool molecular = molecular_box > 0.0;
-  UmaEdgeList edges;
   if (complete > 0 && (want == complete || (molecular && want == 0))) {
-    edges = molecular_edges(local.pos, local.nAtoms, session);
+    session.edges = molecular_edges(local.pos, local.nAtoms, session);
   } else {
     const double range = (model_cutoff > 0.0 && std::isfinite(model_cutoff))
                              ? model_cutoff
                              : cutoff;
-    edges = periodic_edges(local, range, max_neighbors, session);
-    if (want > 0 && static_cast<int64_t>(edges.neighbor.size()) != want)
-      edges = fit_edge_count(local, std::move(edges), want, range);
+    periodic_edges(local, range, max_neighbors, session);
+    if (want > 0 && static_cast<int64_t>(session.edges.neighbor.size()) != want)
+      session.edges = fit_edge_count(local, std::move(session.edges), want, range);
   }
   session.calls += 1;
-  return edges;
+  return session.edges;
 }
 
 } // namespace rgpot

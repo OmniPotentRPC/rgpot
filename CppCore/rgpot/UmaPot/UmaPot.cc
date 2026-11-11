@@ -286,7 +286,7 @@ void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const ForceInput local{in.nAtoms, molecular ? mol_pos.data() : in.pos,
                          in.atmnrs, molecular ? mol_box.data() : in.box};
 
-  const UmaEdgeList edges = build_system_edges(
+  const UmaEdgeList &edges = build_system_edges(
       local, m_impl->cutoff, m_impl->model_cutoff, m_impl->molecular_box,
       m_impl->max_neighbors, m_impl->contract, /*n_systems=*/1,
       m_impl->edges);
