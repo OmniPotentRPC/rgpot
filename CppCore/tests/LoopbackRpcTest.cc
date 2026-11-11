@@ -198,3 +198,38 @@ TEST_CASE("loopback client falls back to TCP when the abstract socket is absent"
   REQUIRE(forces[2] == 3.0);
   pot_client_free(client);
 }
+
+TEST_CASE("reply poll budget follows the env, the init option, and the setter",
+          "[rpc][loopback]") {
+  const char *saved = std::getenv("RGPOT_RPC_POLL_US");
+  const std::string previous = saved == nullptr ? std::string() : saved;
+  const bool had = saved != nullptr;
+  unsetenv("RGPOT_RPC_POLL_US");
+
+  PotClient *client = pot_client_init("127.0.0.1", 9);
+  REQUIRE(client != nullptr);
+  REQUIRE(pot_client_reply_poll_us(client) == 40);
+  pot_client_set_reply_poll_us(client, 0);
+  REQUIRE(pot_client_reply_poll_us(client) == 0);
+  pot_client_set_reply_poll_us(client, 12);
+  REQUIRE(pot_client_reply_poll_us(client) == 12);
+  pot_client_free(client);
+
+  setenv("RGPOT_RPC_POLL_US", "0", 1);
+  client = pot_client_init("127.0.0.1", 9);
+  REQUIRE(pot_client_reply_poll_us(client) == 0);
+  pot_client_free(client);
+
+  client = pot_client_init_ex("127.0.0.1", 9, 7);
+  REQUIRE(pot_client_reply_poll_us(client) == 7);
+  pot_client_free(client);
+
+  client = pot_client_init_ex("127.0.0.1", 9, -1);
+  REQUIRE(pot_client_reply_poll_us(client) == 0);
+  pot_client_free(client);
+
+  if (had)
+    setenv("RGPOT_RPC_POLL_US", previous.c_str(), 1);
+  else
+    unsetenv("RGPOT_RPC_POLL_US");
+}

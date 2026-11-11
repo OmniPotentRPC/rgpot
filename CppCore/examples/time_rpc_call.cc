@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+#include <sys/resource.h>
+
 #include "bench_systems.hpp"
 #include "rgpot/rpc/pot_bridge.h"
 
@@ -26,6 +28,7 @@ int main(int argc, char **argv) {
   std::size_t n = 1000;
   long calls = 200;
   int repeats = 5;
+  int poll_us = -1;
   for (int i = 1; i + 1 < argc; i += 2) {
     if (std::strcmp(argv[i], "--host") == 0)
       host = argv[i + 1];
@@ -37,8 +40,10 @@ int main(int argc, char **argv) {
       calls = std::atol(argv[i + 1]);
     else if (std::strcmp(argv[i], "--repeats") == 0)
       repeats = std::atoi(argv[i + 1]);
+    else if (std::strcmp(argv[i], "--poll-us") == 0)
+      poll_us = std::atoi(argv[i + 1]);
   }
-  PotClient *client = pot_client_init(host.c_str(), port);
+  PotClient *client = pot_client_init_ex(host.c_str(), port, poll_us);
   if (client == nullptr) {
     std::fprintf(stderr, "cannot connect to %s:%d\n", host.c_str(), port);
     return 1;
@@ -50,6 +55,11 @@ int main(int argc, char **argv) {
   double energy = 0.0;
 
   std::vector<double> perCall;
+  std::vector<double> cpuPerCall;
+  auto cpu_usec = [](const rusage &ru) {
+    return static_cast<double>(ru.ru_utime.tv_sec) * 1.0e6 + ru.ru_utime.tv_usec +
+           static_cast<double>(ru.ru_stime.tv_sec) * 1.0e6 + ru.ru_stime.tv_usec;
+  };
   for (int r = 0; r < repeats; ++r) {
     // Same geometry every call: the server's pair list hits, so the
     // figure is the transport plus the warm kernel.
@@ -62,22 +72,29 @@ int main(int argc, char **argv) {
         return 1;
       }
     }
+    rusage before{};
+    getrusage(RUSAGE_SELF, &before);
     const auto t0 = std::chrono::steady_clock::now();
     for (long c = 0; c < calls; ++c) {
       pot_calculate(client, natoms, s.pos.data(), types.data(), s.box.data(),
                     &energy, F.data());
     }
     const auto t1 = std::chrono::steady_clock::now();
+    rusage after{};
+    getrusage(RUSAGE_SELF, &after);
     perCall.push_back(
         std::chrono::duration<double, std::micro>(t1 - t0).count() /
         static_cast<double>(calls));
+    cpuPerCall.push_back((cpu_usec(after) - cpu_usec(before)) /
+                         static_cast<double>(calls));
   }
   pot_client_free(client);
   std::sort(perCall.begin(), perCall.end());
+  std::sort(cpuPerCall.begin(), cpuPerCall.end());
   std::printf("system,mode,natoms,calls,repeats,us_per_call_median,us_per_"
-              "call_min,us_per_call_max,energy_last\n");
-  std::printf("pt-np-rpc,warm,%d,%ld,%d,%.3f,%.3f,%.3f,%.12g\n", natoms, calls,
-              repeats, perCall[perCall.size() / 2], perCall.front(),
-              perCall.back(), energy);
+              "call_min,us_per_call_max,energy_last,cpu_us_per_call_median\n");
+  std::printf("pt-np-rpc,warm,%d,%ld,%d,%.3f,%.3f,%.3f,%.12g,%.3f\n", natoms,
+              calls, repeats, perCall[perCall.size() / 2], perCall.front(),
+              perCall.back(), energy, cpuPerCall[cpuPerCall.size() / 2]);
   return 0;
 }

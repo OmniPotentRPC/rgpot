@@ -43,6 +43,30 @@ typedef struct PotClient PotClient;
 POT_BRIDGE_API PotClient *pot_client_init(const char *host, int32_t port);
 
 /**
+ * @brief Like pot_client_init, with an explicit post-write poll budget.
+ *
+ * On a loopback connection the client polls for the reply for up to
+ * @a poll_us microseconds after each write, so the following wait does not
+ * sleep when the reply is already queued. 0 disables that poll. A negative
+ * @a poll_us reads RGPOT_RPC_POLL_US (microseconds, 0 disables) and otherwise
+ * uses 40, the same default as pot_client_init.
+ */
+POT_BRIDGE_API PotClient *pot_client_init_ex(const char *host, int32_t port,
+                                             int32_t poll_us);
+
+/**
+ * @brief Set the post-write poll budget for a live client.
+ * @param poll_us Microseconds. 0 disables the poll.
+ */
+POT_BRIDGE_API void pot_client_set_reply_poll_us(PotClient *client,
+                                                 int32_t poll_us);
+
+/**
+ * @brief The client's current post-write poll budget, in microseconds.
+ */
+POT_BRIDGE_API int32_t pot_client_reply_poll_us(const PotClient *client);
+
+/**
  * @brief Frees all resources associated with the client.
  * @param client The opaque client handle to release.
  * @return Void.

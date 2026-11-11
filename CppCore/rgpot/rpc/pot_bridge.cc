@@ -19,6 +19,7 @@
 #include <capnp/rpc-twoparty.h>
 #include <capnp/rpc.h>
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <kj/async-io.h>
 #include <kj/common.h>
@@ -42,8 +43,9 @@
 /// before, so the spin does not stretch a slow call.
 class SpinAfterWrite final : public kj::AsyncIoStream {
 public:
-  SpinAfterWrite(kj::Own<kj::AsyncIoStream> inner, int fd)
-      : inner(kj::mv(inner)), fd(fd) {}
+  SpinAfterWrite(kj::Own<kj::AsyncIoStream> inner, int fd,
+                 const std::shared_ptr<int> &budget_us)
+      : inner(kj::mv(inner)), fd(fd), budget_us(budget_us) {}
 
   kj::Promise<size_t> tryRead(void *buffer, size_t minBytes,
                               size_t maxBytes) override {
@@ -51,12 +53,18 @@ public:
   }
 
   kj::Promise<void> write(const void *buffer, size_t size) override {
-    return inner->write(buffer, size).then([this]() { spin(); });
+    auto written = inner->write(buffer, size);
+    if (budget() <= 0)
+      return written;
+    return written.then([this]() { spin(); });
   }
 
   kj::Promise<void> write(
       kj::ArrayPtr<const kj::ArrayPtr<const kj::byte>> pieces) override {
-    return inner->write(pieces).then([this]() { spin(); });
+    auto written = inner->write(pieces);
+    if (budget() <= 0)
+      return written;
+    return written.then([this]() { spin(); });
   }
 
   kj::Promise<void> whenWriteDisconnected() override {
@@ -66,9 +74,14 @@ public:
   void shutdownWrite() override { inner->shutdownWrite(); }
 
 private:
+  int budget() const { return budget_us ? *budget_us : 0; }
+
   void spin() const {
-    const auto deadline =
-        std::chrono::steady_clock::now() + std::chrono::microseconds(40);
+    const int usec = budget();
+    if (usec <= 0)
+      return;
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::microseconds(usec);
     while (std::chrono::steady_clock::now() < deadline) {
       pollfd pfd{};
       pfd.fd = fd;
@@ -81,6 +94,7 @@ private:
 
   kj::Own<kj::AsyncIoStream> inner;
   int fd;
+  std::shared_ptr<int> budget_us;
 };
 
 /// Loopback connection. The fd is owned by the wrapped stream. Members are
@@ -97,13 +111,13 @@ struct LocalConn {
   // bootstrap() below.
   std::unique_ptr<Potential::Client> cap;
 
-  explicit LocalConn(int fd)
+  explicit LocalConn(int fd, const std::shared_ptr<int> &budget_us)
       : io(kj::setupAsyncIo()),
         stream(kj::heap<SpinAfterWrite>(
             io.lowLevelProvider->wrapSocketFd(
                 fd, kj::LowLevelAsyncIoProvider::TAKE_OWNERSHIP |
                         kj::LowLevelAsyncIoProvider::ALREADY_CLOEXEC),
-            fd)) {
+            fd, budget_us)) {
     network = kj::heap<capnp::TwoPartyVatNetwork>(
         *stream, capnp::rpc::twoparty::Side::CLIENT);
     rpc = kj::heap<Rpc>(capnp::makeRpcClient(*network));
@@ -124,22 +138,40 @@ struct LocalConn {
  * exposed to C as an opaque pointer.  The use of @c std::unique_ptr ensures
  * that the RPC client is cleaned up correctly upon destruction.
  */
-struct PotClient {
-  std::unique_ptr<capnp::EzRpcClient>
-      rpc_client;               //!< TCP client. Empty on the loopback path.
-  std::unique_ptr<LocalConn> local; //!< Abstract-socket client, when dialed.
-  Potential::Client capability; //!< The RPC capability for potential calls.
-  kj::WaitScope *wait_scope;    //!< Reference to the client wait scope.
-  std::string last_error;       //!< Buffer for the most recent error message.
-  bool server_checked = false;  //!< True once the server passed the handshake.
+/// Microseconds. Unset, empty, or not a non-negative integer keeps 40.
+int reply_poll_us_from_env() {
+  const char *value = std::getenv("RGPOT_RPC_POLL_US");
+  if (value == nullptr || *value == '\0')
+    return 40;
+  char *end = nullptr;
+  const long parsed = std::strtol(value, &end, 10);
+  if (end == value || *end != '\0' || parsed < 0)
+    return 40;
+  if (parsed > 1000000L)
+    return 1000000;
+  return static_cast<int>(parsed);
+}
 
-  PotClient(std::unique_ptr<capnp::EzRpcClient> client, Potential::Client cap)
-      : rpc_client(std::move(client)), capability(std::move(cap)),
+struct PotClient {
+  std::shared_ptr<int> reply_poll_us; //!< Post-write poll budget. 0 disables.
+  std::unique_ptr<capnp::EzRpcClient>
+      rpc_client;                   //!< TCP client. Empty on the loopback path.
+  std::unique_ptr<LocalConn> local; //!< Abstract-socket client, when dialed.
+  Potential::Client capability;     //!< The RPC capability for potential calls.
+  kj::WaitScope *wait_scope;        //!< Reference to the client wait scope.
+  std::string last_error;           //!< Buffer for the most recent error message.
+  bool server_checked = false;      //!< True once the server passed the handshake.
+
+  PotClient(int poll_us, std::unique_ptr<capnp::EzRpcClient> client,
+            Potential::Client cap)
+      : reply_poll_us(std::make_shared<int>(poll_us)),
+        rpc_client(std::move(client)), capability(std::move(cap)),
         wait_scope(&rpc_client->getWaitScope()) {}
 
-  explicit PotClient(std::unique_ptr<LocalConn> conn)
-      : local(std::move(conn)), capability(std::move(*local->cap)),
-        wait_scope(&local->io.waitScope) {}
+  PotClient(int poll_us, int fd)
+      : reply_poll_us(std::make_shared<int>(poll_us)),
+        local(std::make_unique<LocalConn>(fd, reply_poll_us)),
+        capability(std::move(*local->cap)), wait_scope(&local->io.waitScope) {}
 };
 
 // Helper macros to enforce safety without clutter
@@ -166,10 +198,12 @@ extern "C" {
  * @note Returns @c nullptr if the connection cannot be established
  * or if the address is malformed.
  */
-PotClient *pot_client_init(const char *host, int32_t port) {
-  // We cannot use the client struct for storage yet, so we use a temporary
+PotClient *pot_client_init_ex(const char *host, int32_t port, int32_t poll_us) {
   if (!host)
     return nullptr;
+  const int budget =
+      poll_us < 0 ? reply_poll_us_from_env()
+                  : (poll_us > 1000000 ? 1000000 : static_cast<int>(poll_us));
   try {
     // Loopback skips the TCP stack when this build's server is listening.
     // connect() fails immediately if it is not, and the TCP client below is
@@ -177,18 +211,38 @@ PotClient *pot_client_init(const char *host, int32_t port) {
     if (rgpot::rpc::is_loopback_host(host)) {
       const int fd = rgpot::rpc::connect_abstract(port);
       if (fd >= 0)
-        return new PotClient(std::make_unique<LocalConn>(fd));
+        return new PotClient(budget, fd);
     }
     std::string address = std::string(host) + ":" + std::to_string(port);
     auto rpc_client = std::make_unique<capnp::EzRpcClient>(address);
     auto cap = rpc_client->getMain().castAs<Potential>();
 
-    return new PotClient(std::move(rpc_client), std::move(cap));
+    return new PotClient(budget, std::move(rpc_client), std::move(cap));
   } catch (...) {
     // In init, we return nullptr. The caller must assume initialization failed.
     // TODO(rg): Advanced logging could go to a thread-local static
     return nullptr;
   }
+}
+
+PotClient *pot_client_init(const char *host, int32_t port) {
+  return pot_client_init_ex(host, port, -1);
+}
+
+void pot_client_set_reply_poll_us(PotClient *client, int32_t poll_us) {
+  if (!client || !client->reply_poll_us)
+    return;
+  if (poll_us < 0)
+    poll_us = 0;
+  if (poll_us > 1000000)
+    poll_us = 1000000;
+  *client->reply_poll_us = poll_us;
+}
+
+int32_t pot_client_reply_poll_us(const PotClient *client) {
+  if (!client || !client->reply_poll_us)
+    return 0;
+  return *client->reply_poll_us;
 }
 
 /**
