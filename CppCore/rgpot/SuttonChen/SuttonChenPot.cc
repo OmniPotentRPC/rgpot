@@ -143,7 +143,7 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   std::vector<double> rho(n_size, 0.0);
   double epair = 0.0;
   const double skin = mode_ == nlist::Mode::Stream ? 0.0 : cutoff / 5.0;
-  nlist::updateCells(neighbours_, R, n_size, box_use, cutoff, skin, nlist::Image::Round,
+  neighbours_.update(R, n_size, box_use, cutoff, skin, nlist::Image::Round,
                      mode_, periodic);
   const int nt = nlist::threadsRequested();
   const bool stream = neighbours_.streaming();
@@ -165,9 +165,9 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       epair += epsilon * rep;
     };
     if (stream) {
-      nlist::visitHalf(neighbours_, 0, n_atoms, density);
+      neighbours_.forHalf(0, n_atoms, density);
     } else {
-      nlist::visitDirected(neighbours_, 
+      neighbours_.forDirected(
           0, n_atoms, [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
             if (!(j > i)) {
               return;
@@ -238,13 +238,13 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   };
   if (nt == 1) {
     if (stream) {
-      nlist::visitHalf(neighbours_, 
+      neighbours_.forHalf(
           0, n_atoms,
           [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
             apply(i, j, dx, dy, dz, r2, F, cfg.stress ? strain : nullptr, true);
           });
     } else {
-      nlist::visitDirected(neighbours_, 
+      neighbours_.forDirected(
           0, n_atoms,
           [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
             if (!(j > i)) {

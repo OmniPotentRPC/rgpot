@@ -22,7 +22,7 @@
 // clang-format on
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/Potential.hpp"
-#include "rgpot/nlist/Neighbours.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/pot_caps.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
@@ -139,7 +139,7 @@ private:
   mutable std::mutex m_tablesMtx;
   mutable std::shared_ptr<const ZblTables> m_tables;
   nlist::Mode mode_ = nlist::Mode::Auto;
-  mutable nlist::Neighbours neighbours_;
+  mutable nlist::Cells neighbours_;
 };
 
 } // namespace rgpot

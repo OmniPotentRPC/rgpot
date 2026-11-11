@@ -218,7 +218,7 @@ void ZBLPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   }
   const double skin = mode == nlist::Mode::Stream ? 0.0 : neighbourSkin(cut_global);
   const std::array<bool, 3> open{{false, false, false}};
-  nlist::updateCells(neighbours_, R, static_cast<std::size_t>(N), box_use, cut_global, skin,
+  neighbours_.update(R, static_cast<std::size_t>(N), box_use, cut_global, skin,
                      nlist::Image::Round, mode, open);
   const double rInner = cut_inner;
   const double rInnerSq = cut_inner_sq;
@@ -256,7 +256,7 @@ void ZBLPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   };
   double energy = 0.0;
   if (nt <= 1) {
-    nlist::visitHalf(neighbours_, 0, N,
+    neighbours_.forHalf(0, N,
                      [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
                          double r2) { accept(i, j, dx, dy, dz, r2, F, energy, strain); });
   } else {

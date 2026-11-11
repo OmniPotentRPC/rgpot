@@ -20,7 +20,7 @@
 
 #include "rgpot/Potential.hpp"
 #include "rgpot/nlist/HalfShell.hpp"
-#include "rgpot/nlist/Neighbours.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 
 namespace rgpot {
 
@@ -104,7 +104,7 @@ private:
 
   uint64_t m_paramsKey{0};
   nlist::Mode mode_ = nlist::Mode::Auto;
-  mutable nlist::Neighbours neighbours_;
+  mutable nlist::Cells neighbours_;
 };
 
 } // namespace rgpot

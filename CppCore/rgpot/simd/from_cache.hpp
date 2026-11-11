@@ -54,11 +54,10 @@ inline void append_half(std::vector<std::int32_t> &ij, std::int32_t i,
 inline void fill_view(CachedPairs &out, const double *R, std::size_t n,
                       const double *box, const PairSpec &opt,
                       nlist::Mode mode = nlist::Mode::Auto,
-                      nlist::Neighbours *reuse = nullptr) {
-  nlist::Neighbours local;
-  nlist::Neighbours &found = reuse != nullptr ? *reuse : local;
-  nlist::updateCells(found, R, n, box, opt.cutoff, opt.skin, nlist::Image::Round, mode,
-                     opt.periodic);
+                      nlist::Cells *reuse = nullptr) {
+  nlist::Cells local;
+  nlist::Cells &found = reuse != nullptr ? *reuse : local;
+  found.update(R, n, box, opt.cutoff, opt.skin, nlist::Image::Round, mode, opt.periodic);
   // Keep candidates out to the skin. The force kernel still drops pairs
   // past opt.cutoff, using the positions of the call that evaluates them.
   // A reused list therefore still has a pair that was outside the cutoff
@@ -68,7 +67,7 @@ inline void fill_view(CachedPairs &out, const double *R, std::size_t n,
   const int nt = n > 1 ? nlist::threadsRequested() : 1;
   std::vector<std::int32_t> ij;
   if (nt <= 1) {
-    nlist::visitDirected(found, 0, static_cast<std::int64_t>(n),
+    found.forDirected(0, static_cast<std::int64_t>(n),
                       [&](std::int32_t i, std::int32_t j, double, double, double,
                           double r2) {
                         detail_fill::append_half(ij, i, j, r2, cutoff2);
@@ -86,7 +85,7 @@ inline void fill_view(CachedPairs &out, const double *R, std::size_t n,
 #endif
       const auto range = nlist::partition(static_cast<std::int64_t>(n), t, nt);
       auto &mine = part[static_cast<std::size_t>(t)];
-      nlist::visitDirected(found, range.begin, range.end,
+      found.forDirected(range.begin, range.end,
                         [&](std::int32_t i, std::int32_t j, double, double,
                             double, double r2) {
                           detail_fill::append_half(mine, i, j, r2, cutoff2);

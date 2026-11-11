@@ -11,7 +11,7 @@
 */
 #pragma once
 
-#include "rgpot/nlist/Neighbours.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 
 namespace rgpot::eam {
 struct ElementSpline;
@@ -141,7 +141,7 @@ private:
   std::vector<double> stream_rho_;
   std::vector<double> stream_force_;
   std::vector<rgpot::nlist::Range> parts_;
-  rgpot::nlist::Neighbours neighbours_;
+  rgpot::nlist::Cells neighbours_;
 
   double box_len_[3]{};
   long n_atoms_ = 0;

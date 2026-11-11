@@ -57,13 +57,13 @@ void walkCentres(const double *centres, int n, const double *period, double cuto
       }
     }
   }
-  rgpot::nlist::Neighbours cells;
+  rgpot::nlist::Cells cells;
   const double search = cutoff * (1.0 + 1.0e-8);
-  rgpot::nlist::updateCells(cells, wrapped.data(), static_cast<std::size_t>(n), box, search,
-                            0.0, rgpot::nlist::Image::Round, rgpot::nlist::Mode::Stream,
-                            periodic);
-  rgpot::nlist::visitHalf(cells, 0, n, [&](std::int32_t i, std::int32_t j, double, double, double,
-                                           double) { fn(static_cast<int>(i), static_cast<int>(j)); });
+  cells.update(wrapped.data(), static_cast<std::size_t>(n), box, search, 0.0,
+               rgpot::nlist::Image::Round, rgpot::nlist::Mode::Stream, periodic);
+  cells.forHalf(0, n, [&](std::int32_t i, std::int32_t j, double, double, double, double) {
+    fn(static_cast<int>(i), static_cast<int>(j));
+  });
 }
 
 } // namespace forcefields

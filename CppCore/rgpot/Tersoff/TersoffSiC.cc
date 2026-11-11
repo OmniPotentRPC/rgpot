@@ -268,7 +268,7 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
                           ? neighbors->skin
                           : (mode_ == nlist::Mode::Stream ? 0.0 : kMaxCut / 5.0);
   const auto before = neighbours_.builds();
-  nlist::updateCells(neighbours_, positions, n_atoms, box, kMaxCut, skin, nlist::Image::Round,
+  neighbours_.update(positions, n_atoms, box, kMaxCut, skin, nlist::Image::Round,
                      mode_, {true, true, true});
   if (neighbors != nullptr && neighbors->skin > 0.0 &&
       (neighbours_.builds() != before || !neighbors->built)) {
@@ -302,7 +302,7 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
     if (neighbours_.streaming()) {
       neighbours_.forAtom(static_cast<std::int32_t>(i), take);
     } else {
-      nlist::visitDirected(neighbours_, i, static_cast<std::int64_t>(i) + 1, take);
+      neighbours_.forDirected(i, static_cast<std::int64_t>(i) + 1, take);
     }
     std::sort(nb.begin(), nb.end(), [](const Bond &a, const Bond &b) { return a.j < b.j; });
   };

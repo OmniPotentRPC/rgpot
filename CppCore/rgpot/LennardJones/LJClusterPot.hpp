@@ -19,7 +19,7 @@
 #include "rgpot/PairSwitch.hpp"
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/Potential.hpp"
-#include "rgpot/nlist/Neighbours.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/pot_caps.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
@@ -119,7 +119,7 @@ private:
   QuinticSwitch m_switch{}; //!< In use when m_config.switch_width != 0.
   uint64_t m_paramsKey{0};
   nlist::Mode mode_ = nlist::Mode::Auto;
-  mutable nlist::Neighbours neighbours_;
+  mutable nlist::Cells neighbours_;
   mutable std::size_t retained_ = 0;
 };
 

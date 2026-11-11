@@ -105,7 +105,7 @@ void EAM::buildList(long N) {
   // A stream does not reuse bins unless the coordinates match, so the
   // skin only adds pairs the kernel then rejects.
   const double skin = mode_ == rgpot::nlist::Mode::Stream ? 0.0 : kEamSkinOverCutoff * widest;
-  rgpot::nlist::updateCells(neighbours_, wrapped_.data(), static_cast<std::size_t>(N), box9,
+  neighbours_.update(wrapped_.data(), static_cast<std::size_t>(N), box9,
                             widest, skin, rgpot::nlist::Image::Half, mode_, {true, true, true});
   n_atoms_ = N;
   if (neighbours_.streaming()) {

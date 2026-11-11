@@ -31,7 +31,7 @@
 // clang-format on
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/Potential.hpp"
-#include "rgpot/nlist/Neighbours.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
 #if defined(_WIN32)
@@ -125,7 +125,7 @@ private:
   SuttonChenConfig m_config;
   uint64_t m_paramsKey{0};
   nlist::Mode mode_ = nlist::Mode::Auto;
-  mutable nlist::Neighbours neighbours_;
+  mutable nlist::Cells neighbours_;
 };
 
 } // namespace rgpot

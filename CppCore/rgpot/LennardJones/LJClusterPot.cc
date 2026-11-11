@@ -114,7 +114,7 @@ void LJClusterPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   }
   const double skin = mode_ == nlist::Mode::Stream ? 0.0 : cutoff / 5.0;
   const std::array<bool, 3> open{{false, false, false}};
-  nlist::updateCells(neighbours_, R, static_cast<std::size_t>(N), box_use, cutoff, skin,
+  neighbours_.update(R, static_cast<std::size_t>(N), box_use, cutoff, skin,
                      nlist::Image::Round, mode_, open);
   retained_ = neighbours_.streaming() ? 0 : neighbours_.slots();
   const double cutoff2 = cutoff * cutoff;
@@ -159,7 +159,7 @@ void LJClusterPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   };
   const int nt = nlist::threadsRequested();
   if (nt <= 1) {
-    nlist::visitHalf(neighbours_, 0, N,
+    neighbours_.forHalf(0, N,
                      [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
                          double r2) { accept(i, j, dx, dy, dz, r2, F, *U); });
   } else {
@@ -179,8 +179,8 @@ void LJClusterPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       double *local =
           owned.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(N) * 3;
       double local_e = 0.0;
-      nlist::visitDirected(
-          neighbours_, range.begin, range.end,
+      neighbours_.forDirected(
+          range.begin, range.end,
           [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2) {
             accept(i, j, dx, dy, dz, r2, local, local_e);
           });

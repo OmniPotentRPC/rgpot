@@ -71,7 +71,7 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   }
   const double skin = mode == nlist::Mode::Stream ? 0.0 : neighbourSkin(cuttOffR);
   const std::array<bool, 3> periodic{{true, true, true}};
-  nlist::updateCells(neighbours_, R, n_atoms, box, cuttOffR, skin, nlist::Image::Round,
+  neighbours_.update(R, n_atoms, box, cuttOffR, skin, nlist::Image::Round,
                      mode, periodic);
   const double cutoff2 = cuttOffR * cuttOffR;
   const double twoDeA = 2.0 * De * a;
@@ -109,7 +109,7 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   };
   double energy = 0.0;
   if (nt <= 1) {
-    nlist::visitHalf(neighbours_, 0, N,
+    neighbours_.forHalf(0, N,
                      [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
                          double r2) { accept(i, j, dx, dy, dz, r2, F, energy, strain); });
   } else {

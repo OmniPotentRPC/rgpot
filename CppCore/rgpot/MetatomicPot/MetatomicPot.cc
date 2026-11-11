@@ -3,7 +3,7 @@
 
 #include "rgpot/MetatomicPot/MetatomicPot.hpp"
 #include "rgpot/MetatomicPot/vesin_compat.hpp"
-#include "rgpot/nlist/NeighbourList.hpp"
+#include "rgpot/nlist/adapt.hpp"
 #include <ATen/CPUGeneratorImpl.h>
 #include "vesin.h"
 
@@ -649,18 +649,12 @@ metatensor_torch::TensorBlock MetatomicPot::computeNeighbors(
     const double *positions, const double *box, const bool periodic[3]) const {
 
   auto cutoff = request->engine_cutoff(m_config.length_unit);
-  nlist::Query query;
-  query.cutoff = cutoff;
-  query.shape = request->full_list() ? nlist::Shape{nlist::Pairs{nlist::Shell::Full}}
-                                     : nlist::Shape{nlist::Pairs{nlist::Shell::Half}};
-  query.cut = nlist::Cut::Strict;
+  bool strict = true;
   if constexpr (requires { request->strict(); }) {
-    query.cut = request->strict() ? nlist::Cut::Strict : nlist::Cut::Loose;
+    strict = request->strict();
   }
-  query.periodic = {periodic[0], periodic[1], periodic[2]};
-  query.fields.shifts = true;
-  query.fields.vectors = true;
-  query.fields.distances = false;
+  const nlist::Query query =
+      nlist::metatomicQuery(cutoff, request->full_list(), strict, periodic);
   auto held = std::make_shared<nlist::Table>();
   nlist::build(*held, positions, static_cast<std::size_t>(nAtoms), box, query);
 
