@@ -1080,11 +1080,13 @@ NB_MODULE(_core, m) {
         if (items.size() == 1) {
           return nb::object(items[0]);
         }
-        nb::tuple out(items.size());
-        for (size_t k = 0; k < items.size(); ++k) {
-          out[k] = items[k];
+        PyObject *raw = PyTuple_New(static_cast<Py_ssize_t>(items.size()));
+        for (Py_ssize_t k = 0; k < static_cast<Py_ssize_t>(items.size()); ++k) {
+          nb::handle item = items[static_cast<size_t>(k)];
+          Py_INCREF(item.ptr());
+          PyTuple_SetItem(raw, k, item.ptr());
         }
-        return nb::object(std::move(out));
+        return nb::steal<nb::object>(raw);
       },
       nb::arg("positions").noconvert(), nb::arg("cell").noconvert(), nb::arg("cutoff"),
       nb::arg("quantities") = "ijd", nb::arg("full") = false, nb::arg("offsets") = false,
