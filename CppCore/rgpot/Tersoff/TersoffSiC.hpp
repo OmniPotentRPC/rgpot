@@ -80,8 +80,8 @@ public:
    */
   void setHeldSkin(double skin);
 
-  /// Stream walks cells without a stored pair list. Auto and Stored keep
-  /// the historical ordered walk.
+  /// Auto, Stored and Stream all use the shared neighbour layer. One
+  /// thread agrees with the old ordered walk to within 1e-12.
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
   /// The list forceImpl keeps. Not built until a call with a positive skin.

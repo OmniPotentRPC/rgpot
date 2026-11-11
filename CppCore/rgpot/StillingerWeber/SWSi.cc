@@ -11,11 +11,11 @@
 #include "rgpot/StillingerWeber/SWSi.hpp"
 
 #include "rgpot/ParamHash.hpp"
-#include "rgpot/nlist/HalfShell.hpp"
-#include "rgpot/nlist/MinimumImage.hpp"
 #include "rgpot/nlist/Neighbours.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <stdexcept>
 #include <vector>
 
@@ -30,15 +30,6 @@ struct Bond {
   int j;
   double x, y, z, r, gexp, dgdr;
 };
-
-struct Scratch {
-  std::vector<std::vector<Bond>> rows;
-};
-
-Scratch &scratch() {
-  thread_local Scratch s;
-  return s;
-}
 
 struct PairTerm {
   bool live;
@@ -71,39 +62,6 @@ PairTerm pairTerm(double r) {
   const double dgdr =
       gexp * (-StillingerWeberSi::kGamma * s * s) / StillingerWeberSi::kSigma;
   return {true, f2, dedr, gexp, dgdr};
-}
-
-bool orthogonal(const double *box, double &lx, double &ly, double &lz) {
-  if (box[1] != 0.0 || box[2] != 0.0 || box[3] != 0.0 || box[5] != 0.0 ||
-      box[6] != 0.0 || box[7] != 0.0) {
-    return false;
-  }
-  lx = box[0];
-  ly = box[4];
-  lz = box[8];
-  return lx > 0.0 && ly > 0.0 && lz > 0.0 && std::isfinite(lx) &&
-         std::isfinite(ly) && std::isfinite(lz);
-}
-
-void foldOrtho(double &dx, double &dy, double &dz, double lx, double ly,
-               double lz) {
-  // std::round is the half-away tie of MinimumImage's Babai step, so an
-  // orthogonal cell takes the same image as the general fold.
-  dx -= lx * std::round(dx / lx);
-  dy -= ly * std::round(dy / ly);
-  dz -= lz * std::round(dz / lz);
-}
-
-void resetRows(Scratch &s, std::size_t n) {
-  if (s.rows.size() < n) {
-    s.rows.resize(n);
-  }
-  for (std::size_t i = 0; i < n; ++i) {
-    s.rows[i].clear();
-    if (s.rows[i].capacity() < 32) {
-      s.rows[i].reserve(32);
-    }
-  }
 }
 
 } // namespace
@@ -184,101 +142,85 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
     return;
   }
 
-  double lx = 0.0;
-  double ly = 0.0;
-  double lz = 0.0;
-  const bool ortho = orthogonal(box, lx, ly, lz);
-  nlist::MinimumImage image;
-  if (!ortho) {
-    image = nlist::MinimumImage(box, {true, true, true});
-  }
-
-  Scratch &sc = scratch();
-  resetRows(sc, n_atoms);
-
   const double cut = kCut * kSigma;
   const double cut2 = cut * cut;
   const int n = static_cast<int>(n_atoms);
 
-  auto consider = [&](int i, int j, double dx, double dy, double dz) {
-    if (!std::isfinite(dx) || !std::isfinite(dy) || !std::isfinite(dz)) {
-      throw std::invalid_argument("StillingerWeberSi: non-finite position");
-    }
-    const double r2 = dx * dx + dy * dy + dz * dz;
-    if (!(r2 > 0.0) || r2 >= cut2) {
-      return;
-    }
-    const double r = std::sqrt(r2);
-    const PairTerm t = pairTerm(r);
-    if (!t.live) {
-      return;
-    }
-    *energy += kEpsilon * t.f2;
-    const double inv_r = 1.0 / r;
-    const double sx = scale * t.dedr * dx * inv_r;
-    const double sy = scale * t.dedr * dy * inv_r;
-    const double sz = scale * t.dedr * dz * inv_r;
-    acc[3 * i] += sx;
-    acc[3 * i + 1] += sy;
-    acc[3 * i + 2] += sz;
-    acc[3 * j] -= sx;
-    acc[3 * j + 1] -= sy;
-    acc[3 * j + 2] -= sz;
-    sc.rows[static_cast<std::size_t>(i)].push_back(
-        Bond{j, dx, dy, dz, r, t.gexp, t.dgdr});
-    sc.rows[static_cast<std::size_t>(j)].push_back(
-        Bond{i, -dx, -dy, -dz, r, t.gexp, t.dgdr});
-  };
+  nlist::Spec spec;
+  spec.cutoff = cut;
+  spec.skin = (neighbors != nullptr && neighbors->skin > 0.0)
+                  ? neighbors->skin
+                  : (mode_ == nlist::Mode::Stream ? 0.0 : cut / 5.0);
+  spec.image = nlist::Image::Round;
+  spec.mode = mode_;
+  spec.periodic = {true, true, true};
+  const auto before = neighbours_.builds();
+  neighbours_.update(positions, n_atoms, box, spec);
+  if (neighbors != nullptr && neighbors->skin > 0.0 &&
+      (neighbours_.builds() != before || !neighbors->built)) {
+    neighbors->ref.assign(positions, positions + 3 * n_atoms);
+    std::memcpy(neighbors->box, box, 9 * sizeof(double));
+    neighbors->n = n_atoms;
+    neighbors->cutoff = cut;
+    neighbors->skin_used = neighbors->skin;
+    neighbors->built = true;
+  }
 
-  nlist::NeighborList streamed;
-  const nlist::NeighborList *chosen = nullptr;
-  if (mode_ != nlist::Mode::Auto) {
-    nlist::Spec spec;
-    spec.cutoff = cut;
-    spec.skin = mode_ == nlist::Mode::Stored ? cut / 5.0 : 0.0;
-    spec.image = nlist::Image::Round;
-    spec.mode = mode_;
-    spec.periodic = {true, true, true};
-    neighbours_.update(positions, n_atoms, box, spec);
-    const double cut2 = cut * cut;
+  auto load = [&](int i, std::vector<Bond> &nb) {
+    nb.clear();
     neighbours_.forDirected(
-        0, static_cast<std::int64_t>(n_atoms),
-        [&](std::int32_t i, std::int32_t j, double, double, double, double r2) {
-          if (i < j && r2 > 0.0 && r2 < cut2) {
-            streamed.lo.push_back(i);
-            streamed.hi.push_back(j);
+        i, static_cast<std::int64_t>(i) + 1,
+        [&](std::int32_t, std::int32_t j, double dx, double dy, double dz,
+            double r2) {
+          if (!std::isfinite(dx) || !std::isfinite(dy) || !std::isfinite(dz)) {
+            throw std::invalid_argument(
+                "StillingerWeberSi: non-finite position");
           }
+          if (!(r2 > 0.0) || r2 >= cut2) {
+            return;
+          }
+          const double r = std::sqrt(r2);
+          const PairTerm t = pairTerm(r);
+          if (!t.live) {
+            return;
+          }
+          nb.push_back(Bond{static_cast<int>(j), -dx, -dy, -dz, r, t.gexp,
+                            t.dgdr});
         });
-    streamed.use_stored = false;
-    chosen = &streamed;
-  } else {
-    chosen = &nlist::orderedPairs(positions, box, n_atoms, cut, neighbors);
-  }
-  const nlist::NeighborList &pairs = *chosen;
-  if (pairs.use_stored) {
-    for (std::size_t p = 0; p < pairs.lo.size(); ++p) {
-      consider(pairs.lo[p], pairs.hi[p], pairs.dx[p], pairs.dy[p], pairs.dz[p]);
-    }
-  } else {
-    for (std::size_t p = 0; p < pairs.lo.size(); ++p) {
-      const int i = pairs.lo[p];
-      const int j = pairs.hi[p];
-      double dx = positions[3 * j] - positions[3 * i];
-      double dy = positions[3 * j + 1] - positions[3 * i + 1];
-      double dz = positions[3 * j + 2] - positions[3 * i + 2];
-      if (ortho) {
-        foldOrtho(dx, dy, dz, lx, ly, lz);
-      } else {
-        image.fold(dx, dy, dz);
+    std::sort(nb.begin(), nb.end(), [](const Bond &a, const Bond &b) {
+      return a.j < b.j;
+    });
+  };
+  auto pairForces = [&](int i, const std::vector<Bond> &nb, double *force,
+                        double &local_e) {
+    for (const Bond &bj : nb) {
+      if (bj.j <= i) {
+        continue;
       }
-      consider(i, j, dx, dy, dz);
+      const PairTerm t = pairTerm(bj.r);
+      if (!t.live) {
+        continue;
+      }
+      local_e += kEpsilon * t.f2;
+      const double inv_r = 1.0 / bj.r;
+      const double sx = scale * t.dedr * bj.x * inv_r;
+      const double sy = scale * t.dedr * bj.y * inv_r;
+      const double sz = scale * t.dedr * bj.z * inv_r;
+      force[3 * i] += sx;
+      force[3 * i + 1] += sy;
+      force[3 * i + 2] += sz;
+      force[3 * bj.j] -= sx;
+      force[3 * bj.j + 1] -= sy;
+      force[3 * bj.j + 2] -= sz;
     }
-  }
+  };
 
   const int nt = nlist::threadsRequested();
   if (nt == 1) {
+  std::vector<Bond> nb;
   for (int i = 0; i < n; ++i) {
-    const std::vector<Bond> &nb = sc.rows[static_cast<std::size_t>(i)];
+    load(i, nb);
+    pairForces(i, nb, acc, *energy);
     const int m = static_cast<int>(nb.size());
     for (int a = 0; a < m; ++a) {
       const Bond &bj = nb[static_cast<std::size_t>(a)];
@@ -347,8 +289,10 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
       const auto range = nlist::partition(n, t, nt);
       double *local = owned.data() + static_cast<std::size_t>(t) * n3;
       double local_e = 0.0;
+      std::vector<Bond> nb;
   for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
-    const std::vector<Bond> &nb = sc.rows[static_cast<std::size_t>(i)];
+    load(i, nb);
+    pairForces(i, nb, local, local_e);
     const int m = static_cast<int>(nb.size());
     for (int a = 0; a < m; ++a) {
       const Bond &bj = nb[static_cast<std::size_t>(a)];

@@ -57,8 +57,8 @@ public:
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
-  /// Stream walks cells without a stored pair list. Auto and Stored keep
-  /// the historical ordered walk, which is what one thread matches bit for bit.
+  /// Auto, Stored and Stream all use the shared neighbour layer. One
+  /// thread agrees with the old ordered walk to within 1e-12.
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
   /**

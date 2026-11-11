@@ -12,11 +12,12 @@
 #include "rgpot/Tersoff/TersoffSiC.hpp"
 
 #include "rgpot/ParamHash.hpp"
-#include "rgpot/nlist/MinimumImage.hpp"
 #include "rgpot/nlist/Neighbours.hpp"
 #include "rgpot/stress.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -49,7 +50,6 @@ struct Bond {
 };
 
 struct Scratch {
-  std::vector<std::vector<Bond>> rows;
   std::vector<int> kind;
 };
 
@@ -132,37 +132,6 @@ void radial(const TersoffSiC::Pair &p, double r, Bond &b) {
   b.df_r = -p.lambda1 * b.f_r;
   b.f_a = -p.big_b * e2;
   b.df_a = -p.lambda2 * b.f_a;
-}
-
-bool orthogonal(const double *box, double &lx, double &ly, double &lz) {
-  if (box[1] != 0.0 || box[2] != 0.0 || box[3] != 0.0 || box[5] != 0.0 ||
-      box[6] != 0.0 || box[7] != 0.0) {
-    return false;
-  }
-  lx = box[0];
-  ly = box[4];
-  lz = box[8];
-  return lx > 0.0 && ly > 0.0 && lz > 0.0 && std::isfinite(lx) &&
-         std::isfinite(ly) && std::isfinite(lz);
-}
-
-void foldOrtho(double &dx, double &dy, double &dz, double lx, double ly,
-               double lz) {
-  dx -= lx * std::round(dx / lx);
-  dy -= ly * std::round(dy / ly);
-  dz -= lz * std::round(dz / lz);
-}
-
-void resetRows(Scratch &s, std::size_t n) {
-  if (s.rows.size() < n) {
-    s.rows.resize(n);
-  }
-  for (std::size_t i = 0; i < n; ++i) {
-    s.rows[i].clear();
-    if (s.rows[i].capacity() < 32) {
-      s.rows[i].reserve(32);
-    }
-  }
 }
 
 double cosine(const Bond &a, const Bond &b) {
@@ -287,17 +256,7 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
     return;
   }
 
-  double lx = 0.0;
-  double ly = 0.0;
-  double lz = 0.0;
-  const bool ortho = orthogonal(box, lx, ly, lz);
-  nlist::MinimumImage image;
-  if (!ortho) {
-    image = nlist::MinimumImage(box, {true, true, true});
-  }
-
   Scratch &sc = scratch();
-  resetRows(sc, n_atoms);
   sc.kind.resize(n_atoms);
   for (std::size_t i = 0; i < n_atoms; ++i) {
     sc.kind[i] = kindOf(atomic_numbers[i]);
@@ -305,75 +264,57 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
   const int n = static_cast<int>(n_atoms);
   const double cut2 = kMaxCut * kMaxCut;
 
-  auto consider = [&](int i, int j, double dx, double dy, double dz) {
-    const double r2 = dx * dx + dy * dy + dz * dz;
-    if (!(r2 > 0.0) || r2 >= cut2) {
-      return;
-    }
-    const double r = std::sqrt(r2);
-    const Pair &pij = m_pair[sc.kind[static_cast<std::size_t>(i)]]
-                            [sc.kind[static_cast<std::size_t>(j)]];
-    if (r >= pij.rout) {
-      return;
-    }
-    Bond forth{j, dx, dy, dz, r, 0, 0, 0, 0, 0, 0};
-    radial(pij, r, forth);
-    Bond back{i,         -dx,       -dy,       -dz,        r,         forth.fc,
-              forth.dfc, forth.f_r, forth.f_a, forth.df_r, forth.df_a};
-    sc.rows[static_cast<std::size_t>(i)].push_back(forth);
-    sc.rows[static_cast<std::size_t>(j)].push_back(back);
-  };
+  nlist::Spec spec;
+  spec.cutoff = kMaxCut;
+  spec.skin = (neighbors != nullptr && neighbors->skin > 0.0)
+                  ? neighbors->skin
+                  : (mode_ == nlist::Mode::Stream ? 0.0 : kMaxCut / 5.0);
+  spec.image = nlist::Image::Round;
+  spec.mode = mode_;
+  spec.periodic = {true, true, true};
+  const auto before = neighbours_.builds();
+  neighbours_.update(positions, n_atoms, box, spec);
+  if (neighbors != nullptr && neighbors->skin > 0.0 &&
+      (neighbours_.builds() != before || !neighbors->built)) {
+    neighbors->ref.assign(positions, positions + 3 * n_atoms);
+    std::memcpy(neighbors->box, box, 9 * sizeof(double));
+    neighbors->n = n_atoms;
+    neighbors->cutoff = kMaxCut;
+    neighbors->skin_used = neighbors->skin;
+    neighbors->built = true;
+  }
 
-  nlist::NeighborList streamed;
-  const nlist::NeighborList *chosen = nullptr;
-  if (mode_ != nlist::Mode::Auto) {
-    nlist::Spec spec;
-    spec.cutoff = kMaxCut;
-    spec.skin = mode_ == nlist::Mode::Stored ? kMaxCut / 5.0 : 0.0;
-    spec.image = nlist::Image::Round;
-    spec.mode = mode_;
-    spec.periodic = {true, true, true};
-    neighbours_.update(positions, n_atoms, box, spec);
-    const double cut2 = kMaxCut * kMaxCut;
+  const int *kind = sc.kind.data();
+  auto load = [&](int i, std::vector<Bond> &nb) {
+    nb.clear();
+    const int ki = kind[i];
     neighbours_.forDirected(
-        0, static_cast<std::int64_t>(n_atoms),
-        [&](std::int32_t i, std::int32_t j, double, double, double, double r2) {
-          if (i < j && r2 > 0.0 && r2 < cut2) {
-            streamed.lo.push_back(i);
-            streamed.hi.push_back(j);
+        i, static_cast<std::int64_t>(i) + 1,
+        [&](std::int32_t, std::int32_t j, double dx, double dy, double dz,
+            double r2) {
+          if (!(r2 > 0.0) || r2 >= cut2) {
+            return;
           }
+          const double r = std::sqrt(r2);
+          const Pair &pij = m_pair[ki][kind[j]];
+          if (r >= pij.rout) {
+            return;
+          }
+          Bond forth{static_cast<int>(j), -dx, -dy, -dz, r, 0, 0, 0, 0, 0, 0};
+          radial(pij, r, forth);
+          nb.push_back(forth);
         });
-    streamed.use_stored = false;
-    chosen = &streamed;
-  } else {
-    chosen = &nlist::orderedPairs(positions, box, n_atoms, kMaxCut, neighbors);
-  }
-  const nlist::NeighborList &pairs = *chosen;
-  if (pairs.use_stored) {
-    for (std::size_t p = 0; p < pairs.lo.size(); ++p) {
-      consider(pairs.lo[p], pairs.hi[p], pairs.dx[p], pairs.dy[p], pairs.dz[p]);
-    }
-  } else {
-    for (std::size_t p = 0; p < pairs.lo.size(); ++p) {
-      const int i = pairs.lo[p];
-      const int j = pairs.hi[p];
-      double dx = positions[3 * j] - positions[3 * i];
-      double dy = positions[3 * j + 1] - positions[3 * i + 1];
-      double dz = positions[3 * j + 2] - positions[3 * i + 2];
-      if (ortho) {
-        foldOrtho(dx, dy, dz, lx, ly, lz);
-      } else {
-        image.fold(dx, dy, dz);
-      }
-      consider(i, j, dx, dy, dz);
-    }
-  }
+    std::sort(nb.begin(), nb.end(), [](const Bond &a, const Bond &b) {
+      return a.j < b.j;
+    });
+  };
 
   const int nt = nlist::threadsRequested();
   if (nt == 1) {
+  std::vector<Bond> nb;
   for (int i = 0; i < n; ++i) {
-    const Species &sp = m_species[sc.kind[static_cast<std::size_t>(i)]];
-    const std::vector<Bond> &nb = sc.rows[static_cast<std::size_t>(i)];
+    load(i, nb);
+    const Species &sp = m_species[kind[i]];
     const int m = static_cast<int>(nb.size());
     for (int a = 0; a < m; ++a) {
       const Bond &bj = nb[static_cast<std::size_t>(a)];
@@ -474,9 +415,10 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
       double *local = owned.data() + static_cast<std::size_t>(t) * n3;
       double local_e = 0.0;
       double *local_strain = strain == nullptr ? nullptr : vir.data() + static_cast<std::size_t>(t) * 6;
+      std::vector<Bond> nb;
       for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
-    const Species &sp = m_species[sc.kind[static_cast<std::size_t>(i)]];
-    const std::vector<Bond> &nb = sc.rows[static_cast<std::size_t>(i)];
+    load(i, nb);
+    const Species &sp = m_species[kind[i]];
     const int m = static_cast<int>(nb.size());
     for (int a = 0; a < m; ++a) {
       const Bond &bj = nb[static_cast<std::size_t>(a)];
