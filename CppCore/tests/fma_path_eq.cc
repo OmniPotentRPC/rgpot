@@ -166,6 +166,48 @@ int rowAgainstPairs() {
   return bad;
 }
 
+// A target("fma") clone fuses a*b+c unless contraction is turned off inside
+// the function. clang ignores optimize("-ffp-contract=off"); the pragma is
+// the switch it honours. gcc contracts inside target("fma") unless the
+// optimize attribute says otherwise. The two results differ, so a build that
+// stops splitting the paths fails this check.
+#if defined(__clang__)
+__attribute__((target("fma"), noinline))
+double fma_probe_contracted(double a, double b, double c) {
+#pragma clang fp contract(fast)
+  return a * b + c;
+}
+__attribute__((target("fma"), noinline))
+double fma_probe_separated(double a, double b, double c) {
+#pragma clang fp contract(off)
+  return a * b + c;
+}
+#else
+__attribute__((target("fma"), optimize("-ffp-contract=fast"), noinline))
+double fma_probe_contracted(double a, double b, double c) {
+  return a * b + c;
+}
+__attribute__((target("fma"), optimize("-ffp-contract=off"), noinline))
+double fma_probe_separated(double a, double b, double c) {
+  return a * b + c;
+}
+#endif
+
+int contractionStillSplits() {
+  // Volatile, so the call is not folded in this translation unit, which is
+  // built with contraction off. The difference has to come from the callee.
+  volatile double a = 0x1.0000000000001p+0;
+  volatile double b = 0x1.0000000000011p+0;
+  volatile double c = -1.0;
+  const double contracted = fma_probe_contracted(a, b, c);
+  const double separated = fma_probe_separated(a, b, c);
+  if (contracted == separated) {
+    std::cerr << "FMA clone did not split contraction from a separate mul/add\n";
+    return 1;
+  }
+  return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -175,7 +217,7 @@ int main(int argc, char **argv) {
                 rgpot::simd::detail::fma_hw_active() ? 1 : 0);
     return 0;
   }
-  int fail = rowAgainstPairs();
+  int fail = rowAgainstPairs() + contractionStillSplits();
   const bool hw = rgpot::simd::detail::fma_hw_active();
 #if defined(__unix__) || defined(__APPLE__)
   setenv("RGPOT_FMA", "software", 1);

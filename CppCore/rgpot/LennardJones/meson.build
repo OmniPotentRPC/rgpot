@@ -4,7 +4,7 @@ lennard_jones = static_library(
     'LJPot.cc',
     'LJClusterPot.cc',
     dependencies: _deps,
-    cpp_args: _args,
+    cpp_args: _args + _fp_contract_off,
     include_directories: ['../../'],
     pic: true,
     install: false,

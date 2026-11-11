@@ -208,11 +208,15 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     set_source_files_properties(
       CppCore/rgpot/nlist/MinimumImage.cpp CppCore/rgpot/simd/exact_fma_hw.cc
       CppCore/rgpot/simd/exp.cc CppCore/rgpot/Morse/MorsePot.cc
+      CppCore/rgpot/LennardJones/LJPot.cc
+      CppCore/rgpot/LennardJones/LJClusterPot.cc
       PROPERTIES COMPILE_OPTIONS "/fp:precise")
   else()
     set_source_files_properties(
       CppCore/rgpot/nlist/MinimumImage.cpp CppCore/rgpot/simd/exact_fma_hw.cc
       CppCore/rgpot/simd/exp.cc CppCore/rgpot/Morse/MorsePot.cc
+      CppCore/rgpot/LennardJones/LJPot.cc
+      CppCore/rgpot/LennardJones/LJClusterPot.cc
       PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
     # Value-safe: lets the exp clamps if-convert and sqrt use sqrtpd, so
     # the exp and Morse row loops vectorise, also at -O2. Each flag is kept

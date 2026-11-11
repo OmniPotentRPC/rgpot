@@ -51,6 +51,14 @@
 #else
 #define RGPOT_PL_INLINE inline
 #endif
+// clang ignores optimize("-ffp-contract=off") on a target("fma") clone, and
+// that clone can then fuse a*b+c that the baseline compile cannot. The pragma
+// is what keeps the clone on the same rounding as the software path.
+#if defined(__clang__)
+#define RGPOT_PL_NO_CONTRACT _Pragma("clang fp contract(off)")
+#else
+#define RGPOT_PL_NO_CONTRACT
+#endif
 #if defined(__GNUC__) && defined(__x86_64__) && !defined(__FMA__)
 #define RGPOT_PL_FMA_DISPATCH 1
 // The loops must inline into the target("fma") clone to get vfmadd.
@@ -341,6 +349,7 @@ private:
   __attribute__((target("fma"), optimize("-ffp-contract=off"), noinline))
   double accumulateHw(const double *R, double *F, Kernel &kernel,
                       Observer &observe) const {
+    RGPOT_PL_NO_CONTRACT
     return accumulateFold<true>(R, F, kernel, observe);
   }
 #endif
@@ -370,6 +379,7 @@ private:
   [[nodiscard]] RGPOT_PL_LOOP double
   accumulateImpl(const double *R, double *F, Kernel &kernel,
                  Observer &observe) const {
+    RGPOT_PL_NO_CONTRACT
     const double cutoff2 = opt_.cutoff * opt_.cutoff;
     const Fold fold = makeFold();
     double energy = 0.0;
@@ -416,6 +426,7 @@ private:
   [[nodiscard]] RGPOT_PL_LOOP double
   accumulateRows(const double *R, double *F, Kernel &kernel,
                  Observer &observe) const {
+    RGPOT_PL_NO_CONTRACT
     const double cutoff2 = opt_.cutoff * opt_.cutoff;
     const Fold fold = makeFold();
     std::size_t widest = 0;
