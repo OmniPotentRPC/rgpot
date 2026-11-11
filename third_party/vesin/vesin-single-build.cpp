@@ -1165,6 +1165,11 @@ void vesin::cpu::cell_list_neighbors(
     auto initial_capacity = std::max(capacity, raw_neighbors.length);
     auto neighbors = GrowableNeighborList{raw_neighbors, initial_capacity, options};
     neighbors.reset();
+    // One reservation avoids a doubling copy of the pair buffer.
+    const size_t guess = n_points * (options.full ? 96 : 48);
+    if (neighbors.capacity < guess) {
+        neighbors.grow(guess);
+    }
 
     auto thread_count = std::max<size_t>(1, static_cast<size_t>(options.n_threads));
     thread_count = std::min(thread_count, std::max<size_t>(1, n_points));
@@ -1555,6 +1560,10 @@ void CellList::foreach_atom(ThreadPool& thread_pool, size_t n_threads, size_t n_
         CellShift shift{};
     };
     auto loc = std::vector<Loc>(n_points);
+    // Cell order keeps the 27-cell stencil hot. Atom-index order jumps
+    // across the box and misses once the cell grid leaves cache.
+    auto spatial = std::vector<size_t>();
+    spatial.reserve(n_points);
     for (size_t z = 0; z < cells_shape_[2]; z++) {
         for (size_t y = 0; y < cells_shape_[1]; y++) {
             for (size_t x = 0; x < cells_shape_[0]; x++) {
@@ -1569,12 +1578,14 @@ void CellList::foreach_atom(ThreadPool& thread_pool, size_t n_threads, size_t n_
                         static_cast<int32_t>(z),
                         point.shift,
                     };
+                    spatial.push_back(point.index);
                 }
             }
         }
     }
 
-    thread_pool.run(n_threads, n_points, [&](size_t atom_i, size_t thread_id) {
+    thread_pool.run(n_threads, spatial.size(), [&](size_t task_i, size_t thread_id) {
+        const size_t atom_i = spatial[task_i];
         const auto cell_i_x = loc[atom_i].x;
         const auto cell_i_y = loc[atom_i].y;
         const auto cell_i_z = loc[atom_i].z;
@@ -2087,33 +2098,139 @@ void cpu::VerletList::filter(
 
     // The cached list is an over-complete Verlet candidate list. Each call
     // filters candidates with the exact cutoff and requested shift/vector outputs.
-    for (size_t k = 0; k < candidates_.length; k++) {
-        size_t i = candidates_.pairs[k][0];
-        size_t j = candidates_.pairs[k][1];
+    const size_t n_cand = candidates_.length;
+    size_t thread_count = 1;
+    if (options.n_threads > 1 && n_cand > 1) {
+        thread_count = static_cast<size_t>(options.n_threads);
+        if (thread_count > n_cand) {
+            thread_count = n_cand;
+        }
+    }
 
-        auto shift = CellShift(candidates_.shifts[k]);
+    auto accept = [&](size_t k, size_t& i, size_t& j, CellShift& shift, Vector& vec, double& dist_sq) {
+        i = candidates_.pairs[k][0];
+        j = candidates_.pairs[k][1];
+        shift = CellShift(candidates_.shifts[k]);
+        vec = points[j] - points[i] + shift.cartesian(box);
+        dist_sq = vec.dot(vec);
+        return dist_sq < cutoff_sq;
+    };
 
-        auto vec = points[j] - points[i] + shift.cartesian(box);
-        double dist_sq = vec.dot(vec);
-
-        if (dist_sq < cutoff_sq) {
+    if (thread_count <= 1) {
+        for (size_t k = 0; k < n_cand; k++) {
+            size_t i = 0;
+            size_t j = 0;
+            CellShift shift;
+            Vector vec;
+            double dist_sq = 0.0;
+            if (!accept(k, i, j, shift, vec, dist_sq)) {
+                continue;
+            }
             auto idx = growable.length();
             growable.set_pair(idx, i, j);
-
             if (options.return_shifts) {
                 growable.set_shift(idx, shift);
             }
-
             if (options.return_distances) {
                 growable.set_distance(idx, std::sqrt(dist_sq));
             }
-
             if (options.return_vectors) {
                 growable.set_vector(idx, vec);
             }
-
             growable.increment_length();
         }
+    } else {
+        struct Part {
+            std::vector<size_t> first;
+            std::vector<size_t> second;
+            std::vector<int32_t> s0;
+            std::vector<int32_t> s1;
+            std::vector<int32_t> s2;
+            std::vector<double> distance;
+            std::vector<double> vx;
+            std::vector<double> vy;
+            std::vector<double> vz;
+        };
+        auto parts = std::vector<Part>(thread_count);
+        auto& pool = global_thread_pool();
+        pool.run(thread_count, thread_count, [&](size_t task_i, size_t) {
+            const size_t begin = task_i * n_cand / thread_count;
+            const size_t end = (task_i + 1) * n_cand / thread_count;
+            auto& part = parts[task_i];
+            const size_t span = end - begin;
+            part.first.reserve(span);
+            part.second.reserve(span);
+            if (options.return_shifts) {
+                part.s0.reserve(span);
+                part.s1.reserve(span);
+                part.s2.reserve(span);
+            }
+            if (options.return_distances) {
+                part.distance.reserve(span);
+            }
+            if (options.return_vectors) {
+                part.vx.reserve(span);
+                part.vy.reserve(span);
+                part.vz.reserve(span);
+            }
+            for (size_t k = begin; k < end; k++) {
+                size_t i = 0;
+                size_t j = 0;
+                CellShift shift;
+                Vector vec;
+                double dist_sq = 0.0;
+                if (!accept(k, i, j, shift, vec, dist_sq)) {
+                    continue;
+                }
+                part.first.push_back(i);
+                part.second.push_back(j);
+                if (options.return_shifts) {
+                    part.s0.push_back(shift[0]);
+                    part.s1.push_back(shift[1]);
+                    part.s2.push_back(shift[2]);
+                }
+                if (options.return_distances) {
+                    part.distance.push_back(std::sqrt(dist_sq));
+                }
+                if (options.return_vectors) {
+                    part.vx.push_back(vec[0]);
+                    part.vy.push_back(vec[1]);
+                    part.vz.push_back(vec[2]);
+                }
+            }
+        });
+
+        // Prefix sums keep the serial order: chunk 0, then chunk 1, and so on.
+        size_t total = 0;
+        auto offsets = std::vector<size_t>(thread_count, 0);
+        for (size_t t = 0; t < thread_count; t++) {
+            offsets[t] = total;
+            total += parts[t].first.size();
+        }
+        if (total > growable.capacity) {
+            growable.grow(total);
+        }
+        for (size_t t = 0; t < thread_count; t++) {
+            const auto& part = parts[t];
+            for (size_t i = 0; i < part.first.size(); i++) {
+                const size_t idx = offsets[t] + i;
+                growable.set_pair(idx, part.first[i], part.second[i]);
+                if (options.return_shifts) {
+                    neighbors.shifts[idx][0] = part.s0[i];
+                    neighbors.shifts[idx][1] = part.s1[i];
+                    neighbors.shifts[idx][2] = part.s2[i];
+                }
+                if (options.return_distances) {
+                    neighbors.distances[idx] = part.distance[i];
+                }
+                if (options.return_vectors) {
+                    neighbors.vectors[idx][0] = part.vx[i];
+                    neighbors.vectors[idx][1] = part.vy[i];
+                    neighbors.vectors[idx][2] = part.vz[i];
+                }
+            }
+        }
+        neighbors.length = total;
     }
 
     if (options.sorted) {
