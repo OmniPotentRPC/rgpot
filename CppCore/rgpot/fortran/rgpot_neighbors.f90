@@ -49,10 +49,15 @@ module rgpot_neighbors
       real(wp), private :: skin = -1.0_wp
       !> Builder kept across calls. Reused while atoms stay within half the skin.
       type(c_ptr), private :: builder = c_null_ptr
+      !> When true, build keeps the cell bins and load asks for one atom.
+      logical :: streaming = .false.
    contains
       procedure :: build => neighbor_table_build
       procedure :: count_for => neighbor_table_count_for
       procedure :: release => neighbor_table_release
+      procedure :: load => neighbor_load
+      procedure :: set_stream => neighbor_table_set_stream
+      procedure :: pair_slots => neighbor_table_slots
    end type neighbor_table_t
 
    interface
@@ -93,6 +98,33 @@ module rgpot_neighbors
          integer(c_int32_t), value :: code
          type(c_ptr) :: rgpot_nlist_strerror
       end function rgpot_nlist_strerror
+
+      function rgpot_nlist_fortran_stream(list, positions, natoms, box9, cutoff, periodic) &
+         bind(C, name="rgpot_nlist_fortran_stream")
+         import :: c_ptr, c_double, c_size_t, c_int32_t
+         implicit none
+         type(c_ptr), value :: list
+         real(c_double), intent(in) :: positions(*)
+         integer(c_size_t), value :: natoms
+         real(c_double), intent(in) :: box9(*)
+         real(c_double), value :: cutoff
+         integer(c_int32_t), intent(in) :: periodic(*)
+         integer(c_int32_t) :: rgpot_nlist_fortran_stream
+      end function rgpot_nlist_fortran_stream
+
+      function rgpot_nlist_fortran_atom(list, atom, idx, vector, distance, cap, count) &
+         bind(C, name="rgpot_nlist_fortran_atom")
+         import :: c_ptr, c_double, c_size_t, c_int32_t
+         implicit none
+         type(c_ptr), value :: list
+         integer(c_int32_t), value :: atom
+         type(c_ptr), value :: idx
+         type(c_ptr), value :: vector
+         type(c_ptr), value :: distance
+         integer(c_size_t), value :: cap
+         integer(c_size_t), intent(out) :: count
+         integer(c_int32_t) :: rgpot_nlist_fortran_atom
+      end function rgpot_nlist_fortran_atom
    end interface
 
 contains
@@ -152,6 +184,21 @@ contains
       end if
 
       natoms_c = int(natoms, c_size_t)
+      if (self%streaming) then
+         rc = rgpot_nlist_fortran_stream(self%builder, positions, natoms_c, cell, &
+                                         real(cutoff, c_double), pbc)
+         if (rc /= 0_c_int32_t) then
+            status = int(rc)
+            msg = rgpot_nlist_strerror(rc)
+            errmsg = "rgpot_neighbors: "//c_string(msg)
+            return
+         end if
+         self%natoms = natoms
+         self%cutoff = cutoff
+         if (allocated(self%idx)) deallocate (self%idx, self%vec, self%dist)
+         if (allocated(self%row)) deallocate (self%row)
+         return
+      end if
       needed = 0_c_size_t
       rc = rgpot_nlist_fortran_build(self%builder, positions, natoms_c, cell, &
                                      real(cutoff, c_double), real(use_skin, c_double), pbc, &
@@ -249,6 +296,100 @@ contains
       self%cutoff = -1.0_wp
       self%skin = -1.0_wp
    end subroutine neighbor_table_release
+
+   !> Ask the next build to stream (`enabled`) or to store the table.
+   subroutine neighbor_table_set_stream(self, enabled)
+      class(neighbor_table_t), intent(inout) :: self
+      logical, intent(in) :: enabled
+
+      self%streaming = enabled
+   end subroutine neighbor_table_set_stream
+
+   !> Stored pair count. Zero while streaming, because no index is kept.
+   function neighbor_table_slots(self) result(n)
+      class(neighbor_table_t), intent(in) :: self
+      integer(lp) :: n
+
+      n = 0_lp
+      if (self%streaming .or. .not. allocated(self%row)) return
+      if (self%natoms < 1_ip) return
+      n = int(self%row(self%natoms + 1_ip) - 1_ip, lp)
+   end function neighbor_table_slots
+
+   !> Neighbours of atom `i` (one-based), partner index then geometry.
+   !!
+   !! A stored table copies its row. A stream asks the shared bins and
+   !! does not keep the row afterwards.
+   subroutine neighbor_load(self, atom, idx, vec, dist, n)
+      class(neighbor_table_t), intent(in) :: self
+      integer(ip), intent(in) :: atom
+      integer(ip), allocatable, intent(inout), target :: idx(:)
+      real(wp), allocatable, intent(inout), target :: vec(:, :)
+      real(wp), allocatable, intent(inout), target :: dist(:)
+      integer(ip), intent(out) :: n
+
+      integer(c_int32_t) :: rc
+      integer(c_size_t) :: needed, cap
+      integer(ip) :: s, slot
+      integer :: have
+
+      n = 0_ip
+      if (atom < 1_ip .or. atom > self%natoms) return
+
+      if (.not. self%streaming) then
+         if (.not. allocated(self%row)) return
+         n = self%row(atom + 1_ip) - self%row(atom)
+         call grow_load(idx, vec, dist, n)
+         do s = 1_ip, n
+            slot = self%row(atom) + s - 1_ip
+            idx(s) = self%idx(slot)
+            vec(:, s) = self%vec(:, slot)
+            dist(s) = self%dist(slot)
+         end do
+         return
+      end if
+
+      needed = 0_c_size_t
+      rc = rgpot_nlist_fortran_atom(self%builder, int(atom - 1_ip, c_int32_t), &
+                                    c_null_ptr, c_null_ptr, c_null_ptr, 0_c_size_t, needed)
+      if (rc /= 0_c_int32_t) then
+         n = 0_ip
+         return
+      end if
+      n = int(needed, ip)
+      call grow_load(idx, vec, dist, n)
+      if (n == 0_ip) return
+      cap = int(n, c_size_t)
+      have = size(idx)
+      if (have < n) return
+      rc = rgpot_nlist_fortran_atom(self%builder, int(atom - 1_ip, c_int32_t), &
+                                    c_loc(idx), c_loc(vec), c_loc(dist), cap, needed)
+      if (rc /= 0_c_int32_t) then
+         n = 0_ip
+         return
+      end if
+      ! The C walk is zero-based. The stored table is one-based.
+      do s = 1_ip, n
+         idx(s) = idx(s) + 1_ip
+      end do
+   end subroutine neighbor_load
+
+   subroutine grow_load(idx, vec, dist, n)
+      integer(ip), allocatable, intent(inout) :: idx(:)
+      real(wp), allocatable, intent(inout) :: vec(:, :)
+      real(wp), allocatable, intent(inout) :: dist(:)
+      integer(ip), intent(in) :: n
+
+      integer(ip) :: need
+
+      need = max(n, 1_ip)
+      if (allocated(idx)) then
+         if (size(idx) < need) deallocate (idx, vec, dist)
+      end if
+      if (.not. allocated(idx)) then
+         allocate (idx(need), vec(3, need), dist(need))
+      end if
+   end subroutine grow_load
 
    !> Number of neighbours atom `i` owns.
    pure function neighbor_table_count_for(self, i) result(n)

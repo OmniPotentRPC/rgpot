@@ -12,7 +12,7 @@
 module rgpot_workspace
    use, intrinsic :: iso_c_binding, only: c_ptr, c_loc, c_f_pointer, &
                                           c_associated, c_null_ptr, c_char, &
-                                          c_int, c_null_char
+                                          c_int, c_int64_t, c_null_char
    use rgpot_neighbors, only: neighbor_table_t
    implicit none
    private
@@ -20,6 +20,7 @@ module rgpot_workspace
    public :: rgpot_workspace_t, workspace_from_c, ws_set_error, ws_clear_error
    public :: rgpot_fortran_workspace_new, rgpot_fortran_workspace_free
    public :: rgpot_fortran_workspace_error
+   public :: rgpot_fortran_workspace_set_mode, rgpot_fortran_workspace_slots
 
    integer, parameter :: max_len = 512
 
@@ -83,6 +84,33 @@ contains
       end do
       if (buffer_len > 0_c_int) buffer(int(written) + 1) = c_null_char
    end function rgpot_fortran_workspace_error
+
+   !> `mode` 2 streams. Any other value stores the neighbour table.
+   subroutine rgpot_fortran_workspace_set_mode(handle, mode) &
+      bind(c, name="rgpot_fortran_workspace_set_mode")
+      type(c_ptr), value :: handle
+      integer(c_int), value, intent(in) :: mode
+
+      type(rgpot_workspace_t), pointer :: ws
+
+      if (.not. c_associated(handle)) return
+      call c_f_pointer(handle, ws)
+      call ws%table%set_stream(mode == 2_c_int)
+   end subroutine rgpot_fortran_workspace_set_mode
+
+   !> Stored pairs from the last build. Zero when the table is streaming.
+   function rgpot_fortran_workspace_slots(handle) result(n) &
+      bind(c, name="rgpot_fortran_workspace_slots")
+      type(c_ptr), value :: handle
+      integer(c_int64_t) :: n
+
+      type(rgpot_workspace_t), pointer :: ws
+
+      n = 0_c_int64_t
+      if (.not. c_associated(handle)) return
+      call c_f_pointer(handle, ws)
+      n = int(ws%table%pair_slots(), c_int64_t)
+   end function rgpot_fortran_workspace_slots
 
    !> The workspace behind a C handle (unassociated for NULL).
    function workspace_from_c(handle) result(ws)
