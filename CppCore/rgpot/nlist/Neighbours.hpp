@@ -59,6 +59,23 @@ struct Range {
 /// that figure is not reported.
 [[nodiscard]] std::uint64_t availableBytes();
 
+/// True when every atom has moved by at most half of `skin` from
+/// `reference`. Skin 0 is true only when the coordinates match. The same
+/// test decides `Builder::update`'s reused flag.
+[[nodiscard]] inline bool withinSkin(const double *reference, const double *current,
+                                     std::size_t n, double skin) noexcept {
+  const double limit2 = 0.25 * skin * skin;
+  for (std::size_t a = 0; a < n; ++a) {
+    const double dx = current[3 * a] - reference[3 * a];
+    const double dy = current[3 * a + 1] - reference[3 * a + 1];
+    const double dz = current[3 * a + 2] - reference[3 * a + 2];
+    if (dx * dx + dy * dy + dz * dz > limit2) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /// Candidate pairs around one configuration.
 ///
 /// A stored list is reused while every atom has moved by at most half
@@ -71,6 +88,9 @@ public:
 
   [[nodiscard]] Mode mode() const noexcept { return mode_; }
   [[nodiscard]] bool streaming() const noexcept { return streaming_; }
+  /// True when the last update kept the previous list. The displacement
+  /// test is `withinSkin`, the same one `Builder::update` uses.
+  [[nodiscard]] bool reused() const noexcept { return reused_; }
   [[nodiscard]] std::uint64_t builds() const noexcept { return builds_; }
   [[nodiscard]] std::size_t slots() const noexcept { return nbr_.size(); }
   [[nodiscard]] const std::vector<std::int32_t> &offsets() const noexcept {
@@ -161,6 +181,15 @@ public:
     }
   }
 
+  /// Neighbours of one atom from the bins already built. Does not allocate
+  /// the tile stencil. A three-body stream uses this so the scratch is one
+  /// atom, not every bond.
+  template <typename Fn>
+  void forAtom(std::int32_t i, Fn fn) const {
+    walkCellsScattered(static_cast<std::int64_t>(i), static_cast<std::int64_t>(i) + 1, fn,
+                       false, search_ * search_);
+  }
+
 private:
   struct SpecKey {
     double cutoff = 0;
@@ -201,11 +230,24 @@ private:
 
   template <typename Loop>
   bool fastTiles(Loop &&loop) const {
-    if (use_general_ || image_ != Image::Round || n_ < 2) {
+    // Half is the same orthorhombic minimum image once coordinates sit in
+    // the cell. A sheared box stays on the scattered walk.
+    if (use_general_ || (image_ != Image::Round && image_ != Image::Half) || n_ < 2) {
       return false;
     }
     const auto ncells = static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_) *
                         static_cast<std::size_t>(nz_);
+    // The tile stencil is one slot per cell per neighbour cell. When that
+    // scratch is larger than the pair index it replaces, the scattered
+    // walk is the smaller stream.
+    const double per_cell =
+        static_cast<double>(n_) / static_cast<double>(ncells > 0 ? ncells : 1);
+    const double list_bytes = per_cell * 27.0 * static_cast<double>(n_) * 4.0;
+    const double tile_bytes = static_cast<double>(ncells) * 27.0 * 32.0 +
+                              static_cast<double>(n_) * 32.0;
+    if (tile_bytes > list_bytes) {
+      return false;
+    }
     const bool cell_shift = (!periodic_[0] || nx_ >= 5) && (!periodic_[1] || ny_ >= 5) &&
                             (!periodic_[2] || nz_ >= 5);
     struct Nbor {
@@ -465,6 +507,7 @@ private:
   bool use_general_ = false;
   bool streaming_ = true;
   bool built_ = false;
+  bool reused_ = false;
   std::size_t n_ = 0;
   std::uint64_t builds_ = 0;
   const double *xyz_ = nullptr;

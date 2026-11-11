@@ -19,6 +19,7 @@
 #include "rgpot/PairSwitch.hpp"
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/Potential.hpp"
+#include "rgpot/nlist/Neighbours.hpp"
 #include "rgpot/pot_caps.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
@@ -99,6 +100,13 @@ public:
    */
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
+  void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
+
+  [[nodiscard]] bool listReused() const noexcept { return neighbours_.reused(); }
+
+  /// Zero when the call used the direct all-pairs kernel or a stream.
+  [[nodiscard]] std::size_t retainedPairs() const noexcept { return retained_; }
+
 private:
   /// Bump when the kernel numerics change, so stale cache entries die.
   static constexpr uint64_t kKernelVersion = 2;
@@ -110,6 +118,9 @@ private:
   LJClusterConfig m_config;
   QuinticSwitch m_switch{}; //!< In use when m_config.switch_width != 0.
   uint64_t m_paramsKey{0};
+  nlist::Mode mode_ = nlist::Mode::Auto;
+  mutable nlist::Neighbours neighbours_;
+  mutable std::size_t retained_ = 0;
 };
 
 } // namespace rgpot

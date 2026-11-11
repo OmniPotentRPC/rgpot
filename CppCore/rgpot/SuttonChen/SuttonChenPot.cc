@@ -142,8 +142,9 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
   std::vector<double> rho(n_size, 0.0);
   double epair = 0.0;
-  nlist::updateCells(neighbours_, R, n_size, box_use, cutoff, cutoff / 5.0,
-                     nlist::Image::Round, mode_, periodic);
+  const double skin = mode_ == nlist::Mode::Stream ? 0.0 : cutoff / 5.0;
+  nlist::updateCells(neighbours_, R, n_size, box_use, cutoff, skin, nlist::Image::Round,
+                     mode_, periodic);
   const int nt = nlist::threadsRequested();
   const bool stream = neighbours_.streaming();
   auto pair_term = [&](double r2, double &phi, double &rep) {
@@ -175,38 +176,21 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
           });
     }
   } else {
-    std::vector<nlist::Range> parts(static_cast<std::size_t>(nt));
-    for (int t = 0; t < nt; ++t) {
-      parts[static_cast<std::size_t>(t)] = nlist::partition(n_atoms, t, nt);
-    }
     std::vector<double> partial(static_cast<std::size_t>(nt), 0.0);
-#if defined(_OPENMP)
-#pragma omp parallel num_threads(nt)
-#endif
-    {
-#if defined(_OPENMP)
-      const int t = omp_get_thread_num();
-#else
-      const int t = 0;
-#endif
-      const auto range = parts[static_cast<std::size_t>(t)];
-      double local = 0.0;
-      nlist::visitDirected(neighbours_, 
-          range.begin, range.end,
-          [&](int32_t i, int32_t j, double, double, double, double r2) {
-            if (!(r2 > 0.0) || r2 > cutoff2) {
-              return;
-            }
-            double phi = 0.0;
-            double rep = 0.0;
-            pair_term(r2, phi, rep);
-            rho[static_cast<std::size_t>(i)] += phi;
-            if (j > i) {
-              local += epsilon * rep;
-            }
-          });
-      partial[static_cast<std::size_t>(t)] = local;
-    }
+    // One shared tile. A visit from each thread would build it again.
+    neighbours_.forCellTeam(
+        false, nt, [&](int t, int32_t i, int32_t j, double, double, double, double r2) {
+          if (!(r2 > 0.0) || r2 > cutoff2) {
+            return;
+          }
+          double phi = 0.0;
+          double rep = 0.0;
+          pair_term(r2, phi, rep);
+          rho[static_cast<std::size_t>(i)] += phi;
+          if (j > i) {
+            partial[static_cast<std::size_t>(t)] += epsilon * rep;
+          }
+        });
     for (double part : partial) {
       epair += part;
     }
@@ -270,37 +254,15 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
           });
     }
   } else {
-    std::vector<nlist::Range> parts(static_cast<std::size_t>(nt));
-    for (int t = 0; t < nt; ++t) {
-      parts[static_cast<std::size_t>(t)] = nlist::partition(n_atoms, t, nt);
-    }
-    std::vector<double> owned(static_cast<std::size_t>(nt) * n_size * 3, 0.0);
     std::vector<double> vir(static_cast<std::size_t>(nt) * 6, 0.0);
-#if defined(_OPENMP)
-#pragma omp parallel num_threads(nt)
-#endif
-    {
-#if defined(_OPENMP)
-      const int t = omp_get_thread_num();
-#else
-      const int t = 0;
-#endif
-      const auto range = parts[static_cast<std::size_t>(t)];
-      double *force = owned.data() + static_cast<std::size_t>(t) * n_size * 3;
-      double *virial = cfg.stress ? vir.data() + static_cast<std::size_t>(t) * 6
-                                 : nullptr;
-      nlist::visitDirected(neighbours_, 
-          range.begin, range.end,
-          [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
-            apply(i, j, dx, dy, dz, r2, force, virial, false);
-          });
-    }
-    for (int t = 0; t < nt; ++t) {
-      const double *force = owned.data() + static_cast<std::size_t>(t) * n_size * 3;
-      for (std::size_t k = 0; k < n_size * 3; ++k) {
-        F[k] += force[k];
-      }
-      if (cfg.stress) {
+    // Each atom is central in one cell, so its force is written once.
+    neighbours_.forCellTeam(
+        false, nt, [&](int t, int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
+          double *virial = cfg.stress ? vir.data() + static_cast<std::size_t>(t) * 6 : nullptr;
+          apply(i, j, dx, dy, dz, r2, F, virial, false);
+        });
+    if (cfg.stress) {
+      for (int t = 0; t < nt; ++t) {
         for (int k = 0; k < 6; ++k) {
           strain[k] += vir[static_cast<std::size_t>(t) * 6 + static_cast<std::size_t>(k)];
         }

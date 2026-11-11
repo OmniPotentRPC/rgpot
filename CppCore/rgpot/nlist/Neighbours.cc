@@ -101,16 +101,7 @@ bool Neighbours::reusable(const double *xyz, std::size_t n, const double *box9,
   if (streaming_) {
     return std::memcmp(ref_.data(), xyz, n * 3 * sizeof(double)) == 0;
   }
-  const double limit2 = 0.25 * spec.skin * spec.skin;
-  for (std::size_t a = 0; a < n; ++a) {
-    const double dx = xyz[3 * a] - ref_[3 * a];
-    const double dy = xyz[3 * a + 1] - ref_[3 * a + 1];
-    const double dz = xyz[3 * a + 2] - ref_[3 * a + 2];
-    if (dx * dx + dy * dy + dz * dz > limit2) {
-      return false;
-    }
-  }
-  return true;
+  return withinSkin(ref_.data(), xyz, n, spec.skin);
 }
 
 void Neighbours::buildCells(const double *xyz, std::size_t n) {
@@ -270,8 +261,10 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
                         const Spec &spec) {
   xyz_ = xyz;
   if (reusable(xyz, n, box9, spec)) {
+    reused_ = true;
     return;
   }
+  reused_ = false;
   n_ = n;
   std::memcpy(box_, box9, sizeof(box_));
   len_[0] = box9[0];
@@ -324,7 +317,12 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
   const auto index_bytes = static_cast<std::uint64_t>(sizeof(std::int32_t));
   const bool fits = avail > 0 && bound <= avail / index_bytes &&
                     bound <= static_cast<std::uint64_t>(0x7fffffff);
-  const bool want_store = spec.mode != Mode::Stream && fits;
+  // The stream keeps the bins. The list adds one index per candidate.
+  // Auto stores only when that index fits. It does not pick a stream
+  // whose scratch would exceed the list: the tile walk refuses a stencil
+  // larger than the index, so the stream stays the smaller footprint.
+  const bool want_store = spec.mode == Mode::Stored ? fits
+                          : spec.mode == Mode::Auto && fits;
   if (want_store) {
     buildStored(xyz, n);
     streaming_ = false;

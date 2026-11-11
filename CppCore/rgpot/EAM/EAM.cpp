@@ -99,9 +99,11 @@ void EAM::buildList(long N) {
     widest = std::max(widest, el_params[i].r_cut);
   }
   double box9[9] = {box_len_[0], 0, 0, 0, box_len_[1], 0, 0, 0, box_len_[2]};
+  // A stream does not reuse bins unless the coordinates match, so the
+  // skin only adds pairs the kernel then rejects.
+  const double skin = mode_ == rgpot::nlist::Mode::Stream ? 0.0 : kEamSkinOverCutoff * widest;
   rgpot::nlist::updateCells(neighbours_, wrapped_.data(), static_cast<std::size_t>(N), box9,
-                            widest, kEamSkinOverCutoff * widest, rgpot::nlist::Image::Half,
-                            mode_, {true, true, true});
+                            widest, skin, rgpot::nlist::Image::Half, mode_, {true, true, true});
   n_atoms_ = N;
   if (neighbours_.streaming()) {
     rev_.clear();
@@ -219,8 +221,8 @@ void EAM::accumulate(long i, const int *atomicNrs, double *F, double &U,
       const double expArg = std::exp(-epar.alphaM * (r - epar.Rm));
       const double d = 1.0 - expArg;
       const double phi_r = epar.Dm * d * d - epar.Dm;
-      // mag_force = d(phi)/dr with a minus: phi = Dm (1 - exp(-a(r-Rm)))^2 - Dm,
-      // so d(phi)/dr = -mag_force. The force on i is -(d phi/dr) (r_i-r_j)/r.
+      // d(phi)/dr = -mag_force, so the force on i is
+      // -(d phi/dr) (r_i - r_j) / r = mag_force (r_i - r_j) / r.
       const double mag_force = 2.0 * epar.alphaM * epar.Dm * d * (d - 1.0);
       const double fcomp_scale = mag_force * invR;
       F[3 * i] += fcomp_scale * dx;
@@ -410,8 +412,9 @@ void EAM::evaluateStoredParallel(long N, const int *atomicNrs, double *F,
         if (fnei == 0.0 && fcomp == 0.0) {
           continue;
         }
-        // Embedding stays -dF*fnei*dx. The pair term flips, so fcomp is
-        // subtracted here and the following minus restores +fcomp*dx.
+        // fcomp is (d phi/dr) with a minus already in mag_force. The
+        // neighbour's pair force is +fcomp * dx, while the embedding
+        // term stays -dF * fnei * dx.
         const double scale = dF_[static_cast<std::size_t>(j)] * fnei - fcomp;
         const double dx = gdx_[s];
         fx -= scale * dx;
@@ -435,99 +438,129 @@ void EAM::evaluateStoredParallel(long N, const int *atomicNrs, double *F,
   *U = energy;
 }
 
-void EAM::evaluateStreamParallel(long N, const int *atomicNrs, double *F,
-                                  double *U) {
+void EAM::evaluateDensityStream(long N, const int *atomicNrs, double *F,
+                                 double *U) {
+  // Two fused walks. The first keeps only the density. The second reads
+  // that density. No partner index is stored between them.
+  js_.clear();
   const int nt = threads_used_;
   ensureParts(N, nt);
-  const auto n3 = static_cast<std::size_t>(3 * N);
-  std::vector<double> owned(static_cast<std::size_t>(nt) * n3, 0.0);
-  std::vector<double> energies(static_cast<std::size_t>(nt), 0.0);
-#if defined(_OPENMP)
-#pragma omp parallel num_threads(nt)
-#endif
-  {
-#if defined(_OPENMP)
-    const int t = omp_get_thread_num();
-#else
-    const int t = 0;
-#endif
-    const auto range = parts_[static_cast<std::size_t>(t)];
-    std::vector<std::int32_t> ids;
-    std::vector<Delta> deltas;
-    double energy = 0.0;
-    double *local = owned.data() + static_cast<std::size_t>(t) * n3;
-    for (std::int64_t i = range.begin; i < range.end; ++i) {
-      ids.clear();
-      rgpot::nlist::visitDirected(neighbours_, 
-          i, i + 1,
-          [&](std::int32_t, std::int32_t j, double, double, double, double) {
-            ids.push_back(j);
-          });
-      std::sort(ids.begin(), ids.end());
-      accumulate(static_cast<long>(i), atomicNrs, local, energy, deltas,
-                 ids.data(), static_cast<long>(ids.size()));
-    }
-    energies[static_cast<std::size_t>(t)] = energy;
+  std::vector<element_parameters> ep;
+  ep.reserve(static_cast<std::size_t>(N));
+  for (long i = 0; i < N; ++i) {
+    ep.push_back(get_element_parameters(atomicNrs[i]));
   }
-  for (int t = 0; t < nt; ++t) {
-    const double *local = owned.data() + static_cast<std::size_t>(t) * n3;
-    for (std::size_t k = 0; k < n3; ++k) {
-      F[k] += local[k];
-    }
-    *U += energies[static_cast<std::size_t>(t)];
+  rho_.assign(static_cast<std::size_t>(N), 0.0);
+  std::vector<double> pair_energy(static_cast<std::size_t>(nt), 0.0);
+  auto density_of = [](const element_parameters &epar, double r, double r2, double &rho,
+                       double &fscale) {
+    const double r6 = r2 * r2 * r2;
+    const double exp_b1 = std::exp(-epar.beta1 * r);
+    const double exp_b2 = std::exp(-2.0 * epar.beta2 * r);
+    const double rho_pair = exp_b1 + 512.0 * exp_b2;
+    rho = r6 * rho_pair;
+    const double r5 = r2 * r2 * r;
+    const double mag = 6.0 * r5 * rho_pair +
+                       r6 * (-epar.beta1 * exp_b1 - 1024.0 * epar.beta2 * exp_b2);
+    fscale = -mag / r;
+  };
+  neighbours_.forCellTeam(
+      false, nt, [&](int t, std::int32_t i, std::int32_t j, double, double, double, double r2) {
+        if (!(r2 > 0.0)) {
+          return;
+        }
+        const element_parameters &epar = ep[static_cast<std::size_t>(i)];
+        if (r2 > epar.r_cut * epar.r_cut) {
+          return;
+        }
+        const double r = std::sqrt(r2);
+        double rho = 0.0;
+        double fscale = 0.0;
+        density_of(epar, r, r2, rho, fscale);
+        rho_[static_cast<std::size_t>(i)] += rho;
+        if (j > i) {
+          const double expArg = std::exp(-epar.alphaM * (r - epar.Rm));
+          const double d = 1.0 - expArg;
+          pair_energy[static_cast<std::size_t>(t)] += epar.Dm * d * d - epar.Dm;
+        }
+      });
+  dF_.resize(static_cast<std::size_t>(N));
+  double embedded = 0.0;
+  for (long i = 0; i < N; ++i) {
+    const element_parameters &epar = ep[static_cast<std::size_t>(i)];
+    const double dens = rho_[static_cast<std::size_t>(i)];
+    dF_[static_cast<std::size_t>(i)] = embedding_force(epar.func_coeff, dens);
+    embedded += embedding_function(epar.func_coeff, dens);
   }
+  auto force_on = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                      double r2) {
+    if (!(r2 > 0.0)) {
+      return;
+    }
+    const double r = std::sqrt(r2);
+    const element_parameters &mine = ep[static_cast<std::size_t>(i)];
+    const element_parameters &other = ep[static_cast<std::size_t>(j)];
+    double fx = 0.0;
+    double fy = 0.0;
+    double fz = 0.0;
+    if (r2 <= mine.r_cut * mine.r_cut) {
+      double rho = 0.0;
+      double fscale = 0.0;
+      density_of(mine, r, r2, rho, fscale);
+      const double scale = dF_[static_cast<std::size_t>(i)] * fscale;
+      fx -= scale * dx;
+      fy -= scale * dy;
+      fz -= scale * dz;
+    }
+    if (r2 <= other.r_cut * other.r_cut) {
+      double rho = 0.0;
+      double fscale = 0.0;
+      density_of(other, r, r2, rho, fscale);
+      const double scale = dF_[static_cast<std::size_t>(j)] * fscale;
+      fx -= scale * dx;
+      fy -= scale * dy;
+      fz -= scale * dz;
+    }
+    const bool lower_is_i = i < j;
+    const element_parameters &owner = lower_is_i ? mine : other;
+    if (r2 <= owner.r_cut * owner.r_cut) {
+      const double expArg = std::exp(-owner.alphaM * (r - owner.Rm));
+      const double d = 1.0 - expArg;
+      const double fcomp = 2.0 * owner.alphaM * owner.Dm * d * (d - 1.0) / r;
+      fx += fcomp * dx;
+      fy += fcomp * dy;
+      fz += fcomp * dz;
+    }
+    F[3 * i] += fx;
+    F[3 * i + 1] += fy;
+    F[3 * i + 2] += fz;
+  };
+  neighbours_.forCellTeam(false, nt,
+                          [&](int, std::int32_t i, std::int32_t j, double dx, double dy,
+                              double dz, double r2) { force_on(i, j, dx, dy, dz, r2); });
+  double energy = embedded;
+  for (double part : pair_energy) {
+    energy += part;
+  }
+  *U = energy;
 }
 
 void EAM::evaluate(long N, const int *atomicNrs, double *F, double *U) {
   const int nt = threadsRequested();
   threads_used_ = nt;
+  if (neighbours_.streaming()) {
+    evaluateDensityStream(N, atomicNrs, F, U);
+    return;
+  }
   if (nt == 1) {
     double energy = 0.0;
     for (long i = 0; i < N; ++i) {
-      if (neighbours_.streaming()) {
-        js_.clear();
-        rgpot::nlist::visitDirected(neighbours_, 
-            i, i + 1,
-            [&](std::int32_t, std::int32_t j, double, double, double, double) {
-              js_.push_back(j);
-            });
-        std::sort(js_.begin(), js_.end());
-      }
-      accumulate(i, atomicNrs, F, energy, deltas_, js_.data(),
-                 static_cast<long>(js_.size()));
+      accumulate(i, atomicNrs, F, energy, deltas_, nullptr, 0);
     }
     *U = energy;
     return;
   }
-#if defined(_OPENMP)
-  if (!neighbours_.streaming()) {
-    evaluateStoredParallel(N, atomicNrs, F, U);
-    return;
-  }
-#endif
-#if defined(_OPENMP)
-  // Same one-walk arithmetic as one thread. Each thread keeps the
-  // neighbour forces in a private buffer, so the embedding term does
-  // not need a second exponential pass.
-  evaluateStreamParallel(N, atomicNrs, F, U);
-  return;
-#else
-  double energy = 0.0;
-  for (long i = 0; i < N; ++i) {
-    if (neighbours_.streaming()) {
-      js_.clear();
-      rgpot::nlist::visitDirected(neighbours_, 
-          i, i + 1,
-          [&](std::int32_t, std::int32_t j, double, double, double, double) {
-            js_.push_back(j);
-          });
-      std::sort(js_.begin(), js_.end());
-    }
-    accumulate(i, atomicNrs, F, energy, deltas_, js_.data(),
-               static_cast<long>(js_.size()));
-  }
-  *U = energy;
-#endif
+  evaluateStoredParallel(N, atomicNrs, F, U);
 }
 void EAM::force(long N, const double *R, const int *atomicNrs, double *F,
                 double *U, double *variance, const double *fullbox) {

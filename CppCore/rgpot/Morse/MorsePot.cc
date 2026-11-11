@@ -10,7 +10,9 @@
  */
 
 // clang-format off
+#include <array>
 #include <cmath>
+#include <vector>
 // clang-format on
 
 #include "rgpot/Morse/MorsePot.hpp"
@@ -18,46 +20,22 @@
 #include "rgpot/simd/exp.hpp"
 #include "rgpot/stress.hpp"
 
-#include <cmath>
+#if defined(_OPENMP)
+#include <omp.h>
+#endif
 
 namespace rgpot {
-namespace {
-
-double roundVisit(double t) {
-  if (!std::isfinite(t)) {
-    return 0.0;
-  }
-  const double shifted = t + std::copysign(0.5, t);
-  if (!std::isfinite(shifted) || shifted >= 9223372036854775808.0 ||
-      shifted <= -9223372036854775808.0) {
-    return 0.0;
-  }
-  return static_cast<double>(static_cast<long long>(shifted));
-}
-
-void separate(const simd::PairView &v, std::size_t i, std::size_t j, double &dx,
-              double &dy, double &dz) {
-  dx = v.R[3 * i] - v.R[3 * j];
-  dy = v.R[3 * i + 1] - v.R[3 * j + 1];
-  dz = v.R[3 * i + 2] - v.R[3 * j + 2];
-  if (v.fold == 1) {
-    dx -= v.w[0] * roundVisit(dx * v.inv[0]);
-    dy -= v.w[1] * roundVisit(dy * v.inv[1]);
-    dz -= v.w[2] * roundVisit(dz * v.inv[2]);
-  } else if (v.fold == 3 && v.general != nullptr) {
-    static_cast<const nlist::MinimumImage *>(v.general)->fold(dx, dy, dz);
-  }
-}
-
-} // namespace
 
 /**
  * @class MorsePot
  * @details
  *
- * Pairwise interactions within the cutoff radius, minimum image convention
- * on an orthogonal box. Pairs come from the shared neighbour layer, so
- * repeated evaluations on nearby geometries reuse a Verlet list.
+ * Pairwise interactions within the cutoff radius. The minimum image
+ * comes from the shared neighbour layer, on an orthogonal or sheared
+ * box. The pair term runs during the cell walk. A stream does not copy
+ * a half-list. A stored list keeps candidates out to the cutoff plus a
+ * skin of one fifth of the cutoff, and a later call inside half that
+ * skin reuses them. The distance filter uses the positions of this call.
  *
  * With ``MorseConfig::switch_width`` set, each pair term is the unshifted
  * Morse energy times the C^2 quintic switch of PairSwitch.hpp; otherwise
@@ -84,67 +62,71 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
     return;
   }
 
-  simd::PairSpec opt;
-  opt.cutoff = cuttOffR;
   const auto n_atoms = static_cast<std::size_t>(N);
-  nlist::updateCells(neighbours_, R, n_atoms, box, opt.cutoff, opt.skin,
-                     nlist::Image::Round, mode_, opt.periodic);
-  const bool reuse_pairs = have_cache_ && !neighbours_.streaming() &&
-                           neighbours_.builds() == list_stamp_ &&
-                           cached_.view.n == n_atoms;
-  if (reuse_pairs) {
-    cached_.view.R = R;
-  } else {
-    simd::fill_view(cached_, R, n_atoms, box, opt, mode_, &neighbours_);
-    have_cache_ = !neighbours_.streaming();
-    list_stamp_ = neighbours_.builds();
-  }
-
-  const simd::PairView &view = cached_.view;
+  const double skin = mode_ == nlist::Mode::Stream ? 0.0 : neighbourSkin(cuttOffR);
+  const std::array<bool, 3> periodic{{true, true, true}};
+  nlist::updateCells(neighbours_, R, n_atoms, box, cuttOffR, skin, nlist::Image::Round,
+                     mode_, periodic);
   const double cutoff2 = cuttOffR * cuttOffR;
   const double twoDeA = 2.0 * De * a;
   const bool switched = m_config.switch_width != 0.0;
-  double energy = 0.0;
-  for (std::size_t i = 0; i < view.n; ++i) {
-    double fxi = 0.0;
-    double fyi = 0.0;
-    double fzi = 0.0;
-    for (std::int32_t p = view.rows[i]; p < view.rows[i + 1]; ++p) {
-      const auto j =
-          static_cast<std::size_t>(view.nbr[static_cast<std::size_t>(p)]);
-      double dx = 0.0;
-      double dy = 0.0;
-      double dz = 0.0;
-      separate(view, i, j, dx, dy, dz);
-      const double r2 = dx * dx + dy * dy + dz * dz;
-      if (!(r2 > 0.0) || r2 > cutoff2) {
-        continue;
-      }
-      const double r = std::sqrt(r2);
-      const double d = 1.0 - simd::exp_fixed(-a * (r - re));
-      const double bare = De * d * d - De;
-      double pair_e = 0.0;
-      double fscale = 0.0;
-      if (switched) {
-        const auto s = m_switch(r);
-        pair_e = bare * s.s;
-        fscale = (twoDeA * d * (d - 1.0) * s.s - bare * s.dsdr) / r;
-      } else {
-        pair_e = bare - energyCutoff;
-        fscale = twoDeA * d * (d - 1.0) / r;
-      }
-      energy += pair_e;
-      fxi += fscale * dx;
-      fyi += fscale * dy;
-      fzi += fscale * dz;
-      F[3 * j] -= fscale * dx;
-      F[3 * j + 1] -= fscale * dy;
-      F[3 * j + 2] -= fscale * dz;
-      accumulatePairStrain(strain, fscale, dx, dy, dz);
+  const int nt = nlist::threadsRequested();
+  auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                    double r2, double *force, double &energy, double *virial) {
+    if (!(i < j) || !(r2 > 0.0) || r2 > cutoff2) {
+      return;
     }
-    F[3 * i] += fxi;
-    F[3 * i + 1] += fyi;
-    F[3 * i + 2] += fzi;
+    const double r = std::sqrt(r2);
+    const double d = 1.0 - simd::exp_fixed(-a * (r - re));
+    const double bare = De * d * d - De;
+    double pair_e = 0.0;
+    double fscale = 0.0;
+    if (switched) {
+      const auto s = m_switch(r);
+      pair_e = bare * s.s;
+      fscale = (twoDeA * d * (d - 1.0) * s.s - bare * s.dsdr) / r;
+    } else {
+      pair_e = bare - energyCutoff;
+      fscale = twoDeA * d * (d - 1.0) / r;
+    }
+    energy += pair_e;
+    const double fx = fscale * dx;
+    const double fy = fscale * dy;
+    const double fz = fscale * dz;
+    force[3 * i] += fx;
+    force[3 * i + 1] += fy;
+    force[3 * i + 2] += fz;
+    force[3 * j] -= fx;
+    force[3 * j + 1] -= fy;
+    force[3 * j + 2] -= fz;
+    accumulatePairStrain(virial, fscale, dx, dy, dz);
+  };
+  double energy = 0.0;
+  if (nt <= 1) {
+    nlist::visitHalf(neighbours_, 0, N,
+                     [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                         double r2) { accept(i, j, dx, dy, dz, r2, F, energy, strain); });
+  } else {
+    std::vector<double> owned(static_cast<std::size_t>(nt) * n_atoms * 3, 0.0);
+    std::vector<double> partial(static_cast<std::size_t>(nt), 0.0);
+    std::vector<double> virial(static_cast<std::size_t>(nt) * 6, 0.0);
+    neighbours_.forCellTeam(
+        true, nt, [&](int t, std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                      double r2) {
+          double *local = owned.data() + static_cast<std::size_t>(t) * n_atoms * 3;
+          double *st = virial.data() + static_cast<std::size_t>(t) * 6;
+          accept(i, j, dx, dy, dz, r2, local, partial[static_cast<std::size_t>(t)], st);
+        });
+    for (int t = 0; t < nt; ++t) {
+      energy += partial[static_cast<std::size_t>(t)];
+      const double *local = owned.data() + static_cast<std::size_t>(t) * n_atoms * 3;
+      for (std::size_t k = 0; k < n_atoms * 3; ++k) {
+        F[k] += local[k];
+      }
+      for (int c = 0; c < 6; ++c) {
+        strain[c] += virial[static_cast<std::size_t>(t) * 6 + static_cast<std::size_t>(c)];
+      }
+    }
   }
   *U = energy;
   publishCauchyStress(out, strain, volume);

@@ -75,6 +75,13 @@ public:
     return neighbours_.slots();
   }
 
+  /// True when the last build kept the Verlet list.
+  [[nodiscard]] bool listReused() const noexcept { return neighbours_.reused(); }
+
+  /// Partner indices retained between the density pass and the force pass.
+  /// A density-only stream keeps none.
+  [[nodiscard]] std::size_t streamPartners() const noexcept { return js_.size(); }
+
   /// Ask for a stored list or a streaming walk. Auto stores when the
   /// candidate index array fits in the memory reported as available.
   void setNeighbourMode(rgpot::nlist::Mode mode) noexcept { mode_ = mode; }
@@ -143,8 +150,8 @@ private:
   void evaluate(long N, const int *atomicNrs, double *F, double *U);
   void evaluateStoredParallel(long N, const int *atomicNrs, double *F,
                               double *U);
-  void evaluateStreamParallel(long N, const int *atomicNrs, double *F,
-                              double *U);
+  void evaluateDensityStream(long N, const int *atomicNrs, double *F,
+                             double *U);
   void accumulate(long i, const int *atomicNrs, double *F, double &U,
                   std::vector<Delta> &deltas, const std::int32_t *stream_ids,
                   long stream_n) const;

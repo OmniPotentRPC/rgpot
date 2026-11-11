@@ -281,28 +281,30 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
   }
 
   const int *kind = sc.kind.data();
+  // One atom of bonds. The stream reads the bins, so the scratch is that
+  // atom. The stored call reads the index row.
   auto load = [&](int i, std::vector<Bond> &nb) {
     nb.clear();
     const int ki = kind[i];
-    nlist::visitDirected(neighbours_, 
-        i, static_cast<std::int64_t>(i) + 1,
-        [&](std::int32_t, std::int32_t j, double dx, double dy, double dz,
-            double r2) {
-          if (!(r2 > 0.0) || r2 >= cut2) {
-            return;
-          }
-          const double r = std::sqrt(r2);
-          const Pair &pij = m_pair[ki][kind[j]];
-          if (r >= pij.rout) {
-            return;
-          }
-          Bond forth{static_cast<int>(j), -dx, -dy, -dz, r, 0, 0, 0, 0, 0, 0};
-          radial(pij, r, forth);
-          nb.push_back(forth);
-        });
-    std::sort(nb.begin(), nb.end(), [](const Bond &a, const Bond &b) {
-      return a.j < b.j;
-    });
+    auto take = [&](std::int32_t, std::int32_t j, double dx, double dy, double dz, double r2) {
+      if (!(r2 > 0.0) || r2 >= cut2) {
+        return;
+      }
+      const double r = std::sqrt(r2);
+      const Pair &pij = m_pair[ki][kind[j]];
+      if (r >= pij.rout) {
+        return;
+      }
+      Bond forth{static_cast<int>(j), -dx, -dy, -dz, r, 0, 0, 0, 0, 0, 0};
+      radial(pij, r, forth);
+      nb.push_back(forth);
+    };
+    if (neighbours_.streaming()) {
+      neighbours_.forAtom(static_cast<std::int32_t>(i), take);
+    } else {
+      nlist::visitDirected(neighbours_, i, static_cast<std::int64_t>(i) + 1, take);
+    }
+    std::sort(nb.begin(), nb.end(), [](const Bond &a, const Bond &b) { return a.j < b.j; });
   };
 
   const int nt = nlist::threadsRequested();

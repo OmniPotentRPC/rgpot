@@ -12,14 +12,20 @@
 
 // clang-format off
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iterator>
 #include <stdexcept>
+#include <vector>
 // clang-format on
 
 #include "rgpot/ZBL/ZBLPot.hpp"
-#include "rgpot/simd/from_cache.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/stress.hpp"
+
+#if defined(_OPENMP)
+#include <omp.h>
+#endif
 
 namespace rgpot {
 
@@ -166,11 +172,10 @@ std::shared_ptr<const ZblTables> ZBLPot::tablesFor(const int *atomicNrs,
  * @class ZBLPot
  * @details
  *
- * Every pair within ``cut_global`` contributes, with vectors taken
- * straight from the coordinates: periodicity is off in all three
- * directions, so the pair scan never folds a separation into the cell.
- * Pairs come from the shared neighbour layer, and the per-species
- * coefficient tables are built once per species set.
+ * Every pair within ``cut_global`` contributes. Periodicity is off, so
+ * the walk does not fold a separation into the cell. The pair term runs
+ * during the shared cell walk. A stream copies no pair index. A stored
+ * list keeps candidates out to the cutoff plus one fifth of the cutoff.
  */
 void ZBLPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const auto N = static_cast<long>(in.nAtoms);
@@ -180,9 +185,6 @@ void ZBLPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   double strain[6] = {};
   const double volume = cellVolume(in.box);
   publishCauchyStress(out, strain, volume);
-  const auto observe = [&](double fscale, double dx, double dy, double dz) {
-    accumulatePairStrain(strain, fscale, dx, dy, dz);
-  };
   *U = 0.0;
   std::fill(F, F + 3 * N, 0.0);
   if (N < 2) {
@@ -203,64 +205,78 @@ void ZBLPot::forceImpl(const ForceInput &in, ForceOut *out) const {
         static_cast<int>(std::distance(tables->z.begin(), it));
   }
 
-  simd::PairSpec opt;
-  opt.cutoff = cut_global;
-  opt.skin = 0.0;
-  opt.periodic = {{false, false, false}};
-
   static constexpr double free_box[9] = {1e6, 0.0, 0.0, 0.0, 1e6,
                                          0.0, 0.0, 0.0, 1e6};
   const bool box_ok = in.box != nullptr && in.box[0] > 0.0 && in.box[4] > 0.0 &&
                       in.box[8] > 0.0;
   const double *box_use = box_ok ? in.box : free_box;
-
-  simd::CachedPairs pairs;
-  simd::fill_view(pairs, R, static_cast<std::size_t>(N), box_use, opt);
-  const simd::PairView &view = pairs.view;
+  const double skin = mode_ == nlist::Mode::Stream ? 0.0 : neighbourSkin(cut_global);
+  const std::array<bool, 3> open{{false, false, false}};
+  nlist::updateCells(neighbours_, R, static_cast<std::size_t>(N), box_use, cut_global, skin,
+                     nlist::Image::Round, mode_, open);
   const double rInner = cut_inner;
   const double rInnerSq = cut_inner_sq;
   const int *types = typeIdx.data();
   const double cutoff2 = cut_global * cut_global;
-  double energy = 0.0;
-  for (std::size_t i = 0; i < view.n; ++i) {
-    double fxi = 0.0;
-    double fyi = 0.0;
-    double fzi = 0.0;
-    const std::int32_t p0 = view.rows[i];
-    const std::int32_t p1 = view.rows[i + 1];
-    for (std::int32_t p = p0; p < p1; ++p) {
-      const auto j = static_cast<std::size_t>(view.nbr[static_cast<std::size_t>(p)]);
-      const double dx = R[3 * i] - R[3 * j];
-      const double dy = R[3 * i + 1] - R[3 * j + 1];
-      const double dz = R[3 * i + 2] - R[3 * j + 2];
-      const double r2 = dx * dx + dy * dy + dz * dz;
-      if (!(r2 > 0.0) || r2 > cutoff2) {
-        continue;
-      }
-      const auto ti = static_cast<std::size_t>(types[i]);
-      const auto tj = static_cast<std::size_t>(types[j]);
-      const ZblPairCoeffs &coeff = coeffs[ti * nTypes + tj];
-      const double r = std::sqrt(r2);
-      double energy_pair = e_zbl(coeff, r) + coeff.sw5;
-      double dEdr = dzbldr(coeff, r);
-      if (r2 > rInnerSq) {
-        const double t = r - rInner;
-        energy_pair += t * t * t * (coeff.sw3 + coeff.sw4 * t);
-        dEdr += t * t * (coeff.sw1 + coeff.sw2 * t);
-      }
-      const double fscale = -dEdr / r;
-      energy += energy_pair;
-      fxi += fscale * dx;
-      fyi += fscale * dy;
-      fzi += fscale * dz;
-      F[3 * j] -= fscale * dx;
-      F[3 * j + 1] -= fscale * dy;
-      F[3 * j + 2] -= fscale * dz;
-      observe(fscale, dx, dy, dz);
+  const int nt = nlist::threadsRequested();
+  auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                    double r2, double *force, double &energy, double *virial) {
+    if (!(i < j) || !(r2 > 0.0) || r2 > cutoff2) {
+      return;
     }
-    F[3 * i] += fxi;
-    F[3 * i + 1] += fyi;
-    F[3 * i + 2] += fzi;
+    const auto ti = static_cast<std::size_t>(types[i]);
+    const auto tj = static_cast<std::size_t>(types[j]);
+    const ZblPairCoeffs &coeff = coeffs[ti * nTypes + tj];
+    const double r = std::sqrt(r2);
+    double energy_pair = e_zbl(coeff, r) + coeff.sw5;
+    double dEdr = dzbldr(coeff, r);
+    if (r2 > rInnerSq) {
+      const double t = r - rInner;
+      energy_pair += t * t * t * (coeff.sw3 + coeff.sw4 * t);
+      dEdr += t * t * (coeff.sw1 + coeff.sw2 * t);
+    }
+    const double fscale = -dEdr / r;
+    energy += energy_pair;
+    const double fx = fscale * dx;
+    const double fy = fscale * dy;
+    const double fz = fscale * dz;
+    force[3 * i] += fx;
+    force[3 * i + 1] += fy;
+    force[3 * i + 2] += fz;
+    force[3 * j] -= fx;
+    force[3 * j + 1] -= fy;
+    force[3 * j + 2] -= fz;
+    accumulatePairStrain(virial, fscale, dx, dy, dz);
+  };
+  double energy = 0.0;
+  if (nt <= 1) {
+    nlist::visitHalf(neighbours_, 0, N,
+                     [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                         double r2) { accept(i, j, dx, dy, dz, r2, F, energy, strain); });
+  } else {
+    std::vector<double> owned(static_cast<std::size_t>(nt) * static_cast<std::size_t>(N) * 3,
+                              0.0);
+    std::vector<double> partial(static_cast<std::size_t>(nt), 0.0);
+    std::vector<double> virial(static_cast<std::size_t>(nt) * 6, 0.0);
+    neighbours_.forCellTeam(
+        true, nt, [&](int t, std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                      double r2) {
+          double *local =
+              owned.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(N) * 3;
+          double *st = virial.data() + static_cast<std::size_t>(t) * 6;
+          accept(i, j, dx, dy, dz, r2, local, partial[static_cast<std::size_t>(t)], st);
+        });
+    for (int t = 0; t < nt; ++t) {
+      energy += partial[static_cast<std::size_t>(t)];
+      const double *local =
+          owned.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(N) * 3;
+      for (long k = 0; k < 3 * N; ++k) {
+        F[k] += local[k];
+      }
+      for (int c = 0; c < 6; ++c) {
+        strain[c] += virial[static_cast<std::size_t>(t) * 6 + static_cast<std::size_t>(c)];
+      }
+    }
   }
   *U = energy;
   publishCauchyStress(out, strain, volume);
