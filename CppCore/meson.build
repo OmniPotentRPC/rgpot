@@ -673,6 +673,16 @@ if get_option('with_tests')
             override_options: ['cpp_std=c++20'],
         ),
     )
+    test(
+        'UmaCutoffBench',
+        executable(
+            'uma_cutoff_bench',
+            'tests/uma_cutoff_bench.cc',
+            include_directories: ['.'],
+            dependencies: [vesin_dep],
+            override_options: ['cpp_std=c++20'],
+        ),
+    )
     test_deps = _deps + [vesin_dep, fastnlist_dep] + fortran_rt_deps
     if has_metatomic
         test_deps += _mta_engine_deps
