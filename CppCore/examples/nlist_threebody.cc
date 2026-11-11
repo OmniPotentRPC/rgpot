@@ -37,5 +37,25 @@ int main() {
     std::fprintf(stderr, "angle dot %.16g\n", dot);
     return 1;
   }
+  vx.clear();
+  vy.clear();
+  rgpot::nlist::each(pos, 3, box, query,
+                     [&](std::int32_t i, std::int32_t, int, int, int, double x, double y, double,
+                         double) {
+                       if (i != 0) {
+                         return;
+                       }
+                       vx.push_back(x);
+                       vy.push_back(y);
+                     });
+  if (vx.size() != 2) {
+    std::fprintf(stderr, "callback origin has %zu neighbours\n", vx.size());
+    return 1;
+  }
+  const double streamed = vx[0] * vx[1] + vy[0] * vy[1];
+  if (std::abs(streamed) > 1e-12) {
+    std::fprintf(stderr, "callback angle dot %.16g\n", streamed);
+    return 1;
+  }
   return 0;
 }

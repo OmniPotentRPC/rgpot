@@ -12,6 +12,26 @@
 #include <stdint.h>
 #include <stdio.h>
 
+struct Seen {
+  int n;
+  double r;
+};
+
+static void on_pair(void *user, int32_t i, int32_t j, int32_t shift_a, int32_t shift_b,
+                    int32_t shift_c, double x, double y, double z, double dist) {
+  struct Seen *seen = (struct Seen *)user;
+  (void)shift_a;
+  (void)shift_b;
+  (void)shift_c;
+  (void)x;
+  (void)y;
+  (void)z;
+  if (i == 0 && j == 1) {
+    seen->n += 1;
+    seen->r = dist;
+  }
+}
+
 int main(void) {
   const double r = pow(2.0, 1.0 / 6.0);
   const double pos[] = {0, 0, 0, r, 0, 0};
@@ -47,6 +67,12 @@ int main(void) {
   }
   if (fabs(distance - r) > 1e-12) {
     fprintf(stderr, "distance %.16g\n", distance);
+    return 1;
+  }
+  struct Seen seen = {0, 0};
+  rc = rgpot_nlist_each(pos, 2, box, &request, on_pair, &seen);
+  if (rc != RGPOT_NLIST_OK || seen.n != 1 || fabs(seen.r - r) > 1e-12) {
+    fprintf(stderr, "each: %s n %d\n", rgpot_nlist_strerror(rc), seen.n);
     return 1;
   }
   return 0;
