@@ -944,3 +944,24 @@ discarded calls. The stored arm is `updateCells` in `Mode::Stored` and
 
 The checksums agree at each thread count: 328872650.382774,
 328872650.319305 and 328872650.329224.
+
+## Two consumer passes
+
+The first consumers were a C adapter that copies `(first, second, shift)`,
+a pure C pair sum, and a Cap'n Proto client. Three calls were awkward.
+
+- The column struct had no initialiser. A caller who set the pointers and
+  forgot `bytes` got an abi error, the same trap `request` had before
+  `rgpot_nlist_request_init`.
+- A full list was `shape = 0` and `shell = 1`. The wire calls that one
+  field `format`, so the client invented the integer `1`.
+- The adapter probed the length, allocated, then filled. That part is the
+  short-buffer rule and stayed.
+
+`rgpot_nlist_soa_init` sets `bytes`. `rgpot_nlist_request_pairs` sets a
+half or full pair list at one cutoff. `RGPOT_NLIST_FORMAT_HALF`,
+`RGPOT_NLIST_FORMAT_FULL` and `RGPOT_NLIST_FORMAT_CLUSTER` are the wire
+values. The three programs were rewritten against those. The second pass
+still probes then fills. That is one call to learn `needed` and one call
+to write the caller's arrays, which is the overflow rule from the survey,
+not a second convention.

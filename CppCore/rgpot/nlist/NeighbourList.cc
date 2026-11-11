@@ -1617,6 +1617,23 @@ void rgpot_nlist_request_init(rgpot_nlist_request *request) {
   request->want_distances = 1;
 }
 
+void rgpot_nlist_request_pairs(rgpot_nlist_request *request, double cutoff, int full) {
+  if (request == nullptr) {
+    return;
+  }
+  rgpot_nlist_request_init(request);
+  request->cutoff = cutoff;
+  request->shell = full ? RGPOT_NLIST_FORMAT_FULL : RGPOT_NLIST_FORMAT_HALF;
+}
+
+void rgpot_nlist_soa_init(rgpot_nlist_soa *soa) {
+  if (soa == nullptr) {
+    return;
+  }
+  std::memset(soa, 0, sizeof(*soa));
+  soa->bytes = static_cast<uint32_t>(sizeof(*soa));
+}
+
 int32_t rgpot_nlist_build(const double *positions, size_t n, const double *box9,
                           const rgpot_nlist_request *request, rgpot_nlist_soa *out,
                           size_t *count, size_t *needed) {

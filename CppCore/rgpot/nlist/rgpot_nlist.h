@@ -36,6 +36,11 @@ extern "C" {
 
 #define RGPOT_NLIST_ABI 4
 
+/* shell and the Cap'n Proto NeighborRequest.format field. */
+#define RGPOT_NLIST_FORMAT_HALF 0
+#define RGPOT_NLIST_FORMAT_FULL 1
+#define RGPOT_NLIST_FORMAT_CLUSTER 2
+
 enum {
   RGPOT_NLIST_OK = 0,
   RGPOT_NLIST_ERR_ABI = 1,
@@ -105,6 +110,13 @@ const char *rgpot_nlist_strerror(int32_t code);
  * boundaries on every axis, and shifts, vectors and distances.
  * cutoff and skin are left at 0. A null request is ignored. */
 void rgpot_nlist_request_init(rgpot_nlist_request *request);
+
+/* init, then a pair list at cutoff. full is 0 for half and 1 for both
+ * directions. Shifts, vectors and distances stay on. */
+void rgpot_nlist_request_pairs(rgpot_nlist_request *request, double cutoff, int full);
+
+/* Zero a caller-owned column struct and set bytes. */
+void rgpot_nlist_soa_init(rgpot_nlist_soa *soa);
 
 /* Stored fill into caller arrays. *count is the number written.
  * *needed is the full number, which may exceed out->cap. A null out,

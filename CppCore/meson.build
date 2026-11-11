@@ -1828,6 +1828,28 @@ if get_option('with_tests')
         )
     endforeach
     test(
+        'nlist_plain',
+        executable(
+            'nlist_plain',
+            sources: ['examples/nlist_plain.c'],
+            include_directories: _incdirs + ['.'],
+            c_args: _args,
+            link_with: _nlist_link,
+            link_language: 'cpp',
+        ),
+    )
+    test(
+        'nlist_model',
+        executable(
+            'nlist_model',
+            sources: ['examples/nlist_model.c'],
+            include_directories: _incdirs + ['.'],
+            c_args: _args,
+            link_with: _nlist_link,
+            link_language: 'cpp',
+        ),
+    )
+    test(
         'nlist_c',
         executable(
             'nlist_c',
@@ -1868,6 +1890,20 @@ if get_option('with_tests')
             executable(
                 'nlist_stream',
                 sources: ['examples/nlist_stream.cc'],
+                include_directories: _incdirs + ['.'],
+                cpp_args: _args,
+                dependencies: [_capnp_dep, _capnpc_dep],
+                link_with: _nlist_link,
+            ),
+            args: [
+                meson.project_source_root() / 'CppCore' / 'rgpot' / 'rpc' / 'Potentials.capnp',
+            ],
+        )
+        test(
+            'nlist_capnp_client',
+            executable(
+                'nlist_capnp_client',
+                sources: ['examples/nlist_capnp_client.cc'],
                 include_directories: _incdirs + ['.'],
                 cpp_args: _args,
                 dependencies: [_capnp_dep, _capnpc_dep],

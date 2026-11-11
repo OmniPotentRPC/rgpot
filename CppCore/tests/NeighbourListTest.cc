@@ -6,9 +6,12 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <map>
 #include <mutex>
 #include <set>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -787,4 +790,38 @@ TEST_CASE("a sweep serves half and full from one skin", "[nlist][api]") {
   nudged[0] += 1.0;
   sweep.update(nudged.data(), nudged.size() / 3, box, query);
   REQUIRE(sweep.reused() == false);
+}
+
+TEST_CASE("a potential does not build its own neighbour list", "[nlist][api]") {
+  namespace fs = std::filesystem;
+  const fs::path root = fs::path(__FILE__).parent_path().parent_path() / "rgpot";
+  REQUIRE(fs::exists(root));
+  bool saw_shared = false;
+  for (const fs::directory_entry &entry : fs::recursive_directory_iterator(root)) {
+    if (!entry.is_regular_file()) {
+      continue;
+    }
+    const fs::path path = entry.path();
+    const std::string rel = fs::relative(path, root).generic_string();
+    if (rel.rfind("nlist/", 0) == 0) {
+      continue;
+    }
+    const std::string ext = path.extension().string();
+    if (ext != ".h" && ext != ".hpp" && ext != ".cc" && ext != ".cpp" && ext != ".f90") {
+      continue;
+    }
+    std::ifstream in(path);
+    std::stringstream buffer;
+    buffer << in.rdbuf();
+    const std::string text = buffer.str();
+    if (rel == "EMT/Asap/NeighborList.cpp") {
+      REQUIRE(text.find("rgpot::nlist::build") != std::string::npos);
+      saw_shared = true;
+    }
+    INFO(rel);
+    REQUIRE(text.find("class CellList") == std::string::npos);
+    REQUIRE(text.find("MakeNeighborList") == std::string::npos);
+    REQUIRE(text.find("nTotalCells") == std::string::npos);
+  }
+  REQUIRE(saw_shared);
 }
