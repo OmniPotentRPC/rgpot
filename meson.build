@@ -215,28 +215,19 @@ if has_fortran
     elif _fc_id == 'intel-llvm' or _fc_id == 'intel'
         _fc_rt_names = ['ifcoremt']
     endif
-    foreach _n : _fc_rt_names
-        if _fc_rt_dirs.length() > 0
-            _rt = _fc.find_library(_n, dirs: _fc_rt_dirs, required: false)
-        else
-            _rt = _fc.find_library(_n, required: false)
-        endif
-        if _rt.found()
-            fortran_rt_deps += _rt
-            message('fortran runtime: ' + _n)
-            if host_system != 'windows'
-                break
-            endif
-        endif
-    endforeach
-    # A toolchain that ships only the versioned runtime (conda's
-    # libgfortran.so.5 without the libgfortran.so link) is invisible to
-    # find_library; ask the compiler where its runtime lives and link that
-    # file directly. Static consumers of the Fortran kernels otherwise fail
-    # with unresolved _gfortran_* symbols.
-    if fortran_rt_deps.length() == 0 and _fc_id == 'gcc'
+    # librgpot_cuh2 links as C++. find_library('gfortran') often comes back
+    # as a bare -lgfortran, which gfortran's driver searches and clang/c++
+    # does not (Homebrew keeps the dylib off the default link path). Ask
+    # the compiler for the file and pass that path.
+    if _fc_id == 'gcc'
         _fs_rt = import('fs')
-        foreach _cand : ['libgfortran.so', 'libgfortran.so.5', 'libgfortran.a']
+        foreach _cand : [
+            'libgfortran.dylib',
+            'libgfortran.5.dylib',
+            'libgfortran.so',
+            'libgfortran.so.5',
+            'libgfortran.a',
+        ]
             _pf = run_command(
                 _fc.cmd_array() + ['-print-file-name=' + _cand],
                 check: false,
@@ -248,6 +239,47 @@ if has_fortran
                 )
                     fortran_rt_deps += declare_dependency(link_args: [_rt_path])
                     message('fortran runtime (compiler file): ' + _rt_path)
+                    break
+                endif
+            endif
+        endforeach
+        if host_system == 'darwin'
+            foreach _cand : [
+                'libquadmath.dylib',
+                'libquadmath.0.dylib',
+                'libquadmath.so',
+                'libquadmath.a',
+            ]
+                _pf = run_command(
+                    _fc.cmd_array() + ['-print-file-name=' + _cand],
+                    check: false,
+                )
+                if _pf.returncode() == 0
+                    _rt_path = _pf.stdout().strip()
+                    if _rt_path != _cand and _fs_rt.is_absolute(_rt_path) and _fs_rt.exists(
+                        _rt_path,
+                    )
+                        fortran_rt_deps += declare_dependency(
+                            link_args: [_rt_path],
+                        )
+                        message('fortran runtime (compiler file): ' + _rt_path)
+                        break
+                    endif
+                endif
+            endforeach
+        endif
+    endif
+    if fortran_rt_deps.length() == 0
+        foreach _n : _fc_rt_names
+            if _fc_rt_dirs.length() > 0
+                _rt = _fc.find_library(_n, dirs: _fc_rt_dirs, required: false)
+            else
+                _rt = _fc.find_library(_n, required: false)
+            endif
+            if _rt.found()
+                fortran_rt_deps += _rt
+                message('fortran runtime: ' + _n)
+                if host_system != 'windows'
                     break
                 endif
             endif

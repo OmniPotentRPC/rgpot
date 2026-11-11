@@ -39,6 +39,9 @@ if _rpc_stack
                 meson.project_version(),
             ),
         ],
+        # NeighbourList.cc is in rgpot_halfshell. The static archive is
+        # absorbed into the plugin.
+        link_with: [rgpot_halfshell],
         include_directories: ['../../'],
         install: not meson.is_subproject(),
         build_rpath: _engine_build_rpath,
