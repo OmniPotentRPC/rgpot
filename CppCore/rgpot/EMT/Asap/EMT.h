@@ -39,6 +39,12 @@ public:
   /// Check that neighbor lists are up to date, update them if not.
   virtual void CheckNeighborLists();
 
+  /// 0 auto, 1 stored, 2 stream. The next energy call rebuilds.
+  void SetNeighbourMode(int mode);
+
+  /// Stored partner indices. Zero while the list is streaming.
+  int NeighbourSlots() const;
+
   virtual double GetCutoffRadius() const { return rNbCut; }
   virtual double GetLatticeConstant() const;
   virtual int GetNumberOfAtoms() const { return nAtoms; }
@@ -118,6 +124,7 @@ protected:                        // Data
   int nAtoms;                     ///< The number of (real) atoms.
   int nSize;                      ///< Number of atoms including ghost atoms.
   NeighborList *nblist;           ///< The neighborlist object.
+  int neighbourMode_ = 1;         ///< 0 auto, 1 stored, 2 stream.
   EMTParameterProvider *provider; ///< The source of the EMT parameters
   bool ownProvider;               ///< May we delete the provider?
 

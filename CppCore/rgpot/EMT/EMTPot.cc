@@ -2,6 +2,7 @@
 
 #include "Atoms.h"
 #include "EMT.h"
+#include "NeighborList.h"
 #include "EMTRasmussenParameterProvider.h"
 #include "SuperCell.h"
 #include "Vec.h"
@@ -65,9 +66,17 @@ void EMTPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   }
   auto *atoms = static_cast<Atoms *>(m_atoms);
   auto *emt = static_cast<EMT *>(m_emt);
+  int code = 1;
+  if (mode_ == nlist::Mode::Stream) {
+    code = 2;
+  } else if (mode_ == nlist::Mode::Auto) {
+    code = 0;
+  }
+  emt->SetNeighbourMode(code);
   atoms->SetCartesianPositions(reinterpret_cast<Vec *>(pos.data()));
   atoms->SetUnitCell(basis, true);
   out->energy = emt->GetPotentialEnergy();
+  slots_ = emt->NeighbourSlots();
   const Vec *forces = emt->GetCartesianForces();
   std::memcpy(out->F, forces, static_cast<size_t>(n) * sizeof(Vec));
   out->variance = 0.0;

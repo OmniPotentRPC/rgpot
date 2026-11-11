@@ -5,7 +5,6 @@ asap_emt = static_library(
     [
         'Asap/NeighborList.cpp',
         'Asap/GhostAtoms.cpp',
-        'Asap/CellList.cpp',
         'Asap/Vec.cpp',
         'Asap/Atoms.cpp',
         'Asap/Exception.cpp',
@@ -17,6 +16,7 @@ asap_emt = static_library(
         'EMTPot.cc',
     ],
     dependencies: _deps,
+    link_with: rgpot_halfshell,
     cpp_args: _args,
     include_directories: ['../../', 'Asap'],
     pic: true,

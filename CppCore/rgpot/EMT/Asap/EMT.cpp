@@ -364,6 +364,21 @@ double EMT::GetPotentialEnergy() {
   return etot;
 }
 
+void EMT::SetNeighbourMode(int mode) {
+  if (neighbourMode_ == mode) {
+    return;
+  }
+  neighbourMode_ = mode;
+  counters.nblist = -1;
+  if (nblist != nullptr) {
+    nblist->setMode(mode);
+  }
+}
+
+int EMT::NeighbourSlots() const {
+  return nblist == nullptr ? 0 : nblist->slots();
+}
+
 void EMT::CheckNeighborLists() {
   // USETIMER("EMT::CheckNeighborLists");
   DEBUGPRINT;
@@ -386,7 +401,7 @@ void EMT::CheckNeighborLists() {
   } else {
     DEBUGPRINT;
     // First call, create the neighbor list.
-    nblist = new NeighborList(atoms, rNbCut);
+    nblist = new NeighborList(atoms, rNbCut, 0.05, neighbourMode_);
     nAtoms = atoms->GetNumberOfRealAtoms();
     nSize = nAtoms;
     if (ghostatoms)

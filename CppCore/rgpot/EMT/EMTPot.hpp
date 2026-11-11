@@ -10,6 +10,7 @@
 
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/Potential.hpp"
+#include "rgpot/nlist/Neighbours.hpp"
 
 namespace rgpot {
 
@@ -39,12 +40,20 @@ public:
     return m_paramsKey;
   }
 
+  /// Stored Verlet list or a streaming cell walk.
+  void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
+
+  /// Partner indices kept by the last force call. Zero while streaming.
+  [[nodiscard]] int neighbourSlots() const noexcept { return slots_; }
+
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
 private:
   void reset() const;
 
   EMTConfig m_config;
+  nlist::Mode mode_ = nlist::Mode::Stored;
+  mutable int slots_ = 0;
   uint64_t m_paramsKey = 0;
   mutable long m_nAtoms = 0;
   mutable void *m_cell = nullptr;
