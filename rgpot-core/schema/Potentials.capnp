@@ -25,6 +25,8 @@ struct ForceInput {
   charge @6 :Int32 = 0;             # @brief Per-step charge when hasCharge is true.
   hasMultiplicity @7 :Bool = false; # @brief Override NWChemParams.multiplicity for this step.
   multiplicity @8 :Int32 = 1;       # @brief Per-step spin multiplicity when hasMultiplicity is true.
+  # Optional. Old clients leave it unset and no neighbour list is returned.
+  neighbors @9 :NeighborRequest;
 }
 
 # @struct PotentialResult
@@ -59,6 +61,9 @@ struct PotentialResult {
   mdTrajectoryRow @25 :List(Float64); # MD ENERGY row incl. EKINC when MD ran
   mdTrajectoryValid @26 :Bool = false;
   embedMdPropsSkipped @27 :Bool = true; # true when MD/PROP not harvested this eval (honest skip)
+  # Present only when ForceInput.neighbors was set. A stream is one chunk;
+  # more is true when the client should ask again with the same query.
+  neighborList @28 :NeighborList;
 }
 
 # @struct Capabilities
@@ -2615,4 +2620,36 @@ interface Potential {
   # @return The protocol, schema, eindir bridge, DLPack and build identity.
   # buildVersion and buildRevision are empty when the build does not know them.
   getCapabilities @12 () -> (capabilities :Capabilities);
+
+  # One chunk of a neighbour query. The whole list is not required on the wire:
+  # a stream sets NeighborList.more and the client repeats the call.
+  neighbours @13 (fip :ForceInput, request :NeighborRequest) -> (neighbors :NeighborList);
+}
+
+# Neighbour query. format: 0 half, 1 full, 2 cluster of four.
+# cut: 0 strict (distance < cutoff), 1 loose (distance < cutoff + skin).
+# mode: 0 auto, 1 stored, 2 stream.
+struct NeighborRequest {
+  cutoff @0 :Float64;
+  skin @1 :Float64 = 0;
+  format @2 :UInt8 = 0;
+  cut @3 :UInt8 = 0;
+  periodic @4 :List(Bool);
+  shifts @5 :Bool = true;
+  vectors @6 :Bool = true;
+  distances @7 :Bool = true;
+  mode @8 :UInt8 = 1;
+}
+
+# One chunk. first and second have length count. shift has 3*count when
+# shifts were requested, vector has 3*count, distance has count.
+# mask is one byte per pair, 0xff except for a cluster of four.
+struct NeighborList {
+  first @0 :List(Int32);
+  second @1 :List(Int32);
+  shift @2 :List(Int32);
+  vector @3 :List(Float64);
+  distance @4 :List(Float64);
+  mask @5 :List(UInt8);
+  more @6 :Bool = false;
 }
