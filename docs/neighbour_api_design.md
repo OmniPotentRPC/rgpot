@@ -361,3 +361,54 @@ Counted by hand against `rgpot_nlist.h` and `NeighbourList.cc`:
 
 The passes below close those gaps without changing the pair walk the
 kernels use.
+
+## Pass 1: the failure is a sentence, and the C default matches C++
+
+The baseline C call returned 0 for a nonperiodic half list with no
+vectors, because a zeroed struct is mode auto and every flag false.
+`rgpot_nlist_build` returned 1 for an abi mismatch and nothing else.
+`Walk::pull` spun when the destination pointers were null.
+
+After this pass the C caller initialises the request, and a bad value
+is a code with a fixed sentence:
+
+```c
+rgpot_nlist_request request;
+rgpot_nlist_request_init(&request);
+request.cutoff = 2.5;
+size_t count = 0, needed = 0;
+int32_t rc = rgpot_nlist_build(positions, n, box, &request, NULL, 0,
+                               &count, &needed);
+if (rc != RGPOT_NLIST_OK) {
+  fputs(rgpot_nlist_strerror(rc), stderr);
+}
+```
+
+`rgpot_nlist_request_init` sets `bytes` to the compiled size, the abi,
+a half list, a strict cutoff, periodic boundaries, shifts, vectors,
+distances, and a stored list. A zeroed request fails with
+`RGPOT_NLIST_ABI` instead of building the wrong crystal. `format` 9,
+`cut` 3 and `mode` 7 return `RGPOT_NLIST_SHAPE` instead of becoming a
+half list. A negative cutoff returns `RGPOT_NLIST_CUTOFF`. A short
+buffer returns `RGPOT_NLIST_SHORT` and still writes what fit, with
+`needed` set, which is the JAX overflow bit expressed as a code. A
+size probe (`out` null and `cap` 0) stays `RGPOT_NLIST_OK`.
+
+C++ throws `rgpot::nlist::Error`. `code()` is the same integer the C
+ABI returns. `what()` is the sentence. `Builder::update` checks the
+geometry before it clears a table, so a rejected update leaves the
+previous pairs in place. `Walk::pull` throws when `cap > 0` and the
+index pointers are null, and does not advance.
+
+`bytes` is the first field. The library copies
+`min(bytes, sizeof request)` and rejects a `bytes` that does not cover
+`mode`. A newer caller that appends fields still works. The message
+pointer from `rgpot_nlist_strerror` is a literal. There is no
+thread-local last error.
+
+What this pass leaves open: `Mode::Auto` can still return an empty
+stored table, `Format` is still one enum that a reader can confuse
+with a modifier, and the C result is still an array of
+`rgpot_nlist_pair` copied out of the structure of arrays. The walk
+open now returns a code (`rgpot_nlist_walk **` out-parameter) so a
+rejected geometry is not only a null pointer.

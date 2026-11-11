@@ -1,10 +1,26 @@
 /* MIT License
  * Copyright 2023--present rgpot developers
  *
- * C ABI of the neighbour query, version 1. Callers pass
- * rgpot_nlist_abi_version() and refuse a mismatch. A later version adds
- * fields at the end of the request and pair structs; it does not reorder
- * the fields below.
+ * C ABI of the neighbour query. Call rgpot_nlist_request_init before
+ * setting cutoff. The first field of every caller-allocated struct is
+ * bytes, the size the caller compiled. A later version may append
+ * fields. It does not reorder the fields below and it does not change
+ * the meaning of a value. A break of that rule bumps RGPOT_NLIST_ABI.
+ *
+ * Positions and cutoff are one length unit. The library does not
+ * convert. box9 is nine doubles, lattice vectors as rows, the ASE cell
+ * in row-major order: ax ay az bx by bz cx cy cz. The pair vector is
+ * r_j - r_i + S H, with S the integer shift. A pair of an atom with
+ * itself at shift zero is never returned.
+ *
+ * rgpot_nlist_build and rgpot_nlist_walk_pull may be called on different
+ * objects at the same time. One walk, and the buffers of one build, are
+ * used by one thread. There is no mutable global. rgpot_nlist_strerror
+ * returns a literal.
+ *
+ * The walk borrows positions and box9 until rgpot_nlist_walk_close.
+ * The caller keeps those arrays alive and does not write them from
+ * another thread during a pull.
  */
 #ifndef RGPOT_NLIST_H
 #define RGPOT_NLIST_H
@@ -16,12 +32,28 @@
 extern "C" {
 #endif
 
-#define RGPOT_NLIST_ABI 1
+#define RGPOT_NLIST_ABI 2
 
-/* format: 0 half, 1 full, 2 cluster of four. cut: 0 strict, 1 loose.
- * mode: 0 auto, 1 stored, 2 stream. */
+enum {
+  RGPOT_NLIST_OK = 0,
+  RGPOT_NLIST_ERR_ABI = 1,
+  RGPOT_NLIST_NULL = 2,
+  RGPOT_NLIST_CUTOFF = 3,
+  RGPOT_NLIST_BOX = 4,
+  RGPOT_NLIST_SHAPE = 5,
+  RGPOT_NLIST_SHORT = 6,
+  RGPOT_NLIST_NOMEM = 7
+};
+
+/* format: 0 half, 1 full, 2 cluster of four. Any other value is
+ * RGPOT_NLIST_SHAPE. cut: 0 strict (distance < cutoff), 1 loose
+ * (distance < cutoff + skin, or distance <= cutoff when skin is 0).
+ * mode: 0 auto, 1 stored, 2 stream. init() selects a half list, a
+ * strict cutoff, periodic boundaries, every geometry field, and a
+ * stored list. */
 typedef struct rgpot_nlist_request {
-  int32_t abi;
+  uint32_t bytes;
+  uint32_t abi;
   double cutoff;
   double skin;
   int32_t format;
@@ -47,9 +79,21 @@ typedef struct rgpot_nlist_pair {
 /* Returns RGPOT_NLIST_ABI. */
 int32_t rgpot_nlist_abi_version(void);
 
+/* Sentence for a code. Unknown codes return "unknown neighbour error".
+ * The pointer is a literal and is not freed. */
+const char *rgpot_nlist_strerror(int32_t code);
+
+/* Sets bytes, abi, a half list, a strict cutoff, periodic boundaries
+ * on every axis, shifts, vectors, distances, and a stored list.
+ * cutoff and skin are left at 0. A null request is ignored. */
+void rgpot_nlist_request_init(rgpot_nlist_request *request);
+
 /* Stored fill. Writes at most cap pairs. *count is the number written.
- * *needed is the full number, which may exceed cap (the caller allocates
- * again). Returns 0, or 1 if the request abi does not match. */
+ * *needed is the full number, which may exceed cap. A null out with
+ * cap 0 reports the size and returns RGPOT_NLIST_OK. A buffer that is
+ * shorter than the list returns RGPOT_NLIST_SHORT after writing cap
+ * pairs. On any other error *count is 0 when count is not null, and
+ * the pair buffer is left untouched. */
 int32_t rgpot_nlist_build(const double *positions, size_t n, const double *box9,
                           const rgpot_nlist_request *request,
                           rgpot_nlist_pair *out, size_t cap, size_t *count,
@@ -58,12 +102,17 @@ int32_t rgpot_nlist_build(const double *positions, size_t n, const double *box9,
 /* Opaque chunked walk. It does not store the pairs of the whole system. */
 typedef struct rgpot_nlist_walk rgpot_nlist_walk;
 
-/* Returns null if the request abi does not match. */
-rgpot_nlist_walk *rgpot_nlist_walk_open(const double *positions, size_t n,
-                                        const double *box9,
-                                        const rgpot_nlist_request *request);
+/* Opens a walk into *walk. On failure *walk is null when walk is not
+ * null, and the return is the code from rgpot_nlist_strerror. The walk
+ * borrows positions and box9. */
+int32_t rgpot_nlist_walk_open(const double *positions, size_t n,
+                              const double *box9,
+                              const rgpot_nlist_request *request,
+                              rgpot_nlist_walk **walk);
 
-/* Writes at most cap pairs. *done is 1 when the geometry is exhausted. */
+/* Writes at most cap pairs. *done is 1 when the geometry is exhausted.
+ * A null out with cap greater than 0 returns RGPOT_NLIST_NULL and does
+ * not advance. cap 0 writes nothing. */
 int32_t rgpot_nlist_walk_pull(rgpot_nlist_walk *walk, rgpot_nlist_pair *out,
                               size_t cap, size_t *count, int32_t *done);
 

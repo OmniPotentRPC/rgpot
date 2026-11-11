@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <map>
 #include <set>
+#include <string>
 #include <tuple>
 #include <vector>
 
@@ -175,33 +176,49 @@ TEST_CASE("the C ABI round-trips a stored list and a stream", "[nlist][api]") {
   REQUIRE(rgpot_nlist_abi_version() == RGPOT_NLIST_ABI);
   const double box[9] = {5, 0, 0, 0, 5, 0, 0.4, 0, 5};
   const double pos[] = {0.2, 0.2, 0.2, 1.4, 0.3, 0.5, 3.0, 3.0, 1.0};
-  rgpot_nlist_request request{};
-  request.abi = RGPOT_NLIST_ABI;
+  rgpot_nlist_request request;
+  rgpot_nlist_request_init(&request);
   request.cutoff = 3.0;
-  request.skin = 0;
-  request.format = 0;
-  request.cut = 0;
-  request.periodic[0] = request.periodic[1] = request.periodic[2] = 1;
-  request.want_shifts = 1;
-  request.want_vectors = 1;
-  request.want_distances = 1;
-  request.mode = 1;
+  REQUIRE(request.periodic[0] == 1);
+  REQUIRE(request.want_distances == 1);
+  REQUIRE(request.mode == 1);
+  REQUIRE(request.bytes == sizeof(request));
   std::size_t count = 0;
   std::size_t needed = 0;
-  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, nullptr, 0, &count, &needed) == 0);
+  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, nullptr, 0, &count, &needed) ==
+          RGPOT_NLIST_OK);
   REQUIRE(needed > 0);
   std::vector<rgpot_nlist_pair> pairs(needed);
   REQUIRE(rgpot_nlist_build(pos, 3, box, &request, pairs.data(), pairs.size(), &count,
-                            &needed) == 0);
+                            &needed) == RGPOT_NLIST_OK);
   REQUIRE(count == needed);
-  rgpot_nlist_walk *walk = rgpot_nlist_walk_open(pos, 3, box, &request);
+  rgpot_nlist_pair one;
+  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, &one, 1, &count, &needed) ==
+          RGPOT_NLIST_SHORT);
+  REQUIRE(count == 1);
+  REQUIRE(needed > 1);
+  REQUIRE(std::string(rgpot_nlist_strerror(RGPOT_NLIST_SHORT)).find("needed") !=
+          std::string::npos);
+  rgpot_nlist_request zero{};
+  REQUIRE(rgpot_nlist_build(pos, 3, box, &zero, nullptr, 0, &count, &needed) ==
+          RGPOT_NLIST_ERR_ABI);
+  request.format = 9;
+  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, nullptr, 0, &count, &needed) ==
+          RGPOT_NLIST_SHAPE);
+  request.format = 0;
+  request.cutoff = -1;
+  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, nullptr, 0, &count, &needed) ==
+          RGPOT_NLIST_CUTOFF);
+  request.cutoff = 3.0;
+  rgpot_nlist_walk *walk = nullptr;
+  REQUIRE(rgpot_nlist_walk_open(pos, 3, box, &request, &walk) == RGPOT_NLIST_OK);
   REQUIRE(walk != nullptr);
   std::vector<rgpot_nlist_pair> streamed;
   int32_t done = 0;
   while (done == 0) {
     rgpot_nlist_pair chunk[2];
     std::size_t n = 0;
-    REQUIRE(rgpot_nlist_walk_pull(walk, chunk, 2, &n, &done) == 0);
+    REQUIRE(rgpot_nlist_walk_pull(walk, chunk, 2, &n, &done) == RGPOT_NLIST_OK);
     streamed.insert(streamed.end(), chunk, chunk + n);
   }
   rgpot_nlist_walk_close(walk);
@@ -213,6 +230,22 @@ TEST_CASE("the C ABI round-trips a stored list and a stream", "[nlist][api]") {
     REQUIRE(streamed[p].shift[1] == pairs[p].shift[1]);
     REQUIRE(streamed[p].shift[2] == pairs[p].shift[2]);
   }
+}
+
+TEST_CASE("a rejected geometry throws and keeps the previous table", "[nlist][api]") {
+  const double box[9] = {4, 0, 0, 0, 4, 0, 0, 0, 4};
+  const std::vector<double> pos = {0, 0, 0, 1, 0, 0};
+  rgpot::nlist::Query query;
+  query.cutoff = 1.5;
+  query.mode = rgpot::nlist::Mode::Stored;
+  rgpot::nlist::Builder builder;
+  builder.update(pos.data(), pos.size() / 3, box, query);
+  const auto n = builder.table().size();
+  REQUIRE(n > 0);
+  query.cutoff = -1;
+  REQUIRE_THROWS_AS(builder.update(pos.data(), pos.size() / 3, box, query),
+                    rgpot::nlist::Error);
+  REQUIRE(builder.table().size() == n);
 }
 
 TEST_CASE("a skin rebuild keeps the same pairs", "[nlist][api]") {

@@ -13,13 +13,43 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace rgpot::nlist {
 
+/// Status values shared with the C ABI. Ok is never thrown.
+enum class Code : std::int32_t {
+  Ok = 0,
+  Abi = 1,
+  Null = 2,
+  Cutoff = 3,
+  Box = 4,
+  Shape = 5,
+  Short = 6,
+  Nomem = 7
+};
+
+/// A rejected query. code() is the C ABI value. what() is a sentence
+/// the caller can show. Builders throw this and leave a previous table
+/// in place.
+class Error : public std::runtime_error {
+public:
+  Error(Code code, const std::string &message)
+      : std::runtime_error(message), code_(code) {}
+
+  [[nodiscard]] Code code() const noexcept { return code_; }
+
+private:
+  Code code_;
+};
+
 /// Half keeps one direction of each pair, with the same image rule vesin
 /// uses for a self image. Full keeps both directions. Cluster4 groups
 /// four consecutive central atoms and stores one partner with a 4-bit mask.
+/// Cluster4 is the full interaction set packed by fours. It is not a
+/// half list.
 enum class Format : std::uint8_t { Half, Full, Cluster4 };
 
 /// Strict keeps pairs with distance strictly below the cutoff. Loose keeps
@@ -96,6 +126,9 @@ struct Table {
 /// Stored list with a skin rebuild. A later update keeps the table while
 /// every atom has moved by at most half the skin and the cell and the
 /// query are unchanged. Skin 0 rebuilds unless the coordinates match.
+/// Throws Error and keeps the previous table when the geometry is
+/// rejected. The same builder is used by one thread. Two builders may
+/// update at the same time.
 class Builder {
 public:
   void update(const double *positions, std::size_t n, const double *box9,
@@ -116,10 +149,13 @@ private:
   bool reused_ = false;
 };
 
-/// Walk pairs for `chunk` central atoms at a time into caller storage.
-/// The walk does not keep a list of the whole system. `pull` writes at
-/// most `cap` pairs and returns how many it wrote. `done` is set when the
-/// geometry has been exhausted.
+/// Walk pairs for one central atom, or one cluster of four, at a time
+/// into caller storage. The walk does not keep a list of the whole
+/// system. It borrows `positions` and `box9` until it is destroyed.
+/// `pull` writes at most `cap` pairs and returns how many it wrote.
+/// `done` is set when the geometry has been exhausted. A null first or
+/// second pointer with a positive cap throws Error and does not advance.
+/// One walk is used by one thread.
 class Walk {
 public:
   Walk(const double *positions, std::size_t n, const double *box9,
@@ -146,7 +182,10 @@ private:
 
 /// Fill `table` from `query`. Stream mode leaves the table empty and sets
 /// `table.stored` false; the caller uses Walk. Auto stores when a bound on
-/// the pair count fits in the memory the OS reports as available.
+/// the pair count fits in the memory the OS reports as available, and
+/// otherwise leaves the table empty. Throws Error before clearing `table`
+/// when the geometry is rejected. Two builds on different tables may run
+/// at the same time. They share no mutable global.
 void build(Table &table, const double *positions, std::size_t n,
            const double *box9, const Query &query);
 

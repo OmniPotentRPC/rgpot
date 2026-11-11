@@ -7,7 +7,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <new>
+#include <string>
 #include <utility>
 
 #if defined(_OPENMP)
@@ -25,6 +27,52 @@ struct Rec {
   double distance = 0;
   std::uint8_t mask = 0xff;
 };
+
+void check_geometry(const double *positions, std::size_t n, const double *box9,
+                    const Query &query) {
+  if (n > 0 && positions == nullptr) {
+    throw Error(Code::Null, "positions is null");
+  }
+  if (box9 == nullptr) {
+    throw Error(Code::Null, "box is null");
+  }
+  if (!std::isfinite(query.cutoff) || query.cutoff < 0.0) {
+    throw Error(Code::Cutoff, "cutoff must be finite and >= 0");
+  }
+  if (!std::isfinite(query.skin) || query.skin < 0.0) {
+    throw Error(Code::Cutoff, "skin must be finite and >= 0");
+  }
+  if (query.format != Format::Half && query.format != Format::Full &&
+      query.format != Format::Cluster4) {
+    throw Error(Code::Shape, "format must be half, full, or a cluster of four");
+  }
+  if (query.cut != Cut::Strict && query.cut != Cut::Loose) {
+    throw Error(Code::Shape, "cut must be strict or loose");
+  }
+  if (query.mode != Mode::Auto && query.mode != Mode::Stored &&
+      query.mode != Mode::Stream) {
+    throw Error(Code::Shape, "mode must be auto, stored, or stream");
+  }
+  for (int k = 0; k < 9; ++k) {
+    if (!std::isfinite(box9[k])) {
+      throw Error(Code::Box, "box has a non-finite element");
+    }
+  }
+  const bool any_periodic =
+      query.periodic[0] || query.periodic[1] || query.periodic[2];
+  if (any_periodic) {
+    const double a[3] = {box9[0], box9[1], box9[2]};
+    const double b[3] = {box9[3], box9[4], box9[5]};
+    const double c[3] = {box9[6], box9[7], box9[8]};
+    const double bx = b[1] * c[2] - b[2] * c[1];
+    const double by = b[2] * c[0] - b[0] * c[2];
+    const double bz = b[0] * c[1] - b[1] * c[0];
+    const double vol = std::fabs(a[0] * bx + a[1] * by + a[2] * bz);
+    if (!(vol > 0.0)) {
+      throw Error(Code::Box, "a periodic box has zero volume");
+    }
+  }
+}
 
 double search_radius(const Query &query) {
   if (query.cut == Cut::Loose) {
@@ -285,6 +333,7 @@ std::uint64_t pair_bound(std::size_t n, const int nmax[3]) {
 
 void Builder::update(const double *positions, std::size_t n, const double *box9,
                      const Query &query) {
+  check_geometry(positions, n, box9, query);
   reused_ = false;
   if (have_ && n_ == n && query_.cutoff == query.cutoff && query_.skin == query.skin &&
       query_.format == query.format && query_.cut == query.cut &&
@@ -319,12 +368,16 @@ void Builder::update(const double *positions, std::size_t n, const double *box9,
 
 Walk::Walk(const double *positions, std::size_t n, const double *box9, const Query &query)
     : pos_(positions), n_(n), query_(query) {
+  check_geometry(positions, n, box9, query);
   std::memcpy(box_, box9, sizeof(box_));
   shift_bounds(box_, query_.periodic, search_radius(query_), nmax_);
 }
 
 std::size_t Walk::pull(OutSoA dest, std::size_t cap, bool &done) {
-  if (finished_ || cap == 0 || dest.first == nullptr || dest.second == nullptr) {
+  if (cap > 0 && (dest.first == nullptr || dest.second == nullptr)) {
+    throw Error(Code::Null, "walk buffers for first and second are null");
+  }
+  if (finished_ || cap == 0) {
     done = finished_;
     return 0;
   }
@@ -393,6 +446,7 @@ std::size_t Walk::pull(OutSoA dest, std::size_t cap, bool &done) {
 
 void build(Table &table, const double *positions, std::size_t n, const double *box9,
            const Query &query) {
+  check_geometry(positions, n, box9, query);
   table = Table{};
   if (n == 0 || !(query.cutoff > 0.0)) {
     table.stored = query.mode != Mode::Stream;
@@ -441,22 +495,51 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
 namespace {
 
 rgpot::nlist::Query query_from_c(const rgpot_nlist_request *request) {
+  if (request == nullptr) {
+    throw rgpot::nlist::Error(rgpot::nlist::Code::Null, "request is null");
+  }
+  const auto minimum = offsetof(rgpot_nlist_request, mode) + sizeof(std::int32_t);
+  if (request->bytes < minimum || request->abi != RGPOT_NLIST_ABI) {
+    throw rgpot::nlist::Error(rgpot::nlist::Code::Abi,
+                              "request abi or bytes does not match this library");
+  }
+  rgpot_nlist_request taken{};
+  std::memcpy(&taken, request,
+              std::min(static_cast<std::size_t>(request->bytes), sizeof(taken)));
+  if (taken.format != 0 && taken.format != 1 && taken.format != 2) {
+    throw rgpot::nlist::Error(rgpot::nlist::Code::Shape,
+                              "format must be 0 (half), 1 (full) or 2 (cluster of four)");
+  }
+  if (taken.cut != 0 && taken.cut != 1) {
+    throw rgpot::nlist::Error(rgpot::nlist::Code::Shape,
+                              "cut must be 0 (strict) or 1 (loose)");
+  }
+  if (taken.mode != 0 && taken.mode != 1 && taken.mode != 2) {
+    throw rgpot::nlist::Error(rgpot::nlist::Code::Shape,
+                              "mode must be 0 (auto), 1 (stored) or 2 (stream)");
+  }
   rgpot::nlist::Query query;
-  query.cutoff = request->cutoff;
-  query.skin = request->skin;
-  query.format = request->format == 1   ? rgpot::nlist::Format::Full
-                 : request->format == 2 ? rgpot::nlist::Format::Cluster4
-                                         : rgpot::nlist::Format::Half;
-  query.cut = request->cut == 0 ? rgpot::nlist::Cut::Strict : rgpot::nlist::Cut::Loose;
-  query.periodic = {request->periodic[0] != 0, request->periodic[1] != 0,
-                    request->periodic[2] != 0};
-  query.fields.shifts = request->want_shifts != 0;
-  query.fields.vectors = request->want_vectors != 0;
-  query.fields.distances = request->want_distances != 0;
-  query.mode = request->mode == 2   ? rgpot::nlist::Mode::Stream
-               : request->mode == 0 ? rgpot::nlist::Mode::Auto
-                                     : rgpot::nlist::Mode::Stored;
+  query.cutoff = taken.cutoff;
+  query.skin = taken.skin;
+  query.format = taken.format == 1   ? rgpot::nlist::Format::Full
+                 : taken.format == 2 ? rgpot::nlist::Format::Cluster4
+                                      : rgpot::nlist::Format::Half;
+  query.cut = taken.cut == 0 ? rgpot::nlist::Cut::Strict : rgpot::nlist::Cut::Loose;
+  query.periodic = {taken.periodic[0] != 0, taken.periodic[1] != 0, taken.periodic[2] != 0};
+  query.fields.shifts = taken.want_shifts != 0;
+  query.fields.vectors = taken.want_vectors != 0;
+  query.fields.distances = taken.want_distances != 0;
+  query.mode = taken.mode == 2   ? rgpot::nlist::Mode::Stream
+               : taken.mode == 0 ? rgpot::nlist::Mode::Auto
+                                 : rgpot::nlist::Mode::Stored;
   return query;
+}
+
+int32_t code_of(const rgpot::nlist::Error &err, size_t *count) {
+  if (count != nullptr) {
+    *count = 0;
+  }
+  return static_cast<int32_t>(err.code());
 }
 
 void write_pair(rgpot_nlist_pair &dst, const rgpot::nlist::SoA &src, std::size_t p) {
@@ -483,26 +566,82 @@ extern "C" {
 
 int32_t rgpot_nlist_abi_version(void) { return RGPOT_NLIST_ABI; }
 
+const char *rgpot_nlist_strerror(int32_t code) {
+  switch (code) {
+  case RGPOT_NLIST_OK:
+    return "ok";
+  case RGPOT_NLIST_ERR_ABI:
+    return "neighbour request abi or size does not match this library";
+  case RGPOT_NLIST_NULL:
+    return "a required neighbour pointer is null";
+  case RGPOT_NLIST_CUTOFF:
+    return "cutoff and skin must be finite and >= 0";
+  case RGPOT_NLIST_BOX:
+    return "box must be finite, and a periodic box must have positive volume";
+  case RGPOT_NLIST_SHAPE:
+    return "neighbour format, cut or mode is not a supported value";
+  case RGPOT_NLIST_SHORT:
+    return "neighbour buffer is shorter than the list; needed holds the full count";
+  case RGPOT_NLIST_NOMEM:
+    return "neighbour list allocation failed";
+  default:
+    return "unknown neighbour error";
+  }
+}
+
+void rgpot_nlist_request_init(rgpot_nlist_request *request) {
+  if (request == nullptr) {
+    return;
+  }
+  std::memset(request, 0, sizeof(*request));
+  request->bytes = static_cast<uint32_t>(sizeof(*request));
+  request->abi = RGPOT_NLIST_ABI;
+  request->format = 0;
+  request->cut = 0;
+  request->periodic[0] = 1;
+  request->periodic[1] = 1;
+  request->periodic[2] = 1;
+  request->want_shifts = 1;
+  request->want_vectors = 1;
+  request->want_distances = 1;
+  request->mode = 1;
+}
+
 int32_t rgpot_nlist_build(const double *positions, size_t n, const double *box9,
                           const rgpot_nlist_request *request, rgpot_nlist_pair *out,
                           size_t cap, size_t *count, size_t *needed) {
-  if (request == nullptr || request->abi != RGPOT_NLIST_ABI) {
-    return 1;
+  try {
+    if (out == nullptr && cap > 0) {
+      if (count != nullptr) {
+        *count = 0;
+      }
+      return RGPOT_NLIST_NULL;
+    }
+    rgpot::nlist::Table table;
+    rgpot::nlist::build(table, positions, n, box9, query_from_c(request));
+    if (needed != nullptr) {
+      *needed = table.size();
+    }
+    const size_t nwrite = out == nullptr ? 0 : std::min(cap, table.size());
+    const auto view = table.view();
+    for (size_t p = 0; p < nwrite; ++p) {
+      write_pair(out[p], view, p);
+    }
+    if (count != nullptr) {
+      *count = nwrite;
+    }
+    if (out != nullptr && nwrite < table.size()) {
+      return RGPOT_NLIST_SHORT;
+    }
+    return RGPOT_NLIST_OK;
+  } catch (const rgpot::nlist::Error &err) {
+    return code_of(err, count);
+  } catch (const std::bad_alloc &) {
+    if (count != nullptr) {
+      *count = 0;
+    }
+    return RGPOT_NLIST_NOMEM;
   }
-  rgpot::nlist::Table table;
-  rgpot::nlist::build(table, positions, n, box9, query_from_c(request));
-  if (needed != nullptr) {
-    *needed = table.size();
-  }
-  const size_t nwrite = out == nullptr ? 0 : std::min(cap, table.size());
-  const auto view = table.view();
-  for (size_t p = 0; p < nwrite; ++p) {
-    write_pair(out[p], view, p);
-  }
-  if (count != nullptr) {
-    *count = nwrite;
-  }
-  return 0;
 }
 
 struct rgpot_nlist_walk {
@@ -512,47 +651,82 @@ struct rgpot_nlist_walk {
       : walk(positions, n, box9, query) {}
 };
 
-rgpot_nlist_walk *rgpot_nlist_walk_open(const double *positions, size_t n,
-                                        const double *box9,
-                                        const rgpot_nlist_request *request) {
-  if (request == nullptr || request->abi != RGPOT_NLIST_ABI) {
-    return nullptr;
+int32_t rgpot_nlist_walk_open(const double *positions, size_t n, const double *box9,
+                              const rgpot_nlist_request *request,
+                              rgpot_nlist_walk **walk) {
+  if (walk == nullptr) {
+    return RGPOT_NLIST_NULL;
   }
-  return new (std::nothrow)
-      rgpot_nlist_walk(positions, n, box9, query_from_c(request));
+  *walk = nullptr;
+  try {
+    const auto query = query_from_c(request);
+    *walk = new (std::nothrow) rgpot_nlist_walk(positions, n, box9, query);
+    if (*walk == nullptr) {
+      return RGPOT_NLIST_NOMEM;
+    }
+    return RGPOT_NLIST_OK;
+  } catch (const rgpot::nlist::Error &err) {
+    return static_cast<int32_t>(err.code());
+  } catch (const std::bad_alloc &) {
+    return RGPOT_NLIST_NOMEM;
+  }
 }
 
 int32_t rgpot_nlist_walk_pull(rgpot_nlist_walk *walk, rgpot_nlist_pair *out, size_t cap,
                               size_t *count, int32_t *done) {
-  if (walk == nullptr) {
-    return 1;
+  if (walk == nullptr || (out == nullptr && cap > 0)) {
+    if (count != nullptr) {
+      *count = 0;
+    }
+    return RGPOT_NLIST_NULL;
   }
-  std::vector<std::int32_t> first(cap), second(cap), shift(cap * 3);
-  std::vector<double> vector(cap * 3), distance(cap);
-  std::vector<std::uint8_t> mask(cap);
-  rgpot::nlist::OutSoA dest{first.data(),   second.data(), shift.data(),
-                            vector.data(), distance.data(), mask.data()};
-  bool finished = false;
-  const std::size_t nwrite = walk->walk.pull(dest, cap, finished);
-  for (std::size_t p = 0; p < nwrite; ++p) {
-    out[p].first = first[p];
-    out[p].second = second[p];
-    out[p].shift[0] = shift[3 * p];
-    out[p].shift[1] = shift[3 * p + 1];
-    out[p].shift[2] = shift[3 * p + 2];
-    out[p].vector[0] = vector[3 * p];
-    out[p].vector[1] = vector[3 * p + 1];
-    out[p].vector[2] = vector[3 * p + 2];
-    out[p].distance = distance[p];
-    out[p].mask = mask[p];
+  try {
+    if (cap == 0) {
+      bool finished = false;
+      rgpot::nlist::OutSoA dest{};
+      walk->walk.pull(dest, 0, finished);
+      if (count != nullptr) {
+        *count = 0;
+      }
+      if (done != nullptr) {
+        *done = finished ? 1 : 0;
+      }
+      return RGPOT_NLIST_OK;
+    }
+    std::vector<std::int32_t> first(cap), second(cap), shift(cap * 3);
+    std::vector<double> vector(cap * 3), distance(cap);
+    std::vector<std::uint8_t> mask(cap);
+    rgpot::nlist::OutSoA dest{first.data(),   second.data(), shift.data(),
+                              vector.data(), distance.data(), mask.data()};
+    bool finished = false;
+    const std::size_t nwrite = walk->walk.pull(dest, cap, finished);
+    for (std::size_t p = 0; p < nwrite; ++p) {
+      out[p].first = first[p];
+      out[p].second = second[p];
+      out[p].shift[0] = shift[3 * p];
+      out[p].shift[1] = shift[3 * p + 1];
+      out[p].shift[2] = shift[3 * p + 2];
+      out[p].vector[0] = vector[3 * p];
+      out[p].vector[1] = vector[3 * p + 1];
+      out[p].vector[2] = vector[3 * p + 2];
+      out[p].distance = distance[p];
+      out[p].mask = mask[p];
+    }
+    if (count != nullptr) {
+      *count = nwrite;
+    }
+    if (done != nullptr) {
+      *done = finished ? 1 : 0;
+    }
+    return RGPOT_NLIST_OK;
+  } catch (const rgpot::nlist::Error &err) {
+    return code_of(err, count);
+  } catch (const std::bad_alloc &) {
+    if (count != nullptr) {
+      *count = 0;
+    }
+    return RGPOT_NLIST_NOMEM;
   }
-  if (count != nullptr) {
-    *count = nwrite;
-  }
-  if (done != nullptr) {
-    *done = finished ? 1 : 0;
-  }
-  return 0;
 }
 
 void rgpot_nlist_walk_close(rgpot_nlist_walk *walk) { delete walk; }
