@@ -192,6 +192,62 @@ int runJob(const Job &job) {
       auto call = [&] { pot(xyz, z, box); };
       timeCall(call, job.repeats, median, rss);
     }
+  } else if (std::string(job.name) == "FortranTersoff" || std::string(job.name) == "FortranEDIP" ||
+             std::string(job.name) == "FortranLenosky") {
+    double lx = 0, ly = 0, lz = 0;
+    auto pos = diamond(job.n, 5.431, lx, ly, lz);
+    std::vector<int> z(pos.size() / 3, 14);
+    atoms = pos.size() / 3;
+    cutoff = 0;
+    rgpot::types::AtomMatrix xyz(atoms, 3);
+    for (std::size_t i = 0; i < atoms; ++i) {
+      xyz(i, 0) = pos[3 * i];
+      xyz(i, 1) = pos[3 * i + 1];
+      xyz(i, 2) = pos[3 * i + 2];
+    }
+    const std::array<std::array<double, 3>, 3> box{{{lx, 0, 0}, {0, ly, 0}, {0, 0, lz}}};
+    const auto which = mode == 2 ? rgpot::nlist::Mode::Stream : rgpot::nlist::Mode::Stored;
+    auto run = [&](auto &pot) {
+      pot.setNeighbourMode(which);
+      auto call = [&] { pot(xyz, z, box); };
+      timeCall(call, job.repeats, median, rss);
+    };
+    if (std::string(job.name) == "FortranTersoff") {
+      rgpot::fortranpots::TersoffPot pot;
+      run(pot);
+    } else if (std::string(job.name) == "FortranEDIP") {
+      rgpot::fortranpots::EDIPPot pot;
+      run(pot);
+    } else {
+      rgpot::fortranpots::LenoskyPot pot;
+      run(pot);
+    }
+  } else if (std::string(job.name) == "FortranFeHe" || std::string(job.name) == "FortranCuH2") {
+    double lx = 0, ly = 0, lz = 0;
+    auto pos = fcc(job.n, job.n, job.n, 3.6, lx, ly, lz);
+    atoms = pos.size() / 3;
+    const int znum = std::string(job.name) == "FortranFeHe" ? 26 : 29;
+    std::vector<int> z(atoms, znum);
+    cutoff = 0;
+    rgpot::types::AtomMatrix xyz(atoms, 3);
+    for (std::size_t i = 0; i < atoms; ++i) {
+      xyz(i, 0) = pos[3 * i];
+      xyz(i, 1) = pos[3 * i + 1];
+      xyz(i, 2) = pos[3 * i + 2];
+    }
+    const std::array<std::array<double, 3>, 3> box{{{lx, 0, 0}, {0, ly, 0}, {0, 0, lz}}};
+    const auto which = mode == 2 ? rgpot::nlist::Mode::Stream : rgpot::nlist::Mode::Stored;
+    if (std::string(job.name) == "FortranFeHe") {
+      rgpot::fortranpots::FeHePot pot;
+      pot.setNeighbourMode(which);
+      auto call = [&] { pot(xyz, z, box); };
+      timeCall(call, job.repeats, median, rss);
+    } else {
+      rgpot::fortranpots::CuH2Pot pot;
+      pot.setNeighbourMode(which);
+      auto call = [&] { pot(xyz, z, box); };
+      timeCall(call, job.repeats, median, rss);
+    }
   }
 #endif
   else {
