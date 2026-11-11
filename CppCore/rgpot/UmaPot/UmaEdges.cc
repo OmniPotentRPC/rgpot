@@ -3,6 +3,7 @@
 #include "rgpot/UmaPot/UmaEdges.hpp"
 
 #include "rgpot/MetatomicPot/vesin_compat.hpp"
+#include "rgpot/UmaPot/UmaLinkedCell.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -16,6 +17,11 @@
 #include <vector>
 
 namespace rgpot {
+
+struct UmaEdgeSession::CellCache {
+  linked_cell::Scratch scratch;
+};
+
 namespace {
 
 // Vesin rebuilds the cached list after an atom moves more than half of this.
@@ -200,6 +206,85 @@ void emit_sorted(const VesinNeighborList &nl, const ForceInput &in, int max_neig
   }
 }
 
+void emit_slices(linked_cell::Scratch &scratch, const double *pos, const double *box,
+                 std::size_t n, double cut2, int max_neighbors, int threads, bool recompute,
+                 UmaEdgeSession &session) {
+  const double side[3] = {box[0], box[4], box[8]};
+  const int workers = worker_count(threads, n);
+  if (recompute) {
+    run_ranges(workers, n, [&](std::size_t begin, std::size_t end) {
+      for (std::size_t c = begin; c < end; ++c) {
+        const auto t = scratch.slice_thread[c];
+        auto &part = scratch.parts[t];
+        const auto at = scratch.slice_at[c];
+        const auto count = scratch.slice_n[c];
+        for (std::uint32_t i = 0; i < count; ++i) {
+          auto &row = part[at + i];
+          const double dx = pos[3 * row.neighbor] - pos[3 * c] + row.s0 * side[0];
+          const double dy = pos[3 * row.neighbor + 1] - pos[3 * c + 1] + row.s1 * side[1];
+          const double dz = pos[3 * row.neighbor + 2] - pos[3 * c + 2] + row.s2 * side[2];
+          row.dist2 = dx * dx + dy * dy + dz * dz;
+        }
+        if (count > 1) {
+          std::sort(part.begin() + static_cast<std::ptrdiff_t>(at),
+                    part.begin() + static_cast<std::ptrdiff_t>(at + count),
+                    linked_cell::before);
+        }
+      }
+    });
+  }
+  session.bucket.assign(n + 1, 0);
+  auto keep_of = [&](std::size_t c) {
+    const auto &part = scratch.parts[scratch.slice_thread[c]];
+    const auto at = scratch.slice_at[c];
+    const auto count = scratch.slice_n[c];
+    std::size_t keep = 0;
+    const int cap = max_neighbors > 0 ? max_neighbors : static_cast<int>(count);
+    for (std::uint32_t i = 0; i < count; ++i) {
+      const double d2 = part[at + i].dist2;
+      if (d2 < 1e-16)
+        continue;
+      if (!(d2 < cut2))
+        break;
+      ++keep;
+      if (keep >= static_cast<std::size_t>(cap))
+        break;
+    }
+    return keep;
+  };
+  run_ranges(workers, n, [&](std::size_t begin, std::size_t end) {
+    for (std::size_t c = begin; c < end; ++c)
+      session.bucket[c + 1] = keep_of(c);
+  });
+  for (std::size_t i = 1; i <= n; ++i)
+    session.bucket[i] += session.bucket[i - 1];
+  const std::size_t total = session.bucket[n];
+  auto &out = session.edges;
+  out.neighbor.resize(total);
+  out.center.resize(total);
+  out.offsets.resize(total * 3);
+  run_ranges(workers, n, [&](std::size_t begin, std::size_t end) {
+    for (std::size_t c = begin; c < end; ++c) {
+      const auto &part = scratch.parts[scratch.slice_thread[c]];
+      const auto at = scratch.slice_at[c];
+      const auto count = scratch.slice_n[c];
+      std::size_t slot = session.bucket[c];
+      const std::size_t stop = session.bucket[c + 1];
+      for (std::uint32_t i = 0; i < count && slot < stop; ++i) {
+        const auto &row = part[at + i];
+        if (row.dist2 < 1e-16 || !(row.dist2 < cut2))
+          continue;
+        out.neighbor[slot] = static_cast<int64_t>(row.neighbor);
+        out.center[slot] = static_cast<int64_t>(c);
+        out.offsets[3 * slot] = static_cast<float>(row.s0);
+        out.offsets[3 * slot + 1] = static_cast<float>(row.s1);
+        out.offsets[3 * slot + 2] = static_cast<float>(row.s2);
+        ++slot;
+      }
+    }
+  });
+}
+
 void periodic_edges(const ForceInput &in, double cutoff, int max_neighbors,
                      UmaEdgeSession &session) {
   VesinOptions options{};
@@ -222,6 +307,37 @@ void periodic_edges(const ForceInput &in, double cutoff, int max_neighbors,
   session.last_skin = skin;
   options.return_distances = false;
   options.return_vectors = false;
+
+  const double search = cutoff + skin;
+  if (!brute) {
+    if (!session.cell_cache)
+      session.cell_cache = std::make_unique<UmaEdgeSession::CellCache>();
+    auto &scratch = session.cell_cache->scratch;
+    const double half = 0.5 * skin;
+    bool box_same = scratch.ref_n == static_cast<int>(in.nAtoms);
+    for (int a = 0; box_same && a < 9; ++a)
+      box_same = scratch.ref_box[a] == in.box[a];
+    const bool keep = skin > 0.0 && box_same && scratch.ref_search == search &&
+                      scratch.ref_pos.size() == in.nAtoms * 3 &&
+                      linked_cell::max_move(in.pos, scratch.ref_pos) <= half * half;
+    bool ready = keep;
+    if (!keep &&
+        linked_cell::build(in.pos, in.nAtoms, in.box, search, session.threads, scratch)) {
+      scratch.ref_pos.assign(in.pos, in.pos + 3 * in.nAtoms);
+      for (int a = 0; a < 9; ++a)
+        scratch.ref_box[a] = in.box[a];
+      scratch.ref_n = static_cast<int>(in.nAtoms);
+      scratch.ref_search = search;
+      ready = true;
+    }
+    if (ready) {
+      session.list_ptr = scratch.stable;
+      session.list_len = scratch.stable_n;
+      emit_slices(scratch, in.pos, in.box, in.nAtoms, cutoff * cutoff, max_neighbors,
+                  session.threads, /*recompute=*/keep, session);
+      return;
+    }
+  }
 
   if (!session.held_live) {
     session.held = VesinNeighborList{};

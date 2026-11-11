@@ -276,6 +276,17 @@ void check_trim() {
     }
   }
   expect(true, "max neighbors holds");
+
+  const auto wide = lattice(8, 3.0);
+  const std::size_t wn = wide.size() / 3;
+  const double wside = 8 * 3.0;
+  double wbox[9] = {wside, 0, 0, 0, wside, 0, 0, 0, wside};
+  std::vector<int> wz(wn, 1);
+  rgpot::ForceInput win{wn, wide.data(), wz.data(), wbox};
+  rgpot::UmaEdgeSession wide_session;
+  const auto wide_got = call_edges(win, 6.0, 0.0, 4, 8, wide_session);
+  const auto wide_ref = reference_periodic(win, 6.0, 4);
+  expect(same_edges(wide_got, wide_ref), "linked cell trim matches the reference");
 }
 
 void shift_all(std::vector<double> &pos, double delta) {
@@ -301,11 +312,12 @@ void check_fresh_cutoff_and_reuse() {
   expect(kept.calls == 2, "the second call is recorded");
   expect(kept.last_skin == 1.0, "the second call turns the skin on");
   expect(same_edges(first, second), "the second call keeps the cutoff edges");
-  const auto *pairs = kept.held.pairs;
-  const auto length = kept.held.length;
+  expect(kept.list_ptr != nullptr, "a reused session keeps its list");
+  const auto *pairs = kept.list_ptr;
+  const auto length = kept.list_len;
   const auto third = call_edges(in, 6.0, 0.0, 300, 1, kept);
-  expect(kept.held.pairs == pairs, "a reused session keeps its list");
-  expect(kept.held.length == length, "a reused session keeps its length");
+  expect(kept.list_ptr == pairs, "a reused session keeps its list");
+  expect(kept.list_len == length, "a reused session keeps its length");
   expect(same_edges(second, third), "unchanged positions keep the same edges");
   shift_all(pos, 0.05);
   rgpot::ForceInput moved{n, pos.data(), z.data(), box};

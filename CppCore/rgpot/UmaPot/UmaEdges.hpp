@@ -6,6 +6,7 @@
 #include "vesin.h"
 
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <vector>
 
@@ -48,6 +49,10 @@ struct UmaEdgeSession {
   };
   std::vector<EdgeKey> keys;
   std::vector<std::size_t> bucket;
+  struct CellCache;
+  std::unique_ptr<CellCache> cell_cache;
+  const void *list_ptr = nullptr;
+  std::size_t list_len = 0;
 
   UmaEdgeSession();
   ~UmaEdgeSession();

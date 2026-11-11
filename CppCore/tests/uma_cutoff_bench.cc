@@ -1,8 +1,8 @@
 // Copyright (c) rgpot developers
 //
 // Times rgpot::build_system_edges, the list UmaPot hands to the graph.
-// Molecular rows are every ordered pair. Periodic rows are the vesin
-// list at a 6 angstrom cutoff, trimmed at 300 neighbors.
+// Molecular rows are every ordered pair. Periodic rows are the cutoff
+// list at 6 angstroms, trimmed at 300 neighbors.
 // Each sample is 11 calls. The report gives the minimum, the median,
 // and the interquartile range of those calls.
 // CppCore/meson.build registers the binary with benchmark().
