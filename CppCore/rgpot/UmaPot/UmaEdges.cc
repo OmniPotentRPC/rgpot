@@ -1,4 +1,4 @@
-// Copyright (c) rgpot developers
+// Copyright 2023--present rgpot developers
 
 #include "rgpot/UmaPot/UmaEdges.hpp"
 

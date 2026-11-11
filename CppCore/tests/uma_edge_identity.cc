@@ -1,4 +1,4 @@
-// Copyright (c) rgpot developers
+// Copyright 2023--present rgpot developers
 //
 // The optimized edge builders must match a single-thread reference.
 // A Verlet step must match a full rebuild of the same coordinates.

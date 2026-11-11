@@ -1,4 +1,4 @@
-# Copyright (c) rgpot developers
+# Copyright 2023--present rgpot developers
 """AOTI package that reproduces the Claisen static-edge contract.
 
 The graph is traced at n(n-1) edges. Energy is a sum of a polynomial

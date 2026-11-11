@@ -1,4 +1,4 @@
-// Copyright (c) rgpot developers
+// Copyright 2023--present rgpot developers
 //
 // Times rgpot::build_system_edges, the list UmaPot hands to the graph.
 // Molecular rows are every ordered pair. Periodic rows are the cutoff

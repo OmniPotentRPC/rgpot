@@ -1,4 +1,4 @@
-# Copyright (c) rgpot developers
+# Copyright 2023--present rgpot developers
 """The molecular edge list keeps a pair the 10 angstrom cutoff would drop."""
 
 from __future__ import annotations

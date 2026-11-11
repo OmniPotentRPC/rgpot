@@ -1,4 +1,4 @@
-# Copyright (c) rgpot developers
+# Copyright 2023--present rgpot developers
 """Ordered pair lists shared by the UMA exporter and its tests.
 
 A molecular AOTI package is traced at n(n-1) directed edges. The list

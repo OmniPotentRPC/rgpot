@@ -1,5 +1,5 @@
 #pragma once
-// Copyright (c) rgpot developers
+// Copyright 2023--present rgpot developers
 
 #include "rgpot/ForceStructs.hpp"
 #include "rgpot/UmaPot/UmaContract.hpp"
