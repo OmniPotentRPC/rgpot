@@ -18,10 +18,10 @@ package is read.
 
 | Key | Use at runtime |
 | --- | --- |
-| `cutoff` | Model interaction range when `model_cutoff` is absent. Vesin radius for a package that was not traced as every ordered pair. |
-| `model_cutoff` | Backbone interaction range. Pairs past it do not change the energy. Older packages omit the key. |
-| `max_neighbors` | Vesin cap per atom, on a list that is not the full ordered pair list |
-| `molecular_box` | Cube side length; positions are centred at zero (0: caller's cell). A positive value with a full-pair edge count (or with no recorded edge count) builds every ordered pair, not a cutoff truncation. |
+| `cutoff` | Backbone interaction range when `model_cutoff` is absent. Vesin radius for a partial pair list. |
+| `model_cutoff` | Backbone interaction range. Pairs past it leave the energy unchanged. Older packages omit the key. |
+| `max_neighbors` | Vesin cap per atom on a partial pair list. |
+| `molecular_box` | Cube side length. Positions are centred at zero (0: caller's cell). A positive value with a full pair count lists every ordered pair. |
 | `batch_max` | band graph size (0 or 1: single system) |
 | `pos_dtype` | input dtype of positions, the cell and cell offsets (`float32` or `float64`) |
 | `model_dtype` | weight dtype recorded by the exporter (`float32` or `float64`) |
@@ -32,8 +32,8 @@ package is read.
 
 `UmaConfig.cutoff` / `max_neighbors` are defaults. The embedded
 values win when present. A molecular package traced at `n(n-1)`
-edges keeps that count for every geometry. The envelope, not a
-10 angstrom neighbor cutoff, drops pairs past the model range.
+edges keeps that count for every geometry. The model envelope
+zeroes pairs past the backbone range.
 
 The exporter converts the model with `hydra.double()` before the
 AOTI trace for `--dtype float64` and records both dtype keys as
@@ -98,8 +98,9 @@ are refused and write no package. A static path with no box records
 the traced count, so a later call whose edge list changed size
 throws `UmaShapeError` and names both shapes. The atom count stays
 the traced size. `--molecular-box` lists every ordered pair,
-`n(n-1)`, and the trace does not widen the neighbor cutoff to
-`0.4*L`. The envelope zeroes pairs past the backbone range.
+`n(n-1)`. The package records the backbone cutoff. Without the
+molecular box, a geometry that moves a pair across the cutoff
+changes the edge count and the call fails.
 
 ## potserv
 
