@@ -22,6 +22,11 @@ struct UmaEdgeList {
 struct UmaEdgeSession {
   /// Threads for the molecular rows and the periodic list. 1 is serial.
   int threads = 1;
+  /// 0 waits until one call has finished, then uses a 1 angstrom skin.
+  /// 1 keeps the skin at 0. 2 applies that skin on every call.
+  int skin_policy = 0;
+  int calls = 0;
+  double last_skin = 0.0;
   std::mutex mutex;
   VesinNeighborList held{};
   bool held_live = false;

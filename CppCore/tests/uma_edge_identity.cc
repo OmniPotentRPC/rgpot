@@ -274,8 +274,41 @@ void shift_all(std::vector<double> &pos, double delta) {
     pos[i] += delta;
 }
 
+void check_fresh_cutoff_and_reuse() {
+  const auto base = lattice(8, 3.0);
+  const std::size_t n = base.size() / 3;
+  const double side = 8 * 3.0;
+  double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  std::vector<int> z(n, 1);
+  auto pos = base;
+  rgpot::UmaEdgeSession kept;
+  rgpot::ForceInput in{n, pos.data(), z.data(), box};
+  const auto first = call_edges(in, 6.0, 0.0, 300, 1, kept);
+  const auto ref = reference_periodic(in, 6.0, 300);
+  expect(kept.calls == 1, "fresh session records one call");
+  expect(kept.last_skin == 0.0, "fresh session builds at the bare cutoff");
+  expect(same_edges(first, ref), "fresh edges match the bare cutoff");
+  const auto second = call_edges(in, 6.0, 0.0, 300, 1, kept);
+  expect(kept.calls == 2, "the second call is recorded");
+  expect(kept.last_skin == 1.0, "the second call turns the skin on");
+  expect(same_edges(first, second), "the second call keeps the cutoff edges");
+  const auto *pairs = kept.held.pairs;
+  const auto length = kept.held.length;
+  const auto third = call_edges(in, 6.0, 0.0, 300, 1, kept);
+  expect(kept.held.pairs == pairs, "a reused session keeps its list");
+  expect(kept.held.length == length, "a reused session keeps its length");
+  expect(same_edges(second, third), "unchanged positions keep the same edges");
+  shift_all(pos, 0.05);
+  rgpot::ForceInput moved{n, pos.data(), z.data(), box};
+  const auto kept_moved = call_edges(moved, 6.0, 0.0, 300, 1, kept);
+  rgpot::UmaEdgeSession fresh;
+  const auto fresh_edges = call_edges(moved, 6.0, 0.0, 300, 1, fresh);
+  expect(fresh.last_skin == 0.0, "a new session stays at the bare cutoff");
+  expect(same_edges(kept_moved, fresh_edges), "a small step matches a fresh rebuild");
+}
+
 void check_verlet_forces() {
-  // Wider than three cutoffs, so the periodic path keeps a Verlet list.
+  // Wider than three cutoffs. The first call uses the bare cutoff.
   const auto base = lattice(8, 3.0);
   const std::size_t n = base.size() / 3;
   const double side = 8 * 3.0;
@@ -320,6 +353,7 @@ int main() {
   check_molecular();
   check_periodic_threads();
   check_trim();
+  check_fresh_cutoff_and_reuse();
   check_verlet_forces();
   if (g_fails != 0) {
     std::fprintf(stderr, "FAIL checks=%d\n", g_fails);

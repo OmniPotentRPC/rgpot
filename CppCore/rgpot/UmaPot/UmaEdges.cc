@@ -200,9 +200,16 @@ UmaEdgeList periodic_edges(const ForceInput &in, double cutoff, int max_neighbor
     options.algorithm = VesinBruteForce;
   else
     options.algorithm = VesinCellList;
-  // A small box is already a direct pair loop. Skin pays off once the
-  // cell list has enough cells to rebuild.
-  vesin_compat::set_skin(options, brute ? 0.0 : kVerletSkin);
+  // The direct pair loop matches the cell list only when every side
+  // is at least two cutoffs and under three. A fresh session builds
+  // at the bare cutoff. The skin turns on after that call finishes.
+  double skin = 0.0;
+  if (!brute && session.skin_policy != 1) {
+    if (session.skin_policy == 2 || session.calls > 0)
+      skin = kVerletSkin;
+  }
+  vesin_compat::set_skin(options, skin);
+  session.last_skin = skin;
   options.return_distances = true;
 
   if (!session.held_live) {
@@ -398,14 +405,18 @@ UmaEdgeList build_system_edges(const ForceInput &local, double cutoff,
   const int64_t complete = n > 1 ? n * (n - 1) : 0;
   const int64_t want = static_edges_per_system(contract, n_systems);
   const bool molecular = molecular_box > 0.0;
-  if (complete > 0 && (want == complete || (molecular && want == 0)))
-    return molecular_edges(local.pos, local.nAtoms, session);
-
-  const double range = (model_cutoff > 0.0 && std::isfinite(model_cutoff)) ? model_cutoff
-                                                                           : cutoff;
-  UmaEdgeList edges = periodic_edges(local, range, max_neighbors, session);
-  if (want > 0 && static_cast<int64_t>(edges.neighbor.size()) != want)
-    edges = fit_edge_count(local, std::move(edges), want, range);
+  UmaEdgeList edges;
+  if (complete > 0 && (want == complete || (molecular && want == 0))) {
+    edges = molecular_edges(local.pos, local.nAtoms, session);
+  } else {
+    const double range = (model_cutoff > 0.0 && std::isfinite(model_cutoff))
+                             ? model_cutoff
+                             : cutoff;
+    edges = periodic_edges(local, range, max_neighbors, session);
+    if (want > 0 && static_cast<int64_t>(edges.neighbor.size()) != want)
+      edges = fit_edge_count(local, std::move(edges), want, range);
+  }
+  session.calls += 1;
   return edges;
 }
 
