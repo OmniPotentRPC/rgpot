@@ -495,3 +495,68 @@ TEST_CASE("stream matches the stored list past 100k atoms", "[nlist][stream]") {
   sc_w.setNeighbourMode(rgpot::nlist::Mode::Stream);
   checkParity(sc_s, sc_w, scxyz, pt, ortho(n * asc, n * asc, n * asc));
 }
+
+TEST_CASE("ZBL stream matches a direct pair sum on a short cutoff", "[nlist][stream][zbl]") {
+  setThreads("1");
+  const double a = 4.05;
+  auto pos = fccAtoms(10, 4, 4, a);
+  // Pull one neighbour inside the 2.5 A cutoff. The crystal spacing is longer.
+  pos[3] = 1.2;
+  pos[4] = 0.0;
+  pos[5] = 0.0;
+  auto xyz = matrixOf(pos);
+  const std::vector<int> au(xyz.rows(), 79);
+  const auto box = ortho(10 * a, 4 * a, 4 * a);
+  const double cutoff = 2.5;
+  const double cut2 = cutoff * cutoff;
+
+  rgpot::ZBLPot direct_pot;
+  double energy = 0.0;
+  std::vector<double> force(static_cast<std::size_t>(xyz.rows()) * 3, 0.0);
+  int pairs = 0;
+  for (int i = 0; i < xyz.rows(); ++i) {
+    for (int j = i + 1; j < xyz.rows(); ++j) {
+      const double dx = xyz(i, 0) - xyz(j, 0);
+      const double dy = xyz(i, 1) - xyz(j, 1);
+      const double dz = xyz(i, 2) - xyz(j, 2);
+      if (dx * dx + dy * dy + dz * dz > cut2) {
+        continue;
+      }
+      rgpot::types::AtomMatrix pair(2, 3);
+      pair(0, 0) = xyz(i, 0);
+      pair(0, 1) = xyz(i, 1);
+      pair(0, 2) = xyz(i, 2);
+      pair(1, 0) = xyz(j, 0);
+      pair(1, 1) = xyz(j, 1);
+      pair(1, 2) = xyz(j, 2);
+      const std::vector<int> z{au[static_cast<std::size_t>(i)], au[static_cast<std::size_t>(j)]};
+      const auto one = direct_pot(pair, z, box);
+      energy += std::get<0>(one);
+      const auto &f = std::get<1>(one);
+      for (int k = 0; k < 3; ++k) {
+        force[static_cast<std::size_t>(i) * 3 + static_cast<std::size_t>(k)] += f(0, k);
+        force[static_cast<std::size_t>(j) * 3 + static_cast<std::size_t>(k)] += f(1, k);
+      }
+      ++pairs;
+    }
+  }
+  REQUIRE(pairs >= 1);
+  REQUIRE(std::abs(energy) > 1.0);
+
+  rgpot::ZBLPot streamed;
+  streamed.setNeighbourMode(rgpot::nlist::Mode::Stream);
+  const auto got = streamed(xyz, au, box);
+  REQUIRE(streamed.retainedPairs() == 0);
+  REQUIRE(relClose(std::get<0>(got), energy, 1e-12));
+  const auto &gf = std::get<1>(got);
+  for (int i = 0; i < xyz.rows(); ++i) {
+    for (int k = 0; k < 3; ++k) {
+      REQUIRE(relClose(gf(i, k), force[static_cast<std::size_t>(i) * 3 + static_cast<std::size_t>(k)],
+                       1e-12));
+    }
+  }
+
+  rgpot::ZBLPot stored;
+  stored.setNeighbourMode(rgpot::nlist::Mode::Stored);
+  checkParity(stored, streamed, xyz, au, box);
+}

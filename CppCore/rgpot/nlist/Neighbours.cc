@@ -200,6 +200,7 @@ std::uint64_t Neighbours::candidateBound() const {
   return bound;
 }
 
+
 void Neighbours::buildStored(const double *xyz, std::size_t n) {
   (void)xyz;
   off_.assign(n + 1, 0);
@@ -318,9 +319,8 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
   const bool fits = avail > 0 && bound <= avail / index_bytes &&
                     bound <= static_cast<std::uint64_t>(0x7fffffff);
   // The stream keeps the bins. The list adds one index per candidate.
-  // Auto stores only when that index fits. It does not pick a stream
-  // whose scratch would exceed the list: the tile walk refuses a stencil
-  // larger than the index, so the stream stays the smaller footprint.
+  // Auto stores only when that index fits. A short cutoff that does not
+  // fit the 27-slot stencil keeps the smaller mask in the same cache.
   const bool want_store = spec.mode == Mode::Stored ? fits
                           : spec.mode == Mode::Auto && fits;
   if (want_store) {

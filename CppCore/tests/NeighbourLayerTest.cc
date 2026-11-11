@@ -3,10 +3,11 @@
 
 #include <array>
 #include <cmath>
-#include <utility>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <map>
+#include <utility>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
@@ -262,4 +263,192 @@ TEST_CASE("threaded classical forces repeat and stay near one thread",
   te_one_s.setNeighbourMode(rgpot::nlist::Mode::Stream);
   te_two_s.setNeighbourMode(rgpot::nlist::Mode::Stream);
   checkThreads(std::move(te_one_s), std::move(te_two_s), si, zsi, 2 * 5.431);
+}
+
+namespace {
+
+double roundVisit(double t) {
+  if (!std::isfinite(t)) {
+    return 0.0;
+  }
+  const double shifted = t + std::copysign(0.5, t);
+  if (!std::isfinite(shifted) || shifted >= 9223372036854775808.0 ||
+      shifted <= -9223372036854775808.0) {
+    return 0.0;
+  }
+  return static_cast<double>(static_cast<long long>(shifted));
+}
+
+void foldDelta(double &dx, double &dy, double &dz, double lx, double ly, double lz, bool periodic) {
+  if (!periodic) {
+    return;
+  }
+  dx -= lx * roundVisit(dx / lx);
+  dy -= ly * roundVisit(dy / ly);
+  dz -= lz * roundVisit(dz / lz);
+}
+
+using PairMap = std::map<std::pair<int, int>, double>;
+
+PairMap directPairs(const std::vector<double> &pos, double lx, double ly, double lz, double cutoff,
+                    bool periodic) {
+  const double cut2 = cutoff * cutoff;
+  const int n = static_cast<int>(pos.size() / 3);
+  PairMap out;
+  for (int i = 0; i < n; ++i) {
+    for (int j = i + 1; j < n; ++j) {
+      double dx = pos[3 * i] - pos[3 * j];
+      double dy = pos[3 * i + 1] - pos[3 * j + 1];
+      double dz = pos[3 * i + 2] - pos[3 * j + 2];
+      foldDelta(dx, dy, dz, lx, ly, lz, periodic);
+      const double r2 = dx * dx + dy * dy + dz * dz;
+      if (r2 <= cut2) {
+        out[{i, j}] = r2;
+      }
+    }
+  }
+  return out;
+}
+
+std::vector<double> fccBlock(int nx, int ny, int nz, double a) {
+  const double b[4][3] = {{0, 0, 0}, {0, 0.5, 0.5}, {0.5, 0, 0.5}, {0.5, 0.5, 0}};
+  std::vector<double> pos;
+  for (int ix = 0; ix < nx; ++ix) {
+    for (int iy = 0; iy < ny; ++iy) {
+      for (int iz = 0; iz < nz; ++iz) {
+        for (const auto &p : b) {
+          pos.push_back((ix + p[0]) * a);
+          pos.push_back((iy + p[1]) * a);
+          pos.push_back((iz + p[2]) * a);
+        }
+      }
+    }
+  }
+  return pos;
+}
+
+PairMap walkedPairs(rgpot::nlist::Neighbours &cells, std::size_t n, double cutoff) {
+  const double cut2 = cutoff * cutoff;
+  PairMap out;
+  cells.forHalf(0, static_cast<std::int64_t>(n),
+                [&](std::int32_t i, std::int32_t j, double, double, double, double r2) {
+                  if (r2 <= cut2) {
+                    const int lo = std::min(i, j);
+                    const int hi = std::max(i, j);
+                    out[{lo, hi}] = r2;
+                  }
+                });
+  return out;
+}
+
+void requireSamePairs(const PairMap &got, const PairMap &ref) {
+  REQUIRE(got.size() == ref.size());
+  for (const auto &item : ref) {
+    const auto it = got.find(item.first);
+    REQUIRE(it != got.end());
+    const double scale = std::max(1.0, std::abs(item.second));
+    REQUIRE(std::abs(it->second - item.second) <= 1e-12 * scale);
+  }
+}
+
+void loadCells(rgpot::nlist::Neighbours &cells, const std::vector<double> &pos, double lx,
+               double ly, double lz, double cutoff, bool periodic, rgpot::nlist::Mode mode) {
+  const double box[9] = {lx, 0, 0, 0, ly, 0, 0, 0, lz};
+  rgpot::nlist::Spec spec;
+  spec.cutoff = cutoff;
+  spec.skin = 0;
+  spec.periodic = {periodic, periodic, periodic};
+  spec.image = rgpot::nlist::Image::Round;
+  spec.mode = mode;
+  cells.update(pos.data(), pos.size() / 3, box, spec);
+}
+
+} // namespace
+
+TEST_CASE("a short cutoff stream matches the direct pair sum", "[nlist][stream][direct]") {
+  setThreads("1");
+  const double a = 4.05;
+  const double cutoff = 2.5;
+  auto pos = fccBlock(10, 4, 4, a);
+  const double lx = 10 * a;
+  const double ly = 4 * a;
+  const double lz = 4 * a;
+  const auto none = directPairs(pos, lx, ly, lz, cutoff, false);
+  REQUIRE(none.empty());
+
+  rgpot::nlist::Neighbours streamed;
+  loadCells(streamed, pos, lx, ly, lz, cutoff, false, rgpot::nlist::Mode::Stream);
+  REQUIRE(streamed.streaming());
+  REQUIRE(streamed.slots() == 0);
+  requireSamePairs(walkedPairs(streamed, pos.size() / 3, cutoff), none);
+
+  // One pair inside the cutoff. The rest of the lattice stays outside it.
+  pos[3] = 1.2;
+  pos[4] = 0;
+  pos[5] = 0;
+  const auto close = directPairs(pos, lx, ly, lz, cutoff, false);
+  REQUIRE(close.count({0, 1}) == 1);
+
+  rgpot::nlist::Neighbours again;
+  loadCells(again, pos, lx, ly, lz, cutoff, false, rgpot::nlist::Mode::Stream);
+  requireSamePairs(walkedPairs(again, pos.size() / 3, cutoff), close);
+
+  rgpot::nlist::Neighbours stored;
+  loadCells(stored, pos, lx, ly, lz, cutoff, false, rgpot::nlist::Mode::Stored);
+  REQUIRE(stored.mode() == rgpot::nlist::Mode::Stored);
+  requireSamePairs(walkedPairs(stored, pos.size() / 3, cutoff), close);
+
+  rgpot::nlist::Neighbours automatic;
+  loadCells(automatic, pos, lx, ly, lz, cutoff, false, rgpot::nlist::Mode::Auto);
+  REQUIRE(automatic.mode() == rgpot::nlist::Mode::Stored);
+  REQUIRE(!automatic.streaming());
+  requireSamePairs(walkedPairs(automatic, pos.size() / 3, cutoff), close);
+
+  setThreads("4");
+  std::vector<PairMap> parts(4);
+  again.forCellTeam(true, 4,
+                    [&](int thread, std::int32_t i, std::int32_t j, double, double, double,
+                        double r2) {
+                      if (r2 <= cutoff * cutoff) {
+                        const int lo = std::min(i, j);
+                        const int hi = std::max(i, j);
+                        parts[static_cast<std::size_t>(thread)][{lo, hi}] = r2;
+                      }
+                    });
+  PairMap merged;
+  for (const auto &part : parts) {
+    for (const auto &item : part) {
+      REQUIRE(merged.insert(item).second);
+    }
+  }
+  requireSamePairs(merged, close);
+}
+
+TEST_CASE("periodic and long-cutoff streams match the direct pair sum", "[nlist][stream][direct]") {
+  setThreads("1");
+  const double a = 4.05;
+  auto pos = fccBlock(10, 4, 4, a);
+  const double lx = 10 * a;
+  const double ly = 4 * a;
+  const double lz = 4 * a;
+  // Image of atom 0 across the x boundary, inside a 2.5 A cutoff.
+  pos[3] = lx - 0.4;
+  pos[4] = 0;
+  pos[5] = 0;
+  const double cutoff = 2.5;
+  const auto boundary = directPairs(pos, lx, ly, lz, cutoff, true);
+  REQUIRE(boundary.count({0, 1}) == 1);
+  rgpot::nlist::Neighbours cells;
+  loadCells(cells, pos, lx, ly, lz, cutoff, true, rgpot::nlist::Mode::Stream);
+  REQUIRE(cells.streaming());
+  requireSamePairs(walkedPairs(cells, pos.size() / 3, cutoff), boundary);
+
+  const auto wide = fccBlock(4, 4, 4, a);
+  const double side = 4 * a;
+  const double long_cut = 6.0;
+  const auto many = directPairs(wide, side, side, side, long_cut, true);
+  REQUIRE(many.size() > 100);
+  rgpot::nlist::Neighbours tiles;
+  loadCells(tiles, wide, side, side, side, long_cut, true, rgpot::nlist::Mode::Stream);
+  requireSamePairs(walkedPairs(tiles, wide.size() / 3, long_cut), many);
 }

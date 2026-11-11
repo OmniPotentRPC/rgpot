@@ -210,8 +210,8 @@ void ZBLPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const bool box_ok = in.box != nullptr && in.box[0] > 0.0 && in.box[4] > 0.0 &&
                       in.box[8] > 0.0;
   const double *box_use = box_ok ? in.box : free_box;
-  // The scattered cell walk is slower than the stored list through a
-  // million atoms. Auto stores below that.
+  // Auto stores below two million atoms. An explicit stream keeps the
+  // pruned stencil in the shared cache.
   nlist::Mode mode = mode_;
   if (mode == nlist::Mode::Auto && N < 2000000) {
     mode = nlist::Mode::Stored;
