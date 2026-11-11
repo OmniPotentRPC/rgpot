@@ -199,9 +199,9 @@ contains
 
       allocate (e_atom(natoms), source=0.0_wp)
 
-      ! Atom loop writes only its own force column and energy slot, so the
-      ! iterations are independent.
-      do concurrent(i=1:natoms)
+      ! Each atom loads its own neighbours. A stream keeps that scratch
+      ! and the bins, not a pair index for the whole cell.
+      do i = 1_ip, natoms
          call atom_contribution(par, table, i, e_atom(i), forces(:, i))
       end do
 
@@ -210,24 +210,27 @@ contains
 
    !> Energy owned by atom `i` (its two-body halves plus the triplets it
    !! centres) and the total force acting on it.
-   pure subroutine atom_contribution(par, table, i, e_i, f_i)
+   subroutine atom_contribution(par, table, i, e_i, f_i)
       type(sw_params_t), intent(in) :: par
       type(neighbor_table_t), intent(in) :: table
       integer(ip), intent(in) :: i
       real(wp), intent(out) :: e_i
       real(wp), intent(out) :: f_i(3)
 
-      integer(ip) :: sj, sk, sm, sn, m, n
+      integer(ip) :: sj, sk, sm, sn, m, n, ni, nm
+      integer(ip), allocatable :: idx(:), midx(:)
+      real(wp), allocatable :: vec(:, :), mvec(:, :), dist(:), mdist(:)
       real(wp) :: rij, rik, rim, rmn
       real(wp) :: u_ij(3), u_ik(3), u_mi(3), u_mn(3)
       real(wp) :: e_pair, dedr
 
       e_i = 0.0_wp
       f_i = 0.0_wp
+      call table%load(i, idx, vec, dist, ni)
 
-      do sj = table%row(i), table%row(i + 1_ip) - 1_ip
-         rij = table%dist(sj)
-         u_ij = table%vec(:, sj)/rij
+      do sj = 1_ip, ni
+         rij = dist(sj)
+         u_ij = vec(:, sj)/rij
 
          ! Two-body: half the pair energy, and the whole radial force this
          ! neighbour exerts on i.
@@ -236,9 +239,9 @@ contains
          f_i = f_i - dedr*u_ij
 
          ! Three-body, i at the centre: every unordered pair of neighbours.
-         do sk = sj + 1_ip, table%row(i + 1_ip) - 1_ip
-            rik = table%dist(sk)
-            u_ik = table%vec(:, sk)/rik
+         do sk = sj + 1_ip, ni
+            rik = dist(sk)
+            u_ik = vec(:, sk)/rik
             e_i = e_i + triplet_energy(par, u_ij, rij, u_ik, rik)
             f_i = f_i - end_atom_force(par, u_ij, rij, u_ik, rik) &
                   - end_atom_force(par, u_ik, rik, u_ij, rij)
@@ -246,16 +249,17 @@ contains
       end do
 
       ! Three-body, i at an end: triplets centred on each neighbour m.
-      do sm = table%row(i), table%row(i + 1_ip) - 1_ip
-         m = table%idx(sm)
-         rim = table%dist(sm)
+      do sm = 1_ip, ni
+         m = idx(sm)
+         rim = dist(sm)
          ! Vector m -> i is the reverse of the stored i -> m vector.
-         u_mi = -table%vec(:, sm)/rim
-         do sn = table%row(m), table%row(m + 1_ip) - 1_ip
-            n = table%idx(sn)
+         u_mi = -vec(:, sm)/rim
+         call table%load(m, midx, mvec, mdist, nm)
+         do sn = 1_ip, nm
+            n = midx(sn)
             if (n == i) cycle
-            rmn = table%dist(sn)
-            u_mn = table%vec(:, sn)/rmn
+            rmn = mdist(sn)
+            u_mn = mvec(:, sn)/rmn
             f_i = f_i + end_atom_force(par, u_mi, rim, u_mn, rmn)
          end do
       end do

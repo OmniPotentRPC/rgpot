@@ -172,29 +172,32 @@ contains
 
    !> Local density of atom `i`: two-body `rho` plus the three-body
    !! `f f g` sum over unordered neighbour pairs.
-   pure function atom_density(table, i) result(dens)
+   function atom_density(table, i) result(dens)
       type(neighbor_table_t), intent(in) :: table
       integer(ip), intent(in) :: i
       real(wp) :: dens
 
-      integer(ip) :: sj, sk
+      integer(ip) :: sj, sk, ni
+      integer(ip), allocatable :: idx(:)
+      real(wp), allocatable :: vec(:, :), dist(:)
       real(wp) :: rij, rik, rho, rhop, fij, fijp, fik, fikp, gjik, gjikp
       real(wp) :: u_ij(3), u_ik(3)
 
       dens = 0.0_wp
+      call table%load(i, idx, vec, dist, ni)
 
-      do sj = table%row(i), table%row(i + 1_ip) - 1_ip
-         rij = table%dist(sj)
+      do sj = 1_ip, ni
+         rij = dist(sj)
          call splint(sp_rho, cof_rho, dof_rho, rij, rho, rhop)
          dens = dens + rho
 
          call splint(sp_fff, cof_fff, dof_fff, rij, fij, fijp)
-         u_ij = table%vec(:, sj)/rij
+         u_ij = vec(:, sj)/rij
 
-         do sk = sj + 1_ip, table%row(i + 1_ip) - 1_ip
-            rik = table%dist(sk)
+         do sk = sj + 1_ip, ni
+            rik = dist(sk)
             call splint(sp_fff, cof_fff, dof_fff, rik, fik, fikp)
-            u_ik = table%vec(:, sk)/rik
+            u_ik = vec(:, sk)/rik
             call splint(sp_ggg, cof_ggg, dof_ggg, dot_product(u_ij, u_ik), &
                         gjik, gjikp)
             dens = dens + fij*fik*gjik
@@ -233,23 +236,26 @@ contains
    !! The table stores the opposite direction, so each one is negated at
    !! the point of use. Cosines are unaffected, which is why the energy
    !! survives the convention but the forces do not.
-   pure subroutine atom_contribution(table, dudens, i, e_i, f_i)
+   subroutine atom_contribution(table, dudens, i, e_i, f_i)
       type(neighbor_table_t), intent(in) :: table
       real(wp), intent(in) :: dudens(:)
       integer(ip), intent(in) :: i
       real(wp), intent(out) :: e_i
       real(wp), intent(out) :: f_i(3)
 
-      integer(ip) :: sj, sk, sm, sn, m, n
+      integer(ip) :: sj, sk, sm, sn, m, n, ni, nm
+      integer(ip), allocatable :: idx(:), midx(:)
+      real(wp), allocatable :: vec(:, :), mvec(:, :), dist(:), mdist(:)
       real(wp) :: rij, rik, rim, rmn, e_phi, ep_phi, rho, rhop
       real(wp) :: u_ij(3), u_ik(3), u_mi(3), u_mn(3), grad_j(3), grad_k(3)
 
       e_i = 0.0_wp
       f_i = 0.0_wp
+      call table%load(i, idx, vec, dist, ni)
 
-      do sj = table%row(i), table%row(i + 1_ip) - 1_ip
-         rij = table%dist(sj)
-         u_ij = -table%vec(:, sj)/rij
+      do sj = 1_ip, ni
+         rij = dist(sj)
+         u_ij = -vec(:, sj)/rij
 
          ! Pair term: half the energy, the whole force this pair exerts.
          call splint(sp_phi, cof_phi, dof_phi, rij, e_phi, ep_phi)
@@ -261,28 +267,29 @@ contains
          f_i = f_i - dudens(i)*u_ij*rhop
 
          ! Own density, triplets centred here.
-         do sk = sj + 1_ip, table%row(i + 1_ip) - 1_ip
-            rik = table%dist(sk)
-            u_ik = -table%vec(:, sk)/rik
+         do sk = sj + 1_ip, ni
+            rik = dist(sk)
+            u_ik = -vec(:, sk)/rik
             call triplet_gradients(u_ij, rij, u_ik, rik, grad_j, grad_k)
             f_i = f_i - dudens(i)*(grad_j + grad_k)
          end do
       end do
 
       ! Terms this atom contributes to its neighbours' densities.
-      do sm = table%row(i), table%row(i + 1_ip) - 1_ip
-         m = table%idx(sm)
-         rim = table%dist(sm)
-         u_mi = table%vec(:, sm)/rim
+      do sm = 1_ip, ni
+         m = idx(sm)
+         rim = dist(sm)
+         u_mi = vec(:, sm)/rim
 
          call splint(sp_rho, cof_rho, dof_rho, rim, rho, rhop)
          f_i = f_i + dudens(m)*u_mi*rhop
 
-         do sn = table%row(m), table%row(m + 1_ip) - 1_ip
-            n = table%idx(sn)
+         call table%load(m, midx, mvec, mdist, nm)
+         do sn = 1_ip, nm
+            n = midx(sn)
             if (n == i) cycle
-            rmn = table%dist(sn)
-            u_mn = -table%vec(:, sn)/rmn
+            rmn = mdist(sn)
+            u_mn = -mvec(:, sn)/rmn
             call triplet_gradients(u_mi, rim, u_mn, rmn, grad_j, grad_k)
             f_i = f_i + dudens(m)*grad_j
          end do
@@ -314,7 +321,7 @@ contains
       allocate (dens(natoms), dudens(natoms), e_embed(natoms), e_pair(natoms))
 
       ! Pass one: local density of every atom.
-      do concurrent(i=1:natoms)
+      do i = 1_ip, natoms
          dens(i) = atom_density(table, i)
       end do
 
@@ -326,7 +333,7 @@ contains
       end do
 
       ! Pass three: pair energy and the force gather.
-      do concurrent(i=1:natoms)
+      do i = 1_ip, natoms
          call atom_contribution(table, dudens, i, e_pair(i), forces(:, i))
       end do
 

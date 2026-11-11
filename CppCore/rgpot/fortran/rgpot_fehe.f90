@@ -468,22 +468,25 @@ contains
    ! ------------------------------------------------------------------
 
    !> Pass one: both densities seen by atom `i`.
-   pure subroutine atom_densities(par, table, species, i, rho_d, rho_s)
+   subroutine atom_densities(par, table, species, i, rho_d, rho_s)
       type(fehe_params_t), intent(in) :: par
       type(neighbor_table_t), intent(in) :: table
       integer(ip), intent(in) :: species(:)
       integer(ip), intent(in) :: i
       real(wp), intent(out) :: rho_d, rho_s
 
-      integer(ip) :: s, j
+      integer(ip) :: s, j, ni
+      integer(ip), allocatable :: idx(:)
+      real(wp), allocatable :: vec(:, :), dist(:)
       real(wp) :: pair_d, pair_s
 
       rho_d = 0.0_wp
       rho_s = 0.0_wp
+      call table%load(i, idx, vec, dist, ni)
 
-      do s = table%row(i), table%row(i + 1_ip) - 1_ip
-         j = table%idx(s)
-         call pair_densities(par, species(i), species(j), table%dist(s), &
+      do s = 1_ip, ni
+         j = idx(s)
+         call pair_densities(par, species(i), species(j), dist(s), &
                              pair_d, pair_s)
          rho_d = rho_d + pair_d
          rho_s = rho_s + pair_s
@@ -496,7 +499,7 @@ contains
    !! The force on `i` from neighbour `j` is
    !! `(dV/dr + (dFd_i + dFd_j) drho_d/dr + (dFs_i + dFs_j) drho_s/dr)`
    !! along the unit vector pointing from `i` towards `j`.
-   pure subroutine atom_contribution(par, table, species, dfd, dfs, i, e_i, f_i)
+   subroutine atom_contribution(par, table, species, dfd, dfs, i, e_i, f_i)
       type(fehe_params_t), intent(in) :: par
       type(neighbor_table_t), intent(in) :: table
       integer(ip), intent(in) :: species(:)
@@ -505,16 +508,19 @@ contains
       real(wp), intent(out) :: e_i
       real(wp), intent(out) :: f_i(3)
 
-      integer(ip) :: s, j
+      integer(ip) :: s, j, ni
+      integer(ip), allocatable :: idx(:)
+      real(wp), allocatable :: vec(:, :), dist(:)
       real(wp) :: r, u_ij(3), v, dvdr, drho_d, drho_s, radial
 
       e_i = 0.0_wp
       f_i = 0.0_wp
+      call table%load(i, idx, vec, dist, ni)
 
-      do s = table%row(i), table%row(i + 1_ip) - 1_ip
-         j = table%idx(s)
-         r = table%dist(s)
-         u_ij = table%vec(:, s)/r
+      do s = 1_ip, ni
+         j = idx(s)
+         r = dist(s)
+         u_ij = vec(:, s)/r
 
          call pair_terms(par, species(i), species(j), r, v, dvdr)
          call pair_density_derivs(par, species(i), species(j), r, drho_d, &
@@ -598,7 +604,7 @@ contains
       allocate (rho_d(natoms), rho_s(natoms), dfd(natoms), dfs(natoms))
       allocate (e_embed(natoms), e_pair(natoms))
 
-      do concurrent(i=1:natoms)
+      do i = 1_ip, natoms
          call atom_densities(par, table, species, i, rho_d(i), rho_s(i))
       end do
 
@@ -609,7 +615,7 @@ contains
          dfs(i) = dembed_sband(par, rho_s(i))
       end do
 
-      do concurrent(i=1:natoms)
+      do i = 1_ip, natoms
          call atom_contribution(par, table, species, dfd, dfs, i, e_pair(i), &
                                 forces(:, i))
       end do
