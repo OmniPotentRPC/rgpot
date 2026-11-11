@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <map>
 #include <set>
 #include <string>
@@ -459,4 +460,72 @@ TEST_CASE("the skin rebuild follows half the skin", "[nlist][api]") {
     REQUIRE(std::abs(got[key][2] - fresh.vector[3 * p + 2]) < 1e-12);
     REQUIRE(std::abs(got[key][3] - fresh.distance[p]) < 1e-12);
   }
+}
+
+TEST_CASE("a positive skin with a strict cut is rejected", "[nlist][api]") {
+  const double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+  const double pos[] = {0, 0, 0, 1, 0, 0};
+  rgpot::nlist::Query query;
+  query.cutoff = 2.0;
+  query.skin = 0.2;
+  query.cut = rgpot::nlist::Cut::Strict;
+  rgpot::nlist::Table table;
+  REQUIRE_THROWS_AS(rgpot::nlist::build(table, pos, 2, box, query), rgpot::nlist::Error);
+  try {
+    rgpot::nlist::build(table, pos, 2, box, query);
+  } catch (const rgpot::nlist::Error &err) {
+    REQUIRE(err.code() == rgpot::nlist::Code::Skin);
+  }
+}
+
+TEST_CASE("a batch keeps the systems apart", "[nlist][api]") {
+  const double positions[] = {0, 0, 0, 1.2, 0, 0, 0, 0, 0, 1.2, 0, 0};
+  const std::int32_t count[] = {2, 2};
+  const double box[] = {8, 0, 0, 0, 8, 0, 0, 0, 8, 9, 0, 0, 0, 9, 0, 0, 0, 9};
+  rgpot::nlist::Query query;
+  query.cutoff = 2.0;
+  rgpot::nlist::Systems systems{positions, count, 2, box};
+  rgpot::nlist::Batch batch;
+  rgpot::nlist::build(batch, systems, query);
+  REQUIRE(batch.pairs.size() == 2);
+  REQUIRE(batch.system[0] == 0);
+  REQUIRE(batch.system[1] == 1);
+  REQUIRE(batch.pairs.first[1] >= 2);
+  rgpot::nlist::Table one;
+  rgpot::nlist::build(one, positions, 2, box, query);
+  REQUIRE(one.size() == 1);
+  REQUIRE(batch.pairs.distance[0] == one.distance[0]);
+}
+
+TEST_CASE("eight threads match the serial list", "[nlist][api]") {
+  constexpr int ncell = 14;
+  constexpr double lattice = 3.615;
+  const double basis[4][3] = {{0, 0, 0}, {0, 0.5, 0.5}, {0.5, 0, 0.5}, {0.5, 0.5, 0}};
+  std::vector<double> pos;
+  for (int ix = 0; ix < ncell; ++ix) {
+    for (int iy = 0; iy < ncell; ++iy) {
+      for (int iz = 0; iz < ncell; ++iz) {
+        for (const auto &b : basis) {
+          pos.push_back((ix + b[0]) * lattice);
+          pos.push_back((iy + b[1]) * lattice);
+          pos.push_back((iz + b[2]) * lattice);
+        }
+      }
+    }
+  }
+  const double edge = ncell * lattice;
+  const double box[9] = {edge, 0, 0, 0, edge, 0, 0, 0, edge};
+  rgpot::nlist::Query query;
+  query.cutoff = 5.0;
+  query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Half};
+  setenv("OMP_NUM_THREADS", "1", 1);
+  rgpot::nlist::Table serial;
+  rgpot::nlist::build(serial, pos.data(), pos.size() / 3, box, query);
+  setenv("OMP_NUM_THREADS", "8", 1);
+  rgpot::nlist::Table threaded;
+  rgpot::nlist::build(threaded, pos.data(), pos.size() / 3, box, query);
+  setenv("OMP_NUM_THREADS", "1", 1);
+  REQUIRE(pos.size() / 3 >= 8192);
+  REQUIRE(serial.size() == threaded.size());
+  REQUIRE(from_table(serial) == from_table(threaded));
 }

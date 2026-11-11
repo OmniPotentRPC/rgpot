@@ -14,6 +14,10 @@
 #include <cstdint>
 #include <vector>
 
+#if defined(_OPENMP)
+#include <omp.h>
+#endif
+
 namespace rgpot::nlist {
 
 /// How the minimum image is formed. Round is the orthorhombic truncation
@@ -105,6 +109,55 @@ public:
         }
       };
       walkStored(begin, end, half);
+    }
+  }
+
+  /// One walk of the directed pairs, split by cell across `nthreads`.
+  /// The bins are built once and shared. `fn(thread, i, j, dx, dy, dz, r2)`.
+  /// A thread owns each cell, so a pair is visited once.
+  template <typename Fn>
+  void forCellTeam(bool half, int nthreads, Fn &&fn) const {
+    if (nthreads < 1) {
+      nthreads = 1;
+    }
+    if (!fastTiles([&](const auto &tile, const auto &neigh, const auto &nneigh, std::size_t ncells,
+                       bool cell_shift, double search2, double L0, double L1, double L2, double i0,
+                       double i1, double i2, bool p0, bool p1, bool p2) {
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nthreads)
+#endif
+          {
+#if defined(_OPENMP)
+            const int thread = omp_get_thread_num();
+#else
+            const int thread = 0;
+#endif
+            const auto range = partition(static_cast<std::int64_t>(ncells), thread, nthreads);
+            visitTiles(tile, neigh, nneigh, static_cast<std::size_t>(range.begin),
+                       static_cast<std::size_t>(range.end), 0, n_, half, cell_shift, search2, L0,
+                       L1, L2, i0, i1, i2, p0, p1, p2,
+                       [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                           double r2) { fn(thread, i, j, dx, dy, dz, r2); });
+          }
+        })) {
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nthreads)
+#endif
+      {
+#if defined(_OPENMP)
+        const int thread = omp_get_thread_num();
+#else
+        const int thread = 0;
+#endif
+        const auto range = partition(static_cast<std::int64_t>(n_), thread, nthreads);
+        auto adapt = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                         double r2) { fn(thread, i, j, dx, dy, dz, r2); };
+        if (half) {
+          forHalf(range.begin, range.end, adapt);
+        } else {
+          forDirected(range.begin, range.end, adapt);
+        }
+      }
     }
   }
 

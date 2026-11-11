@@ -42,6 +42,10 @@ void check_geometry(const double *positions, std::size_t n, const double *box9,
   if (!std::isfinite(query.skin) || query.skin < 0.0) {
     throw Error(Code::Cutoff, "skin must be finite and >= 0");
   }
+  if (query.skin > 0.0 && query.cut == Cut::Strict) {
+    throw Error(Code::Skin,
+                "a positive skin needs a loose cut; a strict cut stores no buffer");
+  }
   if (const auto *pairs = std::get_if<Pairs>(&query.shape)) {
     if (pairs->shell != Shell::Half && pairs->shell != Shell::Full) {
       throw Error(Code::Shape, "a pair list shell must be half or full");
@@ -477,19 +481,66 @@ std::size_t pair_guess(std::size_t natoms, std::size_t nall, const double *box, 
   return static_cast<std::size_t>(per * static_cast<double>(natoms) + 1.0);
 }
 
-void reserve_columns(Columns &cols, std::size_t slots, const Query &query) {
-  cols.first.reserve(slots);
-  cols.second.reserve(slots);
-  cols.mask.reserve(slots);
-  if (query.fields.shifts) {
-    cols.shift.reserve(slots * 3);
+// A parallel region costs more than the search itself below this size.
+// 64 atoms on 8 threads was several times the serial search.
+int teamSize(std::size_t n) {
+  int nt = threadsRequested();
+  if (nt < 1) {
+    nt = 1;
   }
-  if (query.fields.vectors) {
-    cols.vector.reserve(slots * 3);
+  if (n < 8192 || nt == 1) {
+    return 1;
   }
-  if (query.fields.distances) {
-    cols.distance.reserve(slots);
+  if (static_cast<std::size_t>(nt) > n) {
+    return static_cast<int>(n);
   }
+  return nt;
+}
+
+struct alignas(64) TeamCursor {
+  std::size_t count = 0;
+};
+
+void compact_i32(std::vector<std::int32_t> &col, int width, const TeamCursor *cursors,
+                 const std::size_t *base, int nt) {
+  std::size_t dst = 0;
+  for (int t = 0; t < nt; ++t) {
+    const std::size_t n = cursors[t].count * static_cast<std::size_t>(width);
+    const std::size_t src = base[t] * static_cast<std::size_t>(width);
+    if (n != 0 && dst != src) {
+      std::memmove(col.data() + dst, col.data() + src, n * sizeof(std::int32_t));
+    }
+    dst += n;
+  }
+  col.resize(dst);
+}
+
+void compact_f64(std::vector<double> &col, int width, const TeamCursor *cursors,
+                 const std::size_t *base, int nt) {
+  std::size_t dst = 0;
+  for (int t = 0; t < nt; ++t) {
+    const std::size_t n = cursors[t].count * static_cast<std::size_t>(width);
+    const std::size_t src = base[t] * static_cast<std::size_t>(width);
+    if (n != 0 && dst != src) {
+      std::memmove(col.data() + dst, col.data() + src, n * sizeof(double));
+    }
+    dst += n;
+  }
+  col.resize(dst);
+}
+
+void compact_u8(std::vector<std::uint8_t> &col, const TeamCursor *cursors, const std::size_t *base,
+                int nt) {
+  std::size_t dst = 0;
+  for (int t = 0; t < nt; ++t) {
+    const std::size_t n = cursors[t].count;
+    const std::size_t src = base[t];
+    if (n != 0 && dst != src) {
+      std::memmove(col.data() + dst, col.data() + src, n);
+    }
+    dst += n;
+  }
+  col.resize(dst);
 }
 
 void move_columns(Table &table, Columns &cols) {
@@ -645,8 +696,71 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
   const double search = search_radius(query);
   shift_bounds(box9, query.periodic, search, nmax);
   const bool one_image = one_minimum_image(box9, query, search);
+  // A handful of atoms is cheaper as a direct pair loop. The cell list
+  // spends its time building bins, and a sheared cell of this size has
+  // only a few bins, so the stencil visits every pair anyway.
+  if (!clustered(query) && n < 512) {
+    Columns cols;
+    const bool full = full_shell(query);
+    const int stencil =
+        one_image ? 1 : (2 * nmax[0] + 1) * (2 * nmax[1] + 1) * (2 * nmax[2] + 1);
+    const std::size_t slots = pair_guess(n, n, box9, search, full, stencil);
+    cols.first.reserve(slots);
+    cols.second.reserve(slots);
+    cols.mask.reserve(slots);
+    if (query.fields.shifts) {
+      cols.shift.reserve(slots * 3);
+    }
+    if (query.fields.vectors) {
+      cols.vector.reserve(slots * 3);
+    }
+    if (query.fields.distances) {
+      cols.distance.reserve(slots);
+    }
+    for (std::size_t i = 0; i < n; ++i) {
+      for (std::size_t j = 0; j < n; ++j) {
+        for (int sa = -nmax[0]; sa <= nmax[0]; ++sa) {
+          for (int sb = -nmax[1]; sb <= nmax[1]; ++sb) {
+            for (int sc = -nmax[2]; sc <= nmax[2]; ++sc) {
+              const auto ii = static_cast<std::int32_t>(i);
+              const auto jj = static_cast<std::int32_t>(j);
+              if (!full && !keep_half(ii, jj, sa, sb, sc)) {
+                continue;
+              }
+              double vx = 0;
+              double vy = 0;
+              double vz = 0;
+              image_vector(positions, i, j, sa, sb, sc, box9, vx, vy, vz);
+              const double r2 = vx * vx + vy * vy + vz * vz;
+              if (!accept_distance(r2, query)) {
+                continue;
+              }
+              cols.first.push_back(ii);
+              cols.second.push_back(jj);
+              cols.mask.push_back(0xff);
+              if (query.fields.shifts) {
+                cols.shift.push_back(sa);
+                cols.shift.push_back(sb);
+                cols.shift.push_back(sc);
+              }
+              if (query.fields.vectors) {
+                cols.vector.push_back(vx);
+                cols.vector.push_back(vy);
+                cols.vector.push_back(vz);
+              }
+              if (query.fields.distances) {
+                cols.distance.push_back(std::sqrt(r2));
+              }
+            }
+          }
+        }
+      }
+    }
+    move_columns(table, cols);
+    return;
+  }
   const Neighbours cells = prepare_cells(positions, n, box9, query);
-  const int nt = threadsRequested();
+  const int nt = teamSize(n);
   if (!clustered(query)) {
     std::vector<Columns> parts(static_cast<std::size_t>(std::max(nt, 1)));
     const bool full = full_shell(query);
@@ -759,40 +873,119 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
       move_columns(table, parts[0]);
       return;
     }
-#if defined(_OPENMP)
-#pragma omp parallel num_threads(nt)
-#endif
-    {
-#if defined(_OPENMP)
-      const int t = omp_get_thread_num();
-#else
-      const int t = 0;
-#endif
-      const auto range = partition(static_cast<std::int64_t>(n), t, nt);
-      fill(parts[static_cast<std::size_t>(t)], static_cast<std::size_t>(range.begin),
-           static_cast<std::size_t>(range.end));
+    const int stencil = one_image ? 1 : (2 * nmax[0] + 1) * (2 * nmax[1] + 1) * (2 * nmax[2] + 1);
+    const std::size_t slice = pair_guess(n, n, box9, search, full, stencil) /
+                                  static_cast<std::size_t>(nt) +
+                              8;
+    const std::size_t slots = slice * static_cast<std::size_t>(nt);
+    Columns cols;
+    grow_uninitialized(cols.first, slots);
+    grow_uninitialized(cols.second, slots);
+    grow_uninitialized(cols.mask, slots);
+    if (query.fields.shifts) {
+      grow_uninitialized(cols.shift, slots * 3);
     }
-    std::size_t total = 0;
-    for (const auto &part : parts) {
-      total += part.first.size();
+    if (query.fields.vectors) {
+      grow_uninitialized(cols.vector, slots * 3);
     }
-    Columns all;
-    reserve_columns(all, total, query);
-    for (auto &part : parts) {
-      all.first.insert(all.first.end(), part.first.begin(), part.first.end());
-      all.second.insert(all.second.end(), part.second.begin(), part.second.end());
-      all.mask.insert(all.mask.end(), part.mask.begin(), part.mask.end());
+    if (query.fields.distances) {
+      grow_uninitialized(cols.distance, slots);
+    }
+    std::vector<std::size_t> base(static_cast<std::size_t>(nt));
+    for (int t = 0; t < nt; ++t) {
+      base[static_cast<std::size_t>(t)] = slice * static_cast<std::size_t>(t);
+    }
+    std::vector<TeamCursor> cursors(static_cast<std::size_t>(nt));
+    std::vector<Columns> extra(static_cast<std::size_t>(nt));
+    const double inv0 = box9[0] > 0.0 ? 1.0 / box9[0] : 0.0;
+    const double inv1 = box9[4] > 0.0 ? 1.0 / box9[4] : 0.0;
+    const double inv2 = box9[8] > 0.0 ? 1.0 / box9[8] : 0.0;
+    cells.forCellTeam(
+        !full, nt,
+        [&](int thread, std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+            double r2) {
+          if (!accept_distance(r2, query)) {
+            return;
+          }
+          const auto ui = static_cast<std::size_t>(i);
+          const auto uj = static_cast<std::size_t>(j);
+          const int sa = axis_shift(positions[3 * ui] - positions[3 * uj], inv0, query.periodic[0]);
+          const int sb =
+              axis_shift(positions[3 * ui + 1] - positions[3 * uj + 1], inv1, query.periodic[1]);
+          const int sc =
+              axis_shift(positions[3 * ui + 2] - positions[3 * uj + 2], inv2, query.periodic[2]);
+          const double dist = std::sqrt(r2);
+          const auto t = static_cast<std::size_t>(thread);
+          auto &cursor = cursors[t];
+          if (cursor.count == slice) {
+            extra[t].first.push_back(i);
+            extra[t].second.push_back(j);
+            extra[t].mask.push_back(0xff);
+            if (query.fields.shifts) {
+              extra[t].shift.push_back(sa);
+              extra[t].shift.push_back(sb);
+              extra[t].shift.push_back(sc);
+            }
+            if (query.fields.vectors) {
+              extra[t].vector.push_back(-dx);
+              extra[t].vector.push_back(-dy);
+              extra[t].vector.push_back(-dz);
+            }
+            if (query.fields.distances) {
+              extra[t].distance.push_back(dist);
+            }
+            return;
+          }
+          const std::size_t p = base[t] + cursor.count;
+          cols.first[p] = i;
+          cols.second[p] = j;
+          cols.mask[p] = 0xff;
+          if (query.fields.shifts) {
+            cols.shift[3 * p] = sa;
+            cols.shift[3 * p + 1] = sb;
+            cols.shift[3 * p + 2] = sc;
+          }
+          if (query.fields.vectors) {
+            cols.vector[3 * p] = -dx;
+            cols.vector[3 * p + 1] = -dy;
+            cols.vector[3 * p + 2] = -dz;
+          }
+          if (query.fields.distances) {
+            cols.distance[p] = dist;
+          }
+          ++cursor.count;
+        });
+    compact_i32(cols.first, 1, cursors.data(), base.data(), nt);
+    compact_i32(cols.second, 1, cursors.data(), base.data(), nt);
+    compact_u8(cols.mask, cursors.data(), base.data(), nt);
+    if (query.fields.shifts) {
+      compact_i32(cols.shift, 3, cursors.data(), base.data(), nt);
+    }
+    if (query.fields.vectors) {
+      compact_f64(cols.vector, 3, cursors.data(), base.data(), nt);
+    }
+    if (query.fields.distances) {
+      compact_f64(cols.distance, 1, cursors.data(), base.data(), nt);
+    }
+    for (int t = 0; t < nt; ++t) {
+      auto &over = extra[static_cast<std::size_t>(t)];
+      if (over.first.empty()) {
+        continue;
+      }
+      cols.first.insert(cols.first.end(), over.first.begin(), over.first.end());
+      cols.second.insert(cols.second.end(), over.second.begin(), over.second.end());
+      cols.mask.insert(cols.mask.end(), over.mask.begin(), over.mask.end());
       if (query.fields.shifts) {
-        all.shift.insert(all.shift.end(), part.shift.begin(), part.shift.end());
+        cols.shift.insert(cols.shift.end(), over.shift.begin(), over.shift.end());
       }
       if (query.fields.vectors) {
-        all.vector.insert(all.vector.end(), part.vector.begin(), part.vector.end());
+        cols.vector.insert(cols.vector.end(), over.vector.begin(), over.vector.end());
       }
       if (query.fields.distances) {
-        all.distance.insert(all.distance.end(), part.distance.begin(), part.distance.end());
+        cols.distance.insert(cols.distance.end(), over.distance.begin(), over.distance.end());
       }
     }
-    move_columns(table, all);
+    move_columns(table, cols);
     return;
   }
   std::vector<std::vector<Rec>> parts(static_cast<std::size_t>(std::max(nt, 1)));
@@ -822,6 +1015,45 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
     merge_clusters(rows);
   }
   store_records(table, query, rows);
+}
+
+void build(Batch &batch, const Systems &systems, const Query &query) {
+  if (systems.systems > 0 &&
+      (systems.positions == nullptr || systems.count == nullptr || systems.box9 == nullptr)) {
+    throw Error(Code::Null, "a batch needs positions, a count per system and a box per system");
+  }
+  Batch out;
+  std::size_t origin = 0;
+  for (std::size_t s = 0; s < systems.systems; ++s) {
+    const auto count = systems.count[s];
+    if (count < 0) {
+      throw Error(Code::Shape, "a system count must be >= 0");
+    }
+    const auto n = static_cast<std::size_t>(count);
+    Table table;
+    build(table, systems.positions + 3 * origin, n, systems.box9 + 9 * s, query);
+    const auto base = static_cast<std::int32_t>(origin);
+    for (std::size_t p = 0; p < table.size(); ++p) {
+      out.pairs.first.push_back(table.first[p] + base);
+      out.pairs.second.push_back(table.second[p] + base);
+      out.pairs.mask.push_back(table.mask[p]);
+      out.system.push_back(static_cast<std::int32_t>(s));
+    }
+    if (query.fields.shifts) {
+      out.pairs.shift.insert(out.pairs.shift.end(), table.shift.begin(), table.shift.end());
+    }
+    if (query.fields.vectors) {
+      out.pairs.vector.insert(out.pairs.vector.end(), table.vector.begin(), table.vector.end());
+    }
+    if (query.fields.distances) {
+      out.pairs.distance.insert(out.pairs.distance.end(), table.distance.begin(),
+                                table.distance.end());
+    }
+    origin += n;
+  }
+  out.pairs.stored = true;
+  out.pairs.device = 0;
+  batch = std::move(out);
 }
 
 } // namespace rgpot::nlist
@@ -962,6 +1194,8 @@ const char *rgpot_nlist_strerror(int32_t code) {
     return "neighbour buffer is shorter than the list; needed holds the full count";
   case RGPOT_NLIST_NOMEM:
     return "neighbour list allocation failed";
+  case RGPOT_NLIST_SKIN:
+    return "a positive skin needs a loose cut; a strict cut stores no buffer";
   default:
     return "unknown neighbour error";
   }
@@ -1108,5 +1342,164 @@ int32_t rgpot_nlist_walk_pull(rgpot_nlist_walk *walk, rgpot_nlist_soa *out, size
 }
 
 void rgpot_nlist_walk_close(rgpot_nlist_walk *walk) { delete walk; }
+
+int32_t rgpot_nlist_build_systems(const double *positions, const int32_t *counts,
+                                  size_t nsystems, const double *box9,
+                                  const rgpot_nlist_request *request, rgpot_nlist_soa *out,
+                                  int32_t *system, size_t *count, size_t *needed) {
+  try {
+    const auto query = query_from_c(request);
+    rgpot::nlist::Systems systems;
+    systems.positions = positions;
+    systems.count = counts;
+    systems.systems = nsystems;
+    systems.box9 = box9;
+    rgpot::nlist::Batch batch;
+    rgpot::nlist::build(batch, systems, query);
+    if (needed != nullptr) {
+      *needed = batch.pairs.size();
+    }
+    if (out == nullptr) {
+      if (count != nullptr) {
+        *count = 0;
+      }
+      return RGPOT_NLIST_OK;
+    }
+    const rgpot_nlist_soa taken = load_soa(out);
+    if (taken.cap == 0) {
+      if (count != nullptr) {
+        *count = 0;
+      }
+      return RGPOT_NLIST_OK;
+    }
+    require_columns(query, taken);
+    const size_t nwrite = std::min(taken.cap, batch.pairs.size());
+    const auto view = batch.pairs.view();
+    for (size_t p = 0; p < nwrite; ++p) {
+      taken.first[p] = view.first[p];
+      taken.second[p] = view.second[p];
+      if (system != nullptr) {
+        system[p] = batch.system[p];
+      }
+      if (taken.shift != nullptr && view.shift.size() >= (p + 1) * 3) {
+        taken.shift[3 * p] = view.shift[3 * p];
+        taken.shift[3 * p + 1] = view.shift[3 * p + 1];
+        taken.shift[3 * p + 2] = view.shift[3 * p + 2];
+      }
+      if (taken.vector != nullptr && view.vector.size() >= (p + 1) * 3) {
+        taken.vector[3 * p] = view.vector[3 * p];
+        taken.vector[3 * p + 1] = view.vector[3 * p + 1];
+        taken.vector[3 * p + 2] = view.vector[3 * p + 2];
+      }
+      if (taken.distance != nullptr && p < view.distance.size()) {
+        taken.distance[p] = view.distance[p];
+      }
+      if (taken.mask != nullptr && p < view.mask.size()) {
+        taken.mask[p] = view.mask[p];
+      }
+    }
+    if (count != nullptr) {
+      *count = nwrite;
+    }
+    if (nwrite < batch.pairs.size()) {
+      return RGPOT_NLIST_SHORT;
+    }
+    return RGPOT_NLIST_OK;
+  } catch (const rgpot::nlist::Error &err) {
+    return code_of(err, count);
+  } catch (const std::bad_alloc &) {
+    if (count != nullptr) {
+      *count = 0;
+    }
+    return RGPOT_NLIST_NOMEM;
+  }
+}
+
+struct rgpot_nlist_builder {
+  rgpot::nlist::Builder builder;
+};
+
+int32_t rgpot_nlist_builder_open(rgpot_nlist_builder **builder) {
+  if (builder == nullptr) {
+    return RGPOT_NLIST_NULL;
+  }
+  *builder = new (std::nothrow) rgpot_nlist_builder;
+  if (*builder == nullptr) {
+    return RGPOT_NLIST_NOMEM;
+  }
+  return RGPOT_NLIST_OK;
+}
+
+int32_t rgpot_nlist_builder_update(rgpot_nlist_builder *builder, const double *positions, size_t n,
+                                   const double *box9, const rgpot_nlist_request *request,
+                                   rgpot_nlist_soa *out, size_t *count, size_t *needed,
+                                   int32_t *reused) {
+  if (builder == nullptr) {
+    return RGPOT_NLIST_NULL;
+  }
+  try {
+    const auto query = query_from_c(request);
+    builder->builder.update(positions, n, box9, query);
+    if (reused != nullptr) {
+      *reused = builder->builder.reused() ? 1 : 0;
+    }
+    const auto &table = builder->builder.table();
+    if (needed != nullptr) {
+      *needed = table.size();
+    }
+    if (out == nullptr) {
+      if (count != nullptr) {
+        *count = 0;
+      }
+      return RGPOT_NLIST_OK;
+    }
+    const rgpot_nlist_soa taken = load_soa(out);
+    if (taken.cap == 0) {
+      if (count != nullptr) {
+        *count = 0;
+      }
+      return RGPOT_NLIST_OK;
+    }
+    require_columns(query, taken);
+    const size_t nwrite = std::min(taken.cap, table.size());
+    const auto view = table.view();
+    for (size_t p = 0; p < nwrite; ++p) {
+      taken.first[p] = view.first[p];
+      taken.second[p] = view.second[p];
+      if (taken.shift != nullptr && view.shift.size() >= (p + 1) * 3) {
+        taken.shift[3 * p] = view.shift[3 * p];
+        taken.shift[3 * p + 1] = view.shift[3 * p + 1];
+        taken.shift[3 * p + 2] = view.shift[3 * p + 2];
+      }
+      if (taken.vector != nullptr && view.vector.size() >= (p + 1) * 3) {
+        taken.vector[3 * p] = view.vector[3 * p];
+        taken.vector[3 * p + 1] = view.vector[3 * p + 1];
+        taken.vector[3 * p + 2] = view.vector[3 * p + 2];
+      }
+      if (taken.distance != nullptr && p < view.distance.size()) {
+        taken.distance[p] = view.distance[p];
+      }
+      if (taken.mask != nullptr && p < view.mask.size()) {
+        taken.mask[p] = view.mask[p];
+      }
+    }
+    if (count != nullptr) {
+      *count = nwrite;
+    }
+    if (nwrite < table.size()) {
+      return RGPOT_NLIST_SHORT;
+    }
+    return RGPOT_NLIST_OK;
+  } catch (const rgpot::nlist::Error &err) {
+    return code_of(err, count);
+  } catch (const std::bad_alloc &) {
+    if (count != nullptr) {
+      *count = 0;
+    }
+    return RGPOT_NLIST_NOMEM;
+  }
+}
+
+void rgpot_nlist_builder_close(rgpot_nlist_builder *builder) { delete builder; }
 
 } // extern "C"

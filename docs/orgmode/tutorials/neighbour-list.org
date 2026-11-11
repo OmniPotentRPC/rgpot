@@ -17,7 +17,7 @@ no mode that returns an empty table because the machine looked short of
 memory.
 
 The compiled copies of these programs are =CppCore/examples/nlist_lj.cc=,
-=nlist_threebody.cc=, =nlist_metatomic.cc=, =nlist_c.c=, =nlist_stream.cc=
+=nlist_threebody.cc=, =nlist_metatomic.cc=, =nlist_c.c=, =nlist_batch.cc=, =nlist_verlet.c=, =nlist_stream.cc=
 and =nlist_rust/main.rs=.
 
 ** A half-list pair potential
@@ -110,11 +110,29 @@ build of the same geometry.
 
 Distinct =Table=, =Builder= and =Walk= objects may be used from different
 threads. One object is not shared. =build= may start an OpenMP team when
-=OMP_NUM_THREADS= is set, so do not call it from inside an OpenMP region.
-There is no mutable global. =rgpot_nlist_strerror= returns a literal.
+=OMP_NUM_THREADS= is set and the system has at least 8192 atoms. A smaller
+system stays on the calling thread. Do not call =build= from inside an
+OpenMP region. There is no mutable global. =rgpot_nlist_strerror= returns
+a literal.
+
+** Several systems
+
+Systems that do not interact are one =Systems= value: concatenated
+positions, a count per system and a box per system. =build= into a
+=Batch= returns pairs whose indices address that concatenation, and
+=system= says which system owns each pair. =rgpot_nlist_build_systems=
+and =NeighborRequest.systems= are the same call.
+
+** A skin in C
+
+A positive skin with a strict cut is rejected. The list would have no
+buffer. =rgpot_nlist_builder_open= / =update= / =close= keep the list
+and set =reused= while every atom has moved by at most half the skin.
+=nlist_verlet.c= is that loop.
+
 ** Where the design came from
 
 =docs/neighbour_api_design.md= records the survey of vesin, JAX-MD, LAMMPS,
-ArborX, matscipy, ASE, freud and torch-nl, and the four passes that
-produced this surface. =docs/neighbour_layer.md= records the kernel the
-classical potentials still use.
+ArborX, matscipy, ASE, freud and torch-nl, and the passes that produced
+this surface. =docs/neighbour_layer.md= records the kernel the classical
+potentials still use.

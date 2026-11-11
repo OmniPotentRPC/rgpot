@@ -16,8 +16,9 @@
  * rgpot_nlist_build and rgpot_nlist_walk_pull may be called on different
  * objects at the same time. One walk, and the buffers of one build, are
  * used by one thread. build may start an OpenMP team when OMP_NUM_THREADS
- * is set; do not call it from inside an OpenMP region. There is no
- * mutable global. rgpot_nlist_strerror returns a literal.
+ * is set and the system has at least 8192 atoms. A smaller system stays
+ * on the calling thread. Do not call build from inside an OpenMP region.
+ * There is no mutable global. rgpot_nlist_strerror returns a literal.
  *
  * The walk borrows positions and box9 until rgpot_nlist_walk_close.
  * The caller keeps those arrays alive and does not write them from
@@ -43,7 +44,8 @@ enum {
   RGPOT_NLIST_BOX = 4,
   RGPOT_NLIST_SHAPE = 5,
   RGPOT_NLIST_SHORT = 6,
-  RGPOT_NLIST_NOMEM = 7
+  RGPOT_NLIST_NOMEM = 7,
+  RGPOT_NLIST_SKIN = 8
 };
 
 /* shape: 0 pairs, 1 cluster of four. shell: 0 half, 1 full.
@@ -127,6 +129,36 @@ int32_t rgpot_nlist_walk_pull(rgpot_nlist_walk *walk, rgpot_nlist_soa *out,
                               size_t *count, int32_t *done);
 
 void rgpot_nlist_walk_close(rgpot_nlist_walk *walk);
+
+/* Several systems that do not interact. positions is the concatenation
+ * of counts[s] atoms. box9 holds 9 * nsystems lattice values. first and
+ * second in out index the concatenated positions. system, when not
+ * null, receives the system id of each written pair and must hold cap
+ * ints. A null system pointer skips that column. The size probe and
+ * the short-buffer rule match rgpot_nlist_build. */
+int32_t rgpot_nlist_build_systems(const double *positions, const int32_t *counts,
+                                  size_t nsystems, const double *box9,
+                                  const rgpot_nlist_request *request,
+                                  rgpot_nlist_soa *out, int32_t *system,
+                                  size_t *count, size_t *needed);
+
+/* A builder keeps the last list and skips the search while every atom
+ * has moved by at most half the skin. Skin 0 rebuilds unless the
+ * coordinates match. open returns a code and writes *builder. update
+ * fills out the same way rgpot_nlist_build does. *reused is 1 when the
+ * stored list was kept. close frees the builder. */
+typedef struct rgpot_nlist_builder rgpot_nlist_builder;
+
+int32_t rgpot_nlist_builder_open(rgpot_nlist_builder **builder);
+
+int32_t rgpot_nlist_builder_update(rgpot_nlist_builder *builder,
+                                   const double *positions, size_t n,
+                                   const double *box9,
+                                   const rgpot_nlist_request *request,
+                                   rgpot_nlist_soa *out, size_t *count,
+                                   size_t *needed, int32_t *reused);
+
+void rgpot_nlist_builder_close(rgpot_nlist_builder *builder);
 
 #ifdef __cplusplus
 }

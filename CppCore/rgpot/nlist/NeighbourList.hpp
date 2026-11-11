@@ -37,7 +37,8 @@ enum class Code : std::int32_t {
   Box = 4,
   Shape = 5,
   Short = 6,
-  Nomem = 7
+  Nomem = 7,
+  Skin = 8
 };
 
 /// A rejected query. code() is the C ABI value. what() is a sentence
@@ -208,8 +209,31 @@ private:
 /// Fill `table` from `query`. The table holds every pair. A caller that
 /// must not store the list uses Walk. Throws Error before clearing
 /// `table` when the geometry is rejected. Two builds on different tables
-/// may run at the same time. They share no mutable global.
+/// may run at the same time. They share no mutable global. A build of
+/// at least 8192 atoms may start an OpenMP team. A smaller build stays
+/// on the calling thread.
 void build(Table &table, const double *positions, std::size_t n,
            const double *box9, const Query &query);
+
+/// Several systems that do not interact. `positions` is the concatenation
+/// of every system, `count` atoms each. `box9` holds nine lattice values
+/// per system, in the same order. `count[s] == 0` is an empty system.
+struct Systems {
+  const double *positions = nullptr;
+  const std::int32_t *count = nullptr;
+  std::size_t systems = 0;
+  const double *box9 = nullptr;
+};
+
+/// Pairs of a `Systems` build. `first` and `second` index the concatenated
+/// positions. `system[p]` is the system that owns pair `p`.
+struct Batch {
+  Table pairs;
+  std::vector<std::int32_t> system;
+};
+
+/// One query for every system. The systems do not see each other's atoms.
+/// A rejected system throws before `batch` is cleared.
+void build(Batch &batch, const Systems &systems, const Query &query);
 
 } // namespace rgpot::nlist

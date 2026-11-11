@@ -564,29 +564,65 @@ atoms held about 30 GB and was stopped. matscipy has no half list.
 
 | system | list | threads | rgpot s | rgpot MB | vesin s | vesin MB | ASE s | matscipy s |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| tri | half | 1 | 0.00135 | 4.8 | 0.00041 | 33.5 | 0.00532 |  |
-| tri | half | 8 | 0.00720 | 5.4 | 0.00041 | 33.4 | 0.00513 |  |
-| tri | full | 1 | 0.00142 | 5.1 | 0.00063 | 34.2 | 0.0369 | 0.00172 |
-| tri | full | 8 | 0.00728 | 6.0 | 0.00064 | 34.1 | 0.0357 | 0.00174 |
-| 108000 | half | 1 | 0.117 | 139 | 0.143 | 316 | 2.51 |  |
-| 108000 | half | 8 | 0.070 | 324 | 0.079 | 428 | 2.46 |  |
-| 108000 | full | 1 | 0.215 | 256 | 0.230 | 591 | 8.45 | 0.632 |
-| 108000 | full | 8 | 0.166 | 558 | 0.165 | 807 | 8.32 | 0.638 |
-| 1048576 | half | 1 | 1.25 | 1317 | 1.39 | 2787 | 25.2 |  |
-| 1048576 | half | 8 | 0.925 | 2345 | 0.751 | 3565 | 24.8 |  |
-| 1048576 | full | 1 | 2.27 | 2457 | 2.39 | 5453 |  | 6.17 |
-| 1048576 | full | 8 | 1.80 | 4624 | 1.64 | 6668 |  | 5.95 |
+| tri | half | 1 | 0.000278 | 4.4 | 0.000410 | 33.5 | 0.00532 |  |
+| tri | half | 8 | 0.000292 | 4.4 | 0.000408 | 33.4 | 0.00513 |  |
+| tri | full | 1 | 0.000491 | 4.7 | 0.000627 | 34.2 | 0.0369 | 0.00172 |
+| tri | full | 8 | 0.000491 | 4.9 | 0.000642 | 34.1 | 0.0357 | 0.00174 |
+| 108000 | half | 1 | 0.128 | 139 | 0.143 | 316 | 2.51 |  |
+| 108000 | half | 8 | 0.0509 | 182 | 0.0794 | 428 | 2.46 |  |
+| 108000 | full | 1 | 0.218 | 256 | 0.230 | 591 | 8.45 | 0.632 |
+| 108000 | full | 8 | 0.0923 | 341 | 0.165 | 807 | 8.32 | 0.638 |
+| 1048576 | half | 1 | 1.26 | 1317 | 1.39 | 2787 | 25.2 |  |
+| 1048576 | half | 8 | 0.574 | 1634 | 0.751 | 3565 | 24.8 |  |
+| 1048576 | full | 1 | 2.21 | 2457 | 2.39 | 5453 |  | 6.17 |
+| 1048576 | full | 8 | 1.02 | 3192 | 1.64 | 6668 |  | 5.95 |
 
-On one thread the half list is faster than vesin at both sizes, and
-the resident set is about half of vesin's. Eight threads on the
-million-atom lists take longer than vesin. The search streams through
-the cells, and the resident set is the stored table plus the cell bins.
+A system of fewer than 8192 atoms stays on the calling thread, so the
+64-atom list costs the same with `OMP_NUM_THREADS=8` as with one
+thread. It is also a direct pair loop: a sheared cell that small has
+only a few bins, and the cell list was spending the call on setup.
+Eight threads share one cell list and write into slices of one table.
+The slices are then packed in place. The resident set is that table.
+Every row above is faster than vesin and uses less memory.
+
+## Pass 5: several systems are one call
+
+Writing a batched consumer from the tutorial meant a loop of `build`,
+then adding each system's atom count onto `first` and `second`, and
+keeping a side array of system ids. Nothing stopped a pair from being
+requested across the boundary except the caller's own bookkeeping.
+The C caller had the same loop and no column for the system id.
+Cap'n Proto had one `ForceInput` and no place to name a second system.
+
+`Systems` is the concatenated positions, a count per system and a box
+per system. `build` into a `Batch` returns one pair table whose
+indices address that concatenation, plus `system[p]`. Systems do not
+see each other's atoms. `rgpot_nlist_build_systems` is the same call.
+`NeighborRequest.systems` and `NeighborList.system` carry it on the
+wire. `CppCore/examples/nlist_batch.cc` builds two dimers and checks
+that the second pair is indexed in the second system.
+
+## Pass 6: the skin belongs to a builder, in C as well
+
+A Verlet loop written from the tutorial used `Builder` in C++ and, in
+C, called `rgpot_nlist_build` on every step. The C caller could not
+ask whether the list was still inside half the skin. A strict cut
+with a positive skin compiled and stored pairs out to the cutoff
+only, so the skin did not protect a later move. That request now
+throws `Code::Skin` (`RGPOT_NLIST_SKIN`), with the sentence "a
+positive skin needs a loose cut; a strict cut stores no buffer".
+
+`rgpot_nlist_builder_open`, `rgpot_nlist_builder_update` and
+`rgpot_nlist_builder_close` keep the list. `update` writes `*reused`
+when every atom is still within half the skin. `nlist_verlet.c`
+moves one atom inside the skin, then past it.
 
 ## Re-run
 
-`NeighbourListTest` passed, 547 assertions in 9 cases. The compiled
+`NeighbourListTest` passed, 558 assertions in 12 cases. The compiled
 callers passed: Lennard-Jones, the three-body angle, the metatomic
-label copy, the C caller, the Rust caller, and the two-process stream.
+label copy, the C caller, the batch of two systems, the C Verlet
+builder, the Rust caller, and the two-process stream.
 Morse, Stillinger-Weber, Tersoff, the EAM cell, Sutton-Chen, ZBL, the
 LJ cluster, EMT, the half shell and the neighbour layer passed with
 them.

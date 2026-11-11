@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   columns, and a client streams chunks with `cursor` and `next`.
   The tutorial is `docs/orgmode/tutorials/neighbour-list.org`.
   The query walks the same cell list as the classical potentials.
+  Fewer than 8192 atoms stay on the calling thread. A larger build writes
+  one shared table. Several independent systems are one batch, and the C
+  builder keeps a Verlet list. A positive skin with a strict cut is rejected.
 
 ## [3.5.1](https://github.com/OmniPotentRPC/rgpot/tree/v3.5.1) - 2026-10-11
 

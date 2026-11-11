@@ -72,6 +72,21 @@ def main() -> int:
     decoded_bare = run(capnp, "decode", schema, "ForceInput", data=encoded_bare).decode()
     if "neighbors =" in decoded_bare:
         raise SystemExit(f"unset neighbours leaked into an old input: {decoded_bare}")
+    batch = (
+        "(cutoff = 2, systems = [(count = 2, box = [8, 0, 0, 0, 8, 0, 0, 0, 8]), "
+        "(count = 2, box = [9, 0, 0, 0, 9, 0, 0, 0, 9])])"
+    )
+    encoded_batch = run(capnp, "encode", schema, "NeighborRequest", batch)
+    decoded_batch = run(capnp, "decode", schema, "NeighborRequest", data=encoded_batch).decode()
+    if "systems = [" not in decoded_batch or "count = 2" not in decoded_batch:
+        raise SystemExit(f"batch request lost the systems: {decoded_batch}")
+    tagged = (
+        "(first = [0, 3], second = [1, 2], mask = [255, 255], system = [0, 1], message = \"ok\")"
+    )
+    encoded_tagged = run(capnp, "encode", schema, "NeighborList", tagged)
+    decoded_tagged = run(capnp, "decode", schema, "NeighborList", data=encoded_tagged).decode()
+    if "system = [0, 1]" not in decoded_tagged:
+        raise SystemExit(f"chunk lost the system ids: {decoded_tagged}")
     print("nlist capnp round-trip ok")
     return 0
 

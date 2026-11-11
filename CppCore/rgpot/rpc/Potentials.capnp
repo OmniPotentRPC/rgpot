@@ -2648,6 +2648,16 @@ struct NeighborRequest {
   mode @8 :UInt8 = 1;
   cursor @9 :UInt64 = 0;
   limit @10 :UInt32 = 0;
+  # Empty for one system. Each entry is a system that does not interact
+  # with the others. Positions are concatenated in the same order, and
+  # NeighborList.first indexes that concatenation. NeighborList.system
+  # is the system of each pair.
+  systems @11 :List(NeighborSystem);
+}
+
+struct NeighborSystem {
+  count @0 :UInt32;
+  box @1 :List(Float64);
 }
 
 # One chunk. first and second have the same length. shift has 3 times that
@@ -2667,4 +2677,6 @@ struct NeighborList {
   next @7 :UInt64 = 0;
   status @8 :Int32 = 0;
   message @9 :Text;
+  # System id of each pair. Empty when the request named one system.
+  system @10 :List(Int32);
 }
