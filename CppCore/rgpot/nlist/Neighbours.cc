@@ -266,6 +266,7 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
     return;
   }
   reused_ = false;
+  tiles_hot_ = false;
   n_ = n;
   std::memcpy(box_, box9, sizeof(box_));
   len_[0] = box9[0];

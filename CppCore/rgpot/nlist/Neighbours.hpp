@@ -125,13 +125,28 @@ public:
     if (streaming_) {
       walkCells(begin, end, fn, true);
     } else {
-      auto half = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                      double r2) {
-        if (j > i) {
-          fn(i, j, dx, dy, dz, r2);
+      // The stored index keeps both directions. Skip j <= i before the
+      // minimum image, which is what the comment above promises.
+      for (std::int64_t i = begin; i < end; ++i) {
+        const auto a = static_cast<std::size_t>(i);
+        if (a + 1 >= off_.size()) {
+          break;
         }
-      };
-      walkStored(begin, end, half);
+        const auto lo = off_[a];
+        const auto hi = off_[a + 1];
+        for (std::int32_t p = lo; p < hi; ++p) {
+          const auto j = nbr_[static_cast<std::size_t>(p)];
+          if (j <= static_cast<std::int32_t>(i)) {
+            continue;
+          }
+          double dx = 0;
+          double dy = 0;
+          double dz = 0;
+          foldPair(static_cast<std::int32_t>(i), j, dx, dy, dz);
+          const double r2 = dx * dx + dy * dy + dz * dz;
+          fn(static_cast<std::int32_t>(i), j, dx, dy, dz, r2);
+        }
+      }
     }
   }
 
@@ -202,6 +217,203 @@ public:
                        search_ * search_);
   }
 
+  /// Pairs whose central atom lies in `cell`. The first call builds the
+  /// tile stencil; later cells reuse it. The stencil is not a pair index.
+  template <typename Fn>
+  void forCell(int cell, Fn fn) const {
+    if (cell < 0 || n_ < 2) {
+      return;
+    }
+    const auto ncells = static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_) *
+                        static_cast<std::size_t>(nz_);
+    if (static_cast<std::size_t>(cell) >= ncells) {
+      return;
+    }
+    const auto c0 = static_cast<std::size_t>(cell);
+    const double search2 = search_ * search_;
+    if (!fastTiles([&](const auto &tile, const auto &neigh, const auto &nneigh,
+                       const std::int32_t *head, std::size_t, bool cell_shift, double search2_fast,
+                       double L0, double L1, double L2, double i0, double i1, double i2, bool p0,
+                       bool p1, bool p2) {
+          if (head != nullptr) {
+            visitTiles<true>(tile, neigh, nneigh, head, c0, c0 + 1, 0, n_, false, cell_shift,
+                             search2_fast, L0, L1, L2, i0, i1, i2, p0, p1, p2, fn);
+          } else {
+            visitTiles<false>(tile, neigh, nneigh, head, c0, c0 + 1, 0, n_, false, cell_shift,
+                              search2_fast, L0, L1, L2, i0, i1, i2, p0, p1, p2, fn);
+          }
+        })) {
+      const auto a0 = cell_start_[c0];
+      const auto a1 = cell_start_[c0 + 1];
+      for (std::int32_t q = a0; q < a1; ++q) {
+        const auto i = cell_atoms_[static_cast<std::size_t>(q)];
+        walkCellsScattered(static_cast<std::int64_t>(i), static_cast<std::int64_t>(i) + 1, fn,
+                           false, search2);
+      }
+    }
+  }
+
+  [[nodiscard]] int gridCells() const noexcept { return nx_ * ny_ * nz_; }
+  [[nodiscard]] int gridX() const noexcept { return nx_; }
+  [[nodiscard]] int gridY() const noexcept { return ny_; }
+  [[nodiscard]] int gridZ() const noexcept { return nz_; }
+  [[nodiscard]] bool axisPeriodic(int axis) const noexcept {
+    return axis >= 0 && axis < 3 && periodic_[axis];
+  }
+
+  /// Pairs whose central atom lies in cells `[c0, c1)`. One tile build
+  /// covers the whole range.
+  template <typename Fn>
+  void forCellRange(int c0, int c1, Fn fn) const {
+    if (c0 < 0 || c1 <= c0 || n_ < 2 || cell_start_.empty()) {
+      return;
+    }
+    const int ncells = nx_ * ny_ * nz_;
+    if (c0 >= ncells) {
+      return;
+    }
+    if (c1 > ncells) {
+      c1 = ncells;
+    }
+    const auto b0 = static_cast<std::size_t>(c0);
+    const auto b1 = static_cast<std::size_t>(c1);
+    // One stencil for the whole grid, then only the cells in this range.
+    // A later plane reuses it. The direct loop below is the fallback when
+    // the box is sheared or the stencil does not fit.
+    if (fastTiles([&](const auto &tile, const auto &neigh, const auto &nneigh,
+                      const std::int32_t *head, std::size_t, bool cell_shift, double search2_fast,
+                      double L0, double L1, double L2, double i0, double i1, double i2, bool p0,
+                      bool p1, bool p2) {
+          if (head != nullptr) {
+            visitTiles<true>(tile, neigh, nneigh, head, b0, b1, 0, n_, false, cell_shift,
+                             search2_fast, L0, L1, L2, i0, i1, i2, p0, p1, p2, fn);
+          } else {
+            visitTiles<false>(tile, neigh, nneigh, head, b0, b1, 0, n_, false, cell_shift,
+                              search2_fast, L0, L1, L2, i0, i1, i2, p0, p1, p2, fn);
+          }
+        })) {
+      return;
+    }
+    const double search2 = search_ * search_;
+    for (int c = c0; c < c1; ++c) {
+      const auto a0 = cell_start_[static_cast<std::size_t>(c)];
+      const auto a1 = cell_start_[static_cast<std::size_t>(c) + 1];
+      const int iz = c % nz_;
+      const int iy = (c / nz_) % ny_;
+      const int ix = c / (nz_ * ny_);
+      int seen[27];
+      int nseen = 0;
+      int neigh[27];
+      for (int ox = -1; ox <= 1; ++ox) {
+        for (int oy = -1; oy <= 1; ++oy) {
+          for (int oz = -1; oz <= 1; ++oz) {
+            const int id = cellId(ix + ox, iy + oy, iz + oz);
+            if (id < 0) {
+              continue;
+            }
+            bool dup = false;
+            for (int s = 0; s < nseen; ++s) {
+              if (seen[s] == id) {
+                dup = true;
+                break;
+              }
+            }
+            if (dup) {
+              continue;
+            }
+            seen[nseen] = id;
+            neigh[nseen] = id;
+            ++nseen;
+          }
+        }
+      }
+      for (std::int32_t q = a0; q < a1; ++q) {
+        const auto i = cell_atoms_[static_cast<std::size_t>(q)];
+        for (int s = 0; s < nseen; ++s) {
+          const auto nb = static_cast<std::size_t>(neigh[s]);
+          const auto b0 = cell_start_[nb];
+          const auto b1 = cell_start_[nb + 1];
+          for (std::int32_t r = b0; r < b1; ++r) {
+            const auto j = cell_atoms_[static_cast<std::size_t>(r)];
+            if (j == i) {
+              continue;
+            }
+            double dx = 0;
+            double dy = 0;
+            double dz = 0;
+            foldPair(i, j, dx, dy, dz);
+            const double r2 = dx * dx + dy * dy + dz * dz;
+            if (r2 <= search2) {
+              fn(i, j, dx, dy, dz, r2);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  [[nodiscard]] int cellOf(std::int32_t i) const {
+    if (i < 0 || static_cast<std::size_t>(i) >= cell_of_.size()) {
+      return -1;
+    }
+    return cell_of_[static_cast<std::size_t>(i)];
+  }
+
+  /// Atoms binned in `cell`, as indices into the coordinate array.
+  void cellAtoms(int cell, const std::int32_t *&ids, int &n) const {
+    ids = nullptr;
+    n = 0;
+    if (cell < 0 || cell_start_.empty()) {
+      return;
+    }
+    const auto c = static_cast<std::size_t>(cell);
+    if (c + 1 >= cell_start_.size()) {
+      return;
+    }
+    const auto b = cell_start_[c];
+    const auto e = cell_start_[c + 1];
+    n = static_cast<int>(e - b);
+    if (n > 0) {
+      ids = cell_atoms_.data() + b;
+    }
+  }
+
+  /// Up to 27 cells around `cell`, periodic sides wrapped. `n` is how
+  /// many were written into `out`.
+  void stencil(int cell, int *out, int &n) const {
+    n = 0;
+    if (cell < 0 || out == nullptr || nz_ < 1) {
+      return;
+    }
+    const int iz = cell % nz_;
+    const int iy = (cell / nz_) % ny_;
+    const int ix = cell / (nz_ * ny_);
+    int seen[27];
+    int nseen = 0;
+    for (int ox = -1; ox <= 1; ++ox) {
+      for (int oy = -1; oy <= 1; ++oy) {
+        for (int oz = -1; oz <= 1; ++oz) {
+          const int id = cellId(ix + ox, iy + oy, iz + oz);
+          if (id < 0) {
+            continue;
+          }
+          bool dup = false;
+          for (int s = 0; s < nseen; ++s) {
+            if (seen[s] == id) {
+              dup = true;
+              break;
+            }
+          }
+          if (dup) {
+            continue;
+          }
+          seen[nseen++] = id;
+          out[n++] = id;
+        }
+      }
+    }
+  }
+
 private:
   struct SpecKey {
     double cutoff = 0;
@@ -266,7 +478,11 @@ private:
     // are unchanged. When that array is larger than the pair index, the same
     // cache keeps only the cells that hold a pair inside the search. A stored
     // list does not take the compact form; it walks the index.
-    const bool dense = tileStencilFits();
+    // A stream has no pair index to compare the stencil with. The compact
+    // form scans every pair and then gives up when a cell keeps more than
+    // two neighbours, which a many-body cutoff does. The 27-slot stencil
+    // is built once and reused for the rest of the force call.
+    const bool dense = streaming_ || tileStencilFits();
     if (!dense && !streaming_) {
       return false;
     }
@@ -307,10 +523,13 @@ private:
     const bool same_grid = cache.owner == this && cache.nx == nx_ && cache.ny == ny_ &&
                            cache.nz == nz_ && cache.search == search_ && cache.compact == !dense;
     // update() already compared the coordinates when it reused the bins.
+    // tiles_hot_ skips the coordinate compare. A cell-by-cell stream
+    // would otherwise compare every coordinate on every cell.
     const bool reuse =
         streaming_ && same_grid &&
-        (reused_ || (cache.xyz.size() == n_ * 3 &&
-                     std::memcmp(cache.xyz.data(), xyz_, n_ * 3 * sizeof(double)) == 0));
+        (reused_ || tiles_hot_ ||
+         (cache.xyz.size() == n_ * 3 &&
+          std::memcmp(cache.xyz.data(), xyz_, n_ * 3 * sizeof(double)) == 0));
     if (!reuse) {
     if (!dense) {
       cache.compact = true;
@@ -538,6 +757,7 @@ private:
       cache.nz = nz_;
       cache.search = search_;
       cache.xyz.assign(xyz_, xyz_ + n_ * 3);
+      tiles_hot_ = true;
     }
     }
     if (cache.compact && cache.neigh.empty()) {
@@ -745,6 +965,7 @@ private:
   MinimumImage general_;
   bool use_general_ = false;
   bool streaming_ = true;
+  mutable bool tiles_hot_ = false;
   bool built_ = false;
   bool reused_ = false;
   std::size_t n_ = 0;
