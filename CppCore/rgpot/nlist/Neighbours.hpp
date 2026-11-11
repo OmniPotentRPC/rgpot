@@ -83,9 +83,27 @@ public:
   template <typename Fn>
   void forDirected(std::int64_t begin, std::int64_t end, Fn &&fn) const {
     if (streaming_) {
-      walkCells(begin, end, fn);
+      walkCells(begin, end, fn, false);
     } else {
       walkStored(begin, end, fn);
+    }
+  }
+
+  /// The pairs of `forDirected` with `j > i` only. Geometry for `j <= i`
+  /// is not computed. A serial two-pass potential uses this so each
+  /// unordered pair is visited once per pass.
+  template <typename Fn>
+  void forHalf(std::int64_t begin, std::int64_t end, Fn &&fn) const {
+    if (streaming_) {
+      walkCells(begin, end, fn, true);
+    } else {
+      auto half = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                      double r2) {
+        if (j > i) {
+          fn(i, j, dx, dy, dz, r2);
+        }
+      };
+      walkStored(begin, end, half);
     }
   }
 
@@ -128,7 +146,7 @@ private:
   }
 
   template <typename Fn>
-  void walkCells(std::int64_t begin, std::int64_t end, Fn &fn) const {
+  void walkCells(std::int64_t begin, std::int64_t end, Fn &fn, bool half) const {
     const double search2 = search_ * search_;
     for (std::int64_t i = begin; i < end; ++i) {
       const auto a = static_cast<std::size_t>(i);
@@ -162,6 +180,9 @@ private:
             for (std::int32_t q = a0; q < a1; ++q) {
               const auto j = cell_atoms_[static_cast<std::size_t>(q)];
               if (j == static_cast<std::int32_t>(i)) {
+                continue;
+              }
+              if (half && !(j > static_cast<std::int32_t>(i))) {
                 continue;
               }
               double dx = 0;

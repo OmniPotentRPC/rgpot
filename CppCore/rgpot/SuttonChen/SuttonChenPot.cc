@@ -151,42 +151,34 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   neighbours_.update(R, n_size, box_use, spec);
   const int nt = nlist::threadsRequested();
   const bool stream = neighbours_.streaming();
-  // Accepted pairs from the one cell walk. The force pass reads these
-  // instead of walking the cells again.
-  std::vector<std::int32_t> hit_i;
-  std::vector<std::int32_t> hit_j;
-  std::vector<std::vector<std::int32_t>> part_i;
-  std::vector<std::vector<std::int32_t>> part_j;
-  if (stream && nt <= 1) {
-    hit_i.reserve(n_size * 8);
-    hit_j.reserve(n_size * 8);
-  }
-  if (stream && nt > 1) {
-    part_i.resize(static_cast<std::size_t>(nt));
-    part_j.resize(static_cast<std::size_t>(nt));
-  }
   auto pair_term = [&](double r2, double &phi, double &rep) {
     const double ar2 = (lattice * lattice) / r2;
     phi = pow_ar(ar2, m_exp);
     rep = pow_ar(ar2, n_exp);
   };
   if (nt == 1) {
-    neighbours_.forDirected(
-        0, n_atoms, [&](int32_t i, int32_t j, double, double, double, double r2) {
-          if (!(j > i) || !(r2 > 0.0) || r2 > cutoff2) {
-            return;
-          }
-          double phi = 0.0;
-          double rep = 0.0;
-          pair_term(r2, phi, rep);
-          rho[static_cast<std::size_t>(i)] += phi;
-          rho[static_cast<std::size_t>(j)] += phi;
-          epair += epsilon * rep;
-          if (stream) {
-            hit_i.push_back(i);
-            hit_j.push_back(j);
-          }
-        });
+    auto density = [&](int32_t i, int32_t j, double, double, double, double r2) {
+      if (!(r2 > 0.0) || r2 > cutoff2) {
+        return;
+      }
+      double phi = 0.0;
+      double rep = 0.0;
+      pair_term(r2, phi, rep);
+      rho[static_cast<std::size_t>(i)] += phi;
+      rho[static_cast<std::size_t>(j)] += phi;
+      epair += epsilon * rep;
+    };
+    if (stream) {
+      neighbours_.forHalf(0, n_atoms, density);
+    } else {
+      neighbours_.forDirected(
+          0, n_atoms, [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
+            if (!(j > i)) {
+              return;
+            }
+            density(i, j, dx, dy, dz, r2);
+          });
+    }
   } else {
     std::vector<nlist::Range> parts(static_cast<std::size_t>(nt));
     for (int t = 0; t < nt; ++t) {
@@ -216,10 +208,6 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
             rho[static_cast<std::size_t>(i)] += phi;
             if (j > i) {
               local += epsilon * rep;
-            }
-            if (stream) {
-              part_i[static_cast<std::size_t>(t)].push_back(i);
-              part_j[static_cast<std::size_t>(t)].push_back(j);
             }
           });
       partial[static_cast<std::size_t>(t)] = local;
@@ -269,52 +257,13 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       accumulatePairStrain(virial, fscale, dx, dy, dz);
     }
   };
-  auto round_visit = [](double t) {
-    if (!std::isfinite(t)) {
-      return 0.0;
-    }
-    const double shifted = t + std::copysign(0.5, t);
-    if (!std::isfinite(shifted) || shifted >= 9223372036854775808.0 ||
-        shifted <= -9223372036854775808.0) {
-      return 0.0;
-    }
-    return static_cast<double>(static_cast<long long>(shifted));
-  };
-  const double len0 = box_use[0];
-  const double len1 = box_use[4];
-  const double len2 = box_use[8];
-  const double inv0 = periodic[0] && len0 != 0.0 ? 1.0 / len0 : 0.0;
-  const double inv1 = periodic[1] && len1 != 0.0 ? 1.0 / len1 : 0.0;
-  const double inv2 = periodic[2] && len2 != 0.0 ? 1.0 / len2 : 0.0;
-  auto separation = [&](std::int32_t i, std::int32_t j, double &dx, double &dy,
-                        double &dz, double &r2) {
-    const auto ui = static_cast<std::size_t>(i) * 3;
-    const auto uj = static_cast<std::size_t>(j) * 3;
-    dx = R[ui] - R[uj];
-    dy = R[ui + 1] - R[uj + 1];
-    dz = R[ui + 2] - R[uj + 2];
-    if (inv0 != 0.0) {
-      dx -= len0 * round_visit(dx * inv0);
-    }
-    if (inv1 != 0.0) {
-      dy -= len1 * round_visit(dy * inv1);
-    }
-    if (inv2 != 0.0) {
-      dz -= len2 * round_visit(dz * inv2);
-    }
-    r2 = dx * dx + dy * dy + dz * dz;
-  };
   if (nt == 1) {
     if (stream) {
-      for (std::size_t p = 0; p < hit_i.size(); ++p) {
-        double dx = 0.0;
-        double dy = 0.0;
-        double dz = 0.0;
-        double r2 = 0.0;
-        separation(hit_i[p], hit_j[p], dx, dy, dz, r2);
-        apply(hit_i[p], hit_j[p], dx, dy, dz, r2, F,
-              cfg.stress ? strain : nullptr, true);
-      }
+      neighbours_.forHalf(
+          0, n_atoms,
+          [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
+            apply(i, j, dx, dy, dz, r2, F, cfg.stress ? strain : nullptr, true);
+          });
     } else {
       neighbours_.forDirected(
           0, n_atoms,
@@ -345,24 +294,11 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       double *force = owned.data() + static_cast<std::size_t>(t) * n_size * 3;
       double *virial = cfg.stress ? vir.data() + static_cast<std::size_t>(t) * 6
                                  : nullptr;
-      if (stream) {
-        const auto &pi = part_i[static_cast<std::size_t>(t)];
-        const auto &pj = part_j[static_cast<std::size_t>(t)];
-        for (std::size_t p = 0; p < pi.size(); ++p) {
-          double dx = 0.0;
-          double dy = 0.0;
-          double dz = 0.0;
-          double r2 = 0.0;
-          separation(pi[p], pj[p], dx, dy, dz, r2);
-          apply(pi[p], pj[p], dx, dy, dz, r2, force, virial, false);
-        }
-      } else {
-        neighbours_.forDirected(
-            range.begin, range.end,
-            [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
-              apply(i, j, dx, dy, dz, r2, force, virial, false);
-            });
-      }
+      neighbours_.forDirected(
+          range.begin, range.end,
+          [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
+            apply(i, j, dx, dy, dz, r2, force, virial, false);
+          });
     }
     for (int t = 0; t < nt; ++t) {
       const double *force = owned.data() + static_cast<std::size_t>(t) * n_size * 3;
