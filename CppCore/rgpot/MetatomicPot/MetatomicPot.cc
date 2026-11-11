@@ -3,6 +3,7 @@
 
 #include "rgpot/MetatomicPot/MetatomicPot.hpp"
 #include "rgpot/MetatomicPot/vesin_compat.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include <ATen/CPUGeneratorImpl.h>
 #include "vesin.h"
 
@@ -648,63 +649,45 @@ metatensor_torch::TensorBlock MetatomicPot::computeNeighbors(
     const double *positions, const double *box, const bool periodic[3]) const {
 
   auto cutoff = request->engine_cutoff(m_config.length_unit);
-
-  // VesinOptions layout must match the linked libvesin (0.5 vs 0.6 diverge
-  // on skin/n_threads). fill_neighbor_options zero-inits and sets fields
-  // via vesin_compat traits for the headers we compile against.
-  VesinOptions options{};
-  vesin_compat::fill_neighbor_options(options, cutoff, request->full_list());
-
-  VesinNeighborList *vesin_nl = new VesinNeighborList();
-
-  // enum VesinDevice (0.3.x) vs struct VesinDevice (0.5+) — type traits.
-  VesinDevice cpu = vesin_compat::make_cpu_device();
-  const char *error_message = nullptr;
-  int status = vesin_neighbors(
-      reinterpret_cast<const double (*)[3]>(positions),
-      static_cast<size_t>(nAtoms), reinterpret_cast<const double (*)[3]>(box),
-      const_cast<bool *>(periodic), cpu, options, vesin_nl, &error_message);
-
-  if (status != EXIT_SUCCESS) {
-    std::string err_str = "vesin_neighbors failed";
-    if (error_message != nullptr) {
-      err_str += ": " + std::string(error_message);
-    } else {
-      // Bare failure is the usual symptom of a VesinOptions ABI mismatch
-      // (engine built against a different vesin minor than libvesin.so).
-      err_str +=
-          " (no message; check vesin header/lib major match — need "
-          "vesin>=0.6 for current engines)";
-    }
-    err_str += " cutoff=" + std::to_string(cutoff) +
-               " nAtoms=" + std::to_string(nAtoms) +
-               " full=" + std::to_string(static_cast<int>(options.full));
-    delete vesin_nl;
-    throw std::runtime_error(err_str);
+  nlist::Query query;
+  query.cutoff = cutoff;
+  query.format = request->full_list() ? nlist::Format::Full : nlist::Format::Half;
+  query.cut = nlist::Cut::Strict;
+  if constexpr (requires { request->strict(); }) {
+    query.cut = request->strict() ? nlist::Cut::Strict : nlist::Cut::Loose;
   }
+  query.periodic = {periodic[0], periodic[1], periodic[2]};
+  query.fields.shifts = true;
+  query.fields.vectors = true;
+  query.fields.distances = false;
+  query.mode = nlist::Mode::Stored;
+  auto held = std::make_shared<nlist::Table>();
+  nlist::build(*held, positions, static_cast<std::size_t>(nAtoms), box, query);
 
-  auto n_pairs = static_cast<int64_t>(vesin_nl->length);
+  auto n_pairs = static_cast<int64_t>(held->size());
   auto labels_options_cpu =
       torch::TensorOptions().dtype(torch::kInt32).device(torch::kCPU);
-
   auto pair_samples_values = torch::empty({n_pairs, 5}, labels_options_cpu);
-  auto pair_samples_values_ptr = pair_samples_values.accessor<int32_t, 2>();
-  for (int64_t i = 0; i < n_pairs; i++) {
-    pair_samples_values_ptr[i][0] = static_cast<int32_t>(vesin_nl->pairs[i][0]);
-    pair_samples_values_ptr[i][1] = static_cast<int32_t>(vesin_nl->pairs[i][1]);
-    pair_samples_values_ptr[i][2] = vesin_nl->shifts[i][0];
-    pair_samples_values_ptr[i][3] = vesin_nl->shifts[i][1];
-    pair_samples_values_ptr[i][4] = vesin_nl->shifts[i][2];
+  if (n_pairs > 0) {
+    auto pair_samples_values_ptr = pair_samples_values.accessor<int32_t, 2>();
+    for (int64_t i = 0; i < n_pairs; i++) {
+      const auto p = static_cast<std::size_t>(i);
+      pair_samples_values_ptr[i][0] = held->first[p];
+      pair_samples_values_ptr[i][1] = held->second[p];
+      pair_samples_values_ptr[i][2] = held->shift[3 * p];
+      pair_samples_values_ptr[i][3] = held->shift[3 * p + 1];
+      pair_samples_values_ptr[i][4] = held->shift[3 * p + 2];
+    }
   }
 
-  auto deleter = [=](void *) {
-    vesin_free(vesin_nl);
-    delete vesin_nl;
-  };
-
-  auto pair_vectors = torch::from_blob(
-      vesin_nl->vectors, {n_pairs, 3, 1}, deleter,
-      torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU));
+  // The distance vectors stay in the table. The extra axis is a view.
+  auto pair_vectors =
+      n_pairs == 0
+          ? torch::empty({0, 3, 1}, torch::TensorOptions().dtype(torch::kFloat64))
+          : torch::from_blob(held->vector.data(), {n_pairs, 3},
+                             [held](void *) {},
+                             torch::TensorOptions().dtype(torch::kFloat64))
+                .unsqueeze(-1);
 
   auto neighbor_samples = torch::make_intrusive<metatensor_torch::LabelsHolder>(
       std::vector<std::string>{"first_atom", "second_atom", "cell_shift_a",

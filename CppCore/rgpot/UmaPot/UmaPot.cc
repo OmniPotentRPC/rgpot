@@ -4,6 +4,7 @@
 #include "rgpot/UmaPot/MolecularFrame.hpp"
 
 #include "rgpot/MetatomicPot/vesin_compat.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/UmaPot/UmaContract.hpp"
 #include "rgpot/UmaPot/aoti_execstack.hpp"
 #include "vesin.h"
@@ -50,27 +51,17 @@ struct EdgeList {
 
 EdgeList vesin_fairchem_edges(const ForceInput &in, double cutoff,
                               int max_neighbors) {
-  VesinOptions options{};
-  vesin_compat::fill_neighbor_options(options, cutoff, /*full_list=*/true);
-  // One neighbor-list thread: the pair order then depends on the input alone.
-  vesin_compat::set_n_threads(options, 1);
-  options.return_distances = true;
-
-  VesinNeighborList nl{};
-  VesinDevice cpu = vesin_compat::make_cpu_device();
-  const char *err = nullptr;
-  bool pbc[3] = {true, true, true};
-  const int status =
-      vesin_neighbors(reinterpret_cast<const double(*)[3]>(in.pos), in.nAtoms,
-                      reinterpret_cast<const double(*)[3]>(in.box), pbc, cpu,
-                      options, &nl, &err);
-  if (status != EXIT_SUCCESS) {
-    std::string msg = "UmaPot: vesin_neighbors failed";
-    if (err)
-      msg += ": " + std::string(err);
-    vesin_free(&nl);
-    throw std::runtime_error(msg);
-  }
+  nlist::Query query;
+  query.cutoff = cutoff;
+  query.format = nlist::Format::Full;
+  query.cut = nlist::Cut::Strict;
+  query.periodic = {true, true, true};
+  query.fields.shifts = true;
+  query.fields.vectors = false;
+  query.fields.distances = true;
+  query.mode = nlist::Mode::Stored;
+  nlist::Table table;
+  nlist::build(table, in.pos, in.nAtoms, in.box, query);
 
   struct Cand {
     int64_t n{0};
@@ -81,38 +72,19 @@ EdgeList vesin_fairchem_edges(const ForceInput &in, double cutoff,
     double dist{0};
   };
   std::vector<Cand> keep;
-  keep.reserve(nl.length);
-  const double *box = in.box;
-  for (size_t k = 0; k < nl.length; ++k) {
-    const int64_t i = static_cast<int64_t>(nl.pairs[k][0]);
-    const int64_t j = static_cast<int64_t>(nl.pairs[k][1]);
-    double dist = 0.0;
-    if (nl.distances != nullptr) {
-      dist = nl.distances[k];
-    } else {
-      const double sx = static_cast<double>(nl.shifts[k][0]);
-      const double sy = static_cast<double>(nl.shifts[k][1]);
-      const double sz = static_cast<double>(nl.shifts[k][2]);
-      const double dx = in.pos[3 * j] - in.pos[3 * i] + sx * box[0] +
-                        sy * box[3] + sz * box[6];
-      const double dy = in.pos[3 * j + 1] - in.pos[3 * i + 1] + sx * box[1] +
-                        sy * box[4] + sz * box[7];
-      const double dz = in.pos[3 * j + 2] - in.pos[3 * i + 2] + sx * box[2] +
-                        sy * box[5] + sz * box[8];
-      dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-    }
-    if (dist < 1e-8)
+  keep.reserve(table.size());
+  for (size_t k = 0; k < table.size(); ++k) {
+    if (table.distance[k] < 1e-8)
       continue;
     Cand c;
-    c.n = j;
-    c.c = i;
-    c.s0 = static_cast<double>(nl.shifts[k][0]);
-    c.s1 = static_cast<double>(nl.shifts[k][1]);
-    c.s2 = static_cast<double>(nl.shifts[k][2]);
-    c.dist = dist;
+    c.n = table.second[k];
+    c.c = table.first[k];
+    c.s0 = static_cast<double>(table.shift[3 * k]);
+    c.s1 = static_cast<double>(table.shift[3 * k + 1]);
+    c.s2 = static_cast<double>(table.shift[3 * k + 2]);
+    c.dist = table.distance[k];
     keep.push_back(c);
   }
-  vesin_free(&nl);
 
   // Canonical edge order: the neighbor list may be assembled by several
   // threads, so its pair order is not a function of the input. Message
