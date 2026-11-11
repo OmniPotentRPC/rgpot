@@ -13,6 +13,10 @@
 
 #include "rgpot/nlist/Neighbours.hpp"
 
+namespace rgpot::eam {
+struct ElementSpline;
+}
+
 #include <array>
 #include <cstdint>
 #include <vector>
@@ -132,6 +136,10 @@ private:
   std::vector<std::int32_t> rev_;
   std::vector<double> thread_energy_;
   std::vector<double> partial_f_;
+  /// Per-thread density and force for the stream. One row per thread,
+  /// so a half pair can update both atoms without a lock.
+  std::vector<double> stream_rho_;
+  std::vector<double> stream_force_;
   std::vector<rgpot::nlist::Range> parts_;
   rgpot::nlist::Neighbours neighbours_;
 
@@ -152,6 +160,7 @@ private:
                               double *U);
   void evaluateDensityStream(long N, const int *atomicNrs, double *F,
                              double *U);
+  [[nodiscard]] const rgpot::eam::ElementSpline &splineFor(int Z);
   void accumulate(long i, const int *atomicNrs, double *F, double &U,
                   std::vector<Delta> &deltas, const std::int32_t *stream_ids,
                   long stream_n) const;

@@ -12,6 +12,7 @@
 #include "EAM.h"
 #include "rgpot/nlist/NeighbourList.hpp"
 #include "Parameters.h"
+#include "StreamSpline.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -40,6 +41,8 @@ void EAM::cleanMemory() {
   std::vector<std::int32_t>().swap(rev_);
   std::vector<double>().swap(thread_energy_);
   std::vector<double>().swap(partial_f_);
+  std::vector<double>().swap(stream_rho_);
+  std::vector<double>().swap(stream_force_);
   parts_.clear();
   part_n_ = -1;
   part_nt_ = -1;
@@ -438,106 +441,167 @@ void EAM::evaluateStoredParallel(long N, const int *atomicNrs, double *F,
   *U = energy;
 }
 
+const rgpot::eam::ElementSpline &EAM::splineFor(int Z) {
+  static std::vector<rgpot::eam::ElementSpline> tables;
+  if (tables.capacity() < 8) {
+    tables.reserve(8);
+  }
+  for (const auto &table : tables) {
+    if (table.Z == Z) {
+      return table;
+    }
+  }
+  const element_parameters *raw = nullptr;
+  for (int i = 0; i < NPARAMS; ++i) {
+    if (el_params[i].Z == Z) {
+      raw = &el_params[i];
+      break;
+    }
+  }
+  if (raw == nullptr) {
+    throw 14324;
+  }
+  tables.push_back(rgpot::eam::makeElementSpline(raw->Z, raw->Dm, raw->alphaM, raw->Rm,
+                                                 raw->beta1, raw->beta2, raw->r_cut,
+                                                 raw->func_coeff));
+  return tables.back();
+}
+
 void EAM::evaluateDensityStream(long N, const int *atomicNrs, double *F,
                                  double *U) {
-  // Two fused walks. The first keeps only the density. The second reads
-  // that density. No partner index is stored between them.
+  // One half pair, tabulated. The density walk and the force walk
+  // share the cell bins. Each thread keeps its own rows, so the
+  // partner atom needs no lock and no pair index.
   js_.clear();
   const int nt = threads_used_;
-  ensureParts(N, nt);
-  std::vector<element_parameters> ep;
-  ep.reserve(static_cast<std::size_t>(N));
+  std::vector<const rgpot::eam::ElementSpline *> kind(
+      static_cast<std::size_t>(N));
   for (long i = 0; i < N; ++i) {
-    ep.push_back(get_element_parameters(atomicNrs[i]));
+    kind[static_cast<std::size_t>(i)] = &splineFor(atomicNrs[i]);
   }
-  rho_.assign(static_cast<std::size_t>(N), 0.0);
+  const rgpot::eam::ElementSpline *only = kind.empty() ? nullptr : kind[0];
+  bool uniform = true;
+  for (const auto *k : kind) {
+    if (k != only) {
+      uniform = false;
+      break;
+    }
+  }
+  const auto rows = static_cast<std::size_t>(nt) * static_cast<std::size_t>(N);
+  stream_rho_.assign(rows, 0.0);
   std::vector<double> pair_energy(static_cast<std::size_t>(nt), 0.0);
-  auto density_of = [](const element_parameters &epar, double r, double r2, double &rho,
-                       double &fscale) {
-    const double r6 = r2 * r2 * r2;
-    const double exp_b1 = std::exp(-epar.beta1 * r);
-    const double exp_b2 = std::exp(-2.0 * epar.beta2 * r);
-    const double rho_pair = exp_b1 + 512.0 * exp_b2;
-    rho = r6 * rho_pair;
-    const double r5 = r2 * r2 * r;
-    const double mag = 6.0 * r5 * rho_pair +
-                       r6 * (-epar.beta1 * exp_b1 - 1024.0 * epar.beta2 * exp_b2);
-    fscale = -mag / r;
+  auto density_row = [&](int t) {
+    return stream_rho_.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(N);
   };
-  neighbours_.forCellTeam(
-      false, nt, [&](int t, std::int32_t i, std::int32_t j, double, double, double, double r2) {
+  rho_.assign(static_cast<std::size_t>(N), 0.0);
+  dF_.resize(static_cast<std::size_t>(N));
+  stream_force_.assign(rows * 3, 0.0);
+  double embedded = 0.0;
+  auto absorb = [&](int thread) {
+    if (thread != 0) {
+      return;
+    }
+    for (long i = 0; i < N; ++i) {
+      double dens = 0.0;
+      for (int t = 0; t < nt; ++t) {
+        dens += stream_rho_[static_cast<std::size_t>(t) * static_cast<std::size_t>(N) +
+                            static_cast<std::size_t>(i)];
+      }
+      rho_[static_cast<std::size_t>(i)] = dens;
+      const auto *s = kind[static_cast<std::size_t>(i)];
+      dF_[static_cast<std::size_t>(i)] = embedding_force(s->embed, dens);
+      embedded += embedding_function(s->embed, dens);
+    }
+  };
+  auto force_row = [&](int t) {
+    return stream_force_.data() +
+           static_cast<std::size_t>(t) * static_cast<std::size_t>(N) * 3;
+  };
+  auto add_pair = [&](double *row, std::int32_t i, std::int32_t j, double scale, double dx,
+                      double dy, double dz) {
+    row[3 * i] += scale * dx;
+    row[3 * i + 1] += scale * dy;
+    row[3 * i + 2] += scale * dz;
+    row[3 * j] -= scale * dx;
+    row[3 * j + 1] -= scale * dy;
+    row[3 * j + 2] -= scale * dz;
+  };
+  auto density_of = [&](int t, std::int32_t i, std::int32_t j, double, double, double, double r2) {
         if (!(r2 > 0.0)) {
           return;
         }
-        const element_parameters &epar = ep[static_cast<std::size_t>(i)];
-        if (r2 > epar.r_cut * epar.r_cut) {
+        if (uniform && only != nullptr) {
+          if (r2 > only->cutoff2) {
+            return;
+          }
+          const double r = std::sqrt(r2);
+          const double rho = only->density(r);
+          double *row = density_row(t);
+          row[i] += rho;
+          row[j] += rho;
+          pair_energy[static_cast<std::size_t>(t)] += only->pairEnergy(r);
+          return;
+        }
+        const auto *si = kind[static_cast<std::size_t>(i)];
+        const auto *sj = kind[static_cast<std::size_t>(j)];
+        const double r = std::sqrt(r2);
+        double *row = density_row(t);
+        // j > i on a half walk, so the pair term belongs to i.
+        if (r2 <= si->cutoff2) {
+          row[i] += si->density(r);
+          pair_energy[static_cast<std::size_t>(t)] += si->pairEnergy(r);
+        }
+        if (r2 <= sj->cutoff2) {
+          row[j] += sj->density(r);
+        }
+  };
+  auto force_of = [&](int t, std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                      double r2) {
+        if (!(r2 > 0.0)) {
           return;
         }
         const double r = std::sqrt(r2);
-        double rho = 0.0;
-        double fscale = 0.0;
-        density_of(epar, r, r2, rho, fscale);
-        rho_[static_cast<std::size_t>(i)] += rho;
-        if (j > i) {
-          const double expArg = std::exp(-epar.alphaM * (r - epar.Rm));
-          const double d = 1.0 - expArg;
-          pair_energy[static_cast<std::size_t>(t)] += epar.Dm * d * d - epar.Dm;
+        double scale = 0.0;
+        if (uniform && only != nullptr) {
+          if (r2 > only->cutoff2) {
+            return;
+          }
+          const double fs = only->densityForce(r);
+          scale = only->pairForce(r) -
+                  (dF_[static_cast<std::size_t>(i)] + dF_[static_cast<std::size_t>(j)]) * fs;
+        } else {
+          const auto *si = kind[static_cast<std::size_t>(i)];
+          const auto *sj = kind[static_cast<std::size_t>(j)];
+          if (r2 <= si->cutoff2) {
+            scale += si->pairForce(r);
+            scale -= dF_[static_cast<std::size_t>(i)] * si->densityForce(r);
+          }
+          if (r2 <= sj->cutoff2) {
+            scale -= dF_[static_cast<std::size_t>(j)] * sj->densityForce(r);
+          }
         }
-      });
-  dF_.resize(static_cast<std::size_t>(N));
-  double embedded = 0.0;
+        if (scale != 0.0) {
+          add_pair(force_row(t), i, j, scale, dx, dy, dz);
+        }
+  };
+  neighbours_.forCellTeam(true, nt, density_of);
+  absorb(0);
+  neighbours_.forCellTeam(true, nt, force_of);
   for (long i = 0; i < N; ++i) {
-    const element_parameters &epar = ep[static_cast<std::size_t>(i)];
-    const double dens = rho_[static_cast<std::size_t>(i)];
-    dF_[static_cast<std::size_t>(i)] = embedding_force(epar.func_coeff, dens);
-    embedded += embedding_function(epar.func_coeff, dens);
-  }
-  auto force_on = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                      double r2) {
-    if (!(r2 > 0.0)) {
-      return;
-    }
-    const double r = std::sqrt(r2);
-    const element_parameters &mine = ep[static_cast<std::size_t>(i)];
-    const element_parameters &other = ep[static_cast<std::size_t>(j)];
     double fx = 0.0;
     double fy = 0.0;
     double fz = 0.0;
-    if (r2 <= mine.r_cut * mine.r_cut) {
-      double rho = 0.0;
-      double fscale = 0.0;
-      density_of(mine, r, r2, rho, fscale);
-      const double scale = dF_[static_cast<std::size_t>(i)] * fscale;
-      fx -= scale * dx;
-      fy -= scale * dy;
-      fz -= scale * dz;
+    for (int t = 0; t < nt; ++t) {
+      const double *row = stream_force_.data() +
+                          static_cast<std::size_t>(t) * static_cast<std::size_t>(N) * 3;
+      fx += row[3 * i];
+      fy += row[3 * i + 1];
+      fz += row[3 * i + 2];
     }
-    if (r2 <= other.r_cut * other.r_cut) {
-      double rho = 0.0;
-      double fscale = 0.0;
-      density_of(other, r, r2, rho, fscale);
-      const double scale = dF_[static_cast<std::size_t>(j)] * fscale;
-      fx -= scale * dx;
-      fy -= scale * dy;
-      fz -= scale * dz;
-    }
-    const bool lower_is_i = i < j;
-    const element_parameters &owner = lower_is_i ? mine : other;
-    if (r2 <= owner.r_cut * owner.r_cut) {
-      const double expArg = std::exp(-owner.alphaM * (r - owner.Rm));
-      const double d = 1.0 - expArg;
-      const double fcomp = 2.0 * owner.alphaM * owner.Dm * d * (d - 1.0) / r;
-      fx += fcomp * dx;
-      fy += fcomp * dy;
-      fz += fcomp * dz;
-    }
-    F[3 * i] += fx;
-    F[3 * i + 1] += fy;
-    F[3 * i + 2] += fz;
-  };
-  neighbours_.forCellTeam(false, nt,
-                          [&](int, std::int32_t i, std::int32_t j, double dx, double dy,
-                              double dz, double r2) { force_on(i, j, dx, dy, dz, r2); });
+    F[3 * i] = fx;
+    F[3 * i + 1] = fy;
+    F[3 * i + 2] = fz;
+  }
   double energy = embedded;
   for (double part : pair_energy) {
     energy += part;
