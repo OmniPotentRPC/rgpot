@@ -1,0 +1,12 @@
+chore(uma): match the develop copyright line
+
+The cutoff sources now use the develop header.
+One file is CppCore/rgpot/UmaPot/UmaEdges.cc.
+One file is CppCore/rgpot/UmaPot/UmaEdges.hpp.
+One file is CppCore/rgpot/UmaPot/UmaLinkedCell.hpp.
+One file is CppCore/tests/uma_cutoff_bench.cc.
+One file is CppCore/tests/uma_cutoff_probe.cc.
+One file is CppCore/tests/uma_edge_identity.cc.
+One file is scripts/export_cutoff_probe.py.
+One file is scripts/uma_edges.py.
+One file is tests/test_uma_complete_edges.py.

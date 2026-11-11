@@ -1,0 +1,5 @@
+docs(uma): record the neighbor-cutoff finding in PROGRESS.md
+
+PROGRESS.md records the Claisen failure.
+The 10 angstrom list is 0.4 of the molecular box.
+That value is read back as the vesin cutoff.

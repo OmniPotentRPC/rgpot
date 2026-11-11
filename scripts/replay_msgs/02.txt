@@ -1,0 +1,15 @@
+fix(uma): keep a molecular graph at every ordered pair
+
+UmaPot.cc emits every ordered pair.
+UmaPot.hpp emits every ordered pair.
+UmaConfig.hpp emits every ordered pair.
+CppCore/meson.build registers the cutoff probe.
+One file is scripts/export_cutoff_probe.py.
+One file is scripts/uma_edges.py.
+That script builds the Claisen edges.
+One file is tests/test_uma_complete_edges.py.
+It checks that count.
+scripts/export_uma_aoti.py records the backbone cutoff.
+One file is the molecular news fragment.
+One file is CppCore/rgpot/UmaPot/README.md.
+PROGRESS.md describes the list.

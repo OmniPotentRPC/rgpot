@@ -1,0 +1,9 @@
+perf(vesin): pad per-thread lists and split work by atom
+
+This change is in vendored vesin.
+Each per-thread list stays allocated between calls.
+The slot is aligned to 64 bytes.
+Pair storage grows to a multiple of 64 bytes.
+The cell walk is split into atom ranges.
+A full brute force pair reserves two slots up front.
+The Verlet rebuild follows the stored algorithm.

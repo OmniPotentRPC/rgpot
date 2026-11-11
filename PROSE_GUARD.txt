@@ -1,0 +1,10 @@
+Snapper check on REPORT.md exited 0.
+Snapper check on REPLAY.txt exited 0.
+Snapper check on REPRODUCE.txt exited 0.
+Snapper check on MESON.txt exited 0.
+Snapper check on scripts/replay_msgs exited 0.
+Stderr from those checks was empty.
+proseguard --profile github-review on the docs exited 2.
+proseguard --profile commit-msg on the messages exited 2.
+The installed proseguard has no profile flag.
+Those exits are the process status.

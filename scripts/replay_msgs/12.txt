@@ -1,0 +1,9 @@
+fix(uma): build the first edge call at the bare cutoff
+
+UmaEdges.cc leaves the skin at 0 on a fresh session.
+The next call turns on a 1 angstrom skin.
+A later call keeps that list.
+A fresh session matches a build at the bare cutoff.
+uma_edge_identity.cc checks both of those results.
+The bench file can run the ABBA comparison.
+That comparison is skin 0, the previous tip, and this policy.

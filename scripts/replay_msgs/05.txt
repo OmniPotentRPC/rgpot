@@ -1,0 +1,4 @@
+fix(uma): derive the padded image shift from the cell edge
+
+The shift is the smallest integer past the recorded range.
+That integer places the image outside the range.

@@ -1,0 +1,24 @@
+test(uma): cover the branches the score had missed
+
+A one-thread prefix of 8192 bins uses the blocked loops.
+A wrapped coordinate uses the last bin.
+Fit drops an edge past the range.
+Fit steps an image that sits on the range.
+Fit refuses a zero cell.
+Fit refuses an inexact float32 shift.
+Equal-distance images keep shift order.
+The score covers the whole source.
+The raw seeds are recorded.
+The pinned ABBA is recorded.
+One file is CppCore/rgpot/UmaPot/UmaEdges.cc.
+One file is CppCore/rgpot/UmaPot/UmaEdges.hpp.
+One file is CppCore/rgpot/UmaPot/UmaLinkedCell.hpp.
+One file is CppCore/tests/uma_linked_cell_cover.cc.
+One file is CppCore/tests/uma_cutoff_gcov.txt.
+One file is CppCore/tests/uma_cutoff_abba.cc.
+One file is CppCore/tests/uma_cutoff_abba_20261126.txt.
+One file is CppCore/tests/uma_cutoff_calls_20261121.txt.
+One file is CppCore/tests/uma_cutoff_calls_20261122.txt.
+One file is CppCore/tests/uma_behavior_receipts.txt.
+One file is scripts/uma_cutoff_gcov.sh.
+One file is scripts/uma_cutoff_report.py.

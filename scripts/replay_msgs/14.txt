@@ -1,0 +1,8 @@
+perf(vesin): filter pairs on per-thread buffers
+
+vesin-single-build.cpp gives each thread its own buffer.
+The buffer stores candidate pairs that pass the cutoff.
+A prefix sum places those buffers back in serial order.
+The edge list matches a one-thread filter.
+The cell walk follows cell order.
+The pair buffer is reserved once.

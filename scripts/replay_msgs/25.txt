@@ -1,0 +1,11 @@
+perf(uma): keep the thread pool and score the real arms
+
+The builder uses the standard thread type and vector.
+The want check is absent from the builder.
+The empty-range check is absent from the builder.
+Both checks can fire.
+The gcov scorer counts never-executed branches.
+It also counts lines of equals signs as missed.
+Raw gcov files are kept.
+Pool mutations are stored as patches.
+The bench driver prints head, tree and hostname.

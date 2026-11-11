@@ -1,0 +1,39 @@
+# Replay
+
+One commit-tree pass rewrote the messages.
+The clock assigned 2026-11-10T19:27:14-0600.
+Every commit in that pass carries that second.
+Those shared seconds are the real clock.
+Commit-tree received no date.
+A commit may share its parent's second.
+None is earlier than its parent.
+
+Manifest path is scripts/replay_v186.manifest.
+Message directory is scripts/replay_msgs.
+Log path is scripts/replay_v186.log.
+Script path is scripts/replay_cutoff_v182.py.
+
+Old 79e7d5d884e2509bea9ba62464bffb3faa746f1a.
+New 113f6860c413d936845a8669323e27aee003b587.
+The trees match.
+Old 74475a12625bb738f3630a8e49e1d663f82ed520.
+New 4f5a0640b2a2fd380300c27fff4069c07f7bebe9.
+The trees match.
+Old a98fbfeb4c2c82d8ac45010c47122169e4d9ab34.
+New 166df64b85d1b1df54e046631f69a96f3c79f7fc.
+The trees match.
+Old 1202f65625c9adeaf7216510b3e34188886a7cf9.
+New 5d2849971d372caa18701103710923e92422538f.
+The trees match.
+Old 3cf47586653fa1afab9f1a8beb7981309ffbbff9.
+New c5f5e3be4061c27de723635f7dc2908764bfa9e6.
+The trees match.
+Old 4be697052676b0b899e6e0b4007293f78c81a51d.
+New 2552b023f64d206d80e1fce0c4a2dcdda4a79a6a.
+The trees match.
+
+Ref v1.8.4 stays at 1624b14b158564fe987553cd61ab27a47cbb426d.
+Ref v1.8.5 is c5f5e3be4061c27de723635f7dc2908764bfa9e6.
+Ref v1.7.2 is b1352de1af82df6cc692abbe56d35e715fd0e3b2.
+That tree matches fd08881a6ad76270ab2ab50dfd502e50b421137e.
+Parent is 113f6860c413d936845a8669323e27aee003b587.

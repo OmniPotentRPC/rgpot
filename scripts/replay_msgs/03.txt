@@ -1,0 +1,3 @@
+chore(uma): remove the progress notes from the tree
+
+The investigation notes sit in the handoff kit.

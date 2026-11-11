@@ -1,0 +1,3 @@
+docs(uma): spell out the model name in the news fragment
+
+The news fragment names the model in full.

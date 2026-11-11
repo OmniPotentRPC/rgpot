@@ -1,0 +1,45 @@
+fixed_atoms_per_thread
+fixed_atoms_meaning 8192 atoms per thread. Exponent 0 is flat. This is not the 1.05 target.
+run seed=20261129 boots 10000 percentile 250 9749
+run weak n=8192 threads=1 ver=v183 median=30031.172 iqr=1601.314 n=24
+run weak n=8192 threads=1 ver=v184 median=31111.109 iqr=1672.083 n=24
+run weak n=8192 threads=1 ver=v186 median=29593.296 iqr=919.768 n=24
+run weak n=16384 threads=2 ver=v183 median=34495.306 iqr=2684.790 n=24
+run weak n=16384 threads=2 ver=v184 median=43086.249 iqr=3089.014 n=24
+run weak n=16384 threads=2 ver=v186 median=33289.340 iqr=7699.363 n=24
+run weak n=32768 threads=4 ver=v183 median=37677.889 iqr=5819.737 n=24
+run weak n=32768 threads=4 ver=v184 median=64435.106 iqr=4493.925 n=24
+run weak n=32768 threads=4 ver=v186 median=37540.974 iqr=4639.529 n=24
+run weak n=65536 threads=8 ver=v183 median=44479.409 iqr=10554.880 n=24
+run weak n=65536 threads=8 ver=v184 median=84981.269 iqr=24345.190 n=24
+run weak n=65536 threads=8 ver=v186 median=43342.874 iqr=9943.944 n=24
+run strong n=65536 threads=1 ver=v183 median=249908.974 iqr=11014.147 n=24
+run strong n=65536 threads=1 ver=v184 median=259164.143 iqr=10367.599 n=24
+run strong n=65536 threads=1 ver=v186 median=247684.811 iqr=2031.091 n=24
+run strong n=65536 threads=2 ver=v183 median=136669.035 iqr=10334.496 n=24
+run strong n=65536 threads=2 ver=v184 median=172975.531 iqr=8153.395 n=24
+run strong n=65536 threads=2 ver=v186 median=135274.695 iqr=16016.477 n=24
+run strong n=65536 threads=4 ver=v183 median=75877.340 iqr=14483.722 n=24
+run strong n=65536 threads=4 ver=v184 median=130959.097 iqr=8644.058 n=24
+run strong n=65536 threads=4 ver=v186 median=73385.660 iqr=12914.478 n=24
+run strong n=65536 threads=8 ver=v183 median=46695.142 iqr=10321.182 n=24
+run strong n=65536 threads=8 ver=v184 median=83921.124 iqr=8481.874 n=24
+run strong n=65536 threads=8 ver=v186 median=44762.464 iqr=12036.716 n=24
+pairs same call index, later version over v183
+pair weak n=8192 threads=1 v184/v183 median=1.037 iqr=0.025 n=24 slower=21 lo=1.024 hi=1.045
+pair weak n=8192 threads=1 v186/v183 median=0.985 iqr=0.024 n=24 slower=5 lo=0.978 hi=0.998
+pair weak n=16384 threads=2 v184/v183 median=1.247 iqr=0.048 n=24 slower=24 lo=1.239 hi=1.278
+pair weak n=16384 threads=2 v186/v183 median=0.980 iqr=0.063 n=24 slower=7 lo=0.959 hi=1.001
+pair weak n=32768 threads=4 v184/v183 median=1.753 iqr=0.128 n=24 slower=24 lo=1.669 hi=1.781
+pair weak n=32768 threads=4 v186/v183 median=0.995 iqr=0.079 n=24 slower=12 lo=0.970 hi=1.033
+pair weak n=65536 threads=8 v184/v183 median=1.963 iqr=0.245 n=24 slower=24 lo=1.854 hi=2.041
+pair weak n=65536 threads=8 v186/v183 median=0.956 iqr=0.071 n=24 slower=4 lo=0.919 hi=0.968
+pair strong n=65536 threads=1 v184/v183 median=1.031 iqr=0.014 n=24 slower=22 lo=1.029 hi=1.039
+pair strong n=65536 threads=1 v186/v183 median=0.992 iqr=0.009 n=24 slower=3 lo=0.989 hi=0.995
+pair strong n=65536 threads=2 v184/v183 median=1.241 iqr=0.071 n=24 slower=24 lo=1.226 hi=1.281
+pair strong n=65536 threads=2 v186/v183 median=0.976 iqr=0.039 n=24 slower=6 lo=0.970 hi=0.992
+pair strong n=65536 threads=4 v184/v183 median=1.727 iqr=0.140 n=24 slower=24 lo=1.674 hi=1.798
+pair strong n=65536 threads=4 v186/v183 median=0.976 iqr=0.043 n=24 slower=5 lo=0.962 hi=0.988
+pair strong n=65536 threads=8 v184/v183 median=1.889 iqr=0.196 n=24 slower=24 lo=1.833 hi=1.972
+pair strong n=65536 threads=8 v186/v183 median=0.980 iqr=0.168 n=24 slower=11 lo=0.925 hi=1.066
+by_size_meaning slope of log(median time) versus log(N) at one thread. The 1.05 target is this slope.

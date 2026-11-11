@@ -1,0 +1,18 @@
+perf(uma): recycle the one-shot edge arrays
+
+The eight-thread one-shot list spent time on the edge arrays.
+That time was page faults and zeroing on the calling thread.
+The pages are recycled.
+The size advances without a fill.
+The workers write every slot.
+A short bin prefix stays on this thread.
+The raw calls record the before and after seeds.
+The report script records those seeds.
+One file is CppCore/rgpot/UmaPot/UmaEdges.cc.
+One file is CppCore/rgpot/UmaPot/UmaLinkedCell.hpp.
+One file is CppCore/tests/uma_cutoff_sample.cc.
+One file is CppCore/tests/uma_cutoff_calls_20261124.txt.
+One file is CppCore/tests/uma_cutoff_calls_20261125.txt.
+One file is CppCore/tests/uma_linked_cell_cover.cc.
+One file is scripts/uma_cutoff_report.py.
+One file is scripts/uma_engine.py.

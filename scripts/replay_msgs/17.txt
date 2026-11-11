@@ -1,0 +1,9 @@
+test(uma): keep a complete static edge list when a contact grows
+
+A package traced at n(n-1) edges keeps every ordered pair.
+The compiled shape stays the same.
+The float64 graph tests expected a vesin list to shrink.
+They missed that count.
+A molecular box lists those pairs at shift zero.
+UmaGraphSizeTest.cc names the new result.
+UmaFloat64Test.cc names the new result.

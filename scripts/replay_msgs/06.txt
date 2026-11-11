@@ -1,0 +1,5 @@
+test(uma): require 182 edges and a finite Claisen energy
+
+Atoms 5 and 11 stay at the logged distance.
+That traced list has 182 edges and a finite energy.
+Package metadata keeps the backbone cutoff.

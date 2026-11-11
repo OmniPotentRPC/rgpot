@@ -1,0 +1,4 @@
+perf(uma): name the cell write index slot
+
+The cell-write index is named slot.
+One file is CppCore/rgpot/UmaPot/UmaLinkedCell.hpp.

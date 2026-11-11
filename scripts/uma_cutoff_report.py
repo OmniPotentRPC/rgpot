@@ -142,17 +142,21 @@ def report_file(rows, role: str) -> tuple[float, float]:
     known = {"reused65536", "weak_atoms", "by_size", "abba_v17", "abba_now"}
     seen = []
     for row in rows:
-        key = (row["series"], row.get("n", ""), row.get("threads", ""))
+        key = (row["series"], row.get("n", ""), row.get("threads", ""), row.get("ver", ""))
         if row["series"] in known or key in seen:
             continue
         seen.append(key)
         samples = [
             r["us"]
             for r in rows
-            if r["series"] == key[0] and r.get("n") == key[1] and r.get("threads") == key[2]
+            if r["series"] == key[0]
+            and r.get("n") == key[1]
+            and r.get("threads") == key[2]
+            and r.get("ver", "") == key[3]
         ]
+        ver = f" ver={key[3]}" if key[3] else ""
         print(
-            f"{role} {key[0]} n={key[1]} threads={key[2]} "
+            f"{role} {key[0]} n={key[1]} threads={key[2]}{ver} "
             f"median={median(samples):.3f} iqr={iqr(samples):.3f} n={len(samples)}"
         )
     for series in ("abba_v17", "abba_now"):
@@ -234,11 +238,12 @@ def main() -> int:
         pair_report(rows)
         if len(grouped(rows, "weak_atoms")) >= 2:
             points.append(point)
-    print(
-        "fixed_atoms_spread "
-        f"min={min(points):.6f} max={max(points):.6f} "
-        f"spread={max(points) - min(points):.6f} n_seeds={len(points)}"
-    )
+    if len(points) >= 2:
+        print(
+            "fixed_atoms_spread "
+            f"min={min(points):.6f} max={max(points):.6f} "
+            f"spread={max(points) - min(points):.6f} n_seeds={len(points)}"
+        )
     print(
         "by_size_meaning slope of log(median time) versus log(N) "
         "at one thread. The 1.05 target is this slope."

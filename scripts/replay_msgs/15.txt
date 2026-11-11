@@ -1,0 +1,8 @@
+perf(uma): group pair keys without a second edge copy
+
+UmaEdges.cc writes one compact key per pair.
+The session keeps that buffer.
+Each atom's keys sit together and are sorted there.
+The output vectors are reserved once.
+uma_edge_identity.cc checks the parallel filter.
+The parallel filter matches the serial edge list.

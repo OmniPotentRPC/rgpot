@@ -1,0 +1,16 @@
+perf(uma): build periodic edges with a linked cell
+
+Orthorhombic boxes bin atoms when every side is long enough.
+The side must be at least three search lengths.
+The bin width is at least the cutoff plus the skin.
+A counting sort places the atoms.
+A parallel prefix sum places the atoms.
+Each thread writes one contiguous pair block.
+Each atom's pairs are sorted inside that block.
+UmaLinkedCell.hpp is the builder.
+UmaEdges.cc keeps the list.
+UmaEdges.hpp keeps the list.
+The emit order matches the previous edge order.
+uma_edge_identity.cc checks the reused list.
+It also checks a trimmed wide box.
+uma_cutoff_bench.cc names the cutoff list.

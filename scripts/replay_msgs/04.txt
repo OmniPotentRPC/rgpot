@@ -1,0 +1,5 @@
+docs(uma): state the molecular pair list in plain sentences
+
+The readme names the full pair list.
+The news fragment names the full pair list.
+Both name the backbone cutoff.

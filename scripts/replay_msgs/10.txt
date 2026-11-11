@@ -1,0 +1,21 @@
+bench(uma): time UmaPot edge builders outside meson test
+
+UmaEdges.cc defines build_system_edges.
+UmaEdges.hpp defines build_system_edges.
+The bench file times that builder.
+The molecular path lists every ordered pair.
+The periodic path builds the vesin list at the model cutoff.
+Each row gives the minimum, the median, and the range.
+The range is the interquartile range over 11 calls.
+Each row also names the CPU model and the core count.
+CppCore/meson.build registers the binary with benchmark.
+Meson test leaves benchmark targets out.
+The runner takes one target at a time.
+The molecular path sorts each atom row on reused buffers.
+It splits the rows across threads.
+The periodic path counting-sorts by atom.
+It trims max neighbors in one pass.
+It keeps the caller thread count.
+The direct pair loop runs for a narrow box.
+A wider box keeps a Verlet list between steps.
+uma_edge_identity.cc checks the edge bytes and the forces.

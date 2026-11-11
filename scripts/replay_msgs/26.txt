@@ -1,0 +1,8 @@
+bench(uma): interleave the v1.8.3 and v1.8.5 edge builders
+
+The panel runs weak cells and strong cells.
+The thread counts are 1, 2, 4, and 8.
+Each cell alternates the v1.8.3 binary and the v1.8.5 binary.
+The builder file keeps every call.
+Rows come from uma_cutoff_abba.
+Each row prints head, tree, and hostname.

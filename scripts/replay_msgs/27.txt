@@ -1,0 +1,8 @@
+fix(uma): restore two edge checks and catch a thread start failure
+
+A refused thread start joins workers that already began.
+The build then runs on one thread.
+fit_recorded_edges keeps every edge when want is not positive.
+An empty range does not start workers.
+Growth of the edge buffers is noexcept.
+The vendored vesin unit is the one excluded file.

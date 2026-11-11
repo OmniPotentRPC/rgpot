@@ -1,0 +1,4 @@
+fix(uma): require a path for the cutoff probe package
+
+The cutoff probe writes its package at the given path.
+The meson test passes a file under the build directory.

@@ -1,0 +1,6 @@
+docs(uma): wrap the cutoff notes to 72 columns
+
+The news fragment stays within 72 columns.
+The cutoff row in the UmaPot readme stays within 72 columns.
+The model cutoff row stays within 72 columns.
+The molecular box row stays within 72 columns.

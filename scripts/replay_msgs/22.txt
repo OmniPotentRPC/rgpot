@@ -1,0 +1,10 @@
+bench(uma): rebuild the cutoff table from raw calls
+
+The report script reads the raw calls.
+It prints every median.
+It prints both earlier fixed-atom exponents.
+It prints the new seed, the spread, and the by-size slope.
+The replay script is included.
+One file is CppCore/tests/uma_cutoff_calls.txt.
+One file is scripts/uma_cutoff_report.py.
+One file is scripts/replay_cutoff_v182.py.

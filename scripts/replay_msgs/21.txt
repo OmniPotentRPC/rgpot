@@ -1,0 +1,10 @@
+test(uma): record the gcov command and profile
+
+The cover driver is committed with the profile it produced.
+The gcov command is committed with that profile.
+Combined line coverage is 96.85 percent.
+Combined branch coverage is 72.55 percent.
+The 98 percent bar is not met.
+One file is CppCore/tests/uma_linked_cell_cover.cc.
+One file is CppCore/tests/uma_cutoff_gcov.txt.
+One file is scripts/uma_cutoff_gcov.sh.

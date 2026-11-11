@@ -1,0 +1,16 @@
+# Reproduce
+
+Host from gethostname is cursor.
+CPU model is Intel Xeon Processor.
+Panel pins CPUs 0 through 7.
+v1.8.6 code is 2552b023f64d206d80e1fce0c4a2dcdda4a79a6a.
+v1.8.3 code is 5d2849971d372caa18701103710923e92422538f.
+v1.8.4 control is 1624b14b158564fe987553cd61ab27a47cbb426d.
+
+scripts/uma_cutoff_gcov.sh CppCore/tests/uma_cutoff_gcov.txt
+
+scripts/uma_panel_v186.sh
+
+scripts/uma_cutoff_bench.sh
+
+scripts/uma_cutoff_provenance.sh

@@ -1,0 +1,6 @@
+test(uma): time cutoff lists against full pair lists
+
+uma_cutoff_bench.cc reports microseconds per call.
+It times a cutoff list and every ordered pair.
+The counts are several atom totals.
+The thread counts are 1, 2, 4, and 8.

@@ -1,0 +1,12 @@
+test(uma): count ordered pairs in the graph tests
+
+Each complete-list case requires n times n-1 edges.
+Each of those edges has a zero shift.
+Each case also checks the energy of a sum or gather model.
+The parent checks return a finite energy.
+They do not show the edge count.
+The receipt records that parent result.
+A mutation that drops the complete-list branch fails the test.
+One file is CppCore/tests/UmaFloat64Test.cc.
+One file is CppCore/tests/UmaGraphSizeTest.cc.
+One file is CppCore/tests/uma_graph_receipt.txt.
