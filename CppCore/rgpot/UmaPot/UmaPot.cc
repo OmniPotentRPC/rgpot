@@ -354,25 +354,59 @@ EdgeList fit_edge_count(const ForceInput &in, EdgeList edges, int64_t want,
   if (in.nAtoms < 2)
     throw std::runtime_error(
         "UmaPot: static edge count needs at least two atoms to pad");
-  int shift = 1;
-  double dist = 0.0;
-  for (; shift <= 32; ++shift) {
-    dist = edge_span(in, 1, 0, static_cast<double>(shift), 0.0, 0.0);
-    if (dist > range)
-      break;
+  // One periodic image of atoms 0 and 1. Along a cell edge of length L,
+  // |s*a + d| >= s*L - |d|, so the image lies past `range` once
+  // s > (range + |d|) / L. The longest edge keeps s small. ceil can
+  // land on equality, and one further step clears that boundary.
+  const double pair = edge_span(in, 1, 0, 0.0, 0.0, 0.0);
+  const int column[3] = {0, 3, 6};
+  int axis = -1;
+  double longest = 0.0;
+  for (int a = 0; a < 3; ++a) {
+    const double x = in.box[column[a]];
+    const double y = in.box[column[a] + 1];
+    const double z = in.box[column[a] + 2];
+    const double len = std::sqrt(x * x + y * y + z * z);
+    if (len > longest) {
+      longest = len;
+      axis = a;
+    }
   }
-  if (!(dist > range))
+  if (!(longest > 0.0))
+    throw std::runtime_error("UmaPot: cannot pad an edge in a zero cell");
+  int shift = static_cast<int>(std::ceil((range + pair) / longest));
+  if (shift < 1)
+    shift = 1;
+  auto span_at = [&](int s) {
+    const double v = static_cast<double>(s);
+    if (axis == 0)
+      return edge_span(in, 1, 0, v, 0.0, 0.0);
+    if (axis == 1)
+      return edge_span(in, 1, 0, 0.0, v, 0.0);
+    return edge_span(in, 1, 0, 0.0, 0.0, v);
+  };
+  if (!(span_at(shift) > range))
+    ++shift;
+  if (!(span_at(shift) > range))
     throw std::runtime_error(
         "UmaPot: cannot pad an edge past the model cutoff");
+  // cell_offsets are float32. Integers through 2^24 stay exact.
+  constexpr int kMaxExactFloatShift = 1 << 24;
+  if (shift > kMaxExactFloatShift)
+    throw std::runtime_error(
+        "UmaPot: padded image shift is not an exact float32 integer");
+  const float s0 = axis == 0 ? static_cast<float>(shift) : 0.f;
+  const float s1 = axis == 1 ? static_cast<float>(shift) : 0.f;
+  const float s2 = axis == 2 ? static_cast<float>(shift) : 0.f;
   edges.neighbor.reserve(static_cast<size_t>(want));
   edges.center.reserve(static_cast<size_t>(want));
   edges.offsets.reserve(static_cast<size_t>(want) * 3);
   while (static_cast<int64_t>(edges.neighbor.size()) < want) {
     edges.neighbor.push_back(1);
     edges.center.push_back(0);
-    edges.offsets.push_back(static_cast<float>(shift));
-    edges.offsets.push_back(0.f);
-    edges.offsets.push_back(0.f);
+    edges.offsets.push_back(s0);
+    edges.offsets.push_back(s1);
+    edges.offsets.push_back(s2);
   }
   return edges;
 }
