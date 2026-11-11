@@ -2,9 +2,10 @@
 # Copyright 2023--present rgpot developers
 """Build the cutoff bench table from raw per-call samples.
 
-Seed rule, fixed before the 20261123 collection: bootstrap uses
-20261123, 10000 resamples, percentiles 250 and 9749. The two earlier
-seed runs stay in the table. The script does not drop one of them.
+Each file carries its own seed. The bootstrap for that file uses the
+seed, 10000 resamples, and percentiles 250 and 9749. Recorded seeds
+that have no sample file stay in the table. The script does not drop
+one of them.
 
 A by-size series keeps one thread and varies the atom count. Its
 exponent is the slope of log(median time) against log(N). The 1.05
@@ -19,9 +20,8 @@ import math
 import sys
 from pathlib import Path
 
-SEED = 20261123
 BOOTS = 10000
-# Recorded fixed-atoms exponents from the two earlier seed runs.
+# Recorded fixed-atoms exponents. Their sample files were not kept.
 # Each value is the slope printed for that seed. They stay together.
 PRIOR = (
     (20261121, 0.564866, 0.542017, 0.576587),
@@ -106,51 +106,71 @@ def grouped(rows, series):
     return [(n, buckets[(n, threads)]) for n, threads in order]
 
 
-def main() -> int:
-    rows = load(Path(sys.argv[1]))
-    print(f"seed_rule {SEED} boots {BOOTS} percentile 250 9749")
+def report_file(rows, role: str) -> tuple[float, float]:
+    seed = int(rows[0]["seed"])
+    print(f"{role} seed={seed} boots {BOOTS} percentile 250 9749")
     reused = [r["us"] for r in rows if r["series"] == "reused65536"]
     print(
-        "reused n=65536 threads=8 "
+        f"{role} reused n=65536 threads=8 "
         f"median={median(reused):.3f} iqr={iqr(reused):.3f} n={len(reused)}"
     )
+    weak = grouped(rows, "weak_atoms")
+    for n, samples in weak:
+        threads = n // 8192
+        print(
+            f"{role} weak_atoms n={n} threads={threads} "
+            f"median={median(samples):.3f} iqr={iqr(samples):.3f}"
+        )
+    point, lo, hi = slope(weak, seed)
+    print(
+        f"{role} weak_atoms seed={seed} exponent={point:.6f} "
+        f"lo={lo:.6f} hi={hi:.6f}"
+    )
+    by_size = grouped(rows, "by_size")
+    for n, samples in by_size:
+        print(
+            f"{role} by_size n={n} threads=1 "
+            f"median={median(samples):.3f} iqr={iqr(samples):.3f}"
+        )
+    bpoint, blo, bhi = slope(by_size, seed)
+    print(
+        f"{role} by_size seed={seed} exponent={bpoint:.6f} "
+        f"lo={blo:.6f} hi={bhi:.6f}"
+    )
+    return point, bpoint
+
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        print("usage: uma_cutoff_report.py after [before ...]", file=sys.stderr)
+        return 2
     print("fixed_atoms_per_thread")
+    print(
+        "fixed_atoms_meaning 8192 atoms per thread. "
+        "Exponent 0 is flat. This is not the 1.05 target."
+    )
+    before_points = []
     for seed, point, lo, hi in PRIOR:
         print(
             f"prior seed={seed} exponent={point:.6f} "
             f"lo={lo:.6f} hi={hi:.6f}"
         )
-    weak = grouped(rows, "weak_atoms")
-    for n, samples in weak:
-        threads = n // 8192
-        print(
-            f"weak_atoms n={n} threads={threads} "
-            f"median={median(samples):.3f} iqr={iqr(samples):.3f}"
-        )
-    point, lo, hi = slope(weak, SEED)
+        before_points.append(point)
+    roles = ["after"] + ["before"] * (len(sys.argv) - 2)
+    after_point = None
+    for role, arg in zip(roles, sys.argv[1:]):
+        point, _by = report_file(load(Path(arg)), role)
+        if role == "before":
+            before_points.append(point)
+        else:
+            after_point = point
+    spread = max(before_points) - min(before_points)
     print(
-        f"weak_atoms seed={SEED} exponent={point:.6f} "
-        f"lo={lo:.6f} hi={hi:.6f}"
-    )
-    exponents = [item[1] for item in PRIOR] + [point]
-    spread = max(exponents) - min(exponents)
-    print(
-        "fixed_atoms_spread "
-        f"min={min(exponents):.6f} max={max(exponents):.6f} "
+        "before_fixed_atoms_spread "
+        f"min={min(before_points):.6f} max={max(before_points):.6f} "
         f"spread={spread:.6f}"
     )
-    print("by_size_one_thread")
-    by_size = grouped(rows, "by_size")
-    for n, samples in by_size:
-        print(
-            f"by_size n={n} threads=1 "
-            f"median={median(samples):.3f} iqr={iqr(samples):.3f}"
-        )
-    bpoint, blo, bhi = slope(by_size, SEED)
-    print(
-        f"by_size seed={SEED} exponent={bpoint:.6f} "
-        f"lo={blo:.6f} hi={bhi:.6f}"
-    )
+    print(f"after_fixed_atoms exponent={after_point:.6f}")
     print(
         "by_size_meaning slope of log(median time) versus log(N) "
         "at one thread. The 1.05 target is this slope."

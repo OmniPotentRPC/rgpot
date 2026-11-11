@@ -91,6 +91,9 @@ void cover_linked_cell() {
   std::vector<std::size_t> many{1, 1, 1, 1, 1, 1, 1, 1};
   rgpot::linked_cell::exclusive_prefix(many, 4);
   expect(many.back() == 8, "parallel prefix total");
+  std::vector<std::size_t> wide_bins(8192, 1);
+  rgpot::linked_cell::exclusive_prefix(wide_bins, 4);
+  expect(wide_bins.back() == 8192, "wide prefix");
 
   Scratch scratch;
   const double nowhere[9] = {30, 0, 0, 0, 30, 0, 0, 0, 30};

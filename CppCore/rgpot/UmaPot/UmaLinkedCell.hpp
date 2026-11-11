@@ -65,6 +65,19 @@ inline void exclusive_prefix(std::vector<std::size_t> &count, int threads) {
   const std::size_t m = count.size();
   if (m == 0)
     return;
+  // A few thousand bins are cheaper to add on this thread than to
+  // hand to a freshly spawned worker.
+  if (threads <= 1 || m < 8192) {
+    std::size_t run = 0;
+    count.push_back(0);
+    for (std::size_t i = 0; i < m; ++i) {
+      const std::size_t value = count[i];
+      count[i] = run;
+      run += value;
+    }
+    count[m] = run;
+    return;
+  }
   threads = std::max(1, std::min(threads, static_cast<int>(m)));
   std::vector<std::size_t> block(static_cast<std::size_t>(threads) + 1, 0);
   auto sum_block = [&](int t) {

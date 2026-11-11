@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <type_traits>
 #include <mutex>
 #include <numeric>
 #include <stdexcept>
@@ -22,10 +23,33 @@ struct UmaEdgeSession::CellCache {
   linked_cell::Scratch scratch;
 };
 
+UmaEdgeList take_edges();
+std::unique_ptr<UmaEdgeSession::CellCache> take_cell();
+
 namespace {
 
 // Vesin rebuilds the cached list after an atom moves more than half of this.
 constexpr double kVerletSkin = 1.0;
+
+// libstdc++ and libc++ both store a vector as three pointers, and the
+// second one is the end of the constructed range. A large resize
+// value-initializes that range on the calling thread, which faults
+// every page before the workers run. The edge write fills every slot,
+// so the size is advanced and the workers touch the pages themselves.
+template <typename T>
+void resize_no_init(std::vector<T> &vec, std::size_t n) {
+  static_assert(std::is_trivially_copyable<T>::value, "trivial elements only");
+  static_assert(sizeof(std::vector<T>) == 3 * sizeof(void *), "vector is three pointers");
+  if (n <= vec.size()) {
+    vec.resize(n);
+    return;
+  }
+  if (vec.capacity() < n)
+    vec.reserve(n);
+  const std::size_t bytes = n * sizeof(T);
+  auto *ptr = reinterpret_cast<unsigned char **>(&vec);
+  ptr[1] = ptr[0] + bytes;
+}
 
 double axis_length(const double *box, int axis) {
   const double x = box[3 * axis];
@@ -260,9 +284,9 @@ void emit_slices(linked_cell::Scratch &scratch, const double *pos, const double 
     session.bucket[i] += session.bucket[i - 1];
   const std::size_t total = session.bucket[n];
   auto &out = session.edges;
-  out.neighbor.resize(total);
-  out.center.resize(total);
-  out.offsets.resize(total * 3);
+  resize_no_init(out.neighbor, total);
+  resize_no_init(out.center, total);
+  resize_no_init(out.offsets, total * 3);
   run_ranges(workers, n, [&](std::size_t begin, std::size_t end) {
     for (std::size_t c = begin; c < end; ++c) {
       const auto &part = scratch.parts[scratch.slice_thread[c]];
@@ -311,7 +335,7 @@ void periodic_edges(const ForceInput &in, double cutoff, int max_neighbors,
   const double search = cutoff + skin;
   if (!brute) {
     if (!session.cell_cache)
-      session.cell_cache = std::make_unique<UmaEdgeSession::CellCache>();
+      session.cell_cache = take_cell();
     auto &scratch = session.cell_cache->scratch;
     const double half = 0.5 * skin;
     bool box_same = scratch.ref_n == static_cast<int>(in.nAtoms);
@@ -484,11 +508,73 @@ int64_t static_edges_per_system(const UmaContract &contract, int64_t n_systems) 
 
 } // namespace
 
-UmaEdgeSession::UmaEdgeSession() = default;
+// glibc hands multi-megabyte buffers back to the kernel. The next
+// one-shot call would fault them again. A short recycle list keeps the
+// pages, and drops the Verlet keys so a new session still rebuilds.
+struct EdgePool {
+  std::mutex mu;
+  std::vector<UmaEdgeList> lists;
+  std::vector<std::unique_ptr<UmaEdgeSession::CellCache>> cells;
+};
+
+EdgePool &edge_pool() {
+  static EdgePool pool;
+  return pool;
+}
+
+UmaEdgeList take_edges() {
+  auto &pool = edge_pool();
+  std::lock_guard<std::mutex> lock(pool.mu);
+  if (pool.lists.empty())
+    return {};
+  UmaEdgeList out = std::move(pool.lists.back());
+  pool.lists.pop_back();
+  return out;
+}
+
+void give_edges(UmaEdgeList edges) {
+  if (edges.neighbor.capacity() < 4096)
+    return;
+  auto &pool = edge_pool();
+  std::lock_guard<std::mutex> lock(pool.mu);
+  if (pool.lists.size() >= 4)
+    return;
+  pool.lists.push_back(std::move(edges));
+}
+
+std::unique_ptr<UmaEdgeSession::CellCache> take_cell() {
+  auto &pool = edge_pool();
+  std::lock_guard<std::mutex> lock(pool.mu);
+  if (pool.cells.empty())
+    return std::make_unique<UmaEdgeSession::CellCache>();
+  auto cell = std::move(pool.cells.back());
+  pool.cells.pop_back();
+  auto &scratch = cell->scratch;
+  scratch.ref_n = -1;
+  scratch.ref_search = -1;
+  scratch.stable = nullptr;
+  scratch.stable_n = 0;
+  scratch.ref_pos.clear();
+  return cell;
+}
+
+void give_cell(std::unique_ptr<UmaEdgeSession::CellCache> cell) {
+  if (!cell)
+    return;
+  auto &pool = edge_pool();
+  std::lock_guard<std::mutex> lock(pool.mu);
+  if (pool.cells.size() >= 4)
+    return;
+  pool.cells.push_back(std::move(cell));
+}
+
+UmaEdgeSession::UmaEdgeSession() : edges(take_edges()) {}
 
 UmaEdgeSession::~UmaEdgeSession() {
   if (held_live)
     vesin_free(&held);
+  give_cell(std::move(cell_cache));
+  give_edges(std::move(edges));
 }
 
 const UmaEdgeList &build_system_edges(const ForceInput &local, double cutoff,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) rgpot developers
+# Copyright 2023--present rgpot developers
 """Call libuma_engine.so and surface the C++ exception text.
 
 A nonzero return used to be reported as "uma force returned 2". The
@@ -116,8 +116,9 @@ def main() -> int:
         )
         return 2
     engine = UmaEngine(sys.argv[1], sys.argv[2], Path(sys.argv[3]))
-    # s-tetrazine with one hydrogen moved 12 angstroms. A static
-    # 56-edge package must name the edge shapes.
+    # s-tetrazine with one hydrogen moved 12 angstroms. The compiled
+    # list is the complete graph, 8*7 edges, so the call returns the
+    # gather energy (n-1) times the coordinate sum.
     pos = [
         12.5, 13.83, 12.5, 12.5, 11.17, 12.5, 13.65, 13.165, 12.5,
         13.65, 11.835, 12.5, 11.35, 13.165, 12.5, 11.35, 11.835, 12.5,
@@ -125,20 +126,18 @@ def main() -> int:
     ]
     z = [6, 6, 7, 7, 7, 7, 1, 1]
     box = [40.0, 0, 0, 0, 40.0, 0, 0, 0, 40.0]
+    expect = (len(z) - 1) * sum(pos)
     try:
-        engine.force(pos, z, box)
+        energy, _forces = engine.force(pos, z, box)
     except RuntimeError as err:
-        text = str(err)
-        if "returned 2" in text and "edge_index shape is" not in text:
-            return 2
-        if "edge_index shape is" not in text:
-            print(text, file=sys.stderr)
-            return 2
-        return 0
+        print(err, file=sys.stderr)
+        return 2
     finally:
         engine.close()
-    print("the static package returned a force", file=sys.stderr)
-    return 1
+    if abs(energy - expect) > 1e-6:
+        print(f"energy {energy} wanted {expect}", file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
