@@ -17,11 +17,29 @@ fi
 half=$(find "$build" -name 'librgpot_halfshell.a' -print -quit)
 mini=$(find "$build" -name 'librgpot_minimage.a' -print -quit)
 fma=$(find "$build" -name 'librgpot_exact_fma.a' -print -quit)
+cxx=${CXX:-c++}
+omp_flag=
+if "$cxx" -fopenmp -x c++ -E - >/dev/null 2>&1 <<'EOF'
+int main() { return 0; }
+EOF
+then
+  omp_flag=-fopenmp
+fi
 dir=$(mktemp -d)
-g++ -shared -o "$dir/libnlist.so" -Wl,--whole-archive "$half" "$mini" "$fma" \
-  -Wl,--no-whole-archive -fopenmp
+if [ "$(uname -s)" = Darwin ]; then
+  "$cxx" -shared -o "$dir/libnlist.dylib" \
+    -Wl,-force_load,"$half" -Wl,-force_load,"$mini" -Wl,-force_load,"$fma" \
+    $omp_flag
+else
+  "$cxx" -shared -o "$dir/libnlist.so" -Wl,--whole-archive "$half" "$mini" "$fma" \
+    -Wl,--no-whole-archive $omp_flag
+fi
 out=$(mktemp)
 "$rustc_bin" --edition 2021 "$root/CppCore/examples/nlist_rust/main.rs" -o "$out" \
   -L "$dir" -lnlist
-LD_LIBRARY_PATH="$dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" "$out"
+if [ "$(uname -s)" = Darwin ]; then
+  DYLD_LIBRARY_PATH="$dir${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}" "$out"
+else
+  LD_LIBRARY_PATH="$dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" "$out"
+fi
 rm -rf "$dir" "$out"
