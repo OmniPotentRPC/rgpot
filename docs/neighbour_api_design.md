@@ -879,10 +879,45 @@ g++ -O3 -DNDEBUG -std=c++20 -fopenmp -ffp-contract=off, one thread.
 FCC, lattice 3.615, strict half list, cutoff 5. The walk is
 `updateCells` and `visitHalf`. The callback is `each`. Each figure is
 the median of seven calls after two discarded calls, in a fresh
-process. `rss_kb` is VmHWM. The walk sums `r2`. The callback sums `r`.
+process. `rss_kb` is VmHWM. That run summed `r2` on the walk and `r` on
+the callback.
 
 | atoms | walk (s) | walk RSS (kB) | callback (s) | callback RSS (kB) |
 | --- | ---: | ---: | ---: | ---: |
 | 10976 | 0.005232939 | 6152 | 0.008163649 | 6572 |
 | 108000 | 0.038710421 | 23764 | 0.069547707 | 24152 |
 | 1048576 | 0.383691586 | 201656 | 0.697787257 | 201980 |
+
+The callback summed `r` and rebuilt a fresh cell list through a function
+pointer, so it was slower and no smaller. The next two passes make the
+`r²` callback the same walk.
+
+### Pass 6
+
+`each(cells, positions, n, box, cutoff, periodic, fn)` reused the caller's
+`Neighbours` and skipped the square root. `fn` was still invoked through
+a function pointer inside `forHalf`. The checksum matched `visitHalf`
+(both summed `r²`: 3442484.102410 at 10,976 atoms and 33872839.198321 at
+108,000). The pointer kept it slower.
+
+| atoms | walk (s) | walk RSS (kB) | pointer each (s) | pointer RSS (kB) |
+| --- | ---: | ---: | ---: | ---: |
+| 10976 | 0.005061481 | 6148 | 0.005546122 | 6296 |
+| 108000 | 0.038842096 | 23792 | 0.043523570 | 23956 |
+
+### Pass 7
+
+The pointer is gone. `each` returns a `HalfEach` after `updateCells`, and
+the functor is a template argument of `HalfEach::operator()`, built after
+the cell update so a captured sum is not address-taken across that call.
+It is inlined into `visitHalf`. No square root, no shift, the same `r²`
+the walk adds. One thread, the same driver as above.
+
+| atoms | walk (s) | walk RSS (kB) | each (s) | each RSS (kB) |
+| --- | ---: | ---: | ---: | ---: |
+| 10976 | 0.005214914 | 6188 | 0.005155092 | 6124 |
+| 108000 | 0.040345226 | 23872 | 0.039608935 | 23816 |
+| 1048576 | 0.397913262 | 201696 | 0.389498168 | 201712 |
+
+The checksum is 3442484.102410, 33872839.198321 and 328872650.382774 on
+both arms.

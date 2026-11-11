@@ -727,6 +727,25 @@ TEST_CASE("the C callback and the pair matrix agree with build", "[nlist][api]")
   REQUIRE(tally.n == 2);
 }
 
+TEST_CASE("each sums the same r2 as visitHalf", "[nlist][api]") {
+  const double box[9] = {12, 0, 0, 0, 12, 0, 0, 0, 12};
+  const std::vector<double> pos = {0.4, 0.5, 0.6, 1.5, 0.4, 0.5, 0.3, 1.7, 0.4, 2.4, 1.2, 0.5};
+  const std::array<bool, 3> periodic{{true, true, true}};
+  rgpot::nlist::Neighbours cells;
+  double walked = 0;
+  rgpot::nlist::updateCells(cells, pos.data(), pos.size() / 3, box, 2.2, 0.0, rgpot::nlist::Image::Round,
+                            rgpot::nlist::Mode::Stream, periodic);
+  rgpot::nlist::visitHalf(cells, 0, static_cast<std::int64_t>(pos.size() / 3),
+                          [&](std::int32_t, std::int32_t, double, double, double, double r2) {
+                            walked += r2;
+                          });
+  double called = 0;
+  rgpot::nlist::each(cells, pos.data(), pos.size() / 3, box, 2.2, periodic)(
+      [&](std::int32_t, std::int32_t, double, double, double, double r2) { called += r2; });
+  REQUIRE(called == walked);
+  REQUIRE(called > 0);
+}
+
 TEST_CASE("a sweep serves half and full from one skin", "[nlist][api]") {
   const double box[9] = {12, 0, 0, 0, 12, 0, 0, 0, 12};
   const std::vector<double> pos = {0.4, 0.5, 0.6, 1.5, 0.4, 0.5, 0.3, 1.7, 0.4, 2.4, 1.2, 0.5};

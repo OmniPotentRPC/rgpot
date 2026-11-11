@@ -503,4 +503,29 @@ inline void visitHalf(const Neighbours &cells, std::int64_t begin, std::int64_t 
   cells.forHalf(begin, end, std::forward<Fn>(fn));
 }
 
+/// Half-list r² callback. Call it as
+/// `each(cells, pos, n, box, cutoff, periodic)(fn)`.
+/// `each` reuses `cells` the way `updateCells` does, then `fn` is built and
+/// inlined into `visitHalf`. `fn` is
+/// `void(int32_t i, int32_t j, double dx, double dy, double dz, double r2)`.
+/// `dx` is `r_i - r_j`. There is no square root and no shift. The call is
+/// split so the functor is not constructed before the cell update: a capture
+/// created earlier has its address taken across that call, and the sum is
+/// then reloaded on every pair.
+struct HalfEach {
+  Neighbours *cells = nullptr;
+  std::int64_t n = 0;
+
+  template <typename Fn>
+  void operator()(Fn &&fn) const {
+    visitHalf(*cells, 0, n, std::forward<Fn>(fn));
+  }
+};
+
+inline HalfEach each(Neighbours &cells, const double *positions, std::size_t n, const double *box9,
+                     double cutoff, const std::array<bool, 3> &periodic) {
+  updateCells(cells, positions, n, box9, cutoff, 0.0, Image::Round, Mode::Stream, periodic);
+  return HalfEach{&cells, static_cast<std::int64_t>(n)};
+}
+
 } // namespace rgpot::nlist

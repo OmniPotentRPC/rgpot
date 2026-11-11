@@ -1,8 +1,8 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 //
-// Wall time and peak resident set of the geometry callback against the
-// cell walk. One path per process: walk, callback. Sizes are FCC cubes.
+// Wall time and peak resident set of each() against updateCells and
+// visitHalf. Both sum r^2. One path per process. Sizes are FCC cubes.
 
 #include <algorithm>
 #include <chrono>
@@ -90,14 +90,12 @@ double timeWalk(const Geom &geo, double cutoff, int repeats, double &acc) {
 
 double timeCallback(const Geom &geo, double cutoff, int repeats, double &acc) {
   const auto nat = geo.pos.size() / 3;
-  rgpot::nlist::Query query;
-  query.cutoff = cutoff;
-  query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Half};
+  const std::array<bool, 3> periodic{{true, true, true}};
+  rgpot::nlist::Neighbours cells;
   auto once = [&]() {
     double sum = 0;
-    rgpot::nlist::each(geo.pos.data(), nat, geo.box, query,
-                       [&](std::int32_t, std::int32_t, int, int, int, double, double, double,
-                           double r) { sum += r; });
+    rgpot::nlist::each(cells, geo.pos.data(), nat, geo.box, cutoff, periodic)(
+        [&](std::int32_t, std::int32_t, double, double, double, double r2) { sum += r2; });
     acc = sum;
   };
   once();
