@@ -29,1099 +29,956 @@
         -:   28:
         -:   29:namespace {
         -:   30:
-        -:   31:// Vesin rebuilds the cached list after an atom moves more than half of this.
-        -:   32:constexpr double kVerletSkin = 1.0;
-        -:   33:
-        -:   34:// libstdc++ and libc++ both store a vector as three pointers, and the
-        -:   35:// second one is the end of the constructed range. A large resize
-        -:   36:// value-initializes that range on the calling thread, which faults
-        -:   37:// every page before the workers run. The edge write fills every slot,
-        -:   38:// so the size is advanced and the workers touch the pages themselves.
-        -:   39:template <typename T>
-      204:   40:void resize_no_init(std::vector<T> &vec, std::size_t n) {
-        -:   41:  static_assert(std::is_trivially_copyable<T>::value, "trivial elements only");
-        -:   42:  static_assert(sizeof(std::vector<T>) == 3 * sizeof(void *), "vector is three pointers");
-      204:   43:  if (n <= vec.size()) {
-       24:   44:    vec.resize(n);
-       24:   45:    return;
-        -:   46:  }
-      180:   47:  if (vec.capacity() < n)
-      114:   48:    vec.reserve(n);
-      180:   49:  const std::size_t bytes = n * sizeof(T);
-      180:   50:  auto *ptr = reinterpret_cast<unsigned char **>(&vec);
-      180:   51:  ptr[1] = ptr[0] + bytes;
-        -:   52:}
+        -:   31:struct EdgeError : std::exception {
+        -:   32:  const char *text;
+function _ZN5rgpot12_GLOBAL__N_19EdgeErrorC2EPKc called 6 returned 100% blocks executed 100%
+        6:   33:  explicit EdgeError(const char *t) noexcept : text(t) {}
+call    0 returned 100%
+function _ZNK5rgpot12_GLOBAL__N_19EdgeError4whatEv called 3 returned 100% blocks executed 100%
+        3:   34:  const char *what() const noexcept override { return text; }
+        -:   35:};
+        -:   36:
+        -:   37:int call_vesin(const double (*points)[3], std::size_t n_points, const double (*box)[3],
+        -:   38:               bool pbc[3], VesinDevice device, const VesinOptions &options,
+        -:   39:               VesinNeighborList *neighbors, const char **error) noexcept;
+        -:   40:void free_vesin(VesinNeighborList *neighbors) noexcept;
+        -:   41:
+        -:   42:// Vesin rebuilds the cached list after an atom moves more than half of this.
+        -:   43:constexpr double kVerletSkin = 1.0;
+        -:   44:
+        -:   45:// libstdc++ and libc++ both store a vector as three pointers, and the
+        -:   46:// second one is the end of the constructed range. A large resize
+        -:   47:// value-initializes that range on the calling thread, which faults
+        -:   48:// every page before the workers run. The edge write fills every slot,
+        -:   49:// so the size is advanced and the workers touch the pages themselves.
+        -:   50:template <typename T>
+      111:   51:void resize_no_init(std::vector<T> &vec, std::size_t n) {
+        -:   52:  static_assert(std::is_trivially_copyable<T>::value, "trivial elements only");
+        -:   53:  static_assert(sizeof(std::vector<T>) == 3 * sizeof(void *), "vector is three pointers");
+      111:   54:  if (n <= vec.size()) {
+       12:   55:    grow_resize(vec, n);
+       12:   56:    return;
+        -:   57:  }
+       99:   58:  if (vec.capacity() < n)
+       57:   59:    grow_reserve(vec, n);
+       99:   60:  const std::size_t bytes = n * sizeof(T);
+       99:   61:  auto *ptr = reinterpret_cast<unsigned char **>(&vec);
+       99:   62:  ptr[1] = ptr[0] + bytes;
+        -:   63:}
 ------------------
 _ZN5rgpot12_GLOBAL__N_114resize_no_initIfEEvRSt6vectorIT_SaIS3_EEm:
-function _ZN5rgpot12_GLOBAL__N_114resize_no_initIfEEvRSt6vectorIT_SaIS3_EEm called 68 returned 100% blocks executed 100%
-       68:   40:void resize_no_init(std::vector<T> &vec, std::size_t n) {
-        -:   41:  static_assert(std::is_trivially_copyable<T>::value, "trivial elements only");
-        -:   42:  static_assert(sizeof(std::vector<T>) == 3 * sizeof(void *), "vector is three pointers");
-       68:   43:  if (n <= vec.size()) {
+function _ZN5rgpot12_GLOBAL__N_114resize_no_initIfEEvRSt6vectorIT_SaIS3_EEm called 37 returned 100% blocks executed 100%
+       37:   51:void resize_no_init(std::vector<T> &vec, std::size_t n) {
+        -:   52:  static_assert(std::is_trivially_copyable<T>::value, "trivial elements only");
+        -:   53:  static_assert(sizeof(std::vector<T>) == 3 * sizeof(void *), "vector is three pointers");
+       37:   54:  if (n <= vec.size()) {
 call    0 returned 100%
-branch  1 taken 12% (fallthrough)
-branch  2 taken 88%
-        8:   44:    vec.resize(n);
+branch  1 taken 11% (fallthrough)
+branch  2 taken 89%
+        4:   55:    grow_resize(vec, n);
 call    0 returned 100%
-        8:   45:    return;
-        -:   46:  }
-       60:   47:  if (vec.capacity() < n)
+        4:   56:    return;
+        -:   57:  }
+       33:   58:  if (vec.capacity() < n)
 call    0 returned 100%
-branch  1 taken 63% (fallthrough)
-branch  2 taken 37%
-       38:   48:    vec.reserve(n);
+branch  1 taken 58% (fallthrough)
+branch  2 taken 42%
+       19:   59:    grow_reserve(vec, n);
 call    0 returned 100%
-       60:   49:  const std::size_t bytes = n * sizeof(T);
-       60:   50:  auto *ptr = reinterpret_cast<unsigned char **>(&vec);
-       60:   51:  ptr[1] = ptr[0] + bytes;
-        -:   52:}
+       33:   60:  const std::size_t bytes = n * sizeof(T);
+       33:   61:  auto *ptr = reinterpret_cast<unsigned char **>(&vec);
+       33:   62:  ptr[1] = ptr[0] + bytes;
+        -:   63:}
 ------------------
 _ZN5rgpot12_GLOBAL__N_114resize_no_initIlEEvRSt6vectorIT_SaIS3_EEm:
-function _ZN5rgpot12_GLOBAL__N_114resize_no_initIlEEvRSt6vectorIT_SaIS3_EEm called 136 returned 100% blocks executed 100%
-      136:   40:void resize_no_init(std::vector<T> &vec, std::size_t n) {
-        -:   41:  static_assert(std::is_trivially_copyable<T>::value, "trivial elements only");
-        -:   42:  static_assert(sizeof(std::vector<T>) == 3 * sizeof(void *), "vector is three pointers");
-      136:   43:  if (n <= vec.size()) {
+function _ZN5rgpot12_GLOBAL__N_114resize_no_initIlEEvRSt6vectorIT_SaIS3_EEm called 74 returned 100% blocks executed 100%
+       74:   51:void resize_no_init(std::vector<T> &vec, std::size_t n) {
+        -:   52:  static_assert(std::is_trivially_copyable<T>::value, "trivial elements only");
+        -:   53:  static_assert(sizeof(std::vector<T>) == 3 * sizeof(void *), "vector is three pointers");
+       74:   54:  if (n <= vec.size()) {
 call    0 returned 100%
-branch  1 taken 12% (fallthrough)
-branch  2 taken 88%
-       16:   44:    vec.resize(n);
+branch  1 taken 11% (fallthrough)
+branch  2 taken 89%
+        8:   55:    grow_resize(vec, n);
 call    0 returned 100%
-       16:   45:    return;
-        -:   46:  }
-      120:   47:  if (vec.capacity() < n)
+        8:   56:    return;
+        -:   57:  }
+       66:   58:  if (vec.capacity() < n)
 call    0 returned 100%
-branch  1 taken 63% (fallthrough)
-branch  2 taken 37%
-       76:   48:    vec.reserve(n);
+branch  1 taken 58% (fallthrough)
+branch  2 taken 42%
+       38:   59:    grow_reserve(vec, n);
 call    0 returned 100%
-      120:   49:  const std::size_t bytes = n * sizeof(T);
-      120:   50:  auto *ptr = reinterpret_cast<unsigned char **>(&vec);
-      120:   51:  ptr[1] = ptr[0] + bytes;
-        -:   52:}
+       66:   60:  const std::size_t bytes = n * sizeof(T);
+       66:   61:  auto *ptr = reinterpret_cast<unsigned char **>(&vec);
+       66:   62:  ptr[1] = ptr[0] + bytes;
+        -:   63:}
 ------------------
-        -:   53:
-function _ZN5rgpot12_GLOBAL__N_111axis_lengthEPKdi called 246 returned 100% blocks executed 100%
-      246:   54:double axis_length(const double *box, int axis) {
-      246:   55:  const double x = box[3 * axis];
-      246:   56:  const double y = box[3 * axis + 1];
-      246:   57:  const double z = box[3 * axis + 2];
-      246:   58:  return std::sqrt(x * x + y * y + z * z);
-        -:   59:}
-        -:   60:
-        -:   61:// A cell list with fewer than three cells along a side walks the same
-        -:   62:// pairs as a direct search. Brute force is the minimum image, so it
-        -:   63:// matches the cell list only when a second image sits past the cutoff.
-function _ZN5rgpot12_GLOBAL__N_115brute_force_boxEPKdd called 82 returned 100% blocks executed 100%
-       82:   64:bool brute_force_box(const double *box, double cutoff) {
-       82:   65:  double lo = 1e300;
-       82:   66:  double hi = 0.0;
-      328:   67:  for (int axis = 0; axis < 3; ++axis) {
+        -:   64:
+function _ZN5rgpot12_GLOBAL__N_111axis_lengthEPKdi called 135 returned 100% blocks executed 100%
+      135:   65:double axis_length(const double *box, int axis) noexcept {
+      135:   66:  const double x = box[3 * axis];
+      135:   67:  const double y = box[3 * axis + 1];
+      135:   68:  const double z = box[3 * axis + 2];
+      135:   69:  return std::sqrt(x * x + y * y + z * z);
+        -:   70:}
+        -:   71:
+        -:   72:// A cell list with fewer than three cells along a side walks the same
+        -:   73:// pairs as a direct search. Brute force is the minimum image, so it
+        -:   74:// matches the cell list only when a second image sits past the cutoff.
+function _ZN5rgpot12_GLOBAL__N_115brute_force_boxEPKdd called 45 returned 100% blocks executed 100%
+       45:   75:bool brute_force_box(const double *box, double cutoff) noexcept {
+       45:   76:  double lo = 1e300;
+       45:   77:  double hi = 0.0;
+      180:   78:  for (int axis = 0; axis < 3; ++axis) {
 branch  0 taken 75%
 branch  1 taken 25% (fallthrough)
-      246:   68:    const double len = axis_length(box, axis);
+      135:   79:    const double len = axis_length(box, axis);
 call    0 returned 100%
-      246:   69:    lo = std::min(lo, len);
+      135:   80:    lo = std::min(lo, len);
 call    0 returned 100%
-      246:   70:    hi = std::max(hi, len);
+      135:   81:    hi = std::max(hi, len);
 call    0 returned 100%
-        -:   71:  }
-       82:   72:  return lo >= 2.0 * cutoff && hi < 3.0 * cutoff;
-branch  0 taken 95% (fallthrough)
-branch  1 taken 5%
-branch  2 taken 3% (fallthrough)
-branch  3 taken 97%
-        -:   73:}
-        -:   74:
-function _ZN5rgpot12_GLOBAL__N_112worker_countEim called 100 returned 100% blocks executed 100%
-      100:   75:int worker_count(int requested, std::size_t n) {
-      100:   76:  int threads = requested > 0 ? requested : 1;
-      100:   77:  if (n > 0 && threads > static_cast<int>(n))
-branch  0 taken 100% (fallthrough)
-branch  1 taken 0%
+        -:   82:  }
+       45:   83:  return lo >= 2.0 * cutoff && hi < 3.0 * cutoff;
+branch  0 taken 93% (fallthrough)
+branch  1 taken 7%
 branch  2 taken 2% (fallthrough)
 branch  3 taken 98%
-        2:   78:    threads = static_cast<int>(n);
-        -:   79:  // The line above already yields at least 1.
-      100:   80:  return threads;
-        -:   81:}
-        -:   82:
-        -:   83:template <typename Work>
-      172:   84:void run_ranges(int threads, std::size_t n, Work work) {
-      172:   85:  if (threads <= 1) {
-      162:   86:    work(0, n);
-      162:   87:    return;
-        -:   88:  }
-      10*:   89:  std::vector<std::thread> pool;
-      10*:   90:  pool.reserve(static_cast<std::size_t>(threads));
-      54*:   91:  for (int t = 0; t < threads; ++t) {
-      44*:   92:    const std::size_t begin =
-      44*:   93:        (static_cast<std::size_t>(t) * n) / static_cast<std::size_t>(threads);
-      44*:   94:    const std::size_t end =
-      44*:   95:        (static_cast<std::size_t>(t + 1) * n) / static_cast<std::size_t>(threads);
-      44*:   96:    pool.emplace_back(work, begin, end);
-        -:   97:  }
-      54*:   98:  for (auto &worker : pool)
-      44*:   99:    worker.join();
-      10*:  100:}
+        -:   84:}
+        -:   85:
+function _ZN5rgpot12_GLOBAL__N_112worker_countEim called 54 returned 100% blocks executed 100%
+       54:   86:int worker_count(int requested, std::size_t n) noexcept {
+       54:   87:  int threads = requested > 0 ? requested : 1;
+       54:   88:  if (n > 0 && threads > static_cast<int>(n))
+branch  0 taken 98% (fallthrough)
+branch  1 taken 2%
+branch  2 taken 2% (fallthrough)
+branch  3 taken 98%
+        1:   89:    threads = static_cast<int>(n);
+        -:   90:  // The line above already yields at least 1.
+       54:   91:  return threads;
+        -:   92:}
+        -:   93:
+        -:   94:template <typename Work>
+       93:   95:void run_ranges(int threads, std::size_t n, Work work) noexcept {
+      93*:   96:  if (threads <= 1 || n <= 1) {
+       82:   97:    work(0, n);
+       82:   98:    return;
+        -:   99:  }
+      47*:  100:  const bool started = spawn_workers(threads, [&](int t) {
+      36*:  101:    const std::size_t begin =
+      36*:  102:        (static_cast<std::size_t>(t) * n) / static_cast<std::size_t>(threads);
+      36*:  103:    const std::size_t end =
+      36*:  104:        (static_cast<std::size_t>(t + 1) * n) / static_cast<std::size_t>(threads);
+      70*:  105:    return [&, begin, end] { work(begin, end); };
+        -:  106:  });
+      11*:  107:  if (!started)
+       3*:  108:    work(0, n);
+        -:  109:}
 ------------------
 _ZN5rgpot12_GLOBAL__N_110run_rangesIZNS0_11emit_slicesERNS_11linked_cell7ScratchEPKdS6_mdiibRNS_14UmaEdgeSessionEEUlmmE1_EEvimT_:
-function _ZN5rgpot12_GLOBAL__N_110run_rangesIZNS0_11emit_slicesERNS_11linked_cell7ScratchEPKdS6_mdiibRNS_14UmaEdgeSessionEEUlmmE1_EEvimT_ called 68 returned 100% blocks executed 83%
-       68:   84:void run_ranges(int threads, std::size_t n, Work work) {
-       68:   85:  if (threads <= 1) {
-branch  0 taken 94% (fallthrough)
-branch  1 taken 6%
-       64:   86:    work(0, n);
+function _ZN5rgpot12_GLOBAL__N_110run_rangesIZNS0_11emit_slicesERNS_11linked_cell7ScratchEPKdS6_mdiibRNS_14UmaEdgeSessionEEUlmmE1_EEvimT_ called 37 returned 100% blocks executed 100%
+       37:   95:void run_ranges(int threads, std::size_t n, Work work) noexcept {
+       37:   96:  if (threads <= 1 || n <= 1) {
+branch  0 taken 14% (fallthrough)
+branch  1 taken 86%
+branch  2 taken 0% (fallthrough)
+branch  3 taken 100%
+       32:   97:    work(0, n);
 call    0 returned 100%
-       64:   87:    return;
-        -:   88:  }
-        4:   89:  std::vector<std::thread> pool;
-        4:   90:  pool.reserve(static_cast<std::size_t>(threads));
+       32:   98:    return;
+        -:   99:  }
+        5:  100:  const bool started = spawn_workers(threads, [&](int t) {
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       24:   91:  for (int t = 0; t < threads; ++t) {
-branch  0 taken 83%
-branch  1 taken 17% (fallthrough)
-       20:   92:    const std::size_t begin =
-       20:   93:        (static_cast<std::size_t>(t) * n) / static_cast<std::size_t>(threads);
-       20:   94:    const std::size_t end =
-       20:   95:        (static_cast<std::size_t>(t + 1) * n) / static_cast<std::size_t>(threads);
-       20:   96:    pool.emplace_back(work, begin, end);
+        -:  101:    const std::size_t begin =
+        -:  102:        (static_cast<std::size_t>(t) * n) / static_cast<std::size_t>(threads);
+        -:  103:    const std::size_t end =
+        -:  104:        (static_cast<std::size_t>(t + 1) * n) / static_cast<std::size_t>(threads);
+        -:  105:    return [&, begin, end] { work(begin, end); };
+        -:  106:  });
+        5:  107:  if (!started)
+branch  0 taken 20% (fallthrough)
+branch  1 taken 80%
+        1:  108:    work(0, n);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        -:   97:  }
-       24:   98:  for (auto &worker : pool)
-call    0 returned 100%
-call    1 returned 100%
-call    2 returned 100%
-call    3 returned 100%
-call    4 returned 100%
-branch  5 taken 83%
-branch  6 taken 17% (fallthrough)
-       20:   99:    worker.join();
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        4:  100:}
-call    0 returned 100%
-call    1 never executed
+        -:  109:}
 ------------------
 _ZN5rgpot12_GLOBAL__N_110run_rangesIZNS0_11emit_slicesERNS_11linked_cell7ScratchEPKdS6_mdiibRNS_14UmaEdgeSessionEEUlmmE0_EEvimT_:
-function _ZN5rgpot12_GLOBAL__N_110run_rangesIZNS0_11emit_slicesERNS_11linked_cell7ScratchEPKdS6_mdiibRNS_14UmaEdgeSessionEEUlmmE0_EEvimT_ called 68 returned 100% blocks executed 83%
-       68:   84:void run_ranges(int threads, std::size_t n, Work work) {
-       68:   85:  if (threads <= 1) {
-branch  0 taken 94% (fallthrough)
-branch  1 taken 6%
-       64:   86:    work(0, n);
+function _ZN5rgpot12_GLOBAL__N_110run_rangesIZNS0_11emit_slicesERNS_11linked_cell7ScratchEPKdS6_mdiibRNS_14UmaEdgeSessionEEUlmmE0_EEvimT_ called 37 returned 100% blocks executed 100%
+       37:   95:void run_ranges(int threads, std::size_t n, Work work) noexcept {
+       37:   96:  if (threads <= 1 || n <= 1) {
+branch  0 taken 14% (fallthrough)
+branch  1 taken 86%
+branch  2 taken 0% (fallthrough)
+branch  3 taken 100%
+       32:   97:    work(0, n);
 call    0 returned 100%
-       64:   87:    return;
-        -:   88:  }
-        4:   89:  std::vector<std::thread> pool;
-        4:   90:  pool.reserve(static_cast<std::size_t>(threads));
+       32:   98:    return;
+        -:   99:  }
+        5:  100:  const bool started = spawn_workers(threads, [&](int t) {
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       24:   91:  for (int t = 0; t < threads; ++t) {
-branch  0 taken 83%
-branch  1 taken 17% (fallthrough)
-       20:   92:    const std::size_t begin =
-       20:   93:        (static_cast<std::size_t>(t) * n) / static_cast<std::size_t>(threads);
-       20:   94:    const std::size_t end =
-       20:   95:        (static_cast<std::size_t>(t + 1) * n) / static_cast<std::size_t>(threads);
-       20:   96:    pool.emplace_back(work, begin, end);
+        -:  101:    const std::size_t begin =
+        -:  102:        (static_cast<std::size_t>(t) * n) / static_cast<std::size_t>(threads);
+        -:  103:    const std::size_t end =
+        -:  104:        (static_cast<std::size_t>(t + 1) * n) / static_cast<std::size_t>(threads);
+        -:  105:    return [&, begin, end] { work(begin, end); };
+        -:  106:  });
+        5:  107:  if (!started)
+branch  0 taken 40% (fallthrough)
+branch  1 taken 60%
+        2:  108:    work(0, n);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        -:   97:  }
-       24:   98:  for (auto &worker : pool)
-call    0 returned 100%
-call    1 returned 100%
-call    2 returned 100%
-call    3 returned 100%
-call    4 returned 100%
-branch  5 taken 83%
-branch  6 taken 17% (fallthrough)
-       20:   99:    worker.join();
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        4:  100:}
-call    0 returned 100%
-call    1 never executed
+        -:  109:}
 ------------------
 _ZN5rgpot12_GLOBAL__N_110run_rangesIZNS0_11emit_slicesERNS_11linked_cell7ScratchEPKdS6_mdiibRNS_14UmaEdgeSessionEEUlmmE_EEvimT_:
-function _ZN5rgpot12_GLOBAL__N_110run_rangesIZNS0_11emit_slicesERNS_11linked_cell7ScratchEPKdS6_mdiibRNS_14UmaEdgeSessionEEUlmmE_EEvimT_ called 4 returned 100% blocks executed 22%
-        4:   84:void run_ranges(int threads, std::size_t n, Work work) {
-        4:   85:  if (threads <= 1) {
-branch  0 taken 100% (fallthrough)
-branch  1 taken 0%
-        4:   86:    work(0, n);
+function _ZN5rgpot12_GLOBAL__N_110run_rangesIZNS0_11emit_slicesERNS_11linked_cell7ScratchEPKdS6_mdiibRNS_14UmaEdgeSessionEEUlmmE_EEvimT_ called 2 returned 100% blocks executed 50%
+        2:   95:void run_ranges(int threads, std::size_t n, Work work) noexcept {
+       2*:   96:  if (threads <= 1 || n <= 1) {
+branch  0 taken 0% (fallthrough)
+branch  1 taken 100%
+branch  2 never executed (fallthrough)
+branch  3 never executed
+        2:   97:    work(0, n);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        4:   87:    return;
-        -:   88:  }
-    #####:   89:  std::vector<std::thread> pool;
-    #####:   90:  pool.reserve(static_cast<std::size_t>(threads));
+        2:   98:    return;
+        -:   99:  }
+    #####:  100:  const bool started = spawn_workers(threads, [&](int t) {
 call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:   91:  for (int t = 0; t < threads; ++t) {
-branch  0 never executed
-branch  1 never executed (fallthrough)
-    #####:   92:    const std::size_t begin =
-    #####:   93:        (static_cast<std::size_t>(t) * n) / static_cast<std::size_t>(threads);
-    #####:   94:    const std::size_t end =
-    #####:   95:        (static_cast<std::size_t>(t + 1) * n) / static_cast<std::size_t>(threads);
-    #####:   96:    pool.emplace_back(work, begin, end);
+        -:  101:    const std::size_t begin =
+        -:  102:        (static_cast<std::size_t>(t) * n) / static_cast<std::size_t>(threads);
+        -:  103:    const std::size_t end =
+        -:  104:        (static_cast<std::size_t>(t + 1) * n) / static_cast<std::size_t>(threads);
+        -:  105:    return [&, begin, end] { work(begin, end); };
+        -:  106:  });
+    #####:  107:  if (!started)
+branch  0 never executed (fallthrough)
+branch  1 never executed
+    #####:  108:    work(0, n);
 call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-        -:   97:  }
-    #####:   98:  for (auto &worker : pool)
-call    0 never executed
-call    1 never executed
-call    2 never executed
-call    3 never executed
-call    4 never executed
-branch  5 never executed
-branch  6 never executed (fallthrough)
-    #####:   99:    worker.join();
-call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:  100:}
-call    0 never executed
-call    1 never executed
+        -:  109:}
 ------------------
 _ZN5rgpot12_GLOBAL__N_110run_rangesIZNS0_11emit_sortedERK17VesinNeighborListRKNS_10ForceInputEiiRNS_14UmaEdgeSessionEEUlmmE_EEvimT_:
-function _ZN5rgpot12_GLOBAL__N_110run_rangesIZNS0_11emit_sortedERK17VesinNeighborListRKNS_10ForceInputEiiRNS_14UmaEdgeSessionEEUlmmE_EEvimT_ called 10 returned 100% blocks executed 83%
-       10:   84:void run_ranges(int threads, std::size_t n, Work work) {
-       10:   85:  if (threads <= 1) {
-branch  0 taken 80% (fallthrough)
-branch  1 taken 20%
-        8:   86:    work(0, n);
+function _ZN5rgpot12_GLOBAL__N_110run_rangesIZNS0_11emit_sortedERK17VesinNeighborListRKNS_10ForceInputEiiRNS_14UmaEdgeSessionEEUlmmE_EEvimT_ called 5 returned 100% blocks executed 88%
+        5:   95:void run_ranges(int threads, std::size_t n, Work work) noexcept {
+        5:   96:  if (threads <= 1 || n <= 1) {
+branch  0 taken 20% (fallthrough)
+branch  1 taken 80%
+branch  2 taken 0% (fallthrough)
+branch  3 taken 100%
+        4:   97:    work(0, n);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        8:   87:    return;
-        -:   88:  }
-        2:   89:  std::vector<std::thread> pool;
-        2:   90:  pool.reserve(static_cast<std::size_t>(threads));
+        4:   98:    return;
+        -:   99:  }
+        1:  100:  const bool started = spawn_workers(threads, [&](int t) {
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        6:   91:  for (int t = 0; t < threads; ++t) {
-branch  0 taken 67%
-branch  1 taken 33% (fallthrough)
-        4:   92:    const std::size_t begin =
-        4:   93:        (static_cast<std::size_t>(t) * n) / static_cast<std::size_t>(threads);
-        4:   94:    const std::size_t end =
-        4:   95:        (static_cast<std::size_t>(t + 1) * n) / static_cast<std::size_t>(threads);
-        4:   96:    pool.emplace_back(work, begin, end);
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        -:   97:  }
-        6:   98:  for (auto &worker : pool)
-call    0 returned 100%
-call    1 returned 100%
-call    2 returned 100%
-call    3 returned 100%
-call    4 returned 100%
-branch  5 taken 67%
-branch  6 taken 33% (fallthrough)
-        4:   99:    worker.join();
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        2:  100:}
-call    0 returned 100%
-call    1 never executed
+        -:  101:    const std::size_t begin =
+        -:  102:        (static_cast<std::size_t>(t) * n) / static_cast<std::size_t>(threads);
+        -:  103:    const std::size_t end =
+        -:  104:        (static_cast<std::size_t>(t + 1) * n) / static_cast<std::size_t>(threads);
+        -:  105:    return [&, begin, end] { work(begin, end); };
+        -:  106:  });
+        1:  107:  if (!started)
+branch  0 taken 0% (fallthrough)
+branch  1 taken 100%
+    #####:  108:    work(0, n);
+call    0 never executed
+        -:  109:}
 ------------------
 _ZN5rgpot12_GLOBAL__N_110run_rangesIZNS0_15molecular_edgesEPKdmRNS_14UmaEdgeSessionEEUlmmE_EEvimT_:
-function _ZN5rgpot12_GLOBAL__N_110run_rangesIZNS0_15molecular_edgesEPKdmRNS_14UmaEdgeSessionEEUlmmE_EEvimT_ called 22 returned 100% blocks executed 22%
-       22:   84:void run_ranges(int threads, std::size_t n, Work work) {
-       22:   85:  if (threads <= 1) {
+function _ZN5rgpot12_GLOBAL__N_110run_rangesIZNS0_15molecular_edgesEPKdmRNS_14UmaEdgeSessionEEUlmmE_EEvimT_ called 11 returned 100% blocks executed 50%
+       11:   95:void run_ranges(int threads, std::size_t n, Work work) noexcept {
+      11*:   96:  if (threads <= 1 || n <= 1) {
+branch  0 taken 0% (fallthrough)
+branch  1 taken 100%
+branch  2 never executed (fallthrough)
+branch  3 never executed
+       11:   97:    work(0, n);
+call    0 returned 100%
+       11:   98:    return;
+        -:   99:  }
+    #####:  100:  const bool started = spawn_workers(threads, [&](int t) {
+call    0 never executed
+        -:  101:    const std::size_t begin =
+        -:  102:        (static_cast<std::size_t>(t) * n) / static_cast<std::size_t>(threads);
+        -:  103:    const std::size_t end =
+        -:  104:        (static_cast<std::size_t>(t + 1) * n) / static_cast<std::size_t>(threads);
+        -:  105:    return [&, begin, end] { work(begin, end); };
+        -:  106:  });
+    #####:  107:  if (!started)
+branch  0 never executed (fallthrough)
+branch  1 never executed
+    #####:  108:    work(0, n);
+call    0 never executed
+        -:  109:}
+------------------
+_ZN5rgpot12_GLOBAL__N_110run_rangesIZNS0_26exercise_empty_ranges_implEiEUlmmE_EEvimT_:
+function _ZN5rgpot12_GLOBAL__N_110run_rangesIZNS0_26exercise_empty_ranges_implEiEUlmmE_EEvimT_ called 1 returned 100% blocks executed 62%
+        1:   95:void run_ranges(int threads, std::size_t n, Work work) noexcept {
+        1:   96:  if (threads <= 1 || n <= 1) {
 branch  0 taken 100% (fallthrough)
 branch  1 taken 0%
-       22:   86:    work(0, n);
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0%
+        1:   97:    work(0, n);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       22:   87:    return;
-        -:   88:  }
-    #####:   89:  std::vector<std::thread> pool;
-    #####:   90:  pool.reserve(static_cast<std::size_t>(threads));
+        1:   98:    return;
+        -:   99:  }
+    #####:  100:  const bool started = spawn_workers(threads, [&](int t) {
 call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:   91:  for (int t = 0; t < threads; ++t) {
-branch  0 never executed
-branch  1 never executed (fallthrough)
-    #####:   92:    const std::size_t begin =
-    #####:   93:        (static_cast<std::size_t>(t) * n) / static_cast<std::size_t>(threads);
-    #####:   94:    const std::size_t end =
-    #####:   95:        (static_cast<std::size_t>(t + 1) * n) / static_cast<std::size_t>(threads);
-    #####:   96:    pool.emplace_back(work, begin, end);
+        -:  101:    const std::size_t begin =
+        -:  102:        (static_cast<std::size_t>(t) * n) / static_cast<std::size_t>(threads);
+        -:  103:    const std::size_t end =
+        -:  104:        (static_cast<std::size_t>(t + 1) * n) / static_cast<std::size_t>(threads);
+        -:  105:    return [&, begin, end] { work(begin, end); };
+        -:  106:  });
+    #####:  107:  if (!started)
+branch  0 never executed (fallthrough)
+branch  1 never executed
+    #####:  108:    work(0, n);
 call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-        -:   97:  }
-    #####:   98:  for (auto &worker : pool)
-call    0 never executed
-call    1 never executed
-call    2 never executed
-call    3 never executed
-call    4 never executed
-branch  5 never executed
-branch  6 never executed (fallthrough)
-    #####:   99:    worker.join();
-call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:  100:}
-call    0 never executed
-call    1 never executed
+        -:  109:}
 ------------------
-        -:  101:
-function _ZN5rgpot12_GLOBAL__N_115molecular_edgesEPKdmRNS_14UmaEdgeSessionE called 22 returned 100% blocks executed 81%
-       22:  102:UmaEdgeList molecular_edges(const double *pos, std::size_t n, UmaEdgeSession &session) {
-       22:  103:  session.rows.resize(n);
+        -:  110:
+function _ZN5rgpot12_GLOBAL__N_126exercise_empty_ranges_implEi called 1 returned 100% blocks executed 100%
+        1:  111:void exercise_empty_ranges_impl(int threads) {
+function _ZZN5rgpot12_GLOBAL__N_126exercise_empty_ranges_implEiENKUlmmE_clEmm called 1 returned 100% blocks executed 100%
+        1:  112:  run_ranges(worker_count(threads, 0), 0, [](std::size_t, std::size_t) {});
 call    0 returned 100%
-       22:  104:  const int threads = worker_count(session.threads, n);
+call    1 returned 100%
+        1:  113:}
+        -:  114:
+function _ZN5rgpot12_GLOBAL__N_115molecular_edgesEPKdmRNS_14UmaEdgeSessionE called 11 returned 100% blocks executed 100%
+       11:  115:UmaEdgeList molecular_edges(const double *pos, std::size_t n, UmaEdgeSession &session) {
+       11:  116:  grow_resize(session.rows, n);
 call    0 returned 100%
-function _ZZN5rgpot12_GLOBAL__N_115molecular_edgesEPKdmRNS_14UmaEdgeSessionEENKUlmmE_clEmm called 22 returned 100% blocks executed 96%
-       22:  105:  run_ranges(threads, n, [&](std::size_t begin, std::size_t end) {
+       11:  117:  const int threads = worker_count(session.threads, n);
 call    0 returned 100%
-     1070:  106:    for (std::size_t c = begin; c < end; ++c) {
+function _ZZN5rgpot12_GLOBAL__N_115molecular_edgesEPKdmRNS_14UmaEdgeSessionEENKUlmmE_clEmm called 11 returned 100% blocks executed 100%
+       11:  118:  run_ranges(threads, n, [&](std::size_t begin, std::size_t end) {
+call    0 returned 100%
+      535:  119:    for (std::size_t c = begin; c < end; ++c) {
 branch  0 taken 98%
 branch  1 taken 2% (fallthrough)
-     1048:  107:      auto &row = session.rows[c];
+      524:  120:      auto &row = session.rows[c];
 call    0 returned 100%
-     1048:  108:      row.neighbor.clear();
+      524:  121:      row.neighbor.clear();
 call    0 returned 100%
-     1048:  109:      row.dist.clear();
+      524:  122:      row.dist.clear();
 call    0 returned 100%
-     1048:  110:      row.neighbor.reserve(n - 1);
+      524:  123:      grow_reserve(row.neighbor, n - 1);
 call    0 returned 100%
-     1048:  111:      row.dist.reserve(n - 1);
+      524:  124:      grow_reserve(row.dist, n - 1);
 call    0 returned 100%
-    78968:  112:      for (std::size_t j = 0; j < n; ++j) {
+    39484:  125:      for (std::size_t j = 0; j < n; ++j) {
 branch  0 taken 99%
 branch  1 taken 1% (fallthrough)
-    77920:  113:        if (j == c)
+    38960:  126:        if (j == c)
 branch  0 taken 1% (fallthrough)
 branch  1 taken 99%
-     1048:  114:          continue;
-    76872:  115:        const double dx = pos[3 * j] - pos[3 * c];
-    76872:  116:        const double dy = pos[3 * j + 1] - pos[3 * c + 1];
-    76872:  117:        const double dz = pos[3 * j + 2] - pos[3 * c + 2];
-    76872:  118:        row.neighbor.push_back(static_cast<int64_t>(j));
+      524:  127:          continue;
+    38436:  128:        const double dx = pos[3 * j] - pos[3 * c];
+    38436:  129:        const double dy = pos[3 * j + 1] - pos[3 * c + 1];
+    38436:  130:        const double dz = pos[3 * j + 2] - pos[3 * c + 2];
+    38436:  131:        grow_push(row.neighbor, static_cast<int64_t>(j));
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-call    3 never executed
-    76872:  119:        row.dist.push_back(std::sqrt(dx * dx + dy * dy + dz * dz));
+    38436:  132:        grow_push(row.dist, std::sqrt(dx * dx + dy * dy + dz * dz));
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        -:  120:      }
-     1048:  121:      row.order.resize(row.neighbor.size());
+        -:  133:      }
+      524:  134:      grow_resize(row.order, row.neighbor.size());
 call    0 returned 100%
 call    1 returned 100%
-     1048:  122:      std::iota(row.order.begin(), row.order.end(), 0);
+      524:  135:      std::iota(row.order.begin(), row.order.end(), 0);
 call    0 returned 100%
 call    1 returned 100%
 call    2 returned 100%
-function _ZZZN5rgpot12_GLOBAL__N_115molecular_edgesEPKdmRNS_14UmaEdgeSessionEENKUlmmE_clEmmENKUlmmE_clEmm called 574108 returned 100% blocks executed 100%
-     1048:  123:      std::sort(row.order.begin(), row.order.end(), [&](std::size_t a, std::size_t b) {
+function _ZZZN5rgpot12_GLOBAL__N_115molecular_edgesEPKdmRNS_14UmaEdgeSessionEENKUlmmE_clEmmENKUlmmE_clEmm called 287054 returned 100% blocks executed 100%
+      524:  136:      grow_sort(row.order.begin(), row.order.end(), [&](std::size_t a, std::size_t b) {
 call    0 returned 100%
 call    1 returned 100%
 call    2 returned 100%
-   574108:  124:        if (row.dist[a] != row.dist[b])
+   287054:  137:        if (row.dist[a] != row.dist[b])
 call    0 returned 100%
 call    1 returned 100%
 branch  2 taken 83% (fallthrough)
 branch  3 taken 17%
-   475916:  125:          return row.dist[a] < row.dist[b];
+   237958:  138:          return row.dist[a] < row.dist[b];
 call    0 returned 100%
 call    1 returned 100%
-    98192:  126:        return row.neighbor[a] < row.neighbor[b];
+    49096:  139:        return row.neighbor[a] < row.neighbor[b];
 call    0 returned 100%
 call    1 returned 100%
-        -:  127:      });
-        -:  128:    }
-       22:  129:  });
-        -:  130:
-       22:  131:  UmaEdgeList out;
-       22:  132:  const std::size_t total = n * (n - 1);
-       22:  133:  out.neighbor.reserve(total);
+        -:  140:      });
+        -:  141:    }
+       11:  142:  });
+        -:  143:
+       11:  144:  UmaEdgeList out;
+       11:  145:  const std::size_t total = n * (n - 1);
+       11:  146:  grow_reserve(out.neighbor, total);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       22:  134:  out.center.reserve(total);
+       11:  147:  grow_reserve(out.center, total);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       22:  135:  out.offsets.reserve(total * 3);
+       11:  148:  grow_reserve(out.offsets, total * 3);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-     1070:  136:  for (std::size_t c = 0; c < n; ++c) {
+      535:  149:  for (std::size_t c = 0; c < n; ++c) {
 branch  0 taken 98%
 branch  1 taken 2% (fallthrough)
-     1048:  137:    const auto &row = session.rows[c];
+      524:  150:    const auto &row = session.rows[c];
 call    0 returned 100%
-    77920:  138:    for (std::size_t id : row.order) {
+    38960:  151:    for (std::size_t id : row.order) {
 call    0 returned 100%
 call    1 returned 100%
 call    2 returned 100%
 call    3 returned 100%
 branch  4 taken 99%
 branch  5 taken 1% (fallthrough)
-    76872:  139:      out.neighbor.push_back(row.neighbor[id]);
+    38436:  152:      grow_push(out.neighbor, row.neighbor[id]);
 call    0 returned 100%
 call    1 returned 100%
-branch  2 taken 100% (fallthrough)
-branch  3 taken 0% (throw)
-    76872:  140:      out.center.push_back(static_cast<int64_t>(c));
+    38436:  153:      grow_push(out.center, static_cast<int64_t>(c));
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-    76872:  141:      out.offsets.push_back(0.f);
+    38436:  154:      grow_push(out.offsets, 0.f);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-    76872:  142:      out.offsets.push_back(0.f);
+    38436:  155:      grow_push(out.offsets, 0.f);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-    76872:  143:      out.offsets.push_back(0.f);
+    38436:  156:      grow_push(out.offsets, 0.f);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-call    3 returned 100%
-        -:  144:    }
-        -:  145:  }
-       22:  146:  return out;
-    =====:  147:}
-call    0 never executed
-        -:  148:
-function _ZN5rgpot12_GLOBAL__N_111emit_sortedERK17VesinNeighborListRKNS_10ForceInputEiiRNS_14UmaEdgeSessionE called 10 returned 100% blocks executed 89%
-       10:  149:void emit_sorted(const VesinNeighborList &nl, const ForceInput &in, int max_neighbors,
-        -:  150:                 int threads, UmaEdgeSession &session) {
-       10:  151:  const std::size_t n = in.nAtoms;
-        -:  152:  (void)threads;
-       10:  153:  const double *pos = in.pos;
-       10:  154:  const double *box = in.box;
-       10:  155:  session.bucket.assign(n + 1, 0);
+call    1 returned 100%
+        -:  157:    }
+        -:  158:  }
+       11:  159:  return out;
+        -:  160:}
+        -:  161:
+function _ZN5rgpot12_GLOBAL__N_111emit_sortedERK17VesinNeighborListRKNS_10ForceInputEiiRNS_14UmaEdgeSessionE called 5 returned 100% blocks executed 100%
+        5:  162:void emit_sorted(const VesinNeighborList &nl, const ForceInput &in, int max_neighbors,
+        -:  163:                 int threads, UmaEdgeSession &session) noexcept {
+        5:  164:  const std::size_t n = in.nAtoms;
+        -:  165:  (void)threads;
+        5:  166:  const double *pos = in.pos;
+        5:  167:  const double *box = in.box;
+        5:  168:  grow_assign_n(session.bucket, n + 1, std::size_t{0});
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-      822:  156:  for (std::size_t k = 0; k < nl.length; ++k) {
+      411:  169:  for (std::size_t k = 0; k < nl.length; ++k) {
 branch  0 taken 99%
 branch  1 taken 1% (fallthrough)
-      812:  157:    const auto center = static_cast<std::size_t>(nl.pairs[k][0]);
-      812:  158:    ++session.bucket[center + 1];
+      406:  170:    const auto center = static_cast<std::size_t>(nl.pairs[k][0]);
+      406:  171:    ++session.bucket[center + 1];
 call    0 returned 100%
-        -:  159:  }
-       54:  160:  for (std::size_t i = 1; i <= n; ++i)
+        -:  172:  }
+       27:  173:  for (std::size_t i = 1; i <= n; ++i)
 branch  0 taken 81%
 branch  1 taken 19% (fallthrough)
-       44:  161:    session.bucket[i] += session.bucket[i - 1];
+       22:  174:    session.bucket[i] += session.bucket[i - 1];
 call    0 returned 100%
 call    1 returned 100%
-       10:  162:  if (session.keys.size() < session.bucket[n])
+        5:  175:  if (session.keys.size() < session.bucket[n])
 call    0 returned 100%
 call    1 returned 100%
 branch  2 taken 80% (fallthrough)
 branch  3 taken 20%
-        8:  163:    session.keys.resize(session.bucket[n]);
+        4:  176:    grow_resize(session.keys, session.bucket[n]);
 call    0 returned 100%
 call    1 returned 100%
-branch  2 taken 100% (fallthrough)
-branch  3 taken 0% (throw)
-       10:  164:  auto write_idx = session.bucket;
+        5:  177:  std::vector<std::size_t> write_idx;
+        5:  178:  grow_assign_range(write_idx, session.bucket.data(), session.bucket.data() + session.bucket.size());
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-      822:  165:  for (std::size_t k = 0; k < nl.length; ++k) {
+call    1 returned 100%
+call    2 returned 100%
+call    3 returned 100%
+      411:  179:  for (std::size_t k = 0; k < nl.length; ++k) {
 branch  0 taken 99%
 branch  1 taken 1% (fallthrough)
-      812:  166:    const auto center = static_cast<std::size_t>(nl.pairs[k][0]);
-      812:  167:    const std::size_t j = nl.pairs[k][1];
-      812:  168:    const double s0 = static_cast<double>(nl.shifts[k][0]);
-      812:  169:    const double s1 = static_cast<double>(nl.shifts[k][1]);
-      812:  170:    const double s2 = static_cast<double>(nl.shifts[k][2]);
-      812:  171:    const double dx = pos[3 * j] - pos[3 * center] + s0 * box[0] + s1 * box[3] + s2 * box[6];
-      812:  172:    const double dy = pos[3 * j + 1] - pos[3 * center + 1] + s0 * box[1] + s1 * box[4] + s2 * box[7];
-      812:  173:    const double dz = pos[3 * j + 2] - pos[3 * center + 2] + s0 * box[2] + s1 * box[5] + s2 * box[8];
-      812:  174:    auto &key = session.keys[write_idx[center]++];
+      406:  180:    const auto center = static_cast<std::size_t>(nl.pairs[k][0]);
+      406:  181:    const std::size_t j = nl.pairs[k][1];
+      406:  182:    const double s0 = static_cast<double>(nl.shifts[k][0]);
+      406:  183:    const double s1 = static_cast<double>(nl.shifts[k][1]);
+      406:  184:    const double s2 = static_cast<double>(nl.shifts[k][2]);
+      406:  185:    const double dx = pos[3 * j] - pos[3 * center] + s0 * box[0] + s1 * box[3] + s2 * box[6];
+      406:  186:    const double dy = pos[3 * j + 1] - pos[3 * center + 1] + s0 * box[1] + s1 * box[4] + s2 * box[7];
+      406:  187:    const double dz = pos[3 * j + 2] - pos[3 * center + 2] + s0 * box[2] + s1 * box[5] + s2 * box[8];
+      406:  188:    auto &key = session.keys[write_idx[center]++];
 call    0 returned 100%
 call    1 returned 100%
-      812:  175:    key.dist2 = dx * dx + dy * dy + dz * dz;
-      812:  176:    key.neighbor = static_cast<std::uint32_t>(j);
-      812:  177:    key.s0 = nl.shifts[k][0];
-      812:  178:    key.s1 = nl.shifts[k][1];
-      812:  179:    key.s2 = nl.shifts[k][2];
-        -:  180:  }
-       10:  181:  auto &out = session.edges;
-       10:  182:  out.neighbor.clear();
+      406:  189:    key.dist2 = dx * dx + dy * dy + dz * dz;
+      406:  190:    key.neighbor = static_cast<std::uint32_t>(j);
+      406:  191:    key.s0 = nl.shifts[k][0];
+      406:  192:    key.s1 = nl.shifts[k][1];
+      406:  193:    key.s2 = nl.shifts[k][2];
+        -:  194:  }
+        5:  195:  auto &out = session.edges;
+        5:  196:  out.neighbor.clear();
 call    0 returned 100%
-       10:  183:  out.center.clear();
+        5:  197:  out.center.clear();
 call    0 returned 100%
-       10:  184:  out.offsets.clear();
+        5:  198:  out.offsets.clear();
 call    0 returned 100%
-       10:  185:  if (out.neighbor.capacity() < session.bucket[n])
-call    0 returned 100%
-call    1 returned 100%
-branch  2 taken 60% (fallthrough)
-branch  3 taken 40%
-        6:  186:    out.neighbor.reserve(session.bucket[n]);
-call    0 returned 100%
-call    1 returned 100%
-branch  2 taken 100% (fallthrough)
-branch  3 taken 0% (throw)
-       10:  187:  if (out.center.capacity() < session.bucket[n])
+        5:  199:  if (out.neighbor.capacity() < session.bucket[n])
 call    0 returned 100%
 call    1 returned 100%
 branch  2 taken 60% (fallthrough)
 branch  3 taken 40%
-        6:  188:    out.center.reserve(session.bucket[n]);
+        3:  200:    grow_reserve(out.neighbor, session.bucket[n]);
 call    0 returned 100%
 call    1 returned 100%
-branch  2 taken 100% (fallthrough)
-branch  3 taken 0% (throw)
-       10:  189:  if (out.offsets.capacity() < session.bucket[n] * 3)
+        5:  201:  if (out.center.capacity() < session.bucket[n])
 call    0 returned 100%
 call    1 returned 100%
 branch  2 taken 60% (fallthrough)
 branch  3 taken 40%
-        6:  190:    out.offsets.reserve(session.bucket[n] * 3);
+        3:  202:    grow_reserve(out.center, session.bucket[n]);
 call    0 returned 100%
 call    1 returned 100%
-branch  2 taken 100% (fallthrough)
-branch  3 taken 0% (throw)
-       10:  191:  const int workers = worker_count(threads, n);
+        5:  203:  if (out.offsets.capacity() < session.bucket[n] * 3)
 call    0 returned 100%
-function _ZZN5rgpot12_GLOBAL__N_111emit_sortedERK17VesinNeighborListRKNS_10ForceInputEiiRNS_14UmaEdgeSessionEENKUlmmE_clEmm called 12 returned 100% blocks executed 100%
-       10:  192:  run_ranges(workers, n, [&](std::size_t begin, std::size_t end) {
+call    1 returned 100%
+branch  2 taken 60% (fallthrough)
+branch  3 taken 40%
+        3:  204:    grow_reserve(out.offsets, session.bucket[n] * 3);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       56:  193:    for (std::size_t c = begin; c < end; ++c) {
+call    1 returned 100%
+        5:  205:  const int workers = worker_count(threads, n);
+call    0 returned 100%
+function _ZZN5rgpot12_GLOBAL__N_111emit_sortedERK17VesinNeighborListRKNS_10ForceInputEiiRNS_14UmaEdgeSessionEENKUlmmE_clEmm called 6 returned 100% blocks executed 100%
+        5:  206:  run_ranges(workers, n, [&](std::size_t begin, std::size_t end) {
+call    0 returned 100%
+       28:  207:    for (std::size_t c = begin; c < end; ++c) {
 branch  0 taken 79%
 branch  1 taken 21% (fallthrough)
-       44:  194:      auto first = session.keys.begin() + static_cast<std::ptrdiff_t>(session.bucket[c]);
+       22:  208:      auto first = session.keys.begin() + static_cast<std::ptrdiff_t>(session.bucket[c]);
 call    0 returned 100%
 call    1 returned 100%
 call    2 returned 100%
-       44:  195:      auto last = session.keys.begin() + static_cast<std::ptrdiff_t>(session.bucket[c + 1]);
+       22:  209:      auto last = session.keys.begin() + static_cast<std::ptrdiff_t>(session.bucket[c + 1]);
 call    0 returned 100%
 call    1 returned 100%
 call    2 returned 100%
-function _ZZZN5rgpot12_GLOBAL__N_111emit_sortedERK17VesinNeighborListRKNS_10ForceInputEiiRNS_14UmaEdgeSessionEENKUlmmE_clEmmENKUlRKNS7_7EdgeKeyESC_E_clESC_SC_ called 6972 returned 100% blocks executed 100%
-       44:  196:      std::sort(first, last, [](const UmaEdgeSession::EdgeKey &a, const UmaEdgeSession::EdgeKey &b) {
+function _ZZZN5rgpot12_GLOBAL__N_111emit_sortedERK17VesinNeighborListRKNS_10ForceInputEiiRNS_14UmaEdgeSessionEENKUlmmE_clEmmENKUlRKNS7_7EdgeKeyESC_E_clESC_SC_ called 3486 returned 100% blocks executed 100%
+       22:  210:      grow_sort(first, last, [](const UmaEdgeSession::EdgeKey &a, const UmaEdgeSession::EdgeKey &b) {
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-     6972:  197:        if (a.dist2 != b.dist2)
+     3486:  211:        if (a.dist2 != b.dist2)
 branch  0 taken 79% (fallthrough)
 branch  1 taken 21%
-     5520:  198:          return a.dist2 < b.dist2;
-     1452:  199:        if (a.neighbor != b.neighbor)
+     2760:  212:          return a.dist2 < b.dist2;
+      726:  213:        if (a.neighbor != b.neighbor)
 branch  0 taken 57% (fallthrough)
 branch  1 taken 43%
-      832:  200:          return a.neighbor < b.neighbor;
-      620:  201:        if (a.s0 != b.s0)
+      416:  214:          return a.neighbor < b.neighbor;
+      310:  215:        if (a.s0 != b.s0)
 branch  0 taken 70% (fallthrough)
 branch  1 taken 30%
-      432:  202:          return a.s0 < b.s0;
-      188:  203:        if (a.s1 != b.s1)
+      216:  216:          return a.s0 < b.s0;
+       94:  217:        if (a.s1 != b.s1)
 branch  0 taken 62% (fallthrough)
 branch  1 taken 38%
-      116:  204:          return a.s1 < b.s1;
-       72:  205:        return a.s2 < b.s2;
-        -:  206:      });
-        -:  207:    }
-       12:  208:  });
-       54:  209:  for (std::size_t c = 0; c < n; ++c) {
+       58:  218:          return a.s1 < b.s1;
+       36:  219:        return a.s2 < b.s2;
+        -:  220:      });
+        -:  221:    }
+        6:  222:  });
+       27:  223:  for (std::size_t c = 0; c < n; ++c) {
 branch  0 taken 81%
 branch  1 taken 19% (fallthrough)
-       44:  210:    std::size_t written = 0;
-      844:  211:    for (std::size_t k = session.bucket[c]; k < session.bucket[c + 1]; ++k) {
+       22:  224:    std::size_t written = 0;
+      422:  225:    for (std::size_t k = session.bucket[c]; k < session.bucket[c + 1]; ++k) {
 call    0 returned 100%
 call    1 returned 100%
 branch  2 taken 96%
 branch  3 taken 4% (fallthrough)
-      808:  212:      const auto &key = session.keys[k];
+      404:  226:      const auto &key = session.keys[k];
 call    0 returned 100%
-      808:  213:      if (key.dist2 < 1e-16)
+      404:  227:      if (key.dist2 < 1e-16)
 branch  0 taken 1% (fallthrough)
 branch  1 taken 99%
-        8:  214:        continue;
-      800:  215:      if (max_neighbors > 0 && written >= static_cast<std::size_t>(max_neighbors))
+        4:  228:        continue;
+      400:  229:      if (max_neighbors > 0 && written >= static_cast<std::size_t>(max_neighbors))
 branch  0 taken 97% (fallthrough)
 branch  1 taken 3%
 branch  2 taken 1% (fallthrough)
 branch  3 taken 99%
-        8:  216:        break;
-      792:  217:      out.neighbor.push_back(static_cast<int64_t>(key.neighbor));
+        4:  230:        break;
+      396:  231:      grow_push(out.neighbor, static_cast<int64_t>(key.neighbor));
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-      792:  218:      out.center.push_back(static_cast<int64_t>(c));
+      396:  232:      grow_push(out.center, static_cast<int64_t>(c));
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-      792:  219:      out.offsets.push_back(static_cast<float>(key.s0));
+      396:  233:      grow_push(out.offsets, static_cast<float>(key.s0));
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-      792:  220:      out.offsets.push_back(static_cast<float>(key.s1));
+      396:  234:      grow_push(out.offsets, static_cast<float>(key.s1));
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-      792:  221:      out.offsets.push_back(static_cast<float>(key.s2));
+      396:  235:      grow_push(out.offsets, static_cast<float>(key.s2));
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-      792:  222:      ++written;
-        -:  223:    }
-        -:  224:  }
-       10:  225:}
+      396:  236:      ++written;
+        -:  237:    }
+        -:  238:  }
+        5:  239:}
 call    0 returned 100%
-call    1 never executed
-        -:  226:
-function _ZN5rgpot12_GLOBAL__N_111emit_slicesERNS_11linked_cell7ScratchEPKdS5_mdiibRNS_14UmaEdgeSessionE called 68 returned 100% blocks executed 95%
-       68:  227:void emit_slices(linked_cell::Scratch &scratch, const double *pos, const double *box,
-        -:  228:                 std::size_t n, double cut2, int max_neighbors, int threads, bool recompute,
-        -:  229:                 UmaEdgeSession &session) {
-       68:  230:  const double side[3] = {box[0], box[4], box[8]};
-       68:  231:  const int workers = worker_count(threads, n);
+        -:  240:
+function _ZN5rgpot12_GLOBAL__N_111emit_slicesERNS_11linked_cell7ScratchEPKdS5_mdiibRNS_14UmaEdgeSessionE called 37 returned 100% blocks executed 100%
+       37:  241:void emit_slices(linked_cell::Scratch &scratch, const double *pos, const double *box,
+        -:  242:                 std::size_t n, double cut2, int max_neighbors, int threads, bool recompute,
+        -:  243:                 UmaEdgeSession &session) noexcept {
+       37:  244:  const double side[3] = {box[0], box[4], box[8]};
+       37:  245:  const int workers = worker_count(threads, n);
 call    0 returned 100%
-       68:  232:  if (recompute) {
-branch  0 taken 6% (fallthrough)
-branch  1 taken 94%
-function _ZZN5rgpot12_GLOBAL__N_111emit_slicesERNS_11linked_cell7ScratchEPKdS5_mdiibRNS_14UmaEdgeSessionEENKUlmmE_clEmm called 4 returned 100% blocks executed 95%
-        4:  233:    run_ranges(workers, n, [&](std::size_t begin, std::size_t end) {
+       37:  246:  if (recompute) {
+branch  0 taken 5% (fallthrough)
+branch  1 taken 95%
+function _ZZN5rgpot12_GLOBAL__N_111emit_slicesERNS_11linked_cell7ScratchEPKdS5_mdiibRNS_14UmaEdgeSessionEENKUlmmE_clEmm called 2 returned 100% blocks executed 100%
+        2:  247:    run_ranges(workers, n, [&](std::size_t begin, std::size_t end) {
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       20:  234:      for (std::size_t c = begin; c < end; ++c) {
+       10:  248:      for (std::size_t c = begin; c < end; ++c) {
 branch  0 taken 80%
 branch  1 taken 20% (fallthrough)
-       16:  235:        const auto t = scratch.slice_thread[c];
+        8:  249:        const auto t = scratch.slice_thread[c];
 call    0 returned 100%
-       16:  236:        auto &part = scratch.parts[t];
+        8:  250:        auto &part = scratch.parts[t];
 call    0 returned 100%
-       16:  237:        const auto at = scratch.slice_at[c];
+        8:  251:        const auto at = scratch.slice_at[c];
 call    0 returned 100%
-       16:  238:        const auto count = scratch.slice_n[c];
+        8:  252:        const auto count = scratch.slice_n[c];
 call    0 returned 100%
-       80:  239:        for (std::uint32_t i = 0; i < count; ++i) {
+       40:  253:        for (std::uint32_t i = 0; i < count; ++i) {
 branch  0 taken 80%
 branch  1 taken 20% (fallthrough)
-       64:  240:          auto &row = part[at + i];
+       32:  254:          auto &row = part[at + i];
 call    0 returned 100%
-       64:  241:          const double dx = pos[3 * row.neighbor] - pos[3 * c] + row.s0 * side[0];
-       64:  242:          const double dy = pos[3 * row.neighbor + 1] - pos[3 * c + 1] + row.s1 * side[1];
-       64:  243:          const double dz = pos[3 * row.neighbor + 2] - pos[3 * c + 2] + row.s2 * side[2];
-       64:  244:          row.dist2 = dx * dx + dy * dy + dz * dz;
-        -:  245:        }
-       16:  246:        if (count > 1) {
+       32:  255:          const double dx = pos[3 * row.neighbor] - pos[3 * c] + row.s0 * side[0];
+       32:  256:          const double dy = pos[3 * row.neighbor + 1] - pos[3 * c + 1] + row.s1 * side[1];
+       32:  257:          const double dz = pos[3 * row.neighbor + 2] - pos[3 * c + 2] + row.s2 * side[2];
+       32:  258:          row.dist2 = dx * dx + dy * dy + dz * dz;
+        -:  259:        }
+        8:  260:        if (count > 1) {
 branch  0 taken 75% (fallthrough)
 branch  1 taken 25%
-       12:  247:          std::sort(part.begin() + static_cast<std::ptrdiff_t>(at),
+        6:  261:          grow_sort(part.begin() + static_cast<std::ptrdiff_t>(at),
 call    0 returned 100%
 call    1 returned 100%
 call    2 returned 100%
 call    3 returned 100%
-branch  4 taken 100% (fallthrough)
-branch  5 taken 0% (throw)
-       24:  248:                    part.begin() + static_cast<std::ptrdiff_t>(at + count),
+       12:  262:                    part.begin() + static_cast<std::ptrdiff_t>(at + count),
 call    0 returned 100%
-        -:  249:                    linked_cell::before);
-        -:  250:        }
-        -:  251:      }
-        4:  252:    });
-        -:  253:  }
-       68:  254:  session.bucket.assign(n + 1, 0);
+        -:  263:                    linked_cell::before);
+        -:  264:        }
+        -:  265:      }
+        2:  266:    });
+        -:  267:  }
+       37:  268:  grow_assign_n(session.bucket, n + 1, std::size_t{0});
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-function _ZZN5rgpot12_GLOBAL__N_111emit_slicesERNS_11linked_cell7ScratchEPKdS5_mdiibRNS_14UmaEdgeSessionEENKUlmE_clEm called 266 returned 100% blocks executed 100%
-      266:  255:  auto keep_of = [&](std::size_t c) {
-      266:  256:    const auto &part = scratch.parts[scratch.slice_thread[c]];
+function _ZZN5rgpot12_GLOBAL__N_111emit_slicesERNS_11linked_cell7ScratchEPKdS5_mdiibRNS_14UmaEdgeSessionEENKUlmE_clEm called 157 returned 100% blocks executed 100%
+      157:  269:  auto keep_of = [&](std::size_t c) {
+      157:  270:    const auto &part = scratch.parts[scratch.slice_thread[c]];
 call    0 returned 100%
 call    1 returned 100%
-      266:  257:    const auto at = scratch.slice_at[c];
+      157:  271:    const auto at = scratch.slice_at[c];
 call    0 returned 100%
-      266:  258:    const auto count = scratch.slice_n[c];
+      157:  272:    const auto count = scratch.slice_n[c];
 call    0 returned 100%
-      266:  259:    std::size_t keep = 0;
-      266:  260:    const int cap = max_neighbors > 0 ? max_neighbors : static_cast<int>(count);
-branch  0 taken 98% (fallthrough)
-branch  1 taken 2%
-     1362:  261:    for (std::uint32_t i = 0; i < count; ++i) {
-branch  0 taken 84%
-branch  1 taken 16% (fallthrough)
-     1140:  262:      const double d2 = part[at + i].dist2;
+      157:  273:    std::size_t keep = 0;
+      157:  274:    const int cap = max_neighbors > 0 ? max_neighbors : static_cast<int>(count);
+branch  0 taken 99% (fallthrough)
+branch  1 taken 1%
+      873:  275:    for (std::uint32_t i = 0; i < count; ++i) {
+branch  0 taken 85%
+branch  1 taken 15% (fallthrough)
+      738:  276:      const double d2 = part[at + i].dist2;
 call    0 returned 100%
-     1140:  263:      if (d2 < 1e-16)
+      738:  277:      if (d2 < 1e-16)
 branch  0 taken 1% (fallthrough)
 branch  1 taken 99%
-        8:  264:        continue;
-     1132:  265:      if (!(d2 < cut2))
+        4:  278:        continue;
+      734:  279:      if (!(d2 < cut2))
 branch  0 taken 2% (fallthrough)
 branch  1 taken 98%
-       24:  266:        break;
-     1108:  267:      ++keep;
-     1108:  268:      if (keep >= static_cast<std::size_t>(cap))
-branch  0 taken 2% (fallthrough)
-branch  1 taken 98%
-       20:  269:        break;
-        -:  270:    }
-      266:  271:    return keep;
-       68:  272:  };
-function _ZZN5rgpot12_GLOBAL__N_111emit_slicesERNS_11linked_cell7ScratchEPKdS5_mdiibRNS_14UmaEdgeSessionEENKUlmmE0_clEmm called 84 returned 100% blocks executed 100%
-       68:  273:  run_ranges(workers, n, [&](std::size_t begin, std::size_t end) {
+       12:  280:        break;
+      722:  281:      ++keep;
+      722:  282:      if (keep >= static_cast<std::size_t>(cap))
+branch  0 taken 1% (fallthrough)
+branch  1 taken 99%
+       10:  283:        break;
+        -:  284:    }
+      157:  285:    return keep;
+       37:  286:  };
+function _ZZN5rgpot12_GLOBAL__N_111emit_slicesERNS_11linked_cell7ScratchEPKdS5_mdiibRNS_14UmaEdgeSessionEENKUlmmE0_clEmm called 48 returned 100% blocks executed 100%
+       37:  287:  run_ranges(workers, n, [&](std::size_t begin, std::size_t end) {
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-      350:  274:    for (std::size_t c = begin; c < end; ++c)
-branch  0 taken 76%
-branch  1 taken 24% (fallthrough)
-      266:  275:      session.bucket[c + 1] = keep_of(c);
+      205:  288:    for (std::size_t c = begin; c < end; ++c)
+branch  0 taken 77%
+branch  1 taken 23% (fallthrough)
+      157:  289:      session.bucket[c + 1] = keep_of(c);
 call    0 returned 100%
 call    1 returned 100%
-       84:  276:  });
-      334:  277:  for (std::size_t i = 1; i <= n; ++i)
-branch  0 taken 80%
-branch  1 taken 20% (fallthrough)
-      266:  278:    session.bucket[i] += session.bucket[i - 1];
+       48:  290:  });
+      194:  291:  for (std::size_t i = 1; i <= n; ++i)
+branch  0 taken 81%
+branch  1 taken 19% (fallthrough)
+      157:  292:    session.bucket[i] += session.bucket[i - 1];
 call    0 returned 100%
 call    1 returned 100%
-       68:  279:  const std::size_t total = session.bucket[n];
+       37:  293:  const std::size_t total = session.bucket[n];
 call    0 returned 100%
-       68:  280:  auto &out = session.edges;
-       68:  281:  out.neighbor.clear();
+       37:  294:  auto &out = session.edges;
+       37:  295:  out.neighbor.clear();
 call    0 returned 100%
-       68:  282:  out.center.clear();
+       37:  296:  out.center.clear();
 call    0 returned 100%
-       68:  283:  out.offsets.clear();
+       37:  297:  out.offsets.clear();
 call    0 returned 100%
-       68:  284:  resize_no_init(out.neighbor, total);
+       37:  298:  resize_no_init(out.neighbor, total);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       68:  285:  resize_no_init(out.center, total);
+       37:  299:  resize_no_init(out.center, total);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       68:  286:  resize_no_init(out.offsets, total * 3);
+       37:  300:  resize_no_init(out.offsets, total * 3);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-function _ZZN5rgpot12_GLOBAL__N_111emit_slicesERNS_11linked_cell7ScratchEPKdS5_mdiibRNS_14UmaEdgeSessionEENKUlmmE1_clEmm called 84 returned 100% blocks executed 100%
-       68:  287:  run_ranges(workers, n, [&](std::size_t begin, std::size_t end) {
+function _ZZN5rgpot12_GLOBAL__N_111emit_slicesERNS_11linked_cell7ScratchEPKdS5_mdiibRNS_14UmaEdgeSessionEENKUlmmE1_clEmm called 51 returned 100% blocks executed 100%
+       37:  301:  run_ranges(workers, n, [&](std::size_t begin, std::size_t end) {
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-      350:  288:    for (std::size_t c = begin; c < end; ++c) {
-branch  0 taken 76%
-branch  1 taken 24% (fallthrough)
-      266:  289:      const auto &part = scratch.parts[scratch.slice_thread[c]];
+      208:  302:    for (std::size_t c = begin; c < end; ++c) {
+branch  0 taken 75%
+branch  1 taken 25% (fallthrough)
+      157:  303:      const auto &part = scratch.parts[scratch.slice_thread[c]];
 call    0 returned 100%
 call    1 returned 100%
-      266:  290:      const auto at = scratch.slice_at[c];
+      157:  304:      const auto at = scratch.slice_at[c];
 call    0 returned 100%
-      266:  291:      const auto count = scratch.slice_n[c];
+      157:  305:      const auto count = scratch.slice_n[c];
 call    0 returned 100%
-      266:  292:      std::size_t slot = session.bucket[c];
+      157:  306:      std::size_t slot = session.bucket[c];
 call    0 returned 100%
-      266:  293:      const std::size_t stop = session.bucket[c + 1];
+      157:  307:      const std::size_t stop = session.bucket[c + 1];
 call    0 returned 100%
-     1382:  294:      for (std::uint32_t i = 0; i < count && slot < stop; ++i) {
+      883:  308:      for (std::uint32_t i = 0; i < count && slot < stop; ++i) {
 branch  0 taken 84% (fallthrough)
 branch  1 taken 16%
 branch  2 taken 97%
 branch  3 taken 3% (fallthrough)
-     1116:  295:        const auto &row = part[at + i];
+      726:  309:        const auto &row = part[at + i];
 call    0 returned 100%
-     1116:  296:        if (row.dist2 < 1e-16)
+      726:  310:        if (row.dist2 < 1e-16)
 branch  0 taken 1% (fallthrough)
 branch  1 taken 99%
-        8:  297:          continue;
-     1108:  298:        out.neighbor[slot] = static_cast<int64_t>(row.neighbor);
+        4:  311:          continue;
+      722:  312:        out.neighbor[slot] = static_cast<int64_t>(row.neighbor);
 call    0 returned 100%
-     1108:  299:        out.center[slot] = static_cast<int64_t>(c);
+      722:  313:        out.center[slot] = static_cast<int64_t>(c);
 call    0 returned 100%
-     1108:  300:        out.offsets[3 * slot] = static_cast<float>(row.s0);
+      722:  314:        out.offsets[3 * slot] = static_cast<float>(row.s0);
 call    0 returned 100%
-     1108:  301:        out.offsets[3 * slot + 1] = static_cast<float>(row.s1);
+      722:  315:        out.offsets[3 * slot + 1] = static_cast<float>(row.s1);
 call    0 returned 100%
-     1108:  302:        out.offsets[3 * slot + 2] = static_cast<float>(row.s2);
+      722:  316:        out.offsets[3 * slot + 2] = static_cast<float>(row.s2);
 call    0 returned 100%
-     1108:  303:        ++slot;
-        -:  304:      }
-        -:  305:    }
-       84:  306:  });
-       68:  307:}
-        -:  308:
-function _ZN5rgpot12_GLOBAL__N_114periodic_edgesERKNS_10ForceInputEdiRNS_14UmaEdgeSessionE called 82 returned 95% blocks executed 84%
-       82:  309:void periodic_edges(const ForceInput &in, double cutoff, int max_neighbors,
-        -:  310:                     UmaEdgeSession &session) {
-       82:  311:  VesinOptions options{};
-       82:  312:  vesin_compat::fill_neighbor_options(options, cutoff, /*full_list=*/true);
+      722:  317:        ++slot;
+        -:  318:      }
+        -:  319:    }
+       51:  320:  });
+       37:  321:}
+        -:  322:
+function _ZN5rgpot12_GLOBAL__N_114periodic_edgesERKNS_10ForceInputEdiRNS_14UmaEdgeSessionE called 45 returned 93% blocks executed 97%
+       45:  323:void periodic_edges(const ForceInput &in, double cutoff, int max_neighbors,
+        -:  324:                     UmaEdgeSession &session) {
+       45:  325:  VesinOptions options{};
+       45:  326:  vesin_compat::fill_neighbor_options(options, cutoff, /*full_list=*/true);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       82:  313:  vesin_compat::set_n_threads(options, session.threads > 0 ? session.threads : 1);
+       45:  327:  vesin_compat::set_n_threads(options, session.threads > 0 ? session.threads : 1);
 call    0 returned 100%
-       82:  314:  const bool brute = brute_force_box(in.box, cutoff);
+       45:  328:  const bool brute = brute_force_box(in.box, cutoff);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       82:  315:  if (brute)
+       45:  329:  if (brute)
 branch  0 taken 2% (fallthrough)
 branch  1 taken 98%
-        2:  316:    options.algorithm = VesinBruteForce;
-        -:  317:  else
-       80:  318:    options.algorithm = VesinCellList;
-        -:  319:  // The direct pair loop matches the cell list only when every side
-        -:  320:  // is at least two cutoffs and under three. A fresh session builds
-        -:  321:  // at the bare cutoff. The skin turns on after that call finishes.
-       82:  322:  double skin = 0.0;
-       82:  323:  if (!brute && session.skin_policy != 1) {
+        1:  330:    options.algorithm = VesinBruteForce;
+        -:  331:  else
+       44:  332:    options.algorithm = VesinCellList;
+        -:  333:  // The direct pair loop matches the cell list only when every side
+        -:  334:  // is at least two cutoffs and under three. A fresh session builds
+        -:  335:  // at the bare cutoff. The skin turns on after that call finishes.
+       45:  336:  double skin = 0.0;
+       45:  337:  if (!brute && session.skin_policy != 1) {
 branch  0 taken 98% (fallthrough)
 branch  1 taken 2%
 branch  2 taken 95% (fallthrough)
 branch  3 taken 5%
-       76:  324:    if (session.skin_policy == 2 || session.calls > 0)
+       42:  338:    if (session.skin_policy == 2 || session.calls > 0)
 branch  0 taken 95% (fallthrough)
 branch  1 taken 5%
-branch  2 taken 17% (fallthrough)
-branch  3 taken 83%
-       16:  325:      skin = kVerletSkin;
-        -:  326:  }
-       82:  327:  vesin_compat::set_skin(options, skin);
+branch  2 taken 15% (fallthrough)
+branch  3 taken 85%
+        8:  339:      skin = kVerletSkin;
+        -:  340:  }
+       45:  341:  vesin_compat::set_skin(options, skin);
 call    0 returned 100%
-       82:  328:  session.last_skin = skin;
-       82:  329:  options.return_distances = false;
-       82:  330:  options.return_vectors = false;
-        -:  331:
-       82:  332:  const double search = cutoff + skin;
-       82:  333:  if (!brute) {
+       45:  342:  session.last_skin = skin;
+       45:  343:  options.return_distances = false;
+       45:  344:  options.return_vectors = false;
+        -:  345:
+       45:  346:  const double search = cutoff + skin;
+       45:  347:  if (!brute) {
 branch  0 taken 98% (fallthrough)
 branch  1 taken 2%
-       80:  334:    if (!session.cell_cache)
+       44:  348:    if (!session.cell_cache)
 call    0 returned 100%
-branch  1 taken 80% (fallthrough)
-branch  2 taken 20%
-       64:  335:      session.cell_cache = take_cell();
+branch  1 taken 82% (fallthrough)
+branch  2 taken 18%
+       36:  349:      session.cell_cache = take_cell();
 call    0 returned 100%
 branch  1 taken 100% (fallthrough)
 branch  2 taken 0% (throw)
 call    3 returned 100%
 call    4 returned 100%
-       80:  336:    auto &scratch = session.cell_cache->scratch;
+       44:  350:    auto &scratch = session.cell_cache->scratch;
 call    0 returned 100%
-       80:  337:    const double half = 0.5 * skin;
-       80:  338:    bool box_same = scratch.ref_n == static_cast<int>(in.nAtoms);
-      206:  339:    for (int a = 0; box_same && a < 9; ++a)
-branch  0 taken 68% (fallthrough)
-branch  1 taken 32%
+       44:  351:    const double half = 0.5 * skin;
+       44:  352:    bool box_same = scratch.ref_n == static_cast<int>(in.nAtoms);
+      107:  353:    for (int a = 0; box_same && a < 9; ++a)
+branch  0 taken 65% (fallthrough)
+branch  1 taken 35%
 branch  2 taken 90%
 branch  3 taken 10% (fallthrough)
-      126:  340:      box_same = scratch.ref_box[a] == in.box[a];
-       86:  341:    const bool keep = skin > 0.0 && box_same && scratch.ref_search == search &&
-branch  0 taken 20% (fallthrough)
-branch  1 taken 80%
+       63:  354:      box_same = scratch.ref_box[a] == in.box[a];
+       47:  355:    const bool keep = skin > 0.0 && box_same && scratch.ref_search == search &&
+branch  0 taken 18% (fallthrough)
+branch  1 taken 82%
 branch  2 taken 75% (fallthrough)
 branch  3 taken 25%
 branch  4 taken 50% (fallthrough)
 branch  5 taken 50%
-        6:  342:                      linked_cell::max_move(in.pos, scratch.ref_pos) <= half * half;
+        3:  356:                      linked_cell::max_move(in.pos, scratch.ref_pos) <= half * half;
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-branch  3 taken 67% (fallthrough)
-branch  4 taken 33%
-       80:  343:    bool ready = keep;
-      156:  344:    if (!keep &&
+branch  1 taken 67% (fallthrough)
+branch  2 taken 33%
+       44:  357:    bool ready = keep;
+       86:  358:    if (!keep &&
 branch  0 taken 95% (fallthrough)
 branch  1 taken 5%
-branch  2 taken 80% (fallthrough)
-branch  3 taken 20%
-       76:  345:        linked_cell::build(in.pos, in.nAtoms, in.box, search, session.threads, scratch)) {
+branch  2 taken 83% (fallthrough)
+branch  3 taken 17%
+branch  4 taken 80% (fallthrough)
+branch  5 taken 20%
+       42:  359:        linked_cell::build(in.pos, in.nAtoms, in.box, search, session.threads, scratch)) {
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-branch  3 taken 84% (fallthrough)
-branch  4 taken 16%
-       64:  346:      scratch.ref_pos.assign(in.pos, in.pos + 3 * in.nAtoms);
+       35:  360:      grow_assign_range(scratch.ref_pos, in.pos, in.pos + 3 * in.nAtoms);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-      640:  347:      for (int a = 0; a < 9; ++a)
+      350:  361:      for (int a = 0; a < 9; ++a)
 branch  0 taken 90%
 branch  1 taken 10% (fallthrough)
-      576:  348:        scratch.ref_box[a] = in.box[a];
-       64:  349:      scratch.ref_n = static_cast<int>(in.nAtoms);
-       64:  350:      scratch.ref_search = search;
-       64:  351:      ready = true;
-        -:  352:    }
-       80:  353:    if (ready) {
-branch  0 taken 85% (fallthrough)
-branch  1 taken 15%
-       68:  354:      session.list_ptr = scratch.stable;
-       68:  355:      session.list_len = scratch.stable_n;
-       68:  356:      emit_slices(scratch, in.pos, in.box, in.nAtoms, cutoff * cutoff, max_neighbors,
+      315:  362:        scratch.ref_box[a] = in.box[a];
+       35:  363:      scratch.ref_n = static_cast<int>(in.nAtoms);
+       35:  364:      scratch.ref_search = search;
+       35:  365:      ready = true;
+        -:  366:    }
+       44:  367:    if (ready) {
+branch  0 taken 84% (fallthrough)
+branch  1 taken 16%
+       37:  368:      session.list_ptr = scratch.stable;
+       37:  369:      session.list_len = scratch.stable_n;
+       37:  370:      emit_slices(scratch, in.pos, in.box, in.nAtoms, cutoff * cutoff, max_neighbors,
+call    0 returned 100%
+        -:  371:                  session.threads, /*recompute=*/keep, session);
+       37:  372:      return;
+        -:  373:    }
+        -:  374:  }
+        -:  375:
+        8:  376:  if (!session.held_live) {
+branch  0 taken 88% (fallthrough)
+branch  1 taken 12%
+        7:  377:    session.held = VesinNeighborList{};
+call    0 returned 100%
+        7:  378:    session.held_live = true;
+        -:  379:  }
+        8:  380:  const char *err = nullptr;
+        8:  381:  bool pbc[3] = {true, true, true};
+        8:  382:  const int status = call_vesin(
+call    0 returned 100%
+        8:  383:      reinterpret_cast<const double(*)[3]>(in.pos), in.nAtoms,
+        8:  384:      reinterpret_cast<const double(*)[3]>(in.box), pbc,
+call    0 returned 100%
+        -:  385:      vesin_compat::make_cpu_device(), options, &session.held, &err);
+        8:  386:  if (status != EXIT_SUCCESS) {
+branch  0 taken 38% (fallthrough)
+branch  1 taken 62%
+        3:  387:    free_vesin(&session.held);
+call    0 returned 100%
+        3:  388:    session.held = VesinNeighborList{};
+call    0 returned 100%
+        3:  389:    session.held_live = false;
+        3:  390:    throw EdgeError(err ? "UmaPot: vesin_neighbors failed: vesin"
+       3*:  391:                        : "UmaPot: vesin_neighbors failed");
 call    0 returned 100%
 branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        -:  357:                  session.threads, /*recompute=*/keep, session);
-       68:  358:      return;
-        -:  359:    }
-        -:  360:  }
-        -:  361:
-       14:  362:  if (!session.held_live) {
-branch  0 taken 86% (fallthrough)
-branch  1 taken 14%
-       12:  363:    session.held = VesinNeighborList{};
-call    0 returned 100%
-       12:  364:    session.held_live = true;
-        -:  365:  }
-       14:  366:  const char *err = nullptr;
-       14:  367:  bool pbc[3] = {true, true, true};
-       14:  368:  const int status = vesin_neighbors(
-call    0 returned 100%
-       14:  369:      reinterpret_cast<const double(*)[3]>(in.pos), in.nAtoms,
-       14:  370:      reinterpret_cast<const double(*)[3]>(in.box), pbc,
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        -:  371:      vesin_compat::make_cpu_device(), options, &session.held, &err);
-       14:  372:  if (status != EXIT_SUCCESS) {
-branch  0 taken 29% (fallthrough)
-branch  1 taken 71%
-        4:  373:    std::string msg = "UmaPot: vesin_neighbors failed";
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        4:  374:    if (err)
-branch  0 taken 100% (fallthrough)
-branch  1 taken 0%
-        8:  375:      msg += ": " + std::string(err);
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
+branch  2 taken 0%
 call    3 returned 100%
-branch  4 taken 100% (fallthrough)
-branch  5 taken 0% (throw)
-call    6 returned 100%
-branch  7 taken 100% (fallthrough)
-branch  8 taken 0% (throw)
-call    9 returned 100%
-call   10 returned 100%
-call   11 never executed
-call   12 never executed
-        4:  376:    vesin_free(&session.held);
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        4:  377:    session.held = VesinNeighborList{};
-call    0 returned 100%
-        4:  378:    session.held_live = false;
-        4:  379:    throw std::runtime_error(msg);
-call    0 returned 100%
-call    1 returned 100%
-branch  2 taken 100% (fallthrough)
-branch  3 taken 0% (throw)
 call    4 returned 100%
-call    5 never executed
-        4:  380:  }
+        -:  392:  }
+        -:  393:
+        5:  394:  emit_sorted(session.held, in, max_neighbors, session.threads, session);
 call    0 returned 100%
-        -:  381:
-       10:  382:  emit_sorted(session.held, in, max_neighbors, session.threads, session);
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        -:  383:}
-        -:  384:
-function _ZN5rgpot12_GLOBAL__N_19edge_spanERKNS_10ForceInputEllddd called 370 returned 100% blocks executed 100%
-      370:  385:double edge_span(const ForceInput &in, int64_t neighbor, int64_t center, double s0,
-        -:  386:                 double s1, double s2) {
-      370:  387:  const double *box = in.box;
-      370:  388:  const double dx = in.pos[3 * neighbor] - in.pos[3 * center] + s0 * box[0] +
-      370:  389:                    s1 * box[3] + s2 * box[6];
-      370:  390:  const double dy = in.pos[3 * neighbor + 1] - in.pos[3 * center + 1] + s0 * box[1] +
-      370:  391:                    s1 * box[4] + s2 * box[7];
-      370:  392:  const double dz = in.pos[3 * neighbor + 2] - in.pos[3 * center + 2] + s0 * box[2] +
-      370:  393:                    s1 * box[5] + s2 * box[8];
-      370:  394:  return std::sqrt(dx * dx + dy * dy + dz * dz);
         -:  395:}
         -:  396:
-function _ZN5rgpot12_GLOBAL__N_114fit_edge_countERKNS_10ForceInputENS_11UmaEdgeListEld called 28 returned 79% blocks executed 81%
-       28:  397:UmaEdgeList fit_edge_count(const ForceInput &in, UmaEdgeList edges, int64_t want,
-        -:  398:                           double range) {
-       28:  399:  const int64_t have = static_cast<int64_t>(edges.neighbor.size());
+function _ZN5rgpot12_GLOBAL__N_19edge_spanERKNS_10ForceInputEllddd called 185 returned 100% blocks executed 100%
+      185:  397:double edge_span(const ForceInput &in, int64_t neighbor, int64_t center, double s0,
+        -:  398:                 double s1, double s2) noexcept {
+      185:  399:  const double *box = in.box;
+      185:  400:  const double dx = in.pos[3 * neighbor] - in.pos[3 * center] + s0 * box[0] +
+      185:  401:                    s1 * box[3] + s2 * box[6];
+      185:  402:  const double dy = in.pos[3 * neighbor + 1] - in.pos[3 * center + 1] + s0 * box[1] +
+      185:  403:                    s1 * box[4] + s2 * box[7];
+      185:  404:  const double dz = in.pos[3 * neighbor + 2] - in.pos[3 * center + 2] + s0 * box[2] +
+      185:  405:                    s1 * box[5] + s2 * box[8];
+      185:  406:  return std::sqrt(dx * dx + dy * dy + dz * dz);
+        -:  407:}
+        -:  408:
+function _ZN5rgpot12_GLOBAL__N_114fit_edge_countERKNS_10ForceInputENS_11UmaEdgeListEld called 15 returned 80% blocks executed 100%
+       15:  409:UmaEdgeList fit_edge_count(const ForceInput &in, UmaEdgeList edges, int64_t want,
+        -:  410:                           double range) {
+       15:  411:  const int64_t have = static_cast<int64_t>(edges.neighbor.size());
 call    0 returned 100%
-       28:  400:  if (have == want)
-branch  0 taken 7% (fallthrough)
-branch  1 taken 93%
-        2:  401:    return edges;
+       15:  412:  if (want <= 0 || have == want)
+branch  0 taken 93% (fallthrough)
+branch  1 taken 7%
+branch  2 taken 7% (fallthrough)
+branch  3 taken 93%
+        2:  413:    return edges;
 call    0 returned 100%
-       26:  402:  if (have > want) {
+       13:  414:  if (have > want) {
 branch  0 taken 31% (fallthrough)
 branch  1 taken 69%
-       16:  403:    std::vector<double> dist(static_cast<std::size_t>(have));
+        4:  415:    std::vector<double> dist;
+        4:  416:    std::vector<std::size_t> order;
+        4:  417:    grow_resize(dist, static_cast<std::size_t>(have));
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        8:  404:    std::vector<std::size_t> order(static_cast<std::size_t>(have));
+        4:  418:    grow_resize(order, static_cast<std::size_t>(have));
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-      348:  405:    for (int64_t e = 0; e < have; ++e) {
+      174:  419:    for (int64_t e = 0; e < have; ++e) {
 branch  0 taken 98%
 branch  1 taken 2% (fallthrough)
-      340:  406:      dist[static_cast<std::size_t>(e)] =
+      170:  420:      dist[static_cast<std::size_t>(e)] =
 call    0 returned 100%
-      340:  407:          edge_span(in, edges.neighbor[static_cast<std::size_t>(e)],
+      170:  421:          edge_span(in, edges.neighbor[static_cast<std::size_t>(e)],
 call    0 returned 100%
 call    1 returned 100%
-      340:  408:                    edges.center[static_cast<std::size_t>(e)],
+      170:  422:                    edges.center[static_cast<std::size_t>(e)],
 call    0 returned 100%
-      340:  409:                    edges.offsets[static_cast<std::size_t>(3 * e)],
+      170:  423:                    edges.offsets[static_cast<std::size_t>(3 * e)],
 call    0 returned 100%
-      340:  410:                    edges.offsets[static_cast<std::size_t>(3 * e + 1)],
+      170:  424:                    edges.offsets[static_cast<std::size_t>(3 * e + 1)],
 call    0 returned 100%
-      340:  411:                    edges.offsets[static_cast<std::size_t>(3 * e + 2)]);
+      170:  425:                    edges.offsets[static_cast<std::size_t>(3 * e + 2)]);
 call    0 returned 100%
-      340:  412:      order[static_cast<std::size_t>(e)] = static_cast<std::size_t>(e);
+      170:  426:      order[static_cast<std::size_t>(e)] = static_cast<std::size_t>(e);
 call    0 returned 100%
-        -:  413:    }
-        8:  414:    std::sort(order.begin(), order.end(),
+        -:  427:    }
+        4:  428:    grow_sort(order.begin(), order.end(),
 call    0 returned 100%
 call    1 returned 100%
 call    2 returned 100%
-branch  3 taken 100% (fallthrough)
-branch  4 taken 0% (throw)
-function _ZZN5rgpot12_GLOBAL__N_114fit_edge_countERKNS_10ForceInputENS_11UmaEdgeListEldENKUlmmE_clEmm called 1586 returned 100% blocks executed 100%
-     1586:  415:              [&](std::size_t a, std::size_t b) { return dist[a] > dist[b]; });
+function _ZZN5rgpot12_GLOBAL__N_114fit_edge_countERKNS_10ForceInputENS_11UmaEdgeListEldENKUlmmE_clEmm called 793 returned 100% blocks executed 100%
+      793:  429:              [&](std::size_t a, std::size_t b) { return dist[a] > dist[b]; });
 call    0 returned 100%
 call    1 returned 100%
-        8:  416:    std::vector<char> drop(static_cast<std::size_t>(have), 0);
+        4:  430:    std::vector<char> drop;
+        4:  431:    grow_assign_n(drop, static_cast<std::size_t>(have), char{0});
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        8:  417:    int64_t kept = have;
-      346:  418:    for (std::size_t idx : order) {
+        4:  432:    int64_t kept = have;
+      173:  433:    for (std::size_t idx : order) {
 call    0 returned 100%
 call    1 returned 100%
 call    2 returned 100%
@@ -1129,472 +986,423 @@ call    3 returned 100%
 call    4 returned 100%
 branch  5 taken 98%
 branch  6 taken 2% (fallthrough)
-      340:  419:      if (kept <= want)
+      170:  434:      if (kept <= want)
 branch  0 taken 1% (fallthrough)
 branch  1 taken 99%
-        2:  420:        break;
-      338:  421:      if (dist[idx] >= range) {
+        1:  435:        break;
+      169:  436:      if (dist[idx] >= range) {
 call    0 returned 100%
 branch  1 taken 1% (fallthrough)
 branch  2 taken 99%
-        2:  422:        drop[idx] = 1;
+        1:  437:        drop[idx] = 1;
 call    0 returned 100%
-        2:  423:        --kept;
-        -:  424:      }
-        -:  425:    }
-        8:  426:    UmaEdgeList trimmed;
-        8:  427:    trimmed.neighbor.reserve(static_cast<std::size_t>(kept));
+        1:  438:        --kept;
+        -:  439:      }
+        -:  440:    }
+        4:  441:    UmaEdgeList trimmed;
+        4:  442:    grow_reserve(trimmed.neighbor, static_cast<std::size_t>(kept));
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        8:  428:    trimmed.center.reserve(static_cast<std::size_t>(kept));
+        4:  443:    grow_reserve(trimmed.center, static_cast<std::size_t>(kept));
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        8:  429:    trimmed.offsets.reserve(static_cast<std::size_t>(kept) * 3);
+        4:  444:    grow_reserve(trimmed.offsets, static_cast<std::size_t>(kept) * 3);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-      348:  430:    for (int64_t e = 0; e < have; ++e) {
+      174:  445:    for (int64_t e = 0; e < have; ++e) {
 branch  0 taken 98%
 branch  1 taken 2% (fallthrough)
-      340:  431:      if (drop[static_cast<std::size_t>(e)])
+      170:  446:      if (drop[static_cast<std::size_t>(e)])
 call    0 returned 100%
 branch  1 taken 1% (fallthrough)
 branch  2 taken 99%
-        2:  432:        continue;
-      338:  433:      trimmed.neighbor.push_back(edges.neighbor[static_cast<std::size_t>(e)]);
+        1:  447:        continue;
+      169:  448:      grow_push(trimmed.neighbor, edges.neighbor[static_cast<std::size_t>(e)]);
 call    0 returned 100%
 call    1 returned 100%
-branch  2 taken 100% (fallthrough)
-branch  3 taken 0% (throw)
-      338:  434:      trimmed.center.push_back(edges.center[static_cast<std::size_t>(e)]);
+      169:  449:      grow_push(trimmed.center, edges.center[static_cast<std::size_t>(e)]);
 call    0 returned 100%
 call    1 returned 100%
-branch  2 taken 100% (fallthrough)
-branch  3 taken 0% (throw)
-      338:  435:      trimmed.offsets.push_back(edges.offsets[static_cast<std::size_t>(3 * e)]);
+      169:  450:      grow_push(trimmed.offsets, edges.offsets[static_cast<std::size_t>(3 * e)]);
 call    0 returned 100%
 call    1 returned 100%
-branch  2 taken 100% (fallthrough)
-branch  3 taken 0% (throw)
-      338:  436:      trimmed.offsets.push_back(edges.offsets[static_cast<std::size_t>(3 * e + 1)]);
+      169:  451:      grow_push(trimmed.offsets, edges.offsets[static_cast<std::size_t>(3 * e + 1)]);
 call    0 returned 100%
 call    1 returned 100%
-branch  2 taken 100% (fallthrough)
-branch  3 taken 0% (throw)
-      338:  437:      trimmed.offsets.push_back(edges.offsets[static_cast<std::size_t>(3 * e + 2)]);
+      169:  452:      grow_push(trimmed.offsets, edges.offsets[static_cast<std::size_t>(3 * e + 2)]);
 call    0 returned 100%
 call    1 returned 100%
-branch  2 taken 100% (fallthrough)
-branch  3 taken 0% (throw)
-        -:  438:    }
-        8:  439:    return trimmed;
+        -:  453:    }
+        4:  454:    return trimmed;
 call    0 returned 100%
-        8:  440:  }
+        4:  455:  }
 call    0 returned 100%
 call    1 returned 100%
 call    2 returned 100%
 call    3 returned 100%
-call    4 never executed
-call    5 never executed
-call    6 never executed
-call    7 never executed
-       18:  441:  if (in.nAtoms < 2)
+        9:  456:  if (in.nAtoms < 2)
 branch  0 taken 11% (fallthrough)
 branch  1 taken 89%
-        2:  442:    throw std::runtime_error("UmaPot: static edge count needs at least two atoms to pad");
+        1:  457:    throw EdgeError("UmaPot: static edge count needs at least two atoms to pad");
 call    0 returned 100%
 call    1 returned 100%
-branch  2 taken 100% (fallthrough)
-branch  3 taken 0% (throw)
-call    4 returned 100%
-call    5 never executed
-       16:  443:  const double pair = edge_span(in, 1, 0, 0.0, 0.0, 0.0);
+call    2 returned 100%
+        8:  458:  const double pair = edge_span(in, 1, 0, 0.0, 0.0, 0.0);
 call    0 returned 100%
-       16:  444:  const int column[3] = {0, 3, 6};
-       16:  445:  int axis = -1;
-       16:  446:  double longest = 0.0;
-       64:  447:  for (int a = 0; a < 3; ++a) {
+        8:  459:  const int column[3] = {0, 3, 6};
+        8:  460:  int axis = -1;
+        8:  461:  double longest = 0.0;
+       32:  462:  for (int a = 0; a < 3; ++a) {
 branch  0 taken 75%
 branch  1 taken 25% (fallthrough)
-       48:  448:    const double x = in.box[column[a]];
-       48:  449:    const double y = in.box[column[a] + 1];
-       48:  450:    const double z = in.box[column[a] + 2];
-       48:  451:    const double len = std::sqrt(x * x + y * y + z * z);
-       48:  452:    if (len > longest) {
+       24:  463:    const double x = in.box[column[a]];
+       24:  464:    const double y = in.box[column[a] + 1];
+       24:  465:    const double z = in.box[column[a] + 2];
+       24:  466:    const double len = std::sqrt(x * x + y * y + z * z);
+       24:  467:    if (len > longest) {
 branch  0 taken 42% (fallthrough)
 branch  1 taken 58%
-       20:  453:      longest = len;
-       20:  454:      axis = a;
-        -:  455:    }
-        -:  456:  }
-       16:  457:  if (!(longest > 0.0))
+       10:  468:      longest = len;
+       10:  469:      axis = a;
+        -:  470:    }
+        -:  471:  }
+        8:  472:  if (!(longest > 0.0))
 branch  0 taken 12% (fallthrough)
 branch  1 taken 88%
-        2:  458:    throw std::runtime_error("UmaPot: cannot pad an edge in a zero cell");
+        1:  473:    throw EdgeError("UmaPot: cannot pad an edge in a zero cell");
 call    0 returned 100%
 call    1 returned 100%
-branch  2 taken 100% (fallthrough)
-branch  3 taken 0% (throw)
-call    4 returned 100%
-call    5 never executed
-       14:  459:  int shift = static_cast<int>(std::ceil((range + pair) / longest));
-        -:  460:  // The ceiling of a positive ratio is at least 1.
-function _ZZN5rgpot12_GLOBAL__N_114fit_edge_countERKNS_10ForceInputENS_11UmaEdgeListEldENKUliE_clEi called 14 returned 100% blocks executed 100%
-       14:  461:  auto span_at = [&](int s) {
-       14:  462:    const double v = static_cast<double>(s);
-       14:  463:    if (axis == 0)
+call    2 returned 100%
+        7:  474:  int shift = static_cast<int>(std::ceil((range + pair) / longest));
+        -:  475:  // The ceiling of a positive ratio is at least 1.
+function _ZZN5rgpot12_GLOBAL__N_114fit_edge_countERKNS_10ForceInputENS_11UmaEdgeListEldENKUliE_clEi called 7 returned 100% blocks executed 100%
+        7:  476:  auto span_at = [&](int s) {
+        7:  477:    const double v = static_cast<double>(s);
+        7:  478:    if (axis == 0)
 branch  0 taken 57% (fallthrough)
 branch  1 taken 43%
-        8:  464:      return edge_span(in, 1, 0, v, 0.0, 0.0);
+        4:  479:      return edge_span(in, 1, 0, v, 0.0, 0.0);
 call    0 returned 100%
-        6:  465:    if (axis == 1)
+        3:  480:    if (axis == 1)
 branch  0 taken 33% (fallthrough)
 branch  1 taken 67%
-        2:  466:      return edge_span(in, 1, 0, 0.0, v, 0.0);
+        1:  481:      return edge_span(in, 1, 0, 0.0, v, 0.0);
 call    0 returned 100%
-        4:  467:    return edge_span(in, 1, 0, 0.0, 0.0, v);
+        2:  482:    return edge_span(in, 1, 0, 0.0, 0.0, v);
 call    0 returned 100%
-       14:  468:  };
-       14:  469:  if (!(span_at(shift) > range))
+        7:  483:  };
+        7:  484:  if (!(span_at(shift) > range))
 call    0 returned 100%
 branch  1 taken 29% (fallthrough)
 branch  2 taken 71%
-        4:  470:    ++shift;
-        -:  471:  // One more cell along a positive axis leaves the range.
-       14:  472:  constexpr int kMaxExactFloatShift = 1 << 24;
-       14:  473:  if (shift > kMaxExactFloatShift)
+        2:  485:    ++shift;
+        -:  486:  // One more cell along a positive axis leaves the range.
+        7:  487:  constexpr int kMaxExactFloatShift = 1 << 24;
+        7:  488:  if (shift > kMaxExactFloatShift)
 branch  0 taken 14% (fallthrough)
 branch  1 taken 86%
-        2:  474:    throw std::runtime_error("UmaPot: padded image shift is not an exact float32 integer");
+        1:  489:    throw EdgeError("UmaPot: padded image shift is not an exact float32 integer");
 call    0 returned 100%
 call    1 returned 100%
-branch  2 taken 100% (fallthrough)
-branch  3 taken 0% (throw)
-call    4 returned 100%
-call    5 never executed
-       12:  475:  const float s0 = axis == 0 ? static_cast<float>(shift) : 0.f;
+call    2 returned 100%
+        6:  490:  const float s0 = axis == 0 ? static_cast<float>(shift) : 0.f;
 branch  0 taken 50% (fallthrough)
 branch  1 taken 50%
-       12:  476:  const float s1 = axis == 1 ? static_cast<float>(shift) : 0.f;
+        6:  491:  const float s1 = axis == 1 ? static_cast<float>(shift) : 0.f;
 branch  0 taken 17% (fallthrough)
 branch  1 taken 83%
-       12:  477:  const float s2 = axis == 2 ? static_cast<float>(shift) : 0.f;
+        6:  492:  const float s2 = axis == 2 ? static_cast<float>(shift) : 0.f;
 branch  0 taken 33% (fallthrough)
 branch  1 taken 67%
-       12:  478:  edges.neighbor.reserve(static_cast<size_t>(want));
+        6:  493:  grow_reserve(edges.neighbor, static_cast<size_t>(want));
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       12:  479:  edges.center.reserve(static_cast<size_t>(want));
+        6:  494:  grow_reserve(edges.center, static_cast<size_t>(want));
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       12:  480:  edges.offsets.reserve(static_cast<size_t>(want) * 3);
+        6:  495:  grow_reserve(edges.offsets, static_cast<size_t>(want) * 3);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-      188:  481:  while (static_cast<int64_t>(edges.neighbor.size()) < want) {
+       94:  496:  while (static_cast<int64_t>(edges.neighbor.size()) < want) {
 call    0 returned 100%
 branch  1 taken 94%
 branch  2 taken 6% (fallthrough)
-      176:  482:    edges.neighbor.push_back(1);
+       88:  497:    grow_push(edges.neighbor, static_cast<int64_t>(1));
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-      176:  483:    edges.center.push_back(0);
+       88:  498:    grow_push(edges.center, static_cast<int64_t>(0));
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-      176:  484:    edges.offsets.push_back(s0);
+       88:  499:    grow_push(edges.offsets, s0);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-      176:  485:    edges.offsets.push_back(s1);
+       88:  500:    grow_push(edges.offsets, s1);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-      176:  486:    edges.offsets.push_back(s2);
+       88:  501:    grow_push(edges.offsets, s2);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        -:  487:  }
-       12:  488:  return edges;
+        -:  502:  }
+        6:  503:  return edges;
 call    0 returned 100%
-        -:  489:}
-        -:  490:
-function _ZN5rgpot12_GLOBAL__N_123static_edges_per_systemERKNS_11UmaContractEl called 104 returned 100% blocks executed 100%
-      104:  491:int64_t static_edges_per_system(const UmaContract &contract, int64_t n_systems) {
-      134:  492:  if (!contract.nedges_min || !contract.nedges_max ||
+        -:  504:}
+        -:  505:
+function _ZN5rgpot12_GLOBAL__N_123static_edges_per_systemERKNS_11UmaContractEl called 56 returned 100% blocks executed 100%
+       56:  506:int64_t static_edges_per_system(const UmaContract &contract, int64_t n_systems) {
+       71:  507:  if (!contract.nedges_min || !contract.nedges_max ||
 call    0 returned 100%
 call    1 returned 100%
 branch  2 taken 93% (fallthrough)
 branch  3 taken 7%
-      134:  493:      *contract.nedges_min != *contract.nedges_max || n_systems < 1)
-branch  0 taken 29% (fallthrough)
-branch  1 taken 71%
+       71:  508:      *contract.nedges_min != *contract.nedges_max || n_systems < 1)
+branch  0 taken 27% (fallthrough)
+branch  1 taken 73%
 call    2 returned 100%
 call    3 returned 100%
 branch  4 taken 93% (fallthrough)
 branch  5 taken 7%
 branch  6 taken 8% (fallthrough)
 branch  7 taken 92%
-branch  8 taken 77% (fallthrough)
-branch  9 taken 23%
-       80:  494:    return 0;
-       24:  495:  const int64_t total = *contract.nedges_max;
+branch  8 taken 79% (fallthrough)
+branch  9 taken 21%
+       44:  509:    return 0;
+       12:  510:  const int64_t total = *contract.nedges_max;
 call    0 returned 100%
-       24:  496:  if (n_systems == 1)
+       12:  511:  if (n_systems == 1)
 branch  0 taken 83% (fallthrough)
 branch  1 taken 17%
-       20:  497:    return total;
-        4:  498:  if (total % n_systems != 0)
+       10:  512:    return total;
+        2:  513:  if (total % n_systems != 0)
 branch  0 taken 50% (fallthrough)
 branch  1 taken 50%
-        2:  499:    return total;
-        2:  500:  return total / n_systems;
-        -:  501:}
-        -:  502:
-        -:  503:} // namespace
-        -:  504:
-        -:  505:// glibc hands multi-megabyte buffers back to the kernel. The next
-        -:  506:// one-shot call would fault them again. A short recycle list keeps the
-        -:  507:// pages, and drops the Verlet keys so a new session still rebuilds.
-        -:  508:struct EdgePool {
-        -:  509:  std::mutex mu;
-        -:  510:  std::vector<UmaEdgeList> lists;
-        -:  511:  std::vector<std::unique_ptr<UmaEdgeSession::CellCache>> cells;
-        -:  512:};
-        -:  513:
-        -:  514:static EdgePool g_edge_pool;
-        -:  515:
-function _ZN5rgpot9edge_poolEv called 240 returned 100% blocks executed 100%
-      240:  516:EdgePool &edge_pool() { return g_edge_pool; }
+        1:  514:    return total;
+        1:  515:  return total / n_systems;
+        -:  516:}
         -:  517:
-function _ZN5rgpot10take_edgesEv called 84 returned 100% blocks executed 100%
-       84:  518:UmaEdgeList take_edges() {
-       84:  519:  auto &pool = edge_pool();
+function _ZN5rgpot12_GLOBAL__N_110call_vesinEPA3_KdmS3_Pb11VesinDeviceRK12VesinOptionsP17VesinNeighborListPPKc called 8 returned 100% blocks executed 100%
+        8:  518:int call_vesin(const double (*points)[3], std::size_t n_points, const double (*box)[3],
+        -:  519:               bool pbc[3], VesinDevice device, const VesinOptions &options,
+        -:  520:               VesinNeighborList *neighbors, const char **error) noexcept {
+        8:  521:  return vesin_neighbors(points, n_points, box, pbc, device, options, neighbors, error);
 call    0 returned 100%
-       84:  520:  std::lock_guard<std::mutex> lock(pool.mu);
+        -:  522:}
+        -:  523:
+function _ZN5rgpot12_GLOBAL__N_110free_vesinEP17VesinNeighborList called 3 returned 100% blocks executed 100%
+        3:  524:void free_vesin(VesinNeighborList *neighbors) noexcept { vesin_free(neighbors); }
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       84:  521:  if (pool.lists.empty())
-call    0 returned 100%
-branch  1 taken 76% (fallthrough)
-branch  2 taken 24%
-       64:  522:    return {};
-       20:  523:  UmaEdgeList out = std::move(pool.lists.back());
-call    0 returned 100%
-call    1 returned 100%
-call    2 returned 100%
-       20:  524:  pool.lists.pop_back();
-call    0 returned 100%
-       20:  525:  return out;
-call    0 returned 100%
-       84:  526:}
-call    0 returned 100%
-call    1 returned 100%
+        -:  525:
+        -:  526:} // namespace
         -:  527:
-function _ZN5rgpot10give_edgesENS_11UmaEdgeListE called 84 returned 100% blocks executed 90%
-       84:  528:void give_edges(UmaEdgeList edges) {
-       84:  529:  if (edges.neighbor.capacity() < 4096)
+function _ZN5rgpot21exercise_empty_rangesEi called 1 returned 100% blocks executed 100%
+        1:  528:void exercise_empty_ranges(int threads) { exercise_empty_ranges_impl(threads); }
 call    0 returned 100%
-branch  1 taken 67% (fallthrough)
-branch  2 taken 33%
-       58:  530:    return;
-       28:  531:  auto &pool = edge_pool();
+        -:  529:
+        -:  530:// glibc hands multi-megabyte buffers back to the kernel. The next
+        -:  531:// one-shot call would fault them again. A short recycle list keeps the
+        -:  532:// pages, and drops the Verlet keys so a new session still rebuilds.
+        -:  533:struct EdgePool {
+        -:  534:  std::mutex mu;
+        -:  535:  std::vector<UmaEdgeList> lists;
+        -:  536:  std::vector<std::unique_ptr<UmaEdgeSession::CellCache>> cells;
+        -:  537:};
+        -:  538:
+        -:  539:static EdgePool g_edge_pool;
+        -:  540:
+function _ZN5rgpot9edge_poolEv called 136 returned 100% blocks executed 100%
+      136:  541:EdgePool &edge_pool() { return g_edge_pool; }
+        -:  542:
+function _ZN5rgpot10take_edgesEv called 46 returned 100% blocks executed 100%
+       46:  543:UmaEdgeList take_edges() {
+       46:  544:  auto &pool = edge_pool();
 call    0 returned 100%
-       28:  532:  std::lock_guard<std::mutex> lock(pool.mu);
+       46:  545:  QuietLock lock(pool.mu);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       28:  533:  if (pool.lists.size() >= 4)
+       46:  546:  if (pool.lists.empty())
 call    0 returned 100%
-branch  1 taken 7% (fallthrough)
-branch  2 taken 93%
-        2:  534:    return;
-       26:  535:  pool.lists.push_back(std::move(edges));
-call    0 returned 100%
-call    1 returned 100%
-branch  2 taken 100% (fallthrough)
-branch  3 taken 0% (throw)
-       28:  536:}
-call    0 returned 100%
-branch  1 taken 93% (fallthrough)
-branch  2 taken 7%
-call    3 never executed
-        -:  537:
-function _ZN5rgpot9take_cellEv called 64 returned 100% blocks executed 90%
-       64:  538:std::unique_ptr<UmaEdgeSession::CellCache> take_cell() {
-       64:  539:  auto &pool = edge_pool();
-call    0 returned 100%
-       64:  540:  std::lock_guard<std::mutex> lock(pool.mu);
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       64:  541:  if (pool.cells.empty())
-call    0 returned 100%
-branch  1 taken 62% (fallthrough)
-branch  2 taken 38%
-       40:  542:    return std::make_unique<UmaEdgeSession::CellCache>();
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       24:  543:  auto cell = std::move(pool.cells.back());
+branch  1 taken 70% (fallthrough)
+branch  2 taken 30%
+       32:  547:    return {};
+       14:  548:  UmaEdgeList out = std::move(pool.lists.back());
 call    0 returned 100%
 call    1 returned 100%
 call    2 returned 100%
-       24:  544:  pool.cells.pop_back();
+       14:  549:  pool.lists.pop_back();
 call    0 returned 100%
-       24:  545:  auto &scratch = cell->scratch;
+       14:  550:  return out;
 call    0 returned 100%
-       24:  546:  scratch.ref_n = -1;
-       24:  547:  scratch.ref_search = -1;
-       24:  548:  scratch.stable = nullptr;
-       24:  549:  scratch.stable_n = 0;
-       24:  550:  scratch.ref_pos.clear();
+       46:  551:}
 call    0 returned 100%
-       24:  551:  return cell;
+call    1 returned 100%
+        -:  552:
+function _ZN5rgpot10give_edgesENS_11UmaEdgeListE called 46 returned 100% blocks executed 100%
+       46:  553:void give_edges(UmaEdgeList edges) {
+       46:  554:  if (edges.neighbor.capacity() < 4096)
 call    0 returned 100%
-       64:  552:}
+branch  1 taken 61% (fallthrough)
+branch  2 taken 39%
+       29:  555:    return;
+       18:  556:  auto &pool = edge_pool();
+call    0 returned 100%
+       18:  557:  QuietLock lock(pool.mu);
+call    0 returned 100%
+       18:  558:  if (pool.lists.size() >= 4)
+call    0 returned 100%
+branch  1 taken 6% (fallthrough)
+branch  2 taken 94%
+        1:  559:    return;
+       17:  560:  grow_push(pool.lists, std::move(edges));
+call    0 returned 100%
+call    1 returned 100%
+       18:  561:}
+call    0 returned 100%
+branch  1 taken 94% (fallthrough)
+branch  2 taken 6%
+        -:  562:
+function _ZN5rgpot9take_cellEv called 36 returned 100% blocks executed 90%
+       36:  563:std::unique_ptr<UmaEdgeSession::CellCache> take_cell() {
+       36:  564:  auto &pool = edge_pool();
+call    0 returned 100%
+       36:  565:  QuietLock lock(pool.mu);
+call    0 returned 100%
+       36:  566:  if (pool.cells.empty()) {
+call    0 returned 100%
+branch  1 taken 56% (fallthrough)
+branch  2 taken 44%
+       20:  567:    return std::make_unique<UmaEdgeSession::CellCache>();
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+        -:  568:  }
+       16:  569:  auto cell = std::move(pool.cells.back());
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+       16:  570:  pool.cells.pop_back();
+call    0 returned 100%
+       16:  571:  auto &scratch = cell->scratch;
+call    0 returned 100%
+       16:  572:  scratch.ref_n = -1;
+       16:  573:  scratch.ref_search = -1;
+       16:  574:  scratch.stable = nullptr;
+       16:  575:  scratch.stable_n = 0;
+       16:  576:  scratch.ref_pos.clear();
+call    0 returned 100%
+       16:  577:  return cell;
+call    0 returned 100%
+       36:  578:}
 call    0 returned 100%
 call    1 returned 100%
 call    2 never executed
-        -:  553:
-function _ZN5rgpot9give_cellESt10unique_ptrINS_14UmaEdgeSession9CellCacheESt14default_deleteIS2_EE called 84 returned 100% blocks executed 90%
-       84:  554:void give_cell(std::unique_ptr<UmaEdgeSession::CellCache> cell) {
-       84:  555:  if (!cell)
+        -:  579:
+function _ZN5rgpot9give_cellESt10unique_ptrINS_14UmaEdgeSession9CellCacheESt14default_deleteIS2_EE called 46 returned 100% blocks executed 100%
+       46:  580:void give_cell(std::unique_ptr<UmaEdgeSession::CellCache> cell) {
+       46:  581:  if (!cell)
 call    0 returned 100%
-branch  1 taken 24% (fallthrough)
-branch  2 taken 76%
-       52:  556:    return;
-       64:  557:  auto &pool = edge_pool();
+branch  1 taken 22% (fallthrough)
+branch  2 taken 78%
+       26:  582:    return;
+       36:  583:  auto &pool = edge_pool();
 call    0 returned 100%
-       64:  558:  std::lock_guard<std::mutex> lock(pool.mu);
+       36:  584:  QuietLock lock(pool.mu);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       64:  559:  if (pool.cells.size() >= 4)
+       36:  585:  if (pool.cells.size() >= 4)
 call    0 returned 100%
-branch  1 taken 50% (fallthrough)
-branch  2 taken 50%
-       32:  560:    return;
-       32:  561:  pool.cells.push_back(std::move(cell));
+branch  1 taken 44% (fallthrough)
+branch  2 taken 56%
+       16:  586:    return;
+       20:  587:  grow_push(pool.cells, std::move(cell));
 call    0 returned 100%
 call    1 returned 100%
-branch  2 taken 100% (fallthrough)
-branch  3 taken 0% (throw)
-       64:  562:}
+       36:  588:}
 call    0 returned 100%
-branch  1 taken 50% (fallthrough)
-branch  2 taken 50%
-call    3 never executed
-        -:  563:
-function _ZN5rgpot18fit_recorded_edgesERKNS_10ForceInputENS_11UmaEdgeListEld called 10 returned 60% blocks executed 100%
-       10:  564:UmaEdgeList fit_recorded_edges(const ForceInput &in, UmaEdgeList edges, int64_t want,
-        -:  565:                               double range) {
-       10:  566:  return fit_edge_count(in, std::move(edges), want, range);
+branch  1 taken 56% (fallthrough)
+branch  2 taken 44%
+        -:  589:
+function _ZN5rgpot18fit_recorded_edgesERKNS_10ForceInputENS_11UmaEdgeListEld called 6 returned 67% blocks executed 100%
+        6:  590:UmaEdgeList fit_recorded_edges(const ForceInput &in, UmaEdgeList edges, int64_t want,
+        -:  591:                               double range) {
+        6:  592:  return fit_edge_count(in, std::move(edges), want, range);
 call    0 returned 100%
 call    1 returned 100%
 call    2 returned 100%
-branch  3 taken 60% (fallthrough)
-branch  4 taken 40% (throw)
+branch  3 taken 67% (fallthrough)
+branch  4 taken 33% (throw)
 call    5 returned 100%
 call    6 returned 100%
-        -:  567:}
-        -:  568:
-function _ZN5rgpot14UmaEdgeSessionC2Ev called 84 returned 100% blocks executed 90%
-       84:  569:UmaEdgeSession::UmaEdgeSession() : edges(take_edges()) {}
-call    0 returned 100%
-call    1 returned 100%
-call    2 returned 100%
-call    3 returned 100%
-branch  4 taken 100% (fallthrough)
-branch  5 taken 0% (throw)
-call    6 returned 100%
-call    7 returned 100%
-call    8 returned 100%
-call    9 never executed
-        -:  570:
-function _ZN5rgpot14UmaEdgeSessionD2Ev called 84 returned 100% blocks executed 100%
-       84:  571:UmaEdgeSession::~UmaEdgeSession() {
-       84:  572:  if (held_live)
-branch  0 taken 10% (fallthrough)
-branch  1 taken 90%
-        8:  573:    vesin_free(&held);
-call    0 returned 100%
-       84:  574:  give_cell(std::move(cell_cache));
-call    0 returned 100%
-call    1 returned 100%
-call    2 returned 100%
-call    3 returned 100%
-       84:  575:  give_edges(std::move(edges));
-call    0 returned 100%
-call    1 returned 100%
-call    2 returned 100%
-call    3 returned 100%
-       84:  576:}
+        -:  593:}
+        -:  594:
+function _ZN5rgpot14UmaEdgeSessionC2Ev called 46 returned 100% blocks executed 100%
+       46:  595:UmaEdgeSession::UmaEdgeSession() : edges(take_edges()) {}
 call    0 returned 100%
 call    1 returned 100%
 call    2 returned 100%
 call    3 returned 100%
 call    4 returned 100%
-        -:  577:
-function _ZN5rgpot18build_system_edgesERKNS_10ForceInputEdddiRKNS_11UmaContractElRNS_14UmaEdgeSessionE called 104 returned 94% blocks executed 98%
-      104:  578:const UmaEdgeList &build_system_edges(const ForceInput &local, double cutoff,
-        -:  579:                                      double model_cutoff, double molecular_box,
-        -:  580:                                      int max_neighbors, const UmaContract &contract,
-        -:  581:                                      int64_t n_systems, UmaEdgeSession &session) {
-      104:  582:  std::lock_guard<std::mutex> lock(session.mutex);
+call    5 returned 100%
+call    6 returned 100%
+        -:  596:
+function _ZN5rgpot14UmaEdgeSessionD2Ev called 46 returned 100% blocks executed 100%
+       46:  597:UmaEdgeSession::~UmaEdgeSession() {
+       46:  598:  if (held_live)
+branch  0 taken 9% (fallthrough)
+branch  1 taken 91%
+        4:  599:    vesin_free(&held);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-      104:  583:  const int64_t n = static_cast<int64_t>(local.nAtoms);
-      104:  584:  const int64_t complete = n > 1 ? n * (n - 1) : 0;
-branch  0 taken 98% (fallthrough)
-branch  1 taken 2%
-      104:  585:  const int64_t want = static_edges_per_system(contract, n_systems);
+       46:  600:  give_cell(std::move(cell_cache));
 call    0 returned 100%
-      104:  586:  const bool molecular = molecular_box > 0.0;
-      104:  587:  if (complete > 0 && (want == complete || (molecular && want == 0))) {
-branch  0 taken 98% (fallthrough)
-branch  1 taken 2%
+call    1 returned 100%
+call    2 returned 100%
+call    3 returned 100%
+       46:  601:  give_edges(std::move(edges));
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+call    3 returned 100%
+       46:  602:}
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+call    3 returned 100%
+call    4 returned 100%
+        -:  603:
+function _ZN5rgpot18build_system_edgesERKNS_10ForceInputEdddiRKNS_11UmaContractElRNS_14UmaEdgeSessionE called 56 returned 93% blocks executed 100%
+       56:  604:const UmaEdgeList &build_system_edges(const ForceInput &local, double cutoff,
+        -:  605:                                      double model_cutoff, double molecular_box,
+        -:  606:                                      int max_neighbors, const UmaContract &contract,
+        -:  607:                                      int64_t n_systems, UmaEdgeSession &session) {
+       56:  608:  QuietLock lock(session.mutex);
+call    0 returned 100%
+       56:  609:  const int64_t n = static_cast<int64_t>(local.nAtoms);
+       56:  610:  const int64_t complete = n > 1 ? n * (n - 1) : 0;
+branch  0 taken 96% (fallthrough)
+branch  1 taken 4%
+       56:  611:  const int64_t want = static_edges_per_system(contract, n_systems);
+call    0 returned 100%
+       56:  612:  const bool molecular = molecular_box > 0.0;
+       56:  613:  if (complete > 0 && (want == complete || (molecular && want == 0))) {
+branch  0 taken 96% (fallthrough)
+branch  1 taken 4%
 branch  2 taken 98% (fallthrough)
 branch  3 taken 2%
-branch  4 taken 22% (fallthrough)
-branch  5 taken 78%
+branch  4 taken 21% (fallthrough)
+branch  5 taken 79%
 branch  6 taken 91% (fallthrough)
 branch  7 taken 9%
-       22:  588:    session.edges = molecular_edges(local.pos, local.nAtoms, session);
+       11:  614:    session.edges = molecular_edges(local.pos, local.nAtoms, session);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-call    3 returned 100%
-call    4 returned 100%
-        -:  589:  } else {
-       80:  590:    const double range = (model_cutoff > 0.0 && std::isfinite(model_cutoff))
+call    1 returned 100%
+call    2 returned 100%
+        -:  615:  } else {
+       44:  616:    const double range = (model_cutoff > 0.0 && std::isfinite(model_cutoff))
 call    0 returned 100%
 branch  1 taken 98% (fallthrough)
 branch  2 taken 2%
-      162:  591:                             ? model_cutoff
+       89:  617:                             ? model_cutoff
 branch  0 taken 98% (fallthrough)
 branch  1 taken 2%
-       82:  592:                             : cutoff;
-       82:  593:    periodic_edges(local, range, max_neighbors, session);
+       45:  618:                             : cutoff;
+       45:  619:    periodic_edges(local, range, max_neighbors, session);
 call    0 returned 100%
-branch  1 taken 95% (fallthrough)
-branch  2 taken 5% (throw)
-       78:  594:    if (want > 0 && static_cast<int64_t>(session.edges.neighbor.size()) != want)
-branch  0 taken 26% (fallthrough)
-branch  1 taken 74%
+branch  1 taken 93% (fallthrough)
+branch  2 taken 7% (throw)
+       42:  620:    if (want > 0 && static_cast<int64_t>(session.edges.neighbor.size()) != want)
+branch  0 taken 24% (fallthrough)
+branch  1 taken 76%
 call    2 returned 100%
 branch  3 taken 90% (fallthrough)
 branch  4 taken 10%
-branch  5 taken 23% (fallthrough)
-branch  6 taken 77%
-       20:  595:      session.edges = fit_edge_count(local, std::move(session.edges), want, range);
+branch  5 taken 21% (fallthrough)
+branch  6 taken 79%
+       10:  621:      session.edges = fit_edge_count(local, std::move(session.edges), want, range);
 call    0 returned 100%
 call    1 returned 100%
 call    2 returned 100%
@@ -1604,11 +1412,11 @@ call    5 returned 100%
 call    6 returned 100%
 call    7 returned 100%
 call    8 returned 100%
-        -:  596:  }
-       98:  597:  session.calls += 1;
-       98:  598:  return session.edges;
-      104:  599:}
+        -:  622:  }
+       52:  623:  session.calls += 1;
+       52:  624:  return session.edges;
+       56:  625:}
 call    0 returned 100%
 call    1 returned 100%
-        -:  600:
-        -:  601:} // namespace rgpot
+        -:  626:
+        -:  627:} // namespace rgpot

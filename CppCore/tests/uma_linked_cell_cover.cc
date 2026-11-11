@@ -6,11 +6,16 @@
 #include "rgpot/UmaPot/UmaEdges.hpp"
 #include "rgpot/UmaPot/UmaLinkedCell.hpp"
 
+namespace rgpot {
+void exercise_empty_ranges(int threads);
+}
+
 #include <cmath>
 #include <cstdio>
 #include <limits>
 #include <memory>
 #include <string>
+#include <sys/resource.h>
 #include <unordered_map>
 #include <vector>
 
@@ -469,6 +474,88 @@ void test_pool_stops_at_four() {
   }
 }
 
+void test_want_zero() {
+  const double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+  double pos[6] = {0, 0, 0, 1, 0, 0};
+  int z[2] = {1, 1};
+  const rgpot::ForceInput in{2, pos, z, box};
+  rgpot::UmaEdgeList edges;
+  edges.neighbor = {1, 0};
+  edges.center = {0, 1};
+  // The second edge sits one cell along x, past a range of 6.
+  edges.offsets = {0, 0, 0, 1, 0, 0};
+  const auto out = rgpot::fit_recorded_edges(in, std::move(edges), 0, 6.0);
+  expect(out.neighbor.size() == 2, "want zero keeps both edges");
+}
+
+void test_empty_range_stays_serial() {
+  rgpot::spawn_started() = 0;
+  rgpot::exercise_empty_ranges(4);
+  expect(rgpot::spawn_started() == 0, "empty atom count stays serial");
+}
+
+void test_spawn_failure_is_serial() {
+  const double box[9] = {30, 0, 0, 0, 30, 0, 0, 0, 30};
+  auto pos = grid(8, 2.5, 1, 1, 1);
+  std::vector<int> z(8, 1);
+  rgpot::UmaContract contract;
+  const rgpot::ForceInput in{8, pos.data(), z.data(), box};
+  {
+    rgpot::UmaEdgeSession session;
+    session.threads = 4;
+    rgpot::spawn_fail_budget() = 0;
+    const auto &list = rgpot::build_system_edges(in, 6, 6, 0, 300, contract, 1, session);
+    expect(!list.neighbor.empty(), "spawn failure still returns edges");
+  }
+  {
+    rgpot::UmaEdgeSession session;
+    session.threads = 4;
+    rgpot::spawn_fail_budget() = 4;
+    const auto &list = rgpot::build_system_edges(in, 6, 6, 0, 300, contract, 1, session);
+    expect(!list.neighbor.empty(), "later spawn failure still returns edges");
+  }
+  std::vector<std::size_t> wide(8192, 1);
+  rgpot::spawn_fail_budget() = 0;
+  rgpot::linked_cell::exclusive_prefix(wide, 4);
+  expect(wide.back() == 8192, "prefix survives a refused spawn");
+  rgpot::spawn_fail_budget() = 4;
+  std::vector<std::size_t> wide2(8192, 1);
+  rgpot::linked_cell::exclusive_prefix(wide2, 4);
+  expect(wide2.back() == 8192, "prefix survives a later refused spawn");
+  rgpot::spawn_fail_budget() = 1;
+  rgpot::spawn_started() = 0;
+  const bool started = rgpot::spawn_workers(4, [](int) { return [] {}; });
+  expect(!started, "the hook refuses the second worker");
+  expect(rgpot::spawn_started() == 1, "the first worker started before the refusal");
+  struct rlimit saved;
+  getrlimit(RLIMIT_NPROC, &saved);
+  struct rlimit tight = saved;
+  tight.rlim_cur = 1;
+  setrlimit(RLIMIT_NPROC, &tight);
+  {
+    rgpot::UmaEdgeSession session;
+    session.threads = 4;
+    rgpot::spawn_fail_budget() = -1;
+    const auto &list = rgpot::build_system_edges(in, 6, 6, 0, 300, contract, 1, session);
+    expect(!list.neighbor.empty(), "os thread refusal still returns edges");
+  }
+  setrlimit(RLIMIT_NPROC, &saved);
+}
+
+void test_vesin_rejects_null() {
+  const double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+  rgpot::UmaContract contract;
+  rgpot::UmaEdgeSession session;
+  const rgpot::ForceInput in{0, nullptr, nullptr, box};
+  bool refused = false;
+  try {
+    rgpot::build_system_edges(in, 6, 6, 0, 300, contract, 1, session);
+  } catch (const std::exception &err) {
+    refused = std::string(err.what()).find("vesin") != std::string::npos;
+  }
+  expect(refused, "vesin refuses a null point list");
+}
+
 // Arms the main cover leaves out.
 void test_remaining_arms() {
   const double wide[9] = {40, 0, 0, 0, 40, 0, 0, 0, 40};
@@ -587,6 +674,14 @@ int main(int argc, char **argv) {
     test_pool_stops_at_four();
   if (which == "all" || which == "rest")
     test_remaining_arms();
+  if (which == "all" || which == "want-zero")
+    test_want_zero();
+  if (which == "all" || which == "empty-range")
+    test_empty_range_stays_serial();
+  if (which == "all" || which == "spawn-fail")
+    test_spawn_failure_is_serial();
+  if (which == "all" || which == "vesin-null")
+    test_vesin_rejects_null();
   if (g_fails != 0) {
     std::fprintf(stderr, "FAIL checks=%d\n", g_fails);
     return 1;

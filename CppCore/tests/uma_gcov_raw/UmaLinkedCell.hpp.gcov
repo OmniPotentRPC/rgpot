@@ -2,319 +2,296 @@
         -:    1:#pragma once
         -:    2:// Copyright 2023--present rgpot developers
         -:    3:
-        -:    4:#include <algorithm>
-        -:    5:#include <cmath>
-        -:    6:#include <cstddef>
-        -:    7:#include <cstdint>
-        -:    8:#include <thread>
-        -:    9:#include <vector>
-        -:   10:
-        -:   11:namespace rgpot {
-        -:   12:namespace linked_cell {
-        -:   13:
-        -:   14:// One directed pair. The owning atom is the slice index, not a field,
-        -:   15:// so the record stays 16 bytes and the write stays inside the atom's block.
-        -:   16:struct Pair {
-        -:   17:  double dist2 = 0;
-        -:   18:  std::uint32_t neighbor = 0;
-        -:   19:  std::int8_t s0 = 0;
-        -:   20:  std::int8_t s1 = 0;
-        -:   21:  std::int8_t s2 = 0;
-        -:   22:  std::int8_t pad = 0;
-        -:   23:};
-        -:   24:
-    4322*:   25:inline bool before(const Pair &a, const Pair &b) {
-    4322*:   26:  if (a.dist2 != b.dist2)
-    2920*:   27:    return a.dist2 < b.dist2;
-    1402*:   28:  if (a.neighbor != b.neighbor)
-    1394*:   29:    return a.neighbor < b.neighbor;
-       8*:   30:  if (a.s0 != b.s0)
-       2*:   31:    return a.s0 < b.s0;
-       6*:   32:  if (a.s1 != b.s1)
-       2*:   33:    return a.s1 < b.s1;
-       4*:   34:  return a.s2 < b.s2;
-        -:   35:}
+        -:    4:#include "rgpot/UmaPot/UmaGrow.hpp"
+        -:    5:
+        -:    6:#include <algorithm>
+        -:    7:#include <cmath>
+        -:    8:#include <cstddef>
+        -:    9:#include <cstdint>
+        -:   10:#include <vector>
+        -:   11:
+        -:   12:namespace rgpot {
+        -:   13:namespace linked_cell {
+        -:   14:
+        -:   15:// One directed pair. The owning atom is the slice index, not a field,
+        -:   16:// so the record stays 16 bytes and the write stays inside the atom's block.
+        -:   17:struct Pair {
+        -:   18:  double dist2 = 0;
+        -:   19:  std::uint32_t neighbor = 0;
+        -:   20:  std::int8_t s0 = 0;
+        -:   21:  std::int8_t s1 = 0;
+        -:   22:  std::int8_t s2 = 0;
+        -:   23:  std::int8_t pad = 0;
+        -:   24:};
+        -:   25:
+    2590*:   26:inline bool before(const Pair &a, const Pair &b) noexcept {
+    2590*:   27:  if (a.dist2 != b.dist2)
+    1742*:   28:    return a.dist2 < b.dist2;
+     848*:   29:  if (a.neighbor != b.neighbor)
+     844*:   30:    return a.neighbor < b.neighbor;
+       4*:   31:  if (a.s0 != b.s0)
+       1*:   32:    return a.s0 < b.s0;
+       3*:   33:  if (a.s1 != b.s1)
+       1*:   34:    return a.s1 < b.s1;
+       2*:   35:  return a.s2 < b.s2;
+        -:   36:}
 ------------------
 _ZN5rgpot11linked_cell6beforeERKNS0_4PairES3_:
-function _ZN5rgpot11linked_cell6beforeERKNS0_4PairES3_ called 4322 returned 100% blocks executed 100%
-     4322:   25:inline bool before(const Pair &a, const Pair &b) {
-     4322:   26:  if (a.dist2 != b.dist2)
-branch  0 taken 68% (fallthrough)
-branch  1 taken 32%
-     2920:   27:    return a.dist2 < b.dist2;
-     1402:   28:  if (a.neighbor != b.neighbor)
-branch  0 taken 99% (fallthrough)
+function _ZN5rgpot11linked_cell6beforeERKNS0_4PairES3_ called 2590 returned 100% blocks executed 100%
+     2590:   26:inline bool before(const Pair &a, const Pair &b) noexcept {
+     2590:   27:  if (a.dist2 != b.dist2)
+branch  0 taken 67% (fallthrough)
+branch  1 taken 33%
+     1742:   28:    return a.dist2 < b.dist2;
+      848:   29:  if (a.neighbor != b.neighbor)
+branch  0 taken 100% (fallthrough)
 branch  1 taken 1%
-     1394:   29:    return a.neighbor < b.neighbor;
-        8:   30:  if (a.s0 != b.s0)
+      844:   30:    return a.neighbor < b.neighbor;
+        4:   31:  if (a.s0 != b.s0)
 branch  0 taken 25% (fallthrough)
 branch  1 taken 75%
-        2:   31:    return a.s0 < b.s0;
-        6:   32:  if (a.s1 != b.s1)
+        1:   32:    return a.s0 < b.s0;
+        3:   33:  if (a.s1 != b.s1)
 branch  0 taken 33% (fallthrough)
 branch  1 taken 67%
-        2:   33:    return a.s1 < b.s1;
-        4:   34:  return a.s2 < b.s2;
-        -:   35:}
+        1:   34:    return a.s1 < b.s1;
+        2:   35:  return a.s2 < b.s2;
+        -:   36:}
 ------------------
 _ZN5rgpot11linked_cell6beforeERKNS0_4PairES3_:
 function _ZN5rgpot11linked_cell6beforeERKNS0_4PairES3_ called 0 returned 0% blocks executed 0%
-    #####:   25:inline bool before(const Pair &a, const Pair &b) {
-    #####:   26:  if (a.dist2 != b.dist2)
+    #####:   26:inline bool before(const Pair &a, const Pair &b) noexcept {
+    #####:   27:  if (a.dist2 != b.dist2)
 branch  0 never executed (fallthrough)
 branch  1 never executed
-    #####:   27:    return a.dist2 < b.dist2;
-    #####:   28:  if (a.neighbor != b.neighbor)
+    #####:   28:    return a.dist2 < b.dist2;
+    #####:   29:  if (a.neighbor != b.neighbor)
 branch  0 never executed (fallthrough)
 branch  1 never executed
-    #####:   29:    return a.neighbor < b.neighbor;
-    #####:   30:  if (a.s0 != b.s0)
+    #####:   30:    return a.neighbor < b.neighbor;
+    #####:   31:  if (a.s0 != b.s0)
 branch  0 never executed (fallthrough)
 branch  1 never executed
-    #####:   31:    return a.s0 < b.s0;
-    #####:   32:  if (a.s1 != b.s1)
+    #####:   32:    return a.s0 < b.s0;
+    #####:   33:  if (a.s1 != b.s1)
 branch  0 never executed (fallthrough)
 branch  1 never executed
-    #####:   33:    return a.s1 < b.s1;
-    #####:   34:  return a.s2 < b.s2;
-        -:   35:}
+    #####:   34:    return a.s1 < b.s1;
+    #####:   35:  return a.s2 < b.s2;
+        -:   36:}
 ------------------
-        -:   36:
-        -:   37:struct Scratch {
-        -:   38:  std::vector<std::uint32_t> cell_of;
-        -:   39:  std::vector<std::uint32_t> placed;
-        -:   40:  std::vector<std::size_t> hist;
-        -:   41:  std::vector<double> x;
-        -:   42:  std::vector<double> y;
-        -:   43:  std::vector<double> z;
-        -:   44:  std::vector<std::vector<Pair>> parts;
-        -:   45:  std::vector<std::uint32_t> slice_at;
-        -:   46:  std::vector<std::uint32_t> slice_n;
-        -:   47:  std::vector<std::uint32_t> slice_thread;
-        -:   48:  std::vector<double> ref_pos;
-        -:   49:  double ref_box[9]{};
-        -:   50:  int ref_n = -1;
-        -:   51:  double ref_search = -1;
-        -:   52:  const void *stable = nullptr;
-        -:   53:  std::size_t stable_n = 0;
-        -:   54:};
-        -:   55:
-     112*:   56:inline bool orthorhombic(const double *box) {
-     108*:   57:  return box[0] > 0.0 && box[4] > 0.0 && box[8] > 0.0 && std::fabs(box[1]) < 1e-12 &&
-      90*:   58:         std::fabs(box[2]) < 1e-12 && std::fabs(box[3]) < 1e-12 &&
-     302*:   59:         std::fabs(box[5]) < 1e-12 && std::fabs(box[6]) < 1e-12 &&
-     194*:   60:         std::fabs(box[7]) < 1e-12;
-        -:   61:}
+        -:   37:
+        -:   38:struct Scratch {
+        -:   39:  std::vector<std::uint32_t> cell_of;
+        -:   40:  std::vector<std::uint32_t> placed;
+        -:   41:  std::vector<std::size_t> hist;
+        -:   42:  std::vector<double> x;
+        -:   43:  std::vector<double> y;
+        -:   44:  std::vector<double> z;
+        -:   45:  std::vector<std::vector<Pair>> parts;
+        -:   46:  std::vector<std::uint32_t> slice_at;
+        -:   47:  std::vector<std::uint32_t> slice_n;
+        -:   48:  std::vector<std::uint32_t> slice_thread;
+        -:   49:  std::vector<double> ref_pos;
+        -:   50:  double ref_box[9]{};
+        -:   51:  int ref_n = -1;
+        -:   52:  double ref_search = -1;
+        -:   53:  const void *stable = nullptr;
+        -:   54:  std::size_t stable_n = 0;
+        -:   55:};
+        -:   56:
+      59*:   57:inline bool orthorhombic(const double *box) noexcept {
+      57*:   58:  return box[0] > 0.0 && box[4] > 0.0 && box[8] > 0.0 && std::fabs(box[1]) < 1e-12 &&
+      48*:   59:         std::fabs(box[2]) < 1e-12 && std::fabs(box[3]) < 1e-12 &&
+     160*:   60:         std::fabs(box[5]) < 1e-12 && std::fabs(box[6]) < 1e-12 &&
+     103*:   61:         std::fabs(box[7]) < 1e-12;
+        -:   62:}
 ------------------
 _ZN5rgpot11linked_cell12orthorhombicEPKd:
-function _ZN5rgpot11linked_cell12orthorhombicEPKd called 112 returned 100% blocks executed 100%
-      112:   56:inline bool orthorhombic(const double *box) {
-      108:   57:  return box[0] > 0.0 && box[4] > 0.0 && box[8] > 0.0 && std::fabs(box[1]) < 1e-12 &&
+function _ZN5rgpot11linked_cell12orthorhombicEPKd called 59 returned 100% blocks executed 100%
+       59:   57:inline bool orthorhombic(const double *box) noexcept {
+       57:   58:  return box[0] > 0.0 && box[4] > 0.0 && box[8] > 0.0 && std::fabs(box[1]) < 1e-12 &&
 branch  0 taken 98% (fallthrough)
 branch  1 taken 2%
 branch  2 taken 98% (fallthrough)
 branch  3 taken 2%
 branch  4 taken 87% (fallthrough)
 branch  5 taken 13%
-       90:   58:         std::fabs(box[2]) < 1e-12 && std::fabs(box[3]) < 1e-12 &&
+       48:   59:         std::fabs(box[2]) < 1e-12 && std::fabs(box[3]) < 1e-12 &&
 branch  0 taken 98% (fallthrough)
 branch  1 taken 2%
 branch  2 taken 98% (fallthrough)
 branch  3 taken 2%
-      302:   59:         std::fabs(box[5]) < 1e-12 && std::fabs(box[6]) < 1e-12 &&
-branch  0 taken 96% (fallthrough)
-branch  1 taken 4%
+      160:   60:         std::fabs(box[5]) < 1e-12 && std::fabs(box[6]) < 1e-12 &&
+branch  0 taken 97% (fallthrough)
+branch  1 taken 3%
 branch  2 taken 98% (fallthrough)
 branch  3 taken 2%
 branch  4 taken 98% (fallthrough)
 branch  5 taken 2%
-      194:   60:         std::fabs(box[7]) < 1e-12;
+      103:   61:         std::fabs(box[7]) < 1e-12;
 branch  0 taken 98% (fallthrough)
 branch  1 taken 2%
-        -:   61:}
+        -:   62:}
 ------------------
 _ZN5rgpot11linked_cell12orthorhombicEPKd:
 function _ZN5rgpot11linked_cell12orthorhombicEPKd called 0 returned 0% blocks executed 0%
-    #####:   56:inline bool orthorhombic(const double *box) {
-    #####:   57:  return box[0] > 0.0 && box[4] > 0.0 && box[8] > 0.0 && std::fabs(box[1]) < 1e-12 &&
+    #####:   57:inline bool orthorhombic(const double *box) noexcept {
+    #####:   58:  return box[0] > 0.0 && box[4] > 0.0 && box[8] > 0.0 && std::fabs(box[1]) < 1e-12 &&
 branch  0 never executed (fallthrough)
 branch  1 never executed
 branch  2 never executed (fallthrough)
 branch  3 never executed
 branch  4 never executed (fallthrough)
 branch  5 never executed
-    #####:   58:         std::fabs(box[2]) < 1e-12 && std::fabs(box[3]) < 1e-12 &&
+    #####:   59:         std::fabs(box[2]) < 1e-12 && std::fabs(box[3]) < 1e-12 &&
 branch  0 never executed (fallthrough)
 branch  1 never executed
 branch  2 never executed (fallthrough)
 branch  3 never executed
-    #####:   59:         std::fabs(box[5]) < 1e-12 && std::fabs(box[6]) < 1e-12 &&
+    #####:   60:         std::fabs(box[5]) < 1e-12 && std::fabs(box[6]) < 1e-12 &&
 branch  0 never executed (fallthrough)
 branch  1 never executed
 branch  2 never executed (fallthrough)
 branch  3 never executed
 branch  4 never executed (fallthrough)
 branch  5 never executed
-    #####:   60:         std::fabs(box[7]) < 1e-12;
+    #####:   61:         std::fabs(box[7]) < 1e-12;
 branch  0 never executed (fallthrough)
 branch  1 never executed
-        -:   61:}
+        -:   62:}
 ------------------
-        -:   62:
-        -:   63:// Exclusive prefix. `count` grows by one and the last entry is the total.
-      82*:   64:inline void exclusive_prefix(std::vector<std::size_t> &count, int threads) {
-      82*:   65:  const std::size_t m = count.size();
-      82*:   66:  if (m == 0)
-      78*:   67:    return;
-        -:   68:  // A few thousand bins are cheaper to add on this thread than to
-        -:   69:  // hand to a freshly spawned worker.
-        -:   70:  // One thread on a long prefix still uses the blocked loops below.
-      80*:   71:  if (m < 8192) {
-      76*:   72:    std::size_t run = 0;
-      76*:   73:    count.push_back(0);
-   11644*:   74:    for (std::size_t i = 0; i < m; ++i) {
-   11568*:   75:      const std::size_t value = count[i];
-   11568*:   76:      count[i] = run;
-   11568*:   77:      run += value;
-        -:   78:    }
-      76*:   79:    count[m] = run;
-      76*:   80:    return;
-        -:   81:  }
-       4*:   82:  threads = std::max(1, std::min(threads, static_cast<int>(m)));
-       4*:   83:  std::vector<std::size_t> block(static_cast<std::size_t>(threads) + 1, 0);
-      10*:   84:  auto sum_block = [&](int t) {
-      10*:   85:    const std::size_t b = (static_cast<std::size_t>(t) * m) / static_cast<std::size_t>(threads);
-      10*:   86:    const std::size_t e =
-      10*:   87:        (static_cast<std::size_t>(t + 1) * m) / static_cast<std::size_t>(threads);
-      10*:   88:    std::size_t s = 0;
-   32778*:   89:    for (std::size_t i = b; i < e; ++i)
-   32768*:   90:      s += count[i];
-      10*:   91:    block[static_cast<std::size_t>(t) + 1] = s;
-      14*:   92:  };
-       4*:   93:  if (threads == 1) {
-       2*:   94:    sum_block(0);
-        -:   95:  } else {
-       2*:   96:    std::vector<std::thread> pool;
-      10*:   97:    for (int t = 0; t < threads; ++t)
-       8*:   98:      pool.emplace_back(sum_block, t);
-      10*:   99:    for (auto &worker : pool)
-       8*:  100:      worker.join();
-       2*:  101:  }
-      14*:  102:  for (int t = 1; t <= threads; ++t)
-      10*:  103:    block[static_cast<std::size_t>(t)] += block[static_cast<std::size_t>(t - 1)];
-       4*:  104:  std::vector<std::size_t> out(m + 1, 0);
-      10*:  105:  auto fill = [&](int t) {
-      10*:  106:    const std::size_t b = (static_cast<std::size_t>(t) * m) / static_cast<std::size_t>(threads);
-      10*:  107:    const std::size_t e =
-      10*:  108:        (static_cast<std::size_t>(t + 1) * m) / static_cast<std::size_t>(threads);
-      10*:  109:    std::size_t run = block[static_cast<std::size_t>(t)];
-   32778*:  110:    for (std::size_t i = b; i < e; ++i) {
+        -:   63:
+        -:   64:// Exclusive prefix. `count` grows by one and the last entry is the total.
+      46*:   65:inline void exclusive_prefix(std::vector<std::size_t> &count, int threads) noexcept {
+      46*:   66:  const std::size_t m = count.size();
+      46*:   67:  if (m == 0)
+      42*:   68:    return;
+        -:   69:  // A few thousand bins are cheaper to add on this thread than to
+        -:   70:  // hand to a freshly spawned worker.
+        -:   71:  // One thread on a long prefix still uses the blocked loops below.
+      45*:   72:  if (m < 8192) {
+      41*:   73:    std::size_t run = 0;
+      41*:   74:    grow_push(count, std::size_t{0});
+    6200*:   75:    for (std::size_t i = 0; i < m; ++i) {
+    6159*:   76:      const std::size_t value = count[i];
+    6159*:   77:      count[i] = run;
+    6159*:   78:      run += value;
+        -:   79:    }
+      41*:   80:    count[m] = run;
+      41*:   81:    return;
+        -:   82:  }
+       4*:   83:  threads = std::max(1, std::min(threads, static_cast<int>(m)));
+       4*:   84:  std::vector<std::size_t> block;
+       4*:   85:  grow_assign_n(block, static_cast<std::size_t>(threads) + 1, std::size_t{0});
+      10*:   86:  auto sum_block = [&](int t) {
+      10*:   87:    const std::size_t b = (static_cast<std::size_t>(t) * m) / static_cast<std::size_t>(threads);
+      10*:   88:    const std::size_t e =
+      10*:   89:        (static_cast<std::size_t>(t + 1) * m) / static_cast<std::size_t>(threads);
+      10*:   90:    std::size_t s = 0;
+   32778*:   91:    for (std::size_t i = b; i < e; ++i)
+   32768*:   92:      s += count[i];
+      10*:   93:    block[static_cast<std::size_t>(t) + 1] = s;
+      14*:   94:  };
+       4*:   95:  if (threads == 1) {
+       1*:   96:    sum_block(0);
+      19*:   97:  } else if (!spawn_workers(threads, [&](int t) { return [&, t] { sum_block(t); }; })) {
+       1*:   98:    threads = 1;
+       1*:   99:    sum_block(0);
+        -:  100:  }
+      14*:  101:  for (int t = 1; t <= threads; ++t)
+      10*:  102:    block[static_cast<std::size_t>(t)] += block[static_cast<std::size_t>(t - 1)];
+       4*:  103:  std::vector<std::size_t> out;
+       4*:  104:  grow_assign_n(out, m + 1, std::size_t{0});
+       7*:  105:  auto fill = [&](int t) {
+       7*:  106:    const std::size_t b = (static_cast<std::size_t>(t) * m) / static_cast<std::size_t>(threads);
+       7*:  107:    const std::size_t e =
+       7*:  108:        (static_cast<std::size_t>(t + 1) * m) / static_cast<std::size_t>(threads);
+       7*:  109:    std::size_t run = block[static_cast<std::size_t>(t)];
+   32775*:  110:    for (std::size_t i = b; i < e; ++i) {
    32768*:  111:      out[i] = run;
    32768*:  112:      run += count[i];
         -:  113:    }
-      10*:  114:    if (t + 1 == threads)
+       7*:  114:    if (t + 1 == threads)
        4*:  115:      out[m] = run;
-      14*:  116:  };
+      11*:  116:  };
        4*:  117:  if (threads == 1) {
        2*:  118:    fill(0);
-        -:  119:  } else {
-       2*:  120:    std::vector<std::thread> pool;
-      10*:  121:    for (int t = 0; t < threads; ++t)
-       8*:  122:      pool.emplace_back(fill, t);
-      10*:  123:    for (auto &worker : pool)
-       8*:  124:      worker.join();
-       2*:  125:  }
-       4*:  126:  count.swap(out);
-       4*:  127:}
+      10*:  119:  } else if (!spawn_workers(threads, [&](int t) { return [&, t] { fill(t); }; })) {
+       1*:  120:    threads = 1;
+       1*:  121:    fill(0);
+        -:  122:  }
+       4*:  123:  count.swap(out);
+       4*:  124:}
 ------------------
 _ZN5rgpot11linked_cell16exclusive_prefixERSt6vectorImSaImEEi:
-function _ZN5rgpot11linked_cell16exclusive_prefixERSt6vectorImSaImEEi called 82 returned 100% blocks executed 74%
-       82:   64:inline void exclusive_prefix(std::vector<std::size_t> &count, int threads) {
-       82:   65:  const std::size_t m = count.size();
+function _ZN5rgpot11linked_cell16exclusive_prefixERSt6vectorImSaImEEi called 46 returned 100% blocks executed 100%
+       46:   65:inline void exclusive_prefix(std::vector<std::size_t> &count, int threads) noexcept {
+       46:   66:  const std::size_t m = count.size();
 call    0 returned 100%
-       82:   66:  if (m == 0)
+       46:   67:  if (m == 0)
 branch  0 taken 2% (fallthrough)
 branch  1 taken 98%
-       78:   67:    return;
-        -:   68:  // A few thousand bins are cheaper to add on this thread than to
-        -:   69:  // hand to a freshly spawned worker.
-        -:   70:  // One thread on a long prefix still uses the blocked loops below.
-       80:   71:  if (m < 8192) {
-branch  0 taken 95% (fallthrough)
-branch  1 taken 5%
-       76:   72:    std::size_t run = 0;
-       76:   73:    count.push_back(0);
+       42:   68:    return;
+        -:   69:  // A few thousand bins are cheaper to add on this thread than to
+        -:   70:  // hand to a freshly spawned worker.
+        -:   71:  // One thread on a long prefix still uses the blocked loops below.
+       45:   72:  if (m < 8192) {
+branch  0 taken 91% (fallthrough)
+branch  1 taken 9%
+       41:   73:    std::size_t run = 0;
+       41:   74:    grow_push(count, std::size_t{0});
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-    11644:   74:    for (std::size_t i = 0; i < m; ++i) {
+     6200:   75:    for (std::size_t i = 0; i < m; ++i) {
 branch  0 taken 99%
 branch  1 taken 1% (fallthrough)
-    11568:   75:      const std::size_t value = count[i];
+     6159:   76:      const std::size_t value = count[i];
 call    0 returned 100%
-    11568:   76:      count[i] = run;
+     6159:   77:      count[i] = run;
 call    0 returned 100%
-    11568:   77:      run += value;
-        -:   78:    }
-       76:   79:    count[m] = run;
+     6159:   78:      run += value;
+        -:   79:    }
+       41:   80:    count[m] = run;
 call    0 returned 100%
-       76:   80:    return;
-        -:   81:  }
-        4:   82:  threads = std::max(1, std::min(threads, static_cast<int>(m)));
-call    0 returned 100%
-call    1 returned 100%
-        4:   83:  std::vector<std::size_t> block(static_cast<std::size_t>(threads) + 1, 0);
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        -:   84:  auto sum_block = [&](int t) {
-        -:   85:    const std::size_t b = (static_cast<std::size_t>(t) * m) / static_cast<std::size_t>(threads);
-        -:   86:    const std::size_t e =
-        -:   87:        (static_cast<std::size_t>(t + 1) * m) / static_cast<std::size_t>(threads);
-        -:   88:    std::size_t s = 0;
-        -:   89:    for (std::size_t i = b; i < e; ++i)
-        -:   90:      s += count[i];
-        -:   91:    block[static_cast<std::size_t>(t) + 1] = s;
-        4:   92:  };
-        4:   93:  if (threads == 1) {
-branch  0 taken 50% (fallthrough)
-branch  1 taken 50%
-        2:   94:    sum_block(0);
-call    0 returned 100%
-        -:   95:  } else {
-        2:   96:    std::vector<std::thread> pool;
-       10:   97:    for (int t = 0; t < threads; ++t)
-branch  0 taken 80%
-branch  1 taken 20% (fallthrough)
-        8:   98:      pool.emplace_back(sum_block, t);
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       10:   99:    for (auto &worker : pool)
+       41:   81:    return;
+        -:   82:  }
+        4:   83:  threads = std::max(1, std::min(threads, static_cast<int>(m)));
 call    0 returned 100%
 call    1 returned 100%
-call    2 returned 100%
-call    3 returned 100%
-call    4 returned 100%
-branch  5 taken 80%
-branch  6 taken 20% (fallthrough)
-        8:  100:      worker.join();
+        4:   84:  std::vector<std::size_t> block;
+        4:   85:  grow_assign_n(block, static_cast<std::size_t>(threads) + 1, std::size_t{0});
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        2:  101:  }
+        -:   86:  auto sum_block = [&](int t) {
+        -:   87:    const std::size_t b = (static_cast<std::size_t>(t) * m) / static_cast<std::size_t>(threads);
+        -:   88:    const std::size_t e =
+        -:   89:        (static_cast<std::size_t>(t + 1) * m) / static_cast<std::size_t>(threads);
+        -:   90:    std::size_t s = 0;
+        -:   91:    for (std::size_t i = b; i < e; ++i)
+        -:   92:      s += count[i];
+        -:   93:    block[static_cast<std::size_t>(t) + 1] = s;
+        4:   94:  };
+        4:   95:  if (threads == 1) {
+branch  0 taken 25% (fallthrough)
+branch  1 taken 75%
+        1:   96:    sum_block(0);
 call    0 returned 100%
-call    1 never executed
-       14:  102:  for (int t = 1; t <= threads; ++t)
+        3:   97:  } else if (!spawn_workers(threads, [&](int t) { return [&, t] { sum_block(t); }; })) {
+call    0 returned 100%
+branch  1 taken 33% (fallthrough)
+branch  2 taken 67%
+        1:   98:    threads = 1;
+        1:   99:    sum_block(0);
+call    0 returned 100%
+        -:  100:  }
+       14:  101:  for (int t = 1; t <= threads; ++t)
 branch  0 taken 71%
 branch  1 taken 29% (fallthrough)
-       10:  103:    block[static_cast<std::size_t>(t)] += block[static_cast<std::size_t>(t - 1)];
+       10:  102:    block[static_cast<std::size_t>(t)] += block[static_cast<std::size_t>(t - 1)];
 call    0 returned 100%
 call    1 returned 100%
-        4:  104:  std::vector<std::size_t> out(m + 1, 0);
+        4:  103:  std::vector<std::size_t> out;
+        4:  104:  grow_assign_n(out, m + 1, std::size_t{0});
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
         -:  105:  auto fill = [&](int t) {
         -:  106:    const std::size_t b = (static_cast<std::size_t>(t) * m) / static_cast<std::size_t>(threads);
         -:  107:    const std::size_t e =
@@ -332,126 +309,88 @@ branch  0 taken 50% (fallthrough)
 branch  1 taken 50%
         2:  118:    fill(0);
 call    0 returned 100%
-        -:  119:  } else {
-        2:  120:    std::vector<std::thread> pool;
-       10:  121:    for (int t = 0; t < threads; ++t)
-branch  0 taken 80%
-branch  1 taken 20% (fallthrough)
-        8:  122:      pool.emplace_back(fill, t);
+        2:  119:  } else if (!spawn_workers(threads, [&](int t) { return [&, t] { fill(t); }; })) {
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       10:  123:    for (auto &worker : pool)
+branch  1 taken 50% (fallthrough)
+branch  2 taken 50%
+        1:  120:    threads = 1;
+        1:  121:    fill(0);
 call    0 returned 100%
-call    1 returned 100%
-call    2 returned 100%
-call    3 returned 100%
-call    4 returned 100%
-branch  5 taken 80%
-branch  6 taken 20% (fallthrough)
-        8:  124:      worker.join();
+        -:  122:  }
+        4:  123:  count.swap(out);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        2:  125:  }
-call    0 returned 100%
-call    1 never executed
-        4:  126:  count.swap(out);
-call    0 returned 100%
-        4:  127:}
+        4:  124:}
 call    0 returned 100%
 call    1 returned 100%
-call    2 never executed
-call    3 never executed
 ------------------
 _ZN5rgpot11linked_cell16exclusive_prefixERSt6vectorImSaImEEi:
 function _ZN5rgpot11linked_cell16exclusive_prefixERSt6vectorImSaImEEi called 0 returned 0% blocks executed 0%
-    #####:   64:inline void exclusive_prefix(std::vector<std::size_t> &count, int threads) {
-    #####:   65:  const std::size_t m = count.size();
+    #####:   65:inline void exclusive_prefix(std::vector<std::size_t> &count, int threads) noexcept {
+    #####:   66:  const std::size_t m = count.size();
 call    0 never executed
-    #####:   66:  if (m == 0)
+    #####:   67:  if (m == 0)
 branch  0 never executed (fallthrough)
 branch  1 never executed
-    #####:   67:    return;
-        -:   68:  // A few thousand bins are cheaper to add on this thread than to
-        -:   69:  // hand to a freshly spawned worker.
-        -:   70:  // One thread on a long prefix still uses the blocked loops below.
-    #####:   71:  if (m < 8192) {
+    #####:   68:    return;
+        -:   69:  // A few thousand bins are cheaper to add on this thread than to
+        -:   70:  // hand to a freshly spawned worker.
+        -:   71:  // One thread on a long prefix still uses the blocked loops below.
+    #####:   72:  if (m < 8192) {
 branch  0 never executed (fallthrough)
 branch  1 never executed
-    #####:   72:    std::size_t run = 0;
-    #####:   73:    count.push_back(0);
+    #####:   73:    std::size_t run = 0;
+    #####:   74:    grow_push(count, std::size_t{0});
 call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:   74:    for (std::size_t i = 0; i < m; ++i) {
+    #####:   75:    for (std::size_t i = 0; i < m; ++i) {
 branch  0 never executed
 branch  1 never executed (fallthrough)
-    #####:   75:      const std::size_t value = count[i];
+    #####:   76:      const std::size_t value = count[i];
 call    0 never executed
-    #####:   76:      count[i] = run;
+    #####:   77:      count[i] = run;
 call    0 never executed
-    #####:   77:      run += value;
-        -:   78:    }
-    #####:   79:    count[m] = run;
+    #####:   78:      run += value;
+        -:   79:    }
+    #####:   80:    count[m] = run;
 call    0 never executed
-    #####:   80:    return;
-        -:   81:  }
-    #####:   82:  threads = std::max(1, std::min(threads, static_cast<int>(m)));
+    #####:   81:    return;
+        -:   82:  }
+    #####:   83:  threads = std::max(1, std::min(threads, static_cast<int>(m)));
 call    0 never executed
 call    1 never executed
-    #####:   83:  std::vector<std::size_t> block(static_cast<std::size_t>(threads) + 1, 0);
+    #####:   84:  std::vector<std::size_t> block;
+    #####:   85:  grow_assign_n(block, static_cast<std::size_t>(threads) + 1, std::size_t{0});
 call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-        -:   84:  auto sum_block = [&](int t) {
-        -:   85:    const std::size_t b = (static_cast<std::size_t>(t) * m) / static_cast<std::size_t>(threads);
-        -:   86:    const std::size_t e =
-        -:   87:        (static_cast<std::size_t>(t + 1) * m) / static_cast<std::size_t>(threads);
-        -:   88:    std::size_t s = 0;
-        -:   89:    for (std::size_t i = b; i < e; ++i)
-        -:   90:      s += count[i];
-        -:   91:    block[static_cast<std::size_t>(t) + 1] = s;
-    #####:   92:  };
-    #####:   93:  if (threads == 1) {
+        -:   86:  auto sum_block = [&](int t) {
+        -:   87:    const std::size_t b = (static_cast<std::size_t>(t) * m) / static_cast<std::size_t>(threads);
+        -:   88:    const std::size_t e =
+        -:   89:        (static_cast<std::size_t>(t + 1) * m) / static_cast<std::size_t>(threads);
+        -:   90:    std::size_t s = 0;
+        -:   91:    for (std::size_t i = b; i < e; ++i)
+        -:   92:      s += count[i];
+        -:   93:    block[static_cast<std::size_t>(t) + 1] = s;
+    #####:   94:  };
+    #####:   95:  if (threads == 1) {
 branch  0 never executed (fallthrough)
 branch  1 never executed
-    #####:   94:    sum_block(0);
+    #####:   96:    sum_block(0);
 call    0 never executed
-        -:   95:  } else {
-    #####:   96:    std::vector<std::thread> pool;
-    #####:   97:    for (int t = 0; t < threads; ++t)
+    #####:   97:  } else if (!spawn_workers(threads, [&](int t) { return [&, t] { sum_block(t); }; })) {
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed
+    #####:   98:    threads = 1;
+    #####:   99:    sum_block(0);
+call    0 never executed
+        -:  100:  }
+    #####:  101:  for (int t = 1; t <= threads; ++t)
 branch  0 never executed
 branch  1 never executed (fallthrough)
-    #####:   98:      pool.emplace_back(sum_block, t);
-call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:   99:    for (auto &worker : pool)
+    #####:  102:    block[static_cast<std::size_t>(t)] += block[static_cast<std::size_t>(t - 1)];
 call    0 never executed
 call    1 never executed
-call    2 never executed
-call    3 never executed
-call    4 never executed
-branch  5 never executed
-branch  6 never executed (fallthrough)
-    #####:  100:      worker.join();
+    #####:  103:  std::vector<std::size_t> out;
+    #####:  104:  grow_assign_n(out, m + 1, std::size_t{0});
 call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:  101:  }
-call    0 never executed
-call    1 never executed
-    #####:  102:  for (int t = 1; t <= threads; ++t)
-branch  0 never executed
-branch  1 never executed (fallthrough)
-    #####:  103:    block[static_cast<std::size_t>(t)] += block[static_cast<std::size_t>(t - 1)];
-call    0 never executed
-call    1 never executed
-    #####:  104:  std::vector<std::size_t> out(m + 1, 0);
-call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
         -:  105:  auto fill = [&](int t) {
         -:  106:    const std::size_t b = (static_cast<std::size_t>(t) * m) / static_cast<std::size_t>(threads);
         -:  107:    const std::size_t e =
@@ -469,457 +408,398 @@ branch  0 never executed (fallthrough)
 branch  1 never executed
     #####:  118:    fill(0);
 call    0 never executed
-        -:  119:  } else {
-    #####:  120:    std::vector<std::thread> pool;
-    #####:  121:    for (int t = 0; t < threads; ++t)
-branch  0 never executed
-branch  1 never executed (fallthrough)
-    #####:  122:      pool.emplace_back(fill, t);
+    #####:  119:  } else if (!spawn_workers(threads, [&](int t) { return [&, t] { fill(t); }; })) {
 call    0 never executed
 branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:  123:    for (auto &worker : pool)
+branch  2 never executed
+    #####:  120:    threads = 1;
+    #####:  121:    fill(0);
+call    0 never executed
+        -:  122:  }
+    #####:  123:  count.swap(out);
+call    0 never executed
+    #####:  124:}
 call    0 never executed
 call    1 never executed
-call    2 never executed
-call    3 never executed
-call    4 never executed
-branch  5 never executed
-branch  6 never executed (fallthrough)
-    #####:  124:      worker.join();
-call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:  125:  }
-call    0 never executed
-call    1 never executed
-    #####:  126:  count.swap(out);
-call    0 never executed
-    #####:  127:}
-call    0 never executed
-call    1 never executed
-call    2 never executed
-call    3 never executed
 ------------------
-        -:  128:
-        -:  129:// Bin size is at least `search`. Atoms are counting-sorted into bins.
-        -:  130:// Each thread writes one contiguous pair block, and each atom's pairs
-        -:  131:// are sorted before the next atom is visited. False when the box is
-        -:  132:// not orthorhombic or a side is shorter than three search lengths.
-      96*:  133:inline bool build(const double *pos, std::size_t n, const double *box, double search,
-        -:  134:                  int threads, Scratch &scratch) {
-      96*:  135:  if (n == 0 || !(search > 0.0) || !orthorhombic(box))
-      18*:  136:    return false;
-      78*:  137:  const double side[3] = {box[0], box[4], box[8]};
-      78*:  138:  if (side[0] < 3.0 * search || side[1] < 3.0 * search || side[2] < 3.0 * search)
-       6*:  139:    return false;
-      72*:  140:  threads = std::max(1, threads);
-        -:  141:  int ncell[3];
-      72*:  142:  int cells = 1;
-     288*:  143:  for (int a = 0; a < 3; ++a) {
-     216*:  144:    ncell[a] = std::max(1, static_cast<int>(std::floor(side[a] / search)));
-     216*:  145:    cells *= ncell[a];
-        -:  146:  }
-      72*:  147:  scratch.cell_of.resize(n);
-      72*:  148:  scratch.hist.assign(static_cast<std::size_t>(cells), 0);
-     410*:  149:  for (std::size_t i = 0; i < n; ++i) {
-        -:  150:    int ix[3];
-    1352*:  151:    for (int a = 0; a < 3; ++a) {
-    1014*:  152:      double f = pos[3 * i + a] / side[a];
-    1014*:  153:      f -= std::floor(f);
-    1014*:  154:      int bin = static_cast<int>(std::floor(f * static_cast<double>(ncell[a])));
-    1014*:  155:      if (bin >= ncell[a])
-       2*:  156:        bin = ncell[a] - 1;
-        -:  157:      // The wrap puts the fraction in [0, 1], so the bin is not negative.
-    1014*:  158:      ix[a] = bin;
-        -:  159:    }
-     338*:  160:    const int cell = ix[0] + ncell[0] * (ix[1] + ncell[1] * ix[2]);
-     338*:  161:    scratch.cell_of[i] = static_cast<std::uint32_t>(cell);
-     338*:  162:    ++scratch.hist[static_cast<std::size_t>(cell)];
-        -:  163:  }
-      72*:  164:  exclusive_prefix(scratch.hist, threads);
-      72*:  165:  scratch.placed.resize(n);
-      72*:  166:  auto slot = scratch.hist;
-     410*:  167:  for (std::size_t i = 0; i < n; ++i) {
-     338*:  168:    const auto cell = static_cast<std::size_t>(scratch.cell_of[i]);
-     338*:  169:    scratch.placed[slot[cell]++] = static_cast<std::uint32_t>(i);
-        -:  170:  }
-      72*:  171:  scratch.x.resize(n);
-      72*:  172:  scratch.y.resize(n);
-      72*:  173:  scratch.z.resize(n);
-     410*:  174:  for (std::size_t k = 0; k < n; ++k) {
-     338*:  175:    const std::uint32_t id = scratch.placed[k];
-     338*:  176:    scratch.x[k] = pos[3 * id];
-     338*:  177:    scratch.y[k] = pos[3 * id + 1];
-     338*:  178:    scratch.z[k] = pos[3 * id + 2];
-        -:  179:  }
-        -:  180:
-      72*:  181:  if (static_cast<int>(scratch.parts.size()) < threads)
-      48*:  182:    scratch.parts.resize(static_cast<std::size_t>(threads));
-      72*:  183:  scratch.slice_at.resize(n);
-      72*:  184:  scratch.slice_n.resize(n);
-      72*:  185:  scratch.slice_thread.resize(n);
-      72*:  186:  const double cut2 = search * search;
-     152*:  187:  auto work = [&](int t) {
-     152*:  188:    const std::size_t begin =
-     152*:  189:        (static_cast<std::size_t>(t) * n) / static_cast<std::size_t>(threads);
-     152*:  190:    const std::size_t end =
-     152*:  191:        (static_cast<std::size_t>(t + 1) * n) / static_cast<std::size_t>(threads);
-     152*:  192:    auto &out = scratch.parts[static_cast<std::size_t>(t)];
-     152*:  193:    out.clear();
-     152*:  194:    out.reserve((end - begin) * 128);
-     490*:  195:    for (std::size_t k = begin; k < end; ++k) {
-     338*:  196:      const std::uint32_t id = scratch.placed[k];
-     338*:  197:      const std::uint32_t slice = static_cast<std::uint32_t>(out.size());
-     338*:  198:      const int cell = static_cast<int>(scratch.cell_of[id]);
-     338*:  199:      const int ix = cell % ncell[0];
-     338*:  200:      const int iy = (cell / ncell[0]) % ncell[1];
-     338*:  201:      const int iz = cell / (ncell[0] * ncell[1]);
-     338*:  202:      const double cx = scratch.x[k];
-     338*:  203:      const double cy = scratch.y[k];
-     338*:  204:      const double cz = scratch.z[k];
-    1352*:  205:      for (int dz = -1; dz <= 1; ++dz) {
-    4056*:  206:        for (int dy = -1; dy <= 1; ++dy) {
-   12168*:  207:          for (int dx = -1; dx <= 1; ++dx) {
-    9126*:  208:            int jx = ix + dx;
-    9126*:  209:            int jy = iy + dy;
-    9126*:  210:            int jz = iz + dz;
-    9126*:  211:            int sx = 0, sy = 0, sz = 0;
-    9126*:  212:            if (jx < 0) {
-    2790*:  213:              jx += ncell[0];
-    2790*:  214:              sx = -1;
-    6336*:  215:            } else if (jx >= ncell[0]) {
-      54*:  216:              jx -= ncell[0];
-      54*:  217:              sx = 1;
-        -:  218:            }
-    9126*:  219:            if (jy < 0) {
-    2844*:  220:              jy += ncell[1];
-    2844*:  221:              sy = -1;
-    6282*:  222:            } else if (jy >= ncell[1]) {
-      54*:  223:              jy -= ncell[1];
-      54*:  224:              sy = 1;
-        -:  225:            }
-    9126*:  226:            if (jz < 0) {
-    2988*:  227:              jz += ncell[2];
-    2988*:  228:              sz = -1;
-    6138*:  229:            } else if (jz >= ncell[2]) {
-      36*:  230:              jz -= ncell[2];
-      36*:  231:              sz = 1;
-        -:  232:            }
-    9126*:  233:            const int jcell = jx + ncell[0] * (jy + ncell[1] * jz);
-    9126*:  234:            const std::size_t lo = scratch.hist[static_cast<std::size_t>(jcell)];
-    9126*:  235:            const std::size_t hi = scratch.hist[static_cast<std::size_t>(jcell) + 1];
-   11612*:  236:            for (std::size_t p = lo; p < hi; ++p) {
-    2486*:  237:              const std::uint32_t jd = scratch.placed[p];
-    2486*:  238:              if (jd == id && sx == 0 && sy == 0 && sz == 0)
-     770*:  239:                continue;
-    2148*:  240:              const double ddx = scratch.x[p] - cx + static_cast<double>(sx) * side[0];
-    2148*:  241:              const double ddy = scratch.y[p] - cy + static_cast<double>(sy) * side[1];
-    2148*:  242:              const double ddz = scratch.z[p] - cz + static_cast<double>(sz) * side[2];
-    2148*:  243:              const double d2 = ddx * ddx + ddy * ddy + ddz * ddz;
-    2148*:  244:              if (!(d2 < cut2))
-     432*:  245:                continue;
-    1716*:  246:              Pair row;
-    1716*:  247:              row.dist2 = d2;
-    1716*:  248:              row.neighbor = jd;
-    1716*:  249:              row.s0 = static_cast<std::int8_t>(sx);
-    1716*:  250:              row.s1 = static_cast<std::int8_t>(sy);
-    1716*:  251:              row.s2 = static_cast<std::int8_t>(sz);
-    1716*:  252:              out.push_back(row);
-        -:  253:            }
-        -:  254:          }
-        -:  255:        }
-        -:  256:      }
-     338*:  257:      const auto count = static_cast<std::uint32_t>(out.size() - slice);
-     338*:  258:      scratch.slice_at[id] = slice;
-     338*:  259:      scratch.slice_n[id] = count;
-     338*:  260:      scratch.slice_thread[id] = static_cast<std::uint32_t>(t);
-     338*:  261:      if (count > 1)
-     260*:  262:        std::sort(out.begin() + static_cast<std::ptrdiff_t>(slice), out.end(), before);
-        -:  263:    }
-     224*:  264:  };
-      72*:  265:  if (threads == 1) {
-      64*:  266:    work(0);
-        -:  267:  } else {
-       8*:  268:    std::vector<std::thread> pool;
-      96*:  269:    for (int t = 0; t < threads; ++t)
-      88*:  270:      pool.emplace_back(work, t);
-      96*:  271:    for (auto &worker : pool)
-      88*:  272:      worker.join();
-       8*:  273:  }
-      72*:  274:  scratch.stable = scratch.parts[0].data();
-      72*:  275:  scratch.stable_n = 0;
-     224*:  276:  for (const auto &part : scratch.parts)
-     152*:  277:    scratch.stable_n += part.size();
-      72*:  278:  return true;
-      72*:  279:}
+        -:  125:
+        -:  126:// Bin size is at least `search`. Atoms are counting-sorted into bins.
+        -:  127:// Each thread writes one contiguous pair block, and each atom's pairs
+        -:  128:// are sorted before the next atom is visited. False when the box is
+        -:  129:// not orthorhombic or a side is shorter than three search lengths.
+      52*:  130:inline bool build(const double *pos, std::size_t n, const double *box, double search,
+        -:  131:                  int threads, Scratch &scratch) noexcept {
+      52*:  132:  if (n == 0 || !(search > 0.0) || !orthorhombic(box))
+      10*:  133:    return false;
+      42*:  134:  const double side[3] = {box[0], box[4], box[8]};
+      42*:  135:  if (side[0] < 3.0 * search || side[1] < 3.0 * search || side[2] < 3.0 * search)
+       3*:  136:    return false;
+      39*:  137:  threads = std::max(1, threads);
+        -:  138:  int ncell[3];
+      39*:  139:  int cells = 1;
+     156*:  140:  for (int a = 0; a < 3; ++a) {
+     117*:  141:    ncell[a] = std::max(1, static_cast<int>(std::floor(side[a] / search)));
+     117*:  142:    cells *= ncell[a];
+        -:  143:  }
+      39*:  144:  grow_resize(scratch.cell_of, n);
+      39*:  145:  grow_assign_n(scratch.hist, static_cast<std::size_t>(cells), std::size_t{0});
+     232*:  146:  for (std::size_t i = 0; i < n; ++i) {
+        -:  147:    int ix[3];
+     772*:  148:    for (int a = 0; a < 3; ++a) {
+     579*:  149:      double f = pos[3 * i + a] / side[a];
+     579*:  150:      f -= std::floor(f);
+     579*:  151:      int bin = static_cast<int>(std::floor(f * static_cast<double>(ncell[a])));
+     579*:  152:      if (bin >= ncell[a])
+       1*:  153:        bin = ncell[a] - 1;
+        -:  154:      // The wrap puts the fraction in [0, 1], so the bin is not negative.
+     579*:  155:      ix[a] = bin;
+        -:  156:    }
+     193*:  157:    const int cell = ix[0] + ncell[0] * (ix[1] + ncell[1] * ix[2]);
+     193*:  158:    scratch.cell_of[i] = static_cast<std::uint32_t>(cell);
+     193*:  159:    ++scratch.hist[static_cast<std::size_t>(cell)];
+        -:  160:  }
+      39*:  161:  exclusive_prefix(scratch.hist, threads);
+      39*:  162:  grow_resize(scratch.placed, n);
+      39*:  163:  std::vector<std::size_t> slot;
+      39*:  164:  grow_assign_range(slot, scratch.hist.data(), scratch.hist.data() + scratch.hist.size());
+     232*:  165:  for (std::size_t i = 0; i < n; ++i) {
+     193*:  166:    const auto cell = static_cast<std::size_t>(scratch.cell_of[i]);
+     193*:  167:    scratch.placed[slot[cell]++] = static_cast<std::uint32_t>(i);
+        -:  168:  }
+      39*:  169:  grow_resize(scratch.x, n);
+      39*:  170:  grow_resize(scratch.y, n);
+      39*:  171:  grow_resize(scratch.z, n);
+     232*:  172:  for (std::size_t k = 0; k < n; ++k) {
+     193*:  173:    const std::uint32_t id = scratch.placed[k];
+     193*:  174:    scratch.x[k] = pos[3 * id];
+     193*:  175:    scratch.y[k] = pos[3 * id + 1];
+     193*:  176:    scratch.z[k] = pos[3 * id + 2];
+        -:  177:  }
+        -:  178:
+      39*:  179:  if (static_cast<int>(scratch.parts.size()) < threads)
+      25*:  180:    grow_resize(scratch.parts, static_cast<std::size_t>(threads));
+      39*:  181:  grow_resize(scratch.slice_at, n);
+      39*:  182:  grow_resize(scratch.slice_n, n);
+      39*:  183:  grow_resize(scratch.slice_thread, n);
+      39*:  184:  const double cut2 = search * search;
+      82*:  185:  auto work = [&](int t) {
+      82*:  186:    const std::size_t begin =
+      82*:  187:        (static_cast<std::size_t>(t) * n) / static_cast<std::size_t>(threads);
+      82*:  188:    const std::size_t end =
+      82*:  189:        (static_cast<std::size_t>(t + 1) * n) / static_cast<std::size_t>(threads);
+      82*:  190:    auto &out = scratch.parts[static_cast<std::size_t>(t)];
+      82*:  191:    out.clear();
+      82*:  192:    grow_reserve(out, (end - begin) * 128);
+     275*:  193:    for (std::size_t k = begin; k < end; ++k) {
+     193*:  194:      const std::uint32_t id = scratch.placed[k];
+     193*:  195:      const std::uint32_t slice = static_cast<std::uint32_t>(out.size());
+     193*:  196:      const int cell = static_cast<int>(scratch.cell_of[id]);
+     193*:  197:      const int ix = cell % ncell[0];
+     193*:  198:      const int iy = (cell / ncell[0]) % ncell[1];
+     193*:  199:      const int iz = cell / (ncell[0] * ncell[1]);
+     193*:  200:      const double cx = scratch.x[k];
+     193*:  201:      const double cy = scratch.y[k];
+     193*:  202:      const double cz = scratch.z[k];
+     772*:  203:      for (int dz = -1; dz <= 1; ++dz) {
+    2316*:  204:        for (int dy = -1; dy <= 1; ++dy) {
+    6948*:  205:          for (int dx = -1; dx <= 1; ++dx) {
+    5211*:  206:            int jx = ix + dx;
+    5211*:  207:            int jy = iy + dy;
+    5211*:  208:            int jz = iz + dz;
+    5211*:  209:            int sx = 0, sy = 0, sz = 0;
+    5211*:  210:            if (jx < 0) {
+    1611*:  211:              jx += ncell[0];
+    1611*:  212:              sx = -1;
+    3600*:  213:            } else if (jx >= ncell[0]) {
+      27*:  214:              jx -= ncell[0];
+      27*:  215:              sx = 1;
+        -:  216:            }
+    5211*:  217:            if (jy < 0) {
+    1638*:  218:              jy += ncell[1];
+    1638*:  219:              sy = -1;
+    3573*:  220:            } else if (jy >= ncell[1]) {
+      27*:  221:              jy -= ncell[1];
+      27*:  222:              sy = 1;
+        -:  223:            }
+    5211*:  224:            if (jz < 0) {
+    1710*:  225:              jz += ncell[2];
+    1710*:  226:              sz = -1;
+    3501*:  227:            } else if (jz >= ncell[2]) {
+      18*:  228:              jz -= ncell[2];
+      18*:  229:              sz = 1;
+        -:  230:            }
+    5211*:  231:            const int jcell = jx + ncell[0] * (jy + ncell[1] * jz);
+    5211*:  232:            const std::size_t lo = scratch.hist[static_cast<std::size_t>(jcell)];
+    5211*:  233:            const std::size_t hi = scratch.hist[static_cast<std::size_t>(jcell) + 1];
+    6646*:  234:            for (std::size_t p = lo; p < hi; ++p) {
+    1435*:  235:              const std::uint32_t jd = scratch.placed[p];
+    1435*:  236:              if (jd == id && sx == 0 && sy == 0 && sz == 0)
+     409*:  237:                continue;
+    1242*:  238:              const double ddx = scratch.x[p] - cx + static_cast<double>(sx) * side[0];
+    1242*:  239:              const double ddy = scratch.y[p] - cy + static_cast<double>(sy) * side[1];
+    1242*:  240:              const double ddz = scratch.z[p] - cz + static_cast<double>(sz) * side[2];
+    1242*:  241:              const double d2 = ddx * ddx + ddy * ddy + ddz * ddz;
+    1242*:  242:              if (!(d2 < cut2))
+     216*:  243:                continue;
+    1026*:  244:              Pair row;
+    1026*:  245:              row.dist2 = d2;
+    1026*:  246:              row.neighbor = jd;
+    1026*:  247:              row.s0 = static_cast<std::int8_t>(sx);
+    1026*:  248:              row.s1 = static_cast<std::int8_t>(sy);
+    1026*:  249:              row.s2 = static_cast<std::int8_t>(sz);
+    1026*:  250:              grow_push(out, row);
+        -:  251:            }
+        -:  252:          }
+        -:  253:        }
+        -:  254:      }
+     193*:  255:      const auto count = static_cast<std::uint32_t>(out.size() - slice);
+     193*:  256:      scratch.slice_at[id] = slice;
+     193*:  257:      scratch.slice_n[id] = count;
+     193*:  258:      scratch.slice_thread[id] = static_cast<std::uint32_t>(t);
+     193*:  259:      if (count > 1)
+     154*:  260:        grow_sort(out.begin() + static_cast<std::ptrdiff_t>(slice), out.end(), before);
+        -:  261:    }
+     121*:  262:  };
+      39*:  263:  if (threads == 1) {
+      32*:  264:    work(0);
+     104*:  265:  } else if (!spawn_workers(threads, [&](int t) { return [&, t] { work(t); }; })) {
+       2*:  266:    threads = 1;
+       2*:  267:    work(0);
+        -:  268:  }
+      39*:  269:  scratch.stable = scratch.parts[0].data();
+      39*:  270:  scratch.stable_n = 0;
+     127*:  271:  for (const auto &part : scratch.parts)
+      88*:  272:    scratch.stable_n += part.size();
+      39*:  273:  return true;
+      39*:  274:}
 ------------------
 _ZN5rgpot11linked_cell5buildEPKdmS2_diRNS0_7ScratchE:
-function _ZN5rgpot11linked_cell5buildEPKdmS2_diRNS0_7ScratchE called 96 returned 100% blocks executed 91%
-       96:  133:inline bool build(const double *pos, std::size_t n, const double *box, double search,
-        -:  134:                  int threads, Scratch &scratch) {
-       96:  135:  if (n == 0 || !(search > 0.0) || !orthorhombic(box))
-branch  0 taken 98% (fallthrough)
-branch  1 taken 2%
+function _ZN5rgpot11linked_cell5buildEPKdmS2_diRNS0_7ScratchE called 52 returned 100% blocks executed 100%
+       52:  130:inline bool build(const double *pos, std::size_t n, const double *box, double search,
+        -:  131:                  int threads, Scratch &scratch) noexcept {
+       52:  132:  if (n == 0 || !(search > 0.0) || !orthorhombic(box))
+branch  0 taken 96% (fallthrough)
+branch  1 taken 4%
 branch  2 taken 96% (fallthrough)
 branch  3 taken 4%
 call    4 returned 100%
-branch  5 taken 13% (fallthrough)
-branch  6 taken 87%
+branch  5 taken 12% (fallthrough)
+branch  6 taken 88%
 branch  7 taken 19% (fallthrough)
 branch  8 taken 81%
-       18:  136:    return false;
-       78:  137:  const double side[3] = {box[0], box[4], box[8]};
-       78:  138:  if (side[0] < 3.0 * search || side[1] < 3.0 * search || side[2] < 3.0 * search)
-branch  0 taken 97% (fallthrough)
-branch  1 taken 3%
-branch  2 taken 97% (fallthrough)
-branch  3 taken 3%
-branch  4 taken 3% (fallthrough)
-branch  5 taken 97%
-        6:  139:    return false;
-       72:  140:  threads = std::max(1, threads);
+       10:  133:    return false;
+       42:  134:  const double side[3] = {box[0], box[4], box[8]};
+       42:  135:  if (side[0] < 3.0 * search || side[1] < 3.0 * search || side[2] < 3.0 * search)
+branch  0 taken 98% (fallthrough)
+branch  1 taken 2%
+branch  2 taken 98% (fallthrough)
+branch  3 taken 2%
+branch  4 taken 2% (fallthrough)
+branch  5 taken 98%
+        3:  136:    return false;
+       39:  137:  threads = std::max(1, threads);
 call    0 returned 100%
-        -:  141:  int ncell[3];
-       72:  142:  int cells = 1;
-      288:  143:  for (int a = 0; a < 3; ++a) {
+        -:  138:  int ncell[3];
+       39:  139:  int cells = 1;
+      156:  140:  for (int a = 0; a < 3; ++a) {
 branch  0 taken 75%
 branch  1 taken 25% (fallthrough)
-      216:  144:    ncell[a] = std::max(1, static_cast<int>(std::floor(side[a] / search)));
+      117:  141:    ncell[a] = std::max(1, static_cast<int>(std::floor(side[a] / search)));
 call    0 returned 100%
-      216:  145:    cells *= ncell[a];
-        -:  146:  }
-       72:  147:  scratch.cell_of.resize(n);
+      117:  142:    cells *= ncell[a];
+        -:  143:  }
+       39:  144:  grow_resize(scratch.cell_of, n);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       72:  148:  scratch.hist.assign(static_cast<std::size_t>(cells), 0);
+       39:  145:  grow_assign_n(scratch.hist, static_cast<std::size_t>(cells), std::size_t{0});
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-      410:  149:  for (std::size_t i = 0; i < n; ++i) {
-branch  0 taken 82%
-branch  1 taken 18% (fallthrough)
-        -:  150:    int ix[3];
-     1352:  151:    for (int a = 0; a < 3; ++a) {
+      232:  146:  for (std::size_t i = 0; i < n; ++i) {
+branch  0 taken 83%
+branch  1 taken 17% (fallthrough)
+        -:  147:    int ix[3];
+      772:  148:    for (int a = 0; a < 3; ++a) {
 branch  0 taken 75%
 branch  1 taken 25% (fallthrough)
-     1014:  152:      double f = pos[3 * i + a] / side[a];
-     1014:  153:      f -= std::floor(f);
-     1014:  154:      int bin = static_cast<int>(std::floor(f * static_cast<double>(ncell[a])));
-     1014:  155:      if (bin >= ncell[a])
+      579:  149:      double f = pos[3 * i + a] / side[a];
+      579:  150:      f -= std::floor(f);
+      579:  151:      int bin = static_cast<int>(std::floor(f * static_cast<double>(ncell[a])));
+      579:  152:      if (bin >= ncell[a])
 branch  0 taken 1% (fallthrough)
 branch  1 taken 100%
-        2:  156:        bin = ncell[a] - 1;
-        -:  157:      // The wrap puts the fraction in [0, 1], so the bin is not negative.
-     1014:  158:      ix[a] = bin;
-        -:  159:    }
-      338:  160:    const int cell = ix[0] + ncell[0] * (ix[1] + ncell[1] * ix[2]);
-      338:  161:    scratch.cell_of[i] = static_cast<std::uint32_t>(cell);
+        1:  153:        bin = ncell[a] - 1;
+        -:  154:      // The wrap puts the fraction in [0, 1], so the bin is not negative.
+      579:  155:      ix[a] = bin;
+        -:  156:    }
+      193:  157:    const int cell = ix[0] + ncell[0] * (ix[1] + ncell[1] * ix[2]);
+      193:  158:    scratch.cell_of[i] = static_cast<std::uint32_t>(cell);
 call    0 returned 100%
-      338:  162:    ++scratch.hist[static_cast<std::size_t>(cell)];
+      193:  159:    ++scratch.hist[static_cast<std::size_t>(cell)];
 call    0 returned 100%
-        -:  163:  }
-       72:  164:  exclusive_prefix(scratch.hist, threads);
+        -:  160:  }
+       39:  161:  exclusive_prefix(scratch.hist, threads);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       72:  165:  scratch.placed.resize(n);
+       39:  162:  grow_resize(scratch.placed, n);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       72:  166:  auto slot = scratch.hist;
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-      410:  167:  for (std::size_t i = 0; i < n; ++i) {
-branch  0 taken 82%
-branch  1 taken 18% (fallthrough)
-      338:  168:    const auto cell = static_cast<std::size_t>(scratch.cell_of[i]);
-call    0 returned 100%
-      338:  169:    scratch.placed[slot[cell]++] = static_cast<std::uint32_t>(i);
-call    0 returned 100%
-call    1 returned 100%
-        -:  170:  }
-       72:  171:  scratch.x.resize(n);
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       72:  172:  scratch.y.resize(n);
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       72:  173:  scratch.z.resize(n);
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-      410:  174:  for (std::size_t k = 0; k < n; ++k) {
-branch  0 taken 82%
-branch  1 taken 18% (fallthrough)
-      338:  175:    const std::uint32_t id = scratch.placed[k];
-call    0 returned 100%
-      338:  176:    scratch.x[k] = pos[3 * id];
-call    0 returned 100%
-      338:  177:    scratch.y[k] = pos[3 * id + 1];
-call    0 returned 100%
-      338:  178:    scratch.z[k] = pos[3 * id + 2];
-call    0 returned 100%
-        -:  179:  }
-        -:  180:
-       72:  181:  if (static_cast<int>(scratch.parts.size()) < threads)
-call    0 returned 100%
-branch  1 taken 67% (fallthrough)
-branch  2 taken 33%
-       48:  182:    scratch.parts.resize(static_cast<std::size_t>(threads));
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       72:  183:  scratch.slice_at.resize(n);
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       72:  184:  scratch.slice_n.resize(n);
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       72:  185:  scratch.slice_thread.resize(n);
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       72:  186:  const double cut2 = search * search;
-        -:  187:  auto work = [&](int t) {
-        -:  188:    const std::size_t begin =
-        -:  189:        (static_cast<std::size_t>(t) * n) / static_cast<std::size_t>(threads);
-        -:  190:    const std::size_t end =
-        -:  191:        (static_cast<std::size_t>(t + 1) * n) / static_cast<std::size_t>(threads);
-        -:  192:    auto &out = scratch.parts[static_cast<std::size_t>(t)];
-        -:  193:    out.clear();
-        -:  194:    out.reserve((end - begin) * 128);
-        -:  195:    for (std::size_t k = begin; k < end; ++k) {
-        -:  196:      const std::uint32_t id = scratch.placed[k];
-        -:  197:      const std::uint32_t slice = static_cast<std::uint32_t>(out.size());
-        -:  198:      const int cell = static_cast<int>(scratch.cell_of[id]);
-        -:  199:      const int ix = cell % ncell[0];
-        -:  200:      const int iy = (cell / ncell[0]) % ncell[1];
-        -:  201:      const int iz = cell / (ncell[0] * ncell[1]);
-        -:  202:      const double cx = scratch.x[k];
-        -:  203:      const double cy = scratch.y[k];
-        -:  204:      const double cz = scratch.z[k];
-        -:  205:      for (int dz = -1; dz <= 1; ++dz) {
-        -:  206:        for (int dy = -1; dy <= 1; ++dy) {
-        -:  207:          for (int dx = -1; dx <= 1; ++dx) {
-        -:  208:            int jx = ix + dx;
-        -:  209:            int jy = iy + dy;
-        -:  210:            int jz = iz + dz;
-        -:  211:            int sx = 0, sy = 0, sz = 0;
-        -:  212:            if (jx < 0) {
-        -:  213:              jx += ncell[0];
-        -:  214:              sx = -1;
-        -:  215:            } else if (jx >= ncell[0]) {
-        -:  216:              jx -= ncell[0];
-        -:  217:              sx = 1;
-        -:  218:            }
-        -:  219:            if (jy < 0) {
-        -:  220:              jy += ncell[1];
-        -:  221:              sy = -1;
-        -:  222:            } else if (jy >= ncell[1]) {
-        -:  223:              jy -= ncell[1];
-        -:  224:              sy = 1;
-        -:  225:            }
-        -:  226:            if (jz < 0) {
-        -:  227:              jz += ncell[2];
-        -:  228:              sz = -1;
-        -:  229:            } else if (jz >= ncell[2]) {
-        -:  230:              jz -= ncell[2];
-        -:  231:              sz = 1;
-        -:  232:            }
-        -:  233:            const int jcell = jx + ncell[0] * (jy + ncell[1] * jz);
-        -:  234:            const std::size_t lo = scratch.hist[static_cast<std::size_t>(jcell)];
-        -:  235:            const std::size_t hi = scratch.hist[static_cast<std::size_t>(jcell) + 1];
-        -:  236:            for (std::size_t p = lo; p < hi; ++p) {
-        -:  237:              const std::uint32_t jd = scratch.placed[p];
-        -:  238:              if (jd == id && sx == 0 && sy == 0 && sz == 0)
-        -:  239:                continue;
-        -:  240:              const double ddx = scratch.x[p] - cx + static_cast<double>(sx) * side[0];
-        -:  241:              const double ddy = scratch.y[p] - cy + static_cast<double>(sy) * side[1];
-        -:  242:              const double ddz = scratch.z[p] - cz + static_cast<double>(sz) * side[2];
-        -:  243:              const double d2 = ddx * ddx + ddy * ddy + ddz * ddz;
-        -:  244:              if (!(d2 < cut2))
-        -:  245:                continue;
-        -:  246:              Pair row;
-        -:  247:              row.dist2 = d2;
-        -:  248:              row.neighbor = jd;
-        -:  249:              row.s0 = static_cast<std::int8_t>(sx);
-        -:  250:              row.s1 = static_cast<std::int8_t>(sy);
-        -:  251:              row.s2 = static_cast<std::int8_t>(sz);
-        -:  252:              out.push_back(row);
-        -:  253:            }
-        -:  254:          }
-        -:  255:        }
-        -:  256:      }
-        -:  257:      const auto count = static_cast<std::uint32_t>(out.size() - slice);
-        -:  258:      scratch.slice_at[id] = slice;
-        -:  259:      scratch.slice_n[id] = count;
-        -:  260:      scratch.slice_thread[id] = static_cast<std::uint32_t>(t);
-        -:  261:      if (count > 1)
-        -:  262:        std::sort(out.begin() + static_cast<std::ptrdiff_t>(slice), out.end(), before);
-        -:  263:    }
-       72:  264:  };
-       72:  265:  if (threads == 1) {
-branch  0 taken 89% (fallthrough)
-branch  1 taken 11%
-       64:  266:    work(0);
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        -:  267:  } else {
-        8:  268:    std::vector<std::thread> pool;
-       96:  269:    for (int t = 0; t < threads; ++t)
-branch  0 taken 92%
-branch  1 taken 8% (fallthrough)
-       88:  270:      pool.emplace_back(work, t);
-call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-       96:  271:    for (auto &worker : pool)
+       39:  163:  std::vector<std::size_t> slot;
+       39:  164:  grow_assign_range(slot, scratch.hist.data(), scratch.hist.data() + scratch.hist.size());
 call    0 returned 100%
 call    1 returned 100%
 call    2 returned 100%
 call    3 returned 100%
-call    4 returned 100%
-branch  5 taken 92%
-branch  6 taken 8% (fallthrough)
-       88:  272:      worker.join();
+      232:  165:  for (std::size_t i = 0; i < n; ++i) {
+branch  0 taken 83%
+branch  1 taken 17% (fallthrough)
+      193:  166:    const auto cell = static_cast<std::size_t>(scratch.cell_of[i]);
 call    0 returned 100%
-branch  1 taken 100% (fallthrough)
-branch  2 taken 0% (throw)
-        8:  273:  }
-call    0 returned 100%
-call    1 never executed
-       72:  274:  scratch.stable = scratch.parts[0].data();
+      193:  167:    scratch.placed[slot[cell]++] = static_cast<std::uint32_t>(i);
 call    0 returned 100%
 call    1 returned 100%
-       72:  275:  scratch.stable_n = 0;
-      224:  276:  for (const auto &part : scratch.parts)
+        -:  168:  }
+       39:  169:  grow_resize(scratch.x, n);
+call    0 returned 100%
+       39:  170:  grow_resize(scratch.y, n);
+call    0 returned 100%
+       39:  171:  grow_resize(scratch.z, n);
+call    0 returned 100%
+      232:  172:  for (std::size_t k = 0; k < n; ++k) {
+branch  0 taken 83%
+branch  1 taken 17% (fallthrough)
+      193:  173:    const std::uint32_t id = scratch.placed[k];
+call    0 returned 100%
+      193:  174:    scratch.x[k] = pos[3 * id];
+call    0 returned 100%
+      193:  175:    scratch.y[k] = pos[3 * id + 1];
+call    0 returned 100%
+      193:  176:    scratch.z[k] = pos[3 * id + 2];
+call    0 returned 100%
+        -:  177:  }
+        -:  178:
+       39:  179:  if (static_cast<int>(scratch.parts.size()) < threads)
+call    0 returned 100%
+branch  1 taken 64% (fallthrough)
+branch  2 taken 36%
+       25:  180:    grow_resize(scratch.parts, static_cast<std::size_t>(threads));
+call    0 returned 100%
+       39:  181:  grow_resize(scratch.slice_at, n);
+call    0 returned 100%
+       39:  182:  grow_resize(scratch.slice_n, n);
+call    0 returned 100%
+       39:  183:  grow_resize(scratch.slice_thread, n);
+call    0 returned 100%
+       39:  184:  const double cut2 = search * search;
+        -:  185:  auto work = [&](int t) {
+        -:  186:    const std::size_t begin =
+        -:  187:        (static_cast<std::size_t>(t) * n) / static_cast<std::size_t>(threads);
+        -:  188:    const std::size_t end =
+        -:  189:        (static_cast<std::size_t>(t + 1) * n) / static_cast<std::size_t>(threads);
+        -:  190:    auto &out = scratch.parts[static_cast<std::size_t>(t)];
+        -:  191:    out.clear();
+        -:  192:    grow_reserve(out, (end - begin) * 128);
+        -:  193:    for (std::size_t k = begin; k < end; ++k) {
+        -:  194:      const std::uint32_t id = scratch.placed[k];
+        -:  195:      const std::uint32_t slice = static_cast<std::uint32_t>(out.size());
+        -:  196:      const int cell = static_cast<int>(scratch.cell_of[id]);
+        -:  197:      const int ix = cell % ncell[0];
+        -:  198:      const int iy = (cell / ncell[0]) % ncell[1];
+        -:  199:      const int iz = cell / (ncell[0] * ncell[1]);
+        -:  200:      const double cx = scratch.x[k];
+        -:  201:      const double cy = scratch.y[k];
+        -:  202:      const double cz = scratch.z[k];
+        -:  203:      for (int dz = -1; dz <= 1; ++dz) {
+        -:  204:        for (int dy = -1; dy <= 1; ++dy) {
+        -:  205:          for (int dx = -1; dx <= 1; ++dx) {
+        -:  206:            int jx = ix + dx;
+        -:  207:            int jy = iy + dy;
+        -:  208:            int jz = iz + dz;
+        -:  209:            int sx = 0, sy = 0, sz = 0;
+        -:  210:            if (jx < 0) {
+        -:  211:              jx += ncell[0];
+        -:  212:              sx = -1;
+        -:  213:            } else if (jx >= ncell[0]) {
+        -:  214:              jx -= ncell[0];
+        -:  215:              sx = 1;
+        -:  216:            }
+        -:  217:            if (jy < 0) {
+        -:  218:              jy += ncell[1];
+        -:  219:              sy = -1;
+        -:  220:            } else if (jy >= ncell[1]) {
+        -:  221:              jy -= ncell[1];
+        -:  222:              sy = 1;
+        -:  223:            }
+        -:  224:            if (jz < 0) {
+        -:  225:              jz += ncell[2];
+        -:  226:              sz = -1;
+        -:  227:            } else if (jz >= ncell[2]) {
+        -:  228:              jz -= ncell[2];
+        -:  229:              sz = 1;
+        -:  230:            }
+        -:  231:            const int jcell = jx + ncell[0] * (jy + ncell[1] * jz);
+        -:  232:            const std::size_t lo = scratch.hist[static_cast<std::size_t>(jcell)];
+        -:  233:            const std::size_t hi = scratch.hist[static_cast<std::size_t>(jcell) + 1];
+        -:  234:            for (std::size_t p = lo; p < hi; ++p) {
+        -:  235:              const std::uint32_t jd = scratch.placed[p];
+        -:  236:              if (jd == id && sx == 0 && sy == 0 && sz == 0)
+        -:  237:                continue;
+        -:  238:              const double ddx = scratch.x[p] - cx + static_cast<double>(sx) * side[0];
+        -:  239:              const double ddy = scratch.y[p] - cy + static_cast<double>(sy) * side[1];
+        -:  240:              const double ddz = scratch.z[p] - cz + static_cast<double>(sz) * side[2];
+        -:  241:              const double d2 = ddx * ddx + ddy * ddy + ddz * ddz;
+        -:  242:              if (!(d2 < cut2))
+        -:  243:                continue;
+        -:  244:              Pair row;
+        -:  245:              row.dist2 = d2;
+        -:  246:              row.neighbor = jd;
+        -:  247:              row.s0 = static_cast<std::int8_t>(sx);
+        -:  248:              row.s1 = static_cast<std::int8_t>(sy);
+        -:  249:              row.s2 = static_cast<std::int8_t>(sz);
+        -:  250:              grow_push(out, row);
+        -:  251:            }
+        -:  252:          }
+        -:  253:        }
+        -:  254:      }
+        -:  255:      const auto count = static_cast<std::uint32_t>(out.size() - slice);
+        -:  256:      scratch.slice_at[id] = slice;
+        -:  257:      scratch.slice_n[id] = count;
+        -:  258:      scratch.slice_thread[id] = static_cast<std::uint32_t>(t);
+        -:  259:      if (count > 1)
+        -:  260:        grow_sort(out.begin() + static_cast<std::ptrdiff_t>(slice), out.end(), before);
+        -:  261:    }
+       39:  262:  };
+       39:  263:  if (threads == 1) {
+branch  0 taken 82% (fallthrough)
+branch  1 taken 18%
+       32:  264:    work(0);
+call    0 returned 100%
+        7:  265:  } else if (!spawn_workers(threads, [&](int t) { return [&, t] { work(t); }; })) {
+call    0 returned 100%
+branch  1 taken 29% (fallthrough)
+branch  2 taken 71%
+        2:  266:    threads = 1;
+        2:  267:    work(0);
+call    0 returned 100%
+        -:  268:  }
+       39:  269:  scratch.stable = scratch.parts[0].data();
+call    0 returned 100%
+call    1 returned 100%
+       39:  270:  scratch.stable_n = 0;
+      127:  271:  for (const auto &part : scratch.parts)
 call    0 returned 100%
 call    1 returned 100%
 call    2 returned 100%
 call    3 returned 100%
-branch  4 taken 68%
-branch  5 taken 32% (fallthrough)
-      152:  277:    scratch.stable_n += part.size();
+branch  4 taken 69%
+branch  5 taken 31% (fallthrough)
+       88:  272:    scratch.stable_n += part.size();
 call    0 returned 100%
 call    1 returned 100%
-       72:  278:  return true;
-       72:  279:}
+       39:  273:  return true;
+       39:  274:}
 call    0 returned 100%
-call    1 never executed
 ------------------
 _ZN5rgpot11linked_cell5buildEPKdmS2_diRNS0_7ScratchE:
 function _ZN5rgpot11linked_cell5buildEPKdmS2_diRNS0_7ScratchE called 0 returned 0% blocks executed 0%
-    #####:  133:inline bool build(const double *pos, std::size_t n, const double *box, double search,
-        -:  134:                  int threads, Scratch &scratch) {
-    #####:  135:  if (n == 0 || !(search > 0.0) || !orthorhombic(box))
+    #####:  130:inline bool build(const double *pos, std::size_t n, const double *box, double search,
+        -:  131:                  int threads, Scratch &scratch) noexcept {
+    #####:  132:  if (n == 0 || !(search > 0.0) || !orthorhombic(box))
 branch  0 never executed (fallthrough)
 branch  1 never executed
 branch  2 never executed (fallthrough)
@@ -929,264 +809,225 @@ branch  5 never executed (fallthrough)
 branch  6 never executed
 branch  7 never executed (fallthrough)
 branch  8 never executed
-    #####:  136:    return false;
-    #####:  137:  const double side[3] = {box[0], box[4], box[8]};
-    #####:  138:  if (side[0] < 3.0 * search || side[1] < 3.0 * search || side[2] < 3.0 * search)
+    #####:  133:    return false;
+    #####:  134:  const double side[3] = {box[0], box[4], box[8]};
+    #####:  135:  if (side[0] < 3.0 * search || side[1] < 3.0 * search || side[2] < 3.0 * search)
 branch  0 never executed (fallthrough)
 branch  1 never executed
 branch  2 never executed (fallthrough)
 branch  3 never executed
 branch  4 never executed (fallthrough)
 branch  5 never executed
-    #####:  139:    return false;
-    #####:  140:  threads = std::max(1, threads);
+    #####:  136:    return false;
+    #####:  137:  threads = std::max(1, threads);
 call    0 never executed
-        -:  141:  int ncell[3];
-    #####:  142:  int cells = 1;
-    #####:  143:  for (int a = 0; a < 3; ++a) {
+        -:  138:  int ncell[3];
+    #####:  139:  int cells = 1;
+    #####:  140:  for (int a = 0; a < 3; ++a) {
 branch  0 never executed
 branch  1 never executed (fallthrough)
-    #####:  144:    ncell[a] = std::max(1, static_cast<int>(std::floor(side[a] / search)));
+    #####:  141:    ncell[a] = std::max(1, static_cast<int>(std::floor(side[a] / search)));
 call    0 never executed
-    #####:  145:    cells *= ncell[a];
-        -:  146:  }
-    #####:  147:  scratch.cell_of.resize(n);
+    #####:  142:    cells *= ncell[a];
+        -:  143:  }
+    #####:  144:  grow_resize(scratch.cell_of, n);
 call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:  148:  scratch.hist.assign(static_cast<std::size_t>(cells), 0);
+    #####:  145:  grow_assign_n(scratch.hist, static_cast<std::size_t>(cells), std::size_t{0});
 call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:  149:  for (std::size_t i = 0; i < n; ++i) {
+    #####:  146:  for (std::size_t i = 0; i < n; ++i) {
 branch  0 never executed
 branch  1 never executed (fallthrough)
-        -:  150:    int ix[3];
-    #####:  151:    for (int a = 0; a < 3; ++a) {
+        -:  147:    int ix[3];
+    #####:  148:    for (int a = 0; a < 3; ++a) {
 branch  0 never executed
 branch  1 never executed (fallthrough)
-    #####:  152:      double f = pos[3 * i + a] / side[a];
-    #####:  153:      f -= std::floor(f);
-    #####:  154:      int bin = static_cast<int>(std::floor(f * static_cast<double>(ncell[a])));
-    #####:  155:      if (bin >= ncell[a])
+    #####:  149:      double f = pos[3 * i + a] / side[a];
+    #####:  150:      f -= std::floor(f);
+    #####:  151:      int bin = static_cast<int>(std::floor(f * static_cast<double>(ncell[a])));
+    #####:  152:      if (bin >= ncell[a])
 branch  0 never executed (fallthrough)
 branch  1 never executed
-    #####:  156:        bin = ncell[a] - 1;
-        -:  157:      // The wrap puts the fraction in [0, 1], so the bin is not negative.
-    #####:  158:      ix[a] = bin;
-        -:  159:    }
-    #####:  160:    const int cell = ix[0] + ncell[0] * (ix[1] + ncell[1] * ix[2]);
-    #####:  161:    scratch.cell_of[i] = static_cast<std::uint32_t>(cell);
+    #####:  153:        bin = ncell[a] - 1;
+        -:  154:      // The wrap puts the fraction in [0, 1], so the bin is not negative.
+    #####:  155:      ix[a] = bin;
+        -:  156:    }
+    #####:  157:    const int cell = ix[0] + ncell[0] * (ix[1] + ncell[1] * ix[2]);
+    #####:  158:    scratch.cell_of[i] = static_cast<std::uint32_t>(cell);
 call    0 never executed
-    #####:  162:    ++scratch.hist[static_cast<std::size_t>(cell)];
+    #####:  159:    ++scratch.hist[static_cast<std::size_t>(cell)];
 call    0 never executed
-        -:  163:  }
-    #####:  164:  exclusive_prefix(scratch.hist, threads);
+        -:  160:  }
+    #####:  161:  exclusive_prefix(scratch.hist, threads);
 call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:  165:  scratch.placed.resize(n);
+    #####:  162:  grow_resize(scratch.placed, n);
 call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:  166:  auto slot = scratch.hist;
-call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:  167:  for (std::size_t i = 0; i < n; ++i) {
-branch  0 never executed
-branch  1 never executed (fallthrough)
-    #####:  168:    const auto cell = static_cast<std::size_t>(scratch.cell_of[i]);
-call    0 never executed
-    #####:  169:    scratch.placed[slot[cell]++] = static_cast<std::uint32_t>(i);
-call    0 never executed
-call    1 never executed
-        -:  170:  }
-    #####:  171:  scratch.x.resize(n);
-call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:  172:  scratch.y.resize(n);
-call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:  173:  scratch.z.resize(n);
-call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:  174:  for (std::size_t k = 0; k < n; ++k) {
-branch  0 never executed
-branch  1 never executed (fallthrough)
-    #####:  175:    const std::uint32_t id = scratch.placed[k];
-call    0 never executed
-    #####:  176:    scratch.x[k] = pos[3 * id];
-call    0 never executed
-    #####:  177:    scratch.y[k] = pos[3 * id + 1];
-call    0 never executed
-    #####:  178:    scratch.z[k] = pos[3 * id + 2];
-call    0 never executed
-        -:  179:  }
-        -:  180:
-    #####:  181:  if (static_cast<int>(scratch.parts.size()) < threads)
-call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed
-    #####:  182:    scratch.parts.resize(static_cast<std::size_t>(threads));
-call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:  183:  scratch.slice_at.resize(n);
-call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:  184:  scratch.slice_n.resize(n);
-call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:  185:  scratch.slice_thread.resize(n);
-call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:  186:  const double cut2 = search * search;
-        -:  187:  auto work = [&](int t) {
-        -:  188:    const std::size_t begin =
-        -:  189:        (static_cast<std::size_t>(t) * n) / static_cast<std::size_t>(threads);
-        -:  190:    const std::size_t end =
-        -:  191:        (static_cast<std::size_t>(t + 1) * n) / static_cast<std::size_t>(threads);
-        -:  192:    auto &out = scratch.parts[static_cast<std::size_t>(t)];
-        -:  193:    out.clear();
-        -:  194:    out.reserve((end - begin) * 128);
-        -:  195:    for (std::size_t k = begin; k < end; ++k) {
-        -:  196:      const std::uint32_t id = scratch.placed[k];
-        -:  197:      const std::uint32_t slice = static_cast<std::uint32_t>(out.size());
-        -:  198:      const int cell = static_cast<int>(scratch.cell_of[id]);
-        -:  199:      const int ix = cell % ncell[0];
-        -:  200:      const int iy = (cell / ncell[0]) % ncell[1];
-        -:  201:      const int iz = cell / (ncell[0] * ncell[1]);
-        -:  202:      const double cx = scratch.x[k];
-        -:  203:      const double cy = scratch.y[k];
-        -:  204:      const double cz = scratch.z[k];
-        -:  205:      for (int dz = -1; dz <= 1; ++dz) {
-        -:  206:        for (int dy = -1; dy <= 1; ++dy) {
-        -:  207:          for (int dx = -1; dx <= 1; ++dx) {
-        -:  208:            int jx = ix + dx;
-        -:  209:            int jy = iy + dy;
-        -:  210:            int jz = iz + dz;
-        -:  211:            int sx = 0, sy = 0, sz = 0;
-        -:  212:            if (jx < 0) {
-        -:  213:              jx += ncell[0];
-        -:  214:              sx = -1;
-        -:  215:            } else if (jx >= ncell[0]) {
-        -:  216:              jx -= ncell[0];
-        -:  217:              sx = 1;
-        -:  218:            }
-        -:  219:            if (jy < 0) {
-        -:  220:              jy += ncell[1];
-        -:  221:              sy = -1;
-        -:  222:            } else if (jy >= ncell[1]) {
-        -:  223:              jy -= ncell[1];
-        -:  224:              sy = 1;
-        -:  225:            }
-        -:  226:            if (jz < 0) {
-        -:  227:              jz += ncell[2];
-        -:  228:              sz = -1;
-        -:  229:            } else if (jz >= ncell[2]) {
-        -:  230:              jz -= ncell[2];
-        -:  231:              sz = 1;
-        -:  232:            }
-        -:  233:            const int jcell = jx + ncell[0] * (jy + ncell[1] * jz);
-        -:  234:            const std::size_t lo = scratch.hist[static_cast<std::size_t>(jcell)];
-        -:  235:            const std::size_t hi = scratch.hist[static_cast<std::size_t>(jcell) + 1];
-        -:  236:            for (std::size_t p = lo; p < hi; ++p) {
-        -:  237:              const std::uint32_t jd = scratch.placed[p];
-        -:  238:              if (jd == id && sx == 0 && sy == 0 && sz == 0)
-        -:  239:                continue;
-        -:  240:              const double ddx = scratch.x[p] - cx + static_cast<double>(sx) * side[0];
-        -:  241:              const double ddy = scratch.y[p] - cy + static_cast<double>(sy) * side[1];
-        -:  242:              const double ddz = scratch.z[p] - cz + static_cast<double>(sz) * side[2];
-        -:  243:              const double d2 = ddx * ddx + ddy * ddy + ddz * ddz;
-        -:  244:              if (!(d2 < cut2))
-        -:  245:                continue;
-        -:  246:              Pair row;
-        -:  247:              row.dist2 = d2;
-        -:  248:              row.neighbor = jd;
-        -:  249:              row.s0 = static_cast<std::int8_t>(sx);
-        -:  250:              row.s1 = static_cast<std::int8_t>(sy);
-        -:  251:              row.s2 = static_cast<std::int8_t>(sz);
-        -:  252:              out.push_back(row);
-        -:  253:            }
-        -:  254:          }
-        -:  255:        }
-        -:  256:      }
-        -:  257:      const auto count = static_cast<std::uint32_t>(out.size() - slice);
-        -:  258:      scratch.slice_at[id] = slice;
-        -:  259:      scratch.slice_n[id] = count;
-        -:  260:      scratch.slice_thread[id] = static_cast<std::uint32_t>(t);
-        -:  261:      if (count > 1)
-        -:  262:        std::sort(out.begin() + static_cast<std::ptrdiff_t>(slice), out.end(), before);
-        -:  263:    }
-    #####:  264:  };
-    #####:  265:  if (threads == 1) {
-branch  0 never executed (fallthrough)
-branch  1 never executed
-    #####:  266:    work(0);
-call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-        -:  267:  } else {
-    #####:  268:    std::vector<std::thread> pool;
-    #####:  269:    for (int t = 0; t < threads; ++t)
-branch  0 never executed
-branch  1 never executed (fallthrough)
-    #####:  270:      pool.emplace_back(work, t);
-call    0 never executed
-branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:  271:    for (auto &worker : pool)
+    #####:  163:  std::vector<std::size_t> slot;
+    #####:  164:  grow_assign_range(slot, scratch.hist.data(), scratch.hist.data() + scratch.hist.size());
 call    0 never executed
 call    1 never executed
 call    2 never executed
 call    3 never executed
-call    4 never executed
-branch  5 never executed
-branch  6 never executed (fallthrough)
-    #####:  272:      worker.join();
+    #####:  165:  for (std::size_t i = 0; i < n; ++i) {
+branch  0 never executed
+branch  1 never executed (fallthrough)
+    #####:  166:    const auto cell = static_cast<std::size_t>(scratch.cell_of[i]);
+call    0 never executed
+    #####:  167:    scratch.placed[slot[cell]++] = static_cast<std::uint32_t>(i);
+call    0 never executed
+call    1 never executed
+        -:  168:  }
+    #####:  169:  grow_resize(scratch.x, n);
+call    0 never executed
+    #####:  170:  grow_resize(scratch.y, n);
+call    0 never executed
+    #####:  171:  grow_resize(scratch.z, n);
+call    0 never executed
+    #####:  172:  for (std::size_t k = 0; k < n; ++k) {
+branch  0 never executed
+branch  1 never executed (fallthrough)
+    #####:  173:    const std::uint32_t id = scratch.placed[k];
+call    0 never executed
+    #####:  174:    scratch.x[k] = pos[3 * id];
+call    0 never executed
+    #####:  175:    scratch.y[k] = pos[3 * id + 1];
+call    0 never executed
+    #####:  176:    scratch.z[k] = pos[3 * id + 2];
+call    0 never executed
+        -:  177:  }
+        -:  178:
+    #####:  179:  if (static_cast<int>(scratch.parts.size()) < threads)
 call    0 never executed
 branch  1 never executed (fallthrough)
-branch  2 never executed (throw)
-    #####:  273:  }
+branch  2 never executed
+    #####:  180:    grow_resize(scratch.parts, static_cast<std::size_t>(threads));
+call    0 never executed
+    #####:  181:  grow_resize(scratch.slice_at, n);
+call    0 never executed
+    #####:  182:  grow_resize(scratch.slice_n, n);
+call    0 never executed
+    #####:  183:  grow_resize(scratch.slice_thread, n);
+call    0 never executed
+    #####:  184:  const double cut2 = search * search;
+        -:  185:  auto work = [&](int t) {
+        -:  186:    const std::size_t begin =
+        -:  187:        (static_cast<std::size_t>(t) * n) / static_cast<std::size_t>(threads);
+        -:  188:    const std::size_t end =
+        -:  189:        (static_cast<std::size_t>(t + 1) * n) / static_cast<std::size_t>(threads);
+        -:  190:    auto &out = scratch.parts[static_cast<std::size_t>(t)];
+        -:  191:    out.clear();
+        -:  192:    grow_reserve(out, (end - begin) * 128);
+        -:  193:    for (std::size_t k = begin; k < end; ++k) {
+        -:  194:      const std::uint32_t id = scratch.placed[k];
+        -:  195:      const std::uint32_t slice = static_cast<std::uint32_t>(out.size());
+        -:  196:      const int cell = static_cast<int>(scratch.cell_of[id]);
+        -:  197:      const int ix = cell % ncell[0];
+        -:  198:      const int iy = (cell / ncell[0]) % ncell[1];
+        -:  199:      const int iz = cell / (ncell[0] * ncell[1]);
+        -:  200:      const double cx = scratch.x[k];
+        -:  201:      const double cy = scratch.y[k];
+        -:  202:      const double cz = scratch.z[k];
+        -:  203:      for (int dz = -1; dz <= 1; ++dz) {
+        -:  204:        for (int dy = -1; dy <= 1; ++dy) {
+        -:  205:          for (int dx = -1; dx <= 1; ++dx) {
+        -:  206:            int jx = ix + dx;
+        -:  207:            int jy = iy + dy;
+        -:  208:            int jz = iz + dz;
+        -:  209:            int sx = 0, sy = 0, sz = 0;
+        -:  210:            if (jx < 0) {
+        -:  211:              jx += ncell[0];
+        -:  212:              sx = -1;
+        -:  213:            } else if (jx >= ncell[0]) {
+        -:  214:              jx -= ncell[0];
+        -:  215:              sx = 1;
+        -:  216:            }
+        -:  217:            if (jy < 0) {
+        -:  218:              jy += ncell[1];
+        -:  219:              sy = -1;
+        -:  220:            } else if (jy >= ncell[1]) {
+        -:  221:              jy -= ncell[1];
+        -:  222:              sy = 1;
+        -:  223:            }
+        -:  224:            if (jz < 0) {
+        -:  225:              jz += ncell[2];
+        -:  226:              sz = -1;
+        -:  227:            } else if (jz >= ncell[2]) {
+        -:  228:              jz -= ncell[2];
+        -:  229:              sz = 1;
+        -:  230:            }
+        -:  231:            const int jcell = jx + ncell[0] * (jy + ncell[1] * jz);
+        -:  232:            const std::size_t lo = scratch.hist[static_cast<std::size_t>(jcell)];
+        -:  233:            const std::size_t hi = scratch.hist[static_cast<std::size_t>(jcell) + 1];
+        -:  234:            for (std::size_t p = lo; p < hi; ++p) {
+        -:  235:              const std::uint32_t jd = scratch.placed[p];
+        -:  236:              if (jd == id && sx == 0 && sy == 0 && sz == 0)
+        -:  237:                continue;
+        -:  238:              const double ddx = scratch.x[p] - cx + static_cast<double>(sx) * side[0];
+        -:  239:              const double ddy = scratch.y[p] - cy + static_cast<double>(sy) * side[1];
+        -:  240:              const double ddz = scratch.z[p] - cz + static_cast<double>(sz) * side[2];
+        -:  241:              const double d2 = ddx * ddx + ddy * ddy + ddz * ddz;
+        -:  242:              if (!(d2 < cut2))
+        -:  243:                continue;
+        -:  244:              Pair row;
+        -:  245:              row.dist2 = d2;
+        -:  246:              row.neighbor = jd;
+        -:  247:              row.s0 = static_cast<std::int8_t>(sx);
+        -:  248:              row.s1 = static_cast<std::int8_t>(sy);
+        -:  249:              row.s2 = static_cast<std::int8_t>(sz);
+        -:  250:              grow_push(out, row);
+        -:  251:            }
+        -:  252:          }
+        -:  253:        }
+        -:  254:      }
+        -:  255:      const auto count = static_cast<std::uint32_t>(out.size() - slice);
+        -:  256:      scratch.slice_at[id] = slice;
+        -:  257:      scratch.slice_n[id] = count;
+        -:  258:      scratch.slice_thread[id] = static_cast<std::uint32_t>(t);
+        -:  259:      if (count > 1)
+        -:  260:        grow_sort(out.begin() + static_cast<std::ptrdiff_t>(slice), out.end(), before);
+        -:  261:    }
+    #####:  262:  };
+    #####:  263:  if (threads == 1) {
+branch  0 never executed (fallthrough)
+branch  1 never executed
+    #####:  264:    work(0);
+call    0 never executed
+    #####:  265:  } else if (!spawn_workers(threads, [&](int t) { return [&, t] { work(t); }; })) {
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed
+    #####:  266:    threads = 1;
+    #####:  267:    work(0);
+call    0 never executed
+        -:  268:  }
+    #####:  269:  scratch.stable = scratch.parts[0].data();
 call    0 never executed
 call    1 never executed
-    #####:  274:  scratch.stable = scratch.parts[0].data();
-call    0 never executed
-call    1 never executed
-    #####:  275:  scratch.stable_n = 0;
-    #####:  276:  for (const auto &part : scratch.parts)
+    #####:  270:  scratch.stable_n = 0;
+    #####:  271:  for (const auto &part : scratch.parts)
 call    0 never executed
 call    1 never executed
 call    2 never executed
 call    3 never executed
 branch  4 never executed
 branch  5 never executed (fallthrough)
-    #####:  277:    scratch.stable_n += part.size();
+    #####:  272:    scratch.stable_n += part.size();
 call    0 never executed
 call    1 never executed
-    #####:  278:  return true;
-    #####:  279:}
+    #####:  273:  return true;
+    #####:  274:}
 call    0 never executed
-call    1 never executed
 ------------------
-        -:  280:
-      10*:  281:inline double max_move(const double *pos, const std::vector<double> &ref) {
-      10*:  282:  double peak = 0.0;
-      94*:  283:  for (std::size_t i = 0; i < ref.size(); i += 3) {
-      84*:  284:    const double dx = pos[i] - ref[i];
-      84*:  285:    const double dy = pos[i + 1] - ref[i + 1];
-      84*:  286:    const double dz = pos[i + 2] - ref[i + 2];
-      84*:  287:    peak = std::max(peak, dx * dx + dy * dy + dz * dz);
-        -:  288:  }
-      10*:  289:  return peak;
-        -:  290:}
-        -:  291:
-        -:  292:} // namespace linked_cell
-        -:  293:} // namespace rgpot
+        -:  275:
+       5*:  276:inline double max_move(const double *pos, const std::vector<double> &ref) noexcept {
+       5*:  277:  double peak = 0.0;
+      47*:  278:  for (std::size_t i = 0; i < ref.size(); i += 3) {
+      42*:  279:    const double dx = pos[i] - ref[i];
+      42*:  280:    const double dy = pos[i + 1] - ref[i + 1];
+      42*:  281:    const double dz = pos[i + 2] - ref[i + 2];
+      42*:  282:    peak = std::max(peak, dx * dx + dy * dy + dz * dz);
+        -:  283:  }
+       5*:  284:  return peak;
+        -:  285:}
+        -:  286:
+        -:  287:} // namespace linked_cell
+        -:  288:} // namespace rgpot

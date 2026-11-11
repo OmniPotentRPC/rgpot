@@ -1,0 +1,2366 @@
+        -:    0:Source:CppCore/rgpot/UmaPot/UmaPot.cc
+        -:    1:// MIT License — UmaPot: vesin neighbor list + AOTInductor .pt2
+        -:    2:
+        -:    3:#include "rgpot/UmaPot/UmaPot.hpp"
+        -:    4:#include "rgpot/UmaPot/UmaEdges.hpp"
+        -:    5:#include "rgpot/UmaPot/MolecularFrame.hpp"
+        -:    6:
+        -:    7:#include "rgpot/UmaPot/UmaContract.hpp"
+        -:    8:#include "rgpot/UmaPot/aoti_execstack.hpp"
+        -:    9:
+        -:   10:#include <array>
+        -:   11:#include <vector>
+        -:   12:
+        -:   13:#include <torch/csrc/inductor/aoti_package/model_package_loader.h>
+        -:   14:#include <torch/torch.h>
+        -:   15:
+        -:   16:#include <algorithm>
+        -:   17:#include <cmath>
+        -:   18:#include <cstdio>
+        -:   19:#include <fstream>
+        -:   20:#include <mutex>
+        -:   21:#include <optional>
+        -:   22:#include <sstream>
+        -:   23:#include <stdexcept>
+        -:   24:#include <string>
+        -:   25:#include <thread>
+        -:   26:#include <utility>
+        -:   27:#include <vector>
+        -:   28:
+        -:   29:namespace rgpot {
+        -:   30:namespace {
+        -:   31:
+function _ZN5rgpot12_GLOBAL__N_19ends_withERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEES8_ called 23 returned 100% blocks executed 100%
+       23:   32:bool ends_with(const std::string &s, const std::string &suf) {
+       46:   33:  return s.size() >= suf.size() &&
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0%
+       46:   34:         s.compare(s.size() - suf.size(), suf.size(), suf) == 0;
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+call    3 returned 100%
+branch  4 taken 91% (fallthrough)
+branch  5 taken 9%
+        -:   35:}
+        -:   36:
+function _ZN5rgpot12_GLOBAL__N_112parse_deviceERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE called 21 returned 100% blocks executed 50%
+       21:   37:torch::Device parse_device(const std::string &name) {
+      21*:   38:  if (name.empty() || name == "cpu")
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0%
+call    3 returned 100%
+branch  4 taken 100% (fallthrough)
+branch  5 taken 0%
+branch  6 taken 100% (fallthrough)
+branch  7 taken 0%
+       21:   39:    return torch::kCPU;
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 never executed
+    #####:   40:  if (name.rfind("cuda", 0) == 0)
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed
+    #####:   41:    return torch::Device(name);
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed (throw)
+call    3 never executed
+    #####:   42:  return torch::kCPU;
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed (throw)
+        -:   43:}
+        -:   44:
+function _ZN5rgpot12_GLOBAL__N_111dtype_tokenEN3c1010ScalarTypeE called 34 returned 100% blocks executed 83%
+       34:   45:const char *dtype_token(torch::ScalarType dt) {
+       34:   46:  if (dt == torch::kFloat64)
+branch  0 taken 91% (fallthrough)
+branch  1 taken 9%
+       31:   47:    return "float64";
+        3:   48:  if (dt == torch::kFloat32)
+branch  0 taken 100% (fallthrough)
+branch  1 taken 0%
+        3:   49:    return "float32";
+    #####:   50:  return "unknown";
+        -:   51:}
+        -:   52:
+function _ZN5rgpot12_GLOBAL__N_115dtype_from_nameERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE called 34 returned 100% blocks executed 71%
+       34:   53:std::optional<torch::ScalarType> dtype_from_name(const std::string &raw) {
+       34:   54:  if (raw == "float64" || raw == "double" || raw == "torch.float64")
+call    0 returned 100%
+branch  1 taken 9% (fallthrough)
+branch  2 taken 91%
+call    3 returned 100%
+branch  4 taken 100% (fallthrough)
+branch  5 taken 0%
+call    6 returned 100%
+branch  7 taken 0% (fallthrough)
+branch  8 taken 100%
+branch  9 taken 91% (fallthrough)
+branch 10 taken 9%
+       31:   55:    return torch::kFloat64;
+call    0 returned 100%
+       3*:   56:  if (raw == "float32" || raw == "float" || raw == "torch.float32")
+call    0 returned 100%
+branch  1 taken 0% (fallthrough)
+branch  2 taken 100%
+call    3 never executed
+branch  4 never executed (fallthrough)
+branch  5 never executed
+call    6 never executed
+branch  7 never executed (fallthrough)
+branch  8 never executed
+branch  9 taken 100% (fallthrough)
+branch 10 taken 0%
+        3:   57:    return torch::kFloat32;
+call    0 returned 100%
+    #####:   58:  return std::nullopt;
+call    0 never executed
+        -:   59:}
+        -:   60:
+        -:   61:// Every edge index must land inside the position buffer. The compiled
+        -:   62:// graph gathers by this index, so a value past the last atom would
+        -:   63:// read off the end of that buffer.
+function _ZN5rgpot12_GLOBAL__N_122reject_periodic_imagesERKSt6vectorIfSaIfEE called 21 returned 100% blocks executed 17%
+       21:   64:void reject_periodic_images(const std::vector<float> &offsets) {
+     8847:   65:  for (float shift : offsets) {
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+call    3 returned 100%
+call    4 returned 100%
+branch  5 taken 100%
+branch  6 taken 1% (fallthrough)
+     8826:   66:    if (shift == 0.f)
+branch  0 taken 100% (fallthrough)
+branch  1 taken 0%
+     8826:   67:      continue;
+        -:   68:    throw UmaContractError(
+        -:   69:        "cell_offsets", "a molecular box with no periodic image", "nonzero",
+    #####:   70:        "input");
+call    0 never executed
+call    1 never executed
+branch  2 never executed (fallthrough)
+branch  3 never executed (throw)
+call    4 never executed
+branch  5 never executed (fallthrough)
+branch  6 never executed (throw)
+call    7 never executed
+branch  8 never executed (fallthrough)
+branch  9 never executed (throw)
+call   10 never executed
+branch 11 never executed (fallthrough)
+branch 12 never executed (throw)
+call   13 never executed
+branch 14 never executed (fallthrough)
+branch 15 never executed (throw)
+call   16 never executed
+call   17 never executed
+call   18 never executed
+call   19 never executed
+call   20 never executed
+call   21 never executed
+call   22 never executed
+call   23 never executed
+call   24 never executed
+call   25 never executed
+        -:   71:  }
+       21:   72:}
+        -:   73:
+        -:   74:// One edge-count contract for a single system and for every system in
+        -:   75:// a band. The compiled graph is not called when this throws.
+function _ZN5rgpot12_GLOBAL__N_119apply_edge_contractERKNS_11UmaContractEbllPKll called 37 returned 100% blocks executed 67%
+       37:   76:void apply_edge_contract(const UmaContract &contract, bool molecular,
+        -:   77:                         int64_t natoms, int64_t systems, const int64_t *counts,
+        -:   78:                         int64_t nedges_total) {
+       37:   79:  contract.checkEachSystem(systems, counts, natoms, molecular);
+call    0 returned 100%
+      37*:   80:  if (contract.pos_decl.known || contract.edge_decl.known)
+branch  0 taken 0% (fallthrough)
+branch  1 taken 100%
+branch  2 never executed (fallthrough)
+branch  3 never executed
+       37:   81:    contract.checkCallShapes(natoms, nedges_total);
+call    0 returned 100%
+        -:   82:  else
+    #####:   83:    contract.checkEdges(nedges_total);
+call    0 never executed
+       37:   84:}
+        -:   85:
+function _ZN5rgpot12_GLOBAL__N_118check_edge_indicesERKN2at6TensorEl called 37 returned 100% blocks executed 18%
+       37:   86:void check_edge_indices(const torch::Tensor &edge_index, int64_t npos) {
+       37:   87:  const auto ei = edge_index.accessor<int64_t, 2>();
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+       37:   88:  const int64_t nedges = edge_index.size(1);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+     3211:   89:  for (int64_t e = 0; e < nedges; ++e) {
+branch  0 taken 99%
+branch  1 taken 1% (fallthrough)
+     9522:   90:    for (int row = 0; row < 2; ++row) {
+branch  0 taken 67%
+branch  1 taken 33% (fallthrough)
+     6348:   91:      const int64_t v = ei[row][e];
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+     6348:   92:      if (v < 0 || v >= npos) {
+branch  0 taken 100% (fallthrough)
+branch  1 taken 0%
+branch  2 taken 0% (fallthrough)
+branch  3 taken 100%
+        -:   93:        throw UmaShapeError(
+    #####:   94:            "edge_index", "[2, " + std::to_string(nedges) + "]",
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed (throw)
+call    3 never executed
+branch  4 never executed (fallthrough)
+branch  5 never executed (throw)
+call    6 never executed
+branch  7 never executed (fallthrough)
+branch  8 never executed (throw)
+call    9 never executed
+call   10 never executed
+call   11 never executed
+call   12 never executed
+call   13 never executed
+    #####:   95:            "pos [" + std::to_string(npos) + ", 3] (index " +
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed (throw)
+call    3 never executed
+branch  4 never executed (fallthrough)
+branch  5 never executed (throw)
+call    6 never executed
+branch  7 never executed (fallthrough)
+branch  8 never executed (throw)
+call    9 never executed
+branch 10 never executed (fallthrough)
+branch 11 never executed (throw)
+call   12 never executed
+call   13 never executed
+call   14 never executed
+call   15 never executed
+call   16 never executed
+call   17 never executed
+call   18 never executed
+call   19 never executed
+    #####:   96:                std::to_string(v) + " is outside it)");
+call    0 never executed
+call    1 never executed
+branch  2 never executed (fallthrough)
+branch  3 never executed (throw)
+call    4 never executed
+branch  5 never executed (fallthrough)
+branch  6 never executed (throw)
+call    7 never executed
+branch  8 never executed (fallthrough)
+branch  9 never executed (throw)
+call   10 never executed
+branch 11 never executed (fallthrough)
+branch 12 never executed (throw)
+call   13 never executed
+call   14 never executed
+call   15 never executed
+call   16 never executed
+call   17 never executed
+call   18 never executed
+call   19 never executed
+call   20 never executed
+call   21 never executed
+        -:   97:      }
+        -:   98:    }
+        -:   99:  }
+       37:  100:}
+        -:  101:
+        -:  102:// Write host values into a tensor that already has the package dtype.
+        -:  103:// Positions and the cell are doubles. Cell shifts arrive as floats.
+        -:  104:template <typename T>
+      123:  105:void store_rows(torch::Tensor dst, const T *src, int64_t rows, int64_t cols) {
+      123:  106:  if (dst.scalar_type() == torch::kFloat64) {
+      111:  107:    auto a = dst.accessor<double, 2>();
+     3598:  108:    for (int64_t i = 0; i < rows; ++i)
+    14170:  109:      for (int64_t c = 0; c < cols; ++c)
+    10683:  110:        a[i][c] = static_cast<double>(src[static_cast<size_t>(i * cols + c)]);
+      111:  111:    return;
+        -:  112:  }
+       12:  113:  if (dst.scalar_type() == torch::kFloat32) {
+       12:  114:    auto a = dst.accessor<float, 2>();
+       52:  115:    for (int64_t i = 0; i < rows; ++i)
+      184:  116:      for (int64_t c = 0; c < cols; ++c)
+      144:  117:        a[i][c] = static_cast<float>(src[static_cast<size_t>(i * cols + c)]);
+       12:  118:    return;
+        -:  119:  }
+    #####:  120:  throw std::runtime_error(
+        -:  121:      "UmaPot: floating input dtype is not float32 or float64");
+        -:  122:}
+------------------
+_ZN5rgpot12_GLOBAL__N_110store_rowsIfEEvN2at6TensorEPKT_ll:
+function _ZN5rgpot12_GLOBAL__N_110store_rowsIfEEvN2at6TensorEPKT_ll called 41 returned 100% blocks executed 76%
+       41:  105:void store_rows(torch::Tensor dst, const T *src, int64_t rows, int64_t cols) {
+       41:  106:  if (dst.scalar_type() == torch::kFloat64) {
+call    0 returned 100%
+branch  1 taken 90% (fallthrough)
+branch  2 taken 10%
+       37:  107:    auto a = dst.accessor<double, 2>();
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+     3187:  108:    for (int64_t i = 0; i < rows; ++i)
+branch  0 taken 99%
+branch  1 taken 1% (fallthrough)
+    12600:  109:      for (int64_t c = 0; c < cols; ++c)
+branch  0 taken 75%
+branch  1 taken 25% (fallthrough)
+     9450:  110:        a[i][c] = static_cast<double>(src[static_cast<size_t>(i * cols + c)]);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+       37:  111:    return;
+        -:  112:  }
+        4:  113:  if (dst.scalar_type() == torch::kFloat32) {
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0%
+        4:  114:    auto a = dst.accessor<float, 2>();
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+       28:  115:    for (int64_t i = 0; i < rows; ++i)
+branch  0 taken 86%
+branch  1 taken 14% (fallthrough)
+       96:  116:      for (int64_t c = 0; c < cols; ++c)
+branch  0 taken 75%
+branch  1 taken 25% (fallthrough)
+       72:  117:        a[i][c] = static_cast<float>(src[static_cast<size_t>(i * cols + c)]);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+        4:  118:    return;
+        -:  119:  }
+    #####:  120:  throw std::runtime_error(
+call    0 never executed
+call    1 never executed
+branch  2 never executed (fallthrough)
+branch  3 never executed (throw)
+call    4 never executed
+call    5 never executed
+        -:  121:      "UmaPot: floating input dtype is not float32 or float64");
+        -:  122:}
+------------------
+_ZN5rgpot12_GLOBAL__N_110store_rowsIdEEvN2at6TensorEPKT_ll:
+function _ZN5rgpot12_GLOBAL__N_110store_rowsIdEEvN2at6TensorEPKT_ll called 82 returned 100% blocks executed 76%
+       82:  105:void store_rows(torch::Tensor dst, const T *src, int64_t rows, int64_t cols) {
+       82:  106:  if (dst.scalar_type() == torch::kFloat64) {
+call    0 returned 100%
+branch  1 taken 90% (fallthrough)
+branch  2 taken 10%
+       74:  107:    auto a = dst.accessor<double, 2>();
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+      411:  108:    for (int64_t i = 0; i < rows; ++i)
+branch  0 taken 82%
+branch  1 taken 18% (fallthrough)
+     1570:  109:      for (int64_t c = 0; c < cols; ++c)
+branch  0 taken 79%
+branch  1 taken 21% (fallthrough)
+     1233:  110:        a[i][c] = static_cast<double>(src[static_cast<size_t>(i * cols + c)]);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+       74:  111:    return;
+        -:  112:  }
+        8:  113:  if (dst.scalar_type() == torch::kFloat32) {
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0%
+        8:  114:    auto a = dst.accessor<float, 2>();
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+       24:  115:    for (int64_t i = 0; i < rows; ++i)
+branch  0 taken 67%
+branch  1 taken 33% (fallthrough)
+       88:  116:      for (int64_t c = 0; c < cols; ++c)
+branch  0 taken 82%
+branch  1 taken 18% (fallthrough)
+       72:  117:        a[i][c] = static_cast<float>(src[static_cast<size_t>(i * cols + c)]);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+        8:  118:    return;
+        -:  119:  }
+    #####:  120:  throw std::runtime_error(
+call    0 never executed
+call    1 never executed
+branch  2 never executed (fallthrough)
+branch  3 never executed (throw)
+call    4 never executed
+call    5 never executed
+        -:  121:      "UmaPot: floating input dtype is not float32 or float64");
+        -:  122:}
+------------------
+        -:  123:
+        -:  124:} // namespace
+        -:  125:
+        -:  126:struct UmaPot::Impl {
+        -:  127:  torch::Device device{torch::kCPU};
+        -:  128:  // Input dtype of pos, cell and cell_offsets. float32 until metadata
+        -:  129:  // says otherwise, including packages that record neither key.
+        -:  130:  torch::ScalarType dtype{torch::kFloat32};
+        -:  131:  std::string pos_dtype_name{"float32"};
+        -:  132:  std::string model_dtype_name{"float32"};
+        -:  133:  double cutoff{6.0};
+        -:  134:  // Backbone interaction range from metadata `model_cutoff`. 0 when the
+        -:  135:  // package does not record it; `cutoff` is the fallback.
+        -:  136:  double model_cutoff{0.0};
+        -:  137:  double molecular_box{0.0};
+        -:  138:  int max_neighbors{300};
+        -:  139:  int64_t batch_max{0};
+        -:  140:  UmaContract contract;
+        -:  141:  std::unique_ptr<torch::inductor::AOTIModelPackageLoader> loader;
+        -:  142:  mutable std::mutex mutex;
+        -:  143:  mutable UmaEdgeSession edges;
+        -:  144:};
+        -:  145:
+function _ZN5rgpot6UmaPot18recomputeParamsKeyEv called 23 returned 100% blocks executed 100%
+       23:  146:void UmaPot::recomputeParamsKey() {
+       23:  147:  Fnv1a fp;
+       23:  148:  fp.u64(kKernelVersion);
+call    0 returned 100%
+       23:  149:  fp.str(m_config.model_path);
+call    0 returned 100%
+call    1 returned 100%
+       23:  150:  fp.str(m_config.task_name);
+call    0 returned 100%
+call    1 returned 100%
+       23:  151:  fp.str(m_config.device);
+call    0 returned 100%
+call    1 returned 100%
+       23:  152:  fp.i64(m_config.charge);
+call    0 returned 100%
+       23:  153:  fp.i64(m_config.spin);
+call    0 returned 100%
+       23:  154:  m_paramsKey = fp.h;
+       23:  155:}
+        -:  156:
+function _ZNK5rgpot6UmaPot12ensureLoadedEv called 77 returned 95% blocks executed 83%
+       77:  157:void UmaPot::ensureLoaded() const {
+       77:  158:  if (m_impl->loader)
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 75% (fallthrough)
+branch  3 taken 25%
+       58:  159:    return;
+       19:  160:  c10::InferenceMode guard;
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+        -:  161:  const std::string load_path =
+       19:  162:      aoti_execstack::prepare_pt2_for_load(m_config.model_path);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+       19:  163:  m_impl->loader =
+call    0 returned 100%
+       38:  164:      std::make_unique<torch::inductor::AOTIModelPackageLoader>(load_path);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+call    4 returned 100%
+        -:  165:  // The package's embedded metadata is the runtime contract: one
+        -:  166:  // producer (scripts/export_uma_aoti.py), the .pt2 self-describing.
+       19:  167:  const auto meta = m_impl->loader->get_metadata();
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+branch  3 taken 100% (fallthrough)
+branch  4 taken 0% (throw)
+function _ZZNK5rgpot6UmaPot12ensureLoadedEvENKUlPKcdE_clES2_d called 95 returned 100% blocks executed 65%
+       95:  168:  auto num = [&](const char *key, double fallback) {
+      190:  169:    const auto it = meta.find(key);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+branch  4 taken 100% (fallthrough)
+branch  5 taken 0% (throw)
+call    6 returned 100%
+call    7 never executed
+      95*:  170:    if (it == meta.end() || it->second.empty())
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0%
+call    4 returned 100%
+call    5 returned 100%
+branch  6 taken 0% (fallthrough)
+branch  7 taken 100%
+branch  8 taken 0% (fallthrough)
+branch  9 taken 100%
+    #####:  171:      return fallback;
+        -:  172:    try {
+       95:  173:      return std::stod(it->second);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+    =====:  174:    } catch (...) {
+call    0 never executed
+    =====:  175:      return fallback;
+    =====:  176:    }
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed (throw)
+       19:  177:  };
+       19:  178:  m_impl->cutoff = num("cutoff", m_impl->cutoff);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+       19:  179:  m_impl->model_cutoff = num("model_cutoff", 0.0);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+      19*:  180:  if (!std::isfinite(m_impl->model_cutoff) || !(m_impl->model_cutoff > 0.0))
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0%
+call    4 returned 100%
+branch  5 taken 0% (fallthrough)
+branch  6 taken 100%
+branch  7 taken 0% (fallthrough)
+branch  8 taken 100%
+    #####:  181:    m_impl->model_cutoff = 0.0;
+call    0 never executed
+       19:  182:  m_impl->molecular_box = num("molecular_box", m_impl->molecular_box);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+       38:  183:  m_impl->max_neighbors = static_cast<int>(
+       19:  184:      num("max_neighbors", static_cast<double>(m_impl->max_neighbors)));
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+       19:  185:  m_impl->batch_max = static_cast<int64_t>(num("batch_max", 0.0));
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+function _ZZNK5rgpot6UmaPot12ensureLoadedEvENKUlPKcE_clES2_ called 38 returned 100% blocks executed 41%
+       38:  186:  auto named = [&](const char *key) -> std::optional<torch::ScalarType> {
+       76:  187:    const auto it = meta.find(key);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+branch  4 taken 100% (fallthrough)
+branch  5 taken 0% (throw)
+call    6 returned 100%
+call    7 never executed
+       38:  188:    if (it == meta.end() || it->second.empty())
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 89% (fallthrough)
+branch  3 taken 11%
+call    4 returned 100%
+call    5 returned 100%
+branch  6 taken 0% (fallthrough)
+branch  7 taken 100%
+branch  8 taken 11% (fallthrough)
+branch  9 taken 89%
+        4:  189:      return std::nullopt;
+call    0 returned 100%
+       34:  190:    const auto parsed = dtype_from_name(it->second);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+       34:  191:    if (!parsed)
+call    0 returned 100%
+branch  1 taken 0% (fallthrough)
+branch  2 taken 100%
+    #####:  192:      throw std::runtime_error(std::string("UmaPot: package metadata ") +
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed (throw)
+call    3 never executed
+call    4 never executed
+call    5 never executed
+call    6 never executed
+    #####:  193:                               key + " is not float32 or float64: " +
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed (throw)
+call    3 never executed
+branch  4 never executed (fallthrough)
+branch  5 never executed (throw)
+call    6 never executed
+branch  7 never executed (fallthrough)
+branch  8 never executed (throw)
+call    9 never executed
+call   10 never executed
+call   11 never executed
+call   12 never executed
+    #####:  194:                               it->second);
+call    0 never executed
+call    1 never executed
+call    2 never executed
+branch  3 never executed (fallthrough)
+branch  4 never executed (throw)
+call    5 never executed
+call    6 never executed
+       34:  195:    return parsed;
+       19:  196:  };
+       19:  197:  const auto pos = named("pos_dtype");
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+       19:  198:  const auto model = named("model_dtype");
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+        -:  199:  // Log only keys the package recorded. "unset" is not a guessed dtype.
+       19:  200:  m_impl->pos_dtype_name = pos ? dtype_token(*pos) : "unset";
+call    0 returned 100%
+branch  1 taken 89% (fallthrough)
+branch  2 taken 11%
+call    3 returned 100%
+call    4 returned 100%
+call    5 returned 100%
+call    6 returned 100%
+branch  7 taken 100% (fallthrough)
+branch  8 taken 0% (throw)
+       19:  201:  m_impl->model_dtype_name = model ? dtype_token(*model) : "unset";
+call    0 returned 100%
+branch  1 taken 89% (fallthrough)
+branch  2 taken 11%
+call    3 returned 100%
+call    4 returned 100%
+call    5 returned 100%
+call    6 returned 100%
+branch  7 taken 100% (fallthrough)
+branch  8 taken 0% (throw)
+       19:  202:  if (pos && model && *pos != *model) {
+call    0 returned 100%
+branch  1 taken 89% (fallthrough)
+branch  2 taken 11%
+call    3 returned 100%
+branch  4 taken 94% (fallthrough)
+branch  5 taken 6%
+call    6 returned 100%
+call    7 returned 100%
+branch  8 taken 6% (fallthrough)
+branch  9 taken 94%
+branch 10 taken 5% (fallthrough)
+branch 11 taken 95%
+        -:  203:    throw std::runtime_error(
+        3:  204:        std::string("UmaPot: pos_dtype is ") + m_impl->pos_dtype_name +
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+branch  4 taken 100% (fallthrough)
+branch  5 taken 0% (throw)
+call    6 returned 100%
+branch  7 taken 100% (fallthrough)
+branch  8 taken 0% (throw)
+call    9 returned 100%
+call   10 returned 100%
+call   11 returned 100%
+call   12 never executed
+call   13 never executed
+call   14 never executed
+        3:  205:        " and model_dtype is " + m_impl->model_dtype_name +
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+branch  5 taken 100% (fallthrough)
+branch  6 taken 0% (throw)
+call    7 returned 100%
+call    8 returned 100%
+call    9 never executed
+call   10 never executed
+        3:  206:        "; refusing to feed one dtype into a graph recorded as the other");
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+branch  3 taken 100% (fallthrough)
+branch  4 taken 0% (throw)
+call    5 returned 100%
+call    6 never executed
+        -:  207:  }
+       18:  208:  if (!pos && !model) {
+call    0 returned 100%
+branch  1 taken 11% (fallthrough)
+branch  2 taken 89%
+call    3 returned 100%
+branch  4 taken 50% (fallthrough)
+branch  5 taken 50%
+branch  6 taken 6% (fallthrough)
+branch  7 taken 94%
+        1:  209:    m_impl->dtype = torch::kFloat32;
+call    0 returned 100%
+        1:  210:    std::fprintf(stderr,
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+        -:  211:                 "UmaPot: package metadata has no pos_dtype or model_dtype; "
+        -:  212:                 "falling back to float32\n");
+        -:  213:  } else {
+       17:  214:    m_impl->dtype = pos ? *pos : *model;
+call    0 returned 100%
+branch  1 taken 94% (fallthrough)
+branch  2 taken 6%
+call    3 returned 100%
+call    4 returned 100%
+call    5 returned 100%
+        -:  215:  }
+       36:  216:  std::fprintf(stderr, "UmaPot: pos_dtype=%s model_dtype=%s\n",
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+branch  3 taken 100% (fallthrough)
+branch  4 taken 0% (throw)
+       18:  217:               m_impl->pos_dtype_name.c_str(),
+call    0 returned 100%
+       18:  218:               m_impl->model_dtype_name.c_str());
+call    0 returned 100%
+       18:  219:  m_impl->contract = UmaContract::fromMetadata(meta);
+call    0 returned 100%
+branch  1 taken 83% (fallthrough)
+branch  2 taken 17% (throw)
+call    3 returned 100%
+call    4 returned 100%
+call    5 returned 100%
+       27:  220:}
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+call    3 returned 100%
+call    4 returned 100%
+call    5 returned 100%
+        -:  221:
+function _ZNK5rgpot6UmaPot13checkContractERKNS_10ForceInputE called 38 returned 100% blocks executed 100%
+       38:  222:void UmaPot::checkContract(const ForceInput &in) const {
+       38:  223:  m_impl->contract.checkConfig(m_config);
+call    0 returned 100%
+call    1 returned 100%
+       38:  224:  m_impl->contract.checkSystem(in.nAtoms, in.atmnrs);
+call    0 returned 100%
+call    1 returned 100%
+       38:  225:}
+        -:  226:
+function _ZN5rgpot6UmaPotC2ERKNS_9UmaConfigE called 25 returned 84% blocks executed 78%
+       25:  227:UmaPot::UmaPot(const UmaConfig &config)
+       25:  228:    : Potential(PotType::Uma), m_config(config) {
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+       25:  229:  if (m_config.model_path.empty()) {
+call    0 returned 100%
+branch  1 taken 8% (fallthrough)
+branch  2 taken 92%
+        -:  230:    throw std::runtime_error(
+        2:  231:        "UmaPot: model_path is required (AOTI package .pt2)");
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+call    5 never executed
+        -:  232:  }
+       46:  233:  if (!ends_with(m_config.model_path, ".pt2")) {
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+branch  4 taken 100% (fallthrough)
+branch  5 taken 0% (throw)
+call    6 returned 100%
+branch  7 taken 9% (fallthrough)
+branch  8 taken 91%
+call    9 never executed
+        -:  234:    throw std::runtime_error(
+        -:  235:        "UmaPot: model_path must be an AOTI .pt2 from "
+        2:  236:        "scripts/export_uma_aoti.py (not a metatomic/torchscript .pt)");
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+call    5 never executed
+        -:  237:  }
+       21:  238:  recomputeParamsKey();
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+       21:  239:  m_impl = std::make_unique<Impl>();
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+call    4 returned 100%
+       42:  240:  m_impl->edges.threads =
+       21:  241:      static_cast<int>(std::thread::hardware_concurrency());
+call    0 returned 100%
+call    1 returned 100%
+       21:  242:  if (m_impl->edges.threads < 1)
+call    0 returned 100%
+branch  1 taken 0% (fallthrough)
+branch  2 taken 100%
+    #####:  243:    m_impl->edges.threads = 1;
+call    0 never executed
+       21:  244:  m_impl->device = parse_device(m_config.device);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+       21:  245:  m_impl->max_neighbors = m_config.max_neighbors;
+call    0 returned 100%
+       21:  246:  m_impl->cutoff = m_config.cutoff;
+call    0 returned 100%
+       21:  247:  if (!(m_impl->cutoff > 0.0) || !std::isfinite(m_impl->cutoff))
+call    0 returned 100%
+branch  1 taken 95% (fallthrough)
+branch  2 taken 5%
+call    3 returned 100%
+call    4 returned 100%
+branch  5 taken 0% (fallthrough)
+branch  6 taken 100%
+branch  7 taken 5% (fallthrough)
+branch  8 taken 95%
+        1:  248:    m_impl->cutoff = 6.0;
+call    0 returned 100%
+       33:  249:}
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+        -:  250:
+      21*:  251:UmaPot::~UmaPot() = default;
+------------------
+_ZN5rgpot6UmaPotD0Ev:
+function _ZN5rgpot6UmaPotD0Ev called 0 returned 0% blocks executed 0%
+    #####:  251:UmaPot::~UmaPot() = default;
+call    0 never executed
+call    1 never executed
+------------------
+_ZN5rgpot6UmaPotD2Ev:
+function _ZN5rgpot6UmaPotD2Ev called 21 returned 100% blocks executed 100%
+       21:  251:UmaPot::~UmaPot() = default;
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+------------------
+        -:  252:
+function _ZN5rgpot6UmaPot13setChargeSpinEii called 2 returned 100% blocks executed 100%
+        2:  253:void UmaPot::setChargeSpin(int charge, int spin) {
+        2:  254:  m_config.charge = charge;
+        2:  255:  m_config.spin = spin;
+        2:  256:  recomputeParamsKey();
+call    0 returned 100%
+        2:  257:}
+        -:  258:
+function _ZNK5rgpot6UmaPot9forceImplERKNS_10ForceInputEPNS_8ForceOutE called 39 returned 87% blocks executed 43%
+       39:  259:void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+       39:  260:  if (in.nAtoms == 0)
+branch  0 taken 3% (fallthrough)
+branch  1 taken 97%
+        1:  261:    throw std::runtime_error("UmaPot: nAtoms == 0");
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+call    5 never executed
+        -:  262:  {
+       38:  263:    std::lock_guard<std::mutex> lock(m_impl->mutex);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+       38:  264:    ensureLoaded();
+call    0 returned 100%
+branch  1 taken 89% (fallthrough)
+branch  2 taken 11% (throw)
+       38:  265:  }
+call    0 returned 100%
+call    1 returned 100%
+       34:  266:  checkContract(in);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+       34:  267:  if (m_impl->batch_max > 1) {
+call    0 returned 100%
+branch  1 taken 3% (fallthrough)
+branch  2 taken 97%
+        -:  268:    // A band package carries only the batched (B >= 2) graph; a lone
+        -:  269:    // system rides the batch path, which pads it to two.
+        1:  270:    ForceBatch one{.nSystems = 1, .in = &in, .out = out};
+        1:  271:    forceBatchImpl(one);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+        1:  272:    return;
+        -:  273:  }
+        -:  274:
+        -:  275:  // Molecular inputs use the sidecar's cube and an origin-centred frame.
+        -:  276:  // A common translation preserves all relative vectors and cell offsets;
+        -:  277:  // avoiding a large coordinate offset retains precision in float32 models.
+       33:  278:  const bool molecular = m_impl->molecular_box > 0.0;
+call    0 returned 100%
+       33:  279:  std::vector<double> mol_pos;
+       33:  280:  std::array<double, 9> mol_box{};
+       33:  281:  if (molecular) {
+branch  0 taken 52% (fallthrough)
+branch  1 taken 48%
+       17:  282:    const double L = m_impl->molecular_box;
+call    0 returned 100%
+       17:  283:    mol_pos.assign(in.pos, in.pos + 3 * in.nAtoms);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+       17:  284:    mol_box = uma::molecularFrame(mol_pos, L);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+        -:  285:  }
+       33:  286:  const ForceInput local{in.nAtoms, molecular ? mol_pos.data() : in.pos,
+call    0 returned 100%
+       83:  287:                         in.atmnrs, molecular ? mol_box.data() : in.box};
+branch  0 taken 52% (fallthrough)
+branch  1 taken 48%
+branch  2 taken 52% (fallthrough)
+branch  3 taken 48%
+        -:  288:
+       33:  289:  const UmaEdgeList &edges = build_system_edges(
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+       33:  290:      local, m_impl->cutoff, m_impl->model_cutoff, m_impl->molecular_box,
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+       33:  291:      m_impl->max_neighbors, m_impl->contract, /*n_systems=*/1,
+call    0 returned 100%
+       33:  292:      m_impl->edges);
+call    0 returned 100%
+call    1 returned 100%
+       33:  293:  const auto n = static_cast<int64_t>(local.nAtoms);
+       33:  294:  const auto nedges = static_cast<int64_t>(edges.neighbor.size());
+call    0 returned 100%
+       33:  295:  if (nedges == 0)
+branch  0 taken 0% (fallthrough)
+branch  1 taken 100%
+    #####:  296:    throw std::runtime_error("UmaPot: vesin produced no edges");
+call    0 never executed
+call    1 never executed
+branch  2 never executed (fallthrough)
+branch  3 never executed (throw)
+call    4 never executed
+call    5 never executed
+       33:  297:  if (molecular)
+branch  0 taken 52% (fallthrough)
+branch  1 taken 48%
+       17:  298:    reject_periodic_images(edges.offsets);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+        -:  299:  // The same check the band path uses. A molecular count other than
+        -:  300:  // n*(n-1), or a count outside the traced range, is named here.
+       33:  301:  const int64_t one_count = nedges;
+       33:  302:  apply_edge_contract(m_impl->contract, molecular, n, 1, &one_count, nedges);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+        -:  303:
+       33:  304:  auto opts_f = torch::TensorOptions().dtype(m_impl->dtype).device(torch::kCPU);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+call    4 returned 100%
+call    5 returned 100%
+call    6 returned 100%
+       33:  305:  auto opts_l = torch::TensorOptions().dtype(torch::kLong).device(torch::kCPU);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+call    4 returned 100%
+call    5 returned 100%
+        -:  306:
+       33:  307:  auto pos = torch::empty({n, 3}, opts_f);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+branch  5 taken 100% (fallthrough)
+branch  6 taken 0% (throw)
+       33:  308:  store_rows(pos, local.pos, n, 3);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+branch  4 taken 100% (fallthrough)
+branch  5 taken 0% (throw)
+call    6 returned 100%
+call    7 never executed
+        -:  309:
+       33:  310:  auto atomic_numbers = torch::empty({n}, opts_l);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+branch  5 taken 100% (fallthrough)
+branch  6 taken 0% (throw)
+       33:  311:  auto z_a = atomic_numbers.accessor<int64_t, 1>();
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+      321:  312:  for (int64_t i = 0; i < n; ++i)
+branch  0 taken 90%
+branch  1 taken 10% (fallthrough)
+      288:  313:    z_a[i] = local.atmnrs[i];
+call    0 returned 100%
+        -:  314:
+       33:  315:  auto cell = torch::empty({1, 3, 3}, opts_f);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+branch  5 taken 100% (fallthrough)
+branch  6 taken 0% (throw)
+       33:  316:  store_rows(cell.view({1, 9}), local.box, 1, 9);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+branch  4 taken 100% (fallthrough)
+branch  5 taken 0% (throw)
+call    6 returned 100%
+branch  7 taken 100% (fallthrough)
+branch  8 taken 0% (throw)
+call    9 returned 100%
+call   10 never executed
+       33:  317:  cell = cell.view({1, 3, 3});
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+branch  4 taken 100% (fallthrough)
+branch  5 taken 0% (throw)
+call    6 returned 100%
+call    7 returned 100%
+        -:  318:
+      198:  319:  auto pbc = torch::tensor({{true, true, true}},
+call    0 returned 100%
+call    1 returned 100%
+call    2 never executed
+call    3 never executed
+      132:  320:                           torch::TensorOptions().dtype(torch::kBool));
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+call    4 returned 100%
+call    5 returned 100%
+branch  6 taken 100% (fallthrough)
+branch  7 taken 0% (throw)
+call    8 returned 100%
+branch  9 taken 50% (fallthrough)
+branch 10 taken 50%
+call   11 never executed
+branch 12 never executed (fallthrough)
+branch 13 never executed
+       33:  321:  auto edge_index = torch::empty({2, nedges}, opts_l);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+branch  4 taken 100% (fallthrough)
+branch  5 taken 0% (throw)
+       33:  322:  auto ei = edge_index.accessor<int64_t, 2>();
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+     3159:  323:  for (int64_t e = 0; e < nedges; ++e) {
+branch  0 taken 99%
+branch  1 taken 1% (fallthrough)
+     3126:  324:    ei[0][e] = edges.neighbor[static_cast<size_t>(e)];
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+     3126:  325:    ei[1][e] = edges.center[static_cast<size_t>(e)];
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+        -:  326:  }
+       33:  327:  check_edge_indices(edge_index, n);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+       33:  328:  auto cell_offsets = torch::empty({nedges, 3}, opts_f);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+branch  5 taken 100% (fallthrough)
+branch  6 taken 0% (throw)
+       33:  329:  store_rows(cell_offsets, edges.offsets.data(), nedges, 3);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+branch  5 taken 100% (fallthrough)
+branch  6 taken 0% (throw)
+call    7 returned 100%
+call    8 never executed
+       66:  330:  auto charge = torch::tensor({static_cast<int64_t>(m_config.charge)}, opts_l);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+branch  4 taken 50% (fallthrough)
+branch  5 taken 50%
+call    6 returned 100%
+call    7 never executed
+branch  8 never executed (fallthrough)
+branch  9 never executed
+call   10 never executed
+       66:  331:  auto spin = torch::tensor({static_cast<int64_t>(m_config.spin)}, opts_l);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+branch  4 taken 50% (fallthrough)
+branch  5 taken 50%
+call    6 returned 100%
+call    7 never executed
+branch  8 never executed (fallthrough)
+branch  9 never executed
+call   10 never executed
+       33:  332:  auto batch = torch::zeros({n}, opts_l);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+branch  4 taken 100% (fallthrough)
+branch  5 taken 0% (throw)
+       66:  333:  auto natoms = torch::tensor({n}, opts_l);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+branch  4 taken 50% (fallthrough)
+branch  5 taken 50%
+call    6 returned 100%
+call    7 never executed
+branch  8 never executed (fallthrough)
+branch  9 never executed
+call   10 never executed
+        -:  334:
+       33:  335:  if (m_impl->device != torch::kCPU) {
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+call    4 returned 100%
+branch  5 taken 0% (fallthrough)
+branch  6 taken 100%
+    #####:  336:    pos = pos.to(m_impl->device);
+call    0 never executed
+call    1 never executed
+call    2 never executed
+branch  3 never executed (fallthrough)
+branch  4 never executed (throw)
+call    5 never executed
+branch  6 never executed (fallthrough)
+branch  7 never executed (throw)
+call    8 never executed
+call    9 never executed
+    #####:  337:    atomic_numbers = atomic_numbers.to(m_impl->device);
+call    0 never executed
+call    1 never executed
+call    2 never executed
+branch  3 never executed (fallthrough)
+branch  4 never executed (throw)
+call    5 never executed
+branch  6 never executed (fallthrough)
+branch  7 never executed (throw)
+call    8 never executed
+call    9 never executed
+    #####:  338:    cell = cell.to(m_impl->device);
+call    0 never executed
+call    1 never executed
+call    2 never executed
+branch  3 never executed (fallthrough)
+branch  4 never executed (throw)
+call    5 never executed
+branch  6 never executed (fallthrough)
+branch  7 never executed (throw)
+call    8 never executed
+call    9 never executed
+    #####:  339:    pbc = pbc.to(m_impl->device);
+call    0 never executed
+call    1 never executed
+call    2 never executed
+branch  3 never executed (fallthrough)
+branch  4 never executed (throw)
+call    5 never executed
+branch  6 never executed (fallthrough)
+branch  7 never executed (throw)
+call    8 never executed
+call    9 never executed
+    #####:  340:    edge_index = edge_index.to(m_impl->device);
+call    0 never executed
+call    1 never executed
+call    2 never executed
+branch  3 never executed (fallthrough)
+branch  4 never executed (throw)
+call    5 never executed
+branch  6 never executed (fallthrough)
+branch  7 never executed (throw)
+call    8 never executed
+call    9 never executed
+    #####:  341:    cell_offsets = cell_offsets.to(m_impl->device);
+call    0 never executed
+call    1 never executed
+call    2 never executed
+branch  3 never executed (fallthrough)
+branch  4 never executed (throw)
+call    5 never executed
+branch  6 never executed (fallthrough)
+branch  7 never executed (throw)
+call    8 never executed
+call    9 never executed
+    #####:  342:    charge = charge.to(m_impl->device);
+call    0 never executed
+call    1 never executed
+call    2 never executed
+branch  3 never executed (fallthrough)
+branch  4 never executed (throw)
+call    5 never executed
+branch  6 never executed (fallthrough)
+branch  7 never executed (throw)
+call    8 never executed
+call    9 never executed
+    #####:  343:    spin = spin.to(m_impl->device);
+call    0 never executed
+call    1 never executed
+call    2 never executed
+branch  3 never executed (fallthrough)
+branch  4 never executed (throw)
+call    5 never executed
+branch  6 never executed (fallthrough)
+branch  7 never executed (throw)
+call    8 never executed
+call    9 never executed
+    #####:  344:    batch = batch.to(m_impl->device);
+call    0 never executed
+call    1 never executed
+call    2 never executed
+branch  3 never executed (fallthrough)
+branch  4 never executed (throw)
+call    5 never executed
+branch  6 never executed (fallthrough)
+branch  7 never executed (throw)
+call    8 never executed
+call    9 never executed
+    #####:  345:    natoms = natoms.to(m_impl->device);
+call    0 never executed
+call    1 never executed
+call    2 never executed
+branch  3 never executed (fallthrough)
+branch  4 never executed (throw)
+call    5 never executed
+branch  6 never executed (fallthrough)
+branch  7 never executed (throw)
+call    8 never executed
+call    9 never executed
+        -:  346:  }
+        -:  347:
+        -:  348:  std::vector<torch::Tensor> inputs = {pos,        atomic_numbers, cell,   pbc,
+        -:  349:                                       edge_index, cell_offsets,   charge, spin,
+      396:  350:                                       batch,      natoms};
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+branch  3 taken 91% (fallthrough)
+branch  4 taken 9%
+call    5 returned 100%
+branch  6 never executed (fallthrough)
+branch  7 never executed
+call    8 never executed
+        -:  351:
+       33:  352:  std::lock_guard<std::mutex> lock(m_impl->mutex);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+       33:  353:  ensureLoaded();
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+       33:  354:  c10::InferenceMode guard;
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+       33:  355:  auto outputs = m_impl->loader->run(inputs);
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+branch  3 taken 100% (fallthrough)
+branch  4 taken 0% (throw)
+       33:  356:  if (outputs.size() < 2)
+call    0 returned 100%
+branch  1 taken 0% (fallthrough)
+branch  2 taken 100%
+    #####:  357:    throw std::runtime_error("UmaPot: AOTI package returned <2 tensors");
+call    0 never executed
+call    1 never executed
+branch  2 never executed (fallthrough)
+branch  3 never executed (throw)
+call    4 never executed
+call    5 never executed
+        -:  358:
+       33:  359:  const double energy = outputs[0].to(torch::kFloat64).cpu().item<double>();
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+branch  3 taken 100% (fallthrough)
+branch  4 taken 0% (throw)
+call    5 returned 100%
+branch  6 taken 100% (fallthrough)
+branch  7 taken 0% (throw)
+call    8 returned 100%
+branch  9 taken 100% (fallthrough)
+branch 10 taken 0% (throw)
+call   11 returned 100%
+call   12 returned 100%
+call   13 never executed
+call   14 never executed
+       33:  360:  auto forces = outputs[1].to(torch::kFloat64).cpu().contiguous();
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+branch  3 taken 100% (fallthrough)
+branch  4 taken 0% (throw)
+call    5 returned 100%
+branch  6 taken 100% (fallthrough)
+branch  7 taken 0% (throw)
+call    8 returned 100%
+branch  9 taken 100% (fallthrough)
+branch 10 taken 0% (throw)
+call   11 returned 100%
+call   12 returned 100%
+call   13 never executed
+call   14 never executed
+       33:  361:  if (forces.numel() != n * 3)
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+branch  3 taken 0% (fallthrough)
+branch  4 taken 100%
+    #####:  362:    throw std::runtime_error("UmaPot: force tensor shape mismatch");
+call    0 never executed
+call    1 never executed
+branch  2 never executed (fallthrough)
+branch  3 never executed (throw)
+call    4 never executed
+call    5 never executed
+       33:  363:  const double *fp = forces.data_ptr<double>();
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+      897:  364:  for (int64_t i = 0; i < n * 3; ++i)
+branch  0 taken 96%
+branch  1 taken 4% (fallthrough)
+      864:  365:    out->F[i] = fp[i];
+       33:  366:  out->energy = energy;
+       33:  367:  out->variance = 0.0;
+      330:  368:}
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+branch  4 taken 100% (fallthrough)
+branch  5 taken 0% (throw)
+call    6 returned 100%
+branch  7 taken 100% (fallthrough)
+branch  8 taken 0% (throw)
+call    9 returned 100%
+branch 10 taken 100% (fallthrough)
+branch 11 taken 0% (throw)
+call   12 returned 100%
+branch 13 taken 100% (fallthrough)
+branch 14 taken 0% (throw)
+branch 15 taken 75% (fallthrough)
+branch 16 taken 25%
+call   17 returned 100%
+call   18 returned 100%
+branch 19 taken 100% (fallthrough)
+branch 20 taken 0% (throw)
+call   21 returned 100%
+branch 22 taken 100% (fallthrough)
+branch 23 taken 0% (throw)
+call   24 returned 100%
+branch 25 taken 100% (fallthrough)
+branch 26 taken 0% (throw)
+call   27 returned 100%
+branch 28 taken 100% (fallthrough)
+branch 29 taken 0% (throw)
+call   30 returned 100%
+branch 31 taken 100% (fallthrough)
+branch 32 taken 0% (throw)
+call   33 returned 100%
+branch 34 taken 100% (fallthrough)
+branch 35 taken 0% (throw)
+call   36 returned 100%
+branch 37 taken 100% (fallthrough)
+branch 38 taken 0% (throw)
+call   39 returned 100%
+branch 40 taken 100% (fallthrough)
+branch 41 taken 0% (throw)
+call   42 returned 100%
+branch 43 taken 100% (fallthrough)
+branch 44 taken 0% (throw)
+call   45 returned 100%
+branch 46 taken 100% (fallthrough)
+branch 47 taken 0% (throw)
+call   48 returned 100%
+branch 49 taken 100% (fallthrough)
+branch 50 taken 0% (throw)
+call   51 returned 100%
+branch 52 taken 100% (fallthrough)
+branch 53 taken 0% (throw)
+call   54 returned 100%
+branch 55 taken 100% (fallthrough)
+branch 56 taken 0% (throw)
+call   57 returned 100%
+branch 58 taken 100% (fallthrough)
+branch 59 taken 0% (throw)
+call   60 returned 100%
+branch 61 taken 100% (fallthrough)
+branch 62 taken 0% (throw)
+call   63 returned 100%
+branch 64 taken 100% (fallthrough)
+branch 65 taken 0% (throw)
+call   66 returned 100%
+call   67 returned 100%
+call   68 returned 100%
+call   69 returned 100%
+call   70 returned 100%
+call   71 returned 100%
+call   72 returned 100%
+call   73 returned 100%
+call   74 returned 100%
+call   75 returned 100%
+call   76 returned 100%
+call   77 returned 100%
+call   78 returned 100%
+call   79 returned 100%
+call   80 returned 100%
+call   81 returned 100%
+branch 82 never executed (fallthrough)
+branch 83 never executed
+branch 84 never executed (fallthrough)
+branch 85 never executed
+branch 86 never executed (fallthrough)
+branch 87 never executed
+call   88 never executed
+branch 89 never executed (fallthrough)
+branch 90 never executed
+branch 91 never executed (fallthrough)
+branch 92 never executed
+call   93 never executed
+branch 94 never executed (fallthrough)
+branch 95 never executed
+branch 96 never executed (fallthrough)
+branch 97 never executed
+call   98 never executed
+branch 99 never executed (fallthrough)
+branch 100 never executed
+branch 101 never executed (fallthrough)
+branch 102 never executed
+call   103 never executed
+branch 104 never executed (fallthrough)
+branch 105 never executed
+branch 106 never executed (fallthrough)
+branch 107 never executed
+call   108 never executed
+branch 109 never executed (fallthrough)
+branch 110 never executed
+branch 111 never executed (fallthrough)
+branch 112 never executed
+call   113 never executed
+call   114 never executed
+call   115 never executed
+call   116 never executed
+call   117 never executed
+call   118 never executed
+call   119 never executed
+call   120 never executed
+call   121 never executed
+call   122 never executed
+call   123 never executed
+call   124 never executed
+call   125 never executed
+call   126 never executed
+call   127 never executed
+call   128 never executed
+call   129 never executed
+        -:  369:
+function _ZNK5rgpot6UmaPot14forceBatchImplERKNS_10ForceBatchE called 4 returned 100% blocks executed 47%
+        4:  370:void UmaPot::forceBatchImpl(const ForceBatch &batch) const {
+        -:  371:  // A band evaluation: every system shares this pot's composition, so
+        -:  372:  // one AOTI call covers a chunk of up to batch_max geometries. The
+        -:  373:  // per-system fallback covers everything else (no band contract in
+        -:  374:  // the package, mixed compositions, single systems).
+function _ZZNK5rgpot6UmaPot14forceBatchImplERKNS_10ForceBatchEENKUlmmE_clEmm called 0 returned 0% blocks executed 0%
+    #####:  375:  auto fallback = [&](size_t from, size_t to) {
+    #####:  376:    for (size_t i = from; i < to; ++i)
+branch  0 never executed
+branch  1 never executed (fallthrough)
+    #####:  377:      forceImpl(batch.in[i], &batch.out[i]);
+call    0 never executed
+       4*:  378:  };
+        4:  379:  if (batch.nSystems == 0)
+branch  0 taken 0% (fallthrough)
+branch  1 taken 100%
+    #####:  380:    return;
+        -:  381:  {
+        4:  382:    std::lock_guard<std::mutex> lock(m_impl->mutex);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+        4:  383:    ensureLoaded();
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+        4:  384:  }
+call    0 returned 100%
+call    1 never executed
+        4:  385:  const int64_t bmax = m_impl->batch_max;
+call    0 returned 100%
+        4:  386:  if (bmax <= 1) {
+branch  0 taken 0% (fallthrough)
+branch  1 taken 100%
+        -:  387:    // Single-system package: the plain graph is the only one there is.
+    #####:  388:    fallback(0, batch.nSystems);
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed (throw)
+    #####:  389:    return;
+        -:  390:  }
+        4:  391:  const size_t n0 = batch.in[0].nAtoms;
+        4:  392:  bool uniform = true;
+       11:  393:  for (size_t i = 0; uniform && i < batch.nSystems; ++i) {
+branch  0 taken 100% (fallthrough)
+branch  1 taken 0%
+branch  2 taken 64%
+branch  3 taken 36% (fallthrough)
+        7:  394:    uniform = batch.in[i].nAtoms == n0;
+       28:  395:    for (size_t a = 0; uniform && a < n0; ++a)
+branch  0 taken 100% (fallthrough)
+branch  1 taken 0%
+branch  2 taken 75%
+branch  3 taken 25% (fallthrough)
+       21:  396:      uniform = batch.in[i].atmnrs[a] == batch.in[0].atmnrs[a];
+        -:  397:  }
+        4:  398:  if (!uniform) {
+branch  0 taken 0% (fallthrough)
+branch  1 taken 100%
+        -:  399:    throw std::runtime_error(
+    #####:  400:        "UmaPot: band package requires one composition per batch");
+call    0 never executed
+call    1 never executed
+branch  2 never executed (fallthrough)
+branch  3 never executed (throw)
+call    4 never executed
+call    5 never executed
+        -:  401:  }
+        4:  402:  checkContract(batch.in[0]);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+        -:  403:
+        4:  404:  const auto n = static_cast<int64_t>(n0);
+        4:  405:  const bool molecular = m_impl->molecular_box > 0.0;
+call    0 returned 100%
+        4:  406:  const double L = m_impl->molecular_box;
+call    0 returned 100%
+        -:  407:
+        8:  408:  for (size_t start = 0; start < batch.nSystems;
+branch  0 taken 50%
+branch  1 taken 50% (fallthrough)
+        4:  409:       start += static_cast<size_t>(bmax)) {
+        -:  410:    const size_t stop =
+        4:  411:        std::min(batch.nSystems, start + static_cast<size_t>(bmax));
+call    0 returned 100%
+        4:  412:    const auto B_real = static_cast<int64_t>(stop - start);
+        -:  413:    // The band graph is traced at exactly batch_max systems (static
+        -:  414:    // shapes; merge_mole freezes per-atom buffers at the traced
+        -:  415:    // total), so every chunk pads to that size by repeating the last
+        -:  416:    // system and the padded results are discarded.
+        4:  417:    const int64_t B = bmax;
+function _ZZNK5rgpot6UmaPot14forceBatchImplERKNS_10ForceBatchEENKUllE_clEl called 16 returned 100% blocks executed 100%
+       16:  418:    auto in_at = [&](int64_t b) -> const ForceInput & {
+       16:  419:      const int64_t src = b < B_real ? b : B_real - 1;
+branch  0 taken 12% (fallthrough)
+branch  1 taken 88%
+       16:  420:      return batch.in[start + static_cast<size_t>(src)];
+        4:  421:    };
+        -:  422:
+        -:  423:    // Per-system recenter + edges; edge indices offset into the
+        -:  424:    // concatenated atom range.
+        8:  425:    std::vector<std::vector<double>> sys_pos(static_cast<size_t>(B));
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+        8:  426:    std::vector<std::array<double, 9>> sys_box(static_cast<size_t>(B));
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+        4:  427:    std::vector<UmaEdgeList> sys_edges(static_cast<size_t>(B));
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+        4:  428:    int64_t nedges_total = 0;
+       12:  429:    for (int64_t b = 0; b < B; ++b) {
+branch  0 taken 67%
+branch  1 taken 33% (fallthrough)
+        8:  430:      const ForceInput &in = in_at(b);
+call    0 returned 100%
+        8:  431:      auto &pos_b = sys_pos[static_cast<size_t>(b)];
+call    0 returned 100%
+        8:  432:      auto &box_b = sys_box[static_cast<size_t>(b)];
+call    0 returned 100%
+        8:  433:      pos_b.assign(in.pos, in.pos + 3 * n);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+        8:  434:      if (molecular) {
+branch  0 taken 50% (fallthrough)
+branch  1 taken 50%
+        4:  435:        box_b = uma::molecularFrame(pos_b, L);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+        -:  436:      } else {
+        4:  437:        std::copy(in.box, in.box + 9, box_b.begin());
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+        -:  438:      }
+       16:  439:      const ForceInput local{static_cast<size_t>(n), pos_b.data(), in.atmnrs,
+        8:  440:                             box_b.data()};
+call    0 returned 100%
+        8:  441:      sys_edges[static_cast<size_t>(b)] = build_system_edges(
+       24:  442:          local, m_impl->cutoff, m_impl->model_cutoff, m_impl->molecular_box,
+        8:  443:          m_impl->max_neighbors, m_impl->contract, B, m_impl->edges);
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+call    3 returned 100%
+call    4 returned 100%
+call    5 returned 100%
+call    6 returned 100%
+branch  7 taken 100% (fallthrough)
+branch  8 taken 0% (throw)
+call    9 returned 100%
+call   10 returned 100%
+branch 11 taken 100% (fallthrough)
+branch 12 taken 0% (throw)
+        8:  444:      nedges_total += static_cast<int64_t>(
+        8:  445:          sys_edges[static_cast<size_t>(b)].neighbor.size());
+call    0 returned 100%
+call    1 returned 100%
+        -:  446:    }
+        4:  447:    if (nedges_total == 0)
+branch  0 taken 0% (fallthrough)
+branch  1 taken 100%
+    #####:  448:      throw std::runtime_error("UmaPot: vesin produced no edges (batch)");
+call    0 never executed
+call    1 never executed
+branch  2 never executed (fallthrough)
+branch  3 never executed (throw)
+call    4 never executed
+call    5 never executed
+        4:  449:    std::vector<int64_t> per_system(static_cast<size_t>(B));
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+       12:  450:    for (int64_t b = 0; b < B; ++b) {
+branch  0 taken 67%
+branch  1 taken 33% (fallthrough)
+        8:  451:      per_system[static_cast<size_t>(b)] = static_cast<int64_t>(
+call    0 returned 100%
+        8:  452:          sys_edges[static_cast<size_t>(b)].neighbor.size());
+call    0 returned 100%
+call    1 returned 100%
+        8:  453:      if (molecular)
+branch  0 taken 50% (fallthrough)
+branch  1 taken 50%
+        4:  454:        reject_periodic_images(sys_edges[static_cast<size_t>(b)].offsets);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+        -:  455:    }
+        -:  456:    // Same edge contract as a single system, including a molecular
+        -:  457:    // band. forceImpl sends batch_max > 1 here before any other check.
+        4:  458:    apply_edge_contract(m_impl->contract, molecular, n, B, per_system.data(),
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+branch  3 taken 100% (fallthrough)
+branch  4 taken 0% (throw)
+        -:  459:                        nedges_total);
+        -:  460:
+        -:  461:    auto opts_f =
+        4:  462:        torch::TensorOptions().dtype(m_impl->dtype).device(torch::kCPU);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+call    4 returned 100%
+call    5 returned 100%
+call    6 returned 100%
+        -:  463:    auto opts_l =
+        4:  464:        torch::TensorOptions().dtype(torch::kLong).device(torch::kCPU);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+call    4 returned 100%
+call    5 returned 100%
+        -:  465:
+        4:  466:    auto pos = torch::empty({B * n, 3}, opts_f);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+branch  5 taken 100% (fallthrough)
+branch  6 taken 0% (throw)
+        4:  467:    auto atomic_numbers = torch::empty({B * n}, opts_l);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+branch  5 taken 100% (fallthrough)
+branch  6 taken 0% (throw)
+        4:  468:    auto cell = torch::empty({B, 3, 3}, opts_f);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+branch  5 taken 100% (fallthrough)
+branch  6 taken 0% (throw)
+        4:  469:    auto pbc = torch::ones({B, 3}, torch::TensorOptions().dtype(torch::kBool));
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+call    4 returned 100%
+call    5 returned 100%
+branch  6 taken 100% (fallthrough)
+branch  7 taken 0% (throw)
+call    8 returned 100%
+branch  9 taken 100% (fallthrough)
+branch 10 taken 0% (throw)
+        4:  470:    auto edge_index = torch::empty({2, nedges_total}, opts_l);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+branch  5 taken 100% (fallthrough)
+branch  6 taken 0% (throw)
+        4:  471:    auto cell_offsets = torch::empty({nedges_total, 3}, opts_f);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+branch  5 taken 100% (fallthrough)
+branch  6 taken 0% (throw)
+        -:  472:    auto charge =
+        4:  473:        torch::full({B}, static_cast<int64_t>(m_config.charge), opts_l);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+branch  4 taken 100% (fallthrough)
+branch  5 taken 0% (throw)
+call    6 returned 100%
+branch  7 taken 100% (fallthrough)
+branch  8 taken 0% (throw)
+call    9 returned 100%
+call   10 never executed
+        4:  474:    auto spin = torch::full({B}, static_cast<int64_t>(m_config.spin), opts_l);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+branch  4 taken 100% (fallthrough)
+branch  5 taken 0% (throw)
+call    6 returned 100%
+branch  7 taken 100% (fallthrough)
+branch  8 taken 0% (throw)
+call    9 returned 100%
+call   10 never executed
+        4:  475:    auto batch_vec = torch::empty({B * n}, opts_l);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+branch  5 taken 100% (fallthrough)
+branch  6 taken 0% (throw)
+        4:  476:    auto natoms = torch::full({B}, n, opts_l);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+branch  4 taken 100% (fallthrough)
+branch  5 taken 0% (throw)
+call    6 returned 100%
+branch  7 taken 100% (fallthrough)
+branch  8 taken 0% (throw)
+call    9 returned 100%
+call   10 never executed
+        4:  477:    auto nedges_t = torch::empty({B}, opts_l);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+branch  5 taken 100% (fallthrough)
+branch  6 taken 0% (throw)
+        -:  478:    {
+        4:  479:      auto ne_a = nedges_t.accessor<int64_t, 1>();
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+       12:  480:      for (int64_t b = 0; b < B; ++b)
+branch  0 taken 67%
+branch  1 taken 33% (fallthrough)
+        8:  481:        ne_a[b] = static_cast<int64_t>(
+call    0 returned 100%
+        8:  482:            sys_edges[static_cast<size_t>(b)].neighbor.size());
+call    0 returned 100%
+call    1 returned 100%
+        -:  483:    }
+        -:  484:
+        -:  485:    {
+        4:  486:      auto z_a = atomic_numbers.accessor<int64_t, 1>();
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+        4:  487:      auto ei = edge_index.accessor<int64_t, 2>();
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+        4:  488:      auto bv = batch_vec.accessor<int64_t, 1>();
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+        4:  489:      int64_t e_at = 0;
+       12:  490:      for (int64_t b = 0; b < B; ++b) {
+branch  0 taken 67%
+branch  1 taken 33% (fallthrough)
+        8:  491:        const ForceInput &in = in_at(b);
+call    0 returned 100%
+        8:  492:        const auto &pos_b = sys_pos[static_cast<size_t>(b)];
+call    0 returned 100%
+        8:  493:        store_rows(pos.narrow(0, b * n, n), pos_b.data(), n, 3);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+branch  5 taken 100% (fallthrough)
+branch  6 taken 0% (throw)
+call    7 returned 100%
+call    8 never executed
+       32:  494:        for (int64_t i = 0; i < n; ++i) {
+branch  0 taken 75%
+branch  1 taken 25% (fallthrough)
+       24:  495:          z_a[b * n + i] = in.atmnrs[i];
+call    0 returned 100%
+       24:  496:          bv[b * n + i] = b;
+call    0 returned 100%
+        -:  497:        }
+       16:  498:        store_rows(cell[b].view({1, 9}), sys_box[static_cast<size_t>(b)].data(),
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+branch  5 taken 100% (fallthrough)
+branch  6 taken 0% (throw)
+call    7 returned 100%
+branch  8 taken 100% (fallthrough)
+branch  9 taken 0% (throw)
+call   10 returned 100%
+branch 11 taken 100% (fallthrough)
+branch 12 taken 0% (throw)
+call   13 returned 100%
+call   14 returned 100%
+call   15 never executed
+call   16 never executed
+        -:  499:                   1, 9);
+        8:  500:        const auto &edges = sys_edges[static_cast<size_t>(b)];
+call    0 returned 100%
+        8:  501:        const auto ne = static_cast<int64_t>(edges.neighbor.size());
+call    0 returned 100%
+       56:  502:        for (int64_t e = 0; e < ne; ++e) {
+branch  0 taken 86%
+branch  1 taken 14% (fallthrough)
+       48:  503:          ei[0][e_at + e] = edges.neighbor[static_cast<size_t>(e)] + b * n;
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+       48:  504:          ei[1][e_at + e] = edges.center[static_cast<size_t>(e)] + b * n;
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+        -:  505:        }
+        8:  506:        if (ne > 0)
+branch  0 taken 100% (fallthrough)
+branch  1 taken 0%
+        8:  507:          store_rows(cell_offsets.narrow(0, e_at, ne), edges.offsets.data(), ne,
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+call    4 returned 100%
+branch  5 taken 100% (fallthrough)
+branch  6 taken 0% (throw)
+call    7 returned 100%
+call    8 never executed
+        -:  508:                     3);
+        8:  509:        e_at += ne;
+        -:  510:      }
+        -:  511:    }
+        4:  512:    check_edge_indices(edge_index, B * n);
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+        4:  513:    auto cell_offsets_f = cell_offsets;
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+        -:  514:
+        4:  515:    if (m_impl->device != torch::kCPU) {
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+call    4 returned 100%
+branch  5 taken 0% (fallthrough)
+branch  6 taken 100%
+    #####:  516:      pos = pos.to(m_impl->device);
+call    0 never executed
+call    1 never executed
+call    2 never executed
+branch  3 never executed (fallthrough)
+branch  4 never executed (throw)
+call    5 never executed
+branch  6 never executed (fallthrough)
+branch  7 never executed (throw)
+call    8 never executed
+call    9 never executed
+    #####:  517:      atomic_numbers = atomic_numbers.to(m_impl->device);
+call    0 never executed
+call    1 never executed
+call    2 never executed
+branch  3 never executed (fallthrough)
+branch  4 never executed (throw)
+call    5 never executed
+branch  6 never executed (fallthrough)
+branch  7 never executed (throw)
+call    8 never executed
+call    9 never executed
+    #####:  518:      cell = cell.to(m_impl->device);
+call    0 never executed
+call    1 never executed
+call    2 never executed
+branch  3 never executed (fallthrough)
+branch  4 never executed (throw)
+call    5 never executed
+branch  6 never executed (fallthrough)
+branch  7 never executed (throw)
+call    8 never executed
+call    9 never executed
+    #####:  519:      pbc = pbc.to(m_impl->device);
+call    0 never executed
+call    1 never executed
+call    2 never executed
+branch  3 never executed (fallthrough)
+branch  4 never executed (throw)
+call    5 never executed
+branch  6 never executed (fallthrough)
+branch  7 never executed (throw)
+call    8 never executed
+call    9 never executed
+    #####:  520:      edge_index = edge_index.to(m_impl->device);
+call    0 never executed
+call    1 never executed
+call    2 never executed
+branch  3 never executed (fallthrough)
+branch  4 never executed (throw)
+call    5 never executed
+branch  6 never executed (fallthrough)
+branch  7 never executed (throw)
+call    8 never executed
+call    9 never executed
+    #####:  521:      cell_offsets_f = cell_offsets_f.to(m_impl->device);
+call    0 never executed
+call    1 never executed
+call    2 never executed
+branch  3 never executed (fallthrough)
+branch  4 never executed (throw)
+call    5 never executed
+branch  6 never executed (fallthrough)
+branch  7 never executed (throw)
+call    8 never executed
+call    9 never executed
+    #####:  522:      charge = charge.to(m_impl->device);
+call    0 never executed
+call    1 never executed
+call    2 never executed
+branch  3 never executed (fallthrough)
+branch  4 never executed (throw)
+call    5 never executed
+branch  6 never executed (fallthrough)
+branch  7 never executed (throw)
+call    8 never executed
+call    9 never executed
+    #####:  523:      spin = spin.to(m_impl->device);
+call    0 never executed
+call    1 never executed
+call    2 never executed
+branch  3 never executed (fallthrough)
+branch  4 never executed (throw)
+call    5 never executed
+branch  6 never executed (fallthrough)
+branch  7 never executed (throw)
+call    8 never executed
+call    9 never executed
+    #####:  524:      batch_vec = batch_vec.to(m_impl->device);
+call    0 never executed
+call    1 never executed
+call    2 never executed
+branch  3 never executed (fallthrough)
+branch  4 never executed (throw)
+call    5 never executed
+branch  6 never executed (fallthrough)
+branch  7 never executed (throw)
+call    8 never executed
+call    9 never executed
+    #####:  525:      natoms = natoms.to(m_impl->device);
+call    0 never executed
+call    1 never executed
+call    2 never executed
+branch  3 never executed (fallthrough)
+branch  4 never executed (throw)
+call    5 never executed
+branch  6 never executed (fallthrough)
+branch  7 never executed (throw)
+call    8 never executed
+call    9 never executed
+    #####:  526:      nedges_t = nedges_t.to(m_impl->device);
+call    0 never executed
+call    1 never executed
+call    2 never executed
+branch  3 never executed (fallthrough)
+branch  4 never executed (throw)
+call    5 never executed
+branch  6 never executed (fallthrough)
+branch  7 never executed (throw)
+call    8 never executed
+call    9 never executed
+        -:  527:    }
+        -:  528:
+        -:  529:    std::vector<torch::Tensor> inputs = {
+        -:  530:        pos,    atomic_numbers, cell,      pbc,    edge_index, cell_offsets_f,
+       52:  531:        charge, spin,           batch_vec, natoms, nedges_t};
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+branch  3 taken 92% (fallthrough)
+branch  4 taken 8%
+call    5 returned 100%
+branch  6 never executed (fallthrough)
+branch  7 never executed
+call    8 never executed
+        -:  532:
+        4:  533:    std::lock_guard<std::mutex> lock(m_impl->mutex);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+        4:  534:    c10::InferenceMode guard;
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+        4:  535:    auto outputs = m_impl->loader->run(inputs);
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+branch  3 taken 100% (fallthrough)
+branch  4 taken 0% (throw)
+        4:  536:    if (outputs.size() < 2)
+call    0 returned 100%
+branch  1 taken 0% (fallthrough)
+branch  2 taken 100%
+    #####:  537:      throw std::runtime_error("UmaPot: AOTI package returned <2 tensors");
+call    0 never executed
+call    1 never executed
+branch  2 never executed (fallthrough)
+branch  3 never executed (throw)
+call    4 never executed
+call    5 never executed
+        4:  538:    auto energies = outputs[0].to(torch::kFloat64).cpu().contiguous();
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+branch  3 taken 100% (fallthrough)
+branch  4 taken 0% (throw)
+call    5 returned 100%
+branch  6 taken 100% (fallthrough)
+branch  7 taken 0% (throw)
+call    8 returned 100%
+branch  9 taken 100% (fallthrough)
+branch 10 taken 0% (throw)
+call   11 returned 100%
+call   12 returned 100%
+call   13 never executed
+call   14 never executed
+        4:  539:    auto forces = outputs[1].to(torch::kFloat64).cpu().contiguous();
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+branch  3 taken 100% (fallthrough)
+branch  4 taken 0% (throw)
+call    5 returned 100%
+branch  6 taken 100% (fallthrough)
+branch  7 taken 0% (throw)
+call    8 returned 100%
+branch  9 taken 100% (fallthrough)
+branch 10 taken 0% (throw)
+call   11 returned 100%
+call   12 returned 100%
+call   13 never executed
+call   14 never executed
+       4*:  540:    if (energies.numel() != B || forces.numel() != B * n * 3)
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+branch  3 taken 100% (fallthrough)
+branch  4 taken 0%
+call    5 returned 100%
+branch  6 taken 100% (fallthrough)
+branch  7 taken 0% (throw)
+branch  8 taken 0% (fallthrough)
+branch  9 taken 100%
+branch 10 taken 0% (fallthrough)
+branch 11 taken 100%
+    #####:  541:      throw std::runtime_error("UmaPot: batch output shape mismatch");
+call    0 never executed
+call    1 never executed
+branch  2 never executed (fallthrough)
+branch  3 never executed (throw)
+call    4 never executed
+call    5 never executed
+        4:  542:    const double *ep = energies.data_ptr<double>();
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+        4:  543:    const double *fp = forces.data_ptr<double>();
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+       11:  544:    for (int64_t b = 0; b < B_real; ++b) {
+branch  0 taken 64%
+branch  1 taken 36% (fallthrough)
+        7:  545:      ForceOut &o = batch.out[start + static_cast<size_t>(b)];
+        7:  546:      o.energy = ep[b];
+        7:  547:      o.variance = 0.0;
+       70:  548:      for (int64_t i = 0; i < n * 3; ++i)
+branch  0 taken 90%
+branch  1 taken 10% (fallthrough)
+       63:  549:        o.F[i] = fp[b * n * 3 + i];
+        -:  550:    }
+        4:  551:  }
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+call    3 returned 100%
+call    4 returned 100%
+call    5 returned 100%
+call    6 returned 100%
+call    7 returned 100%
+call    8 returned 100%
+call    9 returned 100%
+call   10 returned 100%
+call   11 returned 100%
+call   12 returned 100%
+call   13 returned 100%
+call   14 returned 100%
+call   15 returned 100%
+call   16 returned 100%
+call   17 returned 100%
+call   18 returned 100%
+call   19 returned 100%
+call   20 returned 100%
+call   21 returned 100%
+call   22 never executed
+call   23 never executed
+call   24 never executed
+call   25 never executed
+call   26 never executed
+call   27 never executed
+call   28 never executed
+call   29 never executed
+call   30 never executed
+call   31 never executed
+call   32 never executed
+call   33 never executed
+call   34 never executed
+call   35 never executed
+call   36 never executed
+call   37 never executed
+call   38 never executed
+call   39 never executed
+call   40 never executed
+call   41 never executed
+call   42 never executed
+call   43 never executed
+        4:  552:}
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+call    3 returned 100%
+branch  4 taken 100% (fallthrough)
+branch  5 taken 0% (throw)
+call    6 returned 100%
+branch  7 taken 100% (fallthrough)
+branch  8 taken 0% (throw)
+call    9 returned 100%
+branch 10 taken 100% (fallthrough)
+branch 11 taken 0% (throw)
+call   12 returned 100%
+branch 13 taken 100% (fallthrough)
+branch 14 taken 0% (throw)
+call   15 returned 100%
+branch 16 taken 100% (fallthrough)
+branch 17 taken 0% (throw)
+call   18 returned 100%
+branch 19 taken 100% (fallthrough)
+branch 20 taken 0% (throw)
+call   21 returned 100%
+branch 22 taken 100% (fallthrough)
+branch 23 taken 0% (throw)
+call   24 returned 100%
+branch 25 taken 100% (fallthrough)
+branch 26 taken 0% (throw)
+call   27 returned 100%
+branch 28 taken 100% (fallthrough)
+branch 29 taken 0% (throw)
+call   30 returned 100%
+branch 31 taken 100% (fallthrough)
+branch 32 taken 0% (throw)
+branch 33 never executed (fallthrough)
+branch 34 never executed
+branch 35 never executed (fallthrough)
+branch 36 never executed
+call   37 never executed
+        -:  553:
+function _ZNK5rgpot6UmaPot12posDtypeNameEv called 1 returned 100% blocks executed 82%
+        1:  554:const char *UmaPot::posDtypeName() const {
+        1:  555:  std::lock_guard<std::mutex> lock(m_impl->mutex);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+        1:  556:  ensureLoaded();
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+        2:  557:  return m_impl->pos_dtype_name.c_str();
+call    0 returned 100%
+call    1 returned 100%
+        1:  558:}
+call    0 returned 100%
+call    1 never executed
+        -:  559:
+function _ZNK5rgpot6UmaPot14modelDtypeNameEv called 1 returned 100% blocks executed 82%
+        1:  560:const char *UmaPot::modelDtypeName() const {
+        1:  561:  std::lock_guard<std::mutex> lock(m_impl->mutex);
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+        1:  562:  ensureLoaded();
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0% (throw)
+        2:  563:  return m_impl->model_dtype_name.c_str();
+call    0 returned 100%
+call    1 returned 100%
+        1:  564:}
+call    0 returned 100%
+call    1 never executed
+        -:  565:
+        -:  566:} // namespace rgpot

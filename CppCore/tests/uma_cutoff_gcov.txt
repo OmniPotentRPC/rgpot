@@ -1,8 +1,37 @@
-UmaLinkedCell.hpp.gcov lines 207/207 100.00% raw_branches 104/126 82.54% branches 104/104 100.00% excluded_compiler_throw 22
-UmaEdges.cc.gcov lines 450/451 99.78% raw_branches 317/402 78.86% branches 314/320 98.12% excluded_compiler_throw 82
-combined lines 657/658 99.85% branches 418/424 98.58%
-scored branches omit compiler throw edges on calls that are not throw statements
-UmaLinkedCell.hpp.gcov missed_lines 
-UmaLinkedCell.hpp.gcov untaken_throw 22 untaken_code 0 code_lines 
-UmaEdges.cc.gcov missed_lines 147
-UmaEdges.cc.gcov untaken_throw 83 untaken_code 2 code_lines 77 374
+Throw edges are counted.
+Never-executed branches are counted.
+UmaLinkedCell.hpp lines are 201 of 201.
+That is 100.00 percent.
+UmaLinkedCell.hpp raw branches are 76 of 76.
+That is 100.00 percent.
+UmaLinkedCell.hpp has no untaken branch.
+UmaEdges.cc lines are 457 of 457.
+That is 100.00 percent.
+UmaEdges.cc raw branches are 239 of 242.
+That is 98.76 percent.
+UmaEdges.cc untaken line 349 is the cell take.
+UmaEdges.cc untaken line 391 is the vesin message.
+UmaEdges.cc untaken line 567 is the cell allocation.
+UmaGrow.hpp lines are 44 of 44.
+That is 100.00 percent.
+UmaGrow.hpp raw branches are 14 of 14.
+That is 100.00 percent.
+UmaGrow.hpp has no untaken branch.
+vesin-single-build.cpp with the file included has 618 of 1111 lines.
+That is 55.63 percent.
+vesin-single-build.cpp raw branches are 304 of 964.
+That is 31.54 percent.
+vesin-single-build.cpp is excluded.
+The file is a vendored generated translation unit.
+Non-CPU device paths are not buildable on this host.
+UmaPot.cc lines are 324 of 378.
+That is 85.71 percent.
+UmaPot.cc raw branches are 370 of 820.
+That is 45.12 percent.
+The CPU run leaves the non-CPU device copies untaken.
+Several package error arms stay untaken.
+UmaPot.hpp lines are 4 of 4.
+That is 100.00 percent.
+UmaPot.hpp has no branches.
+UmaEdges.hpp has no executable lines.
+UmaConfig.hpp has no executable lines.

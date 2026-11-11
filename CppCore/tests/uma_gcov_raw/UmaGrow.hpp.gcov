@@ -1,0 +1,1278 @@
+        -:    0:Source:CppCore/rgpot/UmaPot/UmaGrow.hpp
+        -:    1:#pragma once
+        -:    2:// Copyright 2023--present rgpot developers
+        -:    3:
+        -:    4:#include <algorithm>
+        -:    5:#include <cstddef>
+        -:    6:#include <memory>
+        -:    7:#include <mutex>
+        -:    8:#include <new>
+        -:    9:#include <system_error>
+        -:   10:#include <thread>
+        -:   11:#include <utility>
+        -:   12:#include <vector>
+        -:   13:
+        -:   14:namespace rgpot {
+        -:   15:
+        -:   16:// Successful growth does the same work as the vector call.
+        -:   17:// A failure aborts the process instead of throwing, which keeps a
+        -:   18:// bad_alloc edge off every call. The timed builder measures this.
+        -:   19:template <class T>
+    1283*:   20:inline void grow_reserve(std::vector<T> &v, std::size_t n) noexcept {
+    1283*:   21:  if (v.capacity() < n)
+    1236*:   22:    v.reserve(n);
+    1283*:   23:}
+------------------
+_ZN5rgpot12grow_reserveISt6threadEEvRSt6vectorIT_SaIS3_EEm:
+function _ZN5rgpot12grow_reserveISt6threadEEvRSt6vectorIT_SaIS3_EEm called 24 returned 100% blocks executed 100%
+       24:   20:inline void grow_reserve(std::vector<T> &v, std::size_t n) noexcept {
+       24:   21:  if (v.capacity() < n)
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0%
+       24:   22:    v.reserve(n);
+call    0 returned 100%
+       24:   23:}
+------------------
+_ZN5rgpot12grow_reserveINS_11linked_cell4PairEEEvRSt6vectorIT_SaIS4_EEm:
+function _ZN5rgpot12grow_reserveINS_11linked_cell4PairEEEvRSt6vectorIT_SaIS4_EEm called 82 returned 100% blocks executed 100%
+       82:   20:inline void grow_reserve(std::vector<T> &v, std::size_t n) noexcept {
+       82:   21:  if (v.capacity() < n)
+call    0 returned 100%
+branch  1 taken 52% (fallthrough)
+branch  2 taken 48%
+       43:   22:    v.reserve(n);
+call    0 returned 100%
+       82:   23:}
+------------------
+_ZN5rgpot12grow_reserveISt6threadEEvRSt6vectorIT_SaIS3_EEm:
+function _ZN5rgpot12grow_reserveISt6threadEEvRSt6vectorIT_SaIS3_EEm called 0 returned 0% blocks executed 0%
+    #####:   20:inline void grow_reserve(std::vector<T> &v, std::size_t n) noexcept {
+    #####:   21:  if (v.capacity() < n)
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed
+    #####:   22:    v.reserve(n);
+call    0 never executed
+    #####:   23:}
+------------------
+_ZN5rgpot12grow_reserveIfEEvRSt6vectorIT_SaIS2_EEm:
+function _ZN5rgpot12grow_reserveIfEEvRSt6vectorIT_SaIS2_EEm called 43 returned 100% blocks executed 100%
+       43:   20:inline void grow_reserve(std::vector<T> &v, std::size_t n) noexcept {
+       43:   21:  if (v.capacity() < n)
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0%
+       43:   22:    v.reserve(n);
+call    0 returned 100%
+       43:   23:}
+------------------
+_ZN5rgpot12grow_reserveIdEEvRSt6vectorIT_SaIS2_EEm:
+function _ZN5rgpot12grow_reserveIdEEvRSt6vectorIT_SaIS2_EEm called 524 returned 100% blocks executed 100%
+      524:   20:inline void grow_reserve(std::vector<T> &v, std::size_t n) noexcept {
+      524:   21:  if (v.capacity() < n)
+call    0 returned 100%
+branch  1 taken 99% (fallthrough)
+branch  2 taken 1%
+      520:   22:    v.reserve(n);
+call    0 returned 100%
+      524:   23:}
+------------------
+_ZN5rgpot12grow_reserveIlEEvRSt6vectorIT_SaIS2_EEm:
+function _ZN5rgpot12grow_reserveIlEEvRSt6vectorIT_SaIS2_EEm called 610 returned 100% blocks executed 100%
+      610:   20:inline void grow_reserve(std::vector<T> &v, std::size_t n) noexcept {
+      610:   21:  if (v.capacity() < n)
+call    0 returned 100%
+branch  1 taken 99% (fallthrough)
+branch  2 taken 1%
+      606:   22:    v.reserve(n);
+call    0 returned 100%
+      610:   23:}
+------------------
+_ZN5rgpot12grow_reserveINS_11linked_cell4PairEEEvRSt6vectorIT_SaIS4_EEm:
+function _ZN5rgpot12grow_reserveINS_11linked_cell4PairEEEvRSt6vectorIT_SaIS4_EEm called 0 returned 0% blocks executed 0%
+    #####:   20:inline void grow_reserve(std::vector<T> &v, std::size_t n) noexcept {
+    #####:   21:  if (v.capacity() < n)
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed
+    #####:   22:    v.reserve(n);
+call    0 never executed
+    #####:   23:}
+------------------
+        -:   24:
+        -:   25:template <class T, class U>
+  273421*:   26:inline void grow_push(std::vector<T> &v, U &&x) noexcept {
+  273421*:   27:  v.push_back(std::forward<U>(x));
+  273421*:   28:}
+------------------
+_ZN5rgpot9grow_pushINS_11linked_cell4PairERS2_EEvRSt6vectorIT_SaIS5_EEOT0_:
+function _ZN5rgpot9grow_pushINS_11linked_cell4PairERS2_EEvRSt6vectorIT_SaIS5_EEOT0_ called 1026 returned 100% blocks executed 100%
+     1026:   26:inline void grow_push(std::vector<T> &v, U &&x) noexcept {
+     1026:   27:  v.push_back(std::forward<U>(x));
+call    0 returned 100%
+call    1 returned 100%
+     1026:   28:}
+------------------
+_ZN5rgpot9grow_pushImmEEvRSt6vectorIT_SaIS2_EEOT0_:
+function _ZN5rgpot9grow_pushImmEEvRSt6vectorIT_SaIS2_EEOT0_ called 41 returned 100% blocks executed 100%
+       41:   26:inline void grow_push(std::vector<T> &v, U &&x) noexcept {
+       41:   27:  v.push_back(std::forward<U>(x));
+call    0 returned 100%
+call    1 returned 100%
+       41:   28:}
+------------------
+_ZN5rgpot9grow_pushISt10unique_ptrINS_14UmaEdgeSession9CellCacheESt14default_deleteIS3_EES6_EEvRSt6vectorIT_SaIS8_EEOT0_:
+function _ZN5rgpot9grow_pushISt10unique_ptrINS_14UmaEdgeSession9CellCacheESt14default_deleteIS3_EES6_EEvRSt6vectorIT_SaIS8_EEOT0_ called 20 returned 100% blocks executed 100%
+       20:   26:inline void grow_push(std::vector<T> &v, U &&x) noexcept {
+       20:   27:  v.push_back(std::forward<U>(x));
+call    0 returned 100%
+call    1 returned 100%
+       20:   28:}
+------------------
+_ZN5rgpot9grow_pushINS_11UmaEdgeListES1_EEvRSt6vectorIT_SaIS3_EEOT0_:
+function _ZN5rgpot9grow_pushINS_11UmaEdgeListES1_EEvRSt6vectorIT_SaIS3_EEOT0_ called 17 returned 100% blocks executed 100%
+       17:   26:inline void grow_push(std::vector<T> &v, U &&x) noexcept {
+       17:   27:  v.push_back(std::forward<U>(x));
+call    0 returned 100%
+call    1 returned 100%
+       17:   28:}
+------------------
+_ZN5rgpot9grow_pushIfRKfEEvRSt6vectorIT_SaIS4_EEOT0_:
+function _ZN5rgpot9grow_pushIfRKfEEvRSt6vectorIT_SaIS4_EEOT0_ called 264 returned 100% blocks executed 100%
+      264:   26:inline void grow_push(std::vector<T> &v, U &&x) noexcept {
+      264:   27:  v.push_back(std::forward<U>(x));
+call    0 returned 100%
+call    1 returned 100%
+      264:   28:}
+------------------
+_ZN5rgpot9grow_pushIfRfEEvRSt6vectorIT_SaIS3_EEOT0_:
+function _ZN5rgpot9grow_pushIfRfEEvRSt6vectorIT_SaIS3_EEOT0_ called 507 returned 100% blocks executed 100%
+      507:   26:inline void grow_push(std::vector<T> &v, U &&x) noexcept {
+      507:   27:  v.push_back(std::forward<U>(x));
+call    0 returned 100%
+call    1 returned 100%
+      507:   28:}
+------------------
+_ZN5rgpot9grow_pushIlRlEEvRSt6vectorIT_SaIS3_EEOT0_:
+function _ZN5rgpot9grow_pushIlRlEEvRSt6vectorIT_SaIS3_EEOT0_ called 338 returned 100% blocks executed 100%
+      338:   26:inline void grow_push(std::vector<T> &v, U &&x) noexcept {
+      338:   27:  v.push_back(std::forward<U>(x));
+call    0 returned 100%
+call    1 returned 100%
+      338:   28:}
+------------------
+_ZN5rgpot9grow_pushIffEEvRSt6vectorIT_SaIS2_EEOT0_:
+function _ZN5rgpot9grow_pushIffEEvRSt6vectorIT_SaIS2_EEOT0_ called 116496 returned 100% blocks executed 100%
+   116496:   26:inline void grow_push(std::vector<T> &v, U &&x) noexcept {
+   116496:   27:  v.push_back(std::forward<U>(x));
+call    0 returned 100%
+call    1 returned 100%
+   116496:   28:}
+------------------
+_ZN5rgpot9grow_pushIlRKlEEvRSt6vectorIT_SaIS4_EEOT0_:
+function _ZN5rgpot9grow_pushIlRKlEEvRSt6vectorIT_SaIS4_EEOT0_ called 38436 returned 100% blocks executed 100%
+    38436:   26:inline void grow_push(std::vector<T> &v, U &&x) noexcept {
+    38436:   27:  v.push_back(std::forward<U>(x));
+call    0 returned 100%
+call    1 returned 100%
+    38436:   28:}
+------------------
+_ZN5rgpot9grow_pushIddEEvRSt6vectorIT_SaIS2_EEOT0_:
+function _ZN5rgpot9grow_pushIddEEvRSt6vectorIT_SaIS2_EEOT0_ called 38436 returned 100% blocks executed 100%
+    38436:   26:inline void grow_push(std::vector<T> &v, U &&x) noexcept {
+    38436:   27:  v.push_back(std::forward<U>(x));
+call    0 returned 100%
+call    1 returned 100%
+    38436:   28:}
+------------------
+_ZN5rgpot9grow_pushIllEEvRSt6vectorIT_SaIS2_EEOT0_:
+function _ZN5rgpot9grow_pushIllEEvRSt6vectorIT_SaIS2_EEOT0_ called 77840 returned 100% blocks executed 100%
+    77840:   26:inline void grow_push(std::vector<T> &v, U &&x) noexcept {
+    77840:   27:  v.push_back(std::forward<U>(x));
+call    0 returned 100%
+call    1 returned 100%
+    77840:   28:}
+------------------
+_ZN5rgpot9grow_pushINS_11linked_cell4PairERS2_EEvRSt6vectorIT_SaIS5_EEOT0_:
+function _ZN5rgpot9grow_pushINS_11linked_cell4PairERS2_EEvRSt6vectorIT_SaIS5_EEOT0_ called 0 returned 0% blocks executed 0%
+    #####:   26:inline void grow_push(std::vector<T> &v, U &&x) noexcept {
+    #####:   27:  v.push_back(std::forward<U>(x));
+call    0 never executed
+call    1 never executed
+    #####:   28:}
+------------------
+_ZN5rgpot9grow_pushImmEEvRSt6vectorIT_SaIS2_EEOT0_:
+function _ZN5rgpot9grow_pushImmEEvRSt6vectorIT_SaIS2_EEOT0_ called 0 returned 0% blocks executed 0%
+    #####:   26:inline void grow_push(std::vector<T> &v, U &&x) noexcept {
+    #####:   27:  v.push_back(std::forward<U>(x));
+call    0 never executed
+call    1 never executed
+    #####:   28:}
+------------------
+        -:   29:
+        -:   30:template <class T>
+     896*:   31:inline void grow_resize(std::vector<T> &v, std::size_t n) noexcept {
+     896*:   32:  v.resize(n);
+     896*:   33:}
+------------------
+_ZN5rgpot11grow_resizeISt6vectorINS_11linked_cell4PairESaIS3_EEEEvRS1_IT_SaIS6_EEm:
+function _ZN5rgpot11grow_resizeISt6vectorINS_11linked_cell4PairESaIS3_EEEEvRS1_IT_SaIS6_EEm called 25 returned 100% blocks executed 100%
+       25:   31:inline void grow_resize(std::vector<T> &v, std::size_t n) noexcept {
+       25:   32:  v.resize(n);
+call    0 returned 100%
+       25:   33:}
+------------------
+_ZN5rgpot11grow_resizeIdEEvRSt6vectorIT_SaIS2_EEm:
+function _ZN5rgpot11grow_resizeIdEEvRSt6vectorIT_SaIS2_EEm called 121 returned 100% blocks executed 100%
+      121:   31:inline void grow_resize(std::vector<T> &v, std::size_t n) noexcept {
+      121:   32:  v.resize(n);
+call    0 returned 100%
+      121:   33:}
+------------------
+_ZN5rgpot11grow_resizeIjEEvRSt6vectorIT_SaIS2_EEm:
+function _ZN5rgpot11grow_resizeIjEEvRSt6vectorIT_SaIS2_EEm called 195 returned 100% blocks executed 100%
+      195:   31:inline void grow_resize(std::vector<T> &v, std::size_t n) noexcept {
+      195:   32:  v.resize(n);
+call    0 returned 100%
+      195:   33:}
+------------------
+_ZN5rgpot11grow_resizeIfEEvRSt6vectorIT_SaIS2_EEm:
+function _ZN5rgpot11grow_resizeIfEEvRSt6vectorIT_SaIS2_EEm called 4 returned 100% blocks executed 100%
+        4:   31:inline void grow_resize(std::vector<T> &v, std::size_t n) noexcept {
+        4:   32:  v.resize(n);
+call    0 returned 100%
+        4:   33:}
+------------------
+_ZN5rgpot11grow_resizeIlEEvRSt6vectorIT_SaIS2_EEm:
+function _ZN5rgpot11grow_resizeIlEEvRSt6vectorIT_SaIS2_EEm called 8 returned 100% blocks executed 100%
+        8:   31:inline void grow_resize(std::vector<T> &v, std::size_t n) noexcept {
+        8:   32:  v.resize(n);
+call    0 returned 100%
+        8:   33:}
+------------------
+_ZN5rgpot11grow_resizeINS_14UmaEdgeSession7EdgeKeyEEEvRSt6vectorIT_SaIS4_EEm:
+function _ZN5rgpot11grow_resizeINS_14UmaEdgeSession7EdgeKeyEEEvRSt6vectorIT_SaIS4_EEm called 4 returned 100% blocks executed 100%
+        4:   31:inline void grow_resize(std::vector<T> &v, std::size_t n) noexcept {
+        4:   32:  v.resize(n);
+call    0 returned 100%
+        4:   33:}
+------------------
+_ZN5rgpot11grow_resizeImEEvRSt6vectorIT_SaIS2_EEm:
+function _ZN5rgpot11grow_resizeImEEvRSt6vectorIT_SaIS2_EEm called 528 returned 100% blocks executed 100%
+      528:   31:inline void grow_resize(std::vector<T> &v, std::size_t n) noexcept {
+      528:   32:  v.resize(n);
+call    0 returned 100%
+      528:   33:}
+------------------
+_ZN5rgpot11grow_resizeINS_14UmaEdgeSession3RowEEEvRSt6vectorIT_SaIS4_EEm:
+function _ZN5rgpot11grow_resizeINS_14UmaEdgeSession3RowEEEvRSt6vectorIT_SaIS4_EEm called 11 returned 100% blocks executed 100%
+       11:   31:inline void grow_resize(std::vector<T> &v, std::size_t n) noexcept {
+       11:   32:  v.resize(n);
+call    0 returned 100%
+       11:   33:}
+------------------
+_ZN5rgpot11grow_resizeISt6vectorINS_11linked_cell4PairESaIS3_EEEEvRS1_IT_SaIS6_EEm:
+function _ZN5rgpot11grow_resizeISt6vectorINS_11linked_cell4PairESaIS3_EEEEvRS1_IT_SaIS6_EEm called 0 returned 0% blocks executed 0%
+    #####:   31:inline void grow_resize(std::vector<T> &v, std::size_t n) noexcept {
+    #####:   32:  v.resize(n);
+call    0 never executed
+    #####:   33:}
+------------------
+_ZN5rgpot11grow_resizeIdEEvRSt6vectorIT_SaIS2_EEm:
+function _ZN5rgpot11grow_resizeIdEEvRSt6vectorIT_SaIS2_EEm called 0 returned 0% blocks executed 0%
+    #####:   31:inline void grow_resize(std::vector<T> &v, std::size_t n) noexcept {
+    #####:   32:  v.resize(n);
+call    0 never executed
+    #####:   33:}
+------------------
+_ZN5rgpot11grow_resizeIjEEvRSt6vectorIT_SaIS2_EEm:
+function _ZN5rgpot11grow_resizeIjEEvRSt6vectorIT_SaIS2_EEm called 0 returned 0% blocks executed 0%
+    #####:   31:inline void grow_resize(std::vector<T> &v, std::size_t n) noexcept {
+    #####:   32:  v.resize(n);
+call    0 never executed
+    #####:   33:}
+------------------
+        -:   34:
+        -:   35:template <class T>
+      93*:   36:inline void grow_assign_n(std::vector<T> &v, std::size_t n, const T &x) noexcept {
+      93*:   37:  v.assign(n, x);
+      93*:   38:}
+------------------
+_ZN5rgpot13grow_assign_nImEEvRSt6vectorIT_SaIS2_EEmRKS2_:
+function _ZN5rgpot13grow_assign_nImEEvRSt6vectorIT_SaIS2_EEmRKS2_ called 89 returned 100% blocks executed 100%
+       89:   36:inline void grow_assign_n(std::vector<T> &v, std::size_t n, const T &x) noexcept {
+       89:   37:  v.assign(n, x);
+call    0 returned 100%
+       89:   38:}
+------------------
+_ZN5rgpot13grow_assign_nIcEEvRSt6vectorIT_SaIS2_EEmRKS2_:
+function _ZN5rgpot13grow_assign_nIcEEvRSt6vectorIT_SaIS2_EEmRKS2_ called 4 returned 100% blocks executed 100%
+        4:   36:inline void grow_assign_n(std::vector<T> &v, std::size_t n, const T &x) noexcept {
+        4:   37:  v.assign(n, x);
+call    0 returned 100%
+        4:   38:}
+------------------
+_ZN5rgpot13grow_assign_nImEEvRSt6vectorIT_SaIS2_EEmRKS2_:
+function _ZN5rgpot13grow_assign_nImEEvRSt6vectorIT_SaIS2_EEmRKS2_ called 0 returned 0% blocks executed 0%
+    #####:   36:inline void grow_assign_n(std::vector<T> &v, std::size_t n, const T &x) noexcept {
+    #####:   37:  v.assign(n, x);
+call    0 never executed
+    #####:   38:}
+------------------
+        -:   39:
+        -:   40:template <class T>
+      79*:   41:inline void grow_assign_range(std::vector<T> &v, const T *first, const T *last) noexcept {
+      79*:   42:  v.assign(first, last);
+      79*:   43:}
+------------------
+_ZN5rgpot17grow_assign_rangeImEEvRSt6vectorIT_SaIS2_EEPKS2_S7_:
+function _ZN5rgpot17grow_assign_rangeImEEvRSt6vectorIT_SaIS2_EEPKS2_S7_ called 44 returned 100% blocks executed 100%
+       44:   41:inline void grow_assign_range(std::vector<T> &v, const T *first, const T *last) noexcept {
+       44:   42:  v.assign(first, last);
+call    0 returned 100%
+       44:   43:}
+------------------
+_ZN5rgpot17grow_assign_rangeIdEEvRSt6vectorIT_SaIS2_EEPKS2_S7_:
+function _ZN5rgpot17grow_assign_rangeIdEEvRSt6vectorIT_SaIS2_EEPKS2_S7_ called 35 returned 100% blocks executed 100%
+       35:   41:inline void grow_assign_range(std::vector<T> &v, const T *first, const T *last) noexcept {
+       35:   42:  v.assign(first, last);
+call    0 returned 100%
+       35:   43:}
+------------------
+_ZN5rgpot17grow_assign_rangeImEEvRSt6vectorIT_SaIS2_EEPKS2_S7_:
+function _ZN5rgpot17grow_assign_rangeImEEvRSt6vectorIT_SaIS2_EEPKS2_S7_ called 0 returned 0% blocks executed 0%
+    #####:   41:inline void grow_assign_range(std::vector<T> &v, const T *first, const T *last) noexcept {
+    #####:   42:  v.assign(first, last);
+call    0 never executed
+    #####:   43:}
+------------------
+        -:   44:
+        -:   45:template <class It, class Cmp>
+     710*:   46:inline void grow_sort(It first, It last, Cmp cmp) noexcept {
+     710*:   47:  std::sort(first, last, cmp);
+     710*:   48:}
+------------------
+_ZN5rgpot9grow_sortIN9__gnu_cxx17__normal_iteratorIPNS_11linked_cell4PairESt6vectorIS4_SaIS4_EEEEPDoFbRKS4_SB_EEEvT_SE_T0_:
+function _ZN5rgpot9grow_sortIN9__gnu_cxx17__normal_iteratorIPNS_11linked_cell4PairESt6vectorIS4_SaIS4_EEEEPDoFbRKS4_SB_EEEvT_SE_T0_ called 160 returned 100% blocks executed 100%
+      160:   46:inline void grow_sort(It first, It last, Cmp cmp) noexcept {
+      160:   47:  std::sort(first, last, cmp);
+call    0 returned 100%
+      160:   48:}
+------------------
+_ZN5rgpot9grow_sortIN9__gnu_cxx17__normal_iteratorIPmSt6vectorImSaImEEEEZNS_12_GLOBAL__N_114fit_edge_countERKNS_10ForceInputENS_11UmaEdgeListEldEUlmmE_EEvT_SE_T0_:
+function _ZN5rgpot9grow_sortIN9__gnu_cxx17__normal_iteratorIPmSt6vectorImSaImEEEEZNS_12_GLOBAL__N_114fit_edge_countERKNS_10ForceInputENS_11UmaEdgeListEldEUlmmE_EEvT_SE_T0_ called 4 returned 100% blocks executed 100%
+        4:   46:inline void grow_sort(It first, It last, Cmp cmp) noexcept {
+        4:   47:  std::sort(first, last, cmp);
+call    0 returned 100%
+        4:   48:}
+------------------
+_ZN5rgpot9grow_sortIN9__gnu_cxx17__normal_iteratorIPNS_14UmaEdgeSession7EdgeKeyESt6vectorIS4_SaIS4_EEEEZZNS_12_GLOBAL__N_111emit_sortedERK17VesinNeighborListRKNS_10ForceInputEiiRS3_ENKUlmmE_clEmmEUlRKS4_SK_E_EEvT_SM_T0_:
+function _ZN5rgpot9grow_sortIN9__gnu_cxx17__normal_iteratorIPNS_14UmaEdgeSession7EdgeKeyESt6vectorIS4_SaIS4_EEEEZZNS_12_GLOBAL__N_111emit_sortedERK17VesinNeighborListRKNS_10ForceInputEiiRS3_ENKUlmmE_clEmmEUlRKS4_SK_E_EEvT_SM_T0_ called 22 returned 100% blocks executed 100%
+       22:   46:inline void grow_sort(It first, It last, Cmp cmp) noexcept {
+       22:   47:  std::sort(first, last, cmp);
+call    0 returned 100%
+       22:   48:}
+------------------
+_ZN5rgpot9grow_sortIN9__gnu_cxx17__normal_iteratorIPmSt6vectorImSaImEEEEZZNS_12_GLOBAL__N_115molecular_edgesEPKdmRNS_14UmaEdgeSessionEENKUlmmE_clEmmEUlmmE_EEvT_SF_T0_:
+function _ZN5rgpot9grow_sortIN9__gnu_cxx17__normal_iteratorIPmSt6vectorImSaImEEEEZZNS_12_GLOBAL__N_115molecular_edgesEPKdmRNS_14UmaEdgeSessionEENKUlmmE_clEmmEUlmmE_EEvT_SF_T0_ called 524 returned 100% blocks executed 100%
+      524:   46:inline void grow_sort(It first, It last, Cmp cmp) noexcept {
+      524:   47:  std::sort(first, last, cmp);
+call    0 returned 100%
+      524:   48:}
+------------------
+_ZN5rgpot9grow_sortIN9__gnu_cxx17__normal_iteratorIPNS_11linked_cell4PairESt6vectorIS4_SaIS4_EEEEPDoFbRKS4_SB_EEEvT_SE_T0_:
+function _ZN5rgpot9grow_sortIN9__gnu_cxx17__normal_iteratorIPNS_11linked_cell4PairESt6vectorIS4_SaIS4_EEEEPDoFbRKS4_SB_EEEvT_SE_T0_ called 0 returned 0% blocks executed 0%
+    #####:   46:inline void grow_sort(It first, It last, Cmp cmp) noexcept {
+    #####:   47:  std::sort(first, last, cmp);
+call    0 never executed
+    #####:   48:}
+------------------
+        -:   49:
+        -:   50:struct QuietLock {
+        -:   51:  std::mutex &mu;
+function _ZN5rgpot9QuietLockC2ERSt5mutex called 192 returned 100% blocks executed 100%
+      192:   52:  explicit QuietLock(std::mutex &mu) noexcept : mu(mu) { mu.lock(); }
+call    0 returned 100%
+function _ZN5rgpot9QuietLockD2Ev called 192 returned 100% blocks executed 100%
+      192:   53:  ~QuietLock() { mu.unlock(); }
+call    0 returned 100%
+        -:   54:};
+        -:   55:
+        -:   56:struct SpawnError {};
+        -:   57:
+        -:   58:// Tests set this to the number of successful starts before a refusal.
+        -:   59:// A negative value never refuses.
+     221*:   60:inline int &spawn_fail_budget() {
+        -:   61:  static int budget = -1;
+     221*:   62:  return budget;
+        -:   63:}
+------------------
+_ZN5rgpot17spawn_fail_budgetEv:
+function _ZN5rgpot17spawn_fail_budgetEv called 221 returned 100% blocks executed 100%
+      221:   60:inline int &spawn_fail_budget() {
+        -:   61:  static int budget = -1;
+      221:   62:  return budget;
+        -:   63:}
+------------------
+_ZN5rgpot17spawn_fail_budgetEv:
+function _ZN5rgpot17spawn_fail_budgetEv called 0 returned 0% blocks executed 0%
+    #####:   60:inline int &spawn_fail_budget() {
+        -:   61:  static int budget = -1;
+    #####:   62:  return budget;
+        -:   63:}
+------------------
+        -:   64:
+      99*:   65:inline int &spawn_started() {
+        -:   66:  static int count = 0;
+      99*:   67:  return count;
+        -:   68:}
+------------------
+_ZN5rgpot13spawn_startedEv:
+function _ZN5rgpot13spawn_startedEv called 99 returned 100% blocks executed 100%
+       99:   65:inline int &spawn_started() {
+        -:   66:  static int count = 0;
+       99:   67:  return count;
+        -:   68:}
+------------------
+_ZN5rgpot13spawn_startedEv:
+function _ZN5rgpot13spawn_startedEv called 0 returned 0% blocks executed 0%
+    #####:   65:inline int &spawn_started() {
+        -:   66:  static int count = 0;
+    #####:   67:  return count;
+        -:   68:}
+------------------
+        -:   69:
+        -:   70:template <class Make>
+      24*:   71:bool spawn_workers(int threads, Make make) noexcept {
+      24*:   72:  std::vector<std::thread> pool;
+      24*:   73:  grow_reserve(pool, static_cast<std::size_t>(threads));
+        -:   74:  try {
+     119*:   75:    for (int t = 0; t < threads; ++t) {
+     103*:   76:      if (spawn_fail_budget() == 0) {
+       5*:   77:        spawn_fail_budget() = -1;
+       5*:   78:        throw SpawnError{};
+        -:   79:      }
+      98*:   80:      if (spawn_fail_budget() > 0)
+       9*:   81:        --spawn_fail_budget();
+      98*:   82:      pool.emplace_back(make(t));
+      95*:   83:      ++spawn_started();
+        -:   84:    }
+        8:   85:  } catch (...) {
+        9:   86:    for (auto &worker : pool)
+        1:   87:      worker.join();
+        8:   88:    return false;
+        -:   89:  }
+     110*:   90:  for (auto &worker : pool)
+      94*:   91:    worker.join();
+      16*:   92:  return true;
+      24*:   93:}
+------------------
+_ZN5rgpot13spawn_workersIZN12_GLOBAL__N_128test_spawn_failure_is_serialEvEUliE_EEbiT_:
+function _ZN5rgpot13spawn_workersIZN12_GLOBAL__N_128test_spawn_failure_is_serialEvEUliE_EEbiT_ called 1 returned 100% blocks executed 76%
+        1:   71:bool spawn_workers(int threads, Make make) noexcept {
+        1:   72:  std::vector<std::thread> pool;
+        1:   73:  grow_reserve(pool, static_cast<std::size_t>(threads));
+call    0 returned 100%
+        -:   74:  try {
+        2:   75:    for (int t = 0; t < threads; ++t) {
+branch  0 taken 100%
+branch  1 taken 0% (fallthrough)
+        2:   76:      if (spawn_fail_budget() == 0) {
+call    0 returned 100%
+branch  1 taken 50% (fallthrough)
+branch  2 taken 50%
+        1:   77:        spawn_fail_budget() = -1;
+call    0 returned 100%
+        1:   78:        throw SpawnError{};
+call    0 returned 100%
+call    1 returned 100%
+        -:   79:      }
+        1:   80:      if (spawn_fail_budget() > 0)
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0%
+        1:   81:        --spawn_fail_budget();
+call    0 returned 100%
+        1:   82:      pool.emplace_back(make(t));
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+        1:   83:      ++spawn_started();
+call    0 returned 100%
+        -:   84:    }
+        1:   85:  } catch (...) {
+call    0 returned 100%
+        2:   86:    for (auto &worker : pool)
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+call    3 returned 100%
+call    4 returned 100%
+branch  5 taken 50%
+branch  6 taken 50% (fallthrough)
+        1:   87:      worker.join();
+call    0 returned 100%
+        1:   88:    return false;
+        -:   89:  }
+    #####:   90:  for (auto &worker : pool)
+call    0 never executed
+call    1 never executed
+call    2 never executed
+call    3 never executed
+call    4 never executed
+branch  5 never executed
+branch  6 never executed (fallthrough)
+    #####:   91:    worker.join();
+call    0 never executed
+    #####:   92:  return true;
+        1:   93:}
+call    0 returned 100%
+------------------
+_ZN5rgpot13spawn_workersIZNS_11linked_cell5buildEPKdmS3_diRNS1_7ScratchEEUliE0_EEbiT_:
+function _ZN5rgpot13spawn_workersIZNS_11linked_cell5buildEPKdmS3_diRNS1_7ScratchEEUliE0_EEbiT_ called 7 returned 100% blocks executed 92%
+        7:   71:bool spawn_workers(int threads, Make make) noexcept {
+        7:   72:  std::vector<std::thread> pool;
+        7:   73:  grow_reserve(pool, static_cast<std::size_t>(threads));
+call    0 returned 100%
+        -:   74:  try {
+       55:   75:    for (int t = 0; t < threads; ++t) {
+branch  0 taken 91%
+branch  1 taken 9% (fallthrough)
+       50:   76:      if (spawn_fail_budget() == 0) {
+call    0 returned 100%
+branch  1 taken 2% (fallthrough)
+branch  2 taken 98%
+        1:   77:        spawn_fail_budget() = -1;
+call    0 returned 100%
+        1:   78:        throw SpawnError{};
+call    0 returned 100%
+call    1 returned 100%
+        -:   79:      }
+       49:   80:      if (spawn_fail_budget() > 0)
+call    0 returned 100%
+branch  1 taken 8% (fallthrough)
+branch  2 taken 92%
+        4:   81:        --spawn_fail_budget();
+call    0 returned 100%
+       49:   82:      pool.emplace_back(make(t));
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 98% (fallthrough)
+branch  3 taken 2% (throw)
+       48:   83:      ++spawn_started();
+call    0 returned 100%
+        -:   84:    }
+        2:   85:  } catch (...) {
+call    0 returned 100%
+        2:   86:    for (auto &worker : pool)
+call    0 returned 100%
+call    1 returned 100%
+call    2 never executed
+call    3 never executed
+call    4 returned 100%
+branch  5 taken 0%
+branch  6 taken 100% (fallthrough)
+    =====:   87:      worker.join();
+call    0 never executed
+        2:   88:    return false;
+        -:   89:  }
+       53:   90:  for (auto &worker : pool)
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+call    3 returned 100%
+call    4 returned 100%
+branch  5 taken 91%
+branch  6 taken 9% (fallthrough)
+       48:   91:    worker.join();
+call    0 returned 100%
+        5:   92:  return true;
+        7:   93:}
+call    0 returned 100%
+------------------
+_ZN5rgpot13spawn_workersIZNS_11linked_cell16exclusive_prefixERSt6vectorImSaImEEiEUliE2_EEbiT_:
+function _ZN5rgpot13spawn_workersIZNS_11linked_cell16exclusive_prefixERSt6vectorImSaImEEiEUliE2_EEbiT_ called 2 returned 100% blocks executed 84%
+        2:   71:bool spawn_workers(int threads, Make make) noexcept {
+        2:   72:  std::vector<std::thread> pool;
+        2:   73:  grow_reserve(pool, static_cast<std::size_t>(threads));
+call    0 returned 100%
+        -:   74:  try {
+        6:   75:    for (int t = 0; t < threads; ++t) {
+branch  0 taken 83%
+branch  1 taken 17% (fallthrough)
+        5:   76:      if (spawn_fail_budget() == 0) {
+call    0 returned 100%
+branch  1 taken 20% (fallthrough)
+branch  2 taken 80%
+        1:   77:        spawn_fail_budget() = -1;
+call    0 returned 100%
+        1:   78:        throw SpawnError{};
+call    0 returned 100%
+call    1 returned 100%
+        -:   79:      }
+        4:   80:      if (spawn_fail_budget() > 0)
+call    0 returned 100%
+branch  1 taken 0% (fallthrough)
+branch  2 taken 100%
+    #####:   81:        --spawn_fail_budget();
+call    0 never executed
+        4:   82:      pool.emplace_back(make(t));
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+        4:   83:      ++spawn_started();
+call    0 returned 100%
+        -:   84:    }
+        1:   85:  } catch (...) {
+call    0 returned 100%
+        1:   86:    for (auto &worker : pool)
+call    0 returned 100%
+call    1 returned 100%
+call    2 never executed
+call    3 never executed
+call    4 returned 100%
+branch  5 taken 0%
+branch  6 taken 100% (fallthrough)
+    =====:   87:      worker.join();
+call    0 never executed
+        1:   88:    return false;
+        -:   89:  }
+        5:   90:  for (auto &worker : pool)
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+call    3 returned 100%
+call    4 returned 100%
+branch  5 taken 80%
+branch  6 taken 20% (fallthrough)
+        4:   91:    worker.join();
+call    0 returned 100%
+        1:   92:  return true;
+        2:   93:}
+call    0 returned 100%
+------------------
+_ZN5rgpot13spawn_workersIZNS_11linked_cell16exclusive_prefixERSt6vectorImSaImEEiEUliE0_EEbiT_:
+function _ZN5rgpot13spawn_workersIZNS_11linked_cell16exclusive_prefixERSt6vectorImSaImEEiEUliE0_EEbiT_ called 3 returned 100% blocks executed 89%
+        3:   71:bool spawn_workers(int threads, Make make) noexcept {
+        3:   72:  std::vector<std::thread> pool;
+        3:   73:  grow_reserve(pool, static_cast<std::size_t>(threads));
+call    0 returned 100%
+        -:   74:  try {
+       11:   75:    for (int t = 0; t < threads; ++t) {
+branch  0 taken 82%
+branch  1 taken 18% (fallthrough)
+        9:   76:      if (spawn_fail_budget() == 0) {
+call    0 returned 100%
+branch  1 taken 11% (fallthrough)
+branch  2 taken 89%
+        1:   77:        spawn_fail_budget() = -1;
+call    0 returned 100%
+        1:   78:        throw SpawnError{};
+call    0 returned 100%
+call    1 returned 100%
+        -:   79:      }
+        8:   80:      if (spawn_fail_budget() > 0)
+call    0 returned 100%
+branch  1 taken 50% (fallthrough)
+branch  2 taken 50%
+        4:   81:        --spawn_fail_budget();
+call    0 returned 100%
+        8:   82:      pool.emplace_back(make(t));
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+        8:   83:      ++spawn_started();
+call    0 returned 100%
+        -:   84:    }
+        1:   85:  } catch (...) {
+call    0 returned 100%
+        1:   86:    for (auto &worker : pool)
+call    0 returned 100%
+call    1 returned 100%
+call    2 never executed
+call    3 never executed
+call    4 returned 100%
+branch  5 taken 0%
+branch  6 taken 100% (fallthrough)
+    =====:   87:      worker.join();
+call    0 never executed
+        1:   88:    return false;
+        -:   89:  }
+       10:   90:  for (auto &worker : pool)
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+call    3 returned 100%
+call    4 returned 100%
+branch  5 taken 80%
+branch  6 taken 20% (fallthrough)
+        8:   91:    worker.join();
+call    0 returned 100%
+        2:   92:  return true;
+        3:   93:}
+call    0 returned 100%
+------------------
+_ZN5rgpot13spawn_workersIZNS_12_GLOBAL__N_110run_rangesIZNS1_11emit_slicesERNS_11linked_cell7ScratchEPKdS7_mdiibRNS_14UmaEdgeSessionEEUlmmE1_EEvimT_EUliE_EEbiSB_:
+function _ZN5rgpot13spawn_workersIZNS_12_GLOBAL__N_110run_rangesIZNS1_11emit_slicesERNS_11linked_cell7ScratchEPKdS7_mdiibRNS_14UmaEdgeSessionEEUlmmE1_EEvimT_EUliE_EEbiSB_ called 5 returned 100% blocks executed 79%
+        5:   71:bool spawn_workers(int threads, Make make) noexcept {
+        5:   72:  std::vector<std::thread> pool;
+        5:   73:  grow_reserve(pool, static_cast<std::size_t>(threads));
+call    0 returned 100%
+        -:   74:  try {
+       23:   75:    for (int t = 0; t < threads; ++t) {
+branch  0 taken 83%
+branch  1 taken 17% (fallthrough)
+       19:   76:      if (spawn_fail_budget() == 0) {
+call    0 returned 100%
+branch  1 taken 0% (fallthrough)
+branch  2 taken 100%
+    #####:   77:        spawn_fail_budget() = -1;
+call    0 never executed
+    #####:   78:        throw SpawnError{};
+call    0 never executed
+call    1 never executed
+        -:   79:      }
+       19:   80:      if (spawn_fail_budget() > 0)
+call    0 returned 100%
+branch  1 taken 0% (fallthrough)
+branch  2 taken 100%
+    #####:   81:        --spawn_fail_budget();
+call    0 never executed
+       19:   82:      pool.emplace_back(make(t));
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 95% (fallthrough)
+branch  3 taken 5% (throw)
+       18:   83:      ++spawn_started();
+call    0 returned 100%
+        -:   84:    }
+        1:   85:  } catch (...) {
+call    0 returned 100%
+        1:   86:    for (auto &worker : pool)
+call    0 returned 100%
+call    1 returned 100%
+call    2 never executed
+call    3 never executed
+call    4 returned 100%
+branch  5 taken 0%
+branch  6 taken 100% (fallthrough)
+    =====:   87:      worker.join();
+call    0 never executed
+        1:   88:    return false;
+        -:   89:  }
+       22:   90:  for (auto &worker : pool)
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+call    3 returned 100%
+call    4 returned 100%
+branch  5 taken 82%
+branch  6 taken 18% (fallthrough)
+       18:   91:    worker.join();
+call    0 returned 100%
+        4:   92:  return true;
+        5:   93:}
+call    0 returned 100%
+------------------
+_ZN5rgpot13spawn_workersIZNS_12_GLOBAL__N_110run_rangesIZNS1_11emit_slicesERNS_11linked_cell7ScratchEPKdS7_mdiibRNS_14UmaEdgeSessionEEUlmmE0_EEvimT_EUliE_EEbiSB_:
+function _ZN5rgpot13spawn_workersIZNS_12_GLOBAL__N_110run_rangesIZNS1_11emit_slicesERNS_11linked_cell7ScratchEPKdS7_mdiibRNS_14UmaEdgeSessionEEUlmmE0_EEvimT_EUliE_EEbiSB_ called 5 returned 100% blocks executed 87%
+        5:   71:bool spawn_workers(int threads, Make make) noexcept {
+        5:   72:  std::vector<std::thread> pool;
+        5:   73:  grow_reserve(pool, static_cast<std::size_t>(threads));
+call    0 returned 100%
+        -:   74:  try {
+       19:   75:    for (int t = 0; t < threads; ++t) {
+branch  0 taken 84%
+branch  1 taken 16% (fallthrough)
+       16:   76:      if (spawn_fail_budget() == 0) {
+call    0 returned 100%
+branch  1 taken 6% (fallthrough)
+branch  2 taken 94%
+        1:   77:        spawn_fail_budget() = -1;
+call    0 returned 100%
+        1:   78:        throw SpawnError{};
+call    0 returned 100%
+call    1 returned 100%
+        -:   79:      }
+       15:   80:      if (spawn_fail_budget() > 0)
+call    0 returned 100%
+branch  1 taken 0% (fallthrough)
+branch  2 taken 100%
+    #####:   81:        --spawn_fail_budget();
+call    0 never executed
+       15:   82:      pool.emplace_back(make(t));
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 93% (fallthrough)
+branch  3 taken 7% (throw)
+       14:   83:      ++spawn_started();
+call    0 returned 100%
+        -:   84:    }
+        2:   85:  } catch (...) {
+call    0 returned 100%
+        2:   86:    for (auto &worker : pool)
+call    0 returned 100%
+call    1 returned 100%
+call    2 never executed
+call    3 never executed
+call    4 returned 100%
+branch  5 taken 0%
+branch  6 taken 100% (fallthrough)
+    =====:   87:      worker.join();
+call    0 never executed
+        2:   88:    return false;
+        -:   89:  }
+       17:   90:  for (auto &worker : pool)
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+call    3 returned 100%
+call    4 returned 100%
+branch  5 taken 82%
+branch  6 taken 18% (fallthrough)
+       14:   91:    worker.join();
+call    0 returned 100%
+        3:   92:  return true;
+        5:   93:}
+call    0 returned 100%
+------------------
+_ZN5rgpot13spawn_workersIZNS_12_GLOBAL__N_110run_rangesIZNS1_11emit_slicesERNS_11linked_cell7ScratchEPKdS7_mdiibRNS_14UmaEdgeSessionEEUlmmE_EEvimT_EUliE_EEbiSB_:
+function _ZN5rgpot13spawn_workersIZNS_12_GLOBAL__N_110run_rangesIZNS1_11emit_slicesERNS_11linked_cell7ScratchEPKdS7_mdiibRNS_14UmaEdgeSessionEEUlmmE_EEvimT_EUliE_EEbiSB_ called 0 returned 0% blocks executed 0%
+    #####:   71:bool spawn_workers(int threads, Make make) noexcept {
+    #####:   72:  std::vector<std::thread> pool;
+    #####:   73:  grow_reserve(pool, static_cast<std::size_t>(threads));
+call    0 never executed
+        -:   74:  try {
+    #####:   75:    for (int t = 0; t < threads; ++t) {
+branch  0 never executed
+branch  1 never executed (fallthrough)
+    #####:   76:      if (spawn_fail_budget() == 0) {
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed
+    #####:   77:        spawn_fail_budget() = -1;
+call    0 never executed
+    #####:   78:        throw SpawnError{};
+call    0 never executed
+call    1 never executed
+        -:   79:      }
+    #####:   80:      if (spawn_fail_budget() > 0)
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed
+    #####:   81:        --spawn_fail_budget();
+call    0 never executed
+    #####:   82:      pool.emplace_back(make(t));
+call    0 never executed
+call    1 never executed
+branch  2 never executed (fallthrough)
+branch  3 never executed (throw)
+    #####:   83:      ++spawn_started();
+call    0 never executed
+        -:   84:    }
+    =====:   85:  } catch (...) {
+call    0 never executed
+    =====:   86:    for (auto &worker : pool)
+call    0 never executed
+call    1 never executed
+call    2 never executed
+call    3 never executed
+call    4 never executed
+branch  5 never executed
+branch  6 never executed (fallthrough)
+    =====:   87:      worker.join();
+call    0 never executed
+    =====:   88:    return false;
+        -:   89:  }
+    #####:   90:  for (auto &worker : pool)
+call    0 never executed
+call    1 never executed
+call    2 never executed
+call    3 never executed
+call    4 never executed
+branch  5 never executed
+branch  6 never executed (fallthrough)
+    #####:   91:    worker.join();
+call    0 never executed
+    #####:   92:  return true;
+    #####:   93:}
+call    0 never executed
+------------------
+_ZN5rgpot13spawn_workersIZNS_12_GLOBAL__N_110run_rangesIZNS1_11emit_sortedERK17VesinNeighborListRKNS_10ForceInputEiiRNS_14UmaEdgeSessionEEUlmmE_EEvimT_EUliE_EEbiSC_:
+function _ZN5rgpot13spawn_workersIZNS_12_GLOBAL__N_110run_rangesIZNS1_11emit_sortedERK17VesinNeighborListRKNS_10ForceInputEiiRNS_14UmaEdgeSessionEEUlmmE_EEvimT_EUliE_EEbiSC_ called 1 returned 100% blocks executed 61%
+        1:   71:bool spawn_workers(int threads, Make make) noexcept {
+        1:   72:  std::vector<std::thread> pool;
+        1:   73:  grow_reserve(pool, static_cast<std::size_t>(threads));
+call    0 returned 100%
+        -:   74:  try {
+        3:   75:    for (int t = 0; t < threads; ++t) {
+branch  0 taken 67%
+branch  1 taken 33% (fallthrough)
+        2:   76:      if (spawn_fail_budget() == 0) {
+call    0 returned 100%
+branch  1 taken 0% (fallthrough)
+branch  2 taken 100%
+    #####:   77:        spawn_fail_budget() = -1;
+call    0 never executed
+    #####:   78:        throw SpawnError{};
+call    0 never executed
+call    1 never executed
+        -:   79:      }
+        2:   80:      if (spawn_fail_budget() > 0)
+call    0 returned 100%
+branch  1 taken 0% (fallthrough)
+branch  2 taken 100%
+    #####:   81:        --spawn_fail_budget();
+call    0 never executed
+        2:   82:      pool.emplace_back(make(t));
+call    0 returned 100%
+call    1 returned 100%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0% (throw)
+        2:   83:      ++spawn_started();
+call    0 returned 100%
+        -:   84:    }
+    =====:   85:  } catch (...) {
+call    0 never executed
+    =====:   86:    for (auto &worker : pool)
+call    0 never executed
+call    1 never executed
+call    2 never executed
+call    3 never executed
+call    4 never executed
+branch  5 never executed
+branch  6 never executed (fallthrough)
+    =====:   87:      worker.join();
+call    0 never executed
+    =====:   88:    return false;
+        -:   89:  }
+        3:   90:  for (auto &worker : pool)
+call    0 returned 100%
+call    1 returned 100%
+call    2 returned 100%
+call    3 returned 100%
+call    4 returned 100%
+branch  5 taken 67%
+branch  6 taken 33% (fallthrough)
+        2:   91:    worker.join();
+call    0 returned 100%
+        1:   92:  return true;
+        1:   93:}
+call    0 returned 100%
+------------------
+_ZN5rgpot13spawn_workersIZNS_12_GLOBAL__N_110run_rangesIZNS1_15molecular_edgesEPKdmRNS_14UmaEdgeSessionEEUlmmE_EEvimT_EUliE_EEbiS8_:
+function _ZN5rgpot13spawn_workersIZNS_12_GLOBAL__N_110run_rangesIZNS1_15molecular_edgesEPKdmRNS_14UmaEdgeSessionEEUlmmE_EEvimT_EUliE_EEbiS8_ called 0 returned 0% blocks executed 0%
+    #####:   71:bool spawn_workers(int threads, Make make) noexcept {
+    #####:   72:  std::vector<std::thread> pool;
+    #####:   73:  grow_reserve(pool, static_cast<std::size_t>(threads));
+call    0 never executed
+        -:   74:  try {
+    #####:   75:    for (int t = 0; t < threads; ++t) {
+branch  0 never executed
+branch  1 never executed (fallthrough)
+    #####:   76:      if (spawn_fail_budget() == 0) {
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed
+    #####:   77:        spawn_fail_budget() = -1;
+call    0 never executed
+    #####:   78:        throw SpawnError{};
+call    0 never executed
+call    1 never executed
+        -:   79:      }
+    #####:   80:      if (spawn_fail_budget() > 0)
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed
+    #####:   81:        --spawn_fail_budget();
+call    0 never executed
+    #####:   82:      pool.emplace_back(make(t));
+call    0 never executed
+call    1 never executed
+branch  2 never executed (fallthrough)
+branch  3 never executed (throw)
+    #####:   83:      ++spawn_started();
+call    0 never executed
+        -:   84:    }
+    =====:   85:  } catch (...) {
+call    0 never executed
+    =====:   86:    for (auto &worker : pool)
+call    0 never executed
+call    1 never executed
+call    2 never executed
+call    3 never executed
+call    4 never executed
+branch  5 never executed
+branch  6 never executed (fallthrough)
+    =====:   87:      worker.join();
+call    0 never executed
+    =====:   88:    return false;
+        -:   89:  }
+    #####:   90:  for (auto &worker : pool)
+call    0 never executed
+call    1 never executed
+call    2 never executed
+call    3 never executed
+call    4 never executed
+branch  5 never executed
+branch  6 never executed (fallthrough)
+    #####:   91:    worker.join();
+call    0 never executed
+    #####:   92:  return true;
+    #####:   93:}
+call    0 never executed
+------------------
+_ZN5rgpot13spawn_workersIZNS_12_GLOBAL__N_110run_rangesIZNS1_26exercise_empty_ranges_implEiEUlmmE_EEvimT_EUliE_EEbiS4_:
+function _ZN5rgpot13spawn_workersIZNS_12_GLOBAL__N_110run_rangesIZNS1_26exercise_empty_ranges_implEiEUlmmE_EEvimT_EUliE_EEbiS4_ called 0 returned 0% blocks executed 0%
+    #####:   71:bool spawn_workers(int threads, Make make) noexcept {
+    #####:   72:  std::vector<std::thread> pool;
+    #####:   73:  grow_reserve(pool, static_cast<std::size_t>(threads));
+call    0 never executed
+        -:   74:  try {
+    #####:   75:    for (int t = 0; t < threads; ++t) {
+branch  0 never executed
+branch  1 never executed (fallthrough)
+    #####:   76:      if (spawn_fail_budget() == 0) {
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed
+    #####:   77:        spawn_fail_budget() = -1;
+call    0 never executed
+    #####:   78:        throw SpawnError{};
+call    0 never executed
+call    1 never executed
+        -:   79:      }
+    #####:   80:      if (spawn_fail_budget() > 0)
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed
+    #####:   81:        --spawn_fail_budget();
+call    0 never executed
+    #####:   82:      pool.emplace_back(make(t));
+call    0 never executed
+call    1 never executed
+branch  2 never executed (fallthrough)
+branch  3 never executed (throw)
+    #####:   83:      ++spawn_started();
+call    0 never executed
+        -:   84:    }
+    =====:   85:  } catch (...) {
+call    0 never executed
+    =====:   86:    for (auto &worker : pool)
+call    0 never executed
+call    1 never executed
+call    2 never executed
+call    3 never executed
+call    4 never executed
+branch  5 never executed
+branch  6 never executed (fallthrough)
+    =====:   87:      worker.join();
+call    0 never executed
+    =====:   88:    return false;
+        -:   89:  }
+    #####:   90:  for (auto &worker : pool)
+call    0 never executed
+call    1 never executed
+call    2 never executed
+call    3 never executed
+call    4 never executed
+branch  5 never executed
+branch  6 never executed (fallthrough)
+    #####:   91:    worker.join();
+call    0 never executed
+    #####:   92:  return true;
+    #####:   93:}
+call    0 never executed
+------------------
+_ZN5rgpot13spawn_workersIZNS_11linked_cell5buildEPKdmS3_diRNS1_7ScratchEEUliE0_EEbiT_:
+function _ZN5rgpot13spawn_workersIZNS_11linked_cell5buildEPKdmS3_diRNS1_7ScratchEEUliE0_EEbiT_ called 0 returned 0% blocks executed 0%
+    #####:   71:bool spawn_workers(int threads, Make make) noexcept {
+    #####:   72:  std::vector<std::thread> pool;
+    #####:   73:  grow_reserve(pool, static_cast<std::size_t>(threads));
+call    0 never executed
+        -:   74:  try {
+    #####:   75:    for (int t = 0; t < threads; ++t) {
+branch  0 never executed
+branch  1 never executed (fallthrough)
+    #####:   76:      if (spawn_fail_budget() == 0) {
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed
+    #####:   77:        spawn_fail_budget() = -1;
+call    0 never executed
+    #####:   78:        throw SpawnError{};
+call    0 never executed
+call    1 never executed
+        -:   79:      }
+    #####:   80:      if (spawn_fail_budget() > 0)
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed
+    #####:   81:        --spawn_fail_budget();
+call    0 never executed
+    #####:   82:      pool.emplace_back(make(t));
+call    0 never executed
+call    1 never executed
+branch  2 never executed (fallthrough)
+branch  3 never executed (throw)
+    #####:   83:      ++spawn_started();
+call    0 never executed
+        -:   84:    }
+    =====:   85:  } catch (...) {
+call    0 never executed
+    =====:   86:    for (auto &worker : pool)
+call    0 never executed
+call    1 never executed
+call    2 never executed
+call    3 never executed
+call    4 never executed
+branch  5 never executed
+branch  6 never executed (fallthrough)
+    =====:   87:      worker.join();
+call    0 never executed
+    =====:   88:    return false;
+        -:   89:  }
+    #####:   90:  for (auto &worker : pool)
+call    0 never executed
+call    1 never executed
+call    2 never executed
+call    3 never executed
+call    4 never executed
+branch  5 never executed
+branch  6 never executed (fallthrough)
+    #####:   91:    worker.join();
+call    0 never executed
+    #####:   92:  return true;
+    #####:   93:}
+call    0 never executed
+------------------
+_ZN5rgpot13spawn_workersIZNS_11linked_cell16exclusive_prefixERSt6vectorImSaImEEiEUliE2_EEbiT_:
+function _ZN5rgpot13spawn_workersIZNS_11linked_cell16exclusive_prefixERSt6vectorImSaImEEiEUliE2_EEbiT_ called 0 returned 0% blocks executed 0%
+    #####:   71:bool spawn_workers(int threads, Make make) noexcept {
+    #####:   72:  std::vector<std::thread> pool;
+    #####:   73:  grow_reserve(pool, static_cast<std::size_t>(threads));
+call    0 never executed
+        -:   74:  try {
+    #####:   75:    for (int t = 0; t < threads; ++t) {
+branch  0 never executed
+branch  1 never executed (fallthrough)
+    #####:   76:      if (spawn_fail_budget() == 0) {
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed
+    #####:   77:        spawn_fail_budget() = -1;
+call    0 never executed
+    #####:   78:        throw SpawnError{};
+call    0 never executed
+call    1 never executed
+        -:   79:      }
+    #####:   80:      if (spawn_fail_budget() > 0)
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed
+    #####:   81:        --spawn_fail_budget();
+call    0 never executed
+    #####:   82:      pool.emplace_back(make(t));
+call    0 never executed
+call    1 never executed
+branch  2 never executed (fallthrough)
+branch  3 never executed (throw)
+    #####:   83:      ++spawn_started();
+call    0 never executed
+        -:   84:    }
+    =====:   85:  } catch (...) {
+call    0 never executed
+    =====:   86:    for (auto &worker : pool)
+call    0 never executed
+call    1 never executed
+call    2 never executed
+call    3 never executed
+call    4 never executed
+branch  5 never executed
+branch  6 never executed (fallthrough)
+    =====:   87:      worker.join();
+call    0 never executed
+    =====:   88:    return false;
+        -:   89:  }
+    #####:   90:  for (auto &worker : pool)
+call    0 never executed
+call    1 never executed
+call    2 never executed
+call    3 never executed
+call    4 never executed
+branch  5 never executed
+branch  6 never executed (fallthrough)
+    #####:   91:    worker.join();
+call    0 never executed
+    #####:   92:  return true;
+    #####:   93:}
+call    0 never executed
+------------------
+_ZN5rgpot13spawn_workersIZNS_11linked_cell16exclusive_prefixERSt6vectorImSaImEEiEUliE0_EEbiT_:
+function _ZN5rgpot13spawn_workersIZNS_11linked_cell16exclusive_prefixERSt6vectorImSaImEEiEUliE0_EEbiT_ called 0 returned 0% blocks executed 0%
+    #####:   71:bool spawn_workers(int threads, Make make) noexcept {
+    #####:   72:  std::vector<std::thread> pool;
+    #####:   73:  grow_reserve(pool, static_cast<std::size_t>(threads));
+call    0 never executed
+        -:   74:  try {
+    #####:   75:    for (int t = 0; t < threads; ++t) {
+branch  0 never executed
+branch  1 never executed (fallthrough)
+    #####:   76:      if (spawn_fail_budget() == 0) {
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed
+    #####:   77:        spawn_fail_budget() = -1;
+call    0 never executed
+    #####:   78:        throw SpawnError{};
+call    0 never executed
+call    1 never executed
+        -:   79:      }
+    #####:   80:      if (spawn_fail_budget() > 0)
+call    0 never executed
+branch  1 never executed (fallthrough)
+branch  2 never executed
+    #####:   81:        --spawn_fail_budget();
+call    0 never executed
+    #####:   82:      pool.emplace_back(make(t));
+call    0 never executed
+call    1 never executed
+branch  2 never executed (fallthrough)
+branch  3 never executed (throw)
+    #####:   83:      ++spawn_started();
+call    0 never executed
+        -:   84:    }
+    =====:   85:  } catch (...) {
+call    0 never executed
+    =====:   86:    for (auto &worker : pool)
+call    0 never executed
+call    1 never executed
+call    2 never executed
+call    3 never executed
+call    4 never executed
+branch  5 never executed
+branch  6 never executed (fallthrough)
+    =====:   87:      worker.join();
+call    0 never executed
+    =====:   88:    return false;
+        -:   89:  }
+    #####:   90:  for (auto &worker : pool)
+call    0 never executed
+call    1 never executed
+call    2 never executed
+call    3 never executed
+call    4 never executed
+branch  5 never executed
+branch  6 never executed (fallthrough)
+    #####:   91:    worker.join();
+call    0 never executed
+    #####:   92:  return true;
+    #####:   93:}
+call    0 never executed
+------------------
+        -:   94:
+        -:   95:} // namespace rgpot

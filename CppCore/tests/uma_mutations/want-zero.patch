@@ -1,0 +1,11 @@
+--- a/CppCore/rgpot/UmaPot/UmaEdges.cc
++++ b/CppCore/rgpot/UmaPot/UmaEdges.cc
+@@ -409,7 +409,7 @@
+ UmaEdgeList fit_edge_count(const ForceInput &in, UmaEdgeList edges, int64_t want,
+                            double range) {
+   const int64_t have = static_cast<int64_t>(edges.neighbor.size());
+-  if (want <= 0 || have == want)
++  if (have == want)
+     return edges;
+   if (have > want) {
+     std::vector<double> dist;

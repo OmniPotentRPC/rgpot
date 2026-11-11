@@ -1,11 +1,12 @@
 #pragma once
 // Copyright 2023--present rgpot developers
 
+#include "rgpot/UmaPot/UmaGrow.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <thread>
 #include <vector>
 
 namespace rgpot {
@@ -22,7 +23,7 @@ struct Pair {
   std::int8_t pad = 0;
 };
 
-inline bool before(const Pair &a, const Pair &b) {
+inline bool before(const Pair &a, const Pair &b) noexcept {
   if (a.dist2 != b.dist2)
     return a.dist2 < b.dist2;
   if (a.neighbor != b.neighbor)
@@ -53,7 +54,7 @@ struct Scratch {
   std::size_t stable_n = 0;
 };
 
-inline bool orthorhombic(const double *box) {
+inline bool orthorhombic(const double *box) noexcept {
   return box[0] > 0.0 && box[4] > 0.0 && box[8] > 0.0 && std::fabs(box[1]) < 1e-12 &&
          std::fabs(box[2]) < 1e-12 && std::fabs(box[3]) < 1e-12 &&
          std::fabs(box[5]) < 1e-12 && std::fabs(box[6]) < 1e-12 &&
@@ -61,7 +62,7 @@ inline bool orthorhombic(const double *box) {
 }
 
 // Exclusive prefix. `count` grows by one and the last entry is the total.
-inline void exclusive_prefix(std::vector<std::size_t> &count, int threads) {
+inline void exclusive_prefix(std::vector<std::size_t> &count, int threads) noexcept {
   const std::size_t m = count.size();
   if (m == 0)
     return;
@@ -70,7 +71,7 @@ inline void exclusive_prefix(std::vector<std::size_t> &count, int threads) {
   // One thread on a long prefix still uses the blocked loops below.
   if (m < 8192) {
     std::size_t run = 0;
-    count.push_back(0);
+    grow_push(count, std::size_t{0});
     for (std::size_t i = 0; i < m; ++i) {
       const std::size_t value = count[i];
       count[i] = run;
@@ -80,7 +81,8 @@ inline void exclusive_prefix(std::vector<std::size_t> &count, int threads) {
     return;
   }
   threads = std::max(1, std::min(threads, static_cast<int>(m)));
-  std::vector<std::size_t> block(static_cast<std::size_t>(threads) + 1, 0);
+  std::vector<std::size_t> block;
+  grow_assign_n(block, static_cast<std::size_t>(threads) + 1, std::size_t{0});
   auto sum_block = [&](int t) {
     const std::size_t b = (static_cast<std::size_t>(t) * m) / static_cast<std::size_t>(threads);
     const std::size_t e =
@@ -92,16 +94,14 @@ inline void exclusive_prefix(std::vector<std::size_t> &count, int threads) {
   };
   if (threads == 1) {
     sum_block(0);
-  } else {
-    std::vector<std::thread> pool;
-    for (int t = 0; t < threads; ++t)
-      pool.emplace_back(sum_block, t);
-    for (auto &worker : pool)
-      worker.join();
+  } else if (!spawn_workers(threads, [&](int t) { return [&, t] { sum_block(t); }; })) {
+    threads = 1;
+    sum_block(0);
   }
   for (int t = 1; t <= threads; ++t)
     block[static_cast<std::size_t>(t)] += block[static_cast<std::size_t>(t - 1)];
-  std::vector<std::size_t> out(m + 1, 0);
+  std::vector<std::size_t> out;
+  grow_assign_n(out, m + 1, std::size_t{0});
   auto fill = [&](int t) {
     const std::size_t b = (static_cast<std::size_t>(t) * m) / static_cast<std::size_t>(threads);
     const std::size_t e =
@@ -116,12 +116,9 @@ inline void exclusive_prefix(std::vector<std::size_t> &count, int threads) {
   };
   if (threads == 1) {
     fill(0);
-  } else {
-    std::vector<std::thread> pool;
-    for (int t = 0; t < threads; ++t)
-      pool.emplace_back(fill, t);
-    for (auto &worker : pool)
-      worker.join();
+  } else if (!spawn_workers(threads, [&](int t) { return [&, t] { fill(t); }; })) {
+    threads = 1;
+    fill(0);
   }
   count.swap(out);
 }
@@ -131,7 +128,7 @@ inline void exclusive_prefix(std::vector<std::size_t> &count, int threads) {
 // are sorted before the next atom is visited. False when the box is
 // not orthorhombic or a side is shorter than three search lengths.
 inline bool build(const double *pos, std::size_t n, const double *box, double search,
-                  int threads, Scratch &scratch) {
+                  int threads, Scratch &scratch) noexcept {
   if (n == 0 || !(search > 0.0) || !orthorhombic(box))
     return false;
   const double side[3] = {box[0], box[4], box[8]};
@@ -144,8 +141,8 @@ inline bool build(const double *pos, std::size_t n, const double *box, double se
     ncell[a] = std::max(1, static_cast<int>(std::floor(side[a] / search)));
     cells *= ncell[a];
   }
-  scratch.cell_of.resize(n);
-  scratch.hist.assign(static_cast<std::size_t>(cells), 0);
+  grow_resize(scratch.cell_of, n);
+  grow_assign_n(scratch.hist, static_cast<std::size_t>(cells), std::size_t{0});
   for (std::size_t i = 0; i < n; ++i) {
     int ix[3];
     for (int a = 0; a < 3; ++a) {
@@ -162,15 +159,16 @@ inline bool build(const double *pos, std::size_t n, const double *box, double se
     ++scratch.hist[static_cast<std::size_t>(cell)];
   }
   exclusive_prefix(scratch.hist, threads);
-  scratch.placed.resize(n);
-  auto slot = scratch.hist;
+  grow_resize(scratch.placed, n);
+  std::vector<std::size_t> slot;
+  grow_assign_range(slot, scratch.hist.data(), scratch.hist.data() + scratch.hist.size());
   for (std::size_t i = 0; i < n; ++i) {
     const auto cell = static_cast<std::size_t>(scratch.cell_of[i]);
     scratch.placed[slot[cell]++] = static_cast<std::uint32_t>(i);
   }
-  scratch.x.resize(n);
-  scratch.y.resize(n);
-  scratch.z.resize(n);
+  grow_resize(scratch.x, n);
+  grow_resize(scratch.y, n);
+  grow_resize(scratch.z, n);
   for (std::size_t k = 0; k < n; ++k) {
     const std::uint32_t id = scratch.placed[k];
     scratch.x[k] = pos[3 * id];
@@ -179,10 +177,10 @@ inline bool build(const double *pos, std::size_t n, const double *box, double se
   }
 
   if (static_cast<int>(scratch.parts.size()) < threads)
-    scratch.parts.resize(static_cast<std::size_t>(threads));
-  scratch.slice_at.resize(n);
-  scratch.slice_n.resize(n);
-  scratch.slice_thread.resize(n);
+    grow_resize(scratch.parts, static_cast<std::size_t>(threads));
+  grow_resize(scratch.slice_at, n);
+  grow_resize(scratch.slice_n, n);
+  grow_resize(scratch.slice_thread, n);
   const double cut2 = search * search;
   auto work = [&](int t) {
     const std::size_t begin =
@@ -191,7 +189,7 @@ inline bool build(const double *pos, std::size_t n, const double *box, double se
         (static_cast<std::size_t>(t + 1) * n) / static_cast<std::size_t>(threads);
     auto &out = scratch.parts[static_cast<std::size_t>(t)];
     out.clear();
-    out.reserve((end - begin) * 128);
+    grow_reserve(out, (end - begin) * 128);
     for (std::size_t k = begin; k < end; ++k) {
       const std::uint32_t id = scratch.placed[k];
       const std::uint32_t slice = static_cast<std::uint32_t>(out.size());
@@ -249,7 +247,7 @@ inline bool build(const double *pos, std::size_t n, const double *box, double se
               row.s0 = static_cast<std::int8_t>(sx);
               row.s1 = static_cast<std::int8_t>(sy);
               row.s2 = static_cast<std::int8_t>(sz);
-              out.push_back(row);
+              grow_push(out, row);
             }
           }
         }
@@ -259,17 +257,14 @@ inline bool build(const double *pos, std::size_t n, const double *box, double se
       scratch.slice_n[id] = count;
       scratch.slice_thread[id] = static_cast<std::uint32_t>(t);
       if (count > 1)
-        std::sort(out.begin() + static_cast<std::ptrdiff_t>(slice), out.end(), before);
+        grow_sort(out.begin() + static_cast<std::ptrdiff_t>(slice), out.end(), before);
     }
   };
   if (threads == 1) {
     work(0);
-  } else {
-    std::vector<std::thread> pool;
-    for (int t = 0; t < threads; ++t)
-      pool.emplace_back(work, t);
-    for (auto &worker : pool)
-      worker.join();
+  } else if (!spawn_workers(threads, [&](int t) { return [&, t] { work(t); }; })) {
+    threads = 1;
+    work(0);
   }
   scratch.stable = scratch.parts[0].data();
   scratch.stable_n = 0;
@@ -278,7 +273,7 @@ inline bool build(const double *pos, std::size_t n, const double *box, double se
   return true;
 }
 
-inline double max_move(const double *pos, const std::vector<double> &ref) {
+inline double max_move(const double *pos, const std::vector<double> &ref) noexcept {
   double peak = 0.0;
   for (std::size_t i = 0; i < ref.size(); i += 3) {
     const double dx = pos[i] - ref[i];

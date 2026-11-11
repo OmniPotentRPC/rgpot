@@ -9,6 +9,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -20,10 +22,12 @@ namespace {
 void pin_process() {
   cpu_set_t set;
   CPU_ZERO(&set);
-  const long n = sysconf(_SC_NPROCESSORS_ONLN);
-  for (long cpu = 0; cpu < n; ++cpu)
-    CPU_SET(static_cast<int>(cpu), &set);
-  sched_setaffinity(0, sizeof(set), &set);
+  for (int cpu = 0; cpu < 8; ++cpu)
+    CPU_SET(cpu, &set);
+  if (sched_setaffinity(0, sizeof(set), &set) != 0) {
+    std::perror("sched_setaffinity");
+    std::exit(1);
+  }
 }
 
 std::vector<double> place(int n, double side) {
@@ -75,12 +79,65 @@ double once(const std::vector<double> &pos, const std::vector<int> &z, double si
 #define RGPOT_ROW_TREE "unset"
 #endif
 
+std::string row_host() {
+  char host[256];
+  if (gethostname(host, sizeof host) != 0)
+    return "unknown";
+  host[sizeof host - 1] = '\0';
+  return host;
+}
+
+std::string row_cpu() {
+  FILE *file = std::fopen("/proc/cpuinfo", "r");
+  if (!file)
+    return "unknown";
+  char line[256];
+  std::string model = "unknown";
+  while (std::fgets(line, sizeof line, file)) {
+    if (std::strncmp(line, "model name", 10) != 0)
+      continue;
+    const char *colon = std::strchr(line, ':');
+    if (!colon)
+      break;
+    ++colon;
+    while (*colon == ' ')
+      ++colon;
+    model = colon;
+    while (!model.empty() && (model.back() == '\n' || model.back() == ' '))
+      model.pop_back();
+    break;
+  }
+  std::fclose(file);
+  for (char &ch : model)
+    if (ch == ' ')
+      ch = '_';
+  return model;
+}
+
+std::string row_load() {
+  FILE *file = std::fopen("/proc/loadavg", "r");
+  if (!file)
+    return "0";
+  char buf[64];
+  if (!std::fgets(buf, sizeof buf, file))
+    buf[0] = '0';
+  std::fclose(file);
+  std::string load = buf;
+  const auto space = load.find(' ');
+  if (space != std::string::npos)
+    load.resize(space);
+  while (!load.empty() && load.back() == '\n')
+    load.pop_back();
+  return load;
+}
+
 void emit(const char *series, unsigned seed, int reuse, int n, int threads, int call,
           double us) {
   std::printf(
       "series=%s seed=%u reuse=%d n=%d threads=%d call=%d us=%.3f rss_kb=0 "
-      "head=%s tree=%s hostname=bench\n",
-      series, seed, reuse, n, threads, call, us, RGPOT_ROW_HEAD, RGPOT_ROW_TREE);
+      "head=%s tree=%s hostname=%s cpu=%s load=%s cpus=0-7\n",
+      series, seed, reuse, n, threads, call, us, RGPOT_ROW_HEAD, RGPOT_ROW_TREE,
+      row_host().c_str(), row_cpu().c_str(), row_load().c_str());
   std::fflush(stdout);
 }
 

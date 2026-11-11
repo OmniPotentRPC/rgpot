@@ -167,6 +167,57 @@ def report_file(rows, role: str) -> tuple[float, float]:
     return point, bpoint
 
 
+def pair_report(rows) -> None:
+    if not rows or "ver" not in rows[0]:
+        return
+    buckets = {}
+    order = []
+    for row in rows:
+        key = (row["series"], int(row["n"]), int(row["threads"]), int(row["call"]))
+        slot = buckets.setdefault(key, {})
+        if key not in order:
+            order.append(key)
+        slot[row["ver"]] = row["us"]
+    cells = []
+    for key in order:
+        cell = (key[0], key[1], key[2])
+        if cell not in cells:
+            cells.append(cell)
+    print("pairs same call index, later version over v183")
+    for series, n, threads in cells:
+        for other in ("v184", "v186"):
+            ratios = []
+            slower = 0
+            for key, slot in buckets.items():
+                if (key[0], key[1], key[2]) != (series, n, threads):
+                    continue
+                if "v183" not in slot or other not in slot:
+                    continue
+                ratio = slot[other] / slot["v183"]
+                ratios.append(ratio)
+                if slot[other] > slot["v183"]:
+                    slower += 1
+            if len(ratios) < 2:
+                continue
+            seed = int(rows[0]["seed"])
+            state = seed
+            boots = []
+            count = len(ratios)
+            for _draw in range(BOOTS):
+                sample = []
+                for _k in range(count):
+                    state = lcg(state)
+                    sample.append(ratios[(state >> 8) % count])
+                boots.append(median(sample))
+            boots.sort()
+            lo, hi = boots[250], boots[9749]
+            print(
+                f"pair {series} n={n} threads={threads} {other}/v183 "
+                f"median={median(ratios):.3f} iqr={iqr(ratios):.3f} "
+                f"n={len(ratios)} slower={slower} lo={lo:.3f} hi={hi:.3f}"
+            )
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print("usage: uma_cutoff_report.py calls.txt ...", file=sys.stderr)
@@ -180,6 +231,7 @@ def main() -> int:
     for arg in sys.argv[1:]:
         rows = load(Path(arg))
         point, _by = report_file(rows, "run")
+        pair_report(rows)
         if len(grouped(rows, "weak_atoms")) >= 2:
             points.append(point)
     print(

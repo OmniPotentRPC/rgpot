@@ -1,6 +1,6 @@
 --- a/CppCore/rgpot/UmaPot/UmaEdges.cc
 +++ b/CppCore/rgpot/UmaPot/UmaEdges.cc
-@@ -526,8 +526,7 @@
+@@ -551,8 +551,7 @@
  }
  
  void give_edges(UmaEdgeList edges) {
@@ -8,5 +8,5 @@
 -    return;
 +  return;
    auto &pool = edge_pool();
-   std::lock_guard<std::mutex> lock(pool.mu);
+   QuietLock lock(pool.mu);
    if (pool.lists.size() >= 4)

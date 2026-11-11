@@ -1,0 +1,34 @@
+--- a/CppCore/rgpot/UmaPot/UmaGrow.hpp
++++ b/CppCore/rgpot/UmaPot/UmaGrow.hpp
+@@ -71,22 +71,16 @@
+ bool spawn_workers(int threads, Make make) noexcept {
+   std::vector<std::thread> pool;
+   grow_reserve(pool, static_cast<std::size_t>(threads));
+-  try {
+-    for (int t = 0; t < threads; ++t) {
+-      if (spawn_fail_budget() == 0) {
+-        spawn_fail_budget() = -1;
+-        throw SpawnError{};
+-      }
+-      if (spawn_fail_budget() > 0)
+-        --spawn_fail_budget();
+-      pool.emplace_back(make(t));
+-      ++spawn_started();
+-    }
+-  } catch (...) {
+-    for (auto &worker : pool)
+-      worker.join();
+-    return false;
++  for (int t = 0; t < threads; ++t) {
++    if (spawn_fail_budget() == 0) {
++      spawn_fail_budget() = -1;
++      throw SpawnError{};
++    }
++    if (spawn_fail_budget() > 0)
++      --spawn_fail_budget();
++    pool.emplace_back(make(t));
++    ++spawn_started();
+   }
+   for (auto &worker : pool)
+     worker.join();
+   return true;

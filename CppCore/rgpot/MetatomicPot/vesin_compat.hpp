@@ -77,21 +77,21 @@ struct has_n_threads_member<
 // When algorithm exists, assign its zero/default value without naming
 // VesinAutoAlgorithm (absent from older headers). No-op otherwise.
 template <typename Options>
-void set_algorithm_default(Options &options) {
+void set_algorithm_default(Options &options) noexcept {
   if constexpr (has_algorithm_member<Options>::value) {
     options.algorithm = {};
   }
 }
 
 template <typename Options>
-void set_skin(Options &options, double skin) {
+void set_skin(Options &options, double skin) noexcept {
   if constexpr (has_skin_member<Options>::value) {
     options.skin = skin;
   }
 }
 
 template <typename Options>
-void set_n_threads(Options &options, std::int32_t n_threads) {
+void set_n_threads(Options &options, std::int32_t n_threads) noexcept {
   if constexpr (has_n_threads_member<Options>::value) {
     options.n_threads = n_threads;
   }
@@ -100,7 +100,7 @@ void set_n_threads(Options &options, std::int32_t n_threads) {
 // Fill shared VesinOptions fields for a neighbor request. Zero-init the
 // struct first so unknown/newer members stay at safe defaults.
 template <typename Options>
-void fill_neighbor_options(Options &options, double cutoff, bool full_list) {
+void fill_neighbor_options(Options &options, double cutoff, bool full_list) noexcept {
   options = Options{};
   options.cutoff = cutoff;
   options.full = full_list;

@@ -33,3 +33,15 @@ The recycled buffer does not come back.
 pool-cap status is 1.
 The patch is uma_mutations/pool-cap.patch.
 The fifth buffer is stored.
+
+want-zero status is 1.
+The patch is uma_mutations/want-zero.patch.
+A request of zero edges drops the long image.
+
+empty-range status is 1.
+The patch is uma_mutations/empty-range.patch.
+An empty range starts workers.
+
+spawn-fail status is 134.
+The patch is uma_mutations/spawn-fail.patch.
+A refused start leaves the process.

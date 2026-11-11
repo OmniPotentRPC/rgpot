@@ -1,0 +1,94 @@
+        -:    0:Source:CppCore/rgpot/UmaPot/UmaPot.hpp
+        -:    1:#pragma once
+        -:    2:// MIT License — UMA / OMol via vesin neighbors + AOTInductor .pt2
+        -:    3:
+        -:    4:#include "rgpot/ParamHash.hpp"
+        -:    5:#include "rgpot/Potential.hpp"
+        -:    6:#include "rgpot/UmaPot/UmaConfig.hpp"
+        -:    7:#include "rgpot/UmaPot/UmaContract.hpp"
+        -:    8:
+        -:    9:#include <cstdint>
+        -:   10:#include <memory>
+        -:   11:
+        -:   12:namespace rgpot {
+        -:   13:
+        -:   14:/**
+        -:   15: * @brief UMA / OMol calculator: vesin neighbor list + AOTI package.
+        -:   16: *
+        -:   17: * Loads an AOTInductor ``.pt2`` exported by ``scripts/export_uma_aoti.py``.
+        -:   18: * Each force call builds a fairchem-convention edge list with vesin and
+        -:   19: * runs the compiled graph. Charge and spin are per-call tensor inputs.
+        -:   20: *
+        -:   21: * The package was merged for one composition, charge, spin and task.
+        -:   22: * Every force call checks the config and the input against the
+        -:   23: * metadata embedded in the package and throws UmaContractError on a
+        -:   24: * mismatch (see UmaContract).
+        -:   25: */
+        -:   26:class UmaPot : public Potential<UmaPot> {
+        -:   27:public:
+        -:   28:  explicit UmaPot(const UmaConfig &config);
+        -:   29:  ~UmaPot() override;
+        -:   30:
+        -:   31:  UmaPot(const UmaPot &) = delete;
+        -:   32:  UmaPot &operator=(const UmaPot &) = delete;
+        -:   33:
+        -:   34:  void forceImpl(const ForceInput &in, ForceOut *out) const override;
+        -:   35:
+        -:   36:  /// One AOTI call per chunk of up to the package's batch_max
+        -:   37:  /// same-composition systems (a NEB band). Band packages carry only
+        -:   38:  /// the batched graph, so a lone system is padded to two.
+        -:   39:  void forceBatchImpl(const ForceBatch &batch) const override;
+        -:   40:
+       1*:   41:  [[nodiscard]] PotCaps caps() const noexcept override {
+        -:   42:    return {.reentrancy = Reentrancy::SharedInstance,
+       1*:   43:            .perImageInstances = true};
+        -:   44:  }
+------------------
+_ZNK5rgpot6UmaPot4capsEv:
+function _ZNK5rgpot6UmaPot4capsEv called 0 returned 0% blocks executed 0%
+    #####:   41:  [[nodiscard]] PotCaps caps() const noexcept override {
+        -:   42:    return {.reentrancy = Reentrancy::SharedInstance,
+    #####:   43:            .perImageInstances = true};
+        -:   44:  }
+------------------
+_ZNK5rgpot6UmaPot4capsEv:
+function _ZNK5rgpot6UmaPot4capsEv called 1 returned 100% blocks executed 100%
+        1:   41:  [[nodiscard]] PotCaps caps() const noexcept override {
+        -:   42:    return {.reentrancy = Reentrancy::SharedInstance,
+        1:   43:            .perImageInstances = true};
+        -:   44:  }
+------------------
+        -:   45:
+function _ZNK5rgpot6UmaPot6configEv called 1 returned 100% blocks executed 100%
+        1:   46:  [[nodiscard]] const UmaConfig &config() const noexcept { return m_config; }
+        -:   47:
+        -:   48:  void setChargeSpin(int charge, int spin);
+        -:   49:
+        -:   50:  /// Input dtype used for positions, the cell and cell offsets.
+        -:   51:  /// ``float32`` or ``float64``. Loads the package on the first call.
+        -:   52:  [[nodiscard]] const char *posDtypeName() const;
+        -:   53:  /// Weight dtype recorded in the package. Same lifetime rules as
+        -:   54:  /// posDtypeName().
+        -:   55:  [[nodiscard]] const char *modelDtypeName() const;
+        -:   56:
+       1*:   57:  [[nodiscard]] uint64_t paramsKey() const noexcept override {
+       1*:   58:    return m_paramsKey;
+        -:   59:  }
+        -:   60:
+        -:   61:private:
+        -:   62:  static constexpr uint64_t kKernelVersion = 6;
+        -:   63:
+        -:   64:  struct Impl;
+        -:   65:
+        -:   66:  UmaConfig m_config;
+        -:   67:  uint64_t m_paramsKey{0};
+        -:   68:  std::unique_ptr<Impl> m_impl;
+        -:   69:
+        -:   70:  void recomputeParamsKey();
+        -:   71:  void ensureLoaded() const;
+        -:   72:  /// Throws UmaContractError when the package's embedded charge, spin,
+        -:   73:  /// task or composition disagrees with the config or this input.
+        -:   74:  void checkContract(const ForceInput &in) const;
+        -:   75:};
+        -:   76:
+        -:   77:} // namespace rgpot

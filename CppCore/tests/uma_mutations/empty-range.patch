@@ -1,0 +1,11 @@
+--- a/CppCore/rgpot/UmaPot/UmaEdges.cc
++++ b/CppCore/rgpot/UmaPot/UmaEdges.cc
+@@ -93,7 +93,7 @@
+ 
+ template <typename Work>
+ void run_ranges(int threads, std::size_t n, Work work) noexcept {
+-  if (threads <= 1 || n <= 1) {
++  if (threads <= 1) {
+     work(0, n);
+     return;
+   }

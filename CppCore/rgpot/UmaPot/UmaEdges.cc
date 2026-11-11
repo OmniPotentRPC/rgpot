@@ -28,6 +28,17 @@ std::unique_ptr<UmaEdgeSession::CellCache> take_cell();
 
 namespace {
 
+struct EdgeError : std::exception {
+  const char *text;
+  explicit EdgeError(const char *t) noexcept : text(t) {}
+  const char *what() const noexcept override { return text; }
+};
+
+int call_vesin(const double (*points)[3], std::size_t n_points, const double (*box)[3],
+               bool pbc[3], VesinDevice device, const VesinOptions &options,
+               VesinNeighborList *neighbors, const char **error) noexcept;
+void free_vesin(VesinNeighborList *neighbors) noexcept;
+
 // Vesin rebuilds the cached list after an atom moves more than half of this.
 constexpr double kVerletSkin = 1.0;
 
@@ -41,17 +52,17 @@ void resize_no_init(std::vector<T> &vec, std::size_t n) {
   static_assert(std::is_trivially_copyable<T>::value, "trivial elements only");
   static_assert(sizeof(std::vector<T>) == 3 * sizeof(void *), "vector is three pointers");
   if (n <= vec.size()) {
-    vec.resize(n);
+    grow_resize(vec, n);
     return;
   }
   if (vec.capacity() < n)
-    vec.reserve(n);
+    grow_reserve(vec, n);
   const std::size_t bytes = n * sizeof(T);
   auto *ptr = reinterpret_cast<unsigned char **>(&vec);
   ptr[1] = ptr[0] + bytes;
 }
 
-double axis_length(const double *box, int axis) {
+double axis_length(const double *box, int axis) noexcept {
   const double x = box[3 * axis];
   const double y = box[3 * axis + 1];
   const double z = box[3 * axis + 2];
@@ -61,7 +72,7 @@ double axis_length(const double *box, int axis) {
 // A cell list with fewer than three cells along a side walks the same
 // pairs as a direct search. Brute force is the minimum image, so it
 // matches the cell list only when a second image sits past the cutoff.
-bool brute_force_box(const double *box, double cutoff) {
+bool brute_force_box(const double *box, double cutoff) noexcept {
   double lo = 1e300;
   double hi = 0.0;
   for (int axis = 0; axis < 3; ++axis) {
@@ -72,7 +83,7 @@ bool brute_force_box(const double *box, double cutoff) {
   return lo >= 2.0 * cutoff && hi < 3.0 * cutoff;
 }
 
-int worker_count(int requested, std::size_t n) {
+int worker_count(int requested, std::size_t n) noexcept {
   int threads = requested > 0 ? requested : 1;
   if (n > 0 && threads > static_cast<int>(n))
     threads = static_cast<int>(n);
@@ -81,46 +92,48 @@ int worker_count(int requested, std::size_t n) {
 }
 
 template <typename Work>
-void run_ranges(int threads, std::size_t n, Work work) {
-  if (threads <= 1) {
+void run_ranges(int threads, std::size_t n, Work work) noexcept {
+  if (threads <= 1 || n <= 1) {
     work(0, n);
     return;
   }
-  std::vector<std::thread> pool;
-  pool.reserve(static_cast<std::size_t>(threads));
-  for (int t = 0; t < threads; ++t) {
+  const bool started = spawn_workers(threads, [&](int t) {
     const std::size_t begin =
         (static_cast<std::size_t>(t) * n) / static_cast<std::size_t>(threads);
     const std::size_t end =
         (static_cast<std::size_t>(t + 1) * n) / static_cast<std::size_t>(threads);
-    pool.emplace_back(work, begin, end);
-  }
-  for (auto &worker : pool)
-    worker.join();
+    return [&, begin, end] { work(begin, end); };
+  });
+  if (!started)
+    work(0, n);
+}
+
+void exercise_empty_ranges_impl(int threads) {
+  run_ranges(worker_count(threads, 0), 0, [](std::size_t, std::size_t) {});
 }
 
 UmaEdgeList molecular_edges(const double *pos, std::size_t n, UmaEdgeSession &session) {
-  session.rows.resize(n);
+  grow_resize(session.rows, n);
   const int threads = worker_count(session.threads, n);
   run_ranges(threads, n, [&](std::size_t begin, std::size_t end) {
     for (std::size_t c = begin; c < end; ++c) {
       auto &row = session.rows[c];
       row.neighbor.clear();
       row.dist.clear();
-      row.neighbor.reserve(n - 1);
-      row.dist.reserve(n - 1);
+      grow_reserve(row.neighbor, n - 1);
+      grow_reserve(row.dist, n - 1);
       for (std::size_t j = 0; j < n; ++j) {
         if (j == c)
           continue;
         const double dx = pos[3 * j] - pos[3 * c];
         const double dy = pos[3 * j + 1] - pos[3 * c + 1];
         const double dz = pos[3 * j + 2] - pos[3 * c + 2];
-        row.neighbor.push_back(static_cast<int64_t>(j));
-        row.dist.push_back(std::sqrt(dx * dx + dy * dy + dz * dz));
+        grow_push(row.neighbor, static_cast<int64_t>(j));
+        grow_push(row.dist, std::sqrt(dx * dx + dy * dy + dz * dz));
       }
-      row.order.resize(row.neighbor.size());
+      grow_resize(row.order, row.neighbor.size());
       std::iota(row.order.begin(), row.order.end(), 0);
-      std::sort(row.order.begin(), row.order.end(), [&](std::size_t a, std::size_t b) {
+      grow_sort(row.order.begin(), row.order.end(), [&](std::size_t a, std::size_t b) {
         if (row.dist[a] != row.dist[b])
           return row.dist[a] < row.dist[b];
         return row.neighbor[a] < row.neighbor[b];
@@ -130,29 +143,29 @@ UmaEdgeList molecular_edges(const double *pos, std::size_t n, UmaEdgeSession &se
 
   UmaEdgeList out;
   const std::size_t total = n * (n - 1);
-  out.neighbor.reserve(total);
-  out.center.reserve(total);
-  out.offsets.reserve(total * 3);
+  grow_reserve(out.neighbor, total);
+  grow_reserve(out.center, total);
+  grow_reserve(out.offsets, total * 3);
   for (std::size_t c = 0; c < n; ++c) {
     const auto &row = session.rows[c];
     for (std::size_t id : row.order) {
-      out.neighbor.push_back(row.neighbor[id]);
-      out.center.push_back(static_cast<int64_t>(c));
-      out.offsets.push_back(0.f);
-      out.offsets.push_back(0.f);
-      out.offsets.push_back(0.f);
+      grow_push(out.neighbor, row.neighbor[id]);
+      grow_push(out.center, static_cast<int64_t>(c));
+      grow_push(out.offsets, 0.f);
+      grow_push(out.offsets, 0.f);
+      grow_push(out.offsets, 0.f);
     }
   }
   return out;
 }
 
 void emit_sorted(const VesinNeighborList &nl, const ForceInput &in, int max_neighbors,
-                 int threads, UmaEdgeSession &session) {
+                 int threads, UmaEdgeSession &session) noexcept {
   const std::size_t n = in.nAtoms;
   (void)threads;
   const double *pos = in.pos;
   const double *box = in.box;
-  session.bucket.assign(n + 1, 0);
+  grow_assign_n(session.bucket, n + 1, std::size_t{0});
   for (std::size_t k = 0; k < nl.length; ++k) {
     const auto center = static_cast<std::size_t>(nl.pairs[k][0]);
     ++session.bucket[center + 1];
@@ -160,8 +173,9 @@ void emit_sorted(const VesinNeighborList &nl, const ForceInput &in, int max_neig
   for (std::size_t i = 1; i <= n; ++i)
     session.bucket[i] += session.bucket[i - 1];
   if (session.keys.size() < session.bucket[n])
-    session.keys.resize(session.bucket[n]);
-  auto write_idx = session.bucket;
+    grow_resize(session.keys, session.bucket[n]);
+  std::vector<std::size_t> write_idx;
+  grow_assign_range(write_idx, session.bucket.data(), session.bucket.data() + session.bucket.size());
   for (std::size_t k = 0; k < nl.length; ++k) {
     const auto center = static_cast<std::size_t>(nl.pairs[k][0]);
     const std::size_t j = nl.pairs[k][1];
@@ -183,17 +197,17 @@ void emit_sorted(const VesinNeighborList &nl, const ForceInput &in, int max_neig
   out.center.clear();
   out.offsets.clear();
   if (out.neighbor.capacity() < session.bucket[n])
-    out.neighbor.reserve(session.bucket[n]);
+    grow_reserve(out.neighbor, session.bucket[n]);
   if (out.center.capacity() < session.bucket[n])
-    out.center.reserve(session.bucket[n]);
+    grow_reserve(out.center, session.bucket[n]);
   if (out.offsets.capacity() < session.bucket[n] * 3)
-    out.offsets.reserve(session.bucket[n] * 3);
+    grow_reserve(out.offsets, session.bucket[n] * 3);
   const int workers = worker_count(threads, n);
   run_ranges(workers, n, [&](std::size_t begin, std::size_t end) {
     for (std::size_t c = begin; c < end; ++c) {
       auto first = session.keys.begin() + static_cast<std::ptrdiff_t>(session.bucket[c]);
       auto last = session.keys.begin() + static_cast<std::ptrdiff_t>(session.bucket[c + 1]);
-      std::sort(first, last, [](const UmaEdgeSession::EdgeKey &a, const UmaEdgeSession::EdgeKey &b) {
+      grow_sort(first, last, [](const UmaEdgeSession::EdgeKey &a, const UmaEdgeSession::EdgeKey &b) {
         if (a.dist2 != b.dist2)
           return a.dist2 < b.dist2;
         if (a.neighbor != b.neighbor)
@@ -214,11 +228,11 @@ void emit_sorted(const VesinNeighborList &nl, const ForceInput &in, int max_neig
         continue;
       if (max_neighbors > 0 && written >= static_cast<std::size_t>(max_neighbors))
         break;
-      out.neighbor.push_back(static_cast<int64_t>(key.neighbor));
-      out.center.push_back(static_cast<int64_t>(c));
-      out.offsets.push_back(static_cast<float>(key.s0));
-      out.offsets.push_back(static_cast<float>(key.s1));
-      out.offsets.push_back(static_cast<float>(key.s2));
+      grow_push(out.neighbor, static_cast<int64_t>(key.neighbor));
+      grow_push(out.center, static_cast<int64_t>(c));
+      grow_push(out.offsets, static_cast<float>(key.s0));
+      grow_push(out.offsets, static_cast<float>(key.s1));
+      grow_push(out.offsets, static_cast<float>(key.s2));
       ++written;
     }
   }
@@ -226,7 +240,7 @@ void emit_sorted(const VesinNeighborList &nl, const ForceInput &in, int max_neig
 
 void emit_slices(linked_cell::Scratch &scratch, const double *pos, const double *box,
                  std::size_t n, double cut2, int max_neighbors, int threads, bool recompute,
-                 UmaEdgeSession &session) {
+                 UmaEdgeSession &session) noexcept {
   const double side[3] = {box[0], box[4], box[8]};
   const int workers = worker_count(threads, n);
   if (recompute) {
@@ -244,14 +258,14 @@ void emit_slices(linked_cell::Scratch &scratch, const double *pos, const double 
           row.dist2 = dx * dx + dy * dy + dz * dz;
         }
         if (count > 1) {
-          std::sort(part.begin() + static_cast<std::ptrdiff_t>(at),
+          grow_sort(part.begin() + static_cast<std::ptrdiff_t>(at),
                     part.begin() + static_cast<std::ptrdiff_t>(at + count),
                     linked_cell::before);
         }
       }
     });
   }
-  session.bucket.assign(n + 1, 0);
+  grow_assign_n(session.bucket, n + 1, std::size_t{0});
   auto keep_of = [&](std::size_t c) {
     const auto &part = scratch.parts[scratch.slice_thread[c]];
     const auto at = scratch.slice_at[c];
@@ -343,7 +357,7 @@ void periodic_edges(const ForceInput &in, double cutoff, int max_neighbors,
     bool ready = keep;
     if (!keep &&
         linked_cell::build(in.pos, in.nAtoms, in.box, search, session.threads, scratch)) {
-      scratch.ref_pos.assign(in.pos, in.pos + 3 * in.nAtoms);
+      grow_assign_range(scratch.ref_pos, in.pos, in.pos + 3 * in.nAtoms);
       for (int a = 0; a < 9; ++a)
         scratch.ref_box[a] = in.box[a];
       scratch.ref_n = static_cast<int>(in.nAtoms);
@@ -365,25 +379,23 @@ void periodic_edges(const ForceInput &in, double cutoff, int max_neighbors,
   }
   const char *err = nullptr;
   bool pbc[3] = {true, true, true};
-  const int status = vesin_neighbors(
+  const int status = call_vesin(
       reinterpret_cast<const double(*)[3]>(in.pos), in.nAtoms,
       reinterpret_cast<const double(*)[3]>(in.box), pbc,
       vesin_compat::make_cpu_device(), options, &session.held, &err);
   if (status != EXIT_SUCCESS) {
-    std::string msg = "UmaPot: vesin_neighbors failed";
-    if (err)
-      msg += ": " + std::string(err);
-    vesin_free(&session.held);
+    free_vesin(&session.held);
     session.held = VesinNeighborList{};
     session.held_live = false;
-    throw std::runtime_error(msg);
+    throw EdgeError(err ? "UmaPot: vesin_neighbors failed: vesin"
+                        : "UmaPot: vesin_neighbors failed");
   }
 
   emit_sorted(session.held, in, max_neighbors, session.threads, session);
 }
 
 double edge_span(const ForceInput &in, int64_t neighbor, int64_t center, double s0,
-                 double s1, double s2) {
+                 double s1, double s2) noexcept {
   const double *box = in.box;
   const double dx = in.pos[3 * neighbor] - in.pos[3 * center] + s0 * box[0] +
                     s1 * box[3] + s2 * box[6];
@@ -397,11 +409,13 @@ double edge_span(const ForceInput &in, int64_t neighbor, int64_t center, double 
 UmaEdgeList fit_edge_count(const ForceInput &in, UmaEdgeList edges, int64_t want,
                            double range) {
   const int64_t have = static_cast<int64_t>(edges.neighbor.size());
-  if (have == want)
+  if (want <= 0 || have == want)
     return edges;
   if (have > want) {
-    std::vector<double> dist(static_cast<std::size_t>(have));
-    std::vector<std::size_t> order(static_cast<std::size_t>(have));
+    std::vector<double> dist;
+    std::vector<std::size_t> order;
+    grow_resize(dist, static_cast<std::size_t>(have));
+    grow_resize(order, static_cast<std::size_t>(have));
     for (int64_t e = 0; e < have; ++e) {
       dist[static_cast<std::size_t>(e)] =
           edge_span(in, edges.neighbor[static_cast<std::size_t>(e)],
@@ -411,9 +425,10 @@ UmaEdgeList fit_edge_count(const ForceInput &in, UmaEdgeList edges, int64_t want
                     edges.offsets[static_cast<std::size_t>(3 * e + 2)]);
       order[static_cast<std::size_t>(e)] = static_cast<std::size_t>(e);
     }
-    std::sort(order.begin(), order.end(),
+    grow_sort(order.begin(), order.end(),
               [&](std::size_t a, std::size_t b) { return dist[a] > dist[b]; });
-    std::vector<char> drop(static_cast<std::size_t>(have), 0);
+    std::vector<char> drop;
+    grow_assign_n(drop, static_cast<std::size_t>(have), char{0});
     int64_t kept = have;
     for (std::size_t idx : order) {
       if (kept <= want)
@@ -424,22 +439,22 @@ UmaEdgeList fit_edge_count(const ForceInput &in, UmaEdgeList edges, int64_t want
       }
     }
     UmaEdgeList trimmed;
-    trimmed.neighbor.reserve(static_cast<std::size_t>(kept));
-    trimmed.center.reserve(static_cast<std::size_t>(kept));
-    trimmed.offsets.reserve(static_cast<std::size_t>(kept) * 3);
+    grow_reserve(trimmed.neighbor, static_cast<std::size_t>(kept));
+    grow_reserve(trimmed.center, static_cast<std::size_t>(kept));
+    grow_reserve(trimmed.offsets, static_cast<std::size_t>(kept) * 3);
     for (int64_t e = 0; e < have; ++e) {
       if (drop[static_cast<std::size_t>(e)])
         continue;
-      trimmed.neighbor.push_back(edges.neighbor[static_cast<std::size_t>(e)]);
-      trimmed.center.push_back(edges.center[static_cast<std::size_t>(e)]);
-      trimmed.offsets.push_back(edges.offsets[static_cast<std::size_t>(3 * e)]);
-      trimmed.offsets.push_back(edges.offsets[static_cast<std::size_t>(3 * e + 1)]);
-      trimmed.offsets.push_back(edges.offsets[static_cast<std::size_t>(3 * e + 2)]);
+      grow_push(trimmed.neighbor, edges.neighbor[static_cast<std::size_t>(e)]);
+      grow_push(trimmed.center, edges.center[static_cast<std::size_t>(e)]);
+      grow_push(trimmed.offsets, edges.offsets[static_cast<std::size_t>(3 * e)]);
+      grow_push(trimmed.offsets, edges.offsets[static_cast<std::size_t>(3 * e + 1)]);
+      grow_push(trimmed.offsets, edges.offsets[static_cast<std::size_t>(3 * e + 2)]);
     }
     return trimmed;
   }
   if (in.nAtoms < 2)
-    throw std::runtime_error("UmaPot: static edge count needs at least two atoms to pad");
+    throw EdgeError("UmaPot: static edge count needs at least two atoms to pad");
   const double pair = edge_span(in, 1, 0, 0.0, 0.0, 0.0);
   const int column[3] = {0, 3, 6};
   int axis = -1;
@@ -455,7 +470,7 @@ UmaEdgeList fit_edge_count(const ForceInput &in, UmaEdgeList edges, int64_t want
     }
   }
   if (!(longest > 0.0))
-    throw std::runtime_error("UmaPot: cannot pad an edge in a zero cell");
+    throw EdgeError("UmaPot: cannot pad an edge in a zero cell");
   int shift = static_cast<int>(std::ceil((range + pair) / longest));
   // The ceiling of a positive ratio is at least 1.
   auto span_at = [&](int s) {
@@ -471,19 +486,19 @@ UmaEdgeList fit_edge_count(const ForceInput &in, UmaEdgeList edges, int64_t want
   // One more cell along a positive axis leaves the range.
   constexpr int kMaxExactFloatShift = 1 << 24;
   if (shift > kMaxExactFloatShift)
-    throw std::runtime_error("UmaPot: padded image shift is not an exact float32 integer");
+    throw EdgeError("UmaPot: padded image shift is not an exact float32 integer");
   const float s0 = axis == 0 ? static_cast<float>(shift) : 0.f;
   const float s1 = axis == 1 ? static_cast<float>(shift) : 0.f;
   const float s2 = axis == 2 ? static_cast<float>(shift) : 0.f;
-  edges.neighbor.reserve(static_cast<size_t>(want));
-  edges.center.reserve(static_cast<size_t>(want));
-  edges.offsets.reserve(static_cast<size_t>(want) * 3);
+  grow_reserve(edges.neighbor, static_cast<size_t>(want));
+  grow_reserve(edges.center, static_cast<size_t>(want));
+  grow_reserve(edges.offsets, static_cast<size_t>(want) * 3);
   while (static_cast<int64_t>(edges.neighbor.size()) < want) {
-    edges.neighbor.push_back(1);
-    edges.center.push_back(0);
-    edges.offsets.push_back(s0);
-    edges.offsets.push_back(s1);
-    edges.offsets.push_back(s2);
+    grow_push(edges.neighbor, static_cast<int64_t>(1));
+    grow_push(edges.center, static_cast<int64_t>(0));
+    grow_push(edges.offsets, s0);
+    grow_push(edges.offsets, s1);
+    grow_push(edges.offsets, s2);
   }
   return edges;
 }
@@ -500,7 +515,17 @@ int64_t static_edges_per_system(const UmaContract &contract, int64_t n_systems) 
   return total / n_systems;
 }
 
+int call_vesin(const double (*points)[3], std::size_t n_points, const double (*box)[3],
+               bool pbc[3], VesinDevice device, const VesinOptions &options,
+               VesinNeighborList *neighbors, const char **error) noexcept {
+  return vesin_neighbors(points, n_points, box, pbc, device, options, neighbors, error);
+}
+
+void free_vesin(VesinNeighborList *neighbors) noexcept { vesin_free(neighbors); }
+
 } // namespace
+
+void exercise_empty_ranges(int threads) { exercise_empty_ranges_impl(threads); }
 
 // glibc hands multi-megabyte buffers back to the kernel. The next
 // one-shot call would fault them again. A short recycle list keeps the
@@ -517,7 +542,7 @@ EdgePool &edge_pool() { return g_edge_pool; }
 
 UmaEdgeList take_edges() {
   auto &pool = edge_pool();
-  std::lock_guard<std::mutex> lock(pool.mu);
+  QuietLock lock(pool.mu);
   if (pool.lists.empty())
     return {};
   UmaEdgeList out = std::move(pool.lists.back());
@@ -529,17 +554,18 @@ void give_edges(UmaEdgeList edges) {
   if (edges.neighbor.capacity() < 4096)
     return;
   auto &pool = edge_pool();
-  std::lock_guard<std::mutex> lock(pool.mu);
+  QuietLock lock(pool.mu);
   if (pool.lists.size() >= 4)
     return;
-  pool.lists.push_back(std::move(edges));
+  grow_push(pool.lists, std::move(edges));
 }
 
 std::unique_ptr<UmaEdgeSession::CellCache> take_cell() {
   auto &pool = edge_pool();
-  std::lock_guard<std::mutex> lock(pool.mu);
-  if (pool.cells.empty())
+  QuietLock lock(pool.mu);
+  if (pool.cells.empty()) {
     return std::make_unique<UmaEdgeSession::CellCache>();
+  }
   auto cell = std::move(pool.cells.back());
   pool.cells.pop_back();
   auto &scratch = cell->scratch;
@@ -555,10 +581,10 @@ void give_cell(std::unique_ptr<UmaEdgeSession::CellCache> cell) {
   if (!cell)
     return;
   auto &pool = edge_pool();
-  std::lock_guard<std::mutex> lock(pool.mu);
+  QuietLock lock(pool.mu);
   if (pool.cells.size() >= 4)
     return;
-  pool.cells.push_back(std::move(cell));
+  grow_push(pool.cells, std::move(cell));
 }
 
 UmaEdgeList fit_recorded_edges(const ForceInput &in, UmaEdgeList edges, int64_t want,
@@ -579,7 +605,7 @@ const UmaEdgeList &build_system_edges(const ForceInput &local, double cutoff,
                                       double model_cutoff, double molecular_box,
                                       int max_neighbors, const UmaContract &contract,
                                       int64_t n_systems, UmaEdgeSession &session) {
-  std::lock_guard<std::mutex> lock(session.mutex);
+  QuietLock lock(session.mutex);
   const int64_t n = static_cast<int64_t>(local.nAtoms);
   const int64_t complete = n > 1 ? n * (n - 1) : 0;
   const int64_t want = static_edges_per_system(contract, n_systems);
