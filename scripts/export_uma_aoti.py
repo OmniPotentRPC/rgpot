@@ -42,7 +42,7 @@ if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 from aoti_execstack import clear_pt2_execstack  # noqa: E402
 from aoti_graph import canonicalize_strided_slices  # noqa: E402
-from uma_edges import complete_ordered_edges  # noqa: E402
+from uma_edges import complete_ordered_edges, package_cutoffs  # noqa: E402
 
 import numpy as np
 import torch
@@ -1113,15 +1113,14 @@ def main() -> int:
     backbone = hydra.module.backbone
     # ASE used internal graph gen. The exported module takes vesin edges.
     backbone.otf_graph = False
-    cutoff = float(backbone.cutoff)
-    model_cutoff = cutoff
+    cutoff, model_cutoff = package_cutoffs(
+        float(backbone.cutoff), float(args.molecular_box or 0.0)
+    )
     max_n = int(getattr(backbone, "max_neighbors", 300) or 300)
     molecular = bool(args.molecular_box and args.molecular_box > 0.0)
     if molecular:
-        # The compiled graph is static. Every ordered pair is an edge, so
-        # a later geometry whose longest contact exceeds the old 0.4*L
-        # trace cutoff does not change the edge count. The envelope zeroes
-        # pairs past model_cutoff.
+        # Every ordered pair is an edge, so the edge count stays n(n-1)
+        # for every geometry. The envelope zeroes pairs past model_cutoff.
         max_n = max(max_n, len(atoms) - 1)
     print(f"cutoff={cutoff} model_cutoff={model_cutoff} max_neighbors={max_n}",
           flush=True)

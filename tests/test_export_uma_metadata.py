@@ -28,6 +28,28 @@ def test_counts_of_is_exact_and_sorted():
     assert exp.counts_of(_hcn()) == {1: 1, 6: 1, 7: 1}
 
 
+def test_molecular_metadata_records_the_backbone_cutoff():
+    backbone = 6.0
+    box = 25.0
+    cutoff, model_cutoff = exp.package_cutoffs(backbone, box)
+    atoms = _hcn()
+    n = len(atoms)
+    example = [torch.zeros(n, 3), torch.zeros(n, dtype=torch.long)]
+    meta = exp.runtime_metadata(
+        Path("hcn.pt2"),
+        cutoff,
+        300,
+        example,
+        torch.float32,
+        molecular_box=box,
+        model_cutoff=model_cutoff,
+    )
+    assert meta["cutoff"] == backbone
+    assert meta["model_cutoff"] == backbone
+    assert meta["cutoff"] != 0.4 * box
+    assert meta["molecular_box"] == box
+
+
 def test_runtime_metadata_carries_the_contract():
     atoms = _hcn()
     n = len(atoms)

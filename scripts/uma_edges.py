@@ -11,6 +11,26 @@ from __future__ import annotations
 import math
 
 
+def package_cutoffs(backbone_cutoff, molecular_box):
+    """Return the cutoff and model_cutoff written into a package.
+
+    Both values are the backbone interaction range. ``molecular_box``
+    is the cube side recorded beside them.
+    """
+    value = float(backbone_cutoff)
+    if not (value > 0.0) or value != value:
+        raise ValueError("backbone cutoff must be positive")
+    side = float(molecular_box)
+    if side != side:
+        raise ValueError("molecular box must be finite")
+    return value, value
+
+
+def molecular_edges(pos):
+    """Every ordered pair, the list a molecular export traces."""
+    return complete_ordered_edges(pos)
+
+
 def complete_ordered_edges(pos):
     """Return (neighbor, center) index lists and zero shifts.
 

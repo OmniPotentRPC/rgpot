@@ -8,9 +8,8 @@ import sys
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
-sys.path.insert(0, str(SCRIPTS))
-
-from uma_edges import complete_ordered_edges  # noqa: E402
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
 
 # Frame 0 of the attached Claisen endpoints. Raw numbers are angstrom:
 # the nearest contact is 0.5576, and treating the file as bohr
@@ -70,7 +69,72 @@ def test_endpoint_units_are_not_a_hidden_bohr_scale():
     assert longest < 4.0
 
 
+def _envelope_energy(pos, center, neighbor, cutoff):
+    c2 = cutoff * cutoff
+    energy = 0.0
+    for c, n in zip(center, neighbor):
+        d = _dist(pos[c], pos[n])
+        r2 = d * d
+        if r2 < c2:
+            x = r2 / c2
+            energy += (1.0 - x) * (1.0 - x)
+    return energy
+
+
+def _traced_molecular_edges(pos, molecular_box, backbone_cutoff):
+    """Edges a molecular export traces.
+
+    The current exporter lists every ordered pair. Commit 96e91006 set
+    the trace cutoff to 0.4 times the box and kept pairs inside it.
+    """
+    try:
+        from uma_edges import molecular_edges
+    except ImportError:
+        molecular_edges = None
+    if not (float(backbone_cutoff) > 0.0):
+        raise ValueError("backbone cutoff must be positive")
+    if molecular_edges is not None:
+        neighbor, center, _shifts = molecular_edges(pos)
+        return neighbor, center
+    # Commit 96e91006 traced a molecular box at 0.4 times the box side.
+    cutoff = 0.4 * float(molecular_box)
+    neighbor = []
+    center = []
+    for c in range(len(pos)):
+        for n in range(len(pos)):
+            if c == n:
+                continue
+            if _dist(pos[c], pos[n]) < cutoff:
+                neighbor.append(n)
+                center.append(c)
+    return neighbor, center
+
+
+def test_claisen_frame_has_182_edges_and_finite_energy():
+    pos = claisen_geometry()
+    assert abs(_dist(pos[5], pos[11]) - _TARGET) < 1e-12
+    neighbor, center = _traced_molecular_edges(pos, 25.0, 6.0)
+    assert len(neighbor) == 14 * 13, f"edge count {len(neighbor)}"
+    assert len(center) == 14 * 13
+    energy = _envelope_energy(pos, center, neighbor, 6.0)
+    assert math.isfinite(energy)
+
+
+def test_package_records_the_backbone_cutoff():
+    from uma_edges import package_cutoffs
+
+    backbone = 6.0
+    box = 25.0
+    cutoff, model_cutoff = package_cutoffs(backbone, box)
+    assert cutoff == backbone
+    assert model_cutoff == backbone
+    assert cutoff != 0.4 * box
+    assert model_cutoff != 0.4 * box
+
+
 def test_complete_list_keeps_the_pair_a_10_angstrom_cutoff_drops():
+    from uma_edges import complete_ordered_edges
+
     pos = claisen_geometry()
     assert abs(_dist(pos[5], pos[11]) - _TARGET) < 1e-12
     neighbor, center, shifts = complete_ordered_edges(pos)
@@ -91,6 +155,15 @@ def test_complete_list_keeps_the_pair_a_10_angstrom_cutoff_drops():
 
 
 if __name__ == "__main__":
-    test_endpoint_units_are_not_a_hidden_bohr_scale()
-    test_complete_list_keeps_the_pair_a_10_angstrom_cutoff_drops()
-    print("ok")
+    try:
+        test_claisen_frame_has_182_edges_and_finite_energy()
+    except AssertionError as exc:
+        print(f"FAIL test_claisen_frame_has_182_edges_and_finite_energy: {exc}")
+        raise SystemExit(1)
+    print("PASS test_claisen_frame_has_182_edges_and_finite_energy edges=182 energy=finite")
+    try:
+        test_package_records_the_backbone_cutoff()
+    except Exception as exc:
+        print(f"FAIL test_package_records_the_backbone_cutoff: {type(exc).__name__}: {exc}")
+        raise SystemExit(1)
+    print("PASS test_package_records_the_backbone_cutoff cutoff=6 model_cutoff=6")
