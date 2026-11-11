@@ -17,18 +17,6 @@
 namespace rgpot::nlist {
 namespace {
 
-double roundVisit(double t) {
-  if (!std::isfinite(t)) {
-    return 0.0;
-  }
-  const double shifted = t + std::copysign(0.5, t);
-  if (!std::isfinite(shifted) || shifted >= 9223372036854775808.0 ||
-      shifted <= -9223372036854775808.0) {
-    return 0.0;
-  }
-  return static_cast<double>(static_cast<long long>(shifted));
-}
-
 int axisCount(double length, double edge) {
   if (!(length > 0.0) || !(edge > 0.0)) {
     return 1;
@@ -91,90 +79,6 @@ std::uint64_t availableBytes() {
     }
   }
   return 0;
-}
-
-void Neighbours::fold(double &dx, double &dy, double &dz) const {
-  if (use_general_) {
-    general_.fold(dx, dy, dz);
-    return;
-  }
-  if (image_ == Image::Half) {
-    const double h0 = 0.5 * len_[0];
-    const double h1 = 0.5 * len_[1];
-    const double h2 = 0.5 * len_[2];
-    if (periodic_[0]) {
-      if (dx > h0) {
-        dx -= len_[0];
-      } else if (dx < -h0) {
-        dx += len_[0];
-      }
-    }
-    if (periodic_[1]) {
-      if (dy > h1) {
-        dy -= len_[1];
-      } else if (dy < -h1) {
-        dy += len_[1];
-      }
-    }
-    if (periodic_[2]) {
-      if (dz > h2) {
-        dz -= len_[2];
-      } else if (dz < -h2) {
-        dz += len_[2];
-      }
-    }
-    return;
-  }
-  if (periodic_[0]) {
-    dx -= len_[0] * roundVisit(dx * inv_[0]);
-  }
-  if (periodic_[1]) {
-    dy -= len_[1] * roundVisit(dy * inv_[1]);
-  }
-  if (periodic_[2]) {
-    dz -= len_[2] * roundVisit(dz * inv_[2]);
-  }
-}
-
-void Neighbours::foldPair(std::int32_t i, std::int32_t j, double &dx,
-                          double &dy, double &dz) const {
-  const auto ui = static_cast<std::size_t>(i) * 3;
-  const auto uj = static_cast<std::size_t>(j) * 3;
-  dx = xyz_[ui] - xyz_[uj];
-  dy = xyz_[ui + 1] - xyz_[uj + 1];
-  dz = xyz_[ui + 2] - xyz_[uj + 2];
-  fold(dx, dy, dz);
-}
-
-int Neighbours::cellId(int ix, int iy, int iz) const {
-  if (periodic_[0]) {
-    if (ix < 0) {
-      ix += nx_;
-    } else if (ix >= nx_) {
-      ix -= nx_;
-    }
-  } else if (ix < 0 || ix >= nx_) {
-    return -1;
-  }
-  if (periodic_[1]) {
-    if (iy < 0) {
-      iy += ny_;
-    } else if (iy >= ny_) {
-      iy -= ny_;
-    }
-  } else if (iy < 0 || iy >= ny_) {
-    return -1;
-  }
-  if (periodic_[2]) {
-    if (iz < 0) {
-      iz += nz_;
-    } else if (iz >= nz_) {
-      iz -= nz_;
-    }
-  } else if (iz < 0 || iz >= nz_) {
-    return -1;
-  }
-  return (ix * ny_ + iy) * nz_ + iz;
 }
 
 bool Neighbours::reusable(const double *xyz, std::size_t n, const double *box9,
@@ -406,6 +310,15 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
     return;
   }
   buildCells(xyz, n);
+  // A stream never stores the pairs, so the candidate count is unused.
+  // Counting it walks every stencil the search is about to walk.
+  if (spec.mode == Mode::Stream) {
+    streaming_ = true;
+    mode_ = Mode::Stream;
+    built_ = true;
+    ref_.assign(xyz, xyz + 3 * n);
+    return;
+  }
   const std::uint64_t bound = candidateBound();
   const auto avail = availableBytes();
   const auto index_bytes = static_cast<std::uint64_t>(sizeof(std::int32_t));

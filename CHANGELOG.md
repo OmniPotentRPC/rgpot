@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `rgpot_nlist_strerror` names a code. Potentials.capnp carries the same
   columns, and a client streams chunks with `cursor` and `next`.
   The tutorial is `docs/orgmode/tutorials/neighbour-list.org`.
+  The query walks the same cell list as the classical potentials.
 
 ## [3.5.1](https://github.com/OmniPotentRPC/rgpot/tree/v3.5.1) - 2026-10-11
 

@@ -540,9 +540,51 @@ buffer struct. Columns are `first`, `second`, `shift`, `vector`,
 Cap'n Proto: `NeighborRequest` and `NeighborList` use those columns.
 `cursor`, `limit`, `next`, `status` and `message` are the stream.
 
+## The query walks the cell list
+
+`build` used to visit every atom pair and every periodic image. A half
+list of the 108000-atom copper block did not return within three
+minutes. It now bins atoms with `rgpot::nlist::Neighbours` and walks
+that cell list. A box at least two cutoffs wide, and not sheared, has
+one image, so the folded cell vector is the pair. A narrower or
+sheared cell still tests the shift stencil, but only for atoms that
+share a neighbouring cell. `Walk` keeps one cell list for its whole
+life.
+
+`NeighbourListTest` rejects an all-pairs scan: the 108000-atom half
+list must finish in five seconds and contain 21 neighbours per atom.
+A wide orthorhombic cell is checked against the same brute force as
+the triclinic cell.
+
+Times below are the median of seven calls after two discarded calls,
+from `benches/neighbour_api_bench.py`. The resident set is VmHWM of a
+fresh process. rgpot is the cell-list query. vesin 0.6.2, ASE 3.29 and
+matscipy 1.3.1 ran in the same driver. ASE's full list of the million
+atoms held about 30 GB and was stopped. matscipy has no half list.
+
+| system | list | threads | rgpot s | rgpot MB | vesin s | vesin MB | ASE s | matscipy s |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| tri | half | 1 | 0.00135 | 4.8 | 0.00041 | 33.5 | 0.00532 |  |
+| tri | half | 8 | 0.00720 | 5.4 | 0.00041 | 33.4 | 0.00513 |  |
+| tri | full | 1 | 0.00142 | 5.1 | 0.00063 | 34.2 | 0.0369 | 0.00172 |
+| tri | full | 8 | 0.00728 | 6.0 | 0.00064 | 34.1 | 0.0357 | 0.00174 |
+| 108000 | half | 1 | 0.117 | 139 | 0.143 | 316 | 2.51 |  |
+| 108000 | half | 8 | 0.070 | 324 | 0.079 | 428 | 2.46 |  |
+| 108000 | full | 1 | 0.215 | 256 | 0.230 | 591 | 8.45 | 0.632 |
+| 108000 | full | 8 | 0.166 | 558 | 0.165 | 807 | 8.32 | 0.638 |
+| 1048576 | half | 1 | 1.25 | 1317 | 1.39 | 2787 | 25.2 |  |
+| 1048576 | half | 8 | 0.925 | 2345 | 0.751 | 3565 | 24.8 |  |
+| 1048576 | full | 1 | 2.27 | 2457 | 2.39 | 5453 |  | 6.17 |
+| 1048576 | full | 8 | 1.80 | 4624 | 1.64 | 6668 |  | 5.95 |
+
+On one thread the half list is faster than vesin at both sizes, and
+the resident set is about half of vesin's. Eight threads on the
+million-atom lists take longer than vesin. The search streams through
+the cells, and the resident set is the stored table plus the cell bins.
+
 ## Re-run
 
-`NeighbourListTest` passed, 111 assertions in 6 cases. The compiled
+`NeighbourListTest` passed, 547 assertions in 9 cases. The compiled
 callers passed: Lennard-Jones, the three-body angle, the metatomic
 label copy, the C caller, the Rust caller, and the two-process stream.
 Morse, Stillinger-Weber, Tersoff, the EAM cell, Sutton-Chen, ZBL, the
@@ -559,3 +601,4 @@ One million atoms, streaming:
 
 The resident set is the fresh-process figure from `classical_scaling_bench rss`.
 The pair walk those potentials use is `rgpot::nlist::Neighbours`.
+The public query uses that same walk.

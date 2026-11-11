@@ -9,6 +9,7 @@
 #include "rgpot/nlist/MinimumImage.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -145,9 +146,195 @@ private:
     }
   }
 
+  template <typename Loop>
+  bool fastTiles(Loop &&loop) const {
+    if (use_general_ || image_ != Image::Round || n_ < 2) {
+      return false;
+    }
+    const auto ncells = static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_) *
+                        static_cast<std::size_t>(nz_);
+    const bool cell_shift = (!periodic_[0] || nx_ >= 5) && (!periodic_[1] || ny_ >= 5) &&
+                            (!periodic_[2] || nz_ >= 5);
+    struct Nbor {
+      int id;
+      double sx;
+      double sy;
+      double sz;
+    };
+    std::vector<Nbor> neigh(ncells * 27);
+    std::vector<int> nneigh(ncells, 0);
+    for (std::size_t c = 0; c < ncells; ++c) {
+      const int cell = static_cast<int>(c);
+      int iz = cell % nz_;
+      int iy = (cell / nz_) % ny_;
+      int ix = cell / (nz_ * ny_);
+      int seen[27];
+      int nseen = 0;
+      for (int ox = -1; ox <= 1; ++ox) {
+        for (int oy = -1; oy <= 1; ++oy) {
+          for (int oz = -1; oz <= 1; ++oz) {
+            int jx = ix + ox;
+            int jy = iy + oy;
+            int jz = iz + oz;
+            int sa = 0;
+            int sb = 0;
+            int sc = 0;
+            if (periodic_[0]) {
+              if (jx < 0) {
+                jx += nx_;
+                sa = -1;
+              } else if (jx >= nx_) {
+                jx -= nx_;
+                sa = 1;
+              }
+            } else if (jx < 0 || jx >= nx_) {
+              continue;
+            }
+            if (periodic_[1]) {
+              if (jy < 0) {
+                jy += ny_;
+                sb = -1;
+              } else if (jy >= ny_) {
+                jy -= ny_;
+                sb = 1;
+              }
+            } else if (jy < 0 || jy >= ny_) {
+              continue;
+            }
+            if (periodic_[2]) {
+              if (jz < 0) {
+                jz += nz_;
+                sc = -1;
+              } else if (jz >= nz_) {
+                jz -= nz_;
+                sc = 1;
+              }
+            } else if (jz < 0 || jz >= nz_) {
+              continue;
+            }
+            const int id = (jx * ny_ + jy) * nz_ + jz;
+            bool dup = false;
+            for (int s = 0; s < nseen; ++s) {
+              if (seen[s] == id) {
+                dup = true;
+                break;
+              }
+            }
+            if (dup) {
+              continue;
+            }
+            seen[nseen] = id;
+            neigh[c * 27 + static_cast<std::size_t>(nseen)] =
+                Nbor{id, sa * len_[0], sb * len_[1], sc * len_[2]};
+            ++nseen;
+          }
+        }
+      }
+      nneigh[c] = nseen;
+    }
+    struct Tile {
+      double x;
+      double y;
+      double z;
+      std::int32_t id;
+    };
+    std::vector<Tile> tile(n_);
+    for (std::size_t q = 0; q < n_; ++q) {
+      const auto j = cell_atoms_[q];
+      const auto u = static_cast<std::size_t>(j) * 3;
+      tile[q] = Tile{xyz_[u], xyz_[u + 1], xyz_[u + 2], j};
+    }
+    loop(tile, neigh, nneigh, ncells, cell_shift, search_ * search_, len_[0], len_[1], len_[2],
+         inv_[0], inv_[1], inv_[2], periodic_[0], periodic_[1], periodic_[2]);
+    return true;
+  }
+
+  template <typename Tile, typename Nbor, typename Fn>
+  void visitTiles(const std::vector<Tile> &tile, const std::vector<Nbor> &neigh,
+                  const std::vector<int> &nneigh, std::size_t c0, std::size_t c1,
+                  std::int64_t atom0, std::size_t atom1, bool half, bool cell_shift,
+                  double search2, double L0, double L1, double L2, double i0, double i1,
+                  double i2, bool p0, bool p1, bool p2, Fn &&fn) const {
+    auto round_axis = [](double delta, double inv, double length, bool periodic, int &shift) {
+      if (!periodic) {
+        shift = 0;
+        return delta;
+      }
+      const double t = delta * inv;
+      if (!(t > -1.0e15 && t < 1.0e15)) {
+        shift = 0;
+        return delta;
+      }
+      const double shifted = t + std::copysign(0.5, t);
+      const auto image = static_cast<long long>(shifted);
+      shift = static_cast<int>(image);
+      return delta - length * static_cast<double>(image);
+    };
+    for (std::size_t c = c0; c < c1; ++c) {
+      const auto a0 = cell_start_[c];
+      const auto a1 = cell_start_[c + 1];
+      if (a0 == a1) {
+        continue;
+      }
+      const int nn = nneigh[c];
+      const Nbor *nb = neigh.data() + c * 27;
+      for (std::int32_t q = a0; q < a1; ++q) {
+        const Tile &a = tile[static_cast<std::size_t>(q)];
+        if (a.id < atom0 || static_cast<std::size_t>(a.id) >= atom1) {
+          continue;
+        }
+        for (int k = 0; k < nn; ++k) {
+          const Nbor &src = nb[k];
+          const auto b0 = static_cast<std::size_t>(cell_start_[static_cast<std::size_t>(src.id)]);
+          const auto b1 =
+              static_cast<std::size_t>(cell_start_[static_cast<std::size_t>(src.id) + 1]);
+          for (std::size_t r = b0; r < b1; ++r) {
+            const Tile &b = tile[r];
+            if (b.id == a.id || (half && b.id <= a.id)) {
+              continue;
+            }
+            double dx;
+            double dy;
+            double dz;
+            if (cell_shift) {
+              dx = (a.x - b.x) - src.sx;
+              dy = (a.y - b.y) - src.sy;
+              dz = (a.z - b.z) - src.sz;
+            } else {
+              int sa = 0;
+              int sb = 0;
+              int sc = 0;
+              dx = round_axis(a.x - b.x, i0, L0, p0, sa);
+              dy = round_axis(a.y - b.y, i1, L1, p1, sb);
+              dz = round_axis(a.z - b.z, i2, L2, p2, sc);
+            }
+            const double r2 = dx * dx + dy * dy + dz * dz;
+            if (r2 <= search2) {
+              fn(a.id, b.id, dx, dy, dz, r2);
+            }
+          }
+        }
+      }
+    }
+  }
+
   template <typename Fn>
   void walkCells(std::int64_t begin, std::int64_t end, Fn &fn, bool half) const {
     const double search2 = search_ * search_;
+    if (!fastTiles([&](const auto &tile, const auto &neigh, const auto &nneigh,
+                       std::size_t ncells, bool cell_shift, double search2_fast, double L0,
+                       double L1, double L2, double i0, double i1, double i2, bool p0, bool p1,
+                       bool p2) {
+          visitTiles(tile, neigh, nneigh, 0, ncells, begin, static_cast<std::size_t>(end), half,
+                     cell_shift, search2_fast, L0, L1, L2, i0, i1, i2, p0, p1, p2, fn);
+        })) {
+      walkCellsScattered(begin, end, fn, half, search2);
+    }
+  }
+
+  template <typename Fn>
+  void walkCellsScattered(std::int64_t begin, std::int64_t end, Fn &fn, bool half,
+                          double search2) const {
     for (std::int64_t i = begin; i < end; ++i) {
       const auto a = static_cast<std::size_t>(i);
       const int cell = cell_of_[a];
@@ -229,5 +416,100 @@ private:
   std::uint64_t builds_ = 0;
   const double *xyz_ = nullptr;
 };
+
+inline void Neighbours::fold(double &dx, double &dy, double &dz) const {
+  if (use_general_) {
+    general_.fold(dx, dy, dz);
+    return;
+  }
+  auto round_visit = [](double t) {
+    if (!std::isfinite(t)) {
+      return 0.0;
+    }
+    const double shifted = t + std::copysign(0.5, t);
+    if (!std::isfinite(shifted) || shifted >= 9223372036854775808.0 ||
+        shifted <= -9223372036854775808.0) {
+      return 0.0;
+    }
+    return static_cast<double>(static_cast<long long>(shifted));
+  };
+  if (image_ == Image::Half) {
+    const double h0 = 0.5 * len_[0];
+    const double h1 = 0.5 * len_[1];
+    const double h2 = 0.5 * len_[2];
+    if (periodic_[0]) {
+      if (dx > h0) {
+        dx -= len_[0];
+      } else if (dx < -h0) {
+        dx += len_[0];
+      }
+    }
+    if (periodic_[1]) {
+      if (dy > h1) {
+        dy -= len_[1];
+      } else if (dy < -h1) {
+        dy += len_[1];
+      }
+    }
+    if (periodic_[2]) {
+      if (dz > h2) {
+        dz -= len_[2];
+      } else if (dz < -h2) {
+        dz += len_[2];
+      }
+    }
+    return;
+  }
+  if (periodic_[0]) {
+    dx -= len_[0] * round_visit(dx * inv_[0]);
+  }
+  if (periodic_[1]) {
+    dy -= len_[1] * round_visit(dy * inv_[1]);
+  }
+  if (periodic_[2]) {
+    dz -= len_[2] * round_visit(dz * inv_[2]);
+  }
+}
+
+inline void Neighbours::foldPair(std::int32_t i, std::int32_t j, double &dx, double &dy,
+                                 double &dz) const {
+  const auto ui = static_cast<std::size_t>(i) * 3;
+  const auto uj = static_cast<std::size_t>(j) * 3;
+  dx = xyz_[ui] - xyz_[uj];
+  dy = xyz_[ui + 1] - xyz_[uj + 1];
+  dz = xyz_[ui + 2] - xyz_[uj + 2];
+  fold(dx, dy, dz);
+}
+
+inline int Neighbours::cellId(int ix, int iy, int iz) const {
+  if (periodic_[0]) {
+    if (ix < 0) {
+      ix += nx_;
+    } else if (ix >= nx_) {
+      ix -= nx_;
+    }
+  } else if (ix < 0 || ix >= nx_) {
+    return -1;
+  }
+  if (periodic_[1]) {
+    if (iy < 0) {
+      iy += ny_;
+    } else if (iy >= ny_) {
+      iy -= ny_;
+    }
+  } else if (iy < 0 || iy >= ny_) {
+    return -1;
+  }
+  if (periodic_[2]) {
+    if (iz < 0) {
+      iz += nz_;
+    } else if (iz >= nz_) {
+      iz -= nz_;
+    }
+  } else if (iz < 0 || iz >= nz_) {
+    return -1;
+  }
+  return (ix * ny_ + iy) * nz_ + iz;
+}
 
 } // namespace rgpot::nlist

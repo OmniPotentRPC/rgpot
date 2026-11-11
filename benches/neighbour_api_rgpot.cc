@@ -92,10 +92,10 @@ int main(int argc, char **argv) {
   rgpot::nlist::Query query;
   query.cutoff = cutoff;
   query.skin = 0;
-  query.format = format == "full" ? rgpot::nlist::Format::Full : rgpot::nlist::Format::Half;
+  query.shape = rgpot::nlist::Pairs{format == "full" ? rgpot::nlist::Shell::Full
+                                                       : rgpot::nlist::Shell::Half};
   query.cut = rgpot::nlist::Cut::Strict;
   query.fields = {true, true, true};
-  query.mode = rgpot::nlist::Mode::Stored;
   query.periodic = {true, true, true};
   if (threads > 0) {
     setenv("OMP_NUM_THREADS", std::to_string(threads).c_str(), 1);

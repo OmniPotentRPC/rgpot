@@ -197,24 +197,20 @@ def main() -> int:
     threads = [1, 8]
     env = os.environ.copy()
     env["OMP_NUM_THREADS"] = "1"
-    # The public query visits every atom pair. One 108000-atom half build
-    # did not return within 180 seconds, so the large rgpot cases are not
-    # launched. The triclinic cell does finish.
     for system in systems:
         for fmt in formats:
             for nthreads in threads:
-                if system == "tri":
-                    print(
-                        subprocess.run(
-                            [str(BINARY), system, fmt, str(nthreads), str(REPEATS)],
-                            check=True,
-                            env={**env, "OMP_NUM_THREADS": str(nthreads)},
-                            stdout=subprocess.PIPE,
-                            text=True,
-                        ).stdout,
-                        end="",
-                        flush=True,
-                    )
+                print(
+                    subprocess.run(
+                        [str(BINARY), system, fmt, str(nthreads), str(REPEATS)],
+                        check=True,
+                        env={**env, "OMP_NUM_THREADS": str(nthreads)},
+                        stdout=subprocess.PIPE,
+                        text=True,
+                    ).stdout,
+                    end="",
+                    flush=True,
+                )
                 for lib in ("vesin", "ase", "matscipy"):
                     subprocess.run(
                         [sys.executable, str(Path(__file__).resolve()), lib, system, fmt, str(nthreads)],

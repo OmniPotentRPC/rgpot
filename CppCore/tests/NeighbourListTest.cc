@@ -2,6 +2,7 @@
 // Copyright 2023--present rgpot developers
 
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <map>
@@ -300,6 +301,79 @@ TEST_CASE("a cluster of four expands to the full list", "[nlist][api]") {
   }
 }
 
+TEST_CASE("a wide orthorhombic cell matches the brute force", "[nlist][api]") {
+  // The box is many cutoffs across, so the query takes the cell-shift path.
+  const double box[9] = {40, 0, 0, 0, 36, 0, 0, 0, 44};
+  std::vector<double> pos;
+  for (int i = 0; i < 24; ++i) {
+    pos.push_back(1.5 + (i % 5) * 7.0);
+    pos.push_back(2.0 + (i % 7) * 4.5);
+    pos.push_back(0.5 + (i % 4) * 9.0);
+  }
+  const std::array<bool, 3> periodic{{true, true, true}};
+  for (bool full : {false, true}) {
+    rgpot::nlist::Query query;
+    query.cutoff = 6.0;
+    query.skin = 0;
+    query.shape = rgpot::nlist::Pairs{full ? rgpot::nlist::Shell::Full
+                                          : rgpot::nlist::Shell::Half};
+    query.cut = rgpot::nlist::Cut::Strict;
+    query.periodic = periodic;
+    rgpot::nlist::Table table;
+    rgpot::nlist::build(table, pos.data(), pos.size() / 3, box, query);
+    REQUIRE(from_table(table) == brute(pos, box, 6.0, full, true, periodic));
+  }
+}
+
+TEST_CASE("a large orthorhombic list is not an all-pairs scan", "[nlist][api][perf]") {
+  // 30^3 FCC cells, the 108000-atom copper block. An all-pairs scan does
+  // not finish in seconds. A cell list does, and each atom has the twelve,
+  // six and twenty-four shells inside 5.
+  constexpr int ncell = 30;
+  constexpr double lattice = 3.615;
+  const double basis[4][3] = {{0, 0, 0}, {0, 0.5, 0.5}, {0.5, 0, 0.5}, {0.5, 0.5, 0}};
+  std::vector<double> pos;
+  pos.reserve(static_cast<std::size_t>(ncell) * ncell * ncell * 4 * 3);
+  for (int ix = 0; ix < ncell; ++ix) {
+    for (int iy = 0; iy < ncell; ++iy) {
+      for (int iz = 0; iz < ncell; ++iz) {
+        for (const auto &b : basis) {
+          pos.push_back((ix + b[0]) * lattice);
+          pos.push_back((iy + b[1]) * lattice);
+          pos.push_back((iz + b[2]) * lattice);
+        }
+      }
+    }
+  }
+  const double edge = ncell * lattice;
+  const double box[9] = {edge, 0, 0, 0, edge, 0, 0, 0, edge};
+  rgpot::nlist::Query query;
+  query.cutoff = 5.0;
+  query.skin = 0;
+  query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Half};
+  query.cut = rgpot::nlist::Cut::Strict;
+  rgpot::nlist::Table table;
+  const auto t0 = std::chrono::steady_clock::now();
+  rgpot::nlist::build(table, pos.data(), pos.size() / 3, box, query);
+  const auto seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+  REQUIRE(pos.size() / 3 == 108000);
+  REQUIRE(table.size() == 108000 * 21);
+  REQUIRE(seconds < 5.0);
+  for (std::size_t p = 0; p < 64; ++p) {
+    const int i = table.first[p];
+    const int j = table.second[p];
+    const double vx = pos[3 * j] - pos[3 * i] + table.shift[3 * p] * box[0];
+    const double vy = pos[3 * j + 1] - pos[3 * i + 1] + table.shift[3 * p + 1] * box[4];
+    const double vz = pos[3 * j + 2] - pos[3 * i + 2] + table.shift[3 * p + 2] * box[8];
+    REQUIRE(std::abs(vx - table.vector[3 * p]) < 1e-9);
+    REQUIRE(std::abs(vy - table.vector[3 * p + 1]) < 1e-9);
+    REQUIRE(std::abs(vz - table.vector[3 * p + 2]) < 1e-9);
+    REQUIRE(std::abs(std::sqrt(vx * vx + vy * vy + vz * vz) - table.distance[p]) < 1e-9);
+    REQUIRE(table.distance[p] < 5.0);
+    REQUIRE(table.distance[p] > 0.0);
+  }
+}
+
 TEST_CASE("a skin rebuild keeps the same pairs", "[nlist][api]") {
   const double box[9] = {8, 0, 0, 0, 8, 0, 0, 0, 8};
   std::vector<double> pos = {1, 1, 1, 2, 1, 1, 1, 3, 1};
@@ -328,10 +402,9 @@ TEST_CASE("the skin rebuild follows half the skin", "[nlist][api]") {
   rgpot::nlist::Query query;
   query.cutoff = 3.0;
   query.skin = skin;
-  query.format = rgpot::nlist::Format::Full;
+  query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Full};
   query.cut = rgpot::nlist::Cut::Loose;
   query.fields = {true, true, true};
-  query.mode = rgpot::nlist::Mode::Stored;
 
   rgpot::nlist::Builder edge;
   auto pos = origin;

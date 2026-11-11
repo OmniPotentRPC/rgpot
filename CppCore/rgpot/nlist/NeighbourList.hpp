@@ -192,6 +192,8 @@ private:
   double box_[9]{};
   Query query_{};
   int nmax_[3]{};
+  bool one_image_ = false;
+  Neighbours cells_;
   std::size_t atom_ = 0;
   std::vector<std::int32_t> hold_first_;
   std::vector<std::int32_t> hold_second_;
