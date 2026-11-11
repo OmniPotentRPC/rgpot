@@ -143,8 +143,11 @@ private:
   void evaluate(long N, const int *atomicNrs, double *F, double *U);
   void evaluateStoredParallel(long N, const int *atomicNrs, double *F,
                               double *U);
+  void evaluateStreamParallel(long N, const int *atomicNrs, double *F,
+                              double *U);
   void accumulate(long i, const int *atomicNrs, double *F, double &U,
-                  std::vector<Delta> &deltas) const;
+                  std::vector<Delta> &deltas, const std::int32_t *stream_ids,
+                  long stream_n) const;
   void geometry(long i, long j, double &dx, double &dy, double &dz,
                 double &r2) const;
   [[nodiscard]] int threadsRequested() const;

@@ -153,7 +153,8 @@ void EAM::ensureParts(long N, int nt) {
 }
 
 void EAM::accumulate(long i, const int *atomicNrs, double *F, double &U,
-                     std::vector<Delta> &deltas) const {
+                     std::vector<Delta> &deltas, const std::int32_t *stream_ids,
+                     long stream_n) const {
   deltas.clear();
   const element_parameters epar = get_element_parameters(atomicNrs[i]);
   const double cutoff2 = epar.r_cut * epar.r_cut;
@@ -169,17 +170,15 @@ void EAM::accumulate(long i, const int *atomicNrs, double *F, double &U,
   double diz = 0.0;
   const auto &off = neighbours_.offsets();
   const auto &nbr = neighbours_.neighbours();
-  const long begin = neighbours_.streaming()
-                         ? 0
-                         : static_cast<long>(off[static_cast<std::size_t>(i)]);
+  const bool stream = neighbours_.streaming();
+  const long begin = stream ? 0 : static_cast<long>(off[static_cast<std::size_t>(i)]);
   const long end =
-      neighbours_.streaming()
-          ? static_cast<long>(js_.size())
-          : static_cast<long>(off[static_cast<std::size_t>(i) + 1]);
+      stream ? stream_n
+             : static_cast<long>(off[static_cast<std::size_t>(i) + 1]);
   for (long p = begin; p < end; ++p) {
     const long j =
-        neighbours_.streaming() ? js_[static_cast<std::size_t>(p)]
-                                : nbr[static_cast<std::size_t>(p)];
+        stream ? stream_ids[static_cast<std::size_t>(p)]
+               : nbr[static_cast<std::size_t>(p)];
     double dx = xi - wrapped_[static_cast<std::size_t>(3 * j)];
     double dy = yi - wrapped_[static_cast<std::size_t>(3 * j + 1)];
     double dz = zi - wrapped_[static_cast<std::size_t>(3 * j + 2)];
@@ -435,6 +434,49 @@ void EAM::evaluateStoredParallel(long N, const int *atomicNrs, double *F,
   *U = energy;
 }
 
+void EAM::evaluateStreamParallel(long N, const int *atomicNrs, double *F,
+                                  double *U) {
+  const int nt = threads_used_;
+  ensureParts(N, nt);
+  const auto n3 = static_cast<std::size_t>(3 * N);
+  std::vector<double> owned(static_cast<std::size_t>(nt) * n3, 0.0);
+  std::vector<double> energies(static_cast<std::size_t>(nt), 0.0);
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+  {
+#if defined(_OPENMP)
+    const int t = omp_get_thread_num();
+#else
+    const int t = 0;
+#endif
+    const auto range = parts_[static_cast<std::size_t>(t)];
+    std::vector<std::int32_t> ids;
+    std::vector<Delta> deltas;
+    double energy = 0.0;
+    double *local = owned.data() + static_cast<std::size_t>(t) * n3;
+    for (std::int64_t i = range.begin; i < range.end; ++i) {
+      ids.clear();
+      neighbours_.forDirected(
+          i, i + 1,
+          [&](std::int32_t, std::int32_t j, double, double, double, double) {
+            ids.push_back(j);
+          });
+      std::sort(ids.begin(), ids.end());
+      accumulate(static_cast<long>(i), atomicNrs, local, energy, deltas,
+                 ids.data(), static_cast<long>(ids.size()));
+    }
+    energies[static_cast<std::size_t>(t)] = energy;
+  }
+  for (int t = 0; t < nt; ++t) {
+    const double *local = owned.data() + static_cast<std::size_t>(t) * n3;
+    for (std::size_t k = 0; k < n3; ++k) {
+      F[k] += local[k];
+    }
+    *U += energies[static_cast<std::size_t>(t)];
+  }
+}
+
 void EAM::evaluate(long N, const int *atomicNrs, double *F, double *U) {
   const int nt = threadsRequested();
   threads_used_ = nt;
@@ -450,7 +492,8 @@ void EAM::evaluate(long N, const int *atomicNrs, double *F, double *U) {
             });
         std::sort(js_.begin(), js_.end());
       }
-      accumulate(i, atomicNrs, F, energy, deltas_);
+      accumulate(i, atomicNrs, F, energy, deltas_, js_.data(),
+                 static_cast<long>(js_.size()));
     }
     *U = energy;
     return;
@@ -462,206 +505,11 @@ void EAM::evaluate(long N, const int *atomicNrs, double *F, double *U) {
   }
 #endif
 #if defined(_OPENMP)
-  // One geometry and density pass. The only work that waits for every
-  // density is the neighbour embedding term, a multiply by dF[j].
-  rho_.resize(static_cast<std::size_t>(N));
-  dF_.resize(static_cast<std::size_t>(N));
-  partial_f_.resize(static_cast<std::size_t>(3 * N));
-  thread_energy_.assign(static_cast<std::size_t>(nt), 0.0);
-  ensureParts(N, nt);
-  const bool stored = !neighbours_.streaming();
-  if (stored) {
-    const auto nslot = neighbours_.slots();
-    if (fscale_.size() != nslot) {
-      fscale_.resize(nslot);
-      gdx_.resize(nslot);
-      gdy_.resize(nslot);
-      gdz_.resize(nslot);
-      ginv_.resize(nslot);
-    }
-  }
-#pragma omp parallel num_threads(nt)
-  {
-    const int t = omp_get_thread_num();
-    const auto range = parts_[static_cast<std::size_t>(t)];
-    std::vector<std::int32_t> local;
-    auto partners = [&](long i, const auto &body) {
-      if (stored) {
-        const auto &off = neighbours_.offsets();
-        const auto &nbr = neighbours_.neighbours();
-        for (std::int32_t p = off[static_cast<std::size_t>(i)];
-             p < off[static_cast<std::size_t>(i) + 1]; ++p) {
-          body(p, nbr[static_cast<std::size_t>(p)]);
-        }
-      } else {
-        local.clear();
-        neighbours_.forDirected(
-            i, i + 1,
-            [&](std::int32_t, std::int32_t j, double, double, double, double) {
-              local.push_back(j);
-            });
-        std::sort(local.begin(), local.end());
-        for (std::int32_t j : local) {
-          body(static_cast<std::int32_t>(-1), j);
-        }
-      }
-    };
-    for (std::int64_t i = range.begin; i < range.end; ++i) {
-      const element_parameters epar = get_element_parameters(atomicNrs[i]);
-      const double cutoff2 = epar.r_cut * epar.r_cut;
-      double dens = 0.0;
-      partners(i, [&](std::int32_t p, std::int32_t j) {
-        double dx = 0;
-        double dy = 0;
-        double dz = 0;
-        double r2 = 0;
-        geometry(i, j, dx, dy, dz, r2);
-        if (stored && p >= 0) {
-          const auto s = static_cast<std::size_t>(p);
-          gdx_[s] = dx;
-          gdy_[s] = dy;
-          gdz_[s] = dz;
-          ginv_[s] = r2 > 0.0 ? 1.0 / std::sqrt(r2) : 0.0;
-        }
-        if (!(r2 > 0.0) || r2 > cutoff2) {
-          if (stored && p >= 0) {
-            fscale_[static_cast<std::size_t>(p)] = 0.0;
-          }
-          return;
-        }
-        const double r = std::sqrt(r2);
-        const double r6 = r2 * r2 * r2;
-        const double exp_b1 = std::exp(-epar.beta1 * r);
-        const double exp_b2 = std::exp(-2.0 * epar.beta2 * r);
-        const double rho_pair = exp_b1 + 512.0 * exp_b2;
-        dens += r6 * rho_pair;
-        const double r5 = r2 * r2 * r;
-        const double mag =
-            6.0 * r5 * rho_pair +
-            r6 * (-epar.beta1 * exp_b1 - 1024.0 * epar.beta2 * exp_b2);
-        if (stored && p >= 0) {
-          fscale_[static_cast<std::size_t>(p)] = -mag / r;
-        }
-      });
-      rho_[static_cast<std::size_t>(i)] = dens;
-      dF_[static_cast<std::size_t>(i)] =
-          embedding_force(epar.func_coeff, dens);
-    }
-#pragma omp barrier
-    double energy = 0.0;
-    for (std::int64_t i = range.begin; i < range.end; ++i) {
-      const element_parameters ei = get_element_parameters(atomicNrs[i]);
-      const double cut_i2 = ei.r_cut * ei.r_cut;
-      const double dFi = dF_[static_cast<std::size_t>(i)];
-      double fx = 0.0;
-      double fy = 0.0;
-      double fz = 0.0;
-      partners(i, [&](std::int32_t p, std::int32_t j) {
-        double dx = 0;
-        double dy = 0;
-        double dz = 0;
-        double invR = 0;
-        double fself = 0;
-        if (stored && p >= 0) {
-          const auto s = static_cast<std::size_t>(p);
-          dx = gdx_[s];
-          dy = gdy_[s];
-          dz = gdz_[s];
-          invR = ginv_[s];
-          fself = fscale_[s];
-        } else {
-          double r2 = 0;
-          geometry(i, j, dx, dy, dz, r2);
-          if (!(r2 > 0.0)) {
-            return;
-          }
-          const double r = std::sqrt(r2);
-          invR = 1.0 / r;
-          if (r2 <= cut_i2) {
-            const double r6 = r2 * r2 * r2;
-            const double exp_b1 = std::exp(-ei.beta1 * r);
-            const double exp_b2 = std::exp(-2.0 * ei.beta2 * r);
-            const double rho_pair = exp_b1 + 512.0 * exp_b2;
-            const double r5 = r2 * r2 * r;
-            const double mag =
-                6.0 * r5 * rho_pair +
-                r6 * (-ei.beta1 * exp_b1 - 1024.0 * ei.beta2 * exp_b2);
-            fself = -mag * invR;
-          }
-        }
-        const double r2 = dx * dx + dy * dy + dz * dz;
-        const element_parameters ej = get_element_parameters(atomicNrs[j]);
-        const bool in_i = r2 <= cut_i2 && r2 > 0.0;
-        const bool in_j = r2 <= ej.r_cut * ej.r_cut && r2 > 0.0;
-        if (in_i) {
-          fx -= dFi * fself * dx;
-          fy -= dFi * fself * dy;
-          fz -= dFi * fself * dz;
-          if (j > i) {
-            const double r = 1.0 / invR;
-            const double expArg = std::exp(-ei.alphaM * (r - ei.Rm));
-            const double d = 1.0 - expArg;
-            energy += ei.Dm * d * d - ei.Dm;
-            const double fcomp =
-                2.0 * ei.alphaM * ei.Dm * d * (d - 1.0) * invR;
-            fx -= fcomp * dx;
-            fy -= fcomp * dy;
-            fz -= fcomp * dz;
-          }
-        }
-        if (in_j && j < i && invR > 0.0) {
-          const double r = 1.0 / invR;
-          const double useInv = invR;
-          const double expArg = std::exp(-ej.alphaM * (r - ej.Rm));
-          const double d = 1.0 - expArg;
-          const double fcomp =
-              2.0 * ej.alphaM * ej.Dm * d * (d - 1.0) * useInv;
-          fx -= fcomp * dx;
-          fy -= fcomp * dy;
-          fz -= fcomp * dz;
-        }
-        if (in_j) {
-          double fnei = 0;
-          if (stored && p >= 0 && rev_[static_cast<std::size_t>(p)] >= 0) {
-            const auto slot = static_cast<std::size_t>(
-                rev_[static_cast<std::size_t>(p)]);
-            fnei = fscale_[slot];
-          } else {
-            const double r = std::sqrt(r2);
-            const double r6 = r2 * r2 * r2;
-            const double exp_b1 = std::exp(-ej.beta1 * r);
-            const double exp_b2 = std::exp(-2.0 * ej.beta2 * r);
-            const double rho_pair = exp_b1 + 512.0 * exp_b2;
-            const double r5 = r2 * r2 * r;
-            const double mag =
-                6.0 * r5 * rho_pair +
-                r6 * (-ej.beta1 * exp_b1 - 1024.0 * ej.beta2 * exp_b2);
-            fnei = -mag / r;
-          }
-          const double dFj = dF_[static_cast<std::size_t>(j)];
-          fx -= dFj * fnei * dx;
-          fy -= dFj * fnei * dy;
-          fz -= dFj * fnei * dz;
-        }
-      });
-      energy += embedding_function(ei.func_coeff,
-                                   rho_[static_cast<std::size_t>(i)]);
-      partial_f_[static_cast<std::size_t>(3 * i)] = fx;
-      partial_f_[static_cast<std::size_t>(3 * i + 1)] = fy;
-      partial_f_[static_cast<std::size_t>(3 * i + 2)] = fz;
-    }
-    thread_energy_[static_cast<std::size_t>(t)] = energy;
-  }
-  for (long i = 0; i < N; ++i) {
-    F[3 * i] = partial_f_[static_cast<std::size_t>(3 * i)];
-    F[3 * i + 1] = partial_f_[static_cast<std::size_t>(3 * i + 1)];
-    F[3 * i + 2] = partial_f_[static_cast<std::size_t>(3 * i + 2)];
-  }
-  double energy = 0.0;
-  for (int t = 0; t < nt; ++t) {
-    energy += thread_energy_[static_cast<std::size_t>(t)];
-  }
-  *U = energy;
+  // Same one-walk arithmetic as one thread. Each thread keeps the
+  // neighbour forces in a private buffer, so the embedding term does
+  // not need a second exponential pass.
+  evaluateStreamParallel(N, atomicNrs, F, U);
+  return;
 #else
   double energy = 0.0;
   for (long i = 0; i < N; ++i) {
@@ -674,7 +522,8 @@ void EAM::evaluate(long N, const int *atomicNrs, double *F, double *U) {
           });
       std::sort(js_.begin(), js_.end());
     }
-    accumulate(i, atomicNrs, F, energy, deltas_);
+    accumulate(i, atomicNrs, F, energy, deltas_, js_.data(),
+               static_cast<long>(js_.size()));
   }
   *U = energy;
 #endif

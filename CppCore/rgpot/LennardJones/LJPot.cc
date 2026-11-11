@@ -21,12 +21,49 @@
 
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/simd/api.hpp"
+#include "rgpot/simd/exact_fma.hpp"
 #include "rgpot/simd/from_cache.hpp"
 #include "rgpot/stress.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 using rgpot::types::AtomMatrix;
 
 namespace rgpot {
+namespace {
+
+void lj_pair(double r2, const simd::LjParams &p, double &energy, double &fscale) {
+  const double inv_r2 = 1.0 / r2;
+  const double sr2 = p.psi2 * inv_r2;
+  const double sr4 = sr2 * sr2;
+  const double a = sr4 * sr2;
+  const double b = p.four_u0 * a;
+  const double a_m1 = a - 1.0;
+  const double v = b * a_m1;
+  const double two_a = 2.0 * a;
+  const double two_a_m1 = two_a - 1.0;
+  const double six_b = 6.0 * b;
+  const double f_un = (six_b * inv_r2) * two_a_m1;
+  if (p.use_switch == 0) {
+    energy = v - p.shift;
+    fscale = f_un;
+    return;
+  }
+  const double r = std::sqrt(r2);
+  const double t_raw = (r - p.r_on) * p.inv_width;
+  const double t = t_raw < 0.0 ? 0.0 : (t_raw > 1.0 ? 1.0 : t_raw);
+  const double t2 = t * t;
+  const double t3 = t2 * t;
+  const double six_t = 6.0 * t;
+  const double inner = 15.0 - six_t;
+  const double poly = simd::fma_quick(t, inner, -10.0);
+  const double s = simd::fma_quick(t3, poly, 1.0);
+  const double omt = 1.0 - t;
+  const double ds2 = (-30.0 * t2) * omt * omt;
+  const double dsdr = ds2 * p.inv_width;
+  energy = v * s;
+  fscale = f_un * s - (v * dsdr) / r;
+}
+
+} // namespace
 
 /**
  * @class LJPot
@@ -35,10 +72,11 @@ namespace rgpot {
  * Pairwise interactions within the cutoff radius, minimum image convention
  * on an orthogonal box. Pairs come from the shared neighbour layer: a
  * cell list, a Verlet skin, and either a stored list or a streaming walk.
- * Repeated evaluations on nearby geometries reuse that list. The pair
- * term on one thread is the kernel selected for this process. Several
- * threads split the atoms, keep a private force buffer, and add those
- * buffers in thread order. A nonzero switch width uses the quintic switch.
+ * Repeated evaluations on a stored list reuse that list. A streaming
+ * call applies the pair term during the cell walk and does not keep a
+ * half-list. Several threads split the atoms, keep a private force
+ * buffer, and add those buffers in thread order. A nonzero switch width
+ * uses the quintic switch.
  * Cauchy stress is published from the kernel's strain accumulator.
  *
  * @warning The box is assumed to be orthogonal.
@@ -80,6 +118,82 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   neighbours_.update(R, n_atoms, box,
                      nlist::Spec{opt.cutoff, opt.skin, opt.periodic,
                                  nlist::Image::Round, mode_});
+  if (neighbours_.streaming()) {
+    cached_.rows.clear();
+    cached_.rows.shrink_to_fit();
+    cached_.nbr.clear();
+    cached_.nbr.shrink_to_fit();
+    have_cache_ = false;
+    const double cutoff2 = cuttOffR * cuttOffR;
+    const int nt = nlist::threadsRequested();
+    auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy,
+                      double dz, double r2, double *force, double &energy,
+                      double *virial) {
+      if (!(i < j) || !(r2 > 0.0) || r2 > cutoff2) {
+        return;
+      }
+      double pair_e = 0.0;
+      double fscale = 0.0;
+      lj_pair(r2, params, pair_e, fscale);
+      energy += pair_e;
+      const double fx = fscale * dx;
+      const double fy = fscale * dy;
+      const double fz = fscale * dz;
+      force[3 * i] += fx;
+      force[3 * i + 1] += fy;
+      force[3 * i + 2] += fz;
+      force[3 * j] -= fx;
+      force[3 * j + 1] -= fy;
+      force[3 * j + 2] -= fz;
+      accumulatePairStrain(virial, fscale, dx, dy, dz);
+    };
+    if (nt <= 1) {
+      neighbours_.forDirected(
+          0, N, [&](std::int32_t i, std::int32_t j, double dx, double dy,
+                    double dz, double r2) {
+            accept(i, j, dx, dy, dz, r2, F, *U, strain);
+          });
+    } else {
+      std::vector<double> owned(static_cast<std::size_t>(nt) * n_atoms * 3, 0.0);
+      std::vector<double> energy(static_cast<std::size_t>(nt), 0.0);
+      std::vector<double> virial(static_cast<std::size_t>(nt) * 6, 0.0);
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+      {
+#if defined(_OPENMP)
+        const int t = omp_get_thread_num();
+#else
+        const int t = 0;
+#endif
+        const auto range = nlist::partition(N, t, nt);
+        double *local = owned.data() + static_cast<std::size_t>(t) * n_atoms * 3;
+        double *st = virial.data() + static_cast<std::size_t>(t) * 6;
+        double local_e = 0.0;
+        neighbours_.forDirected(
+            range.begin, range.end,
+            [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                double r2) {
+              accept(i, j, dx, dy, dz, r2, local, local_e, st);
+            });
+        energy[static_cast<std::size_t>(t)] = local_e;
+      }
+      for (int t = 0; t < nt; ++t) {
+        *U += energy[static_cast<std::size_t>(t)];
+        const double *local =
+            owned.data() + static_cast<std::size_t>(t) * n_atoms * 3;
+        for (std::size_t k = 0; k < n_atoms * 3; ++k) {
+          F[k] += local[k];
+        }
+        for (int c = 0; c < 6; ++c) {
+          strain[c] +=
+              virial[static_cast<std::size_t>(t) * 6 + static_cast<std::size_t>(c)];
+        }
+      }
+    }
+    publishCauchyStress(out, strain, volume);
+    return;
+  }
   const bool reuse_pairs = have_cache_ && !neighbours_.streaming() &&
                            neighbours_.builds() == list_stamp_ &&
                            cached_.view.n == n_atoms;

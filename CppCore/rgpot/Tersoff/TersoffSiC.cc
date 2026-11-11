@@ -450,7 +450,9 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
       local[3 * bj.j + 2] -= sz;
       if (local_strain != nullptr) {
         // dE/d(bj) is (dedr / r) bj, the gradient along the folded bond.
-        accumulatePairStrain(strain, -dedr * inv_r, bj.x, bj.y, bj.z);
+        // The private buffer keeps this off the shared stress, which
+        // every bond would otherwise fight over.
+        accumulatePairStrain(local_strain, -dedr * inv_r, bj.x, bj.y, bj.z);
       }
       const double dedz = 0.5 * bj.fc * bj.f_a * db;
       if (dedz == 0.0) {
