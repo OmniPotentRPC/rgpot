@@ -131,7 +131,11 @@ rgpot_minimage = static_library(
 )
 rgpot_halfshell = static_library(
     'rgpot_halfshell',
-    files('rgpot/nlist/HalfShell.cc', 'rgpot/nlist/HalfShellWalk.cc'),
+    files(
+        'rgpot/nlist/HalfShell.cc',
+        'rgpot/nlist/HalfShellWalk.cc',
+        'rgpot/nlist/Neighbours.cc',
+    ),
     include_directories: _incdirs,
     cpp_args: _args,
     pic: true,
@@ -157,6 +161,10 @@ if not get_option('with_rpc_client_only')
     # Product-sums in the simd sources are explicit. Contraction stays off
     # in this archive so a multiply that is not written as mul_add is not fused.
     _deps += dependency('threads')
+    _nlist_openmp = dependency('openmp', language: 'cpp', required: false)
+    if _nlist_openmp.found()
+        _deps += _nlist_openmp
+    endif
     _rgpot_srcs += files(
         'rgpot/plugin/PluginBridge.cc',
         'rgpot/plugin/PluginRegistry.cc',

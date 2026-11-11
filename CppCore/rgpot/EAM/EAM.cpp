@@ -24,69 +24,25 @@
 #include <omp.h>
 #endif
 
-namespace {
-
-long cellsAlong(double length, double edge) {
-  long n = static_cast<long>(std::floor(length / edge));
-  if (n < 1) {
-    n = 1;
-  }
-  // floor can land one cell too high when length/edge is just under an
-  // integer, which would make the cell narrower than the search.
-  while (n > 1 && length / static_cast<double>(n) < edge) {
-    --n;
-  }
-  return n;
-}
-
-long binAtom(double x, double length, long n) {
-  // The wrap leaves a coordinate of exactly `length` in place. That point
-  // is the periodic image of the origin.
-  if (!(x < length)) {
-    x = 0.0;
-  }
-  if (x < 0.0) {
-    x = 0.0;
-  }
-  long i = static_cast<long>(x / length * static_cast<double>(n));
-  if (i < 0) {
-    i = 0;
-  }
-  if (i >= n) {
-    i = n - 1;
-  }
-  return i;
-}
-
-long wrapCell(long index, long n) {
-  if (index < 0) {
-    return index + n;
-  }
-  if (index >= n) {
-    return index - n;
-  }
-  return index;
-}
-
-} // namespace
-
 void EAM::cleanMemory() {
   std::vector<double>().swap(wrapped_);
-  std::vector<double>().swap(ref_);
-  std::vector<int>().swap(species_);
-  std::vector<long>().swap(head_);
-  std::vector<long>().swap(next_);
-  std::vector<long>().swap(off_);
-  std::vector<long>().swap(nbr_);
-  std::vector<long>().swap(rev_);
-  std::vector<long>().swap(gather_);
-  std::vector<unsigned>().swap(stamp_);
   std::vector<Delta>().swap(deltas_);
+  std::vector<std::int32_t>().swap(js_);
   std::vector<double>().swap(rho_);
   std::vector<double>().swap(dF_);
   std::vector<double>().swap(fscale_);
+  std::vector<double>().swap(morse_);
+  std::vector<double>().swap(gdx_);
+  std::vector<double>().swap(gdy_);
+  std::vector<double>().swap(gdz_);
+  std::vector<double>().swap(ginv_);
+  std::vector<std::int32_t>().swap(rev_);
   std::vector<double>().swap(thread_energy_);
-  built_ = false;
+  std::vector<double>().swap(partial_f_);
+  parts_.clear();
+  part_n_ = -1;
+  part_nt_ = -1;
+  rev_stamp_ = 0;
   n_atoms_ = 0;
 }
 
@@ -136,146 +92,64 @@ void EAM::prepare(long N, const double *R, const double *box) {
   box_len_[2] = box[2];
 }
 
-bool EAM::reusable(long N, const double *R, const int *atomicNrs,
-                   const double *box) const {
-  if (!built_ || N != n_atoms_) {
-    return false;
-  }
-  if (box[0] != box_ref_[0] || box[4] != box_ref_[1] || box[8] != box_ref_[2]) {
-    return false;
-  }
-  if (std::memcmp(species_.data(), atomicNrs,
-                  static_cast<std::size_t>(N) * sizeof(int)) != 0) {
-    return false;
-  }
-  const double limit = 0.5 * skin_;
-  const double limit2 = limit * limit;
-  for (long i = 0; i < N; ++i) {
-    const double dx = R[3 * i] - ref_[static_cast<std::size_t>(3 * i)];
-    const double dy = R[3 * i + 1] - ref_[static_cast<std::size_t>(3 * i + 1)];
-    const double dz = R[3 * i + 2] - ref_[static_cast<std::size_t>(3 * i + 2)];
-    if (dx * dx + dy * dy + dz * dz > limit2) {
-      return false;
-    }
-  }
-  return true;
-}
-
-void EAM::buildList(long N, const int *atomicNrs) {
-  ++builds_;
+void EAM::buildList(long N) {
   double widest = 0.0;
   for (int i = 0; i < NPARAMS; i++) {
     widest = std::max(widest, el_params[i].r_cut);
   }
-  skin_ = kEamSkinOverCutoff * widest;
-  const double edge = widest + skin_;
-  for (int axis = 0; axis < 3; ++axis) {
-    n_axis_[axis] = cellsAlong(box_len_[axis], edge);
+  rgpot::nlist::Spec spec;
+  spec.cutoff = widest;
+  spec.skin = kEamSkinOverCutoff * widest;
+  spec.periodic = {true, true, true};
+  spec.image = rgpot::nlist::Image::Half;
+  spec.mode = mode_;
+  double box9[9] = {box_len_[0], 0, 0, 0, box_len_[1], 0, 0, 0, box_len_[2]};
+  neighbours_.update(wrapped_.data(), static_cast<std::size_t>(N), box9, spec);
+  n_atoms_ = N;
+  if (neighbours_.streaming()) {
+    rev_.clear();
+    rev_stamp_ = 0;
+    return;
   }
-  const long nx = n_axis_[0];
-  const long ny = n_axis_[1];
-  const long nz = n_axis_[2];
-  const long ncells = nx * ny * nz;
-  head_.assign(static_cast<std::size_t>(ncells), -1);
-  next_.resize(static_cast<std::size_t>(N));
-  for (long i = 0; i < N; ++i) {
-    const double *r = wrapped_.data() + 3 * i;
-    const long ix = binAtom(r[0], box_len_[0], nx);
-    const long iy = binAtom(r[1], box_len_[1], ny);
-    const long iz = binAtom(r[2], box_len_[2], nz);
-    const long cell = (ix * ny + iy) * nz + iz;
-    next_[static_cast<std::size_t>(i)] = head_[static_cast<std::size_t>(cell)];
-    head_[static_cast<std::size_t>(cell)] = i;
+  if (rev_stamp_ != neighbours_.builds()) {
+    ensureRev();
+    rev_stamp_ = neighbours_.builds();
   }
+}
 
-  off_.resize(static_cast<std::size_t>(N) + 1);
-  nbr_.clear();
-  stamp_.assign(static_cast<std::size_t>(ncells), 0);
-  unsigned generation = 0;
-  const double half0 = box_len_[0] * 0.5;
-  const double half1 = box_len_[1] * 0.5;
-  const double half2 = box_len_[2] * 0.5;
-
-  for (long i = 0; i < N; ++i) {
-    off_[static_cast<std::size_t>(i)] = static_cast<long>(nbr_.size());
-    const element_parameters epar = get_element_parameters(atomicNrs[i]);
-    const double search = epar.r_cut + skin_;
-    const double search2 = search * search;
-    const double xi = wrapped_[static_cast<std::size_t>(3 * i)];
-    const double yi = wrapped_[static_cast<std::size_t>(3 * i + 1)];
-    const double zi = wrapped_[static_cast<std::size_t>(3 * i + 2)];
-    const long ix = binAtom(xi, box_len_[0], nx);
-    const long iy = binAtom(yi, box_len_[1], ny);
-    const long iz = binAtom(zi, box_len_[2], nz);
-    ++generation;
-    if (generation == 0) {
-      std::fill(stamp_.begin(), stamp_.end(), 0);
-      generation = 1;
-    }
-    gather_.clear();
-    for (long ox = -1; ox <= 1; ++ox) {
-      for (long oy = -1; oy <= 1; ++oy) {
-        for (long oz = -1; oz <= 1; ++oz) {
-          const long jx = wrapCell(ix + ox, nx);
-          const long jy = wrapCell(iy + oy, ny);
-          const long jz = wrapCell(iz + oz, nz);
-          const long cell = (jx * ny + jy) * nz + jz;
-          if (stamp_[static_cast<std::size_t>(cell)] == generation) {
-            continue;
-          }
-          stamp_[static_cast<std::size_t>(cell)] = generation;
-          for (long j = head_[static_cast<std::size_t>(cell)]; j >= 0;
-               j = next_[static_cast<std::size_t>(j)]) {
-            if (j == i) {
-              continue;
-            }
-            double dx = xi - wrapped_[static_cast<std::size_t>(3 * j)];
-            double dy = yi - wrapped_[static_cast<std::size_t>(3 * j + 1)];
-            double dz = zi - wrapped_[static_cast<std::size_t>(3 * j + 2)];
-            if (dx > half0) {
-              dx -= box_len_[0];
-            } else if (dx < -half0) {
-              dx += box_len_[0];
-            }
-            if (dy > half1) {
-              dy -= box_len_[1];
-            } else if (dy < -half1) {
-              dy += box_len_[1];
-            }
-            if (dz > half2) {
-              dz -= box_len_[2];
-            } else if (dz < -half2) {
-              dz += box_len_[2];
-            }
-            const double r2 = dx * dx + dy * dy + dz * dz;
-            if (r2 <= search2) {
-              gather_.push_back(j);
-            }
-          }
-        }
+void EAM::ensureRev() {
+  const auto &off = neighbours_.offsets();
+  const auto &nbr = neighbours_.neighbours();
+  rev_.assign(nbr.size(), 0);
+  for (std::size_t i = 0; i + 1 < off.size(); ++i) {
+    for (std::int32_t p = off[i]; p < off[i + 1]; ++p) {
+      const auto j = static_cast<std::size_t>(nbr[static_cast<std::size_t>(p)]);
+      const auto jlo = off[j];
+      const auto jhi = off[j + 1];
+      const auto *row = nbr.data();
+      const auto *found =
+          std::lower_bound(row + jlo, row + jhi, static_cast<std::int32_t>(i));
+      if (found == row + jhi || *found != static_cast<std::int32_t>(i)) {
+        rev_[static_cast<std::size_t>(p)] = -1;
+      } else {
+        rev_[static_cast<std::size_t>(p)] =
+            static_cast<std::int32_t>(found - row);
       }
     }
-    std::sort(gather_.begin(), gather_.end());
-    nbr_.insert(nbr_.end(), gather_.begin(), gather_.end());
   }
-  off_[static_cast<std::size_t>(N)] = static_cast<long>(nbr_.size());
-  // Slot of i in j's row, so a later call can read j's stored scale
-  // without searching. The rows stay sorted for the life of the list.
-  rev_.resize(nbr_.size());
-  for (long i = 0; i < N; ++i) {
-    const long lo = off_[static_cast<std::size_t>(i)];
-    const long hi = off_[static_cast<std::size_t>(i) + 1];
-    for (long p = lo; p < hi; ++p) {
-      const long j = nbr_[static_cast<std::size_t>(p)];
-      const long jlo = off_[static_cast<std::size_t>(j)];
-      const long jhi = off_[static_cast<std::size_t>(j) + 1];
-      const long *row = nbr_.data();
-      const long *found = std::lower_bound(row + jlo, row + jhi, i);
-      rev_[static_cast<std::size_t>(p)] = static_cast<long>(found - row);
-    }
+}
+
+void EAM::ensureParts(long N, int nt) {
+  if (part_n_ == N && part_nt_ == nt &&
+      static_cast<int>(parts_.size()) == nt) {
+    return;
   }
-  built_ = true;
-  n_atoms_ = N;
+  parts_.resize(static_cast<std::size_t>(nt));
+  for (int t = 0; t < nt; ++t) {
+    parts_[static_cast<std::size_t>(t)] = rgpot::nlist::partition(N, t, nt);
+  }
+  part_n_ = N;
+  part_nt_ = nt;
 }
 
 void EAM::accumulate(long i, const int *atomicNrs, double *F, double &U,
@@ -293,10 +167,19 @@ void EAM::accumulate(long i, const int *atomicNrs, double *F, double &U,
   double dix = 0.0;
   double diy = 0.0;
   double diz = 0.0;
-  const long begin = off_[static_cast<std::size_t>(i)];
-  const long end = off_[static_cast<std::size_t>(i) + 1];
+  const auto &off = neighbours_.offsets();
+  const auto &nbr = neighbours_.neighbours();
+  const long begin = neighbours_.streaming()
+                         ? 0
+                         : static_cast<long>(off[static_cast<std::size_t>(i)]);
+  const long end =
+      neighbours_.streaming()
+          ? static_cast<long>(js_.size())
+          : static_cast<long>(off[static_cast<std::size_t>(i) + 1]);
   for (long p = begin; p < end; ++p) {
-    const long j = nbr_[static_cast<std::size_t>(p)];
+    const long j =
+        neighbours_.streaming() ? js_[static_cast<std::size_t>(p)]
+                                : nbr[static_cast<std::size_t>(p)];
     double dx = xi - wrapped_[static_cast<std::size_t>(3 * j)];
     double dy = yi - wrapped_[static_cast<std::size_t>(3 * j + 1)];
     double dz = zi - wrapped_[static_cast<std::size_t>(3 * j + 2)];
@@ -371,37 +254,19 @@ void EAM::accumulate(long i, const int *atomicNrs, double *F, double &U,
   }
 }
 
-int EAM::threadsRequested() const {
-#if defined(_OPENMP)
-  const char *env = std::getenv("OMP_NUM_THREADS");
-  if (env == nullptr || env[0] == '\0') {
-    return 1;
-  }
-  char *end = nullptr;
-  const long parsed = std::strtol(env, &end, 10);
-  if (end == env || parsed < 1) {
-    return 1;
-  }
-  if (parsed > std::numeric_limits<int>::max()) {
-    return std::numeric_limits<int>::max();
-  }
-  return static_cast<int>(parsed);
-#else
-  return 1;
-#endif
-}
+int EAM::threadsRequested() const { return rgpot::nlist::threadsRequested(); }
 
 void EAM::geometry(long i, long j, double &dx, double &dy, double &dz,
                    double &r2) const {
   const double half0 = box_len_[0] * 0.5;
   const double half1 = box_len_[1] * 0.5;
   const double half2 = box_len_[2] * 0.5;
-  dx = wrapped_[static_cast<std::size_t>(3 * i)] -
-       wrapped_[static_cast<std::size_t>(3 * j)];
-  dy = wrapped_[static_cast<std::size_t>(3 * i + 1)] -
-       wrapped_[static_cast<std::size_t>(3 * j + 1)];
-  dz = wrapped_[static_cast<std::size_t>(3 * i + 2)] -
-       wrapped_[static_cast<std::size_t>(3 * j + 2)];
+  const double xi = wrapped_[static_cast<std::size_t>(3 * i)];
+  const double yi = wrapped_[static_cast<std::size_t>(3 * i + 1)];
+  const double zi = wrapped_[static_cast<std::size_t>(3 * i + 2)];
+  dx = xi - wrapped_[static_cast<std::size_t>(3 * j)];
+  dy = yi - wrapped_[static_cast<std::size_t>(3 * j + 1)];
+  dz = zi - wrapped_[static_cast<std::size_t>(3 * j + 2)];
   if (dx > half0) {
     dx -= box_len_[0];
   } else if (dx < -half0) {
@@ -420,49 +285,249 @@ void EAM::geometry(long i, long j, double &dx, double &dy, double &dz,
   r2 = dx * dx + dy * dy + dz * dz;
 }
 
+void EAM::evaluateStoredParallel(long N, const int *atomicNrs, double *F,
+                                  double *U) {
+  const int nt = threads_used_;
+  rho_.resize(static_cast<std::size_t>(N));
+  dF_.resize(static_cast<std::size_t>(N));
+  partial_f_.assign(static_cast<std::size_t>(3 * N), 0.0);
+  thread_energy_.assign(static_cast<std::size_t>(nt), 0.0);
+  ensureParts(N, nt);
+  const auto nslot = neighbours_.slots();
+  if (fscale_.size() != nslot) {
+    fscale_.assign(nslot, 0.0);
+    morse_.assign(nslot, 0.0);
+    gdx_.assign(nslot, 0.0);
+    gdy_.assign(nslot, 0.0);
+    gdz_.assign(nslot, 0.0);
+  }
+  const auto &off = neighbours_.offsets();
+  const auto &nbr = neighbours_.neighbours();
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+  {
+#if defined(_OPENMP)
+    const int t = omp_get_thread_num();
+#else
+    const int t = 0;
+#endif
+    const long begin = static_cast<long>(parts_[static_cast<std::size_t>(t)].begin);
+    const long end = static_cast<long>(parts_[static_cast<std::size_t>(t)].end);
+    for (long i = begin; i < end; ++i) {
+      const element_parameters epar = get_element_parameters(atomicNrs[i]);
+      const double cutoff2 = epar.r_cut * epar.r_cut;
+      double dens = 0.0;
+      double fx = 0.0;
+      double fy = 0.0;
+      double fz = 0.0;
+      double energy = 0.0;
+      const auto lo = off[static_cast<std::size_t>(i)];
+      const auto hi = off[static_cast<std::size_t>(i) + 1];
+      for (std::int32_t p = lo; p < hi; ++p) {
+        const auto s = static_cast<std::size_t>(p);
+        const long j = nbr[s];
+        double dx = 0.0;
+        double dy = 0.0;
+        double dz = 0.0;
+        double r2 = 0.0;
+        geometry(i, j, dx, dy, dz, r2);
+        gdx_[s] = dx;
+        gdy_[s] = dy;
+        gdz_[s] = dz;
+        if (!(r2 > 0.0)) {
+          fscale_[s] = 0.0;
+          morse_[s] = 0.0;
+          continue;
+        }
+        const double r = std::sqrt(r2);
+        const double invR = 1.0 / r;
+        if (r2 <= cutoff2) {
+          const double r6 = r2 * r2 * r2;
+          const double exp_b1 = std::exp(-epar.beta1 * r);
+          const double exp_b2 = std::exp(-2.0 * epar.beta2 * r);
+          const double rho_pair = exp_b1 + 512.0 * exp_b2;
+          dens += r6 * rho_pair;
+          const double r5 = r2 * r2 * r;
+          const double mag =
+              6.0 * r5 * rho_pair +
+              r6 * (-epar.beta1 * exp_b1 - 1024.0 * epar.beta2 * exp_b2);
+          fscale_[s] = -mag * invR;
+          if (j > i) {
+            const double expArg = std::exp(-epar.alphaM * (r - epar.Rm));
+            const double d = 1.0 - expArg;
+            energy += epar.Dm * d * d - epar.Dm;
+            const double fcomp =
+                2.0 * epar.alphaM * epar.Dm * d * (d - 1.0) * invR;
+            morse_[s] = fcomp;
+            fx -= fcomp * dx;
+            fy -= fcomp * dy;
+            fz -= fcomp * dz;
+          } else {
+            morse_[s] = 0.0;
+          }
+        } else {
+          fscale_[s] = 0.0;
+          morse_[s] = 0.0;
+        }
+      }
+      const double dFi = embedding_force(epar.func_coeff, dens);
+      rho_[static_cast<std::size_t>(i)] = dens;
+      dF_[static_cast<std::size_t>(i)] = dFi;
+      for (std::int32_t p = lo; p < hi; ++p) {
+        const auto s = static_cast<std::size_t>(p);
+        const double fscale = fscale_[s];
+        if (fscale == 0.0) {
+          continue;
+        }
+        fx -= dFi * fscale * gdx_[s];
+        fy -= dFi * fscale * gdy_[s];
+        fz -= dFi * fscale * gdz_[s];
+      }
+      energy += embedding_function(epar.func_coeff, dens);
+      partial_f_[static_cast<std::size_t>(3 * i)] = fx;
+      partial_f_[static_cast<std::size_t>(3 * i + 1)] = fy;
+      partial_f_[static_cast<std::size_t>(3 * i + 2)] = fz;
+      thread_energy_[static_cast<std::size_t>(t)] += energy;
+    }
+#if defined(_OPENMP)
+#pragma omp barrier
+#endif
+    for (long i = begin; i < end; ++i) {
+      double fx = partial_f_[static_cast<std::size_t>(3 * i)];
+      double fy = partial_f_[static_cast<std::size_t>(3 * i + 1)];
+      double fz = partial_f_[static_cast<std::size_t>(3 * i + 2)];
+      const auto lo = off[static_cast<std::size_t>(i)];
+      const auto hi = off[static_cast<std::size_t>(i) + 1];
+      for (std::int32_t p = lo; p < hi; ++p) {
+        const auto s = static_cast<std::size_t>(p);
+        const long j = nbr[s];
+        const auto rev_slot = rev_[s];
+        const double fnei =
+            rev_slot >= 0 ? fscale_[static_cast<std::size_t>(rev_slot)] : 0.0;
+        const double fcomp =
+            (rev_slot >= 0 && j < i)
+                ? morse_[static_cast<std::size_t>(rev_slot)]
+                : 0.0;
+        if (fnei == 0.0 && fcomp == 0.0) {
+          continue;
+        }
+        const double scale = dF_[static_cast<std::size_t>(j)] * fnei + fcomp;
+        const double dx = gdx_[s];
+        fx -= scale * dx;
+        fy -= scale * gdy_[s];
+        fz -= scale * gdz_[s];
+      }
+      partial_f_[static_cast<std::size_t>(3 * i)] = fx;
+      partial_f_[static_cast<std::size_t>(3 * i + 1)] = fy;
+      partial_f_[static_cast<std::size_t>(3 * i + 2)] = fz;
+    }
+  }
+  for (long i = 0; i < N; ++i) {
+    F[3 * i] = partial_f_[static_cast<std::size_t>(3 * i)];
+    F[3 * i + 1] = partial_f_[static_cast<std::size_t>(3 * i + 1)];
+    F[3 * i + 2] = partial_f_[static_cast<std::size_t>(3 * i + 2)];
+  }
+  double energy = 0.0;
+  for (int t = 0; t < nt; ++t) {
+    energy += thread_energy_[static_cast<std::size_t>(t)];
+  }
+  *U = energy;
+}
+
 void EAM::evaluate(long N, const int *atomicNrs, double *F, double *U) {
   const int nt = threadsRequested();
   threads_used_ = nt;
   if (nt == 1) {
     double energy = 0.0;
     for (long i = 0; i < N; ++i) {
+      if (neighbours_.streaming()) {
+        js_.clear();
+        neighbours_.forDirected(
+            i, i + 1,
+            [&](std::int32_t, std::int32_t j, double, double, double, double) {
+              js_.push_back(j);
+            });
+        std::sort(js_.begin(), js_.end());
+      }
       accumulate(i, atomicNrs, F, energy, deltas_);
     }
     *U = energy;
     return;
   }
 #if defined(_OPENMP)
-  // Densities first, then each atom gathers its own force. The scatter
-  // loop above writes every neighbour, so threads would need private
-  // copies of the whole force array. The gather writes three components
-  // and nothing else.
+  if (!neighbours_.streaming()) {
+    evaluateStoredParallel(N, atomicNrs, F, U);
+    return;
+  }
+#endif
+#if defined(_OPENMP)
+  // One geometry and density pass. The only work that waits for every
+  // density is the neighbour embedding term, a multiply by dF[j].
   rho_.resize(static_cast<std::size_t>(N));
   dF_.resize(static_cast<std::size_t>(N));
-  fscale_.resize(nbr_.size());
+  partial_f_.resize(static_cast<std::size_t>(3 * N));
   thread_energy_.assign(static_cast<std::size_t>(nt), 0.0);
+  ensureParts(N, nt);
+  const bool stored = !neighbours_.streaming();
+  if (stored) {
+    const auto nslot = neighbours_.slots();
+    if (fscale_.size() != nslot) {
+      fscale_.resize(nslot);
+      gdx_.resize(nslot);
+      gdy_.resize(nslot);
+      gdz_.resize(nslot);
+      ginv_.resize(nslot);
+    }
+  }
 #pragma omp parallel num_threads(nt)
   {
     const int t = omp_get_thread_num();
-    const long begin =
-        static_cast<long>((static_cast<std::int64_t>(N) * t) / nt);
-    const long end =
-        static_cast<long>((static_cast<std::int64_t>(N) * (t + 1)) / nt);
-    for (long i = begin; i < end; ++i) {
+    const auto range = parts_[static_cast<std::size_t>(t)];
+    std::vector<std::int32_t> local;
+    auto partners = [&](long i, const auto &body) {
+      if (stored) {
+        const auto &off = neighbours_.offsets();
+        const auto &nbr = neighbours_.neighbours();
+        for (std::int32_t p = off[static_cast<std::size_t>(i)];
+             p < off[static_cast<std::size_t>(i) + 1]; ++p) {
+          body(p, nbr[static_cast<std::size_t>(p)]);
+        }
+      } else {
+        local.clear();
+        neighbours_.forDirected(
+            i, i + 1,
+            [&](std::int32_t, std::int32_t j, double, double, double, double) {
+              local.push_back(j);
+            });
+        std::sort(local.begin(), local.end());
+        for (std::int32_t j : local) {
+          body(static_cast<std::int32_t>(-1), j);
+        }
+      }
+    };
+    for (std::int64_t i = range.begin; i < range.end; ++i) {
       const element_parameters epar = get_element_parameters(atomicNrs[i]);
       const double cutoff2 = epar.r_cut * epar.r_cut;
       double dens = 0.0;
-      const long lo = off_[static_cast<std::size_t>(i)];
-      const long hi = off_[static_cast<std::size_t>(i) + 1];
-      for (long p = lo; p < hi; ++p) {
-        const long j = nbr_[static_cast<std::size_t>(p)];
-        double dx = 0.0;
-        double dy = 0.0;
-        double dz = 0.0;
-        double r2 = 0.0;
+      partners(i, [&](std::int32_t p, std::int32_t j) {
+        double dx = 0;
+        double dy = 0;
+        double dz = 0;
+        double r2 = 0;
         geometry(i, j, dx, dy, dz, r2);
-        if (r2 > cutoff2) {
-          fscale_[static_cast<std::size_t>(p)] = 0.0;
-          continue;
+        if (stored && p >= 0) {
+          const auto s = static_cast<std::size_t>(p);
+          gdx_[s] = dx;
+          gdy_[s] = dy;
+          gdz_[s] = dz;
+          ginv_[s] = r2 > 0.0 ? 1.0 / std::sqrt(r2) : 0.0;
+        }
+        if (!(r2 > 0.0) || r2 > cutoff2) {
+          if (stored && p >= 0) {
+            fscale_[static_cast<std::size_t>(p)] = 0.0;
+          }
+          return;
         }
         const double r = std::sqrt(r2);
         const double r6 = r2 * r2 * r2;
@@ -474,44 +539,66 @@ void EAM::evaluate(long N, const int *atomicNrs, double *F, double *U) {
         const double mag =
             6.0 * r5 * rho_pair +
             r6 * (-epar.beta1 * exp_b1 - 1024.0 * epar.beta2 * exp_b2);
-        fscale_[static_cast<std::size_t>(p)] = -mag / r;
-      }
+        if (stored && p >= 0) {
+          fscale_[static_cast<std::size_t>(p)] = -mag / r;
+        }
+      });
       rho_[static_cast<std::size_t>(i)] = dens;
       dF_[static_cast<std::size_t>(i)] =
           embedding_force(epar.func_coeff, dens);
     }
 #pragma omp barrier
     double energy = 0.0;
-    for (long i = begin; i < end; ++i) {
+    for (std::int64_t i = range.begin; i < range.end; ++i) {
       const element_parameters ei = get_element_parameters(atomicNrs[i]);
       const double cut_i2 = ei.r_cut * ei.r_cut;
       const double dFi = dF_[static_cast<std::size_t>(i)];
       double fx = 0.0;
       double fy = 0.0;
       double fz = 0.0;
-      const long lo = off_[static_cast<std::size_t>(i)];
-      const long hi = off_[static_cast<std::size_t>(i) + 1];
-      for (long p = lo; p < hi; ++p) {
-        const long j = nbr_[static_cast<std::size_t>(p)];
-        double dx = 0.0;
-        double dy = 0.0;
-        double dz = 0.0;
-        double r2 = 0.0;
-        geometry(i, j, dx, dy, dz, r2);
-        const element_parameters ej = get_element_parameters(atomicNrs[j]);
-        const bool in_i = r2 <= cut_i2;
-        const bool in_j = r2 <= ej.r_cut * ej.r_cut;
-        if (!in_i && !in_j) {
-          continue;
+      partners(i, [&](std::int32_t p, std::int32_t j) {
+        double dx = 0;
+        double dy = 0;
+        double dz = 0;
+        double invR = 0;
+        double fself = 0;
+        if (stored && p >= 0) {
+          const auto s = static_cast<std::size_t>(p);
+          dx = gdx_[s];
+          dy = gdy_[s];
+          dz = gdz_[s];
+          invR = ginv_[s];
+          fself = fscale_[s];
+        } else {
+          double r2 = 0;
+          geometry(i, j, dx, dy, dz, r2);
+          if (!(r2 > 0.0)) {
+            return;
+          }
+          const double r = std::sqrt(r2);
+          invR = 1.0 / r;
+          if (r2 <= cut_i2) {
+            const double r6 = r2 * r2 * r2;
+            const double exp_b1 = std::exp(-ei.beta1 * r);
+            const double exp_b2 = std::exp(-2.0 * ei.beta2 * r);
+            const double rho_pair = exp_b1 + 512.0 * exp_b2;
+            const double r5 = r2 * r2 * r;
+            const double mag =
+                6.0 * r5 * rho_pair +
+                r6 * (-ei.beta1 * exp_b1 - 1024.0 * ei.beta2 * exp_b2);
+            fself = -mag * invR;
+          }
         }
-        const double r = std::sqrt(r2);
-        const double invR = 1.0 / r;
+        const double r2 = dx * dx + dy * dy + dz * dz;
+        const element_parameters ej = get_element_parameters(atomicNrs[j]);
+        const bool in_i = r2 <= cut_i2 && r2 > 0.0;
+        const bool in_j = r2 <= ej.r_cut * ej.r_cut && r2 > 0.0;
         if (in_i) {
-          const double fscale = fscale_[static_cast<std::size_t>(p)];
-          fx -= dFi * fscale * dx;
-          fy -= dFi * fscale * dy;
-          fz -= dFi * fscale * dz;
+          fx -= dFi * fself * dx;
+          fy -= dFi * fself * dy;
+          fz -= dFi * fself * dz;
           if (j > i) {
+            const double r = 1.0 / invR;
             const double expArg = std::exp(-ei.alphaM * (r - ei.Rm));
             const double d = 1.0 - expArg;
             energy += ei.Dm * d * d - ei.Dm;
@@ -522,32 +609,53 @@ void EAM::evaluate(long N, const int *atomicNrs, double *F, double *U) {
             fz -= fcomp * dz;
           }
         }
-        if (in_j) {
-          const std::size_t slot =
-              static_cast<std::size_t>(rev_[static_cast<std::size_t>(p)]);
-          const double fscale = fscale_[slot];
-          const double dFj = dF_[static_cast<std::size_t>(j)];
-          fx -= dFj * fscale * dx;
-          fy -= dFj * fscale * dy;
-          fz -= dFj * fscale * dz;
-          if (j < i) {
-            const double expArg = std::exp(-ej.alphaM * (r - ej.Rm));
-            const double d = 1.0 - expArg;
-            const double fcomp =
-                2.0 * ej.alphaM * ej.Dm * d * (d - 1.0) * invR;
-            fx -= fcomp * dx;
-            fy -= fcomp * dy;
-            fz -= fcomp * dz;
-          }
+        if (in_j && j < i && invR > 0.0) {
+          const double r = 1.0 / invR;
+          const double useInv = invR;
+          const double expArg = std::exp(-ej.alphaM * (r - ej.Rm));
+          const double d = 1.0 - expArg;
+          const double fcomp =
+              2.0 * ej.alphaM * ej.Dm * d * (d - 1.0) * useInv;
+          fx -= fcomp * dx;
+          fy -= fcomp * dy;
+          fz -= fcomp * dz;
         }
-      }
+        if (in_j) {
+          double fnei = 0;
+          if (stored && p >= 0 && rev_[static_cast<std::size_t>(p)] >= 0) {
+            const auto slot = static_cast<std::size_t>(
+                rev_[static_cast<std::size_t>(p)]);
+            fnei = fscale_[slot];
+          } else {
+            const double r = std::sqrt(r2);
+            const double r6 = r2 * r2 * r2;
+            const double exp_b1 = std::exp(-ej.beta1 * r);
+            const double exp_b2 = std::exp(-2.0 * ej.beta2 * r);
+            const double rho_pair = exp_b1 + 512.0 * exp_b2;
+            const double r5 = r2 * r2 * r;
+            const double mag =
+                6.0 * r5 * rho_pair +
+                r6 * (-ej.beta1 * exp_b1 - 1024.0 * ej.beta2 * exp_b2);
+            fnei = -mag / r;
+          }
+          const double dFj = dF_[static_cast<std::size_t>(j)];
+          fx -= dFj * fnei * dx;
+          fy -= dFj * fnei * dy;
+          fz -= dFj * fnei * dz;
+        }
+      });
       energy += embedding_function(ei.func_coeff,
                                    rho_[static_cast<std::size_t>(i)]);
-      F[3 * i] = fx;
-      F[3 * i + 1] = fy;
-      F[3 * i + 2] = fz;
+      partial_f_[static_cast<std::size_t>(3 * i)] = fx;
+      partial_f_[static_cast<std::size_t>(3 * i + 1)] = fy;
+      partial_f_[static_cast<std::size_t>(3 * i + 2)] = fz;
     }
     thread_energy_[static_cast<std::size_t>(t)] = energy;
+  }
+  for (long i = 0; i < N; ++i) {
+    F[3 * i] = partial_f_[static_cast<std::size_t>(3 * i)];
+    F[3 * i + 1] = partial_f_[static_cast<std::size_t>(3 * i + 1)];
+    F[3 * i + 2] = partial_f_[static_cast<std::size_t>(3 * i + 2)];
   }
   double energy = 0.0;
   for (int t = 0; t < nt; ++t) {
@@ -557,12 +665,20 @@ void EAM::evaluate(long N, const int *atomicNrs, double *F, double *U) {
 #else
   double energy = 0.0;
   for (long i = 0; i < N; ++i) {
+    if (neighbours_.streaming()) {
+      js_.clear();
+      neighbours_.forDirected(
+          i, i + 1,
+          [&](std::int32_t, std::int32_t j, double, double, double, double) {
+            js_.push_back(j);
+          });
+      std::sort(js_.begin(), js_.end());
+    }
     accumulate(i, atomicNrs, F, energy, deltas_);
   }
   *U = energy;
 #endif
 }
-
 void EAM::force(long N, const double *R, const int *atomicNrs, double *F,
                 double *U, double *variance, const double *fullbox) {
   (void)variance;
@@ -584,14 +700,7 @@ void EAM::force(long N, const double *R, const int *atomicNrs, double *F,
     (void)get_element_parameters(atomicNrs[i]);
   }
   prepare(N, R, box);
-  if (!reusable(N, R, atomicNrs, fullbox)) {
-    ref_.assign(R, R + 3 * N);
-    species_.assign(atomicNrs, atomicNrs + N);
-    box_ref_[0] = fullbox[0];
-    box_ref_[1] = fullbox[4];
-    box_ref_[2] = fullbox[8];
-    buildList(N, atomicNrs);
-  }
+  buildList(N);
   evaluate(N, atomicNrs, F, U);
 }
 

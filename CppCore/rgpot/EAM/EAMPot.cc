@@ -31,6 +31,10 @@ int EAMPot::threadsUsed() const noexcept {
   return m_impl->kernel.threadsUsed();
 }
 
+void EAMPot::setNeighbourMode(nlist::Mode mode) noexcept {
+  m_impl->kernel.setNeighbourMode(mode);
+}
+
 void EAMPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   double energy = 0.0;
   double variance = 0.0;

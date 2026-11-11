@@ -11,6 +11,8 @@
 */
 #pragma once
 
+#include "rgpot/nlist/Neighbours.hpp"
+
 #include <array>
 #include <cstdint>
 #include <vector>
@@ -64,13 +66,18 @@ public:
       ;
 
   /// Neighbour-list builds since this object was created.
-  [[nodiscard]] std::uint64_t listBuilds() const noexcept { return builds_; }
-
-  /// Stored neighbour indices. Linear in the atom count for a short-ranged
-  /// density; the direct loop kept a slot for every atom pair.
-  [[nodiscard]] std::size_t neighborSlots() const noexcept {
-    return nbr_.size();
+  [[nodiscard]] std::uint64_t listBuilds() const noexcept {
+    return neighbours_.builds();
   }
+
+  /// Stored neighbour indices. Zero while the layer is streaming.
+  [[nodiscard]] std::size_t neighborSlots() const noexcept {
+    return neighbours_.slots();
+  }
+
+  /// Ask for a stored list or a streaming walk. Auto stores when the
+  /// candidate index array fits in the memory reported as available.
+  void setNeighbourMode(rgpot::nlist::Mode mode) noexcept { mode_ = mode; }
 
   /// Threads used by the most recent force call. 1 when OpenMP is off or
   /// `OMP_NUM_THREADS` is unset.
@@ -105,35 +112,37 @@ private:
   };
 
   std::vector<double> wrapped_;
-  std::vector<double> ref_;
-  std::vector<int> species_;
-  std::vector<long> head_;
-  std::vector<long> next_;
-  std::vector<long> off_;
-  std::vector<long> nbr_;
-  std::vector<long> rev_;
-  std::vector<long> gather_;
-  std::vector<unsigned> stamp_;
   std::vector<Delta> deltas_;
+  std::vector<std::int32_t> js_;
   std::vector<double> rho_;
   std::vector<double> dF_;
   std::vector<double> fscale_;
+  std::vector<double> morse_;
+  std::vector<double> gdx_;
+  std::vector<double> gdy_;
+  std::vector<double> gdz_;
+  std::vector<double> ginv_;
+  std::vector<std::int32_t> rev_;
   std::vector<double> thread_energy_;
+  std::vector<double> partial_f_;
+  std::vector<rgpot::nlist::Range> parts_;
+  rgpot::nlist::Neighbours neighbours_;
 
   double box_len_[3]{};
-  double box_ref_[3]{};
-  double skin_ = 0;
   long n_atoms_ = 0;
-  long n_axis_[3]{};
-  std::uint64_t builds_ = 0;
+  long part_n_ = -1;
+  int part_nt_ = -1;
   int threads_used_ = 1;
-  bool built_ = false;
+  std::uint64_t rev_stamp_ = 0;
+  rgpot::nlist::Mode mode_ = rgpot::nlist::Mode::Auto;
 
   void prepare(long N, const double *R, const double *box);
-  [[nodiscard]] bool reusable(long N, const double *R, const int *atomicNrs,
-                              const double *box) const;
-  void buildList(long N, const int *atomicNrs);
+  void buildList(long N);
+  void ensureRev();
+  void ensureParts(long N, int nt);
   void evaluate(long N, const int *atomicNrs, double *F, double *U);
+  void evaluateStoredParallel(long N, const int *atomicNrs, double *F,
+                              double *U);
   void accumulate(long i, const int *atomicNrs, double *F, double &U,
                   std::vector<Delta> &deltas) const;
   void geometry(long i, long j, double &dx, double &dy, double &dz,

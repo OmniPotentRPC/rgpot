@@ -10,6 +10,7 @@
 
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/Potential.hpp"
+#include "rgpot/nlist/Neighbours.hpp"
 
 namespace rgpot {
 
@@ -43,6 +44,10 @@ public:
 
   /// Threads used by the most recent force call.
   [[nodiscard]] int threadsUsed() const noexcept;
+
+  /// Stored Verlet list or a streaming cell walk. Auto follows the
+  /// memory available to the process.
+  void setNeighbourMode(nlist::Mode mode) noexcept;
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
