@@ -148,8 +148,8 @@ rgpot_halfshell = static_library(
     files(
         'rgpot/nlist/HalfShell.cc',
         'rgpot/nlist/HalfShellWalk.cc',
-        'rgpot/nlist/Neighbours.cc',
         'rgpot/nlist/NeighbourList.cc',
+        'rgpot/nlist/Neighbours.cc',
     ),
     include_directories: _incdirs,
     cpp_args: _args,
@@ -1840,7 +1840,14 @@ if get_option('with_tests')
         # sums then miss by an ulp. ReducedPair.cc is built unfused, and
         # its test compares exactly against the same expressions.
         case_args = test_args
-        if test.get(2) in ['FastNlistTest.cc', 'ReducedPairTest.cc']
+        if test.get(2) in [
+            'FastNlistTest.cc',
+            'ReducedPairTest.cc',
+            'EAMCellVerletTest.cc',
+            'StreamParityTest.cc',
+            'NeighbourLayerTest.cc',
+            'TersoffSiCTest.cc',
+        ]
             case_args += cppc.get_supported_arguments(
                 ['-ffp-contract=off', '/fp:precise'],
             )

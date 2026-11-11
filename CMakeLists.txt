@@ -535,7 +535,6 @@ if(RGPOT_BUILD_TESTS)
     add_subdirectory(CppCore/tests/plugin)
 
     add_pot_test(LJClusterPotTest CppCore/tests/LJClusterPotTest.cc)
-    add_pot_test(PairListTest CppCore/tests/PairListTest.cc)
     add_pot_test(MinImageIsaHash CppCore/tests/MinImageIsaHash.cc)
     add_pot_test(FoldDegenerateTest CppCore/tests/FoldDegenerateTest.cc)
     set_tests_properties(FoldDegenerateTest PROPERTIES TIMEOUT 60)

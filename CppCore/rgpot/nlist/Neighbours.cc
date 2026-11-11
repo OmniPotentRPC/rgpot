@@ -7,8 +7,18 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
-#include <fstream>
 #include <string>
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <mach/mach.h>
+#else
+#include <fstream>
+#endif
 
 #if defined(_OPENMP)
 #include <omp.h>
@@ -69,6 +79,26 @@ Range partition(std::int64_t n, int thread, int nthreads) {
 }
 
 std::uint64_t availableBytes() {
+#if defined(_WIN32)
+  MEMORYSTATUSEX status{};
+  status.dwLength = sizeof(status);
+  if (!GlobalMemoryStatusEx(&status)) {
+    return 0;
+  }
+  return static_cast<std::uint64_t>(status.ullAvailPhys);
+#elif defined(__APPLE__)
+  vm_statistics64_data_t vm{};
+  mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
+  if (host_statistics64(mach_host_self(), HOST_VM_INFO64,
+                        reinterpret_cast<host_info64_t>(&vm),
+                        &count) != KERN_SUCCESS) {
+    return 0;
+  }
+  const auto page = static_cast<std::uint64_t>(vm_page_size);
+  return (static_cast<std::uint64_t>(vm.free_count) +
+          static_cast<std::uint64_t>(vm.inactive_count)) *
+         page;
+#else
   std::ifstream in("/proc/meminfo");
   std::string key;
   std::uint64_t kb = 0;
@@ -79,6 +109,7 @@ std::uint64_t availableBytes() {
     }
   }
   return 0;
+#endif
 }
 
 bool Neighbours::reusable(const double *xyz, std::size_t n, const double *box9,
@@ -316,8 +347,11 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
   const std::uint64_t bound = candidateBound();
   const auto avail = availableBytes();
   const auto index_bytes = static_cast<std::uint64_t>(sizeof(std::int32_t));
-  const bool fits = avail > 0 && bound <= avail / index_bytes &&
-                    bound <= static_cast<std::uint64_t>(0x7fffffff);
+  // Zero means the probe failed, not that the machine has no free memory.
+  // An explicit stored list, and Auto, still keep the index in that case.
+  const bool bounded = bound <= static_cast<std::uint64_t>(0x7fffffff);
+  const bool over_budget = avail > 0 && bound > avail / index_bytes;
+  const bool fits = bounded && !over_budget;
   // The stream keeps the bins. The list adds one index per candidate.
   // Auto stores only when that index fits. A short cutoff that does not
   // fit the 27-slot stencil keeps the smaller mask in the same cache.
