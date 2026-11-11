@@ -1,4 +1,4 @@
-// Copyright (c) rgpot developers
+// Copyright 2023--present rgpot developers
 //
 // A float64 package must resolve an energy difference of about 1e-7
 // Angstrom on a three-atom line. Coordinates are exact float32 values
@@ -9,10 +9,12 @@
 #include <cmath>
 #include <cstdlib>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
 
+#include "rgpot/UmaPot/UmaEdges.hpp"
 #include "rgpot/UmaPot/UmaPot.hpp"
 
 namespace {
@@ -44,6 +46,24 @@ Eval run(rgpot::UmaPot &pot, std::vector<double> pos) {
 
 std::vector<double> line_geometry() {
   return {12.5, 12.5, 12.5, 12.5, 12.5, 13.5, 12.5, 12.5, 11.5};
+}
+
+void require_six_pairs(const std::vector<double> &pos) {
+  rgpot::UmaEdgeSession session;
+  auto meta = std::unordered_map<std::string, std::string>{
+      {"nedges_min", "6"},
+      {"nedges_max", "6"},
+  };
+  const auto contract = rgpot::UmaContract::fromMetadata(meta);
+  const std::vector<int> z = {6, 7, 1};
+  const double box[9] = {25, 0, 0, 0, 25, 0, 0, 0, 25};
+  const rgpot::ForceInput in{3, pos.data(), z.data(), box};
+  const auto &edges = rgpot::build_system_edges(
+      in, 6.0, 6.0, 0.0, 300, contract, 1, session);
+  REQUIRE(edges.neighbor.size() == 6);
+  REQUIRE(edges.center.size() == 6);
+  for (float shift : edges.offsets)
+    REQUIRE(shift == 0.f);
 }
 
 rgpot::UmaPot open_pot(const std::string &path) {
@@ -144,6 +164,7 @@ TEST_CASE("a complete float64 list keeps the moved atom",
   pos.back() = 30.0;
   const Eval got = run(pot, pos);
   REQUIRE_THAT(got.energy, Catch::Matchers::WithinAbs(131.0, 1e-9));
+  require_six_pairs(pos);
 }
 
 TEST_CASE("batch path resolves a 1e-7 angstrom shift", "[uma][float64]") {

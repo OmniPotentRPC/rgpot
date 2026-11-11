@@ -1,0 +1,14 @@
+Parent assertions require a throw.
+REQUIRE( threw )
+with expansion: false
+the static package returned a force
+no exception was thrown where one was expected
+Ok: 0
+Fail: 2
+
+Tip assertions name the ordered-pair count and require shift 0.
+Mutation forcing the complete-list condition false:
+REQUIRE( shift == 0.f )
+FAILED
+Ok: 0
+Fail: 1

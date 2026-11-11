@@ -1,4 +1,4 @@
-// Copyright (c) rgpot developers
+// Copyright 2023--present rgpot developers
 //
 // A package traced at n(n-1) edges keeps every ordered pair when a
 // contact grows, so the compiled shape does not change. A symbolic
@@ -13,6 +13,7 @@
 
 #include <catch2/catch_all.hpp>
 
+#include "rgpot/UmaPot/UmaEdges.hpp"
 #include "rgpot/UmaPot/UmaPot.hpp"
 
 namespace {
@@ -52,6 +53,28 @@ Eval run(rgpot::UmaPot &pot, const std::vector<double> &pos) {
   return out;
 }
 
+// The traced count is n(n-1). A truncated neighbour list fails this
+// even when the energy of a sum model stays finite.
+void require_ordered_pairs(const double *pos, std::size_t n, const double *box,
+                           double molecular_box, int64_t recorded) {
+  rgpot::UmaEdgeSession session;
+  const auto meta = std::unordered_map<std::string, std::string>{
+      {"nedges_min", std::to_string(recorded)},
+      {"nedges_max", std::to_string(recorded)},
+  };
+  const auto contract = rgpot::UmaContract::fromMetadata(meta);
+  std::vector<int> z(n, 6);
+  const rgpot::ForceInput in{n, pos, z.data(), box};
+  const auto &edges = rgpot::build_system_edges(
+      in, 6.0, 6.0, molecular_box, 300, contract, 1, session);
+  const std::size_t want = n > 1 ? n * (n - 1) : 0;
+  REQUIRE(edges.neighbor.size() == want);
+  REQUIRE(edges.center.size() == want);
+  REQUIRE(recorded == static_cast<int64_t>(want));
+  for (float shift : edges.offsets)
+    REQUIRE(shift == 0.f);
+}
+
 std::vector<double> line(int n, double spacing) {
   std::vector<double> pos(static_cast<size_t>(n) * 3);
   for (int i = 0; i < n; ++i) {
@@ -77,6 +100,8 @@ TEST_CASE("a complete static graph keeps every ordered pair",
   for (double value : pos)
     sum += value;
   REQUIRE_THAT(got.energy, Catch::Matchers::WithinAbs(7.0 * sum, 1e-6));
+  const double wide[9] = {40, 0, 0, 0, 40, 0, 0, 0, 40};
+  require_ordered_pairs(pos.data(), 8, wide, 0.0, 56);
 }
 
 TEST_CASE("dynamic gather matches eager forces when the neighbour list changes",
@@ -127,7 +152,8 @@ TEST_CASE("a molecular box keeps a long contact at shift zero",
   rgpot::ForceOut slot{force.data(), 0.0, 0.0};
   const rgpot::ForceInput in{3, pos.data(), z.data(), box};
   pot.forceImpl(in, &slot);
-  REQUIRE(std::isfinite(slot.energy));
+  REQUIRE_THAT(slot.energy, Catch::Matchers::WithinAbs(0.0, 1e-9));
+  require_ordered_pairs(pos.data(), 3, box, 15.0, 6);
 }
 
 TEST_CASE("tetrazine past the 10 angstrom cutoff names the missing edge range",
@@ -184,6 +210,7 @@ TEST_CASE("tetrazine walked past 10 angstroms keeps 56 edges",
   for (double value : pos)
     sum += value;
   REQUIRE_THAT(slot.energy, Catch::Matchers::WithinAbs(7.0 * sum, 1e-6));
+  require_ordered_pairs(pos.data(), 8, box, 0.0, 56);
 }
 
 TEST_CASE("a static band keeps six edges when one system stretches",
@@ -208,8 +235,10 @@ TEST_CASE("a static band keeps six edges when one system stretches",
   };
   const rgpot::ForceBatch batch{2, in, out};
   pot.forceBatchImpl(batch);
-  REQUIRE(std::isfinite(out[0].energy));
-  REQUIRE(std::isfinite(out[1].energy));
+  REQUIRE_THAT(out[0].energy, Catch::Matchers::WithinAbs(112.5, 1e-9));
+  REQUIRE_THAT(out[1].energy, Catch::Matchers::WithinAbs(141.0, 1e-9));
+  require_ordered_pairs(compact.data(), 3, box, 0.0, 6);
+  require_ordered_pairs(stretched.data(), 3, box, 0.0, 6);
 }
 
 TEST_CASE("each system of a static band is accepted", "[uma][contract]") {
@@ -270,9 +299,11 @@ TEST_CASE("a molecular band keeps a complete pair list", "[uma][graph]") {
       {f1.data(), 0.0, 0.0},
   };
   pot.forceImpl(in[1], &out[1]);
-  REQUIRE(std::isfinite(out[1].energy));
+  REQUIRE_THAT(out[1].energy, Catch::Matchers::WithinAbs(0.0, 1e-9));
+  require_ordered_pairs(stretched.data(), 3, box, 80.0, 6);
   const rgpot::ForceBatch batch{2, in, out};
   pot.forceBatchImpl(batch);
-  REQUIRE(std::isfinite(out[0].energy));
-  REQUIRE(std::isfinite(out[1].energy));
+  REQUIRE_THAT(out[0].energy, Catch::Matchers::WithinAbs(0.0, 1e-9));
+  REQUIRE_THAT(out[1].energy, Catch::Matchers::WithinAbs(0.0, 1e-9));
+  require_ordered_pairs(compact.data(), 3, box, 80.0, 6);
 }
