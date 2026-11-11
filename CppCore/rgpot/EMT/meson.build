@@ -5,7 +5,6 @@ asap_emt = static_library(
     [
         'Asap/NeighborList.cpp',
         'Asap/GhostAtoms.cpp',
-        'Asap/CellList.cpp',
         'Asap/Vec.cpp',
         'Asap/Atoms.cpp',
         'Asap/Exception.cpp',

@@ -1,13 +1,18 @@
 #include "NeighborList.h"
 #include "Atoms.h"
-#include "CellList.h"
 #include "GhostAtoms.h"
 #include "GhostPotential.h"
 #include "SuperCell.h"
 // #include "Timing.h"
+#include "rgpot/nlist/NeighbourList.hpp"
+
+#include <algorithm>
 #include <assert.h>
 #include <cmath>
+#include <map>
 #include <string.h>
+#include <utility>
+#include <vector>
 
 using std::cerr;
 using std::endl;
@@ -123,21 +128,130 @@ void NeighborList::MakeList() {
            << ghmax << endl;
   }
 
-  // put atoms into cells:
-  CellList cellList(atoms, rMax);
-
-  // delete old images and old neighbor lists:
+  // The shared neighbour query replaces the private cell list. The half
+  // rule matches the old list: a direct pair is stored on the lower atom
+  // index, and a periodic image is stored on the side whose translation
+  // index is at most 13 (the 27-slot centre).
+  const SuperCell *cell = atoms->GetSuperCell();
+  // The old cell list rounded positions through scaled space and back, and
+  // walked cells in (z, y, x) order. The force sum follows that order, so
+  // both stay. The pairs themselves come from the shared query.
+  cell->TransformToScaledSpace(positions, nSize);
+  int bins[3];
+  std::vector<int> bin(static_cast<std::size_t>(nSize) * 3, 0);
+  for (int axis = 0; axis < 3; ++axis) {
+    bins[axis] = static_cast<int>(cell->heights[axis] / rMax);
+    if (bins[axis] < 1)
+      bins[axis] = 1;
+  }
+  for (int atom = 0; atom < nSize; ++atom) {
+    for (int axis = 0; axis < 3; ++axis) {
+      int k = 0;
+      if (cell->periodic[axis]) {
+        double scaled = positions[atom][axis];
+        k = static_cast<int>(scaled * bins[axis]);
+        if (k == bins[axis])
+          k--;
+        if (k < 0)
+          k = 0;
+      }
+      bin[static_cast<std::size_t>(atom) * 3 + static_cast<std::size_t>(axis)] = k;
+    }
+  }
+  cell->TransformToRealSpace(positions, nSize);
+  double box[9];
+  for (int axis = 0; axis < 3; ++axis) {
+    for (int k = 0; k < 3; ++k)
+      box[axis * 3 + k] = cell->vectors[axis][k];
+  }
+  rgpot::nlist::Query query;
+  query.cutoff = rMax;
+  query.cut = rgpot::nlist::Cut::Strict;
+  query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Full};
+  query.periodic = {cell->periodic[0], cell->periodic[1], cell->periodic[2]};
+  query.fields.shifts = true;
+  query.fields.vectors = true;
+  query.fields.distances = false;
+  const Vec *cart = atoms->GetCartesianPositions();
+  rgpot::nlist::Table table;
+  if (nAtoms > 0) {
+    rgpot::nlist::build(table, cart[0].x, static_cast<std::size_t>(nAtoms), box, query);
+  }
+  const double rMax2 = rMax * rMax;
+  struct Slot {
+    int id;
+    int j0;
+    int j1;
+    int j2;
+    int real_id;
+  };
+  std::vector<std::vector<Slot>> owned(static_cast<std::size_t>(nAtoms));
   images.resize(0);
+  std::map<std::pair<int, int>, int> imageOf;
+  auto coord = [&](int atom, int axis) {
+    return bin[static_cast<std::size_t>(atom) * 3 + static_cast<std::size_t>(axis)];
+  };
+  for (std::size_t p = 0; p < table.size(); ++p) {
+    const int i = table.first[p];
+    const int j = table.second[p];
+    const int sa = table.shift[3 * p];
+    const int sb = table.shift[3 * p + 1];
+    const int sc = table.shift[3 * p + 2];
+    const double vx = table.vector[3 * p];
+    const double vy = table.vector[3 * p + 1];
+    const double vz = table.vector[3 * p + 2];
+    if (!(vx * vx + vy * vy + vz * vz < rMax2))
+      continue;
+    if (sa == 0 && sb == 0 && sc == 0) {
+      if (j > i)
+        owned[static_cast<std::size_t>(i)].push_back(
+            Slot{j, coord(j, 0), coord(j, 1), coord(j, 2), j});
+      continue;
+    }
+    if (sa < -1 || sa > 1 || sb < -1 || sb > 1 || sc < -1 || sc > 1)
+      continue;
+    const int nTranslation = 13 + sa + 3 * sb + 9 * sc;
+    if (nTranslation > 13)
+      continue;
+    const std::pair<int, int> key(j, nTranslation);
+    int image = 0;
+    const auto found = imageOf.find(key);
+    if (found == imageOf.end()) {
+      image = nSize + static_cast<int>(images.size());
+      images.push_back(Image(j, nTranslation));
+      imageOf.emplace(key, image);
+    } else {
+      image = found->second;
+    }
+    owned[static_cast<std::size_t>(i)].push_back(
+        Slot{image, coord(j, 0) + sa * bins[0], coord(j, 1) + sb * bins[1],
+             coord(j, 2) + sc * bins[2], j});
+  }
+  int npairs = 0;
+  for (int atom = 0; atom < nAtoms; ++atom)
+    npairs += static_cast<int>(owned[static_cast<std::size_t>(atom)].size());
   if (neighborList != 0)
     delete[] neighborList;
-
-  // make space for new neighbor lists slightly bigger than the last one:
-  //  nMax += int(0.15 * nMax) + 100;
-  nMax += static_cast<int>(0.25 * nMax) + 100;
+  nMax = npairs > 0 ? npairs : 1;
   neighborList = new int[nMax];
-
-  // make the new neighbor list and new image atoms:
-  cellList.MakeNeighborList(neighborList, indices, nMax, images);
+  int cursor = 0;
+  indices[0] = 0;
+  for (int atom = 0; atom < nAtoms; ++atom) {
+    auto &row = owned[static_cast<std::size_t>(atom)];
+    std::sort(row.begin(), row.end(), [](const Slot &a, const Slot &b) {
+      if (a.j2 != b.j2)
+        return a.j2 < b.j2;
+      if (a.j1 != b.j1)
+        return a.j1 < b.j1;
+      if (a.j0 != b.j0)
+        return a.j0 < b.j0;
+      return a.real_id < b.real_id;
+    });
+    for (const Slot &neighbor : row)
+      neighborList[cursor++] = neighbor.id;
+    indices[atom + 1] = cursor;
+  }
+  nMax = cursor;
 
   atoms->SetNumberOfImages(images.size());
   // this could have changed the adress of positions. Get it again:
