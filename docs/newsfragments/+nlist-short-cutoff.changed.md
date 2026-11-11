@@ -1,0 +1,1 @@
+The short-cutoff neighbour build keeps one cell stencil and, on a wide periodic grid, the round minimum image as a cell shift. A stored half walk skips partners that are not past the atom. Lennard-Jones and Morse energies and forces keep the bits of the previous walk.

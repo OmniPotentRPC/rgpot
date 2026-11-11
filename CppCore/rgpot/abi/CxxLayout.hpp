@@ -176,7 +176,9 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// 6 drops the copied half-list from LJ and Morse, and gives ZBL and the
 /// open Lennard-Jones cluster a neighbour member. The pair term runs on
 /// the shared walk, so CachedPairs is no longer part of those objects.
-inline constexpr std::uint32_t kCxxSoversion = 6;
+/// 7 gives that neighbour list its cell stencil and the stored image
+/// shifts. LJ, Morse, ZBL and the open cluster grow with it.
+inline constexpr std::uint32_t kCxxSoversion = 7;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
 struct CxxSoversionEntry {
@@ -189,7 +191,7 @@ struct CxxSoversionEntry {
 /// platform still compiles. How to update the table:
 /// docs/orgmode/reference/c_abi.org.
 inline constexpr std::array<CxxSoversionEntry, 1> kCxxSoversionTable{{
-    {"linux-x86_64-libstdc++-lp64", 0x0bba2f6c8fb3f542ull},
+    {"linux-x86_64-libstdc++-lp64", 0xb760e7d51483cef2ull},
 }};
 
 /// This translation unit's platform tag (`os-arch-stdlib-datamodel`).

@@ -125,13 +125,9 @@ public:
     if (streaming_) {
       walkCells(begin, end, fn, true);
     } else {
-      auto half = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                      double r2) {
-        if (j > i) {
-          fn(i, j, dx, dy, dz, r2);
-        }
-      };
-      walkStored(begin, end, half);
+      // j <= i is not a half pair. Dropping it before the minimum image
+      // leaves the accepted pairs, their vectors and the sum order alone.
+      walkStoredHalf(begin, end, fn);
     }
   }
 
@@ -216,11 +212,36 @@ private:
   };
 
   void buildCells(const double *xyz, std::size_t n);
-  void buildStored(const double *xyz, std::size_t n);
+  void buildStencil() const;
+  void buildStored(const double *xyz, std::size_t n, std::uint64_t bound);
   [[nodiscard]] std::uint64_t candidateBound() const;
   [[nodiscard]] bool reusable(const double *xyz, std::size_t n,
                               const double *box9, const Spec &spec) const;
   void fold(double &dx, double &dy, double &dz) const;
+
+  // Round image on a grid whose periodic sides have at least five cells.
+  // The cell-to-cell shift is then the minimum image, including after a
+  // move that stays inside the skin: the corrected separation stays
+  // strictly inside half the box, so the image integer does not change.
+  void shiftedPair(std::int32_t i, std::int32_t j, std::int8_t sa, std::int8_t sb,
+                   std::int8_t sc, double &dx, double &dy, double &dz) const {
+    const auto ui = static_cast<std::size_t>(i) * 3;
+    const auto uj = static_cast<std::size_t>(j) * 3;
+    dx = xyz_[ui] - xyz_[uj];
+    dy = xyz_[ui + 1] - xyz_[uj + 1];
+    dz = xyz_[ui + 2] - xyz_[uj + 2];
+    // An open axis is left alone. A periodic axis always subtracts, including
+    // a zero image, so the rounding matches fold().
+    if (periodic_[0]) {
+      dx -= static_cast<double>(sa) * len_[0];
+    }
+    if (periodic_[1]) {
+      dy -= static_cast<double>(sb) * len_[1];
+    }
+    if (periodic_[2]) {
+      dz -= static_cast<double>(sc) * len_[2];
+    }
+  }
 
   template <typename Fn>
   void walkStored(std::int64_t begin, std::int64_t end, Fn &fn) const {
@@ -229,13 +250,46 @@ private:
       const auto lo = off_[a];
       const auto hi = off_[a + 1];
       for (std::int32_t p = lo; p < hi; ++p) {
-        const auto j = nbr_[static_cast<std::size_t>(p)];
+        const auto up = static_cast<std::size_t>(p);
+        const auto j = nbr_[up];
         double dx = 0;
         double dy = 0;
         double dz = 0;
-        foldPair(static_cast<std::int32_t>(i), j, dx, dy, dz);
+        if (nbr_shift_) {
+          shiftedPair(static_cast<std::int32_t>(i), j, nbr_sa_[up], nbr_sb_[up], nbr_sc_[up], dx,
+                      dy, dz);
+        } else {
+          foldPair(static_cast<std::int32_t>(i), j, dx, dy, dz);
+        }
         const double r2 = dx * dx + dy * dy + dz * dz;
         fn(static_cast<std::int32_t>(i), j, dx, dy, dz, r2);
+      }
+    }
+  }
+
+  template <typename Fn>
+  void walkStoredHalf(std::int64_t begin, std::int64_t end, Fn &fn) const {
+    for (std::int64_t i = begin; i < end; ++i) {
+      const auto a = static_cast<std::size_t>(i);
+      const auto lo = off_[a];
+      const auto hi = off_[a + 1];
+      const auto ii = static_cast<std::int32_t>(i);
+      for (std::int32_t p = lo; p < hi; ++p) {
+        const auto up = static_cast<std::size_t>(p);
+        const auto j = nbr_[up];
+        if (j <= ii) {
+          continue;
+        }
+        double dx = 0;
+        double dy = 0;
+        double dz = 0;
+        if (nbr_shift_) {
+          shiftedPair(ii, j, nbr_sa_[up], nbr_sb_[up], nbr_sc_[up], dx, dy, dz);
+        } else {
+          foldPair(ii, j, dx, dy, dz);
+        }
+        const double r2 = dx * dx + dy * dy + dz * dz;
+        fn(ii, j, dx, dy, dz, r2);
       }
     }
   }
@@ -312,6 +366,9 @@ private:
         (reused_ || (cache.xyz.size() == n_ * 3 &&
                      std::memcmp(cache.xyz.data(), xyz_, n_ * 3 * sizeof(double)) == 0));
     if (!reuse) {
+    if (sten_off_.size() != ncells + 1) {
+      buildStencil();
+    }
     if (!dense) {
       cache.compact = true;
       cache.neigh.clear();
@@ -326,99 +383,63 @@ private:
         if (cell_start_[c] == cell_start_[c + 1]) {
           continue;
         }
-        const int cell = static_cast<int>(c);
-        const int iz = cell % nz_;
-        const int iy = (cell / nz_) % ny_;
-        const int ix = cell / (nz_ * ny_);
-        int seen[27];
-        int nseen = 0;
-        for (int ox = -1; ox <= 1 && !overflow; ++ox) {
-          for (int oy = -1; oy <= 1 && !overflow; ++oy) {
-            for (int oz = -1; oz <= 1; ++oz) {
-              int jx = ix + ox;
-              int jy = iy + oy;
-              int jz = iz + oz;
-              int sa = 0;
-              int sb = 0;
-              int sc = 0;
-              if (periodic_[0]) {
-                if (jx < 0) {
-                  jx += nx_;
-                  sa = -1;
-                } else if (jx >= nx_) {
-                  jx -= nx_;
-                  sa = 1;
+        const auto s0 = sten_off_[c];
+        const auto s1 = sten_off_[c + 1];
+        for (std::int32_t k = s0; k < s1 && !overflow; ++k) {
+          const Sten &src = sten_[static_cast<std::size_t>(k)];
+          const auto nb = static_cast<std::size_t>(src.id);
+          if (cell_start_[nb] == cell_start_[nb + 1]) {
+            continue;
+          }
+          const double shx = static_cast<double>(src.sa) * len_[0];
+          const double shy = static_cast<double>(src.sb) * len_[1];
+          const double shz = static_cast<double>(src.sc) * len_[2];
+          bool hit = false;
+          for (std::int32_t q = cell_start_[c]; q < cell_start_[c + 1] && !hit; ++q) {
+            const auto i = cell_atoms_[static_cast<std::size_t>(q)];
+            const double xi = cell_x_[static_cast<std::size_t>(q)];
+            const double yi = cell_y_[static_cast<std::size_t>(q)];
+            const double zi = cell_z_[static_cast<std::size_t>(q)];
+            for (std::int32_t r = cell_start_[nb]; r < cell_start_[nb + 1]; ++r) {
+              const auto j = cell_atoms_[static_cast<std::size_t>(r)];
+              if (j == i) {
+                continue;
+              }
+              double dx = 0;
+              double dy = 0;
+              double dz = 0;
+              if (shift_dist_) {
+                const auto ur = static_cast<std::size_t>(r);
+                dx = xi - cell_x_[ur];
+                dy = yi - cell_y_[ur];
+                dz = zi - cell_z_[ur];
+                if (periodic_[0]) {
+                  dx -= shx;
                 }
-              } else if (jx < 0 || jx >= nx_) {
-                continue;
-              }
-              if (periodic_[1]) {
-                if (jy < 0) {
-                  jy += ny_;
-                  sb = -1;
-                } else if (jy >= ny_) {
-                  jy -= ny_;
-                  sb = 1;
+                if (periodic_[1]) {
+                  dy -= shy;
                 }
-              } else if (jy < 0 || jy >= ny_) {
-                continue;
-              }
-              if (periodic_[2]) {
-                if (jz < 0) {
-                  jz += nz_;
-                  sc = -1;
-                } else if (jz >= nz_) {
-                  jz -= nz_;
-                  sc = 1;
+                if (periodic_[2]) {
+                  dz -= shz;
                 }
-              } else if (jz < 0 || jz >= nz_) {
-                continue;
+              } else {
+                foldPair(i, j, dx, dy, dz);
               }
-              const int id = (jx * ny_ + jy) * nz_ + jz;
-              bool dup = false;
-              for (int s = 0; s < nseen; ++s) {
-                if (seen[s] == id) {
-                  dup = true;
-                  break;
-                }
-              }
-              if (dup) {
-                continue;
-              }
-              seen[nseen++] = id;
-              const auto nb = static_cast<std::size_t>(id);
-              if (cell_start_[nb] == cell_start_[nb + 1]) {
-                continue;
-              }
-              bool hit = false;
-              for (std::int32_t q = cell_start_[c]; q < cell_start_[c + 1] && !hit; ++q) {
-                const auto i = cell_atoms_[static_cast<std::size_t>(q)];
-                for (std::int32_t r = cell_start_[nb]; r < cell_start_[nb + 1]; ++r) {
-                  const auto j = cell_atoms_[static_cast<std::size_t>(r)];
-                  if (j == i) {
-                    continue;
-                  }
-                  double dx = 0;
-                  double dy = 0;
-                  double dz = 0;
-                  foldPair(i, j, dx, dy, dz);
-                  if (dx * dx + dy * dy + dz * dz <= search2) {
-                    hit = true;
-                    break;
-                  }
-                }
-              }
-              if (!hit) {
-                continue;
-              }
-              if (cache.neigh.size() >= cap) {
-                overflow = true;
+              if (dx * dx + dy * dy + dz * dz <= search2) {
+                hit = true;
                 break;
               }
-              cache.neigh.push_back(Nbor{id, sa * len_[0], sb * len_[1], sc * len_[2]});
-              ++cache.nneigh[c];
             }
           }
+          if (!hit) {
+            continue;
+          }
+          if (cache.neigh.size() >= cap) {
+            overflow = true;
+            break;
+          }
+          cache.neigh.push_back(Nbor{src.id, shx, shy, shz});
+          ++cache.nneigh[c];
         }
       }
       if (!overflow) {
@@ -455,71 +476,16 @@ private:
     neigh.assign(ncells * 27, Nbor{});
     nneigh.assign(ncells, 0);
     for (std::size_t c = 0; c < ncells; ++c) {
-      const int cell = static_cast<int>(c);
-      int iz = cell % nz_;
-      int iy = (cell / nz_) % ny_;
-      int ix = cell / (nz_ * ny_);
-      int seen[27];
+      const auto s0 = sten_off_[c];
+      const auto s1 = sten_off_[c + 1];
       int nseen = 0;
-      for (int ox = -1; ox <= 1; ++ox) {
-        for (int oy = -1; oy <= 1; ++oy) {
-          for (int oz = -1; oz <= 1; ++oz) {
-            int jx = ix + ox;
-            int jy = iy + oy;
-            int jz = iz + oz;
-            int sa = 0;
-            int sb = 0;
-            int sc = 0;
-            if (periodic_[0]) {
-              if (jx < 0) {
-                jx += nx_;
-                sa = -1;
-              } else if (jx >= nx_) {
-                jx -= nx_;
-                sa = 1;
-              }
-            } else if (jx < 0 || jx >= nx_) {
-              continue;
-            }
-            if (periodic_[1]) {
-              if (jy < 0) {
-                jy += ny_;
-                sb = -1;
-              } else if (jy >= ny_) {
-                jy -= ny_;
-                sb = 1;
-              }
-            } else if (jy < 0 || jy >= ny_) {
-              continue;
-            }
-            if (periodic_[2]) {
-              if (jz < 0) {
-                jz += nz_;
-                sc = -1;
-              } else if (jz >= nz_) {
-                jz -= nz_;
-                sc = 1;
-              }
-            } else if (jz < 0 || jz >= nz_) {
-              continue;
-            }
-            const int id = (jx * ny_ + jy) * nz_ + jz;
-            bool dup = false;
-            for (int s = 0; s < nseen; ++s) {
-              if (seen[s] == id) {
-                dup = true;
-                break;
-              }
-            }
-            if (dup) {
-              continue;
-            }
-            seen[nseen] = id;
-            neigh[c * 27 + static_cast<std::size_t>(nseen)] =
-                Nbor{id, sa * len_[0], sb * len_[1], sc * len_[2]};
-            ++nseen;
-          }
-        }
+      for (std::int32_t k = s0; k < s1; ++k) {
+        const Sten &src = sten_[static_cast<std::size_t>(k)];
+        neigh[c * 27 + static_cast<std::size_t>(nseen)] =
+            Nbor{src.id, static_cast<double>(src.sa) * len_[0],
+                 static_cast<double>(src.sb) * len_[1],
+                 static_cast<double>(src.sc) * len_[2]};
+        ++nseen;
       }
       nneigh[c] = nseen;
     }
@@ -725,11 +691,29 @@ private:
                 double &dz) const;
   [[nodiscard]] int cellId(int ix, int iy, int iz) const;
 
+  struct Sten {
+    std::int32_t id = 0;
+    std::int8_t sa = 0;
+    std::int8_t sb = 0;
+    std::int8_t sc = 0;
+  };
+
   std::vector<std::int32_t> off_;
   std::vector<std::int32_t> nbr_;
+  std::vector<std::int8_t> nbr_sa_;
+  std::vector<std::int8_t> nbr_sb_;
+  std::vector<std::int8_t> nbr_sc_;
   std::vector<std::int32_t> cell_of_;
   std::vector<std::int32_t> cell_start_;
   std::vector<std::int32_t> cell_atoms_;
+  // Coordinates in cell-list order, parallel to cell_atoms_.
+  std::vector<double> cell_x_;
+  std::vector<double> cell_y_;
+  std::vector<double> cell_z_;
+  // Filled by the stored build, or by the first stream walk. Mutable so a
+  // const walk can construct it after the bins are already in place.
+  mutable std::vector<std::int32_t> sten_off_;
+  mutable std::vector<Sten> sten_;
   std::vector<double> ref_;
   double box_[9]{};
   double len_[3]{};
@@ -744,6 +728,10 @@ private:
   SpecKey key_{};
   MinimumImage general_;
   bool use_general_ = false;
+  // Cell-to-cell shift equals the round minimum image.
+  bool shift_dist_ = false;
+  // Stored pairs carry that shift, so a later walk does not round again.
+  bool nbr_shift_ = false;
   bool streaming_ = true;
   bool built_ = false;
   bool reused_ = false;

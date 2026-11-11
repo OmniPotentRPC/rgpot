@@ -152,108 +152,215 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
     cell_start_[c + 1] += cell_start_[c];
   }
   cell_atoms_.assign(n, 0);
+  cell_x_.resize(n);
+  cell_y_.resize(n);
+  cell_z_.resize(n);
   std::vector<std::int32_t> fill(cell_start_.begin(), cell_start_.end() - 1);
   for (std::size_t a = 0; a < n; ++a) {
     const auto c = static_cast<std::size_t>(cell_of_[a]);
-    cell_atoms_[static_cast<std::size_t>(fill[c]++)] = static_cast<std::int32_t>(a);
+    const auto slot = static_cast<std::size_t>(fill[c]++);
+    cell_atoms_[slot] = static_cast<std::int32_t>(a);
+    cell_x_[slot] = xyz[3 * a];
+    cell_y_[slot] = xyz[3 * a + 1];
+    cell_z_[slot] = xyz[3 * a + 2];
   }
 }
 
-std::uint64_t Neighbours::candidateBound() const {
-  std::uint64_t bound = 0;
-  const auto n = n_;
-  for (std::size_t a = 0; a < n; ++a) {
-    const int cell = cell_of_[a];
-    int iz = cell % nz_;
-    int iy = (cell / nz_) % ny_;
-    int ix = cell / (nz_ * ny_);
+void Neighbours::buildStencil() const {
+  const auto ncells = static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_) *
+                      static_cast<std::size_t>(nz_);
+  // A periodic side shorter than three cells maps two of {-1, 0, +1} onto
+  // the same bin. The first offset in that loop wins, matching the walk.
+  const bool nodup = (!periodic_[0] || nx_ >= 3) && (!periodic_[1] || ny_ >= 3) &&
+                     (!periodic_[2] || nz_ >= 3);
+  sten_off_.assign(ncells + 1, 0);
+  sten_.clear();
+  sten_.reserve(ncells * (nodup ? 27 : 14));
+  for (std::size_t c = 0; c < ncells; ++c) {
+    sten_off_[c] = static_cast<std::int32_t>(sten_.size());
+    const int cell = static_cast<int>(c);
+    const int iz = cell % nz_;
+    const int iy = (cell / nz_) % ny_;
+    const int ix = cell / (nz_ * ny_);
     int seen[27];
     int nseen = 0;
-    std::uint64_t here = 0;
     for (int ox = -1; ox <= 1; ++ox) {
       for (int oy = -1; oy <= 1; ++oy) {
         for (int oz = -1; oz <= 1; ++oz) {
-          const int id = cellId(ix + ox, iy + oy, iz + oz);
-          if (id < 0) {
-            continue;
-          }
-          bool dup = false;
-          for (int s = 0; s < nseen; ++s) {
-            if (seen[s] == id) {
-              dup = true;
-              break;
+          int jx = ix + ox;
+          int jy = iy + oy;
+          int jz = iz + oz;
+          int sa = 0;
+          int sb = 0;
+          int sc = 0;
+          if (periodic_[0]) {
+            if (jx < 0) {
+              jx += nx_;
+              sa = -1;
+            } else if (jx >= nx_) {
+              jx -= nx_;
+              sa = 1;
             }
-          }
-          if (dup) {
+          } else if (jx < 0 || jx >= nx_) {
             continue;
           }
-          seen[nseen++] = id;
-          const auto c = static_cast<std::size_t>(id);
-          here += static_cast<std::uint64_t>(cell_start_[c + 1] - cell_start_[c]);
+          if (periodic_[1]) {
+            if (jy < 0) {
+              jy += ny_;
+              sb = -1;
+            } else if (jy >= ny_) {
+              jy -= ny_;
+              sb = 1;
+            }
+          } else if (jy < 0 || jy >= ny_) {
+            continue;
+          }
+          if (periodic_[2]) {
+            if (jz < 0) {
+              jz += nz_;
+              sc = -1;
+            } else if (jz >= nz_) {
+              jz -= nz_;
+              sc = 1;
+            }
+          } else if (jz < 0 || jz >= nz_) {
+            continue;
+          }
+          const int id = (jx * ny_ + jy) * nz_ + jz;
+          if (!nodup) {
+            bool dup = false;
+            for (int s = 0; s < nseen; ++s) {
+              if (seen[s] == id) {
+                dup = true;
+                break;
+              }
+            }
+            if (dup) {
+              continue;
+            }
+            seen[nseen++] = id;
+          }
+          sten_.push_back(Sten{id, static_cast<std::int8_t>(sa), static_cast<std::int8_t>(sb),
+                               static_cast<std::int8_t>(sc)});
         }
       }
     }
-    if (here > 0) {
-      bound += here - 1;
+  }
+  sten_off_[ncells] = static_cast<std::int32_t>(sten_.size());
+}
+
+std::uint64_t Neighbours::candidateBound() const {
+  // Atoms in one cell share the neighbour cells. The old per-atom walk
+  // added (occupancy of those cells, minus the atom itself) once per atom.
+  std::uint64_t bound = 0;
+  const auto ncells = static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_) *
+                      static_cast<std::size_t>(nz_);
+  for (std::size_t c = 0; c < ncells; ++c) {
+    const auto occ = static_cast<std::uint64_t>(cell_start_[c + 1] - cell_start_[c]);
+    if (occ == 0) {
+      continue;
     }
+    std::uint64_t here = 0;
+    const auto s0 = sten_off_[c];
+    const auto s1 = sten_off_[c + 1];
+    for (std::int32_t k = s0; k < s1; ++k) {
+      const auto id = static_cast<std::size_t>(sten_[static_cast<std::size_t>(k)].id);
+      here += static_cast<std::uint64_t>(cell_start_[id + 1] - cell_start_[id]);
+    }
+    if (here == 0) {
+      continue;
+    }
+    bound += occ * (here - 1);
   }
   return bound;
 }
 
-
-void Neighbours::buildStored(const double *xyz, std::size_t n) {
+void Neighbours::buildStored(const double *xyz, std::size_t n, std::uint64_t bound) {
   (void)xyz;
   off_.assign(n + 1, 0);
   nbr_.clear();
-  std::vector<std::int32_t> gather;
+  nbr_sa_.clear();
+  nbr_sb_.clear();
+  nbr_sc_.clear();
+  nbr_shift_ = shift_dist_;
+  if (bound > 0 && bound <= static_cast<std::uint64_t>(0x7fffffff)) {
+    nbr_.reserve(static_cast<std::size_t>(bound));
+    if (nbr_shift_) {
+      nbr_sa_.reserve(static_cast<std::size_t>(bound));
+      nbr_sb_.reserve(static_cast<std::size_t>(bound));
+      nbr_sc_.reserve(static_cast<std::size_t>(bound));
+    }
+  }
+  struct Item {
+    std::int32_t j;
+    std::int8_t sa;
+    std::int8_t sb;
+    std::int8_t sc;
+  };
+  std::vector<Item> gather;
   const double search2 = search_ * search_;
+  const double L0 = len_[0];
+  const double L1 = len_[1];
+  const double L2 = len_[2];
   for (std::size_t a = 0; a < n; ++a) {
     off_[a] = static_cast<std::int32_t>(nbr_.size());
-    const int cell = cell_of_[a];
-    int iz = cell % nz_;
-    int iy = (cell / nz_) % ny_;
-    int ix = cell / (nz_ * ny_);
-    int seen[27];
-    int nseen = 0;
+    const auto cell = static_cast<std::size_t>(cell_of_[a]);
+    const double xi = xyz_[3 * a];
+    const double yi = xyz_[3 * a + 1];
+    const double zi = xyz_[3 * a + 2];
     gather.clear();
-    for (int ox = -1; ox <= 1; ++ox) {
-      for (int oy = -1; oy <= 1; ++oy) {
-        for (int oz = -1; oz <= 1; ++oz) {
-          const int id = cellId(ix + ox, iy + oy, iz + oz);
-          if (id < 0) {
-            continue;
+    const auto s0 = sten_off_[cell];
+    const auto s1 = sten_off_[cell + 1];
+    for (std::int32_t k = s0; k < s1; ++k) {
+      const Sten &src = sten_[static_cast<std::size_t>(k)];
+      const auto nb = static_cast<std::size_t>(src.id);
+      const double shx = static_cast<double>(src.sa) * L0;
+      const double shy = static_cast<double>(src.sb) * L1;
+      const double shz = static_cast<double>(src.sc) * L2;
+      for (std::int32_t q = cell_start_[nb]; q < cell_start_[nb + 1]; ++q) {
+        const auto slot = static_cast<std::size_t>(q);
+        const auto j = cell_atoms_[slot];
+        if (j == static_cast<std::int32_t>(a)) {
+          continue;
+        }
+        double dx;
+        double dy;
+        double dz;
+        if (shift_dist_) {
+          dx = xi - cell_x_[slot];
+          dy = yi - cell_y_[slot];
+          dz = zi - cell_z_[slot];
+          if (periodic_[0]) {
+            dx -= shx;
           }
-          bool dup = false;
-          for (int s = 0; s < nseen; ++s) {
-            if (seen[s] == id) {
-              dup = true;
-              break;
-            }
+          if (periodic_[1]) {
+            dy -= shy;
           }
-          if (dup) {
-            continue;
+          if (periodic_[2]) {
+            dz -= shz;
           }
-          seen[nseen++] = id;
-          const auto c = static_cast<std::size_t>(id);
-          for (std::int32_t q = cell_start_[c]; q < cell_start_[c + 1]; ++q) {
-            const auto j = cell_atoms_[static_cast<std::size_t>(q)];
-            if (j == static_cast<std::int32_t>(a)) {
-              continue;
-            }
-            double dx = 0;
-            double dy = 0;
-            double dz = 0;
-            foldPair(static_cast<std::int32_t>(a), j, dx, dy, dz);
-            const double r2 = dx * dx + dy * dy + dz * dz;
-            if (r2 <= search2) {
-              gather.push_back(j);
-            }
-          }
+        } else {
+          dx = 0;
+          dy = 0;
+          dz = 0;
+          foldPair(static_cast<std::int32_t>(a), j, dx, dy, dz);
+        }
+        const double r2 = dx * dx + dy * dy + dz * dz;
+        if (r2 <= search2) {
+          gather.push_back(Item{j, src.sa, src.sb, src.sc});
         }
       }
     }
-    std::sort(gather.begin(), gather.end());
-    nbr_.insert(nbr_.end(), gather.begin(), gather.end());
+    std::sort(gather.begin(), gather.end(),
+              [](const Item &p, const Item &q) { return p.j < q.j; });
+    for (const Item &item : gather) {
+      nbr_.push_back(item.j);
+      if (nbr_shift_) {
+        nbr_sa_.push_back(item.sa);
+        nbr_sb_.push_back(item.sb);
+        nbr_sc_.push_back(item.sc);
+      }
+    }
   }
   off_[n] = static_cast<std::int32_t>(nbr_.size());
 }
@@ -293,19 +400,33 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
   key_.periodic = spec.periodic;
   off_.clear();
   nbr_.clear();
+  nbr_sa_.clear();
+  nbr_sb_.clear();
+  nbr_sc_.clear();
+  nbr_shift_ = false;
   streaming_ = true;
   if (n < 2 || !(search_ > 0.0)) {
     streaming_ = false;
     mode_ = Mode::Stored;
     off_.assign(n + 1, 0);
     nbr_.clear();
+    shift_dist_ = false;
+    sten_.clear();
+    sten_off_.clear();
     built_ = true;
     ref_.assign(xyz, xyz + 3 * n);
     return;
   }
   buildCells(xyz, n);
-  // A stream never stores the pairs, so the candidate count is unused.
-  // Counting it walks every stencil the search is about to walk.
+  // Five cells on a periodic side put every in-range pair strictly inside
+  // half the box, so the cell shift is the round minimum image.
+  shift_dist_ = !use_general_ && image_ == Image::Round &&
+                (!periodic_[0] || nx_ >= 5) && (!periodic_[1] || ny_ >= 5) &&
+                (!periodic_[2] || nz_ >= 5);
+  sten_.clear();
+  sten_off_.clear();
+  // A stream builds the stencil on the walk. Doing it here made the binning
+  // pass pay for a structure the caller may not use.
   if (spec.mode == Mode::Stream) {
     streaming_ = true;
     mode_ = Mode::Stream;
@@ -313,6 +434,7 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
     ref_.assign(xyz, xyz + 3 * n);
     return;
   }
+  buildStencil();
   const std::uint64_t bound = candidateBound();
   const auto avail = availableBytes();
   const auto index_bytes = static_cast<std::uint64_t>(sizeof(std::int32_t));
@@ -324,7 +446,7 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
   const bool want_store = spec.mode == Mode::Stored ? fits
                           : spec.mode == Mode::Auto && fits;
   if (want_store) {
-    buildStored(xyz, n);
+    buildStored(xyz, n, bound);
     streaming_ = false;
     mode_ = Mode::Stored;
     ++builds_;

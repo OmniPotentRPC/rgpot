@@ -109,9 +109,62 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   };
   double energy = 0.0;
   if (nt <= 1) {
+    // One exp per pair is the pair-loop cost. A contiguous batch uses the
+    // vector clones of exp_fixed, which return its bits, and the pairs are
+    // accumulated in the same order as the scalar walk.
+    struct Hit {
+      std::int32_t i;
+      std::int32_t j;
+      double dx;
+      double dy;
+      double dz;
+      double r;
+    };
+    thread_local std::vector<Hit> hits;
+    thread_local std::vector<double> args;
+    thread_local std::vector<double> exps;
+    hits.clear();
+    args.clear();
     nlist::visitHalf(neighbours_, 0, N,
                      [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                         double r2) { accept(i, j, dx, dy, dz, r2, F, energy, strain); });
+                         double r2) {
+                       if (!(i < j) || !(r2 > 0.0) || r2 > cutoff2) {
+                         return;
+                       }
+                       const double r = std::sqrt(r2);
+                       hits.push_back(Hit{i, j, dx, dy, dz, r});
+                       args.push_back(-a * (r - re));
+                     });
+    exps.resize(args.size());
+    if (!args.empty()) {
+      simd::exp_fixed_n(args.data(), exps.data(), args.size());
+    }
+    for (std::size_t k = 0; k < hits.size(); ++k) {
+      const Hit &h = hits[k];
+      const double d = 1.0 - exps[k];
+      const double bare = De * d * d - De;
+      double pair_e = 0.0;
+      double fscale = 0.0;
+      if (switched) {
+        const auto s = m_switch(h.r);
+        pair_e = bare * s.s;
+        fscale = (twoDeA * d * (d - 1.0) * s.s - bare * s.dsdr) / h.r;
+      } else {
+        pair_e = bare - energyCutoff;
+        fscale = twoDeA * d * (d - 1.0) / h.r;
+      }
+      energy += pair_e;
+      const double fx = fscale * h.dx;
+      const double fy = fscale * h.dy;
+      const double fz = fscale * h.dz;
+      F[3 * h.i] += fx;
+      F[3 * h.i + 1] += fy;
+      F[3 * h.i + 2] += fz;
+      F[3 * h.j] -= fx;
+      F[3 * h.j + 1] -= fy;
+      F[3 * h.j + 2] -= fz;
+      accumulatePairStrain(strain, fscale, h.dx, h.dy, h.dz);
+    }
   } else {
     std::vector<double> owned(static_cast<std::size_t>(nt) * n_atoms * 3, 0.0);
     std::vector<double> partial(static_cast<std::size_t>(nt), 0.0);

@@ -1,0 +1,1 @@
+librgpot's ELF soversion is 7. The shared neighbour list keeps a cell stencil and the stored image shifts, so LJ, Morse, ZBL and the open Lennard-Jones cluster are larger. A caller built against soversion 6 does not load librgpot.so.7. librgpot_mpi stays at soversion 3.

@@ -788,6 +788,12 @@ if get_option('with_tests')
                 '',
             ],
             [
+                'ShortCutoffBitsTest',
+                'short_cutoff_bits_test',
+                'ShortCutoffBitsTest.cc',
+                '',
+            ],
+            [
                 'MinImageIsaHash',
                 'minimage_isa_hash',
                 'MinImageIsaHash.cc',
