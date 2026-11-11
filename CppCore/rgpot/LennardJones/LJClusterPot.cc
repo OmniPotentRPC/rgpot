@@ -17,7 +17,7 @@
 
 #include "rgpot/LennardJones/LJClusterKernel.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
-#include "rgpot/nlist/PairListCache.hpp"
+#include "rgpot/simd/from_cache.hpp"
 #include "rgpot/simd/api.hpp"
 #include "rgpot/simd/from_cache.hpp"
 
@@ -53,7 +53,7 @@ void LJClusterPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     return;
   }
 
-  nlist::CachedPairList::Options opt;
+  simd::PairSpec opt;
   opt.cutoff = (cuttOffR > 0.0) ? cuttOffR : 1.0e6;
   opt.periodic = {{false, false, false}};
 

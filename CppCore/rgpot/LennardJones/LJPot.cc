@@ -20,7 +20,6 @@
 #endif
 
 #include "rgpot/LennardJones/LJPot.hpp"
-#include "rgpot/nlist/PairListCache.hpp"
 #include "rgpot/simd/api.hpp"
 #include "rgpot/simd/from_cache.hpp"
 #include "rgpot/stress.hpp"
@@ -64,7 +63,7 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     return;
   }
 
-  nlist::CachedPairList::Options opt;
+  simd::PairSpec opt;
   opt.cutoff = cuttOffR;
 
   simd::LjParams params{};

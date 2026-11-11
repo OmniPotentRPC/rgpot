@@ -757,7 +757,6 @@ if get_option('with_tests')
                 'EAMCellVerletTest.cc',
                 '',
             ],
-            ['PairListTest', 'pair_list_test', 'PairListTest.cc', ''],
             [
                 'MinImageIsaHash',
                 'minimage_isa_hash',

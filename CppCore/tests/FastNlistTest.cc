@@ -26,7 +26,7 @@
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/nlist/MinimumImage.hpp"
-#include "rgpot/nlist/PairListCache.hpp"
+#include "rgpot/nlist/Neighbours.hpp"
 #include "rgpot/nlist/vesin_visit.hpp"
 
 using Catch::Matchers::WithinAbs;
@@ -296,20 +296,30 @@ TEST_CASE("LJClusterPot matches the fused scan with open boundaries", "[fastnlis
 TEST_CASE("Partial periodic list matches the fused scan", "[fastnlist]") {
   const auto base = slab();
   const double box[9] = {18, 0, 0, 0, 18, 0, 0, 0, 30};
-  rgpot::nlist::CachedPairList::Options opt;
-  opt.cutoff = 6.0;
-  opt.skin = 1.0;
-  opt.periodic = {{true, true, false}};
+  const std::array<bool, 3> periodic{{true, true, false}};
+  const double cutoff = 6.0;
 
   auto run = [&](const std::vector<double> &pos) {
     double energy = 0.0;
     std::vector<double> forces(pos.size(), 0.0);
-    rgpot::nlist::PairListCache::global().evaluate(
-        pos.data(), pos.size() / 3, box, opt,
-        [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
-          lj_accumulate(i, j, dx, dy, dz, r2, 1.0, 1.0, 0.0, forces, energy);
-        });
-    const auto ref = lj_oracle(pos, box, opt.periodic, 6.0);
+    rgpot::nlist::Neighbours found;
+    rgpot::nlist::Spec spec;
+    spec.cutoff = cutoff;
+    spec.skin = 1.0;
+    spec.periodic = periodic;
+    spec.image = rgpot::nlist::Image::Round;
+    spec.mode = rgpot::nlist::Mode::Stored;
+    found.update(pos.data(), pos.size() / 3, box, spec);
+    const double cutoff2 = cutoff * cutoff;
+    found.forDirected(0, static_cast<std::int64_t>(pos.size() / 3),
+                      [&](std::int32_t i, std::int32_t j, double dx, double dy,
+                          double dz, double r2) {
+                        if (i < j && r2 <= cutoff2) {
+                          lj_accumulate(i, j, dx, dy, dz, r2, 1.0, 1.0, 0.0,
+                                        forces, energy);
+                        }
+                      });
+    const auto ref = lj_oracle(pos, box, periodic, cutoff);
     // The oracle subtracts the cutoff shift. This direct walk does not,
     // so compare forces only: the shift is a constant on every in-cutoff
     // pair and does not change the force.
@@ -436,12 +446,19 @@ TEST_CASE("A narrow cell past the old pair cap is every unordered pair", "[fastn
   REQUIRE(pair_count(pos, box, periodic, 15.0) ==
           static_cast<std::size_t>(n) * static_cast<std::size_t>(n - 1) / 2);
 
-  rgpot::nlist::CachedPairList::Options opt;
-  opt.cutoff = 15.0;
+  rgpot::nlist::Neighbours found;
+  rgpot::nlist::Spec spec;
+  spec.cutoff = 15.0;
+  spec.mode = rgpot::nlist::Mode::Stored;
+  found.update(pos.data(), static_cast<std::size_t>(n), box, spec);
   std::size_t visited = 0;
-  rgpot::nlist::PairListCache::global().evaluate(
-      pos.data(), static_cast<std::size_t>(n), box, opt,
-      [&](int32_t, int32_t, double, double, double, double) { ++visited; });
+  const double cutoff2 = 15.0 * 15.0;
+  found.forDirected(0, n, [&](std::int32_t i, std::int32_t j, double, double,
+                              double, double r2) {
+    if (i < j && r2 <= cutoff2) {
+      ++visited;
+    }
+  });
   REQUIRE(visited == static_cast<std::size_t>(n) * static_cast<std::size_t>(n - 1) / 2);
 }
 #endif

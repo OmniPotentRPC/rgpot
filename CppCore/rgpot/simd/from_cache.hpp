@@ -3,17 +3,28 @@
 // Copyright 2023--present rgpot developers
 
 #include "rgpot/nlist/Neighbours.hpp"
-#include "rgpot/nlist/PairListCache.hpp"
 #include "rgpot/simd/pods.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
 
+#if defined(_OPENMP)
+#include <omp.h>
+#endif
+
 namespace rgpot::simd {
 
-/// Indices from one PairListCache evaluation. The view points into this
+/// Cutoff, skin and periodicity for one half-list build.
+struct PairSpec {
+  double cutoff = 0;
+  double skin = 1.0;
+  std::array<bool, 3> periodic{{true, true, true}};
+};
+
+/// Indices from one neighbour-layer evaluation. The view points into this
 /// object. image is the general-cell fold when the box is not orthorhombic.
 struct CachedPairs {
   std::vector<std::int32_t> rows;
@@ -22,16 +33,28 @@ struct CachedPairs {
   PairView view{};
 };
 
+namespace detail_fill {
+
+inline void append_half(std::vector<std::int32_t> &ij, std::int32_t i,
+                        std::int32_t j, double r2, double cutoff2) {
+  if (i < j && r2 <= cutoff2 && r2 > 0.0) {
+    ij.push_back(i);
+    ij.push_back(j);
+  }
+}
+
+} // namespace detail_fill
+
 /// Build a half-list for the dispatched pair kernels. Candidates come
 /// from the shared neighbour layer. `reuse` keeps the Verlet list across
-/// calls. fold is the orthorhombic round, with a zero inverse on an axis
-/// the options leave unfolded.
+/// calls. Several threads walk disjoint atoms and the rows are sorted, so
+/// the list does not depend on which thread found a pair. fold is the
+/// orthorhombic round, with a zero inverse on an axis the options leave
+/// unfolded.
 inline void fill_view(CachedPairs &out, const double *R, std::size_t n,
-                      const double *box,
-                      const nlist::CachedPairList::Options &opt,
+                      const double *box, const PairSpec &opt,
                       nlist::Mode mode = nlist::Mode::Auto,
                       nlist::Neighbours *reuse = nullptr) {
-  std::vector<std::int32_t> ij;
   nlist::Neighbours local;
   nlist::Neighbours &found = reuse != nullptr ? *reuse : local;
   nlist::Spec spec;
@@ -42,14 +65,42 @@ inline void fill_view(CachedPairs &out, const double *R, std::size_t n,
   spec.mode = mode;
   found.update(R, n, box, spec);
   const double cutoff2 = opt.cutoff * opt.cutoff;
-  found.forDirected(0, static_cast<std::int64_t>(n),
-                    [&](std::int32_t i, std::int32_t j, double, double, double,
-                        double r2) {
-                      if (i < j && r2 <= cutoff2) {
-                        ij.push_back(i);
-                        ij.push_back(j);
-                      }
-                    });
+  const int nt = n > 1 ? nlist::threadsRequested() : 1;
+  std::vector<std::int32_t> ij;
+  if (nt <= 1) {
+    found.forDirected(0, static_cast<std::int64_t>(n),
+                      [&](std::int32_t i, std::int32_t j, double, double, double,
+                          double r2) {
+                        detail_fill::append_half(ij, i, j, r2, cutoff2);
+                      });
+  } else {
+    std::vector<std::vector<std::int32_t>> part(static_cast<std::size_t>(nt));
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+    {
+#if defined(_OPENMP)
+      const int t = omp_get_thread_num();
+#else
+      const int t = 0;
+#endif
+      const auto range = nlist::partition(static_cast<std::int64_t>(n), t, nt);
+      auto &mine = part[static_cast<std::size_t>(t)];
+      found.forDirected(range.begin, range.end,
+                        [&](std::int32_t i, std::int32_t j, double, double,
+                            double, double r2) {
+                          detail_fill::append_half(mine, i, j, r2, cutoff2);
+                        });
+    }
+    std::size_t total = 0;
+    for (const auto &mine : part) {
+      total += mine.size();
+    }
+    ij.reserve(total);
+    for (const auto &mine : part) {
+      ij.insert(ij.end(), mine.begin(), mine.end());
+    }
+  }
   out.rows.assign(n + 1, 0);
   for (std::size_t p = 0; p < ij.size(); p += 2) {
     out.rows[static_cast<std::size_t>(ij[p]) + 1] += 1;
@@ -63,7 +114,7 @@ inline void fill_view(CachedPairs &out, const double *R, std::size_t n,
     const auto i = static_cast<std::size_t>(ij[p]);
     out.nbr[static_cast<std::size_t>(cursor[i]++)] = ij[p + 1];
   }
-  // The cache sorts each row so a rebuild and a hit sum in the same order.
+  // Each row is sorted so a rebuild and a threaded walk sum in one order.
   for (std::size_t i = 0; i < n; ++i) {
     std::sort(out.nbr.begin() + out.rows[i], out.nbr.begin() + out.rows[i + 1]);
   }
@@ -87,8 +138,6 @@ inline void fill_view(CachedPairs &out, const double *R, std::size_t n,
                      : 0.0;
     }
   } else {
-    // A sheared cell, including the infinitesimal shear of a stress
-    // difference, takes the same minimum image as the pair list.
     out.image = nlist::MinimumImage(box, opt.periodic);
     v.fold = 3;
     v.general = &out.image;
