@@ -27,6 +27,15 @@ inline Query metatomicQuery(double cutoff, bool full_list, bool strict,
   return query;
 }
 
+/// One sweep, both shells. `fn` receives the five metatomic label fields
+/// and the vector `r_j - r_i + S H`. The distance is not copied.
+template <typename Fn>
+void metatomicPairs(const Sweep &sweep, bool full_list, Fn &&fn) {
+  sweep.each(full_list ? Shell::Full : Shell::Half,
+             [&](std::int32_t i, std::int32_t j, int sa, int sb, int sc, double x, double y,
+                 double z, double) { fn(i, j, sa, sb, sc, x, y, z); });
+}
+
 /// Writes `5 * pairs.first.size()` integers. The vectors stay in the table.
 inline void copyMetatomicLabels(const View &pairs, std::int32_t *labels) {
   for (std::size_t k = 0; k < pairs.first.size(); ++k) {

@@ -147,6 +147,28 @@ typedef void (*rgpot_nlist_each_fn)(void *user, int32_t first, int32_t second, i
 int32_t rgpot_nlist_each(const double *positions, size_t n, const double *box9,
                          const rgpot_nlist_request *request, rgpot_nlist_each_fn fn, void *user);
 
+/* Reusable geometry callback. shell 0 is half, 1 is full. threads 1
+ * runs on the calling thread. threads above 1 may call fn at the same
+ * time; the thread argument is the OpenMP thread index. A positive skin
+ * needs a loose cut. *reused is 1 when the bins, or the candidate index
+ * on a wide orthorhombic cell, were kept. The request's shape is ignored:
+ * the shell argument chooses the list. A cluster request returns
+ * RGPOT_NLIST_SHAPE. */
+typedef struct rgpot_nlist_sweep rgpot_nlist_sweep;
+
+typedef void (*rgpot_nlist_each_team_fn)(void *user, int32_t thread, int32_t first, int32_t second,
+                                        int32_t shift_a, int32_t shift_b, int32_t shift_c,
+                                        double x, double y, double z, double distance);
+
+int32_t rgpot_nlist_sweep_open(rgpot_nlist_sweep **sweep);
+
+int32_t rgpot_nlist_sweep_each(rgpot_nlist_sweep *sweep, const double *positions, size_t n,
+                              const double *box9, const rgpot_nlist_request *request,
+                              rgpot_nlist_each_team_fn fn, void *user, int32_t threads,
+                              int32_t shell, int32_t *reused);
+
+void rgpot_nlist_sweep_close(rgpot_nlist_sweep *sweep);
+
 /* Several systems that do not interact. positions is the concatenation
  * of counts[s] atoms. box9 holds 9 * nsystems lattice values. first and
  * second in out index the concatenated positions. system, when not

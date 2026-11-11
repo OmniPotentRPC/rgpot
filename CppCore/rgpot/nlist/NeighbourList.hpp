@@ -410,6 +410,68 @@ private:
   std::vector<double> limit_;
 };
 
+/// Geometry callback with a skin. `update` keeps the bins, and on a wide
+/// orthorhombic cell the candidate index, while every atom stays within
+/// half the skin. `each` and `eachTeam` choose a half or a full shell
+/// without rebuilding. The vector is `r_j - r_i + S H`. A cluster is not
+/// a sweep. One sweep is used by one thread. `eachTeam` may start an
+/// OpenMP team on a wide orthorhombic cell and must not be called from
+/// inside another one. A narrow or sheared cell stays on the calling
+/// thread. `threads` is at least 1. Callbacks for different threads may
+/// run at the same time.
+class Sweep {
+public:
+  void update(const double *positions, std::size_t n, const double *box9, const Query &query,
+              PairCutoffs cuts = {});
+
+  [[nodiscard]] bool reused() const noexcept { return reused_; }
+
+  template <typename Fn>
+  void each(Shell shell, Fn &&fn) const {
+    using FnObj = std::remove_reference_t<Fn>;
+    each_raw(
+        shell, 1,
+        [](void *user, int, std::int32_t i, std::int32_t j, int sa, int sb, int sc, double x,
+           double y, double z, double r) {
+          (*static_cast<FnObj *>(user))(i, j, sa, sb, sc, x, y, z, r);
+        },
+        &fn);
+  }
+
+  template <typename Fn>
+  void eachTeam(Shell shell, int threads, Fn &&fn) const {
+    using FnObj = std::remove_reference_t<Fn>;
+    each_raw(
+        shell, threads,
+        [](void *user, int thread, std::int32_t i, std::int32_t j, int sa, int sb, int sc, double x,
+           double y, double z, double r) {
+          (*static_cast<FnObj *>(user))(thread, i, j, sa, sb, sc, x, y, z, r);
+        },
+        &fn);
+  }
+
+private:
+  using GeomFn = void (*)(void *user, int thread, std::int32_t i, std::int32_t j, int sa, int sb,
+                          int sc, double x, double y, double z, double r);
+  void each_raw(Shell shell, int threads, GeomFn fn, void *user) const;
+
+  Neighbours cells_;
+  Query query_{};
+  double box_[9]{};
+  int nmax_[3]{};
+  double search_ = 0;
+  const double *pos_ = nullptr;
+  std::size_t n_ = 0;
+  bool one_image_ = false;
+  bool have_ = false;
+  bool reused_ = false;
+  bool cut_typed_ = false;
+  bool cut_inclusive_ = false;
+  std::int32_t cut_ntypes_ = 0;
+  std::vector<std::int32_t> cut_types_;
+  std::vector<double> cut_limit_;
+};
+
 /// Bind `cells` to this geometry. `cutoff` is the pair cutoff and `skin`
 /// is the Verlet buffer the kernels drop inside the cutoff. `image` is
 /// Round for an orthorhombic cell, Half after coordinates have been

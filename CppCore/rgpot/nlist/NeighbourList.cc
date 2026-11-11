@@ -1241,6 +1241,118 @@ void each_raw(const double *positions, std::size_t n, const double *box9, const 
   }
 }
 
+void Sweep::update(const double *positions, std::size_t n, const double *box9, const Query &query,
+                   PairCutoffs cuts) {
+  if (std::holds_alternative<Cluster4>(query.shape)) {
+    throw Error(Code::Shape, "a sweep visits a pair shell; a cluster uses build");
+  }
+  check_geometry(positions, n, box9, query);
+  OwnedCut owned = prepare_cut(n, query, cuts);
+  const double search = owned.search;
+  const bool sheared = box9[1] != 0.0 || box9[2] != 0.0 || box9[3] != 0.0 || box9[5] != 0.0 ||
+                       box9[6] != 0.0 || box9[7] != 0.0;
+  one_image_ = one_minimum_image(box9, query, search);
+  Spec spec;
+  spec.cutoff = query.cutoff;
+  spec.skin = query.skin;
+  spec.image = sheared ? Image::General : Image::Round;
+  spec.periodic = query.periodic;
+  spec.mode = (query.skin > 0.0 && one_image_) ? Mode::Stored : Mode::Stream;
+  cells_.update(positions, n, box9, spec);
+  reused_ = cells_.reused();
+  pos_ = positions;
+  n_ = n;
+  query_ = query;
+  query_.shape = Pairs{};
+  std::memcpy(box_, box9, sizeof(box_));
+  search_ = search;
+  shift_bounds(box_, query_.periodic, search, nmax_);
+  cut_typed_ = owned.typed;
+  cut_inclusive_ = owned.inclusive;
+  cut_ntypes_ = owned.ntypes;
+  cut_types_ = std::move(owned.types);
+  cut_limit_ = std::move(owned.limit2);
+  have_ = true;
+}
+
+void Sweep::each_raw(Shell shell, int threads, GeomFn fn, void *user) const {
+  if (!have_) {
+    throw Error(Code::Shape, "a sweep has not been updated");
+  }
+  if (fn == nullptr) {
+    throw Error(Code::Null, "neighbour callback is null");
+  }
+  if (shell != Shell::Half && shell != Shell::Full) {
+    throw Error(Code::Shape, "a pair list shell must be half or full");
+  }
+  if (threads < 1) {
+    throw Error(Code::Shape, "thread count must be >= 1");
+  }
+  if (n_ == 0 || !(search_ > 0.0)) {
+    return;
+  }
+  Query walked = query_;
+  walked.shape = Pairs{shell};
+  CutView cut;
+  cut.typed = cut_typed_;
+  cut.inclusive = cut_inclusive_;
+  cut.ntypes = cut_ntypes_;
+  cut.types = cut_types_.data();
+  cut.limit2 = cut_limit_.data();
+  const int nt = std::min(threads, static_cast<int>(std::max<std::size_t>(n_, 1)));
+  // A wide orthorhombic cell has one image. The stored index is the list
+  // that stays valid across the skin, so a reused sweep walks that index.
+  // A fresh stream uses forCellTeam. A narrow or sheared cell keeps the
+  // shift stencil on the calling thread.
+  if (one_image_) {
+    const double inv0 = box_[0] > 0.0 ? 1.0 / box_[0] : 0.0;
+    const double inv1 = box_[4] > 0.0 ? 1.0 / box_[4] : 0.0;
+    const double inv2 = box_[8] > 0.0 ? 1.0 / box_[8] : 0.0;
+    auto publish = [&](int thread, std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                       double r2) {
+      if (!keep_r2(cut, walked, i, j, r2)) {
+        return;
+      }
+      const auto ui = static_cast<std::size_t>(i);
+      const auto uj = static_cast<std::size_t>(j);
+      const int sa = axis_shift(pos_[3 * ui] - pos_[3 * uj], inv0, query_.periodic[0]);
+      const int sb = axis_shift(pos_[3 * ui + 1] - pos_[3 * uj + 1], inv1, query_.periodic[1]);
+      const int sc = axis_shift(pos_[3 * ui + 2] - pos_[3 * uj + 2], inv2, query_.periodic[2]);
+      fn(user, thread, i, j, sa, sb, sc, -dx, -dy, -dz, std::sqrt(r2));
+    };
+    if (!cells_.streaming()) {
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+      {
+#if defined(_OPENMP)
+        const int thread = omp_get_thread_num();
+#else
+        const int thread = 0;
+#endif
+        const auto range = partition(static_cast<std::int64_t>(n_), thread, nt);
+        if (shell == Shell::Half) {
+          cells_.forHalf(range.begin, range.end,
+                         [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                             double r2) { publish(thread, i, j, dx, dy, dz, r2); });
+        } else {
+          cells_.forDirected(range.begin, range.end,
+                             [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                                 double r2) { publish(thread, i, j, dx, dy, dz, r2); });
+        }
+      }
+      return;
+    }
+    cells_.forCellTeam(shell == Shell::Half, nt,
+                       [&](int thread, std::int32_t i, std::int32_t j, double dx, double dy,
+                           double dz, double r2) { publish(thread, i, j, dx, dy, dz, r2); });
+    return;
+  }
+  each_cell(cells_, pos_, box_, walked, cut, nmax_, one_image_, 0, n_,
+            [&](std::int32_t i, std::int32_t j, int sa, int sb, int sc, double vx, double vy,
+                double vz, double dist) { fn(user, 0, i, j, sa, sb, sc, vx, vy, vz, dist); });
+}
+
 void Cells::update(const double *positions, std::size_t n, const double *box9, double cutoff,
                    double skin, Image image, Mode mode, const std::array<bool, 3> &periodic,
                    PairCutoffs cuts) {
@@ -1643,6 +1755,55 @@ int32_t rgpot_nlist_each(const double *positions, size_t n, const double *box9,
     return RGPOT_NLIST_NOMEM;
   }
 }
+
+struct rgpot_nlist_sweep {
+  rgpot::nlist::Sweep sweep;
+};
+
+int32_t rgpot_nlist_sweep_open(rgpot_nlist_sweep **sweep) {
+  if (sweep == nullptr) {
+    return RGPOT_NLIST_NULL;
+  }
+  *sweep = new (std::nothrow) rgpot_nlist_sweep;
+  if (*sweep == nullptr) {
+    return RGPOT_NLIST_NOMEM;
+  }
+  return RGPOT_NLIST_OK;
+}
+
+int32_t rgpot_nlist_sweep_each(rgpot_nlist_sweep *sweep, const double *positions, size_t n,
+                              const double *box9, const rgpot_nlist_request *request,
+                              rgpot_nlist_each_team_fn fn, void *user, int32_t threads,
+                              int32_t shell, int32_t *reused) {
+  if (sweep == nullptr || fn == nullptr) {
+    return RGPOT_NLIST_NULL;
+  }
+  try {
+    auto parsed = query_from_c(request);
+    if (shell != 0 && shell != 1) {
+      throw rgpot::nlist::Error(rgpot::nlist::Code::Shape, "shell must be 0 (half) or 1 (full)");
+    }
+    parsed.query.shape = shell == 1 ? rgpot::nlist::Shape{rgpot::nlist::Pairs{rgpot::nlist::Shell::Full}}
+                                    : rgpot::nlist::Shape{rgpot::nlist::Pairs{rgpot::nlist::Shell::Half}};
+    sweep->sweep.update(positions, n, box9, parsed.query, parsed.cuts);
+    if (reused != nullptr) {
+      *reused = sweep->sweep.reused() ? 1 : 0;
+    }
+    const auto which = shell == 1 ? rgpot::nlist::Shell::Full : rgpot::nlist::Shell::Half;
+    sweep->sweep.eachTeam(which, threads,
+                          [&](int thread, std::int32_t i, std::int32_t j, int sa, int sb, int sc,
+                              double x, double y, double z, double r) {
+                            fn(user, static_cast<int32_t>(thread), i, j, sa, sb, sc, x, y, z, r);
+                          });
+    return RGPOT_NLIST_OK;
+  } catch (const rgpot::nlist::Error &err) {
+    return static_cast<int32_t>(err.code());
+  } catch (const std::bad_alloc &) {
+    return RGPOT_NLIST_NOMEM;
+  }
+}
+
+void rgpot_nlist_sweep_close(rgpot_nlist_sweep *sweep) { delete sweep; }
 
 int32_t rgpot_nlist_build_systems(const double *positions, const int32_t *counts,
                                   size_t nsystems, const double *box9,
