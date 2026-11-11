@@ -45,6 +45,10 @@ See `docs/orgmode/howto/exprpot.org`.
 The public wire schema lives in `CppCore/rgpot/rpc/Potentials.capnp` and is
 shared by the C++ server, Python integration tests, and the Rust core crate.
 Native rgpot units are eV and Angstrom.
+The cell-list EAM (`EAMPot`) keeps a Verlet neighbour list.
+With `OMP_NUM_THREADS` unset, the energy and forces match the direct
+pair loop bit for bit. A set thread count stays within a relative
+tolerance of 1e-9. See `docs/eam_cell.md`.
 RPC clients may request compatible units through `ForceInput.lengthUnit` and
 `ForceInput.energyUnit`.
 
