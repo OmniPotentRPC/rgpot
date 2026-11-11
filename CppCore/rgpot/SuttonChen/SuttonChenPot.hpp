@@ -107,7 +107,9 @@ public:
   }
 
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.periodic = m_config.periodic, .stress = m_config.stress};
+    return {.reentrancy = Reentrancy::PerInstance,
+            .periodic = m_config.periodic,
+            .stress = m_config.stress};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {

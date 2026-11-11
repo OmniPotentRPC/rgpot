@@ -49,7 +49,9 @@ public:
 
   StillingerWeberSi();
 
-  [[nodiscard]] PotCaps caps() const noexcept override { return {}; }
+  [[nodiscard]] PotCaps caps() const noexcept override {
+    return {.reentrancy = Reentrancy::PerInstance};
+  }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
     return m_paramsKey;

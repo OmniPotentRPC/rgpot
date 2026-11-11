@@ -73,7 +73,8 @@ public:
   [[nodiscard]] const LJConfig &config() const noexcept { return m_config; }
 
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.stress = true};
+    // neighbours_ is scratch rewritten by every force call.
+    return {.reentrancy = Reentrancy::PerInstance, .stress = true};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
