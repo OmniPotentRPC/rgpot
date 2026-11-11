@@ -41,6 +41,9 @@ public:
   /// Stored neighbour indices after the last build.
   [[nodiscard]] std::size_t neighborSlots() const noexcept;
 
+  /// Threads used by the most recent force call.
+  [[nodiscard]] int threadsUsed() const noexcept;
+
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
 private:

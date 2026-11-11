@@ -24,11 +24,21 @@
 /// of that distance. One fraction for every geometry.
 inline constexpr double kEamSkinOverCutoff = 1.0 / 5.0;
 
+/// One OpenMP thread matches the direct pair loop bit for bit. Several
+/// threads each write the forces of their own atoms and add partial
+/// energies in thread-id order, so a fixed thread count repeats bit for
+/// bit. Energy and every force component stay within this relative
+/// tolerance of the one-thread value. A component whose one-thread
+/// magnitude is below 1 is compared on an absolute scale of the same size.
+inline constexpr double kEamThreadedTolerance = 1e-9;
+
 /// Embedded-atom aluminium, palladium and gold.
 ///
 /// The neighbour search is a linked-cell list with a Verlet skin. The force
 /// loop visits the same pairs, in the same atom order, as the direct double
-/// loop, and the arithmetic of each pair is unchanged.
+/// loop, and the arithmetic of each pair is unchanged. `OMP_NUM_THREADS`
+/// above 1 splits atoms across threads. The variable is read on each call.
+/// When it is unset the call stays on one thread.
 class EAM
 #ifndef EAM_STANDALONE
     : public eonc::Potential
@@ -61,6 +71,10 @@ public:
   [[nodiscard]] std::size_t neighborSlots() const noexcept {
     return nbr_.size();
   }
+
+  /// Threads used by the most recent force call. 1 when OpenMP is off or
+  /// `OMP_NUM_THREADS` is unset.
+  [[nodiscard]] int threadsUsed() const noexcept { return threads_used_; }
 
 #ifndef EAM_STANDALONE
   /// The list and the scratch live on the instance.
@@ -97,9 +111,14 @@ private:
   std::vector<long> next_;
   std::vector<long> off_;
   std::vector<long> nbr_;
+  std::vector<long> rev_;
   std::vector<long> gather_;
   std::vector<unsigned> stamp_;
   std::vector<Delta> deltas_;
+  std::vector<double> rho_;
+  std::vector<double> dF_;
+  std::vector<double> fscale_;
+  std::vector<double> thread_energy_;
 
   double box_len_[3]{};
   double box_ref_[3]{};
@@ -107,6 +126,7 @@ private:
   long n_atoms_ = 0;
   long n_axis_[3]{};
   std::uint64_t builds_ = 0;
+  int threads_used_ = 1;
   bool built_ = false;
 
   void prepare(long N, const double *R, const double *box);
@@ -116,6 +136,9 @@ private:
   void evaluate(long N, const int *atomicNrs, double *F, double *U);
   void accumulate(long i, const int *atomicNrs, double *F, double &U,
                   std::vector<Delta> &deltas) const;
+  void geometry(long i, long j, double &dx, double &dy, double &dz,
+                double &r2) const;
+  [[nodiscard]] int threadsRequested() const;
 
   [[nodiscard]] element_parameters
   get_element_parameters(int atomic_number) const;

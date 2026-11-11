@@ -9,6 +9,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 
@@ -98,6 +99,18 @@ std::uint64_t bitsOf(double v) {
   std::uint64_t bits = 0;
   std::memcpy(&bits, &v, sizeof(bits));
   return bits;
+}
+
+void setThreads(const char *value) {
+#if defined(_WIN32)
+  _putenv_s("OMP_NUM_THREADS", value == nullptr ? "" : value);
+#else
+  if (value == nullptr || value[0] == '\0') {
+    unsetenv("OMP_NUM_THREADS");
+  } else {
+    setenv("OMP_NUM_THREADS", value, 1);
+  }
+#endif
 }
 
 void expectBits(const Outcome &got, const Outcome &ref) {
@@ -283,6 +296,7 @@ std::vector<double> fcc(int nrep, double a, std::vector<int> &z, int atomic) {
 } // namespace
 
 TEST_CASE("EAM matches the direct pair loop bit for bit", "[eam]") {
+  setThreads("");
   rgpot::EAMPot pot;
   std::vector<double> pos = {0.0, 0.0, 0.0, 2.5, 0.0, 0.0};
   std::vector<int> z = {13, 13};
@@ -320,10 +334,25 @@ TEST_CASE("EAM matches the direct pair loop bit for bit", "[eam]") {
   pos = {1.0, 2.0, 3.0};
   z = {79};
   expectBits(evaluate(pot, pos, z, 10.0), direct(pos, z, 10.0));
+  REQUIRE(pot.threadsUsed() == 1);
+}
+
+void expectClose(const Outcome &got, const Outcome &ref) {
+  const double tol = kEamThreadedTolerance;
+  const double escale =
+      std::max(1.0, std::max(std::abs(got.energy), std::abs(ref.energy)));
+  REQUIRE(std::abs(got.energy - ref.energy) <= tol * escale);
+  REQUIRE(got.force.size() == ref.force.size());
+  for (std::size_t i = 0; i < got.force.size(); ++i) {
+    const double scale = std::max(
+        1.0, std::max(std::abs(got.force[i]), std::abs(ref.force[i])));
+    REQUIRE(std::abs(got.force[i] - ref.force[i]) <= tol * scale);
+  }
 }
 
 TEST_CASE("EAM keeps a short neighbour list and reuses it inside the skin",
           "[eam]") {
+  setThreads("");
   // 8^3 fcc cells. The search cells are about 8 Angstrom wide, so an
   // atom that starts near 2 Angstrom can move by 1 Angstrom and stay in
   // the same cell. A cell-crossing rule would not rebuild; the skin does.
@@ -358,4 +387,51 @@ TEST_CASE("EAM keeps a short neighbour list and reuses it inside the skin",
   const Outcome outside = evaluate(pot, pos, z, length);
   REQUIRE(pot.listBuilds() == 2);
   expectBits(outside, direct(pos, z, length));
+}
+
+TEST_CASE("EAM OpenMP sums are deterministic and near one thread", "[eam]") {
+  std::vector<int> z;
+  std::vector<double> pos = fcc(5, 4.05, z, 13);
+  const double length = 5 * 4.05;
+  setThreads("");
+  rgpot::EAMPot serial;
+  const Outcome one = evaluate(serial, pos, z, length);
+  REQUIRE(serial.threadsUsed() == 1);
+
+  setThreads("2");
+  rgpot::EAMPot parallel;
+  const Outcome first = evaluate(parallel, pos, z, length);
+  const Outcome second = evaluate(parallel, pos, z, length);
+#if defined(_OPENMP)
+  REQUIRE(parallel.threadsUsed() == 2);
+#else
+  REQUIRE(parallel.threadsUsed() == 1);
+#endif
+  expectBits(second, first);
+  expectClose(first, one);
+
+  setThreads("4");
+  rgpot::EAMPot four;
+  const Outcome wide = evaluate(four, pos, z, length);
+  const Outcome wideAgain = evaluate(four, pos, z, length);
+#if defined(_OPENMP)
+  REQUIRE(four.threadsUsed() == 4);
+#else
+  REQUIRE(four.threadsUsed() == 1);
+#endif
+  expectBits(wideAgain, wide);
+  expectClose(wide, one);
+
+  pos = {0.2, 0.2, 0.2, 2.2, 0.3, 0.4, 0.4, 3.1, 1.2, 5.5, 6.6, 7.1};
+  z = {13, 46, 79, 13};
+  setThreads("");
+  rgpot::EAMPot mixedSerial;
+  const Outcome mixedOne = evaluate(mixedSerial, pos, z, 12.0);
+  setThreads("2");
+  rgpot::EAMPot mixedParallel;
+  const Outcome mixedTwo = evaluate(mixedParallel, pos, z, 12.0);
+  const Outcome mixedTwoAgain = evaluate(mixedParallel, pos, z, 12.0);
+  expectBits(mixedTwoAgain, mixedTwo);
+  expectClose(mixedTwo, mixedOne);
+  setThreads("");
 }

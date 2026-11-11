@@ -315,6 +315,9 @@ if not get_option('with_rpc_client_only')
     # vesin objects and the Fortran runtime enter here, once, rather than
     # through the convenience archives (see the vesin_hdr_dep note).
     rgpot_deps = _deps_sans_core + [vesin_dep, fastnlist_dep] + fortran_rt_deps
+    if eam_openmp.found()
+        rgpot_deps += eam_openmp
+    endif
     _rpc_whole = []
     if _rpc_stack
         # link_whole, not link_with: the RPC entry points are called by

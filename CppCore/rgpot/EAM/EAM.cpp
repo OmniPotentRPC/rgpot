@@ -14,10 +14,15 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <stdexcept>
 #include <vector>
+
+#if defined(_OPENMP)
+#include <omp.h>
+#endif
 
 namespace {
 
@@ -73,9 +78,14 @@ void EAM::cleanMemory() {
   std::vector<long>().swap(next_);
   std::vector<long>().swap(off_);
   std::vector<long>().swap(nbr_);
+  std::vector<long>().swap(rev_);
   std::vector<long>().swap(gather_);
   std::vector<unsigned>().swap(stamp_);
   std::vector<Delta>().swap(deltas_);
+  std::vector<double>().swap(rho_);
+  std::vector<double>().swap(dF_);
+  std::vector<double>().swap(fscale_);
+  std::vector<double>().swap(thread_energy_);
   built_ = false;
   n_atoms_ = 0;
 }
@@ -249,6 +259,21 @@ void EAM::buildList(long N, const int *atomicNrs) {
     nbr_.insert(nbr_.end(), gather_.begin(), gather_.end());
   }
   off_[static_cast<std::size_t>(N)] = static_cast<long>(nbr_.size());
+  // Slot of i in j's row, so a later call can read j's stored scale
+  // without searching. The rows stay sorted for the life of the list.
+  rev_.resize(nbr_.size());
+  for (long i = 0; i < N; ++i) {
+    const long lo = off_[static_cast<std::size_t>(i)];
+    const long hi = off_[static_cast<std::size_t>(i) + 1];
+    for (long p = lo; p < hi; ++p) {
+      const long j = nbr_[static_cast<std::size_t>(p)];
+      const long jlo = off_[static_cast<std::size_t>(j)];
+      const long jhi = off_[static_cast<std::size_t>(j) + 1];
+      const long *row = nbr_.data();
+      const long *found = std::lower_bound(row + jlo, row + jhi, i);
+      rev_[static_cast<std::size_t>(p)] = static_cast<long>(found - row);
+    }
+  }
   built_ = true;
   n_atoms_ = N;
 }
@@ -346,12 +371,196 @@ void EAM::accumulate(long i, const int *atomicNrs, double *F, double &U,
   }
 }
 
+int EAM::threadsRequested() const {
+#if defined(_OPENMP)
+  const char *env = std::getenv("OMP_NUM_THREADS");
+  if (env == nullptr || env[0] == '\0') {
+    return 1;
+  }
+  char *end = nullptr;
+  const long parsed = std::strtol(env, &end, 10);
+  if (end == env || parsed < 1) {
+    return 1;
+  }
+  if (parsed > std::numeric_limits<int>::max()) {
+    return std::numeric_limits<int>::max();
+  }
+  return static_cast<int>(parsed);
+#else
+  return 1;
+#endif
+}
+
+void EAM::geometry(long i, long j, double &dx, double &dy, double &dz,
+                   double &r2) const {
+  const double half0 = box_len_[0] * 0.5;
+  const double half1 = box_len_[1] * 0.5;
+  const double half2 = box_len_[2] * 0.5;
+  dx = wrapped_[static_cast<std::size_t>(3 * i)] -
+       wrapped_[static_cast<std::size_t>(3 * j)];
+  dy = wrapped_[static_cast<std::size_t>(3 * i + 1)] -
+       wrapped_[static_cast<std::size_t>(3 * j + 1)];
+  dz = wrapped_[static_cast<std::size_t>(3 * i + 2)] -
+       wrapped_[static_cast<std::size_t>(3 * j + 2)];
+  if (dx > half0) {
+    dx -= box_len_[0];
+  } else if (dx < -half0) {
+    dx += box_len_[0];
+  }
+  if (dy > half1) {
+    dy -= box_len_[1];
+  } else if (dy < -half1) {
+    dy += box_len_[1];
+  }
+  if (dz > half2) {
+    dz -= box_len_[2];
+  } else if (dz < -half2) {
+    dz += box_len_[2];
+  }
+  r2 = dx * dx + dy * dy + dz * dz;
+}
+
 void EAM::evaluate(long N, const int *atomicNrs, double *F, double *U) {
+  const int nt = threadsRequested();
+  threads_used_ = nt;
+  if (nt == 1) {
+    double energy = 0.0;
+    for (long i = 0; i < N; ++i) {
+      accumulate(i, atomicNrs, F, energy, deltas_);
+    }
+    *U = energy;
+    return;
+  }
+#if defined(_OPENMP)
+  // Densities first, then each atom gathers its own force. The scatter
+  // loop above writes every neighbour, so threads would need private
+  // copies of the whole force array. The gather writes three components
+  // and nothing else.
+  rho_.resize(static_cast<std::size_t>(N));
+  dF_.resize(static_cast<std::size_t>(N));
+  fscale_.resize(nbr_.size());
+  thread_energy_.assign(static_cast<std::size_t>(nt), 0.0);
+#pragma omp parallel num_threads(nt)
+  {
+    const int t = omp_get_thread_num();
+    const long begin =
+        static_cast<long>((static_cast<std::int64_t>(N) * t) / nt);
+    const long end =
+        static_cast<long>((static_cast<std::int64_t>(N) * (t + 1)) / nt);
+    for (long i = begin; i < end; ++i) {
+      const element_parameters epar = get_element_parameters(atomicNrs[i]);
+      const double cutoff2 = epar.r_cut * epar.r_cut;
+      double dens = 0.0;
+      const long lo = off_[static_cast<std::size_t>(i)];
+      const long hi = off_[static_cast<std::size_t>(i) + 1];
+      for (long p = lo; p < hi; ++p) {
+        const long j = nbr_[static_cast<std::size_t>(p)];
+        double dx = 0.0;
+        double dy = 0.0;
+        double dz = 0.0;
+        double r2 = 0.0;
+        geometry(i, j, dx, dy, dz, r2);
+        if (r2 > cutoff2) {
+          fscale_[static_cast<std::size_t>(p)] = 0.0;
+          continue;
+        }
+        const double r = std::sqrt(r2);
+        const double r6 = r2 * r2 * r2;
+        const double exp_b1 = std::exp(-epar.beta1 * r);
+        const double exp_b2 = std::exp(-2.0 * epar.beta2 * r);
+        const double rho_pair = exp_b1 + 512.0 * exp_b2;
+        dens += r6 * rho_pair;
+        const double r5 = r2 * r2 * r;
+        const double mag =
+            6.0 * r5 * rho_pair +
+            r6 * (-epar.beta1 * exp_b1 - 1024.0 * epar.beta2 * exp_b2);
+        fscale_[static_cast<std::size_t>(p)] = -mag / r;
+      }
+      rho_[static_cast<std::size_t>(i)] = dens;
+      dF_[static_cast<std::size_t>(i)] =
+          embedding_force(epar.func_coeff, dens);
+    }
+#pragma omp barrier
+    double energy = 0.0;
+    for (long i = begin; i < end; ++i) {
+      const element_parameters ei = get_element_parameters(atomicNrs[i]);
+      const double cut_i2 = ei.r_cut * ei.r_cut;
+      const double dFi = dF_[static_cast<std::size_t>(i)];
+      double fx = 0.0;
+      double fy = 0.0;
+      double fz = 0.0;
+      const long lo = off_[static_cast<std::size_t>(i)];
+      const long hi = off_[static_cast<std::size_t>(i) + 1];
+      for (long p = lo; p < hi; ++p) {
+        const long j = nbr_[static_cast<std::size_t>(p)];
+        double dx = 0.0;
+        double dy = 0.0;
+        double dz = 0.0;
+        double r2 = 0.0;
+        geometry(i, j, dx, dy, dz, r2);
+        const element_parameters ej = get_element_parameters(atomicNrs[j]);
+        const bool in_i = r2 <= cut_i2;
+        const bool in_j = r2 <= ej.r_cut * ej.r_cut;
+        if (!in_i && !in_j) {
+          continue;
+        }
+        const double r = std::sqrt(r2);
+        const double invR = 1.0 / r;
+        if (in_i) {
+          const double fscale = fscale_[static_cast<std::size_t>(p)];
+          fx -= dFi * fscale * dx;
+          fy -= dFi * fscale * dy;
+          fz -= dFi * fscale * dz;
+          if (j > i) {
+            const double expArg = std::exp(-ei.alphaM * (r - ei.Rm));
+            const double d = 1.0 - expArg;
+            energy += ei.Dm * d * d - ei.Dm;
+            const double fcomp =
+                2.0 * ei.alphaM * ei.Dm * d * (d - 1.0) * invR;
+            fx -= fcomp * dx;
+            fy -= fcomp * dy;
+            fz -= fcomp * dz;
+          }
+        }
+        if (in_j) {
+          const std::size_t slot =
+              static_cast<std::size_t>(rev_[static_cast<std::size_t>(p)]);
+          const double fscale = fscale_[slot];
+          const double dFj = dF_[static_cast<std::size_t>(j)];
+          fx -= dFj * fscale * dx;
+          fy -= dFj * fscale * dy;
+          fz -= dFj * fscale * dz;
+          if (j < i) {
+            const double expArg = std::exp(-ej.alphaM * (r - ej.Rm));
+            const double d = 1.0 - expArg;
+            const double fcomp =
+                2.0 * ej.alphaM * ej.Dm * d * (d - 1.0) * invR;
+            fx -= fcomp * dx;
+            fy -= fcomp * dy;
+            fz -= fcomp * dz;
+          }
+        }
+      }
+      energy += embedding_function(ei.func_coeff,
+                                   rho_[static_cast<std::size_t>(i)]);
+      F[3 * i] = fx;
+      F[3 * i + 1] = fy;
+      F[3 * i + 2] = fz;
+    }
+    thread_energy_[static_cast<std::size_t>(t)] = energy;
+  }
+  double energy = 0.0;
+  for (int t = 0; t < nt; ++t) {
+    energy += thread_energy_[static_cast<std::size_t>(t)];
+  }
+  *U = energy;
+#else
   double energy = 0.0;
   for (long i = 0; i < N; ++i) {
     accumulate(i, atomicNrs, F, energy, deltas_);
   }
   *U = energy;
+#endif
 }
 
 void EAM::force(long N, const double *R, const int *atomicNrs, double *F,
