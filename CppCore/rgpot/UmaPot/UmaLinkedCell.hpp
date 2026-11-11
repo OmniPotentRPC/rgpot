@@ -150,10 +150,10 @@ inline bool build(const double *pos, std::size_t n, const double *box, double se
   }
   exclusive_prefix(scratch.hist, threads);
   scratch.placed.resize(n);
-  auto cursor = scratch.hist;
+  auto slot = scratch.hist;
   for (std::size_t i = 0; i < n; ++i) {
     const auto cell = static_cast<std::size_t>(scratch.cell_of[i]);
-    scratch.placed[cursor[cell]++] = static_cast<std::uint32_t>(i);
+    scratch.placed[slot[cell]++] = static_cast<std::uint32_t>(i);
   }
   scratch.x.resize(n);
   scratch.y.resize(n);
