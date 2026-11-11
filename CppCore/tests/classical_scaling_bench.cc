@@ -119,8 +119,54 @@ double medianCall(Pot &pot, const std::vector<double> &pos,
 
 } // namespace
 
-int main() {
+int main(int argc, char **argv) {
   std::setvbuf(stdout, nullptr, _IOLBF, 0);
+  if (argc > 1 && std::string(argv[1]) == "rss") {
+    const std::string which = argc > 2 ? argv[2] : "EAM";
+    long rss = 0;
+    auto one = [&](auto &&pot, const std::vector<double> &pos,
+                   const std::vector<int> &z, double lx, double ly, double lz) {
+      pot.setNeighbourMode(rgpot::nlist::Mode::Stream);
+      (void)medianCall(pot, pos, z, lx, ly, lz, 1, rss);
+      std::printf("%s n %zu rss_kb %ld\n", which.c_str(), z.size(), rss);
+    };
+    if (which == "EAM" || which == "LJ" || which == "SuttonChen") {
+      double lx = 0, ly = 0, lz = 0;
+      const double lattice = which == "LJ" ? std::pow(2.0, 1.0 / 6.0) * std::sqrt(2.0)
+                             : which == "SuttonChen" ? std::sqrt(2.0)
+                                                     : 4.05;
+      auto pos = fcc(64, 64, 64, lattice, lx, ly, lz);
+      std::vector<int> z(pos.size() / 3, which == "LJ" ? 18 : which == "SuttonChen" ? 78 : 13);
+      if (which == "EAM") {
+        rgpot::EAMPot pot;
+        one(pot, pos, z, lx, ly, lz);
+      } else if (which == "LJ") {
+        rgpot::LJConfig cfg;
+        cfg.cutoff = 2.5;
+        cfg.psi = 1.0;
+        rgpot::LJPot pot(cfg);
+        one(pot, pos, z, lx, ly, lz);
+      } else {
+        rgpot::SuttonChenConfig cfg;
+        cfg.cutoff = 3.0;
+        cfg.periodic = true;
+        rgpot::SuttonChenPot pot(cfg);
+        one(pot, pos, z, lx, ly, lz);
+      }
+    } else {
+      double length = 0;
+      auto pos = diamond(50, 5.431, length);
+      std::vector<int> z(pos.size() / 3, 14);
+      if (which == "SW") {
+        rgpot::StillingerWeberSi pot;
+        one(pot, pos, z, length, length, length);
+      } else {
+        rgpot::TersoffSiC pot;
+        one(pot, pos, z, length, length, length);
+      }
+    }
+    return 0;
+  }
   constexpr int kRepeats = 7;
   long rss = 0;
   std::printf("repeats %d\n", kRepeats);
@@ -197,6 +243,15 @@ int main() {
       pot.setNeighbourMode(modev[m]);
       const double sec = medianCall(pot, pos, z, lx, ly, lz, kRepeats, rss);
       report("SuttonChen", modes[m], static_cast<int>(z.size()), sec);
+    }
+    if (m == 1) {
+      double lx = 0, ly = 0, lz = 0;
+      auto pos = fcc(64, 64, 64, a_sc, lx, ly, lz);
+      std::vector<int> z(pos.size() / 3, 78);
+      rgpot::SuttonChenPot pot(sc);
+      pot.setNeighbourMode(rgpot::nlist::Mode::Stream);
+      const double sec = medianCall(pot, pos, z, lx, ly, lz, kRepeats, rss);
+      report("SuttonChen", "stream", static_cast<int>(z.size()), sec);
     }
   }
 

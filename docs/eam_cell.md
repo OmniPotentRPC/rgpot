@@ -65,13 +65,13 @@ Strong scaling of the stored list, 108 000 atoms:
 
 | threads | median (s) | speedup |
 | ---: | ---: | ---: |
-| 1 | 0.109320 | 1.00 |
-| 2 | 0.075928 | 1.44 |
-| 4 | 0.038904 | 2.81 |
-| 8 | 0.036770 | 2.97 |
+| 1 | 0.109018 | 1.00 |
+| 2 | 0.073623 | 1.48 |
+| 4 | 0.038092 | 2.86 |
+| 8 | 0.020201 | 5.40 |
 
-At 32 000 atoms the same list reaches 3.87x on 8 threads (0.008380 s
-against 0.032441 s). Two threads are 1.66x there. The earlier separate
+At 32 000 atoms the same list reaches 5.99x on 8 threads (0.005425 s
+against 0.032498 s). Two threads are 1.65x there. The earlier separate
 density and force passes were 1.20x at two threads on 108 000 atoms.
 The cross-potential tables, both neighbour modes, and the weak-scaling
 rows are in `docs/neighbour_layer.md`.

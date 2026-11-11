@@ -45,8 +45,9 @@ See `docs/orgmode/howto/exprpot.org`.
 The public wire schema lives in `CppCore/rgpot/rpc/Potentials.capnp` and is
 shared by the C++ server, Python integration tests, and the Rust core crate.
 Native rgpot units are eV and Angstrom.
-EAM, Lennard-Jones, Sutton-Chen, Stillinger-Weber and Tersoff share
-one neighbour layer, with a stored Verlet list or a streaming cell walk.
+EAM, Lennard-Jones, Sutton-Chen, Stillinger-Weber, Tersoff, Morse and
+ZBL share one neighbour layer, with a stored Verlet list or a streaming
+cell walk.
 With `OMP_NUM_THREADS` unset, the energy and forces match the previous
 one-thread result bit for bit. A set thread count stays within a relative
 tolerance of 1e-9. See `docs/neighbour_layer.md`.
