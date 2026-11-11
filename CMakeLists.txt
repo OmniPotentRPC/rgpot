@@ -191,9 +191,6 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/ZBL/ZBLPot.cc
       CppCore/rgpot/simd/dispatch.cc
       CppCore/rgpot/simd/scalar_kernels.cc
-      CppCore/rgpot/nlist/MinimumImage.cpp
-      CppCore/rgpot/simd/exact_fma_hw.cc
-      CppCore/rgpot/simd/exp.cc
       CppCore/rgpot/CuH2/cuh2Utils.cc
       CppCore/rgpot/fortran/FortranPots.cc
       CppCore/rgpot/SuttonChen/SuttonChenPot.cc
@@ -244,6 +241,20 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     enable_testing()
   endif()
   find_package(Threads REQUIRED)
+  add_library(rgpot_nlist STATIC
+      CppCore/rgpot/nlist/NeighbourList.cc
+      CppCore/rgpot/nlist/Neighbours.cc
+      CppCore/rgpot/nlist/MinimumImage.cpp
+      CppCore/rgpot/simd/exact_fma_hw.cc
+      CppCore/rgpot/simd/exp.cc)
+  target_include_directories(rgpot_nlist PUBLIC
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/CppCore>)
+  target_link_libraries(rgpot_nlist PUBLIC Threads::Threads)
+  find_package(OpenMP)
+  if(OpenMP_CXX_FOUND)
+    target_link_libraries(rgpot_nlist PUBLIC OpenMP::OpenMP_CXX)
+  endif()
+  set_target_properties(rgpot_nlist PROPERTIES POSITION_INDEPENDENT_CODE ON)
   add_library(rgpot_vesin STATIC third_party/vesin/vesin-single-build.cpp)
   add_library(rgpot::vesin ALIAS rgpot_vesin)
   set_target_properties(rgpot_vesin PROPERTIES
@@ -295,7 +306,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
                                         POSITION_INDEPENDENT_CODE ON
                                         VERSION ${PROJECT_VERSION}
                                         SOVERSION ${RGPOT_CXX_SOVERSION})
-  target_link_libraries(rgpot PRIVATE rgpot_fortran_kernels Threads::Threads)
+  target_link_libraries(rgpot PRIVATE rgpot_fortran_kernels rgpot_nlist Threads::Threads)
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_options(
       rgpot PRIVATE

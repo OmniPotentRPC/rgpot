@@ -13,3 +13,5 @@ do not interact are one `Systems` / `rgpot_nlist_build_systems` call.
 with a strict cut returns `RGPOT_NLIST_SKIN`. The classical potentials
 call `updateCells` and `visitDirected`, the same walk `build` uses.
 `rgpot.neighbor_list(positions, cell, cutoff)` is the Python half list.
+The Fortran gather builds that list through `rgpot_nlist_fortran_build`
+and reuses the builder's skin cache.

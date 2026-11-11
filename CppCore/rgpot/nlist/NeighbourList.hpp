@@ -139,6 +139,12 @@ struct Table {
   bool stored = false;
 
   [[nodiscard]] std::size_t size() const noexcept { return first.size(); }
+
+  /// `vector` as a Fortran `(3, npairs)` array. Pair `p` is
+  /// `x, y, z` at elements `3p`, `3p+1`, `3p+2`. Same memory as `vector`.
+  [[nodiscard]] std::span<const double> column_major_vectors() const noexcept {
+    return vector;
+  }
   [[nodiscard]] View view() const noexcept {
     return View{first, second,
                 shift.empty() ? std::span<const std::int32_t>{} : std::span<const std::int32_t>{shift},

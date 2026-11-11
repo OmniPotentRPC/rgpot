@@ -29,7 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one shared table. Several independent systems are one batch, and the C
   builder keeps a Verlet list. A positive skin with a strict cut is rejected.
   The classical potentials call that same walk. `rgpot.neighbor_list` is the
-  Python half list.
+  Python half list. The Fortran gather uses that list and the builder's
+  skin cache. `quantities` selects columns, and `offsets=True` adds a
+  sorted CSR row pointer.
 
 ## [3.5.1](https://github.com/OmniPotentRPC/rgpot/tree/v3.5.1) - 2026-10-11
 

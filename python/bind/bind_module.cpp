@@ -956,49 +956,141 @@ NB_MODULE(_core, m) {
 
   m.def(
       "neighbor_list",
-      [](const F64 &positions, const F64 &cell, double cutoff, bool full) {
+      [](const F64 &positions, const F64 &cell, double cutoff, const std::string &quantities,
+         bool full, bool offsets) {
         if (positions.ndim() != 2 || positions.shape(1) != 3) {
           throw std::invalid_argument("positions must have shape (natoms, 3)");
         }
         if (cell.ndim() != 2 || cell.shape(0) != 3 || cell.shape(1) != 3) {
           throw std::invalid_argument("cell must have shape (3, 3)");
         }
+        for (char q : quantities) {
+          if (q != 'i' && q != 'j' && q != 'd' && q != 'D' && q != 'S') {
+            throw std::invalid_argument(
+                "quantities must be a subset of i, j, d, D and S");
+          }
+        }
         rgpot::nlist::Query query;
         query.cutoff = cutoff;
         query.shape = rgpot::nlist::Pairs{full ? rgpot::nlist::Shell::Full
                                                : rgpot::nlist::Shell::Half};
-        const auto n = static_cast<std::size_t>(positions.shape(0));
-        rgpot::nlist::Table table;
+        const bool want_d = quantities.find('d') != std::string::npos;
+        const bool want_D = quantities.find('D') != std::string::npos;
+        const bool want_S = quantities.find('S') != std::string::npos;
+        query.fields.distances = want_d || offsets;
+        query.fields.vectors = want_D;
+        query.fields.shifts = want_S;
+        const auto natoms = static_cast<std::size_t>(positions.shape(0));
+        struct Owned {
+          rgpot::nlist::Table table;
+          std::vector<std::int32_t> offsets;
+        };
+        auto owned = std::make_shared<Owned>();
         try {
           nb::gil_scoped_release release;
-          rgpot::nlist::build(table, positions.data(), n, cell.data(), query);
+          rgpot::nlist::build(owned->table, positions.data(), natoms, cell.data(), query);
         } catch (const rgpot::nlist::Error &err) {
           throw std::invalid_argument(err.what());
         }
-        std::vector<std::int32_t> first(table.first.begin(), table.first.end());
-        std::vector<std::int32_t> second(table.second.begin(), table.second.end());
-        std::vector<double> distance(table.distance.begin(), table.distance.end());
-        auto as_i32 = [](std::vector<std::int32_t> values) {
-          const auto n = values.size();
-          auto *data = new std::vector<std::int32_t>(std::move(values));
-          return nb::ndarray<nb::numpy, std::int32_t>(
-              data->data(), {n}, nb::capsule(data, [](void *p) noexcept {
-                               delete static_cast<std::vector<std::int32_t> *>(p);
-                             }));
+        if (offsets) {
+          auto &table = owned->table;
+          const auto np = table.size();
+          std::vector<std::size_t> order(np);
+          for (std::size_t p = 0; p < np; ++p) {
+            order[p] = p;
+          }
+          std::sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+            if (table.first[a] != table.first[b]) {
+              return table.first[a] < table.first[b];
+            }
+            return table.second[a] < table.second[b];
+          });
+          auto permute_i = [&](std::vector<std::int32_t> &col, int width) {
+            if (col.empty()) {
+              return;
+            }
+            std::vector<std::int32_t> next(col.size());
+            for (std::size_t p = 0; p < np; ++p) {
+              for (int k = 0; k < width; ++k) {
+                next[static_cast<std::size_t>(width) * p + static_cast<std::size_t>(k)] =
+                    col[static_cast<std::size_t>(width) * order[p] + static_cast<std::size_t>(k)];
+              }
+            }
+            col.swap(next);
+          };
+          auto permute_d = [&](std::vector<double> &col, int width) {
+            if (col.empty()) {
+              return;
+            }
+            std::vector<double> next(col.size());
+            for (std::size_t p = 0; p < np; ++p) {
+              for (int k = 0; k < width; ++k) {
+                next[static_cast<std::size_t>(width) * p + static_cast<std::size_t>(k)] =
+                    col[static_cast<std::size_t>(width) * order[p] + static_cast<std::size_t>(k)];
+              }
+            }
+            col.swap(next);
+          };
+          permute_i(table.first, 1);
+          permute_i(table.second, 1);
+          permute_i(table.shift, 3);
+          permute_d(table.vector, 3);
+          permute_d(table.distance, 1);
+          owned->offsets.assign(natoms + 1, 0);
+          for (std::size_t p = 0; p < np; ++p) {
+            const auto i = static_cast<std::size_t>(table.first[p]);
+            if (i < natoms) {
+              owned->offsets[i + 1] += 1;
+            }
+          }
+          for (std::size_t i = 0; i < natoms; ++i) {
+            owned->offsets[i + 1] += owned->offsets[i];
+          }
+        }
+        auto keep = [owned]() {
+          auto *heap = new std::shared_ptr<Owned>(owned);
+          return nb::capsule(heap, [](void *p) noexcept {
+            delete static_cast<std::shared_ptr<Owned> *>(p);
+          });
         };
-        auto as_f64 = [](std::vector<double> values) {
-          const auto n = values.size();
-          auto *data = new std::vector<double>(std::move(values));
-          return nb::ndarray<nb::numpy, double>(
-              data->data(), {n}, nb::capsule(data, [](void *p) noexcept {
-                               delete static_cast<std::vector<double> *>(p);
-                             }));
-        };
-        return nb::make_tuple(as_i32(std::move(first)), as_i32(std::move(second)),
-                              as_f64(std::move(distance)));
+        const auto npairs = owned->table.size();
+        nb::list items;
+        for (char q : quantities) {
+          if (q == 'i') {
+            items.append(nb::ndarray<nb::numpy, std::int32_t>(
+                owned->table.first.data(), {npairs}, keep()));
+          } else if (q == 'j') {
+            items.append(nb::ndarray<nb::numpy, std::int32_t>(
+                owned->table.second.data(), {npairs}, keep()));
+          } else if (q == 'd') {
+            items.append(nb::ndarray<nb::numpy, double>(owned->table.distance.data(), {npairs},
+                                                        keep()));
+          } else if (q == 'D') {
+            items.append(nb::ndarray<nb::numpy, double>(owned->table.vector.data(), {npairs, 3},
+                                                        keep()));
+          } else if (q == 'S') {
+            items.append(nb::ndarray<nb::numpy, std::int32_t>(owned->table.shift.data(),
+                                                             {npairs, 3}, keep()));
+          }
+        }
+        if (offsets) {
+          items.append(nb::ndarray<nb::numpy, std::int32_t>(
+              owned->offsets.data(), {owned->offsets.size()}, keep()));
+        }
+        if (items.size() == 1) {
+          return nb::object(items[0]);
+        }
+        nb::tuple out(items.size());
+        for (size_t k = 0; k < items.size(); ++k) {
+          out[k] = items[k];
+        }
+        return nb::object(std::move(out));
       },
       nb::arg("positions").noconvert(), nb::arg("cell").noconvert(), nb::arg("cutoff"),
-      nb::arg("full") = false,
-      "Half-list neighbour indices and distances. "
+      nb::arg("quantities") = "ijd", nb::arg("full") = false, nb::arg("offsets") = false,
+      "Neighbour arrays selected by quantities. i and j are indices, d is the "
+      "distance, D is r_j - r_i with shape (npairs, 3), S is the integer shift "
+      "with that shape. offsets=True appends a CSR row pointer of length "
+      "natoms + 1 after sorting pairs by i, then j. "
       "`i, j, d = rgpot.neighbor_list(positions, cell, cutoff)`.");
 }

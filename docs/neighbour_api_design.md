@@ -564,18 +564,18 @@ atoms held about 30 GB and was stopped. matscipy has no half list.
 
 | system | list | threads | rgpot s | rgpot MB | vesin s | vesin MB | ASE s | matscipy s |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| tri | half | 1 | 0.000270 | 4.4 | 0.000410 | 33.5 | 0.00532 |  |
-| tri | half | 8 | 0.000271 | 4.4 | 0.000408 | 33.4 | 0.00513 |  |
-| tri | full | 1 | 0.000478 | 4.8 | 0.000627 | 34.2 | 0.0369 | 0.00172 |
-| tri | full | 8 | 0.000472 | 4.7 | 0.000642 | 34.1 | 0.0357 | 0.00174 |
-| 108000 | half | 1 | 0.118 | 139 | 0.143 | 316 | 2.51 |  |
-| 108000 | half | 8 | 0.0523 | 182 | 0.0794 | 428 | 2.46 |  |
-| 108000 | full | 1 | 0.219 | 256 | 0.230 | 591 | 8.45 | 0.632 |
-| 108000 | full | 8 | 0.0947 | 341 | 0.165 | 807 | 8.32 | 0.638 |
-| 1048576 | half | 1 | 1.26 | 1317 | 1.39 | 2787 | 25.2 |  |
-| 1048576 | half | 8 | 0.589 | 1634 | 0.751 | 3565 | 24.8 |  |
-| 1048576 | full | 1 | 2.21 | 2457 | 2.39 | 5453 |  | 6.17 |
-| 1048576 | full | 8 | 1.00 | 3192 | 1.64 | 6668 |  | 5.95 |
+| tri | half | 1 | 0.000267 | 4.5 | 0.000410 | 33.5 | 0.00532 |  |
+| tri | half | 8 | 0.000259 | 4.4 | 0.000408 | 33.4 | 0.00513 |  |
+| tri | full | 1 | 0.000469 | 4.7 | 0.000627 | 34.2 | 0.0369 | 0.00172 |
+| tri | full | 8 | 0.000469 | 4.7 | 0.000642 | 34.1 | 0.0357 | 0.00174 |
+| 108000 | half | 1 | 0.125 | 139 | 0.143 | 316 | 2.51 |  |
+| 108000 | half | 8 | 0.0514 | 182 | 0.0794 | 428 | 2.46 |  |
+| 108000 | full | 1 | 0.225 | 256 | 0.230 | 591 | 8.45 | 0.632 |
+| 108000 | full | 8 | 0.0988 | 341 | 0.165 | 807 | 8.32 | 0.638 |
+| 1048576 | half | 1 | 1.27 | 1317 | 1.39 | 2787 | 25.2 |  |
+| 1048576 | half | 8 | 0.571 | 1634 | 0.751 | 3565 | 24.8 |  |
+| 1048576 | full | 1 | 2.24 | 2457 | 2.39 | 5453 |  | 6.17 |
+| 1048576 | full | 8 | 0.998 | 3192 | 1.64 | 6668 |  | 5.95 |
 
 A system of fewer than 8192 atoms stays on the calling thread, so the
 64-atom list costs the same with `OMP_NUM_THREADS=8` as with one
@@ -655,9 +655,31 @@ keeps `build` as the check. A sheared cell, a cluster, or fewer than
 512 atoms stays on the host `build`, which is also what a device
 runtime would do when the grid degenerates.
 
+## The Fortran gather uses the same list
+
+`neighbor_table_t` used to ask vesin for a full list. It now calls
+`rgpot_nlist_fortran_build`, which keeps an `rgpot_nlist_builder`.
+The search radius is the cutoff plus the skin. While every atom stays
+within half the skin the builder reuses that candidate list. Each call
+still writes `r_j - r_i + S H` for the positions it was given and keeps
+only pairs strictly inside the cutoff. `vec(3, npairs)` is
+`Table::column_major_vectors()`: column `p` is the vector of pair `p`.
+On 4000 FCC atoms and a cutoff of 5 with skin 0.5, a fresh search
+takes 0.012 s and a reused call, which only refreshes the vectors,
+takes 0.001 s. The Stillinger-Weber, EAM, water, Fe-He, Tersoff, EDIP
+and Lenosky gather tests still match their finite-difference forces.
+vesin remains in the neighbour benchmark and in the vendored tree for
+that comparison.
+
+## Calling the list from eOn
+
+`docs/eon_nlist.md` is the short C and Cap'n Proto sketch. A builder
+with a loose cut and a positive skin is the Verlet cache. The wire
+request is `format = 1`, `cut = 1`.
+
 ## Re-run
 
-`NeighbourListTest` passed, 560 assertions in 13 cases. The compiled
+`NeighbourListTest` passed, 570 assertions in 14 cases. The compiled
 callers passed: Lennard-Jones, the three-body angle, the metatomic
 label copy, the C caller, the batch of two systems, the C Verlet
 builder, the Rust caller, and the two-process stream.

@@ -11,9 +11,6 @@ foreach(flag IN ITEMS -std=f2018 -fimplicit-none -Wall
   endif()
 endforeach()
 
-set(_rgpot_vesin_fortran_sources
-    "${PROJECT_SOURCE_DIR}/third_party/vesin/fortran/cdef.f90"
-    "${PROJECT_SOURCE_DIR}/third_party/vesin/fortran/vesin.f90")
 set(_rgpot_common_sources
     rgpot_kinds.f90 rgpot_ferror.f90 rgpot_neighbors.f90 rgpot_workspace.f90)
 set(_rgpot_kernel_sources
@@ -47,9 +44,8 @@ function(rgpot_fortran_target target module_directory hide_symbols)
     POSITION_INDEPENDENT_CODE ON
     Fortran_MODULE_DIRECTORY "${module_directory}")
   target_include_directories(${target}
-    PRIVATE "${PROJECT_SOURCE_DIR}/third_party/vesin"
     PUBLIC "$<BUILD_INTERFACE:${module_directory}>")
-  target_link_libraries(${target} PRIVATE rgpot_vesin)
+  target_link_libraries(${target} PRIVATE rgpot_nlist)
   foreach(flag IN LISTS _rgpot_fortran_options)
     if(NOT hide_symbols AND flag STREQUAL "-fvisibility=hidden")
       continue()
@@ -62,7 +58,7 @@ endfunction()
 # Keeping the kernels in an archive lets librgpot hide their module and
 # bind(c) symbols while leaving the C++ potential classes visible.
 add_library(rgpot_fortran_kernels STATIC
-  ${_rgpot_vesin_fortran_sources} ${_rgpot_common_sources} ${_rgpot_kernel_sources})
+  ${_rgpot_common_sources} ${_rgpot_kernel_sources})
 target_compile_options(rgpot_fortran_kernels PRIVATE
   "$<$<COMPILE_LANGUAGE:Fortran>:${_rgpot_fortran_pp}>")
 rgpot_fortran_target(rgpot_fortran_kernels "${CMAKE_CURRENT_BINARY_DIR}/modules" TRUE)
@@ -80,7 +76,7 @@ foreach(runtime IN LISTS _rgpot_fortran_runtime)
 endforeach()
 
 # The direct CuH2 plugin is a separate public bind(c) entry point.
-add_library(rgpot_cuh2 SHARED ${_rgpot_vesin_fortran_sources} ${_rgpot_common_sources}
+add_library(rgpot_cuh2 SHARED ${_rgpot_common_sources}
   rgpot_cuh2.f90 rgpot_cuh2_capi.f90)
 rgpot_fortran_target(rgpot_cuh2 "${CMAKE_CURRENT_BINARY_DIR}/cuh2-modules" FALSE)
 

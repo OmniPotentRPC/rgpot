@@ -12,8 +12,9 @@
  * table and consumers reach the kernels only through these classes.
  *
  * Each instance owns a Fortran workspace (rgpot_workspace.f90): its own
- * neighbour table, which vesin keeps between calls and rebuilds only when
- * an atom leaves the Verlet skin, and its own error message. The kernels
+ * neighbour table. The builder keeps that list between calls and rebuilds
+ * it only when an atom leaves the Verlet skin. The kernels also keep an
+ * error message. The kernels
  * carry no other state, so instances evaluate on separate threads at once
  * (`Reentrancy::PerInstance`), and multi-image callers keep one instance
  * per image (`perImageInstances`) so each table follows one geometry
@@ -87,7 +88,7 @@ public:
   }
 
   /// Held list for the calls that reach the 1989 kernel, as
-  /// TersoffSiC::setHeldSkin. The gather keeps its own vesin table.
+  /// TersoffSiC::setHeldSkin. The gather keeps its own neighbour table.
   void setHeldSkin(double skin) { m_sic.setHeldSkin(skin); }
 
 private:

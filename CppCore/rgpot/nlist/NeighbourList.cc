@@ -1523,4 +1523,91 @@ int32_t rgpot_nlist_builder_update(rgpot_nlist_builder *builder, const double *p
 
 void rgpot_nlist_builder_close(rgpot_nlist_builder *builder) { delete builder; }
 
+struct rgpot_nlist_fortran_list {
+  rgpot::nlist::Builder builder;
+};
+
+rgpot_nlist_fortran_list *rgpot_nlist_fortran_open(void) {
+  return new (std::nothrow) rgpot_nlist_fortran_list;
+}
+
+void rgpot_nlist_fortran_close(rgpot_nlist_fortran_list *list) { delete list; }
+
+int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *positions,
+                                  size_t natoms, const double *box9, double cutoff, double skin,
+                                  const int32_t periodic[3], int32_t *first, int32_t *second,
+                                  double *vector, double *distance, size_t cap, size_t *count,
+                                  int32_t *reused) {
+  if (list == nullptr || positions == nullptr || box9 == nullptr || periodic == nullptr) {
+    if (count != nullptr) {
+      *count = 0;
+    }
+    return RGPOT_NLIST_NULL;
+  }
+  try {
+    rgpot::nlist::Query query;
+    query.cutoff = cutoff;
+    query.skin = skin;
+    query.cut = skin > 0.0 ? rgpot::nlist::Cut::Loose : rgpot::nlist::Cut::Strict;
+    query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Full};
+    query.fields = {true, true, true};
+    for (int k = 0; k < 3; ++k) {
+      query.periodic[static_cast<std::size_t>(k)] = periodic[k] != 0;
+    }
+    list->builder.update(positions, natoms, box9, query);
+    if (reused != nullptr) {
+      *reused = list->builder.reused() ? 1 : 0;
+    }
+    const auto &table = list->builder.table();
+    const double cut2 = cutoff * cutoff;
+    std::size_t kept = 0;
+    for (std::size_t p = 0; p < table.size(); ++p) {
+      const auto i = static_cast<std::size_t>(table.first[p]);
+      const auto j = static_cast<std::size_t>(table.second[p]);
+      const int sa = table.shift[3 * p];
+      const int sb = table.shift[3 * p + 1];
+      const int sc = table.shift[3 * p + 2];
+      const double vx = positions[3 * j] - positions[3 * i] + sa * box9[0] + sb * box9[3] +
+                        sc * box9[6];
+      const double vy = positions[3 * j + 1] - positions[3 * i + 1] + sa * box9[1] +
+                        sb * box9[4] + sc * box9[7];
+      const double vz = positions[3 * j + 2] - positions[3 * i + 2] + sa * box9[2] +
+                        sb * box9[5] + sc * box9[8];
+      const double r2 = vx * vx + vy * vy + vz * vz;
+      if (!(r2 > 0.0) || !(r2 < cut2)) {
+        continue;
+      }
+      if (first != nullptr && kept < cap) {
+        first[kept] = table.first[p];
+        second[kept] = table.second[p];
+        vector[3 * kept] = vx;
+        vector[3 * kept + 1] = vy;
+        vector[3 * kept + 2] = vz;
+        distance[kept] = std::sqrt(r2);
+      }
+      ++kept;
+    }
+    if (count != nullptr) {
+      *count = kept;
+    }
+    if (first == nullptr) {
+      return RGPOT_NLIST_OK;
+    }
+    if (kept > cap) {
+      return RGPOT_NLIST_SHORT;
+    }
+    return RGPOT_NLIST_OK;
+  } catch (const rgpot::nlist::Error &err) {
+    if (count != nullptr) {
+      *count = 0;
+    }
+    return static_cast<int32_t>(err.code());
+  } catch (const std::bad_alloc &) {
+    if (count != nullptr) {
+      *count = 0;
+    }
+    return RGPOT_NLIST_NOMEM;
+  }
+}
+
 } // extern "C"

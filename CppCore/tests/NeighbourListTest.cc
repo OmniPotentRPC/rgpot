@@ -526,6 +526,35 @@ TEST_CASE("one atom per thread matches the stored list", "[nlist][api][device]")
   REQUIRE(from_table(bulk) == from_table(by_atom));
 }
 
+TEST_CASE("the fortran bridge reuses the builder and refreshes vectors", "[nlist][api]") {
+  double pos[] = {0, 0, 0, 1.2, 0, 0};
+  const double box[9] = {8, 0, 0, 0, 8, 0, 0, 0, 8};
+  const int32_t periodic[3] = {1, 1, 1};
+  auto *list = rgpot_nlist_fortran_open();
+  REQUIRE(list != nullptr);
+  size_t needed = 0;
+  int32_t reused = 1;
+  REQUIRE(rgpot_nlist_fortran_build(list, pos, 2, box, 2.0, 0.4, periodic, nullptr, nullptr,
+                                    nullptr, nullptr, 0, &needed, &reused) == RGPOT_NLIST_OK);
+  REQUIRE(needed == 2);
+  REQUIRE(reused == 0);
+  std::vector<int32_t> first(needed), second(needed);
+  std::vector<double> vector(needed * 3), distance(needed);
+  REQUIRE(rgpot_nlist_fortran_build(list, pos, 2, box, 2.0, 0.4, periodic, first.data(),
+                                    second.data(), vector.data(), distance.data(), needed, &needed,
+                                    &reused) == RGPOT_NLIST_OK);
+  REQUIRE(distance[0] == Catch::Approx(1.2));
+  pos[0] = 0.05;
+  REQUIRE(rgpot_nlist_fortran_build(list, pos, 2, box, 2.0, 0.4, periodic, first.data(),
+                                    second.data(), vector.data(), distance.data(), needed, &needed,
+                                    &reused) == RGPOT_NLIST_OK);
+  REQUIRE(reused == 1);
+  REQUIRE(distance[0] == Catch::Approx(1.15));
+  const auto view_n = needed;
+  REQUIRE(view_n == 2);
+  rgpot_nlist_fortran_close(list);
+}
+
 TEST_CASE("eight threads match the serial list", "[nlist][api]") {
   constexpr int ncell = 14;
   constexpr double lattice = 3.615;
