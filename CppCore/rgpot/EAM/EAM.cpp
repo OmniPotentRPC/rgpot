@@ -219,14 +219,16 @@ void EAM::accumulate(long i, const int *atomicNrs, double *F, double &U,
       const double expArg = std::exp(-epar.alphaM * (r - epar.Rm));
       const double d = 1.0 - expArg;
       const double phi_r = epar.Dm * d * d - epar.Dm;
+      // mag_force = d(phi)/dr with a minus: phi = Dm (1 - exp(-a(r-Rm)))^2 - Dm,
+      // so d(phi)/dr = -mag_force. The force on i is -(d phi/dr) (r_i-r_j)/r.
       const double mag_force = 2.0 * epar.alphaM * epar.Dm * d * (d - 1.0);
       const double fcomp_scale = mag_force * invR;
-      F[3 * i] -= fcomp_scale * dx;
-      F[3 * i + 1] -= fcomp_scale * dy;
-      F[3 * i + 2] -= fcomp_scale * dz;
-      F[3 * j] += fcomp_scale * dx;
-      F[3 * j + 1] += fcomp_scale * dy;
-      F[3 * j + 2] += fcomp_scale * dz;
+      F[3 * i] += fcomp_scale * dx;
+      F[3 * i + 1] += fcomp_scale * dy;
+      F[3 * i + 2] += fcomp_scale * dz;
+      F[3 * j] -= fcomp_scale * dx;
+      F[3 * j + 1] -= fcomp_scale * dy;
+      F[3 * j + 2] -= fcomp_scale * dz;
       U += phi_r;
     }
   }
@@ -356,9 +358,9 @@ void EAM::evaluateStoredParallel(long N, const int *atomicNrs, double *F,
             const double fcomp =
                 2.0 * epar.alphaM * epar.Dm * d * (d - 1.0) * invR;
             morse_[s] = fcomp;
-            fx -= fcomp * dx;
-            fy -= fcomp * dy;
-            fz -= fcomp * dz;
+            fx += fcomp * dx;
+            fy += fcomp * dy;
+            fz += fcomp * dz;
           } else {
             morse_[s] = 0.0;
           }
@@ -408,7 +410,9 @@ void EAM::evaluateStoredParallel(long N, const int *atomicNrs, double *F,
         if (fnei == 0.0 && fcomp == 0.0) {
           continue;
         }
-        const double scale = dF_[static_cast<std::size_t>(j)] * fnei + fcomp;
+        // Embedding stays -dF*fnei*dx. The pair term flips, so fcomp is
+        // subtracted here and the following minus restores +fcomp*dx.
+        const double scale = dF_[static_cast<std::size_t>(j)] * fnei - fcomp;
         const double dx = gdx_[s];
         fx -= scale * dx;
         fy -= scale * gdy_[s];

@@ -765,6 +765,12 @@ if get_option('with_tests')
                 '',
             ],
             [
+                'ManyBodyForceTest',
+                'many_body_force_test',
+                'ManyBodyForceTest.cc',
+                '',
+            ],
+            [
                 'MinImageIsaHash',
                 'minimage_isa_hash',
                 'MinImageIsaHash.cc',
