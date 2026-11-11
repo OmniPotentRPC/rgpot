@@ -57,3 +57,39 @@ The regression geometry is frame 0, raw numbers kept as angstrom
 atoms 5 and 11 moved equally along the line that joins them until
 that distance is exact. One unordered pair then sits past 10
 angstrom, so a 10 angstrom list has 180 directed edges.
+
+## Change
+
+`model_cutoff` is the backbone range, written by the exporter and
+read by `UmaPot`. It is not a new constant. A molecular package whose
+compiled count is `n(n-1)`, or which did not record a count, emits
+every ordered pair. The 10 angstrom metadata value is not applied.
+A static count that is not that full list is filled out with an image
+of atoms 0 and 1 past the recorded range, or shortened by dropping
+edges already past that range. The envelope makes either edit leave
+the energy and forces unchanged.
+
+`scripts/export_uma_aoti.py` no longer replaces the backbone cutoff
+with `0.4 * L`. `--molecular-box` traces every ordered pair and
+records `model_cutoff`.
+
+## Probe
+
+`CppCore/tests/uma_cutoff_probe.cc` builds the geometry, checks the
+unit reading, and drives one `UmaPot` from 8 angstrom through the
+logged distance to 11 angstrom. The package is
+`scripts/export_cutoff_probe.py`: static 182 edges, metadata cutoff
+10, envelope cutoff 6. Removing pairs at or past 6 angstrom from the
+reference sum matches the engine. A central difference of the energy
+at 9.5, 10.0 and the logged distance matches the reported force.
+
+Against `UmaPot.cc` from `96e910064885a6e81a7b54b5a09d063294823382`
+the sequence passes at 8, 9.5, 9.9 and 10 angstrom (the constructed
+10 angstrom contact is still inside vesin's strict cutoff) and stops
+at 10.197616276524268 angstrom with
+`UmaPot: input nedges is 180, the package was exported for 182`.
+Exit status 1.
+
+After the change the same binary steps through 11 angstrom. Energy
+and forces agree with the pair removed to about `1e-14`. The finite
+difference stays under `2e-9`. Exit status 0.

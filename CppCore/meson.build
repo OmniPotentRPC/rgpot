@@ -936,6 +936,22 @@ if get_option('with_tests')
                 workdir: meson.source_root(),
             )
         endif
+        uma_cutoff_probe = executable(
+            'uma_cutoff_probe',
+            sources: ['tests/uma_cutoff_probe.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+        )
+        test(
+            'UmaCutoffProbe',
+            uma_cutoff_probe,
+            timeout: 600,
+            workdir: meson.source_root(),
+        )
         if _rpc_stack
             executable(
                 'uma_engine_bench',

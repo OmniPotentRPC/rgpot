@@ -1,0 +1,1 @@
+A molecular UMA package keeps every ordered pair in the edge list. A pair past the old 0.4*box trace cutoff no longer shortens that list, so a static graph is not aborted when the pair crosses 10 angstrom.

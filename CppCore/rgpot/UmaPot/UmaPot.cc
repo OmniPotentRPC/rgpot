@@ -242,6 +242,181 @@ void store_rows(torch::Tensor dst, const double *src, int64_t rows,
       "UmaPot: floating input dtype is not float32 or float64");
 }
 
+double edge_span(const ForceInput &in, int64_t neighbor, int64_t center,
+                 double s0, double s1, double s2) {
+  const double *box = in.box;
+  const double dx = in.pos[3 * neighbor] - in.pos[3 * center] + s0 * box[0] +
+                    s1 * box[3] + s2 * box[6];
+  const double dy = in.pos[3 * neighbor + 1] - in.pos[3 * center + 1] +
+                    s0 * box[1] + s1 * box[4] + s2 * box[7];
+  const double dz = in.pos[3 * neighbor + 2] - in.pos[3 * center + 2] +
+                    s0 * box[2] + s1 * box[5] + s2 * box[8];
+  return std::sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+// Every ordered pair, shift 0, ordered by (center, distance, neighbor).
+// A molecular package is traced at this count. The metadata cutoff is the
+// device that was supposed to produce it (0.4 of the box, 10 angstrom when
+// the box is 25) and drops a longer pair.
+EdgeList complete_ordered_edges(const double *pos, size_t n) {
+  struct Cand {
+    int64_t neighbor;
+    int64_t center;
+    double dist;
+  };
+  std::vector<Cand> keep;
+  if (n > 1)
+    keep.reserve(n * (n - 1));
+  for (size_t c = 0; c < n; ++c) {
+    for (size_t j = 0; j < n; ++j) {
+      if (c == j)
+        continue;
+      const double dx = pos[3 * j] - pos[3 * c];
+      const double dy = pos[3 * j + 1] - pos[3 * c + 1];
+      const double dz = pos[3 * j + 2] - pos[3 * c + 2];
+      Cand row;
+      row.neighbor = static_cast<int64_t>(j);
+      row.center = static_cast<int64_t>(c);
+      row.dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+      keep.push_back(row);
+    }
+  }
+  std::sort(keep.begin(), keep.end(), [](const Cand &a, const Cand &b) {
+    if (a.center != b.center)
+      return a.center < b.center;
+    if (a.dist != b.dist)
+      return a.dist < b.dist;
+    return a.neighbor < b.neighbor;
+  });
+  EdgeList out;
+  out.neighbor.reserve(keep.size());
+  out.center.reserve(keep.size());
+  out.offsets.reserve(keep.size() * 3);
+  for (const auto &row : keep) {
+    out.neighbor.push_back(row.neighbor);
+    out.center.push_back(row.center);
+    out.offsets.push_back(0.f);
+    out.offsets.push_back(0.f);
+    out.offsets.push_back(0.f);
+  }
+  return out;
+}
+
+// Static packages record one edge count. A short list is filled with an
+// image of atoms 0 and 1 whose distance sits past `range`, so the model
+// envelope contributes nothing. Edges already past `range` are dropped
+// when the list is long; an in-range overflow is left for checkEdges.
+EdgeList fit_edge_count(const ForceInput &in, EdgeList edges, int64_t want,
+                        double range) {
+  const int64_t have = static_cast<int64_t>(edges.neighbor.size());
+  if (want <= 0 || have == want)
+    return edges;
+  if (have > want) {
+    std::vector<double> dist(static_cast<size_t>(have));
+    std::vector<size_t> order(static_cast<size_t>(have));
+    for (int64_t e = 0; e < have; ++e) {
+      dist[static_cast<size_t>(e)] = edge_span(
+          in, edges.neighbor[static_cast<size_t>(e)],
+          edges.center[static_cast<size_t>(e)],
+          edges.offsets[static_cast<size_t>(3 * e)],
+          edges.offsets[static_cast<size_t>(3 * e + 1)],
+          edges.offsets[static_cast<size_t>(3 * e + 2)]);
+      order[static_cast<size_t>(e)] = static_cast<size_t>(e);
+    }
+    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+      return dist[a] > dist[b];
+    });
+    std::vector<char> drop(static_cast<size_t>(have), 0);
+    int64_t kept = have;
+    for (size_t idx : order) {
+      if (kept <= want)
+        break;
+      if (dist[idx] >= range) {
+        drop[idx] = 1;
+        --kept;
+      }
+    }
+    EdgeList trimmed;
+    trimmed.neighbor.reserve(static_cast<size_t>(kept));
+    trimmed.center.reserve(static_cast<size_t>(kept));
+    trimmed.offsets.reserve(static_cast<size_t>(kept) * 3);
+    for (int64_t e = 0; e < have; ++e) {
+      if (drop[static_cast<size_t>(e)])
+        continue;
+      trimmed.neighbor.push_back(edges.neighbor[static_cast<size_t>(e)]);
+      trimmed.center.push_back(edges.center[static_cast<size_t>(e)]);
+      trimmed.offsets.push_back(edges.offsets[static_cast<size_t>(3 * e)]);
+      trimmed.offsets.push_back(edges.offsets[static_cast<size_t>(3 * e + 1)]);
+      trimmed.offsets.push_back(edges.offsets[static_cast<size_t>(3 * e + 2)]);
+    }
+    return trimmed;
+  }
+  if (in.nAtoms < 2)
+    throw std::runtime_error(
+        "UmaPot: static edge count needs at least two atoms to pad");
+  int shift = 1;
+  double dist = 0.0;
+  for (; shift <= 32; ++shift) {
+    dist = edge_span(in, 1, 0, static_cast<double>(shift), 0.0, 0.0);
+    if (dist > range)
+      break;
+  }
+  if (!(dist > range))
+    throw std::runtime_error(
+        "UmaPot: cannot pad an edge past the model cutoff");
+  edges.neighbor.reserve(static_cast<size_t>(want));
+  edges.center.reserve(static_cast<size_t>(want));
+  edges.offsets.reserve(static_cast<size_t>(want) * 3);
+  while (static_cast<int64_t>(edges.neighbor.size()) < want) {
+    edges.neighbor.push_back(1);
+    edges.center.push_back(0);
+    edges.offsets.push_back(static_cast<float>(shift));
+    edges.offsets.push_back(0.f);
+    edges.offsets.push_back(0.f);
+  }
+  return edges;
+}
+
+// Equal nedges_min and nedges_max are one compiled count. A band package
+// records the total, so the per-system count is that total divided by the
+// system count. A range, or a missing key, returns 0.
+int64_t static_edges_per_system(const UmaContract &contract,
+                                int64_t n_systems) {
+  if (!contract.nedges_min || !contract.nedges_max ||
+      *contract.nedges_min != *contract.nedges_max || n_systems < 1)
+    return 0;
+  const int64_t total = *contract.nedges_max;
+  if (n_systems == 1)
+    return total;
+  if (total % n_systems != 0)
+    return total;
+  return total / n_systems;
+}
+
+EdgeList build_system_edges(const ForceInput &local, double cutoff,
+                            double model_cutoff, double molecular_box,
+                            int max_neighbors, const UmaContract &contract,
+                            int64_t n_systems) {
+  const int64_t n = static_cast<int64_t>(local.nAtoms);
+  const int64_t complete = n > 1 ? n * (n - 1) : 0;
+  const int64_t want = static_edges_per_system(contract, n_systems);
+  const bool molecular = molecular_box > 0.0;
+  // The compiled shape is every ordered pair: either the recorded count
+  // says so, or a molecular package left the count unrecorded (the trace
+  // contract is n(n-1)). The package cutoff is not applied. Pairs past
+  // the model's own range stay in the list and the envelope zeroes them.
+  if (complete > 0 && (want == complete || (molecular && want == 0)))
+    return complete_ordered_edges(local.pos, local.nAtoms);
+
+  const double range = (model_cutoff > 0.0 && std::isfinite(model_cutoff))
+                           ? model_cutoff
+                           : cutoff;
+  EdgeList edges = vesin_fairchem_edges(local, range, max_neighbors);
+  if (want > 0 && static_cast<int64_t>(edges.neighbor.size()) != want)
+    edges = fit_edge_count(local, std::move(edges), want, range);
+  return edges;
+}
+
 } // namespace
 
 struct UmaPot::Impl {
@@ -252,6 +427,9 @@ struct UmaPot::Impl {
   std::string pos_dtype_name{"float32"};
   std::string model_dtype_name{"float32"};
   double cutoff{6.0};
+  // Backbone interaction range from metadata `model_cutoff`. 0 when the
+  // package does not record it; `cutoff` is the fallback.
+  double model_cutoff{0.0};
   double molecular_box{0.0};
   int max_neighbors{300};
   int64_t batch_max{0};
@@ -293,6 +471,9 @@ void UmaPot::ensureLoaded() const {
     }
   };
   m_impl->cutoff = num("cutoff", m_impl->cutoff);
+  m_impl->model_cutoff = num("model_cutoff", 0.0);
+  if (!std::isfinite(m_impl->model_cutoff) || !(m_impl->model_cutoff > 0.0))
+    m_impl->model_cutoff = 0.0;
   m_impl->molecular_box = num("molecular_box", m_impl->molecular_box);
   m_impl->max_neighbors = static_cast<int>(
       num("max_neighbors", static_cast<double>(m_impl->max_neighbors)));
@@ -396,8 +577,9 @@ void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const ForceInput local{in.nAtoms, molecular ? mol_pos.data() : in.pos,
                          in.atmnrs, molecular ? mol_box.data() : in.box};
 
-  const EdgeList edges =
-      vesin_fairchem_edges(local, m_impl->cutoff, m_impl->max_neighbors);
+  const EdgeList edges = build_system_edges(
+      local, m_impl->cutoff, m_impl->model_cutoff, m_impl->molecular_box,
+      m_impl->max_neighbors, m_impl->contract, /*n_systems=*/1);
   const auto n = static_cast<int64_t>(local.nAtoms);
   const auto nedges = static_cast<int64_t>(edges.neighbor.size());
   if (nedges == 0)
@@ -546,8 +728,9 @@ void UmaPot::forceBatchImpl(const ForceBatch &batch) const {
       }
       const ForceInput local{static_cast<size_t>(n), pos_b.data(), in.atmnrs,
                              box_b.data()};
-      sys_edges[static_cast<size_t>(b)] =
-          vesin_fairchem_edges(local, m_impl->cutoff, m_impl->max_neighbors);
+      sys_edges[static_cast<size_t>(b)] = build_system_edges(
+          local, m_impl->cutoff, m_impl->model_cutoff, m_impl->molecular_box,
+          m_impl->max_neighbors, m_impl->contract, B);
       nedges_total += static_cast<int64_t>(
           sys_edges[static_cast<size_t>(b)].neighbor.size());
     }

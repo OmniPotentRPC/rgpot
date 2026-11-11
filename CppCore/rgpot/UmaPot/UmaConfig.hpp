@@ -19,7 +19,11 @@ struct UmaConfig {
   int charge = 0;
   int spin = 1;
   /// Cutoff in angstrom. The package's embedded `cutoff` metadata wins
-  /// when present; no sidecar file is read.
+  /// when present; no sidecar file is read. A molecular package does
+  /// not truncate pairs at this value: the compiled list is every
+  /// ordered pair, and the model envelope zeroes pairs past its own
+  /// range (`model_cutoff` in the package, or this cutoff when that
+  /// key is absent).
   double cutoff = 6.0;
   int max_neighbors = 300;
 };
