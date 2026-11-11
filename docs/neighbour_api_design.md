@@ -412,3 +412,48 @@ with a modifier, and the C result is still an array of
 `rgpot_nlist_pair` copied out of the structure of arrays. The walk
 open now returns a code (`rgpot_nlist_walk **` out-parameter) so a
 rejected geometry is not only a null pointer.
+
+## Pass 2: a half list and a cluster are different types
+
+A three-body term wants every ordered pair around one atom. The pass-1
+call could still ask for a cluster with the half-list default next to
+it, and `Mode::Auto` could hand back an empty table:
+
+```cpp
+rgpot::nlist::Query query;
+query.cutoff = 3.0;
+query.format = rgpot::nlist::Format::Cluster4; // full interactions, easy to miss
+query.mode = rgpot::nlist::Mode::Auto;         // may store nothing
+```
+
+`Format` was one enum, so the C++ type could not be half and cluster
+at once, but the name read as a modifier on the default half list.
+The C integer `format = 2` did not say "this is not a half list".
+`build` treated `Mode::Stream` and a large `Mode::Auto` as success
+with `stored == false`.
+
+The shape is now a variant. Pairs carry a shell. A cluster does not:
+
+```cpp
+rgpot::nlist::Query query;
+query.cutoff = 3.0;
+query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Full};
+rgpot::nlist::Table table;
+rgpot::nlist::build(table, positions, n, box, query);
+// or, for the masked kernel:
+query.shape = rgpot::nlist::Cluster4{};
+```
+
+There is no `mode` on `Query`. `build` and `Builder` store every pair.
+`Walk` is the stream. A cluster expands to the same interactions as a
+full pair list; the mask uses the low four bits and never `0xff`.
+
+In C the two fields are `shape` and `shell`. `shape == 1` with
+`shell == 0` returns `RGPOT_NLIST_SHAPE` and the sentence "a cluster
+list stores every neighbour; set shell to 1 (full)". The abi is 3
+because `format` and `mode` left the struct. `bytes` still has to
+cover the struct the caller compiled.
+
+Metatomic sets `Pairs` from `full_list()`. UMA sets a full pair list.
+Neither can ask the public query for a list that then turns out empty
+because the machine looked short of memory.

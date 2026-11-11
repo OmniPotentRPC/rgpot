@@ -53,13 +53,12 @@ EdgeList vesin_fairchem_edges(const ForceInput &in, double cutoff,
                               int max_neighbors) {
   nlist::Query query;
   query.cutoff = cutoff;
-  query.format = nlist::Format::Full;
+  query.shape = nlist::Pairs{nlist::Shell::Full};
   query.cut = nlist::Cut::Strict;
   query.periodic = {true, true, true};
   query.fields.shifts = true;
   query.fields.vectors = false;
   query.fields.distances = true;
-  query.mode = nlist::Mode::Stored;
   nlist::Table table;
   nlist::build(table, in.pos, in.nAtoms, in.box, query);
 

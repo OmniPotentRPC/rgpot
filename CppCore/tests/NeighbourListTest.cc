@@ -112,10 +112,10 @@ TEST_CASE("neighbour query matches a triclinic brute force", "[nlist][api]") {
       rgpot::nlist::Query query;
       query.cutoff = cutoff;
       query.skin = 0;
-      query.format = full ? rgpot::nlist::Format::Full : rgpot::nlist::Format::Half;
+      query.shape = rgpot::nlist::Pairs{full ? rgpot::nlist::Shell::Full
+                                            : rgpot::nlist::Shell::Half};
       query.cut = strict ? rgpot::nlist::Cut::Strict : rgpot::nlist::Cut::Loose;
       query.periodic = periodic;
-      query.mode = rgpot::nlist::Mode::Stored;
       rgpot::nlist::Table table;
       rgpot::nlist::build(table, pos.data(), pos.size() / 3, box, query);
       const auto got = from_table(table);
@@ -150,9 +150,8 @@ TEST_CASE("a chunked walk returns the stored pairs", "[nlist][api]") {
   const std::vector<double> pos = {0.5, 0.5, 0.5, 2.0, 1.0, 1.0, 4.5, 3.0, 6.0};
   rgpot::nlist::Query query;
   query.cutoff = 4.0;
-  query.format = rgpot::nlist::Format::Full;
+  query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Full};
   query.cut = rgpot::nlist::Cut::Strict;
-  query.mode = rgpot::nlist::Mode::Stored;
   rgpot::nlist::Table table;
   rgpot::nlist::build(table, pos.data(), pos.size() / 3, box, query);
   rgpot::nlist::Walk walk(pos.data(), pos.size() / 3, box, query);
@@ -181,7 +180,8 @@ TEST_CASE("the C ABI round-trips a stored list and a stream", "[nlist][api]") {
   request.cutoff = 3.0;
   REQUIRE(request.periodic[0] == 1);
   REQUIRE(request.want_distances == 1);
-  REQUIRE(request.mode == 1);
+  REQUIRE(request.shape == 0);
+  REQUIRE(request.shell == 0);
   REQUIRE(request.bytes == sizeof(request));
   std::size_t count = 0;
   std::size_t needed = 0;
@@ -202,10 +202,15 @@ TEST_CASE("the C ABI round-trips a stored list and a stream", "[nlist][api]") {
   rgpot_nlist_request zero{};
   REQUIRE(rgpot_nlist_build(pos, 3, box, &zero, nullptr, 0, &count, &needed) ==
           RGPOT_NLIST_ERR_ABI);
-  request.format = 9;
+  request.shape = 9;
   REQUIRE(rgpot_nlist_build(pos, 3, box, &request, nullptr, 0, &count, &needed) ==
           RGPOT_NLIST_SHAPE);
-  request.format = 0;
+  request.shape = 1;
+  request.shell = 0;
+  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, nullptr, 0, &count, &needed) ==
+          RGPOT_NLIST_SHAPE);
+  request.shape = 0;
+  request.shell = 0;
   request.cutoff = -1;
   REQUIRE(rgpot_nlist_build(pos, 3, box, &request, nullptr, 0, &count, &needed) ==
           RGPOT_NLIST_CUTOFF);
@@ -237,7 +242,6 @@ TEST_CASE("a rejected geometry throws and keeps the previous table", "[nlist][ap
   const std::vector<double> pos = {0, 0, 0, 1, 0, 0};
   rgpot::nlist::Query query;
   query.cutoff = 1.5;
-  query.mode = rgpot::nlist::Mode::Stored;
   rgpot::nlist::Builder builder;
   builder.update(pos.data(), pos.size() / 3, box, query);
   const auto n = builder.table().size();
@@ -248,15 +252,34 @@ TEST_CASE("a rejected geometry throws and keeps the previous table", "[nlist][ap
   REQUIRE(builder.table().size() == n);
 }
 
+TEST_CASE("a cluster of four expands to the full list", "[nlist][api]") {
+  const double box[9] = {4.0, 0.2, 0.1, 0.3, 4.5, -0.2, 0.05, 0.15, 4.2};
+  const std::vector<double> pos = {0.2, 0.3, 0.4, 3.6, 0.5, 0.2, 1.0, 3.8, 0.7,
+                                   2.2, 2.1, 3.9};
+  rgpot::nlist::Query query;
+  query.cutoff = 3.2;
+  query.shape = rgpot::nlist::Cluster4{};
+  query.periodic = {{true, true, false}};
+  rgpot::nlist::Table clustered;
+  rgpot::nlist::build(clustered, pos.data(), pos.size() / 3, box, query);
+  query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Full};
+  rgpot::nlist::Table full;
+  rgpot::nlist::build(full, pos.data(), pos.size() / 3, box, query);
+  REQUIRE(from_table(clustered) == from_table(full));
+  for (std::uint8_t mask : clustered.mask) {
+    REQUIRE(mask != 0);
+    REQUIRE((mask & 0xf0) == 0);
+  }
+}
+
 TEST_CASE("a skin rebuild keeps the same pairs", "[nlist][api]") {
   const double box[9] = {8, 0, 0, 0, 8, 0, 0, 0, 8};
   std::vector<double> pos = {1, 1, 1, 2, 1, 1, 1, 3, 1};
   rgpot::nlist::Query query;
   query.cutoff = 2.5;
   query.skin = 0.4;
-  query.format = rgpot::nlist::Format::Half;
+  query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Half};
   query.cut = rgpot::nlist::Cut::Loose;
-  query.mode = rgpot::nlist::Mode::Stored;
   rgpot::nlist::Builder builder;
   builder.update(pos.data(), pos.size() / 3, box, query);
   const auto first = builder.builds();

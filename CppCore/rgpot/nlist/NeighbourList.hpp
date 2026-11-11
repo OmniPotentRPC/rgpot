@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <stdexcept>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace rgpot::nlist {
@@ -46,11 +47,24 @@ private:
 };
 
 /// Half keeps one direction of each pair, with the same image rule vesin
-/// uses for a self image. Full keeps both directions. Cluster4 groups
-/// four consecutive central atoms and stores one partner with a 4-bit mask.
-/// Cluster4 is the full interaction set packed by fours. It is not a
-/// half list.
-enum class Format : std::uint8_t { Half, Full, Cluster4 };
+/// uses for a self image. Full keeps both directions.
+enum class Shell : std::uint8_t { Half, Full };
+
+/// One pair per interaction. `shell` chooses the direction.
+struct Pairs {
+  Shell shell = Shell::Half;
+  friend bool operator==(Pairs a, Pairs b) noexcept { return a.shell == b.shell; }
+};
+
+/// Four consecutive central atoms, one partner, and a 4-bit mask.
+/// The interactions are the full set. There is no half-list cluster:
+/// the type has no shell.
+struct Cluster4 {
+  friend bool operator==(Cluster4, Cluster4) noexcept { return true; }
+};
+
+/// Pairs or a cluster of four. A value cannot be both.
+using Shape = std::variant<Pairs, Cluster4>;
 
 /// Strict keeps pairs with distance strictly below the cutoff. Loose keeps
 /// pairs out to cutoff + skin, which is what a Verlet rebuild needs.
@@ -64,15 +78,15 @@ struct Fields {
   bool distances = true;
 };
 
-/// One neighbour query.
+/// One neighbour query. `build` and `Builder` store the pairs. `Walk`
+/// streams them. There is no mode flag that can store nothing.
 struct Query {
   double cutoff = 0;
   double skin = 0;
-  Format format = Format::Half;
+  Shape shape = Pairs{};
   Cut cut = Cut::Strict;
   std::array<bool, 3> periodic{{true, true, true}};
   Fields fields{};
-  Mode mode = Mode::Stored;
 };
 
 /// Non-owning view of a structure-of-arrays neighbour table.
@@ -180,12 +194,10 @@ private:
   bool finished_ = false;
 };
 
-/// Fill `table` from `query`. Stream mode leaves the table empty and sets
-/// `table.stored` false; the caller uses Walk. Auto stores when a bound on
-/// the pair count fits in the memory the OS reports as available, and
-/// otherwise leaves the table empty. Throws Error before clearing `table`
-/// when the geometry is rejected. Two builds on different tables may run
-/// at the same time. They share no mutable global.
+/// Fill `table` from `query`. The table holds every pair. A caller that
+/// must not store the list uses Walk. Throws Error before clearing
+/// `table` when the geometry is rejected. Two builds on different tables
+/// may run at the same time. They share no mutable global.
 void build(Table &table, const double *positions, std::size_t n,
            const double *box9, const Query &query);
 

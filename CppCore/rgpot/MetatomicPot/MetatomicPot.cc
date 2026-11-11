@@ -651,7 +651,8 @@ metatensor_torch::TensorBlock MetatomicPot::computeNeighbors(
   auto cutoff = request->engine_cutoff(m_config.length_unit);
   nlist::Query query;
   query.cutoff = cutoff;
-  query.format = request->full_list() ? nlist::Format::Full : nlist::Format::Half;
+  query.shape = request->full_list() ? nlist::Shape{nlist::Pairs{nlist::Shell::Full}}
+                                     : nlist::Shape{nlist::Pairs{nlist::Shell::Half}};
   query.cut = nlist::Cut::Strict;
   if constexpr (requires { request->strict(); }) {
     query.cut = request->strict() ? nlist::Cut::Strict : nlist::Cut::Loose;
@@ -660,7 +661,6 @@ metatensor_torch::TensorBlock MetatomicPot::computeNeighbors(
   query.fields.shifts = true;
   query.fields.vectors = true;
   query.fields.distances = false;
-  query.mode = nlist::Mode::Stored;
   auto held = std::make_shared<nlist::Table>();
   nlist::build(*held, positions, static_cast<std::size_t>(nAtoms), box, query);
 

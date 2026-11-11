@@ -32,7 +32,7 @@
 extern "C" {
 #endif
 
-#define RGPOT_NLIST_ABI 2
+#define RGPOT_NLIST_ABI 3
 
 enum {
   RGPOT_NLIST_OK = 0,
@@ -45,24 +45,26 @@ enum {
   RGPOT_NLIST_NOMEM = 7
 };
 
-/* format: 0 half, 1 full, 2 cluster of four. Any other value is
- * RGPOT_NLIST_SHAPE. cut: 0 strict (distance < cutoff), 1 loose
- * (distance < cutoff + skin, or distance <= cutoff when skin is 0).
- * mode: 0 auto, 1 stored, 2 stream. init() selects a half list, a
- * strict cutoff, periodic boundaries, every geometry field, and a
- * stored list. */
+/* shape: 0 pairs, 1 cluster of four. shell: 0 half, 1 full.
+ * A cluster stores every neighbour, so shell must be 1. Half and
+ * cluster together return RGPOT_NLIST_SHAPE. cut: 0 strict
+ * (distance < cutoff), 1 loose (distance < cutoff + skin, or
+ * distance <= cutoff when skin is 0). init() selects pairs, a half
+ * shell, a strict cutoff, periodic boundaries and every geometry
+ * field. build() stores the list. The walk streams it. There is no
+ * mode that stores nothing. */
 typedef struct rgpot_nlist_request {
   uint32_t bytes;
   uint32_t abi;
   double cutoff;
   double skin;
-  int32_t format;
+  int32_t shape;
+  int32_t shell;
   int32_t cut;
   int32_t periodic[3];
   int32_t want_shifts;
   int32_t want_vectors;
   int32_t want_distances;
-  int32_t mode;
 } rgpot_nlist_request;
 
 /* mask is 0xff for half and full. For a cluster of four, bit k is atom
@@ -83,8 +85,8 @@ int32_t rgpot_nlist_abi_version(void);
  * The pointer is a literal and is not freed. */
 const char *rgpot_nlist_strerror(int32_t code);
 
-/* Sets bytes, abi, a half list, a strict cutoff, periodic boundaries
- * on every axis, shifts, vectors, distances, and a stored list.
+/* Sets bytes, abi, a half pair list, a strict cutoff, periodic
+ * boundaries on every axis, and shifts, vectors and distances.
  * cutoff and skin are left at 0. A null request is ignored. */
 void rgpot_nlist_request_init(rgpot_nlist_request *request);
 

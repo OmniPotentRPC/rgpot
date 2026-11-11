@@ -42,16 +42,13 @@ void check_geometry(const double *positions, std::size_t n, const double *box9,
   if (!std::isfinite(query.skin) || query.skin < 0.0) {
     throw Error(Code::Cutoff, "skin must be finite and >= 0");
   }
-  if (query.format != Format::Half && query.format != Format::Full &&
-      query.format != Format::Cluster4) {
-    throw Error(Code::Shape, "format must be half, full, or a cluster of four");
+  if (const auto *pairs = std::get_if<Pairs>(&query.shape)) {
+    if (pairs->shell != Shell::Half && pairs->shell != Shell::Full) {
+      throw Error(Code::Shape, "a pair list shell must be half or full");
+    }
   }
   if (query.cut != Cut::Strict && query.cut != Cut::Loose) {
     throw Error(Code::Shape, "cut must be strict or loose");
-  }
-  if (query.mode != Mode::Auto && query.mode != Mode::Stored &&
-      query.mode != Mode::Stream) {
-    throw Error(Code::Shape, "mode must be auto, stored, or stream");
   }
   for (int k = 0; k < 9; ++k) {
     if (!std::isfinite(box9[k])) {
@@ -79,6 +76,15 @@ double search_radius(const Query &query) {
     return query.cutoff + query.skin;
   }
   return query.cutoff;
+}
+
+bool clustered(const Query &query) { return std::holds_alternative<Cluster4>(query.shape); }
+
+bool full_shell(const Query &query) {
+  if (const auto *pairs = std::get_if<Pairs>(&query.shape)) {
+    return pairs->shell == Shell::Full;
+  }
+  return true;
 }
 
 bool accept_distance(double r2, const Query &query) {
@@ -162,7 +168,7 @@ void each_image(const double *pos, std::size_t n, const double *box, const Query
       for (int sa = -nmax[0]; sa <= nmax[0]; ++sa) {
         for (int sb = -nmax[1]; sb <= nmax[1]; ++sb) {
           for (int sc = -nmax[2]; sc <= nmax[2]; ++sc) {
-            if (query.format != Format::Full &&
+            if (!full_shell(query) &&
                 !keep_half(static_cast<std::int32_t>(i), static_cast<std::int32_t>(j),
                            sa, sb, sc)) {
               continue;
@@ -255,11 +261,11 @@ void merge_clusters(std::vector<Rec> &rows) {
 void collect(const double *pos, std::size_t n, const double *box, const Query &query,
              const int nmax[3], std::size_t begin, std::size_t end,
              std::vector<Rec> &out) {
-  if (query.format == Format::Cluster4) {
+  if (clustered(query)) {
     const std::size_t c0 = begin & ~std::size_t{3};
     const std::size_t c1 = std::min(n, (end + 3) & ~std::size_t{3});
     Query full = query;
-    full.format = Format::Full;
+    full.shape = Pairs{Shell::Full};
     std::vector<Rec> raw;
     each_image(pos, n, box, full, nmax, c0, c1,
                [&](std::int32_t i, std::int32_t j, int sa, int sb, int sc, double vx,
@@ -322,13 +328,6 @@ void store_records(Table &table, const Query &query, const std::vector<Rec> &row
   table.device = 0;
 }
 
-std::uint64_t pair_bound(std::size_t n, const int nmax[3]) {
-  const auto nx = static_cast<std::uint64_t>(2 * nmax[0] + 1);
-  const auto ny = static_cast<std::uint64_t>(2 * nmax[1] + 1);
-  const auto nz = static_cast<std::uint64_t>(2 * nmax[2] + 1);
-  return static_cast<std::uint64_t>(n) * static_cast<std::uint64_t>(n) * nx * ny * nz;
-}
-
 } // namespace
 
 void Builder::update(const double *positions, std::size_t n, const double *box9,
@@ -336,7 +335,7 @@ void Builder::update(const double *positions, std::size_t n, const double *box9,
   check_geometry(positions, n, box9, query);
   reused_ = false;
   if (have_ && n_ == n && query_.cutoff == query.cutoff && query_.skin == query.skin &&
-      query_.format == query.format && query_.cut == query.cut &&
+      query_.shape == query.shape && query_.cut == query.cut &&
       query_.periodic == query.periodic && query_.fields.shifts == query.fields.shifts &&
       query_.fields.vectors == query.fields.vectors &&
       query_.fields.distances == query.fields.distances &&
@@ -410,7 +409,7 @@ std::size_t Walk::pull(OutSoA dest, std::size_t cap, bool &done) {
         break;
       }
       const std::size_t end = std::min(
-          n_, atom_ + (query_.format == Format::Cluster4 ? std::size_t{4} : std::size_t{1}));
+          n_, atom_ + (clustered(query_) ? std::size_t{4} : std::size_t{1}));
       std::vector<Rec> rows;
       collect(pos_, n_, box_, query_, nmax_, atom_, end, rows);
       atom_ = end;
@@ -449,18 +448,11 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
   check_geometry(positions, n, box9, query);
   table = Table{};
   if (n == 0 || !(query.cutoff > 0.0)) {
-    table.stored = query.mode != Mode::Stream;
+    table.stored = true;
     return;
   }
   int nmax[3];
   shift_bounds(box9, query.periodic, search_radius(query), nmax);
-  const bool stream = query.mode == Mode::Stream ||
-                      (query.mode == Mode::Auto &&
-                       pair_bound(n, nmax) > availableBytes() / 32);
-  if (stream) {
-    table.stored = false;
-    return;
-  }
   const int nt = threadsRequested();
   std::vector<std::vector<Rec>> parts(static_cast<std::size_t>(std::max(nt, 1)));
   if (nt <= 1) {
@@ -484,7 +476,7 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
   for (const auto &part : parts) {
     rows.insert(rows.end(), part.begin(), part.end());
   }
-  if (query.format == Format::Cluster4 && nt > 1) {
+  if (clustered(query) && nt > 1) {
     merge_clusters(rows);
   }
   store_records(table, query, rows);
@@ -498,7 +490,8 @@ rgpot::nlist::Query query_from_c(const rgpot_nlist_request *request) {
   if (request == nullptr) {
     throw rgpot::nlist::Error(rgpot::nlist::Code::Null, "request is null");
   }
-  const auto minimum = offsetof(rgpot_nlist_request, mode) + sizeof(std::int32_t);
+  const auto minimum =
+      offsetof(rgpot_nlist_request, want_distances) + sizeof(std::int32_t);
   if (request->bytes < minimum || request->abi != RGPOT_NLIST_ABI) {
     throw rgpot::nlist::Error(rgpot::nlist::Code::Abi,
                               "request abi or bytes does not match this library");
@@ -506,32 +499,36 @@ rgpot::nlist::Query query_from_c(const rgpot_nlist_request *request) {
   rgpot_nlist_request taken{};
   std::memcpy(&taken, request,
               std::min(static_cast<std::size_t>(request->bytes), sizeof(taken)));
-  if (taken.format != 0 && taken.format != 1 && taken.format != 2) {
+  if (taken.shape != 0 && taken.shape != 1) {
     throw rgpot::nlist::Error(rgpot::nlist::Code::Shape,
-                              "format must be 0 (half), 1 (full) or 2 (cluster of four)");
+                              "shape must be 0 (pairs) or 1 (cluster of four)");
+  }
+  if (taken.shell != 0 && taken.shell != 1) {
+    throw rgpot::nlist::Error(rgpot::nlist::Code::Shape, "shell must be 0 (half) or 1 (full)");
+  }
+  if (taken.shape == 1 && taken.shell != 1) {
+    throw rgpot::nlist::Error(
+        rgpot::nlist::Code::Shape,
+        "a cluster list stores every neighbour; set shell to 1 (full)");
   }
   if (taken.cut != 0 && taken.cut != 1) {
     throw rgpot::nlist::Error(rgpot::nlist::Code::Shape,
                               "cut must be 0 (strict) or 1 (loose)");
   }
-  if (taken.mode != 0 && taken.mode != 1 && taken.mode != 2) {
-    throw rgpot::nlist::Error(rgpot::nlist::Code::Shape,
-                              "mode must be 0 (auto), 1 (stored) or 2 (stream)");
-  }
   rgpot::nlist::Query query;
   query.cutoff = taken.cutoff;
   query.skin = taken.skin;
-  query.format = taken.format == 1   ? rgpot::nlist::Format::Full
-                 : taken.format == 2 ? rgpot::nlist::Format::Cluster4
-                                      : rgpot::nlist::Format::Half;
+  if (taken.shape == 1) {
+    query.shape = rgpot::nlist::Cluster4{};
+  } else {
+    query.shape = rgpot::nlist::Pairs{taken.shell == 1 ? rgpot::nlist::Shell::Full
+                                                       : rgpot::nlist::Shell::Half};
+  }
   query.cut = taken.cut == 0 ? rgpot::nlist::Cut::Strict : rgpot::nlist::Cut::Loose;
   query.periodic = {taken.periodic[0] != 0, taken.periodic[1] != 0, taken.periodic[2] != 0};
   query.fields.shifts = taken.want_shifts != 0;
   query.fields.vectors = taken.want_vectors != 0;
   query.fields.distances = taken.want_distances != 0;
-  query.mode = taken.mode == 2   ? rgpot::nlist::Mode::Stream
-               : taken.mode == 0 ? rgpot::nlist::Mode::Auto
-                                 : rgpot::nlist::Mode::Stored;
   return query;
 }
 
@@ -579,7 +576,7 @@ const char *rgpot_nlist_strerror(int32_t code) {
   case RGPOT_NLIST_BOX:
     return "box must be finite, and a periodic box must have positive volume";
   case RGPOT_NLIST_SHAPE:
-    return "neighbour format, cut or mode is not a supported value";
+    return "neighbour shape, shell or cut is not a supported value";
   case RGPOT_NLIST_SHORT:
     return "neighbour buffer is shorter than the list; needed holds the full count";
   case RGPOT_NLIST_NOMEM:
@@ -596,7 +593,8 @@ void rgpot_nlist_request_init(rgpot_nlist_request *request) {
   std::memset(request, 0, sizeof(*request));
   request->bytes = static_cast<uint32_t>(sizeof(*request));
   request->abi = RGPOT_NLIST_ABI;
-  request->format = 0;
+  request->shape = 0;
+  request->shell = 0;
   request->cut = 0;
   request->periodic[0] = 1;
   request->periodic[1] = 1;
@@ -604,7 +602,6 @@ void rgpot_nlist_request_init(rgpot_nlist_request *request) {
   request->want_shifts = 1;
   request->want_vectors = 1;
   request->want_distances = 1;
-  request->mode = 1;
 }
 
 int32_t rgpot_nlist_build(const double *positions, size_t n, const double *box9,
