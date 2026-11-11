@@ -12,7 +12,12 @@
 // clang-format off
 #include <cmath>
 #include <limits>
+#include <vector>
 // clang-format on
+
+#if defined(_OPENMP)
+#include <omp.h>
+#endif
 
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/nlist/PairListCache.hpp"
@@ -29,15 +34,12 @@ namespace rgpot {
  * @details
  *
  * Pairwise interactions within the cutoff radius, minimum image convention
- * on an orthogonal box. Pairs come from the shared
- * ``rgpot::nlist::PairListCache`` (the eOn PairListCache design): repeated
- * evaluations on nearby geometries reuse a Verlet-skin cached candidate
- * list, and one-shot evaluations run a single fused scan identical in pair
- * content to the historical per-call double loop. An orthorhombic cell
- * takes those candidates from the fast list (linkcell when the cell is
- * several cutoffs wide, otherwise every unordered pair) and folds them
- * with minimage. The pair term is the Highway kernel selected for this
- * process. A nonzero switch width uses that kernel's quintic switch.
+ * on an orthogonal box. Pairs come from the shared neighbour layer: a
+ * cell list, a Verlet skin, and either a stored list or a streaming walk.
+ * Repeated evaluations on nearby geometries reuse that list. The pair
+ * term on one thread is the kernel selected for this process. Several
+ * threads split the atoms, keep a private force buffer, and add those
+ * buffers in thread order. A nonzero switch width uses the quintic switch.
  * Cauchy stress is published from the kernel's strain accumulator.
  *
  * @warning The box is assumed to be orthogonal.
@@ -75,9 +77,60 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     params.r_on = m_switch.r_on;
     params.inv_width = m_switch.inv_width;
   }
-  simd::CachedPairs pairs;
-  simd::fill_view(pairs, R, static_cast<std::size_t>(N), box, opt);
-  *U = simd::lj_force(pairs.view, params, F, strain);
+  const auto n_atoms = static_cast<std::size_t>(N);
+  neighbours_.update(R, n_atoms, box,
+                     nlist::Spec{opt.cutoff, opt.skin, opt.periodic,
+                                 nlist::Image::Round, mode_});
+  const bool reuse_pairs = have_cache_ && !neighbours_.streaming() &&
+                           neighbours_.builds() == list_stamp_ &&
+                           cached_.view.n == n_atoms;
+  if (reuse_pairs) {
+    cached_.view.R = R;
+  } else {
+    simd::fill_view(cached_, R, n_atoms, box, opt, mode_, &neighbours_);
+    have_cache_ = !neighbours_.streaming();
+    list_stamp_ = neighbours_.builds();
+  }
+  const simd::PairView &view = cached_.view;
+  const int nt = nlist::threadsRequested();
+  if (nt <= 1) {
+    *U = simd::lj_force(view, params, F, strain);
+  } else {
+    const auto n = static_cast<std::size_t>(N);
+    std::vector<double> owned(static_cast<std::size_t>(nt) * n * 3, 0.0);
+    std::vector<double> energy(static_cast<std::size_t>(nt), 0.0);
+    std::vector<double> virial(static_cast<std::size_t>(nt) * 6, 0.0);
+    std::vector<nlist::Range> parts(static_cast<std::size_t>(nt));
+    for (int t = 0; t < nt; ++t) {
+      parts[static_cast<std::size_t>(t)] = nlist::partition(N, t, nt);
+    }
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+    {
+#if defined(_OPENMP)
+      const int t = omp_get_thread_num();
+#else
+      const int t = 0;
+#endif
+      const auto range = parts[static_cast<std::size_t>(t)];
+      double *local = owned.data() + static_cast<std::size_t>(t) * n * 3;
+      double *st = virial.data() + static_cast<std::size_t>(t) * 6;
+      energy[static_cast<std::size_t>(t)] = simd::lj_force_span(
+          view, params, local, st, static_cast<std::size_t>(range.begin),
+          static_cast<std::size_t>(range.end));
+    }
+    for (int t = 0; t < nt; ++t) {
+      *U += energy[static_cast<std::size_t>(t)];
+      const double *local = owned.data() + static_cast<std::size_t>(t) * n * 3;
+      for (std::size_t k = 0; k < n * 3; ++k) {
+        F[k] += local[k];
+      }
+      for (int c = 0; c < 6; ++c) {
+        strain[c] += virial[static_cast<std::size_t>(t) * 6 + static_cast<std::size_t>(c)];
+      }
+    }
+  }
   publishCauchyStress(out, strain, volume);
 }
 

@@ -24,6 +24,7 @@
 
 #include "rgpot/Potential.hpp"
 #include "rgpot/nlist/HalfShell.hpp"
+#include "rgpot/nlist/Neighbours.hpp"
 
 namespace rgpot {
 
@@ -79,6 +80,10 @@ public:
    */
   void setHeldSkin(double skin);
 
+  /// Stream walks cells without a stored pair list. Auto and Stored keep
+  /// the historical ordered walk.
+  void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
+
   /// The list forceImpl keeps. Not built until a call with a positive skin.
   [[nodiscard]] const nlist::NeighborList &heldList() const noexcept {
     return m_held;
@@ -127,7 +132,9 @@ private:
   Species m_species[2]{};
   Pair m_pair[2][2]{};
   uint64_t m_paramsKey{0};
+  nlist::Mode mode_ = nlist::Mode::Auto;
   mutable nlist::NeighborList m_held;
+  mutable nlist::Neighbours neighbours_;
 };
 
 } // namespace rgpot

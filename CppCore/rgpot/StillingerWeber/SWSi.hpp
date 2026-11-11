@@ -20,6 +20,7 @@
 
 #include "rgpot/Potential.hpp"
 #include "rgpot/nlist/HalfShell.hpp"
+#include "rgpot/nlist/Neighbours.hpp"
 
 namespace rgpot {
 
@@ -55,6 +56,10 @@ public:
   }
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
+
+  /// Stream walks cells without a stored pair list. Auto and Stored keep
+  /// the historical ordered walk, which is what one thread matches bit for bit.
+  void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
   /**
    * @brief Energy and dE/dx for one configuration.
@@ -98,6 +103,8 @@ private:
                 nlist::NeighborList *neighbors) const;
 
   uint64_t m_paramsKey{0};
+  nlist::Mode mode_ = nlist::Mode::Auto;
+  mutable nlist::Neighbours neighbours_;
 };
 
 } // namespace rgpot

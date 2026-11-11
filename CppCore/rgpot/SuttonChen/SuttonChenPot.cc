@@ -23,8 +23,12 @@
 // clang-format on
 
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
-#include "rgpot/nlist/PairListCache.hpp"
+#include "rgpot/nlist/Neighbours.hpp"
 #include "rgpot/stress.hpp"
+
+#if defined(_OPENMP)
+#include <omp.h>
+#endif
 
 namespace {
 
@@ -114,10 +118,11 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     return;
   }
 
-  nlist::CachedPairList::Options opt;
-  opt.cutoff = (cfg.cutoff > 0.0) ? cfg.cutoff : 1.0e6;
-  opt.periodic = cfg.periodic ? std::array<bool, 3>{true, true, true}
-                              : std::array<bool, 3>{false, false, false};
+  const double cutoff = (cfg.cutoff > 0.0) ? cfg.cutoff : 1.0e6;
+  const double cutoff2 = cutoff * cutoff;
+  const std::array<bool, 3> periodic =
+      cfg.periodic ? std::array<bool, 3>{true, true, true}
+                   : std::array<bool, 3>{false, false, false};
 
   static constexpr double free_box[9] = {1.0e6, 0.0, 0.0, 0.0, 1.0e6,
                                          0.0,   0.0, 0.0, 1.0e6};
@@ -137,20 +142,69 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
   std::vector<double> rho(n_size, 0.0);
   double epair = 0.0;
-  auto &pool = nlist::PairListCache::global();
-  pool.evaluate(
-      R, n_size, box_use, opt,
-      [&](int32_t i, int32_t j, double, double, double, double r2) {
-        if (!(r2 > 0.0)) {
-          return;
-        }
-        const double ar2 = (lattice * lattice) / r2;
-        const double phi = pow_ar(ar2, m_exp);
-        const double rep = pow_ar(ar2, n_exp);
-        rho[static_cast<std::size_t>(i)] += phi;
-        rho[static_cast<std::size_t>(j)] += phi;
-        epair += epsilon * rep;
-      });
+  nlist::Spec spec;
+  spec.cutoff = cutoff;
+  spec.skin = cutoff / 5.0;
+  spec.periodic = periodic;
+  spec.image = nlist::Image::Round;
+  spec.mode = mode_;
+  neighbours_.update(R, n_size, box_use, spec);
+  const int nt = nlist::threadsRequested();
+  auto pair_term = [&](double r2, double &phi, double &rep) {
+    const double ar2 = (lattice * lattice) / r2;
+    phi = pow_ar(ar2, m_exp);
+    rep = pow_ar(ar2, n_exp);
+  };
+  if (nt == 1) {
+    neighbours_.forDirected(
+        0, n_atoms, [&](int32_t i, int32_t j, double, double, double, double r2) {
+          if (!(j > i) || !(r2 > 0.0) || r2 > cutoff2) {
+            return;
+          }
+          double phi = 0.0;
+          double rep = 0.0;
+          pair_term(r2, phi, rep);
+          rho[static_cast<std::size_t>(i)] += phi;
+          rho[static_cast<std::size_t>(j)] += phi;
+          epair += epsilon * rep;
+        });
+  } else {
+    std::vector<nlist::Range> parts(static_cast<std::size_t>(nt));
+    for (int t = 0; t < nt; ++t) {
+      parts[static_cast<std::size_t>(t)] = nlist::partition(n_atoms, t, nt);
+    }
+    std::vector<double> partial(static_cast<std::size_t>(nt), 0.0);
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+    {
+#if defined(_OPENMP)
+      const int t = omp_get_thread_num();
+#else
+      const int t = 0;
+#endif
+      const auto range = parts[static_cast<std::size_t>(t)];
+      double local = 0.0;
+      neighbours_.forDirected(
+          range.begin, range.end,
+          [&](int32_t i, int32_t j, double, double, double, double r2) {
+            if (!(r2 > 0.0) || r2 > cutoff2) {
+              return;
+            }
+            double phi = 0.0;
+            double rep = 0.0;
+            pair_term(r2, phi, rep);
+            rho[static_cast<std::size_t>(i)] += phi;
+            if (j > i) {
+              local += epsilon * rep;
+            }
+          });
+      partial[static_cast<std::size_t>(t)] = local;
+    }
+    for (double part : partial) {
+      epair += part;
+    }
+  }
 
   std::vector<double> weight(n_size, 0.0);
   double eemb = 0.0;
@@ -163,35 +217,82 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     weight[i] = epsilon * c_coef / (2.0 * root);
   }
 
-  pool.evaluate(
-      R, n_size, box_use, opt,
-      [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
-        if (!(r2 > 0.0)) {
-          return;
+  auto apply = [&](int32_t i, int32_t j, double dx, double dy, double dz,
+                   double r2, double *force, double *virial, bool both) {
+    if (!(r2 > 0.0) || r2 > cutoff2) {
+      return;
+    }
+    const double inv_r2 = 1.0 / r2;
+    const double ar2 = (lattice * lattice) * inv_r2;
+    const double phi = pow_ar(ar2, m_exp);
+    const double rep = pow_ar(ar2, n_exp);
+    const double wi = weight[static_cast<std::size_t>(i)];
+    const double wj = weight[static_cast<std::size_t>(j)];
+    const double fscale = (epsilon * static_cast<double>(n_exp) * rep -
+                           static_cast<double>(m_exp) * phi * (wi + wj)) *
+                          inv_r2;
+    const double fx = fscale * dx;
+    const double fy = fscale * dy;
+    const double fz = fscale * dz;
+    force[3 * i] += fx;
+    force[3 * i + 1] += fy;
+    force[3 * i + 2] += fz;
+    if (both) {
+      force[3 * j] -= fx;
+      force[3 * j + 1] -= fy;
+      force[3 * j + 2] -= fz;
+    }
+    if (virial != nullptr && j > i) {
+      accumulatePairStrain(virial, fscale, dx, dy, dz);
+    }
+  };
+  if (nt == 1) {
+    neighbours_.forDirected(
+        0, n_atoms,
+        [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
+          if (!(j > i)) {
+            return;
+          }
+          apply(i, j, dx, dy, dz, r2, F, cfg.stress ? strain : nullptr, true);
+        });
+  } else {
+    std::vector<nlist::Range> parts(static_cast<std::size_t>(nt));
+    for (int t = 0; t < nt; ++t) {
+      parts[static_cast<std::size_t>(t)] = nlist::partition(n_atoms, t, nt);
+    }
+    std::vector<double> owned(static_cast<std::size_t>(nt) * n_size * 3, 0.0);
+    std::vector<double> vir(static_cast<std::size_t>(nt) * 6, 0.0);
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+    {
+#if defined(_OPENMP)
+      const int t = omp_get_thread_num();
+#else
+      const int t = 0;
+#endif
+      const auto range = parts[static_cast<std::size_t>(t)];
+      double *force = owned.data() + static_cast<std::size_t>(t) * n_size * 3;
+      double *virial = cfg.stress ? vir.data() + static_cast<std::size_t>(t) * 6
+                                 : nullptr;
+      neighbours_.forDirected(
+          range.begin, range.end,
+          [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
+            apply(i, j, dx, dy, dz, r2, force, virial, false);
+          });
+    }
+    for (int t = 0; t < nt; ++t) {
+      const double *force = owned.data() + static_cast<std::size_t>(t) * n_size * 3;
+      for (std::size_t k = 0; k < n_size * 3; ++k) {
+        F[k] += force[k];
+      }
+      if (cfg.stress) {
+        for (int k = 0; k < 6; ++k) {
+          strain[k] += vir[static_cast<std::size_t>(t) * 6 + static_cast<std::size_t>(k)];
         }
-        const double inv_r2 = 1.0 / r2;
-        const double ar2 = (lattice * lattice) * inv_r2;
-        const double phi = pow_ar(ar2, m_exp);
-        const double rep = pow_ar(ar2, n_exp);
-        const double wi = weight[static_cast<std::size_t>(i)];
-        const double wj = weight[static_cast<std::size_t>(j)];
-        const double fscale =
-            (epsilon * static_cast<double>(n_exp) * rep -
-             static_cast<double>(m_exp) * phi * (wi + wj)) *
-            inv_r2;
-        const double fx = fscale * dx;
-        const double fy = fscale * dy;
-        const double fz = fscale * dz;
-        F[3 * i] += fx;
-        F[3 * i + 1] += fy;
-        F[3 * i + 2] += fz;
-        F[3 * j] -= fx;
-        F[3 * j + 1] -= fy;
-        F[3 * j + 2] -= fz;
-        if (cfg.stress) {
-          accumulatePairStrain(strain, fscale, dx, dy, dz);
-        }
-      });
+      }
+    }
+  }
 
   out->energy = epair + eemb;
   if (cfg.stress) {

@@ -31,6 +31,7 @@
 // clang-format on
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/Potential.hpp"
+#include "rgpot/nlist/Neighbours.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
 #if defined(_WIN32)
@@ -115,11 +116,16 @@ public:
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
+  /// Stored Verlet list or a streaming cell walk.
+  void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
+
 private:
   static constexpr uint64_t kKernelVersion = 1;
 
   SuttonChenConfig m_config;
   uint64_t m_paramsKey{0};
+  nlist::Mode mode_ = nlist::Mode::Auto;
+  mutable nlist::Neighbours neighbours_;
 };
 
 } // namespace rgpot

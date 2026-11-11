@@ -2,6 +2,7 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 
+#include "rgpot/nlist/Neighbours.hpp"
 #include "rgpot/nlist/PairListCache.hpp"
 #include "rgpot/simd/pods.hpp"
 
@@ -21,19 +22,34 @@ struct CachedPairs {
   PairView view{};
 };
 
-/// Build a half-list for the dispatched pair kernels. The scan stays in
-/// PairListCache. fold is the orthorhombic round, with a zero inverse on
-/// an axis the options leave unfolded.
+/// Build a half-list for the dispatched pair kernels. Candidates come
+/// from the shared neighbour layer. `reuse` keeps the Verlet list across
+/// calls. fold is the orthorhombic round, with a zero inverse on an axis
+/// the options leave unfolded.
 inline void fill_view(CachedPairs &out, const double *R, std::size_t n,
                       const double *box,
-                      const nlist::CachedPairList::Options &opt) {
+                      const nlist::CachedPairList::Options &opt,
+                      nlist::Mode mode = nlist::Mode::Auto,
+                      nlist::Neighbours *reuse = nullptr) {
   std::vector<std::int32_t> ij;
-  nlist::PairListCache::global().evaluate(
-      R, n, box, opt,
-      [&](std::int32_t i, std::int32_t j, double, double, double, double) {
-        ij.push_back(i);
-        ij.push_back(j);
-      });
+  nlist::Neighbours local;
+  nlist::Neighbours &found = reuse != nullptr ? *reuse : local;
+  nlist::Spec spec;
+  spec.cutoff = opt.cutoff;
+  spec.skin = opt.skin;
+  spec.periodic = opt.periodic;
+  spec.image = nlist::Image::Round;
+  spec.mode = mode;
+  found.update(R, n, box, spec);
+  const double cutoff2 = opt.cutoff * opt.cutoff;
+  found.forDirected(0, static_cast<std::int64_t>(n),
+                    [&](std::int32_t i, std::int32_t j, double, double, double,
+                        double r2) {
+                      if (i < j && r2 <= cutoff2) {
+                        ij.push_back(i);
+                        ij.push_back(j);
+                      }
+                    });
   out.rows.assign(n + 1, 0);
   for (std::size_t p = 0; p < ij.size(); p += 2) {
     out.rows[static_cast<std::size_t>(ij[p]) + 1] += 1;

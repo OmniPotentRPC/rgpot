@@ -174,9 +174,13 @@ inline void half_box(double &dx, double &dy, double &dz, double b0, double b1,
 
 template <bool Hw, int Fold, typename Term>
 double accumulate_folded(const PairView &v, double *F, double strain[6],
-                         Term &&term) {
+                         Term &&term, std::size_t atom_begin = 0,
+                         std::size_t atom_end = static_cast<std::size_t>(-1)) {
   double energy = 0.0;
-  for (std::size_t i = 0; i < v.n; ++i) {
+  if (atom_end > v.n) {
+    atom_end = v.n;
+  }
+  for (std::size_t i = atom_begin; i < atom_end; ++i) {
     Part8 part{};
     int nacc = 0;
     const std::int32_t p0 = v.rows[i];
@@ -240,25 +244,28 @@ double accumulate_folded(const PairView &v, double *F, double strain[6],
 
 template <bool Hw, typename Term>
 double accumulate_pairs(const PairView &v, double *F, double strain[6],
-                        Term &&term) {
+                        Term &&term, std::size_t atom_begin = 0,
+                        std::size_t atom_end = static_cast<std::size_t>(-1)) {
   switch (v.fold) {
   case 0:
-    return accumulate_folded<Hw, 0>(v, F, strain, term);
+    return accumulate_folded<Hw, 0>(v, F, strain, term, atom_begin, atom_end);
   case 1:
-    return accumulate_folded<Hw, 1>(v, F, strain, term);
+    return accumulate_folded<Hw, 1>(v, F, strain, term, atom_begin, atom_end);
   case 2:
-    return accumulate_folded<Hw, 2>(v, F, strain, term);
+    return accumulate_folded<Hw, 2>(v, F, strain, term, atom_begin, atom_end);
   default:
-    return accumulate_folded<Hw, 3>(v, F, strain, term);
+    return accumulate_folded<Hw, 3>(v, F, strain, term, atom_begin, atom_end);
   }
 }
 
 template <bool Hw>
 inline double lj_scalar(const PairView &v, const LjParams &p, double *F,
-                        double strain[6]) {
-  return accumulate_pairs<Hw>(v, F, strain, [&](double r2, double &e, double &fs) {
-    lj_term<Hw>(r2, p, e, fs);
-  });
+                        double strain[6], std::size_t atom_begin = 0,
+                        std::size_t atom_end = static_cast<std::size_t>(-1)) {
+  return accumulate_pairs<Hw>(
+      v, F, strain,
+      [&](double r2, double &e, double &fs) { lj_term<Hw>(r2, p, e, fs); },
+      atom_begin, atom_end);
 }
 
 template <bool Hw>
@@ -398,8 +405,9 @@ inline void eam_scalar(long n, const double *R, const EamAtom *atoms,
 } // namespace
 
 inline double lj_reference(const PairView &v, const LjParams &p, double *F,
-                           double strain[6]) {
-  return lj_scalar<false>(v, p, F, strain);
+                           double strain[6], std::size_t atom_begin = 0,
+                           std::size_t atom_end = static_cast<std::size_t>(-1)) {
+  return lj_scalar<false>(v, p, F, strain, atom_begin, atom_end);
 }
 
 inline double morse_reference(const PairView &v, const MorseParams &p,
@@ -416,6 +424,8 @@ inline double round_reference(double t) { return visit_round(t); }
 
 #if defined(__x86_64__)
 double lj_hw(const PairView &v, const LjParams &p, double *F, double strain[6]);
+double lj_hw_span(const PairView &v, const LjParams &p, double *F,
+                  double strain[6], std::size_t atom_begin, std::size_t atom_end);
 double morse_hw(const PairView &v, const MorseParams &p, double *F,
                 double strain[6]);
 void eam_hw(long n, const double *R, const EamAtom *atoms, const double *box,

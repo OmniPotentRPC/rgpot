@@ -48,6 +48,12 @@ __attribute__((target("fma"), flatten, noinline)) double lj_hw(const PairView &v
   return lj_scalar<true>(v, p, F, strain);
 }
 
+__attribute__((target("fma"), flatten, noinline)) double
+lj_hw_span(const PairView &v, const LjParams &p, double *F, double strain[6],
+           std::size_t atom_begin, std::size_t atom_end) {
+  return lj_scalar<true>(v, p, F, strain, atom_begin, atom_end);
+}
+
 __attribute__((target("fma"), flatten, noinline)) double morse_hw(const PairView &v,
                                                          const MorseParams &p,
                                                          double *F,

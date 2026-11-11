@@ -11,6 +11,7 @@
 
 // clang-format off
 #include <cmath>
+#include <cstdint>
 #include <utility>
 #include <vector>
 #include <stdexcept>
@@ -18,6 +19,8 @@
 #include "rgpot/PairSwitch.hpp"
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/Potential.hpp"
+#include "rgpot/nlist/Neighbours.hpp"
+#include "rgpot/simd/from_cache.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
 namespace rgpot {
@@ -86,6 +89,8 @@ public:
    */
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
+  void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
+
 private:
   /// Bump when the kernel numerics change, so stale cache entries die.
   static constexpr uint64_t kKernelVersion = 2;
@@ -97,6 +102,11 @@ private:
   LJConfig m_config;
   QuinticSwitch m_switch{}; //!< In use when m_config.switch_width != 0.
   uint64_t m_paramsKey{0};
+  nlist::Mode mode_ = nlist::Mode::Auto;
+  mutable nlist::Neighbours neighbours_;
+  mutable simd::CachedPairs cached_;
+  mutable std::uint64_t list_stamp_ = 0;
+  mutable bool have_cache_ = false;
 };
 
 } // namespace rgpot
