@@ -122,9 +122,8 @@ jobs:
           if [ -n "${BOOTSTRAP_CPYTHON:-}" ]; then
             # cpython-tsan:3.13t lists an amd64 manifest the registry does
             # not serve. Build that interpreter here instead.
-            apt-get update
-            apt-get install -y build-essential clang pkg-config libffi-dev libssl-dev zlib1g-dev \
-              libsqlite3-dev libbz2-dev liblzma-dev libreadline-dev ca-certificates curl xz-utils
+            bash /src/ci/gha/apt-install.sh build-essential clang pkg-config libffi-dev libssl-dev \
+              zlib1g-dev libsqlite3-dev libbz2-dev liblzma-dev libreadline-dev ca-certificates curl xz-utils
             curl -fsSL -o /tmp/cpython.tar.gz \
               "https://github.com/python/cpython/archive/refs/tags/v${BOOTSTRAP_CPYTHON}.tar.gz"
             rm -rf "/tmp/cpython-${BOOTSTRAP_CPYTHON}"
@@ -151,12 +150,10 @@ jobs:
           fi
           "$PY" -c 'import sys; print(sys.version); print("gil", sys._is_gil_enabled())'
           if ! command -v "${CXX:-clang++}" >/dev/null 2>&1 && ! command -v clang++ >/dev/null 2>&1; then
-            apt-get update
-            apt-get install -y clang
+            bash /src/ci/gha/apt-install.sh clang
           fi
           if ! command -v curl >/dev/null 2>&1; then
-            apt-get update
-            apt-get install -y ca-certificates curl
+            bash /src/ci/gha/apt-install.sh ca-certificates curl
           fi
           export CC="${CC:-clang}"
           export CXX="${CXX:-clang++}"
@@ -165,9 +162,8 @@ jobs:
           export LDFLAGS="${LDFLAGS:-} -fsanitize=thread"
           export PIP_BREAK_SYSTEM_PACKAGES=1
           if [ -n "${APT_PACKAGES}" ]; then
-            apt-get update
             # shellcheck disable=SC2086
-            apt-get install -y ${APT_PACKAGES}
+            bash /src/ci/gha/apt-install.sh ${APT_PACKAGES}
           fi
           if [ -n "${RUST_CRATE}" ]; then
             if [ ! -f "/src/${PKG}/${RUST_CRATE}/Cargo.toml" ]; then
@@ -175,8 +171,7 @@ jobs:
               exit 1
             fi
             if ! command -v git >/dev/null 2>&1; then
-              apt-get update
-              apt-get install -y git ca-certificates
+              bash /src/ci/gha/apt-install.sh git ca-certificates
             fi
             # LLVM 21 nightly. rustc moved to LLVM 22 on 2026-01-28, and the
             # image clang is LLVM 21. The dated toolchain keeps the majors equal.
@@ -207,8 +202,7 @@ jobs:
             "$PY" -m pip install hypothesis
           fi
           if [ "${BUILD_NUMPY:-false}" = "true" ]; then
-            apt-get update
-            apt-get install -y pkg-config libopenblas-dev
+            bash /src/ci/gha/apt-install.sh pkg-config libopenblas-dev
             "$PY" -m pip install 'numpy>=2' --no-binary=numpy
           elif ! "$PY" -c 'import numpy' >/dev/null 2>&1; then
             "$PY" -m pip install 'numpy>=1.24'
@@ -236,8 +230,7 @@ jobs:
           fi
           if [ -n "${RUST_CRATE}" ]; then
             if ! command -v nm >/dev/null 2>&1; then
-              apt-get update
-              apt-get install -y binutils
+              bash /src/ci/gha/apt-install.sh binutils
             fi
             found=0
             total=0
