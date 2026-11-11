@@ -41,6 +41,14 @@ RGPOT_PAIR_API int rgpot_lj_curvature_pairs(double epsilon, double sigma,
                                             double *dvdr_over_r,
                                             double *d2vdr2);
 
+/// 0 follows the memory the layer reports, 1 stores a Verlet list, 2
+/// streams. The choice is per thread and covers every cluster kernel.
+RGPOT_PAIR_API void rgpot_pair_set_neighbour_mode(int32_t mode);
+
+/// Pair indices kept by the last cluster kernel on this thread.
+/// Zero when that call streamed.
+RGPOT_PAIR_API int64_t rgpot_pair_neighbour_slots(void);
+
 /// Cluster energy and gradient. `cutoff <= 0` keeps every pair.
 /// Returns 0 on success, 1 on a bad argument.
 RGPOT_PAIR_API int rgpot_lj_gradient(double epsilon, double sigma,

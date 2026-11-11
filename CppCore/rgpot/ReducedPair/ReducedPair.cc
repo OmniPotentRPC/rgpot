@@ -11,11 +11,15 @@
  */
 
 // clang-format off
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
+#include <vector>
 // clang-format on
 
 #include "rgpot/ReducedPair/ReducedPair.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 
 namespace {
 
@@ -40,6 +44,85 @@ bool inside(double r2, double cutoff) {
   }
   const double cut2 = cutoff * cutoff;
   return r2 < cut2;
+}
+
+struct ClusterWalk {
+  rgpot::nlist::Mode mode = rgpot::nlist::Mode::Stored;
+  rgpot::nlist::Neighbours cells;
+  std::vector<double> shifted;
+  std::size_t slots = 0;
+};
+
+ClusterWalk &clusterWalk() {
+  thread_local ClusterWalk walk;
+  return walk;
+}
+
+void bindCluster(const double *pos, int32_t n, double cutoff) {
+  auto &walk = clusterWalk();
+  walk.shifted.assign(static_cast<std::size_t>(std::max(n, 0)) * 3, 0.0);
+  double search = 1.0;
+  double box[9] = {1.0, 0, 0, 0, 1.0, 0, 0, 0, 1.0};
+  if (n > 0 && pos != nullptr) {
+    double minv[3] = {pos[0], pos[1], pos[2]};
+    double maxv[3] = {minv[0], minv[1], minv[2]};
+    for (int32_t i = 1; i < n; ++i) {
+      for (int k = 0; k < 3; ++k) {
+        const double x = pos[3 * i + k];
+        minv[k] = std::min(minv[k], x);
+        maxv[k] = std::max(maxv[k], x);
+      }
+    }
+    double span2 = 0.0;
+    for (int k = 0; k < 3; ++k) {
+      const double span = maxv[k] - minv[k];
+      span2 += span * span;
+    }
+    if (cutoff > 0.0) {
+      search = cutoff;
+    } else {
+      search = std::sqrt(span2) * (1.0 + 1.0e-9) + 1.0e-6;
+      if (!(search > 0.0)) {
+        search = 1.0;
+      }
+    }
+    constexpr double pad = 1.0;
+    for (int k = 0; k < 3; ++k) {
+      const double span = maxv[k] - minv[k];
+      double length = span + 2.0 * pad;
+      if (length < search + 2.0 * pad) {
+        length = search + 2.0 * pad;
+      }
+      box[4 * k] = length;
+      const double origin = minv[k] - pad;
+      for (int32_t i = 0; i < n; ++i) {
+        walk.shifted[static_cast<std::size_t>(3 * i + k)] = pos[3 * i + k] - origin;
+      }
+    }
+  }
+  const double layerCut = cutoff > 0.0 ? cutoff : search;
+  const double skin =
+      (walk.mode == rgpot::nlist::Mode::Stream || !(cutoff > 0.0)) ? 0.0 : cutoff / 5.0;
+  rgpot::nlist::updateCells(walk.cells, walk.shifted.data(), static_cast<std::size_t>(std::max(n, 0)),
+                            box, layerCut, skin, rgpot::nlist::Image::Round, walk.mode,
+                            {{false, false, false}});
+  walk.slots = walk.cells.streaming() ? 0 : walk.cells.slots();
+}
+
+template <typename Fn>
+void visitHalf(const double *pos, int32_t n, double cutoff, Fn &&fn) {
+  bindCluster(pos, n, cutoff);
+  if (n < 2) {
+    return;
+  }
+  rgpot::nlist::visitHalf(
+      clusterWalk().cells, 0, n,
+      [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2) {
+        if (!inside(r2, cutoff)) {
+          return;
+        }
+        fn(i, j, dx, dy, dz, r2);
+      });
 }
 
 void lj_unit(double r2, double *energy, double *coef, double *curv) {
@@ -144,6 +227,21 @@ rgpot_lj_curvature_pairs(double epsilon, double sigma, int32_t npairs,
   return 0;
 }
 
+extern "C" RGPOT_PAIR_API void rgpot_pair_set_neighbour_mode(int32_t mode) {
+  auto &walk = clusterWalk();
+  if (mode == 2) {
+    walk.mode = rgpot::nlist::Mode::Stream;
+  } else if (mode == 0) {
+    walk.mode = rgpot::nlist::Mode::Auto;
+  } else {
+    walk.mode = rgpot::nlist::Mode::Stored;
+  }
+}
+
+extern "C" RGPOT_PAIR_API int64_t rgpot_pair_neighbour_slots(void) {
+  return static_cast<int64_t>(clusterWalk().slots);
+}
+
 extern "C" RGPOT_PAIR_API int
 rgpot_lj_gradient(double epsilon, double sigma, double cutoff, int32_t natoms,
                   const double *positions, double *energy, double *gradient) {
@@ -152,24 +250,15 @@ rgpot_lj_gradient(double epsilon, double sigma, double cutoff, int32_t natoms,
   }
   zero_gradient(natoms, gradient);
   double e = 0.0;
-  for (int32_t i = 0; i < natoms; ++i) {
-    for (int32_t j = i + 1; j < natoms; ++j) {
-      double d[3];
-      double r2 = 0.0;
-      for (int k = 0; k < 3; ++k) {
-        d[k] = positions[3 * i + k] - positions[3 * j + k];
-        r2 += d[k] * d[k];
-      }
-      if (!inside(r2, cutoff)) {
-        continue;
-      }
-      double v = 0.0;
-      double coef = 0.0;
-      lj_terms(epsilon, sigma, r2, &v, &coef, nullptr);
-      e += v;
-      add_pair(gradient, i, j, d, coef);
-    }
-  }
+  visitHalf(positions, natoms, cutoff,
+            [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2) {
+              double d[3] = {dx, dy, dz};
+              double v = 0.0;
+              double coef = 0.0;
+              lj_terms(epsilon, sigma, r2, &v, &coef, nullptr);
+              e += v;
+              add_pair(gradient, i, j, d, coef);
+            });
   *energy = e;
   return 0;
 }
@@ -184,23 +273,14 @@ rgpot_lj_atom_energies(double epsilon, double sigma, int32_t natoms,
   for (int32_t i = 0; i < natoms; ++i) {
     atom_energy[i] = 0.0;
   }
-  for (int32_t i = 0; i < natoms; ++i) {
-    for (int32_t j = i + 1; j < natoms; ++j) {
-      double r2 = 0.0;
-      for (int k = 0; k < 3; ++k) {
-        const double d = positions[3 * i + k] - positions[3 * j + k];
-        r2 += d * d;
-      }
-      if (!(r2 > 0.0)) {
-        continue;
-      }
-      const double scaled = (sigma * sigma) / r2;
-      const double s6 = scaled * scaled * scaled;
-      const double v = 4.0 * epsilon * (s6 * s6 - s6);
-      atom_energy[i] += v;
-      atom_energy[j] += v;
-    }
-  }
+  visitHalf(positions, natoms, 0.0,
+            [&](std::int32_t i, std::int32_t j, double, double, double, double r2) {
+              const double scaled = (sigma * sigma) / r2;
+              const double s6 = scaled * scaled * scaled;
+              const double v = 4.0 * epsilon * (s6 * s6 - s6);
+              atom_energy[i] += v;
+              atom_energy[j] += v;
+            });
   return 0;
 }
 
@@ -219,26 +299,27 @@ rgpot_lj_partial_gradient(double epsilon, double sigma, int32_t natoms,
     if (i < 0 || i >= natoms) {
       return 1;
     }
-    for (int32_t j = 0; j < natoms; ++j) {
-      if (j == i) {
-        continue;
-      }
-      double d[3];
-      double r2 = 0.0;
-      for (int k = 0; k < 3; ++k) {
-        d[k] = positions[3 * i + k] - positions[3 * j + k];
-        r2 += d[k] * d[k];
-      }
+  }
+  bindCluster(positions, natoms, 0.0);
+  if (natoms < 2) {
+    return 0;
+  }
+  auto &walk = clusterWalk();
+  for (int32_t m = 0; m < n_moved; ++m) {
+    const int32_t i = moved[m];
+    walk.cells.forAtom(i, [&](std::int32_t, std::int32_t, double dx, double dy, double dz,
+                              double r2) {
       if (!(r2 > 0.0)) {
-        continue;
+        return;
       }
       double v = 0.0;
       double coef = 0.0;
       lj_terms(epsilon, sigma, r2, &v, &coef, nullptr);
+      const double d[3] = {dx, dy, dz};
       for (int k = 0; k < 3; ++k) {
         gradient[3 * i + k] += coef * d[k];
       }
-    }
+    });
   }
   return 0;
 }
@@ -253,28 +334,19 @@ rgpot_lj_arithmetic_gradient(const double *sigma, double cutoff, int32_t natoms,
   }
   zero_gradient(natoms, gradient);
   double e = 0.0;
-  for (int32_t i = 0; i < natoms; ++i) {
-    for (int32_t j = i + 1; j < natoms; ++j) {
-      double d[3];
-      double r2 = 0.0;
-      for (int k = 0; k < 3; ++k) {
-        d[k] = positions[3 * i + k] - positions[3 * j + k];
-        r2 += d[k] * d[k];
-      }
-      if (!inside(r2, cutoff)) {
-        continue;
-      }
-      const double sum = sigma[i] + sigma[j];
-      const double s2 = 0.25 * sum * sum;
-      const double inv = 1.0 / r2;
-      const double sr2 = s2 * inv;
-      const double sr6 = sr2 * sr2 * sr2;
-      const double sr12 = sr6 * sr6;
-      e += sr12 - sr6;
-      const double slope = 24.0 * (sr6 - 2.0 * sr12) * inv;
-      add_pair(gradient, i, j, d, slope);
-    }
-  }
+  visitHalf(positions, natoms, cutoff,
+            [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2) {
+              double d[3] = {dx, dy, dz};
+              const double sum = sigma[i] + sigma[j];
+              const double s2 = 0.25 * sum * sum;
+              const double inv = 1.0 / r2;
+              const double sr2 = s2 * inv;
+              const double sr6 = sr2 * sr2 * sr2;
+              const double sr12 = sr6 * sr6;
+              e += sr12 - sr6;
+              const double slope = 24.0 * (sr6 - 2.0 * sr12) * inv;
+              add_pair(gradient, i, j, d, slope);
+            });
   *energy = 4.0 * e;
   return 0;
 }
@@ -308,25 +380,16 @@ rgpot_morse_gradient(double epsilon, double rho, double re, double cutoff,
   }
   zero_gradient(natoms, gradient);
   double e = 0.0;
-  for (int32_t i = 0; i < natoms; ++i) {
-    for (int32_t j = i + 1; j < natoms; ++j) {
-      double d[3];
-      double r2 = 0.0;
-      for (int k = 0; k < 3; ++k) {
-        d[k] = positions[3 * i + k] - positions[3 * j + k];
-        r2 += d[k] * d[k];
-      }
-      if (!inside(r2, cutoff)) {
-        continue;
-      }
-      double v = 0.0;
-      double coef = 0.0;
-      double curv = 0.0;
-      rgpot_morse_pair(epsilon, rho, re, r2, &v, &coef, &curv);
-      e += v;
-      add_pair(gradient, i, j, d, coef);
-    }
-  }
+  visitHalf(positions, natoms, cutoff,
+            [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2) {
+              double d[3] = {dx, dy, dz};
+              double v = 0.0;
+              double coef = 0.0;
+              double curv = 0.0;
+              rgpot_morse_pair(epsilon, rho, re, r2, &v, &coef, &curv);
+              e += v;
+              add_pair(gradient, i, j, d, coef);
+            });
   *energy = e;
   return 0;
 }
@@ -346,27 +409,18 @@ rgpot_binary_lj_gradient(int32_t n_a, const double *eps, const double *sig,
   }
   zero_gradient(natoms, gradient);
   double e = 0.0;
-  for (int32_t i = 0; i < natoms; ++i) {
-    for (int32_t j = i + 1; j < natoms; ++j) {
-      double d[3];
-      double r2 = 0.0;
-      for (int k = 0; k < 3; ++k) {
-        d[k] = positions[3 * i + k] - positions[3 * j + k];
-        r2 += d[k] * d[k];
-      }
-      if (!inside(r2, cutoff)) {
-        continue;
-      }
-      const int kind = (i < n_a ? 0 : 2) + (j < n_a ? 0 : 1);
-      const int index = kind == 0 ? 0 : (kind == 3 ? 2 : 1);
-      const double a = (sig[index] * sig[index]) / r2;
-      const double a3 = a * a * a;
-      const double a6 = a3 * a3;
-      e += 4.0 * eps[index] * (a6 - a3);
-      const double coef = 4.0 * eps[index] * (-12.0 * a6 + 6.0 * a3) / r2;
-      add_pair(gradient, i, j, d, coef);
-    }
-  }
+  visitHalf(positions, natoms, cutoff,
+            [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2) {
+              double d[3] = {dx, dy, dz};
+              const int kind = (i < n_a ? 0 : 2) + (j < n_a ? 0 : 1);
+              const int index = kind == 0 ? 0 : (kind == 3 ? 2 : 1);
+              const double a = (sig[index] * sig[index]) / r2;
+              const double a3 = a * a * a;
+              const double a6 = a3 * a3;
+              e += 4.0 * eps[index] * (a6 - a3);
+              const double coef = 4.0 * eps[index] * (-12.0 * a6 + 6.0 * a3) / r2;
+              add_pair(gradient, i, j, d, coef);
+            });
   *energy = e;
   return 0;
 }
@@ -383,17 +437,16 @@ rgpot_tip4p_sites(const rgpot_tip4p_sites_config *cfg, int32_t n_molecules,
     gradient[i] = 0.0;
   }
   const double charges[4] = {0.0, cfg->q_h, cfg->q_h, cfg->q_m};
+  std::vector<double> oxygen(static_cast<std::size_t>(std::max(n_molecules, 0)) * 3, 0.0);
+  for (int32_t m = 0; m < n_molecules; ++m) {
+    oxygen[static_cast<std::size_t>(3 * m)] = sites[12 * m];
+    oxygen[static_cast<std::size_t>(3 * m + 1)] = sites[12 * m + 1];
+    oxygen[static_cast<std::size_t>(3 * m + 2)] = sites[12 * m + 2];
+  }
   double e = 0.0;
-  for (int32_t left = 0; left < n_molecules; ++left) {
-    for (int32_t right = left + 1; right < n_molecules; ++right) {
-      const double *ol = sites + 12 * left;
-      const double *orr = sites + 12 * right;
-      double d[3];
-      double r2 = 0.0;
-      for (int k = 0; k < 3; ++k) {
-        d[k] = ol[k] - orr[k];
-        r2 += d[k] * d[k];
-      }
+  visitHalf(oxygen.data(), n_molecules, 0.0,
+            [&](std::int32_t left, std::int32_t right, double dx, double dy, double dz, double r2) {
+      const double d[3] = {dx, dy, dz};
       if (r2 > 0.0) {
         double coef = 0.0;
         if (cfg->use_epsilon) {
@@ -445,8 +498,7 @@ rgpot_tip4p_sites(const rgpot_tip4p_sites_config *cfg, int32_t n_molecules,
           }
         }
       }
-    }
-  }
+    });
   *energy = e;
   return 0;
 }

@@ -4,6 +4,7 @@ reduced_pair = static_library(
     'reduced_pair',
     'ReducedPair.cc',
     dependencies: _deps,
+    link_with: rgpot_halfshell,
     cpp_args: _args + ['-ffp-contract=off', '-fno-fast-math'],
     include_directories: ['../../'],
     pic: true,
