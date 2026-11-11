@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <map>
 #include <set>
 #include <tuple>
 #include <vector>
@@ -230,4 +231,75 @@ TEST_CASE("a skin rebuild keeps the same pairs", "[nlist][api]") {
   builder.update(pos.data(), pos.size() / 3, box, query);
   REQUIRE(builder.reused());
   REQUIRE(builder.builds() == first);
+}
+
+TEST_CASE("the skin rebuild follows half the skin", "[nlist][api]") {
+  const double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+  // The first atom sits at the origin so a displacement of one ulp past
+  // half the skin is representable. Adding that ulp to a coordinate near
+  // 1 rounds back to the exact half-skin position.
+  const std::vector<double> origin = {0, 0, 0, 2.2, 1, 1, 1, 3.4, 1, 4, 4, 1};
+  const double skin = 0.5;
+  const double half = 0.5 * skin;
+  rgpot::nlist::Query query;
+  query.cutoff = 3.0;
+  query.skin = skin;
+  query.format = rgpot::nlist::Format::Full;
+  query.cut = rgpot::nlist::Cut::Loose;
+  query.fields = {true, true, true};
+  query.mode = rgpot::nlist::Mode::Stored;
+
+  rgpot::nlist::Builder edge;
+  auto pos = origin;
+  edge.update(pos.data(), pos.size() / 3, box, query);
+  REQUIRE(edge.builds() == 1);
+  pos[0] = half;
+  edge.update(pos.data(), pos.size() / 3, box, query);
+  REQUIRE(edge.reused());
+  REQUIRE(edge.builds() == 1);
+  pos[0] = std::nextafter(half, 1.0);
+  edge.update(pos.data(), pos.size() / 3, box, query);
+  REQUIRE_FALSE(edge.reused());
+  REQUIRE(edge.builds() == 2);
+
+  rgpot::nlist::Builder builder;
+  pos = origin;
+  builder.update(pos.data(), pos.size() / 3, box, query);
+  pos[0] = 0.5 * half;
+  builder.update(pos.data(), pos.size() / 3, box, query);
+  REQUIRE(builder.reused());
+  const auto &kept = builder.table();
+  rgpot::nlist::Table fresh;
+  rgpot::nlist::build(fresh, pos.data(), pos.size() / 3, box, query);
+  REQUIRE(kept.size() == fresh.size());
+
+  auto key_of = [](const rgpot::nlist::Table &table, std::size_t p) {
+    return std::tuple{table.first[p], table.second[p], table.shift[3 * p],
+                      table.shift[3 * p + 1], table.shift[3 * p + 2]};
+  };
+  std::map<std::tuple<int, int, int, int, int>, std::array<double, 4>> got;
+  for (std::size_t p = 0; p < kept.size(); ++p) {
+    const int i = kept.first[p];
+    const int j = kept.second[p];
+    const int sa = kept.shift[3 * p];
+    const int sb = kept.shift[3 * p + 1];
+    const int sc = kept.shift[3 * p + 2];
+    const double vx = pos[3 * static_cast<std::size_t>(j)] - pos[3 * static_cast<std::size_t>(i)] +
+                      sa * box[0] + sb * box[3] + sc * box[6];
+    const double vy = pos[3 * static_cast<std::size_t>(j) + 1] -
+                      pos[3 * static_cast<std::size_t>(i) + 1] + sa * box[1] + sb * box[4] +
+                      sc * box[7];
+    const double vz = pos[3 * static_cast<std::size_t>(j) + 2] -
+                      pos[3 * static_cast<std::size_t>(i) + 2] + sa * box[2] + sb * box[5] +
+                      sc * box[8];
+    got[{i, j, sa, sb, sc}] = {vx, vy, vz, std::sqrt(vx * vx + vy * vy + vz * vz)};
+  }
+  for (std::size_t p = 0; p < fresh.size(); ++p) {
+    const auto key = key_of(fresh, p);
+    REQUIRE(got.count(key) == 1);
+    REQUIRE(std::abs(got[key][0] - fresh.vector[3 * p]) < 1e-12);
+    REQUIRE(std::abs(got[key][1] - fresh.vector[3 * p + 1]) < 1e-12);
+    REQUIRE(std::abs(got[key][2] - fresh.vector[3 * p + 2]) < 1e-12);
+    REQUIRE(std::abs(got[key][3] - fresh.distance[p]) < 1e-12);
+  }
 }
