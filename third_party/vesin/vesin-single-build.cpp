@@ -428,6 +428,13 @@ struct ExtraDataCpu {
     size_t capacity = 0;
     /// Optional cached Verlet state for `skin > 0` calculations.
     VerletList* verlet_state = nullptr;
+    /// Per-thread pair lists kept across calls. Each slot is padded to a
+    /// cache line so one thread's length counter does not share a line.
+    struct alignas(64) ThreadSlot {
+        VesinNeighborList raw{};
+        size_t capacity = 0;
+    };
+    std::vector<ThreadSlot> thread_slots;
 };
 
 class ThreadPool;
@@ -490,6 +497,10 @@ public:
     /// Iterate over all possible pairs, calling the given callback every time
     template <typename Function>
     void foreach_pair(ThreadPool& thread_pool, size_t n_threads, Function callback);
+
+    /// Same pairs as `foreach_pair`, split into contiguous atom ranges.
+    template <typename Function>
+    void foreach_atom(ThreadPool& thread_pool, size_t n_threads, size_t n_points, Function callback);
 
     /// Number of cells in this list.
     size_t n_cells() const {
@@ -921,6 +932,12 @@ static void validate_algorithm(VesinOptions options) {
 
 ExtraDataCpu::~ExtraDataCpu() {
     delete this->verlet_state;
+    for (auto& slot : thread_slots) {
+        std::free(slot.raw.pairs);
+        std::free(slot.raw.shifts);
+        std::free(slot.raw.distances);
+        std::free(slot.raw.vectors);
+    }
 }
 
 struct ThreadLocalNeighborLists {
@@ -1150,21 +1167,25 @@ void vesin::cpu::cell_list_neighbors(
     neighbors.reset();
 
     auto thread_count = std::max<size_t>(1, static_cast<size_t>(options.n_threads));
-    thread_count = std::min(thread_count, cell_list.n_cells());
+    thread_count = std::min(thread_count, std::max<size_t>(1, n_points));
     auto& thread_pool = global_thread_pool();
 
-    auto thread_locals = ThreadLocalNeighborLists(thread_count);
+    auto& extra = extra_data(raw_neighbors);
+    if (extra.thread_slots.size() < thread_count - 1) {
+        extra.thread_slots.resize(thread_count - 1);
+    }
 
     auto local_thread_neighbors = std::vector<GrowableNeighborList>();
-    local_thread_neighbors.reserve(thread_locals.raw.size());
-    for (auto& local_raw : thread_locals.raw) {
-        local_raw.device = {VesinCPU, 0};
-        auto list = GrowableNeighborList{local_raw, 0, options};
+    local_thread_neighbors.reserve(thread_count - 1);
+    for (size_t local_i = 0; local_i + 1 < thread_count; local_i++) {
+        auto& slot = extra.thread_slots[local_i];
+        slot.raw.device = {VesinCPU, 0};
+        auto list = GrowableNeighborList{slot.raw, slot.capacity, options};
         list.reset();
         local_thread_neighbors.emplace_back(list);
     }
 
-    cell_list.foreach_pair(thread_pool, thread_count, [&](size_t first, size_t second, CellShift shift, size_t thread_id) {
+    cell_list.foreach_atom(thread_pool, thread_count, n_points, [&](size_t first, size_t second, CellShift shift, size_t thread_id) {
         if (!options.full) {
             // filter out some pairs for half neighbor lists
             if (first > second) {
@@ -1229,19 +1250,23 @@ void vesin::cpu::cell_list_neighbors(
         }
     });
 
-    // Threads 1 to n-1 have their neighbors in `thread_locals`; merge them
-    // into the list created by thread 0 (`raw_neighbors`).
+    for (size_t local_i = 0; local_i < local_thread_neighbors.size(); local_i++) {
+        extra.thread_slots[local_i].capacity = local_thread_neighbors[local_i].capacity;
+    }
+
+    // Threads 1 to n-1 have their neighbors in the kept per-thread slots.
+    // Merge them into the list created by thread 0 (`raw_neighbors`).
     auto final_length = neighbors.length();
-    auto local_offsets = std::vector<size_t>(thread_locals.raw.size(), 0);
-    for (size_t local_i = 0; local_i < thread_locals.raw.size(); local_i++) {
+    auto local_offsets = std::vector<size_t>(local_thread_neighbors.size(), 0);
+    for (size_t local_i = 0; local_i < local_thread_neighbors.size(); local_i++) {
         local_offsets[local_i] = final_length;
-        final_length += thread_locals.raw[local_i].length;
+        final_length += extra.thread_slots[local_i].raw.length;
     }
 
     neighbors.grow(final_length);
 
-    thread_pool.run(thread_count, thread_locals.raw.size(), [&](size_t local_i, size_t /*thread_id*/) {
-        const auto& local_neighbors = thread_locals.raw[local_i];
+    thread_pool.run(thread_count, local_thread_neighbors.size(), [&](size_t local_i, size_t /*thread_id*/) {
+        const auto& local_neighbors = extra.thread_slots[local_i].raw;
         auto offset = local_offsets[local_i];
 
         for (size_t i = 0; i < local_neighbors.length; i++) {
@@ -1521,6 +1546,86 @@ void CellList::foreach_pair(ThreadPool& thread_pool, size_t n_threads, Function 
     });
 }
 
+template <typename Function>
+void CellList::foreach_atom(ThreadPool& thread_pool, size_t n_threads, size_t n_points, Function callback) {
+    struct Loc {
+        int32_t x = 0;
+        int32_t y = 0;
+        int32_t z = 0;
+        CellShift shift{};
+    };
+    auto loc = std::vector<Loc>(n_points);
+    for (size_t z = 0; z < cells_shape_[2]; z++) {
+        for (size_t y = 0; y < cells_shape_[1]; y++) {
+            for (size_t x = 0; x < cells_shape_[0]; x++) {
+                for (const auto& point : this->get_cell({
+                         static_cast<int32_t>(x),
+                         static_cast<int32_t>(y),
+                         static_cast<int32_t>(z),
+                     })) {
+                    loc[point.index] = Loc{
+                        static_cast<int32_t>(x),
+                        static_cast<int32_t>(y),
+                        static_cast<int32_t>(z),
+                        point.shift,
+                    };
+                }
+            }
+        }
+    }
+
+    thread_pool.run(n_threads, n_points, [&](size_t atom_i, size_t thread_id) {
+        const auto cell_i_x = loc[atom_i].x;
+        const auto cell_i_y = loc[atom_i].y;
+        const auto cell_i_z = loc[atom_i].z;
+
+        for (int32_t delta_x = -n_search_[0]; delta_x <= n_search_[0]; delta_x++) {
+            for (int32_t delta_y = -n_search_[1]; delta_y <= n_search_[1]; delta_y++) {
+                for (int32_t delta_z = -n_search_[2]; delta_z <= n_search_[2]; delta_z++) {
+                    auto cell_shift = std::array<int32_t, 3>{0, 0, 0};
+                    auto neighbor_cell_i = std::array<int32_t, 3>{
+                        cell_i_x + delta_x,
+                        cell_i_y + delta_y,
+                        cell_i_z + delta_z,
+                    };
+
+                    bool cell_is_valid = true;
+                    for (int d = 0; d < 3; d++) {
+                        if (box_.periodic(d)) {
+                            auto [q, r] = divmod(neighbor_cell_i[d], cells_shape_[d]);
+                            cell_shift[d] = q;
+                            neighbor_cell_i[d] = r;
+                        } else if (neighbor_cell_i[d] < 0 || neighbor_cell_i[d] >= static_cast<int32_t>(cells_shape_[d])) {
+                            cell_is_valid = false;
+                            break;
+                        }
+                    }
+                    if (!cell_is_valid) {
+                        continue;
+                    }
+
+                    for (const auto& atom_j : this->get_cell(neighbor_cell_i)) {
+                        auto shift = CellShift(cell_shift) + loc[atom_i].shift - atom_j.shift;
+                        auto shift_is_zero = shift[0] == 0 && shift[1] == 0 && shift[2] == 0;
+
+                        if ((shift[0] != 0 && !box_.periodic(0)) ||
+                            (shift[1] != 0 && !box_.periodic(1)) ||
+                            (shift[2] != 0 && !box_.periodic(2))) {
+                            continue;
+                        }
+
+                        if (atom_i == atom_j.index && shift_is_zero) {
+                            continue;
+                        }
+
+                        callback(atom_i, atom_j.index, shift, thread_id);
+                    }
+                }
+            }
+        }
+    });
+}
+
 CellList::Cell& CellList::get_cell(std::array<int32_t, 3> index) {
     size_t linear_index = (cells_shape_[0] * cells_shape_[1] * index[2]) + (cells_shape_[0] * index[1]) + index[0];
     return cells_[linear_index];
@@ -1609,7 +1714,17 @@ void GrowableNeighborList::grow(size_t new_size) {
     assert(this->neighbors.device.type == VesinCPU);
 
     if (new_size == 0) {
-        new_size = neighbors.length == 0 ? 1 : neighbors.length * 2;
+        // A full pair needs two slots before length advances. Doubling only
+        // the length would leave capacity at 1 and spin.
+        const size_t base = std::max(this->neighbors.length, this->capacity);
+        new_size = base == 0 ? 4 : base * 2;
+    }
+    // Pad the pairs buffer to a multiple of 64 bytes. Four pairs are 64 bytes.
+    {
+        const size_t pair_bytes = sizeof(size_t[2]);
+        size_t bytes = new_size * pair_bytes;
+        bytes = (bytes + 63u) & ~size_t{63};
+        new_size = std::max(new_size, bytes / pair_bytes);
     }
 
     auto* new_pairs = alloc<size_t, 2>(neighbors.pairs, neighbors.length, new_size);
@@ -1930,6 +2045,9 @@ void cpu::VerletList::rebuild(
     build_options.return_distances = false;
     build_options.return_vectors = false;
     build_options.skin = 0.0;
+    // A small box asks for the direct pair loop. Anything else stays on
+    // the cell list that built this cache before.
+    build_options.algorithm = options_.algorithm == VesinBruteForce ? VesinBruteForce : VesinCellList;
     // Honour the calculator's thread count. A default of zero would follow
     // OMP_NUM_THREADS inside other entry points and change pair order.
     build_options.n_threads = options_.n_threads > 0 ? options_.n_threads : 1;
