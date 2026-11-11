@@ -106,6 +106,100 @@ bool accept_distance(double r2, const Query &query) {
   return r2 <= cut2;
 }
 
+/// Borrowed view of a prepared pair-type matrix. `types` has one id per
+/// atom. `limit2` is the squared reach, row-major, or null when `typed`
+/// is false.
+struct CutView {
+  bool typed = false;
+  bool inclusive = false;
+  std::int32_t ntypes = 0;
+  const std::int32_t *types = nullptr;
+  const double *limit2 = nullptr;
+};
+
+struct OwnedCut {
+  bool typed = false;
+  bool inclusive = false;
+  std::int32_t ntypes = 0;
+  double search = 0;
+  std::vector<std::int32_t> types;
+  std::vector<double> limit2;
+
+  [[nodiscard]] CutView view() const {
+    CutView cut;
+    cut.typed = typed;
+    cut.inclusive = inclusive;
+    cut.ntypes = ntypes;
+    cut.types = types.data();
+    cut.limit2 = limit2.data();
+    return cut;
+  }
+};
+
+OwnedCut prepare_cut(std::size_t n, const Query &query, PairCutoffs cuts) {
+  OwnedCut out;
+  out.search = search_radius(query);
+  if (cuts.ntypes == 0) {
+    return out;
+  }
+  if (cuts.ntypes < 0 || cuts.cutoff == nullptr || (n > 0 && cuts.types == nullptr)) {
+    throw Error(Code::Cutoff, "a pair-type cutoff needs one type per atom and a square matrix");
+  }
+  const auto nt = cuts.ntypes;
+  const auto n2 = static_cast<std::size_t>(nt) * static_cast<std::size_t>(nt);
+  out.typed = true;
+  out.inclusive = query.cut == Cut::Loose && !(query.skin > 0.0);
+  out.ntypes = nt;
+  if (n > 0) {
+    out.types.assign(cuts.types, cuts.types + n);
+  }
+  out.limit2.resize(n2);
+  double widest = 0.0;
+  for (std::size_t k = 0; k < n2; ++k) {
+    const double c = cuts.cutoff[k];
+    if (!std::isfinite(c) || c < 0.0) {
+      throw Error(Code::Cutoff, "a pair-type cutoff must be finite and >= 0");
+    }
+    if (!(c > 0.0)) {
+      out.limit2[k] = 0.0;
+      continue;
+    }
+    const double reach = query.cut == Cut::Loose ? c + query.skin : c;
+    out.limit2[k] = reach * reach;
+    if (reach > widest) {
+      widest = reach;
+    }
+  }
+  for (std::size_t a = 0; a < n; ++a) {
+    const auto t = out.types[a];
+    if (t < 0 || t >= nt) {
+      throw Error(Code::Shape, "a pair type is outside the cutoff matrix");
+    }
+  }
+  if (widest > out.search) {
+    out.search = widest;
+  }
+  return out;
+}
+
+bool type_ok(const CutView &cut, std::int32_t i, std::int32_t j, double r2) {
+  const auto ti = cut.types[static_cast<std::size_t>(i)];
+  const auto tj = cut.types[static_cast<std::size_t>(j)];
+  const double lim = cut.limit2[static_cast<std::size_t>(ti) * static_cast<std::size_t>(cut.ntypes) +
+                                static_cast<std::size_t>(tj)];
+  if (!(lim > 0.0)) {
+    return false;
+  }
+  return cut.inclusive ? r2 <= lim : r2 < lim;
+}
+
+bool keep_r2(const CutView &cut, const Query &query, std::int32_t i, std::int32_t j, double r2) {
+  if (cut.typed) {
+    return type_ok(cut, i, j, r2);
+  }
+  return accept_distance(r2, query);
+}
+
 // vesin half-list rule for a pair and its periodic self image.
 bool keep_half(std::int32_t first, std::int32_t second, int sa, int sb, int sc) {
   if (first > second) {
@@ -196,9 +290,9 @@ bool one_minimum_image(const double *box, const Query &query, double search) {
 }
 
 Neighbours prepare_cells(const double *pos, std::size_t n, const double *box,
-                         const Query &query) {
+                         const Query &query, double search) {
   Spec spec;
-  spec.cutoff = search_radius(query);
+  spec.cutoff = search;
   spec.skin = 0;
   spec.periodic = query.periodic;
   const bool sheared = box[1] != 0.0 || box[2] != 0.0 || box[3] != 0.0 || box[5] != 0.0 ||
@@ -216,12 +310,12 @@ Neighbours prepare_cells(const double *pos, std::size_t n, const double *box,
 // on those candidates only.
 template <typename Fn>
 void each_cell(const Neighbours &cells, const double *pos, const double *box,
-               const Query &query, const int nmax[3], bool one_image, std::size_t begin,
-               std::size_t end, Fn &&fn) {
+               const Query &query, const CutView &cut, const int nmax[3], bool one_image,
+               std::size_t begin, std::size_t end, Fn &&fn) {
   auto accept = [&](std::int32_t i, std::int32_t j, int sa, int sb, int sc, double vx,
                     double vy, double vz) {
     const double r2 = vx * vx + vy * vy + vz * vz;
-    if (!accept_distance(r2, query)) {
+    if (!keep_r2(cut, query, i, j, r2)) {
       return;
     }
     if (!full_shell(query) && !keep_half(i, j, sa, sb, sc)) {
@@ -235,7 +329,7 @@ void each_cell(const Neighbours &cells, const double *pos, const double *box,
     // forHalf is keep_half when a single image exists: j < i is dropped
     // and a self pair is not emitted.
     auto take = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2) {
-      if (!accept_distance(r2, query)) {
+      if (!keep_r2(cut, query, i, j, r2)) {
         return;
       }
       const auto ui = static_cast<std::size_t>(i);
@@ -356,15 +450,15 @@ void merge_clusters(std::vector<Rec> &rows) {
 }
 
 void collect(const Neighbours &cells, const double *pos, std::size_t n, const double *box,
-             const Query &query, const int nmax[3], bool one_image, std::size_t begin,
-             std::size_t end, std::vector<Rec> &out) {
+             const Query &query, const CutView &cut, const int nmax[3], bool one_image,
+             std::size_t begin, std::size_t end, std::vector<Rec> &out) {
   if (clustered(query)) {
     const std::size_t c0 = begin & ~std::size_t{3};
     const std::size_t c1 = std::min(n, (end + 3) & ~std::size_t{3});
     Query full = query;
     full.shape = Pairs{Shell::Full};
     std::vector<Rec> raw;
-    each_cell(cells, pos, box, full, nmax, one_image, c0, c1,
+    each_cell(cells, pos, box, full, cut, nmax, one_image, c0, c1,
               [&](std::int32_t i, std::int32_t j, int sa, int sb, int sc, double vx, double vy,
                   double vz, double dist) {
                 if (static_cast<std::size_t>(i) < begin || static_cast<std::size_t>(i) >= end) {
@@ -378,7 +472,7 @@ void collect(const Neighbours &cells, const double *pos, std::size_t n, const do
     out.insert(out.end(), raw.begin(), raw.end());
     return;
   }
-  each_cell(cells, pos, box, query, nmax, one_image, begin, end,
+  each_cell(cells, pos, box, query, cut, nmax, one_image, begin, end,
             [&](std::int32_t i, std::int32_t j, int sa, int sb, int sc, double vx, double vy,
                 double vz, double dist) {
               push_rec(out, query, i, j, sa, sb, sc, vx, vy, vz, dist, 0xff);
@@ -557,10 +651,27 @@ void move_columns(Table &table, Columns &cols) {
 } // namespace
 
 void Builder::update(const double *positions, std::size_t n, const double *box9,
-                     const Query &query) {
+                     const Query &query, PairCutoffs cuts) {
   check_geometry(positions, n, box9, query);
+  std::vector<std::int32_t> types;
+  std::vector<double> matrix;
+  if (cuts.ntypes != 0) {
+    if (cuts.ntypes < 0 || cuts.cutoff == nullptr || (n > 0 && cuts.types == nullptr)) {
+      throw Error(Code::Cutoff, "a pair-type cutoff needs one type per atom and a square matrix");
+    }
+    if (n > 0) {
+      types.assign(cuts.types, cuts.types + n);
+    }
+    const auto n2 = static_cast<std::size_t>(cuts.ntypes) * static_cast<std::size_t>(cuts.ntypes);
+    matrix.assign(cuts.cutoff, cuts.cutoff + n2);
+  }
+  PairCutoffs local;
+  local.types = types.data();
+  local.cutoff = matrix.data();
+  local.ntypes = cuts.ntypes;
   reused_ = false;
-  if (have_ && n_ == n && query_.cutoff == query.cutoff && query_.skin == query.skin &&
+  if (have_ && n_ == n && ntypes_ == cuts.ntypes && types_ == types && matrix_ == matrix &&
+      query_.cutoff == query.cutoff && query_.skin == query.skin &&
       query_.shape == query.shape && query_.cut == query.cut &&
       query_.periodic == query.periodic && query_.fields.shifts == query.fields.shifts &&
       query_.fields.vectors == query.fields.vectors &&
@@ -571,22 +682,33 @@ void Builder::update(const double *positions, std::size_t n, const double *box9,
       return;
     }
   }
-  build(table_, positions, n, box9, query);
+  build(table_, positions, n, box9, query, local);
   ref_.assign(positions, positions + 3 * n);
   std::memcpy(box_, box9, sizeof(box_));
   query_ = query;
   n_ = n;
+  ntypes_ = cuts.ntypes;
+  types_ = std::move(types);
+  matrix_ = std::move(matrix);
   have_ = true;
   ++builds_;
 }
 
-Walk::Walk(const double *positions, std::size_t n, const double *box9, const Query &query)
+Walk::Walk(const double *positions, std::size_t n, const double *box9, const Query &query,
+           PairCutoffs cuts)
     : pos_(positions), n_(n), query_(query) {
   check_geometry(positions, n, box9, query);
+  OwnedCut owned = prepare_cut(n, query, cuts);
+  cut_typed_ = owned.typed;
+  cut_inclusive_ = owned.inclusive;
+  cut_ntypes_ = owned.ntypes;
+  cut_search_ = owned.search;
+  cut_types_ = std::move(owned.types);
+  cut_limit_ = std::move(owned.limit2);
   std::memcpy(box_, box9, sizeof(box_));
-  shift_bounds(box_, query_.periodic, search_radius(query_), nmax_);
-  one_image_ = one_minimum_image(box_, query_, search_radius(query_));
-  cells_ = prepare_cells(positions, n, box9, query_);
+  shift_bounds(box_, query_.periodic, cut_search_, nmax_);
+  one_image_ = one_minimum_image(box_, query_, cut_search_);
+  cells_ = prepare_cells(positions, n, box9, query_, cut_search_);
 }
 
 std::size_t Walk::pull(Buffers dest, bool &done) {
@@ -624,6 +746,12 @@ std::size_t Walk::pull(Buffers dest, bool &done) {
       hold_mask_.push_back(rec.mask);
     }
   };
+  CutView cut;
+  cut.typed = cut_typed_;
+  cut.inclusive = cut_inclusive_;
+  cut.ntypes = cut_ntypes_;
+  cut.types = cut_types_.data();
+  cut.limit2 = cut_limit_.data();
   std::size_t written = 0;
   while (written < cap) {
     if (hold_at_ >= hold_first_.size()) {
@@ -641,7 +769,7 @@ std::size_t Walk::pull(Buffers dest, bool &done) {
       const std::size_t end = std::min(
           n_, atom_ + (clustered(query_) ? std::size_t{4} : std::size_t{1}));
       std::vector<Rec> rows;
-      collect(cells_, pos_, n_, box_, query_, nmax_, one_image_, atom_, end, rows);
+      collect(cells_, pos_, n_, box_, query_, cut, nmax_, one_image_, atom_, end, rows);
       atom_ = end;
       stash(rows);
       if (hold_first_.empty()) {
@@ -674,15 +802,17 @@ std::size_t Walk::pull(Buffers dest, bool &done) {
 }
 
 void build(Table &table, const double *positions, std::size_t n, const double *box9,
-           const Query &query) {
+           const Query &query, PairCutoffs cuts) {
   check_geometry(positions, n, box9, query);
+  const OwnedCut owned = prepare_cut(n, query, cuts);
+  const CutView cut = owned.view();
   table = Table{};
-  if (n == 0 || !(query.cutoff > 0.0)) {
+  if (n == 0 || !(owned.search > 0.0)) {
     table.stored = true;
     return;
   }
   int nmax[3];
-  const double search = search_radius(query);
+  const double search = owned.search;
   shift_bounds(box9, query.periodic, search, nmax);
   const bool one_image = one_minimum_image(box9, query, search);
   // A handful of atoms is cheaper as a direct pair loop. The cell list
@@ -721,7 +851,7 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
               double vz = 0;
               image_vector(positions, i, j, sa, sb, sc, box9, vx, vy, vz);
               const double r2 = vx * vx + vy * vy + vz * vz;
-              if (!accept_distance(r2, query)) {
+              if (!keep_r2(cut, query, ii, jj, r2)) {
                 continue;
               }
               cols.first.push_back(ii);
@@ -748,7 +878,7 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
     move_columns(table, cols);
     return;
   }
-  const Neighbours cells = prepare_cells(positions, n, box9, query);
+  const Neighbours cells = prepare_cells(positions, n, box9, query, search);
   const int nt = teamSize(n);
   if (!clustered(query)) {
     std::vector<Columns> parts(static_cast<std::size_t>(std::max(nt, 1)));
@@ -777,7 +907,7 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
       auto *distance = cols.distance.data();
       std::size_t count = 0;
       Columns extra;
-      each_cell(cells, positions, box9, query, nmax, one_image, begin, end,
+      each_cell(cells, positions, box9, query, cut, nmax, one_image, begin, end,
                 [&](std::int32_t i, std::int32_t j, int sa, int sb, int sc, double vx,
                     double vy, double vz, double dist) {
                   if (count == slots) {
@@ -893,7 +1023,7 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
         !full, nt,
         [&](int thread, std::int32_t i, std::int32_t j, double dx, double dy, double dz,
             double r2) {
-          if (!accept_distance(r2, query)) {
+          if (!keep_r2(cut, query, i, j, r2)) {
             return;
           }
           const auto ui = static_cast<std::size_t>(i);
@@ -979,7 +1109,7 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
   }
   std::vector<std::vector<Rec>> parts(static_cast<std::size_t>(std::max(nt, 1)));
   if (nt <= 1) {
-    collect(cells, positions, n, box9, query, nmax, one_image, 0, n, parts[0]);
+    collect(cells, positions, n, box9, query, cut, nmax, one_image, 0, n, parts[0]);
   } else {
 #if defined(_OPENMP)
 #pragma omp parallel num_threads(nt)
@@ -991,7 +1121,7 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
       const int t = 0;
 #endif
       const auto range = partition(static_cast<std::int64_t>(n), t, nt);
-      collect(cells, positions, n, box9, query, nmax, one_image,
+      collect(cells, positions, n, box9, query, cut, nmax, one_image,
               static_cast<std::size_t>(range.begin), static_cast<std::size_t>(range.end),
               parts[static_cast<std::size_t>(t)]);
     }
@@ -1007,27 +1137,29 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
 }
 
 void buildByAtom(Table &table, const double *positions, std::size_t n, const double *box9,
-                 const Query &query) {
+                 const Query &query, PairCutoffs cuts) {
   check_geometry(positions, n, box9, query);
+  const OwnedCut owned = prepare_cut(n, query, cuts);
+  const CutView cut = owned.view();
   table = Table{};
-  if (n == 0 || !(query.cutoff > 0.0) || n < 512 || clustered(query)) {
-    build(table, positions, n, box9, query);
+  if (n == 0 || !(owned.search > 0.0) || n < 512 || clustered(query)) {
+    build(table, positions, n, box9, query, cuts);
     return;
   }
   int nmax[3];
-  const double search = search_radius(query);
+  const double search = owned.search;
   shift_bounds(box9, query.periodic, search, nmax);
   const bool one_image = one_minimum_image(box9, query, search);
-  const Neighbours cells = prepare_cells(positions, n, box9, query);
+  const Neighbours cells = prepare_cells(positions, n, box9, query, search);
   std::vector<Rec> rows;
   rows.reserve(n * 8);
   for (std::size_t i = 0; i < n; ++i) {
-    collect(cells, positions, n, box9, query, nmax, one_image, i, i + 1, rows);
+    collect(cells, positions, n, box9, query, cut, nmax, one_image, i, i + 1, rows);
   }
   store_records(table, query, rows);
 }
 
-void build(Batch &batch, const Systems &systems, const Query &query) {
+void build(Batch &batch, const Systems &systems, const Query &query, PairCutoffs cuts) {
   if (systems.systems > 0 &&
       (systems.positions == nullptr || systems.count == nullptr || systems.box9 == nullptr)) {
     throw Error(Code::Null, "a batch needs positions, a count per system and a box per system");
@@ -1041,7 +1173,11 @@ void build(Batch &batch, const Systems &systems, const Query &query) {
     }
     const auto n = static_cast<std::size_t>(count);
     Table table;
-    build(table, systems.positions + 3 * origin, n, systems.box9 + 9 * s, query);
+    PairCutoffs slice = cuts;
+    if (cuts.ntypes != 0 && cuts.types != nullptr) {
+      slice.types = cuts.types + origin;
+    }
+    build(table, systems.positions + 3 * origin, n, systems.box9 + 9 * s, query, slice);
     const auto base = static_cast<std::int32_t>(origin);
     for (std::size_t p = 0; p < table.size(); ++p) {
       out.pairs.first.push_back(table.first[p] + base);
@@ -1066,11 +1202,146 @@ void build(Batch &batch, const Systems &systems, const Query &query) {
   batch = std::move(out);
 }
 
+void each_raw(const double *positions, std::size_t n, const double *box9, const Query &query,
+              void (*fn)(void *, std::int32_t, std::int32_t, int, int, int, double, double, double,
+                         double),
+              void *user, PairCutoffs cuts) {
+  check_geometry(positions, n, box9, query);
+  const OwnedCut owned = prepare_cut(n, query, cuts);
+  const CutView cut = owned.view();
+  if (fn == nullptr) {
+    throw Error(Code::Null, "neighbour callback is null");
+  }
+  if (n == 0 || !(owned.search > 0.0)) {
+    return;
+  }
+  int nmax[3];
+  shift_bounds(box9, query.periodic, owned.search, nmax);
+  const bool one_image = one_minimum_image(box9, query, owned.search);
+  const Neighbours cells = prepare_cells(positions, n, box9, query, owned.search);
+  auto emit = [&](std::int32_t i, std::int32_t j, int sa, int sb, int sc, double vx, double vy,
+                  double vz, double dist) { fn(user, i, j, sa, sb, sc, vx, vy, vz, dist); };
+  if (!clustered(query)) {
+    each_cell(cells, positions, box9, query, cut, nmax, one_image, 0, n, emit);
+    return;
+  }
+  Query geometry = query;
+  geometry.fields.shifts = true;
+  geometry.fields.vectors = true;
+  geometry.fields.distances = true;
+  for (std::size_t atom = 0; atom < n;) {
+    const std::size_t end = std::min(n, atom + 4);
+    std::vector<Rec> rows;
+    collect(cells, positions, n, box9, geometry, cut, nmax, one_image, atom, end, rows);
+    for (const Rec &rec : rows) {
+      fn(user, rec.first, rec.second, rec.shift[0], rec.shift[1], rec.shift[2], rec.vector[0],
+         rec.vector[1], rec.vector[2], rec.distance);
+    }
+    atom = end;
+  }
+}
+
+void Cells::update(const double *positions, std::size_t n, const double *box9, double cutoff,
+                   double skin, Image image, Mode mode, const std::array<bool, 3> &periodic,
+                   PairCutoffs cuts) {
+  if ((n > 0 && positions == nullptr) || box9 == nullptr) {
+    throw Error(Code::Null, "positions or box is null");
+  }
+  if (!std::isfinite(cutoff) || cutoff < 0.0 || !std::isfinite(skin) || skin < 0.0) {
+    throw Error(Code::Cutoff, "cutoff and skin must be finite and >= 0");
+  }
+  typed_ = false;
+  ntypes_ = 0;
+  types_.clear();
+  limit_.clear();
+  double widest = cutoff;
+  if (cuts.ntypes != 0) {
+    if (cuts.ntypes < 0 || cuts.cutoff == nullptr || (n > 0 && cuts.types == nullptr)) {
+      throw Error(Code::Cutoff, "a pair-type cutoff needs one type per atom and a square matrix");
+    }
+    ntypes_ = cuts.ntypes;
+    const auto n2 = static_cast<std::size_t>(ntypes_) * static_cast<std::size_t>(ntypes_);
+    if (n > 0) {
+      types_.assign(cuts.types, cuts.types + n);
+    }
+    limit_.assign(n2, 0.0);
+    for (std::size_t k = 0; k < n2; ++k) {
+      const double c = cuts.cutoff[k];
+      if (!std::isfinite(c) || c < 0.0) {
+        throw Error(Code::Cutoff, "a pair-type cutoff must be finite and >= 0");
+      }
+      if (!(c > 0.0)) {
+        continue;
+      }
+      const double reach = c + skin;
+      limit_[k] = reach * reach;
+      if (c > widest) {
+        widest = c;
+      }
+    }
+    for (std::size_t a = 0; a < n; ++a) {
+      const auto t = types_[a];
+      if (t < 0 || t >= ntypes_) {
+        throw Error(Code::Shape, "a pair type is outside the cutoff matrix");
+      }
+    }
+    typed_ = true;
+  }
+  Spec spec;
+  spec.cutoff = widest;
+  spec.skin = skin;
+  spec.image = image;
+  spec.mode = mode;
+  spec.periodic = periodic;
+  cells_.update(positions, n, box9, spec);
+}
+
+void Cells::filter_directed(std::int64_t begin, std::int64_t end, PairFn fn, void *user) const {
+  cells_.forDirected(begin, end, [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                                    double r2) {
+    if (allow(i, j, r2)) {
+      fn(user, i, j, dx, dy, dz, r2);
+    }
+  });
+}
+
+void Cells::filter_half(std::int64_t begin, std::int64_t end, PairFn fn, void *user) const {
+  cells_.forHalf(begin, end, [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                                double r2) {
+    if (allow(i, j, r2)) {
+      fn(user, i, j, dx, dy, dz, r2);
+    }
+  });
+}
+
+void Cells::filter_atom(std::int32_t i, PairFn fn, void *user) const {
+  cells_.forAtom(i, [&](std::int32_t a, std::int32_t j, double dx, double dy, double dz, double r2) {
+    if (allow(a, j, r2)) {
+      fn(user, a, j, dx, dy, dz, r2);
+    }
+  });
+}
+
+void Cells::filter_team(bool half, int nthreads, TeamFn fn, void *user) const {
+  cells_.forCellTeam(half, nthreads,
+                     [&](int thread, std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                         double r2) {
+                       if (allow(i, j, r2)) {
+                         fn(user, thread, i, j, dx, dy, dz, r2);
+                       }
+                     });
+}
+
 } // namespace rgpot::nlist
 
 namespace {
 
-rgpot::nlist::Query query_from_c(const rgpot_nlist_request *request) {
+struct ParsedRequest {
+  rgpot::nlist::Query query;
+  rgpot::nlist::PairCutoffs cuts;
+};
+
+ParsedRequest query_from_c(const rgpot_nlist_request *request) {
   if (request == nullptr) {
     throw rgpot::nlist::Error(rgpot::nlist::Code::Null, "request is null");
   }
@@ -1113,7 +1384,12 @@ rgpot::nlist::Query query_from_c(const rgpot_nlist_request *request) {
   query.fields.shifts = taken.want_shifts != 0;
   query.fields.vectors = taken.want_vectors != 0;
   query.fields.distances = taken.want_distances != 0;
-  return query;
+  ParsedRequest parsed;
+  parsed.query = query;
+  parsed.cuts.types = taken.types;
+  parsed.cuts.cutoff = taken.pair_cutoff;
+  parsed.cuts.ntypes = taken.ntypes;
+  return parsed;
 }
 
 int32_t code_of(const rgpot::nlist::Error &err, size_t *count) {
@@ -1233,9 +1509,10 @@ int32_t rgpot_nlist_build(const double *positions, size_t n, const double *box9,
                           const rgpot_nlist_request *request, rgpot_nlist_soa *out,
                           size_t *count, size_t *needed) {
   try {
-    const auto query = query_from_c(request);
+    const auto parsed = query_from_c(request);
+    const auto &query = parsed.query;
     rgpot::nlist::Table table;
-    rgpot::nlist::build(table, positions, n, box9, query);
+    rgpot::nlist::build(table, positions, n, box9, query, parsed.cuts);
     if (needed != nullptr) {
       *needed = table.size();
     }
@@ -1296,8 +1573,8 @@ struct rgpot_nlist_walk {
   rgpot::nlist::Walk walk;
   rgpot::nlist::Query query;
   rgpot_nlist_walk(const double *positions, size_t n, const double *box9,
-                   const rgpot::nlist::Query &q)
-      : walk(positions, n, box9, q), query(q) {}
+                   const rgpot::nlist::Query &q, rgpot::nlist::PairCutoffs cuts)
+      : walk(positions, n, box9, q, cuts), query(q) {}
 };
 
 int32_t rgpot_nlist_walk_open(const double *positions, size_t n, const double *box9,
@@ -1308,8 +1585,9 @@ int32_t rgpot_nlist_walk_open(const double *positions, size_t n, const double *b
   }
   *walk = nullptr;
   try {
-    const auto query = query_from_c(request);
-    *walk = new (std::nothrow) rgpot_nlist_walk(positions, n, box9, query);
+    const auto parsed = query_from_c(request);
+    *walk = new (std::nothrow)
+        rgpot_nlist_walk(positions, n, box9, parsed.query, parsed.cuts);
     if (*walk == nullptr) {
       return RGPOT_NLIST_NOMEM;
     }
@@ -1353,19 +1631,33 @@ int32_t rgpot_nlist_walk_pull(rgpot_nlist_walk *walk, rgpot_nlist_soa *out, size
 
 void rgpot_nlist_walk_close(rgpot_nlist_walk *walk) { delete walk; }
 
+int32_t rgpot_nlist_each(const double *positions, size_t n, const double *box9,
+                         const rgpot_nlist_request *request, rgpot_nlist_each_fn fn, void *user) {
+  try {
+    const auto parsed = query_from_c(request);
+    rgpot::nlist::each_raw(positions, n, box9, parsed.query, fn, user, parsed.cuts);
+    return RGPOT_NLIST_OK;
+  } catch (const rgpot::nlist::Error &err) {
+    return static_cast<int32_t>(err.code());
+  } catch (const std::bad_alloc &) {
+    return RGPOT_NLIST_NOMEM;
+  }
+}
+
 int32_t rgpot_nlist_build_systems(const double *positions, const int32_t *counts,
                                   size_t nsystems, const double *box9,
                                   const rgpot_nlist_request *request, rgpot_nlist_soa *out,
                                   int32_t *system, size_t *count, size_t *needed) {
   try {
-    const auto query = query_from_c(request);
+    const auto parsed = query_from_c(request);
+    const auto &query = parsed.query;
     rgpot::nlist::Systems systems;
     systems.positions = positions;
     systems.count = counts;
     systems.systems = nsystems;
     systems.box9 = box9;
     rgpot::nlist::Batch batch;
-    rgpot::nlist::build(batch, systems, query);
+    rgpot::nlist::build(batch, systems, query, parsed.cuts);
     if (needed != nullptr) {
       *needed = batch.pairs.size();
     }
@@ -1448,8 +1740,9 @@ int32_t rgpot_nlist_builder_update(rgpot_nlist_builder *builder, const double *p
     return RGPOT_NLIST_NULL;
   }
   try {
-    const auto query = query_from_c(request);
-    builder->builder.update(positions, n, box9, query);
+    const auto parsed = query_from_c(request);
+    const auto &query = parsed.query;
+    builder->builder.update(positions, n, box9, query, parsed.cuts);
     if (reused != nullptr) {
       *reused = builder->builder.reused() ? 1 : 0;
     }
