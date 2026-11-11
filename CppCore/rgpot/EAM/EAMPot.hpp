@@ -5,6 +5,7 @@
 // The cell-list EAM kernel is the eOn source compiled with EAM_STANDALONE,
 // BSD-3-Clause, copyright the eOn Development Team.
 
+#include <cstddef>
 #include <cstdint>
 
 #include "rgpot/ParamHash.hpp"
@@ -32,6 +33,13 @@ public:
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
     return m_paramsKey;
   }
+
+  /// Neighbour-list builds. A second call on a geometry inside the Verlet
+  /// skin does not increment this.
+  [[nodiscard]] std::uint64_t listBuilds() const noexcept;
+
+  /// Stored neighbour indices after the last build.
+  [[nodiscard]] std::size_t neighborSlots() const noexcept;
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 

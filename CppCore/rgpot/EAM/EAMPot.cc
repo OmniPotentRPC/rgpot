@@ -19,6 +19,14 @@ EAMPot::EAMPot(const EAMCellConfig &)
 
 EAMPot::~EAMPot() { delete m_impl; }
 
+std::uint64_t EAMPot::listBuilds() const noexcept {
+  return m_impl->kernel.listBuilds();
+}
+
+std::size_t EAMPot::neighborSlots() const noexcept {
+  return m_impl->kernel.neighborSlots();
+}
+
 void EAMPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   double energy = 0.0;
   double variance = 0.0;

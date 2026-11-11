@@ -12,14 +12,23 @@
 #pragma once
 
 #include <array>
-#include <cmath>
+#include <cstdint>
 #include <vector>
 
 #ifndef EAM_STANDALONE
 #include "eon/Potential.h"
 #endif
 
-/// EAM (Embedded Atom Method) potential with cell list neighbor finding.
+/// Fraction of the widest element cutoff added to the neighbour search.
+/// A later call reuses the list while every atom has moved by at most half
+/// of that distance. One fraction for every geometry.
+inline constexpr double kEamSkinOverCutoff = 1.0 / 5.0;
+
+/// Embedded-atom aluminium, palladium and gold.
+///
+/// The neighbour search is a linked-cell list with a Verlet skin. The force
+/// loop visits the same pairs, in the same atom order, as the direct double
+/// loop, and the arithmetic of each pair is unchanged.
 class EAM
 #ifndef EAM_STANDALONE
     : public eonc::Potential
@@ -27,11 +36,11 @@ class EAM
 {
 public:
 #ifdef EAM_STANDALONE
-  EAM() : rc_{6.0, 6.0, 6.0} {}
+  EAM() = default;
   ~EAM() = default;
 #else
   explicit EAM(const eonc::Parameters &params)
-      : eonc::Potential(eonc::PotType::EAM_AL, params), rc_{6.0, 6.0, 6.0} {}
+      : eonc::Potential(eonc::PotType::EAM_AL, params) {}
 
   ~EAM() override = default;
 #endif
@@ -44,8 +53,17 @@ public:
 #endif
       ;
 
+  /// Neighbour-list builds since this object was created.
+  [[nodiscard]] std::uint64_t listBuilds() const noexcept { return builds_; }
+
+  /// Stored neighbour indices. Linear in the atom count for a short-ranged
+  /// density; the direct loop kept a slot for every atom pair.
+  [[nodiscard]] std::size_t neighborSlots() const noexcept {
+    return nbr_.size();
+  }
+
 #ifndef EAM_STANDALONE
-  /// Cell lists live on the instance; two threads cannot share one EAM.
+  /// The list and the scratch live on the instance.
   [[nodiscard]] bool isSharedInstanceThreadSafe() const noexcept override {
     return false;
   }
@@ -53,36 +71,56 @@ public:
 
 private:
   struct element_parameters {
-    const int Z;                // Atomic number
-    const double Dm;            // Morse potential well depth
-    const double alphaM;        // Curvature at Morse minimum
-    const double Rm;            // Position of Morse minimum
-    const double beta1;         // Density parameter 1
-    const double beta2;         // Density parameter 2
-    const double r_cut;         // Cutoff distance
-    const double func_coeff[9]; // 8th order poly for embedding function
+    const int Z;
+    const double Dm;
+    const double alphaM;
+    const double Rm;
+    const double beta1;
+    const double beta2;
+    const double r_cut;
+    const double func_coeff[9];
   };
   static const element_parameters el_params[];
 
-  std::vector<long> celllist_old_;
-  std::vector<long> celllist_new_;
-  std::vector<long> neigh_list_;
-  bool initialized_{false};
-  std::array<double, 3> rc_;
+  /// One neighbour's density derivative, in atom-index order.
+  struct Delta {
+    long atom;
+    double x;
+    double y;
+    double z;
+  };
 
-  void calc_force(long N, double *R, const int *atomicNrs, double *F, double *U,
-                  const double *box);
-  void new_celllist(long N, const double *box, long *num_axis,
-                    long *cell_length, long *celllist_new, long num_cells,
-                    double *Rnew);
-  void cell_to_neighbor(long N, long num_of_cells, long *num_axis,
-                        long *cell_length, long *celllist_new,
-                        long *neigh_list);
-  int update_cell_list(long N, long num_cells, long *num_axis,
-                       long *cell_length, long *celllist_old, double *Rnew);
+  std::vector<double> wrapped_;
+  std::vector<double> ref_;
+  std::vector<int> species_;
+  std::vector<long> head_;
+  std::vector<long> next_;
+  std::vector<long> off_;
+  std::vector<long> nbr_;
+  std::vector<long> gather_;
+  std::vector<unsigned> stamp_;
+  std::vector<Delta> deltas_;
+
+  double box_len_[3]{};
+  double box_ref_[3]{};
+  double skin_ = 0;
+  long n_atoms_ = 0;
+  long n_axis_[3]{};
+  std::uint64_t builds_ = 0;
+  bool built_ = false;
+
+  void prepare(long N, const double *R, const double *box);
+  [[nodiscard]] bool reusable(long N, const double *R, const int *atomicNrs,
+                              const double *box) const;
+  void buildList(long N, const int *atomicNrs);
+  void evaluate(long N, const int *atomicNrs, double *F, double *U);
+  void accumulate(long i, const int *atomicNrs, double *F, double &U,
+                  std::vector<Delta> &deltas) const;
+
+  [[nodiscard]] element_parameters
+  get_element_parameters(int atomic_number) const;
   [[nodiscard]] static double embedding_function(const double *func_coeff,
                                                  double rho);
   [[nodiscard]] static double embedding_force(const double *func_coeff,
                                               double rho);
-  [[nodiscard]] element_parameters get_element_parameters(int atomic_number);
 };
