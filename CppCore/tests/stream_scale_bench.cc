@@ -132,8 +132,10 @@ void timePot(Pot &pot, const std::vector<double> &pos, const std::vector<int> &z
 
 int runJob(const Job &job) {
   setThreads(std::to_string(job.threads).c_str());
-  const bool stream = std::string(job.mode) == "stream";
-  const auto mode = stream ? rgpot::nlist::Mode::Stream : rgpot::nlist::Mode::Stored;
+  const std::string which = job.mode;
+  const auto mode = which == "stream"  ? rgpot::nlist::Mode::Stream
+                    : which == "auto" ? rgpot::nlist::Mode::Auto
+                                      : rgpot::nlist::Mode::Stored;
   double lx = 0;
   double ly = 0;
   double lz = 0;
@@ -262,7 +264,7 @@ int main(int argc, char **argv) {
   }
   out << "potential,mode,atoms,threads,repeats,median_s,peak_rss_kb,cutoff_A\n";
   const char *pots[] = {"LJ", "Morse", "EAM", "SuttonChen", "ZBL", "SW", "Tersoff"};
-  const char *modes[] = {"stored", "stream"};
+  const char *modes[] = {"stored", "stream", "auto"};
   struct Shape {
     int nx, ny, nz;
   };

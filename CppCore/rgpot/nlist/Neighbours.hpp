@@ -8,7 +8,9 @@
 
 #include "rgpot/nlist/MinimumImage.hpp"
 
+#include <algorithm>
 #include <array>
+#include <cstring>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -256,8 +258,37 @@ private:
       double sy;
       double sz;
     };
-    std::vector<Nbor> neigh(ncells * 27);
-    std::vector<int> nneigh(ncells, 0);
+    struct Tile {
+      double x;
+      double y;
+      double z;
+      std::int32_t id;
+    };
+    // The stencil depends only on the coordinates. A warm call with
+    // the same positions reuses it.
+    struct Cache {
+      const Neighbours *owner = nullptr;
+      int nx = 0;
+      int ny = 0;
+      int nz = 0;
+      double search = 0;
+      std::vector<double> xyz;
+      std::vector<Nbor> neigh;
+      std::vector<int> nneigh;
+      std::vector<Tile> tile;
+    };
+    static Cache cache;
+    // The stored evaluation rebuilds its stencil. A stream keeps one and
+    // reuses it when the coordinates are unchanged.
+    const bool reuse =
+        streaming_ && cache.owner == this && cache.nx == nx_ && cache.ny == ny_ &&
+        cache.nz == nz_ && cache.search == search_ && cache.xyz.size() == n_ * 3 &&
+        std::memcmp(cache.xyz.data(), xyz_, n_ * 3 * sizeof(double)) == 0;
+    if (!reuse) {
+    auto &neigh = cache.neigh;
+    auto &nneigh = cache.nneigh;
+    neigh.assign(ncells * 27, Nbor{});
+    nneigh.assign(ncells, 0);
     for (std::size_t c = 0; c < ncells; ++c) {
       const int cell = static_cast<int>(c);
       int iz = cell % nz_;
@@ -327,20 +358,24 @@ private:
       }
       nneigh[c] = nseen;
     }
-    struct Tile {
-      double x;
-      double y;
-      double z;
-      std::int32_t id;
-    };
-    std::vector<Tile> tile(n_);
+    auto &tile = cache.tile;
+    tile.resize(n_);
     for (std::size_t q = 0; q < n_; ++q) {
       const auto j = cell_atoms_[q];
       const auto u = static_cast<std::size_t>(j) * 3;
       tile[q] = Tile{xyz_[u], xyz_[u + 1], xyz_[u + 2], j};
     }
-    loop(tile, neigh, nneigh, ncells, cell_shift, search_ * search_, len_[0], len_[1], len_[2],
-         inv_[0], inv_[1], inv_[2], periodic_[0], periodic_[1], periodic_[2]);
+    if (streaming_) {
+      cache.owner = this;
+      cache.nx = nx_;
+      cache.ny = ny_;
+      cache.nz = nz_;
+      cache.search = search_;
+      cache.xyz.assign(xyz_, xyz_ + n_ * 3);
+    }
+    }
+    loop(cache.tile, cache.neigh, cache.nneigh, ncells, cell_shift, search_ * search_, len_[0],
+         len_[1], len_[2], inv_[0], inv_[1], inv_[2], periodic_[0], periodic_[1], periodic_[2]);
     return true;
   }
 
@@ -383,9 +418,25 @@ private:
           const auto b0 = static_cast<std::size_t>(cell_start_[static_cast<std::size_t>(src.id)]);
           const auto b1 =
               static_cast<std::size_t>(cell_start_[static_cast<std::size_t>(src.id) + 1]);
-          for (std::size_t r = b0; r < b1; ++r) {
+          // Atom ids increase inside a cell, so a half pair starts at the
+          // first neighbour with a larger id and does not test the rest.
+          const std::size_t rstart = [&]() {
+            if (!half) {
+              return b0;
+            }
+            const auto begin = tile.begin() + static_cast<std::ptrdiff_t>(b0);
+            const auto end = tile.begin() + static_cast<std::ptrdiff_t>(b1);
+            const auto found = std::lower_bound(
+                begin, end, a.id, [](const Tile &atom, std::int32_t id) { return atom.id < id; });
+            auto next = found;
+            if (next != end && next->id == a.id) {
+              ++next;
+            }
+            return static_cast<std::size_t>(next - tile.begin());
+          }();
+          for (std::size_t r = rstart; r < b1; ++r) {
             const Tile &b = tile[r];
-            if (b.id == a.id || (half && b.id <= a.id)) {
+            if (!half && b.id == a.id) {
               continue;
             }
             double dx;

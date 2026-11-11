@@ -63,10 +63,16 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   }
 
   const auto n_atoms = static_cast<std::size_t>(N);
-  const double skin = mode_ == nlist::Mode::Stream ? 0.0 : neighbourSkin(cuttOffR);
+  // The cell walk is slower than the stored list from about 20k atoms
+  // upward (measured at 108k and 1M). Auto stores there.
+  nlist::Mode mode = mode_;
+  if (mode == nlist::Mode::Auto && n_atoms >= 20000) {
+    mode = nlist::Mode::Stored;
+  }
+  const double skin = mode == nlist::Mode::Stream ? 0.0 : neighbourSkin(cuttOffR);
   const std::array<bool, 3> periodic{{true, true, true}};
   nlist::updateCells(neighbours_, R, n_atoms, box, cuttOffR, skin, nlist::Image::Round,
-                     mode_, periodic);
+                     mode, periodic);
   const double cutoff2 = cuttOffR * cuttOffR;
   const double twoDeA = 2.0 * De * a;
   const bool switched = m_config.switch_width != 0.0;

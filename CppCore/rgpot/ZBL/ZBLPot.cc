@@ -210,10 +210,16 @@ void ZBLPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const bool box_ok = in.box != nullptr && in.box[0] > 0.0 && in.box[4] > 0.0 &&
                       in.box[8] > 0.0;
   const double *box_use = box_ok ? in.box : free_box;
-  const double skin = mode_ == nlist::Mode::Stream ? 0.0 : neighbourSkin(cut_global);
+  // The scattered cell walk is slower than the stored list through a
+  // million atoms. Auto stores below that.
+  nlist::Mode mode = mode_;
+  if (mode == nlist::Mode::Auto && N < 2000000) {
+    mode = nlist::Mode::Stored;
+  }
+  const double skin = mode == nlist::Mode::Stream ? 0.0 : neighbourSkin(cut_global);
   const std::array<bool, 3> open{{false, false, false}};
   nlist::updateCells(neighbours_, R, static_cast<std::size_t>(N), box_use, cut_global, skin,
-                     nlist::Image::Round, mode_, open);
+                     nlist::Image::Round, mode, open);
   const double rInner = cut_inner;
   const double rInnerSq = cut_inner_sq;
   const int *types = typeIdx.data();
