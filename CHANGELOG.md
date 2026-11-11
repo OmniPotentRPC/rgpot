@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
+## [Unreleased]
+
+### Breaking
+
+- librgpot's ELF soversion is 5. LJPot and MorsePot each hold a neighbour
+  list and a cached pair table, so a binary built against soversion 4
+  does not load librgpot.so.5. librgpot_mpi stays at soversion 3.
+
 ## [3.5.1](https://github.com/OmniPotentRPC/rgpot/tree/v3.5.1) - 2026-10-11
 
 ### Breaking

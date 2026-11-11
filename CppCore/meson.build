@@ -1730,7 +1730,15 @@ if get_option('with_tests')
             sources: [files('../benchmarks/asv_fastpath.cc')],
             dependencies: rgpot_deps,
             include_directories: _incdirs,
-            link_with: [rgpot_core, lennard_jones, morse, fortran_kernels],
+            link_with: [
+                rgpot_core,
+                lennard_jones,
+                morse,
+                fortran_kernels,
+                rgpot_halfshell,
+                rgpot_minimage,
+                rgpot_exact_fma,
+            ],
             cpp_args: [
                 '-DRGPOT_ASV_DATA="@0@"'.format(
                     meson.project_source_root() / 'benchmarks' / 'data',
