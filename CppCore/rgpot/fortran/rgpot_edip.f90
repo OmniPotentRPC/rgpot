@@ -242,8 +242,8 @@ contains
 
    !> Three-body legs of atom `i`: every neighbour inside `bg`, with its
    !! radial factor, unit vector, inverse distance, and atom index.
-   pure subroutine collect_legs(par, cst, table, i, maxnbr, nleg, &
-                                g, dg, u, rinv, who)
+   subroutine collect_legs(par, cst, table, i, maxnbr, nleg, &
+                           g, dg, u, rinv, who)
       type(edip_params_t), intent(in) :: par
       type(edip_const_t), intent(in) :: cst
       type(neighbor_table_t), intent(in) :: table
@@ -252,18 +252,22 @@ contains
       real(wp), intent(out) :: g(maxnbr), dg(maxnbr), u(3, maxnbr), rinv(maxnbr)
       integer(ip), intent(out) :: who(maxnbr)
 
-      integer(ip) :: s
+      integer(ip) :: s, ni
+      integer(ip), allocatable :: idx(:)
+      real(wp), allocatable :: vec(:, :), dist(:)
       real(wp) :: r
 
       nleg = 0_ip
-      do s = table%row(i), table%row(i + 1_ip) - 1_ip
-         r = table%dist(s)
+      call table%load(i, idx, vec, dist, ni)
+      do s = 1_ip, ni
+         r = dist(s)
          if (r >= cst%bg) cycle
+         if (nleg >= maxnbr) exit
          nleg = nleg + 1_ip
          call leg_radial(par, cst, r, g(nleg), dg(nleg))
-         u(:, nleg) = table%vec(:, s)/r
+         u(:, nleg) = vec(:, s)/r
          rinv(nleg) = 1.0_wp/r
-         who(nleg) = table%idx(s)
+         who(nleg) = idx(s)
       end do
    end subroutine collect_legs
 
@@ -271,7 +275,7 @@ contains
    !!
    !! Every quantity here depends on atom `i`'s own neighbourhood only, so
    !! the iterations of the calling loop are independent.
-   pure subroutine atom_terms(par, cst, table, i, maxnbr, z, e_i, dedz)
+   subroutine atom_terms(par, cst, table, i, maxnbr, z, e_i, dedz)
       type(edip_params_t), intent(in) :: par
       type(edip_const_t), intent(in) :: cst
       type(neighbor_table_t), intent(in) :: table
@@ -280,7 +284,9 @@ contains
 
       real(wp) :: g(maxnbr), dg(maxnbr), u(3, maxnbr), rinv(maxnbr)
       integer(ip) :: who(maxnbr)
-      integer(ip) :: s, nleg, nj, nk
+      integer(ip) :: s, nleg, nj, nk, ni
+      integer(ip), allocatable :: idx(:)
+      real(wp), allocatable :: vec(:, :), dist(:)
       real(wp) :: r, t0, t1, t2, t3, fz, dfz, pz, dp
       real(wp) :: winv, dwinv, tau, dtau, lcos, h, dhdx, dxdz, gg
 
@@ -288,16 +294,17 @@ contains
       dedz = 0.0_wp
 
       z = 0.0_wp
-      do s = table%row(i), table%row(i + 1_ip) - 1_ip
-         call coord_term(par, cst, table%dist(s), fz, dfz)
+      call table%load(i, idx, vec, dist, ni)
+      do s = 1_ip, ni
+         call coord_term(par, cst, dist(s), fz, dfz)
          z = z + fz
       end do
 
       call bond_order(par, z, pz, dp)
 
       ! Pair term V2(r, Z) and the share of dE/dZ it carries.
-      do s = table%row(i), table%row(i + 1_ip) - 1_ip
-         r = table%dist(s)
+      do s = 1_ip, ni
+         r = dist(s)
          if (r >= par%a) cycle
          call pair_radial(par, r, t0, t1, t2, t3)
          e_i = e_i + (t1 - pz)*t0
@@ -322,7 +329,7 @@ contains
    end subroutine atom_terms
 
    !> Total force on atom `i`, given `Z` and `dE/dZ` of every atom.
-   pure subroutine atom_force(par, cst, table, i, maxnbr, z, dedz, f_i)
+   subroutine atom_force(par, cst, table, i, maxnbr, z, dedz, f_i)
       type(edip_params_t), intent(in) :: par
       type(edip_const_t), intent(in) :: cst
       type(neighbor_table_t), intent(in) :: table
@@ -332,7 +339,9 @@ contains
 
       real(wp) :: g(maxnbr), dg(maxnbr), u(3, maxnbr), rinv(maxnbr)
       integer(ip) :: who(maxnbr)
-      integer(ip) :: s, sn, j, m, n, nleg, nj, nk
+      integer(ip) :: s, sn, j, m, n, nleg, nj, nk, ni, nm
+      integer(ip), allocatable :: idx(:), midx(:)
+      real(wp), allocatable :: vec(:, :), mvec(:, :), dist(:), mdist(:)
       real(wp) :: r, rim, rmn, uij(3), u_mi(3), u_mn(3)
       real(wp) :: t0, t1, t2, t3, fz, dfz, pz_i, pz_j, dp_i, dp_j
       real(wp) :: winv, dwinv, tau, dtau, lcos, h, dhdx
@@ -340,14 +349,15 @@ contains
 
       f_i = 0.0_wp
       call bond_order(par, z(i), pz_i, dp_i)
+      call table%load(i, idx, vec, dist, ni)
 
       ! Pair and coordination channels. Both close because the pair term
       ! needs the bond order of each end and the coordination term needs
       ! dE/dZ of each end, and both are already known per atom.
-      do s = table%row(i), table%row(i + 1_ip) - 1_ip
-         j = table%idx(s)
-         r = table%dist(s)
-         uij = table%vec(:, s)/r
+      do s = 1_ip, ni
+         j = idx(s)
+         r = dist(s)
+         uij = vec(:, s)/r
 
          if (r < par%a) then
             call pair_radial(par, r, t0, t1, t2, t3)
@@ -378,22 +388,23 @@ contains
       end do
 
       ! Three-body, i at an end of every triplet centred on a neighbour m.
-      do s = table%row(i), table%row(i + 1_ip) - 1_ip
-         m = table%idx(s)
-         rim = table%dist(s)
+      do s = 1_ip, ni
+         m = idx(s)
+         rim = dist(s)
          if (rim >= cst%bg) cycle
 
          ! Vector m -> i is the reverse of the stored i -> m vector.
-         u_mi = -table%vec(:, s)/rim
+         u_mi = -vec(:, s)/rim
          call leg_radial(par, cst, rim, g_self, dg_self)
          call angular_shape(par, cst, z(m), winv, dwinv, tau, dtau)
 
-         do sn = table%row(m), table%row(m + 1_ip) - 1_ip
-            n = table%idx(sn)
+         call table%load(m, midx, mvec, mdist, nm)
+         do sn = 1_ip, nm
+            n = midx(sn)
             if (n == i) cycle
-            rmn = table%dist(sn)
+            rmn = mdist(sn)
             if (rmn >= cst%bg) cycle
-            u_mn = table%vec(:, sn)/rmn
+            u_mn = mvec(:, sn)/rmn
             call leg_radial(par, cst, rmn, g_other, dg_other)
             lcos = dot_product(u_mi, u_mn)
             call angular_term(par, cst, winv, tau, lcos, h, dhdx)
@@ -472,9 +483,21 @@ contains
       cst = edip_constants(par)
 
       maxnbr = 1_ip
-      do i = 1_ip, natoms
-         maxnbr = max(maxnbr, table%row(i + 1_ip) - table%row(i))
-      end do
+      if (table%streaming) then
+         block
+            integer(ip) :: ni
+            integer(ip), allocatable :: idx(:)
+            real(wp), allocatable :: vec(:, :), dist(:)
+            do i = 1_ip, natoms
+               call table%load(i, idx, vec, dist, ni)
+               maxnbr = max(maxnbr, ni)
+            end do
+         end block
+      else
+         do i = 1_ip, natoms
+            maxnbr = max(maxnbr, table%row(i + 1_ip) - table%row(i))
+         end do
+      end if
 
       allocate (e_atom(natoms), source=0.0_wp)
       allocate (z(natoms), source=0.0_wp)
@@ -482,13 +505,13 @@ contains
 
       ! Pass one: per-atom scalars. Each iteration reads its own
       ! neighbourhood and writes its own slots.
-      do concurrent(i=1:natoms)
+      do i = 1_ip, natoms
          call atom_terms(par, cst, table, i, maxnbr, z(i), e_atom(i), dedz(i))
       end do
 
       ! Pass two: forces. Each iteration reads the pass-one arrays and
       ! writes only its own force column.
-      do concurrent(i=1:natoms)
+      do i = 1_ip, natoms
          call atom_force(par, cst, table, i, maxnbr, z, dedz, forces(:, i))
       end do
 

@@ -182,9 +182,8 @@ contains
       integer, intent(out) :: status
       character(len=:), allocatable, intent(out) :: errmsg
 
-      integer(ip) :: natoms, i, nent
+      integer(ip) :: natoms, i
       real(wp), allocatable :: rho(:), dembed(:), e_pair(:), e_embed(:)
-      real(wp), allocatable :: dens(:), ddens(:)
       real(wp) :: rt, pair_shift, dens_shift
 
       natoms = int(size(positions, 2), ip)
@@ -198,14 +197,12 @@ contains
       pair_shift = pair_shape(par, par%rcut)
       dens_shift = density_shape(par, par%rcut)
 
-      nent = max(table%row(natoms + 1_ip) - 1_ip, 1_ip)
       allocate (rho(natoms), dembed(natoms), e_pair(natoms), e_embed(natoms))
-      allocate (dens(nent), ddens(nent))
 
       ! Pass one: each atom sums the density its own neighbours put at its
-      ! site, keeping rho(r) and rho'(r) of every entry for pass three.
-      do concurrent(i=1:natoms)
-         call atom_density(par, table, i, rt, dens_shift, dens, ddens, rho(i))
+      ! site. The force pass evaluates rho(r) again from the same distance.
+      do i = 1_ip, natoms
+         call atom_density(par, table, i, rt, dens_shift, rho(i))
       end do
 
       ! Pass two: F and F' for every atom. F' stands as its own pass
@@ -217,8 +214,8 @@ contains
 
       ! Pass three: each atom sums the whole force acting on it and writes
       ! only its own column.
-      do concurrent(i=1:natoms)
-         call atom_contribution(par, table, i, rt, pair_shift, dens, ddens, &
+      do i = 1_ip, natoms
+         call atom_contribution(par, table, i, rt, pair_shift, dens_shift, &
                                 dembed, e_pair(i), forces(:, i))
       end do
 
@@ -227,67 +224,80 @@ contains
 
    !> Total electron density at atom `i`; stores `rho(r)` and `rho'(r)` of
    !! each of its entries (zero past the truncation radius).
-   pure subroutine atom_density(par, table, i, rt, dens_shift, dens, ddens, &
-                                rho_i)
+   subroutine atom_density(par, table, i, rt, dens_shift, rho_i)
       type(eam_al_params_t), intent(in) :: par
       type(neighbor_table_t), intent(in) :: table
       integer(ip), intent(in) :: i
       real(wp), intent(in) :: rt, dens_shift
-      real(wp), intent(inout) :: dens(:), ddens(:)
       real(wp), intent(out) :: rho_i
 
-      integer(ip) :: s
-      real(wp) :: r, ea, eb, rpm1, rp
+      integer(ip) :: s, ni
+      integer(ip), allocatable :: idx(:)
+      real(wp), allocatable :: vec(:, :), dist(:)
+      real(wp) :: r, rho_r, drho
 
       rho_i = 0.0_wp
-      do s = table%row(i), table%row(i + 1_ip) - 1_ip
-         r = table%dist(s)
-         if (r >= rt) then
-            dens(s) = 0.0_wp
-            ddens(s) = 0.0_wp
-            cycle
-         end if
-         ea = exp(-par%density_decay_a*r)
-         eb = par%density_weight_b*exp(-par%density_decay_b*r)
-         rpm1 = ipow(r, par%density_power - 1)
-         rp = rpm1*r
-         dens(s) = par%density_scale*(rp*(ea + eb) - dens_shift)
-         ddens(s) = par%density_scale &
-                    *(real(par%density_power, wp)*rpm1*(ea + eb) &
-                      - rp*(par%density_decay_a*ea + par%density_decay_b*eb))
-         rho_i = rho_i + dens(s)
+      call table%load(i, idx, vec, dist, ni)
+      do s = 1_ip, ni
+         r = dist(s)
+         call density_terms(par, r, rt, dens_shift, rho_r, drho)
+         rho_i = rho_i + rho_r
       end do
    end subroutine atom_density
 
+   subroutine density_terms(par, r, rt, dens_shift, rho_r, drho)
+      type(eam_al_params_t), intent(in) :: par
+      real(wp), intent(in) :: r, rt, dens_shift
+      real(wp), intent(out) :: rho_r, drho
+
+      real(wp) :: ea, eb, rpm1, rp
+
+      rho_r = 0.0_wp
+      drho = 0.0_wp
+      if (r >= rt) return
+      ea = exp(-par%density_decay_a*r)
+      eb = par%density_weight_b*exp(-par%density_decay_b*r)
+      rpm1 = ipow(r, par%density_power - 1)
+      rp = rpm1*r
+      rho_r = par%density_scale*(rp*(ea + eb) - dens_shift)
+      drho = par%density_scale &
+             *(real(par%density_power, wp)*rpm1*(ea + eb) &
+               - rp*(par%density_decay_a*ea + par%density_decay_b*eb))
+   end subroutine density_terms
+
    !> Atom `i`'s half of the pair energy and the total force acting on it.
-   pure subroutine atom_contribution(par, table, i, rt, pair_shift, dens, &
-                                     ddens, dembed, e_i, f_i)
+   subroutine atom_contribution(par, table, i, rt, pair_shift, dens_shift, &
+                                dembed, e_i, f_i)
       type(eam_al_params_t), intent(in) :: par
       type(neighbor_table_t), intent(in) :: table
       integer(ip), intent(in) :: i
-      real(wp), intent(in) :: rt, pair_shift
-      real(wp), intent(in) :: dens(:), ddens(:), dembed(:)
+      real(wp), intent(in) :: rt, pair_shift, dens_shift
+      real(wp), intent(in) :: dembed(:)
       real(wp), intent(out) :: e_i
       real(wp), intent(out) :: f_i(3)
 
-      integer(ip) :: s, j
-      real(wp) :: r, rhat(3), dedr, pa, pb, phi, dphi
+      integer(ip) :: s, j, ni
+      integer(ip), allocatable :: idx(:)
+      real(wp), allocatable :: vec(:, :), dist(:)
+      real(wp) :: r, rhat(3), dedr, pa, pb, phi, dphi, rho_r, drho
 
       e_i = 0.0_wp
       f_i = 0.0_wp
+      call table%load(i, idx, vec, dist, ni)
 
-      do s = table%row(i), table%row(i + 1_ip) - 1_ip
-         r = table%dist(s)
+      do s = 1_ip, ni
+         r = dist(s)
          if (r >= rt) cycle
-         j = table%idx(s)
-         rhat = table%vec(:, s)/r
+         j = idx(s)
+         rhat = vec(:, s)/r
+         call density_terms(par, r, rt, dens_shift, rho_r, drho)
          pa = par%pair_amp_a*exp(-par%pair_decay_a*r)
          pb = par%pair_amp_b*exp(-par%pair_decay_b*r)
 
          ! Pair energy with the -2 g rho(r) gauge term, and its slope.
-         phi = pa + pb - pair_shift - 2.0_wp*par%g_transform*dens(s)
+         phi = pa + pb - pair_shift - 2.0_wp*par%g_transform*rho_r
          dphi = -(par%pair_decay_a*pa + par%pair_decay_b*pb) &
-                - 2.0_wp*par%g_transform*ddens(s)
+                - 2.0_wp*par%g_transform*drho
 
          ! Half the bond energy, since the neighbour's own pass takes the
          ! other half.
@@ -296,7 +306,7 @@ contains
          ! The whole radial force this bond exerts on i: the pair slope
          ! plus the density slope weighted by both ends' embedding
          ! derivatives.
-         dedr = dphi + (dembed(i) + dembed(j))*ddens(s)
+         dedr = dphi + (dembed(i) + dembed(j))*drho
          f_i = f_i + dedr*rhat
       end do
    end subroutine atom_contribution

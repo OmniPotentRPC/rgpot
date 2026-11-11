@@ -419,12 +419,30 @@ contains
 
       ! Every radial term divides by the pair distance, so a coincident
       ! pair is reported rather than left to seed a NaN in the forces.
-      nentries = table%row(natoms + 1_ip) - 1_ip
-      if (nentries > 0_ip) then
-         if (minval(table%dist(1:nentries)) <= 0.0_wp) then
-            status = 3
-            errmsg = "rgpot_cuh2: two atoms occupy the same position"
-            return
+      if (table%streaming) then
+         block
+            integer(ip) :: ni, s
+            integer(ip), allocatable :: idx(:)
+            real(wp), allocatable :: vec(:, :), dist(:)
+            do i = 1_ip, natoms
+               call table%load(i, idx, vec, dist, ni)
+               do s = 1_ip, ni
+                  if (dist(s) <= 0.0_wp) then
+                     status = 3
+                     errmsg = "rgpot_cuh2: two atoms occupy the same position"
+                     return
+                  end if
+               end do
+            end do
+         end block
+      else
+         nentries = table%row(natoms + 1_ip) - 1_ip
+         if (nentries > 0_ip) then
+            if (minval(table%dist(1:nentries)) <= 0.0_wp) then
+               status = 3
+               errmsg = "rgpot_cuh2: two atoms occupy the same position"
+               return
+            end if
          end if
       end if
 
@@ -433,7 +451,7 @@ contains
 
       ! Pass one: the density each atom sits in. Reads the table, writes
       ! one slot.
-      do concurrent(i=1:natoms)
+      do i = 1_ip, natoms
          rho(i) = atom_density(shifted, table, species, i)
       end do
 
@@ -451,7 +469,7 @@ contains
       end do
 
       ! Pass three: pair energy and the whole force on each atom.
-      do concurrent(i=1:natoms)
+      do i = 1_ip, natoms
          call atom_force(shifted, table, species, dfdrho, i, e_pair(i), &
                          forces(:, i))
       end do
@@ -503,25 +521,28 @@ contains
    !!
    !! Each neighbour deposits the density of *its own* species, so a Cu
    !! atom surrounded by H accumulates `rho_H`.
-   pure function atom_density(par, table, species, i) result(rho_i)
+   function atom_density(par, table, species, i) result(rho_i)
       type(cuh2_params_t), intent(in) :: par
       type(neighbor_table_t), intent(in) :: table
       integer(ip), intent(in) :: species(:)
       integer(ip), intent(in) :: i
       real(wp) :: rho_i
 
-      integer(ip) :: s
+      integer(ip) :: s, ni
+      integer(ip), allocatable :: idx(:)
+      real(wp), allocatable :: vec(:, :), dist(:)
       real(wp) :: r
 
       rho_i = 0.0_wp
+      call table%load(i, idx, vec, dist, ni)
 
-      do s = table%row(i), table%row(i + 1_ip) - 1_ip
-         r = table%dist(s)
+      do s = 1_ip, ni
+         r = dist(s)
          ! A pair sitting exactly at the cutoff carries no shifted energy
          ! or density, but its derivative does not vanish there.
          if (r >= par%rcut) cycle
 
-         if (species(table%idx(s)) == sp_cu) then
+         if (species(idx(s)) == sp_cu) then
             rho_i = rho_i + eam_rho_cu(par, r)
          else
             rho_i = rho_i + eam_rho_h(par, r)
@@ -533,7 +554,7 @@ contains
    !!
    !! The pair energy is halved because the full neighbour list visits
    !! each pair from both ends.
-   pure subroutine atom_force(par, table, species, dfdrho, i, e_i, f_i)
+   subroutine atom_force(par, table, species, dfdrho, i, e_i, f_i)
       type(cuh2_params_t), intent(in) :: par
       type(neighbor_table_t), intent(in) :: table
       integer(ip), intent(in) :: species(:)
@@ -542,18 +563,21 @@ contains
       real(wp), intent(out) :: e_i
       real(wp), intent(out) :: f_i(3)
 
-      integer(ip) :: s, j, zi, zj
+      integer(ip) :: s, j, zi, zj, ni
+      integer(ip), allocatable :: idx(:)
+      real(wp), allocatable :: vec(:, :), dist(:)
       real(wp) :: r, weight, drho_ij, drho_ji
 
       e_i = 0.0_wp
       f_i = 0.0_wp
       zi = species(i)
+      call table%load(i, idx, vec, dist, ni)
 
-      do s = table%row(i), table%row(i + 1_ip) - 1_ip
-         r = table%dist(s)
+      do s = 1_ip, ni
+         r = dist(s)
          if (r >= par%rcut) cycle
 
-         j = table%idx(s)
+         j = idx(s)
          zj = species(j)
 
          if (zi == sp_cu .and. zj == sp_cu) then
@@ -582,7 +606,7 @@ contains
          end if
 
          weight = weight + drho_ij*dfdrho(i) + drho_ji*dfdrho(j)
-         f_i = f_i + weight*table%vec(:, s)
+         f_i = f_i + weight*vec(:, s)
       end do
    end subroutine atom_force
 
