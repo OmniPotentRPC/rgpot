@@ -457,3 +457,42 @@ cover the struct the caller compiled.
 Metatomic sets `Pairs` from `full_list()`. UMA sets a full pair list.
 Neither can ask the public query for a list that then turns out empty
 because the machine looked short of memory.
+
+## Pass 3: C speaks the same columns as C++ and Cap'n Proto
+
+The C walk allocated six temporary vectors and copied them into
+`rgpot_nlist_pair`. A Lennard-Jones loop then read `pairs[k].distance`
+while metatomic read `table.vector[3 * k]`. The columns were the same
+physics and a different type.
+
+`rgpot_nlist_pair` is gone. The caller owns `rgpot_nlist_soa`, whose
+first field is `bytes` and whose columns are `first`, `second`,
+`shift`, `vector`, `distance` and `mask`. Those are the names on
+`rgpot::nlist::View` and on `NeighborList` in the schema. `build` and
+`walk_pull` write the caller's arrays. They do not allocate a second
+copy.
+
+```c
+rgpot_nlist_soa soa;
+memset(&soa, 0, sizeof soa);
+soa.bytes = sizeof soa;
+soa.cap = needed;
+soa.first = first;
+soa.second = second;
+soa.distance = distance;
+/* shifts and vectors omitted: the request must not ask for them */
+int32_t rc = rgpot_nlist_build(positions, n, box, &request, &soa,
+                               &count, &needed);
+```
+
+C++ `Walk::pull` takes `Buffers` of `std::span`. The length of `first`
+is the capacity. A requested column that is shorter throws
+`Error(Code::Short)` before the walk advances. `Table::view()` returns
+`std::span` columns. The view dies at the next `update` of that table.
+
+The abi is 4. A caller still holding an array of pairs does not link.
+A size probe is a null `rgpot_nlist_soa *`, or a struct with `cap` 0,
+and returns `RGPOT_NLIST_OK` with `needed` set. A positive `cap` that
+is still short returns `RGPOT_NLIST_SHORT` after filling that many
+pairs. A column the request asked for, whose pointer is null, returns
+`RGPOT_NLIST_NULL` and writes nothing.

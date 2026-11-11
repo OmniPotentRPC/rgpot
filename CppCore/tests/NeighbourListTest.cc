@@ -161,9 +161,14 @@ TEST_CASE("a chunked walk returns the stored pairs", "[nlist][api]") {
   std::set<Key> got;
   bool done = false;
   while (!done) {
-    rgpot::nlist::OutSoA dest{first.data(),   second.data(), shift.data(),
-                              vector.data(), distance.data(), mask.data()};
-    const std::size_t n = walk.pull(dest, 2, done);
+    rgpot::nlist::Buffers dest;
+    dest.first = first;
+    dest.second = second;
+    dest.shift = shift;
+    dest.vector = vector;
+    dest.distance = distance;
+    dest.mask = mask;
+    const std::size_t n = walk.pull(dest, done);
     for (std::size_t p = 0; p < n; ++p) {
       got.insert(Key{first[p], second[p], shift[3 * p], shift[3 * p + 1], shift[3 * p + 2]});
     }
@@ -185,55 +190,78 @@ TEST_CASE("the C ABI round-trips a stored list and a stream", "[nlist][api]") {
   REQUIRE(request.bytes == sizeof(request));
   std::size_t count = 0;
   std::size_t needed = 0;
-  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, nullptr, 0, &count, &needed) ==
+  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, nullptr, &count, &needed) ==
           RGPOT_NLIST_OK);
   REQUIRE(needed > 0);
-  std::vector<rgpot_nlist_pair> pairs(needed);
-  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, pairs.data(), pairs.size(), &count,
-                            &needed) == RGPOT_NLIST_OK);
+  std::vector<std::int32_t> first(needed), second(needed), shift(needed * 3);
+  std::vector<double> vector(needed * 3), distance(needed);
+  std::vector<std::uint8_t> mask(needed);
+  rgpot_nlist_soa soa{};
+  soa.bytes = sizeof(soa);
+  soa.first = first.data();
+  soa.second = second.data();
+  soa.shift = shift.data();
+  soa.vector = vector.data();
+  soa.distance = distance.data();
+  soa.mask = mask.data();
+  soa.cap = needed;
+  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, &soa, &count, &needed) == RGPOT_NLIST_OK);
   REQUIRE(count == needed);
-  rgpot_nlist_pair one;
-  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, &one, 1, &count, &needed) ==
-          RGPOT_NLIST_SHORT);
+  soa.cap = 1;
+  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, &soa, &count, &needed) == RGPOT_NLIST_SHORT);
   REQUIRE(count == 1);
   REQUIRE(needed > 1);
   REQUIRE(std::string(rgpot_nlist_strerror(RGPOT_NLIST_SHORT)).find("needed") !=
           std::string::npos);
   rgpot_nlist_request zero{};
-  REQUIRE(rgpot_nlist_build(pos, 3, box, &zero, nullptr, 0, &count, &needed) ==
-          RGPOT_NLIST_ERR_ABI);
+  REQUIRE(rgpot_nlist_build(pos, 3, box, &zero, nullptr, &count, &needed) == RGPOT_NLIST_ERR_ABI);
   request.shape = 9;
-  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, nullptr, 0, &count, &needed) ==
+  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, nullptr, &count, &needed) ==
           RGPOT_NLIST_SHAPE);
   request.shape = 1;
   request.shell = 0;
-  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, nullptr, 0, &count, &needed) ==
+  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, nullptr, &count, &needed) ==
           RGPOT_NLIST_SHAPE);
   request.shape = 0;
   request.shell = 0;
   request.cutoff = -1;
-  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, nullptr, 0, &count, &needed) ==
+  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, nullptr, &count, &needed) ==
           RGPOT_NLIST_CUTOFF);
   request.cutoff = 3.0;
+  soa.cap = needed;
+  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, &soa, &count, &needed) == RGPOT_NLIST_OK);
   rgpot_nlist_walk *walk = nullptr;
   REQUIRE(rgpot_nlist_walk_open(pos, 3, box, &request, &walk) == RGPOT_NLIST_OK);
   REQUIRE(walk != nullptr);
-  std::vector<rgpot_nlist_pair> streamed;
+  std::vector<std::int32_t> streamed_first, streamed_second, streamed_shift;
   int32_t done = 0;
   while (done == 0) {
-    rgpot_nlist_pair chunk[2];
+    std::int32_t chunk_first[2], chunk_second[2], chunk_shift[6];
+    double chunk_vector[6], chunk_distance[2];
+    std::uint8_t chunk_mask[2];
+    rgpot_nlist_soa chunk{};
+    chunk.bytes = sizeof(chunk);
+    chunk.first = chunk_first;
+    chunk.second = chunk_second;
+    chunk.shift = chunk_shift;
+    chunk.vector = chunk_vector;
+    chunk.distance = chunk_distance;
+    chunk.mask = chunk_mask;
+    chunk.cap = 2;
     std::size_t n = 0;
-    REQUIRE(rgpot_nlist_walk_pull(walk, chunk, 2, &n, &done) == RGPOT_NLIST_OK);
-    streamed.insert(streamed.end(), chunk, chunk + n);
+    REQUIRE(rgpot_nlist_walk_pull(walk, &chunk, &n, &done) == RGPOT_NLIST_OK);
+    streamed_first.insert(streamed_first.end(), chunk_first, chunk_first + n);
+    streamed_second.insert(streamed_second.end(), chunk_second, chunk_second + n);
+    streamed_shift.insert(streamed_shift.end(), chunk_shift, chunk_shift + 3 * n);
   }
   rgpot_nlist_walk_close(walk);
-  REQUIRE(streamed.size() == pairs.size());
-  for (std::size_t p = 0; p < pairs.size(); ++p) {
-    REQUIRE(streamed[p].first == pairs[p].first);
-    REQUIRE(streamed[p].second == pairs[p].second);
-    REQUIRE(streamed[p].shift[0] == pairs[p].shift[0]);
-    REQUIRE(streamed[p].shift[1] == pairs[p].shift[1]);
-    REQUIRE(streamed[p].shift[2] == pairs[p].shift[2]);
+  REQUIRE(streamed_first.size() == first.size());
+  for (std::size_t p = 0; p < first.size(); ++p) {
+    REQUIRE(streamed_first[p] == first[p]);
+    REQUIRE(streamed_second[p] == second[p]);
+    REQUIRE(streamed_shift[3 * p] == shift[3 * p]);
+    REQUIRE(streamed_shift[3 * p + 1] == shift[3 * p + 1]);
+    REQUIRE(streamed_shift[3 * p + 2] == shift[3 * p + 2]);
   }
 }
 

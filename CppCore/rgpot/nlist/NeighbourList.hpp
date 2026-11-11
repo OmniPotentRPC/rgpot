@@ -13,6 +13,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <variant>
@@ -90,26 +91,29 @@ struct Query {
 };
 
 /// Non-owning view of a structure-of-arrays neighbour table.
-/// `shift` has 3 entries per pair, `vector` has 3, `mask` is one byte per
-/// pair (0xff for Half and Full; bits 0..3 for Cluster4).
-struct SoA {
-  const std::int32_t *first = nullptr;
-  const std::int32_t *second = nullptr;
-  const std::int32_t *shift = nullptr;
-  const double *vector = nullptr;
-  const double *distance = nullptr;
-  const std::uint8_t *mask = nullptr;
-  std::size_t count = 0;
+/// `shift` is empty or 3 entries per pair, `vector` is empty or 3,
+/// `mask` is one byte per pair (0xff for a pair list; bits 0..3 for
+/// a cluster of four). The spans are invalidated by the next rebuild
+/// of the table that owns them.
+struct View {
+  std::span<const std::int32_t> first;
+  std::span<const std::int32_t> second;
+  std::span<const std::int32_t> shift;
+  std::span<const double> vector;
+  std::span<const double> distance;
+  std::span<const std::uint8_t> mask;
 };
 
-/// Writable structure of arrays for one chunk of a walk.
-struct OutSoA {
-  std::int32_t *first = nullptr;
-  std::int32_t *second = nullptr;
-  std::int32_t *shift = nullptr;
-  double *vector = nullptr;
-  double *distance = nullptr;
-  std::uint8_t *mask = nullptr;
+/// Caller-owned buffers for one chunk. `first` and `second` have the
+/// same length, which is the maximum number of pairs this pull writes.
+/// `shift` and `vector` are empty or three times that length.
+struct Buffers {
+  std::span<std::int32_t> first;
+  std::span<std::int32_t> second;
+  std::span<std::int32_t> shift;
+  std::span<double> vector;
+  std::span<double> distance;
+  std::span<std::uint8_t> mask;
 };
 
 /// Owning table. The arrays are the storage a caller can wrap without
@@ -126,14 +130,12 @@ struct Table {
   bool stored = false;
 
   [[nodiscard]] std::size_t size() const noexcept { return first.size(); }
-  [[nodiscard]] SoA view() const noexcept {
-    return SoA{first.data(),
-               second.data(),
-               shift.empty() ? nullptr : shift.data(),
-               vector.empty() ? nullptr : vector.data(),
-               distance.empty() ? nullptr : distance.data(),
-               mask.empty() ? nullptr : mask.data(),
-               first.size()};
+  [[nodiscard]] View view() const noexcept {
+    return View{first, second,
+                shift.empty() ? std::span<const std::int32_t>{} : std::span<const std::int32_t>{shift},
+                vector.empty() ? std::span<const double>{} : std::span<const double>{vector},
+                distance.empty() ? std::span<const double>{} : std::span<const double>{distance},
+                mask.empty() ? std::span<const std::uint8_t>{} : std::span<const std::uint8_t>{mask}};
   }
 };
 
@@ -166,16 +168,16 @@ private:
 /// Walk pairs for one central atom, or one cluster of four, at a time
 /// into caller storage. The walk does not keep a list of the whole
 /// system. It borrows `positions` and `box9` until it is destroyed.
-/// `pull` writes at most `cap` pairs and returns how many it wrote.
-/// `done` is set when the geometry has been exhausted. A null first or
-/// second pointer with a positive cap throws Error and does not advance.
-/// One walk is used by one thread.
+/// `pull` writes at most `dest.first.size()` pairs and returns how
+/// many it wrote. `done` is set when the geometry has been exhausted.
+/// A requested field whose span is too short throws Error and does not
+/// advance. One walk is used by one thread.
 class Walk {
 public:
   Walk(const double *positions, std::size_t n, const double *box9,
        const Query &query);
 
-  std::size_t pull(OutSoA dest, std::size_t cap, bool &done);
+  std::size_t pull(Buffers dest, bool &done);
 
 private:
   const double *pos_ = nullptr;

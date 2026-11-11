@@ -372,9 +372,22 @@ Walk::Walk(const double *positions, std::size_t n, const double *box9, const Que
   shift_bounds(box_, query_.periodic, search_radius(query_), nmax_);
 }
 
-std::size_t Walk::pull(OutSoA dest, std::size_t cap, bool &done) {
-  if (cap > 0 && (dest.first == nullptr || dest.second == nullptr)) {
-    throw Error(Code::Null, "walk buffers for first and second are null");
+std::size_t Walk::pull(Buffers dest, bool &done) {
+  const std::size_t cap = dest.first.size();
+  if (cap > 0 && dest.second.size() != cap) {
+    throw Error(Code::Short, "first and second buffers have different lengths");
+  }
+  if (cap > 0 && query_.fields.shifts && dest.shift.size() < cap * 3) {
+    throw Error(Code::Short, "shift buffer needs 3 entries per pair");
+  }
+  if (cap > 0 && query_.fields.vectors && dest.vector.size() < cap * 3) {
+    throw Error(Code::Short, "vector buffer needs 3 entries per pair");
+  }
+  if (cap > 0 && query_.fields.distances && dest.distance.size() < cap) {
+    throw Error(Code::Short, "distance buffer is shorter than the pair buffer");
+  }
+  if (cap > 0 && clustered(query_) && dest.mask.size() < cap) {
+    throw Error(Code::Short, "a cluster list needs one mask byte per pair");
   }
   if (finished_ || cap == 0) {
     done = finished_;
@@ -420,20 +433,20 @@ std::size_t Walk::pull(OutSoA dest, std::size_t cap, bool &done) {
     }
     dest.first[written] = hold_first_[hold_at_];
     dest.second[written] = hold_second_[hold_at_];
-    if (dest.shift != nullptr) {
+    if (dest.shift.size() >= (written + 1) * 3) {
       dest.shift[3 * written] = hold_shift_[3 * hold_at_];
       dest.shift[3 * written + 1] = hold_shift_[3 * hold_at_ + 1];
       dest.shift[3 * written + 2] = hold_shift_[3 * hold_at_ + 2];
     }
-    if (dest.vector != nullptr) {
+    if (dest.vector.size() >= (written + 1) * 3) {
       dest.vector[3 * written] = hold_vector_[3 * hold_at_];
       dest.vector[3 * written + 1] = hold_vector_[3 * hold_at_ + 1];
       dest.vector[3 * written + 2] = hold_vector_[3 * hold_at_ + 2];
     }
-    if (dest.distance != nullptr) {
+    if (written < dest.distance.size()) {
       dest.distance[written] = hold_distance_[hold_at_];
     }
-    if (dest.mask != nullptr) {
+    if (written < dest.mask.size()) {
       dest.mask[written] = hold_mask_[hold_at_];
     }
     ++hold_at_;
@@ -539,23 +552,62 @@ int32_t code_of(const rgpot::nlist::Error &err, size_t *count) {
   return static_cast<int32_t>(err.code());
 }
 
-void write_pair(rgpot_nlist_pair &dst, const rgpot::nlist::SoA &src, std::size_t p) {
-  dst.first = src.first[p];
-  dst.second = src.second[p];
-  dst.shift[0] = src.shift != nullptr ? src.shift[3 * p] : 0;
-  dst.shift[1] = src.shift != nullptr ? src.shift[3 * p + 1] : 0;
-  dst.shift[2] = src.shift != nullptr ? src.shift[3 * p + 2] : 0;
-  dst.vector[0] = src.vector != nullptr ? src.vector[3 * p] : 0;
-  dst.vector[1] = src.vector != nullptr ? src.vector[3 * p + 1] : 0;
-  dst.vector[2] = src.vector != nullptr ? src.vector[3 * p + 2] : 0;
-  dst.distance = src.distance != nullptr ? src.distance[p] : 0;
-  dst.mask = src.mask != nullptr ? src.mask[p] : 0xff;
+rgpot_nlist_soa load_soa(const rgpot_nlist_soa *out) {
+  if (out == nullptr) {
+    throw rgpot::nlist::Error(rgpot::nlist::Code::Null, "neighbour buffers are null");
+  }
+  const auto minimum = offsetof(rgpot_nlist_soa, cap) + sizeof(size_t);
+  if (out->bytes < minimum) {
+    throw rgpot::nlist::Error(rgpot::nlist::Code::Abi,
+                              "neighbour buffer bytes do not cover this library's struct");
+  }
+  rgpot_nlist_soa taken{};
+  std::memcpy(&taken, out, std::min(static_cast<std::size_t>(out->bytes), sizeof(taken)));
+  return taken;
 }
 
-struct WalkBox {
-  rgpot::nlist::Walk walk;
-  rgpot::nlist::Query query;
-};
+void require_columns(const rgpot::nlist::Query &query, const rgpot_nlist_soa &out) {
+  if (out.cap == 0) {
+    return;
+  }
+  if (out.first == nullptr || out.second == nullptr) {
+    throw rgpot::nlist::Error(rgpot::nlist::Code::Null, "first and second buffers are null");
+  }
+  if (query.fields.shifts && out.shift == nullptr) {
+    throw rgpot::nlist::Error(rgpot::nlist::Code::Null, "shift buffer is null");
+  }
+  if (query.fields.vectors && out.vector == nullptr) {
+    throw rgpot::nlist::Error(rgpot::nlist::Code::Null, "vector buffer is null");
+  }
+  if (query.fields.distances && out.distance == nullptr) {
+    throw rgpot::nlist::Error(rgpot::nlist::Code::Null, "distance buffer is null");
+  }
+  if (std::holds_alternative<rgpot::nlist::Cluster4>(query.shape) && out.mask == nullptr) {
+    throw rgpot::nlist::Error(rgpot::nlist::Code::Null, "a cluster list needs a mask buffer");
+  }
+}
+
+rgpot::nlist::Buffers buffers_from(const rgpot_nlist_soa &out) {
+  rgpot::nlist::Buffers dest;
+  if (out.cap == 0) {
+    return dest;
+  }
+  dest.first = std::span<std::int32_t>(out.first, out.cap);
+  dest.second = std::span<std::int32_t>(out.second, out.cap);
+  if (out.shift != nullptr) {
+    dest.shift = std::span<std::int32_t>(out.shift, out.cap * 3);
+  }
+  if (out.vector != nullptr) {
+    dest.vector = std::span<double>(out.vector, out.cap * 3);
+  }
+  if (out.distance != nullptr) {
+    dest.distance = std::span<double>(out.distance, out.cap);
+  }
+  if (out.mask != nullptr) {
+    dest.mask = std::span<std::uint8_t>(out.mask, out.cap);
+  }
+  return dest;
+}
 
 } // namespace
 
@@ -605,29 +657,55 @@ void rgpot_nlist_request_init(rgpot_nlist_request *request) {
 }
 
 int32_t rgpot_nlist_build(const double *positions, size_t n, const double *box9,
-                          const rgpot_nlist_request *request, rgpot_nlist_pair *out,
-                          size_t cap, size_t *count, size_t *needed) {
+                          const rgpot_nlist_request *request, rgpot_nlist_soa *out,
+                          size_t *count, size_t *needed) {
   try {
-    if (out == nullptr && cap > 0) {
-      if (count != nullptr) {
-        *count = 0;
-      }
-      return RGPOT_NLIST_NULL;
-    }
+    const auto query = query_from_c(request);
     rgpot::nlist::Table table;
-    rgpot::nlist::build(table, positions, n, box9, query_from_c(request));
+    rgpot::nlist::build(table, positions, n, box9, query);
     if (needed != nullptr) {
       *needed = table.size();
     }
-    const size_t nwrite = out == nullptr ? 0 : std::min(cap, table.size());
+    if (out == nullptr) {
+      if (count != nullptr) {
+        *count = 0;
+      }
+      return RGPOT_NLIST_OK;
+    }
+    const rgpot_nlist_soa taken = load_soa(out);
+    if (taken.cap == 0) {
+      if (count != nullptr) {
+        *count = 0;
+      }
+      return RGPOT_NLIST_OK;
+    }
+    require_columns(query, taken);
+    const size_t nwrite = std::min(taken.cap, table.size());
     const auto view = table.view();
     for (size_t p = 0; p < nwrite; ++p) {
-      write_pair(out[p], view, p);
+      taken.first[p] = view.first[p];
+      taken.second[p] = view.second[p];
+      if (taken.shift != nullptr && view.shift.size() >= (p + 1) * 3) {
+        taken.shift[3 * p] = view.shift[3 * p];
+        taken.shift[3 * p + 1] = view.shift[3 * p + 1];
+        taken.shift[3 * p + 2] = view.shift[3 * p + 2];
+      }
+      if (taken.vector != nullptr && view.vector.size() >= (p + 1) * 3) {
+        taken.vector[3 * p] = view.vector[3 * p];
+        taken.vector[3 * p + 1] = view.vector[3 * p + 1];
+        taken.vector[3 * p + 2] = view.vector[3 * p + 2];
+      }
+      if (taken.distance != nullptr && p < view.distance.size()) {
+        taken.distance[p] = view.distance[p];
+      }
+      if (taken.mask != nullptr && p < view.mask.size()) {
+        taken.mask[p] = view.mask[p];
+      }
     }
     if (count != nullptr) {
       *count = nwrite;
     }
-    if (out != nullptr && nwrite < table.size()) {
+    if (nwrite < table.size()) {
       return RGPOT_NLIST_SHORT;
     }
     return RGPOT_NLIST_OK;
@@ -643,9 +721,10 @@ int32_t rgpot_nlist_build(const double *positions, size_t n, const double *box9,
 
 struct rgpot_nlist_walk {
   rgpot::nlist::Walk walk;
-  explicit rgpot_nlist_walk(const double *positions, size_t n, const double *box9,
-                            const rgpot::nlist::Query &query)
-      : walk(positions, n, box9, query) {}
+  rgpot::nlist::Query query;
+  rgpot_nlist_walk(const double *positions, size_t n, const double *box9,
+                   const rgpot::nlist::Query &q)
+      : walk(positions, n, box9, q), query(q) {}
 };
 
 int32_t rgpot_nlist_walk_open(const double *positions, size_t n, const double *box9,
@@ -669,46 +748,19 @@ int32_t rgpot_nlist_walk_open(const double *positions, size_t n, const double *b
   }
 }
 
-int32_t rgpot_nlist_walk_pull(rgpot_nlist_walk *walk, rgpot_nlist_pair *out, size_t cap,
-                              size_t *count, int32_t *done) {
-  if (walk == nullptr || (out == nullptr && cap > 0)) {
+int32_t rgpot_nlist_walk_pull(rgpot_nlist_walk *walk, rgpot_nlist_soa *out, size_t *count,
+                              int32_t *done) {
+  if (walk == nullptr || out == nullptr) {
     if (count != nullptr) {
       *count = 0;
     }
     return RGPOT_NLIST_NULL;
   }
   try {
-    if (cap == 0) {
-      bool finished = false;
-      rgpot::nlist::OutSoA dest{};
-      walk->walk.pull(dest, 0, finished);
-      if (count != nullptr) {
-        *count = 0;
-      }
-      if (done != nullptr) {
-        *done = finished ? 1 : 0;
-      }
-      return RGPOT_NLIST_OK;
-    }
-    std::vector<std::int32_t> first(cap), second(cap), shift(cap * 3);
-    std::vector<double> vector(cap * 3), distance(cap);
-    std::vector<std::uint8_t> mask(cap);
-    rgpot::nlist::OutSoA dest{first.data(),   second.data(), shift.data(),
-                              vector.data(), distance.data(), mask.data()};
+    const rgpot_nlist_soa taken = load_soa(out);
+    require_columns(walk->query, taken);
     bool finished = false;
-    const std::size_t nwrite = walk->walk.pull(dest, cap, finished);
-    for (std::size_t p = 0; p < nwrite; ++p) {
-      out[p].first = first[p];
-      out[p].second = second[p];
-      out[p].shift[0] = shift[3 * p];
-      out[p].shift[1] = shift[3 * p + 1];
-      out[p].shift[2] = shift[3 * p + 2];
-      out[p].vector[0] = vector[3 * p];
-      out[p].vector[1] = vector[3 * p + 1];
-      out[p].vector[2] = vector[3 * p + 2];
-      out[p].distance = distance[p];
-      out[p].mask = mask[p];
-    }
+    const std::size_t nwrite = walk->walk.pull(buffers_from(taken), finished);
     if (count != nullptr) {
       *count = nwrite;
     }

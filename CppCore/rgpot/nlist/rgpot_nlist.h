@@ -32,7 +32,7 @@
 extern "C" {
 #endif
 
-#define RGPOT_NLIST_ABI 3
+#define RGPOT_NLIST_ABI 4
 
 enum {
   RGPOT_NLIST_OK = 0,
@@ -67,16 +67,22 @@ typedef struct rgpot_nlist_request {
   int32_t want_distances;
 } rgpot_nlist_request;
 
-/* mask is 0xff for half and full. For a cluster of four, bit k is atom
- * first+k. vector and distance describe the lowest set bit. */
-typedef struct rgpot_nlist_pair {
-  int32_t first;
-  int32_t second;
-  int32_t shift[3];
-  double vector[3];
-  double distance;
-  uint8_t mask;
-} rgpot_nlist_pair;
+/* Caller-owned structure of arrays, the same columns as NeighborList
+ * in Potentials.capnp and rgpot::nlist::View. first and second hold
+ * cap pairs. shift and vector hold 3 * cap values when the pointers
+ * are not null. distance and mask hold cap values. A null pointer
+ * skips that column. A cluster list requires mask. bytes is
+ * sizeof(rgpot_nlist_soa) as the caller compiled it. */
+typedef struct rgpot_nlist_soa {
+  uint32_t bytes;
+  int32_t *first;
+  int32_t *second;
+  int32_t *shift;
+  double *vector;
+  double *distance;
+  uint8_t *mask;
+  size_t cap;
+} rgpot_nlist_soa;
 
 /* Returns RGPOT_NLIST_ABI. */
 int32_t rgpot_nlist_abi_version(void);
@@ -90,16 +96,16 @@ const char *rgpot_nlist_strerror(int32_t code);
  * cutoff and skin are left at 0. A null request is ignored. */
 void rgpot_nlist_request_init(rgpot_nlist_request *request);
 
-/* Stored fill. Writes at most cap pairs. *count is the number written.
- * *needed is the full number, which may exceed cap. A null out with
- * cap 0 reports the size and returns RGPOT_NLIST_OK. A buffer that is
- * shorter than the list returns RGPOT_NLIST_SHORT after writing cap
- * pairs. On any other error *count is 0 when count is not null, and
- * the pair buffer is left untouched. */
+/* Stored fill into caller arrays. *count is the number written.
+ * *needed is the full number, which may exceed out->cap. A null out,
+ * or a buffer with cap 0, reports the size and returns RGPOT_NLIST_OK.
+ * A buffer that is shorter than the list returns RGPOT_NLIST_SHORT
+ * after writing cap pairs. A requested column whose pointer is null
+ * returns RGPOT_NLIST_NULL and writes nothing. On any other error
+ * *count is 0 when count is not null. */
 int32_t rgpot_nlist_build(const double *positions, size_t n, const double *box9,
-                          const rgpot_nlist_request *request,
-                          rgpot_nlist_pair *out, size_t cap, size_t *count,
-                          size_t *needed);
+                          const rgpot_nlist_request *request, rgpot_nlist_soa *out,
+                          size_t *count, size_t *needed);
 
 /* Opaque chunked walk. It does not store the pairs of the whole system. */
 typedef struct rgpot_nlist_walk rgpot_nlist_walk;
@@ -112,11 +118,12 @@ int32_t rgpot_nlist_walk_open(const double *positions, size_t n,
                               const rgpot_nlist_request *request,
                               rgpot_nlist_walk **walk);
 
-/* Writes at most cap pairs. *done is 1 when the geometry is exhausted.
- * A null out with cap greater than 0 returns RGPOT_NLIST_NULL and does
- * not advance. cap 0 writes nothing. */
-int32_t rgpot_nlist_walk_pull(rgpot_nlist_walk *walk, rgpot_nlist_pair *out,
-                              size_t cap, size_t *count, int32_t *done);
+/* Writes at most out->cap pairs straight into the caller arrays.
+ * *done is 1 when the geometry is exhausted. A null out, or a column
+ * the request asked for whose pointer is null while cap > 0, returns
+ * RGPOT_NLIST_NULL and does not advance. cap 0 writes nothing. */
+int32_t rgpot_nlist_walk_pull(rgpot_nlist_walk *walk, rgpot_nlist_soa *out,
+                              size_t *count, int32_t *done);
 
 void rgpot_nlist_walk_close(rgpot_nlist_walk *walk);
 
