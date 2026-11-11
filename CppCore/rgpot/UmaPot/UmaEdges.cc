@@ -568,6 +568,11 @@ void give_cell(std::unique_ptr<UmaEdgeSession::CellCache> cell) {
   pool.cells.push_back(std::move(cell));
 }
 
+UmaEdgeList fit_recorded_edges(const ForceInput &in, UmaEdgeList edges, int64_t want,
+                               double range) {
+  return fit_edge_count(in, std::move(edges), want, range);
+}
+
 UmaEdgeSession::UmaEdgeSession() : edges(take_edges()) {}
 
 UmaEdgeSession::~UmaEdgeSession() {

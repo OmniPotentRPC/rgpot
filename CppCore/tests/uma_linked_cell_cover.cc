@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -302,11 +303,181 @@ void cover_edges() {
   }
 }
 
+// A one-thread prefix of 8192 bins uses the blocked loops.
+void test_prefix_one_thread() {
+  std::vector<std::size_t> count(8192, 1);
+  rgpot::linked_cell::exclusive_prefix(count, 1);
+  expect(count.size() == 8193, "prefix length");
+  expect(count.front() == 0, "prefix start");
+  expect(count[100] == 100, "prefix mid");
+  expect(count.back() == 8192, "prefix total");
+}
+
+// A coordinate that wraps to 1 lands in the last bin, not past it.
+void test_bin_clamp() {
+  const double box[9] = {24, 0, 0, 0, 24, 0, 0, 0, 24};
+  auto pos = grid(4, 2.0, 1, 1, 1);
+  pos[0] = -1e-300;
+  rgpot::linked_cell::Scratch scratch;
+  expect(rgpot::linked_cell::build(pos.data(), 4, box, 6, 1, scratch), "clamp build");
+  expect(scratch.cell_of[0] % 4 == 3, "high bin clamp");
+}
+
+// Equal-distance images of one atom come out in shift order.
+void test_equal_image_order() {
+  const double box[9] = {8, 0.25, 0, 0, 8, 0.25, 0, 0, 8};
+  double pos[6] = {0, 0, 0, 0, 0, 0};
+  int z[2] = {1, 1};
+  rgpot::UmaContract contract;
+  rgpot::UmaEdgeSession session;
+  const rgpot::ForceInput in{2, pos, z, box};
+  const auto &list = rgpot::build_system_edges(in, 20, 20, 0, 300, contract, 1, session);
+  int neg = 0;
+  int pos_shift = 0;
+  bool neg_first = false;
+  bool seen_pos = false;
+  for (std::size_t e = 0; e < list.neighbor.size(); ++e) {
+    if (list.center[e] != 0 || list.neighbor[e] != 1)
+      continue;
+    const float s0 = list.offsets[3 * e];
+    if (s0 < 0.f) {
+      ++neg;
+      if (!seen_pos)
+        neg_first = true;
+    }
+    if (s0 > 0.f) {
+      ++pos_shift;
+      seen_pos = true;
+    }
+  }
+  expect(neg >= 1 && pos_shift >= 1, "both image signs");
+  expect(neg_first, "negative shift precedes positive");
+}
+
+// The image that lands on the range is stepped one cell further.
+void test_pad_steps_past_range() {
+  const double box[9] = {5, 0, 0, 0, 5, 0, 0, 0, 5};
+  double pos[6] = {0, 0, 0, 0, 0, 0};
+  int z[2] = {1, 1};
+  const rgpot::ForceInput in{2, pos, z, box};
+  const auto out = rgpot::fit_recorded_edges(in, {}, 4, 10.0);
+  expect(out.neighbor.size() == 4, "padded to four");
+  expect(std::fabs(out.offsets[0]) >= 3.f, "image stepped past the range");
+}
+
+// An edge past the range is the one a short static count drops.
+void test_trim_drops_far_edge() {
+  const double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+  double pos[6] = {0, 0, 0, 1, 0, 0};
+  int z[2] = {1, 1};
+  const rgpot::ForceInput in{2, pos, z, box};
+  rgpot::UmaEdgeList edges;
+  edges.neighbor = {1, 1};
+  edges.center = {0, 0};
+  edges.offsets = {0.f, 0.f, 0.f, 1.f, 0.f, 0.f};
+  const auto out = rgpot::fit_recorded_edges(in, std::move(edges), 1, 6.0);
+  expect(out.neighbor.size() == 1, "one edge kept");
+  expect(out.offsets.size() == 3 && out.offsets[0] == 0.f, "far image dropped");
+}
+
+// A zero cell cannot host a pad image.
+void test_pad_zero_cell() {
+  const double box[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+  double pos[6] = {0, 0, 0, 1, 0, 0};
+  int z[2] = {1, 1};
+  const rgpot::ForceInput in{2, pos, z, box};
+  bool refused = false;
+  try {
+    rgpot::fit_recorded_edges(in, {}, 3, 6.0);
+  } catch (const std::exception &err) {
+    refused = std::string(err.what()).find("zero cell") != std::string::npos;
+  }
+  expect(refused, "zero cell refused");
+}
+
+// The image index does not fit in an exact float32.
+void test_huge_shift_refused() {
+  const double box[9] = {1e-6, 0, 0, 0, 1e-6, 0, 0, 0, 1e-6};
+  double pos[6] = {0, 0, 0, 0, 0, 0};
+  int z[2] = {1, 1};
+  const rgpot::ForceInput in{2, pos, z, box};
+  bool refused = false;
+  try {
+    rgpot::fit_recorded_edges(in, {}, 1, 20.0);
+  } catch (const std::exception &err) {
+    refused = std::string(err.what()).find("exact float32") != std::string::npos;
+  }
+  expect(refused, "huge shift refused");
+}
+
+// A complete list of 80 atoms is large enough to recycle the edge buffer.
+void test_pool_reuses_large_list() {
+  constexpr int n = 80;
+  auto pos = grid(n, 1.2, 1, 1, 1);
+  std::vector<int> z(n, 1);
+  const double side = 200;
+  const double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  rgpot::UmaContract contract;
+  const rgpot::ForceInput in{static_cast<std::size_t>(n), pos.data(), z.data(), box};
+  {
+    rgpot::UmaEdgeSession first;
+    const auto &list = rgpot::build_system_edges(in, 6, 6, side, 300, contract, 1, first);
+    expect(list.neighbor.size() == static_cast<std::size_t>(n * (n - 1)), "large complete count");
+  }
+  rgpot::UmaEdgeSession second;
+  const auto &again = rgpot::build_system_edges(in, 6, 6, side, 300, contract, 1, second);
+  expect(again.neighbor.size() == static_cast<std::size_t>(n * (n - 1)), "recycled complete count");
+  bool zero = true;
+  for (float s : again.offsets)
+    zero = zero && s == 0.f;
+  expect(zero, "recycled shifts stay zero");
+}
+
+// The recycle list keeps four buffers and drops the fifth.
+void test_pool_stops_at_four() {
+  constexpr int n = 80;
+  auto pos = grid(n, 1.2, 1, 1, 1);
+  std::vector<int> z(n, 1);
+  const double side = 200;
+  const double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  rgpot::UmaContract contract;
+  const rgpot::ForceInput in{static_cast<std::size_t>(n), pos.data(), z.data(), box};
+  std::vector<std::unique_ptr<rgpot::UmaEdgeSession>> held;
+  for (int i = 0; i < 5; ++i) {
+    auto session = std::make_unique<rgpot::UmaEdgeSession>();
+    const auto &list = rgpot::build_system_edges(in, 6, 6, side, 300, contract, 1, *session);
+    expect(list.neighbor.size() == static_cast<std::size_t>(n * (n - 1)), "pool cap count");
+    held.push_back(std::move(session));
+  }
+  held.clear();
+}
+
 } // namespace
 
-int main() {
-  cover_linked_cell();
-  cover_edges();
+int main(int argc, char **argv) {
+  const std::string which = argc > 1 ? argv[1] : "all";
+  if (which == "all") {
+    cover_linked_cell();
+    cover_edges();
+  }
+  if (which == "all" || which == "prefix-one")
+    test_prefix_one_thread();
+  if (which == "all" || which == "bin-clamp")
+    test_bin_clamp();
+  if (which == "all" || which == "equal-image")
+    test_equal_image_order();
+  if (which == "all" || which == "pad-step")
+    test_pad_steps_past_range();
+  if (which == "all" || which == "trim-far")
+    test_trim_drops_far_edge();
+  if (which == "all" || which == "pad-zero")
+    test_pad_zero_cell();
+  if (which == "all" || which == "huge-shift")
+    test_huge_shift_refused();
+  if (which == "all" || which == "pool-reuse")
+    test_pool_reuses_large_list();
+  if (which == "all" || which == "pool-cap")
+    test_pool_stops_at_four();
   if (g_fails != 0) {
     std::fprintf(stderr, "FAIL checks=%d\n", g_fails);
     return 1;

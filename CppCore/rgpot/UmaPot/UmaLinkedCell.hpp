@@ -67,7 +67,8 @@ inline void exclusive_prefix(std::vector<std::size_t> &count, int threads) {
     return;
   // A few thousand bins are cheaper to add on this thread than to
   // hand to a freshly spawned worker.
-  if (threads <= 1 || m < 8192) {
+  // One thread on a long prefix still uses the blocked loops below.
+  if (m < 8192) {
     std::size_t run = 0;
     count.push_back(0);
     for (std::size_t i = 0; i < m; ++i) {

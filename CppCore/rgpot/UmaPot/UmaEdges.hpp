@@ -68,4 +68,9 @@ const UmaEdgeList &build_system_edges(const ForceInput &local, double cutoff,
                                       int max_neighbors, const UmaContract &contract,
                                       int64_t n_systems, UmaEdgeSession &session);
 
+/// Drops edges whose span is at or beyond `range`, or pads one image of
+/// atoms 0 and 1, until `edges` has `want` rows.
+UmaEdgeList fit_recorded_edges(const ForceInput &in, UmaEdgeList edges, int64_t want,
+                               double range);
+
 } // namespace rgpot

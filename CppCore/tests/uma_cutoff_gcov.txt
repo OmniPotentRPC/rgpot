@@ -1,3 +1,7 @@
-UmaLinkedCell.hpp.gcov lines 198/200 99.00% branches 100/124 80.65%
-UmaEdges.cc.gcov lines 386/403 95.78% branches 299/426 70.19%
-combined lines 584/603 96.85% branches 399/550 72.55%
+UmaLinkedCell.hpp.gcov lines 208/209 99.52% branches 106/130 81.54%
+UmaEdges.cc.gcov lines 456/461 98.92% branches 320/440 72.73%
+combined lines 664/670 99.10% branches 426/570 74.74%
+UmaLinkedCell.hpp.gcov missed_lines 158
+UmaLinkedCell.hpp.gcov untaken_throw 22 untaken_code 2 code_lines 157 275
+UmaEdges.cc.gcov missed_lines 80 172 405 465 477
+UmaEdges.cc.gcov untaken_throw 83 untaken_code 37 code_lines 47 77 79 86 111 135 161 166 171 174 175 176 183 184 185 191 193 195 221 252 266 299 345 346 366 378 404 464 476 498 499 521 594 597 601
