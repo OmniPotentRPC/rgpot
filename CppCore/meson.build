@@ -746,6 +746,12 @@ if get_option('with_tests')
             ['EMTPotTest', 'emt_pot_test', 'EMTPotTest.cc', ''],
             ['EAMCellPotTest', 'eam_cell_pot_test', 'EAMCellPotTest.cc', ''],
             [
+                'NeighbourLayerTest',
+                'neighbour_layer_test',
+                'NeighbourLayerTest.cc',
+                '',
+            ],
+            [
                 'EAMCellVerletTest',
                 'eam_cell_verlet_test',
                 'EAMCellVerletTest.cc',
@@ -2304,6 +2310,23 @@ if get_option('with_tests')
             eam_cell_bench,
             workdir: meson.source_root(),
             timeout: 300,
+        )
+        classical_scaling_bench = executable(
+            'classical_scaling_bench',
+            sources: ['tests/classical_scaling_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'classical_scaling_bench',
+            classical_scaling_bench,
+            workdir: meson.source_root(),
+            timeout: 0,
         )
         tersoff_held_bench = executable(
             'tersoff_held_bench',
