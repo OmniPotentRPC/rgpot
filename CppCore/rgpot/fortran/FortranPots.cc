@@ -22,6 +22,18 @@ void *rgpot_fortran_workspace_new();
 void rgpot_fortran_workspace_free(void *workspace);
 int rgpot_fortran_workspace_error(void *workspace, char *buffer,
                                   int buffer_len);
+void rgpot_fortran_workspace_set_mode(void *workspace, int mode);
+int64_t rgpot_fortran_workspace_slots(void *workspace);
+
+int fortranMode(nlist::Mode mode) {
+  if (mode == nlist::Mode::Stream) {
+    return 2;
+  }
+  if (mode == nlist::Mode::Auto) {
+    return 0;
+  }
+  return 1;
+}
 
 /// Kernels needing only geometry.
 int rgpot_sw_force_ws(void *ws, int32_t natoms, const double *positions,
@@ -127,8 +139,10 @@ FortranWorkspace &FortranWorkspace::operator=(const FortranWorkspace &) {
 #define RGPOT_FORTRAN_POT_IMPL(ClassName, Entry, Label)                        \
   void ClassName::forceImpl(const ForceInput &in, ForceOut *out) const {       \
     ensure_fortran_params();                                                   \
+    rgpot_fortran_workspace_set_mode(m_ws.get(), fortranMode(mode_));          \
     const int status = Entry(m_ws.get(), static_cast<int32_t>(in.nAtoms),       \
                              in.pos, in.box, out->F, &out->energy);            \
+    slots_ = rgpot_fortran_workspace_slots(m_ws.get());                        \
     if (status != 0) {                                                         \
       raise(Label, status, m_ws.get());                                        \
     }                                                                          \
@@ -150,6 +164,7 @@ void TersoffPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   // gather does not have.
   if (siliconOnly(in)) {
     ensure_fortran_params();
+    rgpot_fortran_workspace_set_mode(m_ws.get(), fortranMode(mode_));
     const int status = rgpot_tersoff_force_ws(
         m_ws.get(), static_cast<int32_t>(in.nAtoms), in.pos, in.box, out->F,
         &out->energy);
@@ -157,8 +172,10 @@ void TersoffPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       raise("Tersoff", status, m_ws.get());
     }
     out->variance = 0.0;
+    slots_ = rgpot_fortran_workspace_slots(m_ws.get());
   } else {
     m_sic.forceImpl(in, out);
+    slots_ = 0;
   }
   // The gather writes no stress and caps().stress is false, so no call
   // reports one, and a reused output keeps no earlier tensor.
@@ -169,9 +186,11 @@ void TersoffPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 #define RGPOT_FORTRAN_SPECIES_POT_IMPL(ClassName, Entry, Label)                \
   void ClassName::forceImpl(const ForceInput &in, ForceOut *out) const {       \
     ensure_fortran_params();                                                   \
+    rgpot_fortran_workspace_set_mode(m_ws.get(), fortranMode(mode_));          \
     const int status =                                                         \
         Entry(m_ws.get(), static_cast<int32_t>(in.nAtoms), in.pos, in.atmnrs,  \
               in.box, out->F, &out->energy);                                   \
+    slots_ = rgpot_fortran_workspace_slots(m_ws.get());                        \
     if (status != 0) {                                                         \
       raise(Label, status, m_ws.get());                                        \
     }                                                                          \

@@ -24,6 +24,7 @@
 #include "rgpot/ForceStructs.hpp"
 #include "rgpot/Potential.hpp"
 #include "rgpot/Tersoff/TersoffSiC.hpp"
+#include "rgpot/nlist/Neighbours.hpp"
 #include "rgpot/pot_caps.hpp"
 #include "rgpot/pot_types.hpp"
 
@@ -50,6 +51,8 @@ private:
   class ClassName : public Potential<ClassName> {                              \
   public:                                                                      \
     ClassName() : Potential(PotType::PotTypeValue) {}                          \
+    void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }         \
+    [[nodiscard]] int64_t neighbourSlots() const noexcept { return slots_; }   \
     void forceImpl(const ForceInput &in, ForceOut *out) const override;        \
     [[nodiscard]] PotCaps caps() const noexcept override {                     \
       return {.reentrancy = Reentrancy::PerInstance,                           \
@@ -58,6 +61,8 @@ private:
                                                                                \
   private:                                                                     \
     FortranWorkspace m_ws;                                                     \
+    nlist::Mode mode_ = nlist::Mode::Stored;                                   \
+    mutable int64_t slots_ = 0;                                                \
   }
 
 /// Stillinger-Weber silicon (PotType::SWSi). Epsilon is eOn's
@@ -82,6 +87,11 @@ RGPOT_FORTRAN_POT_CLASS(WaterHPot, WaterH);
 class TersoffPot : public Potential<TersoffPot> {
 public:
   TersoffPot() : Potential(PotType::TersoffSi) {}
+  void setNeighbourMode(nlist::Mode mode) noexcept {
+    mode_ = mode;
+    m_sic.setNeighbourMode(mode);
+  }
+  [[nodiscard]] int64_t neighbourSlots() const noexcept { return slots_; }
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
   [[nodiscard]] PotCaps caps() const noexcept override {
     return {.reentrancy = Reentrancy::PerInstance, .perImageInstances = true};
@@ -94,6 +104,8 @@ public:
 private:
   FortranWorkspace m_ws;
   TersoffSiC m_sic;
+  nlist::Mode mode_ = nlist::Mode::Stored;
+  mutable int64_t slots_ = 0;
 };
 
 } // namespace fortranpots

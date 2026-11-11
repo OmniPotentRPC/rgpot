@@ -186,6 +186,11 @@ contains
       call table%build(positions, cell, rcut, status, errmsg)
       if (status /= 0) return
 
+      if (table%streaming) then
+         call tersoff_stream(par, table, natoms, energy, forces, status, errmsg)
+         return
+      end if
+
       nentries = table%row(natoms + 1_ip) - 1_ip
       allocate (e_atom(natoms), source=0.0_wp)
       allocate (zeta(nentries), e_pair(nentries), f_rad(nentries))
@@ -388,5 +393,135 @@ contains
 
       f_i = -0.5_wp*grad
    end subroutine atom_contribution
+
+   !> Same gather as the stored table, one atom of bonds at a time.
+   subroutine tersoff_stream(par, table, natoms, energy, forces, status, errmsg)
+      type(tersoff_params_t), intent(in) :: par
+      type(neighbor_table_t), intent(in) :: table
+      integer(ip), intent(in) :: natoms
+      real(wp), intent(inout) :: energy
+      real(wp), intent(inout) :: forces(:, :)
+      integer, intent(out) :: status
+      character(len=:), allocatable, intent(out) :: errmsg
+
+      integer(ip) :: i, a, b, m, ni, nj, back, st
+      integer(ip), allocatable :: idx(:), jdx(:)
+      real(wp), allocatable :: vec(:, :), jvec(:, :), dist(:), jdist(:)
+      real(wp), allocatable :: zeta_i(:), e_pair(:), f_rad(:), c_zeta(:)
+      real(wp), allocatable :: zeta_m(:), f_rad_m(:), c_zeta_m(:)
+      real(wp) :: e_i, grad(3), u_ij(3), u_ik(3), u_mi(3), u_mt(3)
+      real(wp) :: rij, rik, rim, rmt, cosine
+      real(wp) :: gval, dgval, fc_k, dfc_k, fc_i, dfc_i
+      real(wp) :: dcos_j(3), dcos_k(3), dcos_i(3), unused
+
+      status = 0
+      errmsg = ""
+      energy = 0.0_wp
+      forces = 0.0_wp
+
+      do i = 1_ip, natoms
+         call table%load(i, idx, vec, dist, ni)
+         if (allocated(zeta_i)) then
+            if (size(zeta_i) < ni) deallocate (zeta_i, e_pair, f_rad, c_zeta)
+         end if
+         if (.not. allocated(zeta_i)) then
+            allocate (zeta_i(max(ni, 1_ip)), e_pair(max(ni, 1_ip)))
+            allocate (f_rad(max(ni, 1_ip)), c_zeta(max(ni, 1_ip)))
+         end if
+
+         do a = 1_ip, ni
+            u_ij = vec(:, a)/dist(a)
+            zeta_i(a) = 0.0_wp
+            do b = 1_ip, ni
+               if (b == a) cycle
+               u_ik = vec(:, b)/dist(b)
+               call cutoff_taper(par, dist(b), fc_k, dfc_k)
+               call angular(par, dot_product(u_ij, u_ik), gval, dgval)
+               zeta_i(a) = zeta_i(a) + fc_k*gval
+            end do
+            call pair_scalars(par, dist(a), zeta_i(a), e_pair(a), f_rad(a), &
+                              c_zeta(a))
+         end do
+
+         e_i = 0.0_wp
+         grad = 0.0_wp
+         do a = 1_ip, ni
+            e_i = e_i + 0.5_wp*e_pair(a)
+            rij = dist(a)
+            u_ij = vec(:, a)/rij
+            do b = 1_ip, ni
+               if (b == a) cycle
+               rik = dist(b)
+               u_ik = vec(:, b)/rik
+               cosine = dot_product(u_ij, u_ik)
+               call cutoff_taper(par, rik, fc_k, dfc_k)
+               call angular(par, cosine, gval, dgval)
+               dcos_j = (u_ik - cosine*u_ij)/rij
+               dcos_k = (u_ij - cosine*u_ik)/rik
+               grad = grad - c_zeta(a)*(fc_k*dgval*dcos_j &
+                                        + dfc_k*gval*u_ik + fc_k*dgval*dcos_k)
+            end do
+         end do
+
+         do a = 1_ip, ni
+            m = idx(a)
+            rij = dist(a)
+            u_ij = vec(:, a)/rij
+            call table%load(m, jdx, jvec, jdist, nj)
+            if (allocated(zeta_m)) then
+               if (size(zeta_m) < nj) deallocate (zeta_m, f_rad_m, c_zeta_m)
+            end if
+            if (.not. allocated(zeta_m)) then
+               allocate (zeta_m(max(nj, 1_ip)), f_rad_m(max(nj, 1_ip)))
+               allocate (c_zeta_m(max(nj, 1_ip)))
+            end if
+            do st = 1_ip, nj
+               u_mi = jvec(:, st)/jdist(st)
+               zeta_m(st) = 0.0_wp
+               do b = 1_ip, nj
+                  if (b == st) cycle
+                  u_mt = jvec(:, b)/jdist(b)
+                  call cutoff_taper(par, jdist(b), fc_k, dfc_k)
+                  call angular(par, dot_product(u_mi, u_mt), gval, dgval)
+                  zeta_m(st) = zeta_m(st) + fc_k*gval
+               end do
+               call pair_scalars(par, jdist(st), zeta_m(st), unused, f_rad_m(st), &
+                                 c_zeta_m(st))
+            end do
+
+            back = 0_ip
+            do st = 1_ip, nj
+               if (jdx(st) /= i) cycle
+               if (maxval(abs(jvec(:, st) + vec(:, a))) > bond_match_tol) cycle
+               back = st
+               exit
+            end do
+            if (back == 0_ip) then
+               status = 2
+               errmsg = "rgpot_tersoff: a pair in the neighbour table has no reverse"
+               return
+            end if
+
+            grad = grad - (f_rad(a) + f_rad_m(back))*u_ij
+            rim = dist(a)
+            u_mi = -vec(:, a)/rim
+            call cutoff_taper(par, rim, fc_i, dfc_i)
+            do st = 1_ip, nj
+               if (st == back) cycle
+               rmt = jdist(st)
+               u_mt = jvec(:, st)/rmt
+               cosine = dot_product(u_mi, u_mt)
+               call angular(par, cosine, gval, dgval)
+               call cutoff_taper(par, rmt, fc_k, dfc_k)
+               dcos_i = (u_mt - cosine*u_mi)/rim
+               grad = grad + c_zeta_m(back)*fc_k*dgval*dcos_i
+               grad = grad + c_zeta_m(st)*(dfc_i*gval*u_mi + fc_i*dgval*dcos_i)
+            end do
+         end do
+
+         forces(:, i) = -0.5_wp*grad
+         energy = energy + e_i
+      end do
+   end subroutine tersoff_stream
 
 end module rgpot_tersoff
