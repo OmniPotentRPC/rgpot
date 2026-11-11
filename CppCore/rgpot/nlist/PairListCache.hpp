@@ -436,19 +436,52 @@ private:
       const int32_t p0 = rows_[i];
       const int32_t p1 = rows_[i + 1];
       std::size_t m = 0;
-      for (int32_t p = p0; p < p1; ++p) {
-        const auto up = static_cast<std::size_t>(p);
-        const auto j = static_cast<std::size_t>(nbr_[up]);
-        double dx, dy, dz;
-        fold.template apply<M>(R, i, j, up, dx, dy, dz);
-        const double r2 = dx * dx + dy * dy + dz * dz;
-        if (r2 <= cutoff2) {
-          bx[m] = dx;
-          by[m] = dy;
-          bz[m] = dz;
-          br2[m] = r2;
-          partner[m] = j;
-          ++m;
+      auto accept = [&](std::size_t j, double dx, double dy, double dz,
+                        double r2) {
+        if (!(r2 <= cutoff2)) {
+          return;
+        }
+        bx[m] = dx;
+        by[m] = dy;
+        bz[m] = dz;
+        br2[m] = r2;
+        partner[m] = j;
+        ++m;
+      };
+      // Below a few hundred atoms the positions and the neighbor index
+      // list sit in L1, and issuing four pairs at once only adds copies.
+      // Above that the position loads miss L1 and overlap pays. Each pair
+      // is still the folded r_i - r_j and r^2 = dx^2 + dy^2 + dz^2, and
+      // accepted pairs are appended in increasing p.
+      if (n_ < 256) {
+        for (int32_t p = p0; p < p1; ++p) {
+          const auto up = static_cast<std::size_t>(p);
+          const auto j = static_cast<std::size_t>(nbr_[up]);
+          double dx, dy, dz;
+          fold.template apply<M>(R, i, j, up, dx, dy, dz);
+          accept(j, dx, dy, dz, dx * dx + dy * dy + dz * dz);
+        }
+      } else {
+        int32_t p = p0;
+        for (; p1 - p >= 4; p += 4) {
+          double dx[4], dy[4], dz[4], r2[4];
+          std::size_t jpair[4];
+          for (int k = 0; k < 4; ++k) {
+            const auto up = static_cast<std::size_t>(p + k);
+            jpair[k] = static_cast<std::size_t>(nbr_[up]);
+            fold.template apply<M>(R, i, jpair[k], up, dx[k], dy[k], dz[k]);
+            r2[k] = dx[k] * dx[k] + dy[k] * dy[k] + dz[k] * dz[k];
+          }
+          for (int k = 0; k < 4; ++k) {
+            accept(jpair[k], dx[k], dy[k], dz[k], r2[k]);
+          }
+        }
+        for (; p < p1; ++p) {
+          const auto up = static_cast<std::size_t>(p);
+          const auto j = static_cast<std::size_t>(nbr_[up]);
+          double dx, dy, dz;
+          fold.template apply<M>(R, i, j, up, dx, dy, dz);
+          accept(j, dx, dy, dz, dx * dx + dy * dy + dz * dz);
         }
       }
       kernel.row(br2, be, bf, m);

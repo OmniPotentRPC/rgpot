@@ -82,11 +82,27 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const double *box = in.box;
   double *F = out->F;
   double *U = &out->energy;
-  double strain[6] = {};
   const double volume = cellVolume(in.box);
-  publishCauchyStress(out, strain, volume);
+  // Zeros first, so a return with no pairs still publishes a defined stress.
+  const double strain0[6] = {};
+  publishCauchyStress(out, strain0, volume);
+  // Named scalars, not a double[6]. Inlined into the pair loop, the array
+  // becomes a shuffle chain that store-forwards the same six words on every
+  // pair. These are the products and additions of accumulatePairStrain, one
+  // pair at a time.
+  double sxx = 0.0, syy = 0.0, szz = 0.0, syz = 0.0, sxz = 0.0, sxy = 0.0;
   const auto observe = [&](double fscale, double dx, double dy, double dz) {
-    accumulatePairStrain(strain, fscale, dx, dy, dz);
+    const double c = -fscale;
+    sxx += (c * dx) * dx;
+    syy += (c * dy) * dy;
+    szz += (c * dz) * dz;
+    syz += (c * dy) * dz;
+    sxz += (c * dx) * dz;
+    sxy += (c * dx) * dy;
+  };
+  const auto publish = [&]() {
+    const double strain[6] = {sxx, syy, szz, syz, sxz, sxy};
+    publishCauchyStress(out, strain, volume);
   };
   *U = 0.0;
   for (long k = 0; k < 3 * N; k++) {
@@ -119,13 +135,13 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
               v * s.s, (twoDeA * d * (d - 1.0) * s.s - v * s.dsdr) / r};
         },
         observe);
-    publishCauchyStress(out, strain, volume);
+    publish();
     return;
   }
   const detail::MorseRow kernel{depth, range, rEq, shiftU, twoDeA};
   *U = pool.accumulate(R, static_cast<std::size_t>(N), box, opt, F, kernel,
                        observe);
-  publishCauchyStress(out, strain, volume);
+  publish();
 }
 
 } // namespace rgpot
