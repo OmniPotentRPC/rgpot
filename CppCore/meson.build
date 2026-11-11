@@ -129,6 +129,10 @@ rgpot_minimage = static_library(
     pic: true,
     install: false,
 )
+# threadsRequested lives in Neighbours.cc. The cell walk's OpenMP
+# pragmas are in the headers, but the thread count is read here, so this
+# archive has to be built with OpenMP or every potential stays on one thread.
+_halfshell_omp = dependency('openmp', language: 'cpp', required: false)
 rgpot_halfshell = static_library(
     'rgpot_halfshell',
     files(
@@ -139,6 +143,7 @@ rgpot_halfshell = static_library(
     ),
     include_directories: _incdirs,
     cpp_args: _args,
+    dependencies: _halfshell_omp.found() ? [_halfshell_omp] : [],
     pic: true,
     install: false,
 )
@@ -753,6 +758,12 @@ if get_option('with_tests')
                 '',
             ],
             [
+                'StreamParityTest',
+                'stream_parity_test',
+                'StreamParityTest.cc',
+                '',
+            ],
+            [
                 'NeighbourListTest',
                 'neighbour_list_test',
                 'NeighbourListTest.cc',
@@ -762,6 +773,18 @@ if get_option('with_tests')
                 'EAMCellVerletTest',
                 'eam_cell_verlet_test',
                 'EAMCellVerletTest.cc',
+                '',
+            ],
+            [
+                'ManyBodyForceTest',
+                'many_body_force_test',
+                'ManyBodyForceTest.cc',
+                '',
+            ],
+            [
+                'SkinPairTest',
+                'skin_pair_test',
+                'SkinPairTest.cc',
                 '',
             ],
             [
@@ -1775,6 +1798,7 @@ if get_option('with_tests')
             test.get(0),
             _test_exe,
             workdir: meson.source_root() + test.get(3),
+            timeout: test.get(0) == 'StreamParityTest' ? 900 : 30,
         )
         if test.get(1) == 'calculator_group_test'
             calculator_group_test_exe = _test_exe
@@ -2411,6 +2435,23 @@ if get_option('with_tests')
         benchmark(
             'classical_scaling_bench',
             classical_scaling_bench,
+            workdir: meson.source_root(),
+            timeout: 0,
+        )
+        stream_scale_bench = executable(
+            'stream_scale_bench',
+            sources: ['tests/stream_scale_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'stream_scale_bench',
+            stream_scale_bench,
             workdir: meson.source_root(),
             timeout: 0,
         )

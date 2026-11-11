@@ -566,18 +566,7 @@ void Builder::update(const double *positions, std::size_t n, const double *box9,
       query_.fields.vectors == query.fields.vectors &&
       query_.fields.distances == query.fields.distances &&
       std::memcmp(box_, box9, sizeof(box_)) == 0) {
-    const double limit2 = 0.25 * query.skin * query.skin;
-    bool same = true;
-    for (std::size_t a = 0; a < n; ++a) {
-      const double dx = positions[3 * a] - ref_[3 * a];
-      const double dy = positions[3 * a + 1] - ref_[3 * a + 1];
-      const double dz = positions[3 * a + 2] - ref_[3 * a + 2];
-      if (dx * dx + dy * dy + dz * dz > limit2) {
-        same = false;
-        break;
-      }
-    }
-    if (same) {
+    if (withinSkin(ref_.data(), positions, n, query.skin)) {
       reused_ = true;
       return;
     }

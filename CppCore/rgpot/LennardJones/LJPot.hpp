@@ -20,7 +20,6 @@
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/Potential.hpp"
 #include "rgpot/nlist/Neighbours.hpp"
-#include "rgpot/simd/from_cache.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
 namespace rgpot {
@@ -91,6 +90,16 @@ public:
 
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
+  /// True when the last force call kept the Verlet list. The test is
+  /// half the skin, the same predicate as `nlist::Builder::update`.
+  [[nodiscard]] bool listReused() const noexcept { return neighbours_.reused(); }
+
+  /// Pair indices this potential kept. Zero in a streaming call: the
+  /// pair term runs inside the cell walk and no half-list is copied out.
+  [[nodiscard]] std::size_t retainedPairs() const noexcept {
+    return neighbours_.streaming() ? 0 : neighbours_.slots();
+  }
+
 private:
   /// Bump when the kernel numerics change, so stale cache entries die.
   static constexpr uint64_t kKernelVersion = 2;
@@ -104,9 +113,6 @@ private:
   uint64_t m_paramsKey{0};
   nlist::Mode mode_ = nlist::Mode::Auto;
   mutable nlist::Neighbours neighbours_;
-  mutable simd::CachedPairs cached_;
-  mutable std::uint64_t list_stamp_ = 0;
-  mutable bool have_cache_ = false;
 };
 
 } // namespace rgpot

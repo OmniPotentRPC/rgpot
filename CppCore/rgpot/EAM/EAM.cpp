@@ -12,6 +12,7 @@
 #include "EAM.h"
 #include "rgpot/nlist/NeighbourList.hpp"
 #include "Parameters.h"
+#include "StreamSpline.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -40,6 +41,8 @@ void EAM::cleanMemory() {
   std::vector<std::int32_t>().swap(rev_);
   std::vector<double>().swap(thread_energy_);
   std::vector<double>().swap(partial_f_);
+  std::vector<double>().swap(stream_rho_);
+  std::vector<double>().swap(stream_force_);
   parts_.clear();
   part_n_ = -1;
   part_nt_ = -1;
@@ -99,9 +102,11 @@ void EAM::buildList(long N) {
     widest = std::max(widest, el_params[i].r_cut);
   }
   double box9[9] = {box_len_[0], 0, 0, 0, box_len_[1], 0, 0, 0, box_len_[2]};
+  // A stream does not reuse bins unless the coordinates match, so the
+  // skin only adds pairs the kernel then rejects.
+  const double skin = mode_ == rgpot::nlist::Mode::Stream ? 0.0 : kEamSkinOverCutoff * widest;
   rgpot::nlist::updateCells(neighbours_, wrapped_.data(), static_cast<std::size_t>(N), box9,
-                            widest, kEamSkinOverCutoff * widest, rgpot::nlist::Image::Half,
-                            mode_, {true, true, true});
+                            widest, skin, rgpot::nlist::Image::Half, mode_, {true, true, true});
   n_atoms_ = N;
   if (neighbours_.streaming()) {
     rev_.clear();
@@ -219,14 +224,16 @@ void EAM::accumulate(long i, const int *atomicNrs, double *F, double &U,
       const double expArg = std::exp(-epar.alphaM * (r - epar.Rm));
       const double d = 1.0 - expArg;
       const double phi_r = epar.Dm * d * d - epar.Dm;
+      // d(phi)/dr = -mag_force, so the force on i is
+      // -(d phi/dr) (r_i - r_j) / r = mag_force (r_i - r_j) / r.
       const double mag_force = 2.0 * epar.alphaM * epar.Dm * d * (d - 1.0);
       const double fcomp_scale = mag_force * invR;
-      F[3 * i] -= fcomp_scale * dx;
-      F[3 * i + 1] -= fcomp_scale * dy;
-      F[3 * i + 2] -= fcomp_scale * dz;
-      F[3 * j] += fcomp_scale * dx;
-      F[3 * j + 1] += fcomp_scale * dy;
-      F[3 * j + 2] += fcomp_scale * dz;
+      F[3 * i] += fcomp_scale * dx;
+      F[3 * i + 1] += fcomp_scale * dy;
+      F[3 * i + 2] += fcomp_scale * dz;
+      F[3 * j] -= fcomp_scale * dx;
+      F[3 * j + 1] -= fcomp_scale * dy;
+      F[3 * j + 2] -= fcomp_scale * dz;
       U += phi_r;
     }
   }
@@ -356,9 +363,9 @@ void EAM::evaluateStoredParallel(long N, const int *atomicNrs, double *F,
             const double fcomp =
                 2.0 * epar.alphaM * epar.Dm * d * (d - 1.0) * invR;
             morse_[s] = fcomp;
-            fx -= fcomp * dx;
-            fy -= fcomp * dy;
-            fz -= fcomp * dz;
+            fx += fcomp * dx;
+            fy += fcomp * dy;
+            fz += fcomp * dz;
           } else {
             morse_[s] = 0.0;
           }
@@ -408,7 +415,10 @@ void EAM::evaluateStoredParallel(long N, const int *atomicNrs, double *F,
         if (fnei == 0.0 && fcomp == 0.0) {
           continue;
         }
-        const double scale = dF_[static_cast<std::size_t>(j)] * fnei + fcomp;
+        // fcomp is (d phi/dr) with a minus already in mag_force. The
+        // neighbour's pair force is +fcomp * dx, while the embedding
+        // term stays -dF * fnei * dx.
+        const double scale = dF_[static_cast<std::size_t>(j)] * fnei - fcomp;
         const double dx = gdx_[s];
         fx -= scale * dx;
         fy -= scale * gdy_[s];
@@ -431,99 +441,190 @@ void EAM::evaluateStoredParallel(long N, const int *atomicNrs, double *F,
   *U = energy;
 }
 
-void EAM::evaluateStreamParallel(long N, const int *atomicNrs, double *F,
-                                  double *U) {
+const rgpot::eam::ElementSpline &EAM::splineFor(int Z) {
+  static std::vector<rgpot::eam::ElementSpline> tables;
+  if (tables.capacity() < 8) {
+    tables.reserve(8);
+  }
+  for (const auto &table : tables) {
+    if (table.Z == Z) {
+      return table;
+    }
+  }
+  const element_parameters *raw = nullptr;
+  for (int i = 0; i < NPARAMS; ++i) {
+    if (el_params[i].Z == Z) {
+      raw = &el_params[i];
+      break;
+    }
+  }
+  if (raw == nullptr) {
+    throw 14324;
+  }
+  tables.push_back(rgpot::eam::makeElementSpline(raw->Z, raw->Dm, raw->alphaM, raw->Rm,
+                                                 raw->beta1, raw->beta2, raw->r_cut,
+                                                 raw->func_coeff));
+  return tables.back();
+}
+
+void EAM::evaluateDensityStream(long N, const int *atomicNrs, double *F,
+                                 double *U) {
+  // One half pair, tabulated. The density walk and the force walk
+  // share the cell bins. Each thread keeps its own rows, so the
+  // partner atom needs no lock and no pair index.
+  js_.clear();
   const int nt = threads_used_;
-  ensureParts(N, nt);
-  const auto n3 = static_cast<std::size_t>(3 * N);
-  std::vector<double> owned(static_cast<std::size_t>(nt) * n3, 0.0);
-  std::vector<double> energies(static_cast<std::size_t>(nt), 0.0);
-#if defined(_OPENMP)
-#pragma omp parallel num_threads(nt)
-#endif
-  {
-#if defined(_OPENMP)
-    const int t = omp_get_thread_num();
-#else
-    const int t = 0;
-#endif
-    const auto range = parts_[static_cast<std::size_t>(t)];
-    std::vector<std::int32_t> ids;
-    std::vector<Delta> deltas;
-    double energy = 0.0;
-    double *local = owned.data() + static_cast<std::size_t>(t) * n3;
-    for (std::int64_t i = range.begin; i < range.end; ++i) {
-      ids.clear();
-      rgpot::nlist::visitDirected(neighbours_, 
-          i, i + 1,
-          [&](std::int32_t, std::int32_t j, double, double, double, double) {
-            ids.push_back(j);
-          });
-      std::sort(ids.begin(), ids.end());
-      accumulate(static_cast<long>(i), atomicNrs, local, energy, deltas,
-                 ids.data(), static_cast<long>(ids.size()));
-    }
-    energies[static_cast<std::size_t>(t)] = energy;
+  std::vector<const rgpot::eam::ElementSpline *> kind(
+      static_cast<std::size_t>(N));
+  for (long i = 0; i < N; ++i) {
+    kind[static_cast<std::size_t>(i)] = &splineFor(atomicNrs[i]);
   }
-  for (int t = 0; t < nt; ++t) {
-    const double *local = owned.data() + static_cast<std::size_t>(t) * n3;
-    for (std::size_t k = 0; k < n3; ++k) {
-      F[k] += local[k];
+  const rgpot::eam::ElementSpline *only = kind.empty() ? nullptr : kind[0];
+  bool uniform = true;
+  for (const auto *k : kind) {
+    if (k != only) {
+      uniform = false;
+      break;
     }
-    *U += energies[static_cast<std::size_t>(t)];
   }
+  const auto rows = static_cast<std::size_t>(nt) * static_cast<std::size_t>(N);
+  stream_rho_.assign(rows, 0.0);
+  std::vector<double> pair_energy(static_cast<std::size_t>(nt), 0.0);
+  auto density_row = [&](int t) {
+    return stream_rho_.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(N);
+  };
+  rho_.assign(static_cast<std::size_t>(N), 0.0);
+  dF_.resize(static_cast<std::size_t>(N));
+  stream_force_.assign(rows * 3, 0.0);
+  double embedded = 0.0;
+  auto absorb = [&](int thread) {
+    if (thread != 0) {
+      return;
+    }
+    for (long i = 0; i < N; ++i) {
+      double dens = 0.0;
+      for (int t = 0; t < nt; ++t) {
+        dens += stream_rho_[static_cast<std::size_t>(t) * static_cast<std::size_t>(N) +
+                            static_cast<std::size_t>(i)];
+      }
+      rho_[static_cast<std::size_t>(i)] = dens;
+      const auto *s = kind[static_cast<std::size_t>(i)];
+      dF_[static_cast<std::size_t>(i)] = embedding_force(s->embed, dens);
+      embedded += embedding_function(s->embed, dens);
+    }
+  };
+  auto force_row = [&](int t) {
+    return stream_force_.data() +
+           static_cast<std::size_t>(t) * static_cast<std::size_t>(N) * 3;
+  };
+  auto add_pair = [&](double *row, std::int32_t i, std::int32_t j, double scale, double dx,
+                      double dy, double dz) {
+    row[3 * i] += scale * dx;
+    row[3 * i + 1] += scale * dy;
+    row[3 * i + 2] += scale * dz;
+    row[3 * j] -= scale * dx;
+    row[3 * j + 1] -= scale * dy;
+    row[3 * j + 2] -= scale * dz;
+  };
+  auto density_of = [&](int t, std::int32_t i, std::int32_t j, double, double, double, double r2) {
+        if (!(r2 > 0.0)) {
+          return;
+        }
+        if (uniform && only != nullptr) {
+          if (r2 > only->cutoff2) {
+            return;
+          }
+          const double r = std::sqrt(r2);
+          const double rho = only->density(r);
+          double *row = density_row(t);
+          row[i] += rho;
+          row[j] += rho;
+          pair_energy[static_cast<std::size_t>(t)] += only->pairEnergy(r);
+          return;
+        }
+        const auto *si = kind[static_cast<std::size_t>(i)];
+        const auto *sj = kind[static_cast<std::size_t>(j)];
+        const double r = std::sqrt(r2);
+        double *row = density_row(t);
+        // j > i on a half walk, so the pair term belongs to i.
+        if (r2 <= si->cutoff2) {
+          row[i] += si->density(r);
+          pair_energy[static_cast<std::size_t>(t)] += si->pairEnergy(r);
+        }
+        if (r2 <= sj->cutoff2) {
+          row[j] += sj->density(r);
+        }
+  };
+  auto force_of = [&](int t, std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                      double r2) {
+        if (!(r2 > 0.0)) {
+          return;
+        }
+        const double r = std::sqrt(r2);
+        double scale = 0.0;
+        if (uniform && only != nullptr) {
+          if (r2 > only->cutoff2) {
+            return;
+          }
+          const double fs = only->densityForce(r);
+          scale = only->pairForce(r) -
+                  (dF_[static_cast<std::size_t>(i)] + dF_[static_cast<std::size_t>(j)]) * fs;
+        } else {
+          const auto *si = kind[static_cast<std::size_t>(i)];
+          const auto *sj = kind[static_cast<std::size_t>(j)];
+          if (r2 <= si->cutoff2) {
+            scale += si->pairForce(r);
+            scale -= dF_[static_cast<std::size_t>(i)] * si->densityForce(r);
+          }
+          if (r2 <= sj->cutoff2) {
+            scale -= dF_[static_cast<std::size_t>(j)] * sj->densityForce(r);
+          }
+        }
+        if (scale != 0.0) {
+          add_pair(force_row(t), i, j, scale, dx, dy, dz);
+        }
+  };
+  neighbours_.forCellTeam(true, nt, density_of);
+  absorb(0);
+  neighbours_.forCellTeam(true, nt, force_of);
+  for (long i = 0; i < N; ++i) {
+    double fx = 0.0;
+    double fy = 0.0;
+    double fz = 0.0;
+    for (int t = 0; t < nt; ++t) {
+      const double *row = stream_force_.data() +
+                          static_cast<std::size_t>(t) * static_cast<std::size_t>(N) * 3;
+      fx += row[3 * i];
+      fy += row[3 * i + 1];
+      fz += row[3 * i + 2];
+    }
+    F[3 * i] = fx;
+    F[3 * i + 1] = fy;
+    F[3 * i + 2] = fz;
+  }
+  double energy = embedded;
+  for (double part : pair_energy) {
+    energy += part;
+  }
+  *U = energy;
 }
 
 void EAM::evaluate(long N, const int *atomicNrs, double *F, double *U) {
   const int nt = threadsRequested();
   threads_used_ = nt;
+  if (neighbours_.streaming()) {
+    evaluateDensityStream(N, atomicNrs, F, U);
+    return;
+  }
   if (nt == 1) {
     double energy = 0.0;
     for (long i = 0; i < N; ++i) {
-      if (neighbours_.streaming()) {
-        js_.clear();
-        rgpot::nlist::visitDirected(neighbours_, 
-            i, i + 1,
-            [&](std::int32_t, std::int32_t j, double, double, double, double) {
-              js_.push_back(j);
-            });
-        std::sort(js_.begin(), js_.end());
-      }
-      accumulate(i, atomicNrs, F, energy, deltas_, js_.data(),
-                 static_cast<long>(js_.size()));
+      accumulate(i, atomicNrs, F, energy, deltas_, nullptr, 0);
     }
     *U = energy;
     return;
   }
-#if defined(_OPENMP)
-  if (!neighbours_.streaming()) {
-    evaluateStoredParallel(N, atomicNrs, F, U);
-    return;
-  }
-#endif
-#if defined(_OPENMP)
-  // Same one-walk arithmetic as one thread. Each thread keeps the
-  // neighbour forces in a private buffer, so the embedding term does
-  // not need a second exponential pass.
-  evaluateStreamParallel(N, atomicNrs, F, U);
-  return;
-#else
-  double energy = 0.0;
-  for (long i = 0; i < N; ++i) {
-    if (neighbours_.streaming()) {
-      js_.clear();
-      rgpot::nlist::visitDirected(neighbours_, 
-          i, i + 1,
-          [&](std::int32_t, std::int32_t j, double, double, double, double) {
-            js_.push_back(j);
-          });
-      std::sort(js_.begin(), js_.end());
-    }
-    accumulate(i, atomicNrs, F, energy, deltas_, js_.data(),
-               static_cast<long>(js_.size()));
-  }
-  *U = energy;
-#endif
+  evaluateStoredParallel(N, atomicNrs, F, U);
 }
 void EAM::force(long N, const double *R, const int *atomicNrs, double *F,
                 double *U, double *variance, const double *fullbox) {
