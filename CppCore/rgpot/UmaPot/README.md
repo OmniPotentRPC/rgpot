@@ -18,10 +18,10 @@ package is read.
 
 | Key | Use at runtime |
 | --- | --- |
-| `cutoff` | Backbone interaction range when `model_cutoff` is absent. Vesin radius for a partial pair list. |
-| `model_cutoff` | Backbone interaction range. Pairs past it leave the energy unchanged. Older packages omit the key. |
+| `cutoff` | Backbone range when `model_cutoff` is absent. |
+| `model_cutoff` | Backbone range. Older packages omit the key. |
 | `max_neighbors` | Vesin cap per atom on a partial pair list. |
-| `molecular_box` | Cube side length. Positions are centred at zero (0: caller's cell). A positive value with a full pair count lists every ordered pair. |
+| `molecular_box` | Cube side. A full count lists every ordered pair. |
 | `batch_max` | band graph size (0 or 1: single system) |
 | `pos_dtype` | input dtype of positions, the cell and cell offsets (`float32` or `float64`) |
 | `model_dtype` | weight dtype recorded by the exporter (`float32` or `float64`) |
@@ -31,9 +31,11 @@ package is read.
 | `model`, `torch_version`, `fairchem_version`, `export_path` | recorded |
 
 `UmaConfig.cutoff` / `max_neighbors` are defaults. The embedded
-values win when present. A molecular package traced at `n(n-1)`
-edges keeps that count for every geometry. The model envelope
-zeroes pairs past the backbone range.
+values win when present. `cutoff` is also the vesin radius for a
+partial pair list. A molecular package traced at `n(n-1)` edges
+keeps that count for every geometry. The model envelope zeroes
+pairs past the backbone range. A positive `molecular_box` centres
+positions at zero and lists every ordered pair.
 
 The exporter converts the model with `hydra.double()` before the
 AOTI trace for `--dtype float64` and records both dtype keys as
