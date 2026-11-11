@@ -1,13 +1,11 @@
-// MIT License — UmaPot: vesin neighbor list + AOTInductor .pt2
+// MIT License — UmaPot: neighbour query + AOTInductor .pt2
 
 #include "rgpot/UmaPot/UmaPot.hpp"
 #include "rgpot/UmaPot/MolecularFrame.hpp"
 
-#include "rgpot/MetatomicPot/vesin_compat.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/UmaPot/UmaContract.hpp"
 #include "rgpot/UmaPot/aoti_execstack.hpp"
-#include "vesin.h"
 
 #include <array>
 #include <vector>
@@ -49,7 +47,7 @@ struct EdgeList {
   std::vector<double> offsets; // nedges * 3, cell shifts
 };
 
-EdgeList vesin_fairchem_edges(const ForceInput &in, double cutoff,
+EdgeList fairchem_edges(const ForceInput &in, double cutoff,
                               int max_neighbors) {
   nlist::Query query;
   query.cutoff = cutoff;
@@ -368,11 +366,11 @@ void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
                          in.atmnrs, molecular ? mol_box.data() : in.box};
 
   const EdgeList edges =
-      vesin_fairchem_edges(local, m_impl->cutoff, m_impl->max_neighbors);
+      fairchem_edges(local, m_impl->cutoff, m_impl->max_neighbors);
   const auto n = static_cast<int64_t>(local.nAtoms);
   const auto nedges = static_cast<int64_t>(edges.neighbor.size());
   if (nedges == 0)
-    throw std::runtime_error("UmaPot: vesin produced no edges");
+    throw std::runtime_error("UmaPot: the neighbour query produced no edges");
   if (molecular)
     reject_periodic_images(edges.offsets);
   // The same check the band path uses. A molecular count other than
@@ -518,12 +516,12 @@ void UmaPot::forceBatchImpl(const ForceBatch &batch) const {
       const ForceInput local{static_cast<size_t>(n), pos_b.data(), in.atmnrs,
                              box_b.data()};
       sys_edges[static_cast<size_t>(b)] =
-          vesin_fairchem_edges(local, m_impl->cutoff, m_impl->max_neighbors);
+          fairchem_edges(local, m_impl->cutoff, m_impl->max_neighbors);
       nedges_total += static_cast<int64_t>(
           sys_edges[static_cast<size_t>(b)].neighbor.size());
     }
     if (nedges_total == 0)
-      throw std::runtime_error("UmaPot: vesin produced no edges (batch)");
+      throw std::runtime_error("UmaPot: the neighbour query produced no edges (batch)");
     std::vector<int64_t> per_system(static_cast<size_t>(B));
     for (int64_t b = 0; b < B; ++b) {
       per_system[static_cast<size_t>(b)] = static_cast<int64_t>(
