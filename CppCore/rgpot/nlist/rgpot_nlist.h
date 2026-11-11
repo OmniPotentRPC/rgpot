@@ -68,6 +68,13 @@ typedef struct rgpot_nlist_request {
   int32_t want_shifts;
   int32_t want_vectors;
   int32_t want_distances;
+  /* Appended. A caller whose bytes stop at want_distances is a scalar
+   * cutoff. types has n entries. pair_cutoff is row-major ntypes*ntypes.
+   * ntypes 0 ignores the pointers. A non-positive matrix entry drops
+   * that pair type. */
+  const int32_t *types;
+  const double *pair_cutoff;
+  int32_t ntypes;
 } rgpot_nlist_request;
 
 /* Caller-owned structure of arrays, the same columns as NeighborList
@@ -129,6 +136,16 @@ int32_t rgpot_nlist_walk_pull(rgpot_nlist_walk *walk, rgpot_nlist_soa *out,
                               size_t *count, int32_t *done);
 
 void rgpot_nlist_walk_close(rgpot_nlist_walk *walk);
+
+/* One pair at a time. The vector is r_j - r_i + S H. The callback runs
+ * on the calling thread. It does not store the list. A null fn returns
+ * RGPOT_NLIST_NULL. */
+typedef void (*rgpot_nlist_each_fn)(void *user, int32_t first, int32_t second, int32_t shift_a,
+                                    int32_t shift_b, int32_t shift_c, double x, double y, double z,
+                                    double distance);
+
+int32_t rgpot_nlist_each(const double *positions, size_t n, const double *box9,
+                         const rgpot_nlist_request *request, rgpot_nlist_each_fn fn, void *user);
 
 /* Several systems that do not interact. positions is the concatenation
  * of counts[s] atoms. box9 holds 9 * nsystems lattice values. first and

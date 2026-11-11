@@ -2,11 +2,11 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 //
-// Public neighbour query. Potentials and this query share updateCells and
-// visitDirected. Neighbours is the cell list those calls walk. The stable
-// list is a structure of arrays: a pair shell or a cluster of four,
-// triclinic and partial periodic boundaries, a skin rebuild, and a chunked
-// walk that does not store the pairs.
+// Public neighbour query. Cells is the reusable list the classical
+// potentials walk. Neighbours is the cell list under it. The stable list
+// is a structure of arrays: a pair shell or a cluster of four, a cutoff
+// per pair type, triclinic and partial periodic boundaries, a skin
+// rebuild, and a callback or a chunked walk that does not store the pairs.
 //
 // Distinct Table, Builder and Walk objects may be used from different
 // threads. One object is not shared. build() may start an OpenMP team
@@ -23,6 +23,7 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -86,6 +87,19 @@ struct Fields {
   bool shifts = true;
   bool vectors = true;
   bool distances = true;
+};
+
+/// Cutoffs that depend on the pair of atom types. `types` has one id per
+/// atom, each in `[0, ntypes)`. `cutoff` is row-major and holds
+/// `ntypes * ntypes` entries: atom `i` with atom `j` uses
+/// `cutoff[types[i] * ntypes + types[j]]`. A non-positive entry drops
+/// that pair type. `ntypes == 0` means every pair uses `Query::cutoff`.
+/// The pointers are borrowed for the call. `Builder`, `Walk` and `Cells`
+/// copy what they keep.
+struct PairCutoffs {
+  const std::int32_t *types = nullptr;
+  const double *cutoff = nullptr;
+  std::int32_t ntypes = 0;
 };
 
 /// One neighbour query. `build` and `Builder` store the pairs. `Walk`
@@ -163,7 +177,7 @@ struct Table {
 class Builder {
 public:
   void update(const double *positions, std::size_t n, const double *box9,
-              const Query &query);
+              const Query &query, PairCutoffs cuts = {});
 
   [[nodiscard]] const Table &table() const noexcept { return table_; }
   [[nodiscard]] std::uint64_t builds() const noexcept { return builds_; }
@@ -178,6 +192,9 @@ private:
   std::uint64_t builds_ = 0;
   bool have_ = false;
   bool reused_ = false;
+  std::int32_t ntypes_ = 0;
+  std::vector<std::int32_t> types_;
+  std::vector<double> matrix_;
 };
 
 /// Walk pairs for one central atom, or one cluster of four, at a time
@@ -190,7 +207,7 @@ private:
 class Walk {
 public:
   Walk(const double *positions, std::size_t n, const double *box9,
-       const Query &query);
+       const Query &query, PairCutoffs cuts = {});
 
   std::size_t pull(Buffers dest, bool &done);
 
@@ -211,6 +228,12 @@ private:
   std::vector<std::uint8_t> hold_mask_;
   std::size_t hold_at_ = 0;
   bool finished_ = false;
+  bool cut_typed_ = false;
+  bool cut_inclusive_ = false;
+  std::int32_t cut_ntypes_ = 0;
+  double cut_search_ = 0;
+  std::vector<std::int32_t> cut_types_;
+  std::vector<double> cut_limit_;
 };
 
 /// Fill `table` from `query`. The table holds every pair. A caller that
@@ -220,13 +243,38 @@ private:
 /// at least 8192 atoms may start an OpenMP team. A smaller build stays
 /// on the calling thread.
 void build(Table &table, const double *positions, std::size_t n,
-           const double *box9, const Query &query);
+           const double *box9, const Query &query, PairCutoffs cuts = {});
+
+/// The pairs `build` would store, one at a time, with no table. The vector
+/// is `r_j - r_i + S H` and `r` is its length. The callback runs on the
+/// calling thread. A cluster is merged a few atoms at a time. `fn` is
+/// `void(int32_t i, int32_t j, int sa, int sb, int sc, double x, double y,
+/// double z, double r)`.
+void each_raw(const double *positions, std::size_t n, const double *box9,
+              const Query &query,
+              void (*fn)(void *user, std::int32_t i, std::int32_t j, int sa, int sb, int sc,
+                         double x, double y, double z, double r),
+              void *user, PairCutoffs cuts = {});
+
+template <typename Fn>
+void each(const double *positions, std::size_t n, const double *box9, const Query &query,
+          Fn &&fn, PairCutoffs cuts = {}) {
+  using FnObj = std::remove_reference_t<Fn>;
+  auto *held = &fn;
+  each_raw(
+      positions, n, box9, query,
+      [](void *user, std::int32_t i, std::int32_t j, int sa, int sb, int sc, double x, double y,
+         double z, double r) {
+        (*static_cast<FnObj *>(user))(i, j, sa, sb, sc, x, y, z, r);
+      },
+      held, cuts);
+}
 
 /// The same pairs as `build`, gathered one atom at a time. A CUDA, HIP
 /// or Kokkos launch gives one thread one atom and runs this walk. The
 /// host `build` remains the source of truth.
 void buildByAtom(Table &table, const double *positions, std::size_t n,
-                 const double *box9, const Query &query);
+                 const double *box9, const Query &query, PairCutoffs cuts = {});
 
 /// Several systems that do not interact. `positions` is the concatenation
 /// of every system, `count` atoms each. `box9` holds nine lattice values
@@ -247,7 +295,120 @@ struct Batch {
 
 /// One query for every system. The systems do not see each other's atoms.
 /// A rejected system throws before `batch` is cleared.
-void build(Batch &batch, const Systems &systems, const Query &query);
+void build(Batch &batch, const Systems &systems, const Query &query,
+           PairCutoffs cuts = {});
+
+/// Reusable cell list for a force kernel. `dx, dy, dz` are `r_i - r_j`
+/// after the image, which is the negation of the vector `build` stores,
+/// and `r2` is the squared length. No square root and no shift are
+/// computed. With an empty `PairCutoffs` the walk is the cell list the
+/// classical potentials used directly: the same pairs, in the same order.
+/// A matrix keeps candidates out to that pair's cutoff plus the skin
+/// (`r2 <= (cutoff + skin)^2`). One `Cells` object is used by one thread.
+/// `forCellTeam` may start an OpenMP team. Do not call it from inside
+/// another OpenMP region.
+class Cells {
+public:
+  void update(const double *positions, std::size_t n, const double *box9, double cutoff,
+              double skin, Image image, Mode mode, const std::array<bool, 3> &periodic,
+              PairCutoffs cuts = {});
+
+  [[nodiscard]] bool streaming() const noexcept { return cells_.streaming(); }
+  [[nodiscard]] bool reused() const noexcept { return cells_.reused(); }
+  [[nodiscard]] std::uint64_t builds() const noexcept { return cells_.builds(); }
+  [[nodiscard]] std::size_t slots() const noexcept { return cells_.slots(); }
+  [[nodiscard]] const std::vector<std::int32_t> &offsets() const noexcept {
+    return cells_.offsets();
+  }
+  [[nodiscard]] const std::vector<std::int32_t> &neighbours() const noexcept {
+    return cells_.neighbours();
+  }
+
+  template <typename Fn>
+  void forDirected(std::int64_t begin, std::int64_t end, Fn &&fn) const {
+    if (!typed_) {
+      cells_.forDirected(begin, end, std::forward<Fn>(fn));
+      return;
+    }
+    using FnObj = std::remove_reference_t<Fn>;
+    filter_directed(
+        begin, end,
+        [](void *user, std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2) {
+          (*static_cast<FnObj *>(user))(i, j, dx, dy, dz, r2);
+        },
+        &fn);
+  }
+
+  template <typename Fn>
+  void forHalf(std::int64_t begin, std::int64_t end, Fn &&fn) const {
+    if (!typed_) {
+      cells_.forHalf(begin, end, std::forward<Fn>(fn));
+      return;
+    }
+    using FnObj = std::remove_reference_t<Fn>;
+    filter_half(
+        begin, end,
+        [](void *user, std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2) {
+          (*static_cast<FnObj *>(user))(i, j, dx, dy, dz, r2);
+        },
+        &fn);
+  }
+
+  template <typename Fn>
+  void forAtom(std::int32_t i, Fn &&fn) const {
+    if (!typed_) {
+      cells_.forAtom(i, std::forward<Fn>(fn));
+      return;
+    }
+    using FnObj = std::remove_reference_t<Fn>;
+    filter_atom(
+        i,
+        [](void *user, std::int32_t a, std::int32_t j, double dx, double dy, double dz, double r2) {
+          (*static_cast<FnObj *>(user))(a, j, dx, dy, dz, r2);
+        },
+        &fn);
+  }
+
+  template <typename Fn>
+  void forCellTeam(bool half, int nthreads, Fn &&fn) const {
+    if (!typed_) {
+      cells_.forCellTeam(half, nthreads, std::forward<Fn>(fn));
+      return;
+    }
+    using FnObj = std::remove_reference_t<Fn>;
+    filter_team(
+        half, nthreads,
+        [](void *user, int thread, std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+           double r2) {
+          (*static_cast<FnObj *>(user))(thread, i, j, dx, dy, dz, r2);
+        },
+        &fn);
+  }
+
+private:
+  using PairFn = void (*)(void *user, std::int32_t i, std::int32_t j, double dx, double dy,
+                          double dz, double r2);
+  using TeamFn = void (*)(void *user, int thread, std::int32_t i, std::int32_t j, double dx,
+                          double dy, double dz, double r2);
+
+  void filter_directed(std::int64_t begin, std::int64_t end, PairFn fn, void *user) const;
+  void filter_half(std::int64_t begin, std::int64_t end, PairFn fn, void *user) const;
+  void filter_atom(std::int32_t i, PairFn fn, void *user) const;
+  void filter_team(bool half, int nthreads, TeamFn fn, void *user) const;
+
+  [[nodiscard]] bool allow(std::int32_t i, std::int32_t j, double r2) const {
+    const double lim = limit_[static_cast<std::size_t>(types_[static_cast<std::size_t>(i)]) *
+                                  static_cast<std::size_t>(ntypes_) +
+                              static_cast<std::size_t>(types_[static_cast<std::size_t>(j)])];
+    return (lim > 0.0) && r2 <= lim;
+  }
+
+  Neighbours cells_;
+  bool typed_ = false;
+  std::int32_t ntypes_ = 0;
+  std::vector<std::int32_t> types_;
+  std::vector<double> limit_;
+};
 
 /// Bind `cells` to this geometry. `cutoff` is the pair cutoff and `skin`
 /// is the Verlet buffer the kernels drop inside the cutoff. `image` is
