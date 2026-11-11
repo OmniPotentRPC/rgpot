@@ -143,9 +143,11 @@ if(RGPOT_WITH_RPC)
 
   # Client Bridge
   if(APPLE)
-    add_library(rgpot_client_bridge STATIC CppCore/rgpot/rpc/pot_bridge.cc)
+    add_library(rgpot_client_bridge STATIC CppCore/rgpot/rpc/pot_bridge.cc
+                                           CppCore/rgpot/rpc/loopback.cc)
   else()
-    add_library(rgpot_client_bridge SHARED CppCore/rgpot/rpc/pot_bridge.cc)
+    add_library(rgpot_client_bridge SHARED CppCore/rgpot/rpc/pot_bridge.cc
+                                           CppCore/rgpot/rpc/loopback.cc)
   endif()
   target_link_libraries(rgpot_client_bridge PUBLIC ptlrpc CapnProto::capnp-rpc)
   set_target_properties(rgpot_client_bridge PROPERTIES LINKER_LANGUAGE CXX)
@@ -332,10 +334,12 @@ endif()
 # The MPI hosts are explicit executables; the serial server and core library
 # do not acquire an MPI load dependency.
 if(RGPOT_WITH_RPC AND NOT RGPOT_RPC_CLIENT_ONLY)
-  add_executable(potserv CppCore/rgpot/rpc/server.cpp)
+  add_executable(potserv CppCore/rgpot/rpc/server.cpp
+                         CppCore/rgpot/rpc/loopback.cc)
   target_link_libraries(potserv PRIVATE rgpot::rgpot ptlrpc CapnProto::capnp-rpc)
   if(RGPOT_HAVE_MPI)
-    add_executable(potserv_mpi CppCore/rgpot/rpc/server.cpp)
+    add_executable(potserv_mpi CppCore/rgpot/rpc/server.cpp
+                             CppCore/rgpot/rpc/loopback.cc)
     target_compile_definitions(potserv_mpi PRIVATE RGPOT_POTSERV_MPI)
     target_link_libraries(potserv_mpi PRIVATE rgpot::rgpot ptlrpc
                                             CapnProto::capnp-rpc MPI::MPI_CXX)

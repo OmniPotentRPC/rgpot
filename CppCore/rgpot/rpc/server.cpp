@@ -9,12 +9,15 @@
  */
 
 #include <algorithm>
+#include <memory>
 #include <sstream>
 #include <vector>
 
 #include <capnp/ez-rpc.h>
 #include <capnp/message.h>
 #include <kj/debug.h>
+
+#include "rgpot/rpc/loopback.hpp"
 
 #ifdef RGPOT_POTSERV_MPI
 #include "tools/MpiPefSession.hpp"
@@ -23,6 +26,33 @@
 namespace rgpot::tools {
 class MpiPefSession;
 }
+
+namespace {
+
+struct RpcListeners {
+  std::unique_ptr<capnp::EzRpcServer> tcp;
+  std::unique_ptr<capnp::EzRpcServer> local;
+};
+
+/// TCP on localhost, plus the abstract socket on Linux. Both servers share
+/// the thread's event loop; waiting on either pumps both.
+RpcListeners listen_rpc(capnp::Capability::Client main, int port) {
+  RpcListeners out;
+  capnp::Capability::Client extra = main;
+  out.tcp = std::make_unique<capnp::EzRpcServer>(kj::mv(main), "localhost", port);
+#if defined(__linux__)
+  if (port > 0 && port <= 65535) {
+    const std::string addr = rgpot::rpc::abstract_address(port);
+    out.local =
+        std::make_unique<capnp::EzRpcServer>(kj::mv(extra), addr.c_str());
+  }
+#else
+  (void)extra;
+#endif
+  return out;
+}
+
+} // namespace
 
 #ifdef RGPOT_HAS_FORTRAN_POTS
 #include "rgpot/fortran/FortranPots.hpp"
@@ -83,6 +113,9 @@ private:
   /// Optional typed handle when backend is CPMD (for configure()).
   rgpot::CPMDPot *m_cpmd = nullptr;
   rgpot::tools::MpiPefSession *m_pef = nullptr;
+  /// Reused across calculate() so a warm system does not allocate per call.
+  rgpot::types::AtomMatrix scratchPos;
+  std::vector<int> scratchTypes;
 
 public:
   /**
@@ -141,62 +174,71 @@ public:
 
     KJ_REQUIRE(fip.getAtmnrs().size() == numAtoms, "AtomNumbers size mismatch");
 
-    // Unit conversion factors (caller units -> internal angstrom/eV)
-    std::string lengthUnit = fip.getLengthUnit();
-    std::string energyUnit = fip.getEnergyUnit();
-    double len_to_angstrom = rgpot::units::unit_conversion_factor(lengthUnit, "angstrom");
-    double ev_to_caller = rgpot::units::unit_conversion_factor("eV", energyUnit);
-    // Force unit: energy/length in caller's system
-    double force_to_caller = ev_to_caller / len_to_angstrom;
+    // Schema defaults are angstrom and eV. Those skip the unit parser; any
+    // other text, including case variants, still goes through it.
+    const auto lengthUnit = fip.getLengthUnit();
+    const auto energyUnit = fip.getEnergyUnit();
+    const double len_to_angstrom = rgpot::units::length_scale_to_angstrom(
+        std::string_view(lengthUnit.cStr(), lengthUnit.size()));
+    const double ev_to_caller = rgpot::units::energy_scale_from_ev(
+        std::string_view(energyUnit.cStr(), energyUnit.size()));
+    const double force_to_caller = ev_to_caller / len_to_angstrom;
 
-    rgpot::types::AtomMatrix nativePositions =
-        rgpot::types::adapt::capnp::convertPositionsFromCapnp(fip.getPos(),
-                                                              numAtoms);
-    // Convert positions from caller's length unit to angstrom
-    if (len_to_angstrom != 1.0) {
-      for (size_t i = 0; i < numAtoms * 3; ++i) {
-        nativePositions.data()[i] *= len_to_angstrom;
-      }
+    scratchPos.reshape(numAtoms, 3);
+    const auto capPos = fip.getPos();
+    if (len_to_angstrom == 1.0) {
+      for (size_t i = 0; i < numAtoms * 3; ++i)
+        scratchPos.data()[i] = capPos[i];
+    } else {
+      for (size_t i = 0; i < numAtoms * 3; ++i)
+        scratchPos.data()[i] = capPos[i] * len_to_angstrom;
     }
 
-    std::vector<int> nativeAtomTypes =
-        rgpot::types::adapt::capnp::convertAtomNumbersFromCapnp(
-            fip.getAtmnrs());
+    if (scratchTypes.size() != numAtoms)
+      scratchTypes.resize(numAtoms);
+    const auto capTypes = fip.getAtmnrs();
+    for (size_t i = 0; i < numAtoms; ++i)
+      scratchTypes[i] = capTypes[i];
+
     std::array<std::array<double, 3>, 3> nativeBoxMatrix =
         rgpot::types::adapt::capnp::convertBoxMatrixFromCapnp(fip.getBox());
-    // Convert box from caller's length unit to angstrom
     if (len_to_angstrom != 1.0) {
       for (auto &row : nativeBoxMatrix)
         for (auto &val : row)
           val *= len_to_angstrom;
     }
 
-    // Potential always computes in eV/angstrom
-    auto evaluate = [&]() {
+    double energy = 0.0;
+    rgpot::types::AtomMatrix forces;
 #ifdef RGPOT_POTSERV_MPI
-      if (m_pef) {
-        try {
-          return m_pef->calculate(nativePositions, nativeAtomTypes, nativeBoxMatrix);
-        } catch (const std::exception &error) {
-          throw KJ_EXCEPTION(FAILED, error.what());
-        }
+    if (m_pef) {
+      try {
+        auto computed =
+            m_pef->calculate(scratchPos, scratchTypes, nativeBoxMatrix);
+        energy = std::get<0>(computed);
+        forces = std::move(std::get<1>(computed));
+        (void)std::get<2>(computed);
+      } catch (const std::exception &error) {
+        throw KJ_EXCEPTION(FAILED, error.what());
       }
+    } else
 #endif
-      return (*m_potential)(nativePositions, nativeAtomTypes, nativeBoxMatrix);
-    };
-    auto [energy, forces, variance] = evaluate();
-    (void)variance;
+    {
+      auto computed =
+          (*m_potential)(scratchPos, scratchTypes, nativeBoxMatrix);
+      energy = std::get<0>(computed);
+      forces = std::move(std::get<1>(computed));
+      (void)std::get<2>(computed);
+    }
 
-    // Convert results to caller's units
     auto result = context.getResults();
     auto pres = result.initResult();
     pres.setEnergy(energy * ev_to_caller);
 
     auto forcesList = pres.initForces(numAtoms * 3);
     if (force_to_caller != 1.0) {
-      for (size_t i = 0; i < numAtoms * 3; ++i) {
+      for (size_t i = 0; i < numAtoms * 3; ++i)
         forces.data()[i] *= force_to_caller;
-      }
     }
     rgpot::types::adapt::capnp::populateForcesToCapnp(forcesList, forces);
 
@@ -481,12 +523,11 @@ int runServer(int argc, char *argv[]
     }
     channel = &session;
 #endif
-    capnp::EzRpcServer server(kj::heap<GenericPotImpl>(std::move(nw), channel),
-                              "localhost", port);
-    auto &waitScope = server.getWaitScope();
+    auto listeners = listen_rpc(
+        kj::heap<GenericPotImpl>(std::move(nw), channel), port);
     std::cout << "Server running on port " << port << " with " << pot_type
               << " potential." << std::endl;
-    kj::NEVER_DONE.wait(waitScope);
+    kj::NEVER_DONE.wait(listeners.tcp->getWaitScope());
     return 0;
   } else if (pot_type == "CPMD") {
     std::cout << "Loading CPMD potential (dlopen libcpmdc)..." << std::endl;
@@ -515,12 +556,11 @@ int runServer(int argc, char *argv[]
     }
     channel = &session;
 #endif
-    capnp::EzRpcServer server(kj::heap<GenericPotImpl>(std::move(cp), channel),
-                              "localhost", port);
-    auto &waitScope = server.getWaitScope();
+    auto listeners = listen_rpc(
+        kj::heap<GenericPotImpl>(std::move(cp), channel), port);
     std::cout << "Server running on port " << port << " with " << pot_type
               << " potential." << std::endl;
-    kj::NEVER_DONE.wait(waitScope);
+    kj::NEVER_DONE.wait(listeners.tcp->getWaitScope());
     return 0;
   } else {
     std::cerr << "Error: Unknown potential type '" << pot_type << "'"
@@ -533,13 +573,12 @@ int runServer(int argc, char *argv[]
     return 1;
   }
 
-  capnp::EzRpcServer server(
-      kj::heap<GenericPotImpl>(std::move(potential_to_use)), "localhost", port);
+  auto listeners = listen_rpc(
+      kj::heap<GenericPotImpl>(std::move(potential_to_use)), port);
 
-  auto &waitScope = server.getWaitScope();
   std::cout << "Server running on port " << port << " with " << pot_type
             << " potential." << std::endl;
-  kj::NEVER_DONE.wait(waitScope);
+  kj::NEVER_DONE.wait(listeners.tcp->getWaitScope());
 
   return 0;
 }

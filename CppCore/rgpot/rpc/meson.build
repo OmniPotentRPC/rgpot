@@ -93,7 +93,7 @@ ptlrpc_dep = declare_dependency(
 
 pot_bridge = library(
     'pot_client_bridge',
-    ['pot_bridge.cc'],
+    ['pot_bridge.cc', 'loopback.cc'],
     link_with: ptlrpc,
     dependencies: [capnp_rpc_dep, ptlrpc_hdr_dep],
     cpp_args: _args + ['-DPOT_BRIDGE_BUILD'],

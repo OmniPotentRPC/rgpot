@@ -120,6 +120,20 @@ public:
   const double *data() const { return m_data.data(); }
 
   /**
+   * @brief Resize without touching elements that already fit.
+   *
+   * A repeated call with the same shape keeps the allocation. New elements
+   * are value-initialized; existing ones are left as they are.
+   */
+  void reshape(size_t rows, size_t cols) {
+    if (m_rows == rows && m_cols == cols)
+      return;
+    m_rows = rows;
+    m_cols = cols;
+    m_data.resize(rows * cols);
+  }
+
+  /**
    * @brief Overload for stream insertion.
    * @param os  The output stream.
    * @param matrix  The matrix to print.

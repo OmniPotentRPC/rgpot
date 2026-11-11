@@ -428,7 +428,7 @@ endif
 if rpc_enabled and not get_option('with_rpc_client_only')
     server = executable(
         'potserv',
-        ['rgpot/rpc/server.cpp'],
+        ['rgpot/rpc/server.cpp', 'rgpot/rpc/loopback.cc'],
         link_with: [ptlrpc, _linkto],
         dependencies: _deps + [capnp_rpc_dep, ptlrpc_hdr_dep, vesin_dep] + _mta_engine_deps + fortran_rt_deps,
         cpp_args: _args,
@@ -440,7 +440,7 @@ if rpc_enabled and not get_option('with_rpc_client_only')
     if _mpi_dep.found()
         mpi_server = executable(
             'potserv_mpi',
-            ['rgpot/rpc/server.cpp'],
+            ['rgpot/rpc/server.cpp', 'rgpot/rpc/loopback.cc'],
             link_with: [ptlrpc, _linkto],
             dependencies: _deps + [
                 capnp_rpc_dep,
@@ -1322,6 +1322,21 @@ if get_option('with_tests')
         test_deps += dependency('capnp-rpc')
         test_deps += ptlrpc_dep
         test_array += [['RPCTest', 'test_rpc', 'CapnpAdapterTest.cc', '']]
+        if not get_option('with_rpc_client_only')
+            test(
+                'LoopbackRpc',
+                executable(
+                    'loopback_rpc_test',
+                    sources: ['tests/LoopbackRpcTest.cc'],
+                    dependencies: test_deps,
+                    include_directories: _incdirs + ['.'],
+                    cpp_args: test_args,
+                    link_with: _linkto + [pot_bridge],
+                    link_language: 'cpp',
+                ),
+                timeout: 60,
+            )
+        endif
         if get_option('with_rpc_client_only')
             test_deps += pot_bridge_dep
             test_array += [

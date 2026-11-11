@@ -12,12 +12,110 @@
 #include "pot_bridge.h"
 #include "Potentials.capnp.h"
 #include "rgpot/abi/Handshake.hpp"
+#include "rgpot/rpc/loopback.hpp"
 #include <algorithm>
 #include <capnp/ez-rpc.h>
 #include <capnp/message.h>
+#include <capnp/rpc-twoparty.h>
+#include <capnp/rpc.h>
+#include <chrono>
+#include <cstring>
+#include <kj/async-io.h>
 #include <kj/common.h>
 #include <memory>
 #include <string>
+
+#include <poll.h>
+#if defined(__x86_64__) || defined(__i386__)
+#include <immintrin.h>
+#define RGPOT_PAUSE() _mm_pause()
+#else
+#define RGPOT_PAUSE()                                                          \
+  do {                                                                         \
+  } while (0)
+#endif
+
+/// After a write, poll until the peer's reply is queued or the budget runs
+/// out. The event loop's epoll_wait then returns without a scheduler sleep
+/// when the reply landed during the poll. The bytes stay in the socket for
+/// the normal read. Past the budget (a large system) we block in epoll as
+/// before, so the spin does not stretch a slow call.
+class SpinAfterWrite final : public kj::AsyncIoStream {
+public:
+  SpinAfterWrite(kj::Own<kj::AsyncIoStream> inner, int fd)
+      : inner(kj::mv(inner)), fd(fd) {}
+
+  kj::Promise<size_t> tryRead(void *buffer, size_t minBytes,
+                              size_t maxBytes) override {
+    return inner->tryRead(buffer, minBytes, maxBytes);
+  }
+
+  kj::Promise<void> write(const void *buffer, size_t size) override {
+    return inner->write(buffer, size).then([this]() { spin(); });
+  }
+
+  kj::Promise<void> write(
+      kj::ArrayPtr<const kj::ArrayPtr<const kj::byte>> pieces) override {
+    return inner->write(pieces).then([this]() { spin(); });
+  }
+
+  kj::Promise<void> whenWriteDisconnected() override {
+    return inner->whenWriteDisconnected();
+  }
+
+  void shutdownWrite() override { inner->shutdownWrite(); }
+
+private:
+  void spin() const {
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::microseconds(40);
+    while (std::chrono::steady_clock::now() < deadline) {
+      pollfd pfd{};
+      pfd.fd = fd;
+      pfd.events = POLLIN;
+      if (::poll(&pfd, 1, 0) > 0)
+        return;
+      RGPOT_PAUSE();
+    }
+  }
+
+  kj::Own<kj::AsyncIoStream> inner;
+  int fd;
+};
+
+/// Loopback connection. The fd is owned by the wrapped stream. Members are
+/// destroyed in reverse declaration order, so the capability dies before the
+/// RPC system, the system before the vat, and the vat before the socket.
+struct LocalConn {
+  using Rpc = capnp::RpcSystem<capnp::rpc::twoparty::VatId>;
+
+  kj::AsyncIoContext io;
+  kj::Own<kj::AsyncIoStream> stream;
+  kj::Own<capnp::TwoPartyVatNetwork> network;
+  kj::Own<Rpc> rpc;
+  // Client's default constructor is protected; the pointer stays null until
+  // bootstrap() below.
+  std::unique_ptr<Potential::Client> cap;
+
+  explicit LocalConn(int fd)
+      : io(kj::setupAsyncIo()),
+        stream(kj::heap<SpinAfterWrite>(
+            io.lowLevelProvider->wrapSocketFd(
+                fd, kj::LowLevelAsyncIoProvider::TAKE_OWNERSHIP |
+                        kj::LowLevelAsyncIoProvider::ALREADY_CLOEXEC),
+            fd)) {
+    network = kj::heap<capnp::TwoPartyVatNetwork>(
+        *stream, capnp::rpc::twoparty::Side::CLIENT);
+    rpc = kj::heap<Rpc>(capnp::makeRpcClient(*network));
+    ::capnp::word scratch[4];
+    std::memset(scratch, 0, sizeof(scratch));
+    capnp::MallocMessageBuilder message(scratch);
+    auto hostId = message.getRoot<capnp::rpc::twoparty::VatId>();
+    hostId.setSide(capnp::rpc::twoparty::Side::SERVER);
+    cap = std::make_unique<Potential::Client>(
+        rpc->bootstrap(hostId).castAs<Potential>());
+  }
+};
 
 /**
  * @class PotClient
@@ -28,20 +126,20 @@
  */
 struct PotClient {
   std::unique_ptr<capnp::EzRpcClient>
-      rpc_client;               //!< The Cap'n Proto RPC client.
+      rpc_client;               //!< TCP client. Empty on the loopback path.
+  std::unique_ptr<LocalConn> local; //!< Abstract-socket client, when dialed.
   Potential::Client capability; //!< The RPC capability for potential calls.
   kj::WaitScope *wait_scope;    //!< Reference to the client wait scope.
   std::string last_error;       //!< Buffer for the most recent error message.
   bool server_checked = false;  //!< True once the server passed the handshake.
 
-  /**
-   * @brief Constructor for PotClient.
-   * @param client Ownership of the initialized EzRpcClient.
-   * @param cap The capability client for the Potential interface.
-   */
   PotClient(std::unique_ptr<capnp::EzRpcClient> client, Potential::Client cap)
       : rpc_client(std::move(client)), capability(std::move(cap)),
         wait_scope(&rpc_client->getWaitScope()) {}
+
+  explicit PotClient(std::unique_ptr<LocalConn> conn)
+      : local(std::move(conn)), capability(std::move(*local->cap)),
+        wait_scope(&local->io.waitScope) {}
 };
 
 // Helper macros to enforce safety without clutter
@@ -73,6 +171,14 @@ PotClient *pot_client_init(const char *host, int32_t port) {
   if (!host)
     return nullptr;
   try {
+    // Loopback skips the TCP stack when this build's server is listening.
+    // connect() fails immediately if it is not, and the TCP client below is
+    // still lazy: init succeeds and the first calculate reports the error.
+    if (rgpot::rpc::is_loopback_host(host)) {
+      const int fd = rgpot::rpc::connect_abstract(port);
+      if (fd >= 0)
+        return new PotClient(std::make_unique<LocalConn>(fd));
+    }
     std::string address = std::string(host) + ":" + std::to_string(port);
     auto rpc_client = std::make_unique<capnp::EzRpcClient>(address);
     auto cap = rpc_client->getMain().castAs<Potential>();

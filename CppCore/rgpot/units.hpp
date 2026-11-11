@@ -18,6 +18,7 @@
  */
 
 #include <string>
+#include <string_view>
 
 namespace rgpot::units {
 
@@ -73,6 +74,26 @@ inline constexpr double KB_EV = 8.617333262e-5;          // k_B in eV/K
 /// @note Derived from metatomic-torch (metatensor/metatomic PR #173).
 double unit_conversion_factor(const std::string &from_unit,
                               const std::string &to_unit);
+
+/// Multiplier that takes a length in @p unit into angstroms.
+///
+/// Empty and the schema default "angstrom" return 1 without parsing. Any
+/// other expression, including case variants, goes through
+/// unit_conversion_factor().
+inline double length_scale_to_angstrom(std::string_view unit) {
+  if (unit.empty() || unit == "angstrom")
+    return 1.0;
+  return unit_conversion_factor(std::string(unit), "angstrom");
+}
+
+/// Multiplier that takes an energy in eV into @p unit.
+///
+/// Empty and the schema default "eV" return 1 without parsing.
+inline double energy_scale_from_ev(std::string_view unit) {
+  if (unit.empty() || unit == "eV")
+    return 1.0;
+  return unit_conversion_factor("eV", std::string(unit));
+}
 
 /// Check that @p unit is a valid expression with dimensions matching @p
 /// quantity. Known quantities: "length", "energy", "force", "pressure",

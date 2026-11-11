@@ -13,6 +13,20 @@
 
 using Catch::Matchers::WithinRel;
 
+TEST_CASE("call scales skip the parser for schema defaults", "[units]") {
+  REQUIRE(rgpot::units::length_scale_to_angstrom("") == 1.0);
+  REQUIRE(rgpot::units::length_scale_to_angstrom("angstrom") == 1.0);
+  REQUIRE(rgpot::units::energy_scale_from_ev("") == 1.0);
+  REQUIRE(rgpot::units::energy_scale_from_ev("eV") == 1.0);
+  // Anything else, including a case variant of the default, matches the parser.
+  REQUIRE(rgpot::units::length_scale_to_angstrom("bohr") ==
+          rgpot::units::unit_conversion_factor("bohr", "angstrom"));
+  REQUIRE(rgpot::units::length_scale_to_angstrom("Angstrom") ==
+          rgpot::units::unit_conversion_factor("Angstrom", "angstrom"));
+  REQUIRE(rgpot::units::energy_scale_from_ev("hartree") ==
+          rgpot::units::unit_conversion_factor("eV", "hartree"));
+}
+
 TEST_CASE("unit_conversion_factor basic conversions", "[units]") {
   SECTION("identity") {
     REQUIRE(rgpot::units::unit_conversion_factor("angstrom", "angstrom") ==
