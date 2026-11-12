@@ -19,6 +19,14 @@
 
 namespace {
 
+void set_omp_threads(const char *value) {
+#if defined(_MSC_VER)
+  _putenv_s("OMP_NUM_THREADS", value);
+#else
+  setenv("OMP_NUM_THREADS", value, 1);
+#endif
+}
+
 struct Key {
   int i, j, sa, sb, sc;
   bool operator<(const Key &o) const {
@@ -576,13 +584,13 @@ TEST_CASE("eight threads match the serial list", "[nlist][api]") {
   rgpot::nlist::Query query;
   query.cutoff = 5.0;
   query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Half};
-  setenv("OMP_NUM_THREADS", "1", 1);
+  set_omp_threads("1");
   rgpot::nlist::Table serial;
   rgpot::nlist::build(serial, pos.data(), pos.size() / 3, box, query);
-  setenv("OMP_NUM_THREADS", "8", 1);
+  set_omp_threads("8");
   rgpot::nlist::Table threaded;
   rgpot::nlist::build(threaded, pos.data(), pos.size() / 3, box, query);
-  setenv("OMP_NUM_THREADS", "1", 1);
+  set_omp_threads("1");
   REQUIRE(pos.size() / 3 >= 8192);
   REQUIRE(serial.size() == threaded.size());
   REQUIRE(from_table(serial) == from_table(threaded));

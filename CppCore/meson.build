@@ -1862,11 +1862,18 @@ if get_option('with_tests')
             link_language: 'cpp',
             build_rpath: _metatomic_build_rpath,
         )
+        _timeout = 30
+        if test.get(0) == 'StreamParityTest'
+            _timeout = 900
+        elif test.get(0) == 'SuttonChenPotTest'
+            # Two cluster relaxations, up to 2000 force calls each.
+            _timeout = 120
+        endif
         test(
             test.get(0),
             _test_exe,
             workdir: meson.source_root() + test.get(3),
-            timeout: test.get(0) == 'StreamParityTest' ? 900 : 30,
+            timeout: _timeout,
         )
         if test.get(1) == 'calculator_group_test'
             calculator_group_test_exe = _test_exe

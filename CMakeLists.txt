@@ -446,7 +446,7 @@ if(RGPOT_IS_TOP_LEVEL)
 
   if(NOT RGPOT_RPC_CLIENT_ONLY)
     install(
-      TARGETS rgpot rgpot_fortran_kernels rgpot_vesin
+      TARGETS rgpot rgpot_fortran_kernels rgpot_nlist rgpot_vesin
       EXPORT rgpotTargets
       LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
       ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
