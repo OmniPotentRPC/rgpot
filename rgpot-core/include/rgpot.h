@@ -134,6 +134,8 @@ typedef struct rgpot_force_input_t {
  * - `forces`: output force tensor, same shape/dtype as `positions`.
  * - `energy`: the calculated potential energy.
  * - `variance`: uncertainty estimate; zero when not applicable.
+ * - `hessian`: optional Cartesian Hessian `[n_dof, n_dof]`, or NULL.
+ * - `capabilities`: bit flags. `RGPOT_CAP_HESSIAN` is set with a Hessian.
  */
 typedef struct rgpot_force_out_t {
   /**
@@ -148,7 +150,18 @@ typedef struct rgpot_force_out_t {
    * Variance / uncertainty of the calculation (0.0 when unused).
    */
   double variance;
+  /**
+   * Hessian tensor `[n_dof, n_dof]`, f64, or NULL.
+   */
+  DLManagedTensorVersioned *hessian;
+  /**
+   * Capability bits.
+   */
+  uint32_t capabilities;
 } rgpot_force_out_t;
+
+/** The callback provided `hessian`. */
+#define RGPOT_CAP_HESSIAN 1u
 
 /**
  * Function pointer type for a potential energy calculation.

@@ -87,6 +87,8 @@ pub unsafe extern "C" fn rgpot_force_out_create() -> rgpot_force_out_t {
         forces: std::ptr::null_mut(),
         energy: 0.0,
         variance: 0.0,
+        hessian: std::ptr::null_mut(),
+        capabilities: 0,
     }
 }
 

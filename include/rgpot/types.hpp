@@ -144,19 +144,29 @@ public:
     if (output_.forces) {
       rgpot_tensor_free(output_.forces);
     }
+    if (output_.hessian) {
+      rgpot_tensor_free(output_.hessian);
+    }
   }
 
   // Move-only
   CalcResult(CalcResult &&other) noexcept : output_(other.output_) {
     other.output_.forces = nullptr;
+    other.output_.hessian = nullptr;
+    other.output_.capabilities = 0;
   }
   CalcResult &operator=(CalcResult &&other) noexcept {
     if (this != &other) {
       if (output_.forces) {
         rgpot_tensor_free(output_.forces);
       }
+      if (output_.hessian) {
+        rgpot_tensor_free(output_.hessian);
+      }
       output_ = other.output_;
       other.output_.forces = nullptr;
+      other.output_.hessian = nullptr;
+      other.output_.capabilities = 0;
     }
     return *this;
   }

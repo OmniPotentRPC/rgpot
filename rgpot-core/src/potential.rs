@@ -200,6 +200,8 @@ mod tests {
             forces: std::ptr::null_mut(),
             energy: 0.0,
             variance: 0.0,
+            hessian: std::ptr::null_mut(),
+            capabilities: 0,
         };
 
         let status = unsafe { pot.calculate(&input, &mut output) };
@@ -221,6 +223,8 @@ mod tests {
             forces: std::ptr::null_mut(),
             energy: 0.0,
             variance: 0.0,
+            hessian: std::ptr::null_mut(),
+            capabilities: 0,
         };
         let status = unsafe { pot.calculate(&input, &mut output) };
         assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
@@ -236,6 +240,8 @@ mod tests {
             forces: std::ptr::null_mut(),
             energy: 0.0,
             variance: 0.0,
+            hessian: std::ptr::null_mut(),
+            capabilities: 0,
         };
 
         let status = unsafe { pot.calculate(&input, &mut output) };
@@ -316,6 +322,8 @@ mod tests {
             forces: std::ptr::null_mut(),
             energy: 0.0,
             variance: 0.0,
+            hessian: std::ptr::null_mut(),
+            capabilities: 0,
         };
 
         unsafe { pot.calculate(&input, &mut output) };

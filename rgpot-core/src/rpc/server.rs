@@ -81,6 +81,8 @@ impl potential::Server for PotentialServer {
             forces: std::ptr::null_mut(),
             energy: 0.0,
             variance: 0.0,
+            hessian: std::ptr::null_mut(),
+            capabilities: 0,
         };
 
         let status = unsafe { (self.callback)(self.user_data, &input, &mut output) };

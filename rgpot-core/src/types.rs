@@ -64,6 +64,13 @@ pub struct rgpot_force_input_t {
 /// - `forces`: output force tensor, same shape/dtype as `positions`.
 /// - `energy`: the calculated potential energy.
 /// - `variance`: uncertainty estimate; zero when not applicable.
+/// - `hessian`: optional Cartesian Hessian `[n_dof, n_dof]`. Null when the
+///   potential does not provide one.
+/// - `capabilities`: bit flags. [`RGPOT_CAP_HESSIAN`] is set only together
+///   with a non-null `hessian`.
+///
+/// A potential that returns energy and forces leaves `hessian` null and
+/// `capabilities` at zero.
 #[repr(C)]
 pub struct rgpot_force_out_t {
     /// Forces tensor `[n_atoms, 3]`, f64 — set by the callback.
@@ -72,6 +79,20 @@ pub struct rgpot_force_out_t {
     pub energy: f64,
     /// Variance / uncertainty of the calculation (0.0 when unused).
     pub variance: f64,
+    /// Hessian tensor `[n_dof, n_dof]`, f64, or null.
+    pub hessian: *mut DLManagedTensorVersioned,
+    /// Capability bits. See [`RGPOT_CAP_HESSIAN`].
+    pub capabilities: u32,
+}
+
+/// The callback filled `hessian`.
+pub const RGPOT_CAP_HESSIAN: u32 = 1;
+
+impl rgpot_force_out_t {
+    /// True when the callback both set the flag and provided a tensor.
+    pub fn has_hessian(&self) -> bool {
+        self.capabilities & RGPOT_CAP_HESSIAN != 0 && !self.hessian.is_null()
+    }
 }
 
 impl rgpot_force_input_t {
@@ -128,10 +149,34 @@ mod tests {
             forces: std::ptr::null_mut(),
             energy: 0.0,
             variance: 0.0,
+            hessian: std::ptr::null_mut(),
+            capabilities: 0,
         };
         assert!(out.forces.is_null());
+        assert!(out.hessian.is_null());
+        assert_eq!(out.capabilities, 0);
+        assert!(!out.has_hessian());
         assert_eq!(out.energy, 0.0);
         assert_eq!(out.variance, 0.0);
+    }
+
+    #[test]
+    fn hessian_is_present_only_when_the_callback_sets_the_flag() {
+        let data = [2.0_f64, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 2.0];
+        let tensor = unsafe { rgpot_tensor_owned_cpu_f64_2d(data.as_ptr(), 3, 3) };
+        let mut out = rgpot_force_out_t {
+            forces: std::ptr::null_mut(),
+            energy: 0.0,
+            variance: 0.0,
+            hessian: tensor,
+            capabilities: 0,
+        };
+        assert!(!out.has_hessian());
+        out.capabilities = RGPOT_CAP_HESSIAN;
+        assert!(out.has_hessian());
+        let ptr = unsafe { rgpot_tensor_data(tensor) } as *const f64;
+        assert!((unsafe { *ptr } - 2.0).abs() < 1.0e-15);
+        unsafe { rgpot_tensor_free(tensor) };
     }
 
     #[test]
@@ -140,6 +185,8 @@ mod tests {
             forces: std::ptr::null_mut(),
             energy: 1.5,
             variance: 2.5,
+            hessian: std::ptr::null_mut(),
+            capabilities: 0,
         };
         assert_eq!(out.energy, 1.5);
         assert_eq!(out.variance, 2.5);

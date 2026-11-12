@@ -328,6 +328,8 @@ unsafe extern "C" fn rgpot_eval_cb(
         forces: std::ptr::null_mut(),
         energy: 0.0,
         variance: 0.0,
+            hessian: std::ptr::null_mut(),
+            capabilities: 0,
     };
     pot.fused_cache.computed.fetch_add(1, Ordering::Relaxed);
     let status =
@@ -420,6 +422,8 @@ unsafe extern "C" fn rgpot_grad_cb(
         forces: std::ptr::null_mut(),
         energy: 0.0,
         variance: 0.0,
+            hessian: std::ptr::null_mut(),
+            capabilities: 0,
     };
     pot.fused_cache.computed.fetch_add(1, Ordering::Relaxed);
     let status =
@@ -1172,6 +1176,8 @@ mod tests {
                     forces: std::ptr::null_mut(),
                     energy: 0.0,
                     variance: 0.0,
+            hessian: std::ptr::null_mut(),
+            capabilities: 0,
                 };
                 let s = unsafe { rgpot_potential_calculate(self.pot, &input, &mut out) };
                 unsafe {

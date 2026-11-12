@@ -227,6 +227,8 @@ mod tests {
             forces: std::ptr::null_mut(),
             energy: 0.0,
             variance: 0.0,
+            hessian: std::ptr::null_mut(),
+            capabilities: 0,
         };
         let status = unsafe {
             rgpot_potential_calculate(std::ptr::null(), &input, &mut output)
@@ -242,6 +244,8 @@ mod tests {
             forces: std::ptr::null_mut(),
             energy: 0.0,
             variance: 0.0,
+            hessian: std::ptr::null_mut(),
+            capabilities: 0,
         };
         let status = unsafe {
             rgpot_potential_calculate(pot, std::ptr::null(), &mut output)
@@ -272,6 +276,8 @@ mod tests {
             forces: std::ptr::null_mut(),
             energy: 0.0,
             variance: 0.0,
+            hessian: std::ptr::null_mut(),
+            capabilities: 0,
         };
         let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
         assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
@@ -293,6 +299,8 @@ mod tests {
             forces: std::ptr::null_mut(),
             energy: 0.0,
             variance: 0.0,
+            hessian: std::ptr::null_mut(),
+            capabilities: 0,
         };
         let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
         assert_eq!(status, rgpot_status_t::RGPOT_INTERNAL_ERROR);
@@ -319,6 +327,8 @@ mod tests {
             forces: std::ptr::null_mut(),
             energy: 0.0,
             variance: 0.0,
+            hessian: std::ptr::null_mut(),
+            capabilities: 0,
         };
         unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
         assert_eq!(counter.load(Ordering::SeqCst), 1);
@@ -373,6 +383,8 @@ mod tests {
                 forces: std::ptr::null_mut(),
                 energy: 0.0,
                 variance: 0.0,
+            hessian: std::ptr::null_mut(),
+            capabilities: 0,
             };
             let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
             assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
