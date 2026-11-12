@@ -167,7 +167,7 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     if (stream) {
       nlist::visitHalf(neighbours_, 0, n_atoms, density);
     } else {
-      nlist::visitDirected(neighbours_, 
+      nlist::visitDirected(neighbours_,
           0, n_atoms, [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
             if (!(j > i)) {
               return;
@@ -238,13 +238,13 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   };
   if (nt == 1) {
     if (stream) {
-      nlist::visitHalf(neighbours_, 
+      nlist::visitHalf(neighbours_,
           0, n_atoms,
           [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
             apply(i, j, dx, dy, dz, r2, F, cfg.stress ? strain : nullptr, true);
           });
     } else {
-      nlist::visitDirected(neighbours_, 
+      nlist::visitDirected(neighbours_,
           0, n_atoms,
           [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
             if (!(j > i)) {

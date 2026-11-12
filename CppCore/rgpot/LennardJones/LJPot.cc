@@ -125,7 +125,13 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const int nt = nlist::threadsRequested();
   auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
                     double r2, double *force, double &energy, double *virial) {
-    if (!(i < j) || !(r2 > 0.0) || r2 > cutoff2) {
+    if (!(i < j) || r2 > cutoff2) {
+      return;
+    }
+    // Two different atoms on the same point. Skipping the pair reports a
+    // finite energy of zero and hides the singularity.
+    if (!(r2 > 0.0)) {
+      energy = std::numeric_limits<double>::quiet_NaN();
       return;
     }
     double pair_e = 0.0;

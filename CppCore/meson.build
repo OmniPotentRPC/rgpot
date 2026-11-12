@@ -148,8 +148,8 @@ rgpot_halfshell = static_library(
     files(
         'rgpot/nlist/HalfShell.cc',
         'rgpot/nlist/HalfShellWalk.cc',
-        'rgpot/nlist/Neighbours.cc',
         'rgpot/nlist/NeighbourList.cc',
+        'rgpot/nlist/Neighbours.cc',
     ),
     include_directories: _incdirs,
     cpp_args: _args,

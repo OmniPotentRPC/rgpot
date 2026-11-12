@@ -89,7 +89,7 @@ public:
   /// Free boundaries: the kernel ignores the cell and never applies the
   /// minimum image convention.
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.periodic = false};
+    return {.reentrancy = Reentrancy::PerInstance, .periodic = false};
   }
 
   /**
