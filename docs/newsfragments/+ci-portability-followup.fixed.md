@@ -13,3 +13,4 @@ The stream scaling bench is too: it forks a child per row.
 The Rust neighbour caller on Windows links the COFF archives with link.exe and exports the C entry points.
 An empty JSON member in a UMA package is written as an empty object, which the AOTI loader can parse.
 Hypothesis checks stay serial, because the strategy cache is process-wide.
+The 108000-atom neighbour list is allowed 30 seconds.
