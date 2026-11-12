@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <map>
 #include <utility>
 #include <vector>
@@ -451,4 +452,123 @@ TEST_CASE("periodic and long-cutoff streams match the direct pair sum", "[nlist]
   rgpot::nlist::Neighbours tiles;
   loadCells(tiles, wide, side, side, side, long_cut, true, rgpot::nlist::Mode::Stream);
   requireSamePairs(walkedPairs(tiles, wide.size() / 3, long_cut), many);
+}
+
+bool sameBits(double a, double b) {
+  return std::memcmp(&a, &b, sizeof(double)) == 0;
+}
+
+TEST_CASE("orthorhombic image index matches the careful truncation", "[nlist][round]") {
+  auto check = [](double t) {
+    const double got = rgpot::nlist::orthorhombicImageIndex(t);
+    const double want = roundVisit(t);
+    REQUIRE(sameBits(got, want));
+  };
+  check(0.0);
+  check(-0.0);
+  check(0.5);
+  check(-0.5);
+  check(1.5);
+  check(-1.5);
+  check(2.0);
+  check(-2.0);
+  check(std::nextafter(0.5, 0.0));
+  check(std::nextafter(0.5, 1.0));
+  check(std::nextafter(-0.5, 0.0));
+  check(std::nextafter(-0.5, -1.0));
+  check(std::numeric_limits<double>::quiet_NaN());
+  check(std::numeric_limits<double>::infinity());
+  check(-std::numeric_limits<double>::infinity());
+  check(0x1p62);
+  check(-0x1p62);
+  check(std::nextafter(0x1p62, 0.0));
+  check(std::nextafter(-0x1p62, 0.0));
+  check(0x1p63);
+  check(-0x1p63);
+  check(0x1p70);
+  check(-0x1p70);
+  check(1e300);
+  check(-1e300);
+  for (int i = -4096; i <= 4096; ++i) {
+    check(static_cast<double>(i) / 64.0);
+    check(std::ldexp(static_cast<double>(i), 40));
+    check(std::ldexp(static_cast<double>(i), 50));
+  }
+
+  // The pair walk must hand the kernel those same displacements.
+  setThreads("");
+  const double side = 4.0;
+  const double cutoff = 3.0;
+  std::vector<double> pos = {0.0, 0.0, 0.0, side * 0.5, 0.2, -0.3};
+  for (double frac : {0.0, 0.25, 0.5, -0.5, 0.75, 1.25, -1.25, 2.5, -3.5}) {
+    pos[3] = frac * side;
+    for (auto mode : {rgpot::nlist::Mode::Stored, rgpot::nlist::Mode::Stream}) {
+      rgpot::nlist::Neighbours cells;
+      loadCells(cells, pos, side, side, side, cutoff, true, mode);
+      int seen = 0;
+      cells.forHalf(0, 2, [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                              double r2) {
+        double ex = pos[3 * i] - pos[3 * j];
+        double ey = pos[3 * i + 1] - pos[3 * j + 1];
+        double ez = pos[3 * i + 2] - pos[3 * j + 2];
+        foldDelta(ex, ey, ez, side, side, side, true);
+        REQUIRE(sameBits(dx, ex));
+        REQUIRE(sameBits(dy, ey));
+        REQUIRE(sameBits(dz, ez));
+        REQUIRE(sameBits(r2, ex * ex + ey * ey + ez * ez));
+        ++seen;
+      });
+      REQUIRE(seen == 1);
+    }
+  }
+
+  // One pair, so the force sum has no ordering ambiguity. The half-box
+  // tie dx/L = -0.5 rounds away from zero, so the folded x component is
+  // +side/2 rather than the negative image.
+  rgpot::LJConfig cfg;
+  cfg.cutoff = cutoff;
+  cfg.psi = 1.0;
+  cfg.u0 = 1.0;
+  rgpot::LJPot pot(cfg);
+  pos = {0.0, 0.0, 0.0, side * 0.5, 0.0, 0.0};
+  const std::vector<int> types = {18, 18};
+  const double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  std::vector<double> forces(6, 0.0);
+  rgpot::ForceInput fi{.nAtoms = 2, .pos = pos.data(), .atmnrs = types.data(), .box = box};
+  rgpot::ForceOut fo{.F = forces.data(),
+                     .energy = 0.0,
+                     .variance = 0.0,
+                     .stress = {},
+                     .has_stress = 0};
+  pot.forceImpl(fi, &fo);
+
+  double dx = pos[0] - pos[3];
+  double dy = 0;
+  double dz = 0;
+  foldDelta(dx, dy, dz, side, side, side, true);
+  REQUIRE(sameBits(dx, side * 0.5));
+  const double r2 = dx * dx + dy * dy + dz * dz;
+  const double psi2 = cfg.psi * cfg.psi;
+  const double four_u0 = 4.0 * cfg.u0;
+  const double shift_a = std::pow(cfg.psi / cfg.cutoff, 6.0);
+  const double shift = four_u0 * shift_a * (shift_a - 1.0);
+  const double inv_r2 = 1.0 / r2;
+  const double sr2 = psi2 * inv_r2;
+  const double sr4 = sr2 * sr2;
+  const double a = sr4 * sr2;
+  const double b = four_u0 * a;
+  const double a_m1 = a - 1.0;
+  const double v = b * a_m1;
+  const double two_a = 2.0 * a;
+  const double two_a_m1 = two_a - 1.0;
+  const double six_b = 6.0 * b;
+  const double fscale = (six_b * inv_r2) * two_a_m1;
+  const double energy = v - shift;
+  REQUIRE(sameBits(fo.energy, energy));
+  REQUIRE(sameBits(forces[0], fscale * dx));
+  REQUIRE(sameBits(forces[1], 0.0));
+  REQUIRE(sameBits(forces[2], 0.0));
+  REQUIRE(sameBits(forces[3], -fscale * dx));
+  REQUIRE(sameBits(forces[4], 0.0));
+  REQUIRE(sameBits(forces[5], 0.0));
 }

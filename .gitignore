@@ -370,3 +370,9 @@ benchflow/out/
 .snakemake/
 __pycache__/
 *.pyc
+
+# Local benchmark outputs
+bench/local/
+*.bench.csv
+*.bench.json
+*.bench.log

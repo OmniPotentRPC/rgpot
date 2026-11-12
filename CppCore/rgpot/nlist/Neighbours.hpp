@@ -29,6 +29,49 @@ namespace rgpot::nlist {
 /// than the search.
 enum class Image : std::uint8_t { Round, Half, General };
 
+#if defined(__GNUC__) || defined(__clang__)
+#define RGPOT_IMAGE_COLD __attribute__((noinline, cold))
+#elif defined(_MSC_VER)
+#define RGPOT_IMAGE_COLD __declspec(noinline)
+#else
+#define RGPOT_IMAGE_COLD
+#endif
+
+namespace {
+
+/// Non-finite coordinates and shifts outside a signed 64-bit integer.
+/// Kept out of the pair loop: every finite value inside (-2^62, 2^62)
+/// is handled by orthorhombicImageIndex.
+RGPOT_IMAGE_COLD double orthorhombicImageIndexCold(double t) noexcept {
+  if (!std::isfinite(t)) {
+    return 0.0;
+  }
+  const double shifted = t + std::copysign(0.5, t);
+  if (!std::isfinite(shifted) || shifted >= 9223372036854775808.0 ||
+      shifted <= -9223372036854775808.0) {
+    return 0.0;
+  }
+  return static_cast<double>(static_cast<long long>(shifted));
+}
+
+} // namespace
+
+#undef RGPOT_IMAGE_COLD
+
+/// Orthorhombic image index, `trunc(t + copysign(0.5, t))`.
+///
+/// A non-finite reduced coordinate, or a shift that does not fit in a
+/// signed 64-bit integer, is 0. Every finite value inside (-2^62, 2^62)
+/// takes that expression directly. The returned bits match the careful
+/// path, which stays out of line.
+inline double orthorhombicImageIndex(double t) noexcept {
+  constexpr double kSpan = 0x1p62;
+  if (t > -kSpan && t < kSpan) {
+    return static_cast<double>(static_cast<long long>(t + std::copysign(0.5, t)));
+  }
+  return orthorhombicImageIndexCold(t);
+}
+
 /// Stored keeps a Verlet list of candidate pairs. Stream walks the cells
 /// and stores nothing beyond the atoms and the bins. Auto stores when the
 /// candidate index array fits in the memory the OS reports as available,
@@ -760,17 +803,6 @@ inline void Neighbours::fold(double &dx, double &dy, double &dz) const {
     general_.fold(dx, dy, dz);
     return;
   }
-  auto round_visit = [](double t) {
-    if (!std::isfinite(t)) {
-      return 0.0;
-    }
-    const double shifted = t + std::copysign(0.5, t);
-    if (!std::isfinite(shifted) || shifted >= 9223372036854775808.0 ||
-        shifted <= -9223372036854775808.0) {
-      return 0.0;
-    }
-    return static_cast<double>(static_cast<long long>(shifted));
-  };
   if (image_ == Image::Half) {
     const double h0 = 0.5 * len_[0];
     const double h1 = 0.5 * len_[1];
@@ -799,13 +831,13 @@ inline void Neighbours::fold(double &dx, double &dy, double &dz) const {
     return;
   }
   if (periodic_[0]) {
-    dx -= len_[0] * round_visit(dx * inv_[0]);
+    dx -= len_[0] * orthorhombicImageIndex(dx * inv_[0]);
   }
   if (periodic_[1]) {
-    dy -= len_[1] * round_visit(dy * inv_[1]);
+    dy -= len_[1] * orthorhombicImageIndex(dy * inv_[1]);
   }
   if (periodic_[2]) {
-    dz -= len_[2] * round_visit(dz * inv_[2]);
+    dz -= len_[2] * orthorhombicImageIndex(dz * inv_[2]);
   }
 }
 

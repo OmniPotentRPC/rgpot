@@ -127,8 +127,11 @@ EAM, Lennard-Jones, Sutton-Chen, Stillinger-Weber, Tersoff, Morse and
 ZBL take candidate pairs from `rgpot::nlist::Neighbours`.
 
 The layer bins atoms into cells whose edge is the cutoff plus the skin.
-`Round` is the orthorhombic truncation used by the pair kernels. `Half`
-is one correction about the half-box, which is what EAM uses after
+`Round` is the orthorhombic truncation used by the pair kernels,
+`trunc(t + copysign(0.5, t))` on each reduced axis. Finite values inside
+(-2^62, 2^62) skip the non-finite and int64-range checks. Those checks
+still return 0 outside that window, so the displacement is the same.
+`Half` is one correction about the half-box, which is what EAM uses after
 wrapping coordinates into the cell. `General`, and any sheared cell,
 calls `MinimumImage`.
 
