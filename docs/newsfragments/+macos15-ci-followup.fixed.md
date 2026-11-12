@@ -6,4 +6,6 @@ Potentials that keep a neighbour scratch ask for one instance per thread.
 Coincident Lennard-Jones atoms raise NumericalError again.
 The layout-stamp job reads kCxxSoversion from the header.
 The metatomic and UMA engines link the neighbour archive.
+The macOS wheel links libgfortran from the path the compiler reports.
+The metatomic environment provides ASE for the UMA exporter.
 The 108000-atom neighbour list is allowed 30 seconds.
