@@ -35,9 +35,9 @@ let P = S.pins in
         {
           name = "Install system hook deps",
           run = m%"
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq cppcheck clang-format-16 || \
-              sudo apt-get install -y -qq cppcheck clang-format
+            if ! bash ci/gha/apt-install.sh cppcheck clang-format-16; then
+              bash ci/gha/apt-install.sh cppcheck clang-format
+            fi
             if ! command -v snapper >/dev/null 2>&1 && ! command -v snapper-fmt >/dev/null 2>&1; then
               curl --proto '=https' --tlsv1.2 -LsSf \
                 https://github.com/TurtleTech-ehf/snapper/releases/download/v0.10.0/snapper-fmt-installer.sh | sh || true

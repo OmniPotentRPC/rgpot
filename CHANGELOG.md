@@ -231,8 +231,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The XcKernel stage-B contraction runs on dgemm and dsyr2k, blocked
   over the grid, linked through FlexiBLAS or the generic blas
   dependency.
-- The eonviz environment installs readcon 0.17.1 from readcon-core
-  commit 694e808 until that wheel is published.
+- The eonviz environment installs readcon 0.17.1 from PyPI.
+  That wheel's RoundTrip writer matches the vendored restart golden.
   Its `atoms_to_con` writes one `.con` frame with the RoundTrip writer,
   precision omitted and canonical left off.
   The UMA exporter reads `.con` files with `atoms_from_con`.

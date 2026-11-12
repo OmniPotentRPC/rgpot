@@ -229,12 +229,12 @@ Outcome direct(const std::vector<double> &pos, const std::vector<int> &z,
         const double phi = epar.Dm * d * d - epar.Dm;
         const double mag = 2.0 * epar.alphaM * epar.Dm * d * (d - 1.0);
         const double scale = mag * invR;
-        F[3 * i] -= scale * dx;
-        F[3 * i + 1] -= scale * dy;
-        F[3 * i + 2] -= scale * dz;
-        F[3 * j] += scale * dx;
-        F[3 * j + 1] += scale * dy;
-        F[3 * j + 2] += scale * dz;
+        F[3 * i] += scale * dx;
+        F[3 * i + 1] += scale * dy;
+        F[3 * i + 2] += scale * dz;
+        F[3 * j] -= scale * dx;
+        F[3 * j + 1] -= scale * dy;
+        F[3 * j + 2] -= scale * dz;
         *U += phi;
       }
     }

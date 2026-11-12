@@ -16,8 +16,10 @@ TIP4P potential for water
 University of Iceland
 */
 #include "rgpot/Water/tip4p_ccl.hpp"
+#include "rgpot/Water/centre_walk.hpp"
 #include <cassert>
 #include <cmath>
+#include <vector>
 #include <iostream>
 // If unit_system.hpp is removed the system of unit will be  (Energy: eV,
 // distance: Angstrom, time: fs, charge: e).
@@ -169,34 +171,48 @@ void Tip4p::computeTemplate(
   };
   energy = 0.0;
   setPeriodicity(b);
-  for (int i = nMolecules - 1; i >= 0; --i) {
-    double rc1[3], rn1[3], fn1[3] = {0}; // rn position charge N, rc centre of
-                                         // charge for groupbased cutoff.
-    calculateWeightedCentre(wo_, wh_, wh_, ro[i], rh1[i], rh2[i], rn1);
-    calculateCentre(rn1, rh1[i], rh2[i], rc1);
-    Water w1 = {rh1[i], rh2[i], ro[i], rn1, rc1, fh1[i], fh2[i], fo[i], fn1};
+  std::vector<double> centres(static_cast<std::size_t>(nMolecules) * 3, 0.0);
+  for (int i = 0; i < nMolecules; ++i) {
+    double rn[3] = {0};
+    double rc[3] = {0};
+    calculateWeightedCentre(wo_, wh_, wh_, ro[i], rh1[i], rh2[i], rn);
+    calculateCentre(rn, rh1[i], rh2[i], rc);
+    centres[static_cast<std::size_t>(3 * i)] = rc[0];
+    centres[static_cast<std::size_t>(3 * i + 1)] = rc[1];
+    centres[static_cast<std::size_t>(3 * i + 2)] = rc[2];
     intramolecular(rh1[i], rh2[i], ro[i], fh1[i], fh2[i], fo[i], energy);
-    for (int j = i - 1; j >= 0; --j) {
-      bool areFixed = false;
-      if (xh1 and xh2 and xo) {
-        areFixed = xh1[i][0] and xh2[i][0] and xo[i][0];
-        // check if all the atoms of molecule j are fixed.
-        areFixed &= xh1[j][0] and xh2[j][0] and xo[j][0];
-      };
-      // if both molecules are fixed skip force calculation
-      if (not areFixed) {
-        double rc2[3], rn2[3], fn2[3] = {0};
-        calculateWeightedCentre(wo_, wh_, wh_, ro[j], rh1[j], rh2[j], rn2);
-        calculateCentre(rn2, rh1[j], rh2[j], rc2);
-        Water w2 = {rh1[j], rh2[j], ro[j], rn2, rc2,
-                    fh1[j], fh2[j], fo[j], fn2};
-        coulombWithCutoff(w1, w2, energy);
-        spreadWeightedForce(wo_, wh_, wh_, w2.fo_, w2.fh1_, w2.fh2_, w2.fn_);
-        lennardJonesWithCutoff(w1, w2, energy);
-      };
-    };
+  }
+  // Each pair spreads the massless-site force of both molecules. The old
+  // loop spread one molecule per pair and the other after its pairs. The
+  // spread is a sum, so once per pair on each molecule is the same total.
+  walkCentres(centres.data(), nMolecules, b, cutoff_, [&](int i, int j) {
+    bool areFixed = false;
+    if (xh1 and xh2 and xo) {
+      areFixed = xh1[i][0] and xh2[i][0] and xo[i][0];
+      areFixed &= xh1[j][0] and xh2[j][0] and xo[j][0];
+    }
+    if (areFixed) {
+      return;
+    }
+    double rn1[3] = {0};
+    double rc1[3] = {centres[static_cast<std::size_t>(3 * i)],
+                     centres[static_cast<std::size_t>(3 * i + 1)],
+                     centres[static_cast<std::size_t>(3 * i + 2)]};
+    double fn1[3] = {0};
+    calculateWeightedCentre(wo_, wh_, wh_, ro[i], rh1[i], rh2[i], rn1);
+    double rn2[3] = {0};
+    double rc2[3] = {centres[static_cast<std::size_t>(3 * j)],
+                     centres[static_cast<std::size_t>(3 * j + 1)],
+                     centres[static_cast<std::size_t>(3 * j + 2)]};
+    double fn2[3] = {0};
+    calculateWeightedCentre(wo_, wh_, wh_, ro[j], rh1[j], rh2[j], rn2);
+    Water w1 = {rh1[i], rh2[i], ro[i], rn1, rc1, fh1[i], fh2[i], fo[i], fn1};
+    Water w2 = {rh1[j], rh2[j], ro[j], rn2, rc2, fh1[j], fh2[j], fo[j], fn2};
+    coulombWithCutoff(w1, w2, energy);
     spreadWeightedForce(wo_, wh_, wh_, w1.fo_, w1.fh1_, w1.fh2_, w1.fn_);
-  };
+    spreadWeightedForce(wo_, wh_, wh_, w2.fo_, w2.fh1_, w2.fh2_, w2.fn_);
+    lennardJonesWithCutoff(w1, w2, energy);
+  });
   assert(not std::isnan(energy) and not std::isinf(energy));
 }
 

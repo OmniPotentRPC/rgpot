@@ -368,3 +368,9 @@ MIT, with backend-specific notes:
 some potentials are adapted from eOn under BSD-3-Clause terms.
 The unit expression parser in `CppCore/rgpot/units.cc` is derived from
 metatomic-torch (BSD-3-Clause, metatensor developers).
+The test tables `CppCore/tests/data/eam_table/Cu_u3.eam` and
+`CuNi.eam.alloy` are copied unchanged from LAMMPS `potentials/` at
+tag `stable_22Jul2025_update4` and are GPL-2.0 (LAMMPS).
+Their copyright notice is in `CppCore/tests/data/eam_table/NOTICE`,
+and the GPL-2.0 text is in `CppCore/tests/data/eam_table/COPYING`.
+The reader sources stay MIT.

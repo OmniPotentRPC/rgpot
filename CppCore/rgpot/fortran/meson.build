@@ -93,10 +93,26 @@ fortran_pots_dep = declare_dependency(
 )
 
 # Fortran-only test programs link the kernels and the neighbour query.
+# The OpenMP dependency is the C++ one. Its compile flag (/openmp, -fopenmp)
+# must not be handed to flang, which treats /openmp as a source file.
 _fortran_nlist_omp = dependency('openmp', language: 'cpp', required: false)
+_fortran_nlist_omp_link = []
+if _fortran_nlist_omp.found()
+    _fortran_nlist_omp_link = [
+        _fortran_nlist_omp.partial_dependency(
+            compile_args: false,
+            includes: false,
+        ),
+    ]
+endif
 fortran_kernels_dep = declare_dependency(
-    link_with: [fortran_kernels, rgpot_halfshell, rgpot_minimage, rgpot_exact_fma],
-    dependencies: [fastnlist_dep, _fortran_nlist_omp],
+    link_with: [
+        fortran_kernels,
+        rgpot_halfshell,
+        rgpot_minimage,
+        rgpot_exact_fma,
+    ],
+    dependencies: [fastnlist_dep] + _fortran_nlist_omp_link,
 )
 
 # Plugin anneal dlopens as RGPOT_CUH2_LIBRARY. The umbrella librgpot hides
@@ -121,8 +137,11 @@ rgpot_cuh2 = library(
         'rgpot_cuh2_capi.f90',
     ],
     link_with: [rgpot_halfshell, rgpot_minimage, rgpot_exact_fma],
+    # C++ is the link language so the half-shell archives resolve, and meson
+    # then does not add the Fortran runtime. fortran_rt_deps is the same
+    # search the umbrella uses for _gfortran_* (and the flang equivalents).
     link_language: 'cpp',
-    dependencies: [_fortran_nlist_omp],
+    dependencies: _fortran_nlist_omp_link + fortran_rt_deps,
     fortran_args: _cuh2_plugin_args,
     install: not meson.is_subproject(),
     gnu_symbol_visibility: 'default',

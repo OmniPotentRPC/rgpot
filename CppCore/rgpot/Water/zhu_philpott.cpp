@@ -16,8 +16,10 @@ Potential for water and Platinum
 University of Iceland
 */
 #include "rgpot/Water/zhu_philpott.hpp"
+#include "rgpot/Water/centre_walk.hpp"
 #include <cassert>
 #include <cmath>
+#include <vector>
 
 /** @class forcefields::ZhuPhilpott
 @brief Forcefield for water and platinum interactions.
@@ -247,37 +249,46 @@ void ZhuPhilpott<P>::computeTemplate(
     interactWithImage(w1, w1, energy); // called Vw-cond in Zhu and Philpott
     DEBUG_LEVEL_RETURN(2)
     assert(not std::isnan(energy));
-    for (int j = i - 1; j >= 0; --j) {
-      bool areFixed = false;
-      if (xh1 and xh2 and xo) {
-        areFixed = xh1[i][0] and xh2[i][0] and xo[i][0];
-        // check if all the atoms of molecule j are fixed.
-        areFixed &= xh1[j][0] and xh2[j][0] and xo[j][0];
-      };
-      // if both molecules are fixed skip force calculation
-      if (not areFixed) {
-        double centre2[3] = {0};
-        calculateCentre(rh1[j], rh2[j], ro[j], centre2);
-        Water w2(rh1[j], rh2[j], ro[j], centre2, fh1[j], fh2[j], fo[j]);
-        lennardJonesWithCutoff(w1, w2, energy);
-        DEBUG_LEVEL_RETURN(3)
-        coulombWithCutoff(w1, w2, energy, 1.0);
-        DEBUG_LEVEL_RETURN(4)
-        // Two next lines for interaction with platinum
-        // called Vw-cond in Zhu and Philpott
-        interactWithImage(w1, w2, energy); // w1 interacts with image of w2
-        interactWithImage(w2, w1, energy); // w2 interacts with image of w1
-        DEBUG_LEVEL_RETURN(5)
-      };
-    };
+  }
+  std::vector<double> centres(static_cast<std::size_t>(nWater) * 3, 0.0);
+  for (int i = 0; i < nWater; ++i) {
+    double centre[3] = {0};
+    calculateCentre(rh1[i], rh2[i], ro[i], centre);
+    centres[static_cast<std::size_t>(3 * i)] = centre[0];
+    centres[static_cast<std::size_t>(3 * i + 1)] = centre[1];
+    centres[static_cast<std::size_t>(3 * i + 2)] = centre[2];
+  }
+  walkCentres(centres.data(), nWater, b, cutoff_, [&](int i, int j) {
+    bool areFixed = false;
+    if (xh1 and xh2 and xo) {
+      areFixed = xh1[i][0] and xh2[i][0] and xo[i][0];
+      areFixed &= xh1[j][0] and xh2[j][0] and xo[j][0];
+    }
+    if (areFixed) {
+      return;
+    }
+    double centre1[3] = {centres[static_cast<std::size_t>(3 * i)],
+                         centres[static_cast<std::size_t>(3 * i + 1)],
+                         centres[static_cast<std::size_t>(3 * i + 2)]};
+    double centre2[3] = {centres[static_cast<std::size_t>(3 * j)],
+                         centres[static_cast<std::size_t>(3 * j + 1)],
+                         centres[static_cast<std::size_t>(3 * j + 2)]};
+    Water w1(rh1[i], rh2[i], ro[i], centre1, fh1[i], fh2[i], fo[i]);
+    Water w2(rh1[j], rh2[j], ro[j], centre2, fh1[j], fh2[j], fo[j]);
+    lennardJonesWithCutoff(w1, w2, energy);
+    coulombWithCutoff(w1, w2, energy, 1.0);
+    interactWithImage(w1, w2, energy);
+    interactWithImage(w2, w1, energy);
+  });
 #ifndef NDEBUG
+  for (int i = 0; i < nWater; ++i) {
     for (int a = 0; a < 3; a++) {
       assert(not std::isnan(fh1[i][a]));
       assert(not std::isnan(fh2[i][a]));
       assert(not std::isnan(fo[i][a]));
-    };
+    }
+  }
 #endif
-  };
   assert(not std::isnan(energy) and not std::isinf(energy));
 }
 

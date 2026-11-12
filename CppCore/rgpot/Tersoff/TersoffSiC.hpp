@@ -53,12 +53,11 @@ public:
   TersoffSiC();
 
   [[nodiscard]] PotCaps caps() const noexcept override {
-    if (m_held.skin > 0.0) {
-      return {.reentrancy = Reentrancy::PerInstance,
-              .perImageInstances = true,
-              .stress = true};
-    }
-    return {.stress = true};
+    // neighbours_ is scratch on every call. A positive held skin adds a
+    // second list that also cannot be shared.
+    return {.reentrancy = Reentrancy::PerInstance,
+            .perImageInstances = m_held.skin > 0.0,
+            .stress = true};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {

@@ -22,7 +22,6 @@
 #include "rgpot/Potential.hpp"
 #include "rgpot/nlist/Neighbours.hpp"
 #include "rgpot/simd/exp.hpp"
-#include "rgpot/simd/from_cache.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
 namespace rgpot {
@@ -86,7 +85,7 @@ public:
   }
 
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.stress = true};
+    return {.reentrancy = Reentrancy::PerInstance, .stress = true};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
@@ -103,6 +102,21 @@ public:
 
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
+  /// True when the last force call kept the Verlet list. Half the skin,
+  /// the same predicate as `nlist::Builder::update`.
+  [[nodiscard]] bool listReused() const noexcept { return neighbours_.reused(); }
+
+  /// Pair indices copied out of the walk. A stream keeps none: the pair
+  /// term accumulates during the cell walk.
+  [[nodiscard]] std::size_t retainedPairs() const noexcept {
+    return neighbours_.streaming() ? 0 : neighbours_.slots();
+  }
+
+  /// Skin added to the cutoff on a stored list. Stream uses none.
+  [[nodiscard]] static double neighbourSkin(double cutoff) noexcept {
+    return cutoff / 5.0;
+  }
+
 private:
   /// Bump when the kernel numerics change, so stale cache entries die.
   static constexpr uint64_t kKernelVersion = 2;
@@ -117,9 +131,6 @@ private:
   uint64_t m_paramsKey{0};
   nlist::Mode mode_ = nlist::Mode::Auto;
   mutable nlist::Neighbours neighbours_;
-  mutable simd::CachedPairs cached_;
-  mutable std::uint64_t list_stamp_ = 0;
-  mutable bool have_cache_ = false;
 };
 
 } // namespace rgpot

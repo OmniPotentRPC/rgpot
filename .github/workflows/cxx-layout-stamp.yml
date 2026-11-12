@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm, macos-14, windows-2022]
+        runner: [ubuntu-latest, ubuntu-24.04-arm, macos-15, windows-2022]
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -35,7 +35,9 @@ jobs:
             CppCore/tests/print_cxx_layout_stamp.cc \
             -o "$RUNNER_TEMP/print_cxx_layout_stamp"
           "$RUNNER_TEMP/print_cxx_layout_stamp"
-          python3 CppCore/tests/check_cxx_soversion.py 4 - \
+          # Same split meson uses. A hardcoded soversion goes stale on the next bump.
+          so=$(python3 -c 'from pathlib import Path; t=Path("CppCore/rgpot/abi/CxxLayout.hpp").read_text(); p=t.split("kCxxSoversion = "); assert len(p)==2, "expected one kCxxSoversion assignment"; print(p[1].split(";")[0].strip())')
+          python3 CppCore/tests/check_cxx_soversion.py "$so" - \
             "$RUNNER_TEMP/print_cxx_layout_stamp"
 
       - name: Print stamp (macOS x86_64)
@@ -50,7 +52,8 @@ jobs:
             softwareupdate --install-rosetta --agree-to-license
             arch -x86_64 "$RUNNER_TEMP/print_cxx_layout_stamp_x86_64"
           fi
-          python3 CppCore/tests/check_cxx_soversion.py 4 - \
+          so=$(python3 -c 'from pathlib import Path; t=Path("CppCore/rgpot/abi/CxxLayout.hpp").read_text(); p=t.split("kCxxSoversion = "); assert len(p)==2, "expected one kCxxSoversion assignment"; print(p[1].split(";")[0].strip())')
+          python3 CppCore/tests/check_cxx_soversion.py "$so" - \
             "$RUNNER_TEMP/print_cxx_layout_stamp_x86_64"
 
       - name: Activate MSVC
@@ -77,5 +80,6 @@ jobs:
           if ! command -v python3 >/dev/null 2>&1; then
             py=python
           fi
-          "$py" CppCore/tests/check_cxx_soversion.py 4 - \
+          so=$("$py" -c 'from pathlib import Path; t=Path("CppCore/rgpot/abi/CxxLayout.hpp").read_text(); p=t.split("kCxxSoversion = "); assert len(p)==2, "expected one kCxxSoversion assignment"; print(p[1].split(";")[0].strip())')
+          "$py" CppCore/tests/check_cxx_soversion.py "$so" - \
             "$RUNNER_TEMP/print_cxx_layout_stamp.exe"

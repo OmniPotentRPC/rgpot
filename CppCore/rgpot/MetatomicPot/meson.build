@@ -99,7 +99,9 @@ if has_metatomic
         _metatomic_engine_srcs,
         dependencies: _deps + _mta_engine_deps + [dl_dep, vesin_dep] + _engine_table_deps,
         cpp_args: _args + _engine_table_args + ['-DRGPOT_MTA_ENGINE_BUILD'],
-        # No link_with: _linkto — engine must not NEEDED host pot libs
+        # NeighbourList.cc lives in rgpot_halfshell, not in rgpot_core.
+        # The archive is absorbed; the engine still must not NEEDED host pot libs.
+        link_with: [rgpot_halfshell],
         include_directories: _incdirs + [mta_inc],
         install: not meson.is_subproject(),
         build_rpath: _engine_build_rpath,

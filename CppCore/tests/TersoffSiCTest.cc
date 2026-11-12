@@ -330,7 +330,7 @@ void heldSequence(int nrep) {
   TersoffSiC fresh;
   TersoffSiC held;
   held.setHeldSkin(kSkin);
-  REQUIRE(fresh.caps().reentrancy == rgpot::Reentrancy::SharedInstance);
+  REQUIRE(fresh.caps().reentrancy == rgpot::Reentrancy::PerInstance);
   REQUIRE(held.caps().reentrancy == rgpot::Reentrancy::PerInstance);
   REQUIRE_FALSE(held.heldList().built);
 
@@ -398,7 +398,7 @@ void heldSequence(int nrep) {
 
   // Skin 0 goes back to a rebuild per call.
   held.setHeldSkin(0.0);
-  REQUIRE(held.caps().reentrancy == rgpot::Reentrancy::SharedInstance);
+  REQUIRE(held.caps().reentrancy == rgpot::Reentrancy::PerInstance);
   REQUIRE(sameBits(forceOf(held, pos0, box), forceOf(fresh, pos0, box)));
   REQUIRE_FALSE(held.heldList().built);
 }

@@ -113,11 +113,21 @@ _vector_loops = cppc.get_supported_arguments(
         '-fvect-cost-model=dynamic',
     ],
 )
+# target("fma"), target("avx2") and target_clones emit ifunc resolvers.
+# ThreadSanitizer instruments the resolver, which then calls
+# __tsan_func_entry through the PLT while RTLD_NOW is still binding it,
+# and the extension segfaults on load. These units keep the resolvers
+# (the bits match the baseline), so the instrumentation stays off them.
+# clones.hpp drops target_clones only when the unit itself is instrumented.
+_no_tsan_ifunc = []
+if 'thread' in get_option('b_sanitize')
+    _no_tsan_ifunc = ['-fno-sanitize=thread']
+endif
 rgpot_exact_fma = static_library(
     'rgpot_exact_fma',
     files('rgpot/simd/exact_fma_hw.cc', 'rgpot/simd/exp.cc'),
     include_directories: _incdirs,
-    cpp_args: _args + _fp_contract_off + _vector_loops,
+    cpp_args: _args + _fp_contract_off + _vector_loops + _no_tsan_ifunc,
     pic: true,
     install: false,
 )
@@ -125,20 +135,25 @@ rgpot_minimage = static_library(
     'rgpot_minimage',
     files('rgpot/nlist/MinimumImage.cpp'),
     include_directories: _incdirs,
-    cpp_args: _args + _fp_contract_off,
+    cpp_args: _args + _fp_contract_off + _no_tsan_ifunc,
     pic: true,
     install: false,
 )
+# threadsRequested lives in Neighbours.cc. The cell walk's OpenMP
+# pragmas are in the headers, but the thread count is read here, so this
+# archive has to be built with OpenMP or every potential stays on one thread.
+_halfshell_omp = dependency('openmp', language: 'cpp', required: false)
 rgpot_halfshell = static_library(
     'rgpot_halfshell',
     files(
         'rgpot/nlist/HalfShell.cc',
         'rgpot/nlist/HalfShellWalk.cc',
-        'rgpot/nlist/Neighbours.cc',
         'rgpot/nlist/NeighbourList.cc',
+        'rgpot/nlist/Neighbours.cc',
     ),
     include_directories: _incdirs,
     cpp_args: _args,
+    dependencies: _halfshell_omp.found() ? [_halfshell_omp] : [],
     pic: true,
     install: false,
 )
@@ -213,6 +228,11 @@ if not get_option('with_rpc_client_only')
 
     subdir('rgpot/EAM')  # 'eam_cell'
     rgpotentials += [eam_cell]
+
+    if has_eam_table
+        subdir('rgpot/EAMTable')  # 'eam_table'
+        rgpotentials += [eam_table]
+    endif
 
     if has_water
         subdir('rgpot/Water')  # 'water_pots'
@@ -753,6 +773,12 @@ if get_option('with_tests')
                 '',
             ],
             [
+                'StreamParityTest',
+                'stream_parity_test',
+                'StreamParityTest.cc',
+                '',
+            ],
+            [
                 'NeighbourListTest',
                 'neighbour_list_test',
                 'NeighbourListTest.cc',
@@ -762,6 +788,18 @@ if get_option('with_tests')
                 'EAMCellVerletTest',
                 'eam_cell_verlet_test',
                 'EAMCellVerletTest.cc',
+                '',
+            ],
+            [
+                'ManyBodyForceTest',
+                'many_body_force_test',
+                'ManyBodyForceTest.cc',
+                '',
+            ],
+            [
+                'SkinPairTest',
+                'skin_pair_test',
+                'SkinPairTest.cc',
                 '',
             ],
             [
@@ -813,6 +851,16 @@ if get_option('with_tests')
         if has_water
             test_array += [
                 ['WaterPotTest', 'water_pot_test', 'WaterPotTest.cc', ''],
+            ]
+        endif
+        if has_eam_table
+            test_array += [
+                [
+                    'EAMTablePotTest',
+                    'eam_table_pot_test',
+                    'EAMTablePotTest.cc',
+                    '',
+                ],
             ]
         endif
     endif
@@ -985,17 +1033,27 @@ if get_option('with_tests')
             ['float32', 'both', 'UMA_FLOAT32_PT2', 'line-float32.pt2'],
             ['float64', 'model', 'UMA_FLOAT64_MODEL_ONLY_PT2', 'line-model.pt2'],
             ['float32', 'none', 'UMA_FLOAT32_NOMETA_PT2', 'line-nometa.pt2'],
-            ['float64', 'mismatch', 'UMA_DTYPE_MISMATCH_PT2', 'line-mismatch.pt2'],
+            [
+                'float64',
+                'mismatch',
+                'UMA_DTYPE_MISMATCH_PT2',
+                'line-mismatch.pt2',
+            ],
         ]
             _pkg = custom_target(
                 'uma-' + _spec[2],
                 output: _spec[3],
                 command: [
-                    _uma_py, _uma_export,
-                    '--kind', 'precision',
-                    '--dtype', _spec[0],
-                    '--meta', _spec[1],
-                    '--out', '@OUTPUT@',
+                    _uma_py,
+                    _uma_export,
+                    '--kind',
+                    'precision',
+                    '--dtype',
+                    _spec[0],
+                    '--meta',
+                    _spec[1],
+                    '--out',
+                    '@OUTPUT@',
                 ],
                 build_by_default: false,
             )
@@ -1006,10 +1064,14 @@ if get_option('with_tests')
             'uma-line-batch',
             output: 'line-float64-batch.pt2',
             command: [
-                _uma_py, _uma_export,
-                '--kind', 'batch',
-                '--dtype', 'float64',
-                '--out', '@OUTPUT@',
+                _uma_py,
+                _uma_export,
+                '--kind',
+                'batch',
+                '--dtype',
+                'float64',
+                '--out',
+                '@OUTPUT@',
             ],
             build_by_default: false,
         )
@@ -1019,10 +1081,14 @@ if get_option('with_tests')
             'uma-gather-static',
             output: 'gather-static.pt2',
             command: [
-                _uma_py, _uma_export,
-                '--kind', 'gather',
-                '--dtype', 'float64',
-                '--out', '@OUTPUT@',
+                _uma_py,
+                _uma_export,
+                '--kind',
+                'gather',
+                '--dtype',
+                'float64',
+                '--out',
+                '@OUTPUT@',
             ],
             build_by_default: false,
         )
@@ -1030,25 +1096,36 @@ if get_option('with_tests')
             'uma-gather-dynamic',
             output: 'gather-dynamic.pt2',
             command: [
-                _uma_py, _uma_export,
-                '--kind', 'gather',
-                '--dtype', 'float64',
+                _uma_py,
+                _uma_export,
+                '--kind',
+                'gather',
+                '--dtype',
+                'float64',
                 '--dynamic',
-                '--out', '@OUTPUT@',
+                '--out',
+                '@OUTPUT@',
             ],
             build_by_default: false,
         )
         _uma_fix_pkgs += [_uma_gather_static, _uma_gather_dynamic]
         _uma_fix_env.set('UMA_GATHER_STATIC_PT2', _uma_gather_static.full_path())
-        _uma_fix_env.set('UMA_GATHER_DYNAMIC_PT2', _uma_gather_dynamic.full_path())
+        _uma_fix_env.set(
+            'UMA_GATHER_DYNAMIC_PT2',
+            _uma_gather_dynamic.full_path(),
+        )
         _uma_no_edges = custom_target(
             'uma-no-edges',
             output: 'line-no-edges.pt2',
             command: [
-                _uma_py, _uma_export,
-                '--kind', 'no-edges',
-                '--dtype', 'float64',
-                '--out', '@OUTPUT@',
+                _uma_py,
+                _uma_export,
+                '--kind',
+                'no-edges',
+                '--dtype',
+                'float64',
+                '--out',
+                '@OUTPUT@',
             ],
             build_by_default: false,
         )
@@ -1056,10 +1133,14 @@ if get_option('with_tests')
             'uma-molecular-box',
             output: 'line-box.pt2',
             command: [
-                _uma_py, _uma_export,
-                '--kind', 'box',
-                '--dtype', 'float64',
-                '--out', '@OUTPUT@',
+                _uma_py,
+                _uma_export,
+                '--kind',
+                'box',
+                '--dtype',
+                'float64',
+                '--out',
+                '@OUTPUT@',
             ],
             build_by_default: false,
         )
@@ -1067,11 +1148,15 @@ if get_option('with_tests')
             'uma-batch-static',
             output: 'line-batch-static.pt2',
             command: [
-                _uma_py, _uma_export,
-                '--kind', 'batch',
-                '--dtype', 'float64',
+                _uma_py,
+                _uma_export,
+                '--kind',
+                'batch',
+                '--dtype',
+                'float64',
                 '--static',
-                '--out', '@OUTPUT@',
+                '--out',
+                '@OUTPUT@',
             ],
             build_by_default: false,
         )
@@ -1083,28 +1168,42 @@ if get_option('with_tests')
             'uma-tetrazine-keyless',
             output: 'tetrazine-keyless.pt2',
             command: [
-                _uma_py, _uma_export,
-                '--kind', 'tetrazine-keyless',
-                '--dtype', 'float64',
-                '--out', '@OUTPUT@',
+                _uma_py,
+                _uma_export,
+                '--kind',
+                'tetrazine-keyless',
+                '--dtype',
+                'float64',
+                '--out',
+                '@OUTPUT@',
             ],
             build_by_default: false,
         )
         _uma_fix_pkgs += [_uma_tetrazine_keyless]
-        _uma_fix_env.set('UMA_TETRAZINE_KEYLESS_PT2', _uma_tetrazine_keyless.full_path())
+        _uma_fix_env.set(
+            'UMA_TETRAZINE_KEYLESS_PT2',
+            _uma_tetrazine_keyless.full_path(),
+        )
         _uma_batch_molecular = custom_target(
             'uma-batch-molecular',
             output: 'line-batch-molecular.pt2',
             command: [
-                _uma_py, _uma_export,
-                '--kind', 'batch-molecular',
-                '--dtype', 'float64',
-                '--out', '@OUTPUT@',
+                _uma_py,
+                _uma_export,
+                '--kind',
+                'batch-molecular',
+                '--dtype',
+                'float64',
+                '--out',
+                '@OUTPUT@',
             ],
             build_by_default: false,
         )
         _uma_fix_pkgs += [_uma_batch_molecular]
-        _uma_fix_env.set('UMA_BATCH_MOLECULAR_PT2', _uma_batch_molecular.full_path())
+        _uma_fix_env.set(
+            'UMA_BATCH_MOLECULAR_PT2',
+            _uma_batch_molecular.full_path(),
+        )
         test(
             'UmaGraphSizeTest',
             executable(
@@ -1756,7 +1855,14 @@ if get_option('with_tests')
         # sums then miss by an ulp. ReducedPair.cc is built unfused, and
         # its test compares exactly against the same expressions.
         case_args = test_args
-        if test.get(2) in ['FastNlistTest.cc', 'ReducedPairTest.cc']
+        if test.get(2) in [
+            'FastNlistTest.cc',
+            'ReducedPairTest.cc',
+            'EAMCellVerletTest.cc',
+            'StreamParityTest.cc',
+            'NeighbourLayerTest.cc',
+            'TersoffSiCTest.cc',
+        ]
             case_args += cppc.get_supported_arguments(
                 ['-ffp-contract=off', '/fp:precise'],
             )
@@ -1771,10 +1877,18 @@ if get_option('with_tests')
             link_language: 'cpp',
             build_rpath: _metatomic_build_rpath,
         )
+        _timeout = 30
+        if test.get(0) == 'StreamParityTest'
+            _timeout = 900
+        elif test.get(0) == 'SuttonChenPotTest'
+            # Two cluster relaxations, up to 2000 force calls each.
+            _timeout = 120
+        endif
         test(
             test.get(0),
             _test_exe,
             workdir: meson.source_root() + test.get(3),
+            timeout: _timeout,
         )
         if test.get(1) == 'calculator_group_test'
             calculator_group_test_exe = _test_exe
@@ -1823,7 +1937,8 @@ if get_option('with_tests')
     )
     _capnp_dep = dependency('capnp', required: false)
     _capnpc_dep = dependency('capnpc', required: false)
-    if _capnp_dep.found() and _capnpc_dep.found()
+    # socketpair, fork and waitpid. Windows has no POSIX process pair.
+    if _capnp_dep.found() and _capnpc_dep.found() and host_machine.system() != 'windows'
         test(
             'nlist_stream',
             executable(
@@ -1886,7 +2001,7 @@ if get_option('with_tests')
                 'minimage_' + spec[0],
                 files('rgpot/nlist/MinimumImage.cpp'),
                 include_directories: _incdirs,
-                cpp_args: _args + _isa_args,
+                cpp_args: _args + _isa_args + _no_tsan_ifunc,
                 pic: true,
                 install: false,
             )
@@ -2296,6 +2411,19 @@ if get_option('with_tests')
             build_rpath: _metatomic_build_rpath,
             install: false,
         )
+        # Warm versus cold GFN2 single points on (H2O)16 and (H2O)20.
+        # Not a default test: the timed run is serial, under hostname bench.
+        xtb_warm_bench = executable(
+            'xtb_warm_bench',
+            sources: ['tests/xtb_warm_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
     else
         if not get_option('with_rpc_client_only')
             # The dlopen frontend is in librgpot whether or not with_xtb
@@ -2414,6 +2542,27 @@ if get_option('with_tests')
             workdir: meson.source_root(),
             timeout: 0,
         )
+        # One child process per row, via fork and waitpid, and the peak
+        # resident set is read from /proc. Windows has neither.
+        if host_machine.system() != 'windows'
+            stream_scale_bench = executable(
+                'stream_scale_bench',
+                sources: ['tests/stream_scale_bench.cc'],
+                dependencies: test_deps,
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+                build_rpath: _metatomic_build_rpath,
+                install: false,
+            )
+            benchmark(
+                'stream_scale_bench',
+                stream_scale_bench,
+                workdir: meson.source_root(),
+                timeout: 0,
+            )
+        endif
         tersoff_held_bench = executable(
             'tersoff_held_bench',
             sources: ['tests/tersoff_held_bench.cc'],
@@ -2486,6 +2635,9 @@ if not meson.is_subproject()
         endif
         if has_water
             _pc_cflags += ['-DRGPOT_HAS_WATER=TRUE']
+        endif
+        if has_eam_table
+            _pc_cflags += ['-DRGPOT_HAS_EAM_TABLE=TRUE']
         endif
         if has_metatomic
             _pc_cflags += ['-DRGPOT_HAS_METATOMIC_POT=TRUE']

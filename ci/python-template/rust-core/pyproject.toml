@@ -45,6 +45,8 @@ environment = { PATH = "/root/.cargo/bin:$PATH" }
 
 [tool.cibuildwheel.macos]
 archs = ["arm64"]
+# The demo does not vendor Homebrew gfortran, OpenBLAS or libomp, so
+# the tag stays macosx_14_0 on the macos-15 runner.
 environment = { MACOSX_DEPLOYMENT_TARGET = "14.0", PATH = "$HOME/.cargo/bin:$PATH" }
 before-all = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal"
 

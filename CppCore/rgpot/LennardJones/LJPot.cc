@@ -10,6 +10,7 @@
  */
 
 // clang-format off
+#include <array>
 #include <cmath>
 #include <limits>
 #include <vector>
@@ -23,7 +24,6 @@
 #include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/simd/api.hpp"
 #include "rgpot/simd/exact_fma.hpp"
-#include "rgpot/simd/from_cache.hpp"
 #include "rgpot/stress.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 using rgpot::types::AtomMatrix;
@@ -71,14 +71,15 @@ void lj_pair(double r2, const simd::LjParams &p, double &energy, double &fscale)
  * @details
  *
  * Pairwise interactions within the cutoff radius, minimum image convention
- * on an orthogonal box. Pairs come from the shared neighbour layer: a
- * cell list, a Verlet skin, and either a stored list or a streaming walk.
- * Repeated evaluations on a stored list reuse that list. A streaming
- * call applies the pair term during the cell walk and does not keep a
- * half-list. Several threads split the atoms, keep a private force
- * buffer, and add those buffers in thread order. A nonzero switch width
- * uses the quintic switch.
- * Cauchy stress is published from the kernel's strain accumulator.
+ * on an orthogonal or sheared box. Pairs come from the shared neighbour
+ * layer: a cell list, a Verlet skin, and either a stored list or a
+ * streaming walk. The pair term runs during that walk. A streaming call
+ * does not copy a half-list. A stored call keeps candidates out to the
+ * cutoff plus the skin and drops the rest from the current distances, so
+ * a later call inside half the skin reuses the candidates. Several
+ * threads split the atoms, keep a private force buffer, and add those
+ * buffers in thread order. A nonzero switch width uses the quintic
+ * switch. Cauchy stress is published from the kernel's strain accumulator.
  *
  * @warning The box is assumed to be orthogonal.
  *
@@ -102,9 +103,6 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     return;
   }
 
-  simd::PairSpec opt;
-  opt.cutoff = cuttOffR;
-
   simd::LjParams params{};
   params.psi2 = psi * psi;
   params.four_u0 = 4.0 * u0;
@@ -116,127 +114,62 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     params.inv_width = m_switch.inv_width;
   }
   const auto n_atoms = static_cast<std::size_t>(N);
-  nlist::updateCells(neighbours_, R, n_atoms, box, opt.cutoff, opt.skin,
-                     nlist::Image::Round, mode_, opt.periodic);
-  if (neighbours_.streaming()) {
-    cached_.rows.clear();
-    cached_.rows.shrink_to_fit();
-    cached_.nbr.clear();
-    cached_.nbr.shrink_to_fit();
-    have_cache_ = false;
-    const double cutoff2 = cuttOffR * cuttOffR;
-    const int nt = nlist::threadsRequested();
-    auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy,
-                      double dz, double r2, double *force, double &energy,
-                      double *virial) {
-      if (!(i < j) || !(r2 > 0.0) || r2 > cutoff2) {
-        return;
-      }
-      double pair_e = 0.0;
-      double fscale = 0.0;
-      lj_pair(r2, params, pair_e, fscale);
-      energy += pair_e;
-      const double fx = fscale * dx;
-      const double fy = fscale * dy;
-      const double fz = fscale * dz;
-      force[3 * i] += fx;
-      force[3 * i + 1] += fy;
-      force[3 * i + 2] += fz;
-      force[3 * j] -= fx;
-      force[3 * j + 1] -= fy;
-      force[3 * j + 2] -= fz;
-      accumulatePairStrain(virial, fscale, dx, dy, dz);
-    };
-    if (nt <= 1) {
-      nlist::visitDirected(neighbours_, 
-          0, N, [&](std::int32_t i, std::int32_t j, double dx, double dy,
-                    double dz, double r2) {
-            accept(i, j, dx, dy, dz, r2, F, *U, strain);
-          });
-    } else {
-      std::vector<double> owned(static_cast<std::size_t>(nt) * n_atoms * 3, 0.0);
-      std::vector<double> energy(static_cast<std::size_t>(nt), 0.0);
-      std::vector<double> virial(static_cast<std::size_t>(nt) * 6, 0.0);
-#if defined(_OPENMP)
-#pragma omp parallel num_threads(nt)
-#endif
-      {
-#if defined(_OPENMP)
-        const int t = omp_get_thread_num();
-#else
-        const int t = 0;
-#endif
-        const auto range = nlist::partition(N, t, nt);
-        double *local = owned.data() + static_cast<std::size_t>(t) * n_atoms * 3;
-        double *st = virial.data() + static_cast<std::size_t>(t) * 6;
-        double local_e = 0.0;
-        nlist::visitDirected(neighbours_, 
-            range.begin, range.end,
-            [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                double r2) {
-              accept(i, j, dx, dy, dz, r2, local, local_e, st);
-            });
-        energy[static_cast<std::size_t>(t)] = local_e;
-      }
-      for (int t = 0; t < nt; ++t) {
-        *U += energy[static_cast<std::size_t>(t)];
-        const double *local =
-            owned.data() + static_cast<std::size_t>(t) * n_atoms * 3;
-        for (std::size_t k = 0; k < n_atoms * 3; ++k) {
-          F[k] += local[k];
-        }
-        for (int c = 0; c < 6; ++c) {
-          strain[c] +=
-              virial[static_cast<std::size_t>(t) * 6 + static_cast<std::size_t>(c)];
-        }
-      }
-    }
-    publishCauchyStress(out, strain, volume);
-    return;
-  }
-  const bool reuse_pairs = have_cache_ && !neighbours_.streaming() &&
-                           neighbours_.builds() == list_stamp_ &&
-                           cached_.view.n == n_atoms;
-  if (reuse_pairs) {
-    cached_.view.R = R;
-  } else {
-    simd::fill_view(cached_, R, n_atoms, box, opt, mode_, &neighbours_);
-    have_cache_ = !neighbours_.streaming();
-    list_stamp_ = neighbours_.builds();
-  }
-  const simd::PairView &view = cached_.view;
+  // One angstrom of skin. A stored list keeps pairs out to cutoff + skin
+  // and the kernel below drops those past the cutoff. Stream asks for no
+  // skin: the bins are not reused unless the coordinates match.
+  const double skin = mode_ == nlist::Mode::Stream ? 0.0 : 1.0;
+  const std::array<bool, 3> periodic{{true, true, true}};
+  nlist::updateCells(neighbours_, R, n_atoms, box, cuttOffR, skin, nlist::Image::Round,
+                     mode_, periodic);
+  const double cutoff2 = cuttOffR * cuttOffR;
   const int nt = nlist::threadsRequested();
+  auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                    double r2, double *force, double &energy, double *virial) {
+    if (!(i < j) || r2 > cutoff2) {
+      return;
+    }
+    // Two different atoms on the same point. Skipping the pair reports a
+    // finite energy of zero and hides the singularity.
+    if (!(r2 > 0.0)) {
+      energy = std::numeric_limits<double>::quiet_NaN();
+      return;
+    }
+    double pair_e = 0.0;
+    double fscale = 0.0;
+    lj_pair(r2, params, pair_e, fscale);
+    energy += pair_e;
+    const double fx = fscale * dx;
+    const double fy = fscale * dy;
+    const double fz = fscale * dz;
+    force[3 * i] += fx;
+    force[3 * i + 1] += fy;
+    force[3 * i + 2] += fz;
+    force[3 * j] -= fx;
+    force[3 * j + 1] -= fy;
+    force[3 * j + 2] -= fz;
+    accumulatePairStrain(virial, fscale, dx, dy, dz);
+  };
   if (nt <= 1) {
-    *U = simd::lj_force(view, params, F, strain);
+    nlist::visitHalf(neighbours_, 0, N,
+                     [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                         double r2) { accept(i, j, dx, dy, dz, r2, F, *U, strain); });
   } else {
-    const auto n = static_cast<std::size_t>(N);
-    std::vector<double> owned(static_cast<std::size_t>(nt) * n * 3, 0.0);
+    std::vector<double> owned(static_cast<std::size_t>(nt) * n_atoms * 3, 0.0);
     std::vector<double> energy(static_cast<std::size_t>(nt), 0.0);
     std::vector<double> virial(static_cast<std::size_t>(nt) * 6, 0.0);
-    std::vector<nlist::Range> parts(static_cast<std::size_t>(nt));
-    for (int t = 0; t < nt; ++t) {
-      parts[static_cast<std::size_t>(t)] = nlist::partition(N, t, nt);
-    }
-#if defined(_OPENMP)
-#pragma omp parallel num_threads(nt)
-#endif
-    {
-#if defined(_OPENMP)
-      const int t = omp_get_thread_num();
-#else
-      const int t = 0;
-#endif
-      const auto range = parts[static_cast<std::size_t>(t)];
-      double *local = owned.data() + static_cast<std::size_t>(t) * n * 3;
-      double *st = virial.data() + static_cast<std::size_t>(t) * 6;
-      energy[static_cast<std::size_t>(t)] = simd::lj_force_span(
-          view, params, local, st, static_cast<std::size_t>(range.begin),
-          static_cast<std::size_t>(range.end));
-    }
+    // One shared tile build. A visit from each thread would allocate the
+    // cell scratch once per thread.
+    neighbours_.forCellTeam(
+        true, nt, [&](int t, std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                      double r2) {
+          double *local = owned.data() + static_cast<std::size_t>(t) * n_atoms * 3;
+          double *st = virial.data() + static_cast<std::size_t>(t) * 6;
+          accept(i, j, dx, dy, dz, r2, local, energy[static_cast<std::size_t>(t)], st);
+        });
     for (int t = 0; t < nt; ++t) {
       *U += energy[static_cast<std::size_t>(t)];
-      const double *local = owned.data() + static_cast<std::size_t>(t) * n * 3;
-      for (std::size_t k = 0; k < n * 3; ++k) {
+      const double *local = owned.data() + static_cast<std::size_t>(t) * n_atoms * 3;
+      for (std::size_t k = 0; k < n_atoms * 3; ++k) {
         F[k] += local[k];
       }
       for (int c = 0; c < 6; ++c) {
