@@ -127,6 +127,7 @@ impl rgpot_fused_cache_t {
             .clone()
     }
 
+    #[cfg(feature = "schema")]
     fn set_peer_refusal(&self, why: Option<String>) {
         *self
             .peer_refusal
