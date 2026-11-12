@@ -10,5 +10,6 @@ The installed CMake package exports the neighbour archive the libraries link.
 The ISA audit names the hardware Lennard-Jones span.
 The socket neighbour example is built only where POSIX processes exist.
 The stream scaling bench is too: it forks a child per row.
-The Rust neighbour caller on Windows links the COFF archives with link.exe.
+The Rust neighbour caller on Windows links the COFF archives with link.exe and exports the C entry points.
+An empty JSON member in a UMA package is written as an empty object, which the AOTI loader can parse.
 Hypothesis checks stay serial, because the strategy cache is process-wide.
