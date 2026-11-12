@@ -2514,23 +2514,27 @@ if get_option('with_tests')
             workdir: meson.source_root(),
             timeout: 0,
         )
-        stream_scale_bench = executable(
-            'stream_scale_bench',
-            sources: ['tests/stream_scale_bench.cc'],
-            dependencies: test_deps,
-            include_directories: _incdirs + ['.'],
-            cpp_args: test_args,
-            link_with: _linkto,
-            link_language: 'cpp',
-            build_rpath: _metatomic_build_rpath,
-            install: false,
-        )
-        benchmark(
-            'stream_scale_bench',
-            stream_scale_bench,
-            workdir: meson.source_root(),
-            timeout: 0,
-        )
+        # One child process per row, via fork and waitpid, and the peak
+        # resident set is read from /proc. Windows has neither.
+        if host_machine.system() != 'windows'
+            stream_scale_bench = executable(
+                'stream_scale_bench',
+                sources: ['tests/stream_scale_bench.cc'],
+                dependencies: test_deps,
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+                build_rpath: _metatomic_build_rpath,
+                install: false,
+            )
+            benchmark(
+                'stream_scale_bench',
+                stream_scale_bench,
+                workdir: meson.source_root(),
+                timeout: 0,
+            )
+        endif
         tersoff_held_bench = executable(
             'tersoff_held_bench',
             sources: ['tests/tersoff_held_bench.cc'],

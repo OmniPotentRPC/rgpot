@@ -9,3 +9,5 @@ Apple clang is not given -fopenmp by the Rust neighbour caller.
 The installed CMake package exports the neighbour archive the libraries link.
 The ISA audit names the hardware Lennard-Jones span.
 The socket neighbour example is built only where POSIX processes exist.
+The stream scaling bench is too: it forks a child per row.
+Hypothesis checks stay serial, because the strategy cache is process-wide.
