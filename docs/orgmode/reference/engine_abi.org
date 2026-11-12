@@ -38,6 +38,7 @@ identity queries and the Python GIL release.
 | =libclassical_engine= | =BuiltinParams= | =lj=, =ljcluster=, =morse=, =zbl= and, with the Fortran kernels, =sw=, =edip=, =lenosky=, =tersoff=, =eamal=, =fehe=, =cuh2=, =waterh=, all with default parameters |
 | =libmopac_engine= | =BuiltinParams= | name =mopac=; =library= is the path of =libmopacc= |
 | =libnwchem_engine= | =NWChemParams= | NWChem through =libnwchemc= |
+| =liborca_engine= | =OrcaParams= | ORCA =! EnGrad= as a subprocess; =executable= empty uses =ORCA_EXE= then =PATH= |
 | =libskala_engine= | =NWChemParams= | Skala XC on NWChem; reads =basis=, =charge=, =multiplicity=, =enginePath= and =nwchemRoot= |
 
 The Metatomic and XTB engines keep their own tables
