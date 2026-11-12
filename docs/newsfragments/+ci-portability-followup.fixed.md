@@ -7,3 +7,4 @@ The socket neighbour example is built only where POSIX processes exist.
 The ISA audit names the hardware Lennard-Jones span.
 The stream scaling bench is too: it forks a child per row.
 The Sutton-Chen cluster relaxation is allowed 120 seconds.
+The Rust neighbour caller on Windows links the COFF archives with link.exe.
