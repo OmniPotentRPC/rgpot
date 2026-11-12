@@ -21,6 +21,7 @@
 //! | [`tensor`] | DLPack tensor helpers: create, free, validate |
 //! | [`status`] | Status codes, thread-local error message, panic safety |
 //! | [`potential`] | Callback-based potential dispatch (opaque handle) |
+//! | [`eam`] | Analytic Mishin copper EAM1: energy, forces and stress |
 //! | [`c_api`] | `extern "C"` entry points collected by cbindgen |
 //! | [`version`] | Loaded library version, to check against `rgpot.h` |
 //! | [`rpc`] | Cap'n Proto RPC client and server (feature-gated) |
@@ -52,6 +53,7 @@ pub mod types;
 pub mod tensor;
 pub mod status;
 pub mod potential;
+pub mod eam;
 pub mod eindir;
 pub mod c_api;
 pub mod version;
