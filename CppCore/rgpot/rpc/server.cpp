@@ -66,6 +66,9 @@ class MpiPefSession;
 #ifdef RGPOT_HAS_IPI
 #include "rgpot/IPIPot/IPIPot.hpp"
 #endif
+#ifdef RGPOT_HAS_ORCA
+#include "rgpot/ORCAPot/ORCAPot.hpp"
+#endif
 #include "rgpot/types/AtomMatrix.hpp"
 #include "rgpot/types/adapters/capnp/capnp_adapter.hpp"
 #include "rgpot/units.hpp"
@@ -90,6 +93,10 @@ private:
   /// Cauchy stress stashed by the last force call.
   rgpot::IPIPot *m_ipi = nullptr;
 #endif
+#ifdef RGPOT_HAS_ORCA
+  /// Set when the backend is ORCA, so configure() can replace OrcaParams.
+  rgpot::ORCAPot *m_orca = nullptr;
+#endif
   rgpot::tools::MpiPefSession *m_pef = nullptr;
 
 public:
@@ -102,6 +109,10 @@ public:
 #ifdef RGPOT_HAS_IPI
         ,
         m_ipi(dynamic_cast<rgpot::IPIPot *>(m_potential.get()))
+#endif
+#ifdef RGPOT_HAS_ORCA
+        ,
+        m_orca(dynamic_cast<rgpot::ORCAPot *>(m_potential.get()))
 #endif
   {
   }
@@ -235,9 +246,18 @@ public:
   kj::Promise<void> configure(ConfigureContext context) override {
     auto cfg = context.getParams().getConfig();
     auto results = context.getResults();
-    if (!m_nwchem && !m_cpmd) {
+    if (!m_nwchem && !m_cpmd
+#ifdef RGPOT_HAS_ORCA
+        && !m_orca
+#endif
+    ) {
       results.setOk(false);
+#ifdef RGPOT_HAS_ORCA
+      results.setMessage(
+          "configure() only supported for NWChem, CPMD, or ORCA backend");
+#else
       results.setMessage("configure() only supported for NWChem or CPMD backend");
+#endif
       return kj::READY_NOW;
     }
     std::string msg;
@@ -253,8 +273,33 @@ public:
     } else
 #endif
     {
-      ok = m_nwchem ? m_nwchem->setPotentialConfig(cfg, &msg)
-                   : m_cpmd->setPotentialConfig(cfg, &msg);
+      if (m_nwchem) {
+        ok = m_nwchem->setPotentialConfig(cfg, &msg);
+      } else if (m_cpmd) {
+        ok = m_cpmd->setPotentialConfig(cfg, &msg);
+      }
+#ifdef RGPOT_HAS_ORCA
+      else if (m_orca) {
+        if (!cfg.isOrca()) {
+          msg = "ORCA server expects the orca arm of PotentialConfig";
+        } else {
+          try {
+            auto params = cfg.getOrca();
+            rgpot::ORCAConfig next;
+            next.method = params.getMethod();
+            next.basis = params.getBasis();
+            next.charge = params.getCharge();
+            next.multiplicity = params.getMultiplicity();
+            next.keywords = params.getKeywords();
+            next.executable = params.getExecutable();
+            m_orca->applyParams(next);
+            ok = true;
+          } catch (const std::exception &error) {
+            msg = error.what();
+          }
+        }
+      }
+#endif
     }
     results.setOk(ok);
     results.setMessage(msg);
@@ -309,6 +354,9 @@ int runServer(int argc, char *argv[]
 #endif
               << ", NWChem[:basis[:theory[:xc]]]"
               << ", CPMD"
+#ifdef RGPOT_HAS_ORCA
+              << ", ORCA[:method[:basis[:charge[:multiplicity]]]]"
+#endif
               << std::endl;
     return 1;
   }
@@ -568,6 +616,39 @@ int runServer(int argc, char *argv[]
               << " potential." << std::endl;
     kj::NEVER_DONE.wait(waitScope);
     return 0;
+#ifdef RGPOT_HAS_ORCA
+  } else if (pot_type == "ORCA" || pot_type.rfind("ORCA:", 0) == 0) {
+    rgpot::ORCAConfig cfg;
+    if (pot_type.rfind("ORCA:", 0) == 0) {
+      std::vector<std::string> parts;
+      std::stringstream ss(pot_type);
+      std::string tok;
+      while (std::getline(ss, tok, ':')) {
+        parts.push_back(tok);
+      }
+      if (parts.size() > 1 && !parts[1].empty()) {
+        cfg.method = parts[1];
+      }
+      if (parts.size() > 2 && !parts[2].empty()) {
+        cfg.basis = parts[2];
+      }
+      if (parts.size() > 3 && !parts[3].empty()) {
+        cfg.charge = std::stoi(parts[3]);
+      }
+      if (parts.size() > 4 && !parts[4].empty()) {
+        cfg.multiplicity = std::stoi(parts[4]);
+      }
+    }
+    std::cout << "Loading ORCA potential (" << cfg.method << "/" << cfg.basis
+              << " charge=" << cfg.charge
+              << " multiplicity=" << cfg.multiplicity << ")..." << std::endl;
+    if (!rgpot::ORCAPot::available(cfg.executable)) {
+      std::cerr << "Warning: ORCA executable not found; calculate() will fail "
+                   "until the config, ORCA_EXE, or PATH provides it."
+                << std::endl;
+    }
+    potential_to_use = std::make_unique<rgpot::ORCAPot>(cfg);
+#endif
   } else {
     std::cerr << "Error: Unknown potential type '" << pot_type << "'"
               << std::endl;

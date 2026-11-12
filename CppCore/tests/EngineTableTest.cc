@@ -373,6 +373,12 @@ TEST_CASE("mopac engine", "[engine][mopac]") {
   check_unavailable_engine("MOPAC", "mopac", builtin_params("mopac"), 2);
 }
 
+TEST_CASE("orca engine", "[engine][orca]") {
+  capnp::MallocMessageBuilder msg;
+  msg.initRoot<::OrcaParams>();
+  check_unavailable_engine("ORCA", "orca", capnp::messageToFlatArray(msg), 1);
+}
+
 TEST_CASE("nwchem engine", "[engine][nwchem]") {
   capnp::MallocMessageBuilder msg;
   msg.initRoot<::NWChemParams>();

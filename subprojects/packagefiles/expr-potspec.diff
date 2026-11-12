@@ -1,5 +1,5 @@
 diff --git a/Potentials.capnp b/Potentials.capnp
-index 9a2f8d7..05c9e7a 100644
+index 9a2f8d7..f38e9a6 100644
 --- a/Potentials.capnp
 +++ b/Potentials.capnp
 @@ -25,6 +25,8 @@ struct ForceInput {
@@ -21,7 +21,7 @@ index 9a2f8d7..05c9e7a 100644
  }
  
  # @struct Capabilities
-@@ -2499,6 +2504,41 @@ struct NWChemCdftSpec {
+@@ -2499,6 +2504,58 @@ struct NWChemCdftSpec {
    }
  }
  
@@ -60,10 +60,39 @@ index 9a2f8d7..05c9e7a 100644
 +  }
 +}
 +
++# @struct OrcaParams
++# @brief ORCA energy and gradient (`! EnGrad`) run as a subprocess.
++#
++# Positions on ForceInput stay Angstrom. The engine returns eV and
++# eV/Angstrom. `executable` empty means the ORCA_EXE environment variable,
++# then an `orca` binary on PATH. `keywords` are extra simple-input tokens.
++# Text after the first newline is written after the `!` line and before
++# the coordinate block.
++struct OrcaParams {
++  method       @0 :Text = "HF";
++  basis        @1 :Text = "def2-SVP";
++  charge       @2 :Int32 = 0;
++  multiplicity @3 :Int32 = 1;
++  keywords     @4 :Text = "";
++  executable   @5 :Text = "";
++}
++
  # @struct PotentialConfig
  # @brief **rgpot user parameters (extensible, in/out via Cap'n Proto only).**
  #
-@@ -2580,4 +2620,63 @@ interface Potential {
+@@ -2517,8 +2574,9 @@ struct PotentialConfig {
+     cpmd      @2 :CPMDParams;   # CPMDPot / potserv ... OpenCPMD
+     metatomic @4 :MetatomicParams; # MetatomicPot (torch ML models)
+     lammps    @5 :LammpsParams;    # lammpc dynlib shim (LAMMPS library API)
+-    # xtb       @6 :XTBParams;
+-    # tblite    @7 :TBLiteParams;
++    orca      @6 :OrcaParams; # ORCA subprocess EnGrad.
++    # xtb       @7 :XTBParams;
++    # tblite    @8 :TBLiteParams;
+   }
+   # Normalized overlay applied BEFORE the native arm; native settings win.
+   common @3 :CommonMethodSpec;
+@@ -2580,4 +2638,63 @@ interface Potential {
    # @return The protocol, schema, eindir bridge, DLPack and build identity.
    # buildVersion and buildRevision are empty when the build does not know them.
    getCapabilities @12 () -> (capabilities :Capabilities);

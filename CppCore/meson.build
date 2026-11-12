@@ -247,6 +247,11 @@ if not get_option('with_rpc_client_only')
         rgpotentials += [ipi]
     endif
 
+    if has_orca
+        subdir('rgpot/ORCAPot')  # 'orcapot'
+        rgpotentials += [orcapot]
+    endif
+
     # Sutton-Chen. Own directory so a Stillinger-Weber or Tersoff
     # series can land beside it.
     subdir('rgpot/SuttonChen')  # 'sutton_chen'
@@ -441,6 +446,19 @@ if not get_option('with_rpc_client_only')
             gnu_symbol_visibility: 'default',
             install: not meson.is_subproject(),
         )
+        if has_orca
+            orca_engine = shared_library(
+                'orca_engine',
+                [_engine_common, files('rgpot/engine/OrcaEngine.cc')],
+                dependencies: _engine_deps,
+                link_with: [rgpot_core],
+                link_whole: [orcapot],
+                cpp_args: _engine_args,
+                include_directories: _incdirs,
+                gnu_symbol_visibility: 'default',
+                install: not meson.is_subproject(),
+            )
+        endif
         if has_skala
             skala_engine = shared_library(
                 'skala_engine',
@@ -846,6 +864,11 @@ if get_option('with_tests')
         if has_ipi
             test_array += [
                 ['IPIPotTest', 'ipi_pot_test', 'IPIPotTest.cc', ''],
+            ]
+        endif
+        if has_orca
+            test_array += [
+                ['ORCAPotTest', 'orca_pot_test', 'ORCAPotTest.cc', ''],
             ]
         endif
         if has_water
@@ -1878,7 +1901,7 @@ if get_option('with_tests')
             build_rpath: _metatomic_build_rpath,
         )
         _timeout = 30
-        if test.get(0) == 'StreamParityTest'
+        if test.get(0) == 'StreamParityTest' or test.get(0) == 'ORCAPotTest'
             _timeout = 900
         elif test.get(0) == 'SuttonChenPotTest'
             # Two cluster relaxations, up to 2000 force calls each.
@@ -2183,6 +2206,11 @@ if get_option('with_tests')
                 'RGPOT_ENGINE_NWCHEM',
                 nwchem_engine.full_path(),
             )
+            if has_orca
+                engine_table_expect += ['ORCA']
+                engine_table_depends += [orca_engine]
+                engine_table_env.set('RGPOT_ENGINE_ORCA', orca_engine.full_path())
+            endif
             if has_skala
                 engine_table_expect += ['SKALA']
                 engine_table_depends += [skala_engine]
@@ -2632,6 +2660,9 @@ if not meson.is_subproject()
         endif
         if has_ipi
             _pc_cflags += ['-DRGPOT_HAS_IPI=TRUE']
+        endif
+        if has_orca
+            _pc_cflags += ['-DRGPOT_HAS_ORCA=TRUE']
         endif
         if has_water
             _pc_cflags += ['-DRGPOT_HAS_WATER=TRUE']

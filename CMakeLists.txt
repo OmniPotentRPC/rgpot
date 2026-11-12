@@ -50,6 +50,15 @@ else()
         "RGPOT_WITH_IPI requires POSIX sockets and cannot be enabled on Windows"
     )
   endif()
+  if(WIN32)
+    set(_rgpot_orca_default OFF)
+  else()
+    set(_rgpot_orca_default ON)
+  endif()
+  option(RGPOT_WITH_ORCA "ORCA energy and gradient via a subprocess" ${_rgpot_orca_default})
+  if(RGPOT_WITH_ORCA AND WIN32)
+    message(FATAL_ERROR "RGPOT_WITH_ORCA cannot be enabled on Windows")
+  endif()
 endif()
 
 option(RGPOT_WITH_EAM_TABLE
@@ -243,6 +252,10 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     list(APPEND RGPOT_SOURCES CppCore/rgpot/EAMTable/EAMTablePot.cc)
   endif()
 
+  if(RGPOT_WITH_ORCA)
+    list(APPEND RGPOT_SOURCES CppCore/rgpot/ORCAPot/ORCAPot.cc)
+  endif()
+
   if(RGPOT_BUILD_TESTS)
     enable_testing()
   endif()
@@ -368,6 +381,10 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
 
   if(RGPOT_WITH_EAM_TABLE)
     target_compile_definitions(rgpot PUBLIC RGPOT_HAS_EAM_TABLE)
+  endif()
+
+  if(RGPOT_WITH_ORCA)
+    target_compile_definitions(rgpot PUBLIC RGPOT_HAS_ORCA)
   endif()
 
   if(RGPOT_WITH_RPC)
@@ -595,6 +612,11 @@ if(RGPOT_BUILD_TESTS)
       find_package(Threads REQUIRED)
       add_pot_test(IPIPotTest CppCore/tests/IPIPotTest.cc)
       target_link_libraries(IPIPotTest PRIVATE Threads::Threads)
+    endif()
+
+    if(RGPOT_WITH_ORCA)
+      add_pot_test(ORCAPotTest CppCore/tests/ORCAPotTest.cc)
+      set_tests_properties(ORCAPotTest PROPERTIES TIMEOUT 900)
     endif()
 
     if(RGPOT_WITH_RPC)
