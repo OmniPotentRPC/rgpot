@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Regenerate committed ExprPot algebra golden masters. rg.terra only.
+"""Regenerate committed ExprPot algebra golden masters on a regen host.
+
+Runs only on a host listed in RGPOT_REGEN_HOSTS (comma-separated),
+unless EXPR_ALLOW_REGEN=1.
 
 Do not invoke from meson test. Do not invent looser tolerances.
 Pins are independent sums: energy in eV, forces in eV/A.
@@ -17,7 +20,6 @@ import sys
 import zipfile
 from pathlib import Path
 
-TERRA_HOSTS = {"rgam5terra", "rg.terra"}
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "CppCore" / "tests" / "data" / "expr"
 
@@ -46,10 +48,17 @@ OPTIONAL_D3 = (
 )
 
 
-def _require_terra() -> None:
-    host = socket.gethostname().split(".")[0]
-    if host not in TERRA_HOSTS and os.environ.get("EXPR_ALLOW_REGEN") != "1":
-        sys.exit(f"regen_expr_goldens.py runs on rg.terra only (got {host})")
+def _require_regen_host() -> None:
+    raw = os.environ.get("RGPOT_REGEN_HOSTS", "")
+    allowed = {h.strip() for h in raw.split(",")} - {""}
+    host = socket.gethostname()
+    override = os.environ.get("EXPR_ALLOW_REGEN") == "1"
+    if override or allowed & {host, host.split(".")[0]}:
+        return
+    sys.exit(
+        f"regen_expr_goldens.py runs only on a host listed in RGPOT_REGEN_HOSTS "
+        f"(got {host}; EXPR_ALLOW_REGEN=1 overrides)"
+    )
 
 
 def sha256_file(path: Path) -> str:
@@ -138,7 +147,7 @@ def write_manifest() -> None:
     if (DATA / "half_lj_plus_d3_energy.npy").is_file():
         cases.append("half_lj_plus_d3")
     man = {
-        "host_only": "rg.terra",
+        "host_only": "workstation-a",
         "regen": "scripts/regen_expr_goldens.py",
         "fixture": "two_atom_ar",
         "units": {"energy": "eV", "forces": "eV/A"},
@@ -155,7 +164,7 @@ def write_manifest() -> None:
 
 
 def main() -> int:
-    _require_terra()
+    _require_regen_host()
     DATA.mkdir(parents=True, exist_ok=True)
     write_geometry()
     if os.environ.get("EXPR_GEOMETRY_ONLY") == "1":

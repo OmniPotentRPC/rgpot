@@ -12,8 +12,9 @@
  * table and consumers reach the kernels only through these classes.
  *
  * Each instance owns a Fortran workspace (rgpot_workspace.f90): its own
- * neighbour table, which vesin keeps between calls and rebuilds only when
- * an atom leaves the Verlet skin, and its own error message. The kernels
+ * neighbour table. The builder keeps that list between calls and rebuilds
+ * it only when an atom leaves the Verlet skin. The kernels also keep an
+ * error message. The kernels
  * carry no other state, so instances evaluate on separate threads at once
  * (`Reentrancy::PerInstance`), and multi-image callers keep one instance
  * per image (`perImageInstances`) so each table follows one geometry
@@ -76,6 +77,8 @@ RGPOT_FORTRAN_POT_CLASS(WaterHPot, WaterH);
 /// Tersoff silicon (PotType::TersoffSi). All-silicon calls, and a null
 /// species pointer, use the Fortran gather. Any other atomic number
 /// uses the 1989 silicon-carbon kernel. There is no second PotType.
+/// No call writes a stress: has_stress is 0 and the tensor is zero on
+/// both paths until the gather computes one.
 class TersoffPot : public Potential<TersoffPot> {
 public:
   TersoffPot() : Potential(PotType::TersoffSi) {}
@@ -85,7 +88,7 @@ public:
   }
 
   /// Held list for the calls that reach the 1989 kernel, as
-  /// TersoffSiC::setHeldSkin. The gather keeps its own vesin table.
+  /// TersoffSiC::setHeldSkin. The gather keeps its own neighbour table.
   void setHeldSkin(double skin) { m_sic.setHeldSkin(skin); }
 
 private:

@@ -52,6 +52,8 @@ else()
   endif()
 endif()
 
+option(RGPOT_WITH_EAM_TABLE
+       "EAM and Finnis-Sinclair potentials read from LAMMPS tables" OFF)
 option(RGPOT_BUILD_TESTS "Build tests" ${RGPOT_IS_TOP_LEVEL})
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -191,9 +193,6 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/ZBL/ZBLPot.cc
       CppCore/rgpot/simd/dispatch.cc
       CppCore/rgpot/simd/scalar_kernels.cc
-      CppCore/rgpot/nlist/MinimumImage.cpp
-      CppCore/rgpot/simd/exact_fma_hw.cc
-      CppCore/rgpot/simd/exp.cc
       CppCore/rgpot/CuH2/cuh2Utils.cc
       CppCore/rgpot/fortran/FortranPots.cc
       CppCore/rgpot/SuttonChen/SuttonChenPot.cc
@@ -240,10 +239,28 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     list(APPEND RGPOT_SOURCES CppCore/rgpot/IPIPot/IPIPot.cc)
   endif()
 
+  if(RGPOT_WITH_EAM_TABLE)
+    list(APPEND RGPOT_SOURCES CppCore/rgpot/EAMTable/EAMTablePot.cc)
+  endif()
+
   if(RGPOT_BUILD_TESTS)
     enable_testing()
   endif()
   find_package(Threads REQUIRED)
+  add_library(rgpot_nlist STATIC
+      CppCore/rgpot/nlist/NeighbourList.cc
+      CppCore/rgpot/nlist/Neighbours.cc
+      CppCore/rgpot/nlist/MinimumImage.cpp
+      CppCore/rgpot/simd/exact_fma_hw.cc
+      CppCore/rgpot/simd/exp.cc)
+  target_include_directories(rgpot_nlist PUBLIC
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/CppCore>)
+  target_link_libraries(rgpot_nlist PUBLIC Threads::Threads)
+  find_package(OpenMP)
+  if(OpenMP_CXX_FOUND)
+    target_link_libraries(rgpot_nlist PUBLIC OpenMP::OpenMP_CXX)
+  endif()
+  set_target_properties(rgpot_nlist PROPERTIES POSITION_INDEPENDENT_CODE ON)
   add_library(rgpot_vesin STATIC third_party/vesin/vesin-single-build.cpp)
   add_library(rgpot::vesin ALIAS rgpot_vesin)
   set_target_properties(rgpot_vesin PROPERTIES
@@ -295,7 +312,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
                                         POSITION_INDEPENDENT_CODE ON
                                         VERSION ${PROJECT_VERSION}
                                         SOVERSION ${RGPOT_CXX_SOVERSION})
-  target_link_libraries(rgpot PRIVATE rgpot_fortran_kernels Threads::Threads)
+  target_link_libraries(rgpot PRIVATE rgpot_fortran_kernels rgpot_nlist Threads::Threads)
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_options(
       rgpot PRIVATE
@@ -347,6 +364,10 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
 
   if(RGPOT_WITH_IPI)
     target_compile_definitions(rgpot PUBLIC RGPOT_HAS_IPI)
+  endif()
+
+  if(RGPOT_WITH_EAM_TABLE)
+    target_compile_definitions(rgpot PUBLIC RGPOT_HAS_EAM_TABLE)
   endif()
 
   if(RGPOT_WITH_RPC)
@@ -435,7 +456,7 @@ if(RGPOT_IS_TOP_LEVEL)
 
   if(NOT RGPOT_RPC_CLIENT_ONLY)
     install(
-      TARGETS rgpot rgpot_fortran_kernels rgpot_vesin
+      TARGETS rgpot rgpot_fortran_kernels rgpot_nlist rgpot_vesin
       EXPORT rgpotTargets
       LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
       ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -524,7 +545,6 @@ if(RGPOT_BUILD_TESTS)
     add_subdirectory(CppCore/tests/plugin)
 
     add_pot_test(LJClusterPotTest CppCore/tests/LJClusterPotTest.cc)
-    add_pot_test(PairListTest CppCore/tests/PairListTest.cc)
     add_pot_test(MinImageIsaHash CppCore/tests/MinImageIsaHash.cc)
     add_pot_test(FoldDegenerateTest CppCore/tests/FoldDegenerateTest.cc)
     set_tests_properties(FoldDegenerateTest PROPERTIES TIMEOUT 60)

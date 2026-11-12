@@ -29,6 +29,17 @@ RGPOT_SCALAR double lj_scalar_entry(const PairView &view, const LjParams &params
   return lj_reference(view, params, F, strain);
 }
 
+RGPOT_SCALAR double lj_scalar_span(const PairView &view, const LjParams &params,
+                                   double *F, double strain[6],
+                                   std::size_t begin, std::size_t end) {
+#if defined(__x86_64__)
+  if (detail::fma_hw_active()) {
+    return lj_hw_span(view, params, F, strain, begin, end);
+  }
+#endif
+  return lj_reference(view, params, F, strain, begin, end);
+}
+
 RGPOT_SCALAR double morse_scalar_entry(const PairView &view,
                                         const MorseParams &params, double *F,
                                         double strain[6]) {

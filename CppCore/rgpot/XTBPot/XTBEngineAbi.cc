@@ -67,6 +67,28 @@ RgpotXtbPot *rgpot_xtb_create(const RgpotXtbConfig *cfg, char *errbuf,
 
 void rgpot_xtb_destroy(RgpotXtbPot *pot) { delete pot; }
 
+void rgpot_xtb_reset(RgpotXtbPot *pot) {
+  if (pot && pot->pot)
+    pot->pot->reset();
+}
+
+void rgpot_xtb_set_warm_move(RgpotXtbPot *pot, double angstrom) {
+  if (pot && pot->pot)
+    pot->pot->setWarmMove(angstrom);
+}
+
+double rgpot_xtb_warm_move(const RgpotXtbPot *pot) {
+  if (!pot || !pot->pot)
+    return 0.0;
+  return pot->pot->warmMove();
+}
+
+int rgpot_xtb_reused_wavefunction(const RgpotXtbPot *pot) {
+  if (!pot || !pot->pot)
+    return 0;
+  return pot->pot->reusedWavefunction() ? 1 : 0;
+}
+
 int rgpot_xtb_force(RgpotXtbPot *pot, long nAtoms, const double *positions,
                     const int *atomicNrs, double *forces, double *energy,
                     double *variance, const double *box) {

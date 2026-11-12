@@ -24,6 +24,7 @@
 
 #include "rgpot/Potential.hpp"
 #include "rgpot/nlist/HalfShell.hpp"
+#include "rgpot/nlist/Neighbours.hpp"
 
 namespace rgpot {
 
@@ -52,17 +53,20 @@ public:
   TersoffSiC();
 
   [[nodiscard]] PotCaps caps() const noexcept override {
-    if (m_held.skin > 0.0) {
-      return {.reentrancy = Reentrancy::PerInstance,
-              .perImageInstances = true};
-    }
-    return {};
+    // neighbours_ is scratch on every call. A positive held skin adds a
+    // second list that also cannot be shared.
+    return {.reentrancy = Reentrancy::PerInstance,
+            .perImageInstances = m_held.skin > 0.0,
+            .stress = true};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
     return m_paramsKey;
   }
 
+  /// Forces, energy and the Cauchy stress sigma = (1/V) dE/dε in
+  /// eV/Angstrom^3, the convention of stress.hpp. The virial sums each
+  /// folded bond vector times the energy gradient with respect to it.
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
   /**
@@ -74,6 +78,10 @@ public:
    *        reports Reentrancy::PerInstance.
    */
   void setHeldSkin(double skin);
+
+  /// Auto, Stored and Stream all use the shared neighbour layer. One
+  /// thread agrees with the old ordered walk to within 1e-12.
+  void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
   /// The list forceImpl keeps. Not built until a call with a positive skin.
   [[nodiscard]] const nlist::NeighborList &heldList() const noexcept {
@@ -113,15 +121,19 @@ public:
                               double *gradients) const;
 
 private:
+  /// scale +1 writes forces, scale -1 writes dE/dx. A non-null strain
+  /// gains dE/dε in eV, in the Voigt order of stress.hpp.
   void evaluate(const double *positions, const int *atomic_numbers,
                 const double *box, std::size_t n_atoms, double *energy,
-                double *acc, double scale,
-                nlist::NeighborList *neighbors) const;
+                double *acc, double scale, nlist::NeighborList *neighbors,
+                double *strain) const;
 
   Species m_species[2]{};
   Pair m_pair[2][2]{};
   uint64_t m_paramsKey{0};
+  nlist::Mode mode_ = nlist::Mode::Auto;
   mutable nlist::NeighborList m_held;
+  mutable nlist::Neighbours neighbours_;
 };
 
 } // namespace rgpot

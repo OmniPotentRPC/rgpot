@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Clear PT_GNU_STACK PF_X inside an AOTI .pt2 wrapper.so.
 
-Elja inductor emits wrapper.so with an executable stack. Terra (glibc
-2.41+, hardened kernel) refuses mprotect(PROT_EXEC) on the stack, so
-AOTIModelPackageLoader dies in dlopen. Terra-traced packages already
-have RW GNU_STACK. This rewrite makes an Elja package load there.
+Elja inductor emits wrapper.so with an executable stack. workstation-a
+(glibc 2.41+, hardened kernel) refuses mprotect(PROT_EXEC) on the stack,
+so AOTIModelPackageLoader dies in dlopen. Packages traced on
+workstation-a already have RW GNU_STACK. This rewrite makes an Elja
+package load there.
 """
 
 from __future__ import annotations

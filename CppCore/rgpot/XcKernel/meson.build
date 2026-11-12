@@ -66,7 +66,7 @@ fs = import('fs')
 _xck_root = meson.project_source_root() / 'third_party' / 'libxckernel'
 if not fs.is_file(_xck_root / 'include' / 'xckernel.h')
     error(
-        'with_xckernel=true but third_party/libxckernel/include/xckernel.h is missing. Generate the C package on rg.terra with scripts/gen_libxckernel.sh',
+        'with_xckernel=true but third_party/libxckernel/include/xckernel.h is missing. Generate the C package with scripts/gen_libxckernel.sh on a host listed in RGPOT_REGEN_HOSTS',
     )
 endif
 

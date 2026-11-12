@@ -5,15 +5,10 @@
 
 namespace rgpot::simd {
 
-#if defined(__x86_64__)
-// Weak so a later link with the highway dispatch object, which defines the
-// same symbol, keeps a single copy. The attribute puts vfmadd in this
-// function while the caller stays on the baseline ISA.
-__attribute__((weak, target("fma"), noinline)) double
-exact_fma_hw(double a, double b, double c) {
-  return __builtin_fma(a, b, c);
-}
-#endif
+// exp.cc defines exact_fma_hw, and every build compiles it with this file.
+// A weak copy here would stay in .text with no symbol after the link picks
+// the strong one, and the instruction set architecture (ISA) audit cannot
+// name it.
 
 #if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
 namespace detail {

@@ -6,7 +6,7 @@
 !! Only `bind(c)` names leave this library; the physics module exports no
 !! external symbols of its own that C could collide with. The `_ws` entry
 !! point keeps the neighbour table in the caller's workspace
-!! (rgpot_workspace), where vesin reuses its buffers and tracks list
+!! (rgpot_workspace), where the builder reuses its list and tracks
 !! staleness for that caller's geometry; the entry point without a handle
 !! shares one module-level workspace and is process-serial.
 module rgpot_eam_al_capi

@@ -19,6 +19,7 @@
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "rgpot/XTBPot/XTBDlopen.hpp"
@@ -298,4 +299,182 @@ TEST_CASE("XTBDlopen serial multi-instance via recreate",
     REQUIRE_THAT(e, WithinAbs(e_ref, 1e-8));
     require_finite_forces(f, 3);
   }
+}
+
+// A reused SCC wavefunction has to land on the same GFN2 energy and forces
+// as a fresh results object. 1e-8 Hartree is the energy agreement. Forces
+// at accuracy 0.01 are compared in eV/Angstrom; accuracy 1 stops earlier
+// and is checked against its own residual below.
+static constexpr double kWarmEnergyTol = 1e-8 * 27.211386245988;
+// Measured warm-versus-cold gap on this water is 6.5e-8 eV/Angstrom.
+static constexpr double kWarmForceTol = 1e-7;
+
+static void shift_all(AtomMatrix &positions, size_t axis, double delta) {
+  for (size_t i = 0; i < positions.rows(); ++i)
+    positions(i, axis) += delta;
+}
+
+static void require_close_forces(const AtomMatrix &got, const AtomMatrix &ref,
+                                 double tol) {
+  REQUIRE(got.rows() == ref.rows());
+  REQUIRE(got.cols() == ref.cols());
+  double worst = 0.0;
+  size_t worst_i = 0;
+  size_t worst_j = 0;
+  for (size_t i = 0; i < got.rows(); ++i) {
+    for (size_t j = 0; j < got.cols(); ++j) {
+      const double delta = std::abs(got(i, j) - ref(i, j));
+      if (delta > worst) {
+        worst = delta;
+        worst_i = i;
+        worst_j = j;
+      }
+    }
+  }
+  UNSCOPED_INFO("worst |dF| " << worst << " at " << worst_i << "," << worst_j
+                              << " got " << got(worst_i, worst_j) << " ref "
+                              << ref(worst_i, worst_j));
+  REQUIRE(worst <= tol);
+}
+
+static rgpot::XTBConfig converged_gfn2() {
+  rgpot::XTBConfig cfg;
+  cfg.accuracy = 0.01;
+  cfg.max_iterations = 500;
+  return cfg;
+}
+
+template <typename Factory>
+static void check_wavefunction_reuse(Factory make) {
+  AtomMatrix positions(3, 3);
+  std::vector<int> atmtypes;
+  std::array<std::array<double, 3>, 3> box{};
+  fill_water(positions, atmtypes, box);
+
+  auto cold_of = [&](const rgpot::XTBConfig &cfg, const AtomMatrix &geo) {
+    auto pot = make(cfg);
+    auto [energy, forces, variance] = (*pot)(geo, atmtypes, box);
+    (void)variance;
+    REQUIRE_FALSE(pot->reusedWavefunction());
+    return std::pair<double, AtomMatrix>{energy, forces};
+  };
+
+  const rgpot::XTBConfig cfg = converged_gfn2();
+  auto session = make(cfg);
+  REQUIRE(session->warmMove() == 1.0);
+  auto [e0, f0, v0] = (*session)(positions, atmtypes, box);
+  (void)f0;
+  (void)v0;
+  REQUIRE_FALSE(session->reusedWavefunction());
+
+  AtomMatrix nudged = positions;
+  nudged(1, 1) += 0.0625;
+  auto [e_warm, f_warm, v_warm] = (*session)(nudged, atmtypes, box);
+  (void)v_warm;
+  REQUIRE(session->reusedWavefunction());
+  {
+    auto [e_cold, f_cold] = cold_of(cfg, nudged);
+    REQUIRE_THAT(e_warm, WithinAbs(e_cold, kWarmEnergyTol));
+    require_close_forces(f_warm, f_cold, kWarmForceTol);
+  }
+
+  // Exactly the guard, measured from the geometry just stored.
+  AtomMatrix edge = nudged;
+  shift_all(edge, 0, 1.0);
+  auto [e_edge, f_edge, v_edge] = (*session)(edge, atmtypes, box);
+  (void)v_edge;
+  REQUIRE(session->reusedWavefunction());
+  {
+    auto [e_cold, f_cold] = cold_of(cfg, edge);
+    REQUIRE_THAT(e_edge, WithinAbs(e_cold, kWarmEnergyTol));
+    require_close_forces(f_edge, f_cold, kWarmForceTol);
+  }
+
+  AtomMatrix far = edge;
+  shift_all(far, 0, 1.25);
+  auto [e_far, f_far, v_far] = (*session)(far, atmtypes, box);
+  (void)v_far;
+  REQUIRE_FALSE(session->reusedWavefunction());
+  {
+    auto [e_cold, f_cold] = cold_of(cfg, far);
+    REQUIRE_THAT(e_far, WithinAbs(e_cold, kWarmEnergyTol));
+    require_close_forces(f_far, f_cold, kWarmForceTol);
+  }
+  AtomMatrix after = far;
+  shift_all(after, 1, 0.0625);
+  auto [e_after, f_after, v_after] = (*session)(after, atmtypes, box);
+  (void)v_after;
+  REQUIRE(session->reusedWavefunction());
+  {
+    auto [e_cold, f_cold] = cold_of(cfg, after);
+    REQUIRE_THAT(e_after, WithinAbs(e_cold, kWarmEnergyTol));
+    require_close_forces(f_after, f_cold, kWarmForceTol);
+  }
+
+  session->reset();
+  REQUIRE_FALSE(session->reusedWavefunction());
+  auto [e_reset, f_reset, v_reset] = (*session)(after, atmtypes, box);
+  (void)v_reset;
+  REQUIRE_FALSE(session->reusedWavefunction());
+  {
+    auto [e_cold, f_cold] = cold_of(cfg, after);
+    REQUIRE_THAT(e_reset, WithinAbs(e_cold, kWarmEnergyTol));
+    require_close_forces(f_reset, f_cold, kWarmForceTol);
+  }
+
+  rgpot::XTBConfig tight = cfg;
+  tight.warm_move = 0.01;
+  auto guarded = make(tight);
+  REQUIRE(guarded->warmMove() == 0.01);
+  auto [e_g0, f_g0, v_g0] = (*guarded)(positions, atmtypes, box);
+  (void)f_g0;
+  (void)v_g0;
+  REQUIRE_FALSE(guarded->reusedWavefunction());
+  auto [e_g1, f_g1, v_g1] = (*guarded)(nudged, atmtypes, box);
+  (void)v_g1;
+  REQUIRE_FALSE(guarded->reusedWavefunction());
+  {
+    auto [e_cold, f_cold] = cold_of(tight, nudged);
+    REQUIRE_THAT(e_g1, WithinAbs(e_cold, kWarmEnergyTol));
+    require_close_forces(f_g1, f_cold, kWarmForceTol);
+  }
+  guarded->setWarmMove(2.0);
+  REQUIRE(guarded->warmMove() == 2.0);
+  AtomMatrix wide = nudged;
+  shift_all(wide, 0, 1.5);
+  auto [e_wide, f_wide, v_wide] = (*guarded)(wide, atmtypes, box);
+  (void)v_wide;
+  REQUIRE(guarded->reusedWavefunction());
+  {
+    auto [e_cold, f_cold] = cold_of(cfg, wide);
+    REQUIRE_THAT(e_wide, WithinAbs(e_cold, kWarmEnergyTol));
+    require_close_forces(f_wide, f_cold, kWarmForceTol);
+  }
+
+  rgpot::XTBConfig off = cfg;
+  off.warm_move = 0.0;
+  auto disabled = make(off);
+  auto [e_off, f_off, v_off] = (*disabled)(positions, atmtypes, box);
+  (void)f_off;
+  (void)v_off;
+  auto [e_off2, f_off2, v_off2] = (*disabled)(nudged, atmtypes, box);
+  (void)f_off2;
+  (void)v_off2;
+  REQUIRE_FALSE(disabled->reusedWavefunction());
+  REQUIRE_THAT(e_off2, WithinAbs(e_warm, kWarmEnergyTol));
+  (void)e_off;
+}
+
+TEST_CASE("XTBPot reuses the GFN2 wavefunction inside the move guard",
+          "[xtb][linked][warm]") {
+  check_wavefunction_reuse([](const rgpot::XTBConfig &cfg) {
+    return std::make_unique<rgpot::XTBPot>(cfg);
+  });
+}
+
+TEST_CASE("XTBDlopen reuses the GFN2 wavefunction inside the move guard",
+          "[xtb][dlopen][warm]") {
+  check_wavefunction_reuse([](const rgpot::XTBConfig &cfg) {
+    return std::make_unique<rgpot::XTBDlopen>(dlopen_cfg(cfg));
+  });
 }

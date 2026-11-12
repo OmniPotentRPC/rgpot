@@ -1,5 +1,5 @@
 #pragma once
-// MIT License — UMA / OMol via vesin neighbors + AOTInductor .pt2
+// MIT License — UMA / OMol via the neighbour query + AOTInductor .pt2
 
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/Potential.hpp"
@@ -12,10 +12,10 @@
 namespace rgpot {
 
 /**
- * @brief UMA / OMol calculator: vesin neighbor list + AOTI package.
+ * @brief UMA / OMol calculator: neighbour query + AOTI package.
  *
  * Loads an AOTInductor ``.pt2`` exported by ``scripts/export_uma_aoti.py``.
- * Each force call builds a fairchem-convention edge list with vesin and
+ * Each force call builds a fairchem-convention edge list with the neighbour query and
  * runs the compiled graph. Charge and spin are per-call tensor inputs.
  *
  * The package was merged for one composition, charge, spin and task.
@@ -47,12 +47,19 @@ public:
 
   void setChargeSpin(int charge, int spin);
 
+  /// Input dtype used for positions, the cell and cell offsets.
+  /// ``float32`` or ``float64``. Loads the package on the first call.
+  [[nodiscard]] const char *posDtypeName() const;
+  /// Weight dtype recorded in the package. Same lifetime rules as
+  /// posDtypeName().
+  [[nodiscard]] const char *modelDtypeName() const;
+
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
     return m_paramsKey;
   }
 
 private:
-  static constexpr uint64_t kKernelVersion = 2;
+  static constexpr uint64_t kKernelVersion = 5;
 
   struct Impl;
 

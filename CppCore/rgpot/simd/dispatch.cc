@@ -135,6 +135,8 @@ void ensure() { std::call_once(once, ensure_body); }
 
 double lj_scalar_entry(const PairView &view, const LjParams &params, double *F,
                        double strain[6]);
+double lj_scalar_span(const PairView &view, const LjParams &params, double *F,
+                      double strain[6], std::size_t begin, std::size_t end);
 double morse_scalar_entry(const PairView &view, const MorseParams &params,
                           double *F, double strain[6]);
 void eam_scalar_entry(long n, const double *R, const EamAtom *atoms,
@@ -227,6 +229,12 @@ double lj_force(const PairView &view, const LjParams &params, double *F,
   }
 #endif
   return lj_scalar_entry(view, params, F, strain);
+}
+
+double lj_force_span(const PairView &view, const LjParams &params, double *F,
+                     double strain[6], std::size_t begin, std::size_t end) {
+  ensure();
+  return lj_scalar_span(view, params, F, strain, begin, end);
 }
 
 double morse_force(const PairView &view, const MorseParams &params, double *F,

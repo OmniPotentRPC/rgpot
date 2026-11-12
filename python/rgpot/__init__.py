@@ -22,8 +22,11 @@ import rgpot._core as _core
 
 __version__: str = str(getattr(_core, "__version__", "0"))
 LJPot = _core.LJPot
+LJClusterPot = _core.LJClusterPot
+MorsePot = _core.MorsePot
 NumericalError = _core.NumericalError
 evaluate_lj = _core.evaluate_lj
+neighbor_list = _core.neighbor_list
 has_cache = _core.has_cache
 has_dftd3 = _core.has_dftd3
 has_dftd4 = _core.has_dftd4
@@ -163,6 +166,8 @@ def evaluate_metatomic(
 
 __all__ = [
     "LJPot",
+    "LJClusterPot",
+    "MorsePot",
     "NumericalError",
     "StillingerWeberSi",
     "TersoffSiC",
@@ -181,6 +186,7 @@ __all__ = [
     "CuH2Pot",
     "WaterHPot",
     "evaluate_lj",
+    "neighbor_list",
     "evaluate_metatomic",
     "evaluate_metatomic_dlopen",
     "default_metatomic_engine_path",

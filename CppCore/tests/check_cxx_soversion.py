@@ -49,6 +49,19 @@ STRUCTS = (
     ("CppCore/rgpot/ZBL/ZBLPot.hpp", "ZBLConfig"),
 )
 
+# Classes whose sizeof the stamp folds. Only instance data members are
+# hashed: a method body or a static constexpr does not change the layout.
+# Neighbours and CachedPairs are members of LJPot and MorsePot, so a field
+# added there moves those sizes too.
+CLASSES = (
+    ("CppCore/rgpot/LennardJones/LJPot.hpp", "LJPot"),
+    ("CppCore/rgpot/LennardJones/LJClusterPot.hpp", "LJClusterPot"),
+    ("CppCore/rgpot/Morse/MorsePot.hpp", "MorsePot"),
+    ("CppCore/rgpot/ZBL/ZBLPot.hpp", "ZBLPot"),
+    ("CppCore/rgpot/nlist/Neighbours.hpp", "Neighbours"),
+    ("CppCore/rgpot/simd/from_cache.hpp", "CachedPairs"),
+)
+
 
 def fail(message: str) -> None:
     print(message, file=sys.stderr)
@@ -126,6 +139,75 @@ def extract_struct(path: Path, name: str) -> str:
     return ""
 
 
+def _function_body(buf: str) -> bool:
+    text = buf.rstrip()
+    text = re.sub(
+        r"(?:\bconst\b|\boverride\b|\bfinal\b|\bnoexcept\b(?:\([^)]*\))?|"
+        r"&&|&|\bvolatile\b|\s)+$",
+        "",
+        text,
+    )
+    return text.endswith(")")
+
+
+def _data_member(stmt: str) -> bool:
+    if not stmt or stmt.startswith("static ") or stmt.startswith("using "):
+        return False
+    if stmt.startswith("typedef ") or stmt.startswith("friend "):
+        return False
+    if "(" in stmt:
+        return False
+    return True
+
+
+def extract_data_members(path: Path, name: str) -> str:
+    """Instance data members of a class, with function bodies removed."""
+    stripped = strip_comments(path.read_text())
+    match = re.search(rf"\b(?:struct|class)\s+{name}\b", stripped)
+    if not match:
+        fail(f"{name} not found in {path}")
+    brace = stripped.find("{", match.end())
+    body = brace_body(stripped, brace)
+    members: list[str] = []
+    buf: list[str] = []
+    depth = 0
+    i = 1
+    while i < len(body) - 1:
+        char = body[i]
+        if char == "{":
+            if depth == 0 and _function_body("".join(buf)):
+                skip = 1
+                i += 1
+                while i < len(body) - 1 and skip:
+                    if body[i] == "{":
+                        skip += 1
+                    elif body[i] == "}":
+                        skip -= 1
+                    i += 1
+                buf = []
+                continue
+            depth += 1
+            buf.append(char)
+        elif char == "}":
+            depth -= 1
+            buf.append(char)
+        elif char == ";" and depth == 0:
+            stmt = normalize("".join(buf))
+            buf = []
+            if _data_member(stmt):
+                members.append(stmt)
+        elif char == ":" and depth == 0 and re.fullmatch(
+            r"\s*(public|private|protected)\s*", "".join(buf)
+        ):
+            buf = []
+        else:
+            buf.append(char)
+        i += 1
+    if not members:
+        fail(f"{name} in {path} has no data members for the layout fingerprint")
+    return "\n".join(members)
+
+
 def fingerprint(layout_text: str) -> str:
     parts = [
         extract_compute_hash(layout_text),
@@ -133,6 +215,8 @@ def fingerprint(layout_text: str) -> str:
     ]
     for rel, name in STRUCTS:
         parts.append(extract_struct(ROOT / rel, name))
+    for rel, name in CLASSES:
+        parts.append(extract_data_members(ROOT / rel, name))
     digest = hashlib.sha256("\n".join(parts).encode()).hexdigest()
     return digest
 

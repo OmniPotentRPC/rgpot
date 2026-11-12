@@ -121,26 +121,13 @@
 // Listed platforms. Each branch matches one kCxxSoversionTable row.
 // The string is the row's tag. check_cxx_soversion.py requires the two
 // sets to be equal. No branch means every platform is unlisted.
+// aarch64, macOS and Windows stay unlisted until a no-cache CI stamp
+// line for soversion 5 is copied in. Their soversion-4 hashes are the
+// layouts from before LJPot and MorsePot grew their neighbour members.
 #if defined(RGPOT_OS_LINUX) && defined(RGPOT_ARCH_X86_64) &&                    \
     defined(RGPOT_STDLIB_LIBSTDCXX) && defined(RGPOT_MODEL_LP64)
 #define RGPOT_CXX_PLATFORM_LISTED 1
 #define RGPOT_CXX_PLATFORM_LISTED_TAG "linux-x86_64-libstdc++-lp64"
-#elif defined(RGPOT_OS_LINUX) && defined(RGPOT_ARCH_AARCH64) &&                \
-    defined(RGPOT_STDLIB_LIBSTDCXX) && defined(RGPOT_MODEL_LP64)
-#define RGPOT_CXX_PLATFORM_LISTED 1
-#define RGPOT_CXX_PLATFORM_LISTED_TAG "linux-aarch64-libstdc++-lp64"
-#elif defined(RGPOT_OS_MACOS) && defined(RGPOT_ARCH_AARCH64) &&                \
-    defined(RGPOT_STDLIB_LIBCPP) && defined(RGPOT_MODEL_LP64)
-#define RGPOT_CXX_PLATFORM_LISTED 1
-#define RGPOT_CXX_PLATFORM_LISTED_TAG "macos-aarch64-libc++-lp64"
-#elif defined(RGPOT_OS_MACOS) && defined(RGPOT_ARCH_X86_64) &&                 \
-    defined(RGPOT_STDLIB_LIBCPP) && defined(RGPOT_MODEL_LP64)
-#define RGPOT_CXX_PLATFORM_LISTED 1
-#define RGPOT_CXX_PLATFORM_LISTED_TAG "macos-x86_64-libc++-lp64"
-#elif defined(RGPOT_OS_WINDOWS) && defined(RGPOT_ARCH_X86_64) &&               \
-    defined(RGPOT_STDLIB_MSVC) && defined(RGPOT_MODEL_LLP64)
-#define RGPOT_CXX_PLATFORM_LISTED 1
-#define RGPOT_CXX_PLATFORM_LISTED_TAG "windows-x86_64-msvc-llp64"
 #endif
 
 /// Plain-C view of the stamp, returned by the exported function.
@@ -181,7 +168,15 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// changed layout. The C API is exported from librgpot, so it has no
 /// shared library of its own and rides this SONAME. `librgpot_mpi` stays
 /// at soversion 3 (`RGPOT_MPI_ABI_VERSION` 1, unchanged).
-inline constexpr std::uint32_t kCxxSoversion = 4;
+///
+/// 5 records LJPot and MorsePot gaining a Neighbours and a CachedPairs.
+/// Soversion 4 hashed those classes at 120 and 136 bytes. They are 1016
+/// and 1032 bytes with the members. The ledger of soversion 4 fingerprinted
+/// the POD configs only, so the class members did not force a bump.
+/// 6 drops the copied half-list from LJ and Morse, and gives ZBL and the
+/// open Lennard-Jones cluster a neighbour member. The pair term runs on
+/// the shared walk, so CachedPairs is no longer part of those objects.
+inline constexpr std::uint32_t kCxxSoversion = 6;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
 struct CxxSoversionEntry {
@@ -193,12 +188,8 @@ struct CxxSoversionEntry {
 /// Rows are copied from `RGPOT_CXX_LAYOUT_STAMP` lines. An unlisted
 /// platform still compiles. How to update the table:
 /// docs/orgmode/reference/c_abi.org.
-inline constexpr std::array<CxxSoversionEntry, 5> kCxxSoversionTable{{
-    {"linux-x86_64-libstdc++-lp64", 0x80bc8962b7808d7aull},
-    {"linux-aarch64-libstdc++-lp64", 0x191f6a916fe32962ull},
-    {"macos-aarch64-libc++-lp64", 0x293e0e103e91a552ull},
-    {"macos-x86_64-libc++-lp64", 0x293e0e103e91a552ull},
-    {"windows-x86_64-msvc-llp64", 0x395cb18f0d402142ull},
+inline constexpr std::array<CxxSoversionEntry, 1> kCxxSoversionTable{{
+    {"linux-x86_64-libstdc++-lp64", 0x0bba2f6c8fb3f542ull},
 }};
 
 /// This translation unit's platform tag (`os-arch-stdlib-datamodel`).

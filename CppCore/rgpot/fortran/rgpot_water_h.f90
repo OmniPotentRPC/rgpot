@@ -26,7 +26,7 @@
 !!     the total. Grouping sites into molecules changes nothing, which is
 !!     why this is a site loop rather than a molecule loop.
 !!   * There is no cutoff. Every site interacts with the lone H at its
-!!     nearest periodic image, however far away. A vesin table built at
+!!     nearest periodic image, however far away. A neighbour table built at
 !!     some finite radius would silently truncate the sum, so the minimum
 !!     image is taken here instead.
 !!

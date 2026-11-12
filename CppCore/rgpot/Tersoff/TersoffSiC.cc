@@ -12,12 +12,19 @@
 #include "rgpot/Tersoff/TersoffSiC.hpp"
 
 #include "rgpot/ParamHash.hpp"
-#include "rgpot/nlist/MinimumImage.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
+#include "rgpot/stress.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+#if defined(_OPENMP)
+#include <omp.h>
+#endif
 
 namespace rgpot {
 namespace {
@@ -43,7 +50,6 @@ struct Bond {
 };
 
 struct Scratch {
-  std::vector<std::vector<Bond>> rows;
   std::vector<int> kind;
 };
 
@@ -128,37 +134,6 @@ void radial(const TersoffSiC::Pair &p, double r, Bond &b) {
   b.df_a = -p.lambda2 * b.f_a;
 }
 
-bool orthogonal(const double *box, double &lx, double &ly, double &lz) {
-  if (box[1] != 0.0 || box[2] != 0.0 || box[3] != 0.0 || box[5] != 0.0 ||
-      box[6] != 0.0 || box[7] != 0.0) {
-    return false;
-  }
-  lx = box[0];
-  ly = box[4];
-  lz = box[8];
-  return lx > 0.0 && ly > 0.0 && lz > 0.0 && std::isfinite(lx) &&
-         std::isfinite(ly) && std::isfinite(lz);
-}
-
-void foldOrtho(double &dx, double &dy, double &dz, double lx, double ly,
-               double lz) {
-  dx -= lx * std::round(dx / lx);
-  dy -= ly * std::round(dy / ly);
-  dz -= lz * std::round(dz / lz);
-}
-
-void resetRows(Scratch &s, std::size_t n) {
-  if (s.rows.size() < n) {
-    s.rows.resize(n);
-  }
-  for (std::size_t i = 0; i < n; ++i) {
-    s.rows[i].clear();
-    if (s.rows[i].capacity() < 32) {
-      s.rows[i].reserve(32);
-    }
-  }
-}
-
 double cosine(const Bond &a, const Bond &b) {
   const double inv = 1.0 / (a.r * b.r);
   double c = (a.x * b.x + a.y * b.y + a.z * b.z) * inv;
@@ -216,8 +191,10 @@ void TersoffSiC::forceImpl(const ForceInput &in, ForceOut *out) const {
                         in.atmnrs == nullptr || out->F == nullptr)) {
     throw std::invalid_argument("TersoffSiC: null force buffer");
   }
+  double strain[6] = {};
   evaluate(in.pos, in.atmnrs, in.box, in.nAtoms, &out->energy, out->F, 1.0,
-           m_held.skin > 0.0 ? &m_held : nullptr);
+           m_held.skin > 0.0 ? &m_held : nullptr, strain);
+  publishCauchyStress(out, strain, cellVolume(in.box));
 }
 
 void TersoffSiC::setHeldSkin(double skin) {
@@ -239,7 +216,7 @@ void TersoffSiC::energyAndGradient(const double *positions,
     throw std::invalid_argument("TersoffSiC: null energy buffer");
   }
   evaluate(positions, atomic_numbers, box, n_atoms, energy, gradient, -1.0,
-           neighbors);
+           neighbors, nullptr);
 }
 
 void TersoffSiC::energyAndGradientBatch(std::size_t n_config,
@@ -266,7 +243,8 @@ void TersoffSiC::energyAndGradientBatch(std::size_t n_config,
 void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
                           const double *box, std::size_t n_atoms,
                           double *energy, double *acc, double scale,
-                          nlist::NeighborList *neighbors) const {
+                          nlist::NeighborList *neighbors,
+                          double *strain) const {
   *energy = 0.0;
   for (std::size_t i = 0; i < n_atoms * 3; ++i) {
     acc[i] = 0.0;
@@ -278,17 +256,7 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
     return;
   }
 
-  double lx = 0.0;
-  double ly = 0.0;
-  double lz = 0.0;
-  const bool ortho = orthogonal(box, lx, ly, lz);
-  nlist::MinimumImage image;
-  if (!ortho) {
-    image = nlist::MinimumImage(box, {true, true, true});
-  }
-
   Scratch &sc = scratch();
-  resetRows(sc, n_atoms);
   sc.kind.resize(n_atoms);
   for (std::size_t i = 0; i < n_atoms; ++i) {
     sc.kind[i] = kindOf(atomic_numbers[i]);
@@ -296,50 +264,55 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
   const int n = static_cast<int>(n_atoms);
   const double cut2 = kMaxCut * kMaxCut;
 
-  auto consider = [&](int i, int j, double dx, double dy, double dz) {
-    const double r2 = dx * dx + dy * dy + dz * dz;
-    if (!(r2 > 0.0) || r2 >= cut2) {
-      return;
-    }
-    const double r = std::sqrt(r2);
-    const Pair &pij = m_pair[sc.kind[static_cast<std::size_t>(i)]]
-                            [sc.kind[static_cast<std::size_t>(j)]];
-    if (r >= pij.rout) {
-      return;
-    }
-    Bond forth{j, dx, dy, dz, r, 0, 0, 0, 0, 0, 0};
-    radial(pij, r, forth);
-    Bond back{i,         -dx,       -dy,       -dz,        r,         forth.fc,
-              forth.dfc, forth.f_r, forth.f_a, forth.df_r, forth.df_a};
-    sc.rows[static_cast<std::size_t>(i)].push_back(forth);
-    sc.rows[static_cast<std::size_t>(j)].push_back(back);
-  };
-
-  const nlist::NeighborList &pairs =
-      nlist::orderedPairs(positions, box, n_atoms, kMaxCut, neighbors);
-  if (pairs.use_stored) {
-    for (std::size_t p = 0; p < pairs.lo.size(); ++p) {
-      consider(pairs.lo[p], pairs.hi[p], pairs.dx[p], pairs.dy[p], pairs.dz[p]);
-    }
-  } else {
-    for (std::size_t p = 0; p < pairs.lo.size(); ++p) {
-      const int i = pairs.lo[p];
-      const int j = pairs.hi[p];
-      double dx = positions[3 * j] - positions[3 * i];
-      double dy = positions[3 * j + 1] - positions[3 * i + 1];
-      double dz = positions[3 * j + 2] - positions[3 * i + 2];
-      if (ortho) {
-        foldOrtho(dx, dy, dz, lx, ly, lz);
-      } else {
-        image.fold(dx, dy, dz);
-      }
-      consider(i, j, dx, dy, dz);
-    }
+  const double skin = (neighbors != nullptr && neighbors->skin > 0.0)
+                          ? neighbors->skin
+                          : (mode_ == nlist::Mode::Stream ? 0.0 : kMaxCut / 5.0);
+  const auto before = neighbours_.builds();
+  nlist::updateCells(neighbours_, positions, n_atoms, box, kMaxCut, skin, nlist::Image::Round,
+                     mode_, {true, true, true});
+  if (neighbors != nullptr && neighbors->skin > 0.0 &&
+      (neighbours_.builds() != before || !neighbors->built)) {
+    neighbors->ref.assign(positions, positions + 3 * n_atoms);
+    std::memcpy(neighbors->box, box, 9 * sizeof(double));
+    neighbors->n = n_atoms;
+    neighbors->cutoff = kMaxCut;
+    neighbors->skin_used = neighbors->skin;
+    neighbors->built = true;
   }
 
+  const int *kind = sc.kind.data();
+  // One atom of bonds. The stream reads the bins, so the scratch is that
+  // atom. The stored call reads the index row.
+  auto load = [&](int i, std::vector<Bond> &nb) {
+    nb.clear();
+    const int ki = kind[i];
+    auto take = [&](std::int32_t, std::int32_t j, double dx, double dy, double dz, double r2) {
+      if (!(r2 > 0.0) || r2 >= cut2) {
+        return;
+      }
+      const double r = std::sqrt(r2);
+      const Pair &pij = m_pair[ki][kind[j]];
+      if (r >= pij.rout) {
+        return;
+      }
+      Bond forth{static_cast<int>(j), -dx, -dy, -dz, r, 0, 0, 0, 0, 0, 0};
+      radial(pij, r, forth);
+      nb.push_back(forth);
+    };
+    if (neighbours_.streaming()) {
+      neighbours_.forAtom(static_cast<std::int32_t>(i), take);
+    } else {
+      nlist::visitDirected(neighbours_, i, static_cast<std::int64_t>(i) + 1, take);
+    }
+    std::sort(nb.begin(), nb.end(), [](const Bond &a, const Bond &b) { return a.j < b.j; });
+  };
+
+  const int nt = nlist::threadsRequested();
+  if (nt == 1) {
+  std::vector<Bond> nb;
   for (int i = 0; i < n; ++i) {
-    const Species &sp = m_species[sc.kind[static_cast<std::size_t>(i)]];
-    const std::vector<Bond> &nb = sc.rows[static_cast<std::size_t>(i)];
+    load(i, nb);
+    const Species &sp = m_species[kind[i]];
     const int m = static_cast<int>(nb.size());
     for (int a = 0; a < m; ++a) {
       const Bond &bj = nb[static_cast<std::size_t>(a)];
@@ -369,6 +342,10 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
       acc[3 * bj.j] -= sx;
       acc[3 * bj.j + 1] -= sy;
       acc[3 * bj.j + 2] -= sz;
+      if (strain != nullptr) {
+        // dE/d(bj) is (dedr / r) bj, the gradient along the folded bond.
+        accumulatePairStrain(strain, -dedr * inv_r, bj.x, bj.y, bj.z);
+      }
       const double dedz = 0.5 * bj.fc * bj.f_a * db;
       if (dedz == 0.0) {
         continue;
@@ -411,9 +388,135 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
         acc[3 * i] += scale * (g1x + g2x);
         acc[3 * i + 1] += scale * (g1y + g2y);
         acc[3 * i + 2] += scale * (g1z + g2z);
+        if (strain != nullptr) {
+          accumulateBondStrain(strain, bj.x, bj.y, bj.z, g1x, g1y, g1z);
+          accumulateBondStrain(strain, bk.x, bk.y, bk.z, g2x, g2y, g2z);
+        }
       }
     }
   }
+  } else {
+    const std::size_t n3 = static_cast<std::size_t>(n) * 3;
+    std::vector<double> owned(static_cast<std::size_t>(nt) * n3, 0.0);
+    std::vector<double> energies(static_cast<std::size_t>(nt), 0.0);
+    std::vector<double> vir(static_cast<std::size_t>(nt) * 6, 0.0);
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+    {
+#if defined(_OPENMP)
+      const int t = omp_get_thread_num();
+#else
+      const int t = 0;
+#endif
+      const auto range = nlist::partition(n, t, nt);
+      double *local = owned.data() + static_cast<std::size_t>(t) * n3;
+      double local_e = 0.0;
+      double *local_strain = strain == nullptr ? nullptr : vir.data() + static_cast<std::size_t>(t) * 6;
+      std::vector<Bond> nb;
+      for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
+    load(i, nb);
+    const Species &sp = m_species[kind[i]];
+    const int m = static_cast<int>(nb.size());
+    for (int a = 0; a < m; ++a) {
+      const Bond &bj = nb[static_cast<std::size_t>(a)];
+      double zeta = 0.0;
+      for (int k = 0; k < m; ++k) {
+        if (k == a) {
+          continue;
+        }
+        double g = 0.0;
+        double dg = 0.0;
+        angular(sp, cosine(bj, nb[static_cast<std::size_t>(k)]), g, dg);
+        zeta += nb[static_cast<std::size_t>(k)].fc * g;
+      }
+      double bij = 0.0;
+      double db = 0.0;
+      bondOrder(sp, zeta, bij, db);
+      local_e += 0.5 * bj.fc * (bj.f_r + bij * bj.f_a);
+      const double dedr = 0.5 * (bj.dfc * (bj.f_r + bij * bj.f_a) +
+                                 bj.fc * (bj.df_r + bij * bj.df_a));
+      const double inv_r = 1.0 / bj.r;
+      const double sx = scale * dedr * bj.x * inv_r;
+      const double sy = scale * dedr * bj.y * inv_r;
+      const double sz = scale * dedr * bj.z * inv_r;
+      local[3 * i] += sx;
+      local[3 * i + 1] += sy;
+      local[3 * i + 2] += sz;
+      local[3 * bj.j] -= sx;
+      local[3 * bj.j + 1] -= sy;
+      local[3 * bj.j + 2] -= sz;
+      if (local_strain != nullptr) {
+        // dE/d(bj) is (dedr / r) bj, the gradient along the folded bond.
+        // The private buffer keeps this off the shared stress, which
+        // every bond would otherwise fight over.
+        accumulatePairStrain(local_strain, -dedr * inv_r, bj.x, bj.y, bj.z);
+      }
+      const double dedz = 0.5 * bj.fc * bj.f_a * db;
+      if (dedz == 0.0) {
+        continue;
+      }
+      for (int k = 0; k < m; ++k) {
+        if (k == a) {
+          continue;
+        }
+        const Bond &bk = nb[static_cast<std::size_t>(k)];
+        const double cth = cosine(bj, bk);
+        double g = 0.0;
+        double dg = 0.0;
+        angular(sp, cth, g, dg);
+        const double inv_r1 = inv_r;
+        const double inv_r2 = 1.0 / bk.r;
+        const double inv = inv_r1 * inv_r2;
+        const double d_edcth = dedz * bk.fc * dg;
+        const double d_edr2 = dedz * bk.dfc * g;
+        const double g1x =
+            d_edcth * (bk.x * inv - cth * bj.x * inv_r1 * inv_r1);
+        const double g1y =
+            d_edcth * (bk.y * inv - cth * bj.y * inv_r1 * inv_r1);
+        const double g1z =
+            d_edcth * (bk.z * inv - cth * bj.z * inv_r1 * inv_r1);
+        const double g2x =
+            d_edr2 * bk.x * inv_r2 +
+            d_edcth * (bj.x * inv - cth * bk.x * inv_r2 * inv_r2);
+        const double g2y =
+            d_edr2 * bk.y * inv_r2 +
+            d_edcth * (bj.y * inv - cth * bk.y * inv_r2 * inv_r2);
+        const double g2z =
+            d_edr2 * bk.z * inv_r2 +
+            d_edcth * (bj.z * inv - cth * bk.z * inv_r2 * inv_r2);
+        local[3 * bj.j] -= scale * g1x;
+        local[3 * bj.j + 1] -= scale * g1y;
+        local[3 * bj.j + 2] -= scale * g1z;
+        local[3 * bk.j] -= scale * g2x;
+        local[3 * bk.j + 1] -= scale * g2y;
+        local[3 * bk.j + 2] -= scale * g2z;
+        local[3 * i] += scale * (g1x + g2x);
+        local[3 * i + 1] += scale * (g1y + g2y);
+        local[3 * i + 2] += scale * (g1z + g2z);
+        if (local_strain != nullptr) {
+          accumulateBondStrain(local_strain, bj.x, bj.y, bj.z, g1x, g1y, g1z);
+          accumulateBondStrain(local_strain, bk.x, bk.y, bk.z, g2x, g2y, g2z);
+        }
+      }
+    }
+  }
+      energies[static_cast<std::size_t>(t)] = local_e;
+    }
+    for (int t = 0; t < nt; ++t) {
+      *energy += energies[static_cast<std::size_t>(t)];
+      const double *local = owned.data() + static_cast<std::size_t>(t) * n3;
+      for (std::size_t k = 0; k < n3; ++k) {
+        acc[k] += local[k];
+      }
+      if (strain != nullptr) {
+        for (int k = 0; k < 6; ++k) {
+          strain[k] += vir[static_cast<std::size_t>(t) * 6 + static_cast<std::size_t>(k)];
+        }
+      }
+    }
+  }
+
 }
 
 } // namespace rgpot

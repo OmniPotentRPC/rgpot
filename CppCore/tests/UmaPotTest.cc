@@ -260,6 +260,7 @@ static std::unordered_map<std::string, std::string> hcn_metadata() {
   return {{"task_name", "omol"},  {"charge", "0"},
           {"spin", "1"},          {"z_set", "[1, 6, 7]"},
           {"natoms", "3"},        {"counts", R"({"1": 1, "6": 1, "7": 1})"},
+          {"nedges_min", "6"},    {"nedges_max", "6"},
           {"cutoff", "10.0"},     {"label", "hcn"},
           {"model", "uma-s-1p1"}, {"torch_version", "2.13.0+cpu"}};
 }
@@ -387,9 +388,13 @@ TEST_CASE("UmaContract refuses an edge count the graph was not exported for",
       Catch::Matchers::Equals("UmaPot: input nedges is 65537, the package "
                               "was exported for [1, 65536]"));
 
-  // A package without edge metadata is not checked.
-  REQUIRE_NOTHROW(rgpot::UmaContract::fromMetadata(hcn_metadata())
-                      .checkEdges(1000000));
+  auto missing = hcn_metadata();
+  missing.erase("nedges_min");
+  missing.erase("nedges_max");
+  REQUIRE_THROWS_WITH(
+      rgpot::UmaContract::fromMetadata(missing),
+      Catch::Matchers::ContainsSubstring("nedges") &&
+          Catch::Matchers::ContainsSubstring("absent"));
 }
 
 TEST_CASE("UmaContract checks z_set alone for packages without counts",
@@ -397,6 +402,8 @@ TEST_CASE("UmaContract checks z_set alone for packages without counts",
   auto legacy = hcn_metadata();
   legacy.erase("counts");
   legacy.erase("natoms");
+  legacy["nedges_min"] = "6";
+  legacy["nedges_max"] = "6";
   const auto c = rgpot::UmaContract::fromMetadata(legacy);
   REQUIRE_FALSE(c.counts.has_value());
   REQUIRE_FALSE(c.natoms.has_value());
@@ -407,9 +414,8 @@ TEST_CASE("UmaContract checks z_set alone for packages without counts",
   const std::vector<int> hhcn{1, 6, 7, 1};
   REQUIRE_NOTHROW(c.checkSystem(hhcn.size(), hhcn.data()));
 
-  const auto none = rgpot::UmaContract::fromMetadata({});
-  REQUIRE_NOTHROW(none.checkConfig(rgpot::UmaConfig{}));
-  REQUIRE_NOTHROW(none.checkSystem(hcno.size(), hcno.data()));
+  REQUIRE_THROWS_WITH(rgpot::UmaContract::fromMetadata({}),
+                      Catch::Matchers::ContainsSubstring("nedges"));
 }
 
 TEST_CASE("UmaPot refuses a charge, spin or composition the package lacks",
@@ -471,6 +477,8 @@ TEST_CASE("UmaPot Baker HCN matches ASE FAIRChem omol", "[UmaPot][omol]") {
   (void)variance;
 
   std::printf("backend=UmaPot\n");
+  std::printf("pos_dtype=%s model_dtype=%s\n", pot.posDtypeName(),
+              pot.modelDtypeName());
   std::printf("model=%s\n", model.c_str());
   std::printf("energy=%.17g\n", energy);
   double max_df = 0.0;

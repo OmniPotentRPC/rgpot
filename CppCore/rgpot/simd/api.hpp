@@ -27,6 +27,11 @@ const char *runnable_target_name(int index);
 
 double lj_force(const PairView &view, const LjParams &params, double *F,
                 double strain[6]);
+
+/// Same kernel as lj_force, limited to atoms in `[begin, end)`. One thread
+/// keeps calling lj_force so the pair order does not change.
+double lj_force_span(const PairView &view, const LjParams &params, double *F,
+                     double strain[6], std::size_t begin, std::size_t end);
 double morse_force(const PairView &view, const MorseParams &params, double *F,
                    double strain[6]);
 void eam_force(long n, const double *R, const EamAtom *atoms, const double *box,

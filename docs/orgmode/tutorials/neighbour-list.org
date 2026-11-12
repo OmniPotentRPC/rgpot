@@ -1,0 +1,154 @@
+#+TITLE: Neighbour lists
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Neighbour lists
+
+The public neighbour query is one mental model in C++, C and Cap'n Proto.
+Positions and the cutoff share a length unit.
+The library does not convert.
+The cell is nine doubles, lattice vectors as rows, the same order as an ASE cell
+written row-major.
+A pair vector is =r_j - r_i + S H=.
+An atom is never paired with itself at shift zero.
+
+A pair list is a half shell or a full shell.
+A cluster of four is a different type and stores the full interaction set.
+A request cannot be both.
+=build= and =Builder= store the pairs.
+=Walk= streams them.
+There is no mode that returns an empty table because the machine looked short of
+memory.
+
+The compiled copies of these programs are
+=CppCore/examples/nlist_lj.cc=, =nlist_threebody.cc=,
+=nlist_metatomic.cc=, =nlist_c.c=, =nlist_batch.cc=, =nlist_verlet.c=,
+=nlist_stream.cc= and =nlist_rust/main.rs=.
+
+** A half-list pair potential
+
+The default query is a half shell, a strict cutoff (=distance < cutoff=) and
+periodic boundaries.
+At the Lennard-Jones minimum the half list holds one pair and the energy is -1.
+
+#+begin_src cpp
+rgpot::nlist::Query query;
+query.cutoff = 2.5;
+rgpot::nlist::Table table;
+rgpot::nlist::build(table, positions, n, box, query);
+rgpot::nlist::View pairs = table.view();
+for (std::size_t k = 0; k < pairs.first.size(); ++k) {
+  const double sr = 1.0 / pairs.distance[k];
+  const double sr2 = sr * sr;
+  const double sr6 = sr2 * sr2 * sr2;
+  energy += 4.0 * (sr6 * sr6 - sr6);
+}
+#+end_src
+
+=pairs= is a set of spans.
+It is invalidated by the next =update= of that table.
+=Builder= keeps the table while every atom has moved by at most half the skin.
+
+** A three-body angle
+
+Ask for a full shell and read the vectors out of one atom.
+Two orthogonal bonds give a dot product of zero.
+The same columns feed a Stillinger-Weber or Tersoff loop.
+A cluster of four is =query.shape = rgpot::nlist::Cluster4{}=.
+The mask uses the low four bits.
+The vector and the distance belong to the lowest set bit.
+
+** What metatomic copies
+
+Metatomic wants five label columns and a vector array of shape =(pairs, 3)=.
+Leave distances off and copy only the labels.
+The vectors stay in the table.
+
+#+begin_src cpp
+query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Full};
+query.cut = rgpot::nlist::Cut::Strict;
+query.fields.distances = false;
+#+end_src
+
+** C, without C++
+
+Call =rgpot_nlist_request_init= before setting the cutoff.
+A zeroed request is an abi error, not a nonperiodic list.
+=bytes= is the size of the struct the caller compiled.
+New fields, if any, are appended.
+The result is the same columns, in caller-owned arrays.
+A null result pointer reports the size.
+A short buffer returns =RGPOT_NLIST_SHORT= and =rgpot_nlist_strerror= names it.
+A cluster with =shell= left at half returns =RGPOT_NLIST_SHAPE=.
+
+#+begin_src c
+rgpot_nlist_request request;
+rgpot_nlist_request_init(&request);
+request.cutoff = 2.5;
+request.want_shifts = 0;
+request.want_vectors = 0;
+rgpot_nlist_soa soa;
+soa.bytes = sizeof soa;
+soa.first = first;
+soa.second = second;
+soa.distance = distance;
+soa.cap = needed;
+int32_t rc = rgpot_nlist_build(positions, n, box, &request, &soa, &count, &needed);
+#+end_src
+
+The walk borrows =positions= and =box= until =rgpot_nlist_walk_close=.
+=rgpot_nlist_walk_pull= writes the caller arrays.
+It does not allocate a second copy.
+
+A Rust caller uses the same header.
+=CppCore/examples/nlist_rust/main.rs= is hand-written.
+It does not run bindgen.
+
+** A stream in another process
+
+=Potential.neighbours= takes a =NeighborRequest= and returns one =NeighborList=.
+=cursor= is the pair index this chunk starts at.
+=limit= is the maximum pairs in the reply.
+The reply sets =more= and =next=.
+The client sends =next= back as =cursor= until =more= is false.
+=status= 0 is success.
+=message= is a sentence otherwise, and the lists are empty.
+
+=nlist_stream= is a client and a server in two processes on one socket.
+The server slices a stored list.
+The client checks each chunk against a build of the same geometry.
+
+** Threads
+
+Distinct =Table=, =Builder= and =Walk= objects may be used from different
+threads.
+One object is not shared.
+=build= may start an OpenMP team when =OMP_NUM_THREADS= is set and the system
+has at least 8192 atoms.
+A smaller system stays on the calling thread.
+Do not call =build= from inside an OpenMP region.
+There is no mutable global.
+=rgpot_nlist_strerror= returns a literal.
+
+** Several systems
+
+Systems that do not interact are one =Systems= value: concatenated positions, a
+count per system and a box per system.
+=build= into a =Batch= returns pairs whose indices address that concatenation,
+and =system= says which system owns each pair.
+=rgpot_nlist_build_systems= and =NeighborRequest.systems= are the same call.
+
+** A skin in C
+
+A positive skin with a strict cut is rejected.
+The list would have no buffer.
+=rgpot_nlist_builder_open= / =update= / =close= keep the list and set =reused=
+while every atom has moved by at most half the skin.
+=nlist_verlet.c= is that loop.
+
+** Where the design came from
+
+=docs/neighbour_api_design.md= records the survey of vesin, JAX-MD, LAMMPS,
+ArborX, matscipy, ASE, freud and torch-nl, and the passes that produced this
+surface.
+=docs/neighbour_layer.md= records the kernel the classical potentials still use.

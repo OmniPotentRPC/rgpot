@@ -20,6 +20,7 @@
 
 #include "rgpot/Potential.hpp"
 #include "rgpot/nlist/HalfShell.hpp"
+#include "rgpot/nlist/Neighbours.hpp"
 
 namespace rgpot {
 
@@ -48,13 +49,19 @@ public:
 
   StillingerWeberSi();
 
-  [[nodiscard]] PotCaps caps() const noexcept override { return {}; }
+  [[nodiscard]] PotCaps caps() const noexcept override {
+    return {.reentrancy = Reentrancy::PerInstance};
+  }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
     return m_paramsKey;
   }
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
+
+  /// Auto, Stored and Stream all use the shared neighbour layer. One
+  /// thread agrees with the old ordered walk to within 1e-12.
+  void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
   /**
    * @brief Energy and dE/dx for one configuration.
@@ -98,6 +105,8 @@ private:
                 nlist::NeighborList *neighbors) const;
 
   uint64_t m_paramsKey{0};
+  nlist::Mode mode_ = nlist::Mode::Auto;
+  mutable nlist::Neighbours neighbours_;
 };
 
 } // namespace rgpot

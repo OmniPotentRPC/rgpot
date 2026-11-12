@@ -35,7 +35,8 @@ named child `Potential` objects. The parser is vendored OpenMM Lepton;
 there is no pixi muparser feature and no `PotentialConfig.expr` arm.
 
 In-process `LJPot` vs pyeonclient `Matter` on the same LJ fixture is
-`scripts/time_lj_rgpot_vs_pyeonclient.py` (rg.terra). On rg.terra
+`scripts/time_lj_rgpot_vs_pyeonclient.py` (on a host listed in
+`RGPOT_REGEN_HOSTS`). On workstation-a
 (2026-09-04, 1e6 calls) A (`LJPot::operator()`) was 31-33 ns/call and
 B (in-process pyeonclient `Matter.forces`, not potserv) was 687 to 791
 ns/call. `XcKernel` is not a `Potential` and is not part of that race.
@@ -44,6 +45,12 @@ See `docs/orgmode/howto/exprpot.org`.
 The public wire schema lives in `CppCore/rgpot/rpc/Potentials.capnp` and is
 shared by the C++ server, Python integration tests, and the Rust core crate.
 Native rgpot units are eV and Angstrom.
+EAM, Lennard-Jones, Sutton-Chen, Stillinger-Weber, Tersoff, Morse and
+ZBL share one neighbour layer, with a stored Verlet list or a streaming
+cell walk.
+With `OMP_NUM_THREADS` unset, the energy and forces match the previous
+one-thread result bit for bit. A set thread count stays within a relative
+tolerance of 1e-9. See `docs/neighbour_layer.md`.
 RPC clients may request compatible units through `ForceInput.lengthUnit` and
 `ForceInput.energyUnit`.
 
@@ -341,9 +348,29 @@ The root README is generated from `readme_src.org`.
 Project documentation sources live under `docs/orgmode/`.
 
 
+## Contact
+
+Ask questions, report bugs and suggest features on the [issue tracker][issues].
+Report security vulnerabilities privately, following [SECURITY.md][security].
+Do not open a public issue for them.
+The development setup is on the [contributing pages][contributing].
+Every contributor follows the [Code of Conduct][conduct].
+
+[issues]: https://github.com/OmniPotentRPC/rgpot/issues
+[security]: https://github.com/OmniPotentRPC/rgpot/blob/main/SECURITY.md
+[contributing]: https://rgpot.rgoswami.me/contributing/index.html
+[conduct]: https://github.com/OmniPotentRPC/rgpot/blob/main/CODE_OF_CONDUCT.md
+
+
 # License
 
 MIT, with backend-specific notes:
 some potentials are adapted from eOn under BSD-3-Clause terms.
 The unit expression parser in `CppCore/rgpot/units.cc` is derived from
 metatomic-torch (BSD-3-Clause, metatensor developers).
+The test tables `CppCore/tests/data/eam_table/Cu_u3.eam` and
+`CuNi.eam.alloy` are copied unchanged from LAMMPS `potentials/` at
+tag `stable_22Jul2025_update4` and are GPL-2.0 (LAMMPS).
+Their copyright notice is in `CppCore/tests/data/eam_table/NOTICE`,
+and the GPL-2.0 text is in `CppCore/tests/data/eam_table/COPYING`.
+The reader sources stay MIT.

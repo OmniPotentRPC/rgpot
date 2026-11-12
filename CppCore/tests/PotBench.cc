@@ -41,13 +41,12 @@ namespace {
 constexpr std::size_t kCellsPerSide = 5;
 constexpr std::size_t kNAtoms = 4 * kCellsPerSide * kCellsPerSide *
                                 kCellsPerSide; // 500, FCC has 4 sites per cell
-// LJPot truncates at 15 A. rgpot::nlist::PairListCache only caches when the
+// LJPot truncates at 15 A. The neighbour layer only stores a list when the
 // cutoff fits within half the smallest periodic width, so a 32 A cube keeps
 // the benchmark inside the cached regime with margin.
 constexpr double kBoxSide = 32.0;
 constexpr int kAtomicNumber = 18;
-// PairListCache holds 8 slots and matches on a per-atom displacement below
-// skin/2 = 0.5 A.
+// A warm geometry stays inside the Verlet skin.
 constexpr double kColdStride = 1.0;
 constexpr int kColdCycle = 128;
 constexpr double kWarmOffset = 500.0;

@@ -4,8 +4,10 @@
 // Sutton-Chen checks: an analytic dimer, a finite-difference force, and
 // the Doye and Wales 10-8 cluster energies.
 
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -16,6 +18,7 @@
 
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
 #include "rgpot/SuttonChen/SuttonChenScales.hpp"
+#include "rgpot/stress.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
 using Catch::Matchers::WithinAbs;
@@ -94,6 +97,93 @@ double direct_fcc_energy(const rgpot::SuttonChenConfig &cfg, double radius) {
     }
   }
   return cfg.epsilon * (0.5 * pair - cfg.c * std::sqrt(rho));
+}
+
+/// One run of the Large-scale Atomic/Molecular Massively Parallel Simulator
+/// (LAMMPS) with eam/fs, written by data/sutton_chen/make_lammps_ref.py.
+/// Stress is xx yy zz yz xz xy in eV/Angstrom^3; rows are x y z fx fy fz.
+struct LammpsRef {
+  double cutoff = 0.0, energy = 0.0, box[9] = {}, stress[6] = {};
+  std::vector<double> pos, forces;
+};
+
+LammpsRef load_lammps_ref(const std::string &name) {
+  std::ifstream in("CppCore/tests/data/sutton_chen/" + name + ".ref");
+  REQUIRE(in.good());
+  LammpsRef ref;
+  std::string key;
+  std::size_t n = 0;
+  while (in >> key) {
+    if (key == "cutoff")
+      in >> ref.cutoff;
+    else if (key == "energy")
+      in >> ref.energy;
+    else if (key == "box")
+      for (double &v : ref.box)
+        in >> v;
+    else if (key == "stress")
+      for (double &v : ref.stress)
+        in >> v;
+    else if (key == "atoms" && in >> n) {
+      for (std::size_t i = 0; i < 6 * n; ++i) {
+        double v = 0.0;
+        in >> v;
+        (i % 6 < 3 ? ref.pos : ref.forces).push_back(v);
+      }
+    } else
+      std::getline(in, key);
+  }
+  return ref;
+}
+
+/// Row-major indices of the Voigt order xx yy zz yz xz xy.
+constexpr int kVoigt[6][2] = {{0, 0}, {1, 1}, {2, 2}, {1, 2}, {0, 2}, {0, 1}};
+
+struct StressEval {
+  double energy = 0.0, stress[9] = {};
+  int has_stress = 0;
+  std::vector<double> forces;
+};
+
+/// forceImpl with the stress slots preset to 7, so an untouched tensor shows.
+StressEval eval_stress(const rgpot::SuttonChenPot &pot,
+                       const std::vector<double> &pos, const double *box) {
+  StressEval e;
+  e.forces.assign(pos.size(), 0.0);
+  rgpot::ForceOut out{};
+  out.F = e.forces.data();
+  std::fill(out.stress, out.stress + 9, 7.0);
+  pot.forceImpl(rgpot::ForceInput{pos.size() / 3, pos.data(), nullptr, box},
+                &out);
+  e.energy = out.energy;
+  std::copy(out.stress, out.stress + 9, e.stress);
+  e.has_stress = out.has_stress;
+  return e;
+}
+
+rgpot::SuttonChenPot platinum_periodic(double cutoff, bool stress) {
+  rgpot::SuttonChenConfig cfg = rgpot::sutton_chen_platinum();
+  cfg.cutoff = cutoff;
+  cfg.periodic = true;
+  cfg.stress = stress;
+  return rgpot::SuttonChenPot(cfg);
+}
+
+/// Perfect fcc crystal of cells^3 conventional cells in a cubic box.
+std::vector<double> fcc_cell(int cells, double lattice, double *box) {
+  const double basis[4][3] = {
+      {0, 0, 0}, {0.5, 0.5, 0}, {0.5, 0, 0.5}, {0, 0.5, 0.5}};
+  std::fill(box, box + 9, 0.0);
+  box[0] = box[4] = box[8] = cells * lattice;
+  std::vector<double> pos;
+  for (int i = 0; i < cells * cells * cells; ++i) {
+    for (const auto &b : basis) {
+      pos.push_back((i % cells + b[0]) * lattice);
+      pos.push_back((i / cells % cells + b[1]) * lattice);
+      pos.push_back((i / (cells * cells) + b[2]) * lattice);
+    }
+  }
+  return pos;
 }
 
 } // namespace
@@ -393,4 +483,112 @@ TEST_CASE("gold clusters relax from the rescaled platinum geometries",
     }
     REQUIRE_THAT(energy, WithinAbs(au.epsilon * e_reduced, 1e-6));
   }
+}
+
+TEST_CASE("Sutton-Chen stress is opt-in and keeps the energy and force bits",
+          "[SuttonChen][stress]") {
+  REQUIRE_FALSE(rgpot::SuttonChenConfig{}.stress);
+  const auto ref = load_lammps_ref("pt_sheared");
+  const auto plain = platinum_periodic(ref.cutoff, false);
+  const auto with = platinum_periodic(ref.cutoff, true);
+  REQUIRE_FALSE(plain.caps().stress);
+  REQUIRE(with.caps().stress);
+  REQUIRE(plain.paramsKey() != with.paramsKey());
+  const StressEval a = eval_stress(plain, ref.pos, ref.box);
+  const StressEval b = eval_stress(with, ref.pos, ref.box);
+  REQUIRE(a.has_stress == 0);
+  REQUIRE(
+      std::all_of(a.stress, a.stress + 9, [](double v) { return v == 7.0; }));
+  REQUIRE(b.has_stress == 1);
+  REQUIRE(std::memcmp(&a.energy, &b.energy, sizeof(double)) == 0);
+  REQUIRE(std::memcmp(a.forces.data(), b.forces.data(),
+                      a.forces.size() * sizeof(double)) == 0);
+  // A cluster with no cell has no volume, so no stress is reported.
+  const rgpot::SuttonChenPot cluster({.cutoff = 0.0, .stress = true});
+  const StressEval c = eval_stress(cluster, {0, 0, 0, 0.8, 0.1, 0}, nullptr);
+  REQUIRE(c.has_stress == 0);
+  REQUIRE(
+      std::all_of(c.stress, c.stress + 9, [](double v) { return v == 0.0; }));
+}
+
+TEST_CASE("Sutton-Chen stress is the strain derivative of the energy",
+          "[SuttonChen][stress]") {
+  const auto ref = load_lammps_ref("pt_sheared");
+  const auto pot = platinum_periodic(ref.cutoff, true);
+  const StressEval here = eval_stress(pot, ref.pos, ref.box);
+  const double h = 1.0e-6;
+  for (const auto &ab : kVoigt) {
+    const int a = ab[0];
+    const int b = ab[1];
+    double energy[2] = {};
+    for (int side = 0; side < 2; ++side) {
+      // Rows of the positions and the cell strain as r (I + eps), with eps
+      // symmetric and eps_ab + eps_ba = 2 h or -2 h on the diagonal.
+      const double step = (side == 0 ? h : -h) * (a == b ? 1.0 : 0.5);
+      std::vector<double> rows(ref.pos);
+      rows.insert(rows.end(), ref.box, ref.box + 9);
+      for (std::size_t r = 0; r < rows.size(); r += 3) {
+        const double ra = rows[r + a];
+        const double rb = rows[r + b];
+        rows[r + b] += step * ra;
+        if (a != b)
+          rows[r + a] += step * rb;
+      }
+      const std::vector<double> pos(rows.begin(), rows.end() - 9);
+      energy[side] = eval_stress(pot, pos, rows.data() + pos.size()).energy;
+    }
+    const double numeric =
+        (energy[0] - energy[1]) / (2.0 * h * rgpot::cellVolume(ref.box));
+    INFO("component " << a << b);
+    REQUIRE_THAT(here.stress[3 * a + b], WithinAbs(numeric, 1.0e-9));
+    REQUIRE(here.stress[3 * b + a] == here.stress[3 * a + b]);
+  }
+}
+
+TEST_CASE("Sutton-Chen stress matches LAMMPS eam/fs", "[SuttonChen][stress]") {
+  // Tables of 12501 and 50001 points give the same LAMMPS energy to
+  // 2e-12 eV, so these tolerances are not set by the table.
+  for (const char *name : {"pt_cubic", "pt_sheared"}) {
+    const auto ref = load_lammps_ref(name);
+    REQUIRE(ref.pos.size() == 3 * 108);
+    const StressEval e =
+        eval_stress(platinum_periodic(ref.cutoff, true), ref.pos, ref.box);
+    INFO(name);
+    REQUIRE(e.has_stress == 1);
+    REQUIRE_THAT(e.energy, WithinAbs(ref.energy, 1.0e-9));
+    for (std::size_t i = 0; i < e.forces.size(); ++i) {
+      REQUIRE_THAT(e.forces[i], WithinAbs(ref.forces[i], 1.0e-8));
+    }
+    for (int v = 0; v < 6; ++v) {
+      REQUIRE_THAT(e.stress[3 * kVoigt[v][0] + kVoigt[v][1]],
+                   WithinAbs(ref.stress[v], 1.0e-11));
+    }
+  }
+}
+
+TEST_CASE("Sutton-Chen pressure vanishes at the fitted lattice parameter",
+          "[SuttonChen][stress]") {
+  // Sutton and Chen's c = 34.408 is the zero-pressure value 34.408374
+  // rounded to three decimals, which leaves about 0.0015 GPa in the
+  // infinite fcc crystal at a.
+  // A truncated sum adds a tail that shrinks as the cutoff grows.
+  const double a = rgpot::sutton_chen_platinum().a;
+  double box[9];
+  double last = 1.0;
+  for (int cells : {4, 6, 8}) {
+    const StressEval e = eval_stress(platinum_periodic(0.49 * cells * a, true),
+                                     fcc_cell(cells, a, box), box);
+    INFO("cells " << cells);
+    for (int k = 0; k < 9; ++k) {
+      REQUIRE_THAT(e.stress[k],
+                   WithinAbs(k % 4 == 0 ? e.stress[0] : 0.0, 1e-12));
+    }
+    REQUIRE(std::abs(e.stress[0]) < last);
+    last = std::abs(e.stress[0]);
+  }
+  const double squeezed = eval_stress(platinum_periodic(0.49 * 8 * a, true),
+                                      fcc_cell(8, 0.99 * a, box), box)
+                              .stress[0];
+  REQUIRE(squeezed < 0.0);
+  REQUIRE(last < 1.0e-3 * std::abs(squeezed));
 }
