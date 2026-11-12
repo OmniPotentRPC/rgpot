@@ -25,14 +25,20 @@ EOF
 then
   omp_flag=-fopenmp
 fi
+# Coverage builds instrument the archives. The shared library has to pull
+# the gcov runtime or the loader cannot resolve __gcov_init.
+gcov_flag=
+if nm "$half" 2>/dev/null | grep -q __gcov_init; then
+  gcov_flag=--coverage
+fi
 dir=$(mktemp -d)
 if [ "$(uname -s)" = Darwin ]; then
   "$cxx" -shared -o "$dir/libnlist.dylib" \
     -Wl,-force_load,"$half" -Wl,-force_load,"$mini" -Wl,-force_load,"$fma" \
-    $omp_flag
+    $omp_flag $gcov_flag
 else
   "$cxx" -shared -o "$dir/libnlist.so" -Wl,--whole-archive "$half" "$mini" "$fma" \
-    -Wl,--no-whole-archive $omp_flag
+    -Wl,--no-whole-archive $omp_flag $gcov_flag
 fi
 out=$(mktemp)
 "$rustc_bin" --edition 2021 "$root/CppCore/examples/nlist_rust/main.rs" -o "$out" \

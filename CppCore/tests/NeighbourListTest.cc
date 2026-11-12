@@ -576,13 +576,20 @@ TEST_CASE("eight threads match the serial list", "[nlist][api]") {
   rgpot::nlist::Query query;
   query.cutoff = 5.0;
   query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Half};
-  setenv("OMP_NUM_THREADS", "1", 1);
+  auto setThreads = [](const char *value) {
+#if defined(_WIN32)
+    _putenv_s("OMP_NUM_THREADS", value);
+#else
+    setenv("OMP_NUM_THREADS", value, 1);
+#endif
+  };
+  setThreads("1");
   rgpot::nlist::Table serial;
   rgpot::nlist::build(serial, pos.data(), pos.size() / 3, box, query);
-  setenv("OMP_NUM_THREADS", "8", 1);
+  setThreads("8");
   rgpot::nlist::Table threaded;
   rgpot::nlist::build(threaded, pos.data(), pos.size() / 3, box, query);
-  setenv("OMP_NUM_THREADS", "1", 1);
+  setThreads("1");
   REQUIRE(pos.size() / 3 >= 8192);
   REQUIRE(serial.size() == threaded.size());
   REQUIRE(from_table(serial) == from_table(threaded));
