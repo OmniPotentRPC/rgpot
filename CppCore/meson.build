@@ -229,6 +229,11 @@ if not get_option('with_rpc_client_only')
     subdir('rgpot/EAM')  # 'eam_cell'
     rgpotentials += [eam_cell]
 
+    if has_eam_table
+        subdir('rgpot/EAMTable')  # 'eam_table'
+        rgpotentials += [eam_table]
+    endif
+
     if has_water
         subdir('rgpot/Water')  # 'water_pots'
         rgpotentials += [water_pots]
@@ -846,6 +851,16 @@ if get_option('with_tests')
         if has_water
             test_array += [
                 ['WaterPotTest', 'water_pot_test', 'WaterPotTest.cc', ''],
+            ]
+        endif
+        if has_eam_table
+            test_array += [
+                [
+                    'EAMTablePotTest',
+                    'eam_table_pot_test',
+                    'EAMTablePotTest.cc',
+                    '',
+                ],
             ]
         endif
     endif
@@ -1840,7 +1855,14 @@ if get_option('with_tests')
         # sums then miss by an ulp. ReducedPair.cc is built unfused, and
         # its test compares exactly against the same expressions.
         case_args = test_args
-        if test.get(2) in ['FastNlistTest.cc', 'ReducedPairTest.cc']
+        if test.get(2) in [
+            'FastNlistTest.cc',
+            'ReducedPairTest.cc',
+            'EAMCellVerletTest.cc',
+            'StreamParityTest.cc',
+            'NeighbourLayerTest.cc',
+            'TersoffSiCTest.cc',
+        ]
             case_args += cppc.get_supported_arguments(
                 ['-ffp-contract=off', '/fp:precise'],
             )
@@ -1855,11 +1877,18 @@ if get_option('with_tests')
             link_language: 'cpp',
             build_rpath: _metatomic_build_rpath,
         )
+        _timeout = 30
+        if test.get(0) == 'StreamParityTest'
+            _timeout = 900
+        elif test.get(0) == 'SuttonChenPotTest'
+            # Two cluster relaxations, up to 2000 force calls each.
+            _timeout = 120
+        endif
         test(
             test.get(0),
             _test_exe,
             workdir: meson.source_root() + test.get(3),
-            timeout: test.get(0) == 'StreamParityTest' ? 900 : 30,
+            timeout: _timeout,
         )
         if test.get(1) == 'calculator_group_test'
             calculator_group_test_exe = _test_exe
@@ -2593,6 +2622,9 @@ if not meson.is_subproject()
         endif
         if has_water
             _pc_cflags += ['-DRGPOT_HAS_WATER=TRUE']
+        endif
+        if has_eam_table
+            _pc_cflags += ['-DRGPOT_HAS_EAM_TABLE=TRUE']
         endif
         if has_metatomic
             _pc_cflags += ['-DRGPOT_HAS_METATOMIC_POT=TRUE']

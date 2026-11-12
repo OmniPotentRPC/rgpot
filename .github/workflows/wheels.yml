@@ -411,7 +411,7 @@ jobs:
       # meson-python runs setup for the sdist; -Dwith_dftd4 pulls the
       # wrap, which needs gfortran and OpenBLAS (lapack=openblas).
       - name: OpenBLAS for the dftd4 wrap
-        run: sudo apt-get update && sudo apt-get install -y gfortran libopenblas-dev pkg-config
+        run: bash ci/gha/apt-install.sh gfortran libopenblas-dev pkg-config
       # pipx's cache under /opt hits the runner's disk quota on the
       # Ubuntu 26.04 image; a venv in the runner's temp dir does not.
       - name: Build sdist
