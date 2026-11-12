@@ -87,6 +87,12 @@ option(
     description: 'i-PI socket server Potential (POSIX sockets). auto is on except on Windows.',
 )
 option(
+    'with_orca',
+    type: 'feature',
+    value: 'auto',
+    description: 'ORCA energy and gradient via a subprocess. auto is on except on Windows.',
+)
+option(
     'with_water',
     type: 'boolean',
     value: false,

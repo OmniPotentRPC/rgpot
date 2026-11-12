@@ -1,8 +1,25 @@
-diff --git a/Potentials.capnp b/Potentials.capnp
-index 5884f27..61c4e96 100644
---- a/Potentials.capnp
-+++ b/Potentials.capnp
-@@ -2475,6 +2475,41 @@ struct NWChemCdftSpec {
+--- a/Potentials.capnp	2026-11-12 04:19:10.168142227 +0000
++++ b/Potentials.capnp	2026-11-12 04:19:10.172142286 +0000
+@@ -25,6 +25,8 @@
+   charge @6 :Int32 = 0;             # @brief Per-step charge when hasCharge is true.
+   hasMultiplicity @7 :Bool = false; # @brief Override NWChemParams.multiplicity for this step.
+   multiplicity @8 :Int32 = 1;       # @brief Per-step spin multiplicity when hasMultiplicity is true.
++  # Optional. Old clients leave it unset and no neighbour list is returned.
++  neighbors @9 :NeighborRequest;
+ }
+ 
+ # @struct PotentialResult
+@@ -59,6 +61,9 @@
+   mdTrajectoryRow @25 :List(Float64); # MD ENERGY row incl. EKINC when MD ran
+   mdTrajectoryValid @26 :Bool = false;
+   embedMdPropsSkipped @27 :Bool = true; # true when MD/PROP not harvested this eval (honest skip)
++  # Present only when ForceInput.neighbors was set. A stream is one chunk;
++  # more is true when the client should ask again with the same query.
++  neighborList @28 :NeighborList;
+ }
+ 
+ # @struct Capabilities
+@@ -2499,6 +2504,58 @@
    }
  }
  
@@ -41,6 +58,99 @@ index 5884f27..61c4e96 100644
 +  }
 +}
 +
++# @struct OrcaParams
++# @brief ORCA energy and gradient (`! EnGrad`) run as a subprocess.
++#
++# Positions on ForceInput stay Angstrom. The engine returns eV and
++# eV/Angstrom. `executable` empty means the ORCA_EXE environment variable,
++# then an `orca` binary on PATH. `keywords` are extra simple-input tokens.
++# Text after the first newline is written after the `!` line and before
++# the coordinate block.
++struct OrcaParams {
++  method       @0 :Text = "HF";
++  basis        @1 :Text = "def2-SVP";
++  charge       @2 :Int32 = 0;
++  multiplicity @3 :Int32 = 1;
++  keywords     @4 :Text = "";
++  executable   @5 :Text = "";
++}
++
  # @struct PotentialConfig
  # @brief **rgpot user parameters (extensible, in/out via Cap'n Proto only).**
  #
+@@ -2517,8 +2574,9 @@
+     cpmd      @2 :CPMDParams;   # CPMDPot / potserv ... OpenCPMD
+     metatomic @4 :MetatomicParams; # MetatomicPot (torch ML models)
+     lammps    @5 :LammpsParams;    # lammpc dynlib shim (LAMMPS library API)
+-    # xtb       @6 :XTBParams;
+-    # tblite    @7 :TBLiteParams;
++    orca      @6 :OrcaParams; # ORCA subprocess EnGrad.
++    # xtb       @7 :XTBParams;
++    # tblite    @8 :TBLiteParams;
+   }
+   # Normalized overlay applied BEFORE the native arm; native settings win.
+   common @3 :CommonMethodSpec;
+@@ -2580,4 +2638,63 @@
+   # @return The protocol, schema, eindir bridge, DLPack and build identity.
+   # buildVersion and buildRevision are empty when the build does not know them.
+   getCapabilities @12 () -> (capabilities :Capabilities);
++
++  # One chunk of a neighbour query. The whole list is not required on the wire.
++  # The client sends NeighborRequest.cursor and repeats the call while
++  # NeighborList.more is true, passing NeighborList.next back as the next cursor.
++  neighbours @13 (fip :ForceInput, request :NeighborRequest) -> (neighbors :NeighborList);
++}
++
++# Neighbour query. The same columns as rgpot::nlist::Query and rgpot_nlist_soa.
++# format: 0 half pairs, 1 full pairs, 2 cluster of four. A cluster is the full
++# interaction set. There is no half cluster, because format is one field.
++# cut: 0 strict (distance < cutoff), 1 loose (distance < cutoff + skin,
++# or distance <= cutoff when skin is 0).
++# mode: 1 one stored chunk, 2 a stream that honours cursor and limit.
++# 0 is not a mode. cursor is the pair index this chunk starts at.
++# limit is the maximum pairs in the reply. 0 means 4096 on a stream.
++# periodic empty means every axis is periodic. Box rows are the lattice vectors.
++struct NeighborRequest {
++  cutoff @0 :Float64;
++  skin @1 :Float64 = 0;
++  format @2 :UInt8 = 0;
++  cut @3 :UInt8 = 0;
++  periodic @4 :List(Bool);
++  shifts @5 :Bool = true;
++  vectors @6 :Bool = true;
++  distances @7 :Bool = true;
++  mode @8 :UInt8 = 1;
++  cursor @9 :UInt64 = 0;
++  limit @10 :UInt32 = 0;
++  # Empty for one system. Each entry is a system that does not interact
++  # with the others. Positions are concatenated in the same order, and
++  # NeighborList.first indexes that concatenation. NeighborList.system
++  # is the system of each pair.
++  systems @11 :List(NeighborSystem);
++}
++
++struct NeighborSystem {
++  count @0 :UInt32;
++  box @1 :List(Float64);
++}
++
++# One chunk. first and second have the same length. shift has 3 times that
++# length when shifts were requested, vector has 3 times that length, distance
++# has that length. mask is one byte per pair, 0xff for a pair list and the
++# low four bits for a cluster. more is true when a later chunk exists.
++# next is the cursor to send for that chunk. status 0 is success. message
++# is a sentence when status is not 0. The lists are empty in that case.
++struct NeighborList {
++  first @0 :List(Int32);
++  second @1 :List(Int32);
++  shift @2 :List(Int32);
++  vector @3 :List(Float64);
++  distance @4 :List(Float64);
++  mask @5 :List(UInt8);
++  more @6 :Bool = false;
++  next @7 :UInt64 = 0;
++  status @8 :Int32 = 0;
++  message @9 :Text;
++  # System id of each pair. Empty when the request named one system.
++  system @10 :List(Int32);
+ }
