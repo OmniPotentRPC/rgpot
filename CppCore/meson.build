@@ -2411,6 +2411,19 @@ if get_option('with_tests')
             build_rpath: _metatomic_build_rpath,
             install: false,
         )
+        # Warm versus cold GFN2 single points on (H2O)16 and (H2O)20.
+        # Not a default test: the timed run is serial, under hostname bench.
+        xtb_warm_bench = executable(
+            'xtb_warm_bench',
+            sources: ['tests/xtb_warm_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
     else
         if not get_option('with_rpc_client_only')
             # The dlopen frontend is in librgpot whether or not with_xtb

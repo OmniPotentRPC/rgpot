@@ -19,6 +19,13 @@ struct XTBConfig {
   double charge = 0.0;
   /** Number of unpaired electrons (libxtb uhf; multiplicity 2 => uhf 1). */
   int uhf = 0;
+  /**
+   * Largest atom move, in Angstrom, that still reuses the previous SCC
+   * wavefunction as the next guess. A larger move drops the results
+   * object, and the next single point uses xtb's own guess. Zero or a
+   * negative value disables reuse.
+   */
+  double warm_move = 1.0;
 };
 
 /** Optional engine path for the dlopen frontend (also RGPOT_XTB_ENGINE). */

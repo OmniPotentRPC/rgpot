@@ -28,7 +28,7 @@ Contract tests care about:
 |--------------|--------|
 | Create | `xtb_newEnvironment` / `newCalculator` / `newResults` (+ `xtb_releaseOutput`) |
 | First geometry | `xtb_newMolecule` + `xtb_loadGFN*xTB` |
-| Updates | `xtb_updateMolecule` then `xtb_singlepoint` |
+| Updates | `xtb_updateMolecule` then `xtb_singlepoint`, reusing the results object inside `warm_move` |
 | Destroy | `xtb_del*` in reverse order |
 | Units | host Å/eV; API Bohr/Hartree (converted in pot) |
 
@@ -108,3 +108,29 @@ bash scripts/run_xtb_backend_bench.sh --out-dir /path/to/scratch
 See `scripts/compare_xtb_backends.py` for flags. Protocol: shared water GFN2
 geometry, warmup force calls, then timed samples; report mean wall ms and
 whether dlopen is as-fast-or-faster than eOn linked ship (5% band).
+
+## Wavefunction reuse
+
+`XTBPot` and `XTBDlopen` keep one calculator. The SCC wavefunction in the
+results object is the next guess while no atom moves by more than
+`XTBConfig::warm_move` angstroms. The default is 1. `reset()`, a larger
+move, or a new composition drops that object, and the next single point
+uses xtb's own guess. `reusedWavefunction()` reports which guess the last
+successful call used. `setWarmMove` changes the guard on a live handle.
+Zero and negative values disable reuse.
+
+```c
+void rgpot_xtb_reset(RgpotXtbPot *pot);
+void rgpot_xtb_set_warm_move(RgpotXtbPot *pot, double angstrom);
+double rgpot_xtb_warm_move(const RgpotXtbPot *pot);
+int rgpot_xtb_reused_wavefunction(const RgpotXtbPot *pot);
+```
+
+`xtb_warm_bench` times that warm step against a cold guess on (H2O)16 and
+(H2O)20. It is built next to `xtb_backend_bench`. The comparison is serial:
+
+```bash
+sudo unshare --uts bash -c 'hostname bench && \
+  OMP_NUM_THREADS=1 taskset -c 0 \
+  ./bbdir-xtb/CppCore/xtb_warm_bench --repeats 6'
+```
