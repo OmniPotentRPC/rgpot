@@ -1,0 +1,131 @@
+#+TITLE: Tabulated EAM and Finnis-Sinclair potentials
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+
+* Tabulated EAM and Finnis-Sinclair potentials
+
+=EAMTablePot= reads an embedded atom method (EAM) potential from a DYNAMO table
+and evaluates
+
+#+begin_example
+E = sum_i F_a(rho_i) + sum_{i<j} phi_ab(r_ij)
+rho_i = sum_{j != i} rho_ab(r_ij)
+#+end_example
+
+where a is the element of atom i, b is the element of atom j, and =rho_ab= is
+the density a b neighbor puts at an a site.
+The three layouts are those of the =pair_eam= page of the Large-scale
+Atomic/Molecular Massively Parallel Simulator (LAMMPS),
+https://docs.lammps.org/pair_eam.html.
+
+| =EAMTableFormat= | LAMMPS style      | Suffix        | Arrays                                 |
+|------------------+-------------------+---------------+----------------------------------------|
+| =Funcfl=         | =eam=             | =.eam=        | F(rho), Z(r), rho(r), one element      |
+| =Setfl=          | =eam/alloy=       | =.eam.alloy=  | F_a(rho), rho_b(r), r phi_ab(r)        |
+| =FinnisSinclair= | =eam/fs=          | =.eam.fs=     | F_a(rho), rho_ab(r), r phi_ab(r)       |
+
+A =Setfl= density depends only on the neighbor, so ~rho_ab = rho_b~.
+The =FinnisSinclair= layout carries a density for each ordered pair of elements.
+It is the form of Finnis and Sinclair, Philosophical Magazine A 50, 45 (1984).
+Section b of an =.eam.fs= file lists F_b and then ~rho_1b~ to ~rho_Nb~, the
+density b puts at a site of each element in turn.
+
+The potential is opt-in.
+Meson builds it with =-Dwith_eam_table=true= and CMake with
+=-DRGPOT_WITH_EAM_TABLE=ON=.
+Both define =RGPOT_HAS_EAM_TABLE=.
+The default build has no new object and no new symbol.
+
+#+begin_src cpp
+#include "rgpot/EAMTable/EAMTablePot.hpp"
+
+rgpot::EAMTablePot pot({.path = "CuNi.eam.alloy",
+                        .format = rgpot::EAMTableFormat::Setfl,
+                        .periodic = true,
+                        .stress = true});
+#+end_src
+
+=read_eam_table= parses a stream into an =EAMTable=, and a second constructor
+takes that table directly.
+
+* Agreement with LAMMPS
+
+The tables go through the steps of =src/MANYBODY/pair_eam.cpp=, so a file gives
+the LAMMPS energy and forces to rounding.
+
+- A =Funcfl= file is resampled by four-point Lagrange interpolation onto
+  =lround((N - 1) d / d)= points, one fewer than the file lists, as
+  =PairEAM::file2array= does for a single file.
+- The pair term of a =Funcfl= file is ~r phi = 27.2 * 0.529 * Z(r)^2~ in eV
+  Angstrom.
+  27.2 is the Hartree in eV and 0.529 the Bohr radius in Angstrom, the rounded
+  values LAMMPS uses.
+- Each array becomes the seven-coefficient cubic of =PairEAM::interpolate=.
+  Its slopes are five-point central differences inside the table, three-point
+  central differences at the second and second-to-last points, and one-sided
+  differences at the ends.
+- Above ~rhomax = (Nrho - 1) drho~ of the file, the energy adds
+  ~F'(rho) (rho - rhomax)~ with the slope at the last table point.
+  Above the last distance point, both the value and the slope are those at the
+  end of the table.
+- A pair counts when r is below the cutoff on the grid line.
+
+Two choices differ from LAMMPS.
+An atom picks its element by atomic number, matched against the first field of
+each element line, where LAMMPS maps types to the element names on line 4.
+A file whose element lines do not carry atomic numbers cannot be used as it is.
+Only one =Funcfl= file is read, so the LAMMPS mixing of several =.eam= files is
+not available.
+The =eam/he= and =eam/cd= layouts are not read.
+
+Periodic evaluation keeps one image of each partner, so it needs the cutoff
+under half of every face spacing of the cell.
+The constructor accepts any table.
+=forceImpl= throws =std::invalid_argument= for a smaller cell, for a periodic
+call without a cell, and for an atomic number that is in no element line.
+
+* Stress
+
+=EAMTableConfig::stress= is off by default.
+When it is set, =forceImpl= writes the Cauchy stress ~sigma = (1/V) dE/dstrain~
+of =stress.hpp= and sets =has_stress=.
+The force pass adds ~-fscale * d d^T~ for each pair, as =SuttonChenPot= does,
+because the embedding term enters fscale through F'.
+With the flag clear, the stress slots and =has_stress= are left as the caller
+set them, and the energy and forces are the same bits.
+Setting the flag changes =paramsKey()=.
+
+* Checks
+
+=EAMTablePotTest= compares rgpot with LAMMPS version 22 Jul 2025.
+=CppCore/tests/data/eam_table/make_lammps_ref.py= writes two references from
+files in the LAMMPS =potentials= directory, copied unchanged.
+
+- =Cu_u3.eam=, a =Funcfl= file for copper from Foiles, Baskes and Daw, Physical
+  Review B 33, 7983 (1986).
+  It has 500 points in rho and in r and a cutoff of 4.95 Angstrom.
+- =CuNi.eam.alloy=, a =Setfl= file for copper and nickel from Onat and
+  Durukanoglu, Journal of Physics: Condensed Matter 26, 035404 (2014).
+  It has 500 points in rho and in r and a cutoff of 6.394332378 Angstrom.
+
+The =Cu_u3= case is a jittered 108-atom fcc copper cell in a cubic box.
+The =CuNi= case is a jittered 256-atom fcc cell in a sheared box, with nickel or
+copper at random on each site.
+A third case takes the Sutton-Chen platinum row as LAMMPS saw it.
+=CppCore/tests/data/sutton_chen/make_lammps_ref.py= writes that row as a
+50001-point =eam/fs= table, and the case compares with its cubic reference.
+
+| Case           | LAMMPS style | energy gap (eV) | largest force gap (eV/Angstrom) | largest stress gap (eV/Angstrom^3) |
+|----------------+--------------+-----------------+---------------------------------+------------------------------------|
+| =Cu_u3= cubic  | =eam=        |         2.3e-12 |                         8.1e-15 |                            7.3e-17 |
+| =CuNi= sheared | =eam/alloy=  |         3.1e-12 |                         1.7e-14 |                            1.5e-16 |
+| Pt cubic       | =eam/fs=     |         1.7e-12 |                         5.1e-12 |                            1.0e-14 |
+
+The test asks for 1e-10 eV, 1e-10 eV/Angstrom and 1e-13 eV/Angstrom^3.
+The test rebuilds the Sutton-Chen table in C++ from the formulas of that script
+rather than reading a file.
+
+A two-element =eam/fs= table of constants checks the order of the density
+blocks.
+The A-A, A-B and B-B dimers give -2, -11 and -28 in the documented order.
+Reading the sections or the blocks inside a section the other way round changes
+at least one of them.

@@ -84,6 +84,12 @@ if has_water
     _args += ['-DRGPOT_HAS_WATER=TRUE']
 endif
 
+# Tabulated EAM / Finnis-Sinclair files. Off unless asked for.
+has_eam_table = get_option('with_eam_table')
+if has_eam_table
+    _args += ['-DRGPOT_HAS_EAM_TABLE=TRUE']
+endif
+
 rpc_enabled = get_option('with_rpc') or get_option('with_rpc_client_only')
 
 if get_option('with_rpc_client_only')
