@@ -49,14 +49,20 @@ case "$os" in
   MINGW*|MSYS*|CYGWIN*)
     # cl rejects -Wl,--whole-archive. link.exe pulls every object; the
     # import library is nlist.lib, which rustc's -lnlist finds.
-    export MSYS_NO_PATHCONV=1
-    export MSYS2_ARG_CONV_EXCL='*'
+    # Path conversion stays on for rustc. Only the link.exe line opts out,
+    # or Git bash rewrites /WHOLEARCHIVE. rustc is a Windows binary and
+    # creates its metadata dir from TMP; an MSYS /tmp does not exist there.
     whalf=$(cygpath -w "$half")
     wmini=$(cygpath -w "$mini")
     wfma=$(cygpath -w "$fma")
     wdir=$(cygpath -w "$dir")
-    link.exe /nologo /DLL "/OUT:${wdir}\\nlist.dll" \
+    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
+      link.exe /nologo /DLL "/OUT:${wdir}\\nlist.dll" \
       "/WHOLEARCHIVE:${whalf}" "/WHOLEARCHIVE:${wmini}" "/WHOLEARCHIVE:${wfma}"
+    TMP="$wdir"
+    TEMP="$wdir"
+    TMPDIR="$wdir"
+    export TMP TEMP TMPDIR
     ;;
   *)
     "$cxx" -shared -o "$dir/libnlist.so" -Wl,--whole-archive "$half" "$mini" "$fma" \
