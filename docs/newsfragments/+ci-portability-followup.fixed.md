@@ -5,3 +5,5 @@ ThreadSanitizer leaves the FMA resolver units uninstrumented so the extension ca
 The macOS wheel links libgfortran from the path the compiler reports.
 The socket neighbour example is built only where POSIX processes exist.
 The ISA audit names the hardware Lennard-Jones span.
+The stream scaling bench is too: it forks a child per row.
+The Sutton-Chen cluster relaxation is allowed 120 seconds.
