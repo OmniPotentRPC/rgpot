@@ -256,12 +256,6 @@ void ZBLPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   };
   double energy = 0.0;
   if (nt <= 1) {
-    // Open boundary: the image index is not executed. The smaller index
-    // body shifts this inlined walk unless the walk itself is aligned,
-    // and that shift showed up as a small slowdown of an unchanged loop.
-#if defined(__GNUC__)
-    asm(".p2align 6");
-#endif
     nlist::visitHalf(neighbours_, 0, N,
                      [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
                          double r2) { accept(i, j, dx, dy, dz, r2, F, energy, strain); });
