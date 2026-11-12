@@ -1930,7 +1930,8 @@ if get_option('with_tests')
     )
     _capnp_dep = dependency('capnp', required: false)
     _capnpc_dep = dependency('capnpc', required: false)
-    if _capnp_dep.found() and _capnpc_dep.found()
+    # socketpair, fork and waitpid. Windows has no POSIX process pair.
+    if _capnp_dep.found() and _capnpc_dep.found() and host_machine.system() != 'windows'
         test(
             'nlist_stream',
             executable(
