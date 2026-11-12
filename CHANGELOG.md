@@ -197,6 +197,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Set ``RGPOT_UMA_REQUIRE_FIXTURES`` to fail that case instead.
 - `CppCore/meson.build` follows `meson format` and seven org
   documentation pages follow the semantic line breaks of `snapper`.
+- The shared `py-wheels` workflow defaults to the `macos-15` runner
+  image instead of `macos-14`, which GitHub Actions retires on
+  November 2, 2026.
+  The `wheels` workflow and the C++ layout check request `macos-15`
+  as well.
+- Twelve pinned GitHub Actions in the CI workflows move to releases
+  that run on the Node 24 runtime, including checkout 7.0.1,
+  setup-python 7.1.0 and upload-artifact 7.0.2.
 
 ### Changed
 
