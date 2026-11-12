@@ -16,10 +16,12 @@ Basic  tools to write potentials.
 University of Iceland
 */
 #include "rgpot/Water/potential_base.hpp"
+#include "rgpot/Water/centre_walk.hpp"
 #include <cassert>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <vector>
 
 /** @class forcefields::PotentialBase
 @brief Functions and tools commonly used by potentials.
@@ -666,16 +668,13 @@ void PotentialBase::computePt(int const nAtoms, double positions[],
   double (*f)[3] = reinterpret_cast<double (*)[3]>(forces);
   setPeriodicity(periods); // Set Periodic boundaries. Essential in order for
                            // some functions to work.
-  for (int i = nAtoms - 1; i > 0; --i) {
-    for (int j = i - 1; j >= 0; --j) {
-      // A fixed neighbor still exerts a force on a movable atom. Skip only
-      // a pair in which both atoms are fixed.
-      if (not fixed[i] or not fixed[j]) {
-        lennardJonesWithCutoff(r[i], r[j], f[i], f[j], energy, EPSILON_PT,
-                               SIGMA_PT);
-      };
-    };
-  };
+  walkCentres(positions, nAtoms, periods, cutoff_, [&](int i, int j) {
+    // A fixed neighbor still exerts a force on a movable atom. Skip only
+    // a pair in which both atoms are fixed.
+    if (not fixed[i] or not fixed[j]) {
+      lennardJonesWithCutoff(r[i], r[j], f[i], f[j], energy, EPSILON_PT, SIGMA_PT);
+    }
+  });
 }
 
 /** Platinum Lennard-Jones.

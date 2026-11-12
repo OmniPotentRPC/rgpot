@@ -50,7 +50,7 @@ public:
   StillingerWeberSi();
 
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.stress = true};
+    return {.reentrancy = Reentrancy::PerInstance, .stress = true};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {

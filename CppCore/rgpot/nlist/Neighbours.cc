@@ -7,8 +7,18 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
-#include <fstream>
 #include <string>
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <mach/mach.h>
+#else
+#include <fstream>
+#endif
 
 #if defined(_OPENMP)
 #include <omp.h>
@@ -69,6 +79,26 @@ Range partition(std::int64_t n, int thread, int nthreads) {
 }
 
 std::uint64_t availableBytes() {
+#if defined(_WIN32)
+  MEMORYSTATUSEX status{};
+  status.dwLength = sizeof(status);
+  if (!GlobalMemoryStatusEx(&status)) {
+    return 0;
+  }
+  return static_cast<std::uint64_t>(status.ullAvailPhys);
+#elif defined(__APPLE__)
+  vm_statistics64_data_t vm{};
+  mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
+  if (host_statistics64(mach_host_self(), HOST_VM_INFO64,
+                        reinterpret_cast<host_info64_t>(&vm),
+                        &count) != KERN_SUCCESS) {
+    return 0;
+  }
+  const auto page = static_cast<std::uint64_t>(vm_page_size);
+  return (static_cast<std::uint64_t>(vm.free_count) +
+          static_cast<std::uint64_t>(vm.inactive_count)) *
+         page;
+#else
   std::ifstream in("/proc/meminfo");
   std::string key;
   std::uint64_t kb = 0;
@@ -79,6 +109,7 @@ std::uint64_t availableBytes() {
     }
   }
   return 0;
+#endif
 }
 
 bool Neighbours::reusable(const double *xyz, std::size_t n, const double *box9,
@@ -101,16 +132,7 @@ bool Neighbours::reusable(const double *xyz, std::size_t n, const double *box9,
   if (streaming_) {
     return std::memcmp(ref_.data(), xyz, n * 3 * sizeof(double)) == 0;
   }
-  const double limit2 = 0.25 * spec.skin * spec.skin;
-  for (std::size_t a = 0; a < n; ++a) {
-    const double dx = xyz[3 * a] - ref_[3 * a];
-    const double dy = xyz[3 * a + 1] - ref_[3 * a + 1];
-    const double dz = xyz[3 * a + 2] - ref_[3 * a + 2];
-    if (dx * dx + dy * dy + dz * dz > limit2) {
-      return false;
-    }
-  }
-  return true;
+  return withinSkin(ref_.data(), xyz, n, spec.skin);
 }
 
 void Neighbours::buildCells(const double *xyz, std::size_t n) {
@@ -209,6 +231,7 @@ std::uint64_t Neighbours::candidateBound() const {
   return bound;
 }
 
+
 void Neighbours::buildStored(const double *xyz, std::size_t n) {
   (void)xyz;
   off_.assign(n + 1, 0);
@@ -270,8 +293,10 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
                         const Spec &spec) {
   xyz_ = xyz;
   if (reusable(xyz, n, box9, spec)) {
+    reused_ = true;
     return;
   }
+  reused_ = false;
   n_ = n;
   std::memcpy(box_, box9, sizeof(box_));
   len_[0] = box9[0];
@@ -322,9 +347,16 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
   const std::uint64_t bound = candidateBound();
   const auto avail = availableBytes();
   const auto index_bytes = static_cast<std::uint64_t>(sizeof(std::int32_t));
-  const bool fits = avail > 0 && bound <= avail / index_bytes &&
-                    bound <= static_cast<std::uint64_t>(0x7fffffff);
-  const bool want_store = spec.mode != Mode::Stream && fits;
+  // Zero means the probe failed, not that the machine has no free memory.
+  // An explicit stored list, and Auto, still keep the index in that case.
+  const bool bounded = bound <= static_cast<std::uint64_t>(0x7fffffff);
+  const bool over_budget = avail > 0 && bound > avail / index_bytes;
+  const bool fits = bounded && !over_budget;
+  // The stream keeps the bins. The list adds one index per candidate.
+  // Auto stores only when that index fits. A short cutoff that does not
+  // fit the 27-slot stencil keeps the smaller mask in the same cache.
+  const bool want_store = spec.mode == Mode::Stored ? fits
+                          : spec.mode == Mode::Auto && fits;
   if (want_store) {
     buildStored(xyz, n);
     streaming_ = false;

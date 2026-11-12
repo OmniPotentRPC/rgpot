@@ -23,6 +23,28 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 #+end_src
 
+*** Floating-point contraction
+
+=FastNlistTest= and =ReducedPairTest= compare kernels bit for bit with plain
+products and sums.
+The kernels are built with contraction off.
+=CppCore/meson.build= builds those two tests the same way, so neither side fuses
+and the compare stays exact.
+A new test of that kind belongs in the same condition.
+Outside it, the test can pass on x86-64, where the baseline has no fused
+multiply-add, and miss by an ulp on macOS arm64.
+To exercise contraction on x86-64, build with Clang at the default debug
+buildtype.
+GCC does not fuse at =-O0=, and an optimized build folds the Morse test
+expressions to constants.
+
+#+begin_src bash
+CXX=clang++ meson setup bbfast -Dwith_tests=true \
+  -Dcpp_args='-ffp-contract=fast -mfma'
+meson compile -C bbfast
+meson test -C bbfast --print-errorlogs
+#+end_src
+
 ** Rust Tests
 
 #+begin_src bash

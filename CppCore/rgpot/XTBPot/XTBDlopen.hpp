@@ -48,6 +48,17 @@ public:
 
   void forceImpl(const ForceInput &in, ForceOut *out) const;
 
+  /// Drop the stored SCC wavefunction. The calculator stays.
+  void reset();
+
+  /// Displacement guard in Angstrom. Zero or negative disables reuse.
+  void setWarmMove(double angstrom);
+
+  [[nodiscard]] double warmMove() const;
+
+  /// True when the last successful force reused the previous wavefunction.
+  [[nodiscard]] bool reusedWavefunction() const;
+
   /// Convenience operator matching Potential interface shape.
   std::tuple<double, types::AtomMatrix, double>
   operator()(const types::AtomMatrix &positions,
@@ -64,6 +75,14 @@ private:
   create_fn m_create{nullptr};
   destroy_fn m_destroy{nullptr};
   force_fn m_force{nullptr};
+  using reset_fn = void (*)(RgpotXtbPot *);
+  using set_warm_fn = void (*)(RgpotXtbPot *, double);
+  using warm_move_fn = double (*)(const RgpotXtbPot *);
+  using reused_fn = int (*)(const RgpotXtbPot *);
+  reset_fn m_reset{nullptr};
+  set_warm_fn m_set_warm{nullptr};
+  warm_move_fn m_warm_move{nullptr};
+  reused_fn m_reused{nullptr};
 };
 
 } // namespace rgpot

@@ -13,6 +13,10 @@ import _rgbind_test
 
 pytest.importorskip("hypothesis")
 
+# Hypothesis memoizes has_reusable_values on the process-wide strategy
+# objects. Two threads validating st.text() at once drop that attribute.
+pytestmark = pytest.mark.thread_unsafe
+
 floats = st.floats(width=64, allow_nan=True, allow_infinity=True, allow_subnormal=True)
 
 

@@ -18,11 +18,15 @@ namespace rgpot {
  * ``xtb_TEnvironment`` / ``xtb_TCalculator`` / ``xtb_TMolecule`` /
  * ``xtb_TResults`` handles with explicit create/update/destroy. We test and
  * use that C contract—not free-form Fortran ABI. Each ``XTBPot`` owns its
- * handles; first force builds the molecule, later forces call
- * ``xtb_updateMolecule``. ``xtb_releaseOutput`` is called on create (library
- * recommendation for multi-env processes). Do not share one instance across
- * threads; distinct instances may be used from different threads if the
- * loaded libxtb build is reentrant for independent handle sets.
+ * handles. The first force builds the molecule. Later forces call
+ * ``xtb_updateMolecule`` and keep the SCC wavefunction in the results
+ * object while no atom moves by more than ``XTBConfig::warm_move``
+ * (1 Angstrom unless changed). A larger move, a new composition, or
+ * ``reset()`` drops that object so the next single point uses xtb's own
+ * guess. ``xtb_releaseOutput`` is called on create (library recommendation
+ * for multi-env processes). Do not share one instance across threads;
+ * distinct instances may be used from different threads if the loaded
+ * libxtb build is reentrant for independent handle sets.
  *
  * For hosts that must not NEEDED libxtb, use ``XTBDlopen`` +
  * ``libxtb_engine.so`` instead (always built; no ``-Dwith_xtb`` required).
@@ -35,6 +39,18 @@ public:
 
   XTBPot(const XTBPot &) = delete;
   XTBPot &operator=(const XTBPot &) = delete;
+
+  /// Drop the stored SCC wavefunction. The calculator stays. The next
+  /// force starts from xtb's own guess, even when the geometry is unchanged.
+  void reset();
+
+  /// Replace the displacement guard. Zero or a negative value disables reuse.
+  void setWarmMove(double angstrom);
+
+  [[nodiscard]] double warmMove() const noexcept;
+
+  /// True when the last successful force reused the previous wavefunction.
+  [[nodiscard]] bool reusedWavefunction() const noexcept;
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
@@ -52,10 +68,17 @@ private:
   mutable xtb_TMolecule m_mol = nullptr;
   mutable xtb_TResults m_res = nullptr;
   mutable bool m_initialized = false;
+  mutable bool m_has_wavefunction = false;
+  mutable bool m_last_reused = false;
+  mutable double m_warm_move = 1.0;
   mutable std::vector<double> m_pos_bohr; //!< Preallocated position buffer.
+  mutable std::vector<double> m_previous; //!< Last host coordinates, Angstrom.
+  mutable std::vector<int> m_numbers;
 
-  void initHandles();
+  void initHandles() const;
   void loadParametrisation() const;
+  void freshResults() const;
+  void discardAfterFailure() const;
 };
 
 } // namespace rgpot

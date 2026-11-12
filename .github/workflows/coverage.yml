@@ -47,8 +47,7 @@ jobs:
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh ${{ matrix.llvm-version }}
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y clang-${{ matrix.llvm-version }}
+          bash ci/gha/apt-install.sh --no-install-recommends clang-${{ matrix.llvm-version }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
@@ -97,8 +96,7 @@ jobs:
 
       - name: Install lcov + gfortran
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends lcov gfortran
+          bash ci/gha/apt-install.sh --no-install-recommends lcov gfortran
 
       - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
@@ -166,8 +164,7 @@ jobs:
 
       - name: Install gfortran + lcov
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends gfortran lcov
+          bash ci/gha/apt-install.sh --no-install-recommends gfortran lcov
 
       - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:

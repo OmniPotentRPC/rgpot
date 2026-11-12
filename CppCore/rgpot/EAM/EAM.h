@@ -13,6 +13,10 @@
 
 #include "rgpot/nlist/Neighbours.hpp"
 
+namespace rgpot::eam {
+struct ElementSpline;
+}
+
 #include <array>
 #include <cstdint>
 #include <vector>
@@ -75,6 +79,13 @@ public:
     return neighbours_.slots();
   }
 
+  /// True when the last build kept the Verlet list.
+  [[nodiscard]] bool listReused() const noexcept { return neighbours_.reused(); }
+
+  /// Partner indices retained between the density pass and the force pass.
+  /// A density-only stream keeps none.
+  [[nodiscard]] std::size_t streamPartners() const noexcept { return js_.size(); }
+
   /// Ask for a stored list or a streaming walk. Auto stores when the
   /// candidate index array fits in the memory reported as available.
   void setNeighbourMode(rgpot::nlist::Mode mode) noexcept { mode_ = mode; }
@@ -125,6 +136,10 @@ private:
   std::vector<std::int32_t> rev_;
   std::vector<double> thread_energy_;
   std::vector<double> partial_f_;
+  /// Per-thread density and force for the stream. One row per thread,
+  /// so a half pair can update both atoms without a lock.
+  std::vector<double> stream_rho_;
+  std::vector<double> stream_force_;
   std::vector<rgpot::nlist::Range> parts_;
   rgpot::nlist::Neighbours neighbours_;
 
@@ -143,8 +158,9 @@ private:
   void evaluate(long N, const int *atomicNrs, double *F, double *U);
   void evaluateStoredParallel(long N, const int *atomicNrs, double *F,
                               double *U);
-  void evaluateStreamParallel(long N, const int *atomicNrs, double *F,
-                              double *U);
+  void evaluateDensityStream(long N, const int *atomicNrs, double *F,
+                             double *U);
+  [[nodiscard]] const rgpot::eam::ElementSpline &splineFor(int Z);
   void accumulate(long i, const int *atomicNrs, double *F, double &U,
                   std::vector<Delta> &deltas, const std::int32_t *stream_ids,
                   long stream_n) const;

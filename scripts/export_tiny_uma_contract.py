@@ -265,6 +265,11 @@ def _enforce_metadata(path: Path, meta: dict) -> None:
         for info in source.infolist():
             data = source.read(info.filename)
             if info.filename.endswith(".json"):
+                # A zero-length member makes AOTIModelPackageLoader::get_metadata
+                # throw from nlohmann::json::parse. An empty object is the
+                # same "no keys" contract.
+                if not data.strip():
+                    data = b"{}"
                 try:
                     payload = json.loads(data)
                 except json.JSONDecodeError:

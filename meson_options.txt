@@ -92,3 +92,9 @@ option(
     value: false,
     description: 'Flexible TIP4P, SPC/E and TIP4P-Pt kernels. Defaults false, matching the eOn with_water option.',
 )
+option(
+    'with_eam_table',
+    type: 'boolean',
+    value: false,
+    description: 'EAM and Finnis-Sinclair potentials read from LAMMPS funcfl, setfl and eam/fs tables.',
+)

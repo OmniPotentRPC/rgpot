@@ -22,6 +22,7 @@
 // clang-format on
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/Potential.hpp"
+#include "rgpot/nlist/Neighbours.hpp"
 #include "rgpot/pot_caps.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
@@ -83,7 +84,7 @@ public:
   /// Free boundaries: the kernel ignores the cell and never applies the
   /// minimum image convention.
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.periodic = false, .stress = true};
+    return {.reentrancy = Reentrancy::PerInstance, .periodic = false, .stress = true};
   }
 
   /**
@@ -93,6 +94,21 @@ public:
    * @return Void.
    */
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
+
+  /// Stored list, streaming walk, or Auto (memory and the candidate bound).
+  void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
+
+  /// True when the last force call kept the Verlet list.
+  [[nodiscard]] bool listReused() const noexcept { return neighbours_.reused(); }
+
+  /// Pair indices copied out of the walk. Stream keeps none.
+  [[nodiscard]] std::size_t retainedPairs() const noexcept {
+    return neighbours_.streaming() ? 0 : neighbours_.slots();
+  }
+
+  [[nodiscard]] static double neighbourSkin(double cutoff) noexcept {
+    return cutoff / 5.0;
+  }
 
 private:
   /// Bump when the kernel numerics change, so stale cache entries die.
@@ -122,6 +138,8 @@ private:
 
   mutable std::mutex m_tablesMtx;
   mutable std::shared_ptr<const ZblTables> m_tables;
+  nlist::Mode mode_ = nlist::Mode::Auto;
+  mutable nlist::Neighbours neighbours_;
 };
 
 } // namespace rgpot
