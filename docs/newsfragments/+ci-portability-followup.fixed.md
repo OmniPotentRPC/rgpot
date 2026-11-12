@@ -9,4 +9,4 @@ The stream scaling bench is too: it forks a child per row.
 The Sutton-Chen cluster relaxation is allowed 120 seconds.
 The Rust neighbour caller on Windows links the COFF archives with link.exe.
 rustc on that host uses the archive directory as its temp directory.
-The 108000-atom neighbour list is allowed 30 seconds.
+The Rust neighbour caller exports the C entry points so link.exe writes nlist.lib.

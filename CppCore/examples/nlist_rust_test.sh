@@ -58,7 +58,15 @@ case "$os" in
     wdir=$(cygpath -w "$dir")
     MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
       link.exe /nologo /DLL "/OUT:${wdir}\\nlist.dll" \
-      "/WHOLEARCHIVE:${whalf}" "/WHOLEARCHIVE:${wmini}" "/WHOLEARCHIVE:${wfma}"
+      "/WHOLEARCHIVE:${whalf}" "/WHOLEARCHIVE:${wmini}" "/WHOLEARCHIVE:${wfma}" \
+      /EXPORT:rgpot_nlist_build \
+      /EXPORT:rgpot_nlist_request_init \
+      /EXPORT:rgpot_nlist_strerror
+    if [ ! -f "$dir/nlist.lib" ]; then
+      echo "link.exe did not write nlist.lib" >&2
+      ls -la "$dir" >&2 || true
+      exit 1
+    fi
     TMP="$wdir"
     TEMP="$wdir"
     TMPDIR="$wdir"
@@ -70,8 +78,19 @@ case "$os" in
     ;;
 esac
 out=$(mktemp)
-"$rustc_bin" --edition 2021 "$root/CppCore/examples/nlist_rust/main.rs" -o "$out" \
-  -L "$dir" -lnlist
+case "$os" in
+  MINGW*|MSYS*|CYGWIN*)
+    # rustc's MSVC linker looks for nlist.lib on a native search path.
+    # An MSYS -L directory is not one it opens.
+    wout=$(cygpath -w "$out")
+    "$rustc_bin" --edition 2021 "$root/CppCore/examples/nlist_rust/main.rs" -o "$wout" \
+      -L "native=${wdir}" -lnlist
+    ;;
+  *)
+    "$rustc_bin" --edition 2021 "$root/CppCore/examples/nlist_rust/main.rs" -o "$out" \
+      -L "$dir" -lnlist
+    ;;
+esac
 case "$os" in
   Darwin)
     DYLD_LIBRARY_PATH="$dir${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}" "$out"
