@@ -14,8 +14,8 @@ backend-configuration carrier:
 
 -   `ForceInput`: positions, atomic numbers, box, and unit strings
 -   `PotentialResult`: energy plus flat force array
--   `PotentialConfig`: backend setup, with arms such as `none`, `nwchem`, and
-    `cpmd`
+-   `PotentialConfig`: backend setup, with arms such as `none`, `nwchem`,
+    `cpmd`, and `orca`
 
 XC response kernels (`rgpot::XcKernel`, meson `-Dwith_xckernel=true`) are
 in-process only. They are not a `Potential`, and there is no
@@ -234,6 +234,12 @@ RPC client types:
 <td class="org-left"><code>IPIPot</code></td>
 <td class="org-left"><code>IPI:unix:&lt;path&gt;</code>, <code>IPI:tcp:&lt;host&gt;:&lt;port&gt;</code></td>
 <td class="org-left">POSIX socket server for an i-PI force driver. <code>-Dwith_ipi=auto</code> (off on Windows). See <code>docs/orgmode/howto/ipi.org</code>.</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>ORCAPot</code></td>
+<td class="org-left"><code>ORCA[:method[:basis[:charge[:multiplicity]]]]</code></td>
+<td class="org-left">ORCA <code>! EnGrad</code> as a subprocess. Energy in eV, forces in eV/Angstrom. Executable from the config, <code>ORCA_EXE</code>, or <code>PATH</code>. <code>-Dwith_orca=auto</code> (off on Windows). See <code>docs/orgmode/howto/orca.org</code>.</td>
 </tr>
 </tbody>
 </table>

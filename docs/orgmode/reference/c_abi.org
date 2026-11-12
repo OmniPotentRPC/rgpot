@@ -129,8 +129,8 @@ Covered types:
 - with the cache: =cache::EvalCounts= and =cache::PotentialCache=
 
 Not covered: the classes of optional backends (xtb, tblite, dftd3, dftd4,
-ExprPot, XcKernel, Metatomic, UMA, NWChem, CPMD, MOPAC, Skala, the Fortran
-potentials).
+ExprPot, XcKernel, Metatomic, UMA, NWChem, CPMD, MOPAC, ORCA, Skala, the
+Fortran potentials).
 Their headers and features differ between builds, so a stamp over them would
 refuse libraries that agree on everything a consumer uses.
 The plugin interface carries

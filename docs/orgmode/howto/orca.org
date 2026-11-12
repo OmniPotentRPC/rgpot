@@ -1,0 +1,80 @@
+#+TITLE: ORCA energy and gradient
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* ORCA energy and gradient
+
+=ORCAPot= evaluates one molecule by running ORCA as a subprocess.
+Each call writes an input with =! EnGrad=, runs the executable, and reads
+the =.engrad= file.
+ORCA reports the energy in Hartree and the Cartesian gradient in
+Hartree/Bohr.
+rgpot returns the energy in eV and the forces in eV/Angstrom.
+The force is the negative of the gradient.
+The cell is ignored: this is a molecular calculation, and it does not build
+a neighbour list.
+
+** Configuration
+
+#+begin_src cpp
+#include "rgpot/ORCAPot/ORCAPot.hpp"
+
+rgpot::ORCAConfig cfg;
+cfg.method = "HF";
+cfg.basis = "def2-SVP";
+cfg.charge = 0;
+cfg.multiplicity = 1;
+cfg.keywords = "TightSCF";
+rgpot::ORCAPot pot(cfg);
+#+end_src
+
+=keywords= are extra simple-input tokens on the =!= line.
+Text after the first newline is written between that line and the coordinate
+block, which is where an ORCA =%= block belongs.
+The engine always adds =EnGrad=.
+
+The executable is =ORCAConfig::executable= when that string is set.
+Otherwise it is the =ORCA_EXE= environment variable, then an =orca= program
+on =PATH=.
+A missing binary throws when a geometry is evaluated.
+
+=potserv= accepts the same method, basis, charge, and multiplicity:
+
+#+begin_src bash
+ORCA_EXE=/path/to/orca ./bbdir/CppCore/potserv 12345 ORCA:HF:def2-SVP:0:1
+#+end_src
+
+An RPC =configure= call reads the =orca= arm of =PotentialConfig=
+(=OrcaParams=).
+The engine library =liborca_engine.so= takes a flat =OrcaParams= message at
+=rgpot_engine_create=.
+=rgpot_engine_set_charge_spin= sets the charge and the spin multiplicity
+(2S+1) used by later evaluations.
+
+** Wavefunction reuse
+
+One instance keeps a private work directory.
+The first evaluation is a cold guess.
+From the second evaluation on, the previous =.gbw= is copied to
+=rgpot.moinp.gbw= and the input adds =! MORead= with =%moinp= pointing at
+that copy.
+ORCA refuses to read and write the same =.gbw=.
+If the =.gbw= is missing, or the MORead run fails, the instance tries one
+cold guess.
+Changing the method, basis, charge, multiplicity, or keywords drops the
+saved wavefunction.
+
+Saddle searches should use one instance per image.
+The saved wavefunction belongs to one geometry.
+=caps()= reports per-instance reentrancy and =perImageInstances=.
+
+** Build
+
+Meson =with_orca= is a feature option.
+=auto= compiles the potential on POSIX hosts and leaves it out on Windows.
+=-Dwith_orca=enabled= is an error on Windows.
+The compile definition is =RGPOT_HAS_ORCA=.
+CMake =RGPOT_WITH_ORCA= has the same default.
+The engine shared library is built with the RPC stack, like the other
+=rgpot_engine_*= plugins.
+ORCA itself is not a build dependency.

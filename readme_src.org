@@ -15,8 +15,8 @@ backend-configuration carrier:
 
 - ~ForceInput~: positions, atomic numbers, box, and unit strings
 - ~PotentialResult~: energy plus flat force array
-- ~PotentialConfig~: backend setup, with arms such as ~none~, ~nwchem~, and
-  ~cpmd~
+- ~PotentialConfig~: backend setup, with arms such as ~none~, ~nwchem~,
+  ~cpmd~, and ~orca~
 
 =D3Pot= and =D4Pot= (meson =-Dwith_dftd3= / =-Dwith_dftd4=) are in-process
 =Potential= summands: construct them and evaluate =ForceInput= to energy and
@@ -137,6 +137,7 @@ ctest --test-dir build_client --output-on-failure
 | =SkalaPot= | =Skala= | Skala XC on NWChem DFT via =libnwchemc=. |
 | =MOPACPot= | =MOPAC= | Frontend always builds; load =libmopacc= from the split [[https://github.com/OmniPotentRPC/mopacc][mopacc]] project at runtime (OpenMOPAC). Packed params. Default model AM1. |
 | =IPIPot= | =IPI:unix:<path>=, =IPI:tcp:<host>:<port>= | POSIX socket server for an i-PI force driver. =-Dwith_ipi=auto= (off on Windows). See =docs/orgmode/howto/ipi.org=. |
+| =ORCAPot= | =ORCA[:method[:basis[:charge[:multiplicity]]]]= | ORCA =! EnGrad= as a subprocess. Energy in eV, forces in eV/Angstrom. Executable from the config, =ORCA_EXE=, or =PATH=. =-Dwith_orca=auto= (off on Windows). See =docs/orgmode/howto/orca.org=. |
 
 Copyable construct-and-evaluate (meson =-Dwith_expr=true=).
 =PotentialHandle::from_impl= / =rgpot_potential_new_eindir= wraps that
