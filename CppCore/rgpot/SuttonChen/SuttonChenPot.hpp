@@ -31,7 +31,14 @@
 // clang-format on
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/Potential.hpp"
+#include "rgpot/nlist/Neighbours.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
+
+#if defined(_WIN32)
+#define RGPOT_SC_API __declspec(dllexport)
+#else
+#define RGPOT_SC_API __attribute__((visibility("default")))
+#endif
 
 extern "C" {
 
@@ -52,9 +59,10 @@ struct rgpot_sc_config {
 /// `_force` is the Fortran bind(c) shape the symbol audit hides.
 /// @a box may be null when @c periodic is 0. @a forces has room for
 /// @c 3 * natoms doubles.
-int rgpot_sutton_chen_energy_forces(const rgpot_sc_config *cfg, int32_t natoms,
-                            const double *positions, const double *box,
-                            double *energy, double *forces);
+RGPOT_SC_API int
+rgpot_sutton_chen_energy_forces(const rgpot_sc_config *cfg, int32_t natoms,
+                                const double *positions, const double *box,
+                                double *energy, double *forces);
 
 } // extern "C"
 
@@ -76,6 +84,11 @@ struct SuttonChenConfig {
   double cutoff = 40.0;
   /// Minimum image convention. Cluster references leave this false.
   bool periodic = false;
+  /// Write the Cauchy stress sigma = (1/V) dE/dstrain of stress.hpp when the
+  /// cell volume is positive.
+  /// Off by default: has_stress and the tensor are left as the caller set
+  /// them, and energy and forces are the same bits either way.
+  bool stress = false;
 };
 
 /**
@@ -94,7 +107,7 @@ public:
   }
 
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.periodic = m_config.periodic};
+    return {.periodic = m_config.periodic, .stress = m_config.stress};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
@@ -103,11 +116,16 @@ public:
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
+  /// Stored Verlet list or a streaming cell walk.
+  void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
+
 private:
   static constexpr uint64_t kKernelVersion = 1;
 
   SuttonChenConfig m_config;
   uint64_t m_paramsKey{0};
+  nlist::Mode mode_ = nlist::Mode::Auto;
+  mutable nlist::Neighbours neighbours_;
 };
 
 } // namespace rgpot

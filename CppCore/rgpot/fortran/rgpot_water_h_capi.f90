@@ -10,7 +10,7 @@
 !!
 !! Unlike the pair potentials, this one keeps no neighbour table. Its sum
 !! has a single centre and no cutoff, so every atom contributes one leg
-!! at its nearest periodic image and there is nothing for vesin to build.
+!! at its nearest periodic image and there is no neighbour table to build.
 module rgpot_water_h_capi
    use rgpot_kinds, only: wp, ip, c_double, c_int
    use, intrinsic :: iso_c_binding, only: c_ptr

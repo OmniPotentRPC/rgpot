@@ -23,6 +23,7 @@
 
 #include "rgpot/Tersoff/TersoffSiC.hpp"
 #include "rgpot/nlist/HalfShell.hpp"
+#include "rgpot/stress.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
 using Catch::Matchers::WithinAbs;
@@ -414,4 +415,161 @@ TEST_CASE("Tersoff 1989 forceImpl keeps a skinned list on request",
                     std::invalid_argument);
   REQUIRE_THROWS_AS(pot.setHeldSkin(std::numeric_limits<double>::infinity()),
                     std::invalid_argument);
+}
+
+namespace {
+
+// The worst error seen on these cells was 4.8e-11 eV/Angstrom^3.
+constexpr double kStressTol = 5e-10; // eV/Angstrom^3
+
+/// (1/V) dE/d(eps_row,col) by the fourth-order central difference. The
+/// strain maps every position and every cell row r to r (I + eps).
+double strainDifference(const std::vector<double> &pos,
+                        const std::vector<int> &types,
+                        const std::array<double, 9> &box, int row, int col) {
+  constexpr double h = 2e-4;
+  const std::size_t n = pos.size() / 3;
+  const TersoffSiC pot;
+  auto energyAt = [&](double eps) {
+    std::vector<double> p = pos;
+    std::array<double, 9> cell = box;
+    for (std::size_t a = 0; a < n; ++a) {
+      p[3 * a + col] += eps * pos[3 * a + row];
+    }
+    for (int k = 0; k < 3; ++k) {
+      cell[3 * k + col] += eps * box[3 * k + row];
+    }
+    double e = 0.0;
+    std::vector<double> g(p.size());
+    pot.energyAndGradient(p.data(), types.data(), cell.data(), n, &e, g.data());
+    return e;
+  };
+  return (8.0 * (energyAt(h) - energyAt(-h)) -
+          (energyAt(2 * h) - energyAt(-2 * h))) /
+         (12.0 * h * rgpot::cellVolume(box.data()));
+}
+
+/// Checks the forceImpl stress against strainDifference for all nine
+/// entries and returns the differences, row-major. The forces must equal
+/// the negated energyAndGradient gradient exactly, since only forceImpl
+/// takes the strain path. A zero force is +0 on both paths, so the check
+/// compares values, not sign bits.
+std::array<double, 9> checkStressByStrain(const std::vector<double> &pos,
+                                          const std::vector<int> &types,
+                                          const std::array<double, 9> &box) {
+  const std::size_t n = pos.size() / 3;
+  const TersoffSiC pot;
+  REQUIRE(pot.caps().stress);
+  std::vector<double> forces(pos.size());
+  rgpot::ForceOut out{forces.data(), 0.0, 0.0, {}, 0};
+  pot.forceImpl({n, pos.data(), types.data(), box.data()}, &out);
+  REQUIRE(out.has_stress == 1);
+  double energy = 0.0;
+  std::vector<double> grad(pos.size());
+  pot.energyAndGradient(pos.data(), types.data(), box.data(), n, &energy,
+                        grad.data());
+  REQUIRE(std::memcmp(&energy, &out.energy, sizeof(double)) == 0);
+  for (std::size_t i = 0; i < grad.size(); ++i) {
+    REQUIRE(forces[i] == -grad[i]);
+  }
+  std::array<double, 9> fd{};
+  for (int row = 0; row < 3; ++row) {
+    for (int col = 0; col < 3; ++col) {
+      fd[3 * row + col] = strainDifference(pos, types, box, row, col);
+      CAPTURE(row, col, fd[3 * row + col]);
+      REQUIRE_THAT(out.stress[3 * row + col],
+                   WithinAbs(fd[3 * row + col], kStressTol));
+    }
+  }
+  return fd;
+}
+
+/// Cubic positions of edge l carried to the same fractional sites of box.
+std::vector<double> toCell(const std::vector<double> &cubicPos,
+                           const std::array<double, 9> &box, double l) {
+  std::vector<double> pos(cubicPos.size());
+  for (std::size_t a = 0; a < pos.size() / 3; ++a) {
+    for (int c = 0; c < 3; ++c) {
+      pos[3 * a + c] =
+          (cubicPos[3 * a] * box[c] + cubicPos[3 * a + 1] * box[3 + c] +
+           cubicPos[3 * a + 2] * box[6 + c]) /
+          l;
+    }
+  }
+  return pos;
+}
+
+} // namespace
+
+TEST_CASE("Tersoff 1989 stress matches a strain difference",
+          "[TersoffSiC][stress]") {
+  SECTION("compressed cubic silicon, 64 atoms") {
+    const double a = 0.98 * 5.432;
+    const std::vector<int> types(64, 14);
+    const std::array<double, 9> box{2 * a, 0, 0, 0, 2 * a, 0, 0, 0, 2 * a};
+    const auto fd = checkStressByStrain(diamond(2, a), types, box);
+    for (int k : {0, 4, 8}) {
+      REQUIRE(fd[k] < -1e-2);
+    }
+  }
+  SECTION("sheared silicon, 64 atoms") {
+    const double l = 2 * 5.432;
+    const std::vector<int> types(64, 14);
+    const std::array<double, 9> box{l, 0,        0,         0.10 * l, l,
+                                    0, 0.05 * l, -0.07 * l, l};
+    const auto fd =
+        checkStressByStrain(toCell(diamond(2, 5.432), box, l), types, box);
+    REQUIRE(std::abs(fd[1]) > 1e-3);
+    REQUIRE(std::abs(fd[2]) > 1e-3);
+    REQUIRE(std::abs(fd[5]) > 1e-3);
+  }
+  SECTION("sheared and rattled silicon carbide, 64 atoms") {
+    // Zincblende SiC, carbon on the first four diamond sites. At a0 = 4.03
+    // every Si-Si second neighbour is inside the 2.7 to 3.0 Angstrom taper
+    // and at least 0.06 Angstrom from either end, where fc is smooth.
+    const double l = 2 * 4.03;
+    std::vector<int> types(64);
+    for (std::size_t a = 0; a < types.size(); ++a) {
+      types[a] = (a % 8 < 4) ? 6 : 14;
+    }
+    const std::array<double, 9> box{l, 0, 0, 0.03 * l, l, 0, 0, 0.02 * l, l};
+    const auto pos = jitter(toCell(diamond(2, 4.03), box, l), 0.03, 41u);
+    const auto fd = checkStressByStrain(pos, types, box);
+    REQUIRE(std::abs(fd[1]) > 1e-4);
+    REQUIRE(std::abs(fd[2]) > 1e-4);
+    REQUIRE(std::abs(fd[5]) > 1e-4);
+  }
+}
+
+TEST_CASE("Tersoff 1989 stress with a held list and without a pair",
+          "[TersoffSiC][stress]") {
+  const double a = 5.432;
+  const auto pos = jitter(diamond(3, a), 0.05, 51u);
+  const std::vector<int> types(pos.size() / 3, 14);
+  const double box[9] = {3 * a, 0, 0, 0, 3 * a, 0, 0, 0, 3 * a};
+  TersoffSiC fresh;
+  TersoffSiC held;
+  held.setHeldSkin(0.4);
+  REQUIRE(held.caps().stress);
+  std::vector<double> f0(pos.size());
+  std::vector<double> f1(pos.size());
+  rgpot::ForceOut o0{f0.data(), 0.0, 0.0, {}, 0};
+  rgpot::ForceOut o1{f1.data(), 0.0, 0.0, {}, 0};
+  fresh.forceImpl({types.size(), pos.data(), types.data(), box}, &o0);
+  held.forceImpl({types.size(), pos.data(), types.data(), box}, &o1);
+  held.forceImpl({types.size(), pos.data(), types.data(), box}, &o1);
+  REQUIRE(o1.has_stress == 1);
+  REQUIRE(std::memcmp(o0.stress, o1.stress, sizeof(o0.stress)) == 0);
+
+  const double position[3] = {1.0, 2.0, 3.0};
+  const int type = 14;
+  const double cell[9] = {20, 0, 0, 0, 20, 0, 0, 0, 20};
+  double force[3] = {};
+  rgpot::ForceOut out{force, 1.0, 0.0, {1, 2, 3, 4, 5, 6, 7, 8, 9}, 0};
+  fresh.forceImpl({1, position, &type, cell}, &out);
+  REQUIRE(out.has_stress == 1);
+  REQUIRE(out.energy == 0.0);
+  for (double component : out.stress) {
+    REQUIRE(component == 0.0);
+  }
 }

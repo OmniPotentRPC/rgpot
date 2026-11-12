@@ -5,7 +5,7 @@
 !! error message, behind an opaque C pointer.
 !!
 !! Each C++ potential instance owns one workspace, so two instances keep
-!! separate vesin tables (their Verlet skins track their own geometries)
+!! separate neighbour tables (their Verlet skins track their own geometries)
 !! and can evaluate on separate threads at once. The `_ws` entry points of
 !! the kernels take a workspace; the older entry points without it share
 !! one module-level workspace and stay process-serial.

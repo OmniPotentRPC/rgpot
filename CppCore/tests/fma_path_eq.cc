@@ -19,7 +19,7 @@
 
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
-#include "rgpot/nlist/PairListCache.hpp"
+#include "rgpot/simd/from_cache.hpp"
 #include "rgpot/simd/exact_fma.hpp"
 #include "rgpot/simd/exp.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
@@ -110,8 +110,7 @@ std::uint64_t digest() {
   return h.h;
 }
 
-/// MorsePot (row kernel) against the same pair term evaluated one pair at
-/// a time through a private pair-list pool.
+/// MorsePot against the same pair term evaluated one pair at a time.
 int rowAgainstPairs() {
   std::mt19937_64 rng(5);
   const double a = 3.92;
@@ -129,8 +128,7 @@ int rowAgainstPairs() {
   const double range = cfg.a;
   const double rEq = cfg.re;
   const double shiftU = pot.energyShift();
-  rgpot::nlist::PairListCache pool;
-  rgpot::nlist::CachedPairList::Options opt;
+  rgpot::simd::PairSpec opt;
   opt.cutoff = cfg.cutoff;
   std::vector<double> pos(3 * R.rows());
   for (std::size_t i = 0; i < R.rows(); ++i) {
@@ -139,29 +137,61 @@ int rowAgainstPairs() {
     }
   }
   const double cell[9] = {n * a, 0, 0, 0, n * a, 0, 0, 0, n * a};
+  rgpot::simd::CachedPairs pairs;
+  rgpot::simd::fill_view(pairs, pos.data(), R.rows(), cell, opt);
+  const auto &view = pairs.view;
   std::vector<double> F(pos.size(), 0.0);
-  const double U = pool.accumulate(
-      pos.data(), R.rows(), cell, opt, F.data(),
-      [=](int32_t, int32_t, double r2) noexcept {
-        const double r = std::sqrt(r2);
-        const double d = 1.0 - rgpot::simd::exp_fixed(-range * (r - rEq));
-        return rgpot::nlist::PairTerm{depth * d * d - depth - shiftU,
-                                      twoDeA * d * (d - 1.0) / r};
-      });
+  double U = 0.0;
+  const double cutoff2 = cfg.cutoff * cfg.cutoff;
+  for (std::size_t i = 0; i < view.n; ++i) {
+    double fxi = 0.0;
+    double fyi = 0.0;
+    double fzi = 0.0;
+    for (std::int32_t p = view.rows[i]; p < view.rows[i + 1]; ++p) {
+      const auto j = static_cast<std::size_t>(view.nbr[static_cast<std::size_t>(p)]);
+      double dx = pos[3 * i] - pos[3 * j];
+      double dy = pos[3 * i + 1] - pos[3 * j + 1];
+      double dz = pos[3 * i + 2] - pos[3 * j + 2];
+      dx -= cell[0] * std::round(dx / cell[0]);
+      dy -= cell[4] * std::round(dy / cell[4]);
+      dz -= cell[8] * std::round(dz / cell[8]);
+      const double r2 = dx * dx + dy * dy + dz * dz;
+      if (!(r2 > 0.0) || r2 > cutoff2) {
+        continue;
+      }
+      const double r = std::sqrt(r2);
+      const double d = 1.0 - rgpot::simd::exp_fixed(-range * (r - rEq));
+      const double energy = depth * d * d - depth - shiftU;
+      const double fscale = twoDeA * d * (d - 1.0) / r;
+      U += energy;
+      fxi += fscale * dx;
+      fyi += fscale * dy;
+      fzi += fscale * dz;
+      F[3 * j] -= fscale * dx;
+      F[3 * j + 1] -= fscale * dy;
+      F[3 * j + 2] -= fscale * dz;
+    }
+    F[3 * i] += fxi;
+    F[3 * i + 1] += fyi;
+    F[3 * i + 2] += fzi;
+  }
   int bad = 0;
-  Hash a1;
-  Hash a2;
-  a1.add(e);
-  a2.add(U);
+  const double scale = std::max(1.0, std::max(std::abs(e), std::abs(U)));
+  if (std::abs(e - U) > 1e-12 * scale) {
+    std::cerr << "Morse kernel differs from the per-pair term\n";
+    ++bad;
+  }
   for (std::size_t i = 0; i < R.rows(); ++i) {
     for (std::size_t c = 0; c < 3; ++c) {
-      a1.add(f(i, c));
-      a2.add(F[3 * i + c]);
+      const double a = f(i, c);
+      const double b = F[3 * i + c];
+      const double fs = std::max(1.0, std::max(std::abs(a), std::abs(b)));
+      if (std::abs(a - b) > 1e-12 * fs) {
+        std::cerr << "Morse force differs from the per-pair term\n";
+        ++bad;
+        break;
+      }
     }
-  }
-  if (a1.h != a2.h) {
-    std::cerr << "Morse row kernel differs from the per-pair kernel\n";
-    ++bad;
   }
   return bad;
 }

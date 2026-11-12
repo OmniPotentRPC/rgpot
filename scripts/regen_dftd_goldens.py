@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Regenerate committed s-dftd3 / dftd4 golden masters. rg.terra only.
+"""Regenerate committed s-dftd3 / dftd4 golden masters on a regen host.
+
+Runs only on a host listed in RGPOT_REGEN_HOSTS (comma-separated),
+unless DFTD_ALLOW_REGEN=1.
 
 Do not invoke from meson test. Do not invent looser tolerances.
 Pins are library-native: energy in Hartree, gradient in Hartree/Bohr.
@@ -17,7 +20,6 @@ import sys
 import zipfile
 from pathlib import Path
 
-TERRA_HOSTS = {"rgam5terra", "rg.terra"}
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "CppCore" / "tests" / "data" / "dftd"
 FUNCTIONAL = "pbe"
@@ -52,10 +54,17 @@ REQUIRED = (
 )
 
 
-def _require_terra() -> None:
-    host = socket.gethostname().split(".")[0]
-    if host not in TERRA_HOSTS and os.environ.get("DFTD_ALLOW_REGEN") != "1":
-        sys.exit(f"regen_dftd_goldens.py runs on rg.terra only (got {host})")
+def _require_regen_host() -> None:
+    raw = os.environ.get("RGPOT_REGEN_HOSTS", "")
+    allowed = {h.strip() for h in raw.split(",")} - {""}
+    host = socket.gethostname()
+    override = os.environ.get("DFTD_ALLOW_REGEN") == "1"
+    if override or allowed & {host, host.split(".")[0]}:
+        return
+    sys.exit(
+        f"regen_dftd_goldens.py runs only on a host listed in RGPOT_REGEN_HOSTS "
+        f"(got {host}; DFTD_ALLOW_REGEN=1 overrides)"
+    )
 
 
 def sha256_file(path: Path) -> str:
@@ -142,7 +151,7 @@ def write_manifest() -> None:
             sys.exit(f"missing pin after regen: {path}")
         files[name] = {"sha256": sha256_file(path), "bytes": path.stat().st_size}
     man = {
-        "host_only": "rg.terra",
+        "host_only": "workstation-a",
         "regen": "scripts/regen_dftd_goldens.py",
         "functional": FUNCTIONAL,
         "fixture": "water_octamer_cube",
@@ -175,7 +184,7 @@ def load_npy_scalar(path: Path) -> float:
 
 
 def main() -> int:
-    _require_terra()
+    _require_regen_host()
     DATA.mkdir(parents=True, exist_ok=True)
     numbers, pos = cube_geometry()
     nat = len(numbers)

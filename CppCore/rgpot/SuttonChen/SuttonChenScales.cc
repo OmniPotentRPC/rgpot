@@ -105,12 +105,6 @@ int export_scales(const rgpot_sc_config *cfg, rgpot_sc_scales *out) {
 
 } // namespace
 
-#if defined(_WIN32)
-#define RGPOT_SC_API __declspec(dllexport)
-#else
-#define RGPOT_SC_API __attribute__((visibility("default")))
-#endif
-
 extern "C" RGPOT_SC_API int
 rgpot_sutton_chen_scales(const rgpot_sc_config *cfg, rgpot_sc_scales *out) {
   return export_scales(cfg, out);

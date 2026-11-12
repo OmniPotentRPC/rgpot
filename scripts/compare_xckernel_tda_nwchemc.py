@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Compare the H2O/sto-3g TDA pin operator to libnwchemc TDA roots.
 
-rg.terra only. Calls the shipped libnwchemc energy ABI with theory=tddft
-(same engine NWChemPot dlopens). Does not transcribe NWChem's TDDFT.
+Runs only on a host listed in RGPOT_REGEN_HOSTS (comma-separated),
+unless XCKERNEL_ALLOW_REGEN=1. Calls the shipped libnwchemc energy ABI
+with theory=tddft (same engine NWChemPot dlopens). Does not transcribe
+NWChem's TDDFT.
 
 The exclusive 1e-17 bar is tightness of that compare, not a PySCF-only
 gate. PySCF TDA.kernel on the committed MOs is the pin's spectrum;
@@ -30,7 +32,6 @@ for _thr in (
 
 import numpy as np
 
-TERRA_HOSTS = {"rgam5terra", "rg.terra"}
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "CppCore" / "tests" / "data" / "xckernel" / "pyscf_h2o_sto3g"
 # Exclusive contraction bar (XcKernel vs sigma pin) stays 1e-17.
@@ -82,10 +83,17 @@ class NWChemCResult(ctypes.Structure):
     ]
 
 
-def _require_terra() -> None:
-    host = socket.gethostname().split(".")[0]
-    if host not in TERRA_HOSTS and os.environ.get("XCKERNEL_ALLOW_REGEN") != "1":
-        sys.exit(f"compare_xckernel_tda_nwchemc.py runs on rg.terra only (got {host})")
+def _require_regen_host() -> None:
+    raw = os.environ.get("RGPOT_REGEN_HOSTS", "")
+    allowed = {h.strip() for h in raw.split(",")} - {""}
+    host = socket.gethostname()
+    override = os.environ.get("XCKERNEL_ALLOW_REGEN") == "1"
+    if override or allowed & {host, host.split(".")[0]}:
+        return
+    sys.exit(
+        "compare_xckernel_tda_nwchemc.py runs only on a host listed in "
+        f"RGPOT_REGEN_HOSTS (got {host}; XCKERNEL_ALLOW_REGEN=1 overrides)"
+    )
 
 
 def _params_text(xc_nw: str, scratch: Path, permanent: Path) -> str:
@@ -273,7 +281,7 @@ def max_rel(got: np.ndarray, ref: np.ndarray) -> tuple[float, float]:
 
 
 def main() -> int:
-    _require_terra()
+    _require_regen_host()
     capnp, schema, lib_path, basis = _resolve_tools()
     os.environ.setdefault("NWCHEM_BASIS_LIBRARY", str(basis))
     work = Path(os.environ.get("NWCHEMC_TDA_WORK", "/tmp/rgpot-nwchemc-tda"))

@@ -28,6 +28,8 @@
 
 #include "pot_holder.hpp"
 
+#include "rgpot/LennardJones/LJClusterPot.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/Tersoff/TersoffSiC.hpp"
@@ -625,6 +627,74 @@ NB_MODULE(_core, m) {
 #endif
   rgpot::pybind::bind_calls(lj);
 
+  // Same call surface as LJPot. Both classes are already in librgpot;
+  // this is the binding a caller of the wheel uses.
+  auto cluster = nb::class_<PotHolder<rgpot::LJClusterPot>>(m, "LJClusterPot");
+  cluster.def(
+      "__init__",
+      [](PotHolder<rgpot::LJClusterPot> *self, double u0, double cutoff,
+         double psi, double switch_width) {
+        new (self) PotHolder<rgpot::LJClusterPot>([=] {
+          rgpot::LJClusterConfig cfg;
+          cfg.u0 = u0;
+          cfg.cutoff = cutoff;
+          cfg.psi = psi;
+          cfg.switch_width = switch_width;
+          return std::make_unique<rgpot::LJClusterPot>(cfg);
+        });
+      },
+      nb::arg("u0") = 1.0, nb::arg("cutoff") = 15.0, nb::arg("psi") = 1.0,
+      nb::arg("switch_width") = 0.0,
+      "Free-boundary shifted 12-6 Lennard-Jones. u0 is the well depth "
+      "(eV), cutoff and psi are Angstrom. An input cell does not fold "
+      "pair vectors. A positive switch_width (Angstrom) replaces the "
+      "shift with the C^2 quintic switch over "
+      "[cutoff - switch_width, cutoff]; it must not exceed cutoff.");
+  cluster.def("config", [](const PotHolder<rgpot::LJClusterPot> &self) {
+    const rgpot::LJClusterConfig &cfg = self.primary().config();
+    nb::dict out;
+    out["u0"] = cfg.u0;
+    out["cutoff"] = cfg.cutoff;
+    out["psi"] = cfg.psi;
+    out["switch_width"] = cfg.switch_width;
+    return out;
+  });
+  rgpot::pybind::bind_calls(cluster);
+
+  auto morse_cls = nb::class_<PotHolder<rgpot::MorsePot>>(m, "MorsePot");
+  morse_cls.def(
+      "__init__",
+      [](PotHolder<rgpot::MorsePot> *self, double De, double a, double re,
+         double cutoff, double switch_width) {
+        new (self) PotHolder<rgpot::MorsePot>([=] {
+          rgpot::MorseConfig cfg;
+          cfg.De = De;
+          cfg.a = a;
+          cfg.re = re;
+          cfg.cutoff = cutoff;
+          cfg.switch_width = switch_width;
+          return std::make_unique<rgpot::MorsePot>(cfg);
+        });
+      },
+      nb::arg("De") = 0.7102, nb::arg("a") = 1.6047, nb::arg("re") = 2.8970,
+      nb::arg("cutoff") = 9.5, nb::arg("switch_width") = 0.0,
+      "Shifted Morse pair potential. De is the well depth (eV), a is "
+      "1/Angstrom, re and cutoff are Angstrom. Defaults are the platinum "
+      "parameters. A positive switch_width (Angstrom) replaces the shift "
+      "with the C^2 quintic switch over [cutoff - switch_width, cutoff]; "
+      "it must not exceed cutoff.");
+  morse_cls.def("config", [](const PotHolder<rgpot::MorsePot> &self) {
+    const rgpot::MorseConfig &cfg = self.primary().config();
+    nb::dict out;
+    out["De"] = cfg.De;
+    out["a"] = cfg.a;
+    out["re"] = cfg.re;
+    out["cutoff"] = cfg.cutoff;
+    out["switch_width"] = cfg.switch_width;
+    return out;
+  });
+  rgpot::pybind::bind_calls(morse_cls);
+
 #ifdef RGPOT_HAS_FORTRAN_POTS
   bind_default_pot<rgpot::fortranpots::SWPot>(m, "SWPot");
   bind_default_pot<rgpot::fortranpots::EDIPPot>(m, "EDIPPot");
@@ -883,4 +953,146 @@ NB_MODULE(_core, m) {
           nb::arg("density").noconvert(), nb::arg("lapl_chi") = nb::none(),
           nb::arg("hess_chi") = nb::none());
 #endif
+
+  m.def(
+      "neighbor_list",
+      [](const F64 &positions, const F64 &cell, double cutoff, const std::string &quantities,
+         bool full, bool offsets) {
+        if (positions.ndim() != 2 || positions.shape(1) != 3) {
+          throw std::invalid_argument("positions must have shape (natoms, 3)");
+        }
+        if (cell.ndim() != 2 || cell.shape(0) != 3 || cell.shape(1) != 3) {
+          throw std::invalid_argument("cell must have shape (3, 3)");
+        }
+        for (char q : quantities) {
+          if (q != 'i' && q != 'j' && q != 'd' && q != 'D' && q != 'S') {
+            throw std::invalid_argument(
+                "quantities must be a subset of i, j, d, D and S");
+          }
+        }
+        rgpot::nlist::Query query;
+        query.cutoff = cutoff;
+        query.shape = rgpot::nlist::Pairs{full ? rgpot::nlist::Shell::Full
+                                               : rgpot::nlist::Shell::Half};
+        const bool want_d = quantities.find('d') != std::string::npos;
+        const bool want_D = quantities.find('D') != std::string::npos;
+        const bool want_S = quantities.find('S') != std::string::npos;
+        query.fields.distances = want_d || offsets;
+        query.fields.vectors = want_D;
+        query.fields.shifts = want_S;
+        const auto natoms = static_cast<std::size_t>(positions.shape(0));
+        struct Owned {
+          rgpot::nlist::Table table;
+          std::vector<std::int32_t> offsets;
+        };
+        auto owned = std::make_shared<Owned>();
+        try {
+          nb::gil_scoped_release release;
+          rgpot::nlist::build(owned->table, positions.data(), natoms, cell.data(), query);
+        } catch (const rgpot::nlist::Error &err) {
+          throw std::invalid_argument(err.what());
+        }
+        if (offsets) {
+          auto &table = owned->table;
+          const auto np = table.size();
+          std::vector<std::size_t> order(np);
+          for (std::size_t p = 0; p < np; ++p) {
+            order[p] = p;
+          }
+          std::sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+            if (table.first[a] != table.first[b]) {
+              return table.first[a] < table.first[b];
+            }
+            return table.second[a] < table.second[b];
+          });
+          auto permute_i = [&](std::vector<std::int32_t> &col, int width) {
+            if (col.empty()) {
+              return;
+            }
+            std::vector<std::int32_t> next(col.size());
+            for (std::size_t p = 0; p < np; ++p) {
+              for (int k = 0; k < width; ++k) {
+                next[static_cast<std::size_t>(width) * p + static_cast<std::size_t>(k)] =
+                    col[static_cast<std::size_t>(width) * order[p] + static_cast<std::size_t>(k)];
+              }
+            }
+            col.swap(next);
+          };
+          auto permute_d = [&](std::vector<double> &col, int width) {
+            if (col.empty()) {
+              return;
+            }
+            std::vector<double> next(col.size());
+            for (std::size_t p = 0; p < np; ++p) {
+              for (int k = 0; k < width; ++k) {
+                next[static_cast<std::size_t>(width) * p + static_cast<std::size_t>(k)] =
+                    col[static_cast<std::size_t>(width) * order[p] + static_cast<std::size_t>(k)];
+              }
+            }
+            col.swap(next);
+          };
+          permute_i(table.first, 1);
+          permute_i(table.second, 1);
+          permute_i(table.shift, 3);
+          permute_d(table.vector, 3);
+          permute_d(table.distance, 1);
+          owned->offsets.assign(natoms + 1, 0);
+          for (std::size_t p = 0; p < np; ++p) {
+            const auto i = static_cast<std::size_t>(table.first[p]);
+            if (i < natoms) {
+              owned->offsets[i + 1] += 1;
+            }
+          }
+          for (std::size_t i = 0; i < natoms; ++i) {
+            owned->offsets[i + 1] += owned->offsets[i];
+          }
+        }
+        auto keep = [owned]() {
+          auto *heap = new std::shared_ptr<Owned>(owned);
+          return nb::capsule(heap, [](void *p) noexcept {
+            delete static_cast<std::shared_ptr<Owned> *>(p);
+          });
+        };
+        const auto npairs = owned->table.size();
+        nb::list items;
+        for (char q : quantities) {
+          if (q == 'i') {
+            items.append(nb::ndarray<nb::numpy, std::int32_t>(
+                owned->table.first.data(), {npairs}, keep()));
+          } else if (q == 'j') {
+            items.append(nb::ndarray<nb::numpy, std::int32_t>(
+                owned->table.second.data(), {npairs}, keep()));
+          } else if (q == 'd') {
+            items.append(nb::ndarray<nb::numpy, double>(owned->table.distance.data(), {npairs},
+                                                        keep()));
+          } else if (q == 'D') {
+            items.append(nb::ndarray<nb::numpy, double>(owned->table.vector.data(), {npairs, 3},
+                                                        keep()));
+          } else if (q == 'S') {
+            items.append(nb::ndarray<nb::numpy, std::int32_t>(owned->table.shift.data(),
+                                                             {npairs, 3}, keep()));
+          }
+        }
+        if (offsets) {
+          items.append(nb::ndarray<nb::numpy, std::int32_t>(
+              owned->offsets.data(), {owned->offsets.size()}, keep()));
+        }
+        if (items.size() == 1) {
+          return nb::object(items[0]);
+        }
+        PyObject *raw = PyTuple_New(static_cast<Py_ssize_t>(items.size()));
+        for (Py_ssize_t k = 0; k < static_cast<Py_ssize_t>(items.size()); ++k) {
+          nb::handle item = items[static_cast<size_t>(k)];
+          Py_INCREF(item.ptr());
+          PyTuple_SetItem(raw, k, item.ptr());
+        }
+        return nb::steal<nb::object>(raw);
+      },
+      nb::arg("positions").noconvert(), nb::arg("cell").noconvert(), nb::arg("cutoff"),
+      nb::arg("quantities") = "ijd", nb::arg("full") = false, nb::arg("offsets") = false,
+      "Neighbour arrays selected by quantities. i and j are indices, d is the "
+      "distance, D is r_j - r_i with shape (npairs, 3), S is the integer shift "
+      "with that shape. offsets=True appends a CSR row pointer of length "
+      "natoms + 1 after sorting pairs by i, then j. "
+      "`i, j, d = rgpot.neighbor_list(positions, cell, cutoff)`.");
 }

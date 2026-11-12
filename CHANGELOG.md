@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
+## [Unreleased]
+
+### Breaking
+
+- librgpot's ELF soversion is 5. LJPot and MorsePot each hold a neighbour
+  list and a cached pair table, so a binary built against soversion 4
+  does not load librgpot.so.5. librgpot_mpi stays at soversion 3.
+
+### Added
+
+- A public neighbour query returns a structure-of-arrays table or a chunk
+  of a walk. A pair list is a half shell or a full shell. A cluster of four
+  is a separate shape and stores every neighbour. The C ABI is version 4.
+  `rgpot_nlist_request_init` sets the defaults, `bytes` is the struct size,
+  and `rgpot_nlist_strerror` names a code. Potentials.capnp carries the same
+  columns, and a client streams chunks with `cursor` and `next`.
+  The tutorial is `docs/orgmode/tutorials/neighbour-list.org`.
+  The query walks the same cell list as the classical potentials.
+  Fewer than 8192 atoms stay on the calling thread. A larger build writes
+  one shared table. Several independent systems are one batch, and the C
+  builder keeps a Verlet list. A positive skin with a strict cut is rejected.
+  The classical potentials call that same walk. `rgpot.neighbor_list` is the
+  Python half list. The Fortran gather uses that list and the builder's
+  skin cache. `quantities` selects columns, and `offsets=True` adds a
+  sorted CSR row pointer.
+
 ## [3.5.1](https://github.com/OmniPotentRPC/rgpot/tree/v3.5.1) - 2026-10-11
 
 ### Breaking

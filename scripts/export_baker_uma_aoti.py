@@ -110,10 +110,10 @@ def main() -> int:
     p.add_argument("--skip-existing", action="store_true")
     p.add_argument("--eager-only", action="store_true")
     p.add_argument("--skip-aoti", action="store_true")
-    # A static-shape package freezes the traced edge count, so a band
-    # that stretches past it aborts. A molecular box makes the intramolecular
-    # graph complete and the edge count constant at n(n-1).
-    p.add_argument("--molecular-box", type=float, default=0.0)
+    # A 15 angstrom box has a 6 angstrom cutoff (0.4*L). A walk of 10
+    # angstroms then rebuilds the same edge count out of periodic images.
+    # 40 angstroms keeps a 16 angstrom cutoff, wider than that walk.
+    p.add_argument("--molecular-box", type=float, default=40.0)
     args = p.parse_args()
 
     baker_dir = discover_baker_dir(args.baker_dir)

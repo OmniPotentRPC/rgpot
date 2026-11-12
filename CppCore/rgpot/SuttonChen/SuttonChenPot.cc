@@ -8,6 +8,10 @@
  * 1/2 sum_i sum_{j != i} term. The density sum has no 1/2. The force
  * on atom i along d = r_i - r_j is fscale * d, with
  * fscale = -(dE/dr) / r.
+ *
+ * The energy depends on positions only through pair distances, so with
+ * SuttonChenConfig::stress the force pass also sums -fscale * d (x) d,
+ * which is dE/dstrain for the embedding and pair terms together.
  */
 
 // clang-format off
@@ -19,7 +23,12 @@
 // clang-format on
 
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
-#include "rgpot/nlist/PairListCache.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
+#include "rgpot/stress.hpp"
+
+#if defined(_OPENMP)
+#include <omp.h>
+#endif
 
 namespace {
 
@@ -82,6 +91,10 @@ SuttonChenPot::SuttonChenPot(const SuttonChenConfig &c)
   fp.u64(static_cast<uint64_t>(c.m));
   fp.f64(c.cutoff);
   fp.u64(c.periodic ? 1 : 0);
+  if (c.stress) {
+    // Mixed in only when set, so the default key keeps its old value.
+    fp.u64(1);
+  }
   m_paramsKey = fp.h;
 }
 
@@ -96,15 +109,20 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     F[3 * i + 1] = 0.0;
     F[3 * i + 2] = 0.0;
   }
+  const SuttonChenConfig cfg = m_config;
+  double strain[6] = {};
   if (n_atoms < 2) {
+    if (cfg.stress) {
+      publishCauchyStress(out, strain, cellVolume(in.box));
+    }
     return;
   }
 
-  const SuttonChenConfig cfg = m_config;
-  nlist::CachedPairList::Options opt;
-  opt.cutoff = (cfg.cutoff > 0.0) ? cfg.cutoff : 1.0e6;
-  opt.periodic = cfg.periodic ? std::array<bool, 3>{true, true, true}
-                              : std::array<bool, 3>{false, false, false};
+  const double cutoff = (cfg.cutoff > 0.0) ? cfg.cutoff : 1.0e6;
+  const double cutoff2 = cutoff * cutoff;
+  const std::array<bool, 3> periodic =
+      cfg.periodic ? std::array<bool, 3>{true, true, true}
+                   : std::array<bool, 3>{false, false, false};
 
   static constexpr double free_box[9] = {1.0e6, 0.0, 0.0, 0.0, 1.0e6,
                                          0.0,   0.0, 0.0, 1.0e6};
@@ -124,20 +142,59 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
   std::vector<double> rho(n_size, 0.0);
   double epair = 0.0;
-  auto &pool = nlist::PairListCache::global();
-  pool.evaluate(
-      R, n_size, box_use, opt,
-      [&](int32_t i, int32_t j, double, double, double, double r2) {
-        if (!(r2 > 0.0)) {
-          return;
-        }
-        const double ar2 = (lattice * lattice) / r2;
-        const double phi = pow_ar(ar2, m_exp);
-        const double rep = pow_ar(ar2, n_exp);
-        rho[static_cast<std::size_t>(i)] += phi;
-        rho[static_cast<std::size_t>(j)] += phi;
-        epair += epsilon * rep;
-      });
+  const double skin = mode_ == nlist::Mode::Stream ? 0.0 : cutoff / 5.0;
+  nlist::updateCells(neighbours_, R, n_size, box_use, cutoff, skin, nlist::Image::Round,
+                     mode_, periodic);
+  const int nt = nlist::threadsRequested();
+  const bool stream = neighbours_.streaming();
+  auto pair_term = [&](double r2, double &phi, double &rep) {
+    const double ar2 = (lattice * lattice) / r2;
+    phi = pow_ar(ar2, m_exp);
+    rep = pow_ar(ar2, n_exp);
+  };
+  if (nt == 1) {
+    auto density = [&](int32_t i, int32_t j, double, double, double, double r2) {
+      if (!(r2 > 0.0) || r2 > cutoff2) {
+        return;
+      }
+      double phi = 0.0;
+      double rep = 0.0;
+      pair_term(r2, phi, rep);
+      rho[static_cast<std::size_t>(i)] += phi;
+      rho[static_cast<std::size_t>(j)] += phi;
+      epair += epsilon * rep;
+    };
+    if (stream) {
+      nlist::visitHalf(neighbours_, 0, n_atoms, density);
+    } else {
+      nlist::visitDirected(neighbours_, 
+          0, n_atoms, [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
+            if (!(j > i)) {
+              return;
+            }
+            density(i, j, dx, dy, dz, r2);
+          });
+    }
+  } else {
+    std::vector<double> partial(static_cast<std::size_t>(nt), 0.0);
+    // One shared tile. A visit from each thread would build it again.
+    neighbours_.forCellTeam(
+        false, nt, [&](int t, int32_t i, int32_t j, double, double, double, double r2) {
+          if (!(r2 > 0.0) || r2 > cutoff2) {
+            return;
+          }
+          double phi = 0.0;
+          double rep = 0.0;
+          pair_term(r2, phi, rep);
+          rho[static_cast<std::size_t>(i)] += phi;
+          if (j > i) {
+            partial[static_cast<std::size_t>(t)] += epsilon * rep;
+          }
+        });
+    for (double part : partial) {
+      epair += part;
+    }
+  }
 
   std::vector<double> weight(n_size, 0.0);
   double eemb = 0.0;
@@ -150,34 +207,73 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     weight[i] = epsilon * c_coef / (2.0 * root);
   }
 
-  pool.evaluate(
-      R, n_size, box_use, opt,
-      [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
-        if (!(r2 > 0.0)) {
-          return;
+  auto apply = [&](int32_t i, int32_t j, double dx, double dy, double dz,
+                   double r2, double *force, double *virial, bool both) {
+    if (!(r2 > 0.0) || r2 > cutoff2) {
+      return;
+    }
+    const double inv_r2 = 1.0 / r2;
+    const double ar2 = (lattice * lattice) * inv_r2;
+    const double phi = pow_ar(ar2, m_exp);
+    const double rep = pow_ar(ar2, n_exp);
+    const double wi = weight[static_cast<std::size_t>(i)];
+    const double wj = weight[static_cast<std::size_t>(j)];
+    const double fscale = (epsilon * static_cast<double>(n_exp) * rep -
+                           static_cast<double>(m_exp) * phi * (wi + wj)) *
+                          inv_r2;
+    const double fx = fscale * dx;
+    const double fy = fscale * dy;
+    const double fz = fscale * dz;
+    force[3 * i] += fx;
+    force[3 * i + 1] += fy;
+    force[3 * i + 2] += fz;
+    if (both) {
+      force[3 * j] -= fx;
+      force[3 * j + 1] -= fy;
+      force[3 * j + 2] -= fz;
+    }
+    if (virial != nullptr && j > i) {
+      accumulatePairStrain(virial, fscale, dx, dy, dz);
+    }
+  };
+  if (nt == 1) {
+    if (stream) {
+      nlist::visitHalf(neighbours_, 
+          0, n_atoms,
+          [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
+            apply(i, j, dx, dy, dz, r2, F, cfg.stress ? strain : nullptr, true);
+          });
+    } else {
+      nlist::visitDirected(neighbours_, 
+          0, n_atoms,
+          [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
+            if (!(j > i)) {
+              return;
+            }
+            apply(i, j, dx, dy, dz, r2, F, cfg.stress ? strain : nullptr, true);
+          });
+    }
+  } else {
+    std::vector<double> vir(static_cast<std::size_t>(nt) * 6, 0.0);
+    // Each atom is central in one cell, so its force is written once.
+    neighbours_.forCellTeam(
+        false, nt, [&](int t, int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
+          double *virial = cfg.stress ? vir.data() + static_cast<std::size_t>(t) * 6 : nullptr;
+          apply(i, j, dx, dy, dz, r2, F, virial, false);
+        });
+    if (cfg.stress) {
+      for (int t = 0; t < nt; ++t) {
+        for (int k = 0; k < 6; ++k) {
+          strain[k] += vir[static_cast<std::size_t>(t) * 6 + static_cast<std::size_t>(k)];
         }
-        const double inv_r2 = 1.0 / r2;
-        const double ar2 = (lattice * lattice) * inv_r2;
-        const double phi = pow_ar(ar2, m_exp);
-        const double rep = pow_ar(ar2, n_exp);
-        const double wi = weight[static_cast<std::size_t>(i)];
-        const double wj = weight[static_cast<std::size_t>(j)];
-        const double fscale =
-            (epsilon * static_cast<double>(n_exp) * rep -
-             static_cast<double>(m_exp) * phi * (wi + wj)) *
-            inv_r2;
-        const double fx = fscale * dx;
-        const double fy = fscale * dy;
-        const double fz = fscale * dz;
-        F[3 * i] += fx;
-        F[3 * i + 1] += fy;
-        F[3 * i + 2] += fz;
-        F[3 * j] -= fx;
-        F[3 * j + 1] -= fy;
-        F[3 * j + 2] -= fz;
-      });
+      }
+    }
+  }
 
   out->energy = epair + eemb;
+  if (cfg.stress) {
+    publishCauchyStress(out, strain, cellVolume(in.box));
+  }
 }
 
 } // namespace rgpot
@@ -209,12 +305,6 @@ int export_force(const rgpot_sc_config *cfg, int32_t natoms,
 }
 
 } // namespace
-
-#if defined(_WIN32)
-#define RGPOT_SC_API __declspec(dllexport)
-#else
-#define RGPOT_SC_API __attribute__((visibility("default")))
-#endif
 
 extern "C" RGPOT_SC_API int
 rgpot_sutton_chen_energy_forces(const rgpot_sc_config *cfg, int32_t natoms,
