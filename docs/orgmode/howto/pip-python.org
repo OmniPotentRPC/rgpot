@@ -18,6 +18,8 @@ The package declares free-threading support as beta.
 The free-threaded wheel is =cp314t= and imports with the GIL disabled.
 =cp315t= is not built: PyPI has no torch wheel for that tag.
 The =cp312= wheel is the stable-ABI build for the GIL interpreters.
+The bundled gfortran runtime is built for macOS 15, so the macOS arm64 wheels
+need macOS 15 or newer.
 Tests run on 3.13t, 3.14t, and 3.15t.
 ThreadSanitizer runs on 3.13t and 3.14t.
 
