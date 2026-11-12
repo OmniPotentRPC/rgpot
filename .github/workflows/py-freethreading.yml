@@ -81,8 +81,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y ${{ inputs.apt-packages }}
+          # shellcheck disable=SC2086
+          bash ci/gha/apt-install.sh ${{ inputs.apt-packages }}
 
       - name: Install the package and the T1 runner
         shell: bash

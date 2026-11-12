@@ -156,7 +156,9 @@ TEST_CASE("classical engine matches the directly compiled LJPot",
   RgpotEngineCaps caps;
   caps.size = sizeof(caps);
   REQUIRE(e.caps(pot, &caps) == 0);
-  REQUIRE(caps.reentrancy == 0);
+  // Neighbour scratch is per instance. The engine serializes this handle;
+  // the following test calls it from several threads.
+  REQUIRE(caps.reentrancy == 1);
 
   const long n = 5;
   std::vector<double> forces(3 * n, 0.0);

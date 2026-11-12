@@ -360,3 +360,8 @@ class XcKernel:
 
     @staticmethod
     def fields_from_density(chi: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], dchi: object, density: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], lapl_chi: object | None = None, hess_chi: object | None = None) -> dict: ...
+
+def neighbor_list(positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], cell: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], cutoff: float, quantities: str = 'ijd', full: bool = False, offsets: bool = False) -> object:
+    """
+    Neighbour arrays selected by quantities. i and j are indices, d is the distance, D is r_j - r_i with shape (npairs, 3), S is the integer shift with that shape. offsets=True appends a CSR row pointer of length natoms + 1 after sorting pairs by i, then j. `i, j, d = rgpot.neighbor_list(positions, cell, cutoff)`.
+    """

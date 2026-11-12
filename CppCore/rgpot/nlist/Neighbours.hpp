@@ -135,6 +135,23 @@ public:
     }
   }
 
+  /// MSVC rejects `#pragma omp` inside a lambda (C2760, token PRAGMA_OMP).
+  /// The region lives in this method; the lambdas only supply the body.
+  template <typename Body>
+  void withTeam(int nthreads, Body &&body) const {
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nthreads)
+#endif
+    {
+#if defined(_OPENMP)
+      const int thread = omp_get_thread_num();
+#else
+      const int thread = 0;
+#endif
+      body(thread);
+    }
+  }
+
   /// One walk of the directed pairs, split by cell across `nthreads`.
   /// The bins are built once and shared. `fn(thread, i, j, dx, dy, dz, r2)`.
   /// A thread owns each cell, so a pair is visited once.
@@ -147,15 +164,7 @@ public:
                        const std::int32_t *head, std::size_t ncells,
                        bool cell_shift, double search2, double L0, double L1, double L2, double i0,
                        double i1, double i2, bool p0, bool p1, bool p2) {
-#if defined(_OPENMP)
-#pragma omp parallel num_threads(nthreads)
-#endif
-          {
-#if defined(_OPENMP)
-            const int thread = omp_get_thread_num();
-#else
-            const int thread = 0;
-#endif
+          withTeam(nthreads, [&](int thread) {
             const auto range = partition(static_cast<std::int64_t>(ncells), thread, nthreads);
             auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
                               double r2) { fn(thread, i, j, dx, dy, dz, r2); };
@@ -168,17 +177,9 @@ public:
                                 static_cast<std::size_t>(range.end), 0, n_, half, cell_shift,
                                 search2, L0, L1, L2, i0, i1, i2, p0, p1, p2, accept);
             }
-          }
+          });
         })) {
-#if defined(_OPENMP)
-#pragma omp parallel num_threads(nthreads)
-#endif
-      {
-#if defined(_OPENMP)
-        const int thread = omp_get_thread_num();
-#else
-        const int thread = 0;
-#endif
+      withTeam(nthreads, [&](int thread) {
         const auto range = partition(static_cast<std::int64_t>(n_), thread, nthreads);
         auto adapt = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
                          double r2) { fn(thread, i, j, dx, dy, dz, r2); };
@@ -187,7 +188,7 @@ public:
         } else {
           forDirected(range.begin, range.end, adapt);
         }
-      }
+      });
     }
   }
 
@@ -301,7 +302,9 @@ private:
       bool compact = false;
       std::vector<std::int32_t> head;
     };
-    static Cache cache;
+    // One stencil per thread. The cache is process-wide otherwise, and two
+    // evaluations then rewrite the same vectors.
+    thread_local Cache cache;
     // The stored evaluation rebuilds its stencil. A stream keeps one and
     // reuses it when the coordinates are unchanged.
     const bool same_grid = cache.owner == this && cache.nx == nx_ && cache.ny == ny_ &&

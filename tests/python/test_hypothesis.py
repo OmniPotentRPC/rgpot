@@ -10,6 +10,10 @@ from hypothesis import strategies as st
 import rgpot
 from rgpot.ase import RgpotCalculator
 
+# Hypothesis memoizes has_reusable_values on the process-wide strategy
+# objects. Concurrent validation drops that attribute.
+pytestmark = pytest.mark.thread_unsafe
+
 
 def _box() -> np.ndarray:
     return np.eye(3, dtype=np.float64) * 20.0

@@ -94,8 +94,10 @@ tblite = "0.6.*"
 platforms = ["linux-64"]
 
 [feature.metatomic.dependencies]
-# uv is already in the default workspace deps; orchestrator potentials jobs use it for
-# fallback wheel installs when pypi packages are incomplete in the env.
+# The tiny UMA contract exporter imports ASE. uv is already in the default
+# workspace deps; orchestrator potentials jobs use it for fallback wheel
+# installs when pypi packages are incomplete in the env.
+ase = ">=3.24"
 
 [feature.metatomic.pypi-dependencies]
 torch = ">=2.10, <2.11"

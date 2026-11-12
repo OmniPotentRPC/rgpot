@@ -3,10 +3,21 @@
 (add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/") t)
 (package-initialize)
 
-;; Ensure ox-rst is present
+;; Ensure ox-rst is present. MELPA often fails the first fetch on CI.
 (unless (package-installed-p 'ox-rst)
-  (package-refresh-contents)
-  (package-install 'ox-rst))
+  (let ((tries 0))
+    (while (and (< tries 4) (not (package-installed-p 'ox-rst)))
+      (setq tries (1+ tries))
+      (condition-case err
+          (progn
+            (package-refresh-contents)
+            (when (assoc 'ox-rst package-archive-contents)
+              (package-install 'ox-rst)))
+        (error
+         (message "ox-rst install attempt %s failed: %s" tries err)
+         (sleep-for (* tries 5)))))))
+(unless (package-installed-p 'ox-rst)
+  (error "Package `ox-rst' is unavailable"))
 
 (require 'ox-rst)
 (require 'ox-publish)
