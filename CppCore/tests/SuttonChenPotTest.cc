@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <random>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -64,8 +65,7 @@ void dimer_oracle(double r, double epsilon, double c, double a, int nexp,
   const double rep = std::pow(s, nexp);
   const double phi = std::pow(s, mexp);
   *energy = epsilon * rep - 2.0 * epsilon * c * std::sqrt(phi);
-  *dEdr = -epsilon * nexp * rep / r +
-          epsilon * c * mexp * std::sqrt(phi) / r;
+  *dEdr = -epsilon * nexp * rep / r + epsilon * c * mexp * std::sqrt(phi) / r;
 }
 
 /// Energy per atom of an fcc crystal at nearest-neighbor `radius`. The
@@ -236,9 +236,10 @@ TEST_CASE("Sutton-Chen forces match a central difference", "[SuttonChen]") {
       const double e_plus = std::get<0>(pot(plus, types, box));
       const double e_minus = std::get<0>(pot(minus, types, box));
       const double numeric = (e_plus - e_minus) / (2.0 * h);
-      const double analytic = -forces(static_cast<size_t>(i),
-                                      static_cast<size_t>(k));
-      REQUIRE_THAT(analytic, WithinAbs(numeric, 1e-4 * (1.0 + std::abs(numeric))));
+      const double analytic =
+          -forces(static_cast<size_t>(i), static_cast<size_t>(k));
+      REQUIRE_THAT(analytic,
+                   WithinAbs(numeric, 1e-4 * (1.0 + std::abs(numeric))));
     }
   }
 }
@@ -262,8 +263,12 @@ TEST_CASE("Sutton-Chen reproduces the Doye 10-8 cluster energies",
     REQUIRE(nexp == 10);
     REQUIRE(mexp == 8);
 
-    const rgpot::SuttonChenConfig cfg{
-        .epsilon = epsilon, .c = c, .a = a, .n = nexp, .m = mexp, .cutoff = 40.0};
+    const rgpot::SuttonChenConfig cfg{.epsilon = epsilon,
+                                      .c = c,
+                                      .a = a,
+                                      .n = nexp,
+                                      .m = mexp,
+                                      .cutoff = 40.0};
     rgpot::SuttonChenPot pot(cfg);
     const std::vector<int> types(pos.rows(), 78);
     auto [energy, forces, variance] = pot(pos, types, cube(80.0));
@@ -272,8 +277,12 @@ TEST_CASE("Sutton-Chen reproduces the Doye 10-8 cluster energies",
     // deposited point file for that row.
     REQUIRE_THAT(energy, WithinAbs(published[which], 5e-5));
 
-    rgpot::SuttonChenPot full(rgpot::SuttonChenConfig{
-        .epsilon = epsilon, .c = c, .a = a, .n = nexp, .m = mexp, .cutoff = 0.0});
+    rgpot::SuttonChenPot full(rgpot::SuttonChenConfig{.epsilon = epsilon,
+                                                      .c = c,
+                                                      .a = a,
+                                                      .n = nexp,
+                                                      .m = mexp,
+                                                      .cutoff = 0.0});
     const double energy_full = std::get<0>(full(pos, types, cube(80.0)));
     REQUIRE_THAT(energy_full, WithinAbs(energy, 1e-9));
 
@@ -319,7 +328,8 @@ TEST_CASE("the C entry point matches the C++ potential", "[SuttonChen]") {
   const double box[] = {20, 0, 0, 0, 20, 0, 0, 0, 20};
   double energy = 0.0;
   double forces[9] = {};
-  REQUIRE(rgpot_sutton_chen_energy_forces(&cfg, 3, pos, box, &energy, forces) == 0);
+  REQUIRE(rgpot_sutton_chen_energy_forces(&cfg, 3, pos, box, &energy, forces) ==
+          0);
 
   AtomMatrix m(3, 3);
   for (int i = 0; i < 9; ++i) {
@@ -331,9 +341,9 @@ TEST_CASE("the C entry point matches the C++ potential", "[SuttonChen]") {
   REQUIRE_THAT(energy, WithinAbs(e2, 1e-12));
   for (int i = 0; i < 3; ++i) {
     for (int k = 0; k < 3; ++k) {
-      REQUIRE_THAT(forces[3 * i + k], WithinAbs(f2(static_cast<size_t>(i),
-                                                   static_cast<size_t>(k)),
-                                                1e-12));
+      REQUIRE_THAT(
+          forces[3 * i + k],
+          WithinAbs(f2(static_cast<size_t>(i), static_cast<size_t>(k)), 1e-12));
     }
   }
 }
@@ -342,7 +352,8 @@ TEST_CASE("Sutton-Chen parameter fingerprint tracks the config",
           "[SuttonChen]") {
   rgpot::SuttonChenPot defaults;
   rgpot::SuttonChenPot same{rgpot::SuttonChenConfig{}};
-  rgpot::SuttonChenPot other{rgpot::SuttonChenConfig{.c = 39.432, .n = 9, .m = 6}};
+  rgpot::SuttonChenPot other{
+      rgpot::SuttonChenConfig{.c = 39.432, .n = 9, .m = 6}};
   REQUIRE(defaults.paramsKey() == same.paramsKey());
   REQUIRE(defaults.paramsKey() != other.paramsKey());
   REQUIRE(defaults.get_type() == rgpot::PotType::SuttonChen);
@@ -394,9 +405,9 @@ TEST_CASE("Sutton-Chen bulk scales match a direct fcc lattice sum",
           "[SuttonChen]") {
   // c was fitted for zero pressure at the lattice parameter a, so the
   // minimum sits at a / sqrt(2) to the digits c is printed with.
-  const rgpot::SuttonChenConfig rows[] = {
-      rgpot::SuttonChenConfig{}, rgpot::sutton_chen_platinum(),
-      rgpot::sutton_chen_gold()};
+  const rgpot::SuttonChenConfig rows[] = {rgpot::SuttonChenConfig{},
+                                          rgpot::sutton_chen_platinum(),
+                                          rgpot::sutton_chen_gold()};
   for (const auto &cfg : rows) {
     const auto scales = rgpot::sutton_chen_scales(cfg);
     REQUIRE_THAT(scales.nearest_neighbor / cfg.a,
@@ -429,9 +440,14 @@ TEST_CASE("gold clusters relax from the rescaled platinum geometries",
     const AtomMatrix deposited =
         load_points(file, &epsilon, &c, &a, &nexp, &mexp);
     const std::vector<int> types(deposited.rows(), 79);
-    rgpot::SuttonChenPot reduced(rgpot::SuttonChenConfig{
-        .epsilon = epsilon, .c = c, .a = a, .n = nexp, .m = mexp, .cutoff = 0.0});
-    const double e_reduced = std::get<0>(reduced(deposited, types, cube(200.0)));
+    rgpot::SuttonChenPot reduced(rgpot::SuttonChenConfig{.epsilon = epsilon,
+                                                         .c = c,
+                                                         .a = a,
+                                                         .n = nexp,
+                                                         .m = mexp,
+                                                         .cutoff = 0.0});
+    const double e_reduced =
+        std::get<0>(reduced(deposited, types, cube(200.0)));
 
     // The deposited file is in units of a = 1. Platinum in Angstrom is
     // that file times a_Pt, and the gold copy is that geometry times
@@ -591,4 +607,234 @@ TEST_CASE("Sutton-Chen pressure vanishes at the fitted lattice parameter",
                               .stress[0];
   REQUIRE(squeezed < 0.0);
   REQUIRE(last < 1.0e-3 * std::abs(squeezed));
+}
+
+namespace {
+
+/// The pair loop the neighbour walk used: binary exponentiation of
+/// (a/r)^2, then the same force scale. i < j, so the direct kernel and
+/// this reference see one order.
+double legacy_ipow(double base, int exp) {
+  double result = 1.0;
+  while (exp > 0) {
+    if ((exp & 1) != 0) {
+      result *= base;
+    }
+    base *= base;
+    exp >>= 1;
+  }
+  return result;
+}
+
+double legacy_pow_ar(double ar2, int exp) {
+  double p = legacy_ipow(ar2, exp / 2);
+  if ((exp % 2) != 0) {
+    p *= std::sqrt(ar2);
+  }
+  return p;
+}
+
+void legacy_sutton_chen(const double *pos, std::size_t n, double epsilon,
+                        double c, double a, int n_exp, int m_exp, double cutoff,
+                        double *forces, double *energy) {
+  std::fill(forces, forces + 3 * n, 0.0);
+  if (n < 2) {
+    *energy = 0.0;
+    return;
+  }
+  const double cutoff2 = cutoff * cutoff;
+  const double a2 = a * a;
+  std::vector<double> rho(n, 0.0);
+  std::vector<double> weight(n, 0.0);
+  double epair = 0.0;
+  for (std::size_t i = 0; i < n; ++i) {
+    for (std::size_t j = i + 1; j < n; ++j) {
+      const double dx = pos[3 * i] - pos[3 * j];
+      const double dy = pos[3 * i + 1] - pos[3 * j + 1];
+      const double dz = pos[3 * i + 2] - pos[3 * j + 2];
+      const double r2 = dx * dx + dy * dy + dz * dz;
+      if (!(r2 > 0.0) || r2 > cutoff2) {
+        continue;
+      }
+      const double ar2 = a2 / r2;
+      const double phi = legacy_pow_ar(ar2, m_exp);
+      const double rep = legacy_pow_ar(ar2, n_exp);
+      rho[i] += phi;
+      rho[j] += phi;
+      epair += epsilon * rep;
+    }
+  }
+  double eemb = 0.0;
+  for (std::size_t i = 0; i < n; ++i) {
+    if (!(rho[i] > 0.0)) {
+      continue;
+    }
+    const double root = std::sqrt(rho[i]);
+    eemb -= epsilon * c * root;
+    weight[i] = epsilon * c / (2.0 * root);
+  }
+  for (std::size_t i = 0; i < n; ++i) {
+    for (std::size_t j = i + 1; j < n; ++j) {
+      const double dx = pos[3 * i] - pos[3 * j];
+      const double dy = pos[3 * i + 1] - pos[3 * j + 1];
+      const double dz = pos[3 * i + 2] - pos[3 * j + 2];
+      const double r2 = dx * dx + dy * dy + dz * dz;
+      if (!(r2 > 0.0) || r2 > cutoff2) {
+        continue;
+      }
+      const double inv = 1.0 / r2;
+      const double ar2 = a2 * inv;
+      const double phi = legacy_pow_ar(ar2, m_exp);
+      const double rep = legacy_pow_ar(ar2, n_exp);
+      const double fscale =
+          (epsilon * static_cast<double>(n_exp) * rep -
+           static_cast<double>(m_exp) * phi * (weight[i] + weight[j])) *
+          inv;
+      const double fx = fscale * dx;
+      const double fy = fscale * dy;
+      const double fz = fscale * dz;
+      forces[3 * i] += fx;
+      forces[3 * i + 1] += fy;
+      forces[3 * i + 2] += fz;
+      forces[3 * j] -= fx;
+      forces[3 * j + 1] -= fy;
+      forces[3 * j + 2] -= fz;
+    }
+  }
+  *energy = epair + eemb;
+}
+
+/// Relative 1e-12. A component below 1 is held to an absolute 1e-12,
+/// which is the cancelled remainder of a pair sum.
+bool rel_1e12(double got, double ref) {
+  const double scale = std::max(1.0, std::max(std::abs(got), std::abs(ref)));
+  return std::abs(got - ref) <= 1e-12 * scale;
+}
+
+/// Compact random cluster. Seeded, so the geometry is the test.
+AtomMatrix random_cluster(int n, std::uint32_t seed) {
+  std::mt19937 rng(seed);
+  std::uniform_real_distribution<double> u(0.0, 1.0);
+  int side = 1;
+  while (side * side * side < n) {
+    ++side;
+  }
+  AtomMatrix pos(static_cast<std::size_t>(n), 3);
+  int k = 0;
+  for (int ix = 0; ix < side && k < n; ++ix) {
+    for (int iy = 0; iy < side && k < n; ++iy) {
+      for (int iz = 0; iz < side && k < n; ++iz, ++k) {
+        pos(static_cast<std::size_t>(k), 0) = ix * 1.2 + 0.05 * u(rng);
+        pos(static_cast<std::size_t>(k), 1) = iy * 1.2 + 0.05 * u(rng);
+        pos(static_cast<std::size_t>(k), 2) = iz * 1.2 + 0.05 * u(rng);
+      }
+    }
+  }
+  return pos;
+}
+
+void check_legacy(const rgpot::SuttonChenConfig &cfg, const AtomMatrix &pos) {
+  const std::vector<int> types(pos.rows(), 47);
+  auto [energy, forces, variance] =
+      rgpot::SuttonChenPot(cfg)(pos, types, cube(80.0));
+  (void)variance;
+  std::vector<double> legacy_f(pos.size(), 0.0);
+  double legacy_e = 0.0;
+  const double cutoff = cfg.cutoff > 0.0 ? cfg.cutoff : 1.0e6;
+  legacy_sutton_chen(pos.data(), pos.rows(), cfg.epsilon, cfg.c, cfg.a, cfg.n,
+                     cfg.m, cutoff, legacy_f.data(), &legacy_e);
+  INFO("n=" << pos.rows() << " exponents " << cfg.n << " " << cfg.m);
+  REQUIRE(rel_1e12(energy, legacy_e));
+  for (std::size_t i = 0; i < legacy_f.size(); ++i) {
+    INFO("component " << i);
+    REQUIRE(rel_1e12(forces.data()[i], legacy_f[i]));
+  }
+}
+
+void check_finite_difference(const rgpot::SuttonChenConfig &cfg,
+                             AtomMatrix pos) {
+  const std::vector<int> types(pos.rows(), 47);
+  const auto box = cube(80.0);
+  rgpot::SuttonChenPot pot(cfg);
+  auto [energy, forces, variance] = pot(pos, types, box);
+  (void)energy;
+  (void)variance;
+  const double h = 1e-6;
+  for (std::size_t i = 0; i < pos.rows(); ++i) {
+    for (int k = 0; k < 3; ++k) {
+      const double base = pos(i, static_cast<std::size_t>(k));
+      pos(i, static_cast<std::size_t>(k)) = base + h;
+      const double e_plus = std::get<0>(pot(pos, types, box));
+      pos(i, static_cast<std::size_t>(k)) = base - h;
+      const double e_minus = std::get<0>(pot(pos, types, box));
+      pos(i, static_cast<std::size_t>(k)) = base;
+      const double numeric = (e_plus - e_minus) / (2.0 * h);
+      const double analytic = -forces(i, static_cast<std::size_t>(k));
+      INFO("atom " << i << " axis " << k);
+      REQUIRE_THAT(analytic,
+                   WithinAbs(numeric, 1e-4 * (1.0 + std::abs(numeric))));
+    }
+  }
+}
+
+} // namespace
+
+TEST_CASE("Sutton-Chen matches the previous pair loop on random clusters",
+          "[SuttonChen][kernel]") {
+  const int sizes[] = {13, 38, 80, 147};
+  const rgpot::SuttonChenConfig rows[] = {
+      {.epsilon = 1.0, .c = 144.41, .a = 1.0, .n = 12, .m = 6, .cutoff = 40.0},
+      {.epsilon = 1.0, .c = 34.408, .a = 1.0, .n = 10, .m = 8, .cutoff = 40.0},
+      {.epsilon = 0.012382,
+       .c = 39.432,
+       .a = 3.61,
+       .n = 9,
+       .m = 6,
+       .cutoff = 40.0},
+      {.epsilon = 1.0, .c = 12.5, .a = 1.3, .n = 7, .m = 5, .cutoff = 0.0},
+      {.epsilon = 0.5, .c = 8.0, .a = 2.0, .n = 18, .m = 11, .cutoff = 40.0},
+  };
+  for (int n : sizes) {
+    const AtomMatrix pos = random_cluster(n, 12);
+    for (const auto &cfg : rows) {
+      check_legacy(cfg, pos);
+    }
+  }
+  // A short cutoff leaves the bounding box, so the call stays on the
+  // neighbour walk. The pair set is still the reference cutoff.
+  rgpot::SuttonChenConfig cut = rows[0];
+  cut.cutoff = 2.5;
+  check_legacy(cut, random_cluster(38, 12));
+  check_legacy(cut, random_cluster(80, 12));
+}
+
+TEST_CASE("Sutton-Chen analytic gradient matches a central difference",
+          "[SuttonChen][kernel]") {
+  const int sizes[] = {13, 38, 80, 147};
+  const rgpot::SuttonChenConfig cfg{
+      .epsilon = 1.0, .c = 144.41, .a = 1.0, .n = 12, .m = 6, .cutoff = 40.0};
+  for (int n : sizes) {
+    check_finite_difference(cfg, random_cluster(n, 12));
+  }
+  check_finite_difference(
+      rgpot::SuttonChenConfig{
+          .epsilon = 1.0, .c = 12.5, .a = 1.3, .n = 7, .m = 5, .cutoff = 0.0},
+      random_cluster(13, 12));
+}
+
+TEST_CASE(
+    "Sutton-Chen direct walk keeps energy and force bits when stress is on",
+    "[SuttonChen][kernel]") {
+  const AtomMatrix pos = random_cluster(13, 12);
+  const std::vector<int> types(pos.rows(), 47);
+  rgpot::SuttonChenConfig plain{
+      .epsilon = 1.0, .c = 144.41, .a = 1.0, .n = 12, .m = 6, .cutoff = 40.0};
+  rgpot::SuttonChenConfig with = plain;
+  with.stress = true;
+  const auto box = cube(80.0);
+  const auto a = rgpot::SuttonChenPot(plain)(pos, types, box);
+  const auto b = rgpot::SuttonChenPot(with)(pos, types, box);
+  REQUIRE(std::memcmp(&std::get<0>(a), &std::get<0>(b), sizeof(double)) == 0);
+  REQUIRE(std::memcmp(std::get<1>(a).data(), std::get<1>(b).data(),
+                      pos.size() * sizeof(double)) == 0);
 }

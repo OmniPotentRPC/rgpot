@@ -22,6 +22,11 @@ features = ["avx", "avx2"]
 reason = "target(\"avx2\") LJ cluster bodies, entered only after __builtin_cpu_supports(\"avx2\")"
 
 [[allow]]
+symbol = "^rgpot::(?:_GLOBAL__N_[0-9]+::|\\(anonymous namespace\\)::)(?:sc_avx2_126|sc_quad_126|sc_acc_rep|sc_acc_emb)(?:\\(|$)"
+features = ["avx", "avx2"]
+reason = "target(\"avx2\") Sutton-Chen 12-6 bodies, entered only after __builtin_cpu_supports(\"avx2\")"
+
+[[allow]]
 symbol = "^__cpu_indicator_init(?:\\(|$)"
 features = ["xsave"]
 reason = "GCC __builtin_cpu_supports initializer; xgetbv reads XCR0"

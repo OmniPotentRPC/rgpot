@@ -1,0 +1,26 @@
+[workspace]
+
+[package]
+name = "sutton-chen-criterion"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "MIT"
+description = "Criterion timings of the Sutton-Chen direct kernel"
+
+[dependencies]
+
+[build-dependencies]
+cc = "=1.0.90"
+
+[[bench]]
+name = "sutton_chen"
+harness = false
+
+[dev-dependencies]
+criterion = "=0.3.6"
+
+[profile.bench]
+lto = "thin"
+codegen-units = 1
+opt-level = 3

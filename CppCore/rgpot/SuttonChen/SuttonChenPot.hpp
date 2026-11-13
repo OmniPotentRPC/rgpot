@@ -122,7 +122,9 @@ public:
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
 private:
-  static constexpr uint64_t kKernelVersion = 1;
+  // 2: open-boundary clusters that fit in the cutoff use the direct
+  // SoA walk. The pair set is unchanged. The sum order is i then j.
+  static constexpr uint64_t kKernelVersion = 2;
 
   SuttonChenConfig m_config;
   uint64_t m_paramsKey{0};
