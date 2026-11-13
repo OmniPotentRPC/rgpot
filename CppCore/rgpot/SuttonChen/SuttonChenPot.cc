@@ -53,6 +53,22 @@ double pow_ar(double ar2, int exp) {
   return p;
 }
 
+/// Density and repulsive powers. The 10-8 metal reuses the two squares
+/// that each separate power would form: (a/r)^8 is 1*(ar2^2)^2 and
+/// (a/r)^10 multiplies that by ar2. Every other pair of exponents is
+/// two pow_ar calls.
+void pow_ar_both(double ar2, int n_exp, int m_exp, double &rep, double &phi) {
+  if (n_exp == 10 && m_exp == 8) {
+    const double s2 = ar2 * ar2;
+    const double s4 = s2 * s2;
+    phi = 1.0 * s4;
+    rep = ar2 * s4;
+    return;
+  }
+  rep = pow_ar(ar2, n_exp);
+  phi = pow_ar(ar2, m_exp);
+}
+
 rgpot::SuttonChenConfig config_from_c(const rgpot_sc_config &raw) {
   rgpot::SuttonChenConfig c;
   c.epsilon = raw.epsilon;
@@ -148,8 +164,7 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const int nt = nlist::threadsRequested();
   auto pair_term = [&](double r2, double &phi, double &rep) {
     const double ar2 = (lattice * lattice) / r2;
-    phi = pow_ar(ar2, m_exp);
-    rep = pow_ar(ar2, n_exp);
+    pow_ar_both(ar2, n_exp, m_exp, rep, phi);
   };
   if (nt == 1) {
     auto density = [&](int32_t i, int32_t j, double, double, double, double r2) {
@@ -207,8 +222,9 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     }
     const double inv_r2 = 1.0 / r2;
     const double ar2 = (lattice * lattice) * inv_r2;
-    const double phi = pow_ar(ar2, m_exp);
-    const double rep = pow_ar(ar2, n_exp);
+    double phi = 0.0;
+    double rep = 0.0;
+    pow_ar_both(ar2, n_exp, m_exp, rep, phi);
     const double wi = weight[static_cast<std::size_t>(i)];
     const double wj = weight[static_cast<std::size_t>(j)];
     const double fscale = (epsilon * static_cast<double>(n_exp) * rep -
