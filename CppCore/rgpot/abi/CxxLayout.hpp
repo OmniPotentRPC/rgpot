@@ -164,10 +164,12 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// did not increase.
 ///
 /// This is not `RGPOT_ABI_LAYOUT_REVISION`. The C ABI stamp in `rgpot.h`
-/// stayed at major 1, minor 0, layout revision 1: no exported C struct
-/// changed layout. The C API is exported from librgpot, so it has no
-/// shared library of its own and rides this SONAME. `librgpot_mpi` stays
-/// at soversion 3 (`RGPOT_MPI_ABI_VERSION` 1, unchanged).
+/// is major 1, minor 1, layout revision 1. Minor 1 adds
+/// `rgpot_eindir_abi_compatible`. No exported C struct of that header
+/// changed layout. The neighbour query is `RGPOT_NLIST_ABI` 4.
+/// The C API is exported from librgpot, so it has no shared library of
+/// its own and rides this SONAME. `librgpot_mpi` stays at soversion 3
+/// (`RGPOT_MPI_ABI_VERSION` 1, unchanged).
 ///
 /// 5 records LJPot and MorsePot gaining a Neighbours and a CachedPairs.
 /// Soversion 4 hashed those classes at 120 and 136 bytes. They are 1016

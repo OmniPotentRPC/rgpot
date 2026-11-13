@@ -1,1 +1,0 @@
-librgpot's ELF soversion is 6. LJ and Morse no longer keep a copied half-list, and ZBL and the open Lennard-Jones cluster hold a neighbour list. A caller built against soversion 5 does not load librgpot.so.6. librgpot_mpi stays at soversion 3.

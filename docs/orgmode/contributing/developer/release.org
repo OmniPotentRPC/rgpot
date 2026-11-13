@@ -10,9 +10,10 @@ rgpot has one release version, written by hand in one place: the
 cargo writes it into =Cargo.lock=.
 Every other copy sits between cogapp markers in a file listed in
 =ci/version/files.txt=: =meson.build=, =CMakeLists.txt=, =pyproject.toml=,
-=pixi.toml= (the workspace key only), =towncrier.toml=, the =RGPOT_VERSION=
-macros of =rgpot-core/include/rgpot.h= and the dependency snippets of the
-=rgpot-core= README.
+=pixi.toml= (the workspace key only), =towncrier.toml=, =docs/source/conf.py=
+(Sphinx =version= and =release=), the =RGPOT_VERSION= macros of
+=rgpot-core/include/rgpot.h= and the dependency snippets of the =rgpot-core=
+README.
 =ci/version/rgpot_version.py= reads the version from =Cargo.toml= for those
 snippets.
 Regenerate the copies, or check them, with the cogapp tasks of the =version=

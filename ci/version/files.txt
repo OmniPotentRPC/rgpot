@@ -7,6 +7,7 @@ CMakeLists.txt
 pyproject.toml
 pixi.toml
 towncrier.toml
+docs/source/conf.py
 rgpot-core/include/rgpot.h
 rgpot-core/README.md
 rgpot-core/README.org
