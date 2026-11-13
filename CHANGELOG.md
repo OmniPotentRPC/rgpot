@@ -7,6 +7,139 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
+## [3.7.0] - 2026-11-13
+
+[3.7.0]: https://github.com/OmniPotentRPC/rgpot/tree/v3.7.0
+
+### Added
+
+- `StillingerWeberSi::forceImpl` writes the Cauchy stress and
+  `caps().stress` is true.
+  The stress is (1/V) dE/dε in eV/Angstrom^3, with the sign and layout
+  of the `LJPot`, `MorsePot` and `ZBLPot` stress.
+  The virial sums each folded bond vector times the energy gradient with
+  respect to that vector.
+  That sum is the many-body virial of Thompson, Plimpton and Mattson,
+  J. Chem. Phys. 131, 154107 (2009).
+  Its digital object identifier (DOI) is 10.1063/1.3245303.
+  Energies and forces keep their bits.
+  `SWSiTest` now also runs under CMake.
+
+- The Fortran `SWPot` (`PotType::SWSi`) writes the Cauchy stress and
+  `caps().stress` is true.
+  It sums the same bond-vector virial as `StillingerWeberSi`, so its
+  stress is the `StillingerWeberSi` stress times the epsilon ratio
+  1.068176741337.
+  Its energies and forces keep their bits.
+  `SWPot::forceBatch`, the call eOn's engine makes, skips the virial and
+  leaves `has_stress` at 0.
+  In Python, `StillingerWeberSi` gains `caps()` and `evaluate()`, which
+  returns the stress, so `RgpotCalculator` reports the Atomic Simulation
+  Environment (ASE) stress for it and for `SWPot`.
+
+- `rgpot_lammps_potential`, `rgpot_gromacs_potential` and
+  `rgpot_openmm_potential` are the public constructors in C++, the C ABI
+  and Python.
+  LAMMPS (Large-scale Atomic/Molecular Massively Parallel Simulator)
+  dlopens the engine plugin.
+  GROMACS and OpenMM store the nanometre and kJ/mol conversion once.
+
+- The engine drivers are `pair_style rgpot`, a PLUMED `RGPOT` collective
+  variable used by `gmx mdrun -plumed`, an OpenMM shifted Lennard-Jones
+  comparison, and an `rgpot_engine_force` Lennard-Jones plugin.
+  Each one is a meson test when its library is present.
+
+- UmaPot evaluates a same-composition stencil in chunks of the package
+  `batch_max` and keeps the per-system loop when `batch_max` is 0 or 1.
+  A static band (`--batch-style static`) is traced at exactly
+  `batch_max` systems, and a short chunk repeats its last system.
+  `--batch-style packed` is one disjoint graph with a dynamic atom count
+  and a dynamic edge count (`batch_packed`).
+  UmaPot sends the real system count and does not repeat a system.
+  `scripts/export_uma_aoti.py --batch-max N --molecular-box L` traces
+  either graph.
+  The force gradient is traced on torch builds that gate
+  `torch.autograd.grad`, and `OMP_NUM_THREADS` is applied to torch
+  before the compile because the CPU general matrix multiply (GEMM)
+  kernel is built for that thread count.
+
+- `scripts/cpu_scaling.py` writes strong, one-cell and weak CPU scaling
+  tables as comma-separated values (CSV).
+  Each CSV header names the host, the compilers and the build options.
+  Every row is checked bit for bit against a 1-thread call.
+  It runs only when called and changes no library behaviour.
+
+### Developer
+
+- The benchmark description states the comparison in plain words.
+  The upper bound is at least the widest calibration ratio.
+  The comparison that fails on a slowdown is the one to run.
+  Continuous integration should use that comparison's exit status.
+
+- The C ABI page lists the public C functions.
+  The coverage check fails when one of them is missing from that page.
+  The ABI baseline keeps the neighbour and fast-list exports.
+
+- The develop continuous integration job builds a serial LAMMPS with the
+  PLUGIN package from the same headers as `pair_style rgpot`.
+  It then requires the LAMMPS, GROMACS, OpenMM and PLUMED tests to pass.
+
+- Configuring the engine drivers accepts an include path that lies
+  inside the source tree.
+  `include_directories()` rejects that absolute path, so a pixi prefix
+  or a LAMMPS checkout under the workspace could not configure.
+  The path is made relative to `engines/meson.build`.
+  A path outside the tree stays absolute.
+
+### Fixed
+
+- UmaPot treats a package with neither `nedges_min` nor `nedges_max`
+  as fixed-shape when `shapes` records `edge_index`.
+  The second extent is the traced edge count, and the neighbour list
+  must match it.
+  A published gpridge export records that list, for example
+  `edge_index` [2, 1332], and it used to be refused.
+  A package with only one of the two keys is still refused.
+
+- A debug or sanitizer build no longer aborts when a vesin neighbour
+  list with no pairs is reset or recomputed.
+  The reset had called memset on a null pairs pointer, which is
+  undefined even when the byte count is zero.
+  It now poisons only the storage the list allocated, and it stops at
+  capacity.
+
+- On a cell narrower than three cutoffs, `rgpot_fast_pairs` answers a
+  short buffer from n(n-1)/2 and fills the caller's buffer directly.
+  For the 10k-atom bridge cell, it no longer builds a 400 MB pair list
+  just to report the count.
+  A short-buffer return also clears the thread-local error message.
+
+- `RgpotCalculator` reports the stress of a non-periodic structure as
+  the cluster virial divided by the caller's cell volume, so it matches
+  ASE's finite-difference stress.
+  A non-periodic evaluation still uses a padded cube so images stay
+  outside the cutoff.
+  ASE's finite-difference stress divides the same virial by the caller's
+  cell, so the cube stress is rescaled by V_cube / V_caller.
+
+- The C++ soversion row is found by index.
+  A pointer into `kCxxSoversionTable` is not a constant expression under
+  `-fsanitize=undefined`, so the layout static asserts failed that
+  build.
+  The recorded hash is unchanged.
+  `tools/check_cxx_layout_ubsan.sh` configures the address and undefined
+  sanitizers and runs `CxxLayoutTest` and `CxxLayoutVirtualCounts`.
+
+- The nine doubles stored in `rgpot_potential_t` are lattice vectors as
+  rows, the same layout as `ForceInput.box`.
+  The header comment had called that matrix column-major.
+
+- The LAMMPS and OpenMM configure probes ignore `engines/lammps` and
+  `engines/openmm`.
+  Those directories sat on the interpreter's path, so the probes
+  reported the modules present and the meson suite ran tests that need
+  the libraries.
+
 ## [3.6.0] - 2026-11-13
 
 [3.6.0]: https://github.com/OmniPotentRPC/rgpot/tree/v3.6.0

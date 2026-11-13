@@ -1,1 +1,0 @@
-`pair_style rgpot`, a PLUMED `RGPOT` collective variable used by `gmx mdrun -plumed`, an OpenMM shifted Lennard-Jones comparison, and an `rgpot_engine_force` LJ plugin. Each one is a meson test when its library is present.

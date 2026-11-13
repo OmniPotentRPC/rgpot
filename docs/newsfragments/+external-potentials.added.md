@@ -1,1 +1,0 @@
-`rgpot_lammps_potential`, `rgpot_gromacs_potential` and `rgpot_openmm_potential` are the public constructors in C++, the C ABI and Python. LAMMPS dlopens the engine plugin. GROMACS and OpenMM store the nanometre and kJ/mol conversion once.
