@@ -4,6 +4,12 @@
 fs = import('fs')
 engines_inc = include_directories('.')
 rgpot_inc = include_directories('../CppCore', '../include')
+# include_directories() rejects an absolute path that sits inside the
+# source tree. A pixi prefix and a LAMMPS checkout under the workspace
+# both do. A path relative to this file is accepted; a path outside the
+# tree can stay absolute.
+project_root = meson.project_source_root()
+engines_here = meson.current_source_dir()
 dl_dep = cppc.find_library('dl', required: false)
 thread_dep = dependency('threads')
 lj_lib = static_library(
@@ -28,13 +34,17 @@ rgpot_lj = executable(
     cpp_args: _args,
     install: true,
 )
-test('lj_eval', executable(
-    'test_lj_eval',
-    files('test_lj_eval.cpp'),
-    dependencies: lj_dep,
-    link_with: rgpot,
-    cpp_args: _args,
-), timeout: 60)
+test(
+    'lj_eval',
+    executable(
+        'test_lj_eval',
+        files('test_lj_eval.cpp'),
+        dependencies: lj_dep,
+        link_with: rgpot,
+        cpp_args: _args,
+    ),
+    timeout: 60,
+)
 
 lj_engine = shared_library(
     'lj_engine',
@@ -88,9 +98,18 @@ python3_engines = find_program('python3', required: false)
 
 lammps_opt = get_option('with_lammps')
 if lammps_opt.allowed() and python3_engines.found()
-    lammps_py = run_command(python3_engines, '-c', 'import lammps', check: false)
+    # Drop '' and '.'. Meson runs this from engines/, and engines/lammps
+    # would otherwise import as the LAMMPS module.
+    lammps_py = run_command(
+        python3_engines,
+        '-c',
+        'import sys; sys.path = [p for p in sys.path if p not in ("", ".")]; import lammps',
+        check: false,
+    )
     if lammps_py.returncode() != 0 and lammps_opt.enabled()
-        error('with_lammps is enabled but the lammps Python module was not found')
+        error(
+            'with_lammps is enabled but the lammps Python module was not found',
+        )
     endif
     if lammps_py.returncode() == 0
         lammps_args = [rgpot_lj.full_path()]
@@ -103,9 +122,16 @@ if lammps_opt.allowed() and python3_engines.found()
             pair_plugin = shared_library(
                 'pair_rgpot',
                 files('lammps/pair_rgpot.cpp'),
-                dependencies: [lj_dep] + (lammps_dep.found() ? [lammps_dep] : []),
+                dependencies: [lj_dep] + (
+                    lammps_dep.found() ? [lammps_dep] : []
+                ),
                 link_with: rgpot,
-                include_directories: include_directories(lammps_src),
+                include_directories: include_directories(
+                    lammps_src.startswith(project_root + '/') ? fs.relative_to(
+                        lammps_src,
+                        engines_here,
+                    ) : lammps_src,
+                ),
                 cpp_args: _args + ['-DLAMMPS_SMALLBIG'],
                 override_options: ['b_lundef=false'],
             )
@@ -114,7 +140,9 @@ if lammps_opt.allowed() and python3_engines.found()
                 lammps_args += [pair_plugin.full_path(), lammps_exe]
             endif
         elif lammps_opt.enabled()
-            error('with_lammps is enabled but lammps_src is empty, so pair_style rgpot cannot be built')
+            error(
+                'with_lammps is enabled but lammps_src is empty, so pair_style rgpot cannot be built',
+            )
         endif
         test(
             'lammps_lj',
@@ -154,7 +182,11 @@ if plumed_opt.allowed()
             test(
                 'plumed_driver',
                 python3_engines,
-                args: [files('plumed/run_plumed.py'), rgpot_lj.full_path(), plumed_lib.full_path()],
+                args: [
+                    files('plumed/run_plumed.py'),
+                    rgpot_lj.full_path(),
+                    plumed_lib.full_path(),
+                ],
                 timeout: 180,
             )
         endif
@@ -168,8 +200,10 @@ if gromacs_opt.allowed()
             'gromacs_mdrun',
             python3_engines,
             args: [
-                files('gromacs/run_gromacs.py'), rgpot_lj.full_path(),
-                plumed_lib.full_path(), meson.current_build_dir() / 'gromacs-work',
+                files('gromacs/run_gromacs.py'),
+                rgpot_lj.full_path(),
+                plumed_lib.full_path(),
+                meson.current_build_dir() / 'gromacs-work',
             ],
             timeout: 180,
         )
@@ -197,9 +231,18 @@ test(
 
 openmm_opt = get_option('with_openmm')
 if openmm_opt.allowed() and python3_engines.found()
-    openmm_py = run_command(python3_engines, '-c', 'import openmm', check: false)
+    # Drop '' and '.'. Meson runs this from engines/, and engines/openmm
+    # would otherwise import as the OpenMM module.
+    openmm_py = run_command(
+        python3_engines,
+        '-c',
+        'import sys; sys.path = [p for p in sys.path if p not in ("", ".")]; import openmm',
+        check: false,
+    )
     if openmm_py.returncode() != 0 and openmm_opt.enabled()
-        error('with_openmm is enabled but the openmm Python module was not found')
+        error(
+            'with_openmm is enabled but the openmm Python module was not found',
+        )
     endif
     if openmm_py.returncode() == 0
         test(
@@ -239,6 +282,12 @@ if openmm_opt.allowed() and python3_engines.found()
     if _openmm_where.returncode() == 0
         openmm_libdir = _openmm_where.stdout().strip()
         openmm_incdir = fs.parent(openmm_libdir) / 'include'
+        openmm_inc = include_directories(
+            openmm_incdir.startswith(project_root + '/') ? fs.relative_to(
+                openmm_incdir,
+                engines_here,
+            ) : openmm_incdir,
+        )
         openmm_lib = cppc.find_library(
             'OpenMM',
             dirs: [openmm_libdir],
@@ -246,13 +295,13 @@ if openmm_opt.allowed() and python3_engines.found()
         )
         if openmm_lib.found() and cppc.has_header(
             'openmm/Platform.h',
-            include_directories: include_directories(openmm_incdir),
+            include_directories: openmm_inc,
         )
             openmm_engine = shared_library(
                 'openmm_engine',
                 files('openmm/openmm_engine.cpp'),
                 dependencies: [openmm_lib],
-                include_directories: [rgpot_inc, include_directories(openmm_incdir)],
+                include_directories: [rgpot_inc, openmm_inc],
                 cpp_args: _args + ['-DRGPOT_ENGINE_BUILD'],
                 build_rpath: openmm_libdir,
                 install_rpath: openmm_libdir,
@@ -283,18 +332,26 @@ if python3_engines.found()
         gromacs_inc = _gmx_inc.stdout().strip()
     endif
 endif
-if gromacs_inc != '' and cppc.has_header(
-    'gromacs/math/units.h',
-    include_directories: include_directories(gromacs_inc),
-)
-    test(
-        'gromacs_unit_reference',
-        executable(
-            'test_gromacs_units',
-            files('test_gromacs_units.cpp'),
-            include_directories: [engines_inc, rgpot_inc, include_directories(gromacs_inc)],
-            cpp_args: _args,
-        ),
-        timeout: 30,
+if gromacs_inc != ''
+    gromacs_headers = include_directories(
+        gromacs_inc.startswith(project_root + '/') ? fs.relative_to(
+            gromacs_inc,
+            engines_here,
+        ) : gromacs_inc,
     )
+    if cppc.has_header(
+        'gromacs/math/units.h',
+        include_directories: gromacs_headers,
+    )
+        test(
+            'gromacs_unit_reference',
+            executable(
+                'test_gromacs_units',
+                files('test_gromacs_units.cpp'),
+                include_directories: [engines_inc, rgpot_inc, gromacs_headers],
+                cpp_args: _args,
+            ),
+            timeout: 30,
+        )
+    endif
 endif
