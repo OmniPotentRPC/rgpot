@@ -1,0 +1,241 @@
+.. index:: pair: class; rgpot::TersoffSiC
+.. _doxid-classrgpot_1_1_tersoff_si_c:
+
+class rgpot::TersoffSiC
+=======================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_TersoffSiC_Pair.rst
+	struct_rgpot_TersoffSiC_Species.rst
+
+Overview
+~~~~~~~~
+
+Tersoff potential for silicon, carbon, and silicon-carbide. :ref:`More...<details-classrgpot_1_1_tersoff_si_c>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <TersoffSiC.hpp>
+	
+	class TersoffSiC: public rgpot::Potential< TersoffSiC > {
+	public:
+		// structs
+	
+		struct :ref:`Pair<doxid-structrgpot_1_1_tersoff_si_c_1_1_pair>`;
+		struct :ref:`Species<doxid-structrgpot_1_1_tersoff_si_c_1_1_species>`;
+
+		// fields
+	
+		static double :target:`kChiSiC<doxid-classrgpot_1_1_tersoff_si_c_1aaf63c88eed2b053aca87f39a8be8acd3>` = 0.9776;
+
+		// construction
+	
+		:target:`TersoffSiC<doxid-classrgpot_1_1_tersoff_si_c_1a291e26431946caafa4a9affd6f345dbc>`();
+
+		// methods
+	
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_tersoff_si_c_1a7939e36339c5a2bed8f7c7f280bddb4f>`() const;
+		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_tersoff_si_c_1ab20b5375dac6a88b37a9e0e6bff9db50>`() const;
+		void :ref:`forceImpl<doxid-classrgpot_1_1_tersoff_si_c_1a3bc910ba7e379c4c5b076c2351d1b323>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		void :ref:`setHeldSkin<doxid-classrgpot_1_1_tersoff_si_c_1ad8c45be1ac5c94f703e4a8d721613b83>`(double skin);
+		void :ref:`setNeighbourMode<doxid-classrgpot_1_1_tersoff_si_c_1a6e261e4cb5db6845668060174c677b9b>`(nlist::Mode mode);
+		const :ref:`nlist::NeighborList<doxid-structrgpot_1_1nlist_1_1_neighbor_list>`& :ref:`heldList<doxid-classrgpot_1_1_tersoff_si_c_1a65b3d20d0d0e4ec42dbcdb5845993215>`() const;
+		void :ref:`energyAndGradient<doxid-classrgpot_1_1_tersoff_si_c_1a0957e1a066c9f67a14b9ba4b1ca7eca2>`(const double* positions, const int* atomic_numbers, const double* box, std::size_t n_atoms, double* energy, double* gradient, :ref:`nlist::NeighborList<doxid-structrgpot_1_1nlist_1_1_neighbor_list>`* neighbors = nullptr) const;
+		void :ref:`energyAndGradientBatch<doxid-classrgpot_1_1_tersoff_si_c_1a30ba4039483df7096c81cb8bd7d06404>`(std::size_t n_config, const double* positions, const int* atomic_numbers, const double* box, std::size_t n_atoms, double* energies, double* gradients) const;
+	};
+.. _details-classrgpot_1_1_tersoff_si_c:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Tersoff potential for silicon, carbon, and silicon-carbide.
+
+Atomic numbers are 14 and 6. One call evaluates a whole configuration. ``energyAndGradientBatch`` evaluates many configurations that share a cell and a species list.
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1_tersoff_si_c_1a7939e36339c5a2bed8f7c7f280bddb4f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Concurrency and evaluation capabilities of this potential.
+
+Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
+
+.. index:: pair: function; paramsKey
+.. _doxid-classrgpot_1_1_tersoff_si_c_1ab20b5375dac6a88b37a9e0e6bff9db50:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual uint64_t paramsKey() const
+
+Fingerprint of the potential's parameter set.
+
+Mixed into the result-cache key so results never cross parameter sets. Implementations hash their config field by field (see :ref:`ParamHash.hpp <doxid-_param_hash_8hpp_source>`) plus a kernel-version salt that changes whenever the numerics change. The default (0) suits parameter-free potentials whose numerics never changed.
+
+.. index:: pair: function; forceImpl
+.. _doxid-classrgpot_1_1_tersoff_si_c_1a3bc910ba7e379c4c5b076c2351d1b323:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void forceImpl(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const
+
+Forces, energy and the Cauchy stress sigma = (1/V) dE/dε in eV/Angstrom^3, the convention of :ref:`stress.hpp <doxid-stress_8hpp_source>`. The virial sums each folded bond vector times the energy gradient with respect to it.
+
+.. index:: pair: function; setHeldSkin
+.. _doxid-classrgpot_1_1_tersoff_si_c_1ad8c45be1ac5c94f703e4a8d721613b83:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void setHeldSkin(double skin)
+
+Keep one Verlet list across forceImpl calls.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- skin
+
+		- Extra search distance, Angstrom. Zero, the default, rebuilds the pairs on every call. A positive skin reuses them until an atom has moved by more than skin/2 since the last build, or the cell or the atom count changes. The instance then reports :ref:`Reentrancy::PerInstance <doxid-namespacergpot_1afc52f666d5e44be6f4cc73b2009ed9bba638926405e39d8cd5227b49fa3156e1a>`.
+
+.. index:: pair: function; setNeighbourMode
+.. _doxid-classrgpot_1_1_tersoff_si_c_1a6e261e4cb5db6845668060174c677b9b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void setNeighbourMode(nlist::Mode mode)
+
+Auto, Stored and Stream all use the shared neighbour layer. One thread agrees with the old ordered walk to within 1e-12.
+
+.. index:: pair: function; heldList
+.. _doxid-classrgpot_1_1_tersoff_si_c_1a65b3d20d0d0e4ec42dbcdb5845993215:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const :ref:`nlist::NeighborList<doxid-structrgpot_1_1nlist_1_1_neighbor_list>`& heldList() const
+
+The list forceImpl keeps. Not built until a call with a positive skin.
+
+.. index:: pair: function; energyAndGradient
+.. _doxid-classrgpot_1_1_tersoff_si_c_1a0957e1a066c9f67a14b9ba4b1ca7eca2:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void energyAndGradient(const double* positions, const int* atomic_numbers, const double* box, std::size_t n_atoms, double* energy, double* gradient, :ref:`nlist::NeighborList<doxid-structrgpot_1_1nlist_1_1_neighbor_list>`* neighbors = nullptr) const
+
+Energy and dE/dx for one configuration.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- positions
+
+		- Row-major coordinates, Angstrom.
+
+	*
+		- atomic_numbers
+
+		- Length n_atoms. 14 is silicon, 6 is carbon.
+
+	*
+		- box
+
+		- Row-major cell, Angstrom. Periodic in every direction.
+
+	*
+		- n_atoms
+
+		- Atom count.
+
+	*
+		- energy
+
+		- Receives the energy, eV.
+
+	*
+		- gradient
+
+		- Receives dE/dx, eV/Angstrom. The force is its negation.
+
+	*
+		- neighbors
+
+		- Optional Verlet list. Null rebuilds the pairs on every call. A list is reused while each atom has moved by at most half its skin and the cell is unchanged.
+
+.. index:: pair: function; energyAndGradientBatch
+.. _doxid-classrgpot_1_1_tersoff_si_c_1a30ba4039483df7096c81cb8bd7d06404:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void energyAndGradientBatch(std::size_t n_config, const double* positions, const int* atomic_numbers, const double* box, std::size_t n_atoms, double* energies, double* gradients) const
+
+Energy and dE/dx for configurations that share a cell.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- n_config
+
+		- Number of configurations.
+
+	*
+		- positions
+
+		- n_config blocks of n_atoms \* 3 coordinates.
+
+	*
+		- atomic_numbers
+
+		- :ref:`Species <doxid-structrgpot_1_1_tersoff_si_c_1_1_species>` shared by every configuration.
+
+	*
+		- box
+
+		- Cell shared by every configuration.
+
+	*
+		- n_atoms
+
+		- Atom count of each configuration.
+
+	*
+		- energies
+
+		- Length n_config.
+
+	*
+		- gradients
+
+		- Length n_config \* n_atoms \* 3.
+

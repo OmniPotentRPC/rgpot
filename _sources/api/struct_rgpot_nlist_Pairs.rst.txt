@@ -1,0 +1,22 @@
+.. index:: pair: struct; rgpot::nlist::Pairs
+.. _doxid-structrgpot_1_1nlist_1_1_pairs:
+
+struct rgpot::nlist::Pairs
+==========================
+
+.. toctree::
+	:hidden:
+
+One pair per interaction. ``shell`` chooses the direction.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <NeighbourList.hpp>
+	
+	struct Pairs {
+		// fields
+	
+		Shell :target:`shell<doxid-structrgpot_1_1nlist_1_1_pairs_1a08275c534ec5593be0dec28d912e3e8d>` = Shell::Half;
+	};

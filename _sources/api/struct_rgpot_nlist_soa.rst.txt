@@ -1,0 +1,28 @@
+.. index:: pair: struct; rgpot_nlist_soa
+.. _doxid-structrgpot__nlist__soa:
+
+struct rgpot_nlist_soa
+======================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct rgpot_nlist_soa {
+		// fields
+	
+		uint32_t :target:`bytes<doxid-structrgpot__nlist__soa_1ab7afaa6672e12f94caebf2996a7b7feb>`;
+		int32_t* :target:`first<doxid-structrgpot__nlist__soa_1adca24e871b0194d1360e587a7464e536>`;
+		int32_t* :target:`second<doxid-structrgpot__nlist__soa_1adf8c8aab58e13dc6774c63c422139a93>`;
+		int32_t* :target:`shift<doxid-structrgpot__nlist__soa_1a6f485672c82c74c5154ea7e200e24836>`;
+		double* :target:`vector<doxid-structrgpot__nlist__soa_1ae65a02d7e4088222a1bba539af0aeece>`;
+		double* :target:`distance<doxid-structrgpot__nlist__soa_1a770ee66bc3346b57a25c76fd2e3e4fa5>`;
+		uint8_t* :target:`mask<doxid-structrgpot__nlist__soa_1a88c485c8a576931f3b957883d31a6263>`;
+		size_t :target:`cap<doxid-structrgpot__nlist__soa_1a57772d3fa882616146c00d2a436df0fb>`;
+	};

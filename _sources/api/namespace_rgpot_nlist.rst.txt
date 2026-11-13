@@ -7,8 +7,29 @@ namespace rgpot::nlist
 .. toctree::
 	:hidden:
 
-	struct_rgpot_nlist_CellGrid.rst
+	namespace_rgpot_nlist_detail.rst
+	enum_rgpot_nlist_Code.rst
+	enum_rgpot_nlist_Cut.rst
+	enum_rgpot_nlist_Image.rst
+	enum_rgpot_nlist_Mode.rst
+	enum_rgpot_nlist_Shell.rst
+	struct_rgpot_nlist_Batch.rst
+	struct_rgpot_nlist_Buffers.rst
+	struct_rgpot_nlist_Cluster4.rst
+	struct_rgpot_nlist_Fields.rst
+	struct_rgpot_nlist_NeighborList.rst
+	struct_rgpot_nlist_Pairs.rst
+	struct_rgpot_nlist_Query.rst
+	struct_rgpot_nlist_Range.rst
+	struct_rgpot_nlist_Spec.rst
+	struct_rgpot_nlist_Systems.rst
+	struct_rgpot_nlist_Table.rst
+	struct_rgpot_nlist_View.rst
+	class_rgpot_nlist_Builder.rst
+	class_rgpot_nlist_Error.rst
 	class_rgpot_nlist_MinimumImage.rst
+	class_rgpot_nlist_Neighbours.rst
+	class_rgpot_nlist_Walk.rst
 
 Overview
 ~~~~~~~~
@@ -22,29 +43,63 @@ Overview
 	
 	namespace nlist {
 
+	// namespaces
+
+	namespace :ref:`rgpot::nlist::detail<doxid-namespacergpot_1_1nlist_1_1detail>`;
+
+	// typedefs
+
+	typedef std::variant<:ref:`Pairs<doxid-structrgpot_1_1nlist_1_1_pairs>`, :ref:`Cluster4<doxid-structrgpot_1_1nlist_1_1_cluster4>`> :ref:`Shape<doxid-_neighbour_list_8hpp_1a75c244beee64128ba817f89c2afc5556>`;
+
+	// enums
+
+	enum :ref:`Code<doxid-_neighbour_list_8hpp_1ae4cfb0fcba7006ab6d27e325afecb6cb>`;
+	enum :ref:`Cut<doxid-_neighbour_list_8hpp_1af395a9dc7c60b5166882e967c210be3a>`;
+	enum :ref:`Image<doxid-_neighbours_8hpp_1a37af90dda547e90ccfbdc2e75ab70188>`;
+	enum :ref:`Mode<doxid-_neighbours_8hpp_1abbe419a29b7b27849823ce4768ab8c08>`;
+	enum :ref:`Shell<doxid-_neighbour_list_8hpp_1a29e158253efb3f84db86615e1da072c8>`;
+
 	// structs
 
-	struct :ref:`CellGrid<doxid-structrgpot_1_1nlist_1_1_cell_grid>`;
+	struct :ref:`Batch<doxid-structrgpot_1_1nlist_1_1_batch>`;
+	struct :ref:`Buffers<doxid-structrgpot_1_1nlist_1_1_buffers>`;
+	struct :ref:`Cluster4<doxid-structrgpot_1_1nlist_1_1_cluster4>`;
+	struct :ref:`Fields<doxid-structrgpot_1_1nlist_1_1_fields>`;
+	struct :ref:`NeighborList<doxid-structrgpot_1_1nlist_1_1_neighbor_list>`;
+	struct :ref:`Pairs<doxid-structrgpot_1_1nlist_1_1_pairs>`;
+	struct :ref:`Query<doxid-structrgpot_1_1nlist_1_1_query>`;
+	struct :ref:`Range<doxid-structrgpot_1_1nlist_1_1_range>`;
+	struct :ref:`Spec<doxid-structrgpot_1_1nlist_1_1_spec>`;
+	struct :ref:`Systems<doxid-structrgpot_1_1nlist_1_1_systems>`;
+	struct :ref:`Table<doxid-structrgpot_1_1nlist_1_1_table>`;
+	struct :ref:`View<doxid-structrgpot_1_1nlist_1_1_view>`;
 
 	// classes
 
+	class :ref:`Builder<doxid-classrgpot_1_1nlist_1_1_builder>`;
+	class :ref:`Error<doxid-classrgpot_1_1nlist_1_1_error>`;
 	class :ref:`MinimumImage<doxid-classrgpot_1_1nlist_1_1_minimum_image>`;
-
-	// global variables
-
-	std::size_t :ref:`kMinCellsForGrid<doxid-cell__visit_8hpp_1aa53e9c32516c19af16368349670478dd>` = 64;
-	int :ref:`kHalfStencil<doxid-cell__visit_8hpp_1a78abd5ab1c7acc559a88a94abfd88557>`[13][3] = {     {1, 0, 0},  {-1, 1, 0}, {0, 1, 0},  {1, 1, 0},  {-1, -1, 1},     {0, -1, 1}, {1, -1, 1}, {-1, 0, 1}, {0, 0, 1},  {1, 0, 1},     {-1, 1, 1}, {0, 1, 1},  {1, 1, 1}};
-	std::mutex :target:`mu_<doxid-_pair_list_cache_8hpp_1ab9b02ec6fe0de32c109eae9a18667776>`;
-	std::vector<std::shared_ptr<CachedPairList>> :target:`slots_<doxid-_pair_list_cache_8hpp_1ae604c022ba9076540e03b866d3e476d9>`;
+	class :ref:`Neighbours<doxid-classrgpot_1_1nlist_1_1_neighbours>`;
+	class :ref:`Walk<doxid-classrgpot_1_1nlist_1_1_walk>`;
 
 	// global functions
 
-	template <bool Collect, typename Visitor>
-	void :ref:`cell_visit<doxid-cell__visit_8hpp_1aaa3ec9789d52a10ccabde3555411db41>`(const :ref:`CellGrid<doxid-structrgpot_1_1nlist_1_1_cell_grid>`& g, const double* points, const double w[3], const double inv[3], double list_cutoff2, double visit_cutoff2, std::vector<int32_t>& pairs, Visitor&& visit);
+	const :ref:`NeighborList<doxid-structrgpot_1_1nlist_1_1_neighbor_list>`& :ref:`orderedPairs<doxid-_half_shell_8cc_1a30e70c079db00399c9c53172445e0fea>`(const double* positions, const double* box, std::size_t n, double cutoff, :ref:`NeighborList<doxid-structrgpot_1_1nlist_1_1_neighbor_list>`* cache);
+	void :ref:`build<doxid-_neighbour_list_8cc_1a3641a03aa5c89a7f06e3f4a10f875e3f>`(:ref:`Table<doxid-structrgpot_1_1nlist_1_1_table>`& table, const double* positions, std::size_t n, const double* box9, const :ref:`Query<doxid-structrgpot_1_1nlist_1_1_query>`& query);
+	void :ref:`buildByAtom<doxid-_neighbour_list_8cc_1a1b061e6d56f25a6d6692411e283cfe68>`(:ref:`Table<doxid-structrgpot_1_1nlist_1_1_table>`& table, const double* positions, std::size_t n, const double* box9, const :ref:`Query<doxid-structrgpot_1_1nlist_1_1_query>`& query);
+	void :ref:`build<doxid-_neighbour_list_8cc_1a3f91ff9cb57f985ee63364fbc20105c2>`(:ref:`Batch<doxid-structrgpot_1_1nlist_1_1_batch>`& batch, const :ref:`Systems<doxid-structrgpot_1_1nlist_1_1_systems>`& systems, const :ref:`Query<doxid-structrgpot_1_1nlist_1_1_query>`& query);
+	void :ref:`updateCells<doxid-_neighbour_list_8hpp_1a03b84bcc3c0939efcb7f0bd31bfc6a87>`(:ref:`Neighbours<doxid-classrgpot_1_1nlist_1_1_neighbours>`& cells, const double* positions, std::size_t n, const double* box9, double cutoff, double skin, :ref:`Image<doxid-struct_image>` image, Mode mode, const std::array<bool, 3>& periodic);
 
-	template <typename Scan, typename OnHit>
-	void :ref:`run<doxid-_pair_list_cache_8hpp_1ab87ece71f82845b3adfd58d3e57129c8>`(const double* R, std::size_t n, const double* box, const CachedPairList::Options& opt, Scan& scan, OnHit&& onHit);
+	template <typename Fn>
+	void :ref:`visitDirected<doxid-_neighbour_list_8hpp_1a570dcf98e1a44f640e93d8a466258463>`(const :ref:`Neighbours<doxid-classrgpot_1_1nlist_1_1_neighbours>`& cells, std::int64_t begin, std::int64_t end, Fn&& fn);
 
+	template <typename Fn>
+	void :ref:`visitHalf<doxid-_neighbour_list_8hpp_1ad26e673b5d183ef34fe91dead088f7c1>`(const :ref:`Neighbours<doxid-classrgpot_1_1nlist_1_1_neighbours>`& cells, std::int64_t begin, std::int64_t end, Fn&& fn);
+
+	int :ref:`threadsRequested<doxid-_neighbours_8cc_1a05e36639124846887956213a31950e7a>`();
+	:ref:`Range<doxid-structrgpot_1_1nlist_1_1_range>` :ref:`partition<doxid-_neighbours_8cc_1afd10c100b7fb7b72ab685a052bffd4a5>`(std::int64_t n, int thread, int nthreads);
+	std::uint64_t :ref:`availableBytes<doxid-_neighbours_8cc_1ad73498fcacbec8d7bad2fdc78d14359e>`();
+	bool :ref:`withinSkin<doxid-_neighbours_8hpp_1a016896fca86003412f1fce1d1f117b2d>`(const double* reference, const double* current, std::size_t n, double skin);
 	double :ref:`mul_add<doxid-_minimum_image_8cpp_1a6400dc19dfc6964f5daa7da968fc9e12>`(double a, double b, double c);
 
 	} // namespace nlist
@@ -55,159 +110,133 @@ Detailed Documentation
 
 
 
-Global Variables
-----------------
+Typedefs
+--------
 
-.. index:: pair: variable; kMinCellsForGrid
-.. _doxid-cell__visit_8hpp_1aa53e9c32516c19af16368349670478dd:
-
-.. ref-code-block:: cpp
-	:class: doxyrest-title-code-block
-
-	std::size_t kMinCellsForGrid = 64
-
-Fewest cells worth binning for. Even with the atoms spread evenly the cell scan tests about 14 n^2 / ncells pairs against n^2 / 2, so below some 30 cells it cannot win; :ref:`CellGrid::build <doxid-structrgpot_1_1nlist_1_1_cell_grid_1a8325e8f4b5bd62f82b8922074de0cca8>` then also compares the pair tests the grid would make for the actual occupancy.
-
-.. index:: pair: variable; kHalfStencil
-.. _doxid-cell__visit_8hpp_1a78abd5ab1c7acc559a88a94abfd88557:
+.. index:: pair: typedef; Shape
+.. _doxid-_neighbour_list_8hpp_1a75c244beee64128ba817f89c2afc5556:
 
 .. ref-code-block:: cpp
 	:class: doxyrest-title-code-block
 
-	int kHalfStencil[13][3] = {     {1, 0, 0},  {-1, 1, 0}, {0, 1, 0},  {1, 1, 0},  {-1, -1, 1},     {0, -1, 1}, {1, -1, 1}, {-1, 0, 1}, {0, 0, 1},  {1, 0, 1},     {-1, 1, 1}, {0, 1, 1},  {1, 1, 1}}
+	typedef std::variant<:ref:`Pairs<doxid-structrgpot_1_1nlist_1_1_pairs>`, :ref:`Cluster4<doxid-structrgpot_1_1nlist_1_1_cluster4>`> Shape
 
-The half stencil: the 13 neighbours that come after a cell in (z, y, x) lexicographic order, as (dx, dy, dz) offsets.
+:ref:`Pairs <doxid-structrgpot_1_1nlist_1_1_pairs>` or a cluster of four. A value cannot be both.
 
 Global Functions
 ----------------
 
-.. index:: pair: function; cell_visit
-.. _doxid-cell__visit_8hpp_1aaa3ec9789d52a10ccabde3555411db41:
+.. index:: pair: function; orderedPairs
+.. _doxid-_half_shell_8cc_1a30e70c079db00399c9c53172445e0fea:
 
 .. ref-code-block:: cpp
 	:class: doxyrest-title-code-block
 
-	template <bool Collect, typename Visitor>
-	void cell_visit(const :ref:`CellGrid<doxid-structrgpot_1_1nlist_1_1_cell_grid>`& g, const double* points, const double w[3], const double inv[3], double list_cutoff2, double visit_cutoff2, std::vector<int32_t>& pairs, Visitor&& visit)
+	const :ref:`NeighborList<doxid-structrgpot_1_1nlist_1_1_neighbor_list>`& orderedPairs(const double* positions, const double* box, std::size_t n, double cutoff, :ref:`NeighborList<doxid-structrgpot_1_1nlist_1_1_neighbor_list>`* cache)
 
-Linked-cell counterpart of vesin::cpu::brute_force_visit over a built grid. With ``Collect`` false no pairs are recorded (the eval-only scan) and ``pairs`` is left untouched.
+:ref:`Pairs <doxid-structrgpot_1_1nlist_1_1_pairs>` with r < cutoff + skin, ordered as the 27-cell walk. The reference is valid until the next call on this thread that passes a null cache. On a hit, the cached pairs are returned as stored.
 
-.. index:: pair: function; run
-.. _doxid-_pair_list_cache_8hpp_1ab87ece71f82845b3adfd58d3e57129c8:
+.. index:: pair: function; build
+.. _doxid-_neighbour_list_8cc_1a3641a03aa5c89a7f06e3f4a10f875e3f:
 
 .. ref-code-block:: cpp
 	:class: doxyrest-title-code-block
 
-	template <typename Scan, typename OnHit>
-	void run(const double* R, std::size_t n, const double* box, const CachedPairList::Options& opt, Scan& scan, OnHit&& onHit)
+	void build(:ref:`Table<doxid-structrgpot_1_1nlist_1_1_table>`& table, const double* positions, std::size_t n, const double* box9, const :ref:`Query<doxid-structrgpot_1_1nlist_1_1_query>`& query)
 
-is the visitor for a fresh search.
+Fill ``table`` from ``query``. The table holds every pair. A caller that must not store the list uses :ref:`Walk <doxid-classrgpot_1_1nlist_1_1_walk>`. Throws :ref:`Error <doxid-classrgpot_1_1nlist_1_1_error>` before clearing ``table`` when the geometry is rejected. Two builds on different tables may run at the same time. They share no mutable global. A build of at least 8192 atoms may start an OpenMP team. A smaller build stays on the calling thread.
 
-One fused multiply-add for the pair force updates, always inlined so the loop keeps its registers. ``Hw`` : the caller runs with FMA enabled (the / unit's own ISA or a target("fma") clone); otherwise the exact software / form, which only a CPU without FMA reaches. template <bool Hw> inline double pairFma(double a, double b, double c) {
+.. index:: pair: function; buildByAtom
+.. _doxid-_neighbour_list_8cc_1a1b061e6d56f25a6d6692411e283cfe68:
 
-return simd::mul_add(a, b, c);
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
 
-}
+	void buildByAtom(:ref:`Table<doxid-structrgpot_1_1nlist_1_1_table>`& table, const double* positions, std::size_t n, const double* box9, const :ref:`Query<doxid-structrgpot_1_1nlist_1_1_query>`& query)
 
-/ One pair's contribution, as a radial kernel returns it: the energy and / ``fscale = -V'(r) / r``, so the force on atom i is ``fscale * (r_i - r_j)``. struct PairTerm { double energy; double fscale; };
+The same pairs as ``build``, gathered one atom at a time. A CUDA, HIP or Kokkos launch gives one thread one atom and runs this walk. The host ``build`` remains the source of truth.
 
-struct IgnorePairContribution { void operator()(double, double, double, double) const noexcept {} };
+.. index:: pair: function; build
+.. _doxid-_neighbour_list_8cc_1a3f91ff9cb57f985ee63364fbc20105c2:
 
-/ True for a kernel that evaluates a whole row at once: / ``kernel.row(r2, energy, fscale, m)`` fills the pair energies and force / scales of the ``m`` squared distances in ``r2``. Each output may depend / only on its own ``r2`` entry, so the pair gets the bits it would get / from a per-pair call. template <typename K, typename = void> struct HasRowKernel : std::false_type {}; template <typename K> struct HasRowKernel<K, std::void_t<decltype(std::declval<const K &>().row( std::declval<const double \*>(), std::declval<double \*>(), std::declval<double \*>(), std::declval<std::size_t>()))>> : std::true_type {};
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
 
-class CachedPairList { public: / How evaluation turns r_i - r_j into the minimum image: no fold (free / boundaries), a per-call rounding fold, or a shift recorded at build. enum class FoldMode : uint8_t { None, Round, Coded, General };
+	void build(:ref:`Batch<doxid-structrgpot_1_1nlist_1_1_batch>`& batch, const :ref:`Systems<doxid-structrgpot_1_1nlist_1_1_systems>`& systems, const :ref:`Query<doxid-structrgpot_1_1nlist_1_1_query>`& query)
 
-struct Options { double cutoff{0.0}; double skin{1.0}; std::array<bool, 3> periodic{{true, true, true}};
+One query for every system. The systems do not see each other's atoms. A rejected system throws before ``batch`` is cleared.
 
-bool operator==(const Options &o) const { return cutoff == o.cutoff && skin == o.skin && periodic == o.periodic; } };
+.. index:: pair: function; updateCells
+.. _doxid-_neighbour_list_8hpp_1a03b84bcc3c0939efcb7f0bd31bfc6a87:
 
-/ True while the cached pair set is valid for positions ``R`` : same / atom count, options and box as the build, and max displacement / below skin/2. [[nodiscard]] bool valid(const double \*R, std::size_t n, const double \*box,
-                           const Options &opt) const { if (!built\_ || n != n\_ || !(opt == opt\_)) { return false; } for (int k = 0; k < 9; ++k) { if (box[k] != boxref\_[k]) { return false; } } if (complete\_) { return true; // all pairs are candidates; motion cannot invalidate } const double thr2 = 0.25 \* opt\_.skin \* opt\_.skin; const double \*ref = Rref\_.data(); for (std::size_t a = 0; a < n; ++a) { const double dx = R[3 \* a] - ref[3 \* a]; const double dy = R[3 \* a + 1] - ref[3 \* a + 1]; const double dz = R[3 \* a + 2] - ref[3 \* a + 2]; if (dx \* dx + dy \* dy + dz \* dz > thr2) { return false; } } return true; }
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
 
-[[nodiscard]] bool isPhantom() const { return phantom\_; }
+	void updateCells(:ref:`Neighbours<doxid-classrgpot_1_1nlist_1_1_neighbours>`& cells, const double* positions, std::size_t n, const double* box9, double cutoff, double skin, :ref:`Image<doxid-struct_image>` image, Mode mode, const std::array<bool, 3>& periodic)
 
-/ First sighting: fused eval-only scan plus a phantom stamp (MIC / regime), or just the scan when caching is unsafe for this box. template <typename Fn> void visitOnly(const double \*R, std::size_t n, const double \*box,
-                 const Options &opt, Fn &&fn) { setup(n, box, opt); double w[3]; double inv[3]; fold_params(box, opt, w, inv); auto flip = [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) { fn(i, j, -dx, -dy, -dz, r2); }; :ref:`CellGrid <doxid-structrgpot_1_1nlist_1_1_cell_grid>` grid; if (general\_) { generalVisit(R, n, -1.0, opt.cutoff \* opt.cutoff, flip); } else if (mic\_ && grid.build(R, n, w, inv, opt.cutoff)) { cell_visit<false>(grid, R, w, inv, HUGE_VAL, opt.cutoff \* opt.cutoff, pairsIJ\_, flip); } else { vesin::cpu::brute_force_visit_only(R, n, w, inv, opt.cutoff \* opt.cutoff, flip); } if (mic\_) { pairsIJ\_.clear(); finishRebuild(R, n, box, opt, true, false); phantom\_ = true; } }
+Bind ``cells`` to this geometry. ``cutoff`` is the pair cutoff and ``skin`` is the Verlet buffer the kernels drop inside the cutoff. ``image`` is Round for an orthorhombic cell, Half after coordinates have been wrapped, and General for a sheared cell. ``mode`` stores the index when it fits and streams otherwise, unless the caller asks.
 
-/ Second sighting: capture the candidate list at cutoff+skin while / evaluating ``fn`` in the same scan. template <typename Fn> void rebuildFused(const double \*R, std::size_t n, const double \*box,
-                    const Options &opt, Fn &&fn) { setup(n, box, opt); double w[3]; double inv[3]; fold_params(box, opt, w, inv); const double bc = opt.cutoff + opt.skin; auto flip = [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) { fn(i, j, -dx, -dy, -dz, r2); }; :ref:`CellGrid <doxid-structrgpot_1_1nlist_1_1_cell_grid>` grid; const bool cells = mic\_ && grid.build(R, n, w, inv, bc); if (general\_) { generalVisit(R, n, bc \* bc, opt.cutoff \* opt.cutoff, flip); } else if (cells) { cell_visit<true>(grid, R, w, inv, bc \* bc, opt.cutoff \* opt.cutoff, pairsIJ\_, flip); } else { vesin::cpu::brute_force_visit(R, n, w, inv, bc \* bc, opt.cutoff \* opt.cutoff, pairsIJ\_, flip); } finishRebuild(R, n, box, opt, !cells, true); }
+.. index:: pair: function; visitDirected
+.. _doxid-_neighbour_list_8hpp_1a570dcf98e1a44f640e93d8a466258463:
 
-/ Build the candidate list at cutoff + skin for positions ``R``, the / list a later call reuses while the Verlet guarantee holds. void rebuild(const double \*R, std::size_t n, const double \*box,
-               const Options &opt) { rebuildFused(R, n, box, opt, [](int32_t, int32_t, double, double, double, double) {}); }
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
 
-/ Build a list holding exactly the pairs within the cutoff of ``R``, / for one evaluation through accumulate. When the box is cacheable the / slot then becomes a phantom (dropPairs) that only stamps the / geometry, as visitOnly leaves it. void buildForEval(const double \*R, std::size_t n, const double \*box,
-                    const Options &opt) { setup(n, box, opt); double w[3]; double inv[3]; fold_params(box, opt, w, inv); const double c2 = opt.cutoff \* opt.cutoff; auto none = [](int32_t, int32_t, double, double, double, double) {}; :ref:`CellGrid <doxid-structrgpot_1_1nlist_1_1_cell_grid>` grid; const bool cells = mic\_ && grid.build(R, n, w, inv, opt.cutoff); if (general\_) { generalVisit(R, n, std::nextafter(c2, HUGE_VAL), -1.0, none); } else if (cells) { cell_visit<true>(grid, R, w, inv, std::nextafter(c2, HUGE_VAL), -1.0, pairsIJ\_, none); } else { vesin::cpu::brute_force_visit(R, n, w, inv, std::nextafter(c2, HUGE_VAL), -1.0, pairsIJ\_, none); } One evaluation: the rounding fold costs what recording the images would, and gives the same vectors bit for bit. finishRebuild(R, n, box, opt, !cells, false); }
+	template <typename Fn>
+	void visitDirected(const :ref:`Neighbours<doxid-classrgpot_1_1nlist_1_1_neighbours>`& cells, std::int64_t begin, std::int64_t end, Fn&& fn)
 
-/ Turn an evaluated slot into a phantom: keep the stamp, drop the pairs. void dropPairs() { nbr\_.clear(); nbr\_.shrink_to_fit(); code\_.clear(); code\_.shrink_to_fit(); std::fill(rows\_.begin(), rows\_.end(), 0); phantom\_ = true; }
+:ref:`Pairs <doxid-structrgpot_1_1nlist_1_1_pairs>` for atoms in ``[begin, end)``. ``dx`` is ``r_i - r_j`` after the image, the negation of the vector a stored table holds for the minimum image.
 
-/ True when caching applies to this box (decided by the last build). [[nodiscard]] bool cacheable() const { return mic\_; }
+.. index:: pair: function; visitHalf
+.. _doxid-_neighbour_list_8hpp_1ad26e673b5d183ef34fe91dead088f7c1:
 
-/ Fold the evaluation loops use for this slot. [[nodiscard]] FoldMode foldMode() const { return fold\_; }
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
 
-/ Candidate pairs held (within cutoff + skin at the build). [[nodiscard]] std::size_t size() const { return nbr\_.size(); }
+	template <typename Fn>
+	void visitHalf(const :ref:`Neighbours<doxid-classrgpot_1_1nlist_1_1_neighbours>`& cells, std::int64_t begin, std::int64_t end, Fn&& fn)
 
-/ Visit every cached pair within the true cutoff of the current / positions; ``fn(i, j, dx, dy, dz, r2)`` uses ``d = r_i - r_j`` with / the minimum image applied. template <typename Fn> void forEach(const double \*R, Fn &&fn) const { switch (fold\_) { case FoldMode::None: forEachImpl<FoldMode::None>(R, fn); break; case FoldMode::Round: forEachImpl<FoldMode::Round>(R, fn); break; case FoldMode::Coded: forEachImpl<FoldMode::Coded>(R, fn); break; case FoldMode::General: forEachImpl<FoldMode::General>(R, fn); break; } }
+The pairs of ``visitDirected`` with ``j > i`` only.
 
-/ Fused force loop over the cached pairs: ``kernel(i, j, r2)`` returns / the pair energy and ``fscale = -V'(r) / r`` (or a row kernel, see / HasRowKernel, fills them for a row of accepted pairs); the loop adds / ``fscale * d`` to atom i and subtracts it from atom j (``d = r_i - / r_j``, minimum image applied) and returns the summed energy. Atom i's / force stays in registers across its row. The optional observer receives / the same force scale and displacement once per accepted pair. template <typename Kernel, typename Observer = IgnorePairContribution> [[nodiscard]] double accumulate(const double \*R, double \*F, Kernel &&kernel, Observer &&observe = {}) const {
+.. index:: pair: function; threadsRequested
+.. _doxid-_neighbours_8cc_1a05e36639124846887956213a31950e7a:
 
-return accumulateFold<false>(R, F, kernel, observe);}
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
 
-private: template <bool Hw, typename Kernel, typename Observer> inline double accumulateFold(const double \*R, double \*F,
-                                      Kernel &kernel,
-                                      Observer &observe) const { if constexpr (HasRowKernel<Kernel>::value) { switch (fold\_) { case FoldMode::None: return accumulateRows<FoldMode::None, Hw>(R, F, kernel, observe); case FoldMode::Round: return accumulateRows<FoldMode::Round, Hw>(R, F, kernel, observe); case FoldMode::Coded: return accumulateRows<FoldMode::Coded, Hw>(R, F, kernel, observe); case FoldMode::General: return accumulateRows<FoldMode::General, Hw>(R, F, kernel, observe); } } else { switch (fold\_) { case FoldMode::None: return accumulateImpl<FoldMode::None, Hw>(R, F, kernel, observe); case FoldMode::Round: return accumulateImpl<FoldMode::Round, Hw>(R, F, kernel, observe); case FoldMode::Coded: return accumulateImpl<FoldMode::Coded, Hw>(R, F, kernel, observe); case FoldMode::General: return accumulateImpl<FoldMode::General, Hw>(R, F, kernel, observe); } } return 0.0; }
+	int threadsRequested()
 
-template <FoldMode M, typename Fn> void forEachImpl(const double \*R, Fn &fn) const { const double cutoff2 = opt\_.cutoff \* opt\_.cutoff; const Fold fold = makeFold(); for (std::size_t i = 0; i < n\_; ++i) { const int32_t p0 = rows\_[i]; const int32_t p1 = rows\_[i + 1]; for (int32_t p = p0; p < p1; ++p) { const auto up = static_cast<std::size_t>(p); const int32_t j = nbr\_[up]; double dx, dy, dz; fold.template apply<M>(R, i, static_cast<std::size_t>(j), up, dx, dy,
-                               dz); const double r2 = dx \* dx + dy \* dy + dz \* dz; if (r2 <= cutoff2) { fn(static_cast<int32_t>(i), j, dx, dy, dz, r2); } } } }
+Thread count from OMP_NUM_THREADS. Unset, empty, or a non-positive value is one thread, so a call that does not ask for threads matches the serial pair order.
 
-template <FoldMode M, bool Hw, typename Kernel, typename Observer> [[nodiscard]] inline double accumulateImpl(const double \*R, double \*F, Kernel &kernel,
-                 Observer &observe) const { const double cutoff2 = opt\_.cutoff \* opt\_.cutoff; const Fold fold = makeFold(); double energy = 0.0; for (std::size_t i = 0; i < n\_; ++i) { const int32_t p0 = rows\_[i]; const int32_t p1 = rows\_[i + 1]; double fxi = 0.0, fyi = 0.0, fzi = 0.0; for (int32_t p = p0; p < p1; ++p) { const auto up = static_cast<std::size_t>(p); const auto j = static_cast<std::size_t>(nbr\_[up]); double dx, dy, dz; fold.template apply<M>(R, i, j, up, dx, dy, dz); const double r2 = dx \* dx + dy \* dy + dz \* dz; A branch, not a mask: masking evaluates the kernel (an exp for Morse) for every candidate past the cutoff, and measures slower for Morse at every size and no faster for LJ. if (r2 <= cutoff2) { const PairTerm t = kernel(static_cast<int32_t>(i), static_cast<int32_t>(j), r2); energy += t.energy; Explicit fused updates: left to -ffp-contract, GCC 15 fuses these differently in the Round and Coded instantiations, and a cold call then differs in the last bit from a captured one. fxi = pairFma<Hw>(t.fscale, dx, fxi); fyi = pairFma<Hw>(t.fscale, dy, fyi); fzi = pairFma<Hw>(t.fscale, dz, fzi); F[3 \* j] = pairFma<Hw>(-t.fscale, dx, F[3 \* j]); F[3 \* j + 1] = pairFma<Hw>(-t.fscale, dy, F[3 \* j + 1]); F[3 \* j + 2] = pairFma<Hw>(-t.fscale, dz, F[3 \* j + 2]); observe(t.fscale, dx, dy, dz); } } F[3 \* i] += fxi; F[3 \* i + 1] += fyi; F[3 \* i + 2] += fzi; } return energy; }
+.. index:: pair: function; partition
+.. _doxid-_neighbours_8cc_1afd10c100b7fb7b72ab685a052bffd4a5:
 
-/ accumulateImpl for a row kernel: the accepted pairs of row i are / gathered, the kernel evaluates them together, and the updates then run / in the order accumulateImpl would run them, so the sums round the same. template <FoldMode M, bool Hw, typename Kernel, typename Observer> [[nodiscard]] inline double accumulateRows(const double \*R, double \*F, Kernel &kernel,
-                 Observer &observe) const { const double cutoff2 = opt\_.cutoff \* opt\_.cutoff; const Fold fold = makeFold(); std::size_t widest = 0; for (std::size_t i = 0; i < n\_; ++i) { widest = std::max(widest, static_cast<std::size_t>(rows\_[i + 1] - rows\_[i])); } dx, dy, dz, r2, energy, fscale per accepted pair. std::vector<double> buf(6 \* widest); std::vector<std::size_t> partner(widest); double \*bx = buf.data(); double \*by = bx + widest; double \*bz = by + widest; double \*br2 = bz + widest; double \*be = br2 + widest; double \*bf = be + widest; double energy = 0.0; for (std::size_t i = 0; i < n\_; ++i) { const int32_t p0 = rows\_[i]; const int32_t p1 = rows\_[i + 1]; std::size_t m = 0; for (int32_t p = p0; p < p1; ++p) { const auto up = static_cast<std::size_t>(p); const auto j = static_cast<std::size_t>(nbr\_[up]); double dx, dy, dz; fold.template apply<M>(R, i, j, up, dx, dy, dz); const double r2 = dx \* dx + dy \* dy + dz \* dz; if (r2 <= cutoff2) { bx[m] = dx; by[m] = dy; bz[m] = dz; br2[m] = r2; partner[m] = j; ++m; } } kernel.row(br2, be, bf, m); double fxi = 0.0, fyi = 0.0, fzi = 0.0; for (std::size_t q = 0; q < m; ++q) { const std::size_t j = partner[q]; const double fs = bf[q]; energy += be[q]; fxi = pairFma<Hw>(fs, bx[q], fxi); fyi = pairFma<Hw>(fs, by[q], fyi); fzi = pairFma<Hw>(fs, bz[q], fzi); F[3 \* j] = pairFma<Hw>(-fs, bx[q], F[3 \* j]); F[3 \* j + 1] = pairFma<Hw>(-fs, by[q], F[3 \* j + 1]); F[3 \* j + 2] = pairFma<Hw>(-fs, bz[q], F[3 \* j + 2]); observe(fs, bx[q], by[q], bz[q]); } F[3 \* i] += fxi; F[3 \* i + 1] += fyi; F[3 \* i + 2] += fzi; } return energy; }
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
 
-template <typename Fn> void generalVisit(const double \*R, std::size_t n, double listCutoff2,
-                    double visitCutoff2, Fn &fn) { pairsIJ\_.clear(); for (std::size_t i = 0; i < n; ++i) { for (std::size_t j = i + 1; j < n; ++j) { double dx = R[3 \* j] - R[3 \* i]; double dy = R[3 \* j + 1] - R[3 \* i + 1]; double dz = R[3 \* j + 2] - R[3 \* i + 2]; generalImage\_.fold(dx, dy, dz); const double r2 = dx \* dx + dy \* dy + dz \* dz; if (r2 < listCutoff2) { pairsIJ\_.push_back(static_cast<int32_t>(i)); pairsIJ\_.push_back(static_cast<int32_t>(j)); } if (r2 <= visitCutoff2) fn(static_cast<int32_t>(i), static_cast<int32_t>(j), dx, dy, dz, r2); } } }
+	:ref:`Range<doxid-structrgpot_1_1nlist_1_1_range>` partition(std::int64_t n, int thread, int nthreads)
 
-void setup(std::size_t n, const double \*box, const Options &opt) { const bool orthorhombic = box[1] == 0.0 && box[2] == 0.0 && box[3] == 0.0 && box[5] == 0.0 && box[6] == 0.0 && box[7] == 0.0; general\_ = !orthorhombic && (opt.periodic[0] || opt.periodic[1] || opt.periodic[2]); if (general\_) generalImage\_ = :ref:`MinimumImage <doxid-classrgpot_1_1nlist_1_1_minimum_image>` (box, opt.periodic); The atom cap bounds the brute-force list build; a fully periodic box that the linked-cell scan can serve needs no cap. mic\_ = orthorhombic && (n <= 20000 || cellGridFits(n, box, opt)); for (int k = 0; mic\_ && k < 3; ++k) { if (opt.periodic[static_cast<std::size_t>(k)] && opt.cutoff > 0.5 \* box[4 \* k]) { mic\_ = false; } } }
+Contiguous slice of ``n`` items for ``thread`` in ``[0, nthreads)``. The slices cover ``n`` without overlap, in thread order.
 
-/ True when every axis is periodic and wide enough that :ref:`CellGrid::build <doxid-structrgpot_1_1nlist_1_1_cell_grid_1a8325e8f4b5bd62f82b8922074de0cca8>` / accepts the box at the list cutoff for any atom positions. static bool cellGridFits(std::size_t n, const double \*box,
-                           const Options &opt) { const double rl = opt.cutoff + opt.skin; std::size_t ncells = 1; for (int k = 0; k < 3; ++k) { if (!opt.periodic[static_cast<std::size_t>(k)] || !(rl > 0.0)) { return false; } const double fit = std::floor(box[4 \* k] / rl); if (fit < 3.0) { return false; } ncells \*= static_cast<std::size_t>(std::min(fit, 1024.0)); } return ncells >= kMinCellsForGrid && ncells <= 8 \* n + 64; }
+.. index:: pair: function; availableBytes
+.. _doxid-_neighbours_8cc_1ad73498fcacbec8d7bad2fdc78d14359e:
 
-static void fold_params(const double \*box, const Options &opt, double w[3],
-                          double inv[3]) { for (int k = 0; k < 3; ++k) { w[k] = box[4 \* k]; inv[k] = (opt.periodic[static_cast<std::size_t>(k)] && w[k] != 0.0) ? 1.0 / w[k] : 0.0; } }
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
 
-/ ``rowsSorted`` : the scan already emitted each row in ascending / partner order (the brute-force scan does). ``codes`` : record image / codes for a list later calls reuse. void finishRebuild(const double \*R, std::size_t n, const double \*box,
-                     const Options &opt, bool rowsSorted, bool codes) { The fold of the historical per-call loop: diagonal widths along the periodic axes, also for a box the pool will not cache. { double w[3]; double inv[3]; fold_params(box, opt, w, inv); for (int k = 0; k < 3; ++k) { micInv\_[static_cast<std::size_t>(k)] = inv[k]; } } Rref\_.assign(R, R + 3 \* n); for (int k = 0; k < 9; ++k) { boxref\_[k] = box[k]; } opt\_ = opt; n\_ = n; const std::size_t np = pairsIJ\_.size() / 2; complete\_ = mic\_ && np == n \* (n - 1) / 2;
+	std::uint64_t availableBytes()
 
-Row-major (CSR) half list: atom i owns its partners j > i. The scans report each pair as (a, b) with a < b, so a counting sort on a is all it takes. rows\_.assign(n + 1, 0); for (std::size_t p = 0; p < np; ++p) { ++rows\_[static_cast<std::size_t>(pairsIJ\_[2 \* p]) + 1]; } for (std::size_t i = 0; i < n; ++i) { rows\_[i + 1] += rows\_[i]; } nbr\_.resize(np); { std::vector<int32_t> fill(rows\_.begin(), rows\_.end() - 1); for (std::size_t p = 0; p < np; ++p) { const auto i = static_cast<std::size_t>(pairsIJ\_[2 \* p]); nbr\_[static_cast<std::size_t>(fill[i]++)] = pairsIJ\_[2 \* p + 1]; } } Rows from the cell scan arrive in cell order; sorting each row keeps the partner order, and so the summation order, independent of the scan that built the list. if (!rowsSorted) { for (std::size_t i = 0; i < n; ++i) { std::sort(nbr\_.begin() + rows\_[i], nbr\_.begin() + rows\_[i + 1]); } } pairsIJ\_.clear(); pairsIJ\_.shrink_to_fit(); if (general\_) { code\_.clear(); fold\_ = FoldMode::General; } else if (codes) { buildImageCodes(); } else { code\_.clear(); const bool fold = micInv\_[0] != 0.0 || micInv\_[1] != 0.0 || micInv\_[2] != 0.0; fold\_ = fold ? FoldMode::Round : FoldMode::None; } built\_ = true; }
+Bytes the process may still allocate, from MemAvailable. Zero when that figure is not reported.
 
-/ Record each candidate's periodic image at build time, so evaluation / subtracts a stored shift instead of rounding three quotients per pair. / / Sound only when cutoff + skin < w / 2 along every periodic axis: a / pair inside the cutoff now moved less than one skin since the build, / so its build-time separation already sat within w / 2 of the image / it has now, and that image is the one the build folded to. With a / complete list motion never invalidates the slot, so the image can / change and the fold stays per call. Partners more than one box width / apart (unwrapped coordinates) fall back to the fold too. void buildImageCodes() { code\_.clear(); fold\_ = FoldMode::None; if (micInv\_[0] == 0.0 && micInv\_[1] == 0.0 && micInv\_[2] == 0.0) { return; } fold\_ = FoldMode::Round; if (complete\_) { return; } const double reach = opt\_.cutoff + opt\_.skin; for (int k = 0; k < 3; ++k) { if (micInv\_[static_cast<std::size_t>(k)] != 0.0 && !(reach < 0.5 \* boxref\_[4 \* k])) { return; } } for (int c = 0; c < 27; ++c) { const int kk[3] = {c % 3 - 1, (c / 3) % 3 - 1, c / 9 - 1}; for (int k = 0; k < 3; ++k) { shift\_[static_cast<std::size_t>(3 \* c + k)] = static_cast<double>(kk[k]) \* boxref\_[4 \* k]; } } code\_.resize(nbr\_.size()); const double \*ref = Rref\_.data(); for (std::size_t i = 0; i < n\_; ++i) { for (int32_t p = rows\_[i]; p < rows\_[i + 1]; ++p) { const auto up = static_cast<std::size_t>(p); const auto j = static_cast<std::size_t>(nbr\_[up]); int c = 0; int stride = 1; for (int k = 0; k < 3; ++k) { const auto uk = static_cast<std::size_t>(k); const double d = ref[3 \* i + uk] - ref[3 \* j + uk]; const double m = vesin::cpu::visit_round(d \* micInv\_[uk]); if (m < -1.0 || m > 1.0) { code\_.clear(); return; } c += (static_cast<int>(m) + 1) \* stride; stride \*= 3; } code\_[up] = static_cast<uint8_t>(c); } } fold\_ = FoldMode::Coded; }
+.. index:: pair: function; withinSkin
+.. _doxid-_neighbours_8hpp_1a016896fca86003412f1fce1d1f117b2d:
 
-/ How the evaluation loops turn r_i - r_j into the minimum image. struct Fold { FoldMode mode; double w[3]; double inv[3]; const uint8_t \*code; const double \*shift; const :ref:`MinimumImage <doxid-classrgpot_1_1nlist_1_1_minimum_image>` \*general;
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
 
-template <FoldMode M> void apply(const double \*R, std::size_t i, std::size_t j, std::size_t p,
-               double &dx, double &dy, double &dz) const { dx = R[3 \* i] - R[3 \* j]; dy = R[3 \* i + 1] - R[3 \* j + 1]; dz = R[3 \* i + 2] - R[3 \* j + 2]; if constexpr (M == FoldMode::General) { general->fold(dx, dy, dz); } else if constexpr (M == FoldMode::Coded) { const double \*sh = shift + 3 \* static_cast<std::size_t>(code[p]); dx -= sh[0]; dy -= sh[1]; dz -= sh[2]; } else if constexpr (M == FoldMode::Round) { dx -= w[0] \* vesin::cpu::visit_round(dx \* inv[0]); dy -= w[1] \* vesin::cpu::visit_round(dy \* inv[1]); dz -= w[2] \* vesin::cpu::visit_round(dz \* inv[2]); } } };
+	bool withinSkin(const double* reference, const double* current, std::size_t n, double skin)
 
-[[nodiscard]] Fold makeFold() const { return Fold{fold\_, {boxref\_[0], boxref\_[4], boxref\_[8]}, {micInv\_[0], micInv\_[1], micInv\_[2]}, code\_.data(), shift\_.data(), &generalImage\_}; }
-
-std::vector<int32_t> pairsIJ\_; //!< Scan output, (a, b) flat; build only. std::vector<int32_t> rows\_; //!< CSR row starts, n + 1 entries. std::vector<int32_t> nbr\_; //!< Partner j > i of each candidate. std::vector<uint8_t> code\_; //!<:ref:`Image <doxid-struct_image>` code per candidate (Coded fold). std::array<double, 81> shift\_{}; //!< 27 image shifts, three doubles each. std::vector<double> Rref\_; std::array<double, 9> boxref\_{}; std::array<double, 3> micInv\_{}; Options opt\_{}; std::size_t n\_{0}; FoldMode fold\_{FoldMode::None}; :ref:`MinimumImage <doxid-classrgpot_1_1nlist_1_1_minimum_image>` generalImage\_; bool general\_{false}; bool mic\_{false}; bool phantom\_{false}; bool complete\_{false}; bool built\_{false}; };
-
-/ Process-wide pool of CachedPairList slots, matched by geometry / proximity; safe for shared potential instances evaluated from / short-lived worker threads. class PairListCache { public: static constexpr std::size_t kMaxSlots = 8;
-
-/ Single-pass evaluation with lazy list capture (see file header). / ``fn(i, j, dx, dy, dz, r2)`` sees every pair within the cutoff once, / with ``d = r_i - r_j`` (minimum image applied). template <typename Fn> void evaluate(const double \*R, std::size_t n, const double \*box,
-                const CachedPairList::Options &opt, Fn &&fn) { run(R, n, box, opt, fn, [&](const CachedPairList &list) { list.forEach(R, fn); }); }
-
-/ Energy and forces of a radial pair potential. ``kernel(i, j, r2)`` / returns the pair's PairTerm; the forces are added into ``F`` (3 n / doubles, interleaved) and the total energy is returned. / / Every call, cached or not, runs CachedPairList::accumulate over a / sorted CSR list: a fresh geometry first gets a list (at the cutoff for / a first sighting, at cutoff + skin when it is captured). The pairs / inside the cutoff and their summation order are then the same whichever / slot or scan served the call, so a result does not depend on the pool's / history or on which thread reached it first. template <typename Kernel, typename Observer = IgnorePairContribution> [[nodiscard]] double accumulate(const double \*R, std::size_t n, const double \*box, const CachedPairList::Options &opt, double \*F, Kernel &&kernel, Observer &&observe = {}) { std::shared_ptr<const CachedPairList> hit = lookup(R, n, box, opt); if (hit && !hit->isPhantom()) { return hit->accumulate(R, F, kernel, observe); } auto fresh = std::make_shared<CachedPairList>(); double energy; if (hit) { fresh->rebuild(R, n, box, opt); energy = fresh->accumulate(R, F, kernel, observe); } else { fresh->buildForEval(R, n, box, opt); energy = fresh->accumulate(R, F, kernel, observe); if (!fresh->cacheable()) { return energy; } fresh->dropPairs(); } store(fresh, hit); return energy; }
-
-static PairListCache &global() { static PairListCache cache; return cache; }
-
-private: / Most recently used slot valid for ``R``, moved to the front. std::shared_ptr<const CachedPairList> lookup(const double \*R, std::size_t n, const double \*box,
-         const CachedPairList::Options &opt) { std::lock_guard<std::mutex> lock(mu\_); for (std::size_t s = 0; s < slots\_.size(); ++s) { if (slots\_[s]->valid(R, n, box, opt)) { if (s != 0) { auto slot = std::move(slots\_[s]); slots\_.erase(slots\_.begin() + static_cast<std::ptrdiff_t>(s)); slots\_.insert(slots\_.begin(), std::move(slot)); } return slots\_.front(); } } return nullptr; }
-
-/ Put ``fresh`` at the front, replacing the phantom ``hit`` it grew / from, and evict the least recently used slot past kMaxSlots. void store(std::shared_ptr<CachedPairList> fresh,
-             const std::shared_ptr<const CachedPairList> &hit) { std::lock_guard<std::mutex> lock(mu\_); if (hit) { for (std::size_t s = 0; s < slots\_.size(); ++s) { if (slots\_[s] == hit) { slots\_.erase(slots\_.begin() + static_cast<std::ptrdiff_t>(s)); break; } } } slots\_.insert(slots\_.begin(), std::move(fresh)); if (slots\_.size() > kMaxSlots) { slots\_.pop_back(); } }
-
-/ Pool lookup for evaluate: ``onHit`` runs on a captured slot, ``scan``
+True when every atom has moved by at most half of ``skin`` from ``reference``. Skin 0 is true only when the coordinates match. The same test decides ``Builder::update`` 's reused flag.
 
 .. index:: pair: function; mul_add
 .. _doxid-_minimum_image_8cpp_1a6400dc19dfc6964f5daa7da968fc9e12:

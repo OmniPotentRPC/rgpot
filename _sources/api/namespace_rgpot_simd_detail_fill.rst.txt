@@ -1,0 +1,23 @@
+.. index:: pair: namespace; rgpot::simd::detail_fill
+.. _doxid-namespacergpot_1_1simd_1_1detail__fill:
+
+namespace rgpot::simd::detail_fill
+==================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace detail_fill {
+
+	// global functions
+
+	void :target:`append_half<doxid-from__cache_8hpp_1ae2554a38543d5a241efb284079932029>`(std::vector<std::int32_t>& ij, std::int32_t i, std::int32_t j, double r2, double cutoff2);
+
+	} // namespace detail_fill

@@ -155,6 +155,22 @@
    .. rubric:: Functions
 
 
+   .. rust:function:: rgpot_core::eindir::rgpot_eindir_abi_compatible
+      :index: 0
+      :vis: pub
+      :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"extern"},{"type":"space"},{"type":"literal","value":"C"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"rgpot_eindir_abi_compatible"},{"type":"punctuation","value":"("},{"type":"name","value":"stamp"},{"type":"punctuation","value":": "},{"type":"operator","value":"*"},{"type":"keyword","value":"const"},{"type":"space"},{"type":"link","value":"eindir_abi_stamp_t","target":"eindir_abi_stamp_t"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"i32","target":"i32"}]
+
+      Return nonzero when the eindir-core compiled into this library can
+      consume an objective described by ``stamp``.
+      
+      This is ``eindir_core_abi_compatible`` reached through rgpot, so a caller
+      that links only rgpot checks the stamp against the same eindir-core that
+      built the ``eindir_objective_t`` base. A null ``stamp`` is not compatible.
+      
+      **Safety**
+      
+      ``stamp`` must be null or point to a readable ``eindir_abi_stamp_t``.
+
    .. rust:function:: rgpot_core::eindir::rgpot_eindir_abi_stamp
       :index: 0
       :vis: pub

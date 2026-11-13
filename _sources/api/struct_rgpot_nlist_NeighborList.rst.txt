@@ -1,0 +1,71 @@
+.. index:: pair: struct; rgpot::nlist::NeighborList
+.. _doxid-structrgpot_1_1nlist_1_1_neighbor_list:
+
+struct rgpot::nlist::NeighborList
+=================================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Reusable pair list. :ref:`More...<details-structrgpot_1_1nlist_1_1_neighbor_list>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <HalfShell.hpp>
+	
+	struct NeighborList {
+		// fields
+	
+		double :target:`skin<doxid-structrgpot_1_1nlist_1_1_neighbor_list_1ae61e8ca73b7fe50311b32999fc0f68fb>` = 0;
+		std::vector<int> :target:`lo<doxid-structrgpot_1_1nlist_1_1_neighbor_list_1a55d65d871dd6fc508c75e61893ee1cb9>`;
+		std::vector<int> :target:`hi<doxid-structrgpot_1_1nlist_1_1_neighbor_list_1a231505593ce04113bf25e6e103d11d07>`;
+		std::vector<double> :ref:`dx<doxid-structrgpot_1_1nlist_1_1_neighbor_list_1a7852947dcb16f49419438a4fc0b37798>`;
+		std::vector<double> :target:`dy<doxid-structrgpot_1_1nlist_1_1_neighbor_list_1a6da3e8f6bdc9492830238ef50ef3e007>`;
+		std::vector<double> :target:`dz<doxid-structrgpot_1_1nlist_1_1_neighbor_list_1a50b275bd75ea282644ef2b014f813c98>`;
+		bool :ref:`use_stored<doxid-structrgpot_1_1nlist_1_1_neighbor_list_1a2df87f77c01cdd27c69e9ad078d9ced2>` = false;
+		std::vector<double> :target:`ref<doxid-structrgpot_1_1nlist_1_1_neighbor_list_1a43bf925efb24b2c2930b8b03972e1348>`;
+		double :target:`box<doxid-structrgpot_1_1nlist_1_1_neighbor_list_1a5568c3540045c37614de6b36ac05aa86>`[9] {};
+		std::size_t :target:`n<doxid-structrgpot_1_1nlist_1_1_neighbor_list_1a9799c61684b14e58f6c47f6588ca4bbc>` = 0;
+		double :target:`cutoff<doxid-structrgpot_1_1nlist_1_1_neighbor_list_1adf9eb67325ce5cea8143c4bfc65a6565>` = 0;
+		double :target:`skin_used<doxid-structrgpot_1_1nlist_1_1_neighbor_list_1aa9e81a1cac3baa015033d8007ea7d676>` = 0;
+		bool :target:`built<doxid-structrgpot_1_1nlist_1_1_neighbor_list_1ab1a754cceadcb50bab83214874e36aa4>` = false;
+
+		// methods
+	
+		void :target:`clear<doxid-structrgpot_1_1nlist_1_1_neighbor_list_1ad5a5332c59444c20001bf6b0619ce167>`();
+	};
+.. _details-structrgpot_1_1nlist_1_1_neighbor_list:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Reusable pair list. A null list passed to orderedPairs rebuilds every call. skin is the extra search distance in Angstrom. The stored pairs are reused while every atom has moved by at most skin/2 and the cell is unchanged. skin 0 reuses the list only when the coordinates match.
+
+Fields
+------
+
+.. index:: pair: variable; dx
+.. _doxid-structrgpot_1_1nlist_1_1_neighbor_list_1a7852947dcb16f49419438a4fc0b37798:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::vector<double> dx
+
+Folded r_hi - r_lo from the build. Valid when use_stored is set.
+
+.. index:: pair: variable; use_stored
+.. _doxid-structrgpot_1_1nlist_1_1_neighbor_list_1a2df87f77c01cdd27c69e9ad078d9ced2:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool use_stored = false
+
+True when dx, dy, dz match the current coordinates.
+

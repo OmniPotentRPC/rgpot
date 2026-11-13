@@ -1,0 +1,27 @@
+.. index:: pair: struct; rgpot::nlist::Buffers
+.. _doxid-structrgpot_1_1nlist_1_1_buffers:
+
+struct rgpot::nlist::Buffers
+============================
+
+.. toctree::
+	:hidden:
+
+Caller-owned buffers for one chunk. ``first`` and ``second`` have the same length, which is the maximum number of pairs this pull writes. ``shift`` and ``vector`` are empty or three times that length.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <NeighbourList.hpp>
+	
+	struct Buffers {
+		// fields
+	
+		std::span<std::int32_t> :target:`first<doxid-structrgpot_1_1nlist_1_1_buffers_1ae958486f5fee50f05d1429f8e8af3809>`;
+		std::span<std::int32_t> :target:`second<doxid-structrgpot_1_1nlist_1_1_buffers_1a0e54317c1eea41116ca44667c96383c9>`;
+		std::span<std::int32_t> :target:`shift<doxid-structrgpot_1_1nlist_1_1_buffers_1a12e2b9ce565e6e7a0349b9cb8d0b8e51>`;
+		std::span<double> :target:`vector<doxid-structrgpot_1_1nlist_1_1_buffers_1a9cfe8bb04d1b5ff037d6d258bf4a310f>`;
+		std::span<double> :target:`distance<doxid-structrgpot_1_1nlist_1_1_buffers_1ad48ec2e6faeb57ce9e80f11369826c64>`;
+		std::span<std::uint8_t> :target:`mask<doxid-structrgpot_1_1nlist_1_1_buffers_1a4a71ed4c82a78922269a6a244d712f5d>`;
+	};

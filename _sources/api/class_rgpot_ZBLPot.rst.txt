@@ -31,6 +31,10 @@ Universal screened nuclear repulsion with a switched cutoff. :ref:`More...<detai
 		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_z_b_l_pot_1a2394b873a5370649d2fe2424ecf36087>`() const;
 		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_z_b_l_pot_1a6f7a87dabb1a420a62a03f5305a0d27d>`() const;
 		void :ref:`forceImpl<doxid-classrgpot_1_1_z_b_l_pot_1a882d16ac5ac327e63c95a5d4c05c8fad>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		void :ref:`setNeighbourMode<doxid-classrgpot_1_1_z_b_l_pot_1a4c4ae1e64adaa2074c7d98e4ca780719>`(nlist::Mode mode);
+		bool :ref:`listReused<doxid-classrgpot_1_1_z_b_l_pot_1a08327788a442f14f869850720408372f>`() const;
+		std::size_t :ref:`retainedPairs<doxid-classrgpot_1_1_z_b_l_pot_1a91aa8413f262ffc8e6551291c9b8f47a>`() const;
+		static double :target:`neighbourSkin<doxid-classrgpot_1_1_z_b_l_pot_1a4a31624d3ecb34e7897f753d213f7dae>`(double cutoff);
 	};
 .. _details-classrgpot_1_1_z_b_l_pot:
 
@@ -39,7 +43,7 @@ Detailed Documentation
 
 Universal screened nuclear repulsion with a switched cutoff.
 
-Every pair within ``cut_global`` contributes, with vectors taken straight from the coordinates: ``opt.periodic`` is off in all three directions, so the pair scan never folds a separation into the cell. Pairs come from the shared ``rgpot::nlist::PairListCache``, and the per-species coefficient tables are built once per species set.
+Every pair within ``cut_global`` contributes. Periodicity is off, so the walk does not fold a separation into the cell. The pair term runs during the shared cell walk. A stream copies no pair index. A stored list keeps candidates out to the cutoff plus one fifth of the cutoff.
 
 Construction
 ------------
@@ -128,4 +132,34 @@ Computes the forces and energy for a given configuration.
 .. rubric:: Returns:
 
 Void.
+
+.. index:: pair: function; setNeighbourMode
+.. _doxid-classrgpot_1_1_z_b_l_pot_1a4c4ae1e64adaa2074c7d98e4ca780719:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void setNeighbourMode(nlist::Mode mode)
+
+Stored list, streaming walk, or Auto (memory and the candidate bound).
+
+.. index:: pair: function; listReused
+.. _doxid-classrgpot_1_1_z_b_l_pot_1a08327788a442f14f869850720408372f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool listReused() const
+
+True when the last force call kept the Verlet list.
+
+.. index:: pair: function; retainedPairs
+.. _doxid-classrgpot_1_1_z_b_l_pot_1a91aa8413f262ffc8e6551291c9b8f47a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::size_t retainedPairs() const
+
+Pair indices copied out of the walk. Stream keeps none.
 

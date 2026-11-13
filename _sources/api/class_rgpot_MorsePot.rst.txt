@@ -33,6 +33,10 @@ D_e`, shifted so that :math:`V(r_\mathrm{cut}) = 0`. :ref:`More...<details-class
 		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_morse_pot_1a4cabcb6bc3fd65d7237e789087ee723c>`() const;
 		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_morse_pot_1a3efdba266543f10b6b5c18ad0384e4ce>`() const;
 		void :ref:`forceImpl<doxid-classrgpot_1_1_morse_pot_1ad87ad7cbb6c64258f8471c594424e6c9>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		void :target:`setNeighbourMode<doxid-classrgpot_1_1_morse_pot_1ab11cd0ea227fa7d529c78837923357b3>`(nlist::Mode mode);
+		bool :ref:`listReused<doxid-classrgpot_1_1_morse_pot_1a34de0c682ea8a887ce72a57c1f200840>`() const;
+		std::size_t :ref:`retainedPairs<doxid-classrgpot_1_1_morse_pot_1a540d840616cf2c1b2fd2b6f72e734766>`() const;
+		static double :ref:`neighbourSkin<doxid-classrgpot_1_1_morse_pot_1a66ffe1a151210a302bd9c4aed1d880f5>`(double cutoff);
 	};
 .. _details-classrgpot_1_1_morse_pot:
 
@@ -42,9 +46,9 @@ Detailed Documentation
 Pairwise Morse potential, :math:`V(r) = D_e [1 - e^{-a(r - r_e)}]^2 -
 D_e`, shifted so that :math:`V(r_\mathrm{cut}) = 0`.
 
-Pairwise interactions within the cutoff radius, minimum image convention on an orthogonal box. Pairs come from the shared ``rgpot::nlist::PairListCache``, so repeated evaluations on nearby geometries (NEB images, dimer rotations) reuse a Verlet-skin cached candidate list.
+Pairwise interactions within the cutoff radius. The minimum image comes from the shared neighbour layer, on an orthogonal or sheared box. The pair term runs during the cell walk. A stream does not copy a half-list. A stored list keeps candidates out to the cutoff plus a skin of one fifth of the cutoff, and a later call inside half that skin reuses them. The distance filter uses the positions of this call.
 
-With ``:ref:`MorseConfig::switch_width <doxid-structrgpot_1_1_morse_config_1a7fe1ac125cf3568298a35231de30561c>``` set, each pair term is the unshifted Morse energy times the C^2 quintic switch of :ref:`PairSwitch.hpp <doxid-_pair_switch_8hpp_source>`; otherwise the energy is shifted to zero at the cutoff and the force jumps there.
+With ``:ref:`MorseConfig::switch_width <doxid-structrgpot_1_1_morse_config_1a7fe1ac125cf3568298a35231de30561c>``` set, each pair term is the unshifted Morse energy times the C^2 quintic switch of :ref:`PairSwitch.hpp <doxid-_pair_switch_8hpp_source>`; otherwise the energy is shifted to zero at the cutoff and the force jumps there. The pair term is ``simd::exp_fixed``, so a per-pair accumulation and this row return the same bits. Cauchy stress is the derivative of that energy.
 
 .. warning::
 
@@ -119,4 +123,34 @@ Computes the forces and energy for a given configuration.
 .. rubric:: Returns:
 
 Void.
+
+.. index:: pair: function; listReused
+.. _doxid-classrgpot_1_1_morse_pot_1a34de0c682ea8a887ce72a57c1f200840:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool listReused() const
+
+True when the last force call kept the Verlet list. Half the skin, the same predicate as ``nlist::Builder::update``.
+
+.. index:: pair: function; retainedPairs
+.. _doxid-classrgpot_1_1_morse_pot_1a540d840616cf2c1b2fd2b6f72e734766:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::size_t retainedPairs() const
+
+Pair indices copied out of the walk. A stream keeps none: the pair term accumulates during the cell walk.
+
+.. index:: pair: function; neighbourSkin
+.. _doxid-classrgpot_1_1_morse_pot_1a66ffe1a151210a302bd9c4aed1d880f5:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static double neighbourSkin(double cutoff)
+
+Skin added to the cutoff on a stored list. Stream uses none.
 

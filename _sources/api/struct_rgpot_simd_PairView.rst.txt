@@ -1,0 +1,32 @@
+.. index:: pair: struct; rgpot::simd::PairView
+.. _doxid-structrgpot_1_1simd_1_1_pair_view:
+
+struct rgpot::simd::PairView
+============================
+
+.. toctree::
+	:hidden:
+
+CSR half-list plus the fold the pair kernels apply. fold is 0 none, 1 orthorhombic round, 2 coded image, 3 general MinimumImage.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <pods.hpp>
+	
+	struct PairView {
+		// fields
+	
+		const double* :target:`R<doxid-structrgpot_1_1simd_1_1_pair_view_1ab748db029b7780544bb1bcb0774030df>`;
+		const std::int32_t* :target:`rows<doxid-structrgpot_1_1simd_1_1_pair_view_1a7e811a161b6c0c4e4ee2fe4514377a1a>`;
+		const std::int32_t* :target:`nbr<doxid-structrgpot_1_1simd_1_1_pair_view_1a4d34605c3af4abdc4ad6a55fd55c985b>`;
+		std::size_t :target:`n<doxid-structrgpot_1_1simd_1_1_pair_view_1a003d194b0d4f4746d9e6658179f17d0f>`;
+		double :target:`cutoff2<doxid-structrgpot_1_1simd_1_1_pair_view_1abc407f7de367e4b0ebfea7aaa0e32c96>`;
+		int :target:`fold<doxid-structrgpot_1_1simd_1_1_pair_view_1a75c03b073ab294685e7053a9edc91760>`;
+		double :target:`w<doxid-structrgpot_1_1simd_1_1_pair_view_1a2f3207b17957316fa72ef3a154b7e5e7>`[3];
+		double :target:`inv<doxid-structrgpot_1_1simd_1_1_pair_view_1aa829abc2dd80b04625a7b7f3ee6d395c>`[3];
+		const std::uint8_t* :target:`code<doxid-structrgpot_1_1simd_1_1_pair_view_1a7feff958c0e90100cbb03cb6366a1163>`;
+		const double* :target:`shift<doxid-structrgpot_1_1simd_1_1_pair_view_1ac68c89743a4fd538a5cc5ab3b7b5f98b>`;
+		const void* :target:`general<doxid-structrgpot_1_1simd_1_1_pair_view_1af07c6c16cd8d8dfc99acdc066fe2c2e5>`;
+	};

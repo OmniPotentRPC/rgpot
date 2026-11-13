@@ -1,0 +1,22 @@
+.. index:: pair: struct; rgpot::nlist::Range
+.. _doxid-structrgpot_1_1nlist_1_1_range:
+
+struct rgpot::nlist::Range
+==========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Range {
+		// fields
+	
+		std::int64_t :target:`begin<doxid-structrgpot_1_1nlist_1_1_range_1a7f5b828d58ff5d32b1aa667885fe29b6>` = 0;
+		std::int64_t :target:`end<doxid-structrgpot_1_1nlist_1_1_range_1adbe77f3572784b5ca6e337e49504180f>` = 0;
+	};

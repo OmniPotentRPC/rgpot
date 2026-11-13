@@ -1,0 +1,28 @@
+.. index:: pair: struct; rgpot::simd::EamAtom
+.. _doxid-structrgpot_1_1simd_1_1_eam_atom:
+
+struct rgpot::simd::EamAtom
+===========================
+
+.. toctree::
+	:hidden:
+
+One atom's analytical :ref:`EAM <doxid-class_e_a_m>` parameters (Zhou form, not a spline table).
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <pods.hpp>
+	
+	struct EamAtom {
+		// fields
+	
+		double :target:`beta1<doxid-structrgpot_1_1simd_1_1_eam_atom_1ae2f61579945035a19d513aad19027054>`;
+		double :target:`beta2<doxid-structrgpot_1_1simd_1_1_eam_atom_1af3c608dfcfaba2e747aec418bc9507f0>`;
+		double :target:`alpha_m<doxid-structrgpot_1_1simd_1_1_eam_atom_1a1c4000f2e6e6081a8742d214ed500be9>`;
+		double :target:`r_m<doxid-structrgpot_1_1simd_1_1_eam_atom_1ad64935aa76f5af21c8aebc66aa8c5f86>`;
+		double :target:`d_m<doxid-structrgpot_1_1simd_1_1_eam_atom_1a3fd26424062b20087a7e404755ee1b14>`;
+		double :target:`cutoff2<doxid-structrgpot_1_1simd_1_1_eam_atom_1ae93370dedaf901706d8eb7ee539ae95a>`;
+		double :target:`coeff<doxid-structrgpot_1_1simd_1_1_eam_atom_1a262dec01fb8cc54526cd02e20bf1c95c>`[9];
+	};

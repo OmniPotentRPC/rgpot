@@ -7,6 +7,9 @@ namespace xckernel
 .. toctree::
 	:hidden:
 
+Overview
+~~~~~~~~
+
 
 
 
@@ -18,14 +21,29 @@ namespace xckernel
 
 	// global functions
 
-	template <typename T, typename Txc = T>
-	void :target:`stage_a<doxid-evaluator_8hpp_1a28afa7e79334c63b417d1ede975d5f45>`(int64_t npts, int64_t nm, const double* cf, const int32_t* off, const uint16_t* fid, int64_t nfld, const T*const* fields, const Txc*const* xc, T* c);
-
+	std::atomic<unsigned long>& :ref:`blas_stage_b_calls<doxid-evaluator_8hpp_1a64794d22d74d5fbf8bbac94621b8f6cd>`();
+	std::atomic<double*>& :target:`stage_b_entry_bound<doxid-evaluator_8hpp_1a08f16db9f8aeb26067724cbd91f4e646>`();
 	void :target:`stage_a< double, double ><doxid-evaluator_8hpp_1aef7940abd9061373928f497278f3eb49>`(int64_t npts, int64_t nm, const double* cf, const int32_t* off, const uint16_t* fid, int64_t nfld, const double*const* fields, const double*const* xc, double* c);
-
-	template <typename T>
-	void :target:`stage_b<doxid-evaluator_8hpp_1a52f2a6bf06639e04b8225ab667eb3be8>`(int64_t npts, int64_t nbf, const T* U, const T* c, const T* V, T* out);
-
 	void :target:`stage_b< double ><doxid-evaluator_8hpp_1a863fda400b50deb9702ee06706edc942>`(int64_t npts, int64_t nbf, const double* U, const double* c, const double* V, double* out);
 
 	} // namespace xckernel
+.. _details-namespacexckernel:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Global Functions
+----------------
+
+.. index:: pair: function; blas_stage_b_calls
+.. _doxid-evaluator_8hpp_1a64794d22d74d5fbf8bbac94621b8f6cd:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::atomic<unsigned long>& blas_stage_b_calls()
+
+Calls of the BLAS stage_b in this process. The kernels increment it, so a test that reads it proves the kernels resolve to this wrapper and not to the generated scalar loop.
+

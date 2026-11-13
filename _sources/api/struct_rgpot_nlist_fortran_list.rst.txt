@@ -1,0 +1,21 @@
+.. index:: pair: struct; rgpot_nlist_fortran_list
+.. _doxid-structrgpot__nlist__fortran__list:
+
+struct rgpot_nlist_fortran_list
+===============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct rgpot_nlist_fortran_list {
+		// fields
+	
+		:ref:`rgpot::nlist::Builder<doxid-classrgpot_1_1nlist_1_1_builder>` :target:`builder<doxid-structrgpot__nlist__fortran__list_1a12f537c202bbea5a6febe2b5f7e9ec30>`;
+	};

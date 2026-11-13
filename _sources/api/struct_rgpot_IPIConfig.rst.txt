@@ -1,0 +1,35 @@
+.. index:: pair: struct; rgpot::IPIConfig
+.. _doxid-structrgpot_1_1_i_p_i_config:
+
+struct rgpot::IPIConfig
+=======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Where the driver connects, and how long one force call may wait. :ref:`More...<details-structrgpot_1_1_i_p_i_config>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <IPIPot.hpp>
+	
+	struct IPIConfig {
+		// fields
+	
+		std::string :target:`address<doxid-structrgpot_1_1_i_p_i_config_1a243271cef445c2009d4f49d587586a24>`;
+		double :target:`timeout_s<doxid-structrgpot_1_1_i_p_i_config_1a1ac7839f22ba692a04419eb5deed93ef>` = 30.0;
+	};
+.. _details-structrgpot_1_1_i_p_i_config:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Where the driver connects, and how long one force call may wait.
+
+address is ``unix:/absolute/path``, ``unix:<name>`` (binds ``/tmp/ipi_<name>``, the i-PI default prefix), ``tcp:<host>:<port>``, or ``tcp:<port>`` (host 127.0.0.1). Port 0 asks the kernel for a free port; endpoint() reports the port that was chosen.
+

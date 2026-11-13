@@ -1,0 +1,25 @@
+.. index:: pair: namespace; simd
+.. _doxid-namespacergpot_1_1simd_1_1_0d256261305211036002011256023345132361252360052151:
+
+namespace simd
+==============
+
+.. toctree::
+	:hidden:
+
+	enum_simd_Mode.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace simd {
+
+	// enums
+
+	enum :ref:`Mode<doxid-namespacergpot_1_1simd_1_1_0d256261305211036002011256023345132361252360052151_1a8518f337bb92aa34dbfd464a3dd73752>`;
+
+	} // namespace simd

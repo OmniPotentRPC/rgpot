@@ -1,0 +1,18 @@
+.. index:: pair: enum; Cut
+.. _doxid-_neighbour_list_8hpp_1af395a9dc7c60b5166882e967c210be3a:
+
+enum rgpot::nlist::Cut
+======================
+
+Strict keeps pairs with distance strictly below the cutoff. Loose keeps pairs out to cutoff + skin, which is what a Verlet rebuild needs.
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <NeighbourList.hpp>
+
+	enum Cut {
+	    :target:`Strict<doxid-_neighbour_list_8hpp_1af395a9dc7c60b5166882e967c210be3aa2e979835dd62324f5bfe217449ba4974>`,
+	    :target:`Loose<doxid-_neighbour_list_8hpp_1af395a9dc7c60b5166882e967c210be3aa08d78f099561104c2015d19ea7d9d41e>`,
+	};
+

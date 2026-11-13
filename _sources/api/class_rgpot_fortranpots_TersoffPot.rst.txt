@@ -10,12 +10,13 @@ class rgpot::fortranpots::TersoffPot
 Overview
 ~~~~~~~~
 
-
+Tersoff silicon (PotType::TersoffSi). :ref:`More...<details-classrgpot_1_1fortranpots_1_1_tersoff_pot>`
 
 
 .. ref-code-block:: cpp
 	:class: doxyrest-overview-code-block
 
+	#include <FortranPots.hpp>
 	
 	class TersoffPot: public rgpot::Potential< TersoffPot > {
 	public:
@@ -27,13 +28,14 @@ Overview
 	
 		void :target:`forceImpl<doxid-classrgpot_1_1fortranpots_1_1_tersoff_pot_1aa1c913a2897e7292e9fa70ee186da6d6>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
 		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1fortranpots_1_1_tersoff_pot_1aa67b03ce8e0d4c722c5778b607b6d2b6>`() const;
+		void :ref:`setHeldSkin<doxid-classrgpot_1_1fortranpots_1_1_tersoff_pot_1a792694b5b21f41606cb036bff7561c9a>`(double skin);
 	};
 .. _details-classrgpot_1_1fortranpots_1_1_tersoff_pot:
 
 Detailed Documentation
 ~~~~~~~~~~~~~~~~~~~~~~
 
-
+Tersoff silicon (PotType::TersoffSi). All-silicon calls, and a null species pointer, use the Fortran gather. Any other atomic number uses the 1989 silicon-carbon kernel. There is no second PotType. No call writes a stress: has_stress is 0 and the tensor is zero on both paths until the gather computes one.
 
 Methods
 -------
@@ -49,4 +51,14 @@ Methods
 Concurrency and evaluation capabilities of this potential.
 
 Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
+
+.. index:: pair: function; setHeldSkin
+.. _doxid-classrgpot_1_1fortranpots_1_1_tersoff_pot_1a792694b5b21f41606cb036bff7561c9a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void setHeldSkin(double skin)
+
+Held list for the calls that reach the 1989 kernel, as :ref:`TersoffSiC::setHeldSkin <doxid-classrgpot_1_1_tersoff_si_c_1ad8c45be1ac5c94f703e4a8d721613b83>`. The gather keeps its own neighbour table.
 

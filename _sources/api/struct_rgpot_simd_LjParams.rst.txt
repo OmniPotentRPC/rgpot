@@ -1,0 +1,26 @@
+.. index:: pair: struct; rgpot::simd::LjParams
+.. _doxid-structrgpot_1_1simd_1_1_lj_params:
+
+struct rgpot::simd::LjParams
+============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct LjParams {
+		// fields
+	
+		double :target:`psi2<doxid-structrgpot_1_1simd_1_1_lj_params_1aa8427cf0d65786fd18d0101dd9de2140>`;
+		double :target:`four_u0<doxid-structrgpot_1_1simd_1_1_lj_params_1a7d78d28d93bf2293f548378f2421ab52>`;
+		double :target:`shift<doxid-structrgpot_1_1simd_1_1_lj_params_1af18487af98af8bdd2fcb7532e6792df1>`;
+		double :target:`r_on<doxid-structrgpot_1_1simd_1_1_lj_params_1a7b0ed534e81cd5911839c7cab1f0a56d>`;
+		double :target:`inv_width<doxid-structrgpot_1_1simd_1_1_lj_params_1a7d9444ebc0687c0ec6d14000fc7838c3>`;
+		int :target:`use_switch<doxid-structrgpot_1_1simd_1_1_lj_params_1afcc2eca077739373384faea40ae73a03>`;
+	};

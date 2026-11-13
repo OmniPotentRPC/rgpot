@@ -1,0 +1,27 @@
+.. index:: pair: struct; rgpot::nlist::View
+.. _doxid-structrgpot_1_1nlist_1_1_view:
+
+struct rgpot::nlist::View
+=========================
+
+.. toctree::
+	:hidden:
+
+Non-owning view of a structure-of-arrays neighbour table. ``shift`` is empty or 3 entries per pair, ``vector`` is empty or 3, ``mask`` is one byte per pair (0xff for a pair list; bits 0..3 for a cluster of four). The spans are invalidated by the next rebuild of the table that owns them.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <NeighbourList.hpp>
+	
+	struct View {
+		// fields
+	
+		std::span<const std::int32_t> :target:`first<doxid-structrgpot_1_1nlist_1_1_view_1a2c1a94d0f0a14b2fe66d61d17ae8c06e>`;
+		std::span<const std::int32_t> :target:`second<doxid-structrgpot_1_1nlist_1_1_view_1a0d3afdd696b7ce35cb70b7e7139e1172>`;
+		std::span<const std::int32_t> :target:`shift<doxid-structrgpot_1_1nlist_1_1_view_1ab0172ca3212e5675408faf8d6147a939>`;
+		std::span<const double> :target:`vector<doxid-structrgpot_1_1nlist_1_1_view_1ad96fbedb22f3d7bb3e89f5541aacd319>`;
+		std::span<const double> :target:`distance<doxid-structrgpot_1_1nlist_1_1_view_1a3af83cdec0fae7a11ca89d9ce969d317>`;
+		std::span<const std::uint8_t> :target:`mask<doxid-structrgpot_1_1nlist_1_1_view_1a5672f4e5f5afa803ebf2aa831aa1c2e5>`;
+	};

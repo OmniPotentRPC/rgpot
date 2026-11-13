@@ -1,0 +1,79 @@
+.. index:: pair: class; rgpot::SuttonChenPot
+.. _doxid-classrgpot_1_1_sutton_chen_pot:
+
+class rgpot::SuttonChenPot
+==========================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Sutton-Chen energy and analytic forces. :ref:`More...<details-classrgpot_1_1_sutton_chen_pot>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <SuttonChenPot.hpp>
+	
+	class SuttonChenPot: public rgpot::Potential< SuttonChenPot > {
+	public:
+		// construction
+	
+		:target:`SuttonChenPot<doxid-classrgpot_1_1_sutton_chen_pot_1adbb11f0ef97a32852ff1afb86ed30302>`();
+		:target:`SuttonChenPot<doxid-classrgpot_1_1_sutton_chen_pot_1adba206784adb9571cbe2594df4af8757>`(const :ref:`SuttonChenConfig<doxid-structrgpot_1_1_sutton_chen_config>`& c);
+
+		// methods
+	
+		const :ref:`SuttonChenConfig<doxid-structrgpot_1_1_sutton_chen_config>`& :target:`config<doxid-classrgpot_1_1_sutton_chen_pot_1a85a02559db7ceb31b72d4deccd6090a7>`() const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_sutton_chen_pot_1a56287af325d76d7298706b1f2bbf1dae>`() const;
+		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_sutton_chen_pot_1a15c3e151689d2de7d6fefc87c5baf4c5>`() const;
+		void :target:`forceImpl<doxid-classrgpot_1_1_sutton_chen_pot_1af979321c99671cbf9912c34ca6d20b87>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		void :ref:`setNeighbourMode<doxid-classrgpot_1_1_sutton_chen_pot_1a824dbf86319385df3d1a0e3221a7ef66>`(nlist::Mode mode);
+	};
+.. _details-classrgpot_1_1_sutton_chen_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Sutton-Chen energy and analytic forces.
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1_sutton_chen_pot_1a56287af325d76d7298706b1f2bbf1dae:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Concurrency and evaluation capabilities of this potential.
+
+Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
+
+.. index:: pair: function; paramsKey
+.. _doxid-classrgpot_1_1_sutton_chen_pot_1a15c3e151689d2de7d6fefc87c5baf4c5:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual uint64_t paramsKey() const
+
+Fingerprint of the potential's parameter set.
+
+Mixed into the result-cache key so results never cross parameter sets. Implementations hash their config field by field (see :ref:`ParamHash.hpp <doxid-_param_hash_8hpp_source>`) plus a kernel-version salt that changes whenever the numerics change. The default (0) suits parameter-free potentials whose numerics never changed.
+
+.. index:: pair: function; setNeighbourMode
+.. _doxid-classrgpot_1_1_sutton_chen_pot_1a824dbf86319385df3d1a0e3221a7ef66:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void setNeighbourMode(nlist::Mode mode)
+
+Stored Verlet list or a streaming cell walk.
+

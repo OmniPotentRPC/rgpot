@@ -1,0 +1,38 @@
+.. index:: pair: struct; rgpot::eam::ElementSpline
+.. _doxid-structrgpot_1_1eam_1_1_element_spline:
+
+struct rgpot::eam::ElementSpline
+================================
+
+.. toctree::
+	:hidden:
+
+One element's density, density force, pair energy and pair force.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <StreamSpline.hpp>
+	
+	struct ElementSpline {
+		// fields
+	
+		static double :target:`kOrigin<doxid-structrgpot_1_1eam_1_1_element_spline_1a278ee0ee85dbae8fa22308155100770c>` = 0.05;
+		static double :target:`kStep<doxid-structrgpot_1_1eam_1_1_element_spline_1ac6ff022bb4960fbf89e2e92888fe3119>` = 5e-5;
+		int :target:`Z<doxid-structrgpot_1_1eam_1_1_element_spline_1add72e7ce3708e5c787bfdd2223eed490>` = 0;
+		double :target:`cutoff2<doxid-structrgpot_1_1eam_1_1_element_spline_1a480d777af4c5e06f93c1685c5fe93318>` = 0;
+		const double* :target:`embed<doxid-structrgpot_1_1eam_1_1_element_spline_1a360a0fd9dae0673e2be3dffa3b67731f>` = nullptr;
+		:ref:`Spline1D<doxid-structrgpot_1_1eam_1_1_spline1_d>` :target:`rho<doxid-structrgpot_1_1eam_1_1_element_spline_1a6cdeb04ef97281d02429b503c2cf06f1>`;
+		:ref:`Spline1D<doxid-structrgpot_1_1eam_1_1_spline1_d>` :target:`fscale<doxid-structrgpot_1_1eam_1_1_element_spline_1a0561a03885a15d9a8eee690724d78359>`;
+		:ref:`Spline1D<doxid-structrgpot_1_1eam_1_1_spline1_d>` :target:`phi<doxid-structrgpot_1_1eam_1_1_element_spline_1af952ee6eee101ea6d1da30a4c717e69a>`;
+		:ref:`Spline1D<doxid-structrgpot_1_1eam_1_1_spline1_d>` :target:`fcomp<doxid-structrgpot_1_1eam_1_1_element_spline_1ae15ab46cfdbad0d2ab2646d36e4c7169>`;
+		double :target:`packed<doxid-structrgpot_1_1eam_1_1_element_spline_1a6c3530e459c8e7c353a6f7185f3f8467>`[5] {};
+
+		// methods
+	
+		double :target:`density<doxid-structrgpot_1_1eam_1_1_element_spline_1a47f419cf0a336724493890476e1b50b7>`(double r) const;
+		double :target:`densityForce<doxid-structrgpot_1_1eam_1_1_element_spline_1af81193097f0e05244daca0268a4d90a5>`(double r) const;
+		double :target:`pairEnergy<doxid-structrgpot_1_1eam_1_1_element_spline_1a8889b7d960f3543cb6b2b9978e04140a>`(double r) const;
+		double :target:`pairForce<doxid-structrgpot_1_1eam_1_1_element_spline_1a505736740ee553901e65ca6bf4b8e25c>`(double r) const;
+	};

@@ -1,0 +1,141 @@
+.. index:: pair: class; rgpot::nlist::Neighbours
+.. _doxid-classrgpot_1_1nlist_1_1_neighbours:
+
+class rgpot::nlist::Neighbours
+==============================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_nlist_Neighbours_SpecKey.rst
+
+Overview
+~~~~~~~~
+
+Candidate pairs around one configuration. :ref:`More...<details-classrgpot_1_1nlist_1_1_neighbours>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <Neighbours.hpp>
+	
+	class Neighbours {
+	public:
+		// structs
+	
+		struct :ref:`SpecKey<doxid-structrgpot_1_1nlist_1_1_neighbours_1_1_spec_key>`;
+
+		// methods
+	
+		void :target:`update<doxid-classrgpot_1_1nlist_1_1_neighbours_1a56ccabc61854c0d7542f9e2be2ca0791>`(const double* xyz, std::size_t n, const double* box9, const :ref:`Spec<doxid-structrgpot_1_1nlist_1_1_spec>`& spec);
+		Mode :target:`mode<doxid-classrgpot_1_1nlist_1_1_neighbours_1a8a113dff7f0357af57cd769471bfe9cc>`() const;
+		bool :target:`streaming<doxid-classrgpot_1_1nlist_1_1_neighbours_1aa420ad4c2fcf5a8c0a01fdac4a5fa72b>`() const;
+		bool :ref:`reused<doxid-classrgpot_1_1nlist_1_1_neighbours_1a00c0890a2415d1186abe7d66fc08e729>`() const;
+		std::uint64_t :target:`builds<doxid-classrgpot_1_1nlist_1_1_neighbours_1a75cef0d749962bca24327eb7f4064e70>`() const;
+		std::size_t :ref:`slots<doxid-classrgpot_1_1nlist_1_1_neighbours_1ac7189ed637aa7e1a69a6041aac3b6781>`() const;
+		const std::vector<std::int32_t>& :target:`offsets<doxid-classrgpot_1_1nlist_1_1_neighbours_1a19c016f90fafd9b5edc97537eec0c1b1>`() const;
+		const std::vector<std::int32_t>& :target:`neighbours<doxid-classrgpot_1_1nlist_1_1_neighbours_1a631def1353cc4a74f3288763dd9fe0e8>`() const;
+	
+		template <typename Fn>
+		void :ref:`forDirected<doxid-classrgpot_1_1nlist_1_1_neighbours_1a3f8b0e62db058cc4e1922a7782a85505>`(std::int64_t begin, std::int64_t end, Fn&& fn) const;
+	
+		template <typename Fn>
+		void :ref:`forHalf<doxid-classrgpot_1_1nlist_1_1_neighbours_1a7b66f85f00aa7b28829e9a4802cc5531>`(std::int64_t begin, std::int64_t end, Fn&& fn) const;
+	
+		template <typename Body>
+		void :ref:`withTeam<doxid-classrgpot_1_1nlist_1_1_neighbours_1a927d3c6fa911571c1ccb644749ab7550>`(int nthreads, Body&& body) const;
+	
+		template <typename Fn>
+		void :ref:`forCellTeam<doxid-classrgpot_1_1nlist_1_1_neighbours_1a68e42c89563b715061ab3b0b7eb295ff>`(bool half, int nthreads, Fn&& fn) const;
+	
+		template <typename Fn>
+		void :ref:`forAtom<doxid-classrgpot_1_1nlist_1_1_neighbours_1a5254db024f288a193c505c9bf2046025>`(std::int32_t i, Fn fn) const;
+	};
+.. _details-classrgpot_1_1nlist_1_1_neighbours:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Candidate pairs around one configuration.
+
+A stored list is reused while every atom has moved by at most half the skin, and the cell, the count and the spec are unchanged. Skin 0 reuses the list only when the coordinates and the cell match.
+
+Methods
+-------
+
+.. index:: pair: function; reused
+.. _doxid-classrgpot_1_1nlist_1_1_neighbours_1a00c0890a2415d1186abe7d66fc08e729:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool reused() const
+
+True when the last update kept the previous list. The displacement test is ``withinSkin``, the same one ``Builder::update`` uses.
+
+.. index:: pair: function; slots
+.. _doxid-classrgpot_1_1nlist_1_1_neighbours_1ac7189ed637aa7e1a69a6041aac3b6781:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::size_t slots() const
+
+Stored pair index. A stream leaves this empty.
+
+.. index:: pair: function; forDirected
+.. _doxid-classrgpot_1_1nlist_1_1_neighbours_1a3f8b0e62db058cc4e1922a7782a85505:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	template <typename Fn>
+	void forDirected(std::int64_t begin, std::int64_t end, Fn&& fn) const
+
+Directed pairs for atoms in ``[begin, end)``. ``dx`` is ``r_i - r_j`` after the selected image. ``r2`` is the squared length of that vector. Candidates lie inside the cutoff plus the skin; the caller drops the rest. In stored mode the partners of each atom are in increasing index order.
+
+.. index:: pair: function; forHalf
+.. _doxid-classrgpot_1_1nlist_1_1_neighbours_1a7b66f85f00aa7b28829e9a4802cc5531:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	template <typename Fn>
+	void forHalf(std::int64_t begin, std::int64_t end, Fn&& fn) const
+
+The pairs of ``forDirected`` with ``j > i`` only. Geometry for ``j <= i`` is not computed. A serial two-pass potential uses this so each unordered pair is visited once per pass.
+
+.. index:: pair: function; withTeam
+.. _doxid-classrgpot_1_1nlist_1_1_neighbours_1a927d3c6fa911571c1ccb644749ab7550:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	template <typename Body>
+	void withTeam(int nthreads, Body&& body) const
+
+MSVC rejects ``#pragma omp`` inside a lambda (C2760, token PRAGMA_OMP). The region lives in this method; the lambdas only supply the body.
+
+.. index:: pair: function; forCellTeam
+.. _doxid-classrgpot_1_1nlist_1_1_neighbours_1a68e42c89563b715061ab3b0b7eb295ff:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	template <typename Fn>
+	void forCellTeam(bool half, int nthreads, Fn&& fn) const
+
+One walk of the directed pairs, split by cell across ``nthreads``. The bins are built once and shared. ``fn(thread, i, j, dx, dy, dz, r2)``. A thread owns each cell, so a pair is visited once.
+
+.. index:: pair: function; forAtom
+.. _doxid-classrgpot_1_1nlist_1_1_neighbours_1a5254db024f288a193c505c9bf2046025:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	template <typename Fn>
+	void forAtom(std::int32_t i, Fn fn) const
+
+:ref:`Neighbours <doxid-classrgpot_1_1nlist_1_1_neighbours>` of one atom from the bins already built. Does not allocate the tile stencil. A three-body stream uses this so the scratch is one atom, not every bond.
+

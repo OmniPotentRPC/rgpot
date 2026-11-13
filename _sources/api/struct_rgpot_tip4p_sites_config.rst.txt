@@ -1,0 +1,29 @@
+.. index:: pair: struct; rgpot_tip4p_sites_config
+.. _doxid-structrgpot__tip4p__sites__config:
+
+struct rgpot_tip4p_sites_config
+===============================
+
+.. toctree::
+	:hidden:
+
+Oxygen Lennard-Jones plus Coulomb on rigid TIP4P sites. ``sites`` and ``gradient`` are molecule-major O, H, H, M, three coordinates each. ``use_epsilon == 0`` uses ``c6`` and ``c12``. ``use_epsilon != 0`` uses ``epsilon`` and ``sigma``.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <ReducedPair.hpp>
+	
+	struct rgpot_tip4p_sites_config {
+		// fields
+	
+		double :target:`c6<doxid-structrgpot__tip4p__sites__config_1a6c9e732277fc7bc77b2f9708b344a378>`;
+		double :target:`c12<doxid-structrgpot__tip4p__sites__config_1aa20696cffc810b894d28149f5350b942>`;
+		double :target:`epsilon<doxid-structrgpot__tip4p__sites__config_1ae4cc4e8d12b95c8f9c3fe07180875e21>`;
+		double :target:`sigma<doxid-structrgpot__tip4p__sites__config_1a28612d2fbc1691ffb30f0b9069d55412>`;
+		int32_t :target:`use_epsilon<doxid-structrgpot__tip4p__sites__config_1aa1ddc55cf6757142ecca251329987a72>`;
+		double :target:`coulomb<doxid-structrgpot__tip4p__sites__config_1aa7e26317fb643eec99f13357c7ae03c4>`;
+		double :target:`q_h<doxid-structrgpot__tip4p__sites__config_1a37b5399ad5f86af5a9896781f8550551>`;
+		double :target:`q_m<doxid-structrgpot__tip4p__sites__config_1ac2d2ad256b6de76d132380f2362b3f33>`;
+	};

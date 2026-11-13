@@ -1,0 +1,11 @@
+.. index:: pair: namespace; simd
+.. _doxid-namespacergpot_1_1simd_1_1_0d173351130365221155237103334322216371207252273353:
+
+namespace simd
+==============
+
+.. toctree::
+	:hidden:
+
+
+

@@ -1,0 +1,25 @@
+.. index:: pair: struct; rgpot::simd::Part8
+.. _doxid-structrgpot_1_1simd_1_1_part8:
+
+struct rgpot::simd::Part8
+=========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Part8 {
+		// fields
+	
+		double :target:`e<doxid-structrgpot_1_1simd_1_1_part8_1a3b0b3ce0600b7c12cddb778dde0aed56>`[8];
+		double :target:`fx<doxid-structrgpot_1_1simd_1_1_part8_1a1ffe5a23917076d8edbfdd5f7b55ea13>`[8];
+		double :target:`fy<doxid-structrgpot_1_1simd_1_1_part8_1afbc90bac461069653f997fd625bb7937>`[8];
+		double :target:`fz<doxid-structrgpot_1_1simd_1_1_part8_1aa0781682f614a7762d8738be3b1b332e>`[8];
+		double :target:`s<doxid-structrgpot_1_1simd_1_1_part8_1a765fbcaa7ea3b7d42020af60af13573c>`[6][8];
+	};

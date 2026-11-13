@@ -1,0 +1,19 @@
+.. index:: pair: enum; EAMTableFormat
+.. _doxid-namespacergpot_1a9a7790544cd1c6e2aebd6460a932726a:
+
+enum rgpot::EAMTableFormat
+==========================
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <EAMTablePot.hpp>
+
+	enum EAMTableFormat {
+	    :target:`Funcfl<doxid-namespacergpot_1a9a7790544cd1c6e2aebd6460a932726aa09dc33ad0feddaa43f3e9b6b93d1c17a>`,
+	    :target:`Setfl<doxid-namespacergpot_1a9a7790544cd1c6e2aebd6460a932726aab9056566bb770a2b9537df736d3af4e1>`,
+	    :target:`FinnisSinclair<doxid-namespacergpot_1a9a7790544cd1c6e2aebd6460a932726aa132bf151b7a068389b7cfcc3d8a2d864>`,
+	};
+

@@ -1,0 +1,27 @@
+.. index:: pair: class; rgpot::nlist::Error
+.. _doxid-classrgpot_1_1nlist_1_1_error:
+
+class rgpot::nlist::Error
+=========================
+
+.. toctree::
+	:hidden:
+
+A rejected query. code() is the C ABI value. what() is a sentence the caller can show. Builders throw this and leave a previous table in place.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <NeighbourList.hpp>
+	
+	class Error: public std::runtime_error {
+	public:
+		// construction
+	
+		:target:`Error<doxid-classrgpot_1_1nlist_1_1_error_1a752dc758452e924d6d78a29da49c739f>`(Code code, const std::string& message);
+
+		// methods
+	
+		Code :target:`code<doxid-classrgpot_1_1nlist_1_1_error_1a48f1e6e08c9ab5a92f3b452f433c43ba>`() const;
+	};

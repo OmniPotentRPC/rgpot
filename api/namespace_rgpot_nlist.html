@@ -2,7 +2,7 @@
 <html lang="en" data-accent-color="teal" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>namespace rgpot::nlist - rgpot documentation</title><link rel="shortcut icon" href="../_static/favicon.svg"/><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="struct rgpot::nlist::CellGrid" href="struct_rgpot_nlist_CellGrid.html" /><link rel="prev" title="class rgpot::fortranpots::WaterHPot" href="class_rgpot_fortranpots_WaterHPot.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>namespace rgpot::nlist - rgpot 3.6.0 documentation</title><link rel="shortcut icon" href="../_static/favicon.svg"/><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="namespace rgpot::nlist::detail" href="namespace_rgpot_nlist_detail.html" /><link rel="prev" title="class rgpot::fortranpots::WaterHPot" href="class_rgpot_fortranpots_WaterHPot.html" />
       <link rel="canonical" href="https://rgpot.rgoswami.me/api/namespace_rgpot_nlist.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
@@ -114,14 +114,18 @@ data-aria-dark="Switch to auto color mode">
         <div class="globaltoc" data-expand-depth="1"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Tutorials</span></p>
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/neighbour-list.html">Neighbour lists</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/pes-scan.html">Scan a potential energy surface over RPC</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/cpmd.html">Evaluate a water geometry with CPMD</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/molecular-global-optimization.html">Find the Ground State of an EON Structure</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">How-To Guides</span></p>
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/pip-python.html">Python package (PyPI)</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/ase.html">ASE calculators</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/embedding.html">Embedding as a Subproject</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/exprpot.html">Compose potentials with ExprPot</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/ipi.html">i-PI socket server</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/integration.html">External Integration Guide</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eindir-anneal.html">rgpot Potentials as eindir Objectives</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html">eOn Potentials Over rgpot</a></li>
@@ -129,22 +133,35 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#landed-work-items">Landed Work Items</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#operator-cheatsheet-rgpot-side">Operator Cheatsheet (rgpot side)</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#related">Related</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/sutton-chen-stress.html">Read the stress of a periodic Sutton-Chen cell</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Explanation</span></p>
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../explanation/index.html">Explanation</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="../explanation/rpc-model.html">The RPC Model</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../explanation/simd.html">SIMD paths and dispatch</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/thread-safety.html">Thread safety</a></li>
 </ul>
 </li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
 <ul class="current">
 <li class="toctree-l1 _expand"><a class="reference internal" href="../reference/architecture.html">Architecture Overview</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../reference/python_api.html">Python API</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../reference/sw_si.html">Stillinger-Weber silicon (1985)</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../reference/tersoff_sic.html">Tersoff silicon-carbon (1989)</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../reference/mpi.html">MPI</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../reference/c_abi.html">C ABI of rgpot-core</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../reference/engine_abi.html">Engine plugin ABI</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../reference/simd_exp.html">FMA dispatch and exp</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../reference/sutton_chen.html">Sutton-Chen potential</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../reference/sutton_chen.html#reduced-cluster-pairs">Reduced cluster pairs</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../reference/sutton_chen.html#stress">Stress</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../reference/eam_table.html">Tabulated EAM and Finnis-Sinclair potentials</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../reference/eam_table.html#agreement-with-lammps">Agreement with LAMMPS</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../reference/eam_table.html#stress">Stress</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../reference/eam_table.html#checks">Checks</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../reference/fortran_potentials.html">Fortran potentials: porting rules</a></li>
 <li class="toctree-l1 current"><a class="reference internal" href="index.html">API Reference</a><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="group_rgpot_cpp.html">C++ RAII Wrappers</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="class_rgpot_CalcResult.html">class rgpot::CalcResult</a><ul class="simple">
@@ -178,7 +195,10 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="namespace_forcefields.html">namespace forcefields</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_forcefields-2.html">namespace forcefields</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="namespace_forcefields-2.html">namespace forcefields</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_forcefields-3.html">namespace forcefields</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="namespace_forcefields_unit_system.html">namespace forcefields::unit_system</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_forcefields_zhu_philpott_parameters.html">namespace forcefields::zhu_philpott_parameters</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_forcefields_Ccl.html">class forcefields::Ccl</a></li>
@@ -188,13 +208,20 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="class_forcefields_ZhuPhilpott.html">template class forcefields::ZhuPhilpott</a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_forcefields-3.html">namespace forcefields</a><ul class="simple">
-</ul>
-</li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_fortranpots.html">namespace fortranpots</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_nlist.html">namespace nlist</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_nlist-2.html">namespace nlist</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enum_nlist_Hit.html">enum nlist::Hit</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_nlist-3.html">namespace nlist</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_nlist-4.html">namespace nlist</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_plugin.html">namespace plugin</a><ul class="simple">
@@ -221,12 +248,24 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-6.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3 current"><a class="reference internal" href="namespace_rgpot-7.html">namespace rgpot</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-7.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-8.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-9.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-10.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3 current"><a class="reference internal" href="namespace_rgpot-11.html">namespace rgpot</a><ul class="current">
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_abi.html">namespace rgpot::abi</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_aoti_execstack.html">namespace rgpot::aoti_execstack</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
-<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_detail.html">namespace rgpot::detail</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_details.html">namespace rgpot::details</a></li>
+<li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_eam.html">namespace rgpot::eam</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_engine.html">namespace rgpot::engine</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_fortranpots.html">namespace rgpot::fortranpots</a></li>
 <li class="toctree-l4 current"><a class="current reference internal" href="#">namespace rgpot::nlist</a></li>
@@ -238,6 +277,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_units.html">namespace rgpot::units</a></li>
 <li class="toctree-l4"><a class="reference internal" href="namespace_rgpot_vesin_compat.html">namespace rgpot::vesin_compat</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_D3Damping.html">enum rgpot::D3Damping</a></li>
+<li class="toctree-l4"><a class="reference internal" href="enum_rgpot_EAMTableFormat.html">enum rgpot::EAMTableFormat</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_GFNMethod.html">enum rgpot::GFNMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_Reentrancy.html">enum rgpot::Reentrancy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
@@ -248,11 +288,14 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_D3Config.html">struct rgpot::D3Config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_D4Config.html">struct rgpot::D4Config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_EAMCellConfig.html">struct rgpot::EAMCellConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_EAMTable.html">struct rgpot::EAMTable</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_EAMTableConfig.html">struct rgpot::EAMTableConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_EMTConfig.html">struct rgpot::EMTConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_ForceBatch.html">struct rgpot::ForceBatch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_IPIConfig.html">struct rgpot::IPIConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_LJClusterConfig.html">struct rgpot::LJClusterConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_LJConfig.html">struct rgpot::LJConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
@@ -260,6 +303,8 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_PotCaps.html">struct rgpot::PotCaps</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_QuinticSwitch.html">struct rgpot::QuinticSwitch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_SkalaConfig.html">struct rgpot::SkalaConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_SuttonChenConfig.html">struct rgpot::SuttonChenConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="struct_rgpot_SuttonChenScales.html">struct rgpot::SuttonChenScales</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_UmaConfig.html">struct rgpot::UmaConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_rgpot_WaterConfig.html">struct rgpot::WaterConfig</a></li>
@@ -277,8 +322,10 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_D4Pot.html">class rgpot::D4Pot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_DynLib.html">class rgpot::DynLib</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_EAMPot.html">class rgpot::EAMPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="class_rgpot_EAMTablePot.html">class rgpot::EAMTablePot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_EMTPot.html">class rgpot::EMTPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_ExprPot.html">class rgpot::ExprPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="class_rgpot_IPIPot.html">class rgpot::IPIPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_LJClusterPot.html">class rgpot::LJClusterPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_MOPACPot.html">class rgpot::MOPACPot</a></li>
@@ -289,27 +336,18 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_PotentialBase.html">class rgpot::PotentialBase</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_SPCEPot.html">class rgpot::SPCEPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_SkalaPot.html">class rgpot::SkalaPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="class_rgpot_StillingerWeberSi.html">class rgpot::StillingerWeberSi</a></li>
+<li class="toctree-l4"><a class="reference internal" href="class_rgpot_SuttonChenPot.html">class rgpot::SuttonChenPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_TBLitePot.html">class rgpot::TBLitePot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_TIP4PPot.html">class rgpot::TIP4PPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_TIP4PPtPot.html">class rgpot::TIP4PPtPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="class_rgpot_TersoffSiC.html">class rgpot::TersoffSiC</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_UmaPot.html">class rgpot::UmaPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_XTBDlopen.html">class rgpot::XTBDlopen</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_XTBPot.html">class rgpot::XTBPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_XcKernel.html">class rgpot::XcKernel</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_ZBLPot.html">class rgpot::ZBLPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="class_rgpot_registry.html">template class rgpot::registry</a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-8.html">namespace rgpot</a><ul class="simple">
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-9.html">namespace rgpot</a><ul class="simple">
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-10.html">namespace rgpot</a><ul class="simple">
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-11.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-12.html">namespace rgpot</a><ul class="simple">
@@ -322,6 +360,27 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-15.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-16.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-17.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-18.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-19.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-20.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-21.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot-22.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_cuh2.html">namespace rgpot_cuh2</a><ul class="simple">
@@ -360,7 +419,11 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_lenosky_capi.html">namespace rgpot_lenosky_capi</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_neighbors.html">namespace rgpot_neighbors</a><ul class="simple">
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_neighbors.html">namespace rgpot_neighbors</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="interface_rgpot_neighbors_rgpot_nlist_fortran_build.html">interface rgpot_neighbors::rgpot_nlist_fortran_build</a></li>
+<li class="toctree-l4"><a class="reference internal" href="interface_rgpot_neighbors_rgpot_nlist_fortran_close.html">interface rgpot_neighbors::rgpot_nlist_fortran_close</a></li>
+<li class="toctree-l4"><a class="reference internal" href="interface_rgpot_neighbors_rgpot_nlist_fortran_open.html">interface rgpot_neighbors::rgpot_nlist_fortran_open</a></li>
+<li class="toctree-l4"><a class="reference internal" href="interface_rgpot_neighbors_rgpot_nlist_strerror.html">interface rgpot_neighbors::rgpot_nlist_strerror</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_sw.html">namespace rgpot_sw</a><ul class="simple">
@@ -375,13 +438,21 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_tersoff_capi.html">namespace rgpot_tersoff_capi</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_water_h.html">namespace rgpot_water_h</a><ul class="simple">
+<li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_water_h.html">namespace rgpot_water_h</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="interface_rgpot_water_h_rgpot_fast_wrap.html">interface rgpot_water_h::rgpot_fast_wrap</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_water_h_capi.html">namespace rgpot_water_h_capi</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_rgpot_workspace.html">namespace rgpot_workspace</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_simd.html">namespace simd</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="namespace_simd-2.html">namespace simd</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enum_simd_Mode.html">enum simd::Mode</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="namespace_std.html">namespace std</a><ul class="simple">
@@ -468,6 +539,21 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="struct_rgpot_mpi_group_t.html">struct rgpot_mpi_group_t</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_nlist_builder.html">struct rgpot_nlist_builder</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_nlist_fortran_list.html">struct rgpot_nlist_fortran_list</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_nlist_request.html">struct rgpot_nlist_request</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_nlist_soa.html">struct rgpot_nlist_soa</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_nlist_walk.html">struct rgpot_nlist_walk</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="struct_rgpot_plugin_descriptor_t.html">struct rgpot_plugin_descriptor_t</a><ul class="simple">
 </ul>
 </li>
@@ -475,6 +561,15 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="struct_rgpot_plugin_output_t.html">struct rgpot_plugin_output_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_sc_config.html">struct rgpot_sc_config</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_sc_scales.html">struct rgpot_sc_scales</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="struct_rgpot_tip4p_sites_config.html">struct rgpot_tip4p_sites_config</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="class_AsapPotential.html">class AsapPotential</a><ul class="simple">
@@ -490,6 +585,7 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="class_EAM.html">class EAM</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="struct_EAM_Delta.html">struct EAM::Delta</a></li>
 <li class="toctree-l4"><a class="reference internal" href="struct_EAM_element_parameters.html">struct EAM::element_parameters</a></li>
 </ul>
 </li>
@@ -587,7 +683,7 @@ data-aria-dark="Switch to auto color mode">
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
 <li><a class="reference internal" href="#overview">Overview</a></li>
 <li><a class="reference internal" href="#detailed-documentation">Detailed Documentation</a><ul>
-<li><a class="reference internal" href="#global-variables">Global Variables</a></li>
+<li><a class="reference internal" href="#typedefs">Typedefs</a></li>
 <li><a class="reference internal" href="#global-functions">Global Functions</a></li>
 </ul>
 </li>
@@ -639,7 +735,7 @@ data-aria-dark="Switch to auto color mode">
         <span>/</span>
         <meta itemprop="position" content="3" />
       </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-        <a itemprop="item" href="namespace_rgpot-7.html"><span itemprop="name">namespace rgpot</span></a>
+        <a itemprop="item" href="namespace_rgpot-11.html"><span itemprop="name">namespace rgpot</span></a>
         <span>/</span>
         <meta itemprop="position" content="4" />
       </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
@@ -700,137 +796,127 @@ data-aria-dark="Switch to auto color mode">
 <div class="doxyrest-overview-code-block highlight">
 <pre><span data-line="1"><span class="k">namespace</span> <span class="n">nlist</span> <span class="p">{</span></span>
 <span data-line="2"> </span>
-<span data-line="3"><span class="c1">// structs</span></span>
+<span data-line="3"><span class="c1">// namespaces</span></span>
 <span data-line="4"> </span>
-<span data-line="5"><span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_CellGrid.html#doxid-structrgpot-1-1nlist-1-1-cell-grid"><span class="std std-ref">CellGrid</span></a><span class="p">;</span></span>
+<span data-line="5"><span class="k">namespace</span> <a class="doxyrest-code-link reference internal" href="namespace_rgpot_nlist_detail.html#doxid-namespacergpot-1-1nlist-1-1detail"><span class="std std-ref">rgpot::nlist::detail</span></a><span class="p">;</span></span>
 <span data-line="6"> </span>
-<span data-line="7"><span class="c1">// classes</span></span>
+<span data-line="7"><span class="c1">// typedefs</span></span>
 <span data-line="8"> </span>
-<span data-line="9"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_nlist_MinimumImage.html#doxid-classrgpot-1-1nlist-1-1-minimum-image"><span class="std std-ref">MinimumImage</span></a><span class="p">;</span></span>
+<span data-line="9"><span class="k">typedef</span> <span class="n">std</span><span class="o">::</span><span class="n">variant</span><span class="o">&lt;</span><a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Pairs.html#doxid-structrgpot-1-1nlist-1-1-pairs"><span class="std std-ref">Pairs</span></a><span class="p">,</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Cluster4.html#doxid-structrgpot-1-1nlist-1-1-cluster4"><span class="std std-ref">Cluster4</span></a><span class="o">&gt;</span> <a class="doxyrest-code-link reference internal" href="#doxid-neighbour-list-8hpp-1a75c244beee64128ba817f89c2afc5556"><span class="std std-ref">Shape</span></a><span class="p">;</span></span>
 <span data-line="10"> </span>
-<span data-line="11"><span class="c1">// global variables</span></span>
+<span data-line="11"><span class="c1">// enums</span></span>
 <span data-line="12"> </span>
-<span data-line="13"><span class="n">std</span><span class="o">::</span><span class="kt">size_t</span> <a class="doxyrest-code-link reference internal" href="#doxid-cell-visit-8hpp-1aa53e9c32516c19af16368349670478dd"><span class="std std-ref">kMinCellsForGrid</span></a> <span class="o">=</span> <span class="mi">64</span><span class="p">;</span></span>
-<span data-line="14"><span class="kt">int</span> <a class="doxyrest-code-link reference internal" href="#doxid-cell-visit-8hpp-1a78abd5ab1c7acc559a88a94abfd88557"><span class="std std-ref">kHalfStencil</span></a><span class="p">[</span><span class="mi">13</span><span class="p">][</span><span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>     <span class="p">{</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">},</span>  <span class="p">{</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">},</span> <span class="p">{</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">},</span>  <span class="p">{</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">},</span>  <span class="p">{</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">},</span>     <span class="p">{</span><span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">},</span> <span class="p">{</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">},</span> <span class="p">{</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">},</span> <span class="p">{</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">},</span>  <span class="p">{</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">},</span>     <span class="p">{</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">},</span> <span class="p">{</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">},</span>  <span class="p">{</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">}};</span></span>
-<span data-line="15"><span class="n">std</span><span class="o">::</span><span class="n">mutex</span> <span class="doxyrest-code-target target" id="doxid-_pair_list_cache_8hpp_1ab9b02ec6fe0de32c109eae9a18667776"></span><span class="n">mu_</span><span class="p">;</span></span>
-<span data-line="16"><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">CachedPairList</span><span class="o">&gt;&gt;</span> <span class="doxyrest-code-target target" id="doxid-_pair_list_cache_8hpp_1ae604c022ba9076540e03b866d3e476d9"></span><span class="n">slots_</span><span class="p">;</span></span>
-<span data-line="17"> </span>
-<span data-line="18"><span class="c1">// global functions</span></span>
-<span data-line="19"> </span>
-<span data-line="20"><span class="k">template</span> <span class="o">&lt;</span><span class="kt">bool</span> <span class="n">Collect</span><span class="p">,</span> <span class="k">typename</span> <span class="n">Visitor</span><span class="o">&gt;</span></span>
-<span data-line="21"><span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-cell-visit-8hpp-1aaa3ec9789d52a10ccabde3555411db41"><span class="std std-ref">cell_visit</span></a><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_CellGrid.html#doxid-structrgpot-1-1nlist-1-1-cell-grid"><span class="std std-ref">CellGrid</span></a><span class="o">&amp;</span> <span class="n">g</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">points</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span> <span class="n">w</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="k">const</span> <span class="kt">double</span> <span class="n">inv</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="kt">double</span> <span class="n">list_cutoff2</span><span class="p">,</span> <span class="kt">double</span> <span class="n">visit_cutoff2</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int32_t</span><span class="o">&gt;&amp;</span> <span class="n">pairs</span><span class="p">,</span> <span class="n">Visitor</span><span class="o">&amp;&amp;</span> <span class="n">visit</span><span class="p">);</span></span>
-<span data-line="22"> </span>
-<span data-line="23"><span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="n">Scan</span><span class="p">,</span> <span class="k">typename</span> <span class="n">OnHit</span><span class="o">&gt;</span></span>
-<span data-line="24"><span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-pair-list-cache-8hpp-1ab87ece71f82845b3adfd58d3e57129c8"><span class="std std-ref">run</span></a><span class="p">(</span><span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">R</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">box</span><span class="p">,</span> <span class="k">const</span> <span class="n">CachedPairList</span><span class="o">::</span><span class="n">Options</span><span class="o">&amp;</span> <span class="n">opt</span><span class="p">,</span> <span class="n">Scan</span><span class="o">&amp;</span> <span class="n">scan</span><span class="p">,</span> <span class="n">OnHit</span><span class="o">&amp;&amp;</span> <span class="n">onHit</span><span class="p">);</span></span>
-<span data-line="25"> </span>
-<span data-line="26"><span class="kt">double</span> <a class="doxyrest-code-link reference internal" href="#doxid-minimum-image-8cpp-1a6400dc19dfc6964f5daa7da968fc9e12"><span class="std std-ref">mul_add</span></a><span class="p">(</span><span class="kt">double</span> <span class="n">a</span><span class="p">,</span> <span class="kt">double</span> <span class="n">b</span><span class="p">,</span> <span class="kt">double</span> <span class="n">c</span><span class="p">);</span></span>
-<span data-line="27"> </span>
-<span data-line="28"><span class="p">}</span> <span class="c1">// namespace nlist</span></span>
+<span data-line="13"><span class="k">enum</span> <a class="doxyrest-code-link reference internal" href="enum_rgpot_nlist_Code.html#doxid-neighbour-list-8hpp-1ae4cfb0fcba7006ab6d27e325afecb6cb"><span class="std std-ref">Code</span></a><span class="p">;</span></span>
+<span data-line="14"><span class="k">enum</span> <a class="doxyrest-code-link reference internal" href="enum_rgpot_nlist_Cut.html#doxid-neighbour-list-8hpp-1af395a9dc7c60b5166882e967c210be3a"><span class="std std-ref">Cut</span></a><span class="p">;</span></span>
+<span data-line="15"><span class="k">enum</span> <a class="doxyrest-code-link reference internal" href="enum_rgpot_nlist_Image.html#doxid-neighbours-8hpp-1a37af90dda547e90ccfbdc2e75ab70188"><span class="std std-ref">Image</span></a><span class="p">;</span></span>
+<span data-line="16"><span class="k">enum</span> <a class="doxyrest-code-link reference internal" href="enum_rgpot_nlist_Mode.html#doxid-neighbours-8hpp-1abbe419a29b7b27849823ce4768ab8c08"><span class="std std-ref">Mode</span></a><span class="p">;</span></span>
+<span data-line="17"><span class="k">enum</span> <a class="doxyrest-code-link reference internal" href="enum_rgpot_nlist_Shell.html#doxid-neighbour-list-8hpp-1a29e158253efb3f84db86615e1da072c8"><span class="std std-ref">Shell</span></a><span class="p">;</span></span>
+<span data-line="18"> </span>
+<span data-line="19"><span class="c1">// structs</span></span>
+<span data-line="20"> </span>
+<span data-line="21"><span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Batch.html#doxid-structrgpot-1-1nlist-1-1-batch"><span class="std std-ref">Batch</span></a><span class="p">;</span></span>
+<span data-line="22"><span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Buffers.html#doxid-structrgpot-1-1nlist-1-1-buffers"><span class="std std-ref">Buffers</span></a><span class="p">;</span></span>
+<span data-line="23"><span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Cluster4.html#doxid-structrgpot-1-1nlist-1-1-cluster4"><span class="std std-ref">Cluster4</span></a><span class="p">;</span></span>
+<span data-line="24"><span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Fields.html#doxid-structrgpot-1-1nlist-1-1-fields"><span class="std std-ref">Fields</span></a><span class="p">;</span></span>
+<span data-line="25"><span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_NeighborList.html#doxid-structrgpot-1-1nlist-1-1-neighbor-list"><span class="std std-ref">NeighborList</span></a><span class="p">;</span></span>
+<span data-line="26"><span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Pairs.html#doxid-structrgpot-1-1nlist-1-1-pairs"><span class="std std-ref">Pairs</span></a><span class="p">;</span></span>
+<span data-line="27"><span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Query.html#doxid-structrgpot-1-1nlist-1-1-query"><span class="std std-ref">Query</span></a><span class="p">;</span></span>
+<span data-line="28"><span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Range.html#doxid-structrgpot-1-1nlist-1-1-range"><span class="std std-ref">Range</span></a><span class="p">;</span></span>
+<span data-line="29"><span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Spec.html#doxid-structrgpot-1-1nlist-1-1-spec"><span class="std std-ref">Spec</span></a><span class="p">;</span></span>
+<span data-line="30"><span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Systems.html#doxid-structrgpot-1-1nlist-1-1-systems"><span class="std std-ref">Systems</span></a><span class="p">;</span></span>
+<span data-line="31"><span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Table.html#doxid-structrgpot-1-1nlist-1-1-table"><span class="std std-ref">Table</span></a><span class="p">;</span></span>
+<span data-line="32"><span class="k">struct</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_View.html#doxid-structrgpot-1-1nlist-1-1-view"><span class="std std-ref">View</span></a><span class="p">;</span></span>
+<span data-line="33"> </span>
+<span data-line="34"><span class="c1">// classes</span></span>
+<span data-line="35"> </span>
+<span data-line="36"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_nlist_Builder.html#doxid-classrgpot-1-1nlist-1-1-builder"><span class="std std-ref">Builder</span></a><span class="p">;</span></span>
+<span data-line="37"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_nlist_Error.html#doxid-classrgpot-1-1nlist-1-1-error"><span class="std std-ref">Error</span></a><span class="p">;</span></span>
+<span data-line="38"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_nlist_MinimumImage.html#doxid-classrgpot-1-1nlist-1-1-minimum-image"><span class="std std-ref">MinimumImage</span></a><span class="p">;</span></span>
+<span data-line="39"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_nlist_Neighbours.html#doxid-classrgpot-1-1nlist-1-1-neighbours"><span class="std std-ref">Neighbours</span></a><span class="p">;</span></span>
+<span data-line="40"><span class="k">class</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_nlist_Walk.html#doxid-classrgpot-1-1nlist-1-1-walk"><span class="std std-ref">Walk</span></a><span class="p">;</span></span>
+<span data-line="41"> </span>
+<span data-line="42"><span class="c1">// global functions</span></span>
+<span data-line="43"> </span>
+<span data-line="44"><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_NeighborList.html#doxid-structrgpot-1-1nlist-1-1-neighbor-list"><span class="std std-ref">NeighborList</span></a><span class="o">&amp;</span> <a class="doxyrest-code-link reference internal" href="#doxid-half-shell-8cc-1a30e70c079db00399c9c53172445e0fea"><span class="std std-ref">orderedPairs</span></a><span class="p">(</span><span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">positions</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">box</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span> <span class="kt">double</span> <span class="n">cutoff</span><span class="p">,</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_NeighborList.html#doxid-structrgpot-1-1nlist-1-1-neighbor-list"><span class="std std-ref">NeighborList</span></a><span class="o">*</span> <span class="n">cache</span><span class="p">);</span></span>
+<span data-line="45"><span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-neighbour-list-8cc-1a3641a03aa5c89a7f06e3f4a10f875e3f"><span class="std std-ref">build</span></a><span class="p">(</span><a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Table.html#doxid-structrgpot-1-1nlist-1-1-table"><span class="std std-ref">Table</span></a><span class="o">&amp;</span> <span class="n">table</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">positions</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">box9</span><span class="p">,</span> <span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Query.html#doxid-structrgpot-1-1nlist-1-1-query"><span class="std std-ref">Query</span></a><span class="o">&amp;</span> <span class="n">query</span><span class="p">);</span></span>
+<span data-line="46"><span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-neighbour-list-8cc-1a1b061e6d56f25a6d6692411e283cfe68"><span class="std std-ref">buildByAtom</span></a><span class="p">(</span><a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Table.html#doxid-structrgpot-1-1nlist-1-1-table"><span class="std std-ref">Table</span></a><span class="o">&amp;</span> <span class="n">table</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">positions</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">box9</span><span class="p">,</span> <span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Query.html#doxid-structrgpot-1-1nlist-1-1-query"><span class="std std-ref">Query</span></a><span class="o">&amp;</span> <span class="n">query</span><span class="p">);</span></span>
+<span data-line="47"><span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-neighbour-list-8cc-1a3f91ff9cb57f985ee63364fbc20105c2"><span class="std std-ref">build</span></a><span class="p">(</span><a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Batch.html#doxid-structrgpot-1-1nlist-1-1-batch"><span class="std std-ref">Batch</span></a><span class="o">&amp;</span> <span class="n">batch</span><span class="p">,</span> <span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Systems.html#doxid-structrgpot-1-1nlist-1-1-systems"><span class="std std-ref">Systems</span></a><span class="o">&amp;</span> <span class="n">systems</span><span class="p">,</span> <span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Query.html#doxid-structrgpot-1-1nlist-1-1-query"><span class="std std-ref">Query</span></a><span class="o">&amp;</span> <span class="n">query</span><span class="p">);</span></span>
+<span data-line="48"><span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-neighbour-list-8hpp-1a03b84bcc3c0939efcb7f0bd31bfc6a87"><span class="std std-ref">updateCells</span></a><span class="p">(</span><a class="doxyrest-code-link reference internal" href="class_rgpot_nlist_Neighbours.html#doxid-classrgpot-1-1nlist-1-1-neighbours"><span class="std std-ref">Neighbours</span></a><span class="o">&amp;</span> <span class="n">cells</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">positions</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">box9</span><span class="p">,</span> <span class="kt">double</span> <span class="n">cutoff</span><span class="p">,</span> <span class="kt">double</span> <span class="n">skin</span><span class="p">,</span> <a class="doxyrest-code-link reference internal" href="struct_Image.html#doxid-struct-image"><span class="std std-ref">Image</span></a> <span class="n">image</span><span class="p">,</span> <span class="n">Mode</span> <span class="n">mode</span><span class="p">,</span> <span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">array</span><span class="o">&lt;</span><span class="kt">bool</span><span class="p">,</span> <span class="mi">3</span><span class="o">&gt;&amp;</span> <span class="n">periodic</span><span class="p">);</span></span>
+<span data-line="49"> </span>
+<span data-line="50"><span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="n">Fn</span><span class="o">&gt;</span></span>
+<span data-line="51"><span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-neighbour-list-8hpp-1a570dcf98e1a44f640e93d8a466258463"><span class="std std-ref">visitDirected</span></a><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_nlist_Neighbours.html#doxid-classrgpot-1-1nlist-1-1-neighbours"><span class="std std-ref">Neighbours</span></a><span class="o">&amp;</span> <span class="n">cells</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">int64_t</span> <span class="n">begin</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">int64_t</span> <span class="n">end</span><span class="p">,</span> <span class="n">Fn</span><span class="o">&amp;&amp;</span> <span class="n">fn</span><span class="p">);</span></span>
+<span data-line="52"> </span>
+<span data-line="53"><span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="n">Fn</span><span class="o">&gt;</span></span>
+<span data-line="54"><span class="kt">void</span> <a class="doxyrest-code-link reference internal" href="#doxid-neighbour-list-8hpp-1ad26e673b5d183ef34fe91dead088f7c1"><span class="std std-ref">visitHalf</span></a><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_nlist_Neighbours.html#doxid-classrgpot-1-1nlist-1-1-neighbours"><span class="std std-ref">Neighbours</span></a><span class="o">&amp;</span> <span class="n">cells</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">int64_t</span> <span class="n">begin</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">int64_t</span> <span class="n">end</span><span class="p">,</span> <span class="n">Fn</span><span class="o">&amp;&amp;</span> <span class="n">fn</span><span class="p">);</span></span>
+<span data-line="55"> </span>
+<span data-line="56"><span class="kt">int</span> <a class="doxyrest-code-link reference internal" href="#doxid-neighbours-8cc-1a05e36639124846887956213a31950e7a"><span class="std std-ref">threadsRequested</span></a><span class="p">();</span></span>
+<span data-line="57"><a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Range.html#doxid-structrgpot-1-1nlist-1-1-range"><span class="std std-ref">Range</span></a> <a class="doxyrest-code-link reference internal" href="#doxid-neighbours-8cc-1afd10c100b7fb7b72ab685a052bffd4a5"><span class="std std-ref">partition</span></a><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="kt">int64_t</span> <span class="n">n</span><span class="p">,</span> <span class="kt">int</span> <span class="kr">thread</span><span class="p">,</span> <span class="kt">int</span> <span class="n">nthreads</span><span class="p">);</span></span>
+<span data-line="58"><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span> <a class="doxyrest-code-link reference internal" href="#doxid-neighbours-8cc-1ad73498fcacbec8d7bad2fdc78d14359e"><span class="std std-ref">availableBytes</span></a><span class="p">();</span></span>
+<span data-line="59"><span class="kt">bool</span> <a class="doxyrest-code-link reference internal" href="#doxid-neighbours-8hpp-1a016896fca86003412f1fce1d1f117b2d"><span class="std std-ref">withinSkin</span></a><span class="p">(</span><span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">reference</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">current</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span> <span class="kt">double</span> <span class="n">skin</span><span class="p">);</span></span>
+<span data-line="60"><span class="kt">double</span> <a class="doxyrest-code-link reference internal" href="#doxid-minimum-image-8cpp-1a6400dc19dfc6964f5daa7da968fc9e12"><span class="std std-ref">mul_add</span></a><span class="p">(</span><span class="kt">double</span> <span class="n">a</span><span class="p">,</span> <span class="kt">double</span> <span class="n">b</span><span class="p">,</span> <span class="kt">double</span> <span class="n">c</span><span class="p">);</span></span>
+<span data-line="61"> </span>
+<span data-line="62"><span class="p">}</span> <span class="c1">// namespace nlist</span></span>
 </pre></div>
 </section>
 <section id="detailed-documentation">
 <span id="details-namespacergpot-1-1nlist"></span><h2>Detailed Documentation<a class="headerlink" href="#detailed-documentation" title="Link to this heading">¶</a></h2>
-<section id="global-variables">
-<h3>Global Variables<a class="headerlink" href="#global-variables" title="Link to this heading">¶</a></h3>
-<div class="doxyrest-title-code-block highlight" id="doxid-cell-visit-8hpp-1aa53e9c32516c19af16368349670478dd">
-<span id="index-1"></span><pre><span data-line="1"><span class="n">std</span><span class="o">::</span><span class="kt">size_t</span> <span class="n">kMinCellsForGrid</span> <span class="o">=</span> <span class="mi">64</span></span>
+<section id="typedefs">
+<h3>Typedefs<a class="headerlink" href="#typedefs" title="Link to this heading">¶</a></h3>
+<div class="doxyrest-title-code-block highlight" id="doxid-neighbour-list-8hpp-1a75c244beee64128ba817f89c2afc5556">
+<span id="index-1"></span><pre><span data-line="1"><span class="k">typedef</span> <span class="n">std</span><span class="o">::</span><span class="n">variant</span><span class="o">&lt;</span><a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Pairs.html#doxid-structrgpot-1-1nlist-1-1-pairs"><span class="std std-ref">Pairs</span></a><span class="p">,</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Cluster4.html#doxid-structrgpot-1-1nlist-1-1-cluster4"><span class="std std-ref">Cluster4</span></a><span class="o">&gt;</span> <span class="n">Shape</span></span>
 </pre></div>
-<p>Fewest cells worth binning for. Even with the atoms spread evenly the cell scan tests about 14 n^2 / ncells pairs against n^2 / 2, so below some 30 cells it cannot win; <a class="reference internal" href="struct_rgpot_nlist_CellGrid.html#doxid-structrgpot-1-1nlist-1-1-cell-grid-1a8325e8f4b5bd62f82b8922074de0cca8"><span class="std std-ref">CellGrid::build</span></a> then also compares the pair tests the grid would make for the actual occupancy.</p>
-<div class="doxyrest-title-code-block highlight" id="doxid-cell-visit-8hpp-1a78abd5ab1c7acc559a88a94abfd88557">
-<span id="index-2"></span><pre><span data-line="1"><span class="kt">int</span> <span class="n">kHalfStencil</span><span class="p">[</span><span class="mi">13</span><span class="p">][</span><span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>     <span class="p">{</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">},</span>  <span class="p">{</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">},</span> <span class="p">{</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">},</span>  <span class="p">{</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">},</span>  <span class="p">{</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">},</span>     <span class="p">{</span><span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">},</span> <span class="p">{</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">},</span> <span class="p">{</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">},</span> <span class="p">{</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">},</span>  <span class="p">{</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">},</span>     <span class="p">{</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">},</span> <span class="p">{</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">},</span>  <span class="p">{</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">}}</span></span>
-</pre></div>
-<p>The half stencil: the 13 neighbours that come after a cell in (z, y, x) lexicographic order, as (dx, dy, dz) offsets.</p>
+<p><a class="reference internal" href="struct_rgpot_nlist_Pairs.html#doxid-structrgpot-1-1nlist-1-1-pairs"><span class="std std-ref">Pairs</span></a> or a cluster of four. A value cannot be both.</p>
 </section>
 <section id="global-functions">
 <h3>Global Functions<a class="headerlink" href="#global-functions" title="Link to this heading">¶</a></h3>
-<div class="doxyrest-title-code-block highlight" id="doxid-cell-visit-8hpp-1aaa3ec9789d52a10ccabde3555411db41">
-<span id="index-3"></span><pre><span data-line="1"><span class="k">template</span> <span class="o">&lt;</span><span class="kt">bool</span> <span class="n">Collect</span><span class="p">,</span> <span class="k">typename</span> <span class="n">Visitor</span><span class="o">&gt;</span></span>
-<span data-line="2"><span class="kt">void</span> <span class="n">cell_visit</span><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_CellGrid.html#doxid-structrgpot-1-1nlist-1-1-cell-grid"><span class="std std-ref">CellGrid</span></a><span class="o">&amp;</span> <span class="n">g</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">points</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span> <span class="n">w</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="k">const</span> <span class="kt">double</span> <span class="n">inv</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="kt">double</span> <span class="n">list_cutoff2</span><span class="p">,</span> <span class="kt">double</span> <span class="n">visit_cutoff2</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int32_t</span><span class="o">&gt;&amp;</span> <span class="n">pairs</span><span class="p">,</span> <span class="n">Visitor</span><span class="o">&amp;&amp;</span> <span class="n">visit</span><span class="p">)</span></span>
+<div class="doxyrest-title-code-block highlight" id="doxid-half-shell-8cc-1a30e70c079db00399c9c53172445e0fea">
+<span id="index-2"></span><pre><span data-line="1"><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_NeighborList.html#doxid-structrgpot-1-1nlist-1-1-neighbor-list"><span class="std std-ref">NeighborList</span></a><span class="o">&amp;</span> <span class="n">orderedPairs</span><span class="p">(</span><span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">positions</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">box</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span> <span class="kt">double</span> <span class="n">cutoff</span><span class="p">,</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_NeighborList.html#doxid-structrgpot-1-1nlist-1-1-neighbor-list"><span class="std std-ref">NeighborList</span></a><span class="o">*</span> <span class="n">cache</span><span class="p">)</span></span>
 </pre></div>
-<p>Linked-cell counterpart of vesin::cpu::brute_force_visit over a built grid. With <code class="docutils literal notranslate"><span class="pre">Collect</span></code> false no pairs are recorded (the eval-only scan) and <code class="docutils literal notranslate"><span class="pre">pairs</span></code> is left untouched.</p>
-<div class="doxyrest-title-code-block highlight" id="doxid-pair-list-cache-8hpp-1ab87ece71f82845b3adfd58d3e57129c8">
-<span id="index-4"></span><pre><span data-line="1"><span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="n">Scan</span><span class="p">,</span> <span class="k">typename</span> <span class="n">OnHit</span><span class="o">&gt;</span></span>
-<span data-line="2"><span class="kt">void</span> <span class="n">run</span><span class="p">(</span><span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">R</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">box</span><span class="p">,</span> <span class="k">const</span> <span class="n">CachedPairList</span><span class="o">::</span><span class="n">Options</span><span class="o">&amp;</span> <span class="n">opt</span><span class="p">,</span> <span class="n">Scan</span><span class="o">&amp;</span> <span class="n">scan</span><span class="p">,</span> <span class="n">OnHit</span><span class="o">&amp;&amp;</span> <span class="n">onHit</span><span class="p">)</span></span>
+<p><a class="reference internal" href="struct_rgpot_nlist_Pairs.html#doxid-structrgpot-1-1nlist-1-1-pairs"><span class="std std-ref">Pairs</span></a> with r &lt; cutoff + skin, ordered as the 27-cell walk. The reference is valid until the next call on this thread that passes a null cache. On a hit, the cached pairs are returned as stored.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-neighbour-list-8cc-1a3641a03aa5c89a7f06e3f4a10f875e3f">
+<span id="index-3"></span><pre><span data-line="1"><span class="kt">void</span> <span class="n">build</span><span class="p">(</span><a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Table.html#doxid-structrgpot-1-1nlist-1-1-table"><span class="std std-ref">Table</span></a><span class="o">&amp;</span> <span class="n">table</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">positions</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">box9</span><span class="p">,</span> <span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Query.html#doxid-structrgpot-1-1nlist-1-1-query"><span class="std std-ref">Query</span></a><span class="o">&amp;</span> <span class="n">query</span><span class="p">)</span></span>
 </pre></div>
-<p>is the visitor for a fresh search.</p>
-<p>One fused multiply-add for the pair force updates, always inlined so the loop keeps its registers. <code class="docutils literal notranslate"><span class="pre">Hw</span></code> : the caller runs with FMA enabled (the / unit’s own ISA or a target(“fma”) clone); otherwise the exact software / form, which only a CPU without FMA reaches. template &lt;bool Hw&gt; inline double pairFma(double a, double b, double c) {</p>
-<p>return simd::mul_add(a, b, c);</p>
-<p>}</p>
-<p>/ One pair’s contribution, as a radial kernel returns it: the energy and / <code class="docutils literal notranslate"><span class="pre">fscale</span> <span class="pre">=</span> <span class="pre">-V'(r)</span> <span class="pre">/</span> <span class="pre">r</span></code>, so the force on atom i is <code class="docutils literal notranslate"><span class="pre">fscale</span> <span class="pre">*</span> <span class="pre">(r_i</span> <span class="pre">-</span> <span class="pre">r_j)</span></code>. struct PairTerm { double energy; double fscale; };</p>
-<p>struct IgnorePairContribution { void operator()(double, double, double, double) const noexcept {} };</p>
-<p>/ True for a kernel that evaluates a whole row at once: / <code class="docutils literal notranslate"><span class="pre">kernel.row(r2,</span> <span class="pre">energy,</span> <span class="pre">fscale,</span> <span class="pre">m)</span></code> fills the pair energies and force / scales of the <code class="docutils literal notranslate"><span class="pre">m</span></code> squared distances in <code class="docutils literal notranslate"><span class="pre">r2</span></code>. Each output may depend / only on its own <code class="docutils literal notranslate"><span class="pre">r2</span></code> entry, so the pair gets the bits it would get / from a per-pair call. template &lt;typename K, typename = void&gt; struct HasRowKernel : std::false_type {}; template &lt;typename K&gt; struct HasRowKernel&lt;K, std::void_t&lt;decltype(std::declval&lt;const K &amp;&gt;().row( std::declval&lt;const double *&gt;(), std::declval&lt;double *&gt;(), std::declval&lt;double *&gt;(), std::declval&lt;std::size_t&gt;()))&gt;&gt; : std::true_type {};</p>
-<p>class CachedPairList { public: / How evaluation turns r_i - r_j into the minimum image: no fold (free / boundaries), a per-call rounding fold, or a shift recorded at build. enum class FoldMode : uint8_t { None, Round, Coded, General };</p>
-<p>struct Options { double cutoff{0.0}; double skin{1.0}; std::array&lt;bool, 3&gt; periodic{{true, true, true}};</p>
-<p>bool operator==(const Options &amp;o) const { return cutoff == o.cutoff &amp;&amp; skin == o.skin &amp;&amp; periodic == o.periodic; } };</p>
-<dl class="simple">
-<dt>/ True while the cached pair set is valid for positions <code class="docutils literal notranslate"><span class="pre">R</span></code><span class="classifier">same / atom count, options and box as the build, and max displacement / below skin/2. [[nodiscard]] bool valid(const double *R, std::size_t n, const double *box,</span></dt><dd><p>const Options &amp;opt) const { if (!built_ || n != n_ || !(opt == opt_)) { return false; } for (int k = 0; k &lt; 9; ++k) { if (box[k] != boxref_[k]) { return false; } } if (complete_) { return true; // all pairs are candidates; motion cannot invalidate } const double thr2 = 0.25 * opt_.skin * opt_.skin; const double *ref = Rref_.data(); for (std::size_t a = 0; a &lt; n; ++a) { const double dx = R[3 * a] - ref[3 * a]; const double dy = R[3 * a + 1] - ref[3 * a + 1]; const double dz = R[3 * a + 2] - ref[3 * a + 2]; if (dx * dx + dy * dy + dz * dz &gt; thr2) { return false; } } return true; }</p>
-</dd>
-</dl>
-<p>[[nodiscard]] bool isPhantom() const { return phantom_; }</p>
-<dl class="simple">
-<dt>/ First sighting: fused eval-only scan plus a phantom stamp (MIC / regime), or just the scan when caching is unsafe for this box. template &lt;typename Fn&gt; void visitOnly(const double *R, std::size_t n, const double *box,</dt><dd><p>const Options &amp;opt, Fn &amp;&amp;fn) { setup(n, box, opt); double w[3]; double inv[3]; fold_params(box, opt, w, inv); auto flip = [&amp;](int32_t i, int32_t j, double dx, double dy, double dz, double r2) { fn(i, j, -dx, -dy, -dz, r2); }; <a class="reference internal" href="struct_rgpot_nlist_CellGrid.html#doxid-structrgpot-1-1nlist-1-1-cell-grid"><span class="std std-ref">CellGrid</span></a> grid; if (general_) { generalVisit(R, n, -1.0, opt.cutoff * opt.cutoff, flip); } else if (mic_ &amp;&amp; grid.build(R, n, w, inv, opt.cutoff)) { cell_visit&lt;false&gt;(grid, R, w, inv, HUGE_VAL, opt.cutoff * opt.cutoff, pairsIJ_, flip); } else { vesin::cpu::brute_force_visit_only(R, n, w, inv, opt.cutoff * opt.cutoff, flip); } if (mic_) { pairsIJ_.clear(); finishRebuild(R, n, box, opt, true, false); phantom_ = true; } }</p>
-</dd>
-<dt>/ Second sighting: capture the candidate list at cutoff+skin while / evaluating <code class="docutils literal notranslate"><span class="pre">fn</span></code> in the same scan. template &lt;typename Fn&gt; void rebuildFused(const double *R, std::size_t n, const double *box,</dt><dd><p>const Options &amp;opt, Fn &amp;&amp;fn) { setup(n, box, opt); double w[3]; double inv[3]; fold_params(box, opt, w, inv); const double bc = opt.cutoff + opt.skin; auto flip = [&amp;](int32_t i, int32_t j, double dx, double dy, double dz, double r2) { fn(i, j, -dx, -dy, -dz, r2); }; <a class="reference internal" href="struct_rgpot_nlist_CellGrid.html#doxid-structrgpot-1-1nlist-1-1-cell-grid"><span class="std std-ref">CellGrid</span></a> grid; const bool cells = mic_ &amp;&amp; grid.build(R, n, w, inv, bc); if (general_) { generalVisit(R, n, bc * bc, opt.cutoff * opt.cutoff, flip); } else if (cells) { cell_visit&lt;true&gt;(grid, R, w, inv, bc * bc, opt.cutoff * opt.cutoff, pairsIJ_, flip); } else { vesin::cpu::brute_force_visit(R, n, w, inv, bc * bc, opt.cutoff * opt.cutoff, pairsIJ_, flip); } finishRebuild(R, n, box, opt, !cells, true); }</p>
-</dd>
-<dt>/ Build the candidate list at cutoff + skin for positions <code class="docutils literal notranslate"><span class="pre">R</span></code>, the / list a later call reuses while the Verlet guarantee holds. void rebuild(const double *R, std::size_t n, const double *box,</dt><dd><p>const Options &amp;opt) { rebuildFused(R, n, box, opt, [](int32_t, int32_t, double, double, double, double) {}); }</p>
-</dd>
-<dt>/ Build a list holding exactly the pairs within the cutoff of <code class="docutils literal notranslate"><span class="pre">R</span></code>, / for one evaluation through accumulate. When the box is cacheable the / slot then becomes a phantom (dropPairs) that only stamps the / geometry, as visitOnly leaves it. void buildForEval(const double *R, std::size_t n, const double *box,</dt><dd><p>const Options &amp;opt) { setup(n, box, opt); double w[3]; double inv[3]; fold_params(box, opt, w, inv); const double c2 = opt.cutoff * opt.cutoff; auto none = [](int32_t, int32_t, double, double, double, double) {}; <a class="reference internal" href="struct_rgpot_nlist_CellGrid.html#doxid-structrgpot-1-1nlist-1-1-cell-grid"><span class="std std-ref">CellGrid</span></a> grid; const bool cells = mic_ &amp;&amp; grid.build(R, n, w, inv, opt.cutoff); if (general_) { generalVisit(R, n, std::nextafter(c2, HUGE_VAL), -1.0, none); } else if (cells) { cell_visit&lt;true&gt;(grid, R, w, inv, std::nextafter(c2, HUGE_VAL), -1.0, pairsIJ_, none); } else { vesin::cpu::brute_force_visit(R, n, w, inv, std::nextafter(c2, HUGE_VAL), -1.0, pairsIJ_, none); } One evaluation: the rounding fold costs what recording the images would, and gives the same vectors bit for bit. finishRebuild(R, n, box, opt, !cells, false); }</p>
-</dd>
-</dl>
-<p>/ Turn an evaluated slot into a phantom: keep the stamp, drop the pairs. void dropPairs() { nbr_.clear(); nbr_.shrink_to_fit(); code_.clear(); code_.shrink_to_fit(); std::fill(rows_.begin(), rows_.end(), 0); phantom_ = true; }</p>
-<p>/ True when caching applies to this box (decided by the last build). [[nodiscard]] bool cacheable() const { return mic_; }</p>
-<p>/ Fold the evaluation loops use for this slot. [[nodiscard]] FoldMode foldMode() const { return fold_; }</p>
-<p>/ Candidate pairs held (within cutoff + skin at the build). [[nodiscard]] std::size_t size() const { return nbr_.size(); }</p>
-<p>/ Visit every cached pair within the true cutoff of the current / positions; <code class="docutils literal notranslate"><span class="pre">fn(i,</span> <span class="pre">j,</span> <span class="pre">dx,</span> <span class="pre">dy,</span> <span class="pre">dz,</span> <span class="pre">r2)</span></code> uses <code class="docutils literal notranslate"><span class="pre">d</span> <span class="pre">=</span> <span class="pre">r_i</span> <span class="pre">-</span> <span class="pre">r_j</span></code> with / the minimum image applied. template &lt;typename Fn&gt; void forEach(const double *R, Fn &amp;&amp;fn) const { switch (fold_) { case FoldMode::None: forEachImpl&lt;FoldMode::None&gt;(R, fn); break; case FoldMode::Round: forEachImpl&lt;FoldMode::Round&gt;(R, fn); break; case FoldMode::Coded: forEachImpl&lt;FoldMode::Coded&gt;(R, fn); break; case FoldMode::General: forEachImpl&lt;FoldMode::General&gt;(R, fn); break; } }</p>
-<p>/ Fused force loop over the cached pairs: <code class="docutils literal notranslate"><span class="pre">kernel(i,</span> <span class="pre">j,</span> <span class="pre">r2)</span></code> returns / the pair energy and <code class="docutils literal notranslate"><span class="pre">fscale</span> <span class="pre">=</span> <span class="pre">-V'(r)</span> <span class="pre">/</span> <span class="pre">r</span></code> (or a row kernel, see / HasRowKernel, fills them for a row of accepted pairs); the loop adds / <code class="docutils literal notranslate"><span class="pre">fscale</span> <span class="pre">*</span> <span class="pre">d</span></code> to atom i and subtracts it from atom j (<code class="docutils literal notranslate"><span class="pre">d</span> <span class="pre">=</span> <span class="pre">r_i</span> <span class="pre">-</span> <span class="pre">/</span> <span class="pre">r_j</span></code>, minimum image applied) and returns the summed energy. Atom i’s / force stays in registers across its row. The optional observer receives / the same force scale and displacement once per accepted pair. template &lt;typename Kernel, typename Observer = IgnorePairContribution&gt; [[nodiscard]] double accumulate(const double *R, double *F, Kernel &amp;&amp;kernel, Observer &amp;&amp;observe = {}) const {</p>
-<p>return accumulateFold&lt;false&gt;(R, F, kernel, observe);}</p>
-<dl class="simple">
-<dt>private: template &lt;bool Hw, typename Kernel, typename Observer&gt; inline double accumulateFold(const double *R, double *F,</dt><dd><p>Kernel &amp;kernel,
-Observer &amp;observe) const { if constexpr (HasRowKernel&lt;Kernel&gt;::value) { switch (fold_) { case FoldMode::None: return accumulateRows&lt;FoldMode::None, Hw&gt;(R, F, kernel, observe); case FoldMode::Round: return accumulateRows&lt;FoldMode::Round, Hw&gt;(R, F, kernel, observe); case FoldMode::Coded: return accumulateRows&lt;FoldMode::Coded, Hw&gt;(R, F, kernel, observe); case FoldMode::General: return accumulateRows&lt;FoldMode::General, Hw&gt;(R, F, kernel, observe); } } else { switch (fold_) { case FoldMode::None: return accumulateImpl&lt;FoldMode::None, Hw&gt;(R, F, kernel, observe); case FoldMode::Round: return accumulateImpl&lt;FoldMode::Round, Hw&gt;(R, F, kernel, observe); case FoldMode::Coded: return accumulateImpl&lt;FoldMode::Coded, Hw&gt;(R, F, kernel, observe); case FoldMode::General: return accumulateImpl&lt;FoldMode::General, Hw&gt;(R, F, kernel, observe); } } return 0.0; }</p>
-</dd>
-<dt>template &lt;FoldMode M, typename Fn&gt; void forEachImpl(const double *R, Fn &amp;fn) const { const double cutoff2 = opt_.cutoff * opt_.cutoff; const Fold fold = makeFold(); for (std::size_t i = 0; i &lt; n_; ++i) { const int32_t p0 = rows_[i]; const int32_t p1 = rows_[i + 1]; for (int32_t p = p0; p &lt; p1; ++p) { const auto up = static_cast&lt;std::size_t&gt;(p); const int32_t j = nbr_[up]; double dx, dy, dz; fold.template apply&lt;M&gt;(R, i, static_cast&lt;std::size_t&gt;(j), up, dx, dy,</dt><dd><p>dz); const double r2 = dx * dx + dy * dy + dz * dz; if (r2 &lt;= cutoff2) { fn(static_cast&lt;int32_t&gt;(i), j, dx, dy, dz, r2); } } } }</p>
-</dd>
-<dt>template &lt;FoldMode M, bool Hw, typename Kernel, typename Observer&gt; [[nodiscard]] inline double accumulateImpl(const double *R, double *F, Kernel &amp;kernel,</dt><dd><p>Observer &amp;observe) const { const double cutoff2 = opt_.cutoff * opt_.cutoff; const Fold fold = makeFold(); double energy = 0.0; for (std::size_t i = 0; i &lt; n_; ++i) { const int32_t p0 = rows_[i]; const int32_t p1 = rows_[i + 1]; double fxi = 0.0, fyi = 0.0, fzi = 0.0; for (int32_t p = p0; p &lt; p1; ++p) { const auto up = static_cast&lt;std::size_t&gt;(p); const auto j = static_cast&lt;std::size_t&gt;(nbr_[up]); double dx, dy, dz; fold.template apply&lt;M&gt;(R, i, j, up, dx, dy, dz); const double r2 = dx * dx + dy * dy + dz * dz; A branch, not a mask: masking evaluates the kernel (an exp for Morse) for every candidate past the cutoff, and measures slower for Morse at every size and no faster for LJ. if (r2 &lt;= cutoff2) { const PairTerm t = kernel(static_cast&lt;int32_t&gt;(i), static_cast&lt;int32_t&gt;(j), r2); energy += t.energy; Explicit fused updates: left to -ffp-contract, GCC 15 fuses these differently in the Round and Coded instantiations, and a cold call then differs in the last bit from a captured one. fxi = pairFma&lt;Hw&gt;(t.fscale, dx, fxi); fyi = pairFma&lt;Hw&gt;(t.fscale, dy, fyi); fzi = pairFma&lt;Hw&gt;(t.fscale, dz, fzi); F[3 * j] = pairFma&lt;Hw&gt;(-t.fscale, dx, F[3 * j]); F[3 * j + 1] = pairFma&lt;Hw&gt;(-t.fscale, dy, F[3 * j + 1]); F[3 * j + 2] = pairFma&lt;Hw&gt;(-t.fscale, dz, F[3 * j + 2]); observe(t.fscale, dx, dy, dz); } } F[3 * i] += fxi; F[3 * i + 1] += fyi; F[3 * i + 2] += fzi; } return energy; }</p>
-</dd>
-<dt>/ accumulateImpl for a row kernel: the accepted pairs of row i are / gathered, the kernel evaluates them together, and the updates then run / in the order accumulateImpl would run them, so the sums round the same. template &lt;FoldMode M, bool Hw, typename Kernel, typename Observer&gt; [[nodiscard]] inline double accumulateRows(const double *R, double *F, Kernel &amp;kernel,</dt><dd><p>Observer &amp;observe) const { const double cutoff2 = opt_.cutoff * opt_.cutoff; const Fold fold = makeFold(); std::size_t widest = 0; for (std::size_t i = 0; i &lt; n_; ++i) { widest = std::max(widest, static_cast&lt;std::size_t&gt;(rows_[i + 1] - rows_[i])); } dx, dy, dz, r2, energy, fscale per accepted pair. std::vector&lt;double&gt; buf(6 * widest); std::vector&lt;std::size_t&gt; partner(widest); double *bx = buf.data(); double *by = bx + widest; double *bz = by + widest; double *br2 = bz + widest; double *be = br2 + widest; double *bf = be + widest; double energy = 0.0; for (std::size_t i = 0; i &lt; n_; ++i) { const int32_t p0 = rows_[i]; const int32_t p1 = rows_[i + 1]; std::size_t m = 0; for (int32_t p = p0; p &lt; p1; ++p) { const auto up = static_cast&lt;std::size_t&gt;(p); const auto j = static_cast&lt;std::size_t&gt;(nbr_[up]); double dx, dy, dz; fold.template apply&lt;M&gt;(R, i, j, up, dx, dy, dz); const double r2 = dx * dx + dy * dy + dz * dz; if (r2 &lt;= cutoff2) { bx[m] = dx; by[m] = dy; bz[m] = dz; br2[m] = r2; partner[m] = j; ++m; } } kernel.row(br2, be, bf, m); double fxi = 0.0, fyi = 0.0, fzi = 0.0; for (std::size_t q = 0; q &lt; m; ++q) { const std::size_t j = partner[q]; const double fs = bf[q]; energy += be[q]; fxi = pairFma&lt;Hw&gt;(fs, bx[q], fxi); fyi = pairFma&lt;Hw&gt;(fs, by[q], fyi); fzi = pairFma&lt;Hw&gt;(fs, bz[q], fzi); F[3 * j] = pairFma&lt;Hw&gt;(-fs, bx[q], F[3 * j]); F[3 * j + 1] = pairFma&lt;Hw&gt;(-fs, by[q], F[3 * j + 1]); F[3 * j + 2] = pairFma&lt;Hw&gt;(-fs, bz[q], F[3 * j + 2]); observe(fs, bx[q], by[q], bz[q]); } F[3 * i] += fxi; F[3 * i + 1] += fyi; F[3 * i + 2] += fzi; } return energy; }</p>
-</dd>
-<dt>template &lt;typename Fn&gt; void generalVisit(const double *R, std::size_t n, double listCutoff2,</dt><dd><p>double visitCutoff2, Fn &amp;fn) { pairsIJ_.clear(); for (std::size_t i = 0; i &lt; n; ++i) { for (std::size_t j = i + 1; j &lt; n; ++j) { double dx = R[3 * j] - R[3 * i]; double dy = R[3 * j + 1] - R[3 * i + 1]; double dz = R[3 * j + 2] - R[3 * i + 2]; generalImage_.fold(dx, dy, dz); const double r2 = dx * dx + dy * dy + dz * dz; if (r2 &lt; listCutoff2) { pairsIJ_.push_back(static_cast&lt;int32_t&gt;(i)); pairsIJ_.push_back(static_cast&lt;int32_t&gt;(j)); } if (r2 &lt;= visitCutoff2) fn(static_cast&lt;int32_t&gt;(i), static_cast&lt;int32_t&gt;(j), dx, dy, dz, r2); } } }</p>
-</dd>
-</dl>
-<p>void setup(std::size_t n, const double *box, const Options &amp;opt) { const bool orthorhombic = box[1] == 0.0 &amp;&amp; box[2] == 0.0 &amp;&amp; box[3] == 0.0 &amp;&amp; box[5] == 0.0 &amp;&amp; box[6] == 0.0 &amp;&amp; box[7] == 0.0; general_ = !orthorhombic &amp;&amp; (opt.periodic[0] || opt.periodic[1] || opt.periodic[2]); if (general_) generalImage_ = <a class="reference internal" href="class_rgpot_nlist_MinimumImage.html#doxid-classrgpot-1-1nlist-1-1-minimum-image"><span class="std std-ref">MinimumImage</span></a> (box, opt.periodic); The atom cap bounds the brute-force list build; a fully periodic box that the linked-cell scan can serve needs no cap. mic_ = orthorhombic &amp;&amp; (n &lt;= 20000 || cellGridFits(n, box, opt)); for (int k = 0; mic_ &amp;&amp; k &lt; 3; ++k) { if (opt.periodic[static_cast&lt;std::size_t&gt;(k)] &amp;&amp; opt.cutoff &gt; 0.5 * box[4 * k]) { mic_ = false; } } }</p>
-<dl>
-<dt>/ True when every axis is periodic and wide enough that <a class="reference internal" href="struct_rgpot_nlist_CellGrid.html#doxid-structrgpot-1-1nlist-1-1-cell-grid-1a8325e8f4b5bd62f82b8922074de0cca8"><span class="std std-ref">CellGrid::build</span></a> / accepts the box at the list cutoff for any atom positions. static bool cellGridFits(std::size_t n, const double *box,</dt><dd><p>const Options &amp;opt) { const double rl = opt.cutoff + opt.skin; std::size_t ncells = 1; for (int k = 0; k &lt; 3; ++k) { if (!opt.periodic[static_cast&lt;std::size_t&gt;(k)] || !(rl &gt; 0.0)) { return false; } const double fit = std::floor(box[4 * k] / rl); if (fit &lt; 3.0) { return false; } ncells *= static_cast&lt;std::size_t&gt;(std::min(fit, 1024.0)); } return ncells &gt;= kMinCellsForGrid &amp;&amp; ncells &lt;= 8 * n + 64; }</p>
-</dd>
-<dt>static void fold_params(const double *box, const Options &amp;opt, double w[3],</dt><dd><p>double inv[3]) { for (int k = 0; k &lt; 3; ++k) { w[k] = box[4 * k]; inv[k] = (opt.periodic[static_cast&lt;std::size_t&gt;(k)] &amp;&amp; w[k] != 0.0) ? 1.0 / w[k] : 0.0; } }</p>
-</dd>
-<dt>/ <code class="docutils literal notranslate"><span class="pre">rowsSorted</span></code><span class="classifier">the scan already emitted each row in ascending / partner order (the brute-force scan does). <code class="docutils literal notranslate"><span class="pre">codes</span></code></span><span class="classifier">record image / codes for a list later calls reuse. void finishRebuild(const double *R, std::size_t n, const double *box,</span></dt><dd><p>const Options &amp;opt, bool rowsSorted, bool codes) { The fold of the historical per-call loop: diagonal widths along the periodic axes, also for a box the pool will not cache. { double w[3]; double inv[3]; fold_params(box, opt, w, inv); for (int k = 0; k &lt; 3; ++k) { micInv_[static_cast&lt;std::size_t&gt;(k)] = inv[k]; } } Rref_.assign(R, R + 3 * n); for (int k = 0; k &lt; 9; ++k) { boxref_[k] = box[k]; } opt_ = opt; n_ = n; const std::size_t np = pairsIJ_.size() / 2; complete_ = mic_ &amp;&amp; np == n * (n - 1) / 2;</p>
-</dd>
-</dl>
-<p>Row-major (CSR) half list: atom i owns its partners j &gt; i. The scans report each pair as (a, b) with a &lt; b, so a counting sort on a is all it takes. rows_.assign(n + 1, 0); for (std::size_t p = 0; p &lt; np; ++p) { ++rows_[static_cast&lt;std::size_t&gt;(pairsIJ_[2 * p]) + 1]; } for (std::size_t i = 0; i &lt; n; ++i) { rows_[i + 1] += rows_[i]; } nbr_.resize(np); { std::vector&lt;int32_t&gt; fill(rows_.begin(), rows_.end() - 1); for (std::size_t p = 0; p &lt; np; ++p) { const auto i = static_cast&lt;std::size_t&gt;(pairsIJ_[2 * p]); nbr_[static_cast&lt;std::size_t&gt;(fill[i]++)] = pairsIJ_[2 * p + 1]; } } Rows from the cell scan arrive in cell order; sorting each row keeps the partner order, and so the summation order, independent of the scan that built the list. if (!rowsSorted) { for (std::size_t i = 0; i &lt; n; ++i) { std::sort(nbr_.begin() + rows_[i], nbr_.begin() + rows_[i + 1]); } } pairsIJ_.clear(); pairsIJ_.shrink_to_fit(); if (general_) { code_.clear(); fold_ = FoldMode::General; } else if (codes) { buildImageCodes(); } else { code_.clear(); const bool fold = micInv_[0] != 0.0 || micInv_[1] != 0.0 || micInv_[2] != 0.0; fold_ = fold ? FoldMode::Round : FoldMode::None; } built_ = true; }</p>
-<p>/ Record each candidate’s periodic image at build time, so evaluation / subtracts a stored shift instead of rounding three quotients per pair. / / Sound only when cutoff + skin &lt; w / 2 along every periodic axis: a / pair inside the cutoff now moved less than one skin since the build, / so its build-time separation already sat within w / 2 of the image / it has now, and that image is the one the build folded to. With a / complete list motion never invalidates the slot, so the image can / change and the fold stays per call. Partners more than one box width / apart (unwrapped coordinates) fall back to the fold too. void buildImageCodes() { code_.clear(); fold_ = FoldMode::None; if (micInv_[0] == 0.0 &amp;&amp; micInv_[1] == 0.0 &amp;&amp; micInv_[2] == 0.0) { return; } fold_ = FoldMode::Round; if (complete_) { return; } const double reach = opt_.cutoff + opt_.skin; for (int k = 0; k &lt; 3; ++k) { if (micInv_[static_cast&lt;std::size_t&gt;(k)] != 0.0 &amp;&amp; !(reach &lt; 0.5 * boxref_[4 * k])) { return; } } for (int c = 0; c &lt; 27; ++c) { const int kk[3] = {c % 3 - 1, (c / 3) % 3 - 1, c / 9 - 1}; for (int k = 0; k &lt; 3; ++k) { shift_[static_cast&lt;std::size_t&gt;(3 * c + k)] = static_cast&lt;double&gt;(kk[k]) * boxref_[4 * k]; } } code_.resize(nbr_.size()); const double *ref = Rref_.data(); for (std::size_t i = 0; i &lt; n_; ++i) { for (int32_t p = rows_[i]; p &lt; rows_[i + 1]; ++p) { const auto up = static_cast&lt;std::size_t&gt;(p); const auto j = static_cast&lt;std::size_t&gt;(nbr_[up]); int c = 0; int stride = 1; for (int k = 0; k &lt; 3; ++k) { const auto uk = static_cast&lt;std::size_t&gt;(k); const double d = ref[3 * i + uk] - ref[3 * j + uk]; const double m = vesin::cpu::visit_round(d * micInv_[uk]); if (m &lt; -1.0 || m &gt; 1.0) { code_.clear(); return; } c += (static_cast&lt;int&gt;(m) + 1) * stride; stride *= 3; } code_[up] = static_cast&lt;uint8_t&gt;(c); } } fold_ = FoldMode::Coded; }</p>
-<p>/ How the evaluation loops turn r_i - r_j into the minimum image. struct Fold { FoldMode mode; double w[3]; double inv[3]; const uint8_t *code; const double *shift; const <a class="reference internal" href="class_rgpot_nlist_MinimumImage.html#doxid-classrgpot-1-1nlist-1-1-minimum-image"><span class="std std-ref">MinimumImage</span></a> *general;</p>
-<dl class="simple">
-<dt>template &lt;FoldMode M&gt; void apply(const double *R, std::size_t i, std::size_t j, std::size_t p,</dt><dd><p>double &amp;dx, double &amp;dy, double &amp;dz) const { dx = R[3 * i] - R[3 * j]; dy = R[3 * i + 1] - R[3 * j + 1]; dz = R[3 * i + 2] - R[3 * j + 2]; if constexpr (M == FoldMode::General) { general-&gt;fold(dx, dy, dz); } else if constexpr (M == FoldMode::Coded) { const double *sh = shift + 3 * static_cast&lt;std::size_t&gt;(code[p]); dx -= sh[0]; dy -= sh[1]; dz -= sh[2]; } else if constexpr (M == FoldMode::Round) { dx -= w[0] * vesin::cpu::visit_round(dx * inv[0]); dy -= w[1] * vesin::cpu::visit_round(dy * inv[1]); dz -= w[2] * vesin::cpu::visit_round(dz * inv[2]); } } };</p>
-</dd>
-</dl>
-<p>[[nodiscard]] Fold makeFold() const { return Fold{fold_, {boxref_[0], boxref_[4], boxref_[8]}, {micInv_[0], micInv_[1], micInv_[2]}, code_.data(), shift_.data(), &amp;generalImage_}; }</p>
-<p>std::vector&lt;int32_t&gt; pairsIJ_; //!&lt; Scan output, (a, b) flat; build only. std::vector&lt;int32_t&gt; rows_; //!&lt; CSR row starts, n + 1 entries. std::vector&lt;int32_t&gt; nbr_; //!&lt; Partner j &gt; i of each candidate. std::vector&lt;uint8_t&gt; code_; //!&lt;<a class="reference internal" href="struct_Image.html#doxid-struct-image"><span class="std std-ref">Image</span></a> code per candidate (Coded fold). std::array&lt;double, 81&gt; shift_{}; //!&lt; 27 image shifts, three doubles each. std::vector&lt;double&gt; Rref_; std::array&lt;double, 9&gt; boxref_{}; std::array&lt;double, 3&gt; micInv_{}; Options opt_{}; std::size_t n_{0}; FoldMode fold_{FoldMode::None}; <a class="reference internal" href="class_rgpot_nlist_MinimumImage.html#doxid-classrgpot-1-1nlist-1-1-minimum-image"><span class="std std-ref">MinimumImage</span></a> generalImage_; bool general_{false}; bool mic_{false}; bool phantom_{false}; bool complete_{false}; bool built_{false}; };</p>
-<p>/ Process-wide pool of CachedPairList slots, matched by geometry / proximity; safe for shared potential instances evaluated from / short-lived worker threads. class PairListCache { public: static constexpr std::size_t kMaxSlots = 8;</p>
-<dl class="simple">
-<dt>/ Single-pass evaluation with lazy list capture (see file header). / <code class="docutils literal notranslate"><span class="pre">fn(i,</span> <span class="pre">j,</span> <span class="pre">dx,</span> <span class="pre">dy,</span> <span class="pre">dz,</span> <span class="pre">r2)</span></code> sees every pair within the cutoff once, / with <code class="docutils literal notranslate"><span class="pre">d</span> <span class="pre">=</span> <span class="pre">r_i</span> <span class="pre">-</span> <span class="pre">r_j</span></code> (minimum image applied). template &lt;typename Fn&gt; void evaluate(const double *R, std::size_t n, const double *box,</dt><dd><p>const CachedPairList::Options &amp;opt, Fn &amp;&amp;fn) { run(R, n, box, opt, fn, [&amp;](const CachedPairList &amp;list) { list.forEach(R, fn); }); }</p>
-</dd>
-</dl>
-<p>/ Energy and forces of a radial pair potential. <code class="docutils literal notranslate"><span class="pre">kernel(i,</span> <span class="pre">j,</span> <span class="pre">r2)</span></code> / returns the pair’s PairTerm; the forces are added into <code class="docutils literal notranslate"><span class="pre">F</span></code> (3 n / doubles, interleaved) and the total energy is returned. / / Every call, cached or not, runs CachedPairList::accumulate over a / sorted CSR list: a fresh geometry first gets a list (at the cutoff for / a first sighting, at cutoff + skin when it is captured). The pairs / inside the cutoff and their summation order are then the same whichever / slot or scan served the call, so a result does not depend on the pool’s / history or on which thread reached it first. template &lt;typename Kernel, typename Observer = IgnorePairContribution&gt; [[nodiscard]] double accumulate(const double *R, std::size_t n, const double *box, const CachedPairList::Options &amp;opt, double *F, Kernel &amp;&amp;kernel, Observer &amp;&amp;observe = {}) { std::shared_ptr&lt;const CachedPairList&gt; hit = lookup(R, n, box, opt); if (hit &amp;&amp; !hit-&gt;isPhantom()) { return hit-&gt;accumulate(R, F, kernel, observe); } auto fresh = std::make_shared&lt;CachedPairList&gt;(); double energy; if (hit) { fresh-&gt;rebuild(R, n, box, opt); energy = fresh-&gt;accumulate(R, F, kernel, observe); } else { fresh-&gt;buildForEval(R, n, box, opt); energy = fresh-&gt;accumulate(R, F, kernel, observe); if (!fresh-&gt;cacheable()) { return energy; } fresh-&gt;dropPairs(); } store(fresh, hit); return energy; }</p>
-<p>static PairListCache &amp;global() { static PairListCache cache; return cache; }</p>
-<dl class="simple">
-<dt>private: / Most recently used slot valid for <code class="docutils literal notranslate"><span class="pre">R</span></code>, moved to the front. std::shared_ptr&lt;const CachedPairList&gt; lookup(const double *R, std::size_t n, const double *box,</dt><dd><p>const CachedPairList::Options &amp;opt) { std::lock_guard&lt;std::mutex&gt; lock(mu_); for (std::size_t s = 0; s &lt; slots_.size(); ++s) { if (slots_[s]-&gt;valid(R, n, box, opt)) { if (s != 0) { auto slot = std::move(slots_[s]); slots_.erase(slots_.begin() + static_cast&lt;std::ptrdiff_t&gt;(s)); slots_.insert(slots_.begin(), std::move(slot)); } return slots_.front(); } } return nullptr; }</p>
-</dd>
-<dt>/ Put <code class="docutils literal notranslate"><span class="pre">fresh</span></code> at the front, replacing the phantom <code class="docutils literal notranslate"><span class="pre">hit</span></code> it grew / from, and evict the least recently used slot past kMaxSlots. void store(std::shared_ptr&lt;CachedPairList&gt; fresh,</dt><dd><p>const std::shared_ptr&lt;const CachedPairList&gt; &amp;hit) { std::lock_guard&lt;std::mutex&gt; lock(mu_); if (hit) { for (std::size_t s = 0; s &lt; slots_.size(); ++s) { if (slots_[s] == hit) { slots_.erase(slots_.begin() + static_cast&lt;std::ptrdiff_t&gt;(s)); break; } } } slots_.insert(slots_.begin(), std::move(fresh)); if (slots_.size() &gt; kMaxSlots) { slots_.pop_back(); } }</p>
-</dd>
-</dl>
-<p>/ Pool lookup for evaluate: <code class="docutils literal notranslate"><span class="pre">onHit</span></code> runs on a captured slot, <code class="docutils literal notranslate"><span class="pre">scan</span></code></p>
+<p>Fill <code class="docutils literal notranslate"><span class="pre">table</span></code> from <code class="docutils literal notranslate"><span class="pre">query</span></code>. The table holds every pair. A caller that must not store the list uses <a class="reference internal" href="class_rgpot_nlist_Walk.html#doxid-classrgpot-1-1nlist-1-1-walk"><span class="std std-ref">Walk</span></a>. Throws <a class="reference internal" href="class_rgpot_nlist_Error.html#doxid-classrgpot-1-1nlist-1-1-error"><span class="std std-ref">Error</span></a> before clearing <code class="docutils literal notranslate"><span class="pre">table</span></code> when the geometry is rejected. Two builds on different tables may run at the same time. They share no mutable global. A build of at least 8192 atoms may start an OpenMP team. A smaller build stays on the calling thread.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-neighbour-list-8cc-1a1b061e6d56f25a6d6692411e283cfe68">
+<span id="index-4"></span><pre><span data-line="1"><span class="kt">void</span> <span class="n">buildByAtom</span><span class="p">(</span><a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Table.html#doxid-structrgpot-1-1nlist-1-1-table"><span class="std std-ref">Table</span></a><span class="o">&amp;</span> <span class="n">table</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">positions</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">box9</span><span class="p">,</span> <span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Query.html#doxid-structrgpot-1-1nlist-1-1-query"><span class="std std-ref">Query</span></a><span class="o">&amp;</span> <span class="n">query</span><span class="p">)</span></span>
+</pre></div>
+<p>The same pairs as <code class="docutils literal notranslate"><span class="pre">build</span></code>, gathered one atom at a time. A CUDA, HIP or Kokkos launch gives one thread one atom and runs this walk. The host <code class="docutils literal notranslate"><span class="pre">build</span></code> remains the source of truth.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-neighbour-list-8cc-1a3f91ff9cb57f985ee63364fbc20105c2">
+<span id="index-5"></span><pre><span data-line="1"><span class="kt">void</span> <span class="n">build</span><span class="p">(</span><a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Batch.html#doxid-structrgpot-1-1nlist-1-1-batch"><span class="std std-ref">Batch</span></a><span class="o">&amp;</span> <span class="n">batch</span><span class="p">,</span> <span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Systems.html#doxid-structrgpot-1-1nlist-1-1-systems"><span class="std std-ref">Systems</span></a><span class="o">&amp;</span> <span class="n">systems</span><span class="p">,</span> <span class="k">const</span> <a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Query.html#doxid-structrgpot-1-1nlist-1-1-query"><span class="std std-ref">Query</span></a><span class="o">&amp;</span> <span class="n">query</span><span class="p">)</span></span>
+</pre></div>
+<p>One query for every system. The systems do not see each other’s atoms. A rejected system throws before <code class="docutils literal notranslate"><span class="pre">batch</span></code> is cleared.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-neighbour-list-8hpp-1a03b84bcc3c0939efcb7f0bd31bfc6a87">
+<span id="index-6"></span><pre><span data-line="1"><span class="kt">void</span> <span class="n">updateCells</span><span class="p">(</span><a class="doxyrest-code-link reference internal" href="class_rgpot_nlist_Neighbours.html#doxid-classrgpot-1-1nlist-1-1-neighbours"><span class="std std-ref">Neighbours</span></a><span class="o">&amp;</span> <span class="n">cells</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">positions</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">box9</span><span class="p">,</span> <span class="kt">double</span> <span class="n">cutoff</span><span class="p">,</span> <span class="kt">double</span> <span class="n">skin</span><span class="p">,</span> <a class="doxyrest-code-link reference internal" href="struct_Image.html#doxid-struct-image"><span class="std std-ref">Image</span></a> <span class="n">image</span><span class="p">,</span> <span class="n">Mode</span> <span class="n">mode</span><span class="p">,</span> <span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">array</span><span class="o">&lt;</span><span class="kt">bool</span><span class="p">,</span> <span class="mi">3</span><span class="o">&gt;&amp;</span> <span class="n">periodic</span><span class="p">)</span></span>
+</pre></div>
+<p>Bind <code class="docutils literal notranslate"><span class="pre">cells</span></code> to this geometry. <code class="docutils literal notranslate"><span class="pre">cutoff</span></code> is the pair cutoff and <code class="docutils literal notranslate"><span class="pre">skin</span></code> is the Verlet buffer the kernels drop inside the cutoff. <code class="docutils literal notranslate"><span class="pre">image</span></code> is Round for an orthorhombic cell, Half after coordinates have been wrapped, and General for a sheared cell. <code class="docutils literal notranslate"><span class="pre">mode</span></code> stores the index when it fits and streams otherwise, unless the caller asks.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-neighbour-list-8hpp-1a570dcf98e1a44f640e93d8a466258463">
+<span id="index-7"></span><pre><span data-line="1"><span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="n">Fn</span><span class="o">&gt;</span></span>
+<span data-line="2"><span class="kt">void</span> <span class="n">visitDirected</span><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_nlist_Neighbours.html#doxid-classrgpot-1-1nlist-1-1-neighbours"><span class="std std-ref">Neighbours</span></a><span class="o">&amp;</span> <span class="n">cells</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">int64_t</span> <span class="n">begin</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">int64_t</span> <span class="n">end</span><span class="p">,</span> <span class="n">Fn</span><span class="o">&amp;&amp;</span> <span class="n">fn</span><span class="p">)</span></span>
+</pre></div>
+<p><a class="reference internal" href="struct_rgpot_nlist_Pairs.html#doxid-structrgpot-1-1nlist-1-1-pairs"><span class="std std-ref">Pairs</span></a> for atoms in <code class="docutils literal notranslate"><span class="pre">[begin,</span> <span class="pre">end)</span></code>. <code class="docutils literal notranslate"><span class="pre">dx</span></code> is <code class="docutils literal notranslate"><span class="pre">r_i</span> <span class="pre">-</span> <span class="pre">r_j</span></code> after the image, the negation of the vector a stored table holds for the minimum image.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-neighbour-list-8hpp-1ad26e673b5d183ef34fe91dead088f7c1">
+<span id="index-8"></span><pre><span data-line="1"><span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="n">Fn</span><span class="o">&gt;</span></span>
+<span data-line="2"><span class="kt">void</span> <span class="n">visitHalf</span><span class="p">(</span><span class="k">const</span> <a class="doxyrest-code-link reference internal" href="class_rgpot_nlist_Neighbours.html#doxid-classrgpot-1-1nlist-1-1-neighbours"><span class="std std-ref">Neighbours</span></a><span class="o">&amp;</span> <span class="n">cells</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">int64_t</span> <span class="n">begin</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">int64_t</span> <span class="n">end</span><span class="p">,</span> <span class="n">Fn</span><span class="o">&amp;&amp;</span> <span class="n">fn</span><span class="p">)</span></span>
+</pre></div>
+<p>The pairs of <code class="docutils literal notranslate"><span class="pre">visitDirected</span></code> with <code class="docutils literal notranslate"><span class="pre">j</span> <span class="pre">&gt;</span> <span class="pre">i</span></code> only.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-neighbours-8cc-1a05e36639124846887956213a31950e7a">
+<span id="index-9"></span><pre><span data-line="1"><span class="kt">int</span> <span class="n">threadsRequested</span><span class="p">()</span></span>
+</pre></div>
+<p>Thread count from OMP_NUM_THREADS. Unset, empty, or a non-positive value is one thread, so a call that does not ask for threads matches the serial pair order.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-neighbours-8cc-1afd10c100b7fb7b72ab685a052bffd4a5">
+<span id="index-10"></span><pre><span data-line="1"><a class="doxyrest-code-link reference internal" href="struct_rgpot_nlist_Range.html#doxid-structrgpot-1-1nlist-1-1-range"><span class="std std-ref">Range</span></a> <span class="n">partition</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="kt">int64_t</span> <span class="n">n</span><span class="p">,</span> <span class="kt">int</span> <span class="kr">thread</span><span class="p">,</span> <span class="kt">int</span> <span class="n">nthreads</span><span class="p">)</span></span>
+</pre></div>
+<p>Contiguous slice of <code class="docutils literal notranslate"><span class="pre">n</span></code> items for <code class="docutils literal notranslate"><span class="pre">thread</span></code> in <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">nthreads)</span></code>. The slices cover <code class="docutils literal notranslate"><span class="pre">n</span></code> without overlap, in thread order.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-neighbours-8cc-1ad73498fcacbec8d7bad2fdc78d14359e">
+<span id="index-11"></span><pre><span data-line="1"><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span> <span class="n">availableBytes</span><span class="p">()</span></span>
+</pre></div>
+<p>Bytes the process may still allocate, from MemAvailable. Zero when that figure is not reported.</p>
+<div class="doxyrest-title-code-block highlight" id="doxid-neighbours-8hpp-1a016896fca86003412f1fce1d1f117b2d">
+<span id="index-12"></span><pre><span data-line="1"><span class="kt">bool</span> <span class="n">withinSkin</span><span class="p">(</span><span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">reference</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span><span class="o">*</span> <span class="n">current</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span> <span class="kt">double</span> <span class="n">skin</span><span class="p">)</span></span>
+</pre></div>
+<p>True when every atom has moved by at most half of <code class="docutils literal notranslate"><span class="pre">skin</span></code> from <code class="docutils literal notranslate"><span class="pre">reference</span></code>. Skin 0 is true only when the coordinates match. The same test decides <code class="docutils literal notranslate"><span class="pre">Builder::update</span></code> ‘s reused flag.</p>
 <div class="doxyrest-title-code-block highlight" id="doxid-minimum-image-8cpp-1a6400dc19dfc6964f5daa7da968fc9e12">
-<span id="index-5"></span><pre><span data-line="1"><span class="kt">double</span> <span class="n">mul_add</span><span class="p">(</span><span class="kt">double</span> <span class="n">a</span><span class="p">,</span> <span class="kt">double</span> <span class="n">b</span><span class="p">,</span> <span class="kt">double</span> <span class="n">c</span><span class="p">)</span></span>
+<span id="index-13"></span><pre><span data-line="1"><span class="kt">double</span> <span class="n">mul_add</span><span class="p">(</span><span class="kt">double</span> <span class="n">a</span><span class="p">,</span> <span class="kt">double</span> <span class="n">b</span><span class="p">,</span> <span class="kt">double</span> <span class="n">c</span><span class="p">)</span></span>
 </pre></div>
 <p>a*b+c, one rounding. A hardware instruction when this translation unit has one, or when fma_hw_active(). Otherwise fma_quick.</p>
 </section>
@@ -849,10 +935,10 @@ Observer &amp;observe) const { if constexpr (HasRowKernel&lt;Kernel&gt;::value) 
         <span>Previous</span><div class="title">class rgpot::fortranpots::WaterHPot</div></div>
     </a>
   </div><div class="navigation-next">
-    <a href="struct_rgpot_nlist_CellGrid.html">
+    <a href="namespace_rgpot_nlist_detail.html">
       <div class="page-info">
         <span>Next</span>
-        <div class="title">struct rgpot::nlist::CellGrid</div>
+        <div class="title">namespace rgpot::nlist::detail</div>
       </div>
       <i class="i-lucide chevron-right"></i>
     </a>
@@ -944,7 +1030,7 @@ Observer &amp;observe) const { if constexpr (HasRowKernel&lt;Kernel&gt;::value) 
     </div>
   </div>
 </footer>
-      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/documentation_options.js?v=5349f462"></script>
       <script src="../_static/doctools.js?v=9a2dae69"></script>
       <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
       <script src="../_static/target-highlight.js?v=df7d332b"></script>

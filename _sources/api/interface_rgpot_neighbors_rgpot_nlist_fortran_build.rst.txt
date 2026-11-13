@@ -1,0 +1,21 @@
+.. index:: pair: interface; rgpot_neighbors::rgpot_nlist_fortran_build
+.. _doxid-interfacergpot__neighbors_1_1rgpot__nlist__fortran__build:
+
+interface rgpot_neighbors::rgpot_nlist_fortran_build
+====================================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	interface rgpot_nlist_fortran_build {
+		// methods
+	
+		integer(c_int32_t) function :target:`rgpot_nlist_fortran_build<doxid-interfacergpot__neighbors_1_1rgpot__nlist__fortran__build_1aa199b512cde064b6fb2aa83dca71e174>`(type(c_ptr), value list, real(c_double), dimension(*), intent(in) positions, integer(c_size_t), value natoms, real(c_double), dimension(*), intent(in) box9, real(c_double), value cutoff, real(c_double), value skin, integer(c_int32_t), dimension(*), intent(in) periodic, type(c_ptr), value first, type(c_ptr), value second, type(c_ptr), value vector, type(c_ptr), value distance, integer(c_size_t), value cap, integer(c_size_t), intent(out) count, integer(c_int32_t), intent(out) reused);
+	};

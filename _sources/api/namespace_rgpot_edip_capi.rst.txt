@@ -23,6 +23,7 @@ C entry point for the EDIP silicon potential. :ref:`More...<details-namespacergp
 
 	integer(c_int) function, public :ref:`rgpot_edip_force<doxid-namespacergpot__edip__capi_1a86f18310e11315d4dc47efc10a049f3d>`(integer(c_int), intent(in), value natoms, real(c_double), dimension(3, natoms), intent(in) positions, real(c_double), dimension(3, 3), intent(in) cell, real(c_double), dimension(3, natoms), intent(out) forces, real(c_double), intent(out) energy);
 	integer(c_int) function, public :ref:`rgpot_edip_force_ws<doxid-namespacergpot__edip__capi_1a2844c5e68ada98e85c002d8466a5784a>`(type(c_ptr), value handle, integer(c_int), intent(in), value natoms, real(c_double), dimension(3, natoms), intent(in) positions, real(c_double), dimension(3, 3), intent(in) cell, real(c_double), dimension(3, natoms), intent(out) forces, real(c_double), intent(out) energy);
+	subroutine, public :ref:`rgpot_edip_ensure_params<doxid-namespacergpot__edip__capi_1a4fd635a5d862524ea1600fa5a23de0c2>`();
 
 	} // namespace rgpot_edip_capi
 .. _details-namespacergpot__edip__capi:
@@ -32,7 +33,7 @@ Detailed Documentation
 
 C entry point for the EDIP silicon potential.
 
-Only ``bind(c)`` names leave this library; the physics module exports no external symbols of its own that C could collide with. The ``_ws`` entry point keeps the neighbour table in the caller's workspace (:ref:`rgpot_workspace <doxid-namespacergpot__workspace>`), so each caller's vesin table follows its own geometry; the entry point without a handle shares one module-level workspace and is process-serial.
+Only ``bind(c)`` names leave this library; the physics module exports no external symbols of its own that C could collide with. The ``_ws`` entry point keeps the neighbour table in the caller's workspace (:ref:`rgpot_workspace <doxid-namespacergpot__workspace>`), so each caller's neighbour table follows its own geometry; the entry point without a handle shares one module-level workspace and is process-serial.
 
 Global Functions
 ----------------
@@ -60,4 +61,14 @@ Evaluate EDIP forces and energy.
 Evaluate EDIP forces and energy in a per-caller workspace.
 
 ``positions`` and ``forces`` are ``3 * natoms`` doubles, x/y/z interleaved; ``cell`` is nine doubles, row-major, one cell vector per row. Returns zero on success, non-zero on failure with the message available through ``rgpot_fortran_workspace_error``. ``handle`` is a workspace from ``rgpot_fortran_workspace_new``; a NULL handle returns -1.
+
+.. index:: pair: function; rgpot_edip_ensure_params
+.. _doxid-namespacergpot__edip__capi_1a4fd635a5d862524ea1600fa5a23de0c2:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	subroutine, public rgpot_edip_ensure_params()
+
+F2: default-initialise the saved parameter block once. The C++ face calls this under std::call_once before any _ws evaluation. A second call does not write.
 

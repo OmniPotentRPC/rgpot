@@ -1,0 +1,67 @@
+.. index:: pair: class; rgpot::EAMTablePot
+.. _doxid-classrgpot_1_1_e_a_m_table_pot:
+
+class rgpot::EAMTablePot
+========================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Tabulated :ref:`EAM <doxid-class_e_a_m>` or Finnis-Sinclair energy and forces. :ref:`More...<details-classrgpot_1_1_e_a_m_table_pot>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <EAMTablePot.hpp>
+	
+	class EAMTablePot: public rgpot::Potential< EAMTablePot > {
+	public:
+		// construction
+	
+		:target:`EAMTablePot<doxid-classrgpot_1_1_e_a_m_table_pot_1a89de2a1b087ef8b9e6f2a7b03e854482>`(const :ref:`EAMTableConfig<doxid-structrgpot_1_1_e_a_m_table_config>`& c);
+		:target:`EAMTablePot<doxid-classrgpot_1_1_e_a_m_table_pot_1a5611168a1d7960087277ccbf5bec6b7f>`(const :ref:`EAMTable<doxid-structrgpot_1_1_e_a_m_table>`& table, bool periodic, bool stress);
+
+		// methods
+	
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_e_a_m_table_pot_1a2122ac46ebec870874a97954ecc78c7c>`() const;
+		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_e_a_m_table_pot_1a0f9f20dd31dab48146a8fe42b5b5719e>`() const;
+		void :target:`forceImpl<doxid-classrgpot_1_1_e_a_m_table_pot_1a2aa6a68dec67700080c649b00f7efe04>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+	};
+.. _details-classrgpot_1_1_e_a_m_table_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Tabulated :ref:`EAM <doxid-class_e_a_m>` or Finnis-Sinclair energy and forces.
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1_e_a_m_table_pot_1a2122ac46ebec870874a97954ecc78c7c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Concurrency and evaluation capabilities of this potential.
+
+Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
+
+.. index:: pair: function; paramsKey
+.. _doxid-classrgpot_1_1_e_a_m_table_pot_1a0f9f20dd31dab48146a8fe42b5b5719e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual uint64_t paramsKey() const
+
+Fingerprint of the potential's parameter set.
+
+Mixed into the result-cache key so results never cross parameter sets. Implementations hash their config field by field (see :ref:`ParamHash.hpp <doxid-_param_hash_8hpp_source>`) plus a kernel-version salt that changes whenever the numerics change. The default (0) suits parameter-free potentials whose numerics never changed.
+

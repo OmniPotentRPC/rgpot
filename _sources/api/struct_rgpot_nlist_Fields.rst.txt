@@ -1,0 +1,24 @@
+.. index:: pair: struct; rgpot::nlist::Fields
+.. _doxid-structrgpot_1_1nlist_1_1_fields:
+
+struct rgpot::nlist::Fields
+===========================
+
+.. toctree::
+	:hidden:
+
+What a stored table or a chunk actually carries. Unset fields are left empty rather than filled with zeros.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <NeighbourList.hpp>
+	
+	struct Fields {
+		// fields
+	
+		bool :target:`shifts<doxid-structrgpot_1_1nlist_1_1_fields_1a4b905887ce5975eeeb74dd8355cc7d9f>` = true;
+		bool :target:`vectors<doxid-structrgpot_1_1nlist_1_1_fields_1af91706d6b99630371a08ef3593bfc32e>` = true;
+		bool :target:`distances<doxid-structrgpot_1_1nlist_1_1_fields_1a6468d42f14387f54f03f19f50b2e47d3>` = true;
+	};

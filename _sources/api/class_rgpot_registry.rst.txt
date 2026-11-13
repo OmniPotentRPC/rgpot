@@ -25,9 +25,8 @@ Static registry for instance tracking and statistics. :ref:`More...<details-clas
 	
 		static std::atomic<size_t> :ref:`count<doxid-classrgpot_1_1registry_1ac4bac5e107803e7b48bb0eab8b0978eb>`;
 		static std::atomic<size_t> :ref:`forceCalls<doxid-classrgpot_1_1registry_1abc3831dfa650a4ca2d5a347b73f76915>`;
-		static T* :ref:`head<doxid-classrgpot_1_1registry_1a720ef6941db97af09f637f56fe278e62>`;
-		T* :ref:`prev<doxid-classrgpot_1_1registry_1a6effb1966d43d271447e51244fca341f>`;
-		T* :ref:`next<doxid-classrgpot_1_1registry_1a63702ca67d75ee109e6a1632541d8407>`;
+		T* :ref:`prev<doxid-classrgpot_1_1registry_1a6effb1966d43d271447e51244fca341f>` = nullptr;
+		T* :ref:`next<doxid-classrgpot_1_1registry_1a63702ca67d75ee109e6a1632541d8407>` = nullptr;
 
 		// methods
 	
@@ -45,7 +44,7 @@ Detailed Documentation
 
 Static registry for instance tracking and statistics.
 
-The registry uses a linked list to track all active instances of a derived potential class.
+The registry counts active instances of a derived potential class and how many times those instances have been evaluated.
 
 Fields
 ------
@@ -60,7 +59,7 @@ Fields
 
 Total number of active instances.
 
-Statistics counters are atomic: force evaluations run concurrently from NEB image / dimer endpoint threads. The instance linked list is NOT concurrency-safe — construct and destroy potentials from one thread (setup paths), only evaluate them concurrently.
+Active-instance and force-call counters. Both are atomic so a batch worker can construct or evaluate a potential while another worker does the same (F2). There is no process-global list of instances: each DSO that includes this header would otherwise keep its own ``head``, and the destructor in librgpot would write through a node freed by the Python extension.
 
 .. index:: pair: variable; forceCalls
 .. _doxid-classrgpot_1_1registry_1abc3831dfa650a4ca2d5a347b73f76915:
@@ -72,25 +71,15 @@ Statistics counters are atomic: force evaluations run concurrently from NEB imag
 
 Global counter for force evaluations.
 
-.. index:: pair: variable; head
-.. _doxid-classrgpot_1_1registry_1a720ef6941db97af09f637f56fe278e62:
-
-.. ref-code-block:: cpp
-	:class: doxyrest-title-code-block
-
-	static T* head
-
-Pointer to the head of the linked list.
-
 .. index:: pair: variable; prev
 .. _doxid-classrgpot_1_1registry_1a6effb1966d43d271447e51244fca341f:
 
 .. ref-code-block:: cpp
 	:class: doxyrest-title-code-block
 
-	T* prev
+	T* prev = nullptr
 
-Pointer to the previous instance in the list.
+Unused. Kept so the potential object layout stays.
 
 .. index:: pair: variable; next
 .. _doxid-classrgpot_1_1registry_1a63702ca67d75ee109e6a1632541d8407:
@@ -98,9 +87,9 @@ Pointer to the previous instance in the list.
 .. ref-code-block:: cpp
 	:class: doxyrest-title-code-block
 
-	T* next
+	T* next = nullptr
 
-Pointer to the next instance in the list.
+Unused. Kept so the potential object layout stays.
 
 Construction
 ------------

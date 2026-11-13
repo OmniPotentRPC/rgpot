@@ -28,7 +28,7 @@ RPC schema only (client mode)
 
 Use this when your project only needs to *call* a remote potential server, or
 when you want to avoid namespace collisions with your own types (see
-`integration guide <integration.rst>`_):
+:doc:`integration guide <integration>`):
 
 .. code:: meson
 

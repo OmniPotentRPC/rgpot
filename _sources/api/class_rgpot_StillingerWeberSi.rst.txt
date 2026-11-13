@@ -1,0 +1,229 @@
+.. index:: pair: class; rgpot::StillingerWeberSi
+.. _doxid-classrgpot_1_1_stillinger_weber_si:
+
+class rgpot::StillingerWeberSi
+==============================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Stillinger-Weber silicon with the 1985 published parameters. :ref:`More...<details-classrgpot_1_1_stillinger_weber_si>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <SWSi.hpp>
+	
+	class StillingerWeberSi: public rgpot::Potential< StillingerWeberSi > {
+	public:
+		// fields
+	
+		static double :ref:`kEpsilon<doxid-classrgpot_1_1_stillinger_weber_si_1a3d57713003fbd11cc7a3cdb5c5b70867>` = 3.4723e-12* 1.0e-7 / 1.602176634e-19;
+		static double :ref:`kSigma<doxid-classrgpot_1_1_stillinger_weber_si_1a80bad90d0f86319d2757f71d4ac78c4b>` = 2.0951;
+		static double :target:`kA<doxid-classrgpot_1_1_stillinger_weber_si_1a6fd30b5143be4974508964bfcd05634e>` = 7.049556277;
+		static double :target:`kB<doxid-classrgpot_1_1_stillinger_weber_si_1afa5d9c1a4cd435887fa61f32ec3844d2>` = 0.6022245584;
+		static double :target:`kP<doxid-classrgpot_1_1_stillinger_weber_si_1a1ef75bbdc0d059db71395dbaec3c36a7>` = 4.0;
+		static double :ref:`kCut<doxid-classrgpot_1_1_stillinger_weber_si_1ab94159ee49fd5b0c0cdd45adbf312e2a>` = 1.80;
+		static double :target:`kLambda<doxid-classrgpot_1_1_stillinger_weber_si_1aae9bd7abadc3952c60fcbd6a79beef63>` = 21.0;
+		static double :target:`kGamma<doxid-classrgpot_1_1_stillinger_weber_si_1ad96df709adf15114868ce07511cf71b5>` = 1.20;
+
+		// construction
+	
+		:target:`StillingerWeberSi<doxid-classrgpot_1_1_stillinger_weber_si_1a129ce44e4252034fa23e782fbbb6756c>`();
+
+		// methods
+	
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_stillinger_weber_si_1a092f548ae42a89f6918b7be005256b63>`() const;
+		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_stillinger_weber_si_1aec1e23058cdad634f8caa49f737710c4>`() const;
+		void :target:`forceImpl<doxid-classrgpot_1_1_stillinger_weber_si_1ab31b440db32f0b6b2b730c8646d48107>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		void :ref:`setNeighbourMode<doxid-classrgpot_1_1_stillinger_weber_si_1acbafe3ba8146d719ed3c210d0d7306c3>`(nlist::Mode mode);
+		void :ref:`energyAndGradient<doxid-classrgpot_1_1_stillinger_weber_si_1a62cde2425330a151a5cdf55713fb4e96>`(const double* positions, const int* atomic_numbers, const double* box, std::size_t n_atoms, double* energy, double* gradient, :ref:`nlist::NeighborList<doxid-structrgpot_1_1nlist_1_1_neighbor_list>`* neighbors = nullptr) const;
+		void :ref:`energyAndGradientBatch<doxid-classrgpot_1_1_stillinger_weber_si_1a22df9b2db2ea1161328495c933ccd311>`(std::size_t n_config, const double* positions, const int* atomic_numbers, const double* box, std::size_t n_atoms, double* energies, double* gradients) const;
+	};
+.. _details-classrgpot_1_1_stillinger_weber_si:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Stillinger-Weber silicon with the 1985 published parameters.
+
+One call evaluates a whole configuration. ``energyAndGradientBatch`` evaluates many configurations that share a cell and a species list, so a caller crosses into the library once per batch rather than once per pair.
+
+Fields
+------
+
+.. index:: pair: variable; kEpsilon
+.. _doxid-classrgpot_1_1_stillinger_weber_si_1a3d57713003fbd11cc7a3cdb5c5b70867:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static double kEpsilon = 3.4723e-12* 1.0e-7 / 1.602176634e-19
+
+Eq. (2.9) prints 3.4723e-12 erg per atom pair, 2.16723920 eV. 1 erg = 1e-7 J. The CODATA electron-volt is 1.602176634e-19 J. PotType::SWSi is 2.3149945 eV, larger by 1.068176741337.
+
+.. index:: pair: variable; kSigma
+.. _doxid-classrgpot_1_1_stillinger_weber_si_1a80bad90d0f86319d2757f71d4ac78c4b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static double kSigma = 2.0951
+
+0.20951 nm, Eq. (2.9).
+
+.. index:: pair: variable; kCut
+.. _doxid-classrgpot_1_1_stillinger_weber_si_1ab94159ee49fd5b0c0cdd45adbf312e2a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static double kCut = 1.80
+
+Reduced cutoff a, Eq. (2.7).
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1_stillinger_weber_si_1a092f548ae42a89f6918b7be005256b63:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Concurrency and evaluation capabilities of this potential.
+
+Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
+
+.. index:: pair: function; paramsKey
+.. _doxid-classrgpot_1_1_stillinger_weber_si_1aec1e23058cdad634f8caa49f737710c4:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual uint64_t paramsKey() const
+
+Fingerprint of the potential's parameter set.
+
+Mixed into the result-cache key so results never cross parameter sets. Implementations hash their config field by field (see :ref:`ParamHash.hpp <doxid-_param_hash_8hpp_source>`) plus a kernel-version salt that changes whenever the numerics change. The default (0) suits parameter-free potentials whose numerics never changed.
+
+.. index:: pair: function; setNeighbourMode
+.. _doxid-classrgpot_1_1_stillinger_weber_si_1acbafe3ba8146d719ed3c210d0d7306c3:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void setNeighbourMode(nlist::Mode mode)
+
+Auto, Stored and Stream all use the shared neighbour layer. One thread agrees with the old ordered walk to within 1e-12.
+
+.. index:: pair: function; energyAndGradient
+.. _doxid-classrgpot_1_1_stillinger_weber_si_1a62cde2425330a151a5cdf55713fb4e96:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void energyAndGradient(const double* positions, const int* atomic_numbers, const double* box, std::size_t n_atoms, double* energy, double* gradient, :ref:`nlist::NeighborList<doxid-structrgpot_1_1nlist_1_1_neighbor_list>`* neighbors = nullptr) const
+
+Energy and dE/dx for one configuration.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- positions
+
+		- Row-major n_atoms by 3 coordinates, Angstrom.
+
+	*
+		- atomic_numbers
+
+		- Length n_atoms. Unused: the 1985 set is silicon.
+
+	*
+		- box
+
+		- Row-major 3 by 3 cell, Angstrom. Periodic in every direction.
+
+	*
+		- n_atoms
+
+		- Atom count.
+
+	*
+		- energy
+
+		- Receives the potential energy, eV.
+
+	*
+		- gradient
+
+		- Receives dE/dx, length 3 \* n_atoms, eV/Angstrom. The library force is the negation of this gradient.
+
+	*
+		- neighbors
+
+		- Optional Verlet list. Null rebuilds the pairs on every call. A list is reused while each atom has moved by at most half its skin and the cell is unchanged.
+
+.. index:: pair: function; energyAndGradientBatch
+.. _doxid-classrgpot_1_1_stillinger_weber_si_1a22df9b2db2ea1161328495c933ccd311:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void energyAndGradientBatch(std::size_t n_config, const double* positions, const int* atomic_numbers, const double* box, std::size_t n_atoms, double* energies, double* gradients) const
+
+Energy and dE/dx for a batch of configurations.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- n_config
+
+		- Number of configurations.
+
+	*
+		- positions
+
+		- n_config blocks of n_atoms \* 3 coordinates.
+
+	*
+		- atomic_numbers
+
+		- Species shared by every configuration.
+
+	*
+		- box
+
+		- Cell shared by every configuration.
+
+	*
+		- n_atoms
+
+		- Atom count of each configuration.
+
+	*
+		- energies
+
+		- Length n_config.
+
+	*
+		- gradients
+
+		- Length n_config \* n_atoms \* 3.
+

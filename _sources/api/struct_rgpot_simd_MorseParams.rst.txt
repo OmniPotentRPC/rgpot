@@ -1,0 +1,28 @@
+.. index:: pair: struct; rgpot::simd::MorseParams
+.. _doxid-structrgpot_1_1simd_1_1_morse_params:
+
+struct rgpot::simd::MorseParams
+===============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct MorseParams {
+		// fields
+	
+		double :target:`depth<doxid-structrgpot_1_1simd_1_1_morse_params_1afb388ef549b786342538f2f7179311ce>`;
+		double :target:`range<doxid-structrgpot_1_1simd_1_1_morse_params_1ad9028e1571abfba506ce79c3f505d276>`;
+		double :target:`r_eq<doxid-structrgpot_1_1simd_1_1_morse_params_1a0225291a68009574877b9e4127623ec3>`;
+		double :target:`two_de_a<doxid-structrgpot_1_1simd_1_1_morse_params_1a501fd970d7541d52df7222ae7a033f7a>`;
+		double :target:`shift<doxid-structrgpot_1_1simd_1_1_morse_params_1acc8557fb0df0a493d75baf776947f9ca>`;
+		double :target:`r_on<doxid-structrgpot_1_1simd_1_1_morse_params_1a0ca8ff666a3d1f54888d36df024306bb>`;
+		double :target:`inv_width<doxid-structrgpot_1_1simd_1_1_morse_params_1a9044aee55340e2e47badfffc470c26ef>`;
+		int :target:`use_switch<doxid-structrgpot_1_1simd_1_1_morse_params_1a7c75b687eebd4abd2d81b2686b20eedc>`;
+	};

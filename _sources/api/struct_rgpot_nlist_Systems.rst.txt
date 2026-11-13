@@ -1,0 +1,25 @@
+.. index:: pair: struct; rgpot::nlist::Systems
+.. _doxid-structrgpot_1_1nlist_1_1_systems:
+
+struct rgpot::nlist::Systems
+============================
+
+.. toctree::
+	:hidden:
+
+Several systems that do not interact. ``positions`` is the concatenation of every system, ``count`` atoms each. ``box9`` holds nine lattice values per system, in the same order. ``count[s] == 0`` is an empty system.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <NeighbourList.hpp>
+	
+	struct Systems {
+		// fields
+	
+		const double* :target:`positions<doxid-structrgpot_1_1nlist_1_1_systems_1a28d9d51599e365f9e4ff70f1806365ed>` = nullptr;
+		const std::int32_t* :target:`count<doxid-structrgpot_1_1nlist_1_1_systems_1a9065c506157340fbd16270a128e49417>` = nullptr;
+		std::size_t :target:`systems<doxid-structrgpot_1_1nlist_1_1_systems_1a09112b85b6d0ed3c28b62176c9f424dd>` = 0;
+		const double* :target:`box9<doxid-structrgpot_1_1nlist_1_1_systems_1affeb38f163ea5f9aa401d25c6aa24a99>` = nullptr;
+	};

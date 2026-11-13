@@ -1,0 +1,33 @@
+.. index:: pair: interface; rgpot_water_h::rgpot_fast_wrap
+.. _doxid-interfacergpot__water__h_1_1rgpot__fast__wrap:
+
+interface rgpot_water_h::rgpot_fast_wrap
+========================================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Minimum-image wrap from the minimage static library. :ref:`More...<details-interfacergpot__water__h_1_1rgpot__fast__wrap>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	interface rgpot_fast_wrap {
+		// methods
+	
+		integer(c_int) function :target:`rgpot_fast_wrap<doxid-interfacergpot__water__h_1_1rgpot__fast__wrap_1a438400e6ae598b4312634ec1168e35be>`(real(c_double), dimension(*), intent(in) cell, real(c_double), dimension(*), intent(in) diffs, integer(c_size_t), value n, real(c_double), dimension(*), intent(out) out);
+	};
+.. _details-interfacergpot__water__h_1_1rgpot__fast__wrap:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Minimum-image wrap from the minimage static library.
+
+Fractional rounding. Exact for an orthorhombic cell, and for a skewed cell when the wrapped length sits strictly inside half the smallest face altitude (Smith, CCP5, 1989). Outside that bound the 26-image scan below is the nearest image.
+

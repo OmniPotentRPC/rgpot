@@ -140,7 +140,7 @@ Callers running multi-system methods (NEB images, dimer endpoints) use this inst
 
 Every kernel supports this call. ``:ref:`caps() <doxid-classrgpot_1_1_potential_base_1a32efde0927ea88bf90e3d24fbb948899>```.batched reports whether it is served natively or by the default per-system loop, which callers read when deciding whether batching is worth the marshalling.
 
-Results land in ``batch.out``; see :ref:`ForceBatch <doxid-structrgpot_1_1_force_batch>` for the buffer contract.
+Results land in ``batch.out``; see :ref:`ForceBatch <doxid-structrgpot_1_1_force_batch>` for the buffer contract. Every slot is zeroed before any kernel runs, so a reused buffer never carries an earlier call's results, even when this call throws.
 
 .. index:: pair: function; paramsKey
 .. _doxid-classrgpot_1_1_potential_base_1af6ed01a80dc945fcc1f8a0735aa36621:

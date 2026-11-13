@@ -31,6 +31,9 @@ Shifted 12-6 Lennard-Jones for isolated clusters. :ref:`More...<details-classrgp
 		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_l_j_cluster_pot_1acd4671bb73a60e0f16f8e9ae61881eb6>`() const;
 		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_l_j_cluster_pot_1af424a4742c6e993deef6ccdec5aca78e>`() const;
 		void :ref:`forceImpl<doxid-classrgpot_1_1_l_j_cluster_pot_1a2c831c32b78d72a59e3bad9b025b1b01>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		void :target:`setNeighbourMode<doxid-classrgpot_1_1_l_j_cluster_pot_1ad5260edf318fcc5caac0e92d64e1ba33>`(nlist::Mode mode);
+		bool :target:`listReused<doxid-classrgpot_1_1_l_j_cluster_pot_1a0159ee104f82e3e70ee0faca05e75040>`() const;
+		std::size_t :ref:`retainedPairs<doxid-classrgpot_1_1_l_j_cluster_pot_1a44129ae569d5b514e426c341f295ddc6>`() const;
 	};
 .. _details-classrgpot_1_1_l_j_cluster_pot:
 
@@ -39,7 +42,7 @@ Detailed Documentation
 
 Shifted 12-6 Lennard-Jones for isolated clusters.
 
-Every pair within the cutoff contributes, with vectors taken straight from the coordinates: ``opt.periodic`` is off in all three directions, so the pair scan never folds a separation into the cell. A degenerate input cell (any non-positive diagonal entry) is replaced by a 1e6 Angstrom cube, which keeps the pair list cacheable for callers that hand over a cluster without a box. ``:ref:`LJClusterConfig::switch_width <doxid-structrgpot_1_1_l_j_cluster_config_1acd174d49619623ee7992be017a8cb055>``` selects the C^2 quintic switch as for :ref:`LJPot <doxid-classrgpot_1_1_l_j_pot>`.
+Every pair within the cutoff contributes, with vectors taken straight from the coordinates: periodicity is off, so the walk never folds a separation into the cell. A cluster whose bounding box fits inside the cutoff, and whose call is not a stream, walks ``i < j`` in SoA form. Every other call runs the pair term on the shared cell walk. A stream copies no pair index. A nonzero switch width skips the direct walk, which has no switch. A degenerate input cell is replaced by a 1e6 Angstrom cube.
 
 Same pair kernel as ``:ref:`LJPot <doxid-classrgpot_1_1_l_j_pot>``` with the minimum image convention switched off, so an input cell never folds pair vectors.
 
@@ -100,4 +103,14 @@ Computes the forces and energy for a given configuration.
 .. rubric:: Returns:
 
 Void.
+
+.. index:: pair: function; retainedPairs
+.. _doxid-classrgpot_1_1_l_j_cluster_pot_1a44129ae569d5b514e426c341f295ddc6:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::size_t retainedPairs() const
+
+Zero when the call used the direct all-pairs kernel or a stream.
 

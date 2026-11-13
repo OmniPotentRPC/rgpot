@@ -12,7 +12,7 @@ Communication and Conduct
 
 We value a respectful and inclusive community.
 All contributors must follow our
-`Code of Conduct <https://rgpycrumbs.rgoswami.me/ code_of_conduct.html>`_.
+:doc:`Code of Conduct <../code_of_conduct>`.
 
 Getting Started
 ---------------
@@ -22,23 +22,24 @@ Please review the technical requirements before submitting a Pull Request:
 Development Environment
     We use ``pixi`` for environment management.
 
-See the `Developer Guide <developer/index.rst>`_ for setup and common
+See the :doc:`Developer Guide <developer/index>` for setup and common
 tasks.
 
 Documentation
     We author all documentation in ``orgmode`` converted to ``rst``.
 
-See `Developer FAQ <developer/faq.rst>`_ for documentation workflow
+See :doc:`Developer FAQ <developer/faq>` for documentation workflow
 details.
 
 Reporting Issues
 ----------------
 
-Use the `GitHub issue tracker <https://github.com/HaoZeke/rgpycrumbs/issues>`_
-to report bugs or suggest enhancements.
+Ask questions, report bugs and suggest enhancements on the
+`rgpot issue tracker <https://github.com/OmniPotentRPC/rgpot/issues>`_.
 Please provide a minimal reproducible example for all bug reports.
-User facing comments may be directed also to the [[`https://matsci.org/c/eon/72 <https://matsci.org/c/eon/72>`_]
-[EON materials science section]].
+Report security vulnerabilities privately, following
+`SECURITY.md <https://github.com/OmniPotentRPC/rgpot/blob/main/SECURITY.md>`_.
+Do not open a public issue for them.
 
 Contributing
 ------------

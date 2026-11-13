@@ -1,0 +1,24 @@
+.. index:: pair: struct; rgpot::nlist::detail::Key
+.. _doxid-structrgpot_1_1nlist_1_1detail_1_1_key:
+
+struct rgpot::nlist::detail::Key
+================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Key {
+		// fields
+	
+		int :target:`cell<doxid-structrgpot_1_1nlist_1_1detail_1_1_key_1a13af97eb83b7b2030fce98ae29ffd8e9>`;
+		int :target:`slot<doxid-structrgpot_1_1nlist_1_1detail_1_1_key_1afbf9ac5cf7f960f0282036f253eef7a0>`;
+		int :target:`rank_lo<doxid-structrgpot_1_1nlist_1_1detail_1_1_key_1ac1810d070ef9939b18ec2b2723666574>`;
+		int :target:`rank_hi<doxid-structrgpot_1_1nlist_1_1detail_1_1_key_1a84f81c2aa478ed81a8572d4ae5547eb9>`;
+	};

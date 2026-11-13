@@ -1,0 +1,124 @@
+.. index:: pair: struct; rgpot::SuttonChenConfig
+.. _doxid-structrgpot_1_1_sutton_chen_config:
+
+struct rgpot::SuttonChenConfig
+==============================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Parameters for the Sutton-Chen potential. :ref:`More...<details-structrgpot_1_1_sutton_chen_config>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <SuttonChenPot.hpp>
+	
+	struct SuttonChenConfig {
+		// fields
+	
+		double :ref:`epsilon<doxid-structrgpot_1_1_sutton_chen_config_1a47cab08d04ab1c2cb67f523de9fe50fb>` = 1.0;
+		double :ref:`c<doxid-structrgpot_1_1_sutton_chen_config_1a95aadb21f6f0a7d474178d0322e61174>` = 34.408;
+		double :ref:`a<doxid-structrgpot_1_1_sutton_chen_config_1a81e66de86ba70eba78846cbd3b10473c>` = 1.0;
+		int :ref:`n<doxid-structrgpot_1_1_sutton_chen_config_1ad6b138804a141db8e548fe9cfcdec1b4>` = 10;
+		int :ref:`m<doxid-structrgpot_1_1_sutton_chen_config_1ab75cd71c02cd2415e3fbbc1e7e8ceb01>` = 8;
+		double :ref:`cutoff<doxid-structrgpot_1_1_sutton_chen_config_1ae9794f8d1133f5c113c533191c0a685e>` = 40.0;
+		bool :ref:`periodic<doxid-structrgpot_1_1_sutton_chen_config_1a4e380d9ee2f046fa0780f345a5e1ea40>` = false;
+		bool :ref:`stress<doxid-structrgpot_1_1_sutton_chen_config_1adb64eb00472f3d4967c998a209e11cf5>` = false;
+	};
+.. _details-structrgpot_1_1_sutton_chen_config:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Parameters for the Sutton-Chen potential.
+
+Plain aggregate. Defaults are the reduced Pt/Au 10-8 potential.
+
+Fields
+------
+
+.. index:: pair: variable; epsilon
+.. _doxid-structrgpot_1_1_sutton_chen_config_1a47cab08d04ab1c2cb67f523de9fe50fb:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double epsilon = 1.0
+
+Energy unit. 1 in the cluster references.
+
+.. index:: pair: variable; c
+.. _doxid-structrgpot_1_1_sutton_chen_config_1a95aadb21f6f0a7d474178d0322e61174:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double c = 34.408
+
+Dimensionless density coefficient (Pt, Au).
+
+.. index:: pair: variable; a
+.. _doxid-structrgpot_1_1_sutton_chen_config_1a81e66de86ba70eba78846cbd3b10473c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double a = 1.0
+
+Length scale. 1 in the cluster references.
+
+.. index:: pair: variable; n
+.. _doxid-structrgpot_1_1_sutton_chen_config_1ad6b138804a141db8e548fe9cfcdec1b4:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int n = 10
+
+Repulsive exponent. 10 for Pt and Au.
+
+.. index:: pair: variable; m
+.. _doxid-structrgpot_1_1_sutton_chen_config_1ab75cd71c02cd2415e3fbbc1e7e8ceb01:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int m = 8
+
+Density exponent. 8 for Pt and Au.
+
+.. index:: pair: variable; cutoff
+.. _doxid-structrgpot_1_1_sutton_chen_config_1ae9794f8d1133f5c113c533191c0a685e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double cutoff = 40.0
+
+Truncation distance in the coordinate unit. 0 keeps every pair. 40 matches the optbench globalopt Lennard-Jones cutoff.
+
+.. index:: pair: variable; periodic
+.. _doxid-structrgpot_1_1_sutton_chen_config_1a4e380d9ee2f046fa0780f345a5e1ea40:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool periodic = false
+
+Minimum image convention. Cluster references leave this false.
+
+.. index:: pair: variable; stress
+.. _doxid-structrgpot_1_1_sutton_chen_config_1adb64eb00472f3d4967c998a209e11cf5:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool stress = false
+
+Write the Cauchy stress sigma = (1/V) dE/dstrain of :ref:`stress.hpp <doxid-stress_8hpp_source>` when the cell volume is positive. Off by default: has_stress and the tensor are left as the caller set them, and energy and forces are the same bits either way.
+

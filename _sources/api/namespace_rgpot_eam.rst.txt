@@ -1,0 +1,37 @@
+.. index:: pair: namespace; rgpot::eam
+.. _doxid-namespacergpot_1_1eam:
+
+namespace rgpot::eam
+====================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_eam_ElementSpline.rst
+	struct_rgpot_eam_Spline1D.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace eam {
+
+	// structs
+
+	struct :ref:`ElementSpline<doxid-structrgpot_1_1eam_1_1_element_spline>`;
+	struct :ref:`Spline1D<doxid-structrgpot_1_1eam_1_1_spline1_d>`;
+
+	// global functions
+
+	double :target:`central<doxid-_stream_spline_8hpp_1af630da9b1678f107ad5c933432db78b3>`(double(*)(const double*, double) fn, const double* p, double r);
+	:ref:`Spline1D<doxid-structrgpot_1_1eam_1_1_spline1_d>` :target:`buildSpline<doxid-_stream_spline_8hpp_1a1082d9326268183fd17b02f4dc18a936>`(double(*)(const double*, double) fn, const double* p, double origin, double end, double h);
+	double :target:`rhoAt<doxid-_stream_spline_8hpp_1a750af2e0e24deafee67de72d012637a4>`(const double* p, double r);
+	double :target:`fscaleAt<doxid-_stream_spline_8hpp_1a76af990d450ebf1c288053cc8e39a86b>`(const double* p, double r);
+	double :target:`phiAt<doxid-_stream_spline_8hpp_1a0a14233e0653f8d623ee42068a5ab926>`(const double* p, double r);
+	double :target:`fcompAt<doxid-_stream_spline_8hpp_1a026c409c84c58e7121603dbfe060433c>`(const double* p, double r);
+	:ref:`ElementSpline<doxid-structrgpot_1_1eam_1_1_element_spline>` :target:`makeElementSpline<doxid-_stream_spline_8hpp_1a390f4b36abcc180a0ebbbdf47828ea32>`(int Z, double Dm, double alpha, double Rm, double beta1, double beta2, double cutoff, const double* embed);
+
+	} // namespace eam

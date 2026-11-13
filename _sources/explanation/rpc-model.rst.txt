@@ -73,6 +73,14 @@ Under it, a Rust core owns the public types and the C ABI, and hand-written C++
 wrappers give RAII handles over that ABI.
 The C++ potentials stay in ``CppCore`` and register back into the core through a
 callback.
+One ``potserv`` process hosts one backend, named by the selector it starts with.
+A selector behind a meson option, such as ``Skala``, only exists in a ``potserv``
+built with that option.
+
+.. figure:: ../../orgmode/explanation/figures/rpc_layers.svg
+
+    Clients talk Cap'n Proto RPC to one potserv process, which hosts the backend its selector names. eOn's RgpotPot links the same engine frontends in process, without potserv. Source: ``figures/rpc_layers.dot``.
+
 The layer-by-layer layout, the status codes, and the capability fields are
 reference material:
 

@@ -1,0 +1,21 @@
+.. index:: pair: interface; rgpot_neighbors::rgpot_nlist_strerror
+.. _doxid-interfacergpot__neighbors_1_1rgpot__nlist__strerror:
+
+interface rgpot_neighbors::rgpot_nlist_strerror
+===============================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	interface rgpot_nlist_strerror {
+		// methods
+	
+		type(c_ptr) function :target:`rgpot_nlist_strerror<doxid-interfacergpot__neighbors_1_1rgpot__nlist__strerror_1a13a84d30f20f7e566917459e2d2ca40c>`(integer(c_int32_t), value code);
+	};

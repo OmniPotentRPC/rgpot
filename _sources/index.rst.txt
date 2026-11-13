@@ -25,8 +25,8 @@
 Overview
 --------
 
-``rgpot`` provides a unified Cap'n Proto schema and RPC server for potential
-energy calculations.
+``rgpot`` provides a unified Cap'n Proto schema for potential energy calculations.
+It also provides a remote procedure call (RPC) server for that schema.
 Clients send ``ForceInput`` messages containing geometry and units, receive
 ``PotentialResult`` messages containing energy and forces, and use
 ``PotentialConfig`` only for backend setup.
@@ -36,8 +36,8 @@ optional xTB / tblite / metatomic backends, and runtime-loaded quantum engines.
 ``NWChemPot`` loads ``libnwchemc`` from the split ``nwchemc`` project.
 ``CPMDPot`` loads ``libcpmdc`` from the split ``cpmdc`` project.
 Its documentation is at `cpmdc.rgoswami.me <https://cpmdc.rgoswami.me>`_.
-Both quantum frontends keep geometry on ``ForceInput`` and carry method options in
-the matching ``PotentialConfig`` arm.
+Both quantum frontends keep geometry on ``ForceInput``.
+They carry method options in the matching ``PotentialConfig`` arm.
 
 The pip package (``pip install rgpot``) ships nanobind abi3 bindings and multi-ABI
 Metatomic engines for **torch 2.7+**.
@@ -58,6 +58,8 @@ See:
    :caption: Tutorials
 
    tutorials/quickstart
+   tutorials/neighbour-list
+   tutorials/pes-scan
    tutorials/cpmd
    tutorials/molecular-global-optimization
 
@@ -66,11 +68,14 @@ See:
    :caption: How-To Guides
 
    howto/pip-python
+   howto/ase
    howto/embedding
    howto/exprpot
+   howto/ipi
    howto/integration
    howto/eindir-anneal
    howto/eon-rgpot
+   howto/sutton-chen-stress
 
 .. toctree::
    :maxdepth: 2
@@ -83,10 +88,16 @@ See:
    :caption: Reference
 
    reference/architecture
+   reference/python_api
+   reference/sw_si
+   reference/tersoff_sic
    reference/mpi
    reference/c_abi
    reference/engine_abi
    reference/simd_exp
+   reference/sutton_chen
+   reference/eam_table
+   reference/fortran_potentials
    api/index
    changelog
 
@@ -100,5 +111,5 @@ See:
 License
 -------
 
-MIT, however note that some of the potentials are adapted from eOn which is
-under a BSD 3-Clause License.
+``rgpot`` is under the Massachusetts Institute of Technology (MIT) License.
+Some potentials are adapted from eOn, which is under a BSD 3-Clause License.

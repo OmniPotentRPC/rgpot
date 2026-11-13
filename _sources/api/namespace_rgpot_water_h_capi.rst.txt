@@ -23,6 +23,7 @@ C entry point for the H-in-water potential. :ref:`More...<details-namespacergpot
 
 	integer(c_int) function, public :ref:`rgpot_water_h_force<doxid-namespacergpot__water__h__capi_1a90483e9b08c79b6a46733311863fdfe1>`(integer(c_int), intent(in), value natoms, real(c_double), dimension(3, natoms), intent(in) positions, integer(c_int), dimension(natoms), intent(in) atomic_numbers, real(c_double), dimension(3, 3), intent(in) cell, real(c_double), dimension(3, natoms), intent(out) forces, real(c_double), intent(out) energy);
 	integer(c_int) function, public :ref:`rgpot_water_h_force_ws<doxid-namespacergpot__water__h__capi_1a9aa70cf6b28708c892f3c7d3ad9a07aa>`(type(c_ptr), value handle, integer(c_int), intent(in), value natoms, real(c_double), dimension(3, natoms), intent(in) positions, integer(c_int), dimension(natoms), intent(in) atomic_numbers, real(c_double), dimension(3, 3), intent(in) cell, real(c_double), dimension(3, natoms), intent(out) forces, real(c_double), intent(out) energy);
+	subroutine, public :ref:`rgpot_water_h_ensure_params<doxid-namespacergpot__water__h__capi_1ad9aadccdbe8f4d440d589889d43cd889>`();
 
 	} // namespace rgpot_water_h_capi
 .. _details-namespacergpot__water__h__capi:
@@ -34,7 +35,7 @@ C entry point for the H-in-water potential.
 
 Only ``bind(c)`` names leave this library; the physics module exports no external symbols of its own that C could collide with. The parameter set is saved here so a caller can be given a way to retune it without the kernel holding state of its own.
 
-Unlike the pair potentials, this one keeps no neighbour table. Its sum has a single centre and no cutoff, so every atom contributes one leg at its nearest periodic image and there is nothing for vesin to build.
+Unlike the pair potentials, this one keeps no neighbour table. Its sum has a single centre and no cutoff, so every atom contributes one leg at its nearest periodic image and there is no neighbour table to build.
 
 Global Functions
 ----------------
@@ -66,4 +67,14 @@ Evaluate H-water forces and energy in a per-caller workspace.
 ``positions`` and ``forces`` are ``3 * natoms`` doubles, x/y/z interleaved; ``atomic_numbers`` is one ``int`` per atom; ``cell`` is nine doubles, row-major, one cell vector per row, and a zero cell means an isolated cluster. Returns zero on success, non-zero on failure with the message available through ``rgpot_fortran_workspace_error``. ``handle`` is a workspace from ``rgpot_fortran_workspace_new``; a NULL handle returns -1.
 
 The atoms must be hydrogen and oxygen only, in whole water molecules plus one extra H, and that extra H must be the last atom: nothing in an atomic-number list distinguishes it from the hydrogens bound in water, so its position in the list is what identifies it. A list that does not meet this is rejected with a message naming the fault.
+
+.. index:: pair: function; rgpot_water_h_ensure_params
+.. _doxid-namespacergpot__water__h__capi_1ad9aadccdbe8f4d440d589889d43cd889:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	subroutine, public rgpot_water_h_ensure_params()
+
+F2: default-initialise the saved parameter block once. The C++ face calls this under std::call_once before any _ws evaluation. A second call does not write.
 

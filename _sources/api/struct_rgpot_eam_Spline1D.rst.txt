@@ -1,0 +1,29 @@
+.. index:: pair: struct; rgpot::eam::Spline1D
+.. _doxid-structrgpot_1_1eam_1_1_spline1_d:
+
+struct rgpot::eam::Spline1D
+===========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Spline1D {
+		// fields
+	
+		double :target:`origin<doxid-structrgpot_1_1eam_1_1_spline1_d_1af9f0c1389cad9a1f4c3b91c9e0c50c9a>` = 0;
+		double :target:`inv_h<doxid-structrgpot_1_1eam_1_1_spline1_d_1a4aa30dd35da6a09594c8838d07859c61>` = 0;
+		double :target:`h<doxid-structrgpot_1_1eam_1_1_spline1_d_1a4a13e02e3f8e1b9ceb58301f1fdf08ba>` = 0;
+		int :target:`nseg<doxid-structrgpot_1_1eam_1_1_spline1_d_1a6d5094d4c11398c0242a165b89f9056c>` = 0;
+		std::vector<double> :target:`c<doxid-structrgpot_1_1eam_1_1_spline1_d_1afdcd5226b94317d8d59d8e187a24e8d5>`;
+
+		// methods
+	
+		double :target:`eval<doxid-structrgpot_1_1eam_1_1_spline1_d_1a8f24c3d2de055af93ad7efb04484534d>`(double r) const;
+	};

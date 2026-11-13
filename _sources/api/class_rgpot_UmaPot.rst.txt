@@ -12,7 +12,7 @@ class rgpot::UmaPot
 Overview
 ~~~~~~~~
 
-UMA / OMol calculator: vesin neighbor list + AOTI package. :ref:`More...<details-classrgpot_1_1_uma_pot>`
+UMA / OMol calculator: neighbour query + AOTI package. :ref:`More...<details-classrgpot_1_1_uma_pot>`
 
 
 .. ref-code-block:: cpp
@@ -40,6 +40,8 @@ UMA / OMol calculator: vesin neighbor list + AOTI package. :ref:`More...<details
 		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_uma_pot_1a019bb20075a03501bca579f1000da723>`() const;
 		const :ref:`UmaConfig<doxid-structrgpot_1_1_uma_config>`& :target:`config<doxid-classrgpot_1_1_uma_pot_1aa19325e9a74bb5c0b2f11705b20e6f03>`() const;
 		void :target:`setChargeSpin<doxid-classrgpot_1_1_uma_pot_1a58c1104e4bb45668135c173868eb83be>`(int charge, int spin);
+		const char* :ref:`posDtypeName<doxid-classrgpot_1_1_uma_pot_1a509e3a1ef6f13e09c069b2e4d6b2527c>`() const;
+		const char* :ref:`modelDtypeName<doxid-classrgpot_1_1_uma_pot_1a0d6ef864eb7268b509e1e8dc976b01ff>`() const;
 		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_uma_pot_1aec8956d8d8fbc5af49d2b69f3e622d5b>`() const;
 	};
 .. _details-classrgpot_1_1_uma_pot:
@@ -47,9 +49,9 @@ UMA / OMol calculator: vesin neighbor list + AOTI package. :ref:`More...<details
 Detailed Documentation
 ~~~~~~~~~~~~~~~~~~~~~~
 
-UMA / OMol calculator: vesin neighbor list + AOTI package.
+UMA / OMol calculator: neighbour query + AOTI package.
 
-Loads an AOTInductor ``.pt2`` exported by ``scripts/export_uma_aoti.py``. Each force call builds a fairchem-convention edge list with vesin and runs the compiled graph. Charge and spin are per-call tensor inputs.
+Loads an AOTInductor ``.pt2`` exported by ``scripts/export_uma_aoti.py``. Each force call builds a fairchem-convention edge list with the neighbour query and runs the compiled graph. Charge and spin are per-call tensor inputs.
 
 The package was merged for one composition, charge, spin and task. Every force call checks the config and the input against the metadata embedded in the package and throws UmaContractError on a mismatch (see UmaContract).
 
@@ -77,6 +79,26 @@ One AOTI call per chunk of up to the package's batch_max same-composition system
 Concurrency and evaluation capabilities of this potential.
 
 Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
+
+.. index:: pair: function; posDtypeName
+.. _doxid-classrgpot_1_1_uma_pot_1a509e3a1ef6f13e09c069b2e4d6b2527c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const char* posDtypeName() const
+
+Input dtype used for positions, the cell and cell offsets. ``float32`` or ``float64``. Loads the package on the first call.
+
+.. index:: pair: function; modelDtypeName
+.. _doxid-classrgpot_1_1_uma_pot_1a0d6ef864eb7268b509e1e8dc976b01ff:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const char* modelDtypeName() const
+
+Weight dtype recorded in the package. Same lifetime rules as :ref:`posDtypeName() <doxid-classrgpot_1_1_uma_pot_1a509e3a1ef6f13e09c069b2e4d6b2527c>`.
 
 .. index:: pair: function; paramsKey
 .. _doxid-classrgpot_1_1_uma_pot_1aec8956d8d8fbc5af49d2b69f3e622d5b:

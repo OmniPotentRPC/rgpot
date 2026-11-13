@@ -19,6 +19,8 @@ struct rgpot::UmaPot::Impl
 	
 		torch::Device :target:`device<doxid-structrgpot_1_1_uma_pot_1_1_impl_1a86a1f8f6b39f5397f2b73c28c8137c59>` {torch::kCPU};
 		torch::ScalarType :target:`dtype<doxid-structrgpot_1_1_uma_pot_1_1_impl_1a975ee695f0f9e7f874d3636ced59facc>` {torch::kFloat32};
+		std::string :target:`pos_dtype_name<doxid-structrgpot_1_1_uma_pot_1_1_impl_1ad861157f0e368a90e4bb98561f696dab>` {"float32"};
+		std::string :target:`model_dtype_name<doxid-structrgpot_1_1_uma_pot_1_1_impl_1a795a923e6bd20d7afd645847c79a3d53>` {"float32"};
 		double :target:`cutoff<doxid-structrgpot_1_1_uma_pot_1_1_impl_1ad6a7397f173834ec078bf5cdbd11cc51>` {6.0};
 		double :target:`molecular_box<doxid-structrgpot_1_1_uma_pot_1_1_impl_1a27f9d11e74dffefc337a2856fff944e0>` {0.0};
 		int :target:`max_neighbors<doxid-structrgpot_1_1_uma_pot_1_1_impl_1a1185dc2d0adb9f26e064d1515e445024>` {300};

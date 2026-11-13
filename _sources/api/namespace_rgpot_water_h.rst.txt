@@ -7,6 +7,8 @@ namespace rgpot_water_h
 .. toctree::
 	:hidden:
 
+	interface_rgpot_water_h_rgpot_fast_wrap.rst
+
 Overview
 ~~~~~~~~
 
@@ -18,6 +20,10 @@ One H atom moving in the field of water molecules. :ref:`More...<details-namespa
 
 	
 	namespace rgpot_water_h {
+
+	// interfaces
+
+	interface :ref:`rgpot_fast_wrap<doxid-interfacergpot__water__h_1_1rgpot__fast__wrap>`;
 
 	// global variables
 
@@ -48,7 +54,7 @@ Three properties of the expression pick that shape.
 
 * The legs are independent and the two hydrogen legs share a single parameter set, so which water a hydrogen belongs to cancels out of the total. Grouping sites into molecules changes nothing, which is why this is a site loop rather than a molecule loop.
 
-* There is no cutoff. Every site interacts with the lone H at its nearest periodic image, however far away. A vesin table built at some finite radius would silently truncate the sum, so the minimum image is taken here instead.
+* There is no cutoff. Every site interacts with the lone H at its nearest periodic image, however far away. A neighbour table built at some finite radius would silently truncate the sum, so the minimum image is taken here instead.
 
 Each site writes only its own force, and the lone H takes the negated sum of the legs, so the site loop runs under ``do concurrent`` and the reduction happens once outside it.
 

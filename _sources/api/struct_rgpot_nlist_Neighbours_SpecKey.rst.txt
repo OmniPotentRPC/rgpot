@@ -1,0 +1,29 @@
+.. index:: pair: struct; rgpot::nlist::Neighbours::SpecKey
+.. _doxid-structrgpot_1_1nlist_1_1_neighbours_1_1_spec_key:
+
+struct rgpot::nlist::Neighbours::SpecKey
+========================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct SpecKey {
+		// fields
+	
+		double :target:`cutoff<doxid-structrgpot_1_1nlist_1_1_neighbours_1_1_spec_key_1a62fe112a4a57400ad40759e912c77b7e>` = 0;
+		double :target:`skin<doxid-structrgpot_1_1nlist_1_1_neighbours_1_1_spec_key_1af7c05ca9a819e9ac972fae4710d0d67d>` = 0;
+		:ref:`Image<doxid-struct_image>` :target:`image<doxid-structrgpot_1_1nlist_1_1_neighbours_1_1_spec_key_1a797700dd7f824a01e7d2b0fa337ee337>` = Image::Round;
+		Mode :target:`mode<doxid-structrgpot_1_1nlist_1_1_neighbours_1_1_spec_key_1af369b1aad5ebb5b712d2732caf73076b>` = Mode::Auto;
+		std::array<bool, 3> :target:`periodic<doxid-structrgpot_1_1nlist_1_1_neighbours_1_1_spec_key_1a39e0b1f5094f7ab59231f69d4102e0b7>` {{true, true, true}};
+
+		// methods
+	
+		bool :target:`operator==<doxid-structrgpot_1_1nlist_1_1_neighbours_1_1_spec_key_1a6b6cdb78093f1e5c412ae30f5ddfa31b>`(const SpecKey& o) const;
+	};

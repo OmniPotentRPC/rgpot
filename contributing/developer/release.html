@@ -2,7 +2,7 @@
 <html lang="en" data-accent-color="teal" data-content_root="../../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Release Process - rgpot documentation</title><link rel="shortcut icon" href="../../_static/favicon.svg"/><link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="Developer FAQ" href="faq.html" /><link rel="prev" title="Testing" href="testing.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Release Process - rgpot 3.6.0 documentation</title><link rel="shortcut icon" href="../../_static/favicon.svg"/><link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="Developer FAQ" href="faq.html" /><link rel="prev" title="Testing" href="testing.html" />
       <link rel="canonical" href="https://rgpot.rgoswami.me/contributing/developer/release.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
@@ -114,14 +114,18 @@ data-aria-dark="Switch to auto color mode">
         <div class="globaltoc" data-expand-depth="1"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Tutorials</span></p>
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../tutorials/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../tutorials/neighbour-list.html">Neighbour lists</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../tutorials/pes-scan.html">Scan a potential energy surface over RPC</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../tutorials/cpmd.html">Evaluate a water geometry with CPMD</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../tutorials/molecular-global-optimization.html">Find the Ground State of an EON Structure</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">How-To Guides</span></p>
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../howto/pip-python.html">Python package (PyPI)</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../howto/ase.html">ASE calculators</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../howto/embedding.html">Embedding as a Subproject</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../howto/exprpot.html">Compose potentials with ExprPot</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../howto/ipi.html">i-PI socket server</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../howto/integration.html">External Integration Guide</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../howto/eindir-anneal.html">rgpot Potentials as eindir Objectives</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../howto/eon-rgpot.html">eOn Potentials Over rgpot</a></li>
@@ -129,22 +133,35 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../howto/eon-rgpot.html#landed-work-items">Landed Work Items</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../howto/eon-rgpot.html#operator-cheatsheet-rgpot-side">Operator Cheatsheet (rgpot side)</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../howto/eon-rgpot.html#related">Related</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../howto/sutton-chen-stress.html">Read the stress of a periodic Sutton-Chen cell</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Explanation</span></p>
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../explanation/index.html">Explanation</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/rpc-model.html">The RPC Model</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/simd.html">SIMD paths and dispatch</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../explanation/thread-safety.html">Thread safety</a></li>
 </ul>
 </li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/architecture.html">Architecture Overview</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/python_api.html">Python API</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/sw_si.html">Stillinger-Weber silicon (1985)</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/tersoff_sic.html">Tersoff silicon-carbon (1989)</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/mpi.html">MPI</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/c_abi.html">C ABI of rgpot-core</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/engine_abi.html">Engine plugin ABI</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/simd_exp.html">FMA dispatch and exp</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/sutton_chen.html">Sutton-Chen potential</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/sutton_chen.html#reduced-cluster-pairs">Reduced cluster pairs</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/sutton_chen.html#stress">Stress</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/eam_table.html">Tabulated EAM and Finnis-Sinclair potentials</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/eam_table.html#agreement-with-lammps">Agreement with LAMMPS</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/eam_table.html#stress">Stress</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/eam_table.html#checks">Checks</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../reference/fortran_potentials.html">Fortran potentials: porting rules</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../../api/index.html">API Reference</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../api/group_rgpot_cpp.html">C++ RAII Wrappers</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../../api/class_rgpot_CalcResult.html">class rgpot::CalcResult</a><ul class="simple">
@@ -178,7 +195,10 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../../api/namespace_forcefields.html">namespace forcefields</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_forcefields-2.html">namespace forcefields</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_forcefields-2.html">namespace forcefields</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_forcefields-3.html">namespace forcefields</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_forcefields_unit_system.html">namespace forcefields::unit_system</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_forcefields_zhu_philpott_parameters.html">namespace forcefields::zhu_philpott_parameters</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_forcefields_Ccl.html">class forcefields::Ccl</a></li>
@@ -188,13 +208,20 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_forcefields_ZhuPhilpott.html">template class forcefields::ZhuPhilpott</a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_forcefields-3.html">namespace forcefields</a><ul class="simple">
-</ul>
-</li>
 <li class="toctree-l3"><a class="reference internal" href="../../api/namespace_fortranpots.html">namespace fortranpots</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../api/namespace_nlist.html">namespace nlist</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_nlist-2.html">namespace nlist</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../api/enum_nlist_Hit.html">enum nlist::Hit</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_nlist-3.html">namespace nlist</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_nlist-4.html">namespace nlist</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../api/namespace_plugin.html">namespace plugin</a><ul class="simple">
@@ -221,12 +248,24 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-6.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-7.html">namespace rgpot</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-7.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-8.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-9.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-10.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-11.html">namespace rgpot</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_abi.html">namespace rgpot::abi</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_aoti_execstack.html">namespace rgpot::aoti_execstack</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_detail.html">namespace rgpot::detail</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_details.html">namespace rgpot::details</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_eam.html">namespace rgpot::eam</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_engine.html">namespace rgpot::engine</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_fortranpots.html">namespace rgpot::fortranpots</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_nlist.html">namespace rgpot::nlist</a></li>
@@ -238,6 +277,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_units.html">namespace rgpot::units</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/namespace_rgpot_vesin_compat.html">namespace rgpot::vesin_compat</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/enum_rgpot_D3Damping.html">enum rgpot::D3Damping</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/enum_rgpot_EAMTableFormat.html">enum rgpot::EAMTableFormat</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/enum_rgpot_GFNMethod.html">enum rgpot::GFNMethod</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/enum_rgpot_Reentrancy.html">enum rgpot::Reentrancy</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
@@ -248,11 +288,14 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_D3Config.html">struct rgpot::D3Config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_D4Config.html">struct rgpot::D4Config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_EAMCellConfig.html">struct rgpot::EAMCellConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_EAMTable.html">struct rgpot::EAMTable</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_EAMTableConfig.html">struct rgpot::EAMTableConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_EMTConfig.html">struct rgpot::EMTConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_ForceBatch.html">struct rgpot::ForceBatch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_IPIConfig.html">struct rgpot::IPIConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_LJClusterConfig.html">struct rgpot::LJClusterConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_LJConfig.html">struct rgpot::LJConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
@@ -260,6 +303,8 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_PotCaps.html">struct rgpot::PotCaps</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_QuinticSwitch.html">struct rgpot::QuinticSwitch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_SkalaConfig.html">struct rgpot::SkalaConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_SuttonChenConfig.html">struct rgpot::SuttonChenConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_SuttonChenScales.html">struct rgpot::SuttonChenScales</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_UmaConfig.html">struct rgpot::UmaConfig</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_rgpot_WaterConfig.html">struct rgpot::WaterConfig</a></li>
@@ -277,8 +322,10 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_D4Pot.html">class rgpot::D4Pot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_DynLib.html">class rgpot::DynLib</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_EAMPot.html">class rgpot::EAMPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_EAMTablePot.html">class rgpot::EAMTablePot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_EMTPot.html">class rgpot::EMTPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_ExprPot.html">class rgpot::ExprPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_IPIPot.html">class rgpot::IPIPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_LJClusterPot.html">class rgpot::LJClusterPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_MOPACPot.html">class rgpot::MOPACPot</a></li>
@@ -289,27 +336,18 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_PotentialBase.html">class rgpot::PotentialBase</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_SPCEPot.html">class rgpot::SPCEPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_SkalaPot.html">class rgpot::SkalaPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_StillingerWeberSi.html">class rgpot::StillingerWeberSi</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_SuttonChenPot.html">class rgpot::SuttonChenPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_TBLitePot.html">class rgpot::TBLitePot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_TIP4PPot.html">class rgpot::TIP4PPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_TIP4PPtPot.html">class rgpot::TIP4PPtPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_TersoffSiC.html">class rgpot::TersoffSiC</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_UmaPot.html">class rgpot::UmaPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_XTBDlopen.html">class rgpot::XTBDlopen</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_XTBPot.html">class rgpot::XTBPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_XcKernel.html">class rgpot::XcKernel</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_ZBLPot.html">class rgpot::ZBLPot</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/class_rgpot_registry.html">template class rgpot::registry</a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-8.html">namespace rgpot</a><ul class="simple">
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-9.html">namespace rgpot</a><ul class="simple">
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-10.html">namespace rgpot</a><ul class="simple">
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-11.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-12.html">namespace rgpot</a><ul class="simple">
@@ -322,6 +360,27 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-15.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-16.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-17.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-18.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-19.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-20.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-21.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot-22.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot_cuh2.html">namespace rgpot_cuh2</a><ul class="simple">
@@ -360,7 +419,11 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot_lenosky_capi.html">namespace rgpot_lenosky_capi</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot_neighbors.html">namespace rgpot_neighbors</a><ul class="simple">
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot_neighbors.html">namespace rgpot_neighbors</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../api/interface_rgpot_neighbors_rgpot_nlist_fortran_build.html">interface rgpot_neighbors::rgpot_nlist_fortran_build</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/interface_rgpot_neighbors_rgpot_nlist_fortran_close.html">interface rgpot_neighbors::rgpot_nlist_fortran_close</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/interface_rgpot_neighbors_rgpot_nlist_fortran_open.html">interface rgpot_neighbors::rgpot_nlist_fortran_open</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api/interface_rgpot_neighbors_rgpot_nlist_strerror.html">interface rgpot_neighbors::rgpot_nlist_strerror</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot_sw.html">namespace rgpot_sw</a><ul class="simple">
@@ -375,13 +438,21 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot_tersoff_capi.html">namespace rgpot_tersoff_capi</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot_water_h.html">namespace rgpot_water_h</a><ul class="simple">
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot_water_h.html">namespace rgpot_water_h</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../api/interface_rgpot_water_h_rgpot_fast_wrap.html">interface rgpot_water_h::rgpot_fast_wrap</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot_water_h_capi.html">namespace rgpot_water_h_capi</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../api/namespace_rgpot_workspace.html">namespace rgpot_workspace</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_simd.html">namespace simd</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/namespace_simd-2.html">namespace simd</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../api/enum_simd_Mode.html">enum simd::Mode</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../api/namespace_std.html">namespace std</a><ul class="simple">
@@ -468,6 +539,21 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../../api/struct_rgpot_mpi_group_t.html">struct rgpot_mpi_group_t</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/struct_rgpot_nlist_builder.html">struct rgpot_nlist_builder</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/struct_rgpot_nlist_fortran_list.html">struct rgpot_nlist_fortran_list</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/struct_rgpot_nlist_request.html">struct rgpot_nlist_request</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/struct_rgpot_nlist_soa.html">struct rgpot_nlist_soa</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/struct_rgpot_nlist_walk.html">struct rgpot_nlist_walk</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="../../api/struct_rgpot_plugin_descriptor_t.html">struct rgpot_plugin_descriptor_t</a><ul class="simple">
 </ul>
 </li>
@@ -475,6 +561,15 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../api/struct_rgpot_plugin_output_t.html">struct rgpot_plugin_output_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/struct_rgpot_sc_config.html">struct rgpot_sc_config</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/struct_rgpot_sc_scales.html">struct rgpot_sc_scales</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/struct_rgpot_tip4p_sites_config.html">struct rgpot_tip4p_sites_config</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../api/class_AsapPotential.html">class AsapPotential</a><ul class="simple">
@@ -490,6 +585,7 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../api/class_EAM.html">class EAM</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../api/struct_EAM_Delta.html">struct EAM::Delta</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../api/struct_EAM_element_parameters.html">struct EAM::element_parameters</a></li>
 </ul>
 </li>
@@ -586,6 +682,7 @@ data-aria-dark="Switch to auto color mode">
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
 <li><a class="reference internal" href="#changelog-fragments">Changelog fragments</a></li>
+<li><a class="reference internal" href="#commit-check">Commit check</a></li>
 <li><a class="reference internal" href="#preparing-a-release-maintainer-run-as-soon-as-this-lands-on-main">Preparing a release (maintainer) &#8212; run as soon as this lands on <code class="docutils literal notranslate"><span class="pre">main</span></code></a></li>
 <li><a class="reference internal" href="#pre-release-rc-tags">Pre-release / RC tags</a></li>
 <li><a class="reference internal" href="#version-policy">Version policy</a></li>
@@ -690,10 +787,34 @@ data-aria-dark="Switch to auto color mode">
 </div><article class="yue dark-code" role="main">
           <section id="release-process">
 <h1>Release Process<a class="headerlink" href="#release-process" title="Link to this heading">¶</a></h1>
-<p>rgpot uses a <strong>lockstep monorepo version</strong>: the same SemVer appears in
-<code class="docutils literal notranslate"><span class="pre">meson.build</span></code>, <code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code> (<code class="docutils literal notranslate"><span class="pre">project(VERSION</span> <span class="pre">...)</span></code>),
-<code class="docutils literal notranslate"><span class="pre">rgpot-core/</span> <span class="pre">Cargo.toml</span></code>, <code class="docutils literal notranslate"><span class="pre">towncrier.toml</span></code>, and <code class="docutils literal notranslate"><span class="pre">pixi.toml</span></code> (workspace key only
-— not dependency pins such as nickel).
+<p>rgpot has one release version, written by hand in one place: the
+<code class="docutils literal notranslate"><span class="pre">[workspace.package]</span> <span class="pre">version</span></code> key of the root <code class="docutils literal notranslate"><span class="pre">Cargo.toml</span></code>.
+<code class="docutils literal notranslate"><span class="pre">rgpot-core</span></code> and <code class="docutils literal notranslate"><span class="pre">rgpot-pair</span></code> inherit it with <code class="docutils literal notranslate"><span class="pre">version.workspace</span> <span class="pre">=</span> <span class="pre">true</span></code>, and
+cargo writes it into <code class="docutils literal notranslate"><span class="pre">Cargo.lock</span></code>.
+Every other copy sits between cogapp markers in a file listed in
+<code class="docutils literal notranslate"><span class="pre">ci/version/files.txt</span></code>: <code class="docutils literal notranslate"><span class="pre">meson.build</span></code>, <code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code>, <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>,
+<code class="docutils literal notranslate"><span class="pre">pixi.toml</span></code> (the workspace key only), <code class="docutils literal notranslate"><span class="pre">towncrier.toml</span></code>, <code class="docutils literal notranslate"><span class="pre">docs/source/conf.py</span></code>
+(Sphinx <code class="docutils literal notranslate"><span class="pre">version</span></code> and <code class="docutils literal notranslate"><span class="pre">release</span></code>), the <code class="docutils literal notranslate"><span class="pre">RGPOT_VERSION</span></code> macros of
+<code class="docutils literal notranslate"><span class="pre">rgpot-core/include/rgpot.h</span></code> and the dependency snippets of the <code class="docutils literal notranslate"><span class="pre">rgpot-core</span></code>
+README.
+<code class="docutils literal notranslate"><span class="pre">ci/version/rgpot_version.py</span></code> reads the version from <code class="docutils literal notranslate"><span class="pre">Cargo.toml</span></code> for those
+snippets.
+Regenerate the copies, or check them, with the cogapp tasks of the <code class="docutils literal notranslate"><span class="pre">version</span></code>
+pixi environment, which pins cogapp 3.6.0:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">pixi<span class="w"> </span>r<span class="w"> </span>-e<span class="w"> </span>version<span class="w"> </span>release-cog
+</span><span data-line="2">pixi<span class="w"> </span>r<span class="w"> </span>-e<span class="w"> </span>version<span class="w"> </span>version-drift
+</span></pre></div>
+</div>
+<p>The tasks call <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">cogapp</span></code>. cogapp also installs a <code class="docutils literal notranslate"><span class="pre">cog</span></code> script, which is
+not cocogitto, so cogapp lives in its own environment and nothing calls it as
+<code class="docutils literal notranslate"><span class="pre">cog</span></code>.
+The <code class="docutils literal notranslate"><span class="pre">version-drift</span></code> prek hook runs the check on every pull request, and
+<code class="docutils literal notranslate"><span class="pre">potctl</span> <span class="pre">release</span> <span class="pre">assert</span></code> compares each copy, the numeric <code class="docutils literal notranslate"><span class="pre">RGPOT_VERSION</span></code> macros
+and the lock entries with <code class="docutils literal notranslate"><span class="pre">Cargo.toml</span></code>.
+<code class="docutils literal notranslate"><span class="pre">RGPOT_VERSION</span></code> keeps a pre-release whole, as in <code class="docutils literal notranslate"><span class="pre">3.6.0-rc.1</span></code>, and <code class="docutils literal notranslate"><span class="pre">RGPOT_VERSION_PATCH</span></code>
+is its numeric patch, <code class="docutils literal notranslate"><span class="pre">0</span></code>.
+<code class="docutils literal notranslate"><span class="pre">rgpot-core/build.rs</span></code> and <code class="docutils literal notranslate"><span class="pre">ci/version/rgpot_version.py</span></code> both write that block,
+and a <code class="docutils literal notranslate"><span class="pre">potctl</span></code> test fails when they disagree.
 Git tags are <code class="docutils literal notranslate"><span class="pre">vX.Y.Z</span></code> (see <code class="docutils literal notranslate"><span class="pre">cog.toml</span></code> <code class="docutils literal notranslate"><span class="pre">tag_prefix</span></code>).
 Pre-release tags such as <code class="docutils literal notranslate"><span class="pre">v1.2.0-rc.1</span></code> are allowed; <code class="docutils literal notranslate"><span class="pre">release.yml</span></code> marks the
 GitHub Release as prerelease and <strong>skips</strong> <code class="docutils literal notranslate"><span class="pre">cargo</span> <span class="pre">publish</span></code> (stable crates.io
@@ -736,7 +857,7 @@ a second prose changelog.</p>
 <td><p>Staged on <code class="docutils literal notranslate"><span class="pre">v*</span></code>: <code class="docutils literal notranslate"><span class="pre">tools</span></code> → <code class="docutils literal notranslate"><span class="pre">gate</span></code> → (<code class="docutils literal notranslate"><span class="pre">cpp-smoke</span></code> ∥ <code class="docutils literal notranslate"><span class="pre">rust-test</span></code>) → <code class="docutils literal notranslate"><span class="pre">publish</span></code> → <code class="docutils literal notranslate"><span class="pre">gh-release</span></code></p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.github/workflows/release-prepare.yml</span></code></p></td>
-<td><p>Staged: <code class="docutils literal notranslate"><span class="pre">tools</span></code> (<code class="docutils literal notranslate"><span class="pre">potctl=+=cog</span></code> artifact) → <code class="docutils literal notranslate"><span class="pre">prepare</span></code> (lockstep, towncrier, cog dry-run)</p></td>
+<td><p>Staged: <code class="docutils literal notranslate"><span class="pre">tools</span></code> (<code class="docutils literal notranslate"><span class="pre">potctl=+=cog</span></code> artifact) → <code class="docutils literal notranslate"><span class="pre">prepare</span></code> (lockstep, towncrier, cog dry-run, cog check)</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CI</span> <span class="pre">(orchestrator)</span></code> / <code class="docutils literal notranslate"><span class="pre">towncrier</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">towncrier</span> <span class="pre">check</span></code> on PRs (orchestrator job)</p></td>
@@ -790,6 +911,22 @@ scripts, etc.).
 Pure <code class="docutils literal notranslate"><span class="pre">docs</span></code> / <code class="docutils literal notranslate"><span class="pre">ci</span></code> / <code class="docutils literal notranslate"><span class="pre">chore</span></code> commits may omit fragments if they avoid those
 paths.</p>
 </section>
+<section id="commit-check">
+<h2>Commit check<a class="headerlink" href="#commit-check" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">release-prepare.yml</span></code> runs <code class="docutils literal notranslate"><span class="pre">potctl</span> <span class="pre">ci</span> <span class="pre">cog-check</span></code> on the commits a pull request
+adds.
+Cocogitto 7 checks a positional range:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">cog<span class="w"> </span>check<span class="w"> </span>--ignore-merge-commits<span class="w"> </span>&lt;base&gt;..HEAD
+</span></pre></div>
+</div>
+<p>There is no <code class="docutils literal notranslate"><span class="pre">cog</span> <span class="pre">check</span> <span class="pre">--from</span></code>.
+<code class="docutils literal notranslate"><span class="pre">--from-latest-tag</span></code> is a boolean, and it shares a group with that range.
+<code class="docutils literal notranslate"><span class="pre">cog.toml</span></code> sets <code class="docutils literal notranslate"><span class="pre">ignore_merge_commits</span> <span class="pre">=</span> <span class="pre">true</span></code>, which skips a commit with more
+than one parent (a <code class="docutils literal notranslate"><span class="pre">Merge</span> <span class="pre">branch</span></code> commit).
+A develop sync whose subject is <code class="docutils literal notranslate"><span class="pre">merge:</span></code> has one parent, so cog still reports
+<code class="docutils literal notranslate"><span class="pre">Commit</span> <span class="pre">type</span> <span class="pre">`merge`</span> <span class="pre">not</span> <span class="pre">allowed</span></code>.
+The prepare check ignores that subject as well.</p>
+</section>
 <section id="preparing-a-release-maintainer-run-as-soon-as-this-lands-on-main">
 <h2>Preparing a release (maintainer) — run as soon as this lands on <code class="docutils literal notranslate"><span class="pre">main</span></code><a class="headerlink" href="#preparing-a-release-maintainer-run-as-soon-as-this-lands-on-main" title="Link to this heading">¶</a></h2>
 <ol class="arabic simple">
@@ -828,11 +965,10 @@ by</p></li>
 </div>
 <p>Hooks (<code class="docutils literal notranslate"><span class="pre">cog.toml</span></code> <code class="docutils literal notranslate"><span class="pre">pre_bump_hooks</span></code>):</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">cargo</span> <span class="pre">run</span> <span class="pre">-q</span> <span class="pre">-p</span> <span class="pre">potctl</span> <span class="pre">--</span> <span class="pre">release</span> <span class="pre">sync</span> <span class="pre">{{version}}</span></code> — lockstep write
-(meson,</p></li>
-</ul>
-<p>CMake, towncrier, Cargo, pixi workspace)</p>
-<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">cargo</span> <span class="pre">run</span> <span class="pre">-q</span> <span class="pre">-p</span> <span class="pre">potctl</span> <span class="pre">--</span> <span class="pre">release</span> <span class="pre">sync</span> <span class="pre">{{version}}</span></code> writes
+<code class="docutils literal notranslate"><span class="pre">[workspace.package]</span> <span class="pre">version</span></code> in <code class="docutils literal notranslate"><span class="pre">Cargo.toml</span></code> and nothing else</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">r</span> <span class="pre">-e</span> <span class="pre">version</span> <span class="pre">release-cog</span></code> regenerates the copies</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">cargo</span> <span class="pre">update</span> <span class="pre">--workspace</span> <span class="pre">--offline</span></code> rewrites the <code class="docutils literal notranslate"><span class="pre">Cargo.lock</span></code> entries</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">uvx</span> <span class="pre">towncrier</span> <span class="pre">build</span> <span class="pre">--yes</span> <span class="pre">--version</span> <span class="pre">{{version}}</span></code> — update <code class="docutils literal notranslate"><span class="pre">CHANGELOG.md</span></code>,
 clear</p></li>
 </ul>
@@ -890,11 +1026,11 @@ release).</p>
 <section id="version-policy">
 <h2>Version policy<a class="headerlink" href="#version-policy" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p><strong>Lockstep</strong>: C++ (meson + CMake), Rust crate (<code class="docutils literal notranslate"><span class="pre">rgpot-core</span></code>), docs towncrier</p></li>
-</ul>
-<p>stamp, and pixi workspace version share one semver (optionally with
-<code class="docutils literal notranslate"><span class="pre">-[a-z0-</span> <span class="pre">9.]+</span></code> suffix for RCs).</p>
-<ul class="simple">
+<li><p><strong>One source</strong>: C++ (meson + CMake), the Rust crates (<code class="docutils literal notranslate"><span class="pre">rgpot-core</span></code>,
+<code class="docutils literal notranslate"><span class="pre">rgpot-pair</span></code>), the Python package, the towncrier stamp and the pixi workspace
+share the semver in <code class="docutils literal notranslate"><span class="pre">Cargo.toml</span></code> (optionally with a <code class="docutils literal notranslate"><span class="pre">-[a-z0-9.]+</span></code> suffix for
+RCs).
+<code class="docutils literal notranslate"><span class="pre">potctl</span></code> keeps its own version, because it does not publish.</p></li>
 <li><p><strong>One global tag</strong>: <code class="docutils literal notranslate"><span class="pre">vX.Y.Z</span></code> or <code class="docutils literal notranslate"><span class="pre">vX.Y.Z-rc.N</span></code> (not <code class="docutils literal notranslate"><span class="pre">rgpot-core-v…</span></code>).</p></li>
 <li><p><strong>Crate publish</strong> ships <code class="docutils literal notranslate"><span class="pre">rgpot-core</span></code> only on <strong>stable</strong> tags; C++ consumers track</p></li>
 </ul>
@@ -918,11 +1054,12 @@ release).</p>
 </span><span data-line="3">uvx<span class="w"> </span>towncrier<span class="w"> </span>build<span class="w"> </span>--draft
 </span><span data-line="4">cargo<span class="w"> </span>run<span class="w"> </span>-q<span class="w"> </span>-p<span class="w"> </span>potctl<span class="w"> </span>--<span class="w"> </span>release<span class="w"> </span>assert
 </span><span data-line="5">cargo<span class="w"> </span>run<span class="w"> </span>-q<span class="w"> </span>-p<span class="w"> </span>potctl<span class="w"> </span>--<span class="w"> </span>release<span class="w"> </span>sync<span class="w"> </span><span class="m">9</span>.9.9<span class="w">   </span><span class="c1"># ok semver; use real target in dry tests</span>
-</span><span data-line="6"><span class="c1"># refuse garbage:</span>
-</span><span data-line="7">cargo<span class="w"> </span>run<span class="w"> </span>-q<span class="w"> </span>-p<span class="w"> </span>potctl<span class="w"> </span>--<span class="w"> </span>release<span class="w"> </span>sync<span class="w"> </span>not-a-version<span class="w">   </span><span class="c1"># must error</span>
-</span><span data-line="8"><span class="c1"># restore if you ran a fake version: git checkout -- meson.build CMakeLists.txt ...</span>
-</span><span data-line="9">cargo<span class="w"> </span>publish<span class="w"> </span>--manifest-path<span class="w"> </span>rgpot-core/Cargo.toml<span class="w"> </span>--locked<span class="w"> </span>--dry-run
-</span><span data-line="10">pixi<span class="w"> </span>r<span class="w"> </span>lychee-check<span class="w">   </span><span class="c1"># optional link hygiene</span>
+</span><span data-line="6">pixi<span class="w"> </span>r<span class="w"> </span>-e<span class="w"> </span>version<span class="w"> </span>version-drift<span class="w">   </span><span class="c1"># must fail now</span>
+</span><span data-line="7"><span class="c1"># refuse garbage:</span>
+</span><span data-line="8">cargo<span class="w"> </span>run<span class="w"> </span>-q<span class="w"> </span>-p<span class="w"> </span>potctl<span class="w"> </span>--<span class="w"> </span>release<span class="w"> </span>sync<span class="w"> </span>not-a-version<span class="w">   </span><span class="c1"># must error</span>
+</span><span data-line="9"><span class="c1"># restore if you ran a fake version: git checkout -- Cargo.toml</span>
+</span><span data-line="10">cargo<span class="w"> </span>publish<span class="w"> </span>--manifest-path<span class="w"> </span>rgpot-core/Cargo.toml<span class="w"> </span>--locked<span class="w"> </span>--dry-run
+</span><span data-line="11">pixi<span class="w"> </span>r<span class="w"> </span>lychee-check<span class="w">   </span><span class="c1"># optional link hygiene</span>
 </span></pre></div>
 </div>
 </section>
@@ -1060,7 +1197,7 @@ crates.io,</p></li>
     </div>
   </div>
 </footer>
-      <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../../_static/documentation_options.js?v=5349f462"></script>
       <script src="../../_static/doctools.js?v=9a2dae69"></script>
       <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
       <script src="../../_static/target-highlight.js?v=df7d332b"></script>

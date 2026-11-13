@@ -86,5 +86,5 @@ Every rank of a calculator group enters each force call together (an MPI engine 
 
 	bool stress = false
 
-forceImpl writes Cauchy stress for a positive cell volume: sigma = (1/V) dE/dstrain in energy/length^3, row-major in :ref:`ForceOut <doxid-structrgpot_1_1_force_out>`.
+forceImpl writes Cauchy stress for a positive cell volume: sigma = (1/V) dE/dstrain in energy/length^3, row-major in :ref:`ForceOut <doxid-structrgpot_1_1_force_out>`. :ref:`IPIPot <doxid-classrgpot_1_1_i_p_i_pot>` also keeps the tensor for copyStress.
 

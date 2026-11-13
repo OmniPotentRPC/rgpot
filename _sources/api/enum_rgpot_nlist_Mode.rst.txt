@@ -1,0 +1,19 @@
+.. index:: pair: enum; Mode
+.. _doxid-_neighbours_8hpp_1abbe419a29b7b27849823ce4768ab8c08:
+
+enum rgpot::nlist::Mode
+=======================
+
+Stored keeps a Verlet list of candidate pairs. Stream walks the cells and stores nothing beyond the atoms and the bins. Auto stores when the candidate index array fits in the memory the OS reports as available, and streams otherwise.
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <Neighbours.hpp>
+
+	enum Mode {
+	    :target:`Auto<doxid-_neighbours_8hpp_1abbe419a29b7b27849823ce4768ab8c08a06b9281e396db002010bde1de57262eb>`,
+	    :target:`Stored<doxid-_neighbours_8hpp_1abbe419a29b7b27849823ce4768ab8c08a7bf2d26eab899c413218b729d4d914b7>`,
+	    :target:`Stream<doxid-_neighbours_8hpp_1abbe419a29b7b27849823ce4768ab8c08aeae835e83c0494a376229f254f7d3392>`,
+	};
+

@@ -1,0 +1,26 @@
+.. index:: pair: class; rgpot::nlist::Builder
+.. _doxid-classrgpot_1_1nlist_1_1_builder:
+
+class rgpot::nlist::Builder
+===========================
+
+.. toctree::
+	:hidden:
+
+Stored list with a skin rebuild. A later update keeps the table while every atom has moved by at most half the skin and the cell and the query are unchanged. Skin 0 rebuilds unless the coordinates match. Throws :ref:`Error <doxid-classrgpot_1_1nlist_1_1_error>` and keeps the previous table when the geometry is rejected. The same builder is used by one thread. Two builders may update at the same time.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <NeighbourList.hpp>
+	
+	class Builder {
+	public:
+		// methods
+	
+		void :target:`update<doxid-classrgpot_1_1nlist_1_1_builder_1ad343f600b6a14f08fcbc829349e1f5fb>`(const double* positions, std::size_t n, const double* box9, const :ref:`Query<doxid-structrgpot_1_1nlist_1_1_query>`& query);
+		const :ref:`Table<doxid-structrgpot_1_1nlist_1_1_table>`& :target:`table<doxid-classrgpot_1_1nlist_1_1_builder_1a4c9f36bacb619e7cfa699ad91d08c425>`() const;
+		std::uint64_t :target:`builds<doxid-classrgpot_1_1nlist_1_1_builder_1a53c2f8a22f7e14329a86d49bce225e96>`() const;
+		bool :target:`reused<doxid-classrgpot_1_1nlist_1_1_builder_1adb6fe2af3a6fbc4c005aa2a3c4c2dfbc>`() const;
+	};

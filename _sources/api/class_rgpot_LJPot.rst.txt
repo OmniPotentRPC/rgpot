@@ -31,6 +31,9 @@ Implementation of a shifted 12-6 Lennard-Jones potential. :ref:`More...<details-
 		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_l_j_pot_1a2421f1854cc46c0c467a58c4ebda956a>`() const;
 		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_l_j_pot_1a8c8f6af50485f38472d8f8b82e3b9be5>`() const;
 		void :ref:`forceImpl<doxid-classrgpot_1_1_l_j_pot_1a74c9c2b391a010329a97b272ef1cc776>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		void :target:`setNeighbourMode<doxid-classrgpot_1_1_l_j_pot_1abd1f445188217b50399c18341e2b660b>`(nlist::Mode mode);
+		bool :ref:`listReused<doxid-classrgpot_1_1_l_j_pot_1a52c309bae656de6586bbf69594a0ee78>`() const;
+		std::size_t :ref:`retainedPairs<doxid-classrgpot_1_1_l_j_pot_1a4dfa3b74991a793011d318c9646b37eb>`() const;
 	};
 .. _details-classrgpot_1_1_l_j_pot:
 
@@ -39,9 +42,11 @@ Detailed Documentation
 
 Implementation of a shifted 12-6 Lennard-Jones potential.
 
-Pairwise interactions within the cutoff radius, minimum image convention with the full cell. Pairs come from the shared ``rgpot::nlist::PairListCache`` (the eOn PairListCache design): repeated evaluations on nearby geometries reuse a Verlet-skin cached candidate list, and one-shot evaluations run a single fused scan identical in pair content to the historical per-call double loop.
+Pairwise interactions within the cutoff radius, minimum image convention on an orthogonal or sheared box. Pairs come from the shared neighbour layer: a cell list, a Verlet skin, and either a stored list or a streaming walk. The pair term runs during that walk. A streaming call does not copy a half-list. A stored call keeps candidates out to the cutoff plus the skin and drops the rest from the current distances, so a later call inside half the skin reuses the candidates. Several threads split the atoms, keep a private force buffer, and add those buffers in thread order. A nonzero switch width uses the quintic switch. Cauchy stress is published from the kernel's strain accumulator.
 
-With ``:ref:`LJConfig::switch_width <doxid-structrgpot_1_1_l_j_config_1a967c7adc35528cafea6aabad6541cf9a>``` set, each pair term is the unshifted 12-6 energy times the C^2 quintic switch of :ref:`PairSwitch.hpp <doxid-_pair_switch_8hpp_source>`, so energy, force and curvature reach zero at the cutoff; otherwise the energy is shifted to zero there and the force jumps.
+.. warning::
+
+	The box is assumed to be orthogonal.
 
 Methods
 -------
@@ -102,4 +107,24 @@ Computes the forces and energy for a given configuration.
 .. rubric:: Returns:
 
 Void.
+
+.. index:: pair: function; listReused
+.. _doxid-classrgpot_1_1_l_j_pot_1a52c309bae656de6586bbf69594a0ee78:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool listReused() const
+
+True when the last force call kept the Verlet list. The test is half the skin, the same predicate as ``nlist::Builder::update``.
+
+.. index:: pair: function; retainedPairs
+.. _doxid-classrgpot_1_1_l_j_pot_1a4dfa3b74991a793011d318c9646b37eb:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::size_t retainedPairs() const
+
+Pair indices this potential kept. Zero in a streaming call: the pair term runs inside the cell walk and no half-list is copied out.
 

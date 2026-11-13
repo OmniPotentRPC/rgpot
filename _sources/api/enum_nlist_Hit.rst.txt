@@ -1,0 +1,18 @@
+.. index:: pair: enum; Hit
+.. _doxid-namespacergpot_1_1nlist_1_1_0d201015067216150156372071277120100232072044125160_1a5c47de8dff9e7e0dd0888e3f661cfaaf:
+
+enum nlist::Hit
+===============
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	enum Hit {
+	    :target:`Miss<doxid-namespacergpot_1_1nlist_1_1_0d201015067216150156372071277120100232072044125160_1a5c47de8dff9e7e0dd0888e3f661cfaafae7ddb7cd777b59610b220bcfa80bd95f>`,
+	    :target:`Same<doxid-namespacergpot_1_1nlist_1_1_0d201015067216150156372071277120100232072044125160_1a5c47de8dff9e7e0dd0888e3f661cfaafac90a13d8ec8fe53c6bb33fe10af6f2fe>`,
+	    :target:`Skin<doxid-namespacergpot_1_1nlist_1_1_0d201015067216150156372071277120100232072044125160_1a5c47de8dff9e7e0dd0888e3f661cfaafa9313566fe19aca293daefe4ce37942bf>`,
+	};
+

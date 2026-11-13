@@ -1,0 +1,24 @@
+.. index:: pair: struct; EAM::Delta
+.. _doxid-struct_e_a_m_1_1_delta:
+
+struct EAM::Delta
+=================
+
+.. toctree::
+	:hidden:
+
+One neighbour's density derivative, in atom-index order.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Delta {
+		// fields
+	
+		long :target:`atom<doxid-struct_e_a_m_1_1_delta_1ad9aa22d7d3f9158e5bcbb6cbc8987b6c>`;
+		double :target:`x<doxid-struct_e_a_m_1_1_delta_1a541caf47ae47e03a10a88dbbea739c05>`;
+		double :target:`y<doxid-struct_e_a_m_1_1_delta_1a532d6b94b64e23f16bde1fb834afe131>`;
+		double :target:`z<doxid-struct_e_a_m_1_1_delta_1a30caa449cfbdec1842e965866b04251e>`;
+	};

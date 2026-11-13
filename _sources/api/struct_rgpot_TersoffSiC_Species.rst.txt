@@ -1,0 +1,30 @@
+.. index:: pair: struct; rgpot::TersoffSiC::Species
+.. _doxid-structrgpot_1_1_tersoff_si_c_1_1_species:
+
+struct rgpot::TersoffSiC::Species
+=================================
+
+.. toctree::
+	:hidden:
+
+Angular parameters of one element. Index 0 is carbon, 1 is silicon.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <TersoffSiC.hpp>
+	
+	struct Species {
+		// fields
+	
+		double :target:`c<doxid-structrgpot_1_1_tersoff_si_c_1_1_species_1aee68fe6f328d2cf9c9398e7a138c62a5>`;
+		double :target:`d<doxid-structrgpot_1_1_tersoff_si_c_1_1_species_1abe5c0e1684163ea58505168acafe9c37>`;
+		double :target:`h<doxid-structrgpot_1_1_tersoff_si_c_1_1_species_1a6827ddc3c2d2516fec6f9ccdec7aba94>`;
+		double :target:`n<doxid-structrgpot_1_1_tersoff_si_c_1_1_species_1ad64269a5126601fc115bf8d5b7fdaa3c>`;
+		double :target:`beta<doxid-structrgpot_1_1_tersoff_si_c_1_1_species_1a5f6b0a853ddd484304da598ee8d9263d>`;
+		double :target:`gamma<doxid-structrgpot_1_1_tersoff_si_c_1_1_species_1a1dc784b80d04bf330553b8b74fc52d44>`;
+		double :target:`c2<doxid-structrgpot_1_1_tersoff_si_c_1_1_species_1a23304be35d36514d3bfad5984ce12cf8>`;
+		double :target:`d2<doxid-structrgpot_1_1_tersoff_si_c_1_1_species_1a5b45c4f8b65376a766fec968954eabb3>`;
+		double :target:`beta_n<doxid-structrgpot_1_1_tersoff_si_c_1_1_species_1ae02da219ea86492f9cf0c67788f8ab5f>`;
+	};

@@ -1,0 +1,27 @@
+.. index:: pair: struct; rgpot::nlist::detail::Grid
+.. _doxid-structrgpot_1_1nlist_1_1detail_1_1_grid:
+
+struct rgpot::nlist::detail::Grid
+=================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Grid {
+		// fields
+	
+		int :target:`nx<doxid-structrgpot_1_1nlist_1_1detail_1_1_grid_1a5d4a5e81db19894f6d5f957c84d233a4>` = 0;
+		int :target:`ny<doxid-structrgpot_1_1nlist_1_1detail_1_1_grid_1ad8b122632f1962ae390a14259adaced2>` = 0;
+		int :target:`nz<doxid-structrgpot_1_1nlist_1_1detail_1_1_grid_1aaf21f8c4e5ffc2f285ddc4a49e32c6d3>` = 0;
+		int :target:`ncell<doxid-structrgpot_1_1nlist_1_1detail_1_1_grid_1a697fad038b94c6079684be6e7d99b611>` = 0;
+		double :target:`lx<doxid-structrgpot_1_1nlist_1_1detail_1_1_grid_1ad372323e40d5ea4a1fb2bc22bd59829e>` = 0;
+		double :target:`ly<doxid-structrgpot_1_1nlist_1_1detail_1_1_grid_1a8335063655e675f9393de10d13c1b9b9>` = 0;
+		double :target:`lz<doxid-structrgpot_1_1nlist_1_1detail_1_1_grid_1a5e2dffb920cbe5e861218ec4139c49ad>` = 0;
+	};

@@ -7,12 +7,13 @@ class EAM
 .. toctree::
 	:hidden:
 
+	struct_EAM_Delta.rst
 	struct_EAM_element_parameters.rst
 
 Overview
 ~~~~~~~~
 
-:ref:`EAM <doxid-class_e_a_m>` (Embedded Atom Method) potential with cell list neighbor finding. :ref:`More...<details-class_e_a_m>`
+Embedded-atom aluminium, palladium and gold. :ref:`More...<details-class_e_a_m>`
 
 
 .. ref-code-block:: cpp
@@ -24,6 +25,7 @@ Overview
 	public:
 		// structs
 	
+		struct :ref:`Delta<doxid-struct_e_a_m_1_1_delta>`;
 		struct :ref:`element_parameters<doxid-struct_e_a_m_1_1element__parameters>`;
 
 		// construction
@@ -35,6 +37,12 @@ Overview
 	
 		void :target:`cleanMemory<doxid-class_e_a_m_1ace6248f3ce70c9e65f9ec59a9cdb8744>`();
 		void :target:`force<doxid-class_e_a_m_1ad3dae1a4f620bc02ea4205ccae927ee6>`(long N, const double* R, const int* atomicNrs, double* F, double* U, double* variance, const double* fullbox);
+		std::uint64_t :ref:`listBuilds<doxid-class_e_a_m_1ab612942749dd5c7a5e9e34225770b31d>`() const;
+		std::size_t :ref:`neighborSlots<doxid-class_e_a_m_1ad049a75c9461d8b199bf761bb4b5a387>`() const;
+		bool :ref:`listReused<doxid-class_e_a_m_1af4e2ca6b1a0caba0645651bd51649b0b>`() const;
+		std::size_t :ref:`streamPartners<doxid-class_e_a_m_1a57044a200aa4e964ce169a3c2e8ea84c>`() const;
+		void :ref:`setNeighbourMode<doxid-class_e_a_m_1af89dce5ffcded578cf55c9ea6563c238>`(rgpot::nlist::Mode mode);
+		int :ref:`threadsUsed<doxid-class_e_a_m_1ac7c0629a9acacc1abbcec423e72aaf52>`() const;
 		bool :ref:`isSharedInstanceThreadSafe<doxid-class_e_a_m_1abcf5da2c9e16e8367fb1a6ac99495030>`() const;
 	};
 .. _details-class_e_a_m:
@@ -42,10 +50,72 @@ Overview
 Detailed Documentation
 ~~~~~~~~~~~~~~~~~~~~~~
 
-:ref:`EAM <doxid-class_e_a_m>` (Embedded Atom Method) potential with cell list neighbor finding.
+Embedded-atom aluminium, palladium and gold.
+
+The neighbour search is a linked-cell list with a Verlet skin. The force loop visits the same pairs, in the same atom order, as the direct double loop, and the arithmetic of each pair is unchanged. ``OMP_NUM_THREADS`` above 1 splits atoms across threads. The variable is read on each call. When it is unset the call stays on one thread.
 
 Methods
 -------
+
+.. index:: pair: function; listBuilds
+.. _doxid-class_e_a_m_1ab612942749dd5c7a5e9e34225770b31d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::uint64_t listBuilds() const
+
+Neighbour-list builds since this object was created.
+
+.. index:: pair: function; neighborSlots
+.. _doxid-class_e_a_m_1ad049a75c9461d8b199bf761bb4b5a387:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::size_t neighborSlots() const
+
+Stored neighbour indices. Zero while the layer is streaming.
+
+.. index:: pair: function; listReused
+.. _doxid-class_e_a_m_1af4e2ca6b1a0caba0645651bd51649b0b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool listReused() const
+
+True when the last build kept the Verlet list.
+
+.. index:: pair: function; streamPartners
+.. _doxid-class_e_a_m_1a57044a200aa4e964ce169a3c2e8ea84c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::size_t streamPartners() const
+
+Partner indices retained between the density pass and the force pass. A density-only stream keeps none.
+
+.. index:: pair: function; setNeighbourMode
+.. _doxid-class_e_a_m_1af89dce5ffcded578cf55c9ea6563c238:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void setNeighbourMode(rgpot::nlist::Mode mode)
+
+Ask for a stored list or a streaming walk. Auto stores when the candidate index array fits in the memory reported as available.
+
+.. index:: pair: function; threadsUsed
+.. _doxid-class_e_a_m_1ac7c0629a9acacc1abbcec423e72aaf52:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int threadsUsed() const
+
+Threads used by the most recent force call. 1 when OpenMP is off or ``OMP_NUM_THREADS`` is unset.
 
 .. index:: pair: function; isSharedInstanceThreadSafe
 .. _doxid-class_e_a_m_1abcf5da2c9e16e8367fb1a6ac99495030:
@@ -55,5 +125,5 @@ Methods
 
 	bool isSharedInstanceThreadSafe() const
 
-Cell lists live on the instance; two threads cannot share one :ref:`EAM <doxid-class_e_a_m>`.
+The list and the scratch live on the instance.
 

@@ -1,0 +1,21 @@
+.. index:: pair: struct; rgpot_nlist_builder
+.. _doxid-structrgpot__nlist__builder:
+
+struct rgpot_nlist_builder
+==========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct rgpot_nlist_builder {
+		// fields
+	
+		:ref:`rgpot::nlist::Builder<doxid-classrgpot_1_1nlist_1_1_builder>` :target:`builder<doxid-structrgpot__nlist__builder_1a6aadf9bdec9f4f89ae5085bc0748b43c>`;
+	};

@@ -1,0 +1,70 @@
+.. index:: pair: struct; rgpot::EAMTableConfig
+.. _doxid-structrgpot_1_1_e_a_m_table_config:
+
+struct rgpot::EAMTableConfig
+============================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Parameters for :ref:`EAMTablePot <doxid-classrgpot_1_1_e_a_m_table_pot>`. :ref:`More...<details-structrgpot_1_1_e_a_m_table_config>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <EAMTablePot.hpp>
+	
+	struct EAMTableConfig {
+		// fields
+	
+		std::string :ref:`path<doxid-structrgpot_1_1_e_a_m_table_config_1a0682b0433f6da5183190dad200724dd1>`;
+		EAMTableFormat :target:`format<doxid-structrgpot_1_1_e_a_m_table_config_1a610468d0daf0cddbe103f52b07c2c53e>` = EAMTableFormat::Setfl;
+		bool :ref:`periodic<doxid-structrgpot_1_1_e_a_m_table_config_1ac869817fe660647faad18cdcc37c8334>` = true;
+		bool :ref:`stress<doxid-structrgpot_1_1_e_a_m_table_config_1a8e003be080f806db6561a221f25e5699>` = false;
+	};
+.. _details-structrgpot_1_1_e_a_m_table_config:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Parameters for :ref:`EAMTablePot <doxid-classrgpot_1_1_e_a_m_table_pot>`.
+
+Energies are in the table's units, eV and Angstrom for the LAMMPS metal files.
+
+Fields
+------
+
+.. index:: pair: variable; path
+.. _doxid-structrgpot_1_1_e_a_m_table_config_1a0682b0433f6da5183190dad200724dd1:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::string path
+
+Table file.
+
+.. index:: pair: variable; periodic
+.. _doxid-structrgpot_1_1_e_a_m_table_config_1ac869817fe660647faad18cdcc37c8334:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool periodic = true
+
+Minimum image convention. The cutoff must sit under half of every face spacing of the cell.
+
+.. index:: pair: variable; stress
+.. _doxid-structrgpot_1_1_e_a_m_table_config_1a8e003be080f806db6561a221f25e5699:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool stress = false
+
+Write the Cauchy stress of :ref:`stress.hpp <doxid-stress_8hpp_source>` when the cell volume is positive.
+

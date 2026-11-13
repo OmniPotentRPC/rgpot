@@ -1,0 +1,51 @@
+.. index:: pair: namespace; rgpot::nlist::detail
+.. _doxid-namespacergpot_1_1nlist_1_1detail:
+
+namespace rgpot::nlist::detail
+==============================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_nlist_detail_Grid.rst
+	struct_rgpot_nlist_detail_Key.rst
+	struct_rgpot_nlist_detail_Scratch.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace detail {
+
+	// structs
+
+	struct :ref:`Grid<doxid-structrgpot_1_1nlist_1_1detail_1_1_grid>`;
+	struct :ref:`Key<doxid-structrgpot_1_1nlist_1_1detail_1_1_key>`;
+	struct :ref:`Scratch<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch>`;
+
+	// global variables
+
+	int :target:`kHalf<doxid-_half_shell_walk_8cc_1aa70b8e373906749be02b4ff632475f03>`[14][3] = {     {0, 0, 0},   {0, 0, 1},  {0, 1, -1}, {0, 1, 0},  {0, 1, 1},     {1, -1, -1}, {1, -1, 0}, {1, -1, 1}, {1, 0, -1}, {1, 0, 0},     {1, 0, 1},   {1, 1, -1}, {1, 1, 0},  {1, 1, 1}, };
+
+	// global functions
+
+	:ref:`Key<doxid-structrgpot_1_1nlist_1_1detail_1_1_key>` :target:`legacyKey<doxid-_half_shell_8cc_1a427d260fd746cea0c7689c27fe02fc3e>`(int lo, int hi, const :ref:`Scratch<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch>`& s, const :ref:`Grid<doxid-structrgpot_1_1nlist_1_1detail_1_1_grid>`& g);
+	bool :target:`keyLess<doxid-_half_shell_8cc_1ad0e1d13d45c4a4d93120b161b810b29d>`(const :ref:`Key<doxid-structrgpot_1_1nlist_1_1detail_1_1_key>`& a, const :ref:`Key<doxid-structrgpot_1_1nlist_1_1detail_1_1_key>`& b);
+	void :target:`sortLegacy<doxid-_half_shell_8cc_1a4e89cb2f05131670e0763e350999f1ec>`(:ref:`Scratch<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch>`& s);
+	void :target:`fillPairs<doxid-_half_shell_detail_8hpp_1aa097affa79cee1d12f47f9262e917f6c>`(const double* positions, const double* box, std::size_t n, double cutoff, double search, :ref:`Scratch<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch>`& s);
+	double :target:`roundHalf<doxid-_half_shell_walk_8cc_1aea58a08f01ed46e75db486506a96c92f>`(double t);
+	double :target:`foldExact<doxid-_half_shell_walk_8cc_1a1941d6923e83a60f63e77b9767c21855>`(double delta, double len);
+	bool :target:`orthogonal<doxid-_half_shell_walk_8cc_1aff282d0aadcc5d1bed650cfc447a1135>`(const double* box, double& lx, double& ly, double& lz);
+	double :target:`folded<doxid-_half_shell_walk_8cc_1a27c510fab0b69dd6346e6b9e9552d441>`(double x, double len);
+	int :target:`bin<doxid-_half_shell_walk_8cc_1a811c159ffd7b94e96d6f8ae2a0d02e02>`(double x, double len, int n);
+	bool :target:`makeGrid<doxid-_half_shell_walk_8cc_1aecc7e36f0b2432b41eb327844dd6bba0>`(const double* box, double edge, :ref:`Grid<doxid-structrgpot_1_1nlist_1_1detail_1_1_grid>`& g);
+	void :target:`binAtoms<doxid-_half_shell_walk_8cc_1a1ba454843d3991e14d21848222886a8b>`(const double* pos, std::size_t n, const :ref:`Grid<doxid-structrgpot_1_1nlist_1_1detail_1_1_grid>`& g, std::vector<int>& cell_of, std::vector<int>& rank, std::vector<int>& counts, std::vector<int>& start, std::vector<int>& atoms, bool ranks);
+	void :target:`foldOrtho<doxid-_half_shell_walk_8cc_1ae2a77aebc042cf974928c7efc057babe>`(double& dx, double& dy, double& dz, double lx, double ly, double lz);
+	bool :target:`within<doxid-_half_shell_walk_8cc_1a610d074e33a9ed887882f3846827503d>`(const double* pos, int i, int j, double lx, double ly, double lz, bool ortho, :ref:`MinimumImage<doxid-classrgpot_1_1nlist_1_1_minimum_image>`& image, double cut2);
+	void :target:`pushPair<doxid-_half_shell_walk_8cc_1ac402b8f9f71c5efecffea5d23e887c7b>`(:ref:`Scratch<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch>`& s, int a, int b, double dx, double dy, double dz);
+	void :target:`halfShell<doxid-_half_shell_walk_8cc_1ae483985ee904439d1c7f0689711dd9ee>`(const double* pos, std::size_t n, const :ref:`Grid<doxid-structrgpot_1_1nlist_1_1detail_1_1_grid>`& g, const std::vector<int>& start, const std::vector<int>& atoms, double cut2, :ref:`Scratch<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch>`& s);
+
+	} // namespace detail

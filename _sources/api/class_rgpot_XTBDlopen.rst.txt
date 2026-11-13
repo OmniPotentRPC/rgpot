@@ -32,6 +32,10 @@ Plugin path: ``dlopen`` ``libxtb_engine.so``, which implements the same ISO_C_BI
 		XTBDlopen& :target:`operator=<doxid-classrgpot_1_1_x_t_b_dlopen_1a28d2a2800ca6f6dea8b737fe3dd495a9>`(const XTBDlopen&);
 		bool :target:`available<doxid-classrgpot_1_1_x_t_b_dlopen_1a53a15363c952bc34c914499be1eabffa>`() const;
 		void :target:`forceImpl<doxid-classrgpot_1_1_x_t_b_dlopen_1a4cca38529aac66d52ec52b3a936c69c9>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		void :ref:`reset<doxid-classrgpot_1_1_x_t_b_dlopen_1a8d9a141acebe35951f242158d1d00a65>`();
+		void :ref:`setWarmMove<doxid-classrgpot_1_1_x_t_b_dlopen_1a83a352555d726d4fe690f9674aef068f>`(double angstrom);
+		double :target:`warmMove<doxid-classrgpot_1_1_x_t_b_dlopen_1a7c5bd3b64af341a1cab2cb56ad9b2e39>`() const;
+		bool :ref:`reusedWavefunction<doxid-classrgpot_1_1_x_t_b_dlopen_1a4700c947e182a003a1a3d93e924ef8d2>`() const;
 		std::tuple<double, :ref:`types::AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`, double> :ref:`operator()<doxid-classrgpot_1_1_x_t_b_dlopen_1a8e36276d08cec60655c0b0a41c936012>`(const :ref:`types::AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& positions, const std::vector<int>& atmtypes, const std::array<std::array<double, 3>, 3>& box) const;
 	};
 .. _details-classrgpot_1_1_x_t_b_dlopen:
@@ -39,12 +43,46 @@ Plugin path: ``dlopen`` ``libxtb_engine.so``, which implements the same ISO_C_BI
 Detailed Documentation
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Plugin path: ``dlopen`` ``libxtb_engine.so``, which implements the same ISO_C_BINDING singlepoint as linked ``:ref:`XTBPot <doxid-classrgpot_1_1_x_t_b_pot>``` behind ``xtb_c_abi.h``. Search: ``engine_path``, ``RGPOT_XTB_ENGINE``, ``XTB_ENGINE``, bare ``libxtb_engine.so``, then ``EON_POTENTIALS_PATH`` / ``RGPOT_ENGINE_PATH``.
+Plugin path: ``dlopen`` ``libxtb_engine.so``, which implements the same ISO_C_BINDING singlepoint as linked ``:ref:`XTBPot <doxid-classrgpot_1_1_x_t_b_pot>``` behind ``xtb_c_abi.h``.
+
+A non-empty ``engine_path`` is the only candidate, and it must contain a directory separator (``/`` or ``\``). A bare soname such as ``libxtb_engine.so`` is rejected: the loader would resolve it through ``LD_LIBRARY_PATH``, ``DYLD_LIBRARY_PATH``, or ``PATH`` and could open a different library. If the path does not open, or the library lacks the C ABI, construction throws. The error names that path and, on POSIX, the ``dlerror`` text. Environment variables, the bare soname, and directory lists are not consulted.
+
+When ``engine_path`` is empty, search ``RGPOT_XTB_ENGINE``, ``XTB_ENGINE``, the platform bare soname (``libxtb_engine.so`` on Linux, ``libxtb_engine.dylib`` then ``.so`` on Apple, ``xtb_engine.dll`` then ``libxtb_engine.dll`` on Windows), then ``EON_POTENTIALS_PATH`` / ``RGPOT_ENGINE_PATH``.
 
 Always compiled (no NEEDED libxtb). Linked ``:ref:`XTBPot <doxid-classrgpot_1_1_x_t_b_pot>``` remains optional via ``-Dwith_xtb=true``.
 
 Methods
 -------
+
+.. index:: pair: function; reset
+.. _doxid-classrgpot_1_1_x_t_b_dlopen_1a8d9a141acebe35951f242158d1d00a65:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void reset()
+
+Drop the stored SCC wavefunction. The calculator stays.
+
+.. index:: pair: function; setWarmMove
+.. _doxid-classrgpot_1_1_x_t_b_dlopen_1a83a352555d726d4fe690f9674aef068f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void setWarmMove(double angstrom)
+
+Displacement guard in Angstrom. Zero or negative disables reuse.
+
+.. index:: pair: function; reusedWavefunction
+.. _doxid-classrgpot_1_1_x_t_b_dlopen_1a4700c947e182a003a1a3d93e924ef8d2:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool reusedWavefunction() const
+
+True when the last successful force reused the previous wavefunction.
 
 .. index:: pair: function; operator()
 .. _doxid-classrgpot_1_1_x_t_b_dlopen_1a8e36276d08cec60655c0b0a41c936012:

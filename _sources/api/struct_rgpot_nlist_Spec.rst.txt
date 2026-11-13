@@ -1,0 +1,25 @@
+.. index:: pair: struct; rgpot::nlist::Spec
+.. _doxid-structrgpot_1_1nlist_1_1_spec:
+
+struct rgpot::nlist::Spec
+=========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Spec {
+		// fields
+	
+		double :target:`cutoff<doxid-structrgpot_1_1nlist_1_1_spec_1ad1b6841d8ba61ff56922c761ea84d320>` = 0;
+		double :target:`skin<doxid-structrgpot_1_1nlist_1_1_spec_1a680572b624e1c5df16d1c2c88a9c961c>` = 0;
+		std::array<bool, 3> :target:`periodic<doxid-structrgpot_1_1nlist_1_1_spec_1a31b294805a0e117bca5ecd3eb424ab68>` {{true, true, true}};
+		:ref:`Image<doxid-struct_image>` :target:`image<doxid-structrgpot_1_1nlist_1_1_spec_1ab7cf2ce7c4ef7bee7e32cca1c99fa0e6>` = Image::Round;
+		Mode :target:`mode<doxid-structrgpot_1_1nlist_1_1_spec_1aa72ad29c8b1d19f4340123007dfac23d>` = Mode::Auto;
+	};

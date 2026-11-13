@@ -1,0 +1,22 @@
+.. index:: pair: struct; rgpot_sc_scales
+.. _doxid-structrgpot__sc__scales:
+
+struct rgpot_sc_scales
+======================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct rgpot_sc_scales {
+		// fields
+	
+		double :target:`nearest_neighbor<doxid-structrgpot__sc__scales_1ae0c4fbb41f0916d348b4232e1994f0d8>`;
+		double :target:`well_depth<doxid-structrgpot__sc__scales_1aeb6efd915e39582cd0cb1e4cccb04fb0>`;
+	};

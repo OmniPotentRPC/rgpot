@@ -1,0 +1,28 @@
+.. index:: pair: struct; rgpot_sc_config
+.. _doxid-structrgpot__sc__config:
+
+struct rgpot_sc_config
+======================
+
+.. toctree::
+	:hidden:
+
+Plain parameter block for ``rgpot_sutton_chen_energy_forces``. Field order is part of the ABI.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <SuttonChenPot.hpp>
+	
+	struct rgpot_sc_config {
+		// fields
+	
+		double :target:`epsilon<doxid-structrgpot__sc__config_1a992ca8931bb29172aceab8d64d656b1a>`;
+		double :target:`c<doxid-structrgpot__sc__config_1ab25b159e3bbd7274ab3a6f9db666e8ed>`;
+		double :target:`a<doxid-structrgpot__sc__config_1aef535fc6d1597539edf10c55c559f7df>`;
+		int32_t :target:`n<doxid-structrgpot__sc__config_1ad246ff2077ccc2c8343b96499e2149f1>`;
+		int32_t :target:`m<doxid-structrgpot__sc__config_1a23b0f7c30aad08864b8d23a1b82c8ace>`;
+		double :target:`cutoff<doxid-structrgpot__sc__config_1a997ffa431fcc1340f1be88ec4ebfc037>`;
+		int32_t :target:`periodic<doxid-structrgpot__sc__config_1a414ed180f630b8787908c5816d43abc0>`;
+	};

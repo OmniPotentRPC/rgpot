@@ -1,0 +1,27 @@
+.. index:: pair: struct; rgpot::nlist::Query
+.. _doxid-structrgpot_1_1nlist_1_1_query:
+
+struct rgpot::nlist::Query
+==========================
+
+.. toctree::
+	:hidden:
+
+One neighbour query. ``build`` and ``:ref:`Builder <doxid-classrgpot_1_1nlist_1_1_builder>``` store the pairs. ``:ref:`Walk <doxid-classrgpot_1_1nlist_1_1_walk>``` streams them. There is no mode flag that can store nothing.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <NeighbourList.hpp>
+	
+	struct Query {
+		// fields
+	
+		double :target:`cutoff<doxid-structrgpot_1_1nlist_1_1_query_1a25d32d862025f495826a123dc70e1999>` = 0;
+		double :target:`skin<doxid-structrgpot_1_1nlist_1_1_query_1a3a7bfaf53e25481ab8c40f380648ad3e>` = 0;
+		Shape :target:`shape<doxid-structrgpot_1_1nlist_1_1_query_1a3d6f5754073497ae07b73ce7f6533dcf>` = :ref:`Pairs<doxid-structrgpot_1_1nlist_1_1_pairs>`{};
+		Cut :target:`cut<doxid-structrgpot_1_1nlist_1_1_query_1a1ad0c598f9699bf7ad578f0ed424c89f>` = Cut::Strict;
+		std::array<bool, 3> :target:`periodic<doxid-structrgpot_1_1nlist_1_1_query_1a716cfaeb87eef1b14c4fb3c7de8a2827>` {{true, true, true}};
+		:ref:`Fields<doxid-structrgpot_1_1nlist_1_1_fields>` :target:`fields<doxid-structrgpot_1_1nlist_1_1_query_1a609d7604e49b570644dd45317412c3c7>` {};
+	};

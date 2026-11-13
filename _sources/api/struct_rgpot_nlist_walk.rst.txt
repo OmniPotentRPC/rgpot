@@ -1,0 +1,26 @@
+.. index:: pair: struct; rgpot_nlist_walk
+.. _doxid-structrgpot__nlist__walk:
+
+struct rgpot_nlist_walk
+=======================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct rgpot_nlist_walk {
+		// fields
+	
+		:ref:`rgpot::nlist::Walk<doxid-classrgpot_1_1nlist_1_1_walk>` :target:`walk<doxid-structrgpot__nlist__walk_1a42d5dc1d6dfa3206121392b3a09dfef2>`;
+		:ref:`rgpot::nlist::Query<doxid-structrgpot_1_1nlist_1_1_query>` :target:`query<doxid-structrgpot__nlist__walk_1a81a74adc8d32607e344e46bc01a5ca80>`;
+
+		// construction
+	
+		:target:`rgpot_nlist_walk<doxid-structrgpot__nlist__walk_1ada9a74e991e11c96efca8f8607149ca4>`(const double* positions, size_t n, const double* box9, const :ref:`rgpot::nlist::Query<doxid-structrgpot_1_1nlist_1_1_query>`& q);
+	};

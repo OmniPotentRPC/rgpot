@@ -1,0 +1,27 @@
+.. index:: pair: class; rgpot::nlist::Walk
+.. _doxid-classrgpot_1_1nlist_1_1_walk:
+
+class rgpot::nlist::Walk
+========================
+
+.. toctree::
+	:hidden:
+
+:ref:`Walk <doxid-classrgpot_1_1nlist_1_1_walk>` pairs for one central atom, or one cluster of four, at a time into caller storage. The walk does not keep a list of the whole system. It borrows ``positions`` and ``box9`` until it is destroyed. ``pull`` writes at most ``dest.first.size()`` pairs and returns how many it wrote. ``done`` is set when the geometry has been exhausted. A requested field whose span is too short throws :ref:`Error <doxid-classrgpot_1_1nlist_1_1_error>` and does not advance. One walk is used by one thread.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <NeighbourList.hpp>
+	
+	class Walk {
+	public:
+		// construction
+	
+		:target:`Walk<doxid-classrgpot_1_1nlist_1_1_walk_1a802887adf4a93aaa0528353eb5536886>`(const double* positions, std::size_t n, const double* box9, const :ref:`Query<doxid-structrgpot_1_1nlist_1_1_query>`& query);
+
+		// methods
+	
+		std::size_t :target:`pull<doxid-classrgpot_1_1nlist_1_1_walk_1ac8bcde4803c15092b710222653782406>`(:ref:`Buffers<doxid-structrgpot_1_1nlist_1_1_buffers>` dest, bool& done);
+	};

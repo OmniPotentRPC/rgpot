@@ -7,7 +7,16 @@ namespace rgpot::simd
 .. toctree::
 	:hidden:
 
+	namespace_rgpot_simd_HWY_NAMESPACE.rst
 	namespace_rgpot_simd_detail.rst
+	namespace_rgpot_simd_detail_fill.rst
+	struct_rgpot_simd_CachedPairs.rst
+	struct_rgpot_simd_EamAtom.rst
+	struct_rgpot_simd_LjParams.rst
+	struct_rgpot_simd_MorseParams.rst
+	struct_rgpot_simd_PairSpec.rst
+	struct_rgpot_simd_PairView.rst
+	struct_rgpot_simd_Part8.rst
 
 Overview
 ~~~~~~~~
@@ -23,17 +32,77 @@ Overview
 
 	// namespaces
 
+	namespace :ref:`rgpot::simd::HWY_NAMESPACE<doxid-namespacergpot_1_1simd_1_1_h_w_y___n_a_m_e_s_p_a_c_e>`;
 	namespace :ref:`rgpot::simd::detail<doxid-namespacergpot_1_1simd_1_1detail>`;
+	namespace :ref:`rgpot::simd::detail_fill<doxid-namespacergpot_1_1simd_1_1detail__fill>`;
+
+	// structs
+
+	struct :ref:`CachedPairs<doxid-structrgpot_1_1simd_1_1_cached_pairs>`;
+	struct :ref:`EamAtom<doxid-structrgpot_1_1simd_1_1_eam_atom>`;
+	struct :ref:`LjParams<doxid-structrgpot_1_1simd_1_1_lj_params>`;
+	struct :ref:`MorseParams<doxid-structrgpot_1_1simd_1_1_morse_params>`;
+	struct :ref:`PairSpec<doxid-structrgpot_1_1simd_1_1_pair_spec>`;
+	struct :ref:`PairView<doxid-structrgpot_1_1simd_1_1_pair_view>`;
+	struct :ref:`Part8<doxid-structrgpot_1_1simd_1_1_part8>`;
+
+	// global variables
+
+	double :target:`kLn2Hi<doxid-exp_8hpp_1a8d7936e4c95caa42c60b602292592a57>` = 6.93147180369123816490e-01;
+	double :target:`kLn2Lo<doxid-exp_8hpp_1a8428a113cda488f136905209efc83ad1>` = 1.90821492927058770002e-10;
+	double :target:`kInvLn2<doxid-exp_8hpp_1a070b35aea4242f1db6313050fd6b1786>` = 1.44269504088896338700e+00;
+	double :target:`kP1<doxid-exp_8hpp_1a9a9abd7cf43d02de18f9725f3f5b2f8a>` = 1.66666666666666019037e-01;
+	double :target:`kP2<doxid-exp_8hpp_1affdd53a9ef1cdd551d1c6e40025df03b>` = -2.77777777770155933842e-03;
+	double :target:`kP3<doxid-exp_8hpp_1aa00cd0aafe478bb7c533386a354afdd9>` = 6.61375632143793436117e-05;
+	double :target:`kP4<doxid-exp_8hpp_1a1f6f4abbd82a350a4c5c84c704f923d6>` = -1.65339022054652515390e-06;
+	double :target:`kP5<doxid-exp_8hpp_1ab4d4dc568ccc4008329a7329280d035c>` = 4.13813679705723846039e-08;
+	double :target:`kOverflow<doxid-exp_8hpp_1afb8dbc81046ca19bcefdb20fe7a4f8b0>` = 7.09782712893383973096e+02;
+	double :target:`kUnderflow<doxid-exp_8hpp_1a86a44701649db38024e4ede614b66827>` = -7.45133219101941108420e+02;
 
 	// global functions
 
+	const char* :ref:`chosen_target_name<doxid-api_8hpp_1a6e96d192d0daee7bcd53880f2c42b160>`();
+	void :ref:`set_target_for_test<doxid-api_8hpp_1a8bd18ccdac7b8900e0b50c99d0141cd9>`(const char* name);
+	int :ref:`runnable_target_count<doxid-api_8hpp_1a32a48d205300bcacaf7b6a76c6d93bfc>`();
+	const char* :target:`runnable_target_name<doxid-api_8hpp_1a20447f154e2acd26390f7f56485dcd6a>`(int index);
+	double :target:`lj_force<doxid-api_8hpp_1a72accc1d749115d57f3a332ddf057cbd>`(const :ref:`PairView<doxid-structrgpot_1_1simd_1_1_pair_view>`& view, const :ref:`LjParams<doxid-structrgpot_1_1simd_1_1_lj_params>`& params, double* F, double strain[6]);
+	double :ref:`lj_force_span<doxid-api_8hpp_1a66d842b2d7740199f9f7c4ba9102f962>`(const :ref:`PairView<doxid-structrgpot_1_1simd_1_1_pair_view>`& view, const :ref:`LjParams<doxid-structrgpot_1_1simd_1_1_lj_params>`& params, double* F, double strain[6], std::size_t begin, std::size_t end);
+	double :target:`morse_force<doxid-api_8hpp_1a577e13b9cf49aff42d2a2ea5d216e6cb>`(const :ref:`PairView<doxid-structrgpot_1_1simd_1_1_pair_view>`& view, const :ref:`MorseParams<doxid-structrgpot_1_1simd_1_1_morse_params>`& params, double* F, double strain[6]);
+	void :target:`eam_force<doxid-api_8hpp_1a6b453c8f7a39776540428ffbdafb70bd>`(long n, const double* R, const :ref:`EamAtom<doxid-structrgpot_1_1simd_1_1_eam_atom>`* atoms, const double* box, double* F, double* U);
+	void :ref:`fma_array<doxid-api_8hpp_1a9d4361f851aac2fb62a8d623c4d65d72>`(const double* a, const double* b, const double* c, double* out, std::size_t n);
+	void :ref:`fold_orthorhombic<doxid-api_8hpp_1adc9fcc7ec15f9dc1b0d039bb9b9a92ea>`(double* x, double* y, double* z, std::size_t n, double w0, double w1, double w2, double i0, double i1, double i2);
+	double :target:`lj_scalar_entry<doxid-dispatch_8cc_1af866be1b49da28c6992f06cf6d38b9f7>`(const :ref:`PairView<doxid-structrgpot_1_1simd_1_1_pair_view>`& view, const :ref:`LjParams<doxid-structrgpot_1_1simd_1_1_lj_params>`& params, double* F, double strain[6]);
+	double :target:`lj_scalar_span<doxid-dispatch_8cc_1ad249a82783b37ba62e436e563c18efee>`(const :ref:`PairView<doxid-structrgpot_1_1simd_1_1_pair_view>`& view, const :ref:`LjParams<doxid-structrgpot_1_1simd_1_1_lj_params>`& params, double* F, double strain[6], std::size_t begin, std::size_t end);
+	double :target:`morse_scalar_entry<doxid-dispatch_8cc_1ac1da80f3fe7419a7894f4915d7b49c8a>`(const :ref:`PairView<doxid-structrgpot_1_1simd_1_1_pair_view>`& view, const :ref:`MorseParams<doxid-structrgpot_1_1simd_1_1_morse_params>`& params, double* F, double strain[6]);
+	void :target:`eam_scalar_entry<doxid-dispatch_8cc_1afbd536adfc6df12d310b966a9d41e3df>`(long n, const double* R, const :ref:`EamAtom<doxid-structrgpot_1_1simd_1_1_eam_atom>`* atoms, const double* box, double* F, double* U);
+	void :target:`fma_scalar_entry<doxid-dispatch_8cc_1a9b471a1d1d900e254e8d86f4d141bb82>`(const double* a, const double* b, const double* c, double* out, std::size_t n);
+	void :target:`fold_scalar_entry<doxid-dispatch_8cc_1a5ff284c2b6ed975f7ca33d6fea2fbe89>`(double* x, double* y, double* z, std::size_t n, double w0, double w1, double w2, double i0, double i1, double i2);
 	double :ref:`exact_fma<doxid-exact__fma_8hpp_1a0ec343a5f4a0560c589ebc170d4eb1ca>`(double a, double b, double c);
 	double :target:`fma_trunc<doxid-exact__fma_8hpp_1a189fbb77dbdcc92c88ae4331c966616c>`(double a, double b, double c);
 	double :target:`fma_quick<doxid-exact__fma_8hpp_1ae9371c811aa36d48483ed35b0efd12d4>`(double a, double b, double c);
 	double :ref:`mul_add<doxid-exact__fma_8hpp_1a6400dc19dfc6964f5daa7da968fc9e12>`(double a, double b, double c);
 	double :ref:`r2_of<doxid-exact__fma_8hpp_1a894a4d861296108dba7ed726b526790c>`(double dx, double dy, double dz);
+	double :ref:`exp<doxid-exp_8cc_1a4021c088b81552fe0d7a8a82acc684d3>`(double x);
 	double :ref:`exp_fixed<doxid-exp_8cc_1a3b98ce20e45a2530b231bb9d1911f83b>`(double x);
-	RGPOT_SIMD_CLONES void :ref:`exp_fixed_n<doxid-exp_8cc_1a350d02044999bf40739e4c634df3484b>`(const double* x, double* out, std::size_t n);
+	void :ref:`exp_fixed_n<doxid-exp_8cc_1a350d02044999bf40739e4c634df3484b>`(const double* x, double* out, std::size_t n);
+
+	template <bool Hw>
+	double :target:`fad<doxid-exp_8hpp_1aa0dea06e8c549d02f2448aa43d076096>`(double a, double b, double c);
+
+	template <bool Hw>
+	double :target:`r2_fast<doxid-exp_8hpp_1ad76b0d3339b60ff32442caf71e415f33>`(double dx, double dy, double dz);
+
+	template <bool Hw>
+	double :target:`exp_fast<doxid-exp_8hpp_1a3d72de9e7c8c369c717371df2176484c>`(double x);
+
+	void :ref:`fill_view<doxid-from__cache_8hpp_1a4447ac3a4a74a41252d0fabec6219cda>`(:ref:`CachedPairs<doxid-structrgpot_1_1simd_1_1_cached_pairs>`& out, const double* R, std::size_t n, const double* box, const :ref:`PairSpec<doxid-structrgpot_1_1simd_1_1_pair_spec>`& opt, nlist::Mode mode = nlist::Mode::Auto, :ref:`nlist::Neighbours<doxid-classrgpot_1_1nlist_1_1_neighbours>`* reuse = nullptr);
+	double :target:`lj_reference<doxid-pair__loops_8hpp_1a3ff7079366ee43fc2aab077be2b82aaa>`(const :ref:`PairView<doxid-structrgpot_1_1simd_1_1_pair_view>`& v, const :ref:`LjParams<doxid-structrgpot_1_1simd_1_1_lj_params>`& p, double* F, double strain[6], std::size_t atom_begin = 0, std::size_t atom_end = static_cast<std::size_t>(-1));
+	double :target:`morse_reference<doxid-pair__loops_8hpp_1a54ab4990a245ea179eecfccceada7377>`(const :ref:`PairView<doxid-structrgpot_1_1simd_1_1_pair_view>`& v, const :ref:`MorseParams<doxid-structrgpot_1_1simd_1_1_morse_params>`& p, double* F, double strain[6]);
+	void :target:`eam_reference<doxid-pair__loops_8hpp_1a7a9ed9900aaffcb5b8218f30aaafed4f>`(long n, const double* R, const :ref:`EamAtom<doxid-structrgpot_1_1simd_1_1_eam_atom>`* atoms, const double* box, double* F, double* U);
+	double :target:`round_reference<doxid-pair__loops_8hpp_1a5cc52557adc5968330a5adac7be67b92>`(double t);
+	double :target:`combine8<doxid-reduce_8hpp_1abf1e4b20b64a99275fb9907011d5647b>`(const double p[8]);
+	void :target:`deposit<doxid-reduce_8hpp_1ad6d5e55372ba72a39597f29ff40cb3ba>`(:ref:`Part8<doxid-structrgpot_1_1simd_1_1_part8>`& a, int nacc, double e, double fx, double fy, double fz, double sxx, double syy, double szz, double syz, double sxz, double sxy);
+	void :target:`strain_of<doxid-reduce_8hpp_1a168a006bd6e85648c9ddc77c38a36505>`(double fscale, double dx, double dy, double dz, double& sxx, double& syy, double& szz, double& syz, double& sxz, double& sxy);
 
 	} // namespace simd
 .. _details-namespacergpot_1_1simd:
@@ -45,6 +114,66 @@ Detailed Documentation
 
 Global Functions
 ----------------
+
+.. index:: pair: function; chosen_target_name
+.. _doxid-api_8hpp_1a6e96d192d0daee7bcd53880f2c42b160:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const char* chosen_target_name()
+
+Name of the target selected for this process ("scalar", "sse2", "sse4", "avx2", "avx3", "avx3_zen4", "neon", "sve", "sve2", "sve_256", "rvv", "emu128"). RGPOT_SIMD is read once, inside the call_once that caches the choice.
+
+.. index:: pair: function; set_target_for_test
+.. _doxid-api_8hpp_1a8bd18ccdac7b8900e0b50c99d0141cd9:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void set_target_for_test(const char* name)
+
+Test hook. "scalar" forces the portable kernel. A known target the CPU cannot run falls back to the best target it can run. On x86-64 that is at least SSE2. An unknown name is ignored. Not for production paths: Highway's chosen target is process-wide.
+
+.. index:: pair: function; runnable_target_count
+.. _doxid-api_8hpp_1a32a48d205300bcacaf7b6a76c6d93bfc:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int runnable_target_count()
+
+Targets this CPU can execute, scalar first. A name that is absent was not exercised.
+
+.. index:: pair: function; lj_force_span
+.. _doxid-api_8hpp_1a66d842b2d7740199f9f7c4ba9102f962:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double lj_force_span(const :ref:`PairView<doxid-structrgpot_1_1simd_1_1_pair_view>`& view, const :ref:`LjParams<doxid-structrgpot_1_1simd_1_1_lj_params>`& params, double* F, double strain[6], std::size_t begin, std::size_t end)
+
+Same kernel as lj_force, limited to atoms in ``[begin, end)``. One thread keeps calling lj_force so the pair order does not change.
+
+.. index:: pair: function; fma_array
+.. _doxid-api_8hpp_1a9d4361f851aac2fb62a8d623c4d65d72:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void fma_array(const double* a, const double* b, const double* c, double* out, std::size_t n)
+
+Test hook. Each output is a\*b+c rounded once, on the selected target.
+
+.. index:: pair: function; fold_orthorhombic
+.. _doxid-api_8hpp_1adc9fcc7ec15f9dc1b0d039bb9b9a92ea:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void fold_orthorhombic(double* x, double* y, double* z, std::size_t n, double w0, double w1, double w2, double i0, double i1, double i2)
+
+In-place orthorhombic minimum image, one component array per axis. inv == 0 leaves that axis unfolded.
 
 .. index:: pair: function; exact_fma
 .. _doxid-exact__fma_8hpp_1a0ec343a5f4a0560c589ebc170d4eb1ca:
@@ -76,6 +205,16 @@ a\*b+c, one rounding. A hardware instruction when this translation unit has one,
 
 dx^2 + dy^2 + dz^2. The first square is a multiply. The two sums fuse.
 
+.. index:: pair: function; exp
+.. _doxid-exp_8cc_1a4021c088b81552fe0d7a8a82acc684d3:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double exp(double x)
+
+Scalar exp. Cody-Waite reduction by a split ln(2), then the fdlibm degree-5 polynomial. The large-argument scale and each polynomial product-sum are one rounding. Overflow returns +inf, underflow returns 0, a NaN returns a NaN, and exp(-0) is +1. Vector targets replay these operations per lane.
+
 .. index:: pair: function; exp_fixed
 .. _doxid-exp_8cc_1a3b98ce20e45a2530b231bb9d1911f83b:
 
@@ -92,7 +231,17 @@ e^x with the same bits on every instruction set and C library. Within 1.24 ulp f
 .. ref-code-block:: cpp
 	:class: doxyrest-title-code-block
 
-	RGPOT_SIMD_CLONES void exp_fixed_n(const double* x, double* out, std::size_t n)
+	void exp_fixed_n(const double* x, double* out, std::size_t n)
 
 out[i] = exp_fixed(x[i]) for i < n. Vectorised and dispatched on the CPU at run time; every variant returns the bits of exp_fixed.
+
+.. index:: pair: function; fill_view
+.. _doxid-from__cache_8hpp_1a4447ac3a4a74a41252d0fabec6219cda:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void fill_view(:ref:`CachedPairs<doxid-structrgpot_1_1simd_1_1_cached_pairs>`& out, const double* R, std::size_t n, const double* box, const :ref:`PairSpec<doxid-structrgpot_1_1simd_1_1_pair_spec>`& opt, nlist::Mode mode = nlist::Mode::Auto, :ref:`nlist::Neighbours<doxid-classrgpot_1_1nlist_1_1_neighbours>`* reuse = nullptr)
+
+Build a half-list for the dispatched pair kernels. Candidates come from the shared neighbour layer. ``reuse`` keeps the Verlet list across calls. Several threads walk disjoint atoms and the rows are sorted, so the list does not depend on which thread found a pair. fold is the orthorhombic round, with a zero inverse on an axis the options leave unfolded.
 

@@ -1,0 +1,23 @@
+.. index:: pair: struct; rgpot::SuttonChenScales
+.. _doxid-structrgpot_1_1_sutton_chen_scales:
+
+struct rgpot::SuttonChenScales
+==============================
+
+.. toctree::
+	:hidden:
+
+Bulk nearest-neighbor distance and positive cohesive well depth.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <SuttonChenScales.hpp>
+	
+	struct SuttonChenScales {
+		// fields
+	
+		double :target:`nearest_neighbor<doxid-structrgpot_1_1_sutton_chen_scales_1a5cbeab91b5d8f86e51109b2a2ff62d20>` = 0.0;
+		double :target:`well_depth<doxid-structrgpot_1_1_sutton_chen_scales_1a76c29a0f8377f057f373c80270520209>` = 0.0;
+	};

@@ -1,0 +1,75 @@
+.. index:: pair: namespace; rgpot::simd::HWY_NAMESPACE
+.. _doxid-namespacergpot_1_1simd_1_1_h_w_y___n_a_m_e_s_p_a_c_e:
+
+namespace rgpot::simd::HWY_NAMESPACE
+====================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace HWY_NAMESPACE {
+
+	// global functions
+
+	template <class V>
+	HWY_INLINE void :target:`two_sum_lanes<doxid-hwy__kernels_8cc_1a05847403483ca407f9de8f92b93c3153>`(V a, V b, V& s, V& e);
+
+	template <class D>
+	HWY_INLINE void :target:`two_prod_lanes<doxid-hwy__kernels_8cc_1a243fc33d75012f10be25917540abc41d>`(D d, hn::Vec<D> a, hn::Vec<D> b, hn::Vec<D>& p, hn::Vec<D>& e);
+
+	template <class D>
+	HWY_INLINE bool :target:`lanes_in_fma_domain<doxid-hwy__kernels_8cc_1a46bf91a0a48a688dc5fd3016e3fcd4dc>`(D d, hn::Vec<D> a, hn::Vec<D> b, hn::Vec<D> c);
+
+	template <class D>
+	HWY_INLINE hn::Vec<D> :target:`fma_rounded<doxid-hwy__kernels_8cc_1affed6eb8892d8be6bfc1f58a99495bfd>`(D d, hn::Vec<D> a, hn::Vec<D> b, hn::Vec<D> c);
+
+	template <class D>
+	HWY_INLINE hn::Vec<D> :target:`fma_lanes<doxid-hwy__kernels_8cc_1a66afebd90a828b522da6d9dd28b8cda6>`(D d, hn::Vec<D> a, hn::Vec<D> b, hn::Vec<D> c);
+
+	HWY_INLINE double :target:`r2_scalar<doxid-hwy__kernels_8cc_1a83cf2e5bb50269b7d4434fccdd7f7df2>`(double dx, double dy, double dz);
+
+	template <class D>
+	HWY_INLINE hn::Vec<D> :target:`r2_vec<doxid-hwy__kernels_8cc_1a5515ee64b084913ea96b58ededf4b84e>`(D d, hn::Vec<D> dx, hn::Vec<D> dy, hn::Vec<D> dz);
+
+	template <class D>
+	HWY_INLINE hn::Vec<D> :target:`round_finite<doxid-hwy__kernels_8cc_1a8dbbedb9e606b4e73eacaced80168052>`(D d, hn::Vec<D> t);
+
+	template <class D>
+	HWY_INLINE hn::Vec<D> :target:`fold_axis<doxid-hwy__kernels_8cc_1ac1a283aabb0fccbdcaf02cd9b68d8cfb>`(D d, hn::Vec<D> delta, double width, double inv);
+
+	template <class D>
+	HWY_INLINE hn::Vec<D> :target:`exp_large<doxid-hwy__kernels_8cc_1ae66a4a5e2bee7dae5d7fcecd42540c0a>`(D d, hn::Vec<D> x_in);
+
+	template <class D>
+	HWY_INLINE hn::Vec<D> :target:`exp_lanes<doxid-hwy__kernels_8cc_1aa16c021e94107d79693bc0696824616e>`(D d, hn::Vec<D> x_in);
+
+	template <class D>
+	HWY_INLINE void :target:`gather_xyz<doxid-hwy__kernels_8cc_1a1e6dd40bcedd2160247edeb48b23c6c4>`(D d, const double* base, hn::Vec<hn::Rebind<std::int64_t, D>> ix, hn::Vec<D>& x, hn::Vec<D>& y, hn::Vec<D>& z);
+
+	template <class D>
+	HWY_INLINE void :target:`lj_vec<doxid-hwy__kernels_8cc_1aa4eac343ada28fdf0275cda422ce7ba4>`(D d, hn::Vec<D> r2, const :ref:`LjParams<doxid-structrgpot_1_1simd_1_1_lj_params>`& p, hn::Vec<D>& energy, hn::Vec<D>& fscale);
+
+	template <class D>
+	HWY_INLINE void :target:`morse_vec<doxid-hwy__kernels_8cc_1a08d1a258a86aa3840c0fbcf503f79be7>`(D d, hn::Vec<D> r2, const :ref:`MorseParams<doxid-structrgpot_1_1simd_1_1_morse_params>`& p, hn::Vec<D>& energy, hn::Vec<D>& fscale);
+
+	template <class D, bool kMorse, int Fold>
+	HWY_INLINE double :target:`pair_run<doxid-hwy__kernels_8cc_1a13dac68530c628a668b4cdb53c3816c9>`(D d, const :ref:`PairView<doxid-structrgpot_1_1simd_1_1_pair_view>`& v, double* F, double* strain, const :ref:`LjParams<doxid-structrgpot_1_1simd_1_1_lj_params>`* lj, const :ref:`MorseParams<doxid-structrgpot_1_1simd_1_1_morse_params>`* mp);
+
+	template <class D, bool kMorse>
+	HWY_INLINE double :target:`pair_dispatch<doxid-hwy__kernels_8cc_1a86f7bd302176381c74b3bd95339d3c82>`(D d, const :ref:`PairView<doxid-structrgpot_1_1simd_1_1_pair_view>`& v, double* F, double* strain, const :ref:`LjParams<doxid-structrgpot_1_1simd_1_1_lj_params>`* lj, const :ref:`MorseParams<doxid-structrgpot_1_1simd_1_1_morse_params>`* mp);
+
+	void :target:`FoldOrtho<doxid-hwy__kernels_8cc_1a925d8419f71ea7b680c9bd0fa13ee888>`(double* x, double* y, double* z, std::size_t n, double w0, double w1, double w2, double i0, double i1, double i2);
+	double :target:`LjRun<doxid-hwy__kernels_8cc_1a204835aa82643b4037c2179fcc8e58f4>`(const :ref:`PairView<doxid-structrgpot_1_1simd_1_1_pair_view>`* view, const :ref:`LjParams<doxid-structrgpot_1_1simd_1_1_lj_params>`* params, double* F, double* strain);
+	double :target:`MorseRun<doxid-hwy__kernels_8cc_1a9dab624aa6d81cb98f11cc23cbb463cc>`(const :ref:`PairView<doxid-structrgpot_1_1simd_1_1_pair_view>`* view, const :ref:`MorseParams<doxid-structrgpot_1_1simd_1_1_morse_params>`* params, double* F, double* strain);
+	void :target:`EamRun<doxid-hwy__kernels_8cc_1a5b0bbd72fe34e96c3e319515a1729fcf>`(long n, const double* R, const :ref:`EamAtom<doxid-structrgpot_1_1simd_1_1_eam_atom>`* atoms, const double* box, double* F, double* U);
+	void :target:`FmaArray<doxid-hwy__kernels_8cc_1abbe69d297d28b6c7aa642bccdd815138>`(const double* a, const double* b, const double* c, double* out, std::size_t n);
+	std::int64_t :target:`ActiveBit<doxid-hwy__kernels_8cc_1aaa6a81309c82a8a73ee74d16184202f0>`();
+
+	} // namespace HWY_NAMESPACE

@@ -1,0 +1,25 @@
+.. index:: pair: enum; Code
+.. _doxid-_neighbour_list_8hpp_1ae4cfb0fcba7006ab6d27e325afecb6cb:
+
+enum rgpot::nlist::Code
+=======================
+
+Status values shared with the C ABI. Ok is never thrown.
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <NeighbourList.hpp>
+
+	enum Code {
+	    :target:`Ok<doxid-_neighbour_list_8hpp_1ae4cfb0fcba7006ab6d27e325afecb6cbaa60852f204ed8028c1c58808b746d115>`     = 0,
+	    :target:`Abi<doxid-_neighbour_list_8hpp_1ae4cfb0fcba7006ab6d27e325afecb6cba5679579ae833c24edfcf07f34acc403a>`    = 1,
+	    :target:`Null<doxid-_neighbour_list_8hpp_1ae4cfb0fcba7006ab6d27e325afecb6cbabbb93ef26e3c101ff11cdd21cab08a94>`   = 2,
+	    :target:`Cutoff<doxid-_neighbour_list_8hpp_1ae4cfb0fcba7006ab6d27e325afecb6cbabc5449e9092ea92f5393be6516916084>` = 3,
+	    :target:`Box<doxid-_neighbour_list_8hpp_1ae4cfb0fcba7006ab6d27e325afecb6cba3cfce651e667ab85486dd42a8185f98a>`    = 4,
+	    :target:`Shape<doxid-_neighbour_list_8hpp_1ae4cfb0fcba7006ab6d27e325afecb6cba880c1273b27d27cfc82004c3a4b205c9>`  = 5,
+	    :target:`Short<doxid-_neighbour_list_8hpp_1ae4cfb0fcba7006ab6d27e325afecb6cba30bb747c98bccdd11b3f89e644c4d0ad>`  = 6,
+	    :target:`Nomem<doxid-_neighbour_list_8hpp_1ae4cfb0fcba7006ab6d27e325afecb6cbaf8f10d1e8ff65e5fe59da16a1ce055d8>`  = 7,
+	    :target:`Skin<doxid-_neighbour_list_8hpp_1ae4cfb0fcba7006ab6d27e325afecb6cba9313566fe19aca293daefe4ce37942bf>`   = 8,
+	};
+

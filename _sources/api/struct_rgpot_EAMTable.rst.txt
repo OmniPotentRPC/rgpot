@@ -1,0 +1,84 @@
+.. index:: pair: struct; rgpot::EAMTable
+.. _doxid-structrgpot_1_1_e_a_m_table:
+
+struct rgpot::EAMTable
+======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Tabulated functions after the LAMMPS file2array step. :ref:`More...<details-structrgpot_1_1_e_a_m_table>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <EAMTablePot.hpp>
+	
+	struct EAMTable {
+		// fields
+	
+		int :target:`nrho<doxid-structrgpot_1_1_e_a_m_table_1a0c63fdc42323033adef05028aed58161>` = 0;
+		double :target:`drho<doxid-structrgpot_1_1_e_a_m_table_1a8d4c7a8ff872c6d5804e8038b34a91d9>` = 0.0;
+		int :target:`nr<doxid-structrgpot_1_1_e_a_m_table_1a38857e1cdd8efbf44069b4bdfd0b2c4c>` = 0;
+		double :target:`dr<doxid-structrgpot_1_1_e_a_m_table_1a1e94e9ec4b0d27a67c55e6c61b747f0f>` = 0.0;
+		double :target:`cutoff<doxid-structrgpot_1_1_e_a_m_table_1a9fbe747e7f2cef4fa594a8ef3099c1fa>` = 0.0;
+		double :target:`rhomax<doxid-structrgpot_1_1_e_a_m_table_1aedced6367682aca895221b8de47bfd82>` = 0.0;
+		std::vector<int> :ref:`z<doxid-structrgpot_1_1_e_a_m_table_1ab6a05e4eeaa52813e7483a4c48ba6119>`;
+		std::vector<std::vector<double>> :ref:`frho<doxid-structrgpot_1_1_e_a_m_table_1a0ef28d92381915ce2e6694de16dd2535>`;
+		std::vector<std::vector<double>> :ref:`rhor<doxid-structrgpot_1_1_e_a_m_table_1a593e0b9d72dfd0f770e2a4618af10136>`;
+		std::vector<std::vector<double>> :ref:`z2r<doxid-structrgpot_1_1_e_a_m_table_1a0f5ac6c1afb6945e6db2616b87eade2e>`;
+	};
+.. _details-structrgpot_1_1_e_a_m_table:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Tabulated functions after the LAMMPS file2array step. Entry m of an array sits at m \* dr or m \* drho.
+
+Fields
+------
+
+.. index:: pair: variable; z
+.. _doxid-structrgpot_1_1_e_a_m_table_1ab6a05e4eeaa52813e7483a4c48ba6119:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::vector<int> z
+
+Atomic number per element.
+
+.. index:: pair: variable; frho
+.. _doxid-structrgpot_1_1_e_a_m_table_1a0ef28d92381915ce2e6694de16dd2535:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::vector<std::vector<double>> frho
+
+F_a, one per element.
+
+.. index:: pair: variable; rhor
+.. _doxid-structrgpot_1_1_e_a_m_table_1a593e0b9d72dfd0f770e2a4618af10136:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::vector<std::vector<double>> rhor
+
+rho_ab at index b \* n + a, the density element b puts at an a site.
+
+.. index:: pair: variable; z2r
+.. _doxid-structrgpot_1_1_e_a_m_table_1a0f5ac6c1afb6945e6db2616b87eade2e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::vector<std::vector<double>> z2r
+
+r phi_ab at index a (a + 1) / 2 + b for a >= b.
+

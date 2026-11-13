@@ -9,7 +9,7 @@ There is no pixi muparser feature.
 One ``ExprPot`` is one ``Potential``, so
 ``PotentialHandle::from_impl`` / ``rgpot_potential_new_eindir`` makes that one
 eindir objective for rgmin, rgsaddle, and anneal.
-See `rgpot potentials as eindir objectives <eindir-anneal.rst>`_.
+See :doc:`rgpot potentials as eindir objectives <eindir-anneal>`.
 
 There is no ``PotentialConfig.expr`` arm.
 The C++ constructor is the first-slice API.
@@ -108,8 +108,8 @@ the PES.
 A claim that ``ExprPot`` or ``XcKernel`` beats pyeonclient is a category error
 unless the race is the same geometry, same pot, and the same host job.
 
-``scripts/time_lj_rgpot_vs_pyeonclient.py`` times that race on rg.terra with repo
-defaults (no invented cheaper pot settings):
+``scripts/time_lj_rgpot_vs_pyeonclient.py`` times that race on workstation-a with
+repo defaults (no invented cheaper pot settings):
 
 - Fixture: the ``ExprPotTest`` two-atom Ar pair (1.5 A, Z=18, 40 A box), default
   ``LJConfig`` (``u0`` 1 eV, cutoff 15 A, ``psi`` 1 A).
@@ -121,7 +121,7 @@ defaults (no invented cheaper pot settings):
 
 - C (optional, ``-Dwith_expr=true``): ``ExprPot("lj", {lj})`` vs A.
 
-Build the helper (terra only; release, repo options):
+Build the helper (workstation-a only; release, repo options):
 
 .. code:: bash
 
@@ -132,7 +132,7 @@ Build the helper (terra only; release, repo options):
     python scripts/time_lj_rgpot_vs_pyeonclient.py \
       --a-bin bbdir-lj-bench/CppCore/time_lj_force
 
-Measured on rg.terra (2026-09-04), ``n_calls=1000000``, ``warmup=5000``, same
+Measured on workstation-a (2026-09-04), ``n_calls=1000000``, ``warmup=5000``, same
 fixture and default ``LJConfig``.
 Two consecutive runs of
 ``scripts/time_lj_rgpot_vs_pyeonclient.py --a-bin time_lj_force``:

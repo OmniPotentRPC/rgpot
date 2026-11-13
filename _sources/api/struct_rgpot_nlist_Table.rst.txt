@@ -1,0 +1,58 @@
+.. index:: pair: struct; rgpot::nlist::Table
+.. _doxid-structrgpot_1_1nlist_1_1_table:
+
+struct rgpot::nlist::Table
+==========================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Owning table. :ref:`More...<details-structrgpot_1_1nlist_1_1_table>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <NeighbourList.hpp>
+	
+	struct Table {
+		// fields
+	
+		std::vector<std::int32_t> :target:`first<doxid-structrgpot_1_1nlist_1_1_table_1a97bb87f67f4d9df0d6039b5708a9ea21>`;
+		std::vector<std::int32_t> :target:`second<doxid-structrgpot_1_1nlist_1_1_table_1a786491022fed0309358316bc3644d39d>`;
+		std::vector<std::int32_t> :target:`shift<doxid-structrgpot_1_1nlist_1_1_table_1a0acd885cd2cdc1872d59f562f2446f54>`;
+		std::vector<double> :target:`vector<doxid-structrgpot_1_1nlist_1_1_table_1a38a9419ae17e602d403110f514a6986b>`;
+		std::vector<double> :target:`distance<doxid-structrgpot_1_1nlist_1_1_table_1a5d6997e9f0a0e73cc1f8c2f1ec2c22ec>`;
+		std::vector<std::uint8_t> :target:`mask<doxid-structrgpot_1_1nlist_1_1_table_1aa6dd8b2d8946ac2c5085fd22aea2bd6e>`;
+		int :target:`device<doxid-structrgpot_1_1nlist_1_1_table_1a7eded389a01a4cf11822cd25b945d4da>` = 0;
+		bool :target:`stored<doxid-structrgpot_1_1nlist_1_1_table_1a9e2bfb52d35a72d231d914c0165ccd3a>` = false;
+
+		// methods
+	
+		std::size_t :target:`size<doxid-structrgpot_1_1nlist_1_1_table_1a00b65fe9bec500bb1470102c3f6fc191>`() const;
+		std::span<const double> :ref:`column_major_vectors<doxid-structrgpot_1_1nlist_1_1_table_1acc494bc1fd08f8bedf7ca6ffc766e72f>`() const;
+		:ref:`View<doxid-structrgpot_1_1nlist_1_1_view>` :target:`view<doxid-structrgpot_1_1nlist_1_1_table_1a8f019bf60e3424b65e620de5cd0fc086>`() const;
+	};
+.. _details-structrgpot_1_1nlist_1_1_table:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Owning table. The arrays are the storage a caller can wrap without copying. ``device`` is 0 for host memory. A GPU fill would use the same layout and a non-zero device id; this build fills host memory.
+
+Methods
+-------
+
+.. index:: pair: function; column_major_vectors
+.. _doxid-structrgpot_1_1nlist_1_1_table_1acc494bc1fd08f8bedf7ca6ffc766e72f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::span<const double> column_major_vectors() const
+
+``vector`` as a Fortran ``(3, npairs)`` array. Pair ``p`` is ``x, y, z`` at elements ``3p``, ``3p+1``, ``3p+2``. Same memory as ``vector``.
+

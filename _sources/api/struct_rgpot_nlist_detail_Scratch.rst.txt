@@ -1,0 +1,43 @@
+.. index:: pair: struct; rgpot::nlist::detail::Scratch
+.. _doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch:
+
+struct rgpot::nlist::detail::Scratch
+====================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Scratch {
+		// fields
+	
+		std::vector<int> :target:`cell_of<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1a64d5b883bdebf63a6439f0f3ba56c9fe>`;
+		std::vector<int> :target:`rank<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1a19780022993e44c85adcc3604efbf717>`;
+		std::vector<int> :target:`counts<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1aa2d5358e2fed4cc3d75ebb86fbaab89a>`;
+		std::vector<int> :target:`start<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1a6fff1d5ca0128c88aaec70083c0a0397>`;
+		std::vector<int> :target:`atoms<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1a1d6a4527cad352eaa4d482aa5eedbda6>`;
+		std::vector<int> :target:`scell<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1a3aed88825021aeb445fe62fe72e0d588>`;
+		std::vector<int> :target:`scounts<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1a170aa86ca94e0f630087a7890b25bd40>`;
+		std::vector<int> :target:`sstart<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1a27d5232e967fe28d70808e11ae3d535e>`;
+		std::vector<int> :target:`satoms<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1acb071a7cf4dfd3650fd627f310624f1c>`;
+		std::vector<int> :target:`lo<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1a87b3af14bf5418ba916c536e9835cb9b>`;
+		std::vector<int> :target:`hi<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1a9c68602a6c24d4880d5ae2a116c5fe97>`;
+		std::vector<double> :target:`dx<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1ad96eb2bcc9126d957460575fe8c2be85>`;
+		std::vector<double> :target:`dy<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1a98dbd23965a4ecb694f1565ae9e7bfea>`;
+		std::vector<double> :target:`dz<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1a0dbdfd6c5d229ddc3fba7863e924f84d>`;
+		std::vector<int> :target:`lo2<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1a3d67fa9b52af74a54a69ebe4d20ed069>`;
+		std::vector<int> :target:`hi2<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1a2af1f5974ce9a16217483cf06b9e7d70>`;
+		std::vector<double> :target:`dx2<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1ac39eb1fcc6df8a5fc30f1a0e6352d813>`;
+		std::vector<double> :target:`dy2<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1a393993c0fa75fe4b7386092c3421ca19>`;
+		std::vector<double> :target:`dz2<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1a92b51d24709c37dcefcbf536fe2bf4b7>`;
+		std::vector<:ref:`Key<doxid-structrgpot_1_1nlist_1_1detail_1_1_key>`> :target:`key<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1a7a9c6ec3bdf2b1be16e8a600603a350b>`;
+		std::vector<std::uint32_t> :target:`ord<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1a95c2aeebc8d3d9f2c9a66b3a7dffe652>`;
+		:ref:`Grid<doxid-structrgpot_1_1nlist_1_1detail_1_1_grid>` :target:`order<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1a54680b988430fb142f1b406cf4f50486>` {};
+		bool :target:`ordered<doxid-structrgpot_1_1nlist_1_1detail_1_1_scratch_1abb019de2259e0e9d144a8d83911580e3>` = false;
+	};

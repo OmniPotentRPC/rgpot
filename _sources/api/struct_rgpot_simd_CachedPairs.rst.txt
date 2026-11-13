@@ -1,0 +1,25 @@
+.. index:: pair: struct; rgpot::simd::CachedPairs
+.. _doxid-structrgpot_1_1simd_1_1_cached_pairs:
+
+struct rgpot::simd::CachedPairs
+===============================
+
+.. toctree::
+	:hidden:
+
+Indices from one neighbour-layer evaluation. The view points into this object. image is the general-cell fold when the box is not orthorhombic.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <from_cache.hpp>
+	
+	struct CachedPairs {
+		// fields
+	
+		std::vector<std::int32_t> :target:`rows<doxid-structrgpot_1_1simd_1_1_cached_pairs_1ab20cd52dfe46bb3e07319dfbbfc875d6>`;
+		std::vector<std::int32_t> :target:`nbr<doxid-structrgpot_1_1simd_1_1_cached_pairs_1aa541cb4d94d5b5b2916ac0dda529f0be>`;
+		:ref:`nlist::MinimumImage<doxid-classrgpot_1_1nlist_1_1_minimum_image>` :target:`image<doxid-structrgpot_1_1simd_1_1_cached_pairs_1acd2dcd5fe96909fd6e0425093eca0d20>` {};
+		:ref:`PairView<doxid-structrgpot_1_1simd_1_1_pair_view>` :target:`view<doxid-structrgpot_1_1simd_1_1_cached_pairs_1a51adad61c36c30f6dd984b9b04060237>` {};
+	};

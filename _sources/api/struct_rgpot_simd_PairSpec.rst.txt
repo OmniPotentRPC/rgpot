@@ -1,0 +1,24 @@
+.. index:: pair: struct; rgpot::simd::PairSpec
+.. _doxid-structrgpot_1_1simd_1_1_pair_spec:
+
+struct rgpot::simd::PairSpec
+============================
+
+.. toctree::
+	:hidden:
+
+Cutoff, skin and periodicity for one half-list build.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <from_cache.hpp>
+	
+	struct PairSpec {
+		// fields
+	
+		double :target:`cutoff<doxid-structrgpot_1_1simd_1_1_pair_spec_1a2aec9356989ffc8dda2bf260bbe04c3b>` = 0;
+		double :target:`skin<doxid-structrgpot_1_1simd_1_1_pair_spec_1aed1552ff27f73dcfc0ef42211b410cca>` = 1.0;
+		std::array<bool, 3> :target:`periodic<doxid-structrgpot_1_1simd_1_1_pair_spec_1ae228f5a605cc7fe11515081645fd1e6b>` {{true, true, true}};
+	};

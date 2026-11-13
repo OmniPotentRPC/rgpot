@@ -1,0 +1,31 @@
+.. index:: pair: struct; rgpot_nlist_request
+.. _doxid-structrgpot__nlist__request:
+
+struct rgpot_nlist_request
+==========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct rgpot_nlist_request {
+		// fields
+	
+		uint32_t :target:`bytes<doxid-structrgpot__nlist__request_1a0153ba251ea6d9c2adb7941f80aeb28a>`;
+		uint32_t :target:`abi<doxid-structrgpot__nlist__request_1a05a68810fc8e897f7878ab162cf82806>`;
+		double :target:`cutoff<doxid-structrgpot__nlist__request_1aed17f1c3f3ff5a65de191bb32b690885>`;
+		double :target:`skin<doxid-structrgpot__nlist__request_1af0cb42e3840bf8f5a42d2ddd87071c8a>`;
+		int32_t :target:`shape<doxid-structrgpot__nlist__request_1aaabc95234347079566317f8f825654f6>`;
+		int32_t :target:`shell<doxid-structrgpot__nlist__request_1ac6db30ca8e9fe4e4d5d40020f0ebc77e>`;
+		int32_t :target:`cut<doxid-structrgpot__nlist__request_1aa94dc9e7da6ded42d5d37a6e3d839ec5>`;
+		int32_t :target:`periodic<doxid-structrgpot__nlist__request_1a97a09f356d530bcc8fffd3e5b622a6a6>`[3];
+		int32_t :target:`want_shifts<doxid-structrgpot__nlist__request_1af91cb9926dc5c7449c1ac6dfa4a3f99f>`;
+		int32_t :target:`want_vectors<doxid-structrgpot__nlist__request_1a1d2b31f91530cae463834d8454b9d158>`;
+		int32_t :target:`want_distances<doxid-structrgpot__nlist__request_1a19efc11fb15ed3a7d27b37a872692f82>`;
+	};

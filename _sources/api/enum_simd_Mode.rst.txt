@@ -1,0 +1,18 @@
+.. index:: pair: enum; Mode
+.. _doxid-namespacergpot_1_1simd_1_1_0d256261305211036002011256023345132361252360052151_1a8518f337bb92aa34dbfd464a3dd73752:
+
+enum simd::Mode
+===============
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	enum Mode {
+	    :target:`Auto<doxid-namespacergpot_1_1simd_1_1_0d256261305211036002011256023345132361252360052151_1a8518f337bb92aa34dbfd464a3dd73752a06b9281e396db002010bde1de57262eb>`,
+	    :target:`Scalar<doxid-namespacergpot_1_1simd_1_1_0d256261305211036002011256023345132361252360052151_1a8518f337bb92aa34dbfd464a3dd73752af60357a8d17e45793298323f1b372a74>`,
+	    :target:`Named<doxid-namespacergpot_1_1simd_1_1_0d256261305211036002011256023345132361252360052151_1a8518f337bb92aa34dbfd464a3dd73752a02a7d85bf0d59dff6a850fb5d7dbbe01>`,
+	};
+

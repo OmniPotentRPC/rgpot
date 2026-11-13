@@ -50,6 +50,18 @@ energy callback, so there is one evaluation path and no conversion step
     );
     let objective = pot as *mut eindir_objective_t; // zero-cost IS-A cast
 
+Check the embedded base against the eindir-core of the loaded library before the
+cast is read as an objective:
+
+.. code:: rust
+
+    let stamp = rgpot_eindir_abi_stamp();
+    assert_eq!(unsafe { rgpot_eindir_abi_compatible(&stamp) }, 1);
+
+``rgpot_eindir_abi_compatible`` forwards to ``eindir_core_abi_compatible`` in the
+eindir-core that rgpot was built with, so the check needs no second link to
+eindir-core.
+
 A callback that reports
 ``RGPOT_SUCCESS`` must return a non-null f64 CPU forces tensor with exactly ``n_atoms * 3``
 finite elements and a finite energy.

@@ -1,0 +1,11 @@
+.. index:: pair: struct; rgpot::nlist::Cluster4
+.. _doxid-structrgpot_1_1nlist_1_1_cluster4:
+
+struct rgpot::nlist::Cluster4
+=============================
+
+.. toctree::
+	:hidden:
+
+Four consecutive central atoms, one partner, and a 4-bit mask. The interactions are the full set. There is no half-list cluster: the type has no shell.
+

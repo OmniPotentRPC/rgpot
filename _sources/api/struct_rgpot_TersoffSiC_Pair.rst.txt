@@ -1,0 +1,27 @@
+.. index:: pair: struct; rgpot::TersoffSiC::Pair
+.. _doxid-structrgpot_1_1_tersoff_si_c_1_1_pair:
+
+struct rgpot::TersoffSiC::Pair
+==============================
+
+.. toctree::
+	:hidden:
+
+Mixed pair. big_a and big_b are the repulsive and attractive amplitudes.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <TersoffSiC.hpp>
+	
+	struct Pair {
+		// fields
+	
+		double :target:`lambda1<doxid-structrgpot_1_1_tersoff_si_c_1_1_pair_1a29ad6775be7c9acb74356897f414a552>`;
+		double :target:`lambda2<doxid-structrgpot_1_1_tersoff_si_c_1_1_pair_1ab3877687dd3c52361ef6da2fff983eb2>`;
+		double :target:`big_a<doxid-structrgpot_1_1_tersoff_si_c_1_1_pair_1a8177b81626009b51c1f0b02a79e30cb9>`;
+		double :target:`big_b<doxid-structrgpot_1_1_tersoff_si_c_1_1_pair_1aef9c12d420502b2b547ae76c1d0cd936>`;
+		double :target:`rin<doxid-structrgpot_1_1_tersoff_si_c_1_1_pair_1a8cfbc7ed8b34ae16aec376dc050388d8>`;
+		double :target:`rout<doxid-structrgpot_1_1_tersoff_si_c_1_1_pair_1a7679309adbc415b79ecd434540805727>`;
+	};

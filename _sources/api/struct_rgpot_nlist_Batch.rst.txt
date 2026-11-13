@@ -1,0 +1,23 @@
+.. index:: pair: struct; rgpot::nlist::Batch
+.. _doxid-structrgpot_1_1nlist_1_1_batch:
+
+struct rgpot::nlist::Batch
+==========================
+
+.. toctree::
+	:hidden:
+
+:ref:`Pairs <doxid-structrgpot_1_1nlist_1_1_pairs>` of a ``:ref:`Systems <doxid-structrgpot_1_1nlist_1_1_systems>``` build. ``first`` and ``second`` index the concatenated positions. ``system[p]`` is the system that owns pair ``p``.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <NeighbourList.hpp>
+	
+	struct Batch {
+		// fields
+	
+		:ref:`Table<doxid-structrgpot_1_1nlist_1_1_table>` :target:`pairs<doxid-structrgpot_1_1nlist_1_1_batch_1a1b30917709f514f335e56793a0442b71>`;
+		std::vector<std::int32_t> :target:`system<doxid-structrgpot_1_1nlist_1_1_batch_1a31d119b3077e09c089dfbb0635071de9>`;
+	};

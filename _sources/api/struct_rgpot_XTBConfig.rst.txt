@@ -26,6 +26,7 @@ Overview
 		int :target:`max_iterations<doxid-structrgpot_1_1_x_t_b_config_1a4becab3591b427ed4728c76c0fa1f8ac>` = 250;
 		double :target:`charge<doxid-structrgpot_1_1_x_t_b_config_1acfc866e6d7cc3878778a4c3995c8e9e1>` = 0.0;
 		int :ref:`uhf<doxid-structrgpot_1_1_x_t_b_config_1a72424ea20e42123cae849a1ce4a392db>` = 0;
+		double :ref:`warm_move<doxid-structrgpot_1_1_x_t_b_config_1a77d9b5f2284813a43156e3ce6fcecf5c>` = 1.0;
 	};
 .. _details-structrgpot_1_1_x_t_b_config:
 
@@ -46,4 +47,14 @@ Fields
 	int uhf = 0
 
 Number of unpaired electrons (libxtb uhf; multiplicity 2 => uhf 1).
+
+.. index:: pair: variable; warm_move
+.. _doxid-structrgpot_1_1_x_t_b_config_1a77d9b5f2284813a43156e3ce6fcecf5c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double warm_move = 1.0
+
+Largest atom move, in Angstrom, that still reuses the previous SCC wavefunction as the next guess. A larger move drops the results object, and the next single point uses xtb's own guess. Zero or a negative value disables reuse.
 

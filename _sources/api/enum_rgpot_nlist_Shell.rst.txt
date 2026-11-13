@@ -1,0 +1,18 @@
+.. index:: pair: enum; Shell
+.. _doxid-_neighbour_list_8hpp_1a29e158253efb3f84db86615e1da072c8:
+
+enum rgpot::nlist::Shell
+========================
+
+Half keeps one direction of each pair, with the same image rule vesin uses for a self image. Full keeps both directions.
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <NeighbourList.hpp>
+
+	enum Shell {
+	    :target:`Half<doxid-_neighbour_list_8hpp_1a29e158253efb3f84db86615e1da072c8ac48615a1bc4197056d522af276aa5a85>`,
+	    :target:`Full<doxid-_neighbour_list_8hpp_1a29e158253efb3f84db86615e1da072c8abbd47109890259c0127154db1af26c75>`,
+	};
+

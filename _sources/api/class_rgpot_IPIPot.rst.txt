@@ -1,0 +1,101 @@
+.. index:: pair: class; rgpot::IPIPot
+.. _doxid-classrgpot_1_1_i_p_i_pot:
+
+class rgpot::IPIPot
+===================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Server-side i-PI socket potential. :ref:`More...<details-classrgpot_1_1_i_p_i_pot>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <IPIPot.hpp>
+	
+	class IPIPot: public rgpot::Potential< IPIPot > {
+	public:
+		// construction
+	
+		:target:`IPIPot<doxid-classrgpot_1_1_i_p_i_pot_1ad289688caa3e25c32b32079109f8a4e0>`(const :ref:`IPIConfig<doxid-structrgpot_1_1_i_p_i_config>`& config);
+		:target:`IPIPot<doxid-classrgpot_1_1_i_p_i_pot_1af80a1763e3d8dd3a77ad4309c8743dee>`(const IPIPot&);
+		:target:`~IPIPot<doxid-classrgpot_1_1_i_p_i_pot_1adc466c547c4a0e0464333ddb18e7dfbf>`();
+
+		// methods
+	
+		IPIPot& :target:`operator=<doxid-classrgpot_1_1_i_p_i_pot_1a632d636f4757b9f529547a3ae23e7027>`(const IPIPot&);
+		void :target:`forceImpl<doxid-classrgpot_1_1_i_p_i_pot_1acb9bf624a3ac9c77b4a6b9d42f48de86>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_i_p_i_pot_1a9c57a616e415ce7f538d5a4d6d8565dc>`() const;
+		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_i_p_i_pot_1a61e8e34de3fe64aae205edfac35d4670>`() const;
+		const :ref:`IPIConfig<doxid-structrgpot_1_1_i_p_i_config>`& :target:`config<doxid-classrgpot_1_1_i_p_i_pot_1a24bf2ef8b9f2b5157868a51ccb830d8b>`() const;
+		const std::string& :ref:`endpoint<doxid-classrgpot_1_1_i_p_i_pot_1aa22421a44258f2704a3ac5543980767c>`() const;
+		bool :ref:`hasStress<doxid-classrgpot_1_1_i_p_i_pot_1aa9f88df793d966a751ca04c6f9208bdc>`() const;
+		bool :ref:`copyStress<doxid-classrgpot_1_1_i_p_i_pot_1a28e56624e04f72d9e47295fe9a7b716c>`(double out[9]) const;
+	};
+.. _details-classrgpot_1_1_i_p_i_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Server-side i-PI socket potential.
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1_i_p_i_pot_1a9c57a616e415ce7f538d5a4d6d8565dc:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+One connection and one driver. Stress is the Cauchy tensor.
+
+.. index:: pair: function; paramsKey
+.. _doxid-classrgpot_1_1_i_p_i_pot_1a61e8e34de3fe64aae205edfac35d4670:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual uint64_t paramsKey() const
+
+Fingerprint of the potential's parameter set.
+
+Mixed into the result-cache key so results never cross parameter sets. Implementations hash their config field by field (see :ref:`ParamHash.hpp <doxid-_param_hash_8hpp_source>`) plus a kernel-version salt that changes whenever the numerics change. The default (0) suits parameter-free potentials whose numerics never changed.
+
+.. index:: pair: function; endpoint
+.. _doxid-classrgpot_1_1_i_p_i_pot_1aa22421a44258f2704a3ac5543980767c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const std::string& endpoint() const
+
+Bound address. A requested TCP port of 0 is the kernel's choice.
+
+.. index:: pair: function; hasStress
+.. _doxid-classrgpot_1_1_i_p_i_pot_1aa9f88df793d966a751ca04c6f9208bdc:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool hasStress() const
+
+True after a force call that published Cauchy stress.
+
+.. index:: pair: function; copyStress
+.. _doxid-classrgpot_1_1_i_p_i_pot_1a28e56624e04f72d9e47295fe9a7b716c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool copyStress(double out[9]) const
+
+Copies the last Cauchy stress, row-major. Returns false when none.
+

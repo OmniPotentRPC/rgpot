@@ -1,0 +1,19 @@
+.. index:: pair: enum; Image
+.. _doxid-_neighbours_8hpp_1a37af90dda547e90ccfbdc2e75ab70188:
+
+enum rgpot::nlist::Image
+========================
+
+How the minimum image is formed. Round is the orthorhombic truncation used by the pair kernels. Half is one correction about the half-box, used after coordinates have been wrapped into the cell. General is :ref:`MinimumImage <doxid-classrgpot_1_1nlist_1_1_minimum_image>`, for a non-orthogonal cell or a periodic side shorter than the search.
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <Neighbours.hpp>
+
+	enum Image {
+	    :target:`Round<doxid-_neighbours_8hpp_1a37af90dda547e90ccfbdc2e75ab70188ab7f41fc1412ad2ee75e9b2635d3b9d5c>`,
+	    :target:`Half<doxid-_neighbours_8hpp_1a37af90dda547e90ccfbdc2e75ab70188ac48615a1bc4197056d522af276aa5a85>`,
+	    :target:`General<doxid-_neighbours_8hpp_1a37af90dda547e90ccfbdc2e75ab70188a0db377921f4ce762c62526131097968f>`,
+	};
+
