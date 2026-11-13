@@ -28,6 +28,15 @@ namespace rgpot {
  * distinct instances may be used from different threads if the loaded
  * libxtb build is reentrant for independent handle sets.
  *
+ * Positions and the lattice are Bohr on the xtb side. A crystal (or
+ * ``XTBConfig::periodic > 0``) passes three periodic flags. Native
+ * GFN1-xTB and GFN2-xTB reject that cell: GFN2 reports "Multipoles not
+ * available with PBC" and the xtb driver aborts, so this class throws
+ * before the single point. Periodic GFN1 and GFN2 are ``TBLitePot``.
+ * GFN-FF keeps the flags; the C API drops the strain derivative
+ * afterwards, so that method returns energy and forces and leaves the
+ * virial unset.
+ *
  * For hosts that must not NEEDED libxtb, use ``XTBDlopen`` +
  * ``libxtb_engine.so`` instead (always built; no ``-Dwith_xtb`` required).
  */
@@ -72,6 +81,7 @@ private:
   mutable bool m_has_wavefunction = false;
   mutable bool m_last_reused = false;
   mutable double m_warm_move = 1.0;
+  mutable bool m_periodic[3] = {false, false, false};
   mutable std::vector<double> m_pos_bohr; //!< Preallocated position buffer.
   mutable std::vector<double> m_previous; //!< Last host coordinates, Angstrom.
   mutable std::vector<int> m_numbers;

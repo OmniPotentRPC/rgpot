@@ -18,6 +18,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -477,4 +478,70 @@ TEST_CASE("XTBDlopen reuses the GFN2 wavefunction inside the move guard",
   check_wavefunction_reuse([](const rgpot::XTBConfig &cfg) {
     return std::make_unique<rgpot::XTBDlopen>(dlopen_cfg(cfg));
   });
+}
+
+static void silicon_cell(AtomMatrix &positions, std::vector<int> &types,
+                         std::array<std::array<double, 3>, 3> &box) {
+  const double a = 5.431;
+  const double frac[8][3] = {{0, 0, 0},         {0.5, 0.5, 0},
+                             {0.5, 0, 0.5},     {0, 0.5, 0.5},
+                             {0.25, 0.25, 0.25}, {0.75, 0.75, 0.25},
+                             {0.75, 0.25, 0.75}, {0.25, 0.75, 0.75}};
+  positions = AtomMatrix(8, 3);
+  types.assign(8, 14);
+  for (int i = 0; i < 8; ++i)
+    for (int k = 0; k < 3; ++k)
+      positions(static_cast<size_t>(i), static_cast<size_t>(k)) = frac[i][k] * a;
+  box = {{{a, 0, 0}, {0, a, 0}, {0, 0, a}}};
+}
+
+TEST_CASE("XTBPot periodic GFN2 throws instead of aborting", "[xtb][linked][pbc]") {
+  // libxtb's native GFN2 calculator stops with "Multipoles not available
+  // with PBC". The driver aborts. The flags used to be hardcoded off, so
+  // a crystal was evaluated as a cluster and the virial stayed untested.
+  rgpot::XTBConfig cfg;
+  cfg.method = rgpot::GFNMethod::GFN2xTB;
+  cfg.periodic = 1;
+  rgpot::XTBPot pot(cfg);
+  AtomMatrix positions(8, 3);
+  std::vector<int> types;
+  std::array<std::array<double, 3>, 3> box{};
+  silicon_cell(positions, types, box);
+  bool threw = false;
+  try {
+    auto [energy, forces, variance] = pot(positions, types, box);
+    (void)energy;
+    (void)forces;
+    (void)variance;
+  } catch (const std::runtime_error &err) {
+    threw = true;
+    const std::string message = err.what();
+    REQUIRE(message.find("PBC") != std::string::npos);
+    REQUIRE(message.find("periodic") != std::string::npos);
+  }
+  REQUIRE(threw);
+}
+
+TEST_CASE("XTBPot GFN-FF periodic silicon does not abort", "[xtb][linked][pbc]") {
+  // xtb 6.7 accepts this lattice. 6.6 rejects GFN-FF setup. Either way the
+  // failure is a C++ exception, not an abort, and the lattice is in Bohr
+  // with the periodic flags set.
+  rgpot::XTBConfig cfg;
+  cfg.method = rgpot::GFNMethod::GFNFF;
+  cfg.periodic = 1;
+  rgpot::XTBPot pot(cfg);
+  AtomMatrix positions(8, 3);
+  std::vector<int> types;
+  std::array<std::array<double, 3>, 3> box{};
+  silicon_cell(positions, types, box);
+  try {
+    auto [energy, forces, variance] = pot(positions, types, box);
+    (void)variance;
+    REQUIRE(std::isfinite(energy));
+    REQUIRE(energy < 0.0);
+    require_finite_forces(forces, 8);
+  } catch (const std::runtime_error &err) {
+    const std::string message = err.what();
+    REQUIRE(message.find("xTB") != std::string::npos);
+  }
 }

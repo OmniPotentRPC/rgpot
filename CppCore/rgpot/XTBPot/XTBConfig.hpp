@@ -26,6 +26,15 @@ struct XTBConfig {
    * negative value disables reuse.
    */
   double warm_move = 1.0;
+  /**
+   * Boundary conditions. 0 is a cluster. A positive value is periodic on
+   * every axis of a non-singular cell. Negative (the default) is periodic
+   * only when the atoms span more than half of every axis. libxtb's own
+   * GFN1-xTB and GFN2-xTB calculators do not support that cell: GFN2 stops
+   * with "Multipoles not available with PBC", and the command-line driver
+   * then aborts. Periodic GFN1 and GFN2 are `TBLitePot`.
+   */
+  int periodic = -1;
 };
 
 /** Optional engine path for the dlopen frontend (also RGPOT_XTB_ENGINE). */

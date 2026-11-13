@@ -19,6 +19,13 @@ struct TBLiteConfig {
   int max_iterations = 250;
   double charge = 0.0;
   int uhf = 0;
+  /**
+   * Boundary conditions. 0 is a cluster. A positive value is periodic on
+   * every axis. Negative (the default) is periodic when the atoms span
+   * more than half of every axis. tblite is the periodic GFN1/GFN2 path;
+   * native libxtb aborts those calculators under PBC.
+   */
+  int periodic = -1;
 };
 
 class TBLitePot : public Potential<TBLitePot> {
@@ -47,6 +54,7 @@ private:
   mutable tblite_structure m_mol = nullptr;
   mutable tblite_result m_res = nullptr;
   mutable bool m_initialized = false;
+  mutable bool m_periodic[3] = {false, false, false};
   mutable std::vector<double> m_pos_bohr; //!< Preallocated position buffer.
 
   void initHandles();

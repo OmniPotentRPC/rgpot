@@ -2,6 +2,7 @@
 // Copyright 2023--present rgpot developers
 
 #include "rgpot/TBLitePot/TBLitePot.hpp"
+#include "rgpot/cell_periodicity.hpp"
 #include "rgpot/stress.hpp"
 #include "rgpot/units.hpp"
 
@@ -105,12 +106,31 @@ void TBLitePot::forceImpl(const ForceInput &in, ForceOut *out) const {
     box_bohr[i] = in.box[i] * ANGSTROM_TO_BOHR;
   }
 
+  bool periodicity[3] = {false, false, false};
+  if (!latticePeriodicity(in.pos, in.nAtoms, in.box, m_config.periodic,
+                          periodicity)) {
+    throw std::invalid_argument(
+        "tblite: a periodic cell must have a non-singular lattice");
+  }
+  const bool bounds_changed =
+      periodicity[0] != m_periodic[0] || periodicity[1] != m_periodic[1] ||
+      periodicity[2] != m_periodic[2];
+  if (m_initialized && bounds_changed) {
+    if (m_calc)
+      tblite_delete_calculator(&m_calc);
+    if (m_mol)
+      tblite_delete_structure(&m_mol);
+    m_calc = nullptr;
+    m_mol = nullptr;
+    m_initialized = false;
+  }
+
   if (!m_initialized) {
     tblite_error err = tblite_new_error();
     double charge = m_config.charge;
     int uhf = m_config.uhf;
     m_mol = tblite_new_structure(err, intN, in.atmnrs, m_pos_bohr.data(),
-                                 &charge, &uhf, box_bohr, nullptr);
+                                 &charge, &uhf, box_bohr, periodicity);
     if (tblite_check_error(err) != 0) {
       char err_msg[512];
       tblite_get_error(err, err_msg, nullptr);
@@ -120,6 +140,9 @@ void TBLitePot::forceImpl(const ForceInput &in, ForceOut *out) const {
     }
     tblite_delete_error(&err);
     createCalculator();
+    m_periodic[0] = periodicity[0];
+    m_periodic[1] = periodicity[1];
+    m_periodic[2] = periodicity[2];
     m_initialized = true;
   } else {
     tblite_error err = tblite_new_error();

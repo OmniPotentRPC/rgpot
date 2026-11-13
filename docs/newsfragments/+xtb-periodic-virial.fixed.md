@@ -1,0 +1,1 @@
+Periodic xTB passes the lattice in Bohr and the periodicity flags. Native GFN1-xTB and GFN2-xTB no longer reach the libxtb abort (`Multipoles not available with PBC`); those cells are `TBLitePot`, whose virial matches a strain derivative. GFN-FF stays on libxtb and reports energy and forces.

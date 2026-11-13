@@ -109,6 +109,28 @@ See `scripts/compare_xtb_backends.py` for flags. Protocol: shared water GFN2
 geometry, warmup force calls, then timed samples; report mean wall ms and
 whether dlopen is as-fast-or-faster than eOn linked ship (5% band).
 
+## Periodic cells
+
+Positions and the lattice are converted to Bohr. Lattice vectors are the
+rows of the cell, which is the column-major layout libxtb and tblite read.
+`XTBConfig::periodic` and `TBLiteConfig::periodic` choose the boundary
+conditions: `0` is a cluster, a positive value is periodic on every axis,
+and the default treats a cell as periodic only when the atoms span more
+than half of every axis. A water molecule in the 100 Å open box stays a
+cluster.
+
+Native libxtb does not evaluate periodic GFN1-xTB or GFN2-xTB. GFN2 stops
+with `Multipoles not available with PBC`, and the xtb driver aborts on
+that error. `XTBPot` throws before the single point. Periodic GFN1-xTB and
+GFN2-xTB are `TBLitePot` (`-Dwith_tblite=true`). That build returns the
+energy, the forces and the virial. The virial is `W = -dE/dε` in eV and
+the stress is `W` divided by the cell volume with a minus sign.
+
+GFN-FF stays on libxtb. xtb 6.7 accepts a periodic silicon cell. The C API
+then deletes the strain derivative, so `XTBPot` returns the energy and the
+forces and leaves the virial unset. xtb 6.6 rejects the GFN-FF setup; that
+failure is an exception.
+
 ## Wavefunction reuse
 
 `XTBPot` and `XTBDlopen` keep one calculator. The SCC wavefunction in the

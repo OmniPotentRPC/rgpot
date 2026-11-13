@@ -2,6 +2,7 @@
 // Copyright 2023--present rgpot developers
 
 #include "rgpot/XTBPot/XTBPot.hpp"
+#include "rgpot/cell_periodicity.hpp"
 #include "rgpot/stress.hpp"
 #include "rgpot/units.hpp"
 
@@ -65,6 +66,7 @@ void XTBPot::reset() {
   m_previous.clear();
   m_has_wavefunction = false;
   m_last_reused = false;
+  m_periodic[0] = m_periodic[1] = m_periodic[2] = false;
 }
 
 void XTBPot::setWarmMove(double angstrom) { m_warm_move = angstrom; }
@@ -178,7 +180,26 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
   int intN = static_cast<int>(in.nAtoms);
   const size_t n3 = 3 * in.nAtoms;
-  const bool periodicity[3] = {false, false, false};
+  bool periodicity[3] = {false, false, false};
+  if (!latticePeriodicity(in.pos, in.nAtoms, in.box, m_config.periodic,
+                          periodicity)) {
+    throw std::invalid_argument(
+        "xTB Error: a periodic cell must have a non-singular lattice");
+  }
+  const bool any_periodic = periodicity[0] || periodicity[1] || periodicity[2];
+  if (any_periodic && (m_config.method == GFNMethod::GFN1xTB ||
+                       m_config.method == GFNMethod::GFN2xTB)) {
+    // libxtb's native calculators do not implement this cell. GFN2 hits
+    // `error stop` "Multipoles not available with PBC" in the driver, and
+    // the C API returns that same string after the single point. Throw
+    // first so the process stays up. Periodic GFN1 and GFN2 are tblite.
+    throw std::runtime_error(
+        "xTB Error: native libxtb cannot evaluate a periodic cell with "
+        "GFN1-xTB or GFN2-xTB. GFN2 stops with \"Multipoles not available "
+        "with PBC\" and the xtb driver aborts. Periodic GFN1-xTB and "
+        "GFN2-xTB are TBLitePot (-Dwith_tblite=true). GFN-FF remains on "
+        "libxtb when that build accepts a lattice.");
+  }
 
   // Reuse preallocated buffer, resize only when atom count changes
   m_pos_bohr.resize(n3);
@@ -191,8 +212,12 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     box_bohr[i] = in.box[i] * ANGSTROM_TO_BOHR;
   }
 
+  const bool bounds_changed =
+      periodicity[0] != m_periodic[0] || periodicity[1] != m_periodic[1] ||
+      periodicity[2] != m_periodic[2];
   const bool composition_changed =
-      !m_initialized || numbersDiffer(m_numbers, in.atmnrs, in.nAtoms);
+      !m_initialized || bounds_changed ||
+      numbersDiffer(m_numbers, in.atmnrs, in.nAtoms);
   const double moved = maxAtomMove(m_previous, in.pos, n3);
   // The results object holds the previous SCC wavefunction. xtb reads it
   // as the guess. Past warm_move that guess is slower than xtb's own, so
@@ -225,7 +250,8 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
   if (xtb_checkEnvironment(m_env) != 0) {
     char err_msg[512];
-    xtb_getError(m_env, err_msg, nullptr);
+    int err_len = static_cast<int>(sizeof err_msg);
+    xtb_getError(m_env, err_msg, &err_len);
     const std::string message = std::string("xTB Error: ") + err_msg;
     discardAfterFailure();
     throw std::runtime_error(message);
@@ -248,11 +274,15 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     out->F[i] *= NEG_GRAD_TO_FORCE;
   }
 
-  // xtb stores dE/dε in Hartree. sigma = virial / V in eV/Angstrom^3.
+  // xtb stores dE/dε in Hartree, column-major. The GFN-FF API deletes
+  // that tensor after the single point, and querying it poisons the
+  // environment, so the virial stays unset for GFN-FF.
   double virial[9] = {};
-  xtb_getVirial(m_env, m_res, virial);
+  const bool ask_virial = m_config.method != GFNMethod::GFNFF;
+  if (ask_virial)
+    xtb_getVirial(m_env, m_res, virial);
   const double volume = cellVolume(in.box);
-  if (volume > 0.0) {
+  if (ask_virial && xtb_checkEnvironment(m_env) == 0 && volume > 0.0) {
     const double scale = units::HARTREE_TO_EV / volume;
     for (int col = 0; col < 3; ++col) {
       for (int row = 0; row < 3; ++row) {
@@ -271,17 +301,23 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   } else {
     out->has_stress = 0;
     out->has_virial = 0;
+    // A failed virial query leaves the environment unusable.
+    if (m_env && xtb_checkEnvironment(m_env) != 0)
+      discardAfterFailure();
   }
 
   out->variance = 0.0;
 
+  m_periodic[0] = periodicity[0];
+  m_periodic[1] = periodicity[1];
+  m_periodic[2] = periodicity[2];
   m_previous.assign(in.pos, in.pos + n3);
   if (in.nAtoms == 0 || !in.atmnrs)
     m_numbers.clear();
   else
     m_numbers.assign(in.atmnrs, in.atmnrs + in.nAtoms);
-  m_has_wavefunction = true;
-  m_last_reused = reuse;
+  m_has_wavefunction = m_initialized && m_env != nullptr;
+  m_last_reused = reuse && m_has_wavefunction;
 }
 
 } // namespace rgpot
