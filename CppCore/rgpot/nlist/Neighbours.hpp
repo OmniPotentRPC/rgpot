@@ -940,6 +940,7 @@ private:
   template <typename Fn>
   void walkCellsScattered(std::int64_t begin, std::int64_t end, Fn &fn, bool half,
                           double search2) const {
+    const SearchBound bound = searchBound();
     for (std::int64_t i = begin; i < end; ++i) {
       const auto a = static_cast<std::size_t>(i);
       const int cell = cell_of_[a];
@@ -977,6 +978,16 @@ private:
               if (half && !(j > static_cast<std::int32_t>(i))) {
                 continue;
               }
+              const auto uj = static_cast<std::size_t>(j) * 3;
+              const auto ui = a * 3;
+              const double dx0 = xyz_[ui] - xyz_[uj];
+              const double dy0 = xyz_[ui + 1] - xyz_[uj + 1];
+              const double dz0 = xyz_[ui + 2] - xyz_[uj + 2];
+              // Same bound as the stored rebuild: a fractional coordinate
+              // past the search cannot fall inside the cutoff ball.
+              if (outsideSearch(bound, dx0, dy0, dz0)) {
+                continue;
+              }
               double dx = 0;
               double dy = 0;
               double dz = 0;
@@ -1007,6 +1018,19 @@ private:
   [[nodiscard]] const std::int32_t *roundShifts(bool &tiny, const unsigned char *&unstable,
                                                 bool &general) const noexcept;
 
+  // Fractional columns of H^{-1}. `on` is false for an orthogonal cell
+  // and for a singular cell, which keeps the old fold.
+  struct SearchBound {
+    double inv[9]{};
+    double dual[3]{};
+    bool on = false;
+  };
+  [[nodiscard]] SearchBound searchBound() const;
+  // |v| >= |f_k| / ||column of H^{-1}||. True only when that lower bound
+  // already exceeds the search.
+  [[nodiscard]] bool outsideSearch(const SearchBound &bound, double dx, double dy,
+                                   double dz) const noexcept;
+
   std::vector<std::int32_t> off_;
   std::vector<std::int32_t> nbr_;
   std::vector<std::int32_t> cell_of_;
@@ -1033,6 +1057,24 @@ private:
   std::uint64_t builds_ = 0;
   const double *xyz_ = nullptr;
 };
+
+inline bool Neighbours::outsideSearch(const SearchBound &bound, double dx, double dy,
+                                      double dz) const noexcept {
+  if (!bound.on) {
+    return false;
+  }
+  const double r[3] = {dx, dy, dz};
+  for (int k = 0; k < 3; ++k) {
+    double f = r[0] * bound.inv[k] + r[1] * bound.inv[3 + k] + r[2] * bound.inv[6 + k];
+    if (periodic_[k]) {
+      f -= std::round(f);
+    }
+    if (std::abs(f) > search_ * bound.dual[k] * (1.0 + 1e-5)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 inline void Neighbours::fold(double &dx, double &dy, double &dz) const {
   if (use_general_) {

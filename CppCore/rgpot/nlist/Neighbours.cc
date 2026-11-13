@@ -610,35 +610,7 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
   };
   const bool record_round = !use_general_ && image_ == Image::Round;
   const bool record_general = use_general_;
-  // A fractional lower bound. |column_k · v| = |f_k| and
-  // |column_k · v| <= ||column_k|| |v|, so |v| >= |f_k| / ||column_k||.
-  // Pairs the bound places past the search never reach tryRounded.
-  // The margin keeps a pair the fused length would still accept.
-  double gout_inv[9] = {};
-  const bool gout = record_general && invertRows(box_, gout_inv);
-  double gout_dual[3] = {};
-  if (gout) {
-    for (int k = 0; k < 3; ++k) {
-      gout_dual[k] = std::hypot(gout_inv[k], gout_inv[3 + k], gout_inv[6 + k]);
-    }
-  }
-  auto provably_outside = [&](double dx, double dy, double dz) {
-    if (!gout) {
-      return false;
-    }
-    const double r[3] = {dx, dy, dz};
-    for (int k = 0; k < 3; ++k) {
-      double f = r[0] * gout_inv[k] + r[1] * gout_inv[3 + k] + r[2] * gout_inv[6 + k];
-      if (periodic_[k]) {
-        f -= std::round(f);
-      }
-      const double limit = search_ * gout_dual[k] * (1.0 + 1e-5);
-      if (std::abs(f) > limit) {
-        return true;
-      }
-    }
-    return false;
-  };
+  const SearchBound bound = searchBound();
   const bool record = record_round || record_general;
   bool fit = record;
   bool tiny = record_round;
@@ -919,7 +891,7 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
               dx = xyz_[ui] - xyz_[uj];
               dy = xyz_[ui + 1] - xyz_[uj + 1];
               dz = xyz_[ui + 2] - xyz_[uj + 2];
-              if (provably_outside(dx, dy, dz)) {
+              if (outsideSearch(bound, dx, dy, dz)) {
                 continue;
               }
               std::int32_t nimg[3] = {};
@@ -1110,6 +1082,18 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
     installRoundShifts(shift_data, nbr_.size(), tiny, all_stable, record_general,
                        all_stable ? nullptr : flag_data);
   }
+}
+
+Neighbours::SearchBound Neighbours::searchBound() const {
+  SearchBound bound;
+  if (!use_general_ || !invertRows(box_, bound.inv)) {
+    return bound;
+  }
+  for (int k = 0; k < 3; ++k) {
+    bound.dual[k] = std::hypot(bound.inv[k], bound.inv[3 + k], bound.inv[6 + k]);
+  }
+  bound.on = true;
+  return bound;
 }
 
 void Neighbours::update(const double *xyz, std::size_t n, const double *box9,

@@ -358,6 +358,15 @@ TEST_CASE("a skin move matches a fresh neighbour list", "[nlist][oracle][skin]")
       INFO("skin distance " << i << "," << j);
       REQUIRE(std::abs(item.second.r2 - r2) <= 1e-8 * scale);
     }
+    // The stream folds every stencil pair. On the moved geometry it has
+    // to match the all-pairs search set, including after the fractional
+    // bound skips pairs that cannot be inside it.
+    spec.mode = rgpot::nlist::Mode::Stream;
+    rgpot::nlist::Neighbours streamed;
+    streamed.update(inside.data(), inside.size() / 3, cell, spec);
+    REQUIRE(streamed.streaming());
+    expectMatches(fromList(streamed, inside.size() / 3), ref_in, search2);
+    spec.mode = rgpot::nlist::Mode::Stored;
 
     std::vector<double> outside = inside;
     const double theta = ang(rng);
