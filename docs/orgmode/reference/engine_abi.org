@@ -37,7 +37,7 @@ identity queries and the Python GIL release.
 | =libxtb_engine= | =BuiltinParams= | name =xtb=, GFN2-xTB defaults |
 | =libclassical_engine= | =BuiltinParams= | =lj=, =ljcluster=, =morse=, =zbl= and, with the Fortran kernels, =sw=, =edip=, =lenosky=, =tersoff=, =eamal=, =fehe=, =cuh2=, =waterh=, all with default parameters |
 | =libmopac_engine= | =BuiltinParams= | name =mopac=; =library= is the path of =libmopacc= |
-| =liborca_engine= | =BuiltinParams= | name =orca=; =library= is an optional path of the =orca= binary. Method and basis stay at =HF= / =STO-3G= unless the C++ class or =rgpot_orca_calculate= is used. |
+| =liborca_engine= | =OrcaParams= | ORCA EnGrad subprocess. =method=, =basis=, =charge=, =multiplicity=, =keywords= and =executable=. |
 | =libnwchem_engine= | =NWChemParams= | NWChem through =libnwchemc= |
 | =libskala_engine= | =NWChemParams= | Skala XC on NWChem; reads =basis=, =charge=, =multiplicity=, =enginePath= and =nwchemRoot= |
 

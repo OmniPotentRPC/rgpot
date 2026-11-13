@@ -9,6 +9,7 @@
 #include <atomic>
 #include <cctype>
 #include <cerrno>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -97,8 +98,22 @@ bool isExecutable(const std::filesystem::path &path) {
 
 std::string missingBinary(const std::string &spec) {
   return "ORCA binary not found: '" + spec +
-         "'. Set OrcaConfig::executable or the RGPOT_ORCA environment "
-         "variable.";
+         "'. Set OrcaConfig::executable, RGPOT_ORCA, ORCA, or ORCA_EXE, "
+         "or put orca on PATH.";
+}
+
+/// An explicit path from the config or from one environment variable.
+/// A set-but-unusable value is an error; it does not fall through.
+std::string takeExplicit(const std::string &spec, const char *source) {
+  if (!isExecutable(spec)) {
+    if (source != nullptr) {
+      throw std::runtime_error(
+          std::string(source) +
+          " is set but is not an executable file: " + spec);
+    }
+    throw std::runtime_error(missingBinary(spec));
+  }
+  return std::filesystem::absolute(spec).string();
 }
 
 long processId() {
@@ -107,6 +122,51 @@ long processId() {
 #else
   return static_cast<long>(::GetCurrentProcessId());
 #endif
+}
+
+double cellDeterminant(const double *h) {
+  return h[0] * (h[4] * h[8] - h[5] * h[7]) -
+         h[1] * (h[3] * h[8] - h[5] * h[6]) +
+         h[2] * (h[3] * h[7] - h[4] * h[6]);
+}
+
+// Rows of `box` are the lattice vectors. A pair folds when its cartesian
+// displacement, written in that basis, has a fractional component outside
+// [-1/2, 1/2]. A singular cell has no images.
+bool foldsPeriodicImage(const double *box, const double *pos,
+                        std::size_t n_atoms) {
+  const double det = cellDeterminant(box);
+  if (!std::isfinite(det) || std::abs(det) <= 1e-12) {
+    return false;
+  }
+  const double invdet = 1.0 / det;
+  const double h0 = box[0], h1 = box[1], h2 = box[2];
+  const double h3 = box[3], h4 = box[4], h5 = box[5];
+  const double h6 = box[6], h7 = box[7], h8 = box[8];
+  const double inv[9] = {
+      (h4 * h8 - h5 * h7) * invdet, (h2 * h7 - h1 * h8) * invdet,
+      (h1 * h5 - h2 * h4) * invdet, (h5 * h6 - h3 * h8) * invdet,
+      (h0 * h8 - h2 * h6) * invdet, (h2 * h3 - h0 * h5) * invdet,
+      (h3 * h7 - h4 * h6) * invdet, (h1 * h6 - h0 * h7) * invdet,
+      (h0 * h4 - h1 * h3) * invdet};
+  constexpr double kHalf = 0.5 + 1e-8;
+  for (std::size_t j = 1; j < n_atoms; ++j) {
+    const double *pj = pos + j * 3;
+    for (std::size_t i = 0; i < j; ++i) {
+      const double *pi = pos + i * 3;
+      const double dx = pj[0] - pi[0];
+      const double dy = pj[1] - pi[1];
+      const double dz = pj[2] - pi[2];
+      const double sx = dx * inv[0] + dy * inv[3] + dz * inv[6];
+      const double sy = dx * inv[1] + dy * inv[4] + dz * inv[7];
+      const double sz = dx * inv[2] + dy * inv[5] + dz * inv[8];
+      if (std::abs(sx) > kHalf || std::abs(sy) > kHalf ||
+          std::abs(sz) > kHalf) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 std::string readFile(const std::filesystem::path &path) {
@@ -515,23 +575,17 @@ OrcaEngrad parseOrcaEngrad(std::string_view text) {
 
 std::string OrcaPot::resolveExecutable(const std::string &configured) {
   std::string spec = trimCopy(configured);
-  if (spec.empty()) {
-    if (const char *env = std::getenv("RGPOT_ORCA")) {
-      if (env[0] != '\0') {
-        spec = env;
-      }
+  if (!spec.empty()) {
+    return takeExplicit(spec, nullptr);
+  }
+  const char *names[] = {"RGPOT_ORCA", "ORCA", "ORCA_EXE"};
+  for (const char *name : names) {
+    const char *env = std::getenv(name);
+    if (env != nullptr && env[0] != '\0') {
+      return takeExplicit(env, name);
     }
   }
-  if (spec.empty()) {
-    if (const char *env = std::getenv("ORCA")) {
-      if (env[0] != '\0') {
-        spec = env;
-      }
-    }
-  }
-  if (spec.empty()) {
-    spec = "orca";
-  }
+  spec = "orca";
   const bool hasSep = spec.find('/') != std::string::npos ||
                       spec.find('\\') != std::string::npos;
   if (hasSep) {
@@ -619,8 +673,7 @@ OrcaPot::~OrcaPot() {
   std::filesystem::remove_all(m_scratch, ec);
 }
 
-void OrcaPot::reset() {
-  std::lock_guard<std::mutex> lock(m_mu);
+void OrcaPot::dropWavefunction() {
   m_have_gbw = false;
   m_last_reused = false;
   std::error_code ec;
@@ -629,20 +682,50 @@ void OrcaPot::reset() {
   std::filesystem::remove(std::filesystem::path(m_scratch) / kMoinp, ec);
 }
 
+void OrcaPot::reset() {
+  std::lock_guard<std::mutex> lock(m_mu);
+  dropWavefunction();
+}
+
 void OrcaPot::setChargeSpin(int charge, int multiplicity) {
   if (multiplicity < 1) {
     throw std::invalid_argument("ORCA: multiplicity must be at least 1");
   }
   std::lock_guard<std::mutex> lock(m_mu);
+  if (charge == m_cfg.charge && multiplicity == m_cfg.multiplicity) {
+    return;
+  }
   m_cfg.charge = charge;
   m_cfg.multiplicity = multiplicity;
   m_paramsKey = hashConfig(m_cfg);
-  m_have_gbw = false;
-  m_last_reused = false;
-  std::error_code ec;
-  std::filesystem::remove(
-      std::filesystem::path(m_scratch) / (std::string(kJob) + ".gbw"), ec);
-  std::filesystem::remove(std::filesystem::path(m_scratch) / kMoinp, ec);
+  dropWavefunction();
+}
+
+void OrcaPot::applyParams(const OrcaConfig &config) {
+  validate(config);
+  std::lock_guard<std::mutex> lock(m_mu);
+  const bool same =
+      config.method == m_cfg.method && config.basis == m_cfg.basis &&
+      config.charge == m_cfg.charge &&
+      config.multiplicity == m_cfg.multiplicity &&
+      config.keywords == m_cfg.keywords &&
+      config.executable == m_cfg.executable && config.nprocs == m_cfg.nprocs &&
+      config.maxcore_mb == m_cfg.maxcore_mb &&
+      config.reuse_gbw == m_cfg.reuse_gbw;
+  m_cfg = config;
+  m_paramsKey = hashConfig(m_cfg);
+  if (!same) {
+    dropWavefunction();
+  }
+}
+
+bool OrcaPot::available(const std::string &executable) {
+  try {
+    (void)resolveExecutable(executable);
+    return true;
+  } catch (const std::runtime_error &) {
+    return false;
+  }
 }
 
 bool OrcaPot::reusedWavefunction() const {
@@ -656,6 +739,11 @@ void OrcaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   }
   if (in.nAtoms == 0 || in.pos == nullptr || in.atmnrs == nullptr) {
     throw std::invalid_argument("ORCA: empty geometry");
+  }
+  if (in.box != nullptr && foldsPeriodicImage(in.box, in.pos, in.nAtoms)) {
+    throw std::invalid_argument(
+        "ORCA handles clusters only and does not support periodic "
+        "boundary conditions");
   }
   std::lock_guard<std::mutex> lock(m_mu);
 

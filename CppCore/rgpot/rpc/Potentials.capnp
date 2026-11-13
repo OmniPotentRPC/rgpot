@@ -2539,6 +2539,24 @@ struct PotSpec {
   }
 }
 
+# @struct OrcaParams
+# @brief ORCA energy and gradient (`! EnGrad`) run as a subprocess.
+#
+# Positions on ForceInput stay Angstrom. The engine returns eV and
+# eV/Angstrom. `executable` empty means RGPOT_ORCA, then ORCA, then
+# ORCA_EXE, then an `orca` binary on PATH. `keywords` are extra
+# simple-input tokens. Text after the first newline is written after
+# the `!` line and before the coordinate block. The basis default
+# matches OrcaConfig (STO-3G).
+struct OrcaParams {
+  method       @0 :Text = "HF";
+  basis        @1 :Text = "STO-3G";
+  charge       @2 :Int32 = 0;
+  multiplicity @3 :Int32 = 1;
+  keywords     @4 :Text = "";
+  executable   @5 :Text = "";
+}
+
 # @struct PotentialConfig
 # @brief **rgpot user parameters (extensible, in/out via Cap'n Proto only).**
 #
@@ -2557,8 +2575,9 @@ struct PotentialConfig {
     cpmd      @2 :CPMDParams;   # CPMDPot / potserv ... OpenCPMD
     metatomic @4 :MetatomicParams; # MetatomicPot (torch ML models)
     lammps    @5 :LammpsParams;    # lammpc dynlib shim (LAMMPS library API)
-    # xtb       @6 :XTBParams;
-    # tblite    @7 :TBLiteParams;
+    orca      @6 :OrcaParams; # ORCA subprocess EnGrad.
+    # xtb       @7 :XTBParams;
+    # tblite    @8 :TBLiteParams;
   }
   # Normalized overlay applied BEFORE the native arm; native settings win.
   common @3 :CommonMethodSpec;

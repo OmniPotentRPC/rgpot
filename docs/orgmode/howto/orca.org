@@ -12,11 +12,13 @@ rgpot returns eV and eV/Angstrom.
 The force on each atom is the negative of the gradient, converted with
 the CODATA 2018 factors in =rgpot/units.hpp= (Tiesinga, Mohr, Newell and
 Taylor, Rev. Mod. Phys. 93, 025010, 2021).
-The box is ignored.
-An EnGrad job is a molecule.
+The job is a cluster.
+A cell that folds any pair into another image is rejected, because ORCA
+has no periodic boundary conditions.
+A singular cell is ignored.
 
-The binary is =OrcaConfig::executable=, then the =RGPOT_ORCA=
-environment variable, then =ORCA=, then =orca= on =PATH=.
+The binary is =OrcaConfig::executable=, then =RGPOT_ORCA=, then =ORCA=,
+then =ORCA_EXE=, then =orca= on =PATH=.
 Each instance keeps its own scratch directory.
 After a successful call the =.gbw= stays there.
 The next call adds =! MORead= and =%moinp= unless =reuse_gbw= is false.
@@ -44,6 +46,14 @@ rgpot::OrcaPot pot(cfg);
 =keywords= is extra simple-input tokens.
 A value that contains a newline, or that starts with =!= or =%=, is
 written as its own block under the simple-input line.
+
+** RPC
+
+=PotentialConfig.orca= is =OrcaParams=: method, basis, charge,
+multiplicity, keywords and executable.
+=potserv= applies that arm in =configure=.
+Meson =with_orca= is =auto= and stays off on Windows.
+=-Dwith_orca=enabled= is an error on Windows.
 
 ** Server
 

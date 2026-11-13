@@ -374,12 +374,16 @@ TEST_CASE("mopac engine", "[engine][mopac]") {
 }
 
 TEST_CASE("orca engine", "[engine][orca]") {
-  check_unavailable_engine("ORCA", "orca", builtin_params("orca"), 1);
+  capnp::MallocMessageBuilder msg;
+  msg.initRoot<::OrcaParams>();
+  check_unavailable_engine("ORCA", "orca", capnp::messageToFlatArray(msg), 1);
   Engine e;
   if (!open_engine("ORCA", e)) {
     SKIP("no orca engine in this build");
   }
-  RgpotEnginePot *pot = create(e, builtin_params("orca"));
+  capnp::MallocMessageBuilder again;
+  again.initRoot<::OrcaParams>();
+  RgpotEnginePot *pot = create(e, capnp::messageToFlatArray(again));
   REQUIRE(pot != nullptr);
   REQUIRE(e.set_charge_spin(pot, -1, 3) == 0);
   REQUIRE(e.set_num_threads(pot, 1, 1) == 3);

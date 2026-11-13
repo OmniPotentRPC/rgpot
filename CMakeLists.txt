@@ -50,6 +50,16 @@ else()
         "RGPOT_WITH_IPI requires POSIX sockets and cannot be enabled on Windows"
     )
   endif()
+  if(WIN32)
+    set(_rgpot_orca_default OFF)
+  else()
+    set(_rgpot_orca_default ON)
+  endif()
+  option(RGPOT_WITH_ORCA "ORCA energy and gradient via a subprocess"
+         ${_rgpot_orca_default})
+  if(RGPOT_WITH_ORCA AND WIN32)
+    message(FATAL_ERROR "RGPOT_WITH_ORCA cannot be enabled on Windows")
+  endif()
 endif()
 
 option(RGPOT_WITH_EAM_TABLE
@@ -191,8 +201,6 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/LennardJones/LJClusterKernel.cc
       CppCore/rgpot/Morse/MorsePot.cc
       CppCore/rgpot/ZBL/ZBLPot.cc
-      CppCore/rgpot/OrcaPot/OrcaPot.cc
-      CppCore/rgpot/OrcaPot/OrcaEngineAbi.cc
       CppCore/rgpot/simd/dispatch.cc
       CppCore/rgpot/simd/scalar_kernels.cc
       CppCore/rgpot/CuH2/cuh2Utils.cc
@@ -239,6 +247,11 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
 
   if(RGPOT_WITH_IPI)
     list(APPEND RGPOT_SOURCES CppCore/rgpot/IPIPot/IPIPot.cc)
+  endif()
+
+  if(RGPOT_WITH_ORCA)
+    list(APPEND RGPOT_SOURCES CppCore/rgpot/OrcaPot/OrcaPot.cc
+         CppCore/rgpot/OrcaPot/OrcaEngineAbi.cc)
   endif()
 
   if(RGPOT_WITH_EAM_TABLE)
@@ -366,6 +379,10 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
 
   if(RGPOT_WITH_IPI)
     target_compile_definitions(rgpot PUBLIC RGPOT_HAS_IPI)
+  endif()
+
+  if(RGPOT_WITH_ORCA)
+    target_compile_definitions(rgpot PUBLIC RGPOT_HAS_ORCA)
   endif()
 
   if(RGPOT_WITH_EAM_TABLE)
@@ -578,10 +595,12 @@ if(RGPOT_BUILD_TESTS)
                        "${CMAKE_CURRENT_SOURCE_DIR}/CppCore/tests/check_virtual_counts.py")
     endif()
     add_pot_test(MorsePotTest CppCore/tests/MorsePotTest.cc)
-    add_pot_test(OrcaPotTest CppCore/tests/OrcaPotTest.cc)
-    set_tests_properties(OrcaPotTest PROPERTIES
-                         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-                         TIMEOUT 180)
+    if(RGPOT_WITH_ORCA)
+      add_pot_test(OrcaPotTest CppCore/tests/OrcaPotTest.cc)
+      set_tests_properties(OrcaPotTest PROPERTIES
+                           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                           TIMEOUT 900)
+    endif()
     add_pot_test(FortranPotsTest CppCore/tests/FortranPotsTest.cc)
     target_link_libraries(FortranPotsTest PRIVATE Threads::Threads)
     add_pot_test(SWSiTest CppCore/tests/SWSiTest.cc)

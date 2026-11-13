@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <sstream>
+#include <utility>
 #include <vector>
 
 #include <capnp/ez-rpc.h>
@@ -62,7 +63,9 @@ class MpiPefSession;
 #include "rgpot/NWChemPot/NWChemPot.hpp"
 #include "rgpot/Potential.hpp"
 #include "rgpot/abi/Handshake.hpp"
+#ifdef RGPOT_HAS_ORCA
 #include "rgpot/OrcaPot/OrcaPot.hpp"
+#endif
 #include "rgpot/ZBL/ZBLPot.hpp"
 #ifdef RGPOT_HAS_IPI
 #include "rgpot/IPIPot/IPIPot.hpp"
@@ -91,6 +94,10 @@ private:
   /// Cauchy stress stashed by the last force call.
   rgpot::IPIPot *m_ipi = nullptr;
 #endif
+#ifdef RGPOT_HAS_ORCA
+  /// Set when the backend is ORCA, so configure() can replace OrcaParams.
+  rgpot::OrcaPot *m_orca = nullptr;
+#endif
   rgpot::tools::MpiPefSession *m_pef = nullptr;
 
 public:
@@ -103,6 +110,10 @@ public:
 #ifdef RGPOT_HAS_IPI
         ,
         m_ipi(dynamic_cast<rgpot::IPIPot *>(m_potential.get()))
+#endif
+#ifdef RGPOT_HAS_ORCA
+        ,
+        m_orca(dynamic_cast<rgpot::OrcaPot *>(m_potential.get()))
 #endif
   {
   }
@@ -199,7 +210,18 @@ public:
 #endif
       return (*m_potential)(nativePositions, nativeAtomTypes, nativeBoxMatrix);
     };
-    auto [energy, forces, variance] = evaluate();
+    // A potential error, including ORCA's periodic-cell rejection, has to
+    // reach the client as the failure text. An uncaught std::exception
+    // does not.
+    decltype(evaluate()) evaluated;
+    try {
+      evaluated = evaluate();
+    } catch (const kj::Exception &) {
+      throw;
+    } catch (const std::exception &error) {
+      throw KJ_EXCEPTION(FAILED, error.what());
+    }
+    auto [energy, forces, variance] = std::move(evaluated);
     (void)variance;
 
     // Convert results to caller's units
@@ -236,9 +258,19 @@ public:
   kj::Promise<void> configure(ConfigureContext context) override {
     auto cfg = context.getParams().getConfig();
     auto results = context.getResults();
-    if (!m_nwchem && !m_cpmd) {
+    if (!m_nwchem && !m_cpmd
+#ifdef RGPOT_HAS_ORCA
+        && !m_orca
+#endif
+    ) {
       results.setOk(false);
-      results.setMessage("configure() only supported for NWChem or CPMD backend");
+#ifdef RGPOT_HAS_ORCA
+      results.setMessage(
+          "configure() only supported for NWChem, CPMD, or ORCA backend");
+#else
+      results.setMessage(
+          "configure() only supported for NWChem or CPMD backend");
+#endif
       return kj::READY_NOW;
     }
     std::string msg;
@@ -254,8 +286,34 @@ public:
     } else
 #endif
     {
-      ok = m_nwchem ? m_nwchem->setPotentialConfig(cfg, &msg)
-                   : m_cpmd->setPotentialConfig(cfg, &msg);
+      if (m_nwchem) {
+        ok = m_nwchem->setPotentialConfig(cfg, &msg);
+      } else if (m_cpmd) {
+        ok = m_cpmd->setPotentialConfig(cfg, &msg);
+      }
+#ifdef RGPOT_HAS_ORCA
+      else if (m_orca) {
+        if (!cfg.isOrca()) {
+          msg = "ORCA server expects the orca arm of PotentialConfig";
+        } else {
+          try {
+            const auto params = cfg.getOrca();
+            rgpot::OrcaConfig next = m_orca->config();
+            next.method = params.getMethod();
+            next.basis = params.getBasis();
+            next.charge = params.getCharge();
+            next.multiplicity = params.getMultiplicity();
+            next.keywords = params.getKeywords();
+            next.executable = params.getExecutable();
+            m_orca->applyParams(next);
+            ok = true;
+            msg = "rgpot params applied (orca arm)";
+          } catch (const std::exception &error) {
+            msg = error.what();
+          }
+        }
+      }
+#endif
     }
     results.setOk(ok);
     results.setMessage(msg);
@@ -284,7 +342,9 @@ int runServer(int argc, char *argv[]
   if (argc < 3) {
     std::cerr << "Usage: " << argv[0] << " <port> <PotentialType>" << std::endl;
     std::cerr << "  Available PotentialTypes: CuH2, LJ, LJCluster, Morse, ZBL"
+#ifdef RGPOT_HAS_ORCA
               << ", ORCA[:method[:basis[:charge[:multiplicity]]]]"
+#endif
 #ifdef RGPOT_HAS_IPI
               << ", IPI:unix:<path>, IPI:tcp:<host>:<port>"
 #endif
@@ -353,6 +413,7 @@ int runServer(int argc, char *argv[]
   } else if (pot_type == "ZBL") {
     std::cout << "Loading ZBL potential..." << std::endl;
     potential_to_use = std::make_unique<rgpot::ZBLPot>();
+#ifdef RGPOT_HAS_ORCA
   } else if (pot_type == "ORCA" || pot_type.rfind("ORCA:", 0) == 0) {
     rgpot::OrcaConfig cfg;
     if (pot_type.size() > 5) {
@@ -378,7 +439,14 @@ int runServer(int argc, char *argv[]
     std::cout << "Loading ORCA potential (method=" << cfg.method
               << " basis=" << cfg.basis << " charge=" << cfg.charge
               << " multiplicity=" << cfg.multiplicity << ")..." << std::endl;
+    if (!rgpot::OrcaPot::available(cfg.executable)) {
+      std::cerr << "Warning: ORCA executable not found; calculate() will fail "
+                   "until the config, RGPOT_ORCA, ORCA, ORCA_EXE, or PATH "
+                   "provides it."
+                << std::endl;
+    }
     potential_to_use = std::make_unique<rgpot::OrcaPot>(cfg);
+#endif
 #ifdef RGPOT_HAS_IPI
   } else if (pot_type == "IPI" || pot_type.rfind("IPI:", 0) == 0) {
     if (pot_type.size() < 5) {

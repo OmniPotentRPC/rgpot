@@ -1,8 +1,6 @@
-diff --git a/Potentials.capnp b/Potentials.capnp
-index 9a2f8d7..05c9e7a 100644
 --- a/Potentials.capnp
 +++ b/Potentials.capnp
-@@ -25,6 +25,8 @@ struct ForceInput {
+@@ -25,6 +25,8 @@
    charge @6 :Int32 = 0;             # @brief Per-step charge when hasCharge is true.
    hasMultiplicity @7 :Bool = false; # @brief Override NWChemParams.multiplicity for this step.
    multiplicity @8 :Int32 = 1;       # @brief Per-step spin multiplicity when hasMultiplicity is true.
@@ -11,7 +9,7 @@ index 9a2f8d7..05c9e7a 100644
  }
  
  # @struct PotentialResult
-@@ -59,6 +61,9 @@ struct PotentialResult {
+@@ -59,6 +61,9 @@
    mdTrajectoryRow @25 :List(Float64); # MD ENERGY row incl. EKINC when MD ran
    mdTrajectoryValid @26 :Bool = false;
    embedMdPropsSkipped @27 :Bool = true; # true when MD/PROP not harvested this eval (honest skip)
@@ -21,7 +19,7 @@ index 9a2f8d7..05c9e7a 100644
  }
  
  # @struct Capabilities
-@@ -2499,6 +2504,41 @@ struct NWChemCdftSpec {
+@@ -2499,6 +2504,59 @@
    }
  }
  
@@ -60,10 +58,40 @@ index 9a2f8d7..05c9e7a 100644
 +  }
 +}
 +
++# @struct OrcaParams
++# @brief ORCA energy and gradient (`! EnGrad`) run as a subprocess.
++#
++# Positions on ForceInput stay Angstrom. The engine returns eV and
++# eV/Angstrom. `executable` empty means RGPOT_ORCA, then ORCA, then
++# ORCA_EXE, then an `orca` binary on PATH. `keywords` are extra
++# simple-input tokens. Text after the first newline is written after
++# the `!` line and before the coordinate block. The basis default
++# matches OrcaConfig (STO-3G).
++struct OrcaParams {
++  method       @0 :Text = "HF";
++  basis        @1 :Text = "STO-3G";
++  charge       @2 :Int32 = 0;
++  multiplicity @3 :Int32 = 1;
++  keywords     @4 :Text = "";
++  executable   @5 :Text = "";
++}
++
  # @struct PotentialConfig
  # @brief **rgpot user parameters (extensible, in/out via Cap'n Proto only).**
  #
-@@ -2580,4 +2620,63 @@ interface Potential {
+@@ -2517,8 +2575,9 @@
+     cpmd      @2 :CPMDParams;   # CPMDPot / potserv ... OpenCPMD
+     metatomic @4 :MetatomicParams; # MetatomicPot (torch ML models)
+     lammps    @5 :LammpsParams;    # lammpc dynlib shim (LAMMPS library API)
+-    # xtb       @6 :XTBParams;
+-    # tblite    @7 :TBLiteParams;
++    orca      @6 :OrcaParams; # ORCA subprocess EnGrad.
++    # xtb       @7 :XTBParams;
++    # tblite    @8 :TBLiteParams;
+   }
+   # Normalized overlay applied BEFORE the native arm; native settings win.
+   common @3 :CommonMethodSpec;
+@@ -2580,4 +2639,63 @@
    # @return The protocol, schema, eindir bridge, DLPack and build identity.
    # buildVersion and buildRevision are empty when the build does not know them.
    getCapabilities @12 () -> (capabilities :Capabilities);

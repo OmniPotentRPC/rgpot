@@ -13,6 +13,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include <catch2/catch_approx.hpp>
@@ -101,6 +102,9 @@ struct FakeOrca {
   SavedEnv path{"PATH"};
   SavedEnv rgpot{"RGPOT_ORCA"};
   SavedEnv orca{"ORCA"};
+  SavedEnv orcaExe{"ORCA_EXE"};
+  SavedEnv replay{"ORCA_FAKE_REPLAY"};
+  SavedEnv replayOwn{"RGPOT_ORCA_FAKE_REPLAY"};
   SavedEnv log{"RGPOT_ORCA_FAKE_LOG"};
   SavedEnv engrad{"RGPOT_ORCA_FAKE_ENGRAD"};
   SavedEnv fail{"RGPOT_ORCA_FAKE_FAIL"};
@@ -127,6 +131,9 @@ struct FakeOrca {
     setenv("PATH", (dir.string() + ":" + old).c_str(), 1);
     unsetenv("RGPOT_ORCA");
     unsetenv("ORCA");
+    unsetenv("ORCA_EXE");
+    unsetenv("ORCA_FAKE_REPLAY");
+    unsetenv("RGPOT_ORCA_FAKE_REPLAY");
     setenv("RGPOT_ORCA_FAKE_LOG", calls.c_str(), 1);
     const auto fixture =
         std::filesystem::absolute("CppCore/tests/data/orca/h2.engrad");
@@ -340,6 +347,134 @@ TEST_CASE("ORCA surfaces a non-zero exit, a missing engrad and SCF", "[orca]") {
     unsetenv("RGPOT_ORCA_FAKE_SCF_FAIL");
   }
 }
+
+TEST_CASE("ORCA drops the wavefunction when the charge changes", "[orca]") {
+  FakeOrca fake;
+  rgpot::OrcaPot pot(tightConfig());
+  const std::vector<int> z{1, 1};
+  (void)pot(hydrogenMatrix(), z, box());
+  pot.setChargeSpin(-1, 2);
+  (void)pot(hydrogenMatrix(), z, box());
+  const std::string log = fake.callsText();
+  REQUIRE(countToken(log, "=== ") == 2);
+  REQUIRE(log.find("* xyz -1 2\n") != std::string::npos);
+  REQUIRE(log.find("! MORead") == std::string::npos);
+}
+
+TEST_CASE("ORCA rejects an engrad whose atom count does not match", "[orca]") {
+  FakeOrca fake;
+  rgpot::OrcaPot pot(tightConfig());
+  const std::vector<int> z{1};
+  AtomMatrix one{{0.0, 0.0, 0.0}};
+  REQUIRE_THROWS_WITH(pot(one, z, box()), ContainsSubstring("does not match"));
+}
+
+TEST_CASE("ORCA accepts the executable from the config or ORCA_EXE", "[orca]") {
+  FakeOrca fake;
+  const auto script = fake.dir / "orca";
+  setenv("PATH", "/no/such/rgpot-orca-path", 1);
+  rgpot::OrcaConfig cfg = tightConfig();
+  cfg.executable = script.string();
+  rgpot::OrcaPot from_config(cfg);
+  const std::vector<int> z{1, 1};
+  auto [energy, forces, variance] = from_config(hydrogenMatrix(), z, box());
+  (void)forces;
+  (void)variance;
+  REQUIRE(energy == Approx(-1.5 * rgpot::units::HARTREE_TO_EV));
+
+  cfg.executable.clear();
+  setenv("ORCA_EXE", script.c_str(), 1);
+  rgpot::OrcaPot from_env(cfg);
+  auto [energy2, forces2, variance2] = from_env(hydrogenMatrix(), z, box());
+  (void)forces2;
+  (void)variance2;
+  REQUIRE(energy2 == Approx(-1.5 * rgpot::units::HARTREE_TO_EV));
+
+  setenv("ORCA_EXE", "/no/such/orca-from-env", 1);
+  rgpot::OrcaPot missing(tightConfig());
+  REQUIRE_THROWS_WITH(missing(hydrogenMatrix(), z, box()),
+                      ContainsSubstring("ORCA_EXE"));
+  REQUIRE_THROWS_WITH(missing(hydrogenMatrix(), z, box()),
+                      ContainsSubstring("/no/such/orca-from-env"));
+}
+
+TEST_CASE("ORCA rejects a cell that folds a pair", "[orca]") {
+  FakeOrca fake;
+  rgpot::OrcaPot pot(tightConfig());
+  AtomMatrix far{{0.0, 0.0, 0.0}, {4.5, 0.0, 0.0}};
+  const std::vector<int> z{1, 1};
+  const std::array<std::array<double, 3>, 3> cell{{
+      {{5.0, 1.0, 0.0}},
+      {{0.0, 5.0, 0.0}},
+      {{0.0, 0.0, 5.0}},
+  }};
+  REQUIRE_THROWS_WITH(pot(far, z, cell),
+                      ContainsSubstring("periodic boundary conditions"));
+  REQUIRE(fake.callsText().find("===") == std::string::npos);
+
+  AtomMatrix inside{{0.0, 0.0, 0.0}, {1.0, 0.2, 0.0}};
+  auto [energy, forces, variance] = pot(inside, z, cell);
+  (void)forces;
+  (void)variance;
+  REQUIRE(energy == Approx(-1.5 * rgpot::units::HARTREE_TO_EV));
+}
+
+TEST_CASE("ORCA keeps one scratch directory per instance", "[orca]") {
+  FakeOrca fake;
+  const std::vector<int> z{1, 1};
+  std::string log;
+  {
+    rgpot::OrcaPot first(tightConfig());
+    rgpot::OrcaPot second(tightConfig());
+    (void)first(hydrogenMatrix(), z, box());
+    (void)second(hydrogenMatrix(), z, box());
+    log = fake.callsText();
+  }
+  std::vector<std::string> dirs;
+  for (std::size_t at = 0; (at = log.find("CWD ", at)) != std::string::npos;
+       at += 4) {
+    const auto end = log.find('\n', at);
+    dirs.push_back(log.substr(at + 4, end - (at + 4)));
+  }
+  REQUIRE(dirs.size() == 2);
+  REQUIRE(dirs[0] != dirs[1]);
+  REQUIRE_FALSE(std::filesystem::exists(dirs[0]));
+  REQUIRE_FALSE(std::filesystem::exists(dirs[1]));
+}
+
+TEST_CASE("ORCA replays the recorded engrad in CODATA units", "[orca]") {
+  const auto replay = std::filesystem::absolute("CppCore/tests/data/orca");
+  REQUIRE(std::filesystem::is_regular_file(replay / "replay.engrad"));
+  REQUIRE(std::filesystem::is_regular_file(replay / "replay.stdout"));
+  const std::string text = readWhole((replay / "replay.engrad").string());
+  const rgpot::OrcaEngrad parsed = rgpot::parseOrcaEngrad(text);
+  REQUIRE(parsed.n_atoms == 3);
+  REQUIRE(parsed.energy_eh == Approx(-75.5));
+  REQUIRE(parsed.gradient_eh_bohr.size() == 9);
+
+  FakeOrca fake;
+  setenv("ORCA_FAKE_REPLAY", replay.c_str(), 1);
+  rgpot::OrcaConfig cfg;
+  cfg.method = "HF";
+  cfg.basis = "def2-SVP";
+  rgpot::OrcaPot pot(cfg);
+  AtomMatrix water{
+      {0.0, 0.0, 0.1173}, {0.0, 0.7572, -0.4692}, {0.0, -0.7572, -0.4692}};
+  const std::vector<int> z{8, 1, 1};
+  auto [energy, forces, variance] = pot(water, z, box());
+  REQUIRE(variance == 0.0);
+  constexpr double grad[9] = {0.020,  -0.010, 0.005,  -0.015, 0.012,
+                              -0.003, -0.005, -0.002, -0.002};
+  REQUIRE(energy == Approx(-75.5 * rgpot::units::HARTREE_TO_EV));
+  for (int atom = 0; atom < 3; ++atom) {
+    for (int axis = 0; axis < 3; ++axis) {
+      REQUIRE(forces(static_cast<std::size_t>(atom),
+                     static_cast<std::size_t>(axis)) ==
+              Approx(grad[atom * 3 + axis] * rgpot::units::NEG_GRAD_TO_FORCE));
+    }
+  }
+  REQUIRE(fake.callsText().find("! HF def2-SVP EnGrad\n") != std::string::npos);
+}
 #endif
 
 TEST_CASE("ORCA water when the binary is installed", "[orca]") {
@@ -374,4 +509,28 @@ TEST_CASE("ORCA water when the binary is installed", "[orca]") {
   (void)f2;
   (void)v2;
   REQUIRE(e2 == Approx(e1).epsilon(1e-5));
+
+  constexpr double delta = 1.0e-4;
+  double worst = 0.0;
+  for (int atom = 0; atom < 3; ++atom) {
+    for (int axis = 0; axis < 3; ++axis) {
+      AtomMatrix plus = water;
+      AtomMatrix minus = water;
+      plus(static_cast<std::size_t>(atom), static_cast<std::size_t>(axis)) +=
+          delta;
+      minus(static_cast<std::size_t>(atom), static_cast<std::size_t>(axis)) -=
+          delta;
+      const double e_plus = std::get<0>(pot(plus, z, box()));
+      const double e_minus = std::get<0>(pot(minus, z, box()));
+      const double numerical = -(e_plus - e_minus) / (2.0 * delta);
+      const double err =
+          std::abs(numerical - f1(static_cast<std::size_t>(atom),
+                                  static_cast<std::size_t>(axis)));
+      if (err > worst) {
+        worst = err;
+      }
+    }
+  }
+  INFO("worst |analytical - finite difference| eV/Angstrom " << worst);
+  REQUIRE(worst < 5.0e-3);
 }

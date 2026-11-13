@@ -78,6 +78,20 @@ if has_ipi
     _args += ['-DRGPOT_HAS_IPI=TRUE']
 endif
 
+# ORCA is a subprocess. auto is on except on Windows.
+_orca_opt = get_option('with_orca')
+has_orca = false
+if host_system == 'windows'
+    if _orca_opt.enabled()
+        error('with_orca cannot be enabled on Windows')
+    endif
+elif not _orca_opt.disabled()
+    has_orca = true
+endif
+if has_orca
+    _args += ['-DRGPOT_HAS_ORCA=TRUE']
+endif
+
 # C++ water family. Off unless the consumer asks, same default as eOn.
 has_water = get_option('with_water')
 if has_water

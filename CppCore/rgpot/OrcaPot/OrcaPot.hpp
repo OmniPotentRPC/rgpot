@@ -8,8 +8,10 @@
  *
  * Positions are Angstrom. ORCA's `.engrad` file reports the energy in
  * hartree and the Cartesian gradient in hartree/bohr. Forces returned
- * here are eV/Angstrom, the negative of that gradient. The box is
- * ignored: an EnGrad job is a molecule, not a periodic cell.
+ * here are eV/Angstrom, the negative of that gradient. The job is a
+ * cluster. A cell that folds any pair into another image is rejected,
+ * because ORCA has no periodic boundary conditions. A singular cell
+ * is ignored.
  *
  * After a successful call the `.gbw` is kept. Later calls pass
  * `! MORead` and `%moinp` unless `OrcaConfig::reuse_gbw` is false. A
@@ -29,8 +31,9 @@ namespace rgpot {
 /**
  * @brief How one ORCA process is started.
  *
- * `executable` empty means `RGPOT_ORCA`, then `ORCA`, then `orca` on
- * `PATH`. `nprocs` and `maxcore_mb` of 0 omit `%pal` and `%maxcore`.
+ * `executable` empty means `RGPOT_ORCA`, then `ORCA`, then `ORCA_EXE`,
+ * then `orca` on `PATH`. `nprocs` and `maxcore_mb` of 0 omit `%pal`
+ * and `%maxcore`.
  * `keywords` is extra simple-input tokens, or a raw block when it
  * contains a newline or starts with `!` or `%`.
  */
@@ -88,7 +91,7 @@ public:
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
   /// One scratch directory and one `.gbw`. A saddle image needs its own
-  /// instance. The calculation is molecular.
+  /// instance. The calculation is a cluster, not a periodic cell.
   [[nodiscard]] PotCaps caps() const noexcept override {
     return {.reentrancy = Reentrancy::PerInstance,
             .perImageInstances = true,
@@ -104,8 +107,16 @@ public:
   /// Drop the stored `.gbw`. The next call uses ORCA's own guess.
   void reset();
 
-  /// Replace the charge and multiplicity and drop the stored `.gbw`.
+  /// Replace the charge and multiplicity and drop the stored `.gbw`
+  /// when either value changes.
   void setChargeSpin(int charge, int multiplicity);
+
+  /// Replace the method setup. Drops the `.gbw` when it changes.
+  /// `nprocs`, `maxcore_mb` and `reuse_gbw` are taken from @a config.
+  void applyParams(const OrcaConfig &config);
+
+  /// True when `resolveExecutable` can name a binary.
+  [[nodiscard]] static bool available(const std::string &executable = {});
 
   /// True when the last successful call started from the previous `.gbw`.
   [[nodiscard]] bool reusedWavefunction() const;
@@ -121,6 +132,7 @@ public:
 private:
   void validate(const OrcaConfig &cfg) const;
   uint64_t hashConfig(const OrcaConfig &cfg) const;
+  void dropWavefunction();
 
   OrcaConfig m_cfg;
   uint64_t m_paramsKey = 0;

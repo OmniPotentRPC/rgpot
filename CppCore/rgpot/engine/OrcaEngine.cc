@@ -1,12 +1,14 @@
 // MIT License — generic rgpot engine table for the ORCA subprocess.
-// BuiltinParams carries the name "orca". `library`, when set, is the
-// `orca` executable. Method, basis, charge and multiplicity stay on
-// OrcaConfig's defaults unless a host uses the C++ class or the
-// `rgpot_orca_*` entry.
+// The configuration is the OrcaParams message. `executable` empty means
+// RGPOT_ORCA, then ORCA, then ORCA_EXE, then `orca` on PATH.
 
 #include "rgpot/OrcaPot/OrcaPot.hpp"
-#include "rgpot/engine/BuiltinParams.hpp"
 #include "rgpot/engine/EngineTable.hpp"
+#include "rgpot/rpc/Potentials.capnp.h"
+
+#include <capnp/message.h>
+#include <capnp/serialize.h>
+#include <kj/io.h>
 
 #include <exception>
 #include <memory>
@@ -19,16 +21,18 @@ const char *backend_name() { return "orca"; }
 Created create(const void *config, std::size_t config_len) {
   Created out;
   try {
-    const Builtin builtin = read_builtin(config, config_len);
-    if (!builtin.name.empty() && builtin.name != "orca") {
-      out.error =
-          "rgpot_engine_create(orca): unknown potential '" + builtin.name + "'";
-      return out;
-    }
+    const kj::ArrayPtr<const capnp::word> words(
+        reinterpret_cast<const capnp::word *>(config),
+        config_len / sizeof(capnp::word));
+    capnp::FlatArrayMessageReader reader(words);
+    const auto params = reader.getRoot<::OrcaParams>();
     OrcaConfig c;
-    if (!builtin.library.empty()) {
-      c.executable = builtin.library;
-    }
+    c.method = params.getMethod();
+    c.basis = params.getBasis();
+    c.charge = params.getCharge();
+    c.multiplicity = params.getMultiplicity();
+    c.keywords = params.getKeywords();
+    c.executable = params.getExecutable();
     auto orca = std::make_unique<OrcaPot>(c);
     OrcaPot *raw = orca.get();
     auto backend = std::make_unique<Backend>();
