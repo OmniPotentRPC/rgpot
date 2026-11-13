@@ -663,6 +663,33 @@ mod tests {
     }
 
     #[test]
+    fn every_pair_count_matches_the_built_list() {
+        // A narrow cell takes the every-pair path. The probe reports the
+        // count without a list; the fill and collect_pairs both build one.
+        // Those three counts are the same number.
+        let n = 64;
+        let (xyz, cell) = bridge_cell(n);
+        let rows = [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]];
+        let found = collect_pairs(&xyz, &rows, [true, true, true], BRIDGE_CUTOFF).unwrap();
+        assert!(matches!(found, Candidates::Every(_)));
+        let counted = found.count().unwrap();
+        let mut slots = vec![[-1; 2]; counted];
+        found.write(&mut slots);
+        let built = slots.iter().take_while(|pair| **pair != [-1, -1]).count();
+        assert_eq!(counted, built);
+
+        let mut probed = 0;
+        assert_eq!(fast_pairs(&xyz, &cell, BRIDGE_CUTOFF, &mut [], &mut probed), 1);
+        let mut ij = vec![[-1; 2]; probed];
+        let mut filled = 0;
+        assert_eq!(fast_pairs(&xyz, &cell, BRIDGE_CUTOFF, &mut ij, &mut filled), 0);
+        let written = ij.iter().take_while(|pair| **pair != [-1, -1]).count();
+        assert_eq!(filled, written);
+        assert_eq!(probed, written);
+        assert_eq!(probed, built);
+    }
+
+    #[test]
     fn short_buffer_clears_an_earlier_error() {
         let (xyz, cell) = bridge_cell(3);
         let skewed = [10.0, 0.0, 0.0, 1.0, 10.0, 0.0, 0.0, 0.0, 10.0];
