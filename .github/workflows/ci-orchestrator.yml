@@ -435,6 +435,24 @@ jobs:
           meson compile -C bbdir
           meson test -C bbdir --print-errorlogs
 
+  # Address+UBSan must still compile the soversion static asserts.
+  cxx_layout_ubsan:
+    name: meson / ubuntu [ASan+UBSan layout]
+    needs: [prepare]
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
+        with:
+          pixi-version: v0.70.2
+          cache: true
+          environments: devbld
+          activate-environment: true
+      - name: ABI layout tests under address,undefined
+        shell: pixi run bash -e {0}
+        run: bash tools/check_cxx_layout_ubsan.sh
+
   # --- Stage 2b: rust ---
   rust_tests:
     name: Rust Core Tests (${{ matrix.os }})
@@ -774,6 +792,7 @@ jobs:
       - build_windows_meson
       - nodownload_rehearsal
       - build_fast_nlist_off
+      - cxx_layout_ubsan
       - rust_tests
       - client_bridge_stress
       - potentials_metatomic
@@ -807,6 +826,7 @@ jobs:
             "build_windows_meson:${{ needs.build_windows_meson.result }}" \
             "nodownload_rehearsal:${{ needs.nodownload_rehearsal.result }}" \
             "build_fast_nlist_off:${{ needs.build_fast_nlist_off.result }}" \
+            "cxx_layout_ubsan:${{ needs.cxx_layout_ubsan.result }}" \
             "rust_tests:${{ needs.rust_tests.result }}" \
             "client_bridge_stress:${{ needs.client_bridge_stress.result }}" \
             "potentials_metatomic:${{ needs.potentials_metatomic.result }}" \

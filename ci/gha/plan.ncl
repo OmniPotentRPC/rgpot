@@ -87,6 +87,12 @@ let P = S.pins in
       role = "meson build with the linkcell/minimage pair list disabled",
     },
     {
+      id = "cxx_layout_ubsan",
+      runs_on = P.ubuntu,
+      needs = ["prepare"],
+      role = "ABI layout tests with -Db_sanitize=address,undefined",
+    },
+    {
       id = "rust_tests",
       needs = ["ci-tools"],
       role = "rgpot-core + potctl tests",
@@ -153,6 +159,7 @@ let P = S.pins in
         "build_windows_meson",
         "nodownload_rehearsal",
         "build_fast_nlist_off",
+        "cxx_layout_ubsan",
         "rust_tests",
         "client_bridge_stress",
         "potentials_metatomic",
