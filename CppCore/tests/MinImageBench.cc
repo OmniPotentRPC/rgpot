@@ -6,7 +6,7 @@
 // of 180 atoms. Prints one line per repeat so a caller can take the median.
 
 #include "rgpot/nlist/MinimumImage.hpp"
-#include "rgpot/nlist/PairListCache.hpp"
+#include "rgpot/nlist/Neighbours.hpp"
 
 #include <chrono>
 #include <cstdint>
@@ -43,10 +43,12 @@ int main(int argc, char **argv) {
   std::uniform_real_distribution<double> p(0.0, 4.0);
   for (double &v : R)
     v = p(rng);
-  rgpot::nlist::CachedPairList::Options opt;
-  opt.cutoff = 3.0;
-  opt.skin = 1.0;
-  opt.periodic = periodic;
+  rgpot::nlist::Spec spec;
+  spec.cutoff = 3.0;
+  spec.skin = 1.0;
+  spec.periodic = periodic;
+  spec.image = rgpot::nlist::Image::General;
+  spec.mode = rgpot::nlist::Mode::Stored;
 
   if (label == "fold") {
     const double wall = seconds([&] {
@@ -63,9 +65,9 @@ int main(int argc, char **argv) {
     return 0;
   }
   const double wall = seconds([&] {
-    rgpot::nlist::CachedPairList list;
-    list.rebuild(R.data(), kAtoms, triclinic, opt);
-    if (!list.valid(R.data(), kAtoms, triclinic, opt))
+    rgpot::nlist::Neighbours list;
+    list.update(R.data(), kAtoms, triclinic, spec);
+    if (list.slots() == 0 && kAtoms > 1)
       std::cerr << "invalid\n";
   });
   std::cout << "rebuild_s " << wall << '\n';

@@ -1,4 +1,5 @@
-# Single PR/main CI workflow: prepare (Nickel plan) → ordered stages.
+# Single PR CI workflow (main and develop) plus pushes to main and feat/**:
+# prepare (Nickel plan) → ordered stages.
 # Remaining separate workflows (different triggers/secrets/permissions):
 #   release.yml, release-prepare.yml, ci_docs.yml, ci_doc_commenter.yml, cosmo-potctl.yml
 # Nickel modules under ci/gha/ still document job bodies; only the files above are
@@ -7,9 +8,9 @@ name: CI (orchestrator)
 
 on:
   push:
-    branches: [main]
+    branches: [main, "feat/**"]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
   workflow_dispatch:
   # was docs_quality.yml weekly; keep link/prose hygiene on a schedule
   schedule:
@@ -99,9 +100,9 @@ jobs:
           prek --version
       - name: Install system hook deps
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq cppcheck clang-format-16 || \
-            sudo apt-get install -y -qq cppcheck clang-format
+          if ! bash ci/gha/apt-install.sh cppcheck clang-format-16; then
+            bash ci/gha/apt-install.sh cppcheck clang-format
+          fi
           if ! command -v snapper >/dev/null 2>&1 && ! command -v snapper-fmt >/dev/null 2>&1; then
             curl --proto '=https' --tlsv1.2 -LsSf \
               https://github.com/TurtleTech-ehf/snapper/releases/download/v0.10.0/snapper-fmt-installer.sh | sh || true
@@ -397,9 +398,42 @@ jobs:
             -Dwith_eigen=false \
             -Dwith_rpc=false \
             -Dwith_cache=false \
+            -Dwith_fast_nlist=disabled \
             -Dpure_lib=true
           meson compile -C bb
           meson test -C bb --print-errorlogs
+
+  # --- Stage 2a''': classical pair scan, no cargo ---
+  # manylinux wheels, conda and the eOn subproject configure without cargo.
+  # This leg forces that fallback on a runner that does have cargo, so the
+  # C++ scan is what the tests exercise.
+  build_fast_nlist_off:
+    name: meson / ubuntu [fast nlist off]
+    needs: [prepare]
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
+        with:
+          pixi-version: v0.70.2
+          cache: true
+          environments: devbld
+          activate-environment: true
+      - name: Build and test without the fast pair list
+        shell: pixi run bash -e {0}
+        run: |
+          meson setup bbdir \
+            -Dwith_tests=true \
+            -Dwith_examples=false \
+            -Dwith_xtensor=false \
+            -Dwith_eigen=false \
+            -Dwith_rpc=false \
+            -Dwith_cache=false \
+            -Dwith_fast_nlist=disabled \
+            -Dpure_lib=true
+          meson compile -C bbdir
+          meson test -C bbdir --print-errorlogs
 
   # --- Stage 2b: rust ---
   rust_tests:
@@ -596,6 +630,33 @@ jobs:
         shell: pixi run -e tbbld bash -e {0}
         run: potctl ci xtb-tblite-test
 
+  # with_xckernel defaults off, so the build matrix never registers
+  # XcKernelGoldens. This leg builds the BLAS dsyr2k path and fails if
+  # that test is missing or red.
+  xckernel_goldens:
+    name: xckernel goldens (meson / ubuntu)
+    needs: [prepare, ci-tools]
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - name: Ensure potctl
+        uses: ./.github/actions/ensure-potctl
+        with:
+          artifact-prefix: ci-tools-${{ github.sha }}
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
+        with:
+          activate-environment: true
+          cache: true
+          environments: default
+          pixi-version: v0.70.2
+      - name: Meson build & test (xckernel goldens)
+        shell: pixi run bash -e {0}
+        run: potctl ci xckernel-test
+
   # Compile-only. conda-forge tblite 0.6.0 (gfortran_ha02e54d_0) segfaults in
   # __dftd4_model_d4_MOD_get_polarizabilities on a GFN2 water single point,
   # including `tblite run`. The [tblite] tests stay on potentials_tight_binding
@@ -712,11 +773,13 @@ jobs:
       - build_and_test
       - build_windows_meson
       - nodownload_rehearsal
+      - build_fast_nlist_off
       - rust_tests
       - client_bridge_stress
       - potentials_metatomic
       - potentials_uma_engine
       - potentials_tight_binding
+      - xckernel_goldens
       - potentials_tblite_06
       - potentials_plugins
       - eonviz_pins
@@ -743,10 +806,13 @@ jobs:
             "build_and_test:${{ needs.build_and_test.result }}" \
             "build_windows_meson:${{ needs.build_windows_meson.result }}" \
             "nodownload_rehearsal:${{ needs.nodownload_rehearsal.result }}" \
+            "build_fast_nlist_off:${{ needs.build_fast_nlist_off.result }}" \
             "rust_tests:${{ needs.rust_tests.result }}" \
             "client_bridge_stress:${{ needs.client_bridge_stress.result }}" \
             "potentials_metatomic:${{ needs.potentials_metatomic.result }}" \
+            "potentials_uma_engine:${{ needs.potentials_uma_engine.result }}" \
             "potentials_tight_binding:${{ needs.potentials_tight_binding.result }}" \
+            "xckernel_goldens:${{ needs.xckernel_goldens.result }}" \
             "potentials_tblite_06:${{ needs.potentials_tblite_06.result }}" \
             "potentials_plugins:${{ needs.potentials_plugins.result }}" \
             "eonviz_pins:${{ needs.eonviz_pins.result }}"

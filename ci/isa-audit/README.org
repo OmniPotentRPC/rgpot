@@ -127,10 +127,36 @@ Rust v0 and legacy names and Itanium C++ names are demangled before
 the match.
 Crate disambiguators are omitted.
 
-rgpot ships no dispatched kernel, so =rgpot/isa-allow.toml= has only
-vendored entries: OpenBLAS (=DYNAMIC_ARCH=), libgfortran matmul
-variants, libgomp, and libquadmath which is copied in with libgfortran.
-An above-baseline instruction in =librgpot= or =_core= is a violation.
+=rgpot/isa-allow.toml= names two kinds of exception.
+Vendored libraries that auditwheel or delocate copy into the wheel
+(OpenBLAS with =DYNAMIC_ARCH=, libgfortran matmul variants, libgomp,
+and libquadmath copied in with libgfortran) select kernels inside
+their own binary.
+The glibc-gated FMA helpers in =librgpot= (=eam_fma=, =lj_hw=,
+=morse_hw=, =eam_hw=, =exact_fma_hw=, =r2_hw=, =r2_hw_n=,
+=accept_row_hw=, =exp2_hw=, =exp_hw_n=, and =morse8_hw=) are compiled
+with =target("fma")=.
+That attribute also emits AVX encodings.
+Each helper is entered only after
+=rgpot::simd::detail::glibc_fma_active()= reports a usable FMA, which
+follows glibc's hwcaps mask.
+The tight Lennard-Jones cluster kernel's =target("avx2")= bodies
+(=lj_avx2=, =eval_quad=, and =acc_quad=) are named for =avx= and
+=avx2=.
+=lj_cluster_direct= calls =lj_avx2= only after
+=__builtin_cpu_supports("avx2")=.
+That builtin pulls in GCC's =__cpu_indicator_init=, which reads XCR0
+with =xgetbv= and is named for =xsave=.
+The same allowlist names the minimum-image and pair-list FMA bodies
+=fold_hardware= and =accumulateHw=.
+Those bodies run only when a usable FMA is reported.
+=exp_fixed_n= and =morse_row= clones for AVX2 and AVX-512F are named
+because function multiversioning emits them, and each clone returns the
+baseline bits.
+=cpuid_fma_usable= reads XCR0 with =xgetbv= after CPUID reports OSXSAVE,
+and is named for =xsave= together with =__cpu_indicator_init=.
+An above-baseline instruction in any other =librgpot= or =_core=
+function is a violation.
 
 * Calling the workflow from another repository
 

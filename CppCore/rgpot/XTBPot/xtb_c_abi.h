@@ -62,6 +62,20 @@ RGPOT_XTB_API int rgpot_xtb_force(RgpotXtbPot *pot, long nAtoms,
                                   double *forces, double *energy,
                                   double *variance, const double *box);
 
+/**
+ * Drop the stored SCC wavefunction. The calculator stays, and the next
+ * force uses xtb's own guess.
+ */
+RGPOT_XTB_API void rgpot_xtb_reset(RgpotXtbPot *pot);
+
+/** Displacement guard in Angstrom. Zero or negative disables reuse. */
+RGPOT_XTB_API void rgpot_xtb_set_warm_move(RgpotXtbPot *pot, double angstrom);
+
+RGPOT_XTB_API double rgpot_xtb_warm_move(const RgpotXtbPot *pot);
+
+/** 1 when the last successful force reused the previous wavefunction. */
+RGPOT_XTB_API int rgpot_xtb_reused_wavefunction(const RgpotXtbPot *pot);
+
 RGPOT_XTB_API int rgpot_xtb_available(void);
 
 #ifdef __cplusplus

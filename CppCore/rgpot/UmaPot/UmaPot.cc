@@ -1,12 +1,11 @@
-// MIT License — UmaPot: vesin neighbor list + AOTInductor .pt2
+// MIT License — UmaPot: neighbour query + AOTInductor .pt2
 
 #include "rgpot/UmaPot/UmaPot.hpp"
 #include "rgpot/UmaPot/MolecularFrame.hpp"
 
-#include "rgpot/MetatomicPot/vesin_compat.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/UmaPot/UmaContract.hpp"
 #include "rgpot/UmaPot/aoti_execstack.hpp"
-#include "vesin.h"
 
 #include <array>
 #include <vector>
@@ -16,8 +15,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <fstream>
 #include <mutex>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -43,80 +44,49 @@ torch::Device parse_device(const std::string &name) {
 struct EdgeList {
   std::vector<int64_t> neighbor;
   std::vector<int64_t> center;
-  std::vector<float> offsets; // nedges * 3
+  std::vector<double> offsets; // nedges * 3, cell shifts
 };
 
-EdgeList vesin_fairchem_edges(const ForceInput &in, double cutoff,
+EdgeList fairchem_edges(const ForceInput &in, double cutoff,
                               int max_neighbors) {
-  VesinOptions options{};
-  vesin_compat::fill_neighbor_options(options, cutoff, /*full_list=*/true);
-  // One neighbor-list thread: the pair order then depends on the input alone.
-  vesin_compat::set_n_threads(options, 1);
-  options.return_distances = true;
-
-  VesinNeighborList nl{};
-  VesinDevice cpu = vesin_compat::make_cpu_device();
-  const char *err = nullptr;
-  bool pbc[3] = {true, true, true};
-  const int status =
-      vesin_neighbors(reinterpret_cast<const double(*)[3]>(in.pos), in.nAtoms,
-                      reinterpret_cast<const double(*)[3]>(in.box), pbc, cpu,
-                      options, &nl, &err);
-  if (status != EXIT_SUCCESS) {
-    std::string msg = "UmaPot: vesin_neighbors failed";
-    if (err)
-      msg += ": " + std::string(err);
-    vesin_free(&nl);
-    throw std::runtime_error(msg);
-  }
+  nlist::Query query;
+  query.cutoff = cutoff;
+  query.shape = nlist::Pairs{nlist::Shell::Full};
+  query.cut = nlist::Cut::Strict;
+  query.periodic = {true, true, true};
+  query.fields.shifts = true;
+  query.fields.vectors = false;
+  query.fields.distances = true;
+  nlist::Table table;
+  nlist::build(table, in.pos, in.nAtoms, in.box, query);
 
   struct Cand {
     int64_t n{0};
     int64_t c{0};
-    float s0{0};
-    float s1{0};
-    float s2{0};
+    double s0{0};
+    double s1{0};
+    double s2{0};
     double dist{0};
   };
   std::vector<Cand> keep;
-  keep.reserve(nl.length);
-  const double *box = in.box;
-  for (size_t k = 0; k < nl.length; ++k) {
-    const int64_t i = static_cast<int64_t>(nl.pairs[k][0]);
-    const int64_t j = static_cast<int64_t>(nl.pairs[k][1]);
-    double dist = 0.0;
-    if (nl.distances != nullptr) {
-      dist = nl.distances[k];
-    } else {
-      const double sx = static_cast<double>(nl.shifts[k][0]);
-      const double sy = static_cast<double>(nl.shifts[k][1]);
-      const double sz = static_cast<double>(nl.shifts[k][2]);
-      const double dx = in.pos[3 * j] - in.pos[3 * i] + sx * box[0] +
-                        sy * box[3] + sz * box[6];
-      const double dy = in.pos[3 * j + 1] - in.pos[3 * i + 1] + sx * box[1] +
-                        sy * box[4] + sz * box[7];
-      const double dz = in.pos[3 * j + 2] - in.pos[3 * i + 2] + sx * box[2] +
-                        sy * box[5] + sz * box[8];
-      dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-    }
-    if (dist < 1e-8)
+  keep.reserve(table.size());
+  for (size_t k = 0; k < table.size(); ++k) {
+    if (table.distance[k] < 1e-8)
       continue;
     Cand c;
-    c.n = j;
-    c.c = i;
-    c.s0 = static_cast<float>(nl.shifts[k][0]);
-    c.s1 = static_cast<float>(nl.shifts[k][1]);
-    c.s2 = static_cast<float>(nl.shifts[k][2]);
-    c.dist = dist;
+    c.n = table.second[k];
+    c.c = table.first[k];
+    c.s0 = static_cast<double>(table.shift[3 * k]);
+    c.s1 = static_cast<double>(table.shift[3 * k + 1]);
+    c.s2 = static_cast<double>(table.shift[3 * k + 2]);
+    c.dist = table.distance[k];
     keep.push_back(c);
   }
-  vesin_free(&nl);
 
   // Canonical edge order: the neighbor list may be assembled by several
-  // threads, so its pair order is not a function of the input. The model's
-  // float32 message-passing sums follow the edge order, so a run is
-  // reproducible only if this order is. Total order on (center, distance,
-  // neighbor, shift).
+  // threads, so its pair order is not a function of the input. Message
+  // passing sums follow the edge order, so a run is reproducible only if
+  // this order is. Total order on (center, distance, neighbor, shift).
   std::sort(keep.begin(), keep.end(), [](const Cand &a, const Cand &b) {
     if (a.c != b.c)
       return a.c < b.c;
@@ -162,11 +132,94 @@ EdgeList vesin_fairchem_edges(const ForceInput &in, double cutoff,
   return out;
 }
 
+const char *dtype_token(torch::ScalarType dt) {
+  if (dt == torch::kFloat64)
+    return "float64";
+  if (dt == torch::kFloat32)
+    return "float32";
+  return "unknown";
+}
+
+std::optional<torch::ScalarType> dtype_from_name(const std::string &raw) {
+  if (raw == "float64" || raw == "double" || raw == "torch.float64")
+    return torch::kFloat64;
+  if (raw == "float32" || raw == "float" || raw == "torch.float32")
+    return torch::kFloat32;
+  return std::nullopt;
+}
+
+// Every edge index must land inside the position buffer. The compiled
+// graph gathers by this index, so a value past the last atom would
+// read off the end of that buffer.
+void reject_periodic_images(const std::vector<double> &offsets) {
+  for (double shift : offsets) {
+    if (shift == 0.0)
+      continue;
+    throw UmaContractError(
+        "cell_offsets", "a molecular box with no periodic image", "nonzero",
+        "input");
+  }
+}
+
+// One edge-count contract for a single system and for every system in
+// a band. The compiled graph is not called when this throws.
+void apply_edge_contract(const UmaContract &contract, bool molecular,
+                         int64_t natoms, int64_t systems, const int64_t *counts,
+                         int64_t nedges_total) {
+  contract.checkEachSystem(systems, counts, natoms, molecular);
+  if (contract.pos_decl.known || contract.edge_decl.known)
+    contract.checkCallShapes(natoms, nedges_total);
+  else
+    contract.checkEdges(nedges_total);
+}
+
+void check_edge_indices(const torch::Tensor &edge_index, int64_t npos) {
+  const auto ei = edge_index.accessor<int64_t, 2>();
+  const int64_t nedges = edge_index.size(1);
+  for (int64_t e = 0; e < nedges; ++e) {
+    for (int row = 0; row < 2; ++row) {
+      const int64_t v = ei[row][e];
+      if (v < 0 || v >= npos) {
+        throw UmaShapeError(
+            "edge_index", "[2, " + std::to_string(nedges) + "]",
+            "pos [" + std::to_string(npos) + ", 3] (index " +
+                std::to_string(v) + " is outside it)");
+      }
+    }
+  }
+}
+
+// Write host doubles into a tensor that already has the package dtype.
+void store_rows(torch::Tensor dst, const double *src, int64_t rows,
+                int64_t cols) {
+  if (dst.scalar_type() == torch::kFloat64) {
+    auto a = dst.accessor<double, 2>();
+    for (int64_t i = 0; i < rows; ++i)
+      for (int64_t c = 0; c < cols; ++c)
+        a[i][c] = src[static_cast<size_t>(i * cols + c)];
+    return;
+  }
+  if (dst.scalar_type() == torch::kFloat32) {
+    auto a = dst.accessor<float, 2>();
+    for (int64_t i = 0; i < rows; ++i)
+      for (int64_t c = 0; c < cols; ++c)
+        a[i][c] =
+            static_cast<float>(src[static_cast<size_t>(i * cols + c)]);
+    return;
+  }
+  throw std::runtime_error(
+      "UmaPot: floating input dtype is not float32 or float64");
+}
+
 } // namespace
 
 struct UmaPot::Impl {
   torch::Device device{torch::kCPU};
+  // Input dtype of pos, cell and cell_offsets. float32 until metadata
+  // says otherwise, including packages that record neither key.
   torch::ScalarType dtype{torch::kFloat32};
+  std::string pos_dtype_name{"float32"};
+  std::string model_dtype_name{"float32"};
   double cutoff{6.0};
   double molecular_box{0.0};
   int max_neighbors{300};
@@ -213,9 +266,39 @@ void UmaPot::ensureLoaded() const {
   m_impl->max_neighbors = static_cast<int>(
       num("max_neighbors", static_cast<double>(m_impl->max_neighbors)));
   m_impl->batch_max = static_cast<int64_t>(num("batch_max", 0.0));
-  const auto dt = meta.find("pos_dtype");
-  if (dt != meta.end() && dt->second == "float64")
-    m_impl->dtype = torch::kFloat64;
+  auto named = [&](const char *key) -> std::optional<torch::ScalarType> {
+    const auto it = meta.find(key);
+    if (it == meta.end() || it->second.empty())
+      return std::nullopt;
+    const auto parsed = dtype_from_name(it->second);
+    if (!parsed)
+      throw std::runtime_error(std::string("UmaPot: package metadata ") +
+                               key + " is not float32 or float64: " +
+                               it->second);
+    return parsed;
+  };
+  const auto pos = named("pos_dtype");
+  const auto model = named("model_dtype");
+  // Log only keys the package recorded. "unset" is not a guessed dtype.
+  m_impl->pos_dtype_name = pos ? dtype_token(*pos) : "unset";
+  m_impl->model_dtype_name = model ? dtype_token(*model) : "unset";
+  if (pos && model && *pos != *model) {
+    throw std::runtime_error(
+        std::string("UmaPot: pos_dtype is ") + m_impl->pos_dtype_name +
+        " and model_dtype is " + m_impl->model_dtype_name +
+        "; refusing to feed one dtype into a graph recorded as the other");
+  }
+  if (!pos && !model) {
+    m_impl->dtype = torch::kFloat32;
+    std::fprintf(stderr,
+                 "UmaPot: package metadata has no pos_dtype or model_dtype; "
+                 "falling back to float32\n");
+  } else {
+    m_impl->dtype = pos ? *pos : *model;
+  }
+  std::fprintf(stderr, "UmaPot: pos_dtype=%s model_dtype=%s\n",
+               m_impl->pos_dtype_name.c_str(),
+               m_impl->model_dtype_name.c_str());
   m_impl->contract = UmaContract::fromMetadata(meta);
 }
 
@@ -268,7 +351,7 @@ void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     return;
   }
 
-  // Molecular inputs use the package's cube and an origin-centred frame.
+  // Molecular inputs use the sidecar's cube and an origin-centred frame.
   // A common translation preserves all relative vectors and cell offsets;
   // avoiding a large coordinate offset retains precision in float32 models.
   const bool molecular = m_impl->molecular_box > 0.0;
@@ -283,36 +366,32 @@ void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
                          in.atmnrs, molecular ? mol_box.data() : in.box};
 
   const EdgeList edges =
-      vesin_fairchem_edges(local, m_impl->cutoff, m_impl->max_neighbors);
+      fairchem_edges(local, m_impl->cutoff, m_impl->max_neighbors);
   const auto n = static_cast<int64_t>(local.nAtoms);
   const auto nedges = static_cast<int64_t>(edges.neighbor.size());
   if (nedges == 0)
-    throw std::runtime_error("UmaPot: vesin produced no edges");
-  m_impl->contract.checkEdges(nedges);
+    throw std::runtime_error("UmaPot: the neighbour query produced no edges");
+  if (molecular)
+    reject_periodic_images(edges.offsets);
+  // The same check the band path uses. A molecular count other than
+  // n*(n-1), or a count outside the traced range, is named here.
+  const int64_t one_count = nedges;
+  apply_edge_contract(m_impl->contract, molecular, n, 1, &one_count, nedges);
 
   auto opts_f = torch::TensorOptions().dtype(m_impl->dtype).device(torch::kCPU);
   auto opts_l = torch::TensorOptions().dtype(torch::kLong).device(torch::kCPU);
 
-  auto pos = torch::empty({n, 3}, torch::dtype(torch::kFloat64));
-  auto pos_a = pos.accessor<double, 2>();
-  for (int64_t i = 0; i < n; ++i) {
-    pos_a[i][0] = local.pos[3 * i];
-    pos_a[i][1] = local.pos[3 * i + 1];
-    pos_a[i][2] = local.pos[3 * i + 2];
-  }
-  pos = pos.to(opts_f);
+  auto pos = torch::empty({n, 3}, opts_f);
+  store_rows(pos, local.pos, n, 3);
 
   auto atomic_numbers = torch::empty({n}, opts_l);
   auto z_a = atomic_numbers.accessor<int64_t, 1>();
   for (int64_t i = 0; i < n; ++i)
     z_a[i] = local.atmnrs[i];
 
-  auto cell = torch::empty({1, 3, 3}, torch::dtype(torch::kFloat64));
-  auto cell_a = cell.accessor<double, 3>();
-  for (int r = 0; r < 3; ++r)
-    for (int c = 0; c < 3; ++c)
-      cell_a[0][r][c] = local.box[3 * r + c];
-  cell = cell.to(opts_f);
+  auto cell = torch::empty({1, 3, 3}, opts_f);
+  store_rows(cell.view({1, 9}), local.box, 1, 9);
+  cell = cell.view({1, 3, 3});
 
   auto pbc = torch::tensor({{true, true, true}},
                            torch::TensorOptions().dtype(torch::kBool));
@@ -322,11 +401,9 @@ void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     ei[0][e] = edges.neighbor[static_cast<size_t>(e)];
     ei[1][e] = edges.center[static_cast<size_t>(e)];
   }
-  auto cell_offsets =
-      torch::from_blob(const_cast<float *>(edges.offsets.data()), {nedges, 3},
-                       torch::dtype(torch::kFloat32))
-          .clone()
-          .to(opts_f);
+  check_edge_indices(edge_index, n);
+  auto cell_offsets = torch::empty({nedges, 3}, opts_f);
+  store_rows(cell_offsets, edges.offsets.data(), nedges, 3);
   auto charge = torch::tensor({static_cast<int64_t>(m_config.charge)}, opts_l);
   auto spin = torch::tensor({static_cast<int64_t>(m_config.spin)}, opts_l);
   auto batch = torch::zeros({n}, opts_l);
@@ -439,26 +516,35 @@ void UmaPot::forceBatchImpl(const ForceBatch &batch) const {
       const ForceInput local{static_cast<size_t>(n), pos_b.data(), in.atmnrs,
                              box_b.data()};
       sys_edges[static_cast<size_t>(b)] =
-          vesin_fairchem_edges(local, m_impl->cutoff, m_impl->max_neighbors);
+          fairchem_edges(local, m_impl->cutoff, m_impl->max_neighbors);
       nedges_total += static_cast<int64_t>(
           sys_edges[static_cast<size_t>(b)].neighbor.size());
     }
     if (nedges_total == 0)
-      throw std::runtime_error("UmaPot: vesin produced no edges (batch)");
-    m_impl->contract.checkEdges(nedges_total);
+      throw std::runtime_error("UmaPot: the neighbour query produced no edges (batch)");
+    std::vector<int64_t> per_system(static_cast<size_t>(B));
+    for (int64_t b = 0; b < B; ++b) {
+      per_system[static_cast<size_t>(b)] = static_cast<int64_t>(
+          sys_edges[static_cast<size_t>(b)].neighbor.size());
+      if (molecular)
+        reject_periodic_images(sys_edges[static_cast<size_t>(b)].offsets);
+    }
+    // Same edge contract as a single system, including a molecular
+    // band. forceImpl sends batch_max > 1 here before any other check.
+    apply_edge_contract(m_impl->contract, molecular, n, B, per_system.data(),
+                        nedges_total);
 
     auto opts_f =
         torch::TensorOptions().dtype(m_impl->dtype).device(torch::kCPU);
     auto opts_l =
         torch::TensorOptions().dtype(torch::kLong).device(torch::kCPU);
 
-    auto pos = torch::empty({B * n, 3}, torch::dtype(torch::kFloat64));
+    auto pos = torch::empty({B * n, 3}, opts_f);
     auto atomic_numbers = torch::empty({B * n}, opts_l);
-    auto cell = torch::empty({B, 3, 3}, torch::dtype(torch::kFloat64));
+    auto cell = torch::empty({B, 3, 3}, opts_f);
     auto pbc = torch::ones({B, 3}, torch::TensorOptions().dtype(torch::kBool));
     auto edge_index = torch::empty({2, nedges_total}, opts_l);
-    auto cell_offsets =
-        torch::empty({nedges_total, 3}, torch::dtype(torch::kFloat32));
+    auto cell_offsets = torch::empty({nedges_total, 3}, opts_f);
     auto charge =
         torch::full({B}, static_cast<int64_t>(m_config.charge), opts_l);
     auto spin = torch::full({B}, static_cast<int64_t>(m_config.spin), opts_l);
@@ -473,42 +559,34 @@ void UmaPot::forceBatchImpl(const ForceBatch &batch) const {
     }
 
     {
-      auto pos_a = pos.accessor<double, 2>();
       auto z_a = atomic_numbers.accessor<int64_t, 1>();
-      auto cell_a = cell.accessor<double, 3>();
       auto ei = edge_index.accessor<int64_t, 2>();
-      auto off = cell_offsets.accessor<float, 2>();
       auto bv = batch_vec.accessor<int64_t, 1>();
       int64_t e_at = 0;
       for (int64_t b = 0; b < B; ++b) {
         const ForceInput &in = in_at(b);
         const auto &pos_b = sys_pos[static_cast<size_t>(b)];
+        store_rows(pos.narrow(0, b * n, n), pos_b.data(), n, 3);
         for (int64_t i = 0; i < n; ++i) {
-          pos_a[b * n + i][0] = pos_b[static_cast<size_t>(3 * i)];
-          pos_a[b * n + i][1] = pos_b[static_cast<size_t>(3 * i + 1)];
-          pos_a[b * n + i][2] = pos_b[static_cast<size_t>(3 * i + 2)];
           z_a[b * n + i] = in.atmnrs[i];
           bv[b * n + i] = b;
         }
-        for (int r = 0; r < 3; ++r)
-          for (int c = 0; c < 3; ++c)
-            cell_a[b][r][c] =
-                sys_box[static_cast<size_t>(b)][static_cast<size_t>(3 * r + c)];
+        store_rows(cell[b].view({1, 9}), sys_box[static_cast<size_t>(b)].data(),
+                   1, 9);
         const auto &edges = sys_edges[static_cast<size_t>(b)];
         const auto ne = static_cast<int64_t>(edges.neighbor.size());
         for (int64_t e = 0; e < ne; ++e) {
           ei[0][e_at + e] = edges.neighbor[static_cast<size_t>(e)] + b * n;
           ei[1][e_at + e] = edges.center[static_cast<size_t>(e)] + b * n;
-          off[e_at + e][0] = edges.offsets[static_cast<size_t>(3 * e)];
-          off[e_at + e][1] = edges.offsets[static_cast<size_t>(3 * e + 1)];
-          off[e_at + e][2] = edges.offsets[static_cast<size_t>(3 * e + 2)];
         }
+        if (ne > 0)
+          store_rows(cell_offsets.narrow(0, e_at, ne), edges.offsets.data(), ne,
+                     3);
         e_at += ne;
       }
     }
-    pos = pos.to(opts_f);
-    cell = cell.to(opts_f);
-    auto cell_offsets_f = cell_offsets.to(opts_f);
+    check_edge_indices(edge_index, B * n);
+    auto cell_offsets_f = cell_offsets;
 
     if (m_impl->device != torch::kCPU) {
       pos = pos.to(m_impl->device);
@@ -547,6 +625,18 @@ void UmaPot::forceBatchImpl(const ForceBatch &batch) const {
         o.F[i] = fp[b * n * 3 + i];
     }
   }
+}
+
+const char *UmaPot::posDtypeName() const {
+  std::lock_guard<std::mutex> lock(m_impl->mutex);
+  ensureLoaded();
+  return m_impl->pos_dtype_name.c_str();
+}
+
+const char *UmaPot::modelDtypeName() const {
+  std::lock_guard<std::mutex> lock(m_impl->mutex);
+  ensureLoaded();
+  return m_impl->model_dtype_name.c_str();
 }
 
 } // namespace rgpot

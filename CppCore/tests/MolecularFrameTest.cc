@@ -15,21 +15,19 @@ int main() {
     }
   };
   const auto gradient = [&](double displacement, double length) {
-    std::array<double, 6> positions{
-        12.0 + displacement, 0.0, 0.0, 13.0, 0.0, 0.0};
+    std::array<double, 6> positions{12.0 + displacement, 0.0, 0.0,
+                                  13.0, 0.0, 0.0};
     const auto cell = rgpot::uma::molecularFrame(positions, length);
-    check(cell ==
-              std::array<double, 9>{length, 0, 0, 0, length, 0, 0, 0, length},
+    check(cell == std::array<double, 9>{length, 0, 0, 0, length, 0, 0, 0, length},
           "molecular frame changes the specified cell");
     // E = (r - 1)^2 / 2, evaluated from binary32 Cartesian inputs.
-    const float bond =
-        static_cast<float>(positions[3]) - static_cast<float>(positions[0]);
+    const float bond = static_cast<float>(positions[3]) -
+                       static_cast<float>(positions[0]);
     return static_cast<double>(1.0f - bond);
   };
   const double h = std::ldexp(1.0, -20);
   for (double length : {25.0, 30.0, 64.0}) {
-    const double curvature =
-        (gradient(h, length) - gradient(-h, length)) / (2 * h);
+    const double curvature = (gradient(h, length) - gradient(-h, length)) / (2 * h);
     check(curvature == 1.0, "synthetic cell erases a resolved bond curvature");
   }
 
@@ -46,7 +44,6 @@ int main() {
   check(first[3] - first[0] == 1.0 && first[4] - first[1] == 0.5 &&
             first[5] - first[2] == -0.5,
         "molecular frame changes relative Cartesian vectors");
-  if (failures == 0)
-    std::cout << "molecular frame checks passed\n";
+  if (failures == 0) std::cout << "molecular frame checks passed\n";
   return failures == 0 ? 0 : 1;
 }

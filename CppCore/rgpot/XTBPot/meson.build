@@ -10,7 +10,7 @@ if not dl_dep.found()
     dl_dep = meson.get_compiler('cpp').find_library('dl', required: false)
 endif
 
-# Thin frontend — no libxtb; safe for with_xtb=false hosts (eOn, gprd paper).
+# Thin frontend, no libxtb; safe for with_xtb=false hosts (eOn, gprd paper).
 xtb_dlopen = static_library(
     'xtb_dlopen',
     'XTBDlopen.cc',
@@ -71,4 +71,8 @@ if has_xtb
         link_with: [xtb_engine],
         include_directories: _incdirs + [xtb_inc],
     )
+
+    # Shared library directory. Tests put this on the process-start loader path
+    # so a bad explicit engine_path cannot be rescued by the bare soname.
+    xtb_engine_dir = meson.current_build_dir()
 endif

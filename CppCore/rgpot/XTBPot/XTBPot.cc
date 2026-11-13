@@ -5,6 +5,8 @@
 #include "rgpot/stress.hpp"
 #include "rgpot/units.hpp"
 
+#include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -14,14 +16,64 @@ using units::ANGSTROM_TO_BOHR;
 using units::HARTREE_TO_EV;
 using units::NEG_GRAD_TO_FORCE;
 
+namespace {
+
+bool numbersDiffer(const std::vector<int> &stored, const int *atmnrs,
+                   size_t n) {
+  if (stored.size() != n)
+    return true;
+  if (n == 0)
+    return false;
+  if (!atmnrs)
+    return true;
+  for (size_t i = 0; i < n; ++i) {
+    if (stored[i] != atmnrs[i])
+      return true;
+  }
+  return false;
+}
+
+// Euclidean displacement of the atom that moved furthest, in Angstrom.
+// An empty history is not a previous geometry.
+double maxAtomMove(const std::vector<double> &previous, const double *next,
+                   size_t n3) {
+  if (previous.size() != n3 || previous.empty() || !next)
+    return std::numeric_limits<double>::infinity();
+  double furthest2 = 0.0;
+  for (size_t i = 0; i < n3; i += 3) {
+    const double dx = previous[i] - next[i];
+    const double dy = previous[i + 1] - next[i + 1];
+    const double dz = previous[i + 2] - next[i + 2];
+    const double d2 = dx * dx + dy * dy + dz * dz;
+    if (d2 > furthest2)
+      furthest2 = d2;
+  }
+  return std::sqrt(furthest2);
+}
+
+} // namespace
+
 XTBPot::XTBPot() : XTBPot(XTBConfig{}) {}
 
 XTBPot::XTBPot(const XTBConfig &config)
-    : Potential(PotType::XTB), m_config(config) {
+    : Potential(PotType::XTB), m_config(config), m_warm_move(config.warm_move) {
   initHandles();
 }
 
-void XTBPot::initHandles() {
+void XTBPot::reset() {
+  freshResults();
+  m_previous.clear();
+  m_has_wavefunction = false;
+  m_last_reused = false;
+}
+
+void XTBPot::setWarmMove(double angstrom) { m_warm_move = angstrom; }
+
+double XTBPot::warmMove() const noexcept { return m_warm_move; }
+
+bool XTBPot::reusedWavefunction() const noexcept { return m_last_reused; }
+
+void XTBPot::initHandles() const {
   m_env = xtb_newEnvironment();
   if (!m_env) {
     throw std::runtime_error("Failed to create xtb environment");
@@ -76,7 +128,54 @@ void XTBPot::loadParametrisation() const {
   xtb_setMaxIter(m_env, m_calc, m_config.max_iterations);
 }
 
+void XTBPot::freshResults() const {
+  if (m_res) {
+    xtb_delResults(&m_res);
+    m_res = nullptr;
+  }
+  m_res = xtb_newResults();
+  if (!m_res)
+    throw std::runtime_error("Failed to create xtb results");
+  m_has_wavefunction = false;
+}
+
+void XTBPot::discardAfterFailure() const {
+  // A failed SCC leaves the environment in an error state and the
+  // wavefunction is not a guess. Replace the handle set.
+  if (m_res) {
+    xtb_delResults(&m_res);
+    m_res = nullptr;
+  }
+  if (m_mol) {
+    xtb_delMolecule(&m_mol);
+    m_mol = nullptr;
+  }
+  if (m_calc) {
+    xtb_delCalculator(&m_calc);
+    m_calc = nullptr;
+  }
+  if (m_env) {
+    xtb_releaseOutput(m_env);
+    xtb_delEnvironment(&m_env);
+    m_env = nullptr;
+  }
+  m_initialized = false;
+  m_has_wavefunction = false;
+  m_last_reused = false;
+  m_previous.clear();
+  m_numbers.clear();
+  m_pos_bohr.clear();
+  try {
+    initHandles();
+  } catch (...) {
+    // The original xtb error is the one the caller sees.
+  }
+}
+
 void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  if (!m_env || !m_calc || !m_res)
+    throw std::runtime_error("xTB Error: calculator is not initialized");
+
   int intN = static_cast<int>(in.nAtoms);
   const size_t n3 = 3 * in.nAtoms;
   const bool periodicity[3] = {false, false, false};
@@ -92,15 +191,34 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     box_bohr[i] = in.box[i] * ANGSTROM_TO_BOHR;
   }
 
-  if (!m_initialized) {
+  const bool composition_changed =
+      !m_initialized || numbersDiffer(m_numbers, in.atmnrs, in.nAtoms);
+  const double moved = maxAtomMove(m_previous, in.pos, n3);
+  // The results object holds the previous SCC wavefunction. xtb reads it
+  // as the guess. Past warm_move that guess is slower than xtb's own, so
+  // the results object is replaced before the single point.
+  const bool reuse = !composition_changed && m_has_wavefunction &&
+                     m_warm_move > 0.0 && moved <= m_warm_move;
+
+  if (composition_changed) {
+    if (m_mol) {
+      xtb_delMolecule(&m_mol);
+      m_mol = nullptr;
+    }
+    if (m_has_wavefunction)
+      freshResults();
     double charge = m_config.charge;
     int uhf = m_config.uhf;
     m_mol = xtb_newMolecule(m_env, &intN, in.atmnrs, m_pos_bohr.data(), &charge,
                             &uhf, box_bohr, periodicity);
+    if (!m_mol)
+      throw std::runtime_error("xTB Error: xtb_newMolecule failed");
     loadParametrisation();
     m_initialized = true;
   } else {
     xtb_updateMolecule(m_env, m_mol, m_pos_bohr.data(), box_bohr);
+    if (!reuse && m_has_wavefunction)
+      freshResults();
   }
 
   xtb_singlepoint(m_env, m_mol, m_calc, m_res);
@@ -108,7 +226,9 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   if (xtb_checkEnvironment(m_env) != 0) {
     char err_msg[512];
     xtb_getError(m_env, err_msg, nullptr);
-    throw std::runtime_error(std::string("xTB Error: ") + err_msg);
+    const std::string message = std::string("xTB Error: ") + err_msg;
+    discardAfterFailure();
+    throw std::runtime_error(message);
   }
 
   double energy_hartree;
@@ -117,6 +237,13 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
   // Write gradient directly into output buffer, then convert in-place
   xtb_getGradient(m_env, m_res, out->F);
+  bool finite = std::isfinite(energy_hartree);
+  for (size_t i = 0; i < n3 && finite; ++i)
+    finite = std::isfinite(out->F[i]);
+  if (!finite) {
+    discardAfterFailure();
+    throw std::runtime_error("xTB Error: non-finite energy or gradient");
+  }
   for (size_t i = 0; i < n3; ++i) {
     out->F[i] *= NEG_GRAD_TO_FORCE;
   }
@@ -138,6 +265,14 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   }
 
   out->variance = 0.0;
+
+  m_previous.assign(in.pos, in.pos + n3);
+  if (in.nAtoms == 0 || !in.atmnrs)
+    m_numbers.clear();
+  else
+    m_numbers.assign(in.atmnrs, in.atmnrs + in.nAtoms);
+  m_has_wavefunction = true;
+  m_last_reused = reuse;
 }
 
 } // namespace rgpot

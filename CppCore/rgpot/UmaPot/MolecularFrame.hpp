@@ -10,11 +10,10 @@ namespace rgpot::uma {
 
 /// Centre molecular inputs at zero before conversion to model precision.
 inline std::array<double, 9> molecularFrame(std::span<double> positions,
-                                            double length) {
-  if (positions.empty() || positions.size() % 3 != 0 || !(length > 0.0) ||
-      !std::isfinite(length))
-    throw std::invalid_argument(
-        "molecular frame requires atoms and a finite cell");
+                                           double length) {
+  if (positions.empty() || positions.size() % 3 != 0 ||
+      !(length > 0.0) || !std::isfinite(length))
+    throw std::invalid_argument("molecular frame requires atoms and a finite cell");
   const std::size_t atoms = positions.size() / 3;
   std::array<double, 3> center{};
   for (std::size_t i = 0; i < atoms; ++i)

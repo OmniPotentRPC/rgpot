@@ -5,10 +5,12 @@
 // The cell-list EAM kernel is the eOn source compiled with EAM_STANDALONE,
 // BSD-3-Clause, copyright the eOn Development Team.
 
+#include <cstddef>
 #include <cstdint>
 
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/Potential.hpp"
+#include "rgpot/nlist/Neighbours.hpp"
 
 namespace rgpot {
 
@@ -32,6 +34,27 @@ public:
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
     return m_paramsKey;
   }
+
+  /// Neighbour-list builds. A second call on a geometry inside the Verlet
+  /// skin does not increment this.
+  [[nodiscard]] std::uint64_t listBuilds() const noexcept;
+
+  /// Stored neighbour indices after the last build.
+  [[nodiscard]] std::size_t neighborSlots() const noexcept;
+
+  /// True when the last force call reused the Verlet list.
+  [[nodiscard]] bool listReused() const noexcept;
+
+  /// Partner indices kept between EAM stream passes. The density-only
+  /// stream keeps none.
+  [[nodiscard]] std::size_t streamPartners() const noexcept;
+
+  /// Threads used by the most recent force call.
+  [[nodiscard]] int threadsUsed() const noexcept;
+
+  /// Stored Verlet list or a streaming cell walk. Auto follows the
+  /// memory available to the process.
+  void setNeighbourMode(nlist::Mode mode) noexcept;
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 

@@ -96,6 +96,17 @@ hooks = [
     always_run = true,
     args = ["ci/gha/audit-large-files.sh"],
   },
+  # Cargo.toml [workspace.package] is the only hand-written release version.
+  # The pixi version environment pins cogapp; see [feature.version] there.
+  {
+    id = "version-drift",
+    name = "version copies match Cargo.toml (cogapp --check)",
+    entry = "pixi",
+    language = "system",
+    pass_filenames = false,
+    always_run = true,
+    args = ["r", "-e", "version", "version-drift"],
+  },
   # Ensure towncrier config stays parseable; fragment enforcement is PR CI
   # (release-prepare / dedicated job), not every local commit.
   {

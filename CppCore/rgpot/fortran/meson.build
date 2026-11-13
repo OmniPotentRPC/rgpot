@@ -15,8 +15,21 @@ _fpot_args = fc.get_supported_arguments(
         '-Wall',
         '-Wno-unused-dummy-argument',
         '-fvisibility=hidden',
+        # F2: gfortran keeps some procedure locals in static storage unless
+        # this is set, and those locals are then shared by every thread.
+        # The _ws entries are one workspace per caller and must be reentrant.
+        '-frecursive',
     ],
 )
+# rgpot_water_h.f90 selects the minimage wrap with the preprocessor.
+if fc.get_id() == 'intel' or fc.get_id() == 'intel-cl'
+    _fpot_args += ['-fpp']
+else
+    _fpot_args += ['-cpp']
+endif
+if has_fast_nlist
+    _fpot_args += ['-DRGPOT_HAS_FAST_NLIST']
+endif
 
 fortran_pots_sources = files(
     'rgpot_cuh2.f90',
@@ -50,8 +63,14 @@ fortran_pots_cpp_sources = files('FortranPots.cc')
 fortran_kernels = static_library(
     'rgpot_fortran_kernels',
     fortran_pots_sources,
-    dependencies: [vesin_f_dep],
+    'water_h_image.cc',
+    dependencies: [],
     fortran_args: _fpot_args,
+    # Same uncontracted products as the cluster kernel. The scan is the
+    # only copy; fusing a product here would move the H-water image.
+    cpp_args: cppc.get_supported_arguments(
+        ['-ffp-contract=off', '/fp:precise', '-fvisibility=hidden'],
+    ),
     pic: true,
     install: false,
 )
@@ -63,22 +82,37 @@ fortran_pots = static_library(
     dependencies: _deps,
     cpp_args: _args,
     include_directories: _incdirs,
-    link_with: fortran_kernels,
+    link_with: [fortran_kernels, tersoff_sic, rgpot_halfshell],
     pic: true,
     install: false,
 )
 
 fortran_pots_dep = declare_dependency(
     link_with: [fortran_pots, fortran_kernels],
-    dependencies: [vesin_f_dep],
+    dependencies: [],
 )
 
-# Fortran-only test programs link the kernels directly. These are leaf
-# executables, so they take the vesin objects themselves rather than the
-# headers-only view the convenience archives use.
+# Fortran-only test programs link the kernels and the neighbour query.
+# The OpenMP dependency is the C++ one. Its compile flag (/openmp, -fopenmp)
+# must not be handed to flang, which treats /openmp as a source file.
+_fortran_nlist_omp = dependency('openmp', language: 'cpp', required: false)
+_fortran_nlist_omp_link = []
+if _fortran_nlist_omp.found()
+    _fortran_nlist_omp_link = [
+        _fortran_nlist_omp.partial_dependency(
+            compile_args: false,
+            includes: false,
+        ),
+    ]
+endif
 fortran_kernels_dep = declare_dependency(
-    link_with: fortran_kernels,
-    dependencies: [vesin_f_dep, vesin_dep],
+    link_with: [
+        fortran_kernels,
+        rgpot_halfshell,
+        rgpot_minimage,
+        rgpot_exact_fma,
+    ],
+    dependencies: [fastnlist_dep] + _fortran_nlist_omp_link,
 )
 
 # Plugin anneal dlopens as RGPOT_CUH2_LIBRARY. The umbrella librgpot hides
@@ -89,6 +123,7 @@ _cuh2_plugin_args = fc.get_supported_arguments(
         '-fimplicit-none',
         '-Wall',
         '-Wno-unused-dummy-argument',
+        '-frecursive',
     ],
 )
 rgpot_cuh2 = library(
@@ -101,7 +136,12 @@ rgpot_cuh2 = library(
         'rgpot_cuh2.f90',
         'rgpot_cuh2_capi.f90',
     ],
-    dependencies: [vesin_f_dep, vesin_dep],
+    link_with: [rgpot_halfshell, rgpot_minimage, rgpot_exact_fma],
+    # C++ is the link language so the half-shell archives resolve, and meson
+    # then does not add the Fortran runtime. fortran_rt_deps is the same
+    # search the umbrella uses for _gfortran_* (and the flang equivalents).
+    link_language: 'cpp',
+    dependencies: _fortran_nlist_omp_link + fortran_rt_deps,
     fortran_args: _cuh2_plugin_args,
     install: not meson.is_subproject(),
     gnu_symbol_visibility: 'default',

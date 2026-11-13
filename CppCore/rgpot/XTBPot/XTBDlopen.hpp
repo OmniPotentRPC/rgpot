@@ -16,8 +16,21 @@ namespace rgpot {
 /**
  * Plugin path: ``dlopen`` ``libxtb_engine.so``, which implements the same
  * ISO_C_BINDING singlepoint as linked ``XTBPot`` behind ``xtb_c_abi.h``.
- * Search: ``engine_path``, ``RGPOT_XTB_ENGINE``, ``XTB_ENGINE``, bare
- * ``libxtb_engine.so``, then ``EON_POTENTIALS_PATH`` / ``RGPOT_ENGINE_PATH``.
+ *
+ * A non-empty ``engine_path`` is the only candidate, and it must contain a
+ * directory separator (``/`` or ``\``). A bare soname such as
+ * ``libxtb_engine.so`` is rejected: the loader would resolve it through
+ * ``LD_LIBRARY_PATH``, ``DYLD_LIBRARY_PATH``, or ``PATH`` and could open a
+ * different library. If the path does not open, or the library lacks the C
+ * ABI, construction throws. The error names that path and, on POSIX, the
+ * ``dlerror`` text. Environment variables, the bare soname, and directory
+ * lists are not consulted.
+ *
+ * When ``engine_path`` is empty, search ``RGPOT_XTB_ENGINE``, ``XTB_ENGINE``,
+ * the platform bare soname (``libxtb_engine.so`` on Linux,
+ * ``libxtb_engine.dylib`` then ``.so`` on Apple, ``xtb_engine.dll`` then
+ * ``libxtb_engine.dll`` on Windows), then ``EON_POTENTIALS_PATH`` /
+ * ``RGPOT_ENGINE_PATH``.
  *
  * Always compiled (no NEEDED libxtb). Linked ``XTBPot`` remains optional via
  * ``-Dwith_xtb=true``.
@@ -35,6 +48,17 @@ public:
 
   void forceImpl(const ForceInput &in, ForceOut *out) const;
 
+  /// Drop the stored SCC wavefunction. The calculator stays.
+  void reset();
+
+  /// Displacement guard in Angstrom. Zero or negative disables reuse.
+  void setWarmMove(double angstrom);
+
+  [[nodiscard]] double warmMove() const;
+
+  /// True when the last successful force reused the previous wavefunction.
+  [[nodiscard]] bool reusedWavefunction() const;
+
   /// Convenience operator matching Potential interface shape.
   std::tuple<double, types::AtomMatrix, double>
   operator()(const types::AtomMatrix &positions,
@@ -51,6 +75,14 @@ private:
   create_fn m_create{nullptr};
   destroy_fn m_destroy{nullptr};
   force_fn m_force{nullptr};
+  using reset_fn = void (*)(RgpotXtbPot *);
+  using set_warm_fn = void (*)(RgpotXtbPot *, double);
+  using warm_move_fn = double (*)(const RgpotXtbPot *);
+  using reused_fn = int (*)(const RgpotXtbPot *);
+  reset_fn m_reset{nullptr};
+  set_warm_fn m_set_warm{nullptr};
+  warm_move_fn m_warm_move{nullptr};
+  reused_fn m_reused{nullptr};
 };
 
 } // namespace rgpot

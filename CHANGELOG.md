@@ -7,6 +7,553 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
+## [3.6.0] - 2026-11-13
+
+[3.6.0]: https://github.com/OmniPotentRPC/rgpot/tree/v3.6.0
+
+### Breaking
+
+- librgpot's ELF soversion is 5.
+  LJPot and MorsePot each hold a neighbour list and a cached pair table,
+  so a binary built against soversion 4 does not load librgpot.so.5.
+  librgpot_mpi stays at soversion 3.
+- librgpot's ELF soversion is 6.
+  LJ and Morse no longer keep a copied half-list, and ZBL and the open
+  Lennard-Jones cluster hold a neighbour list.
+  A caller built against soversion 5 does not load librgpot.so.6.
+  librgpot_mpi stays at soversion 3.
+
+### Added
+
+- A public neighbour query returns a structure-of-arrays table or a
+  chunk of a walk.
+  A pair list is a half shell or a full shell.
+  A cluster of four is a separate shape and stores every neighbour.
+  The C ABI is version 4.
+  `rgpot_nlist_request_init` sets the defaults, `bytes` is the struct
+  size, and `rgpot_nlist_strerror` names a code.
+  Potentials.capnp carries the same columns, and a client streams chunks
+  with `cursor` and `next`.
+  The tutorial is `docs/orgmode/tutorials/neighbour-list.org`.
+  The query walks the same cell list as the classical potentials.
+  Fewer than 8192 atoms stay on the calling thread.
+  A larger build writes one shared table.
+  Several independent systems are one batch, and the C builder keeps a
+  Verlet list.
+  A positive skin with a strict cut is rejected.
+  The classical potentials call that same walk.
+  `rgpot.neighbor_list` is the Python half list.
+  The Fortran gather uses that list and the builder's skin cache.
+  `quantities` selects columns, and `offsets=True` adds a sorted CSR row
+  pointer.
+- `EAMTablePot` reads embedded atom method (EAM) and Finnis-Sinclair
+  potentials from the LAMMPS (Large-scale Atomic/Molecular Massively
+  Parallel Simulator) `funcfl`, `setfl` and `eam/fs` tables, with
+  energy, forces and an optional Cauchy stress.
+  It is built only with `-Dwith_eam_table=true` (CMake
+  `RGPOT_WITH_EAM_TABLE`), so the default build is unchanged.
+  On `Cu_u3.eam` and `CuNi.eam.alloy` from the LAMMPS `potentials`
+  directory it matches `pair_style eam` and `eam/alloy` to 3.1e-12 eV in
+  the energy and 1.7e-14 eV/Angstrom in the forces.
+- `LJClusterPot` and `MorsePot` are on the Python extension.
+  They call the same force implementations as the C++ classes already
+  linked into `librgpot`.
+- `SuttonChenPot` writes the Cauchy stress when
+  `SuttonChenConfig::stress` is set.
+  The flag is off by default, and with it clear the energy, forces,
+  capabilities and parameter key are unchanged.
+  The stress matches LAMMPS `pair_style eam/fs` to 2e-13 eV/Angstrom^3
+  on a cubic and a sheared platinum cell.
+- `TersoffSiC::forceImpl` writes the Cauchy stress and `caps().stress`
+  is true.
+  The stress is (1/V) dE/dε in eV/Angstrom^3, with the sign and layout
+  of the `LJPot`, `MorsePot` and `ZBLPot` stress.
+  The virial sums each folded bond vector times the energy gradient with
+  respect to that vector, the many-body form of Thompson, Plimpton and
+  Mattson, J. Chem. Phys. 131, 154107 (2009).
+  Its digital object identifier (DOI) is 10.1063/1.3245303.
+  Energies and forces keep their bits.
+  `TersoffPot` keeps `caps().stress` false and writes no stress on any
+  call, with `has_stress` 0 and a zero tensor, since its all-silicon
+  calls stay on the Fortran gather.
+- `XTBPot` and `XTBDlopen` reuse the self-consistent charge (SCC)
+  wavefunction across calls.
+  Reuse holds while every atom stays within `warm_move` angstroms.
+  The default guard is 1 angstrom.
+  `reset()` drops that guess, as does a larger move or a new
+  composition.
+  The next single point then uses xtb's own guess.
+  The engine exports `rgpot_xtb_reset` and `rgpot_xtb_set_warm_move`.
+  It also exports `rgpot_xtb_warm_move` and
+  `rgpot_xtb_reused_wavefunction`.
+- Sutton-Chen potential, with the reduced platinum and gold 10-8
+  parameters as the default.
+  Energy and analytic forces, cluster and periodic evaluation, and
+  `rgpot_sutton_chen_energy_forces` for callers that load the library.
+- Physical Sutton-Chen presets for platinum and gold, and bulk
+  nearest-neighbor and cohesive-well scales.
+- Lennard-Jones, Morse, the analytical embedded-atom method (EAM)
+  kernel, and the orthorhombic fold select an instruction set at run
+  time through Google Highway.
+  `RGPOT_SIMD` names the target and `rgpot::simd::chosen_target_name()`
+  reports it.
+  A product-sum uses a hardware fused multiply-add (FMA) only on a
+  target the runtime check selected, and only when that target has the
+  instruction.
+  SSE2 and SSE4 use it when glibc reports a usable FMA, and a Dekker
+  product otherwise.
+  Both potentials still take their pairs from the pair-list cache.
+- Unshifted Lennard-Jones and Morse cluster calls, binary Lennard-Jones,
+  and TIP4P site energy.
+  `rgpot_lj_gradient` returns the energy gradient.
+  `rgpot_lj_curvature_pairs` evaluates a pair list in one call.
+  The `rgpot-pair` crate inlines the same unit trees.
+- `rgpot.LJPot` takes the `LJConfig` fields as keywords (`u0`, `cutoff`,
+  `psi`, `switch_width`), with the C++ defaults, so Python can turn on
+  the C^2 cutoff switch of the Lennard-Jones pair.
+  An `ExprPot` child given as a dict reads the same keys for `"lj"` and
+  `De`, `a`, `re`, `cutoff` and `switch_width` for `"morse"`.
+  Both pair kinds were built from their defaults before.
+- `PotType::TersoffSi` is one potential.
+  All-silicon configurations, and a null species pointer, use the
+  Fortran gather.
+  Any other atomic number uses `TersoffSiC`, the 1989 silicon-carbon
+  kernel.
+  That kernel is from Tersoff, Phys. Rev. B 39, 5566 (1989).
+  Its digital object identifier (DOI) is 10.1103/PhysRevB.39.5566.
+  The erratum, Phys. Rev. B 41, 3248 (1990), sets carbon B to 346.74 eV
+  and d to 4.3484.
+  The DOI of the erratum is 10.1103/PhysRevB.41.3248.2.
+  Carbon beta is dimensionless and is not printed by the erratum.
+  An atomic number other than 6 or 14 is rejected.
+  There is no separate silicon-carbide PotType.
+  Calling `TersoffSiC` directly always evaluates the 1989 kernel.
+  `energy_gradient` evaluates one configuration or a batch of
+  configurations that share a cell and a species list.
+- `StillingerWeberSi` (`PotType::SWSi1985`) is the Stillinger-Weber
+  silicon potential of Stillinger and Weber, Phys. Rev. B 31, 5262
+  (1985), doi:10.1103/PhysRevB.31.5262.
+  Epsilon is the 3.4723e-12 erg printed in equation (2.9), 2.16723920
+  eV.
+  `PotType::SWSi` keeps eOn's rescaled epsilon, 2.16826 times
+  1.06767385, which is 2.3149945 eV.
+  The ratio of the eOn epsilon to the published value is 1.068176741337.
+  The factor 1.06767385 is copied from eOn's SWFortran.f90 and is
+  untraced.
+  `energy_gradient` evaluates one configuration or a batch of
+  configurations that share a cell and a species list.
+- `TersoffSiC::setHeldSkin` keeps a skinned neighbour list across
+  `forceImpl` calls.
+  The list is rebuilt when any atom has moved by more than half the skin
+  since the last build, or when the cell or the atom count changes.
+  The skin is 0 by default, which rebuilds on every call as before.
+  `TersoffPot::setHeldSkin` passes the skin to the 1989 kernel;
+  all-silicon calls stay on the Fortran gather.
+  With a positive skin the instance reports `Reentrancy::PerInstance`.
+- MOPACPot dlopens the split
+  [mopacc](https://github.com/OmniPotentRPC/mopacc) engine
+  (`libmopacc.so`, OpenMOPAC AM1).
+  Packed `MopacCParams`, not Cap'n Proto.
+  It is not the molecular orbital package (MOPAC) engine of the
+  Amsterdam Modeling Suite.
+- NWChem remote procedure call (RPC) specifications accept basis,
+  theory, exchange-correlation, and self-consistent field (SCF)
+  iteration controls for reproducible electronic-structure requests.
+- Skala XC is available as C++ ``SkalaPot``: NWChem density functional
+  theory (DFT) through ``libnwchemc`` with ``dft.xc`` defaulting to
+  ``skala-1.1``.
+  Enable with ``-Dwith_skala=true`` (requires ``-Dwith_rpc=true``).
+- UmaPot evaluates the OMol universal model for atoms (UMA) from an
+  AOTInductor `.pt2` package.
+  The package comes from `scripts/export_uma_aoti.py`.
+  The vesin library builds the neighbor list, and the compiled graph
+  returns energy and forces.
+  Charge and spin are per-call tensor inputs.
+  One `.pt2` is exported per composition with `merge_mole`.
+  Its sidecar records cutoff, neighbors, task, charge, spin, `z_set` and
+  label.
+  The Baker exporter walks Baker endpoints and deduplicates them by
+  `z_set`, charge and spin.
+  It is `scripts/export_baker_uma_aoti.py`.
+  potserv accepts `Uma:<model.pt2>` and `Uma:<model.pt2>:<task>`.
+- `IPIPot` listens for an i-PI driver on a UNIX or TCP socket and
+  returns energy, forces, and Cauchy stress.
+  `potserv` selects it with `IPI:unix:<path>` or
+  `IPI:tcp:<host>:<port>`.
+  Meson `with_ipi` defaults to auto and stays off on Windows.
+  CMake `RGPOT_WITH_IPI` follows the same rule.
+- The Python extension builds a free-threaded cp314t wheel and declares
+  that support as beta.
+  `rgpot.ase.RgpotCalculator` evaluates potentials in process, including
+  a batch of structures.
+- `rgpot_eindir_abi_compatible(&stamp)` checks an `eindir_abi_stamp_t`
+  against the eindir-core compiled into `librgpot`, so a caller that
+  takes an rgpot potential as an eindir objective needs no second link
+  to eindir-core.
+  It returns what `eindir_core_abi_compatible` returns for the same
+  argument.
+  Existing calls do not change.
+
+### Developer
+
+- `FastNlistTest` links with `-Dwith_fortran_pots=disabled`.
+  Its two water-H cases call the Fortran kernels and are compiled only
+  when those kernels are built.
+- The regeneration, comparison and timing scripts read the hosts they
+  may run on from `RGPOT_REGEN_HOSTS`, a comma-separated list of host
+  names that is empty by default.
+  Until it lists the current host, `scripts/regen_dftd_goldens.py`,
+  `scripts/regen_expr_goldens.py`, `scripts/regen_xckernel_goldens.py`,
+  `scripts/gen_libxckernel.sh`,
+  `scripts/compare_xckernel_tda_nwchemc.py` and
+  `scripts/time_lj_rgpot_vs_pyeonclient.py` refuse to run.
+  `DFTD_ALLOW_REGEN=1`, `EXPR_ALLOW_REGEN=1`, `XCKERNEL_ALLOW_REGEN=1`
+  and `TIME_LJ_ALLOW=1` still override the check.
+  `scripts/gen_libxckernel.sh` records the host in
+  `third_party/libxckernel/PIN` as the label from `RGPOT_HOST_LABEL`, or
+  as `unspecified` when that is unset or blank, and never writes the
+  system hostname there.
+- Coverage jobs stay green when the Codecov OpenID Connect (OIDC) token
+  request times out.
+  A failed OIDC upload is retried with the repository token.
+- Pull requests into develop run the CI orchestrator, including the
+  build matrix and the Windows leg.
+- Documentation builds use a concurrency group per ref, so one pull
+  request does not cancel another's build.
+  A running GitHub Pages deploy is left to finish.
+- The release version is written by hand only in the root `Cargo.toml`.
+  The key is `version` in `[workspace.package]`.
+  `rgpot-core` and `rgpot-pair` inherit it.
+  cogapp regenerates every other copy from it.
+  Copies sit in the meson, CMake, pyproject, pixi, towncrier and Sphinx
+  files.
+  The C header and the rgpot-core README carry copies as well.
+  A prek hook fails a pull request when a copy drifts.
+- The release-prepare commit check ignores merge commits.
+  Cog 7 is invoked as `cog check --ignore-merge-commits <base>..HEAD`.
+  Single-parent `merge:` sync commits are ignored as well.
+- The shared `py-tsan` workflow sets `vm.mmap_rnd_bits=28`
+  unconditionally and runs its container with `seccomp=unconfined`, and
+  the instruction set architecture (ISA) self-test compiles its x86
+  fixtures at `-march=x86-64`.
+  Both follow the `ubuntu-latest` runner's move to Ubuntu 26.04, where
+  the sysctl is root-only to read and the default compiler emits vector
+  extension (VEX) scalar moves.
+- py-tsan takes an optional rust-archive input for the Rust staticlib
+  name.
+  The default remains librust_core_demo.a.
+- The tight Lennard-Jones cluster kernel's AVX2 bodies run only after
+  `__builtin_cpu_supports("avx2")`.
+  `rgpot/isa-allow.toml` names `lj_avx2`, `eval_quad`, and `acc_quad`
+  for Advanced Vector Extensions (AVX) and AVX2.
+  It also names `__cpu_indicator_init` from GCC for the `xgetbv` that
+  initializer uses.
+- Wheel builds keep an unstripped copy of librgpot and _core and reject
+  instructions outside the x86-64 and armv8-a baselines, except vendored
+  libraries and the FMA kernels behind the glibc check named in
+  rgpot/isa-allow.toml.
+- `librgpot` on x86-64 now carries one copy of `exact_fma_hw`, the one
+  in `exp.cc`.
+  The weak copy in `exact_fma_hw.cc` stayed in `.text` with no symbol,
+  and the instruction set audit of the Linux x86-64 wheels failed on its
+  `vfmadd132sd`.
+- The Baker hydrogen cyanide (HCN) UmaPot case skips when
+  ``uma-s-1p1-omol-hcn.pt2`` is absent.
+  Set ``RGPOT_UMA_REQUIRE_FIXTURES`` to fail that case instead.
+- `CppCore/meson.build` follows `meson format` and seven org
+  documentation pages follow the semantic line breaks of `snapper`.
+- The shared `py-wheels` workflow defaults to the `macos-15` runner
+  image instead of `macos-14`, which GitHub Actions retires on
+  November 2, 2026.
+  The `wheels` workflow and the C++ layout check request `macos-15`
+  as well.
+- Twelve pinned GitHub Actions in the CI workflows move to releases
+  that run on the Node 24 runtime, including checkout 7.0.1,
+  setup-python 7.1.0 and upload-artifact 7.0.2.
+
+### Changed
+
+- `EAMPot` keeps a Verlet neighbour list and reuses it while every atom
+  moves by at most half of one fifth of the widest cutoff.
+  One thread matches the previous energy and forces bit for bit.
+  `OMP_NUM_THREADS` above 1 splits atoms across threads.
+  A fixed count repeats bit for bit and stays within a relative
+  tolerance of 1e-9 of the one-thread result.
+- macOS wheels of the main package are built on the `macos-15` runner
+  and tagged `macosx_15_0`.
+  Homebrew on that image builds libgfortran, libquadmath, OpenBLAS and
+  libomp for macOS 15.0, and delocate rejects them under a 14.0 target.
+  The bind and rust-core template wheels stay `macosx_14_0`.
+- EAM, Lennard-Jones, Sutton-Chen, Stillinger-Weber and Tersoff share
+  one neighbour layer.
+  It bins atoms into cells, folds the minimum image, and either stores a
+  Verlet list or walks the cells without storing pairs.
+  The mode follows the memory the operating system reports as available,
+  or a caller can select it.
+  `OMP_NUM_THREADS` above 1 splits atoms across threads.
+  One thread matches the previous energy and forces bit for bit.
+  A fixed thread count repeats bit for bit and stays within a relative
+  tolerance of 1e-9 of the one-thread result.
+- Morse and ZBL take pairs from the shared neighbour layer.
+  The separate pair-list cache is gone.
+  Stillinger-Weber and Tersoff use that layer for every mode, including
+  the default.
+  One thread stays within 1e-12 of the previous ordered walk.
+  A streaming evaluation keeps a cell binning and a per-atom scratch,
+  and several threads walk those cells and build bonds together.
+- Sutton-Chen streaming keeps the per-atom density between two cell
+  walks.
+  It no longer stores a partner index for every pair.
+- A short cutoff reuses the shared stream stencil, keeping only cells
+  that hold a pair inside the search when a 27-slot entry per cell is
+  larger than the pair index.
+  Morse and EAM stay on the full stencil.
+  `Mode::Auto` still stores when the pair index fits.
+- The CPMDPot README states how a force call sets the cell.
+  The box of the call is the cell, and a cpmdc release after `0.3.0`
+  replaces the `CELL` of the input deck with it.
+- The Morse kernel computes `exp` with `rgpot::simd::exp_fixed`, a fixed
+  sequence of IEEE operations that returns the same bits on every
+  instruction set and C library (within 1.24 ulp), and evaluates each
+  pair-list row in vector clones for AVX2 and AVX-512F.
+  Morse energies and forces can move in the last bits, and the Morse
+  cache key changes.
+- The general-cell minimum image is computed in double.
+  An ill-conditioned cell is Minkowski-reduced as in Nguyen and Stehle
+  (2009), whose DOI is 10.1145/1597036.1597050.
+  A reduced basis that is still too ill-conditioned searches the 27
+  images with coefficients in {-1, 0, 1}.
+  Each product-sum is a hardware fused multiply-add, inlined in the
+  fold, when glibc reports FMA.
+  Otherwise it is the exactly rounded TwoProduct and TwoSum emulation of
+  Boldo and Muller (2011), whose DOI is 10.1109/tc.2010.139.
+  That file is compiled with contraction off, so the folded bits do not
+  depend on the instruction set.
+- The software fused multiply-add used on CPUs without FMA is about five
+  times faster in the minimum-image fold, with the same bits as
+  `std::fma`.
+- The rgpot-core C ABI minor version is now 1 for the new
+  `rgpot_eindir_abi_compatible`, in `RGPOT_ABI_VERSION_MINOR`.
+  A caller built against minor 0 still passes `rgpot_abi_compatible`.
+  The ABI major and the layout revision do not change.
+  The `librgpot` SONAME does: this release ships soversion 6.
+- The XcKernel stage-B contraction runs on dgemm and dsyr2k, blocked
+  over the grid, linked through FlexiBLAS or the generic blas
+  dependency.
+- The eonviz environment installs readcon 0.17.1 from PyPI.
+  That wheel's RoundTrip writer matches the vendored restart golden.
+  Its `atoms_to_con` writes one `.con` frame with the RoundTrip writer,
+  precision omitted and canonical left off.
+  The UMA exporter reads `.con` files with `atoms_from_con`.
+  CI compares those writes with the byte-exact restart golden.
+
+### Fixed
+
+- Coincident Lennard-Jones atoms raise NumericalError again.
+  Potentials that keep a neighbour scratch ask for one instance per
+  thread.
+  The layout-stamp job reads `kCxxSoversion` from the header.
+  ThreadSanitizer leaves the fused multiply-add (FMA) resolver units
+  uninstrumented so the extension can load.
+  The macOS wheel links libgfortran from the path the compiler reports.
+  A stored neighbour list is kept when free memory cannot be read.
+  Flang is not given the MSVC OpenMP compile flag.
+  Apple clang is not given `-fopenmp` by the Rust neighbour caller.
+  The installed CMake package exports the neighbour archive the
+  libraries link.
+  The instruction set architecture (ISA) audit names the hardware
+  Lennard-Jones span.
+  The socket neighbour example is built only where POSIX processes
+  exist.
+  The stream scaling bench is too: it forks a child per row.
+  The Rust neighbour caller on Windows links the COFF archives with
+  link.exe and exports the C entry points.
+  An empty JSON member in a UMA package is written as an empty object,
+  which the AOTInductor loader can parse.
+  Hypothesis checks stay serial, because the strategy cache is
+  process-wide.
+  The 108000-atom neighbour list is allowed 30 seconds.
+  The Sutton-Chen cluster relaxation is allowed 120 seconds.
+  rustc on that host uses the archive directory as its temp directory.
+- The classical engine now links the water potentials when
+  `-Dwith_water=true` is set, so `libclassical_engine` no longer fails
+  to link.
+  It carries the water kernels that its `tip4p`, `spce` and `tip4p_pt`
+  names construct.
+- `librgpot_cuh2` links the Fortran runtime again.
+  The plugin is a C++ link, so the runtime was not inferred and the
+  shared library was missing `_gfortran_*`.
+- The manylinux wheel jobs retry the gfortran and OpenBLAS install.
+  Each retry reads fresh metadata from the primary AlmaLinux repository.
+  The mirror list could return the same broken mirror on every attempt.
+  The jobs stop when the install fails, instead of failing on a missing
+  OpenBLAS.
+- `forceBatch` now zeroes the energy and forces of every result slot
+  before the kernel runs, as it already did for the variance and stress.
+  Before, a reused buffer kept an earlier call's energy and forces when
+  the kernel threw, for example when a plugin reported an error or
+  returned a non-finite value.
+- UmaPot builds positions, the cell and cell offsets in the package
+  dtype.
+  The package is AOTInductor (PyTorch ahead-of-time compiled).
+  It records `pos_dtype`, and `model_dtype` when `pos_dtype` is absent.
+  The exporter converts the model with `hydra.double()` for `--dtype
+  float64`, and calls `hydra.float()` for `--dtype float32`.
+  A package with neither key stays float32.
+  UmaPot logs that fallback and both dtypes at load.
+- A cell narrower than three cutoffs is every unordered pair, including
+  lists past 4096 atoms.
+  The client bridge stress test (10k atoms, a 10 A box, Lennard-Jones
+  cutoff 15 A) no longer asks linkcell for that stencil.
+- Pair-list force updates each use one fused multiply-add, so a cold
+  evaluation and a captured pair list agree to the last bit.
+- The pair-list loops and the minimum-image fold use the hardware fused
+  multiply-add on any CPU with FMA, detected from the `cpuid`
+  instruction, where they took the software path on C libraries older
+  than glibc 2.33 (Enterprise Linux 8).
+  `RGPOT_FMA=software` selects the software path, which returns the same
+  bits.
+- The aarch64 Linux wheels build again.
+  The minimum-image fold takes `target("fma")` on x86-64 only.
+  That is the one target where `fma_hw_active()` can select the hardware
+  body.
+- A ThreadSanitizer build of `librgpot` compiles each
+  `RGPOT_SIMD_CLONES` loop once, for the baseline, so
+  `import rgpot._core` no longer crashes in the loader.
+  The sanitizer had instrumented the clone resolver.
+  It called the sanitizer hooks through procedure linkage table slots.
+  An `RTLD_NOW` load had not bound those slots yet.
+  Every other build keeps the clones, and every clone returns the same
+  bits.
+- `MinimumImage::fold` now finishes on thin or strongly sheared cells,
+  and on long displacements along open directions; those cases search an
+  LLL-reduced basis of the periodic rows.
+- The H-in-water 26-image scan is one routine.
+  Under Apple Clang the Fortran copy and the test copy differed by an
+  ulp, so a skewed cell disagreed with the cluster folded from it.
+- The linkcell and minimage pair list builds only when cargo and rustc
+  1.89 or newer are available, and the MSVC archive is
+  `rgpot_fastnlist.lib` with the system libraries that compiler prints.
+  On a skewed cell with a longer fractional wrap, WaterH keeps the
+  26-image nearest vector.
+- When the fast pair-list library is built, it is linked into potserv,
+  the examples, and client-only builds.
+- A static build links the fast pair list as one relocatable object.
+  Apple ar was taking the rust archive on its command line as the
+  archive to write, so the macOS umbrella library was never created.
+- The fast pair-list archive on macOS is written with ``/usr/bin/ar``.
+  The conda archiver pixi exports as ``AR`` produces an archive Apple ld
+  rejects.
+- An eindir gradient is served from the fused energy result only when
+  the positions have the same bits as the energy call.
+  Before, a gradient at `-0.0` was served the result computed at `+0.0`,
+  because the two compare equal.
+  The pair list cache and the half-shell neighbour list now compare the
+  box bit for bit as well, so a box that differs only in the sign of a
+  zero gets its own build.
+  Inputs without a signed zero take the same path as before.
+- The MOPAC frontend stays inside `librgpot` and is not installed as its
+  own archive.
+  Installing that archive copied the core helpers into it and the shared
+  library then failed to link.
+- The NWChem and Car-Parrinello molecular dynamics (CPMD) frontends stay
+  inside ``librgpot`` and are not installed as their own archives.
+  Installing those archives could copy the core helpers into them and
+  make the shared library fail to link.
+  A client-only build, which has no umbrella library, still installs the
+  archives.
+- The Lennard-Jones cluster kernel no longer crashes at thread exit when
+  RocksDB links jemalloc.
+  The conda-forge `rocksdb` links it, and `RGPOT_WITH_CACHE=ON` uses
+  that build.
+  Its aligned scratch buffer comes from `posix_memalign`, which jemalloc
+  replaces along with `free`.
+- The open Lennard-Jones cluster kernel allocates its scratch buffer
+  with ``_aligned_malloc`` on Windows.
+  MSVC does not provide ``std::aligned_alloc``.
+- The half-shell pair walk builds with the Visual C++ compiler again.
+  That compiler gets `__forceinline`, `__declspec(noinline)` and a plain
+  test, and GCC and Clang keep their attributes and `__builtin_expect`.
+  The pair and Sutton-Chen headers declare their C entry points for
+  export, so `cl.exe` accepts the exported definitions.
+  The Tersoff neighbour-list bench prints `_MSC_FULL_VER` where the
+  compiler has no `__VERSION__`.
+- The Meson build compiles `ReducedPairTest` with `-ffp-contract=off`,
+  as it already compiles the `ReducedPair` library.
+  Apple Clang had fused the expected Morse curvature in the test into an
+  `fma`, which missed the library value by one ulp.
+- Publishing an AOTInductor package on Windows replaces a file a reader
+  still has open.
+  The reader keeps the complete package it opened, and the replace no
+  longer fails with access denied.
+- On Windows, UmaPot can publish a rewritten AOTInductor package while
+  another reader or writer has the destination open.
+  Access denied and sharing violations during the replace are retried
+  until a deadline.
+  The published file is one complete payload.
+- UmaPot clears PT_GNU_STACK PF_X on the AOTInductor wrapper.so before
+  dlopen, so Elja-traced ``.pt2`` packages load on hosts that refuse an
+  executable stack.
+  ``scripts/export_uma_aoti.py`` applies the same rewrite at mint time.
+- The XcKernel golden pins use the stage-B bound `k*eps*|a|^T|b|` (k is
+  the grid-block length, at most 256) plus half an ulp of the pin, for
+  the C-versus-NumPy and random-grid Fock contractions.
+  A fixed 1e-16 cutoff rejected a correct dsyr2k sum.
+  CI runs XcKernelGoldens with `-Dwith_xckernel=true`.
+- XcKernel links OpenBLAS when FlexiBLAS and a pkg-config file named
+  blas are both absent.
+  Both manylinux `openblas-devel` and Homebrew publish `openblas.pc`.
+- `XcKernel.contract` still treats a missing `dchi` as omitted.
+  `scal` stays required.
+  The stub is valid Python: passing `None` for `scal` raises
+  `TypeError`.
+- ``XTBDlopen`` no longer loads a different
+  ``libxtb_engine`` when ``engine_path`` is set and that file cannot be
+  opened.
+  Environment variables and the bare soname are used only when
+  ``engine_path`` is empty.
+- ``XTBDlopen`` rejects a slash-less ``engine_path``.
+  A bare soname would be opened through the loader search path and could
+  substitute a different ``libxtb_engine``.
+  Pass an absolute or relative path.
+  When that path does not open, the error names it and the loader
+  diagnostic instead of environment variables that are ignored.
+- `IPIPot` sets the UNIX socket address length on macOS.
+  The mock driver is joined before the capture it writes is released.
+- The `rgpot._core` type stub lists `StillingerWeberSi` and
+  `TersoffSiC`, and carries the current `LJPot` and `ExprPot`
+  docstrings.
+- `ase_helpers` imports with only ASE and numpy again.
+  `atoms_from_con` and `atoms_to_con` work without the compiled
+  `rgpot._core`.
+  `AnnealRunner` and `AnnealOptimizer` are loaded from
+  `rgpot.ase.anneal` on first use.
+- Metatomic-enabled build-tree executables locate Torch and metatomic
+  shared libraries without an ``LD_LIBRARY_PATH`` override.
+- `eam_al` stores the eOn r2549 `potinit.f` default-real literals at
+  single precision.
+  Keeping the extra printed digits moves the four-atom aluminium cluster
+  by 1.76e-6 eV.
+- `sutton_chen_scales` summed a bcc lattice.
+  The nearest-neighbor distance is now the fcc value a / sqrt(2), not
+  0.5634 a, and the reduced 10-8 well is 295.4645 epsilon, not 292.9794.
+  `fcc_power_sum` in C++ and `rgpot-pair` changes the same way.
+
+### Miscellaneous
+
+- Questions and bug reports now go to the rgpot issue tracker.
+  Security reports go to `SECURITY.md`.
+  The Code of Conduct names rgoswami@ieee.org for enforcement reports.
+  A root `CONTRIBUTING.md` points to the contributing pages.
+  Links between pages no longer point at missing reStructuredText files.
+  The navigation now lists the thread-safety page and the Fortran
+  porting rules.
+- The tutorial "Scan a potential energy surface over RPC" evaluates
+  Lennard-Jones and Morse pair curves and an H2-over-copper EAM surface
+  through `potserv`, and ships the scripts that draw its figures.
+  The remote procedure call (RPC) model page now draws the client,
+  server and backend layout.
+
 ## [3.5.1](https://github.com/OmniPotentRPC/rgpot/tree/v3.5.1) - 2026-10-11
 
 ### Breaking

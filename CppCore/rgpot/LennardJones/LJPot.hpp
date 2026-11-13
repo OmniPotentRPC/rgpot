@@ -11,6 +11,7 @@
 
 // clang-format off
 #include <cmath>
+#include <cstdint>
 #include <utility>
 #include <vector>
 #include <stdexcept>
@@ -18,6 +19,7 @@
 #include "rgpot/PairSwitch.hpp"
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/Potential.hpp"
+#include "rgpot/nlist/Neighbours.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
 namespace rgpot {
@@ -71,7 +73,8 @@ public:
   [[nodiscard]] const LJConfig &config() const noexcept { return m_config; }
 
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.stress = true};
+    // neighbours_ is scratch rewritten by every force call.
+    return {.reentrancy = Reentrancy::PerInstance, .stress = true};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
@@ -86,9 +89,21 @@ public:
    */
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
+  void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
+
+  /// True when the last force call kept the Verlet list. The test is
+  /// half the skin, the same predicate as `nlist::Builder::update`.
+  [[nodiscard]] bool listReused() const noexcept { return neighbours_.reused(); }
+
+  /// Pair indices this potential kept. Zero in a streaming call: the
+  /// pair term runs inside the cell walk and no half-list is copied out.
+  [[nodiscard]] std::size_t retainedPairs() const noexcept {
+    return neighbours_.streaming() ? 0 : neighbours_.slots();
+  }
+
 private:
   /// Bump when the kernel numerics change, so stale cache entries die.
-  static constexpr uint64_t kKernelVersion = 1;
+  static constexpr uint64_t kKernelVersion = 2;
 
   double u0;       //!< Well depth parameter.
   double cuttOffR; //!< Distance beyond which potential is truncated.
@@ -97,6 +112,8 @@ private:
   LJConfig m_config;
   QuinticSwitch m_switch{}; //!< In use when m_config.switch_width != 0.
   uint64_t m_paramsKey{0};
+  nlist::Mode mode_ = nlist::Mode::Auto;
+  mutable nlist::Neighbours neighbours_;
 };
 
 } // namespace rgpot

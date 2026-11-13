@@ -28,7 +28,7 @@ Contract tests care about:
 |--------------|--------|
 | Create | `xtb_newEnvironment` / `newCalculator` / `newResults` (+ `xtb_releaseOutput`) |
 | First geometry | `xtb_newMolecule` + `xtb_loadGFN*xTB` |
-| Updates | `xtb_updateMolecule` then `xtb_singlepoint` |
+| Updates | `xtb_updateMolecule` then `xtb_singlepoint`, reusing the results object inside `warm_move` |
 | Destroy | `xtb_del*` in reverse order |
 | Units | host Å/eV; API Bohr/Hartree (converted in pot) |
 
@@ -37,13 +37,23 @@ linked↔dlopen parity through the same ISO C semantics.
 
 ## Engine selection (`XTBDlopen`)
 
-Search order for `libxtb_engine.so`:
+A non-empty `XTBDlopenConfig::engine_path` is exclusive: that path is the only
+candidate, and it must contain a directory separator (`/` or `\`). A bare
+soname such as `libxtb_engine.so` is rejected. The loader would resolve it
+through `LD_LIBRARY_PATH`, `DYLD_LIBRARY_PATH`, or `PATH`, and could open a
+different `libxtb_engine`. If the path does not open, or the library does not
+export the C ABI, construction throws. The error names that path and the
+loader diagnostic (`dlerror` on POSIX). `RGPOT_XTB_ENGINE`, the bare soname,
+and the directory lists are not consulted.
 
-1. `XTBDlopenConfig::engine_path`
-2. env `RGPOT_XTB_ENGINE`
-3. env `XTB_ENGINE`
-4. bare `libxtb_engine.so` (loader path)
-5. `EON_POTENTIALS_PATH` / `RGPOT_ENGINE_PATH` directory lists
+When `engine_path` is empty, search order is:
+
+1. env `RGPOT_XTB_ENGINE`
+2. env `XTB_ENGINE`
+3. bare soname on the loader path (`libxtb_engine.so` on Linux,
+   `libxtb_engine.dylib` then `libxtb_engine.so` on Apple,
+   `xtb_engine.dll` then `libxtb_engine.dll` on Windows)
+4. `EON_POTENTIALS_PATH` / `RGPOT_ENGINE_PATH` directory lists
 
 Construct throws if no engine is found (same pattern as `MetatomicDlopen`).
 
@@ -66,7 +76,9 @@ pixi run -e xtbbld meson test -C bbdir-xtb --suite xtb --print-errorlogs
 ```
 
 Catch tags: `[xtb]`, `[xtb][linked]`, `[xtb][dlopen]`. Dlopen tests set
-`RGPOT_XTB_ENGINE` to the built engine full path.
+`RGPOT_XTB_ENGINE` to the built engine full path. `XTBDlopenTest` also puts
+that engine on the process loader path and requires a missing explicit
+`engine_path` to throw anyway.
 
 Thin-host compile check (no libxtb):
 
@@ -96,3 +108,29 @@ bash scripts/run_xtb_backend_bench.sh --out-dir /path/to/scratch
 See `scripts/compare_xtb_backends.py` for flags. Protocol: shared water GFN2
 geometry, warmup force calls, then timed samples; report mean wall ms and
 whether dlopen is as-fast-or-faster than eOn linked ship (5% band).
+
+## Wavefunction reuse
+
+`XTBPot` and `XTBDlopen` keep one calculator. The SCC wavefunction in the
+results object is the next guess while no atom moves by more than
+`XTBConfig::warm_move` angstroms. The default is 1. `reset()`, a larger
+move, or a new composition drops that object, and the next single point
+uses xtb's own guess. `reusedWavefunction()` reports which guess the last
+successful call used. `setWarmMove` changes the guard on a live handle.
+Zero and negative values disable reuse.
+
+```c
+void rgpot_xtb_reset(RgpotXtbPot *pot);
+void rgpot_xtb_set_warm_move(RgpotXtbPot *pot, double angstrom);
+double rgpot_xtb_warm_move(const RgpotXtbPot *pot);
+int rgpot_xtb_reused_wavefunction(const RgpotXtbPot *pot);
+```
+
+`xtb_warm_bench` times that warm step against a cold guess on (H2O)16 and
+(H2O)20. It is built next to `xtb_backend_bench`. The comparison is serial:
+
+```bash
+sudo unshare --uts bash -c 'hostname bench && \
+  OMP_NUM_THREADS=1 taskset -c 0 \
+  ./bbdir-xtb/CppCore/xtb_warm_bench --repeats 6'
+```

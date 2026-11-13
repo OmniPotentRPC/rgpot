@@ -13,6 +13,7 @@
 #include "rgpot/types/AtomMatrix.hpp"
 #include <atomic>
 #include <cstdint>
+#include <mutex>
 #include <optional>
 #include <rocksdb/db.h>
 #include <rocksdb/version.h>
@@ -74,6 +75,9 @@ class PotentialCache {
 private:
   rocksdb::DB *db_ = nullptr; //!< Pointer to the RocksDB instance.
   bool own_db_ = false;       //!< Ownership flag for the DB pointer.
+  /// F2: covers db_ only. Callers detach before taking it. The counters
+  /// below stay atomic and are not under this mutex.
+  std::mutex db_mu_;
   std::atomic<uint64_t> computed_{0}; //!< Kernel-produced result count.
   std::atomic<uint64_t> served_{0};   //!< Cache-served result count.
 

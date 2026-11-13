@@ -87,6 +87,8 @@ public:
    * read when deciding whether batching is worth the marshalling.
    *
    * Results land in @c batch.out; see ForceBatch for the buffer contract.
+   * Every slot is zeroed before any kernel runs, so a reused buffer never
+   * carries an earlier call's results, even when this call throws.
    */
   virtual void forceBatch(const ForceBatch & /*batch*/) {
     throw std::runtime_error("PotentialBase::forceBatch called directly");
@@ -228,6 +230,13 @@ public:
 
   /**
    * @brief Abstract hook for the actual implementation.
+   *
+   * @c operator() and @c forceBatch hand over @c out zeroed: all
+   * @c 3*in.nAtoms entries of @c F, @c energy, @c variance, @c stress and
+   * @c has_stress. An override may assume that, but must not rely on what
+   * an earlier call left in the buffer. It may throw with @c out partly
+   * written.
+   *
    * @param in Structure containing coordinates and cell info.
    * @param out Pointer to the results structure.
    * @return Void.
@@ -246,7 +255,8 @@ public:
    *
    * An override must fill @c batch.out[i] for every i from @c batch.in[i]
    * and treat the systems as independent: no ordering, no shared state,
-   * and no assumption that they have equal atom counts.
+   * and no assumption that they have equal atom counts. Each
+   * @c batch.out[i] arrives zeroed, as for @c forceImpl.
    */
   virtual void forceBatchImpl(const ForceBatch &batch) const {
     for (size_t i = 0; i < batch.nSystems; ++i) {
@@ -268,9 +278,14 @@ public:
       return;
     }
     for (size_t i = 0; i < batch.nSystems; ++i) {
-      batch.out[i].variance = 0.0;
-      batch.out[i].has_stress = 0;
-      std::fill(batch.out[i].stress, batch.out[i].stress + 9, 0.0);
+      ForceOut &out = batch.out[i];
+      if (out.F) {
+        std::fill_n(out.F, 3 * batch.in[i].nAtoms, 0.0);
+      }
+      out.energy = 0.0;
+      out.variance = 0.0;
+      out.has_stress = 0;
+      std::fill(out.stress, out.stress + 9, 0.0);
     }
 #ifdef RGPOT_HAS_CACHE
     if (_cache) {

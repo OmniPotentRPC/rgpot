@@ -105,6 +105,7 @@ The same command with =RGPOT_CPMD_ENGINE= pointed at a CPMD-archive
 ** Next steps
 
 #+begin_export rst
+- :doc:`pes-scan`: scan energy curves and a 2D surface over RPC and plot them
 - :doc:`cpmd`: evaluate the water geometry and read the energy
 - :doc:`../howto/pip-python` — ``pip install rgpot`` (LJ + Metatomic multi-ABI
   engines, torch 2.7+)

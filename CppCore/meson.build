@@ -83,13 +83,20 @@ endif
 _rgpot_srcs += files('rgpot/PotHelpers.cc')
 _rgpot_srcs += files('rgpot/units.cc')
 _rgpot_srcs += files('rgpot/abi/CxxLayout.cc')
-# Product-sums in this file go through rgpot::simd::mul_add. Contraction
+_rgpot_srcs += files(
+    'rgpot/simd/dispatch.cc',
+    'rgpot/simd/scalar_kernels.cc',
+)
+if have_highway
+    _rgpot_srcs += files('rgpot/simd/hwy_kernels.cc')
+endif
+# Product-sums in MinimumImage go through rgpot::simd::mul_add. Contraction
 # stays off so a multiply that is not written as mul_add is not fused, and
 # the folded bits match on scalar, SSE, AVX2, AVX-512 and NEON.
 # exact_fma_hw is a separate object: the ISA variants below recompile
 # MinimumImage.cpp with -mno-fma and still need this hardware definition.
-# exp.cc holds the fixed-sequence exp, whose bits must not depend on
-# contraction either.
+# exp.cc is compiled once, here: the fixed-sequence exp bits must not depend
+# on contraction, and ExpFixedEq links this archive alone.
 _fp_contract_off = cppc.get_supported_arguments(
     ['-ffp-contract=off', '/fp:precise'],
 )
@@ -106,11 +113,21 @@ _vector_loops = cppc.get_supported_arguments(
         '-fvect-cost-model=dynamic',
     ],
 )
+# target("fma"), target("avx2") and target_clones emit ifunc resolvers.
+# ThreadSanitizer instruments the resolver, which then calls
+# __tsan_func_entry through the PLT while RTLD_NOW is still binding it,
+# and the extension segfaults on load. These units keep the resolvers
+# (the bits match the baseline), so the instrumentation stays off them.
+# clones.hpp drops target_clones only when the unit itself is instrumented.
+_no_tsan_ifunc = []
+if 'thread' in get_option('b_sanitize')
+    _no_tsan_ifunc = ['-fno-sanitize=thread']
+endif
 rgpot_exact_fma = static_library(
     'rgpot_exact_fma',
     files('rgpot/simd/exact_fma_hw.cc', 'rgpot/simd/exp.cc'),
     include_directories: _incdirs,
-    cpp_args: _args + _fp_contract_off + _vector_loops,
+    cpp_args: _args + _fp_contract_off + _vector_loops + _no_tsan_ifunc,
     pic: true,
     install: false,
 )
@@ -118,7 +135,25 @@ rgpot_minimage = static_library(
     'rgpot_minimage',
     files('rgpot/nlist/MinimumImage.cpp'),
     include_directories: _incdirs,
-    cpp_args: _args + _fp_contract_off,
+    cpp_args: _args + _fp_contract_off + _no_tsan_ifunc,
+    pic: true,
+    install: false,
+)
+# threadsRequested lives in Neighbours.cc. The cell walk's OpenMP
+# pragmas are in the headers, but the thread count is read here, so this
+# archive has to be built with OpenMP or every potential stays on one thread.
+_halfshell_omp = dependency('openmp', language: 'cpp', required: false)
+rgpot_halfshell = static_library(
+    'rgpot_halfshell',
+    files(
+        'rgpot/nlist/HalfShell.cc',
+        'rgpot/nlist/HalfShellWalk.cc',
+        'rgpot/nlist/NeighbourList.cc',
+        'rgpot/nlist/Neighbours.cc',
+    ),
+    include_directories: _incdirs,
+    cpp_args: _args,
+    dependencies: _halfshell_omp.found() ? [_halfshell_omp] : [],
     pic: true,
     install: false,
 )
@@ -137,17 +172,33 @@ endif
 
 # ------------------------ Main library
 if not get_option('with_rpc_client_only')
+    # RGPOT_WITH_HIGHWAY stays on this archive. The installed dependency
+    # does not pass it on, so a consumer's own Highway headers are untouched.
+    # Product-sums in the simd sources are explicit. Contraction stays off
+    # in this archive so a multiply that is not written as mul_add is not fused.
     _deps += dependency('threads')
+    _nlist_openmp = dependency('openmp', language: 'cpp', required: false)
+    if _nlist_openmp.found()
+        _deps += _nlist_openmp
+    endif
     _rgpot_srcs += files(
         'rgpot/plugin/PluginBridge.cc',
         'rgpot/plugin/PluginRegistry.cc',
         'rgpot/plugin/builtins/lj_plugin.cpp',
     )
+    _core_args = _args + _fp_contract_off
+    if have_highway
+        _core_args += ['-DRGPOT_WITH_HIGHWAY']
+    endif
+    _core_deps = _deps
+    if have_highway
+        _core_deps += highway_dep
+    endif
     rgpot_core = static_library(
         'rgpot_core',
         sources: _rgpot_srcs,
-        dependencies: _deps,
-        cpp_args: _args,
+        dependencies: _core_deps,
+        cpp_args: _core_args,
         include_directories: _incdirs,
         link_whole: [rgpot_minimage, rgpot_exact_fma],
         pic: true,
@@ -161,16 +212,27 @@ if not get_option('with_rpc_client_only')
 
     # Implemented rgpotentials
     subdir('rgpot/LennardJones')  # 'lennard_jones': LJPot + LJClusterPot
-    rgpotentials = [lennard_jones]
+    rgpotentials = [lennard_jones, rgpot_halfshell]
 
     subdir('rgpot/Morse')  # 'morse'
     rgpotentials += [morse]
+
+    subdir('rgpot/StillingerWeber')  # 'sw_si': 1985 Stillinger-Weber silicon
+    rgpotentials += [sw_si]
+
+    subdir('rgpot/Tersoff')  # 'tersoff_sic': 1989 Tersoff Si-C
+    rgpotentials += [tersoff_sic]
 
     subdir('rgpot/EMT')  # 'asap_emt'
     rgpotentials += [asap_emt]
 
     subdir('rgpot/EAM')  # 'eam_cell'
     rgpotentials += [eam_cell]
+
+    if has_eam_table
+        subdir('rgpot/EAMTable')  # 'eam_table'
+        rgpotentials += [eam_table]
+    endif
 
     if has_water
         subdir('rgpot/Water')  # 'water_pots'
@@ -179,6 +241,20 @@ if not get_option('with_rpc_client_only')
 
     subdir('rgpot/ZBL')  # 'zbl'
     rgpotentials += [zbl]
+
+    if has_ipi
+        subdir('rgpot/IPIPot')  # 'ipi'
+        rgpotentials += [ipi]
+    endif
+
+    # Sutton-Chen. Own directory so a Stillinger-Weber or Tersoff
+    # series can land beside it.
+    subdir('rgpot/SuttonChen')  # 'sutton_chen'
+    rgpotentials += [sutton_chen]
+
+    # Unshifted cluster pairs. Separate from LJCluster, which is shifted.
+    subdir('rgpot/ReducedPair')  # 'reduced_pair'
+    rgpotentials += [reduced_pair]
 
     # Pure dlopen consumer of split mopacc (no Cap'n Proto, no OpenMOPAC embed).
     subdir('rgpot/MOPACPot')  # 'mopacpot'
@@ -267,7 +343,10 @@ if not get_option('with_rpc_client_only')
     # librgpot itself references them (consumers do).
     # vesin objects and the Fortran runtime enter here, once, rather than
     # through the convenience archives (see the vesin_hdr_dep note).
-    rgpot_deps = _deps_sans_core + [vesin_dep] + fortran_rt_deps
+    rgpot_deps = _deps_sans_core + [vesin_dep, fastnlist_dep] + fortran_rt_deps
+    if eam_openmp.found()
+        rgpot_deps += eam_openmp
+    endif
     _rpc_whole = []
     if _rpc_stack
         # link_whole, not link_with: the RPC entry points are called by
@@ -314,12 +393,18 @@ if not get_option('with_rpc_client_only')
                 meson.project_version(),
             ),
         ]
+        # Fortran water-H calls rgpot_fast_wrap when the fast list is on.
+        # The umbrella links that archive; this plugin has to as well.
         _engine_deps = _deps_sans_core + [
             vesin_dep,
+            fastnlist_dep,
             capnp_rpc_dep,
             ptlrpc_dep,
         ] + fortran_rt_deps
         _classical_whole = [lennard_jones, morse, zbl]
+        if has_water
+            _classical_whole += [water_pots]
+        endif
         if has_fortran
             _classical_whole += [cuh2, fortran_pots, fortran_kernels]
         endif
@@ -374,9 +459,19 @@ if not get_option('with_rpc_client_only')
     # Subproject consumers (eOn's wrap fallback) take the umbrella through
     # this variable; pkg-config consumers get the same surface from
     # rgpot.pc.
+    # The static umbrella already contains the relocatable fast-list
+    # object. Repeating that object through rgpot_dep defines it twice.
+    # Shared builds keep the archive on the consumer link line.
+    _rgpot_consumer_deps = _deps_sans_core + [
+        vesin_dep,
+        fastnlist_native_dep,
+    ] + fortran_rt_deps
+    if _rpc_stack
+        _rgpot_consumer_deps += [ptlrpc_hdr_dep]
+    endif
     rgpot_dep = declare_dependency(
         link_with: rgpot,
-        dependencies: rgpot_deps,
+        dependencies: _rgpot_consumer_deps,
         include_directories: _incdirs,
         compile_args: _args,
     )
@@ -418,6 +513,7 @@ endif
 # engine, whose optional libmetatomic_engine.so holds torch.
 if get_option('with_rpc_client_only')
     subdir('rgpot/XTBPot')
+    _linkto += [xtb_dlopen]
     if has_metatomic
         subdir('rgpot/MetatomicPot')
         _metatomic_build_rpath = _engine_build_rpath
@@ -430,7 +526,12 @@ if rpc_enabled and not get_option('with_rpc_client_only')
         'potserv',
         ['rgpot/rpc/server.cpp'],
         link_with: [ptlrpc, _linkto],
-        dependencies: _deps + [capnp_rpc_dep, ptlrpc_hdr_dep, vesin_dep] + _mta_engine_deps + fortran_rt_deps,
+        dependencies: _deps + [
+            capnp_rpc_dep,
+            ptlrpc_hdr_dep,
+            vesin_dep,
+            fastnlist_dep,
+        ] + _mta_engine_deps + fortran_rt_deps,
         cpp_args: _args,
         build_rpath: _metatomic_build_rpath,
         include_directories: _incdirs,
@@ -446,6 +547,7 @@ if rpc_enabled and not get_option('with_rpc_client_only')
                 capnp_rpc_dep,
                 ptlrpc_hdr_dep,
                 vesin_dep,
+                fastnlist_dep,
                 _mpi_dep,
             ] + _mta_engine_deps + fortran_rt_deps,
             cpp_args: _args + ['-DRGPOT_POTSERV_MPI'],
@@ -501,7 +603,7 @@ if get_option('with_examples') and not get_option('with_rpc_client_only')
     executable(
         'time_lj_force',
         sources: ['examples/time_lj_force.cc'],
-        dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+        dependencies: _deps + [vesin_dep, fastnlist_dep] + fortran_rt_deps,
         link_with: _linkto,
         cpp_args: _args,
     )
@@ -509,6 +611,27 @@ if get_option('with_examples') and not get_option('with_rpc_client_only')
     executable(
         'time_pair_scaling',
         sources: ['examples/time_pair_scaling.cc'],
+        dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+        link_with: _linkto,
+        cpp_args: _args,
+    )
+    executable(
+        'time_sutton_chen',
+        sources: ['examples/time_sutton_chen.cc'],
+        dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+        link_with: _linkto,
+        cpp_args: _args,
+    )
+    executable(
+        'time_reduced_lj',
+        sources: ['examples/time_reduced_lj.cc'],
+        dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+        link_with: _linkto,
+        cpp_args: _args + _fp_contract_off,
+    )
+    executable(
+        'relax_sutton_chen',
+        sources: ['examples/relax_sutton_chen.cc'],
         dependencies: _deps + [vesin_dep] + fortran_rt_deps,
         link_with: _linkto,
         cpp_args: _args,
@@ -539,7 +662,7 @@ if get_option('with_examples') and not get_option('with_rpc_client_only')
             executable(
                 example.get(1),
                 sources: ['examples/' + example.get(2)],
-                dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+                dependencies: _deps + [vesin_dep, fastnlist_dep] + fortran_rt_deps,
                 link_with: _linkto,
                 cpp_args: _args,
                 build_rpath: _metatomic_build_rpath,
@@ -582,7 +705,7 @@ if get_option('with_tests')
             override_options: ['cpp_std=c++20'],
         ),
     )
-    test_deps = _deps + [vesin_dep] + fortran_rt_deps
+    test_deps = _deps + [vesin_dep, fastnlist_dep] + fortran_rt_deps
     if has_metatomic
         test_deps += _mta_engine_deps
     endif
@@ -625,9 +748,60 @@ if get_option('with_tests')
     if not get_option('with_rpc_client_only')
         test_array += [
             ['MorsePotTest', 'morse_pot_test', 'MorsePotTest.cc', ''],
+            ['SWSiTest', 'sw_si_test', 'SWSiTest.cc', ''],
+            ['TersoffSiCTest', 'tersoff_sic_test', 'TersoffSiCTest.cc', ''],
+            [
+                'HalfShellScanTest',
+                'half_shell_scan_test',
+                'HalfShellScanTest.cc',
+                '',
+            ],
+            ['HalfShellTest', 'half_shell_test', 'HalfShellTest.cc', ''],
+            [
+                'SuttonChenPotTest',
+                'sutton_chen_pot_test',
+                'SuttonChenPotTest.cc',
+                '',
+            ],
+            ['ReducedPairTest', 'reduced_pair_test', 'ReducedPairTest.cc', ''],
             ['EMTPotTest', 'emt_pot_test', 'EMTPotTest.cc', ''],
             ['EAMCellPotTest', 'eam_cell_pot_test', 'EAMCellPotTest.cc', ''],
-            ['PairListTest', 'pair_list_test', 'PairListTest.cc', ''],
+            [
+                'NeighbourLayerTest',
+                'neighbour_layer_test',
+                'NeighbourLayerTest.cc',
+                '',
+            ],
+            [
+                'StreamParityTest',
+                'stream_parity_test',
+                'StreamParityTest.cc',
+                '',
+            ],
+            [
+                'NeighbourListTest',
+                'neighbour_list_test',
+                'NeighbourListTest.cc',
+                '',
+            ],
+            [
+                'EAMCellVerletTest',
+                'eam_cell_verlet_test',
+                'EAMCellVerletTest.cc',
+                '',
+            ],
+            [
+                'ManyBodyForceTest',
+                'many_body_force_test',
+                'ManyBodyForceTest.cc',
+                '',
+            ],
+            [
+                'SkinPairTest',
+                'skin_pair_test',
+                'SkinPairTest.cc',
+                '',
+            ],
             [
                 'MinImageIsaHash',
                 'minimage_isa_hash',
@@ -659,12 +833,34 @@ if get_option('with_tests')
                 '',
             ],
             ['ZBLPotTest', 'zbl_pot_test', 'ZBLPotTest.cc', ''],
-            # The dlopen frontend is in librgpot whether or not with_xtb is.
-            ['XTBDlopenTest', 'xtb_dlopen_test', 'XTBDlopenTest.cc', ''],
+            ['FastNlistTest', 'fast_nlist_test', 'FastNlistTest.cc', ''],
+            ['IsaDispatchTest', 'isa_dispatch_test', 'IsaDispatchTest.cc', ''],
+            ['FmaExactTest', 'fma_exact_test', 'FmaExactTest.cc', ''],
+            [
+                'MinimumImageTest',
+                'minimum_image_test',
+                'MinimumImageTest.cc',
+                '',
+            ],
         ]
+        if has_ipi
+            test_array += [
+                ['IPIPotTest', 'ipi_pot_test', 'IPIPotTest.cc', ''],
+            ]
+        endif
         if has_water
             test_array += [
                 ['WaterPotTest', 'water_pot_test', 'WaterPotTest.cc', ''],
+            ]
+        endif
+        if has_eam_table
+            test_array += [
+                [
+                    'EAMTablePotTest',
+                    'eam_table_pot_test',
+                    'EAMTablePotTest.cc',
+                    '',
+                ],
             ]
         endif
     endif
@@ -828,6 +1024,258 @@ if get_option('with_tests')
                 link_language: 'cpp',
             )
         endif
+        _uma_py = find_program('python3', required: true)
+        _uma_export = meson.project_source_root() / 'scripts' / 'export_tiny_uma_contract.py'
+        _uma_fix_pkgs = []
+        _uma_fix_env = environment()
+        foreach _spec : [
+            ['float64', 'both', 'UMA_FLOAT64_PT2', 'line-float64.pt2'],
+            ['float32', 'both', 'UMA_FLOAT32_PT2', 'line-float32.pt2'],
+            ['float64', 'model', 'UMA_FLOAT64_MODEL_ONLY_PT2', 'line-model.pt2'],
+            ['float32', 'none', 'UMA_FLOAT32_NOMETA_PT2', 'line-nometa.pt2'],
+            [
+                'float64',
+                'mismatch',
+                'UMA_DTYPE_MISMATCH_PT2',
+                'line-mismatch.pt2',
+            ],
+        ]
+            _pkg = custom_target(
+                'uma-' + _spec[2],
+                output: _spec[3],
+                command: [
+                    _uma_py,
+                    _uma_export,
+                    '--kind',
+                    'precision',
+                    '--dtype',
+                    _spec[0],
+                    '--meta',
+                    _spec[1],
+                    '--out',
+                    '@OUTPUT@',
+                ],
+                build_by_default: false,
+            )
+            _uma_fix_pkgs += [_pkg]
+            _uma_fix_env.set(_spec[2], _pkg.full_path())
+        endforeach
+        _uma_batch = custom_target(
+            'uma-line-batch',
+            output: 'line-float64-batch.pt2',
+            command: [
+                _uma_py,
+                _uma_export,
+                '--kind',
+                'batch',
+                '--dtype',
+                'float64',
+                '--out',
+                '@OUTPUT@',
+            ],
+            build_by_default: false,
+        )
+        _uma_fix_pkgs += [_uma_batch]
+        _uma_fix_env.set('UMA_FLOAT64_BATCH_PT2', _uma_batch.full_path())
+        _uma_gather_static = custom_target(
+            'uma-gather-static',
+            output: 'gather-static.pt2',
+            command: [
+                _uma_py,
+                _uma_export,
+                '--kind',
+                'gather',
+                '--dtype',
+                'float64',
+                '--out',
+                '@OUTPUT@',
+            ],
+            build_by_default: false,
+        )
+        _uma_gather_dynamic = custom_target(
+            'uma-gather-dynamic',
+            output: 'gather-dynamic.pt2',
+            command: [
+                _uma_py,
+                _uma_export,
+                '--kind',
+                'gather',
+                '--dtype',
+                'float64',
+                '--dynamic',
+                '--out',
+                '@OUTPUT@',
+            ],
+            build_by_default: false,
+        )
+        _uma_fix_pkgs += [_uma_gather_static, _uma_gather_dynamic]
+        _uma_fix_env.set('UMA_GATHER_STATIC_PT2', _uma_gather_static.full_path())
+        _uma_fix_env.set(
+            'UMA_GATHER_DYNAMIC_PT2',
+            _uma_gather_dynamic.full_path(),
+        )
+        _uma_no_edges = custom_target(
+            'uma-no-edges',
+            output: 'line-no-edges.pt2',
+            command: [
+                _uma_py,
+                _uma_export,
+                '--kind',
+                'no-edges',
+                '--dtype',
+                'float64',
+                '--out',
+                '@OUTPUT@',
+            ],
+            build_by_default: false,
+        )
+        _uma_box = custom_target(
+            'uma-molecular-box',
+            output: 'line-box.pt2',
+            command: [
+                _uma_py,
+                _uma_export,
+                '--kind',
+                'box',
+                '--dtype',
+                'float64',
+                '--out',
+                '@OUTPUT@',
+            ],
+            build_by_default: false,
+        )
+        _uma_batch_static = custom_target(
+            'uma-batch-static',
+            output: 'line-batch-static.pt2',
+            command: [
+                _uma_py,
+                _uma_export,
+                '--kind',
+                'batch',
+                '--dtype',
+                'float64',
+                '--static',
+                '--out',
+                '@OUTPUT@',
+            ],
+            build_by_default: false,
+        )
+        _uma_fix_pkgs += [_uma_no_edges, _uma_box, _uma_batch_static]
+        _uma_fix_env.set('UMA_NO_EDGES_PT2', _uma_no_edges.full_path())
+        _uma_fix_env.set('UMA_MOLECULAR_BOX_PT2', _uma_box.full_path())
+        _uma_fix_env.set('UMA_BATCH_STATIC_PT2', _uma_batch_static.full_path())
+        _uma_tetrazine_keyless = custom_target(
+            'uma-tetrazine-keyless',
+            output: 'tetrazine-keyless.pt2',
+            command: [
+                _uma_py,
+                _uma_export,
+                '--kind',
+                'tetrazine-keyless',
+                '--dtype',
+                'float64',
+                '--out',
+                '@OUTPUT@',
+            ],
+            build_by_default: false,
+        )
+        _uma_fix_pkgs += [_uma_tetrazine_keyless]
+        _uma_fix_env.set(
+            'UMA_TETRAZINE_KEYLESS_PT2',
+            _uma_tetrazine_keyless.full_path(),
+        )
+        _uma_batch_molecular = custom_target(
+            'uma-batch-molecular',
+            output: 'line-batch-molecular.pt2',
+            command: [
+                _uma_py,
+                _uma_export,
+                '--kind',
+                'batch-molecular',
+                '--dtype',
+                'float64',
+                '--out',
+                '@OUTPUT@',
+            ],
+            build_by_default: false,
+        )
+        _uma_fix_pkgs += [_uma_batch_molecular]
+        _uma_fix_env.set(
+            'UMA_BATCH_MOLECULAR_PT2',
+            _uma_batch_molecular.full_path(),
+        )
+        test(
+            'UmaGraphSizeTest',
+            executable(
+                'uma_graph_size_test',
+                sources: ['tests/UmaGraphSizeTest.cc'],
+                dependencies: test_deps,
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+                build_rpath: _metatomic_build_rpath,
+            ),
+            env: _uma_fix_env,
+            depends: _uma_fix_pkgs,
+            workdir: meson.source_root(),
+        )
+        test(
+            'UmaExportBounds',
+            _uma_py,
+            args: [
+                meson.project_source_root() / 'tests' / 'test_uma_export_bounds.py',
+            ],
+            workdir: meson.source_root(),
+        )
+        if _rpc_stack
+            _uma_harness_env = environment()
+            _uma_harness_env.prepend('LD_LIBRARY_PATH', _torch_libdir)
+            test(
+                'UmaEngineHarness',
+                _uma_py,
+                args: [
+                    meson.project_source_root() / 'scripts' / 'uma_engine.py',
+                    uma_engine.full_path(),
+                    _uma_gather_static.full_path(),
+                    meson.project_source_root() / 'CppCore' / 'rgpot' / 'rpc' / 'Potentials.capnp',
+                ],
+                depends: [_uma_gather_static, uma_engine],
+                env: _uma_harness_env,
+                workdir: meson.source_root(),
+            )
+            test(
+                'UmaOffReference',
+                _uma_py,
+                args: [
+                    meson.project_source_root() / 'scripts' / 'uma_off_reference.py',
+                    '--tap',
+                    uma_engine.full_path(),
+                    'uma-off-reference-package-absent.pt2',
+                    meson.project_source_root() / 'CppCore' / 'rgpot' / 'rpc' / 'Potentials.capnp',
+                ],
+                protocol: 'tap',
+                depends: [uma_engine],
+                env: _uma_harness_env,
+                workdir: meson.source_root(),
+            )
+        endif
+        test(
+            'UmaFloat64Test',
+            executable(
+                'uma_float64_test',
+                sources: ['tests/UmaFloat64Test.cc'],
+                dependencies: test_deps,
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+                build_rpath: _metatomic_build_rpath,
+            ),
+            env: _uma_fix_env,
+            depends: _uma_fix_pkgs,
+            workdir: meson.source_root(),
+        )
     endif
     # NWChem/CPMD frontend tests (need ptlrpc + frontends from _rpc_stack)
     if _rpc_stack and not get_option('with_rpc_client_only')
@@ -1372,27 +1820,153 @@ if get_option('with_tests')
         )
     endif
 
+    # asv loads this shared library and times one force call per method.
+    # Built with the tests because it links the same pot archives.
+    # Client-only builds never define rgpot_core or the pot archives.
+    if has_fortran and not get_option('with_rpc_client_only')
+        asv_fastpath = shared_library(
+            'asv_fastpath',
+            sources: [files('../benchmarks/asv_fastpath.cc')],
+            dependencies: rgpot_deps,
+            include_directories: _incdirs,
+            link_with: [
+                rgpot_core,
+                lennard_jones,
+                morse,
+                fortran_kernels,
+                rgpot_halfshell,
+                rgpot_minimage,
+                rgpot_exact_fma,
+            ],
+            cpp_args: [
+                '-DRGPOT_ASV_DATA="@0@"'.format(
+                    meson.project_source_root() / 'benchmarks' / 'data',
+                ),
+            ],
+            install: false,
+        )
+    endif
+
     calculator_group_test_exe = disabler()
     foreach test : test_array
+        # The fused-scan oracles are plain multiplies and adds, the same
+        # form as the cluster kernel and the Fortran 26-image wrap. Apple
+        # Clang fuses those products unless contraction is off, and the
+        # sums then miss by an ulp. ReducedPair.cc is built unfused, and
+        # its test compares exactly against the same expressions.
+        case_args = test_args
+        if test.get(2) in [
+            'FastNlistTest.cc',
+            'ReducedPairTest.cc',
+            'EAMCellVerletTest.cc',
+            'StreamParityTest.cc',
+            'NeighbourLayerTest.cc',
+            'TersoffSiCTest.cc',
+        ]
+            case_args += cppc.get_supported_arguments(
+                ['-ffp-contract=off', '/fp:precise'],
+            )
+        endif
         _test_exe = executable(
             test.get(1),
             sources: ['tests/' + test.get(2)],
             dependencies: test_deps,
             include_directories: _incdirs + ['.'],
-            cpp_args: test_args,
+            cpp_args: case_args,
             link_with: _linkto,
             link_language: 'cpp',
             build_rpath: _metatomic_build_rpath,
         )
+        _timeout = 30
+        if test.get(0) == 'StreamParityTest'
+            _timeout = 900
+        elif test.get(0) == 'SuttonChenPotTest'
+            # Two cluster relaxations, up to 2000 force calls each.
+            _timeout = 120
+        endif
         test(
             test.get(0),
             _test_exe,
             workdir: meson.source_root() + test.get(3),
+            timeout: _timeout,
         )
         if test.get(1) == 'calculator_group_test'
             calculator_group_test_exe = _test_exe
         endif
     endforeach
+    _nlist_link = [rgpot_halfshell, rgpot_minimage, rgpot_exact_fma]
+    _nlist_examples = [
+        ['nlist_lj', 'examples/nlist_lj.cc'],
+        ['nlist_threebody', 'examples/nlist_threebody.cc'],
+        ['nlist_metatomic', 'examples/nlist_metatomic.cc'],
+        ['nlist_batch', 'examples/nlist_batch.cc'],
+    ]
+    foreach example : _nlist_examples
+        test(
+            example.get(0),
+            executable(
+                example.get(0),
+                sources: [example.get(1)],
+                include_directories: _incdirs + ['.'],
+                cpp_args: _args,
+                link_with: _nlist_link,
+            ),
+        )
+    endforeach
+    test(
+        'nlist_c',
+        executable(
+            'nlist_c',
+            sources: ['examples/nlist_c.c'],
+            include_directories: _incdirs + ['.'],
+            c_args: _args,
+            link_with: _nlist_link,
+            link_language: 'cpp',
+        ),
+    )
+    test(
+        'nlist_verlet',
+        executable(
+            'nlist_verlet',
+            sources: ['examples/nlist_verlet.c'],
+            include_directories: _incdirs + ['.'],
+            c_args: _args,
+            link_with: _nlist_link,
+            link_language: 'cpp',
+        ),
+    )
+    _capnp_dep = dependency('capnp', required: false)
+    _capnpc_dep = dependency('capnpc', required: false)
+    # socketpair, fork and waitpid. Windows has no POSIX process pair.
+    if _capnp_dep.found() and _capnpc_dep.found() and host_machine.system() != 'windows'
+        test(
+            'nlist_stream',
+            executable(
+                'nlist_stream',
+                sources: ['examples/nlist_stream.cc'],
+                include_directories: _incdirs + ['.'],
+                cpp_args: _args,
+                dependencies: [_capnp_dep, _capnpc_dep],
+                link_with: _nlist_link,
+            ),
+            args: [
+                meson.project_source_root() / 'CppCore' / 'rgpot' / 'rpc' / 'Potentials.capnp',
+            ],
+        )
+    endif
+    _rustc = find_program('rustc', required: false)
+    if _rustc.found()
+        test(
+            'nlist_rust',
+            find_program('sh'),
+            args: [
+                meson.current_source_dir() / 'examples' / 'nlist_rust_test.sh',
+                meson.project_source_root(),
+                meson.current_build_dir(),
+            ],
+            depends: _nlist_link,
+        )
+    endif
     if not get_option('with_rpc_client_only')
         # Same fold, compiled once per instruction set. The driver checks
         # the CPU and prints skip when the binary cannot run here.
@@ -1427,7 +2001,7 @@ if get_option('with_tests')
                 'minimage_' + spec[0],
                 files('rgpot/nlist/MinimumImage.cpp'),
                 include_directories: _incdirs,
-                cpp_args: _args + _isa_args,
+                cpp_args: _args + _isa_args + _no_tsan_ifunc,
                 pic: true,
                 install: false,
             )
@@ -1471,7 +2045,8 @@ if get_option('with_tests')
                 sources: ['tests/exact_fma_eq.cc'],
                 include_directories: _incdirs,
                 cpp_args: _args + _fp_contract_off,
-                link_whole: rgpot_exact_fma,
+                # exp.cc's pair loops call MinimumImage::fold.
+                link_whole: [rgpot_exact_fma, rgpot_minimage],
                 install: false,
             ),
         )
@@ -1482,7 +2057,7 @@ if get_option('with_tests')
                 sources: ['tests/exp_fixed_eq.cc'],
                 include_directories: _incdirs,
                 cpp_args: _args + _fp_contract_off,
-                link_whole: rgpot_exact_fma,
+                link_whole: [rgpot_exact_fma, rgpot_minimage],
                 install: false,
             ),
         )
@@ -1521,6 +2096,39 @@ if get_option('with_tests')
             env: {'RGPOT_LAYOUT_FIXTURE': layout_fixture.full_path()},
             depends: [layout_fixture],
             workdir: meson.source_root(),
+        )
+        simd_env = executable(
+            'simd_env',
+            sources: ['tests/simd_env.cc'],
+            dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: _args,
+            link_with: _linkto,
+            link_language: 'cpp',
+        )
+        test(
+            'simd-env-scalar',
+            simd_env,
+            args: ['known', 'scalar'],
+            env: ['RGPOT_SIMD=scalar'],
+        )
+        test(
+            'simd-env-unknown',
+            simd_env,
+            args: ['unknown'],
+            env: ['RGPOT_SIMD=not_a_target'],
+        )
+        test(
+            'simd-env-rvv',
+            simd_env,
+            args: ['known', 'rvv'],
+            env: ['RGPOT_SIMD=rvv'],
+        )
+        test(
+            'simd-env-avx2',
+            simd_env,
+            args: ['known', 'avx2'],
+            env: ['RGPOT_SIMD=avx2'],
         )
         if host_system != 'windows'
             # The generic engine table over a stand-in backend: no rpc stack,
@@ -1714,6 +2322,16 @@ if get_option('with_tests')
             suite: 'xckernel',
         )
         executable(
+            'xckernel_bench',
+            sources: ['tests/xckernel_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            install: false,
+        )
+        executable(
             'dump_xckernel_goldens',
             sources: ['tests/dump_xckernel_goldens.cc'],
             dependencies: test_deps,
@@ -1728,6 +2346,25 @@ if get_option('with_tests')
     if has_xtb
         xtb_test_env = environment()
         xtb_test_env.set('RGPOT_XTB_ENGINE', xtb_engine.full_path())
+        # Tells XTBDlopenTest to require that the bare soname resolves, so a
+        # broken loader path cannot skip the module-load regression.
+        xtb_test_env.set('RGPOT_XTB_EXPECT_BARE_SONAME', '1')
+        # Glibc and dyld snapshot the loader path at exec. setenv inside a
+        # Catch process does not make the bare soname visible, so the test
+        # environment (and the binary rpath below) publish xtb_engine_dir
+        # before XTBDlopenTest starts.
+        if host_system == 'windows'
+            xtb_test_env.prepend('PATH', xtb_engine_dir, separator: ';')
+        elif host_system == 'darwin'
+            xtb_test_env.prepend('DYLD_LIBRARY_PATH', xtb_engine_dir)
+            xtb_test_env.prepend('DYLD_FALLBACK_LIBRARY_PATH', xtb_engine_dir)
+        else
+            xtb_test_env.prepend('LD_LIBRARY_PATH', xtb_engine_dir)
+        endif
+        _xtb_test_rpath = xtb_engine_dir
+        if _metatomic_build_rpath != ''
+            _xtb_test_rpath = ':'.join([_metatomic_build_rpath, xtb_engine_dir])
+        endif
         test(
             'XTBtest',
             executable(
@@ -1738,7 +2375,24 @@ if get_option('with_tests')
                 cpp_args: test_args,
                 link_with: _linkto,
                 link_language: 'cpp',
-                build_rpath: _metatomic_build_rpath,
+                build_rpath: _xtb_test_rpath,
+            ),
+            env: xtb_test_env,
+            depends: [xtb_engine],
+            workdir: meson.source_root(),
+            suite: 'xtb',
+        )
+        test(
+            'XTBDlopenTest',
+            executable(
+                'xtb_dlopen_test',
+                sources: ['tests/XTBDlopenTest.cc'],
+                dependencies: test_deps,
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+                build_rpath: _xtb_test_rpath,
             ),
             env: xtb_test_env,
             depends: [xtb_engine],
@@ -1757,6 +2411,40 @@ if get_option('with_tests')
             build_rpath: _metatomic_build_rpath,
             install: false,
         )
+        # Warm versus cold GFN2 single points on (H2O)16 and (H2O)20.
+        # Not a default test: the timed run is serial, under hostname bench.
+        xtb_warm_bench = executable(
+            'xtb_warm_bench',
+            sources: ['tests/xtb_warm_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+    else
+        if not get_option('with_rpc_client_only')
+            # The dlopen frontend is in librgpot whether or not with_xtb
+            # built an engine. Without an engine directory the bare-soname
+            # checks skip themselves.
+            test(
+                'XTBDlopenTest',
+                executable(
+                    'xtb_dlopen_test',
+                    sources: ['tests/XTBDlopenTest.cc'],
+                    dependencies: test_deps,
+                    include_directories: _incdirs + ['.'],
+                    cpp_args: test_args,
+                    link_with: _linkto,
+                    link_language: 'cpp',
+                    build_rpath: _metatomic_build_rpath,
+                ),
+                workdir: meson.source_root(),
+                suite: 'xtb',
+            )
+        endif
     endif
 
     # Pot microbenchmarks. Own binary, outside the default suite: the cases
@@ -1783,6 +2471,113 @@ if get_option('with_tests')
             'pot_bench',
             pot_bench,
             args: ['[benchmark]'],
+            workdir: meson.source_root(),
+            timeout: 300,
+        )
+        sw_si_bench = executable(
+            'sw_si_bench',
+            sources: ['tests/sw_si_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'sw_si_bench',
+            sw_si_bench,
+            workdir: meson.source_root(),
+            timeout: 120,
+        )
+        tersoff_sic_bench = executable(
+            'tersoff_sic_bench',
+            sources: ['tests/tersoff_sic_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'tersoff_sic_bench',
+            tersoff_sic_bench,
+            workdir: meson.source_root(),
+            timeout: 120,
+        )
+        eam_cell_bench = executable(
+            'eam_cell_bench',
+            sources: ['tests/eam_cell_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'eam_cell_bench',
+            eam_cell_bench,
+            workdir: meson.source_root(),
+            timeout: 300,
+        )
+        classical_scaling_bench = executable(
+            'classical_scaling_bench',
+            sources: ['tests/classical_scaling_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'classical_scaling_bench',
+            classical_scaling_bench,
+            workdir: meson.source_root(),
+            timeout: 0,
+        )
+        # One child process per row, via fork and waitpid, and the peak
+        # resident set is read from /proc. Windows has neither.
+        if host_machine.system() != 'windows'
+            stream_scale_bench = executable(
+                'stream_scale_bench',
+                sources: ['tests/stream_scale_bench.cc'],
+                dependencies: test_deps,
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+                build_rpath: _metatomic_build_rpath,
+                install: false,
+            )
+            benchmark(
+                'stream_scale_bench',
+                stream_scale_bench,
+                workdir: meson.source_root(),
+                timeout: 0,
+            )
+        endif
+        tersoff_held_bench = executable(
+            'tersoff_held_bench',
+            sources: ['tests/tersoff_held_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'tersoff_held_bench',
+            tersoff_held_bench,
+            args: ['--runs', '3', '--calls', '50'],
             workdir: meson.source_root(),
             timeout: 300,
         )
@@ -1835,8 +2630,14 @@ if not meson.is_subproject()
         if has_fortran
             _pc_cflags += ['-DRGPOT_HAS_FORTRAN_POTS=TRUE']
         endif
+        if has_ipi
+            _pc_cflags += ['-DRGPOT_HAS_IPI=TRUE']
+        endif
         if has_water
             _pc_cflags += ['-DRGPOT_HAS_WATER=TRUE']
+        endif
+        if has_eam_table
+            _pc_cflags += ['-DRGPOT_HAS_EAM_TABLE=TRUE']
         endif
         if has_metatomic
             _pc_cflags += ['-DRGPOT_HAS_METATOMIC_POT=TRUE']
@@ -1867,7 +2668,12 @@ if not meson.is_subproject()
         endif
     endif
     if _rpc_stack
-        _pc_libs += [nwchempot, cpmdpot]
+        # Umbrella builds keep these symbols inside librgpot. The archives
+        # are not installed, so they cannot appear on the link line.
+        # Client-only builds have no umbrella; the archives are the product.
+        if get_option('with_rpc_client_only')
+            _pc_libs += [nwchempot, cpmdpot]
+        endif
         _pc_requires += ['capnp-rpc']
         _pc_cflags += [
             '-DRGPOT_HAS_NWCHEM_FRONTEND=TRUE',

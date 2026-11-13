@@ -1,12 +1,15 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
+#include <mutex>
 #include <new>
 #include <stdexcept>
 #include <string>
 
+#include "rgpot/Tersoff/TersoffSiC.hpp"
 #include "rgpot/fortran/FortranPots.hpp"
 
 namespace rgpot {
@@ -44,6 +47,33 @@ int rgpot_cuh2_force_ws(void *ws, int32_t natoms, const double *positions,
 int rgpot_water_h_force_ws(void *ws, int32_t natoms, const double *positions,
                            const int32_t *atomic_numbers, const double *cell,
                            double *forces, double *energy);
+
+// F2: the saved parameter block in each *_capi module is written once
+// under std::call_once and read-only afterwards. Python binds only the
+// _ws entries (one workspace per potential instance).
+void rgpot_sw_ensure_params();
+void rgpot_edip_ensure_params();
+void rgpot_lenosky_ensure_params();
+void rgpot_tersoff_ensure_params();
+void rgpot_eam_al_ensure_params();
+void rgpot_fehe_ensure_params();
+void rgpot_cuh2_ensure_params();
+void rgpot_water_h_ensure_params();
+}
+
+/// F2: one initialisation for every kernel's saved parameter block.
+void ensure_fortran_params() {
+  static std::once_flag once;
+  std::call_once(once, [] {
+    rgpot_sw_ensure_params();
+    rgpot_edip_ensure_params();
+    rgpot_lenosky_ensure_params();
+    rgpot_tersoff_ensure_params();
+    rgpot_eam_al_ensure_params();
+    rgpot_fehe_ensure_params();
+    rgpot_cuh2_ensure_params();
+    rgpot_water_h_ensure_params();
+  });
 }
 
 /// Throw carrying the kernel's own message.
@@ -59,6 +89,20 @@ int rgpot_water_h_force_ws(void *ws, int32_t natoms, const double *positions,
     message.append(buffer.data(), static_cast<std::size_t>(written));
   }
   throw std::runtime_error(message);
+}
+
+/// True when the Fortran silicon gather is the right kernel. A null
+/// species pointer is the historical silicon call.
+bool siliconOnly(const ForceInput &in) {
+  if (in.atmnrs == nullptr) {
+    return true;
+  }
+  for (size_t i = 0; i < in.nAtoms; ++i) {
+    if (in.atmnrs[i] != 14) {
+      return false;
+    }
+  }
+  return true;
 }
 
 } // namespace
@@ -82,6 +126,7 @@ FortranWorkspace &FortranWorkspace::operator=(const FortranWorkspace &) {
 
 #define RGPOT_FORTRAN_POT_IMPL(ClassName, Entry, Label)                        \
   void ClassName::forceImpl(const ForceInput &in, ForceOut *out) const {       \
+    ensure_fortran_params();                                                   \
     const int status = Entry(m_ws.get(), static_cast<int32_t>(in.nAtoms),       \
                              in.pos, in.box, out->F, &out->energy);            \
     if (status != 0) {                                                         \
@@ -93,13 +138,37 @@ FortranWorkspace &FortranWorkspace::operator=(const FortranWorkspace &) {
 RGPOT_FORTRAN_POT_IMPL(SWPot, rgpot_sw_force_ws, "SW")
 RGPOT_FORTRAN_POT_IMPL(EDIPPot, rgpot_edip_force_ws, "EDIP")
 RGPOT_FORTRAN_POT_IMPL(LenoskyPot, rgpot_lenosky_force_ws, "Lenosky")
-RGPOT_FORTRAN_POT_IMPL(TersoffPot, rgpot_tersoff_force_ws, "Tersoff")
 RGPOT_FORTRAN_POT_IMPL(EAMAlPot, rgpot_eam_al_force_ws, "EAM-Al")
 
 #undef RGPOT_FORTRAN_POT_IMPL
 
+void TersoffPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  // The C++ kernel rebuilds its neighbour list on this call unless
+  // setHeldSkin was given a skin. On periodic cells of 512 and 4096 atoms
+  // a rebuild is slower than the warm Fortran gather, so all-silicon stays
+  // there. Any other Z needs the 1989 silicon-carbon parameters, which the
+  // gather does not have.
+  if (siliconOnly(in)) {
+    ensure_fortran_params();
+    const int status = rgpot_tersoff_force_ws(
+        m_ws.get(), static_cast<int32_t>(in.nAtoms), in.pos, in.box, out->F,
+        &out->energy);
+    if (status != 0) {
+      raise("Tersoff", status, m_ws.get());
+    }
+    out->variance = 0.0;
+  } else {
+    m_sic.forceImpl(in, out);
+  }
+  // The gather writes no stress and caps().stress is false, so no call
+  // reports one, and a reused output keeps no earlier tensor.
+  out->has_stress = 0;
+  std::fill(out->stress, out->stress + 9, 0.0);
+}
+
 #define RGPOT_FORTRAN_SPECIES_POT_IMPL(ClassName, Entry, Label)                \
   void ClassName::forceImpl(const ForceInput &in, ForceOut *out) const {       \
+    ensure_fortran_params();                                                   \
     const int status =                                                         \
         Entry(m_ws.get(), static_cast<int32_t>(in.nAtoms), in.pos, in.atmnrs,  \
               in.box, out->F, &out->energy);                                   \

@@ -42,8 +42,7 @@ runs:
         set -euo pipefail
         # musl target needs a musl-capable linker on the runner
         if ! command -v musl-gcc >/dev/null 2>&1 && ! command -v x86_64-linux-musl-gcc >/dev/null 2>&1; then
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq musl-tools
+          bash ci/gha/apt-install.sh musl-tools
         fi
         musl-gcc --version | head -1 || true
 

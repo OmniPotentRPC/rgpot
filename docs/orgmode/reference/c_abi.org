@@ -22,7 +22,7 @@ typedef struct rgpot_abi_stamp_t {
 } rgpot_abi_stamp_t;
 
 #define RGPOT_ABI_VERSION_MAJOR 1
-#define RGPOT_ABI_VERSION_MINOR 0
+#define RGPOT_ABI_VERSION_MINOR 1
 #define RGPOT_ABI_LAYOUT_REVISION 1
 
 rgpot_abi_stamp_t rgpot_abi_stamp(void);
@@ -77,8 +77,24 @@ exported symbol leaves them where they are.
 They are also not the ELF soversion of =librgpot=.
 The C API is exported from that library and has no shared library of its own, so
 a C caller relinks when the C++ SONAME moves even if these numbers stay.
-3.5.0 left them at 1, 0 and 1, and they stay there: no exported C struct changed
-layout.
+3.5.0 left them at 1, 0 and 1.
+3.6.0 carries 1, 1 and 1.
+=rgpot_eindir_abi_compatible= is the new exported function.
+A caller built against minor 0 still matches, and a caller that needs the new
+function is refused by a 3.5 library.
+No exported C struct in =rgpot.h= changed layout.
+The neighbour-list C ABI is separate.
+3.6.0 sets it to version 4 (=RGPOT_NLIST_ABI= in =rgpot_nlist.h=).
+=rgpot_nlist_request_init= sets the defaults, =bytes= is the struct size, and =rgpot_nlist_strerror=
+names a code.
+3.6.0 also bumps the ELF soversion of =librgpot= from the soversion 4 of 3.5.1.
+Soversion 5 records LJPot and MorsePot each holding a neighbour list and a
+cached pair table.
+Soversion 6 is what this release ships.
+LJ and Morse no longer keep a copied half-list, and ZBL and the open
+Lennard-Jones cluster hold a neighbour list.
+A caller built against soversion 4 does not load =librgpot.so.6=.
+=librgpot_mpi= stays at soversion 3.
 
 ** C++ layout stamp
 
@@ -240,5 +256,20 @@ The first stamp covers the C surface of =rgpot-core=.
 The C++ and Python packages do not re-export it; the C++ classes have the layout
 stamp above.
 The engine plugins carry their own number, =rgpot_engine_abi_version()=.
-The eindir objective keeps =rgpot_eindir_abi_stamp()=, which reports the stamp
-of =eindir-core=.
+The eindir objective keeps
+=rgpot_eindir_abi_stamp()=, which reports the stamp of =eindir-core=, and =rgpot_eindir_abi_compatible()=,
+which checks a stamp against the =eindir-core= compiled into the loaded library.
+
+#+begin_src c
+eindir_abi_stamp_t rgpot_eindir_abi_stamp(void);
+int32_t rgpot_eindir_abi_compatible(const eindir_abi_stamp_t *stamp);
+#+end_src
+
+=rgpot_eindir_abi_compatible= returns what =eindir_core_abi_compatible= returns
+for the same stamp: nonzero for an equal =abi_major=, =objective_layout=,
+=objective_size=, =objective_align= and =dlpack_major=, an =abi_minor= and a
+=dlpack_minor= no newer than the library's, and no feature bit the library
+lacks.
+A null pointer returns 0.
+A caller that links only =librgpot= uses it instead of resolving
+=eindir_core_abi_compatible= itself.

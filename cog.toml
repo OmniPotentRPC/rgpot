@@ -7,6 +7,11 @@
 # [monorepo] unset so `cog bump` produces one vX.Y.Z for the whole tree.
 
 from_latest_tag = true
+# Cog 7 reads this during `cog check` and skips commits with more than one
+# parent. The CLI is `cog check --ignore-merge-commits <base>..HEAD`.
+# There is no `--from` flag (`--from-latest-tag` is a boolean and shares a
+# clap group with the positional range). Single-parent `merge:` sync commits
+# are not git merges; `potctl ci cog-check` ignores that subject.
 ignore_merge_commits = true
 # Towncrier owns CHANGELOG.md; cog still creates the version commit + tag.
 disable_changelog = true
@@ -17,10 +22,13 @@ skip_ci = "[skip ci]"
 skip_untracked = false
 branch_whitelist = ["main", "master", "release/**"]
 
-# Lockstep monorepo version: C++ (meson + CMake), Rust crate, towncrier, pixi workspace, pyproject.
+# One release version: potctl writes Cargo.toml [workspace.package], cogapp
+# regenerates every copy in ci/version/files.txt, and cargo rewrites Cargo.lock.
 # potctl is built via `cargo build -p potctl` (workspace root); use release binary when present.
 pre_bump_hooks = [
     "cargo run -q -p potctl --bin potctl -- release sync {{version}}",
+    "pixi r -e version release-cog",
+    "cargo update --workspace --offline",
     # Curated notes from docs/newsfragments/ into CHANGELOG.md (Keep a Changelog).
     "uvx towncrier build --yes --version {{version}}",
     # Fail the bump if surfaces diverged or CHANGELOG section is missing.
@@ -38,6 +46,7 @@ post_bump_hooks = [
 feat     = { changelog_title = "Features" }
 fix      = { changelog_title = "Bug Fixes" }
 perf     = { changelog_title = "Performance" }
+bench    = { changelog_title = "Benchmarks" }
 refactor = { changelog_title = "Refactoring" }
 docs     = { changelog_title = "Documentation" }
 test     = { changelog_title = "Tests" }
@@ -48,6 +57,7 @@ style    = { changelog_title = "Style" }
 revert   = { changelog_title = "Reverts" }
 
 # Map common legacy / project-specific prefixes used in this monorepo history.
+simd = { changelog_title = "SIMD" }
 enh  = { changelog_title = "Enhancements" }
 bug  = { changelog_title = "Bugfixes" }
 maint = { changelog_title = "Maintenance" }
@@ -58,6 +68,10 @@ bld  = { changelog_title = "Buildsystem" }
 gen  = { changelog_title = "Generated" }
 # Cosmo potctl spike commit on feat/direct-metatomic-export (before promotion to feat/ci).
 experiment = { changelog_title = "Experiments" }
+# Subjects already in the history this release carries.
+pot = { changelog_title = "Potentials" }
+python = { changelog_title = "Python" }
+nlist = { changelog_title = "Neighbour lists" }
 
 [changelog]
 path = "CHANGELOG.md"

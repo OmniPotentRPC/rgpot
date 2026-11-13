@@ -25,6 +25,16 @@ on:
         required: false
         type: string
         default: ""
+      os:
+        description: JSON array of runner labels. The default is ubuntu-latest, ubuntu-24.04-arm, macos-15, and windows-2022.
+        required: false
+        type: string
+        default: '["ubuntu-latest","ubuntu-24.04-arm","macos-15","windows-2022"]'
+      build:
+        description: cibuildwheel selector. The default is cp310, cp311, cp312, cp314t, and cp315t.
+        required: false
+        type: string
+        default: "cp310-* cp311-* cp312-* cp314t-* cp315t-*"
 
 permissions:
   contents: read
@@ -37,9 +47,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15, windows-2022]
+        os: ${{ fromJSON(inputs.os) }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Stage the F1 import check
         shell: bash
@@ -106,7 +116,7 @@ jobs:
           package-dir: ${{ inputs.package-dir }}
           output-dir: wheelhouse
         env:
-          CIBW_BUILD: cp310-* cp311-* cp312-* cp314t-* cp315t-*
+          CIBW_BUILD: ${{ inputs.build }}
           CIBW_SKIP: pp* *-musllinux* *_i686 *-win32
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
           CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
@@ -118,7 +128,7 @@ jobs:
           CIBW_TEST_SOURCES: ${{ inputs.package-dir }}/${{ inputs.test-path }} ${{ inputs.package-dir }}/_ci
           CIBW_TEST_COMMAND: python ${{ inputs.package-dir }}/_ci/check_f1.py && python -m pytest -q ${{ inputs.package-dir }}/${{ inputs.test-path }} --timeout=180 -o faulthandler_timeout=120
 
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
@@ -299,7 +309,7 @@ jobs:
         env:
           PKG: ${{ inputs.package-dir }}
 
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ steps.artifact.outputs.name }}
           path: wheelhouse/*.whl

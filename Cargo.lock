@@ -702,7 +702,7 @@ dependencies = [
 
 [[package]]
 name = "rgpot-core"
-version = "3.5.1"
+version = "3.6.0"
 dependencies = [
  "capnp",
  "capnp-rpc",
@@ -716,6 +716,10 @@ dependencies = [
  "tokio",
  "tokio-util",
 ]
+
+[[package]]
+name = "rgpot-pair"
+version = "3.6.0"
 
 [[package]]
 name = "rustix"

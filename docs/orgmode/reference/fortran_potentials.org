@@ -1,4 +1,5 @@
 #+TITLE: Fortran potentials: porting rules
+#+OPTIONS: author:nil
 #+DESCRIPTION: How legacy potential kernels become Fortran 2018 modules in rgpot.
 
 * Why a port and not a wrapper
@@ -27,6 +28,10 @@ The module asserts ~wp == c_double~ at compile time.
 with defaults; scratch lives in local automatic arrays.
 Saved state is allowed only in the ~_capi~ module (the neighbour table and the
 parameter set), never in a kernel.
+~params_ready~ is written once, under C++ ~std::call_once~, and the parameter
+block is read-only after that.
+The handle-free entry's legacy workspace is process-serial and is not on the
+Python path.
 4. *Every dummy argument gets ~intent~*, and arrays that cross into kernels are
 ~contiguous~ where the caller can guarantee it.
 5. *No ~goto~, no arithmetic ~if~, no labelled ~do~.* Structured control flow
@@ -151,6 +156,12 @@ such an error can leave the energy correct.
 
 Pinned reference energies from the pre-port kernels live in the Catch2 tests, at
 the tolerances the original suites used.
+~eam_al~ is the exception on the digits, not on the geometry.
+EON r2549 ~potinit.f~ writes the aluminium parameters as default-real literals,
+so a double-precision build stores the single-precision rounding.
+The four-atom ~al_fcc~ cluster is pinned to that Fortran energy,
+-5.217864006173226 eV, tighter than the historical relative 1e-4.
+Keeping the extra printed digits moves the same geometry by 1.76e-6 eV.
 
 ** Compilers
 

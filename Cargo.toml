@@ -1,10 +1,13 @@
 # Cargo workspace: library (rgpot-core) + repo tooling (potctl).
 # Release lockstep / project CLI lives in potctl, not in the published core crate.
 [workspace]
-members = ["rgpot-core", "potctl"]
+members = ["rgpot-core", "rgpot-pair", "potctl"]
 resolver = "2"
 
 [workspace.package]
+# The release version. Edit it here only; every other copy is generated
+# from it (ci/version/files.txt) and CI fails when one drifts.
+version = "3.6.0"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/OmniPotentRPC/rgpot"

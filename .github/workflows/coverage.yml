@@ -3,8 +3,13 @@
 # Live dashboard: https://app.codecov.io/gh/OmniPotentRPC/rgpot
 #
 # Auth: Codecov GitHub App OIDC (use_oidc: true). Optional CODECOV_TOKEN for
-# accounts that still use upload tokens. fail_ci_if_error: false soft-fails
-# upload so generation still greens the job.
+# accounts that still use upload tokens. fail_ci_if_error only covers the
+# uploader CLI. The action's OIDC token step throws before that, so a token
+# request timeout fails the step after coverage was generated. Each upload
+# continues on error, then retries with the repository token.
+# fail_ci_if_error: false soft-fails a CLI error. The token retry does not
+# continue on error, so an action failure there fails the upload job.
+# Generation is a separate job and fails when tests or capture fail.
 
 name: Coverage
 
@@ -42,8 +47,7 @@ jobs:
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh ${{ matrix.llvm-version }}
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y clang-${{ matrix.llvm-version }}
+          bash ci/gha/apt-install.sh --no-install-recommends clang-${{ matrix.llvm-version }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
@@ -92,8 +96,7 @@ jobs:
 
       - name: Install lcov + gfortran
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends lcov gfortran
+          bash ci/gha/apt-install.sh --no-install-recommends lcov gfortran
 
       - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
         with:
@@ -161,8 +164,7 @@ jobs:
 
       - name: Install gfortran + lcov
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends gfortran lcov
+          bash ci/gha/apt-install.sh --no-install-recommends gfortran lcov
 
       - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
         with:
@@ -210,6 +212,8 @@ jobs:
           path: cov
 
       - name: Upload rust coverage to Codecov
+        id: codecov-rust
+        continue-on-error: true
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: cov/coverage-rust/lcov.info,cov/coverage-rust/rust_codecov.json
@@ -220,7 +224,21 @@ jobs:
           fail_ci_if_error: false
           verbose: true
 
+      - name: Upload rust coverage with the repository token
+        if: steps.codecov-rust.outcome == 'failure'
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: cov/coverage-rust/lcov.info,cov/coverage-rust/rust_codecov.json
+          flags: rust
+          name: rgpot-rust
+          use_oidc: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+          verbose: true
+
       - name: Upload cpp coverage to Codecov
+        id: codecov-cpp
+        continue-on-error: true
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: cov/coverage-cpp/cpp_lcov.info
@@ -231,7 +249,21 @@ jobs:
           fail_ci_if_error: false
           verbose: true
 
+      - name: Upload cpp coverage with the repository token
+        if: steps.codecov-cpp.outcome == 'failure'
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: cov/coverage-cpp/cpp_lcov.info
+          flags: cpp
+          name: rgpot-cpp
+          use_oidc: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+          verbose: true
+
       - name: Upload python coverage to Codecov
+        id: codecov-python
+        continue-on-error: true
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: cov/coverage-python/python_coverage.xml
@@ -242,13 +274,39 @@ jobs:
           fail_ci_if_error: false
           verbose: true
 
+      - name: Upload python coverage with the repository token
+        if: steps.codecov-python.outcome == 'failure'
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: cov/coverage-python/python_coverage.xml
+          flags: python
+          name: rgpot-python
+          use_oidc: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+          verbose: true
+
       - name: Upload fortran coverage to Codecov
+        id: codecov-fortran
+        continue-on-error: true
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: cov/coverage-fortran/fortran_lcov.info
           flags: fortran
           name: rgpot-fortran
           use_oidc: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+          verbose: true
+
+      - name: Upload fortran coverage with the repository token
+        if: steps.codecov-fortran.outcome == 'failure'
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: cov/coverage-fortran/fortran_lcov.info
+          flags: fortran
+          name: rgpot-fortran
+          use_oidc: false
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
           verbose: true

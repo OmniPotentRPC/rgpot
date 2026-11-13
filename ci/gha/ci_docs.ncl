@@ -3,17 +3,23 @@ let S = import "lib/steps.ncl" in
 let P = S.pins in
 {
   name = "Build and Deploy Documentation",
-  concurrency = { group = "pages", "cancel-in-progress" = true },
   on = {
     push = { branches = ["main"], tags = ["*"] },
     pull_request = {},
     schedule = [{ cron = "0 8 * * 1" }],
   },
+  # Workflow stays read-only. The deploy job opts into contents: write.
   permissions = { contents = "read" },
   jobs = {
     build_docs = {
       name = "Build documentation",
       "runs-on" = P.ubuntu,
+      # One group per ref, so parallel pull requests do not cancel each other
+      # or a pages deploy. A new push to the same ref still cancels its build.
+      concurrency = {
+        group = "docs-${{ github.workflow }}-${{ github.ref }}",
+        "cancel-in-progress" = true,
+      },
       steps = [
         {
           name = "Checkout repository",
@@ -32,12 +38,17 @@ let P = S.pins in
         },
       ],
     },
-    deploy_docs = {
+    deploy = {
       name = "Deploy documentation",
       needs = ["build_docs"],
-      "if" = "github.event_name == 'push'",
+      "if" = "github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
       "runs-on" = P.ubuntu,
       permissions = { contents = "write" },
+      # Shared pages group, and a running deploy is left to finish.
+      concurrency = {
+        group = "pages",
+        "cancel-in-progress" = false,
+      },
       steps = [
         { uses = P.checkout, with = { "persist-credentials" = false } },
         {

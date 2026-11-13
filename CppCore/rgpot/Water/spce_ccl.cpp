@@ -16,9 +16,11 @@ SPC/E potential for water.
 University of Iceland
 */
 #include "rgpot/Water/spce_ccl.hpp"
+#include "rgpot/Water/centre_walk.hpp"
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <vector>
 
 namespace forcefields {
 
@@ -189,29 +191,42 @@ void SpceCcl::computeTemplate(
   energy = 0.0;
   setPeriodicity(b);
 
+  std::vector<double> centres(static_cast<std::size_t>(nMolecules) * 3, 0.0);
+  for (int i = 0; i < nMolecules; ++i) {
+    double rc[3] = {0};
+    calculateCentre(rh1[i], rh2[i], ro[i], rc);
+    centres[static_cast<std::size_t>(3 * i)] = rc[0];
+    centres[static_cast<std::size_t>(3 * i + 1)] = rc[1];
+    centres[static_cast<std::size_t>(3 * i + 2)] = rc[2];
+  }
   for (int i = nMolecules - 1; i >= 0; --i) {
-    double rc1[3] = {0};
-    calculateCentre(rh1[i], rh2[i], ro[i], rc1);
+    double rc1[3] = {centres[static_cast<std::size_t>(3 * i)],
+                     centres[static_cast<std::size_t>(3 * i + 1)],
+                     centres[static_cast<std::size_t>(3 * i + 2)]};
     Water w1(rh1[i], rh2[i], ro[i], rc1, fh1[i], fh2[i], fo[i]);
     intramolecular(w1, energy);
     energy += polarisationEnergy_;
-    for (int j = i - 1; j >= 0; --j) {
-      bool areFixed = false;
-      if (xh1 and xh2 and xo) {
-        areFixed = xh1[i][0] and xh2[i][0] and xo[i][0];
-        // check if all the atoms of molecule j are fixed.
-        areFixed &= xh1[j][0] and xh2[j][0] and xo[j][0];
-      };
-      // if both molecules are fixed skip force calculation
-      if (not areFixed) {
-        double rc2[3] = {0};
-        calculateCentre(rh1[j], rh2[j], ro[j], rc2);
-        Water w2(rh1[j], rh2[j], ro[j], rc2, fh1[j], fh2[j], fo[j]);
-        lennardJonesWithCutoff(w1, w2, energy);
-        coulombWithCutoff(w1, w2, energy);
-      };
-    };
-  };
+  }
+  walkCentres(centres.data(), nMolecules, b, cutoff_, [&](int i, int j) {
+    bool areFixed = false;
+    if (xh1 and xh2 and xo) {
+      areFixed = xh1[i][0] and xh2[i][0] and xo[i][0];
+      areFixed &= xh1[j][0] and xh2[j][0] and xo[j][0];
+    }
+    if (areFixed) {
+      return;
+    }
+    double rc1[3] = {centres[static_cast<std::size_t>(3 * i)],
+                     centres[static_cast<std::size_t>(3 * i + 1)],
+                     centres[static_cast<std::size_t>(3 * i + 2)]};
+    double rc2[3] = {centres[static_cast<std::size_t>(3 * j)],
+                     centres[static_cast<std::size_t>(3 * j + 1)],
+                     centres[static_cast<std::size_t>(3 * j + 2)]};
+    Water w1(rh1[i], rh2[i], ro[i], rc1, fh1[i], fh2[i], fo[i]);
+    Water w2(rh1[j], rh2[j], ro[j], rc2, fh1[j], fh2[j], fo[j]);
+    lennardJonesWithCutoff(w1, w2, energy);
+    coulombWithCutoff(w1, w2, energy);
+  });
   assert(not std::isnan(energy) and not std::isinf(energy));
 }
 } // namespace forcefields

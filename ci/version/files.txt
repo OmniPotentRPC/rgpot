@@ -1,0 +1,13 @@
+# Copies of the release version, generated from [workspace.package] in
+# the root Cargo.toml by ci/version/rgpot_version.py.
+# Regenerate: pixi r -e version release-cog
+# Check:      pixi r -e version version-drift
+meson.build
+CMakeLists.txt
+pyproject.toml
+pixi.toml
+towncrier.toml
+docs/source/conf.py
+rgpot-core/include/rgpot.h
+rgpot-core/README.md
+rgpot-core/README.org

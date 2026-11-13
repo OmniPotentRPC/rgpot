@@ -8,10 +8,10 @@
 #   - chemparseplot and rgpycrumbs must be exact `==` release pins;
 #   - readcon's minimum is parsed from the dependency. A version string
 #     must be `>=0.17.1` or a higher floor (or an exact `==` at least that
-#     high). A git pin, used until the 0.17.1 wheel is published, must be
-#     readcon-core 694e808 or a descendant, and the script parses `version`
-#     from that commit's pyproject.toml. That parsed version must be
-#     >=0.17.1. A floor the script cannot parse fails the job.
+#     high). A git pin must be readcon-core 694e808 or a descendant, and
+#     the script parses `version` from that commit's pyproject.toml. That
+#     parsed version must be >=0.17.1. A floor the script cannot parse
+#     fails the job.
 #   - every other entry must carry a version specifier (`*` is allowed only
 #     for packages that are not part of the plotting stack).
 #   - `format="eon"` outside a comment fails the job.

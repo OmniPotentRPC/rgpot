@@ -65,10 +65,35 @@ int method_to_c(GFNMethod m) {
   }
 }
 
+// A name with no directory separator is a loader search key, not a file.
+// dlopen / LoadLibraryA would walk LD_LIBRARY_PATH, DYLD_LIBRARY_PATH, PATH,
+// and the ld cache, which can substitute a different libxtb_engine.
+bool has_directory_separator(const std::string &path) {
+  return path.find_first_of("/\\") != std::string::npos;
+}
+
+void append_loader_error(std::string &msg, bool explicit_path) {
+#ifndef _WIN32
+  if (const char *e = dlerror()) {
+    if (*e != '\0') {
+      msg += explicit_path ? "; dlerror: " : "; last dlerror: ";
+      msg += e;
+    }
+  }
+#else
+  (void)explicit_path;
+#endif
+}
+
 std::vector<std::string> candidate_paths(const XTBDlopenConfig &config) {
   std::vector<std::string> out;
-  if (!config.engine_path.empty())
+  // An explicit path is exclusive. The constructor rejects a slash-less
+  // name before this search. Falling through to the bare soname lets the
+  // loader or an env/dir candidate satisfy a request for a different library.
+  if (!config.engine_path.empty()) {
     out.push_back(config.engine_path);
+    return out;
+  }
   if (const char *e = std::getenv("RGPOT_XTB_ENGINE"))
     if (e && *e)
       out.emplace_back(e);
@@ -116,21 +141,29 @@ XTBDlopen::XTBDlopen(const XTBConfig &xtb)
     : XTBDlopen(XTBDlopenConfig{xtb, {}}) {}
 
 XTBDlopen::XTBDlopen(const XTBDlopenConfig &config) {
+  const bool explicit_path = !config.engine_path.empty();
+  if (explicit_path && !has_directory_separator(config.engine_path)) {
+    throw std::runtime_error(
+        "XTBDlopen: engine_path \"" + config.engine_path +
+        "\" has no directory separator; a bare name is resolved through "
+        "the loader search path. Pass an absolute or relative path");
+  }
   for (const auto &path : candidate_paths(config)) {
     m_lib = open_lib(path.c_str());
     if (m_lib)
       break;
   }
   if (!m_lib) {
-    std::string msg =
-        "XTBDlopen: libxtb_engine.so not found "
-        "(set RGPOT_XTB_ENGINE / engine_path / EON_POTENTIALS_PATH)";
-#ifndef _WIN32
-    if (const char *e = dlerror()) {
-      msg += "; last dlerror: ";
-      msg += e;
+    std::string msg;
+    if (explicit_path) {
+      // Discovery env vars are ignored once engine_path is set, so naming
+      // them here points at a variable that was not consulted.
+      msg = "XTBDlopen: libxtb_engine.so not found: " + config.engine_path;
+    } else {
+      msg = "XTBDlopen: libxtb_engine.so not found "
+            "(set RGPOT_XTB_ENGINE / engine_path / EON_POTENTIALS_PATH)";
     }
-#endif
+    append_loader_error(msg, explicit_path);
     throw std::runtime_error(msg);
   }
 
@@ -139,9 +172,20 @@ XTBDlopen::XTBDlopen(const XTBDlopenConfig &config) {
   m_create = reinterpret_cast<create_fn>(sym(m_lib, "rgpot_xtb_create"));
   m_destroy = reinterpret_cast<destroy_fn>(sym(m_lib, "rgpot_xtb_destroy"));
   m_force = reinterpret_cast<force_fn>(sym(m_lib, "rgpot_xtb_force"));
-  if (!abi || !m_create || !m_destroy || !m_force) {
+  m_reset = reinterpret_cast<reset_fn>(sym(m_lib, "rgpot_xtb_reset"));
+  m_set_warm =
+      reinterpret_cast<set_warm_fn>(sym(m_lib, "rgpot_xtb_set_warm_move"));
+  m_warm_move =
+      reinterpret_cast<warm_move_fn>(sym(m_lib, "rgpot_xtb_warm_move"));
+  m_reused =
+      reinterpret_cast<reused_fn>(sym(m_lib, "rgpot_xtb_reused_wavefunction"));
+  if (!abi || !m_create || !m_destroy || !m_force || !m_reset || !m_set_warm ||
+      !m_warm_move || !m_reused) {
     close_lib(m_lib);
     m_lib = nullptr;
+    // The opened library is the one we selected. Do not resume the
+    // candidate list: an explicit path (or the first discovery hit) that
+    // lacks the ABI must not silently load a different engine.
     throw std::runtime_error(
         "XTBDlopen: missing C ABI symbols in engine library");
   }
@@ -164,6 +208,31 @@ XTBDlopen::XTBDlopen(const XTBDlopenConfig &config) {
     m_lib = nullptr;
     throw std::runtime_error(std::string("XTBDlopen: create failed: ") + err);
   }
+  m_set_warm(m_pot, config.xtb.warm_move);
+}
+
+void XTBDlopen::reset() {
+  if (!m_reset || !m_pot)
+    throw std::runtime_error("XTBDlopen: engine not available");
+  m_reset(m_pot);
+}
+
+void XTBDlopen::setWarmMove(double angstrom) {
+  if (!m_set_warm || !m_pot)
+    throw std::runtime_error("XTBDlopen: engine not available");
+  m_set_warm(m_pot, angstrom);
+}
+
+double XTBDlopen::warmMove() const {
+  if (!m_warm_move || !m_pot)
+    throw std::runtime_error("XTBDlopen: engine not available");
+  return m_warm_move(m_pot);
+}
+
+bool XTBDlopen::reusedWavefunction() const {
+  if (!m_reused || !m_pot)
+    throw std::runtime_error("XTBDlopen: engine not available");
+  return m_reused(m_pot) != 0;
 }
 
 XTBDlopen::~XTBDlopen() {
@@ -182,14 +251,15 @@ void XTBDlopen::forceImpl(const ForceInput &in, ForceOut *out) const {
   int rc = m_force(m_pot, static_cast<long>(in.nAtoms), in.pos, in.atmnrs,
                    out->F, &out->energy, &var, in.box);
   if (rc != 0)
-    throw std::runtime_error("XTBDlopen: force evaluation failed (rc=" +
-                             std::to_string(rc) + ")");
+    throw std::runtime_error(
+        "XTBDlopen: force evaluation failed (rc=" + std::to_string(rc) + ")");
   out->variance = var;
 }
 
-std::tuple<double, types::AtomMatrix, double> XTBDlopen::operator()(
-    const types::AtomMatrix &positions, const std::vector<int> &atmtypes,
-    const std::array<std::array<double, 3>, 3> &box) const {
+std::tuple<double, types::AtomMatrix, double>
+XTBDlopen::operator()(const types::AtomMatrix &positions,
+                      const std::vector<int> &atmtypes,
+                      const std::array<std::array<double, 3>, 3> &box) const {
   const size_t nAtoms = positions.rows();
   types::AtomMatrix forces = types::AtomMatrix::Zero(nAtoms, 3);
   double flatBox[9];

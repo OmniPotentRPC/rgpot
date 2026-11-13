@@ -2,7 +2,9 @@ cmake_minimum_required(VERSION 3.16)
 
 project(
   rgpot
-  VERSION 3.5.1
+  # [[[cog import rgpot_version as v; cog.outl(f"  VERSION {v.VERSION}")]]]
+  VERSION 3.6.0
+  # [[[end]]]
   DESCRIPTION "Cpp core for potential energy surface functionality"
   HOMEPAGE_URL "https://github.com/OmniPotentRPC/rgpot"
   LANGUAGES C CXX)
@@ -36,8 +38,24 @@ else()
   option(RGPOT_WITH_CACHE "Build with RocksDB caching support" ON)
   option(RGPOT_WITH_RPC "Build with Cap'n Proto RPC support" OFF)
   option(RGPOT_BUILD_EXAMPLES "Build examples" ${RGPOT_IS_TOP_LEVEL})
+  option(RGPOT_WITH_HIGHWAY "Google Highway runtime ISA dispatch" ON)
+  if(WIN32)
+    set(_rgpot_ipi_default OFF)
+  else()
+    set(_rgpot_ipi_default ON)
+  endif()
+  option(RGPOT_WITH_IPI "i-PI socket server Potential (POSIX sockets)"
+         ${_rgpot_ipi_default})
+  if(RGPOT_WITH_IPI AND WIN32)
+    message(
+      FATAL_ERROR
+        "RGPOT_WITH_IPI requires POSIX sockets and cannot be enabled on Windows"
+    )
+  endif()
 endif()
 
+option(RGPOT_WITH_EAM_TABLE
+       "EAM and Finnis-Sinclair potentials read from LAMMPS tables" OFF)
 option(RGPOT_BUILD_TESTS "Build tests" ${RGPOT_IS_TOP_LEVEL})
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -172,13 +190,24 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/plugin/builtins/lj_plugin.cpp
       CppCore/rgpot/LennardJones/LJPot.cc
       CppCore/rgpot/LennardJones/LJClusterPot.cc
+      CppCore/rgpot/LennardJones/LJClusterKernel.cc
       CppCore/rgpot/Morse/MorsePot.cc
       CppCore/rgpot/ZBL/ZBLPot.cc
-      CppCore/rgpot/nlist/MinimumImage.cpp
-      CppCore/rgpot/simd/exact_fma_hw.cc
-      CppCore/rgpot/simd/exp.cc
+      CppCore/rgpot/simd/dispatch.cc
+      CppCore/rgpot/simd/scalar_kernels.cc
       CppCore/rgpot/CuH2/cuh2Utils.cc
-      CppCore/rgpot/fortran/FortranPots.cc)
+      CppCore/rgpot/fortran/FortranPots.cc
+      CppCore/rgpot/SuttonChen/SuttonChenPot.cc
+      CppCore/rgpot/ReducedPair/ReducedPair.cc
+      CppCore/rgpot/SuttonChen/SuttonChenScales.cc
+      CppCore/rgpot/nlist/HalfShellWalk.cc
+      CppCore/rgpot/nlist/HalfShell.cc
+      CppCore/rgpot/StillingerWeber/SWSi.cc
+      CppCore/rgpot/Tersoff/TersoffSiC.cc)
+
+  if(RGPOT_WITH_HIGHWAY)
+    list(APPEND RGPOT_SOURCES CppCore/rgpot/simd/hwy_kernels.cc)
+  endif()
 
   # NWChemPot / CPMDPot are pure dlopen consumers of the split nwchemc / cpmdc
   # engines (parity with meson). Cap'n Proto params live in the generated schema,
@@ -188,10 +217,52 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
          CppCore/rgpot/CPMDPot/CPMDPot.cc)
   endif()
 
+  if(RGPOT_WITH_HIGHWAY)
+    find_package(hwy 1.2 QUIET CONFIG)
+    if(NOT TARGET hwy)
+      set(HWY_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+      set(HWY_ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
+      set(HWY_ENABLE_CONTRIB OFF CACHE BOOL "" FORCE)
+      set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+      FetchContent_Declare(
+        highway
+        URL https://github.com/google/highway/archive/refs/tags/1.2.0.tar.gz
+        URL_HASH SHA256=7e0be78b8318e8bdbf6fa545d2ecb4c90f947df03f7aadc42c1967f019e63343)
+      FetchContent_MakeAvailable(highway)
+      if(TARGET hwy)
+        set_target_properties(hwy PROPERTIES CXX_VISIBILITY_PRESET hidden)
+        target_compile_definitions(
+          hwy PRIVATE HWY_DISABLED_TARGETS=0xC0F800024041090)
+      endif()
+    endif()
+  endif()
+
+  if(RGPOT_WITH_IPI)
+    list(APPEND RGPOT_SOURCES CppCore/rgpot/IPIPot/IPIPot.cc)
+  endif()
+
+  if(RGPOT_WITH_EAM_TABLE)
+    list(APPEND RGPOT_SOURCES CppCore/rgpot/EAMTable/EAMTablePot.cc)
+  endif()
+
   if(RGPOT_BUILD_TESTS)
     enable_testing()
   endif()
   find_package(Threads REQUIRED)
+  add_library(rgpot_nlist STATIC
+      CppCore/rgpot/nlist/NeighbourList.cc
+      CppCore/rgpot/nlist/Neighbours.cc
+      CppCore/rgpot/nlist/MinimumImage.cpp
+      CppCore/rgpot/simd/exact_fma_hw.cc
+      CppCore/rgpot/simd/exp.cc)
+  target_include_directories(rgpot_nlist PUBLIC
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/CppCore>)
+  target_link_libraries(rgpot_nlist PUBLIC Threads::Threads)
+  find_package(OpenMP)
+  if(OpenMP_CXX_FOUND)
+    target_link_libraries(rgpot_nlist PUBLIC OpenMP::OpenMP_CXX)
+  endif()
+  set_target_properties(rgpot_nlist PROPERTIES POSITION_INDEPENDENT_CODE ON)
   add_library(rgpot_vesin STATIC third_party/vesin/vesin-single-build.cpp)
   add_library(rgpot::vesin ALIAS rgpot_vesin)
   set_target_properties(rgpot_vesin PROPERTIES
@@ -205,12 +276,16 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
   if(MSVC)
     set_source_files_properties(
       CppCore/rgpot/nlist/MinimumImage.cpp CppCore/rgpot/simd/exact_fma_hw.cc
-      CppCore/rgpot/simd/exp.cc CppCore/rgpot/Morse/MorsePot.cc
+      CppCore/rgpot/simd/exp.cc CppCore/rgpot/simd/dispatch.cc
+      CppCore/rgpot/simd/scalar_kernels.cc CppCore/rgpot/simd/hwy_kernels.cc
+      CppCore/rgpot/Morse/MorsePot.cc
       PROPERTIES COMPILE_OPTIONS "/fp:precise")
   else()
     set_source_files_properties(
       CppCore/rgpot/nlist/MinimumImage.cpp CppCore/rgpot/simd/exact_fma_hw.cc
-      CppCore/rgpot/simd/exp.cc CppCore/rgpot/Morse/MorsePot.cc
+      CppCore/rgpot/simd/exp.cc CppCore/rgpot/simd/dispatch.cc
+      CppCore/rgpot/simd/scalar_kernels.cc CppCore/rgpot/simd/hwy_kernels.cc
+      CppCore/rgpot/Morse/MorsePot.cc
       PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
     # Value-safe: lets the exp clamps if-convert and sqrt use sqrtpd, so
     # the exp and Morse row loops vectorise, also at -O2. Each flag is kept
@@ -231,11 +306,15 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
   endif()
   add_subdirectory(CppCore/rgpot/fortran)
   add_library(rgpot ${RGPOT_SOURCES})
+  if(RGPOT_WITH_HIGHWAY)
+    target_link_libraries(rgpot PRIVATE hwy)
+    target_compile_definitions(rgpot PRIVATE RGPOT_WITH_HIGHWAY)
+  endif()
   set_target_properties(rgpot PROPERTIES LINKER_LANGUAGE CXX
                                         POSITION_INDEPENDENT_CODE ON
                                         VERSION ${PROJECT_VERSION}
                                         SOVERSION ${RGPOT_CXX_SOVERSION})
-  target_link_libraries(rgpot PRIVATE rgpot_fortran_kernels Threads::Threads)
+  target_link_libraries(rgpot PRIVATE rgpot_fortran_kernels rgpot_nlist Threads::Threads)
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_options(
       rgpot PRIVATE
@@ -283,6 +362,14 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     target_sources(rgpot PRIVATE CppCore/rgpot/PotentialCache.cc)
     target_link_libraries(rgpot PUBLIC RocksDB::rocksdb xxHash::xxhash)
     target_compile_definitions(rgpot PUBLIC RGPOT_HAS_CACHE)
+  endif()
+
+  if(RGPOT_WITH_IPI)
+    target_compile_definitions(rgpot PUBLIC RGPOT_HAS_IPI)
+  endif()
+
+  if(RGPOT_WITH_EAM_TABLE)
+    target_compile_definitions(rgpot PUBLIC RGPOT_HAS_EAM_TABLE)
   endif()
 
   if(RGPOT_WITH_RPC)
@@ -371,7 +458,7 @@ if(RGPOT_IS_TOP_LEVEL)
 
   if(NOT RGPOT_RPC_CLIENT_ONLY)
     install(
-      TARGETS rgpot rgpot_fortran_kernels rgpot_vesin
+      TARGETS rgpot rgpot_fortran_kernels rgpot_nlist rgpot_vesin
       EXPORT rgpotTargets
       LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
       ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -436,6 +523,7 @@ if(RGPOT_BUILD_TESTS)
   set_tests_properties(AotiPublicationStressTest PROPERTIES TIMEOUT 600)
   add_executable(MolecularFrameTest CppCore/tests/MolecularFrameTest.cc)
   target_include_directories(MolecularFrameTest PRIVATE CppCore)
+  # The RPC client bridge stays C++17. This test includes std::span.
   target_compile_features(MolecularFrameTest PRIVATE cxx_std_20)
   add_test(NAME MolecularFrameTest COMMAND MolecularFrameTest)
   find_package(Catch2 3 REQUIRED)
@@ -459,7 +547,6 @@ if(RGPOT_BUILD_TESTS)
     add_subdirectory(CppCore/tests/plugin)
 
     add_pot_test(LJClusterPotTest CppCore/tests/LJClusterPotTest.cc)
-    add_pot_test(PairListTest CppCore/tests/PairListTest.cc)
     add_pot_test(MinImageIsaHash CppCore/tests/MinImageIsaHash.cc)
     add_pot_test(FoldDegenerateTest CppCore/tests/FoldDegenerateTest.cc)
     set_tests_properties(FoldDegenerateTest PROPERTIES TIMEOUT 60)
@@ -493,6 +580,7 @@ if(RGPOT_BUILD_TESTS)
     add_pot_test(MorsePotTest CppCore/tests/MorsePotTest.cc)
     add_pot_test(FortranPotsTest CppCore/tests/FortranPotsTest.cc)
     target_link_libraries(FortranPotsTest PRIVATE Threads::Threads)
+    add_pot_test(TersoffSiCTest CppCore/tests/TersoffSiCTest.cc)
     add_pot_test(CuH2PotTest CppCore/tests/CuH2PotTest.cc)
     if(BUILD_SHARED_LIBS AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
       add_test(NAME FortranSymbolAudit
@@ -503,6 +591,12 @@ if(RGPOT_BUILD_TESTS)
     if(RGPOT_WITH_CACHE)
       add_pot_test(InvarianceTest CppCore/tests/InvarianceTest.cc)
       add_pot_test(CacheTest CppCore/tests/CacheTest.cc)
+    endif()
+
+    if(RGPOT_WITH_IPI)
+      find_package(Threads REQUIRED)
+      add_pot_test(IPIPotTest CppCore/tests/IPIPotTest.cc)
+      target_link_libraries(IPIPotTest PRIVATE Threads::Threads)
     endif()
 
     if(RGPOT_WITH_RPC)

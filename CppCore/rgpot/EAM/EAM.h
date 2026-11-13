@@ -11,15 +11,40 @@
 */
 #pragma once
 
+#include "rgpot/nlist/Neighbours.hpp"
+
+namespace rgpot::eam {
+struct ElementSpline;
+}
+
 #include <array>
-#include <cmath>
+#include <cstdint>
 #include <vector>
 
 #ifndef EAM_STANDALONE
 #include "eon/Potential.h"
 #endif
 
-/// EAM (Embedded Atom Method) potential with cell list neighbor finding.
+/// Fraction of the widest element cutoff added to the neighbour search.
+/// A later call reuses the list while every atom has moved by at most half
+/// of that distance. One fraction for every geometry.
+inline constexpr double kEamSkinOverCutoff = 1.0 / 5.0;
+
+/// One OpenMP thread matches the direct pair loop bit for bit. Several
+/// threads each write the forces of their own atoms and add partial
+/// energies in thread-id order, so a fixed thread count repeats bit for
+/// bit. Energy and every force component stay within this relative
+/// tolerance of the one-thread value. A component whose one-thread
+/// magnitude is below 1 is compared on an absolute scale of the same size.
+inline constexpr double kEamThreadedTolerance = 1e-9;
+
+/// Embedded-atom aluminium, palladium and gold.
+///
+/// The neighbour search is a linked-cell list with a Verlet skin. The force
+/// loop visits the same pairs, in the same atom order, as the direct double
+/// loop, and the arithmetic of each pair is unchanged. `OMP_NUM_THREADS`
+/// above 1 splits atoms across threads. The variable is read on each call.
+/// When it is unset the call stays on one thread.
 class EAM
 #ifndef EAM_STANDALONE
     : public eonc::Potential
@@ -27,11 +52,11 @@ class EAM
 {
 public:
 #ifdef EAM_STANDALONE
-  EAM() : rc_{6.0, 6.0, 6.0} {}
+  EAM() = default;
   ~EAM() = default;
 #else
   explicit EAM(const eonc::Parameters &params)
-      : eonc::Potential(eonc::PotType::EAM_AL, params), rc_{6.0, 6.0, 6.0} {}
+      : eonc::Potential(eonc::PotType::EAM_AL, params) {}
 
   ~EAM() override = default;
 #endif
@@ -44,8 +69,33 @@ public:
 #endif
       ;
 
+  /// Neighbour-list builds since this object was created.
+  [[nodiscard]] std::uint64_t listBuilds() const noexcept {
+    return neighbours_.builds();
+  }
+
+  /// Stored neighbour indices. Zero while the layer is streaming.
+  [[nodiscard]] std::size_t neighborSlots() const noexcept {
+    return neighbours_.slots();
+  }
+
+  /// True when the last build kept the Verlet list.
+  [[nodiscard]] bool listReused() const noexcept { return neighbours_.reused(); }
+
+  /// Partner indices retained between the density pass and the force pass.
+  /// A density-only stream keeps none.
+  [[nodiscard]] std::size_t streamPartners() const noexcept { return js_.size(); }
+
+  /// Ask for a stored list or a streaming walk. Auto stores when the
+  /// candidate index array fits in the memory reported as available.
+  void setNeighbourMode(rgpot::nlist::Mode mode) noexcept { mode_ = mode; }
+
+  /// Threads used by the most recent force call. 1 when OpenMP is off or
+  /// `OMP_NUM_THREADS` is unset.
+  [[nodiscard]] int threadsUsed() const noexcept { return threads_used_; }
+
 #ifndef EAM_STANDALONE
-  /// Cell lists live on the instance; two threads cannot share one EAM.
+  /// The list and the scratch live on the instance.
   [[nodiscard]] bool isSharedInstanceThreadSafe() const noexcept override {
     return false;
   }
@@ -53,36 +103,75 @@ public:
 
 private:
   struct element_parameters {
-    const int Z;                // Atomic number
-    const double Dm;            // Morse potential well depth
-    const double alphaM;        // Curvature at Morse minimum
-    const double Rm;            // Position of Morse minimum
-    const double beta1;         // Density parameter 1
-    const double beta2;         // Density parameter 2
-    const double r_cut;         // Cutoff distance
-    const double func_coeff[9]; // 8th order poly for embedding function
+    const int Z;
+    const double Dm;
+    const double alphaM;
+    const double Rm;
+    const double beta1;
+    const double beta2;
+    const double r_cut;
+    const double func_coeff[9];
   };
   static const element_parameters el_params[];
 
-  std::vector<long> celllist_old_;
-  std::vector<long> celllist_new_;
-  std::vector<long> neigh_list_;
-  bool initialized_{false};
-  std::array<double, 3> rc_;
+  /// One neighbour's density derivative, in atom-index order.
+  struct Delta {
+    long atom;
+    double x;
+    double y;
+    double z;
+  };
 
-  void calc_force(long N, double *R, const int *atomicNrs, double *F, double *U,
-                  const double *box);
-  void new_celllist(long N, const double *box, long *num_axis,
-                    long *cell_length, long *celllist_new, long num_cells,
-                    double *Rnew);
-  void cell_to_neighbor(long N, long num_of_cells, long *num_axis,
-                        long *cell_length, long *celllist_new,
-                        long *neigh_list);
-  int update_cell_list(long N, long num_cells, long *num_axis,
-                       long *cell_length, long *celllist_old, double *Rnew);
+  std::vector<double> wrapped_;
+  std::vector<Delta> deltas_;
+  std::vector<std::int32_t> js_;
+  std::vector<double> rho_;
+  std::vector<double> dF_;
+  std::vector<double> fscale_;
+  std::vector<double> morse_;
+  std::vector<double> gdx_;
+  std::vector<double> gdy_;
+  std::vector<double> gdz_;
+  std::vector<double> ginv_;
+  std::vector<std::int32_t> rev_;
+  std::vector<double> thread_energy_;
+  std::vector<double> partial_f_;
+  /// Per-thread density and force for the stream. One row per thread,
+  /// so a half pair can update both atoms without a lock.
+  std::vector<double> stream_rho_;
+  std::vector<double> stream_force_;
+  std::vector<rgpot::nlist::Range> parts_;
+  rgpot::nlist::Neighbours neighbours_;
+
+  double box_len_[3]{};
+  long n_atoms_ = 0;
+  long part_n_ = -1;
+  int part_nt_ = -1;
+  int threads_used_ = 1;
+  std::uint64_t rev_stamp_ = 0;
+  rgpot::nlist::Mode mode_ = rgpot::nlist::Mode::Auto;
+
+  void prepare(long N, const double *R, const double *box);
+  void buildList(long N);
+  void ensureRev();
+  void ensureParts(long N, int nt);
+  void evaluate(long N, const int *atomicNrs, double *F, double *U);
+  void evaluateStoredParallel(long N, const int *atomicNrs, double *F,
+                              double *U);
+  void evaluateDensityStream(long N, const int *atomicNrs, double *F,
+                             double *U);
+  [[nodiscard]] const rgpot::eam::ElementSpline &splineFor(int Z);
+  void accumulate(long i, const int *atomicNrs, double *F, double &U,
+                  std::vector<Delta> &deltas, const std::int32_t *stream_ids,
+                  long stream_n) const;
+  void geometry(long i, long j, double &dx, double &dy, double &dz,
+                double &r2) const;
+  [[nodiscard]] int threadsRequested() const;
+
+  [[nodiscard]] element_parameters
+  get_element_parameters(int atomic_number) const;
   [[nodiscard]] static double embedding_function(const double *func_coeff,
                                                  double rho);
   [[nodiscard]] static double embedding_force(const double *func_coeff,
                                               double rho);
-  [[nodiscard]] element_parameters get_element_parameters(int atomic_number);
 };

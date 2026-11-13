@@ -21,10 +21,12 @@
 typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 #endif
 
-#define RGPOT_VERSION "3.5.1"
+/* [[[cog import rgpot_version as v; cog.outl(v.header_macros())]]] */
+#define RGPOT_VERSION "3.6.0"
 #define RGPOT_VERSION_MAJOR 3
-#define RGPOT_VERSION_MINOR 5
-#define RGPOT_VERSION_PATCH 1
+#define RGPOT_VERSION_MINOR 6
+#define RGPOT_VERSION_PATCH 0
+/* [[[end]]] */
 
 /**
  * ABI major of this build.
@@ -34,7 +36,7 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 /**
  * ABI minor of this build.
  */
-#define RGPOT_ABI_VERSION_MINOR 0
+#define RGPOT_ABI_VERSION_MINOR 1
 
 /**
  * Layout revision of this build.
@@ -352,6 +354,20 @@ const char *rgpot_last_error(void);
 eindir_abi_stamp_t rgpot_eindir_abi_stamp(void);
 
 /**
+ * Return nonzero when the eindir-core compiled into this library can
+ * consume an objective described by `stamp`.
+ *
+ * This is `eindir_core_abi_compatible` reached through rgpot, so a caller
+ * that links only rgpot checks the stamp against the same eindir-core that
+ * built the `eindir_objective_t` base. A null `stamp` is not compatible.
+ *
+ * # Safety
+ *
+ * `stamp` must be null or point to a readable `eindir_abi_stamp_t`.
+ */
+int32_t rgpot_eindir_abi_compatible(const eindir_abi_stamp_t *stamp);
+
+/**
  * Install the `Capabilities` message of the peer behind `pot`, checked
  * against what this build speaks.
  *
@@ -573,7 +589,7 @@ void rgpot_rpc_client_free(rgpot_rpc_client_t *client);
 #endif
 
 /**
- * Full version string of the loaded library, e.g. `"3.5.1"`.
+ * Full version string of the loaded library, as `MAJOR.MINOR.PATCH`.
  *
  * The pointer refers to static storage: never free it.
  */

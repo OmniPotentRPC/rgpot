@@ -20,6 +20,10 @@ meson compile -C build-eon-export
 meson install -C build-eon-export
 # exports: libnwchempot, libcpmdpot, include/rgpot/**, rgpot.pc
 # (the Cap'n Proto schema ships inside librgpot; there is no libptlrpc)
+#
+# This client-only profile has no umbrella library, so the archives are the
+# installed product. A full librgpot build link_wholes the same frontends
+# into librgpot and does not install libnwchempot.a or libcpmdpot.a.
 ```
 
 Optional engine plugins (install separately / set `*_ENGINE` env at run time):
