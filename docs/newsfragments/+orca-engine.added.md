@@ -1,0 +1,1 @@
+`OrcaPot` runs ORCA EnGrad in a scratch directory and returns energies and forces in eV and eV/Angstrom. `potserv` selects it with `ORCA` or `ORCA:<method>:<basis>:<charge>:<multiplicity>`. Later calls reuse the `.gbw` unless that option is off.

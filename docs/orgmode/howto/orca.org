@@ -1,0 +1,76 @@
+#+TITLE: ORCA energies and forces
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* ORCA energies and forces
+
+=OrcaPot= writes an ORCA input, runs the =orca= binary, and reads the
+=.engrad= file.
+Positions are Angstrom.
+The file's energy is hartree and its gradient is hartree/bohr.
+rgpot returns eV and eV/Angstrom.
+The force on each atom is the negative of the gradient, converted with
+the CODATA 2018 factors in =rgpot/units.hpp= (Tiesinga, Mohr, Newell and
+Taylor, Rev. Mod. Phys. 93, 025010, 2021).
+The box is ignored.
+An EnGrad job is a molecule.
+
+The binary is =OrcaConfig::executable=, then the =RGPOT_ORCA=
+environment variable, then =ORCA=, then =orca= on =PATH=.
+Each instance keeps its own scratch directory.
+After a successful call the =.gbw= stays there.
+The next call adds =! MORead= and =%moinp= unless =reuse_gbw= is false.
+If that call fails, it is tried once more from a fresh guess.
+=%pal nprocs= and =%maxcore= are written only when =nprocs= and
+=maxcore_mb= are positive.
+
+** Example
+
+#+begin_src cpp
+#include "rgpot/OrcaPot/OrcaPot.hpp"
+
+rgpot::OrcaConfig cfg;
+cfg.method = "B3LYP";
+cfg.basis = "def2-SVP";
+cfg.keywords = "TightSCF";
+cfg.charge = 0;
+cfg.multiplicity = 1;
+cfg.nprocs = 4;
+cfg.maxcore_mb = 2000;
+// Empty executable: RGPOT_ORCA, else ORCA, else `orca` on PATH.
+rgpot::OrcaPot pot(cfg);
+#+end_src
+
+=keywords= is extra simple-input tokens.
+A value that contains a newline, or that starts with =!= or =%=, is
+written as its own block under the simple-input line.
+
+** Server
+
+#+begin_src bash
+RGPOT_ORCA=/opt/orca/orca ./bbdir/CppCore/potserv 12345 ORCA
+RGPOT_ORCA=/opt/orca/orca \
+  ./bbdir/CppCore/potserv 12345 ORCA:B3LYP:def2-SVP:0:1
+#+end_src
+
+The fields after =ORCA= are method, basis, charge and multiplicity.
+Omitted fields keep =HF=, =STO-3G=, charge 0 and multiplicity 1.
+
+** C entry
+
+=rgpot_orca_create=, =rgpot_orca_calculate= and =rgpot_orca_destroy= are
+the C entry points (=orca_c_abi.h=).
+=rgpot_orca_calculate= is the force call.
+Hosts that open =liborca_engine.so= use the generic =rgpot_engine_*=
+table as well.
+=BuiltinParams= with name =orca= selects it, and =library= is an
+optional path to the =orca= binary.
+The handle is per instance: a saddle image keeps its own =.gbw=.
+
+** Build
+
+The potential is always compiled.
+Nothing is linked against ORCA.
+=meson test= covers the =.engrad= parser, the input text, and a fake
+=orca= on =PATH=.
+A real water calculation runs only when an =orca= binary is installed.

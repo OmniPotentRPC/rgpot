@@ -373,6 +373,19 @@ TEST_CASE("mopac engine", "[engine][mopac]") {
   check_unavailable_engine("MOPAC", "mopac", builtin_params("mopac"), 2);
 }
 
+TEST_CASE("orca engine", "[engine][orca]") {
+  check_unavailable_engine("ORCA", "orca", builtin_params("orca"), 1);
+  Engine e;
+  if (!open_engine("ORCA", e)) {
+    SKIP("no orca engine in this build");
+  }
+  RgpotEnginePot *pot = create(e, builtin_params("orca"));
+  REQUIRE(pot != nullptr);
+  REQUIRE(e.set_charge_spin(pot, -1, 3) == 0);
+  REQUIRE(e.set_num_threads(pot, 1, 1) == 3);
+  e.destroy(pot);
+}
+
 TEST_CASE("nwchem engine", "[engine][nwchem]") {
   capnp::MallocMessageBuilder msg;
   msg.initRoot<::NWChemParams>();

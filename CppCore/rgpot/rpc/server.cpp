@@ -62,6 +62,7 @@ class MpiPefSession;
 #include "rgpot/NWChemPot/NWChemPot.hpp"
 #include "rgpot/Potential.hpp"
 #include "rgpot/abi/Handshake.hpp"
+#include "rgpot/OrcaPot/OrcaPot.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
 #ifdef RGPOT_HAS_IPI
 #include "rgpot/IPIPot/IPIPot.hpp"
@@ -283,6 +284,7 @@ int runServer(int argc, char *argv[]
   if (argc < 3) {
     std::cerr << "Usage: " << argv[0] << " <port> <PotentialType>" << std::endl;
     std::cerr << "  Available PotentialTypes: CuH2, LJ, LJCluster, Morse, ZBL"
+              << ", ORCA[:method[:basis[:charge[:multiplicity]]]]"
 #ifdef RGPOT_HAS_IPI
               << ", IPI:unix:<path>, IPI:tcp:<host>:<port>"
 #endif
@@ -351,6 +353,32 @@ int runServer(int argc, char *argv[]
   } else if (pot_type == "ZBL") {
     std::cout << "Loading ZBL potential..." << std::endl;
     potential_to_use = std::make_unique<rgpot::ZBLPot>();
+  } else if (pot_type == "ORCA" || pot_type.rfind("ORCA:", 0) == 0) {
+    rgpot::OrcaConfig cfg;
+    if (pot_type.size() > 5) {
+      std::vector<std::string> parts;
+      std::stringstream ss(pot_type);
+      std::string tok;
+      while (std::getline(ss, tok, ':')) {
+        parts.push_back(tok);
+      }
+      if (parts.size() > 1 && !parts[1].empty()) {
+        cfg.method = parts[1];
+      }
+      if (parts.size() > 2 && !parts[2].empty()) {
+        cfg.basis = parts[2];
+      }
+      if (parts.size() > 3 && !parts[3].empty()) {
+        cfg.charge = std::stoi(parts[3]);
+      }
+      if (parts.size() > 4 && !parts[4].empty()) {
+        cfg.multiplicity = std::stoi(parts[4]);
+      }
+    }
+    std::cout << "Loading ORCA potential (method=" << cfg.method
+              << " basis=" << cfg.basis << " charge=" << cfg.charge
+              << " multiplicity=" << cfg.multiplicity << ")..." << std::endl;
+    potential_to_use = std::make_unique<rgpot::OrcaPot>(cfg);
 #ifdef RGPOT_HAS_IPI
   } else if (pot_type == "IPI" || pot_type.rfind("IPI:", 0) == 0) {
     if (pot_type.size() < 5) {

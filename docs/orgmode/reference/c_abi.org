@@ -227,7 +227,7 @@ stamp differs and that its compatibility check refuses the real stamp.
 =kCxxSoversion= applies to =librgpot= only.
 =librgpot_mpi= stays at soversion 3: its C ABI is =RGPOT_MPI_ABI_VERSION= 1.
 The engine plugins (=libclassical_engine.so=, =libmopac_engine.so=,
-=libnwchem_engine.so=, =libskala_engine.so=,
+=libnwchem_engine.so=, =libskala_engine.so=, =liborca_engine.so=,
 =libxtb_engine.so=, =libmetatomic_engine.so=,
 =libuma_engine.so=) are opened by those unversioned names and keep =RGPOT_ENGINE_ABI_VERSION= 1.
 The =libpot_client_bridge= header did not change.

@@ -235,6 +235,12 @@ RPC client types:
 <td class="org-left"><code>IPI:unix:&lt;path&gt;</code>, <code>IPI:tcp:&lt;host&gt;:&lt;port&gt;</code></td>
 <td class="org-left">POSIX socket server for an i-PI force driver. <code>-Dwith_ipi=auto</code> (off on Windows). See <code>docs/orgmode/howto/ipi.org</code>.</td>
 </tr>
+
+<tr>
+<td class="org-left"><code>OrcaPot</code></td>
+<td class="org-left"><code>ORCA</code>, <code>ORCA:&lt;method&gt;:&lt;basis&gt;:&lt;charge&gt;:&lt;multiplicity&gt;</code></td>
+<td class="org-left">ORCA EnGrad subprocess. Always built. <code>RGPOT_ORCA</code> or <code>ORCA</code> or <code>orca</code> on <code>PATH</code>. See <code>docs/orgmode/howto/orca.org</code>.</td>
+</tr>
 </tbody>
 </table>
 
@@ -276,6 +282,7 @@ When the build also has `-Dwith_dftd3=true`, swap the Morse child for
 Example server commands:
 
     ./bbdir/CppCore/potserv 12345 LJ
+    RGPOT_ORCA=/opt/orca/orca ./bbdir/CppCore/potserv 12345 ORCA:B3LYP:def2-SVP:0:1
     ./bbdir/CppCore/potserv 12345 IPI:unix:/tmp/ipi_rgpot
     ./bbdir/CppCore/potserv 12345 Metatomic:CppCore/tests/data/lj38/lennard-jones.pt
     CPMDC_LIBRARY=/path/to/libcpmdc.so ./bbdir/CppCore/potserv 12345 CPMD

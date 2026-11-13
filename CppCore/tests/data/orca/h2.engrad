@@ -1,0 +1,24 @@
+# Hand-written fixture for the rgpot ORCA engrad parser.
+# This file was not produced by an ORCA run.
+#
+# Number of atoms
+#
+2
+#
+# The current total energy in Eh
+#
+    -1.5
+#
+# The current gradient in Eh/bohr
+#
+    0.25
+    0.0
+    0.0
+   -0.25
+    0.0
+    0.0
+#
+# The atomic numbers and current coordinates in Bohr
+#
+   1    0.0  0.0  0.0
+   1    1.4  0.0  0.0

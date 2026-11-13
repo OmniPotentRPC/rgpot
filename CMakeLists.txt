@@ -191,6 +191,8 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/LennardJones/LJClusterKernel.cc
       CppCore/rgpot/Morse/MorsePot.cc
       CppCore/rgpot/ZBL/ZBLPot.cc
+      CppCore/rgpot/OrcaPot/OrcaPot.cc
+      CppCore/rgpot/OrcaPot/OrcaEngineAbi.cc
       CppCore/rgpot/simd/dispatch.cc
       CppCore/rgpot/simd/scalar_kernels.cc
       CppCore/rgpot/CuH2/cuh2Utils.cc
@@ -576,6 +578,10 @@ if(RGPOT_BUILD_TESTS)
                        "${CMAKE_CURRENT_SOURCE_DIR}/CppCore/tests/check_virtual_counts.py")
     endif()
     add_pot_test(MorsePotTest CppCore/tests/MorsePotTest.cc)
+    add_pot_test(OrcaPotTest CppCore/tests/OrcaPotTest.cc)
+    set_tests_properties(OrcaPotTest PROPERTIES
+                         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                         TIMEOUT 180)
     add_pot_test(FortranPotsTest CppCore/tests/FortranPotsTest.cc)
     target_link_libraries(FortranPotsTest PRIVATE Threads::Threads)
     add_pot_test(SWSiTest CppCore/tests/SWSiTest.cc)

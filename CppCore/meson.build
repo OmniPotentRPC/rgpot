@@ -242,6 +242,9 @@ if not get_option('with_rpc_client_only')
     subdir('rgpot/ZBL')  # 'zbl'
     rgpotentials += [zbl]
 
+    subdir('rgpot/OrcaPot')  # 'orcapot'
+    rgpotentials += [orcapot]
+
     if has_ipi
         subdir('rgpot/IPIPot')  # 'ipi'
         rgpotentials += [ipi]
@@ -436,6 +439,17 @@ if not get_option('with_rpc_client_only')
             dependencies: _engine_deps + [nwchem_dl_dep],
             link_with: [rgpot_core],
             link_whole: [nwchempot],
+            cpp_args: _engine_args,
+            include_directories: _incdirs,
+            gnu_symbol_visibility: 'default',
+            install: not meson.is_subproject(),
+        )
+        orca_engine = shared_library(
+            'orca_engine',
+            [_engine_common, files('rgpot/engine/OrcaEngine.cc')],
+            dependencies: _engine_deps,
+            link_with: [rgpot_core],
+            link_whole: [orcapot],
             cpp_args: _engine_args,
             include_directories: _incdirs,
             gnu_symbol_visibility: 'default',
@@ -748,6 +762,7 @@ if get_option('with_tests')
     if not get_option('with_rpc_client_only')
         test_array += [
             ['MorsePotTest', 'morse_pot_test', 'MorsePotTest.cc', ''],
+            ['OrcaPotTest', 'orca_pot_test', 'OrcaPotTest.cc', ''],
             ['SWSiTest', 'sw_si_test', 'SWSiTest.cc', ''],
             ['TersoffSiCTest', 'tersoff_sic_test', 'TersoffSiCTest.cc', ''],
             [
@@ -1883,6 +1898,9 @@ if get_option('with_tests')
         elif test.get(0) == 'SuttonChenPotTest'
             # Two cluster relaxations, up to 2000 force calls each.
             _timeout = 120
+        elif test.get(0) == 'OrcaPotTest'
+            # The water case runs only when an orca binary is installed.
+            _timeout = 180
         endif
         test(
             test.get(0),
@@ -2168,11 +2186,12 @@ if get_option('with_tests')
         endif
         if _rpc_stack and host_system != 'windows'
             engine_table_env = environment()
-            engine_table_expect = ['CLASSICAL', 'MOPAC', 'NWCHEM']
+            engine_table_expect = ['CLASSICAL', 'MOPAC', 'NWCHEM', 'ORCA']
             engine_table_depends = [
                 classical_engine,
                 mopac_engine,
                 nwchem_engine,
+                orca_engine,
             ]
             engine_table_env.set(
                 'RGPOT_ENGINE_CLASSICAL',
@@ -2183,6 +2202,7 @@ if get_option('with_tests')
                 'RGPOT_ENGINE_NWCHEM',
                 nwchem_engine.full_path(),
             )
+            engine_table_env.set('RGPOT_ENGINE_ORCA', orca_engine.full_path())
             if has_skala
                 engine_table_expect += ['SKALA']
                 engine_table_depends += [skala_engine]

@@ -137,6 +137,7 @@ ctest --test-dir build_client --output-on-failure
 | =SkalaPot= | =Skala= | Skala XC on NWChem DFT via =libnwchemc=. |
 | =MOPACPot= | =MOPAC= | Frontend always builds; load =libmopacc= from the split [[https://github.com/OmniPotentRPC/mopacc][mopacc]] project at runtime (OpenMOPAC). Packed params. Default model AM1. |
 | =IPIPot= | =IPI:unix:<path>=, =IPI:tcp:<host>:<port>= | POSIX socket server for an i-PI force driver. =-Dwith_ipi=auto= (off on Windows). See =docs/orgmode/howto/ipi.org=. |
+| =OrcaPot= | =ORCA=, =ORCA:<method>:<basis>:<charge>:<multiplicity>= | ORCA EnGrad subprocess. Always built. =RGPOT_ORCA= or =ORCA= or =orca= on =PATH=. See =docs/orgmode/howto/orca.org=. |
 
 Copyable construct-and-evaluate (meson =-Dwith_expr=true=).
 =PotentialHandle::from_impl= / =rgpot_potential_new_eindir= wraps that
@@ -179,6 +180,7 @@ Example server commands:
 
 #+begin_src bash
 ./bbdir/CppCore/potserv 12345 LJ
+RGPOT_ORCA=/opt/orca/orca ./bbdir/CppCore/potserv 12345 ORCA:B3LYP:def2-SVP:0:1
 ./bbdir/CppCore/potserv 12345 IPI:unix:/tmp/ipi_rgpot
 ./bbdir/CppCore/potserv 12345 Metatomic:CppCore/tests/data/lj38/lennard-jones.pt
 CPMDC_LIBRARY=/path/to/libcpmdc.so ./bbdir/CppCore/potserv 12345 CPMD
