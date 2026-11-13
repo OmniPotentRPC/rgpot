@@ -285,20 +285,197 @@ fn general_pairs(
         }
     }
     let cut2 = list_cutoff * list_cutoff;
-    let mut pairs = Vec::new();
-    for i in 0..xyz.len() {
-        for j in (i + 1)..xyz.len() {
-            let d = [
-                xyz[i][0] - xyz[j][0],
-                xyz[i][1] - xyz[j][1],
-                xyz[i][2] - xyz[j][2],
-            ];
-            if general_r2(d, cell, &inv, periodic) <= cut2 {
-                pairs.push((i as i32, j as i32));
+    let n = xyz.len();
+    let mut frac = vec![[0.0; 3]; n];
+    for (p, f) in xyz.iter().zip(frac.iter_mut()) {
+        for k in 0..3 {
+            f[k] = p[0] * inv[0][k] + p[1] * inv[1][k] + p[2] * inv[2][k];
+        }
+    }
+    let mut nbins = [1i32; 3];
+    let mut reach = [0i32; 3];
+    let mut origin = [0.0; 3];
+    let mut span = [1.0; 3];
+    for k in 0..3 {
+        if periodic[k] {
+            let mut bins = (widths[k] / list_cutoff).floor() as i32;
+            if bins < 1 {
+                bins = 1;
+            }
+            let bin_w = widths[k] / bins as f64;
+            let ratio = list_cutoff / bin_w;
+            let mut r = ratio.ceil() as i32;
+            if (r as f64 - ratio) < 1e-8 {
+                r += 1;
+            }
+            if r < 1 {
+                r = 1;
+            }
+            nbins[k] = bins;
+            reach[k] = r;
+        } else {
+            let mut lo = f64::INFINITY;
+            let mut hi = f64::NEG_INFINITY;
+            for f in &frac {
+                lo = lo.min(f[k]);
+                hi = hi.max(f[k]);
+            }
+            if !lo.is_finite() {
+                lo = 0.0;
+                hi = 0.0;
+            }
+            let extent = (hi - lo).max(0.0);
+            let phys = extent * widths[k];
+            origin[k] = lo;
+            if !(phys > list_cutoff) || !(widths[k] > 0.0) {
+                nbins[k] = 1;
+                reach[k] = 0;
+                span[k] = 1.0;
+            } else {
+                let mut bins = (phys / list_cutoff).floor() as i32;
+                if bins < 1 {
+                    bins = 1;
+                }
+                let bin_w = phys / bins as f64;
+                let ratio = list_cutoff / bin_w;
+                let mut r = ratio.ceil() as i32;
+                if (r as f64 - ratio) < 1e-8 {
+                    r += 1;
+                }
+                if r < 1 {
+                    r = 1;
+                }
+                nbins[k] = bins;
+                reach[k] = r;
+                span[k] = extent;
             }
         }
     }
+    let nx = nbins[0] as usize;
+    let ny = nbins[1] as usize;
+    let nz = nbins[2] as usize;
+    let ncells = nx * ny * nz;
+    let mut count = vec![0u32; ncells];
+    let mut home = vec![0usize; n];
+    for (i, f) in frac.iter().enumerate() {
+        let ix = bin_axis(f[0], 0, &nbins, &origin, &span, periodic);
+        let iy = bin_axis(f[1], 1, &nbins, &origin, &span, periodic);
+        let iz = bin_axis(f[2], 2, &nbins, &origin, &span, periodic);
+        let id = (ix * ny + iy) * nz + iz;
+        home[i] = id;
+        count[id] += 1;
+    }
+    let mut start = vec![0usize; ncells + 1];
+    for c in 0..ncells {
+        start[c + 1] = start[c] + count[c] as usize;
+    }
+    let mut cursor = start.clone();
+    let mut atoms = vec![0u32; n];
+    for i in 0..n {
+        let id = home[i];
+        atoms[cursor[id]] = i as u32;
+        cursor[id] += 1;
+    }
+    let mut pairs = Vec::new();
+    let mut seen = Vec::with_capacity(27);
+    for i in 0..n {
+        let ix = bin_axis(frac[i][0], 0, &nbins, &origin, &span, periodic) as i32;
+        let iy = bin_axis(frac[i][1], 1, &nbins, &origin, &span, periodic) as i32;
+        let iz = bin_axis(frac[i][2], 2, &nbins, &origin, &span, periodic) as i32;
+        seen.clear();
+        for ox in -reach[0]..=reach[0] {
+            for oy in -reach[1]..=reach[1] {
+                for oz in -reach[2]..=reach[2] {
+                    let bx = ix + ox;
+                    let by = iy + oy;
+                    let bz = iz + oz;
+                    let wx = wrap_bin(bx, nbins[0], periodic[0]);
+                    let wy = wrap_bin(by, nbins[1], periodic[1]);
+                    let wz = wrap_bin(bz, nbins[2], periodic[2]);
+                    if wx < 0 || wy < 0 || wz < 0 {
+                        continue;
+                    }
+                    let id = ((wx as usize) * ny + wy as usize) * nz + wz as usize;
+                    if seen.contains(&id) {
+                        continue;
+                    }
+                    seen.push(id);
+                    for q in start[id]..start[id + 1] {
+                        let j = atoms[q] as usize;
+                        if j <= i {
+                            continue;
+                        }
+                        let d = [
+                            xyz[i][0] - xyz[j][0],
+                            xyz[i][1] - xyz[j][1],
+                            xyz[i][2] - xyz[j][2],
+                        ];
+                        if general_r2(d, cell, &inv, periodic) <= cut2 {
+                            pairs.push((i as i32, j as i32));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    pairs.sort_unstable();
     Ok(pairs)
+}
+
+fn bin_axis(
+    f: f64,
+    axis: usize,
+    nbins: &[i32; 3],
+    origin: &[f64; 3],
+    span: &[f64; 3],
+    periodic: [bool; 3],
+) -> usize {
+    let n = nbins[axis];
+    if n <= 1 {
+        return 0;
+    }
+    let mut u = if periodic[axis] {
+        let mut w = f - f.floor();
+        if w >= 1.0 {
+            w = 0.0;
+        }
+        if w < 0.0 {
+            w = 0.0;
+        }
+        w * n as f64
+    } else if span[axis] > 0.0 {
+        (f - origin[axis]) / span[axis] * n as f64
+    } else {
+        0.0
+    };
+    if !u.is_finite() {
+        u = 0.0;
+    }
+    let mut b = u.floor() as i32;
+    if b < 0 {
+        b = 0;
+    }
+    if b >= n {
+        b = n - 1;
+    }
+    b as usize
+}
+
+fn wrap_bin(b: i32, n: i32, periodic: bool) -> i32 {
+    if n <= 0 {
+        return -1;
+    }
+    if periodic {
+        let mut w = b % n;
+        if w < 0 {
+            w += n;
+        }
+        w
+    } else if b < 0 || b >= n {
+        -1
+    } else {
+        b
+    }
 }
 
 fn collect_pairs(
