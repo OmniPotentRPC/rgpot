@@ -78,10 +78,23 @@ They are also not the ELF soversion of =librgpot=.
 The C API is exported from that library and has no shared library of its own, so
 a C caller relinks when the C++ SONAME moves even if these numbers stay.
 3.5.0 left them at 1, 0 and 1.
-=rgpot_eindir_abi_compatible= is a new exported function, so the next release
-carries 1, 1 and 1: a caller built against minor 0 still matches, and a caller
-that needs the new function is refused by a 3.5 library.
-No exported C struct changed layout.
+3.6.0 carries 1, 1 and 1.
+=rgpot_eindir_abi_compatible= is the new exported function.
+A caller built against minor 0 still matches, and a caller that needs the new
+function is refused by a 3.5 library.
+No exported C struct in =rgpot.h= changed layout.
+The neighbour-list C ABI is separate.
+3.6.0 sets it to version 4 (=RGPOT_NLIST_ABI= in =rgpot_nlist.h=).
+=rgpot_nlist_request_init= sets the defaults, =bytes= is the struct size, and =rgpot_nlist_strerror=
+names a code.
+3.6.0 also bumps the ELF soversion of =librgpot= from the soversion 4 of 3.5.1.
+Soversion 5 records LJPot and MorsePot each holding a neighbour list and a
+cached pair table.
+Soversion 6 is what this release ships.
+LJ and Morse no longer keep a copied half-list, and ZBL and the open
+Lennard-Jones cluster hold a neighbour list.
+A caller built against soversion 4 does not load =librgpot.so.6=.
+=librgpot_mpi= stays at soversion 3.
 
 ** C++ layout stamp
 

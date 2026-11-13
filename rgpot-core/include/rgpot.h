@@ -21,10 +21,12 @@
 typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 #endif
 
-#define RGPOT_VERSION "3.5.1"
+/* [[[cog import rgpot_version as v; cog.outl(v.header_macros())]]] */
+#define RGPOT_VERSION "3.6.0"
 #define RGPOT_VERSION_MAJOR 3
-#define RGPOT_VERSION_MINOR 5
-#define RGPOT_VERSION_PATCH 1
+#define RGPOT_VERSION_MINOR 6
+#define RGPOT_VERSION_PATCH 0
+/* [[[end]]] */
 
 /**
  * ABI major of this build.
@@ -588,7 +590,7 @@ void rgpot_rpc_client_free(rgpot_rpc_client_t *client);
 #endif
 
 /**
- * Full version string of the loaded library, e.g. `"3.5.1"`.
+ * Full version string of the loaded library, as `MAJOR.MINOR.PATCH`.
  *
  * The pointer refers to static storage: never free it.
  */

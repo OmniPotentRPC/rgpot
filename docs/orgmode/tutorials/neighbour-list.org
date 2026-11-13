@@ -5,6 +5,9 @@
 * Neighbour lists
 
 The public neighbour query is one mental model in C++, C and Cap'n Proto.
+The C ABI of that query is version 4, in =rgpot_nlist.h=.
+=rgpot_nlist_request_init= sets the defaults, =bytes= is the struct size, and =rgpot_nlist_strerror=
+names a code.
 Positions and the cutoff share a length unit.
 The library does not convert.
 The cell is nine doubles, lattice vectors as rows, the same order as an ASE cell

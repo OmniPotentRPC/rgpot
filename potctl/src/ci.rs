@@ -307,8 +307,8 @@ pub fn preflight(root: &Path, lockstep_check: bool) -> Result<()> {
         lockstep::assert_lockstep(root, None, false)?;
     } else {
         // Still surface versions for logs without failing on drift (rare).
-        let meson = lockstep::read_meson_version(root).unwrap_or_else(|_| "?".into());
-        println!("preflight: meson version = {meson} (lockstep not enforced)");
+        let version = lockstep::read_workspace_version(root).unwrap_or_else(|_| "?".into());
+        println!("preflight: release version = {version} (lockstep not enforced)");
     }
 
     println!("preflight ok ({})", root.display());
@@ -490,13 +490,13 @@ pub fn run_towncrier_draft(root: &Path) -> Result<()> {
     run_towncrier_argv(root, invoke, &["build", "--draft"])
 }
 
-/// `potctl ci cog-bump-dry-run` — PR tip (meson version) or workflow_dispatch bump kind.
+/// `potctl ci cog-bump-dry-run` — PR tip (workspace version) or workflow_dispatch bump kind.
 pub fn run_cog_bump_dry_run(root: &Path, bump: Option<&str>) -> Result<()> {
     let mut cmd = Command::new("cog");
     cmd.current_dir(root);
     match bump {
         None | Some("") => {
-            let ver = lockstep::read_meson_version(root)?;
+            let ver = lockstep::read_workspace_version(root)?;
             cmd.args(["bump", "--version", &ver, "--dry-run"]);
             let output = cmd
                 .output()
@@ -523,7 +523,7 @@ pub fn run_cog_bump_dry_run(root: &Path, bump: Option<&str>) -> Result<()> {
             run_cmd_status_ok("cog", &["bump", "--major", "--dry-run"], root)
         }
         Some(other) => Err(format!(
-            "unknown cog bump kind {other:?}; expected auto|patch|minor|major or omit for meson version"
+            "unknown cog bump kind {other:?}; expected auto|patch|minor|major or omit for the workspace version"
         )),
     }
 }
@@ -624,7 +624,8 @@ pub fn is_conventional_commit_subject(subj: &str) -> bool {
     // type(scope): or type:
     let types = [
         "feat", "fix", "perf", "bench", "refactor", "docs", "test", "build", "ci", "chore",
-        "style", "revert", "enh", "bug", "maint", "doc", "tst", "bld", "gen", "simd",
+        "style", "revert", "enh", "bug", "maint", "doc", "tst", "bld", "gen", "simd", "pot",
+        "python", "nlist",
     ];
     for t in types {
         if s.starts_with(&format!("{t}(")) || s.starts_with(&format!("{t}:")) {
@@ -1673,6 +1674,11 @@ mod tests {
         assert!(is_conventional_commit_subject("fix: waitid stub"));
         assert!(is_conventional_commit_subject("chore: bump"));
         assert!(is_conventional_commit_subject("bench: time one force call"));
+        assert!(is_conventional_commit_subject("pot(sw): add the pair kernel"));
+        assert!(is_conventional_commit_subject("python(sw): bind the energy"));
+        assert!(is_conventional_commit_subject(
+            "nlist: bin atoms on a cutoff-sized cell grid"
+        ));
         assert!(is_conventional_commit_subject("Merge branch 'main'"));
         assert!(is_conventional_commit_subject(
             "merge: take the wheel ISA audit from main"

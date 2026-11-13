@@ -1,1 +1,0 @@
-A short cutoff reuses the shared stream stencil, keeping only cells that hold a pair inside the search when a 27-slot entry per cell is larger than the pair index. Morse and EAM stay on the full stencil. `Mode::Auto` still stores when the pair index fits.
