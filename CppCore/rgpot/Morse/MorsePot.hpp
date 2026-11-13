@@ -85,7 +85,8 @@ public:
   }
 
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.reentrancy = Reentrancy::PerInstance, .stress = true};
+    return {.reentrancy = Reentrancy::PerInstance, .stress = true,
+            .virial = true};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {

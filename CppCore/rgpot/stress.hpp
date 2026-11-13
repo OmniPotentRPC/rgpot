@@ -94,31 +94,45 @@ inline void accumulateBondStrain(double acc[6], double dx, double dy, double dz,
   acc[5] += dx * gy;
 }
 
-/// Write acc/volume into the row-major ForceOut stress. A nonpositive
-/// volume leaves has_stress clear.
+/// Write the virial and, when volume > 0, the Cauchy stress.
+///
+/// `acc` is dE/dε in Voigt order xx, yy, zz, yz, xz, xy. The virial is
+/// W = -dE/dε, which is sum r_ij ⊗ f_ij for the pair force that produced
+/// `acc`. stress = acc/V = -W/V. A nonpositive volume leaves has_stress
+/// clear and still publishes W.
 inline void publishCauchyStress(ForceOut *out, const double acc[6],
                                 double volume) {
+  const double xx = -acc[0];
+  const double yy = -acc[1];
+  const double zz = -acc[2];
+  const double yz = -acc[3];
+  const double xz = -acc[4];
+  const double xy = -acc[5];
+  out->virial[0] = xx;
+  out->virial[1] = xy;
+  out->virial[2] = xz;
+  out->virial[3] = xy;
+  out->virial[4] = yy;
+  out->virial[5] = yz;
+  out->virial[6] = xz;
+  out->virial[7] = yz;
+  out->virial[8] = zz;
+  out->has_virial = 1;
   std::fill(out->stress, out->stress + 9, 0.0);
   if (!(volume > 0.0)) {
     out->has_stress = 0;
     return;
   }
-  const double s = 1.0 / volume;
-  const double xx = acc[0] * s;
-  const double yy = acc[1] * s;
-  const double zz = acc[2] * s;
-  const double yz = acc[3] * s;
-  const double xz = acc[4] * s;
-  const double xy = acc[5] * s;
-  out->stress[0] = xx;
-  out->stress[1] = xy;
-  out->stress[2] = xz;
-  out->stress[3] = xy;
-  out->stress[4] = yy;
-  out->stress[5] = yz;
-  out->stress[6] = xz;
-  out->stress[7] = yz;
-  out->stress[8] = zz;
+  const double s = -1.0 / volume;
+  out->stress[0] = xx * s;
+  out->stress[1] = xy * s;
+  out->stress[2] = xz * s;
+  out->stress[3] = xy * s;
+  out->stress[4] = yy * s;
+  out->stress[5] = yz * s;
+  out->stress[6] = xz * s;
+  out->stress[7] = yz * s;
+  out->stress[8] = zz * s;
   out->has_stress = 1;
 }
 

@@ -70,6 +70,7 @@ class MpiPefSession;
 #include "rgpot/types/AtomMatrix.hpp"
 #include "rgpot/types/adapters/capnp/capnp_adapter.hpp"
 #include "rgpot/units.hpp"
+#include "rgpot/rpc/write_mechanical.hpp"
 
 /**
  * @class GenericPotImpl
@@ -257,33 +258,16 @@ public:
     rgpot::types::adapt::capnp::populateForcesToCapnp(forcesList, forces);
 
     // sigma_caller = sigma_eV/A^3 * (eV -> caller) * (A -> caller length)^3.
-    // W is an energy, so it converts with the energy factor alone.
-    // stress = -virial/V in either unit system.
-    const double stress_to_caller =
-        ev_to_caller * len_to_angstrom * len_to_angstrom * len_to_angstrom;
-    if (have_stress) {
-      auto stressList = pres.initStress(9);
-      for (unsigned int i = 0; i < 9; ++i) {
-        stressList.set(i, stress_eV[i] * stress_to_caller);
-      }
-      pres.setHasStress(true);
-    }
-    if (have_virial) {
-      auto virialList = pres.initVirial(9);
-      for (unsigned int i = 0; i < 9; ++i) {
-        virialList.set(i, virial_eV[i] * ev_to_caller);
-      }
-      pres.setHasVirial(true);
-    }
+    // W is an energy. stress = -virial/V in either unit system.
+    rgpot::rpc::writeMechanical(pres, stress_eV, have_stress ? 1 : 0, virial_eV,
+                                have_virial ? 1 : 0, ev_to_caller,
+                                len_to_angstrom);
 #ifdef RGPOT_HAS_IPI
     if (!have_stress && m_ipi != nullptr) {
       double stress[9];
       if (m_ipi->copyStress(stress)) {
-        auto stressList = pres.initStress(9);
-        for (unsigned int i = 0; i < 9; ++i) {
-          stressList.set(i, stress[i] * stress_to_caller);
-        }
-        pres.setHasStress(true);
+        rgpot::rpc::writeMechanical(pres, stress, 1, nullptr, 0, ev_to_caller,
+                                    len_to_angstrom);
       }
     }
 #endif

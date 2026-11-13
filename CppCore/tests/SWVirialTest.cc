@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
+#include <iostream>
 #include <random>
 #include <sstream>
 #include <string>
@@ -16,7 +17,7 @@
 
 #include <catch2/catch_all.hpp>
 
-#include "rgpot/LennardJones/LJPot.hpp"
+#include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/stress.hpp"
 
@@ -134,7 +135,39 @@ void checkAgainstCentral(const std::vector<double> &pos,
   }
 }
 
-std::string lammpsBinary() {
+std::array<double, 9> invertCell(const std::array<double, 9> &m) {
+  const double a = m[0], b = m[1], c = m[2];
+  const double d = m[3], e = m[4], f = m[5];
+  const double g = m[6], h = m[7], i = m[8];
+  const double det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+  const double s = 1.0 / det;
+  return {(e * i - f * h) * s, (c * h - b * i) * s, (b * f - c * e) * s,
+          (f * g - d * i) * s, (a * i - c * g) * s, (c * d - a * f) * s,
+          (d * h - e * g) * s, (b * g - a * h) * s, (a * e - b * d) * s};
+}
+
+/// Fold each atom into the primary cell. A sheared embedding can leave
+/// a periodic image with a negative cartesian coordinate; read_data
+/// keeps those atoms, create_atoms does not.
+void wrapIntoCell(std::vector<double> &pos, const std::array<double, 9> &box) {
+  const std::array<double, 9> inv = invertCell(box);
+  for (std::size_t a = 0; a < pos.size() / 3; ++a) {
+    const double x = pos[3 * a];
+    const double y = pos[3 * a + 1];
+    const double z = pos[3 * a + 2];
+    double s[3];
+    for (int col = 0; col < 3; ++col) {
+      s[col] = x * inv[col] + y * inv[3 + col] + z * inv[6 + col];
+      s[col] -= std::floor(s[col]);
+    }
+    for (int col = 0; col < 3; ++col) {
+      pos[3 * a + col] =
+          s[0] * box[col] + s[1] * box[3 + col] + s[2] * box[6 + col];
+    }
+  }
+}
+
+std::string lammpsCommand() {
   const char *names[] = {"lmp", "lmp_serial", "lmp_mpi", "lammps"};
   for (const char *name : names) {
     const std::string probe =
@@ -142,6 +175,9 @@ std::string lammpsBinary() {
     if (std::system(probe.c_str()) == 0) {
       return name;
     }
+  }
+  if (std::system("python3 -c 'import lammps' >/dev/null 2>&1") == 0) {
+    return "python3";
   }
   return {};
 }
@@ -193,16 +229,16 @@ TEST_CASE("virial is unavailable unless the potential implements it",
   REQUIRE(outputs[0].virial[0] == 0.0);
   REQUIRE(outputs[0].energy == 1.0);
 
-  rgpot::LJPot lj;
-  REQUIRE(lj.caps().stress);
-  REQUIRE_FALSE(lj.caps().virial);
+  rgpot::LJClusterPot cluster;
+  REQUIRE_FALSE(cluster.caps().stress);
+  REQUIRE_FALSE(cluster.caps().virial);
   double pair[6] = {0, 0, 0, 1.2, 0.1, 0};
   int types[2] = {1, 1};
   double ljBox[9] = {20, 0, 0, 0, 20, 0, 0, 0, 20};
   double ljF[6] = {};
   rgpot::ForceOut ljOut{ljF, 0.0, 0.0, {}, 0};
-  lj.forceImpl({2, pair, types, ljBox}, &ljOut);
-  REQUIRE(ljOut.has_stress == 1);
+  cluster.forceImpl({2, pair, types, ljBox}, &ljOut);
+  REQUIRE(ljOut.has_stress == 0);
   REQUIRE(ljOut.has_virial == 0);
   for (double component : ljOut.virial) {
     REQUIRE(component == 0.0);
@@ -315,85 +351,159 @@ TEST_CASE("SW 1985 virial uses the folded image vector", "[SWSi][virial]") {
   REQUIRE(std::abs(ea.virial[0]) > 1e-3);
 }
 
-TEST_CASE("SW 1985 virial matches LAMMPS when lmp is installed",
+TEST_CASE("SW 1985 virial matches LAMMPS on the strain-test cells",
           "[SWSi][virial][lammps]") {
-  const std::string lmp = lammpsBinary();
+  const std::string lmp = lammpsCommand();
   if (lmp.empty()) {
-    SKIP("neither LAMMPS (lmp) nor a LAMMPS binary is installed");
+    SKIP("neither LAMMPS nor the lammps Python module is installed");
   }
-  const double a = 0.98 * diamondA0();
-  std::vector<double> pos;
-  appendDiamond(pos, 1, a);
-  const Eval got = evaluate(pos, {a, 0, 0, 0, a, 0, 0, 0, a});
+  const double a0 = diamondA0();
+  struct Cell {
+    const char *name;
+    std::vector<double> pos;
+    std::array<double, 9> box;
+  };
+  std::vector<Cell> cells;
+  {
+    const double a = 0.98 * a0;
+    Cell c{"perfect", {}, {2 * a, 0, 0, 0, 2 * a, 0, 0, 0, 2 * a}};
+    appendDiamond(c.pos, 2, a);
+    cells.push_back(std::move(c));
+  }
+  {
+    const double l = 2 * a0;
+    std::vector<double> cubic;
+    appendDiamond(cubic, 2, a0);
+    Cell c{"sheared",
+           std::vector<double>(cubic.size()),
+           {l, 0, 0, 0.12 * l, l, 0, 0.04 * l, -0.08 * l, l}};
+    for (std::size_t a = 0; a < c.pos.size() / 3; ++a) {
+      for (int col = 0; col < 3; ++col) {
+        c.pos[3 * a + col] =
+            (cubic[3 * a] * c.box[static_cast<std::size_t>(col)] +
+             cubic[3 * a + 1] * c.box[3 + col] +
+             cubic[3 * a + 2] * c.box[6 + col]) /
+            l;
+      }
+    }
+    cells.push_back(std::move(c));
+  }
+  {
+    Cell c{"rattled", {}, {2 * a0, 0, 0, 0, 2 * a0, 0, 0, 0, 2 * a0}};
+    appendDiamond(c.pos, 2, a0);
+    std::mt19937_64 gen(19850415);
+    for (double &x : c.pos) {
+      x += 0.15 * (static_cast<double>(gen() >> 11) * 0x1.0p-53 - 0.5);
+    }
+    cells.push_back(std::move(c));
+  }
+  {
+    Cell c{"vacancy", {}, {2 * a0, 0, 0, 0, 2 * a0, 0, 0, 0, 2 * a0}};
+    appendDiamond(c.pos, 2, a0);
+    c.pos.erase(c.pos.begin(), c.pos.begin() + 3);
+    std::mt19937_64 gen(7);
+    for (double &x : c.pos) {
+      x += 0.12 * (static_cast<double>(gen() >> 11) * 0x1.0p-53 - 0.5);
+    }
+    cells.push_back(std::move(c));
+  }
+
   const std::string dir = "sw-virial-lammps";
   std::system(("rm -rf " + dir + " && mkdir -p " + dir).c_str());
   {
     std::ofstream sw(dir + "/Si.sw");
     sw.setf(std::ios::scientific);
     sw.precision(16);
-    sw << "# Stillinger-Weber 1985, epsilon in eV, sigma in Angstrom\n";
     sw << "Si Si Si " << StillingerWeberSi::kEpsilon << " "
        << StillingerWeberSi::kSigma << " " << StillingerWeberSi::kCut << " "
        << StillingerWeberSi::kLambda << " " << StillingerWeberSi::kGamma
        << " " << (-1.0 / 3.0) << " " << StillingerWeberSi::kA << " "
-       << StillingerWeberSi::kB << " " << StillingerWeberSi::kP
-       << " 0 0\n";
+       << StillingerWeberSi::kB << " " << StillingerWeberSi::kP << " 0 0\n";
   }
   {
-    std::ofstream data(dir + "/data.si");
-    data.setf(std::ios::scientific);
-    data.precision(16);
-    data << pos.size() / 3 << " atoms\n1 atom types\n\n";
-    data << "0.0 " << a << " xlo xhi\n";
-    data << "0.0 " << a << " ylo yhi\n";
-    data << "0.0 " << a << " zlo zhi\n\n";
-    data << "Masses\n\n1 28.0855\n\nAtoms # atomic\n\n";
-    for (std::size_t i = 0; i < pos.size() / 3; ++i) {
-      data << (i + 1) << " 1 " << pos[3 * i] << " " << pos[3 * i + 1] << " "
-           << pos[3 * i + 2] << "\n";
-    }
+    std::ofstream py(dir + "/run_lmp.py");
+    py << "from lammps import lammps\n"
+          "L = lammps(cmdargs=['-screen', 'none', '-log', 'none'])\n"
+          "L.file('in.sw')\n"
+          "names = ['pxx', 'pyy', 'pzz', 'pxy', 'pxz', 'pyz']\n"
+          "print('RGPOT_LAMMPS', *(L.get_thermo(n) for n in names))\n";
   }
-  {
-    std::ofstream in(dir + "/in.sw");
-    in << "units metal\natom_style atomic\nboundary p p p\n"
-          "atom_modify map yes\nread_data data.si\n"
-          "pair_style sw\npair_coeff * * Si.sw Si\nrun 0\n"
-          "variable pxx equal pxx\nvariable pyy equal pyy\n"
-          "variable pzz equal pzz\nvariable pxy equal pxy\n"
-          "variable pxz equal pxz\nvariable pyz equal pyz\n"
-          "print \"RGPOT_LAMMPS ${pxx} ${pyy} ${pzz} ${pxy} ${pxz} ${pyz}\"\n";
-  }
-  const std::string cmd = "cd " + dir + " && " + lmp +
-                          " -in in.sw -log none -screen none > lmp.out 2> lmp.err";
-  const int status = std::system(cmd.c_str());
-  if (status != 0) {
-    std::ifstream err(dir + "/lmp.err");
-    std::stringstream buffer;
-    buffer << err.rdbuf();
-    SKIP("LAMMPS did not accept the SW script: " << buffer.str());
-  }
-  std::ifstream out(dir + "/lmp.out");
-  std::string line;
-  std::array<double, 6> pressure{};
-  bool found = false;
-  while (std::getline(out, line)) {
-    if (line.rfind("RGPOT_LAMMPS", 0) == 0) {
-      std::istringstream row(line.substr(std::string("RGPOT_LAMMPS").size()));
-      for (double &p : pressure) {
-        row >> p;
-      }
-      found = static_cast<bool>(row);
-    }
-  }
-  REQUIRE(found);
-  // LAMMPS metal pressure is bars, positive in compression.
-  // 1 eV/Angstrom^3 = 1.602176634e6 bar. ASE stress = -P.
+
   constexpr double kBarPerEV = 1.602176634e6;
   const int index[6] = {0, 4, 8, 1, 2, 5};
-  for (int k = 0; k < 6; ++k) {
-    const double ase = -pressure[static_cast<std::size_t>(k)] / kBarPerEV;
-    CAPTURE(k, ase, got.stress[index[k]]);
-    REQUIRE_THAT(got.stress[index[k]], WithinAbs(ase, 1e-5));
+  const char *labels[6] = {"xx", "yy", "zz", "xy", "xz", "yz"};
+  for (Cell cell : cells) {
+    wrapIntoCell(cell.pos, cell.box);
+    {
+      std::ofstream data(dir + "/data.si");
+      data.setf(std::ios::fmtflags(0), std::ios::floatfield);
+      data.precision(17);
+      const std::size_t nAtom = cell.pos.size() / 3;
+      // The reader discards the first line, and parse_keyword consumes
+      // the line after each section keyword, so that line is blank.
+      data << "SW virial comparison " << cell.name << "\n\n"
+           << nAtom << " atoms\n1 atom types\n\n"
+           << "0 " << cell.box[0] << " xlo xhi\n"
+           << "0 " << cell.box[4] << " ylo yhi\n"
+           << "0 " << cell.box[8] << " zlo zhi\n"
+           << cell.box[3] << " " << cell.box[6] << " " << cell.box[7]
+           << " xy xz yz\n\n"
+           << "Masses\n\n1 28.0855\n\n"
+           << "Atoms # atomic\n\n";
+      for (std::size_t i = 0; i < nAtom; ++i) {
+        data << (i + 1) << " 1 " << cell.pos[3 * i] << " "
+             << cell.pos[3 * i + 1] << " " << cell.pos[3 * i + 2] << "\n";
+      }
+      std::ofstream in(dir + "/in.sw");
+      in << "units metal\natom_style atomic\nboundary p p p\n"
+            "read_data data.si\n"
+            "pair_style sw\n"
+            "pair_coeff * * Si.sw Si\n"
+            "run 0\n"
+            "variable pxx equal pxx\nvariable pyy equal pyy\n"
+            "variable pzz equal pzz\nvariable pxy equal pxy\n"
+            "variable pxz equal pxz\nvariable pyz equal pyz\n"
+            "print \"RGPOT_LAMMPS ${pxx} ${pyy} ${pzz} ${pxy} ${pxz} ${pyz}\"\n";
+    }
+    const std::string cmd =
+        lmp == "python3"
+            ? "cd " + dir + " && python3 run_lmp.py > lmp.out 2> lmp.err"
+            : "cd " + dir + " && " + lmp +
+                  " -in in.sw -log none -screen lmp.out > lmp.err 2>&1";
+    const int status = std::system(cmd.c_str());
+    if (status != 0) {
+      std::ifstream err(dir + "/lmp.out");
+      std::stringstream buffer;
+      buffer << err.rdbuf();
+      FAIL("LAMMPS failed on " << cell.name << ": " << buffer.str());
+    }
+    std::ifstream out(dir + "/lmp.out");
+    std::string line;
+    std::array<double, 6> pressure{};
+    bool found = false;
+    while (std::getline(out, line)) {
+      if (line.rfind("RGPOT_LAMMPS", 0) == 0) {
+        std::istringstream row(line.substr(std::string("RGPOT_LAMMPS").size()));
+        for (double &p : pressure) {
+          row >> p;
+        }
+        found = static_cast<bool>(row);
+      }
+    }
+    REQUIRE(found);
+    const Eval got = evaluate(cell.pos, cell.box);
+    double worst = 0.0;
+    std::cout << "lammps " << cell.name;
+    for (int k = 0; k < 6; ++k) {
+      const double ase = -pressure[static_cast<std::size_t>(k)] / kBarPerEV;
+      const double diff =
+          std::abs(got.stress[index[k]] - ase);
+      worst = std::max(worst, diff);
+      std::cout << " " << labels[k] << "=" << diff;
+      CAPTURE(cell.name, labels[k], ase, got.stress[index[k]]);
+      REQUIRE_THAT(got.stress[index[k]], WithinAbs(ase, 1e-5));
+    }
+    std::cout << " max=" << worst << "\n";
   }
   std::system(("rm -rf " + dir).c_str());
 }

@@ -1,5 +1,7 @@
 #include "rgpot/EMT/EMTPot.hpp"
 
+#include "rgpot/stress.hpp"
+
 #include "Atoms.h"
 #include "EMT.h"
 #include "EMTRasmussenParameterProvider.h"
@@ -71,7 +73,16 @@ void EMTPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const Vec *forces = emt->GetCartesianForces();
   std::memcpy(out->F, forces, static_cast<size_t>(n) * sizeof(Vec));
   out->variance = 0.0;
-  out->has_stress = 0;
+  // Asap's total stress is (1/V) dE/dε in Voigt order xx, yy, zz, yz, xz,
+  // xy. GetStress adds into the buffer before dividing by the cell volume.
+  double voigt[6] = {};
+  emt->GetStress(voigt, nullptr);
+  const double volume = cellVolume(in.box);
+  double acc[6];
+  for (int i = 0; i < 6; ++i) {
+    acc[i] = voigt[i] * volume;
+  }
+  publishCauchyStress(out, acc, volume);
 }
 
 } // namespace rgpot

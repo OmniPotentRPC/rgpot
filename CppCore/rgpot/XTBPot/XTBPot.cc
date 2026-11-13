@@ -260,8 +260,17 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       }
     }
     out->has_stress = 1;
+    // xtb's tensor is dE/dε. W = -dE/dε, so stress = -W/V.
+    const double wscale = -units::HARTREE_TO_EV;
+    for (int col = 0; col < 3; ++col) {
+      for (int row = 0; row < 3; ++row) {
+        out->virial[row * 3 + col] = virial[row + 3 * col] * wscale;
+      }
+    }
+    out->has_virial = 1;
   } else {
     out->has_stress = 0;
+    out->has_virial = 0;
   }
 
   out->variance = 0.0;

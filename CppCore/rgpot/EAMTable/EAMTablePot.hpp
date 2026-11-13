@@ -89,7 +89,7 @@ public:
   EAMTablePot(const EAMTable &table, bool periodic, bool stress);
 
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.periodic = m_periodic, .stress = m_stress};
+    return {.periodic = m_periodic, .stress = m_stress, .virial = m_stress};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {

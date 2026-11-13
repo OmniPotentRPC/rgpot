@@ -190,9 +190,13 @@ void TersoffPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     m_sic.forceImpl(in, out);
   }
   // The gather writes no stress and caps().stress is false, so no call
-  // reports one, and a reused output keeps no earlier tensor.
+  // reports one, and a reused output keeps no earlier tensor. The
+  // silicon-carbon path fills a virial and this wrapper discards it
+  // with the stress.
   out->has_stress = 0;
+  out->has_virial = 0;
   std::fill(out->stress, out->stress + 9, 0.0);
+  std::fill(out->virial, out->virial + 9, 0.0);
 }
 
 #define RGPOT_FORTRAN_SPECIES_POT_IMPL(ClassName, Entry, Label)                \

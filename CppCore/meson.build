@@ -750,6 +750,7 @@ if get_option('with_tests')
             ['MorsePotTest', 'morse_pot_test', 'MorsePotTest.cc', ''],
             ['SWSiTest', 'sw_si_test', 'SWSiTest.cc', ''],
             ['SWVirialTest', 'sw_virial_test', 'SWVirialTest.cc', ''],
+            ['VirialStrainTest', 'virial_strain_test', 'VirialStrainTest.cc', ''],
             ['TersoffSiCTest', 'tersoff_sic_test', 'TersoffSiCTest.cc', ''],
             [
                 'HalfShellScanTest',
@@ -1765,6 +1766,9 @@ if get_option('with_tests')
         test_deps += dependency('capnp-rpc')
         test_deps += ptlrpc_dep
         test_array += [['RPCTest', 'test_rpc', 'CapnpAdapterTest.cc', '']]
+        test_array += [
+            ['VirialRpcTest', 'virial_rpc_test', 'VirialRpcTest.cc', ''],
+        ]
         if get_option('with_rpc_client_only')
             test_deps += pot_bridge_dep
             test_array += [
@@ -2233,10 +2237,17 @@ if get_option('with_tests')
                 python3_prog,
                 args: [files('tests/check_virtual_counts.py')],
             )
+            # Cache builds compile Potential.hpp, which includes xxhash.h.
+            # The stamp target does not otherwise link that dependency.
+            _stamp_deps = []
+            if get_option('with_cache') and not get_option('with_rpc_client_only')
+                _stamp_deps += subproject('xxhash').get_variable('xxhash_dep')
+            endif
             cxx_layout_stamp = executable(
                 'print_cxx_layout_stamp',
                 sources: ['tests/print_cxx_layout_stamp.cc'],
                 include_directories: _incdirs + ['.'],
+                dependencies: _stamp_deps,
                 cpp_args: _args,
                 link_language: 'cpp',
             )

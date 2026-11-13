@@ -1,0 +1,1 @@
+LJ, Morse, ZBL, Tersoff Si-C, the Fortran Stillinger-Weber potential and the Asap effective-medium potential now fill the virial beside the Cauchy stress. Sutton-Chen fills it when its stress flag is on. A cache hit returns that virial, and an RPC client receives it on `PotentialResult`.

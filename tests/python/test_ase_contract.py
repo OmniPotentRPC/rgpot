@@ -157,9 +157,12 @@ def test_sw_stress_is_the_1985_stress_scaled_by_epsilon() -> None:
     args = (atoms.positions, atoms.numbers, np.ascontiguousarray(atoms.cell.array))
     eon = rgpot.SWPot().evaluate(*args)
     published = rgpot.StillingerWeberSi().evaluate(*args)
-    assert eon["virial"] is None
-    assert published["virial"] is not None
     ratio = 2.16826 * 1.06767385 / (3.4723e-12 * 1.0e-7 / 1.602176634e-19)
+    assert eon["virial"] is not None
+    assert published["virial"] is not None
+    np.testing.assert_allclose(
+        eon["virial"], ratio * published["virial"], atol=1e-9, rtol=0.0
+    )
     assert eon["energy"] == pytest.approx(ratio * published["energy"], rel=1e-13)
     np.testing.assert_allclose(
         eon["stress"], ratio * published["stress"], atol=1e-14, rtol=0.0

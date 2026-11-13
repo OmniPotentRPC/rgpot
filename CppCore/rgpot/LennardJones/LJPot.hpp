@@ -74,7 +74,8 @@ public:
 
   [[nodiscard]] PotCaps caps() const noexcept override {
     // neighbours_ is scratch rewritten by every force call.
-    return {.reentrancy = Reentrancy::PerInstance, .stress = true};
+    return {.reentrancy = Reentrancy::PerInstance, .stress = true,
+            .virial = true};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {

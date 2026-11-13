@@ -460,3 +460,63 @@ TEST_CASE("Cache counters split computed from served evaluations",
   }
   REQUIRE(rocksdb::DestroyDB(path, rocksdb::Options()).ok());
 }
+
+namespace {
+class VirialCachePotential : public rgpot::Potential<VirialCachePotential> {
+public:
+  VirialCachePotential() : Potential(rgpot::PotType::LJ) {}
+  mutable size_t evaluations = 0;
+
+  rgpot::PotCaps caps() const noexcept override {
+    return {.stress = true, .virial = true};
+  }
+  uint64_t paramsKey() const noexcept override { return 0x76697269616cULL; }
+
+  void forceImpl(const rgpot::ForceInput &in,
+                 rgpot::ForceOut *out) const override {
+    ++evaluations;
+    out->energy = 1.5 + in.pos[0];
+    out->variance = 0.5;
+    for (size_t i = 0; i < 3 * in.nAtoms; ++i) {
+      out->F[i] = in.pos[i];
+    }
+    for (size_t i = 0; i < 9; ++i) {
+      out->stress[i] = 0.1 * static_cast<double>(i) + in.pos[0];
+      out->virial[i] = -2.0 * out->stress[i];
+    }
+    out->has_stress = 1;
+    out->has_virial = 1;
+  }
+};
+} // namespace
+
+TEST_CASE("A cache hit restores the virial", "[Potential][cache][virial]") {
+  VirialCachePotential pot;
+  double positions[6] = {0.2, 0.3, 0.4, 1.2, 1.3, 1.4};
+  const int types[2] = {1, 1};
+  const double box[9] = {8, 0, 0, 0, 8, 0, 0, 0, 8};
+  const rgpot::ForceInput input{2, positions, types, box};
+  double forces[6] = {};
+  rgpot::ForceOut out{forces, 0.0, 0.0, {}, 0};
+  const rgpot::ForceBatch batch{1, &input, &out};
+  const std::string path = resultCachePath();
+  {
+    rgpot::cache::PotentialCache cache(path);
+    pot.set_cache(&cache);
+    pot.forceBatch(batch);
+    REQUIRE(pot.evaluations == 1);
+    REQUIRE(out.has_virial == 1);
+    REQUIRE(out.virial[3] == -2.0 * out.stress[3]);
+    const double saved = out.virial[3];
+    out.has_virial = 0;
+    std::fill(out.virial, out.virial + 9,
+              std::numeric_limits<double>::quiet_NaN());
+    pot.forceBatch(batch);
+    REQUIRE(pot.evaluations == 1);
+    REQUIRE(out.has_virial == 1);
+    REQUIRE(out.virial[3] == saved);
+    REQUIRE(out.has_stress == 1);
+    pot.set_cache(nullptr);
+  }
+  REQUIRE(rocksdb::DestroyDB(path, rocksdb::Options()).ok());
+}

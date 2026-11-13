@@ -57,7 +57,8 @@ public:
     // second list that also cannot be shared.
     return {.reentrancy = Reentrancy::PerInstance,
             .perImageInstances = m_held.skin > 0.0,
-            .stress = true};
+            .stress = true,
+            .virial = true};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {

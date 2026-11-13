@@ -85,7 +85,8 @@ public:
   [[nodiscard]] PotCaps caps() const noexcept override {
     return {.reentrancy = Reentrancy::PerInstance,
             .perImageInstances = true,
-            .stress = true};
+            .stress = true,
+            .virial = true};
   }
 
 private:

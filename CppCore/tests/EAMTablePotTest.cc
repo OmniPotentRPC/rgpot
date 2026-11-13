@@ -18,6 +18,7 @@
 #include <catch2/catch_all.hpp>
 
 #include "rgpot/EAMTable/EAMTablePot.hpp"
+#include "rgpot/stress.hpp"
 
 using Catch::Matchers::WithinAbs;
 using rgpot::EAMTableFormat;
@@ -205,6 +206,53 @@ TEST_CASE("EAM table stress flag leaves energy and forces alone",
   REQUIRE(std::all_of(off.stress, off.stress + 9,
                       [](double v) { return v == 7.0; }));
   REQUIRE(cu_u3(true, false).paramsKey() != cu_u3(true, true).paramsKey());
+}
+
+TEST_CASE("funcfl Cu_u3 virial matches a central strain difference",
+          "[EAMTable][virial]") {
+  const LammpsRef ref = load_ref("eam_table/cu_u3_cubic.ref", true);
+  const rgpot::EAMTablePot pot = cu_u3(true, true);
+  REQUIRE(pot.caps().virial);
+  std::vector<double> forces(ref.pos.size());
+  rgpot::ForceOut out{};
+  out.F = forces.data();
+  pot.forceImpl(
+      rgpot::ForceInput{ref.z.size(), ref.pos.data(), ref.z.data(), ref.box},
+      &out);
+  REQUIRE(out.has_virial == 1);
+  REQUIRE(out.has_stress == 1);
+  const double volume = rgpot::cellVolume(ref.box);
+  const double scale = -1.0 / volume;
+  for (int i = 0; i < 9; ++i) {
+    REQUIRE(out.stress[i] == out.virial[i] * scale);
+  }
+  constexpr double h = 1e-6;
+  auto energyAt = [&](int row, int col, double eps) {
+    std::vector<double> pos = ref.pos;
+    double box[9];
+    std::copy(ref.box, ref.box + 9, box);
+    for (std::size_t a = 0; a < ref.z.size(); ++a) {
+      pos[3 * a + static_cast<std::size_t>(col)] +=
+          eps * ref.pos[3 * a + static_cast<std::size_t>(row)];
+    }
+    for (int k = 0; k < 3; ++k) {
+      box[3 * k + col] += eps * ref.box[3 * k + row];
+    }
+    std::vector<double> f(pos.size());
+    rgpot::ForceOut e{};
+    e.F = f.data();
+    pot.forceImpl(rgpot::ForceInput{ref.z.size(), pos.data(), ref.z.data(), box},
+                  &e);
+    return e.energy;
+  };
+  for (int row = 0; row < 3; ++row) {
+    for (int col = 0; col < 3; ++col) {
+      const double fd =
+          (energyAt(row, col, h) - energyAt(row, col, -h)) / (2.0 * h * volume);
+      CAPTURE(row, col, fd, out.stress[3 * row + col]);
+      REQUIRE_THAT(out.stress[3 * row + col], WithinAbs(fd, 1e-6));
+    }
+  }
 }
 
 TEST_CASE("EAM table rejects bad input", "[EAMTable]") {

@@ -177,8 +177,12 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// open Lennard-Jones cluster a neighbour member. The pair term runs on
 /// the shared walk, so CachedPairs is no longer part of those objects.
 /// 7 appends ForceOut::virial and has_virial, and PotCaps::virial. Field
-/// order of the older members is unchanged. A caller built against
-/// soversion 6 does not load librgpot.so.7.
+/// order of the older members is unchanged, but sizeof and the offsets of
+/// later members changed, so this is not a compatible C++ extension and
+/// the soversion stays 7 rather than a minor-only bump. The C layout
+/// revision stays 1: rgpot_force_out_t did not grow, and the virial is the
+/// additive calculate_mechanical call (RGPOT_ABI_VERSION_MINOR 2). A
+/// caller built against soversion 6 does not load librgpot.so.7.
 inline constexpr std::uint32_t kCxxSoversion = 7;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
