@@ -136,9 +136,18 @@ wrapping coordinates into the cell. `General`, and any sheared cell,
 calls `MinimumImage`.
 
 `Mode::Stored` keeps a Verlet list and reuses it while every atom has
-moved by at most half the skin. `Mode::Stream` walks the 27 neighbouring
-cells and stores no pair list. The bins are reused only when the geometry
-is identical. `Mode::Auto` stores when the candidate index array fits in
+moved by at most half the skin. A stored orthorhombic list records the
+image index of each pair when it is built. While a later call's
+coordinates still match that reference, the walk subtracts the box
+length times the stored index instead of rounding the reduced
+displacement. A move inside the skin keeps the pairs and rounds again:
+a pair near a half-box face can change image without leaving the skin.
+The index is dropped when the list is rebuilt. The half walk starts at
+the first partner with a larger index, which the stored row already
+keeps in order, and does not form the displacement of the pairs it
+skips. `Mode::Stream` walks the 27 neighbouring cells and stores no
+pair list. The bins are reused only when the geometry is identical.
+`Mode::Auto` stores when the candidate index array fits in
 `MemAvailable` and in a 32-bit offset, and streams otherwise. There is no
 cutoff on the atom count.
 

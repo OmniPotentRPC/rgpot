@@ -41,6 +41,12 @@ int axisCount(double length, double edge) {
   return static_cast<int>(n);
 }
 
+// Image indices appended to cell_of_ after the per-atom cell ids.
+// magic, pair count, fresh (1 when the coordinates still match the
+// reference), tiny (1 when every index is -1, 0 or 1). The shifts
+// follow, three int32 values per stored pair, in neighbour order.
+constexpr std::int32_t kShiftMagic = 0x52534846;
+
 } // namespace
 
 int threadsRequested() {
@@ -133,6 +139,49 @@ bool Neighbours::reusable(const double *xyz, std::size_t n, const double *box9,
     return std::memcmp(ref_.data(), xyz, n * 3 * sizeof(double)) == 0;
   }
   return withinSkin(ref_.data(), xyz, n, spec.skin);
+}
+
+void Neighbours::installRoundShifts(const std::int32_t *shift, std::size_t npairs,
+                                    bool tiny) {
+  const auto base = n_;
+  if (npairs > (static_cast<std::size_t>(-1) - 4 - base) / 3) {
+    return;
+  }
+  cell_of_.resize(base + 4 + npairs * 3);
+  cell_of_[base] = kShiftMagic;
+  cell_of_[base + 1] = static_cast<std::int32_t>(npairs);
+  cell_of_[base + 2] = 1;
+  cell_of_[base + 3] = tiny ? 1 : 0;
+  if (npairs > 0) {
+    std::memcpy(cell_of_.data() + base + 4, shift, npairs * 3 * sizeof(std::int32_t));
+  }
+}
+
+void Neighbours::noteShiftFresh(bool fresh) noexcept {
+  if (n_ > cell_of_.size() || cell_of_.size() - n_ < 4) {
+    return;
+  }
+  if (cell_of_[n_] != kShiftMagic) {
+    return;
+  }
+  cell_of_[n_ + 2] = fresh ? 1 : 0;
+}
+
+const std::int32_t *Neighbours::roundShifts(bool &tiny) const noexcept {
+  tiny = false;
+  if (n_ > cell_of_.size() || cell_of_.size() - n_ < 4) {
+    return nullptr;
+  }
+  if (cell_of_[n_] != kShiftMagic || cell_of_[n_ + 2] == 0) {
+    return nullptr;
+  }
+  const auto count = static_cast<std::size_t>(cell_of_[n_ + 1]);
+  const auto room = cell_of_.size() - n_ - 4;
+  if (count != nbr_.size() || count > room / 3) {
+    return nullptr;
+  }
+  tiny = cell_of_[n_ + 3] == 1;
+  return cell_of_.data() + n_ + 4;
 }
 
 void Neighbours::buildCells(const double *xyz, std::size_t n) {
@@ -236,8 +285,41 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
   (void)xyz;
   off_.assign(n + 1, 0);
   nbr_.clear();
-  std::vector<std::int32_t> gather;
+  struct Cand {
+    std::int32_t j;
+    std::int32_t sx;
+    std::int32_t sy;
+    std::int32_t sz;
+  };
+  std::vector<Cand> gather;
+  std::vector<std::int32_t> shifts;
+  const bool record = !use_general_ && image_ == Image::Round;
+  bool fit = record;
+  bool tiny = record;
   const double search2 = search_ * search_;
+  auto take_axis = [&](double &delta, int axis, std::int32_t &slot) {
+    if (!periodic_[axis]) {
+      slot = 0;
+      return;
+    }
+    const double idx = orthorhombicImageIndex(delta * inv_[axis]);
+    delta -= len_[axis] * idx;
+    if (!(idx >= -2147483648.0 && idx <= 2147483647.0)) {
+      fit = false;
+      tiny = false;
+      return;
+    }
+    const auto as_int = static_cast<std::int32_t>(idx);
+    if (static_cast<double>(as_int) != idx) {
+      fit = false;
+      tiny = false;
+      return;
+    }
+    slot = as_int;
+    if (as_int < -1 || as_int > 1) {
+      tiny = false;
+    }
+  };
   for (std::size_t a = 0; a < n; ++a) {
     off_[a] = static_cast<std::int32_t>(nbr_.size());
     const int cell = cell_of_[a];
@@ -271,22 +353,47 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
             if (j == static_cast<std::int32_t>(a)) {
               continue;
             }
+            std::int32_t sx = 0;
+            std::int32_t sy = 0;
+            std::int32_t sz = 0;
             double dx = 0;
             double dy = 0;
             double dz = 0;
-            foldPair(static_cast<std::int32_t>(a), j, dx, dy, dz);
+            if (!record) {
+              foldPair(static_cast<std::int32_t>(a), j, dx, dy, dz);
+            } else {
+              const auto ui = a * 3;
+              const auto uj = static_cast<std::size_t>(j) * 3;
+              dx = xyz_[ui] - xyz_[uj];
+              dy = xyz_[ui + 1] - xyz_[uj + 1];
+              dz = xyz_[ui + 2] - xyz_[uj + 2];
+              take_axis(dx, 0, sx);
+              take_axis(dy, 1, sy);
+              take_axis(dz, 2, sz);
+            }
             const double r2 = dx * dx + dy * dy + dz * dz;
             if (r2 <= search2) {
-              gather.push_back(j);
+              gather.push_back(Cand{j, sx, sy, sz});
             }
           }
         }
       }
     }
-    std::sort(gather.begin(), gather.end());
-    nbr_.insert(nbr_.end(), gather.begin(), gather.end());
+    std::sort(gather.begin(), gather.end(),
+              [](const Cand &a, const Cand &b) { return a.j < b.j; });
+    for (const Cand &c : gather) {
+      nbr_.push_back(c.j);
+      if (record) {
+        shifts.push_back(c.sx);
+        shifts.push_back(c.sy);
+        shifts.push_back(c.sz);
+      }
+    }
   }
   off_[n] = static_cast<std::int32_t>(nbr_.size());
+  if (fit) {
+    installRoundShifts(shifts.data(), nbr_.size(), tiny);
+  }
 }
 
 void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
@@ -294,6 +401,8 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
   xyz_ = xyz;
   if (reusable(xyz, n, box9, spec)) {
     reused_ = true;
+    const bool same = std::memcmp(ref_.data(), xyz, n * 3 * sizeof(double)) == 0;
+    noteShiftFresh(same);
     return;
   }
   reused_ = false;

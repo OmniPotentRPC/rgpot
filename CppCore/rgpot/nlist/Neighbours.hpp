@@ -125,7 +125,11 @@ struct Range {
 ///
 /// A stored list is reused while every atom has moved by at most half
 /// the skin, and the cell, the count and the spec are unchanged. Skin 0
-/// reuses the list only when the coordinates and the cell match.
+/// reuses the list only when the coordinates and the cell match. An
+/// orthorhombic stored list keeps each pair's image index beside the
+/// cell ids. The walk subtracts the box length times that index while
+/// the coordinates still match the reference, and rounds again after a
+/// move that stays inside the skin.
 class Neighbours {
 public:
   void update(const double *xyz, std::size_t n, const double *box9,
@@ -156,7 +160,7 @@ public:
     if (streaming_) {
       walkCells(begin, end, fn, false);
     } else {
-      walkStored(begin, end, fn);
+      walkStored(begin, end, fn, false);
     }
   }
 
@@ -168,13 +172,7 @@ public:
     if (streaming_) {
       walkCells(begin, end, fn, true);
     } else {
-      auto half = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                      double r2) {
-        if (j > i) {
-          fn(i, j, dx, dy, dz, r2);
-        }
-      };
-      walkStored(begin, end, half);
+      walkStored(begin, end, fn, true);
     }
   }
 
@@ -267,19 +265,129 @@ private:
   void fold(double &dx, double &dy, double &dz) const;
 
   template <typename Fn>
-  void walkStored(std::int64_t begin, std::int64_t end, Fn &fn) const {
+  void walkStored(std::int64_t begin, std::int64_t end, Fn &fn, bool half) const {
+    const double *xyz = xyz_;
+    const std::int32_t *nbr = nbr_.data();
+    if (nbr == nullptr) {
+      return;
+    }
+    bool tiny = false;
+    const std::int32_t *shift = nullptr;
+    if (image_ == Image::Round && !use_general_) {
+      shift = roundShifts(tiny);
+    }
+    auto emit = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz) {
+      const double r2 = dx * dx + dy * dy + dz * dz;
+      fn(i, j, dx, dy, dz, r2);
+    };
+    // Partners of one atom are sorted. The half list is the suffix j > i.
+    auto first = [&](std::int64_t i, std::int32_t lo, std::int32_t hi) {
+      const std::int32_t *row = nbr + lo;
+      const std::int32_t *stop = nbr + hi;
+      if (!half) {
+        return row;
+      }
+      return std::upper_bound(row, stop, static_cast<std::int32_t>(i));
+    };
+    if (shift != nullptr && periodic_[0] && periodic_[1] && periodic_[2]) {
+      const double L0 = len_[0];
+      const double L1 = len_[1];
+      const double L2 = len_[2];
+      // {-1, 0, 1} is every image of an in-box pair. The table is the
+      // product the rounding used to form, so the subtraction matches it.
+      const double c0[3] = {-L0, 0.0, L0};
+      const double c1[3] = {-L1, 0.0, L1};
+      const double c2[3] = {-L2, 0.0, L2};
+      for (std::int64_t i = begin; i < end; ++i) {
+        const auto a = static_cast<std::size_t>(i);
+        const auto lo = off_[a];
+        const auto hi = off_[a + 1];
+        const std::int32_t *row = first(i, lo, hi);
+        const auto p0 = static_cast<std::size_t>(row - nbr);
+        const std::int32_t *sh = shift + 3 * p0;
+        const auto ui = a * 3;
+        const double xi = xyz[ui];
+        const double yi = xyz[ui + 1];
+        const double zi = xyz[ui + 2];
+        if (tiny) {
+          for (std::size_t p = p0; p < static_cast<std::size_t>(hi); ++p, sh += 3) {
+            const auto j = nbr[p];
+            const auto uj = static_cast<std::size_t>(j) * 3;
+            double dx = xi - xyz[uj];
+            double dy = yi - xyz[uj + 1];
+            double dz = zi - xyz[uj + 2];
+            dx -= c0[static_cast<std::size_t>(sh[0] + 1)];
+            dy -= c1[static_cast<std::size_t>(sh[1] + 1)];
+            dz -= c2[static_cast<std::size_t>(sh[2] + 1)];
+            emit(static_cast<std::int32_t>(i), j, dx, dy, dz);
+          }
+        } else {
+          for (std::size_t p = p0; p < static_cast<std::size_t>(hi); ++p, sh += 3) {
+            const auto j = nbr[p];
+            const auto uj = static_cast<std::size_t>(j) * 3;
+            double dx = xi - xyz[uj];
+            double dy = yi - xyz[uj + 1];
+            double dz = zi - xyz[uj + 2];
+            dx -= L0 * static_cast<double>(sh[0]);
+            dy -= L1 * static_cast<double>(sh[1]);
+            dz -= L2 * static_cast<double>(sh[2]);
+            emit(static_cast<std::int32_t>(i), j, dx, dy, dz);
+          }
+        }
+      }
+      return;
+    }
+    if (shift != nullptr) {
+      const double L0 = len_[0];
+      const double L1 = len_[1];
+      const double L2 = len_[2];
+      const bool p0p = periodic_[0];
+      const bool p1p = periodic_[1];
+      const bool p2p = periodic_[2];
+      for (std::int64_t i = begin; i < end; ++i) {
+        const auto a = static_cast<std::size_t>(i);
+        const auto lo = off_[a];
+        const auto hi = off_[a + 1];
+        const std::int32_t *row = first(i, lo, hi);
+        const auto p0 = static_cast<std::size_t>(row - nbr);
+        const std::int32_t *sh = shift + 3 * p0;
+        const auto ui = a * 3;
+        const double xi = xyz[ui];
+        const double yi = xyz[ui + 1];
+        const double zi = xyz[ui + 2];
+        for (std::size_t p = p0; p < static_cast<std::size_t>(hi); ++p, sh += 3) {
+          const auto j = nbr[p];
+          const auto uj = static_cast<std::size_t>(j) * 3;
+          double dx = xi - xyz[uj];
+          double dy = yi - xyz[uj + 1];
+          double dz = zi - xyz[uj + 2];
+          if (p0p) {
+            dx -= L0 * static_cast<double>(sh[0]);
+          }
+          if (p1p) {
+            dy -= L1 * static_cast<double>(sh[1]);
+          }
+          if (p2p) {
+            dz -= L2 * static_cast<double>(sh[2]);
+          }
+          emit(static_cast<std::int32_t>(i), j, dx, dy, dz);
+        }
+      }
+      return;
+    }
     for (std::int64_t i = begin; i < end; ++i) {
       const auto a = static_cast<std::size_t>(i);
       const auto lo = off_[a];
       const auto hi = off_[a + 1];
-      for (std::int32_t p = lo; p < hi; ++p) {
-        const auto j = nbr_[static_cast<std::size_t>(p)];
+      const std::int32_t *row = first(i, lo, hi);
+      const std::int32_t *stop = nbr + hi;
+      for (const std::int32_t *it = row; it != stop; ++it) {
+        const auto j = *it;
         double dx = 0;
         double dy = 0;
         double dz = 0;
         foldPair(static_cast<std::int32_t>(i), j, dx, dy, dz);
-        const double r2 = dx * dx + dy * dy + dz * dz;
-        fn(static_cast<std::int32_t>(i), j, dx, dy, dz, r2);
+        emit(static_cast<std::int32_t>(i), j, dx, dy, dz);
       }
     }
   }
@@ -770,6 +878,11 @@ private:
   void foldPair(std::int32_t i, std::int32_t j, double &dx, double &dy,
                 double &dz) const;
   [[nodiscard]] int cellId(int ix, int iy, int iz) const;
+  // Image indices live past the per-atom cell ids. The class does not
+  // grow a member for them. `tiny` is true when every index is -1, 0 or 1.
+  void installRoundShifts(const std::int32_t *shift, std::size_t npairs, bool tiny);
+  void noteShiftFresh(bool fresh) noexcept;
+  [[nodiscard]] const std::int32_t *roundShifts(bool &tiny) const noexcept;
 
   std::vector<std::int32_t> off_;
   std::vector<std::int32_t> nbr_;

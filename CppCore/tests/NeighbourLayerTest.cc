@@ -505,20 +505,30 @@ TEST_CASE("orthorhombic image index matches the careful truncation", "[nlist][ro
     for (auto mode : {rgpot::nlist::Mode::Stored, rgpot::nlist::Mode::Stream}) {
       rgpot::nlist::Neighbours cells;
       loadCells(cells, pos, side, side, side, cutoff, true, mode);
-      int seen = 0;
-      cells.forHalf(0, 2, [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                              double r2) {
-        double ex = pos[3 * i] - pos[3 * j];
-        double ey = pos[3 * i + 1] - pos[3 * j + 1];
-        double ez = pos[3 * i + 2] - pos[3 * j + 2];
-        foldDelta(ex, ey, ez, side, side, side, true);
-        REQUIRE(sameBits(dx, ex));
-        REQUIRE(sameBits(dy, ey));
-        REQUIRE(sameBits(dz, ez));
-        REQUIRE(sameBits(r2, ex * ex + ey * ey + ez * ez));
-        ++seen;
-      });
-      REQUIRE(seen == 1);
+      auto check = [&] {
+        int seen = 0;
+        cells.forHalf(0, 2, [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                                double r2) {
+          double ex = pos[3 * i] - pos[3 * j];
+          double ey = pos[3 * i + 1] - pos[3 * j + 1];
+          double ez = pos[3 * i + 2] - pos[3 * j + 2];
+          foldDelta(ex, ey, ez, side, side, side, true);
+          REQUIRE(sameBits(dx, ex));
+          REQUIRE(sameBits(dy, ey));
+          REQUIRE(sameBits(dz, ez));
+          REQUIRE(sameBits(r2, ex * ex + ey * ey + ez * ez));
+          ++seen;
+        });
+        REQUIRE(seen == 1);
+      };
+      check();
+      // The second call reuses the list. The stored index has to reproduce
+      // the same displacement, including an image outside {-1, 0, 1}.
+      if (mode == rgpot::nlist::Mode::Stored) {
+        loadCells(cells, pos, side, side, side, cutoff, true, mode);
+        REQUIRE(cells.reused());
+        check();
+      }
     }
   }
 
@@ -571,4 +581,46 @@ TEST_CASE("orthorhombic image index matches the careful truncation", "[nlist][ro
   REQUIRE(sameBits(forces[3], -fscale * dx));
   REQUIRE(sameBits(forces[4], 0.0));
   REQUIRE(sameBits(forces[5], 0.0));
+}
+
+TEST_CASE("a skin move recomputes an image the stored index would miss",
+          "[nlist][round][skin]") {
+  setThreads("1");
+  const double side = 10.0;
+  const double cutoff = 6.0;
+  const double skin = 1.0;
+  // dx/L = -0.501 rounds to -1. A shift of 0.04 A, inside half the skin,
+  // crosses to -0.497 and rounds to 0. The stored index from the first
+  // call is the wrong image for the second.
+  std::vector<double> pos = {0.0, 0.0, 0.0, 5.01, 0.0, 0.0};
+  const double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  rgpot::nlist::Spec spec;
+  spec.cutoff = cutoff;
+  spec.skin = skin;
+  spec.periodic = {true, true, true};
+  spec.image = rgpot::nlist::Image::Round;
+  spec.mode = rgpot::nlist::Mode::Stored;
+  rgpot::nlist::Neighbours cells;
+  cells.update(pos.data(), 2, box, spec);
+  REQUIRE_FALSE(cells.reused());
+  pos[0] = 0.04;
+  cells.update(pos.data(), 2, box, spec);
+  REQUIRE(cells.reused());
+  int seen = 0;
+  cells.forHalf(0, 2, [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                          double r2) {
+    double ex = pos[3 * i] - pos[3 * j];
+    double ey = pos[3 * i + 1] - pos[3 * j + 1];
+    double ez = pos[3 * i + 2] - pos[3 * j + 2];
+    foldDelta(ex, ey, ez, side, side, side, true);
+    REQUIRE(sameBits(dx, ex));
+    REQUIRE(sameBits(dy, ey));
+    REQUIRE(sameBits(dz, ez));
+    REQUIRE(sameBits(r2, ex * ex + ey * ey + ez * ez));
+    // Index 0 leaves the raw displacement. The index stored at the first
+    // call was -1, which would have moved x by a full box length.
+    REQUIRE(sameBits(dx, pos[3 * i] - pos[3 * j]));
+    ++seen;
+  });
+  REQUIRE(seen == 1);
 }
