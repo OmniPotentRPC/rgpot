@@ -21,6 +21,60 @@ namespace {
 constexpr int kWide = 24;
 constexpr double kPi = 3.14159265358979323846;
 
+double square(double x, double y, double z) {
+  return std::fma(x, x, std::fma(y, y, z * z));
+}
+
+bool invert_cell(const double cell[9], double inv[9]) {
+  const double m0 = std::fma(-cell[5], cell[7], cell[4] * cell[8]);
+  const double m1 = std::fma(-cell[5], cell[6], cell[3] * cell[8]);
+  const double m2 = std::fma(-cell[4], cell[6], cell[3] * cell[7]);
+  const double det = std::fma(cell[0], m0, std::fma(-cell[1], m1, cell[2] * m2));
+  if (!std::isfinite(det) || det == 0.0) {
+    return false;
+  }
+  inv[0] = m0 / det;
+  inv[1] = std::fma(-cell[1], cell[8], cell[2] * cell[7]) / det;
+  inv[2] = std::fma(-cell[2], cell[4], cell[1] * cell[5]) / det;
+  inv[3] = -m1 / det;
+  inv[4] = std::fma(-cell[2], cell[6], cell[0] * cell[8]) / det;
+  inv[5] = std::fma(-cell[0], cell[5], cell[2] * cell[3]) / det;
+  inv[6] = m2 / det;
+  inv[7] = std::fma(-cell[0], cell[7], cell[1] * cell[6]) / det;
+  inv[8] = std::fma(-cell[1], cell[3], cell[0] * cell[4]) / det;
+  for (int k = 0; k < 9; ++k) {
+    if (!std::isfinite(inv[k])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Half of 1/||H^{-1}||_F, pulled in by 2^-20. This is the residual ball
+// inside which the rounded image is returned without a search.
+bool residual_limit2(const double cell[9], double &limit2) {
+  double inv[9];
+  if (!invert_cell(cell, inv)) {
+    return false;
+  }
+  double fro2 = 0.0;
+  for (int k = 0; k < 3; ++k) {
+    const double dual = std::hypot(inv[k], inv[3 + k], inv[6 + k]);
+    fro2 = std::fma(dual, dual, fro2);
+  }
+  if (!(fro2 > 0.0) || !std::isfinite(fro2)) {
+    return false;
+  }
+  const double shortest = (1.0 / std::sqrt(fro2)) * (1.0 - 0x1p-20);
+  const double limit = 0.5 * shortest;
+  limit2 = limit * limit;
+  return std::isfinite(limit2) && limit2 > 0.0;
+}
+
+double fractional(const double inv[9], int axis, double x, double y, double z) {
+  return std::fma(x, inv[axis], std::fma(y, inv[3 + axis], z * inv[6 + axis]));
+}
+
 void at_fraction(const double cell[9], double fi, double fj, double fk,
                  double d[3]) {
   for (int c = 0; c < 3; ++c) {
@@ -112,6 +166,59 @@ void expect_minimum(const double cell[9], const std::array<bool, 3> &periodic,
   if (unique) {
     REQUIRE(second_r2 > best_r2);
   }
+}
+
+void expect_ball(const double cell[9], const std::array<bool, 3> &periodic,
+                 int axis) {
+  double limit2 = 0.0;
+  REQUIRE(residual_limit2(cell, limit2));
+  double inv[9];
+  REQUIRE(invert_cell(cell, inv));
+  const double len = std::hypot(cell[3 * axis], cell[3 * axis + 1],
+                                cell[3 * axis + 2]);
+  REQUIRE(len > 0.0);
+  const double u[3] = {cell[3 * axis] / len, cell[3 * axis + 1] / len,
+                       cell[3 * axis + 2] / len};
+  const auto placed = [&](double s, double r[3]) {
+    r[0] = u[0] * s;
+    r[1] = u[1] * s;
+    r[2] = u[2] * s;
+  };
+  const auto r2_of = [&](double s) {
+    double r[3];
+    placed(s, r);
+    return square(r[0], r[1], r[2]);
+  };
+  double s_in = std::sqrt(limit2);
+  double s_out = s_in;
+  for (int n = 0; n < 64 && !(r2_of(s_in) < limit2); ++n) {
+    s_in = std::nextafter(s_in, 0.0);
+  }
+  for (int n = 0; n < 64 && !(r2_of(s_out) >= limit2); ++n) {
+    s_out = std::nextafter(s_out, std::numeric_limits<double>::infinity());
+  }
+  REQUIRE(r2_of(s_in) < limit2);
+  REQUIRE(r2_of(s_out) >= limit2);
+  REQUIRE(s_out > s_in);
+  double inside[3];
+  double outside[3];
+  placed(s_in, inside);
+  placed(s_out, outside);
+  for (const double *r : {inside, outside}) {
+    for (int k = 0; k < 3; ++k) {
+      if (!periodic[k]) {
+        continue;
+      }
+      const double f = fractional(inv, k, r[0], r[1], r[2]);
+      // The residual is this vector: rounding leaves it unmoved, so the
+      // ball test sees this length and not a wrapped one.
+      REQUIRE(std::abs(f) < 0.5);
+      REQUIRE(std::round(f) == 0.0);
+    }
+  }
+  expect_minimum(cell, periodic, inside[0], inside[1], inside[2], kWide, true);
+  expect_minimum(cell, periodic, outside[0], outside[1], outside[2], kWide,
+                 false);
 }
 
 void expect_grid(const double cell[9], const std::array<bool, 3> &periodic,
@@ -206,3 +313,22 @@ TEST_CASE("Partial periodicity matches a wide search",
   expect_minimum(thin, one_long, 0.25, 1.0e-12, 0.1, kWide, false);
 }
 
+TEST_CASE("Residual ball agrees on both sides of its bound",
+          "[PairList][triclinic][oracle]") {
+  const double cube[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+  const double flat[9] = {1, 0, 0, 0, 1.0e4, 0, 0, 0, 1.0e4};
+  const double tri[9] = {4.0, 0.2, 0.1, 0.3, 5.0, -0.2, 0.1, -0.3, 6.0};
+  double mono[9];
+  monoclinic(100.0, mono);
+  const std::array<bool, 3> all{true, true, true};
+  const std::array<bool, 3> short_only{true, false, false};
+  const std::array<bool, 3> yz{false, true, true};
+  const std::array<bool, 3> xy{true, true, false};
+  expect_ball(cube, all, 0);
+  expect_ball(flat, all, 0);
+  expect_ball(flat, short_only, 0);
+  expect_ball(tri, all, 0);
+  expect_ball(tri, yz, 1);
+  expect_ball(mono, all, 2);
+  expect_ball(mono, xy, 0);
+}
