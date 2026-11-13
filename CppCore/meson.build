@@ -773,6 +773,12 @@ if get_option('with_tests')
                 '',
             ],
             [
+                'NeighbourOracle',
+                'neighbour_oracle_test',
+                'NeighbourOracleTest.cc',
+                '',
+            ],
+            [
                 'StreamParityTest',
                 'stream_parity_test',
                 'StreamParityTest.cc',

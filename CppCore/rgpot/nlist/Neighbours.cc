@@ -41,6 +41,56 @@ int axisCount(double length, double edge) {
   return static_cast<int>(n);
 }
 
+// Row-major inverse. Binning only; the pair geometry still goes through
+// MinimumImage. A singular cell yields one bin, which searches every pair.
+bool invertRows(const double a[9], double inv[9]) {
+  const double m0 = a[4] * a[8] - a[5] * a[7];
+  const double m1 = a[3] * a[8] - a[5] * a[6];
+  const double m2 = a[3] * a[7] - a[4] * a[6];
+  const double det = a[0] * m0 - a[1] * m1 + a[2] * m2;
+  if (!std::isfinite(det) || det == 0.0) {
+    return false;
+  }
+  inv[0] = m0 / det;
+  inv[1] = (a[2] * a[7] - a[1] * a[8]) / det;
+  inv[2] = (a[1] * a[5] - a[2] * a[4]) / det;
+  inv[3] = -m1 / det;
+  inv[4] = (a[0] * a[8] - a[2] * a[6]) / det;
+  inv[5] = (a[2] * a[3] - a[0] * a[5]) / det;
+  inv[6] = m2 / det;
+  inv[7] = (a[1] * a[6] - a[0] * a[7]) / det;
+  inv[8] = (a[0] * a[4] - a[1] * a[3]) / det;
+  for (int k = 0; k < 9; ++k) {
+    if (!std::isfinite(inv[k])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Bins along one fractional axis. The cutoff ball reaches at most
+// `search * ||column||` in that fractional coordinate, so a bin at least
+// that wide makes every neighbour sit in the same bin or a neighbour of it.
+int fractionalBins(const double inv[9], int axis, double search, bool periodic) {
+  if (!periodic || !(search > 0.0)) {
+    return 1;
+  }
+  const double dual = std::hypot(inv[axis], inv[3 + axis], inv[6 + axis]);
+  const double reach = search * dual * (1.0 + 1e-9);
+  if (!(reach > 0.0) || !(reach < 1.0)) {
+    return 1;
+  }
+  const double nf = std::floor(1.0 / reach);
+  if (!(nf >= 1.0) || !(nf < 2.0e9)) {
+    return 1;
+  }
+  int n = static_cast<int>(nf);
+  while (n > 1 && 1.0 / static_cast<double>(n) < reach) {
+    --n;
+  }
+  return n;
+}
+
 // Image indices appended to cell_of_ after the per-atom cell ids.
 // magic, pair count, fresh, then a bit field: bit 0 tiny (-1, 0, 1),
 // bit 1 every index stays valid for any move inside the skin,
@@ -255,9 +305,14 @@ const std::int32_t *Neighbours::roundShifts(bool &tiny, const unsigned char *&un
 
 void Neighbours::buildCells(const double *xyz, std::size_t n) {
   const double edge = search_ > 0.0 ? search_ : 1.0;
-  int nx = axisCount(len_[0], edge);
-  int ny = axisCount(len_[1], edge);
-  int nz = axisCount(len_[2], edge);
+  double frac_inv[9] = {};
+  const bool frac_bins = use_general_ && invertRows(box_, frac_inv);
+  int nx = frac_bins ? fractionalBins(frac_inv, 0, search_, periodic_[0])
+                     : axisCount(len_[0], edge);
+  int ny = frac_bins ? fractionalBins(frac_inv, 1, search_, periodic_[1])
+                     : axisCount(len_[1], edge);
+  int nz = frac_bins ? fractionalBins(frac_inv, 2, search_, periodic_[2])
+                     : axisCount(len_[2], edge);
   const double bytes =
       static_cast<double>(nx) * static_cast<double>(ny) *
       static_cast<double>(nz) * static_cast<double>(sizeof(std::int32_t));
@@ -267,13 +322,33 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
   }
   const auto ncells = static_cast<std::size_t>(nx) * static_cast<std::size_t>(ny) *
                       static_cast<std::size_t>(nz);
-  auto bin = [](double x, double length, int naxis) {
-    if (!(length > 0.0) || naxis <= 1) {
+  // A sheared cell is binned in fractional coordinates. Cartesian bins
+  // along the diagonal miss a pair whose connecting lattice vector is
+  // not that diagonal, even when the minimum image is inside the cutoff.
+  auto bin = [&](const double *r, int axis, double length, int naxis) {
+    if (naxis <= 1) {
       return 0;
     }
-    double t = x / length * static_cast<double>(naxis);
-    if (!(t >= 0.0)) {
-      t = 0.0;
+    double t = 0.0;
+    if (frac_bins) {
+      const double f = r[0] * frac_inv[axis] + r[1] * frac_inv[3 + axis] +
+                       r[2] * frac_inv[6 + axis];
+      double w = f - std::floor(f);
+      if (w < 0.0) {
+        w += 1.0;
+      }
+      if (!(w < 1.0)) {
+        w = 0.0;
+      }
+      t = w * static_cast<double>(naxis);
+    } else {
+      if (!(length > 0.0)) {
+        return 0;
+      }
+      t = r[axis] / length * static_cast<double>(naxis);
+      if (!(t >= 0.0)) {
+        t = 0.0;
+      }
     }
     auto i = static_cast<int>(t);
     if (i >= naxis) {
@@ -292,9 +367,10 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
       cell_of_.size() >= n && cell_start_.size() == ncells + 1) {
     bool same = true;
     for (std::size_t a = 0; a < n; ++a) {
-      const int ix = bin(xyz[3 * a], len_[0], nx);
-      const int iy = bin(xyz[3 * a + 1], len_[1], ny);
-      const int iz = bin(xyz[3 * a + 2], len_[2], nz);
+      const double *r = xyz + 3 * a;
+      const int ix = bin(r, 0, len_[0], nx);
+      const int iy = bin(r, 1, len_[1], ny);
+      const int iz = bin(r, 2, len_[2], nz);
       const int id = (ix * ny + iy) * nz + iz;
       if (id != cell_of_[a]) {
         same = false;
@@ -311,9 +387,10 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
   cell_start_.assign(ncells + 1, 0);
   cell_of_.resize(n);
   for (std::size_t a = 0; a < n; ++a) {
-    const int ix = bin(xyz[3 * a], len_[0], nx_);
-    const int iy = bin(xyz[3 * a + 1], len_[1], ny_);
-    const int iz = bin(xyz[3 * a + 2], len_[2], nz_);
+    const double *r = xyz + 3 * a;
+    const int ix = bin(r, 0, len_[0], nx_);
+    const int iy = bin(r, 1, len_[1], ny_);
+    const int iz = bin(r, 2, len_[2], nz_);
     const int id = (ix * ny_ + iy) * nz_ + iz;
     cell_of_[a] = id;
     ++cell_start_[static_cast<std::size_t>(id) + 1];
