@@ -1,0 +1,1 @@
+A triclinic rebuild keeps the rounded residual when that residual lies inside half a lower bound on the shortest lattice vector. No other image can then compare closer. The stored pairs and their geometry are unchanged.

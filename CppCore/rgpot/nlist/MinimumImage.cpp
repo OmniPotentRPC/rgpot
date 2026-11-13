@@ -470,6 +470,23 @@ void search_reduced(const double cell[9], const bool periodic[3],
   dz = best[2];
 }
 
+// 1/||H^{-1}||_F is a lower bound on the shortest lattice vector. Half of
+// that length, pulled in by 2^-20, sits many ulps inside the open ball
+// around the rounded residual. Another image's fma length cannot then
+// compare strictly smaller, so the search keeps this residual.
+template <bool Hardware>
+bool residual_is_unique(double best2, const double dual[3]) noexcept {
+  const double fro2 =
+      dual[0] * dual[0] + dual[1] * dual[1] + dual[2] * dual[2];
+  if (!(fro2 > 0.0) || !std::isfinite(fro2) || !(best2 >= 0.0) ||
+      !std::isfinite(best2)) {
+    return false;
+  }
+  const double shortest = (1.0 / std::sqrt(fro2)) * (1.0 - 0x1p-20);
+  const double limit = 0.5 * shortest;
+  return best2 < limit * limit;
+}
+
 template <bool Hardware>
 void search_bounds(const double cell[9], const double inv[9],
                    const double dual[3], const bool periodic[3], double &dx,
@@ -490,6 +507,12 @@ void search_bounds(const double cell[9], const double inv[9],
   }
   double best[3] = {reduced[0], reduced[1], reduced[2]};
   double best2 = squared<Hardware>(best[0], best[1], best[2]);
+  if (residual_is_unique<Hardware>(best2, dual)) {
+    dx = best[0];
+    dy = best[1];
+    dz = best[2];
+    return;
+  }
   const double radius = std::sqrt(best2);
   std::int64_t low[3] = {};
   std::int64_t high[3] = {};
@@ -623,8 +646,8 @@ void search_bounds(const double cell[9], const double inv[9],
 
 template <bool Hardware>
 void search_narrow(const double cell[9], const double inv[9],
-                   const bool periodic[3], double &dx, double &dy,
-                   double &dz) {
+                   const double dual[3], const bool periodic[3], double &dx,
+                   double &dy, double &dz) {
   int base[3] = {};
   for (int k = 0; k < 3; ++k) {
     if (!periodic[k]) {
@@ -645,6 +668,12 @@ void search_narrow(const double cell[9], const double inv[9],
   }
   double best[3] = {reduced[0], reduced[1], reduced[2]};
   double best2 = squared<Hardware>(best[0], best[1], best[2]);
+  if (residual_is_unique<Hardware>(best2, dual)) {
+    dx = best[0];
+    dy = best[1];
+    dz = best[2];
+    return;
+  }
   for (int i = -1; i <= 1; ++i) {
     if (!periodic[0] && i != 0) {
       continue;
@@ -748,7 +777,7 @@ void fold_search(bool narrow, const double cell[9], const double inv[9],
                  const double dual[3], const bool periodic[3], double &dx,
                  double &dy, double &dz) {
   if (narrow) {
-    search_narrow<Hardware>(cell, inv, periodic, dx, dy, dz);
+    search_narrow<Hardware>(cell, inv, dual, periodic, dx, dy, dz);
     return;
   }
   search_bounds<Hardware>(cell, inv, dual, periodic, dx, dy, dz);
