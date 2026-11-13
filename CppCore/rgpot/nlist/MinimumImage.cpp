@@ -970,6 +970,22 @@ void fractional_hw(const double inv[9], const bool periodic[3], double dx, doubl
 
 } // namespace
 
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+__attribute__((target("fma"), noinline))
+void MinimumImage::subtractRoundedHw(std::int32_t nx, std::int32_t ny,
+                                     std::int32_t nz, double &dx, double &dy,
+                                     double &dz) const noexcept {
+  const double i = static_cast<double>(nx);
+  const double j = static_cast<double>(ny);
+  const double k = static_cast<double>(nz);
+  const double *c = cell_.data();
+  // k, then j, then i. Same products as the inline path and as sub_image.
+  dx = __builtin_fma(-i, c[0], __builtin_fma(-j, c[3], __builtin_fma(-k, c[6], dx)));
+  dy = __builtin_fma(-i, c[1], __builtin_fma(-j, c[4], __builtin_fma(-k, c[7], dy)));
+  dz = __builtin_fma(-i, c[2], __builtin_fma(-j, c[5], __builtin_fma(-k, c[8], dz)));
+}
+#endif
+
 void MinimumImage::fold(double &dx, double &dy, double &dz) const {
   if (!std::isfinite(dx) || !std::isfinite(dy) || !std::isfinite(dz)) {
     throw std::invalid_argument("pair displacement must be finite");

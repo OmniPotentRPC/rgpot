@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <random>
 
@@ -477,6 +478,41 @@ TEST_CASE("two thin periodic rows stay inside the Gram-Schmidt sphere",
         INFO("folded=" << folded << " best=" << static_cast<double>(best));
         REQUIRE(std::isfinite(folded));
         REQUIRE(static_cast<long double>(folded) <= best * (1.0L + 1e-6L) + 1e-18L);
+      }
+    }
+  }
+}
+
+TEST_CASE("a stored sheared image matches a chain of fused products",
+          "[PairList][triclinic][oracle]") {
+  const double cells[][9] = {
+      {32.0, 0.0, 0.0, 0.0, 32.0, 0.0, -5.566, 0.0, 31.513},
+      {32.0, 1.6, 0.8, 2.4, 40.0, -1.6, 0.8, -2.4, 48.0},
+  };
+  const std::array<bool, 3> periodic{true, true, true};
+  const std::int32_t indexes[][3] = {
+      {0, 0, 0}, {1, 0, -1}, {-1, 1, 0}, {0, -1, 1}, {1, 1, 1},
+  };
+  const double samples[][3] = {
+      {1.25, -0.5, 3.0}, {12.0, 4.0, -7.5}, {-0.125, 8.0, 0.25},
+  };
+  for (const auto &cell : cells) {
+    const rgpot::nlist::MinimumImage image(cell, periodic);
+    for (const auto &n : indexes) {
+      for (const auto &sample : samples) {
+        double dx = sample[0];
+        double dy = sample[1];
+        double dz = sample[2];
+        image.subtractRounded(n[0], n[1], n[2], dx, dy, dz);
+        const double i = static_cast<double>(n[0]);
+        const double j = static_cast<double>(n[1]);
+        const double k = static_cast<double>(n[2]);
+        const double ex = std::fma(-i, cell[0], std::fma(-j, cell[3], std::fma(-k, cell[6], sample[0])));
+        const double ey = std::fma(-i, cell[1], std::fma(-j, cell[4], std::fma(-k, cell[7], sample[1])));
+        const double ez = std::fma(-i, cell[2], std::fma(-j, cell[5], std::fma(-k, cell[8], sample[2])));
+        REQUIRE(std::memcmp(&dx, &ex, sizeof(double)) == 0);
+        REQUIRE(std::memcmp(&dy, &ey, sizeof(double)) == 0);
+        REQUIRE(std::memcmp(&dz, &ez, sizeof(double)) == 0);
       }
     }
   }

@@ -53,6 +53,12 @@ public:
                        double &dx, double &dy, double &dz) const noexcept;
 
 private:
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+  // One call, nine fused products. The inline path would call out for
+  // each product on a unit that was not itself built with FMA.
+  void subtractRoundedHw(std::int32_t nx, std::int32_t ny, std::int32_t nz,
+                         double &dx, double &dy, double &dz) const noexcept;
+#endif
   std::array<double, 9> cell_{};
   std::array<double, 9> inverse_{};
   std::array<double, 3> dual_norm_{};
@@ -67,6 +73,12 @@ inline void MinimumImage::subtractRounded(std::int32_t nx, std::int32_t ny,
                                           std::int32_t nz, double &dx,
                                           double &dy,
                                           double &dz) const noexcept {
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+  if (rgpot::simd::detail::fma_hw_active()) {
+    subtractRoundedHw(nx, ny, nz, dx, dy, dz);
+    return;
+  }
+#endif
   const double i = static_cast<double>(nx);
   const double j = static_cast<double>(ny);
   const double k = static_cast<double>(nz);
