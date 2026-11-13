@@ -77,6 +77,15 @@ table as well.
 optional path to the =orca= binary.
 The handle is per instance: a saddle image keeps its own =.gbw=.
 
+** Python
+
+=OrcaPot= is the nanobind class, and =RgpotCalculator("orca")= is the
+ASE calculator.
+A periodic flag raises =ValueError= before any process starts.
+=RgpotRpcCalculator.spawn= can drive an ASE optimiser through =potserv=.
+The replay files under =CppCore/tests/data/orca= stand in for a real
+=orca= binary.
+
 ** Build
 
 The potential is always compiled.

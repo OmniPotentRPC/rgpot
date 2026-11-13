@@ -102,6 +102,28 @@ class MorsePot:
         One detached BatchEvaluator call. results[i] matches a serial call on inputs[i], bit for bit. n_threads 0 uses the hardware concurrency.
         """
 
+class OrcaPot:
+    def __init__(self, method: str = "HF", basis: str = "STO-3G", charge: int = 0, multiplicity: int = 1, keywords: str = "", executable: str = "") -> None:
+        """
+        ORCA energy and forces for one molecule. The executable is the given path, else RGPOT_ORCA, else ORCA, else ORCA_EXE, else orca on PATH. A cell that would fold a pair is rejected.
+        """
+
+    def config(self) -> dict: ...
+
+    def caps(self) -> dict: ...
+
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
+
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+        """
+        Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
+        """
+
+    def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
+        """
+        One detached BatchEvaluator call. results[i] matches a serial call on inputs[i], bit for bit. n_threads 0 uses the hardware concurrency.
+        """
+
 class SWPot:
     def __init__(self) -> None: ...
 

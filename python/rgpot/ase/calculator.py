@@ -21,6 +21,8 @@ flag false is a cluster: the cell is ignored, and the kernel receives a
 cubic box whose side is at least 100 Angstrom and at least the cluster
 extent plus twice the kernel cutoff. A mixed periodic flag raises
 ``ValueError`` and names the non-periodic axes.
+``OrcaPot`` is a cluster calculation, and any periodic flag raises
+``ValueError``.
 """
 
 from __future__ import annotations
@@ -56,11 +58,20 @@ _KINDS: dict[str, str] = {
     "water_h": "WaterHPot",
     "d3": "D3Pot",
     "d4": "D4Pot",
+    "orca": "OrcaPot",
 }
 
 _LJ_KEYS = {"u0", "cutoff", "psi", "switch_width"}
 _D3_KEYS = {"damping", "functional", "atm"}
 _D4_KEYS = {"functional", "charge", "atm"}
+_ORCA_KEYS = {
+    "method",
+    "basis",
+    "charge",
+    "multiplicity",
+    "keywords",
+    "executable",
+}
 
 # Neighbour cutoffs of the bound kernels, in Angstrom. LJ reads
 # config()["cutoff"] instead. WaterH has no cutoff, so an open cell for
@@ -126,6 +137,18 @@ def _resolve_potential(potential: Any, params: dict[str, Any]) -> Any:
             charge=float(params.get("charge", 0.0)),
             atm=bool(params.get("atm", True)),
         )
+    if class_name == "OrcaPot":
+        unknown = set(params) - _ORCA_KEYS
+        if unknown:
+            raise ValueError(f"unknown ORCA parameters: {sorted(unknown)}")
+        return cls(
+            method=str(params.get("method", "HF")),
+            basis=str(params.get("basis", "STO-3G")),
+            charge=int(params.get("charge", 0)),
+            multiplicity=int(params.get("multiplicity", 1)),
+            keywords=str(params.get("keywords", "")),
+            executable=str(params.get("executable", "")),
+        )
     if params:
         raise ValueError(f"{class_name} does not take parameters")
     return cls()
@@ -172,6 +195,25 @@ def _open_box(positions: Any, cutoff: float) -> np.ndarray:
     if side <= 2.0 * extent:
         side = 2.0 * extent + 2.0 * float(cutoff)
     return np.eye(3, dtype=np.float64) * side
+
+
+def _geometry_box(
+    potential: Any, positions: Any, cell: Any, pbc: Any, cutoff: float
+) -> np.ndarray:
+    """Cell passed to one potential.
+
+    ORCA is a cluster calculation. A periodic flag is an error. Every
+    other bound kernel follows ``_box``.
+    """
+    if type(potential).__name__ == "OrcaPot":
+        flags = _pbc_flags(pbc)
+        if bool(flags.any()):
+            raise ValueError(
+                "OrcaPot handles clusters only and does not support "
+                "periodic boundary conditions"
+            )
+        return _open_box(positions, 0.0)
+    return _box(positions, cell, pbc, cutoff)
 
 
 def _box(positions: Any, cell: Any, pbc: Any, cutoff: float) -> np.ndarray:
@@ -282,7 +324,7 @@ class RgpotCalculator(Calculator):
         """
         pos = _as_f64(positions, "positions")
         num = np.ascontiguousarray(np.asarray(numbers, dtype=np.int32))
-        box = _box(pos, cell, pbc, self._cutoff)
+        box = _geometry_box(self._potential, pos, cell, pbc, self._cutoff)
         raw = self._potential.evaluate(pos, num, box)
         energy = float(raw["energy"])
         forces = np.ascontiguousarray(raw["forces"], dtype=np.float64)
@@ -341,7 +383,13 @@ class RgpotCalculator(Calculator):
             positions.append(_as_f64(atoms.positions, "positions"))
             numbers.append(np.ascontiguousarray(atoms.numbers, dtype=np.int32))
             boxes.append(
-                _box(positions[-1], atoms.cell.array, atoms.pbc, self._cutoff)
+                _geometry_box(
+                    self._potential,
+                    positions[-1],
+                    atoms.cell.array,
+                    atoms.pbc,
+                    self._cutoff,
+                )
             )
         raw_rows = self._potential.evaluate_batch(
             positions, numbers, boxes, int(threads)

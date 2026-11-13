@@ -60,6 +60,11 @@ try:
 except ImportError:  # compiled without -DRGPOT_HAS_IPI
     IPIPot = None  # type: ignore[misc, assignment]
 
+try:
+    from rgpot._core import OrcaPot
+except ImportError:  # compiled without -DRGPOT_HAS_ORCA
+    OrcaPot = None  # type: ignore[misc, assignment]
+
 
 def _torch_major() -> str | None:
     """Return installed torch X.Y, or None if torch is not importable."""
@@ -175,6 +180,7 @@ __all__ = [
     "D4Pot",
     "ExprPot",
     "IPIPot",
+    "OrcaPot",
     "XcKernel",
     "PotentialCache",
     "SWPot",
