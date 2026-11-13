@@ -154,6 +154,108 @@ fn linkcell_helps(
     true
 }
 
+fn invert_rows(a: &[[f64; 3]; 3]) -> Option<[[f64; 3]; 3]> {
+    let m0 = a[1][1] * a[2][2] - a[1][2] * a[2][1];
+    let m1 = a[1][0] * a[2][2] - a[1][2] * a[2][0];
+    let m2 = a[1][0] * a[2][1] - a[1][1] * a[2][0];
+    let det = a[0][0] * m0 - a[0][1] * m1 + a[0][2] * m2;
+    if !det.is_finite() || det == 0.0 {
+        return None;
+    }
+    let inv = [
+        [
+            m0 / det,
+            (a[0][2] * a[2][1] - a[0][1] * a[2][2]) / det,
+            (a[0][1] * a[1][2] - a[0][2] * a[1][1]) / det,
+        ],
+        [
+            -m1 / det,
+            (a[0][0] * a[2][2] - a[0][2] * a[2][0]) / det,
+            (a[0][2] * a[1][0] - a[0][0] * a[1][2]) / det,
+        ],
+        [
+            m2 / det,
+            (a[0][1] * a[2][0] - a[0][0] * a[2][1]) / det,
+            (a[0][0] * a[1][1] - a[0][1] * a[1][0]) / det,
+        ],
+    ];
+    if inv.iter().flatten().any(|v| !v.is_finite()) {
+        return None;
+    }
+    Some(inv)
+}
+
+/// Minimum-image squared length. Open axes stay at coefficient 0. The
+/// search is a neighbourhood of the rounded fractional coordinate, wide
+/// enough for a displacement of a few box lengths.
+fn general_r2(d: [f64; 3], cell: &[[f64; 3]; 3], inv: &[[f64; 3]; 3], periodic: [bool; 3]) -> f64 {
+    let mut base = [0i32; 3];
+    for i in 0..3 {
+        if !periodic[i] {
+            continue;
+        }
+        let f = d[0] * inv[0][i] + d[1] * inv[1][i] + d[2] * inv[2][i];
+        base[i] = f.round() as i32;
+    }
+    let mut best = f64::INFINITY;
+    for da in -2..=2 {
+        if !periodic[0] && da != 0 {
+            continue;
+        }
+        for db in -2..=2 {
+            if !periodic[1] && db != 0 {
+                continue;
+            }
+            for dc in -2..=2 {
+                if !periodic[2] && dc != 0 {
+                    continue;
+                }
+                let ia = (base[0] + da) as f64;
+                let ib = (base[1] + db) as f64;
+                let ic = (base[2] + dc) as f64;
+                let mut r = [0.0; 3];
+                for c in 0..3 {
+                    r[c] = d[c] - ia * cell[0][c] - ib * cell[1][c] - ic * cell[2][c];
+                }
+                let r2 = r[0] * r[0] + r[1] * r[1] + r[2] * r[2];
+                if r2 < best {
+                    best = r2;
+                }
+            }
+        }
+    }
+    best
+}
+
+fn general_pairs(
+    xyz: &[[f64; 3]],
+    cell: &[[f64; 3]; 3],
+    periodic: [bool; 3],
+    list_cutoff: f64,
+) -> Result<Vec<(i32, i32)>, i32> {
+    if xyz.len() > i32::MAX as usize {
+        return Err(fail("atom count does not fit in i32"));
+    }
+    let Some(inv) = invert_rows(cell) else {
+        return Err(fail("periodic cell must be nonsingular"));
+    };
+    let cut2 = list_cutoff * list_cutoff;
+    let mut pairs = Vec::new();
+    for i in 0..xyz.len() {
+        for j in (i + 1)..xyz.len() {
+            let d = [
+                xyz[i][0] - xyz[j][0],
+                xyz[i][1] - xyz[j][1],
+                xyz[i][2] - xyz[j][2],
+            ];
+            if general_r2(d, cell, &inv, periodic) <= cut2 {
+                pairs.push((i as i32, j as i32));
+            }
+        }
+    }
+    Ok(pairs)
+}
+
 fn collect_pairs(
     xyz: &[[f64; 3]],
     cell: &[[f64; 3]; 3],
@@ -164,7 +266,7 @@ fn collect_pairs(
         return Ok(Vec::new());
     }
     if !orthorhombic(cell) {
-        return Err(fail("pair list requires an orthorhombic cell"));
+        return general_pairs(xyz, cell, periodic, list_cutoff);
     }
     if xyz.len() > i32::MAX as usize {
         return Err(fail("atom count does not fit in i32"));
@@ -686,6 +788,165 @@ mod tests {
         let expect = scalar_pairs(&xyz, [1.0e6, 1.0e6, 1.0e6], [false, false, false], 3.5);
         assert_eq!(expect, vec![(0, 1), (0, 2), (1, 2)]);
         assert!(expect.iter().all(|pair| got.contains(pair)));
+    }
+
+    fn shell_pairs(
+        xyz: &[[f64; 3]],
+        cell: &[[f64; 3]; 3],
+        periodic: [bool; 3],
+        reach: f64,
+    ) -> Vec<(i32, i32)> {
+        let inv = invert_rows(cell).unwrap();
+        let cut2 = reach * reach;
+        let mut pairs = Vec::new();
+        for i in 0..xyz.len() {
+            for j in (i + 1)..xyz.len() {
+                let d = [
+                    xyz[i][0] - xyz[j][0],
+                    xyz[i][1] - xyz[j][1],
+                    xyz[i][2] - xyz[j][2],
+                ];
+                // Wider than the list search, so a short neighbourhood cannot
+                // confirm itself.
+                let mut best = f64::INFINITY;
+                let mut base = [0i32; 3];
+                for axis in 0..3 {
+                    if periodic[axis] {
+                        let f = d[0] * inv[0][axis] + d[1] * inv[1][axis] + d[2] * inv[2][axis];
+                        base[axis] = f.round() as i32;
+                    }
+                }
+                for da in -6..=6 {
+                    if !periodic[0] && da != 0 {
+                        continue;
+                    }
+                    for db in -6..=6 {
+                        if !periodic[1] && db != 0 {
+                            continue;
+                        }
+                        for dc in -6..=6 {
+                            if !periodic[2] && dc != 0 {
+                                continue;
+                            }
+                            let ia = (base[0] + da) as f64;
+                            let ib = (base[1] + db) as f64;
+                            let ic = (base[2] + dc) as f64;
+                            let mut r = [0.0; 3];
+                            for c in 0..3 {
+                                r[c] = d[c]
+                                    - ia * cell[0][c]
+                                    - ib * cell[1][c]
+                                    - ic * cell[2][c];
+                            }
+                            let r2 = r[0] * r[0] + r[1] * r[1] + r[2] * r[2];
+                            if r2 < best {
+                                best = r2;
+                            }
+                        }
+                    }
+                }
+                if best <= cut2 {
+                    pairs.push((i as i32, j as i32));
+                }
+            }
+        }
+        pairs
+    }
+
+    #[test]
+    fn skin_follows_a_sheared_and_triclinic_trajectory() {
+        let shear = {
+            let rad = 100.0_f64.to_radians();
+            let l = 18.0;
+            [
+                [l, 0.0, 0.0],
+                [0.0, l, 0.0],
+                [l * rad.cos(), 0.0, l * rad.sin()],
+            ]
+        };
+        let tri = [
+            [16.0, 0.8, 0.4],
+            [1.2, 18.0, -0.6],
+            [0.4, -0.8, 20.0],
+        ];
+        let cells = [shear, tri];
+        let masks = [
+            [true, false, false],
+            [false, true, true],
+            [true, true, true],
+        ];
+        let cutoff = 4.5;
+        let skin = 1.0;
+        for cell in cells {
+            for periodic in masks {
+                let mut xyz = Vec::new();
+                for i in 0..16 {
+                    let t = i as f64;
+                    let f = [
+                        (t * 0.17).fract() * 1.1 - 0.05,
+                        (t * 0.29).fract(),
+                        (t * 0.41).fract() * 1.08 - 0.02,
+                    ];
+                    xyz.push([
+                        f[0] * cell[0][0] + f[1] * cell[1][0] + f[2] * cell[2][0],
+                        f[0] * cell[0][1] + f[1] * cell[1][1] + f[2] * cell[2][1],
+                        f[0] * cell[0][2] + f[1] * cell[1][2] + f[2] * cell[2][2],
+                    ]);
+                }
+                // A pair that meets across the first periodic face.
+                xyz.push([0.05, 4.0, 3.0]);
+                let mut far = xyz[xyz.len() - 1];
+                for c in 0..3 {
+                    far[c] += 0.97 * cell[0][c];
+                }
+                xyz.push(far);
+                let mut list = SkinList::new();
+                let built = list
+                    .pairs(&xyz, &cell, periodic, cutoff, skin)
+                    .unwrap()
+                    .to_vec();
+                let shell = shell_pairs(&xyz, &cell, periodic, cutoff + skin);
+                assert_eq!(built, shell, "{periodic:?}");
+                let mut frame = xyz.clone();
+                for step in 0..4 {
+                    for (p, atom) in frame.iter_mut().enumerate() {
+                        atom[0] += 0.04 * ((step + p) as f64 * 0.7).sin();
+                        atom[1] += 0.03 * ((step + p) as f64 * 0.5).cos();
+                    }
+                    let again = list
+                        .pairs(&frame, &cell, periodic, cutoff, skin)
+                        .unwrap()
+                        .to_vec();
+                    assert_eq!(again, built);
+                    let close = shell_pairs(&frame, &cell, periodic, cutoff);
+                    assert!(close.iter().all(|pair| again.contains(pair)));
+                }
+                let mut under = xyz.clone();
+                under[0][0] += 0.49 * skin;
+                let kept = list
+                    .pairs(&under, &cell, periodic, cutoff, skin)
+                    .unwrap()
+                    .to_vec();
+                assert_eq!(kept, built);
+                let mut over = xyz.clone();
+                over[0][0] += 0.51 * skin;
+                let rebuilt = list
+                    .pairs(&over, &cell, periodic, cutoff, skin)
+                    .unwrap()
+                    .to_vec();
+                assert_eq!(rebuilt, shell_pairs(&over, &cell, periodic, cutoff + skin));
+                let mut changed = cell;
+                changed[0][0] *= 1.15;
+                let shifted = list
+                    .pairs(&over, &changed, periodic, cutoff, skin)
+                    .unwrap()
+                    .to_vec();
+                assert_eq!(
+                    shifted,
+                    shell_pairs(&over, &changed, periodic, cutoff + skin)
+                );
+            }
+        }
     }
 
     #[test]

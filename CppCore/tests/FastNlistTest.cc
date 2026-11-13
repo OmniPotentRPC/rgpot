@@ -12,6 +12,8 @@
 #include <cmath>
 #include <cstdint>
 #include <fstream>
+#include <limits>
+#include <random>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -581,6 +583,144 @@ TEST_CASE("Water plus H wraps every leg with minimage", "[fastnlist][water]") {
 #endif
 
 #ifdef RGPOT_HAS_FAST_NLIST
+std::vector<std::pair<int, int>> brute_cutoff(const double cell[9],
+                                              const std::array<bool, 3> &periodic,
+                                              const std::vector<double> &pos, double reach) {
+  const rgpot::nlist::MinimumImage image(cell, periodic);
+  const double reach2 = reach * reach;
+  const auto n = pos.size() / 3;
+  std::vector<std::pair<int, int>> pairs;
+  for (std::size_t i = 0; i < n; ++i) {
+    for (std::size_t j = i + 1; j < n; ++j) {
+      double dx = pos[3 * i] - pos[3 * j];
+      double dy = pos[3 * i + 1] - pos[3 * j + 1];
+      double dz = pos[3 * i + 2] - pos[3 * j + 2];
+      image.fold(dx, dy, dz);
+      if (dx * dx + dy * dy + dz * dz <= reach2) {
+        pairs.emplace_back(static_cast<int>(i), static_cast<int>(j));
+      }
+    }
+  }
+  return pairs;
+}
+
+std::vector<std::pair<int, int>> skin_call(rgpot_fast_skin *list, const std::vector<double> &pos,
+                                           const double cell[9], const int32_t periodic[3],
+                                           double cutoff, double skin) {
+  const std::size_t n = pos.size() / 3;
+  const std::size_t cap = n < 2 ? 1 : n * (n - 1) / 2;
+  std::vector<int32_t> ij(cap * 2);
+  std::size_t count = 0;
+  const int rc = rgpot_fast_skin_pairs(list, pos.data(), n, cell, periodic, cutoff, skin, ij.data(),
+                                       cap, &count);
+  REQUIRE(rc == 0);
+  std::vector<std::pair<int, int>> pairs;
+  pairs.reserve(count);
+  for (std::size_t p = 0; p < count; ++p) {
+    pairs.emplace_back(ij[2 * p], ij[2 * p + 1]);
+  }
+  std::sort(pairs.begin(), pairs.end());
+  return pairs;
+}
+
+void displace_half_skin(std::vector<double> &pos, const std::vector<double> &ref, double skin,
+                        bool inside) {
+  const double limit2 = 0.25 * skin * skin;
+  double scale = std::sqrt(limit2);
+  for (int n = 0; n < 100000; ++n) {
+    pos = ref;
+    pos[0] = ref[0] + scale;
+    const double dx = pos[0] - ref[0];
+    const bool over = dx * dx > limit2;
+    if (inside != over) {
+      return;
+    }
+    scale = std::nextafter(scale, inside ? 0.0 : std::numeric_limits<double>::infinity());
+  }
+  FAIL("could not place the half-skin displacement");
+}
+
+TEST_CASE("skin list matches brute-force cutoff pairs on a trajectory",
+          "[fastnlist][skin][oracle]") {
+  const double cutoff = 4.5;
+  const double skin = 1.0;
+  double shear[9];
+  {
+    const double rad = 100.0 * 3.14159265358979323846 / 180.0;
+    const double side = 18.0;
+    shear[0] = side;
+    shear[1] = 0;
+    shear[2] = 0;
+    shear[3] = 0;
+    shear[4] = side;
+    shear[5] = 0;
+    shear[6] = side * std::cos(rad);
+    shear[7] = 0;
+    shear[8] = side * std::sin(rad);
+  }
+  const double tri[9] = {16, 0.8, 0.4, 1.2, 18, -0.6, 0.4, -0.8, 20};
+  const double *cells[2] = {shear, tri};
+  const int masks[] = {1, 3, 5, 7};
+  std::mt19937_64 rng(17);
+  std::uniform_real_distribution<double> frac(-0.05, 1.05);
+  for (const double *cell : cells) {
+    for (int mask : masks) {
+      const std::array<bool, 3> periodic{(mask & 1) != 0, (mask & 2) != 0, (mask & 4) != 0};
+      const int32_t flags[3] = {periodic[0] ? 1 : 0, periodic[1] ? 1 : 0, periodic[2] ? 1 : 0};
+      std::vector<double> pos;
+      for (int i = 0; i < 18; ++i) {
+        const double f0 = frac(rng);
+        const double f1 = frac(rng);
+        const double f2 = frac(rng);
+        for (int c = 0; c < 3; ++c) {
+          pos.push_back(f0 * cell[c] + f1 * cell[3 + c] + f2 * cell[6 + c]);
+        }
+      }
+      // Across a periodic face, including a coordinate outside the box.
+      pos.insert(pos.end(), {0.04, 5.0, 2.0, 0.0, 0.0, 0.0});
+      for (int c = 0; c < 3; ++c) {
+        pos[pos.size() - 3 + c] = pos[pos.size() - 6 + c] + 0.98 * cell[c];
+      }
+      INFO("mask=" << mask);
+      rgpot_fast_skin *list = rgpot_fast_skin_new();
+      REQUIRE(list != nullptr);
+      const auto built = skin_call(list, pos, cell, flags, cutoff, skin);
+      const auto shell = brute_cutoff(cell, periodic, pos, cutoff + skin);
+      REQUIRE(built == shell);
+      std::vector<double> frame = pos;
+      std::uniform_real_distribution<double> step(-0.04, 0.04);
+      for (int s = 0; s < 5; ++s) {
+        for (double &v : frame) {
+          v += step(rng);
+        }
+        const auto reused = skin_call(list, frame, cell, flags, cutoff, skin);
+        REQUIRE(reused == built);
+        const auto close = brute_cutoff(cell, periodic, frame, cutoff);
+        for (const auto &pair : close) {
+          REQUIRE(std::binary_search(reused.begin(), reused.end(), pair));
+        }
+      }
+      std::vector<double> under = pos;
+      displace_half_skin(under, pos, skin, true);
+      REQUIRE(skin_call(list, under, cell, flags, cutoff, skin) == built);
+      const auto under_close = brute_cutoff(cell, periodic, under, cutoff);
+      for (const auto &pair : under_close) {
+        REQUIRE(std::binary_search(built.begin(), built.end(), pair));
+      }
+      std::vector<double> over = pos;
+      displace_half_skin(over, pos, skin, false);
+      const auto rebuilt = skin_call(list, over, cell, flags, cutoff, skin);
+      REQUIRE(rebuilt == brute_cutoff(cell, periodic, over, cutoff + skin));
+      double changed[9];
+      std::copy(cell, cell + 9, changed);
+      changed[0] *= 1.2;
+      const auto shifted = skin_call(list, over, changed, flags, cutoff, skin);
+      REQUIRE(shifted == brute_cutoff(changed, periodic, over, cutoff + skin));
+      rgpot_fast_skin_free(list);
+    }
+  }
+}
+
 TEST_CASE("A fastnlist skin reuses inside half a skin", "[fastnlist][skin]") {
   const double box[9] = {40, 0, 0, 0, 40, 0, 0, 0, 40};
   const int32_t periodic[3] = {1, 1, 1};
