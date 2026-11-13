@@ -11,8 +11,8 @@ project = "rgpot"
 copyright = "2025--present, rgpot developers"
 author = "Rohit Goswami"
 # [[[cog import rgpot_version as v; cog.outl(f'version = "{v.VERSION}"'); cog.outl(f'release = "{v.VERSION}"')]]]
-version = "3.6.0"
-release = "3.6.0"
+version = "3.7.0"
+release = "3.7.0"
 # [[[end]]]
 # Navbar falls back to html_logo when light_logo/dark_logo are unset.
 html_logo = "_static/logo-light.svg"

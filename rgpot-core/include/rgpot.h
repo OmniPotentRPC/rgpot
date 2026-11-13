@@ -22,9 +22,9 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 #endif
 
 /* [[[cog import rgpot_version as v; cog.outl(v.header_macros())]]] */
-#define RGPOT_VERSION "3.6.0"
+#define RGPOT_VERSION "3.7.0"
 #define RGPOT_VERSION_MAJOR 3
-#define RGPOT_VERSION_MINOR 6
+#define RGPOT_VERSION_MINOR 7
 #define RGPOT_VERSION_PATCH 0
 /* [[[end]]] */
 

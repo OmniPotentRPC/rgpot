@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 project(
   rgpot
   # [[[cog import rgpot_version as v; cog.outl(f"  VERSION {v.VERSION}")]]]
-  VERSION 3.6.0
+  VERSION 3.7.0
   # [[[end]]]
   DESCRIPTION "Cpp core for potential energy surface functionality"
   HOMEPAGE_URL "https://github.com/OmniPotentRPC/rgpot"

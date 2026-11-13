@@ -5,7 +5,7 @@ description = "RPC based core for potential energy surface functionality."
 name = "rgpot"
 platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
 # [[[cog import rgpot_version as v; cog.outl(f'version = "{v.VERSION}"')]]]
-version = "3.6.0"
+version = "3.7.0"
 # [[[end]]]
 
 [feature.cigen.tasks]
