@@ -1,8 +1,7 @@
 diff --git a/Potentials.capnp b/Potentials.capnp
-index 9a2f8d7..05c9e7a 100644
---- a/Potentials.capnp
-+++ b/Potentials.capnp
-@@ -25,6 +25,8 @@ struct ForceInput {
+--- a/Potentials.capnp	2026-11-13 12:12:04.455149742 +0000
++++ b/Potentials.capnp	2026-11-13 12:11:53.443172758 +0000
+@@ -25,6 +25,8 @@
    charge @6 :Int32 = 0;             # @brief Per-step charge when hasCharge is true.
    hasMultiplicity @7 :Bool = false; # @brief Override NWChemParams.multiplicity for this step.
    multiplicity @8 :Int32 = 1;       # @brief Per-step spin multiplicity when hasMultiplicity is true.
@@ -11,17 +10,35 @@ index 9a2f8d7..05c9e7a 100644
  }
  
  # @struct PotentialResult
-@@ -59,6 +61,9 @@ struct PotentialResult {
+@@ -38,7 +40,7 @@
+   optimizedPos @5 :List(Float64); # Optimized Cartesian coordinates [natoms * 3].
+   frequencies @6 :List(Float64); # Harmonic vibrational frequencies [natoms * 3] in cm^-1.
+   intensities @7 :List(Float64); # Harmonic IR intensities [natoms * 3] in atomic units.
+-  stress @8 :List(Float64); # Stress tensor [9] in energy/length^3 units.
++  stress @8 :List(Float64); # Cauchy stress [9], energy/length^3. ASE: stress = -virial/V. Empty and hasStress false: not available.
+   polarizability @9 :List(Float64); # Polarizability / aoresponse vector (backend-defined length).
+   gradient @10 :List(Float64); # Flat nuclear gradient [natoms * 3] in energy/length units.
+   normalModes @11 :List(Float64); # Dense Cartesian normal-mode matrix [natoms * 3]^2.
+@@ -59,6 +61,18 @@
    mdTrajectoryRow @25 :List(Float64); # MD ENERGY row incl. EKINC when MD ran
    mdTrajectoryValid @26 :Bool = false;
    embedMdPropsSkipped @27 :Bool = true; # true when MD/PROP not harvested this eval (honest skip)
 +  # Present only when ForceInput.neighbors was set. A stream is one chunk;
 +  # more is true when the client should ask again with the same query.
 +  neighborList @28 :NeighborList;
++  # 3x3 row-major virial in energy units (eV when the result is in eV).
++  # Absent, or hasVirial false, means the potential did not compute it.
++  # When hasVirial and hasStress are both true and the cell volume is V,
++  # stress = -virial/V (ASE).
++  virial @29 :List(Float64);
++  hasVirial @30 :Bool = false;
++  # Explicit companion to stress. Older servers leave this false and may
++  # still send a nine-element stress list; that list is a computed stress.
++  hasStress @31 :Bool = false;
  }
  
  # @struct Capabilities
-@@ -2499,6 +2504,41 @@ struct NWChemCdftSpec {
+@@ -2499,6 +2513,41 @@
    }
  }
  
@@ -63,7 +80,7 @@ index 9a2f8d7..05c9e7a 100644
  # @struct PotentialConfig
  # @brief **rgpot user parameters (extensible, in/out via Cap'n Proto only).**
  #
-@@ -2580,4 +2620,63 @@ interface Potential {
+@@ -2580,4 +2629,63 @@
    # @return The protocol, schema, eindir bridge, DLPack and build identity.
    # buildVersion and buildRevision are empty when the build does not know them.
    getCapabilities @12 () -> (capabilities :Capabilities);

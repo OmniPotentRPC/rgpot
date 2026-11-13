@@ -749,6 +749,7 @@ if get_option('with_tests')
         test_array += [
             ['MorsePotTest', 'morse_pot_test', 'MorsePotTest.cc', ''],
             ['SWSiTest', 'sw_si_test', 'SWSiTest.cc', ''],
+            ['SWVirialTest', 'sw_virial_test', 'SWVirialTest.cc', ''],
             ['TersoffSiCTest', 'tersoff_sic_test', 'TersoffSiCTest.cc', ''],
             [
                 'HalfShellScanTest',

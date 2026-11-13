@@ -745,8 +745,10 @@ NB_MODULE(_core, m) {
           },
           nb::arg("positions").noconvert(), nb::arg("atom_types"),
           nb::arg("box").noconvert(),
-          "Energy, forces, variance, and the Cauchy stress, shape (3, 3), "
-          "in eV/Angstrom^3. The kernel runs detached.")
+          "Energy, forces, variance, the virial W in eV, shape (3, 3), and "
+          "the Cauchy stress sigma = -W/V in eV/Angstrom^3, shape (3, 3). "
+          "virial is None when the potential does not compute it. The "
+          "kernel runs detached.")
       .def("energy_gradient", &stillinger_weber_energy_gradient,
            nb::arg("positions").noconvert(), nb::arg("atom_types"),
            nb::arg("box").noconvert(),

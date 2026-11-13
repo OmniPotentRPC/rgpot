@@ -50,16 +50,18 @@ public:
   StillingerWeberSi();
 
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.reentrancy = Reentrancy::PerInstance, .stress = true};
+    return {.reentrancy = Reentrancy::PerInstance, .stress = true,
+            .virial = true};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
     return m_paramsKey;
   }
 
-  /// Forces, energy and the Cauchy stress sigma = (1/V) dE/dε in
-  /// eV/Angstrom^3, the convention of stress.hpp. The virial sums each
-  /// folded bond vector times the energy gradient with respect to it.
+  /// Forces, energy, the virial W = sum r_ij ⊗ f_ij in eV, and the
+  /// Cauchy stress sigma = -W/V in eV/Angstrom^3. r_ij is the folded
+  /// bond, including a periodic image. The two-body term and each arm of
+  /// the three-body term use that same pair form. See stress.hpp.
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
   /// Auto, Stored and Stream all use the shared neighbour layer. One
@@ -102,11 +104,12 @@ public:
                               double *gradients) const;
 
 private:
-  /// scale +1 writes forces, scale -1 writes dE/dx. A non-null strain
-  /// gains dE/dε in eV, in the Voigt order of stress.hpp.
+  /// scale +1 writes forces, scale -1 writes dE/dx. A non-null virial
+  /// receives W = sum r_ij ⊗ f_ij in eV, nine row-major components. The
+  /// tensor is the physical force virial, not scaled by `scale`.
   void evaluate(const double *positions, const double *box, std::size_t n_atoms,
                 double *energy, double *acc, double scale,
-                nlist::NeighborList *neighbors, double *strain) const;
+                nlist::NeighborList *neighbors, double *virial) const;
 
   uint64_t m_paramsKey{0};
   nlist::Mode mode_ = nlist::Mode::Auto;

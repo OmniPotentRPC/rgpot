@@ -126,12 +126,19 @@ def test_lj_stress_matches_finite_difference() -> None:
 def test_stillinger_weber_si_stress_matches_finite_difference() -> None:
     pot = rgpot.StillingerWeberSi()
     assert pot.caps()["stress"] is True
+    assert pot.caps()["virial"] is True
     atoms = si_crystal()
     atoms.calc = RgpotCalculator(pot)
     assert "stress" in atoms.calc.implemented_properties
     analytic = atoms.get_stress()
     numeric = calculate_numerical_stress(atoms, eps=1e-6, voigt=True)
     np.testing.assert_allclose(analytic, numeric, atol=1e-6, rtol=0.0)
+    raw = pot.evaluate(
+        atoms.positions, atoms.numbers, np.ascontiguousarray(atoms.cell.array)
+    )
+    virial = np.asarray(raw["virial"], dtype=np.float64)
+    stress = np.asarray(raw["stress"], dtype=np.float64)
+    np.testing.assert_allclose(stress, -virial / atoms.get_volume(), atol=0.0)
 
 
 @pytest.mark.skipif(not rgpot.has_fortran_pots, reason="no SWPot in this build")
@@ -150,6 +157,8 @@ def test_sw_stress_is_the_1985_stress_scaled_by_epsilon() -> None:
     args = (atoms.positions, atoms.numbers, np.ascontiguousarray(atoms.cell.array))
     eon = rgpot.SWPot().evaluate(*args)
     published = rgpot.StillingerWeberSi().evaluate(*args)
+    assert eon["virial"] is None
+    assert published["virial"] is not None
     ratio = 2.16826 * 1.06767385 / (3.4723e-12 * 1.0e-7 / 1.602176634e-19)
     assert eon["energy"] == pytest.approx(ratio * published["energy"], rel=1e-13)
     np.testing.assert_allclose(

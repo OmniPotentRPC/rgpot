@@ -176,7 +176,10 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// 6 drops the copied half-list from LJ and Morse, and gives ZBL and the
 /// open Lennard-Jones cluster a neighbour member. The pair term runs on
 /// the shared walk, so CachedPairs is no longer part of those objects.
-inline constexpr std::uint32_t kCxxSoversion = 6;
+/// 7 appends ForceOut::virial and has_virial, and PotCaps::virial. Field
+/// order of the older members is unchanged. A caller built against
+/// soversion 6 does not load librgpot.so.7.
+inline constexpr std::uint32_t kCxxSoversion = 7;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
 struct CxxSoversionEntry {
@@ -189,7 +192,7 @@ struct CxxSoversionEntry {
 /// platform still compiles. How to update the table:
 /// docs/orgmode/reference/c_abi.org.
 inline constexpr std::array<CxxSoversionEntry, 1> kCxxSoversionTable{{
-    {"linux-x86_64-libstdc++-lp64", 0x0bba2f6c8fb3f542ull},
+    {"linux-x86_64-libstdc++-lp64", 0xb173dcae8b9a9a6dull},
 }};
 
 /// This translation unit's platform tag (`os-arch-stdlib-datamodel`).
@@ -287,6 +290,8 @@ constexpr std::uint64_t compute_hash() {
   f.add(offsetof(ForceOut, variance));
   f.add(offsetof(ForceOut, stress));
   f.add(offsetof(ForceOut, has_stress));
+  f.add(offsetof(ForceOut, virial));
+  f.add(offsetof(ForceOut, has_virial));
   f.type<ForceBatch>();
   f.add(offsetof(ForceBatch, nSystems));
   f.add(offsetof(ForceBatch, in));
@@ -298,6 +303,7 @@ constexpr std::uint64_t compute_hash() {
   f.add(offsetof(PotCaps, periodic));
   f.add(offsetof(PotCaps, groupCollective));
   f.add(offsetof(PotCaps, stress));
+  f.add(offsetof(PotCaps, virial));
   f.type<CalculatorGroup>();
   f.add(offsetof(CalculatorGroup, index));
   f.add(offsetof(CalculatorGroup, ranks));

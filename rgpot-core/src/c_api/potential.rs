@@ -28,7 +28,25 @@ use std::os::raw::c_void;
 use crate::eindir::rgpot_potential_t;
 use crate::potential::PotentialCallback;
 use crate::status::{catch_unwind, rgpot_status_t, set_last_error};
-use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
+use crate::types::{rgpot_force_input_t, rgpot_force_out_t, rgpot_mechanical_t};
+
+use std::cell::Cell;
+
+thread_local! {
+    static MECHANICAL: Cell<*mut rgpot_mechanical_t> = const { Cell::new(std::ptr::null_mut()) };
+}
+
+/// Slot the in-flight [`rgpot_potential_calculate_mechanical`] call asks
+/// the callback to fill. Null during [`rgpot_potential_calculate`].
+///
+/// # Safety
+///
+/// The returned pointer is valid only on this thread until that call
+/// returns. Callers other than the potential trampoline should not write it.
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_mechanical_slot() -> *mut rgpot_mechanical_t {
+    MECHANICAL.with(|slot| slot.get())
+}
 
 /// Create a new potential handle from a callback function pointer.
 ///
@@ -103,6 +121,43 @@ pub unsafe extern "C" fn rgpot_potential_calculate(
         }
         unsafe { (p.callback)(p.pot_user_data, input, output) }
     }))
+}
+
+/// Energy, forces, and the optional virial and stress.
+///
+/// Same contract as [`rgpot_potential_calculate`]. `mechanical` may be
+/// null, in which case this is that call. Otherwise it is zeroed first
+/// (`has_virial` and `has_stress` are 0, meaning not available) and the
+/// callback may fill it through [`rgpot_mechanical_slot`]. A potential
+/// that does not implement a tensor leaves that flag at 0. When both
+/// flags are set, `stress = -virial / V` in the potential's units.
+///
+/// Existing callers of [`rgpot_potential_calculate`] are unchanged.
+///
+/// # Safety
+///
+/// As for [`rgpot_potential_calculate`]. `mechanical`, when non-null,
+/// must point to writable storage that outlives the call.
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_potential_calculate_mechanical(
+    pot: *const rgpot_potential_t,
+    input: *const rgpot_force_input_t,
+    output: *mut rgpot_force_out_t,
+    mechanical: *mut rgpot_mechanical_t,
+) -> rgpot_status_t {
+    if !mechanical.is_null() {
+        unsafe {
+            let m = &mut *mechanical;
+            m.virial = [0.0; 9];
+            m.stress = [0.0; 9];
+            m.has_virial = 0;
+            m.has_stress = 0;
+        }
+    }
+    MECHANICAL.with(|slot| slot.set(mechanical));
+    let status = unsafe { rgpot_potential_calculate(pot, input, output) };
+    MECHANICAL.with(|slot| slot.set(std::ptr::null_mut()));
+    status
 }
 
 /// Free a potential handle previously obtained from `rgpot_potential_new` or
@@ -380,5 +435,105 @@ mod tests {
             unsafe { cleanup(&mut input, &mut output) };
         }
         unsafe { rgpot_potential_free(pot as *mut _) };
+    }
+
+    unsafe extern "C" fn slot_callback(
+        _ud: *mut c_void,
+        input: *const rgpot_force_input_t,
+        output: *mut rgpot_force_out_t,
+    ) -> rgpot_status_t {
+        let inp = unsafe { &*input };
+        let out = unsafe { &mut *output };
+        let n = unsafe { inp.n_atoms() }.unwrap_or(0);
+        out.energy = n as f64;
+        out.variance = 0.0;
+        out.forces = create_owned_f64_tensor(vec![0.0; n * 3], vec![n as i64, 3]);
+        let slot = unsafe { rgpot_mechanical_slot() };
+        if !slot.is_null() {
+            let m = unsafe { &mut *slot };
+            m.virial = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+            m.stress = [-0.5, 0.0, 0.0, 0.0, -0.5, 0.0, 0.0, 0.0, -0.5];
+            m.has_virial = 1;
+            m.has_stress = 1;
+        }
+        rgpot_status_t::RGPOT_SUCCESS
+    }
+
+    #[test]
+    fn calculate_leaves_the_mechanical_slot_null() {
+        let pot = unsafe { rgpot_potential_new(slot_callback, std::ptr::null_mut(), None) };
+        let (_pos, _atmnrs, _box_, mut input) = make_test_input();
+        let mut output = rgpot_force_out_t {
+            forces: std::ptr::null_mut(),
+            energy: 0.0,
+            variance: 0.0,
+        };
+        let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
+        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+        assert!(unsafe { rgpot_mechanical_slot() }.is_null());
+        unsafe {
+            cleanup(&mut input, &mut output);
+            rgpot_potential_free(pot as *mut _);
+        }
+    }
+
+    #[test]
+    fn mechanical_call_reports_not_available_until_the_callback_fills_it() {
+        let pot = unsafe { rgpot_potential_new(sum_callback, std::ptr::null_mut(), None) };
+        let (_pos, _atmnrs, _box_, mut input) = make_test_input();
+        let mut output = rgpot_force_out_t {
+            forces: std::ptr::null_mut(),
+            energy: 1.0,
+            variance: 1.0,
+        };
+        let mut mechanical = rgpot_mechanical_t {
+            virial: [9.0; 9],
+            stress: [9.0; 9],
+            has_virial: 1,
+            has_stress: 1,
+        };
+        let status = unsafe {
+            rgpot_potential_calculate_mechanical(pot, &input, &mut output, &mut mechanical)
+        };
+        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+        assert_eq!(output.energy, 2.0);
+        assert_eq!(mechanical.has_virial, 0);
+        assert_eq!(mechanical.has_stress, 0);
+        assert!(mechanical.virial.iter().all(|v| *v == 0.0));
+        assert!(mechanical.stress.iter().all(|v| *v == 0.0));
+        assert!(unsafe { rgpot_mechanical_slot() }.is_null());
+        unsafe {
+            cleanup(&mut input, &mut output);
+            rgpot_potential_free(pot as *mut _);
+        }
+    }
+
+    #[test]
+    fn mechanical_call_keeps_what_the_callback_writes() {
+        let pot = unsafe { rgpot_potential_new(slot_callback, std::ptr::null_mut(), None) };
+        let (_pos, _atmnrs, _box_, mut input) = make_test_input();
+        let mut output = rgpot_force_out_t {
+            forces: std::ptr::null_mut(),
+            energy: 0.0,
+            variance: 0.0,
+        };
+        let mut mechanical = rgpot_mechanical_t {
+            virial: [0.0; 9],
+            stress: [0.0; 9],
+            has_virial: 0,
+            has_stress: 0,
+        };
+        let status = unsafe {
+            rgpot_potential_calculate_mechanical(pot, &input, &mut output, &mut mechanical)
+        };
+        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+        assert_eq!(mechanical.has_virial, 1);
+        assert_eq!(mechanical.has_stress, 1);
+        assert_eq!(mechanical.virial[0], 1.0);
+        assert_eq!(mechanical.stress[0], -0.5);
+        unsafe {
+            cleanup(&mut input, &mut output);
+            rgpot_potential_free(pot as *mut _);
+        }
     }
 }

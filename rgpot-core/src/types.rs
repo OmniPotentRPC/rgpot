@@ -74,6 +74,28 @@ pub struct rgpot_force_out_t {
     pub variance: f64,
 }
 
+/// Virial and Cauchy stress from one evaluation.
+///
+/// Both tensors are row-major `xx, xy, xz, yx, yy, yz, zx, zy, zz`.
+/// `virial` is in energy units (eV when the potential uses eV). `stress`
+/// is in energy/length³ (eV/Å³). When both flags are 1 and the cell
+/// volume is `V`, `stress = -virial / V`, which is ASE's sign
+/// (`sigma = (1/V) dE/dε`). A flag of 0 means that tensor was not
+/// computed. A computed zero tensor still has its flag set.
+///
+/// `rgpot_potential_calculate` does not fill this. Call
+/// `rgpot_potential_calculate_mechanical`. A callback that does not
+/// implement the tensors leaves the flags at 0.
+#[repr(C)]
+pub struct rgpot_mechanical_t {
+    pub virial: [f64; 9],
+    pub stress: [f64; 9],
+    /// Nonzero when `virial` was computed.
+    pub has_virial: i32,
+    /// Nonzero when `stress` was computed.
+    pub has_stress: i32,
+}
+
 impl rgpot_force_input_t {
     /// Extract `n_atoms` from the positions tensor's `shape[0]`.
     ///

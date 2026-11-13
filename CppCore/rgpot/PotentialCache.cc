@@ -22,21 +22,46 @@ namespace rgpot::cache {
 
 namespace {
 constexpr char result_marker[] = "RGPOTR1";
+constexpr char virial_marker[] = "RGPOTR2";
 constexpr size_t result_metadata_bytes =
     sizeof(result_marker) + 10 * sizeof(double) + 1;
+// marker, variance, stress[9], virial[9], has_stress, has_virial.
+constexpr size_t virial_metadata_bytes =
+    sizeof(virial_marker) + 19 * sizeof(double) + 2;
 
 size_t energy_force_bytes(size_t n_atoms) {
   return (1 + 3 * n_atoms) * sizeof(double);
+}
+
+bool marker_at(const std::string &value, size_t prefix, const char *marker,
+               size_t marker_bytes) {
+  return value.size() >= prefix + marker_bytes &&
+         std::memcmp(value.data() + prefix, marker, marker_bytes) == 0;
 }
 } // namespace
 
 bool PotentialCache::has_result_metadata(const std::string &value,
                                          size_t n_atoms) {
   const size_t prefix = energy_force_bytes(n_atoms);
-  return value.size() == prefix + result_metadata_bytes &&
-         std::memcmp(value.data() + prefix, result_marker,
-                     sizeof(result_marker)) == 0 &&
-         static_cast<unsigned char>(value.back()) <= 1;
+  if (value.size() == prefix + result_metadata_bytes &&
+      marker_at(value, prefix, result_marker, sizeof(result_marker)) &&
+      static_cast<unsigned char>(value.back()) <= 1) {
+    return true;
+  }
+  return has_virial_metadata(value, n_atoms);
+}
+
+bool PotentialCache::has_virial_metadata(const std::string &value,
+                                         size_t n_atoms) {
+  const size_t prefix = energy_force_bytes(n_atoms);
+  if (value.size() != prefix + virial_metadata_bytes ||
+      !marker_at(value, prefix, virial_marker, sizeof(virial_marker))) {
+    return false;
+  }
+  const auto stress_flag = static_cast<unsigned char>(
+      value[value.size() - 2]);
+  const auto virial_flag = static_cast<unsigned char>(value.back());
+  return stress_flag <= 1 && virial_flag <= 1;
 }
 
 void PotentialCache::deserialize_hit(const std::string &value, ForceOut &out,
@@ -50,8 +75,17 @@ void PotentialCache::deserialize_hit(const std::string &value, ForceOut &out,
               3 * n_atoms * sizeof(double));
   out.variance = 0.0;
   out.has_stress = 0;
+  out.has_virial = 0;
   std::fill(out.stress, out.stress + 9, 0.0);
-  if (has_result_metadata(value, n_atoms)) {
+  std::fill(out.virial, out.virial + 9, 0.0);
+  if (has_virial_metadata(value, n_atoms)) {
+    const char *metadata = value.data() + prefix + sizeof(virial_marker);
+    std::memcpy(&out.variance, metadata, sizeof(double));
+    std::memcpy(out.stress, metadata + sizeof(double), sizeof(out.stress));
+    std::memcpy(out.virial, metadata + 10 * sizeof(double), sizeof(out.virial));
+    out.has_stress = static_cast<unsigned char>(value[value.size() - 2]);
+    out.has_virial = static_cast<unsigned char>(value.back());
+  } else if (has_result_metadata(value, n_atoms)) {
     const char *metadata = value.data() + prefix + sizeof(result_marker);
     std::memcpy(&out.variance, metadata, sizeof(double));
     std::memcpy(out.stress, metadata + sizeof(double), sizeof(out.stress));
@@ -66,15 +100,19 @@ void PotentialCache::add_serialized(const KeyHash &key, const ForceOut &out,
     return;
   }
   const size_t prefix = energy_force_bytes(n_atoms);
-  std::vector<char> buffer(prefix + result_metadata_bytes, 0);
+  std::vector<char> buffer(prefix + virial_metadata_bytes, 0);
   std::memcpy(buffer.data(), &out.energy, sizeof(double));
   std::memcpy(buffer.data() + sizeof(double), out.F,
               3 * n_atoms * sizeof(double));
-  std::memcpy(buffer.data() + prefix, result_marker, sizeof(result_marker));
-  char *metadata = buffer.data() + prefix + sizeof(result_marker);
+  std::memcpy(buffer.data() + prefix, virial_marker, sizeof(virial_marker));
+  char *metadata = buffer.data() + prefix + sizeof(virial_marker);
   std::memcpy(metadata, &out.variance, sizeof(double));
   if (out.has_stress) {
     std::memcpy(metadata + sizeof(double), out.stress, sizeof(out.stress));
+    buffer[buffer.size() - 2] = 1;
+  }
+  if (out.has_virial) {
+    std::memcpy(metadata + 10 * sizeof(double), out.virial, sizeof(out.virial));
     buffer.back() = 1;
   }
   db_->Put(rocksdb::WriteOptions(), key.slice(),

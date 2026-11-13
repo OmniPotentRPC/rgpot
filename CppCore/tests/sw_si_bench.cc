@@ -2,8 +2,10 @@
 // Copyright 2023--present rgpot developers
 //
 // Calls per second of StillingerWeberSi::energyAndGradient on a 216-atom
-// diamond cell, and of forceImpl, which also writes the stress. Three
-// repeats, CPU model printed from /proc/cpuinfo.
+// diamond cell, and of forceImpl, which also writes the virial and the
+// stress. Three repeats, CPU model printed from /proc/cpuinfo. The ratio
+// is the extra cost of the virial against forces only. Both rebuild the
+// neighbour list.
 
 #include <chrono>
 #include <cmath>
@@ -106,6 +108,7 @@ int main() {
     std::cout << "entry: " << (stress ? "forceImpl" : "energyAndGradient")
               << "\n";
     std::cout << "calls_per_repeat: " << calls << "\n";
+    double sum = 0.0;
     for (int rep = 1; rep <= 3; ++rep) {
       const auto t0 = std::chrono::steady_clock::now();
       for (int c = 0; c < calls; ++c) {
@@ -114,18 +117,24 @@ int main() {
       const auto t1 = std::chrono::steady_clock::now();
       const double sec = std::chrono::duration<double>(t1 - t0).count();
       const double rate = static_cast<double>(calls) / sec;
+      sum += rate;
       std::cout << "repeat " << rep << ": " << rate << " calls/s\n";
     }
+    return sum / 3.0;
   };
   std::cout << "cpu: " << cpuModel() << "\n";
   std::cout << "potential: StillingerWeberSi\n";
   std::cout << "n_atoms: " << n_atoms << "\n";
   std::cout.setf(std::ios::fmtflags(0), std::ios::floatfield);
   std::cout.precision(6);
-  report("rebuild", 100, nullptr, false);
+  const double forces_only = report("rebuild", 100, nullptr, false);
   rgpot::nlist::NeighborList held;
   report("held", 200, &held, false);
-  report("forceImpl_stress", 100, nullptr, true);
+  const double with_virial = report("forceImpl_virial", 100, nullptr, true);
+  const double extra =
+      forces_only > 0.0 ? (forces_only / with_virial - 1.0) * 100.0 : 0.0;
+  std::cout << "virial_over_forces: " << forces_only / with_virial << "\n";
+  std::cout << "virial_extra_percent: " << extra << "\n";
   std::cout << "energy_eV: " << energy << "\n";
   return energy < 0.0 ? 0 : 1;
 }

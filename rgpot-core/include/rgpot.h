@@ -34,7 +34,7 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 /**
  * ABI minor of this build.
  */
-#define RGPOT_ABI_VERSION_MINOR 1
+#define RGPOT_ABI_VERSION_MINOR 2
 
 /**
  * Layout revision of this build.
@@ -149,6 +149,35 @@ typedef struct rgpot_force_out_t {
    */
   double variance;
 } rgpot_force_out_t;
+
+/**
+ * Virial and Cauchy stress from one evaluation.
+ *
+ * Both tensors are row-major xx, xy, xz, yx, yy, yz, zx, zy, zz.
+ * `virial` is in energy units (eV). `stress` is in energy/length^3
+ * (eV/Angstrom^3). When both flags are nonzero and the cell volume is V,
+ * stress = -virial/V, which is ASE's sign (sigma = (1/V) dE/dstrain).
+ * A flag of 0 means that tensor was not computed.
+ */
+typedef struct rgpot_mechanical_t {
+  double virial[9];
+  double stress[9];
+  /**
+   * Nonzero when `virial` was computed.
+   */
+  int32_t has_virial;
+  /**
+   * Nonzero when `stress` was computed.
+   */
+  int32_t has_stress;
+} rgpot_mechanical_t;
+
+/**
+ * Slot filled by the callback during rgpot_potential_calculate_mechanical.
+ * Null during rgpot_potential_calculate. Valid only on this thread until
+ * that call returns.
+ */
+struct rgpot_mechanical_t *rgpot_mechanical_slot(void);
 
 /**
  * Function pointer type for a potential energy calculation.
@@ -541,6 +570,23 @@ struct rgpot_potential_t *rgpot_potential_new(PotentialCallback callback,
 enum rgpot_status_t rgpot_potential_calculate(const struct rgpot_potential_t *pot,
                                               const struct rgpot_force_input_t *input,
                                               struct rgpot_force_out_t *output);
+
+/**
+ * Energy, forces, and the optional virial and stress.
+ *
+ * Same contract as `rgpot_potential_calculate`. `mechanical` may be NULL,
+ * in which case this is that call. Otherwise it is zeroed first
+ * (has_virial and has_stress are 0, not available) and the callback may
+ * fill it through `rgpot_mechanical_slot`. A potential that does not
+ * implement a tensor leaves that flag at 0. When both flags are set,
+ * stress = -virial/V.
+ *
+ * Does not change `rgpot_potential_calculate`.
+ */
+enum rgpot_status_t rgpot_potential_calculate_mechanical(const struct rgpot_potential_t *pot,
+                                                        const struct rgpot_force_input_t *input,
+                                                        struct rgpot_force_out_t *output,
+                                                        struct rgpot_mechanical_t *mechanical);
 
 /**
  * Free a potential handle previously obtained from `rgpot_potential_new` or

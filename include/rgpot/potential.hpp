@@ -41,6 +41,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -262,6 +263,13 @@ private:
                            .has_stress = 0};
 
       self->forceImpl(fi, &fo);
+
+      if (rgpot_mechanical_t *slot = rgpot_mechanical_slot()) {
+        std::memcpy(slot->virial, fo.virial, sizeof(fo.virial));
+        std::memcpy(slot->stress, fo.stress, sizeof(fo.stress));
+        slot->has_virial = fo.has_virial;
+        slot->has_stress = fo.has_stress;
+      }
 
       output->energy = fo.energy;
       output->variance = fo.variance;

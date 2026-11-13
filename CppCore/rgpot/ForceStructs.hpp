@@ -33,10 +33,20 @@ typedef struct {
   double energy;   //!< Calculated potential energy of the configuration.
   double variance; //!< Variance or uncertainty of the calculation.
   // Variance here is 0 when not needed and that's OK.
-  // stress is row-major xx,xy,xz,yx,yy,yz,zx,zy,zz in the result energy
-  // and length units. has_stress is 0 when the engine did not compute it.
+  // stress is the Cauchy stress, row-major xx,xy,xz,yx,yy,yz,zx,zy,zz,
+  // in energy/length^3 (eV/Angstrom^3 when the result is in eV and
+  // Angstrom). has_stress is 0 when the engine did not compute it.
+  // A computed zero tensor still has the flag set.
+  //
+  // virial is the 3x3 tensor W = sum r_ij ⊗ f_ij in energy units (eV),
+  // same layout. has_virial is 0 when the potential does not implement
+  // it, which is independent of has_stress. When both flags are set and
+  // the cell volume is V, stress = -virial/V. That is ASE's sign:
+  // sigma = (1/V) dE/dε for the right strain r -> r(I+ε). See stress.hpp.
   double stress[9];
   int has_stress;
+  double virial[9]{};
+  int has_virial = 0;
 } ForceOut;
 
 /**

@@ -1,0 +1,1 @@
+librgpot's ELF soversion is 7. `ForceOut` gained `virial` and `has_virial`, and `PotCaps` gained `virial`. A caller built against soversion 6 does not load librgpot.so.7. The C ABI layout revision is unchanged: `rgpot_force_out_t` is the same struct, and the virial is a new call. librgpot_mpi stays at soversion 3.

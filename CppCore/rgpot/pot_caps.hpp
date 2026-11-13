@@ -51,6 +51,10 @@ struct PotCaps {
   /// sigma = (1/V) dE/dstrain in energy/length^3, row-major in ForceOut.
   /// IPIPot also keeps the tensor for copyStress.
   bool stress = false;
+  /// forceImpl writes the 3x3 virial in energy units, row-major in
+  /// ForceOut. When stress is also written, stress = -virial/V (ASE).
+  /// A potential may write stress and leave the virial unavailable.
+  bool virial = false;
 };
 
 } // namespace rgpot

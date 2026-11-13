@@ -129,7 +129,9 @@ public:
 
   /// Result records retain the energy/force prefix and append versioned
   /// variance and stress metadata. Energy/force-only records remain readable.
+  /// A record that also carries the virial matches has_virial_metadata.
   static bool has_result_metadata(const std::string &value, size_t n_atoms);
+  static bool has_virial_metadata(const std::string &value, size_t n_atoms);
   void deserialize_hit(const std::string &value, ForceOut &out, size_t n_atoms);
   void add_serialized(const KeyHash &key, const ForceOut &out, size_t n_atoms);
 

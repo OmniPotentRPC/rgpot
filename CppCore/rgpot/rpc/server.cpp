@@ -9,6 +9,7 @@
  */
 
 #include <algorithm>
+#include <cstring>
 #include <sstream>
 #include <vector>
 
@@ -185,20 +186,61 @@ public:
           val *= len_to_angstrom;
     }
 
-    // Potential always computes in eV/angstrom
-    auto evaluate = [&]() {
+    // Potential always computes in eV/angstrom. The local path uses
+    // forceBatch so the virial and stress on ForceOut reach the wire.
+    // has_virial / has_stress stay 0 when that potential does not
+    // compute the tensor. An MPI session still returns energy and forces
+    // only; its virial is not available.
+    double energy = 0.0;
+    rgpot::types::AtomMatrix forces(numAtoms, 3);
+    double variance = 0.0;
+    bool have_stress = false;
+    bool have_virial = false;
+    double stress_eV[9] = {};
+    double virial_eV[9] = {};
 #ifdef RGPOT_POTSERV_MPI
-      if (m_pef) {
-        try {
-          return m_pef->calculate(nativePositions, nativeAtomTypes, nativeBoxMatrix);
-        } catch (const std::exception &error) {
-          throw KJ_EXCEPTION(FAILED, error.what());
+    if (m_pef) {
+      try {
+        auto result =
+            m_pef->calculate(nativePositions, nativeAtomTypes, nativeBoxMatrix);
+        energy = std::get<0>(result);
+        forces = std::move(std::get<1>(result));
+        variance = std::get<2>(result);
+      } catch (const std::exception &error) {
+        throw KJ_EXCEPTION(FAILED, error.what());
+      }
+    } else
+#endif
+    {
+      double flatBox[9];
+      for (int row = 0; row < 3; ++row) {
+        for (int col = 0; col < 3; ++col) {
+          flatBox[3 * row + col] =
+              nativeBoxMatrix[static_cast<size_t>(row)][static_cast<size_t>(col)];
         }
       }
-#endif
-      return (*m_potential)(nativePositions, nativeAtomTypes, nativeBoxMatrix);
-    };
-    auto [energy, forces, variance] = evaluate();
+      rgpot::ForceOut fo{.F = forces.data(),
+                         .energy = 0.0,
+                         .variance = 0.0,
+                         .stress = {},
+                         .has_stress = 0};
+      rgpot::ForceInput fi{.nAtoms = numAtoms,
+                           .pos = nativePositions.data(),
+                           .atmnrs = nativeAtomTypes.data(),
+                           .box = flatBox};
+      const rgpot::ForceBatch batch{1, &fi, &fo};
+      m_potential->forceBatch(batch);
+      energy = fo.energy;
+      variance = fo.variance;
+      have_stress = fo.has_stress != 0;
+      have_virial = fo.has_virial != 0;
+      if (have_stress) {
+        std::memcpy(stress_eV, fo.stress, sizeof(stress_eV));
+      }
+      if (have_virial) {
+        std::memcpy(virial_eV, fo.virial, sizeof(virial_eV));
+      }
+    }
     (void)variance;
 
     // Convert results to caller's units
@@ -214,17 +256,34 @@ public:
     }
     rgpot::types::adapt::capnp::populateForcesToCapnp(forcesList, forces);
 
+    // sigma_caller = sigma_eV/A^3 * (eV -> caller) * (A -> caller length)^3.
+    // W is an energy, so it converts with the energy factor alone.
+    // stress = -virial/V in either unit system.
+    const double stress_to_caller =
+        ev_to_caller * len_to_angstrom * len_to_angstrom * len_to_angstrom;
+    if (have_stress) {
+      auto stressList = pres.initStress(9);
+      for (unsigned int i = 0; i < 9; ++i) {
+        stressList.set(i, stress_eV[i] * stress_to_caller);
+      }
+      pres.setHasStress(true);
+    }
+    if (have_virial) {
+      auto virialList = pres.initVirial(9);
+      for (unsigned int i = 0; i < 9; ++i) {
+        virialList.set(i, virial_eV[i] * ev_to_caller);
+      }
+      pres.setHasVirial(true);
+    }
 #ifdef RGPOT_HAS_IPI
-    if (m_ipi != nullptr) {
+    if (!have_stress && m_ipi != nullptr) {
       double stress[9];
       if (m_ipi->copyStress(stress)) {
-        // sigma_caller = sigma_eV/A^3 * (eV -> caller) * (A -> caller length)^3
-        const double stress_to_caller = ev_to_caller * len_to_angstrom *
-                                        len_to_angstrom * len_to_angstrom;
         auto stressList = pres.initStress(9);
         for (unsigned int i = 0; i < 9; ++i) {
           stressList.set(i, stress[i] * stress_to_caller);
         }
+        pres.setHasStress(true);
       }
     }
 #endif

@@ -196,6 +196,7 @@ inline nb::dict caps_dict(const PotCaps &caps) {
   out["periodic"] = caps.periodic;
   out["group_collective"] = caps.groupCollective;
   out["stress"] = caps.stress;
+  out["virial"] = caps.virial;
   // PotCaps does not report per-atom energies. Do not invent the flag.
   return out;
 }
@@ -206,6 +207,8 @@ struct FullResult {
   double variance = 0.0;
   bool has_stress = false;
   double stress[9]{};
+  bool has_virial = false;
+  double virial[9]{};
 };
 
 /// forceImpl while the caller is already detached (F4).
@@ -237,6 +240,8 @@ FullResult run_force(Pot &pot, const Geom &g) {
   result.variance = fo.variance;
   result.has_stress = fo.has_stress != 0;
   std::memcpy(result.stress, fo.stress, sizeof(result.stress));
+  result.has_virial = fo.has_virial != 0;
+  std::memcpy(result.virial, fo.virial, sizeof(result.virial));
   return result;
 }
 
@@ -249,6 +254,11 @@ inline nb::dict result_dict(const FullResult &result) {
     out["stress"] = stress_to_numpy(result.stress);
   } else {
     out["stress"] = nb::none();
+  }
+  if (result.has_virial) {
+    out["virial"] = stress_to_numpy(result.virial);
+  } else {
+    out["virial"] = nb::none();
   }
   out["energies"] = nb::none();
   return out;

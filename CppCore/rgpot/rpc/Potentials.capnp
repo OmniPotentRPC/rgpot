@@ -40,7 +40,7 @@ struct PotentialResult {
   optimizedPos @5 :List(Float64); # Optimized Cartesian coordinates [natoms * 3].
   frequencies @6 :List(Float64); # Harmonic vibrational frequencies [natoms * 3] in cm^-1.
   intensities @7 :List(Float64); # Harmonic IR intensities [natoms * 3] in atomic units.
-  stress @8 :List(Float64); # Stress tensor [9] in energy/length^3 units.
+  stress @8 :List(Float64); # Cauchy stress [9], energy/length^3. ASE: stress = -virial/V. Empty and hasStress false: not available.
   polarizability @9 :List(Float64); # Polarizability / aoresponse vector (backend-defined length).
   gradient @10 :List(Float64); # Flat nuclear gradient [natoms * 3] in energy/length units.
   normalModes @11 :List(Float64); # Dense Cartesian normal-mode matrix [natoms * 3]^2.
@@ -64,6 +64,15 @@ struct PotentialResult {
   # Present only when ForceInput.neighbors was set. A stream is one chunk;
   # more is true when the client should ask again with the same query.
   neighborList @28 :NeighborList;
+  # 3x3 row-major virial in energy units (eV when the result is in eV).
+  # Absent, or hasVirial false, means the potential did not compute it.
+  # When hasVirial and hasStress are both true and the cell volume is V,
+  # stress = -virial/V (ASE).
+  virial @29 :List(Float64);
+  hasVirial @30 :Bool = false;
+  # Explicit companion to stress. Older servers leave this false and may
+  # still send a nine-element stress list; that list is a computed stress.
+  hasStress @31 :Bool = false;
 }
 
 # @struct Capabilities

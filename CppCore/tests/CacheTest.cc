@@ -230,6 +230,10 @@ void checkResultMetadata(const rgpot::ForceInput &in,
   REQUIRE(out.energy == 3.0 + in.pos[0]);
   REQUIRE(out.variance == 0.25);
   REQUIRE(out.has_stress == 1);
+  REQUIRE(out.has_virial == 0);
+  for (double component : out.virial) {
+    REQUIRE(component == 0.0);
+  }
   for (size_t i = 0; i < 3 * in.nAtoms; ++i) {
     REQUIRE(out.F[i] == -in.pos[i]);
   }
@@ -262,7 +266,10 @@ TEST_CASE("Cached force batches retain result metadata through misses and hits",
       checkResultMetadata(inputs[i], outputs[i]);
       outputs[i].variance = -1.0;
       outputs[i].has_stress = 0;
+      outputs[i].has_virial = 1;
       std::fill(outputs[i].stress, outputs[i].stress + 9,
+                std::numeric_limits<double>::quiet_NaN());
+      std::fill(outputs[i].virial, outputs[i].virial + 9,
                 std::numeric_limits<double>::quiet_NaN());
     }
     pot.forceBatch(batch);

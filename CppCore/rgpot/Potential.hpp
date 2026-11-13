@@ -232,8 +232,9 @@ public:
    * @brief Abstract hook for the actual implementation.
    *
    * @c operator() and @c forceBatch hand over @c out zeroed: all
-   * @c 3*in.nAtoms entries of @c F, @c energy, @c variance, @c stress and
-   * @c has_stress. An override may assume that, but must not rely on what
+   * @c 3*in.nAtoms entries of @c F, @c energy, @c variance, @c stress,
+   * @c has_stress, @c virial and @c has_virial. An override may assume
+   * that, but must not rely on what
    * an earlier call left in the buffer. It may throw with @c out partly
    * written.
    *
@@ -285,7 +286,9 @@ public:
       out.energy = 0.0;
       out.variance = 0.0;
       out.has_stress = 0;
+      out.has_virial = 0;
       std::fill(out.stress, out.stress + 9, 0.0);
+      std::fill(out.virial, out.virial + 9, 0.0);
     }
 #ifdef RGPOT_HAS_CACHE
     if (_cache) {
@@ -300,6 +303,11 @@ public:
         hits.push_back(_cache->find(keys[i]));
         if (hits.back() && caps().stress &&
             !cache::PotentialCache::has_result_metadata(*hits.back(),
+                                                        batch.in[i].nAtoms)) {
+          hits.back().reset();
+        }
+        if (hits.back() && caps().virial &&
+            !cache::PotentialCache::has_virial_metadata(*hits.back(),
                                                         batch.in[i].nAtoms)) {
           hits.back().reset();
         }
@@ -352,7 +360,9 @@ public:
         batch.out[idx].energy = missOut[j].energy;
         batch.out[idx].variance = missOut[j].variance;
         batch.out[idx].has_stress = missOut[j].has_stress;
+        batch.out[idx].has_virial = missOut[j].has_virial;
         std::copy_n(missOut[j].stress, 9, batch.out[idx].stress);
+        std::copy_n(missOut[j].virial, 9, batch.out[idx].virial);
         registry<Derived>::incrementForceCalls();
         _cache->note_computed();
         _cache->add_serialized(keys[idx], batch.out[idx], batch.in[idx].nAtoms);
