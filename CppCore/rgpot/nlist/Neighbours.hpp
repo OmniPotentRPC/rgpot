@@ -128,8 +128,9 @@ struct Range {
 /// reuses the list only when the coordinates and the cell match. An
 /// orthorhombic stored list keeps each pair's image index beside the
 /// cell ids. The walk subtracts the box length times that index while
-/// the coordinates still match the reference, and rounds again after a
-/// move that stays inside the skin.
+/// the coordinates still match the reference, and also after a move
+/// inside the skin when that move cannot reach a half-box boundary.
+/// A pair that can change image is rounded again.
 class Neighbours {
 public:
   void update(const double *xyz, std::size_t n, const double *box9,
@@ -272,9 +273,10 @@ private:
       return;
     }
     bool tiny = false;
+    const unsigned char *unstable = nullptr;
     const std::int32_t *shift = nullptr;
     if (image_ == Image::Round && !use_general_) {
-      shift = roundShifts(tiny);
+      shift = roundShifts(tiny, unstable);
     }
     auto emit = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz) {
       const double r2 = dx * dx + dy * dy + dz * dz;
@@ -289,6 +291,61 @@ private:
       }
       return std::upper_bound(row, stop, static_cast<std::int32_t>(i));
     };
+    if (shift != nullptr && unstable != nullptr) {
+      const double L0 = len_[0];
+      const double L1 = len_[1];
+      const double L2 = len_[2];
+      const double c0[3] = {-L0, 0.0, L0};
+      const double c1[3] = {-L1, 0.0, L1};
+      const double c2[3] = {-L2, 0.0, L2};
+      const bool p0p = periodic_[0];
+      const bool p1p = periodic_[1];
+      const bool p2p = periodic_[2];
+      const bool lut = tiny && p0p && p1p && p2p;
+      for (std::int64_t i = begin; i < end; ++i) {
+        const auto a = static_cast<std::size_t>(i);
+        const auto lo = off_[a];
+        const auto hi = off_[a + 1];
+        const std::int32_t *row = first(i, lo, hi);
+        const auto p0 = static_cast<std::size_t>(row - nbr);
+        const std::int32_t *sh = shift + 3 * p0;
+        const auto ui = a * 3;
+        const double xi = xyz[ui];
+        const double yi = xyz[ui + 1];
+        const double zi = xyz[ui + 2];
+        for (std::size_t p = p0; p < static_cast<std::size_t>(hi); ++p, sh += 3) {
+          const auto j = nbr[p];
+          double dx = 0;
+          double dy = 0;
+          double dz = 0;
+          if (unstable[p] != 0) {
+            foldPair(static_cast<std::int32_t>(i), j, dx, dy, dz);
+          } else {
+            const auto uj = static_cast<std::size_t>(j) * 3;
+            dx = xi - xyz[uj];
+            dy = yi - xyz[uj + 1];
+            dz = zi - xyz[uj + 2];
+            if (lut) {
+              dx -= c0[static_cast<std::size_t>(sh[0] + 1)];
+              dy -= c1[static_cast<std::size_t>(sh[1] + 1)];
+              dz -= c2[static_cast<std::size_t>(sh[2] + 1)];
+            } else {
+              if (p0p) {
+                dx -= L0 * static_cast<double>(sh[0]);
+              }
+              if (p1p) {
+                dy -= L1 * static_cast<double>(sh[1]);
+              }
+              if (p2p) {
+                dz -= L2 * static_cast<double>(sh[2]);
+              }
+            }
+          }
+          emit(static_cast<std::int32_t>(i), j, dx, dy, dz);
+        }
+      }
+      return;
+    }
     if (shift != nullptr && periodic_[0] && periodic_[1] && periodic_[2]) {
       const double L0 = len_[0];
       const double L1 = len_[1];
@@ -880,9 +937,13 @@ private:
   [[nodiscard]] int cellId(int ix, int iy, int iz) const;
   // Image indices live past the per-atom cell ids. The class does not
   // grow a member for them. `tiny` is true when every index is -1, 0 or 1.
-  void installRoundShifts(const std::int32_t *shift, std::size_t npairs, bool tiny);
+  // `unstable` is one byte per pair when a skin move can change that pair's
+  // index; a null pointer means every stored index still matches rounding.
+  void installRoundShifts(const std::int32_t *shift, std::size_t npairs, bool tiny,
+                          bool all_stable, const std::uint8_t *unstable);
   void noteShiftFresh(bool fresh) noexcept;
-  [[nodiscard]] const std::int32_t *roundShifts(bool &tiny) const noexcept;
+  [[nodiscard]] const std::int32_t *roundShifts(bool &tiny,
+                                                const unsigned char *&unstable) const noexcept;
 
   std::vector<std::int32_t> off_;
   std::vector<std::int32_t> nbr_;

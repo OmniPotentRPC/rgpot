@@ -8,6 +8,7 @@
 #include <cstring>
 #include <limits>
 #include <map>
+#include <random>
 #include <utility>
 #include <vector>
 
@@ -623,4 +624,97 @@ TEST_CASE("a skin move recomputes an image the stored index would miss",
     ++seen;
   });
   REQUIRE(seen == 1);
+}
+
+void expectStoredMatchesRounding(rgpot::nlist::Neighbours &cells, const std::vector<double> &pos,
+                                 double lx, double ly, double lz, bool px, bool py, bool pz) {
+  const double invx = px && lx > 0.0 ? 1.0 / lx : 0.0;
+  const double invy = py && ly > 0.0 ? 1.0 / ly : 0.0;
+  const double invz = pz && lz > 0.0 ? 1.0 / lz : 0.0;
+  int seen = 0;
+  cells.forDirected(0, static_cast<std::int64_t>(pos.size() / 3),
+                    [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2) {
+                      double ex = pos[3 * i] - pos[3 * j];
+                      double ey = pos[3 * i + 1] - pos[3 * j + 1];
+                      double ez = pos[3 * i + 2] - pos[3 * j + 2];
+                      if (px) {
+                        ex -= lx * rgpot::nlist::orthorhombicImageIndex(ex * invx);
+                      }
+                      if (py) {
+                        ey -= ly * rgpot::nlist::orthorhombicImageIndex(ey * invy);
+                      }
+                      if (pz) {
+                        ez -= lz * rgpot::nlist::orthorhombicImageIndex(ez * invz);
+                      }
+                      REQUIRE(sameBits(dx, ex));
+                      REQUIRE(sameBits(dy, ey));
+                      REQUIRE(sameBits(dz, ez));
+                      REQUIRE(sameBits(r2, ex * ex + ey * ey + ez * ez));
+                      ++seen;
+                    });
+  REQUIRE(seen > 0);
+}
+
+TEST_CASE("a skin move keeps a stored image only when rounding would",
+          "[nlist][round][skin]") {
+  setThreads("1");
+  std::mt19937_64 rng(17);
+  std::uniform_real_distribution<double> unit(0.0, 1.0);
+  std::uniform_real_distribution<double> kick(-0.04, 0.04);
+  const auto perturb = [&](std::vector<double> &pos) {
+    for (double &x : pos) {
+      x += kick(rng);
+    }
+  };
+  const auto run = [&](std::vector<double> pos, double lx, double ly, double lz, double cutoff,
+                       double skin, bool px, bool py, bool pz) {
+    const double box[9] = {lx, 0, 0, 0, ly, 0, 0, 0, lz};
+    rgpot::nlist::Spec spec;
+    spec.cutoff = cutoff;
+    spec.skin = skin;
+    spec.periodic = {px, py, pz};
+    spec.image = rgpot::nlist::Image::Round;
+    spec.mode = rgpot::nlist::Mode::Stored;
+    rgpot::nlist::Neighbours cells;
+    const auto base = pos;
+    cells.update(base.data(), base.size() / 3, box, spec);
+    REQUIRE_FALSE(cells.reused());
+    for (int sample = 0; sample < 6; ++sample) {
+      pos = base;
+      perturb(pos);
+      cells.update(pos.data(), pos.size() / 3, box, spec);
+      REQUIRE(cells.reused());
+      expectStoredMatchesRounding(cells, pos, lx, ly, lz, px, py, pz);
+    }
+  };
+  // Wide cell: every stored pair is far from a half-box face.
+  {
+    std::vector<double> pos;
+    for (int i = 0; i < 48; ++i) {
+      pos.push_back(unit(rng) * 36.0);
+      pos.push_back(unit(rng) * 36.0);
+      pos.push_back(unit(rng) * 36.0);
+    }
+    run(pos, 40.0, 40.0, 40.0, 6.0, 0.5, true, true, true);
+  }
+  // Narrow cell, with atoms on the faces, so some images can change.
+  {
+    std::vector<double> pos;
+    for (int i = 0; i < 24; ++i) {
+      pos.push_back(unit(rng) * 10.0);
+      pos.push_back(unit(rng) * 10.0);
+      pos.push_back(unit(rng) * 10.0);
+    }
+    pos[0] = 0.02;
+    pos[1] = 0.02;
+    pos[2] = 0.02;
+    pos[3] = 5.01;
+    pos[4] = 0.03;
+    pos[5] = 0.04;
+    pos[6] = 9.98;
+    pos[7] = 5.02;
+    pos[8] = 0.01;
+    run(pos, 10.0, 10.0, 10.0, 5.5, 0.8, true, true, true);
+    run(pos, 10.0, 12.0, 9.0, 5.0, 0.6, true, false, true);
+  }
 }
