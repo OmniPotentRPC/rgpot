@@ -162,7 +162,7 @@ contains
 
    !> Energy and forces for `positions` (3 x natoms) in `cell`.
    subroutine tersoff_energy_forces(positions, cell, par, table, energy, &
-                                    forces, status, errmsg)
+                                    forces, status, errmsg, strain)
       real(wp), intent(in), contiguous :: positions(:, :)
       real(wp), intent(in) :: cell(3, 3)
       type(tersoff_params_t), intent(in) :: par
@@ -171,16 +171,19 @@ contains
       real(wp), intent(out), contiguous :: forces(:, :)
       integer, intent(out) :: status
       character(len=:), allocatable, intent(out) :: errmsg
+      real(wp), intent(out), optional :: strain(6)
 
       integer(ip) :: natoms, nentries, i, s
+      integer :: nw
       real(wp) :: rcut
       real(wp), allocatable :: e_atom(:), zeta(:), e_pair(:), f_rad(:)
-      real(wp), allocatable :: c_zeta(:)
+      real(wp), allocatable :: c_zeta(:), w_atom(:, :)
       integer(ip), allocatable :: rev(:)
 
       natoms = int(size(positions, 2), ip)
       energy = 0.0_wp
       forces = 0.0_wp
+      if (present(strain)) strain = 0.0_wp
       rcut = par%cutoff()
 
       call table%build(positions, cell, rcut, status, errmsg)
@@ -218,11 +221,15 @@ contains
       end do
 
       ! Pass 3: the gather. Each atom writes one force column and one
-      ! energy slot.
+      ! energy slot, and the strain of the directed pairs it owns.
+      nw = 0
+      if (present(strain)) nw = 6
+      allocate (w_atom(nw, natoms), source=0.0_wp)
       do concurrent(i=1:natoms)
          call atom_contribution(par, table, e_pair, f_rad, c_zeta, rev, i, &
-                                e_atom(i), forces(:, i))
+                                e_atom(i), forces(:, i), w_atom(:, i))
       end do
+      if (present(strain)) strain = sum(w_atom, dim=2)
 
       energy = sum(e_atom)
    end subroutine tersoff_energy_forces
@@ -309,7 +316,7 @@ contains
    !! directions. The gradient is halved for the same reason and negated
    !! once at the end.
    pure subroutine atom_contribution(par, table, e_pair, f_rad, c_zeta, rev, &
-                                     i, e_i, f_i)
+                                     i, e_i, f_i, w_i)
       type(tersoff_params_t), intent(in) :: par
       type(neighbor_table_t), intent(in) :: table
       real(wp), intent(in) :: e_pair(:), f_rad(:), c_zeta(:)
@@ -317,15 +324,20 @@ contains
       integer(ip), intent(in) :: i
       real(wp), intent(out) :: e_i
       real(wp), intent(out) :: f_i(3)
+      real(wp), intent(out), contiguous :: w_i(:)
 
       integer(ip) :: sj, sk, sm, st, m, back
       real(wp) :: rij, rik, rim, rmt
       real(wp) :: u_ij(3), u_ik(3), u_mi(3), u_mt(3)
       real(wp) :: grad(3), dcos_j(3), dcos_k(3), dcos_i(3)
       real(wp) :: cosine, gval, dgval, fc_k, dfc_k, fc_i, dfc_i, c_back
+      real(wp) :: w(6), g_bond(3)
+      logical :: with_strain
 
       e_i = 0.0_wp
       grad = 0.0_wp
+      w = 0.0_wp
+      with_strain = size(w_i) > 0
 
       ! Role one: the pairs `i` owns. Their radial term acts on `i`, and
       ! so does the coordination sum, through every third leg.
@@ -337,6 +349,11 @@ contains
          ! Radial terms of both directed pairs on this bond. The bond
          ! orders differ, so the reverse entry carries its own scalar.
          grad = grad - (f_rad(sj) + f_rad(rev(sj)))*u_ij
+         if (with_strain) then
+            ! This atom owns half of its directed pair. The reverse pair
+            ! is owned by the neighbour.
+            call add_bond_strain(w, table%vec(:, sj), 0.5_wp*f_rad(sj)*u_ij)
+         end if
 
          do sk = table%row(i), table%row(i + 1_ip) - 1_ip
             if (sk == sj) cycle
@@ -353,6 +370,12 @@ contains
             ! gives the centre is what it takes from the two ends.
             grad = grad - c_zeta(sj)*(fc_k*dgval*dcos_j &
                                       + dfc_k*gval*u_ik + fc_k*dgval*dcos_k)
+            if (with_strain) then
+               g_bond = 0.5_wp*c_zeta(sj)*fc_k*dgval*dcos_j
+               call add_bond_strain(w, table%vec(:, sj), g_bond)
+               g_bond = 0.5_wp*c_zeta(sj)*(dfc_k*gval*u_ik + fc_k*dgval*dcos_k)
+               call add_bond_strain(w, table%vec(:, sk), g_bond)
+            end if
          end do
       end do
 
@@ -387,6 +410,19 @@ contains
       end do
 
       f_i = -0.5_wp*grad
+      if (with_strain) w_i = w
    end subroutine atom_contribution
+
+   pure subroutine add_bond_strain(w, d, g)
+      real(wp), intent(inout) :: w(6)
+      real(wp), intent(in) :: d(3), g(3)
+
+      w(1) = w(1) + d(1)*g(1)
+      w(2) = w(2) + d(2)*g(2)
+      w(3) = w(3) + d(3)*g(3)
+      w(4) = w(4) + d(2)*g(3)
+      w(5) = w(5) + d(1)*g(3)
+      w(6) = w(6) + d(1)*g(2)
+   end subroutine add_bond_strain
 
 end module rgpot_tersoff

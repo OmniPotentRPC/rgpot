@@ -370,7 +370,7 @@ TEST_CASE("Tersoff held skin reaches the 1989 kernel only",
   REQUIRE_THROWS_AS(held.setHeldSkin(-1.0), std::invalid_argument);
 }
 
-TEST_CASE("Tersoff writes no stress into a reused output",
+TEST_CASE("Tersoff overwrites a reused stress",
           "[fortran][tersoff][stress]") {
   const double pos[6] = {0.0, 0.0, 0.0, 2.0, 0.0, 0.0};
   const double box[9] = {20, 0, 0, 0, 20, 0, 0, 0, 20};
@@ -396,10 +396,12 @@ TEST_CASE("Tersoff writes no stress into a reused output",
   REQUIRE_THAT(e_sic, WithinAbs(-3.565, 1e-3));
   REQUIRE_THAT(e_si, WithinAbs(-1.902, 1e-3));
 
-  auto check = [](const rgpot::ForceOut &o, const double *f, double e) {
-    REQUIRE(o.has_stress == 0);
-    for (const double s : o.stress) {
-      REQUIRE(s == 0.0);
+  auto check = [](const rgpot::ForceOut &o, const double *f, double e,
+                  const double *stress) {
+    REQUIRE(o.has_stress == 1);
+    REQUIRE(o.has_virial == 1);
+    for (int i = 0; i < 9; ++i) {
+      REQUIRE(o.stress[i] == stress[i]);
     }
     REQUIRE(o.energy == e);
     for (int i = 0; i < 6; ++i) {
@@ -408,7 +410,22 @@ TEST_CASE("Tersoff writes no stress into a reused output",
   };
 
   rgpot::fortranpots::TersoffPot pot;
-  REQUIRE_FALSE(pot.caps().stress);
+  REQUIRE(pot.caps().stress);
+  REQUIRE(pot.caps().virial);
+  double stress_sic[9];
+  double stress_si[9];
+  {
+    double scratch[6];
+    rgpot::ForceOut o{.F = scratch,
+                      .energy = 0.0,
+                      .variance = 0.0,
+                      .stress = {},
+                      .has_stress = 0};
+    pot.forceImpl(in_sic, &o);
+    std::copy(o.stress, o.stress + 9, stress_sic);
+    pot.forceImpl(in_si, &o);
+    std::copy(o.stress, o.stress + 9, stress_si);
+  }
   const rgpot::ForceInput *order[2][2] = {{&in_sic, &in_si}, {&in_si, &in_sic}};
   for (const auto &seq : order) {
     double got[6];
@@ -420,7 +437,8 @@ TEST_CASE("Tersoff writes no stress into a reused output",
     for (const rgpot::ForceInput *in : seq) {
       pot.forceImpl(*in, &out);
       const bool carbide = in == &in_sic;
-      check(out, carbide ? f_sic : f_si, carbide ? e_sic : e_si);
+      check(out, carbide ? f_sic : f_si, carbide ? e_sic : e_si,
+            carbide ? stress_sic : stress_si);
     }
   }
 }

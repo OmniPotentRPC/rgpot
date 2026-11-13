@@ -172,7 +172,7 @@ contains
    !! forms, the Horner embedding and the gather force against the closed
    !! form in the module header.
    subroutine eam_al_energy_forces(positions, cell, par, table, energy, &
-                                   forces, status, errmsg)
+                                   forces, status, errmsg, strain)
       real(wp), intent(in), contiguous :: positions(:, :)
       real(wp), intent(in) :: cell(3, 3)
       type(eam_al_params_t), intent(in) :: par
@@ -181,15 +181,19 @@ contains
       real(wp), intent(out), contiguous :: forces(:, :)
       integer, intent(out) :: status
       character(len=:), allocatable, intent(out) :: errmsg
+      real(wp), intent(out), optional :: strain(6)
 
       integer(ip) :: natoms, i, nent
+      integer :: nw
       real(wp), allocatable :: rho(:), dembed(:), e_pair(:), e_embed(:)
       real(wp), allocatable :: dens(:), ddens(:)
+      real(wp), allocatable :: w_atom(:, :)
       real(wp) :: rt, pair_shift, dens_shift
 
       natoms = int(size(positions, 2), ip)
       energy = 0.0_wp
       forces = 0.0_wp
+      if (present(strain)) strain = 0.0_wp
 
       call table%build(positions, cell, par%cutoff(), status, errmsg)
       if (status /= 0) return
@@ -216,14 +220,32 @@ contains
       end do
 
       ! Pass three: each atom sums the whole force acting on it and writes
-      ! only its own column.
+      ! only its own column. A present strain receives dE/dε of the energy
+      ! that atom owns: half the pair, and its own embedding.
+      nw = 0
+      if (present(strain)) nw = 6
+      allocate (w_atom(nw, natoms), source=0.0_wp)
       do concurrent(i=1:natoms)
          call atom_contribution(par, table, i, rt, pair_shift, dens, ddens, &
-                                dembed, e_pair(i), forces(:, i))
+                                dembed, e_pair(i), forces(:, i), w_atom(:, i))
       end do
+      if (present(strain)) strain = sum(w_atom, dim=2)
 
       energy = sum(e_pair) + sum(e_embed)
    end subroutine eam_al_energy_forces
+
+   !> Add d ⊗ g to the six strain entries, g = dE/dd, upper triangle a < b.
+   pure subroutine add_bond_strain(w, d, g)
+      real(wp), intent(inout) :: w(6)
+      real(wp), intent(in) :: d(3), g(3)
+
+      w(1) = w(1) + d(1)*g(1)
+      w(2) = w(2) + d(2)*g(2)
+      w(3) = w(3) + d(3)*g(3)
+      w(4) = w(4) + d(2)*g(3)
+      w(5) = w(5) + d(1)*g(3)
+      w(6) = w(6) + d(1)*g(2)
+   end subroutine add_bond_strain
 
    !> Total electron density at atom `i`; stores `rho(r)` and `rho'(r)` of
    !! each of its entries (zero past the truncation radius).
@@ -261,7 +283,7 @@ contains
 
    !> Atom `i`'s half of the pair energy and the total force acting on it.
    pure subroutine atom_contribution(par, table, i, rt, pair_shift, dens, &
-                                     ddens, dembed, e_i, f_i)
+                                     ddens, dembed, e_i, f_i, w_i)
       type(eam_al_params_t), intent(in) :: par
       type(neighbor_table_t), intent(in) :: table
       integer(ip), intent(in) :: i
@@ -269,12 +291,17 @@ contains
       real(wp), intent(in) :: dens(:), ddens(:), dembed(:)
       real(wp), intent(out) :: e_i
       real(wp), intent(out) :: f_i(3)
+      real(wp), intent(out), contiguous :: w_i(:)
 
       integer(ip) :: s, j
-      real(wp) :: r, rhat(3), dedr, pa, pb, phi, dphi
+      real(wp) :: r, rhat(3), dedr, owned, pa, pb, phi, dphi
+      real(wp) :: w(6)
+      logical :: with_strain
 
       e_i = 0.0_wp
       f_i = 0.0_wp
+      w = 0.0_wp
+      with_strain = size(w_i) > 0
 
       do s = table%row(i), table%row(i + 1_ip) - 1_ip
          r = table%dist(s)
@@ -298,7 +325,14 @@ contains
          ! derivatives.
          dedr = dphi + (dembed(i) + dembed(j))*ddens(s)
          f_i = f_i + dedr*rhat
+         ! The neighbour owns the other half of the pair and its own
+         ! embedding. vec is r_j - r_i, and dE/d(vec) is the force on i.
+         if (with_strain) then
+            owned = 0.5_wp*dphi + dembed(i)*ddens(s)
+            call add_bond_strain(w, table%vec(:, s), owned*rhat)
+         end if
       end do
+      if (with_strain) w_i = w
    end subroutine atom_contribution
 
 end module rgpot_eam_al

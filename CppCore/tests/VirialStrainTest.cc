@@ -202,18 +202,85 @@ TEST_CASE("Tersoff Si virial matches a central strain difference",
 }
 
 #ifdef RGPOT_HAS_FORTRAN_POTS
-TEST_CASE("Fortran SW virial matches a central strain difference",
-          "[virial][SW]") {
-  rgpot::fortranpots::SWPot pot;
+void checkFortran(const char *name, auto &&pot, const Sample &sample,
+                  double tol) {
   REQUIRE(pot.caps().virial);
   checkSample(
-      "sw-fortran",
+      name,
       [&](const Sample &s, rgpot::ForceOut *out) {
         pot.forceImpl({s.pos.size() / 3, s.pos.data(), s.types.data(),
                        s.box.data()},
                       out);
       },
-      rattledDiamond(), 1e-5);
+      sample, tol);
+}
+
+TEST_CASE("Fortran SW virial matches a central strain difference",
+          "[virial][SW]") {
+  rgpot::fortranpots::SWPot pot;
+  checkFortran("sw-fortran", pot, rattledDiamond(), 1e-5);
+}
+
+TEST_CASE("Fortran EDIP virial matches a central strain difference",
+          "[virial][EDIP]") {
+  rgpot::fortranpots::EDIPPot pot;
+  checkFortran("edip", pot, rattledDiamond(), 1e-5);
+}
+
+TEST_CASE("Fortran Lenosky virial matches a central strain difference",
+          "[virial][Lenosky]") {
+  rgpot::fortranpots::LenoskyPot pot;
+  checkFortran("lenosky", pot, rattledDiamond(), 1e-5);
+}
+
+TEST_CASE("Fortran Tersoff virial matches a central strain difference",
+          "[virial][Tersoff]") {
+  rgpot::fortranpots::TersoffPot pot;
+  checkFortran("tersoff-gather", pot, rattledDiamond(), 1e-5);
+}
+
+TEST_CASE("Fortran EAM-Al virial matches a central strain difference",
+          "[virial][EAMAl]") {
+  rgpot::fortranpots::EAMAlPot pot;
+  Sample s;
+  s.pos = {7.975, 7.975, 7.975, 10.0, 10.0, 7.975,
+           10.0,  7.975, 10.0,  7.975, 10.0, 10.0};
+  s.types.assign(4, 13);
+  s.box = {20, 0, 0, 0.4, 20, 0, 0.2, -0.3, 20};
+  checkFortran("eam-al", pot, s, 1e-5);
+}
+
+TEST_CASE("Fortran FeHe virial matches a central strain difference",
+          "[virial][FeHe]") {
+  rgpot::fortranpots::FeHePot pot;
+  Sample s;
+  s.pos = {7.13, 7.13, 7.13, 8.565, 8.565, 8.565};
+  s.types = {26, 26};
+  s.box = {16, 0, 0, 0.3, 16, 0, 0.1, -0.2, 16};
+  checkFortran("fehe", pot, s, 1e-5);
+}
+
+TEST_CASE("Fortran CuH2 virial matches a central strain difference",
+          "[virial][CuH2]") {
+  rgpot::fortranpots::CuH2Pot pot;
+  Sample s;
+  s.pos = {0.63940268750835, 0.90484742551374, 6.97516498544584,
+           3.19652040936288, 0.90417430354811, 6.97547796369474,
+           8.98363230369760, 9.94703496017833, 7.83556854923689,
+           7.64080177576300, 9.94703114803832, 7.83556986121272};
+  s.types = {29, 29, 1, 1};
+  s.box = {15.3456, 0, 0, 0.4, 21.702, 0, 0.2, -0.3, 40};
+  checkFortran("cuh2", pot, s, 1e-5);
+}
+
+TEST_CASE("Fortran WaterH virial matches a central strain difference",
+          "[virial][WaterH]") {
+  rgpot::fortranpots::WaterHPot pot;
+  Sample s;
+  s.pos = {8.36, 0.99, 0.2, 6.84, 0.99, -0.1, 4.0, 0.3, 1.0, 0, 0, 0};
+  s.types = {1, 1, 8, 1};
+  s.box = {8, 0, 0, 7.2, 0.8, 0, 0, 0, 8};
+  checkFortran("water-h", pot, s, 1e-5);
 }
 #endif
 

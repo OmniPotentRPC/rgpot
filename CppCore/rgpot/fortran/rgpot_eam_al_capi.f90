@@ -76,14 +76,16 @@ contains
    !! failure with the message available
    !! through `rgpot_fortran_workspace_error`. `handle` is a workspace from
    !! `rgpot_fortran_workspace_new`; a NULL handle returns -1.
-   function rgpot_eam_al_force_ws(handle, natoms, positions, cell, forces, energy) &
-      result(status) bind(c, name="rgpot_eam_al_force_ws")
+   function rgpot_eam_al_force_ws(handle, natoms, positions, cell, forces, energy, &
+                                   strain) result(status) &
+      bind(c, name="rgpot_eam_al_force_ws")
       type(c_ptr), value :: handle
       integer(c_int), value, intent(in) :: natoms
       real(c_double), intent(in) :: positions(3, natoms)
       real(c_double), intent(in) :: cell(3, 3)
       real(c_double), intent(out) :: forces(3, natoms)
       real(c_double), intent(out) :: energy
+      real(c_double), intent(out), optional :: strain(6)
       integer(c_int) :: status
 
       integer :: build_status
@@ -99,11 +101,12 @@ contains
       status = 0_c_int
       energy = 0.0_c_double
       forces = 0.0_c_double
+      if (present(strain)) strain = 0.0_c_double
 
       if (natoms < 1_c_int) return
 
       call eam_al_energy_forces(positions, cell, params, ws%table, energy, &
-                                forces, build_status, errmsg)
+                                forces, build_status, errmsg, strain)
       if (build_status /= 0) then
          call ws_set_error(ws, errmsg)
          status = int(build_status, c_int)

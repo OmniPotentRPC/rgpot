@@ -63,7 +63,12 @@ def test_implemented_properties_follow_caps() -> None:
     if not rgpot.has_fortran_pots:
         pytest.skip("this build has no Fortran potentials")
     eam = RgpotCalculator("eam_al")
-    assert eam.implemented_properties == ["energy", "free_energy", "forces"]
+    assert eam.implemented_properties == [
+        "energy",
+        "free_energy",
+        "forces",
+        "stress",
+    ]
     assert eam.protocol_reentrant is True
 
 

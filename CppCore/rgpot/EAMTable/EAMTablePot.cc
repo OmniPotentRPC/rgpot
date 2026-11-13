@@ -24,7 +24,7 @@
 // clang-format on
 
 #include "rgpot/EAMTable/EAMTablePot.hpp"
-#include "rgpot/nlist/PairListCache.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/stress.hpp"
 
 namespace {
@@ -285,20 +285,31 @@ void EAMTablePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   } else {
     box = free_box;
   }
-  nlist::CachedPairList::Options opt;
-  opt.cutoff = t.cutoff;
-  opt.periodic = {m_periodic, m_periodic, m_periodic};
+  // PairListCache was the half-list pool this kernel was written against.
+  // The neighbour layer that replaced it is Neighbours: one minimum-image
+  // walk, r_i - r_j in the visitor, the same vectors the strain uses.
+  const bool sheared = box[1] != 0.0 || box[2] != 0.0 || box[3] != 0.0 ||
+                       box[5] != 0.0 || box[6] != 0.0 || box[7] != 0.0;
+  nlist::Neighbours cells;
+  const std::array<bool, 3> periodic{{m_periodic, m_periodic, m_periodic}};
+  nlist::updateCells(cells, in.pos, n_size, box, t.cutoff, 0.0,
+                     sheared ? nlist::Image::General : nlist::Image::Round,
+                     nlist::Mode::Stream, periodic);
   const double cut2 = t.cutoff * t.cutoff;
   const double rdr = 1.0 / t.dr;
   const double rdrho = 1.0 / t.drho;
-  auto &pool = nlist::PairListCache::global();
 
   const bool pairs = n_size >= 2;
+  auto eachPair = [&](const auto &fn) {
+    nlist::visitHalf(
+        cells, 0, static_cast<std::int64_t>(n_size),
+        [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+            double r2) { fn(i, j, dx, dy, dz, r2); });
+  };
 
   std::vector<double> rho(n_size, 0.0);
   if (pairs) {
-    pool.evaluate(in.pos, n_size, box, opt,
-                  [&](int32_t i, int32_t j, double, double, double, double r2) {
+    eachPair([&](int32_t i, int32_t j, double, double, double, double r2) {
                     if (!(r2 > 0.0) || !(r2 < cut2)) {
                       return;
                     }
@@ -325,8 +336,7 @@ void EAMTablePot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
   double strain[6] = {};
   if (pairs) {
-    pool.evaluate(
-        in.pos, n_size, box, opt,
+    eachPair(
         [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
           if (!(r2 > 0.0) || !(r2 < cut2)) {
             return;

@@ -496,7 +496,8 @@ contains
    !! The force on `i` from neighbour `j` is
    !! `(dV/dr + (dFd_i + dFd_j) drho_d/dr + (dFs_i + dFs_j) drho_s/dr)`
    !! along the unit vector pointing from `i` towards `j`.
-   pure subroutine atom_contribution(par, table, species, dfd, dfs, i, e_i, f_i)
+   pure subroutine atom_contribution(par, table, species, dfd, dfs, i, e_i, f_i, &
+                                     w_i)
       type(fehe_params_t), intent(in) :: par
       type(neighbor_table_t), intent(in) :: table
       integer(ip), intent(in) :: species(:)
@@ -504,12 +505,17 @@ contains
       integer(ip), intent(in) :: i
       real(wp), intent(out) :: e_i
       real(wp), intent(out) :: f_i(3)
+      real(wp), intent(out), contiguous :: w_i(:)
 
       integer(ip) :: s, j
-      real(wp) :: r, u_ij(3), v, dvdr, drho_d, drho_s, radial
+      real(wp) :: r, u_ij(3), v, dvdr, drho_d, drho_s, radial, owned
+      real(wp) :: w(6)
+      logical :: with_strain
 
       e_i = 0.0_wp
       f_i = 0.0_wp
+      w = 0.0_wp
+      with_strain = size(w_i) > 0
 
       do s = table%row(i), table%row(i + 1_ip) - 1_ip
          j = table%idx(s)
@@ -523,8 +529,25 @@ contains
          e_i = e_i + 0.5_wp*v
          radial = dvdr + (dfd(i) + dfd(j))*drho_d + (dfs(i) + dfs(j))*drho_s
          f_i = f_i + radial*u_ij
+         if (with_strain) then
+            owned = 0.5_wp*dvdr + dfd(i)*drho_d + dfs(i)*drho_s
+            call add_bond_strain(w, table%vec(:, s), owned*u_ij)
+         end if
       end do
+      if (with_strain) w_i = w
    end subroutine atom_contribution
+
+   pure subroutine add_bond_strain(w, d, g)
+      real(wp), intent(inout) :: w(6)
+      real(wp), intent(in) :: d(3), g(3)
+
+      w(1) = w(1) + d(1)*g(1)
+      w(2) = w(2) + d(2)*g(2)
+      w(3) = w(3) + d(3)*g(3)
+      w(4) = w(4) + d(2)*g(3)
+      w(5) = w(5) + d(1)*g(3)
+      w(6) = w(6) + d(1)*g(2)
+   end subroutine add_bond_strain
 
    !> Turn atomic numbers into internal species labels.
    subroutine map_species(atomic_numbers, species, status, errmsg)
@@ -559,7 +582,7 @@ contains
    !> Energy and forces for `positions` (3 x natoms) of the species named by
    !! `atomic_numbers`, in `cell`.
    subroutine fehe_energy_forces(positions, atomic_numbers, cell, par, table, &
-                                 energy, forces, status, errmsg)
+                                 energy, forces, status, errmsg, strain)
       real(wp), intent(in), contiguous :: positions(:, :)
       integer(ip), intent(in), contiguous :: atomic_numbers(:)
       real(wp), intent(in) :: cell(3, 3)
@@ -569,15 +592,18 @@ contains
       real(wp), intent(out), contiguous :: forces(:, :)
       integer, intent(out) :: status
       character(len=:), allocatable, intent(out) :: errmsg
+      real(wp), intent(out), optional :: strain(6)
 
       integer(ip) :: natoms, i
+      integer :: nw
       integer(ip), allocatable :: species(:)
       real(wp), allocatable :: rho_d(:), rho_s(:), dfd(:), dfs(:)
-      real(wp), allocatable :: e_embed(:), e_pair(:)
+      real(wp), allocatable :: e_embed(:), e_pair(:), w_atom(:, :)
 
       natoms = int(size(positions, 2), ip)
       energy = 0.0_wp
       forces = 0.0_wp
+      if (present(strain)) strain = 0.0_wp
       status = 0
       errmsg = ""
 
@@ -609,10 +635,14 @@ contains
          dfs(i) = dembed_sband(par, rho_s(i))
       end do
 
+      nw = 0
+      if (present(strain)) nw = 6
+      allocate (w_atom(nw, natoms), source=0.0_wp)
       do concurrent(i=1:natoms)
          call atom_contribution(par, table, species, dfd, dfs, i, e_pair(i), &
-                                forces(:, i))
+                                forces(:, i), w_atom(:, i))
       end do
+      if (present(strain)) strain = sum(w_atom, dim=2)
 
       energy = sum(e_pair) + sum(e_embed)
    end subroutine fehe_energy_forces

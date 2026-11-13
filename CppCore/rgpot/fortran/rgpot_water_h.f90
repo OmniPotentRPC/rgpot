@@ -448,7 +448,7 @@ contains
 
    !> Energy and forces for `positions` (3 x natoms) in `cell`.
    subroutine water_h_energy_forces(positions, atomic_numbers, cell, par, &
-                                    energy, forces, status, errmsg)
+                                    energy, forces, status, errmsg, strain)
       real(wp), intent(in), contiguous :: positions(:, :)
       integer(ip), intent(in), contiguous :: atomic_numbers(:)
       real(wp), intent(in) :: cell(3, 3)
@@ -457,6 +457,7 @@ contains
       real(wp), intent(out), contiguous :: forces(:, :)
       integer, intent(out) :: status
       character(len=:), allocatable, intent(out) :: errmsg
+      real(wp), intent(out), optional :: strain(6)
 
       integer(ip) :: natoms, i, lone_h, slot, nleg
       real(wp) :: inv_cell(3, 3)
@@ -540,7 +541,27 @@ contains
       energy = sum(e_site)
       forces = leg_force
       forces(:, lone_h) = -sum(leg_force, dim=2)
+      if (present(strain)) then
+         strain = 0.0_wp
+         ! Each site owns its leg. d = r_site - r_lone, and the force on
+         ! the site is -dE/dd.
+         do i = 1_ip, slot
+            call add_bond_strain(strain, wrapped(:, i), -leg_force(:, leg_of(i)))
+         end do
+      end if
    end subroutine water_h_energy_forces
+
+   pure subroutine add_bond_strain(w, d, g)
+      real(wp), intent(inout) :: w(6)
+      real(wp), intent(in) :: d(3), g(3)
+
+      w(1) = w(1) + d(1)*g(1)
+      w(2) = w(2) + d(2)*g(2)
+      w(3) = w(3) + d(3)*g(3)
+      w(4) = w(4) + d(2)*g(3)
+      w(5) = w(5) + d(1)*g(3)
+      w(6) = w(6) + d(1)*g(2)
+   end subroutine add_bond_strain
 
    !> Decimal text for an index or a count, for the error messages.
    function itoa(value) result(text)

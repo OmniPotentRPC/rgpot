@@ -233,19 +233,24 @@ contains
    !! The table stores the opposite direction, so each one is negated at
    !! the point of use. Cosines are unaffected, which is why the energy
    !! survives the convention but the forces do not.
-   pure subroutine atom_contribution(table, dudens, i, e_i, f_i)
+   pure subroutine atom_contribution(table, dudens, i, e_i, f_i, w_i)
       type(neighbor_table_t), intent(in) :: table
       real(wp), intent(in) :: dudens(:)
       integer(ip), intent(in) :: i
       real(wp), intent(out) :: e_i
       real(wp), intent(out) :: f_i(3)
+      real(wp), intent(out), contiguous :: w_i(:)
 
       integer(ip) :: sj, sk, sm, sn, m, n
       real(wp) :: rij, rik, rim, rmn, e_phi, ep_phi, rho, rhop
       real(wp) :: u_ij(3), u_ik(3), u_mi(3), u_mn(3), grad_j(3), grad_k(3)
+      real(wp) :: w(6)
+      logical :: with_strain
 
       e_i = 0.0_wp
       f_i = 0.0_wp
+      w = 0.0_wp
+      with_strain = size(w_i) > 0
 
       do sj = table%row(i), table%row(i + 1_ip) - 1_ip
          rij = table%dist(sj)
@@ -255,17 +260,30 @@ contains
          call splint(sp_phi, cof_phi, dof_phi, rij, e_phi, ep_phi)
          e_i = e_i + 0.5_wp*e_phi
          f_i = f_i - u_ij*ep_phi
+         if (with_strain) then
+            ! Half the pair. u_ij points at i, so dE/d(vec) is -0.5 ep u.
+            call add_bond_strain(w, table%vec(:, sj), -0.5_wp*ep_phi*u_ij)
+         end if
 
-         ! Own density, two-body part.
+         ! Own density, two-body part. The embedding is owned entirely here.
          call splint(sp_rho, cof_rho, dof_rho, rij, rho, rhop)
          f_i = f_i - dudens(i)*u_ij*rhop
+         if (with_strain) then
+            call add_bond_strain(w, table%vec(:, sj), -dudens(i)*rhop*u_ij)
+         end if
 
-         ! Own density, triplets centred here.
+         ! Own density, triplets centred here. grad_* is the density change
+         ! when that end moves; the centre's force is the negated sum, so
+         ! dE/d(vec) on the bond to that end is -dudens*grad.
          do sk = sj + 1_ip, table%row(i + 1_ip) - 1_ip
             rik = table%dist(sk)
             u_ik = -table%vec(:, sk)/rik
             call triplet_gradients(u_ij, rij, u_ik, rik, grad_j, grad_k)
             f_i = f_i - dudens(i)*(grad_j + grad_k)
+            if (with_strain) then
+               call add_bond_strain(w, table%vec(:, sj), -dudens(i)*grad_j)
+               call add_bond_strain(w, table%vec(:, sk), -dudens(i)*grad_k)
+            end if
          end do
       end do
 
@@ -287,11 +305,24 @@ contains
             f_i = f_i + dudens(m)*grad_j
          end do
       end do
+      if (with_strain) w_i = w
    end subroutine atom_contribution
+
+   pure subroutine add_bond_strain(w, d, g)
+      real(wp), intent(inout) :: w(6)
+      real(wp), intent(in) :: d(3), g(3)
+
+      w(1) = w(1) + d(1)*g(1)
+      w(2) = w(2) + d(2)*g(2)
+      w(3) = w(3) + d(3)*g(3)
+      w(4) = w(4) + d(2)*g(3)
+      w(5) = w(5) + d(1)*g(3)
+      w(6) = w(6) + d(1)*g(2)
+   end subroutine add_bond_strain
 
    !> Energy and forces for `positions` (3 x natoms) in `cell`.
    subroutine lenosky_energy_forces(positions, cell, par, table, energy, &
-                                    forces, status, errmsg)
+                                    forces, status, errmsg, strain)
       real(wp), intent(in), contiguous :: positions(:, :)
       real(wp), intent(in) :: cell(3, 3)
       type(lenosky_params_t), intent(in) :: par
@@ -300,13 +331,17 @@ contains
       real(wp), intent(out), contiguous :: forces(:, :)
       integer, intent(out) :: status
       character(len=:), allocatable, intent(out) :: errmsg
+      real(wp), intent(out), optional :: strain(6)
 
       integer(ip) :: natoms, i
+      integer :: nw
       real(wp), allocatable :: dens(:), dudens(:), e_embed(:), e_pair(:)
+      real(wp), allocatable :: w_atom(:, :)
 
       natoms = int(size(positions, 2), ip)
       energy = 0.0_wp
       forces = 0.0_wp
+      if (present(strain)) strain = 0.0_wp
 
       call table%build(positions, cell, par%cutoff, status, errmsg)
       if (status /= 0) return
@@ -326,9 +361,14 @@ contains
       end do
 
       ! Pass three: pair energy and the force gather.
+      nw = 0
+      if (present(strain)) nw = 6
+      allocate (w_atom(nw, natoms), source=0.0_wp)
       do concurrent(i=1:natoms)
-         call atom_contribution(table, dudens, i, e_pair(i), forces(:, i))
+         call atom_contribution(table, dudens, i, e_pair(i), forces(:, i), &
+                                w_atom(:, i))
       end do
+      if (present(strain)) strain = sum(w_atom, dim=2)
 
       energy = sum(e_pair) + sum(e_embed)
    end subroutine lenosky_energy_forces

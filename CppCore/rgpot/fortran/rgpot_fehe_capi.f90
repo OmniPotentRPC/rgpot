@@ -85,7 +85,7 @@ contains
    !! through `rgpot_fortran_workspace_error`. `handle` is a workspace from
    !! `rgpot_fortran_workspace_new`; a NULL handle returns -1.
    function rgpot_fehe_force_ws(handle, natoms, positions, atomic_numbers, cell, forces, &
-                             energy) result(status) &
+                             energy, strain) result(status) &
       bind(c, name="rgpot_fehe_force_ws")
       type(c_ptr), value :: handle
       integer(c_int), value, intent(in) :: natoms
@@ -94,6 +94,7 @@ contains
       real(c_double), intent(in) :: cell(3, 3)
       real(c_double), intent(out) :: forces(3, natoms)
       real(c_double), intent(out) :: energy
+      real(c_double), intent(out), optional :: strain(6)
       integer(c_int) :: status
 
       integer :: eval_status
@@ -109,11 +110,12 @@ contains
       status = 0_c_int
       energy = 0.0_c_double
       forces = 0.0_c_double
+      if (present(strain)) strain = 0.0_c_double
 
       if (natoms < 1_c_int) return
 
       call fehe_energy_forces(positions, atomic_numbers, cell, params, ws%table, &
-                              energy, forces, eval_status, errmsg)
+                              energy, forces, eval_status, errmsg, strain)
       if (eval_status /= 0) then
          call ws_set_error(ws, errmsg)
          status = int(eval_status, c_int)

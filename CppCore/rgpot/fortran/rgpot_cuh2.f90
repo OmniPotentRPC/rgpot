@@ -379,7 +379,7 @@ contains
    !! `cuh2_z_cu` or `cuh2_z_h`. Non-zero `status` leaves `energy` and
    !! `forces` zeroed and describes the fault in `errmsg`.
    subroutine cuh2_energy_forces(positions, atomic_numbers, cell, par, table, &
-                                 energy, forces, status, errmsg)
+                                 energy, forces, status, errmsg, strain)
       real(wp), intent(in), contiguous :: positions(:, :)
       integer(ip), intent(in), contiguous :: atomic_numbers(:)
       real(wp), intent(in) :: cell(3, 3)
@@ -389,14 +389,18 @@ contains
       real(wp), intent(out), contiguous :: forces(:, :)
       integer, intent(out) :: status
       character(len=:), allocatable, intent(out) :: errmsg
+      real(wp), intent(out), optional :: strain(6)
 
       type(cuh2_params_t) :: shifted
       integer(ip) :: natoms, i, nentries
+      integer :: nw
       integer(ip), allocatable :: species(:)
       real(wp), allocatable :: rho(:), dfdrho(:), e_pair(:), e_embed(:)
+      real(wp), allocatable :: w_atom(:, :)
 
       energy = 0.0_wp
       forces = 0.0_wp
+      if (present(strain)) strain = 0.0_wp
       status = 0
       errmsg = ""
       natoms = int(size(positions, 2), ip)
@@ -451,10 +455,14 @@ contains
       end do
 
       ! Pass three: pair energy and the whole force on each atom.
+      nw = 0
+      if (present(strain)) nw = 6
+      allocate (w_atom(nw, natoms), source=0.0_wp)
       do concurrent(i=1:natoms)
          call atom_force(shifted, table, species, dfdrho, i, e_pair(i), &
-                         forces(:, i))
+                         forces(:, i), w_atom(:, i))
       end do
+      if (present(strain)) strain = sum(w_atom, dim=2)
 
       energy = sum(e_pair) + sum(e_embed)
    end subroutine cuh2_energy_forces
@@ -533,7 +541,7 @@ contains
    !!
    !! The pair energy is halved because the full neighbour list visits
    !! each pair from both ends.
-   pure subroutine atom_force(par, table, species, dfdrho, i, e_i, f_i)
+   pure subroutine atom_force(par, table, species, dfdrho, i, e_i, f_i, w_i)
       type(cuh2_params_t), intent(in) :: par
       type(neighbor_table_t), intent(in) :: table
       integer(ip), intent(in) :: species(:)
@@ -541,12 +549,17 @@ contains
       integer(ip), intent(in) :: i
       real(wp), intent(out) :: e_i
       real(wp), intent(out) :: f_i(3)
+      real(wp), intent(out), contiguous :: w_i(:)
 
       integer(ip) :: s, j, zi, zj
-      real(wp) :: r, weight, drho_ij, drho_ji
+      real(wp) :: r, weight, owned, drho_ij, drho_ji
+      real(wp) :: w(6)
+      logical :: with_strain
 
       e_i = 0.0_wp
       f_i = 0.0_wp
+      w = 0.0_wp
+      with_strain = size(w_i) > 0
       zi = species(i)
 
       do s = table%row(i), table%row(i + 1_ip) - 1_ip
@@ -583,7 +596,28 @@ contains
 
          weight = weight + drho_ij*dfdrho(i) + drho_ji*dfdrho(j)
          f_i = f_i + weight*table%vec(:, s)
+         ! dphi and drho are (d/dr)/r, so dE/d(vec) is that weight times vec.
+         ! The neighbour owns the other half of the pair and the density
+         ! it receives.
+         if (with_strain) then
+            owned = 0.5_wp*(weight - drho_ij*dfdrho(i) - drho_ji*dfdrho(j)) &
+                    + drho_ij*dfdrho(i)
+            call add_bond_strain(w, table%vec(:, s), owned*table%vec(:, s))
+         end if
       end do
+      if (with_strain) w_i = w
    end subroutine atom_force
+
+   pure subroutine add_bond_strain(w, d, g)
+      real(wp), intent(inout) :: w(6)
+      real(wp), intent(in) :: d(3), g(3)
+
+      w(1) = w(1) + d(1)*g(1)
+      w(2) = w(2) + d(2)*g(2)
+      w(3) = w(3) + d(3)*g(3)
+      w(4) = w(4) + d(2)*g(3)
+      w(5) = w(5) + d(1)*g(3)
+      w(6) = w(6) + d(1)*g(2)
+   end subroutine add_bond_strain
 
 end module rgpot_cuh2

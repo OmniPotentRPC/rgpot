@@ -1,0 +1,1 @@
+The Fortran EDIP, Lenosky, Tersoff, EAM aluminium, Fe-He, CuH2 and water-plus-H potentials now fill the virial beside the Cauchy stress. The tabulated EAM reader uses the shared neighbour walk, so its virial is available in the same build.

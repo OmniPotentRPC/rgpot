@@ -29,26 +29,28 @@ int rgpot_sw_force_ws(void *ws, int32_t natoms, const double *positions,
                       const double *cell, double *forces, double *energy,
                       double *strain);
 int rgpot_edip_force_ws(void *ws, int32_t natoms, const double *positions,
-                        const double *cell, double *forces, double *energy);
+                        const double *cell, double *forces, double *energy,
+                        double *strain);
 int rgpot_lenosky_force_ws(void *ws, int32_t natoms, const double *positions,
-                           const double *cell, double *forces,
-                           double *energy);
+                           const double *cell, double *forces, double *energy,
+                           double *strain);
 int rgpot_tersoff_force_ws(void *ws, int32_t natoms, const double *positions,
-                           const double *cell, double *forces,
-                           double *energy);
+                           const double *cell, double *forces, double *energy,
+                           double *strain);
 int rgpot_eam_al_force_ws(void *ws, int32_t natoms, const double *positions,
-                          const double *cell, double *forces, double *energy);
+                          const double *cell, double *forces, double *energy,
+                          double *strain);
 
 /// Kernels dispatching on atomic number.
 int rgpot_fehe_force_ws(void *ws, int32_t natoms, const double *positions,
                         const int32_t *atomic_numbers, const double *cell,
-                        double *forces, double *energy);
+                        double *forces, double *energy, double *strain);
 int rgpot_cuh2_force_ws(void *ws, int32_t natoms, const double *positions,
                         const int32_t *atomic_numbers, const double *cell,
-                        double *forces, double *energy);
+                        double *forces, double *energy, double *strain);
 int rgpot_water_h_force_ws(void *ws, int32_t natoms, const double *positions,
                            const int32_t *atomic_numbers, const double *cell,
-                           double *forces, double *energy);
+                           double *forces, double *energy, double *strain);
 
 // F2: the saved parameter block in each *_capi module is written once
 // under std::call_once and read-only afterwards. Python binds only the
@@ -129,12 +131,14 @@ FortranWorkspace &FortranWorkspace::operator=(const FortranWorkspace &) {
 #define RGPOT_FORTRAN_POT_IMPL(ClassName, Entry, Label)                        \
   void ClassName::forceImpl(const ForceInput &in, ForceOut *out) const {       \
     ensure_fortran_params();                                                   \
-    const int status = Entry(m_ws.get(), static_cast<int32_t>(in.nAtoms),       \
-                             in.pos, in.box, out->F, &out->energy);            \
+    double strain[6] = {};                                                     \
+    const int status = Entry(m_ws.get(), static_cast<int32_t>(in.nAtoms),      \
+                             in.pos, in.box, out->F, &out->energy, strain);    \
     if (status != 0) {                                                         \
       raise(Label, status, m_ws.get());                                        \
     }                                                                          \
     out->variance = 0.0;                                                       \
+    publishCauchyStress(out, strain, cellVolume(in.box));                      \
   }
 
 RGPOT_FORTRAN_POT_IMPL(EDIPPot, rgpot_edip_force_ws, "EDIP")
@@ -179,36 +183,32 @@ void TersoffPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   // gather does not have.
   if (siliconOnly(in)) {
     ensure_fortran_params();
+    double strain[6] = {};
     const int status = rgpot_tersoff_force_ws(
         m_ws.get(), static_cast<int32_t>(in.nAtoms), in.pos, in.box, out->F,
-        &out->energy);
+        &out->energy, strain);
     if (status != 0) {
       raise("Tersoff", status, m_ws.get());
     }
     out->variance = 0.0;
+    publishCauchyStress(out, strain, cellVolume(in.box));
   } else {
     m_sic.forceImpl(in, out);
   }
-  // The gather writes no stress and caps().stress is false, so no call
-  // reports one, and a reused output keeps no earlier tensor. The
-  // silicon-carbon path fills a virial and this wrapper discards it
-  // with the stress.
-  out->has_stress = 0;
-  out->has_virial = 0;
-  std::fill(out->stress, out->stress + 9, 0.0);
-  std::fill(out->virial, out->virial + 9, 0.0);
 }
 
 #define RGPOT_FORTRAN_SPECIES_POT_IMPL(ClassName, Entry, Label)                \
   void ClassName::forceImpl(const ForceInput &in, ForceOut *out) const {       \
     ensure_fortran_params();                                                   \
+    double strain[6] = {};                                                     \
     const int status =                                                         \
         Entry(m_ws.get(), static_cast<int32_t>(in.nAtoms), in.pos, in.atmnrs,  \
-              in.box, out->F, &out->energy);                                   \
+              in.box, out->F, &out->energy, strain);                           \
     if (status != 0) {                                                         \
       raise(Label, status, m_ws.get());                                        \
     }                                                                          \
     out->variance = 0.0;                                                       \
+    publishCauchyStress(out, strain, cellVolume(in.box));                      \
   }
 
 RGPOT_FORTRAN_SPECIES_POT_IMPL(FeHePot, rgpot_fehe_force_ws, "FeHe")

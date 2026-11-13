@@ -322,13 +322,14 @@ contains
    end subroutine atom_terms
 
    !> Total force on atom `i`, given `Z` and `dE/dZ` of every atom.
-   pure subroutine atom_force(par, cst, table, i, maxnbr, z, dedz, f_i)
+   pure subroutine atom_force(par, cst, table, i, maxnbr, z, dedz, f_i, w_i)
       type(edip_params_t), intent(in) :: par
       type(edip_const_t), intent(in) :: cst
       type(neighbor_table_t), intent(in) :: table
       integer(ip), intent(in) :: i, maxnbr
       real(wp), intent(in) :: z(:), dedz(:)
       real(wp), intent(out) :: f_i(3)
+      real(wp), intent(out), contiguous :: w_i(:)
 
       real(wp) :: g(maxnbr), dg(maxnbr), u(3, maxnbr), rinv(maxnbr)
       integer(ip) :: who(maxnbr)
@@ -337,8 +338,12 @@ contains
       real(wp) :: t0, t1, t2, t3, fz, dfz, pz_i, pz_j, dp_i, dp_j
       real(wp) :: winv, dwinv, tau, dtau, lcos, h, dhdx
       real(wp) :: g_self, dg_self, g_other, dg_other
+      real(wp) :: leg_j(3), leg_k(3), w(6)
+      logical :: with_strain
 
       f_i = 0.0_wp
+      w = 0.0_wp
+      with_strain = size(w_i) > 0
       call bond_order(par, z(i), pz_i, dp_i)
 
       ! Pair and coordination channels. Both close because the pair term
@@ -354,10 +359,17 @@ contains
             call bond_order(par, z(j), pz_j, dp_j)
             f_i = f_i - t0*(t1*t2 + (t1 - pz_i)*t3)*uij &
                   - t0*(t1*t2 + (t1 - pz_j)*t3)*uij
+            if (with_strain) then
+               call add_bond_strain(w, table%vec(:, s), &
+                                    -t0*(t1*t2 + (t1 - pz_i)*t3)*uij)
+            end if
          end if
 
          call coord_term(par, cst, r, fz, dfz)
          f_i = f_i + (dedz(i) + dedz(j))*dfz*uij
+         if (with_strain) then
+            call add_bond_strain(w, table%vec(:, s), dedz(i)*dfz*uij)
+         end if
       end do
 
       ! Three-body, i at the centre of every unordered pair of its legs.
@@ -369,11 +381,15 @@ contains
             if (who(nj) == who(nk)) cycle
             lcos = dot_product(u(:, nj), u(:, nk))
             call angular_term(par, cst, winv, tau, lcos, h, dhdx)
-            f_i = f_i &
-                  + leg_gradient(g(nj), dg(nj), u(:, nj), rinv(nj), &
-                                 g(nk), u(:, nk), lcos, h, dhdx*winv) &
-                  + leg_gradient(g(nk), dg(nk), u(:, nk), rinv(nk), &
+            leg_j = leg_gradient(g(nj), dg(nj), u(:, nj), rinv(nj), &
+                                 g(nk), u(:, nk), lcos, h, dhdx*winv)
+            leg_k = leg_gradient(g(nk), dg(nk), u(:, nk), rinv(nk), &
                                  g(nj), u(:, nj), lcos, h, dhdx*winv)
+            f_i = f_i + leg_j + leg_k
+            if (with_strain) then
+               call add_bond_strain(w, u(:, nj)/rinv(nj), leg_j)
+               call add_bond_strain(w, u(:, nk)/rinv(nk), leg_k)
+            end if
          end do
       end do
 
@@ -401,7 +417,20 @@ contains
                                      g_other, u_mn, lcos, h, dhdx*winv)
          end do
       end do
+      if (with_strain) w_i = w
    end subroutine atom_force
+
+   pure subroutine add_bond_strain(w, d, g)
+      real(wp), intent(inout) :: w(6)
+      real(wp), intent(in) :: d(3), g(3)
+
+      w(1) = w(1) + d(1)*g(1)
+      w(2) = w(2) + d(2)*g(2)
+      w(3) = w(3) + d(3)*g(3)
+      w(4) = w(4) + d(2)*g(3)
+      w(5) = w(5) + d(1)*g(3)
+      w(6) = w(6) + d(1)*g(2)
+   end subroutine add_bond_strain
 
    !> Perpendicular width of the cell along each lattice vector.
    pure function cell_widths(cell) result(w)
@@ -435,7 +464,7 @@ contains
 
    !> Energy and forces for `positions` (3 x natoms) in `cell`.
    subroutine edip_energy_forces(positions, cell, par, table, energy, forces, &
-                                 status, errmsg)
+                                 status, errmsg, strain)
       real(wp), intent(in), contiguous :: positions(:, :)
       real(wp), intent(in) :: cell(3, 3)
       type(edip_params_t), intent(in) :: par
@@ -444,15 +473,18 @@ contains
       real(wp), intent(out), contiguous :: forces(:, :)
       integer, intent(out) :: status
       character(len=:), allocatable, intent(out) :: errmsg
+      real(wp), intent(out), optional :: strain(6)
 
       type(edip_const_t) :: cst
       integer(ip) :: natoms, i, maxnbr
+      integer :: nw
       real(wp) :: rcut, widths(3)
-      real(wp), allocatable :: e_atom(:), z(:), dedz(:)
+      real(wp), allocatable :: e_atom(:), z(:), dedz(:), w_atom(:, :)
 
       natoms = int(size(positions, 2), ip)
       energy = 0.0_wp
       forces = 0.0_wp
+      if (present(strain)) strain = 0.0_wp
       status = 0
       errmsg = ""
       rcut = par%cutoff()
@@ -487,10 +519,16 @@ contains
       end do
 
       ! Pass two: forces. Each iteration reads the pass-one arrays and
-      ! writes only its own force column.
+      ! writes only its own force column. The strain is the derivative of
+      ! the energy that atom owns.
+      nw = 0
+      if (present(strain)) nw = 6
+      allocate (w_atom(nw, natoms), source=0.0_wp)
       do concurrent(i=1:natoms)
-         call atom_force(par, cst, table, i, maxnbr, z, dedz, forces(:, i))
+         call atom_force(par, cst, table, i, maxnbr, z, dedz, forces(:, i), &
+                         w_atom(:, i))
       end do
+      if (present(strain)) strain = sum(w_atom, dim=2)
 
       energy = sum(e_atom)
    end subroutine edip_energy_forces
