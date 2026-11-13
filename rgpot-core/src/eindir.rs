@@ -100,7 +100,8 @@ pub struct rgpot_potential_t {
     pub n_atoms: usize,
     /// Atomic numbers, heap-allocated (len = n_atoms), owned by this struct.
     pub atomic_numbers: *mut i32,
-    /// Box matrix (column-major, 3x3), copied at construction.
+    /// Box matrix copied at construction. Nine doubles, lattice vectors as
+    /// rows: ax ay az bx by bz cx cy cz. Same layout as `ForceInput.box`.
     pub box_matrix: [f64; 9],
     /// Energy/gradient result shared by a matching eval-then-grad request.
     /// Held behind a pointer so the C view of the struct stays plain C.

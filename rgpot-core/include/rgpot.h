@@ -198,7 +198,8 @@ typedef struct rgpot_potential_t {
    */
   int32_t *atomic_numbers;
   /**
-   * Box matrix (column-major, 3x3), copied at construction.
+   * Box matrix copied at construction. Nine doubles, lattice vectors as
+   * rows: ax ay az bx by bz cx cy cz. Same layout as ForceInput.box.
    */
   double box_matrix[9];
   /**
