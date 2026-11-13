@@ -43,12 +43,14 @@ int axisCount(double length, double edge) {
 
 // Image indices appended to cell_of_ after the per-atom cell ids.
 // magic, pair count, fresh, then a bit field: bit 0 tiny (-1, 0, 1),
-// bit 1 every index stays valid for any move inside the skin.
+// bit 1 every index stays valid for any move inside the skin,
+// bit 2 general-cell coefficients of MinimumImage.
 // The shifts follow, three int32 values per pair. If bit 1 is clear,
-// one byte per pair follows those, and a nonzero byte is rounded again.
+// one byte per pair follows those, and a nonzero byte is folded again.
 constexpr std::int32_t kShiftMagic = 0x52534846;
 constexpr std::int32_t kShiftTiny = 1;
 constexpr std::int32_t kShiftStable = 2;
+constexpr std::int32_t kShiftGeneral = 4;
 
 // Each atom may move by at most skin/2. The squared test in withinSkin is
 // a few ulps loose, so the pair's coordinate difference can change by a
@@ -179,7 +181,7 @@ bool Neighbours::reusable(const double *xyz, std::size_t n, const double *box9,
 }
 
 void Neighbours::installRoundShifts(const std::int32_t *shift, std::size_t npairs, bool tiny,
-                                    bool all_stable, const std::uint8_t *unstable) {
+                                    bool all_stable, bool general, const std::uint8_t *unstable) {
   const auto base = n_;
   if (npairs > (static_cast<std::size_t>(-1) - 4 - base) / 4) {
     return;
@@ -191,7 +193,8 @@ void Neighbours::installRoundShifts(const std::int32_t *shift, std::size_t npair
   cell_of_[base] = kShiftMagic;
   cell_of_[base + 1] = static_cast<std::int32_t>(npairs);
   cell_of_[base + 2] = 1;
-  cell_of_[base + 3] = (tiny ? kShiftTiny : 0) | (all_stable ? kShiftStable : 0);
+  cell_of_[base + 3] = (tiny ? kShiftTiny : 0) | (all_stable ? kShiftStable : 0) |
+                       (general ? kShiftGeneral : 0);
   auto *raw = reinterpret_cast<unsigned char *>(cell_of_.data() + base + 4);
   if (npairs > 0) {
     std::memcpy(raw, shift, shift_bytes);
@@ -211,15 +214,18 @@ void Neighbours::noteShiftFresh(bool fresh) noexcept {
   cell_of_[n_ + 2] = fresh ? 1 : 0;
 }
 
-const std::int32_t *Neighbours::roundShifts(bool &tiny, const unsigned char *&unstable) const noexcept {
+const std::int32_t *Neighbours::roundShifts(bool &tiny, const unsigned char *&unstable,
+                                           bool &general) const noexcept {
   tiny = false;
   unstable = nullptr;
+  general = false;
   if (n_ > cell_of_.size() || cell_of_.size() - n_ < 4 || cell_of_[n_] != kShiftMagic) {
     return nullptr;
   }
   const bool fresh = cell_of_[n_ + 2] != 0;
   const auto bits = cell_of_[n_ + 3];
   const bool all_stable = (bits & kShiftStable) != 0;
+  general = (bits & kShiftGeneral) != 0;
   const auto count = static_cast<std::size_t>(cell_of_[n_ + 1]);
   if (count != nbr_.size()) {
     return nullptr;
@@ -231,14 +237,16 @@ const std::int32_t *Neighbours::roundShifts(bool &tiny, const unsigned char *&un
   if (cell_of_.size() - n_ - 4 < nints) {
     return nullptr;
   }
-  // Exact coordinates make every stored index the one rounding would
-  // return. A skin move may keep an index only when the build proved the
-  // half-box boundary stays out of reach.
+  // Exact coordinates make every stored orthorhombic index the one
+  // rounding would return. A general-cell pair that the search corrected
+  // has no coefficient, so that byte is read even when the coordinates
+  // still match. A skin move may keep an index only when the build proved
+  // the image cannot change.
   if (!fresh && !all_stable && extra == 0) {
     return nullptr;
   }
   tiny = (bits & kShiftTiny) != 0;
-  if (!fresh && !all_stable) {
+  if (!all_stable && (!fresh || general)) {
     const auto *raw = reinterpret_cast<const unsigned char *>(cell_of_.data() + n_ + 4);
     unstable = raw + shift_bytes;
   }
@@ -356,10 +364,13 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
   std::vector<Cand> gather;
   std::vector<std::int32_t> shifts;
   std::vector<std::uint8_t> flags;
-  const bool record = !use_general_ && image_ == Image::Round;
+  const bool record_round = !use_general_ && image_ == Image::Round;
+  const bool record_general = use_general_;
+  const bool record = record_round || record_general;
   bool fit = record;
-  bool tiny = record;
+  bool tiny = record_round;
   bool all_stable = record;
+  const double lambda = record_general ? general_.shortestPeriodic() : 0.0;
   const double search2 = search_ * search_;
   auto take_axis = [&](double &delta, int axis, std::int32_t &slot) {
     if (!periodic_[axis]) {
@@ -430,6 +441,23 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
             double dz = 0;
             if (!record) {
               foldPair(static_cast<std::int32_t>(a), j, dx, dy, dz);
+            } else if (record_general) {
+              const auto ui = a * 3;
+              const auto uj = static_cast<std::size_t>(j) * 3;
+              dx = xyz_[ui] - xyz_[uj];
+              dy = xyz_[ui + 1] - xyz_[uj + 1];
+              dz = xyz_[ui + 2] - xyz_[uj + 2];
+              std::int32_t nimg[3] = {};
+              const bool coded = general_.tryRounded(dx, dy, dz, nimg);
+              holds = coded && general_.roundedHolds(dx, dy, dz, nimg, key_.skin, lambda);
+              if (coded) {
+                sx = nimg[0];
+                sy = nimg[1];
+                sz = nimg[2];
+                general_.subtractRounded(sx, sy, sz, dx, dy, dz);
+              } else {
+                fold(dx, dy, dz);
+              }
             } else {
               const auto ui = a * 3;
               const auto uj = static_cast<std::size_t>(j) * 3;
@@ -465,8 +493,8 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
     }
   }
   off_[n] = static_cast<std::int32_t>(nbr_.size());
-  if (fit) {
-    installRoundShifts(shifts.data(), nbr_.size(), tiny, all_stable,
+  if (fit && (record_round || record_general)) {
+    installRoundShifts(shifts.data(), nbr_.size(), tiny, all_stable, record_general,
                        all_stable ? nullptr : flags.data());
   }
 }

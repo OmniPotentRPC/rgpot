@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <limits>
 #include <stdexcept>
 
@@ -768,6 +770,88 @@ void fold_hardware(bool narrow, const double cell[9], const double inv[9],
 
 } // namespace
 
+namespace {
+
+bool same_bits(double a, double b) {
+  std::uint64_t x = 0;
+  std::uint64_t y = 0;
+  std::memcpy(&x, &a, sizeof(x));
+  std::memcpy(&y, &b, sizeof(y));
+  return x == y;
+}
+
+// Intervals of trunc(t + copysign(0.5, t)), the same round as std::round
+// for finite values. A positive slack on both sides has to stay inside.
+bool round_holds(double t, double idx, double slack) noexcept {
+  if (!(slack >= 0.0) || !std::isfinite(t) || !std::isfinite(idx) ||
+      !std::isfinite(slack)) {
+    return false;
+  }
+  if (idx == 0.0) {
+    return std::abs(t) + slack < 0.5;
+  }
+  if (idx > 0.0) {
+    return (t - slack) >= (idx - 0.5) && (t + slack) < (idx + 0.5);
+  }
+  return (t - slack) > (idx - 0.5) && (t + slack) <= (idx + 0.5);
+}
+
+template <bool Hardware>
+bool rounded_coefficients(const double inv[9], const bool periodic[3],
+                          double dx, double dy, double dz, std::int32_t n[3]) {
+  for (int k = 0; k < 3; ++k) {
+    if (!periodic[k]) {
+      n[k] = 0;
+      continue;
+    }
+    const double f = frac_of<Hardware>(dx, dy, dz, inv, k);
+    if (!std::isfinite(f)) {
+      throw std::overflow_error("periodic image index is out of range");
+    }
+    const double rounded = std::round(f);
+    checked_index(rounded);
+    if (!(rounded >= -2147483648.0 && rounded <= 2147483647.0)) {
+      return false;
+    }
+    const auto as_int = static_cast<std::int32_t>(rounded);
+    if (static_cast<double>(as_int) != rounded) {
+      return false;
+    }
+    n[k] = as_int;
+  }
+  return true;
+}
+
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+__attribute__((target("fma"), noinline, flatten))
+#endif
+bool rounded_coefficients_hw(const double inv[9], const bool periodic[3], double dx, double dy,
+                             double dz, std::int32_t n[3]) {
+  return rounded_coefficients<true>(inv, periodic, dx, dy, dz, n);
+}
+
+double column_norm(const double inv[9], int k) {
+  return std::hypot(inv[k], inv[3 + k], inv[6 + k]);
+}
+
+template <bool Hardware>
+void fractional_of(const double inv[9], const bool periodic[3], double dx,
+                   double dy, double dz, double f[3]) {
+  for (int k = 0; k < 3; ++k) {
+    f[k] = periodic[k] ? frac_of<Hardware>(dx, dy, dz, inv, k) : 0.0;
+  }
+}
+
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+__attribute__((target("fma"), noinline, flatten))
+#endif
+void fractional_hw(const double inv[9], const bool periodic[3], double dx, double dy, double dz,
+                   double f[3]) {
+  fractional_of<true>(inv, periodic, dx, dy, dz, f);
+}
+
+} // namespace
+
 void MinimumImage::fold(double &dx, double &dy, double &dz) const {
   if (!std::isfinite(dx) || !std::isfinite(dy) || !std::isfinite(dz)) {
     throw std::invalid_argument("pair displacement must be finite");
@@ -785,6 +869,179 @@ void MinimumImage::fold(double &dx, double &dy, double &dz) const {
     return;
   }
   fold_search<false>(narrow_, cell, inv, dual, periodic, dx, dy, dz);
+}
+
+bool MinimumImage::tryRounded(double dx, double dy, double dz,
+                              std::int32_t n[3]) const {
+  double fx = dx;
+  double fy = dy;
+  double fz = dz;
+  fold(fx, fy, fz);
+  bool periodic[3] = {periodic_[0], periodic_[1], periodic_[2]};
+  double inv[9];
+  for (int k = 0; k < 9; ++k) {
+    inv[k] = inverse_[static_cast<std::size_t>(k)];
+  }
+  std::int32_t got[3] = {};
+  const bool indexed =
+      rgpot::simd::detail::fma_hw_active()
+          ? rounded_coefficients_hw(inv, periodic, dx, dy, dz, got)
+          : rounded_coefficients<false>(inv, periodic, dx, dy, dz, got);
+  if (!indexed) {
+    return false;
+  }
+  double gx = dx;
+  double gy = dy;
+  double gz = dz;
+  subtractRounded(got[0], got[1], got[2], gx, gy, gz);
+  if (!same_bits(gx, fx) || !same_bits(gy, fy) || !same_bits(gz, fz)) {
+    return false;
+  }
+  n[0] = got[0];
+  n[1] = got[1];
+  n[2] = got[2];
+  return true;
+}
+
+double MinimumImage::shortestPeriodic() const {
+  bool periodic[3] = {periodic_[0], periodic_[1], periodic_[2]};
+  double cell[9];
+  double inv[9];
+  for (int k = 0; k < 9; ++k) {
+    cell[k] = cell_[static_cast<std::size_t>(k)];
+    inv[k] = inverse_[static_cast<std::size_t>(k)];
+  }
+  double dual[3];
+  bool any = false;
+  double best2 = std::numeric_limits<double>::infinity();
+  for (int k = 0; k < 3; ++k) {
+    dual[k] = column_norm(inv, k);
+    if (!periodic[k]) {
+      continue;
+    }
+    if (!(dual[k] > 0.0) || !std::isfinite(dual[k])) {
+      return 0.0;
+    }
+    any = true;
+    const double l2 = cell[3 * k] * cell[3 * k] +
+                      cell[3 * k + 1] * cell[3 * k + 1] +
+                      cell[3 * k + 2] * cell[3 * k + 2];
+    if (l2 < best2) {
+      best2 = l2;
+    }
+  }
+  if (!any) {
+    return std::numeric_limits<double>::infinity();
+  }
+  const double best = std::sqrt(best2);
+  int lim[3] = {};
+  double box = 1.0;
+  bool enumerable = true;
+  for (int k = 0; k < 3; ++k) {
+    if (!periodic[k]) {
+      continue;
+    }
+    const double ext = best * dual[k] + 2.0;
+    if (!(ext < 8.0) || !std::isfinite(ext)) {
+      enumerable = false;
+      break;
+    }
+    lim[k] = static_cast<int>(std::ceil(ext));
+    box *= static_cast<double>(2 * lim[k] + 1);
+  }
+  auto conservative = [&]() {
+    const double fro2 =
+        dual[0] * dual[0] + dual[1] * dual[1] + dual[2] * dual[2];
+    if (!(fro2 > 0.0) || !std::isfinite(fro2)) {
+      return 0.0;
+    }
+    return (1.0 / std::sqrt(fro2)) * (1.0 - 0x1p-40);
+  };
+  if (!enumerable || !(box <= 20000.0)) {
+    return conservative();
+  }
+  for (int ix = -lim[0]; ix <= lim[0]; ++ix) {
+    for (int iy = -lim[1]; iy <= lim[1]; ++iy) {
+      for (int iz = -lim[2]; iz <= lim[2]; ++iz) {
+        if (ix == 0 && iy == 0 && iz == 0) {
+          continue;
+        }
+        double v[3];
+        for (int c = 0; c < 3; ++c) {
+          v[c] = static_cast<double>(ix) * cell[c] +
+                 static_cast<double>(iy) * cell[3 + c] +
+                 static_cast<double>(iz) * cell[6 + c];
+        }
+        const double l2 = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+        if (l2 < best2) {
+          best2 = l2;
+        }
+      }
+    }
+  }
+  if (!(best2 > 0.0) || !std::isfinite(best2)) {
+    return 0.0;
+  }
+  return std::sqrt(best2) * (1.0 - 0x1p-40);
+}
+
+bool MinimumImage::roundedHolds(double dx, double dy, double dz,
+                                const std::int32_t n[3], double skin,
+                                double shortest) const {
+  if (!(skin >= 0.0) || !std::isfinite(skin) || !std::isfinite(dx) ||
+      !std::isfinite(dy) || !std::isfinite(dz) || !(shortest > 0.0) ||
+      !std::isfinite(shortest)) {
+    return false;
+  }
+  bool periodic[3] = {periodic_[0], periodic_[1], periodic_[2]};
+  double inv[9];
+  for (int k = 0; k < 9; ++k) {
+    inv[k] = inverse_[static_cast<std::size_t>(k)];
+  }
+  // Each atom may move by at most skin/2. withinSkin's squared test is a
+  // few ulps loose, so the pair difference can change by a little more
+  // than skin. The same slop bounds the fractional dot.
+  constexpr double kSkinSlop = 0x1p-40;
+  const double reach = skin * (1.0 + kSkinSlop);
+  std::int32_t got[3] = {};
+  const bool indexed =
+      rgpot::simd::detail::fma_hw_active()
+          ? rounded_coefficients_hw(inv, periodic, dx, dy, dz, got)
+          : rounded_coefficients<false>(inv, periodic, dx, dy, dz, got);
+  if (!indexed || got[0] != n[0] || got[1] != n[1] || got[2] != n[2]) {
+    return false;
+  }
+  double fractional[3];
+  if (rgpot::simd::detail::fma_hw_active()) {
+    fractional_hw(inv, periodic, dx, dy, dz, fractional);
+  } else {
+    fractional_of<false>(inv, periodic, dx, dy, dz, fractional);
+  }
+  for (int k = 0; k < 3; ++k) {
+    if (!periodic[k]) {
+      continue;
+    }
+    const double dual = column_norm(inv, k);
+    const double slack = dual * reach * (1.0 + kSkinSlop) +
+                         std::abs(fractional[k]) * kSkinSlop + kSkinSlop;
+    if (!round_holds(fractional[k], static_cast<double>(n[k]), slack)) {
+      return false;
+    }
+  }
+  double rx = dx;
+  double ry = dy;
+  double rz = dz;
+  subtractRounded(n[0], n[1], n[2], rx, ry, rz);
+  const double r2 = rx * rx + ry * ry + rz * rz;
+  // The open ball of radius shortest/2 contains one lattice point. A move
+  // that stays inside it cannot change the minimum image, and the margin
+  // below is far larger than an ulp of the squared length, so the search
+  // cannot prefer another image either.
+  const double limit = shortest * (0.5 * (1.0 - kSkinSlop)) - reach;
+  if (!(limit > 0.0)) {
+    return false;
+  }
+  return r2 < limit * limit;
 }
 
 } // namespace rgpot::nlist

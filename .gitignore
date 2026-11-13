@@ -376,3 +376,6 @@ bench/local/
 *.bench.csv
 *.bench.json
 *.bench.log
+perf.data
+perf.data.*
+*.perf.data

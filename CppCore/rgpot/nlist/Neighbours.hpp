@@ -130,7 +130,10 @@ struct Range {
 /// cell ids. The walk subtracts the box length times that index while
 /// the coordinates still match the reference, and also after a move
 /// inside the skin when that move cannot reach a half-box boundary.
-/// A pair that can change image is rounded again.
+/// A pair that can change image is rounded again. A sheared cell keeps
+/// the rounded coefficients of MinimumImage the same way, and only when
+/// that rounded image is the one the search returns. A move that can
+/// reach another image, or a pair the search corrected, is folded again.
 class Neighbours {
 public:
   void update(const double *xyz, std::size_t n, const double *box9,
@@ -265,6 +268,58 @@ private:
                               const double *box9, const Spec &spec) const;
   void fold(double &dx, double &dy, double &dz) const;
 
+  // Out of line so the orthorhombic pair loops keep the code they had
+  // before the general-cell path existed.
+  template <typename Fn>
+#if defined(__GNUC__) || defined(__clang__)
+  __attribute__((noinline))
+#endif
+  void walkGeneral(std::int64_t begin, std::int64_t end, Fn &fn, bool half,
+                   const std::int32_t *shift, const unsigned char *unstable) const {
+    const double *xyz = xyz_;
+    const std::int32_t *nbr = nbr_.data();
+    auto emit = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz) {
+      const double r2 = dx * dx + dy * dy + dz * dz;
+      fn(i, j, dx, dy, dz, r2);
+    };
+    auto first = [&](std::int64_t i, std::int32_t lo, std::int32_t hi) {
+      const std::int32_t *row = nbr + lo;
+      const std::int32_t *stop = nbr + hi;
+      if (!half) {
+        return row;
+      }
+      return std::upper_bound(row, stop, static_cast<std::int32_t>(i));
+    };
+    for (std::int64_t i = begin; i < end; ++i) {
+      const auto a = static_cast<std::size_t>(i);
+      const auto lo = off_[a];
+      const auto hi = off_[a + 1];
+      const std::int32_t *row = first(i, lo, hi);
+      const auto p0 = static_cast<std::size_t>(row - nbr);
+      const std::int32_t *sh = shift + 3 * p0;
+      const auto ui = a * 3;
+      const double xi = xyz[ui];
+      const double yi = xyz[ui + 1];
+      const double zi = xyz[ui + 2];
+      for (std::size_t p = p0; p < static_cast<std::size_t>(hi); ++p, sh += 3) {
+        const auto j = nbr[p];
+        double dx = 0;
+        double dy = 0;
+        double dz = 0;
+        if (unstable != nullptr && unstable[p] != 0) {
+          foldPair(static_cast<std::int32_t>(i), j, dx, dy, dz);
+        } else {
+          const auto uj = static_cast<std::size_t>(j) * 3;
+          dx = xi - xyz[uj];
+          dy = yi - xyz[uj + 1];
+          dz = zi - xyz[uj + 2];
+          general_.subtractRounded(sh[0], sh[1], sh[2], dx, dy, dz);
+        }
+        emit(static_cast<std::int32_t>(i), j, dx, dy, dz);
+      }
+    }
+  }
+
   template <typename Fn>
   void walkStored(std::int64_t begin, std::int64_t end, Fn &fn, bool half) const {
     const double *xyz = xyz_;
@@ -273,10 +328,11 @@ private:
       return;
     }
     bool tiny = false;
+    bool general = false;
     const unsigned char *unstable = nullptr;
     const std::int32_t *shift = nullptr;
-    if (image_ == Image::Round && !use_general_) {
-      shift = roundShifts(tiny, unstable);
+    if ((image_ == Image::Round && !use_general_) || use_general_) {
+      shift = roundShifts(tiny, unstable, general);
     }
     auto emit = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz) {
       const double r2 = dx * dx + dy * dy + dz * dz;
@@ -291,6 +347,10 @@ private:
       }
       return std::upper_bound(row, stop, static_cast<std::int32_t>(i));
     };
+    if (shift != nullptr && general) {
+      walkGeneral(begin, end, fn, half, shift, unstable);
+      return;
+    }
     if (shift != nullptr && unstable != nullptr) {
       const double L0 = len_[0];
       const double L1 = len_[1];
@@ -940,10 +1000,12 @@ private:
   // `unstable` is one byte per pair when a skin move can change that pair's
   // index; a null pointer means every stored index still matches rounding.
   void installRoundShifts(const std::int32_t *shift, std::size_t npairs, bool tiny,
-                          bool all_stable, const std::uint8_t *unstable);
+                          bool all_stable, bool general, const std::uint8_t *unstable);
   void noteShiftFresh(bool fresh) noexcept;
-  [[nodiscard]] const std::int32_t *roundShifts(bool &tiny,
-                                                const unsigned char *&unstable) const noexcept;
+  // `general` selects MinimumImage coefficients. Those are folded again,
+  // even on the reference coordinates, when the pair was not coded.
+  [[nodiscard]] const std::int32_t *roundShifts(bool &tiny, const unsigned char *&unstable,
+                                                bool &general) const noexcept;
 
   std::vector<std::int32_t> off_;
   std::vector<std::int32_t> nbr_;

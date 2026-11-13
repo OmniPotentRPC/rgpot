@@ -19,6 +19,7 @@
 #include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
 #include "rgpot/Tersoff/TersoffSiC.hpp"
+#include "rgpot/nlist/MinimumImage.hpp"
 #include "rgpot/nlist/Neighbours.hpp"
 
 namespace {
@@ -717,4 +718,166 @@ TEST_CASE("a skin move keeps a stored image only when rounding would",
     run(pos, 10.0, 10.0, 10.0, 5.5, 0.8, true, true, true);
     run(pos, 10.0, 12.0, 9.0, 5.0, 0.6, true, false, true);
   }
+}
+
+void expectStoredMatchesFold(rgpot::nlist::Neighbours &cells,
+                             const std::vector<double> &pos, const double *box,
+                             const std::array<bool, 3> &periodic) {
+  const rgpot::nlist::MinimumImage image(box, periodic);
+  int seen = 0;
+  cells.forDirected(0, static_cast<std::int64_t>(pos.size() / 3),
+                    [&](std::int32_t i, std::int32_t j, double dx, double dy,
+                        double dz, double r2) {
+                      double ex = pos[static_cast<std::size_t>(i) * 3] -
+                                  pos[static_cast<std::size_t>(j) * 3];
+                      double ey = pos[static_cast<std::size_t>(i) * 3 + 1] -
+                                  pos[static_cast<std::size_t>(j) * 3 + 1];
+                      double ez = pos[static_cast<std::size_t>(i) * 3 + 2] -
+                                  pos[static_cast<std::size_t>(j) * 3 + 2];
+                      image.fold(ex, ey, ez);
+                      REQUIRE(sameBits(dx, ex));
+                      REQUIRE(sameBits(dy, ey));
+                      REQUIRE(sameBits(dz, ez));
+                      REQUIRE(sameBits(r2, ex * ex + ey * ey + ez * ez));
+                      ++seen;
+                    });
+  REQUIRE(seen > 0);
+}
+
+TEST_CASE("rounded triclinic coefficients match the minimum-image fold",
+          "[nlist][general][skin]") {
+  setThreads("1");
+  // Mild monoclinic tilt. A short pair sits well inside the Voronoi cell,
+  // so the rounded image is the one the search returns and a skin move
+  // cannot change it.
+  const double side = 40.0;
+  const double beta = 100.0 * 3.14159265358979323846 / 180.0;
+  const double box[9] = {
+      side, 0, 0, 0, side, 0, side * std::cos(beta), 0, side * std::sin(beta)};
+  const std::array<bool, 3> periodic{{true, true, true}};
+  rgpot::nlist::MinimumImage image(box, periodic);
+  const double dx = 3.1;
+  const double dy = -1.4;
+  const double dz = 0.7;
+  std::int32_t n[3] = {};
+  REQUIRE(image.tryRounded(dx, dy, dz, n));
+  const double shortest = image.shortestPeriodic();
+  REQUIRE(shortest > 20.0);
+  REQUIRE(image.roundedHolds(dx, dy, dz, n, 1.0, shortest));
+  std::mt19937_64 rng(11);
+  std::uniform_real_distribution<double> unit(-1.0, 1.0);
+  for (int sample = 0; sample < 32; ++sample) {
+    double x = unit(rng);
+    double y = unit(rng);
+    double z = unit(rng);
+    const double norm = std::sqrt(x * x + y * y + z * z);
+    const double scale = norm > 0.0 ? 0.45 / norm : 0.0;
+    const double px = dx + x * scale;
+    const double py = dy + y * scale;
+    const double pz = dz + z * scale;
+    double folded_x = px;
+    double folded_y = py;
+    double folded_z = pz;
+    image.fold(folded_x, folded_y, folded_z);
+    double replay_x = px;
+    double replay_y = py;
+    double replay_z = pz;
+    image.subtractRounded(n[0], n[1], n[2], replay_x, replay_y, replay_z);
+    REQUIRE(sameBits(replay_x, folded_x));
+    REQUIRE(sameBits(replay_y, folded_y));
+    REQUIRE(sameBits(replay_z, folded_z));
+  }
+}
+
+TEST_CASE("a stored general list matches the fold after a skin move",
+          "[nlist][general][skin]") {
+  setThreads("1");
+  std::mt19937_64 rng(29);
+  std::uniform_real_distribution<double> unit(-1.0, 1.0);
+  const auto shift_atoms = [&](std::vector<double> &pos,
+                               const std::vector<double> &base,
+                               double half_skin) {
+    const double cap = 0.45 * half_skin;
+    for (std::size_t a = 0; a < base.size() / 3; ++a) {
+      double x = unit(rng);
+      double y = unit(rng);
+      double z = unit(rng);
+      const double norm = std::sqrt(x * x + y * y + z * z);
+      const double scale = norm > 0.0 ? cap / norm : 0.0;
+      pos[3 * a] = base[3 * a] + x * scale;
+      pos[3 * a + 1] = base[3 * a + 1] + y * scale;
+      pos[3 * a + 2] = base[3 * a + 2] + z * scale;
+    }
+  };
+  const auto run = [&](std::vector<double> pos, const double *box,
+                       double cutoff, double skin,
+                       std::array<bool, 3> periodic) {
+    rgpot::nlist::Spec spec;
+    spec.cutoff = cutoff;
+    spec.skin = skin;
+    spec.periodic = periodic;
+    spec.image = rgpot::nlist::Image::Round;
+    spec.mode = rgpot::nlist::Mode::Stored;
+    rgpot::nlist::Neighbours cells;
+    const auto base = pos;
+    cells.update(base.data(), base.size() / 3, box, spec);
+    REQUIRE_FALSE(cells.reused());
+    REQUIRE_FALSE(cells.streaming());
+    expectStoredMatchesFold(cells, base, box, periodic);
+    cells.update(base.data(), base.size() / 3, box, spec);
+    REQUIRE(cells.reused());
+    expectStoredMatchesFold(cells, base, box, periodic);
+    for (int sample = 0; sample < 4; ++sample) {
+      pos = base;
+      shift_atoms(pos, base, 0.5 * skin);
+      cells.update(pos.data(), pos.size() / 3, box, spec);
+      REQUIRE(cells.reused());
+      expectStoredMatchesFold(cells, pos, box, periodic);
+    }
+  };
+
+  const double side = 36.0;
+  const double beta = 100.0 * 3.14159265358979323846 / 180.0;
+  const double mild[9] = {
+      side, 0, 0, 0, side, 0, side * std::cos(beta), 0, side * std::sin(beta)};
+  std::vector<double> pos;
+  std::uniform_real_distribution<double> wide(0.0, side);
+  for (int i = 0; i < 40; ++i) {
+    pos.push_back(wide(rng));
+    pos.push_back(wide(rng));
+    pos.push_back(wide(rng));
+  }
+  // Faces of the cell, where a minimum image can sit near a boundary.
+  pos[0] = 0.01;
+  pos[1] = 0.02;
+  pos[2] = 0.01;
+  pos[3] = side - 0.02;
+  pos[4] = 0.03;
+  pos[5] = side - 0.04;
+  pos[6] = 0.015;
+  pos[7] = side - 0.01;
+  pos[8] = 0.02;
+  run(pos, mild, 6.0, 0.8, {true, true, true});
+  run(pos, mild, 6.0, 0.8, {true, false, true});
+
+  // Strong tilt. Rounding in fractional coordinates is not always the
+  // minimum image here; the stored walk still has to match the search.
+  const double skew[9] = {12.0, 0.0, 0.0, 11.2, 1.5, 0.0, 10.4, 0.8, 1.2};
+  std::vector<double> tight;
+  std::uniform_real_distribution<double> span(0.0, 8.0);
+  for (int i = 0; i < 18; ++i) {
+    tight.push_back(span(rng));
+    tight.push_back(span(rng) * 0.4);
+    tight.push_back(span(rng) * 0.3);
+  }
+  tight[0] = 0.002;
+  tight[1] = 0.001;
+  tight[2] = 0.002;
+  tight[3] = 11.5;
+  tight[4] = 0.05;
+  tight[5] = 0.04;
+  tight[6] = 0.01;
+  tight[7] = 1.2;
+  tight[8] = 0.9;
+  run(tight, skew, 3.5, 0.4, {true, true, true});
 }

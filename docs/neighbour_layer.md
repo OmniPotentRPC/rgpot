@@ -143,11 +143,19 @@ still match the reference and also while a later move stays inside the
 skin, provided the reduced coordinate cannot reach a half-integer
 boundary. Each atom moves at most half the skin, so a pair difference
 moves by at most a skin. A pair closer to a boundary than that is
-rounded again. The index is dropped when the list is rebuilt. The half
+rounded again. The index is dropped when the list is rebuilt. A stored
+list on a sheared cell records the rounded fractional coefficients of
+`MinimumImage` when that rounded image is the vector the search
+returns. Rounding is not the minimum image for every triclinic pair, and
+those pairs stay on the search. A coded pair is subtracted with the same
+product-sum while a move inside the skin cannot reach another lattice
+image and cannot change the rounded coefficients. `Half` stays a single
+correction about the half-box; it does not keep an index. The half
 walk starts at the first partner with a larger index, which the stored
 row already keeps in order, and does not form the displacement of the
 pairs it skips. `Mode::Stream` walks the 27 neighbouring cells and stores no
-pair list. The bins are reused only when the geometry is identical.
+pair list, so each visit forms the image again. The bins are reused only
+when the geometry is identical.
 `Mode::Auto` stores when the candidate index array fits in
 `MemAvailable` and in a 32-bit offset, and streams otherwise. There is no
 cutoff on the atom count.
