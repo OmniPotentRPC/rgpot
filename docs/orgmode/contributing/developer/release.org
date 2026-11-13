@@ -23,9 +23,9 @@ pixi r -e version release-cog
 pixi r -e version version-drift
 #+end_src
 
-The tasks call =python -m cogapp=.
-cogapp also installs a =cog= script, which is not cocogitto, so cogapp lives in
-its own environment and nothing calls it as =cog=.
+The tasks call =python -m cogapp=. cogapp also installs a =cog= script, which is
+not cocogitto, so cogapp lives in its own environment and nothing calls it as
+=cog=.
 The =version-drift= prek hook runs the check on every pull request, and
 =potctl release assert= compares each copy, the numeric =RGPOT_VERSION= macros
 and the lock entries with =Cargo.toml=.
