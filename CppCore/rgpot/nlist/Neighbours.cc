@@ -914,6 +914,9 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
     const auto home1 = cell_start_[static_cast<std::size_t>(cell) + 1];
     for (std::int32_t qa = home0; qa < home1; ++qa) {
     const auto a = static_cast<std::size_t>(cell_atoms_[static_cast<std::size_t>(qa)]);
+    // The half list below rebuilds these ends in atom-index order. This
+    // assignment is the cursor for a direct row, which is not the layout
+    // the walk reads.
     off_[a] = static_cast<std::int32_t>(nbr_.size());
     gather.clear();
     const auto ua = a * 3;
@@ -1062,6 +1065,9 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
       ++degree[static_cast<std::size_t>(h.i)];
       ++degree[static_cast<std::size_t>(h.j)];
     }
+    // Rows are stored in atom-index order. A reader that takes
+    // off_[a + 1] - off_[a] gets atom a, including when the cells were
+    // walked in a different order than the indices.
     off_[0] = 0;
     for (std::size_t a = 0; a < n; ++a) {
       off_[a + 1] = off_[a] + degree[a];

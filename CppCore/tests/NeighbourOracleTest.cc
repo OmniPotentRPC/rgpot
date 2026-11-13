@@ -5,18 +5,21 @@
 // minimum image. The reference does not bin atoms. A skin move just inside
 // and just outside half the skin is compared with a fresh build.
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <limits>
 #include <map>
+#include <numeric>
 #include <random>
 #include <utility>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
 
+#include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/nlist/MinimumImage.hpp"
 #include "rgpot/nlist/Neighbours.hpp"
 
@@ -405,5 +408,167 @@ TEST_CASE("a skin move matches a fresh neighbour list", "[nlist][oracle][skin]")
     fresh_out.update(outside.data(), outside.size() / 3, cell, spec);
     REQUIRE(samePairs(fromList(kept, outside.size() / 3),
                       fromList(fresh_out, outside.size() / 3)));
+  }
+}
+
+TEST_CASE("shuffled atom indices keep each row on its atom", "[nlist][oracle][order]") {
+  setThreads("1");
+  const double ortho[9] = {22, 0, 0, 0, 18, 0, 0, 0, 24};
+  double shear[9];
+  monoclinic(100.0, shear);
+  const double tri[9] = {16, 0.4, 0.2, 0.6, 18, -0.3, 0.2, -0.4, 20};
+  const double *cells[3] = {ortho, shear, tri};
+  const double cutoff = 4.0;
+  const double skin = 1.0;
+  const double search2 = (cutoff + skin) * (cutoff + skin);
+  std::mt19937_64 rng(91);
+  std::uniform_real_distribution<double> frac(0.0, 1.0);
+  for (const double *cell : cells) {
+    std::vector<double> ordered;
+    for (int i = 0; i < 24; ++i) {
+      const double f0 = frac(rng);
+      const double f1 = frac(rng);
+      const double f2 = frac(rng);
+      for (int c = 0; c < 3; ++c) {
+        ordered.push_back(f0 * cell[c] + f1 * cell[3 + c] + f2 * cell[6 + c]);
+      }
+    }
+    std::vector<int> perm(ordered.size() / 3);
+    std::iota(perm.begin(), perm.end(), 0);
+    std::shuffle(perm.begin(), perm.end(), rng);
+    std::vector<double> pos(ordered.size());
+    for (std::size_t i = 0; i < perm.size(); ++i) {
+      for (int c = 0; c < 3; ++c) {
+        pos[3 * i + c] = ordered[3 * static_cast<std::size_t>(perm[i]) + c];
+      }
+    }
+    const std::array<bool, 3> periodic{true, true, true};
+    rgpot::nlist::Spec spec;
+    spec.cutoff = cutoff;
+    spec.skin = skin;
+    spec.periodic = periodic;
+    spec.image = rgpot::nlist::Image::Round;
+    spec.mode = rgpot::nlist::Mode::Stored;
+    rgpot::nlist::Neighbours list;
+    list.update(pos.data(), pos.size() / 3, cell, spec);
+    REQUIRE_FALSE(list.streaming());
+    const auto full = fromList(list, pos.size() / 3);
+    const auto ref = referencePairs(cell, periodic, pos, search2);
+    expectMatches(full, ref, search2);
+    std::map<int, int> degree;
+    list.forHalf(0, static_cast<std::int64_t>(pos.size() / 3),
+                 [&](std::int32_t i, std::int32_t j, double, double, double, double) {
+                   REQUIRE(j > i);
+                   ++degree[i];
+                   ++degree[j];
+                 });
+    for (const auto &item : full) {
+      const int i = item.first.first;
+      const int j = item.first.second;
+      if (j > i) {
+        REQUIRE(degree[i] > 0);
+      }
+    }
+    const rgpot::nlist::MinimumImage image(cell, periodic);
+    list.forDirected(0, static_cast<std::int64_t>(pos.size() / 3),
+                     [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double) {
+                       double ex = pos[3 * i] - pos[3 * j];
+                       double ey = pos[3 * i + 1] - pos[3 * j + 1];
+                       double ez = pos[3 * i + 2] - pos[3 * j + 2];
+                       image.fold(ex, ey, ez);
+                       const double scale = std::max(1.0, ex * ex + ey * ey + ez * ez);
+                       REQUIRE(std::abs(dx - ex) <= 1e-8 * std::sqrt(scale));
+                       REQUIRE(std::abs(dy - ey) <= 1e-8 * std::sqrt(scale));
+                       REQUIRE(std::abs(dz - ez) <= 1e-8 * std::sqrt(scale));
+                     });
+
+    rgpot::LJPot pot(rgpot::LJConfig{.cutoff = cutoff});
+    const std::vector<int> types(pos.size() / 3, 1);
+    std::vector<double> forces(pos.size(), 0.0);
+    rgpot::ForceOut out{};
+    out.F = forces.data();
+    pot.forceImpl(rgpot::ForceInput{.nAtoms = pos.size() / 3,
+                                   .pos = pos.data(),
+                                   .atmnrs = types.data(),
+                                   .box = cell},
+                  &out);
+    double energy = 0.0;
+    std::vector<double> ref_f(pos.size(), 0.0);
+    const double cut2 = cutoff * cutoff;
+    const double shift_r2 = cutoff * cutoff;
+    const double shift_sr2 = 1.0 / shift_r2;
+    const double shift_a = shift_sr2 * shift_sr2 * shift_sr2;
+    const double shift = 4.0 * shift_a * (shift_a - 1.0);
+    for (std::size_t i = 0; i < pos.size() / 3; ++i) {
+      for (std::size_t j = i + 1; j < pos.size() / 3; ++j) {
+        double dx = pos[3 * i] - pos[3 * j];
+        double dy = pos[3 * i + 1] - pos[3 * j + 1];
+        double dz = pos[3 * i + 2] - pos[3 * j + 2];
+        image.fold(dx, dy, dz);
+        const double r2 = dx * dx + dy * dy + dz * dz;
+        if (!(r2 > 0.0) || r2 > cut2) {
+          continue;
+        }
+        const double inv_r2 = 1.0 / r2;
+        const double sr2 = inv_r2;
+        const double a = sr2 * sr2 * sr2;
+        const double b = 4.0 * a;
+        const double pair_e = b * (a - 1.0) - shift;
+        const double fscale = (6.0 * b * inv_r2) * (2.0 * a - 1.0);
+        energy += pair_e;
+        ref_f[3 * i] += fscale * dx;
+        ref_f[3 * i + 1] += fscale * dy;
+        ref_f[3 * i + 2] += fscale * dz;
+        ref_f[3 * j] -= fscale * dx;
+        ref_f[3 * j + 1] -= fscale * dy;
+        ref_f[3 * j + 2] -= fscale * dz;
+      }
+    }
+    REQUIRE(std::abs(out.energy - energy) <= 1e-8 * std::max(1.0, std::abs(energy)));
+    for (std::size_t k = 0; k < forces.size(); ++k) {
+      REQUIRE(std::abs(forces[k] - ref_f[k]) <= 1e-6 * std::max(1.0, std::abs(ref_f[k])));
+    }
+
+    std::vector<double> moved = pos;
+    for (std::size_t a = 0; a < moved.size() / 3; ++a) {
+      moved[3 * a] += 0.2;
+    }
+    std::fill(forces.begin(), forces.end(), 0.0);
+    out.energy = 0.0;
+    pot.forceImpl(rgpot::ForceInput{.nAtoms = moved.size() / 3,
+                                   .pos = moved.data(),
+                                   .atmnrs = types.data(),
+                                   .box = cell},
+                  &out);
+    REQUIRE(pot.listReused());
+    double moved_e = 0.0;
+    std::vector<double> moved_f(moved.size(), 0.0);
+    for (std::size_t i = 0; i < moved.size() / 3; ++i) {
+      for (std::size_t j = i + 1; j < moved.size() / 3; ++j) {
+        double dx = moved[3 * i] - moved[3 * j];
+        double dy = moved[3 * i + 1] - moved[3 * j + 1];
+        double dz = moved[3 * i + 2] - moved[3 * j + 2];
+        image.fold(dx, dy, dz);
+        const double r2 = dx * dx + dy * dy + dz * dz;
+        if (!(r2 > 0.0) || r2 > cut2) {
+          continue;
+        }
+        const double inv_r2 = 1.0 / r2;
+        const double a = inv_r2 * inv_r2 * inv_r2;
+        const double b = 4.0 * a;
+        moved_e += b * (a - 1.0) - shift;
+        const double fscale = (6.0 * b * inv_r2) * (2.0 * a - 1.0);
+        moved_f[3 * i] += fscale * dx;
+        moved_f[3 * i + 1] += fscale * dy;
+        moved_f[3 * i + 2] += fscale * dz;
+        moved_f[3 * j] -= fscale * dx;
+        moved_f[3 * j + 1] -= fscale * dy;
+        moved_f[3 * j + 2] -= fscale * dz;
+      }
+    }
+    REQUIRE(std::abs(out.energy - moved_e) <= 1e-8 * std::max(1.0, std::abs(moved_e)));
+    for (std::size_t k = 0; k < forces.size(); ++k) {
+      REQUIRE(std::abs(forces[k] - moved_f[k]) <= 1e-6 * std::max(1.0, std::abs(moved_f[k])));
+    }
   }
 }
