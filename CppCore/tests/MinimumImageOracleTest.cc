@@ -163,3 +163,46 @@ TEST_CASE("Non-orthogonal minimum images match a wide search",
   expect_minimum(thin, periodic, 0.2, 1.0e-12, -0.15, kWide, false);
 }
 
+TEST_CASE("Partial periodicity matches a wide search",
+          "[PairList][triclinic][oracle]") {
+  double mono[9];
+  monoclinic(100.0, mono);
+  const double triclinic[9] = {4.0, 0.2, 0.1, 0.3, 5.0, -0.2, 0.1, -0.3, 6.0};
+  const double ortho[9] = {10.0, 0.0, 0.0, 0.0, 12.0, 0.0, 0.0, 0.0, 8.0};
+  const double *cells[3] = {mono, triclinic, ortho};
+  // One periodic axis, then two. The open axes are not wrapped.
+  const int masks[] = {1, 2, 4, 3, 5, 6};
+  const double frac[] = {-2.0, -0.5, 0.0, 0.5, 2.0};
+  for (const double *cell : cells) {
+    for (int mask : masks) {
+      const std::array<bool, 3> periodic{(mask & 1) != 0, (mask & 2) != 0,
+                                         (mask & 4) != 0};
+      expect_grid(cell, periodic, frac, 5);
+      double d[3];
+      at_fraction(cell, periodic[0] ? 0.3 : 2.5, periodic[1] ? -0.4 : 1.5,
+                  periodic[2] ? 0.2 : -3.0, d);
+      expect_minimum(cell, periodic, d[0], d[1], d[2], kWide, false);
+    }
+  }
+
+  // A long open component makes the dual-norm box enormous, so the fold
+  // goes through the reduced periodic rows. The integer box still covers
+  // the orthogonal image.
+  const std::array<bool, 3> one{true, false, false};
+  const std::array<bool, 3> two{true, true, false};
+  expect_minimum(ortho, one, 0.4, 0.0, 3.0e4, kWide, false);
+  expect_minimum(ortho, two, 0.2, -0.3, 2.0e4, kWide, false);
+  expect_minimum(ortho, one, 0.0, 1.0e3, -4.0e3, kWide, false);
+
+  // The thin row is open. A full-cell reduction must not fold that
+  // direction as if it were periodic.
+  const double thin[9] = {1.0, 1.0, 0.0, 0.0, 5.0e-10, 0.0, 0.0, 0.0, 1.0};
+  const std::array<bool, 3> long_axes{true, false, true};
+  expect_minimum(thin, long_axes, 0.2, 1.0e-12, -0.15, kWide, false);
+  expect_minimum(thin, long_axes, 1.0e-11, 2.0e-12, -1.0e-11, kWide, false);
+  const std::array<bool, 3> thin_only{false, true, false};
+  expect_minimum(thin, thin_only, 1.0e-12, 2.0e-12, -1.0e-12, kWide, false);
+  const std::array<bool, 3> one_long{true, false, false};
+  expect_minimum(thin, one_long, 0.25, 1.0e-12, 0.1, kWide, false);
+}
+
