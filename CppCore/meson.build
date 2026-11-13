@@ -788,6 +788,12 @@ if get_option('with_tests')
                 '',
             ],
             [
+                'VesinEmptyResetTest',
+                'vesin_empty_reset_test',
+                'VesinEmptyResetTest.cc',
+                '',
+            ],
+            [
                 'EAMCellVerletTest',
                 'eam_cell_verlet_test',
                 'EAMCellVerletTest.cc',

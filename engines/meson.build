@@ -67,7 +67,10 @@ capi_threads = executable(
     link_language: 'cpp',
 )
 test('capi_threads', capi_threads, timeout: 60)
-if cppc.has_argument('-fsanitize=thread') and 'thread' not in get_option('b_sanitize')
+# A second binary built only with the thread sanitizer. b_sanitize is
+# already on every compile line, and -fsanitize=thread cannot be combined
+# with address or undefined.
+if cppc.has_argument('-fsanitize=thread') and get_option('b_sanitize') == 'none'
     capi_tsan = executable(
         'capi_threads_tsan',
         files('capi_threads.c'),
