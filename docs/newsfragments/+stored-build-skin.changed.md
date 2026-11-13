@@ -1,0 +1,1 @@
+An orthorhombic rebuild drops a stencil pair whose separation on one axis is already past the search, and runs the skin test only for a pair the list keeps. A periodic box too small for that reject uses the original fold. The stored pairs and their image flags are unchanged.

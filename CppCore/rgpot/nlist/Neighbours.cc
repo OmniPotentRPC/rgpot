@@ -372,7 +372,40 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
   bool all_stable = record;
   const double lambda = record_general ? general_.shortestPeriodic() : 0.0;
   const double search2 = search_ * search_;
-  auto take_axis = [&](double &delta, int axis, std::int32_t &slot) {
+  // The image index and the skin test. The skin test is the heavy part
+  // and is needed only for a pair that is kept, so a pair past the search
+  // folds and returns without it. Flags still move on every folded axis:
+  // a shift that does not fit, or that is outside {-1, 0, 1}, is recorded
+  // before the distance test.
+  auto fold_axis = [&](double &delta, int axis, std::int32_t &slot) {
+    if (!periodic_[axis]) {
+      slot = 0;
+      return true;
+    }
+    const double inv = inv_[axis];
+    const double t = delta * inv;
+    const double idx = orthorhombicImageIndex(t);
+    delta -= len_[axis] * idx;
+    if (!(idx >= -2147483648.0 && idx <= 2147483647.0)) {
+      fit = false;
+      tiny = false;
+      return false;
+    }
+    const auto as_int = static_cast<std::int32_t>(idx);
+    if (static_cast<double>(as_int) != idx) {
+      fit = false;
+      tiny = false;
+      return false;
+    }
+    slot = as_int;
+    if (as_int < -1 || as_int > 1) {
+      tiny = false;
+    }
+    return true;
+  };
+  // The original combined fold, used when the box is too small for the
+  // early reject to remove any pair.
+  auto legacy_axis = [&](double &delta, int axis, std::int32_t &slot) {
     if (!periodic_[axis]) {
       slot = 0;
       return true;
@@ -398,6 +431,48 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
       tiny = false;
     }
     return holds;
+  };
+  auto axis_holds = [&](double raw, int axis, std::int32_t slot, bool folded) {
+    if (!periodic_[axis]) {
+      return true;
+    }
+    if (!folded) {
+      return false;
+    }
+    const double inv = inv_[axis];
+    const double t = raw * inv;
+    return indexHolds(t, static_cast<double>(slot), shiftSlack(raw, inv, key_.skin));
+  };
+  // Lower bound on the folded separation. 1e-6 A keeps a pair the exact
+  // test would accept. A raw separation past 1.5 box lengths is not
+  // classified here, so its image flags still come from fold_axis.
+  const double far = search_ + 1e-6;
+  // A periodic side no larger than twice the search cannot put a pair
+  // outside the search on that axis. The early reject is then pure
+  // overhead, and the original skin test stays on that build.
+  bool wide = record_round;
+  if (wide && (periodic_[0] || periodic_[1] || periodic_[2])) {
+    for (int axis = 0; axis < 3; ++axis) {
+      if (periodic_[axis] && !(len_[axis] > 2.0 * far)) {
+        wide = false;
+      }
+    }
+  }
+  auto clearly_out = [&](double delta, int axis) {
+    if (!periodic_[axis]) {
+      return std::abs(delta) > far;
+    }
+    const double L = len_[axis];
+    if (!(L > 0.0)) {
+      return false;
+    }
+    const double a = std::abs(delta);
+    if (a > 1.5 * L) {
+      return false;
+    }
+    const double other = std::abs(a - L);
+    const double folded = other < a ? other : a;
+    return folded > far;
   };
   for (std::size_t a = 0; a < n; ++a) {
     off_[a] = static_cast<std::int32_t>(nbr_.size());
@@ -464,10 +539,33 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
               dx = xyz_[ui] - xyz_[uj];
               dy = xyz_[ui + 1] - xyz_[uj + 1];
               dz = xyz_[ui + 2] - xyz_[uj + 2];
-              const bool hx = take_axis(dx, 0, sx);
-              const bool hy = take_axis(dy, 1, sy);
-              const bool hz = take_axis(dz, 2, sz);
-              holds = hx && hy && hz;
+              // Half a box no larger than the search means every axis
+              // separation is inside the search, so the early test cannot
+              // reject and the skin test still runs on almost every pair.
+              if (!wide) {
+                const bool hx = legacy_axis(dx, 0, sx);
+                const bool hy = legacy_axis(dy, 1, sy);
+                const bool hz = legacy_axis(dz, 2, sz);
+                holds = hx && hy && hz;
+              } else {
+                if (clearly_out(dx, 0) || clearly_out(dy, 1) || clearly_out(dz, 2)) {
+                  continue;
+                }
+                const double rawx = dx;
+                const double rawy = dy;
+                const double rawz = dz;
+                const bool fx = fold_axis(dx, 0, sx);
+                const bool fy = fold_axis(dy, 1, sy);
+                const bool fz = fold_axis(dz, 2, sz);
+                const double r2_round = dx * dx + dy * dy + dz * dz;
+                if (r2_round <= search2) {
+                  holds = axis_holds(rawx, 0, sx, fx) && axis_holds(rawy, 1, sy, fy) &&
+                          axis_holds(rawz, 2, sz, fz);
+                  gather.push_back(
+                      Cand{j, sx, sy, sz, static_cast<std::uint8_t>(holds ? 0 : 1)});
+                }
+                continue;
+              }
             }
             const double r2 = dx * dx + dy * dy + dz * dz;
             if (r2 <= search2) {
