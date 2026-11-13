@@ -20,7 +20,7 @@ package is read.
 | --- | --- |
 | `cutoff`, `max_neighbors` | vesin neighbor list |
 | `molecular_box` | cube side length; molecular positions are centred at zero (0: caller's cell) |
-| `batch_max` | band graph size (0 or 1: single system) |
+| `batch_max` | systems per forward (0 or 1: one system at a time; above 1: chunks of that size, a short chunk padded by repeating its last system) |
 | `pos_dtype` | input dtype of positions, the cell and cell offsets (`float32` or `float64`) |
 | `model_dtype` | weight dtype recorded by the exporter (`float32` or `float64`) |
 | `task_name`, `charge`, `spin` | must equal `UmaConfig` |
@@ -94,6 +94,40 @@ are refused and write no package. A static path with no box records
 the traced count, so a later call whose edge list changed size
 throws `UmaShapeError` and names both shapes. The atom count stays
 the traced size.
+
+## Band export
+
+A Cartesian stencil is many geometries of one molecule. Export that
+molecule once with `--batch-max` greater than 1 and UmaPot evaluates
+the stencil through `forceBatch`, one compiled forward per chunk.
+`--molecular-box` recenters every geometry in the same cube and widens
+the neighbour cutoff to `0.4 * L`, so the edge count stays
+`batch_max * n * (n - 1)`. The graph is traced at exactly `batch_max`
+systems. A chunk with fewer systems repeats its last system and the
+padded results are discarded. `batch_max` of 0 or 1 keeps the
+single-system graph, and `forceBatch` then calls the per-system loop.
+
+```
+python scripts/export_uma_aoti.py \
+  --atoms path/to/geometry.xyz \
+  --molecular-box 30 \
+  --batch-max 8 \
+  --dtype float32 \
+  --task omol \
+  --charge 0 \
+  --spin 1 \
+  --out /tmp/geometry-b8.pt2
+```
+
+`pixi run -e umaexport export-uma-aoti -- --molecular-box 30 --batch-max 8`
+is the same command inside the exporter environment. The `.pt2` is a
+compiled graph for one composition. Do not commit it. The checkpoint
+weights stay where fairchem loaded them.
+
+The CPU GEMM kernel is compiled for `torch.get_num_threads()` at export
+time. Set `OMP_NUM_THREADS` (and the same `MKL_NUM_THREADS` and
+`OPENBLAS_NUM_THREADS`) to the count the package will run with. The
+exporter applies `OMP_NUM_THREADS` to torch before the compile.
 
 ## potserv
 

@@ -840,6 +840,23 @@ def _first_import(candidates):
     raise RuntimeError(f"none of {candidates} imported") from last
 
 
+def _honor_omp_threads() -> None:
+    """The CPU GEMM template bakes ``torch.get_num_threads()`` into the kernel.
+
+    A package compiled at one thread count and run at another is a different
+    kernel than the one that was timed. When ``OMP_NUM_THREADS`` is set, the
+    export uses that count.
+    """
+    raw = os.environ.get("OMP_NUM_THREADS", "").strip()
+    if not raw.isdigit():
+        return
+    threads = int(raw)
+    if threads < 1:
+        return
+    torch.set_num_threads(threads)
+    print(f"torch.set_num_threads({threads})", flush=True)
+
+
 def aoti_package(exported, path: Path, metadata=None):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -860,6 +877,7 @@ def aoti_package(exported, path: Path, metadata=None):
                 str(k): str(v) for k, v in metadata.items()
             }
         }
+    _honor_omp_threads()
     fn(canonicalize_strided_slices(exported), **kwargs)
     clear_pt2_execstack(path)
     return path
@@ -1040,9 +1058,12 @@ def main() -> int:
         type=int,
         default=0,
         help=(
-            "Trace with a dynamic system dimension so one AOTI call "
-            "evaluates up to this many same-composition geometries (a NEB "
-            "band in one graph call). 0 keeps the single-system export."
+            "Trace a fixed band of this many same-composition systems and "
+            "record it as batch_max. UmaPot runs a stencil in chunks of "
+            "that size and pads a short chunk by repeating its last "
+            "system. 0 or 1 keeps the single-system graph. Pass "
+            "--molecular-box so every geometry has the same edge count "
+            "n(n-1); the make_fx fallback refuses a band with no box."
         ),
     )
     p.add_argument("--skip-aoti", action="store_true")
@@ -1219,6 +1240,14 @@ def main() -> int:
         return 0
 
     patch_export_ops()
+    # torch 2.14 refuses torch.autograd.grad inside a strict export while
+    # this is false. The grad is the force, so the export has to trace it.
+    # Older torch builds have no such switch and are left alone.
+    dynamo = getattr(torch, "_dynamo", None)
+    dynamo_config = getattr(dynamo, "config", None)
+    if dynamo_config is not None and hasattr(dynamo_config, "trace_autograd_ops"):
+        dynamo_config.trace_autograd_ops = True
+        print("torch._dynamo.config.trace_autograd_ops = True", flush=True)
     print("torch.export", flush=True)
     natoms_dim = torch.export.Dim("natoms", min=1, max=256)
     nedges_min, nedges_max = 1, 65536
