@@ -124,7 +124,11 @@ with `Multipoles not available with PBC`, and the xtb driver aborts on
 that error. `XTBPot` throws before the single point. Periodic GFN1-xTB and
 GFN2-xTB are `TBLitePot` (`-Dwith_tblite=true`). That build returns the
 energy, the forces and the virial. The virial is `W = -dE/dε` in eV and
-the stress is `W` divided by the cell volume with a minus sign.
+the stress is `-W/V`. tblite's own Python API and `tblite.ase.TBLite`
+use the same tensor. tblite before 0.7 multiplies the H0 self-image
+(`iat == jat`) contribution by 0.5 instead of 0.25, so a filled 8-atom
+Si cell is off by tenths of an eV. tblite 0.7 and later match that cell
+to 1e-5 eV. A two-atom cell does not show the self-image term.
 
 GFN-FF stays on libxtb. xtb 6.7 accepts a periodic silicon cell. The C API
 then deletes the strain derivative, so `XTBPot` returns the energy and the

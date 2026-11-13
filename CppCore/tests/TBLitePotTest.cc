@@ -9,6 +9,8 @@
 #include <cstring>
 #include <vector>
 
+#include <tblite.h>
+
 #include "rgpot/TBLitePot/TBLitePot.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
@@ -72,62 +74,173 @@ TEST_CASE("TBLitePot GFN1 water energy", "[tblite]") {
   REQUIRE(energy < 0.0);
 }
 
-TEST_CASE("TBLitePot GFN1 periodic virial matches a strain derivative",
+namespace {
+
+struct VirialSample {
+  double energy = 0;
+  double virial[9]{};
+  double stress[9]{};
+  int has_virial = 0;
+  int has_stress = 0;
+};
+
+VirialSample evaluate(rgpot::TBLitePot &pot, std::size_t nAtoms, const int *types,
+                      const double *pos, const double *box) {
+  std::vector<double> forces(3 * nAtoms);
+  rgpot::ForceOut out{forces.data(), 0.0, 0.0, {}, 0};
+  pot.forceImpl({nAtoms, pos, types, box}, &out);
+  VirialSample sample;
+  sample.energy = out.energy;
+  sample.has_virial = out.has_virial;
+  sample.has_stress = out.has_stress;
+  std::memcpy(sample.virial, out.virial, sizeof sample.virial);
+  std::memcpy(sample.stress, out.stress, sizeof sample.stress);
+  return sample;
+}
+
+/// Largest |W + dE/dε| in eV. The strain is the ASE right strain
+/// r -> r (I+ε), applied to positions and to the cell the same way.
+/// The difference is a symmetric central step.
+double maxVirialErrorEV(rgpot::TBLitePot &pot, std::size_t nAtoms, const int *types,
+                        const double *pos0, const double *box0) {
+  const VirialSample base = evaluate(pot, nAtoms, types, pos0, box0);
+  REQUIRE(base.has_virial == 1);
+  REQUIRE(base.has_stress == 1);
+  const double volume =
+      std::abs(box0[0] * (box0[4] * box0[8] - box0[5] * box0[7]) -
+               box0[1] * (box0[3] * box0[8] - box0[5] * box0[6]) +
+               box0[2] * (box0[3] * box0[7] - box0[4] * box0[6]));
+  REQUIRE(volume > 0.0);
+  for (int i = 0; i < 9; ++i) {
+    REQUIRE_THAT(base.stress[i],
+                 Catch::Matchers::WithinAbs(-base.virial[i] / volume, 1e-12));
+  }
+  constexpr double h = 1e-6;
+  double worst = 0.0;
+  for (int row = 0; row < 3; ++row) {
+    for (int col = 0; col < 3; ++col) {
+      auto at = [&](double eps) {
+        std::vector<double> pos(pos0, pos0 + 3 * nAtoms);
+        double box[9];
+        std::memcpy(box, box0, sizeof box);
+        for (std::size_t atom = 0; atom < nAtoms; ++atom)
+          pos[3 * atom + static_cast<std::size_t>(col)] +=
+              eps * pos0[3 * atom + static_cast<std::size_t>(row)];
+        for (int k = 0; k < 3; ++k)
+          box[3 * k + col] += eps * box0[3 * k + row];
+        return evaluate(pot, nAtoms, types, pos.data(), box).energy;
+      };
+      const double dE = (at(h) - at(-h)) / (2.0 * h);
+      const double err = std::abs(base.virial[3 * row + col] + dE);
+      CAPTURE(row, col, dE, base.virial[3 * row + col], err);
+      if (err > worst)
+        worst = err;
+    }
+  }
+  return worst;
+}
+
+} // namespace
+
+TEST_CASE("TBLitePot GFN1 virial sign matches a sparse periodic cell",
           "[tblite][virial]") {
-  // Two Si atoms in a sheared cell. Native libxtb does not return a
-  // periodic GFN1 virial (the crystal single point fails, and a molecule
-  // comes back with a zero tensor). tblite's dE/dε matches the right
-  // strain r -> r(I+ε) on this cell. A filled Si 8-atom crystal does not:
-  // that analytic tensor is off by tenths of an eV.
+  // Two Si atoms. Self-image H0 pairs are negligible, so this checks our
+  // units, the W = -dE/dε sign, the column-major layout and the right
+  // strain even on tblite 0.3. It is not a substitute for the crystal.
   rgpot::TBLiteConfig cfg;
   cfg.method = rgpot::TBLiteMethod::GFN1;
   cfg.periodic = 1;
   cfg.accuracy = 0.01;
   rgpot::TBLitePot pot(cfg);
   REQUIRE(pot.caps().virial);
-
-  const double pos0[6] = {1.0, 1.2, 0.8, 3.4, 1.5, 1.1};
-  const double box0[9] = {12, 0.2, -0.1, 0.15, 12, 0.05, -0.08, 0.12, 12};
+  const double pos[6] = {1.0, 1.2, 0.8, 3.4, 1.5, 1.1};
+  const double box[9] = {12, 0.2, -0.1, 0.15, 12, 0.05, -0.08, 0.12, 12};
   const int types[2] = {14, 14};
+  REQUIRE(maxVirialErrorEV(pot, 2, types, pos, box) < 1e-5);
+}
 
-  auto energy_of = [&](const double *pos, const double *box) {
-    double forces[6];
-    rgpot::ForceOut out{forces, 0.0, 0.0, {}, 0};
-    pot.forceImpl({2, pos, types, box}, &out);
-    return out;
-  };
-
-  const rgpot::ForceOut base = energy_of(pos0, box0);
-  REQUIRE(base.has_virial == 1);
-  REQUIRE(base.has_stress == 1);
-  REQUIRE(std::isfinite(base.energy));
-  const double volume = std::abs(
-      box0[0] * (box0[4] * box0[8] - box0[5] * box0[7]) -
-      box0[1] * (box0[3] * box0[8] - box0[5] * box0[6]) +
-      box0[2] * (box0[3] * box0[7] - box0[4] * box0[6]));
-  for (int i = 0; i < 9; ++i) {
-    REQUIRE_THAT(base.stress[i],
-                 Catch::Matchers::WithinAbs(-base.virial[i] / volume, 1e-12));
+TEST_CASE("TBLitePot GFN1 virial of a filled 8-atom Si cell",
+          "[tblite][virial]") {
+  // Conventional diamond cell, atoms rattled inside the cell so every
+  // strain component is nonzero. Accuracy 0.01, central step 1e-6, right
+  // strain r -> r (I+ε) on positions and the lattice together.
+  //
+  // tblite 0.3 through 0.6 add the H0 self-image (iat == jat, nonzero
+  // lattice translation) with a factor 0.5. The symmetrized cell
+  // derivative of that pair is 0.25. tblite 0.7 makes that change in
+  // src/tblite/xtb/h0.f90. On 0.3 the analytic tensor is then about
+  // 0.3 eV away from dE/dε; on 0.8 the same geometry is within 1e-6 eV.
+  // ASE's TBLite calculator divides this tensor by the volume and does
+  // not remove the discrepancy. Tightening the SCF does not either.
+  //
+  // Pure tblite, no rgpot. Positions and the lattice are Bohr.
+  //
+  //   from tblite.interface import Calculator
+  //   import numpy as np
+  //   a, B = 5.431, 0.529177210903
+  //   frac = np.array([
+  //       [0.02, 0.01, 0.03], [0.52, 0.49, 0.01],
+  //       [0.48, 0.02, 0.51], [0.01, 0.51, 0.49],
+  //       [0.27, 0.26, 0.24], [0.74, 0.76, 0.23],
+  //       [0.73, 0.24, 0.77], [0.26, 0.73, 0.74]])
+  //   pos, cell = frac * a / B, np.eye(3) * (a / B)
+  //   periodic = np.ones(3, dtype=bool)
+  //   def energy(eps, i, j):
+  //       eye = np.eye(3); eye[i, j] += eps
+  //       calc = Calculator("GFN1-xTB", np.full(8, 14), pos @ eye,
+  //                         lattice=cell @ eye, periodic=periodic)
+  //       calc.set("accuracy", 0.01); calc.set("verbosity", 0)
+  //       return float(calc.singlepoint().get("energy"))
+  //   base = Calculator("GFN1-xTB", np.full(8, 14), pos, lattice=cell,
+  //                     periodic=periodic)
+  //   base.set("accuracy", 0.01); base.set("verbosity", 0)
+  //   sigma = np.array(base.singlepoint().get("virial"))
+  //   h = 1e-6
+  //   fd = np.zeros((3, 3))
+  //   for i in range(3):
+  //       for j in range(3):
+  //           fd[i, j] = (energy(h, i, j) - energy(-h, i, j)) / (2 * h)
+  //   # tblite 0.3: max |fd - sigma| * 27.211 ≈ 0.3 eV
+  //   # tblite 0.8: max |fd - sigma| * 27.211 ≈ 1e-6 eV
+  rgpot::TBLiteConfig cfg;
+  cfg.method = rgpot::TBLiteMethod::GFN1;
+  cfg.periodic = 1;
+  cfg.accuracy = 0.01;
+  rgpot::TBLitePot pot(cfg);
+  const double a = 5.431;
+  const double frac[8][3] = {
+      {0.02, 0.01, 0.03}, {0.52, 0.49, 0.01}, {0.48, 0.02, 0.51},
+      {0.01, 0.51, 0.49}, {0.27, 0.26, 0.24}, {0.74, 0.76, 0.23},
+      {0.73, 0.24, 0.77}, {0.26, 0.73, 0.74}};
+  double pos[24];
+  for (int atom = 0; atom < 8; ++atom)
+    for (int k = 0; k < 3; ++k)
+      pos[3 * atom + k] = frac[atom][k] * a;
+  const double box[9] = {a, 0, 0, 0, a, 0, 0, 0, a};
+  const int types[8] = {14, 14, 14, 14, 14, 14, 14, 14};
+  const double worst = maxVirialErrorEV(pot, 8, types, pos, box);
+  // Compact code is 10000*major + 100*minor + patch, so 0.3.0 is 300
+  // and 0.7.0 is 700.
+  const int version = tblite_get_version();
+  CAPTURE(version, worst);
+  if (version < 700) {
+    // A unit or sign error is many eV. The self-image factor is tenths.
+    CHECK(worst > 1e-2);
+    CHECK(worst < 2.0);
+    return;
   }
+  REQUIRE(worst < 1e-5);
+}
 
-  constexpr double h = 1e-6;
-  for (int row = 0; row < 3; ++row) {
-    for (int col = 0; col < 3; ++col) {
-      auto at = [&](double eps) {
-        double pos[6];
-        double box[9];
-        std::memcpy(pos, pos0, sizeof pos);
-        std::memcpy(box, box0, sizeof box);
-        for (int atom = 0; atom < 2; ++atom)
-          pos[3 * atom + col] += eps * pos0[3 * atom + row];
-        for (int k = 0; k < 3; ++k)
-          box[3 * k + col] += eps * box0[3 * k + row];
-        return energy_of(pos, box).energy;
-      };
-      const double dE = (at(h) - at(-h)) / (2.0 * h);
-      CAPTURE(row, col, dE, base.virial[3 * row + col]);
-      REQUIRE_THAT(base.virial[3 * row + col],
-                   Catch::Matchers::WithinAbs(-dE, 1e-5));
-    }
-  }
+// tblite before 0.7 fails the filled cell. The case is expected to fail
+// there and to pass once the linked library has the 0.25 self-image factor.
+TEST_CASE("filled Si cell virial is tblite's until 0.7",
+          "[tblite][virial][!mayfail]") {
+  if (tblite_get_version() >= 700)
+    return;
+  FAIL("tblite " << tblite_get_version()
+                 << " uses 0.5 for the H0 self-image virial; a filled "
+                    "8-atom Si cell disagrees with dE/dε by tenths of an "
+                    "eV. The pure-tblite reproducer is in the filled-cell "
+                    "test. tblite 0.7 writes 0.25 and the cell matches.");
 }
