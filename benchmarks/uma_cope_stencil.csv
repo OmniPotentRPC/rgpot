@@ -1,0 +1,13 @@
+molecule,natoms,n_geometries,displacement_A,package,package_file,batch_max,export_path,molecular_box,torch_version,seconds,repeat,intraop_threads,interop_threads,omp_num_threads,mkl_num_threads,openblas_num_threads
+birkholz_04_cope,16,97,0.01,single,cope2-b0.pt2,0,make_fx-nonstrict,30.0,2.14.1+cpu,3.755421,0,2,2,2,2,2
+birkholz_04_cope,16,97,0.01,single,cope2-b0.pt2,0,make_fx-nonstrict,30.0,2.14.1+cpu,3.762244,1,2,2,2,2,2
+birkholz_04_cope,16,97,0.01,single,cope2-b0.pt2,0,make_fx-nonstrict,30.0,2.14.1+cpu,3.748398,2,2,2,2,2,2
+birkholz_04_cope,16,97,0.01,b2,cope2-b2.pt2,2,make_fx-nonstrict,30.0,2.14.1+cpu,3.600067,0,2,2,2,2,2
+birkholz_04_cope,16,97,0.01,b2,cope2-b2.pt2,2,make_fx-nonstrict,30.0,2.14.1+cpu,3.577917,1,2,2,2,2,2
+birkholz_04_cope,16,97,0.01,b2,cope2-b2.pt2,2,make_fx-nonstrict,30.0,2.14.1+cpu,3.618593,2,2,2,2,2,2
+birkholz_04_cope,16,97,0.01,b4,cope2-b4.pt2,4,make_fx-nonstrict,30.0,2.14.1+cpu,4.047230,0,2,2,2,2,2
+birkholz_04_cope,16,97,0.01,b4,cope2-b4.pt2,4,make_fx-nonstrict,30.0,2.14.1+cpu,4.058350,1,2,2,2,2,2
+birkholz_04_cope,16,97,0.01,b4,cope2-b4.pt2,4,make_fx-nonstrict,30.0,2.14.1+cpu,4.208453,2,2,2,2,2,2
+birkholz_04_cope,16,97,0.01,b8,cope2-b8.pt2,8,make_fx-nonstrict,30.0,2.14.1+cpu,4.761330,0,2,2,2,2,2
+birkholz_04_cope,16,97,0.01,b8,cope2-b8.pt2,8,make_fx-nonstrict,30.0,2.14.1+cpu,4.698260,1,2,2,2,2,2
+birkholz_04_cope,16,97,0.01,b8,cope2-b8.pt2,8,make_fx-nonstrict,30.0,2.14.1+cpu,4.721942,2,2,2,2,2,2
