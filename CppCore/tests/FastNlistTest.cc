@@ -721,6 +721,35 @@ TEST_CASE("skin list matches brute-force cutoff pairs on a trajectory",
   }
 }
 
+TEST_CASE("a strongly skewed cell is refused past half its width", "[fastnlist][skin]") {
+  const double thin[9] = {8, 0, 0, 7.6, 0.4, 0, 0.2, 0.1, 8};
+  const double pos[] = {0.2, 0.1, 1.0, 1.0, 0.2, 1.1, 4.0, 0.3, 3.0};
+  const int32_t periodic[3] = {1, 1, 1};
+  int32_t ij[8] = {};
+  std::size_t count = 0;
+  rgpot_fast_skin *list = rgpot_fast_skin_new();
+  REQUIRE(list != nullptr);
+  REQUIRE(rgpot_fast_skin_pairs(list, pos, 3, thin, periodic, 2.0, 0.0, ij, 4, &count) < 0);
+  const char *msg = rgpot_fast_last_error();
+  REQUIRE(msg != nullptr);
+  REQUIRE(std::string(msg).find("half the smallest cell width") != std::string::npos);
+  const double fat[9] = {40, 0, 0, 18, 24, 0, 3, 4, 36};
+  std::vector<double> pts;
+  for (int i = 0; i < 12; ++i) {
+    const double t = static_cast<double>(i);
+    const double f0 = std::fmod(t * 0.17, 1.0);
+    const double f1 = std::fmod(t * 0.31, 1.0);
+    const double f2 = std::fmod(t * 0.53, 1.0);
+    for (int c = 0; c < 3; ++c) {
+      pts.push_back(f0 * fat[c] + f1 * fat[3 + c] + f2 * fat[6 + c]);
+    }
+  }
+  const auto got = skin_call(list, pts, fat, periodic, 5.0, 0.0);
+  const auto expect = brute_cutoff(fat, {{true, true, true}}, pts, 5.0);
+  REQUIRE(got == expect);
+  rgpot_fast_skin_free(list);
+}
+
 TEST_CASE("A fastnlist skin reuses inside half a skin", "[fastnlist][skin]") {
   const double box[9] = {40, 0, 0, 0, 40, 0, 0, 0, 40};
   const int32_t periodic[3] = {1, 1, 1};

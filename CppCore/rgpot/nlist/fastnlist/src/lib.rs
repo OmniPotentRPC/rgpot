@@ -185,9 +185,46 @@ fn invert_rows(a: &[[f64; 3]; 3]) -> Option<[[f64; 3]; 3]> {
     Some(inv)
 }
 
-/// Minimum-image squared length. Open axes stay at coefficient 0. The
-/// search is a neighbourhood of the rounded fractional coordinate, wide
-/// enough for a displacement of a few box lengths.
+fn cross(u: [f64; 3], v: [f64; 3]) -> [f64; 3] {
+    [
+        u[1] * v[2] - u[2] * v[1],
+        u[2] * v[0] - u[0] * v[2],
+        u[0] * v[1] - u[1] * v[0],
+    ]
+}
+
+fn norm3(u: [f64; 3]) -> f64 {
+    (u[0] * u[0] + u[1] * u[1] + u[2] * u[2]).sqrt()
+}
+
+/// Distance between the faces normal to each lattice row.
+fn face_widths(cell: &[[f64; 3]; 3]) -> Option<[f64; 3]> {
+    let bxc = cross(cell[1], cell[2]);
+    let cxa = cross(cell[2], cell[0]);
+    let axb = cross(cell[0], cell[1]);
+    let det = cell[0][0] * bxc[0] + cell[0][1] * bxc[1] + cell[0][2] * bxc[2];
+    let nb = norm3(bxc);
+    let nc = norm3(cxa);
+    let na = norm3(axb);
+    if !det.is_finite() || det == 0.0 || nb == 0.0 || nc == 0.0 || na == 0.0 {
+        return None;
+    }
+    let w = [det.abs() / nb, det.abs() / nc, det.abs() / na];
+    if w.iter().any(|v| !v.is_finite()) {
+        return None;
+    }
+    Some(w)
+}
+
+/// Minimum-image squared length. Open axes stay at coefficient 0.
+///
+/// `general_pairs` only calls this when the cutoff is at most half the
+/// smallest face-to-face width of a periodic row. Every nonzero lattice
+/// vector is then at least that width, so the cutoff ball holds one
+/// lattice point. Rounding the fractional coordinate leaves a residual of
+/// at most half a basis vector, and a point that sits on a face or just
+/// outside the box moves that index by one. Two integers either side of
+/// the rounding cover it.
 fn general_r2(d: [f64; 3], cell: &[[f64; 3]; 3], inv: &[[f64; 3]; 3], periodic: [bool; 3]) -> f64 {
     let mut base = [0i32; 3];
     for i in 0..3 {
@@ -239,6 +276,14 @@ fn general_pairs(
     let Some(inv) = invert_rows(cell) else {
         return Err(fail("periodic cell must be nonsingular"));
     };
+    let Some(widths) = face_widths(cell) else {
+        return Err(fail("periodic cell must be nonsingular"));
+    };
+    for k in 0..3 {
+        if periodic[k] && list_cutoff > 0.5 * widths[k] {
+            return Err(fail("cutoff exceeds half the smallest cell width"));
+        }
+    }
     let cut2 = list_cutoff * list_cutoff;
     let mut pairs = Vec::new();
     for i in 0..xyz.len() {
@@ -947,6 +992,30 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn a_strongly_skewed_cell_is_bounded_by_its_width() {
+        // Face spacing is about 0.4, so a cutoff of 2 is past half of it.
+        let thin = [[8.0, 0.0, 0.0], [7.6, 0.4, 0.0], [0.2, 0.1, 8.0]];
+        let xyz = vec![[0.2, 0.1, 1.0], [1.0, 0.2, 1.1], [4.0, 0.3, 3.0]];
+        let err = collect_pairs(&xyz, &thin, [true, true, true], 2.0);
+        assert!(err.is_err());
+        // Same skew direction, scaled so every face is many cutoffs apart.
+        let fat = [[40.0, 0.0, 0.0], [18.0, 24.0, 0.0], [3.0, 4.0, 36.0]];
+        let mut pts = Vec::new();
+        for i in 0..12 {
+            let t = i as f64;
+            let f = [(t * 0.17).fract(), (t * 0.31).fract(), (t * 0.53).fract()];
+            pts.push([
+                f[0] * fat[0][0] + f[1] * fat[1][0] + f[2] * fat[2][0],
+                f[0] * fat[0][1] + f[1] * fat[1][1] + f[2] * fat[2][1],
+                f[0] * fat[0][2] + f[1] * fat[1][2] + f[2] * fat[2][2],
+            ]);
+        }
+        let got = collect_pairs(&pts, &fat, [true, true, true], 5.0).unwrap();
+        let expect = shell_pairs(&pts, &fat, [true, true, true], 5.0);
+        assert_eq!(got, expect);
     }
 
     #[test]

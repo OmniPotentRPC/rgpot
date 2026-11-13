@@ -1,0 +1,1 @@
+A non-orthogonal pair shell is refused when the cutoff is larger than half the smallest face-to-face width. Below that, the minimum image is the rounded coefficient and two integers either side of it.
