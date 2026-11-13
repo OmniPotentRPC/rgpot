@@ -1,0 +1,1 @@
+An orthorhombic rebuild with at least five cells on a periodic side uses the stencil wrap as the image index when every atom on that side stays inside the gap between two cell widths and half a box. That integer is the one rounding would return, and the folded step subtracts the same box multiple. The stored row order is unchanged.

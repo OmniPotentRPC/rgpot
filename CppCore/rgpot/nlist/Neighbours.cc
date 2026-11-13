@@ -407,6 +407,8 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
     std::vector<Cand> scratch;
     std::vector<std::int32_t> degree;
     std::vector<std::int32_t> cursor;
+    std::vector<std::int32_t> shifts;
+    std::vector<std::uint8_t> flags;
   };
   thread_local HalfBuf half_buf;
   half_buf.halves.clear();
@@ -552,6 +554,9 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
   // test would accept. A raw separation past 1.5 box lengths is not
   // classified here, so its image flags still come from fold_axis.
   const double far = search_ + 1e-6;
+  const double lim15_0 = 1.5 * len_[0];
+  const double lim15_1 = 1.5 * len_[1];
+  const double lim15_2 = 1.5 * len_[2];
   // A periodic side no larger than twice the search cannot put a pair
   // outside the search on that axis. The early reject is then pure
   // overhead, and the original skin test stays on that build.
@@ -571,14 +576,59 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
     if (!(L > 0.0)) {
       return false;
     }
+    const double lim15 = axis == 0 ? lim15_0 : (axis == 1 ? lim15_1 : lim15_2);
     const double a = std::abs(delta);
-    if (a > 1.5 * L) {
+    if (a > lim15) {
       return false;
     }
     const double other = std::abs(a - L);
     const double folded = other < a ? other : a;
     return folded > far;
   };
+  // Five or more cells make the 27 stencil slots distinct, and a
+  // neighbour is then at most two cell widths away. Only an edge cell
+  // can hold an atom past the box. Nine tenths of the gap between that
+  // span and half a box still rounds to the stencil wrap: 0 when the
+  // cells do not wrap, and exactly ±1 when they do. The separation also
+  // stays under 1.5 box lengths, so the folded early reject matches
+  // clearly_out. {-L, 0, L} is the multiple fold_axis would subtract.
+  const double sub0[3] = {-len_[0], 0.0, len_[0]};
+  const double sub1[3] = {-len_[1], 0.0, len_[1]};
+  const double sub2[3] = {-len_[2], 0.0, len_[2]};
+  bool use_cell_shift = wide;
+  if (use_cell_shift && ((periodic_[0] && nx_ < 5) || (periodic_[1] && ny_ < 5) ||
+                         (periodic_[2] && nz_ < 5))) {
+    use_cell_shift = false;
+  }
+  auto axis_near = [](double x, int cell, int naxis, double len) {
+    const double w = len / static_cast<double>(naxis);
+    const double allowed = 0.9 * (0.5 * len - 2.0 * w);
+    if (!(allowed > 1e-6)) {
+      return false;
+    }
+    if (cell <= 0) {
+      return x >= -allowed && x < w;
+    }
+    if (cell >= naxis - 1) {
+      return x >= static_cast<double>(naxis - 1) * w && x < len + allowed;
+    }
+    const double lo = static_cast<double>(cell) * w;
+    return x >= lo && x < lo + w;
+  };
+  for (std::size_t a = 0; a < n && use_cell_shift; ++a) {
+    const int cell = cell_of_[a];
+    const int iz = cell % nz_;
+    const int iy = (cell / nz_) % ny_;
+    const int ix = cell / (nz_ * ny_);
+    const auto u = a * 3;
+    if (periodic_[0] && !axis_near(xyz_[u], ix, nx_, len_[0])) {
+      use_cell_shift = false;
+    } else if (periodic_[1] && !axis_near(xyz_[u + 1], iy, ny_, len_[1])) {
+      use_cell_shift = false;
+    } else if (periodic_[2] && !axis_near(xyz_[u + 2], iz, nz_, len_[2])) {
+      use_cell_shift = false;
+    }
+  }
   for (std::size_t a = 0; a < n; ++a) {
     off_[a] = static_cast<std::int32_t>(nbr_.size());
     const int cell = cell_of_[a];
@@ -591,6 +641,35 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
     for (int ox = -1; ox <= 1; ++ox) {
       for (int oy = -1; oy <= 1; ++oy) {
         for (int oz = -1; oz <= 1; ++oz) {
+          int sax = 0;
+          int say = 0;
+          int saz = 0;
+          if (use_cell_shift) {
+            const int jx = ix + ox;
+            const int jy = iy + oy;
+            const int jz = iz + oz;
+            if (periodic_[0]) {
+              if (jx < 0) {
+                sax = -1;
+              } else if (jx >= nx_) {
+                sax = 1;
+              }
+            }
+            if (periodic_[1]) {
+              if (jy < 0) {
+                say = -1;
+              } else if (jy >= ny_) {
+                say = 1;
+              }
+            }
+            if (periodic_[2]) {
+              if (jz < 0) {
+                saz = -1;
+              } else if (jz >= nz_) {
+                saz = 1;
+              }
+            }
+          }
           const int id = cellId(ix + ox, iy + oy, iz + oz);
           if (id < 0) {
             continue;
@@ -657,6 +736,23 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
                 const bool hy = legacy_axis(dy, 1, sy);
                 const bool hz = legacy_axis(dz, 2, sz);
                 holds = hx && hy && hz;
+              } else if (use_cell_shift) {
+                const double rawx = dx;
+                const double rawy = dy;
+                const double rawz = dz;
+                dx -= sub0[sax + 1];
+                dy -= sub1[say + 1];
+                dz -= sub2[saz + 1];
+                if (std::abs(dx) > far || std::abs(dy) > far || std::abs(dz) > far) {
+                  continue;
+                }
+                const double r2_round = dx * dx + dy * dy + dz * dz;
+                if (r2_round <= search2) {
+                  holds = axis_holds(rawx, 0, sax, true) && axis_holds(rawy, 1, say, true) &&
+                          axis_holds(rawz, 2, saz, true);
+                  accept(a, j, sax, say, saz, holds);
+                }
+                continue;
               } else {
                 if (clearly_out(dx, 0) || clearly_out(dy, 1) || clearly_out(dz, 2)) {
                   continue;
@@ -768,25 +864,30 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
         }
       }
     };
-    nbr_.clear();
-    nbr_.reserve(slots.size());
-    shifts.clear();
-    flags.clear();
+    const auto npairs = slots.size();
+    nbr_.resize(npairs);
+    auto &out_shifts = half_buf.shifts;
+    auto &out_flags = half_buf.flags;
+    if (record) {
+      out_shifts.resize(npairs * 3);
+      out_flags.resize(npairs);
+    }
     all_stable = record;
+    std::size_t w = 0;
     for (std::size_t a = 0; a < n; ++a) {
       const auto begin = static_cast<std::size_t>(off_[a]);
       const auto end = static_cast<std::size_t>(off_[a + 1]);
       Cand *row = slots.data() + begin;
       const auto len = end - begin;
       order_row(row, len);
-      for (std::size_t k = 0; k < len; ++k) {
+      for (std::size_t k = 0; k < len; ++k, ++w) {
         const Cand &c = row[k];
-        nbr_.push_back(c.j);
+        nbr_[w] = c.j;
         if (record) {
-          shifts.push_back(c.sx);
-          shifts.push_back(c.sy);
-          shifts.push_back(c.sz);
-          flags.push_back(c.unstable);
+          out_shifts[3 * w] = c.sx;
+          out_shifts[3 * w + 1] = c.sy;
+          out_shifts[3 * w + 2] = c.sz;
+          out_flags[w] = c.unstable;
           if (c.unstable != 0) {
             all_stable = false;
           }
@@ -796,8 +897,10 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
   }
   off_[n] = static_cast<std::int32_t>(nbr_.size());
   if (fit && (record_round || record_general)) {
-    installRoundShifts(shifts.data(), nbr_.size(), tiny, all_stable, record_general,
-                       all_stable ? nullptr : flags.data());
+    const std::int32_t *shift_data = half_pairs ? half_buf.shifts.data() : shifts.data();
+    const std::uint8_t *flag_data = half_pairs ? half_buf.flags.data() : flags.data();
+    installRoundShifts(shift_data, nbr_.size(), tiny, all_stable, record_general,
+                       all_stable ? nullptr : flag_data);
   }
 }
 
