@@ -16,6 +16,8 @@
 
 #include "rgpot/nlist/MinimumImage.hpp"
 
+using Catch::Matchers::ContainsSubstring;
+
 namespace {
 
 constexpr int kWide = 24;
@@ -478,4 +480,46 @@ TEST_CASE("two thin periodic rows stay inside the Gram-Schmidt sphere",
       }
     }
   }
+}
+
+TEST_CASE("a Gram-Schmidt interval of a million coefficients is refused",
+          "[PairList][triclinic][oracle]") {
+  // LLL leaves the second row with a height of 1e-12. A displacement of
+  // a few tenths along that row asks for an integer interval of at least
+  // a million coefficients. The fold refuses the search.
+  const double cell[9] = {1.0, 0.0, 0.0, 0.5, 1.0e-12, 0.0, 0.0, 0.0, 1.0};
+  const std::array<bool, 3> periodic{true, true, true};
+  const rgpot::nlist::MinimumImage image(cell, periodic);
+  double x = 0.2;
+  double y = 0.3;
+  double z = -0.1;
+  REQUIRE_THROWS_WITH(image.fold(x, y, z),
+                      ContainsSubstring("periodic image search count is too large"));
+  // The same cell, with the short coordinate already inside half that
+  // row, is still a minimum image. The neighbourhood is the two long
+  // rows; the short one does not need a second coefficient.
+  x = 0.25;
+  y = 1.0e-13;
+  z = 0.1;
+  image.fold(x, y, z);
+  const double folded = x * x + y * y + z * z;
+  long double best = std::numeric_limits<long double>::infinity();
+  const double sample[3] = {0.25, 1.0e-13, 0.1};
+  for (long long i = -2; i <= 2; ++i) {
+    for (long long j = -1; j <= 1; ++j) {
+      for (long long k = -2; k <= 2; ++k) {
+        const long double cx = static_cast<long double>(sample[0]) -
+                               static_cast<long double>(i) * cell[0] -
+                               static_cast<long double>(j) * cell[3];
+        const long double cy = static_cast<long double>(sample[1]) -
+                               static_cast<long double>(j) * cell[4];
+        const long double cz = static_cast<long double>(sample[2]) -
+                               static_cast<long double>(k) * cell[8];
+        best = std::min(best, cx * cx + cy * cy + cz * cz);
+      }
+    }
+  }
+  INFO("folded=" << folded << " best=" << static_cast<double>(best));
+  REQUIRE(std::isfinite(folded));
+  REQUIRE(static_cast<long double>(folded) <= best * (1.0L + 1e-8L) + 1e-24L);
 }
