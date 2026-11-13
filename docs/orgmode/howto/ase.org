@@ -39,9 +39,9 @@ Voigt order (xx, yy, zz, yz, xz, xy) with the ASE sign.
 
 The bound kernels are fully periodic.
 A structure with =pbc= false is a cluster.
-Energy and forces ignore the caller's cell: the kernel sees a cube whose side
-is at least 100 Angstrom and at least the cluster extent plus twice the cutoff,
-so a periodic image cannot enter the cutoff.
+Energy and forces ignore the caller's cell: the kernel sees a cube whose side is
+at least 100 Angstrom and at least the cluster extent plus twice the cutoff, so
+a periodic image cannot enter the cutoff.
 Stress is the cluster virial divided by the caller's cell volume, which is the
 cell =calculate_numerical_stress= strains.
 A caller with no cell keeps the padded cube's stress.

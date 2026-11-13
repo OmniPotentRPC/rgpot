@@ -5,39 +5,35 @@
 * OpenMM
 
 OpenMM has no callback that can call an arbitrary C++ potential.
-The comparison that the meson test =openmm_lj= runs is a
-=CustomNonbondedForce= whose expression is the shifted 12-6 potential
-rgpot evaluates, written in OpenMM's nanometres and kJ/mol.
+The comparison that the meson test =openmm_lj= runs is a =CustomNonbondedForce=
+whose expression is the shifted 12-6 potential rgpot evaluates, written in
+OpenMM's nanometres and kJ/mol.
 
 The energy is one expression.
-Intermediate names are not used, because a name defined after the
-energy is not in scope, and a trailing unnamed expression is rejected.
-Sigma and epsilon are combined geometrically, which is exact when both
-atoms carry the same parameters.
-A different combining rule would not be the rgpot potential, and the
-test would fail.
+Intermediate names are not used, because a name defined after the energy is not
+in scope, and a trailing unnamed expression is rejected.
+Sigma and epsilon are combined geometrically, which is exact when both atoms
+carry the same parameters.
+A different combining rule would not be the rgpot potential, and the test would
+fail.
 
 Positions are 0 and 0.15 nm in a 2 nm cube, cutoff 0.8 nm.
-The context energy, converted with =rgpot-lj --kJ-per-eV=, matches the
-direct evaluation to 1e-6 eV, and the force on the second atom matches
-to 1e-5 eV/Angstrom.
+The context energy, converted with =rgpot-lj --kJ-per-eV=, matches the direct
+evaluation to 1e-6 eV, and the force on the second atom matches to 1e-5
+eV/Angstrom.
 =-Dwith_openmm=enabled= requires the =openmm= Python module.
 
 ** Public constructor
 
-=rgpot_openmm_potential= stores the same nanometre and kJ/mol factors
-as =rgpot_gromacs_potential=.
-=rgpot_md_kj_per_ev= and =rgpot_md_nm_per_angstrom= are those factors.
-=libopenmm_engine.so= is the backend that evaluates the shifted 12-6
-expression in OpenMM's units.
-The constructor converts positions to nanometres and the energy and
-forces back to eV and eV/Angstrom.
+=rgpot_openmm_potential= stores the same nanometre and
+kJ/mol factors as =rgpot_gromacs_potential=. =rgpot_md_kj_per_ev= and =rgpot_md_nm_per_angstrom= are those factors. =libopenmm_engine.so= is the backend that evaluates the shifted 12-6 expression in OpenMM's units. The constructor converts positions to nanometres and the energy and forces back to eV and eV/Angstrom.
 =rgpot_external_potential_energy_forces= returns that result, and
 =rgpot_external_potential_free= releases it.
-The dimer is -0.3203213355 eV, within 1e-6 eV of =rgpot-lj= and with
-the force on the second atom within 1e-5 eV/Angstrom.
-When OpenMM is not found the engine test is skipped and the log names
-that reason. The in-process constructor still evaluates the dimer.
+The dimer is -0.3203213355 eV, within 1e-6 eV of =rgpot-lj= and with the force
+on the second atom within 1e-5 eV/Angstrom.
+When OpenMM is not found the engine test is skipped and the log names that
+reason.
+The in-process constructor still evaluates the dimer.
 
 #+begin_src python
 import numpy as np

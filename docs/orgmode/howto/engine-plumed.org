@@ -5,18 +5,17 @@
 * PLUMED
 
 =RGPOT= is a collective variable, not a copy of the GROMACS mdrun deck.
-=plumed driver= reads an xyz file in nanometres, the default PLUMED
-length, and =--debug-forces= finite-differences the value.
-=BIASVALUE= turns that value into the bias whose forces the driver
-checks.
-The printed number, divided by =rgpot-lj --kJ-per-eV=, is the rgpot
-energy in eV.
+=plumed driver= reads an xyz file in nanometres, the default PLUMED length, and
+=--debug-forces= finite-differences the value.
+=BIASVALUE= turns that value into the bias whose forces the driver checks.
+The printed number, divided by =rgpot-lj --kJ-per-eV=, is the rgpot energy in
+eV.
 
-Telling the driver =UNITS LENGTH=A= while the file is already in
-Angstrom makes PLUMED scale the coordinates again.
-The driver test therefore stays in nanometres: a 0.15 nm separation
-and a 2 nm cell.
+Telling the driver =UNITS LENGTH=A= while the file is already in Angstrom makes
+PLUMED scale the coordinates again.
+The driver test therefore stays in nanometres: a 0.15 nm separation and a 2 nm
+cell.
 The meson test is =plumed_driver=.
-The shared library is =libRgpotPlumed.so=, built when pkg-config finds
-PLUMED and linked with =libplumedKernel=.
+The shared library is =libRgpotPlumed.so=, built when pkg-config finds PLUMED
+and linked with =libplumedKernel=.
 =-Dwith_plumed=enabled= is an error when those headers are missing.

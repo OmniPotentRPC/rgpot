@@ -6,25 +6,24 @@
 
 A metatomic or UMA model is not linked into =librgpot=.
 The host dlopens a library that exports =rgpot_engine_create= and
-=rgpot_engine_force=, then passes positions in Angstrom, a row-major
-cell, and atomic numbers.
+=rgpot_engine_force=, then passes positions in Angstrom, a row-major cell, and
+atomic numbers.
 Energy comes back in eV and forces in eV/Angstrom.
-=rgpot_engine_force_batch= evaluates several systems that share one
-composition.
-=rgpot_engine_last_error= copies the last sentence into a caller buffer
-and returns its length.
+=rgpot_engine_force_batch= evaluates several systems that share one composition.
+=rgpot_engine_last_error= copies the last sentence into a caller buffer and
+returns its length.
 
-The in-tree LJ engine, =liblj_engine.so=, is that same ABI with a
-24-byte config of three float64 values: =u0=, cutoff, =psi=.
+The in-tree LJ engine, =liblj_engine.so=, is that same ABI with a 24-byte config
+of three float64 values: =u0=, cutoff, =psi=.
 A null config is =u0= 1 eV, cutoff 15 Angstrom, =psi= 1 Angstrom.
-The meson test =lj_engine= dlopens it and compares the energy and the
-forces, bit for bit, with =rgpot_lj_eval=.
-A metatomic engine is selected by which library is opened, not by a
-different host call.
+The meson test
+=lj_engine= dlopens it and compares the energy and the forces, bit for bit, with =rgpot_lj_eval=.
+A metatomic engine is selected by which library is opened, not by a different
+host call.
 
 =rgpot_engine_abi_version= is the major.
 =rgpot_engine_abi_stamp= reports minor and layout.
-A host that only calls =rgpot_engine_abi_version= keeps working across
-a minor bump.
-The stamp and =rgpot_engine_abi_compatible= refuse a different major
-or a different layout.
+A host that only calls =rgpot_engine_abi_version= keeps working across a minor
+bump.
+The stamp and =rgpot_engine_abi_compatible= refuse a different major or a
+different layout.

@@ -279,20 +279,22 @@ A caller that links only =librgpot= uses it instead of resolving
 These names are part of the public C surface.
 The coverage check fails when one of them disappears from this book.
 
-- =rgpot_version=, =rgpot_version_major=, =rgpot_version_minor=,
-  =rgpot_version_patch= :: the loaded library's package version.
+- =rgpot_version=, =rgpot_version_major=, =rgpot_version_minor=, =rgpot_version_patch=
+  :: the loaded library's package version.
   The pointers from =rgpot_version= are static.
 - =rgpot_source_revision= :: git revision recorded at build time, or empty.
 - =rgpot_last_error= :: thread-local sentence for the last failed call.
-  Do not free it. It dies at the next =rgpot_*= call on that thread.
+  Do not free it.
+  It dies at the next =rgpot_*= call on that thread.
 - =rgpot_tensor_cpu_f64_2d=, =rgpot_tensor_cpu_i32_1d=,
   =rgpot_tensor_cpu_f64_matrix3= :: non-owning DLPack views of caller memory.
-- =rgpot_tensor_owned_cpu_f64_2d= :: an owning copy. Free it with
-  =rgpot_tensor_free=.
+- =rgpot_tensor_owned_cpu_f64_2d= :: an owning copy.
+  Free it with =rgpot_tensor_free=.
 - =rgpot_tensor_free=, =rgpot_tensor_device=, =rgpot_tensor_data=,
-  =rgpot_tensor_shape= :: deleter and inspectors. A null free is a no-op.
-- =rgpot_force_input_create=, =rgpot_force_input_free=,
-  =rgpot_force_out_create= :: build and release the borrowed input tensors.
+  =rgpot_tensor_shape= :: deleter and inspectors.
+  A null free is a no-op.
+- =rgpot_force_input_create=, =rgpot_force_input_free=, =rgpot_force_out_create=
+  :: build and release the borrowed input tensors.
   Freeing the input does not free the caller's arrays.
 - =rgpot_potential_new=, =rgpot_potential_new_eindir= :: create a handle.
   =rgpot_potential_free= and =rgpot_potential_free_eindir= release it.
@@ -301,21 +303,22 @@ The coverage check fails when one of them disappears from this book.
 - =rgpot_rpc_client_new=, =rgpot_rpc_calculate=, =rgpot_rpc_client_free=,
   =rgpot_rpc_server_start= :: the Cap'n Proto client and the blocking server.
   They are compiled only when the library was built with RPC.
-- =rgpot_nlist_abi_version=, =rgpot_nlist_strerror=,
-  =rgpot_nlist_request_init= :: the neighbour query's version, sentences,
-  and the zeroed request.
+- =rgpot_nlist_abi_version=, =rgpot_nlist_strerror=, =rgpot_nlist_request_init=
+  :: the neighbour query's version, sentences, and the zeroed request.
 - =rgpot_nlist_build=, =rgpot_nlist_build_systems= :: fill a caller-owned
-  structure of arrays. A short buffer returns the needed count.
-- =rgpot_nlist_walk_open=, =rgpot_nlist_walk_pull=, =rgpot_nlist_walk_close=
-  :: stream pairs without storing the whole list.
+  structure of arrays.
+  A short buffer returns the needed count.
+- =rgpot_nlist_walk_open=, =rgpot_nlist_walk_pull=, =rgpot_nlist_walk_close= ::
+  stream pairs without storing the whole list.
   The walk borrows positions until close.
 - =rgpot_nlist_builder_open=, =rgpot_nlist_builder_update=,
-  =rgpot_nlist_builder_close= :: reuse a list while every atom stays inside
-  half the skin.
+  =rgpot_nlist_builder_close= :: reuse a list while every atom stays inside half
+  the skin.
 - =rgpot_nlist_fortran_open=, =rgpot_nlist_fortran_build=,
-  =rgpot_nlist_fortran_close= :: the Fortran gather, indices zero-based,
-  vectors in Fortran order.
-- =rgpot_fast_pairs=, =rgpot_fast_wrap=, =rgpot_fast_wrap_axes=,
-  =rgpot_fast_last_error= :: the orthorhombic candidate list and the
-  minimum-image wrap. A negative code leaves a thread-local sentence.
+  =rgpot_nlist_fortran_close= :: the Fortran gather, indices zero-based, vectors
+  in Fortran order.
+- =rgpot_fast_pairs=, =rgpot_fast_wrap=,
+  =rgpot_fast_wrap_axes=, =rgpot_fast_last_error= :: the orthorhombic candidate
+  list and the minimum-image wrap.
+  A negative code leaves a thread-local sentence.
 - =rgpot_plugin_init= :: the one symbol a plugin shared library exports.

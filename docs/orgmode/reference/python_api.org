@@ -33,10 +33,9 @@ See the [[file:../howto/ase.org][ASE how-to]] and the
 =rgpot.rgpot_openmm_potential= return a shifted 12-6 potential.
 Positions are Angstrom and the energy is eV.
 The LAMMPS constructor dlopens the engine plugin.
-GROMACS and OpenMM store kJ/mol and nanometres once; =native_u0=,
-=native_cutoff= and =native_psi= read those stored values.
-The dimer at 1.5 Angstrom with =u0= 1, cutoff 8 and =psi= 1 is
--0.3203213355 eV.
+GROMACS and OpenMM store kJ/mol and nanometres once;
+=native_u0=, =native_cutoff= and =native_psi= read those stored values.
+The dimer at 1.5 Angstrom with =u0= 1, cutoff 8 and =psi= 1 is -0.3203213355 eV.
 
 ** XcKernel
 
