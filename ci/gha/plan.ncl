@@ -141,6 +141,12 @@ let P = S.pins in
       role = "pixi task check-eonviz-pins and the byte-exact restart golden (blocking)",
     },
     {
+      id = "engines",
+      needs = ["prepare"],
+      runs_on = P.ubuntu,
+      role = "LAMMPS pair_style rgpot, GROMACS mdrun -plumed, OpenMM, PLUMED",
+    },
+    {
       id = "ci_gate",
       needs = [
         "prepare",
@@ -162,6 +168,7 @@ let P = S.pins in
         "potentials_tblite_06",
         "potentials_plugins",
         "eonviz_pins",
+        "engines",
       ],
       role = "single required check aggregator (branch protection target)",
     },

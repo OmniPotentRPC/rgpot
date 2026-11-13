@@ -759,6 +759,54 @@ jobs:
       - name: Byte-exact restart golden
         run: pixi run bash scripts/check_readcon_golden.sh
 
+  engines:
+    name: engines
+    needs: [prepare]
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
+        with:
+          pixi-version: v0.70.2
+          environments: engines
+          cache: true
+      - name: Build a serial LAMMPS with the PLUGIN package
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --filter=blob:none --sparse --branch stable_22Jul2025 \
+            https://github.com/lammps/lammps.git "$GITHUB_WORKSPACE/lammps-src"
+          git -C "$GITHUB_WORKSPACE/lammps-src" sparse-checkout set src cmake
+          pixi run -e engines bash -lc '
+            export CC="$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-cc"
+            export CXX="$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-c++"
+            cmake -S "$GITHUB_WORKSPACE/lammps-src/cmake" \
+              -B "$GITHUB_WORKSPACE/lammps-src/build-lmp" \
+              -DBUILD_MPI=OFF -DBUILD_SHARED_LIBS=ON -DPKG_PLUGIN=ON \
+              -DCMAKE_BUILD_TYPE=Release -DBUILD_TOOLS=OFF
+            cmake --build "$GITHUB_WORKSPACE/lammps-src/build-lmp" -j "$(nproc)" --target lmp
+          '
+      - name: Build rgpot and run the engine tests
+        run: |
+          set -euo pipefail
+          pixi run -e engines meson setup build \
+            -Dwith_lammps=enabled \
+            -Dlammps_src="$GITHUB_WORKSPACE/lammps-src/src" \
+            -Dlammps_exe="$GITHUB_WORKSPACE/lammps-src/build-lmp/lmp" \
+            -Dwith_gromacs=enabled -Dwith_openmm=enabled -Dwith_plumed=enabled \
+            --buildtype=release
+          pixi run -e engines meson compile -C build
+          pixi run -e engines meson test -C build --print-errorlogs \
+            lj_eval lj_engine capi_threads c_symbols abi_symbols \
+            lammps_lj plumed_driver gromacs_mdrun openmm_lj \
+            | tee build/engine-tests.txt
+          for name in lj_eval lj_engine lammps_lj plumed_driver gromacs_mdrun openmm_lj; do
+            if ! grep -E "${name}[[:space:]]+OK" build/engine-tests.txt >/dev/null; then
+              echo "${name} did not pass" >&2
+              exit 1
+            fi
+          done
+
   # --- Single branch-protection target (require this job name in settings) ---
   ci_gate:
     name: CI gate
@@ -783,6 +831,7 @@ jobs:
       - potentials_tblite_06
       - potentials_plugins
       - eonviz_pins
+      - engines
     runs-on: ubuntu-latest
     steps:
       - name: Aggregate job results
@@ -815,7 +864,8 @@ jobs:
             "xckernel_goldens:${{ needs.xckernel_goldens.result }}" \
             "potentials_tblite_06:${{ needs.potentials_tblite_06.result }}" \
             "potentials_plugins:${{ needs.potentials_plugins.result }}" \
-            "eonviz_pins:${{ needs.eonviz_pins.result }}"
+            "eonviz_pins:${{ needs.eonviz_pins.result }}" \
+            "engines:${{ needs.engines.result }}"
           do
             name="${pair%%:*}"
             res="${pair##*:}"
