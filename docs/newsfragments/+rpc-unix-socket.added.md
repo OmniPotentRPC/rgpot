@@ -1,0 +1,1 @@
+potserv and the RPC clients accept a `unix:/path` address as well as a TCP port. The TCP port on localhost stays the default, and the Cap'n Proto messages are unchanged. A path that already exists is removed only when it is a socket; any other file is left in place and the server refuses to bind. On Windows the address is rejected.

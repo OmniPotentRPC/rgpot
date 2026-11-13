@@ -1770,6 +1770,26 @@ if get_option('with_tests')
                 ['RPCClientTest', 'test_rpc_client', 'BridgeStressTest.cc', ''],
             ]
         endif
+        if not get_option('with_rpc_client_only')
+            unix_rpc_test = executable(
+                'unix_socket_rpc_test',
+                sources: ['tests/UnixSocketRpcTest.cc'],
+                dependencies: test_deps + [pot_bridge_dep],
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+            )
+            unix_rpc_env = environment()
+            unix_rpc_env.set('RGPOT_POTSERV', server.full_path())
+            test(
+                'UnixSocketRpc',
+                unix_rpc_test,
+                env: unix_rpc_env,
+                depends: [server],
+                suite: 'rpc',
+            )
+        endif
     endif
     if not get_option('with_rpc_client_only')
         mopacc_fake_engine = shared_library(

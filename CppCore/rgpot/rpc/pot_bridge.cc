@@ -13,6 +13,7 @@
 #include "Potentials.capnp.h"
 #include "rgpot/abi/Handshake.hpp"
 #include <algorithm>
+#include <cstring>
 #include <capnp/ez-rpc.h>
 #include <capnp/message.h>
 #include <kj/common.h>
@@ -73,7 +74,17 @@ PotClient *pot_client_init(const char *host, int32_t port) {
   if (!host)
     return nullptr;
   try {
-    std::string address = std::string(host) + ":" + std::to_string(port);
+    // "unix:/path" is the KJ address. A hostname still joins the port,
+    // which is the TCP default. The messages on the socket are unchanged.
+    std::string address;
+#if !defined(_WIN32)
+    if (std::strncmp(host, "unix:", 5) == 0) {
+      address = host;
+    } else
+#endif
+    {
+      address = std::string(host) + ":" + std::to_string(port);
+    }
     auto rpc_client = std::make_unique<capnp::EzRpcClient>(address);
     auto cap = rpc_client->getMain().castAs<Potential>();
 

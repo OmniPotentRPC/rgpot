@@ -36,10 +36,14 @@ impl RpcClient {
     pub fn new(host: &str, port: u16) -> Result<Self, String> {
         let runtime =
             Runtime::new().map_err(|e| format!("failed to create tokio runtime: {e}"))?;
-        Ok(Self {
-            runtime,
-            addr: format!("{host}:{port}"),
-        })
+        // `unix:/path` is the same address KJ accepts. A hostname still
+        // joins the port, which is the TCP default.
+        let addr = if host.starts_with("unix:") {
+            host.to_owned()
+        } else {
+            format!("{host}:{port}")
+        };
+        Ok(Self { runtime, addr })
     }
 
     /// Perform a synchronous RPC calculation.
@@ -67,16 +71,51 @@ impl RpcClient {
         let (positions, atmnrs, box_data) = unsafe { extract_cpu_input(input, n)? };
 
         // --- Connect ---
+        // TCP_NODELAY is set on TCP. A unix socket has no such option.
+        // The two streams have different types, so each side calls exchange.
+        if let Some(path) = self.addr.strip_prefix("unix:") {
+            #[cfg(unix)]
+            {
+                let stream = tokio::net::UnixStream::connect(path)
+                    .await
+                    .map_err(|e| format!("connection failed: {e}"))?;
+                let (reader, writer) =
+                    tokio_util::compat::TokioAsyncReadCompatExt::compat(stream).split();
+                return exchange(reader, writer, n, positions, atmnrs, box_data, output).await;
+            }
+            #[cfg(not(unix))]
+            {
+                let _ = path;
+                return Err(
+                    "unix sockets are not supported on this platform".to_string(),
+                );
+            }
+        }
         let stream = tokio::net::TcpStream::connect(&self.addr)
             .await
             .map_err(|e| format!("connection failed: {e}"))?;
         stream
             .set_nodelay(true)
             .map_err(|e| format!("set_nodelay failed: {e}"))?;
-
         let (reader, writer) =
             tokio_util::compat::TokioAsyncReadCompatExt::compat(stream).split();
+        exchange(reader, writer, n, positions, atmnrs, box_data, output).await
+    }
+}
 
+async fn exchange<R, W>(
+    reader: R,
+    writer: W,
+    n: usize,
+    positions: &[f64],
+    atmnrs: &[i32],
+    box_data: &[f64],
+    output: &mut rgpot_force_out_t,
+) -> Result<(), String>
+where
+    R: futures::io::AsyncRead + Unpin + 'static,
+    W: futures::io::AsyncWrite + Unpin + 'static,
+{
         let network = twoparty::VatNetwork::new(
             futures::io::BufReader::new(reader),
             futures::io::BufWriter::new(writer),
@@ -147,7 +186,6 @@ impl RpcClient {
         output.forces = create_owned_f64_tensor(forces_vec, vec![n as i64, 3]);
 
         Ok(())
-    }
 }
 
 /// Extract CPU data slices from DLPack input tensors.

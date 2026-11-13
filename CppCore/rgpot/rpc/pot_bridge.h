@@ -35,7 +35,8 @@ typedef struct PotClient PotClient;
 
 /**
  * @brief Initializes the RPC client connection.
- * @param host Target server hostname or IP address.
+ * @param host Target server hostname, IP address, or a @c unix:/path
+ *             socket. A unix address ignores @a port.
  * @param port Network port of the potential server.
  * @return Pointer to the client context or @c NULL on failure.
  * @see pot_get_last_error

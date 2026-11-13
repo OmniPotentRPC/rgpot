@@ -121,6 +121,50 @@ impl potential::Server for PotentialServer {
     }
 }
 
+/// Remove `path` only when `lstat` says it is a socket. A regular file,
+/// a directory, or a symlink is left untouched and reported.
+#[cfg(unix)]
+fn claim_socket_path(path: &str) -> Result<(), String> {
+    use std::os::unix::fs::FileTypeExt;
+    if path.is_empty() {
+        return Err("unix socket path is empty".to_string());
+    }
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) => {
+            if meta.file_type().is_socket() {
+                std::fs::remove_file(path)
+                    .map_err(|e| format!("cannot remove socket {path}: {e}"))
+            } else {
+                Err(format!("{path} exists and is not a socket"))
+            }
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(format!("cannot stat {path}: {err}")),
+    }
+}
+
+fn accept_client<S>(stream: S, pot: *const rgpot_potential_t)
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + 'static,
+{
+    let pot_ref = unsafe { &*pot };
+    let server_impl = PotentialServer {
+        callback: pot_ref.callback,
+        user_data: pot_ref.pot_user_data,
+    };
+    let potential_client = capnp_rpc::new_client::<potential::Client, _>(server_impl);
+    let (reader, writer) =
+        tokio_util::compat::TokioAsyncReadCompatExt::compat(stream).split();
+    let network = twoparty::VatNetwork::new(
+        futures::io::BufReader::new(reader),
+        futures::io::BufWriter::new(writer),
+        rpc_twoparty_capnp::Side::Server,
+        Default::default(),
+    );
+    let rpc_system = RpcSystem::new(Box::new(network), Some(potential_client.client));
+    tokio::task::spawn_local(rpc_system);
+}
+
 /// Start an RPC server listening on `host:port`, dispatching to `pot`.
 ///
 /// This function blocks the current thread. It creates its own tokio runtime.
@@ -147,7 +191,6 @@ pub unsafe extern "C" fn rgpot_rpc_server_start(
             return rgpot_status_t::RGPOT_INVALID_PARAMETER;
         }
 
-        let pot_ref = unsafe { &*pot };
         let host_str = match unsafe { std::ffi::CStr::from_ptr(host) }.to_str() {
             Ok(s) => s,
             Err(e) => {
@@ -156,7 +199,22 @@ pub unsafe extern "C" fn rgpot_rpc_server_start(
             }
         };
 
-        let addr = format!("{host_str}:{port}");
+        // `unix:/path` listens on a domain socket. Anything else is TCP
+        // `host:port`. TCP_NODELAY is set on each accepted TCP stream.
+        // Windows has no UnixListener in this build, so that address fails
+        // before a socket is opened.
+        #[cfg(not(unix))]
+        if host_str.starts_with("unix:") {
+            set_last_error("unix sockets are not supported on this platform");
+            return rgpot_status_t::RGPOT_RPC_ERROR;
+        }
+        #[cfg(unix)]
+        let unix_path = host_str.strip_prefix("unix:").map(str::to_owned);
+        let addr = if host_str.starts_with("unix:") {
+            host_str.to_owned()
+        } else {
+            format!("{host_str}:{port}")
+        };
 
         let runtime = match Runtime::new() {
             Ok(rt) => rt,
@@ -168,6 +226,31 @@ pub unsafe extern "C" fn rgpot_rpc_server_start(
 
         let local = tokio::task::LocalSet::new();
         local.block_on(&runtime, async move {
+            #[cfg(unix)]
+            if let Some(path) = unix_path.as_deref() {
+                if let Err(message) = claim_socket_path(path) {
+                    set_last_error(&message);
+                    return rgpot_status_t::RGPOT_RPC_ERROR;
+                }
+                let listener = match tokio::net::UnixListener::bind(path) {
+                    Ok(l) => l,
+                    Err(e) => {
+                        set_last_error(&format!("failed to bind {addr}: {e}"));
+                        return rgpot_status_t::RGPOT_RPC_ERROR;
+                    }
+                };
+                loop {
+                    let (stream, _) = match listener.accept().await {
+                        Ok(s) => s,
+                        Err(e) => {
+                            set_last_error(&format!("accept failed: {e}"));
+                            return rgpot_status_t::RGPOT_RPC_ERROR;
+                        }
+                    };
+                    accept_client(stream, pot);
+                }
+            }
+
             let listener = match tokio::net::TcpListener::bind(&addr).await {
                 Ok(l) => l,
                 Err(e) => {
@@ -186,30 +269,26 @@ pub unsafe extern "C" fn rgpot_rpc_server_start(
                 };
 
                 let _ = stream.set_nodelay(true);
-
-                let server_impl = PotentialServer {
-                    callback: pot_ref.callback,
-                    user_data: pot_ref.pot_user_data,
-                };
-
-                let potential_client =
-                    capnp_rpc::new_client::<potential::Client, _>(server_impl);
-
-                let (reader, writer) =
-                    tokio_util::compat::TokioAsyncReadCompatExt::compat(stream).split();
-
-                let network = twoparty::VatNetwork::new(
-                    futures::io::BufReader::new(reader),
-                    futures::io::BufWriter::new(writer),
-                    rpc_twoparty_capnp::Side::Server,
-                    Default::default(),
-                );
-
-                let rpc_system =
-                    RpcSystem::new(Box::new(network), Some(potential_client.client));
-
-                tokio::task::spawn_local(rpc_system);
+                accept_client(stream, pot);
             }
         })
     }))
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::claim_socket_path;
+
+    #[test]
+    fn a_regular_file_is_not_removed() {
+        let path = std::env::temp_dir().join(format!(
+            "rgpot-unix-file-{}",
+            std::process::id()
+        ));
+        std::fs::write(&path, b"keep").unwrap();
+        let err = claim_socket_path(path.to_str().unwrap()).unwrap_err();
+        assert!(err.contains("not a socket"), "{err}");
+        assert_eq!(std::fs::read(&path).unwrap(), b"keep");
+        std::fs::remove_file(&path).unwrap();
+    }
 }

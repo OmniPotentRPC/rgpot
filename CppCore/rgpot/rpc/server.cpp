@@ -9,8 +9,14 @@
  */
 
 #include <algorithm>
+#include <cstring>
 #include <sstream>
 #include <vector>
+#if !defined(_WIN32)
+#include <cerrno>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 #include <capnp/ez-rpc.h>
 #include <capnp/message.h>
@@ -281,7 +287,8 @@ int runServer(int argc, char *argv[]
 #endif
 ) {
   if (argc < 3) {
-    std::cerr << "Usage: " << argv[0] << " <port> <PotentialType>" << std::endl;
+    std::cerr << "Usage: " << argv[0]
+              << " <port|unix:/path> <PotentialType>" << std::endl;
     std::cerr << "  Available PotentialTypes: CuH2, LJ, LJCluster, Morse, ZBL"
 #ifdef RGPOT_HAS_IPI
               << ", IPI:unix:<path>, IPI:tcp:<host>:<port>"
@@ -313,12 +320,51 @@ int runServer(int argc, char *argv[]
     return 1;
   }
 
-  int port = 12345;
-  try {
-    port = std::stoi(argv[1]);
-  } catch (const std::exception &e) {
-    std::cerr << "Invalid port argument '" << argv[1]
-              << "'. Using default 12345." << std::endl;
+  // "unix:/path" is a KJ address. Anything else is a TCP port on
+  // localhost, which stays the default. The Cap'n Proto messages are
+  // the same on both. An existing path is removed only when lstat says
+  // it is a socket; a regular file is left in place.
+  std::string bind_address = "localhost";
+  unsigned int bind_port = 12345;
+#if defined(_WIN32)
+  if (std::strncmp(argv[1], "unix:", 5) == 0) {
+    std::cerr << "unix sockets are not supported on this platform" << std::endl;
+    return 1;
+  }
+#endif
+#if !defined(_WIN32)
+  if (std::strncmp(argv[1], "unix:", 5) == 0) {
+    const char *path = argv[1] + 5;
+    if (path[0] == '\0') {
+      std::cerr << "unix socket path is empty" << std::endl;
+      return 1;
+    }
+    struct stat st;
+    if (lstat(path, &st) == 0) {
+      if (!S_ISSOCK(st.st_mode)) {
+        std::cerr << path << " exists and is not a socket" << std::endl;
+        return 1;
+      }
+      if (::unlink(path) != 0) {
+        std::cerr << "cannot remove socket " << path << ": " << std::strerror(errno)
+                  << std::endl;
+        return 1;
+      }
+    } else if (errno != ENOENT) {
+      std::cerr << "cannot stat " << path << ": " << std::strerror(errno) << std::endl;
+      return 1;
+    }
+    bind_address = argv[1];
+    bind_port = 0;
+  } else
+#endif
+  {
+    try {
+      bind_port = static_cast<unsigned int>(std::stoi(argv[1]));
+    } catch (const std::exception &e) {
+      std::cerr << "Invalid port argument '" << argv[1]
+                << "'. Using default 12345." << std::endl;
+    }
   }
 
   std::string pot_type = argv[2];
@@ -528,10 +574,13 @@ int runServer(int argc, char *argv[]
     channel = &session;
 #endif
     capnp::EzRpcServer server(kj::heap<GenericPotImpl>(std::move(nw), channel),
-                              "localhost", port);
+                              bind_address, bind_port);
     auto &waitScope = server.getWaitScope();
-    std::cout << "Server running on port " << port << " with " << pot_type
-              << " potential." << std::endl;
+    std::cout << "Server running on " << bind_address;
+    if (bind_port != 0) {
+      std::cout << ":" << bind_port;
+    }
+    std::cout << " with " << pot_type << " potential." << std::endl;
     kj::NEVER_DONE.wait(waitScope);
     return 0;
   } else if (pot_type == "CPMD") {
@@ -562,10 +611,13 @@ int runServer(int argc, char *argv[]
     channel = &session;
 #endif
     capnp::EzRpcServer server(kj::heap<GenericPotImpl>(std::move(cp), channel),
-                              "localhost", port);
+                              bind_address, bind_port);
     auto &waitScope = server.getWaitScope();
-    std::cout << "Server running on port " << port << " with " << pot_type
-              << " potential." << std::endl;
+    std::cout << "Server running on " << bind_address;
+    if (bind_port != 0) {
+      std::cout << ":" << bind_port;
+    }
+    std::cout << " with " << pot_type << " potential." << std::endl;
     kj::NEVER_DONE.wait(waitScope);
     return 0;
   } else {
@@ -580,11 +632,15 @@ int runServer(int argc, char *argv[]
   }
 
   capnp::EzRpcServer server(
-      kj::heap<GenericPotImpl>(std::move(potential_to_use)), "localhost", port);
+      kj::heap<GenericPotImpl>(std::move(potential_to_use)), bind_address,
+      bind_port);
 
   auto &waitScope = server.getWaitScope();
-  std::cout << "Server running on port " << port << " with " << pot_type
-            << " potential." << std::endl;
+  std::cout << "Server running on " << bind_address;
+  if (bind_port != 0) {
+    std::cout << ":" << bind_port;
+  }
+  std::cout << " with " << pot_type << " potential." << std::endl;
   kj::NEVER_DONE.wait(waitScope);
 
   return 0;
