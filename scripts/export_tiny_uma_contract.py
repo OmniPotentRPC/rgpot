@@ -340,6 +340,61 @@ def _drop_metadata_keys(path: Path, keys: tuple[str, ...]) -> None:
     path.write_bytes(out.getvalue())
 
 
+def export_packed(path: Path, dtype_name: str) -> None:
+    """Dynamic disjoint graph: one, two or three systems, no padding.
+
+    ``batch_packed`` tells UmaPot to send the real system count. The
+    traced example is two copies of the three-atom line.
+    """
+    dtype = torch.float64 if dtype_name == "float64" else torch.float32
+    example = _batch_example(dtype, 6)
+    module = apply_export_dtype(SumEnergyBatch().eval(), dtype_name)
+    nsys = torch.export.Dim("nsys", min=1, max=4)
+    atoms = torch.export.Dim("atoms", min=3, max=12)
+    edges = torch.export.Dim("edges", min=1, max=48)
+    exported = torch.export.export(
+        module,
+        example,
+        dynamic_shapes={
+            "pos": {0: atoms},
+            "atomic_numbers": {0: atoms},
+            "cell": {0: nsys},
+            "pbc": {0: nsys},
+            "edge_index": {1: edges},
+            "cell_offsets": {0: edges},
+            "charge": {0: nsys},
+            "spin": {0: nsys},
+            "batch": {0: atoms},
+            "natoms": {0: nsys},
+            "nedges": {0: nsys},
+        },
+        strict=False,
+    )
+    meta = runtime_metadata(
+        path,
+        6.0,
+        300,
+        example,
+        dtype,
+        model_dtype=dtype,
+        task_name="omol",
+        charge=0,
+        spin=1,
+        z_set=[1, 6, 7],
+        counts={1: 1, 6: 1, 7: 1},
+        label="line",
+        model="tiny-sum-packed",
+        batch_max=4,
+        batch_packed=1,
+    )
+    meta["nedges_min"] = 1
+    meta["nedges_max"] = 48
+    meta["edge_index_shape"] = "2,nedges"
+    meta["export_path"] = "packed-dynamic"
+    meta["pos_shape"] = "3,3"
+    aoti_package(exported, path, metadata=meta)
+
+
 def export_batch(path: Path, dtype_name: str, static: bool = False) -> None:
     dtype = torch.float64 if dtype_name == "float64" else torch.float32
     example = _batch_example(dtype, 6)
@@ -746,6 +801,7 @@ def main() -> int:
         choices=(
             "precision",
             "batch",
+            "packed",
             "cost",
             "gather",
             "no-edges",
@@ -781,6 +837,10 @@ def main() -> int:
         export_precision(args.out, args.dtype, args.meta)
     elif args.kind == "gather":
         export_gather(args.out, args.dtype, args.dynamic)
+    elif args.kind == "packed":
+        if args.meta != "both":
+            raise SystemExit("packed packages always record both dtype keys")
+        export_packed(args.out, args.dtype)
     elif args.kind == "batch":
         if args.meta != "both":
             raise SystemExit("batch packages always record both dtype keys")

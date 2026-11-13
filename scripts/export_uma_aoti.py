@@ -360,10 +360,16 @@ class TensorUma(nn.Module):
         # requires-grad tensor back to the caller.
         pos = pos.clone().requires_grad_(True)
         cell = cell.clone().requires_grad_(True)
-        # The single-system branch does not read nedges. Writing the
-        # symbolic edge count into a tensor specialises that dimension,
-        # so the placeholder stays zero.
-        nedges = edge_index.new_zeros(1)
+        # The packed graph always applies the batched cell shift, which
+        # reads nedges. A static single-system trace has one edge count,
+        # n(n-1) under a molecular box, so the real count is the right
+        # value. A zero placeholder makes repeat_interleave allocate the
+        # wrong number of rows.
+        nedges = torch.tensor(
+            [int(edge_index.shape[1])],
+            dtype=torch.long,
+            device=edge_index.device,
+        )
         z = atomic_numbers.long()
         b = batch.long()
         data = TensorData(
@@ -676,9 +682,57 @@ def patch_export_ops():
         'data_dict["pos"][data_dict["edge_index"][1]]',
         'data_dict["pos"].index_select(0, data_dict["edge_index"][1])',
     )
+    # len(natoms) == 1 is a Python branch. Tracing it freezes the system
+    # count, so a packed graph could not vary the batch. The batched
+    # shift is also correct for one system.
+    single_shift = (
+        '        if len(data_dict["natoms"]) == 1:\n'
+        "            # Single system: use matmul (compile-friendly, no data-dependent ops)\n"
+        '            shifts = data_dict["cell_offsets"].to(\n'
+        '                data_dict["cell"].dtype\n'
+        "            ) @ data_dict[\"cell\"].squeeze(0)\n"
+        "        else:\n"
+        "            # Batched: need repeat_interleave for variable edges per system\n"
+        '            cell_per_edge = data_dict["cell"].repeat_interleave(\n'
+        '                data_dict["nedges"],\n'
+        "                dim=0,\n"
+        '                output_size=data_dict["cell_offsets"].shape[0],\n'
+        "            )\n"
+        "            shifts = torch.einsum(\n"
+        '                "ij,ijk->ik",\n'
+        '                data_dict["cell_offsets"].to(cell_per_edge.dtype),\n'
+        "                cell_per_edge,\n"
+        "            )\n"
+    )
+    batched_shift = (
+        '        cell_per_edge = data_dict["cell"].repeat_interleave(\n'
+        '            data_dict["nedges"],\n'
+        "            dim=0,\n"
+        '            output_size=data_dict["cell_offsets"].shape[0],\n'
+        "        )\n"
+        "        shifts = torch.einsum(\n"
+        '            "ij,ijk->ik",\n'
+        '            data_dict["cell_offsets"].to(cell_per_edge.dtype),\n'
+        "            cell_per_edge,\n"
+        "        )\n"
+    )
+    if single_shift not in src:
+        raise RuntimeError("UMA graph shift branch was not where the exporter expects it")
+    src = src.replace(single_shift, batched_shift)
     namespace: dict = {}
     exec(src, escn_index.__dict__, namespace)  # noqa: S102
     escn_index.eSCNMDBackbone._generate_graph = namespace["_generate_graph"]
+
+    # len(natoms) is a Python int, so the export freezes the system count.
+    balance_src = textwrap.dedent(
+        inspect.getsource(escn_index.balance_channels_batched)
+    )
+    balance_src = balance_src.replace(
+        "num_systems = len(natoms)", "num_systems = natoms.shape[0]"
+    )
+    balance_ns: dict = {}
+    exec(balance_src, escn_index.__dict__, balance_ns)  # noqa: S102
+    escn_index.balance_channels_batched = balance_ns["balance_channels_batched"]
 
     def _node_to_edge(x_full, edge_index, wigner):
         gathered = torch.cat(
@@ -694,6 +748,28 @@ def patch_export_ops():
         _node_to_edge
     )
     print("patched edge gathers: index_select", flush=True)
+    # MoLE walks per-system segments with cumsum().tolist(). That Python
+    # loop is a data-dependent guard, so a dynamic edge count cannot be
+    # exported, and a static band specialises the segment sizes. One
+    # composition shares one expert mix (checked on two Cope geometries:
+    # the coefficient rows differ by 0), so the segments are one GEMM.
+    import fairchem.core.models.uma.nn.mole as mole_mod
+    from fairchem.core.models.uma.nn.matmul import linear_with_folded_batch
+
+    def _mole_one_gemm(self, x):
+        coeffs = self.global_mole_tensors.expert_mixing_coefficients
+        with torch.autocast(device_type=self.weights.device.type, enabled=False):
+            weights = torch.einsum(
+                "eoi, be->boi",
+                self.weights,
+                coeffs,
+            )
+        # weights is [systems, out, in]. A same-composition pack shares
+        # one expert mix, so the first row is every system's matrix.
+        return linear_with_folded_batch(x, weights[0], self.bias)
+
+    mole_mod.MOLE.forward = _mole_one_gemm
+    print("patched MOLE: one GEMM for a same-composition pack", flush=True)
 
 
 def dtype_name(dtype) -> str:
@@ -772,6 +848,7 @@ def runtime_metadata(
     model: str = "",
     molecular_box: float = 0.0,
     batch_max: int = 0,
+    batch_packed: int = 0,
     model_dtype=None,
 ):
     input_names = [
@@ -808,6 +885,7 @@ def runtime_metadata(
         "torch_version": str(torch.__version__),
         "fairchem_version": _dist_version("fairchem-core"),
         "batch_max": int(batch_max),
+        "batch_packed": int(batch_packed),
         "edge_convention": "fairchem_neighbor_center",
         "inputs": input_names,
         "outputs": ["energy", "forces"],
@@ -840,6 +918,23 @@ def _first_import(candidates):
     raise RuntimeError(f"none of {candidates} imported") from last
 
 
+def _honor_omp_threads() -> None:
+    """The CPU GEMM template bakes ``torch.get_num_threads()`` into the kernel.
+
+    A package compiled at one thread count and run at another is a different
+    kernel than the one that was timed. When ``OMP_NUM_THREADS`` is set, the
+    export uses that count.
+    """
+    raw = os.environ.get("OMP_NUM_THREADS", "").strip()
+    if not raw.isdigit():
+        return
+    threads = int(raw)
+    if threads < 1:
+        return
+    torch.set_num_threads(threads)
+    print(f"torch.set_num_threads({threads})", flush=True)
+
+
 def aoti_package(exported, path: Path, metadata=None):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -860,6 +955,7 @@ def aoti_package(exported, path: Path, metadata=None):
                 str(k): str(v) for k, v in metadata.items()
             }
         }
+    _honor_omp_threads()
     fn(canonicalize_strided_slices(exported), **kwargs)
     clear_pt2_execstack(path)
     return path
@@ -1003,6 +1099,136 @@ def edge_export_record(export_path, traced_nedges, molecular_box, alt_nedges=Non
     }
 
 
+def _export_packed(
+    wrap,
+    example,
+    atoms,
+    cutoff,
+    device,
+    dtype,
+    max_n,
+    batch_max,
+    molecular_box,
+    e_ref,
+    f_ref,
+):
+    """Disjoint graph with a dynamic atom count and a dynamic edge count.
+
+    The trace is four systems, so the system count is not unified with
+    the static 2 of ``edge_index`` or the static 3 of the coordinates.
+    The exported program is then run at one system and at three. UmaPot
+    sends the real count and does not pad.
+    """
+    n = len(atoms)
+    each = n * (n - 1)
+    atom_hi = n * int(batch_max)
+    edge_hi = each * int(batch_max)
+    nsys = torch.export.Dim("nsys", min=1, max=int(batch_max))
+    atoms_d = torch.export.Dim("atoms", min=n, max=atom_hi)
+    edges_d = torch.export.Dim("edges", min=each, max=edge_hi)
+    print(
+        f"packed dynamic atoms=[{n},{atom_hi}] edges=[{each},{edge_hi}] "
+        f"systems=[1,{batch_max}]",
+        flush=True,
+    )
+    # Positional, so an fx graph whose placeholders are not the original
+    # argument names still receives the same symbols.
+    dyn_seq = (
+        {0: atoms_d},
+        {0: atoms_d},
+        {0: nsys},
+        {0: nsys},
+        {1: edges_d},
+        {0: edges_d},
+        {0: nsys},
+        {0: nsys},
+        {0: atoms_d},
+        {0: nsys},
+        {0: nsys},
+    )
+    exported = None
+    try:
+        exported = torch.export.export(
+            wrap, example, dynamic_shapes=dyn_seq, strict=False
+        )
+        print("packed export ok torch.export", flush=True)
+    except Exception as exc:
+        print(
+            f"packed torch.export failed: {type(exc).__name__}: {exc}",
+            flush=True,
+        )
+    if exported is None:
+        # Real autograd leaves a fake tensor in the strict exporter's
+        # constants. Symbolic make_fx records the same dynamic sizes
+        # without that constant.
+        print("try packed make_fx symbolic", flush=True)
+        from torch.fx.experimental.proxy_tensor import make_fx
+
+        traced = tuple(tensor.clone() for tensor in example)
+        try:
+            graph = make_fx(
+                wrap,
+                tracing_mode="symbolic",
+                _allow_non_fake_inputs=True,
+                _allow_fake_constant=True,
+            )(*traced)
+            print("packed symbolic nodes", len(graph.graph.nodes), flush=True)
+            exported = torch.export.export(
+                graph, example, dynamic_shapes=dyn_seq, strict=False
+            )
+            print("packed export ok make_fx-symbolic", flush=True)
+        except Exception as exc:
+            print(
+                f"packed export failed: {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+            )
+            return None
+
+    def as_batch(n_systems):
+        packed_example = pack_example(
+            atoms, cutoff, device, dtype, max_n, n_systems=n_systems
+        )
+        if len(packed_example) == 10:
+            nedges = torch.tensor(
+                [int(packed_example[4].shape[1])],
+                dtype=torch.long,
+                device=device,
+            )
+            packed_example = packed_example + (nedges,)
+        return packed_example
+
+    sizes = [1, 3, 4]
+    for systems in sizes:
+        trial = as_batch(systems)
+        with torch.enable_grad():
+            energy, forces = exported.module()(*trial)
+        if not compare_batched(
+            f"packed[{systems}]",
+            energy.detach().cpu(),
+            forces.detach().cpu().numpy(),
+            e_ref,
+            f_ref,
+            n,
+        ):
+            print(
+                f"FAIL: packed graph at {systems} systems does not match ASE",
+                file=sys.stderr,
+            )
+            return None
+    return (
+        exported,
+        "packed-dynamic",
+        {
+            "molecular_box": float(molecular_box),
+            "molecular": True,
+            "nedges_min": int(each),
+            "nedges_max": int(edge_hi),
+            "edge_index_shape": "2,nedges",
+            "batch_packed": 1,
+        },
+    )
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--model", default="uma-s-1p1")
@@ -1040,9 +1266,25 @@ def main() -> int:
         type=int,
         default=0,
         help=(
-            "Trace with a dynamic system dimension so one AOTI call "
-            "evaluates up to this many same-composition geometries (a NEB "
-            "band in one graph call). 0 keeps the single-system export."
+            "Trace a fixed band of this many same-composition systems and "
+            "record it as batch_max. UmaPot runs a stencil in chunks of "
+            "that size and pads a short chunk by repeating its last "
+            "system. 0 or 1 keeps the single-system graph. Pass "
+            "--molecular-box so every geometry has the same edge count "
+            "n(n-1); the make_fx fallback refuses a band with no box."
+        ),
+    )
+    p.add_argument(
+        "--batch-style",
+        choices=("static", "packed"),
+        default="static",
+        help=(
+            "static traces exactly --batch-max systems and UmaPot pads "
+            "every chunk to that size. packed is one disjoint graph "
+            "(concatenated atoms, a batch index, block-diagonal edges) "
+            "with a dynamic atom count and a dynamic edge count; UmaPot "
+            "sends the real system count, up to --batch-max, and does "
+            "not repeat a system. Requires --molecular-box."
         ),
     )
     p.add_argument("--skip-aoti", action="store_true")
@@ -1180,17 +1422,29 @@ def main() -> int:
     )
 
     batch_max = max(0, int(args.batch_max))
-    # merge_mole freezes per-atom expert buffers at the traced total, so
-    # a band package is traced at exactly batch_max systems and stays
-    # fully static; the C++ side pads every chunk to that size. A NEB
-    # band has a fixed image count, so nothing is lost.
-    trace_systems = batch_max if batch_max > 1 else 1
+    packed = args.batch_style == "packed"
+    if packed and not (args.molecular_box and args.molecular_box > 0.0):
+        print("FAIL: --batch-style packed needs --molecular-box", file=sys.stderr)
+        return 2
+    # A static band is traced at exactly batch_max systems and UmaPot
+    # pads every chunk. A packed graph is traced at four systems: two
+    # would unify with edge_index's leading 2, and three with the
+    # coordinate axis. The atom and edge counts stay dynamic up to
+    # batch_max.
+    if packed and batch_max < 4:
+        print(
+            "FAIL: --batch-style packed needs --batch-max >= 4 "
+            "(2 and 3 unify with static input axes)",
+            file=sys.stderr,
+        )
+        return 2
+    trace_systems = 4 if packed else (batch_max if batch_max > 1 else 1)
     example = pack_example(atoms, cutoff, device, dtype, max_n,
                            n_systems=trace_systems)
     print(f"vesin edges={example[4].shape[1]} systems={trace_systems}",
           flush=True)
 
-    wrap_cls = TensorUmaBatched if batch_max > 1 else TensorUma
+    wrap_cls = TensorUmaBatched if packed or batch_max > 1 else TensorUma
     wrap = wrap_cls(hydra, pred_unit=pred, task_name=task_name).to(device).eval()
     with torch.enable_grad():
         e_e, f_e = wrap(*example)
@@ -1214,12 +1468,44 @@ def main() -> int:
         model=args.model,
         molecular_box=float(args.molecular_box or 0.0),
         batch_max=max(0, int(args.batch_max)),
+        batch_packed=1 if packed else 0,
     )
     if args.eager_only:
         return 0
 
     patch_export_ops()
+    # torch 2.14 refuses torch.autograd.grad inside a strict export while
+    # this is false. The grad is the force, so the export has to trace it.
+    # Older torch builds have no such switch and are left alone.
+    dynamo = getattr(torch, "_dynamo", None)
+    dynamo_config = getattr(dynamo, "config", None)
+    if dynamo_config is not None and hasattr(dynamo_config, "trace_autograd_ops"):
+        dynamo_config.trace_autograd_ops = True
+        print("torch._dynamo.config.trace_autograd_ops = True", flush=True)
     print("torch.export", flush=True)
+    exported = None
+    export_path = ""
+    edge_record = None
+    example_alt = None
+    e_alt_ref = None
+    f_alt_ref = None
+    if packed:
+        packed_out = _export_packed(
+            wrap,
+            example,
+            atoms,
+            cutoff,
+            device,
+            dtype,
+            max_n,
+            batch_max,
+            float(args.molecular_box),
+            e_ref,
+            f_ref,
+        )
+        if packed_out is None:
+            return 5
+        exported, export_path, edge_record = packed_out
     natoms_dim = torch.export.Dim("natoms", min=1, max=256)
     nedges_min, nedges_max = 1, 65536
     nedges_dim = torch.export.Dim("nedges", min=nedges_min, max=nedges_max)
@@ -1235,17 +1521,9 @@ def main() -> int:
         "batch": {0: natoms_dim},
         "natoms": None,
     }
-    if batch_max > 1:
-        # Fully static band package: fixed composition and fixed system
-        # count leave nothing dynamic, and the molecular-box convention
-        # keeps the edge count at B * n * (n-1) for every geometry.
+    if packed or batch_max > 1:
+        # A packed graph was exported above. A static band is exact-B.
         dyn = None
-    exported = None
-    export_path = ""
-    edge_record = None
-    example_alt = None
-    e_alt_ref = None
-    f_alt_ref = None
     # Atom count stays fixed: a three-atom trace unifies that count with
     # the trailing 3 of the coordinates, so natoms is not a free symbol.
     # The edge count is free. A second geometry, scored against a

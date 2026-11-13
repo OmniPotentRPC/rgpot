@@ -224,6 +224,9 @@ struct UmaPot::Impl {
   double molecular_box{0.0};
   int max_neighbors{300};
   int64_t batch_max{0};
+  // A packed package is one disjoint graph with a dynamic atom count
+  // and a dynamic edge count. Chunks are not padded.
+  bool batch_packed{false};
   UmaContract contract;
   std::unique_ptr<torch::inductor::AOTIModelPackageLoader> loader;
   mutable std::mutex mutex;
@@ -266,6 +269,7 @@ void UmaPot::ensureLoaded() const {
   m_impl->max_neighbors = static_cast<int>(
       num("max_neighbors", static_cast<double>(m_impl->max_neighbors)));
   m_impl->batch_max = static_cast<int64_t>(num("batch_max", 0.0));
+  m_impl->batch_packed = num("batch_packed", 0.0) != 0.0;
   auto named = [&](const char *key) -> std::optional<torch::ScalarType> {
     const auto it = meta.find(key);
     if (it == meta.end() || it->second.empty())
@@ -344,8 +348,8 @@ void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   }
   checkContract(in);
   if (m_impl->batch_max > 1) {
-    // A band package carries only the batched (B >= 2) graph; a lone
-    // system rides the batch path, which pads it to two.
+    // A static band carries only the batched graph, so a lone system
+    // is padded. A packed graph accepts one system as itself.
     ForceBatch one{.nSystems = 1, .in = &in, .out = out};
     forceBatchImpl(one);
     return;
@@ -487,11 +491,11 @@ void UmaPot::forceBatchImpl(const ForceBatch &batch) const {
     const size_t stop =
         std::min(batch.nSystems, start + static_cast<size_t>(bmax));
     const auto B_real = static_cast<int64_t>(stop - start);
-    // The band graph is traced at exactly batch_max systems (static
-    // shapes; merge_mole freezes per-atom buffers at the traced
-    // total), so every chunk pads to that size by repeating the last
-    // system and the padded results are discarded.
-    const int64_t B = bmax;
+    // A static band is traced at exactly batch_max systems, so a short
+    // chunk repeats its last system. A packed graph takes the real
+    // count: the atom and edge dimensions are dynamic.
+    const bool packed = m_impl->batch_packed;
+    const int64_t B = packed ? B_real : bmax;
     auto in_at = [&](int64_t b) -> const ForceInput & {
       const int64_t src = b < B_real ? b : B_real - 1;
       return batch.in[start + static_cast<size_t>(src)];

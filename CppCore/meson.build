@@ -1077,6 +1077,23 @@ if get_option('with_tests')
         )
         _uma_fix_pkgs += [_uma_batch]
         _uma_fix_env.set('UMA_FLOAT64_BATCH_PT2', _uma_batch.full_path())
+        _uma_packed = custom_target(
+            'uma-line-packed',
+            output: 'line-float64-packed.pt2',
+            command: [
+                _uma_py,
+                _uma_export,
+                '--kind',
+                'packed',
+                '--dtype',
+                'float64',
+                '--out',
+                '@OUTPUT@',
+            ],
+            build_by_default: false,
+        )
+        _uma_fix_pkgs += [_uma_packed]
+        _uma_fix_env.set('UMA_PACKED_PT2', _uma_packed.full_path())
         _uma_gather_static = custom_target(
             'uma-gather-static',
             output: 'gather-static.pt2',
