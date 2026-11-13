@@ -77,6 +77,11 @@ meson compile -C bbdir && meson test -C bbdir
 
    howto/pip-python
    howto/ase
+   howto/engine-lammps
+   howto/engine-gromacs
+   howto/engine-openmm
+   howto/engine-plumed
+   howto/engine-metatomic
    howto/embedding
    howto/exprpot
    howto/ipi

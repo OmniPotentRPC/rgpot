@@ -1,0 +1,34 @@
+#+TITLE: GROMACS
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* GROMACS
+
+GROMACS 2026's NNPot module loads a TorchScript model.
+The conda-forge build used here has no NNPot.
+It does accept =gmx mdrun -plumed=.
+The collective variable =RGPOT= calls the same Lennard-Jones evaluator
+as the other engines, and =BIASVALUE= applies that energy as the bias.
+A topology with zero charge and zero Lennard-Jones leaves the bias as
+the only potential.
+
+Parameters in the PLUMED file are in GROMACS units: nanometres and
+kJ/mol.
+=U0= for a 1 eV well is the factor =rgpot-lj --kJ-per-eV= prints.
+=CUTOFF= 0.8 and =PSI= 0.1 are 8 Angstrom and 1 Angstrom.
+
+#+begin_src text
+ene: RGPOT ATOMS=1,2 U0=96.48533212331002 CUTOFF=0.8 PSI=0.1
+b: BIASVALUE ARG=ene
+PRINT ARG=ene FILE=COLVAR
+#+end_src
+
+=gmx mdrun= needs =PLUMED_KERNEL= pointed at =libplumedKernel.so=.
+The meson test =gromacs_mdrun= writes a two-atom topology, runs
+=grompp= and =mdrun -nsteps 0 -plumed=, and checks the printed bias
+against =rgpot-lj=.
+The box is 4 nm so the neighbour list cutoff is shorter than half the
+cell.
+Set =-Dwith_gromacs=enabled= and =-Dwith_plumed=enabled= to require the
+binaries.
+Auto skips the test when =gmx= or the PLUMED headers are absent.

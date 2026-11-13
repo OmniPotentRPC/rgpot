@@ -1,0 +1,43 @@
+#+TITLE: LAMMPS
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* LAMMPS
+
+=pair_style rgpot= evaluates one frame with the in-process shifted
+Lennard-Jones potential, or with any library that exports
+=rgpot_engine_force=.
+The style is a LAMMPS plugin.
+It has to be compiled against the same LAMMPS headers as the =lmp= that
+loads it.
+A conda-forge =liblammps= does not ship =pair.h=, and a plugin built from
+a different tree will not see the coefficient arrays the library checks.
+
+#+begin_src lammps
+plugin load pair_rgpot.so
+units metal
+pair_style rgpot 8.0
+pair_coeff * * 1.0 1.0
+#+end_src
+
+=pair_coeff * * u0 psi= is the well depth and the zero crossing, in the
+metal units of the input.
+=pair_coeff * * engine /path/to/libengine.so= dlopens an engine plugin
+instead.
+Metatomic and the in-tree LJ engine use that entry.
+The style reads the whole box on one rank.
+A parallel run is rejected.
+
+The meson test =lammps_lj= runs LAMMPS =pair_style lj/cut= with
+=pair_modify shift yes= on the same dimer and compares the energy and
+the forces with =rgpot-lj=.
+That is the check that does not need LAMMPS headers.
+Pass =-Dlammps_src=SRC= and =-Dlammps_exe=/path/to/lmp= to compile the
+plugin and to run =pair_style rgpot= against that binary.
+The two energies agree to 1e-8 eV on the dimer in
+=engines/compare_geom.txt=.
+
+Build the matching LAMMPS with the PLUGIN package and =BUILD_MPI= off,
+then point =lammps_src= at its =src= directory.
+The integer layout is =LAMMPS_SMALLBIG=, which the plugin compile flag
+repeats.

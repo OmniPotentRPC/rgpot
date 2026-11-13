@@ -1,0 +1,24 @@
+#+TITLE: OpenMM
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* OpenMM
+
+OpenMM has no callback that can call an arbitrary C++ potential.
+The comparison that the meson test =openmm_lj= runs is a
+=CustomNonbondedForce= whose expression is the shifted 12-6 potential
+rgpot evaluates, written in OpenMM's nanometres and kJ/mol.
+
+The energy is one expression.
+Intermediate names are not used, because a name defined after the
+energy is not in scope, and a trailing unnamed expression is rejected.
+Sigma and epsilon are combined geometrically, which is exact when both
+atoms carry the same parameters.
+A different combining rule would not be the rgpot potential, and the
+test would fail.
+
+Positions are 0 and 0.15 nm in a 2 nm cube, cutoff 0.8 nm.
+The context energy, converted with =rgpot-lj --kJ-per-eV=, matches the
+direct evaluation to 1e-6 eV, and the force on the second atom matches
+to 1e-5 eV/Angstrom.
+=-Dwith_openmm=enabled= requires the =openmm= Python module.
