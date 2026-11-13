@@ -8,6 +8,7 @@
 
 #include <cctype>
 #include <cerrno>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -236,6 +237,51 @@ void parse_engrad(const std::filesystem::path &path, std::size_t n_atoms,
   }
 }
 
+double cell_determinant(const double *h) {
+  return h[0] * (h[4] * h[8] - h[5] * h[7]) -
+         h[1] * (h[3] * h[8] - h[5] * h[6]) +
+         h[2] * (h[3] * h[7] - h[4] * h[6]);
+}
+
+// Rows of `box` are the lattice vectors. A pair folds when its cartesian
+// displacement, written in that basis, has a fractional component outside
+// [-1/2, 1/2]. A singular cell has no images.
+bool folds_periodic_image(const double *box, const double *pos,
+                          std::size_t n_atoms) {
+  const double det = cell_determinant(box);
+  if (!std::isfinite(det) || std::abs(det) <= 1e-12) {
+    return false;
+  }
+  const double invdet = 1.0 / det;
+  const double h0 = box[0], h1 = box[1], h2 = box[2];
+  const double h3 = box[3], h4 = box[4], h5 = box[5];
+  const double h6 = box[6], h7 = box[7], h8 = box[8];
+  const double inv[9] = {
+      (h4 * h8 - h5 * h7) * invdet, (h2 * h7 - h1 * h8) * invdet,
+      (h1 * h5 - h2 * h4) * invdet, (h5 * h6 - h3 * h8) * invdet,
+      (h0 * h8 - h2 * h6) * invdet, (h2 * h3 - h0 * h5) * invdet,
+      (h3 * h7 - h4 * h6) * invdet, (h1 * h6 - h0 * h7) * invdet,
+      (h0 * h4 - h1 * h3) * invdet};
+  constexpr double kHalf = 0.5 + 1e-8;
+  for (std::size_t j = 1; j < n_atoms; ++j) {
+    const double *pj = pos + j * 3;
+    for (std::size_t i = 0; i < j; ++i) {
+      const double *pi = pos + i * 3;
+      const double dx = pj[0] - pi[0];
+      const double dy = pj[1] - pi[1];
+      const double dz = pj[2] - pi[2];
+      const double sx = dx * inv[0] + dy * inv[3] + dz * inv[6];
+      const double sy = dx * inv[1] + dy * inv[4] + dz * inv[7];
+      const double sz = dx * inv[2] + dy * inv[5] + dz * inv[8];
+      if (std::abs(sx) > kHalf || std::abs(sy) > kHalf ||
+          std::abs(sz) > kHalf) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 std::string failure_text(int code, const std::string &stderr_text,
                          const std::string &detail) {
   std::ostringstream msg;
@@ -364,6 +410,12 @@ void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   std::vector<const char *> symbols(in.nAtoms);
   for (std::size_t i = 0; i < in.nAtoms; ++i) {
     symbols[i] = element_symbol(in.atmnrs[i]);
+  }
+  if (in.box != nullptr &&
+      folds_periodic_image(in.box, in.pos, in.nAtoms)) {
+    throw std::invalid_argument(
+        "ORCAPot handles clusters only and does not support periodic "
+        "boundary conditions");
   }
 
   std::lock_guard<std::mutex> lock(mu_);

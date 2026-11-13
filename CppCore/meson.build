@@ -1878,6 +1878,9 @@ if get_option('with_tests')
         # sums then miss by an ulp. ReducedPair.cc is built unfused, and
         # its test compares exactly against the same expressions.
         case_args = test_args
+        case_deps = test_deps
+        case_env = environment()
+        case_depends = []
         if test.get(2) in [
             'FastNlistTest.cc',
             'ReducedPairTest.cc',
@@ -1890,10 +1893,22 @@ if get_option('with_tests')
                 ['-ffp-contract=off', '/fp:precise'],
             )
         endif
+        if test.get(0) == 'ORCAPotTest' and _rpc_stack
+            case_deps += [capnp_rpc_dep, ptlrpc_dep]
+            case_args += ['-DRGPOT_ORCA_TEST_RPC']
+            if is_variable('orca_engine')
+                case_env.set('RGPOT_ENGINE_ORCA', orca_engine.full_path())
+                case_depends += [orca_engine]
+            endif
+            if is_variable('server')
+                case_env.set('RGPOT_POTSERV', server.full_path())
+                case_depends += [server]
+            endif
+        endif
         _test_exe = executable(
             test.get(1),
             sources: ['tests/' + test.get(2)],
-            dependencies: test_deps,
+            dependencies: case_deps,
             include_directories: _incdirs + ['.'],
             cpp_args: case_args,
             link_with: _linkto,
@@ -1912,6 +1927,8 @@ if get_option('with_tests')
             _test_exe,
             workdir: meson.source_root() + test.get(3),
             timeout: _timeout,
+            env: case_env,
+            depends: case_depends,
         )
         if test.get(1) == 'calculator_group_test'
             calculator_group_test_exe = _test_exe

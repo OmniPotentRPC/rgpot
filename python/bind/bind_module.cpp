@@ -61,6 +61,9 @@
 #ifdef RGPOT_HAS_IPI
 #include "rgpot/IPIPot/IPIPot.hpp"
 #endif
+#ifdef RGPOT_HAS_ORCA
+#include "rgpot/ORCAPot/ORCAPot.hpp"
+#endif
 
 #ifndef RGPOT_PY_VERSION
 #define RGPOT_PY_VERSION "0.0.0"
@@ -694,6 +697,44 @@ NB_MODULE(_core, m) {
     return out;
   });
   rgpot::pybind::bind_calls(morse_cls);
+
+#ifdef RGPOT_HAS_ORCA
+  auto orca_cls = nb::class_<PotHolder<rgpot::ORCAPot>>(m, "ORCAPot");
+  orca_cls.def(
+      "__init__",
+      [](PotHolder<rgpot::ORCAPot> *self, const std::string &method,
+         const std::string &basis, int charge, int multiplicity,
+         const std::string &keywords, const std::string &executable) {
+        new (self) PotHolder<rgpot::ORCAPot>([=] {
+          rgpot::ORCAConfig cfg;
+          cfg.method = method;
+          cfg.basis = basis;
+          cfg.charge = charge;
+          cfg.multiplicity = multiplicity;
+          cfg.keywords = keywords;
+          cfg.executable = executable;
+          return std::make_unique<rgpot::ORCAPot>(cfg);
+        });
+      },
+      nb::arg("method") = "HF", nb::arg("basis") = "def2-SVP",
+      nb::arg("charge") = 0, nb::arg("multiplicity") = 1,
+      nb::arg("keywords") = "", nb::arg("executable") = "",
+      "ORCA energy and forces for one molecule. The executable is the "
+      "given path, else ORCA_EXE, else orca on PATH. A cell that would "
+      "fold a pair is rejected.");
+  orca_cls.def("config", [](const PotHolder<rgpot::ORCAPot> &self) {
+    const rgpot::ORCAConfig &cfg = self.primary().config();
+    nb::dict out;
+    out["method"] = cfg.method;
+    out["basis"] = cfg.basis;
+    out["charge"] = cfg.charge;
+    out["multiplicity"] = cfg.multiplicity;
+    out["keywords"] = cfg.keywords;
+    out["executable"] = cfg.executable;
+    return out;
+  });
+  rgpot::pybind::bind_calls(orca_cls);
+#endif
 
 #ifdef RGPOT_HAS_FORTRAN_POTS
   bind_default_pot<rgpot::fortranpots::SWPot>(m, "SWPot");

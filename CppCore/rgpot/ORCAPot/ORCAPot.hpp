@@ -22,8 +22,9 @@
  * write the same `.gbw`. A missing `.gbw`, or one failed MORead run, falls
  * back to a single cold guess.
  *
- * The calculation is molecular. The cell is not used and there is no
- * neighbour list. Saddle-search drivers should give each image its own
+ * The calculation is a cluster. A cell that folds any pair into another
+ * image is rejected: ORCA has no periodic boundary conditions. There is
+ * no neighbour list. Saddle-search drivers should give each image its own
  * instance: the saved wavefunction belongs to one geometry.
  */
 

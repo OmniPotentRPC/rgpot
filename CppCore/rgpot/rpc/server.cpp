@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <sstream>
+#include <utility>
 #include <vector>
 
 #include <capnp/ez-rpc.h>
@@ -209,7 +210,18 @@ public:
 #endif
       return (*m_potential)(nativePositions, nativeAtomTypes, nativeBoxMatrix);
     };
-    auto [energy, forces, variance] = evaluate();
+    // A potential error, including ORCA's periodic-cell rejection, has to
+    // reach the client as the failure text. An uncaught std::exception
+    // does not.
+    decltype(evaluate()) evaluated;
+    try {
+      evaluated = evaluate();
+    } catch (const kj::Exception &) {
+      throw;
+    } catch (const std::exception &error) {
+      throw KJ_EXCEPTION(FAILED, error.what());
+    }
+    auto [energy, forces, variance] = std::move(evaluated);
     (void)variance;
 
     // Convert results to caller's units

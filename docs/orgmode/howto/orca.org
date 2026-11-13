@@ -11,8 +11,11 @@ ORCA reports the energy in Hartree and the Cartesian gradient in
 Hartree/Bohr.
 rgpot returns the energy in eV and the forces in eV/Angstrom.
 The force is the negative of the gradient.
-The cell is ignored: this is a molecular calculation, and it does not build
-a neighbour list.
+Hartree and Bohr use the CODATA 2018 values in =rgpot/units.hpp=.
+The calculation is a cluster.
+A cell that folds any pair into another image is rejected, because ORCA
+has no periodic boundary conditions.
+There is no neighbour list.
 
 ** Configuration
 
@@ -50,6 +53,11 @@ The engine library =liborca_engine.so= takes a flat =OrcaParams= message at
 =rgpot_engine_create=.
 =rgpot_engine_set_charge_spin= sets the charge and the spin multiplicity
 (2S+1) used by later evaluations.
+
+The Python extension exports =ORCAPot= when the build has ORCA.
+=RgpotCalculator("orca")= is the ASE calculator.
+Any periodic flag on the atoms raises =ValueError=.
+A cluster passes an open cell through and ignores it.
 
 ** Wavefunction reuse
 
