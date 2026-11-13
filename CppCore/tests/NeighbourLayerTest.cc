@@ -924,3 +924,106 @@ TEST_CASE("a rebuild inside the same cells matches a fresh list", "[nlist][cells
   REQUIRE(a == b);
   REQUIRE(!a.empty());
 }
+
+std::vector<std::uint64_t> directedBits(rgpot::nlist::Neighbours &cells, std::size_t n) {
+  std::vector<std::uint64_t> out;
+  cells.forDirected(0, static_cast<std::int64_t>(n),
+                    [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                        double r2) {
+                      out.push_back(static_cast<std::uint64_t>(static_cast<std::uint32_t>(i))
+                                        << 32 |
+                                    static_cast<std::uint32_t>(j));
+                      out.push_back(bits(dx));
+                      out.push_back(bits(dy));
+                      out.push_back(bits(dz));
+                      out.push_back(bits(r2));
+                    });
+  return out;
+}
+
+std::vector<double> boxAtoms(int count, double lo, double hi, std::uint64_t seed) {
+  std::mt19937_64 rng(seed);
+  std::uniform_real_distribution<double> u(lo, hi);
+  std::vector<double> pos(static_cast<std::size_t>(count) * 3);
+  for (double &x : pos) {
+    x = u(rng);
+  }
+  return pos;
+}
+
+// search = cutoff + skin. The cell count is floor(L / search), reduced
+// while a cell would be shorter than the search.
+void expectGuard(const std::vector<double> &pos, double side, double cutoff, double skin) {
+  const double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  rgpot::nlist::Spec spec;
+  spec.cutoff = cutoff;
+  spec.skin = skin;
+  spec.periodic = {true, true, true};
+  spec.image = rgpot::nlist::Image::Round;
+  spec.mode = rgpot::nlist::Mode::Stored;
+  const auto n = pos.size() / 3;
+  setThreads("1");
+  rgpot::nlist::Neighbours one;
+  one.update(pos.data(), n, box, spec);
+  REQUIRE_FALSE(one.reused());
+  REQUIRE_FALSE(one.streaming());
+  expectStoredMatchesRounding(one, pos, side, side, side, true, true, true);
+  const auto bits1 = directedBits(one, n);
+  setThreads("2");
+  rgpot::nlist::Neighbours two;
+  two.update(pos.data(), n, box, spec);
+  REQUIRE(directedBits(two, n) == bits1);
+  expectStoredMatchesRounding(two, pos, side, side, side, true, true, true);
+}
+
+void expectSwitch(std::vector<double> pos, double side, double cutoff, double skin,
+                  double shift) {
+  const double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  rgpot::nlist::Spec spec;
+  spec.cutoff = cutoff;
+  spec.skin = skin;
+  spec.periodic = {true, true, true};
+  spec.image = rgpot::nlist::Image::Round;
+  spec.mode = rgpot::nlist::Mode::Stored;
+  const auto n = pos.size() / 3;
+  setThreads("1");
+  rgpot::nlist::Neighbours kept;
+  kept.update(pos.data(), n, box, spec);
+  REQUIRE_FALSE(kept.reused());
+  expectStoredMatchesRounding(kept, pos, side, side, side, true, true, true);
+  for (std::size_t k = 0; k < pos.size(); k += 3) {
+    pos[k] += shift;
+  }
+  kept.update(pos.data(), n, box, spec);
+  REQUIRE_FALSE(kept.reused());
+  rgpot::nlist::Neighbours fresh;
+  fresh.update(pos.data(), n, box, spec);
+  REQUIRE(directedBits(kept, n) == directedBits(fresh, n));
+  expectStoredMatchesRounding(kept, pos, side, side, side, true, true, true);
+  expectStoredMatchesRounding(fresh, pos, side, side, side, true, true, true);
+  setThreads("2");
+  rgpot::nlist::Neighbours threaded;
+  threaded.update(pos.data(), n, box, spec);
+  REQUIRE(directedBits(threaded, n) == directedBits(fresh, n));
+}
+
+TEST_CASE("the cell-shift guard matches the fold on both sides", "[nlist][round][cells]") {
+  const double cutoff = 5.0;
+  const double skin = 1.0;
+  // Two and three cells stay on the original fold.
+  expectGuard(boxAtoms(40, 0.05, 13.9, 3), 14.0, cutoff, skin);
+  expectGuard(boxAtoms(48, 0.05, 19.9, 5), 20.0, cutoff, skin);
+  // Four cells. Inside the box the stencil image is the unique nearest
+  // one. The same atoms then leave the box, and the pairs still match
+  // the original fold and a list built from scratch.
+  auto four = boxAtoms(64, 0.05, 25.9, 7);
+  expectGuard(four, 26.0, cutoff, skin);
+  expectSwitch(four, 26.0, cutoff, skin, 4.0);
+  // Eight cells. w = 6.25 and the outside margin is 11.25. A shift of 13
+  // pushes an atom at 49.5 past that margin, onto the original fold.
+  auto eight = boxAtoms(80, 0.2, 49.5, 11);
+  eight[0] = 0.2;
+  eight[3] = 49.5;
+  expectGuard(eight, 50.0, cutoff, skin);
+  expectSwitch(eight, 50.0, cutoff, skin, 13.0);
+}

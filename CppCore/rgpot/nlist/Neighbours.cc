@@ -585,21 +585,32 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
     const double folded = other < a ? other : a;
     return folded > far;
   };
-  // Five or more cells make the 27 stencil slots distinct, and a
-  // neighbour is then at most two cell widths away. Only an edge cell
-  // can hold an atom past the box. Nine tenths of the gap between that
-  // span and half a box still rounds to the stencil wrap: 0 when the
-  // cells do not wrap, and exactly ±1 when they do. The separation also
-  // stays under 1.5 box lengths, so the folded early reject matches
-  // clearly_out. {-L, 0, L} is the multiple fold_axis would subtract.
+  // Four or more cells make the 27 stencil slots distinct. With five
+  // or more, a neighbour is at most two cell widths away and only an
+  // edge cell can hold an atom past the box. Nine tenths of the gap
+  // between that span and half a box still rounds to the stencil wrap.
+  // Four cells leave no such gap. The folded axis is the unique nearest
+  // image only while it lies strictly inside half a box; any other pair
+  // keeps the original fold. That test is what admits an atom outside
+  // the box. The separation then stays under 1.5 box lengths, so the
+  // early reject matches clearly_out. {-L, 0, L} is the multiple
+  // fold_axis would subtract. A sheared cell is not handled here. Its
+  // hash wraps the Cartesian bins, and that integer is not the lattice
+  // coefficient.
   const double sub0[3] = {-len_[0], 0.0, len_[0]};
   const double sub1[3] = {-len_[1], 0.0, len_[1]};
   const double sub2[3] = {-len_[2], 0.0, len_[2]};
+  const double half0 = 0.5 * len_[0];
+  const double half1 = 0.5 * len_[1];
+  const double half2 = 0.5 * len_[2];
   bool use_cell_shift = wide;
-  if (use_cell_shift && ((periodic_[0] && nx_ < 5) || (periodic_[1] && ny_ < 5) ||
-                         (periodic_[2] && nz_ < 5))) {
+  if (use_cell_shift && ((periodic_[0] && nx_ < 4) || (periodic_[1] && ny_ < 4) ||
+                         (periodic_[2] && nz_ < 4))) {
     use_cell_shift = false;
   }
+  const bool proof_cell4 =
+      use_cell_shift && ((periodic_[0] && nx_ == 4) || (periodic_[1] && ny_ == 4) ||
+                         (periodic_[2] && nz_ == 4));
   auto axis_near = [](double x, int cell, int naxis, double len) {
     const double w = len / static_cast<double>(naxis);
     const double allowed = 0.9 * (0.5 * len - 2.0 * w);
@@ -615,20 +626,51 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
     const double lo = static_cast<double>(cell) * w;
     return x >= lo && x < lo + w;
   };
+  auto axis_in = [&](int axis, double x, int cell, int naxis, double len) {
+    if (!periodic_[axis]) {
+      return true;
+    }
+    if (naxis >= 5) {
+      return axis_near(x, cell, naxis, len);
+    }
+    // Four cells have no slack that is exact for every pair. The folded
+    // half-box test below keeps the original fold for a pair whose
+    // stencil image is not the unique nearest one, including atoms that
+    // sit outside the box.
+    return true;
+  };
   for (std::size_t a = 0; a < n && use_cell_shift; ++a) {
     const int cell = cell_of_[a];
     const int iz = cell % nz_;
     const int iy = (cell / nz_) % ny_;
     const int ix = cell / (nz_ * ny_);
     const auto u = a * 3;
-    if (periodic_[0] && !axis_near(xyz_[u], ix, nx_, len_[0])) {
-      use_cell_shift = false;
-    } else if (periodic_[1] && !axis_near(xyz_[u + 1], iy, ny_, len_[1])) {
-      use_cell_shift = false;
-    } else if (periodic_[2] && !axis_near(xyz_[u + 2], iz, nz_, len_[2])) {
+    if (!axis_in(0, xyz_[u], ix, nx_, len_[0]) ||
+        !axis_in(1, xyz_[u + 1], iy, ny_, len_[1]) ||
+        !axis_in(2, xyz_[u + 2], iz, nz_, len_[2])) {
       use_cell_shift = false;
     }
   }
+  auto fold_wide = [&](std::size_t atom, std::int32_t partner, double dx, double dy, double dz) {
+    if (clearly_out(dx, 0) || clearly_out(dy, 1) || clearly_out(dz, 2)) {
+      return;
+    }
+    const double rawx = dx;
+    const double rawy = dy;
+    const double rawz = dz;
+    std::int32_t sx = 0;
+    std::int32_t sy = 0;
+    std::int32_t sz = 0;
+    const bool fx = fold_axis(dx, 0, sx);
+    const bool fy = fold_axis(dy, 1, sy);
+    const bool fz = fold_axis(dz, 2, sz);
+    const double r2_round = dx * dx + dy * dy + dz * dz;
+    if (r2_round <= search2) {
+      const bool holds = axis_holds(rawx, 0, sx, fx) && axis_holds(rawy, 1, sy, fy) &&
+                         axis_holds(rawz, 2, sz, fz);
+      accept(atom, partner, sx, sy, sz, holds);
+    }
+  };
   for (std::size_t a = 0; a < n; ++a) {
     off_[a] = static_cast<std::int32_t>(nbr_.size());
     const int cell = cell_of_[a];
@@ -743,6 +785,17 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
                 dx -= sub0[sax + 1];
                 dy -= sub1[say + 1];
                 dz -= sub2[saz + 1];
+                // Four cells sit on the rounding boundary. A folded axis
+                // that is not strictly inside half a box is not the unique
+                // nearest image, so that pair keeps the original fold.
+                const bool proven = !proof_cell4 ||
+                                    ((!periodic_[0] || std::abs(dx) < half0) &&
+                                     (!periodic_[1] || std::abs(dy) < half1) &&
+                                     (!periodic_[2] || std::abs(dz) < half2));
+                if (!proven) {
+                  fold_wide(a, j, rawx, rawy, rawz);
+                  continue;
+                }
                 if (std::abs(dx) > far || std::abs(dy) > far || std::abs(dz) > far) {
                   continue;
                 }
@@ -754,21 +807,7 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
                 }
                 continue;
               } else {
-                if (clearly_out(dx, 0) || clearly_out(dy, 1) || clearly_out(dz, 2)) {
-                  continue;
-                }
-                const double rawx = dx;
-                const double rawy = dy;
-                const double rawz = dz;
-                const bool fx = fold_axis(dx, 0, sx);
-                const bool fy = fold_axis(dy, 1, sy);
-                const bool fz = fold_axis(dz, 2, sz);
-                const double r2_round = dx * dx + dy * dy + dz * dz;
-                if (r2_round <= search2) {
-                  holds = axis_holds(rawx, 0, sx, fx) && axis_holds(rawy, 1, sy, fy) &&
-                          axis_holds(rawz, 2, sz, fz);
-                  accept(a, j, sx, sy, sz, holds);
-                }
+                fold_wide(a, j, dx, dy, dz);
                 continue;
               }
             }

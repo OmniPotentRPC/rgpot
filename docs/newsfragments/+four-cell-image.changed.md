@@ -1,0 +1,1 @@
+An orthorhombic rebuild with four cells on a periodic side uses the stencil wrap as the image index. A folded separation that is not strictly inside half a box keeps the original image, which is what an atom outside the box requires. The stored row order is unchanged.
