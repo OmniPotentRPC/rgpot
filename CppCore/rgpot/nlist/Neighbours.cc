@@ -841,19 +841,24 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
       accept(atom, partner, sx, sy, sz, holds);
     }
   };
-  for (std::size_t a = 0; a < n; ++a) {
-    off_[a] = static_cast<std::int32_t>(nbr_.size());
-    const int cell = cell_of_[a];
-    int iz = cell % nz_;
-    int iy = (cell / nz_) % ny_;
-    int ix = cell / (nz_ * ny_);
+  // Atoms of one cell share the stencil. The neighbour ids are the
+  // same for every atom there, so they are built once. The half list
+  // sorts each row afterwards, so visiting cells instead of atom indices
+  // does not change the stored pairs.
+  struct StencilSlot {
+    int id;
+    int sax;
+    int say;
+    int saz;
+  };
+  for (int cell = 0; cell < ncells; ++cell) {
+    const int iz = cell % nz_;
+    const int iy = (cell / nz_) % ny_;
+    const int ix = cell / (nz_ * ny_);
+    StencilSlot stencil[27];
+    int nstencil = 0;
     int seen[27];
     int nseen = 0;
-    gather.clear();
-    const auto ua = a * 3;
-    const double ax = xyz_[ua];
-    const double ay = xyz_[ua + 1];
-    const double az = xyz_[ua + 2];
     for (int ox = -1; ox <= 1; ++ox) {
       for (int oy = -1; oy <= 1; ++oy) {
         for (int oz = -1; oz <= 1; ++oz) {
@@ -901,7 +906,25 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
             continue;
           }
           seen[nseen++] = id;
-          const auto c = static_cast<std::size_t>(id);
+          stencil[nstencil++] = StencilSlot{id, sax, say, saz};
+        }
+      }
+    }
+    const auto home0 = cell_start_[static_cast<std::size_t>(cell)];
+    const auto home1 = cell_start_[static_cast<std::size_t>(cell) + 1];
+    for (std::int32_t qa = home0; qa < home1; ++qa) {
+    const auto a = static_cast<std::size_t>(cell_atoms_[static_cast<std::size_t>(qa)]);
+    off_[a] = static_cast<std::int32_t>(nbr_.size());
+    gather.clear();
+    const auto ua = a * 3;
+    const double ax = xyz_[ua];
+    const double ay = xyz_[ua + 1];
+    const double az = xyz_[ua + 2];
+    for (int slot = 0; slot < nstencil; ++slot) {
+          const int sax = stencil[slot].sax;
+          const int say = stencil[slot].say;
+          const int saz = stencil[slot].saz;
+          const auto c = static_cast<std::size_t>(stencil[slot].id);
           if (slab_skip) {
             const auto s = c * 3;
             if (slab_out(ax, slab_lo[s], slab_hi[s], sub0[sax + 1]) ||
@@ -1011,8 +1034,6 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
               accept(a, j, sx, sy, sz, holds);
             }
           }
-        }
-      }
     }
     // Each neighbour cell is appended as a run already sorted by partner
     // index, because the atoms of a cell are binned in index order. A
@@ -1020,17 +1041,18 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
     // comparison sort, which is what the half-list walk assumes. The
     // mirrored orthorhombic rows are ordered once, after both ends exist.
     order();
-    for (const Cand &c : gather) {
-      nbr_.push_back(c.j);
+    for (const Cand &cand : gather) {
+      nbr_.push_back(cand.j);
       if (record) {
-        shifts.push_back(c.sx);
-        shifts.push_back(c.sy);
-        shifts.push_back(c.sz);
-        flags.push_back(c.unstable);
-        if (c.unstable != 0) {
+        shifts.push_back(cand.sx);
+        shifts.push_back(cand.sy);
+        shifts.push_back(cand.sz);
+        flags.push_back(cand.unstable);
+        if (cand.unstable != 0) {
           all_stable = false;
         }
       }
+    }
     }
   }
   if (half_pairs) {
