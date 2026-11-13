@@ -265,6 +265,30 @@ TEST_CASE("cell lists match an all-pairs minimum image", "[nlist][oracle]") {
   }
 }
 
+TEST_CASE("a wide orthogonal cell keeps pairs the slab test could drop",
+          "[nlist][oracle]") {
+  setThreads("1");
+  // Forty angstroms and a search of 6 give at least five bins. The
+  // rebuild skips a neighbour cell only when every atom in it is past
+  // the search. These two sit on either side of a bin face, inside it.
+  const double cell[9] = {40.0, 0, 0, 0, 40.0, 0, 0, 0, 40.0};
+  std::vector<double> pos;
+  auto add = [&](double x, double y, double z) {
+    pos.push_back(x);
+    pos.push_back(y);
+    pos.push_back(z);
+  };
+  add(6.2, 20.0, 20.0);
+  add(7.0, 20.0, 20.0);
+  std::mt19937_64 rng(41);
+  std::uniform_real_distribution<double> u(0.0, 40.0);
+  for (int i = 0; i < 80; ++i) {
+    add(u(rng), u(rng), u(rng));
+  }
+  const std::array<bool, 3> periodic{true, true, true};
+  checkList(cell, periodic, pos, 5.0, 1.0);
+}
+
 TEST_CASE("an open axis of a sheared cell follows the atoms' fractional extent",
           "[nlist][oracle]") {
   setThreads("1");

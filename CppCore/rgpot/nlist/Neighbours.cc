@@ -749,6 +749,38 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
   const bool proof_cell4 =
       use_cell_shift && ((periodic_[0] && nx_ == 4) || (periodic_[1] && ny_ == 4) ||
                          (periodic_[2] && nz_ == 4));
+  // Five or more cells make the stencil shift the unique image, so a
+  // neighbour cell whose every atom sits past the search on one axis
+  // cannot contribute a pair. The range is the atoms actually binned
+  // there, evaluated with the same subtraction as the pair loop.
+  const bool slab_skip = use_cell_shift && !proof_cell4;
+  const int ncells = nx_ * ny_ * nz_;
+  std::vector<double> slab_lo;
+  std::vector<double> slab_hi;
+  if (slab_skip) {
+    const double inf = std::numeric_limits<double>::infinity();
+    slab_lo.assign(static_cast<std::size_t>(ncells) * 3, inf);
+    slab_hi.assign(static_cast<std::size_t>(ncells) * 3, -inf);
+    for (std::size_t atom = 0; atom < n; ++atom) {
+      const auto c = static_cast<std::size_t>(cell_of_[atom]) * 3;
+      const auto u = atom * 3;
+      for (int k = 0; k < 3; ++k) {
+        const double x = xyz_[u + static_cast<std::size_t>(k)];
+        const auto s = c + static_cast<std::size_t>(k);
+        if (x < slab_lo[s]) {
+          slab_lo[s] = x;
+        }
+        if (x > slab_hi[s]) {
+          slab_hi[s] = x;
+        }
+      }
+    }
+  }
+  auto slab_out = [&](double origin, double lo, double hi, double sub) {
+    const double dlo = (origin - lo) - sub;
+    const double dhi = (origin - hi) - sub;
+    return (dlo > far && dhi > far) || (dlo < -far && dhi < -far);
+  };
   auto axis_near = [](double x, int cell, int naxis, double len) {
     const double w = len / static_cast<double>(naxis);
     const double allowed = 0.9 * (0.5 * len - 2.0 * w);
@@ -818,6 +850,10 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
     int seen[27];
     int nseen = 0;
     gather.clear();
+    const auto ua = a * 3;
+    const double ax = xyz_[ua];
+    const double ay = xyz_[ua + 1];
+    const double az = xyz_[ua + 2];
     for (int ox = -1; ox <= 1; ++ox) {
       for (int oy = -1; oy <= 1; ++oy) {
         for (int oz = -1; oz <= 1; ++oz) {
@@ -866,7 +902,25 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
           }
           seen[nseen++] = id;
           const auto c = static_cast<std::size_t>(id);
-          for (std::int32_t q = cell_start_[c]; q < cell_start_[c + 1]; ++q) {
+          if (slab_skip) {
+            const auto s = c * 3;
+            if (slab_out(ax, slab_lo[s], slab_hi[s], sub0[sax + 1]) ||
+                slab_out(ay, slab_lo[s + 1], slab_hi[s + 1], sub1[say + 1]) ||
+                slab_out(az, slab_lo[s + 2], slab_hi[s + 2], sub2[saz + 1])) {
+              continue;
+            }
+          }
+          // Atom indices increase inside a cell. The half list starts at
+          // the first partner with a larger index.
+          const std::int32_t qend = cell_start_[c + 1];
+          std::int32_t q = cell_start_[c];
+          if (half_pairs) {
+            const auto *base = cell_atoms_.data();
+            const auto *found =
+                std::upper_bound(base + q, base + qend, static_cast<std::int32_t>(a));
+            q = static_cast<std::int32_t>(found - base);
+          }
+          for (; q < qend; ++q) {
             const auto j = cell_atoms_[static_cast<std::size_t>(q)];
             if (j == static_cast<std::int32_t>(a)) {
               continue;
