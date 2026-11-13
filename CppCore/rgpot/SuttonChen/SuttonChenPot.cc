@@ -146,7 +146,6 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   nlist::updateCells(neighbours_, R, n_size, box_use, cutoff, skin, nlist::Image::Round,
                      mode_, periodic);
   const int nt = nlist::threadsRequested();
-  const bool stream = neighbours_.streaming();
   auto pair_term = [&](double r2, double &phi, double &rep) {
     const double ar2 = (lattice * lattice) / r2;
     phi = pow_ar(ar2, m_exp);
@@ -164,17 +163,11 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       rho[static_cast<std::size_t>(j)] += phi;
       epair += epsilon * rep;
     };
-    if (stream) {
-      nlist::visitHalf(neighbours_, 0, n_atoms, density);
-    } else {
-      nlist::visitDirected(neighbours_,
-          0, n_atoms, [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
-            if (!(j > i)) {
-              return;
-            }
-            density(i, j, dx, dy, dz, r2);
-          });
-    }
+    // Half the shell: each unordered pair is visited once, as j > i, in the
+    // same order a directed walk would keep after dropping j <= i. The
+    // density of both atoms is updated here, so the directed walk's extra
+    // geometry is not needed.
+    nlist::visitHalf(neighbours_, 0, n_atoms, density);
   } else {
     std::vector<double> partial(static_cast<std::size_t>(nt), 0.0);
     // One shared tile. A visit from each thread would build it again.
@@ -237,22 +230,10 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     }
   };
   if (nt == 1) {
-    if (stream) {
-      nlist::visitHalf(neighbours_,
-          0, n_atoms,
-          [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
-            apply(i, j, dx, dy, dz, r2, F, cfg.stress ? strain : nullptr, true);
-          });
-    } else {
-      nlist::visitDirected(neighbours_,
-          0, n_atoms,
-          [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
-            if (!(j > i)) {
-              return;
-            }
-            apply(i, j, dx, dy, dz, r2, F, cfg.stress ? strain : nullptr, true);
-          });
-    }
+    nlist::visitHalf(neighbours_, 0, n_atoms,
+                     [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
+                       apply(i, j, dx, dy, dz, r2, F, cfg.stress ? strain : nullptr, true);
+                     });
   } else {
     std::vector<double> vir(static_cast<std::size_t>(nt) * 6, 0.0);
     // Each atom is central in one cell, so its force is written once.

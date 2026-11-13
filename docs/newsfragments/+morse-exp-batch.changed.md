@@ -1,0 +1,1 @@
+Morse evaluates each accepted pair's exponential with `exp_fixed_n`, in the order the half-list walk visits the pairs. Each lane is the scalar `exp_fixed` body, so the energy and the forces keep their bits. A stored Sutton-Chen list walks each unordered pair once, the same pairs the directed walk kept after dropping `j <= i`.

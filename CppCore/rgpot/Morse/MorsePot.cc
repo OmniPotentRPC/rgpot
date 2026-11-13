@@ -77,13 +77,21 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const double twoDeA = 2.0 * De * a;
   const bool switched = m_config.switch_width != 0.0;
   const int nt = nlist::threadsRequested();
-  auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                    double r2, double *force, double &energy, double *virial) {
-    if (!(i < j) || !(r2 > 0.0) || r2 > cutoff2) {
-      return;
-    }
-    const double r = std::sqrt(r2);
-    const double d = 1.0 - simd::exp_fixed(-a * (r - re));
+  // One exp per pair, in the order visitHalf walks them. A short run of
+  // arguments goes through exp_fixed_n, whose lanes are the scalar exp, so
+  // each pair still contributes the same energy and the same force.
+  struct Hit {
+    std::int32_t i;
+    std::int32_t j;
+    double dx;
+    double dy;
+    double dz;
+    double r;
+  };
+  constexpr int kChunk = 128;
+  auto accept_one = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                        double r, double ex, double *force, double &energy, double *virial) {
+    const double d = 1.0 - ex;
     const double bare = De * d * d - De;
     double pair_e = 0.0;
     double fscale = 0.0;
@@ -109,10 +117,45 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   };
   double energy = 0.0;
   if (nt <= 1) {
+    Hit hits[kChunk];
+    double args[kChunk];
+    double exps[kChunk];
+    int nbuf = 0;
+    auto flush = [&]() {
+      if (nbuf == 0) {
+        return;
+      }
+      simd::exp_fixed_n(args, exps, static_cast<std::size_t>(nbuf));
+      for (int k = 0; k < nbuf; ++k) {
+        const Hit &h = hits[k];
+        accept_one(h.i, h.j, h.dx, h.dy, h.dz, h.r, exps[k], F, energy, strain);
+      }
+      nbuf = 0;
+    };
     nlist::visitHalf(neighbours_, 0, N,
                      [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                         double r2) { accept(i, j, dx, dy, dz, r2, F, energy, strain); });
+                         double r2) {
+                       if (!(i < j) || !(r2 > 0.0) || r2 > cutoff2) {
+                         return;
+                       }
+                       if (nbuf == kChunk) {
+                         flush();
+                       }
+                       const double r = std::sqrt(r2);
+                       hits[nbuf] = Hit{i, j, dx, dy, dz, r};
+                       args[nbuf] = -a * (r - re);
+                       ++nbuf;
+                     });
+    flush();
   } else {
+    auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                      double r2, double *force, double &part, double *virial) {
+      if (!(i < j) || !(r2 > 0.0) || r2 > cutoff2) {
+        return;
+      }
+      const double r = std::sqrt(r2);
+      accept_one(i, j, dx, dy, dz, r, simd::exp_fixed(-a * (r - re)), force, part, virial);
+    };
     std::vector<double> owned(static_cast<std::size_t>(nt) * n_atoms * 3, 0.0);
     std::vector<double> partial(static_cast<std::size_t>(nt), 0.0);
     std::vector<double> virial(static_cast<std::size_t>(nt) * 6, 0.0);
