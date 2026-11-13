@@ -203,14 +203,16 @@ constexpr bool cxx_tag_eq(const char *a, const char *b) noexcept {
   return *a == *b;
 }
 
-constexpr const CxxSoversionEntry *
-find_soversion_entry(const char *tag) noexcept {
-  for (const CxxSoversionEntry &row : kCxxSoversionTable) {
-    if (cxx_tag_eq(row.tag, tag)) {
-      return &row;
+/// Index of @p tag in @c kCxxSoversionTable, or -1 when the platform is absent.
+/// A pointer into the table is not a constant expression under
+/// @c -fsanitize=undefined, so callers compare this index with zero.
+constexpr int find_soversion_index(const char *tag) noexcept {
+  for (std::size_t i = 0; i < kCxxSoversionTable.size(); ++i) {
+    if (cxx_tag_eq(kCxxSoversionTable[i].tag, tag)) {
+      return static_cast<int>(i);
     }
   }
-  return nullptr;
+  return -1;
 }
 
 constexpr bool soversion_tags_unique() noexcept {
@@ -367,17 +369,21 @@ inline constexpr rgpot_cxx_layout_stamp_t header_stamp() noexcept {
 
 /// Recorded no-cache hash for this platform, or 0 when it has no row.
 constexpr std::uint64_t recorded_layout_hash() noexcept {
-  const CxxSoversionEntry *row = find_soversion_entry(kCxxPlatformTag);
-  return row == nullptr ? 0 : row->hash;
+  const int index = find_soversion_index(kCxxPlatformTag);
+  if (index < 0) {
+    return 0;
+  }
+  return kCxxSoversionTable[static_cast<std::size_t>(index)].hash;
 }
 
 /// True when this platform has no row, or the row matches `header_stamp`.
 constexpr bool platform_soversion_ok() noexcept {
-  const CxxSoversionEntry *row = find_soversion_entry(kCxxPlatformTag);
-  if (row == nullptr) {
+  const int index = find_soversion_index(kCxxPlatformTag);
+  if (index < 0) {
     return true;
   }
-  return header_stamp().hash == row->hash;
+  return header_stamp().hash ==
+         kCxxSoversionTable[static_cast<std::size_t>(index)].hash;
 }
 
 /// What the loaded library was built with.
