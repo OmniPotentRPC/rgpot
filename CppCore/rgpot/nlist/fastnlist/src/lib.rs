@@ -438,6 +438,71 @@ mod tests {
     }
 
     #[test]
+    fn wide_cell_partial_periodicity_matches_all_pairs() {
+        let mut xyz = Vec::new();
+        for i in 0..16 {
+            let t = i as f64;
+            xyz.push([
+                (t * 2.5).rem_euclid(48.0),
+                (t * 1.7).rem_euclid(36.0),
+                (t * 0.9).rem_euclid(40.0),
+            ]);
+        }
+        // On the faces, including a pair that meets across x.
+        xyz.push([0.0, 10.0, 12.0]);
+        xyz.push([47.8, 10.2, 12.1]);
+        xyz.push([20.0, 0.0, 8.0]);
+        xyz.push([20.4, 35.9, 8.2]);
+        let cell = [[48.0, 0.0, 0.0], [0.0, 36.0, 0.0], [0.0, 0.0, 40.0]];
+        let widths = [48.0, 36.0, 40.0];
+        // Cutoff well under a third of every side, so the linked-cell
+        // stencil is the one that runs. One and two axes are periodic.
+        let masks = [
+            [true, false, false],
+            [false, true, false],
+            [false, false, true],
+            [true, true, false],
+            [true, false, true],
+            [false, true, true],
+        ];
+        let cutoff = 6.0;
+        for periodic in masks {
+            let got = collect_pairs(&xyz, &cell, periodic, cutoff).unwrap();
+            let expect = scalar_pairs(&xyz, widths, periodic, cutoff);
+            assert_eq!(got, expect, "{periodic:?}");
+            assert!(got.len() < xyz.len() * (xyz.len() - 1) / 2);
+        }
+    }
+
+    #[test]
+    fn cutoff_near_half_a_side_matches_all_pairs() {
+        // Half of 10 is 5. A cutoff of 4.9 is too wide for the linked-cell
+        // stencil, so the list is the all-pairs buffer filtered by the
+        // caller. Faces are included.
+        let xyz = vec![
+            [0.0, 1.0, 2.0],
+            [9.8, 1.1, 2.2],
+            [5.0, 0.0, 4.0],
+            [5.2, 9.9, 4.1],
+            [2.0, 3.0, 0.0],
+            [2.1, 3.2, 9.7],
+            [4.0, 6.0, 5.0],
+        ];
+        let cell = [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]];
+        let widths = [10.0, 10.0, 10.0];
+        let cutoff = 4.9;
+        for periodic in [
+            [true, false, false],
+            [true, true, false],
+            [true, true, true],
+        ] {
+            let got = collect_pairs(&xyz, &cell, periodic, cutoff).unwrap();
+            let expect = scalar_pairs(&xyz, widths, periodic, cutoff);
+            assert!(expect.iter().all(|pair| got.contains(pair)), "{periodic:?}");
+        }
+    }
+
+    #[test]
     fn wide_cell_returns_only_in_cutoff_pairs() {
         let mut xyz = Vec::new();
         for i in 0..20 {
