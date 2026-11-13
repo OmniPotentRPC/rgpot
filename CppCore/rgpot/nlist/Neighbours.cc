@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <string>
 
 #if defined(_WIN32)
@@ -86,6 +87,29 @@ int fractionalBins(const double inv[9], int axis, double search, bool periodic) 
   }
   int n = static_cast<int>(nf);
   while (n > 1 && 1.0 / static_cast<double>(n) < reach) {
+    --n;
+  }
+  return n;
+}
+
+// An open axis is not wrapped. Bins cover the atoms' fractional extent,
+// each at least as wide as the cutoff ball in that coordinate. One bin
+// when every atom already lies inside that ball.
+int openExtentBins(const double inv[9], int axis, double search, double extent) {
+  if (!(search > 0.0) || !(extent > 0.0)) {
+    return 1;
+  }
+  const double dual = std::hypot(inv[axis], inv[3 + axis], inv[6 + axis]);
+  const double reach = search * dual * (1.0 + 1e-9);
+  if (!(reach > 0.0) || !(extent > reach)) {
+    return 1;
+  }
+  const double nf = std::floor(extent / reach);
+  if (!(nf >= 1.0) || !(nf < 2.0e9)) {
+    return 1;
+  }
+  int n = static_cast<int>(nf);
+  while (n > 1 && extent / static_cast<double>(n) < reach) {
     --n;
   }
   return n;
@@ -307,12 +331,42 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
   const double edge = search_ > 0.0 ? search_ : 1.0;
   double frac_inv[9] = {};
   const bool frac_bins = use_general_ && invertRows(box_, frac_inv);
-  int nx = frac_bins ? fractionalBins(frac_inv, 0, search_, periodic_[0])
-                     : axisCount(len_[0], edge);
-  int ny = frac_bins ? fractionalBins(frac_inv, 1, search_, periodic_[1])
-                     : axisCount(len_[1], edge);
-  int nz = frac_bins ? fractionalBins(frac_inv, 2, search_, periodic_[2])
-                     : axisCount(len_[2], edge);
+  double open_lo[3] = {};
+  double open_hi[3] = {};
+  if (frac_bins) {
+    for (int axis = 0; axis < 3; ++axis) {
+      if (periodic_[axis]) {
+        continue;
+      }
+      double lo = std::numeric_limits<double>::infinity();
+      double hi = -lo;
+      for (std::size_t a = 0; a < n; ++a) {
+        const double *r = xyz + 3 * a;
+        const double f = r[0] * frac_inv[axis] + r[1] * frac_inv[3 + axis] +
+                         r[2] * frac_inv[6 + axis];
+        lo = std::min(lo, f);
+        hi = std::max(hi, f);
+      }
+      if (!(hi >= lo)) {
+        lo = 0.0;
+        hi = 0.0;
+      }
+      open_lo[axis] = lo;
+      open_hi[axis] = hi;
+    }
+  }
+  auto axis_bins = [&](int axis, double length) {
+    if (!frac_bins) {
+      return axisCount(length, edge);
+    }
+    if (periodic_[axis]) {
+      return fractionalBins(frac_inv, axis, search_, true);
+    }
+    return openExtentBins(frac_inv, axis, search_, open_hi[axis] - open_lo[axis]);
+  };
+  int nx = axis_bins(0, len_[0]);
+  int ny = axis_bins(1, len_[1]);
+  int nz = axis_bins(2, len_[2]);
   const double bytes =
       static_cast<double>(nx) * static_cast<double>(ny) *
       static_cast<double>(nz) * static_cast<double>(sizeof(std::int32_t));
@@ -333,14 +387,20 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
     if (frac_bins) {
       const double f = r[0] * frac_inv[axis] + r[1] * frac_inv[3 + axis] +
                        r[2] * frac_inv[6 + axis];
-      double w = f - std::floor(f);
-      if (w < 0.0) {
-        w += 1.0;
+      if (!periodic_[axis]) {
+        const double extent = open_hi[axis] - open_lo[axis];
+        t = extent > 0.0 ? (f - open_lo[axis]) / extent * static_cast<double>(naxis)
+                         : 0.0;
+      } else {
+        double w = f - std::floor(f);
+        if (w < 0.0) {
+          w += 1.0;
+        }
+        if (!(w < 1.0)) {
+          w = 0.0;
+        }
+        t = w * static_cast<double>(naxis);
       }
-      if (!(w < 1.0)) {
-        w = 0.0;
-      }
-      t = w * static_cast<double>(naxis);
     } else {
       if (!(length > 0.0)) {
         return 0;
@@ -550,6 +610,35 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
   };
   const bool record_round = !use_general_ && image_ == Image::Round;
   const bool record_general = use_general_;
+  // A fractional lower bound. |column_k · v| = |f_k| and
+  // |column_k · v| <= ||column_k|| |v|, so |v| >= |f_k| / ||column_k||.
+  // Pairs the bound places past the search never reach tryRounded.
+  // The margin keeps a pair the fused length would still accept.
+  double gout_inv[9] = {};
+  const bool gout = record_general && invertRows(box_, gout_inv);
+  double gout_dual[3] = {};
+  if (gout) {
+    for (int k = 0; k < 3; ++k) {
+      gout_dual[k] = std::hypot(gout_inv[k], gout_inv[3 + k], gout_inv[6 + k]);
+    }
+  }
+  auto provably_outside = [&](double dx, double dy, double dz) {
+    if (!gout) {
+      return false;
+    }
+    const double r[3] = {dx, dy, dz};
+    for (int k = 0; k < 3; ++k) {
+      double f = r[0] * gout_inv[k] + r[1] * gout_inv[3 + k] + r[2] * gout_inv[6 + k];
+      if (periodic_[k]) {
+        f -= std::round(f);
+      }
+      const double limit = search_ * gout_dual[k] * (1.0 + 1e-5);
+      if (std::abs(f) > limit) {
+        return true;
+      }
+    }
+    return false;
+  };
   const bool record = record_round || record_general;
   bool fit = record;
   bool tiny = record_round;
@@ -830,6 +919,9 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
               dx = xyz_[ui] - xyz_[uj];
               dy = xyz_[ui + 1] - xyz_[uj + 1];
               dz = xyz_[ui + 2] - xyz_[uj + 2];
+              if (provably_outside(dx, dy, dz)) {
+                continue;
+              }
               std::int32_t nimg[3] = {};
               const bool coded = general_.tryRounded(dx, dy, dz, nimg);
               holds = coded && general_.roundedHolds(dx, dy, dz, nimg, key_.skin, lambda);

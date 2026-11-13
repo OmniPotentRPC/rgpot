@@ -1,0 +1,1 @@
+A sheared rebuild skips a stencil pair whose fractional coordinate is already past the search. The stored pairs and their geometry are unchanged.

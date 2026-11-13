@@ -265,6 +265,31 @@ TEST_CASE("cell lists match an all-pairs minimum image", "[nlist][oracle]") {
   }
 }
 
+TEST_CASE("an open axis of a sheared cell follows the atoms' fractional extent",
+          "[nlist][oracle]") {
+  setThreads("1");
+  double mono[9];
+  monoclinic(100.0, mono);
+  // Two clusters many cutoffs apart along the open z axis, plus a pair
+  // that meets across the periodic x face. A single slab would still
+  // find these pairs; bins along the extent must not drop them.
+  std::vector<double> pos;
+  auto add = [&](double x, double y, double z) {
+    pos.push_back(x);
+    pos.push_back(y);
+    pos.push_back(z);
+  };
+  add(0.05, 1.0, 0.2);
+  add(0.4, 1.1, 0.5);
+  add(9.9, 1.05, 0.3);
+  add(2.0, 3.0, 40.0);
+  add(2.2, 3.1, 40.4);
+  add(1.5, 2.8, 41.0);
+  add(5.0, 5.0, 20.0);
+  const std::array<bool, 3> periodic{true, true, false};
+  checkList(mono, periodic, pos, 2.5, 0.4);
+}
+
 TEST_CASE("a skin move matches a fresh neighbour list", "[nlist][oracle][skin]") {
   setThreads("1");
   const double ortho[9] = {16.0, 0, 0, 0, 14.0, 0, 0, 0, 18.0};
