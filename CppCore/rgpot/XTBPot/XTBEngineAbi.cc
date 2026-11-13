@@ -89,6 +89,18 @@ int rgpot_xtb_reused_wavefunction(const RgpotXtbPot *pot) {
   return pot->pot->reusedWavefunction() ? 1 : 0;
 }
 
+void rgpot_xtb_set_adaptive_scc(RgpotXtbPot *pot, double loose_accuracy,
+                                double force_rms_ev_per_angstrom) {
+  if (pot && pot->pot)
+    pot->pot->setAdaptiveScc(loose_accuracy, force_rms_ev_per_angstrom);
+}
+
+double rgpot_xtb_last_accuracy(const RgpotXtbPot *pot) {
+  if (!pot || !pot->pot)
+    return 0.0;
+  return pot->pot->lastAccuracy();
+}
+
 int rgpot_xtb_force(RgpotXtbPot *pot, long nAtoms, const double *positions,
                     const int *atomicNrs, double *forces, double *energy,
                     double *variance, const double *box) {

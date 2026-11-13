@@ -26,6 +26,17 @@ struct XTBConfig {
    * negative value disables reuse.
    */
   double warm_move = 1.0;
+  /**
+   * xtb accuracy used while the RMS force is above ``adaptive_force``.
+   * In xtb a larger accuracy is a looser SCC. Zero, or a value that is
+   * not looser than ``accuracy``, disables the schedule and every call
+   * uses ``accuracy``. A call that lands on or below ``adaptive_force``
+   * is repeated at ``accuracy``, so the returned energy and forces of a
+   * converged step match a fixed-accuracy pot.
+   */
+  double loose_accuracy = 0.0;
+  /// RMS Cartesian force, in eV/Angstrom, below which the schedule tightens.
+  double adaptive_force = 0.05;
 };
 
 /** Optional engine path for the dlopen frontend (also RGPOT_XTB_ENGINE). */

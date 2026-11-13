@@ -126,8 +126,23 @@ double rgpot_xtb_warm_move(const RgpotXtbPot *pot);
 int rgpot_xtb_reused_wavefunction(const RgpotXtbPot *pot);
 ```
 
-`xtb_warm_bench` times that warm step against a cold guess on (H2O)16 and
-(H2O)20. It is built next to `xtb_backend_bench`. The comparison is serial:
+`loose_accuracy` turns on a looser SCC while the RMS force is above
+`adaptive_force` (eV/Å). Zero disables it. A step that falls to the
+threshold is evaluated again at `accuracy`, so the converged energy and
+forces match a fixed-accuracy pot. xtb rebuilds the neighbour list and
+the coordination number inside every single point; that setup is not a
+separate handle, and on a water cluster it is smaller than the SCC and
+the gradient.
+
+```c
+void rgpot_xtb_set_adaptive_scc(RgpotXtbPot *pot, double loose_accuracy,
+                                double force_rms_ev_per_angstrom);
+double rgpot_xtb_last_accuracy(const RgpotXtbPot *pot);
+```
+
+`xtb_warm_bench` times a cold guess, a warm step, and the loose SCC on
+(H2O)16 and (H2O)20. It is built next to `xtb_backend_bench`. The
+comparison is serial:
 
 ```bash
 sudo unshare --uts bash -c 'hostname bench && \

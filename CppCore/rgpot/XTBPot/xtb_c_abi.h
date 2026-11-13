@@ -76,6 +76,19 @@ RGPOT_XTB_API double rgpot_xtb_warm_move(const RgpotXtbPot *pot);
 /** 1 when the last successful force reused the previous wavefunction. */
 RGPOT_XTB_API int rgpot_xtb_reused_wavefunction(const RgpotXtbPot *pot);
 
+/**
+ * Loose SCC while the RMS force stays above ``force_rms_ev_per_angstrom``.
+ * ``loose_accuracy`` <= 0 disables the schedule. A larger xtb accuracy is
+ * a looser SCC. The step that falls to the threshold is repeated at the
+ * accuracy given to ``rgpot_xtb_create``.
+ */
+RGPOT_XTB_API void rgpot_xtb_set_adaptive_scc(RgpotXtbPot *pot,
+                                              double loose_accuracy,
+                                              double force_rms_ev_per_angstrom);
+
+/** xtb accuracy of the result from the last successful force. */
+RGPOT_XTB_API double rgpot_xtb_last_accuracy(const RgpotXtbPot *pot);
+
 RGPOT_XTB_API int rgpot_xtb_available(void);
 
 #ifdef __cplusplus

@@ -59,6 +59,14 @@ public:
   /// True when the last successful force reused the previous wavefunction.
   [[nodiscard]] bool reusedWavefunction() const;
 
+  /// Looser SCC while the RMS force is above ``force_ev_per_angstrom``.
+  /// ``loose_accuracy`` <= 0 disables the schedule.
+  void setAdaptiveScc(double loose_accuracy, double force_ev_per_angstrom);
+
+  [[nodiscard]] double looseAccuracy() const;
+  [[nodiscard]] double adaptiveForce() const;
+  [[nodiscard]] double lastAccuracy() const;
+
   /// Convenience operator matching Potential interface shape.
   std::tuple<double, types::AtomMatrix, double>
   operator()(const types::AtomMatrix &positions,
@@ -83,6 +91,12 @@ private:
   set_warm_fn m_set_warm{nullptr};
   warm_move_fn m_warm_move{nullptr};
   reused_fn m_reused{nullptr};
+  using adaptive_fn = void (*)(RgpotXtbPot *, double, double);
+  using last_accuracy_fn = double (*)(const RgpotXtbPot *);
+  adaptive_fn m_adaptive{nullptr};
+  last_accuracy_fn m_last_accuracy{nullptr};
+  double m_loose_accuracy{0.0};
+  double m_adaptive_force{0.05};
 };
 
 } // namespace rgpot

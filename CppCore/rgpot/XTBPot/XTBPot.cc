@@ -56,7 +56,9 @@ double maxAtomMove(const std::vector<double> &previous, const double *next,
 XTBPot::XTBPot() : XTBPot(XTBConfig{}) {}
 
 XTBPot::XTBPot(const XTBConfig &config)
-    : Potential(PotType::XTB), m_config(config), m_warm_move(config.warm_move) {
+    : Potential(PotType::XTB), m_config(config), m_warm_move(config.warm_move),
+      m_loose_accuracy(config.loose_accuracy),
+      m_adaptive_force(config.adaptive_force) {
   initHandles();
 }
 
@@ -65,6 +67,8 @@ void XTBPot::reset() {
   m_previous.clear();
   m_has_wavefunction = false;
   m_last_reused = false;
+  m_have_force = false;
+  m_force_rms = 0.0;
 }
 
 void XTBPot::setWarmMove(double angstrom) { m_warm_move = angstrom; }
@@ -72,6 +76,18 @@ void XTBPot::setWarmMove(double angstrom) { m_warm_move = angstrom; }
 double XTBPot::warmMove() const noexcept { return m_warm_move; }
 
 bool XTBPot::reusedWavefunction() const noexcept { return m_last_reused; }
+
+void XTBPot::setAdaptiveScc(double loose_accuracy,
+                            double force_ev_per_angstrom) {
+  m_loose_accuracy = loose_accuracy;
+  m_adaptive_force = force_ev_per_angstrom;
+}
+
+double XTBPot::looseAccuracy() const noexcept { return m_loose_accuracy; }
+
+double XTBPot::adaptiveForce() const noexcept { return m_adaptive_force; }
+
+double XTBPot::lastAccuracy() const noexcept { return m_last_accuracy; }
 
 void XTBPot::initHandles() const {
   m_env = xtb_newEnvironment();
@@ -124,9 +140,23 @@ void XTBPot::loadParametrisation() const {
     break;
   }
   xtb_setAccuracy(m_env, m_calc, m_config.accuracy);
+  m_applied_accuracy = m_config.accuracy;
   xtb_setElectronicTemp(m_env, m_calc, m_config.electronic_temperature);
   xtb_setMaxIter(m_env, m_calc, m_config.max_iterations);
 }
+
+namespace {
+
+double forceRms(const double *forces, size_t n3) {
+  if (n3 == 0 || !forces)
+    return 0.0;
+  double sum = 0.0;
+  for (size_t i = 0; i < n3; ++i)
+    sum += forces[i] * forces[i];
+  return std::sqrt(sum / static_cast<double>(n3));
+}
+
+} // namespace
 
 void XTBPot::freshResults() const {
   if (m_res) {
@@ -162,6 +192,9 @@ void XTBPot::discardAfterFailure() const {
   m_initialized = false;
   m_has_wavefunction = false;
   m_last_reused = false;
+  m_have_force = false;
+  m_force_rms = 0.0;
+  m_applied_accuracy = -1.0;
   m_previous.clear();
   m_numbers.clear();
   m_pos_bohr.clear();
@@ -215,56 +248,37 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       throw std::runtime_error("xTB Error: xtb_newMolecule failed");
     loadParametrisation();
     m_initialized = true;
+    m_have_force = false;
   } else {
     xtb_updateMolecule(m_env, m_mol, m_pos_bohr.data(), box_bohr);
     if (!reuse && m_has_wavefunction)
       freshResults();
   }
 
-  xtb_singlepoint(m_env, m_mol, m_calc, m_res);
+  // xtb rebuilds the neighbour list and the coordination number inside
+  // every singlepoint. That setup is not a separate handle. What accuracy
+  // changes is the SCC: a larger value stops the iterations sooner, and
+  // the integral cutoff is already floored once accuracy is above about 3.
+  const bool adaptive =
+      m_loose_accuracy > m_config.accuracy && m_loose_accuracy > 0.0;
+  double chosen = m_config.accuracy;
+  if (adaptive && (!m_have_force || m_force_rms > m_adaptive_force))
+    chosen = m_loose_accuracy;
 
-  if (xtb_checkEnvironment(m_env) != 0) {
-    char err_msg[512];
-    xtb_getError(m_env, err_msg, nullptr);
-    const std::string message = std::string("xTB Error: ") + err_msg;
-    discardAfterFailure();
-    throw std::runtime_error(message);
+  evaluateSinglepoint(in, out, chosen);
+  double rms = forceRms(out->F, n3);
+  if (adaptive && chosen != m_config.accuracy && rms <= m_adaptive_force) {
+    chosen = m_config.accuracy;
+    // The loose density is inside the loose charge threshold. One tight
+    // single point starts from it, and a second one on the same geometry
+    // is what brings the forces onto the fixed-accuracy result.
+    evaluateSinglepoint(in, out, chosen);
+    evaluateSinglepoint(in, out, chosen);
+    rms = forceRms(out->F, n3);
   }
-
-  double energy_hartree;
-  xtb_getEnergy(m_env, m_res, &energy_hartree);
-  out->energy = energy_hartree * HARTREE_TO_EV;
-
-  // Write gradient directly into output buffer, then convert in-place
-  xtb_getGradient(m_env, m_res, out->F);
-  bool finite = std::isfinite(energy_hartree);
-  for (size_t i = 0; i < n3 && finite; ++i)
-    finite = std::isfinite(out->F[i]);
-  if (!finite) {
-    discardAfterFailure();
-    throw std::runtime_error("xTB Error: non-finite energy or gradient");
-  }
-  for (size_t i = 0; i < n3; ++i) {
-    out->F[i] *= NEG_GRAD_TO_FORCE;
-  }
-
-  // xtb stores dE/dε in Hartree. sigma = virial / V in eV/Angstrom^3.
-  double virial[9] = {};
-  xtb_getVirial(m_env, m_res, virial);
-  const double volume = cellVolume(in.box);
-  if (volume > 0.0) {
-    const double scale = units::HARTREE_TO_EV / volume;
-    for (int col = 0; col < 3; ++col) {
-      for (int row = 0; row < 3; ++row) {
-        out->stress[row * 3 + col] = virial[row + 3 * col] * scale;
-      }
-    }
-    out->has_stress = 1;
-  } else {
-    out->has_stress = 0;
-  }
-
-  out->variance = 0.0;
+  m_force_rms = rms;
+  m_have_force = true;
+  m_last_accuracy = chosen;
 
   m_previous.assign(in.pos, in.pos + n3);
   if (in.nAtoms == 0 || !in.atmnrs)
@@ -273,6 +287,53 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     m_numbers.assign(in.atmnrs, in.atmnrs + in.nAtoms);
   m_has_wavefunction = true;
   m_last_reused = reuse;
+}
+
+void XTBPot::evaluateSinglepoint(const ForceInput &in, ForceOut *out,
+                                 double accuracy) const {
+  if (accuracy != m_applied_accuracy) {
+    xtb_setAccuracy(m_env, m_calc, accuracy);
+    m_applied_accuracy = accuracy;
+  }
+  xtb_singlepoint(m_env, m_mol, m_calc, m_res);
+  if (xtb_checkEnvironment(m_env) != 0) {
+    char err_msg[512];
+    xtb_getError(m_env, err_msg, nullptr);
+    const std::string message = std::string("xTB Error: ") + err_msg;
+    discardAfterFailure();
+    throw std::runtime_error(message);
+  }
+
+  double energy_hartree = 0.0;
+  xtb_getEnergy(m_env, m_res, &energy_hartree);
+  out->energy = energy_hartree * HARTREE_TO_EV;
+
+  const size_t n3 = 3 * in.nAtoms;
+  xtb_getGradient(m_env, m_res, out->F);
+  bool finite = std::isfinite(energy_hartree);
+  for (size_t i = 0; i < n3 && finite; ++i)
+    finite = std::isfinite(out->F[i]);
+  if (!finite) {
+    discardAfterFailure();
+    throw std::runtime_error("xTB Error: non-finite energy or gradient");
+  }
+  for (size_t i = 0; i < n3; ++i)
+    out->F[i] *= NEG_GRAD_TO_FORCE;
+
+  double virial[9] = {};
+  xtb_getVirial(m_env, m_res, virial);
+  const double volume = cellVolume(in.box);
+  if (volume > 0.0) {
+    const double scale = units::HARTREE_TO_EV / volume;
+    for (int col = 0; col < 3; ++col) {
+      for (int row = 0; row < 3; ++row)
+        out->stress[row * 3 + col] = virial[row + 3 * col] * scale;
+    }
+    out->has_stress = 1;
+  } else {
+    out->has_stress = 0;
+  }
+  out->variance = 0.0;
 }
 
 } // namespace rgpot

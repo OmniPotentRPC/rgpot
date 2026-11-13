@@ -23,7 +23,10 @@ namespace rgpot {
  * object while no atom moves by more than ``XTBConfig::warm_move``
  * (1 Angstrom unless changed). A larger move, a new composition, or
  * ``reset()`` drops that object so the next single point uses xtb's own
- * guess. ``xtb_releaseOutput`` is called on create (library recommendation
+ * guess. With ``loose_accuracy`` set, an early quench step uses that
+ * looser SCC and a step whose RMS force has fallen to
+ * ``adaptive_force`` is evaluated at ``accuracy``.
+ * ``xtb_releaseOutput`` is called on create (library recommendation
  * for multi-env processes). Do not share one instance across threads;
  * distinct instances may be used from different threads if the loaded
  * libxtb build is reentrant for independent handle sets.
@@ -52,6 +55,17 @@ public:
   /// True when the last successful force reused the previous wavefunction.
   [[nodiscard]] bool reusedWavefunction() const noexcept;
 
+  /// Looser SCC while the force is large. ``loose_accuracy`` <= 0 disables it.
+  /// ``force_ev_per_angstrom`` is the RMS Cartesian force that tightens
+  /// the next converged step back to ``XTBConfig::accuracy``.
+  void setAdaptiveScc(double loose_accuracy, double force_ev_per_angstrom);
+
+  [[nodiscard]] double looseAccuracy() const noexcept;
+  [[nodiscard]] double adaptiveForce() const noexcept;
+
+  /// xtb accuracy of the result returned by the last successful force.
+  [[nodiscard]] double lastAccuracy() const noexcept;
+
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
   /// Native handles are per-instance; concurrent use needs one instance
@@ -71,6 +85,12 @@ private:
   mutable bool m_has_wavefunction = false;
   mutable bool m_last_reused = false;
   mutable double m_warm_move = 1.0;
+  mutable double m_loose_accuracy = 0.0;
+  mutable double m_adaptive_force = 0.05;
+  mutable double m_applied_accuracy = -1.0;
+  mutable double m_last_accuracy = 0.0;
+  mutable double m_force_rms = 0.0;
+  mutable bool m_have_force = false;
   mutable std::vector<double> m_pos_bohr; //!< Preallocated position buffer.
   mutable std::vector<double> m_previous; //!< Last host coordinates, Angstrom.
   mutable std::vector<int> m_numbers;
@@ -79,6 +99,8 @@ private:
   void loadParametrisation() const;
   void freshResults() const;
   void discardAfterFailure() const;
+  void evaluateSinglepoint(const ForceInput &in, ForceOut *out,
+                           double accuracy) const;
 };
 
 } // namespace rgpot

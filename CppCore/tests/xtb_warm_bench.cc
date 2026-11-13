@@ -1,9 +1,10 @@
-// MIT License — warm versus cold GFN2 single points on water clusters.
+// MIT License — cold, warm, and loose-SCC GFN2 single points on water clusters.
 //
 // One calculator is kept. A warm call moves one oxygen by 1/16 Angstrom
 // and reuses the SCC wavefunction. A cold call is the same geometry after
-// reset(), so xtb builds its own guess. The timed calls exclude the first
-// load of the parametrisation.
+// reset(), so xtb builds its own guess. The new arm is that warm step at
+// xtb accuracy 50 while the RMS force stays above 0.05 eV/Angstrom.
+// The timed calls exclude the first load of the parametrisation.
 //
 // Run serial, under hostname bench:
 //   sudo unshare --uts bash -c 'hostname bench && OMP_NUM_THREADS=1 taskset -c 0 ./xtb_warm_bench --repeats 6'
@@ -170,6 +171,7 @@ AtomMatrix as_matrix(const std::vector<double> &flat) {
 struct Arm {
   std::vector<double> samples_ms;
   int reused = 0;
+  double last_accuracy = 0.0;
 };
 
 double mean_of(const std::vector<double> &samples) {
@@ -205,6 +207,7 @@ Arm time_arm(rgpot::XTBPot &pot, const std::vector<AtomMatrix> &frames,
         std::chrono::duration<double, std::milli>(stopped - started).count());
     if (pot.reusedWavefunction())
       arm.reused += 1;
+    arm.last_accuracy = pot.lastAccuracy();
   }
   return arm;
 }
@@ -232,7 +235,9 @@ int main(int argc, char **argv) {
             << "omp_threads " << (threads ? threads : "unset") << "\n"
             << "repeats " << repeats << "\n"
             << "accuracy 1\n"
-            << "warm_move_A 1\n";
+            << "warm_move_A 1\n"
+            << "loose_accuracy 50\n"
+            << "adaptive_force_eV_A 0.05\n";
 
   const std::array<std::array<double, 3>, 3> box = {
       {{80.0, 0.0, 0.0}, {0.0, 80.0, 0.0}, {0.0, 0.0, 80.0}}};
@@ -254,24 +259,40 @@ int main(int argc, char **argv) {
 
       rgpot::XTBConfig cfg;
       cfg.method = rgpot::GFNMethod::GFN2xTB;
+      rgpot::XTBConfig adaptive = cfg;
+      adaptive.loose_accuracy = 50.0;
+      adaptive.adaptive_force = 0.05;
       rgpot::XTBPot warm(cfg);
       rgpot::XTBPot cold(cfg);
+      rgpot::XTBPot scheduled(adaptive);
       auto [e0, f0, v0] = warm(base, numbers, box);
       auto [e1, f1, v1] = cold(base, numbers, box);
+      auto [e2, f2, v2] = scheduled(base, numbers, box);
       (void)e0;
-      (void)f0;
       (void)v0;
       (void)e1;
-      (void)f1;
       (void)v1;
+      (void)e2;
+      (void)v2;
+      double force_sq = 0.0;
+      for (size_t i = 0; i < f0.rows(); ++i)
+        for (size_t j = 0; j < f0.cols(); ++j)
+          force_sq += f0(i, j) * f0(i, j);
+      const double force_rms =
+          std::sqrt(force_sq / static_cast<double>(f0.rows() * f0.cols()));
 
       const Arm warm_arm = time_arm(warm, warm_frames, numbers, box, false);
       const Arm cold_arm = time_arm(cold, cold_frames, numbers, box, true);
+      const Arm new_arm = time_arm(scheduled, warm_frames, numbers, box, false);
       std::cout << "molecules " << molecules << " n_atoms " << numbers.size()
-                << " min_pair_A " << min_pair(flat) << "\n";
+                << " min_pair_A " << min_pair(flat) << " force_rms_eV_A "
+                << force_rms << "\n";
       print_samples("cold", cold_arm);
       print_samples("warm", warm_arm);
-      if (cold_arm.reused != 0 || warm_arm.reused != repeats)
+      print_samples("new", new_arm);
+      std::cout << "new_accuracy " << new_arm.last_accuracy << "\n";
+      if (cold_arm.reused != 0 || warm_arm.reused != repeats ||
+          new_arm.reused != repeats)
         failed = 1;
     }
   } catch (const std::exception &ex) {

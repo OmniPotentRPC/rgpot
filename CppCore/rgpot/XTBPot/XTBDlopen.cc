@@ -179,8 +179,12 @@ XTBDlopen::XTBDlopen(const XTBDlopenConfig &config) {
       reinterpret_cast<warm_move_fn>(sym(m_lib, "rgpot_xtb_warm_move"));
   m_reused =
       reinterpret_cast<reused_fn>(sym(m_lib, "rgpot_xtb_reused_wavefunction"));
+  m_adaptive =
+      reinterpret_cast<adaptive_fn>(sym(m_lib, "rgpot_xtb_set_adaptive_scc"));
+  m_last_accuracy = reinterpret_cast<last_accuracy_fn>(
+      sym(m_lib, "rgpot_xtb_last_accuracy"));
   if (!abi || !m_create || !m_destroy || !m_force || !m_reset || !m_set_warm ||
-      !m_warm_move || !m_reused) {
+      !m_warm_move || !m_reused || !m_adaptive || !m_last_accuracy) {
     close_lib(m_lib);
     m_lib = nullptr;
     // The opened library is the one we selected. Do not resume the
@@ -209,6 +213,9 @@ XTBDlopen::XTBDlopen(const XTBDlopenConfig &config) {
     throw std::runtime_error(std::string("XTBDlopen: create failed: ") + err);
   }
   m_set_warm(m_pot, config.xtb.warm_move);
+  m_loose_accuracy = config.xtb.loose_accuracy;
+  m_adaptive_force = config.xtb.adaptive_force;
+  m_adaptive(m_pot, m_loose_accuracy, m_adaptive_force);
 }
 
 void XTBDlopen::reset() {
@@ -233,6 +240,25 @@ bool XTBDlopen::reusedWavefunction() const {
   if (!m_reused || !m_pot)
     throw std::runtime_error("XTBDlopen: engine not available");
   return m_reused(m_pot) != 0;
+}
+
+void XTBDlopen::setAdaptiveScc(double loose_accuracy,
+                               double force_ev_per_angstrom) {
+  if (!m_adaptive || !m_pot)
+    throw std::runtime_error("XTBDlopen: engine not available");
+  m_loose_accuracy = loose_accuracy;
+  m_adaptive_force = force_ev_per_angstrom;
+  m_adaptive(m_pot, loose_accuracy, force_ev_per_angstrom);
+}
+
+double XTBDlopen::looseAccuracy() const { return m_loose_accuracy; }
+
+double XTBDlopen::adaptiveForce() const { return m_adaptive_force; }
+
+double XTBDlopen::lastAccuracy() const {
+  if (!m_last_accuracy || !m_pot)
+    throw std::runtime_error("XTBDlopen: engine not available");
+  return m_last_accuracy(m_pot);
 }
 
 XTBDlopen::~XTBDlopen() {

@@ -478,3 +478,106 @@ TEST_CASE("XTBDlopen reuses the GFN2 wavefunction inside the move guard",
     return std::make_unique<rgpot::XTBDlopen>(dlopen_cfg(cfg));
   });
 }
+
+static double force_rms(const AtomMatrix &forces) {
+  double sum = 0.0;
+  const size_t n = forces.rows() * forces.cols();
+  for (size_t i = 0; i < forces.rows(); ++i)
+    for (size_t j = 0; j < forces.cols(); ++j)
+      sum += forces(i, j) * forces(i, j);
+  return n == 0 ? 0.0 : std::sqrt(sum / static_cast<double>(n));
+}
+
+template <typename Factory>
+static void check_adaptive_scc(Factory make) {
+  AtomMatrix positions(3, 3);
+  std::vector<int> atmtypes;
+  std::array<std::array<double, 3>, 3> box{};
+  fill_water(positions, atmtypes, box);
+
+  rgpot::XTBConfig tight = converged_gfn2();
+  auto survey = make(tight);
+  auto [e_eq, f_eq, v_eq] = (*survey)(positions, atmtypes, box);
+  (void)e_eq;
+  (void)v_eq;
+  const double rms_eq = force_rms(f_eq);
+
+  AtomMatrix stretched = positions;
+  stretched(1, 0) += 0.45;
+  auto [e_far, f_far, v_far] = (*survey)(stretched, atmtypes, box);
+  (void)e_far;
+  (void)v_far;
+  const double rms_far = force_rms(f_far);
+  REQUIRE(rms_far > rms_eq * 5.0);
+  const double threshold = 0.5 * (rms_eq + rms_far);
+
+  rgpot::XTBConfig scheduled = tight;
+  scheduled.loose_accuracy = 50.0;
+  scheduled.adaptive_force = threshold;
+  auto pot = make(scheduled);
+  REQUIRE(pot->looseAccuracy() == 50.0);
+  REQUIRE(pot->adaptiveForce() == threshold);
+
+  auto [e_loose, f_loose, v_loose] = (*pot)(stretched, atmtypes, box);
+  (void)v_loose;
+  REQUIRE(pot->lastAccuracy() == 50.0);
+  rgpot::XTBConfig only_loose = tight;
+  only_loose.accuracy = 50.0;
+  auto loose_ref = make(only_loose);
+  auto [e_lref, f_lref, v_lref] = (*loose_ref)(stretched, atmtypes, box);
+  (void)v_lref;
+  // The loose SCC is the early-quench step. Its residual is wider than
+  // the tightened result, which is held to the usual tolerance below.
+  REQUIRE_THAT(e_loose, WithinAbs(e_lref, 1e-6));
+  require_close_forces(f_loose, f_lref, 1e-5);
+
+  // The previous force is still large, so this call starts loose and the
+  // small residual tightens it before the result is returned.
+  auto [e_back, f_back, v_back] = (*pot)(positions, atmtypes, box);
+  (void)v_back;
+  REQUIRE(pot->lastAccuracy() == tight.accuracy);
+  auto fixed = make(tight);
+  auto [e_fix, f_fix, v_fix] = (*fixed)(positions, atmtypes, box);
+  (void)v_fix;
+  REQUIRE_THAT(e_back, WithinAbs(e_fix, kWarmEnergyTol));
+  require_close_forces(f_back, f_fix, kWarmForceTol);
+
+  AtomMatrix nudged = positions;
+  nudged(2, 1) += 0.02;
+  auto [e_step, f_step, v_step] = (*pot)(nudged, atmtypes, box);
+  (void)v_step;
+  REQUIRE(pot->lastAccuracy() == tight.accuracy);
+  auto [e_step_fix, f_step_fix, v_step_fix] = (*fixed)(nudged, atmtypes, box);
+  (void)v_step_fix;
+  REQUIRE_THAT(e_step, WithinAbs(e_step_fix, kWarmEnergyTol));
+  require_close_forces(f_step, f_step_fix, kWarmForceTol);
+
+  pot->reset();
+  auto [e_again, f_again, v_again] = (*pot)(stretched, atmtypes, box);
+  (void)e_again;
+  (void)f_again;
+  (void)v_again;
+  REQUIRE(pot->lastAccuracy() == 50.0);
+
+  pot->setAdaptiveScc(0.0, threshold);
+  REQUIRE(pot->looseAccuracy() == 0.0);
+  auto [e_off, f_off, v_off] = (*pot)(positions, atmtypes, box);
+  (void)f_off;
+  (void)v_off;
+  REQUIRE(pot->lastAccuracy() == tight.accuracy);
+  REQUIRE_THAT(e_off, WithinAbs(e_fix, kWarmEnergyTol));
+}
+
+TEST_CASE("XTBPot tightens the SCC once the force has fallen",
+          "[xtb][linked][warm]") {
+  check_adaptive_scc([](const rgpot::XTBConfig &cfg) {
+    return std::make_unique<rgpot::XTBPot>(cfg);
+  });
+}
+
+TEST_CASE("XTBDlopen tightens the SCC once the force has fallen",
+          "[xtb][dlopen][warm]") {
+  check_adaptive_scc([](const rgpot::XTBConfig &cfg) {
+    return std::make_unique<rgpot::XTBDlopen>(dlopen_cfg(cfg));
+  });
+}
