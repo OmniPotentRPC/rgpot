@@ -79,6 +79,9 @@ jobs:
       package-dir: .
       import-names: rgpot._core
       test-path: tests/python
+      # tests/python/test_cpu_scaling.py runs scripts/cpu_scaling.py from the
+      # repository root. The wheel test tree is only the copied sources.
+      extra-test-sources: scripts/cpu_scaling.py
       extras: ase
       test-requires: pytest-timeout hypothesis
       os: '["ubuntu-latest","ubuntu-24.04-arm","macos-15"]'

@@ -84,6 +84,7 @@ meson compile -C bbdir && meson test -C bbdir
    howto/eindir-anneal
    howto/eon-rgpot
    howto/sutton-chen-stress
+   howto/cpu-scaling
 
 .. toctree::
    :maxdepth: 2
