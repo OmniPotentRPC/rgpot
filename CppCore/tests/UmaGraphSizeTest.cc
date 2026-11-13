@@ -140,12 +140,32 @@ TEST_CASE("a molecular box rejects a periodic image", "[uma][graph]") {
           Catch::Matchers::ContainsSubstring("nonzero"));
 }
 
-TEST_CASE("tetrazine past the 10 angstrom cutoff names the missing edge range",
+TEST_CASE("a fixed-shape package loads and computes a force", "[uma][graph]") {
+  // The keyless tetrazine package records edge_index [2, 56] in shapes
+  // and neither nedges_min nor nedges_max. Eight atoms at 0.5 angstrom
+  // stay inside the 10 angstrom cutoff, so the list is the traced 56.
+  rgpot::UmaPot pot = open_pot(package_path("UMA_TETRAZINE_KEYLESS_PT2"));
+  const Eval out = run(pot, line(8, 0.5));
+  REQUIRE(std::isfinite(out.energy));
+  REQUIRE_THAT(out.energy, Catch::Matchers::WithinAbs(0.0, 1e-6));
+  REQUIRE(out.force.size() == 24);
+  for (double component : out.force)
+    REQUIRE_THAT(component, Catch::Matchers::WithinAbs(-7.0, 1e-6));
+}
+
+TEST_CASE("a dynamic package still loads", "[uma][graph]") {
+  rgpot::UmaPot pot = open_pot(package_path("UMA_GATHER_DYNAMIC_PT2"));
+  const Eval out = run(pot, line(4, 1.0));
+  REQUIRE(std::isfinite(out.energy));
+  REQUIRE_THAT(out.energy, Catch::Matchers::WithinAbs(468.0, 1e-6));
+}
+
+TEST_CASE("tetrazine past the 10 angstrom cutoff names the fixed edge shape",
           "[uma][graph]") {
-  // Control packages omit nedges_min and nedges_max. They were traced
-  // on the complete pair list, cutoff 10 angstrom. Moving one hydrogen
-  // by 12 angstroms crosses that cutoff. The named error is raised
-  // before the compiled graph runs.
+  // Control packages omit nedges_min and nedges_max. shapes records
+  // the traced complete pair list, [2, 56], cutoff 10 angstrom. Moving
+  // one hydrogen by 12 angstroms crosses that cutoff. The named error
+  // is raised before the compiled graph runs.
   std::vector<double> pos = {
       12.5, 13.83, 12.5, 12.5, 11.17, 12.5, 13.65, 13.165, 12.5,
       13.65, 11.835, 12.5, 11.35, 13.165, 12.5, 11.35, 11.835, 12.5,
@@ -160,8 +180,8 @@ TEST_CASE("tetrazine past the 10 angstrom cutoff names the missing edge range",
   const rgpot::ForceInput in{8, pos.data(), z.data(), box};
   REQUIRE_THROWS_WITH(
       pot.forceImpl(in, &slot),
-      Catch::Matchers::ContainsSubstring("nedges") &&
-          Catch::Matchers::ContainsSubstring("absent"));
+      Catch::Matchers::ContainsSubstring("edge_index shape is") &&
+          Catch::Matchers::ContainsSubstring("[2, 56]"));
 }
 
 TEST_CASE("a package with no edge range is refused", "[uma][graph]") {

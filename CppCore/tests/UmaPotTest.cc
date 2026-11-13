@@ -395,6 +395,31 @@ TEST_CASE("UmaContract refuses an edge count the graph was not exported for",
       rgpot::UmaContract::fromMetadata(missing),
       Catch::Matchers::ContainsSubstring("nedges") &&
           Catch::Matchers::ContainsSubstring("absent"));
+
+  // Grignard: 37 * 36 directed pairs, recorded only in shapes.
+  auto shaped = missing;
+  shaped.erase("natoms");
+  shaped["shapes"] =
+      "{'pos': [37, 3], 'edge_index': [2, 1332], 'cell_offsets': [1332, 3]}";
+  const auto grignard = rgpot::UmaContract::fromMetadata(shaped);
+  REQUIRE(grignard.nedges_min == 1332);
+  REQUIRE(grignard.nedges_max == 1332);
+  REQUIRE_NOTHROW(grignard.checkEdges(1332));
+  REQUIRE_THROWS_WITH(
+      grignard.checkCallShapes(37, 1000),
+      Catch::Matchers::ContainsSubstring("edge_index shape is") &&
+          Catch::Matchers::ContainsSubstring("[2, 1332]"));
+
+  auto min_only = hcn_metadata();
+  min_only.erase("nedges_max");
+  REQUIRE_THROWS_WITH(
+      rgpot::UmaContract::fromMetadata(min_only),
+      Catch::Matchers::ContainsSubstring("nedges_max is absent"));
+  auto max_only = hcn_metadata();
+  max_only.erase("nedges_min");
+  REQUIRE_THROWS_WITH(
+      rgpot::UmaContract::fromMetadata(max_only),
+      Catch::Matchers::ContainsSubstring("nedges_min is absent"));
 }
 
 TEST_CASE("UmaContract checks z_set alone for packages without counts",

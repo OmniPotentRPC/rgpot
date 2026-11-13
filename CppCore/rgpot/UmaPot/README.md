@@ -64,8 +64,12 @@ An edge index outside the position buffer throws the same error and
 is not gathered. `pos_shape` and `edge_index_shape` record the
 declaration; when they are absent the atom count and the edge range
 are used. A package that records neither `nedges_min` nor
-`nedges_max` is refused: there is no range to check, and a static
-graph would otherwise return a finite force.
+`nedges_max` is fixed-shape: the edge count is the `edge_index`
+length in `shapes` (Grignard is `[2, 1332]`). The neighbour list is
+built, and a short band is padded, to that count. A list that cannot
+fit throws `UmaShapeError` and names both shapes. A package with only
+one of the two keys, or with neither key and no fixed `edge_index`
+in `shapes`, is refused.
 
 A molecular box recenters the atoms in a cube and is traced on every
 ordered pair, `n(n-1)`. Any other edge count throws `UmaShapeError`

@@ -761,8 +761,17 @@ def export_tetrazine_keyless(path: Path, dtype_name: str) -> None:
 
 def export_no_edges(path: Path, dtype_name: str) -> None:
     export_precision(path, dtype_name, "both")
+    # ``shapes`` still carries the example edge list. Drop that too, or
+    # the package is a fixed-shape export rather than one with no range.
     _drop_metadata_keys(
-        path, ("nedges_min", "nedges_max", "edge_index_shape", "pos_shape")
+        path,
+        (
+            "nedges_min",
+            "nedges_max",
+            "edge_index_shape",
+            "pos_shape",
+            "shapes",
+        ),
     )
 
 

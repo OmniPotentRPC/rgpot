@@ -120,6 +120,53 @@ struct UmaContract {
   ShapeDecl pos_decl;
   ShapeDecl edge_decl;
 
+  /// Second extent of ``edge_index`` inside the exporter's ``shapes``
+  /// dict (``{'edge_index': [2, 1332], ...}``). Packages written before
+  /// ``nedges_min`` and ``nedges_max`` record a fixed edge list there
+  /// and nowhere else. A missing or non-fixed entry is not a count.
+  static std::optional<int64_t>
+  fixedEdgesFromShapes(const std::string *shapes) {
+    if (shapes == nullptr)
+      return std::nullopt;
+    const std::string &s = *shapes;
+    const std::string key = "edge_index";
+    std::size_t at = 0;
+    while (at < s.size()) {
+      const auto found = s.find(key, at);
+      if (found == std::string::npos)
+        return std::nullopt;
+      const bool boundary = found == 0 || s[found - 1] == '\'' ||
+                            s[found - 1] == '"' || s[found - 1] == '{' ||
+                            s[found - 1] == ' ' || s[found - 1] == ',';
+      std::size_t i = found + key.size();
+      if (!boundary || i > s.size()) {
+        at = found + 1;
+        continue;
+      }
+      if (i < s.size() && (s[i] == '\'' || s[i] == '"'))
+        ++i;
+      // ``edge_index_shape`` and other longer names are not this key.
+      if (i < s.size() &&
+          ((s[i] >= 'A' && s[i] <= 'Z') || (s[i] >= 'a' && s[i] <= 'z') ||
+           s[i] == '_')) {
+        at = i;
+        continue;
+      }
+      while (i < s.size() && (s[i] == ' ' || s[i] == ':' || s[i] == '='))
+        ++i;
+      if (i >= s.size() || s[i] != '[')
+        return std::nullopt;
+      const auto close = s.find(']', i);
+      if (close == std::string::npos)
+        return std::nullopt;
+      const auto dims = integers(s.substr(i, close - i + 1));
+      if (dims.size() == 2 && dims[0] == 2 && dims[1] > 0)
+        return dims[1];
+      return std::nullopt;
+    }
+    return std::nullopt;
+  }
+
   /// Signed decimal integers in order of appearance; anything else
   /// separates them.
   static std::vector<int64_t> integers(const std::string &s) {
@@ -166,11 +213,22 @@ struct UmaContract {
     c.natoms = one_int("natoms");
     c.nedges_min = one_int("nedges_min");
     c.nedges_max = one_int("nedges_max");
-    // A package with no edge range used to skip the check and then run
-    // a static graph. That returns a finite force for the wrong
-    // neighbour list. Both keys are required.
-    if (!c.nedges_min || !c.nedges_max) {
-      throw UmaContractError("nedges", "nedges_min and nedges_max", "absent",
+    // Published packages record a fixed edge list in ``shapes`` and
+    // carry neither range key. That count is the traced size: the
+    // neighbour list is built or padded to it, and a graph that cannot
+    // fit is named before the compiled graph runs. One key without the
+    // other is still not a range.
+    if (!c.nedges_min && !c.nedges_max) {
+      if (const auto fixed = fixedEdgesFromShapes(get("shapes"))) {
+        c.nedges_min = fixed;
+        c.nedges_max = fixed;
+      } else {
+        throw UmaContractError("nedges", "nedges_min and nedges_max", "absent",
+                               "package");
+      }
+    } else if (!c.nedges_min || !c.nedges_max) {
+      const char *missing = c.nedges_min ? "nedges_max" : "nedges_min";
+      throw UmaContractError(missing, "nedges_min and nedges_max", "absent",
                              "package");
     }
     c.natoms_min = one_int("natoms_min");
