@@ -41,6 +41,21 @@ int rgpot_fast_wrap(const double *cell9, const double *diffs, size_t n,
 int rgpot_fast_wrap_axes(const double *cell9, const int32_t *periodic,
                          const double *diffs, size_t n, double *out);
 
+/// One Verlet shell. The pointer is opaque. A null argument is an error.
+struct rgpot_fast_skin;
+struct rgpot_fast_skin *rgpot_fast_skin_new(void);
+void rgpot_fast_skin_free(struct rgpot_fast_skin *list);
+
+/// Pairs inside `cutoff + skin`, with `i < j`. `skin == 0` rebuilds on
+/// every call and lists `cutoff`. A positive skin keeps that shell while
+/// every atom has moved by at most half the skin since it was built, and
+/// the cell, periodicity, cutoff, skin, and atom count are unchanged.
+/// Return codes match `rgpot_fast_pairs`.
+int rgpot_fast_skin_pairs(struct rgpot_fast_skin *list, const double *xyz,
+                          size_t n, const double *cell9,
+                          const int32_t *periodic, double cutoff, double skin,
+                          int32_t *out_ij, size_t cap, size_t *out_count);
+
 /// Thread-local message for the most recent negative return on this
 /// thread, or NULL when the last call succeeded. Do not free it.
 const char *rgpot_fast_last_error(void);

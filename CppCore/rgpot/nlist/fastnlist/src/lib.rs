@@ -250,6 +250,161 @@ fn collect_pairs(
     Ok(pairs)
 }
 
+pub struct SkinList {
+    cutoff: f64,
+    skin: f64,
+    periodic: [bool; 3],
+    cell: [[f64; 3]; 3],
+    reference: Vec<[f64; 3]>,
+    pairs: Vec<(i32, i32)>,
+    ready: bool,
+}
+
+impl SkinList {
+    fn new() -> Self {
+        Self {
+            cutoff: 0.0,
+            skin: 0.0,
+            periodic: [false; 3],
+            cell: [[0.0; 3]; 3],
+            reference: Vec::new(),
+            pairs: Vec::new(),
+            ready: false,
+        }
+    }
+
+    fn reusable(
+        &self,
+        xyz: &[[f64; 3]],
+        cell: &[[f64; 3]; 3],
+        periodic: [bool; 3],
+        cutoff: f64,
+        skin: f64,
+    ) -> bool {
+        if !self.ready || !(skin > 0.0) || self.skin != skin || self.cutoff != cutoff {
+            return false;
+        }
+        if self.periodic != periodic || self.cell != *cell || self.reference.len() != xyz.len() {
+            return false;
+        }
+        // Strict `>`. A displacement of exactly half the skin still reuses.
+        let limit2 = 0.25 * skin * skin;
+        for (prev, next) in self.reference.iter().zip(xyz.iter()) {
+            let dx = next[0] - prev[0];
+            let dy = next[1] - prev[1];
+            let dz = next[2] - prev[2];
+            if dx * dx + dy * dy + dz * dz > limit2 {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn pairs(
+        &mut self,
+        xyz: &[[f64; 3]],
+        cell: &[[f64; 3]; 3],
+        periodic: [bool; 3],
+        cutoff: f64,
+        skin: f64,
+    ) -> Result<&[(i32, i32)], i32> {
+        if !(cutoff > 0.0) || !cutoff.is_finite() || !(skin >= 0.0) || !skin.is_finite() {
+            return Err(fail("cutoff and skin must be finite and the cutoff positive"));
+        }
+        if self.reusable(xyz, cell, periodic, cutoff, skin) {
+            return Ok(&self.pairs);
+        }
+        let reach = cutoff + skin;
+        let pairs = collect_pairs(xyz, cell, periodic, reach)?;
+        self.cutoff = cutoff;
+        self.skin = skin;
+        self.periodic = periodic;
+        self.cell = *cell;
+        self.reference = xyz.to_vec();
+        self.pairs = pairs;
+        self.ready = true;
+        Ok(&self.pairs)
+    }
+}
+
+/// Allocate an empty Verlet shell.
+#[no_mangle]
+pub extern "C" fn rgpot_fast_skin_new() -> *mut SkinList {
+    Box::into_raw(Box::new(SkinList::new()))
+}
+
+/// # Safety
+///
+/// `list` is null or a pointer returned by `rgpot_fast_skin_new` and not
+/// yet freed.
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_fast_skin_free(list: *mut SkinList) {
+    if !list.is_null() {
+        drop(unsafe { Box::from_raw(list) });
+    }
+}
+
+/// Verlet pair shell. See `fastnlist.h`.
+///
+/// # Safety
+///
+/// `list` came from `rgpot_fast_skin_new`. The buffers follow
+/// `rgpot_fast_pairs`: `xyz` is `n * 3` doubles, `cell9` is 9 doubles,
+/// `periodic` is 3 ints, and a fill writes `2 * count` ints.
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_fast_skin_pairs(
+    list: *mut SkinList,
+    xyz: *const f64,
+    n: usize,
+    cell9: *const f64,
+    periodic: *const i32,
+    cutoff: f64,
+    skin: f64,
+    out_ij: *mut i32,
+    cap: usize,
+    out_count: *mut usize,
+) -> i32 {
+    if list.is_null() {
+        return fail("null skin list");
+    }
+    if out_count.is_null() {
+        return fail("null out_count");
+    }
+    let points = match triples(xyz, n) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let cell = match cell_rows(cell9) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let periodic = match periodic3(periodic) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let list = unsafe { &mut *list };
+    match list.pairs(points, &cell, periodic, cutoff, skin) {
+        Ok(pairs) => {
+            unsafe { *out_count = pairs.len() };
+            if pairs.len() > cap {
+                return 1;
+            }
+            if !pairs.is_empty() && out_ij.is_null() {
+                return fail("null out_ij");
+            }
+            for (k, (i, j)) in pairs.iter().enumerate() {
+                unsafe {
+                    *out_ij.add(2 * k) = *i;
+                    *out_ij.add(2 * k + 1) = *j;
+                }
+            }
+            clear_error();
+            0
+        }
+        Err(code) => code,
+    }
+}
+
 fn wrap_into(cell: &Cell, diffs: &[[f64; 3]], out: &mut [[f64; 3]]) -> Result<(), i32> {
     wrap_many(cell, diffs, out).map_err(|err| fail(&err.to_string()))
 }
@@ -531,6 +686,87 @@ mod tests {
         let expect = scalar_pairs(&xyz, [1.0e6, 1.0e6, 1.0e6], [false, false, false], 3.5);
         assert_eq!(expect, vec![(0, 1), (0, 2), (1, 2)]);
         assert!(expect.iter().all(|pair| got.contains(pair)));
+    }
+
+    #[test]
+    fn skin_reuses_inside_half_and_rebuilds_outside() {
+        let mut xyz = Vec::new();
+        for i in 0..24 {
+            let t = i as f64;
+            xyz.push([
+                (t * 1.3).rem_euclid(40.0),
+                (t * 2.1).rem_euclid(40.0),
+                (t * 0.7).rem_euclid(40.0),
+            ]);
+        }
+        xyz.push([0.2, 10.0, 10.0]);
+        xyz.push([39.6, 10.2, 10.1]);
+        let cell = [[40.0, 0.0, 0.0], [0.0, 40.0, 0.0], [0.0, 0.0, 40.0]];
+        let periodic = [true, true, true];
+        let cutoff = 5.0;
+        let skin = 1.0;
+        let mut list = SkinList::new();
+        let first = list
+            .pairs(&xyz, &cell, periodic, cutoff, skin)
+            .unwrap()
+            .to_vec();
+        let shell = collect_pairs(&xyz, &cell, periodic, cutoff + skin).unwrap();
+        assert_eq!(first, shell);
+        let mut inside = xyz.clone();
+        for p in &mut inside {
+            p[0] += 0.4;
+        }
+        let reused = list
+            .pairs(&inside, &cell, periodic, cutoff, skin)
+            .unwrap()
+            .to_vec();
+        assert_eq!(reused, first);
+        let cut2 = cutoff * cutoff;
+        for i in 0..inside.len() {
+            for j in (i + 1)..inside.len() {
+                let mut d = [
+                    inside[i][0] - inside[j][0],
+                    inside[i][1] - inside[j][1],
+                    inside[i][2] - inside[j][2],
+                ];
+                for k in 0..3 {
+                    let inv = 1.0 / 40.0;
+                    d[k] -= 40.0 * round_away(d[k] * inv);
+                }
+                let r2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+                if r2 <= cut2 {
+                    assert!(reused.contains(&(i as i32, j as i32)));
+                }
+            }
+        }
+        let mut outside = xyz.clone();
+        outside[0][0] += 0.6;
+        let rebuilt = list
+            .pairs(&outside, &cell, periodic, cutoff, skin)
+            .unwrap()
+            .to_vec();
+        let fresh = collect_pairs(&outside, &cell, periodic, cutoff + skin).unwrap();
+        assert_eq!(rebuilt, fresh);
+    }
+
+    #[test]
+    fn zero_skin_rebuilds_when_coordinates_change() {
+        let cell = [[30.0, 0.0, 0.0], [0.0, 30.0, 0.0], [0.0, 0.0, 30.0]];
+        let xyz = vec![[1.0, 2.0, 3.0], [4.0, 2.0, 3.0], [20.0, 10.0, 8.0]];
+        let mut nudged = xyz.clone();
+        nudged[0][0] += 1.0e-6;
+        let mut list = SkinList::new();
+        let periodic = [true, true, true];
+        let first = list.pairs(&xyz, &cell, periodic, 6.0, 0.0).unwrap().to_vec();
+        assert_eq!(first, collect_pairs(&xyz, &cell, periodic, 6.0).unwrap());
+        let second = list
+            .pairs(&nudged, &cell, periodic, 6.0, 0.0)
+            .unwrap()
+            .to_vec();
+        assert_eq!(
+            second,
+            collect_pairs(&nudged, &cell, periodic, 6.0).unwrap()
+        );
     }
 
     #[test]

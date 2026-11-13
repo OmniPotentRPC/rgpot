@@ -580,6 +580,77 @@ TEST_CASE("Water plus H wraps every leg with minimage", "[fastnlist][water]") {
 }
 #endif
 
+#ifdef RGPOT_HAS_FAST_NLIST
+TEST_CASE("A fastnlist skin reuses inside half a skin", "[fastnlist][skin]") {
+  const double box[9] = {40, 0, 0, 0, 40, 0, 0, 0, 40};
+  const int32_t periodic[3] = {1, 1, 1};
+  std::vector<double> pos;
+  for (int i = 0; i < 24; ++i) {
+    const double t = static_cast<double>(i);
+    pos.push_back(std::fmod(t * 1.3, 40.0));
+    pos.push_back(std::fmod(t * 2.1, 40.0));
+    pos.push_back(std::fmod(t * 0.7, 40.0));
+  }
+  pos.insert(pos.end(), {0.2, 10.0, 10.0, 39.6, 10.2, 10.1});
+  const std::size_t n = pos.size() / 3;
+  const std::size_t cap = n * (n - 1) / 2;
+  std::vector<int32_t> shell(cap * 2);
+  std::vector<int32_t> fresh(cap * 2);
+  std::size_t shell_n = 0;
+  std::size_t fresh_n = 0;
+  rgpot_fast_skin *list = rgpot_fast_skin_new();
+  REQUIRE(list != nullptr);
+  REQUIRE(rgpot_fast_skin_pairs(list, pos.data(), n, box, periodic, 5.0, 1.0, shell.data(), cap,
+                               &shell_n) == 0);
+  REQUIRE(rgpot_fast_pairs(pos.data(), n, box, periodic, 6.0, fresh.data(), cap, &fresh_n) == 0);
+  REQUIRE(shell_n == fresh_n);
+  REQUIRE(std::equal(shell.begin(), shell.begin() + static_cast<std::ptrdiff_t>(shell_n * 2),
+                     fresh.begin()));
+  std::vector<double> inside = pos;
+  for (std::size_t a = 0; a < n; ++a) {
+    inside[3 * a] += 0.4;
+  }
+  std::vector<int32_t> kept(cap * 2);
+  std::size_t kept_n = 0;
+  REQUIRE(rgpot_fast_skin_pairs(list, inside.data(), n, box, periodic, 5.0, 1.0, kept.data(), cap,
+                               &kept_n) == 0);
+  REQUIRE(kept_n == shell_n);
+  REQUIRE(std::equal(kept.begin(), kept.begin() + static_cast<std::ptrdiff_t>(kept_n * 2),
+                     shell.begin()));
+  const rgpot::nlist::MinimumImage image(box, {{true, true, true}});
+  for (std::size_t i = 0; i < n; ++i) {
+    for (std::size_t j = i + 1; j < n; ++j) {
+      double dx = inside[3 * i] - inside[3 * j];
+      double dy = inside[3 * i + 1] - inside[3 * j + 1];
+      double dz = inside[3 * i + 2] - inside[3 * j + 2];
+      image.fold(dx, dy, dz);
+      if (!(dx * dx + dy * dy + dz * dz <= 25.0)) {
+        continue;
+      }
+      bool found = false;
+      for (std::size_t p = 0; p < kept_n; ++p) {
+        if (kept[2 * p] == static_cast<int32_t>(i) && kept[2 * p + 1] == static_cast<int32_t>(j)) {
+          found = true;
+          break;
+        }
+      }
+      REQUIRE(found);
+    }
+  }
+  std::vector<double> outside = pos;
+  outside[0] += 0.6;
+  std::size_t rebuilt_n = 0;
+  REQUIRE(rgpot_fast_skin_pairs(list, outside.data(), n, box, periodic, 5.0, 1.0, kept.data(), cap,
+                               &rebuilt_n) == 0);
+  REQUIRE(rgpot_fast_pairs(outside.data(), n, box, periodic, 6.0, fresh.data(), cap, &fresh_n) ==
+          0);
+  REQUIRE(rebuilt_n == fresh_n);
+  REQUIRE(std::equal(kept.begin(), kept.begin() + static_cast<std::ptrdiff_t>(rebuilt_n * 2),
+                     fresh.begin()));
+  rgpot_fast_skin_free(list);
+}
+#endif
+
 TEST_CASE("A rigid shift keeps the Pt list", "[fastnlist][morse]") {
   std::vector<double> base;
   double box[9]{};
