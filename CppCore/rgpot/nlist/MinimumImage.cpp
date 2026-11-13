@@ -478,6 +478,23 @@ void search_reduced(const double cell[9], const bool periodic[3],
     const double point2 = dot3(reduced, reduced);
     const double out2 = point2 > span2 ? point2 - span2 : 0.0;
     have = true;
+    // Nearest-plane point. Its length is the sphere the exact interval
+    // below is measured against. Without it the sphere is the whole
+    // residual and a short Gram-Schmidt vector has an enormous radius.
+    {
+      double mb[3] = {};
+      for (int level = n - 1; level >= 0; --level) {
+        double center = y[level];
+        for (int j = level + 1; j < n; ++j) {
+          center = mul_add(-mb[j], mu[j][level], center);
+        }
+        mb[level] = std::round(center);
+      }
+      for (int a = 0; a < n; ++a) {
+        m[a] = mb[a];
+      }
+      visit();
+    }
     const auto enumerate = [&](auto &&self, int level, double dist2) -> void {
       double center = y[level];
       for (int j = level + 1; j < n; ++j) {
@@ -496,23 +513,15 @@ void search_reduced(const double cell[9], const bool periodic[3],
         low = nearest - 1;
         high = nearest + 1;
       } else {
+        // Exact Gram-Schmidt sphere: (center - m)^2 * ||b*||^2 <= room.
+        // One extra integer on each side covers the gap between that
+        // length and the fused length visit() scores.
         const double width = std::sqrt(room / norm2[level]);
-        if (!(width < 64.0)) {
-          // The sphere still contains the whole residual, so its radius
-          // along a short Gram-Schmidt vector is enormous. The last
-          // coordinate is minimized at the nearest integer; earlier
-          // coordinates keep a small neighbourhood of the center.
-          if (!(std::abs(center) < 0x1p52)) {
-            throw std::overflow_error("periodic image index is out of range");
-          }
-          const auto nearest = std::llround(center);
-          const int pad = level == 0 ? 2 : 8;
-          low = nearest - pad;
-          high = nearest + pad;
-        } else {
-          low = static_cast<long long>(std::floor(center - width)) - 1;
-          high = static_cast<long long>(std::ceil(center + width)) + 1;
+        if (!(width < 1.0e6)) {
+          throw std::overflow_error("periodic image search count is too large");
         }
+        low = static_cast<long long>(std::floor(center - width)) - 1;
+        high = static_cast<long long>(std::ceil(center + width)) + 1;
       }
       for (long long mi = low; mi <= high; ++mi) {
         m[level] = static_cast<double>(mi);

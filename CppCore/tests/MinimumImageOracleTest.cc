@@ -397,3 +397,85 @@ TEST_CASE("a thin periodic row stays within half that row",
     }
   }
 }
+
+TEST_CASE("two thin periodic rows stay inside the Gram-Schmidt sphere",
+          "[PairList][triclinic][oracle]") {
+  // Both short rows are periodic. Their coefficients are ~1e8, and the
+  // outer Gram-Schmidt coordinate is fixed before the short one. The
+  // scored image has to match a neighbourhood of those coefficients.
+  const double cells[][9] = {
+      {1.0e-8, 0.0, 0.0, 0.0, 1.0e-8, 0.0, 0.0, 0.0, 1.0},
+      {1.0e-8, 0.4e-8, 0.0, 0.3e-8, 1.0e-8, 0.0, 0.0, 0.0, 1.0},
+  };
+  const std::array<std::array<bool, 3>, 2> masks{{
+      {{true, true, true}},
+      {{true, true, false}},
+  }};
+  const double samples[][3] = {
+      {0.25, -0.4, 0.1},
+      {3.0e-9, -2.0e-9, 0.5},
+      {-0.15, 0.05, -0.7},
+  };
+  for (const auto &cell : cells) {
+    for (const auto &periodic : masks) {
+      const rgpot::nlist::MinimumImage image(cell, periodic);
+      for (const auto &sample : samples) {
+        double x = sample[0];
+        double y = sample[1];
+        double z = sample[2];
+        image.fold(x, y, z);
+        const double folded = x * x + y * y + z * z;
+        // Least-squares coefficients of the two short rows, which lie in
+        // the xy plane. The long row is the z axis.
+        const double aa = cell[0] * cell[0] + cell[1] * cell[1];
+        const double bb = cell[3] * cell[3] + cell[4] * cell[4];
+        const double ab = cell[0] * cell[3] + cell[1] * cell[4];
+        const double ad = sample[0] * cell[0] + sample[1] * cell[1];
+        const double bd = sample[0] * cell[3] + sample[1] * cell[4];
+        const double det = aa * bb - ab * ab;
+        long long center[3] = {};
+        if (periodic[0]) {
+          center[0] = std::llround((bb * ad - ab * bd) / det);
+        }
+        if (periodic[1]) {
+          center[1] = std::llround((aa * bd - ab * ad) / det);
+        }
+        if (periodic[2]) {
+          center[2] = std::llround(sample[2]);
+        }
+        long double best = std::numeric_limits<long double>::infinity();
+        for (long long i = center[0] - 4; i <= center[0] + 4; ++i) {
+          if (!periodic[0] && i != 0) {
+            continue;
+          }
+          for (long long j = center[1] - 4; j <= center[1] + 4; ++j) {
+            if (!periodic[1] && j != 0) {
+              continue;
+            }
+            for (long long k = center[2] - 2; k <= center[2] + 2; ++k) {
+              if (!periodic[2] && k != 0) {
+                continue;
+              }
+              const long double cx = static_cast<long double>(sample[0]) -
+                                     static_cast<long double>(i) * cell[0] -
+                                     static_cast<long double>(j) * cell[3] -
+                                     static_cast<long double>(k) * cell[6];
+              const long double cy = static_cast<long double>(sample[1]) -
+                                     static_cast<long double>(i) * cell[1] -
+                                     static_cast<long double>(j) * cell[4] -
+                                     static_cast<long double>(k) * cell[7];
+              const long double cz = static_cast<long double>(sample[2]) -
+                                     static_cast<long double>(i) * cell[2] -
+                                     static_cast<long double>(j) * cell[5] -
+                                     static_cast<long double>(k) * cell[8];
+              best = std::min(best, cx * cx + cy * cy + cz * cz);
+            }
+          }
+        }
+        INFO("folded=" << folded << " best=" << static_cast<double>(best));
+        REQUIRE(std::isfinite(folded));
+        REQUIRE(static_cast<long double>(folded) <= best * (1.0L + 1e-6L) + 1e-18L);
+      }
+    }
+  }
+}

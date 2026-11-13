@@ -1,0 +1,1 @@
+The reduced-basis image search measures its integer interval against the nearest-plane length. A short periodic row no longer depends on a fixed neighbourhood of eight coefficients, including when two rows are short.
