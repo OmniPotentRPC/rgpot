@@ -30,7 +30,7 @@ def main() -> int:
         (replay / "replay.engrad").read_text(encoding="utf-8"),
         encoding="utf-8",
     )
-    sys.stdout.write((replay / "replay.out").read_text(encoding="utf-8"))
+    sys.stdout.write((replay / "replay.stdout").read_text(encoding="utf-8"))
     return 0
 
 if __name__ == "__main__":

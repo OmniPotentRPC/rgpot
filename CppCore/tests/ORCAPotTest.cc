@@ -169,7 +169,7 @@ def main() -> int:
         engrad_text = (src / "replay.engrad").read_text(encoding="utf-8")
         target.with_suffix(".engrad").write_text(engrad_text, encoding="utf-8")
         # ASE's ORCA calculator reads the process stdout as the .out file.
-        out_text = (src / "replay.out").read_text(encoding="utf-8")
+        out_text = (src / "replay.stdout").read_text(encoding="utf-8")
         sys.stdout.write(out_text)
         if not out_text.endswith("\n"):
             sys.stdout.write("\n")
@@ -585,7 +585,7 @@ void expect_recorded(double energy, const AtomMatrix &forces) {
 TEST_CASE("ORCAPot replays a recorded engrad in CODATA units", "[orca]") {
   const std::filesystem::path replay = replay_dir();
   REQUIRE(std::filesystem::is_regular_file(replay / "replay.engrad"));
-  REQUIRE(std::filesystem::is_regular_file(replay / "replay.out"));
+  REQUIRE(std::filesystem::is_regular_file(replay / "replay.stdout"));
   std::ifstream recorded(replay / "replay.engrad");
   const std::string text((std::istreambuf_iterator<char>(recorded)), {});
   REQUIRE(text.find("-75.500000000000") != std::string::npos);
