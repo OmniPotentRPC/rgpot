@@ -98,3 +98,39 @@ option(
     value: false,
     description: 'EAM and Finnis-Sinclair potentials read from LAMMPS funcfl, setfl and eam/fs tables.',
 )
+option(
+    'with_lammps',
+    type: 'feature',
+    value: 'auto',
+    description: 'LAMMPS pair_style rgpot and the lj/cut comparison. Needs the lammps Python module. pair_style rgpot also needs lammps_src.',
+)
+option(
+    'lammps_src',
+    type: 'string',
+    value: '',
+    description: 'LAMMPS src directory that contains pair.h, matching the liblammps that will load the plugin.',
+)
+option(
+    'lammps_exe',
+    type: 'string',
+    value: '',
+    description: 'lmp built from lammps_src. When set, the LAMMPS test also runs pair_style rgpot.',
+)
+option(
+    'with_gromacs',
+    type: 'feature',
+    value: 'auto',
+    description: 'GROMACS mdrun -plumed using the RGPOT collective variable.',
+)
+option(
+    'with_openmm',
+    type: 'feature',
+    value: 'auto',
+    description: 'OpenMM shifted Lennard-Jones comparison.',
+)
+option(
+    'with_plumed',
+    type: 'feature',
+    value: 'auto',
+    description: 'PLUMED RGPOT collective variable.',
+)

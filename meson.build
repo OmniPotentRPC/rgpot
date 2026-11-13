@@ -917,6 +917,11 @@ if get_option('with_rpc_client_only')
     )
 endif
 
+# Engine drivers link the umbrella. A client-only build has no LJPot.
+if not get_option('with_rpc_client_only')
+    subdir('engines')
+endif
+
 # --------------------- Python package (pip install rgpot)
 if get_option('with_python')
     if get_option('with_rpc_client_only')
