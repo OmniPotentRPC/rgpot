@@ -115,6 +115,16 @@ def test_atom_types_accept_int64_and_python_list() -> None:
         pot.evaluate(positions, [1.5, 1], box)
 
 
+def test_cluster_stress_matches_finite_difference() -> None:
+    """A non-periodic cell is the volume ASE strains, not the padded cube."""
+    atoms = lj_dimer()
+    assert not np.any(atoms.pbc)
+    atoms.calc = RgpotCalculator("lj", cutoff=8.0)
+    analytic = atoms.get_stress()
+    numeric = calculate_numerical_stress(atoms, eps=1e-5, voigt=True)
+    np.testing.assert_allclose(analytic, numeric, atol=1e-5, rtol=0.0)
+
+
 def test_lj_stress_matches_finite_difference() -> None:
     atoms = lj_crystal()
     atoms.calc = RgpotCalculator("lj", cutoff=8.0)

@@ -17,9 +17,13 @@ and ``self.results`` and must not run on two threads at once. The
 potential object underneath keeps one workspace per calling thread (F2).
 
 The bound kernels are fully periodic. A structure with every periodic
-flag false is a cluster: the cell is ignored, and the kernel receives a
-cubic box whose side is at least 100 Angstrom and at least the cluster
-extent plus twice the kernel cutoff. A mixed periodic flag raises
+flag false is a cluster: the kernel receives a cubic box whose side is
+at least 100 Angstrom and at least the cluster extent plus twice the
+kernel cutoff, so a periodic image cannot enter the cutoff. Energy and
+forces do not depend on the caller's cell. Stress does: it is the
+cluster virial divided by the caller's cell volume, which is what
+``calculate_numerical_stress`` differentiates. A caller with no cell
+keeps the padded cube's stress. A mixed periodic flag raises
 ``ValueError`` and names the non-periodic axes.
 """
 
@@ -190,6 +194,12 @@ def _box(positions: Any, cell: Any, pbc: Any, cutoff: float) -> np.ndarray:
     return np.ascontiguousarray(np.asarray(cell, dtype=np.float64).reshape(3, 3))
 
 
+def _cell_volume(cell: Any) -> float:
+    """Absolute volume of a 3x3 cell. A singular cell has volume 0."""
+    matrix = np.asarray(cell, dtype=np.float64).reshape(3, 3)
+    return float(abs(np.linalg.det(matrix)))
+
+
 def _voigt(stress: np.ndarray) -> np.ndarray:
     """Row-major 3x3 Cauchy stress to ASE Voigt (xx, yy, zz, yz, xz, xy)."""
     s = np.asarray(stress, dtype=np.float64).reshape(3, 3)
@@ -197,6 +207,26 @@ def _voigt(stress: np.ndarray) -> np.ndarray:
         [s[0, 0], s[1, 1], s[2, 2], s[1, 2], s[0, 2], s[0, 1]],
         dtype=np.float64,
     )
+
+
+def _ase_stress(kernel_stress: Any, kernel_box: Any, user_cell: Any, pbc: Any) -> np.ndarray:
+    """Cauchy stress on the cell ASE differentiates.
+
+    A periodic call uses the caller's cell as the kernel box, so the
+    kernel stress is already ASE's. A cluster is evaluated in a padded
+    cube that keeps periodic images out of the cutoff. The kernel then
+    divides the virial by that cube. ASE's finite-difference stress
+    divides the same virial by the caller's cell, so the cube stress is
+    rescaled by ``V_kernel / V_caller``. A caller with no cell keeps the
+    cube stress.
+    """
+    stress = np.asarray(kernel_stress, dtype=np.float64).reshape(3, 3).copy()
+    if not bool(_pbc_flags(pbc).any()):
+        user_volume = _cell_volume(user_cell)
+        kernel_volume = _cell_volume(kernel_box)
+        if user_volume > 0.0 and kernel_volume > 0.0:
+            stress *= kernel_volume / user_volume
+    return _voigt(stress)
 
 
 def _as_f64(array: Any, what: str) -> np.ndarray:
@@ -282,7 +312,8 @@ class RgpotCalculator(Calculator):
         """
         pos = _as_f64(positions, "positions")
         num = np.ascontiguousarray(np.asarray(numbers, dtype=np.int32))
-        box = _box(pos, cell, pbc, self._cutoff)
+        user_cell = np.asarray(cell, dtype=np.float64).reshape(3, 3)
+        box = _box(pos, user_cell, pbc, self._cutoff)
         raw = self._potential.evaluate(pos, num, box)
         energy = float(raw["energy"])
         forces = np.ascontiguousarray(raw["forces"], dtype=np.float64)
@@ -293,7 +324,7 @@ class RgpotCalculator(Calculator):
         }
         stress = raw.get("stress")
         if stress is not None:
-            out["stress"] = _voigt(np.asarray(stress))
+            out["stress"] = _ase_stress(stress, box, user_cell, pbc)
         energies = raw.get("energies")
         if energies is not None:
             out["energies"] = np.ascontiguousarray(energies, dtype=np.float64)
@@ -333,6 +364,8 @@ class RgpotCalculator(Calculator):
         positions: list[np.ndarray] = []
         numbers: list[np.ndarray] = []
         boxes: list[np.ndarray] = []
+        user_cells: list[np.ndarray] = []
+        pbcs: list[Any] = []
         for atoms in frames_list:
             # Read the arrays ASE stores. get_positions copies, and that
             # copy was comparable to an EAM evaluation of Pt7. The C++
@@ -340,8 +373,10 @@ class RgpotCalculator(Calculator):
             # Atoms objects are not mutated and are not read again.
             positions.append(_as_f64(atoms.positions, "positions"))
             numbers.append(np.ascontiguousarray(atoms.numbers, dtype=np.int32))
+            user_cells.append(np.asarray(atoms.cell.array, dtype=np.float64))
+            pbcs.append(atoms.pbc)
             boxes.append(
-                _box(positions[-1], atoms.cell.array, atoms.pbc, self._cutoff)
+                _box(positions[-1], user_cells[-1], atoms.pbc, self._cutoff)
             )
         raw_rows = self._potential.evaluate_batch(
             positions, numbers, boxes, int(threads)
@@ -363,7 +398,12 @@ class RgpotCalculator(Calculator):
                     positions[index], numbers[index], boxes[index]
                 )
                 if stress_eval.get("stress") is not None:
-                    row["stress"] = _voigt(np.asarray(stress_eval["stress"]))
+                    row["stress"] = _ase_stress(
+                        stress_eval["stress"],
+                        boxes[index],
+                        user_cells[index],
+                        pbcs[index],
+                    )
             rows.append(row)
             if attach:
                 spc_kw: dict[str, Any] = {}
