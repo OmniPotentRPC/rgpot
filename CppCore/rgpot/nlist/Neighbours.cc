@@ -362,6 +362,7 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
     std::uint8_t unstable;
   };
   std::vector<Cand> gather;
+  std::vector<Cand> scratch;
   std::vector<std::int32_t> shifts;
   std::vector<std::uint8_t> flags;
   const bool record_round = !use_general_ && image_ == Image::Round;
@@ -575,8 +576,45 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
         }
       }
     }
-    std::sort(gather.begin(), gather.end(),
-              [](const Cand &a, const Cand &b) { return a.j < b.j; });
+    // Each neighbour cell is appended as a run already sorted by partner
+    // index, because the atoms of a cell are binned in index order. A
+    // radix pass on those bytes puts the row in the same order as a
+    // comparison sort, which is what the half-list walk assumes.
+    if (gather.size() > 1) {
+      int nbytes = 1;
+      std::int32_t maxj = 0;
+      for (const Cand &c : gather) {
+        if (c.j > maxj) {
+          maxj = c.j;
+        }
+      }
+      if (maxj > 0x0000ffff) {
+        nbytes = maxj > 0x00ffffff ? 4 : 3;
+      } else if (maxj > 0x000000ff) {
+        nbytes = 2;
+      }
+      scratch.resize(gather.size());
+      int counts[256];
+      for (int shift = 0; shift < 8 * nbytes; shift += 8) {
+        for (int b = 0; b < 256; ++b) {
+          counts[b] = 0;
+        }
+        for (const Cand &c : gather) {
+          ++counts[(static_cast<unsigned>(c.j) >> shift) & 255u];
+        }
+        int sum = 0;
+        for (int b = 0; b < 256; ++b) {
+          const int nbin = counts[b];
+          counts[b] = sum;
+          sum += nbin;
+        }
+        for (const Cand &c : gather) {
+          scratch[static_cast<std::size_t>(
+              counts[(static_cast<unsigned>(c.j) >> shift) & 255u]++)] = c;
+        }
+        gather.swap(scratch);
+      }
+    }
     for (const Cand &c : gather) {
       nbr_.push_back(c.j);
       if (record) {

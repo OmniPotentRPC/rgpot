@@ -1,0 +1,1 @@
+An orthorhombic neighbour row is ordered with a radix pass over the partner index. Each cell already contributes partners in index order, and the row the half-list walk reads is the same sequence as before. The Lennard-Jones pair term is compiled into the force routine.
