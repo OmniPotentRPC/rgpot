@@ -238,8 +238,30 @@ def base_rev() -> str | None:
     return None
 
 
+def history_rev() -> str | None:
+    """Ledger revision this branch inherited from main.
+
+    main's tip appends soversions for layouts that landed after the branch
+    point. Those lines were not part of this branch, so a shorter ledger is
+    not a dropped line. The merge-base is that shipped history. A branch
+    that already contains the tip uses the tip, and deleting one of its
+    lines still fails.
+    """
+    tip = base_rev()
+    if tip is None:
+        return None
+    merged = subprocess.run(
+        ["git", "-C", str(ROOT), "merge-base", "HEAD", tip],
+        capture_output=True,
+        text=True,
+    )
+    if merged.returncode == 0 and merged.stdout.strip():
+        return merged.stdout.strip()
+    return tip
+
+
 def check_against_base(rows: list[tuple[int, str]], layout_text: str) -> None:
-    rev = base_rev()
+    rev = history_rev()
     if rev is None:
         print("soversion ledger: no main ref, skipped the history check")
         return

@@ -1921,6 +1921,11 @@ if get_option('with_tests')
                 python3_prog,
                 args: [files('tests/check_virtual_counts.py')],
             )
+            test(
+                'SoversionLedger',
+                python3_prog,
+                args: [files('tests/test_soversion_ledger.py')],
+            )
             cxx_layout_stamp = executable(
                 'print_cxx_layout_stamp',
                 sources: ['tests/print_cxx_layout_stamp.cc'],

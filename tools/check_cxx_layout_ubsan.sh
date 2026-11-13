@@ -45,5 +45,7 @@ fi
 meson compile -C "$BUILD" cxx_layout_test print_cxx_layout_stamp
 # CxxLayoutTest compiles the soversion static asserts and the index lookup.
 # CxxLayoutVirtualCounts checks the virtual-function counters in the same header.
+# CxxSoversion checks the ledger against the soversions this branch inherited.
+# SoversionLedger is the same history rule without the built library.
 meson test -C "$BUILD" --print-errorlogs \
-  CxxLayoutTest CxxLayoutVirtualCounts
+  CxxLayoutTest CxxLayoutVirtualCounts CxxSoversion SoversionLedger
