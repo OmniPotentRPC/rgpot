@@ -68,6 +68,10 @@ bld  = { changelog_title = "Buildsystem" }
 gen  = { changelog_title = "Generated" }
 # Cosmo potctl spike commit on feat/direct-metatomic-export (before promotion to feat/ci).
 experiment = { changelog_title = "Experiments" }
+# Subjects already in the history this release carries.
+pot = { changelog_title = "Potentials" }
+python = { changelog_title = "Python" }
+nlist = { changelog_title = "Neighbour lists" }
 
 [changelog]
 path = "CHANGELOG.md"
