@@ -1,0 +1,1 @@
+An orthorhombic neighbour build folds each unordered pair once and writes the other row with the negated image index and the same skin flag. The stored row stays in partner-index order. Atoms that are still in the cells of the previous build keep that binning; the pairs are searched again.

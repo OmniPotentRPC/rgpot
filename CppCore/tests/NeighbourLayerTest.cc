@@ -881,3 +881,46 @@ TEST_CASE("a stored general list matches the fold after a skin move",
   tight[8] = 0.9;
   run(tight, skew, 3.5, 0.4, {true, true, true});
 }
+
+TEST_CASE("a rebuild inside the same cells matches a fresh list", "[nlist][cells]") {
+  setThreads("1");
+  const double side = 40.0;
+  const double cutoff = 6.0;
+  const double skin = 1.0;
+  const double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  // Cell width is side/5 = 8. An atom at the middle of a cell can move
+  // by more than half the skin and still occupy that cell.
+  std::vector<double> pos = {20.0, 20.0, 20.0, 22.5, 20.4, 19.7, 4.2, 12.1, 28.3};
+  rgpot::nlist::Spec spec;
+  spec.cutoff = cutoff;
+  spec.skin = skin;
+  spec.periodic = {true, true, true};
+  spec.image = rgpot::nlist::Image::Round;
+  spec.mode = rgpot::nlist::Mode::Stored;
+  rgpot::nlist::Neighbours kept;
+  kept.update(pos.data(), pos.size() / 3, box, spec);
+  REQUIRE_FALSE(kept.reused());
+  pos[0] = 20.6;
+  pos[3] = 22.1;
+  kept.update(pos.data(), pos.size() / 3, box, spec);
+  REQUIRE_FALSE(kept.reused());
+  rgpot::nlist::Neighbours fresh;
+  fresh.update(pos.data(), pos.size() / 3, box, spec);
+  std::vector<std::uint64_t> a;
+  std::vector<std::uint64_t> b;
+  auto take = [](rgpot::nlist::Neighbours &cells, std::vector<std::uint64_t> &out) {
+    cells.forDirected(0, 3, [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                                double r2) {
+      out.push_back(static_cast<std::uint64_t>(static_cast<std::uint32_t>(i)) << 32 |
+                    static_cast<std::uint32_t>(j));
+      out.push_back(bits(dx));
+      out.push_back(bits(dy));
+      out.push_back(bits(dz));
+      out.push_back(bits(r2));
+    });
+  };
+  take(kept, a);
+  take(fresh, b);
+  REQUIRE(a == b);
+  REQUIRE(!a.empty());
+}

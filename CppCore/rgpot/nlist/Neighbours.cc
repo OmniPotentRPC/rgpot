@@ -255,44 +255,65 @@ const std::int32_t *Neighbours::roundShifts(bool &tiny, const unsigned char *&un
 
 void Neighbours::buildCells(const double *xyz, std::size_t n) {
   const double edge = search_ > 0.0 ? search_ : 1.0;
-  nx_ = axisCount(len_[0], edge);
-  ny_ = axisCount(len_[1], edge);
-  nz_ = axisCount(len_[2], edge);
+  int nx = axisCount(len_[0], edge);
+  int ny = axisCount(len_[1], edge);
+  int nz = axisCount(len_[2], edge);
   const double bytes =
-      static_cast<double>(nx_) * static_cast<double>(ny_) *
-      static_cast<double>(nz_) * static_cast<double>(sizeof(std::int32_t));
+      static_cast<double>(nx) * static_cast<double>(ny) *
+      static_cast<double>(nz) * static_cast<double>(sizeof(std::int32_t));
   const auto avail = availableBytes();
   if (avail > 0 && bytes > static_cast<double>(avail)) {
-    nx_ = ny_ = nz_ = 1;
+    nx = ny = nz = 1;
   }
-  const auto ncells = static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_) *
-                      static_cast<std::size_t>(nz_);
+  const auto ncells = static_cast<std::size_t>(nx) * static_cast<std::size_t>(ny) *
+                      static_cast<std::size_t>(nz);
+  auto bin = [](double x, double length, int naxis) {
+    if (!(length > 0.0) || naxis <= 1) {
+      return 0;
+    }
+    double t = x / length * static_cast<double>(naxis);
+    if (!(t >= 0.0)) {
+      t = 0.0;
+    }
+    auto i = static_cast<int>(t);
+    if (i >= naxis) {
+      i = naxis - 1;
+    }
+    if (i < 0) {
+      i = 0;
+    }
+    return i;
+  };
+  // A rebuild whose atoms are still in the cells they occupied keeps
+  // those cells. The pairs are searched again; only the binning is kept.
+  // Atoms were inserted in index order, so an unchanged assignment is
+  // the same cell_atoms_ sequence.
+  if (nx == nx_ && ny == ny_ && nz == nz_ && cell_atoms_.size() == n &&
+      cell_of_.size() >= n && cell_start_.size() == ncells + 1) {
+    bool same = true;
+    for (std::size_t a = 0; a < n; ++a) {
+      const int ix = bin(xyz[3 * a], len_[0], nx);
+      const int iy = bin(xyz[3 * a + 1], len_[1], ny);
+      const int iz = bin(xyz[3 * a + 2], len_[2], nz);
+      const int id = (ix * ny + iy) * nz + iz;
+      if (id != cell_of_[a]) {
+        same = false;
+        break;
+      }
+    }
+    if (same) {
+      return;
+    }
+  }
+  nx_ = nx;
+  ny_ = ny;
+  nz_ = nz;
   cell_start_.assign(ncells + 1, 0);
   cell_of_.resize(n);
   for (std::size_t a = 0; a < n; ++a) {
-    int ix = 0;
-    int iy = 0;
-    int iz = 0;
-    auto bin = [](double x, double length, int naxis) {
-      if (!(length > 0.0) || naxis <= 1) {
-        return 0;
-      }
-      double t = x / length * static_cast<double>(naxis);
-      if (!(t >= 0.0)) {
-        t = 0.0;
-      }
-      auto i = static_cast<int>(t);
-      if (i >= naxis) {
-        i = naxis - 1;
-      }
-      if (i < 0) {
-        i = 0;
-      }
-      return i;
-    };
-    ix = bin(xyz[3 * a], len_[0], nx_);
-    iy = bin(xyz[3 * a + 1], len_[1], ny_);
-    iz = bin(xyz[3 * a + 2], len_[2], nz_);
+    const int ix = bin(xyz[3 * a], len_[0], nx_);
+    const int iy = bin(xyz[3 * a + 1], len_[1], ny_);
+    const int iz = bin(xyz[3 * a + 2], len_[2], nz_);
     const int id = (ix * ny_ + iy) * nz_ + iz;
     cell_of_[a] = id;
     ++cell_start_[static_cast<std::size_t>(id) + 1];
@@ -365,6 +386,83 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
   std::vector<Cand> scratch;
   std::vector<std::int32_t> shifts;
   std::vector<std::uint8_t> flags;
+  // An orthorhombic pair is the same geometry from either end, with the
+  // image index and the skin flag negated together. Evaluating j > i and
+  // writing both rows avoids a second fold. A sheared cell is not mirrored.
+  struct Half {
+    std::int32_t i;
+    std::int32_t j;
+    std::int32_t sx;
+    std::int32_t sy;
+    std::int32_t sz;
+    std::uint8_t flag;
+  };
+  // The mirrored rows are assembled again on the next rebuild. Keeping
+  // the buffers avoids asking the allocator for them on every call.
+  struct HalfBuf {
+    std::vector<Half> halves;
+    std::vector<Cand> slots;
+    std::vector<Cand> scratch;
+    std::vector<std::int32_t> degree;
+    std::vector<std::int32_t> cursor;
+  };
+  thread_local HalfBuf half_buf;
+  half_buf.halves.clear();
+  std::vector<Half> &halves = half_buf.halves;
+  const bool half_pairs = !use_general_;
+#if defined(__GNUC__) || defined(__clang__)
+#define RGPOT_ACCEPT_INLINE __attribute__((always_inline))
+#else
+#define RGPOT_ACCEPT_INLINE
+#endif
+  auto accept = [&](std::size_t a, std::int32_t j, std::int32_t sx, std::int32_t sy,
+                    std::int32_t sz, bool holds) RGPOT_ACCEPT_INLINE {
+    const auto flag = static_cast<std::uint8_t>(holds ? 0 : 1);
+    if (!half_pairs) {
+      gather.push_back(Cand{j, sx, sy, sz, flag});
+      return;
+    }
+    halves.push_back(Half{static_cast<std::int32_t>(a), j, sx, sy, sz, flag});
+  };
+#undef RGPOT_ACCEPT_INLINE
+  auto order = [&]() {
+    if (gather.size() <= 1) {
+      return;
+    }
+    int nbytes = 1;
+    std::int32_t maxj = 0;
+    for (const Cand &c : gather) {
+      if (c.j > maxj) {
+        maxj = c.j;
+      }
+    }
+    if (maxj > 0x0000ffff) {
+      nbytes = maxj > 0x00ffffff ? 4 : 3;
+    } else if (maxj > 0x000000ff) {
+      nbytes = 2;
+    }
+    scratch.resize(gather.size());
+    int counts[256];
+    for (int shift = 0; shift < 8 * nbytes; shift += 8) {
+      for (int b = 0; b < 256; ++b) {
+        counts[b] = 0;
+      }
+      for (const Cand &c : gather) {
+        ++counts[(static_cast<unsigned>(c.j) >> shift) & 255u];
+      }
+      int sum = 0;
+      for (int b = 0; b < 256; ++b) {
+        const int nbin = counts[b];
+        counts[b] = sum;
+        sum += nbin;
+      }
+      for (const Cand &c : gather) {
+        scratch[static_cast<std::size_t>(
+            counts[(static_cast<unsigned>(c.j) >> shift) & 255u]++)] = c;
+      }
+      gather.swap(scratch);
+    }
+  };
   const bool record_round = !use_general_ && image_ == Image::Round;
   const bool record_general = use_general_;
   const bool record = record_round || record_general;
@@ -508,6 +606,11 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
             if (j == static_cast<std::int32_t>(a)) {
               continue;
             }
+            // The partner with the larger index owns the fold. Its row
+            // receives the negated index when the rows are assembled.
+            if (half_pairs && j < static_cast<std::int32_t>(a)) {
+              continue;
+            }
             std::int32_t sx = 0;
             std::int32_t sy = 0;
             std::int32_t sz = 0;
@@ -562,15 +665,14 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
                 if (r2_round <= search2) {
                   holds = axis_holds(rawx, 0, sx, fx) && axis_holds(rawy, 1, sy, fy) &&
                           axis_holds(rawz, 2, sz, fz);
-                  gather.push_back(
-                      Cand{j, sx, sy, sz, static_cast<std::uint8_t>(holds ? 0 : 1)});
+                  accept(a, j, sx, sy, sz, holds);
                 }
                 continue;
               }
             }
             const double r2 = dx * dx + dy * dy + dz * dz;
             if (r2 <= search2) {
-              gather.push_back(Cand{j, sx, sy, sz, static_cast<std::uint8_t>(holds ? 0 : 1)});
+              accept(a, j, sx, sy, sz, holds);
             }
           }
         }
@@ -579,42 +681,9 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
     // Each neighbour cell is appended as a run already sorted by partner
     // index, because the atoms of a cell are binned in index order. A
     // radix pass on those bytes puts the row in the same order as a
-    // comparison sort, which is what the half-list walk assumes.
-    if (gather.size() > 1) {
-      int nbytes = 1;
-      std::int32_t maxj = 0;
-      for (const Cand &c : gather) {
-        if (c.j > maxj) {
-          maxj = c.j;
-        }
-      }
-      if (maxj > 0x0000ffff) {
-        nbytes = maxj > 0x00ffffff ? 4 : 3;
-      } else if (maxj > 0x000000ff) {
-        nbytes = 2;
-      }
-      scratch.resize(gather.size());
-      int counts[256];
-      for (int shift = 0; shift < 8 * nbytes; shift += 8) {
-        for (int b = 0; b < 256; ++b) {
-          counts[b] = 0;
-        }
-        for (const Cand &c : gather) {
-          ++counts[(static_cast<unsigned>(c.j) >> shift) & 255u];
-        }
-        int sum = 0;
-        for (int b = 0; b < 256; ++b) {
-          const int nbin = counts[b];
-          counts[b] = sum;
-          sum += nbin;
-        }
-        for (const Cand &c : gather) {
-          scratch[static_cast<std::size_t>(
-              counts[(static_cast<unsigned>(c.j) >> shift) & 255u]++)] = c;
-        }
-        gather.swap(scratch);
-      }
-    }
+    // comparison sort, which is what the half-list walk assumes. The
+    // mirrored orthorhombic rows are ordered once, after both ends exist.
+    order();
     for (const Cand &c : gather) {
       nbr_.push_back(c.j);
       if (record) {
@@ -624,6 +693,97 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
         flags.push_back(c.unstable);
         if (c.unstable != 0) {
           all_stable = false;
+        }
+      }
+    }
+  }
+  if (half_pairs) {
+    auto &degree = half_buf.degree;
+    degree.assign(n, 0);
+    for (const Half &h : halves) {
+      ++degree[static_cast<std::size_t>(h.i)];
+      ++degree[static_cast<std::size_t>(h.j)];
+    }
+    off_[0] = 0;
+    for (std::size_t a = 0; a < n; ++a) {
+      off_[a + 1] = off_[a] + degree[a];
+    }
+    auto &cursor = half_buf.cursor;
+    cursor.assign(off_.begin(), off_.end() - 1);
+    auto &slots = half_buf.slots;
+    slots.resize(halves.size() * 2);
+    for (const Half &h : halves) {
+      const auto si = static_cast<std::size_t>(h.i);
+      const auto sj = static_cast<std::size_t>(h.j);
+      slots[static_cast<std::size_t>(cursor[si]++)] = Cand{h.j, h.sx, h.sy, h.sz, h.flag};
+      const auto nsx = static_cast<std::int32_t>(-static_cast<std::int64_t>(h.sx));
+      const auto nsy = static_cast<std::int32_t>(-static_cast<std::int64_t>(h.sy));
+      const auto nsz = static_cast<std::int32_t>(-static_cast<std::int64_t>(h.sz));
+      slots[static_cast<std::size_t>(cursor[sj]++)] = Cand{h.i, nsx, nsy, nsz, h.flag};
+    }
+    auto &row_scratch = half_buf.scratch;
+    auto order_row = [&](Cand *row, std::size_t len) {
+      if (len <= 1) {
+        return;
+      }
+      int nbytes = 1;
+      std::int32_t maxj = 0;
+      for (std::size_t k = 0; k < len; ++k) {
+        if (row[k].j > maxj) {
+          maxj = row[k].j;
+        }
+      }
+      if (maxj > 0x0000ffff) {
+        nbytes = maxj > 0x00ffffff ? 4 : 3;
+      } else if (maxj > 0x000000ff) {
+        nbytes = 2;
+      }
+      row_scratch.resize(len);
+      int counts[256];
+      for (int shift = 0; shift < 8 * nbytes; shift += 8) {
+        for (int b = 0; b < 256; ++b) {
+          counts[b] = 0;
+        }
+        for (std::size_t k = 0; k < len; ++k) {
+          ++counts[(static_cast<unsigned>(row[k].j) >> shift) & 255u];
+        }
+        int sum = 0;
+        for (int b = 0; b < 256; ++b) {
+          const int nbin = counts[b];
+          counts[b] = sum;
+          sum += nbin;
+        }
+        for (std::size_t k = 0; k < len; ++k) {
+          row_scratch[static_cast<std::size_t>(
+              counts[(static_cast<unsigned>(row[k].j) >> shift) & 255u]++)] = row[k];
+        }
+        for (std::size_t k = 0; k < len; ++k) {
+          row[k] = row_scratch[k];
+        }
+      }
+    };
+    nbr_.clear();
+    nbr_.reserve(slots.size());
+    shifts.clear();
+    flags.clear();
+    all_stable = record;
+    for (std::size_t a = 0; a < n; ++a) {
+      const auto begin = static_cast<std::size_t>(off_[a]);
+      const auto end = static_cast<std::size_t>(off_[a + 1]);
+      Cand *row = slots.data() + begin;
+      const auto len = end - begin;
+      order_row(row, len);
+      for (std::size_t k = 0; k < len; ++k) {
+        const Cand &c = row[k];
+        nbr_.push_back(c.j);
+        if (record) {
+          shifts.push_back(c.sx);
+          shifts.push_back(c.sy);
+          shifts.push_back(c.sz);
+          flags.push_back(c.unstable);
+          if (c.unstable != 0) {
+            all_stable = false;
+          }
         }
       }
     }
