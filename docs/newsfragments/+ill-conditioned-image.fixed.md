@@ -1,0 +1,1 @@
+An ill-conditioned cell that stays ill-conditioned after Minkowski reduction keeps its original rows. The fold enumerates those rows and returns the shortest lattice image, including when every axis is periodic.

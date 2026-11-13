@@ -842,6 +842,12 @@ if get_option('with_tests')
                 'MinimumImageTest.cc',
                 '',
             ],
+            [
+                'MinimumImageOracle',
+                'minimum_image_oracle_test',
+                'MinimumImageOracleTest.cc',
+                '',
+            ],
         ]
         if has_ipi
             test_array += [

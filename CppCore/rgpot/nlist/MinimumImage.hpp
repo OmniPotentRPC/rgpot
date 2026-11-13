@@ -19,8 +19,9 @@ namespace rgpot::nlist {
 /// condition estimate would spend more than half the double significand is
 /// Minkowski-reduced (Nguyen and Stehlé, ACM Trans. Algorithms 5, 46
 /// (2009), doi:10.1145/1597036.1597050) and the image is taken in that
-/// basis. A reduced basis that is still too ill-conditioned searches the
-/// 27 images of coefficients in {-1, 0, 1}. Singular or non-finite cells
+/// basis. A reduced basis that is still too ill-conditioned keeps the
+/// original rows and enumerates a reduced basis of those rows. Singular or
+/// non-finite cells
 /// throw. An index that does not fit in an int64 throws.
 class MinimumImage {
 public:
@@ -57,6 +58,9 @@ private:
   std::array<double, 3> dual_norm_{};
   std::array<bool, 3> periodic_{};
   bool narrow_{false};
+  // The Minkowski basis stayed ill-conditioned. Fold enumerates the
+  // original rows instead of searching that basis.
+  bool enumerate_{false};
 };
 
 inline void MinimumImage::subtractRounded(std::int32_t nx, std::int32_t ny,

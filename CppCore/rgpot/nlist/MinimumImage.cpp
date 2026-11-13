@@ -27,8 +27,8 @@ constexpr double kTol = 1e-12;
 constexpr int kMaxIt = 10000;
 // search_bounds enumerates its box only up to this many candidates.
 constexpr double kExhaustiveCap = 4096.0;
-// Guard on the reduced-basis box. A reduced basis of at most three rows
-// keeps it far below this; reaching it means the input left double range.
+// Rectangular reduced-basis box. Above this, Gram-Schmidt enumeration
+// is used so a thin row does not multiply the count by its dual norm.
 constexpr double kReducedCap = 1048576.0;
 // Guard on LLL steps for at most three rows.
 constexpr int kLllCap = 100000;
@@ -351,13 +351,12 @@ ReducedRows lll_rows(const double cell[9], const bool periodic[3]) {
   return r;
 }
 
-// Minimum image over the periodic rows through an LLL-reduced basis. A
-// lattice point v within distance R of the in-span part of the target has
-// reduced coordinates m_i = d_i . v, so |m_i - d_i . p| <= |d_i| R, where
-// d_i are the dual rows inside the span. For a reduced basis that box has
-// a small constant size. Candidates are evaluated with the same sub_image
-// and squared as search_bounds, in cell-row coordinates, and ties go to the
-// lexicographically smallest index triple, the one search_bounds keeps.
+// Minimum image over the periodic rows through an LLL-reduced basis.
+// Coefficients are enumerated from the longest Gram-Schmidt direction
+// down to the shortest, so a thin row does not turn the box into a
+// product of its dual norm and the whole residual. Candidates are scored
+// with the same sub_image and squared as search_bounds, in cell-row
+// coordinates, and ties go to the lexicographically smallest index.
 template <bool Hardware>
 void search_reduced(const double cell[9], const bool periodic[3],
                     const double reduced[3], double &dx, double &dy,
@@ -377,7 +376,7 @@ void search_reduced(const double cell[9], const bool periodic[3],
     gi[1][1] = g[0][0] / det;
     gi[0][1] = -g[0][1] / det;
     gi[1][0] = -g[1][0] / det;
-  } else {
+  } else if (n == 3) {
     double flat[9];
     for (int a = 0; a < 3; ++a)
       for (int b = 0; b < 3; ++b)
@@ -401,7 +400,6 @@ void search_reduced(const double cell[9], const bool periodic[3],
     }
     f[a] = dot3(dual_rows[a], reduced);
   }
-  // In-span residual of the rounded (Babai) point bounds the search radius.
   double e[3] = {};
   for (int c = 0; c < 3; ++c) {
     double acc = 0.0;
@@ -418,9 +416,6 @@ void search_reduced(const double cell[9], const bool periodic[3],
     lo[a] = std::floor(f[a] - ext) - 1.0;
     hi[a] = std::ceil(f[a] + ext) + 1.0;
     box *= hi[a] - lo[a] + 1.0;
-  }
-  if (!(box <= kReducedCap)) {
-    throw std::overflow_error("periodic image search count is too large");
   }
   double best[3] = {reduced[0], reduced[1], reduced[2]};
   double best2 = squared<Hardware>(best[0], best[1], best[2]);
@@ -451,19 +446,75 @@ void search_reduced(const double cell[9], const bool periodic[3],
       }
     }
   };
-  for (m[0] = lo[0]; m[0] <= hi[0]; m[0] += 1.0) {
-    if (n == 1) {
-      visit();
-      continue;
-    }
-    for (m[1] = lo[1]; m[1] <= hi[1]; m[1] += 1.0) {
-      if (n == 2) {
+  if (box <= kReducedCap) {
+    for (m[0] = lo[0]; m[0] <= hi[0]; m[0] += 1.0) {
+      if (n == 1) {
         visit();
         continue;
       }
-      for (m[2] = lo[2]; m[2] <= hi[2]; m[2] += 1.0)
-        visit();
+      for (m[1] = lo[1]; m[1] <= hi[1]; m[1] += 1.0) {
+        if (n == 2) {
+          visit();
+          continue;
+        }
+        for (m[2] = lo[2]; m[2] <= hi[2]; m[2] += 1.0)
+          visit();
+      }
     }
+  } else if (n > 0) {
+    double bstar[3][3] = {};
+    double norm2[3] = {};
+    double mu[3][3] = {};
+    gram_schmidt(r, bstar, norm2, mu);
+    double y[3] = {};
+    double span2 = 0.0;
+    for (int i = 0; i < n; ++i) {
+      if (!(norm2[i] > 0.0) || !std::isfinite(norm2[i])) {
+        throw std::invalid_argument("periodic cell must be nonsingular");
+      }
+      y[i] = dot3(reduced, bstar[i]) / norm2[i];
+      span2 = mul_add(y[i] * y[i], norm2[i], span2);
+    }
+    const double point2 = dot3(reduced, reduced);
+    const double out2 = point2 > span2 ? point2 - span2 : 0.0;
+    have = true;
+    const auto enumerate = [&](auto &&self, int level, double dist2) -> void {
+      double center = y[level];
+      for (int j = level + 1; j < n; ++j) {
+        center = mul_add(-m[j], mu[j][level], center);
+      }
+      if (!std::isfinite(center) || std::abs(center) > 0x1p52) {
+        throw std::overflow_error("periodic image index is out of range");
+      }
+      // No relative pad: next to a short Gram-Schmidt vector it would
+      // admit every coefficient that moves by a fraction of the residual.
+      const double room = best2 - dist2;
+      int low = 0;
+      int high = 0;
+      if (!(room > 0.0)) {
+        const int nearest = static_cast<int>(std::lround(center));
+        low = nearest - 1;
+        high = nearest + 1;
+      } else {
+        const double width = std::sqrt(room / norm2[level]);
+        if (!(width < 1.0e6)) {
+          throw std::overflow_error("periodic image search count is too large");
+        }
+        low = static_cast<int>(std::floor(center - width)) - 1;
+        high = static_cast<int>(std::ceil(center + width)) + 1;
+      }
+      for (int mi = low; mi <= high; ++mi) {
+        m[level] = static_cast<double>(mi);
+        const double delta = center - m[level];
+        const double step = delta * delta * norm2[level];
+        if (level == 0) {
+          visit();
+        } else {
+          self(self, level - 1, dist2 + step);
+        }
+      }
+    };
+    enumerate(enumerate, n - 1, out2);
   }
   dx = best[0];
   dy = best[1];
@@ -753,13 +804,25 @@ MinimumImage::MinimumImage(const double *cell,
     if (!invert(reduced, rinv)) {
       throw std::invalid_argument("periodic cell must be nonsingular");
     }
-    for (int k = 0; k < 9; ++k) {
-      cell_[static_cast<std::size_t>(k)] = reduced[k];
-      inverse_[static_cast<std::size_t>(k)] = rinv[k];
-    }
     narrow = !well_conditioned(reduced, rinv);
     if (!narrow) {
+      // The reduced rows are a well-conditioned basis of the same lattice.
+      for (int k = 0; k < 9; ++k) {
+        cell_[static_cast<std::size_t>(k)] = reduced[k];
+        inverse_[static_cast<std::size_t>(k)] = rinv[k];
+      }
       dual_of(rinv, dual_norm_.data());
+    } else {
+      // Reducing in double did not recover a basis that reproduces the
+      // integer lattice. Keep the original rows. The exhaustive box is
+      // huge, so the fold enumerates a reduced basis of those rows and
+      // scores each candidate on the original cell.
+      for (int k = 0; k < 9; ++k) {
+        inverse_[static_cast<std::size_t>(k)] = inv[k];
+      }
+      dual_of(inv, dual_norm_.data());
+      narrow = false;
+      enumerate_ = true;
     }
   } else {
     for (int k = 0; k < 9; ++k) {
@@ -773,9 +836,14 @@ MinimumImage::MinimumImage(const double *cell,
 namespace {
 
 template <bool Hardware>
-void fold_search(bool narrow, const double cell[9], const double inv[9],
-                 const double dual[3], const bool periodic[3], double &dx,
-                 double &dy, double &dz) {
+void fold_search(bool narrow, bool enumerate, const double cell[9],
+                 const double inv[9], const double dual[3],
+                 const bool periodic[3], double &dx, double &dy, double &dz) {
+  if (enumerate) {
+    const double point[3] = {dx, dy, dz};
+    search_reduced<Hardware>(cell, periodic, point, dx, dy, dz);
+    return;
+  }
   if (narrow) {
     search_narrow<Hardware>(cell, inv, dual, periodic, dx, dy, dz);
     return;
@@ -791,10 +859,11 @@ void fold_search(bool narrow, const double cell[9], const double inv[9],
 #if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
 __attribute__((target("fma"), noinline, flatten))
 #endif
-void fold_hardware(bool narrow, const double cell[9], const double inv[9],
-                   const double dual[3], const bool periodic[3], double &dx,
-                   double &dy, double &dz) {
-  fold_search<true>(narrow, cell, inv, dual, periodic, dx, dy, dz);
+void fold_hardware(bool narrow, bool enumerate, const double cell[9],
+                   const double inv[9], const double dual[3],
+                   const bool periodic[3], double &dx, double &dy,
+                   double &dz) {
+  fold_search<true>(narrow, enumerate, cell, inv, dual, periodic, dx, dy, dz);
 }
 
 } // namespace
@@ -894,10 +963,11 @@ void MinimumImage::fold(double &dx, double &dy, double &dz) const {
   }
   double dual[3] = {dual_norm_[0], dual_norm_[1], dual_norm_[2]};
   if (rgpot::simd::detail::fma_hw_active()) {
-    fold_hardware(narrow_, cell, inv, dual, periodic, dx, dy, dz);
+    fold_hardware(narrow_, enumerate_, cell, inv, dual, periodic, dx, dy, dz);
     return;
   }
-  fold_search<false>(narrow_, cell, inv, dual, periodic, dx, dy, dz);
+  fold_search<false>(narrow_, enumerate_, cell, inv, dual, periodic, dx, dy,
+                     dz);
 }
 
 bool MinimumImage::tryRounded(double dx, double dy, double dz,
