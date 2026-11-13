@@ -1,0 +1,1 @@
+A sheared neighbour build folds each unordered pair once and writes the other row with the negated MinimumImage coefficients and the same skin flag. The stored row stays in partner-index order, and the folded geometry matches the search.

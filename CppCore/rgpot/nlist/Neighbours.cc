@@ -386,9 +386,11 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
   std::vector<Cand> scratch;
   std::vector<std::int32_t> shifts;
   std::vector<std::uint8_t> flags;
-  // An orthorhombic pair is the same geometry from either end, with the
-  // image index and the skin flag negated together. Evaluating j > i and
-  // writing both rows avoids a second fold. A sheared cell is not mirrored.
+  // A pair is the same geometry from either end, with the image index
+  // and the skin flag negated together. Evaluating j > i and writing
+  // both rows avoids a second fold. For a sheared cell the index is the
+  // rounded MinimumImage coefficient; subtractRounded is an odd map, so
+  // the negated coefficient is the opposite end.
   struct Half {
     std::int32_t i;
     std::int32_t j;
@@ -409,7 +411,11 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
   thread_local HalfBuf half_buf;
   half_buf.halves.clear();
   std::vector<Half> &halves = half_buf.halves;
-  const bool half_pairs = !use_general_;
+  // Orthorhombic and sheared builds both fold each unordered pair once.
+  // The opposite row stores the negated image. For a sheared cell that
+  // image is the rounded MinimumImage coefficient, and subtractRounded
+  // is an odd map, so the stored geometry matches the search.
+  const bool half_pairs = true;
 #if defined(__GNUC__) || defined(__clang__)
 #define RGPOT_ACCEPT_INLINE __attribute__((always_inline))
 #else
