@@ -20,7 +20,8 @@ package is read.
 | --- | --- |
 | `cutoff`, `max_neighbors` | vesin neighbor list |
 | `molecular_box` | cube side length; molecular positions are centred at zero (0: caller's cell) |
-| `batch_max` | systems per forward (0 or 1: one system at a time; above 1: chunks of that size, a short chunk padded by repeating its last system) |
+| `batch_max` | systems per forward (0 or 1: one system at a time; above 1: chunks of that size) |
+| `batch_packed` | 1: the chunk is the real system count (dynamic atom and edge counts). Absent or 0: a short chunk repeats its last system up to `batch_max` |
 | `pos_dtype` | input dtype of positions, the cell and cell offsets (`float32` or `float64`) |
 | `model_dtype` | weight dtype recorded by the exporter (`float32` or `float64`) |
 | `task_name`, `charge`, `spin` | must equal `UmaConfig` |
@@ -123,6 +124,23 @@ python scripts/export_uma_aoti.py \
 is the same command inside the exporter environment. The `.pt2` is a
 compiled graph for one composition. Do not commit it. The checkpoint
 weights stay where fairchem loaded them.
+
+`--batch-style packed` is the other graph. It concatenates the systems
+(one batch index, block-diagonal edges) and exports a dynamic atom
+count and a dynamic edge count, up to `--batch-max` systems. UmaPot
+then sends the real count and does not repeat a system to fill the
+chunk. A same-composition pack shares one expert mix, so that mix is
+one GEMM rather than a per-system segment loop.
+
+```
+python scripts/export_uma_aoti.py \
+  --atoms path/to/geometry.xyz \
+  --molecular-box 30 \
+  --batch-style packed \
+  --batch-max 8 \
+  --dtype float32 \
+  --out /tmp/geometry-packed.pt2
+```
 
 The CPU GEMM kernel is compiled for `torch.get_num_threads()` at export
 time. Set `OMP_NUM_THREADS` (and the same `MKL_NUM_THREADS` and
