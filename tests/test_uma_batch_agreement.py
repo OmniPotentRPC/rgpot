@@ -201,3 +201,38 @@ def test_batched_forward_matches_per_system_on_two_sizes():
         for i in range(len(frames)):
             assert energy_b[i] == pytest.approx(singles_e[i], abs=1e-4)
             assert forces_b[i] == pytest.approx(singles_f[i], abs=1e-4)
+
+    # The packed export replaces MoLE's per-system segment loop with one
+    # GEMM and always uses the batched cell shift. The reference is the
+    # unpatched single-system forward. TensorUma.forward writes a dummy
+    # nedges, which that shift does not read; the packed call carries
+    # the real per-system edge counts.
+    cope_frames = [
+        _place(molecules["cope"], box),
+        _place(_perturb(molecules["cope"]), box),
+        _place(molecules["cope"], box),
+    ]
+    cope_frames[2].positions[0, 0] += 0.15
+    n = len(cope_frames[0])
+    singles_e = []
+    singles_f = []
+    with torch.enable_grad():
+        for atoms in cope_frames:
+            example = exp.pack_example(
+                atoms, cutoff, device, dtype, max_neighbors, n_systems=1
+            )
+            energy, forces = exp.TensorUma.forward(band, *example)
+            singles_e.append(float(energy.detach().cpu()))
+            singles_f.append(forces.detach().cpu().numpy().reshape(n, 3))
+    exp.patch_export_ops()
+    with torch.enable_grad():
+        for count in (1, 2, 3):
+            batched = _pack_many(
+                cope_frames[:count], cutoff, device, dtype, max_neighbors
+            )
+            energy_b, forces_b = band(*batched)
+            energy_b = energy_b.detach().cpu().numpy()
+            forces_b = forces_b.detach().cpu().numpy().reshape(count, n, 3)
+            for i in range(count):
+                assert energy_b[i] == pytest.approx(singles_e[i], abs=1e-4)
+                assert forces_b[i] == pytest.approx(singles_f[i], abs=1e-4)
