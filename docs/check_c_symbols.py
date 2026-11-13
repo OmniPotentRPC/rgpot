@@ -20,6 +20,7 @@ HEADERS = (
     ROOT / "CppCore/rgpot/nlist/fastnlist.h",
     ROOT / "include/rgpot/plugin.h",
     ROOT / "CppCore/rgpot/engine_c_abi.h",
+    ROOT / "CppCore/rgpot/ExternalPot/external_potentials.h",
 )
 
 

@@ -56,7 +56,10 @@ enum class PotType {
   IPI,         //!<  i-PI socket server. Built with -Dwith_ipi (POSIX).
   SuttonChen,  //!<  Sutton-Chen 10-8. Reduced units by default.
   SWSi1985,    //!<  Stillinger-Weber silicon, 1985 parameters.
-  EAMTable     //!<  EAM / Finnis-Sinclair tables. -Dwith_eam_table=true.
+  EAMTable,    //!<  EAM / Finnis-Sinclair tables. -Dwith_eam_table=true.
+  Lammps,      //!<  Shifted Lennard-Jones via the engine plugin.
+  Gromacs,     //!<  Shifted Lennard-Jones; nm and kJ/mol stored once.
+  OpenMM       //!<  Shifted Lennard-Jones; nm and kJ/mol stored once.
 };
 
 } // namespace rgpot

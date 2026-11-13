@@ -352,6 +352,45 @@ class IPIPot:
     @property
     def endpoint(self) -> str: ...
 
+class LammpsPot:
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
+        """Energy, forces and variance. Positions are Angstrom, energy is eV."""
+
+class GromacsPot:
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
+        """Energy, forces and variance. Positions are Angstrom, energy is eV."""
+
+    def native_u0(self) -> float:
+        """Well depth stored for GROMACS, kJ/mol."""
+
+    def native_cutoff(self) -> float:
+        """Cutoff stored for GROMACS, nanometres."""
+
+    def native_psi(self) -> float:
+        """Zero crossing stored for GROMACS, nanometres."""
+
+class OpenMMPot:
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
+        """Energy, forces and variance. Positions are Angstrom, energy is eV."""
+
+    def native_u0(self) -> float:
+        """Well depth stored for OpenMM, kJ/mol."""
+
+    def native_cutoff(self) -> float:
+        """Cutoff stored for OpenMM, nanometres."""
+
+    def native_psi(self) -> float:
+        """Zero crossing stored for OpenMM, nanometres."""
+
+def rgpot_lammps_potential(u0: float = 1.0, cutoff: float = 8.0, psi: float = 1.0, engine_path: str = '') -> LammpsPot:
+    """Shifted 12-6 Lennard-Jones. The constructor dlopens liblj_engine.so (or liblammps_engine.so) and that plugin stays the backend."""
+
+def rgpot_gromacs_potential(u0: float = 1.0, cutoff: float = 8.0, psi: float = 1.0, engine_path: str = '') -> GromacsPot:
+    """Shifted 12-6 Lennard-Jones. Nanometres and kJ/mol are stored once."""
+
+def rgpot_openmm_potential(u0: float = 1.0, cutoff: float = 8.0, psi: float = 1.0, engine_path: str = '') -> OpenMMPot:
+    """Shifted 12-6 Lennard-Jones. Nanometres and kJ/mol are stored once."""
+
 class XcKernel:
     def __init__(self, name: str) -> None: ...
 

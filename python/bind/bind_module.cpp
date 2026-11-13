@@ -28,14 +28,15 @@
 
 #include "pot_holder.hpp"
 
+#include "rgpot/ExternalPot/ExternalPot.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
-#include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
+#include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/Tersoff/TersoffSiC.hpp"
-#include "rgpot/Morse/MorsePot.hpp"
-#include "rgpot/types/AtomMatrix.hpp"
 #include "rgpot/XcKernel/XcKernel.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
+#include "rgpot/types/AtomMatrix.hpp"
 
 #ifdef RGPOT_HAS_METATOMIC
 #include "rgpot/MetatomicPot/MetatomicConfig.hpp"
@@ -319,7 +320,8 @@ buffer_to_numpy(const double *src, size_t rows, size_t cols) {
   if (n != 0 && src != nullptr) {
     std::memcpy(buf, src, n * sizeof(double));
   }
-  nb::capsule owner(buf, [](void *p) noexcept { delete[] static_cast<double *>(p); });
+  nb::capsule owner(
+      buf, [](void *p) noexcept { delete[] static_cast<double *>(p); });
   return nb::ndarray<nb::numpy, double, nb::c_contig>(buf, {rows, cols}, owner);
 }
 
@@ -359,8 +361,8 @@ nb::tuple stillinger_weber_energy_gradient(rgpot::StillingerWeberSi &self,
       self.energyAndGradient(positions.data(), species.data(), cell, n, &energy,
                              grad);
     }
-    auto arr = nb::ndarray<nb::numpy, double, nb::c_contig>(grad, {n, 3},
-                                                            own(grad));
+    auto arr =
+        nb::ndarray<nb::numpy, double, nb::c_contig>(grad, {n, 3}, own(grad));
     return nb::make_tuple(energy, arr);
   }
   if (positions.ndim() == 3) {
@@ -409,11 +411,11 @@ nb::tuple tersoff_sic_energy_gradient(rgpot::TersoffSiC &self,
     double energy = 0.0;
     {
       nb::gil_scoped_release release;
-      self.energyAndGradient(positions.data(), species.data(), cell, n,
-                             &energy, grad);
+      self.energyAndGradient(positions.data(), species.data(), cell, n, &energy,
+                             grad);
     }
-    auto arr = nb::ndarray<nb::numpy, double, nb::c_contig>(grad, {n, 3},
-                                                            own(grad));
+    auto arr =
+        nb::ndarray<nb::numpy, double, nb::c_contig>(grad, {n, 3}, own(grad));
     return nb::make_tuple(energy, arr);
   }
   if (positions.ndim() == 3) {
@@ -450,10 +452,9 @@ NB_MODULE(_core, m) {
   rgbind::install_policy(m);
   nb::register_exception_translator(translate_invalid_argument);
 
-  m.doc() =
-      "rgpot Python bindings (nanobind): LJ, Fortran kernels, Metatomic "
-      "dlopen, ExprPot, D3Pot, D4Pot, and XcKernel when the build flags "
-      "are on. Evaluations release the thread (F4).";
+  m.doc() = "rgpot Python bindings (nanobind): LJ, Fortran kernels, Metatomic "
+            "dlopen, ExprPot, D3Pot, D4Pot, and XcKernel when the build flags "
+            "are on. Evaluations release the thread (F4).";
   m.attr("__version__") = RGPOT_PY_VERSION;
 #ifdef RGPOT_HAS_METATOMIC
   m.attr("has_metatomic_dlopen") = true;
@@ -498,8 +499,7 @@ NB_MODULE(_core, m) {
 
   // F6 round trip. -0.0, NaN, and subnormals are copied unchanged.
   m.def(
-      "echo_f64",
-      [](const F64 &values) { return rgbind::echo_f64(values); },
+      "echo_f64", [](const F64 &values) { return rgbind::echo_f64(values); },
       nb::arg("values").noconvert());
 
   m.def(
@@ -560,8 +560,8 @@ NB_MODULE(_core, m) {
         if (!std::isfinite(out.energy)) {
           throw rgbind::NumericalError("energy is not finite");
         }
-        return nb::make_tuple(out.energy, rgpot::pybind::matrix_to_numpy(forces),
-                              out.variance);
+        return nb::make_tuple(
+            out.energy, rgpot::pybind::matrix_to_numpy(forces), out.variance);
       },
       nb::arg("positions").noconvert(), nb::arg("atom_types"),
       nb::arg("box").noconvert(), nb::arg("model_path"),
@@ -719,9 +719,8 @@ NB_MODULE(_core, m) {
             auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
             const auto [energy, forces, variance] =
                 self(geom.pos, geom.types, geom.box);
-            return nb::make_tuple(energy,
-                                  rgpot::pybind::matrix_to_numpy(forces),
-                                  variance);
+            return nb::make_tuple(
+                energy, rgpot::pybind::matrix_to_numpy(forces), variance);
           },
           nb::arg("positions").noconvert(), nb::arg("atom_types"),
           nb::arg("box").noconvert(),
@@ -770,9 +769,8 @@ NB_MODULE(_core, m) {
             auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
             const auto [energy, forces, variance] =
                 self(geom.pos, geom.types, geom.box);
-            return nb::make_tuple(energy,
-                                  rgpot::pybind::matrix_to_numpy(forces),
-                                  variance);
+            return nb::make_tuple(
+                energy, rgpot::pybind::matrix_to_numpy(forces), variance);
           },
           nb::arg("positions").noconvert(), nb::arg("atom_types"),
           nb::arg("box").noconvert(),
@@ -837,9 +835,8 @@ NB_MODULE(_core, m) {
           auto name = nb::cast<std::string>(item.first);
           specs.push_back(child_spec_from(name, item.second));
         }
-        new (self) PotHolder<rgpot::ExprPot>([=] {
-          return expr_from_specs(expression, specs);
-        });
+        new (self) PotHolder<rgpot::ExprPot>(
+            [=] { return expr_from_specs(expression, specs); });
       },
       nb::arg("expression"), nb::arg("terms"),
       "expression is a Lepton string; terms maps names to 'lj'/'morse'/"
@@ -863,7 +860,8 @@ NB_MODULE(_core, m) {
   nb::class_<rgpot::IPIPot>(m, "IPIPot")
       .def(
           "__init__",
-          [](rgpot::IPIPot *self, const std::string &address, double timeout_s) {
+          [](rgpot::IPIPot *self, const std::string &address,
+             double timeout_s) {
             rgpot::IPIConfig cfg;
             cfg.address = address;
             cfg.timeout_s = timeout_s;
@@ -887,8 +885,8 @@ NB_MODULE(_core, m) {
               std::tie(energy, forces, variance) =
                   self(geom.pos, geom.types, geom.box);
             }
-            return nb::make_tuple(energy, rgpot::pybind::matrix_to_numpy(forces),
-                                  variance);
+            return nb::make_tuple(
+                energy, rgpot::pybind::matrix_to_numpy(forces), variance);
           },
           nb::arg("positions").noconvert(), nb::arg("atom_types"),
           nb::arg("box").noconvert())
@@ -947,13 +945,13 @@ NB_MODULE(_core, m) {
             const auto &grid = storage.grid;
             rgbind::check_f64_2d(density, static_cast<size_t>(chi.shape(0)),
                                  static_cast<size_t>(chi.shape(0)), "density");
-            std::vector<double> density_copy(
-                density.data(), density.data() + density.size());
+            std::vector<double> density_copy(density.data(),
+                                             density.data() + density.size());
             rgpot::XcFields fields;
             {
               nb::gil_scoped_release release;
-              fields = rgpot::XcKernel::fieldsFromDensity(grid,
-                                                         density_copy.data());
+              fields =
+                  rgpot::XcKernel::fieldsFromDensity(grid, density_copy.data());
             }
             nb::dict out;
             auto vec1 = [](const std::vector<double> &v, size_t n) {
@@ -965,7 +963,8 @@ NB_MODULE(_core, m) {
             out["tau"] = vec1(fields.tau, npts);
             out["lapl"] = vec1(fields.lapl, npts);
             if (!fields.grad_rho.empty()) {
-              out["grad_rho"] = buffer_to_numpy(fields.grad_rho.data(), 3, npts);
+              out["grad_rho"] =
+                  buffer_to_numpy(fields.grad_rho.data(), 3, npts);
             }
             return out;
           },
@@ -976,8 +975,8 @@ NB_MODULE(_core, m) {
 
   m.def(
       "neighbor_list",
-      [](const F64 &positions, const F64 &cell, double cutoff, const std::string &quantities,
-         bool full, bool offsets) {
+      [](const F64 &positions, const F64 &cell, double cutoff,
+         const std::string &quantities, bool full, bool offsets) {
         if (positions.ndim() != 2 || positions.shape(1) != 3) {
           throw std::invalid_argument("positions must have shape (natoms, 3)");
         }
@@ -1008,7 +1007,8 @@ NB_MODULE(_core, m) {
         auto owned = std::make_shared<Owned>();
         try {
           nb::gil_scoped_release release;
-          rgpot::nlist::build(owned->table, positions.data(), natoms, cell.data(), query);
+          rgpot::nlist::build(owned->table, positions.data(), natoms,
+                              cell.data(), query);
         } catch (const rgpot::nlist::Error &err) {
           throw std::invalid_argument(err.what());
         }
@@ -1019,12 +1019,13 @@ NB_MODULE(_core, m) {
           for (std::size_t p = 0; p < np; ++p) {
             order[p] = p;
           }
-          std::sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
-            if (table.first[a] != table.first[b]) {
-              return table.first[a] < table.first[b];
-            }
-            return table.second[a] < table.second[b];
-          });
+          std::sort(order.begin(), order.end(),
+                    [&](std::size_t a, std::size_t b) {
+                      if (table.first[a] != table.first[b]) {
+                        return table.first[a] < table.first[b];
+                      }
+                      return table.second[a] < table.second[b];
+                    });
           auto permute_i = [&](std::vector<std::int32_t> &col, int width) {
             if (col.empty()) {
               return;
@@ -1032,8 +1033,10 @@ NB_MODULE(_core, m) {
             std::vector<std::int32_t> next(col.size());
             for (std::size_t p = 0; p < np; ++p) {
               for (int k = 0; k < width; ++k) {
-                next[static_cast<std::size_t>(width) * p + static_cast<std::size_t>(k)] =
-                    col[static_cast<std::size_t>(width) * order[p] + static_cast<std::size_t>(k)];
+                next[static_cast<std::size_t>(width) * p +
+                     static_cast<std::size_t>(k)] =
+                    col[static_cast<std::size_t>(width) * order[p] +
+                        static_cast<std::size_t>(k)];
               }
             }
             col.swap(next);
@@ -1045,8 +1048,10 @@ NB_MODULE(_core, m) {
             std::vector<double> next(col.size());
             for (std::size_t p = 0; p < np; ++p) {
               for (int k = 0; k < width; ++k) {
-                next[static_cast<std::size_t>(width) * p + static_cast<std::size_t>(k)] =
-                    col[static_cast<std::size_t>(width) * order[p] + static_cast<std::size_t>(k)];
+                next[static_cast<std::size_t>(width) * p +
+                     static_cast<std::size_t>(k)] =
+                    col[static_cast<std::size_t>(width) * order[p] +
+                        static_cast<std::size_t>(k)];
               }
             }
             col.swap(next);
@@ -1083,14 +1088,14 @@ NB_MODULE(_core, m) {
             items.append(nb::ndarray<nb::numpy, std::int32_t>(
                 owned->table.second.data(), {npairs}, keep()));
           } else if (q == 'd') {
-            items.append(nb::ndarray<nb::numpy, double>(owned->table.distance.data(), {npairs},
-                                                        keep()));
+            items.append(nb::ndarray<nb::numpy, double>(
+                owned->table.distance.data(), {npairs}, keep()));
           } else if (q == 'D') {
-            items.append(nb::ndarray<nb::numpy, double>(owned->table.vector.data(), {npairs, 3},
-                                                        keep()));
+            items.append(nb::ndarray<nb::numpy, double>(
+                owned->table.vector.data(), {npairs, 3}, keep()));
           } else if (q == 'S') {
-            items.append(nb::ndarray<nb::numpy, std::int32_t>(owned->table.shift.data(),
-                                                             {npairs, 3}, keep()));
+            items.append(nb::ndarray<nb::numpy, std::int32_t>(
+                owned->table.shift.data(), {npairs, 3}, keep()));
           }
         }
         if (offsets) {
@@ -1108,11 +1113,148 @@ NB_MODULE(_core, m) {
         }
         return nb::steal<nb::object>(raw);
       },
-      nb::arg("positions").noconvert(), nb::arg("cell").noconvert(), nb::arg("cutoff"),
-      nb::arg("quantities") = "ijd", nb::arg("full") = false, nb::arg("offsets") = false,
+      nb::arg("positions").noconvert(), nb::arg("cell").noconvert(),
+      nb::arg("cutoff"), nb::arg("quantities") = "ijd", nb::arg("full") = false,
+      nb::arg("offsets") = false,
       "Neighbour arrays selected by quantities. i and j are indices, d is the "
       "distance, D is r_j - r_i with shape (npairs, 3), S is the integer shift "
       "with that shape. offsets=True appends a CSR row pointer of length "
       "natoms + 1 after sorting pairs by i, then j. "
       "`i, j, d = rgpot.neighbor_list(positions, cell, cutoff)`.");
+
+  auto lammps = nb::class_<rgpot::LammpsPot>(m, "LammpsPot");
+  lammps.def(
+      "__call__",
+      [](rgpot::LammpsPot &self, const F64 &positions, nb::handle atom_types,
+         const F64 &box) {
+        auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
+        double energy = 0.0;
+        rgpot::types::AtomMatrix forces;
+        double variance = 0.0;
+        {
+          nb::gil_scoped_release release;
+          std::tie(energy, forces, variance) =
+              self(geom.pos, geom.types, geom.box);
+        }
+        if (!std::isfinite(energy)) {
+          throw rgbind::NumericalError("energy is not finite");
+        }
+        return nb::make_tuple(energy, rgpot::pybind::matrix_to_numpy(forces),
+                              variance);
+      },
+      nb::arg("positions").noconvert(), nb::arg("atom_types"),
+      nb::arg("box").noconvert(),
+      "Energy, forces and variance. Positions are Angstrom, energy is eV.");
+  auto gromacs = nb::class_<rgpot::GromacsPot>(m, "GromacsPot");
+  gromacs.def(
+      "__call__",
+      [](rgpot::GromacsPot &self, const F64 &positions, nb::handle atom_types,
+         const F64 &box) {
+        auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
+        double energy = 0.0;
+        rgpot::types::AtomMatrix forces;
+        double variance = 0.0;
+        {
+          nb::gil_scoped_release release;
+          std::tie(energy, forces, variance) =
+              self(geom.pos, geom.types, geom.box);
+        }
+        if (!std::isfinite(energy)) {
+          throw rgbind::NumericalError("energy is not finite");
+        }
+        return nb::make_tuple(energy, rgpot::pybind::matrix_to_numpy(forces),
+                              variance);
+      },
+      nb::arg("positions").noconvert(), nb::arg("atom_types"),
+      nb::arg("box").noconvert(),
+      "Energy, forces and variance. Positions are Angstrom, energy is eV.");
+  gromacs.def("native_u0", &rgpot::GromacsPot::nativeU0,
+              "Well depth stored for GROMACS, kJ/mol.");
+  gromacs.def("native_cutoff", &rgpot::GromacsPot::nativeCutoff,
+              "Cutoff stored for GROMACS, nanometres.");
+  gromacs.def("native_psi", &rgpot::GromacsPot::nativePsi,
+              "Zero crossing stored for GROMACS, nanometres.");
+  auto openmm = nb::class_<rgpot::OpenMMPot>(m, "OpenMMPot");
+  openmm.def(
+      "__call__",
+      [](rgpot::OpenMMPot &self, const F64 &positions, nb::handle atom_types,
+         const F64 &box) {
+        auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
+        double energy = 0.0;
+        rgpot::types::AtomMatrix forces;
+        double variance = 0.0;
+        {
+          nb::gil_scoped_release release;
+          std::tie(energy, forces, variance) =
+              self(geom.pos, geom.types, geom.box);
+        }
+        if (!std::isfinite(energy)) {
+          throw rgbind::NumericalError("energy is not finite");
+        }
+        return nb::make_tuple(energy, rgpot::pybind::matrix_to_numpy(forces),
+                              variance);
+      },
+      nb::arg("positions").noconvert(), nb::arg("atom_types"),
+      nb::arg("box").noconvert(),
+      "Energy, forces and variance. Positions are Angstrom, energy is eV.");
+  openmm.def("native_u0", &rgpot::OpenMMPot::nativeU0,
+             "Well depth stored for OpenMM, kJ/mol.");
+  openmm.def("native_cutoff", &rgpot::OpenMMPot::nativeCutoff,
+             "Cutoff stored for OpenMM, nanometres.");
+  openmm.def("native_psi", &rgpot::OpenMMPot::nativePsi,
+             "Zero crossing stored for OpenMM, nanometres.");
+
+  auto make_cfg = [](double u0, double cutoff, double psi,
+                     const std::string &engine_path) {
+    rgpot::ExternalLjConfig cfg;
+    cfg.u0 = u0;
+    cfg.cutoff = cutoff;
+    cfg.psi = psi;
+    cfg.engine_path = engine_path;
+    return cfg;
+  };
+  m.def(
+      "rgpot_lammps_potential",
+      [&](double u0, double cutoff, double psi,
+          const std::string &engine_path) {
+        return rgpot::rgpot_lammps_potential(
+                   make_cfg(u0, cutoff, psi, engine_path))
+            .release();
+      },
+      nb::rv_policy::take_ownership,
+      nb::arg("u0") = 1.0, nb::arg("cutoff") = 8.0, nb::arg("psi") = 1.0,
+      nb::arg("engine_path") = "",
+      "Shifted 12-6 Lennard-Jones. The constructor dlopens liblj_engine.so "
+      "(or liblammps_engine.so) and that plugin stays the backend. "
+      "engine_path empty searches those names. u0 is eV; cutoff and psi "
+      "are Angstrom.");
+  m.def(
+      "rgpot_gromacs_potential",
+      [&](double u0, double cutoff, double psi,
+          const std::string &engine_path) {
+        return rgpot::rgpot_gromacs_potential(
+                   make_cfg(u0, cutoff, psi, engine_path))
+            .release();
+      },
+      nb::rv_policy::take_ownership,
+      nb::arg("u0") = 1.0, nb::arg("cutoff") = 8.0, nb::arg("psi") = 1.0,
+      nb::arg("engine_path") = "",
+      "Shifted 12-6 Lennard-Jones. Nanometres and kJ/mol are stored once. "
+      "An empty engine_path evaluates in process. A path is a library "
+      "whose rgpot_md_native_force uses those units.");
+  m.def(
+      "rgpot_openmm_potential",
+      [&](double u0, double cutoff, double psi,
+          const std::string &engine_path) {
+        return rgpot::rgpot_openmm_potential(
+                   make_cfg(u0, cutoff, psi, engine_path))
+            .release();
+      },
+      nb::rv_policy::take_ownership,
+      nb::arg("u0") = 1.0, nb::arg("cutoff") = 8.0, nb::arg("psi") = 1.0,
+      nb::arg("engine_path") = "",
+      "Shifted 12-6 Lennard-Jones. Nanometres and kJ/mol are stored once. "
+      "An empty engine_path evaluates in process. A path is a library "
+      "whose rgpot_md_native_force uses those units, such as "
+      "libopenmm_engine.so.");
 }

@@ -27,6 +27,17 @@ The worker count is not part of the result.
 See the [[file:../howto/ase.org][ASE how-to]] and the
 [[file:../explanation/thread-safety.org][thread-safety]] page.
 
+** Engine constructors
+
+=rgpot.rgpot_lammps_potential=, =rgpot.rgpot_gromacs_potential= and
+=rgpot.rgpot_openmm_potential= return a shifted 12-6 potential.
+Positions are Angstrom and the energy is eV.
+The LAMMPS constructor dlopens the engine plugin.
+GROMACS and OpenMM store kJ/mol and nanometres once; =native_u0=,
+=native_cutoff= and =native_psi= read those stored values.
+The dimer at 1.5 Angstrom with =u0= 1, cutoff 8 and =psi= 1 is
+-0.3203213355 eV.
+
 ** XcKernel
 
 =XcKernel.contract= takes =chi=, an optional =dchi= (default =None=), and a

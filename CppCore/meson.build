@@ -260,6 +260,9 @@ if not get_option('with_rpc_client_only')
     subdir('rgpot/MOPACPot')  # 'mopacpot'
     rgpotentials += [mopacpot]
 
+    subdir('rgpot/ExternalPot')  # lammps / gromacs / openmm constructors
+    rgpotentials += [external_pot]
+
     subdir('rgpot/CuH2')  # 'cuh2': slab-geometry helpers
     rgpotentials += [cuh2]
 

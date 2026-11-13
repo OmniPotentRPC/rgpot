@@ -22,6 +22,12 @@ import rgpot._core as _core
 
 __version__: str = str(getattr(_core, "__version__", "0"))
 LJPot = _core.LJPot
+rgpot_lammps_potential = _core.rgpot_lammps_potential
+rgpot_gromacs_potential = _core.rgpot_gromacs_potential
+rgpot_openmm_potential = _core.rgpot_openmm_potential
+LammpsPot = _core.LammpsPot
+GromacsPot = _core.GromacsPot
+OpenMMPot = _core.OpenMMPot
 LJClusterPot = _core.LJClusterPot
 MorsePot = _core.MorsePot
 NumericalError = _core.NumericalError

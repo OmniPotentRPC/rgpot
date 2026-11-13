@@ -207,3 +207,91 @@ if openmm_opt.allowed() and python3_engines.found()
         )
     endif
 endif
+
+native_lj_engine = shared_library(
+    'native_lj_engine',
+    files('native_lj_engine.cpp'),
+    dependencies: lj_dep,
+    link_with: rgpot,
+    include_directories: rgpot_inc,
+    cpp_args: _args + ['-DRGPOT_ENGINE_BUILD'],
+    install: true,
+)
+external_pot_test = executable(
+    'test_external_potentials',
+    files('test_external_potentials.cpp'),
+    dependencies: lj_dep,
+    link_with: rgpot,
+    include_directories: rgpot_inc,
+    cpp_args: _args,
+)
+external_env = environment()
+if openmm_opt.allowed() and python3_engines.found()
+    _openmm_where = run_command(
+        python3_engines,
+        '-c',
+        'import openmm.version; print(openmm.version.openmm_library_path)',
+        check: false,
+    )
+    if _openmm_where.returncode() == 0
+        openmm_libdir = _openmm_where.stdout().strip()
+        openmm_incdir = fs.parent(openmm_libdir) / 'include'
+        openmm_lib = cppc.find_library(
+            'OpenMM',
+            dirs: [openmm_libdir],
+            required: openmm_opt.enabled(),
+        )
+        if openmm_lib.found() and cppc.has_header(
+            'openmm/Platform.h',
+            include_directories: include_directories(openmm_incdir),
+        )
+            openmm_engine = shared_library(
+                'openmm_engine',
+                files('openmm/openmm_engine.cpp'),
+                dependencies: [openmm_lib],
+                include_directories: [rgpot_inc, include_directories(openmm_incdir)],
+                cpp_args: _args + ['-DRGPOT_ENGINE_BUILD'],
+                build_rpath: openmm_libdir,
+                install_rpath: openmm_libdir,
+                install: true,
+            )
+            external_env.set('RGPOT_OPENMM_ENGINE', openmm_engine.full_path())
+            external_env.set('OPENMM_PLUGIN_DIR', openmm_libdir / 'plugins')
+        endif
+    endif
+endif
+test(
+    'external_potentials',
+    external_pot_test,
+    args: [lj_engine.full_path(), native_lj_engine.full_path()],
+    env: external_env,
+    timeout: 120,
+)
+
+gromacs_inc = ''
+if python3_engines.found()
+    _gmx_inc = run_command(
+        python3_engines,
+        '-c',
+        'import pathlib, sys; print(pathlib.Path(sys.prefix) / "include")',
+        check: false,
+    )
+    if _gmx_inc.returncode() == 0
+        gromacs_inc = _gmx_inc.stdout().strip()
+    endif
+endif
+if gromacs_inc != '' and cppc.has_header(
+    'gromacs/math/units.h',
+    include_directories: include_directories(gromacs_inc),
+)
+    test(
+        'gromacs_unit_reference',
+        executable(
+            'test_gromacs_units',
+            files('test_gromacs_units.cpp'),
+            include_directories: [engines_inc, rgpot_inc, include_directories(gromacs_inc)],
+            cpp_args: _args,
+        ),
+        timeout: 30,
+    )
+endif
