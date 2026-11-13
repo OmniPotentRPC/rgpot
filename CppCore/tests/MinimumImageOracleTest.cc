@@ -332,3 +332,68 @@ TEST_CASE("Residual ball agrees on both sides of its bound",
   expect_ball(mono, all, 2);
   expect_ball(mono, xy, 0);
 }
+
+TEST_CASE("a thin periodic row stays within half that row",
+          "[PairList][triclinic][oracle]") {
+  // The short row is 5e-10. An ordinary displacement has a coefficient
+  // near 1e9 on it. The fold used to leave the integer range.
+  const double cell[9] = {1.0, 1.0, 0.0, 0.0, 5.0e-10, 0.0, 0.0, 0.0, 1.0};
+  const std::array<std::array<bool, 3>, 3> masks{{
+      {{true, true, false}},
+      {{false, true, true}},
+      {{true, true, true}},
+  }};
+  const double samples[][3] = {
+      {0.2, 0.4, -0.15},
+      {0.0, 0.3 * 5.0e-10, 0.0},
+      {-0.4, 0.7, 0.2},
+      {0.15, 1.0e-12, -0.3},
+  };
+  for (const auto &periodic : masks) {
+    const rgpot::nlist::MinimumImage image(cell, periodic);
+    for (const auto &sample : samples) {
+      double x = sample[0];
+      double y = sample[1];
+      double z = sample[2];
+      image.fold(x, y, z);
+      const double folded = x * x + y * y + z * z;
+      long long center[3] = {};
+      int span[3] = {};
+      for (int axis = 0; axis < 3; ++axis) {
+        if (!periodic[static_cast<std::size_t>(axis)]) {
+          continue;
+        }
+        const double rx = cell[3 * axis];
+        const double ry = cell[3 * axis + 1];
+        const double rz = cell[3 * axis + 2];
+        const double row2 = rx * rx + ry * ry + rz * rz;
+        const double dot = sample[0] * rx + sample[1] * ry + sample[2] * rz;
+        center[axis] = std::llround(dot / row2);
+        span[axis] = row2 < 1.0e-12 ? 3 : 4;
+      }
+      long double best = std::numeric_limits<long double>::infinity();
+      for (long long i = center[0] - span[0]; i <= center[0] + span[0]; ++i) {
+        for (long long j = center[1] - span[1]; j <= center[1] + span[1]; ++j) {
+          for (long long k = center[2] - span[2]; k <= center[2] + span[2]; ++k) {
+            const long double cx = static_cast<long double>(sample[0]) -
+                                   static_cast<long double>(i) * cell[0] -
+                                   static_cast<long double>(j) * cell[3] -
+                                   static_cast<long double>(k) * cell[6];
+            const long double cy = static_cast<long double>(sample[1]) -
+                                   static_cast<long double>(i) * cell[1] -
+                                   static_cast<long double>(j) * cell[4] -
+                                   static_cast<long double>(k) * cell[7];
+            const long double cz = static_cast<long double>(sample[2]) -
+                                   static_cast<long double>(i) * cell[2] -
+                                   static_cast<long double>(j) * cell[5] -
+                                   static_cast<long double>(k) * cell[8];
+            best = std::min(best, cx * cx + cy * cy + cz * cz);
+          }
+        }
+      }
+      INFO("folded=" << folded << " best=" << static_cast<double>(best));
+      REQUIRE(std::isfinite(folded));
+      REQUIRE(static_cast<long double>(folded) <= best * (1.0L + 1e-8L) + 1e-18L);
+    }
+  }
+}

@@ -489,21 +489,32 @@ void search_reduced(const double cell[9], const bool periodic[3],
       // No relative pad: next to a short Gram-Schmidt vector it would
       // admit every coefficient that moves by a fraction of the residual.
       const double room = best2 - dist2;
-      int low = 0;
-      int high = 0;
+      long long low = 0;
+      long long high = 0;
       if (!(room > 0.0)) {
-        const int nearest = static_cast<int>(std::lround(center));
+        const auto nearest = std::llround(center);
         low = nearest - 1;
         high = nearest + 1;
       } else {
         const double width = std::sqrt(room / norm2[level]);
-        if (!(width < 1.0e6)) {
-          throw std::overflow_error("periodic image search count is too large");
+        if (!(width < 64.0)) {
+          // The sphere still contains the whole residual, so its radius
+          // along a short Gram-Schmidt vector is enormous. The last
+          // coordinate is minimized at the nearest integer; earlier
+          // coordinates keep a small neighbourhood of the center.
+          if (!(std::abs(center) < 0x1p52)) {
+            throw std::overflow_error("periodic image index is out of range");
+          }
+          const auto nearest = std::llround(center);
+          const int pad = level == 0 ? 2 : 8;
+          low = nearest - pad;
+          high = nearest + pad;
+        } else {
+          low = static_cast<long long>(std::floor(center - width)) - 1;
+          high = static_cast<long long>(std::ceil(center + width)) + 1;
         }
-        low = static_cast<int>(std::floor(center - width)) - 1;
-        high = static_cast<int>(std::ceil(center + width)) + 1;
       }
-      for (int mi = low; mi <= high; ++mi) {
+      for (long long mi = low; mi <= high; ++mi) {
         m[level] = static_cast<double>(mi);
         const double delta = center - m[level];
         const double step = delta * delta * norm2[level];
