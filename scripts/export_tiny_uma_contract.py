@@ -5,7 +5,9 @@
 The graphs are small on purpose. ``precision`` is the sum of coordinates,
 so a 1e-7 Angstrom shift changes the energy by 1e-7 when the inputs stay
 float64. ``cost`` is a pair of linear layers, used to time float32 against
-float64. ``batch`` is the same sum, traced for two systems.
+float64. ``batch`` is the same sum, traced for two systems. ``pair`` is a
+spring on every edge; without ``--dynamic`` it is compiled for fixed
+shapes and records no atom or edge count.
 
 ``--meta both`` writes pos_dtype and model_dtype. ``model`` writes only
 model_dtype, ``pos`` only pos_dtype, ``none`` writes neither.
@@ -96,6 +98,48 @@ class GatherEnergy(nn.Module):
         forces = torch.zeros_like(pos)
         # The host force is minus the derivative of the energy.
         forces.index_add_(0, edge_index[0], -torch.ones_like(src))
+        return energy, forces
+
+
+class PairEnergy(nn.Module):
+    """Harmonic springs on every edge, with analytic forces.
+
+    Each directed edge carries half of ``0.5 * k * (d - r0)**2``, so a full
+    neighbour list counts every pair once. ``k`` and ``r0`` are weights,
+    so a fixed-shape and a dynamic package of this module are the same
+    model compiled twice.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.k = nn.Parameter(torch.tensor(0.75))
+        self.r0 = nn.Parameter(torch.tensor(1.125))
+
+    def forward(
+        self,
+        pos,
+        atomic_numbers,
+        cell,
+        pbc,
+        edge_index,
+        cell_offsets,
+        charge,
+        spin,
+        batch,
+        natoms,
+    ):
+        vec = (
+            pos.index_select(0, edge_index[0])
+            - pos.index_select(0, edge_index[1])
+            + cell_offsets @ cell[0]
+        )
+        dist = vec.norm(dim=-1)
+        stretch = dist - self.r0
+        energy = 0.25 * self.k * (stretch * stretch).sum()
+        grad = (0.5 * self.k * stretch / dist).unsqueeze(-1) * vec
+        forces = torch.zeros_like(pos)
+        forces.index_add_(0, edge_index[0], -grad)
+        forces.index_add_(0, edge_index[1], grad)
         return energy, forces
 
 
@@ -798,6 +842,82 @@ def export_no_edges(path: Path, dtype_name: str) -> None:
     _blank_wrapper_source(path)
 
 
+# Every key that declares an atom or edge count. A plain
+# aoti_compile_and_package of a fixed-shape graph records none of them.
+_SHAPE_KEYS = (
+    "nedges_min",
+    "nedges_max",
+    "natoms",
+    "natoms_min",
+    "natoms_max",
+    "counts",
+    "pos_shape",
+    "edge_index_shape",
+    "shapes",
+)
+
+
+def export_pair(path: Path, dtype_name: str, dynamic: bool) -> None:
+    """Spring model, traced on four atoms and their twelve directed edges.
+
+    The static package is compiled for pos [4, 3] and edge_index [2, 12]
+    and records no shape key, so UmaPot reads those from the compiled
+    graph. The dynamic package records the usual ranges.
+    """
+    dtype = torch.float64 if dtype_name == "float64" else torch.float32
+    example = _cluster_example(dtype, 4, 12)
+    module = apply_export_dtype(PairEnergy().eval(), dtype_name)
+    shapes = None
+    if dynamic:
+        natoms_dim = torch.export.Dim("natoms", min=1, max=64)
+        nedges_dim = torch.export.Dim("nedges", min=1, max=4096)
+        shapes = {
+            "pos": {0: natoms_dim},
+            "atomic_numbers": {0: natoms_dim},
+            "cell": None,
+            "pbc": None,
+            "edge_index": {1: nedges_dim},
+            "cell_offsets": {0: nedges_dim},
+            "charge": None,
+            "spin": None,
+            "batch": {0: natoms_dim},
+            "natoms": None,
+        }
+    exported = torch.export.export(
+        module, example, dynamic_shapes=shapes, strict=False
+    )
+    meta = runtime_metadata(
+        path,
+        6.0,
+        300,
+        example,
+        dtype,
+        model_dtype=dtype,
+        task_name="omol",
+        charge=0,
+        spin=1,
+        z_set=None,
+        counts=None,
+        label="pair",
+        model="tiny-pair",
+    )
+    if dynamic:
+        meta["nedges_min"] = 1
+        meta["nedges_max"] = 4096
+        meta["natoms_min"] = 1
+        meta["natoms_max"] = 64
+        meta["pos_shape"] = "natoms,3"
+        meta["edge_index_shape"] = "2,nedges"
+        meta["export_path"] = "tiny-pair-dynamic"
+        aoti_package(exported, path, metadata=meta)
+        return
+    meta["export_path"] = "tiny-pair-static"
+    for key in _SHAPE_KEYS:
+        meta.pop(key, None)
+    aoti_package(exported, path, metadata=meta)
+    _drop_metadata_keys(path, _SHAPE_KEYS)
+
+
 def export_box(path: Path, dtype_name: str) -> None:
     """Line package recorded with a 15 angstrom molecular box."""
     dtype = torch.float64 if dtype_name == "float64" else torch.float32
@@ -836,6 +956,7 @@ def main() -> int:
             "packed",
             "cost",
             "gather",
+            "pair",
             "no-edges",
             "box",
             "tetrazine-keyless",
@@ -849,7 +970,7 @@ def main() -> int:
     parser.add_argument(
         "--dynamic",
         action="store_true",
-        help="gather only: symbolic atom count and edge count",
+        help="gather and pair only: symbolic atom count and edge count",
     )
     parser.add_argument(
         "--static",
@@ -869,6 +990,8 @@ def main() -> int:
         export_precision(args.out, args.dtype, args.meta)
     elif args.kind == "gather":
         export_gather(args.out, args.dtype, args.dynamic)
+    elif args.kind == "pair":
+        export_pair(args.out, args.dtype, args.dynamic)
     elif args.kind == "packed":
         if args.meta != "both":
             raise SystemExit("packed packages always record both dtype keys")

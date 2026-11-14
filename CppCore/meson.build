@@ -1140,6 +1140,42 @@ if get_option('with_tests')
             'UMA_GATHER_DYNAMIC_PT2',
             _uma_gather_dynamic.full_path(),
         )
+        # One spring model compiled twice: fixed shapes with no shape
+        # metadata, and dynamic shapes with the usual ranges.
+        _uma_pair_fixed = custom_target(
+            'uma-pair-fixed',
+            output: 'pair-fixed.pt2',
+            command: [
+                _uma_py,
+                _uma_export,
+                '--kind',
+                'pair',
+                '--dtype',
+                'float64',
+                '--out',
+                '@OUTPUT@',
+            ],
+            build_by_default: false,
+        )
+        _uma_pair_dynamic = custom_target(
+            'uma-pair-dynamic',
+            output: 'pair-dynamic.pt2',
+            command: [
+                _uma_py,
+                _uma_export,
+                '--kind',
+                'pair',
+                '--dtype',
+                'float64',
+                '--dynamic',
+                '--out',
+                '@OUTPUT@',
+            ],
+            build_by_default: false,
+        )
+        _uma_fix_pkgs += [_uma_pair_fixed, _uma_pair_dynamic]
+        _uma_fix_env.set('UMA_PAIR_FIXED_PT2', _uma_pair_fixed.full_path())
+        _uma_fix_env.set('UMA_PAIR_DYNAMIC_PT2', _uma_pair_dynamic.full_path())
         _uma_no_edges = custom_target(
             'uma-no-edges',
             output: 'line-no-edges.pt2',

@@ -53,6 +53,45 @@ Eval run(rgpot::UmaPot &pot, const std::vector<double> &pos) {
   return out;
 }
 
+// The pair fixtures: each directed edge carries half of
+// 0.5 * k * (d - r0)^2, so every pair inside the cutoff counts once.
+Eval springs(const std::vector<double> &pos, double cutoff) {
+  const double k = 0.75;
+  const double r0 = 1.125;
+  const size_t n = pos.size() / 3;
+  Eval out;
+  out.force.assign(pos.size(), 0.0);
+  for (size_t i = 0; i < n; ++i) {
+    for (size_t j = i + 1; j < n; ++j) {
+      double v[3];
+      for (size_t c = 0; c < 3; ++c)
+        v[c] = pos[3 * i + c] - pos[3 * j + c];
+      const double d = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+      if (d >= cutoff)
+        continue;
+      const double s = d - r0;
+      out.energy += 0.5 * k * s * s;
+      for (size_t c = 0; c < 3; ++c) {
+        out.force[3 * i + c] -= k * s / d * v[c];
+        out.force[3 * j + c] += k * s / d * v[c];
+      }
+    }
+  }
+  return out;
+}
+
+void require_same(const Eval &a, const Eval &b, double tol) {
+  REQUIRE_THAT(a.energy, Catch::Matchers::WithinAbs(b.energy, tol));
+  REQUIRE(a.force.size() == b.force.size());
+  for (size_t i = 0; i < a.force.size(); ++i)
+    REQUIRE_THAT(a.force[i], Catch::Matchers::WithinAbs(b.force[i], tol));
+}
+
+// Four atoms, every pair inside the 6 angstrom cutoff: 12 directed
+// edges, the shape the fixed pair package was compiled for.
+const std::vector<double> kTetra = {12.5, 12.5, 12.5, 13.6, 12.5, 12.5,
+                                    12.5, 13.7, 12.5, 12.5, 12.5, 13.4};
+
 std::vector<double> line(int n, double spacing) {
   std::vector<double> pos(static_cast<size_t>(n) * 3);
   for (int i = 0; i < n; ++i) {
@@ -184,7 +223,75 @@ TEST_CASE("tetrazine past the 10 angstrom cutoff names the fixed edge shape",
           Catch::Matchers::ContainsSubstring("[2, 56]"));
 }
 
+TEST_CASE("a fixed-shape package with no shape metadata runs at its "
+          "compiled shapes",
+          "[uma][graph][compiled]") {
+  // pair-fixed.pt2 records no nedges_min, nedges_max, natoms,
+  // pos_shape, edge_index_shape or shapes. Its graph was compiled for
+  // pos [4, 3] and edge_index [2, 12].
+  rgpot::UmaPot fixed = open_pot(package_path("UMA_PAIR_FIXED_PT2"));
+  rgpot::UmaPot dynamic = open_pot(package_path("UMA_PAIR_DYNAMIC_PT2"));
+  const Eval a = run(fixed, kTetra);
+  const Eval b = run(dynamic, kTetra);
+  REQUIRE(std::isfinite(a.energy));
+  REQUIRE(a.energy > 0.01);
+  require_same(a, springs(kTetra, 6.0), 1e-10);
+  require_same(a, b, 1e-12);
+
+  std::vector<double> moved = kTetra;
+  moved[4] += 0.05;
+  moved[11] -= 0.08;
+  require_same(run(fixed, moved), run(dynamic, moved), 1e-12);
+  require_same(run(fixed, moved), springs(moved, 6.0), 1e-10);
+}
+
+TEST_CASE("a fixed-shape package names the compiled edge_index",
+          "[uma][graph][compiled]") {
+  // The last atom leaves the cutoff, so the list has 6 edges instead
+  // of the 12 the graph was compiled for.
+  rgpot::UmaPot fixed = open_pot(package_path("UMA_PAIR_FIXED_PT2"));
+  std::vector<double> stretched = kTetra;
+  stretched[11] = 30.0;
+  try {
+    run(fixed, stretched);
+    FAIL("the fixed-shape package returned a force");
+  } catch (const rgpot::UmaShapeError &err) {
+    REQUIRE(err.field() == "edge_index");
+    REQUIRE(err.actual() == "[2, 6]");
+    REQUIRE(err.package() == "[2, 12]");
+    REQUIRE_THAT(std::string(err.what()),
+                 Catch::Matchers::Equals("UmaPot: edge_index shape is [2, 6], "
+                                         "the package was exported for "
+                                         "[2, 12]"));
+  }
+
+  // The dynamic package of the same model takes that list.
+  rgpot::UmaPot dynamic = open_pot(package_path("UMA_PAIR_DYNAMIC_PT2"));
+  require_same(run(dynamic, stretched), springs(stretched, 6.0), 1e-10);
+}
+
+TEST_CASE("a fixed-shape package names the compiled atom count",
+          "[uma][graph][compiled]") {
+  // Three atoms give six edges. The atom count is named first, since
+  // that is the shape that does not fit.
+  rgpot::UmaPot fixed = open_pot(package_path("UMA_PAIR_FIXED_PT2"));
+  const std::vector<double> three(kTetra.begin(), kTetra.begin() + 9);
+  try {
+    run(fixed, three);
+    FAIL("the fixed-shape package returned a force");
+  } catch (const rgpot::UmaShapeError &err) {
+    REQUIRE(err.field() == "pos");
+    REQUIRE_THAT(std::string(err.what()),
+                 Catch::Matchers::Equals("UmaPot: pos shape is [3, 3], the "
+                                         "package was exported for [4, 3]"));
+  }
+  rgpot::UmaPot dynamic = open_pot(package_path("UMA_PAIR_DYNAMIC_PT2"));
+  require_same(run(dynamic, three), springs(three, 6.0), 1e-10);
+}
+
 TEST_CASE("a package with no edge range is refused", "[uma][graph]") {
+  // No range key, no shapes, and a wrapper source without input checks:
+  // nothing records the edge count the graph was compiled for.
   rgpot::UmaPot pot = open_pot(package_path("UMA_NO_EDGES_PT2"));
   REQUIRE_THROWS_WITH(run(pot, line(3, 1.0)),
                       Catch::Matchers::ContainsSubstring("nedges") &&
