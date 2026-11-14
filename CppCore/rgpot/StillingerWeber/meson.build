@@ -2,6 +2,7 @@
 sw_si = static_library(
     'sw_si',
     'SWSi.cc',
+    'SWWide.cc',
     dependencies: _deps,
     cpp_args: _args,
     include_directories: ['../../'],

@@ -1,0 +1,1 @@
+From 1024 atoms, a threaded Stillinger-Weber call counts each atom's bonds and writes them into that slice, then counts the pair and triplet slots in parallel. Smaller cells keep the previous copy. One thread is unchanged, and the energies and forces still match it bit for bit.
