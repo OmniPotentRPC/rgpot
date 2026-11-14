@@ -553,6 +553,15 @@ void EAM::force(long N, const double *R, const int *atomicNrs, double *F,
     evaluateStreamFixed(N, atomicNrs, F, U);
     return;
   }
-  evaluateFixed(N, atomicNrs, F, U);
+  // One thread writes the force array as it walks. That is the fast
+  // serial order. Several threads gather: each atom sums its own density,
+  // then its own force, from its full neighbour list. The partner record
+  // is read only after every atom has written one, and the resulting bits
+  // match the one-thread walk.
+  if (nt == 1) {
+    evaluateFixed(N, atomicNrs, F, U);
+  } else {
+    evaluateThreaded(N, atomicNrs, F, U);
+  }
 }
 
