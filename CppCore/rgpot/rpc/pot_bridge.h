@@ -67,6 +67,19 @@ POT_BRIDGE_API int32_t pot_calculate(PotClient *client, int32_t natoms, const do
                       double *out_energy, double *out_forces);
 
 /**
+ * @brief Evaluates @a count geometries in one round trip.
+ * Image @c k is @a natoms[k] atoms at @a pos[k], types @a atmnrs[k],
+ * cell @a box[k]. Energies land in @a out_energy[k] and forces in
+ * @a out_forces[k], which has room for @c natoms[k] * 3 doubles.
+ * @c calculate stays the one-geometry call.
+ * @return 0 on success, non-zero on failure.
+ */
+POT_BRIDGE_API int32_t pot_calculate_batch(PotClient *client, int32_t count,
+                            const int32_t *natoms, const double *const *pos,
+                            const int32_t *const *atmnrs, const double *const *box,
+                            double *out_energy, double *const *out_forces);
+
+/**
  * @brief Retrieves the most recent error message.
  * @param client The opaque client handle.
  * @return String containing the error description.

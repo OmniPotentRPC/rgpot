@@ -76,6 +76,17 @@ def _load_bridge(path: str):
         ctypes.POINTER(ctypes.c_double),
     ]
     lib.pot_calculate.restype = ctypes.c_int32
+    lib.pot_calculate_batch.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_int32,
+        ctypes.POINTER(ctypes.c_int32),
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_double)),
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_int32)),
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_double)),
+        ctypes.POINTER(ctypes.c_double),
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_double)),
+    ]
+    lib.pot_calculate_batch.restype = ctypes.c_int32
     return lib
 
 
@@ -188,5 +199,71 @@ class RpcLjRoundTrip:
 
 class RpcLjUnixRoundTrip(RpcLjRoundTrip):
     """The same call on a ``unix:/path`` address. TCP stays the default row."""
+
+    transport = "unix"
+
+
+class RpcLjBatch(RpcLjRoundTrip):
+    """One ``calculateBatch`` of ``images`` geometries.
+
+    ``images`` is 1, 8, or 32. Atom counts are 7 and 256. Image ``k`` is
+    the same crystal shifted by ``0.01 * k`` angstrom on x.
+    """
+
+    params = ([7, 256], [1, 8, 32])
+    param_names = ["atoms", "images"]
+
+    def setup(self, atoms: int, images: int) -> None:
+        super().setup(atoms)
+        import numpy as np
+
+        self.images = images
+        self.image_pos = []
+        self.image_types = []
+        self.image_box = []
+        self.image_forces = []
+        for k in range(images):
+            pos = np.array(self.pos, copy=True)
+            pos[0::3] += 0.01 * k
+            self.image_pos.append(np.ascontiguousarray(pos))
+            self.image_types.append(np.array(self.types, copy=True))
+            self.image_box.append(np.array(self.box, copy=True))
+            self.image_forces.append((ctypes.c_double * (atoms * 3))())
+        self.natoms = (ctypes.c_int32 * images)(*([atoms] * images))
+        self.pos_p = (ctypes.POINTER(ctypes.c_double) * images)(
+            *[p.ctypes.data_as(ctypes.POINTER(ctypes.c_double)) for p in self.image_pos]
+        )
+        self.type_p = (ctypes.POINTER(ctypes.c_int32) * images)(
+            *[t.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)) for t in self.image_types]
+        )
+        self.box_p = (ctypes.POINTER(ctypes.c_double) * images)(
+            *[b.ctypes.data_as(ctypes.POINTER(ctypes.c_double)) for b in self.image_box]
+        )
+        self.force_p = (ctypes.POINTER(ctypes.c_double) * images)(*self.image_forces)
+        self.energies = (ctypes.c_double * images)()
+
+    def time_round_trip(self, atoms: int, images: int) -> None:
+        del atoms, images
+        rc = self.lib.pot_calculate_batch(
+            self.client,
+            self.images,
+            self.natoms,
+            self.pos_p,
+            self.type_p,
+            self.box_p,
+            self.energies,
+            self.force_p,
+        )
+        if rc != 0:
+            err = self.lib.pot_get_last_error(self.client) or b""
+            raise RuntimeError(err.decode())
+
+    def teardown(self, atoms: int, images: int) -> None:
+        del images
+        super().teardown(atoms)
+
+
+class RpcLjUnixBatch(RpcLjBatch):
+    """``calculateBatch`` on a ``unix:/path`` address."""
 
     transport = "unix"

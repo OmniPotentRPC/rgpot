@@ -159,8 +159,7 @@ public:
    * @param context The Cap'n Proto RPC call context.
    * @return An asynchronous promise for completion.
    */
-  kj::Promise<void> calculate(CalculateContext context) override {
-    auto fip = context.getParams().getFip();
+  void evaluateOne(::ForceInput::Reader fip, ::PotentialResult::Builder pres) {
     const size_t numAtoms = fip.getPos().size() / 3;
 
     KJ_REQUIRE(fip.getAtmnrs().size() == numAtoms, "AtomNumbers size mismatch");
@@ -228,9 +227,6 @@ public:
     auto [energy, forces, variance] = evaluate();
     (void)variance;
 
-    // Convert results to caller's units
-    auto result = context.getResults();
-    auto pres = result.initResult();
     pres.setEnergy(energy * ev_to_caller);
 
     auto forcesList = pres.initForces(numAtoms * 3);
@@ -255,7 +251,19 @@ public:
       }
     }
 #endif
+  }
 
+  kj::Promise<void> calculate(CalculateContext context) override {
+    evaluateOne(context.getParams().getFip(), context.getResults().initResult());
+    return kj::READY_NOW;
+  }
+
+  kj::Promise<void> calculateBatch(CalculateBatchContext context) override {
+    auto items = context.getParams().getItems();
+    auto results = context.getResults().initResults(items.size());
+    for (unsigned int i = 0; i < items.size(); ++i) {
+      evaluateOne(items[i], results[i]);
+    }
     return kj::READY_NOW;
   }
 

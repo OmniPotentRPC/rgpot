@@ -196,6 +196,94 @@ int32_t pot_calculate(PotClient *client, int32_t natoms, const double *pos,
   CATCH_AND_REPORT(client, -1)
 }
 
+} // extern "C"
+
+namespace {
+
+void fill_fip(::ForceInput::Builder fip, int32_t natoms, const double *pos,
+              const int32_t *atmnrs, const double *box) {
+  const auto npos = static_cast<unsigned int>(natoms * 3);
+  auto pos_builder = fip.initPos(npos);
+  if (double *dest = rgpot::types::adapt::capnp::contiguous_builder<double>(pos_builder)) {
+    std::memcpy(dest, pos, sizeof(double) * npos);
+  } else {
+    for (unsigned int i = 0; i < npos; ++i) {
+      pos_builder.set(i, pos[i]);
+    }
+  }
+  auto type_builder = fip.initAtmnrs(static_cast<unsigned int>(natoms));
+  if (std::int32_t *dest =
+          rgpot::types::adapt::capnp::contiguous_builder<std::int32_t>(type_builder)) {
+    std::memcpy(dest, atmnrs, sizeof(std::int32_t) * static_cast<std::size_t>(natoms));
+  } else {
+    for (int32_t i = 0; i < natoms; ++i) {
+      type_builder.set(static_cast<unsigned int>(i), atmnrs[i]);
+    }
+  }
+  fip.setBox(kj::arrayPtr(box, 9));
+}
+
+} // namespace
+
+extern "C" {
+
+int32_t pot_calculate_batch(PotClient *client, int32_t count, const int32_t *natoms,
+                            const double *const *pos, const int32_t *const *atmnrs,
+                            const double *const *box, double *out_energy,
+                            double *const *out_forces) {
+  if (!client) {
+    return -1;
+  }
+  client->last_error.clear();
+  if (count < 0 || (count > 0 && (natoms == nullptr || pos == nullptr || atmnrs == nullptr ||
+                                  box == nullptr || out_energy == nullptr ||
+                                  out_forces == nullptr))) {
+    client->last_error = "batch arguments are incomplete";
+    return -1;
+  }
+  try {
+    auto &waitScope = *client->wait_scope;
+    if (!client->server_checked) {
+      const std::string why = rgpot::abi::check_server(client->capability, waitScope);
+      if (!why.empty()) {
+        client->last_error = "server refused: " + why;
+        return -3;
+      }
+      client->server_checked = true;
+    }
+    auto req = client->capability.calculateBatchRequest();
+    auto items = req.initItems(static_cast<unsigned int>(count));
+    for (int32_t k = 0; k < count; ++k) {
+      if (natoms[k] < 0 || pos[k] == nullptr || atmnrs[k] == nullptr || box[k] == nullptr ||
+          out_forces[k] == nullptr) {
+        client->last_error = "a batch image is missing its arrays";
+        return -1;
+      }
+      fill_fip(items[k], natoms[k], pos[k], atmnrs[k], box[k]);
+    }
+    auto response = req.send().wait(waitScope);
+    auto results = response.getResults();
+    if (results.size() != static_cast<size_t>(count)) {
+      client->last_error = "Server returned the wrong number of images";
+      return -2;
+    }
+    for (int32_t k = 0; k < count; ++k) {
+      auto result = results[k];
+      out_energy[k] = result.getEnergy();
+      auto res_forces = result.getForces();
+      if (res_forces.size() != static_cast<size_t>(natoms[k] * 3)) {
+        client->last_error = "Server returned a force array of incorrect size";
+        return -2;
+      }
+      for (size_t i = 0; i < res_forces.size(); ++i) {
+        out_forces[k][i] = res_forces[i];
+      }
+    }
+    return 0;
+  }
+  CATCH_AND_REPORT(client, -1)
+}
+
 /**
  * @details
  * Checks if a valid client handle is provided and if the @c last_error

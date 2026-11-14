@@ -72,6 +72,11 @@ on a Unix-domain socket; the Cap'n Proto messages are unchanged.
 ./bbdir/CppCore/potserv unix:/tmp/rgpot.sock LJ
 #+end_src
 
+=calculate= still sends one geometry. =calculateBatch= sends a list of
+=ForceInput= values, one per NEB image or dimer end, and returns one
+=PotentialResult= per item in that order. The C bridge for that call is
+=pot_calculate_batch=. The one-geometry call is unchanged.
+
 For runtime-loaded quantum engines, pass the matching selector and engine path:
 
 #+begin_src bash

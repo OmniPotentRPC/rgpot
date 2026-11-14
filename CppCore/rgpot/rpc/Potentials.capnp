@@ -2625,6 +2625,11 @@ interface Potential {
   # The client sends NeighborRequest.cursor and repeats the call while
   # NeighborList.more is true, passing NeighborList.next back as the next cursor.
   neighbours @13 (fip :ForceInput, request :NeighborRequest) -> (neighbors :NeighborList);
+
+  # Several geometries in one round trip. Each item is one configuration,
+  # for example one NEB image or one end of a dimer. Results come back in
+  # that order. calculate @0 is unchanged.
+  calculateBatch @14 (items :List(ForceInput)) -> (results :List(PotentialResult));
 }
 
 # Neighbour query. The same columns as rgpot::nlist::Query and rgpot_nlist_soa.

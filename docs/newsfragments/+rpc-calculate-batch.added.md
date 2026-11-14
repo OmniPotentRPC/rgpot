@@ -1,0 +1,1 @@
+`calculateBatch` evaluates several geometries in one RPC round trip and returns one energy and force array per geometry, in the same order. `calculate` is unchanged. The C bridge is `pot_calculate_batch`.
