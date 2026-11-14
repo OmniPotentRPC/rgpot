@@ -11,6 +11,7 @@
  */
 
 #include <array>
+#include <cstring>
 #include <vector>
 
 #include "rgpot/rpc/Potentials.capnp.h"
@@ -22,6 +23,25 @@ namespace rgpot {
 namespace types {
 namespace adapt {
 namespace capnp {
+
+// A primitive list is one contiguous run of native values. Copying into it
+// matches the per-element setter when that setter does not canonicalise NaNs.
+template <typename T>
+T *contiguous_builder(typename ::capnp::List<T>::Builder builder) {
+#if CAPNP_CANONICALIZE_NAN
+  (void)builder;
+  return nullptr;
+#else
+  auto internal =
+      ::capnp::_::PointerHelpers<::capnp::List<T>>::getInternalBuilder(kj::mv(builder));
+  const auto bytes = sizeof(T) == 8 ? ::capnp::ElementSize::EIGHT_BYTES
+                                     : ::capnp::ElementSize::FOUR_BYTES;
+  if (internal.getElementSize() != bytes || internal.size() == 0) {
+    return nullptr;
+  }
+  return static_cast<T *>(static_cast<void *>(internal.getLocation()));
+#endif
+}
 
 // --- Functions to convert from Cap'n Proto Readers to Native Types ---
 
@@ -93,7 +113,12 @@ inline void populatePositionsToCapnp(::capnp::List<double>::Builder &capnpPos,
  */
 inline void populateForcesToCapnp(::capnp::List<double>::Builder &capnpForces,
                                   const AtomMatrix &forces) {
-  for (size_t i = 0; i < forces.rows() * forces.cols(); ++i) {
+  const size_t n = forces.rows() * forces.cols();
+  if (double *dest = contiguous_builder<double>(capnpForces); dest != nullptr) {
+    std::memcpy(dest, forces.data(), n * sizeof(double));
+    return;
+  }
+  for (size_t i = 0; i < n; ++i) {
     capnpForces.set(i, forces.data()[i]);
   }
 }

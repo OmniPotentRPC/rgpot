@@ -97,6 +97,10 @@ private:
   rgpot::IPIPot *m_ipi = nullptr;
 #endif
   rgpot::tools::MpiPefSession *m_pef = nullptr;
+  // Kept across calls. A shorter system lowers the size and leaves the
+  // capacity in place, so a run of the same atom count does not allocate.
+  rgpot::types::AtomMatrix m_pos;
+  std::vector<int> m_types;
 
 public:
   /**
@@ -161,27 +165,44 @@ public:
 
     KJ_REQUIRE(fip.getAtmnrs().size() == numAtoms, "AtomNumbers size mismatch");
 
-    // Unit conversion factors (caller units -> internal angstrom/eV)
-    std::string lengthUnit = fip.getLengthUnit();
-    std::string energyUnit = fip.getEnergyUnit();
-    double len_to_angstrom = rgpot::units::unit_conversion_factor(lengthUnit, "angstrom");
-    double ev_to_caller = rgpot::units::unit_conversion_factor("eV", energyUnit);
+    // The schema default is angstrom / eV, and that factor is 1. Any other
+    // unit still goes through the parser. The comparison does not allocate.
+    const auto lengthUnit = fip.getLengthUnit();
+    const auto energyUnit = fip.getEnergyUnit();
+    const double len_to_angstrom =
+        lengthUnit == "angstrom"
+            ? 1.0
+            : rgpot::units::unit_conversion_factor(std::string(lengthUnit), "angstrom");
+    const double ev_to_caller =
+        energyUnit == "eV"
+            ? 1.0
+            : rgpot::units::unit_conversion_factor("eV", std::string(energyUnit));
     // Force unit: energy/length in caller's system
-    double force_to_caller = ev_to_caller / len_to_angstrom;
+    const double force_to_caller = ev_to_caller / len_to_angstrom;
 
-    rgpot::types::AtomMatrix nativePositions =
-        rgpot::types::adapt::capnp::convertPositionsFromCapnp(fip.getPos(),
-                                                              numAtoms);
+    if (m_pos.rows() != numAtoms || m_pos.cols() != 3) {
+      m_pos = rgpot::types::AtomMatrix(numAtoms, 3);
+    }
+    auto pos_reader = fip.getPos();
+    for (size_t i = 0; i < numAtoms * 3; ++i) {
+      m_pos.data()[i] = pos_reader[i];
+    }
     // Convert positions from caller's length unit to angstrom
     if (len_to_angstrom != 1.0) {
       for (size_t i = 0; i < numAtoms * 3; ++i) {
-        nativePositions.data()[i] *= len_to_angstrom;
+        m_pos.data()[i] *= len_to_angstrom;
       }
     }
 
-    std::vector<int> nativeAtomTypes =
-        rgpot::types::adapt::capnp::convertAtomNumbersFromCapnp(
-            fip.getAtmnrs());
+    if (m_types.size() != numAtoms) {
+      m_types.resize(numAtoms);
+    }
+    auto type_reader = fip.getAtmnrs();
+    for (size_t i = 0; i < numAtoms; ++i) {
+      m_types[i] = type_reader[i];
+    }
+    rgpot::types::AtomMatrix &nativePositions = m_pos;
+    std::vector<int> &nativeAtomTypes = m_types;
     std::array<std::array<double, 3>, 3> nativeBoxMatrix =
         rgpot::types::adapt::capnp::convertBoxMatrixFromCapnp(fip.getBox());
     // Convert box from caller's length unit to angstrom

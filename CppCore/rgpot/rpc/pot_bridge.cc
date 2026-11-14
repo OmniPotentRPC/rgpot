@@ -12,6 +12,7 @@
 #include "pot_bridge.h"
 #include "Potentials.capnp.h"
 #include "rgpot/abi/Handshake.hpp"
+#include "rgpot/types/adapters/capnp/capnp_adapter.hpp"
 #include <algorithm>
 #include <cstring>
 #include <capnp/ez-rpc.h>
@@ -145,17 +146,25 @@ int32_t pot_calculate(PotClient *client, int32_t natoms, const double *pos,
     auto req = client->capability.calculateRequest();
     auto fip = req.initFip();
 
-    // kj::arrayPtr creates a "view" (pointer + size) with NO copying.
-    // It is essentially a span.
-    auto pos_view = kj::arrayPtr(pos, natoms * 3);
-    auto atm_view = kj::arrayPtr(atmnrs, natoms);
-    auto box_view = kj::arrayPtr(box, 9);
-
-    // Cap'n Proto sees these views and performs a bulk memcpy
-    // directly into the message builder's memory segment.
-    fip.setPos(pos_view);
-    fip.setAtmnrs(atm_view);
-    fip.setBox(box_view);
+    const auto npos = static_cast<unsigned int>(natoms * 3);
+    auto pos_builder = fip.initPos(npos);
+    if (double *dest = rgpot::types::adapt::capnp::contiguous_builder<double>(pos_builder)) {
+      std::memcpy(dest, pos, sizeof(double) * npos);
+    } else {
+      for (unsigned int i = 0; i < npos; ++i) {
+        pos_builder.set(i, pos[i]);
+      }
+    }
+    auto type_builder = fip.initAtmnrs(static_cast<unsigned int>(natoms));
+    if (std::int32_t *dest =
+            rgpot::types::adapt::capnp::contiguous_builder<std::int32_t>(type_builder)) {
+      std::memcpy(dest, atmnrs, sizeof(std::int32_t) * static_cast<std::size_t>(natoms));
+    } else {
+      for (int32_t i = 0; i < natoms; ++i) {
+        type_builder.set(static_cast<unsigned int>(i), atmnrs[i]);
+      }
+    }
+    fip.setBox(kj::arrayPtr(box, 9));
 
     // ---------------------------------------------------------
 
