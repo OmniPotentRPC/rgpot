@@ -137,7 +137,12 @@ private:
   // Density term of a pure-metal pair, stored from the lower atom index
   // into the higher atom's slot. The higher atom reuses it when its own
   // squared distance has the same bits, so the sum is the one it would
-  // have computed.
+  // have computed. Only the one-thread evaluation writes these slots:
+  // it walks atoms in index order, so the store happens before the read.
+  // The OpenMP evaluation uses fscale_ and morse_ and does not touch them.
+  // A force call is not invoked on one object from two external threads.
+  // The batch builds one instance per worker, and the RPC server does not
+  // serve this kernel.
   std::vector<double> reuse_r2_;
   std::vector<double> reuse_rho_;
   std::vector<double> reuse_fs_;

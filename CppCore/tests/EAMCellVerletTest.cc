@@ -435,3 +435,32 @@ TEST_CASE("EAM OpenMP sums are deterministic and near one thread", "[eam]") {
   expectClose(mixedTwo, mixedOne);
   setThreads("");
 }
+
+TEST_CASE("EAM pure-metal reuse agrees across threads", "[eam][threads]") {
+  // One EAM object, several OpenMP threads. The density-reuse slots are
+  // written only by the one-thread path. The threaded path keeps its own
+  // pair slots and does not read those buffers. A repeated call at the
+  // same thread count matches bit for bit, and it stays next to the
+  // one-thread result.
+  std::vector<int> z;
+  std::vector<double> pos = fcc(8, 4.05, z, 13);
+  const double length = 8 * 4.05;
+  setThreads("");
+  rgpot::EAMPot serial;
+  const Outcome one = evaluate(serial, pos, z, length);
+  REQUIRE(serial.threadsUsed() == 1);
+
+  setThreads("2");
+  rgpot::EAMPot parallel;
+  const Outcome first = evaluate(parallel, pos, z, length);
+  const Outcome second = evaluate(parallel, pos, z, length);
+#if defined(_OPENMP)
+  REQUIRE(parallel.threadsUsed() == 2);
+#else
+  REQUIRE(parallel.threadsUsed() == 1);
+  expectBits(first, one);
+#endif
+  expectBits(second, first);
+  expectClose(first, one);
+  setThreads("");
+}
