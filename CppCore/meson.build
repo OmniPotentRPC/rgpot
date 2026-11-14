@@ -392,6 +392,7 @@ if not get_option('with_rpc_client_only')
         version: meson.project_version(),
         soversion: rgpot_cxx_soversion,
         install: not meson.is_subproject(),
+        kwargs: fastnlist_umbrella_kwargs,
     )
 
     # Generic rgpot_engine_* plugins (engine_c_abi.h) for the backends that

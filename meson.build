@@ -867,14 +867,34 @@ if has_fast_nlist
     # Fortran calls nothing, and the C ABI was not exported. Naming the
     # entry points as undefined pulls that object in every build. The
     # names are the fast-list ABI baseline the abi_symbols test checks.
+    _fast_names = []
+    foreach _name : import('fs').read(
+        'scripts/abi_baseline_fast.txt',
+    ).strip().split('\n')
+        _fast_names += [_name.strip()]
+    endforeach
     fastnlist_export_args = []
-    if not _fast_as_object and host_system != 'windows'
+    if not _fast_as_object and get_option('default_library') != 'static'
         _fast_prefix = host_system == 'darwin' ? '_' : ''
-        foreach _name : import('fs').read(
-            'scripts/abi_baseline_fast.txt',
-        ).strip().split('\n')
-            fastnlist_export_args += ['-Wl,-u,' + _fast_prefix + _name.strip()]
+        foreach _name : _fast_names
+            if cppc.get_argument_syntax() == 'msvc'
+                fastnlist_export_args += ['/INCLUDE:' + _name]
+            else
+                fastnlist_export_args += ['-Wl,-u,' + _fast_prefix + _name]
+            endif
         endforeach
+    endif
+    # rustc writes no export directive into a staticlib, so a DLL exports
+    # the fast names only when a module definition file lists them.
+    fastnlist_umbrella_kwargs = {}
+    if host_system == 'windows' and get_option('default_library') != 'static'
+        fastnlist_umbrella_kwargs = {
+            'vs_module_defs': configure_file(
+                input: 'CppCore/rgpot/nlist/fastnlist/rgpot_fastnlist.def.in',
+                output: 'rgpot_fastnlist.def',
+                configuration: {'FAST_EXPORTS': '\n'.join(_fast_names)},
+            ),
+        }
     endif
     message(
         'fast pair list: enabled (rustc minor ' + _fast_minor.to_string() + ')',
@@ -883,6 +903,7 @@ else
     fastnlist_dep = declare_dependency()
     fastnlist_native_dep = fastnlist_dep
     fastnlist_export_args = []
+    fastnlist_umbrella_kwargs = {}
     message('fast pair list: disabled, classical pots use the C++ scan')
 endif
 
