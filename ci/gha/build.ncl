@@ -14,6 +14,7 @@ let meson_build_test =
     -Dwith_eigen=False \
     -Dwith_rpc=${{ matrix.rpc }} \
     -Dwith_cache=${{ matrix.cache }} \
+    -Dwith_eam_table=true \
     -Dpure_lib=False
   meson compile -C bbdir
   meson test -C bbdir --print-errorlogs

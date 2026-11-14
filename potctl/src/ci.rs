@@ -105,6 +105,7 @@ pub fn meson_configure_args(
         "-Dwith_eigen=False".into(),
         format!("-Dwith_rpc={}", if rpc { "true" } else { "false" }),
         format!("-Dwith_cache={}", if cache { "true" } else { "false" }),
+        "-Dwith_eam_table=true".into(),
         "-Dpure_lib=False".into(),
     ];
     if with_mpi {
@@ -1638,6 +1639,7 @@ mod tests {
         assert!(a.iter().any(|x| x == "-Dwith_rpc=true"));
         assert!(a.iter().any(|x| x == "-Dwith_cache=false"));
         assert!(a.iter().any(|x| x == "-Dwith_tests=True"));
+        assert!(a.iter().any(|x| x == "-Dwith_eam_table=true"));
         assert!(a.iter().any(|x| x == "-Dwith_mpi=enabled"));
         assert!(a.iter().any(|x| x == "-Ddefault_library=static"));
         let off = meson_configure_args(true, false, false, "");
