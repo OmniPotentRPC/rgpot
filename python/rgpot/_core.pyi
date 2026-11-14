@@ -27,6 +27,8 @@ has_fortran_pots: bool = True
 
 has_ipi: bool = True
 
+has_eam_table: bool = False
+
 def echo_f64(values: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> NDArray[numpy.float64]: ...
 
 def evaluate_lj(positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
@@ -256,6 +258,10 @@ class StillingerWeberSi:
         Energy, forces, variance, and the Cauchy stress, shape (3, 3), in eV/Angstrom^3. With energies=True, also the energy of each atom, shape (n_atoms,), three-body terms on the centre atom. The kernel runs detached.
         """
 
+    @staticmethod
+    def params() -> dict:
+        """The parameters under the names of a LAMMPS sw file entry."""
+
     def energy_gradient(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
         """
         Energy and dE/dx. positions is (n_atoms, 3) or (n_config, n_atoms, 3). A batch shares atom_types and box, and crosses into the library once.
@@ -279,9 +285,54 @@ class TersoffSiC:
         Energy, forces, variance, and the Cauchy stress, shape (3, 3), in eV/Angstrom^3. With energies=True, also the energy of each atom, shape (n_atoms,), each bond term on its centre atom. The kernel runs detached.
         """
 
+    def params(self) -> dict:
+        """
+        species maps C and Si to their angular and bond-order parameters. pairs maps (centre, partner) to lambda1, lambda2, A, B (chi included), and the inner and outer cutoffs rin and rout, which are R - D and R + D of a LAMMPS tersoff file.
+        """
+
     def energy_gradient(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
         """
         Energy and dE/dx. positions is (n_atoms, 3) or (n_config, n_atoms, 3). A batch shares atom_types and box, and crosses into the library once.
+        """
+
+class SuttonChenPot:
+    def __init__(self, epsilon: float = 1.0, c: float = 34.408, a: float = 1.0, n: int = 10, m: int = 8, cutoff: float = 40.0, periodic: bool = False, stress: bool = False) -> None:
+        """
+        Sutton-Chen, Phil. Mag. Lett. 61, 139 (1990). epsilon is the energy unit, a and cutoff the length unit, with no energy shift at the cutoff. Defaults are the reduced 10-8 Pt/Au set as a cluster. periodic=True counts every image inside the cutoff. stress=True writes the Cauchy stress.
+        """
+
+    def caps(self) -> dict: ...
+
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
+
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], energies: bool = False) -> dict:
+        """
+        Energy, forces, variance, and stress when the kernel writes it. With energies=True, also the energy of each atom, shape (n_atoms,), when caps()['energies'] is true; ValueError otherwise. F4: the kernel runs detached.
+        """
+
+    def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
+        """
+        One detached BatchEvaluator call. results[i] matches a serial call on inputs[i], bit for bit. n_threads 0 uses the hardware concurrency.
+        """
+
+class ZBLPot:
+    def __init__(self, cut_inner: float = 2.0, cut_global: float = 2.5) -> None:
+        """
+        Ziegler-Biersack-Littmark screened nuclear repulsion with the LAMMPS pair_zbl switch from cut_inner to cut_global (Angstrom). Free boundaries; writes the Cauchy stress.
+        """
+
+    def caps(self) -> dict: ...
+
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
+
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], energies: bool = False) -> dict:
+        """
+        Energy, forces, variance, and stress when the kernel writes it. With energies=True, also the energy of each atom, shape (n_atoms,), when caps()['energies'] is true; ValueError otherwise. F4: the kernel runs detached.
+        """
+
+    def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
+        """
+        One detached BatchEvaluator call. results[i] matches a serial call on inputs[i], bit for bit. n_threads 0 uses the hardware concurrency.
         """
 
 class D3Pot:

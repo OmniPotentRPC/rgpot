@@ -95,6 +95,11 @@ public:
     return m_held;
   }
 
+  /// Angular parameters of carbon (0) or silicon (1).
+  [[nodiscard]] const Species &species(int k) const { return m_species[k]; }
+  /// Mixed pair of two species indices, chi already in big_b.
+  [[nodiscard]] const Pair &pair(int a, int b) const { return m_pair[a][b]; }
+
   /**
    * @brief Energy and dE/dx for one configuration.
    * @param positions Row-major coordinates, Angstrom.

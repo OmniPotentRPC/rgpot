@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
 #include <map>
 #include <memory>
 #include <stdexcept>
@@ -33,8 +34,10 @@
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/StillingerWeber/SWSi.hpp"
+#include "rgpot/SuttonChen/SuttonChenPot.hpp"
 #include "rgpot/Tersoff/TersoffSiC.hpp"
 #include "rgpot/XcKernel/XcKernel.hpp"
+#include "rgpot/ZBL/ZBLPot.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
@@ -61,6 +64,9 @@
 #endif
 #ifdef RGPOT_HAS_IPI
 #include "rgpot/IPIPot/IPIPot.hpp"
+#endif
+#ifdef RGPOT_HAS_EAM_TABLE
+#include "rgpot/EAMTable/EAMTablePot.hpp"
 #endif
 
 #ifndef RGPOT_PY_VERSION
@@ -443,6 +449,74 @@ nb::tuple tersoff_sic_energy_gradient(rgpot::TersoffSiC &self,
       "positions must have shape (n_atoms, 3) or (n_config, n_atoms, 3)");
 }
 
+nb::dict stillinger_weber_params() {
+  using SW = rgpot::StillingerWeberSi;
+  nb::dict out;
+  out["epsilon"] = SW::kEpsilon;
+  out["sigma"] = SW::kSigma;
+  out["a"] = SW::kCut;
+  out["lambda"] = SW::kLambda;
+  out["gamma"] = SW::kGamma;
+  out["costheta0"] = -1.0 / 3.0;
+  out["A"] = SW::kA;
+  out["B"] = SW::kB;
+  out["p"] = SW::kP;
+  out["q"] = 0.0;
+  return out;
+}
+
+/// Keys are the LAMMPS tersoff file columns. Species index 0 is carbon,
+/// 1 is silicon.
+nb::dict tersoff_sic_params(const rgpot::TersoffSiC &self) {
+  nb::dict species;
+  const char *names[2] = {"C", "Si"};
+  for (int k = 0; k < 2; ++k) {
+    const auto &s = self.species(k);
+    nb::dict row;
+    row["c"] = s.c;
+    row["d"] = s.d;
+    row["costheta0"] = s.h;
+    row["n"] = s.n;
+    row["beta"] = s.beta;
+    row["gamma"] = s.gamma;
+    species[names[k]] = row;
+  }
+  nb::dict pairs;
+  for (int a = 0; a < 2; ++a) {
+    for (int b = 0; b < 2; ++b) {
+      const auto &p = self.pair(a, b);
+      nb::dict row;
+      row["lambda1"] = p.lambda1;
+      row["lambda2"] = p.lambda2;
+      row["A"] = p.big_a;
+      row["B"] = p.big_b;
+      row["rin"] = p.rin;
+      row["rout"] = p.rout;
+      pairs[nb::make_tuple(names[a], names[b])] = row;
+    }
+  }
+  nb::dict out;
+  out["species"] = species;
+  out["pairs"] = pairs;
+  out["chi"] = rgpot::TersoffSiC::kChiSiC;
+  return out;
+}
+
+#ifdef RGPOT_HAS_EAM_TABLE
+rgpot::EAMTableFormat eam_table_format(const std::string &name) {
+  if (name == "funcfl" || name == "eam") {
+    return rgpot::EAMTableFormat::Funcfl;
+  }
+  if (name == "setfl" || name == "eam/alloy") {
+    return rgpot::EAMTableFormat::Setfl;
+  }
+  if (name == "fs" || name == "eam/fs") {
+    return rgpot::EAMTableFormat::FinnisSinclair;
+  }
+  throw std::invalid_argument("EAMTablePot: format must be funcfl, setfl or fs");
+}
+#endif
+
 } // namespace
 
 NB_MODULE(_core, m) {
@@ -495,6 +569,11 @@ NB_MODULE(_core, m) {
   m.attr("has_ipi") = true;
 #else
   m.attr("has_ipi") = false;
+#endif
+#ifdef RGPOT_HAS_EAM_TABLE
+  m.attr("has_eam_table") = true;
+#else
+  m.attr("has_eam_table") = false;
 #endif
 
   // F6 round trip. -0.0, NaN, and subnormals are copied unchanged.
@@ -748,6 +827,8 @@ NB_MODULE(_core, m) {
           "in eV/Angstrom^3. With energies=True, also the energy of each "
           "atom, shape (n_atoms,), three-body terms on the centre atom. The "
           "kernel runs detached.")
+      .def_static("params", &stillinger_weber_params,
+                  "The parameters under the names of a LAMMPS sw file entry.")
       .def("energy_gradient", &stillinger_weber_energy_gradient,
            nb::arg("positions").noconvert(), nb::arg("atom_types"),
            nb::arg("box").noconvert(),
@@ -800,12 +881,86 @@ NB_MODULE(_core, m) {
           "in eV/Angstrom^3. With energies=True, also the energy of each "
           "atom, shape (n_atoms,), each bond term on its centre atom. The "
           "kernel runs detached.")
+      .def("params", &tersoff_sic_params,
+           "species maps C and Si to their angular and bond-order "
+           "parameters. pairs maps (centre, partner) to lambda1, lambda2, A, "
+           "B (chi included), and the inner and outer cutoffs rin and rout, "
+           "which are R - D and R + D of a LAMMPS tersoff file.")
       .def("energy_gradient", &tersoff_sic_energy_gradient,
            nb::arg("positions").noconvert(), nb::arg("atom_types"),
            nb::arg("box").noconvert(),
            "Energy and dE/dx. positions is (n_atoms, 3) or "
            "(n_config, n_atoms, 3). A batch shares atom_types and box, "
            "and crosses into the library once.");
+
+  auto sc_cls = nb::class_<PotHolder<rgpot::SuttonChenPot>>(m, "SuttonChenPot");
+  sc_cls.def(
+      "__init__",
+      [](PotHolder<rgpot::SuttonChenPot> *self, double epsilon, double c,
+         double a, int n, int m, double cutoff, bool periodic, bool stress) {
+        new (self) PotHolder<rgpot::SuttonChenPot>([=] {
+          rgpot::SuttonChenConfig cfg;
+          cfg.epsilon = epsilon;
+          cfg.c = c;
+          cfg.a = a;
+          cfg.n = n;
+          cfg.m = m;
+          cfg.cutoff = cutoff;
+          cfg.periodic = periodic;
+          cfg.stress = stress;
+          return std::make_unique<rgpot::SuttonChenPot>(cfg);
+        });
+      },
+      nb::arg("epsilon") = 1.0, nb::arg("c") = 34.408, nb::arg("a") = 1.0,
+      nb::arg("n") = 10, nb::arg("m") = 8, nb::arg("cutoff") = 40.0,
+      nb::arg("periodic") = false, nb::arg("stress") = false,
+      "Sutton-Chen, Phil. Mag. Lett. 61, 139 (1990). epsilon is the "
+      "energy unit, a and cutoff the length unit, with no energy shift at "
+      "the cutoff. Defaults are the reduced 10-8 Pt/Au set as a cluster. "
+      "periodic=True counts every image inside the cutoff. stress=True "
+      "writes the Cauchy stress.");
+  rgpot::pybind::bind_calls(sc_cls);
+
+  auto zbl_cls = nb::class_<PotHolder<rgpot::ZBLPot>>(m, "ZBLPot");
+  zbl_cls.def(
+      "__init__",
+      [](PotHolder<rgpot::ZBLPot> *self, double cut_inner, double cut_global) {
+        new (self) PotHolder<rgpot::ZBLPot>([=] {
+          return std::make_unique<rgpot::ZBLPot>(rgpot::ZBLConfig{
+              .cut_inner = cut_inner, .cut_global = cut_global});
+        });
+      },
+      nb::arg("cut_inner") = 2.0, nb::arg("cut_global") = 2.5,
+      "Ziegler-Biersack-Littmark screened nuclear repulsion with the LAMMPS "
+      "pair_zbl switch from cut_inner to cut_global (Angstrom). Free "
+      "boundaries; writes the Cauchy stress.");
+  rgpot::pybind::bind_calls(zbl_cls);
+
+#ifdef RGPOT_HAS_EAM_TABLE
+  auto eamt = nb::class_<PotHolder<rgpot::EAMTablePot>>(m, "EAMTablePot");
+  eamt.def(
+      "__init__",
+      [](PotHolder<rgpot::EAMTablePot> *self, const std::string &path,
+         const std::string &format, bool periodic, bool stress) {
+        std::ifstream in(path);
+        if (!in) {
+          throw std::invalid_argument("EAMTablePot: cannot open " + path);
+        }
+        // Thread instances copy the parsed table rather than reread the file.
+        auto table = std::make_shared<const rgpot::EAMTable>(
+            rgpot::read_eam_table(in, eam_table_format(format)));
+        new (self) PotHolder<rgpot::EAMTablePot>([=] {
+          return std::make_unique<rgpot::EAMTablePot>(*table, periodic, stress);
+        });
+      },
+      nb::arg("path"), nb::arg("format") = "setfl", nb::arg("periodic") = true,
+      nb::arg("stress") = true,
+      "EAM or Finnis-Sinclair potential read from a LAMMPS table. format is "
+      "funcfl (pair_style eam), setfl (eam/alloy) or fs (eam/fs). Atoms "
+      "pick their element by atomic number, the first field of each "
+      "element line. Energies are in the table's units.");
+  rgpot::pybind::bind_calls(eamt);
+#endif
 
 #ifdef RGPOT_HAS_DFTD3
   auto d3 = nb::class_<PotHolder<rgpot::D3Pot>>(m, "D3Pot");
