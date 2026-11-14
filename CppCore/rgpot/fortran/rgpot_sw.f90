@@ -203,10 +203,18 @@ contains
       ! The triplet loop reads the stored values, in the same sum order.
       nent = max(table%row(natoms + 1_ip) - 1_ip, 1_ip)
       allocate (u(3, nent), expo(nent), dfac(nent))
+      ! Each entry writes its own leg. The threaded loop stores the same
+      ! values as the serial one, in the same slots.
+#ifdef RGPOT_EAM_AL_OPENMP
+!$omp parallel do schedule(static)
+#endif
       do s = 1, table%row(natoms + 1_ip) - 1_ip
          call leg_factor(par, table%dist(s), expo(s), dfac(s))
          u(:, s) = table%vec(:, s)/table%dist(s)
       end do
+#ifdef RGPOT_EAM_AL_OPENMP
+!$omp end parallel do
+#endif
 
       ! Atom loop writes only its own force column and energy slot, so the
       ! iterations are independent. The threaded build keeps that map and
