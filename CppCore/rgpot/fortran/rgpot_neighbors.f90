@@ -14,7 +14,10 @@
 !! candidate list in an `rgpot_nlist_builder` and reuses it while every
 !! atom has moved by at most half the skin. Each call still writes
 !! vectors for the positions it was given and keeps only pairs strictly
-!! inside the cutoff, which is the Verlet filter.
+!! inside the cutoff, which is the Verlet filter. The write buffer stays
+!! on the table, so a later call that fits in it walks those candidates
+!! once. The first call, and a call that outgrows the buffer, counts and
+!! then fills.
 !!
 !! Cell convention: C callers hand over nine doubles, row-major, one cell
 !! vector per row. Fortran reads that same memory column-major, so a
@@ -49,6 +52,9 @@ module rgpot_neighbors
       real(wp), private :: skin = -1.0_wp
       !> Builder kept across calls. Reused while atoms stay within half the skin.
       type(c_ptr), private :: builder = c_null_ptr
+      !> Scratch for the C fill. Kept so a warm call walks the pairs once.
+      integer(c_int), allocatable, private :: scratch_i(:), scratch_j(:)
+      real(c_double), allocatable, private :: scratch_v(:, :), scratch_d(:)
    contains
       procedure :: build => neighbor_table_build
       procedure :: count_for => neighbor_table_count_for
@@ -116,9 +122,9 @@ contains
 
       integer(c_int32_t) :: pbc(3), rc, reused
       integer(c_size_t) :: natoms_c, needed, cap
-      integer(c_int), allocatable, target :: ifirst(:), isecond(:)
-      real(c_double), allocatable, target :: cvec(:, :), cdist(:)
       real(wp) :: use_skin
+      ! RGPOT_NLIST_SHORT. A short buffer still reports the full count.
+      integer, parameter :: nlist_short = 6
       integer :: p, np, q, nkept
       integer(ip) :: i, j, natoms
       integer(ip), allocatable :: fill(:), by_j(:), jstart(:)
@@ -153,11 +159,23 @@ contains
 
       natoms_c = int(natoms, c_size_t)
       needed = 0_c_size_t
-      rc = rgpot_nlist_fortran_build(self%builder, positions, natoms_c, cell, &
-                                     real(cutoff, c_double), real(use_skin, c_double), pbc, &
-                                     c_null_ptr, c_null_ptr, c_null_ptr, c_null_ptr, &
-                                     0_c_size_t, needed, reused)
-      if (rc /= 0_c_int32_t) then
+      cap = 0_c_size_t
+      if (allocated(self%scratch_i)) cap = int(size(self%scratch_i), c_size_t)
+      ! A buffer that already holds the pairs is filled in one walk. The
+      ! first call, or a call that outgrows it, counts and then fills.
+      if (cap > 0_c_size_t) then
+         rc = rgpot_nlist_fortran_build(self%builder, positions, natoms_c, cell, &
+                                        real(cutoff, c_double), real(use_skin, c_double), pbc, &
+                                        loc_ints(self%scratch_i), loc_ints(self%scratch_j), &
+                                        loc_vecs(self%scratch_v), loc_reals(self%scratch_d), &
+                                        cap, needed, reused)
+      else
+         rc = rgpot_nlist_fortran_build(self%builder, positions, natoms_c, cell, &
+                                        real(cutoff, c_double), real(use_skin, c_double), pbc, &
+                                        c_null_ptr, c_null_ptr, c_null_ptr, c_null_ptr, &
+                                        0_c_size_t, needed, reused)
+      end if
+      if (rc /= 0_c_int32_t .and. rc /= nlist_short) then
          status = int(rc)
          msg = rgpot_nlist_strerror(rc)
          errmsg = "rgpot_neighbors: "//c_string(msg)
@@ -169,12 +187,17 @@ contains
       self%cutoff = cutoff
       self%skin = use_skin
 
-      if (np > 0) then
-         allocate (ifirst(np), isecond(np), cvec(3, np), cdist(np))
+      if ((cap == 0_c_size_t .or. rc == nlist_short) .and. np > 0) then
+         if (allocated(self%scratch_i)) then
+            deallocate (self%scratch_i, self%scratch_j, self%scratch_v, self%scratch_d)
+         end if
+         allocate (self%scratch_i(np), self%scratch_j(np), self%scratch_v(3, np), &
+                   self%scratch_d(np))
          cap = int(np, c_size_t)
          rc = rgpot_nlist_fortran_build(self%builder, positions, natoms_c, cell, &
                                         real(cutoff, c_double), real(use_skin, c_double), pbc, &
-                                        c_loc(ifirst), c_loc(isecond), c_loc(cvec), c_loc(cdist), &
+                                        loc_ints(self%scratch_i), loc_ints(self%scratch_j), &
+                                        loc_vecs(self%scratch_v), loc_reals(self%scratch_d), &
                                         cap, needed, reused)
          if (rc /= 0_c_int32_t) then
             status = int(rc)
@@ -197,8 +220,8 @@ contains
       jstart = 0_ip
       self%row = 0_ip
       do p = 1, np
-         i = int(ifirst(p), ip) + 1_ip
-         j = int(isecond(p), ip) + 1_ip
+         i = int(self%scratch_i(p), ip) + 1_ip
+         j = int(self%scratch_j(p), ip) + 1_ip
          if (i == j) cycle
          self%row(i) = self%row(i) + 1_ip
          jstart(j) = jstart(j) + 1_ip
@@ -209,8 +232,8 @@ contains
 
       nkept = int(self%row(natoms + 1) - 1_ip)
       do p = 1, np
-         i = int(ifirst(p), ip) + 1_ip
-         j = int(isecond(p), ip) + 1_ip
+         i = int(self%scratch_i(p), ip) + 1_ip
+         j = int(self%scratch_j(p), ip) + 1_ip
          if (i == j) cycle
          by_j(jstart(j)) = p
          jstart(j) = jstart(j) + 1_ip
@@ -229,12 +252,12 @@ contains
 
       do q = 1, nkept
          p = int(by_j(q))
-         i = int(ifirst(p), ip) + 1_ip
-         j = int(isecond(p), ip) + 1_ip
+         i = int(self%scratch_i(p), ip) + 1_ip
+         j = int(self%scratch_j(p), ip) + 1_ip
          associate (slot => self%row(i) + fill(i))
             self%idx(slot) = j
-            self%vec(:, slot) = cvec(:, p)
-            self%dist(slot) = cdist(p)
+            self%vec(:, slot) = self%scratch_v(:, p)
+            self%dist(slot) = self%scratch_d(p)
          end associate
          fill(i) = fill(i) + 1_ip
       end do
@@ -273,6 +296,26 @@ contains
          running = running + held
       end do
    end subroutine prefix_sum
+
+   !> An allocatable component cannot carry TARGET. The dummy can, and
+   !! c_loc of that dummy is the address the C fill writes into.
+   function loc_ints(a) result(p)
+      integer(c_int), intent(inout), target :: a(:)
+      type(c_ptr) :: p
+      p = c_loc(a)
+   end function loc_ints
+
+   function loc_reals(a) result(p)
+      real(c_double), intent(inout), target :: a(:)
+      type(c_ptr) :: p
+      p = c_loc(a)
+   end function loc_reals
+
+   function loc_vecs(a) result(p)
+      real(c_double), intent(inout), target :: a(:, :)
+      type(c_ptr) :: p
+      p = c_loc(a)
+   end function loc_vecs
 
    function c_string(ptr) result(text)
       type(c_ptr), intent(in) :: ptr
