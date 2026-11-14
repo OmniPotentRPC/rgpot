@@ -2583,6 +2583,25 @@ if get_option('with_tests')
             workdir: meson.source_root(),
             timeout: 300,
         )
+        # scripts/bench_nlist_shear.sh interleaves this binary from two
+        # builds; the benchmark entry runs every row once.
+        nlist_shear_bench = executable(
+            'nlist_shear_bench',
+            sources: ['tests/nlist_shear_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'nlist_shear_bench',
+            nlist_shear_bench,
+            workdir: meson.source_root(),
+            timeout: 600,
+        )
         classical_scaling_bench = executable(
             'classical_scaling_bench',
             sources: ['tests/classical_scaling_bench.cc'],
