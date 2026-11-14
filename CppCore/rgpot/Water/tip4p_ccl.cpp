@@ -19,6 +19,7 @@ University of Iceland
 #include "rgpot/Water/centre_walk.hpp"
 #include <cassert>
 #include <cmath>
+#include <optional>
 #include <vector>
 #include <iostream>
 // If unit_system.hpp is removed the system of unit will be  (Energy: eV,
@@ -185,7 +186,7 @@ void Tip4p::computeTemplate(
   // Each pair spreads the massless-site force of both molecules. The old
   // loop spread one molecule per pair and the other after its pairs. The
   // spread is a sum, so once per pair on each molecule is the same total.
-  walkCentres(centres.data(), nMolecules, b, cutoff_, [&](int i, int j) {
+  walkCentres(centres.data(), nMolecules, b, cutoff_, [&](int i, int j, const double *shift) {
     bool areFixed = false;
     if (xh1 and xh2 and xo) {
       areFixed = xh1[i][0] and xh2[i][0] and xo[i][0];
@@ -194,20 +195,39 @@ void Tip4p::computeTemplate(
     if (areFixed) {
       return;
     }
-    double rn1[3] = {0};
     double rc1[3] = {centres[static_cast<std::size_t>(3 * i)],
                      centres[static_cast<std::size_t>(3 * i + 1)],
                      centres[static_cast<std::size_t>(3 * i + 2)]};
-    double fn1[3] = {0};
-    calculateWeightedCentre(wo_, wh_, wh_, ro[i], rh1[i], rh2[i], rn1);
-    double rn2[3] = {0};
     double rc2[3] = {centres[static_cast<std::size_t>(3 * j)],
                      centres[static_cast<std::size_t>(3 * j + 1)],
                      centres[static_cast<std::size_t>(3 * j + 2)]};
+    const double *h1i = rh1[i], *h2i = rh2[i], *oi = ro[i];
+    const double *h1j = rh1[j], *h2j = rh2[j], *oj = ro[j];
+    double s1[3][3], s2[3][3];
+    std::optional<OpenBoundaries> open;
+    if (shift != nullptr) {
+      for (int a = 0; a < 3; ++a) {
+        rc2[a] += shift[a];
+      }
+      carrySite(rh1[i], rc1, rc1, s1[0]);
+      carrySite(rh2[i], rc1, rc1, s1[1]);
+      carrySite(ro[i], rc1, rc1, s1[2]);
+      double const *from = &centres[static_cast<std::size_t>(3 * j)];
+      carrySite(rh1[j], from, rc2, s2[0]);
+      carrySite(rh2[j], from, rc2, s2[1]);
+      carrySite(ro[j], from, rc2, s2[2]);
+      h1i = s1[0], h2i = s1[1], oi = s1[2];
+      h1j = s2[0], h2j = s2[1], oj = s2[2];
+      open.emplace(*this);
+    }
+    double rn1[3] = {0};
+    double fn1[3] = {0};
+    calculateWeightedCentre(wo_, wh_, wh_, oi, h1i, h2i, rn1);
+    double rn2[3] = {0};
     double fn2[3] = {0};
-    calculateWeightedCentre(wo_, wh_, wh_, ro[j], rh1[j], rh2[j], rn2);
-    Water w1 = {rh1[i], rh2[i], ro[i], rn1, rc1, fh1[i], fh2[i], fo[i], fn1};
-    Water w2 = {rh1[j], rh2[j], ro[j], rn2, rc2, fh1[j], fh2[j], fo[j], fn2};
+    calculateWeightedCentre(wo_, wh_, wh_, oj, h1j, h2j, rn2);
+    Water w1 = {h1i, h2i, oi, rn1, rc1, fh1[i], fh2[i], fo[i], fn1};
+    Water w2 = {h1j, h2j, oj, rn2, rc2, fh1[j], fh2[j], fo[j], fn2};
     coulombWithCutoff(w1, w2, energy);
     spreadWeightedForce(wo_, wh_, wh_, w1.fo_, w1.fh1_, w1.fh2_, w1.fn_);
     spreadWeightedForce(wo_, wh_, wh_, w2.fo_, w2.fh1_, w2.fh2_, w2.fn_);

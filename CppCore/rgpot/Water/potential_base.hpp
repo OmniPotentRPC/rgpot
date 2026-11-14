@@ -124,6 +124,25 @@ protected:
   static void unBreak0(double r[], double const ref[], double const periods[]);
   double unBreak1(double const r, double const ref, int const axis);
   void unBreak1(double r[], double const ref[]);
+  /// `site` of the molecule centred on `centre`, moved with that molecule
+  /// to a centre at `to`. The molecule stays whole across a boundary.
+  void carrySite(double const site[], double const centre[], double const to[],
+                 double out[]);
+  /// No periodic fold while alive. A pair whose image the caller placed
+  /// explicitly uses this so `distance` does not fold it back.
+  class OpenBoundaries {
+  public:
+    explicit OpenBoundaries(PotentialBase &base);
+    ~OpenBoundaries();
+    OpenBoundaries(const OpenBoundaries &) = delete;
+    OpenBoundaries &operator=(const OpenBoundaries &) = delete;
+    /// Period along `axis` before the boundaries opened.
+    double period(int axis) const { return saved_[axis]; }
+
+  private:
+    PotentialBase &base_;
+    double saved_[3];
+  };
   /// @}
   //----------------------------------Common potential for platinum
   //--------------------------------------

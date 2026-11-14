@@ -5,6 +5,12 @@
 // Molecule and atom pairs for the water kernels. The search is the shared
 // neighbour walk. The pair function still applies its own cutoff, so the
 // walk is a hair wider than that cutoff and does not drop a boundary pair.
+//
+// `fn(i, j, shift)`. In a cell at least twice the cutoff wide each pair
+// comes once and `shift` is null: the kernel folds its own minimum image.
+// In a thinner cell a pair comes once per image inside the search, a
+// molecule may pair with its own images, and `shift` is the Cartesian
+// vector added to centre j to reach that image.
 
 #include "rgpot/nlist/NeighbourList.hpp"
 
@@ -17,7 +23,7 @@ namespace forcefields {
 
 template <typename Fn>
 void walkCentres(const double *centres, int n, const double *period, double cutoff, Fn &&fn) {
-  if (n < 2 || !(cutoff > 0.0) || centres == nullptr || period == nullptr) {
+  if (n < 1 || !(cutoff > 0.0) || centres == nullptr || period == nullptr) {
     return;
   }
   double minc[3] = {centres[0], centres[1], centres[2]};
@@ -62,8 +68,23 @@ void walkCentres(const double *centres, int n, const double *period, double cuto
   rgpot::nlist::updateCells(cells, wrapped.data(), static_cast<std::size_t>(n), box, search,
                             0.0, rgpot::nlist::Image::Round, rgpot::nlist::Mode::Stream,
                             periodic);
-  rgpot::nlist::visitHalf(cells, 0, n, [&](std::int32_t i, std::int32_t j, double, double, double,
-                                           double) { fn(static_cast<int>(i), static_cast<int>(j)); });
+  if (!cells.images()) {
+    rgpot::nlist::visitHalf(cells, 0, n,
+                            [&](std::int32_t i, std::int32_t j, double, double, double, double) {
+                              fn(static_cast<int>(i), static_cast<int>(j),
+                                 static_cast<const double *>(nullptr));
+                            });
+    return;
+  }
+  rgpot::nlist::visitHalf(
+      cells, 0, n, [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double) {
+        const auto a = static_cast<std::size_t>(3 * i);
+        const auto b = static_cast<std::size_t>(3 * j);
+        const double shift[3] = {centres[a] - centres[b] - dx,
+                                 centres[a + 1] - centres[b + 1] - dy,
+                                 centres[a + 2] - centres[b + 2] - dz};
+        fn(static_cast<int>(i), static_cast<int>(j), static_cast<const double *>(shift));
+      });
 }
 
 } // namespace forcefields

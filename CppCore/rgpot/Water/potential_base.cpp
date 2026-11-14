@@ -668,13 +668,40 @@ void PotentialBase::computePt(int const nAtoms, double positions[],
   double (*f)[3] = reinterpret_cast<double (*)[3]>(forces);
   setPeriodicity(periods); // Set Periodic boundaries. Essential in order for
                            // some functions to work.
-  walkCentres(positions, nAtoms, periods, cutoff_, [&](int i, int j) {
+  walkCentres(positions, nAtoms, periods, cutoff_, [&](int i, int j, const double *shift) {
     // A fixed neighbor still exerts a force on a movable atom. Skip only
     // a pair in which both atoms are fixed.
-    if (not fixed[i] or not fixed[j]) {
-      lennardJonesWithCutoff(r[i], r[j], f[i], f[j], energy, EPSILON_PT, SIGMA_PT);
+    if (fixed[i] and fixed[j]) {
+      return;
     }
+    if (shift == nullptr) {
+      lennardJonesWithCutoff(r[i], r[j], f[i], f[j], energy, EPSILON_PT, SIGMA_PT);
+      return;
+    }
+    double const image[3] = {r[j][0] + shift[0], r[j][1] + shift[1], r[j][2] + shift[2]};
+    OpenBoundaries open(*this);
+    lennardJonesWithCutoff(r[i], image, f[i], f[j], energy, EPSILON_PT, SIGMA_PT);
   });
+}
+
+void PotentialBase::carrySite(double const site[], double const centre[], double const to[],
+                              double out[]) {
+  for (int a = 0; a < 3; ++a) {
+    out[a] = to[a] + applyPeriodicity1(site[a] - centre[a], a);
+  }
+}
+
+PotentialBase::OpenBoundaries::OpenBoundaries(PotentialBase &base) : base_(base) {
+  for (int a = 0; a < 3; ++a) {
+    saved_[a] = base_.periods_[a];
+    base_.periods_[a] = INFINITY;
+  }
+}
+
+PotentialBase::OpenBoundaries::~OpenBoundaries() {
+  for (int a = 0; a < 3; ++a) {
+    base_.periods_[a] = saved_[a];
+  }
 }
 
 /** Platinum Lennard-Jones.

@@ -51,6 +51,8 @@ private:
                        bool const (*const xo)[O] = 0, bool const *xPt = 0);
   void interactWithCorePt(Water &water, int const nPt, double const rPt[][3],
                           double fPt[][3], double &energy);
+  void interactWithPt(Water &water, double const pt[], double fpt[],
+                      double &energy);
   void interactionPtO(double const R1[], double const R2[], double F1[],
                       double F2[], double &energy);
   void interactionPtH(double const R1[], double const R2[], double F1[],

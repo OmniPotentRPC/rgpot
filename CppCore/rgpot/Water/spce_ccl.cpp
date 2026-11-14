@@ -207,7 +207,7 @@ void SpceCcl::computeTemplate(
     intramolecular(w1, energy);
     energy += polarisationEnergy_;
   }
-  walkCentres(centres.data(), nMolecules, b, cutoff_, [&](int i, int j) {
+  walkCentres(centres.data(), nMolecules, b, cutoff_, [&](int i, int j, const double *shift) {
     bool areFixed = false;
     if (xh1 and xh2 and xo) {
       areFixed = xh1[i][0] and xh2[i][0] and xo[i][0];
@@ -222,8 +222,24 @@ void SpceCcl::computeTemplate(
     double rc2[3] = {centres[static_cast<std::size_t>(3 * j)],
                      centres[static_cast<std::size_t>(3 * j + 1)],
                      centres[static_cast<std::size_t>(3 * j + 2)]};
-    Water w1(rh1[i], rh2[i], ro[i], rc1, fh1[i], fh2[i], fo[i]);
-    Water w2(rh1[j], rh2[j], ro[j], rc2, fh1[j], fh2[j], fo[j]);
+    if (shift == nullptr) {
+      Water w1(rh1[i], rh2[i], ro[i], rc1, fh1[i], fh2[i], fo[i]);
+      Water w2(rh1[j], rh2[j], ro[j], rc2, fh1[j], fh2[j], fo[j]);
+      lennardJonesWithCutoff(w1, w2, energy);
+      coulombWithCutoff(w1, w2, energy);
+      return;
+    }
+    double const to[3] = {rc2[0] + shift[0], rc2[1] + shift[1], rc2[2] + shift[2]};
+    double s1[3][3], s2[3][3];
+    carrySite(rh1[i], rc1, rc1, s1[0]);
+    carrySite(rh2[i], rc1, rc1, s1[1]);
+    carrySite(ro[i], rc1, rc1, s1[2]);
+    carrySite(rh1[j], rc2, to, s2[0]);
+    carrySite(rh2[j], rc2, to, s2[1]);
+    carrySite(ro[j], rc2, to, s2[2]);
+    OpenBoundaries open(*this);
+    Water w1(s1[0], s1[1], s1[2], rc1, fh1[i], fh2[i], fo[i]);
+    Water w2(s2[0], s2[1], s2[2], to, fh1[j], fh2[j], fo[j]);
     lennardJonesWithCutoff(w1, w2, energy);
     coulombWithCutoff(w1, w2, energy);
   });

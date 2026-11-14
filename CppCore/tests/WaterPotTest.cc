@@ -62,6 +62,79 @@ void requireNetForce(const rgpot::types::AtomMatrix &forces) {
   REQUIRE_THAT(sum[2], WithinAbs(0.0, 1e-8));
 }
 
+// `copies` of `pos` along each axis of the diagonal `box`. Rows keep the
+// H-pairs, then O, then Pt order, so the first copy of every block leads.
+rgpot::types::AtomMatrix repeatWater(const rgpot::types::AtomMatrix &pos,
+                                     const std::vector<int> &types,
+                                     const std::array<double, 3> &box,
+                                     const std::array<int, 3> &copies,
+                                     std::vector<int> &bigTypes) {
+  const int total = copies[0] * copies[1] * copies[2];
+  rgpot::types::AtomMatrix big(pos.rows() * static_cast<std::size_t>(total), 3);
+  bigTypes.clear();
+  std::size_t row = 0;
+  std::size_t start = 0;
+  while (start < pos.rows()) {
+    std::size_t end = start;
+    while (end < pos.rows() && types[end] == types[start]) {
+      ++end;
+    }
+    for (int a = 0; a < copies[0]; ++a) {
+      for (int b = 0; b < copies[1]; ++b) {
+        for (int c = 0; c < copies[2]; ++c) {
+          const double shift[3] = {a * box[0], b * box[1], c * box[2]};
+          for (std::size_t i = start; i < end; ++i, ++row) {
+            for (int k = 0; k < 3; ++k) {
+              big(row, k) = pos(i, k) + shift[k];
+            }
+            bigTypes.push_back(types[i]);
+          }
+        }
+      }
+    }
+    start = end;
+  }
+  return big;
+}
+
+template <class Pot>
+void requireThinBoxMatchesRepeat(Pot &pot, const rgpot::types::AtomMatrix &pos,
+                                 const std::vector<int> &types,
+                                 const std::array<double, 3> &box,
+                                 const std::array<int, 3> &copies) {
+  const auto diag = [](const std::array<double, 3> &l) {
+    return std::array<std::array<double, 3>, 3>{
+        {{l[0], 0.0, 0.0}, {0.0, l[1], 0.0}, {0.0, 0.0, l[2]}}};
+  };
+  std::vector<int> bigTypes;
+  const auto big = repeatWater(pos, types, box, copies, bigTypes);
+  const std::array<double, 3> bigBox = {copies[0] * box[0], copies[1] * box[1],
+                                        copies[2] * box[2]};
+  for (int k = 0; k < 3; ++k) {
+    REQUIRE(bigBox[static_cast<std::size_t>(k)] >= 17.0);
+  }
+  const auto [e1, f1, v1] = pot(pos, types, diag(box));
+  const auto [e2, f2, v2] = pot(big, bigTypes, diag(bigBox));
+  const int total = copies[0] * copies[1] * copies[2];
+  REQUIRE_THAT(e1, WithinAbs(e2 / total, 1e-11));
+  // Row i of the small cell is row (block start) * total + offset in big.
+  std::size_t start = 0;
+  while (start < pos.rows()) {
+    std::size_t end = start;
+    while (end < pos.rows() && types[end] == types[start]) {
+      ++end;
+    }
+    for (std::size_t i = start; i < end; ++i) {
+      for (int k = 0; k < 3; ++k) {
+        REQUIRE_THAT(f1(i, k), WithinAbs(f2(start * total + (i - start), k), 1e-11));
+      }
+    }
+    start = end;
+  }
+  (void)v1;
+  (void)v2;
+}
+
 class PtLjProbe : public forcefields::PotentialBase {
 public:
   void eval(int nAtoms, double positions[], double forces[], double &energy,
@@ -142,6 +215,70 @@ TEST_CASE("TIP4P-Pt energy on one water and one platinum", "[water]") {
     REQUIRE(std::isfinite(forces(i, 1)));
     REQUIRE(std::isfinite(forces(i, 2)));
   }
+}
+
+TEST_CASE("Water in a box thinner than twice the cutoff sums every image",
+          "[water][images]") {
+  const std::array<double, 3> box = {5.2, 6.1, 7.3};
+  rgpot::types::AtomMatrix two(6, 3);
+  const double xyz[6][3] = {{1.8, 1.1, 1.5}, {0.3, 1.05, 1.55}, {4.3, 3.6, 4.9},
+                            {3.1, 4.6, 4.9}, {1.0, 1.0, 1.0},   {3.6, 3.9, 4.4}};
+  for (int i = 0; i < 6; ++i) {
+    for (int k = 0; k < 3; ++k) {
+      two(i, k) = xyz[i][k];
+    }
+  }
+  const std::vector<int> twoTypes = {1, 1, 1, 1, 8, 8};
+  rgpot::TIP4PPot tip(rgpot::WaterConfig{});
+  rgpot::SPCEPot spc(rgpot::WaterConfig{});
+  requireThinBoxMatchesRepeat(tip, two, twoTypes, box, {4, 3, 3});
+  requireThinBoxMatchesRepeat(spc, two, twoTypes, box, {4, 3, 3});
+  // One molecule meets only its own images.
+  const std::vector<int> oneTypes = {1, 1, 8};
+  requireThinBoxMatchesRepeat(tip, waterPositions(), oneTypes, box, {4, 3, 3});
+  requireThinBoxMatchesRepeat(spc, waterPositions(), oneTypes, box, {4, 3, 3});
+
+  // TIP4P-Pt above a 2x2 Pt(100) layer, thin across the surface.
+  const double a = 2.77;
+  rgpot::types::AtomMatrix slab(7, 3);
+  const double sxyz[7][3] = {{2.0, 1.1, 3.1}, {0.5, 1.05, 3.15}, {1.2, 1.0, 2.6},
+                             {0.0, 0.0, 0.0}, {a, 0.0, 0.0},     {0.0, a, 0.0},
+                             {a, a, 0.0}};
+  for (int i = 0; i < 7; ++i) {
+    for (int k = 0; k < 3; ++k) {
+      slab(i, k) = sxyz[i][k];
+    }
+  }
+  rgpot::TIP4PPtPot zp(rgpot::WaterConfig{});
+  requireThinBoxMatchesRepeat(zp, slab, {1, 1, 8, 78, 78, 78, 78}, {2 * a, 2 * a, 30.0},
+                              {4, 4, 1});
+}
+
+TEST_CASE("computePt sums the images of one atom in a thin cell", "[water][pt]") {
+  PtLjProbe pot;
+  double one[3] = {0.0, 0.0, 0.0};
+  double small[3] = {2.77, 2.77, 2.77};
+  double f1[3] = {};
+  double e1 = 0.0;
+  bool fixed1[1] = {false};
+  pot.eval(1, one, f1, e1, small, fixed1);
+  std::vector<double> big;
+  for (int x = 0; x < 7; ++x) {
+    for (int y = 0; y < 7; ++y) {
+      for (int z = 0; z < 7; ++z) {
+        big.push_back(x * 2.77);
+        big.push_back(y * 2.77);
+        big.push_back(z * 2.77);
+      }
+    }
+  }
+  double large[3] = {7 * 2.77, 7 * 2.77, 7 * 2.77};
+  std::vector<double> f2(big.size(), 0.0);
+  std::vector<char> fixed2(big.size() / 3, 0);
+  double e2 = 0.0;
+  pot.eval(343, big.data(), f2.data(), e2, large, reinterpret_cast<bool *>(fixed2.data()));
+  REQUIRE(e1 < 0.0);
+  REQUIRE_THAT(e1, WithinAbs(e2 / 343.0, 1e-10));
 }
 
 TEST_CASE("computePt keeps an LJ pair when one atom is fixed", "[water][pt]") {

@@ -9,7 +9,7 @@
 namespace rgpot {
 namespace {
 
-constexpr uint64_t kKernelVersion = 1;
+constexpr uint64_t kKernelVersion = 2;
 
 uint64_t hashWater(uint64_t kind, const WaterConfig &config) {
   Fnv1a fp;

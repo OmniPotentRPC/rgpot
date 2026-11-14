@@ -19,6 +19,7 @@ University of Iceland
 #include "rgpot/Water/centre_walk.hpp"
 #include <cassert>
 #include <cmath>
+#include <optional>
 #include <vector>
 
 /** @class forcefields::ZhuPhilpott
@@ -258,7 +259,7 @@ void ZhuPhilpott<P>::computeTemplate(
     centres[static_cast<std::size_t>(3 * i + 1)] = centre[1];
     centres[static_cast<std::size_t>(3 * i + 2)] = centre[2];
   }
-  walkCentres(centres.data(), nWater, b, cutoff_, [&](int i, int j) {
+  walkCentres(centres.data(), nWater, b, cutoff_, [&](int i, int j, const double *shift) {
     bool areFixed = false;
     if (xh1 and xh2 and xo) {
       areFixed = xh1[i][0] and xh2[i][0] and xo[i][0];
@@ -273,8 +274,27 @@ void ZhuPhilpott<P>::computeTemplate(
     double centre2[3] = {centres[static_cast<std::size_t>(3 * j)],
                          centres[static_cast<std::size_t>(3 * j + 1)],
                          centres[static_cast<std::size_t>(3 * j + 2)]};
-    Water w1(rh1[i], rh2[i], ro[i], centre1, fh1[i], fh2[i], fo[i]);
-    Water w2(rh1[j], rh2[j], ro[j], centre2, fh1[j], fh2[j], fo[j]);
+    const double *h1i = rh1[i], *h2i = rh2[i], *oi = ro[i];
+    const double *h1j = rh1[j], *h2j = rh2[j], *oj = ro[j];
+    double s1[3][3], s2[3][3];
+    std::optional<OpenBoundaries> open;
+    if (shift != nullptr) {
+      double const from[3] = {centre2[0], centre2[1], centre2[2]};
+      for (int a = 0; a < 3; ++a) {
+        centre2[a] += shift[a];
+      }
+      carrySite(rh1[i], centre1, centre1, s1[0]);
+      carrySite(rh2[i], centre1, centre1, s1[1]);
+      carrySite(ro[i], centre1, centre1, s1[2]);
+      carrySite(rh1[j], from, centre2, s2[0]);
+      carrySite(rh2[j], from, centre2, s2[1]);
+      carrySite(ro[j], from, centre2, s2[2]);
+      h1i = s1[0], h2i = s1[1], oi = s1[2];
+      h1j = s2[0], h2j = s2[1], oj = s2[2];
+      open.emplace(*this);
+    }
+    Water w1(h1i, h2i, oi, centre1, fh1[i], fh2[i], fo[i]);
+    Water w2(h1j, h2j, oj, centre2, fh1[j], fh2[j], fo[j]);
     lennardJonesWithCutoff(w1, w2, energy);
     coulombWithCutoff(w1, w2, energy, 1.0);
     interactWithImage(w1, w2, energy);
@@ -293,6 +313,8 @@ void ZhuPhilpott<P>::computeTemplate(
 }
 
 /** Interaction of one molecule of water with the whole platinum.
+In a cell under twice the cutoff wide a water meets every image of a platinum
+atom inside the cutoff, not only the nearest.
 @param[in, out]   water    Molecule of water. The forces are incremented.
 @param[in]  nPt   Number of Platinum atom.
 @param[in]  rPt   Positions of the platinum.
@@ -303,52 +325,100 @@ template <class P>
 void ZhuPhilpott<P>::interactWithCorePt(Water &water, int const nPt,
                                         double const rPt[][3], double fPt[][3],
                                         double &energy) {
+  bool thin = false;
+  for (int a = 0; a < 3; ++a) {
+    thin |= std::isfinite(periods_[a]) and periods_[a] < 2.0 * cutoff_;
+  }
+  if (not thin) {
+    for (int i = 0; i < nPt; ++i) {
+      interactWithPt(water, rPt[i], fPt[i], energy);
+    }
+    return;
+  }
+  double h1[3], h2[3];
+  carrySite(water.rh1_, water.ro_, water.ro_, h1);
+  carrySite(water.rh2_, water.ro_, water.ro_, h2);
+  Water whole(h1, h2, water.ro_, water.rc_, water.fh1_, water.fh2_, water.fo_);
+  double spread = 0.0;
+  for (int a = 0; a < 3; ++a) {
+    spread = std::fmax(spread, std::fabs(h1[a] - water.ro_[a]));
+    spread = std::fmax(spread, std::fabs(h2[a] - water.ro_[a]));
+  }
+  // The nearest image of an atom is within half a period of the oxygen, so
+  // these many periods either side reach every image in range of a site.
+  int reach[3] = {0, 0, 0};
+  for (int a = 0; a < 3; ++a) {
+    if (std::isfinite(periods_[a])) {
+      reach[a] = static_cast<int>(std::ceil((cutoff_ + spread) / periods_[a] + 0.5));
+    }
+  }
   for (int i = 0; i < nPt; ++i) {
-    double r[3], r1; // for distance between two atoms
-                     // Pt - O
-    distance(water.ro_, rPt[i], r, r1);
-    if (r1 <= cutoff_ - switchingWidth_) {
-      interactionPtO(water.ro_, rPt[i], water.fo_, fPt[i], energy);
-    } else if (r1 < cutoff_) {
-      double en = 0;
-      double fo[3] = {0}, fPtTmp[3] = {0};
-      interactionPtO(water.ro_, rPt[i], fo, fPtTmp, en);
-      switching(water.ro_, rPt[i], fo, fPtTmp, en);
-      energy += en;
-      for (int j = 0; j < 3; j++) {
-        water.fo_[j] += fo[j];
-        fPt[i][j] += fPtTmp[j];
-      };
+    double nearest[3];
+    for (int a = 0; a < 3; ++a) {
+      nearest[a] = water.ro_[a] - applyPeriodicity1(water.ro_[a] - rPt[i][a], a);
+    }
+    OpenBoundaries open(*this);
+    for (int sa = -reach[0]; sa <= reach[0]; ++sa) {
+      for (int sb = -reach[1]; sb <= reach[1]; ++sb) {
+        for (int sc = -reach[2]; sc <= reach[2]; ++sc) {
+          double const image[3] = {nearest[0] + sa * open.period(0),
+                                   nearest[1] + sb * open.period(1),
+                                   nearest[2] + sc * open.period(2)};
+          interactWithPt(whole, image, fPt[i], energy);
+        }
+      }
+    }
+  }
+}
+
+/// Interaction of one molecule of water with one platinum atom.
+template <class P>
+void ZhuPhilpott<P>::interactWithPt(Water &water, double const pt[], double fpt[],
+                                    double &energy) {
+  double r[3], r1; // for distance between two atoms
+                   // Pt - O
+  distance(water.ro_, pt, r, r1);
+  if (r1 <= cutoff_ - switchingWidth_) {
+    interactionPtO(water.ro_, pt, water.fo_, fpt, energy);
+  } else if (r1 < cutoff_) {
+    double en = 0;
+    double fo[3] = {0}, fPtTmp[3] = {0};
+    interactionPtO(water.ro_, pt, fo, fPtTmp, en);
+    switching(water.ro_, pt, fo, fPtTmp, en);
+    energy += en;
+    for (int j = 0; j < 3; j++) {
+      water.fo_[j] += fo[j];
+      fpt[j] += fPtTmp[j];
     };
-    // Pt - H1
-    distance(water.rh1_, rPt[i], r, r1);
-    if (r1 <= cutoff_ - switchingWidth_) {
-      interactionPtH(water.rh1_, rPt[i], water.fh1_, fPt[i], energy);
-    } else if (r1 < cutoff_) {
-      double en = 0;
-      double fh[3] = {0}, fPtTmp[3] = {0};
-      interactionPtH(water.rh1_, rPt[i], fh, fPtTmp, en);
-      switching(water.rh1_, rPt[i], fh, fPtTmp, en);
-      energy += en;
-      for (int j = 0; j < 3; j++) {
-        water.fh1_[j] += fh[j];
-        fPt[i][j] += fPtTmp[j];
-      };
+  };
+  // Pt - H1
+  distance(water.rh1_, pt, r, r1);
+  if (r1 <= cutoff_ - switchingWidth_) {
+    interactionPtH(water.rh1_, pt, water.fh1_, fpt, energy);
+  } else if (r1 < cutoff_) {
+    double en = 0;
+    double fh[3] = {0}, fPtTmp[3] = {0};
+    interactionPtH(water.rh1_, pt, fh, fPtTmp, en);
+    switching(water.rh1_, pt, fh, fPtTmp, en);
+    energy += en;
+    for (int j = 0; j < 3; j++) {
+      water.fh1_[j] += fh[j];
+      fpt[j] += fPtTmp[j];
     };
-    // Pt - H2
-    distance(water.rh2_, rPt[i], r, r1);
-    if (r1 <= cutoff_ - switchingWidth_) {
-      interactionPtH(water.rh2_, rPt[i], water.fh2_, fPt[i], energy);
-    } else if (r1 < cutoff_) {
-      double en = 0;
-      double fh[3] = {0}, fPtTmp[3] = {0};
-      interactionPtH(water.rh2_, rPt[i], fh, fPtTmp, en);
-      switching(water.rh2_, rPt[i], fh, fPtTmp, en);
-      energy += en;
-      for (int j = 0; j < 3; j++) {
-        water.fh2_[j] += fh[j];
-        fPt[i][j] += fPtTmp[j];
-      };
+  };
+  // Pt - H2
+  distance(water.rh2_, pt, r, r1);
+  if (r1 <= cutoff_ - switchingWidth_) {
+    interactionPtH(water.rh2_, pt, water.fh2_, fpt, energy);
+  } else if (r1 < cutoff_) {
+    double en = 0;
+    double fh[3] = {0}, fPtTmp[3] = {0};
+    interactionPtH(water.rh2_, pt, fh, fPtTmp, en);
+    switching(water.rh2_, pt, fh, fPtTmp, en);
+    energy += en;
+    for (int j = 0; j < 3; j++) {
+      water.fh2_[j] += fh[j];
+      fpt[j] += fPtTmp[j];
     };
   };
 }
