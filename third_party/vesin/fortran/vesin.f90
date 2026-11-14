@@ -67,6 +67,14 @@ module vesin
         procedure, public :: free => vesin_destroy
     end type NeighborList
 
+    ! eOn local patch (upstream candidate): targets for a list of length
+    ! zero whose C arrays are NULL. A disassociated pointer has no defined
+    ! shape, so `size(list%pairs, 2)` would read a stale descriptor.
+    integer(c_size_t), target :: empty_pairs(2, 0)
+    integer(c_int32_t), target :: empty_shifts(3, 0)
+    real(c_double), target :: empty_distances(0)
+    real(c_double), target :: empty_vectors(3, 0)
+
     !> Initialize a `NeighborList`.
     !!
     !! The `cutoff` and `full` options are mandatory, the other are optional
@@ -272,15 +280,23 @@ contains
 
         if (c_associated(self%c_neighbors%pairs)) then
             call c_f_pointer(self%c_neighbors%pairs, self%pairs, shape=[2, int(self%length)])
+        else if (self%length == 0) then
+            self%pairs => empty_pairs
         endif
         if (c_associated(self%c_neighbors%shifts)) then
             call c_f_pointer(self%c_neighbors%shifts, self%shifts, shape=[3, int(self%length)])
+        else if (self%length == 0 .and. self%options%return_shifts) then
+            self%shifts => empty_shifts
         endif
         if (c_associated(self%c_neighbors%distances)) then
             call c_f_pointer(self%c_neighbors%distances, self%distances, shape=[int(self%length)])
+        else if (self%length == 0 .and. self%options%return_distances) then
+            self%distances => empty_distances
         endif
         if (c_associated(self%c_neighbors%vectors)) then
             call c_f_pointer(self%c_neighbors%vectors, self%vectors, shape=[3, int(self%length)])
+        else if (self%length == 0 .and. self%options%return_vectors) then
+            self%vectors => empty_vectors
         endif
     end subroutine vesin_compute_c_double
 
