@@ -96,13 +96,23 @@ jobs:
           set -euo pipefail
           bash ci/gha/apt-install.sh gfortran g++ pkg-config ninja-build meson \
             python3-dev python3-venv libopenblas-dev
+      # The NIST EAM tables test_lammps_agreement.py fetches and checksums.
+      - name: Cache pinned LAMMPS potential files
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .pytest_cache/d/lammps-potentials
+          key: lammps-potentials-${{ hashFiles('tests/python/test_lammps_agreement.py') }}
+          restore-keys: lammps-potentials-
       - name: Reduced-feature build and pytest
+        env:
+          # Fail, not skip, when LAMMPS or a pinned potential is missing.
+          RGPOT_REQUIRE_LAMMPS: "1"
         run: |
           set -euo pipefail
           python3 -m venv /tmp/rgpot-ci
           /tmp/rgpot-ci/bin/pip install -U pip
           /tmp/rgpot-ci/bin/pip install 'nanobind==3.1.0' 'numpy' 'ase>=3.23' \
-            pytest pytest-timeout hypothesis
+            pytest pytest-timeout hypothesis 'lammps[mpi]==2025.7.22.4.0'
           site=$(/tmp/rgpot-ci/bin/python -c 'import site; print(site.getsitepackages()[0])')
           export PYTHONPATH="${site}:${PWD}/python:${PWD}/tests/python"
           meson setup /tmp/rgpot-ci-build \
@@ -120,6 +130,7 @@ jobs:
             -Dwith_eigen=false \
             -Dwith_xtb=false \
             -Dwith_tblite=false \
+            -Dwith_eam_table=true \
             --buildtype=release
           meson compile -C /tmp/rgpot-ci-build
           ln -sfn /tmp/rgpot-ci-build/python/_core*.so python/rgpot/
