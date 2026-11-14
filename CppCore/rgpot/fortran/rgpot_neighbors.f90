@@ -8,7 +8,10 @@
 !! `f(:, i)`. Iterations of the atom loop then touch disjoint memory, so
 !! they run under `do concurrent`. That needs a **full** list (both `i->j`
 !! and `j->i`), with the pair vectors and distances already folded, so
-!! the kernels never redo minimum image arithmetic.
+!! the kernels never redo minimum image arithmetic. A partner appears once
+!! per periodic image inside the cutoff, and a cell thinner than twice the
+!! cutoff lists an atom among its own neighbours (`idx == i`, nonzero
+!! vector).
 !!
 !! The search is `rgpot_nlist_fortran_build`. A positive skin keeps the
 !! candidate list in an `rgpot_nlist_builder` and reuses it while every
@@ -52,6 +55,7 @@ module rgpot_neighbors
    contains
       procedure :: build => neighbor_table_build
       procedure :: count_for => neighbor_table_count_for
+      procedure :: is_return => neighbor_table_is_return
       procedure :: release => neighbor_table_release
    end type neighbor_table_t
 
@@ -199,7 +203,6 @@ contains
       do p = 1, np
          i = int(ifirst(p), ip) + 1_ip
          j = int(isecond(p), ip) + 1_ip
-         if (i == j) cycle
          self%row(i) = self%row(i) + 1_ip
          jstart(j) = jstart(j) + 1_ip
       end do
@@ -211,7 +214,6 @@ contains
       do p = 1, np
          i = int(ifirst(p), ip) + 1_ip
          j = int(isecond(p), ip) + 1_ip
-         if (i == j) cycle
          by_j(jstart(j)) = p
          jstart(j) = jstart(j) + 1_ip
       end do
@@ -249,6 +251,21 @@ contains
       self%cutoff = -1.0_wp
       self%skin = -1.0_wp
    end subroutine neighbor_table_release
+
+   !> True when entry `back`, in the row of the atom entry `out` of atom
+   !! `i`'s row reaches, is that same bond seen from the other end: it
+   !! points at `i` along the reverse vector. Another image of `i` differs
+   !! from it by a lattice vector.
+   pure function neighbor_table_is_return(self, back, i, out) result(same)
+      class(neighbor_table_t), intent(in) :: self
+      integer(ip), intent(in) :: back, i, out
+      logical :: same
+
+      same = .false.
+      if (self%idx(back) /= i) return
+      same = sum((self%vec(:, back) + self%vec(:, out))**2) <= &
+             (1.0e-10_wp*self%dist(out))**2
+   end function neighbor_table_is_return
 
    !> Number of neighbours atom `i` owns.
    pure function neighbor_table_count_for(self, i) result(n)
