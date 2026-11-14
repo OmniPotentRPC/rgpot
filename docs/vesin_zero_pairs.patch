@@ -1,0 +1,83 @@
+Proposed vesin patch: lists with zero pairs hand out no NULL arrays
+
+Against Luthaf/vesin 8074d9a (v0.6.2-40). See docs/vesin_zero_pairs.md
+for the reproducers. Not sent upstream.
+
+- cell_list.cpp, GrowableNeighborList::reset(): poison the pairs array
+  in debug builds only when it exists, and give a list that never
+  stored a pair a pairs array, as the optional arrays already have.
+- fortran/src/vesin.f90, vesin_compute_c_double: point the Fortran
+  arrays at zero-extent targets when the list has length zero and the
+  C pointer is NULL, instead of leaving them disassociated.
+
+diff --git a/fortran/src/vesin.f90 b/fortran/src/vesin.f90
+index dbf564c..ae63a0b 100644
+--- a/fortran/src/vesin.f90
++++ b/fortran/src/vesin.f90
+@@ -67,6 +67,14 @@ module vesin
+         procedure, public :: free => vesin_destroy
+     end type NeighborList
+ 
++    ! Targets for a list of length zero whose C arrays are NULL. A
++    ! disassociated pointer has no defined shape, so `size(list%pairs, 2)`
++    ! on it is undefined.
++    integer(c_size_t), target :: empty_pairs(2, 0)
++    integer(c_int32_t), target :: empty_shifts(3, 0)
++    real(c_double), target :: empty_distances(0)
++    real(c_double), target :: empty_vectors(3, 0)
++
+     !> Initialize a `NeighborList`.
+     !!
+     !! The `cutoff` and `full` options are mandatory, the other are optional
+@@ -289,15 +297,23 @@ contains
+ 
+         if (c_associated(self%c_neighbors%pairs)) then
+             call c_f_pointer(self%c_neighbors%pairs, self%pairs, shape=[2, int(self%length)])
++        else if (self%length == 0) then
++            self%pairs => empty_pairs
+         endif
+         if (c_associated(self%c_neighbors%shifts)) then
+             call c_f_pointer(self%c_neighbors%shifts, self%shifts, shape=[3, int(self%length)])
++        else if (self%length == 0 .and. self%options%return_shifts) then
++            self%shifts => empty_shifts
+         endif
+         if (c_associated(self%c_neighbors%distances)) then
+             call c_f_pointer(self%c_neighbors%distances, self%distances, shape=[int(self%length)])
++        else if (self%length == 0 .and. self%options%return_distances) then
++            self%distances => empty_distances
+         endif
+         if (c_associated(self%c_neighbors%vectors)) then
+             call c_f_pointer(self%c_neighbors%vectors, self%vectors, shape=[3, int(self%length)])
++        else if (self%length == 0 .and. self%options%return_vectors) then
++            self%vectors => empty_vectors
+         endif
+     end subroutine vesin_compute_c_double
+ 
+diff --git a/vesin/src/cpu/cell_list.cpp b/vesin/src/cpu/cell_list.cpp
+index 0a6e7d5..2d6d073 100644
+--- a/vesin/src/cpu/cell_list.cpp
++++ b/vesin/src/cpu/cell_list.cpp
+@@ -887,7 +887,9 @@ void GrowableNeighborList::reset() {
+     // so we also limit this to the arrays we allocated
+     auto size = std::min(this->neighbors.length, this->capacity);
+     // set all allocated data to a bit pattern that maps to NaN for double
+-    std::memset(this->neighbors.pairs, 0b11111111, size * sizeof(size_t[2]));
++    if (this->neighbors.pairs != nullptr) {
++        std::memset(this->neighbors.pairs, 0b11111111, size * sizeof(size_t[2]));
++    }
+ 
+     if (this->neighbors.shifts != nullptr) {
+         std::memset(this->neighbors.shifts, 0b11111111, size * sizeof(int32_t[3]));
+@@ -933,4 +935,12 @@ void GrowableNeighborList::reset() {
+     this->neighbors.shifts = shifts;
+     this->neighbors.distances = distances;
+     this->neighbors.vectors = vectors;
++
++    // Only grow() creates the pairs array, so a list that never stored a
++    // pair has none, and malloc(0) may return NULL for the others. Give
++    // every requested array one slot, so a list of length zero never hands
++    // out a NULL pointer.
++    if (this->neighbors.pairs == nullptr) {
++        this->grow(std::max(this->capacity, size_t(1)));
++    }
+ }
