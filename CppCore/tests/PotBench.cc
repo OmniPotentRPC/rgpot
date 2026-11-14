@@ -340,6 +340,59 @@ TEST_CASE("Benchmark: CuH2Pot force", "[.][benchmark][cuh2]") {
   std::vector<double> forces(pos.size(), 0.0);
   rgpot::fortranpots::CuH2Pot pot;
 
+  auto diamond = [](int side) {
+    constexpr double kA = 5.431;
+    static const double basis[8][3] = {
+        {0, 0, 0},          {0, 0.5, 0.5},      {0.5, 0, 0.5},
+        {0.5, 0.5, 0},      {0.25, 0.25, 0.25}, {0.25, 0.75, 0.75},
+        {0.75, 0.25, 0.75}, {0.75, 0.75, 0.25}};
+    std::vector<double> pos;
+    pos.reserve(static_cast<std::size_t>(side * side * side * 8 * 3));
+    for (int ix = 0; ix < side; ++ix) {
+      for (int iy = 0; iy < side; ++iy) {
+        for (int iz = 0; iz < side; ++iz) {
+          for (const auto &b : basis) {
+            const double idx = static_cast<double>(pos.size() / 3 + 1);
+            pos.push_back((ix + b[0]) * kA + 0.02 * std::sin(idx));
+            pos.push_back((iy + b[1]) * kA);
+            pos.push_back((iz + b[2]) * kA);
+          }
+        }
+      }
+    }
+    return pos;
+  };
+  auto benchDiamond = [](auto &pot, const std::vector<double> &pos,
+                         const char *name) {
+    const double side = std::cbrt(static_cast<double>(pos.size() / 3) / 8.0) * 5.431;
+    const std::array<double, 9> box{side, 0, 0, 0, side, 0, 0, 0, side};
+    std::vector<int> types(pos.size() / 3, 14);
+    std::vector<double> forces(pos.size(), 0.0);
+    BENCHMARK(name) {
+      rgpot::ForceInput fi{.nAtoms = types.size(),
+                           .pos = pos.data(),
+                           .atmnrs = types.data(),
+                           .box = box.data()};
+      rgpot::ForceOut fo{.F = forces.data(),
+                        .energy = 0.0,
+                        .variance = 0.0,
+                        .stress = {},
+                        .has_stress = 0};
+      pot.forceImpl(fi, &fo);
+      return fo.energy;
+    };
+  };
+  {
+    const auto d512 = diamond(4);
+    const auto d4096 = diamond(8);
+    rgpot::fortranpots::SWPot sw;
+    rgpot::fortranpots::TersoffPot tersoff;
+    benchDiamond(sw, d512, "sw512");
+    benchDiamond(sw, d4096, "sw4096");
+    benchDiamond(tersoff, d512, "tersoff512");
+    benchDiamond(tersoff, d4096, "tersoff4096");
+  }
+
   BENCHMARK("CuH2 force, 128 Cu + 2 H") {
     rgpot::ForceInput fi{.nAtoms = kNCu + kNH,
                          .pos = pos.data(),

@@ -175,7 +175,7 @@ contains
       integer(ip) :: natoms, nentries, i, s
       real(wp) :: rcut
       real(wp), allocatable :: e_atom(:), zeta(:), e_pair(:), f_rad(:)
-      real(wp), allocatable :: c_zeta(:)
+      real(wp), allocatable :: c_zeta(:), uhat(:, :), fc(:), dfc(:)
       integer(ip), allocatable :: rev(:)
 
       natoms = int(size(positions, 2), ip)
@@ -188,8 +188,17 @@ contains
 
       nentries = table%row(natoms + 1_ip) - 1_ip
       allocate (e_atom(natoms), source=0.0_wp)
-      allocate (zeta(nentries), e_pair(nentries), f_rad(nentries))
-      allocate (c_zeta(nentries), rev(nentries))
+      allocate (zeta(max(nentries, 1_ip)), e_pair(max(nentries, 1_ip)))
+      allocate (f_rad(max(nentries, 1_ip)), c_zeta(max(nentries, 1_ip)))
+      allocate (rev(max(nentries, 1_ip)))
+      allocate (uhat(3, max(nentries, 1_ip)), fc(max(nentries, 1_ip)))
+      allocate (dfc(max(nentries, 1_ip)))
+      ! The taper and the unit vector depend only on the stored pair.
+      ! Both triplet walks read these values.
+      do s = 1_ip, nentries
+         call cutoff_taper(par, table%dist(s), fc(s), dfc(s))
+         uhat(:, s) = table%vec(:, s)/table%dist(s)
+      end do
 
       ! Each atom resolves the reverse of its own bonds, so the map is
       ! written in disjoint slices.
@@ -206,7 +215,7 @@ contains
 
       ! Pass 1: coordination sum of every pair the atom owns.
       do concurrent(i=1:natoms)
-         call atom_zeta(par, table, i, &
+         call atom_zeta(par, table, uhat, fc, i, &
                         zeta(table%row(i):table%row(i + 1_ip) - 1_ip))
       end do
 
@@ -220,8 +229,8 @@ contains
       ! Pass 3: the gather. Each atom writes one force column and one
       ! energy slot.
       do concurrent(i=1:natoms)
-         call atom_contribution(par, table, e_pair, f_rad, c_zeta, rev, i, &
-                                e_atom(i), forces(:, i))
+         call atom_contribution(par, table, uhat, fc, dfc, e_pair, f_rad, &
+                                c_zeta, rev, i, e_atom(i), forces(:, i))
       end do
 
       energy = sum(e_atom)
@@ -258,28 +267,28 @@ contains
 
    !> Coordination sum `zeta_ij` of every pair `i` owns, over the other
    !! neighbours of `i`.
-   pure subroutine atom_zeta(par, table, i, zeta_i)
+   pure subroutine atom_zeta(par, table, uhat, fc, i, zeta_i)
       type(tersoff_params_t), intent(in) :: par
       type(neighbor_table_t), intent(in) :: table
+      real(wp), intent(in), contiguous :: uhat(:, :), fc(:)
       integer(ip), intent(in) :: i
       real(wp), intent(out) :: zeta_i(:)
 
       integer(ip) :: sj, sk, base
-      real(wp) :: u_ij(3), u_ik(3), fc_k, dfc_k, gval, dgval, acc
+      real(wp) :: u_ij(3), u_ik(3), gval, dgval, acc
 
       base = table%row(i) - 1_ip
 
       do sj = table%row(i), table%row(i + 1_ip) - 1_ip
-         u_ij = table%vec(:, sj)/table%dist(sj)
+         u_ij = uhat(:, sj)
          acc = 0.0_wp
          do sk = table%row(i), table%row(i + 1_ip) - 1_ip
             ! The bond itself is excluded, but a second image of the same
             ! atom is a legitimate third leg.
             if (sk == sj) cycle
-            u_ik = table%vec(:, sk)/table%dist(sk)
-            call cutoff_taper(par, table%dist(sk), fc_k, dfc_k)
+            u_ik = uhat(:, sk)
             call angular(par, dot_product(u_ij, u_ik), gval, dgval)
-            acc = acc + fc_k*gval
+            acc = acc + fc(sk)*gval
          end do
          zeta_i(sj - base) = acc
       end do
@@ -308,10 +317,11 @@ contains
    !! The energy of a directed pair is halved because the table lists both
    !! directions. The gradient is halved for the same reason and negated
    !! once at the end.
-   pure subroutine atom_contribution(par, table, e_pair, f_rad, c_zeta, rev, &
-                                     i, e_i, f_i)
+   pure subroutine atom_contribution(par, table, uhat, fc, dfc, e_pair, f_rad, &
+                                     c_zeta, rev, i, e_i, f_i)
       type(tersoff_params_t), intent(in) :: par
       type(neighbor_table_t), intent(in) :: table
+      real(wp), intent(in), contiguous :: uhat(:, :), fc(:), dfc(:)
       real(wp), intent(in) :: e_pair(:), f_rad(:), c_zeta(:)
       integer(ip), intent(in) :: rev(:)
       integer(ip), intent(in) :: i
@@ -331,7 +341,7 @@ contains
       ! so does the coordination sum, through every third leg.
       do sj = table%row(i), table%row(i + 1_ip) - 1_ip
          rij = table%dist(sj)
-         u_ij = table%vec(:, sj)/rij
+         u_ij = uhat(:, sj)
          e_i = e_i + 0.5_wp*e_pair(sj)
 
          ! Radial terms of both directed pairs on this bond. The bond
@@ -341,9 +351,10 @@ contains
          do sk = table%row(i), table%row(i + 1_ip) - 1_ip
             if (sk == sj) cycle
             rik = table%dist(sk)
-            u_ik = table%vec(:, sk)/rik
+            u_ik = uhat(:, sk)
+            fc_k = fc(sk)
+            dfc_k = dfc(sk)
             cosine = dot_product(u_ij, u_ik)
-            call cutoff_taper(par, rik, fc_k, dfc_k)
             call angular(par, cosine, gval, dgval)
 
             dcos_j = (u_ik - cosine*u_ij)/rij
@@ -362,18 +373,20 @@ contains
       do sm = table%row(i), table%row(i + 1_ip) - 1_ip
          m = table%idx(sm)
          rim = table%dist(sm)
-         u_mi = -table%vec(:, sm)/rim
+         u_mi = -uhat(:, sm)
+         fc_i = fc(sm)
+         dfc_i = dfc(sm)
          back = rev(sm)
          c_back = c_zeta(back)
-         call cutoff_taper(par, rim, fc_i, dfc_i)
 
          do st = table%row(m), table%row(m + 1_ip) - 1_ip
             if (st == back) cycle
             rmt = table%dist(st)
-            u_mt = table%vec(:, st)/rmt
+            u_mt = uhat(:, st)
+            fc_k = fc(st)
+            dfc_k = dfc(st)
             cosine = dot_product(u_mi, u_mt)
             call angular(par, cosine, gval, dgval)
-            call cutoff_taper(par, rmt, fc_k, dfc_k)
 
             dcos_i = (u_mt - cosine*u_mi)/rim
 

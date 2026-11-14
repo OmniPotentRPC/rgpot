@@ -255,7 +255,8 @@ int main(int argc, char **argv) {
     }
   }
 
-  const int dia[] = {2, 3, 5, 8, 12};
+  // Side 4 is 512 atoms and side 8 is 4096.
+  const int dia[] = {2, 3, 4, 5, 8, 12};
   for (int m = 0; m < 2; ++m) {
     for (int nrep : dia) {
       double length = 0;

@@ -49,6 +49,14 @@ struct Bond {
   double fc, dfc, f_r, f_a, df_r, df_a;
 };
 
+// g(cos) for one ordered pair of neighbours. The force walk reads the
+// value the coordination sum already computed.
+struct Angle {
+  double cth;
+  double g;
+  double dg;
+};
+
 struct Scratch {
   std::vector<int> kind;
 };
@@ -310,10 +318,14 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
   const int nt = nlist::threadsRequested();
   if (nt == 1) {
   std::vector<Bond> nb;
+  std::vector<Angle> ang;
   for (int i = 0; i < n; ++i) {
     load(i, nb);
     const Species &sp = m_species[kind[i]];
     const int m = static_cast<int>(nb.size());
+    if (static_cast<int>(ang.size()) < m * m) {
+      ang.resize(static_cast<std::size_t>(m) * static_cast<std::size_t>(m));
+    }
     for (int a = 0; a < m; ++a) {
       const Bond &bj = nb[static_cast<std::size_t>(a)];
       double zeta = 0.0;
@@ -321,10 +333,10 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
         if (k == a) {
           continue;
         }
-        double g = 0.0;
-        double dg = 0.0;
-        angular(sp, cosine(bj, nb[static_cast<std::size_t>(k)]), g, dg);
-        zeta += nb[static_cast<std::size_t>(k)].fc * g;
+        Angle &slot = ang[static_cast<std::size_t>(a * m + k)];
+        slot.cth = cosine(bj, nb[static_cast<std::size_t>(k)]);
+        angular(sp, slot.cth, slot.g, slot.dg);
+        zeta += nb[static_cast<std::size_t>(k)].fc * slot.g;
       }
       double bij = 0.0;
       double db = 0.0;
@@ -355,10 +367,10 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
           continue;
         }
         const Bond &bk = nb[static_cast<std::size_t>(k)];
-        const double cth = cosine(bj, bk);
-        double g = 0.0;
-        double dg = 0.0;
-        angular(sp, cth, g, dg);
+        const Angle &slot = ang[static_cast<std::size_t>(a * m + k)];
+        const double cth = slot.cth;
+        const double g = slot.g;
+        const double dg = slot.dg;
         const double inv_r1 = inv_r;
         const double inv_r2 = 1.0 / bk.r;
         const double inv = inv_r1 * inv_r2;
@@ -414,10 +426,14 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
       double local_e = 0.0;
       double *local_strain = strain == nullptr ? nullptr : vir.data() + static_cast<std::size_t>(t) * 6;
       std::vector<Bond> nb;
+      std::vector<Angle> ang;
       for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
     load(i, nb);
     const Species &sp = m_species[kind[i]];
     const int m = static_cast<int>(nb.size());
+    if (static_cast<int>(ang.size()) < m * m) {
+      ang.resize(static_cast<std::size_t>(m) * static_cast<std::size_t>(m));
+    }
     for (int a = 0; a < m; ++a) {
       const Bond &bj = nb[static_cast<std::size_t>(a)];
       double zeta = 0.0;
@@ -425,10 +441,10 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
         if (k == a) {
           continue;
         }
-        double g = 0.0;
-        double dg = 0.0;
-        angular(sp, cosine(bj, nb[static_cast<std::size_t>(k)]), g, dg);
-        zeta += nb[static_cast<std::size_t>(k)].fc * g;
+        Angle &slot = ang[static_cast<std::size_t>(a * m + k)];
+        slot.cth = cosine(bj, nb[static_cast<std::size_t>(k)]);
+        angular(sp, slot.cth, slot.g, slot.dg);
+        zeta += nb[static_cast<std::size_t>(k)].fc * slot.g;
       }
       double bij = 0.0;
       double db = 0.0;
@@ -461,10 +477,10 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
           continue;
         }
         const Bond &bk = nb[static_cast<std::size_t>(k)];
-        const double cth = cosine(bj, bk);
-        double g = 0.0;
-        double dg = 0.0;
-        angular(sp, cth, g, dg);
+        const Angle &slot = ang[static_cast<std::size_t>(a * m + k)];
+        const double cth = slot.cth;
+        const double g = slot.g;
+        const double dg = slot.dg;
         const double inv_r1 = inv_r;
         const double inv_r2 = 1.0 / bk.r;
         const double inv = inv_r1 * inv_r2;
