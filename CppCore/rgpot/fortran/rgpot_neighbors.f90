@@ -17,7 +17,8 @@
 !! inside the cutoff, which is the Verlet filter. The write buffer stays
 !! on the table, so a later call that fits in it walks those candidates
 !! once. The first call, and a call that outgrows the buffer, counts and
-!! then fills.
+!! then fills. A call with the same positions, cell, cutoff, skin, and
+!! periodicity keeps the table it already built.
 !!
 !! Cell convention: C callers hand over nine doubles, row-major, one cell
 !! vector per row. Fortran reads that same memory column-major, so a
@@ -55,6 +56,14 @@ module rgpot_neighbors
       !> Scratch for the C fill. Kept so a warm call walks the pairs once.
       integer(c_int), allocatable, private :: scratch_i(:), scratch_j(:)
       real(c_double), allocatable, private :: scratch_v(:, :), scratch_d(:)
+      !> Partner-order scratch. Kept across calls.
+      integer(ip), allocatable, private :: ord_fill(:), ord_by(:), ord_j0(:)
+      !> Geometry of the table now stored. A later call with the same bits
+      !! does not walk or copy again.
+      real(wp), allocatable, private :: ref_pos(:, :)
+      real(wp), private :: ref_cell(3, 3) = 0.0_wp
+      integer(c_int32_t), private :: ref_pbc(3) = 0_c_int32_t
+      logical, private :: have_geom = .false.
    contains
       procedure :: build => neighbor_table_build
       procedure :: count_for => neighbor_table_count_for
@@ -127,7 +136,6 @@ contains
       integer, parameter :: nlist_short = 6
       integer :: p, np, q, nkept
       integer(ip) :: i, j, natoms
-      integer(ip), allocatable :: fill(:), by_j(:), jstart(:)
       type(c_ptr) :: msg
 
       status = 0
@@ -147,6 +155,19 @@ contains
 
       use_skin = 0.1_wp*cutoff
       if (present(skin)) use_skin = skin
+
+      ! Zero displacement, bitwise: the stored vectors and distances are
+      ! already the ones a fresh fill would write. A move inside the skin
+      ! still changes those distances, so that path rebuilds.
+      if (self%have_geom .and. allocated(self%row) .and. self%natoms == natoms .and. &
+          transfer(self%cutoff, 0_lp) == transfer(cutoff, 0_lp) .and. &
+          transfer(self%skin, 0_lp) == transfer(use_skin, 0_lp) .and. &
+          all(self%ref_pbc == pbc) .and. same_bits(self%ref_cell, cell) .and. &
+          same_bits(self%ref_pos, positions)) then
+         status = 0
+         return
+      end if
+      self%have_geom = .false.
 
       if (.not. c_associated(self%builder)) then
          self%builder = rgpot_nlist_fortran_open()
@@ -212,31 +233,33 @@ contains
          if (size(self%row) /= natoms + 1) deallocate (self%row)
       end if
       if (.not. allocated(self%row)) allocate (self%row(natoms + 1))
-      allocate (fill(natoms), source=0_ip)
+      call grow_index(self%ord_fill, natoms)
+      self%ord_fill(1:natoms) = 0_ip
 
       ! Rows ordered by partner index, so a reused candidate list and a
       ! fresh build sum forces in one order.
-      allocate (by_j(max(np, 1)), jstart(natoms + 1))
-      jstart = 0_ip
+      call grow_index(self%ord_by, max(np, 1))
+      call grow_index(self%ord_j0, natoms + 1)
+      self%ord_j0(1:natoms + 1) = 0_ip
       self%row = 0_ip
       do p = 1, np
          i = int(self%scratch_i(p), ip) + 1_ip
          j = int(self%scratch_j(p), ip) + 1_ip
          if (i == j) cycle
          self%row(i) = self%row(i) + 1_ip
-         jstart(j) = jstart(j) + 1_ip
+         self%ord_j0(j) = self%ord_j0(j) + 1_ip
       end do
 
       call prefix_sum(self%row)
-      call prefix_sum(jstart)
+      call prefix_sum(self%ord_j0(1:natoms + 1))
 
       nkept = int(self%row(natoms + 1) - 1_ip)
       do p = 1, np
          i = int(self%scratch_i(p), ip) + 1_ip
          j = int(self%scratch_j(p), ip) + 1_ip
          if (i == j) cycle
-         by_j(jstart(j)) = p
-         jstart(j) = jstart(j) + 1_ip
+         self%ord_by(self%ord_j0(j)) = p
+         self%ord_j0(j) = self%ord_j0(j) + 1_ip
       end do
 
       if (allocated(self%idx)) then
@@ -251,16 +274,25 @@ contains
       end if
 
       do q = 1, nkept
-         p = int(by_j(q))
+         p = int(self%ord_by(q))
          i = int(self%scratch_i(p), ip) + 1_ip
          j = int(self%scratch_j(p), ip) + 1_ip
-         associate (slot => self%row(i) + fill(i))
+         associate (slot => self%row(i) + self%ord_fill(i))
             self%idx(slot) = j
             self%vec(:, slot) = self%scratch_v(:, p)
             self%dist(slot) = self%scratch_d(p)
          end associate
-         fill(i) = fill(i) + 1_ip
+         self%ord_fill(i) = self%ord_fill(i) + 1_ip
       end do
+
+      if (.not. allocated(self%ref_pos) .or. size(self%ref_pos, 2) /= natoms) then
+         if (allocated(self%ref_pos)) deallocate (self%ref_pos)
+         allocate (self%ref_pos(3, natoms))
+      end if
+      self%ref_pos = positions
+      self%ref_cell = cell
+      self%ref_pbc = pbc
+      self%have_geom = .true.
    end subroutine neighbor_table_build
 
    !> Free the builder; the table can be built again afterwards.
@@ -271,6 +303,7 @@ contains
       self%builder = c_null_ptr
       self%cutoff = -1.0_wp
       self%skin = -1.0_wp
+      self%have_geom = .false.
    end subroutine neighbor_table_release
 
    !> Number of neighbours atom `i` owns.
@@ -281,6 +314,40 @@ contains
 
       n = self%row(i + 1_ip) - self%row(i)
    end function neighbor_table_count_for
+
+   !> Grow an index buffer without discarding one that is already long enough.
+   subroutine grow_index(buf, n)
+      integer(ip), allocatable, intent(inout) :: buf(:)
+      integer, intent(in) :: n
+
+      if (allocated(buf)) then
+         if (size(buf) >= n) return
+         deallocate (buf)
+      end if
+      allocate (buf(max(n, 1)))
+   end subroutine grow_index
+
+   !> True when every element has the same bits, including signed zero.
+   pure function same_bits(a, b) result(eq)
+      real(wp), intent(in) :: a(:, :), b(:, :)
+      logical :: eq
+
+      integer :: i, j
+      integer(lp) :: xa, xb
+
+      eq = size(a, 1) == size(b, 1) .and. size(a, 2) == size(b, 2)
+      if (.not. eq) return
+      do j = 1, size(a, 2)
+         do i = 1, size(a, 1)
+            xa = transfer(a(i, j), 0_lp)
+            xb = transfer(b(i, j), 0_lp)
+            if (xa /= xb) then
+               eq = .false.
+               return
+            end if
+         end do
+      end do
+   end function same_bits
 
    !> Turn per-atom counts into one-based row starts in place.
    pure subroutine prefix_sum(row)
