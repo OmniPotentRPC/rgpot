@@ -48,9 +48,9 @@ class LJPot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], energies: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
+        Energy, forces, variance, and stress when the kernel writes it. With energies=True, also the energy of each atom, shape (n_atoms,), when caps()['energies'] is true; ValueError otherwise. F4: the kernel runs detached.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -70,9 +70,9 @@ class LJClusterPot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], energies: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
+        Energy, forces, variance, and stress when the kernel writes it. With energies=True, also the energy of each atom, shape (n_atoms,), when caps()['energies'] is true; ValueError otherwise. F4: the kernel runs detached.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -92,9 +92,9 @@ class MorsePot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], energies: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
+        Energy, forces, variance, and stress when the kernel writes it. With energies=True, also the energy of each atom, shape (n_atoms,), when caps()['energies'] is true; ValueError otherwise. F4: the kernel runs detached.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -109,9 +109,9 @@ class SWPot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], energies: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
+        Energy, forces, variance, and stress when the kernel writes it. With energies=True, also the energy of each atom, shape (n_atoms,), when caps()['energies'] is true; ValueError otherwise. F4: the kernel runs detached.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -126,9 +126,9 @@ class EDIPPot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], energies: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
+        Energy, forces, variance, and stress when the kernel writes it. With energies=True, also the energy of each atom, shape (n_atoms,), when caps()['energies'] is true; ValueError otherwise. F4: the kernel runs detached.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -143,9 +143,9 @@ class LenoskyPot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], energies: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
+        Energy, forces, variance, and stress when the kernel writes it. With energies=True, also the energy of each atom, shape (n_atoms,), when caps()['energies'] is true; ValueError otherwise. F4: the kernel runs detached.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -160,9 +160,9 @@ class TersoffPot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], energies: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
+        Energy, forces, variance, and stress when the kernel writes it. With energies=True, also the energy of each atom, shape (n_atoms,), when caps()['energies'] is true; ValueError otherwise. F4: the kernel runs detached.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -177,9 +177,9 @@ class EAMAlPot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], energies: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
+        Energy, forces, variance, and stress when the kernel writes it. With energies=True, also the energy of each atom, shape (n_atoms,), when caps()['energies'] is true; ValueError otherwise. F4: the kernel runs detached.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -194,9 +194,9 @@ class FeHePot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], energies: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
+        Energy, forces, variance, and stress when the kernel writes it. With energies=True, also the energy of each atom, shape (n_atoms,), when caps()['energies'] is true; ValueError otherwise. F4: the kernel runs detached.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -211,9 +211,9 @@ class CuH2Pot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], energies: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
+        Energy, forces, variance, and stress when the kernel writes it. With energies=True, also the energy of each atom, shape (n_atoms,), when caps()['energies'] is true; ValueError otherwise. F4: the kernel runs detached.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -228,9 +228,9 @@ class WaterHPot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], energies: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
+        Energy, forces, variance, and stress when the kernel writes it. With energies=True, also the energy of each atom, shape (n_atoms,), when caps()['energies'] is true; ValueError otherwise. F4: the kernel runs detached.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -251,9 +251,9 @@ class StillingerWeberSi:
 
     def caps(self) -> dict: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], energies: bool = False) -> dict:
         """
-        Energy, forces, variance, and the Cauchy stress, shape (3, 3), in eV/Angstrom^3. The kernel runs detached.
+        Energy, forces, variance, and the Cauchy stress, shape (3, 3), in eV/Angstrom^3. With energies=True, also the energy of each atom, shape (n_atoms,), three-body terms on the centre atom. The kernel runs detached.
         """
 
     def energy_gradient(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
@@ -272,6 +272,13 @@ class TersoffSiC:
         Return (energy, forces, variance) for one configuration. Forces are -dE/dx.
         """
 
+    def caps(self) -> dict: ...
+
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], energies: bool = False) -> dict:
+        """
+        Energy, forces, variance, and the Cauchy stress, shape (3, 3), in eV/Angstrom^3. With energies=True, also the energy of each atom, shape (n_atoms,), each bond term on its centre atom. The kernel runs detached.
+        """
+
     def energy_gradient(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
         """
         Energy and dE/dx. positions is (n_atoms, 3) or (n_config, n_atoms, 3). A batch shares atom_types and box, and crosses into the library once.
@@ -284,9 +291,9 @@ class D3Pot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], energies: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
+        Energy, forces, variance, and stress when the kernel writes it. With energies=True, also the energy of each atom, shape (n_atoms,), when caps()['energies'] is true; ValueError otherwise. F4: the kernel runs detached.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -301,9 +308,9 @@ class D4Pot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], energies: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
+        Energy, forces, variance, and stress when the kernel writes it. With energies=True, also the energy of each atom, shape (n_atoms,), when caps()['energies'] is true; ValueError otherwise. F4: the kernel runs detached.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -326,9 +333,9 @@ class ExprPot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], energies: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. F4: the kernel runs detached.
+        Energy, forces, variance, and stress when the kernel writes it. With energies=True, also the energy of each atom, shape (n_atoms,), when caps()['energies'] is true; ValueError otherwise. F4: the kernel runs detached.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
