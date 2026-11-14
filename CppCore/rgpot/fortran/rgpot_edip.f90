@@ -34,9 +34,10 @@
 !! per-atom scalars (`Z`, energy, `dE/dZ`), one over forces. Neither writes
 !! outside the atom it is indexed by.
 !!
-!! A triplet whose two ends are the same atom reached through different
-!! periodic images is dropped, in the centre role and the end role alike,
-!! so the force stays the exact gradient of the energy reported here.
+!! Every periodic image inside the cutoff is its own leg, so a cell
+!! thinner than the cutoff, and a triplet whose ends are two images of one
+!! atom, need nothing special. The end role skips only the bond back to
+!! `i` that it arrived along.
 module rgpot_edip
    use rgpot_kinds, only: wp, ip
    use rgpot_neighbors, only: neighbor_table_t
@@ -240,17 +241,16 @@ contains
              + g_self*g_other*dhdl*(u_other - lcos*u_self)*rinv_self
    end function leg_gradient
 
-   !> Three-body legs of atom `i`: every neighbour inside `bg`, with its
-   !! radial factor, unit vector, inverse distance, and atom index.
+   !> Three-body legs of atom `i`: every neighbour image inside `bg`, with
+   !! its radial factor, unit vector and inverse distance.
    pure subroutine collect_legs(par, cst, table, i, maxnbr, nleg, &
-                                g, dg, u, rinv, who)
+                                g, dg, u, rinv)
       type(edip_params_t), intent(in) :: par
       type(edip_const_t), intent(in) :: cst
       type(neighbor_table_t), intent(in) :: table
       integer(ip), intent(in) :: i, maxnbr
       integer(ip), intent(out) :: nleg
       real(wp), intent(out) :: g(maxnbr), dg(maxnbr), u(3, maxnbr), rinv(maxnbr)
-      integer(ip), intent(out) :: who(maxnbr)
 
       integer(ip) :: s
       real(wp) :: r
@@ -263,7 +263,6 @@ contains
          call leg_radial(par, cst, r, g(nleg), dg(nleg))
          u(:, nleg) = table%vec(:, s)/r
          rinv(nleg) = 1.0_wp/r
-         who(nleg) = table%idx(s)
       end do
    end subroutine collect_legs
 
@@ -279,7 +278,6 @@ contains
       real(wp), intent(out) :: z, e_i, dedz
 
       real(wp) :: g(maxnbr), dg(maxnbr), u(3, maxnbr), rinv(maxnbr)
-      integer(ip) :: who(maxnbr)
       integer(ip) :: s, nleg, nj, nk
       real(wp) :: r, t0, t1, t2, t3, fz, dfz, pz, dp
       real(wp) :: winv, dwinv, tau, dtau, lcos, h, dhdx, dxdz, gg
@@ -304,13 +302,12 @@ contains
          dedz = dedz - dp*t0
       end do
 
-      call collect_legs(par, cst, table, i, maxnbr, nleg, g, dg, u, rinv, who)
+      call collect_legs(par, cst, table, i, maxnbr, nleg, g, dg, u, rinv)
       call angular_shape(par, cst, z, winv, dwinv, tau, dtau)
 
       ! Three-body term over the unordered pairs of legs i centres.
       do nj = 1_ip, nleg - 1_ip
          do nk = nj + 1_ip, nleg
-            if (who(nj) == who(nk)) cycle
             lcos = dot_product(u(:, nj), u(:, nk))
             call angular_term(par, cst, winv, tau, lcos, h, dhdx)
             gg = g(nj)*g(nk)
@@ -331,8 +328,7 @@ contains
       real(wp), intent(out) :: f_i(3)
 
       real(wp) :: g(maxnbr), dg(maxnbr), u(3, maxnbr), rinv(maxnbr)
-      integer(ip) :: who(maxnbr)
-      integer(ip) :: s, sn, j, m, n, nleg, nj, nk
+      integer(ip) :: s, sn, j, m, nleg, nj, nk
       real(wp) :: r, rim, rmn, uij(3), u_mi(3), u_mn(3)
       real(wp) :: t0, t1, t2, t3, fz, dfz, pz_i, pz_j, dp_i, dp_j
       real(wp) :: winv, dwinv, tau, dtau, lcos, h, dhdx
@@ -361,12 +357,11 @@ contains
       end do
 
       ! Three-body, i at the centre of every unordered pair of its legs.
-      call collect_legs(par, cst, table, i, maxnbr, nleg, g, dg, u, rinv, who)
+      call collect_legs(par, cst, table, i, maxnbr, nleg, g, dg, u, rinv)
       call angular_shape(par, cst, z(i), winv, dwinv, tau, dtau)
 
       do nj = 1_ip, nleg - 1_ip
          do nk = nj + 1_ip, nleg
-            if (who(nj) == who(nk)) cycle
             lcos = dot_product(u(:, nj), u(:, nk))
             call angular_term(par, cst, winv, tau, lcos, h, dhdx)
             f_i = f_i &
@@ -389,8 +384,7 @@ contains
          call angular_shape(par, cst, z(m), winv, dwinv, tau, dtau)
 
          do sn = table%row(m), table%row(m + 1_ip) - 1_ip
-            n = table%idx(sn)
-            if (n == i) cycle
+            if (table%is_return(sn, i, s)) cycle
             rmn = table%dist(sn)
             if (rmn >= cst%bg) cycle
             u_mn = table%vec(:, sn)/rmn
@@ -402,36 +396,6 @@ contains
          end do
       end do
    end subroutine atom_force
-
-   !> Perpendicular width of the cell along each lattice vector.
-   pure function cell_widths(cell) result(w)
-      real(wp), intent(in) :: cell(3, 3)
-      real(wp) :: w(3)
-
-      real(wp) :: face(3, 3), vol, area
-      integer :: k
-
-      face(:, 1) = cross(cell(:, 2), cell(:, 3))
-      face(:, 2) = cross(cell(:, 3), cell(:, 1))
-      face(:, 3) = cross(cell(:, 1), cell(:, 2))
-      vol = abs(dot_product(cell(:, 1), face(:, 1)))
-
-      w = 0.0_wp
-      do k = 1, 3
-         area = norm2(face(:, k))
-         if (area > 0.0_wp) w(k) = vol/area
-      end do
-   end function cell_widths
-
-   !> Vector cross product.
-   pure function cross(p, q) result(r)
-      real(wp), intent(in) :: p(3), q(3)
-      real(wp) :: r(3)
-
-      r(1) = p(2)*q(3) - p(3)*q(2)
-      r(2) = p(3)*q(1) - p(1)*q(3)
-      r(3) = p(1)*q(2) - p(2)*q(1)
-   end function cross
 
    !> Energy and forces for `positions` (3 x natoms) in `cell`.
    subroutine edip_energy_forces(positions, cell, par, table, energy, forces, &
@@ -447,7 +411,7 @@ contains
 
       type(edip_const_t) :: cst
       integer(ip) :: natoms, i, maxnbr
-      real(wp) :: rcut, widths(3)
+      real(wp) :: rcut
       real(wp), allocatable :: e_atom(:), z(:), dedz(:)
 
       natoms = int(size(positions, 2), ip)
@@ -456,15 +420,6 @@ contains
       status = 0
       errmsg = ""
       rcut = par%cutoff()
-
-      ! One cell layer has to hold the cutoff, the precondition the legacy
-      ! kernel enforced by binning into cells of at least the cutoff width.
-      widths = cell_widths(cell)
-      if (minval(widths) < rcut) then
-         status = 1
-         errmsg = "rgpot_edip: cell is thinner than the interaction cutoff"
-         return
-      end if
 
       call table%build(positions, cell, rcut, status, errmsg)
       if (status /= 0) return

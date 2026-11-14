@@ -240,7 +240,7 @@ contains
       real(wp), intent(out) :: e_i
       real(wp), intent(out) :: f_i(3)
 
-      integer(ip) :: sj, sk, sm, sn, m, n
+      integer(ip) :: sj, sk, sm, sn, m
       real(wp) :: rij, rik, rim, rmn, e_phi, ep_phi, rho, rhop
       real(wp) :: u_ij(3), u_ik(3), u_mi(3), u_mn(3), grad_j(3), grad_k(3)
 
@@ -279,8 +279,7 @@ contains
          f_i = f_i + dudens(m)*u_mi*rhop
 
          do sn = table%row(m), table%row(m + 1_ip) - 1_ip
-            n = table%idx(sn)
-            if (n == i) cycle
+            if (table%is_return(sn, i, sm)) cycle
             rmn = table%dist(sn)
             u_mn = -table%vec(:, sn)/rmn
             call triplet_gradients(u_mi, rim, u_mn, rmn, grad_j, grad_k)

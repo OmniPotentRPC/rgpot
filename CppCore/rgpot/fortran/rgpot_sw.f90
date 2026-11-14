@@ -255,7 +255,7 @@ contains
       real(wp), intent(out) :: f_i(3)
       real(wp), intent(out), contiguous :: w_i(:)
 
-      integer(ip) :: sj, sk, sm, sn, m, n
+      integer(ip) :: sj, sk, sm, sn, m
       real(wp) :: rij, rik, rim, rmn
       real(wp) :: u_ij(3), u_ik(3), u_mi(3), u_mn(3)
       real(wp) :: e_pair, dedr, f_j(3), f_k(3), w(6)
@@ -306,8 +306,7 @@ contains
          ! Vector m -> i is the reverse of the stored i -> m vector.
          u_mi = -table%vec(:, sm)/rim
          do sn = table%row(m), table%row(m + 1_ip) - 1_ip
-            n = table%idx(sn)
-            if (n == i) cycle
+            if (table%is_return(sn, i, sm)) cycle
             rmn = table%dist(sn)
             u_mn = table%vec(:, sn)/rmn
             f_i = f_i + end_atom_force(par, u_mi, rim, u_mn, rmn)
