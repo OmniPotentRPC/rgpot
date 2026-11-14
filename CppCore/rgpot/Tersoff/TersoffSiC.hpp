@@ -69,6 +69,13 @@ public:
   /// folded bond vector times the energy gradient with respect to it.
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
+  /// forceImpl plus each atom's share of the energy. The bond term
+  /// fc (f_R + b_ij f_A) / 2 of i -> j goes to its centre i, whose
+  /// neighbours set b_ij: the Tersoff site energy E_i. See
+  /// Potential::forceEnergies.
+  void forceEnergiesImpl(const ForceInput &in, ForceOut *out,
+                         double *energies) const;
+
   /**
    * @brief Keep one Verlet list across forceImpl calls.
    * @param skin Extra search distance, Angstrom. Zero, the default,
@@ -122,11 +129,13 @@ public:
 
 private:
   /// scale +1 writes forces, scale -1 writes dE/dx. A non-null strain
-  /// gains dE/dε in eV, in the Voigt order of stress.hpp.
+  /// gains dE/dε in eV, in the Voigt order of stress.hpp. With PerAtom,
+  /// @p site gains each atom's site energy.
+  template <bool PerAtom>
   void evaluate(const double *positions, const int *atomic_numbers,
                 const double *box, std::size_t n_atoms, double *energy,
                 double *acc, double scale, nlist::NeighborList *neighbors,
-                double *strain) const;
+                double *strain, double *site) const;
 
   Species m_species[2]{};
   Pair m_pair[2][2]{};
