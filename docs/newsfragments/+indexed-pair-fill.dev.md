@@ -1,0 +1,1 @@
+With `with_eam_al_openmp`, a rebuilt neighbour list is filtered through the sorted pair index. The columns are not copied first. One thread still permutes the columns, and the pairs written at every thread count match that order.

@@ -175,9 +175,21 @@ public:
   /// each atom's neighbours in that order; sorting once per rebuild lets
   /// the fill copy straight into those rows.
   void orderByPartner();
+#ifdef RGPOT_EAM_AL_OPENMP
+  /// Source index of logical pair `p` after `orderByPartner`. Empty when
+  /// the table columns themselves were permuted, so a fill walks `0..n`.
+  [[nodiscard]] const std::vector<std::size_t> &partnerOrder() const noexcept {
+    return partner_order_;
+  }
+#endif
 
 private:
   Table table_;
+#ifdef RGPOT_EAM_AL_OPENMP
+  // Columns stay in search order. The fill reads pair `partner_order_[p]`.
+  // Empty when the columns were permuted instead.
+  std::vector<std::size_t> partner_order_;
+#endif
   std::vector<double> ref_;
   double box_[9]{};
   Query query_{};

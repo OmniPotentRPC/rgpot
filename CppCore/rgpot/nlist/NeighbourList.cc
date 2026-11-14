@@ -569,23 +569,9 @@ void permute_stride(std::vector<T> &col, const std::vector<std::size_t> &order, 
     return;
   }
   std::vector<T> out(col.size());
-#ifdef RGPOT_EAM_AL_OPENMP
-  if (threadsRequested() > 1 && order.size() >= 16384) {
-#if defined(_OPENMP)
-#pragma omp parallel for schedule(static) num_threads(threadsRequested())
-#endif
-    for (std::size_t i = 0; i < order.size(); ++i) {
-      for (std::size_t k = 0; k < stride; ++k) {
-        out[i * stride + k] = col[order[i] * stride + k];
-      }
-    }
-  } else
-#endif
-  {
-    for (std::size_t i = 0; i < order.size(); ++i) {
-      for (std::size_t k = 0; k < stride; ++k) {
-        out[i * stride + k] = col[order[i] * stride + k];
-      }
+  for (std::size_t i = 0; i < order.size(); ++i) {
+    for (std::size_t k = 0; k < stride; ++k) {
+      out[i * stride + k] = col[order[i] * stride + k];
     }
   }
   col.swap(out);
@@ -596,6 +582,9 @@ void permute_stride(std::vector<T> &col, const std::vector<std::size_t> &order, 
 void Builder::orderByPartner() {
   const std::size_t n = table_.first.size();
   if (n < 2) {
+#ifdef RGPOT_EAM_AL_OPENMP
+    partner_order_.clear();
+#endif
     return;
   }
   std::vector<std::size_t> order(n);
@@ -665,7 +654,11 @@ void Builder::orderByPartner() {
       }
       order.swap(scratch);
     }
-  } else
+    // The fill gathers through this index, so the columns are not copied.
+    partner_order_ = std::move(order);
+    return;
+  }
+  partner_order_.clear();
 #endif
   std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
     if (table_.first[a] != table_.first[b]) {
@@ -683,54 +676,12 @@ void Builder::orderByPartner() {
   if (already) {
     return;
   }
-#ifdef RGPOT_EAM_AL_OPENMP
-  if (threadsRequested() > 1 && n >= 16384) {
-    std::vector<std::int32_t> first(n), second(n);
-    std::vector<std::uint8_t> mask(n);
-    std::vector<std::int32_t> shift(table_.shift.size());
-    std::vector<double> vector(table_.vector.size());
-    std::vector<double> distance(table_.distance.size());
-    const bool has_shift = !shift.empty();
-    const bool has_vector = !vector.empty();
-    const bool has_distance = !distance.empty();
-#if defined(_OPENMP)
-#pragma omp parallel for schedule(static) num_threads(threadsRequested())
-#endif
-    for (std::size_t i = 0; i < n; ++i) {
-      const auto j = order[i];
-      first[i] = table_.first[j];
-      second[i] = table_.second[j];
-      mask[i] = table_.mask[j];
-      if (has_shift) {
-        shift[3 * i] = table_.shift[3 * j];
-        shift[3 * i + 1] = table_.shift[3 * j + 1];
-        shift[3 * i + 2] = table_.shift[3 * j + 2];
-      }
-      if (has_vector) {
-        vector[3 * i] = table_.vector[3 * j];
-        vector[3 * i + 1] = table_.vector[3 * j + 1];
-        vector[3 * i + 2] = table_.vector[3 * j + 2];
-      }
-      if (has_distance) {
-        distance[i] = table_.distance[j];
-      }
-    }
-    table_.first.swap(first);
-    table_.second.swap(second);
-    table_.mask.swap(mask);
-    table_.shift.swap(shift);
-    table_.vector.swap(vector);
-    table_.distance.swap(distance);
-  } else
-#endif
-  {
-    permute_stride(table_.first, order, 1);
-    permute_stride(table_.second, order, 1);
-    permute_stride(table_.mask, order, 1);
-    permute_stride(table_.shift, order, 3);
-    permute_stride(table_.vector, order, 3);
-    permute_stride(table_.distance, order, 1);
-  }
+  permute_stride(table_.first, order, 1);
+  permute_stride(table_.second, order, 1);
+  permute_stride(table_.mask, order, 1);
+  permute_stride(table_.shift, order, 3);
+  permute_stride(table_.vector, order, 3);
+  permute_stride(table_.distance, order, 1);
 }
 
 void Builder::update(const double *positions, std::size_t n, const double *box9,
@@ -762,6 +713,9 @@ void Builder::update(const double *positions, std::size_t n, const double *box9,
       return;
     }
   }
+#ifdef RGPOT_EAM_AL_OPENMP
+  partner_order_.clear();
+#endif
   build(table_, positions, n, box9, query);
   ref_.assign(positions, positions + 3 * n);
   std::memcpy(box_, box9, sizeof(box_));
@@ -1805,6 +1759,13 @@ int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *
       *reused = list->builder.reused() ? 1 : 0;
     }
     const auto &table = list->builder.table();
+#ifdef RGPOT_EAM_AL_OPENMP
+    const auto &ord = list->builder.partnerOrder();
+    const std::size_t *map = ord.empty() ? nullptr : ord.data();
+    auto loc = [&](std::size_t p) { return map == nullptr ? p : map[p]; };
+#else
+    auto loc = [](std::size_t p) { return p; };
+#endif
     const double cut2 = cutoff * cutoff;
     // A pair stored at r stays outside this cutoff when every atom has
     // moved by at most d: the separation can shrink by at most 2d. The
@@ -1825,14 +1786,15 @@ int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *
       list->dist.resize(slots);
     }
     auto accept = [&](std::size_t p, std::size_t &kept) {
-      const auto i = static_cast<std::size_t>(table.first[p]);
-      const auto j = static_cast<std::size_t>(table.second[p]);
+      const auto q = loc(p);
+      const auto i = static_cast<std::size_t>(table.first[q]);
+      const auto j = static_cast<std::size_t>(table.second[q]);
       if (i == j) {
         return;
       }
-      const int sa = table.shift[3 * p];
-      const int sb = table.shift[3 * p + 1];
-      const int sc = table.shift[3 * p + 2];
+      const int sa = table.shift[3 * q];
+      const int sb = table.shift[3 * q + 1];
+      const int sc = table.shift[3 * q + 2];
       const double vx = positions[3 * j] - positions[3 * i] + sa * box9[0] + sb * box9[3] +
                         sc * box9[6];
       const double vy = positions[3 * j + 1] - positions[3 * i + 1] + sa * box9[1] +
@@ -1864,17 +1826,18 @@ int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *
       std::vector<std::size_t> counts(static_cast<std::size_t>(nt));
       const auto keep_pair = [&](std::size_t p, double &vx, double &vy, double &vz,
                                  double &r2) -> bool {
-        if (skip_outside && table.distance[p] >= outside) {
+        const auto q = loc(p);
+        if (skip_outside && table.distance[q] >= outside) {
           return false;
         }
-        const auto i = static_cast<std::size_t>(table.first[p]);
-        const auto j = static_cast<std::size_t>(table.second[p]);
+        const auto i = static_cast<std::size_t>(table.first[q]);
+        const auto j = static_cast<std::size_t>(table.second[q]);
         if (i == j) {
           return false;
         }
-        const int sa = table.shift[3 * p];
-        const int sb = table.shift[3 * p + 1];
-        const int sc = table.shift[3 * p + 2];
+        const int sa = table.shift[3 * q];
+        const int sb = table.shift[3 * q + 1];
+        const int sc = table.shift[3 * q + 2];
         vx = positions[3 * j] - positions[3 * i] + sa * box9[0] + sb * box9[3] + sc * box9[6];
         vy = positions[3 * j + 1] - positions[3 * i + 1] + sa * box9[1] + sb * box9[4] +
              sc * box9[7];
@@ -1916,8 +1879,9 @@ int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *
           if (!keep_pair(p, vx, vy, vz, r2)) {
             continue;
           }
-          list->atom[at] = table.first[p];
-          list->idx[at] = table.second[p] + 1;
+          const auto q = loc(p);
+          list->atom[at] = table.first[q];
+          list->idx[at] = table.second[q] + 1;
           list->vec[3 * at] = vx;
           list->vec[3 * at + 1] = vy;
           list->vec[3 * at + 2] = vz;
@@ -1930,7 +1894,7 @@ int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *
 #endif
     if (skip_outside) {
       for (std::size_t p = 0; p < table.size(); ++p) {
-        if (table.distance[p] >= outside) {
+        if (table.distance[loc(p)] >= outside) {
           continue;
         }
         accept(p, kept);
