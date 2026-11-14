@@ -39,6 +39,10 @@ void EAM::cleanMemory() {
   std::vector<double>().swap(gdz_);
   std::vector<double>().swap(ginv_);
   std::vector<std::int32_t>().swap(rev_);
+  std::vector<double>().swap(reuse_r2_);
+  std::vector<double>().swap(reuse_rho_);
+  std::vector<double>().swap(reuse_fs_);
+  std::vector<char>().swap(reuse_ok_);
   std::vector<double>().swap(thread_energy_);
   std::vector<double>().swap(partial_f_);
   std::vector<double>().swap(stream_rho_);
@@ -156,7 +160,7 @@ void EAM::ensureParts(long N, int nt) {
 
 void EAM::accumulate(long i, const int *atomicNrs, double *F, double &U,
                      std::vector<Delta> &deltas, const std::int32_t *stream_ids,
-                     long stream_n) const {
+                     long stream_n) {
   deltas.clear();
   const element_parameters epar = get_element_parameters(atomicNrs[i]);
   const double cutoff2 = epar.r_cut * epar.r_cut;
@@ -203,18 +207,50 @@ void EAM::accumulate(long i, const int *atomicNrs, double *F, double &U,
     if (r2 > cutoff2) {
       continue;
     }
-    const double r = std::sqrt(r2);
-    const double r6 = r2 * r2 * r2;
-    const double exp_b1 = std::exp(-epar.beta1 * r);
-    const double exp_b2 = std::exp(-2.0 * epar.beta2 * r);
-    const double rho_pair = exp_b1 + 512.0 * exp_b2;
-    dens += r6 * rho_pair;
-    const double r5 = r2 * r2 * r;
-    const double mag_force_den =
-        6.0 * r5 * rho_pair +
-        r6 * (-epar.beta1 * exp_b1 - 1024.0 * epar.beta2 * exp_b2);
-    const double invR = 1.0 / r;
-    const double fscale = -mag_force_den * invR;
+    // A pure-metal pair uses the same density coefficients from either
+    // end. The lower atom index computes them and leaves them on the
+    // higher atom's slot. The higher atom adds that term only when its
+    // squared distance is the same bits, which is the value sqrt and
+    // exp would have produced here.
+    double rho_term = 0.0;
+    double fscale = 0.0;
+    double r = 0.0;
+    double invR = 0.0;
+    const bool pure = !stream && atomicNrs[j] == epar.Z &&
+                      static_cast<std::size_t>(p) < reuse_ok_.size() &&
+                      rev_.size() == reuse_ok_.size();
+    bool reused = false;
+    if (pure && j < i && reuse_ok_[static_cast<std::size_t>(p)] != 0 &&
+        reuse_r2_[static_cast<std::size_t>(p)] == r2) {
+      rho_term = reuse_rho_[static_cast<std::size_t>(p)];
+      fscale = reuse_fs_[static_cast<std::size_t>(p)];
+      reused = true;
+    }
+    if (!reused) {
+      r = std::sqrt(r2);
+      const double r6 = r2 * r2 * r2;
+      const double exp_b1 = std::exp(-epar.beta1 * r);
+      const double exp_b2 = std::exp(-2.0 * epar.beta2 * r);
+      const double rho_pair = exp_b1 + 512.0 * exp_b2;
+      rho_term = r6 * rho_pair;
+      const double r5 = r2 * r2 * r;
+      const double mag_force_den =
+          6.0 * r5 * rho_pair +
+          r6 * (-epar.beta1 * exp_b1 - 1024.0 * epar.beta2 * exp_b2);
+      invR = 1.0 / r;
+      fscale = -mag_force_den * invR;
+      if (pure && j > i) {
+        const auto rev = rev_[static_cast<std::size_t>(p)];
+        if (rev >= 0) {
+          const auto rs = static_cast<std::size_t>(rev);
+          reuse_ok_[rs] = 1;
+          reuse_r2_[rs] = r2;
+          reuse_rho_[rs] = rho_term;
+          reuse_fs_[rs] = fscale;
+        }
+      }
+    }
+    dens += rho_term;
     dix += fscale * dx;
     diy += fscale * dy;
     diz += fscale * dz;
@@ -617,6 +653,15 @@ void EAM::evaluate(long N, const int *atomicNrs, double *F, double *U) {
     return;
   }
   if (nt == 1) {
+    const auto nslot = neighbours_.slots();
+    if (reuse_ok_.size() != nslot) {
+      reuse_r2_.assign(nslot, 0.0);
+      reuse_rho_.assign(nslot, 0.0);
+      reuse_fs_.assign(nslot, 0.0);
+      reuse_ok_.assign(nslot, 0);
+    } else {
+      std::fill(reuse_ok_.begin(), reuse_ok_.end(), 0);
+    }
     double energy = 0.0;
     for (long i = 0; i < N; ++i) {
       accumulate(i, atomicNrs, F, energy, deltas_, nullptr, 0);

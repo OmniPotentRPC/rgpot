@@ -134,6 +134,14 @@ private:
   std::vector<double> gdz_;
   std::vector<double> ginv_;
   std::vector<std::int32_t> rev_;
+  // Density term of a pure-metal pair, stored from the lower atom index
+  // into the higher atom's slot. The higher atom reuses it when its own
+  // squared distance has the same bits, so the sum is the one it would
+  // have computed.
+  std::vector<double> reuse_r2_;
+  std::vector<double> reuse_rho_;
+  std::vector<double> reuse_fs_;
+  std::vector<char> reuse_ok_;
   std::vector<double> thread_energy_;
   std::vector<double> partial_f_;
   /// Per-thread density and force for the stream. One row per thread,
@@ -163,7 +171,7 @@ private:
   [[nodiscard]] const rgpot::eam::ElementSpline &splineFor(int Z);
   void accumulate(long i, const int *atomicNrs, double *F, double &U,
                   std::vector<Delta> &deltas, const std::int32_t *stream_ids,
-                  long stream_n) const;
+                  long stream_n);
   void geometry(long i, long j, double &dx, double &dy, double &dz,
                 double &r2) const;
   [[nodiscard]] int threadsRequested() const;
