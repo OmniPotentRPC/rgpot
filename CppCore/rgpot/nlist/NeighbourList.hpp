@@ -168,6 +168,9 @@ public:
   [[nodiscard]] const Table &table() const noexcept { return table_; }
   [[nodiscard]] std::uint64_t builds() const noexcept { return builds_; }
   [[nodiscard]] bool reused() const noexcept { return reused_; }
+  /// Largest squared displacement from the positions of the stored table.
+  /// Zero when that table was just built.
+  [[nodiscard]] double maxMove2() const noexcept { return move2_; }
 
 private:
   Table table_;
@@ -176,6 +179,7 @@ private:
   Query query_{};
   std::size_t n_ = 0;
   std::uint64_t builds_ = 0;
+  double move2_ = 0;
   bool have_ = false;
   bool reused_ = false;
 };

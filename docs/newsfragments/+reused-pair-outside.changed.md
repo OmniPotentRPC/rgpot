@@ -1,0 +1,1 @@
+A reused neighbour search skips a stored pair that cannot reach the cutoff after the atoms have moved. Pairs that might enter are still evaluated, and systems smaller than 64 atoms keep the plain walk.

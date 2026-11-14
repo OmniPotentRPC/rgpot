@@ -560,6 +560,7 @@ void Builder::update(const double *positions, std::size_t n, const double *box9,
                      const Query &query) {
   check_geometry(positions, n, box9, query);
   reused_ = false;
+  move2_ = 0;
   if (have_ && n_ == n && query_.cutoff == query.cutoff && query_.skin == query.skin &&
       query_.shape == query.shape && query_.cut == query.cut &&
       query_.periodic == query.periodic && query_.fields.shifts == query.fields.shifts &&
@@ -568,6 +569,19 @@ void Builder::update(const double *positions, std::size_t n, const double *box9,
       std::memcmp(box_, box9, sizeof(box_)) == 0) {
     if (withinSkin(ref_.data(), positions, n, query.skin)) {
       reused_ = true;
+      if (n >= 64) {
+        double furthest = 0;
+        for (std::size_t a = 0; a < n; ++a) {
+          const double dx = positions[3 * a] - ref_[3 * a];
+          const double dy = positions[3 * a + 1] - ref_[3 * a + 1];
+          const double dz = positions[3 * a + 2] - ref_[3 * a + 2];
+          const double d2 = dx * dx + dy * dy + dz * dz;
+          if (d2 > furthest) {
+            furthest = d2;
+          }
+        }
+        move2_ = furthest;
+      }
       return;
     }
   }
@@ -1549,8 +1563,17 @@ int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *
     }
     const auto &table = list->builder.table();
     const double cut2 = cutoff * cutoff;
-    std::size_t kept = 0;
-    for (std::size_t p = 0; p < table.size(); ++p) {
+    // A pair stored at r stays outside this cutoff when every atom has
+    // moved by at most d: the separation can shrink by at most 2d. The
+    // extra 1e-8 is room for the stored length and the recomputed one
+    // disagreeing in the last digits. Small systems take the plain walk;
+    // the test does not pay for itself there.
+    const bool skip_outside =
+        natoms >= 64 && list->builder.reused() && !table.distance.empty();
+    const double outside = skip_outside ? cutoff + 2.0 * std::sqrt(list->builder.maxMove2()) +
+                                              1.0e-8 * (1.0 + cutoff)
+                                        : 0.0;
+    auto accept = [&](std::size_t p, std::size_t &kept) {
       const auto i = static_cast<std::size_t>(table.first[p]);
       const auto j = static_cast<std::size_t>(table.second[p]);
       const int sa = table.shift[3 * p];
@@ -1564,7 +1587,7 @@ int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *
                         sb * box9[5] + sc * box9[8];
       const double r2 = vx * vx + vy * vy + vz * vz;
       if (!(r2 > 0.0) || !(r2 < cut2)) {
-        continue;
+        return;
       }
       if (first != nullptr && kept < cap) {
         first[kept] = table.first[p];
@@ -1575,6 +1598,19 @@ int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *
         distance[kept] = std::sqrt(r2);
       }
       ++kept;
+    };
+    std::size_t kept = 0;
+    if (skip_outside) {
+      for (std::size_t p = 0; p < table.size(); ++p) {
+        if (table.distance[p] >= outside) {
+          continue;
+        }
+        accept(p, kept);
+      }
+    } else {
+      for (std::size_t p = 0; p < table.size(); ++p) {
+        accept(p, kept);
+      }
     }
     if (count != nullptr) {
       *count = kept;
