@@ -1658,6 +1658,81 @@ int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *
       ++kept;
     };
     std::size_t kept = 0;
+#ifdef RGPOT_EAM_AL_OPENMP
+    // Each thread filters a contiguous slice of the stored pairs. A prefix
+    // sum of those counts writes the kept pairs back in the serial order.
+    const int want = omp_get_max_threads();
+    if (want > 1 && natoms >= 256 && table.size() >= 4096 && first != nullptr) {
+      int nt = want;
+      while (nt > 1 && table.size() / static_cast<std::size_t>(nt) < 512) {
+        --nt;
+      }
+      std::vector<std::size_t> counts(static_cast<std::size_t>(nt));
+      const auto keep_pair = [&](std::size_t p, double &vx, double &vy, double &vz,
+                                 double &r2) -> bool {
+        if (skip_outside && table.distance[p] >= outside) {
+          return false;
+        }
+        const auto i = static_cast<std::size_t>(table.first[p]);
+        const auto j = static_cast<std::size_t>(table.second[p]);
+        const int sa = table.shift[3 * p];
+        const int sb = table.shift[3 * p + 1];
+        const int sc = table.shift[3 * p + 2];
+        vx = positions[3 * j] - positions[3 * i] + sa * box9[0] + sb * box9[3] + sc * box9[6];
+        vy = positions[3 * j + 1] - positions[3 * i + 1] + sa * box9[1] + sb * box9[4] +
+             sc * box9[7];
+        vz = positions[3 * j + 2] - positions[3 * i + 2] + sa * box9[2] + sb * box9[5] +
+             sc * box9[8];
+        r2 = vx * vx + vy * vy + vz * vz;
+        return (r2 > 0.0) && (r2 < cut2);
+      };
+#pragma omp parallel num_threads(nt)
+      {
+        const int t = omp_get_thread_num();
+        const auto n = table.size();
+        const auto begin = n * static_cast<std::size_t>(t) / static_cast<std::size_t>(nt);
+        const auto end = n * static_cast<std::size_t>(t + 1) / static_cast<std::size_t>(nt);
+        std::size_t local = 0;
+        double vx, vy, vz, r2;
+        for (std::size_t p = begin; p < end; ++p) {
+          if (keep_pair(p, vx, vy, vz, r2)) {
+            ++local;
+          }
+        }
+        counts[static_cast<std::size_t>(t)] = local;
+      }
+      std::vector<std::size_t> offset(static_cast<std::size_t>(nt));
+      std::size_t running = 0;
+      for (int t = 0; t < nt; ++t) {
+        offset[static_cast<std::size_t>(t)] = running;
+        running += counts[static_cast<std::size_t>(t)];
+      }
+#pragma omp parallel num_threads(nt)
+      {
+        const int t = omp_get_thread_num();
+        const auto n = table.size();
+        const auto begin = n * static_cast<std::size_t>(t) / static_cast<std::size_t>(nt);
+        const auto end = n * static_cast<std::size_t>(t + 1) / static_cast<std::size_t>(nt);
+        std::size_t at = offset[static_cast<std::size_t>(t)];
+        double vx, vy, vz, r2;
+        for (std::size_t p = begin; p < end; ++p) {
+          if (!keep_pair(p, vx, vy, vz, r2)) {
+            continue;
+          }
+          if (at < cap) {
+            first[at] = table.first[p];
+            second[at] = table.second[p];
+            vector[3 * at] = vx;
+            vector[3 * at + 1] = vy;
+            vector[3 * at + 2] = vz;
+            distance[at] = std::sqrt(r2);
+          }
+          ++at;
+        }
+      }
+      kept = running;
+    } else
+#endif
     if (skip_outside) {
       for (std::size_t p = 0; p < table.size(); ++p) {
         if (table.distance[p] >= outside) {
