@@ -792,6 +792,15 @@ if has_fast_nlist
         get_option('default_library') == 'static'
         and host_system != 'windows'
     )
+    # A partial link is not safe for PE objects, so a static MinGW build
+    # keeps the rust archive beside librgpot and installs it with it.
+    # Meson then propagates it to the final link instead of handing it
+    # to ar.
+    _fast_beside = (
+        get_option('default_library') == 'static'
+        and host_system == 'windows'
+        and cppc.get_argument_syntax() != 'msvc'
+    )
     _fast_lib_name = 'librgpot_fastnlist.a'
     if _fast_as_object
         _fast_lib_name = 'rgpot_fastnlist.o'
@@ -846,8 +855,12 @@ if has_fast_nlist
         output: _fast_lib_name,
         build_by_default: true,
         console: true,
+        install: _fast_beside and not meson.is_subproject(),
+        install_dir: get_option('libdir'),
     )
     _args += ['-DRGPOT_HAS_FAST_NLIST']
+    fastnlist_pc_libs = []
+    fastnlist_beside_lib = []
     # Archive first, then the system libraries rustc named. The generated
     # source is what ninja builds; repeating its path here keeps that
     # order on a single-pass link. A response file is not used: gcc leaves
@@ -864,6 +877,16 @@ if has_fast_nlist
         fastnlist_native_dep = declare_dependency(
             link_args: _fast_native,
         )
+    elif _fast_beside
+        fastnlist_dep = declare_dependency(
+            link_with: _fastnlist_tgt,
+            link_args: _fast_native,
+        )
+        fastnlist_native_dep = fastnlist_dep
+        # Meson would list the archive after the system libraries it needs;
+        # naming it first keeps the order a single-pass link wants.
+        fastnlist_pc_libs = [_fastnlist_tgt] + _fast_native
+        fastnlist_beside_lib = [_fastnlist_tgt]
     else
         fastnlist_dep = declare_dependency(
             sources: [_fastnlist_tgt],
@@ -914,6 +937,8 @@ else
     fastnlist_native_dep = fastnlist_dep
     fastnlist_export_args = []
     fastnlist_umbrella_kwargs = {}
+    fastnlist_pc_libs = []
+    fastnlist_beside_lib = []
     message('fast pair list: disabled, classical pots use the C++ scan')
 endif
 
