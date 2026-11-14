@@ -1937,6 +1937,10 @@ if get_option('with_tests')
         elif test.get(0) == 'PeriodicImagesTest'
             # Supercells of up to 11k atoms, several on sheared cells.
             _timeout = 120
+        elif test.get(0) == 'PerAtomEnergyTest'
+            # Primitive supercells to 7 x 7 x 7 in five cell forms, and wide
+            # cells of up to 7k atoms in every neighbour mode.
+            _timeout = 120
         endif
         test(
             test.get(0),

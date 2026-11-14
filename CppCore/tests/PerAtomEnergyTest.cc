@@ -238,6 +238,125 @@ double sum(const std::vector<double> &v) {
   return std::accumulate(v.begin(), v.end(), 0.0);
 }
 
+// The symmetric primitive fcc rows, every lattice vector off-diagonal.
+Box fccRows(double a) {
+  const double h = 0.5 * a;
+  return {0.0, h, h, h, 0.0, h, h, h, 0.0};
+}
+
+Cell diamondPrimitive(double a, int type) {
+  Cell cell;
+  cell.box = fccRows(a);
+  cell.pos = {0.0, 0.0, 0.0, 0.25 * a, 0.25 * a, 0.25 * a};
+  cell.types = {type, type};
+  return cell;
+}
+
+// Rows replaced by the integer combinations in `m`, of determinant one.
+// The lattice and the atoms are unchanged.
+Cell rebased(const Cell &s, const int m[3][3]) {
+  Cell out = s;
+  for (int r = 0; r < 3; ++r) {
+    for (int c = 0; c < 3; ++c) {
+      out.box[static_cast<std::size_t>(3 * r + c)] =
+          m[r][0] * s.box[static_cast<std::size_t>(c)] +
+          m[r][1] * s.box[static_cast<std::size_t>(3 + c)] +
+          m[r][2] * s.box[static_cast<std::size_t>(6 + c)];
+    }
+  }
+  return out;
+}
+
+// Fractional coordinates of `r` in the rows of `h`.
+std::array<double, 3> fractional(const Box &h, const double *r) {
+  const double det = h[0] * (h[4] * h[8] - h[5] * h[7]) - h[1] * (h[3] * h[8] - h[5] * h[6]) +
+                     h[2] * (h[3] * h[7] - h[4] * h[6]);
+  const double inv[9] = {(h[4] * h[8] - h[5] * h[7]) / det, (h[2] * h[7] - h[1] * h[8]) / det,
+                         (h[1] * h[5] - h[2] * h[4]) / det, (h[5] * h[6] - h[3] * h[8]) / det,
+                         (h[0] * h[8] - h[2] * h[6]) / det, (h[2] * h[3] - h[0] * h[5]) / det,
+                         (h[3] * h[7] - h[4] * h[6]) / det, (h[1] * h[6] - h[0] * h[7]) / det,
+                         (h[0] * h[4] - h[1] * h[3]) / det};
+  std::array<double, 3> f{};
+  for (int k = 0; k < 3; ++k) {
+    f[static_cast<std::size_t>(k)] = r[0] * inv[k] + r[1] * inv[3 + k] + r[2] * inv[6 + k];
+  }
+  return f;
+}
+
+// Every atom moved into the cell along its rows, as ASE's wrap does.
+Cell wrapped(const Cell &s) {
+  Cell out = s;
+  for (std::size_t p = 0; p < s.size(); ++p) {
+    auto f = fractional(s.box, &s.pos[3 * p]);
+    for (double &x : f) {
+      x -= std::floor(x);
+    }
+    for (std::size_t c = 0; c < 3; ++c) {
+      out.pos[3 * p + c] = f[0] * s.box[c] + f[1] * s.box[3 + c] + f[2] * s.box[6 + c];
+    }
+  }
+  return out;
+}
+
+// Each atom moved by a different lattice vector, up to three cells away,
+// as an MD run that never wraps leaves them.
+Cell unwrapped(const Cell &s) {
+  Cell out = s;
+  for (std::size_t p = 0; p < s.size(); ++p) {
+    const int k[3] = {static_cast<int>(p % 3) - 1, static_cast<int>(p % 7) - 3,
+                      static_cast<int>(p % 2) * 2};
+    for (std::size_t c = 0; c < 3; ++c) {
+      out.pos[3 * p + c] += k[0] * s.box[c] + k[1] * s.box[3 + c] + k[2] * s.box[6 + c];
+    }
+  }
+  return out;
+}
+
+// The same crystal rotated so the rows are lower triangular, as ASE's
+// standard_form and LAMMPS write a cell: a along x, b in the xy plane.
+Cell lowerTriangular(const Cell &s) {
+  const double *a = &s.box[0];
+  const double *b = &s.box[3];
+  const double *c = &s.box[6];
+  const auto dot = [](const double *u, const double *v) {
+    return u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+  };
+  const double la = std::sqrt(dot(a, a));
+  const double bx = dot(a, b) / la;
+  const double by = std::sqrt(dot(b, b) - bx * bx);
+  const double cx = dot(a, c) / la;
+  const double cy = (dot(b, c) - bx * cx) / by;
+  const double cz = std::sqrt(dot(c, c) - cx * cx - cy * cy);
+  Cell out = s;
+  out.box = {la, 0.0, 0.0, bx, by, 0.0, cx, cy, cz};
+  for (std::size_t p = 0; p < s.size(); ++p) {
+    const auto f = fractional(s.box, &s.pos[3 * p]);
+    for (std::size_t k = 0; k < 3; ++k) {
+      out.pos[3 * p + k] = f[0] * out.box[k] + f[1] * out.box[3 + k] + f[2] * out.box[6 + k];
+    }
+  }
+  return out;
+}
+
+// Spacing of the lattice planes parallel to rows other than `axis`.
+double height(const Box &box, int axis) {
+  const double *a = &box[static_cast<std::size_t>(3 * ((axis + 1) % 3))];
+  const double *b = &box[static_cast<std::size_t>(3 * ((axis + 2) % 3))];
+  const double *c = &box[static_cast<std::size_t>(3 * axis)];
+  const double n[3] = {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2],
+                       a[0] * b[1] - a[1] * b[0]};
+  const double area = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+  return std::fabs(n[0] * c[0] + n[1] * c[1] + n[2] * c[2]) / area;
+}
+
+// `layers` copies of `cell` along its third row, then `vacuum` added to
+// that row along z: periodic in-plane and open across, a (T, T, F) slab.
+Cell slab(const Cell &cell, int layers, double vacuum) {
+  Cell out = repeat(cell, 1, 1, layers);
+  out.box[8] += vacuum;
+  return out;
+}
+
 /// The shares sum to the total to 1e-10 relative, and energy and forces
 /// are those of forceImpl. One thread walks the pairs in forceImpl's
 /// order, so those match bit for bit; threads only to rounding.
@@ -330,6 +449,54 @@ void requireAll(const Pot &pot, const Cell &cell) {
   requireSymmetric(pot, cell);
   Threads four(4);
   requireConsistent(pot, cell);
+}
+
+/// The shares of one call, after checking that they sum to its energy to
+/// 1e-10 and that energy and forces are forceImpl's. Both sums run over
+/// thousands of terms, so the bound scales with an energy past 1 eV.
+template <class Pot>
+Result summed(const Pot &pot, const Cell &cell) {
+  const Result ref = plain(pot, cell);
+  Result got = perAtom(pot, cell);
+  const double tol = 1e-10 * std::max(1.0, std::fabs(ref.energy));
+  CHECK(std::fabs(sum(got.energies) - got.energy) <= tol);
+  CHECK_THAT(got.energy, WithinAbs(ref.energy, tol));
+  for (std::size_t k = 0; k < ref.forces.size(); ++k) {
+    CHECK_THAT(got.forces[k], WithinAbs(ref.forces[k], 1e-10));
+  }
+  return got;
+}
+
+/// Atom by atom, the shares of two calls on one crystal.
+void requireSameShares(const Result &a, const Result &b, double tol) {
+  REQUIRE(a.energies.size() == b.energies.size());
+  for (std::size_t i = 0; i < a.energies.size(); ++i) {
+    CAPTURE(i);
+    CHECK_THAT(b.energies[i], WithinAbs(a.energies[i], tol));
+  }
+}
+
+/// Atom i of every copy in `big` has the share `small` gives atom i.
+void requireCopiesShare(const Result &small, const Result &big, double tol) {
+  const std::size_t n = small.energies.size();
+  REQUIRE(big.energies.size() % n == 0);
+  for (std::size_t p = 0; p < big.energies.size(); ++p) {
+    CAPTURE(p);
+    CHECK_THAT(big.energies[p], WithinAbs(small.energies[p % n], tol));
+  }
+}
+
+/// The shares of `cell` follow its atoms when the cell is written in
+/// lower-triangular form, when the atoms are wrapped into it, and when
+/// they are moved several cells out of it.
+template <class Pot>
+Result requireFormInvariant(const Pot &pot, const Cell &cell, double tol) {
+  const Result base = summed(pot, cell);
+  requireSameShares(base, summed(pot, lowerTriangular(cell)), tol);
+  requireSameShares(base, summed(pot, wrapped(cell)), tol);
+  requireSameShares(base, summed(pot, unwrapped(wrapped(cell))), tol);
+  requireSameShares(base, summed(pot, unwrapped(lowerTriangular(cell))), tol);
+  return base;
 }
 
 // Two atoms `r` apart, and a chain of three with both bonds `r` long and
@@ -453,8 +620,7 @@ TEST_CASE("Per-atom Stillinger-Weber and Tersoff shares sum to the total",
   const Cell drop = cluster(lattice(a, 2, kDiamond, {14}), 4.0, 40.0);
 
   // The conventional cube is under twice either cutoff, so its own images
-  // are neighbours. The supercell of a sheared primitive cell is not used
-  // here: these kernels do not yet agree with its thin primitive cell.
+  // are neighbours.
   Cell cube = lattice(a, 1, kDiamond, {14});
   rattle(cube, 0.05);
 
@@ -463,12 +629,14 @@ TEST_CASE("Per-atom Stillinger-Weber and Tersoff shares sum to the total",
   requireAll(sw, thin);
   requireAll(sw, drop);
   requireThinMatchesRepeat(sw, cube, 3, 3, 3, 1e-11);
+  requireThinMatchesRepeat(sw, thin, 5, 5, 5, 1e-11);
 
   const rgpot::TersoffSiC tersoff;
   requireAll(tersoff, bulk);
   requireAll(tersoff, thin);
   requireAll(tersoff, drop);
   requireThinMatchesRepeat(tersoff, cube, 3, 3, 3, 1e-11);
+  requireThinMatchesRepeat(tersoff, thin, 5, 5, 5, 1e-11);
   // Zincblende SiC: the C sites carry other parameters.
   Cell sic = lattice(4.36, 2, kDiamond, {14, 14, 14, 14, 6, 6, 6, 6});
   rattle(sic, 0.04);
@@ -576,4 +744,216 @@ TEST_CASE("Kernels without a per-atom split report it and refuse the call",
   const Cell two = dimer(2.35, 40.0, 14);
   REQUIRE_THROWS_AS(perAtom(sw, two), std::runtime_error);
   REQUIRE_THROWS_AS(perAtom(zbl, two), std::runtime_error);
+}
+
+TEST_CASE("Per-atom SW and Tersoff on diamond primitive supercells",
+          "[peratom][images][triclinic]") {
+  // Up to 4 x 4 x 4 the primitive supercell is thinner than twice either
+  // search and walks the image table; from 5 x 5 x 5 it takes the minimum
+  // image, binned by its face spacings.
+  const double a = 5.431;
+  const rgpot::StillingerWeberSi sw;
+  const rgpot::TersoffSiC tersoff;
+  const Cell cubic = lattice(a, 3, kDiamond, {14});
+  const double swSite = summed(sw, cubic).energy / static_cast<double>(cubic.size());
+  const double tSite = summed(tersoff, cubic).energy / static_cast<double>(cubic.size());
+
+  const Cell perfect = diamondPrimitive(a, 14);
+  Cell rattled = perfect;
+  rattle(rattled, 0.05);
+  for (const Cell *prim : {&perfect, static_cast<const Cell *>(&rattled)}) {
+    const Result swOne = summed(sw, *prim);
+    const Result tOne = summed(tersoff, *prim);
+    if (prim == &perfect) {
+      for (std::size_t i = 0; i < prim->size(); ++i) {
+        CHECK_THAT(swOne.energies[i], WithinAbs(swSite, 1e-10));
+        CHECK_THAT(tOne.energies[i], WithinAbs(tSite, 1e-10));
+      }
+    }
+    for (int n = 1; n <= 7; ++n) {
+      CAPTURE(prim == &rattled, n);
+      const Cell big = repeat(*prim, n, n, n);
+      requireCopiesShare(swOne, requireFormInvariant(sw, big, 1e-10), 1e-10);
+      requireCopiesShare(tOne, requireFormInvariant(tersoff, big, 1e-10), 1e-10);
+    }
+  }
+
+  Threads four(4);
+  for (const Cell &big : {repeat(rattled, 3, 3, 3), repeat(rattled, 7, 7, 7),
+                          lowerTriangular(repeat(rattled, 7, 7, 7))}) {
+    requireConsistent(sw, big);
+    requireConsistent(tersoff, big);
+  }
+}
+
+TEST_CASE("Per-atom shares on thin cells follow the atoms in any cell form",
+          "[peratom][images][thin]") {
+  // Each cell is under twice its search along some face spacing, so each
+  // walks the image table, and each starts off lower-triangular form.
+  const int skew[3][3] = {{1, 0, 0}, {1, 1, 0}, {-1, 2, 1}};
+  const rgpot::LJPot lj{rgpot::LJConfig{.u0 = 0.0104, .cutoff = 8.5, .psi = 3.40}};
+  const Cell ar = rebased(thinTriclinic(5.26, false, 18, 18), skew);
+  REQUIRE(height(ar.box, 0) < 2.0 * 8.5);
+  requireFormInvariant(lj, ar, 1e-10);
+  requireThinMatchesRepeat(lj, ar, 4, 4, 4, 1e-10);
+
+  const rgpot::MorsePot morse{
+      rgpot::MorseConfig{.De = 0.3429, .a = 1.3588, .re = 2.866, .cutoff = 6.0}};
+  requireFormInvariant(morse, rebased(thinTriclinic(3.61, false, 29, 29), skew), 1e-10);
+
+  rgpot::SuttonChenConfig scCfg;
+  scCfg.cutoff = 2.3;
+  scCfg.periodic = true;
+  const rgpot::SuttonChenPot sc{scCfg};
+  requireFormInvariant(sc, rebased(thinTriclinic(std::sqrt(2.0), false, 78, 78), skew), 1e-10);
+
+  const rgpot::fortranpots::EAMAlPot eamAl;
+  const Cell al = rebased(thinTriclinic(4.05, false, 13, 13), skew);
+  requireFormInvariant(eamAl, al, 1e-10);
+  requireThinMatchesRepeat(eamAl, al, 4, 4, 4, 1e-10);
+  const rgpot::fortranpots::CuH2Pot cuh2;
+  requireFormInvariant(cuh2, rebased(thinTriclinic(3.61, false, 29, 29), skew), 1e-10);
+
+  const rgpot::EAMPot eam;
+  Cell cube = lattice(4.05, 1, kFcc, {13});
+  rattle(cube, 0.03);
+  requireFormInvariant(eam, cube, 1e-10);
+  requireFormInvariant(eam, al, 1e-10);
+  requireThinMatchesRepeat(eam, al, 4, 4, 4, 1e-10);
+
+  Cell si = diamondPrimitive(5.431, 14);
+  rattle(si, 0.05);
+  const rgpot::StillingerWeberSi sw;
+  const rgpot::TersoffSiC tersoff;
+  requireFormInvariant(sw, si, 1e-10);
+  requireFormInvariant(tersoff, si, 1e-10);
+  requireFormInvariant(sw, rebased(si, skew), 1e-10);
+  requireFormInvariant(tersoff, rebased(si, skew), 1e-10);
+  Cell sic = thinTriclinic(4.36, true, 14, 6);
+  requireFormInvariant(tersoff, rebased(sic, skew), 1e-10);
+}
+
+TEST_CASE("Per-atom shares on (T, T, F) slabs", "[peratom][images][slab]") {
+  // Periodic in-plane, thin there, with vacuum wider than twice any search
+  // across. The in-plane rows are taken square and sheared.
+  const int shear[3][3] = {{1, 0, 0}, {1, 1, 0}, {0, 0, 1}};
+  const double vacuum = 20.0;
+  auto check = [&](const auto &pot, Cell base, int layers, bool sheared) {
+    Cell s = slab(base, layers, vacuum);
+    rattle(s, 0.04);
+    if (sheared) {
+      s = rebased(s, shear);
+    }
+    CAPTURE(sheared, s.size());
+    const Result one = requireFormInvariant(pot, s, 1e-10);
+    requireCopiesShare(one, summed(pot, repeat(s, 3, 3, 1)), 1e-10);
+    // The two faces differ from the middle layer.
+    double lo = one.energies[0];
+    double hi = one.energies[0];
+    for (double e : one.energies) {
+      lo = std::min(lo, e);
+      hi = std::max(hi, e);
+    }
+    CHECK(hi - lo > 1e-3 * std::fabs(lo));
+  };
+  for (bool sheared : {false, true}) {
+    check(rgpot::LJPot{rgpot::LJConfig{.u0 = 0.0104, .cutoff = 8.5, .psi = 3.40}},
+          lattice(5.26, 1, kFcc, {18}), 4, sheared);
+    rgpot::SuttonChenConfig scCfg;
+    scCfg.cutoff = 2.3;
+    scCfg.periodic = true;
+    check(rgpot::SuttonChenPot{scCfg}, lattice(std::sqrt(2.0), 1, kFcc, {78}), 5, sheared);
+    check(rgpot::fortranpots::EAMAlPot{}, lattice(4.05, 1, kFcc, {13}), 4, sheared);
+    check(rgpot::fortranpots::CuH2Pot{}, lattice(3.61, 1, kFcc, {29}), 4, sheared);
+    check(rgpot::EAMPot{}, lattice(4.05, 1, kFcc, {13}), 4, sheared);
+    check(rgpot::StillingerWeberSi{}, lattice(5.431, 1, kDiamond, {14}), 3, sheared);
+    check(rgpot::TersoffSiC{}, lattice(5.431, 1, kDiamond, {14}), 3, sheared);
+  }
+}
+
+TEST_CASE("Per-atom EAM on fcc primitive supercells", "[peratom][images][triclinic][eam]") {
+  // The symmetric fcc rows have zeros on the diagonal; the lower-triangular
+  // form has diagonal entries that are not periodic lengths of the lattice.
+  const double a = 4.05;
+  Cell perfect;
+  perfect.box = fccRows(a);
+  perfect.pos = {0.0, 0.0, 0.0};
+  perfect.types = {13};
+  // Two atoms in the cell doubled along its first row, the second moved
+  // off the lattice site at that row's midpoint.
+  Cell pair = perfect;
+  for (std::size_t k = 0; k < 3; ++k) {
+    pair.pos.push_back(pair.box[k]);
+    pair.box[k] *= 2.0;
+  }
+  pair.types.push_back(13);
+  const double push[3] = {0.031, -0.022, 0.043};
+  for (std::size_t k = 0; k < 3; ++k) {
+    pair.pos[3 + k] += push[k];
+  }
+  const Cell cube = lattice(a, 6, kFcc, {13});
+  const rgpot::EAMPot cxx;
+  const rgpot::fortranpots::EAMAlPot fortran;
+  auto run = [&](const auto &pot) {
+    const double site = summed(pot, cube).energy / static_cast<double>(cube.size());
+    const Result one = summed(pot, perfect);
+    CHECK_THAT(one.energies[0], WithinAbs(site, 1e-10));
+    const Result two = summed(pot, pair);
+    for (int n = 1; n <= 7; ++n) {
+      CAPTURE(n);
+      requireCopiesShare(one, requireFormInvariant(pot, repeat(perfect, n, n, n), 1e-10), 1e-10);
+      requireCopiesShare(two, requireFormInvariant(pot, repeat(pair, n, n, n), 1e-10), 1e-10);
+    }
+  };
+  run(cxx);
+  run(fortran);
+  for (auto mode : {rgpot::nlist::Mode::Stored, rgpot::nlist::Mode::Stream}) {
+    rgpot::EAMPot fixed;
+    fixed.setNeighbourMode(mode);
+    const Cell big = repeat(pair, 7, 7, 7);
+    requireSameShares(summed(cxx, big), summed(fixed, lowerTriangular(big)), 1e-10);
+    Threads four(4);
+    requireConsistent(fixed, big);
+    requireConsistent(fixed, unwrapped(lowerTriangular(big)));
+  }
+}
+
+TEST_CASE("Per-atom LJ and EAM shares of atoms outside a wide cell",
+          "[peratom][images][unwrapped]") {
+  // Wide enough for five or more bins along each axis, so the fast tiles
+  // add each bin's lattice shift; an atom outside the cell is binned by
+  // its image inside it.
+  Cell ar = lattice(5.26, 12, kFcc, {18});
+  rattle(ar, 0.05);
+  Cell al = lattice(4.05, 10, kFcc, {13});
+  rattle(al, 0.04);
+  for (int threads : {1, 4}) {
+    Threads use(threads);
+    for (auto mode : {rgpot::nlist::Mode::Auto, rgpot::nlist::Mode::Stored,
+                      rgpot::nlist::Mode::Stream}) {
+      CAPTURE(threads, static_cast<int>(mode));
+      rgpot::LJPot lj{rgpot::LJConfig{.u0 = 0.0104, .cutoff = 8.5, .psi = 3.40}};
+      lj.setNeighbourMode(mode);
+      requireSameShares(summed(lj, ar), summed(lj, unwrapped(ar)), 1e-10);
+      rgpot::EAMPot eam;
+      eam.setNeighbourMode(mode);
+      requireSameShares(summed(eam, al), summed(eam, unwrapped(al)), 1e-10);
+    }
+  }
+
+  // The same Al and Cu on a sheared basis of the lattice, wide by its face
+  // spacings, through the Fortran EAM kernels.
+  const int shear[3][3] = {{1, 0, 0}, {1, 1, 0}, {0, 0, 1}};
+  const rgpot::fortranpots::EAMAlPot eamAl;
+  Cell alSmall = lattice(4.05, 6, kFcc, {13});
+  rattle(alSmall, 0.04);
+  const Result alRef = summed(eamAl, alSmall);
+  requireSameShares(alRef, summed(eamAl, unwrapped(alSmall)), 1e-10);
+  requireSameShares(alRef, requireFormInvariant(eamAl, rebased(alSmall, shear), 1e-10), 1e-10);
+  const rgpot::fortranpots::CuH2Pot cuh2;
+  Cell cu = lattice(3.61, 6, kFcc, {29});
+  rattle(cu, 0.04);
+  const Result cuRef = summed(cuh2, cu);
+  requireSameShares(cuRef, summed(cuh2, unwrapped(cu)), 1e-10);
+  requireSameShares(cuRef, requireFormInvariant(cuh2, rebased(cu, shear), 1e-10), 1e-10);
 }
