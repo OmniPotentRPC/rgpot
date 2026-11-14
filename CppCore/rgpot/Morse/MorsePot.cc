@@ -47,6 +47,15 @@ namespace rgpot {
  * @warning The box is assumed to be orthogonal.
  */
 void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const int asked = nlist::threadsRequested();
+  if (asked <= 1 || in.nAtoms <= 256) {
+    forceLegacy(in, out);
+    return;
+  }
+  forceParallel(in, out);
+}
+
+void MorsePot::forceLegacy(const ForceInput &in, ForceOut *out) const {
   const auto N = static_cast<long>(in.nAtoms);
   const double *R = in.pos;
   const double *box = in.box;

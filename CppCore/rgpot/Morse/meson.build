@@ -5,6 +5,7 @@
 morse = static_library(
     'morse',
     'MorsePot.cc',
+    'MorseWide.cc',
     dependencies: _deps,
     cpp_args: _args + _fp_contract_off + _vector_loops,
     include_directories: ['../../'],

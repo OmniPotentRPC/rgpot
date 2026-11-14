@@ -118,6 +118,11 @@ public:
   }
 
 private:
+  /// The one-thread walk, unchanged.
+  void forceLegacy(const ForceInput &in, ForceOut *out) const;
+  /// Batched exp and a reused pair buffer. Thread order matches the half list.
+  void forceParallel(const ForceInput &in, ForceOut *out) const;
+
   /// Bump when the kernel numerics change, so stale cache entries die.
   static constexpr uint64_t kKernelVersion = 2;
 
