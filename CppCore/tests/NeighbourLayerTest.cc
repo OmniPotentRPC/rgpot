@@ -1,12 +1,14 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <random>
 #include <utility>
 #include <vector>
 
@@ -451,4 +453,282 @@ TEST_CASE("periodic and long-cutoff streams match the direct pair sum", "[nlist]
   rgpot::nlist::Neighbours tiles;
   loadCells(tiles, wide, side, side, side, long_cut, true, rgpot::nlist::Mode::Stream);
   requireSamePairs(walkedPairs(tiles, wide.size() / 3, long_cut), many);
+}
+
+namespace {
+
+/// Atom pair and integer lattice image: the vector is r_i - r_j - n H.
+using ImageKey = std::array<std::int64_t, 5>;
+
+struct Lattice {
+  double h[9];
+  double dual[9];
+};
+
+Lattice lattice(const double box[9]) {
+  Lattice l{};
+  std::memcpy(l.h, box, sizeof(l.h));
+  const double *a = box;
+  const double *b = box + 3;
+  const double *c = box + 6;
+  const double bc[3] = {b[1] * c[2] - b[2] * c[1], b[2] * c[0] - b[0] * c[2],
+                        b[0] * c[1] - b[1] * c[0]};
+  const double ca[3] = {c[1] * a[2] - c[2] * a[1], c[2] * a[0] - c[0] * a[2],
+                        c[0] * a[1] - c[1] * a[0]};
+  const double ab[3] = {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2],
+                        a[0] * b[1] - a[1] * b[0]};
+  const double vol = a[0] * bc[0] + a[1] * bc[1] + a[2] * bc[2];
+  for (int k = 0; k < 3; ++k) {
+    l.dual[k] = bc[k] / vol;
+    l.dual[3 + k] = ca[k] / vol;
+    l.dual[6 + k] = ab[k] / vol;
+  }
+  return l;
+}
+
+/// Coefficients of `v` on the rows of the cell.
+void rowsOf(const Lattice &l, const double v[3], double f[3]) {
+  for (int k = 0; k < 3; ++k) {
+    f[k] = l.dual[3 * k] * v[0] + l.dual[3 * k + 1] * v[1] + l.dual[3 * k + 2] * v[2];
+  }
+}
+
+/// Every image of every partner within `search`, with its squared length.
+/// The image range on row k is exact: a vector shorter than `search` has
+/// a coefficient within `search |b_k|` of the fractional separation.
+std::map<ImageKey, double> allImages(const std::vector<double> &pos, const Lattice &l,
+                                     const std::array<bool, 3> &periodic, double search) {
+  std::map<ImageKey, double> out;
+  const std::size_t n = pos.size() / 3;
+  double reach[3];
+  for (int k = 0; k < 3; ++k) {
+    reach[k] = search * std::sqrt(l.dual[3 * k] * l.dual[3 * k] +
+                                  l.dual[3 * k + 1] * l.dual[3 * k + 1] +
+                                  l.dual[3 * k + 2] * l.dual[3 * k + 2]);
+  }
+  for (std::size_t i = 0; i < n; ++i) {
+    for (std::size_t j = 0; j < n; ++j) {
+      const double d[3] = {pos[3 * i] - pos[3 * j], pos[3 * i + 1] - pos[3 * j + 1],
+                           pos[3 * i + 2] - pos[3 * j + 2]};
+      double f[3];
+      rowsOf(l, d, f);
+      std::int64_t lo[3] = {0, 0, 0};
+      std::int64_t hi[3] = {0, 0, 0};
+      for (int k = 0; k < 3; ++k) {
+        if (periodic[static_cast<std::size_t>(k)]) {
+          lo[k] = static_cast<std::int64_t>(std::ceil(f[k] - reach[k])) - 1;
+          hi[k] = static_cast<std::int64_t>(std::floor(f[k] + reach[k])) + 1;
+        }
+      }
+      for (std::int64_t a = lo[0]; a <= hi[0]; ++a) {
+        for (std::int64_t b = lo[1]; b <= hi[1]; ++b) {
+          for (std::int64_t c = lo[2]; c <= hi[2]; ++c) {
+            if (i == j && a == 0 && b == 0 && c == 0) {
+              continue;
+            }
+            double r2 = 0;
+            for (int x = 0; x < 3; ++x) {
+              const double v = d[x] - static_cast<double>(a) * l.h[x] -
+                               static_cast<double>(b) * l.h[3 + x] -
+                               static_cast<double>(c) * l.h[6 + x];
+              r2 += v * v;
+            }
+            if (r2 <= search * search * (1 + 1e-9)) {
+              out[{static_cast<std::int64_t>(i), static_cast<std::int64_t>(j), a, b, c}] = r2;
+            }
+          }
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/// The nearest image of each pair from `all`, unless a second image is as
+/// near to within rounding.
+std::map<ImageKey, double> nearestImages(const std::map<ImageKey, double> &all,
+                                         std::map<ImageKey, double> &tied) {
+  std::map<std::pair<std::int64_t, std::int64_t>, std::vector<std::pair<double, ImageKey>>> by;
+  for (const auto &item : all) {
+    if (item.first[0] != item.first[1]) {
+      by[{item.first[0], item.first[1]}].push_back({item.second, item.first});
+    }
+  }
+  std::map<ImageKey, double> out;
+  for (auto &pair : by) {
+    auto &v = pair.second;
+    std::sort(v.begin(), v.end());
+    if (v.size() > 1 && v[1].first <= v[0].first * (1 + 1e-9)) {
+      tied[v[0].second] = v[0].first;
+      tied[v[1].second] = v[1].first;
+      continue;
+    }
+    out[v[0].second] = v[0].first;
+  }
+  return out;
+}
+
+/// The walk's pairs keyed by the lattice image each vector implies.
+std::map<ImageKey, double> walkedImages(const rgpot::nlist::Neighbours &cells,
+                                        const std::vector<double> &pos, const Lattice &l,
+                                        double search) {
+  std::map<ImageKey, double> out;
+  cells.forDirected(0, static_cast<std::int64_t>(pos.size() / 3),
+                    [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                        double r2) {
+                      if (r2 > search * search) {
+                        return;
+                      }
+                      const auto a = static_cast<std::size_t>(i);
+                      const auto b = static_cast<std::size_t>(j);
+                      const double shift[3] = {pos[3 * a] - pos[3 * b] - dx,
+                                               pos[3 * a + 1] - pos[3 * b + 1] - dy,
+                                               pos[3 * a + 2] - pos[3 * b + 2] - dz};
+                      double f[3];
+                      rowsOf(l, shift, f);
+                      const ImageKey key{i, j, std::llround(f[0]), std::llround(f[1]),
+                                         std::llround(f[2])};
+                      REQUIRE(out.insert({key, r2}).second);
+                    });
+  return out;
+}
+
+/// `got` holds every pair of `ref` clear of the search radius, and nothing
+/// that is not in `ref` or `fringe`.
+void requireSameImages(const std::map<ImageKey, double> &got,
+                       const std::map<ImageKey, double> &ref,
+                       const std::map<ImageKey, double> &fringe, double search) {
+  const double edge = search * search;
+  for (const auto &item : ref) {
+    if (item.second < edge * (1 - 1e-9)) {
+      INFO("pair " << item.first[0] << " " << item.first[1] << " image " << item.first[2]
+                   << " " << item.first[3] << " " << item.first[4]);
+      REQUIRE(got.count(item.first) == 1);
+    }
+  }
+  for (const auto &item : got) {
+    const auto it = ref.find(item.first);
+    if (it == ref.end()) {
+      INFO("extra pair " << item.first[0] << " " << item.first[1]);
+      REQUIRE(fringe.count(item.first) == 1);
+      continue;
+    }
+    REQUIRE(std::abs(item.second - it->second) <= 1e-9 * std::max(1.0, it->second));
+  }
+}
+
+} // namespace
+
+TEST_CASE("sheared stored lists match every image of a brute force",
+          "[nlist][stored][triclinic]") {
+  setThreads("1");
+  std::mt19937_64 rng(20260514u);
+  const auto uniform = [&rng] { return static_cast<double>(rng() >> 11) * 0x1p-53; };
+  const double cutoff = 3.2;
+  const double skin = 0.4;
+  const double search = cutoff + skin;
+  int stored_bins = 0;
+  int image_tables = 0;
+  for (int trial = 0; trial < 36; ++trial) {
+    const int kind = trial % 6;
+    double box[9] = {};
+    const double side = 9.0 + 9.0 * uniform();
+    for (int k = 0; k < 3; ++k) {
+      box[4 * k] = side * (0.7 + 0.6 * uniform());
+    }
+    // Lower-triangular tilts up to half a row, strong ones up to three
+    // rows, then full rows, a thin slab and a thin needle.
+    const double tilt = kind == 0 ? 0.5 : kind == 1 ? 3.0 : 1.5;
+    box[3] = tilt * (2 * uniform() - 1) * box[0];
+    box[6] = tilt * (2 * uniform() - 1) * box[0];
+    box[7] = tilt * (2 * uniform() - 1) * box[4];
+    if (kind == 2) {
+      box[1] = 0.4 * (2 * uniform() - 1) * box[4];
+      box[2] = 0.3 * (2 * uniform() - 1) * box[8];
+      box[5] = 0.3 * (2 * uniform() - 1) * box[8];
+    }
+    if (kind == 3) {
+      box[8] = 2.0 + 3.0 * uniform();
+    }
+    if (kind == 4) {
+      box[0] = 2.5 + 2.0 * uniform();
+      box[4] = 3.0 + 2.0 * uniform();
+    }
+    if (box[3] == 0.0) {
+      box[3] = 0.25 * box[0];
+    }
+    std::array<bool, 3> periodic{{true, true, true}};
+    if (kind == 5) {
+      periodic[static_cast<std::size_t>(trial % 3)] = false;
+    }
+    const Lattice l = lattice(box);
+    const double vol = std::abs(box[0] * (box[4] * box[8] - box[5] * box[7]) -
+                                box[1] * (box[3] * box[8] - box[5] * box[6]) +
+                                box[2] * (box[3] * box[7] - box[4] * box[6]));
+    const auto n = static_cast<std::size_t>(std::clamp(vol * 0.05, 12.0, 700.0));
+    // Some atoms sit outside the cell, up to a third of a row away.
+    std::vector<double> pos(3 * n);
+    for (std::size_t a = 0; a < n; ++a) {
+      double f[3];
+      for (double &v : f) {
+        v = trial % 2 == 0 ? uniform() : 1.6 * uniform() - 0.3;
+      }
+      for (int x = 0; x < 3; ++x) {
+        pos[3 * a + static_cast<std::size_t>(x)] = f[0] * box[x] + f[1] * box[3 + x] +
+                                                   f[2] * box[6 + x];
+      }
+    }
+    INFO("trial " << trial << " kind " << kind << " atoms " << n);
+    const auto all = allImages(pos, l, periodic, search);
+    std::map<ImageKey, double> tied;
+    const auto nearest = nearestImages(all, tied);
+    for (const bool images : {true, false}) {
+      for (const auto mode : {rgpot::nlist::Mode::Stored, rgpot::nlist::Mode::Stream}) {
+        rgpot::nlist::Spec spec;
+        spec.cutoff = cutoff;
+        spec.skin = skin;
+        spec.periodic = periodic;
+        spec.image = rgpot::nlist::Image::Round;
+        spec.mode = mode;
+        spec.images = images;
+        rgpot::nlist::Neighbours cells;
+        cells.update(pos.data(), n, box, spec);
+        const auto got = walkedImages(cells, pos, l, search);
+        if (cells.images()) {
+          ++image_tables;
+          requireSameImages(got, all, all, search);
+          continue;
+        }
+        requireSameImages(got, nearest, tied, search);
+        if (mode != rgpot::nlist::Mode::Stored) {
+          continue;
+        }
+        REQUIRE(!cells.streaming());
+        ++stored_bins;
+        // The stored index is the pair set of the walk, in increasing order.
+        std::map<std::pair<std::int64_t, std::int64_t>, int> index;
+        const auto &off = cells.offsets();
+        const auto &nbr = cells.neighbours();
+        REQUIRE(off.size() == n + 1);
+        for (std::size_t a = 0; a < n; ++a) {
+          for (auto q = off[a]; q < off[a + 1]; ++q) {
+            if (q > off[a]) {
+              REQUIRE(nbr[static_cast<std::size_t>(q - 1)] < nbr[static_cast<std::size_t>(q)]);
+            }
+            index[{static_cast<std::int64_t>(a), nbr[static_cast<std::size_t>(q)]}] = 1;
+          }
+        }
+        for (const auto &item : got) {
+          REQUIRE(index.count({item.first[0], item.first[1]}) == 1);
+        }
+        for (const auto &item : nearest) {
+          if (item.second < search * search * (1 - 1e-9)) {
+            REQUIRE(index.count({item.first[0], item.first[1]}) == 1);
+          }
+        }
+      }
+    }
+  }
+  REQUIRE(stored_bins > 12);
+  REQUIRE(image_tables > 6);
 }
