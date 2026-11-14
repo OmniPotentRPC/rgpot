@@ -16,8 +16,11 @@ only (F5). :meth:`calculate` and ``get_property`` mutate ``self.atoms``
 and ``self.results`` and must not run on two threads at once. The
 potential object underneath keeps one workspace per calling thread (F2).
 
-The bound kernels are fully periodic. A structure with every periodic
-flag false is a cluster: the kernel receives a cubic box whose side is
+The bound kernels are fully periodic and fold each pair to its minimum
+image. A periodic cell with a height under twice the kernel cutoff is
+evaluated as a supercell that clears it, and the results are mapped
+back onto the caller's atoms. A structure with every periodic flag
+false is a cluster: the kernel receives a cubic box whose side is
 at least 100 Angstrom and at least the cluster extent plus twice the
 kernel cutoff, so a periodic image cannot enter the cutoff. Energy and
 forces do not depend on the caller's cell. Stress does: it is the
@@ -249,8 +252,22 @@ def _caps_of(kernel: Any) -> dict[str, Any]:
     return dict(caps()) if callable(caps) else {}
 
 
+def _expr_term_cutoff(term: Any) -> float:
+    """Cutoff of one ExprPot child spec. D3 and D4 children are free-boundary."""
+    if isinstance(term, dict):
+        if "cutoff" in term:
+            return float(term["cutoff"])
+        kind = term.get("kind", term.get("type"))
+    else:
+        kind = term
+    factory = {"lj": "LJPot", "morse": "MorsePot"}.get(str(kind))
+    if factory is None:
+        return 0.0
+    return float(_FACTORY_PARAMETERS[factory][1]["cutoff"])
+
+
 def _kernel_cutoff(potential: Any, params: dict[str, Any] | None = None) -> float:
-    """Cutoff the open-cell box has to clear, in Angstrom."""
+    """Interaction range of the kernel in Angstrom, 0 when unknown."""
     config = getattr(potential, "config", None)
     if callable(config):
         cfg = config()
@@ -258,9 +275,7 @@ def _kernel_cutoff(potential: Any, params: dict[str, Any] | None = None) -> floa
             return float(cfg["cutoff"])
     params = params or {}
     cutoffs = [
-        float(term["cutoff"])
-        for term in dict(params.get("terms") or {}).values()
-        if isinstance(term, dict) and "cutoff" in term
+        _expr_term_cutoff(term) for term in dict(params.get("terms") or {}).values()
     ]
     if "cutoff" in params:
         cutoffs.append(float(params["cutoff"]))
@@ -316,6 +331,45 @@ def _box(positions: Any, cell: Any, pbc: Any, cutoff: float) -> np.ndarray:
             f"kernels are fully periodic; non-periodic axes: {joined}"
         )
     return np.ascontiguousarray(np.asarray(cell, dtype=np.float64).reshape(3, 3))
+
+
+def _replicas(cell: Any, pbc: Any, cutoff: float) -> np.ndarray:
+    """Repeats per cell vector that make every cell height at least 2*cutoff.
+
+    The kernels fold each pair to its minimum image, which counts every
+    neighbour once only when the cutoff is under half of each height.
+    """
+    ones = np.ones(3, dtype=np.int64)
+    if not cutoff > 0.0 or not bool(_pbc_flags(pbc).all()):
+        return ones
+    matrix = np.asarray(cell, dtype=np.float64).reshape(3, 3)
+    volume = _cell_volume(matrix)
+    if not volume > 0.0:
+        return ones
+    heights = np.array(
+        [
+            volume / np.linalg.norm(np.cross(matrix[(i + 1) % 3], matrix[(i + 2) % 3]))
+            for i in range(3)
+        ]
+    )
+    return np.maximum(ones, np.ceil(2.0 * cutoff / heights - 1e-9).astype(np.int64))
+
+
+def _supercell(
+    positions: np.ndarray, numbers: np.ndarray, box: np.ndarray, reps: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Tile the cell ``reps`` times. The original atoms come first."""
+    grid = np.stack(
+        np.meshgrid(*(np.arange(n) for n in reps), indexing="ij"), axis=-1
+    ).reshape(-1, 3)
+    shifts = grid.astype(np.float64) @ box
+    pos = (positions[None, :, :] + shifts[:, None, :]).reshape(-1, 3)
+    num = np.tile(numbers, len(grid))
+    return (
+        np.ascontiguousarray(pos),
+        np.ascontiguousarray(num, dtype=np.int32),
+        np.ascontiguousarray(box * reps[:, None].astype(np.float64)),
+    )
 
 
 def _cell_volume(cell: Any) -> float:
@@ -497,15 +551,46 @@ class RgpotCalculator(Calculator):
         pos = _as_f64(positions, "positions")
         num = np.ascontiguousarray(np.asarray(numbers, dtype=np.int32))
         user_cell = np.asarray(cell, dtype=np.float64).reshape(3, 3)
+        kernel_in = self._kernel_input(pos, num, user_cell, pbc)
+        raw = self._kernel.evaluate(*kernel_in[:3])
+        return self._from_kernel(raw, len(num), kernel_in[2], user_cell, pbc)
+
+    def _kernel_input(
+        self, pos: np.ndarray, num: np.ndarray, user_cell: np.ndarray, pbc: Any
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Positions, numbers and box the kernel sees for one structure.
+
+        A periodic cell thinner than twice the cutoff is tiled into a
+        supercell first, so the minimum-image kernels see every neighbour.
+        """
         self._check_periodic(pbc)
         box = _box(pos, user_cell, pbc, self._cutoff)
-        raw = self._kernel.evaluate(pos, num, box)
-        energy = float(raw["energy"])
-        forces = np.ascontiguousarray(raw["forces"], dtype=np.float64)
+        reps = _replicas(box, pbc, self._cutoff)
+        if int(np.prod(reps)) == 1:
+            return pos, num, box
+        return _supercell(pos, num, box, reps)
+
+    @staticmethod
+    def _from_kernel(
+        raw: dict[str, Any],
+        n_atoms: int,
+        box: np.ndarray,
+        user_cell: np.ndarray,
+        pbc: Any,
+    ) -> dict[str, Any]:
+        """Results for the caller's atoms from a kernel result on ``box``.
+
+        A supercell holds whole copies of the cell, so the energy is
+        divided by the copy count, forces are those of the first copy, and
+        the stress of the tiled cell is already the stress of one cell.
+        """
+        forces = np.asarray(raw["forces"], dtype=np.float64).reshape(-1, 3)
+        copies = forces.shape[0] // n_atoms if n_atoms else 1
+        energy = float(raw["energy"]) / copies
         out: dict[str, Any] = {
             "energy": energy,
             "free_energy": energy,
-            "forces": forces,
+            "forces": np.ascontiguousarray(forces[:n_atoms]),
         }
         stress = raw.get("stress")
         if stress is not None:
@@ -514,7 +599,9 @@ class RgpotCalculator(Calculator):
                 out["stress"] = voigt
         energies = raw.get("energies")
         if energies is not None:
-            out["energies"] = np.ascontiguousarray(energies, dtype=np.float64)
+            out["energies"] = np.ascontiguousarray(
+                np.asarray(energies, dtype=np.float64)[:n_atoms]
+            )
         return out
 
     def get_hessian(self, atoms: Atoms) -> np.ndarray:
@@ -558,14 +645,17 @@ class RgpotCalculator(Calculator):
             # copy was comparable to an EAM evaluation of Pt7. The C++
             # batch copies into BatchInput before it detaches, so the
             # Atoms objects are not mutated and are not read again.
-            positions.append(_as_f64(atoms.positions, "positions"))
-            numbers.append(np.ascontiguousarray(atoms.numbers, dtype=np.int32))
+            pos, num, box = self._kernel_input(
+                _as_f64(atoms.positions, "positions"),
+                np.ascontiguousarray(atoms.numbers, dtype=np.int32),
+                np.asarray(atoms.cell.array, dtype=np.float64),
+                atoms.pbc,
+            )
+            positions.append(pos)
+            numbers.append(num)
+            boxes.append(box)
             user_cells.append(np.asarray(atoms.cell.array, dtype=np.float64))
             pbcs.append(atoms.pbc)
-            self._check_periodic(atoms.pbc)
-            boxes.append(
-                _box(positions[-1], user_cells[-1], atoms.pbc, self._cutoff)
-            )
         batch = getattr(self._kernel, "evaluate_batch", None)
         if batch is not None:
             raw_rows = batch(positions, numbers, boxes, int(threads))
@@ -576,29 +666,24 @@ class RgpotCalculator(Calculator):
             ]
         rows: list[dict[str, Any]] = []
         for index, (atoms, raw) in enumerate(zip(frames_list, raw_rows)):
-            energy = float(raw["energy"])
-            forces = np.ascontiguousarray(raw["forces"], dtype=np.float64)
-            row: dict[str, Any] = {}
-            if "energy" in wanted or "free_energy" in wanted:
-                row["energy"] = energy
-                row["free_energy"] = energy
-            if "forces" in wanted:
-                row["forces"] = forces
             if "stress" in wanted and "stress" in self.implemented_properties:
                 # BatchEvaluator returns energy and forces. Stress comes
                 # from the same kernel on the copied geometry.
                 stress_eval = self._kernel.evaluate(
                     positions[index], numbers[index], boxes[index]
                 )
-                if stress_eval.get("stress") is not None:
-                    voigt = _ase_stress(
-                        stress_eval["stress"],
-                        boxes[index],
-                        user_cells[index],
-                        pbcs[index],
-                    )
-                    if voigt is not None:
-                        row["stress"] = voigt
+                raw = {**raw, "stress": stress_eval.get("stress")}
+            result = self._from_kernel(
+                raw, len(atoms), boxes[index], user_cells[index], pbcs[index]
+            )
+            row: dict[str, Any] = {}
+            if "energy" in wanted or "free_energy" in wanted:
+                row["energy"] = result["energy"]
+                row["free_energy"] = result["free_energy"]
+            if "forces" in wanted:
+                row["forces"] = result["forces"]
+            if "stress" in wanted and "stress" in result:
+                row["stress"] = result["stress"]
             rows.append(row)
             if attach:
                 spc_kw: dict[str, Any] = {}

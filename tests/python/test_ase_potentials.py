@@ -134,6 +134,19 @@ def sic_zincblende() -> Atoms:
     return _distort(bulk("SiC", "zincblende", a=4.36, cubic=True).repeat(2), seed=5)
 
 
+def _small(atoms: Atoms, seed: int) -> Callable[[], Atoms]:
+    """A sheared, rattled cell thinner than twice the potential's cutoff."""
+    return lambda: _distort(atoms.copy(), seed=seed, rattle=0.05)
+
+
+AR_SMALL = _small(bulk("Ar", "fcc", a=LJ_A), seed=11)
+PT_SMALL = _small(bulk("Pt", "fcc", a=3.92), seed=12)
+AL_SMALL = _small(bulk("Al", "fcc", a=4.05), seed=13)
+SI_SMALL = _small(bulk("Si", "diamond", a=5.431), seed=14)
+SIC_SMALL = _small(bulk("SiC", "zincblende", a=4.36), seed=15)
+CU_SMALL = _small(bulk("Cu", "fcc", a=3.61), seed=16)
+
+
 def _fe_he(repeat: int) -> Atoms:
     a = 2.87
     atoms = bulk("Fe", "bcc", a=a, cubic=True).repeat(repeat)
@@ -276,7 +289,9 @@ class Case:
     False for a potential with no minimum (dispersion alone collapses),
     which gets a bounded number of optimizer steps instead.
     ``tweak`` is a parameter change for set(). ``new_numbers`` gives
-    other valid atomic numbers for the cache check.
+    other valid atomic numbers for the cache check. ``small`` is a cell
+    thinner than twice the cutoff; it is None where the calculator does
+    not know the range (WaterH has none, the i-PI driver owns its images).
     """
 
     name: str
@@ -290,6 +305,7 @@ class Case:
     relaxes: bool = True
     ipi: bool = False
     force_atol: float = 1e-5
+    small: Callable[[], Atoms] | None = None
 
 
 def _needs(attr: str) -> Callable[[], str | None]:
@@ -320,38 +336,50 @@ def _needs_ipi() -> str | None:
     return None
 
 
-LJ_PARAMS = {"u0": 1.0, "psi": 1.0, "cutoff": 2.5, "switch_width": 0.5}
-MD_LJ = {"u0": 1.0, "psi": 1.0, "cutoff": 2.5}
+# A 2.2 cutoff is under half of lj_fcc's 4.76 Angstrom cell, which then
+# needs no supercell, and it is the cutoff of the i-PI test driver.
+LJ_PARAMS = {"u0": 1.0, "psi": 1.0, "cutoff": 2.2, "switch_width": 0.5}
+MD_LJ = {"u0": 1.0, "psi": 1.0, "cutoff": 2.2}
 SMOOTH = {"cutoff": 6.0, "switch_width": 1.0}
 
 CASES = [
-    Case("lj", "lj", lj7, lj_fcc, lambda: None, LJ_PARAMS, {"u0": 1.5}, _all_to(2)),
+    Case(
+        "lj", "lj", lj7, lj_fcc, lambda: None, LJ_PARAMS, {"u0": 1.5},
+        _all_to(2), small=AR_SMALL,
+    ),
     Case(
         "lj_cluster", "lj_cluster", lj7, None, lambda: None, LJ_PARAMS,
         {"psi": 1.05}, _all_to(2),
     ),
     Case(
         "morse", "morse", pt_cluster, pt_fcc, lambda: None,
-        {"cutoff": 6.0, "switch_width": 1.0}, {"De": 0.8},
+        {"cutoff": 6.0, "switch_width": 1.0}, {"De": 0.8}, small=PT_SMALL,
     ),
-    Case("eam_al", "eam_al", al_cluster, al_fcc, _needs_fortran),
-    Case("sw", "sw", si_cluster, si_diamond, _needs_fortran),
+    Case("eam_al", "eam_al", al_cluster, al_fcc, _needs_fortran, small=AL_SMALL),
+    Case("sw", "sw", si_cluster, si_diamond, _needs_fortran, small=SI_SMALL),
     Case(
         "stillinger_weber_si", "stillinger_weber_si", si_cluster, si_diamond,
-        _needs("StillingerWeberSi"),
+        _needs("StillingerWeberSi"), small=SI_SMALL,
     ),
-    Case("edip", "edip", si_cluster, si_diamond, _needs_fortran),
-    Case("lenosky", "lenosky", si_cluster, si_diamond, _needs_fortran),
-    Case("tersoff", "tersoff", si_cluster, si_diamond, _needs_fortran),
+    Case("edip", "edip", si_cluster, si_diamond, _needs_fortran, small=SI_SMALL),
+    Case(
+        "lenosky", "lenosky", si_cluster, si_diamond, _needs_fortran,
+        small=SI_SMALL,
+    ),
+    Case(
+        "tersoff", "tersoff", si_cluster, si_diamond, _needs_fortran,
+        small=SI_SMALL,
+    ),
     Case(
         "tersoff_sic", "tersoff_sic", sic_cluster, sic_zincblende,
         _needs("TersoffSiC"), new_numbers=_swap_first(14, 6),
+        small=SIC_SMALL,
     ),
     Case(
         "fehe", "fehe", fehe_cluster, fehe_bcc, _needs_fortran,
-        new_numbers=_swap_first(26, 2),
+        new_numbers=_swap_first(26, 2), small=lambda: _distort(_fe_he(1), 17),
     ),
-    Case("cuh2", "cuh2", cuh2_cluster, cuh2_fcc, _needs_fortran),
+    Case("cuh2", "cuh2", cuh2_cluster, cuh2_fcc, _needs_fortran, small=CU_SMALL),
     Case("water_h", "water_h", water_h_cluster, water_h_box, _needs_fortran),
     # D3Pot and D4Pot build a molecular structure: free boundaries only.
     Case(
@@ -372,18 +400,19 @@ CASES = [
             },
         },
         {"expression": "lj + morse"},
+        small=PT_SMALL,
     ),
     Case(
         "gromacs", "gromacs", lj7, lj_fcc, lambda: None, MD_LJ, {"u0": 1.5},
-        _all_to(2),
+        _all_to(2), small=AR_SMALL,
     ),
     Case(
         "openmm", "openmm", lj7, lj_fcc, lambda: None, MD_LJ, {"u0": 1.5},
-        _all_to(2),
+        _all_to(2), small=AR_SMALL,
     ),
     Case(
         "lammps", "lammps", lj7, lj_fcc, _needs_lammps, MD_LJ, {"u0": 1.5},
-        _all_to(2),
+        _all_to(2), small=AR_SMALL,
     ),
     Case("ipi", "ipi", lj7, lj_fcc, _needs_ipi, ipi=True),
 ]
@@ -564,6 +593,48 @@ def test_energy_is_invariant_under_translation(case: Case, make_calc) -> None:
             energy, rel=1e-10, abs=1e-10
         )
         np.testing.assert_allclose(moved.get_forces(), forces, atol=1e-8)
+
+
+SMALL_CASES = [case for case in CASES if case.small is not None]
+
+
+@pytest.mark.parametrize(
+    "case", SMALL_CASES, ids=[case.name for case in SMALL_CASES], indirect=True
+)
+def test_small_cell_matches_its_supercell(case: Case, make_calc) -> None:
+    """A cell thinner than twice the cutoff sees every periodic image.
+
+    The 8x8x8 repeat is at least twice the cutoff thick, so it is the
+    reference. ASE's own calculators give the same per-atom results.
+    """
+    assert case.small is not None
+    small = case.small()
+    big = small.repeat(8)
+    small.calc = make_calc()
+    big.calc = make_calc()
+    n = len(small)
+    assert small.get_potential_energy() / n == pytest.approx(
+        big.get_potential_energy() / len(big), rel=1e-9, abs=1e-9
+    )
+    np.testing.assert_allclose(small.get_forces(), big.get_forces()[:n], atol=1e-8)
+    if "stress" in small.calc.implemented_properties:
+        np.testing.assert_allclose(small.get_stress(), big.get_stress(), atol=1e-8)
+
+
+def test_lj_small_cell_matches_ase_lennard_jones() -> None:
+    from ase.calculators.lj import LennardJones
+
+    atoms = bulk("Ar", "fcc", a=1.6)
+    atoms.rattle(stdev=0.02, seed=18)
+    ours = atoms.copy()
+    ours.calc = RgpotCalculator("lj", u0=1.0, psi=1.0, cutoff=2.5)
+    theirs = atoms.copy()
+    theirs.calc = LennardJones(sigma=1.0, epsilon=1.0, rc=2.5, smooth=False)
+    assert ours.get_potential_energy() == pytest.approx(
+        theirs.get_potential_energy(), rel=1e-10
+    )
+    np.testing.assert_allclose(ours.get_forces(), theirs.get_forces(), atol=1e-9)
+    np.testing.assert_allclose(ours.get_stress(), theirs.get_stress(), atol=1e-9)
 
 
 def test_results_are_cached_until_the_system_changes(case: Case, make_calc) -> None:
@@ -796,6 +867,23 @@ def test_rpc_calculator_contract(potserv_lj) -> None:
     boxed.pbc = [True, False, True]
     with pytest.raises(ValueError, match="non-periodic axes: y"):
         boxed.get_potential_energy()
+
+
+def _ar_gas() -> Atoms:
+    """Four atoms in a 12 Angstrom cell, thinner than twice LJPot's 15."""
+    positions = [[1.0, 1.0, 1.0], [2.3, 1.2, 0.9], [7.0, 6.5, 5.0], [6.1, 7.6, 9.8]]
+    return Atoms("Ar4", positions=positions, cell=[12.0] * 3, pbc=True)
+
+
+def test_rpc_calculator_tiles_a_small_cell(potserv_lj) -> None:
+    atoms = _ar_gas()
+    atoms.calc = potserv_lj
+    local = _ar_gas()
+    local.calc = RgpotCalculator("lj")
+    assert atoms.get_potential_energy() == pytest.approx(
+        local.get_potential_energy(), rel=1e-10
+    )
+    np.testing.assert_allclose(atoms.get_forces(), local.get_forces(), atol=1e-9)
 
 
 def test_rpc_calculator_bfgs_and_neb(potserv_lj) -> None:
