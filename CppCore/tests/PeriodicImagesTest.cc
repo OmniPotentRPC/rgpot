@@ -218,6 +218,81 @@ Cell diamondPrimitive(double a, int type) {
   return s;
 }
 
+// Rows replaced by the integer combinations in `m`, of determinant one.
+// The lattice and the atoms are unchanged.
+Cell rebased(const Cell &s, const int m[3][3]) {
+  Cell out = s;
+  for (int r = 0; r < 3; ++r) {
+    for (int c = 0; c < 3; ++c) {
+      out.box[static_cast<std::size_t>(3 * r + c)] =
+          m[r][0] * s.box[static_cast<std::size_t>(c)] +
+          m[r][1] * s.box[static_cast<std::size_t>(3 + c)] +
+          m[r][2] * s.box[static_cast<std::size_t>(6 + c)];
+    }
+  }
+  return out;
+}
+
+// Fractional coordinates of `r` in the rows of `h`.
+std::array<double, 3> fractional(const Box &h, const double *r) {
+  const double det = h[0] * (h[4] * h[8] - h[5] * h[7]) - h[1] * (h[3] * h[8] - h[5] * h[6]) +
+                     h[2] * (h[3] * h[7] - h[4] * h[6]);
+  const double inv[9] = {(h[4] * h[8] - h[5] * h[7]) / det, (h[2] * h[7] - h[1] * h[8]) / det,
+                         (h[1] * h[5] - h[2] * h[4]) / det, (h[5] * h[6] - h[3] * h[8]) / det,
+                         (h[0] * h[8] - h[2] * h[6]) / det, (h[2] * h[3] - h[0] * h[5]) / det,
+                         (h[3] * h[7] - h[4] * h[6]) / det, (h[1] * h[6] - h[0] * h[7]) / det,
+                         (h[0] * h[4] - h[1] * h[3]) / det};
+  std::array<double, 3> f{};
+  for (int k = 0; k < 3; ++k) {
+    f[static_cast<std::size_t>(k)] = r[0] * inv[k] + r[1] * inv[3 + k] + r[2] * inv[6 + k];
+  }
+  return f;
+}
+
+// Every atom moved into the cell along its rows, as ASE's wrap does.
+Cell wrapped(const Cell &s) {
+  Cell out = s;
+  for (std::size_t p = 0; p < s.size(); ++p) {
+    auto f = fractional(s.box, &s.pos[3 * p]);
+    for (double &x : f) {
+      x -= std::floor(x);
+    }
+    for (int c = 0; c < 3; ++c) {
+      out.pos[3 * p + static_cast<std::size_t>(c)] =
+          f[0] * s.box[static_cast<std::size_t>(c)] +
+          f[1] * s.box[static_cast<std::size_t>(3 + c)] +
+          f[2] * s.box[static_cast<std::size_t>(6 + c)];
+    }
+  }
+  return out;
+}
+
+// The same crystal rotated so the rows are lower triangular, as ASE's
+// standard_form and LAMMPS write a cell: a along x, b in the xy plane.
+Cell lowerTriangular(const Cell &s) {
+  const double *a = &s.box[0];
+  const double *b = &s.box[3];
+  const double *c = &s.box[6];
+  const auto dot = [](const double *u, const double *v) {
+    return u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+  };
+  const double la = std::sqrt(dot(a, a));
+  const double bx = dot(a, b) / la;
+  const double by = std::sqrt(dot(b, b) - bx * bx);
+  const double cx = dot(a, c) / la;
+  const double cy = (dot(b, c) - bx * cx) / by;
+  const double cz = std::sqrt(dot(c, c) - cx * cx - cy * cy);
+  Cell out = s;
+  out.box = {la, 0.0, 0.0, bx, by, 0.0, cx, cy, cz};
+  for (std::size_t p = 0; p < s.size(); ++p) {
+    const auto f = fractional(s.box, &s.pos[3 * p]);
+    for (std::size_t k = 0; k < 3; ++k) {
+      out.pos[3 * p + k] = f[0] * out.box[k] + f[1] * out.box[3 + k] + f[2] * out.box[6 + k];
+    }
+  }
+  return out;
+}
+
 void jitter(Cell &s, double amount, unsigned seed) {
   for (double &x : s.pos) {
     seed = seed * 1103515245u + 12345u;
@@ -345,6 +420,59 @@ void requireFiniteDifferenceStress(const Pot &pot, const Cell &s, double e, doub
       const double fd = (up - down) / (2.0 * e * volume);
       CHECK_THAT(base.stress[static_cast<std::size_t>(3 * a + b)], WithinAbs(fd, tol));
     }
+  }
+}
+
+// The public list against a direct sum over shifts in [-reach, reach].
+void requirePublicListMatchesBrute(const Cell &s, double cutoff, int reach) {
+  std::size_t brute = 0;
+  double brute_sum = 0.0;
+  for (std::size_t i = 0; i < s.size(); ++i) {
+    for (std::size_t j = 0; j < s.size(); ++j) {
+      for (int a = -reach; a <= reach; ++a) {
+        for (int b = -reach; b <= reach; ++b) {
+          for (int c = -reach; c <= reach; ++c) {
+            if (i == j && a == 0 && b == 0 && c == 0) {
+              continue;
+            }
+            double r2 = 0.0;
+            for (std::size_t k = 0; k < 3; ++k) {
+              const double d = s.pos[3 * j + k] - s.pos[3 * i + k] + a * s.box[k] +
+                               b * s.box[3 + k] + c * s.box[6 + k];
+              r2 += d * d;
+            }
+            if (r2 < cutoff * cutoff) {
+              ++brute;
+              brute_sum += 1.0 / r2;
+            }
+          }
+        }
+      }
+    }
+  }
+  for (auto shell : {rgpot::nlist::Shell::Full, rgpot::nlist::Shell::Half}) {
+    rgpot::nlist::Query q;
+    q.cutoff = cutoff;
+    q.shape = rgpot::nlist::Pairs{shell};
+    rgpot::nlist::Table t;
+    rgpot::nlist::build(t, s.pos.data(), s.size(), s.box.data(), q);
+    const double weight = shell == rgpot::nlist::Shell::Full ? 1.0 : 2.0;
+    double sum = 0.0;
+    double worst = 0.0;
+    for (std::size_t p = 0; p < t.size(); ++p) {
+      const auto i = static_cast<std::size_t>(t.first[p]);
+      const auto j = static_cast<std::size_t>(t.second[p]);
+      const int *sh = &t.shift[3 * p];
+      for (std::size_t k = 0; k < 3; ++k) {
+        const double v = s.pos[3 * j + k] - s.pos[3 * i + k] + sh[0] * s.box[k] +
+                         sh[1] * s.box[3 + k] + sh[2] * s.box[6 + k];
+        worst = std::max(worst, std::abs(t.vector[3 * p + k] - v));
+      }
+      sum += weight / (t.distance[p] * t.distance[p]);
+    }
+    CHECK(worst < 1e-9);
+    CHECK(static_cast<double>(t.size()) * weight == static_cast<double>(brute));
+    CHECK_THAT(sum, WithinAbs(brute_sum, 1e-12 * brute_sum));
   }
 }
 
@@ -582,6 +710,29 @@ TEST_CASE("three-body potentials count every image", "[images][sw][tersoff]") {
   requireFiniteDifferenceForces(tersoff, skew, 1e-5, 1e-6);
 }
 
+TEST_CASE("three-body potentials on wide supercells of the diamond primitive cell",
+          "[images][sw][tersoff][triclinic]") {
+  setThreads("1");
+  // From 5x5x5 the 60 degree cell is wide enough for the minimum-image
+  // walk, which must bin it by face spacing. Only the lower triangular
+  // form puts its long diagonal entries where the row lengths mislead.
+  const double a = 5.431;
+  const rgpot::StillingerWeberSi sw;
+  const rgpot::TersoffSiC tersoff;
+  const auto cubic = diamondCubic(a, 3, 14);
+  const double e_sw = evaluate(sw, cubic).energy / static_cast<double>(cubic.size());
+  const double e_tersoff = evaluate(tersoff, cubic).energy / static_cast<double>(cubic.size());
+  for (const auto &prim : {diamondPrimitive(a, 14), lowerTriangular(diamondPrimitive(a, 14))}) {
+    for (int n = 1; n <= 7; ++n) {
+      CAPTURE(prim.box, n);
+      const auto big = repeat(prim, n, n, n);
+      const auto atoms = static_cast<double>(big.size());
+      CHECK_THAT(evaluate(sw, big).energy / atoms, WithinAbs(e_sw, 1e-10));
+      CHECK_THAT(evaluate(tersoff, big).energy / atoms, WithinAbs(e_tersoff, 1e-10));
+    }
+  }
+}
+
 TEST_CASE("forces and stress on thin cells match finite differences", "[images][fd]") {
   setThreads("1");
   const rgpot::LJPot lj{
@@ -618,6 +769,21 @@ TEST_CASE("a slab thin in two directions sums the in-plane images", "[images][sl
   for (std::size_t k = 0; k < slab.pos.size(); ++k) {
     CHECK_THAT(a.forces[k], WithinAbs(b.forces[k], 1e-9));
   }
+}
+
+TEST_CASE("the public neighbour list searches sheared and thin cells by their widths",
+          "[images][nlist]") {
+  setThreads("1");
+  // Wide, sheared and wrapped: the rows are long combinations of a cubic
+  // lattice, so Cartesian bins on the diagonal miss partners.
+  auto cubic = fccCubic(kLjFcc, 11, 6, 6, 18);
+  jitter(cubic, 0.05, 21u);
+  const int m[3][3] = {{1, 0, 0}, {2, 1, 0}, {1, 1, 1}};
+  requirePublicListMatchesBrute(wrapped(rebased(cubic, m)), 3.0, 2);
+  // Thin, at the size where the direct loop hands over to the cells.
+  auto thin = repeat(fccPrimitive(kLjFcc, 18), 16, 8, 4);
+  jitter(thin, 0.05, 53u);
+  requirePublicListMatchesBrute(wrapped(thin), 3.0, 4);
 }
 
 TEST_CASE("wide orthorhombic cells keep the minimum-image walk", "[images][fast]") {

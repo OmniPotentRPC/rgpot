@@ -1,7 +1,8 @@
-"""Thin cells give the same energy per atom as their supercells.
+"""Thin and sheared cells give the same energy per atom as their supercells.
 
-A cell narrower than twice the cutoff sums every periodic image, so the
-energy per atom and the forces agree with a supercell of the same crystal.
+A cell narrower than twice the cutoff sums every periodic image, and a
+wide sheared cell is binned by its face spacing, so the energy per atom
+and the forces agree with a supercell of the same crystal.
 """
 
 from __future__ import annotations
@@ -37,6 +38,13 @@ def _same_as_supercell(kind, thin, repeat, **params):
     np.testing.assert_allclose(f_thin, f_big[: len(thin)], atol=1e-9, rtol=0.0)
 
 
+def _lower_triangular(atoms):
+    atoms = atoms.copy()
+    cell, _ = atoms.cell.standard_form()
+    atoms.set_cell(cell, scale_atoms=True)
+    return atoms
+
+
 def test_one_atom_fcc_lennard_jones_sees_its_own_images() -> None:
     calc = RgpotCalculator("lj", cutoff=3.0)
     one, _ = _per_atom(bulk("Ar", "fcc", a=_LJ_FCC), calc)
@@ -68,6 +76,25 @@ def test_thin_lennard_jones_cell_matches_its_supercell() -> None:
 )
 def test_thin_fortran_cell_matches_its_supercell(kind, cell) -> None:
     _same_as_supercell(kind, cell, (4, 4, 4))
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        pytest.param("sw", marks=needs_fortran),
+        pytest.param("tersoff", marks=needs_fortran),
+        "stillinger_weber_si",
+        "tersoff_sic",
+    ],
+)
+def test_diamond_primitive_supercells_match_the_cubic_cell(kind) -> None:
+    calc = RgpotCalculator(kind)
+    cubic, _ = _per_atom(bulk("Si", "diamond", a=_SI, cubic=True).repeat(3), calc)
+    prim = bulk("Si", "diamond", a=_SI)
+    for prim in (prim, _lower_triangular(prim)):
+        for n in range(1, 8):
+            energy, _ = _per_atom(prim.repeat(n), calc)
+            assert energy == pytest.approx(cubic, abs=1e-10), (prim.cell[:], n)
 
 
 @pytest.mark.parametrize(

@@ -71,6 +71,26 @@ struct Spec {
 [[nodiscard]] bool needsImages(const double *box9, const std::array<bool, 3> &periodic,
                                double cutoff);
 
+/// Fractional coordinates along the rows of a cell: `f_k = dual_k . r`.
+/// When the rows are not a basis, each open or zero row is replaced by
+/// unit vectors normal to the periodic rows. `width[k]` is the spacing of
+/// the planes of constant `f_k`, so two points `d` apart differ by at most
+/// `d / width[k]` in `f_k`. `periodic[k]` is a requested axis whose row is
+/// not zero.
+struct CellFrame {
+  double dual[9]{};
+  double width[3]{};
+  bool periodic[3]{};
+};
+
+/// Throws Error when the periodic rows are not independent.
+[[nodiscard]] CellFrame cellFrame(const double *box9, const std::array<bool, 3> &periodic);
+
+/// `f` of `r`, moved into [0, 1) on each periodic axis, and the lattice
+/// offset `o` with `r = (f + o) H` there. `o` is zero on an open axis.
+/// Throws Error for an atom more than 1e9 cells away.
+void cellFraction(const CellFrame &frame, const double *r, double f[3], std::int32_t o[3]);
+
 struct Range {
   std::int64_t begin = 0;
   std::int64_t end = 0;
@@ -262,6 +282,8 @@ private:
   };
 
   void buildCells(const double *xyz, std::size_t n);
+  void buildFrameCells(const double *xyz, std::size_t n, double edge);
+  void fillCells(std::size_t n);
   void buildStored(const double *xyz, std::size_t n);
   void buildImages(const double *xyz, std::size_t n, const std::array<bool, 3> &periodic);
 

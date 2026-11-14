@@ -70,6 +70,119 @@ bool needsImages(const double *box9, const std::array<bool, 3> &periodic, double
   return false;
 }
 
+namespace {
+
+void cross(const double *u, const double *v, double *out) {
+  out[0] = u[1] * v[2] - u[2] * v[1];
+  out[1] = u[2] * v[0] - u[0] * v[2];
+  out[2] = u[0] * v[1] - u[1] * v[0];
+}
+
+double norm3(const double *v) { return std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]); }
+
+double triple(const double *rows) {
+  double c[3];
+  cross(rows + 3, rows + 6, c);
+  return rows[0] * c[0] + rows[1] * c[1] + rows[2] * c[2];
+}
+
+bool isBasis(const double *rows) {
+  const double det = triple(rows);
+  const double scale = norm3(rows) * norm3(rows + 3) * norm3(rows + 6);
+  return std::isfinite(det) && std::fabs(det) > 1.0e-12 * scale;
+}
+
+} // namespace
+
+CellFrame cellFrame(const double *box9, const std::array<bool, 3> &periodic) {
+  CellFrame frame;
+  double rows[9];
+  std::memcpy(rows, box9, sizeof(rows));
+  int nper = 0;
+  for (int k = 0; k < 3; ++k) {
+    frame.periodic[k] = periodic[static_cast<std::size_t>(k)] && norm3(rows + 3 * k) > 0.0;
+    nper += frame.periodic[k] ? 1 : 0;
+  }
+  if (!isBasis(rows)) {
+    if (nper == 3) {
+      throw Error(Code::Box, "the periodic cell rows are not independent");
+    }
+    if (nper == 2) {
+      const int k = !frame.periodic[0] ? 0 : (!frame.periodic[1] ? 1 : 2);
+      double *out = rows + 3 * k;
+      cross(rows + 3 * ((k + 1) % 3), rows + 3 * ((k + 2) % 3), out);
+      const double len = norm3(out);
+      if (!(len > 0.0)) {
+        throw Error(Code::Box, "the periodic cell rows are parallel");
+      }
+      for (int c = 0; c < 3; ++c) {
+        out[c] /= len;
+      }
+    } else if (nper == 1) {
+      const int k = frame.periodic[0] ? 0 : (frame.periodic[1] ? 1 : 2);
+      const double len = norm3(rows + 3 * k);
+      const double u[3] = {rows[3 * k] / len, rows[3 * k + 1] / len, rows[3 * k + 2] / len};
+      int least = 0;
+      for (int c = 1; c < 3; ++c) {
+        if (std::fabs(u[c]) < std::fabs(u[least])) {
+          least = c;
+        }
+      }
+      double e[3] = {0.0, 0.0, 0.0};
+      e[least] = 1.0;
+      double v[3];
+      cross(u, e, v);
+      const double vl = norm3(v);
+      for (double &x : v) {
+        x /= vl;
+      }
+      double w[3];
+      cross(u, v, w);
+      std::memcpy(rows + 3 * ((k + 1) % 3), v, sizeof(v));
+      std::memcpy(rows + 3 * ((k + 2) % 3), w, sizeof(w));
+    } else {
+      static constexpr double eye[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+      std::memcpy(rows, eye, sizeof(rows));
+    }
+  }
+  // f = r H^-1 for row vectors r = f H. Column k of H^-1 is the cross
+  // product of the other two rows over the determinant.
+  const double det = triple(rows);
+  for (int k = 0; k < 3; ++k) {
+    double *d = frame.dual + 3 * k;
+    cross(rows + 3 * ((k + 1) % 3), rows + 3 * ((k + 2) % 3), d);
+    frame.width[k] = std::fabs(det) / norm3(d);
+    for (int c = 0; c < 3; ++c) {
+      d[c] /= det;
+    }
+  }
+  return frame;
+}
+
+void cellFraction(const CellFrame &frame, const double *r, double f[3], std::int32_t o[3]) {
+  for (int k = 0; k < 3; ++k) {
+    const double *d = frame.dual + 3 * k;
+    double x = r[0] * d[0] + r[1] * d[1] + r[2] * d[2];
+    if (!std::isfinite(x)) {
+      x = 0.0;
+    }
+    o[k] = 0;
+    if (frame.periodic[k]) {
+      const double whole = std::floor(x);
+      if (!(std::fabs(whole) < 1.0e9)) {
+        throw Error(Code::Box, "an atom lies more than 1e9 cells from the box");
+      }
+      o[k] = static_cast<std::int32_t>(whole);
+      x -= whole;
+      if (x >= 1.0) {
+        x -= 1.0;
+        ++o[k];
+      }
+    }
+    f[k] = x;
+  }
+}
+
 int threadsRequested() {
 #if defined(_OPENMP)
   const char *env = std::getenv("OMP_NUM_THREADS");
@@ -165,6 +278,10 @@ bool Neighbours::reusable(const double *xyz, std::size_t n, const double *box9,
 
 void Neighbours::buildCells(const double *xyz, std::size_t n) {
   const double edge = search_ > 0.0 ? search_ : 1.0;
+  if (use_general_) {
+    buildFrameCells(xyz, n, edge);
+    return;
+  }
   nx_ = axisCount(len_[0], edge);
   ny_ = axisCount(len_[1], edge);
   nz_ = axisCount(len_[2], edge);
@@ -207,6 +324,67 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
     cell_of_[a] = id;
     ++cell_start_[static_cast<std::size_t>(id) + 1];
   }
+  fillCells(n);
+}
+
+void Neighbours::buildFrameCells(const double *xyz, std::size_t n, double edge) {
+  // Bins along the cell rows, a search thick across, with every atom
+  // wrapped into the cell first. Diagonal lengths of a sheared cell are
+  // not plane spacings, and an atom outside them is not in its bin.
+  const CellFrame frame = cellFrame(box_, key_.periodic);
+  std::vector<double> frac(3 * n);
+  double lo[3] = {0.0, 0.0, 0.0};
+  double hi[3] = {0.0, 0.0, 0.0};
+  for (std::size_t a = 0; a < n; ++a) {
+    std::int32_t o[3];
+    cellFraction(frame, xyz + 3 * a, frac.data() + 3 * a, o);
+    for (int k = 0; k < 3; ++k) {
+      const double f = frac[3 * a + static_cast<std::size_t>(k)];
+      lo[k] = a == 0 ? f : std::min(lo[k], f);
+      hi[k] = a == 0 ? f : std::max(hi[k], f);
+    }
+  }
+  int nb[3];
+  for (int k = 0; k < 3; ++k) {
+    periodic_[k] = frame.periodic[k];
+    const double span = frame.periodic[k] ? frame.width[k] : (hi[k] - lo[k]) * frame.width[k];
+    nb[k] = axisCount(span, edge);
+  }
+  const double bytes = static_cast<double>(nb[0]) * static_cast<double>(nb[1]) *
+                       static_cast<double>(nb[2]) * static_cast<double>(sizeof(std::int32_t));
+  const auto avail = availableBytes();
+  if (avail > 0 && bytes > static_cast<double>(avail)) {
+    nb[0] = nb[1] = nb[2] = 1;
+  }
+  nx_ = nb[0];
+  ny_ = nb[1];
+  nz_ = nb[2];
+  const auto ncells = static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_) *
+                      static_cast<std::size_t>(nz_);
+  cell_start_.assign(ncells + 1, 0);
+  cell_of_.resize(n);
+  for (std::size_t a = 0; a < n; ++a) {
+    int bin[3];
+    for (int k = 0; k < 3; ++k) {
+      const double f = frac[3 * a + static_cast<std::size_t>(k)];
+      double t = 0.0;
+      if (frame.periodic[k]) {
+        t = f * nb[k];
+      } else if (hi[k] > lo[k]) {
+        t = (f - lo[k]) / (hi[k] - lo[k]) * nb[k];
+      }
+      const int b = t >= 0.0 ? static_cast<int>(t) : 0;
+      bin[k] = std::min(b, nb[k] - 1);
+    }
+    const int id = (bin[0] * ny_ + bin[1]) * nz_ + bin[2];
+    cell_of_[a] = id;
+    ++cell_start_[static_cast<std::size_t>(id) + 1];
+  }
+  fillCells(n);
+}
+
+void Neighbours::fillCells(std::size_t n) {
+  const auto ncells = cell_start_.size() - 1;
   for (std::size_t c = 0; c < ncells; ++c) {
     cell_start_[c + 1] += cell_start_[c];
   }
@@ -455,8 +633,11 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
   // cell), so the requested flags decide here, not periodic_. The minimum
   // image is exact while every height is twice the cutoff: the walk folds
   // from the current coordinates, and a pair left out at build is still
-  // past the cutoff after moves inside the skin.
-  if (spec.images && n > 0 && needsImages(box9, spec.periodic, spec.cutoff)) {
+  // past the cutoff after moves inside the skin. A sheared fold rounds the
+  // fractional coordinates, which finds the minimum image only within half
+  // a face spacing, so a sheared cell needs twice the search.
+  const double thick = sheared ? search_ : spec.cutoff;
+  if (spec.images && n > 0 && needsImages(box9, spec.periodic, thick)) {
     buildImages(xyz, n, spec.periodic);
     images_ = true;
     streaming_ = false;
