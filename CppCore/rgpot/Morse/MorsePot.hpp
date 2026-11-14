@@ -100,6 +100,11 @@ public:
    */
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
+  /// forceImpl plus each atom's share of the energy: half of every pair
+  /// term to each partner. See Potential::forceEnergies.
+  void forceEnergiesImpl(const ForceInput &in, ForceOut *out,
+                         double *energies) const;
+
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
   /// True when the last force call kept the Verlet list. Half the skin,
@@ -118,6 +123,9 @@ public:
   }
 
 private:
+  template <bool PerAtom>
+  void evaluate(const ForceInput &in, ForceOut *out, double *energies) const;
+
   /// Bump when the kernel numerics change, so stale cache entries die.
   static constexpr uint64_t kKernelVersion = 3;
 
