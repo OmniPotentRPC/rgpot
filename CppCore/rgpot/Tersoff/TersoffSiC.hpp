@@ -131,6 +131,9 @@ private:
   // are written into each atom's scatter-order row.
   void runWide(const int *kind, int n, int nt, double cut2, double scale, double *energy,
                double *acc, double *strain) const;
+  // 4096 atoms and up. Each thread adds the terms that land on its atoms.
+  void runOwned(const int *kind, int n, int nt, double cut2, double scale, double *energy,
+                double *acc, double *strain) const;
 
   Species m_species[2]{};
   Pair m_pair[2][2]{};
