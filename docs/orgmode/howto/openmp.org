@@ -1,0 +1,50 @@
+#+TITLE: OpenMP gathers
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* OpenMP gathers
+
+=with_eam_al_openmp= threads the embedded-atom aluminium gather and the
+Fortran Stillinger-Weber and Tersoff gathers. It is off by default.
+The neighbour builder has the same layout either way. The partner-order
+index is empty when the gather is not threaded.
+
+#+begin_src bash
+meson setup bbdir -Dwith_eam_al_openmp=true -Dwith_fortran_pots=enabled \
+  --buildtype=release
+meson compile -C bbdir
+#+end_src
+
+The thread count is =OMP_NUM_THREADS=. One thread, and a cell below 32
+atoms, stays on the serial routine. =rgpot.has_eam_al_openmp= is false
+when the option was off, and the benchmark rows that need it are skipped.
+
+** Determinism
+
+The forces and the energy are the same bits at every thread count. A
+tie in the partner order keeps the earlier pair, which is the order the
+serial sort writes. Each atom writes only its own force column. The
+energy is the sum of the per-atom values afterwards, in atom order.
+
+** Measured scaling
+
+Warm call, identical positions, one 8-core run with
+=OMP_PROC_BIND=close= and =OMP_PLACES=cores=. Times are milliseconds.
+
+| threads | EAM Al 32768 | SW 32768 | Tersoff 32768 |
+|---------+--------------+----------+---------------|
+|       1 |         64.1 |     5.55 |          17.4 |
+|       2 |         37.6 |     3.21 |          9.14 |
+|       4 |         20.9 |     1.65 |          5.01 |
+|       8 |         11.4 |    0.933 |          2.89 |
+
+Eight threads are 5.6×, 5.9×, and 6.0× the one-thread call.
+
+The aluminium neighbour search at 32768 atoms, cutoff 7.1 Å and skin
+0.71 Å, is 176 ms on one thread and 53 ms on eight. The eight-thread
+walk is 29 ms. The slowest thread owns cells 729–1000 and 610343 pairs
+and takes 27.5 ms; the lightest owns 484142 pairs and takes 21.3 ms.
+Cell binning is 0.50 ms, the stencil is 1.17 ms, and the allocation is
+0.02 ms. The gather copy is 16.3 ms: 223 MB on eight threads, 13.5 GB/s.
+A copy of those same bytes, already resident, is 3.1 ms at 71 GB/s.
+The 16.3 ms is the fresh mapping of that buffer, not a serial loop.

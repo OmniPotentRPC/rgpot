@@ -31,6 +31,10 @@ def _eval(calc: RgpotCalculator, atoms) -> bytes:
     return raw_bytes(row["energy"], row["forces"])
 
 
+def test_openmp_gather_flag_is_bool() -> None:
+    assert isinstance(rgpot.has_eam_al_openmp, bool)
+
+
 def test_independent_calculators() -> None:
     atoms = lj_dimer()
     reference = _eval(RgpotCalculator("lj"), atoms)

@@ -25,6 +25,8 @@ has_xckernel: bool = True
 
 has_fortran_pots: bool = True
 
+has_eam_al_openmp: bool = False
+
 has_ipi: bool = True
 
 def echo_f64(values: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> NDArray[numpy.float64]: ...

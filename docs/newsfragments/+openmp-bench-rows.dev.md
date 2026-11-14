@@ -1,0 +1,1 @@
+asv times the threaded EAM-Al cold build, in-skin step, and 300 K mix at 4096 and 32768 atoms, and the Stillinger-Weber and Tersoff warm calls. The thread count is the benchmark parameter, or `RGPOT_OMP_THREADS`. The rows are skipped when `with_eam_al_openmp` is off.

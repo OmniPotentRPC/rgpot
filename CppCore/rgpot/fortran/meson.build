@@ -55,7 +55,7 @@ fortran_pots_sources = files(
 )
 
 # C++ faces over the bind(c) entries.
-fortran_pots_cpp_sources = files('FortranPots.cc')
+fortran_pots_cpp_sources = files('FortranPots.cc', 'OpenmpGather.cc')
 
 # Kernels only. gfortran ignores -fvisibility for module symbols, so the
 # archive is kept separate and hidden at link time (see the umbrella

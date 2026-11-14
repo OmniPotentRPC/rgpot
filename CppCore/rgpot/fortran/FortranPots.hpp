@@ -96,5 +96,8 @@ private:
   TersoffSiC m_sic;
 };
 
+/// True when this library was built with `with_eam_al_openmp`.
+[[nodiscard]] bool openmpGather() noexcept;
+
 } // namespace fortranpots
 } // namespace rgpot

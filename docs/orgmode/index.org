@@ -80,6 +80,7 @@ meson compile -C bbdir && meson test -C bbdir
    howto/embedding
    howto/exprpot
    howto/ipi
+   howto/openmp
    howto/integration
    howto/eindir-anneal
    howto/eon-rgpot

@@ -32,6 +32,7 @@ has_dftd3 = _core.has_dftd3
 has_dftd4 = _core.has_dftd4
 has_expr = _core.has_expr
 has_fortran_pots = _core.has_fortran_pots
+has_eam_al_openmp = bool(getattr(_core, "has_eam_al_openmp", False))
 has_metatomic_dlopen = _core.has_metatomic_dlopen
 has_xckernel = _core.has_xckernel
 has_ipi = _core.has_ipi
@@ -199,6 +200,7 @@ __all__ = [
     "has_dftd4",
     "has_xckernel",
     "has_fortran_pots",
+    "has_eam_al_openmp",
     "ase",
     "__version__",
 ]

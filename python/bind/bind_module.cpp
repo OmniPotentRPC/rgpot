@@ -487,8 +487,10 @@ NB_MODULE(_core, m) {
 #endif
 #ifdef RGPOT_HAS_FORTRAN_POTS
   m.attr("has_fortran_pots") = true;
+  m.attr("has_eam_al_openmp") = rgpot::fortranpots::openmpGather();
 #else
   m.attr("has_fortran_pots") = false;
+  m.attr("has_eam_al_openmp") = false;
 #endif
 #ifdef RGPOT_HAS_IPI
   m.attr("has_ipi") = true;
