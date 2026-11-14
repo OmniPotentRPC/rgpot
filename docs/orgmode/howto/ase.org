@@ -66,31 +66,32 @@ print(slab.get_potential_energy())    # recomputed with the new cutoff
 The first argument is a kind string from the table, or a potential object
 from =rgpot= (=rgpot.LJPot(...)=, =rgpot.IPIPot(...)=, and so on).
 Every potential gives =energy=, =free_energy= and =forces=.
-The stress column says whether =stress= is in =implemented_properties=.
+The stress and energies columns say whether =stress= and =energies= are in
+=implemented_properties=.
 A potential with "free" boundaries accepts only =pbc=False=.
 
-| Kind string                                  | Object                    | Stress | Boundaries | Parameters (defaults)                                         |
-|----------------------------------------------+---------------------------+--------+------------+---------------------------------------------------------------|
-| =lj=, =lennard-jones=, =lennardjones=        | =LJPot=                   | yes    | periodic   | =u0= 1.0, =psi= 1.0, =cutoff= 15.0, =switch_width= 0.0         |
-| =lj_cluster=, =lj-cluster=, =ljcluster=      | =LJClusterPot=            | no     | free       | as =lj=                                                       |
-| =morse=                                      | =MorsePot=                | yes    | periodic   | =De= 0.7102, =a= 1.6047, =re= 2.897, =cutoff= 9.5, =switch_width= 0.0 |
-| =stillinger_weber_si=, =sw_si=               | =StillingerWeberSi=       | yes    | periodic   | none                                                          |
-| =sw=                                         | =SWPot=                   | yes    | periodic   | none                                                          |
-| =tersoff_sic=                                | =TersoffSiC=              | no     | periodic   | none                                                          |
-| =eam_al=, =eam-al=                           | =EAMAlPot=                | no     | periodic   | none                                                          |
-| =edip=                                       | =EDIPPot=                 | no     | periodic   | none                                                          |
-| =lenosky=                                    | =LenoskyPot=              | no     | periodic   | none                                                          |
-| =tersoff=                                    | =TersoffPot=              | no     | periodic   | none                                                          |
-| =fehe=                                       | =FeHePot=                 | no     | periodic   | none                                                          |
-| =cuh2=                                       | =CuH2Pot=                 | no     | periodic   | none                                                          |
-| =water_h=                                    | =WaterHPot=               | no     | periodic   | none                                                          |
-| =d3=                                         | =D3Pot=                   | no     | free       | =damping= "bj", =functional= "pbe", =atm= True                 |
-| =d4=                                         | =D4Pot=                   | no     | free       | =functional= "pbe", =charge= 0.0, =atm= True                   |
-| =expr=                                       | =ExprPot=                 | no     | from terms | =expression=, =terms= (both required)                         |
-| =lammps=                                     | =rgpot_lammps_potential=  | no     | periodic   | =u0= 1.0, =psi= 1.0, =cutoff= 8.0, =engine_path= ""            |
-| =gromacs=                                    | =rgpot_gromacs_potential= | no     | periodic   | as =lammps=                                                   |
-| =openmm=                                     | =rgpot_openmm_potential=  | no     | periodic   | as =lammps=                                                   |
-| (object only)                                | =IPIPot=                  | yes    | periodic   | the address and timeout given to =IPIPot=                     |
+| Kind string                             | Object                    | Stress | Energies | Boundaries | Parameters (defaults)                                                 |
+|-----------------------------------------+---------------------------+--------+----------+------------+-----------------------------------------------------------------------|
+| =lj=, =lennard-jones=, =lennardjones=   | =LJPot=                   | yes    | yes      | periodic   | =u0= 1.0, =psi= 1.0, =cutoff= 15.0, =switch_width= 0.0                |
+| =lj_cluster=, =lj-cluster=, =ljcluster= | =LJClusterPot=            | no     | no       | free       | as =lj=                                                               |
+| =morse=                                 | =MorsePot=                | yes    | yes      | periodic   | =De= 0.7102, =a= 1.6047, =re= 2.897, =cutoff= 9.5, =switch_width= 0.0 |
+| =stillinger_weber_si=, =sw_si=          | =StillingerWeberSi=       | yes    | yes      | periodic   | none                                                                  |
+| =sw=                                    | =SWPot=                   | yes    | no       | periodic   | none                                                                  |
+| =tersoff_sic=                           | =TersoffSiC=              | yes    | yes      | periodic   | none                                                                  |
+| =eam_al=, =eam-al=                      | =EAMAlPot=                | no     | yes      | periodic   | none                                                                  |
+| =edip=                                  | =EDIPPot=                 | no     | no       | periodic   | none                                                                  |
+| =lenosky=                               | =LenoskyPot=              | no     | no       | periodic   | none                                                                  |
+| =tersoff=                               | =TersoffPot=              | no     | no       | periodic   | none                                                                  |
+| =fehe=                                  | =FeHePot=                 | no     | no       | periodic   | none                                                                  |
+| =cuh2=                                  | =CuH2Pot=                 | no     | yes      | periodic   | none                                                                  |
+| =water_h=                               | =WaterHPot=               | no     | no       | periodic   | none                                                                  |
+| =d3=                                    | =D3Pot=                   | no     | no       | free       | =damping= "bj", =functional= "pbe", =atm= True                        |
+| =d4=                                    | =D4Pot=                   | no     | no       | free       | =functional= "pbe", =charge= 0.0, =atm= True                          |
+| =expr=                                  | =ExprPot=                 | no     | no       | from terms | =expression=, =terms= (both required)                                 |
+| =lammps=                                | =rgpot_lammps_potential=  | no     | no       | periodic   | =u0= 1.0, =psi= 1.0, =cutoff= 8.0, =engine_path= ""                   |
+| =gromacs=                               | =rgpot_gromacs_potential= | no     | no       | periodic   | as =lammps=                                                           |
+| =openmm=                                | =rgpot_openmm_potential=  | no     | no       | periodic   | as =lammps=                                                           |
+| (object only)                           | =IPIPot=                  | yes    | no       | periodic   | the address and timeout given to =IPIPot=                             |
 
 The Fortran kernels (=sw= to =water_h=), =d3=, =d4= and =expr= exist only in a
 build that compiled them in.
@@ -99,12 +100,48 @@ build that compiled them in.
 =IPIPot= is an i-PI socket server: an i-PI driver must connect to it, and the
 stress comes from the virial the driver sends back.
 
-No potential computes per-atom energies, so =energies= is never in
-=implemented_properties=.
+=energies= is ASE's per-atom energy, read with =atoms.get_potential_energies()=.
+The shares sum to =energy= to rounding (=1e-10= relative in the tests).
+A pair term is split half and half between its two atoms, an EAM embedding
+term sits on the embedded atom, and a three-body term (Stillinger-Weber,
+Tersoff) sits on its centre atom.
+That is the site energy of the Stillinger-Weber and Tersoff papers and of
+LAMMPS =pair_sw= and =pair_tersoff=; LAMMPS =compute pe/atom= instead splits a
+three-body term in thirds, so its per-atom values differ for those two
+potentials while the totals agree.
+The kernel computes them only for a call that asks for =energies=, so energy,
+forces and stress cost the same as before.
+A call that asks for =energies= first stores all four properties; asking for
+=energies= after an energy-only call evaluates once more.
+=calculate_many= returns =energies= when they are in =properties=.
 Asking for a property that is not in the list raises
 =PropertyNotImplementedError=, as a built-in calculator does.
 =get_hessian= raises it too, because no potential has an analytic Hessian.
 =free_energy= equals =energy=: these potentials have no electronic entropy.
+
+** Cost of per-atom energies
+
+=CppCore/examples/time_per_atom_energy.cc= (built as =time_per_atom_energy=)
+times =forceImpl= against =forceEnergies= on one geometry, alternating blocks
+of calls so drift on the host reaches both.
+=cu-bulk= is 8788 Cu atoms (13^3 fcc cells) through the Fortran CuH2 EAM
+kernel, 21 block pairs of 5 calls.
+=ar-bulk= is 500 Ar atoms (5^3 cells) through =LJPot=, 21 block pairs of 200
+calls.
+The host was the 8-core KVM machine of the CPU-scaling page (=Intel(R) Xeon(R)
+Processor=), release build, GCC 13.3.0.
+Times are the median of the per-block means.
+
+| System  | =OMP_NUM_THREADS= | =forceImpl= (ms) | =forceEnergies= (ms) | median ratio | ratio range    |
+|---------+-------------------+------------------+----------------------+--------------+----------------|
+| ar-bulk |                 1 |            0.574 |                0.572 |        1.001 | 0.911 to 1.053 |
+| ar-bulk |                 4 |            1.256 |                1.293 |        1.024 | 0.840 to 1.208 |
+| cu-bulk |                 1 |           54.91  |               54.84  |        0.999 | 0.881 to 1.077 |
+| cu-bulk |                 4 |           56.36  |               56.57  |        1.005 | 0.956 to 1.147 |
+
+The per-atom shares cost nothing measurable next to the block-to-block spread.
+The CuH2 kernel does not thread, and 500 LJ atoms are slower on four threads
+than on one on this host, with or without per-atom energies.
 
 ** Units and conventions
 
