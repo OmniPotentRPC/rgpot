@@ -176,6 +176,13 @@ rgpot::LJPot pot(config, rgpot::nlist::Images::All);
 #+end_src
 
 The all-images path runs on one thread.
+=all_images_bench= times it against the minimum image.
+On a crystal at least twice the cutoff across, both give the same numbers.
+On one machine, with 4000 and 32000 atoms, the all-images path took less time
+than the minimum image, with the list reused or rebuilt.
+On the smallest such crystals, 100 to 500 atoms, a rebuild took about three
+times as long.
+A one-atom fcc cell took about a microsecond per call.
 
 ** Where the design came from
 

@@ -2569,6 +2569,23 @@ if get_option('with_tests')
             workdir: meson.source_root(),
             timeout: 0,
         )
+        all_images_bench = executable(
+            'all_images_bench',
+            sources: ['tests/all_images_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'all_images_bench',
+            all_images_bench,
+            workdir: meson.source_root(),
+            timeout: 300,
+        )
         # One child process per row, via fork and waitpid, and the peak
         # resident set is read from /proc. Windows has neither.
         if host_machine.system() != 'windows'

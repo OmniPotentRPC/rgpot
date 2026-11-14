@@ -13,3 +13,4 @@ on the Python `LJPot` and `MorsePot`, and `all_images=True` in the
 `RgpotCalculator` Lennard-Jones keywords.
 The pairs come from the existing `nlist::Builder` half table, with shift
 bounds from the perpendicular widths of the cell.
+`all_images_bench` times the mode against the minimum image.
