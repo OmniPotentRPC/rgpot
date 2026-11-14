@@ -192,8 +192,20 @@ void TersoffSiC::forceImpl(const ForceInput &in, ForceOut *out) const {
     throw std::invalid_argument("TersoffSiC: null force buffer");
   }
   double strain[6] = {};
-  evaluate(in.pos, in.atmnrs, in.box, in.nAtoms, &out->energy, out->F, 1.0,
-           m_held.skin > 0.0 ? &m_held : nullptr, strain);
+  evaluate<false>(in.pos, in.atmnrs, in.box, in.nAtoms, &out->energy, out->F, 1.0,
+                  m_held.skin > 0.0 ? &m_held : nullptr, strain, nullptr);
+  publishCauchyStress(out, strain, cellVolume(in.box));
+}
+
+void TersoffSiC::forceEnergiesImpl(const ForceInput &in, ForceOut *out,
+                                   double *energies) const {
+  if (in.nAtoms > 0 && (in.pos == nullptr || in.box == nullptr ||
+                        in.atmnrs == nullptr || out->F == nullptr)) {
+    throw std::invalid_argument("TersoffSiC: null force buffer");
+  }
+  double strain[6] = {};
+  evaluate<true>(in.pos, in.atmnrs, in.box, in.nAtoms, &out->energy, out->F, 1.0,
+                 m_held.skin > 0.0 ? &m_held : nullptr, strain, energies);
   publishCauchyStress(out, strain, cellVolume(in.box));
 }
 
@@ -215,8 +227,8 @@ void TersoffSiC::energyAndGradient(const double *positions,
                        box == nullptr || gradient == nullptr))) {
     throw std::invalid_argument("TersoffSiC: null energy buffer");
   }
-  evaluate(positions, atomic_numbers, box, n_atoms, energy, gradient, -1.0,
-           neighbors, nullptr);
+  evaluate<false>(positions, atomic_numbers, box, n_atoms, energy, gradient, -1.0,
+                  neighbors, nullptr, nullptr);
 }
 
 void TersoffSiC::energyAndGradientBatch(std::size_t n_config,
@@ -240,11 +252,12 @@ void TersoffSiC::energyAndGradientBatch(std::size_t n_config,
   }
 }
 
+template <bool PerAtom>
 void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
                           const double *box, std::size_t n_atoms,
                           double *energy, double *acc, double scale,
                           nlist::NeighborList *neighbors,
-                          double *strain) const {
+                          double *strain, double *site) const {
   *energy = 0.0;
   for (std::size_t i = 0; i < n_atoms * 3; ++i) {
     acc[i] = 0.0;
@@ -327,6 +340,9 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
       double db = 0.0;
       bondOrder(sp, zeta, bij, db);
       *energy += 0.5 * bj.fc * (bj.f_r + bij * bj.f_a);
+      if constexpr (PerAtom) {
+        site[i] += 0.5 * bj.fc * (bj.f_r + bij * bj.f_a);
+      }
       const double dedr = 0.5 * (bj.dfc * (bj.f_r + bij * bj.f_a) +
                                  bj.fc * (bj.df_r + bij * bj.df_a));
       const double inv_r = 1.0 / bj.r;
@@ -431,6 +447,10 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
       double db = 0.0;
       bondOrder(sp, zeta, bij, db);
       local_e += 0.5 * bj.fc * (bj.f_r + bij * bj.f_a);
+      // Only the thread that owns centre i writes its site.
+      if constexpr (PerAtom) {
+        site[i] += 0.5 * bj.fc * (bj.f_r + bij * bj.f_a);
+      }
       const double dedr = 0.5 * (bj.dfc * (bj.f_r + bij * bj.f_a) +
                                  bj.fc * (bj.df_r + bij * bj.df_a));
       const double inv_r = 1.0 / bj.r;
