@@ -1527,7 +1527,8 @@ int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *
                                   const int32_t periodic[3], int32_t *first, int32_t *second,
                                   double *vector, double *distance, size_t cap, size_t *count,
                                   int32_t *reused) {
-  if (list == nullptr || positions == nullptr || box9 == nullptr || periodic == nullptr) {
+  if (list == nullptr || (natoms > 0 && positions == nullptr) || box9 == nullptr ||
+      periodic == nullptr) {
     if (count != nullptr) {
       *count = 0;
     }
