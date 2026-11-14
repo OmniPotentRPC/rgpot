@@ -1,0 +1,2 @@
+rgpot_nlist_abi_version
+rgpot_nlist_not_exported
