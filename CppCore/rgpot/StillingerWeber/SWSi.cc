@@ -69,6 +69,86 @@ struct ForceHit {
   double z;
 };
 
+// local_n[t * n + atom] is how many hits thread t wrote for that atom,
+// and thread t's sources are a contiguous lower range than thread t + 1.
+// Placing those hits in thread order is the same order as the one-thread
+// scatter. One team scatters them and then sums each owned atom.
+void gatherFromCounts(const int *force_at, const int *force_used, const ForceHit *hits,
+                      const int *local_n, double *acc, int n, int nt) {
+  struct Scratch {
+    std::vector<int> touch;
+    std::vector<int> cursor;
+    std::vector<ForceHit> csr;
+  };
+  thread_local Scratch scratch;
+  auto &touch = scratch.touch;
+  auto &cursor = scratch.cursor;
+  auto &csr = scratch.csr;
+  touch.resize(static_cast<std::size_t>(n) + 1);
+  touch[0] = 0;
+  for (int atom = 0; atom < n; ++atom) {
+    int count = 0;
+    for (int t = 0; t < nt; ++t) {
+      count += local_n[static_cast<std::size_t>(t) * static_cast<std::size_t>(n) +
+                       static_cast<std::size_t>(atom)];
+    }
+    touch[static_cast<std::size_t>(atom) + 1] = touch[static_cast<std::size_t>(atom)] + count;
+  }
+  const int ntouch = touch[static_cast<std::size_t>(n)];
+  if (static_cast<int>(csr.size()) < ntouch) {
+    csr.resize(static_cast<std::size_t>(ntouch));
+  }
+  if (static_cast<int>(cursor.size()) < nt * n) {
+    cursor.resize(static_cast<std::size_t>(nt) * static_cast<std::size_t>(n));
+  }
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+  {
+#if defined(_OPENMP)
+    const int t = omp_get_thread_num();
+#else
+    const int t = 0;
+#endif
+    int *place = cursor.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(n);
+    for (int atom = 0; atom < n; ++atom) {
+      int off = touch[static_cast<std::size_t>(atom)];
+      for (int u = 0; u < t; ++u) {
+        off += local_n[static_cast<std::size_t>(u) * static_cast<std::size_t>(n) +
+                       static_cast<std::size_t>(atom)];
+      }
+      place[atom] = off;
+    }
+    const auto range = nlist::partition(n, t, nt);
+    for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
+      const ForceHit *hit = hits + force_at[i];
+      const int nf = force_used[i];
+      for (int k = 0; k < nf; ++k) {
+        csr[static_cast<std::size_t>(place[hit[k].atom])] = hit[k];
+        ++place[hit[k].atom];
+      }
+    }
+#if defined(_OPENMP)
+#pragma omp barrier
+#endif
+    for (int atom = static_cast<int>(range.begin); atom < static_cast<int>(range.end); ++atom) {
+      double x = acc[3 * atom];
+      double y = acc[3 * atom + 1];
+      double z = acc[3 * atom + 2];
+      const int begin = touch[static_cast<std::size_t>(atom)];
+      const int end = touch[static_cast<std::size_t>(atom) + 1];
+      for (int p = begin; p < end; ++p) {
+        x += csr[static_cast<std::size_t>(p)].x;
+        y += csr[static_cast<std::size_t>(p)].y;
+        z += csr[static_cast<std::size_t>(p)].z;
+      }
+      acc[3 * atom] = x;
+      acc[3 * atom + 1] = y;
+      acc[3 * atom + 2] = z;
+    }
+  }
+}
+
 // Hits already sit in scatter order, one source atom after another.
 // Grouping them by the atom they update keeps that order inside the row,
 // and each thread sums the atoms it owns.
@@ -405,6 +485,7 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
       std::vector<int> force_used;
       std::vector<double> energy;
       std::vector<ForceHit> force;
+      std::vector<int> local_n;
     };
     thread_local Slots slots;
     auto &bonds = slots.bonds;
@@ -418,26 +499,43 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
     auto &force_used = slots.force_used;
     auto &energy_slot = slots.energy;
     auto &force = slots.force;
+    auto &local_n = slots.local_n;
     const auto &row = neighbours_.offsets();
     const bool stored = !neighbours_.streaming() &&
                         row.size() == static_cast<std::size_t>(n) + 1;
-    // Below 256 atoms the copy and the serial slot scan stay as they are.
     // At 256 and above the wide kernel writes each force into its atom's row.
+    // Below that, the row degree bounds the slots, so one team can load the
+    // bonds and count where the hits land. A second team replays them.
     if (stored && n >= 256) {
       swi::runWide(neighbours_, n, nt, cut2, scale, energy, acc);
-    } else {
-    bond_at.resize(static_cast<std::size_t>(n) + 1);
-    bond_n.assign(static_cast<std::size_t>(n), 0);
-    bond_at[0] = 0;
-    if (stored) {
+    } else if (stored) {
+      energy_at.resize(static_cast<std::size_t>(n) + 1);
+      force_at.resize(static_cast<std::size_t>(n) + 1);
+      energy_used.assign(static_cast<std::size_t>(n), 0);
+      force_used.assign(static_cast<std::size_t>(n), 0);
+      energy_at[0] = 0;
+      force_at[0] = 0;
       for (int i = 0; i < n; ++i) {
-        const int deg = row[static_cast<std::size_t>(i) + 1] - row[static_cast<std::size_t>(i)];
-        bond_at[static_cast<std::size_t>(i) + 1] =
-            bond_at[static_cast<std::size_t>(i)] + deg;
+        const int m = row[static_cast<std::size_t>(i) + 1] - row[static_cast<std::size_t>(i)];
+        const int trips = m * (m - 1) / 2;
+        energy_at[static_cast<std::size_t>(i) + 1] =
+            energy_at[static_cast<std::size_t>(i)] + m + trips;
+        force_at[static_cast<std::size_t>(i) + 1] =
+            force_at[static_cast<std::size_t>(i)] + 2 * m + 3 * trips;
       }
-      if (static_cast<int>(bonds.size()) < bond_at[static_cast<std::size_t>(n)]) {
-        bonds.resize(static_cast<std::size_t>(bond_at[static_cast<std::size_t>(n)]));
+      const int nenergy = energy_at[static_cast<std::size_t>(n)];
+      const int nforce = force_at[static_cast<std::size_t>(n)];
+      if (static_cast<int>(energy_slot.size()) < nenergy) {
+        energy_slot.resize(static_cast<std::size_t>(nenergy));
       }
+      if (static_cast<int>(force.size()) < nforce) {
+        force.resize(static_cast<std::size_t>(nforce));
+      }
+      if (static_cast<int>(local_n.size()) < nt * n) {
+        local_n.resize(static_cast<std::size_t>(nt) * static_cast<std::size_t>(n));
+      }
+      std::fill(local_n.begin(),
+                local_n.begin() + static_cast<std::size_t>(nt) * static_cast<std::size_t>(n), 0);
 #if defined(_OPENMP)
 #pragma omp parallel num_threads(nt)
 #endif
@@ -447,19 +545,101 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
 #else
         const int t = 0;
 #endif
+        int *mine = local_n.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(n);
         const auto range = nlist::partition(n, t, nt);
-        std::vector<Bond> nb;
+        thread_local std::vector<Bond> loaded;
         for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
-          load(i, nb);
-          const int room = bond_at[static_cast<std::size_t>(i) + 1] -
-                           bond_at[static_cast<std::size_t>(i)];
-          const int m = std::min(static_cast<int>(nb.size()), room);
-          std::copy(nb.begin(), nb.begin() + m,
-                    bonds.begin() + bond_at[static_cast<std::size_t>(i)]);
-          bond_n[static_cast<std::size_t>(i)] = m;
+          load(i, loaded);
+          const Bond *nb = loaded.data();
+          const int m = static_cast<int>(loaded.size());
+          double *e_steps = energy_slot.data() + energy_at[static_cast<std::size_t>(i)];
+          ForceHit *f_steps = force.data() + force_at[static_cast<std::size_t>(i)];
+          int ne = 0;
+          int nf = 0;
+          for (int a = 0; a < m; ++a) {
+            const Bond &bj = nb[a];
+            if (bj.j <= i) {
+              continue;
+            }
+            const PairTerm term = pairTerm(bj.r);
+            if (!term.live) {
+              continue;
+            }
+            e_steps[ne] = kEpsilon * term.f2;
+            ++ne;
+            const double inv_r = 1.0 / bj.r;
+            const double sx = scale * term.dedr * bj.x * inv_r;
+            const double sy = scale * term.dedr * bj.y * inv_r;
+            const double sz = scale * term.dedr * bj.z * inv_r;
+            f_steps[nf] = ForceHit{i, sx, sy, sz};
+            ++mine[i];
+            ++nf;
+            f_steps[nf] = ForceHit{bj.j, -sx, -sy, -sz};
+            ++mine[bj.j];
+            ++nf;
+          }
+          for (int a = 0; a < m; ++a) {
+            const Bond &bj = nb[a];
+            for (int b = a + 1; b < m; ++b) {
+              const Bond &bk = nb[b];
+              const double inv_r1 = 1.0 / bj.r;
+              const double inv_r2 = 1.0 / bk.r;
+              const double inv = inv_r1 * inv_r2;
+              double cth = (bj.x * bk.x + bj.y * bk.y + bj.z * bk.z) * inv;
+              if (cth > 1.0) {
+                cth = 1.0;
+              } else if (cth < -1.0) {
+                cth = -1.0;
+              }
+              const double ang = cth + (1.0 / 3.0);
+              const double ang2 = ang * ang;
+              e_steps[ne] = kEpsilon * kLambda * bj.gexp * bk.gexp * ang2;
+              ++ne;
+              const double pref = kEpsilon * kLambda;
+              const double d_edcth = pref * bj.gexp * bk.gexp * 2.0 * ang;
+              const double d_edr1 = pref * bj.dgdr * bk.gexp * ang2;
+              const double d_edr2 = pref * bj.gexp * bk.dgdr * ang2;
+              const double g1x =
+                  d_edr1 * bj.x * inv_r1 + d_edcth * (bk.x * inv - cth * bj.x * inv_r1 * inv_r1);
+              const double g1y =
+                  d_edr1 * bj.y * inv_r1 + d_edcth * (bk.y * inv - cth * bj.y * inv_r1 * inv_r1);
+              const double g1z =
+                  d_edr1 * bj.z * inv_r1 + d_edcth * (bk.z * inv - cth * bj.z * inv_r1 * inv_r1);
+              const double g2x =
+                  d_edr2 * bk.x * inv_r2 + d_edcth * (bj.x * inv - cth * bk.x * inv_r2 * inv_r2);
+              const double g2y =
+                  d_edr2 * bk.y * inv_r2 + d_edcth * (bj.y * inv - cth * bk.y * inv_r2 * inv_r2);
+              const double g2z =
+                  d_edr2 * bk.z * inv_r2 + d_edcth * (bj.z * inv - cth * bk.z * inv_r2 * inv_r2);
+              f_steps[nf] = ForceHit{bj.j, -scale * g1x, -scale * g1y, -scale * g1z};
+              ++mine[bj.j];
+              ++nf;
+              f_steps[nf] = ForceHit{bk.j, -scale * g2x, -scale * g2y, -scale * g2z};
+              ++mine[bk.j];
+              ++nf;
+              f_steps[nf] = ForceHit{i, scale * (g1x + g2x), scale * (g1y + g2y),
+                                     scale * (g1z + g2z)};
+              ++mine[i];
+              ++nf;
+            }
+          }
+          energy_used[static_cast<std::size_t>(i)] = ne;
+          force_used[static_cast<std::size_t>(i)] = nf;
         }
       }
+      for (int i = 0; i < n; ++i) {
+        const double *step = energy_slot.data() + energy_at[static_cast<std::size_t>(i)];
+        const int ne = energy_used[static_cast<std::size_t>(i)];
+        for (int k = 0; k < ne; ++k) {
+          *energy += step[k];
+        }
+      }
+      gatherFromCounts(force_at.data(), force_used.data(), force.data(), local_n.data(), acc, n,
+                       nt);
     } else {
+    bond_at.resize(static_cast<std::size_t>(n) + 1);
+    bond_n.assign(static_cast<std::size_t>(n), 0);
+    bond_at[0] = 0;
       bond_at[static_cast<std::size_t>(n)] = 0;
 #if defined(_OPENMP)
 #pragma omp parallel num_threads(nt)
@@ -502,7 +682,6 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
                     bonds.begin() + bond_at[static_cast<std::size_t>(i)]);
         }
       }
-    }
     energy_at.resize(static_cast<std::size_t>(n) + 1);
     force_at.resize(static_cast<std::size_t>(n) + 1);
     energy_n.assign(static_cast<std::size_t>(n), 0);
