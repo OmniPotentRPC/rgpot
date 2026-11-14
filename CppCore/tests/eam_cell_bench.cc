@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -108,7 +109,16 @@ double medianWarm(EAM &pot, int n, const double *pos, const int *z,
 
 } // namespace
 
+extern "C" std::size_t rgpot_eam_object_bytes();
+
 int main() {
+  // The constructor lives in the library. A bench compiled against a
+  // different EAM.h has a different sizeof and must not run.
+  if (rgpot_eam_object_bytes() != sizeof(EAM)) {
+    std::fprintf(stderr, "EAM layout mismatch: library %zu caller %zu\n",
+                 rgpot_eam_object_bytes(), sizeof(EAM));
+    return 2;
+  }
   constexpr int kRepeats = 7;
   constexpr double kA = 4.05;
   std::printf("cpu: %s\n", cpuModel().c_str());
