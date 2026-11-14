@@ -861,12 +861,28 @@ if has_fast_nlist
         )
         fastnlist_native_dep = fastnlist_dep
     endif
+    # The umbrella links the archive normally, so the linker takes its
+    # object only for a symbol something inside librgpot calls. The
+    # Fortran water-H kernel calls rgpot_fast_wrap; a build without
+    # Fortran calls nothing, and the C ABI was not exported. Naming the
+    # entry points as undefined pulls that object in every build. The
+    # names are the fast-list ABI baseline the abi_symbols test checks.
+    fastnlist_export_args = []
+    if not _fast_as_object and host_system != 'windows'
+        _fast_prefix = host_system == 'darwin' ? '_' : ''
+        foreach _name : import('fs').read(
+            'scripts/abi_baseline_fast.txt',
+        ).strip().split('\n')
+            fastnlist_export_args += ['-Wl,-u,' + _fast_prefix + _name.strip()]
+        endforeach
+    endif
     message(
         'fast pair list: enabled (rustc minor ' + _fast_minor.to_string() + ')',
     )
 else
     fastnlist_dep = declare_dependency()
     fastnlist_native_dep = fastnlist_dep
+    fastnlist_export_args = []
     message('fast pair list: disabled, classical pots use the C++ scan')
 endif
 
