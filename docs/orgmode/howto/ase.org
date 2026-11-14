@@ -7,57 +7,178 @@
 =rgpot.ase= is an optional extra (=pip install 'rgpot[ase]'=, ASE 3.23 or
 newer).
 =import rgpot= does not import ASE.
-The in-process calculator evaluates a bound potential in this process.
-The Cap'n Proto calculator talks to =potserv=.
+=RgpotCalculator= runs a potential in this process.
+=RgpotRpcCalculator= sends each structure to a =potserv= server over Cap'n
+Proto.
+Both are ordinary =ase.calculators.calculator.Calculator= subclasses, so
+optimizers, filters, NEB, dynamics and trajectory writers use them the way
+they use a built-in calculator.
 
 ASE itself is described by Hjorth Larsen et al., J. Phys.: Condens.
 Matter 29, 273002 (2017), doi:10.1088/1361-648X/aa680e.
 
-** In process
+** Example
+
+This relaxes the atoms and the cell of a rattled silicon crystal with the
+Stillinger-Weber potential.
 
 #+begin_src python
-from ase import Atoms
+from ase.build import bulk
+from ase.filters import FrechetCellFilter
 from ase.optimize import BFGS
 from rgpot.ase import RgpotCalculator
 
-atoms = Atoms("Al7", positions=[[0, 0, 0]] * 7, cell=[30, 30, 30])
-atoms.calc = RgpotCalculator("eam_al")
-BFGS(atoms, logfile=None).run(fmax=0.05)
-print(atoms.get_potential_energy())
+atoms = bulk("Si", "diamond", a=5.6, cubic=True)
+atoms.rattle(stdev=0.05, seed=1)
+atoms.calc = RgpotCalculator("stillinger_weber_si")
+
+print(atoms.get_potential_energy())   # eV
+print(atoms.get_forces()[0])          # eV/Angstrom
+print(atoms.get_stress())             # eV/Angstrom^3, Voigt order
+
+BFGS(FrechetCellFilter(atoms), logfile=None).run(fmax=1e-4)
+print(atoms.cell.lengths())           # [5.431 5.431 5.431]
+print(atoms.get_potential_energy() / len(atoms))  # -4.334 eV per atom
 #+end_src
 
-=RgpotCalculator= accepts an rgpot potential object or a kind string (=lj=,
-=eam_al=, and the other bound names) plus that potential's parameters.
-=implemented_properties= is =energy=, =free_energy=, and =forces=.
-=stress= is added only when the potential's caps report it.
-There is no per-atom =energies= flag on those caps, so the calculator does not
-invent one.
-=free_energy= equals =energy=: these potentials have no electronic entropy term.
+A potential with parameters takes them as keyword arguments, and =set=
+changes them later.
+The slab is made periodic along z as well, because the potentials take either
+all-periodic or all-free boundaries; the vacuum keeps the slab's images
+apart.
 
-Energies are eV, forces are eV/Angstrom, and stress is eV/Angstrom^3 in ASE
-Voigt order (xx, yy, zz, yz, xz, xy) with the ASE sign.
+#+begin_src python
+from ase.build import fcc100, add_adsorbate
+from rgpot.ase import RgpotCalculator
 
-The bound kernels are fully periodic.
-A structure with =pbc= false is a cluster.
-Energy and forces ignore the caller's cell: the kernel sees a cube whose side is
-at least 100 Angstrom and at least the cluster extent plus twice the cutoff, so
-a periodic image cannot enter the cutoff.
-Stress is the cluster virial divided by the caller's cell volume, which is the
-cell =calculate_numerical_stress= strains.
-A caller with no cell keeps the padded cube's stress.
-A mixed =pbc= raises =ValueError= and names the non-periodic axes.
+slab = fcc100("Ar", size=(3, 3, 3), a=1.5496, vacuum=5.0)
+add_adsorbate(slab, "Ar", 1.0, "hollow")
+slab.pbc = True
+slab.calc = RgpotCalculator("lj", u0=1.0, psi=1.0, cutoff=2.5)
+print(slab.get_potential_energy())
+
+print(slab.calc.set(cutoff=3.0))      # {'cutoff': 3.0}
+print(slab.get_potential_energy())    # recomputed with the new cutoff
+#+end_src
+
+** Potentials and properties
+
+The first argument is a kind string from the table, or a potential object
+from =rgpot= (=rgpot.LJPot(...)=, =rgpot.IPIPot(...)=, and so on).
+Every potential gives =energy=, =free_energy= and =forces=.
+The stress column says whether =stress= is in =implemented_properties=.
+A potential with "free" boundaries accepts only =pbc=False=.
+
+| Kind string                                  | Object                    | Stress | Boundaries | Parameters (defaults)                                         |
+|----------------------------------------------+---------------------------+--------+------------+---------------------------------------------------------------|
+| =lj=, =lennard-jones=, =lennardjones=        | =LJPot=                   | yes    | periodic   | =u0= 1.0, =psi= 1.0, =cutoff= 15.0, =switch_width= 0.0         |
+| =lj_cluster=, =lj-cluster=, =ljcluster=      | =LJClusterPot=            | no     | free       | as =lj=                                                       |
+| =morse=                                      | =MorsePot=                | yes    | periodic   | =De= 0.7102, =a= 1.6047, =re= 2.897, =cutoff= 9.5, =switch_width= 0.0 |
+| =stillinger_weber_si=, =sw_si=               | =StillingerWeberSi=       | yes    | periodic   | none                                                          |
+| =sw=                                         | =SWPot=                   | yes    | periodic   | none                                                          |
+| =tersoff_sic=                                | =TersoffSiC=              | no     | periodic   | none                                                          |
+| =eam_al=, =eam-al=                           | =EAMAlPot=                | no     | periodic   | none                                                          |
+| =edip=                                       | =EDIPPot=                 | no     | periodic   | none                                                          |
+| =lenosky=                                    | =LenoskyPot=              | no     | periodic   | none                                                          |
+| =tersoff=                                    | =TersoffPot=              | no     | periodic   | none                                                          |
+| =fehe=                                       | =FeHePot=                 | no     | periodic   | none                                                          |
+| =cuh2=                                       | =CuH2Pot=                 | no     | periodic   | none                                                          |
+| =water_h=                                    | =WaterHPot=               | no     | periodic   | none                                                          |
+| =d3=                                         | =D3Pot=                   | no     | free       | =damping= "bj", =functional= "pbe", =atm= True                 |
+| =d4=                                         | =D4Pot=                   | no     | free       | =functional= "pbe", =charge= 0.0, =atm= True                   |
+| =expr=                                       | =ExprPot=                 | no     | from terms | =expression=, =terms= (both required)                         |
+| =lammps=                                     | =rgpot_lammps_potential=  | no     | periodic   | =u0= 1.0, =psi= 1.0, =cutoff= 8.0, =engine_path= ""            |
+| =gromacs=                                    | =rgpot_gromacs_potential= | no     | periodic   | as =lammps=                                                   |
+| =openmm=                                     | =rgpot_openmm_potential=  | no     | periodic   | as =lammps=                                                   |
+| (object only)                                | =IPIPot=                  | yes    | periodic   | the address and timeout given to =IPIPot=                     |
+
+The Fortran kernels (=sw= to =water_h=), =d3=, =d4= and =expr= exist only in a
+build that compiled them in.
+=lammps= needs its engine plugin, either on the library path or as
+=engine_path=.
+=IPIPot= is an i-PI socket server: an i-PI driver must connect to it, and the
+stress comes from the virial the driver sends back.
+
+No potential computes per-atom energies, so =energies= is never in
+=implemented_properties=.
+Asking for a property that is not in the list raises
+=PropertyNotImplementedError=, as a built-in calculator does.
+=get_hessian= raises it too, because no potential has an analytic Hessian.
+=free_energy= equals =energy=: these potentials have no electronic entropy.
+
+** Units and conventions
+
+Energy is in eV, forces in eV/Angstrom and stress in eV/Angstrom^3.
+Stress is in ASE's Voigt order (xx, yy, zz, yz, xz, xy) with ASE's sign: it is
+\((1/V)\,\partial E/\partial \varepsilon\), so a compressed crystal has
+negative stress and =atoms.get_stress()= agrees with
+=ase.calculators.fd.calculate_numerical_stress=.
+
+** Boundaries
+
+A structure with every =pbc= flag true is periodic in its cell.
+The potentials count each neighbour at its nearest periodic image, which is
+right only when every cell height is at least twice the cutoff.
+A thinner cell, such as a one-atom fcc cell, is evaluated as a supercell that
+is thick enough, and the energy, forces and stress of the original cell are
+taken from it, so the results match ASE's own calculators for any cell.
+=water_h= has no cutoff and is not tiled.
+For an =IPIPot= or a potential object without =config()=, the calculator does
+not know the cutoff, so the cell must be thick enough already.
+
+A structure with every flag false is a cluster.
+For a cluster, the potential sees a cube whose side is at least 100 Angstrom
+and at least the cluster size plus twice the cutoff, so no periodic image is
+within the cutoff, and energy and forces do not depend on the cell you set.
+Stress does: it is the cluster virial divided by your cell's volume, which is
+what finite differences of that cell measure.
+A cluster with no three-dimensional cell has no stress, and =get_stress=
+raises =PropertyNotImplementedError=.
+Mixed flags such as =pbc=[True, True, False]= raise =ValueError=.
+A free-boundary potential (=lj_cluster=, =d3=, =d4=) raises =ValueError= for
+periodic atoms instead of returning the energy of the isolated structure.
+
+** Parameters, caching and copies
+
+The potential's parameters live in =calc.parameters= next to ASE's own, and
+=calc.default_parameters= holds their defaults.
+An unknown parameter raises =ValueError= and names it.
+=set= returns the keys whose value changed, rebuilds the potential and
+clears the results when any of them did.
+=calc.todict()= lists the parameters that differ from the defaults.
+
+Results are cached in the usual ASE way.
+Asking again for a property of unchanged atoms returns the stored value
+without evaluating the potential.
+A change of positions, atomic numbers, cell or =pbc= evaluates it again.
+=get_property(name, atoms, allow_calculation=False)= returns =None= instead
+of computing a missing result.
+
+=copy.deepcopy= and =pickle= work for a calculator built from a kind string or
+from a potential that reports =config()=: the copy builds its own potential
+from the parameters.
+A calculator over an object with no =config()=, such as =IPIPot=, raises
+=TypeError= on copy, because the object holds an engine or socket that cannot
+be copied.
+
+** Batches
 
 =calculate_many= evaluates a list of =Atoms= in one batch.
 The default properties are energy and forces.
 Pass =attach=True= to store a =SinglePointCalculator= on each structure.
 The inputs are not modified.
-=get_hessian= raises =NotImplementedError=.
-No bound potential has an analytic Hessian.
 
 ** RPC calculator
 
 =RgpotRpcCalculator= is the Cap'n Proto calculator.
-One connection belongs to one calculator.
+Its =implemented_properties= is =energy=, =free_energy= and =forces=.
+Periodic atoms go to the server in their cell; a cluster goes in the same
+padded cube as above.
+The calculator cannot ask the server for its cutoff.
+Pass =cutoff= (Angstrom) and a cell thinner than twice it is sent as a
+supercell, as above.
+=RgpotRpcCalculator.spawn= sets it for =LJ=, =Morse=, =CuH2= and =EAMAl=.
+One connection belongs to one calculator, so it cannot be copied or pickled.
 A second thread that enters =calculate= while the first still holds the
 connection gets =RuntimeError=.
 The old import =ase_calculator.RgpotCalculator= warns and re-exports this class.
