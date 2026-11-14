@@ -143,7 +143,7 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
   for (std::size_t i = 0; i < n3; ++i) {
     acc[i] = 0.0;
   }
-  if (n_atoms < 2) {
+  if (n_atoms < 1) {
     return;
   }
 
@@ -196,14 +196,16 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
   auto pairForces = [&](int i, const std::vector<Bond> &nb, double *force,
                         double &local_e, double *local_strain) {
     for (const Bond &bj : nb) {
-      if (bj.j <= i) {
+      if (bj.j < i) {
         continue;
       }
       const PairTerm t = pairTerm(bj.r);
       if (!t.live) {
         continue;
       }
-      local_e += kEpsilon * t.f2;
+      // A periodic self image is a bond at both of its shifts.
+      const double share = bj.j == i ? 0.5 : 1.0;
+      local_e += share * kEpsilon * t.f2;
       const double inv_r = 1.0 / bj.r;
       const double sx = scale * t.dedr * bj.x * inv_r;
       const double sy = scale * t.dedr * bj.y * inv_r;
@@ -218,7 +220,7 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
         // dE/d(bj) is (dedr / r) bj. bj is the negative of the d in
         // stress.hpp when the walk stores r_i - r_j. The term is
         // quadratic in that vector, so the sign does not change it.
-        accumulatePairStrain(local_strain, -t.dedr * inv_r, bj.x, bj.y, bj.z);
+        accumulatePairStrain(local_strain, -share * t.dedr * inv_r, bj.x, bj.y, bj.z);
       }
     }
   };

@@ -249,10 +249,7 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
   for (std::size_t i = 0; i < n_atoms * 3; ++i) {
     acc[i] = 0.0;
   }
-  if (n_atoms < 2) {
-    if (n_atoms == 1) {
-      kindOf(atomic_numbers[0]);
-    }
+  if (n_atoms == 0) {
     return;
   }
 
