@@ -1211,6 +1211,20 @@ void build(Batch &batch, const Systems &systems, const Query &query) {
   batch = std::move(out);
 }
 
+#ifdef RGPOT_EAM_AL_OPENMP
+// The Fortran fill used to value-initialise these buffers on the calling
+// thread. The parallel filter then wrote each static slice. Growing without
+// that write leaves the first store, in the filter, as the first touch.
+void grow_fortran_outputs(std::vector<std::int32_t> &idx, std::vector<std::int32_t> &atom,
+                          std::vector<double> &vec, std::vector<double> &dist,
+                          std::size_t slots) {
+  grow_uninitialized(idx, slots);
+  grow_uninitialized(atom, slots);
+  grow_uninitialized(vec, slots * 3);
+  grow_uninitialized(dist, slots);
+}
+#endif
+
 } // namespace rgpot::nlist
 
 namespace {
@@ -1779,6 +1793,13 @@ int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *
                                               1.0e-8 * (1.0 + cutoff)
                                         : 0.0;
     const auto slots = std::max(table.size(), std::size_t{1});
+#ifdef RGPOT_EAM_AL_OPENMP
+    if (omp_get_max_threads() > 1) {
+      if (list->idx.size() < slots) {
+        rgpot::nlist::grow_fortran_outputs(list->idx, list->atom, list->vec, list->dist, slots);
+      }
+    } else
+#endif
     if (list->idx.size() < slots) {
       list->idx.resize(slots);
       list->atom.resize(slots);

@@ -1,0 +1,1 @@
+With `with_eam_al_openmp` and more than one thread, the Fortran neighbour outputs grow without a serial zero-fill. Each thread's first store of its own kept pairs is the first touch. One thread still value-initialises the buffers.
