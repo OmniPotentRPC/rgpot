@@ -371,10 +371,9 @@ __attribute__((target("sse2"), noinline)) void morse8_soft(const double *r2,
   }
 }
 
-__attribute__((target("fma"), noinline)) static void eam_fma(long n, const double *R,
-                                                             const EamAtom *atoms,
-                                                             const double *box, double *F,
-                                                             double *U) {
+__attribute__((target("fma"), flatten, noinline)) static void eam_fma(
+    long n, const double *R, const EamAtom *atoms, const double *box, double *F,
+    double *U) {
 #define RGPOT_EAM_HW true
 #include "rgpot/simd/eam_body.inc"
 #undef RGPOT_EAM_HW
@@ -393,9 +392,9 @@ __attribute__((target("sse2"), noinline)) void eam_sse(long n, const double *R,
 #undef RGPOT_EAM_HW
 }
 
-__attribute__((target("fma"), noinline)) void exp_hw_n(const double *in,
-                                                       double *out,
-                                                       std::size_t n) {
+__attribute__((target("fma"), flatten, noinline)) void exp_hw_n(const double *in,
+                                                                double *out,
+                                                                std::size_t n) {
   std::size_t i = 0;
   for (; i + 2 <= n; i += 2) {
     const double a = exp_fast<true>(in[i]);
