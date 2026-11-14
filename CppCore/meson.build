@@ -794,6 +794,12 @@ if get_option('with_tests')
                 '',
             ],
             [
+                'ZeroPairResetTest',
+                'zero_pair_reset_test',
+                'ZeroPairResetTest.cc',
+                '',
+            ],
+            [
                 'EAMCellVerletTest',
                 'eam_cell_verlet_test',
                 'EAMCellVerletTest.cc',
