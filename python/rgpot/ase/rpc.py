@@ -6,6 +6,10 @@ raises ``RuntimeError``.
 
 Units follow the Cap'n Proto ``ForceInput`` defaults (Angstrom / eV),
 which are ASE's units.
+
+The server kernels are fully periodic. A structure with ``pbc`` false
+is sent in a cube of at least 100 Angstrom, whatever its cell, and a
+mixed ``pbc`` raises ``ValueError``, as for :class:`RgpotCalculator`.
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ from typing import Any
 import numpy as np
 from ase.calculators.calculator import Calculator, all_changes
 
+from rgpot.ase.calculator import _box
 from rgpot.ase.claim import ConnectionClaim
 
 def _capnp() -> Any:
@@ -63,7 +68,7 @@ class RgpotRpcCalculator(Calculator):
         Prefer :meth:`spawn`.
     """
 
-    implemented_properties = ["energy", "forces"]
+    implemented_properties = ["energy", "free_energy", "forces"]
     # The connection is a session (F3), not the pure protocol.
     reentrant = False
 
@@ -141,6 +146,12 @@ class RgpotRpcCalculator(Calculator):
                 self._server_proc.wait()
                 self._server_proc = None
 
+    def __getstate__(self) -> dict[str, Any]:
+        raise TypeError(
+            "RgpotRpcCalculator owns a live connection and cannot be copied "
+            "or pickled; make a new calculator for each copy"
+        )
+
     def __enter__(self) -> RgpotRpcCalculator:
         return self
 
@@ -186,11 +197,7 @@ class RgpotRpcCalculator(Calculator):
             super().calculate(atoms, properties, system_changes)
             frame = self.atoms
             assert frame is not None
-            cell = frame.cell
-            if cell.rank == 3:
-                box = np.asarray(cell.array)
-            else:
-                box = np.eye(3) * 100.0
+            box = _box(frame.positions, frame.cell.array, frame.pbc, 0.0)
             energy, forces = self._loop.run_until_complete(
                 self._calculate_async(
                     frame.get_positions(), frame.get_atomic_numbers(), box
