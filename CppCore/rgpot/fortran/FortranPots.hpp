@@ -60,13 +60,32 @@ private:
     FortranWorkspace m_ws;                                                     \
   }
 
+/// A kernel that also splits its energy over the atoms: half of every
+/// pair term to each partner and the embedding term on its own atom.
+#define RGPOT_FORTRAN_EAM_CLASS(ClassName, PotTypeValue)                       \
+  class ClassName : public Potential<ClassName> {                              \
+  public:                                                                      \
+    ClassName() : Potential(PotType::PotTypeValue) {}                          \
+    void forceImpl(const ForceInput &in, ForceOut *out) const override;        \
+    void forceEnergiesImpl(const ForceInput &in, ForceOut *out,                \
+                           double *energies) const;                            \
+    [[nodiscard]] PotCaps caps() const noexcept override {                     \
+      return {.reentrancy = Reentrancy::PerInstance,                           \
+              .perImageInstances = true};                                      \
+    }                                                                          \
+                                                                               \
+  private:                                                                     \
+    FortranWorkspace m_ws;                                                     \
+  }
+
 RGPOT_FORTRAN_POT_CLASS(EDIPPot, EDIP);
 RGPOT_FORTRAN_POT_CLASS(LenoskyPot, LenoskySi);
-RGPOT_FORTRAN_POT_CLASS(EAMAlPot, EAMAl);
+RGPOT_FORTRAN_EAM_CLASS(EAMAlPot, EAMAl);
 RGPOT_FORTRAN_POT_CLASS(FeHePot, FeHe);
-RGPOT_FORTRAN_POT_CLASS(CuH2Pot, CuH2);
+RGPOT_FORTRAN_EAM_CLASS(CuH2Pot, CuH2);
 RGPOT_FORTRAN_POT_CLASS(WaterHPot, WaterH);
 
+#undef RGPOT_FORTRAN_EAM_CLASS
 #undef RGPOT_FORTRAN_POT_CLASS
 
 /// Stillinger-Weber silicon (PotType::SWSi). Epsilon is eOn's

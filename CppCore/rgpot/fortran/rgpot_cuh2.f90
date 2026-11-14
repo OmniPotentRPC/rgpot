@@ -377,9 +377,11 @@ contains
    !!
    !! `atomic_numbers` selects the species per atom and must hold only
    !! `cuh2_z_cu` or `cuh2_z_h`. Non-zero `status` leaves `energy` and
-   !! `forces` zeroed and describes the fault in `errmsg`.
+   !! `forces` zeroed and describes the fault in `errmsg`. `energies`, when
+   !! present, receives each atom's share: half of every pair term and its
+   !! own embedding term. They sum to `energy`.
    subroutine cuh2_energy_forces(positions, atomic_numbers, cell, par, table, &
-                                 energy, forces, status, errmsg)
+                                 energy, forces, status, errmsg, energies)
       real(wp), intent(in), contiguous :: positions(:, :)
       integer(ip), intent(in), contiguous :: atomic_numbers(:)
       real(wp), intent(in) :: cell(3, 3)
@@ -389,6 +391,7 @@ contains
       real(wp), intent(out), contiguous :: forces(:, :)
       integer, intent(out) :: status
       character(len=:), allocatable, intent(out) :: errmsg
+      real(wp), intent(out), contiguous, optional :: energies(:)
 
       type(cuh2_params_t) :: shifted
       integer(ip) :: natoms, i, nentries
@@ -397,6 +400,7 @@ contains
 
       energy = 0.0_wp
       forces = 0.0_wp
+      if (present(energies)) energies = 0.0_wp
       status = 0
       errmsg = ""
       natoms = int(size(positions, 2), ip)
@@ -457,6 +461,7 @@ contains
       end do
 
       energy = sum(e_pair) + sum(e_embed)
+      if (present(energies)) energies = e_pair + e_embed
    end subroutine cuh2_energy_forces
 
    !> Map atomic numbers onto the dense species codes.
