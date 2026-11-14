@@ -567,6 +567,11 @@ TEST_CASE("EAM-Al primitive cell matches a supercell", "[images][eam]") {
                a / 2, a / 2, 0.0};
   cubic.types = {13, 13, 13, 13};
   requireMatchesRepeat(cell, cubic, 4, 4, 4, 5.555 * 1.2, false, 1e-9);
+  requireMatchesRepeat(cell, one, 8, 8, 8, 5.555 * 1.2, false, 1e-9);
+  requireMatchesRepeat(cell, rattledPair(tri, 13), 4, 8, 8, 5.555 * 1.2, false, 1e-9);
+  // The cubic lattice energy in the primitive cell's symmetric rows.
+  CHECK_THAT(evaluate(cell, fccPrimitive(a, 13)).energy,
+             WithinAbs(evaluate(cell, fccCubic(a, 5, 5, 5, 13)).energy / 500.0, 1e-10));
 }
 
 TEST_CASE("one-atom and four-atom fcc Lennard-Jones match the lattice sum",

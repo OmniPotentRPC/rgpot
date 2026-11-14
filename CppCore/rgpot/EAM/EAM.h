@@ -149,6 +149,11 @@ private:
   rgpot::nlist::Neighbours neighbours_;
 
   double box_len_[3]{};
+  // A cell with an off-diagonal entry keeps the positions as given and
+  // folds each pair with the minimum image of its rows.
+  double box9_[9]{};
+  bool sheared_ = false;
+  rgpot::nlist::MinimumImage image_;
   long n_atoms_ = 0;
   long part_n_ = -1;
   int part_nt_ = -1;
@@ -158,6 +163,7 @@ private:
 
   void prepare(long N, const double *R, const double *box);
   void buildList(long N);
+  void fold(double &dx, double &dy, double &dz) const;
   void ensureRev();
   void ensureParts(long N, int nt);
   template <bool PerAtom>

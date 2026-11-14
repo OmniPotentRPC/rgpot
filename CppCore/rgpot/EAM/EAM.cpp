@@ -61,6 +61,15 @@ EAM::element_parameters EAM::get_element_parameters(int atomic_number) const {
 
 void EAM::prepare(long N, const double *R, const double *box) {
   wrapped_.resize(static_cast<std::size_t>(3 * N));
+  box_len_[0] = box[0];
+  box_len_[1] = box[1];
+  box_len_[2] = box[2];
+  if (sheared_) {
+    // The neighbour layer bins a sheared cell by fractional coordinates
+    // and folds every difference, so the atoms may sit anywhere.
+    std::copy(R, R + 3 * N, wrapped_.begin());
+    return;
+  }
   double xmin = std::numeric_limits<double>::max();
   double ymin = xmin;
   double zmin = xmin;
@@ -91,9 +100,6 @@ void EAM::prepare(long N, const double *R, const double *box) {
       wrapped_[static_cast<std::size_t>(i)] -= box[i % 3];
     }
   }
-  box_len_[0] = box[0];
-  box_len_[1] = box[1];
-  box_len_[2] = box[2];
 }
 
 void EAM::buildList(long N) {
@@ -102,11 +108,16 @@ void EAM::buildList(long N) {
     widest = std::max(widest, el_params[i].r_cut);
   }
   double box9[9] = {box_len_[0], 0, 0, 0, box_len_[1], 0, 0, 0, box_len_[2]};
+  if (sheared_) {
+    std::copy(box9_, box9_ + 9, box9);
+  }
   // A stream does not reuse bins unless the coordinates match, so the
   // skin only adds pairs the kernel then rejects.
   const double skin = mode_ == rgpot::nlist::Mode::Stream ? 0.0 : kEamSkinOverCutoff * widest;
   rgpot::nlist::updateCells(neighbours_, wrapped_.data(), static_cast<std::size_t>(N), box9,
-                            widest, skin, rgpot::nlist::Image::Half, mode_, {true, true, true});
+                            widest, skin,
+                            sheared_ ? rgpot::nlist::Image::General : rgpot::nlist::Image::Half,
+                            mode_, {true, true, true});
   n_atoms_ = N;
   if (neighbours_.streaming()) {
     rev_.clear();
@@ -116,6 +127,31 @@ void EAM::buildList(long N) {
   if (rev_stamp_ != neighbours_.builds()) {
     ensureRev();
     rev_stamp_ = neighbours_.builds();
+  }
+}
+
+inline void EAM::fold(double &dx, double &dy, double &dz) const {
+  if (sheared_) {
+    image_.fold(dx, dy, dz);
+    return;
+  }
+  const double half0 = box_len_[0] * 0.5;
+  const double half1 = box_len_[1] * 0.5;
+  const double half2 = box_len_[2] * 0.5;
+  if (dx > half0) {
+    dx -= box_len_[0];
+  } else if (dx < -half0) {
+    dx += box_len_[0];
+  }
+  if (dy > half1) {
+    dy -= box_len_[1];
+  } else if (dy < -half1) {
+    dy += box_len_[1];
+  }
+  if (dz > half2) {
+    dz -= box_len_[2];
+  } else if (dz < -half2) {
+    dz += box_len_[2];
   }
 }
 
@@ -161,9 +197,6 @@ void EAM::accumulate(long i, const int *atomicNrs, double *F, double &U,
   deltas.clear();
   const element_parameters epar = get_element_parameters(atomicNrs[i]);
   const double cutoff2 = epar.r_cut * epar.r_cut;
-  const double half0 = box_len_[0] * 0.5;
-  const double half1 = box_len_[1] * 0.5;
-  const double half2 = box_len_[2] * 0.5;
   const double xi = wrapped_[static_cast<std::size_t>(3 * i)];
   const double yi = wrapped_[static_cast<std::size_t>(3 * i + 1)];
   const double zi = wrapped_[static_cast<std::size_t>(3 * i + 2)];
@@ -185,21 +218,7 @@ void EAM::accumulate(long i, const int *atomicNrs, double *F, double &U,
     double dx = xi - wrapped_[static_cast<std::size_t>(3 * j)];
     double dy = yi - wrapped_[static_cast<std::size_t>(3 * j + 1)];
     double dz = zi - wrapped_[static_cast<std::size_t>(3 * j + 2)];
-    if (dx > half0) {
-      dx -= box_len_[0];
-    } else if (dx < -half0) {
-      dx += box_len_[0];
-    }
-    if (dy > half1) {
-      dy -= box_len_[1];
-    } else if (dy < -half1) {
-      dy += box_len_[1];
-    }
-    if (dz > half2) {
-      dz -= box_len_[2];
-    } else if (dz < -half2) {
-      dz += box_len_[2];
-    }
+    fold(dx, dy, dz);
     const double r2 = dx * dx + dy * dy + dz * dz;
     if (r2 > cutoff2) {
       continue;
@@ -269,30 +288,13 @@ int EAM::threadsRequested() const { return rgpot::nlist::threadsRequested(); }
 
 void EAM::geometry(long i, long j, double &dx, double &dy, double &dz,
                    double &r2) const {
-  const double half0 = box_len_[0] * 0.5;
-  const double half1 = box_len_[1] * 0.5;
-  const double half2 = box_len_[2] * 0.5;
   const double xi = wrapped_[static_cast<std::size_t>(3 * i)];
   const double yi = wrapped_[static_cast<std::size_t>(3 * i + 1)];
   const double zi = wrapped_[static_cast<std::size_t>(3 * i + 2)];
   dx = xi - wrapped_[static_cast<std::size_t>(3 * j)];
   dy = yi - wrapped_[static_cast<std::size_t>(3 * j + 1)];
   dz = zi - wrapped_[static_cast<std::size_t>(3 * j + 2)];
-  if (dx > half0) {
-    dx -= box_len_[0];
-  } else if (dx < -half0) {
-    dx += box_len_[0];
-  }
-  if (dy > half1) {
-    dy -= box_len_[1];
-  } else if (dy < -half1) {
-    dy += box_len_[1];
-  }
-  if (dz > half2) {
-    dz -= box_len_[2];
-  } else if (dz < -half2) {
-    dz += box_len_[2];
-  }
+  fold(dx, dy, dz);
   r2 = dx * dx + dy * dy + dz * dz;
 }
 
@@ -694,12 +696,29 @@ template <bool PerAtom>
 void EAM::run(long N, const double *R, const int *atomicNrs, double *F, double *U,
               double *site, const double *fullbox) {
   const double box[3] = {fullbox[0], fullbox[4], fullbox[8]};
-  for (int axis = 0; axis < 3; ++axis) {
-    if (!(box[axis] > 0.0)) {
-      throw std::invalid_argument(
-          "EAM::force: box diagonal and cutoff must be positive");
+  const bool sheared = fullbox[1] != 0.0 || fullbox[2] != 0.0 || fullbox[3] != 0.0 ||
+                       fullbox[5] != 0.0 || fullbox[6] != 0.0 || fullbox[7] != 0.0;
+  if (sheared) {
+    // An fcc primitive cell has zeros on its diagonal and is still real.
+    const double *h = fullbox;
+    const double det = h[0] * (h[4] * h[8] - h[5] * h[7]) - h[1] * (h[3] * h[8] - h[5] * h[6]) +
+                       h[2] * (h[3] * h[7] - h[4] * h[6]);
+    if (!(std::fabs(det) > 0.0) || !std::isfinite(det)) {
+      throw std::invalid_argument("EAM::force: the cell rows must span a volume");
+    }
+    if (!sheared_ || std::memcmp(box9_, fullbox, sizeof(box9_)) != 0) {
+      image_ = rgpot::nlist::MinimumImage(fullbox, {true, true, true});
+      std::memcpy(box9_, fullbox, sizeof(box9_));
+    }
+  } else {
+    for (int axis = 0; axis < 3; ++axis) {
+      if (!(box[axis] > 0.0)) {
+        throw std::invalid_argument(
+            "EAM::force: box diagonal and cutoff must be positive");
+      }
     }
   }
+  sheared_ = sheared;
   *U = 0;
   for (long k = 0; k < 3 * N; k++) {
     F[k] = 0.0;
