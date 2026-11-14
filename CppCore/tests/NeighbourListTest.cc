@@ -20,7 +20,7 @@
 namespace {
 
 void set_omp_threads(const char *value) {
-#if defined(_MSC_VER)
+#if defined(_WIN32)
   _putenv_s("OMP_NUM_THREADS", value);
 #else
   setenv("OMP_NUM_THREADS", value, 1);
