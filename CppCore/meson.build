@@ -2273,6 +2273,7 @@ if get_option('with_tests')
                 'print_cxx_layout_stamp',
                 sources: ['tests/print_cxx_layout_stamp.cc'],
                 include_directories: _incdirs + ['.'],
+                dependencies: has_fmt ? [fmt_dep] : [],
                 cpp_args: _args,
                 link_language: 'cpp',
             )
