@@ -434,6 +434,10 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
       std::vector<int> strain_used;
       std::vector<double> energy;
       std::vector<Hit> force;
+      std::vector<int> local_n;
+      std::vector<int> touch;
+      std::vector<int> cursor_all;
+      std::vector<Hit> csr;
       std::vector<StrainHit> strain_hit;
     };
     thread_local Slots slots;
@@ -450,6 +454,10 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
     auto &strain_used = slots.strain_used;
     auto &energy_slot = slots.energy;
     auto &force = slots.force;
+    auto &local_n = slots.local_n;
+    auto &touch = slots.touch;
+    auto &cursor_all = slots.cursor_all;
+    auto &csr = slots.csr;
     auto &strain_hit = slots.strain_hit;
     const auto &row = neighbours_.offsets();
     const bool stored = !neighbours_.streaming() &&
@@ -668,13 +676,102 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
         *energy += step[k];
       }
     }
-    for (int i = 0; i < n; ++i) {
-      const Hit *hit = force.data() + force_at[static_cast<std::size_t>(i)];
-      const int nf = force_used[static_cast<std::size_t>(i)];
-      for (int k = 0; k < nf; ++k) {
-        acc[3 * hit[k].atom] += hit[k].x;
-        acc[3 * hit[k].atom + 1] += hit[k].y;
-        acc[3 * hit[k].atom + 2] += hit[k].z;
+    // Hits for one atom stay in scatter order. Thread 0 owns the first
+    // atoms, so concatenating the threads is the serial emission order,
+    // and the per-atom sum is that same left fold.
+    if (static_cast<int>(local_n.size()) < nt * n) {
+      local_n.resize(static_cast<std::size_t>(nt) * static_cast<std::size_t>(n));
+    }
+    std::fill(local_n.begin(),
+              local_n.begin() + static_cast<std::size_t>(nt) * static_cast<std::size_t>(n), 0);
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+    {
+#if defined(_OPENMP)
+      const int t = omp_get_thread_num();
+#else
+      const int t = 0;
+#endif
+      int *mine = local_n.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(n);
+      const auto range = nlist::partition(n, t, nt);
+      for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
+        const Hit *hit = force.data() + force_at[static_cast<std::size_t>(i)];
+        const int nf = force_used[static_cast<std::size_t>(i)];
+        for (int k = 0; k < nf; ++k) {
+          ++mine[hit[k].atom];
+        }
+      }
+    }
+    touch.resize(static_cast<std::size_t>(n) + 1);
+    touch[0] = 0;
+    for (int atom = 0; atom < n; ++atom) {
+      int count = 0;
+      for (int t = 0; t < nt; ++t) {
+        count += local_n[static_cast<std::size_t>(t) * static_cast<std::size_t>(n) +
+                         static_cast<std::size_t>(atom)];
+      }
+      touch[static_cast<std::size_t>(atom) + 1] = touch[static_cast<std::size_t>(atom)] + count;
+    }
+    const int ntouch = touch[static_cast<std::size_t>(n)];
+    if (static_cast<int>(csr.size()) < ntouch) {
+      csr.resize(static_cast<std::size_t>(ntouch));
+    }
+    if (static_cast<int>(cursor_all.size()) < nt * n) {
+      cursor_all.resize(static_cast<std::size_t>(nt) * static_cast<std::size_t>(n));
+    }
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+    {
+#if defined(_OPENMP)
+      const int t = omp_get_thread_num();
+#else
+      const int t = 0;
+#endif
+      int *cursor = cursor_all.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(n);
+      for (int atom = 0; atom < n; ++atom) {
+        int off = touch[static_cast<std::size_t>(atom)];
+        for (int u = 0; u < t; ++u) {
+          off += local_n[static_cast<std::size_t>(u) * static_cast<std::size_t>(n) +
+                         static_cast<std::size_t>(atom)];
+        }
+        cursor[atom] = off;
+      }
+      const auto range = nlist::partition(n, t, nt);
+      for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
+        const Hit *hit = force.data() + force_at[static_cast<std::size_t>(i)];
+        const int nf = force_used[static_cast<std::size_t>(i)];
+        for (int k = 0; k < nf; ++k) {
+          csr[static_cast<std::size_t>(cursor[hit[k].atom])] = hit[k];
+          ++cursor[hit[k].atom];
+        }
+      }
+    }
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+    {
+#if defined(_OPENMP)
+      const int t = omp_get_thread_num();
+#else
+      const int t = 0;
+#endif
+      const auto range = nlist::partition(n, t, nt);
+      for (int atom = static_cast<int>(range.begin); atom < static_cast<int>(range.end); ++atom) {
+        double x = 0.0;
+        double y = 0.0;
+        double z = 0.0;
+        const int begin = touch[static_cast<std::size_t>(atom)];
+        const int end = touch[static_cast<std::size_t>(atom) + 1];
+        for (int p = begin; p < end; ++p) {
+          x += csr[static_cast<std::size_t>(p)].x;
+          y += csr[static_cast<std::size_t>(p)].y;
+          z += csr[static_cast<std::size_t>(p)].z;
+        }
+        acc[3 * atom] += x;
+        acc[3 * atom + 1] += y;
+        acc[3 * atom + 2] += z;
       }
     }
     if (strain != nullptr) {

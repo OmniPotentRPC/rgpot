@@ -34,6 +34,7 @@ struct ClusterScratch {
   std::vector<double> terms;
   std::vector<int> slot;
   std::vector<int> kept;
+  std::vector<int> counts;
 };
 
 // Kept out of the one-thread walk so that walk's code stays the serial one.
@@ -46,16 +47,35 @@ struct ClusterScratch {
   auto &slot = scratch.slot;
   auto &terms = scratch.terms;
   auto &kept = scratch.kept;
+  auto &counts = scratch.counts;
   slot.assign(static_cast<std::size_t>(N) + 1, 0);
-  for (std::int64_t i = 0; i < N; ++i) {
-    int count = 0;
-    const auto row = static_cast<std::size_t>(i);
-    for (std::int32_t p = off[row]; p < off[row + 1]; ++p) {
-      if (nbr[static_cast<std::size_t>(p)] > i) {
-        ++count;
+  if (static_cast<std::int64_t>(counts.size()) < N) {
+    counts.resize(static_cast<std::size_t>(N));
+  }
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+  {
+#if defined(_OPENMP)
+    const int thread = omp_get_thread_num();
+#else
+    const int thread = 0;
+#endif
+    const auto range = nlist::partition(N, thread, nt);
+    for (std::int64_t i = range.begin; i < range.end; ++i) {
+      int count = 0;
+      const auto row = static_cast<std::size_t>(i);
+      for (std::int32_t p = off[row]; p < off[row + 1]; ++p) {
+        if (nbr[static_cast<std::size_t>(p)] > i) {
+          ++count;
+        }
       }
+      counts[row] = count;
     }
-    slot[row + 1] = slot[row] + count;
+  }
+  for (std::int64_t i = 0; i < N; ++i) {
+    slot[static_cast<std::size_t>(i) + 1] =
+        slot[static_cast<std::size_t>(i)] + counts[static_cast<std::size_t>(i)];
   }
   const int nterm_all = slot[static_cast<std::size_t>(N)];
   if (static_cast<int>(terms.size()) < nterm_all) {

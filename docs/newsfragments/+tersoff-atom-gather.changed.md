@@ -1,0 +1,1 @@
+Threaded Tersoff sums each atom's force updates from one row of the scatter log, and a threaded Lennard-Jones cluster counts its pair slots across threads. Both still match the one-thread energy and forces bit for bit.
