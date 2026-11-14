@@ -1,0 +1,1 @@
+A threaded stored embedded-atom metal adds each atom's forces from the atom that owns it, in the serial write order. Threaded Stillinger-Weber does the same from 1024 atoms up. One thread is unchanged, and the energies and forces still match it bit for bit.

@@ -64,6 +64,126 @@ PairTerm pairTerm(double r) {
   return {true, f2, dedr, gexp, dgdr};
 }
 
+struct ForceHit {
+  int atom;
+  double x;
+  double y;
+  double z;
+};
+
+// Hits already sit in scatter order, one source atom after another.
+// Grouping them by the atom they update keeps that order inside the row,
+// and each thread sums the atoms it owns.
+[[gnu::noinline]] void gatherByAtom(const int *force_at, const int *force_used,
+                                    const ForceHit *hits, double *acc, int n, int nt) {
+  struct Scratch {
+    std::vector<int> local_n;
+    std::vector<int> touch;
+    std::vector<int> cursor;
+    std::vector<ForceHit> csr;
+  };
+  thread_local Scratch scratch;
+  auto &local_n = scratch.local_n;
+  auto &touch = scratch.touch;
+  auto &cursor = scratch.cursor;
+  auto &csr = scratch.csr;
+  if (static_cast<int>(local_n.size()) < nt * n) {
+    local_n.resize(static_cast<std::size_t>(nt) * static_cast<std::size_t>(n));
+  }
+  std::fill(local_n.begin(),
+            local_n.begin() + static_cast<std::size_t>(nt) * static_cast<std::size_t>(n), 0);
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+  {
+#if defined(_OPENMP)
+    const int t = omp_get_thread_num();
+#else
+    const int t = 0;
+#endif
+    int *mine = local_n.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(n);
+    const auto range = nlist::partition(n, t, nt);
+    for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
+      const ForceHit *hit = hits + force_at[i];
+      const int nf = force_used[i];
+      for (int k = 0; k < nf; ++k) {
+        ++mine[hit[k].atom];
+      }
+    }
+  }
+  touch.resize(static_cast<std::size_t>(n) + 1);
+  touch[0] = 0;
+  for (int atom = 0; atom < n; ++atom) {
+    int count = 0;
+    for (int t = 0; t < nt; ++t) {
+      count += local_n[static_cast<std::size_t>(t) * static_cast<std::size_t>(n) +
+                       static_cast<std::size_t>(atom)];
+    }
+    touch[static_cast<std::size_t>(atom) + 1] = touch[static_cast<std::size_t>(atom)] + count;
+  }
+  const int ntouch = touch[static_cast<std::size_t>(n)];
+  if (static_cast<int>(csr.size()) < ntouch) {
+    csr.resize(static_cast<std::size_t>(ntouch));
+  }
+  if (static_cast<int>(cursor.size()) < nt * n) {
+    cursor.resize(static_cast<std::size_t>(nt) * static_cast<std::size_t>(n));
+  }
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+  {
+#if defined(_OPENMP)
+    const int t = omp_get_thread_num();
+#else
+    const int t = 0;
+#endif
+    int *place = cursor.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(n);
+    for (int atom = 0; atom < n; ++atom) {
+      int off = touch[static_cast<std::size_t>(atom)];
+      for (int u = 0; u < t; ++u) {
+        off += local_n[static_cast<std::size_t>(u) * static_cast<std::size_t>(n) +
+                       static_cast<std::size_t>(atom)];
+      }
+      place[atom] = off;
+    }
+    const auto range = nlist::partition(n, t, nt);
+    for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
+      const ForceHit *hit = hits + force_at[i];
+      const int nf = force_used[i];
+      for (int k = 0; k < nf; ++k) {
+        csr[static_cast<std::size_t>(place[hit[k].atom])] = hit[k];
+        ++place[hit[k].atom];
+      }
+    }
+  }
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+  {
+#if defined(_OPENMP)
+    const int t = omp_get_thread_num();
+#else
+    const int t = 0;
+#endif
+    const auto range = nlist::partition(n, t, nt);
+    for (int atom = static_cast<int>(range.begin); atom < static_cast<int>(range.end); ++atom) {
+      double x = 0.0;
+      double y = 0.0;
+      double z = 0.0;
+      const int begin = touch[static_cast<std::size_t>(atom)];
+      const int end = touch[static_cast<std::size_t>(atom) + 1];
+      for (int p = begin; p < end; ++p) {
+        x += csr[static_cast<std::size_t>(p)].x;
+        y += csr[static_cast<std::size_t>(p)].y;
+        z += csr[static_cast<std::size_t>(p)].z;
+      }
+      acc[3 * atom] += x;
+      acc[3 * atom + 1] += y;
+      acc[3 * atom + 2] += z;
+    }
+  }
+}
+
 } // namespace
 
 StillingerWeberSi::StillingerWeberSi() : Potential(PotType::SWSi1985) {
@@ -275,12 +395,6 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
     // Each thread writes the pair and triplet updates into slots whose
     // index is their place in the one-thread scatter. The gather adds
     // those slots in that order.
-    struct Hit {
-      int atom;
-      double x;
-      double y;
-      double z;
-    };
     struct Slots {
       std::vector<Bond> bonds;
       std::vector<int> bond_at;
@@ -292,7 +406,7 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
       std::vector<int> force_n;
       std::vector<int> force_used;
       std::vector<double> energy;
-      std::vector<Hit> force;
+      std::vector<ForceHit> force;
     };
     thread_local Slots slots;
     auto &bonds = slots.bonds;
@@ -433,7 +547,7 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
         const Bond *nb = bonds.data() + bond_at[static_cast<std::size_t>(i)];
         const int m = bond_n[static_cast<std::size_t>(i)];
         double *e_steps = energy_slot.data() + energy_at[static_cast<std::size_t>(i)];
-        Hit *f_steps = force.data() + force_at[static_cast<std::size_t>(i)];
+        ForceHit *f_steps = force.data() + force_at[static_cast<std::size_t>(i)];
         int ne = 0;
         int nf = 0;
         for (int a = 0; a < m; ++a) {
@@ -451,9 +565,9 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
           const double sx = scale * term.dedr * bj.x * inv_r;
           const double sy = scale * term.dedr * bj.y * inv_r;
           const double sz = scale * term.dedr * bj.z * inv_r;
-          f_steps[nf] = Hit{i, sx, sy, sz};
+          f_steps[nf] = ForceHit{i, sx, sy, sz};
           ++nf;
-          f_steps[nf] = Hit{bj.j, -sx, -sy, -sz};
+          f_steps[nf] = ForceHit{bj.j, -sx, -sy, -sz};
           ++nf;
         }
         for (int a = 0; a < m; ++a) {
@@ -489,11 +603,12 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
                 d_edr2 * bk.y * inv_r2 + d_edcth * (bj.y * inv - cth * bk.y * inv_r2 * inv_r2);
             const double g2z =
                 d_edr2 * bk.z * inv_r2 + d_edcth * (bj.z * inv - cth * bk.z * inv_r2 * inv_r2);
-            f_steps[nf] = Hit{bj.j, -scale * g1x, -scale * g1y, -scale * g1z};
+            f_steps[nf] = ForceHit{bj.j, -scale * g1x, -scale * g1y, -scale * g1z};
             ++nf;
-            f_steps[nf] = Hit{bk.j, -scale * g2x, -scale * g2y, -scale * g2z};
+            f_steps[nf] = ForceHit{bk.j, -scale * g2x, -scale * g2y, -scale * g2z};
             ++nf;
-            f_steps[nf] = Hit{i, scale * (g1x + g2x), scale * (g1y + g2y), scale * (g1z + g2z)};
+            f_steps[nf] = ForceHit{i, scale * (g1x + g2x), scale * (g1y + g2y),
+                                   scale * (g1z + g2z)};
             ++nf;
           }
         }
@@ -508,16 +623,20 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
         *energy += step[k];
       }
     }
-    // Serial slot order is the one-thread scatter. Summing each atom's
-    // hits in that order is the same left fold, done here as one pass.
-    for (int i = 0; i < n; ++i) {
-      const Hit *hit = force.data() + force_at[static_cast<std::size_t>(i)];
-      const int nf = force_used[static_cast<std::size_t>(i)];
-      for (int k = 0; k < nf; ++k) {
-        acc[3 * hit[k].atom] += hit[k].x;
-        acc[3 * hit[k].atom + 1] += hit[k].y;
-        acc[3 * hit[k].atom + 2] += hit[k].z;
+    // Below 1024 atoms the serial replay is the fast path. At 1024 and
+    // above each thread sums the atoms it owns, in scatter order.
+    if (n < 1024) {
+      for (int i = 0; i < n; ++i) {
+        const ForceHit *hit = force.data() + force_at[static_cast<std::size_t>(i)];
+        const int nf = force_used[static_cast<std::size_t>(i)];
+        for (int k = 0; k < nf; ++k) {
+          acc[3 * hit[k].atom] += hit[k].x;
+          acc[3 * hit[k].atom + 1] += hit[k].y;
+          acc[3 * hit[k].atom + 2] += hit[k].z;
+        }
       }
+    } else {
+      gatherByAtom(force_at.data(), force_used.data(), force.data(), acc, n, nt);
     }
   }
 }
