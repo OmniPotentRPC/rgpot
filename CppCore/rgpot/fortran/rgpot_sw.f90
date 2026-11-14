@@ -136,16 +136,14 @@ contains
    !!
    !! `u_end` and `u_other` are the unit vectors from the centre towards
    !! each end; `r_end` is the centre-to-end distance.
-   pure function end_atom_force(par, u_end, r_end, u_other, r_other) result(f)
+   pure function end_atom_force(par, u_end, r_end, expo_end, dfac_end, &
+                                u_other, r_other, expo_other, dfac_other) result(f)
       type(sw_params_t), intent(in) :: par
-      real(wp), intent(in) :: u_end(3), r_end, u_other(3), r_other
+      real(wp), intent(in) :: u_end(3), r_end, expo_end, dfac_end
+      real(wp), intent(in) :: u_other(3), r_other, expo_other, dfac_other
       real(wp) :: f(3)
 
-      real(wp) :: expo_end, expo_other, dfac_end, dfac_other
       real(wp) :: fact, cosine, cos_shift, radial, angular, dcos(3)
-
-      call leg_factor(par, r_end, expo_end, dfac_end)
-      call leg_factor(par, r_other, expo_other, dfac_other)
 
       fact = par%epsilon*par%lambda*expo_end*expo_other
       cosine = dot_product(u_end, u_other)
@@ -159,15 +157,12 @@ contains
    end function end_atom_force
 
    !> Three-body energy of the triplet centred on the shared atom.
-   pure function triplet_energy(par, u_j, r_j, u_k, r_k) result(e)
+   pure function triplet_energy(par, u_j, expo_j, u_k, expo_k) result(e)
       type(sw_params_t), intent(in) :: par
-      real(wp), intent(in) :: u_j(3), r_j, u_k(3), r_k
+      real(wp), intent(in) :: u_j(3), expo_j, u_k(3), expo_k
       real(wp) :: e
 
-      real(wp) :: expo_j, expo_k, dfac_j, dfac_k, cos_shift
-
-      call leg_factor(par, r_j, expo_j, dfac_j)
-      call leg_factor(par, r_k, expo_k, dfac_k)
+      real(wp) :: cos_shift
 
       cos_shift = dot_product(u_j, u_k) + one_third
       e = par%epsilon*par%lambda*expo_j*expo_k*cos_shift*cos_shift
@@ -185,9 +180,10 @@ contains
       integer, intent(out) :: status
       character(len=:), allocatable, intent(out) :: errmsg
 
-      integer(ip) :: natoms, i
+      integer(ip) :: natoms, i, nent, s
       real(wp) :: rcut
       real(wp), allocatable :: e_atom(:)
+      real(wp), allocatable :: u(:, :), expo(:), dfac(:)
 
       natoms = int(size(positions, 2), ip)
       energy = 0.0_wp
@@ -199,10 +195,19 @@ contains
 
       allocate (e_atom(natoms), source=0.0_wp)
 
+      ! Each leg's exponential and unit vector depend only on that pair.
+      ! The triplet loop reads the stored values, in the same sum order.
+      nent = max(table%row(natoms + 1_ip) - 1_ip, 1_ip)
+      allocate (u(3, nent), expo(nent), dfac(nent))
+      do s = 1, table%row(natoms + 1_ip) - 1_ip
+         call leg_factor(par, table%dist(s), expo(s), dfac(s))
+         u(:, s) = table%vec(:, s)/table%dist(s)
+      end do
+
       ! Atom loop writes only its own force column and energy slot, so the
       ! iterations are independent.
       do concurrent(i=1:natoms)
-         call atom_contribution(par, table, i, e_atom(i), forces(:, i))
+         call atom_contribution(par, table, u, expo, dfac, i, e_atom(i), forces(:, i))
       end do
 
       energy = sum(e_atom)
@@ -210,9 +215,10 @@ contains
 
    !> Energy owned by atom `i` (its two-body halves plus the triplets it
    !! centres) and the total force acting on it.
-   pure subroutine atom_contribution(par, table, i, e_i, f_i)
+   pure subroutine atom_contribution(par, table, u, expo, dfac, i, e_i, f_i)
       type(sw_params_t), intent(in) :: par
       type(neighbor_table_t), intent(in) :: table
+      real(wp), intent(in), contiguous :: u(:, :), expo(:), dfac(:)
       integer(ip), intent(in) :: i
       real(wp), intent(out) :: e_i
       real(wp), intent(out) :: f_i(3)
@@ -227,7 +233,7 @@ contains
 
       do sj = table%row(i), table%row(i + 1_ip) - 1_ip
          rij = table%dist(sj)
-         u_ij = table%vec(:, sj)/rij
+         u_ij = u(:, sj)
 
          ! Two-body: half the pair energy, and the whole radial force this
          ! neighbour exerts on i.
@@ -238,10 +244,12 @@ contains
          ! Three-body, i at the centre: every unordered pair of neighbours.
          do sk = sj + 1_ip, table%row(i + 1_ip) - 1_ip
             rik = table%dist(sk)
-            u_ik = table%vec(:, sk)/rik
-            e_i = e_i + triplet_energy(par, u_ij, rij, u_ik, rik)
-            f_i = f_i - end_atom_force(par, u_ij, rij, u_ik, rik) &
-                  - end_atom_force(par, u_ik, rik, u_ij, rij)
+            u_ik = u(:, sk)
+            e_i = e_i + triplet_energy(par, u_ij, expo(sj), u_ik, expo(sk))
+            f_i = f_i - end_atom_force(par, u_ij, rij, expo(sj), dfac(sj), &
+                                       u_ik, rik, expo(sk), dfac(sk)) &
+                  - end_atom_force(par, u_ik, rik, expo(sk), dfac(sk), &
+                                   u_ij, rij, expo(sj), dfac(sj))
          end do
       end do
 
@@ -250,13 +258,14 @@ contains
          m = table%idx(sm)
          rim = table%dist(sm)
          ! Vector m -> i is the reverse of the stored i -> m vector.
-         u_mi = -table%vec(:, sm)/rim
+         u_mi = -u(:, sm)
          do sn = table%row(m), table%row(m + 1_ip) - 1_ip
             n = table%idx(sn)
             if (n == i) cycle
             rmn = table%dist(sn)
-            u_mn = table%vec(:, sn)/rmn
-            f_i = f_i + end_atom_force(par, u_mi, rim, u_mn, rmn)
+            u_mn = u(:, sn)
+            f_i = f_i + end_atom_force(par, u_mi, rim, expo(sm), dfac(sm), &
+                                       u_mn, rmn, expo(sn), dfac(sn))
          end do
       end do
    end subroutine atom_contribution
