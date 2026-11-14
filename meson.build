@@ -930,7 +930,7 @@ if get_option('with_rpc_client_only')
     rgpot_dep = declare_dependency(
         include_directories: _incdirs,
         link_with: _linkto,
-        compile_args: _args,
+        compile_args: rgpot_consumer_args + ['-DRGPOT_STATIC'],
         dependencies: _deps + [ptlrpc_dep, fastnlist_dep],
     )
 endif

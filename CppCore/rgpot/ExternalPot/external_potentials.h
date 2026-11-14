@@ -14,6 +14,8 @@
 
 #include <stddef.h>
 
+#include "rgpot/rgpot_api.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -21,8 +23,8 @@ extern "C" {
 typedef struct rgpot_external_potential rgpot_external_potential;
 
 /* kJ/mol in one eV, and nanometres in one Angstrom. */
-double rgpot_md_kj_per_ev(void);
-double rgpot_md_nm_per_angstrom(void);
+RGPOT_API double rgpot_md_kj_per_ev(void);
+RGPOT_API double rgpot_md_nm_per_angstrom(void);
 
 /*
  * Shifted 12-6 Lennard-Jones. u0 is eV, cutoff and psi are Angstrom.
@@ -31,10 +33,10 @@ double rgpot_md_nm_per_angstrom(void);
  * dlopens it and calls rgpot_engine_force. Returns NULL and writes
  * err on failure.
  */
-rgpot_external_potential *rgpot_lammps_potential(const char *engine_path,
-                                                double u0, double cutoff,
-                                                double psi, char *err,
-                                                size_t err_len);
+RGPOT_API rgpot_external_potential *rgpot_lammps_potential(const char *engine_path,
+                                                          double u0, double cutoff,
+                                                          double psi, char *err,
+                                                          size_t err_len);
 
 /*
  * The same potential. The constructor stores u0 in kJ/mol and the
@@ -42,20 +44,20 @@ rgpot_external_potential *rgpot_lammps_potential(const char *engine_path,
  * in process. A path is a library that exports rgpot_md_native_force
  * in those units.
  */
-rgpot_external_potential *rgpot_gromacs_potential(const char *engine_path,
-                                                 double u0, double cutoff,
-                                                 double psi, char *err,
-                                                 size_t err_len);
+RGPOT_API rgpot_external_potential *rgpot_gromacs_potential(const char *engine_path,
+                                                           double u0, double cutoff,
+                                                           double psi, char *err,
+                                                           size_t err_len);
 
-rgpot_external_potential *rgpot_openmm_potential(const char *engine_path,
-                                                double u0, double cutoff,
-                                                double psi, char *err,
-                                                size_t err_len);
+RGPOT_API rgpot_external_potential *rgpot_openmm_potential(const char *engine_path,
+                                                          double u0, double cutoff,
+                                                          double psi, char *err,
+                                                          size_t err_len);
 
-void rgpot_external_potential_free(rgpot_external_potential *pot);
+RGPOT_API void rgpot_external_potential_free(rgpot_external_potential *pot);
 
 /* Returns 0, or 1 and writes err. forces holds 3 * n doubles. */
-int rgpot_external_potential_energy_forces(
+RGPOT_API int rgpot_external_potential_energy_forces(
     rgpot_external_potential *pot, const double *xyz, const int *atomic_numbers,
     size_t n, const double *box9, double *forces, double *energy, char *err,
     size_t err_len);
