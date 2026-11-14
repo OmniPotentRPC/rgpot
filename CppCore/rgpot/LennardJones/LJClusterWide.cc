@@ -82,7 +82,8 @@ void balanceChunks(const std::int32_t *off, const std::int32_t *nbr, std::int64_
   }
 }
 
-void pairTerm(const simd::LjParams &params, double r2, double &pair_e, double &fscale) {
+[[gnu::noinline]] void pairTerm(const simd::LjParams &params, double r2, double &pair_e,
+                                double &fscale) {
   const double inv_r2 = 1.0 / r2;
   const double sr2 = params.psi2 * inv_r2;
   const double a = (sr2 * sr2) * sr2;
@@ -106,8 +107,11 @@ void pairTerm(const simd::LjParams &params, double r2, double &pair_e, double &f
   fscale = f_un * s - (v * dsdr) / r;
 }
 
-void applyPair(double *local, int origin, std::int64_t i, std::int64_t j, double dx, double dy,
-               double dz, double r2, double cutoff2, const simd::LjParams &params, double &energy) {
+// The image walk still calls this. Inlining it there rebuilds that walk
+// and moves every later kernel, including the stored EAM fold.
+[[gnu::noinline]] void applyPair(double *local, int origin, std::int64_t i, std::int64_t j,
+                                 double dx, double dy, double dz, double r2, double cutoff2,
+                                 const simd::LjParams &params, double &energy) {
   if (!(r2 > 0.0) || r2 > cutoff2) {
     return;
   }
@@ -209,7 +213,8 @@ void ljClusterChunks(nlist::Neighbours &cells, const simd::LjParams &params, dou
           const std::int32_t *const row_nbr = nbr + off[row];
           const std::int32_t *const row_end = nbr + off[row + 1];
           // Partners are sorted, so the half list is the suffix j > i.
-          for (const std::int32_t *it = std::upper_bound(row_nbr, row_end, static_cast<std::int32_t>(i));
+          for (const std::int32_t *it =
+                   std::upper_bound(row_nbr, row_end, static_cast<std::int32_t>(i));
                it != row_end; ++it) {
             const auto j = static_cast<std::int64_t>(*it);
             const auto uj = static_cast<std::size_t>(j) * 3;
@@ -217,7 +222,35 @@ void ljClusterChunks(nlist::Neighbours &cells, const simd::LjParams &params, dou
             const double dy = yi - pos[uj + 1];
             const double dz = zi - pos[uj + 2];
             const double r2 = (dx * dx + dy * dy) + dz * dz;
-            applyPair(local, org, i, j, dx, dy, dz, r2, cutoff2, params, local_e);
+            // The vacuum walk is the hot one. The arithmetic sits here so
+            // it is not a separate call; the image walk keeps that call.
+            if (!(r2 > 0.0) || r2 > cutoff2) {
+              continue;
+            }
+            const double inv_r2 = 1.0 / r2;
+            const double sr2 = params.psi2 * inv_r2;
+            const double a = (sr2 * sr2) * sr2;
+            const double b = params.four_u0 * a;
+            double pair_e = 0.0;
+            double fscale = 0.0;
+            if (params.use_switch == 0) {
+              pair_e = b * (a - 1.0) - params.shift;
+              fscale = ((6.0 * b) * inv_r2) * ((2.0 * a) - 1.0);
+            } else {
+              pairTerm(params, r2, pair_e, fscale);
+            }
+            local_e += pair_e;
+            const double fx = fscale * dx;
+            const double fy = fscale * dy;
+            const double fz = fscale * dz;
+            double *fi = local + (static_cast<std::size_t>(i - org) * 3);
+            double *fj = local + (static_cast<std::size_t>(j - org) * 3);
+            fi[0] += fx;
+            fi[1] += fy;
+            fi[2] += fz;
+            fj[0] -= fx;
+            fj[1] -= fy;
+            fj[2] -= fz;
           }
         }
       } else {

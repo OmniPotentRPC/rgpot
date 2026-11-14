@@ -1,0 +1,1 @@
+The vacuum Lennard-Jones cluster pair body sits in the chunk loop, and the switched cutoff stays out of line. The image walk keeps the pair call, so that walk is not rebuilt. One thread is unchanged, and the energies and forces still match it bit for bit.
