@@ -42,6 +42,11 @@ int rgpot_eam_al_force_ws(void *ws, int32_t natoms, const double *positions,
 #ifdef RGPOT_EAM_AL_OPENMP
 int rgpot_eam_al_force_ws_omp(void *ws, int32_t natoms, const double *positions,
                               const double *cell, double *forces, double *energy);
+int rgpot_sw_force_ws_omp(void *ws, int32_t natoms, const double *positions,
+                          const double *cell, double *forces, double *energy);
+int rgpot_tersoff_force_ws_omp(void *ws, int32_t natoms, const double *positions,
+                               const double *cell, double *forces,
+                               double *energy);
 #endif
 
 /// Kernels dispatching on atomic number.
@@ -142,16 +147,31 @@ FortranWorkspace &FortranWorkspace::operator=(const FortranWorkspace &) {
     out->variance = 0.0;                                                       \
   }
 
-RGPOT_FORTRAN_POT_IMPL(SWPot, rgpot_sw_force_ws, "SW")
-RGPOT_FORTRAN_POT_IMPL(EDIPPot, rgpot_edip_force_ws, "EDIP")
-RGPOT_FORTRAN_POT_IMPL(LenoskyPot, rgpot_lenosky_force_ws, "Lenosky")
 #ifdef RGPOT_EAM_AL_OPENMP
-// Warm FCC calls: at 7 atoms the threaded gather is slower at 1, 2, 4 and
+// Warm calls: at 7 atoms the threaded gather is slower at 1, 2, 4 and
 // 8 threads. From 32 atoms, two or more threads are faster. One thread
 // stays on the serial routine at every size.
 #ifndef RGPOT_EAM_AL_OMP_MIN
 #define RGPOT_EAM_AL_OMP_MIN 32
 #endif
+void SWPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  ensure_fortran_params();
+  const bool parallel = in.nAtoms >= static_cast<std::size_t>(RGPOT_EAM_AL_OMP_MIN) &&
+                        omp_get_max_threads() > 1;
+  const int status = (parallel ? rgpot_sw_force_ws_omp : rgpot_sw_force_ws)(
+      m_ws.get(), static_cast<int32_t>(in.nAtoms), in.pos, in.box, out->F,
+      &out->energy);
+  if (status != 0) {
+    raise("SW", status, m_ws.get());
+  }
+  out->variance = 0.0;
+}
+#else
+RGPOT_FORTRAN_POT_IMPL(SWPot, rgpot_sw_force_ws, "SW")
+#endif
+RGPOT_FORTRAN_POT_IMPL(EDIPPot, rgpot_edip_force_ws, "EDIP")
+RGPOT_FORTRAN_POT_IMPL(LenoskyPot, rgpot_lenosky_force_ws, "Lenosky")
+#ifdef RGPOT_EAM_AL_OPENMP
 void EAMAlPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   ensure_fortran_params();
   const bool parallel = in.nAtoms >= static_cast<std::size_t>(RGPOT_EAM_AL_OMP_MIN) &&
@@ -179,9 +199,19 @@ void TersoffPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   // gather does not have.
   if (siliconOnly(in)) {
     ensure_fortran_params();
+#ifdef RGPOT_EAM_AL_OPENMP
+    const bool parallel =
+        in.nAtoms >= static_cast<std::size_t>(RGPOT_EAM_AL_OMP_MIN) &&
+        omp_get_max_threads() > 1;
+    const int status =
+        (parallel ? rgpot_tersoff_force_ws_omp : rgpot_tersoff_force_ws)(
+            m_ws.get(), static_cast<int32_t>(in.nAtoms), in.pos, in.box, out->F,
+            &out->energy);
+#else
     const int status = rgpot_tersoff_force_ws(
         m_ws.get(), static_cast<int32_t>(in.nAtoms), in.pos, in.box, out->F,
         &out->energy);
+#endif
     if (status != 0) {
       raise("Tersoff", status, m_ws.get());
     }

@@ -39,7 +39,11 @@
 !! The two roles together reproduce the scatter sum exactly, at the cost
 !! of walking each neighbour's neighbour list. Energy accrues to the
 !! centre atom only, so it is counted once.
+#ifdef RGPOT_EAM_AL_OPENMP
+module rgpot_sw_omp
+#else
 module rgpot_sw
+#endif
    use rgpot_kinds, only: wp, ip, c_double, c_int
    use rgpot_neighbors, only: neighbor_table_t
    implicit none
@@ -205,10 +209,19 @@ contains
       end do
 
       ! Atom loop writes only its own force column and energy slot, so the
-      ! iterations are independent.
+      ! iterations are independent. The threaded build keeps that map and
+      ! sums the per-atom energies afterwards, in atom order.
+#ifdef RGPOT_EAM_AL_OPENMP
+!$omp parallel do schedule(static)
+      do i = 1, natoms
+#else
       do concurrent(i=1:natoms)
+#endif
          call atom_contribution(par, table, u, expo, dfac, i, e_atom(i), forces(:, i))
       end do
+#ifdef RGPOT_EAM_AL_OPENMP
+!$omp end parallel do
+#endif
 
       energy = sum(e_atom)
    end subroutine sw_energy_forces
@@ -270,4 +283,8 @@ contains
       end do
    end subroutine atom_contribution
 
+#ifdef RGPOT_EAM_AL_OPENMP
+end module rgpot_sw_omp
+#else
 end module rgpot_sw
+#endif

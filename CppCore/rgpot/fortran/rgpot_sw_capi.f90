@@ -9,13 +9,18 @@
 !! (rgpot_workspace), so each caller's neighbour table follows its own
 !! geometry; the entry point without a handle shares one module-level
 !! workspace and is process-serial.
+#ifdef RGPOT_EAM_AL_OPENMP
+module rgpot_sw_capi_omp
+   use rgpot_sw_omp, only: sw_params_t, sw_energy_forces
+#else
 module rgpot_sw_capi
+   use rgpot_sw, only: sw_params_t, sw_energy_forces
+#endif
    use rgpot_kinds, only: wp, ip, c_double, c_int
    use, intrinsic :: iso_c_binding, only: c_ptr
    use rgpot_ferror, only: set_error, clear_error
    use rgpot_workspace, only: rgpot_workspace_t, workspace_from_c, &
                               ws_set_error, ws_clear_error
-   use rgpot_sw, only: sw_params_t, sw_energy_forces
    implicit none
    private
 
@@ -40,8 +45,13 @@ contains
    !! `cell` is nine doubles, row-major, one cell vector per row. Returns
    !! zero on success, non-zero on failure with the message available
    !! through `rgpot_fortran_last_error`.
+#ifdef RGPOT_EAM_AL_OPENMP
+   function rgpot_sw_force(natoms, positions, cell, forces, energy) &
+      result(status) bind(c, name="rgpot_sw_force_omp")
+#else
    function rgpot_sw_force(natoms, positions, cell, forces, energy) &
       result(status) bind(c, name="rgpot_sw_force")
+#endif
       integer(c_int), value, intent(in) :: natoms
       real(c_double), intent(in) :: positions(3, natoms)
       real(c_double), intent(in) :: cell(3, 3)
@@ -75,8 +85,13 @@ contains
    !! zero on success, non-zero on failure with the message available
    !! through `rgpot_fortran_workspace_error`. `handle` is a workspace from
    !! `rgpot_fortran_workspace_new`; a NULL handle returns -1.
+#ifdef RGPOT_EAM_AL_OPENMP
+   function rgpot_sw_force_ws(handle, natoms, positions, cell, forces, energy) &
+      result(status) bind(c, name="rgpot_sw_force_ws_omp")
+#else
    function rgpot_sw_force_ws(handle, natoms, positions, cell, forces, energy) &
       result(status) bind(c, name="rgpot_sw_force_ws")
+#endif
       type(c_ptr), value :: handle
       integer(c_int), value, intent(in) :: natoms
       real(c_double), intent(in) :: positions(3, natoms)
@@ -101,6 +116,12 @@ contains
 
       if (natoms < 1_c_int) return
 
+#ifdef RGPOT_EAM_AL_OPENMP
+      if (.not. params_ready) then
+         params = sw_params_t()
+         params_ready = .true.
+      end if
+#endif
       call sw_energy_forces(positions, cell, params, ws%table, energy, forces, &
                             build_status, errmsg)
       if (build_status /= 0) then
@@ -113,11 +134,19 @@ contains
    !> F2: default-initialise the saved parameter block once.
    !! The C++ face calls this under std::call_once before any _ws
    !! evaluation. A second call does not write.
+#ifdef RGPOT_EAM_AL_OPENMP
+   subroutine rgpot_sw_ensure_params() bind(c, name="rgpot_sw_ensure_params_omp")
+#else
    subroutine rgpot_sw_ensure_params() bind(c, name="rgpot_sw_ensure_params")
+#endif
       if (.not. params_ready) then
          params = sw_params_t()
          params_ready = .true.
       end if
    end subroutine rgpot_sw_ensure_params
 
+#ifdef RGPOT_EAM_AL_OPENMP
+end module rgpot_sw_capi_omp
+#else
 end module rgpot_sw_capi
+#endif

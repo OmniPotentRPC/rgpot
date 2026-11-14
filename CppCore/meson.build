@@ -265,7 +265,7 @@ if not get_option('with_rpc_client_only')
 
     if has_fortran
         subdir('rgpot/fortran')  # Fortran 2018 pot kernels + C entry points
-        rgpotentials += [fortran_pots, fortran_kernels] + eam_al_omp_libs
+        rgpotentials += [fortran_pots, fortran_kernels] + eam_al_omp_libs + sw_tersoff_omp_libs
         # The kernel archive's symbols (module symbols and the bind(c)
         # entries) stay local to librgpot: only the C++ faces above are
         # part of the library's interface.
@@ -275,6 +275,7 @@ if not get_option('with_rpc_client_only')
             [
                 '-Wl,--exclude-libs,librgpot_fortran_kernels.a',
                 '-Wl,--exclude-libs,librgpot_eam_al_omp.a',
+                '-Wl,--exclude-libs,librgpot_sw_tersoff_omp.a',
                 '-Wl,--exclude-libs,libvesin_fortran.a',
             ],
         )
@@ -407,7 +408,7 @@ if not get_option('with_rpc_client_only')
             _classical_whole += [water_pots]
         endif
         if has_fortran
-            _classical_whole += [cuh2, fortran_pots, fortran_kernels] + eam_al_omp_libs
+            _classical_whole += [cuh2, fortran_pots, fortran_kernels] + eam_al_omp_libs + sw_tersoff_omp_libs
         endif
         classical_engine = shared_library(
             'classical_engine',

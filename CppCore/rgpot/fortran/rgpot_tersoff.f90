@@ -39,7 +39,11 @@
 !! The last two roles share one walk over `m`'s row and one cosine per
 !! step, so the gather costs `O(natoms * nn^2)` like the two passes before
 !! it. All three passes run under `do concurrent`; none of them scatters.
+#ifdef RGPOT_EAM_AL_OPENMP
+module rgpot_tersoff_omp
+#else
 module rgpot_tersoff
+#endif
    use rgpot_kinds, only: wp, ip
    use rgpot_neighbors, only: neighbor_table_t
    implicit none
@@ -201,11 +205,20 @@ contains
       end do
 
       ! Each atom resolves the reverse of its own bonds, so the map is
-      ! written in disjoint slices.
+      ! written in disjoint slices. The threaded build gives each atom
+      ! the same slice; the energy sum below stays in atom order.
+#ifdef RGPOT_EAM_AL_OPENMP
+!$omp parallel do schedule(static)
+      do i = 1, natoms
+#else
       do concurrent(i=1:natoms)
+#endif
          call atom_reverse(table, i, &
                            rev(table%row(i):table%row(i + 1_ip) - 1_ip))
       end do
+#ifdef RGPOT_EAM_AL_OPENMP
+!$omp end parallel do
+#endif
 
       if (any(rev == 0_ip)) then
          status = 2
@@ -214,24 +227,48 @@ contains
       end if
 
       ! Pass 1: coordination sum of every pair the atom owns.
+#ifdef RGPOT_EAM_AL_OPENMP
+!$omp parallel do schedule(static)
+      do i = 1, natoms
+#else
       do concurrent(i=1:natoms)
+#endif
          call atom_zeta(par, table, uhat, fc, i, &
                         zeta(table%row(i):table%row(i + 1_ip) - 1_ip))
       end do
+#ifdef RGPOT_EAM_AL_OPENMP
+!$omp end parallel do
+#endif
 
       ! Pass 2: per-pair scalars, each entry depending only on its own
       ! length and coordination.
+#ifdef RGPOT_EAM_AL_OPENMP
+!$omp parallel do schedule(static)
+      do s = 1, nentries
+#else
       do concurrent(s=1:nentries)
+#endif
          call pair_scalars(par, table%dist(s), zeta(s), e_pair(s), f_rad(s), &
                            c_zeta(s))
       end do
+#ifdef RGPOT_EAM_AL_OPENMP
+!$omp end parallel do
+#endif
 
       ! Pass 3: the gather. Each atom writes one force column and one
       ! energy slot.
+#ifdef RGPOT_EAM_AL_OPENMP
+!$omp parallel do schedule(static)
+      do i = 1, natoms
+#else
       do concurrent(i=1:natoms)
+#endif
          call atom_contribution(par, table, uhat, fc, dfc, e_pair, f_rad, &
                                 c_zeta, rev, i, e_atom(i), forces(:, i))
       end do
+#ifdef RGPOT_EAM_AL_OPENMP
+!$omp end parallel do
+#endif
 
       energy = sum(e_atom)
    end subroutine tersoff_energy_forces
@@ -402,4 +439,8 @@ contains
       f_i = -0.5_wp*grad
    end subroutine atom_contribution
 
+#ifdef RGPOT_EAM_AL_OPENMP
+end module rgpot_tersoff_omp
+#else
 end module rgpot_tersoff
+#endif

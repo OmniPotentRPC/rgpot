@@ -75,9 +75,14 @@ fortran_kernels = static_library(
     install: false,
 )
 
-# OpenMP aluminium gather. Off by default, and the serial kernel is not
-# rebuilt with -fopenmp, so a default build keeps that code path.
+# OpenMP gathers. Off by default, and the serial kernels are not rebuilt
+# with -fopenmp, so a default build keeps those code paths. Tersoff and
+# Stillinger-Weber are a second compile of the same sources: the macro
+# renames the modules and the bind(c) entries, and turns the atom loops
+# into static parallel loops. Each atom still writes only its own force
+# column; the energy is the sum of the per-atom array afterwards.
 eam_al_omp_libs = []
+sw_tersoff_omp_libs = []
 _fpot_cpp_args = _args
 _fpot_deps = _deps
 if get_option('with_eam_al_openmp')
@@ -91,6 +96,19 @@ if get_option('with_eam_al_openmp')
     )
     _fpot_cpp_args += ['-DRGPOT_EAM_AL_OPENMP']
     _fpot_deps += dependency('openmp', language: 'cpp')
+    sw_tersoff_omp_libs += static_library(
+        'rgpot_sw_tersoff_omp',
+        files(
+            'rgpot_sw.f90',
+            'rgpot_sw_capi.f90',
+            'rgpot_tersoff.f90',
+            'rgpot_tersoff_capi.f90',
+        ),
+        fortran_args: _fpot_args + ['-DRGPOT_EAM_AL_OPENMP'] + fc.get_supported_arguments('-fopenmp'),
+        link_with: [fortran_kernels],
+        pic: true,
+        install: false,
+    )
 endif
 
 # The C++ faces stay visible: consumers construct these classes.
@@ -100,7 +118,7 @@ fortran_pots = static_library(
     dependencies: _fpot_deps,
     cpp_args: _fpot_cpp_args,
     include_directories: _incdirs,
-    link_with: [fortran_kernels, tersoff_sic, rgpot_halfshell] + eam_al_omp_libs,
+    link_with: [fortran_kernels, tersoff_sic, rgpot_halfshell] + eam_al_omp_libs + sw_tersoff_omp_libs,
     pic: true,
     install: false,
 )

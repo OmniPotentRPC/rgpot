@@ -1,0 +1,1 @@
+`with_eam_al_openmp` also threads the Fortran Tersoff and Stillinger-Weber gathers. Each atom still writes only its own force column, and the energy is the sum of that array afterwards, so the result does not depend on the thread count. One thread, and cells below 32 atoms, stay on the serial routines. The option remains off by default.

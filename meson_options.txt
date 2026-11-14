@@ -78,7 +78,7 @@ option(
     'with_eam_al_openmp',
     type: 'boolean',
     value: false,
-    description: 'OpenMP atom loops for the Fortran EAM-Al gather. Off leaves that kernel on its serial path.',
+    description: 'OpenMP atom loops for the Fortran EAM-Al, Tersoff and Stillinger-Weber gathers. Off leaves those kernels on their serial paths.',
 )
 option(
     'with_highway',
