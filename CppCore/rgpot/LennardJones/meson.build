@@ -15,6 +15,7 @@ lennard_jones = static_library(
     'lennard_jones',
     'LJPot.cc',
     'LJClusterPot.cc',
+    'LJClusterWide.cc',
     dependencies: _deps,
     # Contraction off: the cluster energy pins are the uncontracted
     # i < j sum. The kernel adds each pair in that order.

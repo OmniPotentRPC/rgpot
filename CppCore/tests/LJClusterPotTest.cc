@@ -7,7 +7,9 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -265,6 +267,57 @@ TEST_CASE("a periodic boundary pair stays on the folded walk",
     for (int i = 0; i < 9; ++i) {
       REQUIRE(fn[i] == f1[i]);
       REQUIRE(sn[i] == s1[i]);
+    }
+  }
+  useThreads(1);
+}
+
+TEST_CASE("LJ cluster chunk sums match at every thread count", "[LJClusterPot][threads]") {
+  // Several atoms share a chunk, and 3 is not a divisor of the chunk count.
+  // Energy and every force component must match the one-thread call.
+  static const double basis[4][3] = {{0, 0, 0}, {0, 0.5, 0.5}, {0.5, 0, 0.5}, {0.5, 0.5, 0}};
+  auto bits = [](double x) {
+    std::uint64_t u = 0;
+    std::memcpy(&u, &x, sizeof(u));
+    return u;
+  };
+  for (int n : {256, 1024, 4096}) {
+    int cells = n / 4;
+    int nx = 1;
+    while (nx * nx * nx < cells) {
+      ++nx;
+    }
+    const int ny = nx;
+    const int nz = std::max(1, cells / (nx * ny));
+    AtomMatrix pos(static_cast<std::size_t>(n), 3);
+    int atom = 0;
+    for (int ix = 0; ix < nx && atom < n; ++ix) {
+      for (int iy = 0; iy < ny && atom < n; ++iy) {
+        for (int iz = 0; iz < nz && atom < n; ++iz) {
+          for (int k = 0; k < 4 && atom < n; ++k, ++atom) {
+            pos(static_cast<std::size_t>(atom), 0) = (ix + basis[k][0]) * 3.5 + 0.01 * std::sin(atom);
+            pos(static_cast<std::size_t>(atom), 1) = (iy + basis[k][1]) * 3.5;
+            pos(static_cast<std::size_t>(atom), 2) = (iz + basis[k][2]) * 3.5;
+          }
+        }
+      }
+    }
+    const std::array<std::array<double, 3>, 3> box{
+        {{nx * 3.5, 0.0, 0.0}, {0.0, ny * 3.5, 0.0}, {0.0, 0.0, nz * 3.5}}};
+    const std::vector<int> types(static_cast<std::size_t>(n), 18);
+    rgpot::LJClusterPot pot;
+    useThreads(1);
+    auto [e1, f1, v1] = pot(pos, types, box);
+    (void)v1;
+    const double *ref = f1.data();
+    for (int threads : {2, 3, 4, 8}) {
+      useThreads(threads);
+      auto [en, fn, vn] = pot(pos, types, box);
+      (void)vn;
+      REQUIRE(bits(en) == bits(e1));
+      for (int i = 0; i < 3 * n; ++i) {
+        REQUIRE(bits(fn.data()[i]) == bits(ref[i]));
+      }
     }
   }
   useThreads(1);

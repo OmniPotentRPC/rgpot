@@ -14,7 +14,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <vector>
 // clang-format on
 
 #include "rgpot/LennardJones/LJClusterKernel.hpp"
@@ -28,163 +27,10 @@
 #endif
 
 namespace rgpot {
-namespace {
 
-struct ClusterScratch {
-  std::vector<double> terms;
-  std::vector<int> slot;
-  std::vector<int> counts;
-};
-
-// Kept out of the one-thread walk so that walk's code stays the serial one.
-[[gnu::noinline]] void clusterOwner(nlist::Neighbours &cells, const simd::LjParams &params,
-                                    double cutoff2, double *F, double *U, std::int64_t N,
-                                    int nt) {
-  const auto &off = cells.offsets();
-  const auto &nbr = cells.neighbours();
-  thread_local ClusterScratch scratch;
-  auto &slot = scratch.slot;
-  auto &terms = scratch.terms;
-  auto &counts = scratch.counts;
-  slot.assign(static_cast<std::size_t>(N) + 1, 0);
-  if (static_cast<std::int64_t>(counts.size()) < N) {
-    counts.resize(static_cast<std::size_t>(N));
-  }
-#if defined(_OPENMP)
-#pragma omp parallel num_threads(nt)
-#endif
-  {
-#if defined(_OPENMP)
-    const int thread = omp_get_thread_num();
-#else
-    const int thread = 0;
-#endif
-    const auto range = nlist::partition(N, thread, nt);
-    for (std::int64_t i = range.begin; i < range.end; ++i) {
-      int count = 0;
-      const auto row = static_cast<std::size_t>(i);
-      for (std::int32_t p = off[row]; p < off[row + 1]; ++p) {
-        if (nbr[static_cast<std::size_t>(p)] > i) {
-          ++count;
-        }
-      }
-      counts[row] = count;
-    }
-  }
-  for (std::int64_t i = 0; i < N; ++i) {
-    slot[static_cast<std::size_t>(i) + 1] =
-        slot[static_cast<std::size_t>(i)] + counts[static_cast<std::size_t>(i)];
-  }
-  const int nterm_all = slot[static_cast<std::size_t>(N)];
-  const bool plain = cells.rawSeparation();
-  const double *pos = cells.coordinates();
-  if (static_cast<int>(terms.size()) < nterm_all) {
-    terms.resize(static_cast<std::size_t>(nterm_all));
-  }
-  auto eval = [&](double r2, double &pair_e, double &fscale) {
-    const double inv_r2 = 1.0 / r2;
-    const double sr2 = params.psi2 * inv_r2;
-    const double a = (sr2 * sr2) * sr2;
-    const double b = params.four_u0 * a;
-    if (params.use_switch == 0) {
-      pair_e = b * (a - 1.0) - params.shift;
-      fscale = ((6.0 * b) * inv_r2) * ((2.0 * a) - 1.0);
-      return;
-    }
-    const double r = std::sqrt(r2);
-    const double t_raw = (r - params.r_on) * params.inv_width;
-    const double t = t_raw < 0.0 ? 0.0 : (t_raw > 1.0 ? 1.0 : t_raw);
-    const double t2 = t * t;
-    const double t3 = t2 * t;
-    const double poly = simd::fma_quick(t, 15.0 - 6.0 * t, -10.0);
-    const double s = simd::fma_quick(t3, poly, 1.0);
-    const double dsdr = ((-30.0 * t2) * (1.0 - t) * (1.0 - t)) * params.inv_width;
-    const double v = b * (a - 1.0);
-    const double f_un = ((6.0 * b) * inv_r2) * ((2.0 * a) - 1.0);
-    pair_e = v * s;
-    fscale = f_un * s - (v * dsdr) / r;
-  };
-#if defined(_OPENMP)
-#pragma omp parallel num_threads(nt)
-#endif
-  {
-#if defined(_OPENMP)
-    const int thread = omp_get_thread_num();
-#else
-    const int thread = 0;
-#endif
-    const auto range = nlist::partition(N, thread, nt);
-    for (std::int64_t i = range.begin; i < range.end; ++i) {
-      double *write = terms.data() + slot[static_cast<std::size_t>(i)];
-      int ord = 0;
-      double fx = 0.0;
-      double fy = 0.0;
-      double fz = 0.0;
-      auto accept = [&](std::int32_t j, double dx, double dy, double dz, double r2) {
-        // Each j > i neighbour owns one slot in the counted prefix. A pair
-        // outside the cutoff keeps a zero so the sum is one left fold.
-        if (j <= i) {
-          if (!(r2 > 0.0) || r2 > cutoff2) {
-            return;
-          }
-          double pair_e = 0.0;
-          double fscale = 0.0;
-          eval(r2, pair_e, fscale);
-          fx += fscale * dx;
-          fy += fscale * dy;
-          fz += fscale * dz;
-          return;
-        }
-        if (!(r2 > 0.0) || r2 > cutoff2) {
-          write[ord] = 0.0;
-          ++ord;
-          return;
-        }
-        double pair_e = 0.0;
-        double fscale = 0.0;
-        eval(r2, pair_e, fscale);
-        write[ord] = pair_e;
-        ++ord;
-        fx += fscale * dx;
-        fy += fscale * dy;
-        fz += fscale * dz;
-      };
-      // Partners are already sorted by index. On a free orthogonal cell the
-      // folded vector is the coordinate difference, so the row is a plain load.
-      if (plain) {
-        const auto ui = static_cast<std::size_t>(i) * 3;
-        const double xi = pos[ui];
-        const double yi = pos[ui + 1];
-        const double zi = pos[ui + 2];
-        const auto row = static_cast<std::size_t>(i);
-        for (std::int32_t p = off[row]; p < off[row + 1]; ++p) {
-          const auto j = nbr[static_cast<std::size_t>(p)];
-          const auto uj = static_cast<std::size_t>(j) * 3;
-          const double dx = xi - pos[uj];
-          const double dy = yi - pos[uj + 1];
-          const double dz = zi - pos[uj + 2];
-          const double r2 = dx * dx + dy * dy + dz * dz;
-          accept(j, dx, dy, dz, r2);
-        }
-      } else {
-        cells.forDirected(i, i + 1,
-                          [&](std::int32_t, std::int32_t j, double dx, double dy, double dz,
-                              double r2) { accept(j, dx, dy, dz, r2); });
-      }
-      F[3 * i] = fx;
-      F[3 * i + 1] = fy;
-      F[3 * i + 2] = fz;
-    }
-  }
-  double total = 0.0;
-  const double *term = terms.data();
-  for (int k = 0; k < nterm_all; ++k) {
-    total += term[k];
-  }
-  *U += total;
-}
-
-} // namespace
+// Fixed pair chunks. Kept out of the direct all-pairs walk.
+void ljClusterChunks(nlist::Neighbours &cells, const simd::LjParams &params, double cutoff2,
+                     double *force, double *energy, std::int64_t n, int nt);
 
 /**
  * @class LJClusterPot
@@ -315,19 +161,18 @@ void LJClusterPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     force[3 * j + 2] -= fz;
   };
   const int nt = nlist::threadsRequested();
-  // A stream walks cells, not the stored partner order, so the owner
-  // sums would not match the half walk. One thread stays on that walk.
-  if (nt <= 1 || neighbours_.streaming() ||
+  // A stream has no stored partner order. The chunk sum needs that order,
+  // so a stream stays on the half walk at every thread count.
+  if (neighbours_.streaming() ||
       neighbours_.offsets().size() != static_cast<std::size_t>(N) + 1) {
     nlist::visitHalf(neighbours_, 0, N,
                      [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
                          double r2) { accept(i, j, dx, dy, dz, r2, F, *U); });
     return;
   }
-  // Each atom owns its force. Stored partners are sorted, so the additions
-  // to one atom are the same sequence the half walk uses. Pair energies are
-  // replayed in that order, one term at a time.
-  clusterOwner(neighbours_, params, cutoff2, F, U, N, nt);
+  // Chunks are a function of the atom count. Every thread count adds the
+  // chunk buffers in the same order.
+  ljClusterChunks(neighbours_, params, cutoff2, F, U, N, nt < 1 ? 1 : nt);
 }
 
 } // namespace rgpot
