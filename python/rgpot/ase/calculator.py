@@ -25,7 +25,8 @@ cluster virial divided by the caller's cell volume, which is what
 ``calculate_numerical_stress`` differentiates. A caller with no
 three-dimensional cell gets no stress, and ``get_stress`` raises
 ``PropertyNotImplementedError``. A mixed periodic flag raises
-``ValueError`` and names the non-periodic axes.
+``ValueError`` and names the non-periodic axes. A potential whose caps
+report ``periodic`` false accepts only ``pbc=False``.
 """
 
 from __future__ import annotations
@@ -284,6 +285,13 @@ class RgpotCalculator(Calculator):
         """The rgpot potential this calculator evaluates."""
         return self._potential
 
+    def _check_periodic(self, pbc: Any) -> None:
+        if bool(_pbc_flags(pbc).any()) and self._caps.get("periodic") is False:
+            name = type(self._potential).__name__
+            raise ValueError(
+                f"{name} has free boundaries; set pbc=False on the Atoms"
+            )
+
     def calculate(
         self,
         atoms: Atoms | None = None,
@@ -323,6 +331,7 @@ class RgpotCalculator(Calculator):
         pos = _as_f64(positions, "positions")
         num = np.ascontiguousarray(np.asarray(numbers, dtype=np.int32))
         user_cell = np.asarray(cell, dtype=np.float64).reshape(3, 3)
+        self._check_periodic(pbc)
         box = _box(pos, user_cell, pbc, self._cutoff)
         raw = self._potential.evaluate(pos, num, box)
         energy = float(raw["energy"])
@@ -387,6 +396,7 @@ class RgpotCalculator(Calculator):
             numbers.append(np.ascontiguousarray(atoms.numbers, dtype=np.int32))
             user_cells.append(np.asarray(atoms.cell.array, dtype=np.float64))
             pbcs.append(atoms.pbc)
+            self._check_periodic(atoms.pbc)
             boxes.append(
                 _box(positions[-1], user_cells[-1], atoms.pbc, self._cutoff)
             )
