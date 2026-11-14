@@ -2566,7 +2566,7 @@ struct PotentialConfig {
     lammps    @5 :LammpsParams;    # lammpc dynlib shim (LAMMPS library API)
     # xtb       @6 :XTBParams;
     # tblite    @7 :TBLiteParams;
-    morse     @10 :MorseParams;
+    morse     @6 :MorseParams;
   }
   # Normalized overlay applied BEFORE the native arm; native settings win.
   common @3 :CommonMethodSpec;
