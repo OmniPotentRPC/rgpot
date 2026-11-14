@@ -101,6 +101,13 @@ void EAM::prepare(long N, const double *R, const double *box) {
 }
 
 void EAM::buildList(long N) {
+  // A mode byte that is not one of the three enumerators is not a request
+  // to stream. Leaving it that way made some processes take the spline
+  // walk and some the stored list.
+  if (mode_ != rgpot::nlist::Mode::Auto && mode_ != rgpot::nlist::Mode::Stored &&
+      mode_ != rgpot::nlist::Mode::Stream) {
+    mode_ = rgpot::nlist::Mode::Auto;
+  }
   double widest = 0.0;
   for (int i = 0; i < NPARAMS; i++) {
     widest = std::max(widest, el_params[i].r_cut);

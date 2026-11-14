@@ -1027,3 +1027,25 @@ TEST_CASE("the cell-shift guard matches the fold on both sides", "[nlist][round]
   expectGuard(eight, 50.0, cutoff, skin);
   expectSwitch(eight, 50.0, cutoff, skin, 13.0);
 }
+
+TEST_CASE("a neighbour mode outside the enumerators still stores", "[nlist][mode]") {
+  // A mode byte that is not Auto, Stored, or Stream is not a request to
+  // stream. Streaming that byte used to change a warm call from the stored
+  // list to the spline walk.
+  const double pos[] = {0.2, 0.1, 0.3, 2.4, 0.2, 0.4, 0.3, 2.5, 0.2, 2.2, 2.1, 0.5};
+  const double box[9] = {12, 0, 0, 0, 12, 0, 0, 0, 12};
+  rgpot::nlist::Spec spec;
+  spec.cutoff = 4.0;
+  spec.skin = 0.5;
+  spec.image = rgpot::nlist::Image::Round;
+  spec.periodic = {true, true, true};
+  spec.mode = static_cast<rgpot::nlist::Mode>(47);
+  rgpot::nlist::Neighbours garbage;
+  garbage.update(pos, 4, box, spec);
+  spec.mode = rgpot::nlist::Mode::Auto;
+  rgpot::nlist::Neighbours automatic;
+  automatic.update(pos, 4, box, spec);
+  REQUIRE_FALSE(garbage.streaming());
+  REQUIRE(garbage.slots() > 0);
+  REQUIRE(garbage.slots() == automatic.slots());
+}

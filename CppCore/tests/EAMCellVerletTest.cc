@@ -464,3 +464,21 @@ TEST_CASE("EAM pure-metal reuse agrees across threads", "[eam][threads]") {
   expectClose(first, one);
   setThreads("");
 }
+
+TEST_CASE("a neighbour mode outside the enumerators stays stored", "[eam][mode]") {
+  // A mode byte that is not Auto, Stored, or Stream used to select the
+  // spline walk. That walk is a different energy, and on a 1024-atom cell
+  // it was several times slower than the stored list.
+  setThreads("");
+  std::vector<int> z;
+  std::vector<double> pos = fcc(2, 4.05, z, 13);
+  const double length = 2 * 4.05;
+  rgpot::EAMPot automatic;
+  const Outcome stored = evaluate(automatic, pos, z, length);
+  REQUIRE(automatic.neighborSlots() > 0);
+  rgpot::EAMPot garbage;
+  garbage.setNeighbourMode(static_cast<rgpot::nlist::Mode>(47));
+  const Outcome other = evaluate(garbage, pos, z, length);
+  REQUIRE(garbage.neighborSlots() == automatic.neighborSlots());
+  expectBits(other, stored);
+}

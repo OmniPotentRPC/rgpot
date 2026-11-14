@@ -1246,8 +1246,13 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
   // The stream keeps the bins. The list adds one index per candidate.
   // Auto stores only when that index fits. A short cutoff that does not
   // fit the 27-slot stencil keeps the smaller mask in the same cache.
-  const bool want_store = spec.mode == Mode::Stored ? fits
-                          : spec.mode == Mode::Auto && fits;
+  // Only an explicit stream request skips the stored list. Any other
+  // value, including Auto and Stored, keeps the list when it fits.
+  // A mode byte that is not one of those three enumerators used to
+  // fall through to the stream, and that choice changed the warm-call
+  // time by several times and the energy in the last digits.
+  const bool want_stream = spec.mode == Mode::Stream;
+  const bool want_store = !want_stream && fits;
   if (want_store) {
     buildStored(xyz, n);
     streaming_ = false;
