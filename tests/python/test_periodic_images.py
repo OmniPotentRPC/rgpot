@@ -110,3 +110,143 @@ def test_thin_cell_stress_matches_finite_difference(kind, cell, params) -> None:
     atoms.calc = RgpotCalculator(kind, **params)
     numeric = calculate_numerical_stress(atoms, eps=1e-6)
     np.testing.assert_allclose(atoms.get_stress(), numeric, atol=1e-7, rtol=0.0)
+
+
+def _energies(atoms, kind, **params):
+    """Per-atom energies of ``atoms``, checked to sum to its energy."""
+    atoms = atoms.copy()
+    atoms.calc = RgpotCalculator(kind, **params)
+    energies = atoms.get_potential_energies()
+    energy = atoms.get_potential_energy()
+    assert abs(float(np.sum(energies)) - energy) <= 1e-10 * max(1.0, abs(energy))
+    return energies
+
+
+def _unwrapped(atoms):
+    """Each atom moved by its own lattice vector, up to three cells away."""
+    atoms = atoms.copy()
+    index = np.arange(len(atoms))
+    shifts = np.stack([index % 3 - 1, index % 7 - 3, (index % 2) * 2], axis=1)
+    atoms.positions += shifts @ atoms.cell[:]
+    return atoms
+
+
+def _wrapped(atoms):
+    atoms = atoms.copy()
+    atoms.wrap()
+    return atoms
+
+
+def _same_shares(atoms, kind, **params):
+    """The shares follow the atoms in lower-triangular form, wrapped and
+    unwrapped."""
+    ref = _energies(atoms, kind, **params)
+    for other in (
+        _lower_triangular(atoms),
+        _wrapped(atoms),
+        _unwrapped(_wrapped(atoms)),
+        _unwrapped(_lower_triangular(atoms)),
+    ):
+        np.testing.assert_allclose(
+            _energies(other, kind, **params), ref, atol=1e-10, rtol=0.0
+        )
+    return ref
+
+
+_ENERGY_KINDS = [
+    pytest.param("stillinger_weber_si", id="stillinger_weber_si"),
+    pytest.param("tersoff_sic", id="tersoff_sic"),
+]
+
+
+@pytest.mark.parametrize("kind", _ENERGY_KINDS)
+def test_diamond_primitive_supercell_per_atom_energies(kind) -> None:
+    """Up to 4x4x4 the image table, from 5x5x5 the face-spacing bins."""
+    cubic = bulk("Si", "diamond", a=_SI, cubic=True).repeat(3)
+    site = float(np.mean(_energies(cubic, kind)))
+    perfect = bulk("Si", "diamond", a=_SI)
+    np.testing.assert_allclose(_energies(perfect, kind), site, atol=1e-10, rtol=0.0)
+    prim = perfect.copy()
+    prim.rattle(0.05, seed=5)
+    one = _energies(prim, kind)
+    for n in range(1, 8):
+        shares = _same_shares(prim.repeat(n), kind).reshape(-1, len(prim))
+        np.testing.assert_allclose(
+            shares, np.broadcast_to(one, shares.shape), atol=1e-10, rtol=0.0
+        )
+
+
+_THIN = [
+    pytest.param("lj", bulk("Ar", "fcc", a=_LJ_FCC), {"cutoff": 3.0}, id="lj"),
+    pytest.param("morse", bulk("Pt", "fcc", a=3.92), {"cutoff": 6.0}, id="morse"),
+    pytest.param(
+        "eam_al", bulk("Al", "fcc", a=4.05), {}, id="eam_al", marks=needs_fortran
+    ),
+    pytest.param(
+        "cuh2", bulk("Cu", "fcc", a=3.61), {}, id="cuh2", marks=needs_fortran
+    ),
+    pytest.param("stillinger_weber_si", bulk("Si", "diamond", a=_SI), {}, id="sw"),
+    pytest.param("tersoff_sic", bulk("Si", "diamond", a=_SI), {}, id="tersoff"),
+]
+
+
+@pytest.mark.parametrize(("kind", "cell", "params"), _THIN)
+def test_thin_cell_per_atom_energies_follow_the_cell_form(kind, cell, params) -> None:
+    thin = cell.repeat((2, 1, 1))
+    thin.rattle(0.05, seed=9)
+    one = _same_shares(thin, kind, **params)
+    big = _energies(thin.repeat(4), kind, **params).reshape(-1, len(thin))
+    np.testing.assert_allclose(big, np.broadcast_to(one, big.shape), atol=1e-10, rtol=0.0)
+
+
+@pytest.mark.parametrize(("kind", "cell", "params"), _THIN)
+def test_slab_per_atom_energies(kind, cell, params) -> None:
+    """A slab periodic in-plane with vacuum across, the (T, T, F) case.
+
+    The calculator takes only fully periodic flags, so the open axis is
+    vacuum wider than twice any search. The in-plane rows are sheared.
+    """
+    slab = cell.repeat((1, 1, 4))
+    normal = np.cross(slab.cell[0], slab.cell[1])
+    normal *= np.sign(normal @ slab.cell[2]) / np.linalg.norm(normal)
+    slab.cell[2] = slab.cell[2] + 20.0 * normal
+    slab.rattle(0.04, seed=11)
+    one = _same_shares(slab, kind, **params)
+    assert np.ptp(one) > 1e-3 * abs(float(one.min()))
+    big = _energies(slab.repeat((3, 3, 1)), kind, **params).reshape(-1, len(slab))
+    np.testing.assert_allclose(big, np.broadcast_to(one, big.shape), atol=1e-10, rtol=0.0)
+    with pytest.raises(ValueError, match="non-periodic"):
+        mixed = slab.copy()
+        mixed.pbc = (True, True, False)
+        _energies(mixed, kind, **params)
+
+
+@pytest.mark.parametrize(
+    ("kind", "cell", "params"),
+    [
+        pytest.param(
+            "lj", bulk("Ar", "fcc", a=_LJ_FCC, cubic=True).repeat(12), {"cutoff": 3.0},
+            id="lj",
+        ),
+        pytest.param(
+            "eam_al", bulk("Al", "fcc", a=4.05, cubic=True).repeat(6), {},
+            id="eam_al", marks=needs_fortran,
+        ),
+        pytest.param(
+            "cuh2", bulk("Cu", "fcc", a=3.61, cubic=True).repeat(6), {},
+            id="cuh2", marks=needs_fortran,
+        ),
+    ],
+)
+def test_atoms_outside_a_wide_cell_keep_their_shares(kind, cell, params) -> None:
+    atoms = cell.copy()
+    atoms.rattle(0.05, seed=13)
+    ref = _energies(atoms, kind, **params)
+    np.testing.assert_allclose(
+        _energies(_unwrapped(atoms), kind, **params), ref, atol=1e-10, rtol=0.0
+    )
+    sheared = atoms.copy()
+    sheared.set_cell(np.array([[1, 0, 0], [1, 1, 0], [0, 0, 1]]) @ atoms.cell[:])
+    np.testing.assert_allclose(
+        _same_shares(sheared, kind, **params), ref, atol=1e-10, rtol=0.0
+    )
