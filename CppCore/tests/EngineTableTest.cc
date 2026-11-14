@@ -11,6 +11,7 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 #include <dlfcn.h>
@@ -46,6 +47,9 @@ struct Engine {
   int (*force_batch)(RgpotEnginePot *, long, long, const double *, const int *,
                      double *, double *, double *, const double *,
                      rgpot_engine_coord_transform, void *) = nullptr;
+  int (*force_energies)(RgpotEnginePot *, long, const double *, const int *,
+                        double *, double *, double *, const double *,
+                        rgpot_engine_coord_transform, void *) = nullptr;
   RgpotEngineAbiStamp (*stamp)() = nullptr;
   int (*caps)(const RgpotEnginePot *, RgpotEngineCaps *) = nullptr;
   size_t (*last_error)(const RgpotEnginePot *, char *, size_t) = nullptr;
@@ -88,6 +92,8 @@ bool open_engine(const std::string &key, Engine &out) {
   out.destroy = sym<decltype(out.destroy)>(h, "rgpot_engine_destroy");
   out.force = sym<decltype(out.force)>(h, "rgpot_engine_force");
   out.force_batch = sym<decltype(out.force_batch)>(h, "rgpot_engine_force_batch");
+  out.force_energies =
+      sym<decltype(out.force_energies)>(h, "rgpot_engine_force_energies");
   out.stamp = sym<decltype(out.stamp)>(h, "rgpot_engine_abi_stamp");
   out.caps = sym<decltype(out.caps)>(h, "rgpot_engine_caps");
   out.last_error = sym<decltype(out.last_error)>(h, "rgpot_engine_last_error");
@@ -273,6 +279,115 @@ TEST_CASE("classical engine names its potentials", "[engine][classical]") {
   }
 }
 
+namespace {
+
+/// What rgpot_engine_force_energies gives for `name`, checked against
+/// rgpot_engine_force on the same input. Returns false when the engine has
+/// no such potential in this build.
+bool check_per_atom(const Engine &e, const std::string &name, bool expected,
+                    const std::vector<double> &pos, const std::vector<int> &z) {
+  INFO(name);
+  std::string error;
+  RgpotEnginePot *pot = create(e, builtin_params(name), &error);
+  if (pot == nullptr) {
+    return false;
+  }
+  RgpotEngineCaps caps;
+  caps.size = sizeof(caps);
+  REQUIRE(e.caps(pot, &caps) == 0);
+  REQUIRE(caps.size == sizeof(caps));
+  REQUIRE(caps.per_atom_energy == (expected ? 1 : 0));
+
+  const long n = static_cast<long>(z.size());
+  std::vector<double> forces(3 * n, 0.0);
+  double energy = 0.0;
+  REQUIRE(e.force(pot, n, pos.data(), z.data(), forces.data(), &energy, nullptr,
+                  kBox.data(), nullptr, nullptr) == 0);
+  std::vector<double> f2(3 * n, 0.0);
+  std::vector<double> sites(n, 0.0);
+  double e2 = 0.0;
+  const int rc = e.force_energies(pot, n, pos.data(), z.data(), f2.data(), &e2,
+                                  sites.data(), kBox.data(), nullptr, nullptr);
+  if (!expected) {
+    REQUIRE(rc == 3);
+    REQUIRE(!error_of(e, pot).empty());
+    e.destroy(pot);
+    return true;
+  }
+  REQUIRE(rc == 0);
+  REQUIRE(e2 == energy);
+  REQUIRE(f2 == forces);
+  double total = 0.0;
+  for (double v : sites) {
+    total += v;
+  }
+  REQUIRE_THAT(total, Catch::Matchers::WithinAbs(energy, 1e-10 * std::abs(energy)));
+  REQUIRE(e.force_energies(pot, n, pos.data(), z.data(), f2.data(), &e2, nullptr,
+                           kBox.data(), nullptr, nullptr) == 1);
+  e.destroy(pot);
+  return true;
+}
+
+} // namespace
+
+TEST_CASE("classical engine reports per-atom energies where the potential has them",
+          "[engine][classical][per-atom]") {
+  Engine e;
+  if (!open_engine("CLASSICAL", e)) {
+    SKIP("no classical engine in this build");
+  }
+  REQUIRE(RGPOT_ENGINE_ABI_MINOR >= 3);
+  REQUIRE(check_per_atom(e, "lj", true, kCluster, kZ));
+  REQUIRE(check_per_atom(e, "morse", true, kCluster, kZ));
+  REQUIRE(check_per_atom(e, "ljcluster", false, kCluster, kZ));
+  REQUIRE(check_per_atom(e, "zbl", false, kCluster, kZ));
+
+  // A host built before minor 3 announces the shorter struct; the engine
+  // writes only that much and reports the size it wrote.
+  RgpotEnginePot *pot = create(e, builtin_params("lj"));
+  REQUIRE(pot != nullptr);
+  RgpotEngineCaps old;
+  std::memset(&old, 0x5a, sizeof(old));
+  old.size = offsetof(RgpotEngineCaps, per_atom_energy);
+  REQUIRE(e.caps(pot, &old) == 0);
+  REQUIRE(old.size == offsetof(RgpotEngineCaps, per_atom_energy));
+  REQUIRE(old.reentrancy == 1);
+  int untouched;
+  std::memset(&untouched, 0x5a, sizeof(untouched));
+  REQUIRE(old.per_atom_energy == untouched);
+  e.destroy(pot);
+
+  // Fortran kernels: the EAM pair ones split, the others do not.
+  const std::vector<double> cu = {0.0, 0.0, 0.0, 2.5, 0.2, 0.0, 0.1, 2.6, 0.3, 1.3, 1.2, 2.4};
+  const std::vector<int> zcu = {29, 29, 29, 29};
+  if (check_per_atom(e, "cuh2", true, cu, zcu)) {
+    const std::vector<int> zal = {13, 13, 13, 13};
+    std::vector<double> al = cu;
+    for (double &x : al) {
+      x *= 1.15;
+    }
+    REQUIRE(check_per_atom(e, "eamal", true, al, zal));
+    const std::vector<int> zsi = {14, 14, 14, 14};
+    std::vector<double> si = cu;
+    for (double &x : si) {
+      x *= 0.95;
+    }
+    REQUIRE(check_per_atom(e, "sw", false, si, zsi));
+    REQUIRE(check_per_atom(e, "tersoff", false, si, zsi));
+    REQUIRE(check_per_atom(e, "edip", false, si, zsi));
+  }
+#ifdef RGPOT_HAS_WATER
+  const std::vector<double> waters = {1.8, 1.1, 1.5, 0.3, 1.05, 1.55, 4.3, 3.6, 4.9,
+                                      3.1, 4.6, 4.9, 1.0, 1.0,  1.0,  3.6, 3.9, 4.4};
+  const std::vector<int> zw = {1, 1, 1, 1, 8, 8};
+  REQUIRE(check_per_atom(e, "tip4p", true, waters, zw));
+  REQUIRE(check_per_atom(e, "spce", true, waters, zw));
+  const std::vector<double> on_pt = {0.80, 0.10, 2.50, -0.70, 0.05, 2.55,
+                                     0.0,  0.0,  2.0,  0.0,   0.0,  0.0};
+  REQUIRE(check_per_atom(e, "tip4p_pt", true, on_pt, {1, 1, 8, 78}));
+#endif
+}
+
 #ifdef RGPOT_HAS_WATER
 namespace {
 
@@ -352,10 +467,14 @@ void check_unavailable_engine(const std::string &key, const std::string &name,
   REQUIRE(e.caps(pot, &caps) == 0);
   REQUIRE(caps.reentrancy == reentrancy);
   REQUIRE(caps.periodic == 0);
+  REQUIRE(caps.per_atom_energy == 0);
   std::vector<double> forces(6, 0.0);
   double energy = 0.0;
   const double pos[6] = {0, 0, 0, 0, 0, 0.74};
   const int z[2] = {1, 1};
+  double sites[2] = {0.0, 0.0};
+  REQUIRE(e.force_energies(pot, 2, pos, z, forces.data(), &energy, sites, kBox.data(),
+                           nullptr, nullptr) == 3);
   const int rc = e.force(pot, 2, pos, z, forces.data(), &energy, nullptr,
                          kBox.data(), nullptr, nullptr);
   if (rc != 0) {
