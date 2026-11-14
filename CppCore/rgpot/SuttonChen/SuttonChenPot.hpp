@@ -122,7 +122,7 @@ public:
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
 private:
-  static constexpr uint64_t kKernelVersion = 1;
+  static constexpr uint64_t kKernelVersion = 2;
 
   SuttonChenConfig m_config;
   uint64_t m_paramsKey{0};

@@ -111,7 +111,7 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   }
   const SuttonChenConfig cfg = m_config;
   double strain[6] = {};
-  if (n_atoms < 2) {
+  if (n_atoms < 1) {
     if (cfg.stress) {
       publishCauchyStress(out, strain, cellVolume(in.box));
     }
@@ -187,8 +187,11 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
           double rep = 0.0;
           pair_term(r2, phi, rep);
           rho[static_cast<std::size_t>(i)] += phi;
+          // A periodic self image comes once per shift, so twice.
           if (j > i) {
             partial[static_cast<std::size_t>(t)] += epsilon * rep;
+          } else if (j == i) {
+            partial[static_cast<std::size_t>(t)] += 0.5 * epsilon * rep;
           }
         });
     for (double part : partial) {
@@ -232,8 +235,10 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       force[3 * j + 1] -= fy;
       force[3 * j + 2] -= fz;
     }
-    if (virial != nullptr && j > i) {
-      accumulatePairStrain(virial, fscale, dx, dy, dz);
+    // A directed walk (both false) sees a periodic self image at both shifts.
+    const double share = j > i ? 1.0 : (j == i ? (both ? 1.0 : 0.5) : 0.0);
+    if (virial != nullptr && share > 0.0) {
+      accumulatePairStrain(virial, share * fscale, dx, dy, dz);
     }
   };
   if (nt == 1) {
