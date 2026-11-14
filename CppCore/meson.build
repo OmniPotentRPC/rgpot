@@ -752,6 +752,12 @@ if get_option('with_tests')
                 'PeriodicImagesTest.cc',
                 '',
             ],
+            [
+                'PerAtomEnergyTest',
+                'per_atom_energy_test',
+                'PerAtomEnergyTest.cc',
+                '',
+            ],
         ]
     endif
     if not get_option('with_rpc_client_only')
