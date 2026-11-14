@@ -37,6 +37,7 @@
 // clang-format on
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/Potential.hpp"
+#include "rgpot/nlist/Neighbours.hpp"
 
 namespace rgpot {
 
@@ -71,8 +72,8 @@ EAMTable read_eam_table(std::istream &in, EAMTableFormat format);
 struct EAMTableConfig {
   std::string path; //!< Table file.
   EAMTableFormat format = EAMTableFormat::Setfl;
-  /// Minimum image convention. The cutoff must sit under half of every
-  /// face spacing of the cell.
+  /// Periodic in all three cell vectors. Every image inside the cutoff
+  /// counts, so the cell may be thinner than the cutoff.
   bool periodic = true;
   /// Write the Cauchy stress of stress.hpp when the cell volume is positive.
   bool stress = false;
@@ -89,7 +90,9 @@ public:
   EAMTablePot(const EAMTable &table, bool periodic, bool stress);
 
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.periodic = m_periodic, .stress = m_stress};
+    return {.reentrancy = Reentrancy::PerInstance,
+            .periodic = m_periodic,
+            .stress = m_stress};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
@@ -98,7 +101,19 @@ public:
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
+  /// forceImpl plus each atom's share of the energy: F_a(rho_i) on atom i
+  /// and half of every pair term to each partner, the split of LAMMPS
+  /// compute pe/atom for pair_style eam. See Potential::forceEnergies.
+  void forceEnergiesImpl(const ForceInput &in, ForceOut *out,
+                         double *energies) const;
+
+  /// Stored Verlet list or a streaming cell walk.
+  void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
+
 private:
+  template <bool PerAtom>
+  void evaluate(const ForceInput &in, ForceOut *out, double *energies) const;
+
   static constexpr uint64_t kKernelVersion = 1;
 
   EAMTable m_table;
@@ -108,6 +123,8 @@ private:
   bool m_periodic;
   bool m_stress;
   uint64_t m_paramsKey{0};
+  nlist::Mode mode_ = nlist::Mode::Auto;
+  mutable nlist::Neighbours neighbours_;
 };
 
 } // namespace rgpot

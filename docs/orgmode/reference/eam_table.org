@@ -77,11 +77,17 @@ Only one =Funcfl= file is read, so the LAMMPS mixing of several =.eam= files is
 not available.
 The =eam/he= and =eam/cd= layouts are not read.
 
-Periodic evaluation keeps one image of each partner, so it needs the cutoff
-under half of every face spacing of the cell.
+Pairs come from the shared neighbour layer of =rgpot/nlist=, as for
+=SuttonChenPot=.
+Periodic evaluation counts every image inside the cutoff, so a cell may be
+thinner than the cutoff or strongly sheared.
 The constructor accepts any table.
-=forceImpl= throws =std::invalid_argument= for a smaller cell, for a periodic
-call without a cell, and for an atomic number that is in no element line.
+=forceImpl= throws =std::invalid_argument= for a periodic call without a cell
+and for an atomic number that is in no element line.
+
+=forceEnergiesImpl= also writes each atom's share of the energy: F_a(rho_i) on
+atom i and half of every pair term to each partner, the split of LAMMPS
+=compute pe/atom= for =pair_style eam=.
 
 * Stress
 

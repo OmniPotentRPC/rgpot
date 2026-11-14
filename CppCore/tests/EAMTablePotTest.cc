@@ -212,9 +212,6 @@ TEST_CASE("EAM table rejects bad input", "[EAMTable]") {
   std::vector<int> nickel(ref.z.size(), 28);
   REQUIRE_THROWS_AS(eval(cu_u3(true, false), ref.pos, nickel, ref.box),
                     std::invalid_argument);
-  const double small[9] = {9.0, 0.0, 0.0, 0.0, 9.0, 0.0, 0.0, 0.0, 9.0};
-  REQUIRE_THROWS_AS(eval(cu_u3(true, false), ref.pos, ref.z, small),
-                    std::invalid_argument);
   std::ifstream file(kData + "eam_table/Cu_u3.eam");
   std::string head, line;
   for (int k = 0; k < 40 && std::getline(file, line); ++k)
@@ -222,4 +219,72 @@ TEST_CASE("EAM table rejects bad input", "[EAMTable]") {
   std::istringstream cut(head);
   REQUIRE_THROWS_AS(rgpot::read_eam_table(cut, EAMTableFormat::Funcfl),
                     std::invalid_argument);
+}
+
+TEST_CASE("EAM table counts every image of a cell thinner than the cutoff",
+          "[EAMTable]") {
+  // One sheared, rattled fcc conventional cell, every face spacing under
+  // the 4.95 Angstrom cutoff, against its 3 x 3 x 3 replica, whose face
+  // spacings clear twice the cutoff.
+  const double a = 3.615;
+  const double cell[9] = {a, 0.0, 0.0, 0.4, a, 0.0, -0.3, 0.5, a};
+  const double frac[4][3] = {
+      {0.0, 0.0, 0.0}, {0.5, 0.5, 0.0}, {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5}};
+  const double rattle[4][3] = {{0.05, -0.03, 0.02},
+                               {-0.04, 0.06, 0.01},
+                               {0.02, 0.03, -0.07},
+                               {-0.01, -0.05, 0.04}};
+  std::vector<double> pos;
+  for (int i = 0; i < 4; ++i) {
+    for (int k = 0; k < 3; ++k) {
+      double x = rattle[i][k];
+      for (int v = 0; v < 3; ++v)
+        x += frac[i][v] * cell[3 * v + k];
+      pos.push_back(x);
+    }
+  }
+  const std::vector<int> z(4, 29);
+
+  std::vector<double> big_pos;
+  for (int u = 0; u < 3; ++u)
+    for (int v = 0; v < 3; ++v)
+      for (int w = 0; w < 3; ++w)
+        for (int i = 0; i < 4; ++i)
+          for (int k = 0; k < 3; ++k)
+            big_pos.push_back(pos[3 * i + k] + u * cell[k] +
+                              v * cell[3 + k] + w * cell[6 + k]);
+  double big_cell[9];
+  for (int k = 0; k < 9; ++k)
+    big_cell[k] = 3.0 * cell[k];
+  const std::vector<int> big_z(108, 29);
+
+  const auto pot = cu_u3(true, true);
+  const Eval thin = eval(pot, pos, z, cell);
+  const Eval big = eval(pot, big_pos, big_z, big_cell);
+  REQUIRE_THAT(thin.energy, WithinAbs(big.energy / 27.0, 1e-12));
+  for (std::size_t k = 0; k < big.forces.size(); ++k) {
+    REQUIRE_THAT(thin.forces[k % 12], WithinAbs(big.forces[k], 1e-12));
+  }
+  for (int k = 0; k < 9; ++k) {
+    REQUIRE_THAT(thin.stress[k], WithinAbs(big.stress[k], 1e-13));
+  }
+}
+
+TEST_CASE("EAM table per-atom energies sum to the energy", "[EAMTable]") {
+  const LammpsRef ref = load_ref("eam_table/cuni_sheared.ref", true);
+  const rgpot::EAMTablePot pot(
+      {.path = kData + "eam_table/CuNi.eam.alloy", .stress = true});
+  const Eval whole = eval(pot, ref.pos, ref.z, ref.box);
+  std::vector<double> forces(ref.pos.size(), 0.0), energies(ref.z.size());
+  rgpot::ForceOut out{};
+  out.F = forces.data();
+  pot.forceEnergiesImpl(
+      rgpot::ForceInput{ref.z.size(), ref.pos.data(), ref.z.data(), ref.box},
+      &out, energies.data());
+  REQUIRE(out.energy == whole.energy);
+  REQUIRE(forces == whole.forces);
+  double sum = 0.0;
+  for (const double e : energies)
+    sum += e;
+  REQUIRE_THAT(sum, WithinAbs(whole.energy, 1e-10));
 }

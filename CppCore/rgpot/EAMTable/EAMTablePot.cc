@@ -24,7 +24,7 @@
 // clang-format on
 
 #include "rgpot/EAMTable/EAMTablePot.hpp"
-#include "rgpot/nlist/PairListCache.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/stress.hpp"
 
 namespace {
@@ -247,6 +247,17 @@ EAMTablePot::EAMTablePot(const EAMTable &table, bool periodic, bool stress)
 }
 
 void EAMTablePot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  evaluate<false>(in, out, nullptr);
+}
+
+void EAMTablePot::forceEnergiesImpl(const ForceInput &in, ForceOut *out,
+                                    double *energies) const {
+  evaluate<true>(in, out, energies);
+}
+
+template <bool PerAtom>
+void EAMTablePot::evaluate(const ForceInput &in, ForceOut *out,
+                           double *energies) const {
   const auto n_size = in.nAtoms;
   double *F = out->F;
   std::fill(F, F + 3 * n_size, 0.0);
@@ -265,51 +276,47 @@ void EAMTablePot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
   static constexpr double free_box[9] = {1.0e6, 0.0, 0.0, 0.0,  1.0e6,
                                          0.0,   0.0, 0.0, 1.0e6};
-  const double *box = in.box;
+  const double *box = free_box;
   if (m_periodic) {
-    const double vol = cellVolume(box);
-    if (!(vol > 0.0)) {
+    if (!(cellVolume(in.box) > 0.0)) {
       bad("periodic evaluation needs a cell");
     }
-    // The pair list folds to one image per partner.
-    for (int k = 0; k < 3; ++k) {
-      const double *u = box + 3 * ((k + 1) % 3);
-      const double *v = box + 3 * ((k + 2) % 3);
-      const double cx = u[1] * v[2] - u[2] * v[1];
-      const double cy = u[2] * v[0] - u[0] * v[2];
-      const double cz = u[0] * v[1] - u[1] * v[0];
-      if (!(2.0 * t.cutoff < vol / std::sqrt(cx * cx + cy * cy + cz * cz))) {
-        bad("cutoff exceeds half a face spacing");
-      }
-    }
-  } else {
-    box = free_box;
+    box = in.box;
   }
-  nlist::CachedPairList::Options opt;
-  opt.cutoff = t.cutoff;
-  opt.periodic = {m_periodic, m_periodic, m_periodic};
   const double cut2 = t.cutoff * t.cutoff;
   const double rdr = 1.0 / t.dr;
   const double rdrho = 1.0 / t.drho;
-  auto &pool = nlist::PairListCache::global();
-
-  const bool pairs = n_size >= 2;
+  const bool pairs = n_size > 0;
+  if (pairs) {
+    const double skin = mode_ == nlist::Mode::Stream ? 0.0 : t.cutoff / 5.0;
+    nlist::updateCells(neighbours_, in.pos, n_size, box, t.cutoff, skin,
+                       nlist::Image::Round, mode_,
+                       {m_periodic, m_periodic, m_periodic});
+  }
+  // Each unordered pair once. A periodic self image j == i comes at one of
+  // its two shifts, which is the whole of its pair energy and gives rho_i
+  // both of its density terms.
+  auto half = [&](auto &&fn) {
+    nlist::visitHalf(neighbours_, 0, static_cast<std::int64_t>(n_size),
+                     [&](int32_t i, int32_t j, double dx, double dy, double dz,
+                         double r2) {
+                       if (!(r2 > 0.0) || !(r2 < cut2)) {
+                         return;
+                       }
+                       fn(static_cast<std::size_t>(i),
+                          static_cast<std::size_t>(j), dx, dy, dz, r2);
+                     });
+  };
 
   std::vector<double> rho(n_size, 0.0);
   if (pairs) {
-    pool.evaluate(in.pos, n_size, box, opt,
-                  [&](int32_t i, int32_t j, double, double, double, double r2) {
-                    if (!(r2 > 0.0) || !(r2 < cut2)) {
-                      return;
-                    }
-                    const auto a = el[static_cast<std::size_t>(i)];
-                    const auto b = el[static_cast<std::size_t>(j)];
-                    const double r = std::sqrt(r2);
-                    rho[static_cast<std::size_t>(i)] +=
-                        lookup(m_rhor[b * nel + a], r, rdr, t.nr).value();
-                    rho[static_cast<std::size_t>(j)] +=
-                        lookup(m_rhor[a * nel + b], r, rdr, t.nr).value();
-                  });
+    half([&](std::size_t i, std::size_t j, double, double, double, double r2) {
+      const auto a = el[i];
+      const auto b = el[j];
+      const double r = std::sqrt(r2);
+      rho[i] += lookup(m_rhor[b * nel + a], r, rdr, t.nr).value();
+      rho[j] += lookup(m_rhor[a * nel + b], r, rdr, t.nr).value();
+    });
   }
 
   std::vector<double> fprime(n_size, 0.0);
@@ -317,48 +324,48 @@ void EAMTablePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   for (std::size_t i = 0; i < n_size; ++i) {
     const Knot k = lookup(m_frho[el[i]], rho[i], rdrho, t.nrho);
     fprime[i] = k.slope();
-    energy += k.value();
+    double embed = k.value();
     if (rho[i] > t.rhomax) {
-      energy += fprime[i] * (rho[i] - t.rhomax);
+      embed += fprime[i] * (rho[i] - t.rhomax);
+    }
+    energy += embed;
+    if constexpr (PerAtom) {
+      energies[i] += embed;
     }
   }
 
   double strain[6] = {};
   if (pairs) {
-    pool.evaluate(
-        in.pos, n_size, box, opt,
-        [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
-          if (!(r2 > 0.0) || !(r2 < cut2)) {
-            return;
-          }
-          const auto ui = static_cast<std::size_t>(i);
-          const auto uj = static_cast<std::size_t>(j);
-          const auto a = el[ui];
-          const auto b = el[uj];
-          const double r = std::sqrt(r2);
-          const double rhoip =
-              lookup(m_rhor[a * nel + b], r, rdr, t.nr).slope();
-          const double rhojp =
-              lookup(m_rhor[b * nel + a], r, rdr, t.nr).slope();
-          const auto hi = std::max(a, b);
-          const Knot z2 =
-              lookup(m_z2r[hi * (hi + 1) / 2 + std::min(a, b)], r, rdr, t.nr);
-          const double recip = 1.0 / r;
-          const double phi = z2.value() * recip;
-          const double phip = z2.slope() * recip - phi * recip;
-          const double fscale =
-              -(fprime[ui] * rhojp + fprime[uj] * rhoip + phip) * recip;
-          energy += phi;
-          F[3 * ui] += fscale * dx;
-          F[3 * ui + 1] += fscale * dy;
-          F[3 * ui + 2] += fscale * dz;
-          F[3 * uj] -= fscale * dx;
-          F[3 * uj + 1] -= fscale * dy;
-          F[3 * uj + 2] -= fscale * dz;
-          if (m_stress) {
-            accumulatePairStrain(strain, fscale, dx, dy, dz);
-          }
-        });
+    half([&](std::size_t i, std::size_t j, double dx, double dy, double dz,
+             double r2) {
+      const auto a = el[i];
+      const auto b = el[j];
+      const double r = std::sqrt(r2);
+      const double rhoip = lookup(m_rhor[a * nel + b], r, rdr, t.nr).slope();
+      const double rhojp = lookup(m_rhor[b * nel + a], r, rdr, t.nr).slope();
+      const auto hi = std::max(a, b);
+      const Knot z2 =
+          lookup(m_z2r[hi * (hi + 1) / 2 + std::min(a, b)], r, rdr, t.nr);
+      const double recip = 1.0 / r;
+      const double phi = z2.value() * recip;
+      const double phip = z2.slope() * recip - phi * recip;
+      const double fscale =
+          -(fprime[i] * rhojp + fprime[j] * rhoip + phip) * recip;
+      energy += phi;
+      if constexpr (PerAtom) {
+        energies[i] += 0.5 * phi;
+        energies[j] += 0.5 * phi;
+      }
+      F[3 * i] += fscale * dx;
+      F[3 * i + 1] += fscale * dy;
+      F[3 * i + 2] += fscale * dz;
+      F[3 * j] -= fscale * dx;
+      F[3 * j + 1] -= fscale * dy;
+      F[3 * j + 2] -= fscale * dz;
+      if (m_stress) {
+        accumulatePairStrain(strain, fscale, dx, dy, dz);
+      }
+    });
   }
 
   out->energy = energy;
