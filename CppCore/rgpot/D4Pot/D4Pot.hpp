@@ -52,8 +52,9 @@ public:
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
+  // The structure is built with every periodicity flag false.
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.reentrancy = Reentrancy::PerInstance};
+    return {.reentrancy = Reentrancy::PerInstance, .periodic = false};
   }
 
   [[nodiscard]] const D4Config &config() const noexcept { return m_config; }
