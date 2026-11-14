@@ -75,10 +75,17 @@ struct ForceHit {
 // scatter. One team scatters them and then sums each owned atom.
 void gatherFromCounts(const int *force_at, const int *force_used, const ForceHit *hits,
                       const int *local_n, double *acc, int n, int nt) {
+  // The atom index is already the row, so the copy keeps only the three
+  // force components. Their order inside the row is still the source order.
+  struct Hit3 {
+    double x;
+    double y;
+    double z;
+  };
   struct Scratch {
     std::vector<int> touch;
     std::vector<int> cursor;
-    std::vector<ForceHit> csr;
+    std::vector<Hit3> csr;
   };
   thread_local Scratch scratch;
   auto &touch = scratch.touch;
@@ -124,7 +131,10 @@ void gatherFromCounts(const int *force_at, const int *force_used, const ForceHit
       const ForceHit *hit = hits + force_at[i];
       const int nf = force_used[i];
       for (int k = 0; k < nf; ++k) {
-        csr[static_cast<std::size_t>(place[hit[k].atom])] = hit[k];
+        Hit3 &dst = csr[static_cast<std::size_t>(place[hit[k].atom])];
+        dst.x = hit[k].x;
+        dst.y = hit[k].y;
+        dst.z = hit[k].z;
         ++place[hit[k].atom];
       }
     }
