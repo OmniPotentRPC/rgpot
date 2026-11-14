@@ -29,9 +29,12 @@ public:
   ZhuPhilpott(ZhuPhilpott const &);
   void operator=(ZhuPhilpott const &);
   ~ZhuPhilpott();
+  /// A non-null @p energies (one per atom, same order) gains each atom's
+  /// share of @p energy: half of every site-site, site-image and
+  /// site-platinum term to each end, the intramolecular term on the oxygen.
   void computeHH_O_Pt_(const int nWater, const int nPt, const double r[],
                        double f[], double &energy, double const b[],
-                       bool const fixed[]);
+                       bool const fixed[], double energies[] = nullptr);
   void computeHH_O_(const int nWater, const double r[], double f[],
                     double &energy, double const b[], bool const fixed[]);
   int nPlatinum() const;
@@ -48,11 +51,12 @@ private:
                        double &energy, double const b[],
                        bool const (*const xh1)[H] = 0,
                        bool const (*const xh2)[H] = 0,
-                       bool const (*const xo)[O] = 0, bool const *xPt = 0);
+                       bool const (*const xo)[O] = 0, bool const *xPt = 0,
+                       double *ea = nullptr);
   void interactWithCorePt(Water &water, int const nPt, double const rPt[][3],
-                          double fPt[][3], double &energy);
+                          double fPt[][3], double &energy, double *ePt = nullptr);
   void interactWithPt(Water &water, double const pt[], double fpt[],
-                      double &energy);
+                      double &energy, double *ept = nullptr);
   void interactionPtO(double const R1[], double const R2[], double F1[],
                       double F2[], double &energy);
   void interactionPtH(double const R1[], double const R2[], double F1[],

@@ -80,6 +80,12 @@ protected:
   template <int N, class R, class F>
   void switching(ChargeGroup<N, R, F> &g1, ChargeGroup<N, R, F> &g2,
                  double &energy, double cutoff, double switchingWidth);
+  /// The factor S the charge-group switching() scales a pair energy by at
+  /// centre distance @p z1 inside the switching zone.
+  static double switchFactor(double z1, double cutoff, double switchingWidth) {
+    double const x = (z1 - cutoff + switchingWidth) / switchingWidth;
+    return (2 * x - 3) * x * x + 1;
+  }
   //-------------------------------------------Lennard-Jones---------------------------------------------------------
   /// @name Lennard-Jones
   /// @{

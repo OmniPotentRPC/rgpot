@@ -69,6 +69,12 @@ public:
   void computeHH_O_(const int nAtoms, const double R[], double F[], double &U,
                     const double b[], const bool fixed[]);
 
+  /// As computeHH_O_, and @p energies (one per atom, same order) gains each
+  /// atom's share of @p U: half of every site-site term to each site, the
+  /// intramolecular and polarisation terms on the oxygen.
+  void computeHH_O_(const int nAtoms, const double R[], double F[], double &U,
+                    const double b[], const bool fixed[], double energies[]);
+
   char const *getName() const; ///< Name of the potential.
 
 protected:
@@ -97,6 +103,9 @@ protected:
     double *const fh1_;
     double *const fh2_;
     double *const fo_;
+    /// Null, or the energies of sites H1, H2, O, which the pair terms
+    /// add their halves to.
+    double *e_ = nullptr;
   };
 
   /** Interactions within a molecules.
@@ -134,6 +143,10 @@ protected:
       @see intermolecularFull() and intermolecularSwitching().
       */
   void coulombFull(Water &w1, Water &w2, double &U);
+
+  /// coulombFull with relative permittivity, adding half of each of the
+  /// nine site terms to @c e_ of either site. Both molecules carry @c e_.
+  void coulombSites(Water &w1, Water &w2, double &U, double relativePermittivity);
 
   /// Distance OH
   static const double roh_;
@@ -197,6 +210,6 @@ private:
                        double (*const fo)[O * 3], double &energy,
                        double const b[], bool const (*const xh1)[H] = 0,
                        bool const (*const xh2)[H] = 0,
-                       bool const (*const xo)[O] = 0);
+                       bool const (*const xo)[O] = 0, double *ea = nullptr);
 };
 } // namespace forcefields
