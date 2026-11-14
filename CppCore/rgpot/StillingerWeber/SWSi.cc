@@ -421,9 +421,9 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
     const auto &row = neighbours_.offsets();
     const bool stored = !neighbours_.streaming() &&
                         row.size() == static_cast<std::size_t>(n) + 1;
-    // Below 1024 atoms the copy and the serial slot scan stay as they are.
-    // At 1024 and above the wide kernel writes each force into its atom's row.
-    if (stored && n >= 1024) {
+    // Below 256 atoms the copy and the serial slot scan stay as they are.
+    // At 256 and above the wide kernel writes each force into its atom's row.
+    if (stored && n >= 256) {
       swi::runWide(neighbours_, n, nt, cut2, scale, energy, acc);
     } else {
     bond_at.resize(static_cast<std::size_t>(n) + 1);
