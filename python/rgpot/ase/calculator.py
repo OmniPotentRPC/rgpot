@@ -33,7 +33,11 @@ from typing import Any, Iterable, Sequence
 
 import numpy as np
 from ase.atoms import Atoms
-from ase.calculators.calculator import Calculator, all_changes
+from ase.calculators.calculator import (
+    Calculator,
+    PropertyNotImplementedError,
+    all_changes,
+)
 from ase.calculators.singlepoint import SinglePointCalculator
 
 _ASE_KEYS = {
@@ -333,11 +337,11 @@ class RgpotCalculator(Calculator):
     def get_hessian(self, atoms: Atoms) -> np.ndarray:
         """Analytic Hessian, shape (3N, 3N).
 
-        Raises NotImplementedError. No bound potential reports an analytic
-        Hessian.
+        Raises PropertyNotImplementedError, a NotImplementedError. No
+        bound potential reports an analytic Hessian.
         """
         del atoms
-        raise NotImplementedError(
+        raise PropertyNotImplementedError(
             f"{type(self._potential).__name__} has no analytic Hessian"
         )
 
