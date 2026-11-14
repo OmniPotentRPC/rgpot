@@ -510,6 +510,32 @@ void search_bounds(const double cell[9], const double inv[9],
     search_reduced<Hardware>(cell, periodic, reduced, dx, dy, dz);
     return;
   }
+  // A lattice vector with a nonzero coefficient on row k is at least the
+  // face spacing h_k = 1 / dual[k] long. A rounded image shorter than half
+  // the smallest spacing, with room for the rounding of every candidate,
+  // is then strictly nearer than any other in the box. The scan below
+  // would keep the seed unchanged, so it is returned as is.
+  double widest = 0.0;
+  double scale = 0.0;
+  for (int k = 0; k < 3; ++k) {
+    if (periodic[k]) {
+      widest = std::max(widest, dual[k]);
+    }
+    scale += std::fabs(cell[3 * k]) + std::fabs(cell[3 * k + 1]) + std::fabs(cell[3 * k + 2]);
+  }
+  if (widest > 0.0) {
+    const double eps = std::numeric_limits<double>::epsilon();
+    const double slack =
+        64.0 * eps *
+        (3.0 * std::max({std::fabs(reduced[0]), std::fabs(reduced[1]), std::fabs(reduced[2])}) +
+         4.0 * scale);
+    if (radius * (1.0 + 0x1p-40) + slack < 0.5 * (1.0 - 0x1p-40) / widest) {
+      dx = reduced[0];
+      dy = reduced[1];
+      dz = reduced[2];
+      return;
+    }
+  }
   std::uint64_t count = 1;
   for (int k = 0; k < 3; ++k) {
     if (periodic[k]) {
