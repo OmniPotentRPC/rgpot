@@ -69,6 +69,11 @@ public:
 #endif
       ;
 
+  /// force() plus each atom's share of @p U in @p energies: half of every
+  /// pair term to each partner, the embedding term on its own atom.
+  void forceEnergies(long N, const double *R, const int *atomicNrs, double *F,
+                     double *U, double *energies, const double *fullbox);
+
   /// Neighbour-list builds since this object was created.
   [[nodiscard]] std::uint64_t listBuilds() const noexcept {
     return neighbours_.builds();
@@ -155,15 +160,22 @@ private:
   void buildList(long N);
   void ensureRev();
   void ensureParts(long N, int nt);
-  void evaluate(long N, const int *atomicNrs, double *F, double *U);
+  template <bool PerAtom>
+  void run(long N, const double *R, const int *atomicNrs, double *F, double *U,
+           double *site, const double *fullbox);
+  template <bool PerAtom>
+  void evaluate(long N, const int *atomicNrs, double *F, double *U, double *site);
+  template <bool PerAtom>
   void evaluateStoredParallel(long N, const int *atomicNrs, double *F,
-                              double *U);
+                              double *U, double *site);
+  template <bool PerAtom>
   void evaluateDensityStream(long N, const int *atomicNrs, double *F,
-                             double *U);
+                             double *U, double *site);
   [[nodiscard]] const rgpot::eam::ElementSpline &splineFor(int Z);
+  template <bool PerAtom>
   void accumulate(long i, const int *atomicNrs, double *F, double &U,
                   std::vector<Delta> &deltas, const std::int32_t *stream_ids,
-                  long stream_n) const;
+                  long stream_n, double *site) const;
   void geometry(long i, long j, double &dx, double &dy, double &dz,
                 double &r2) const;
   [[nodiscard]] int threadsRequested() const;

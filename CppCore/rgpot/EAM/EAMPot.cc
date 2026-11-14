@@ -51,4 +51,13 @@ void EAMPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   out->has_stress = 0;
 }
 
+void EAMPot::forceEnergiesImpl(const ForceInput &in, ForceOut *out,
+                               double *energies) const {
+  double energy = 0.0;
+  m_impl->kernel.forceEnergies(static_cast<long>(in.nAtoms), in.pos, in.atmnrs,
+                               out->F, &energy, energies, in.box);
+  out->energy = energy;
+  out->has_stress = 0;
+}
+
 } // namespace rgpot

@@ -58,6 +58,12 @@ public:
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
+  /// forceImpl plus each atom's share of the energy: half of every pair
+  /// term to each partner and the embedding term on its own atom. See
+  /// Potential::forceEnergies.
+  void forceEnergiesImpl(const ForceInput &in, ForceOut *out,
+                         double *energies) const;
+
 private:
   struct Impl;
   Impl *m_impl;

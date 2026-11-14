@@ -154,9 +154,10 @@ void EAM::ensureParts(long N, int nt) {
   part_nt_ = nt;
 }
 
+template <bool PerAtom>
 void EAM::accumulate(long i, const int *atomicNrs, double *F, double &U,
                      std::vector<Delta> &deltas, const std::int32_t *stream_ids,
-                     long stream_n) const {
+                     long stream_n, double *site) const {
   deltas.clear();
   const element_parameters epar = get_element_parameters(atomicNrs[i]);
   const double cutoff2 = epar.r_cut * epar.r_cut;
@@ -235,9 +236,16 @@ void EAM::accumulate(long i, const int *atomicNrs, double *F, double &U,
       F[3 * j + 1] -= fcomp_scale * dy;
       F[3 * j + 2] -= fcomp_scale * dz;
       U += phi_r;
+      if constexpr (PerAtom) {
+        site[i] += 0.5 * phi_r;
+        site[j] += 0.5 * phi_r;
+      }
     }
   }
   U += embedding_function(epar.func_coeff, dens);
+  if constexpr (PerAtom) {
+    site[i] += embedding_function(epar.func_coeff, dens);
+  }
   const double dF = embedding_force(epar.func_coeff, dens);
   std::size_t slot = 0;
   for (; slot < deltas.size() && deltas[slot].atom < i; ++slot) {
@@ -288,8 +296,9 @@ void EAM::geometry(long i, long j, double &dx, double &dy, double &dz,
   r2 = dx * dx + dy * dy + dz * dz;
 }
 
+template <bool PerAtom>
 void EAM::evaluateStoredParallel(long N, const int *atomicNrs, double *F,
-                                  double *U) {
+                                  double *U, double *site) {
   const int nt = threads_used_;
   rho_.resize(static_cast<std::size_t>(N));
   dF_.resize(static_cast<std::size_t>(N));
@@ -345,6 +354,17 @@ void EAM::evaluateStoredParallel(long N, const int *atomicNrs, double *F,
         }
         const double r = std::sqrt(r2);
         const double invR = 1.0 / r;
+        if constexpr (PerAtom) {
+          // The pair term of j < i belongs to j's parameters, as in the
+          // serial walk. Only this thread writes atom i.
+          if (j < i) {
+            const element_parameters ej = get_element_parameters(atomicNrs[j]);
+            if (r2 <= ej.r_cut * ej.r_cut) {
+              const double d = 1.0 - std::exp(-ej.alphaM * (r - ej.Rm));
+              site[i] += 0.5 * (ej.Dm * d * d - ej.Dm);
+            }
+          }
+        }
         if (r2 <= cutoff2) {
           const double r6 = r2 * r2 * r2;
           const double exp_b1 = std::exp(-epar.beta1 * r);
@@ -360,6 +380,9 @@ void EAM::evaluateStoredParallel(long N, const int *atomicNrs, double *F,
             const double expArg = std::exp(-epar.alphaM * (r - epar.Rm));
             const double d = 1.0 - expArg;
             energy += epar.Dm * d * d - epar.Dm;
+            if constexpr (PerAtom) {
+              site[i] += 0.5 * (epar.Dm * d * d - epar.Dm);
+            }
             const double fcomp =
                 2.0 * epar.alphaM * epar.Dm * d * (d - 1.0) * invR;
             morse_[s] = fcomp;
@@ -388,6 +411,9 @@ void EAM::evaluateStoredParallel(long N, const int *atomicNrs, double *F,
         fz -= dFi * fscale * gdz_[s];
       }
       energy += embedding_function(epar.func_coeff, dens);
+      if constexpr (PerAtom) {
+        site[i] += embedding_function(epar.func_coeff, dens);
+      }
       partial_f_[static_cast<std::size_t>(3 * i)] = fx;
       partial_f_[static_cast<std::size_t>(3 * i + 1)] = fy;
       partial_f_[static_cast<std::size_t>(3 * i + 2)] = fz;
@@ -467,8 +493,9 @@ const rgpot::eam::ElementSpline &EAM::splineFor(int Z) {
   return tables.back();
 }
 
+template <bool PerAtom>
 void EAM::evaluateDensityStream(long N, const int *atomicNrs, double *F,
-                                 double *U) {
+                                 double *U, double *site) {
   // One half pair, tabulated. The density walk and the force walk
   // share the cell bins. Each thread keeps its own rows, so the
   // partner atom needs no lock and no pair index.
@@ -490,6 +517,14 @@ void EAM::evaluateDensityStream(long N, const int *atomicNrs, double *F,
   const auto rows = static_cast<std::size_t>(nt) * static_cast<std::size_t>(N);
   stream_rho_.assign(rows, 0.0);
   std::vector<double> pair_energy(static_cast<std::size_t>(nt), 0.0);
+  std::vector<double> site_rows(PerAtom ? rows : 0, 0.0);
+  auto share = [&](int t, std::int32_t i, std::int32_t j, double e) {
+    if constexpr (PerAtom) {
+      double *row = site_rows.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(N);
+      row[i] += 0.5 * e;
+      row[j] += 0.5 * e;
+    }
+  };
   auto density_row = [&](int t) {
     return stream_rho_.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(N);
   };
@@ -511,6 +546,9 @@ void EAM::evaluateDensityStream(long N, const int *atomicNrs, double *F,
       const auto *s = kind[static_cast<std::size_t>(i)];
       dF_[static_cast<std::size_t>(i)] = embedding_force(s->embed, dens);
       embedded += embedding_function(s->embed, dens);
+      if constexpr (PerAtom) {
+        site[i] += embedding_function(s->embed, dens);
+      }
     }
   };
   auto force_row = [&](int t) {
@@ -540,6 +578,7 @@ void EAM::evaluateDensityStream(long N, const int *atomicNrs, double *F,
           row[i] += rho;
           row[j] += rho;
           pair_energy[static_cast<std::size_t>(t)] += only->pairEnergy(r);
+          share(t, i, j, only->pairEnergy(r));
           return;
         }
         const auto *si = kind[static_cast<std::size_t>(i)];
@@ -550,6 +589,7 @@ void EAM::evaluateDensityStream(long N, const int *atomicNrs, double *F,
         if (r2 <= si->cutoff2) {
           row[i] += si->density(r);
           pair_energy[static_cast<std::size_t>(t)] += si->pairEnergy(r);
+          share(t, i, j, si->pairEnergy(r));
         }
         if (r2 <= sj->cutoff2) {
           row[j] += sj->density(r);
@@ -607,28 +647,52 @@ void EAM::evaluateDensityStream(long N, const int *atomicNrs, double *F,
     energy += part;
   }
   *U = energy;
+  if constexpr (PerAtom) {
+    for (int t = 0; t < nt; ++t) {
+      const double *row =
+          site_rows.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(N);
+      for (long i = 0; i < N; ++i) {
+        site[i] += row[i];
+      }
+    }
+  }
 }
 
-void EAM::evaluate(long N, const int *atomicNrs, double *F, double *U) {
+template <bool PerAtom>
+void EAM::evaluate(long N, const int *atomicNrs, double *F, double *U, double *site) {
   const int nt = threadsRequested();
   threads_used_ = nt;
   if (neighbours_.streaming()) {
-    evaluateDensityStream(N, atomicNrs, F, U);
+    evaluateDensityStream<PerAtom>(N, atomicNrs, F, U, site);
     return;
   }
   if (nt == 1) {
     double energy = 0.0;
     for (long i = 0; i < N; ++i) {
-      accumulate(i, atomicNrs, F, energy, deltas_, nullptr, 0);
+      accumulate<PerAtom>(i, atomicNrs, F, energy, deltas_, nullptr, 0, site);
     }
     *U = energy;
     return;
   }
-  evaluateStoredParallel(N, atomicNrs, F, U);
+  evaluateStoredParallel<PerAtom>(N, atomicNrs, F, U, site);
 }
 void EAM::force(long N, const double *R, const int *atomicNrs, double *F,
                 double *U, double *variance, const double *fullbox) {
   (void)variance;
+  run<false>(N, R, atomicNrs, F, U, nullptr, fullbox);
+}
+
+void EAM::forceEnergies(long N, const double *R, const int *atomicNrs, double *F,
+                        double *U, double *energies, const double *fullbox) {
+  for (long i = 0; i < N; ++i) {
+    energies[i] = 0.0;
+  }
+  run<true>(N, R, atomicNrs, F, U, energies, fullbox);
+}
+
+template <bool PerAtom>
+void EAM::run(long N, const double *R, const int *atomicNrs, double *F, double *U,
+              double *site, const double *fullbox) {
   const double box[3] = {fullbox[0], fullbox[4], fullbox[8]};
   for (int axis = 0; axis < 3; ++axis) {
     if (!(box[axis] > 0.0)) {
@@ -648,7 +712,7 @@ void EAM::force(long N, const double *R, const int *atomicNrs, double *F,
   }
   prepare(N, R, box);
   buildList(N);
-  evaluate(N, atomicNrs, F, U);
+  evaluate<PerAtom>(N, atomicNrs, F, U, site);
 }
 
 double EAM::embedding_function(const double *func_coeff, double rho) {
