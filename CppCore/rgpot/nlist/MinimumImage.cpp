@@ -968,6 +968,31 @@ void fractional_hw(const double inv[9], const bool periodic[3], double dx, doubl
   fractional_of<true>(inv, periodic, dx, dy, dz, f);
 }
 
+// The residual `fold` keeps when it is the only lattice point in the ball.
+// `n` is the rounded coefficients. The vector is `sub_image` of those
+// coefficients, the same product-sum the early return of the search uses.
+template <bool Hardware>
+bool rounded_residual(const double cell[9], const double dual[3],
+                      const std::int32_t n[3], double dx, double dy, double dz,
+                      double &rx, double &ry, double &rz) noexcept {
+  const double i = static_cast<double>(n[0]);
+  const double j = static_cast<double>(n[1]);
+  const double k = static_cast<double>(n[2]);
+  rx = sub_image<Hardware>(dx, i, cell[0], j, cell[3], k, cell[6]);
+  ry = sub_image<Hardware>(dy, i, cell[1], j, cell[4], k, cell[7]);
+  rz = sub_image<Hardware>(dz, i, cell[2], j, cell[5], k, cell[8]);
+  return residual_is_unique<Hardware>(squared<Hardware>(rx, ry, rz), dual);
+}
+
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+__attribute__((target("fma"), noinline, flatten))
+#endif
+bool rounded_residual_hw(const double cell[9], const double dual[3],
+                         const std::int32_t n[3], double dx, double dy, double dz,
+                         double &rx, double &ry, double &rz) noexcept {
+  return rounded_residual<true>(cell, dual, n, dx, dy, dz, rx, ry, rz);
+}
+
 } // namespace
 
 #if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
@@ -1008,6 +1033,44 @@ void MinimumImage::fold(double &dx, double &dy, double &dz) const {
 
 bool MinimumImage::tryRounded(double dx, double dy, double dz,
                               std::int32_t n[3]) const {
+  // A unique rounded residual is the vector fold returns. Checking it
+  // first skips the search on a well-conditioned cell.
+  if (!enumerate_ && std::isfinite(dx) && std::isfinite(dy) && std::isfinite(dz)) {
+    bool periodic[3] = {periodic_[0], periodic_[1], periodic_[2]};
+    double cell[9];
+    double inv[9];
+    for (int k = 0; k < 9; ++k) {
+      cell[k] = cell_[static_cast<std::size_t>(k)];
+      inv[k] = inverse_[static_cast<std::size_t>(k)];
+    }
+    double dual[3] = {dual_norm_[0], dual_norm_[1], dual_norm_[2]};
+    std::int32_t got[3] = {};
+    const bool indexed =
+        rgpot::simd::detail::fma_hw_active()
+            ? rounded_coefficients_hw(inv, periodic, dx, dy, dz, got)
+            : rounded_coefficients<false>(inv, periodic, dx, dy, dz, got);
+    if (indexed) {
+      double rx = 0;
+      double ry = 0;
+      double rz = 0;
+      const bool unique =
+          rgpot::simd::detail::fma_hw_active()
+              ? rounded_residual_hw(cell, dual, got, dx, dy, dz, rx, ry, rz)
+              : rounded_residual<false>(cell, dual, got, dx, dy, dz, rx, ry, rz);
+      if (unique) {
+        double gx = dx;
+        double gy = dy;
+        double gz = dz;
+        subtractRounded(got[0], got[1], got[2], gx, gy, gz);
+        if (same_bits(gx, rx) && same_bits(gy, ry) && same_bits(gz, rz)) {
+          n[0] = got[0];
+          n[1] = got[1];
+          n[2] = got[2];
+          return true;
+        }
+      }
+    }
+  }
   double fx = dx;
   double fy = dy;
   double fz = dz;
@@ -1156,7 +1219,7 @@ bool MinimumImage::roundedHolds(double dx, double dy, double dz,
     if (!periodic[k]) {
       continue;
     }
-    const double dual = column_norm(inv, k);
+    const double dual = dual_norm_[static_cast<std::size_t>(k)];
     const double slack = dual * reach * (1.0 + kSkinSlop) +
                          std::abs(fractional[k]) * kSkinSlop + kSkinSlop;
     if (!round_holds(fractional[k], static_cast<double>(n[k]), slack)) {
