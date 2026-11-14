@@ -9,6 +9,7 @@
 #include <cstring>
 #include <limits>
 #include <new>
+#include <numeric>
 #include <string>
 #include <utility>
 
@@ -559,6 +560,55 @@ void move_columns(Table &table, Columns &cols) {
 }
 
 } // namespace
+
+namespace {
+
+template <typename T>
+void permute_stride(std::vector<T> &col, const std::vector<std::size_t> &order, std::size_t stride) {
+  if (order.empty() || col.size() != order.size() * stride) {
+    return;
+  }
+  std::vector<T> out(col.size());
+  for (std::size_t i = 0; i < order.size(); ++i) {
+    for (std::size_t k = 0; k < stride; ++k) {
+      out[i * stride + k] = col[order[i] * stride + k];
+    }
+  }
+  col.swap(out);
+}
+
+} // namespace
+
+void Builder::orderByPartner() {
+  const std::size_t n = table_.first.size();
+  if (n < 2) {
+    return;
+  }
+  std::vector<std::size_t> order(n);
+  std::iota(order.begin(), order.end(), 0);
+  std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+    if (table_.first[a] != table_.first[b]) {
+      return table_.first[a] < table_.first[b];
+    }
+    return table_.second[a] < table_.second[b];
+  });
+  bool already = true;
+  for (std::size_t i = 0; i < n; ++i) {
+    if (order[i] != i) {
+      already = false;
+      break;
+    }
+  }
+  if (already) {
+    return;
+  }
+  permute_stride(table_.first, order, 1);
+  permute_stride(table_.second, order, 1);
+  permute_stride(table_.mask, order, 1);
+  permute_stride(table_.shift, order, 3);
+  permute_stride(table_.vector, order, 3);
+  permute_stride(table_.distance, order, 1);
+}
 
 void Builder::update(const double *positions, std::size_t n, const double *box9,
                      const Query &query) {
@@ -1562,6 +1612,9 @@ int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *
       query.periodic[static_cast<std::size_t>(k)] = periodic[k] != 0;
     }
     list->builder.update(positions, natoms, box9, query);
+    if (!list->builder.reused()) {
+      list->builder.orderByPartner();
+    }
     if (reused != nullptr) {
       *reused = list->builder.reused() ? 1 : 0;
     }

@@ -171,6 +171,10 @@ public:
   /// Largest squared displacement from the positions of the stored table.
   /// Zero when that table was just built.
   [[nodiscard]] double maxMove2() const noexcept { return move2_; }
+  /// Stable order by central atom, then partner. The Fortran gather sums
+  /// each atom's neighbours in that order; sorting once per rebuild lets
+  /// the fill copy straight into those rows.
+  void orderByPartner();
 
 private:
   Table table_;
