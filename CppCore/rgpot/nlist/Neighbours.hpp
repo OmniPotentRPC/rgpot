@@ -100,6 +100,19 @@ struct Range {
 /// slices cover `n` without overlap, in thread order.
 [[nodiscard]] Range partition(std::int64_t n, int thread, int nthreads);
 
+// Pair chunks for a deterministic reduction. The count follows the atom
+// count alone, so one thread and many threads add the same buffers.
+// A cluster below 256 atoms uses eight chunks; 256 and above use 16.
+[[nodiscard]] inline int fixedChunks(std::int64_t n) noexcept {
+  if (n < 2) {
+    return 1;
+  }
+  if (n < 256) {
+    return n < 8 ? static_cast<int>(n) : 8;
+  }
+  return 16;
+}
+
 /// Bytes the process may still allocate, from MemAvailable. Zero when
 /// that figure is not reported.
 [[nodiscard]] std::uint64_t availableBytes();
@@ -312,6 +325,13 @@ public:
         }
       });
     }
+  }
+
+  /// Half pairs whose lower atom lies in `[begin, end)`. The visit order is
+  /// the cell walk of that atom range, independent of the thread count.
+  template <typename Fn>
+  void forHalfAtoms(std::int64_t begin, std::int64_t end, Fn &&fn) const {
+    walkCells(begin, end, fn, true);
   }
 
   /// Neighbours of one atom from the bins already built. Does not allocate

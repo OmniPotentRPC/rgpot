@@ -5,6 +5,7 @@
 #include "rgpot/simd/api.hpp"
 #include "rgpot/simd/exact_fma.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -15,23 +16,7 @@
 namespace rgpot {
 namespace {
 
-// Chunk count depends only on the atom count. Threads take whole chunks
-// and the output adds chunk 0, then 1, and so on, so the bits do not
-// depend on how many threads ran.
-int chunkCount(std::int64_t n) {
-#if defined(LJC_CHUNK_CAP)
-  constexpr int cap = LJC_CHUNK_CAP;
-#else
-  constexpr int cap = 16;
-#endif
-  if (n < 2) {
-    return 1;
-  }
-  if (n < cap) {
-    return static_cast<int>(n);
-  }
-  return cap;
-}
+int chunkCount(std::int64_t n) { return nlist::fixedChunks(n); }
 
 struct ChunkScratch {
   std::vector<int> begin;
@@ -141,11 +126,12 @@ void ljClusterChunks(nlist::Neighbours &cells, const simd::LjParams &params, dou
           const double yi = pos[ui + 1];
           const double zi = pos[ui + 2];
           const auto row = static_cast<std::size_t>(i);
-          for (std::int32_t p = off[row]; p < off[row + 1]; ++p) {
-            const auto j = static_cast<std::int64_t>(nbr[static_cast<std::size_t>(p)]);
-            if (j <= i) {
-              continue;
-            }
+          const std::int32_t *const row_nbr = nbr + off[row];
+          const std::int32_t *const row_end = nbr + off[row + 1];
+          // Partners are sorted, so the half list is the suffix j > i.
+          for (const std::int32_t *it = std::upper_bound(row_nbr, row_end, static_cast<std::int32_t>(i));
+               it != row_end; ++it) {
+            const auto j = static_cast<std::int64_t>(*it);
             const auto uj = static_cast<std::size_t>(j) * 3;
             const double dx = xi - pos[uj];
             const double dy = yi - pos[uj + 1];

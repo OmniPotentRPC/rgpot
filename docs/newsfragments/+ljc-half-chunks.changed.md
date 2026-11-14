@@ -1,0 +1,1 @@
+The free Lennard-Jones cluster walks only the upper neighbours of each atom. A cluster below 256 atoms uses eight pair chunks, and a larger cluster uses sixteen, so every thread count still adds the same buffers.
