@@ -1,0 +1,30 @@
+# Tersoff silicon-carbon, J. Tersoff, Phys. Rev. B 39, 5566 (1989), with the
+# erratum Phys. Rev. B 41, 3248 (1990): carbon B = 346.74 eV, d = 4.3484.
+# LAMMPS pair_style tersoff format, metal units. These are the constants
+# of rgpot::TersoffSiC. Mixed pairs follow the 1989 rules: lambda1 and
+# lambda2 arithmetic means, A geometric, B = chi * geometric with
+# chi = 0.9776, and the inner and outer cutoffs (R - D and R + D here)
+# geometric means of the elements' own. The LAMMPS potentials/SiC.tersoff
+# file omits the erratum, uses Si lambda2 = 1.73222 and rounds the mixed
+# taper to R = 2.36, D = 0.15.
+# tests/python/test_lammps_agreement.py checks every value against
+# TersoffSiC().params().
+#
+# element1 element2 element3 m gamma lambda3 c d costheta0
+#   n beta lambda2 B R D lambda1 A
+C C C 3.0 1.0 0.0 38049.0 4.3484 -0.57058
+    0.72751 1.5724e-07 2.2119 346.74 1.9500000000000002 0.15000000000000002 3.4879 1393.6
+C C Si 3.0 1.0 0.0 38049.0 4.3484 -0.57058
+    0.72751 1.5724e-07 2.2119 346.74 2.3572604240535435 0.15271965554868316 3.4879 1393.6
+C Si C 3.0 1.0 0.0 38049.0 4.3484 -0.57058
+    0.72751 1.5724e-07 1.9720499999999999 395.14508945028996 1.9500000000000002 0.15000000000000002 2.9839 1597.3111406360376
+C Si Si 3.0 1.0 0.0 38049.0 4.3484 -0.57058
+    0.72751 1.5724e-07 1.9720499999999999 395.14508945028996 2.3572604240535435 0.15271965554868316 2.9839 1597.3111406360376
+Si C C 3.0 1.0 0.0 100390.0 16.217 -0.59825
+    0.78734 1.1e-06 1.9720499999999999 395.14508945028996 2.3572604240535435 0.15271965554868316 2.9839 1597.3111406360376
+Si C Si 3.0 1.0 0.0 100390.0 16.217 -0.59825
+    0.78734 1.1e-06 1.9720499999999999 395.14508945028996 2.85 0.1499999999999999 2.9839 1597.3111406360376
+Si Si C 3.0 1.0 0.0 100390.0 16.217 -0.59825
+    0.78734 1.1e-06 1.7322 471.18 2.3572604240535435 0.15271965554868316 2.4799 1830.8
+Si Si Si 3.0 1.0 0.0 100390.0 16.217 -0.59825
+    0.78734 1.1e-06 1.7322 471.18 2.85 0.1499999999999999 2.4799 1830.8

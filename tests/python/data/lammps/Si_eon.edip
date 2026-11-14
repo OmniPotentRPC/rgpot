@@ -1,0 +1,14 @@
+# EDIP silicon as rgpot's Fortran EDIPPot evaluates it, for LAMMPS
+# pair_style edip/multi (plain edip interpolates on a grid, about 4e-8 off).
+#
+# The kernel keeps eOn's (Bazant 1997) folded constants: the pair term is
+# cap_a [(cap_b/r)^rho - palp exp(-beta Z^2)] exp(sigma/(r-a)) and the
+# angular term uses delta = eta Q0. Here A = cap_a palp,
+# B = cap_b palp^(-1/rho) and eta = delta/Q0, written at full precision.
+# The folded constants are 8-digit roundings of Justo et al., PRB 58, 2539
+# (1998), Table I, so the stock LAMMPS Si.edip differs by up to 5.5e-8.
+#
+# element1 element2 element3 A B cutoffA cutoffC alpha beta eta
+# gamma lambda mu rho sigma Q0 u1 u2 u3 u4
+Si Si Si 7.9821730496872005 1.5075463382222638 3.121382 2.5609104 3.1083847 0.0070975 0.252324386119864
+         1.1247945 1.4533108 0.6966326 1.2085196 0.5774108 312.1341346 -0.165799 32.557 0.286198 0.66
