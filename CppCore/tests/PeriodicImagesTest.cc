@@ -1006,6 +1006,35 @@ TEST_CASE("a pair view keeps its list across calls", "[images][simd]") {
   CHECK(reuse.reused());
 }
 
+TEST_CASE("each walk rebuilds its tile stencil after the atoms move", "[images][fast]") {
+  // The one-thread walk and the team walk keep separate stencils. Moving
+  // the atoms between them must not leave the team walk on the old one
+  // when the next call reuses the bins.
+  auto before = fccCubic(kLjFcc, 8, 8, 8, 18);
+  jitter(before, 0.05, 79u);
+  auto after = before;
+  jitter(after, 0.3, 83u);
+  auto lj = reducedLj();
+  lj.setNeighbourMode(rgpot::nlist::Mode::Stream);
+  const auto fresh = [&](const Cell &s) {
+    auto pot = reducedLj();
+    pot.setNeighbourMode(rgpot::nlist::Mode::Stream);
+    return evaluate(pot, s);
+  };
+  setThreads("2");
+  (void)evaluate(lj, before);
+  setThreads("1");
+  (void)evaluate(lj, after);
+  setThreads("2");
+  const auto team = evaluate(lj, after);
+  const auto ref = fresh(after);
+  setThreads("1");
+  CHECK_THAT(team.energy, WithinAbs(ref.energy, 1e-10 * std::abs(ref.energy)));
+  for (std::size_t k = 0; k < ref.forces.size(); ++k) {
+    CHECK_THAT(team.forces[k], WithinAbs(ref.forces[k], 1e-9));
+  }
+}
+
 TEST_CASE("atoms outside a wide cell keep their partners", "[images][unwrapped][fast]") {
   setThreads("1");
   // Enough bins that a clamped atom leaves its partners' stencil.

@@ -476,6 +476,8 @@ private:
       int ny = 0;
       int nz = 0;
       double search = 0;
+      double len[3]{};
+      bool periodic[3]{};
       std::vector<double> xyz;
       std::vector<Nbor> neigh;
       std::vector<int> nneigh;
@@ -489,12 +491,17 @@ private:
     // The stored evaluation rebuilds its stencil. A stream keeps one and
     // reuses it when the coordinates are unchanged.
     const bool same_grid = cache.owner == this && cache.nx == nx_ && cache.ny == ny_ &&
-                           cache.nz == nz_ && cache.search == search_ && cache.compact == !dense;
-    // update() already compared the coordinates when it reused the bins.
+                           cache.nz == nz_ && cache.search == search_ &&
+                           cache.compact == !dense &&
+                           std::equal(len_, len_ + 3, cache.len) &&
+                           std::equal(periodic_, periodic_ + 3, cache.periodic);
+    // Every Loop type has its own cache, and another object may since have
+    // been built at this address, so reused bins do not mean this cache
+    // holds them. The bins follow from the coordinates and the grid, so
+    // the same coordinates on the same grid give the same stencil.
     const bool reuse =
-        streaming_ && same_grid &&
-        (reused_ || (cache.xyz.size() == n_ * 3 &&
-                     std::memcmp(cache.xyz.data(), xyz_, n_ * 3 * sizeof(double)) == 0));
+        streaming_ && same_grid && cache.xyz.size() == n_ * 3 &&
+        std::memcmp(cache.xyz.data(), xyz_, n_ * 3 * sizeof(double)) == 0;
     if (!reuse) {
     if (!dense) {
       cache.compact = true;
@@ -725,6 +732,8 @@ private:
       cache.ny = ny_;
       cache.nz = nz_;
       cache.search = search_;
+      std::copy(len_, len_ + 3, cache.len);
+      std::copy(periodic_, periodic_ + 3, cache.periodic);
       cache.xyz.assign(xyz_, xyz_ + n_ * 3);
     }
     }
