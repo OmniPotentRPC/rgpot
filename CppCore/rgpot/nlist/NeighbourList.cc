@@ -506,48 +506,6 @@ struct alignas(64) TeamCursor {
   std::size_t count = 0;
 };
 
-void compact_i32(std::vector<std::int32_t> &col, int width, const TeamCursor *cursors,
-                 const std::size_t *base, int nt) {
-  std::size_t dst = 0;
-  for (int t = 0; t < nt; ++t) {
-    const std::size_t n = cursors[t].count * static_cast<std::size_t>(width);
-    const std::size_t src = base[t] * static_cast<std::size_t>(width);
-    if (n != 0 && dst != src) {
-      std::memmove(col.data() + dst, col.data() + src, n * sizeof(std::int32_t));
-    }
-    dst += n;
-  }
-  col.resize(dst);
-}
-
-void compact_f64(std::vector<double> &col, int width, const TeamCursor *cursors,
-                 const std::size_t *base, int nt) {
-  std::size_t dst = 0;
-  for (int t = 0; t < nt; ++t) {
-    const std::size_t n = cursors[t].count * static_cast<std::size_t>(width);
-    const std::size_t src = base[t] * static_cast<std::size_t>(width);
-    if (n != 0 && dst != src) {
-      std::memmove(col.data() + dst, col.data() + src, n * sizeof(double));
-    }
-    dst += n;
-  }
-  col.resize(dst);
-}
-
-void compact_u8(std::vector<std::uint8_t> &col, const TeamCursor *cursors, const std::size_t *base,
-                int nt) {
-  std::size_t dst = 0;
-  for (int t = 0; t < nt; ++t) {
-    const std::size_t n = cursors[t].count;
-    const std::size_t src = base[t];
-    if (n != 0 && dst != src) {
-      std::memmove(col.data() + dst, col.data() + src, n);
-    }
-    dst += n;
-  }
-  col.resize(dst);
-}
-
 void move_columns(Table &table, Columns &cols) {
   table.first = std::move(cols.first);
   table.second = std::move(cols.second);
@@ -1089,37 +1047,80 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
           }
           ++cursor.count;
         });
-    compact_i32(cols.first, 1, cursors.data(), base.data(), nt);
-    compact_i32(cols.second, 1, cursors.data(), base.data(), nt);
-    compact_u8(cols.mask, cursors.data(), base.data(), nt);
+    // Each thread wrote a gap-padded slice. The packed prefix is the same
+    // order: thread 0's pairs, then thread 1's. Copying into a fresh buffer
+    // lets every thread write its own destination at once.
+    std::vector<std::size_t> prefix(static_cast<std::size_t>(nt) + 1);
+    for (int t = 0; t < nt; ++t) {
+      prefix[static_cast<std::size_t>(t) + 1] =
+          prefix[static_cast<std::size_t>(t)] + cursors[static_cast<std::size_t>(t)].count;
+    }
+    const auto kept = prefix[static_cast<std::size_t>(nt)];
+    Columns packed;
+    grow_uninitialized(packed.first, kept);
+    grow_uninitialized(packed.second, kept);
+    grow_uninitialized(packed.mask, kept);
     if (query.fields.shifts) {
-      compact_i32(cols.shift, 3, cursors.data(), base.data(), nt);
+      grow_uninitialized(packed.shift, kept * 3);
     }
     if (query.fields.vectors) {
-      compact_f64(cols.vector, 3, cursors.data(), base.data(), nt);
+      grow_uninitialized(packed.vector, kept * 3);
     }
     if (query.fields.distances) {
-      compact_f64(cols.distance, 1, cursors.data(), base.data(), nt);
+      grow_uninitialized(packed.distance, kept);
+    }
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+    {
+#if defined(_OPENMP)
+      const int t = omp_get_thread_num();
+#else
+      const int t = 0;
+#endif
+      const auto ncopy = cursors[static_cast<std::size_t>(t)].count;
+      if (ncopy != 0) {
+        const auto src = base[static_cast<std::size_t>(t)];
+        const auto dst = prefix[static_cast<std::size_t>(t)];
+        std::memcpy(packed.first.data() + dst, cols.first.data() + src,
+                    ncopy * sizeof(std::int32_t));
+        std::memcpy(packed.second.data() + dst, cols.second.data() + src,
+                    ncopy * sizeof(std::int32_t));
+        std::memcpy(packed.mask.data() + dst, cols.mask.data() + src, ncopy);
+        if (query.fields.shifts) {
+          std::memcpy(packed.shift.data() + dst * 3, cols.shift.data() + src * 3,
+                      ncopy * 3 * sizeof(std::int32_t));
+        }
+        if (query.fields.vectors) {
+          std::memcpy(packed.vector.data() + dst * 3, cols.vector.data() + src * 3,
+                      ncopy * 3 * sizeof(double));
+        }
+        if (query.fields.distances) {
+          std::memcpy(packed.distance.data() + dst, cols.distance.data() + src,
+                      ncopy * sizeof(double));
+        }
+      }
     }
     for (int t = 0; t < nt; ++t) {
       auto &over = extra[static_cast<std::size_t>(t)];
       if (over.first.empty()) {
         continue;
       }
-      cols.first.insert(cols.first.end(), over.first.begin(), over.first.end());
-      cols.second.insert(cols.second.end(), over.second.begin(), over.second.end());
-      cols.mask.insert(cols.mask.end(), over.mask.begin(), over.mask.end());
+      packed.first.insert(packed.first.end(), over.first.begin(), over.first.end());
+      packed.second.insert(packed.second.end(), over.second.begin(), over.second.end());
+      packed.mask.insert(packed.mask.end(), over.mask.begin(), over.mask.end());
       if (query.fields.shifts) {
-        cols.shift.insert(cols.shift.end(), over.shift.begin(), over.shift.end());
+        packed.shift.insert(packed.shift.end(), over.shift.begin(), over.shift.end());
       }
       if (query.fields.vectors) {
-        cols.vector.insert(cols.vector.end(), over.vector.begin(), over.vector.end());
+        packed.vector.insert(packed.vector.end(), over.vector.begin(), over.vector.end());
       }
       if (query.fields.distances) {
-        cols.distance.insert(cols.distance.end(), over.distance.begin(), over.distance.end());
+        packed.distance.insert(packed.distance.end(), over.distance.begin(),
+                               over.distance.end());
       }
     }
-    move_columns(table, cols);
+    move_columns(table, packed);
     return;
   }
   std::vector<std::vector<Rec>> parts(static_cast<std::size_t>(std::max(nt, 1)));

@@ -199,30 +199,97 @@ public:
 
   /// One walk of the directed pairs, split by cell across `nthreads`.
   /// The bins are built once and shared. `fn(thread, i, j, dx, dy, dz, r2)`.
-  /// A thread owns each cell, so a pair is visited once.
+  /// A thread owns a contiguous run of cells, so concatenating the threads
+  /// in order is the serial cell walk. The runs carry equal estimated
+  /// work: an equal count of cells leaves the last, nearly empty, slab
+  /// on one thread.
   template <typename Fn>
   void forCellTeam(bool half, int nthreads, Fn &&fn) const {
     if (nthreads < 1) {
       nthreads = 1;
     }
+    const auto ncells = static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_) *
+                        static_cast<std::size_t>(nz_);
+    std::vector<std::int64_t> cut(static_cast<std::size_t>(nthreads) + 1, 0);
+    for (int t = 0; t <= nthreads; ++t) {
+      cut[static_cast<std::size_t>(t)] =
+          static_cast<std::int64_t>(ncells) * t / nthreads;
+    }
+    if (nthreads > 1 && ncells > 0 && cell_start_.size() == ncells + 1) {
+      std::vector<std::uint64_t> prefix(ncells + 1, 0);
+      for (std::size_t c = 0; c < ncells; ++c) {
+        const int cell = static_cast<int>(c);
+        const int iz = cell % nz_;
+        const int iy = (cell / nz_) % ny_;
+        const int ix = cell / (nz_ * ny_);
+        const auto atoms =
+            static_cast<std::uint64_t>(cell_start_[c + 1] - cell_start_[c]);
+        std::uint64_t around = 0;
+        if (atoms != 0) {
+          int seen[27];
+          int nseen = 0;
+          for (int ox = -1; ox <= 1; ++ox) {
+            for (int oy = -1; oy <= 1; ++oy) {
+              for (int oz = -1; oz <= 1; ++oz) {
+                const int id = cellId(ix + ox, iy + oy, iz + oz);
+                if (id < 0) {
+                  continue;
+                }
+                bool dup = false;
+                for (int s = 0; s < nseen; ++s) {
+                  if (seen[s] == id) {
+                    dup = true;
+                    break;
+                  }
+                }
+                if (dup) {
+                  continue;
+                }
+                seen[nseen++] = id;
+                const auto nb = static_cast<std::size_t>(id);
+                around += static_cast<std::uint64_t>(cell_start_[nb + 1] - cell_start_[nb]);
+              }
+            }
+          }
+        }
+        const std::uint64_t weight = atoms == 0 ? 0 : atoms * (around == 0 ? 1 : around);
+        prefix[c + 1] = prefix[c] + weight;
+      }
+      const auto total = prefix[ncells];
+      if (total > 0) {
+        std::size_t t = 1;
+        for (std::size_t c = 0; c < ncells && t < static_cast<std::size_t>(nthreads); ++c) {
+          while (t < static_cast<std::size_t>(nthreads) &&
+                 prefix[c + 1] * static_cast<std::uint64_t>(nthreads) >=
+                     total * static_cast<std::uint64_t>(t)) {
+            cut[t] = static_cast<std::int64_t>(c + 1);
+            ++t;
+          }
+        }
+        while (t <= static_cast<std::size_t>(nthreads)) {
+          cut[t] = static_cast<std::int64_t>(ncells);
+          ++t;
+        }
+      }
+    }
     if (!fastTiles([&](const auto &tile, const auto &neigh, const auto &nneigh,
-                       const std::int32_t *head, std::size_t ncells,
+                       const std::int32_t *head, std::size_t tiles,
                        bool cell_shift, double search2, double L0, double L1, double L2, double i0,
                        double i1, double i2, bool p0, bool p1, bool p2) {
           withTeam(nthreads, [&](int thread) {
-            const auto range = partition(static_cast<std::int64_t>(ncells), thread, nthreads);
+            const auto begin = static_cast<std::size_t>(cut[static_cast<std::size_t>(thread)]);
+            const auto end = static_cast<std::size_t>(cut[static_cast<std::size_t>(thread) + 1]);
             auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
                               double r2) { fn(thread, i, j, dx, dy, dz, r2); };
             if (head != nullptr) {
-              visitTiles<true>(tile, neigh, nneigh, head, static_cast<std::size_t>(range.begin),
-                               static_cast<std::size_t>(range.end), 0, n_, half, cell_shift,
+              visitTiles<true>(tile, neigh, nneigh, head, begin, end, 0, n_, half, cell_shift,
                                search2, L0, L1, L2, i0, i1, i2, p0, p1, p2, accept);
             } else {
-              visitTiles<false>(tile, neigh, nneigh, head, static_cast<std::size_t>(range.begin),
-                                static_cast<std::size_t>(range.end), 0, n_, half, cell_shift,
+              visitTiles<false>(tile, neigh, nneigh, head, begin, end, 0, n_, half, cell_shift,
                                 search2, L0, L1, L2, i0, i1, i2, p0, p1, p2, accept);
             }
           });
+          (void)tiles;
         })) {
       withTeam(nthreads, [&](int thread) {
         const auto range = partition(static_cast<std::int64_t>(n_), thread, nthreads);
