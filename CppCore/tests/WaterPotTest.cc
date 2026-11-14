@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <stdexcept>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
@@ -252,6 +253,17 @@ TEST_CASE("Water in a box thinner than twice the cutoff sums every image",
   rgpot::TIP4PPtPot zp(rgpot::WaterConfig{});
   requireThinBoxMatchesRepeat(zp, slab, {1, 1, 8, 78, 78, 78, 78}, {2 * a, 2 * a, 30.0},
                               {4, 4, 1});
+}
+
+TEST_CASE("Water kernels refuse a sheared cell", "[water]") {
+  rgpot::TIP4PPot pot(rgpot::WaterConfig{});
+  const std::vector<int> types = {1, 1, 8};
+  const std::array<std::array<double, 3>, 3> sheared = {{
+      {40.0, 0.0, 0.0},
+      {3.0, 40.0, 0.0},
+      {0.0, 0.0, 40.0},
+  }};
+  REQUIRE_THROWS_AS(pot(waterPositions(), types, sheared), std::invalid_argument);
 }
 
 TEST_CASE("computePt sums the images of one atom in a thin cell", "[water][pt]") {
