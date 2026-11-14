@@ -23,13 +23,15 @@ Run every command from the repository root.
 
 ** Step 1: start a server
 
-=potserv= takes a port and the name of one potential:
+=potserv= takes an address and the name of one potential. A port is TCP
+on localhost, which stays the default. =unix:/path= selects a
+Unix-domain socket.
 
 #+begin_src bash
 ./bbdir/CppCore/potserv 12345 LJ &
 #+end_src
 
-It prints =Server running on port 12345 with LJ potential.= when it is ready.
+It prints =Server running on localhost:12345 with LJ potential.= when it is ready.
 
 ** Step 2: send one geometry
 

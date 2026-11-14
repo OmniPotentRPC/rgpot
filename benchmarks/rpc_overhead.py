@@ -1,8 +1,9 @@
 """Per-call LJ round trip through potserv.
 
-asv times ``time_round_trip`` only. ``setup`` starts one server and keeps
-the client connection. The row is skipped when ``RGPOT_POTSERV`` or
-``RGPOT_POT_BRIDGE`` is unset or does not name a file, which is the
+asv times ``time_round_trip`` only. ``RpcLjRoundTrip`` uses a TCP port.
+``RpcLjUnixRoundTrip`` uses ``unix:/path``. ``setup`` starts one server
+and keeps the client connection. A row is skipped when ``RGPOT_POTSERV``
+or ``RGPOT_POT_BRIDGE`` is unset or does not name a file, which is the
 default wheel (``with_rpc`` off).
 """
 
@@ -79,10 +80,14 @@ def _load_bridge(path: str):
 
 
 class RpcLjRoundTrip:
-    """One warm LJ force call through a live potserv connection."""
+    """One warm LJ force call through a live potserv connection.
+
+    ``transport`` is ``tcp`` (a localhost port, the default) or ``unix``.
+    """
 
     params = [7, 256, 1024]
     param_names = ["atoms"]
+    transport = "tcp"
     rounds = 8
     repeat = 1
     sample_time = 0.05
@@ -95,12 +100,26 @@ class RpcLjRoundTrip:
         bridge = os.environ.get("RGPOT_POT_BRIDGE", "")
         if not server or not bridge or not os.path.isfile(server) or not os.path.isfile(bridge):
             raise NotImplementedError("potserv is not available")
+        if self.transport == "unix" and os.name == "nt":
+            raise NotImplementedError("unix sockets are not supported on this platform")
         self.pos, self.types, self.box = _fcc(atoms)
         self.energy = ctypes.c_double(0.0)
         self.forces = (ctypes.c_double * (atoms * 3))()
-        self.port = _free_port()
+        self.sock_path = ""
+        if self.transport == "unix":
+            self.sock_path = f"/tmp/rgpot-asv-{os.getpid()}-{atoms}.sock"
+            try:
+                os.unlink(self.sock_path)
+            except FileNotFoundError:
+                pass
+            address = f"unix:{self.sock_path}"
+            argv = [server, address, "LJ"]
+        else:
+            self.port = _free_port()
+            address = "127.0.0.1"
+            argv = [server, str(self.port), "LJ"]
         self.proc = subprocess.Popen(
-            [server, str(self.port), "LJ"],
+            argv,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -110,13 +129,19 @@ class RpcLjRoundTrip:
         while time.monotonic() < deadline:
             if self.proc.poll() is not None:
                 raise RuntimeError("potserv exited before accepting a client")
-            try:
-                with socket.create_connection(("127.0.0.1", self.port), 0.05):
-                    pass
-            except OSError:
-                time.sleep(0.02)
-                continue
-            client = self.lib.pot_client_init(b"127.0.0.1", self.port)
+            if self.transport == "unix":
+                if not os.path.exists(self.sock_path):
+                    time.sleep(0.02)
+                    continue
+                client = self.lib.pot_client_init(address.encode(), 0)
+            else:
+                try:
+                    with socket.create_connection(("127.0.0.1", self.port), 0.05):
+                        pass
+                except OSError:
+                    time.sleep(0.02)
+                    continue
+                client = self.lib.pot_client_init(b"127.0.0.1", self.port)
             if client:
                 self.client = client
                 break
@@ -153,3 +178,15 @@ class RpcLjRoundTrip:
         if proc is not None and proc.poll() is None:
             proc.terminate()
             proc.wait(timeout=5)
+        path = getattr(self, "sock_path", "")
+        if path:
+            try:
+                os.unlink(path)
+            except FileNotFoundError:
+                pass
+
+
+class RpcLjUnixRoundTrip(RpcLjRoundTrip):
+    """The same call on a ``unix:/path`` address. TCP stays the default row."""
+
+    transport = "unix"

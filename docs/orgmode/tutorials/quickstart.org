@@ -63,10 +63,13 @@ implementation.
 
 ** Start a manual server
 
-Launch a Lennard-Jones server on port 12345:
+Launch a Lennard-Jones server on port 12345. A port is a TCP listener
+on localhost, and that is the default. =unix:/path= is the same server
+on a Unix-domain socket; the Cap'n Proto messages are unchanged.
 
 #+begin_src bash
 ./bbdir/CppCore/potserv 12345 LJ
+./bbdir/CppCore/potserv unix:/tmp/rgpot.sock LJ
 #+end_src
 
 For runtime-loaded quantum engines, pass the matching selector and engine path:
