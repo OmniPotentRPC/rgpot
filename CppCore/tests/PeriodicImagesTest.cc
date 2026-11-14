@@ -262,6 +262,30 @@ double ljFccLatticeSum(double a, double u0, double psi, double rc) {
   return 0.5 * sum;
 }
 
+// Sutton-Chen on a perfect fcc lattice, per atom.
+double scFccLatticeSum(double a, const rgpot::SuttonChenConfig &c) {
+  const double rc = c.cutoff;
+  const int reach = static_cast<int>(std::ceil(2.0 * rc / a)) + 1;
+  double pair = 0.0;
+  double rho = 0.0;
+  for (int i = -reach; i <= reach; ++i) {
+    for (int j = -reach; j <= reach; ++j) {
+      for (int k = -reach; k <= reach; ++k) {
+        if (((i + j + k) & 1) != 0 || (i == 0 && j == 0 && k == 0)) {
+          continue;
+        }
+        const double r = 0.5 * a * std::sqrt(static_cast<double>(i * i + j * j + k * k));
+        if (r > rc) {
+          continue;
+        }
+        pair += std::pow(c.a / r, c.n);
+        rho += std::pow(c.a / r, c.m);
+      }
+    }
+  }
+  return c.epsilon * (0.5 * pair - c.c * std::sqrt(rho));
+}
+
 rgpot::LJPot reducedLj() {
   return rgpot::LJPot(rgpot::LJConfig{.u0 = 1.0, .cutoff = 3.0, .psi = 1.0});
 }
@@ -463,6 +487,32 @@ TEST_CASE("thin Lennard-Jones and Morse cells match their supercell with displac
   requireSamePerAtom(morse, cu, repeat(cu, 7, 7, 7), 1e-10);
 }
 
+TEST_CASE("Sutton-Chen embedding density counts every image", "[images][sc]") {
+  setThreads("1");
+  const auto cfg = copperSc();
+  const rgpot::SuttonChenPot pot(cfg);
+  const double exact = scFccLatticeSum(cfg.a, cfg);
+  const auto wide = fccCubic(cfg.a, 5, 5, 5, 29);
+  REQUIRE(height(wide.box, 0) > 2.0 * cfg.cutoff * 1.2);
+  CHECK_THAT(evaluate(pot, wide).energy / static_cast<double>(wide.size()),
+             WithinAbs(exact, 1e-10));
+  CHECK_THAT(evaluate(pot, fccPrimitive(cfg.a, 29)).energy, WithinAbs(exact, 1e-10));
+  CHECK_THAT(evaluate(pot, fccCubic(cfg.a, 1, 1, 1, 29)).energy / 4.0, WithinAbs(exact, 1e-10));
+
+  auto thin = fccCubic(cfg.a, 1, 1, 1, 29);
+  jitter(thin, 0.1, 3u);
+  const auto big = repeat(thin, 5, 5, 5);
+  const auto a = evaluate(pot, thin);
+  const auto b = evaluate(pot, big);
+  CHECK_THAT(a.energy / 4.0, WithinAbs(b.energy / static_cast<double>(big.size()), 1e-10));
+  for (std::size_t k = 0; k < thin.pos.size(); ++k) {
+    CHECK_THAT(a.forces[k], WithinAbs(b.forces[k], 1e-9));
+  }
+  for (std::size_t k = 0; k < 9; ++k) {
+    CHECK_THAT(a.stress[k], WithinAbs(b.stress[k], 1e-9));
+  }
+}
+
 TEST_CASE("Sutton-Chen threaded walk counts every image", "[images][sc][threads]") {
   setThreads("3");
   const auto cfg = copperSc();
@@ -530,6 +580,27 @@ TEST_CASE("three-body potentials count every image", "[images][sw][tersoff]") {
   requireFiniteDifferenceForces(sw, skew, 1e-5, 1e-6);
   requireFiniteDifferenceStress(sw, skew, 1e-6, 1e-6);
   requireFiniteDifferenceForces(tersoff, skew, 1e-5, 1e-6);
+}
+
+TEST_CASE("forces and stress on thin cells match finite differences", "[images][fd]") {
+  setThreads("1");
+  const rgpot::LJPot lj{
+      rgpot::LJConfig{.u0 = 1.0, .cutoff = 3.0, .psi = 1.0, .switch_width = 0.5}};
+  Cell two = repeat(fccPrimitive(kLjFcc, 18), 2, 1, 1);
+  jitter(two, 0.1, 23u);
+  requireFiniteDifferenceForces(lj, two, 1e-5, 1e-6);
+  requireFiniteDifferenceStress(lj, two, 1e-6, 1e-6);
+
+  auto four = fccCubic(kLjFcc, 1, 1, 1, 18);
+  jitter(four, 0.1, 29u);
+  requireFiniteDifferenceForces(lj, four, 1e-5, 1e-6);
+  requireFiniteDifferenceStress(lj, four, 1e-6, 1e-6);
+
+  const rgpot::SuttonChenPot sc(copperSc());
+  Cell cu = repeat(fccPrimitive(3.61, 29), 1, 2, 1);
+  jitter(cu, 0.1, 31u);
+  requireFiniteDifferenceForces(sc, cu, 1e-5, 1e-7);
+  requireFiniteDifferenceStress(sc, cu, 1e-6, 1e-8);
 }
 
 TEST_CASE("a slab thin in two directions sums the in-plane images", "[images][slab]") {

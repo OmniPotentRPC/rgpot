@@ -126,8 +126,8 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
   static constexpr double free_box[9] = {1.0e6, 0.0, 0.0, 0.0, 1.0e6,
                                          0.0,   0.0, 0.0, 1.0e6};
-  const bool box_ok = in.box != nullptr && in.box[0] > 0.0 && in.box[4] > 0.0 &&
-                      in.box[8] > 0.0;
+  // An fcc primitive cell has zeros on its diagonal and is still real.
+  const bool box_ok = cellVolume(in.box) > 0.0;
   if (cfg.periodic && !box_ok) {
     throw std::invalid_argument("periodic Sutton-Chen needs a real cell");
   }
