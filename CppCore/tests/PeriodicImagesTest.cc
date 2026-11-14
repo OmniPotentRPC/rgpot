@@ -6,9 +6,12 @@
 // per-atom energy, forces and stress of an explicit supercell thick enough
 // for the minimum image.
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
@@ -17,8 +20,13 @@
 #include "rgpot/ForceStructs.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
+#include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
+#include "rgpot/Tersoff/TersoffSiC.hpp"
 #include "rgpot/fortran/FortranPots.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
+#include "rgpot/simd/from_cache.hpp"
+#include "rgpot/stress.hpp"
 
 using Catch::Matchers::WithinAbs;
 
@@ -152,6 +160,170 @@ void requireMatchesRepeat(const Pot &pot, const Cell &small, int na, int nb, int
   }
 }
 
+void setThreads(const char *value) {
+#if defined(_WIN32)
+  _putenv_s("OMP_NUM_THREADS", value);
+#else
+  setenv("OMP_NUM_THREADS", value, 1);
+#endif
+}
+
+// One atom, every lattice vector off-diagonal.
+Cell fccPrimitive(double a, int type) {
+  Cell s;
+  const double h = 0.5 * a;
+  s.box = {0.0, h, h, h, 0.0, h, h, h, 0.0};
+  s.pos = {0.0, 0.0, 0.0};
+  s.types = {type};
+  return s;
+}
+
+// Conventional fcc, four atoms per cube, nx x ny x nz cubes.
+Cell fccCubic(double a, int nx, int ny, int nz, int type) {
+  static constexpr double basis[4][3] = {
+      {0.0, 0.0, 0.0}, {0.5, 0.5, 0.0}, {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5}};
+  Cell s;
+  s.box = {nx * a, 0.0, 0.0, 0.0, ny * a, 0.0, 0.0, 0.0, nz * a};
+  for (int i = 0; i < nx; ++i) {
+    for (int j = 0; j < ny; ++j) {
+      for (int k = 0; k < nz; ++k) {
+        for (const auto &b : basis) {
+          s.pos.push_back((i + b[0]) * a);
+          s.pos.push_back((j + b[1]) * a);
+          s.pos.push_back((k + b[2]) * a);
+          s.types.push_back(type);
+        }
+      }
+    }
+  }
+  return s;
+}
+
+Cell diamondCubic(double a, int n, int type) {
+  Cell s = fccCubic(a, n, n, n, type);
+  const std::size_t half = s.size();
+  for (std::size_t i = 0; i < half; ++i) {
+    for (int k = 0; k < 3; ++k) {
+      s.pos.push_back(s.pos[3 * i + static_cast<std::size_t>(k)] + 0.25 * a);
+    }
+    s.types.push_back(type);
+  }
+  return s;
+}
+
+Cell diamondPrimitive(double a, int type) {
+  Cell s = fccPrimitive(a, type);
+  s.pos = {0.0, 0.0, 0.0, 0.25 * a, 0.25 * a, 0.25 * a};
+  s.types = {type, type};
+  return s;
+}
+
+void jitter(Cell &s, double amount, unsigned seed) {
+  for (double &x : s.pos) {
+    seed = seed * 1103515245u + 12345u;
+    x += amount * (static_cast<double>((seed >> 8) & 0xffff) / 65535.0 - 0.5);
+  }
+}
+
+// Cartesian strain r -> r (I + e) on positions and cell rows.
+Cell strained(const Cell &s, int a, int b, double e) {
+  Cell out = s;
+  auto apply = [&](double *v) { v[b] += v[a] * e; };
+  for (std::size_t p = 0; p < out.size(); ++p) {
+    apply(&out.pos[3 * p]);
+  }
+  for (int r = 0; r < 3; ++r) {
+    apply(&out.box[static_cast<std::size_t>(3 * r)]);
+  }
+  return out;
+}
+
+// Shifted 12-6 Lennard-Jones on a perfect fcc lattice, per atom.
+double ljFccLatticeSum(double a, double u0, double psi, double rc) {
+  const double s6 = std::pow(psi / rc, 6);
+  const double shift = 4.0 * u0 * s6 * (s6 - 1.0);
+  const int reach = static_cast<int>(std::ceil(2.0 * rc / a)) + 1;
+  double sum = 0.0;
+  for (int i = -reach; i <= reach; ++i) {
+    for (int j = -reach; j <= reach; ++j) {
+      for (int k = -reach; k <= reach; ++k) {
+        if (((i + j + k) & 1) != 0 || (i == 0 && j == 0 && k == 0)) {
+          continue;
+        }
+        const double r = 0.5 * a * std::sqrt(static_cast<double>(i * i + j * j + k * k));
+        if (r > rc) {
+          continue;
+        }
+        const double q = std::pow(psi / r, 6);
+        sum += 4.0 * u0 * q * (q - 1.0) - shift;
+      }
+    }
+  }
+  return 0.5 * sum;
+}
+
+rgpot::LJPot reducedLj() {
+  return rgpot::LJPot(rgpot::LJConfig{.u0 = 1.0, .cutoff = 3.0, .psi = 1.0});
+}
+
+rgpot::SuttonChenConfig copperSc() {
+  // Sutton and Chen, Phil. Mag. Lett. 61, 139 (1990): Cu 12-6.
+  rgpot::SuttonChenConfig c;
+  c.epsilon = 1.2382e-2;
+  c.c = 39.432;
+  c.a = 3.61;
+  c.n = 12;
+  c.m = 6;
+  c.cutoff = 7.0;
+  c.periodic = true;
+  c.stress = true;
+  return c;
+}
+
+const double kLjFcc = std::pow(2.0, 1.0 / 6.0) * std::sqrt(2.0);
+
+// Energies of the jittered wide cells under the minimum-image walk of
+// develop 8be4d794. A wide cell must not move.
+constexpr double kWideLj = -6645.0085405826667;
+constexpr double kWideSc = -189.41980600758961;
+constexpr double kWideEam = -774.20652086039615;
+
+template <typename Pot>
+void requireSamePerAtom(const Pot &pot, const Cell &thin, const Cell &wide, double tol) {
+  const auto a = evaluate(pot, thin);
+  const auto b = evaluate(pot, wide);
+  CHECK_THAT(a.energy / static_cast<double>(thin.size()),
+             WithinAbs(b.energy / static_cast<double>(wide.size()), tol));
+}
+
+template <typename Pot>
+void requireFiniteDifferenceForces(const Pot &pot, const Cell &s, double h, double tol) {
+  const auto base = evaluate(pot, s);
+  for (std::size_t k = 0; k < s.pos.size(); ++k) {
+    Cell up = s;
+    Cell down = s;
+    up.pos[k] += h;
+    down.pos[k] -= h;
+    const double fd = -(evaluate(pot, up).energy - evaluate(pot, down).energy) / (2.0 * h);
+    CHECK_THAT(base.forces[k], WithinAbs(fd, tol));
+  }
+}
+
+// Central differences of the energy under strain against sigma V.
+template <typename Pot>
+void requireFiniteDifferenceStress(const Pot &pot, const Cell &s, double e, double tol) {
+  const auto base = evaluate(pot, s);
+  const double volume = rgpot::cellVolume(s.box.data());
+  for (int a = 0; a < 3; ++a) {
+    for (int b = 0; b < 3; ++b) {
+      const double up = evaluate(pot, strained(s, a, b, e)).energy;
+      const double down = evaluate(pot, strained(s, a, b, -e)).energy;
+      const double fd = (up - down) / (2.0 * e * volume);
+      CHECK_THAT(base.stress[static_cast<std::size_t>(3 * a + b)], WithinAbs(fd, tol));
+    }
+  }
+}
+
 } // namespace
 
 TEST_CASE("LJ one-atom fcc primitive cell sums every image", "[images][lj]") {
@@ -243,4 +415,186 @@ TEST_CASE("EAM-Al primitive cell matches a supercell", "[images][eam]") {
                a / 2, a / 2, 0.0};
   cubic.types = {13, 13, 13, 13};
   requireMatchesRepeat(cell, cubic, 4, 4, 4, 5.555 * 1.2, false, 1e-9);
+}
+
+TEST_CASE("one-atom and four-atom fcc Lennard-Jones match the lattice sum",
+          "[images][lj]") {
+  setThreads("1");
+  const auto pot = reducedLj();
+  const double exact = ljFccLatticeSum(kLjFcc, 1.0, 1.0, 3.0);
+  REQUIRE_THAT(exact, WithinAbs(-7.762386540408, 1e-12));
+  const auto wide = fccCubic(kLjFcc, 6, 6, 6, 18);
+  REQUIRE(height(wide.box, 0) > 2.0 * (3.0 + 1.0));
+  REQUIRE_THAT(evaluate(pot, wide).energy / static_cast<double>(wide.size()),
+               WithinAbs(exact, 1e-10));
+
+  const auto one = fccPrimitive(kLjFcc, 18);
+  REQUIRE(height(one.box, 0) < 3.0);
+  const auto r1 = evaluate(pot, one);
+  CHECK_THAT(r1.energy, WithinAbs(exact, 1e-10));
+  CHECK_THAT(r1.forces[0], WithinAbs(0.0, 1e-10));
+
+  CHECK_THAT(evaluate(pot, fccCubic(kLjFcc, 1, 1, 1, 18)).energy / 4.0, WithinAbs(exact, 1e-10));
+  const auto slab = fccCubic(kLjFcc, 1, 2, 3, 18);
+  CHECK_THAT(evaluate(pot, slab).energy / static_cast<double>(slab.size()),
+             WithinAbs(exact, 1e-10));
+}
+
+TEST_CASE("thin Lennard-Jones and Morse cells match their supercell with displacements",
+          "[images][lj][morse]") {
+  setThreads("1");
+  auto thin = fccCubic(kLjFcc, 1, 1, 2, 18);
+  jitter(thin, 0.08, 7u);
+  const auto wide = repeat(thin, 6, 6, 3);
+  const auto lj = reducedLj();
+  requireSamePerAtom(lj, thin, wide, 1e-10);
+  const auto a = evaluate(lj, thin);
+  const auto b = evaluate(lj, wide);
+  for (std::size_t k = 0; k < thin.pos.size(); ++k) {
+    CHECK_THAT(a.forces[k], WithinAbs(b.forces[k], 1e-9));
+  }
+  for (std::size_t k = 0; k < 9; ++k) {
+    CHECK_THAT(a.stress[k], WithinAbs(b.stress[k], 1e-9));
+  }
+
+  auto cu = fccCubic(3.61, 1, 1, 1, 29);
+  jitter(cu, 0.1, 11u);
+  const rgpot::MorsePot morse;
+  requireSamePerAtom(morse, cu, repeat(cu, 7, 7, 7), 1e-10);
+}
+
+TEST_CASE("Sutton-Chen threaded walk counts every image", "[images][sc][threads]") {
+  setThreads("3");
+  const auto cfg = copperSc();
+  const rgpot::SuttonChenPot pot(cfg);
+  auto thin = fccCubic(cfg.a, 1, 1, 2, 29);
+  jitter(thin, 0.1, 5u);
+  const auto threaded = evaluate(pot, thin);
+  setThreads("1");
+  const auto serial = evaluate(pot, thin);
+  CHECK_THAT(threaded.energy, WithinAbs(serial.energy, 1e-10));
+  for (std::size_t k = 0; k < thin.pos.size(); ++k) {
+    CHECK_THAT(threaded.forces[k], WithinAbs(serial.forces[k], 1e-10));
+  }
+  for (std::size_t k = 0; k < 9; ++k) {
+    CHECK_THAT(threaded.stress[k], WithinAbs(serial.stress[k], 1e-10));
+  }
+  CHECK_THAT(serial.energy / 8.0,
+             WithinAbs(evaluate(pot, repeat(thin, 5, 5, 3)).energy / (8.0 * 75.0), 1e-10));
+}
+
+TEST_CASE("EAM densities count every image in a thin cell", "[images][eam]") {
+  setThreads("1");
+  const rgpot::EAMPot pot;
+  auto thin = fccCubic(4.05, 1, 1, 1, 13);
+  REQUIRE(height(thin.box, 0) < 2.0 * 5.555);
+  requireSamePerAtom(pot, thin, repeat(thin, 4, 4, 4), 1e-10);
+  jitter(thin, 0.1, 9u);
+  const auto big = repeat(thin, 4, 4, 4);
+  const auto a = evaluate(pot, thin);
+  const auto b = evaluate(pot, big);
+  CHECK_THAT(a.energy / 4.0, WithinAbs(b.energy / static_cast<double>(big.size()), 1e-10));
+  for (std::size_t k = 0; k < thin.pos.size(); ++k) {
+    CHECK_THAT(a.forces[k], WithinAbs(b.forces[k], 1e-9));
+  }
+  for (auto mode : {rgpot::nlist::Mode::Stream, rgpot::nlist::Mode::Stored}) {
+    rgpot::EAMPot fixed;
+    fixed.setNeighbourMode(mode);
+    CHECK_THAT(evaluate(fixed, thin).energy, WithinAbs(a.energy, 1e-10));
+  }
+  // One atom in a simple cubic cell: every partner is a self image.
+  Cell one;
+  one.box = {2.9, 0, 0, 0, 2.9, 0, 0, 0, 2.9};
+  one.pos = {0.3, 0.2, 0.1};
+  one.types = {13};
+  requireSamePerAtom(pot, one, repeat(one, 5, 5, 5), 1e-10);
+}
+
+TEST_CASE("three-body potentials count every image", "[images][sw][tersoff]") {
+  setThreads("1");
+  const double a = 5.431;
+  const rgpot::StillingerWeberSi sw;
+  const rgpot::TersoffSiC tersoff;
+  const auto wide = diamondCubic(a, 3, 14);
+  const auto prim = diamondPrimitive(a, 14);
+  REQUIRE(height(prim.box, 0) < 2.0 * 2.0951 * 1.8);
+  requireSamePerAtom(sw, prim, wide, 1e-10);
+  requireSamePerAtom(tersoff, prim, wide, 1e-10);
+  auto cubic = diamondCubic(a, 1, 14);
+  jitter(cubic, 0.15, 13u);
+  const auto big = repeat(cubic, 3, 3, 3);
+  requireSamePerAtom(sw, cubic, big, 1e-10);
+  requireSamePerAtom(tersoff, cubic, big, 1e-10);
+  auto skew = diamondPrimitive(a, 14);
+  jitter(skew, 0.1, 17u);
+  requireFiniteDifferenceForces(sw, skew, 1e-5, 1e-6);
+  requireFiniteDifferenceStress(sw, skew, 1e-6, 1e-6);
+  requireFiniteDifferenceForces(tersoff, skew, 1e-5, 1e-6);
+}
+
+TEST_CASE("a slab thin in two directions sums the in-plane images", "[images][slab]") {
+  setThreads("1");
+  // The vacuum along z is wider than the cutoff, so the two faces do not
+  // see each other.
+  auto slab = fccCubic(kLjFcc, 1, 1, 3, 18);
+  slab.box[8] = 3.0 * kLjFcc + 10.0;
+  jitter(slab, 0.05, 37u);
+  const auto lj = reducedLj();
+  const auto wide = repeat(slab, 6, 6, 1);
+  requireSamePerAtom(lj, slab, wide, 1e-10);
+  const auto a = evaluate(lj, slab);
+  const auto b = evaluate(lj, wide);
+  for (std::size_t k = 0; k < slab.pos.size(); ++k) {
+    CHECK_THAT(a.forces[k], WithinAbs(b.forces[k], 1e-9));
+  }
+}
+
+TEST_CASE("wide orthorhombic cells keep the minimum-image walk", "[images][fast]") {
+  setThreads("1");
+  auto lj_cell = fccCubic(kLjFcc, 6, 6, 6, 18);
+  jitter(lj_cell, 0.05, 41u);
+  auto cu = fccCubic(3.61, 5, 5, 5, 29);
+  jitter(cu, 0.05, 43u);
+  auto al = fccCubic(4.05, 4, 4, 4, 13);
+  jitter(al, 0.05, 47u);
+
+  const std::array<bool, 3> periodic{{true, true, true}};
+  const auto images = [&](const Cell &s, double cutoff) {
+    rgpot::nlist::Neighbours cells;
+    rgpot::nlist::updateCells(cells, s.pos.data(), s.size(), s.box.data(), cutoff, 0.0,
+                              rgpot::nlist::Image::Round, rgpot::nlist::Mode::Auto, periodic);
+    return cells.images();
+  };
+  CHECK_FALSE(images(lj_cell, 3.0));
+  CHECK_FALSE(images(cu, 7.0));
+  CHECK_FALSE(images(al, 5.555));
+  CHECK(images(fccCubic(kLjFcc, 1, 1, 1, 18), 3.0));
+  // A sheared cell takes the table only when a face spacing, 3.61 / sqrt(3)
+  // here, is under twice the search.
+  CHECK_FALSE(images(fccPrimitive(3.61, 29), 1.0));
+  CHECK(images(fccPrimitive(3.61, 29), 1.1));
+
+  const double lj = evaluate(reducedLj(), lj_cell).energy;
+  const double sc = evaluate(rgpot::SuttonChenPot(copperSc()), cu).energy;
+  const double eam = evaluate(rgpot::EAMPot(), al).energy;
+  CHECK_THAT(lj, WithinAbs(kWideLj, 1e-12 * std::abs(kWideLj)));
+  CHECK_THAT(sc, WithinAbs(kWideSc, 1e-12 * std::abs(kWideSc)));
+  CHECK_THAT(eam, WithinAbs(kWideEam, 1e-12 * std::abs(kWideEam)));
+}
+
+TEST_CASE("a pair view keeps its list across calls", "[images][simd]") {
+  setThreads("1");
+  auto cu = fccCubic(3.61, 5, 5, 5, 29);
+  jitter(cu, 0.05, 67u);
+  rgpot::simd::PairSpec opt;
+  opt.cutoff = 5.0;
+  opt.skin = 1.0;
+  rgpot::nlist::Neighbours reuse;
+  rgpot::simd::CachedPairs pairs;
+  for (int call = 0; call < 3; ++call) {
+    rgpot::simd::fill_view(pairs, cu.pos.data(), cu.size(), cu.box.data(), opt,
+                           rgpot::nlist::Mode::Auto, &reuse);
+  }
+  CHECK(reuse.builds() == 1);
+  CHECK(reuse.reused());
 }
