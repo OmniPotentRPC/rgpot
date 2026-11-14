@@ -11,8 +11,11 @@
 //   ar-np    Ar fcc nanoparticle (a = 5.26 A), LJPot with Ar parameters
 //            (u0 = 0.0104 eV, psi = 3.40 A, cutoff = 8.5 A).
 //   ar-cl    the same nanoparticle through LJClusterPot.
+//   ar-bulk  periodic Ar fcc (a = 5.26 A), LJPot with the ar-np parameters.
 //   al-bulk  periodic Al fcc (a = 4.05 A) through the Fortran EAM kernel,
 //            when the build carries the Fortran potentials.
+//   cu-bulk  periodic Cu fcc (a = 3.61 A) through the Fortran CuH2 EAM
+//            kernel, Cu only.
 //
 // Modes:
 //   cold   every call sees a geometry the pair-list pool has never matched
@@ -78,6 +81,9 @@ double callOnce(const rgpot::PotentialBase &potBase, const System &s,
   else if (auto *p =
                dynamic_cast<const rgpot::fortranpots::EAMAlPot *>(&potBase))
     p->forceImpl(fi, &fo);
+  else if (auto *p =
+               dynamic_cast<const rgpot::fortranpots::CuH2Pot *>(&potBase))
+    p->forceImpl(fi, &fo);
 #endif
   return fo.energy;
 }
@@ -112,7 +118,8 @@ int main(int argc, char **argv) {
     else {
       std::fprintf(stderr,
                    "usage: time_pair_scaling --system "
-                   "pt-np|pt-bulk|ar-np|ar-cl|al-bulk --mode cold|warm|walk "
+                   "pt-np|pt-bulk|ar-np|ar-cl|ar-bulk|al-bulk|cu-bulk "
+                   "--mode cold|warm|walk "
                    "--n N [--calls K] [--repeats R]\n");
       return 2;
     }
@@ -124,19 +131,23 @@ int main(int argc, char **argv) {
     pot = std::make_unique<rgpot::MorsePot>();
     s = system == "pt-np" ? nanoparticle(n, 3.92, 10.5, 78)
                           : bulk(cellsFor(n), 3.92, 78);
-  } else if (system == "ar-np" || system == "ar-cl") {
+  } else if (system == "ar-np" || system == "ar-cl" || system == "ar-bulk") {
     const double u0 = 0.0104, psi = 3.40, rc = 8.5;
-    if (system == "ar-np")
-      pot = std::make_unique<rgpot::LJPot>(
-          rgpot::LJConfig{.u0 = u0, .cutoff = rc, .psi = psi});
-    else
+    if (system == "ar-cl")
       pot = std::make_unique<rgpot::LJClusterPot>(
           rgpot::LJClusterConfig{.u0 = u0, .cutoff = rc, .psi = psi});
-    s = nanoparticle(n, 5.26, 9.5, 18);
+    else
+      pot = std::make_unique<rgpot::LJPot>(
+          rgpot::LJConfig{.u0 = u0, .cutoff = rc, .psi = psi});
+    s = system == "ar-bulk" ? bulk(cellsFor(n), 5.26, 18)
+                            : nanoparticle(n, 5.26, 9.5, 18);
 #ifdef RGPOT_HAS_FORTRAN_POTS
   } else if (system == "al-bulk") {
     pot = std::make_unique<rgpot::fortranpots::EAMAlPot>();
     s = bulk(cellsFor(n), 4.05, 13);
+  } else if (system == "cu-bulk") {
+    pot = std::make_unique<rgpot::fortranpots::CuH2Pot>();
+    s = bulk(cellsFor(n), 3.61, 29);
 #endif
   } else {
     std::fprintf(stderr, "unknown or unbuilt system %s\n", system.c_str());
