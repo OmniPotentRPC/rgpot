@@ -1,0 +1,1 @@
+`D3Pot` and `D4Pot` report free boundaries in their caps, as `LJClusterPot` does, and `RgpotCalculator` raises `ValueError` for periodic atoms on such a potential instead of returning the energy of the isolated structure.

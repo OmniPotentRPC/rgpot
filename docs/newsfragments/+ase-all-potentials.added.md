@@ -1,0 +1,1 @@
+`RgpotCalculator` accepts every potential the package exposes: the kind strings `lj_cluster`, `morse`, `stillinger_weber_si`, `tersoff_sic`, `expr`, `lammps`, `gromacs` and `openmm` are new, and `TersoffSiC`, `IPIPot` and the engine potentials work as objects. The `IPIPot` stress is passed through.

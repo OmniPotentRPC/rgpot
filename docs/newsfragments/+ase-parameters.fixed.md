@@ -1,0 +1,1 @@
+`RgpotCalculator` keeps the potential parameters in `parameters`, `default_parameters` and `todict()`. `set()` validates them, returns the changed keys, rebuilds the potential and clears the results. `copy.deepcopy` and `pickle` rebuild the potential from those parameters.
