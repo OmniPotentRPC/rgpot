@@ -1,0 +1,142 @@
+#+TITLE: Agreement with LAMMPS
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+
+* Agreement with LAMMPS
+
+=tests/python/test_lammps_agreement.py= evaluates each classical kernel that
+has a pair style in the Large-scale Atomic/Molecular Massively Parallel
+Simulator (LAMMPS) on the same structure and the same parameter file on both
+sides.
+It compares the energy, the forces, all six stress components and, where the
+conventions match, the per-atom energies.
+
+The module is opt-in.
+It skips when the =lammps= Python module is missing or lacks a pair style, and
+fails instead when =RGPOT_REQUIRE_LAMMPS= is set, as in the =rgpot python
+(meson)= job of =py-ci.yml=.
+The PyPI wheel works:
+
+#+begin_src bash
+pip install 'lammps[mpi]==2025.7.22.4.0'
+python -m pytest tests/python/test_lammps_agreement.py
+#+end_src
+
+=RGPOT_LAMMPS_POTENTIALS= names a directory that already holds the pinned EAM
+files, and =RGPOT_LAMMPS_REPORT= names a JSON lines file that receives one row
+of deviations for each case.
+
+** Cells
+
+Every kernel runs on six rattled cells:
+
+| Cell        | Shape                                                             |
+|-------------+-------------------------------------------------------------------|
+| ortho       | orthorhombic                                                      |
+| tri-sym     | triclinic, symmetric strain                                       |
+| tri-lower   | triclinic, already lower triangular                               |
+| thin-ortho  | orthorhombic, one conventional cell thick, under the cutoff       |
+| thin-tri    | general triclinic, thinner than the cutoff along two vectors      |
+| large-tri   | lower-triangular triclinic supercell of 4000 or 4096 atoms        |
+
+LAMMPS takes a lower-triangular cell.
+The test factors the cell as ~H = L Q^T~, sends ~r Q~ to LAMMPS, and rotates
+back the forces as ~f Q^T~ and the stress as ~Q sigma Q^T~.
+The stress is ~-P / nktv2p~ from =compute pressure NULL virial=.
+=ZBLPot= has free boundaries and runs instead on rattled carbon, silicon and
+nickel clusters of 108 and 4000 atoms, centred in a box whose vacuum exceeds
+twice the cutoff.
+
+** Parameter files
+
+| Kernel                 | LAMMPS style     | File                                            |
+|------------------------+------------------+-------------------------------------------------|
+| =LJPot=                | =lj/cut=, shift  | inline, argon                                   |
+| =MorsePot=             | =morse=, shift   | inline, platinum defaults                       |
+| =EAMTablePot=          | =eam/alloy=      | =Cu01.eam.alloy=, =Al99.eam.alloy= (NIST)       |
+| =SuttonChenPot=        | =eam/fs=         | 50001-point table written by the test           |
+| =EAMTablePot= (fs)     | =eam/fs=         | the same table                                  |
+| =StillingerWeberSi=    | =sw=             | =data/lammps/Si_1985.sw=                        |
+| =TersoffSiC=           | =tersoff=        | =data/lammps/SiC_1989_erratum.tersoff=          |
+| =SWPot= (Fortran)      | =sw=             | =Si_1985.sw= with eOn's epsilon                 |
+| =TersoffPot= (Fortran) | =tersoff=        | =SiC_1989_erratum.tersoff=                      |
+| =EDIPPot= (Fortran)    | =edip/multi=     | =data/lammps/Si_eon.edip=                       |
+| =LenoskyPot= (Fortran) | =meam/spline=    | =data/lammps/Si_eon.meam.spline=                |
+| =ZBLPot=               | =zbl=            | inline, 2.0 and 2.5 Angstrom                    |
+
+The EAM files come from the NIST Interatomic Potentials Repository and are
+fetched at test time from a pinned URL and checked against a SHA-256:
+=Cu01.eam.alloy= is Mishin, Mehl, Papaconstantopoulos, Voter and Kress,
+Physical Review B 63, 224106 (2001), and =Al99.eam.alloy= is Mishin, Farkas,
+Mehl and Papaconstantopoulos, Physical Review B 59, 3393 (1999), both as
+converted to setfl by C. A. Becker.
+The copper file in the LAMMPS distribution, =Cu_mishin1.eam.alloy=, writes 1
+for the atomic number on its element line, and =EAMTablePot= maps elements by
+atomic number.
+
+The tracked files under =tests/python/data/lammps= carry each kernel's own
+constants at full precision, and a test checks every value against the
+kernel.
+The stock LAMMPS files differ from them:
+
+- =Si.sw= rounds epsilon to 2.1683 and cos theta_0 to -0.333333333333.
+- =SiC.tersoff= is the 1989 set without the 1990 erratum.
+- =Si.edip= is Justo et al., Physical Review B 58, 2539 (1998), Table I.
+  The eOn kernel folds it into eight-digit constants, ~A = cap_a palp~,
+  ~A B^rho = cap_a cap_b^rho~ and ~eta = delta / Q_0~, which differ from the
+  table by up to 5.5e-8.
+  The plain =edip= style also interpolates on a grid and is 4e-8 off in the
+  forces even with exact constants, so the test uses =edip/multi=.
+- =Si_1.meam.spline= is the Lenosky et al. spline at full precision.
+  The eOn tables round its knots to five decimals, which moves the forces by
+  about 4e-5.
+
+=meam/spline= measures the energy from the isolated atom, ~U(0) = -5.624~ meV
+for the Lenosky tables, and =LenoskyPot= does not.
+The test subtracts the isolated-atom energy that =LenoskyPot= reports.
+
+** Tolerances
+
+Every quantity must agree to 1e-10, relative to the largest reference entry,
+except the analytic Sutton-Chen forces against the =eam/fs= table, which are
+held to 1e-8.
+That table ends on the nonzero value of the unshifted cutoff, and the last
+interval of the =PairEAM= cubic takes a first-order slope there.
+The largest force gap halves with the spacing, 7.5e-9, 3.5e-9, 1.5e-9 and
+5.1e-10 at 12501, 25001, 50001 and 100001 points, while atoms with no partner
+in the last two intervals converge at third order.
+=EAMTablePot= reading the same table agrees to rounding, as both EAM files do,
+because both sides evaluate the same cubic.
+
+Per-atom energies are compared atom by atom for the pair and EAM kernels.
+For SW and Tersoff rgpot puts each three-body term on its centre atom, where
+LAMMPS =pe/atom= splits it over the three, so only the sums are compared.
+
+** Largest deviations
+
+The largest relative deviation over energy, forces, stress and per-atom
+energies, with LAMMPS 22 Jul 2025:
+
+| Kernel                 | ortho | tri-sym | tri-lower | thin-ortho | thin-tri | large-tri |
+|------------------------+-------+---------+-----------+------------+----------+-----------|
+| lj                     | 2e-14 | 4e-14   | 3e-14     | 2e-14      | 3e-13    | 9e-14     |
+| morse                  | 2e-14 | 3e-14   | 3e-14     | 2e-14      | 2e-14    | 5e-14     |
+| eam-cu-mishin2001      | 2e-14 | 2e-14   | 2e-14     | 1e-14      | 1e-14    | 6e-14     |
+| eam-al-mishin1999      | 2e-14 | 4e-14   | 2e-14     | 2e-14      | 3e-14    | 4e-14     |
+| sutton-chen            | 6e-12 | 5e-12   | 6e-12     | 6e-12      | 6e-12    | 1.5e-9    |
+| sutton-chen-fs-table   | 2e-14 | 2e-14   | 2e-14     | 2e-14      | 1e-14    | 7e-14     |
+| sw-si                  | 1e-14 | 2e-14   | 2e-14     | 9e-15      | 6e-15    | 4e-14     |
+| tersoff-si             | 4e-14 | 3e-14   | 3e-14     | 2e-14      | 3e-14    | 6e-14     |
+| tersoff-c              | 2e-14 | 5e-14   | 3e-14     | 1e-14      | 1e-14    | 5e-14     |
+| tersoff-sic-zincblende | 1e-14 | 2e-14   | 2e-14     | 5e-15      | 5e-14    | 4e-14     |
+| tersoff-sic-random     | 3e-14 | 3e-14   | 2e-14     | 1e-14      | 7e-15    | 4e-14     |
+| fortran-sw-si          | 1e-14 | 2e-14   | 2e-14     | 1e-14      | 6e-15    | 4e-14     |
+| fortran-tersoff-si     | 2e-14 | 3e-14   | 3e-14     | 1e-14      | 3e-14    | 6e-14     |
+| fortran-edip-si        | 1e-14 | 3e-14   | 2e-14     | 1e-14      | 9e-15    | 7e-14     |
+| fortran-lenosky-si     | 2e-14 | 2e-14   | 2e-14     | 7e-15      | 8e-15    | 4e-14     |
+
+The Fortran silicon gathers for Tersoff, EDIP and Lenosky write no stress.
+=ZBLPot= agrees to 3e-15 in energy, 1.5e-14 in forces and 8e-15 in stress on
+both clusters.
+
+The engine-level check of =pair_style rgpot= against =lj/cut=, built with
+=-Dwith_lammps=, is separate and lives under =engines/lammps=.

@@ -113,6 +113,7 @@ meson compile -C bbdir && meson test -C bbdir
    reference/sutton_chen
    reference/eam_table
    reference/fortran_potentials
+   reference/lammps_agreement
    api/index
    changelog
 

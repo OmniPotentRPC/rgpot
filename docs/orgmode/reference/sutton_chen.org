@@ -87,9 +87,8 @@ served to a caller that asked for one.
 The C entry point =rgpot_sutton_chen_energy_forces= and =rgpot_sc_config= do not
 carry the flag.
 
-Periodic evaluation keeps one image of each partner.
-The stress, like the energy, is the whole sum only while the cutoff is under
-half the smallest face spacing of the cell.
+The stress, like the energy, sums over every image inside the cutoff, so it
+holds for a cell thinner than the cutoff too.
 
 ** Checks
 
