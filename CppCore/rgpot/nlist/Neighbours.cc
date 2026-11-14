@@ -749,11 +749,11 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
   const bool proof_cell4 =
       use_cell_shift && ((periodic_[0] && nx_ == 4) || (periodic_[1] && ny_ == 4) ||
                          (periodic_[2] && nz_ == 4));
-  // Five or more cells make the stencil shift the unique image, so a
-  // neighbour cell whose every atom sits past the search on one axis
-  // cannot contribute a pair. The range is the atoms actually binned
-  // there, evaluated with the same subtraction as the pair loop.
-  const bool slab_skip = use_cell_shift && !proof_cell4;
+  // An axis bound on the atoms actually in a neighbour cell dropped
+  // pairs the stream walk still finds (a 108000-atom FCC, cutoff 2.5).
+  // The stencil shift is not a safe reject for that list, so the cell
+  // is scanned.
+  const bool slab_skip = false;
   const int ncells = nx_ * ny_ * nz_;
   std::vector<double> slab_lo;
   std::vector<double> slab_hi;

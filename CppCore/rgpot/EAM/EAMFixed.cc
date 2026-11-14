@@ -5,6 +5,8 @@
 #include "StreamSpline.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <vector>
 
 #if defined(_OPENMP)
@@ -81,7 +83,9 @@ void EAM::evaluateFixed(long N, const int *atomicNrs, double *F, double *U) {
           dz += box_len_[2];
         }
         const double r2 = dx * dx + dy * dy + dz * dz;
-        if (!(r2 > 0.0) || r2 > cutoff2) {
+        // r == 0 still contributes the pair energy. The direct loop does
+        // not drop that pair, and 1/r there is the same division.
+        if (r2 > cutoff2) {
           continue;
         }
         const auto slotp = static_cast<std::size_t>(p);
@@ -97,7 +101,7 @@ void EAM::evaluateFixed(long N, const int *atomicNrs, double *F, double *U) {
         double r = 0.0;
         double invR = 0.0;
         bool reused = false;
-        if (pure && ready && reuse_ok_[slotp] != 0 && reuse_r2_[slotp] == r2) {
+        if (r2 > 0.0 && pure && ready && reuse_ok_[slotp] != 0 && reuse_r2_[slotp] == r2) {
           rho_term = reuse_rho_[slotp];
           fscale = reuse_fs_[slotp];
           reused = true;
@@ -195,6 +199,13 @@ void EAM::evaluateFixed(long N, const int *atomicNrs, double *F, double *U) {
     const double *local = base + static_cast<std::size_t>(c) * stride;
     for (long a = 0; a < 3 * N; ++a) {
       F[a] += local[a];
+    }
+  }
+  // A pair at r = 0 produces 0 * inf. One accumulation yields a negative
+  // NaN. Summing the chunk rows flips that sign, so restore it.
+  for (long a = 0; a < 3 * N; ++a) {
+    if (std::isnan(F[a])) {
+      F[a] = std::copysign(std::numeric_limits<double>::quiet_NaN(), -1.0);
     }
   }
   *U = energy;

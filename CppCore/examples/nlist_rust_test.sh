@@ -25,6 +25,15 @@ if [ -z "$half" ] || [ -z "$mini" ] || [ -z "$fma" ]; then
   exit 1
 fi
 cxx=${CXX:-c++}
+# Clang as /usr/bin/c++ does not search GCC's libstdc++ directory.
+# A compiler that cannot link a C++ program is not usable here.
+probe=$(mktemp)
+if ! echo 'int main(){return 0;}' | "$cxx" -x c++ - -o "$probe" >/dev/null 2>&1; then
+  if [ -z "${CXX:-}" ] && command -v g++ >/dev/null 2>&1; then
+    cxx=g++
+  fi
+fi
+rm -f "$probe"
 os=$(uname -s)
 omp_flag=
 if "$cxx" -fopenmp -x c++ -E - >/dev/null 2>&1 <<'EOF'

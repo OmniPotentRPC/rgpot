@@ -155,6 +155,14 @@ def _data_member(stmt: str) -> bool:
         return False
     if stmt.startswith("typedef ") or stmt.startswith("friend "):
         return False
+    # A nested type is not an instance field. Neighbours keeps SearchBound
+    # inside the class, and that definition does not change the object size.
+    if "{" in stmt and (
+        stmt.startswith("struct ")
+        or stmt.startswith("class ")
+        or stmt.startswith("enum ")
+    ):
+        return False
     if "(" in stmt:
         return False
     return True
