@@ -17,7 +17,7 @@ index dbf564c..ae63a0b 100644
 @@ -67,6 +67,14 @@ module vesin
          procedure, public :: free => vesin_destroy
      end type NeighborList
- 
+
 +    ! Targets for a list of length zero whose C arrays are NULL. A
 +    ! disassociated pointer has no defined shape, so `size(list%pairs, 2)`
 +    ! on it is undefined.
@@ -30,7 +30,7 @@ index dbf564c..ae63a0b 100644
      !!
      !! The `cutoff` and `full` options are mandatory, the other are optional
 @@ -289,15 +297,23 @@ contains
- 
+
          if (c_associated(self%c_neighbors%pairs)) then
              call c_f_pointer(self%c_neighbors%pairs, self%pairs, shape=[2, int(self%length)])
 +        else if (self%length == 0) then
@@ -52,7 +52,7 @@ index dbf564c..ae63a0b 100644
 +            self%vectors => empty_vectors
          endif
      end subroutine vesin_compute_c_double
- 
+
 diff --git a/vesin/src/cpu/cell_list.cpp b/vesin/src/cpu/cell_list.cpp
 index 0a6e7d5..2d6d073 100644
 --- a/vesin/src/cpu/cell_list.cpp
@@ -65,7 +65,7 @@ index 0a6e7d5..2d6d073 100644
 +    if (this->neighbors.pairs != nullptr) {
 +        std::memset(this->neighbors.pairs, 0b11111111, size * sizeof(size_t[2]));
 +    }
- 
+
      if (this->neighbors.shifts != nullptr) {
          std::memset(this->neighbors.shifts, 0b11111111, size * sizeof(int32_t[3]));
 @@ -933,4 +935,12 @@ void GrowableNeighborList::reset() {
