@@ -118,10 +118,19 @@ public:
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
+  /// forceImpl plus each atom's share of the energy: half of every pair
+  /// repulsion to each partner and the embedding term on its own atom.
+  /// See Potential::forceEnergies.
+  void forceEnergiesImpl(const ForceInput &in, ForceOut *out,
+                         double *energies) const;
+
   /// Stored Verlet list or a streaming cell walk.
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
 private:
+  template <bool PerAtom>
+  void evaluate(const ForceInput &in, ForceOut *out, double *energies) const;
+
   static constexpr uint64_t kKernelVersion = 2;
 
   SuttonChenConfig m_config;
