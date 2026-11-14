@@ -17,6 +17,7 @@
 
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
+#include "rgpot/nlist/OrderedWalk.hpp"
 #include "rgpot/simd/exp.hpp"
 #include "rgpot/stress.hpp"
 
@@ -148,34 +149,40 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
                      });
     flush();
   } else {
-    auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                      double r2, double *force, double &part, double *virial) {
-      if (!(i < j) || !(r2 > 0.0) || r2 > cutoff2) {
-        return;
-      }
-      const double r = std::sqrt(r2);
-      accept_one(i, j, dx, dy, dz, r, simd::exp_fixed(-a * (r - re)), force, part, virial);
-    };
-    std::vector<double> owned(static_cast<std::size_t>(nt) * n_atoms * 3, 0.0);
-    std::vector<double> partial(static_cast<std::size_t>(nt), 0.0);
-    std::vector<double> virial(static_cast<std::size_t>(nt) * 6, 0.0);
-    neighbours_.forCellTeam(
-        true, nt, [&](int t, std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                      double r2) {
-          double *local = owned.data() + static_cast<std::size_t>(t) * n_atoms * 3;
-          double *st = virial.data() + static_cast<std::size_t>(t) * 6;
-          accept(i, j, dx, dy, dz, r2, local, partial[static_cast<std::size_t>(t)], st);
+    std::vector<nlist::HalfPart> parts;
+    nlist::gather_half(
+        neighbours_, nt, N, parts,
+        [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2,
+            nlist::HalfTerm &term) {
+          if (!(i < j) || !(r2 > 0.0) || r2 > cutoff2) {
+            return false;
+          }
+          const double r = std::sqrt(r2);
+          const double ex = simd::exp_fixed(-a * (r - re));
+          const double d = 1.0 - ex;
+          const double bare = De * d * d - De;
+          double pair_e = 0.0;
+          double fscale = 0.0;
+          if (switched) {
+            const auto s = m_switch(r);
+            pair_e = bare * s.s;
+            fscale = (twoDeA * d * (d - 1.0) * s.s - bare * s.dsdr) / r;
+          } else {
+            pair_e = bare - energyCutoff;
+            fscale = twoDeA * d * (d - 1.0) / r;
+          }
+          term.e = pair_e;
+          term.fscale = fscale;
+          (void)i;
+          (void)j;
+          (void)dx;
+          (void)dy;
+          (void)dz;
+          return true;
         });
-    for (int t = 0; t < nt; ++t) {
-      energy += partial[static_cast<std::size_t>(t)];
-      const double *local = owned.data() + static_cast<std::size_t>(t) * n_atoms * 3;
-      for (std::size_t k = 0; k < n_atoms * 3; ++k) {
-        F[k] += local[k];
-      }
-      for (int c = 0; c < 6; ++c) {
-        strain[c] += virial[static_cast<std::size_t>(t) * 6 + static_cast<std::size_t>(c)];
-      }
-    }
+    nlist::replay_half(parts, F, energy, [&](const nlist::HalfTerm &term) {
+      accumulatePairStrain(strain, term.fscale, term.dx, term.dy, term.dz);
+    });
   }
   *U = energy;
   publishCauchyStress(out, strain, volume);

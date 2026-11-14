@@ -157,44 +157,11 @@ void LJClusterPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     force[3 * j + 1] -= fy;
     force[3 * j + 2] -= fz;
   };
-  const int nt = nlist::threadsRequested();
-  if (nt <= 1) {
-    nlist::visitHalf(neighbours_, 0, N,
-                     [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                         double r2) { accept(i, j, dx, dy, dz, r2, F, *U); });
-  } else {
-    std::vector<double> owned(static_cast<std::size_t>(nt) * static_cast<std::size_t>(N) * 3,
-                              0.0);
-    std::vector<double> partial(static_cast<std::size_t>(nt), 0.0);
-#if defined(_OPENMP)
-#pragma omp parallel num_threads(nt)
-#endif
-    {
-#if defined(_OPENMP)
-      const int t = omp_get_thread_num();
-#else
-      const int t = 0;
-#endif
-      const auto range = nlist::partition(N, t, nt);
-      double *local =
-          owned.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(N) * 3;
-      double local_e = 0.0;
-      nlist::visitDirected(
-          neighbours_, range.begin, range.end,
-          [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2) {
-            accept(i, j, dx, dy, dz, r2, local, local_e);
-          });
-      partial[static_cast<std::size_t>(t)] = local_e;
-    }
-    for (int t = 0; t < nt; ++t) {
-      *U += partial[static_cast<std::size_t>(t)];
-      const double *local =
-          owned.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(N) * 3;
-      for (long k = 0; k < 3 * N; ++k) {
-        F[k] += local[k];
-      }
-    }
-  }
+  // Same order at every thread count. The cluster pair is short enough
+  // that a stored-term replay is slower than this walk.
+  nlist::visitHalf(neighbours_, 0, N,
+                   [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                       double r2) { accept(i, j, dx, dy, dz, r2, F, *U); });
 }
 
 } // namespace rgpot

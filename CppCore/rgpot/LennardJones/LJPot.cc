@@ -123,7 +123,6 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   nlist::updateCells(neighbours_, R, n_atoms, box, cuttOffR, skin, nlist::Image::Round,
                      mode_, periodic);
   const double cutoff2 = cuttOffR * cuttOffR;
-  const int nt = nlist::threadsRequested();
   auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
                     double r2, double *force, double &energy, double *virial) {
     if (!(i < j) || r2 > cutoff2) {
@@ -150,34 +149,12 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     force[3 * j + 2] -= fz;
     accumulatePairStrain(virial, fscale, dx, dy, dz);
   };
-  if (nt <= 1) {
-    nlist::visitHalf(neighbours_, 0, N,
-                     [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                         double r2) { accept(i, j, dx, dy, dz, r2, F, *U, strain); });
-  } else {
-    std::vector<double> owned(static_cast<std::size_t>(nt) * n_atoms * 3, 0.0);
-    std::vector<double> energy(static_cast<std::size_t>(nt), 0.0);
-    std::vector<double> virial(static_cast<std::size_t>(nt) * 6, 0.0);
-    // One shared tile build. A visit from each thread would allocate the
-    // cell scratch once per thread.
-    neighbours_.forCellTeam(
-        true, nt, [&](int t, std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                      double r2) {
-          double *local = owned.data() + static_cast<std::size_t>(t) * n_atoms * 3;
-          double *st = virial.data() + static_cast<std::size_t>(t) * 6;
-          accept(i, j, dx, dy, dz, r2, local, energy[static_cast<std::size_t>(t)], st);
-        });
-    for (int t = 0; t < nt; ++t) {
-      *U += energy[static_cast<std::size_t>(t)];
-      const double *local = owned.data() + static_cast<std::size_t>(t) * n_atoms * 3;
-      for (std::size_t k = 0; k < n_atoms * 3; ++k) {
-        F[k] += local[k];
-      }
-      for (int c = 0; c < 6; ++c) {
-        strain[c] += virial[static_cast<std::size_t>(t) * 6 + static_cast<std::size_t>(c)];
-      }
-    }
-  }
+  // One accumulator, in half-list order. A per-thread total is a different
+  // parenthesization, and storing every pair to add it back is slower than
+  // this walk for this kernel.
+  nlist::visitHalf(neighbours_, 0, N,
+                   [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                       double r2) { accept(i, j, dx, dy, dz, r2, F, *U, strain); });
   publishCauchyStress(out, strain, volume);
 }
 

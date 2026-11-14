@@ -174,8 +174,6 @@ private:
   void ensureRev();
   void ensureParts(long N, int nt);
   void evaluate(long N, const int *atomicNrs, double *F, double *U);
-  void evaluateStoredParallel(long N, const int *atomicNrs, double *F,
-                              double *U);
   void evaluateDensityStream(long N, const int *atomicNrs, double *F,
                              double *U);
   [[nodiscard]] const rgpot::eam::ElementSpline &splineFor(int Z);

@@ -408,10 +408,19 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
     }
   }
   } else {
-    const std::size_t n3 = static_cast<std::size_t>(n) * 3;
-    std::vector<double> owned(static_cast<std::size_t>(nt) * n3, 0.0);
-    std::vector<double> energies(static_cast<std::size_t>(nt), 0.0);
-    std::vector<double> vir(static_cast<std::size_t>(nt) * 6, 0.0);
+    struct Hit {
+      int atom;
+      double x;
+      double y;
+      double z;
+    };
+    struct StrainHit {
+      int kind;
+      double p0, p1, p2, p3, p4, p5;
+    };
+    std::vector<std::vector<double>> energy_of(static_cast<std::size_t>(n));
+    std::vector<std::vector<Hit>> force_of(static_cast<std::size_t>(n));
+    std::vector<std::vector<StrainHit>> strain_of(static_cast<std::size_t>(n));
 #if defined(_OPENMP)
 #pragma omp parallel num_threads(nt)
 #endif
@@ -422,117 +431,100 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
       const int t = 0;
 #endif
       const auto range = nlist::partition(n, t, nt);
-      double *local = owned.data() + static_cast<std::size_t>(t) * n3;
-      double local_e = 0.0;
-      double *local_strain = strain == nullptr ? nullptr : vir.data() + static_cast<std::size_t>(t) * 6;
       std::vector<Bond> nb;
       std::vector<Angle> ang;
       for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
-    load(i, nb);
-    const Species &sp = m_species[kind[i]];
-    const int m = static_cast<int>(nb.size());
-    if (static_cast<int>(ang.size()) < m * m) {
-      ang.resize(static_cast<std::size_t>(m) * static_cast<std::size_t>(m));
-    }
-    for (int a = 0; a < m; ++a) {
-      const Bond &bj = nb[static_cast<std::size_t>(a)];
-      double zeta = 0.0;
-      for (int k = 0; k < m; ++k) {
-        if (k == a) {
-          continue;
+        load(i, nb);
+        const Species &sp = m_species[kind[i]];
+        const int m = static_cast<int>(nb.size());
+        if (static_cast<int>(ang.size()) < m * m) {
+          ang.resize(static_cast<std::size_t>(m) * static_cast<std::size_t>(m));
         }
-        Angle &slot = ang[static_cast<std::size_t>(a * m + k)];
-        slot.cth = cosine(bj, nb[static_cast<std::size_t>(k)]);
-        angular(sp, slot.cth, slot.g, slot.dg);
-        zeta += nb[static_cast<std::size_t>(k)].fc * slot.g;
-      }
-      double bij = 0.0;
-      double db = 0.0;
-      bondOrder(sp, zeta, bij, db);
-      local_e += 0.5 * bj.fc * (bj.f_r + bij * bj.f_a);
-      const double dedr = 0.5 * (bj.dfc * (bj.f_r + bij * bj.f_a) +
-                                 bj.fc * (bj.df_r + bij * bj.df_a));
-      const double inv_r = 1.0 / bj.r;
-      const double sx = scale * dedr * bj.x * inv_r;
-      const double sy = scale * dedr * bj.y * inv_r;
-      const double sz = scale * dedr * bj.z * inv_r;
-      local[3 * i] += sx;
-      local[3 * i + 1] += sy;
-      local[3 * i + 2] += sz;
-      local[3 * bj.j] -= sx;
-      local[3 * bj.j + 1] -= sy;
-      local[3 * bj.j + 2] -= sz;
-      if (local_strain != nullptr) {
-        // dE/d(bj) is (dedr / r) bj, the gradient along the folded bond.
-        // The private buffer keeps this off the shared stress, which
-        // every bond would otherwise fight over.
-        accumulatePairStrain(local_strain, -dedr * inv_r, bj.x, bj.y, bj.z);
-      }
-      const double dedz = 0.5 * bj.fc * bj.f_a * db;
-      if (dedz == 0.0) {
-        continue;
-      }
-      for (int k = 0; k < m; ++k) {
-        if (k == a) {
-          continue;
-        }
-        const Bond &bk = nb[static_cast<std::size_t>(k)];
-        const Angle &slot = ang[static_cast<std::size_t>(a * m + k)];
-        const double cth = slot.cth;
-        const double g = slot.g;
-        const double dg = slot.dg;
-        const double inv_r1 = inv_r;
-        const double inv_r2 = 1.0 / bk.r;
-        const double inv = inv_r1 * inv_r2;
-        const double d_edcth = dedz * bk.fc * dg;
-        const double d_edr2 = dedz * bk.dfc * g;
-        const double g1x =
-            d_edcth * (bk.x * inv - cth * bj.x * inv_r1 * inv_r1);
-        const double g1y =
-            d_edcth * (bk.y * inv - cth * bj.y * inv_r1 * inv_r1);
-        const double g1z =
-            d_edcth * (bk.z * inv - cth * bj.z * inv_r1 * inv_r1);
-        const double g2x =
-            d_edr2 * bk.x * inv_r2 +
-            d_edcth * (bj.x * inv - cth * bk.x * inv_r2 * inv_r2);
-        const double g2y =
-            d_edr2 * bk.y * inv_r2 +
-            d_edcth * (bj.y * inv - cth * bk.y * inv_r2 * inv_r2);
-        const double g2z =
-            d_edr2 * bk.z * inv_r2 +
-            d_edcth * (bj.z * inv - cth * bk.z * inv_r2 * inv_r2);
-        local[3 * bj.j] -= scale * g1x;
-        local[3 * bj.j + 1] -= scale * g1y;
-        local[3 * bj.j + 2] -= scale * g1z;
-        local[3 * bk.j] -= scale * g2x;
-        local[3 * bk.j + 1] -= scale * g2y;
-        local[3 * bk.j + 2] -= scale * g2z;
-        local[3 * i] += scale * (g1x + g2x);
-        local[3 * i + 1] += scale * (g1y + g2y);
-        local[3 * i + 2] += scale * (g1z + g2z);
-        if (local_strain != nullptr) {
-          accumulateBondStrain(local_strain, bj.x, bj.y, bj.z, g1x, g1y, g1z);
-          accumulateBondStrain(local_strain, bk.x, bk.y, bk.z, g2x, g2y, g2z);
+        auto &e_steps = energy_of[static_cast<std::size_t>(i)];
+        auto &f_steps = force_of[static_cast<std::size_t>(i)];
+        auto &s_steps = strain_of[static_cast<std::size_t>(i)];
+        for (int a = 0; a < m; ++a) {
+          const Bond &bj = nb[static_cast<std::size_t>(a)];
+          double zeta = 0.0;
+          for (int k = 0; k < m; ++k) {
+            if (k == a) {
+              continue;
+            }
+            Angle &slot = ang[static_cast<std::size_t>(a * m + k)];
+            slot.cth = cosine(bj, nb[static_cast<std::size_t>(k)]);
+            angular(sp, slot.cth, slot.g, slot.dg);
+            zeta += nb[static_cast<std::size_t>(k)].fc * slot.g;
+          }
+          double bij = 0.0;
+          double db = 0.0;
+          bondOrder(sp, zeta, bij, db);
+          e_steps.push_back(0.5 * bj.fc * (bj.f_r + bij * bj.f_a));
+          const double dedr = 0.5 * (bj.dfc * (bj.f_r + bij * bj.f_a) +
+                                     bj.fc * (bj.df_r + bij * bj.df_a));
+          const double inv_r = 1.0 / bj.r;
+          const double sx = scale * dedr * bj.x * inv_r;
+          const double sy = scale * dedr * bj.y * inv_r;
+          const double sz = scale * dedr * bj.z * inv_r;
+          f_steps.push_back(Hit{i, sx, sy, sz});
+          f_steps.push_back(Hit{bj.j, -sx, -sy, -sz});
+          if (strain != nullptr) {
+            s_steps.push_back(StrainHit{0, -dedr * inv_r, bj.x, bj.y, bj.z, 0, 0});
+          }
+          const double dedz = 0.5 * bj.fc * bj.f_a * db;
+          if (dedz == 0.0) {
+            continue;
+          }
+          for (int k = 0; k < m; ++k) {
+            if (k == a) {
+              continue;
+            }
+            const Bond &bk = nb[static_cast<std::size_t>(k)];
+            const Angle &slot = ang[static_cast<std::size_t>(a * m + k)];
+            const double cth = slot.cth;
+            const double g = slot.g;
+            const double dg = slot.dg;
+            const double inv_r1 = inv_r;
+            const double inv_r2 = 1.0 / bk.r;
+            const double inv = inv_r1 * inv_r2;
+            const double d_edcth = dedz * bk.fc * dg;
+            const double d_edr2 = dedz * bk.dfc * g;
+            const double g1x = d_edcth * (bk.x * inv - cth * bj.x * inv_r1 * inv_r1);
+            const double g1y = d_edcth * (bk.y * inv - cth * bj.y * inv_r1 * inv_r1);
+            const double g1z = d_edcth * (bk.z * inv - cth * bj.z * inv_r1 * inv_r1);
+            const double g2x = d_edr2 * bk.x * inv_r2 + d_edcth * (bj.x * inv - cth * bk.x * inv_r2 * inv_r2);
+            const double g2y = d_edr2 * bk.y * inv_r2 + d_edcth * (bj.y * inv - cth * bk.y * inv_r2 * inv_r2);
+            const double g2z = d_edr2 * bk.z * inv_r2 + d_edcth * (bj.z * inv - cth * bk.z * inv_r2 * inv_r2);
+            f_steps.push_back(Hit{bj.j, -scale * g1x, -scale * g1y, -scale * g1z});
+            f_steps.push_back(Hit{bk.j, -scale * g2x, -scale * g2y, -scale * g2z});
+            f_steps.push_back(Hit{i, scale * (g1x + g2x), scale * (g1y + g2y), scale * (g1z + g2z)});
+            if (strain != nullptr) {
+              s_steps.push_back(StrainHit{1, bj.x, bj.y, bj.z, g1x, g1y, g1z});
+              s_steps.push_back(StrainHit{1, bk.x, bk.y, bk.z, g2x, g2y, g2z});
+            }
+          }
         }
       }
     }
-  }
-      energies[static_cast<std::size_t>(t)] = local_e;
-    }
-    for (int t = 0; t < nt; ++t) {
-      *energy += energies[static_cast<std::size_t>(t)];
-      const double *local = owned.data() + static_cast<std::size_t>(t) * n3;
-      for (std::size_t k = 0; k < n3; ++k) {
-        acc[k] += local[k];
+    for (int i = 0; i < n; ++i) {
+      for (double step : energy_of[static_cast<std::size_t>(i)]) {
+        *energy += step;
+      }
+      for (const Hit &hit : force_of[static_cast<std::size_t>(i)]) {
+        acc[3 * hit.atom] += hit.x;
+        acc[3 * hit.atom + 1] += hit.y;
+        acc[3 * hit.atom + 2] += hit.z;
       }
       if (strain != nullptr) {
-        for (int k = 0; k < 6; ++k) {
-          strain[k] += vir[static_cast<std::size_t>(t) * 6 + static_cast<std::size_t>(k)];
+        for (const StrainHit &hit : strain_of[static_cast<std::size_t>(i)]) {
+          if (hit.kind == 0) {
+            accumulatePairStrain(strain, hit.p0, hit.p1, hit.p2, hit.p3);
+          } else {
+            accumulateBondStrain(strain, hit.p0, hit.p1, hit.p2, hit.p3, hit.p4, hit.p5);
+          }
         }
       }
     }
   }
-
 }
 
 } // namespace rgpot

@@ -24,6 +24,7 @@
 
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
+#include "rgpot/nlist/OrderedWalk.hpp"
 #include "rgpot/stress.hpp"
 
 #if defined(_OPENMP)
@@ -184,23 +185,27 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     // geometry is not needed.
     nlist::visitHalf(neighbours_, 0, n_atoms, density);
   } else {
-    std::vector<double> partial(static_cast<std::size_t>(nt), 0.0);
-    // One shared tile. A visit from each thread would build it again.
-    neighbours_.forCellTeam(
-        false, nt, [&](int t, int32_t i, int32_t j, double, double, double, double r2) {
+    std::vector<nlist::HalfPart> parts;
+    nlist::gather_half(
+        neighbours_, nt, n_atoms, parts,
+        [&](std::int32_t, std::int32_t, double, double, double, double r2,
+            nlist::HalfTerm &term) {
           if (!(r2 > 0.0) || r2 > cutoff2) {
-            return;
+            return false;
           }
           double phi = 0.0;
           double rep = 0.0;
           pair_term(r2, phi, rep);
-          rho[static_cast<std::size_t>(i)] += phi;
-          if (j > i) {
-            partial[static_cast<std::size_t>(t)] += epsilon * rep;
-          }
+          term.e = epsilon * rep;
+          term.fscale = phi;
+          return true;
         });
-    for (double part : partial) {
-      epair += part;
+    for (const nlist::HalfPart &part : parts) {
+      for (const nlist::HalfTerm &term : part.terms) {
+        rho[static_cast<std::size_t>(term.i)] += term.fscale;
+        rho[static_cast<std::size_t>(term.j)] += term.fscale;
+        epair += term.e;
+      }
     }
   }
 
@@ -251,20 +256,33 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
                        apply(i, j, dx, dy, dz, r2, F, cfg.stress ? strain : nullptr, true);
                      });
   } else {
-    std::vector<double> vir(static_cast<std::size_t>(nt) * 6, 0.0);
-    // Each atom is central in one cell, so its force is written once.
-    neighbours_.forCellTeam(
-        false, nt, [&](int t, int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
-          double *virial = cfg.stress ? vir.data() + static_cast<std::size_t>(t) * 6 : nullptr;
-          apply(i, j, dx, dy, dz, r2, F, virial, false);
+    std::vector<nlist::HalfPart> parts;
+    nlist::gather_half(
+        neighbours_, nt, n_atoms, parts,
+        [&](std::int32_t i, std::int32_t j, double, double, double, double r2,
+            nlist::HalfTerm &term) {
+          if (!(r2 > 0.0) || r2 > cutoff2) {
+            return false;
+          }
+          const double inv_r2 = 1.0 / r2;
+          const double ar2 = (lattice * lattice) * inv_r2;
+          double phi = 0.0;
+          double rep = 0.0;
+          pow_ar_both(ar2, n_exp, m_exp, rep, phi);
+          const double wi = weight[static_cast<std::size_t>(i)];
+          const double wj = weight[static_cast<std::size_t>(j)];
+          term.e = 0;
+          term.fscale = (epsilon * static_cast<double>(n_exp) * rep -
+                         static_cast<double>(m_exp) * phi * (wi + wj)) *
+                        inv_r2;
+          return true;
         });
-    if (cfg.stress) {
-      for (int t = 0; t < nt; ++t) {
-        for (int k = 0; k < 6; ++k) {
-          strain[k] += vir[static_cast<std::size_t>(t) * 6 + static_cast<std::size_t>(k)];
-        }
+    double ignored = 0;
+    nlist::replay_half(parts, F, ignored, [&](const nlist::HalfTerm &term) {
+      if (cfg.stress) {
+        accumulatePairStrain(strain, term.fscale, term.dx, term.dy, term.dz);
       }
-    }
+    });
   }
 
   out->energy = epair + eemb;

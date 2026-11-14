@@ -348,159 +348,6 @@ void EAM::geometry(long i, long j, double &dx, double &dy, double &dz,
   r2 = dx * dx + dy * dy + dz * dz;
 }
 
-void EAM::evaluateStoredParallel(long N, const int *atomicNrs, double *F,
-                                  double *U) {
-  const int nt = threads_used_;
-  rho_.resize(static_cast<std::size_t>(N));
-  dF_.resize(static_cast<std::size_t>(N));
-  partial_f_.assign(static_cast<std::size_t>(3 * N), 0.0);
-  thread_energy_.assign(static_cast<std::size_t>(nt), 0.0);
-  ensureParts(N, nt);
-  const auto nslot = neighbours_.slots();
-  if (fscale_.size() != nslot) {
-    fscale_.assign(nslot, 0.0);
-    morse_.assign(nslot, 0.0);
-    gdx_.assign(nslot, 0.0);
-    gdy_.assign(nslot, 0.0);
-    gdz_.assign(nslot, 0.0);
-  }
-  const auto &off = neighbours_.offsets();
-  const auto &nbr = neighbours_.neighbours();
-#if defined(_OPENMP)
-#pragma omp parallel num_threads(nt)
-#endif
-  {
-#if defined(_OPENMP)
-    const int t = omp_get_thread_num();
-#else
-    const int t = 0;
-#endif
-    const long begin = static_cast<long>(parts_[static_cast<std::size_t>(t)].begin);
-    const long end = static_cast<long>(parts_[static_cast<std::size_t>(t)].end);
-    for (long i = begin; i < end; ++i) {
-      const element_parameters epar = get_element_parameters(atomicNrs[i]);
-      const double cutoff2 = epar.r_cut * epar.r_cut;
-      double dens = 0.0;
-      double fx = 0.0;
-      double fy = 0.0;
-      double fz = 0.0;
-      double energy = 0.0;
-      const auto lo = off[static_cast<std::size_t>(i)];
-      const auto hi = off[static_cast<std::size_t>(i) + 1];
-      for (std::int32_t p = lo; p < hi; ++p) {
-        const auto s = static_cast<std::size_t>(p);
-        const long j = nbr[s];
-        double dx = 0.0;
-        double dy = 0.0;
-        double dz = 0.0;
-        double r2 = 0.0;
-        geometry(i, j, dx, dy, dz, r2);
-        gdx_[s] = dx;
-        gdy_[s] = dy;
-        gdz_[s] = dz;
-        if (!(r2 > 0.0)) {
-          fscale_[s] = 0.0;
-          morse_[s] = 0.0;
-          continue;
-        }
-        const double r = std::sqrt(r2);
-        const double invR = 1.0 / r;
-        if (r2 <= cutoff2) {
-          const double r6 = r2 * r2 * r2;
-          const double exp_b1 = std::exp(-epar.beta1 * r);
-          const double exp_b2 = std::exp(-2.0 * epar.beta2 * r);
-          const double rho_pair = exp_b1 + 512.0 * exp_b2;
-          dens += r6 * rho_pair;
-          const double r5 = r2 * r2 * r;
-          const double mag =
-              6.0 * r5 * rho_pair +
-              r6 * (-epar.beta1 * exp_b1 - 1024.0 * epar.beta2 * exp_b2);
-          fscale_[s] = -mag * invR;
-          if (j > i) {
-            const double expArg = std::exp(-epar.alphaM * (r - epar.Rm));
-            const double d = 1.0 - expArg;
-            energy += epar.Dm * d * d - epar.Dm;
-            const double fcomp =
-                2.0 * epar.alphaM * epar.Dm * d * (d - 1.0) * invR;
-            morse_[s] = fcomp;
-            fx += fcomp * dx;
-            fy += fcomp * dy;
-            fz += fcomp * dz;
-          } else {
-            morse_[s] = 0.0;
-          }
-        } else {
-          fscale_[s] = 0.0;
-          morse_[s] = 0.0;
-        }
-      }
-      const double dFi = embedding_force(epar.func_coeff, dens);
-      rho_[static_cast<std::size_t>(i)] = dens;
-      dF_[static_cast<std::size_t>(i)] = dFi;
-      for (std::int32_t p = lo; p < hi; ++p) {
-        const auto s = static_cast<std::size_t>(p);
-        const double fscale = fscale_[s];
-        if (fscale == 0.0) {
-          continue;
-        }
-        fx -= dFi * fscale * gdx_[s];
-        fy -= dFi * fscale * gdy_[s];
-        fz -= dFi * fscale * gdz_[s];
-      }
-      energy += embedding_function(epar.func_coeff, dens);
-      partial_f_[static_cast<std::size_t>(3 * i)] = fx;
-      partial_f_[static_cast<std::size_t>(3 * i + 1)] = fy;
-      partial_f_[static_cast<std::size_t>(3 * i + 2)] = fz;
-      thread_energy_[static_cast<std::size_t>(t)] += energy;
-    }
-#if defined(_OPENMP)
-#pragma omp barrier
-#endif
-    for (long i = begin; i < end; ++i) {
-      double fx = partial_f_[static_cast<std::size_t>(3 * i)];
-      double fy = partial_f_[static_cast<std::size_t>(3 * i + 1)];
-      double fz = partial_f_[static_cast<std::size_t>(3 * i + 2)];
-      const auto lo = off[static_cast<std::size_t>(i)];
-      const auto hi = off[static_cast<std::size_t>(i) + 1];
-      for (std::int32_t p = lo; p < hi; ++p) {
-        const auto s = static_cast<std::size_t>(p);
-        const long j = nbr[s];
-        const auto rev_slot = rev_[s];
-        const double fnei =
-            rev_slot >= 0 ? fscale_[static_cast<std::size_t>(rev_slot)] : 0.0;
-        const double fcomp =
-            (rev_slot >= 0 && j < i)
-                ? morse_[static_cast<std::size_t>(rev_slot)]
-                : 0.0;
-        if (fnei == 0.0 && fcomp == 0.0) {
-          continue;
-        }
-        // fcomp is (d phi/dr) with a minus already in mag_force. The
-        // neighbour's pair force is +fcomp * dx, while the embedding
-        // term stays -dF * fnei * dx.
-        const double scale = dF_[static_cast<std::size_t>(j)] * fnei - fcomp;
-        const double dx = gdx_[s];
-        fx -= scale * dx;
-        fy -= scale * gdy_[s];
-        fz -= scale * gdz_[s];
-      }
-      partial_f_[static_cast<std::size_t>(3 * i)] = fx;
-      partial_f_[static_cast<std::size_t>(3 * i + 1)] = fy;
-      partial_f_[static_cast<std::size_t>(3 * i + 2)] = fz;
-    }
-  }
-  for (long i = 0; i < N; ++i) {
-    F[3 * i] = partial_f_[static_cast<std::size_t>(3 * i)];
-    F[3 * i + 1] = partial_f_[static_cast<std::size_t>(3 * i + 1)];
-    F[3 * i + 2] = partial_f_[static_cast<std::size_t>(3 * i + 2)];
-  }
-  double energy = 0.0;
-  for (int t = 0; t < nt; ++t) {
-    energy += thread_energy_[static_cast<std::size_t>(t)];
-  }
-  *U = energy;
-}
-
 const rgpot::eam::ElementSpline &EAM::splineFor(int Z) {
   static std::vector<rgpot::eam::ElementSpline> tables;
   if (tables.capacity() < 8) {
@@ -547,126 +394,136 @@ void EAM::evaluateDensityStream(long N, const int *atomicNrs, double *F,
       break;
     }
   }
-  const auto rows = static_cast<std::size_t>(nt) * static_cast<std::size_t>(N);
-  stream_rho_.assign(rows, 0.0);
-  std::vector<double> pair_energy(static_cast<std::size_t>(nt), 0.0);
-  auto density_row = [&](int t) {
-    return stream_rho_.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(N);
-  };
   rho_.assign(static_cast<std::size_t>(N), 0.0);
   dF_.resize(static_cast<std::size_t>(N));
-  stream_force_.assign(rows * 3, 0.0);
-  double embedded = 0.0;
-  auto absorb = [&](int thread) {
-    if (thread != 0) {
+  struct DTerm {
+    std::int32_t i;
+    std::int32_t j;
+    double rho_i;
+    double rho_j;
+    double epair;
+  };
+  struct FTerm {
+    std::int32_t i;
+    std::int32_t j;
+    double scale;
+    double dx;
+    double dy;
+    double dz;
+  };
+  std::vector<std::vector<DTerm>> density_parts(static_cast<std::size_t>(nt));
+  double epair = 0.0;
+  auto density_of = [&](int t, std::int32_t i, std::int32_t j, double, double, double, double r2) {
+    if (!(r2 > 0.0)) {
       return;
     }
-    for (long i = 0; i < N; ++i) {
-      double dens = 0.0;
-      for (int t = 0; t < nt; ++t) {
-        dens += stream_rho_[static_cast<std::size_t>(t) * static_cast<std::size_t>(N) +
-                            static_cast<std::size_t>(i)];
+    DTerm term{i, j, 0, 0, 0};
+    if (uniform && only != nullptr) {
+      if (r2 > only->cutoff2) {
+        return;
       }
-      rho_[static_cast<std::size_t>(i)] = dens;
-      const auto *s = kind[static_cast<std::size_t>(i)];
-      dF_[static_cast<std::size_t>(i)] = embedding_force(s->embed, dens);
-      embedded += embedding_function(s->embed, dens);
+      const double r = std::sqrt(r2);
+      const double rho = only->density(r);
+      term.rho_i = rho;
+      term.rho_j = rho;
+      term.epair = only->pairEnergy(r);
+    } else {
+      const auto *si = kind[static_cast<std::size_t>(i)];
+      const auto *sj = kind[static_cast<std::size_t>(j)];
+      const double r = std::sqrt(r2);
+      if (r2 <= si->cutoff2) {
+        term.rho_i = si->density(r);
+        term.epair = si->pairEnergy(r);
+      }
+      if (r2 <= sj->cutoff2) {
+        term.rho_j = sj->density(r);
+      }
     }
-  };
-  auto force_row = [&](int t) {
-    return stream_force_.data() +
-           static_cast<std::size_t>(t) * static_cast<std::size_t>(N) * 3;
-  };
-  auto add_pair = [&](double *row, std::int32_t i, std::int32_t j, double scale, double dx,
-                      double dy, double dz) {
-    row[3 * i] += scale * dx;
-    row[3 * i + 1] += scale * dy;
-    row[3 * i + 2] += scale * dz;
-    row[3 * j] -= scale * dx;
-    row[3 * j + 1] -= scale * dy;
-    row[3 * j + 2] -= scale * dz;
-  };
-  auto density_of = [&](int t, std::int32_t i, std::int32_t j, double, double, double, double r2) {
-        if (!(r2 > 0.0)) {
-          return;
-        }
-        if (uniform && only != nullptr) {
-          if (r2 > only->cutoff2) {
-            return;
-          }
-          const double r = std::sqrt(r2);
-          const double rho = only->density(r);
-          double *row = density_row(t);
-          row[i] += rho;
-          row[j] += rho;
-          pair_energy[static_cast<std::size_t>(t)] += only->pairEnergy(r);
-          return;
-        }
-        const auto *si = kind[static_cast<std::size_t>(i)];
-        const auto *sj = kind[static_cast<std::size_t>(j)];
-        const double r = std::sqrt(r2);
-        double *row = density_row(t);
-        // j > i on a half walk, so the pair term belongs to i.
-        if (r2 <= si->cutoff2) {
-          row[i] += si->density(r);
-          pair_energy[static_cast<std::size_t>(t)] += si->pairEnergy(r);
-        }
-        if (r2 <= sj->cutoff2) {
-          row[j] += sj->density(r);
-        }
-  };
-  auto force_of = [&](int t, std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                      double r2) {
-        if (!(r2 > 0.0)) {
-          return;
-        }
-        const double r = std::sqrt(r2);
-        double scale = 0.0;
-        if (uniform && only != nullptr) {
-          if (r2 > only->cutoff2) {
-            return;
-          }
-          const double fs = only->densityForce(r);
-          scale = only->pairForce(r) -
-                  (dF_[static_cast<std::size_t>(i)] + dF_[static_cast<std::size_t>(j)]) * fs;
-        } else {
-          const auto *si = kind[static_cast<std::size_t>(i)];
-          const auto *sj = kind[static_cast<std::size_t>(j)];
-          if (r2 <= si->cutoff2) {
-            scale += si->pairForce(r);
-            scale -= dF_[static_cast<std::size_t>(i)] * si->densityForce(r);
-          }
-          if (r2 <= sj->cutoff2) {
-            scale -= dF_[static_cast<std::size_t>(j)] * sj->densityForce(r);
-          }
-        }
-        if (scale != 0.0) {
-          add_pair(force_row(t), i, j, scale, dx, dy, dz);
-        }
+    if (nt == 1) {
+      rho_[static_cast<std::size_t>(term.i)] += term.rho_i;
+      rho_[static_cast<std::size_t>(term.j)] += term.rho_j;
+      epair += term.epair;
+    } else {
+      density_parts[static_cast<std::size_t>(t)].push_back(term);
+    }
   };
   neighbours_.forCellTeam(true, nt, density_of);
-  absorb(0);
-  neighbours_.forCellTeam(true, nt, force_of);
-  for (long i = 0; i < N; ++i) {
-    double fx = 0.0;
-    double fy = 0.0;
-    double fz = 0.0;
-    for (int t = 0; t < nt; ++t) {
-      const double *row = stream_force_.data() +
-                          static_cast<std::size_t>(t) * static_cast<std::size_t>(N) * 3;
-      fx += row[3 * i];
-      fy += row[3 * i + 1];
-      fz += row[3 * i + 2];
+  for (const auto &part : density_parts) {
+    for (const DTerm &term : part) {
+      rho_[static_cast<std::size_t>(term.i)] += term.rho_i;
+      rho_[static_cast<std::size_t>(term.j)] += term.rho_j;
+      epair += term.epair;
     }
-    F[3 * i] = fx;
-    F[3 * i + 1] = fy;
-    F[3 * i + 2] = fz;
   }
-  double energy = embedded;
-  for (double part : pair_energy) {
-    energy += part;
+  double embedded = 0.0;
+  for (long i = 0; i < N; ++i) {
+    const auto *s = kind[static_cast<std::size_t>(i)];
+    const double dens = rho_[static_cast<std::size_t>(i)];
+    dF_[static_cast<std::size_t>(i)] = embedding_force(s->embed, dens);
+    embedded += embedding_function(s->embed, dens);
   }
-  *U = energy;
+  std::vector<std::vector<FTerm>> force_parts(static_cast<std::size_t>(nt));
+  auto force_of = [&](int t, std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                      double r2) {
+    if (!(r2 > 0.0)) {
+      return;
+    }
+    const double r = std::sqrt(r2);
+    double scale = 0.0;
+    if (uniform && only != nullptr) {
+      if (r2 > only->cutoff2) {
+        return;
+      }
+      const double fs = only->densityForce(r);
+      scale = only->pairForce(r) -
+              (dF_[static_cast<std::size_t>(i)] + dF_[static_cast<std::size_t>(j)]) * fs;
+    } else {
+      const auto *si = kind[static_cast<std::size_t>(i)];
+      const auto *sj = kind[static_cast<std::size_t>(j)];
+      if (r2 <= si->cutoff2) {
+        scale += si->pairForce(r);
+        scale -= dF_[static_cast<std::size_t>(i)] * si->densityForce(r);
+      }
+      if (r2 <= sj->cutoff2) {
+        scale -= dF_[static_cast<std::size_t>(j)] * sj->densityForce(r);
+      }
+    }
+    if (scale != 0.0) {
+      if (nt == 1) {
+        const double fx = scale * dx;
+        const double fy = scale * dy;
+        const double fz = scale * dz;
+        F[3 * i] += fx;
+        F[3 * i + 1] += fy;
+        F[3 * i + 2] += fz;
+        F[3 * j] -= fx;
+        F[3 * j + 1] -= fy;
+        F[3 * j + 2] -= fz;
+      } else {
+        force_parts[static_cast<std::size_t>(t)].push_back(FTerm{i, j, scale, dx, dy, dz});
+      }
+    }
+  };
+  neighbours_.forCellTeam(true, nt, force_of);
+  if (nt > 1) {
+    for (long i = 0; i < 3 * N; ++i) {
+      F[i] = 0.0;
+    }
+  }
+  for (const auto &part : force_parts) {
+    for (const FTerm &term : part) {
+      const double fx = term.scale * term.dx;
+      const double fy = term.scale * term.dy;
+      const double fz = term.scale * term.dz;
+      F[3 * term.i] += fx;
+      F[3 * term.i + 1] += fy;
+      F[3 * term.i + 2] += fz;
+      F[3 * term.j] -= fx;
+      F[3 * term.j + 1] -= fy;
+      F[3 * term.j + 2] -= fz;
+    }
+  }
+  *U = embedded + epair;
 }
 
 void EAM::evaluate(long N, const int *atomicNrs, double *F, double *U) {
@@ -676,24 +533,23 @@ void EAM::evaluate(long N, const int *atomicNrs, double *F, double *U) {
     evaluateDensityStream(N, atomicNrs, F, U);
     return;
   }
-  if (nt == 1) {
-    const auto nslot = neighbours_.slots();
-    if (reuse_ok_.size() != nslot) {
-      reuse_r2_.assign(nslot, 0.0);
-      reuse_rho_.assign(nslot, 0.0);
-      reuse_fs_.assign(nslot, 0.0);
-      reuse_ok_.assign(nslot, 0);
-    } else {
-      std::fill(reuse_ok_.begin(), reuse_ok_.end(), 0);
-    }
-    double energy = 0.0;
-    for (long i = 0; i < N; ++i) {
-      accumulate(i, atomicNrs, F, energy, deltas_, nullptr, 0);
-    }
-    *U = energy;
-    return;
+  const auto nslot = neighbours_.slots();
+  if (reuse_ok_.size() != nslot) {
+    reuse_r2_.assign(nslot, 0.0);
+    reuse_rho_.assign(nslot, 0.0);
+    reuse_fs_.assign(nslot, 0.0);
+    reuse_ok_.assign(nslot, 0);
+  } else {
+    std::fill(reuse_ok_.begin(), reuse_ok_.end(), 0);
   }
-  evaluateStoredParallel(N, atomicNrs, F, U);
+  // Several threads parenthesize the pair sum differently, and a parallel
+  // prefill of the exponentials is slower than this walk because the walk
+  // still evaluates the pair term. One thread keeps the serial order.
+  double energy = 0.0;
+  for (long i = 0; i < N; ++i) {
+    accumulate(i, atomicNrs, F, energy, deltas_, nullptr, 0);
+  }
+  *U = energy;
 }
 void EAM::force(long N, const double *R, const int *atomicNrs, double *F,
                 double *U, double *variance, const double *fullbox) {

@@ -21,6 +21,7 @@
 
 #include "rgpot/ZBL/ZBLPot.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
+#include "rgpot/nlist/OrderedWalk.hpp"
 #include "rgpot/stress.hpp"
 
 #if defined(_OPENMP)
@@ -260,29 +261,32 @@ void ZBLPot::forceImpl(const ForceInput &in, ForceOut *out) const {
                      [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
                          double r2) { accept(i, j, dx, dy, dz, r2, F, energy, strain); });
   } else {
-    std::vector<double> owned(static_cast<std::size_t>(nt) * static_cast<std::size_t>(N) * 3,
-                              0.0);
-    std::vector<double> partial(static_cast<std::size_t>(nt), 0.0);
-    std::vector<double> virial(static_cast<std::size_t>(nt) * 6, 0.0);
-    neighbours_.forCellTeam(
-        true, nt, [&](int t, std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                      double r2) {
-          double *local =
-              owned.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(N) * 3;
-          double *st = virial.data() + static_cast<std::size_t>(t) * 6;
-          accept(i, j, dx, dy, dz, r2, local, partial[static_cast<std::size_t>(t)], st);
+    std::vector<nlist::HalfPart> parts;
+    nlist::gather_half(
+        neighbours_, nt, N, parts,
+        [&](std::int32_t i, std::int32_t j, double, double, double, double r2,
+            nlist::HalfTerm &term) {
+          if (!(i < j) || !(r2 > 0.0) || r2 > cutoff2) {
+            return false;
+          }
+          const auto ti = static_cast<std::size_t>(types[i]);
+          const auto tj = static_cast<std::size_t>(types[j]);
+          const ZblPairCoeffs &coeff = coeffs[ti * nTypes + tj];
+          const double r = std::sqrt(r2);
+          double energy_pair = e_zbl(coeff, r) + coeff.sw5;
+          double dEdr = dzbldr(coeff, r);
+          if (r2 > rInnerSq) {
+            const double t = r - rInner;
+            energy_pair += t * t * t * (coeff.sw3 + coeff.sw4 * t);
+            dEdr += t * t * (coeff.sw1 + coeff.sw2 * t);
+          }
+          term.e = energy_pair;
+          term.fscale = -dEdr / r;
+          return true;
         });
-    for (int t = 0; t < nt; ++t) {
-      energy += partial[static_cast<std::size_t>(t)];
-      const double *local =
-          owned.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(N) * 3;
-      for (long k = 0; k < 3 * N; ++k) {
-        F[k] += local[k];
-      }
-      for (int c = 0; c < 6; ++c) {
-        strain[c] += virial[static_cast<std::size_t>(t) * 6 + static_cast<std::size_t>(c)];
-      }
-    }
+    nlist::replay_half(parts, F, energy, [&](const nlist::HalfTerm &term) {
+      accumulatePairStrain(strain, term.fscale, term.dx, term.dy, term.dz);
+    });
   }
   *U = energy;
   publishCauchyStress(out, strain, volume);

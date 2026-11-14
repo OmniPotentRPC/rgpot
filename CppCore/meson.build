@@ -800,6 +800,12 @@ if get_option('with_tests')
                 '',
             ],
             [
+                'ThreadBitsTest',
+                'thread_bits_test',
+                'ThreadBitsTest.cc',
+                '',
+            ],
+            [
                 'ManyBodyForceTest',
                 'many_body_force_test',
                 'ManyBodyForceTest.cc',
@@ -1894,6 +1900,7 @@ if get_option('with_tests')
             'FastNlistTest.cc',
             'ReducedPairTest.cc',
             'EAMCellVerletTest.cc',
+            'ThreadBitsTest.cc',
             'StreamParityTest.cc',
             'NeighbourLayerTest.cc',
             'TersoffSiCTest.cc',
