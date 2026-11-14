@@ -1712,6 +1712,14 @@ void GrowableNeighborList::reset() {
     this->neighbors.shifts = shifts;
     this->neighbors.distances = distances;
     this->neighbors.vectors = vectors;
+
+    // eOn local patch (upstream candidate): a list that never stored a pair
+    // has no pairs array, and malloc(0) may return NULL for the others.
+    // Keep one slot in every requested array, so a list of length zero
+    // never hands out a NULL pointer.
+    if (this->capacity == 0) {
+        this->grow(1);
+    }
 }
 
 void GrowableNeighborList::sort() {
