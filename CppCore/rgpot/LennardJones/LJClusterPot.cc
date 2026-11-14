@@ -33,7 +33,6 @@ namespace {
 struct ClusterScratch {
   std::vector<double> terms;
   std::vector<int> slot;
-  std::vector<int> kept;
   std::vector<int> counts;
 };
 
@@ -46,7 +45,6 @@ struct ClusterScratch {
   thread_local ClusterScratch scratch;
   auto &slot = scratch.slot;
   auto &terms = scratch.terms;
-  auto &kept = scratch.kept;
   auto &counts = scratch.counts;
   slot.assign(static_cast<std::size_t>(N) + 1, 0);
   if (static_cast<std::int64_t>(counts.size()) < N) {
@@ -81,7 +79,6 @@ struct ClusterScratch {
   if (static_cast<int>(terms.size()) < nterm_all) {
     terms.resize(static_cast<std::size_t>(nterm_all));
   }
-  kept.assign(static_cast<std::size_t>(N), 0);
   auto eval = [&](double r2, double &pair_e, double &fscale) {
     const double inv_r2 = 1.0 / r2;
     const double sr2 = params.psi2 * inv_r2;
@@ -117,39 +114,51 @@ struct ClusterScratch {
     const auto range = nlist::partition(N, thread, nt);
     for (std::int64_t i = range.begin; i < range.end; ++i) {
       double *write = terms.data() + slot[static_cast<std::size_t>(i)];
-      int nterm = 0;
+      int ord = 0;
       double fx = 0.0;
       double fy = 0.0;
       double fz = 0.0;
       cells.forDirected(i, i + 1, [&](std::int32_t, std::int32_t j, double dx, double dy, double dz,
                                       double r2) {
+        // Each j > i neighbour owns one slot in the counted prefix. A pair
+        // outside the cutoff keeps a zero so the sum is one left fold.
+        if (j <= i) {
+          if (!(r2 > 0.0) || r2 > cutoff2) {
+            return;
+          }
+          double pair_e = 0.0;
+          double fscale = 0.0;
+          eval(r2, pair_e, fscale);
+          fx += fscale * dx;
+          fy += fscale * dy;
+          fz += fscale * dz;
+          return;
+        }
         if (!(r2 > 0.0) || r2 > cutoff2) {
+          write[ord] = 0.0;
+          ++ord;
           return;
         }
         double pair_e = 0.0;
         double fscale = 0.0;
         eval(r2, pair_e, fscale);
-        if (i < j) {
-          write[nterm] = pair_e;
-          ++nterm;
-        }
+        write[ord] = pair_e;
+        ++ord;
         fx += fscale * dx;
         fy += fscale * dy;
         fz += fscale * dz;
       });
-      kept[static_cast<std::size_t>(i)] = nterm;
       F[3 * i] = fx;
       F[3 * i + 1] = fy;
       F[3 * i + 2] = fz;
     }
   }
-  for (std::int64_t i = 0; i < N; ++i) {
-    const double *term = terms.data() + slot[static_cast<std::size_t>(i)];
-    const int nterm = kept[static_cast<std::size_t>(i)];
-    for (int k = 0; k < nterm; ++k) {
-      *U += term[k];
-    }
+  double total = 0.0;
+  const double *term = terms.data();
+  for (int k = 0; k < nterm_all; ++k) {
+    total += term[k];
   }
+  *U += total;
 }
 
 } // namespace
