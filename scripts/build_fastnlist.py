@@ -13,6 +13,11 @@ libraries from ``rustc --print native-static-libs``, one token per line,
 so meson can pass them as link arguments. ``--copy`` rebuilds that
 archive and copies it to the meson output.
 
+``--target TRIPLE --linker CC`` before the mode builds for that Rust
+target and sets ``CARGO_TARGET_<TRIPLE>_LINKER`` to the C++ compiler
+meson uses, so a MinGW build neither depends on ``CARGO_BUILD_TARGET``
+in the environment nor links with the build machine's ``cc``.
+
 On Darwin the cargo subprocess uses ``/usr/bin/ar`` and
 ``/usr/bin/ranlib``. Pixi exports ``AR`` as the conda archiver
 (``arm64-apple-darwin20.0.0-ar``), rustc honours that variable when it
@@ -66,6 +71,12 @@ def artifact_name(output: str) -> str:
 
 
 def find_artifact(target_dir: str, name: str) -> str:
+    if TARGET:
+        # Not release/: that holds a build for the build machine, if any.
+        built = os.path.join(target_dir, TARGET, "release", name)
+        if os.path.isfile(built):
+            return built
+        sys.exit(f"rgpot_fastnlist did not produce {built}")
     release = os.path.join(target_dir, "release", name)
     if os.path.isfile(release):
         return release
@@ -90,8 +101,12 @@ def native_libs(text: str) -> list[str]:
     return found
 
 
+TARGET = ""
+LINKER = ""
+
+
 def cargo_cmd(cargo: str, sub: str, manifest: str, target_dir: str) -> list[str]:
-    return cargo_argv(cargo) + [
+    cmd = cargo_argv(cargo) + [
         sub,
         "--release",
         "--manifest-path",
@@ -100,23 +115,32 @@ def cargo_cmd(cargo: str, sub: str, manifest: str, target_dir: str) -> list[str]
         target_dir,
         "--locked",
     ]
+    if TARGET:
+        cmd += ["--target", TARGET]
+    return cmd
 
 
 def cargo_env() -> dict[str, str] | None:
     """Environment for the cargo subprocess.
 
-    ``None`` inherits the parent environment. Darwin overrides only the
-    archiver rustc uses for this staticlib.
+    ``None`` inherits the parent environment. A ``--target`` build sets
+    that target's linker. Darwin overrides only the archiver rustc uses
+    for this staticlib.
     """
+    env = None
+    if TARGET:
+        env = os.environ.copy()
+        key = "CARGO_TARGET_" + TARGET.upper().replace("-", "_") + "_LINKER"
+        env[key] = LINKER
     if sys.platform != "darwin":
-        return None
+        return env
     ar = "/usr/bin/ar"
     ranlib = "/usr/bin/ranlib"
     if not (os.path.isfile(ar) and os.access(ar, os.X_OK)):
-        return None
+        return env
     if not (os.path.isfile(ranlib) and os.access(ranlib, os.X_OK)):
-        return None
-    env = os.environ.copy()
+        return env
+    env = env if env is not None else os.environ.copy()
     env["AR"] = ar
     env["RANLIB"] = ranlib
     return env
@@ -184,9 +208,9 @@ def copy_archive(cargo: str, manifest: str, target_dir: str, lib_out: str) -> No
         sys.exit(proc.returncode)
     # The meson output is a relocatable object when the umbrella is a
     # static library. Cargo still writes the archive under target_dir.
-    cargo_name = "rgpot_fastnlist.lib" if sys.platform == "win32" else "librgpot_fastnlist.a"
-    if lib_out.lower().endswith(".lib"):
-        cargo_name = "rgpot_fastnlist.lib"
+    # The output name follows the compiler, not the Python: MSYS2's MinGW
+    # Python reports win32 while cargo writes the GNU archive.
+    cargo_name = artifact_name(lib_out)
     built = find_artifact(target_dir, cargo_name)
     if lib_out.endswith(".o"):
         relocatable_object(built, lib_out)
@@ -195,19 +219,24 @@ def copy_archive(cargo: str, manifest: str, target_dir: str, lib_out: str) -> No
 
 
 def main() -> None:
-    mode = sys.argv[1]
+    global TARGET, LINKER
+    argv = sys.argv[1:]
+    if argv[:1] == ["--target"] and argv[2:3] == ["--linker"]:
+        TARGET, LINKER = argv[1], argv[3]
+        argv = argv[4:]
+    mode = argv[0] if argv else ""
     if mode == "--native-libs":
-        cargo, manifest, target_dir = sys.argv[2:5]
+        cargo, manifest, target_dir = argv[1:4]
         for lib in print_native_libs(cargo, manifest, target_dir):
             print(lib)
         return
     if mode == "--copy":
-        cargo, manifest, target_dir, lib_out = sys.argv[2:6]
+        cargo, manifest, target_dir, lib_out = argv[1:5]
         copy_archive(cargo, manifest, target_dir, lib_out)
         return
     sys.exit(
-        "usage: build_fastnlist.py --native-libs|--copy cargo manifest "
-        "target_dir [lib_out]"
+        "usage: build_fastnlist.py [--target TRIPLE --linker CC] "
+        "--native-libs|--copy cargo manifest target_dir [lib_out]"
     )
 
 

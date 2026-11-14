@@ -1993,6 +1993,13 @@ if get_option('with_tests')
     endif
     _rustc = find_program('rustc', required: false)
     if _rustc.found()
+        _nlist_rust_env = {}
+        if rust_target != ''
+            _nlist_rust_env = {
+                'RGPOT_RUST_TARGET': rust_target,
+                'CXX': rust_linker,
+            }
+        endif
         test(
             'nlist_rust',
             find_program('sh'),
@@ -2000,7 +2007,8 @@ if get_option('with_tests')
                 meson.current_source_dir() / 'examples' / 'nlist_rust_test.sh',
                 meson.project_source_root(),
                 meson.current_build_dir(),
-            ],
+            ] + exe_wrapper_args,
+            env: _nlist_rust_env,
             depends: _nlist_link,
         )
     endif
