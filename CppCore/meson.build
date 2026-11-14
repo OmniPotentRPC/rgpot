@@ -27,6 +27,12 @@ if _fs.read('rgpot/rpc/Potentials.capnp').contains('buildVersion')
 endif
 _args += _build_identity_args
 
+# The neighbour builder's partner-order index is part of the class only
+# when this option is on. Every C++ file has to see that same layout.
+if get_option('with_eam_al_openmp')
+    _args += ['-DRGPOT_EAM_AL_OPENMP']
+endif
+
 if get_option('with_cache') and not get_option('with_rpc_client_only')
     _deps += dependency('rocksdb')
     _deps += subproject('xxhash', default_options: ['cli=false']).get_variable(
