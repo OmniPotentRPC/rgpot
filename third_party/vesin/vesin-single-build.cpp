@@ -990,8 +990,11 @@ void vesin::cpu::brute_force_neighbors(
     // dominates dense O(n^2) fills.
     auto emit = [&](size_t first, size_t second, CellShift shift, Vector vector, double distance2) {
         auto index = neighbors.length();
-        while (index + (full ? 2 : 1) > neighbors.capacity) {
-            neighbors.grow();
+        // grow() with no size doubles the length, and an empty list grows
+        // to one slot: too few for the two directions of a full list.
+        auto needed = index + (full ? 2 : 1);
+        if (needed > neighbors.capacity) {
+            neighbors.grow(std::max(needed, 2 * neighbors.capacity));
         }
         auto& nb = neighbors.neighbors;
         nb.pairs[index][0] = first;
