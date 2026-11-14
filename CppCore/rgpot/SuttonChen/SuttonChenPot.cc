@@ -115,6 +115,8 @@ SuttonChenPot::SuttonChenPot(const SuttonChenConfig &c)
   m_paramsKey = fp.h;
 }
 
+int suttonChenThreads(int asked, long n_atoms, long pairs, bool listed);
+
 void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const auto n_atoms = static_cast<long>(in.nAtoms);
   const double *R = in.pos;
@@ -163,28 +165,29 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   nlist::updateCells(neighbours_, R, n_size, box_use, cutoff, skin, nlist::Image::Round,
                      mode_, periodic);
   int nt = nlist::threadsRequested();
-  // Two threads lose to the serial walk except on a large sparse list.
-  // Eight threads lose on a short list and on a sparse list below 1024.
-  // slots()/2 counts the stored half, skin included.
+  // slots()/2 counts the stored half, skin included. Two threads lose to
+  // the serial walk except on a large sparse list. Four and eight threads
+  // lose once that half is dense enough for the gather buffer to dominate,
+  // and on a short list.
   const bool listed = !neighbours_.streaming() &&
                       neighbours_.offsets().size() == static_cast<std::size_t>(n_atoms) + 1;
   const long pairs = listed ? static_cast<long>(neighbours_.slots() / 2) : 0;
-  if (nt > 1 && nt < 4) {
-    if (!listed || n_atoms < 4096 || pairs >= 50000) {
-      nt = 1;
+  nt = suttonChenThreads(nt, n_atoms, pairs, listed);
+  if (nt > 1) {
+    double energy = 0.0;
+    gatherWide(n_atoms, F, cfg.stress ? strain : nullptr, cutoff2, epsilon, c_coef, lattice,
+               n_exp, m_exp, nt, energy);
+    out->energy = energy;
+    if (cfg.stress) {
+      publishCauchyStress(out, strain, cellVolume(in.box));
     }
-  } else if (nt >= 8) {
-    if (n_atoms <= 128 || (listed && n_atoms < 1024 && pairs < 6000)) {
-      nt = 1;
-    }
-  } else if (n_atoms <= 128) {
-    nt = 1;
+    return;
   }
   auto pair_term = [&](double r2, double &phi, double &rep) {
     const double ar2 = (lattice * lattice) / r2;
     pow_ar_both(ar2, n_exp, m_exp, rep, phi);
   };
-  if (nt == 1) {
+  {
     auto density = [&](int32_t i, int32_t j, double, double, double, double r2) {
       if (!(r2 > 0.0) || r2 > cutoff2) {
         return;
@@ -201,29 +204,6 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     // density of both atoms is updated here, so the directed walk's extra
     // geometry is not needed.
     nlist::visitHalf(neighbours_, 0, n_atoms, density);
-  } else {
-    std::vector<nlist::HalfPart> parts;
-    nlist::gather_half(
-        neighbours_, nt, n_atoms, parts,
-        [&](std::int32_t, std::int32_t, double, double, double, double r2,
-            nlist::HalfTerm &term) {
-          if (!(r2 > 0.0) || r2 > cutoff2) {
-            return false;
-          }
-          double phi = 0.0;
-          double rep = 0.0;
-          pair_term(r2, phi, rep);
-          term.e = epsilon * rep;
-          term.fscale = phi;
-          return true;
-        });
-    for (const nlist::HalfPart &part : parts) {
-      for (const nlist::HalfTerm &term : part.terms) {
-        rho[static_cast<std::size_t>(term.i)] += term.fscale;
-        rho[static_cast<std::size_t>(term.j)] += term.fscale;
-        epair += term.e;
-      }
-    }
   }
 
   std::vector<double> weight(n_size, 0.0);
@@ -267,40 +247,10 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       accumulatePairStrain(virial, fscale, dx, dy, dz);
     }
   };
-  if (nt == 1) {
-    nlist::visitHalf(neighbours_, 0, n_atoms,
-                     [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
-                       apply(i, j, dx, dy, dz, r2, F, cfg.stress ? strain : nullptr, true);
-                     });
-  } else {
-    std::vector<nlist::HalfPart> parts;
-    nlist::gather_half(
-        neighbours_, nt, n_atoms, parts,
-        [&](std::int32_t i, std::int32_t j, double, double, double, double r2,
-            nlist::HalfTerm &term) {
-          if (!(r2 > 0.0) || r2 > cutoff2) {
-            return false;
-          }
-          const double inv_r2 = 1.0 / r2;
-          const double ar2 = (lattice * lattice) * inv_r2;
-          double phi = 0.0;
-          double rep = 0.0;
-          pow_ar_both(ar2, n_exp, m_exp, rep, phi);
-          const double wi = weight[static_cast<std::size_t>(i)];
-          const double wj = weight[static_cast<std::size_t>(j)];
-          term.e = 0;
-          term.fscale = (epsilon * static_cast<double>(n_exp) * rep -
-                         static_cast<double>(m_exp) * phi * (wi + wj)) *
-                        inv_r2;
-          return true;
-        });
-    double ignored = 0;
-    nlist::replay_half(parts, F, ignored, [&](const nlist::HalfTerm &term) {
-      if (cfg.stress) {
-        accumulatePairStrain(strain, term.fscale, term.dx, term.dy, term.dz);
-      }
-    });
-  }
+  nlist::visitHalf(neighbours_, 0, n_atoms,
+                   [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
+                     apply(i, j, dx, dy, dz, r2, F, cfg.stress ? strain : nullptr, true);
+                   });
 
   out->energy = epair + eemb;
   if (cfg.stress) {

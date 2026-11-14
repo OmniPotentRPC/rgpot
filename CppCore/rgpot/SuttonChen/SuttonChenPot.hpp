@@ -122,6 +122,10 @@ public:
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
 private:
+  void gatherWide(long n_atoms, double *F, double *strain, double cutoff2, double epsilon,
+                  double c_coef, double lattice, int n_exp, int m_exp, int nt,
+                  double &energy) const;
+
   static constexpr uint64_t kKernelVersion = 1;
 
   SuttonChenConfig m_config;
