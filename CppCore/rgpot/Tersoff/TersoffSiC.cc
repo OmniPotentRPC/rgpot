@@ -316,6 +316,8 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
   };
 
   const int nt = nlist::threadsRequested();
+  const bool stored = !neighbours_.streaming() &&
+                      neighbours_.offsets().size() == static_cast<std::size_t>(n) + 1;
   if (nt == 1) {
   std::vector<Bond> nb;
   std::vector<Angle> ang;
@@ -407,6 +409,8 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
       }
     }
   }
+  } else if (stored && n >= 256) {
+    runWide(kind, n, nt, cut2, scale, energy, acc, strain);
   } else {
     // Slots are indexed by the one-thread scatter position and summed
     // in that order.

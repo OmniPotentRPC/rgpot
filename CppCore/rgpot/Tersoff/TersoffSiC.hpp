@@ -127,6 +127,10 @@ private:
                 const double *box, std::size_t n_atoms, double *energy,
                 double *acc, double scale, nlist::NeighborList *neighbors,
                 double *strain) const;
+  // Stored cells from 256 atoms. Bonds go into counted slices and forces
+  // are written into each atom's scatter-order row.
+  void runWide(const int *kind, int n, int nt, double cut2, double scale, double *energy,
+               double *acc, double *strain) const;
 
   Species m_species[2]{};
   Pair m_pair[2][2]{};
