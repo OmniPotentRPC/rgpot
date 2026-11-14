@@ -232,21 +232,22 @@ if python3_engines.found()
     )
 endif
 
-abi_script = find_program('../scripts/abi_symbols.sh')
+abi_python = find_program('python3', 'python')
+abi_script = files('../scripts/abi_symbols.py')
 abi_baselines = files('../scripts/abi_baseline.txt')
 if has_fast_nlist
     abi_baselines += files('../scripts/abi_baseline_fast.txt')
 endif
 test(
     'abi_symbols',
-    abi_script,
-    args: [rgpot.full_path(), abi_baselines],
+    abi_python,
+    args: [abi_script, rgpot.full_path(), abi_baselines],
     timeout: 30,
 )
 test(
     'abi_symbols_selftest',
-    abi_script,
-    args: [rgpot.full_path(), files('abi_selftest_baseline.txt')],
+    abi_python,
+    args: [abi_script, rgpot.full_path(), files('abi_selftest_baseline.txt')],
     should_fail: true,
     timeout: 30,
 )
