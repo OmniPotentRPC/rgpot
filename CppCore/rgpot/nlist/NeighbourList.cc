@@ -1592,6 +1592,46 @@ struct rgpot_nlist_fortran_list {
 };
 
 void fortran_rows(rgpot_nlist_fortran_list *list, std::size_t natoms, std::size_t kept) {
+#ifdef RGPOT_EAM_AL_OPENMP
+  // The kept pairs are already grouped by central atom. Each thread marks
+  // the atoms that start in its slice; a backward fill writes the atoms
+  // that own no pairs. The starts are the same numbers the serial scan writes.
+  const int want = omp_get_max_threads();
+  if (want > 1 && kept >= 4096 && natoms >= 256) {
+    int nt = want;
+    while (nt > 1 && kept / static_cast<std::size_t>(nt) < 1024) {
+      --nt;
+    }
+    list->row.assign(natoms + 1, 0);
+#pragma omp parallel num_threads(nt)
+    {
+      const int t = omp_get_thread_num();
+      const auto begin = kept * static_cast<std::size_t>(t) / static_cast<std::size_t>(nt);
+      const auto end = kept * static_cast<std::size_t>(t + 1) / static_cast<std::size_t>(nt);
+      auto s = begin;
+      while (s < end) {
+        const auto atom = list->atom[s];
+        if (!(s == begin && begin > 0 && list->atom[begin - 1] == atom)) {
+          list->row[static_cast<std::size_t>(atom)] = static_cast<std::int32_t>(s) + 1;
+        }
+        const auto here = atom;
+        while (s < end && list->atom[s] == here) {
+          ++s;
+        }
+      }
+    }
+    auto next = static_cast<std::int32_t>(kept) + 1;
+    list->row[natoms] = next;
+    for (std::size_t a = natoms; a-- > 0;) {
+      if (list->row[a] == 0) {
+        list->row[a] = next;
+      } else {
+        next = list->row[a];
+      }
+    }
+    return;
+  }
+#endif
   list->row.assign(natoms + 1, 1);
   auto cursor = std::int32_t{1};
   for (std::size_t s = 0; s < kept; ++s) {
