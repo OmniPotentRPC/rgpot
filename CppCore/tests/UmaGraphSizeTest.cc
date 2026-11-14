@@ -296,6 +296,10 @@ TEST_CASE("a package with no edge range is refused", "[uma][graph]") {
   REQUIRE_THROWS_WITH(run(pot, line(3, 1.0)),
                       Catch::Matchers::ContainsSubstring("nedges") &&
                           Catch::Matchers::ContainsSubstring("absent"));
+  // The second call is refused the same way.
+  REQUIRE_THROWS_WITH(run(pot, line(3, 1.0)),
+                      Catch::Matchers::ContainsSubstring("nedges") &&
+                          Catch::Matchers::ContainsSubstring("absent"));
 }
 
 TEST_CASE("tetrazine walked past 10 angstroms names the edge count",

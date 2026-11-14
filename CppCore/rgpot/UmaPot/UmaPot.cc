@@ -241,8 +241,9 @@ void store_rows(torch::Tensor dst, const double *src, int64_t rows,
 
 struct UmaPot::Impl {
   torch::Device device{torch::kCPU};
-  // Input dtype of pos, cell and cell_offsets. float32 until metadata
-  // says otherwise, including packages that record neither key.
+  // Input dtype of pos, cell and cell_offsets: pos_dtype or model_dtype,
+  // else the compiled pos, else float32 for a package with neither key
+  // and no wrapper input checks.
   torch::ScalarType dtype{torch::kFloat32};
   std::string pos_dtype_name{"float32"};
   std::string model_dtype_name{"float32"};
@@ -275,11 +276,14 @@ void UmaPot::ensureLoaded() const {
   c10::InferenceMode guard;
   const std::string load_path =
       aoti_execstack::prepare_pt2_for_load(m_config.model_path);
-  m_impl->loader =
+  // Kept only once every check below passes, so a refused package is
+  // refused on every call.
+  auto loader =
       std::make_unique<torch::inductor::AOTIModelPackageLoader>(load_path);
   // The package's embedded metadata is the runtime contract: one
   // producer (scripts/export_uma_aoti.py), the .pt2 self-describing.
-  const auto meta = m_impl->loader->get_metadata();
+  const auto meta = loader->get_metadata();
+  const auto compiled = compiled_inputs(load_path);
   auto num = [&](const char *key, double fallback) {
     const auto it = meta.find(key);
     if (it == meta.end() || it->second.empty())
@@ -309,7 +313,8 @@ void UmaPot::ensureLoaded() const {
   };
   const auto pos = named("pos_dtype");
   const auto model = named("model_dtype");
-  // Log only keys the package recorded. "unset" is not a guessed dtype.
+  // Log only what the package records, in its keys or in the compiled
+  // graph. "unset" is not a guessed dtype.
   m_impl->pos_dtype_name = pos ? dtype_token(*pos) : "unset";
   m_impl->model_dtype_name = model ? dtype_token(*model) : "unset";
   if (pos && model && *pos != *model) {
@@ -318,19 +323,27 @@ void UmaPot::ensureLoaded() const {
         " and model_dtype is " + m_impl->model_dtype_name +
         "; refusing to feed one dtype into a graph recorded as the other");
   }
-  if (!pos && !model) {
-    m_impl->dtype = torch::kFloat32;
+  if (pos || model) {
+    m_impl->dtype = pos ? *pos : *model;
+  } else if (const auto from_graph = UmaContract::compiledFloatDtype(compiled)) {
+    m_impl->dtype = *dtype_from_name(*from_graph);
+    m_impl->pos_dtype_name = *from_graph;
     std::fprintf(stderr,
                  "UmaPot: package metadata has no pos_dtype or model_dtype; "
-                 "falling back to float32\n");
+                 "pos is %s in the compiled graph\n",
+                 from_graph->c_str());
   } else {
-    m_impl->dtype = pos ? *pos : *model;
+    m_impl->dtype = torch::kFloat32;
+    std::fprintf(stderr,
+                 "UmaPot: package metadata has no pos_dtype or model_dtype "
+                 "and the wrapper source has no input checks; falling back "
+                 "to float32\n");
   }
   std::fprintf(stderr, "UmaPot: pos_dtype=%s model_dtype=%s\n",
                m_impl->pos_dtype_name.c_str(),
                m_impl->model_dtype_name.c_str());
-  m_impl->contract =
-      UmaContract::fromMetadata(meta, compiled_inputs(load_path));
+  m_impl->contract = UmaContract::fromMetadata(meta, compiled);
+  m_impl->loader = std::move(loader);
   if (m_impl->contract.edge_source != "metadata") {
     std::fprintf(stderr,
                  "UmaPot: package metadata has no nedges_min or nedges_max; "

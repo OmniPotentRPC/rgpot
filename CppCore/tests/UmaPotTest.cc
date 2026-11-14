@@ -596,6 +596,168 @@ TEST_CASE("UmaContract keeps the metadata contract over the compiled shapes",
   REQUIRE(unbounded.edge_decl.text == "[2, nedges] with nedges in [2, inf]");
 }
 
+// The check_input_* functions of the spring model in
+// scripts/export_tiny_uma_contract.py, as torch wrote them. The file
+// header names the export command and the torch version.
+static std::string wrapper_excerpt(const std::string &torch,
+                                   const std::string &dtype,
+                                   const std::string &kind) {
+  const std::string path =
+      "data/aoti_wrapper/torch-" + torch + "-pair-" + dtype + "-" + kind +
+      ".txt";
+  std::ifstream in(path, std::ios::binary);
+  if (!in)
+    FAIL("cannot read " + path);
+  return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+}
+
+// Replace ``from`` with ``to`` inside check_input_<index> only.
+static std::string edit_check(std::string src, int index,
+                              const std::string &from, const std::string &to) {
+  const auto start =
+      src.find("static void check_input_" + std::to_string(index) + "(");
+  REQUIRE(start != std::string::npos);
+  const auto stop = src.find("\n}", start);
+  const auto at = src.find(from, start);
+  REQUIRE(at < stop);
+  return src.replace(at, from.size(), to);
+}
+
+TEST_CASE("UmaContract reads dtype and shape from torch 2.10 and 2.13 "
+          "wrappers",
+          "[UmaPot][contract][compiled][dtype]") {
+  for (const std::string torch : {"2.10", "2.13"}) {
+    for (const std::string dtype : {"float32", "float64"}) {
+      for (const std::string kind : {"fixed", "dynamic"}) {
+        CAPTURE(torch, dtype, kind);
+        const auto c =
+            rgpot::UmaContract::compiledInputs(wrapper_excerpt(torch, dtype,
+                                                               kind));
+        REQUIRE(c.size() == 10);
+        for (const std::size_t i : {0, 2, 5}) {
+          CAPTURE(i);
+          REQUIRE(c[i].dtype == dtype);
+          REQUIRE(c[i].dtype_text == "aoti_torch_dtype_" + dtype + "()");
+        }
+        for (const std::size_t i : {1, 4, 6, 7, 8, 9}) {
+          CAPTURE(i);
+          REQUIRE(c[i].dtype == "int64");
+        }
+        REQUIRE(c[3].dtype == "bool");
+        REQUIRE(rgpot::UmaContract::compiledFloatDtype(c) == dtype);
+
+        REQUIRE(c[0].known);
+        REQUIRE(c[0].axes.size() == 2);
+        REQUIRE(c[0].axes[1].fixed == 3);
+        REQUIRE(c[4].known);
+        REQUIRE(c[4].axes.size() == 2);
+        REQUIRE(c[4].axes[0].fixed == 2);
+        if (kind == "fixed") {
+          REQUIRE_FALSE(c[0].axes[0].symbolic);
+          REQUIRE(c[0].axes[0].fixed == 4);
+          REQUIRE_FALSE(c[4].axes[1].symbolic);
+          REQUIRE(c[4].axes[1].fixed == 12);
+        } else {
+          REQUIRE(c[0].axes[0].symbolic);
+          REQUIRE(c[0].axes[0].lo == 2);
+          REQUIRE(c[0].axes[0].hi == 64);
+          REQUIRE(c[4].axes[1].symbolic);
+          REQUIRE(c[4].axes[1].lo == 2);
+          REQUIRE(c[4].axes[1].hi == 4096);
+        }
+      }
+    }
+  }
+}
+
+TEST_CASE("UmaContract refuses a compiled dtype it cannot use",
+          "[UmaPot][contract][compiled][dtype]") {
+  using rgpot::UmaContract;
+  REQUIRE_FALSE(UmaContract::compiledFloatDtype({}).has_value());
+
+  const std::string src = wrapper_excerpt("2.13", "float64", "fixed");
+  const std::string f64 = "aoti_torch_dtype_float64()";
+  auto refused = [](const std::string &edited) {
+    try {
+      UmaContract::compiledFloatDtype(UmaContract::compiledInputs(edited));
+    } catch (const rgpot::UmaContractError &err) {
+      return err;
+    }
+    FAIL("the compiled dtype was accepted");
+    throw std::logic_error("unreachable");
+  };
+
+  // pos has no dtype line.
+  {
+    const auto err =
+        refused(edit_check(src, 0, "arg2_1_expected_dtype = " + f64 + ";",
+                           "arg2_1_expected_dtype_unused;"));
+    REQUIRE(err.field() == "pos");
+    REQUIRE(err.package() == "absent");
+    REQUIRE_THAT(std::string(err.what()),
+                 Catch::Matchers::Equals(
+                     "UmaPot: the package metadata has no pos_dtype or "
+                     "model_dtype and the wrapper source has no dtype check "
+                     "for pos (input 0)"));
+  }
+  // pos names a dtype UmaPot does not pass.
+  {
+    const auto err = refused(
+        edit_check(src, 0, f64, "aoti_torch_dtype_bfloat16()"));
+    REQUIRE(err.field() == "pos");
+    REQUIRE(err.package() == "aoti_torch_dtype_bfloat16()");
+    REQUIRE_THAT(std::string(err.what()),
+                 Catch::Matchers::Equals(
+                     "UmaPot: the package metadata has no pos_dtype or "
+                     "model_dtype and the wrapper source checks pos (input 0) "
+                     "against aoti_torch_dtype_bfloat16(), which is not "
+                     "float32 or float64"));
+  }
+  // pos names no dtype the parser knows.
+  {
+    const auto err = refused(edit_check(src, 0, f64, "cached_dtype(7)"));
+    REQUIRE(err.package() == "cached_dtype(7)");
+    REQUIRE_THAT(std::string(err.what()),
+                 Catch::Matchers::ContainsSubstring(
+                     "against cached_dtype(7), which is not float32 or "
+                     "float64"));
+  }
+  // cell_offsets disagrees with pos.
+  {
+    const auto err =
+        refused(edit_check(src, 5, f64, "aoti_torch_dtype_float32()"));
+    REQUIRE(err.field() == "cell_offsets");
+    REQUIRE(err.package() == "aoti_torch_dtype_float32()");
+    REQUIRE(err.actual() == "float64");
+    REQUIRE_THAT(std::string(err.what()),
+                 Catch::Matchers::Equals(
+                     "UmaPot: the wrapper source checks pos (input 0) as "
+                     "float64 and cell_offsets (input 5) against "
+                     "aoti_torch_dtype_float32(); UmaPot passes both in one "
+                     "dtype"));
+  }
+  // So does cell, with something unparseable.
+  {
+    const auto err = refused(edit_check(src, 2, f64, "garbled"));
+    REQUIRE(err.field() == "cell");
+    REQUIRE_THAT(std::string(err.what()),
+                 Catch::Matchers::ContainsSubstring(
+                     "cell (input 2) against garbled"));
+  }
+  // An input whose check has no dtype line is not compared.
+  {
+    const auto c = UmaContract::compiledInputs(edit_check(
+        src, 5, "arg7_1_expected_dtype = " + f64 + ";", "/* none */;"));
+    REQUIRE(c[5].dtype_text.empty());
+    REQUIRE(UmaContract::compiledFloatDtype(c) == "float64");
+  }
+  // The trimmed synthetic checks above carry shapes only.
+  REQUIRE_THROWS_AS(
+      UmaContract::compiledFloatDtype(
+          UmaContract::compiledInputs(wrapper_checks(false))),
+      rgpot::UmaContractError);
+}
+
 TEST_CASE("UmaContract checks z_set alone for packages without counts",
           "[UmaPot][contract]") {
   auto legacy = hcn_metadata();

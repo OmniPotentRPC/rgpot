@@ -1,0 +1,591 @@
+// check_input_* from the AOTInductor wrapper source of
+// scripts/export_tiny_uma_contract.py --kind pair --dtype float32 --dynamic,
+// torch 2.13.0+cpu. Copied verbatim; UmaPotTest parses it.
+
+AOTI_NOINLINE static void check_input_0(
+    AtenTensorHandle* input_handles
+) {
+    ConstantHandle arg2_1 = ConstantHandle(input_handles[0]);
+    int32_t arg2_1_dtype;
+    AOTI_TORCH_ERROR_CODE_CHECK(aoti_torch_get_dtype(arg2_1, &arg2_1_dtype));
+
+    int32_t arg2_1_expected_dtype = aoti_torch_dtype_float32();
+    if (arg2_1_expected_dtype != arg2_1_dtype) {
+        std::stringstream ss;
+        ss << "input_handles[0]: unmatched dtype, "
+           << "expected: " << arg2_1_expected_dtype << "(at::kFloat), "
+           << "but got: " << arg2_1_dtype << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    auto arg2_1_size = arg2_1.sizes();
+
+    if (arg2_1_size[0] < 2) {
+        std::stringstream ss;
+        ss << "input_handles[0]: dim value is too small at 0, "
+           << "expected it to be >= 2, " << "but got: "
+           << arg2_1_size[0] << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+
+    if (arg2_1_size[0] > 64) {
+        std::stringstream ss;
+        ss << "input_handles[0]: dim value is too large at 0, "
+           << "expected to be <= 64, " << "but got: "
+           << arg2_1_size[0] << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+
+    if (3 != arg2_1_size[1]) {
+        std::stringstream ss;
+        ss << "input_handles[0]: unmatched dim value at 1, "
+           << "expected: 3, " << "but got: " << arg2_1_size[1]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    auto arg2_1_stride = arg2_1.strides();
+
+    if (3 != arg2_1_stride[0]) {
+        std::stringstream ss;
+        ss << "input_handles[0]: unmatched stride value at 0, "
+           << "expected: 3, " << "but got: " << arg2_1_stride[0]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+
+    if (1 != arg2_1_stride[1]) {
+        std::stringstream ss;
+        ss << "input_handles[0]: unmatched stride value at 1, "
+           << "expected: 1, " << "but got: " << arg2_1_stride[1]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    int32_t arg2_1_device_type;
+    AOTI_TORCH_ERROR_CODE_CHECK(aoti_torch_get_device_type(arg2_1, &arg2_1_device_type));
+
+    int32_t arg2_1_expected_device_type = 0;
+    if (arg2_1_expected_device_type != arg2_1_device_type) {
+        std::stringstream ss;
+        ss << "input_handles[0]: unmatched device type, "
+        << "expected: " << arg2_1_expected_device_type << "0(cpu), "
+        << "but got: " << arg2_1_device_type << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+}
+
+AOTI_NOINLINE static void check_input_1(
+    AtenTensorHandle* input_handles
+) {
+    ConstantHandle arg3_1 = ConstantHandle(input_handles[1]);
+    int32_t arg3_1_dtype;
+    AOTI_TORCH_ERROR_CODE_CHECK(aoti_torch_get_dtype(arg3_1, &arg3_1_dtype));
+
+    int32_t arg3_1_expected_dtype = aoti_torch_dtype_int64();
+    if (arg3_1_expected_dtype != arg3_1_dtype) {
+        std::stringstream ss;
+        ss << "input_handles[1]: unmatched dtype, "
+           << "expected: " << arg3_1_expected_dtype << "(at::kLong), "
+           << "but got: " << arg3_1_dtype << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    auto arg3_1_size = arg3_1.sizes();
+
+    if (arg3_1_size[0] < 2) {
+        std::stringstream ss;
+        ss << "input_handles[1]: dim value is too small at 0, "
+           << "expected it to be >= 2, " << "but got: "
+           << arg3_1_size[0] << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+
+    if (arg3_1_size[0] > 64) {
+        std::stringstream ss;
+        ss << "input_handles[1]: dim value is too large at 0, "
+           << "expected to be <= 64, " << "but got: "
+           << arg3_1_size[0] << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    auto arg3_1_stride = arg3_1.strides();
+
+    if (1 != arg3_1_stride[0]) {
+        std::stringstream ss;
+        ss << "input_handles[1]: unmatched stride value at 0, "
+           << "expected: 1, " << "but got: " << arg3_1_stride[0]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    int32_t arg3_1_device_type;
+    AOTI_TORCH_ERROR_CODE_CHECK(aoti_torch_get_device_type(arg3_1, &arg3_1_device_type));
+
+    int32_t arg3_1_expected_device_type = 0;
+    if (arg3_1_expected_device_type != arg3_1_device_type) {
+        std::stringstream ss;
+        ss << "input_handles[1]: unmatched device type, "
+        << "expected: " << arg3_1_expected_device_type << "0(cpu), "
+        << "but got: " << arg3_1_device_type << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+}
+
+AOTI_NOINLINE static void check_input_2(
+    AtenTensorHandle* input_handles
+) {
+    ConstantHandle arg4_1 = ConstantHandle(input_handles[2]);
+    int32_t arg4_1_dtype;
+    AOTI_TORCH_ERROR_CODE_CHECK(aoti_torch_get_dtype(arg4_1, &arg4_1_dtype));
+
+    int32_t arg4_1_expected_dtype = aoti_torch_dtype_float32();
+    if (arg4_1_expected_dtype != arg4_1_dtype) {
+        std::stringstream ss;
+        ss << "input_handles[2]: unmatched dtype, "
+           << "expected: " << arg4_1_expected_dtype << "(at::kFloat), "
+           << "but got: " << arg4_1_dtype << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    auto arg4_1_size = arg4_1.sizes();
+
+    if (1 != arg4_1_size[0]) {
+        std::stringstream ss;
+        ss << "input_handles[2]: unmatched dim value at 0, "
+           << "expected: 1, " << "but got: " << arg4_1_size[0]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+
+    if (3 != arg4_1_size[1]) {
+        std::stringstream ss;
+        ss << "input_handles[2]: unmatched dim value at 1, "
+           << "expected: 3, " << "but got: " << arg4_1_size[1]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+
+    if (3 != arg4_1_size[2]) {
+        std::stringstream ss;
+        ss << "input_handles[2]: unmatched dim value at 2, "
+           << "expected: 3, " << "but got: " << arg4_1_size[2]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    auto arg4_1_stride = arg4_1.strides();
+
+    if (9 != arg4_1_stride[0]) {
+        std::stringstream ss;
+        ss << "input_handles[2]: unmatched stride value at 0, "
+           << "expected: 9, " << "but got: " << arg4_1_stride[0]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+
+    if (3 != arg4_1_stride[1]) {
+        std::stringstream ss;
+        ss << "input_handles[2]: unmatched stride value at 1, "
+           << "expected: 3, " << "but got: " << arg4_1_stride[1]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+
+    if (1 != arg4_1_stride[2]) {
+        std::stringstream ss;
+        ss << "input_handles[2]: unmatched stride value at 2, "
+           << "expected: 1, " << "but got: " << arg4_1_stride[2]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    int32_t arg4_1_device_type;
+    AOTI_TORCH_ERROR_CODE_CHECK(aoti_torch_get_device_type(arg4_1, &arg4_1_device_type));
+
+    int32_t arg4_1_expected_device_type = 0;
+    if (arg4_1_expected_device_type != arg4_1_device_type) {
+        std::stringstream ss;
+        ss << "input_handles[2]: unmatched device type, "
+        << "expected: " << arg4_1_expected_device_type << "0(cpu), "
+        << "but got: " << arg4_1_device_type << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+}
+
+AOTI_NOINLINE static void check_input_3(
+    AtenTensorHandle* input_handles
+) {
+    ConstantHandle arg5_1 = ConstantHandle(input_handles[3]);
+    int32_t arg5_1_dtype;
+    AOTI_TORCH_ERROR_CODE_CHECK(aoti_torch_get_dtype(arg5_1, &arg5_1_dtype));
+
+    int32_t arg5_1_expected_dtype = aoti_torch_dtype_bool();
+    if (arg5_1_expected_dtype != arg5_1_dtype) {
+        std::stringstream ss;
+        ss << "input_handles[3]: unmatched dtype, "
+           << "expected: " << arg5_1_expected_dtype << "(at::kBool), "
+           << "but got: " << arg5_1_dtype << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    auto arg5_1_size = arg5_1.sizes();
+
+    if (1 != arg5_1_size[0]) {
+        std::stringstream ss;
+        ss << "input_handles[3]: unmatched dim value at 0, "
+           << "expected: 1, " << "but got: " << arg5_1_size[0]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+
+    if (3 != arg5_1_size[1]) {
+        std::stringstream ss;
+        ss << "input_handles[3]: unmatched dim value at 1, "
+           << "expected: 3, " << "but got: " << arg5_1_size[1]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    auto arg5_1_stride = arg5_1.strides();
+
+    if (3 != arg5_1_stride[0]) {
+        std::stringstream ss;
+        ss << "input_handles[3]: unmatched stride value at 0, "
+           << "expected: 3, " << "but got: " << arg5_1_stride[0]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+
+    if (1 != arg5_1_stride[1]) {
+        std::stringstream ss;
+        ss << "input_handles[3]: unmatched stride value at 1, "
+           << "expected: 1, " << "but got: " << arg5_1_stride[1]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    int32_t arg5_1_device_type;
+    AOTI_TORCH_ERROR_CODE_CHECK(aoti_torch_get_device_type(arg5_1, &arg5_1_device_type));
+
+    int32_t arg5_1_expected_device_type = 0;
+    if (arg5_1_expected_device_type != arg5_1_device_type) {
+        std::stringstream ss;
+        ss << "input_handles[3]: unmatched device type, "
+        << "expected: " << arg5_1_expected_device_type << "0(cpu), "
+        << "but got: " << arg5_1_device_type << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+}
+
+AOTI_NOINLINE static void check_input_4(
+    AtenTensorHandle* input_handles
+) {
+    ConstantHandle arg6_1 = ConstantHandle(input_handles[4]);
+    int32_t arg6_1_dtype;
+    AOTI_TORCH_ERROR_CODE_CHECK(aoti_torch_get_dtype(arg6_1, &arg6_1_dtype));
+
+    int32_t arg6_1_expected_dtype = aoti_torch_dtype_int64();
+    if (arg6_1_expected_dtype != arg6_1_dtype) {
+        std::stringstream ss;
+        ss << "input_handles[4]: unmatched dtype, "
+           << "expected: " << arg6_1_expected_dtype << "(at::kLong), "
+           << "but got: " << arg6_1_dtype << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    auto arg6_1_size = arg6_1.sizes();
+
+    if (2 != arg6_1_size[0]) {
+        std::stringstream ss;
+        ss << "input_handles[4]: unmatched dim value at 0, "
+           << "expected: 2, " << "but got: " << arg6_1_size[0]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+
+    if (arg6_1_size[1] < 2) {
+        std::stringstream ss;
+        ss << "input_handles[4]: dim value is too small at 1, "
+           << "expected it to be >= 2, " << "but got: "
+           << arg6_1_size[1] << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+
+    if (arg6_1_size[1] > 4096) {
+        std::stringstream ss;
+        ss << "input_handles[4]: dim value is too large at 1, "
+           << "expected to be <= 4096, " << "but got: "
+           << arg6_1_size[1] << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    auto arg6_1_stride = arg6_1.strides();
+
+    if (1 != arg6_1_stride[1]) {
+        std::stringstream ss;
+        ss << "input_handles[4]: unmatched stride value at 1, "
+           << "expected: 1, " << "but got: " << arg6_1_stride[1]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    int32_t arg6_1_device_type;
+    AOTI_TORCH_ERROR_CODE_CHECK(aoti_torch_get_device_type(arg6_1, &arg6_1_device_type));
+
+    int32_t arg6_1_expected_device_type = 0;
+    if (arg6_1_expected_device_type != arg6_1_device_type) {
+        std::stringstream ss;
+        ss << "input_handles[4]: unmatched device type, "
+        << "expected: " << arg6_1_expected_device_type << "0(cpu), "
+        << "but got: " << arg6_1_device_type << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+}
+
+AOTI_NOINLINE static void check_input_5(
+    AtenTensorHandle* input_handles
+) {
+    ConstantHandle arg7_1 = ConstantHandle(input_handles[5]);
+    int32_t arg7_1_dtype;
+    AOTI_TORCH_ERROR_CODE_CHECK(aoti_torch_get_dtype(arg7_1, &arg7_1_dtype));
+
+    int32_t arg7_1_expected_dtype = aoti_torch_dtype_float32();
+    if (arg7_1_expected_dtype != arg7_1_dtype) {
+        std::stringstream ss;
+        ss << "input_handles[5]: unmatched dtype, "
+           << "expected: " << arg7_1_expected_dtype << "(at::kFloat), "
+           << "but got: " << arg7_1_dtype << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    auto arg7_1_size = arg7_1.sizes();
+
+    if (arg7_1_size[0] < 2) {
+        std::stringstream ss;
+        ss << "input_handles[5]: dim value is too small at 0, "
+           << "expected it to be >= 2, " << "but got: "
+           << arg7_1_size[0] << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+
+    if (arg7_1_size[0] > 4096) {
+        std::stringstream ss;
+        ss << "input_handles[5]: dim value is too large at 0, "
+           << "expected to be <= 4096, " << "but got: "
+           << arg7_1_size[0] << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+
+    if (3 != arg7_1_size[1]) {
+        std::stringstream ss;
+        ss << "input_handles[5]: unmatched dim value at 1, "
+           << "expected: 3, " << "but got: " << arg7_1_size[1]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    auto arg7_1_stride = arg7_1.strides();
+
+    if (3 != arg7_1_stride[0]) {
+        std::stringstream ss;
+        ss << "input_handles[5]: unmatched stride value at 0, "
+           << "expected: 3, " << "but got: " << arg7_1_stride[0]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+
+    if (1 != arg7_1_stride[1]) {
+        std::stringstream ss;
+        ss << "input_handles[5]: unmatched stride value at 1, "
+           << "expected: 1, " << "but got: " << arg7_1_stride[1]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    int32_t arg7_1_device_type;
+    AOTI_TORCH_ERROR_CODE_CHECK(aoti_torch_get_device_type(arg7_1, &arg7_1_device_type));
+
+    int32_t arg7_1_expected_device_type = 0;
+    if (arg7_1_expected_device_type != arg7_1_device_type) {
+        std::stringstream ss;
+        ss << "input_handles[5]: unmatched device type, "
+        << "expected: " << arg7_1_expected_device_type << "0(cpu), "
+        << "but got: " << arg7_1_device_type << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+}
+
+AOTI_NOINLINE static void check_input_6(
+    AtenTensorHandle* input_handles
+) {
+    ConstantHandle arg8_1 = ConstantHandle(input_handles[6]);
+    int32_t arg8_1_dtype;
+    AOTI_TORCH_ERROR_CODE_CHECK(aoti_torch_get_dtype(arg8_1, &arg8_1_dtype));
+
+    int32_t arg8_1_expected_dtype = aoti_torch_dtype_int64();
+    if (arg8_1_expected_dtype != arg8_1_dtype) {
+        std::stringstream ss;
+        ss << "input_handles[6]: unmatched dtype, "
+           << "expected: " << arg8_1_expected_dtype << "(at::kLong), "
+           << "but got: " << arg8_1_dtype << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    auto arg8_1_size = arg8_1.sizes();
+
+    if (1 != arg8_1_size[0]) {
+        std::stringstream ss;
+        ss << "input_handles[6]: unmatched dim value at 0, "
+           << "expected: 1, " << "but got: " << arg8_1_size[0]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    auto arg8_1_stride = arg8_1.strides();
+
+    if (1 != arg8_1_stride[0]) {
+        std::stringstream ss;
+        ss << "input_handles[6]: unmatched stride value at 0, "
+           << "expected: 1, " << "but got: " << arg8_1_stride[0]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    int32_t arg8_1_device_type;
+    AOTI_TORCH_ERROR_CODE_CHECK(aoti_torch_get_device_type(arg8_1, &arg8_1_device_type));
+
+    int32_t arg8_1_expected_device_type = 0;
+    if (arg8_1_expected_device_type != arg8_1_device_type) {
+        std::stringstream ss;
+        ss << "input_handles[6]: unmatched device type, "
+        << "expected: " << arg8_1_expected_device_type << "0(cpu), "
+        << "but got: " << arg8_1_device_type << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+}
+
+AOTI_NOINLINE static void check_input_7(
+    AtenTensorHandle* input_handles
+) {
+    ConstantHandle arg9_1 = ConstantHandle(input_handles[7]);
+    int32_t arg9_1_dtype;
+    AOTI_TORCH_ERROR_CODE_CHECK(aoti_torch_get_dtype(arg9_1, &arg9_1_dtype));
+
+    int32_t arg9_1_expected_dtype = aoti_torch_dtype_int64();
+    if (arg9_1_expected_dtype != arg9_1_dtype) {
+        std::stringstream ss;
+        ss << "input_handles[7]: unmatched dtype, "
+           << "expected: " << arg9_1_expected_dtype << "(at::kLong), "
+           << "but got: " << arg9_1_dtype << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    auto arg9_1_size = arg9_1.sizes();
+
+    if (1 != arg9_1_size[0]) {
+        std::stringstream ss;
+        ss << "input_handles[7]: unmatched dim value at 0, "
+           << "expected: 1, " << "but got: " << arg9_1_size[0]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    auto arg9_1_stride = arg9_1.strides();
+
+    if (1 != arg9_1_stride[0]) {
+        std::stringstream ss;
+        ss << "input_handles[7]: unmatched stride value at 0, "
+           << "expected: 1, " << "but got: " << arg9_1_stride[0]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    int32_t arg9_1_device_type;
+    AOTI_TORCH_ERROR_CODE_CHECK(aoti_torch_get_device_type(arg9_1, &arg9_1_device_type));
+
+    int32_t arg9_1_expected_device_type = 0;
+    if (arg9_1_expected_device_type != arg9_1_device_type) {
+        std::stringstream ss;
+        ss << "input_handles[7]: unmatched device type, "
+        << "expected: " << arg9_1_expected_device_type << "0(cpu), "
+        << "but got: " << arg9_1_device_type << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+}
+
+AOTI_NOINLINE static void check_input_8(
+    AtenTensorHandle* input_handles
+) {
+    ConstantHandle arg10_1 = ConstantHandle(input_handles[8]);
+    int32_t arg10_1_dtype;
+    AOTI_TORCH_ERROR_CODE_CHECK(aoti_torch_get_dtype(arg10_1, &arg10_1_dtype));
+
+    int32_t arg10_1_expected_dtype = aoti_torch_dtype_int64();
+    if (arg10_1_expected_dtype != arg10_1_dtype) {
+        std::stringstream ss;
+        ss << "input_handles[8]: unmatched dtype, "
+           << "expected: " << arg10_1_expected_dtype << "(at::kLong), "
+           << "but got: " << arg10_1_dtype << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    auto arg10_1_size = arg10_1.sizes();
+
+    if (arg10_1_size[0] < 2) {
+        std::stringstream ss;
+        ss << "input_handles[8]: dim value is too small at 0, "
+           << "expected it to be >= 2, " << "but got: "
+           << arg10_1_size[0] << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+
+    if (arg10_1_size[0] > 64) {
+        std::stringstream ss;
+        ss << "input_handles[8]: dim value is too large at 0, "
+           << "expected to be <= 64, " << "but got: "
+           << arg10_1_size[0] << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    auto arg10_1_stride = arg10_1.strides();
+
+    if (1 != arg10_1_stride[0]) {
+        std::stringstream ss;
+        ss << "input_handles[8]: unmatched stride value at 0, "
+           << "expected: 1, " << "but got: " << arg10_1_stride[0]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    int32_t arg10_1_device_type;
+    AOTI_TORCH_ERROR_CODE_CHECK(aoti_torch_get_device_type(arg10_1, &arg10_1_device_type));
+
+    int32_t arg10_1_expected_device_type = 0;
+    if (arg10_1_expected_device_type != arg10_1_device_type) {
+        std::stringstream ss;
+        ss << "input_handles[8]: unmatched device type, "
+        << "expected: " << arg10_1_expected_device_type << "0(cpu), "
+        << "but got: " << arg10_1_device_type << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+}
+
+AOTI_NOINLINE static void check_input_9(
+    AtenTensorHandle* input_handles
+) {
+    ConstantHandle arg11_1 = ConstantHandle(input_handles[9]);
+    int32_t arg11_1_dtype;
+    AOTI_TORCH_ERROR_CODE_CHECK(aoti_torch_get_dtype(arg11_1, &arg11_1_dtype));
+
+    int32_t arg11_1_expected_dtype = aoti_torch_dtype_int64();
+    if (arg11_1_expected_dtype != arg11_1_dtype) {
+        std::stringstream ss;
+        ss << "input_handles[9]: unmatched dtype, "
+           << "expected: " << arg11_1_expected_dtype << "(at::kLong), "
+           << "but got: " << arg11_1_dtype << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    auto arg11_1_size = arg11_1.sizes();
+
+    if (1 != arg11_1_size[0]) {
+        std::stringstream ss;
+        ss << "input_handles[9]: unmatched dim value at 0, "
+           << "expected: 1, " << "but got: " << arg11_1_size[0]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    auto arg11_1_stride = arg11_1.strides();
+
+    if (1 != arg11_1_stride[0]) {
+        std::stringstream ss;
+        ss << "input_handles[9]: unmatched stride value at 0, "
+           << "expected: 1, " << "but got: " << arg11_1_stride[0]
+           << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+    int32_t arg11_1_device_type;
+    AOTI_TORCH_ERROR_CODE_CHECK(aoti_torch_get_device_type(arg11_1, &arg11_1_device_type));
+
+    int32_t arg11_1_expected_device_type = 0;
+    if (arg11_1_expected_device_type != arg11_1_device_type) {
+        std::stringstream ss;
+        ss << "input_handles[9]: unmatched device type, "
+        << "expected: " << arg11_1_expected_device_type << "0(cpu), "
+        << "but got: " << arg11_1_device_type << "\n";
+        throw std::runtime_error(std::move(ss).str());
+    }
+}

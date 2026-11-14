@@ -60,8 +60,19 @@ public:
         m_field(std::move(field)), m_package(std::move(package)),
         m_actual(std::move(actual)) {}
 
+  /// A message that is not one value against another, such as a dtype
+  /// read from the compiled graph.
+  struct Message {
+    std::string text;
+  };
+  UmaContractError(std::string field, std::string package, std::string actual,
+                   Message message)
+      : std::runtime_error(std::move(message.text)), m_field(std::move(field)),
+        m_package(std::move(package)), m_actual(std::move(actual)) {}
+
   /// Metadata key that disagrees (``charge``, ``spin``, ``task_name``,
-  /// ``z_set``, ``counts`` or ``natoms``).
+  /// ``z_set``, ``counts`` or ``natoms``), or the compiled input whose
+  /// dtype is refused (``pos``, ``cell`` or ``cell_offsets``).
   [[nodiscard]] const std::string &field() const noexcept { return m_field; }
   /// Value embedded in the package.
   [[nodiscard]] const std::string &package() const noexcept {
@@ -119,6 +130,13 @@ struct UmaContract {
     bool known{false};
     std::vector<Axis> axes;
     std::string text;
+    /// Compiled inputs only. ``dtype_text`` is the right-hand side of the
+    /// wrapper's ``<arg>_expected_dtype =`` line, empty when the check
+    /// has none. ``dtype`` is ``<name>`` when that is
+    /// ``aoti_torch_dtype_<name>()`` (``float32``, ``float64``,
+    /// ``int64``, ``bool``) and empty otherwise.
+    std::string dtype_text;
+    std::string dtype;
   };
 
   ShapeDecl pos_decl;
@@ -136,7 +154,10 @@ struct UmaContract {
   /// (``if (3 != arg0_1_size[1])``) and bounds a symbolic one
   /// (``if (arg4_1_size[1] < 2)``, ``if (arg4_1_size[1] > 4096)``). Entry
   /// ``i`` is graph input ``i``. An input without such a function is not
-  /// known, and an axis with no bound is open on that side.
+  /// known, and an axis with no bound is open on that side. The same
+  /// function sets the input's dtype
+  /// (``int32_t arg0_1_expected_dtype = aoti_torch_dtype_float64();``);
+  /// torch 2.10 and 2.13 write both the same way.
   static std::vector<ShapeDecl> compiledInputs(const std::string &src) {
     std::vector<ShapeDecl> out;
     const std::string fn = "static void check_input_";
@@ -166,6 +187,14 @@ struct UmaContract {
         continue;
       const std::string size_ref = var + "_size[";
       const std::string stride_ref = var + "_stride[";
+      std::string dtype_text;
+      const std::string dtype_ref = var + "_expected_dtype =";
+      if (const std::size_t d = body.find(dtype_ref); d != std::string::npos) {
+        const std::size_t from = d + dtype_ref.size();
+        const std::size_t semi = body.find(';', from);
+        dtype_text = trim(body.substr(
+            from, semi == std::string::npos ? std::string::npos : semi - from));
+      }
 
       struct Bound {
         bool fixed{false};
@@ -233,10 +262,12 @@ struct UmaContract {
             bounds[*d].hi = *k;
         }
       }
-      if (rank == 0)
+      if (rank == 0 && dtype_text.empty())
         continue;
       ShapeDecl decl;
-      decl.known = true;
+      decl.known = rank > 0;
+      decl.dtype = dtypeName(dtype_text);
+      decl.dtype_text = std::move(dtype_text);
       for (std::size_t d = 0; d < rank; ++d) {
         const Bound b = bounds.count(d) ? bounds[d] : Bound{};
         Axis axis;
@@ -255,6 +286,77 @@ struct UmaContract {
       out[i] = std::move(decl);
     }
     return out;
+  }
+
+  static std::string trim(const std::string &s) {
+    const auto first = s.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos)
+      return {};
+    return s.substr(first, s.find_last_not_of(" \t\r\n") - first + 1);
+  }
+
+  /// ``float64`` for ``aoti_torch_dtype_float64()``; empty for anything
+  /// else.
+  static std::string dtypeName(const std::string &text) {
+    const std::string prefix = "aoti_torch_dtype_";
+    const std::string suffix = "()";
+    if (text.size() <= prefix.size() + suffix.size() ||
+        text.compare(0, prefix.size(), prefix) != 0 ||
+        text.compare(text.size() - suffix.size(), suffix.size(), suffix) != 0)
+      return {};
+    const std::string name = text.substr(
+        prefix.size(), text.size() - prefix.size() - suffix.size());
+    const bool ident = std::all_of(name.begin(), name.end(), [](char ch) {
+      return (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_';
+    });
+    return ident ? name : std::string{};
+  }
+
+  /// Dtype of the floating inputs UmaPot fills, for a package whose
+  /// metadata records neither ``pos_dtype`` nor ``model_dtype``. Those
+  /// are graph inputs 0 (``pos``), 2 (``cell``) and 5 (``cell_offsets``),
+  /// and UmaPot passes all three in one dtype. The compiled ``pos`` must
+  /// be checked as float32 or float64. A checked ``cell`` or
+  /// ``cell_offsets`` must name the same dtype; an input with no dtype
+  /// line is not checked. ``nullopt`` when the wrapper source has no
+  /// input checks at all.
+  static std::optional<std::string>
+  compiledFloatDtype(const std::vector<ShapeDecl> &compiled) {
+    if (compiled.empty())
+      return std::nullopt;
+    const std::string none =
+        "UmaPot: the package metadata has no pos_dtype or model_dtype";
+    const ShapeDecl &pos = compiled.front();
+    if (pos.dtype_text.empty()) {
+      throw UmaContractError(
+          "pos", "absent", "float32 or float64",
+          UmaContractError::Message{none + " and the wrapper source has no "
+                                           "dtype check for pos (input 0)"});
+    }
+    if (pos.dtype != "float32" && pos.dtype != "float64") {
+      throw UmaContractError(
+          "pos", pos.dtype_text, "float32 or float64",
+          UmaContractError::Message{
+              none + " and the wrapper source checks pos (input 0) against " +
+              pos.dtype_text + ", which is not float32 or float64"});
+    }
+    const std::pair<std::size_t, const char *> others[] = {
+        {2, "cell"}, {5, "cell_offsets"}};
+    for (const auto &[index, name] : others) {
+      if (index >= compiled.size() || compiled[index].dtype_text.empty())
+        continue;
+      const ShapeDecl &in = compiled[index];
+      if (in.dtype == pos.dtype)
+        continue;
+      throw UmaContractError(
+          name, in.dtype_text, pos.dtype,
+          UmaContractError::Message{
+              "UmaPot: the wrapper source checks pos (input 0) as " +
+              pos.dtype + " and " + name + " (input " + std::to_string(index) +
+              ") against " + in.dtype_text +
+              "; UmaPot passes both in one dtype"});
+    }
+    return pos.dtype;
   }
 
   static std::string bound(int64_t v) {
