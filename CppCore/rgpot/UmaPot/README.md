@@ -3,8 +3,9 @@
 `UmaPot` loads an AOTI (AOTInductor, PyTorch ahead-of-time
 compiled) package (`.pt2`), usually one that
 `scripts/export_uma_aoti.py` wrote from a UMA checkpoint. A package
-exported with fixed shapes and no shape metadata also loads; see
-[Accepted packages](#accepted-packages).
+exported with fixed shapes and no shape or dtype metadata also loads;
+see [Accepted packages](#accepted-packages) and
+[Input dtype](#input-dtype).
 
 vesin builds the neighbor list. The graph returns energy and forces.
 Charge and spin are per-call tensors. The compiled graph does not
@@ -24,7 +25,7 @@ package is read.
 | `molecular_box` | cube side length; molecular positions are centred at zero (0: caller's cell) |
 | `batch_max` | systems per forward (0 or 1: one system at a time; above 1: chunks of that size) |
 | `batch_packed` | 1: the chunk is the real system count (dynamic atom and edge counts). Absent or 0: a short chunk repeats its last system up to `batch_max` |
-| `pos_dtype` | input dtype of positions, the cell and cell offsets (`float32` or `float64`) |
+| `pos_dtype` | input dtype of positions, the cell and cell offsets (`float32` or `float64`; see [Input dtype](#input-dtype)) |
 | `model_dtype` | weight dtype recorded by the exporter (`float32` or `float64`) |
 | `task_name`, `charge`, `spin` | must equal `UmaConfig` |
 | `z_set`, `natoms`, `counts` | must match the input atoms |
@@ -40,10 +41,44 @@ values win when present.
 `scripts/export_uma_aoti.py --dtype float64` converts the model with
 `hydra.double()` before the AOTI trace and records both dtype keys as
 `float64`. `--dtype float32` calls `hydra.float()` and records
-`float32`. A package with neither key falls back to float32, and the
-load line keeps a missing key as `unset` rather than inventing it.
-`pos_dtype` and `model_dtype` must name the same dtype; a disagreement
-throws before any force call.
+`float32`. `pos_dtype` and `model_dtype` must name the same dtype; a
+disagreement throws before any force call.
+
+### Input dtype
+
+UmaPot passes positions, the cell and the cell offsets in one dtype.
+It takes that dtype from the first of these that the package has.
+
+1. `pos_dtype`, then `model_dtype`.
+2. The dtype the graph was compiled for. The `check_input_<i>`
+   functions in the wrapper source (see
+   [Accepted packages](#accepted-packages)) also check each input's
+   dtype. UmaPot reads it for input 0 (`pos`). Inputs 2 (`cell`) and
+   5 (`cell_offsets`) must have the same dtype when their checks name
+   one. Torch 2.10 and 2.13 write these checks the same way.
+3. float32, when the wrapper source has no input checks.
+
+The graph does not check its input dtypes at run time unless
+`AOTI_RUNTIME_CHECK_INPUTS` is set. A float64 graph given float32
+buffers reads them as doubles or throws from inside an ATen call, so
+UmaPot refuses a package it cannot read a dtype from. In the second
+case, `UmaContractError` is thrown when the package loads if:
+
+- `pos` has no dtype check,
+- `pos` is checked against anything but float32 or float64, or
+- `cell` or `cell_offsets` is checked against another dtype.
+
+`field()` names the input:
+
+```
+UmaPot: the package metadata has no pos_dtype or model_dtype and the wrapper source checks pos (input 0) against aoti_torch_dtype_bfloat16(), which is not float32 or float64
+UmaPot: the wrapper source checks pos (input 0) as float64 and cell_offsets (input 5) against aoti_torch_dtype_float32(); UmaPot passes both in one dtype
+```
+
+The load line shows `pos_dtype` from the key, or from the compiled
+graph when the key is absent. It shows `model_dtype` as `unset` when
+the package does not record it. A package that was refused is refused
+again on every later call.
 
 ## Contract checks
 
@@ -164,7 +199,7 @@ python scripts/export_uma_aoti.py \
   --task omol \
   --charge 0 \
   --spin 1 \
-  --out /tmp/geometry-b8.pt2
+  --out geometry-b8.pt2
 ```
 
 `pixi run -e umaexport export-uma-aoti -- --molecular-box 30 --batch-max 8`
@@ -186,7 +221,7 @@ python scripts/export_uma_aoti.py \
   --batch-style packed \
   --batch-max 8 \
   --dtype float32 \
-  --out /tmp/geometry-packed.pt2
+  --out geometry-packed.pt2
 ```
 
 The CPU GEMM kernel is compiled for `torch.get_num_threads()` at export
