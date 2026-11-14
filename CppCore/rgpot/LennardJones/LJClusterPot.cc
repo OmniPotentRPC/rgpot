@@ -76,6 +76,8 @@ struct ClusterScratch {
         slot[static_cast<std::size_t>(i)] + counts[static_cast<std::size_t>(i)];
   }
   const int nterm_all = slot[static_cast<std::size_t>(N)];
+  const bool plain = cells.rawSeparation();
+  const double *pos = cells.coordinates();
   if (static_cast<int>(terms.size()) < nterm_all) {
     terms.resize(static_cast<std::size_t>(nterm_all));
   }
@@ -118,8 +120,7 @@ struct ClusterScratch {
       double fx = 0.0;
       double fy = 0.0;
       double fz = 0.0;
-      cells.forDirected(i, i + 1, [&](std::int32_t, std::int32_t j, double dx, double dy, double dz,
-                                      double r2) {
+      auto accept = [&](std::int32_t j, double dx, double dy, double dz, double r2) {
         // Each j > i neighbour owns one slot in the counted prefix. A pair
         // outside the cutoff keeps a zero so the sum is one left fold.
         if (j <= i) {
@@ -147,7 +148,29 @@ struct ClusterScratch {
         fx += fscale * dx;
         fy += fscale * dy;
         fz += fscale * dz;
-      });
+      };
+      // Partners are already sorted by index. On a free orthogonal cell the
+      // folded vector is the coordinate difference, so the row is a plain load.
+      if (plain) {
+        const auto ui = static_cast<std::size_t>(i) * 3;
+        const double xi = pos[ui];
+        const double yi = pos[ui + 1];
+        const double zi = pos[ui + 2];
+        const auto row = static_cast<std::size_t>(i);
+        for (std::int32_t p = off[row]; p < off[row + 1]; ++p) {
+          const auto j = nbr[static_cast<std::size_t>(p)];
+          const auto uj = static_cast<std::size_t>(j) * 3;
+          const double dx = xi - pos[uj];
+          const double dy = yi - pos[uj + 1];
+          const double dz = zi - pos[uj + 2];
+          const double r2 = dx * dx + dy * dy + dz * dz;
+          accept(j, dx, dy, dz, r2);
+        }
+      } else {
+        cells.forDirected(i, i + 1,
+                          [&](std::int32_t, std::int32_t j, double dx, double dy, double dz,
+                              double r2) { accept(j, dx, dy, dz, r2); });
+      }
       F[3 * i] = fx;
       F[3 * i + 1] = fy;
       F[3 * i + 2] = fz;

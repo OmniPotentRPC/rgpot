@@ -153,6 +153,13 @@ public:
   [[nodiscard]] const std::vector<std::int32_t> &neighbours() const noexcept {
     return nbr_;
   }
+  /// Coordinates last passed to `update`, in the caller's layout.
+  [[nodiscard]] const double *coordinates() const noexcept { return xyz_; }
+  /// True when a stored pair vector is the raw coordinate difference.
+  /// A sheared cell or a periodic axis still folds that difference.
+  [[nodiscard]] bool rawSeparation() const noexcept {
+    return !use_general_ && !periodic_[0] && !periodic_[1] && !periodic_[2];
+  }
 
   /// Directed pairs for atoms in `[begin, end)`. `dx` is `r_i - r_j`
   /// after the selected image. `r2` is the squared length of that vector.
