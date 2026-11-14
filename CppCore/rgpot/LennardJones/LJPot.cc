@@ -70,8 +70,8 @@ void lj_pair(double r2, const simd::LjParams &p, double &energy, double &fscale)
  * @class LJPot
  * @details
  *
- * Pairwise interactions within the cutoff radius, minimum image convention
- * on an orthogonal or sheared box. Pairs come from the shared neighbour
+ * Pairwise interactions within the cutoff radius, summed over every
+ * periodic image of an orthogonal or sheared box. Pairs come from the shared neighbour
  * layer: a cell list, a Verlet skin, and either a stored list or a
  * streaming walk. The pair term runs during that walk. A streaming call
  * does not copy a half-list. A stored call keeps candidates out to the
@@ -98,7 +98,7 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     F[3 * i + 1] = 0;
     F[3 * i + 2] = 0;
   }
-  if (N < 2 || cuttOffR <= 0.0) {
+  if (N < 1 || cuttOffR <= 0.0) {
     publishCauchyStress(out, strain, volume);
     return;
   }
@@ -125,7 +125,7 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const int nt = nlist::threadsRequested();
   auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
                     double r2, double *force, double &energy, double *virial) {
-    if (!(i < j) || r2 > cutoff2) {
+    if (j < i || r2 > cutoff2) {
       return;
     }
     // Two different atoms on the same point. Skipping the pair reports a

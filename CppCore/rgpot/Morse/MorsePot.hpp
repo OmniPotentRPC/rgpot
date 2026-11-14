@@ -119,7 +119,7 @@ public:
 
 private:
   /// Bump when the kernel numerics change, so stale cache entries die.
-  static constexpr uint64_t kKernelVersion = 2;
+  static constexpr uint64_t kKernelVersion = 3;
 
   double De;           //!< Well depth parameter.
   double a;            //!< Range parameter.

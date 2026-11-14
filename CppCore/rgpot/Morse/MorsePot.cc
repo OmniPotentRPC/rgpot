@@ -58,7 +58,7 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   for (long k = 0; k < 3 * N; k++) {
     F[k] = 0.0;
   }
-  if (N < 2 || cuttOffR <= 0.0) {
+  if (N < 1 || cuttOffR <= 0.0) {
     return;
   }
 
@@ -79,7 +79,7 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const int nt = nlist::threadsRequested();
   auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
                     double r2, double *force, double &energy, double *virial) {
-    if (!(i < j) || !(r2 > 0.0) || r2 > cutoff2) {
+    if (j < i || !(r2 > 0.0) || r2 > cutoff2) {
       return;
     }
     const double r = std::sqrt(r2);
