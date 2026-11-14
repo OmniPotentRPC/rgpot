@@ -1915,6 +1915,9 @@ if get_option('with_tests')
         elif test.get(0) == 'SuttonChenPotTest'
             # Two cluster relaxations, up to 2000 force calls each.
             _timeout = 120
+        elif test.get(0) == 'PeriodicImagesTest'
+            # Supercells of up to 11k atoms, several on sheared cells.
+            _timeout = 120
         endif
         test(
             test.get(0),

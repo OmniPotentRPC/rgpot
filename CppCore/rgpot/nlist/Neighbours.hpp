@@ -354,6 +354,23 @@ private:
   void buildFrameCells(const double *xyz, std::size_t n, double edge);
   void fillCells(std::size_t n);
   void buildStored(const double *xyz, std::size_t n);
+  /// The coordinate an orthorhombic bin and tile use: `x` itself inside
+  /// the cell, and its image inside the cell along a periodic axis
+  /// otherwise.
+  [[nodiscard]] double binCoord(int k, double x) const noexcept {
+    const double length = len_[k];
+    if (!periodic_[k] || !(length > 0.0)) {
+      return x;
+    }
+    const double t = x / length;
+    if (t >= 0.0 && t < 1.0) {
+      return x;
+    }
+    if (!std::isfinite(t)) {
+      return x;
+    }
+    return x - length * std::floor(t);
+  }
   void buildImages(const double *xyz, std::size_t n, const std::array<bool, 3> &periodic);
 
   template <typename Fn>
@@ -611,7 +628,8 @@ private:
         for (std::size_t q = 0; q < n_; ++q) {
           const auto j = cell_atoms_[q];
           const auto u = static_cast<std::size_t>(j) * 3;
-          cache.tile[q] = Tile{xyz_[u], xyz_[u + 1], xyz_[u + 2], j};
+          cache.tile[q] = Tile{binCoord(0, xyz_[u]), binCoord(1, xyz_[u + 1]),
+                               binCoord(2, xyz_[u + 2]), j};
         }
       }
     } else {
@@ -695,7 +713,10 @@ private:
     for (std::size_t q = 0; q < n_; ++q) {
       const auto j = cell_atoms_[q];
       const auto u = static_cast<std::size_t>(j) * 3;
-      tile[q] = Tile{xyz_[u], xyz_[u + 1], xyz_[u + 2], j};
+      // cell_shift adds the bin's lattice shift, so a tile holds the
+      // coordinate its bin was taken from.
+      tile[q] = Tile{binCoord(0, xyz_[u]), binCoord(1, xyz_[u + 1]), binCoord(2, xyz_[u + 2]),
+                     j};
     }
     }
     if (streaming_) {

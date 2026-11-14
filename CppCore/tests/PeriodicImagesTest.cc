@@ -1005,3 +1005,56 @@ TEST_CASE("a pair view keeps its list across calls", "[images][simd]") {
   CHECK(reuse.builds() == 1);
   CHECK(reuse.reused());
 }
+
+TEST_CASE("atoms outside a wide cell keep their partners", "[images][unwrapped][fast]") {
+  setThreads("1");
+  // Enough bins that a clamped atom leaves its partners' stencil.
+  auto cubic = fccCubic(kLjFcc, 14, 14, 14, 18);
+  jitter(cubic, 0.05, 71u);
+  const auto away = [](const Cell &s) {
+    Cell out = s;
+    for (std::size_t p = 0; p < out.size(); ++p) {
+      const int k[3] = {static_cast<int>(p % 3) - 1, static_cast<int>(p % 5) - 2,
+                        static_cast<int>(p % 2)};
+      for (std::size_t c = 0; c < 3; ++c) {
+        out.pos[3 * p + c] += k[0] * s.box[c] + k[1] * s.box[3 + c] + k[2] * s.box[6 + c];
+      }
+    }
+    return out;
+  };
+  const auto moved = away(cubic);
+  const double inside = evaluate(reducedLj(), cubic).energy;
+  const double tol = 1e-10 * static_cast<double>(cubic.size());
+  for (auto mode : {rgpot::nlist::Mode::Auto, rgpot::nlist::Mode::Stored,
+                    rgpot::nlist::Mode::Stream}) {
+    auto lj = reducedLj();
+    lj.setNeighbourMode(mode);
+    const auto a = evaluate(lj, moved);
+    CHECK_THAT(a.energy, WithinAbs(inside, tol));
+  }
+  const auto ref = evaluate(reducedLj(), cubic);
+  const auto out = evaluate(reducedLj(), moved);
+  for (std::size_t k = 0; k < ref.forces.size(); ++k) {
+    CHECK_THAT(out.forces[k], WithinAbs(ref.forces[k], 1e-9));
+  }
+
+  // The same lattice on a sheared basis, wide by its face spacings, with
+  // the atoms wrapped into it and then moved out again.
+  const int m[3][3] = {{1, 0, 0}, {1, 1, 0}, {0, 0, 1}};
+  auto small = fccCubic(kLjFcc, 8, 8, 8, 18);
+  jitter(small, 0.05, 71u);
+  const double small_inside = evaluate(reducedLj(), small).energy;
+  const auto skew = wrapped(rebased(small, m));
+  for (int k = 0; k < 3; ++k) {
+    REQUIRE(height(skew.box, k) > 2.0 * (3.0 + 1.0));
+  }
+  CHECK_THAT(evaluate(reducedLj(), skew).energy, WithinAbs(small_inside, 1e-10 * 2048.0));
+  CHECK_THAT(evaluate(reducedLj(), away(skew)).energy, WithinAbs(small_inside, 1e-10 * 2048.0));
+  const rgpot::SuttonChenPot sc(copperSc());
+  auto cu = fccCubic(3.61, 8, 8, 8, 29);
+  jitter(cu, 0.05, 73u);
+  const double cu_inside = evaluate(sc, cu).energy;
+  const auto cu_skew = wrapped(rebased(cu, m));
+  CHECK_THAT(evaluate(sc, cu_skew).energy, WithinAbs(cu_inside, 1e-10 * 2048.0));
+  CHECK_THAT(evaluate(sc, away(cu)).energy, WithinAbs(cu_inside, 1e-10 * 2048.0));
+}

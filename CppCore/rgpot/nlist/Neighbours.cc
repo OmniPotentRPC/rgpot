@@ -317,9 +317,9 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
       }
       return i;
     };
-    ix = bin(xyz[3 * a], len_[0], nx_);
-    iy = bin(xyz[3 * a + 1], len_[1], ny_);
-    iz = bin(xyz[3 * a + 2], len_[2], nz_);
+    ix = bin(binCoord(0, xyz[3 * a]), len_[0], nx_);
+    iy = bin(binCoord(1, xyz[3 * a + 1]), len_[1], ny_);
+    iz = bin(binCoord(2, xyz[3 * a + 2]), len_[2], nz_);
     const int id = (ix * ny_ + iy) * nz_ + iz;
     cell_of_[a] = id;
     ++cell_start_[static_cast<std::size_t>(id) + 1];
