@@ -10,6 +10,7 @@
 #include <array>
 #include <vector>
 
+#include <caffe2/serialize/inline_container.h>
 #include <torch/csrc/inductor/aoti_package/model_package_loader.h>
 #include <torch/torch.h>
 
@@ -161,11 +162,36 @@ void reject_periodic_images(const std::vector<double> &offsets) {
   }
 }
 
+// Input shapes of the graph AOTIModelPackageLoader runs. The package
+// keeps the wrapper source beside the compiled library; the loader
+// itself needs that file. A package without it has no compiled shapes.
+std::vector<UmaContract::ShapeDecl> compiled_inputs(const std::string &pt2) {
+  const std::string dir = "data/aotinductor/model/";
+  try {
+    caffe2::serialize::PyTorchStreamReader reader(pt2);
+    for (const auto &name : reader.getAllRecords()) {
+      if (name.rfind(dir, 0) != 0 || !ends_with(name, ".cpp") ||
+          ends_with(name, ".kernel.cpp"))
+        continue;
+      const auto [data, size] = reader.getRecord(name);
+      auto decls = UmaContract::compiledInputs(
+          std::string(static_cast<const char *>(data.get()), size));
+      if (!decls.empty())
+        return decls;
+    }
+  } catch (const std::exception &err) {
+    std::fprintf(stderr, "UmaPot: no compiled input shapes in %s: %s\n",
+                 pt2.c_str(), err.what());
+  }
+  return {};
+}
+
 // One edge-count contract for a single system and for every system in
 // a band. The compiled graph is not called when this throws.
 void apply_edge_contract(const UmaContract &contract, bool molecular,
                          int64_t natoms, int64_t systems, const int64_t *counts,
                          int64_t nedges_total) {
+  contract.checkCompiledPos(natoms * systems);
   contract.checkEachSystem(systems, counts, natoms, molecular);
   if (contract.pos_decl.known || contract.edge_decl.known)
     contract.checkCallShapes(natoms, nedges_total);
@@ -303,7 +329,15 @@ void UmaPot::ensureLoaded() const {
   std::fprintf(stderr, "UmaPot: pos_dtype=%s model_dtype=%s\n",
                m_impl->pos_dtype_name.c_str(),
                m_impl->model_dtype_name.c_str());
-  m_impl->contract = UmaContract::fromMetadata(meta);
+  m_impl->contract =
+      UmaContract::fromMetadata(meta, compiled_inputs(load_path));
+  if (m_impl->contract.edge_source != "metadata") {
+    std::fprintf(stderr,
+                 "UmaPot: package metadata has no nedges_min or nedges_max; "
+                 "edge_index %s from the %s shape\n",
+                 m_impl->contract.edge_decl.text.c_str(),
+                 m_impl->contract.edge_source.c_str());
+  }
 }
 
 void UmaPot::checkContract(const ForceInput &in) const {

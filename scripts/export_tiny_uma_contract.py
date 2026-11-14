@@ -759,10 +759,32 @@ def export_tetrazine_keyless(path: Path, dtype_name: str) -> None:
     )
 
 
+def _blank_wrapper_source(path: Path) -> None:
+    """Replace the AOTI wrapper source with a comment.
+
+    AOTIModelPackageLoader finds the compiled library through that file
+    name, so the member stays. Its input checks are what UmaPot reads as
+    the compiled shapes; a package written without them looks like this.
+    """
+    import zipfile
+    from io import BytesIO
+
+    source = zipfile.ZipFile(BytesIO(path.read_bytes()))
+    out = BytesIO()
+    with zipfile.ZipFile(out, "w") as dest:
+        for info in source.infolist():
+            data = source.read(info.filename)
+            if info.filename.endswith(".wrapper.cpp"):
+                data = b"// wrapper source not shipped\n"
+            dest.writestr(info, data)
+    path.write_bytes(out.getvalue())
+
+
 def export_no_edges(path: Path, dtype_name: str) -> None:
     export_precision(path, dtype_name, "both")
-    # ``shapes`` still carries the example edge list. Drop that too, or
-    # the package is a fixed-shape export rather than one with no range.
+    # ``shapes`` still carries the example edge list and the wrapper
+    # source still checks the compiled one. Drop both, or the package is
+    # a fixed-shape export rather than one with no edge count anywhere.
     _drop_metadata_keys(
         path,
         (
@@ -773,6 +795,7 @@ def export_no_edges(path: Path, dtype_name: str) -> None:
             "shapes",
         ),
     )
+    _blank_wrapper_source(path)
 
 
 def export_box(path: Path, dtype_name: str) -> None:

@@ -422,6 +422,180 @@ TEST_CASE("UmaContract refuses an edge count the graph was not exported for",
       Catch::Matchers::ContainsSubstring("nedges_min is absent"));
 }
 
+// check_input_<i> as torch 2.10 AOTInductor writes it, trimmed to the
+// size checks. pos [3, 3] and edge_index [2, 6] are fixed; the dynamic
+// variant bounds both counts.
+static std::string wrapper_checks(bool dynamic) {
+  const std::string pos_n = dynamic
+                                ? "    if (arg0_1_size[0] < 2) {\n"
+                                  "        throw std::runtime_error(\"\");\n"
+                                  "    }\n"
+                                  "    if (arg0_1_size[0] > 64) {\n"
+                                  "        throw std::runtime_error(\"\");\n"
+                                  "    }\n"
+                                : "    if (3 != arg0_1_size[0]) {\n"
+                                  "        throw std::runtime_error(\"\");\n"
+                                  "    }\n";
+  const std::string edge_n =
+      dynamic ? "    if (arg4_1_size[1] < 2) {\n"
+                "        ss << \"expected it to be >= 2, \";\n"
+                "    }\n"
+                "    if (arg4_1_size[1] > 4096) {\n"
+                "        ss << \"expected to be <= 4096, \";\n"
+                "    }\n"
+              : "    if (6 != arg4_1_size[1]) {\n"
+                "        ss << \"expected: 6, \";\n"
+                "    }\n";
+  return "AOTI_NOINLINE static void check_input_0(\n"
+         "    AtenTensorHandle* input_handles\n"
+         ") {\n"
+         "    ConstantHandle arg0_1 = ConstantHandle(input_handles[0]);\n"
+         "    if (arg0_1_expected_dtype != arg0_1_dtype) {\n"
+         "    }\n"
+         "    auto arg0_1_size = arg0_1.sizes();\n" +
+         pos_n +
+         "    if (3 != arg0_1_size[1]) {\n"
+         "    }\n"
+         "    if (1 != arg0_1_stride[1]) {\n"
+         "    }\n"
+         "}\n"
+         "\n"
+         "AOTI_NOINLINE static void check_input_4(\n"
+         "    AtenTensorHandle* input_handles\n"
+         ") {\n"
+         "    ConstantHandle arg4_1 = ConstantHandle(input_handles[4]);\n"
+         "    auto arg4_1_size = arg4_1.sizes();\n"
+         "    if (2 != arg4_1_size[0]) {\n"
+         "    }\n" +
+         edge_n +
+         "    if (1 != arg4_1_stride[1]) {\n"
+         "    }\n"
+         "}\n"
+         "\n"
+         "static bool _check_aoti_runtime_check_inputs_env() {\n"
+         "    if (arg9_1_size[0] > 7) {\n"
+         "    }\n"
+         "}\n";
+}
+
+TEST_CASE("UmaContract reads the input shapes a package was compiled for",
+          "[UmaPot][contract][compiled]") {
+  const auto fixed = rgpot::UmaContract::compiledInputs(wrapper_checks(false));
+  REQUIRE(fixed.size() == 5);
+  REQUIRE(fixed[0].known);
+  REQUIRE_FALSE(fixed[1].known);
+  REQUIRE(fixed[0].axes.size() == 2);
+  REQUIRE_FALSE(fixed[0].axes[0].symbolic);
+  REQUIRE(fixed[0].axes[0].fixed == 3);
+  REQUIRE(fixed[0].axes[1].fixed == 3);
+  REQUIRE(fixed[4].axes.size() == 2);
+  REQUIRE(fixed[4].axes[0].fixed == 2);
+  REQUIRE_FALSE(fixed[4].axes[1].symbolic);
+  REQUIRE(fixed[4].axes[1].fixed == 6);
+
+  const auto dynamic = rgpot::UmaContract::compiledInputs(wrapper_checks(true));
+  REQUIRE(dynamic[0].axes[0].symbolic);
+  REQUIRE(dynamic[0].axes[0].lo == 2);
+  REQUIRE(dynamic[0].axes[0].hi == 64);
+  REQUIRE(dynamic[4].axes[1].symbolic);
+  REQUIRE(dynamic[4].axes[1].lo == 2);
+  REQUIRE(dynamic[4].axes[1].hi == 4096);
+
+  REQUIRE(rgpot::UmaContract::compiledInputs("").empty());
+  REQUIRE(rgpot::UmaContract::compiledInputs("// no checks\n").empty());
+}
+
+TEST_CASE("UmaContract falls back to the compiled shapes",
+          "[UmaPot][contract][compiled]") {
+  // A fixed-shape export with the runtime keys and no shape key.
+  auto bare = hcn_metadata();
+  for (const char *key : {"nedges_min", "nedges_max", "natoms", "counts"})
+    bare.erase(key);
+  REQUIRE_THROWS_WITH(rgpot::UmaContract::fromMetadata(bare),
+                      Catch::Matchers::ContainsSubstring("nedges") &&
+                          Catch::Matchers::ContainsSubstring("absent"));
+
+  const auto fixed_shapes =
+      rgpot::UmaContract::compiledInputs(wrapper_checks(false));
+  const auto fixed = rgpot::UmaContract::fromMetadata(bare, fixed_shapes);
+  REQUIRE(fixed.edge_source == "compiled");
+  REQUIRE(fixed.nedges_min == 6);
+  REQUIRE(fixed.nedges_max == 6);
+  REQUIRE(fixed.edge_decl.text == "[2, 6]");
+  REQUIRE_NOTHROW(fixed.checkCallShapes(3, 6));
+  REQUIRE_NOTHROW(fixed.checkCompiledPos(3));
+  const int64_t six = 6;
+  REQUIRE_NOTHROW(fixed.checkEachSystem(1, &six));
+  const int64_t four = 4;
+  REQUIRE_THROWS_WITH(
+      fixed.checkEachSystem(1, &four),
+      Catch::Matchers::Equals(
+          "UmaPot: edge_index shape is [2, 4], the package was exported for "
+          "[2, 6]"));
+  REQUIRE_THROWS_WITH(
+      fixed.checkCompiledPos(4),
+      Catch::Matchers::Equals(
+          "UmaPot: pos shape is [4, 3], the package was exported for [3, 3]"));
+
+  const auto dynamic = rgpot::UmaContract::fromMetadata(
+      bare, rgpot::UmaContract::compiledInputs(wrapper_checks(true)));
+  REQUIRE(dynamic.nedges_min == 2);
+  REQUIRE(dynamic.nedges_max == 4096);
+  REQUIRE_NOTHROW(dynamic.checkCallShapes(3, 100));
+  REQUIRE_NOTHROW(dynamic.checkCompiledPos(64));
+  REQUIRE_THROWS_WITH(
+      dynamic.checkCallShapes(3, 5000),
+      Catch::Matchers::ContainsSubstring("[2, nedges] with nedges in [2, "
+                                         "4096]"));
+  REQUIRE_THROWS_WITH(
+      dynamic.checkCompiledPos(65),
+      Catch::Matchers::ContainsSubstring("[natoms, 3] with natoms in [2, 64]"));
+
+  // shapes records the traced example. The compiled graph wins.
+  auto shaped = bare;
+  shaped["shapes"] = "{'pos': [3, 3], 'edge_index': [2, 6]}";
+  REQUIRE(rgpot::UmaContract::fromMetadata(shaped).edge_source == "shapes");
+  const auto both = rgpot::UmaContract::fromMetadata(
+      shaped, rgpot::UmaContract::compiledInputs(wrapper_checks(true)));
+  REQUIRE(both.edge_source == "compiled");
+  REQUIRE(both.nedges_max == 4096);
+}
+
+TEST_CASE("UmaContract keeps the metadata contract over the compiled shapes",
+          "[UmaPot][contract][compiled]") {
+  // The dynamic path is unchanged: recorded keys decide, and the
+  // compiled pos is not consulted when natoms is recorded.
+  const auto compiled =
+      rgpot::UmaContract::compiledInputs(wrapper_checks(false));
+  auto ranged = hcn_metadata();
+  ranged["nedges_min"] = "1";
+  ranged["nedges_max"] = "65536";
+  const auto c = rgpot::UmaContract::fromMetadata(ranged, compiled);
+  REQUIRE(c.edge_source == "metadata");
+  REQUIRE(c.nedges_min == 1);
+  REQUIRE(c.nedges_max == 65536);
+  REQUIRE_FALSE(c.compiled_pos.known);
+  REQUIRE_NOTHROW(c.checkCompiledPos(9));
+
+  auto min_only = hcn_metadata();
+  min_only.erase("nedges_max");
+  REQUIRE_THROWS_WITH(
+      rgpot::UmaContract::fromMetadata(min_only, compiled),
+      Catch::Matchers::ContainsSubstring("nedges_max is absent"));
+
+  // An open upper bound is named as such.
+  auto open = hcn_metadata();
+  open.erase("nedges_min");
+  open.erase("nedges_max");
+  std::string src = wrapper_checks(true);
+  const std::string upper = "    if (arg4_1_size[1] > 4096) {\n";
+  src.erase(src.find(upper), upper.size());
+  const auto unbounded = rgpot::UmaContract::fromMetadata(
+      open, rgpot::UmaContract::compiledInputs(src));
+  REQUIRE(unbounded.nedges_max == INT64_MAX);
+  REQUIRE(unbounded.edge_decl.text == "[2, nedges] with nedges in [2, inf]");
+}
+
 TEST_CASE("UmaContract checks z_set alone for packages without counts",
           "[UmaPot][contract]") {
   auto legacy = hcn_metadata();

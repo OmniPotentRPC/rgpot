@@ -21,7 +21,8 @@ namespace rgpot {
  * The package was merged for one composition, charge, spin and task.
  * Every force call checks the config and the input against the
  * metadata embedded in the package and throws UmaContractError on a
- * mismatch (see UmaContract).
+ * mismatch (see UmaContract). A package whose metadata records no edge
+ * count is held to the shapes its graph was compiled for.
  */
 class UmaPot : public Potential<UmaPot> {
 public:

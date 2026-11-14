@@ -4,6 +4,7 @@
 #include "rgpot/UmaPot/UmaConfig.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -87,6 +88,9 @@ private:
  * the edge-count range the exported graph accepts (equal for a static
  * package, whose graph is traced at one edge count); packages from older
  * exporters carry the first four only.
+ *
+ * A package with neither edge key takes the edge count from the shapes
+ * the graph was compiled for (compiledInputs), then from ``shapes``.
  */
 struct UmaContract {
   std::optional<std::string> task_name;
@@ -119,11 +123,164 @@ struct UmaContract {
 
   ShapeDecl pos_decl;
   ShapeDecl edge_decl;
+  /// Compiled ``pos`` of one call, used only when the metadata declares
+  /// no atom count. A band call stacks its systems, so the rows are the
+  /// atoms of every system in the chunk.
+  ShapeDecl compiled_pos;
+  /// Where the edge range came from: ``metadata``, ``compiled`` or
+  /// ``shapes``.
+  std::string edge_source{"metadata"};
+
+  /// Input shapes the AOTI wrapper source checks. Each graph input has a
+  /// ``check_input_<i>`` that compares a fixed axis
+  /// (``if (3 != arg0_1_size[1])``) and bounds a symbolic one
+  /// (``if (arg4_1_size[1] < 2)``, ``if (arg4_1_size[1] > 4096)``). Entry
+  /// ``i`` is graph input ``i``. An input without such a function is not
+  /// known, and an axis with no bound is open on that side.
+  static std::vector<ShapeDecl> compiledInputs(const std::string &src) {
+    std::vector<ShapeDecl> out;
+    const std::string fn = "static void check_input_";
+    const std::string handle = "= ConstantHandle(input_handles[";
+    for (std::size_t at = src.find(fn); at != std::string::npos;
+         at = src.find(fn, at + fn.size())) {
+      // The generated function closes with a brace in column zero.
+      const std::size_t stop = src.find("\n}", at);
+      const std::string body =
+          src.substr(at, (stop == std::string::npos ? src.size() : stop) - at);
+      const std::size_t h = body.find(handle);
+      if (h == std::string::npos)
+        continue;
+      const auto index = integers(body.substr(h + handle.size(), 24));
+      if (index.empty() || index.front() < 0)
+        continue;
+      std::size_t v_end = h;
+      while (v_end > 0 && body[v_end - 1] == ' ')
+        --v_end;
+      std::size_t v_begin = v_end;
+      while (v_begin > 0 &&
+             (std::isalnum(static_cast<unsigned char>(body[v_begin - 1])) ||
+              body[v_begin - 1] == '_'))
+        --v_begin;
+      const std::string var = body.substr(v_begin, v_end - v_begin);
+      if (var.empty())
+        continue;
+      const std::string size_ref = var + "_size[";
+      const std::string stride_ref = var + "_stride[";
+
+      struct Bound {
+        bool fixed{false};
+        int64_t value{0};
+        int64_t lo{0};
+        int64_t hi{INT64_MAX};
+      };
+      std::map<std::size_t, Bound> bounds;
+      std::size_t rank = 0;
+      auto axis_of = [](const std::string &tok,
+                        const std::string &ref) -> std::optional<std::size_t> {
+        if (tok.rfind(ref, 0) != 0 || tok.back() != ']')
+          return std::nullopt;
+        const auto d = integers(tok.substr(ref.size()));
+        if (d.size() != 1 || d.front() < 0)
+          return std::nullopt;
+        return static_cast<std::size_t>(d.front());
+      };
+      auto literal = [](const std::string &tok) -> std::optional<int64_t> {
+        if (tok.empty() || !std::all_of(tok.begin(), tok.end(), [](char ch) {
+              return ch >= '0' && ch <= '9';
+            }))
+          return std::nullopt;
+        return integers(tok).front();
+      };
+      for (std::size_t c = body.find("if ("); c != std::string::npos;
+           c = body.find("if (", c + 4)) {
+        const std::size_t close = body.find(')', c);
+        if (close == std::string::npos)
+          break;
+        std::vector<std::string> tok;
+        std::string cur;
+        for (char ch : body.substr(c + 4, close - c - 4)) {
+          if (ch == ' ') {
+            if (!cur.empty())
+              tok.push_back(cur);
+            cur.clear();
+          } else {
+            cur.push_back(ch);
+          }
+        }
+        if (!cur.empty())
+          tok.push_back(cur);
+        if (tok.size() != 3)
+          continue;
+        if (const auto d = axis_of(tok[2], stride_ref))
+          rank = std::max(rank, *d + 1);
+        if (const auto d = axis_of(tok[0], stride_ref))
+          rank = std::max(rank, *d + 1);
+        if (const auto d = axis_of(tok[2], size_ref)) {
+          rank = std::max(rank, *d + 1);
+          const auto k = literal(tok[0]);
+          if (tok[1] == "!=" && k) {
+            bounds[*d].fixed = true;
+            bounds[*d].value = *k;
+          }
+          continue;
+        }
+        if (const auto d = axis_of(tok[0], size_ref)) {
+          rank = std::max(rank, *d + 1);
+          const auto k = literal(tok[2]);
+          if (tok[1] == "<" && k)
+            bounds[*d].lo = *k;
+          else if (tok[1] == ">" && k)
+            bounds[*d].hi = *k;
+        }
+      }
+      if (rank == 0)
+        continue;
+      ShapeDecl decl;
+      decl.known = true;
+      for (std::size_t d = 0; d < rank; ++d) {
+        const Bound b = bounds.count(d) ? bounds[d] : Bound{};
+        Axis axis;
+        if (b.fixed) {
+          axis.fixed = b.value;
+        } else {
+          axis.symbolic = true;
+          axis.lo = b.lo;
+          axis.hi = b.hi;
+        }
+        decl.axes.push_back(axis);
+      }
+      const auto i = static_cast<std::size_t>(index.front());
+      if (out.size() <= i)
+        out.resize(i + 1);
+      out[i] = std::move(decl);
+    }
+    return out;
+  }
+
+  static std::string bound(int64_t v) {
+    return v == INT64_MAX ? "inf" : std::to_string(v);
+  }
+
+  /// Compiled input ``index`` when it is two-dimensional and axis
+  /// ``fixed_axis`` is the constant ``value`` (``pos`` is ``[n, 3]``,
+  /// ``edge_index`` is ``[2, e]``).
+  static const ShapeDecl *compiledInput(const std::vector<ShapeDecl> &compiled,
+                                        std::size_t index,
+                                        std::size_t fixed_axis, int64_t value) {
+    if (index >= compiled.size())
+      return nullptr;
+    const ShapeDecl &decl = compiled[index];
+    if (!decl.known || decl.axes.size() != 2 ||
+        decl.axes[fixed_axis].symbolic || decl.axes[fixed_axis].fixed != value)
+      return nullptr;
+    return &decl;
+  }
 
   /// Second extent of ``edge_index`` inside the exporter's ``shapes``
   /// dict (``{'edge_index': [2, 1332], ...}``). Packages written before
-  /// ``nedges_min`` and ``nedges_max`` record a fixed edge list there
-  /// and nowhere else. A missing or non-fixed entry is not a count.
+  /// ``nedges_min`` and ``nedges_max`` record a fixed edge list there.
+  /// It is the traced example, so the compiled edge_index wins when the
+  /// package has one. A missing or non-fixed entry is not a count.
   static std::optional<int64_t>
   fixedEdgesFromShapes(const std::string *shapes) {
     if (shapes == nullptr)
@@ -189,8 +346,11 @@ struct UmaContract {
     return out;
   }
 
+  /// ``compiled`` is compiledInputs() of the package's wrapper source,
+  /// empty when the package carries none.
   static UmaContract
-  fromMetadata(const std::unordered_map<std::string, std::string> &meta) {
+  fromMetadata(const std::unordered_map<std::string, std::string> &meta,
+               const std::vector<ShapeDecl> &compiled = {}) {
     auto get = [&](const char *key) -> const std::string * {
       const auto it = meta.find(key);
       return it == meta.end() || it->second.empty() ? nullptr : &it->second;
@@ -213,18 +373,28 @@ struct UmaContract {
     c.natoms = one_int("natoms");
     c.nedges_min = one_int("nedges_min");
     c.nedges_max = one_int("nedges_max");
-    // Published packages record a fixed edge list in ``shapes`` and
-    // carry neither range key. That count is the traced size: the
-    // neighbour list is built or padded to it, and a graph that cannot
-    // fit is named before the compiled graph runs. One key without the
-    // other is still not a range.
+    // A package exported with fixed shapes carries neither range key.
+    // The compiled edge_index is what the graph accepts: a fixed axis is
+    // the one edge count, a symbolic axis its bounds. ``shapes`` only
+    // records the example, so it is used when the wrapper source is
+    // missing. The neighbour list is not padded; a list of another
+    // length is named before the compiled graph runs. One key without
+    // the other is still not a range.
+    const ShapeDecl *compiled_edges = compiledInput(compiled, 4, 0, 2);
     if (!c.nedges_min && !c.nedges_max) {
-      if (const auto fixed = fixedEdgesFromShapes(get("shapes"))) {
+      if (compiled_edges) {
+        const Axis &e = compiled_edges->axes[1];
+        c.nedges_min = e.symbolic ? e.lo : e.fixed;
+        c.nedges_max = e.symbolic ? e.hi : e.fixed;
+        c.edge_source = "compiled";
+      } else if (const auto fixed = fixedEdgesFromShapes(get("shapes"))) {
         c.nedges_min = fixed;
         c.nedges_max = fixed;
+        c.edge_source = "shapes";
       } else {
-        throw UmaContractError("nedges", "nedges_min and nedges_max", "absent",
-                               "package");
+        throw UmaContractError(
+            "nedges", "nedges_min and nedges_max or a compiled edge_index",
+            "absent", "package");
       }
     } else if (!c.nedges_min || !c.nedges_max) {
       const char *missing = c.nedges_min ? "nedges_max" : "nedges_min";
@@ -241,6 +411,16 @@ struct UmaContract {
       c.pos_decl.axes.push_back(Axis{false, 3, 0, 0, {}});
       c.pos_decl.text = "[" + std::to_string(*c.natoms) + ", 3]";
     }
+    if (!c.pos_decl.known) {
+      if (const ShapeDecl *pos = compiledInput(compiled, 0, 1, 3)) {
+        c.compiled_pos = *pos;
+        const Axis &n = pos->axes[0];
+        c.compiled_pos.text = n.symbolic
+                                  ? "[natoms, 3] with natoms in [" +
+                                        bound(n.lo) + ", " + bound(n.hi) + "]"
+                                  : "[" + std::to_string(n.fixed) + ", 3]";
+      }
+    }
     if (!c.edge_decl.known && (c.nedges_min || c.nedges_max)) {
       const int64_t lo = c.nedges_min ? *c.nedges_min : 0;
       const int64_t hi = c.nedges_max ? *c.nedges_max : lo;
@@ -251,9 +431,8 @@ struct UmaContract {
         c.edge_decl.text = "[2, " + std::to_string(lo) + "]";
       } else {
         c.edge_decl.axes.push_back(Axis{true, 0, lo, hi, "nedges"});
-        c.edge_decl.text = "[2, nedges] with nedges in [" +
-                           std::to_string(lo) + ", " + std::to_string(hi) +
-                           "]";
+        c.edge_decl.text = "[2, nedges] with nedges in [" + std::to_string(lo) +
+                           ", " + bound(hi) + "]";
       }
     }
     if (const std::string *raw = get("z_set")) {
@@ -395,6 +574,12 @@ struct UmaContract {
     matchShape("edge_index", edge_decl, {2, nedges});
   }
 
+  /// Rows of the ``pos`` tensor one call passes, against the compiled
+  /// shape. Known only for a package whose metadata declares no atoms.
+  void checkCompiledPos(int64_t rows) const {
+    matchShape("pos", compiled_pos, {rows, 3});
+  }
+
   /// Every system, on the single path and on the band path.
   ///
   /// An exact package stores the traced total, so each system must
@@ -433,10 +618,10 @@ struct UmaContract {
                             "[2, " + std::to_string(each_exact) + "]");
       }
       if (count < *nedges_min || count > *nedges_max) {
-        throw UmaShapeError(
-            "edge_index", "[2, " + std::to_string(count) + "]",
-            "[2, nedges] with nedges in [" + std::to_string(*nedges_min) +
-                ", " + std::to_string(*nedges_max) + "]");
+        throw UmaShapeError("edge_index", "[2, " + std::to_string(count) + "]",
+                            "[2, nedges] with nedges in [" +
+                                std::to_string(*nedges_min) + ", " +
+                                bound(*nedges_max) + "]");
       }
     }
   }
@@ -453,7 +638,7 @@ struct UmaContract {
         nedges_max && lo == *nedges_max
             ? std::to_string(lo)
             : "[" + std::to_string(lo) + ", " +
-                  (nedges_max ? std::to_string(*nedges_max) : "inf") + "]";
+                  (nedges_max ? bound(*nedges_max) : "inf") + "]";
     throw UmaContractError("nedges", want, std::to_string(nedges), "input");
   }
 
