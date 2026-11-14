@@ -654,6 +654,7 @@ void Builder::update(const double *positions, std::size_t n, const double *box9,
       query_.fields.distances == query.fields.distances &&
       std::memcmp(box_, box9, sizeof(box_)) == 0) {
     if (withinSkin(ref_.data(), positions, n, query.skin)) {
+      // The stored pair columns stay at the capacity of the last rebuild.
       reused_ = true;
       if (n >= kOutsideSkipMinAtoms) {
         double furthest = 0;
@@ -779,7 +780,18 @@ std::size_t Walk::pull(Buffers dest, bool &done) {
 void build(Table &table, const double *positions, std::size_t n, const double *box9,
            const Query &query) {
   check_geometry(positions, n, box9, query);
+#ifdef RGPOT_EAM_AL_OPENMP
+  // The threaded fill writes into the columns already stored on `table`.
+  // Replacing the table here would unmap that memory and fault it again
+  // on the next rebuild. A shorter list only lowers the size.
+  const bool keep_columns =
+      !clustered(query) && n >= 8192 && query.cutoff > 0.0 && teamSize(n) > 1;
+  if (!keep_columns) {
+    table = Table{};
+  }
+#else
   table = Table{};
+#endif
   if (n == 0 || !(query.cutoff > 0.0)) {
     table.stored = true;
     return;
@@ -1048,8 +1060,101 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
           ++cursor.count;
         });
     // Each thread wrote a gap-padded slice. The packed prefix is the same
-    // order: thread 0's pairs, then thread 1's. Copying into a fresh buffer
-    // lets every thread write its own destination at once.
+    // order: thread 0's pairs, then thread 1's.
+#ifdef RGPOT_EAM_AL_OPENMP
+    // The copy lands in the columns kept from the previous rebuild.
+    std::vector<std::size_t> prefix(static_cast<std::size_t>(nt) + 1);
+    for (int t = 0; t < nt; ++t) {
+      prefix[static_cast<std::size_t>(t) + 1] =
+          prefix[static_cast<std::size_t>(t)] + cursors[static_cast<std::size_t>(t)].count;
+    }
+    const auto kept = prefix[static_cast<std::size_t>(nt)];
+    std::size_t extra_n = 0;
+    for (int t = 0; t < nt; ++t) {
+      extra_n += extra[static_cast<std::size_t>(t)].first.size();
+    }
+    const auto total = kept + extra_n;
+    // Reuse the columns from the previous rebuild. grow_uninitialized
+    // allocates only when the new list exceeds that capacity.
+    grow_uninitialized(table.first, total);
+    grow_uninitialized(table.second, total);
+    grow_uninitialized(table.mask, total);
+    if (query.fields.shifts) {
+      grow_uninitialized(table.shift, total * 3);
+    } else {
+      grow_uninitialized(table.shift, 0);
+    }
+    if (query.fields.vectors) {
+      grow_uninitialized(table.vector, total * 3);
+    } else {
+      grow_uninitialized(table.vector, 0);
+    }
+    if (query.fields.distances) {
+      grow_uninitialized(table.distance, total);
+    } else {
+      grow_uninitialized(table.distance, 0);
+    }
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+    {
+#if defined(_OPENMP)
+      const int t = omp_get_thread_num();
+#else
+      const int t = 0;
+#endif
+      const auto ncopy = cursors[static_cast<std::size_t>(t)].count;
+      if (ncopy != 0) {
+        const auto src = base[static_cast<std::size_t>(t)];
+        const auto dst = prefix[static_cast<std::size_t>(t)];
+        std::memcpy(table.first.data() + dst, cols.first.data() + src,
+                    ncopy * sizeof(std::int32_t));
+        std::memcpy(table.second.data() + dst, cols.second.data() + src,
+                    ncopy * sizeof(std::int32_t));
+        std::memcpy(table.mask.data() + dst, cols.mask.data() + src, ncopy);
+        if (query.fields.shifts) {
+          std::memcpy(table.shift.data() + dst * 3, cols.shift.data() + src * 3,
+                      ncopy * 3 * sizeof(std::int32_t));
+        }
+        if (query.fields.vectors) {
+          std::memcpy(table.vector.data() + dst * 3, cols.vector.data() + src * 3,
+                      ncopy * 3 * sizeof(double));
+        }
+        if (query.fields.distances) {
+          std::memcpy(table.distance.data() + dst, cols.distance.data() + src,
+                      ncopy * sizeof(double));
+        }
+      }
+    }
+    std::size_t at = kept;
+    for (int t = 0; t < nt; ++t) {
+      auto &over = extra[static_cast<std::size_t>(t)];
+      const auto nextra = over.first.size();
+      if (nextra == 0) {
+        continue;
+      }
+      std::memcpy(table.first.data() + at, over.first.data(), nextra * sizeof(std::int32_t));
+      std::memcpy(table.second.data() + at, over.second.data(), nextra * sizeof(std::int32_t));
+      std::memcpy(table.mask.data() + at, over.mask.data(), nextra);
+      if (query.fields.shifts) {
+        std::memcpy(table.shift.data() + at * 3, over.shift.data(),
+                    nextra * 3 * sizeof(std::int32_t));
+      }
+      if (query.fields.vectors) {
+        std::memcpy(table.vector.data() + at * 3, over.vector.data(),
+                    nextra * 3 * sizeof(double));
+      }
+      if (query.fields.distances) {
+        std::memcpy(table.distance.data() + at, over.distance.data(), nextra * sizeof(double));
+      }
+      at += nextra;
+    }
+    table.stored = true;
+    table.device = 0;
+    return;
+#else
+    // Copying into a fresh buffer lets every thread write its own
+    // destination at once.
     std::vector<std::size_t> prefix(static_cast<std::size_t>(nt) + 1);
     for (int t = 0; t < nt; ++t) {
       prefix[static_cast<std::size_t>(t) + 1] =
@@ -1122,6 +1227,7 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
     }
     move_columns(table, packed);
     return;
+#endif
   }
   std::vector<std::vector<Rec>> parts(static_cast<std::size_t>(std::max(nt, 1)));
   if (nt <= 1) {

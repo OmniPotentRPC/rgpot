@@ -1,0 +1,1 @@
+With `with_eam_al_openmp` and more than one thread, a rebuilt neighbour list writes into the pair columns kept from the previous rebuild. A shorter list lowers the size and leaves that capacity in place. Inside the skin the columns are left alone.
