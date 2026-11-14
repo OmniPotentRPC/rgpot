@@ -438,8 +438,71 @@ std::uint64_t Neighbours::candidateBound() const {
 }
 
 
+bool Neighbours::buildFrameStored(const double *xyz, std::size_t n) {
+  const CellFrame frame = cellFrame(box_, key_.periodic);
+  if (n != n_ || xyz != xyz_ || !frameStencilExact(frame)) {
+    return false;
+  }
+  WrappedAtoms all;
+  if (!wrapShare(frame, 0, static_cast<std::int64_t>(n), all) || !all.near) {
+    return false;
+  }
+  const double search2 = search_ * search_;
+  const double cap = search2 + imageSlack(search_, 2.0 * all.bound + 7.0 * latticeSum());
+  off_.assign(n + 1, 0);
+  nbr_.clear();
+  std::vector<std::int32_t> gather;
+  double f[3];
+  for (std::size_t a = 0; a < n; ++a) {
+    off_[a] = static_cast<std::int32_t>(nbr_.size());
+    std::int32_t oi[3];
+    double ui[3];
+    cellFraction(frame, xyz + 3 * a, f, oi);
+    wrappedPoint(xyz + 3 * a, oi, ui);
+    int ids[27];
+    int first[28];
+    int shift[27][3];
+    const int nid = frameStencil(cell_of_[a], ids, first, shift);
+    gather.clear();
+    for (int slot = 0; slot < nid; ++slot) {
+      const auto c = static_cast<std::size_t>(ids[slot]);
+      for (int s = first[slot]; s < first[slot + 1]; ++s) {
+        double v[3];
+        latticeShift(shift[s], v);
+        for (std::int32_t q = cell_start_[c]; q < cell_start_[c + 1]; ++q) {
+          const auto j = cell_atoms_[static_cast<std::size_t>(q)];
+          if (j == static_cast<std::int32_t>(a)) {
+            continue;
+          }
+          if (squaredGap(ui, all.inside.data() + 3 * static_cast<std::size_t>(q), v) <= cap) {
+            gather.push_back(j);
+          }
+        }
+      }
+    }
+    std::sort(gather.begin(), gather.end());
+    gather.erase(std::unique(gather.begin(), gather.end()), gather.end());
+    // The nearest image of every partner inside the search is one of the
+    // stencil images, so a partner left out here folds past the search.
+    for (const std::int32_t j : gather) {
+      double dx = 0;
+      double dy = 0;
+      double dz = 0;
+      foldPair(static_cast<std::int32_t>(a), j, dx, dy, dz);
+      const double r2 = dx * dx + dy * dy + dz * dz;
+      if (r2 <= search2) {
+        nbr_.push_back(j);
+      }
+    }
+  }
+  off_[n] = static_cast<std::int32_t>(nbr_.size());
+  return true;
+}
+
 void Neighbours::buildStored(const double *xyz, std::size_t n) {
-  (void)xyz;
+  if (use_general_ && buildFrameStored(xyz, n)) {
+    return;
+  }
   off_.assign(n + 1, 0);
   nbr_.clear();
   std::vector<std::int32_t> gather;

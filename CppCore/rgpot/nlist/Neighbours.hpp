@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 #if defined(_OPENMP)
@@ -90,6 +91,17 @@ struct CellFrame {
 /// offset `o` with `r = (f + o) H` there. `o` is zero on an open axis.
 /// Throws Error for an atom more than 1e9 cells away.
 void cellFraction(const CellFrame &frame, const double *r, double f[3], std::int32_t o[3]);
+
+/// `cellFraction` offsets and the points `r - o H` of a walk's atoms, in
+/// the bin order of a Neighbours, and the largest |r|_1 + |o|_1 sum|H|
+/// among them. `near` is false when an offset is too far out for the
+/// sheared stencil test.
+struct WrappedAtoms {
+  std::vector<std::int32_t> offset;
+  std::vector<double> inside;
+  double bound = 0;
+  bool near = true;
+};
 
 struct Range {
   std::int64_t begin = 0;
@@ -276,6 +288,8 @@ public:
   template <typename Fn>
   void forShifts(std::int64_t begin, std::int64_t end, Fn &&fn) const {
     const CellFrame frame = cellFrame(box_, key_.periodic);
+    const double search2 = search_ * search_;
+    const double hsum = latticeSum();
     const int nb[3] = {nx_, ny_, nz_};
     int reach[3];
     for (int k = 0; k < 3; ++k) {
@@ -295,11 +309,18 @@ public:
       bin = raw;
       return raw >= 0 && raw < nb[k];
     };
+    WrappedAtoms all;
+    const bool table = wrapShare(frame, begin, end, all);
+    const double cap =
+        search2 +
+        imageSlack(search_, 2.0 * all.bound + (reach[0] + reach[1] + reach[2] + 4.0) * hsum);
     double f[3];
     for (std::int64_t i = begin; i < end; ++i) {
       const auto a = static_cast<std::size_t>(i);
       std::int32_t oi[3];
+      double ui[3];
       cellFraction(frame, xyz_ + 3 * a, f, oi);
+      wrappedPoint(xyz_ + 3 * a, oi, ui);
       const int cell = cell_of_[a];
       const int home[3] = {cell / (nz_ * ny_), (cell / nz_) % ny_, cell % nz_};
       int t[3];
@@ -317,15 +338,36 @@ public:
               continue;
             }
             const auto c = static_cast<std::size_t>((t[0] * ny_ + t[1]) * nz_ + t[2]);
+            double wv[3];
+            latticeShift(w, wv);
             for (std::int32_t q = cell_start_[c]; q < cell_start_[c + 1]; ++q) {
               const auto j = cell_atoms_[static_cast<std::size_t>(q)];
-              std::int32_t oj[3];
-              cellFraction(frame, xyz_ + 3 * static_cast<std::size_t>(j), f, oj);
+              const auto b = 3 * static_cast<std::size_t>(j);
+              std::int32_t own[3];
+              double near[3];
+              const std::int32_t *oj = own;
+              const double *uj = near;
+              if (table) {
+                oj = all.offset.data() + 3 * static_cast<std::size_t>(q);
+                uj = all.inside.data() + 3 * static_cast<std::size_t>(q);
+              } else {
+                cellFraction(frame, xyz_ + b, f, own);
+                wrappedPoint(xyz_ + b, own, near);
+              }
               // The bins hold wrapped atoms: r = w + o H. The image of w_j
               // at bin shift `w` is r_j + (w + o_i - o_j) H seen from r_i.
               const int s[3] = {w[0] + oi[0] - oj[0], w[1] + oi[1] - oj[1],
                                 w[2] + oi[2] - oj[2]};
               if (j == static_cast<std::int32_t>(i) && s[0] == 0 && s[1] == 0 && s[2] == 0) {
+                continue;
+              }
+              // An image that is past the search in wrapped coordinates,
+              // by more than both measurements can round, is past it in
+              // the caller's measurement too.
+              const double r2 = squaredGap(ui, uj, wv);
+              if (r2 > (table ? cap
+                              : search2 + imageSlack(search_, pairScale(xyz_ + 3 * a, xyz_ + b,
+                                                                        oi, oj, w, hsum)))) {
                 continue;
               }
               fn(static_cast<std::int32_t>(i), j, s);
@@ -354,6 +396,193 @@ private:
   void buildFrameCells(const double *xyz, std::size_t n, double edge);
   void fillCells(std::size_t n);
   void buildStored(const double *xyz, std::size_t n);
+  bool buildFrameStored(const double *xyz, std::size_t n);
+
+  // Sheared cells are binned along their rows, by face spacing, as LAMMPS
+  // bins a triclinic box in lamda coordinates (Neighbor::setup_bins and
+  // NBinStandard, https://docs.lammps.org/Howto_triclinic.html) and as
+  // matscipy's neighbour_list bins scaled positions. The stencil is the
+  // 27 adjacent bins, each carrying the lattice shift its wrap implies, so
+  // a candidate is measured at that one image from wrapped coordinates.
+  // Only candidates that may lie inside the search are folded.
+
+  /// `r - o H`: the point `cellFraction` puts in the cell, from the same
+  /// offset.
+  void wrappedPoint(const double *r, const std::int32_t o[3], double u[3]) const noexcept {
+    for (int c = 0; c < 3; ++c) {
+      u[c] = r[c] - (static_cast<double>(o[0]) * box_[c] + static_cast<double>(o[1]) * box_[3 + c] +
+                     static_cast<double>(o[2]) * box_[6 + c]);
+    }
+  }
+  void latticeShift(const int w[3], double v[3]) const noexcept {
+    for (int c = 0; c < 3; ++c) {
+      v[c] = static_cast<double>(w[0]) * box_[c] + static_cast<double>(w[1]) * box_[3 + c] +
+             static_cast<double>(w[2]) * box_[6 + c];
+    }
+  }
+  [[nodiscard]] double latticeSum() const noexcept {
+    double s = 0.0;
+    for (double v : box_) {
+      s += std::fabs(v);
+    }
+    return s;
+  }
+  /// |u_i - u_j - v|^2.
+  static double squaredGap(const double ui[3], const double uj[3], const double v[3]) noexcept {
+    const double x = ui[0] - uj[0] - v[0];
+    const double y = ui[1] - uj[1] - v[1];
+    const double z = ui[2] - uj[2] - v[2];
+    return x * x + y * y + z * z;
+  }
+  /// Magnitude of the terms that build one image vector, either from
+  /// wrapped coordinates or from the positions and a fold.
+  static double pairScale(const double *ri, const double *rj, const std::int32_t oi[3],
+                          const std::int32_t oj[3], const int w[3], double hsum) noexcept {
+    double s = 0.0;
+    double o = 4.0;
+    for (int c = 0; c < 3; ++c) {
+      s += std::fabs(ri[c]) + std::fabs(rj[c]);
+      o += std::fabs(static_cast<double>(oi[c])) + std::fabs(static_cast<double>(oj[c])) +
+           std::fabs(static_cast<double>(w[c]));
+    }
+    return s + o * hsum;
+  }
+  /// Bound on the difference of two squared lengths of the same image
+  /// computed by different roundings, near the search radius.
+  static double imageSlack(double search, double scale) noexcept {
+    const double eps = std::numeric_limits<double>::epsilon();
+    const double d = 64.0 * eps * scale;
+    return 8.0 * d * search + 8.0 * d * d + 16.0 * eps * search * search;
+  }
+  /// True when every periodic bin of `frame` is thicker than the search,
+  /// with room for rounding, so the nearest image of a partner inside the
+  /// search lies in an adjacent bin at that bin's shift.
+  [[nodiscard]] bool frameStencilExact(const CellFrame &frame) const noexcept {
+    const int nb[3] = {nx_, ny_, nz_};
+    if (!(search_ > 0.0)) {
+      return false;
+    }
+    for (int k = 0; k < 3; ++k) {
+      if (frame.periodic[k] && !(frame.width[k] / nb[k] >= search_ * (1.0 + 1e-6))) {
+        return false;
+      }
+    }
+    return true;
+  }
+  /// Offsets beyond this many cells leave too little of the significand
+  /// for the bin test above.
+  static bool nearCell(const std::int32_t o[3]) noexcept {
+    constexpr std::int32_t far = 1 << 16;
+    return o[0] > -far && o[0] < far && o[1] > -far && o[1] < far && o[2] > -far && o[2] < far;
+  }
+  /// Fills `all` when `[begin, end)` is a large enough share of the atoms
+  /// that one pass over all of them is cheaper than a fraction per
+  /// candidate. A walk of one atom at a time measures each candidate.
+  bool wrapShare(const CellFrame &frame, std::int64_t begin, std::int64_t end,
+                 WrappedAtoms &all) const {
+    if (n_ == 0 || (end - begin) * 8 < static_cast<std::int64_t>(n_)) {
+      return false;
+    }
+    all.offset.resize(3 * n_);
+    all.inside.resize(3 * n_);
+    const double hsum = latticeSum();
+    double f[3];
+    for (std::size_t q = 0; q < n_; ++q) {
+      std::int32_t *o = all.offset.data() + 3 * q;
+      const double *r = xyz_ + 3 * static_cast<std::size_t>(cell_atoms_[q]);
+      cellFraction(frame, r, f, o);
+      wrappedPoint(r, o, all.inside.data() + 3 * q);
+      all.near = all.near && nearCell(o);
+      const double m = std::fabs(r[0]) + std::fabs(r[1]) + std::fabs(r[2]) +
+                       (std::fabs(static_cast<double>(o[0])) + std::fabs(static_cast<double>(o[1])) +
+                        std::fabs(static_cast<double>(o[2]))) *
+                           hsum;
+      all.bound = std::max(all.bound, m);
+    }
+    return true;
+  }
+  /// The distinct bins of the 27-bin stencil of `cell`, in the order the
+  /// scattered walk meets them, and every lattice shift that reaches each:
+  /// bin `ids[s]` is reached at `shift[first[s]]` up to `shift[first[s+1]]`.
+  /// Returns the number of distinct bins.
+  int frameStencil(int cell, int ids[27], int first[28], int shift[27][3]) const {
+    int raw[27][3];
+    int owner[27];
+    int nshift = 0;
+    const int nid = frameStencilRaw(cell, ids, raw, owner, nshift);
+    int count[28] = {};
+    for (int s = 0; s < nshift; ++s) {
+      ++count[owner[s] + 1];
+    }
+    first[0] = 0;
+    for (int s = 0; s < nid; ++s) {
+      first[s + 1] = first[s] + count[s + 1];
+    }
+    int fill[27];
+    for (int s = 0; s < nid; ++s) {
+      fill[s] = first[s];
+    }
+    for (int s = 0; s < nshift; ++s) {
+      int *to = shift[fill[owner[s]]++];
+      to[0] = raw[s][0];
+      to[1] = raw[s][1];
+      to[2] = raw[s][2];
+    }
+    return nid;
+  }
+  int frameStencilRaw(int cell, int ids[27], int shift[27][3], int owner[27], int &nshift) const {
+    const int home[3] = {cell / (nz_ * ny_), (cell / nz_) % ny_, cell % nz_};
+    const int nb[3] = {nx_, ny_, nz_};
+    int nid = 0;
+    nshift = 0;
+    for (int ox = -1; ox <= 1; ++ox) {
+      for (int oy = -1; oy <= 1; ++oy) {
+        for (int oz = -1; oz <= 1; ++oz) {
+          const int off[3] = {ox, oy, oz};
+          int bin[3];
+          int w[3];
+          bool inside = true;
+          for (int k = 0; k < 3 && inside; ++k) {
+            int raw = home[k] + off[k];
+            w[k] = 0;
+            if (periodic_[k]) {
+              if (raw < 0) {
+                raw += nb[k];
+                w[k] = -1;
+              } else if (raw >= nb[k]) {
+                raw -= nb[k];
+                w[k] = 1;
+              }
+            } else if (raw < 0 || raw >= nb[k]) {
+              inside = false;
+            }
+            bin[k] = raw;
+          }
+          if (!inside) {
+            continue;
+          }
+          const int id = (bin[0] * ny_ + bin[1]) * nz_ + bin[2];
+          int slot = -1;
+          for (int s = 0; s < nid; ++s) {
+            if (ids[s] == id) {
+              slot = s;
+              break;
+            }
+          }
+          if (slot < 0) {
+            slot = nid;
+            ids[nid++] = id;
+          }
+          shift[nshift][0] = w[0];
+          shift[nshift][1] = w[1];
+          shift[nshift][2] = w[2];
+          owner[nshift] = slot;
+          ++nshift;
+        }
+      }
+    }
+    return nid;
+  }
   /// The coordinate an orthorhombic bin and tile use: `x` itself inside
   /// the cell, and its image inside the cell along a periodic axis
   /// otherwise.
@@ -863,9 +1092,93 @@ private:
     }
   }
 
+  /// walkCellsScattered on bins from buildFrameCells: the same bins, the
+  /// same visiting order and the same folded vectors. A partner whose
+  /// nearest stencil image is past the search is not folded.
+  template <typename Fn>
+  void walkFrameScattered(std::int64_t begin, std::int64_t end, Fn &fn, bool half,
+                          double search2) const {
+    const CellFrame frame = cellFrame(box_, key_.periodic);
+    const bool exact = frameStencilExact(frame);
+    const double hsum = latticeSum();
+    WrappedAtoms all;
+    const bool table = exact && wrapShare(frame, begin, end, all) && all.near;
+    const double cap = search2 + imageSlack(search_, 2.0 * all.bound + 7.0 * hsum);
+    static constexpr int kUnit[3] = {1, 1, 1};
+    double f[3];
+    for (std::int64_t i = begin; i < end; ++i) {
+      const auto a = static_cast<std::size_t>(i);
+      const double *ri = xyz_ + 3 * a;
+      std::int32_t oi[3];
+      double ui[3];
+      cellFraction(frame, ri, f, oi);
+      wrappedPoint(ri, oi, ui);
+      const bool skip = exact && nearCell(oi);
+      int ids[27];
+      int first[28];
+      int shift[27][3];
+      double shiftv[27][3];
+      const int nid = frameStencil(cell_of_[a], ids, first, shift);
+      for (int s = 0; s < first[nid]; ++s) {
+        latticeShift(shift[s], shiftv[s]);
+      }
+      for (int slot = 0; slot < nid; ++slot) {
+        const auto c = static_cast<std::size_t>(ids[slot]);
+        for (std::int32_t q = cell_start_[c]; q < cell_start_[c + 1]; ++q) {
+          const auto j = cell_atoms_[static_cast<std::size_t>(q)];
+          if (j == static_cast<std::int32_t>(i)) {
+            continue;
+          }
+          if (half && !(j > static_cast<std::int32_t>(i))) {
+            continue;
+          }
+          if (skip) {
+            const auto b = 3 * static_cast<std::size_t>(j);
+            std::int32_t own[3];
+            double near[3];
+            const std::int32_t *oj = own;
+            const double *uj = near;
+            bool measured = true;
+            if (table) {
+              oj = all.offset.data() + 3 * static_cast<std::size_t>(q);
+              uj = all.inside.data() + 3 * static_cast<std::size_t>(q);
+            } else {
+              cellFraction(frame, xyz_ + b, f, own);
+              wrappedPoint(xyz_ + b, own, near);
+              measured = nearCell(own);
+            }
+            if (measured) {
+              double nearest = squaredGap(ui, uj, shiftv[first[slot]]);
+              for (int s = first[slot] + 1; s < first[slot + 1]; ++s) {
+                nearest = std::min(nearest, squaredGap(ui, uj, shiftv[s]));
+              }
+              if (nearest > (table ? cap
+                                   : search2 + imageSlack(search_, pairScale(ri, xyz_ + b, oi, oj,
+                                                                             kUnit, hsum)))) {
+                continue;
+              }
+            }
+          }
+          double dx = 0;
+          double dy = 0;
+          double dz = 0;
+          foldPair(static_cast<std::int32_t>(i), j, dx, dy, dz);
+          const double r2 = dx * dx + dy * dy + dz * dz;
+          if (r2 <= search2) {
+            fn(static_cast<std::int32_t>(i), j, dx, dy, dz, r2);
+          }
+        }
+      }
+    }
+  }
+
   template <typename Fn>
   void walkCellsScattered(std::int64_t begin, std::int64_t end, Fn &fn, bool half,
                           double search2) const {
+    if (use_general_ && n_ >= 2) {
+      walkFrameScattered(begin, end, fn, half, search2);
+      return;
+    }
     for (std::int64_t i = begin; i < end; ++i) {
       const auto a = static_cast<std::size_t>(i);
       const int cell = cell_of_[a];
