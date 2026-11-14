@@ -4,7 +4,9 @@
 //
 // One neighbour layer for the classical potentials: cell binning, the
 // minimum image, an optional Verlet list, a streaming walk that does not
-// store pairs, and a deterministic OpenMP split.
+// store pairs, and a deterministic OpenMP split. A cell thinner than twice
+// the cutoff along a periodic axis holds a partner at several images, and
+// at its own images; that cell walks a stored image table from build().
 
 #include "rgpot/nlist/MinimumImage.hpp"
 
@@ -41,7 +43,33 @@ struct Spec {
   std::array<bool, 3> periodic{{true, true, true}};
   Image image = Image::Round;
   Mode mode = Mode::Auto;
+  /// Every periodic image inside the search when a cell is thinner than
+  /// twice the cutoff. False keeps the minimum-image candidates only, for
+  /// a caller that expands the shifts itself.
+  bool images = true;
 };
+
+/// vesin's half-list rule: one direction of each pair and one of the two
+/// opposite shifts of a periodic self image.
+[[nodiscard]] inline bool keepHalf(std::int32_t first, std::int32_t second, int sa, int sb,
+                                   int sc) noexcept {
+  if (first != second) {
+    return first < second;
+  }
+  const int sum = sa + sb + sc;
+  if (sum < 0) {
+    return false;
+  }
+  if (sum == 0 && (sc < 0 || (sc == 0 && sb < 0))) {
+    return false;
+  }
+  return sa != 0 || sb != 0 || sc != 0;
+}
+
+/// True when a periodic face spacing of `box9` is under twice `cutoff`,
+/// so the minimum image misses partners.
+[[nodiscard]] bool needsImages(const double *box9, const std::array<bool, 3> &periodic,
+                               double cutoff);
 
 struct Range {
   std::int64_t begin = 0;
@@ -89,7 +117,13 @@ public:
               const Spec &spec);
 
   [[nodiscard]] Mode mode() const noexcept { return mode_; }
-  [[nodiscard]] bool streaming() const noexcept { return streaming_; }
+  /// True when `offsets` and `neighbours` hold no pairs, so a potential
+  /// must walk with forDirected, forHalf, forAtom or forCellTeam. An image
+  /// table counts as a stream here: its pairs carry shifts the minimum-image
+  /// index cannot.
+  [[nodiscard]] bool streaming() const noexcept { return streaming_ || images_; }
+  /// True when the walks sum every periodic image from the image table.
+  [[nodiscard]] bool images() const noexcept { return images_; }
   /// True when the last update kept the previous list. The displacement
   /// test is `withinSkin`, the same one `Builder::update` uses.
   [[nodiscard]] bool reused() const noexcept { return reused_; }
@@ -107,10 +141,13 @@ public:
   /// after the selected image. `r2` is the squared length of that vector.
   /// Candidates lie inside the cutoff plus the skin; the caller drops the
   /// rest. In stored mode the partners of each atom are in increasing
-  /// index order.
+  /// index order. With images() a partner may appear once per image and
+  /// `j == i` is a periodic self image; both of its shifts appear.
   template <typename Fn>
   void forDirected(std::int64_t begin, std::int64_t end, Fn &&fn) const {
-    if (streaming_) {
+    if (images_) {
+      walkImages(begin, end, fn, false);
+    } else if (streaming_) {
       walkCells(begin, end, fn, false);
     } else {
       walkStored(begin, end, fn);
@@ -119,10 +156,13 @@ public:
 
   /// The pairs of `forDirected` with `j > i` only. Geometry for `j <= i`
   /// is not computed. A serial two-pass potential uses this so each
-  /// unordered pair is visited once per pass.
+  /// unordered pair is visited once per pass. With images() a self image
+  /// `j == i` also appears, at one of its two shifts (keepHalf).
   template <typename Fn>
   void forHalf(std::int64_t begin, std::int64_t end, Fn &&fn) const {
-    if (streaming_) {
+    if (images_) {
+      walkImages(begin, end, fn, true);
+    } else if (streaming_) {
       walkCells(begin, end, fn, true);
     } else {
       auto half = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
@@ -197,6 +237,10 @@ public:
   /// atom, not every bond.
   template <typename Fn>
   void forAtom(std::int32_t i, Fn fn) const {
+    if (images_) {
+      walkImages(i, static_cast<std::int64_t>(i) + 1, fn, false);
+      return;
+    }
     // One atom, often from several threads. The cached stencil is built
     // once for a whole walk; this call does not touch it.
     walkCellsScattered(static_cast<std::int64_t>(i), static_cast<std::int64_t>(i) + 1, fn, false,
@@ -210,14 +254,42 @@ private:
     Image image = Image::Round;
     Mode mode = Mode::Auto;
     std::array<bool, 3> periodic{{true, true, true}};
+    bool images = true;
     bool operator==(const SpecKey &o) const {
       return cutoff == o.cutoff && skin == o.skin && image == o.image &&
-             mode == o.mode && periodic == o.periodic;
+             mode == o.mode && periodic == o.periodic && images == o.images;
     }
   };
 
   void buildCells(const double *xyz, std::size_t n);
   void buildStored(const double *xyz, std::size_t n);
+  void buildImages(const double *xyz, std::size_t n, const std::array<bool, 3> &periodic);
+
+  template <typename Fn>
+  void walkImages(std::int64_t begin, std::int64_t end, Fn &fn, bool half) const {
+    const double search2 = search_ * search_;
+    for (std::int64_t i = begin; i < end; ++i) {
+      const auto a = static_cast<std::size_t>(i);
+      const double xi = xyz_[3 * a];
+      const double yi = xyz_[3 * a + 1];
+      const double zi = xyz_[3 * a + 2];
+      for (std::int32_t p = img_off_[a]; p < img_off_[a + 1]; ++p) {
+        const auto q = static_cast<std::size_t>(p);
+        if (half && img_half_[q] == 0) {
+          continue;
+        }
+        const auto j = img_j_[q];
+        const auto b = static_cast<std::size_t>(j) * 3;
+        const double dx = xi - xyz_[b] - img_vec_[3 * q];
+        const double dy = yi - xyz_[b + 1] - img_vec_[3 * q + 1];
+        const double dz = zi - xyz_[b + 2] - img_vec_[3 * q + 2];
+        const double r2 = dx * dx + dy * dy + dz * dz;
+        if (r2 <= search2) {
+          fn(static_cast<std::int32_t>(i), j, dx, dy, dz, r2);
+        }
+      }
+    }
+  }
   [[nodiscard]] std::uint64_t candidateBound() const;
   [[nodiscard]] bool reusable(const double *xyz, std::size_t n,
                               const double *box9, const Spec &spec) const;
@@ -260,7 +332,8 @@ private:
   bool fastTiles(Loop &&loop) const {
     // Half is the same orthorhombic minimum image once coordinates sit in
     // the cell. A sheared box stays on the scattered walk.
-    if (use_general_ || (image_ != Image::Round && image_ != Image::Half) || n_ < 2) {
+    if (images_ || use_general_ || (image_ != Image::Round && image_ != Image::Half) ||
+        n_ < 2) {
       return false;
     }
     // One stencil. A 27-slot entry per cell is reused while the coordinates
@@ -733,6 +806,13 @@ private:
   std::vector<std::int32_t> cell_of_;
   std::vector<std::int32_t> cell_start_;
   std::vector<std::int32_t> cell_atoms_;
+  // Image table, one row per directed (i, j, shift) inside the search at
+  // build time. img_vec_ is the Cartesian lattice shift added to r_j.
+  std::vector<std::int32_t> img_off_;
+  std::vector<std::int32_t> img_j_;
+  std::vector<double> img_vec_;
+  std::vector<std::uint8_t> img_half_;
+  bool images_ = false;
   std::vector<double> ref_;
   double box_[9]{};
   double len_[3]{};

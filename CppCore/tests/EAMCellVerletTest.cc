@@ -168,9 +168,13 @@ Outcome direct(const std::vector<double> &pos, const std::vector<int> &z,
   double *F = out.force.data();
   double *U = &out.energy;
   std::vector<double> drho(static_cast<std::size_t>(3 * n));
-  const double half0 = box[0] * 0.5;
-  const double half1 = box[1] * 0.5;
-  const double half2 = box[2] * 0.5;
+  // Images out to the widest cutoff. In a cell at least twice the cutoff
+  // wide only the nearest passes, and dx0 + s * L is the same double as
+  // the old single fold.
+  int reach[3];
+  for (int a = 0; a < 3; ++a) {
+    reach[a] = static_cast<int>(std::ceil(5.555 / box[a])) + 1;
+  }
   for (long i = 0; i < n; ++i) {
     std::fill(drho.begin(), drho.end(), 0.0);
     const Elem &epar = elemOf(z[static_cast<std::size_t>(i)]);
@@ -180,62 +184,63 @@ Outcome direct(const std::vector<double> &pos, const std::vector<int> &z,
     const double yi = wrapped[static_cast<std::size_t>(3 * i + 1)];
     const double zi = wrapped[static_cast<std::size_t>(3 * i + 2)];
     for (long j = 0; j < n; ++j) {
-      if (i == j) {
-        continue;
-      }
-      double dx = xi - wrapped[static_cast<std::size_t>(3 * j)];
-      double dy = yi - wrapped[static_cast<std::size_t>(3 * j + 1)];
-      double dz = zi - wrapped[static_cast<std::size_t>(3 * j + 2)];
-      if (dx > half0) {
-        dx -= box[0];
-      } else if (dx < -half0) {
-        dx += box[0];
-      }
-      if (dy > half1) {
-        dy -= box[1];
-      } else if (dy < -half1) {
-        dy += box[1];
-      }
-      if (dz > half2) {
-        dz -= box[2];
-      } else if (dz < -half2) {
-        dz += box[2];
-      }
-      const double r2 = dx * dx + dy * dy + dz * dz;
-      if (r2 > cutoff2) {
-        continue;
-      }
-      const double r = std::sqrt(r2);
-      const double r6 = r2 * r2 * r2;
-      const double exp_b1 = std::exp(-epar.beta1 * r);
-      const double exp_b2 = std::exp(-2.0 * epar.beta2 * r);
-      const double rho_pair = exp_b1 + 512.0 * exp_b2;
-      dens += r6 * rho_pair;
-      const double r5 = r2 * r2 * r;
-      const double mag_den =
-          6.0 * r5 * rho_pair +
-          r6 * (-epar.beta1 * exp_b1 - 1024.0 * epar.beta2 * exp_b2);
-      const double invR = 1.0 / r;
-      const double fscale = -mag_den * invR;
-      drho[static_cast<std::size_t>(3 * i)] += fscale * dx;
-      drho[static_cast<std::size_t>(3 * i + 1)] += fscale * dy;
-      drho[static_cast<std::size_t>(3 * i + 2)] += fscale * dz;
-      drho[static_cast<std::size_t>(3 * j)] -= fscale * dx;
-      drho[static_cast<std::size_t>(3 * j + 1)] -= fscale * dy;
-      drho[static_cast<std::size_t>(3 * j + 2)] -= fscale * dz;
-      if (j > i) {
-        const double expArg = std::exp(-epar.alphaM * (r - epar.Rm));
-        const double d = 1.0 - expArg;
-        const double phi = epar.Dm * d * d - epar.Dm;
-        const double mag = 2.0 * epar.alphaM * epar.Dm * d * (d - 1.0);
-        const double scale = mag * invR;
-        F[3 * i] += scale * dx;
-        F[3 * i + 1] += scale * dy;
-        F[3 * i + 2] += scale * dz;
-        F[3 * j] -= scale * dx;
-        F[3 * j + 1] -= scale * dy;
-        F[3 * j + 2] -= scale * dz;
-        *U += phi;
+      const double dx0 = xi - wrapped[static_cast<std::size_t>(3 * j)];
+      const double dy0 = yi - wrapped[static_cast<std::size_t>(3 * j + 1)];
+      const double dz0 = zi - wrapped[static_cast<std::size_t>(3 * j + 2)];
+      for (int sa = -reach[0]; sa <= reach[0]; ++sa) {
+        for (int sb = -reach[1]; sb <= reach[1]; ++sb) {
+          for (int sc = -reach[2]; sc <= reach[2]; ++sc) {
+            if (i == j && sa == 0 && sb == 0 && sc == 0) {
+              continue;
+            }
+            const double dx = sa == 0 ? dx0 : dx0 + sa * box[0];
+            const double dy = sb == 0 ? dy0 : dy0 + sb * box[1];
+            const double dz = sc == 0 ? dz0 : dz0 + sc * box[2];
+            const double r2 = dx * dx + dy * dy + dz * dz;
+            if (r2 > cutoff2) {
+              continue;
+            }
+            const double r = std::sqrt(r2);
+            const double r6 = r2 * r2 * r2;
+            const double exp_b1 = std::exp(-epar.beta1 * r);
+            const double exp_b2 = std::exp(-2.0 * epar.beta2 * r);
+            const double rho_pair = exp_b1 + 512.0 * exp_b2;
+            dens += r6 * rho_pair;
+            if (i == j) {
+              // Atom and image move together: no force, and the pair
+              // energy is shared with the opposite image.
+              const double d = 1.0 - std::exp(-epar.alphaM * (r - epar.Rm));
+              *U += 0.5 * (epar.Dm * d * d - epar.Dm);
+              continue;
+            }
+            const double r5 = r2 * r2 * r;
+            const double mag_den =
+                6.0 * r5 * rho_pair +
+                r6 * (-epar.beta1 * exp_b1 - 1024.0 * epar.beta2 * exp_b2);
+            const double invR = 1.0 / r;
+            const double fscale = -mag_den * invR;
+            drho[static_cast<std::size_t>(3 * i)] += fscale * dx;
+            drho[static_cast<std::size_t>(3 * i + 1)] += fscale * dy;
+            drho[static_cast<std::size_t>(3 * i + 2)] += fscale * dz;
+            drho[static_cast<std::size_t>(3 * j)] -= fscale * dx;
+            drho[static_cast<std::size_t>(3 * j + 1)] -= fscale * dy;
+            drho[static_cast<std::size_t>(3 * j + 2)] -= fscale * dz;
+            if (j > i) {
+              const double expArg = std::exp(-epar.alphaM * (r - epar.Rm));
+              const double d = 1.0 - expArg;
+              const double phi = epar.Dm * d * d - epar.Dm;
+              const double mag = 2.0 * epar.alphaM * epar.Dm * d * (d - 1.0);
+              const double scale = mag * invR;
+              F[3 * i] += scale * dx;
+              F[3 * i + 1] += scale * dy;
+              F[3 * i + 2] += scale * dz;
+              F[3 * j] -= scale * dx;
+              F[3 * j + 1] -= scale * dy;
+              F[3 * j + 2] -= scale * dz;
+              *U += phi;
+            }
+          }
+        }
       }
     }
     *U += embed(epar.coeff, dens);
@@ -313,27 +318,12 @@ TEST_CASE("EAM matches the direct pair loop bit for bit", "[eam]") {
   z = {13, 13};
   expectBits(evaluate(pot, pos, z, 20.0), direct(pos, z, 20.0));
 
-  pos = {0.2, 0.2, 0.2, 2.2, 0.3, 0.4, 0.4, 3.1, 1.2, 5.5, 6.6, 7.1};
-  z = {13, 46, 79, 13};
-  expectBits(evaluate(pot, pos, z, 8.0), direct(pos, z, 8.0));
-
   pos = fcc(3, 4.05, z, 13);
   expectBits(evaluate(pot, pos, z, 3 * 4.05), direct(pos, z, 3 * 4.05));
   pos[0] += 0.37;
   pos[4] -= 0.11;
   expectBits(evaluate(pot, pos, z, 3 * 4.05), direct(pos, z, 3 * 4.05));
 
-  pos = fcc(2, 4.05, z, 13);
-  const int species[] = {13, 46, 79};
-  for (std::size_t i = 0; i < z.size(); ++i) {
-    z[i] = species[i % 3];
-    pos[3 * i] -= 0.8;
-  }
-  expectBits(evaluate(pot, pos, z, 2 * 4.05), direct(pos, z, 2 * 4.05));
-
-  pos = {1.0, 2.0, 3.0};
-  z = {79};
-  expectBits(evaluate(pot, pos, z, 10.0), direct(pos, z, 10.0));
   REQUIRE(pot.threadsUsed() == 1);
 }
 
@@ -348,6 +338,30 @@ void expectClose(const Outcome &got, const Outcome &ref) {
         1.0, std::max(std::abs(got.force[i]), std::abs(ref.force[i])));
     REQUIRE(std::abs(got.force[i] - ref.force[i]) <= tol * scale);
   }
+}
+
+TEST_CASE("EAM sums every image in a cell thinner than twice the cutoff",
+          "[eam]") {
+  setThreads("");
+  rgpot::EAMPot pot;
+  std::vector<double> pos = {0.2, 0.2, 0.2, 2.2, 0.3, 0.4, 0.4, 3.1, 1.2, 5.5, 6.6, 7.1};
+  std::vector<int> z = {13, 46, 79, 13};
+  expectClose(evaluate(pot, pos, z, 8.0), direct(pos, z, 8.0));
+
+  pos = fcc(2, 4.05, z, 13);
+  const int species[] = {13, 46, 79};
+  for (std::size_t i = 0; i < z.size(); ++i) {
+    z[i] = species[i % 3];
+    pos[3 * i] -= 0.8;
+  }
+  expectClose(evaluate(pot, pos, z, 2 * 4.05), direct(pos, z, 2 * 4.05));
+
+  // One atom meets only its own images.
+  pos = {1.0, 2.0, 3.0};
+  z = {79};
+  const Outcome one = evaluate(pot, pos, z, 4.0);
+  expectClose(one, direct(pos, z, 4.0));
+  REQUIRE(one.energy != direct(pos, z, 40.0).energy);
 }
 
 TEST_CASE("EAM keeps a short neighbour list and reuses it inside the skin",

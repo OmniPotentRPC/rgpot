@@ -446,10 +446,12 @@ TEST_CASE("A narrow cell past the old pair cap is every unordered pair", "[fastn
   REQUIRE(pair_count(pos, box, periodic, 15.0) ==
           static_cast<std::size_t>(n) * static_cast<std::size_t>(n - 1) / 2);
 
+  // The minimum-image candidates; every image would be about 14 per pair.
   rgpot::nlist::Neighbours found;
   rgpot::nlist::Spec spec;
   spec.cutoff = 15.0;
   spec.mode = rgpot::nlist::Mode::Stored;
+  spec.images = false;
   found.update(pos.data(), static_cast<std::size_t>(n), box, spec);
   std::size_t visited = 0;
   const double cutoff2 = 15.0 * 15.0;

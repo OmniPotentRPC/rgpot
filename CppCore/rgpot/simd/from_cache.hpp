@@ -9,6 +9,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <stdexcept>
 #include <vector>
 
 #if defined(_OPENMP)
@@ -59,6 +60,11 @@ inline void fill_view(CachedPairs &out, const double *R, std::size_t n,
   nlist::Neighbours &found = reuse != nullptr ? *reuse : local;
   nlist::updateCells(found, R, n, box, opt.cutoff, opt.skin, nlist::Image::Round, mode,
                      opt.periodic);
+  // A row holds partner indices folded to one image, so a cell under two
+  // cutoffs thick has no representation here.
+  if (found.images()) {
+    throw std::invalid_argument("fill_view: a cell face spacing is under twice the cutoff");
+  }
   // Keep candidates out to the skin. The force kernel still drops pairs
   // past opt.cutoff, using the positions of the call that evaluates them.
   // A reused list therefore still has a pair that was outside the cutoff

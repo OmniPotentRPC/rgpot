@@ -106,22 +106,8 @@ bool accept_distance(double r2, const Query &query) {
   return r2 <= cut2;
 }
 
-// vesin half-list rule for a pair and its periodic self image.
 bool keep_half(std::int32_t first, std::int32_t second, int sa, int sb, int sc) {
-  if (first > second) {
-    return false;
-  }
-  if (first < second) {
-    return true;
-  }
-  const int sum = sa + sb + sc;
-  if (sum < 0) {
-    return false;
-  }
-  if (sum == 0 && (sc < 0 || (sc == 0 && sb < 0))) {
-    return false;
-  }
-  return sa != 0 || sb != 0 || sc != 0;
+  return keepHalf(first, second, sa, sb, sc);
 }
 
 void shift_bounds(const double *box, const std::array<bool, 3> &periodic,
@@ -205,6 +191,7 @@ Neighbours prepare_cells(const double *pos, std::size_t n, const double *box,
                        box[6] != 0.0 || box[7] != 0.0;
   spec.image = sheared ? Image::General : Image::Round;
   spec.mode = Mode::Stream;
+  spec.images = false;
   Neighbours cells;
   cells.update(pos, n, box, spec);
   return cells;

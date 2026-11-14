@@ -90,10 +90,12 @@ names a code.
 3.6.0 also bumps the ELF soversion of =librgpot= from the soversion 4 of 3.5.1.
 Soversion 5 records LJPot and MorsePot each holding a neighbour list and a
 cached pair table.
-Soversion 6 is what this release ships.
-LJ and Morse no longer keep a copied half-list, and ZBL and the open
-Lennard-Jones cluster hold a neighbour list.
-A caller built against soversion 4 does not load =librgpot.so.6=.
+Soversion 6: LJ and Morse no longer keep a copied half-list, and ZBL and
+the open Lennard-Jones cluster hold a neighbour list.
+Soversion 7 is what this release ships.
+The neighbour list holds a periodic image table for a cell thinner than
+twice the cutoff, so every potential carrying one changes size.
+A caller built against soversion 6 does not load =librgpot.so.7=.
 =librgpot_mpi= stays at soversion 3.
 
 ** C++ layout stamp

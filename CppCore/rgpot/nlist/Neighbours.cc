@@ -2,6 +2,7 @@
 // Copyright 2023--present rgpot developers
 
 #include "rgpot/nlist/Neighbours.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -42,6 +43,32 @@ int axisCount(double length, double edge) {
 }
 
 } // namespace
+
+bool needsImages(const double *box9, const std::array<bool, 3> &periodic, double cutoff) {
+  if (!(cutoff > 0.0)) {
+    return false;
+  }
+  for (int k = 0; k < 3; ++k) {
+    if (!periodic[static_cast<std::size_t>(k)]) {
+      continue;
+    }
+    const double *a = box9 + 3 * k;
+    const double *u = box9 + 3 * ((k + 1) % 3);
+    const double *v = box9 + 3 * ((k + 2) % 3);
+    const double cx = u[1] * v[2] - u[2] * v[1];
+    const double cy = u[2] * v[0] - u[0] * v[2];
+    const double cz = u[0] * v[1] - u[1] * v[0];
+    const double area = std::sqrt(cx * cx + cy * cy + cz * cz);
+    const double volume = std::fabs(a[0] * cx + a[1] * cy + a[2] * cz);
+    if (!(area > 0.0) || !(volume > 0.0)) {
+      return false;
+    }
+    if (volume / area < 2.0 * cutoff) {
+      return true;
+    }
+  }
+  return false;
+}
 
 int threadsRequested() {
 #if defined(_OPENMP)
@@ -123,6 +150,7 @@ bool Neighbours::reusable(const double *xyz, std::size_t n, const double *box9,
   key.image = spec.image;
   key.mode = spec.mode;
   key.periodic = spec.periodic;
+  key.images = spec.images;
   if (!(key == key_) || std::memcmp(box_, box9, sizeof(box_)) != 0) {
     return false;
   }
@@ -289,6 +317,98 @@ void Neighbours::buildStored(const double *xyz, std::size_t n) {
   off_[n] = static_cast<std::int32_t>(nbr_.size());
 }
 
+void Neighbours::buildImages(const double *xyz, std::size_t n,
+                             const std::array<bool, 3> &periodic) {
+  Query query;
+  query.cutoff = search_;
+  query.cut = Cut::Loose;
+  query.shape = Pairs{Shell::Full};
+  query.periodic = periodic;
+  query.fields.vectors = false;
+  query.fields.distances = false;
+  Table table;
+  build(table, xyz, n, box_, query);
+  // build() drops a zero distance. Coincident atoms keep their pair so the
+  // kernel meets r = 0, as it does on the minimum-image walk.
+  std::vector<std::array<std::int32_t, 2>> same;
+  {
+    std::vector<std::int32_t> by(n);
+    for (std::size_t a = 0; a < n; ++a) {
+      by[a] = static_cast<std::int32_t>(a);
+    }
+    std::sort(by.begin(), by.end(), [&](std::int32_t a, std::int32_t b) {
+      return std::lexicographical_compare(xyz + 3 * a, xyz + 3 * a + 3, xyz + 3 * b,
+                                          xyz + 3 * b + 3);
+    });
+    std::size_t lo = 0;
+    while (lo < n) {
+      std::size_t hi = lo + 1;
+      while (hi < n && std::equal(xyz + 3 * by[lo], xyz + 3 * by[lo] + 3, xyz + 3 * by[hi])) {
+        ++hi;
+      }
+      for (std::size_t p = lo; p < hi; ++p) {
+        for (std::size_t q = lo; q < hi; ++q) {
+          if (p != q) {
+            same.push_back({by[p], by[q]});
+          }
+        }
+      }
+      lo = hi;
+    }
+  }
+  const std::size_t built = table.size();
+  const std::size_t rows = built + same.size();
+  if (rows > static_cast<std::size_t>(0x7fffffff)) {
+    throw Error(Code::Nomem, "image table exceeds the 32-bit pair index");
+  }
+  static constexpr std::int32_t kZero[3] = {0, 0, 0};
+  const auto first = [&](std::size_t r) { return r < built ? table.first[r] : same[r - built][0]; };
+  const auto second = [&](std::size_t r) {
+    return r < built ? table.second[r] : same[r - built][1];
+  };
+  const auto shift = [&](std::size_t r) {
+    return r < built ? table.shift.data() + 3 * r : kZero;
+  };
+  // Group by atom, then by partner and shift, so the walk order does not
+  // depend on the build's thread split.
+  std::vector<std::size_t> order(rows);
+  for (std::size_t p = 0; p < rows; ++p) {
+    order[p] = p;
+  }
+  std::sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+    if (first(a) != first(b)) {
+      return first(a) < first(b);
+    }
+    if (second(a) != second(b)) {
+      return second(a) < second(b);
+    }
+    return std::lexicographical_compare(shift(a), shift(a) + 3, shift(b), shift(b) + 3);
+  });
+  img_off_.assign(n + 1, 0);
+  img_j_.resize(rows);
+  img_vec_.resize(3 * rows);
+  img_half_.resize(rows);
+  for (std::size_t r = 0; r < rows; ++r) {
+    const std::size_t p = order[r];
+    const auto i = first(p);
+    const auto j = second(p);
+    const std::int32_t *sp = shift(p);
+    const int sa = sp[0];
+    const int sb = sp[1];
+    const int sc = sp[2];
+    ++img_off_[static_cast<std::size_t>(i) + 1];
+    img_j_[r] = j;
+    for (int k = 0; k < 3; ++k) {
+      img_vec_[3 * r + static_cast<std::size_t>(k)] =
+          sa * box_[k] + sb * box_[3 + k] + sc * box_[6 + k];
+    }
+    img_half_[r] = keepHalf(i, j, sa, sb, sc) ? 1 : 0;
+  }
+  for (std::size_t a = 0; a < n; ++a) {
+    img_off_[a + 1] += img_off_[a];
+  }
+}
+
 void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
                         const Spec &spec) {
   xyz_ = xyz;
@@ -322,9 +442,30 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
   key_.image = spec.image;
   key_.mode = spec.mode;
   key_.periodic = spec.periodic;
+  key_.images = spec.images;
   off_.clear();
   nbr_.clear();
+  images_ = false;
+  img_off_.clear();
+  img_j_.clear();
+  img_vec_.clear();
+  img_half_.clear();
   streaming_ = true;
+  // A lattice vector may have a zero diagonal entry (an fcc primitive
+  // cell), so the requested flags decide here, not periodic_. The minimum
+  // image is exact while every height is twice the cutoff: the walk folds
+  // from the current coordinates, and a pair left out at build is still
+  // past the cutoff after moves inside the skin.
+  if (spec.images && n > 0 && needsImages(box9, spec.periodic, spec.cutoff)) {
+    buildImages(xyz, n, spec.periodic);
+    images_ = true;
+    streaming_ = false;
+    mode_ = Mode::Stored;
+    ++builds_;
+    built_ = true;
+    ref_.assign(xyz, xyz + 3 * n);
+    return;
+  }
   if (n < 2 || !(search_ > 0.0)) {
     streaming_ = false;
     mode_ = Mode::Stored;
