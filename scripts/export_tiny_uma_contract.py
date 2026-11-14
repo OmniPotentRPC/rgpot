@@ -9,7 +9,8 @@ float64. ``batch`` is the same sum, traced for two systems. ``pair`` is a
 spring on every edge; without ``--dynamic`` it is compiled for fixed
 shapes and records no atom or edge count.
 
-``--meta both`` writes pos_dtype and model_dtype. ``model`` writes only
+``--meta both`` (``precision`` and ``pair``) writes pos_dtype and
+model_dtype. ``model`` writes only
 model_dtype, ``pos`` only pos_dtype, ``none`` writes neither.
 """
 
@@ -857,12 +858,16 @@ _SHAPE_KEYS = (
 )
 
 
-def export_pair(path: Path, dtype_name: str, dynamic: bool) -> None:
+def export_pair(
+    path: Path, dtype_name: str, dynamic: bool, meta_mode: str = "both"
+) -> None:
     """Spring model, traced on four atoms and their twelve directed edges.
 
     The static package is compiled for pos [4, 3] and edge_index [2, 12]
     and records no shape key, so UmaPot reads those from the compiled
-    graph. The dynamic package records the usual ranges.
+    graph. The dynamic package records the usual ranges. ``meta_mode``
+    picks the dtype keys as for ``precision``; with ``none`` UmaPot reads
+    the input dtype from the compiled graph as well.
     """
     dtype = torch.float64 if dtype_name == "float64" else torch.float32
     example = _cluster_example(dtype, 4, 12)
@@ -901,6 +906,7 @@ def export_pair(path: Path, dtype_name: str, dynamic: bool) -> None:
         label="pair",
         model="tiny-pair",
     )
+    meta = _apply_meta(meta, meta_mode)
     if dynamic:
         meta["nedges_min"] = 1
         meta["nedges_max"] = 4096
@@ -910,12 +916,14 @@ def export_pair(path: Path, dtype_name: str, dynamic: bool) -> None:
         meta["edge_index_shape"] = "2,nedges"
         meta["export_path"] = "tiny-pair-dynamic"
         aoti_package(exported, path, metadata=meta)
-        return
-    meta["export_path"] = "tiny-pair-static"
-    for key in _SHAPE_KEYS:
-        meta.pop(key, None)
-    aoti_package(exported, path, metadata=meta)
-    _drop_metadata_keys(path, _SHAPE_KEYS)
+    else:
+        meta["export_path"] = "tiny-pair-static"
+        for key in _SHAPE_KEYS:
+            meta.pop(key, None)
+        aoti_package(exported, path, metadata=meta)
+        _drop_metadata_keys(path, _SHAPE_KEYS)
+    if meta_mode != "both":
+        _enforce_metadata(path, meta)
 
 
 def export_box(path: Path, dtype_name: str) -> None:
@@ -982,7 +990,7 @@ def main() -> int:
         "--meta",
         choices=("both", "model", "pos", "none", "mismatch"),
         default="both",
-        help="Which dtype keys to embed. precision only.",
+        help="Which dtype keys to embed. precision and pair only.",
     )
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
@@ -991,7 +999,7 @@ def main() -> int:
     elif args.kind == "gather":
         export_gather(args.out, args.dtype, args.dynamic)
     elif args.kind == "pair":
-        export_pair(args.out, args.dtype, args.dynamic)
+        export_pair(args.out, args.dtype, args.dynamic, args.meta)
     elif args.kind == "packed":
         if args.meta != "both":
             raise SystemExit("packed packages always record both dtype keys")

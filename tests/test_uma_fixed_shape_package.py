@@ -1,7 +1,8 @@
 """A fixed-shape UMA package and a dynamic one of the same model agree.
 
 UmaPot takes the atom and edge counts of a package whose metadata records
-none from the input checks in its AOTI wrapper source. These tests pin
+none from the input checks in its AOTI wrapper source, and the input
+dtype when it records neither pos_dtype nor model_dtype. These tests pin
 that torch still writes those checks for the spring model in
 ``scripts/export_tiny_uma_contract.py``, and that its fixed-shape and
 dynamic packages return the eager energy and forces. They skip when torch
@@ -74,6 +75,13 @@ def packages(tmp_path_factory):
     return fixed, dynamic
 
 
+@pytest.fixture(scope="module")
+def nodtype(tmp_path_factory):
+    path = tmp_path_factory.mktemp("pair-nodtype") / "pair-fixed-nodtype.pt2"
+    tiny.export_pair(path, "float64", dynamic=False, meta_mode="none")
+    return path
+
+
 def test_fixed_package_records_no_shape_key(packages):
     fixed, dynamic = packages
     assert not SHAPE_KEYS & set(_loader(fixed).get_metadata())
@@ -95,6 +103,31 @@ def test_wrapper_source_checks_the_compiled_shapes(packages):
     edges = _check_body(_wrapper_source(dynamic), 4)
     assert re.search(r"if \(\w+_size\[1\] < 2\)", edges)
     assert re.search(r"if \(\w+_size\[1\] > 4096\)", edges)
+
+
+def test_wrapper_source_checks_the_compiled_dtypes(packages, nodtype):
+    # pos, cell and cell_offsets; UmaPot reads these when the metadata
+    # has neither pos_dtype nor model_dtype.
+    for path in (*packages, nodtype):
+        src = _wrapper_source(path)
+        for index in (0, 2, 5):
+            assert re.search(
+                r"int32_t \w+_expected_dtype = aoti_torch_dtype_float64\(\);",
+                _check_body(src, index),
+            ), (path.name, index)
+
+
+def test_nodtype_package_records_no_dtype_key(nodtype):
+    meta = _loader(nodtype).get_metadata()
+    assert "pos_dtype" not in meta
+    assert "model_dtype" not in meta
+    assert not SHAPE_KEYS & set(meta)
+    example = _tetra()
+    with torch.no_grad():
+        eager_e, eager_f = tiny.PairEnergy().double().eval()(*example)
+    energy, forces = _loader(nodtype).run(example)
+    torch.testing.assert_close(energy, eager_e, rtol=0, atol=1e-12)
+    torch.testing.assert_close(forces, eager_f, rtol=0, atol=1e-12)
 
 
 def test_fixed_and_dynamic_packages_agree(packages):

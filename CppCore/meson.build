@@ -1173,9 +1173,36 @@ if get_option('with_tests')
             ],
             build_by_default: false,
         )
-        _uma_fix_pkgs += [_uma_pair_fixed, _uma_pair_dynamic]
+        # The fixed float64 package again, with pos_dtype and model_dtype
+        # removed as well.
+        _uma_pair_fixed_nodtype = custom_target(
+            'uma-pair-fixed-nodtype',
+            output: 'pair-fixed-nodtype.pt2',
+            command: [
+                _uma_py,
+                _uma_export,
+                '--kind',
+                'pair',
+                '--dtype',
+                'float64',
+                '--meta',
+                'none',
+                '--out',
+                '@OUTPUT@',
+            ],
+            build_by_default: false,
+        )
+        _uma_fix_pkgs += [
+            _uma_pair_fixed,
+            _uma_pair_dynamic,
+            _uma_pair_fixed_nodtype,
+        ]
         _uma_fix_env.set('UMA_PAIR_FIXED_PT2', _uma_pair_fixed.full_path())
         _uma_fix_env.set('UMA_PAIR_DYNAMIC_PT2', _uma_pair_dynamic.full_path())
+        _uma_fix_env.set(
+            'UMA_PAIR_FIXED_NODTYPE_PT2',
+            _uma_pair_fixed_nodtype.full_path(),
+        )
         _uma_no_edges = custom_target(
             'uma-no-edges',
             output: 'line-no-edges.pt2',

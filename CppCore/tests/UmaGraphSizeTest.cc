@@ -245,6 +245,33 @@ TEST_CASE("a fixed-shape package with no shape metadata runs at its "
   require_same(run(fixed, moved), springs(moved, 6.0), 1e-10);
 }
 
+TEST_CASE("a float64 package with no dtype metadata runs in float64",
+          "[uma][graph][compiled][dtype]") {
+  // pair-fixed-nodtype.pt2 is pair-fixed.pt2 without pos_dtype and
+  // model_dtype. Its graph was compiled for float64 pos, cell and
+  // cell_offsets. Fed float32 buffers, it reads them as doubles.
+  rgpot::UmaPot fixed = open_pot(package_path("UMA_PAIR_FIXED_NODTYPE_PT2"));
+  rgpot::UmaPot dynamic = open_pot(package_path("UMA_PAIR_DYNAMIC_PT2"));
+  const Eval a = run(fixed, kTetra);
+  REQUIRE(std::isfinite(a.energy));
+  REQUIRE(a.energy > 0.01);
+  require_same(a, run(dynamic, kTetra), 1e-12);
+  require_same(a, springs(kTetra, 6.0), 1e-12);
+  REQUIRE(std::string(fixed.posDtypeName()) == "float64");
+  REQUIRE(std::string(fixed.modelDtypeName()) == "unset");
+
+  // A 1e-7 angstrom step is below float32 resolution at 13 angstroms.
+  std::vector<double> nudged = kTetra;
+  nudged[3] += 1e-7;
+  const Eval b = run(fixed, nudged);
+  require_same(b, run(dynamic, nudged), 1e-12);
+  require_same(b, springs(nudged, 6.0), 1e-12);
+  REQUIRE_THAT(b.energy - a.energy,
+               Catch::Matchers::WithinAbs(
+                   springs(nudged, 6.0).energy - springs(kTetra, 6.0).energy,
+                   1e-12));
+}
+
 TEST_CASE("a fixed-shape package names the compiled edge_index",
           "[uma][graph][compiled]") {
   // The last atom leaves the cutoff, so the list has 6 edges instead
