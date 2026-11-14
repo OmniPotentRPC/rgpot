@@ -1049,3 +1049,50 @@ TEST_CASE("a neighbour mode outside the enumerators still stores", "[nlist][mode
   REQUIRE(garbage.slots() > 0);
   REQUIRE(garbage.slots() == automatic.slots());
 }
+
+TEST_CASE("raw pair vectors are used only when no pair can wrap", "[nlist][round]") {
+  auto load = [](rgpot::nlist::Neighbours &cells, const double *pos, std::size_t n,
+                 const double *box, double cutoff, double skin, bool periodic, bool shear) {
+    rgpot::nlist::Spec spec;
+    spec.cutoff = cutoff;
+    spec.skin = skin;
+    spec.periodic = {periodic, periodic, periodic};
+    spec.image = rgpot::nlist::Image::Round;
+    spec.mode = rgpot::nlist::Mode::Stored;
+    double cell[9] = {box[0], box[1], box[2], box[3], box[4],
+                      box[5], box[6], box[7], box[8]};
+    if (shear) {
+      cell[1] = 0.4;
+    }
+    cells.update(pos, n, cell, spec);
+  };
+  const double pair[] = {0.2, 0.1, 0.3, 2.7, 0.1, 0.3};
+  const double wide[9] = {20, 0, 0, 0, 20, 0, 0, 0, 20};
+  const double tight[9] = {4, 0, 0, 0, 4, 0, 0, 0, 4};
+  rgpot::nlist::Neighbours cells;
+
+  // Free cell: nothing wraps, even when the box is smaller than the pair.
+  load(cells, pair, 2, tight, 3.0, 0.0, false, false);
+  REQUIRE(cells.rawSeparation());
+  // A short periodic search still wraps a pair that crosses the boundary.
+  const double side = 10.0;
+  const double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  const double ends[] = {0.1, 0.0, 0.0, side - 0.1, 0.0, 0.0};
+  load(cells, ends, 2, box, 0.5, 0.0, true, false);
+  REQUIRE_FALSE(cells.rawSeparation());
+  double folded = 0.0;
+  int seen = 0;
+  cells.forDirected(0, 1, [&](std::int32_t, std::int32_t, double dx, double, double, double) {
+    folded = dx;
+    ++seen;
+  });
+  const double raw = ends[0] - ends[3];
+  REQUIRE(seen == 1);
+  REQUIRE(folded != raw);
+  // The stored vector is the short image, not the raw gap of L - 0.2.
+  REQUIRE(std::abs(folded) < 0.5 * side);
+  REQUIRE(std::abs(raw) > 0.5 * side);
+  // A sheared free cell keeps the general fold.
+  load(cells, pair, 2, wide, 3.0, 0.0, false, true);
+  REQUIRE_FALSE(cells.rawSeparation());
+}

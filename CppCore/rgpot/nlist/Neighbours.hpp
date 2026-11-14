@@ -156,7 +156,10 @@ public:
   /// Coordinates last passed to `update`, in the caller's layout.
   [[nodiscard]] const double *coordinates() const noexcept { return xyz_; }
   /// True when a stored pair vector is the raw coordinate difference.
-  /// A sheared cell or a periodic axis still folds that difference.
+  /// Only a free orthogonal cell qualifies. A periodic pair can cross the
+  /// boundary even when the search sphere is shorter than half the box:
+  /// atoms at 0.1 and L-0.1 are 0.2 apart under the minimum image and L-0.2
+  /// apart as a raw difference. A sheared cell keeps the general fold.
   [[nodiscard]] bool rawSeparation() const noexcept {
     return !use_general_ && !periodic_[0] && !periodic_[1] && !periodic_[2];
   }

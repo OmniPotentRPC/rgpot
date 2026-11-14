@@ -7,7 +7,13 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
+#include <string>
 #include <vector>
+
+#if defined(_OPENMP)
+#include <omp.h>
+#endif
 
 #include <catch2/catch_all.hpp>
 
@@ -111,6 +117,157 @@ TEST_CASE("LJClusterPot ignores the cell", "[LJClusterPot]") {
 
   REQUIRE_THAT(e_tight, WithinRel(e_wide, 1e-12));
   REQUIRE_FALSE(pot.caps().periodic);
+}
+
+namespace {
+
+void useThreads(int n) {
+  const auto text = std::to_string(n);
+  setenv("OMP_NUM_THREADS", text.c_str(), 1);
+#if defined(_OPENMP)
+  omp_set_num_threads(n);
+#endif
+}
+
+/// Free-boundary pair sum. This is the one-thread cell walk: increasing
+/// i, then increasing j, raw coordinate differences, no image fold.
+void rawCluster(const double *pos, int n, double cutoff, double &energy, double *force) {
+  const double cut2 = cutoff * cutoff;
+  const double psi2 = 1.0;
+  const double four = 4.0;
+  const double a_cut = std::pow(1.0 / cutoff, 6.0);
+  const double shift = 4.0 * a_cut * (a_cut - 1.0);
+  energy = 0.0;
+  for (int i = 0; i < 3 * n; ++i) {
+    force[i] = 0.0;
+  }
+  for (int i = 0; i < n; ++i) {
+    for (int j = i + 1; j < n; ++j) {
+      const double dx = pos[3 * i] - pos[3 * j];
+      const double dy = pos[3 * i + 1] - pos[3 * j + 1];
+      const double dz = pos[3 * i + 2] - pos[3 * j + 2];
+      const double r2 = dx * dx + dy * dy + dz * dz;
+      if (!(r2 > 0.0) || r2 > cut2) {
+        continue;
+      }
+      const double inv = 1.0 / r2;
+      const double sr2 = psi2 * inv;
+      const double a = (sr2 * sr2) * sr2;
+      const double b = four * a;
+      energy += b * (a - 1.0) - shift;
+      const double fscale = ((6.0 * b) * inv) * ((2.0 * a) - 1.0);
+      const double fx = fscale * dx;
+      const double fy = fscale * dy;
+      const double fz = fscale * dz;
+      force[3 * i] += fx;
+      force[3 * i + 1] += fy;
+      force[3 * i + 2] += fz;
+      force[3 * j] -= fx;
+      force[3 * j + 1] -= fy;
+      force[3 * j + 2] -= fz;
+    }
+  }
+}
+
+} // namespace
+
+TEST_CASE("LJClusterPot raw differences match across cells and threads",
+          "[LJClusterPot][threads]") {
+  // The span exceeds the cutoff, so the call uses the stored list rather
+  // than the all-pairs kernel. One atom sits on each side of the origin,
+  // and the pair at 2.5 A would change under a 4 A periodic fold.
+  const double pos[] = {0.0, 0.0, 0.0, 2.5, 0.0, 0.0, -1.5, 0.2, 0.4, 18.0, 1.0, -0.5};
+  const int n = 4;
+  const double cutoff = 3.0;
+  rgpot::LJClusterPot pot{rgpot::LJClusterConfig{.cutoff = cutoff}};
+  const std::vector<int> types(static_cast<std::size_t>(n), 1);
+  AtomMatrix positions(static_cast<std::size_t>(n), 3);
+  for (int i = 0; i < 3 * n; ++i) {
+    positions.data()[i] = pos[i];
+  }
+  const std::array<std::array<double, 3>, 3> wide{
+      {{40.0, 0.0, 0.0}, {0.0, 40.0, 0.0}, {0.0, 0.0, 40.0}}};
+  const std::array<std::array<double, 3>, 3> tight{
+      {{4.0, 0.0, 0.0}, {0.0, 4.0, 0.0}, {0.0, 0.0, 4.0}}};
+
+  double ref_e = 0.0;
+  double ref_f[12] = {};
+  rawCluster(pos, n, cutoff, ref_e, ref_f);
+
+  useThreads(1);
+  auto [e1, f1, v1] = pot(positions, types, wide);
+  (void)v1;
+  REQUIRE(e1 == ref_e);
+  for (int i = 0; i < 3 * n; ++i) {
+    REQUIRE(f1.data()[i] == ref_f[i]);
+  }
+  // A periodic-sized cell must not fold. One thread stays on the free walk.
+  auto [e_tight, f_tight, v_tight] = pot(positions, types, tight);
+  (void)v_tight;
+  REQUIRE(e_tight == e1);
+  for (int i = 0; i < 3 * n; ++i) {
+    REQUIRE(f_tight.data()[i] == f1.data()[i]);
+  }
+
+  for (int threads : {2, 4, 8}) {
+    useThreads(threads);
+    auto [e_n, f_n, v_n] = pot(positions, types, tight);
+    (void)v_n;
+    REQUIRE(e_n == e1);
+    for (int i = 0; i < 3 * n; ++i) {
+      REQUIRE(f_n.data()[i] == f1.data()[i]);
+    }
+    auto [e_w, f_w, v_w] = pot(positions, types, wide);
+    (void)v_w;
+    REQUIRE(e_w == e1);
+    for (int i = 0; i < 3 * n; ++i) {
+      REQUIRE(f_w.data()[i] == f1.data()[i]);
+    }
+  }
+  useThreads(1);
+}
+
+TEST_CASE("a periodic boundary pair stays on the folded walk",
+          "[LJClusterPot][threads][stress]") {
+  // x = 0.1 and x = L-0.1. The minimum image is 0.2 and the raw difference
+  // is L-0.2. The search is shorter than half the box, and the pair still
+  // crosses the boundary. LJ keeps free boundaries, so every thread count
+  // matches the one-thread walk, including the untouched stress slot.
+  const double side = 10.0;
+  const double pos[] = {0.1, 0.0, 0.0, side - 0.1, 0.0, 0.0, 0.3, 0.1, 0.0};
+  const int n = 3;
+  const double cutoff = 0.5;
+  const std::vector<int> types(static_cast<std::size_t>(n), 1);
+  const double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  auto run = [&](int threads, double *force, double &energy, double *stress, int &has_stress) {
+    useThreads(threads);
+    rgpot::LJClusterPot pot{rgpot::LJClusterConfig{.cutoff = cutoff}};
+    rgpot::ForceOut out{force, 0.0, 0.0, {}, 0};
+    pot.forceImpl(rgpot::ForceInput{static_cast<std::size_t>(n), pos, types.data(), box}, &out);
+    energy = out.energy;
+    has_stress = out.has_stress;
+    std::copy(out.stress, out.stress + 9, stress);
+  };
+  double f1[9] = {};
+  double s1[9] = {};
+  double e1 = 0.0;
+  int h1 = 0;
+  run(1, f1, e1, s1, h1);
+  REQUIRE(e1 != 0.0);
+  for (int threads : {2, 4, 8}) {
+    double fn[9] = {};
+    double sn[9] = {};
+    double en = 0.0;
+    int hn = 0;
+    run(threads, fn, en, sn, hn);
+    REQUIRE(en == e1);
+    REQUIRE(hn == h1);
+    for (int i = 0; i < 9; ++i) {
+      REQUIRE(fn[i] == f1[i]);
+      REQUIRE(sn[i] == s1[i]);
+    }
+  }
+  useThreads(1);
 }
 
 TEST_CASE("LJClusterPot parameter fingerprint tracks the config",
