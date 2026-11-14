@@ -239,4 +239,15 @@ if get_option('with_tests')
         install: false,
     )
     test('FortranLenoskyGather', test_lenosky, timeout: 180)
+
+    test_vesin_empty = executable(
+        'test_vesin_empty',
+        'test_vesin_empty.f90',
+        dependencies: [vesin_f_dep] + fortran_rt_deps,
+        fortran_args: _fpot_args,
+        # vesin is C++, and meson then adds no Fortran runtime of its own.
+        link_language: 'cpp',
+        install: false,
+    )
+    test('FortranVesinEmpty', test_vesin_empty, timeout: 120)
 endif
