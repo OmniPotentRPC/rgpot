@@ -5,6 +5,7 @@
 #include "StreamSpline.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <vector>
 
 #if defined(_OPENMP)
@@ -294,10 +295,23 @@ void EAM::evaluateStreamFixed(long N, const int *atomicNrs, double *F, double *U
       break;
     }
   }
+  // The force pass used to walk the neighbour list again. The density
+  // pass already has the image and the distance, so the force pass
+  // reads that record in the same pair order.
+  struct PairRec {
+    std::int32_t i;
+    std::int32_t j;
+    double dx;
+    double dy;
+    double dz;
+    double r;
+    double r2;
+  };
   struct Scratch {
     std::vector<double> rho;
     std::vector<double> force;
     std::vector<double> epair;
+    std::vector<std::vector<PairRec>> pairs;
     int n = -1;
     int k = -1;
   };
@@ -309,9 +323,15 @@ void EAM::evaluateStreamFixed(long N, const int *atomicNrs, double *F, double *U
     scratch.n = static_cast<int>(N);
     scratch.k = k;
   }
+  if (static_cast<int>(scratch.pairs.size()) != k) {
+    scratch.pairs.resize(static_cast<std::size_t>(k));
+  }
   double *rho_rows = scratch.rho.data();
   double *force_rows = scratch.force.data();
   double *epair = scratch.epair.data();
+  // The name scratch is thread-local, so a worker that mentions it
+  // would see an empty buffer. The pointer is the caller's copy.
+  auto *saved_pairs = scratch.pairs.data();
   const auto atoms = static_cast<std::size_t>(N);
   auto run_density = [&](int c) {
     double *row = rho_rows + static_cast<std::size_t>(c) * atoms;
@@ -319,17 +339,21 @@ void EAM::evaluateStreamFixed(long N, const int *atomicNrs, double *F, double *U
       row[i] = 0.0;
     }
     double pair = 0.0;
+    auto &saved = saved_pairs[c];
+    saved.clear();
     const auto range = rgpot::nlist::partition(N, c, k);
     neighbours_.forHalfAtoms(range.begin, range.end,
-                             [&](std::int32_t i, std::int32_t j, double, double, double, double r2) {
+                             [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                                 double r2) {
                                if (!(r2 > 0.0)) {
                                  return;
                                }
+                               const double r = std::sqrt(r2);
+                               saved.push_back(PairRec{i, j, dx, dy, dz, r, r2});
                                if (uniform && only != nullptr) {
                                  if (r2 > only->cutoff2) {
                                    return;
                                  }
-                                 const double r = std::sqrt(r2);
                                  const double rho = only->density(r);
                                  row[i] += rho;
                                  row[j] += rho;
@@ -338,7 +362,6 @@ void EAM::evaluateStreamFixed(long N, const int *atomicNrs, double *F, double *U
                                }
                                const auto *si = kind[static_cast<std::size_t>(i)];
                                const auto *sj = kind[static_cast<std::size_t>(j)];
-                               const double r = std::sqrt(r2);
                                if (r2 <= si->cutoff2) {
                                  row[i] += si->density(r);
                                  pair += si->pairEnergy(r);
@@ -389,46 +412,43 @@ void EAM::evaluateStreamFixed(long N, const int *atomicNrs, double *F, double *U
     for (std::size_t i = 0; i < atoms * 3; ++i) {
       row[i] = 0.0;
     }
-    const auto range = rgpot::nlist::partition(N, c, k);
-    neighbours_.forHalfAtoms(
-        range.begin, range.end,
-        [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2) {
-          if (!(r2 > 0.0)) {
-            return;
-          }
-          const double r = std::sqrt(r2);
-          double scale = 0.0;
-          if (uniform && only != nullptr) {
-            if (r2 > only->cutoff2) {
-              return;
-            }
-            const double fs = only->densityForce(r);
-            scale = only->pairForce(r) -
-                    (dF_[static_cast<std::size_t>(i)] + dF_[static_cast<std::size_t>(j)]) * fs;
-          } else {
-            const auto *si = kind[static_cast<std::size_t>(i)];
-            const auto *sj = kind[static_cast<std::size_t>(j)];
-            if (r2 <= si->cutoff2) {
-              scale += si->pairForce(r);
-              scale -= dF_[static_cast<std::size_t>(i)] * si->densityForce(r);
-            }
-            if (r2 <= sj->cutoff2) {
-              scale -= dF_[static_cast<std::size_t>(j)] * sj->densityForce(r);
-            }
-          }
-          if (scale == 0.0) {
-            return;
-          }
-          const double fx = scale * dx;
-          const double fy = scale * dy;
-          const double fz = scale * dz;
-          row[3 * i] += fx;
-          row[3 * i + 1] += fy;
-          row[3 * i + 2] += fz;
-          row[3 * j] -= fx;
-          row[3 * j + 1] -= fy;
-          row[3 * j + 2] -= fz;
-        });
+    for (const PairRec &p : saved_pairs[c]) {
+      const std::int32_t i = p.i;
+      const std::int32_t j = p.j;
+      const double r = p.r;
+      const double r2 = p.r2;
+      double scale = 0.0;
+      if (uniform && only != nullptr) {
+        if (r2 > only->cutoff2) {
+          continue;
+        }
+        const double fs = only->densityForce(r);
+        scale = only->pairForce(r) -
+                (dF_[static_cast<std::size_t>(i)] + dF_[static_cast<std::size_t>(j)]) * fs;
+      } else {
+        const auto *si = kind[static_cast<std::size_t>(i)];
+        const auto *sj = kind[static_cast<std::size_t>(j)];
+        if (r2 <= si->cutoff2) {
+          scale += si->pairForce(r);
+          scale -= dF_[static_cast<std::size_t>(i)] * si->densityForce(r);
+        }
+        if (r2 <= sj->cutoff2) {
+          scale -= dF_[static_cast<std::size_t>(j)] * sj->densityForce(r);
+        }
+      }
+      if (scale == 0.0) {
+        continue;
+      }
+      const double fx = scale * p.dx;
+      const double fy = scale * p.dy;
+      const double fz = scale * p.dz;
+      row[3 * i] += fx;
+      row[3 * i + 1] += fy;
+      row[3 * i + 2] += fz;
+      row[3 * j] -= fx;
+      row[3 * j + 1] -= fy;
+      row[3 * j + 2] -= fz;
+    }
   };
   if (nt == 1) {
     for (int c = 0; c < k; ++c) {
