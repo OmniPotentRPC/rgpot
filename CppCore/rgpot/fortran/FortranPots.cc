@@ -8,6 +8,9 @@
 #include <new>
 #include <stdexcept>
 #include <string>
+#ifdef RGPOT_EAM_AL_OPENMP
+#include <omp.h>
+#endif
 
 #include "rgpot/Tersoff/TersoffSiC.hpp"
 #include "rgpot/fortran/FortranPots.hpp"
@@ -36,6 +39,10 @@ int rgpot_tersoff_force_ws(void *ws, int32_t natoms, const double *positions,
                            double *energy);
 int rgpot_eam_al_force_ws(void *ws, int32_t natoms, const double *positions,
                           const double *cell, double *forces, double *energy);
+#ifdef RGPOT_EAM_AL_OPENMP
+int rgpot_eam_al_force_ws_omp(void *ws, int32_t natoms, const double *positions,
+                              const double *cell, double *forces, double *energy);
+#endif
 
 /// Kernels dispatching on atomic number.
 int rgpot_fehe_force_ws(void *ws, int32_t natoms, const double *positions,
@@ -138,7 +145,29 @@ FortranWorkspace &FortranWorkspace::operator=(const FortranWorkspace &) {
 RGPOT_FORTRAN_POT_IMPL(SWPot, rgpot_sw_force_ws, "SW")
 RGPOT_FORTRAN_POT_IMPL(EDIPPot, rgpot_edip_force_ws, "EDIP")
 RGPOT_FORTRAN_POT_IMPL(LenoskyPot, rgpot_lenosky_force_ws, "Lenosky")
+#ifdef RGPOT_EAM_AL_OPENMP
+// Warm FCC calls: at 7 atoms the threaded gather is slower at 1, 2, 4 and
+// 8 threads. From 32 atoms, two or more threads are faster. One thread
+// stays on the serial routine at every size.
+#ifndef RGPOT_EAM_AL_OMP_MIN
+#define RGPOT_EAM_AL_OMP_MIN 32
+#endif
+void EAMAlPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  ensure_fortran_params();
+  const bool parallel = in.nAtoms >= static_cast<std::size_t>(RGPOT_EAM_AL_OMP_MIN) &&
+                        omp_get_max_threads() > 1;
+  const int status =
+      (parallel ? rgpot_eam_al_force_ws_omp : rgpot_eam_al_force_ws)(
+          m_ws.get(), static_cast<int32_t>(in.nAtoms), in.pos, in.box, out->F,
+          &out->energy);
+  if (status != 0) {
+    raise("EAM-Al", status, m_ws.get());
+  }
+  out->variance = 0.0;
+}
+#else
 RGPOT_FORTRAN_POT_IMPL(EAMAlPot, rgpot_eam_al_force_ws, "EAM-Al")
+#endif
 
 #undef RGPOT_FORTRAN_POT_IMPL
 

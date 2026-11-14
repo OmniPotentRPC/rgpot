@@ -75,14 +75,32 @@ fortran_kernels = static_library(
     install: false,
 )
 
+# OpenMP aluminium gather. Off by default, and the serial kernel is not
+# rebuilt with -fopenmp, so a default build keeps that code path.
+eam_al_omp_libs = []
+_fpot_cpp_args = _args
+_fpot_deps = _deps
+if get_option('with_eam_al_openmp')
+    eam_al_omp_libs += static_library(
+        'rgpot_eam_al_omp',
+        'rgpot_eam_al_omp.f90',
+        fortran_args: _fpot_args + fc.get_supported_arguments('-fopenmp'),
+        link_with: [fortran_kernels],
+        pic: true,
+        install: false,
+    )
+    _fpot_cpp_args += ['-DRGPOT_EAM_AL_OPENMP']
+    _fpot_deps += dependency('openmp', language: 'cpp')
+endif
+
 # The C++ faces stay visible: consumers construct these classes.
 fortran_pots = static_library(
     'rgpot_fortran_pots',
     fortran_pots_cpp_sources,
-    dependencies: _deps,
-    cpp_args: _args,
+    dependencies: _fpot_deps,
+    cpp_args: _fpot_cpp_args,
     include_directories: _incdirs,
-    link_with: [fortran_kernels, tersoff_sic, rgpot_halfshell],
+    link_with: [fortran_kernels, tersoff_sic, rgpot_halfshell] + eam_al_omp_libs,
     pic: true,
     install: false,
 )
@@ -176,6 +194,18 @@ if get_option('with_tests')
         install: false,
     )
     test('FortranEAMAlGather', test_eam_al, timeout: 120)
+
+    if get_option('with_eam_al_openmp')
+        test_eam_al_omp = executable(
+            'test_eam_al_omp',
+            'test_eam_al_omp.f90',
+            dependencies: [fortran_kernels_dep],
+            link_with: eam_al_omp_libs,
+            fortran_args: _fpot_args + fc.get_supported_arguments('-fopenmp'),
+            install: false,
+        )
+        test('FortranEAMAlOpenMP', test_eam_al_omp, timeout: 120)
+    endif
 
     test_water_h = executable(
         'test_water_h',

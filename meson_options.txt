@@ -75,6 +75,12 @@ option(
     description: 'Fortran-backed potentials (CuH2; grows with the eOn migration). Independent of the RPC options.',
 )
 option(
+    'with_eam_al_openmp',
+    type: 'boolean',
+    value: false,
+    description: 'OpenMP atom loops for the Fortran EAM-Al gather. Off leaves that kernel on its serial path.',
+)
+option(
     'with_highway',
     type: 'feature',
     value: 'auto',
