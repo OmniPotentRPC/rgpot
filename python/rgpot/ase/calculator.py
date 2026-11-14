@@ -50,7 +50,7 @@ _ASE_KEYS = {
     "directory",
 }
 
-# kind string -> (class name on rgpot, accepts LJ-style numeric kwargs)
+# kind string -> name of the class or factory function on rgpot
 _KINDS: dict[str, str] = {
     "lj": "LJPot",
     "lennard-jones": "LJPot",
@@ -68,9 +68,27 @@ _KINDS: dict[str, str] = {
     "d4": "D4Pot",
 }
 
-_LJ_KEYS = {"u0", "cutoff", "psi", "switch_width"}
-_D3_KEYS = {"damping", "functional", "atm"}
-_D4_KEYS = {"functional", "charge", "atm"}
+_LJ_DEFAULTS = {"u0": 1.0, "cutoff": 15.0, "psi": 1.0, "switch_width": 0.0}
+
+# Factory name -> (label used in error messages, default parameters).
+# A factory missing here takes no parameters.
+_FACTORY_PARAMETERS: dict[str, tuple[str, dict[str, Any]]] = {
+    "LJPot": ("LJ", _LJ_DEFAULTS),
+    "D3Pot": ("D3", {"damping": "bj", "functional": "pbe", "atm": True}),
+    "D4Pot": ("D4", {"functional": "pbe", "charge": 0.0, "atm": True}),
+}
+
+# Classes whose objects carry no parameters, so type(obj)() rebuilds them.
+_PARAMETERLESS = {
+    "SWPot",
+    "EDIPPot",
+    "LenoskyPot",
+    "TersoffPot",
+    "EAMAlPot",
+    "FeHePot",
+    "CuH2Pot",
+    "WaterHPot",
+}
 
 # Neighbour cutoffs of the bound kernels, in Angstrom. LJ reads
 # config()["cutoff"] instead. WaterH has no cutoff, so an open cell for
@@ -88,57 +106,78 @@ _KERNEL_CUTOFF_ANGSTROM = {
 }
 
 
-def _resolve_potential(potential: Any, params: dict[str, Any]) -> Any:
+def _check_parameters(factory: str, params: dict[str, Any]) -> None:
+    label, defaults = _FACTORY_PARAMETERS.get(factory, (factory, {}))
+    if not defaults:
+        if params:
+            raise ValueError(f"{factory} does not take parameters")
+        return
+    unknown = set(params) - set(defaults)
+    if unknown:
+        raise ValueError(f"unknown {label} parameters: {sorted(unknown)}")
+
+
+def _coerce(default: Any, value: Any) -> Any:
+    if isinstance(default, bool):
+        return bool(value)
+    if isinstance(default, float):
+        return float(value)
+    if isinstance(default, str):
+        return str(value)
+    return value
+
+
+def _build(factory: str, params: dict[str, Any]) -> Any:
+    """Construct the potential ``factory`` names from complete parameters."""
     import rgpot
 
-    if not isinstance(potential, str):
+    make = getattr(rgpot, factory, None)
+    if make is None:
+        raise ValueError(f"potential {factory!r} is not in this build")
+    _check_parameters(factory, params)
+    _, defaults = _FACTORY_PARAMETERS.get(factory, (factory, {}))
+    kwargs = {k: _coerce(d, params.get(k, d)) for k, d in defaults.items()}
+    return make(**kwargs)
+
+
+def _resolve_potential(
+    potential: Any, params: dict[str, Any]
+) -> tuple[Any, str | None, dict[str, Any], dict[str, Any]]:
+    """Return (potential, factory, default parameters, parameters).
+
+    ``factory`` is the rgpot name that rebuilds the potential from the
+    parameters, or None when the object cannot be rebuilt.
+    """
+    if isinstance(potential, str):
+        key = potential.strip().lower().replace(" ", "_")
+        factory = _KINDS.get(key)
+        if factory is None:
+            raise ValueError(f"unknown potential kind {potential!r}")
+        _check_parameters(factory, params)
+        defaults = dict(_FACTORY_PARAMETERS.get(factory, (factory, {}))[1])
+        full = {**defaults, **params}
+        return _build(factory, full), factory, defaults, full
+    if not hasattr(potential, "evaluate"):
+        raise TypeError("potential must be an rgpot potential or a kind string")
+    name = type(potential).__name__
+    if name in _PARAMETERLESS:
         if params:
-            raise ValueError(
-                "potential parameters are accepted only with a kind string"
-            )
-        if not hasattr(potential, "evaluate"):
-            raise TypeError(
-                "potential must be an rgpot potential or a kind string"
-            )
-        return potential
-    key = potential.strip().lower().replace(" ", "_")
-    class_name = _KINDS.get(key)
-    if class_name is None:
-        raise ValueError(f"unknown potential kind {potential!r}")
-    cls = getattr(rgpot, class_name, None)
-    if cls is None:
-        raise ValueError(f"potential {potential!r} is not in this build")
-    if class_name == "LJPot":
-        unknown = set(params) - _LJ_KEYS
-        if unknown:
-            raise ValueError(f"unknown LJ parameters: {sorted(unknown)}")
-        return cls(
-            u0=float(params.get("u0", 1.0)),
-            cutoff=float(params.get("cutoff", 15.0)),
-            psi=float(params.get("psi", 1.0)),
-            switch_width=float(params.get("switch_width", 0.0)),
-        )
-    if class_name == "D3Pot":
-        unknown = set(params) - _D3_KEYS
-        if unknown:
-            raise ValueError(f"unknown D3 parameters: {sorted(unknown)}")
-        return cls(
-            damping=str(params.get("damping", "bj")),
-            functional=str(params.get("functional", "pbe")),
-            atm=bool(params.get("atm", True)),
-        )
-    if class_name == "D4Pot":
-        unknown = set(params) - _D4_KEYS
-        if unknown:
-            raise ValueError(f"unknown D4 parameters: {sorted(unknown)}")
-        return cls(
-            functional=str(params.get("functional", "pbe")),
-            charge=float(params.get("charge", 0.0)),
-            atm=bool(params.get("atm", True)),
-        )
+            raise ValueError(f"{name} does not take parameters")
+        return potential, name, {}, {}
+    config = getattr(potential, "config", None)
+    if name in _FACTORY_PARAMETERS and callable(config):
+        _check_parameters(name, params)
+        current = dict(config())
+        defaults = dict(_FACTORY_PARAMETERS[name][1])
+        full = {**current, **params}
+        built = _build(name, full) if params else potential
+        return built, name, defaults, full
     if params:
-        raise ValueError(f"{class_name} does not take parameters")
-    return cls()
+        raise ValueError(
+            "potential parameters are accepted only with a kind string "
+            "or a potential that reports config()"
+        )
+    return potential, None, {}, {}
 
 
 def _kernel_cutoff(potential: Any) -> float:
@@ -256,7 +295,8 @@ class RgpotCalculator(Calculator):
         An rgpot potential object, or a kind string such as ``"lj"`` or
         ``"eam_al"``. Keyword arguments that are not ASE calculator
         arguments are potential parameters (``u0``, ``cutoff``, ``psi``,
-        ``switch_width`` for LJ).
+        ``switch_width`` for LJ). They live in ``parameters``, and
+        :meth:`set` rebuilds the potential when one changes.
     """
 
     implemented_properties = ["energy", "free_energy", "forces"]
@@ -268,10 +308,17 @@ class RgpotCalculator(Calculator):
     def __init__(self, potential: Any, **kwargs: Any) -> None:
         pot_kw = {k: v for k, v in kwargs.items() if k not in _ASE_KEYS}
         ase_kw = {k: v for k, v in kwargs.items() if k in _ASE_KEYS}
-        self._potential = _resolve_potential(potential, pot_kw)
-        self._cutoff = _kernel_cutoff(self._potential)
+        built, factory, defaults, params = _resolve_potential(potential, pot_kw)
+        self._factory = factory
+        self.default_parameters = defaults
+        self._install(built)
         Calculator.__init__(self, **ase_kw)
-        caps = dict(self._potential.caps())
+        self.parameters.update(params)
+
+    def _install(self, potential: Any) -> None:
+        self._potential = potential
+        self._cutoff = _kernel_cutoff(potential)
+        caps = dict(potential.caps())
         props = ["energy", "free_energy", "forces"]
         if bool(caps.get("stress")):
             props.append("stress")
@@ -284,6 +331,43 @@ class RgpotCalculator(Calculator):
     def potential(self) -> Any:
         """The rgpot potential this calculator evaluates."""
         return self._potential
+
+    def set(self, **kwargs: Any) -> dict[str, Any]:
+        """Change potential parameters. Returns the keys that changed.
+
+        A change rebuilds the potential and clears ``results``. An
+        unknown key raises ``ValueError`` before anything is stored.
+        """
+        if "parameters" in kwargs or not kwargs:
+            return Calculator.set(self, **kwargs)
+        if self._factory is None:
+            name = type(self._potential).__name__
+            raise ValueError(
+                f"{name} was given as an object without config(); "
+                "build the calculator from a kind string to set parameters"
+            )
+        _check_parameters(self._factory, kwargs)
+        new = {**self.parameters, **kwargs}
+        changed = Calculator.set(self, **kwargs)
+        if changed:
+            self._install(_build(self._factory, new))
+            self.reset()
+        return changed
+
+    def __getstate__(self) -> dict[str, Any]:
+        if self._factory is None:
+            name = type(self._potential).__name__
+            raise TypeError(
+                f"cannot copy or pickle RgpotCalculator over a {name} object "
+                "without config(); build it from a kind string"
+            )
+        state = self.__dict__.copy()
+        state.pop("_potential", None)
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
+        self._install(_build(self._factory, dict(self.parameters)))
 
     def _check_periodic(self, pbc: Any) -> None:
         if bool(_pbc_flags(pbc).any()) and self._caps.get("periodic") is False:
