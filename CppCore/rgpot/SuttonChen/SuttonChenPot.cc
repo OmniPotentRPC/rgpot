@@ -62,6 +62,9 @@ rgpot::SuttonChenConfig config_from_c(const rgpot_sc_config &raw) {
   c.m = raw.m;
   c.cutoff = raw.cutoff;
   c.periodic = raw.periodic != 0;
+  if (raw.periodic == RGPOT_SC_ALL_IMAGES) {
+    c.images = rgpot::nlist::Images::All;
+  }
   return c;
 }
 
@@ -95,6 +98,9 @@ SuttonChenPot::SuttonChenPot(const SuttonChenConfig &c)
     // Mixed in only when set, so the default key keeps its old value.
     fp.u64(1);
   }
+  if (c.periodic && c.images != nlist::Images::Minimum) {
+    fp.u64(static_cast<uint64_t>(c.images) << 8);
+  }
   m_paramsKey = fp.h;
 }
 
@@ -110,19 +116,25 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     F[3 * i + 2] = 0.0;
   }
   const SuttonChenConfig cfg = m_config;
-  double strain[6] = {};
-  if (n_atoms < 2) {
-    if (cfg.stress) {
-      publishCauchyStress(out, strain, cellVolume(in.box));
-    }
-    return;
+  const bool all_images = cfg.periodic && cfg.images == nlist::Images::All;
+  if (all_images && !(cfg.cutoff > 0.0)) {
+    throw std::invalid_argument("all-images Sutton-Chen needs a positive cutoff");
   }
-
   const double cutoff = (cfg.cutoff > 0.0) ? cfg.cutoff : 1.0e6;
   const double cutoff2 = cutoff * cutoff;
   const std::array<bool, 3> periodic =
       cfg.periodic ? std::array<bool, 3>{true, true, true}
                    : std::array<bool, 3>{false, false, false};
+  // With no cutoff the minimum image is the convention: every pair once.
+  const bool listed = all_images || (cfg.periodic && cfg.cutoff > 0.0 &&
+                                     nlist::beyondHalfWidth(in.box, cutoff, periodic));
+  double strain[6] = {};
+  if (n_atoms < (listed ? 1 : 2)) {
+    if (cfg.stress) {
+      publishCauchyStress(out, strain, cellVolume(in.box));
+    }
+    return;
+  }
 
   static constexpr double free_box[9] = {1.0e6, 0.0, 0.0, 0.0, 1.0e6,
                                          0.0,   0.0, 0.0, 1.0e6};
@@ -143,16 +155,38 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   std::vector<double> rho(n_size, 0.0);
   double epair = 0.0;
   const double skin = mode_ == nlist::Mode::Stream ? 0.0 : cutoff / 5.0;
-  nlist::updateCells(neighbours_, R, n_size, box_use, cutoff, skin, nlist::Image::Round,
-                     mode_, periodic);
-  const int nt = nlist::threadsRequested();
-  const bool stream = neighbours_.streaming();
   auto pair_term = [&](double r2, double &phi, double &rep) {
     const double ar2 = (lattice * lattice) / r2;
     phi = pow_ar(ar2, m_exp);
     rep = pow_ar(ar2, n_exp);
   };
-  if (nt == 1) {
+  int nt = 1;
+  bool stream = false;
+  if (listed) {
+    images_list_.update(R, n_size, box_use, cutoff, skin, periodic);
+    if (!all_images) {
+      images_list_.requireSingleImage("SuttonChenPot", cutoff);
+    }
+  } else {
+    nlist::updateCells(neighbours_, R, n_size, box_use, cutoff, skin, nlist::Image::Round,
+                       mode_, periodic);
+    nt = nlist::threadsRequested();
+    stream = neighbours_.streaming();
+  }
+  if (listed) {
+    // A self image adds phi to rho_i twice, once for each of n and -n.
+    images_list_.forHalf([&](int32_t i, int32_t j, double, double, double, double r2) {
+      if (!(r2 > 0.0) || r2 > cutoff2) {
+        return;
+      }
+      double phi = 0.0;
+      double rep = 0.0;
+      pair_term(r2, phi, rep);
+      rho[static_cast<std::size_t>(i)] += phi;
+      rho[static_cast<std::size_t>(j)] += phi;
+      epair += epsilon * rep;
+    });
+  } else if (nt == 1) {
     auto density = [&](int32_t i, int32_t j, double, double, double, double r2) {
       if (!(r2 > 0.0) || r2 > cutoff2) {
         return;
@@ -232,11 +266,15 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       force[3 * j + 1] -= fy;
       force[3 * j + 2] -= fz;
     }
-    if (virial != nullptr && j > i) {
+    if (virial != nullptr && j >= i) {
       accumulatePairStrain(virial, fscale, dx, dy, dz);
     }
   };
-  if (nt == 1) {
+  if (listed) {
+    images_list_.forHalf([&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
+      apply(i, j, dx, dy, dz, r2, F, cfg.stress ? strain : nullptr, true);
+    });
+  } else if (nt == 1) {
     if (stream) {
       nlist::visitHalf(neighbours_,
           0, n_atoms,

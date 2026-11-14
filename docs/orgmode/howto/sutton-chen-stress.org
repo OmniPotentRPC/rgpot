@@ -12,8 +12,9 @@ The convention and the checks are in the
 ** Set up the potential
 
 Start from a parameter row, make it periodic, and set the flag.
-Keep the cutoff under half the smallest face spacing of the cell, since periodic
-evaluation keeps one image of each partner.
+The minimum image needs the cutoff under half the smallest perpendicular width
+of the cell, and throws when that drops pairs.
+For a smaller cell, set =cfg.images = rgpot::nlist::Images::All=.
 
 #+begin_src cpp
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"

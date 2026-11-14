@@ -10,13 +10,18 @@
 
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/Potential.hpp"
-#include "rgpot/nlist/Neighbours.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 
 namespace rgpot {
 
 /// The cell-list EAM has no free parameters. The element table is the
 /// one shipped with the kernel.
-struct EAMCellConfig {};
+struct EAMCellConfig {
+  /// Minimum keeps the nearest image and throws when a pair has a second
+  /// image inside the widest cutoff. All sums every image inside the
+  /// cutoff, an atom's own images included. The box is the diagonal in both.
+  nlist::Images images = nlist::Images::Minimum;
+};
 
 class EAMPot : public Potential<EAMPot> {
 public:

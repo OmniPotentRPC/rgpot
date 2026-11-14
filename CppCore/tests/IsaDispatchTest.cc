@@ -197,6 +197,8 @@ TEST_CASE("SIMD targets match the scalar kernel bit for bit", "[simd][isa]") {
                               5.0, 1.2, 1.1};
   const double eam_pos[] = {0.2, 0.2, 0.2, 2.7, 0.3, 0.4, 4.0, 0.2, 0.2};
   const double box[9] = {12, 0, 0, 0, 12, 0, 0, 0, 12};
+  // Wide enough that each pair has one image inside the potentials' cutoffs.
+  const double pot_box[9] = {20, 0, 0, 0, 20, 0, 0, 0, 20};
   Built lj = half_list(std::vector<double>(lj_pos, lj_pos + 12), 8.5, 1, 12, 12,
                        12);
   Built morse =
@@ -217,8 +219,8 @@ TEST_CASE("SIMD targets match the scalar kernel bit for bit", "[simd][isa]") {
     Pack p{run_lj(lj.view),
            run_morse(morse.view),
            run_eam(eam_pos, 3),
-           run_lj_pot(lj_pos, 4, box),
-           run_morse_pot(morse_pos, 3, box),
+           run_lj_pot(lj_pos, 4, pot_box),
+           run_morse_pot(morse_pos, 3, pot_box),
            {}};
     const double neg0 = std::copysign(0.0, -1.0);
     const double sub = std::numeric_limits<double>::denorm_min();

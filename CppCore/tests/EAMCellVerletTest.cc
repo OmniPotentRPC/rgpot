@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <stdexcept>
 #include <vector>
 
 #ifndef EAM_STANDALONE
@@ -313,9 +314,12 @@ TEST_CASE("EAM matches the direct pair loop bit for bit", "[eam]") {
   z = {13, 13};
   expectBits(evaluate(pot, pos, z, 20.0), direct(pos, z, 20.0));
 
+  // An 8 A cell is under twice the widest cutoff, and these pairs have a
+  // second image inside it. The minimum image refuses them.
   pos = {0.2, 0.2, 0.2, 2.2, 0.3, 0.4, 0.4, 3.1, 1.2, 5.5, 6.6, 7.1};
   z = {13, 46, 79, 13};
-  expectBits(evaluate(pot, pos, z, 8.0), direct(pos, z, 8.0));
+  REQUIRE_THROWS_AS(evaluate(pot, pos, z, 8.0), std::invalid_argument);
+  expectBits(evaluate(pot, pos, z, 12.0), direct(pos, z, 12.0));
 
   pos = fcc(3, 4.05, z, 13);
   expectBits(evaluate(pot, pos, z, 3 * 4.05), direct(pos, z, 3 * 4.05));
@@ -329,7 +333,13 @@ TEST_CASE("EAM matches the direct pair loop bit for bit", "[eam]") {
     z[i] = species[i % 3];
     pos[3 * i] -= 0.8;
   }
-  expectBits(evaluate(pot, pos, z, 2 * 4.05), direct(pos, z, 2 * 4.05));
+  REQUIRE_THROWS_AS(evaluate(pot, pos, z, 2 * 4.05), std::invalid_argument);
+  pos = fcc(3, 4.05, z, 13);
+  for (std::size_t i = 0; i < z.size(); ++i) {
+    z[i] = species[i % 3];
+    pos[3 * i] -= 0.8;
+  }
+  expectBits(evaluate(pot, pos, z, 3 * 4.05), direct(pos, z, 3 * 4.05));
 
   pos = {1.0, 2.0, 3.0};
   z = {79};

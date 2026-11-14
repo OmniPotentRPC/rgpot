@@ -37,6 +37,7 @@
 // clang-format on
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/Potential.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 
 namespace rgpot {
 
@@ -71,11 +72,14 @@ EAMTable read_eam_table(std::istream &in, EAMTableFormat format);
 struct EAMTableConfig {
   std::string path; //!< Table file.
   EAMTableFormat format = EAMTableFormat::Setfl;
-  /// Minimum image convention. The cutoff must sit under half of every
-  /// face spacing of the cell.
+  /// Periodic in all three cell vectors.
   bool periodic = true;
   /// Write the Cauchy stress of stress.hpp when the cell volume is positive.
   bool stress = false;
+  /// With periodic, Minimum keeps the nearest image and throws when a pair
+  /// has a second image inside the cutoff. All sums every image inside the
+  /// cutoff, an atom's own images included.
+  nlist::Images images = nlist::Images::Minimum;
 };
 
 /**
@@ -86,10 +90,14 @@ struct EAMTableConfig {
 class EAMTablePot : public Potential<EAMTablePot> {
 public:
   explicit EAMTablePot(const EAMTableConfig &c);
-  EAMTablePot(const EAMTable &table, bool periodic, bool stress);
+  EAMTablePot(const EAMTable &table, bool periodic, bool stress,
+              nlist::Images images = nlist::Images::Minimum);
 
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.periodic = m_periodic, .stress = m_stress};
+    // The neighbour scratch is rewritten by every force call.
+    return {.reentrancy = Reentrancy::PerInstance,
+            .periodic = m_periodic,
+            .stress = m_stress};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
@@ -97,6 +105,9 @@ public:
   }
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
+
+  /// Stored Verlet list or a streaming cell walk on the minimum image.
+  void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
 private:
   static constexpr uint64_t kKernelVersion = 1;
@@ -107,7 +118,11 @@ private:
   std::vector<std::vector<double>> m_frho, m_rhor, m_z2r;
   bool m_periodic;
   bool m_stress;
+  nlist::Images m_images;
   uint64_t m_paramsKey{0};
+  nlist::Mode mode_ = nlist::Mode::Auto;
+  mutable nlist::Neighbours neighbours_;
+  mutable nlist::ImagePairs images_list_;
 };
 
 } // namespace rgpot

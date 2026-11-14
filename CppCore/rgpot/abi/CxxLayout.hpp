@@ -122,7 +122,7 @@
 // The string is the row's tag. check_cxx_soversion.py requires the two
 // sets to be equal. No branch means every platform is unlisted.
 // aarch64, macOS and Windows stay unlisted until a no-cache CI stamp
-// line for soversion 5 is copied in. Their soversion-4 hashes are the
+// line for soversion 7 is copied in. Their soversion-4 hashes are the
 // layouts from before LJPot and MorsePot grew their neighbour members.
 #if defined(RGPOT_OS_LINUX) && defined(RGPOT_ARCH_X86_64) &&                    \
     defined(RGPOT_STDLIB_LIBSTDCXX) && defined(RGPOT_MODEL_LP64)
@@ -178,7 +178,8 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// 6 drops the copied half-list from LJ and Morse, and gives ZBL and the
 /// open Lennard-Jones cluster a neighbour member. The pair term runs on
 /// the shared walk, so CachedPairs is no longer part of those objects.
-inline constexpr std::uint32_t kCxxSoversion = 6;
+/// 7 gives LJ and Morse an image mode and a stored all-images pair list.
+inline constexpr std::uint32_t kCxxSoversion = 7;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
 struct CxxSoversionEntry {
@@ -191,7 +192,7 @@ struct CxxSoversionEntry {
 /// platform still compiles. How to update the table:
 /// docs/orgmode/reference/c_abi.org.
 inline constexpr std::array<CxxSoversionEntry, 1> kCxxSoversionTable{{
-    {"linux-x86_64-libstdc++-lp64", 0x0bba2f6c8fb3f542ull},
+    {"linux-x86_64-libstdc++-lp64", 0x7cb1fa3948a0bd22ull},
 }};
 
 /// This translation unit's platform tag (`os-arch-stdlib-datamodel`).

@@ -10,10 +10,14 @@ struct EAMPot::Impl {
 
 EAMPot::EAMPot() : EAMPot(EAMCellConfig{}) {}
 
-EAMPot::EAMPot(const EAMCellConfig &)
+EAMPot::EAMPot(const EAMCellConfig &c)
     : Potential(PotType::EAMCell), m_impl(new Impl) {
+  m_impl->kernel.setImages(c.images);
   Fnv1a fp;
   fp.u64(1);
+  if (c.images != nlist::Images::Minimum) {
+    fp.u64(static_cast<uint64_t>(c.images) << 8);
+  }
   m_paramsKey = fp.h;
 }
 

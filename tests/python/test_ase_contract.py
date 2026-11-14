@@ -127,7 +127,8 @@ def test_cluster_stress_matches_finite_difference() -> None:
 
 def test_lj_stress_matches_finite_difference() -> None:
     atoms = lj_crystal()
-    atoms.calc = RgpotCalculator("lj", cutoff=8.0)
+    # Under half the 5.5 A cell: one image of each pair is the whole sum.
+    atoms.calc = RgpotCalculator("lj", cutoff=2.7)
     analytic = atoms.get_stress()
     numeric = calculate_numerical_stress(atoms, eps=1e-6, voigt=True)
     np.testing.assert_allclose(analytic, numeric, atol=1e-6, rtol=0.0)

@@ -31,7 +31,7 @@
 // clang-format on
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/Potential.hpp"
-#include "rgpot/nlist/Neighbours.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
 #if defined(_WIN32)
@@ -42,6 +42,11 @@
 
 extern "C" {
 
+/// @c rgpot_sc_config::periodic value that sums every periodic image
+/// inside the cutoff, an atom's own images included. Any other nonzero
+/// value keeps the minimum image.
+#define RGPOT_SC_ALL_IMAGES 2
+
 /// Plain parameter block for @c rgpot_sutton_chen_energy_forces.
 /// Field order is part of the ABI.
 struct rgpot_sc_config {
@@ -51,6 +56,8 @@ struct rgpot_sc_config {
   int32_t n;
   int32_t m;
   double cutoff;
+  /// 0 open boundaries, RGPOT_SC_ALL_IMAGES every image, other values the
+  /// minimum image.
   int32_t periodic;
 };
 
@@ -82,8 +89,12 @@ struct SuttonChenConfig {
   /// Truncation distance in the coordinate unit. 0 keeps every pair.
   /// 40 matches the optbench globalopt Lennard-Jones cutoff.
   double cutoff = 40.0;
-  /// Minimum image convention. Cluster references leave this false.
+  /// Periodic cell. Cluster references leave this false.
   bool periodic = false;
+  /// With periodic, Minimum keeps the nearest image and throws when a pair
+  /// has a second image inside the cutoff. All sums every image inside a
+  /// positive cutoff, an atom's own images included.
+  nlist::Images images = nlist::Images::Minimum;
   /// Write the Cauchy stress sigma = (1/V) dE/dstrain of stress.hpp when the
   /// cell volume is positive.
   /// Off by default: has_stress and the tensor are left as the caller set
@@ -128,6 +139,7 @@ private:
   uint64_t m_paramsKey{0};
   nlist::Mode mode_ = nlist::Mode::Auto;
   mutable nlist::Neighbours neighbours_;
+  mutable nlist::ImagePairs images_list_;
 };
 
 } // namespace rgpot

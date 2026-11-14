@@ -20,7 +20,7 @@
 #include "rgpot/PairSwitch.hpp"
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/Potential.hpp"
-#include "rgpot/nlist/Neighbours.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/simd/exp.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
@@ -53,9 +53,11 @@ class MorsePot : public Potential<MorsePot> {
 public:
   MorsePot() : MorsePot(MorseConfig{}) {}
 
-  explicit MorsePot(const MorseConfig &c)
+  /// `images` is a constructor argument rather than a MorseConfig field
+  /// because MorseConfig's layout is part of the C++ layout stamp.
+  explicit MorsePot(const MorseConfig &c, nlist::Images images = nlist::Images::Minimum)
       : Potential(PotType::Morse), De{c.De}, a{c.a}, re{c.re},
-        cuttOffR{c.cutoff}, m_config{c} {
+        cuttOffR{c.cutoff}, m_config{c}, images_{images} {
     // Shift so U(cuttOffR) = 0, evaluating the same closed form and the
     // same exp as the pair kernel.
     const double d = 1.0 - simd::exp_fixed(-a * (cuttOffR - re));
@@ -73,10 +75,16 @@ public:
     if (c.switch_width != 0.0) {
       fp.f64(c.switch_width);
     }
+    if (images != nlist::Images::Minimum) {
+      fp.u64(static_cast<uint64_t>(images));
+    }
     m_paramsKey = fp.h;
   }
 
   [[nodiscard]] const MorseConfig &config() const noexcept { return m_config; }
+
+  /// Minimum (the default) or every periodic image inside the cutoff.
+  [[nodiscard]] nlist::Images images() const noexcept { return images_; }
 
   /// Energy offset subtracted from every pair term (the unshifted pair
   /// energy at the cutoff); 0 when the quintic switch replaces the shift.
@@ -130,7 +138,9 @@ private:
   QuinticSwitch m_switch{}; //!< In use when m_config.switch_width != 0.
   uint64_t m_paramsKey{0};
   nlist::Mode mode_ = nlist::Mode::Auto;
+  nlist::Images images_ = nlist::Images::Minimum;
   mutable nlist::Neighbours neighbours_;
+  mutable nlist::ImagePairs images_list_;
 };
 
 } // namespace rgpot

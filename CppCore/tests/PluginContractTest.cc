@@ -124,7 +124,7 @@ TEST_CASE("Plugin forceBatch failures leave no earlier results in a reused buffe
   const rgpot::ForceInput periodic{.nAtoms=2,.pos=pos.data(),.atmnrs=types.data(),.box=cell};
   rgpot::ForceOut out{.F=forces.data(),.energy=0.0,.variance=0.0,.stress={},.has_stress=0};
   const auto nonzero=[](double value) { return value!=0.0; };
-  rgpot::LJPot lj;
+  rgpot::LJPot lj{rgpot::LJConfig{.cutoff=1.9}};
   lj.forceBatch({1,&periodic,&out});
   REQUIRE(out.energy!=0.0);
   REQUIRE(std::any_of(forces.begin(),forces.end(),nonzero));

@@ -81,6 +81,13 @@ void lj_pair(double r2, const simd::LjParams &p, double &energy, double &fscale)
  * buffers in thread order. A nonzero switch width uses the quintic
  * switch. Cauchy stress is published from the kernel's strain accumulator.
  *
+ * With nlist::Images::All the pairs come from nlist::ImagePairs: every
+ * image inside the cutoff, an atom's own images included, on one thread.
+ * The minimum image is the default. When the cutoff is more than half a
+ * perpendicular width of the cell, the same list checks that no pair has
+ * a second image inside the cutoff, throws std::invalid_argument when one
+ * does, and otherwise evaluates the single images.
+ *
  * @warning The box is assumed to be orthogonal.
  *
  */
@@ -98,7 +105,10 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     F[3 * i + 1] = 0;
     F[3 * i + 2] = 0;
   }
-  if (N < 2 || cuttOffR <= 0.0) {
+  const std::array<bool, 3> periodic{{true, true, true}};
+  const bool all_images = images_ == nlist::Images::All;
+  const bool listed = all_images || nlist::beyondHalfWidth(box, cuttOffR, periodic);
+  if (cuttOffR <= 0.0 || N < (listed ? 1 : 2)) {
     publishCauchyStress(out, strain, volume);
     return;
   }
@@ -118,7 +128,39 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   // and the kernel below drops those past the cutoff. Stream asks for no
   // skin: the bins are not reused unless the coordinates match.
   const double skin = mode_ == nlist::Mode::Stream ? 0.0 : 1.0;
-  const std::array<bool, 3> periodic{{true, true, true}};
+  if (listed) {
+    const double cutoff2 = cuttOffR * cuttOffR;
+    images_list_.update(R, n_atoms, box, cuttOffR, skin, periodic);
+    if (!all_images) {
+      images_list_.requireSingleImage("LJPot", cuttOffR);
+    }
+    // The list leaves out pairs on the same point, and reports them here.
+    if (images_list_.coincident()) {
+      *U = std::numeric_limits<double>::quiet_NaN();
+    }
+    images_list_.forHalf([&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                             double r2) {
+      if (r2 > cutoff2) {
+        return;
+      }
+      double pair_e = 0.0;
+      double fscale = 0.0;
+      lj_pair(r2, params, pair_e, fscale);
+      *U += pair_e;
+      const double fx = fscale * dx;
+      const double fy = fscale * dy;
+      const double fz = fscale * dz;
+      F[3 * i] += fx;
+      F[3 * i + 1] += fy;
+      F[3 * i + 2] += fz;
+      F[3 * j] -= fx;
+      F[3 * j + 1] -= fy;
+      F[3 * j + 2] -= fz;
+      accumulatePairStrain(strain, fscale, dx, dy, dz);
+    });
+    publishCauchyStress(out, strain, volume);
+    return;
+  }
   nlist::updateCells(neighbours_, R, n_atoms, box, cuttOffR, skin, nlist::Image::Round,
                      mode_, periodic);
   const double cutoff2 = cuttOffR * cuttOffR;

@@ -128,12 +128,12 @@ TEST_CASE("LJClusterPot parameter fingerprint tracks the config",
 }
 
 TEST_CASE("LJPot stress matches a coordinate difference", "[LJPot]") {
-  rgpot::LJPot pot;
+  rgpot::LJPot pot{rgpot::LJConfig{.cutoff = 4.0}};
   REQUIRE(pot.caps().stress);
 
   AtomMatrix pos{{0.0, 0.0, 0.0}, {1.3, 0.4, -0.25}};
   const std::vector<int> types{1, 1};
-  // Row-major cell, large enough that the pair is the minimum image.
+  // Row-major cell, more than twice the cutoff across.
   const double box[9] = {12.0, 0.0, 0.0, 0.4, 11.0, 0.0, -0.2, 0.3, 10.0};
   double forces[6] = {};
   rgpot::ForceOut out{forces, 0.0, 0.0, {}, 0};

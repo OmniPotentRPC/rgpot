@@ -149,6 +149,34 @@ The list would have no buffer.
 while every atom has moved by at most half the skin.
 =nlist_verlet.c= is that loop.
 
+** Small cells and periodic images
+
+=LJPot=, =MorsePot=, =SuttonChenPot=, =EAMTablePot= and the cell-list =EAMPot=
+use the minimum image by default: each pair is counted once, at its nearest
+image.
+That is exact only while the cutoff is at most half of every perpendicular width
+of the cell, the volume over the area of the opposite face.
+Above that, the kernel checks the pairs.
+If an atom is inside the cutoff of its own image, or a pair has two images
+inside it, the call throws =std::invalid_argument= (=ValueError= in Python).
+It does not return a truncated sum.
+
+=nlist::Images::All= sums every image inside the cutoff, as ASE and LAMMPS do.
+The pairs come from a =Builder= half table with shifts and a loose cut.
+Along each periodic axis the shifts run to =ceil((cutoff + skin) / width)=.
+An atom paired with its own image appears once for each pair of opposite shifts.
+That one term is half of the two, so the energy, forces and stress need no
+further factor.
+Positions need not lie inside the cell.
+The list stores each atom's cell offset and adds it back to the shift.
+
+#+begin_src cpp
+rgpot::LJConfig config{.u0 = 1.0, .cutoff = 2.5, .psi = 1.0};
+rgpot::LJPot pot(config, rgpot::nlist::Images::All);
+#+end_src
+
+The all-images path runs on one thread.
+
 ** Where the design came from
 
 =docs/neighbour_api_design.md= records the survey of vesin, JAX-MD, LAMMPS,

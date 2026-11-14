@@ -165,6 +165,12 @@ Configurable via =LJClusterConfig= (=u0=, =cutoff=, =psi=, =switch_width=).
 default.
 Configurable via =MorseConfig= (=De=, =a=, =re=, =cutoff=, =switch_width=).
 
+=LJPot= and =MorsePot= take an =nlist::Images= as a second constructor argument.
+=Minimum=, the default, counts each pair once at its nearest image and throws
+=std::invalid_argument= when the cell is too small for that.
+=All= sums every image inside the cutoff, an atom's own images included.
+See [[file:../tutorials/neighbour-list.org][Neighbour lists]].
+
 With =switch_width= at 0 (the default) these three shift each pair energy to
 zero at the cutoff, and the force jumps there.
 A positive

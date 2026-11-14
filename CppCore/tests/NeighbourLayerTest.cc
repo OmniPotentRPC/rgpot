@@ -128,9 +128,9 @@ TEST_CASE("neighbour modes agree for the classical potentials", "[nlist]") {
   lj_s.setNeighbourMode(rgpot::nlist::Mode::Stored);
   lj_w.setNeighbourMode(rgpot::nlist::Mode::Stream);
   const double a_lj = std::pow(2.0, 1.0 / 6.0) * std::sqrt(2.0);
-  const auto ljpos = fcc(3, a_lj);
+  const auto ljpos = fcc(4, a_lj);
   const std::vector<int> ar(ljpos.size() / 3, 18);
-  checkModes(lj_s, lj_w, ljpos, ar, 3 * a_lj);
+  checkModes(lj_s, lj_w, ljpos, ar, 4 * a_lj);
 
   rgpot::SuttonChenConfig sc;
   sc.cutoff = 3.0;
@@ -139,9 +139,9 @@ TEST_CASE("neighbour modes agree for the classical potentials", "[nlist]") {
   rgpot::SuttonChenPot sc_w(sc);
   sc_s.setNeighbourMode(rgpot::nlist::Mode::Stored);
   sc_w.setNeighbourMode(rgpot::nlist::Mode::Stream);
-  const auto scpos = fcc(3, std::sqrt(2.0));
+  const auto scpos = fcc(5, std::sqrt(2.0));
   const std::vector<int> pt(scpos.size() / 3, 78);
-  checkModes(sc_s, sc_w, scpos, pt, 3 * std::sqrt(2.0));
+  checkModes(sc_s, sc_w, scpos, pt, 5 * std::sqrt(2.0));
 
   const auto si = diamond(2, 5.431);
   const std::vector<int> zsi(si.size() / 3, 14);
@@ -209,36 +209,36 @@ TEST_CASE("threaded classical forces repeat and stay near one thread",
   ljcfg.cutoff = 2.5;
   ljcfg.psi = 1.0;
   const double a_lj = std::pow(2.0, 1.0 / 6.0) * std::sqrt(2.0);
-  const auto ljpos = fcc(3, a_lj);
+  const auto ljpos = fcc(4, a_lj);
   const std::vector<int> ar(ljpos.size() / 3, 18);
   rgpot::LJPot lj_one(ljcfg);
   rgpot::LJPot lj_two(ljcfg);
   lj_one.setNeighbourMode(rgpot::nlist::Mode::Stored);
   lj_two.setNeighbourMode(rgpot::nlist::Mode::Stored);
-  checkThreads(std::move(lj_one), std::move(lj_two), ljpos, ar, 3 * a_lj);
+  checkThreads(std::move(lj_one), std::move(lj_two), ljpos, ar, 4 * a_lj);
   rgpot::LJPot lj_one_s(ljcfg);
   rgpot::LJPot lj_two_s(ljcfg);
   lj_one_s.setNeighbourMode(rgpot::nlist::Mode::Stream);
   lj_two_s.setNeighbourMode(rgpot::nlist::Mode::Stream);
-  checkThreads(std::move(lj_one_s), std::move(lj_two_s), ljpos, ar, 3 * a_lj);
+  checkThreads(std::move(lj_one_s), std::move(lj_two_s), ljpos, ar, 4 * a_lj);
 
   rgpot::SuttonChenConfig sc;
   sc.cutoff = 3.0;
   sc.periodic = true;
-  const auto scpos = fcc(3, std::sqrt(2.0));
+  const auto scpos = fcc(5, std::sqrt(2.0));
   const std::vector<int> pt(scpos.size() / 3, 78);
   rgpot::SuttonChenPot sc_one(sc);
   rgpot::SuttonChenPot sc_two(sc);
   sc_one.setNeighbourMode(rgpot::nlist::Mode::Stored);
   sc_two.setNeighbourMode(rgpot::nlist::Mode::Stored);
   checkThreads(std::move(sc_one), std::move(sc_two), scpos, pt,
-               3 * std::sqrt(2.0));
+               5 * std::sqrt(2.0));
   rgpot::SuttonChenPot sc_one_s(sc);
   rgpot::SuttonChenPot sc_two_s(sc);
   sc_one_s.setNeighbourMode(rgpot::nlist::Mode::Stream);
   sc_two_s.setNeighbourMode(rgpot::nlist::Mode::Stream);
   checkThreads(std::move(sc_one_s), std::move(sc_two_s), scpos, pt,
-               3 * std::sqrt(2.0));
+               5 * std::sqrt(2.0));
 
   const auto si = diamond(2, 5.431);
   const std::vector<int> zsi(si.size() / 3, 14);

@@ -11,7 +11,7 @@
 */
 #pragma once
 
-#include "rgpot/nlist/Neighbours.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 
 namespace rgpot::eam {
 struct ElementSpline;
@@ -90,6 +90,12 @@ public:
   /// candidate index array fits in the memory reported as available.
   void setNeighbourMode(rgpot::nlist::Mode mode) noexcept { mode_ = mode; }
 
+  /// Minimum keeps the nearest image. When the widest cutoff is more than
+  /// half a box length, the force call throws if a pair has a second image
+  /// inside that cutoff. All sums every image inside the cutoff, an atom's
+  /// own images included, on one thread.
+  void setImages(rgpot::nlist::Images images) noexcept { images_ = images; }
+
   /// Threads used by the most recent force call. 1 when OpenMP is off or
   /// `OMP_NUM_THREADS` is unset.
   [[nodiscard]] int threadsUsed() const noexcept { return threads_used_; }
@@ -142,6 +148,8 @@ private:
   std::vector<double> stream_force_;
   std::vector<rgpot::nlist::Range> parts_;
   rgpot::nlist::Neighbours neighbours_;
+  rgpot::nlist::ImagePairs image_pairs_;
+  rgpot::nlist::Images images_ = rgpot::nlist::Images::Minimum;
 
   double box_len_[3]{};
   long n_atoms_ = 0;
@@ -160,6 +168,10 @@ private:
                               double *U);
   void evaluateDensityStream(long N, const int *atomicNrs, double *F,
                              double *U);
+  void evaluateAllImages(long N, const double *R, const int *atomicNrs,
+                         double *F, double *U, const double box9[9],
+                         bool single_image);
+  [[nodiscard]] double widestCutoff() const;
   [[nodiscard]] const rgpot::eam::ElementSpline &splineFor(int Z);
   void accumulate(long i, const int *atomicNrs, double *F, double &U,
                   std::vector<Delta> &deltas, const std::int32_t *stream_ids,

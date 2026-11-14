@@ -24,7 +24,7 @@
 // clang-format on
 
 #include "rgpot/EAMTable/EAMTablePot.hpp"
-#include "rgpot/nlist/PairListCache.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/stress.hpp"
 
 namespace {
@@ -206,11 +206,12 @@ EAMTable read_eam_table(std::istream &in, EAMTableFormat format) {
 }
 
 EAMTablePot::EAMTablePot(const EAMTableConfig &c)
-    : EAMTablePot(load(c), c.periodic, c.stress) {}
+    : EAMTablePot(load(c), c.periodic, c.stress, c.images) {}
 
-EAMTablePot::EAMTablePot(const EAMTable &table, bool periodic, bool stress)
+EAMTablePot::EAMTablePot(const EAMTable &table, bool periodic, bool stress,
+                         nlist::Images images)
     : Potential(PotType::EAMTable), m_table{table}, m_periodic{periodic},
-      m_stress{stress} {
+      m_stress{stress}, m_images{images} {
   const std::size_t n = table.z.size();
   if (n == 0 || table.frho.size() != n || table.rhor.size() != n * n ||
       table.z2r.size() != n * (n + 1) / 2) {
@@ -243,6 +244,9 @@ EAMTablePot::EAMTablePot(const EAMTable &table, bool periodic, bool stress)
   if (stress) {
     fp.u64(1);
   }
+  if (periodic && images != nlist::Images::Minimum) {
+    fp.u64(static_cast<uint64_t>(images) << 8);
+  }
   m_paramsKey = fp.h;
 }
 
@@ -265,51 +269,61 @@ void EAMTablePot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
   static constexpr double free_box[9] = {1.0e6, 0.0, 0.0, 0.0,  1.0e6,
                                          0.0,   0.0, 0.0, 1.0e6};
-  const double *box = in.box;
+  const double *box = free_box;
+  const std::array<bool, 3> periodic{{m_periodic, m_periodic, m_periodic}};
   if (m_periodic) {
-    const double vol = cellVolume(box);
-    if (!(vol > 0.0)) {
+    if (!(cellVolume(in.box) > 0.0)) {
       bad("periodic evaluation needs a cell");
     }
-    // The pair list folds to one image per partner.
-    for (int k = 0; k < 3; ++k) {
-      const double *u = box + 3 * ((k + 1) % 3);
-      const double *v = box + 3 * ((k + 2) % 3);
-      const double cx = u[1] * v[2] - u[2] * v[1];
-      const double cy = u[2] * v[0] - u[0] * v[2];
-      const double cz = u[0] * v[1] - u[1] * v[0];
-      if (!(2.0 * t.cutoff < vol / std::sqrt(cx * cx + cy * cy + cz * cz))) {
-        bad("cutoff exceeds half a face spacing");
-      }
-    }
-  } else {
-    box = free_box;
+    box = in.box;
   }
-  nlist::CachedPairList::Options opt;
-  opt.cutoff = t.cutoff;
-  opt.periodic = {m_periodic, m_periodic, m_periodic};
+  const bool all_images = m_periodic && m_images == nlist::Images::All;
+  const bool listed =
+      all_images || (m_periodic && nlist::beyondHalfWidth(box, t.cutoff, periodic));
   const double cut2 = t.cutoff * t.cutoff;
   const double rdr = 1.0 / t.dr;
   const double rdrho = 1.0 / t.drho;
-  auto &pool = nlist::PairListCache::global();
-
-  const bool pairs = n_size >= 2;
+  const bool pairs = n_size >= (listed ? 1u : 2u);
+  if (pairs) {
+    const double skin = mode_ == nlist::Mode::Stream ? 0.0 : t.cutoff / 5.0;
+    if (listed) {
+      images_list_.update(in.pos, n_size, box, t.cutoff, skin, periodic);
+      if (!all_images) {
+        images_list_.requireSingleImage("EAMTablePot", t.cutoff);
+      }
+    } else {
+      nlist::updateCells(neighbours_, in.pos, n_size, box, t.cutoff, skin,
+                         nlist::Image::Round, mode_, periodic);
+    }
+  }
+  // Each unordered pair once. A self image j == i comes at one of its two
+  // shifts n and -n, which is the whole of its pair energy and gives rho_i
+  // both of its density terms.
+  auto half = [&](auto &&fn) {
+    auto take = [&](int32_t i, int32_t j, double dx, double dy, double dz,
+                    double r2) {
+      if (!(r2 > 0.0) || !(r2 < cut2)) {
+        return;
+      }
+      fn(static_cast<std::size_t>(i), static_cast<std::size_t>(j), dx, dy, dz,
+         r2);
+    };
+    if (listed) {
+      images_list_.forHalf(take);
+    } else {
+      nlist::visitHalf(neighbours_, 0, static_cast<std::int64_t>(n_size), take);
+    }
+  };
 
   std::vector<double> rho(n_size, 0.0);
   if (pairs) {
-    pool.evaluate(in.pos, n_size, box, opt,
-                  [&](int32_t i, int32_t j, double, double, double, double r2) {
-                    if (!(r2 > 0.0) || !(r2 < cut2)) {
-                      return;
-                    }
-                    const auto a = el[static_cast<std::size_t>(i)];
-                    const auto b = el[static_cast<std::size_t>(j)];
-                    const double r = std::sqrt(r2);
-                    rho[static_cast<std::size_t>(i)] +=
-                        lookup(m_rhor[b * nel + a], r, rdr, t.nr).value();
-                    rho[static_cast<std::size_t>(j)] +=
-                        lookup(m_rhor[a * nel + b], r, rdr, t.nr).value();
-                  });
+    half([&](std::size_t i, std::size_t j, double, double, double, double r2) {
+      const auto a = el[i];
+      const auto b = el[j];
+      const double r = std::sqrt(r2);
+      rho[i] += lookup(m_rhor[b * nel + a], r, rdr, t.nr).value();
+      rho[j] += lookup(m_rhor[a * nel + b], r, rdr, t.nr).value();
+    });
   }
 
   std::vector<double> fprime(n_size, 0.0);
@@ -325,14 +339,8 @@ void EAMTablePot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
   double strain[6] = {};
   if (pairs) {
-    pool.evaluate(
-        in.pos, n_size, box, opt,
-        [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
-          if (!(r2 > 0.0) || !(r2 < cut2)) {
-            return;
-          }
-          const auto ui = static_cast<std::size_t>(i);
-          const auto uj = static_cast<std::size_t>(j);
+    half([&](std::size_t ui, std::size_t uj, double dx, double dy, double dz,
+             double r2) {
           const auto a = el[ui];
           const auto b = el[uj];
           const double r = std::sqrt(r2);

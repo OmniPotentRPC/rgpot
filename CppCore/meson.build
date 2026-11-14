@@ -851,6 +851,7 @@ if get_option('with_tests')
                 'MinimumImageTest.cc',
                 '',
             ],
+            ['AllImagesTest', 'all_images_test', 'AllImagesTest.cc', ''],
         ]
         if has_ipi
             test_array += [

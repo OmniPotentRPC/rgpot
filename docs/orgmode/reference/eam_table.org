@@ -77,11 +77,17 @@ Only one =Funcfl= file is read, so the LAMMPS mixing of several =.eam= files is
 not available.
 The =eam/he= and =eam/cd= layouts are not read.
 
-Periodic evaluation keeps one image of each partner, so it needs the cutoff
-under half of every face spacing of the cell.
+By default periodic evaluation keeps the nearest image of each partner.
+When the cutoff is more than half a perpendicular width of the cell, =forceImpl=
+throws =std::invalid_argument= if an atom is inside the cutoff of its own image
+or a pair has two images inside it.
+=EAMTableConfig::images = nlist::Images::All= sums every image inside the
+cutoff, an atom's own images included, as LAMMPS does.
+A self-image term adds to the atom's density twice, once for each of the two
+opposite shifts, and adds no force on the atom.
 The constructor accepts any table.
-=forceImpl= throws =std::invalid_argument= for a smaller cell, for a periodic
-call without a cell, and for an atomic number that is in no element line.
+=forceImpl= also throws for a periodic call without a cell and for an atomic
+number that is in no element line.
 
 * Stress
 
@@ -123,6 +129,18 @@ A third case takes the Sutton-Chen platinum row as LAMMPS saw it.
 The test asks for 1e-10 eV, 1e-10 eV/Angstrom and 1e-13 eV/Angstrom^3.
 The test rebuilds the Sutton-Chen table in C++ from the formulas of that script
 rather than reading a file.
+
+=AllImagesTest= checks the all-images mode.
+It compares a one-atom fcc primitive cell, a three-atom triclinic cell and a
+three-layer slab with the minimum image on a replicated supercell, atom by atom,
+for =Cu_u3= and =CuNi=.
+It compares the same cells with ASE 3.29.0 =ase.calculators.eam.EAM= on a smooth
+two-element =eam/alloy= table with 1001 points.
+The gaps allowed are 1e-8 eV, 1e-7 eV/Angstrom and 5e-9 eV/Angstrom^3.
+=CppCore/tests/data/all_images/make_ase_ref.py= writes the table and the
+references.
+ASE interpolates with its own splines, so the files from LAMMPS do not match it
+this closely.
 
 A two-element =eam/fs= table of constants checks the order of the density
 blocks.

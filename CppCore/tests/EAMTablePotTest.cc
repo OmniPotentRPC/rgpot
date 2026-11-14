@@ -212,8 +212,14 @@ TEST_CASE("EAM table rejects bad input", "[EAMTable]") {
   std::vector<int> nickel(ref.z.size(), 28);
   REQUIRE_THROWS_AS(eval(cu_u3(true, false), ref.pos, nickel, ref.box),
                     std::invalid_argument);
+  // The crystal squeezed into a 9 A cell: atoms half a cell apart have
+  // two images inside the 4.95 A cutoff, which the minimum image drops.
   const double small[9] = {9.0, 0.0, 0.0, 0.0, 9.0, 0.0, 0.0, 0.0, 9.0};
-  REQUIRE_THROWS_AS(eval(cu_u3(true, false), ref.pos, ref.z, small),
+  std::vector<double> squeezed = ref.pos;
+  for (double &x : squeezed) {
+    x *= 9.0 / ref.box[0];
+  }
+  REQUIRE_THROWS_AS(eval(cu_u3(true, false), squeezed, ref.z, small),
                     std::invalid_argument);
   std::ifstream file(kData + "eam_table/Cu_u3.eam");
   std::string head, line;

@@ -96,11 +96,16 @@ void EAM::prepare(long N, const double *R, const double *box) {
   box_len_[2] = box[2];
 }
 
-void EAM::buildList(long N) {
+double EAM::widestCutoff() const {
   double widest = 0.0;
   for (int i = 0; i < NPARAMS; i++) {
     widest = std::max(widest, el_params[i].r_cut);
   }
+  return widest;
+}
+
+void EAM::buildList(long N) {
+  const double widest = widestCutoff();
   double box9[9] = {box_len_[0], 0, 0, 0, box_len_[1], 0, 0, 0, box_len_[2]};
   // A stream does not reuse bins unless the coordinates match, so the
   // skin only adds pairs the kernel then rejects.
@@ -646,9 +651,118 @@ void EAM::force(long N, const double *R, const int *atomicNrs, double *F,
   for (long i = 0; i < N; ++i) {
     (void)get_element_parameters(atomicNrs[i]);
   }
+  const double box9[9] = {box[0], 0, 0, 0, box[1], 0, 0, 0, box[2]};
+  const bool all_images = images_ == rgpot::nlist::Images::All;
+  if (all_images || rgpot::nlist::beyondHalfWidth(box9, widestCutoff(), {true, true, true})) {
+    evaluateAllImages(N, R, atomicNrs, F, U, box9, !all_images);
+    return;
+  }
   prepare(N, R, box);
   buildList(N);
   evaluate(N, atomicNrs, F, U);
+}
+
+// The same analytic terms as accumulate() over every image. The pair term
+// takes the parameters of the lower index, as the j > i branch of
+// accumulate() does. rho_i takes the density of i's element and rho_j that
+// of j's. A self image adds to rho_i twice, once for each of n and -n, and
+// its force on the atom cancels.
+void EAM::evaluateAllImages(long N, const double *R, const int *atomicNrs,
+                            double *F, double *U, const double box9[9],
+                            bool single_image) {
+  threads_used_ = 1;
+  const double widest = widestCutoff();
+  const double skin = mode_ == rgpot::nlist::Mode::Stream ? 0.0 : kEamSkinOverCutoff * widest;
+  image_pairs_.update(R, static_cast<std::size_t>(N), box9, widest, skin, {true, true, true});
+  if (single_image) {
+    image_pairs_.requireSingleImage("EAMPot", widest);
+  }
+  const auto n = static_cast<std::size_t>(N);
+  std::vector<const element_parameters *> par(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    for (int k = 0; k < NPARAMS; ++k) {
+      if (el_params[k].Z == atomicNrs[i]) {
+        par[i] = &el_params[k];
+        break;
+      }
+    }
+  }
+  auto density = [](const element_parameters &p, double r, double &value, double &slope) {
+    const double r2 = r * r;
+    const double r5 = r2 * r2 * r;
+    const double r6 = r5 * r;
+    const double exp_b1 = std::exp(-p.beta1 * r);
+    const double exp_b2 = std::exp(-2.0 * p.beta2 * r);
+    const double rho_pair = exp_b1 + 512.0 * exp_b2;
+    value = r6 * rho_pair;
+    slope = 6.0 * r5 * rho_pair + r6 * (-p.beta1 * exp_b1 - 1024.0 * p.beta2 * exp_b2);
+  };
+  rho_.assign(n, 0.0);
+  double energy = 0.0;
+  image_pairs_.forHalf([&](std::int32_t i, std::int32_t j, double, double, double, double r2) {
+    if (!(r2 > 0.0)) {
+      return;
+    }
+    const element_parameters &pi = *par[static_cast<std::size_t>(i)];
+    const element_parameters &pj = *par[static_cast<std::size_t>(j)];
+    const element_parameters &pp = i < j ? pi : pj;
+    const double r = std::sqrt(r2);
+    double value = 0.0;
+    double slope = 0.0;
+    if (r2 <= pp.r_cut * pp.r_cut) {
+      const double d = 1.0 - std::exp(-pp.alphaM * (r - pp.Rm));
+      energy += pp.Dm * d * d - pp.Dm;
+    }
+    if (r2 <= pi.r_cut * pi.r_cut) {
+      density(pi, r, value, slope);
+      rho_[static_cast<std::size_t>(i)] += value;
+    }
+    if (r2 <= pj.r_cut * pj.r_cut) {
+      density(pj, r, value, slope);
+      rho_[static_cast<std::size_t>(j)] += value;
+    }
+  });
+  dF_.resize(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    energy += embedding_function(par[i]->func_coeff, rho_[i]);
+    dF_[i] = embedding_force(par[i]->func_coeff, rho_[i]);
+  }
+  // F_i += s d and F_j -= s d with d = r_i - r_j - n H.
+  image_pairs_.forHalf([&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                           double r2) {
+    if (!(r2 > 0.0)) {
+      return;
+    }
+    const auto ui = static_cast<std::size_t>(i);
+    const auto uj = static_cast<std::size_t>(j);
+    const element_parameters &pi = *par[ui];
+    const element_parameters &pj = *par[uj];
+    const element_parameters &pp = i < j ? pi : pj;
+    const double r = std::sqrt(r2);
+    double value = 0.0;
+    double slope = 0.0;
+    double s = 0.0;
+    if (r2 <= pp.r_cut * pp.r_cut) {
+      const double d = 1.0 - std::exp(-pp.alphaM * (r - pp.Rm));
+      s += 2.0 * pp.alphaM * pp.Dm * d * (d - 1.0);
+    }
+    if (r2 <= pi.r_cut * pi.r_cut) {
+      density(pi, r, value, slope);
+      s += dF_[ui] * slope;
+    }
+    if (r2 <= pj.r_cut * pj.r_cut) {
+      density(pj, r, value, slope);
+      s += dF_[uj] * slope;
+    }
+    s /= r;
+    F[3 * ui] += s * dx;
+    F[3 * ui + 1] += s * dy;
+    F[3 * ui + 2] += s * dz;
+    F[3 * uj] -= s * dx;
+    F[3 * uj + 1] -= s * dy;
+    F[3 * uj + 2] -= s * dz;
+  });
+  *U = energy;
 }
 
 double EAM::embedding_function(const double *func_coeff, double rho) {

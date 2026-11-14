@@ -305,10 +305,10 @@ TEST_CASE("stream matches the stored list on a small cell", "[nlist][stream]") {
   lj_s.setNeighbourMode(rgpot::nlist::Mode::Stored);
   lj_w.setNeighbourMode(rgpot::nlist::Mode::Stream);
   const double a_lj = std::pow(2.0, 1.0 / 6.0) * std::sqrt(2.0);
-  auto ljxyz = matrixOf(fccAtoms(3, 3, 3, a_lj));
+  auto ljxyz = matrixOf(fccAtoms(4, 4, 4, a_lj));
   nudge(ljxyz);
   const std::vector<int> ar(ljxyz.rows(), 18);
-  const auto ljbox = ortho(3 * a_lj, 3 * a_lj, 3 * a_lj);
+  const auto ljbox = ortho(4 * a_lj, 4 * a_lj, 4 * a_lj);
   checkParity(lj_s, lj_w, ljxyz, ar, ljbox);
 
   rgpot::MorseConfig mcfg;
@@ -332,10 +332,10 @@ TEST_CASE("stream matches the stored list on a small cell", "[nlist][stream]") {
   rgpot::SuttonChenPot sc_w(sc);
   sc_s.setNeighbourMode(rgpot::nlist::Mode::Stored);
   sc_w.setNeighbourMode(rgpot::nlist::Mode::Stream);
-  auto scxyz = matrixOf(fccAtoms(3, 3, 3, std::sqrt(2.0)));
+  auto scxyz = matrixOf(fccAtoms(5, 5, 5, std::sqrt(2.0)));
   nudge(scxyz);
   const std::vector<int> pt(scxyz.rows(), 78);
-  const double lsc = 3 * std::sqrt(2.0);
+  const double lsc = 5 * std::sqrt(2.0);
   checkParity(sc_s, sc_w, scxyz, pt, ortho(lsc, lsc, lsc));
 
   auto si = matrixOf(diamondAtoms(2, 5.431));

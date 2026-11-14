@@ -43,6 +43,13 @@ namespace rgpot {
  * The pair term is ``simd::exp_fixed``, so a per-pair accumulation and this
  * row return the same bits. Cauchy stress is the derivative of that energy.
  *
+ * With nlist::Images::All the pairs come from nlist::ImagePairs: every
+ * image inside the cutoff, an atom's own images included, on one thread.
+ * The minimum image is the default. When the cutoff is more than half a
+ * perpendicular width of the cell, the same list checks that no pair has
+ * a second image inside the cutoff, throws std::invalid_argument when one
+ * does, and otherwise evaluates the single images.
+ *
  * @warning The box is assumed to be orthogonal.
  */
 void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
@@ -58,7 +65,10 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   for (long k = 0; k < 3 * N; k++) {
     F[k] = 0.0;
   }
-  if (N < 2 || cuttOffR <= 0.0) {
+  const std::array<bool, 3> periodic{{true, true, true}};
+  const bool all_images = images_ == nlist::Images::All;
+  const bool listed = all_images || nlist::beyondHalfWidth(box, cuttOffR, periodic);
+  if (cuttOffR <= 0.0 || N < (listed ? 1 : 2)) {
     return;
   }
 
@@ -70,18 +80,11 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
     mode = nlist::Mode::Stored;
   }
   const double skin = mode == nlist::Mode::Stream ? 0.0 : neighbourSkin(cuttOffR);
-  const std::array<bool, 3> periodic{{true, true, true}};
-  nlist::updateCells(neighbours_, R, n_atoms, box, cuttOffR, skin, nlist::Image::Round,
-                     mode, periodic);
   const double cutoff2 = cuttOffR * cuttOffR;
   const double twoDeA = 2.0 * De * a;
   const bool switched = m_config.switch_width != 0.0;
-  const int nt = nlist::threadsRequested();
-  auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                    double r2, double *force, double &energy, double *virial) {
-    if (!(i < j) || !(r2 > 0.0) || r2 > cutoff2) {
-      return;
-    }
+  auto term = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                  double r2, double *force, double &energy, double *virial) {
     const double r = std::sqrt(r2);
     const double d = 1.0 - simd::exp_fixed(-a * (r - re));
     const double bare = De * d * d - De;
@@ -108,6 +111,31 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
     accumulatePairStrain(virial, fscale, dx, dy, dz);
   };
   double energy = 0.0;
+  if (listed) {
+    images_list_.update(R, n_atoms, box, cuttOffR, skin, periodic);
+    if (!all_images) {
+      images_list_.requireSingleImage("MorsePot", cuttOffR);
+    }
+    images_list_.forHalf([&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                             double r2) {
+      if (r2 > 0.0 && r2 <= cutoff2) {
+        term(i, j, dx, dy, dz, r2, F, energy, strain);
+      }
+    });
+    *U = energy;
+    publishCauchyStress(out, strain, volume);
+    return;
+  }
+  nlist::updateCells(neighbours_, R, n_atoms, box, cuttOffR, skin, nlist::Image::Round,
+                     mode, periodic);
+  const int nt = nlist::threadsRequested();
+  auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                    double r2, double *force, double &energy, double *virial) {
+    if (!(i < j) || !(r2 > 0.0) || r2 > cutoff2) {
+      return;
+    }
+    term(i, j, dx, dy, dz, r2, force, energy, virial);
+  };
   if (nt <= 1) {
     nlist::visitHalf(neighbours_, 0, N,
                      [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
