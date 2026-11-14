@@ -86,8 +86,8 @@ int storeBonds(nlist::Neighbours &cells, int i, double cut2, Bond *dest, double 
   return m;
 }
 
+// The row is the atom, so the gather does not keep a copy of the index.
 struct Hit {
-  int atom;
   double x;
   double y;
   double z;
@@ -109,52 +109,12 @@ struct WideScratch {
   std::vector<Hit> csr;
 };
 
-// Pair and triplet targets, in the order the fill emits them. Threads own
-// contiguous atom ranges, so a prefix across threads is the serial order.
-void countTargets(const std::vector<Bond> &bonds, const std::vector<int> &bond_at,
-                  const std::vector<int> &bond_n, std::vector<int> &energy_at,
-                  std::vector<int> &energy_n, std::vector<int> &local_n, std::vector<int> &touch,
-                  int n, int nt) {
+// Threads already counted while the bonds were loaded. A prefix across
+// those counts is the serial order, because each thread owns a lower
+// contiguous range than the next.
+void prefixTargets(const std::vector<int> &energy_n, const std::vector<int> &local_n,
+                   std::vector<int> &energy_at, std::vector<int> &touch, int n, int nt) {
   energy_at.resize(static_cast<std::size_t>(n) + 1);
-  energy_n.assign(static_cast<std::size_t>(n), 0);
-  if (static_cast<int>(local_n.size()) < nt * n) {
-    local_n.resize(static_cast<std::size_t>(nt) * static_cast<std::size_t>(n));
-  }
-  std::fill(local_n.begin(),
-            local_n.begin() + static_cast<std::size_t>(nt) * static_cast<std::size_t>(n), 0);
-#if defined(_OPENMP)
-#pragma omp parallel num_threads(nt)
-#endif
-  {
-#if defined(_OPENMP)
-    const int t = omp_get_thread_num();
-#else
-    const int t = 0;
-#endif
-    int *mine = local_n.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(n);
-    const auto range = nlist::partition(n, t, nt);
-    for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
-      const Bond *nb = bonds.data() + bond_at[static_cast<std::size_t>(i)];
-      const int m = bond_n[static_cast<std::size_t>(i)];
-      int pairs = 0;
-      for (int a = 0; a < m; ++a) {
-        if (nb[a].j > i) {
-          ++pairs;
-          ++mine[i];
-          ++mine[nb[a].j];
-        }
-      }
-      for (int a = 0; a < m; ++a) {
-        for (int b = a + 1; b < m; ++b) {
-          ++mine[nb[a].j];
-          ++mine[nb[b].j];
-          ++mine[i];
-        }
-      }
-      const int trips = m * (m - 1) / 2;
-      energy_n[static_cast<std::size_t>(i)] = pairs + trips;
-    }
-  }
   energy_at[0] = 0;
   touch.resize(static_cast<std::size_t>(n) + 1);
   touch[0] = 0;
@@ -190,32 +150,24 @@ void runWide(nlist::Neighbours &cells, int n, int nt, double cut2, double scale,
   auto &csr = scratch.csr;
   const auto &row = cells.offsets();
   bond_at.resize(static_cast<std::size_t>(n) + 1);
-  bond_n.assign(static_cast<std::size_t>(n), 0);
+  bond_n.resize(static_cast<std::size_t>(n));
   bond_at[0] = 0;
-#if defined(_OPENMP)
-#pragma omp parallel num_threads(nt)
-#endif
-  {
-#if defined(_OPENMP)
-    const int t = omp_get_thread_num();
-#else
-    const int t = 0;
-#endif
-    const auto range = nlist::partition(n, t, nt);
-    for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
-      bond_n[static_cast<std::size_t>(i)] =
-          row[static_cast<std::size_t>(i) + 1] - row[static_cast<std::size_t>(i)];
-    }
-  }
   for (int i = 0; i < n; ++i) {
-    bond_at[static_cast<std::size_t>(i) + 1] =
-        bond_at[static_cast<std::size_t>(i)] + bond_n[static_cast<std::size_t>(i)];
+    const int deg = row[static_cast<std::size_t>(i) + 1] - row[static_cast<std::size_t>(i)];
+    bond_n[static_cast<std::size_t>(i)] = deg;
+    bond_at[static_cast<std::size_t>(i) + 1] = bond_at[static_cast<std::size_t>(i)] + deg;
   }
   if (static_cast<int>(bonds.size()) < bond_at[static_cast<std::size_t>(n)]) {
     bonds.resize(static_cast<std::size_t>(bond_at[static_cast<std::size_t>(n)]));
     pair_f2.resize(bonds.size());
     pair_dedr.resize(bonds.size());
   }
+  energy_n.assign(static_cast<std::size_t>(n), 0);
+  if (static_cast<int>(local_n.size()) < nt * n) {
+    local_n.resize(static_cast<std::size_t>(nt) * static_cast<std::size_t>(n));
+  }
+  std::fill(local_n.begin(),
+            local_n.begin() + static_cast<std::size_t>(nt) * static_cast<std::size_t>(n), 0);
 #if defined(_OPENMP)
 #pragma omp parallel num_threads(nt)
 #endif
@@ -225,17 +177,32 @@ void runWide(nlist::Neighbours &cells, int n, int nt, double cut2, double scale,
 #else
     const int t = 0;
 #endif
+    int *mine = local_n.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(n);
     const auto range = nlist::partition(n, t, nt);
     for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
       const int room =
           bond_at[static_cast<std::size_t>(i) + 1] - bond_at[static_cast<std::size_t>(i)];
       Bond *dest = bonds.data() + bond_at[static_cast<std::size_t>(i)];
-      bond_n[static_cast<std::size_t>(i)] =
+      const int m =
           storeBonds(cells, i, cut2, dest, pair_f2.data() + bond_at[static_cast<std::size_t>(i)],
                      pair_dedr.data() + bond_at[static_cast<std::size_t>(i)], room);
+      bond_n[static_cast<std::size_t>(i)] = m;
+      int pairs = 0;
+      for (int a = 0; a < m; ++a) {
+        const int j = dest[a].j;
+        // Every other neighbour makes one triplet with this one.
+        mine[j] += m - 1;
+        if (j > i) {
+          ++pairs;
+          ++mine[j];
+        }
+      }
+      const int trips = m * (m - 1) / 2;
+      mine[i] += pairs + trips;
+      energy_n[static_cast<std::size_t>(i)] = pairs + trips;
     }
   }
-  countTargets(bonds, bond_at, bond_n, energy_at, energy_n, local_n, touch, n, nt);
+  prefixTargets(energy_n, local_n, energy_at, touch, n, nt);
   const int nenergy = energy_at[static_cast<std::size_t>(n)];
   const int ntouch = touch[static_cast<std::size_t>(n)];
   if (static_cast<int>(eterm.size()) < nenergy) {
@@ -285,8 +252,8 @@ void runWide(nlist::Neighbours &cells, int n, int nt, double cut2, double scale,
         const double sx = scale * dedr * bj.x * inv_r;
         const double sy = scale * dedr * bj.y * inv_r;
         const double sz = scale * dedr * bj.z * inv_r;
-        csr[static_cast<std::size_t>(place[i]++)] = Hit{i, sx, sy, sz};
-        csr[static_cast<std::size_t>(place[bj.j]++)] = Hit{bj.j, -sx, -sy, -sz};
+        csr[static_cast<std::size_t>(place[i]++)] = Hit{sx, sy, sz};
+        csr[static_cast<std::size_t>(place[bj.j]++)] = Hit{-sx, -sy, -sz};
       }
       for (int a = 0; a < m; ++a) {
         const Bond &bj = nb[a];
@@ -323,11 +290,11 @@ void runWide(nlist::Neighbours &cells, int n, int nt, double cut2, double scale,
           const double g2z =
               d_edr2 * bk.z * inv_r2 + d_edcth * (bj.z * inv - cth * bk.z * inv_r2 * inv_r2);
           csr[static_cast<std::size_t>(place[bj.j]++)] =
-              Hit{bj.j, -scale * g1x, -scale * g1y, -scale * g1z};
+              Hit{-scale * g1x, -scale * g1y, -scale * g1z};
           csr[static_cast<std::size_t>(place[bk.j]++)] =
-              Hit{bk.j, -scale * g2x, -scale * g2y, -scale * g2z};
+              Hit{-scale * g2x, -scale * g2y, -scale * g2z};
           csr[static_cast<std::size_t>(place[i]++)] =
-              Hit{i, scale * (g1x + g2x), scale * (g1y + g2y), scale * (g1z + g2z)};
+              Hit{scale * (g1x + g2x), scale * (g1y + g2y), scale * (g1z + g2z)};
         }
       }
       energy_used[static_cast<std::size_t>(i)] = ne;
