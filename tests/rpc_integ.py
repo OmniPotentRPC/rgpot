@@ -85,6 +85,57 @@ async def run_client(port):
     return True
 
 
+async def run_morse_configure(port):
+    """configure(morse) on a Morse server changes the energy it returns."""
+    for _ in range(10):
+        try:
+            connection = await capnp.AsyncIoStream.create_connection(
+                host="localhost", port=port
+            )
+            break
+        except OSError:
+            await asyncio.sleep(0.5)
+    else:
+        print("Morse configure: failed to connect to server.")
+        return False
+
+    client = capnp.TwoPartyClient(connection)
+    pot = client.bootstrap().cast_as(pot_capnp.Potential)
+
+    defaults = pot_capnp.MorseParams.new_message()
+    fip = pot_capnp.ForceInput.new_message()
+    fip.init("pos", 6)
+    for i, p in enumerate([10.0, 10.0, 10.0, 10.0 + defaults.re, 10.0, 10.0]):
+        fip.pos[i] = p
+    fip.init("atmnrs", 2)
+    fip.atmnrs[0] = 78
+    fip.atmnrs[1] = 78
+    fip.init("box", 9)
+    for i, b in enumerate([40.0, 0.0, 0.0, 0.0, 40.0, 0.0, 0.0, 0.0, 40.0]):
+        fip.box[i] = b
+
+    before = (await pot.calculate(fip)).result.energy
+
+    cfg = pot_capnp.PotentialConfig.new_message()
+    cfg.init("morse").de = 2.0 * defaults.de
+    reply = await pot.configure(cfg)
+    print(f"Morse configure(morse): ok={reply.ok} msg={reply.message}")
+    assert reply.ok, reply.message
+
+    after = (await pot.calculate(fip)).result.energy
+    print(f"Morse energy at re: default de {before}, doubled de {after}")
+    # At r = re the shifted pair energy is -de d^2, linear in de.
+    d = 1.0 - math.exp(-defaults.a * (defaults.cutoff - defaults.re))
+    assert math.isclose(after, -2.0 * defaults.de * d * d, rel_tol=1e-12)
+    assert math.isclose(after, 2.0 * before, rel_tol=1e-12)
+
+    other = pot_capnp.PotentialConfig.new_message()
+    other.init("nwchem")
+    refused = await pot.configure(other)
+    assert not refused.ok, refused.message
+    return True
+
+
 async def run_nwchem_smoke(port):
     """Optional smoke: start NWChem server, configure(), skip calculate if no engine."""
     for _ in range(10):
@@ -277,6 +328,30 @@ def main():
     if not success:
         sys.exit(1)
     print("Integration test passed.")
+
+    morse_port = args.port + 3
+    print(f"Starting Morse server: {args.server_bin} {morse_port} Morse")
+    morse_proc = subprocess.Popen(
+        [args.server_bin, str(morse_port), "Morse"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        morse_ok = asyncio.run(capnp.run(run_morse_configure(morse_port)))
+    except BaseException as e:
+        print(f"Morse configure exception: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        morse_proc.kill()
+        out, err = morse_proc.communicate(timeout=30)
+        print("Server stdout:", out.decode(errors="replace")[-4000:])
+        print("Server stderr:", err.decode(errors="replace")[-4000:])
+        morse_ok = False
+    finally:
+        morse_proc.kill()
+        morse_proc.wait()
+    if not morse_ok:
+        sys.exit(1)
+    print("Morse configure passed.")
 
     if args.nwchem_smoke:
         nw_port = args.port + 1

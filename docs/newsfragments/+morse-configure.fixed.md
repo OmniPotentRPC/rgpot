@@ -1,0 +1,1 @@
+`potserv` on the Morse backend applies `configure(PotentialConfig.morse)`, rebuilding the pot with the sent `de`, `a`, `re` and `cutoff`; it used to refuse every configure call that was not for NWChem or CPMD.

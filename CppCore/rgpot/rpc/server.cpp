@@ -66,6 +66,7 @@ class MpiPefSession;
 #ifdef RGPOT_HAS_IPI
 #include "rgpot/IPIPot/IPIPot.hpp"
 #endif
+#include "rgpot/rpc/MorseConfigure.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 #include "rgpot/types/adapters/capnp/capnp_adapter.hpp"
 #include "rgpot/units.hpp"
@@ -85,6 +86,8 @@ private:
   rgpot::NWChemPot *m_nwchem = nullptr;
   /// Optional typed handle when backend is CPMD (for configure()).
   rgpot::CPMDPot *m_cpmd = nullptr;
+  /// Set when the backend is Morse; configure() replaces the pot it names.
+  rgpot::MorsePot *m_morse = nullptr;
 #ifdef RGPOT_HAS_IPI
   /// Set when the backend is the i-PI socket server. calculate copies the
   /// Cauchy stress stashed by the last force call.
@@ -98,7 +101,8 @@ public:
    * @param pot Ownership of a PotentialBase derived object.
    */
   GenericPotImpl(std::unique_ptr<rgpot::PotentialBase> pot)
-      : m_potential(std::move(pot))
+      : m_potential(std::move(pot)),
+        m_morse(dynamic_cast<rgpot::MorsePot *>(m_potential.get()))
 #ifdef RGPOT_HAS_IPI
         ,
         m_ipi(dynamic_cast<rgpot::IPIPot *>(m_potential.get()))
@@ -235,9 +239,19 @@ public:
   kj::Promise<void> configure(ConfigureContext context) override {
     auto cfg = context.getParams().getConfig();
     auto results = context.getResults();
+    if (m_morse) {
+      auto applied = rgpot::rpc::configureMorse(cfg, *m_morse);
+      if (applied.replacement) {
+        m_morse = applied.replacement.get();
+        m_potential = std::move(applied.replacement);
+      }
+      results.setOk(applied.ok);
+      results.setMessage(applied.message);
+      return kj::READY_NOW;
+    }
     if (!m_nwchem && !m_cpmd) {
       results.setOk(false);
-      results.setMessage("configure() only supported for NWChem or CPMD backend");
+      results.setMessage("configure() only supported for NWChem, CPMD or Morse backend");
       return kj::READY_NOW;
     }
     std::string msg;

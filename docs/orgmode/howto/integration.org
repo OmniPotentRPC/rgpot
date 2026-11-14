@@ -30,7 +30,8 @@ Both names are extremely common in computational chemistry codebases.
 *** rgpot user parameters (=PotentialConfig=) over RPC
 
 Backend knobs for a live =Potential= use Cap'n Proto =PotentialConfig=: an
-extensible union (=none=, =nwchem=, =cpmd=, =metatomic=; later =xtb= / …).
+extensible union (=none=, =nwchem=, =cpmd=, =metatomic=, =lammps=, =morse=;
+later =xtb= / …).
 Geometry stays on =ForceInput=; =configure(config)= applies method/backend setup
 only.
 =D3Pot= and =D4Pot= stay in-process =Potential= summands.
@@ -49,6 +50,16 @@ language.
 Python: =tests/nwchem_params.py= builds =PotentialConfig= + =nwchem=.
 BLYP: =theory="dft"=, =scfType="blyp"=. Embed =.so= still required for
 =calculate=.
+
+*** Morse arm (=PotentialConfig.morse= / =MorseParams=)
+
+With =potserv <port> Morse=, pass =configure= with the =morse= arm set.
+=MorseParams= carries =de=, =a=, =re= and =cutoff=, with the platinum defaults
+of =MorseConfig=.
+The server rebuilds its =MorsePot= from those values, so the next =calculate=
+uses them.
+Every arm other than =none= and =morse= is refused with =ok=false=.
+=tests/rpc_integ.py= doubles =de= and checks the energy at =re= doubles.
 
 *** CPMD arm (=PotentialConfig.cpmd= / =CPMDParams=)
 
