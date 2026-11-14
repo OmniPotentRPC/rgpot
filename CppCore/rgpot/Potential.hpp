@@ -244,6 +244,57 @@ public:
   virtual void forceImpl(const ForceInput &in, ForceOut *out) const = 0;
 
   /**
+   * @brief True when @c forceEnergies can split the energy over the atoms.
+   *
+   * A kernel opts in by defining
+   * @c forceEnergiesImpl(const ForceInput&, ForceOut*, double*) const, and
+   * may narrow that at run time with @c perAtomEnergiesImpl() (a Fortran
+   * fallback, say, that has no per-atom split). Neither touches the class
+   * layout or the dispatch table, so @c operator() and @c forceImpl stay
+   * exactly as they were.
+   */
+  [[nodiscard]] bool perAtomEnergies() const noexcept {
+    if constexpr (hasForceEnergies()) {
+      if constexpr (requires(const Derived &d) { d.perAtomEnergiesImpl(); }) {
+        return static_cast<const Derived *>(this)->perAtomEnergiesImpl();
+      } else {
+        return true;
+      }
+    } else {
+      return false;
+    }
+  }
+
+  /**
+   * @brief @c forceImpl plus each atom's share of the energy.
+   *
+   * @p energies holds @c in.nAtoms values and, like @c out, is zeroed
+   * before the kernel runs. Pair terms are split half and half between
+   * the partners, an embedding term stays on its atom and a three-body
+   * term on its centre atom, so the shares sum to @c out->energy up to
+   * rounding. The result cache is bypassed: it stores no per-atom data.
+   *
+   * @throws std::runtime_error when @c perAtomEnergies() is false.
+   */
+  void forceEnergies(const ForceInput &in, ForceOut *out, double *energies) const {
+    if (!perAtomEnergies()) {
+      throw std::runtime_error("this potential does not report per-atom energies");
+    }
+    if (out->F) {
+      std::fill_n(out->F, 3 * in.nAtoms, 0.0);
+    }
+    out->energy = 0.0;
+    out->variance = 0.0;
+    out->has_stress = 0;
+    std::fill(out->stress, out->stress + 9, 0.0);
+    std::fill_n(energies, in.nAtoms, 0.0);
+    if constexpr (hasForceEnergies()) {
+      static_cast<const Derived *>(this)->forceEnergiesImpl(in, out, energies);
+      registry<Derived>::incrementForceCalls();
+    }
+  }
+
+  /**
    * @brief Batched counterpart of @c forceImpl.
    *
    * The default evaluates the systems one at a time, so every kernel
@@ -367,6 +418,14 @@ public:
   }
 
 private:
+  // A function, not a static member: Derived is incomplete while this
+  // base is instantiated, and complete when a member body is.
+  static constexpr bool hasForceEnergies() {
+    return requires(const Derived &d, const ForceInput &in, ForceOut *out, double *e) {
+      d.forceEnergiesImpl(in, out, e);
+    };
+  }
+
 #ifdef RGPOT_HAS_CACHE
   /**
    * @brief Result-cache key for one system.
