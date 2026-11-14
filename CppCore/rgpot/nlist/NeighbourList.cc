@@ -569,9 +569,23 @@ void permute_stride(std::vector<T> &col, const std::vector<std::size_t> &order, 
     return;
   }
   std::vector<T> out(col.size());
-  for (std::size_t i = 0; i < order.size(); ++i) {
-    for (std::size_t k = 0; k < stride; ++k) {
-      out[i * stride + k] = col[order[i] * stride + k];
+#ifdef RGPOT_EAM_AL_OPENMP
+  if (threadsRequested() > 1 && order.size() >= 16384) {
+#if defined(_OPENMP)
+#pragma omp parallel for schedule(static) num_threads(threadsRequested())
+#endif
+    for (std::size_t i = 0; i < order.size(); ++i) {
+      for (std::size_t k = 0; k < stride; ++k) {
+        out[i * stride + k] = col[order[i] * stride + k];
+      }
+    }
+  } else
+#endif
+  {
+    for (std::size_t i = 0; i < order.size(); ++i) {
+      for (std::size_t k = 0; k < stride; ++k) {
+        out[i * stride + k] = col[order[i] * stride + k];
+      }
     }
   }
   col.swap(out);
@@ -586,6 +600,73 @@ void Builder::orderByPartner() {
   }
   std::vector<std::size_t> order(n);
   std::iota(order.begin(), order.end(), 0);
+#ifdef RGPOT_EAM_AL_OPENMP
+  // Eight stable counting passes, partner atom then central atom. A tie
+  // keeps the earlier pair, which is the permutation std::stable_sort writes.
+  int nt = threadsRequested();
+  if (nt > 1 && n >= 16384) {
+    if (static_cast<std::size_t>(nt) > n / 2048) {
+      nt = static_cast<int>(n / 2048);
+    }
+    if (nt < 1) {
+      nt = 1;
+    }
+    std::vector<std::size_t> scratch(n);
+    std::vector<int> counts(static_cast<std::size_t>(256 * nt));
+    std::vector<int> starts(static_cast<std::size_t>(256 * nt));
+    for (int pass_i = 0; pass_i < 8; ++pass_i) {
+      const bool central = pass_i >= 4;
+      const int shift = (pass_i & 3) * 8;
+      std::fill(counts.begin(), counts.end(), 0);
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+      {
+#if defined(_OPENMP)
+        const int t = omp_get_thread_num();
+#else
+        const int t = 0;
+#endif
+        const auto begin = n * static_cast<std::size_t>(t) / static_cast<std::size_t>(nt);
+        const auto end = n * static_cast<std::size_t>(t + 1) / static_cast<std::size_t>(nt);
+        int *local = counts.data() + 256 * t;
+        const auto *keys = central ? table_.first.data() : table_.second.data();
+        for (std::size_t k = begin; k < end; ++k) {
+          const auto key = static_cast<std::uint32_t>(keys[order[k]]) ^ 0x80000000u;
+          ++local[(key >> shift) & 255u];
+        }
+      }
+      int sum = 0;
+      for (int digit = 0; digit < 256; ++digit) {
+        for (int t = 0; t < nt; ++t) {
+          const auto at = static_cast<std::size_t>(t * 256 + digit);
+          starts[at] = sum;
+          sum += counts[at];
+        }
+      }
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+      {
+#if defined(_OPENMP)
+        const int t = omp_get_thread_num();
+#else
+        const int t = 0;
+#endif
+        const auto begin = n * static_cast<std::size_t>(t) / static_cast<std::size_t>(nt);
+        const auto end = n * static_cast<std::size_t>(t + 1) / static_cast<std::size_t>(nt);
+        int *slot = starts.data() + 256 * t;
+        const auto *keys = central ? table_.first.data() : table_.second.data();
+        for (std::size_t k = begin; k < end; ++k) {
+          const auto i = order[k];
+          const auto key = static_cast<std::uint32_t>(keys[i]) ^ 0x80000000u;
+          scratch[slot[(key >> shift) & 255u]++] = i;
+        }
+      }
+      order.swap(scratch);
+    }
+  } else
+#endif
   std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
     if (table_.first[a] != table_.first[b]) {
       return table_.first[a] < table_.first[b];
@@ -602,12 +683,54 @@ void Builder::orderByPartner() {
   if (already) {
     return;
   }
-  permute_stride(table_.first, order, 1);
-  permute_stride(table_.second, order, 1);
-  permute_stride(table_.mask, order, 1);
-  permute_stride(table_.shift, order, 3);
-  permute_stride(table_.vector, order, 3);
-  permute_stride(table_.distance, order, 1);
+#ifdef RGPOT_EAM_AL_OPENMP
+  if (threadsRequested() > 1 && n >= 16384) {
+    std::vector<std::int32_t> first(n), second(n);
+    std::vector<std::uint8_t> mask(n);
+    std::vector<std::int32_t> shift(table_.shift.size());
+    std::vector<double> vector(table_.vector.size());
+    std::vector<double> distance(table_.distance.size());
+    const bool has_shift = !shift.empty();
+    const bool has_vector = !vector.empty();
+    const bool has_distance = !distance.empty();
+#if defined(_OPENMP)
+#pragma omp parallel for schedule(static) num_threads(threadsRequested())
+#endif
+    for (std::size_t i = 0; i < n; ++i) {
+      const auto j = order[i];
+      first[i] = table_.first[j];
+      second[i] = table_.second[j];
+      mask[i] = table_.mask[j];
+      if (has_shift) {
+        shift[3 * i] = table_.shift[3 * j];
+        shift[3 * i + 1] = table_.shift[3 * j + 1];
+        shift[3 * i + 2] = table_.shift[3 * j + 2];
+      }
+      if (has_vector) {
+        vector[3 * i] = table_.vector[3 * j];
+        vector[3 * i + 1] = table_.vector[3 * j + 1];
+        vector[3 * i + 2] = table_.vector[3 * j + 2];
+      }
+      if (has_distance) {
+        distance[i] = table_.distance[j];
+      }
+    }
+    table_.first.swap(first);
+    table_.second.swap(second);
+    table_.mask.swap(mask);
+    table_.shift.swap(shift);
+    table_.vector.swap(vector);
+    table_.distance.swap(distance);
+  } else
+#endif
+  {
+    permute_stride(table_.first, order, 1);
+    permute_stride(table_.second, order, 1);
+    permute_stride(table_.mask, order, 1);
+    permute_stride(table_.shift, order, 3);
+    permute_stride(table_.vector, order, 3);
+    permute_stride(table_.distance, order, 1);
+  }
 }
 
 void Builder::update(const double *positions, std::size_t n, const double *box9,
