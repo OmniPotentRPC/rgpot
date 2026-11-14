@@ -319,35 +319,6 @@ void EAM::accumulate(long i, const int *atomicNrs, double *F, double &U,
 
 int EAM::threadsRequested() const { return rgpot::nlist::threadsRequested(); }
 
-void EAM::geometry(long i, long j, double &dx, double &dy, double &dz,
-                   double &r2) const {
-  const double half0 = box_len_[0] * 0.5;
-  const double half1 = box_len_[1] * 0.5;
-  const double half2 = box_len_[2] * 0.5;
-  const double xi = wrapped_[static_cast<std::size_t>(3 * i)];
-  const double yi = wrapped_[static_cast<std::size_t>(3 * i + 1)];
-  const double zi = wrapped_[static_cast<std::size_t>(3 * i + 2)];
-  dx = xi - wrapped_[static_cast<std::size_t>(3 * j)];
-  dy = yi - wrapped_[static_cast<std::size_t>(3 * j + 1)];
-  dz = zi - wrapped_[static_cast<std::size_t>(3 * j + 2)];
-  if (dx > half0) {
-    dx -= box_len_[0];
-  } else if (dx < -half0) {
-    dx += box_len_[0];
-  }
-  if (dy > half1) {
-    dy -= box_len_[1];
-  } else if (dy < -half1) {
-    dy += box_len_[1];
-  }
-  if (dz > half2) {
-    dz -= box_len_[2];
-  } else if (dz < -half2) {
-    dz += box_len_[2];
-  }
-  r2 = dx * dx + dy * dy + dz * dz;
-}
-
 const rgpot::eam::ElementSpline &EAM::splineFor(int Z) {
   static std::vector<rgpot::eam::ElementSpline> tables;
   if (tables.capacity() < 8) {
@@ -573,29 +544,15 @@ void EAM::force(long N, const double *R, const int *atomicNrs, double *F,
   }
   prepare(N, R, box);
   buildList(N);
-  // The fill pays for itself from 8 threads, and from 4 threads once the
-  // cell holds at least 1024 atoms. Every other call keeps evaluate().
-  const int nt = threadsRequested();
-  if (!neighbours_.streaming() && nt > 1 && (nt >= 8 || N >= 1024)) {
-    threads_used_ = nt;
-    evaluateThreaded(N, atomicNrs, F, U);
+  int nt = threadsRequested();
+  if (nt < 1) {
+    nt = 1;
+  }
+  threads_used_ = nt;
+  if (neighbours_.streaming()) {
+    evaluateStreamFixed(N, atomicNrs, F, U);
     return;
   }
-  evaluate(N, atomicNrs, F, U);
+  evaluateFixed(N, atomicNrs, F, U);
 }
 
-double EAM::embedding_function(const double *func_coeff, double rho) {
-  double result = func_coeff[8];
-  for (int i = 7; i >= 0; i--) {
-    result = result * rho + func_coeff[i];
-  }
-  return result;
-}
-
-double EAM::embedding_force(const double *func_coeff, double rho) {
-  double result = func_coeff[8] * 8;
-  for (int i = 7; i >= 1; i--) {
-    result = result * rho + i * func_coeff[i];
-  }
-  return -result;
-}

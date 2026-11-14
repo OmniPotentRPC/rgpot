@@ -165,3 +165,36 @@ TEST_CASE("threaded kernels match the one-thread bits", "[threads][bits]") {
   check([] { return rgpot::fortranpots::TersoffPot{}; }, diamond(64, 14, 5.43));
   check([] { return rgpot::fortranpots::TersoffPot{}; }, diamond(256, 14, 5.43));
 }
+
+TEST_CASE("EAM chunk sums match at every thread count", "[threads][bits][eam]") {
+  auto bits_of = [](double x) {
+    std::uint64_t u = 0;
+    std::memcpy(&u, &x, sizeof(u));
+    return u;
+  };
+  for (int stream : {0, 1}) {
+    for (int n : {256, 1024}) {
+      const Geom g = fcc(n, 13, 4.05);
+      set_threads(1);
+      rgpot::EAMPot serial;
+      if (stream != 0) {
+        serial.setNeighbourMode(rgpot::nlist::Mode::Stream);
+      }
+      const Outcome one = run(serial, g);
+      for (int threads : {2, 3, 4, 8}) {
+        set_threads(threads);
+        rgpot::EAMPot parallel;
+        if (stream != 0) {
+          parallel.setNeighbourMode(rgpot::nlist::Mode::Stream);
+        }
+        const Outcome got = run(parallel, g);
+        REQUIRE(bits_of(got.energy) == bits_of(one.energy));
+        REQUIRE(got.force.size() == one.force.size());
+        for (std::size_t i = 0; i < got.force.size(); ++i) {
+          REQUIRE(bits_of(got.force[i]) == bits_of(one.force[i]));
+        }
+      }
+    }
+  }
+  set_threads(1);
+}

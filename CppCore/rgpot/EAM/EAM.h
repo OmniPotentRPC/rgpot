@@ -182,17 +182,59 @@ private:
                         std::vector<Delta> &deltas);
   void prefillPure(long N, const int *atomicNrs);
   void evaluateThreaded(long N, const int *atomicNrs, double *F, double *U);
+  // Stored and stream walks over a fixed set of atom chunks. Threads take
+  // whole chunks. Densities, forces and energies are reduced in chunk order.
+  void evaluateFixed(long N, const int *atomicNrs, double *F, double *U);
+  void evaluateStreamFixed(long N, const int *atomicNrs, double *F, double *U);
   // Threaded stored walk. Each thread owns a contiguous atom range and
   // folds that atom's force in the serial write order.
   void accumulateOwned(long N, const int *atomicNrs, double *F, double *U);
   void geometry(long i, long j, double &dx, double &dy, double &dz,
-                double &r2) const;
+                double &r2) const {
+    const double half0 = box_len_[0] * 0.5;
+    const double half1 = box_len_[1] * 0.5;
+    const double half2 = box_len_[2] * 0.5;
+    const double xi = wrapped_[static_cast<std::size_t>(3 * i)];
+    const double yi = wrapped_[static_cast<std::size_t>(3 * i + 1)];
+    const double zi = wrapped_[static_cast<std::size_t>(3 * i + 2)];
+    dx = xi - wrapped_[static_cast<std::size_t>(3 * j)];
+    dy = yi - wrapped_[static_cast<std::size_t>(3 * j + 1)];
+    dz = zi - wrapped_[static_cast<std::size_t>(3 * j + 2)];
+    if (dx > half0) {
+      dx -= box_len_[0];
+    } else if (dx < -half0) {
+      dx += box_len_[0];
+    }
+    if (dy > half1) {
+      dy -= box_len_[1];
+    } else if (dy < -half1) {
+      dy += box_len_[1];
+    }
+    if (dz > half2) {
+      dz -= box_len_[2];
+    } else if (dz < -half2) {
+      dz += box_len_[2];
+    }
+    r2 = dx * dx + dy * dy + dz * dz;
+  }
   [[nodiscard]] int threadsRequested() const;
 
   [[nodiscard]] element_parameters
   get_element_parameters(int atomic_number) const;
   [[nodiscard]] static double embedding_function(const double *func_coeff,
-                                                 double rho);
+                                                 double rho) {
+    double result = func_coeff[8];
+    for (int i = 7; i >= 0; i--) {
+      result = result * rho + func_coeff[i];
+    }
+    return result;
+  }
   [[nodiscard]] static double embedding_force(const double *func_coeff,
-                                              double rho);
+                                              double rho) {
+    double result = func_coeff[8] * 8;
+    for (int i = 7; i >= 1; i--) {
+      result = result * rho + i * func_coeff[i];
+    }
+    return -result;
+  }
 };
