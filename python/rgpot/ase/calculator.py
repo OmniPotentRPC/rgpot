@@ -22,8 +22,9 @@ at least 100 Angstrom and at least the cluster extent plus twice the
 kernel cutoff, so a periodic image cannot enter the cutoff. Energy and
 forces do not depend on the caller's cell. Stress does: it is the
 cluster virial divided by the caller's cell volume, which is what
-``calculate_numerical_stress`` differentiates. A caller with no cell
-keeps the padded cube's stress. A mixed periodic flag raises
+``calculate_numerical_stress`` differentiates. A caller with no
+three-dimensional cell gets no stress, and ``get_stress`` raises
+``PropertyNotImplementedError``. A mixed periodic flag raises
 ``ValueError`` and names the non-periodic axes.
 """
 
@@ -213,22 +214,27 @@ def _voigt(stress: np.ndarray) -> np.ndarray:
     )
 
 
-def _ase_stress(kernel_stress: Any, kernel_box: Any, user_cell: Any, pbc: Any) -> np.ndarray:
-    """Cauchy stress on the cell ASE differentiates.
+def _ase_stress(
+    kernel_stress: Any, kernel_box: Any, user_cell: Any, pbc: Any
+) -> np.ndarray | None:
+    """Cauchy stress on the cell ASE differentiates, or None.
 
     A periodic call uses the caller's cell as the kernel box, so the
     kernel stress is already ASE's. A cluster is evaluated in a padded
     cube that keeps periodic images out of the cutoff. The kernel then
     divides the virial by that cube. ASE's finite-difference stress
     divides the same virial by the caller's cell, so the cube stress is
-    rescaled by ``V_kernel / V_caller``. A caller with no cell keeps the
-    cube stress.
+    rescaled by ``V_kernel / V_caller``. A caller with no
+    three-dimensional cell has no volume to strain, so there is no
+    stress, as for ASE's own calculators.
     """
+    user_volume = _cell_volume(user_cell)
+    if not user_volume > 0.0:
+        return None
     stress = np.asarray(kernel_stress, dtype=np.float64).reshape(3, 3).copy()
     if not bool(_pbc_flags(pbc).any()):
-        user_volume = _cell_volume(user_cell)
         kernel_volume = _cell_volume(kernel_box)
-        if user_volume > 0.0 and kernel_volume > 0.0:
+        if kernel_volume > 0.0:
             stress *= kernel_volume / user_volume
     return _voigt(stress)
 
@@ -328,7 +334,9 @@ class RgpotCalculator(Calculator):
         }
         stress = raw.get("stress")
         if stress is not None:
-            out["stress"] = _ase_stress(stress, box, user_cell, pbc)
+            voigt = _ase_stress(stress, box, user_cell, pbc)
+            if voigt is not None:
+                out["stress"] = voigt
         energies = raw.get("energies")
         if energies is not None:
             out["energies"] = np.ascontiguousarray(energies, dtype=np.float64)
@@ -402,12 +410,14 @@ class RgpotCalculator(Calculator):
                     positions[index], numbers[index], boxes[index]
                 )
                 if stress_eval.get("stress") is not None:
-                    row["stress"] = _ase_stress(
+                    voigt = _ase_stress(
                         stress_eval["stress"],
                         boxes[index],
                         user_cells[index],
                         pbcs[index],
                     )
+                    if voigt is not None:
+                        row["stress"] = voigt
             rows.append(row)
             if attach:
                 spc_kw: dict[str, Any] = {}
