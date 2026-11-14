@@ -543,24 +543,26 @@ TEST_CASE("the fortran bridge reuses the builder and refreshes vectors", "[nlist
   REQUIRE(list != nullptr);
   size_t needed = 0;
   int32_t reused = 1;
-  REQUIRE(rgpot_nlist_fortran_build(list, pos, 2, box, 2.0, 0.4, periodic, nullptr, nullptr,
-                                    nullptr, nullptr, 0, &needed, &reused) == RGPOT_NLIST_OK);
+  int32_t *idx = nullptr;
+  int32_t *row = nullptr;
+  double *vec = nullptr;
+  double *dist = nullptr;
+  REQUIRE(rgpot_nlist_fortran_build(list, pos, 2, box, 2.0, 0.4, periodic, &idx, &vec, &dist, &row,
+                                    &needed, &reused) == RGPOT_NLIST_OK);
   REQUIRE(needed == 2);
   REQUIRE(reused == 0);
-  std::vector<int32_t> first(needed), second(needed);
-  std::vector<double> vector(needed * 3), distance(needed);
-  REQUIRE(rgpot_nlist_fortran_build(list, pos, 2, box, 2.0, 0.4, periodic, first.data(),
-                                    second.data(), vector.data(), distance.data(), needed, &needed,
-                                    &reused) == RGPOT_NLIST_OK);
-  REQUIRE(distance[0] == Catch::Approx(1.2));
+  REQUIRE(idx != nullptr);
+  REQUIRE(idx[0] == 2);
+  REQUIRE(idx[1] == 1);
+  REQUIRE(dist[0] == Catch::Approx(1.2));
+  REQUIRE(row[0] == 1);
+  REQUIRE(row[2] == 3);
   pos[0] = 0.05;
-  REQUIRE(rgpot_nlist_fortran_build(list, pos, 2, box, 2.0, 0.4, periodic, first.data(),
-                                    second.data(), vector.data(), distance.data(), needed, &needed,
-                                    &reused) == RGPOT_NLIST_OK);
+  REQUIRE(rgpot_nlist_fortran_build(list, pos, 2, box, 2.0, 0.4, periodic, &idx, &vec, &dist, &row,
+                                    &needed, &reused) == RGPOT_NLIST_OK);
   REQUIRE(reused == 1);
-  REQUIRE(distance[0] == Catch::Approx(1.15));
-  const auto view_n = needed;
-  REQUIRE(view_n == 2);
+  REQUIRE(dist[0] == Catch::Approx(1.15));
+  REQUIRE(needed == 2);
   rgpot_nlist_fortran_close(list);
 }
 

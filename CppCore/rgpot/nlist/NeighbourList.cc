@@ -1582,7 +1582,31 @@ void rgpot_nlist_builder_close(rgpot_nlist_builder *builder) { delete builder; }
 
 struct rgpot_nlist_fortran_list {
   rgpot::nlist::Builder builder;
+  // The filtered list, in the order the Fortran gather sums. `idx` is the
+  // partner atom, one-based. `vec` is `3 * count` interleaved values.
+  std::vector<std::int32_t> idx;
+  std::vector<std::int32_t> atom;
+  std::vector<double> vec;
+  std::vector<double> dist;
+  std::vector<std::int32_t> row;
 };
+
+void fortran_rows(rgpot_nlist_fortran_list *list, std::size_t natoms, std::size_t kept) {
+  list->row.assign(natoms + 1, 1);
+  auto cursor = std::int32_t{1};
+  for (std::size_t s = 0; s < kept; ++s) {
+    const auto i = list->atom[s] + 1;
+    while (cursor <= i) {
+      list->row[static_cast<std::size_t>(cursor - 1)] = static_cast<std::int32_t>(s) + 1;
+      ++cursor;
+    }
+  }
+  const auto past = static_cast<std::int32_t>(kept) + 1;
+  while (cursor <= static_cast<std::int32_t>(natoms) + 1) {
+    list->row[static_cast<std::size_t>(cursor - 1)] = past;
+    ++cursor;
+  }
+}
 
 rgpot_nlist_fortran_list *rgpot_nlist_fortran_open(void) {
   return new (std::nothrow) rgpot_nlist_fortran_list;
@@ -1592,9 +1616,8 @@ void rgpot_nlist_fortran_close(rgpot_nlist_fortran_list *list) { delete list; }
 
 int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *positions,
                                   size_t natoms, const double *box9, double cutoff, double skin,
-                                  const int32_t periodic[3], int32_t *first, int32_t *second,
-                                  double *vector, double *distance, size_t cap, size_t *count,
-                                  int32_t *reused) {
+                                  const int32_t periodic[3], int32_t **idx, double **vec,
+                                  double **dist, int32_t **row, size_t *count, int32_t *reused) {
   if (list == nullptr || positions == nullptr || box9 == nullptr || periodic == nullptr) {
     if (count != nullptr) {
       *count = 0;
@@ -1631,9 +1654,19 @@ int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *
     const double outside = skip_outside ? cutoff + 2.0 * std::sqrt(list->builder.maxMove2()) +
                                               1.0e-8 * (1.0 + cutoff)
                                         : 0.0;
+    const auto slots = std::max(table.size(), std::size_t{1});
+    if (list->idx.size() < slots) {
+      list->idx.resize(slots);
+      list->atom.resize(slots);
+      list->vec.resize(slots * 3);
+      list->dist.resize(slots);
+    }
     auto accept = [&](std::size_t p, std::size_t &kept) {
       const auto i = static_cast<std::size_t>(table.first[p]);
       const auto j = static_cast<std::size_t>(table.second[p]);
+      if (i == j) {
+        return;
+      }
       const int sa = table.shift[3 * p];
       const int sb = table.shift[3 * p + 1];
       const int sc = table.shift[3 * p + 2];
@@ -1647,14 +1680,12 @@ int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *
       if (!(r2 > 0.0) || !(r2 < cut2)) {
         return;
       }
-      if (first != nullptr && kept < cap) {
-        first[kept] = table.first[p];
-        second[kept] = table.second[p];
-        vector[3 * kept] = vx;
-        vector[3 * kept + 1] = vy;
-        vector[3 * kept + 2] = vz;
-        distance[kept] = std::sqrt(r2);
-      }
+      list->atom[kept] = static_cast<std::int32_t>(i);
+      list->idx[kept] = static_cast<std::int32_t>(j) + 1;
+      list->vec[3 * kept] = vx;
+      list->vec[3 * kept + 1] = vy;
+      list->vec[3 * kept + 2] = vz;
+      list->dist[kept] = std::sqrt(r2);
       ++kept;
     };
     std::size_t kept = 0;
@@ -1662,7 +1693,7 @@ int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *
     // Each thread filters a contiguous slice of the stored pairs. A prefix
     // sum of those counts writes the kept pairs back in the serial order.
     const int want = omp_get_max_threads();
-    if (want > 1 && natoms >= 256 && table.size() >= 4096 && first != nullptr) {
+    if (want > 1 && natoms >= 256 && table.size() >= 4096) {
       int nt = want;
       while (nt > 1 && table.size() / static_cast<std::size_t>(nt) < 512) {
         --nt;
@@ -1675,6 +1706,9 @@ int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *
         }
         const auto i = static_cast<std::size_t>(table.first[p]);
         const auto j = static_cast<std::size_t>(table.second[p]);
+        if (i == j) {
+          return false;
+        }
         const int sa = table.shift[3 * p];
         const int sb = table.shift[3 * p + 1];
         const int sc = table.shift[3 * p + 2];
@@ -1719,14 +1753,12 @@ int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *
           if (!keep_pair(p, vx, vy, vz, r2)) {
             continue;
           }
-          if (at < cap) {
-            first[at] = table.first[p];
-            second[at] = table.second[p];
-            vector[3 * at] = vx;
-            vector[3 * at + 1] = vy;
-            vector[3 * at + 2] = vz;
-            distance[at] = std::sqrt(r2);
-          }
+          list->atom[at] = table.first[p];
+          list->idx[at] = table.second[p] + 1;
+          list->vec[3 * at] = vx;
+          list->vec[3 * at + 1] = vy;
+          list->vec[3 * at + 2] = vz;
+          list->dist[at] = std::sqrt(r2);
           ++at;
         }
       }
@@ -1745,14 +1777,21 @@ int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *
         accept(p, kept);
       }
     }
+    fortran_rows(list, natoms, kept);
     if (count != nullptr) {
       *count = kept;
     }
-    if (first == nullptr) {
-      return RGPOT_NLIST_OK;
+    if (idx != nullptr) {
+      *idx = list->idx.data();
     }
-    if (kept > cap) {
-      return RGPOT_NLIST_SHORT;
+    if (vec != nullptr) {
+      *vec = list->vec.data();
+    }
+    if (dist != nullptr) {
+      *dist = list->dist.data();
+    }
+    if (row != nullptr) {
+      *row = list->row.data();
     }
     return RGPOT_NLIST_OK;
   } catch (const rgpot::nlist::Error &err) {

@@ -15,20 +15,18 @@
 !! atom has moved by at most half the skin. Each call still writes
 !! vectors for the positions it was given and keeps only pairs strictly
 !! inside the cutoff, which is the Verlet filter. The builder stores
-!! those pairs by central atom and then by partner, so the table is
-!! filled with one forward copy. The write buffer stays
-!! on the table, so a later call that fits in it walks those candidates
-!! once. The first call, and a call that outgrows the buffer, counts and
-!! then fills. A call with the same positions, cell, cutoff, skin, and
-!! periodicity keeps the table it already built.
+!! those pairs by central atom and then by partner, and the filter writes
+!! that same order straight into the arrays the kernels read. A call
+!! with the same positions, cell, cutoff, skin, and periodicity keeps
+!! the table it already built.
 !!
 !! Cell convention: C callers hand over nine doubles, row-major, one cell
 !! vector per row. Fortran reads that same memory column-major, so a
 !! `real(wp) :: cell(3, 3)` dummy sees one cell vector per *column*.
 !! `vec(3, npairs)` is that same layout: column `p` is `r_j - r_i`.
 module rgpot_neighbors
-   use, intrinsic :: iso_c_binding, only: c_ptr, c_loc, c_f_pointer, c_null_ptr, &
-                                          c_null_char, c_char, c_int, c_double, &
+   use, intrinsic :: iso_c_binding, only: c_ptr, c_f_pointer, c_null_ptr, &
+                                          c_null_char, c_char, c_double, &
                                           c_size_t, c_int32_t, c_associated
    use rgpot_kinds, only: wp, ip, lp
    implicit none
@@ -40,13 +38,14 @@ module rgpot_neighbors
    !! index into `idx`, `vec`, and `dist`.
    type :: neighbor_table_t
       !> Row starts, `natoms + 1` entries, one-based.
-      integer(ip), allocatable :: row(:)
+      !! These point at the C filter buffers. A later build reassociates them.
+      integer(ip), pointer, contiguous :: row(:) => null()
       !> Neighbour atom index for each entry, one-based.
-      integer(ip), allocatable :: idx(:)
+      integer(ip), pointer, contiguous :: idx(:) => null()
       !> `r_j - r_i` with the periodic shift folded in, `3 x nentries`.
-      real(wp), allocatable :: vec(:, :)
+      real(wp), pointer, contiguous :: vec(:, :) => null()
       !> `|r_j - r_i|` for each entry.
-      real(wp), allocatable :: dist(:)
+      real(wp), pointer, contiguous :: dist(:) => null()
       !> Atom count the table was built for.
       integer(ip) :: natoms = 0_ip
       !> Cutoff the table was built at.
@@ -55,11 +54,6 @@ module rgpot_neighbors
       real(wp), private :: skin = -1.0_wp
       !> Builder kept across calls. Reused while atoms stay within half the skin.
       type(c_ptr), private :: builder = c_null_ptr
-      !> Scratch for the C fill. Kept so a warm call walks the pairs once.
-      !! The builder writes central atom, then partner, so this scratch is
-      !! already the row order the kernel sums.
-      integer(c_int), allocatable, private :: scratch_i(:), scratch_j(:)
-      real(c_double), allocatable, private :: scratch_v(:, :), scratch_d(:)
       !> Geometry of the table now stored. A later call with the same bits
       !! does not walk or copy again.
       real(wp), allocatable, private :: ref_pos(:, :)
@@ -86,10 +80,9 @@ module rgpot_neighbors
       end subroutine rgpot_nlist_fortran_close
 
       function rgpot_nlist_fortran_build(list, positions, natoms, box9, cutoff, skin, &
-                                         periodic, first, second, vector, distance, cap, &
-                                         count, reused) &
+                                         periodic, idx, vec, dist, row, count, reused) &
          bind(C, name="rgpot_nlist_fortran_build")
-         import :: c_ptr, c_double, c_size_t, c_int32_t, c_int
+         import :: c_ptr, c_double, c_size_t, c_int32_t
          implicit none
          type(c_ptr), value :: list
          real(c_double), intent(in) :: positions(*)
@@ -97,8 +90,7 @@ module rgpot_neighbors
          real(c_double), intent(in) :: box9(*)
          real(c_double), value :: cutoff, skin
          integer(c_int32_t), intent(in) :: periodic(*)
-         type(c_ptr), value :: first, second, vector, distance
-         integer(c_size_t), value :: cap
+         type(c_ptr), intent(out) :: idx, vec, dist, row
          integer(c_size_t), intent(out) :: count
          integer(c_int32_t), intent(out) :: reused
          integer(c_int32_t) :: rgpot_nlist_fortran_build
@@ -132,12 +124,11 @@ contains
       real(wp), intent(in), optional :: skin
 
       integer(c_int32_t) :: pbc(3), rc, reused
-      integer(c_size_t) :: natoms_c, needed, cap
+      integer(c_size_t) :: natoms_c, npairs
       real(wp) :: use_skin
-      ! RGPOT_NLIST_SHORT. A short buffer still reports the full count.
-      integer, parameter :: nlist_short = 6
-      integer :: p, np
-      integer(ip) :: i, j, natoms, slot, cursor
+      type(c_ptr) :: idx_p, vec_p, dist_p, row_p
+      integer :: np
+      integer(ip) :: natoms
       type(c_ptr) :: msg
 
       status = 0
@@ -161,7 +152,7 @@ contains
       ! Zero displacement, bitwise: the stored vectors and distances are
       ! already the ones a fresh fill would write. A move inside the skin
       ! still changes those distances, so that path rebuilds.
-      if (self%have_geom .and. allocated(self%row) .and. self%natoms == natoms .and. &
+      if (self%have_geom .and. associated(self%row) .and. self%natoms == natoms .and. &
           transfer(self%cutoff, 0_lp) == transfer(cutoff, 0_lp) .and. &
           transfer(self%skin, 0_lp) == transfer(use_skin, 0_lp) .and. &
           all(self%ref_pbc == pbc) .and. same_bits(self%ref_cell, cell) .and. &
@@ -181,90 +172,25 @@ contains
       end if
 
       natoms_c = int(natoms, c_size_t)
-      needed = 0_c_size_t
-      cap = 0_c_size_t
-      if (allocated(self%scratch_i)) cap = int(size(self%scratch_i), c_size_t)
-      ! A buffer that already holds the pairs is filled in one walk. The
-      ! first call, or a call that outgrows it, counts and then fills.
-      if (cap > 0_c_size_t) then
-         rc = rgpot_nlist_fortran_build(self%builder, positions, natoms_c, cell, &
-                                        real(cutoff, c_double), real(use_skin, c_double), pbc, &
-                                        loc_ints(self%scratch_i), loc_ints(self%scratch_j), &
-                                        loc_vecs(self%scratch_v), loc_reals(self%scratch_d), &
-                                        cap, needed, reused)
-      else
-         rc = rgpot_nlist_fortran_build(self%builder, positions, natoms_c, cell, &
-                                        real(cutoff, c_double), real(use_skin, c_double), pbc, &
-                                        c_null_ptr, c_null_ptr, c_null_ptr, c_null_ptr, &
-                                        0_c_size_t, needed, reused)
-      end if
-      if (rc /= 0_c_int32_t .and. rc /= nlist_short) then
+      rc = rgpot_nlist_fortran_build(self%builder, positions, natoms_c, cell, &
+                                     real(cutoff, c_double), real(use_skin, c_double), pbc, &
+                                     idx_p, vec_p, dist_p, row_p, npairs, reused)
+      if (rc /= 0_c_int32_t) then
          status = int(rc)
          msg = rgpot_nlist_strerror(rc)
          errmsg = "rgpot_neighbors: "//c_string(msg)
          return
       end if
 
-      np = int(needed)
+      np = int(npairs)
+      if (np < 1) np = 1
+      call c_f_pointer(idx_p, self%idx, [np])
+      call c_f_pointer(vec_p, self%vec, [3, np])
+      call c_f_pointer(dist_p, self%dist, [np])
+      call c_f_pointer(row_p, self%row, [int(natoms) + 1])
       self%natoms = natoms
       self%cutoff = cutoff
       self%skin = use_skin
-
-      if ((cap == 0_c_size_t .or. rc == nlist_short) .and. np > 0) then
-         if (allocated(self%scratch_i)) then
-            deallocate (self%scratch_i, self%scratch_j, self%scratch_v, self%scratch_d)
-         end if
-         allocate (self%scratch_i(np), self%scratch_j(np), self%scratch_v(3, np), &
-                   self%scratch_d(np))
-         cap = int(np, c_size_t)
-         rc = rgpot_nlist_fortran_build(self%builder, positions, natoms_c, cell, &
-                                        real(cutoff, c_double), real(use_skin, c_double), pbc, &
-                                        loc_ints(self%scratch_i), loc_ints(self%scratch_j), &
-                                        loc_vecs(self%scratch_v), loc_reals(self%scratch_d), &
-                                        cap, needed, reused)
-         if (rc /= 0_c_int32_t) then
-            status = int(rc)
-            msg = rgpot_nlist_strerror(rc)
-            errmsg = "rgpot_neighbors: "//c_string(msg)
-            return
-         end if
-         np = int(needed)
-      end if
-
-      ! The C list is ordered by central atom, then partner. Dropping an
-      ! atom paired with itself and writing the rest in that order is the
-      ! row layout the force sum uses.
-      if (allocated(self%row)) then
-         if (size(self%row) /= natoms + 1) deallocate (self%row)
-      end if
-      if (.not. allocated(self%row)) allocate (self%row(natoms + 1))
-      if (allocated(self%idx)) then
-         if (size(self%idx) < np) deallocate (self%idx, self%vec, self%dist)
-      end if
-      if (.not. allocated(self%idx)) then
-         allocate (self%idx(max(np, 1)))
-         allocate (self%vec(3, max(np, 1)))
-         allocate (self%dist(max(np, 1)))
-      end if
-      slot = 0
-      cursor = 1
-      do p = 1, np
-         i = int(self%scratch_i(p), ip) + 1_ip
-         j = int(self%scratch_j(p), ip) + 1_ip
-         if (i == j) cycle
-         do while (cursor <= i)
-            self%row(cursor) = slot + 1_ip
-            cursor = cursor + 1
-         end do
-         slot = slot + 1
-         self%idx(slot) = j
-         self%vec(:, slot) = self%scratch_v(:, p)
-         self%dist(slot) = self%scratch_d(p)
-      end do
-      do while (cursor <= natoms + 1)
-         self%row(cursor) = slot + 1_ip
-         cursor = cursor + 1
-      end do
 
       if (.not. allocated(self%ref_pos) .or. size(self%ref_pos, 2) /= natoms) then
          if (allocated(self%ref_pos)) deallocate (self%ref_pos)
@@ -282,6 +208,10 @@ contains
 
       if (c_associated(self%builder)) call rgpot_nlist_fortran_close(self%builder)
       self%builder = c_null_ptr
+      self%row => null()
+      self%idx => null()
+      self%vec => null()
+      self%dist => null()
       self%cutoff = -1.0_wp
       self%skin = -1.0_wp
       self%have_geom = .false.
@@ -297,8 +227,6 @@ contains
    end function neighbor_table_count_for
 
 
-   !> An allocatable component cannot carry TARGET. The dummy can, and
-   !! c_loc of that dummy is the address the C fill writes into.
    !> True when every element has the same bits, including signed zero.
    pure function same_bits(a, b) result(eq)
       real(wp), intent(in) :: a(:, :), b(:, :)
@@ -320,24 +248,6 @@ contains
          end do
       end do
    end function same_bits
-
-   function loc_ints(a) result(p)
-      integer(c_int), intent(inout), target :: a(:)
-      type(c_ptr) :: p
-      p = c_loc(a)
-   end function loc_ints
-
-   function loc_reals(a) result(p)
-      real(c_double), intent(inout), target :: a(:)
-      type(c_ptr) :: p
-      p = c_loc(a)
-   end function loc_reals
-
-   function loc_vecs(a) result(p)
-      real(c_double), intent(inout), target :: a(:, :)
-      type(c_ptr) :: p
-      p = c_loc(a)
-   end function loc_vecs
 
    function c_string(ptr) result(text)
       type(c_ptr), intent(in) :: ptr

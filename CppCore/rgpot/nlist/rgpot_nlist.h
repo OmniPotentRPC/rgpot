@@ -163,9 +163,11 @@ void rgpot_nlist_builder_close(rgpot_nlist_builder *builder);
 /* Fortran gather bridge. One list keeps a builder. The search runs at
  * cutoff + skin and is reused while every atom stays within half the
  * skin. Each call writes the pairs that are strictly inside `cutoff`
- * for the positions passed in, with vectors in Fortran (3, npairs)
- * order: x, y, z of pair 0, then pair 1. Indices are zero-based.
- * A null `first` only sets *count. `periodic` is three ints, 0 or 1. */
+ * for the positions passed in. The list owns those arrays and returns
+ * pointers to them. `idx` is the partner atom, one-based. `vec` is
+ * `3 * count` values in Fortran (3, npairs) order. `row` has
+ * `natoms + 1` one-based starts. A pair of an atom with itself is left
+ * out. `periodic` is three ints, 0 or 1. */
 typedef struct rgpot_nlist_fortran_list rgpot_nlist_fortran_list;
 
 rgpot_nlist_fortran_list *rgpot_nlist_fortran_open(void);
@@ -175,9 +177,9 @@ void rgpot_nlist_fortran_close(rgpot_nlist_fortran_list *list);
 int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list,
                                   const double *positions, size_t natoms,
                                   const double *box9, double cutoff, double skin,
-                                  const int32_t periodic[3], int32_t *first,
-                                  int32_t *second, double *vector, double *distance,
-                                  size_t cap, size_t *count, int32_t *reused);
+                                  const int32_t periodic[3], int32_t **idx, double **vec,
+                                  double **dist, int32_t **row, size_t *count,
+                                  int32_t *reused);
 
 #ifdef __cplusplus
 }

@@ -205,7 +205,7 @@ contains
       ! Pass one: each atom sums the density its own neighbours put at its
       ! site, keeping rho(r) and rho'(r) of every entry for pass three.
       do concurrent(i=1:natoms)
-         call atom_density(par, table, i, rt, dens_shift, dens, ddens, rho(i))
+         call atom_density(par, i, rt, dens_shift, table%dist, table%row, dens, ddens, rho(i))
       end do
 
       ! Pass two: F and F' for every atom. F' stands as its own pass
@@ -218,8 +218,8 @@ contains
       ! Pass three: each atom sums the whole force acting on it and writes
       ! only its own column.
       do concurrent(i=1:natoms)
-         call atom_contribution(par, table, i, rt, pair_shift, dens, ddens, &
-                                dembed, e_pair(i), forces(:, i))
+         call atom_contribution(par, i, rt, pair_shift, table%idx, table%vec, table%dist, &
+                                table%row, dens, ddens, dembed, e_pair(i), forces(:, i))
       end do
 
       energy = sum(e_pair) + sum(e_embed)
@@ -227,21 +227,22 @@ contains
 
    !> Total electron density at atom `i`; stores `rho(r)` and `rho'(r)` of
    !! each of its entries (zero past the truncation radius).
-   pure subroutine atom_density(par, table, i, rt, dens_shift, dens, ddens, &
+   pure subroutine atom_density(par, i, rt, dens_shift, dist, row, dens, ddens, &
                                 rho_i)
       type(eam_al_params_t), intent(in) :: par
-      type(neighbor_table_t), intent(in) :: table
       integer(ip), intent(in) :: i
       real(wp), intent(in) :: rt, dens_shift
-      real(wp), intent(inout) :: dens(:), ddens(:)
+      real(wp), intent(in) :: dist(*)
+      integer(ip), intent(in) :: row(*)
+      real(wp), intent(inout) :: dens(*), ddens(*)
       real(wp), intent(out) :: rho_i
 
       integer(ip) :: s
       real(wp) :: r, ea, eb, rpm1, rp
 
       rho_i = 0.0_wp
-      do s = table%row(i), table%row(i + 1_ip) - 1_ip
-         r = table%dist(s)
+      do s = row(i), row(i + 1_ip) - 1_ip
+         r = dist(s)
          if (r >= rt) then
             dens(s) = 0.0_wp
             ddens(s) = 0.0_wp
@@ -260,13 +261,14 @@ contains
    end subroutine atom_density
 
    !> Atom `i`'s half of the pair energy and the total force acting on it.
-   pure subroutine atom_contribution(par, table, i, rt, pair_shift, dens, &
-                                     ddens, dembed, e_i, f_i)
+   pure subroutine atom_contribution(par, i, rt, pair_shift, idx, vec, dist, row, &
+                                     dens, ddens, dembed, e_i, f_i)
       type(eam_al_params_t), intent(in) :: par
-      type(neighbor_table_t), intent(in) :: table
       integer(ip), intent(in) :: i
       real(wp), intent(in) :: rt, pair_shift
-      real(wp), intent(in) :: dens(:), ddens(:), dembed(:)
+      integer(ip), intent(in) :: idx(*), row(*)
+      real(wp), intent(in) :: vec(3, *), dist(*)
+      real(wp), intent(in) :: dens(*), ddens(*), dembed(*)
       real(wp), intent(out) :: e_i
       real(wp), intent(out) :: f_i(3)
 
@@ -276,11 +278,11 @@ contains
       e_i = 0.0_wp
       f_i = 0.0_wp
 
-      do s = table%row(i), table%row(i + 1_ip) - 1_ip
-         r = table%dist(s)
+      do s = row(i), row(i + 1_ip) - 1_ip
+         r = dist(s)
          if (r >= rt) cycle
-         j = table%idx(s)
-         rhat = table%vec(:, s)/r
+         j = idx(s)
+         rhat = vec(:, s)/r
          pa = par%pair_amp_a*exp(-par%pair_decay_a*r)
          pb = par%pair_amp_b*exp(-par%pair_decay_b*r)
 
