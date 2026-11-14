@@ -95,7 +95,7 @@ typedef int (*rgpot_engine_coord_transform)(void *user, long nAtoms,
  * minor 0, layout 1.
  */
 #define RGPOT_ENGINE_ABI_VERSION 1
-#define RGPOT_ENGINE_ABI_MINOR 2
+#define RGPOT_ENGINE_ABI_MINOR 3
 #define RGPOT_ENGINE_ABI_LAYOUT_REVISION 1
 
 RGPOT_ENGINE_API int rgpot_engine_abi_version(void);
@@ -176,6 +176,20 @@ RGPOT_ENGINE_API int rgpot_engine_force_batch(
     RgpotEnginePot *pot, long nSystems, long nAtoms, const double *positions,
     const int *atomicNrs, double *forces, double *energies, double *variances,
     const double *boxes, rgpot_engine_coord_transform transform,
+    void *transform_user);
+
+/**
+ * Energy, forces and the energy of each atom (minor 3). energies holds nAtoms
+ * doubles and sums to *energy up to rounding. Arguments and the transform are
+ * as for rgpot_engine_force; there is no variance. Returns 3 when the
+ * instance cannot split its energy: the symbol may be present for a backend
+ * that does not support it, so a host checks RgpotEngineCaps::per_atom_energy.
+ * rgpot_engine_force is unchanged and never computes per-atom energies.
+ */
+RGPOT_ENGINE_API int rgpot_engine_force_energies(
+    RgpotEnginePot *pot, long nAtoms, const double *positions,
+    const int *atomicNrs, double *forces, double *energy, double *energies,
+    const double *box, rgpot_engine_coord_transform transform,
     void *transform_user);
 
 /**
@@ -270,6 +284,8 @@ typedef struct {
   int periodic;            /**< periodic boundary conditions supported */
   int stress;              /**< cell stress is available */
   int group_collective;    /**< every rank of a group enters each call */
+  /** rgpot_engine_force_energies serves this instance (minor 3). */
+  int per_atom_energy;
 } RgpotEngineCaps;
 
 RGPOT_ENGINE_API int rgpot_engine_caps(const RgpotEnginePot *pot,

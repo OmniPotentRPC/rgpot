@@ -43,7 +43,26 @@ struct Backend {
   std::function<void(int charge, int spin)> set_charge_spin;
   /// Empty when the backend has no tensor runtime.
   std::function<void(int intra_op, int inter_op)> set_num_threads;
+  /// Energy, forces and per-atom energies; empty when the potential cannot
+  /// split its energy.
+  std::function<void(const ForceInput &in, ForceOut *out, double *energies)>
+      force_energies;
 };
+
+/// A backend over `pot`, with @c force_energies set when the potential
+/// reports per-atom energies.
+template <class Pot> std::unique_ptr<Backend> backend_for(std::unique_ptr<Pot> pot) {
+  auto backend = std::make_unique<Backend>();
+  if (pot->perAtomEnergies()) {
+    const Pot *raw = pot.get();
+    backend->force_energies = [raw](const ForceInput &in, ForceOut *out,
+                                    double *energies) {
+      raw->forceEnergies(in, out, energies);
+    };
+  }
+  backend->pot = std::move(pot);
+  return backend;
+}
 
 struct Created {
   std::unique_ptr<Backend> backend;
