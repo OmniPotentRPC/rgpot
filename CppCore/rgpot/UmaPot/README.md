@@ -1,8 +1,10 @@
 # UmaPot: UMA / OMol AOTI frontend
 
 `UmaPot` loads an AOTI (AOTInductor, PyTorch ahead-of-time
-compiled) package (`.pt2`) that `scripts/export_uma_aoti.py`
-wrote from a UMA checkpoint.
+compiled) package (`.pt2`), usually one that
+`scripts/export_uma_aoti.py` wrote from a UMA checkpoint. A package
+exported with fixed shapes and no shape metadata also loads; see
+[Accepted packages](#accepted-packages).
 
 vesin builds the neighbor list. The graph returns energy and forces.
 Charge and spin are per-call tensors. The compiled graph does not
@@ -26,7 +28,10 @@ package is read.
 | `model_dtype` | weight dtype recorded by the exporter (`float32` or `float64`) |
 | `task_name`, `charge`, `spin` | must equal `UmaConfig` |
 | `z_set`, `natoms`, `counts` | must match the input atoms |
-| `label`, `shapes`, `inputs`, `outputs` | recorded |
+| `nedges_min`, `nedges_max` | edge count of one call (see [Accepted packages](#accepted-packages)) |
+| `pos_shape`, `edge_index_shape`, `natoms_min`, `natoms_max` | declared `pos` and `edge_index` shapes |
+| `shapes` | example shapes; the edge count when nothing else records one |
+| `label`, `inputs`, `outputs` | recorded |
 | `model`, `torch_version`, `fairchem_version`, `export_path` | recorded |
 
 `UmaConfig.cutoff` / `max_neighbors` are defaults. The embedded
@@ -63,13 +68,7 @@ that axis and its range. A mismatch throws `rgpot::UmaShapeError`.
 An edge index outside the position buffer throws the same error and
 is not gathered. `pos_shape` and `edge_index_shape` record the
 declaration; when they are absent the atom count and the edge range
-are used. A package that records neither `nedges_min` nor
-`nedges_max` is fixed-shape: the edge count is the `edge_index`
-length in `shapes` (Grignard is `[2, 1332]`). The neighbour list is
-built, and a short band is padded, to that count. A list that cannot
-fit throws `UmaShapeError` and names both shapes. A package with only
-one of the two keys, or with neither key and no fixed `edge_index`
-in `shapes`, is refused.
+are used.
 
 A molecular box recenters the atoms in a cube and is traced on every
 ordered pair, `n(n-1)`. Any other edge count throws `UmaShapeError`
@@ -86,6 +85,50 @@ C2H2 from C2H4.
 `scripts/export_baker_uma_aoti.py` walks Baker endpoints and
 deduplicates by exact composition (atom count per element), charge
 and spin.
+
+## Accepted packages
+
+The edge count comes from the first of these that the package has.
+
+1. `nedges_min` and `nedges_max`. `scripts/export_uma_aoti.py`
+   writes both, equal for a static graph and a range for a symbolic
+   one.
+2. The shapes the graph was compiled for. AOTInductor writes a
+   wrapper source next to the compiled library, and
+   `AOTIModelPackageLoader` needs that file to load the package. Its
+   `check_input_<i>` functions compare every fixed axis and bound
+   every symbolic one. UmaPot reads input 0 (`pos`, `[n, 3]`) and
+   input 4 (`edge_index`, `[2, e]`) from them. A package exported
+   with fixed shapes and no shape key, for example a plain
+   `aoti_compile_and_package` of a static `torch.export`, loads this
+   way. A symbolic axis gives its bounds; torch raises a lower bound
+   of 1 to 2.
+3. The `edge_index` length in `shapes` (Grignard is `[2, 1332]`). This
+   is the traced example, so it is used only when the wrapper source
+   has no input checks.
+
+A package with only one of the two keys is refused. So is a package
+with neither key, no compiled `edge_index` and no `edge_index` in
+`shapes`; that is `UmaContractError` on `nedges` (`absent`).
+
+The compiled `pos` shape is checked when the metadata records neither
+`natoms` nor `pos_shape`. Each call passes `pos` with the atoms of
+every system in the chunk.
+
+The neighbour list is not padded. Every edge enters the energy, so a
+fixed-shape graph accepts only a system whose list has exactly the
+compiled length. A static band repeats its last system to fill the
+chunk, and that is the only padding. A system that does not fit
+throws `UmaShapeError` before the compiled graph runs, and the
+message names the compiled shape:
+
+```
+UmaPot: pos shape is [3, 3], the package was exported for [4, 3]
+UmaPot: edge_index shape is [2, 6], the package was exported for [2, 12]
+```
+
+The load line says when the edge count came from the compiled graph
+or from `shapes` rather than from the keys.
 
 ## Export path
 
