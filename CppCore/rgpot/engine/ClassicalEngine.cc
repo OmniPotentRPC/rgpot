@@ -26,51 +26,49 @@ Created create(const void *config, std::size_t config_len) {
   Created out;
   try {
     const Builtin builtin = read_builtin(config, config_len);
-    std::unique_ptr<PotentialBase> pot;
+    std::unique_ptr<Backend> backend;
     const std::string &n = builtin.name;
     if (n == "lj") {
-      pot = std::make_unique<LJPot>();
+      backend = backend_for(std::make_unique<LJPot>());
     } else if (n == "ljcluster") {
-      pot = std::make_unique<LJClusterPot>();
+      backend = backend_for(std::make_unique<LJClusterPot>());
     } else if (n == "morse") {
-      pot = std::make_unique<MorsePot>();
+      backend = backend_for(std::make_unique<MorsePot>());
     } else if (n == "zbl") {
-      pot = std::make_unique<ZBLPot>();
+      backend = backend_for(std::make_unique<ZBLPot>());
 #ifdef RGPOT_HAS_WATER
     } else if (n == "tip4p") {
-      pot = std::make_unique<TIP4PPot>();
+      backend = backend_for(std::make_unique<TIP4PPot>());
     } else if (n == "spce") {
-      pot = std::make_unique<SPCEPot>();
+      backend = backend_for(std::make_unique<SPCEPot>());
     } else if (n == "tip4p_pt") {
-      pot = std::make_unique<TIP4PPtPot>();
+      backend = backend_for(std::make_unique<TIP4PPtPot>());
 #endif
 #ifdef RGPOT_HAS_FORTRAN_POTS
     } else if (n == "sw") {
-      pot = std::make_unique<fortranpots::SWPot>();
+      backend = backend_for(std::make_unique<fortranpots::SWPot>());
     } else if (n == "edip") {
-      pot = std::make_unique<fortranpots::EDIPPot>();
+      backend = backend_for(std::make_unique<fortranpots::EDIPPot>());
     } else if (n == "lenosky") {
-      pot = std::make_unique<fortranpots::LenoskyPot>();
+      backend = backend_for(std::make_unique<fortranpots::LenoskyPot>());
     } else if (n == "tersoff") {
       // All-silicon stays on the Fortran gather. Any other Z is the
       // 1989 kernel, inside TersoffPot::forceImpl.
-      pot = std::make_unique<fortranpots::TersoffPot>();
+      backend = backend_for(std::make_unique<fortranpots::TersoffPot>());
     } else if (n == "eamal") {
-      pot = std::make_unique<fortranpots::EAMAlPot>();
+      backend = backend_for(std::make_unique<fortranpots::EAMAlPot>());
     } else if (n == "fehe") {
-      pot = std::make_unique<fortranpots::FeHePot>();
+      backend = backend_for(std::make_unique<fortranpots::FeHePot>());
     } else if (n == "cuh2") {
-      pot = std::make_unique<fortranpots::CuH2Pot>();
+      backend = backend_for(std::make_unique<fortranpots::CuH2Pot>());
     } else if (n == "waterh") {
-      pot = std::make_unique<fortranpots::WaterHPot>();
+      backend = backend_for(std::make_unique<fortranpots::WaterHPot>());
 #endif
     } else {
       out.error = "rgpot_engine_create(classical): unknown potential '" + n +
                   "'";
       return out;
     }
-    auto backend = std::make_unique<Backend>();
-    backend->pot = std::move(pot);
     out.backend = std::move(backend);
   } catch (const std::exception &e) {
     out.error = e.what();

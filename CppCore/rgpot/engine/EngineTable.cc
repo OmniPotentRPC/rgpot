@@ -273,6 +273,50 @@ int rgpot_engine_force_batch(RgpotEnginePot *pot, long nSystems, long nAtoms,
   }
 }
 
+int rgpot_engine_force_energies(RgpotEnginePot *pot, long nAtoms,
+                                const double *positions, const int *atomicNrs,
+                                double *forces, double *energy,
+                                double *energies, const double *box,
+                                rgpot_engine_coord_transform transform,
+                                void *transform_user) {
+  if (!pot || !pot->backend || !positions || !atomicNrs || !forces ||
+      !energy || !energies || !box || nAtoms <= 0) {
+    return fail(pot, 1, "invalid argument");
+  }
+  if (!pot->backend->force_energies) {
+    return fail(pot, 3, "backend has no per-atom energies");
+  }
+  try {
+    RgpotEnginePot::CallGuard guard(*pot);
+    SoftGilRelease no_gil;
+    std::vector<double> R(positions, positions + 3 * nAtoms);
+    std::vector<double> cell(box, box + 9);
+    if (transform) {
+      const int rc = transform(transform_user, nAtoms, R.data(), cell.data());
+      if (rc != 0) {
+        return fail(pot, rc,
+                    "coordinate transform returned " + std::to_string(rc));
+      }
+    }
+    const size_t n = static_cast<size_t>(nAtoms);
+    std::vector<double> Fbuf(n * 3);
+    std::vector<double> Ebuf(n);
+    const rgpot::ForceInput in{n, R.data(), atomicNrs, cell.data()};
+    rgpot::ForceOut out{};
+    out.F = Fbuf.data();
+    pot->backend->force_energies(in, &out, Ebuf.data());
+    *energy = out.energy;
+    std::memcpy(forces, Fbuf.data(), Fbuf.size() * sizeof(double));
+    std::memcpy(energies, Ebuf.data(), Ebuf.size() * sizeof(double));
+    pot->clear_error();
+    return 0;
+  } catch (const std::exception &e) {
+    return fail(pot, 2, e.what());
+  } catch (...) {
+    return fail(pot, 2, "unknown exception");
+  }
+}
+
 RgpotEngineAbiStamp rgpot_engine_abi_stamp(void) {
   RgpotEngineAbiStamp stamp;
   stamp.abi_major = RGPOT_ENGINE_ABI_VERSION;
@@ -305,6 +349,7 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
   filled.periodic = pot->caps.periodic ? 1 : 0;
   filled.stress = pot->caps.stress ? 1 : 0;
   filled.group_collective = pot->caps.groupCollective ? 1 : 0;
+  filled.per_atom_energy = pot->backend->force_energies ? 1 : 0;
   // The host's struct may be older (smaller) than this engine's: write only
   // the bytes it announced room for.
   const unsigned room = out->size < sizeof(filled) ? out->size : sizeof(filled);
