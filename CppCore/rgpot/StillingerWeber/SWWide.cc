@@ -42,8 +42,16 @@ PairTerm pairTerm(double r) {
   return {true, f2, dedr, gexp, dgdr};
 }
 
-int storeBonds(nlist::Neighbours &cells, int i, double cut2, Bond *dest, int room) {
-  int m = 0;
+int storeBonds(nlist::Neighbours &cells, int i, double cut2, Bond *dest, double *f2,
+               double *dedr, int room) {
+  struct Item {
+    Bond bond;
+    double f2;
+    double dedr;
+  };
+  // One buffer per worker. The sort has to carry the pair term with the bond.
+  thread_local std::vector<Item> items;
+  items.clear();
   auto take = [&](std::int32_t, std::int32_t j, double dx, double dy, double dz, double r2) {
     if (!std::isfinite(dx) || !std::isfinite(dy) || !std::isfinite(dz)) {
       throw std::invalid_argument("StillingerWeberSi: non-finite position");
@@ -56,18 +64,25 @@ int storeBonds(nlist::Neighbours &cells, int i, double cut2, Bond *dest, int roo
     if (!t.live) {
       return;
     }
-    if (m >= room) {
+    if (static_cast<int>(items.size()) >= room) {
       return;
     }
-    dest[m] = Bond{static_cast<int>(j), -dx, -dy, -dz, r, t.gexp, t.dgdr};
-    ++m;
+    items.push_back(
+        Item{Bond{static_cast<int>(j), -dx, -dy, -dz, r, t.gexp, t.dgdr}, t.f2, t.dedr});
   };
   if (cells.streaming()) {
     cells.forAtom(static_cast<std::int32_t>(i), take);
   } else {
     nlist::visitDirected(cells, i, static_cast<std::int64_t>(i) + 1, take);
   }
-  std::sort(dest, dest + m, [](const Bond &a, const Bond &b) { return a.j < b.j; });
+  std::sort(items.begin(), items.end(),
+            [](const Item &a, const Item &b) { return a.bond.j < b.bond.j; });
+  const int m = static_cast<int>(items.size());
+  for (int k = 0; k < m; ++k) {
+    dest[k] = items[static_cast<std::size_t>(k)].bond;
+    f2[k] = items[static_cast<std::size_t>(k)].f2;
+    dedr[k] = items[static_cast<std::size_t>(k)].dedr;
+  }
   return m;
 }
 
@@ -80,6 +95,8 @@ struct Hit {
 
 struct WideScratch {
   std::vector<Bond> bonds;
+  std::vector<double> pair_f2;
+  std::vector<double> pair_dedr;
   std::vector<int> bond_at;
   std::vector<int> bond_n;
   std::vector<int> energy_at;
@@ -159,6 +176,8 @@ void runWide(nlist::Neighbours &cells, int n, int nt, double cut2, double scale,
              double *acc) {
   thread_local WideScratch scratch;
   auto &bonds = scratch.bonds;
+  auto &pair_f2 = scratch.pair_f2;
+  auto &pair_dedr = scratch.pair_dedr;
   auto &bond_at = scratch.bond_at;
   auto &bond_n = scratch.bond_n;
   auto &energy_at = scratch.energy_at;
@@ -194,6 +213,8 @@ void runWide(nlist::Neighbours &cells, int n, int nt, double cut2, double scale,
   }
   if (static_cast<int>(bonds.size()) < bond_at[static_cast<std::size_t>(n)]) {
     bonds.resize(static_cast<std::size_t>(bond_at[static_cast<std::size_t>(n)]));
+    pair_f2.resize(bonds.size());
+    pair_dedr.resize(bonds.size());
   }
 #if defined(_OPENMP)
 #pragma omp parallel num_threads(nt)
@@ -209,7 +230,9 @@ void runWide(nlist::Neighbours &cells, int n, int nt, double cut2, double scale,
       const int room =
           bond_at[static_cast<std::size_t>(i) + 1] - bond_at[static_cast<std::size_t>(i)];
       Bond *dest = bonds.data() + bond_at[static_cast<std::size_t>(i)];
-      bond_n[static_cast<std::size_t>(i)] = storeBonds(cells, i, cut2, dest, room);
+      bond_n[static_cast<std::size_t>(i)] =
+          storeBonds(cells, i, cut2, dest, pair_f2.data() + bond_at[static_cast<std::size_t>(i)],
+                     pair_dedr.data() + bond_at[static_cast<std::size_t>(i)], room);
     }
   }
   countTargets(bonds, bond_at, bond_n, energy_at, energy_n, local_n, touch, n, nt);
@@ -254,16 +277,14 @@ void runWide(nlist::Neighbours &cells, int n, int nt, double cut2, double scale,
         if (bj.j <= i) {
           continue;
         }
-        const PairTerm term = pairTerm(bj.r);
-        if (!term.live) {
-          continue;
-        }
-        steps[ne] = StillingerWeberSi::kEpsilon * term.f2;
+        const double f2 = pair_f2[bond_at[static_cast<std::size_t>(i)] + a];
+        const double dedr = pair_dedr[bond_at[static_cast<std::size_t>(i)] + a];
+        steps[ne] = StillingerWeberSi::kEpsilon * f2;
         ++ne;
         const double inv_r = 1.0 / bj.r;
-        const double sx = scale * term.dedr * bj.x * inv_r;
-        const double sy = scale * term.dedr * bj.y * inv_r;
-        const double sz = scale * term.dedr * bj.z * inv_r;
+        const double sx = scale * dedr * bj.x * inv_r;
+        const double sy = scale * dedr * bj.y * inv_r;
+        const double sz = scale * dedr * bj.z * inv_r;
         csr[static_cast<std::size_t>(place[i]++)] = Hit{i, sx, sy, sz};
         csr[static_cast<std::size_t>(place[bj.j]++)] = Hit{bj.j, -sx, -sy, -sz};
       }
