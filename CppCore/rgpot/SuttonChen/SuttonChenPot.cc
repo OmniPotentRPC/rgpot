@@ -163,9 +163,21 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   nlist::updateCells(neighbours_, R, n_size, box_use, cutoff, skin, nlist::Image::Round,
                      mode_, periodic);
   int nt = nlist::threadsRequested();
-  // One thread is faster through 128 atoms. The serial half walk beats
-  // the gathered parallel walk there, and both return the same bits.
-  if (n_atoms <= 128) {
+  // Two threads lose to the serial walk except on a large sparse list.
+  // Eight threads lose on a short list and on a sparse list below 1024.
+  // slots()/2 counts the stored half, skin included.
+  const bool listed = !neighbours_.streaming() &&
+                      neighbours_.offsets().size() == static_cast<std::size_t>(n_atoms) + 1;
+  const long pairs = listed ? static_cast<long>(neighbours_.slots() / 2) : 0;
+  if (nt > 1 && nt < 4) {
+    if (!listed || n_atoms < 4096 || pairs >= 50000) {
+      nt = 1;
+    }
+  } else if (nt >= 8) {
+    if (n_atoms <= 128 || (listed && n_atoms < 1024 && pairs < 6000)) {
+      nt = 1;
+    }
+  } else if (n_atoms <= 128) {
     nt = 1;
   }
   auto pair_term = [&](double r2, double &phi, double &rep) {

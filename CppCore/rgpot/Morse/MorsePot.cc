@@ -78,9 +78,10 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const double twoDeA = 2.0 * De * a;
   const bool switched = m_config.switch_width != 0.0;
   int nt = nlist::threadsRequested();
-  // One thread is faster through 256 atoms. The batched walk beats the
-  // gathered parallel walk there, and both return the same bits.
-  if (N <= 256) {
+  // Two threads do not pay for the serial replay. Eight threads do once
+  // the list is past 256 atoms; a shorter cutoff moves that point, but
+  // counting pairs on the serial path costs more than it saves.
+  if ((nt > 1 && nt < 4) || N <= 256) {
     nt = 1;
   }
   // One exp per pair, in the order visitHalf walks them. A short run of

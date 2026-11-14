@@ -1,0 +1,1 @@
+Morse and Sutton-Chen stay on one thread when two are requested, except a large sparse Sutton-Chen list. A sparse Sutton-Chen list below 1024 atoms also stays on one thread. The pair order matches the one-thread walk.
