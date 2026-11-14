@@ -872,6 +872,12 @@ if get_option('with_tests')
         if has_water
             test_array += [
                 ['WaterPotTest', 'water_pot_test', 'WaterPotTest.cc', ''],
+                [
+                    'PerAtomWaterTest',
+                    'per_atom_water_test',
+                    'PerAtomWaterTest.cc',
+                    '',
+                ],
             ]
         endif
         if has_eam_table
