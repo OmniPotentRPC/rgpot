@@ -212,19 +212,22 @@ def _resolve_potential(
 class _CallAdapter:
     """``evaluate`` for a potential that has only ``__call__``.
 
-    ``__call__`` returns (energy, forces, variance). These potentials do
-    not report stress.
+    ``__call__`` returns (energy, forces, variance). A potential with a
+    ``stress()`` method (IPIPot) reports the Cauchy stress of its last
+    call there, or None when the engine sent none.
     """
 
     def __init__(self, potential: Any) -> None:
         self.potential = potential
+        self._stress = getattr(potential, "stress", None)
 
     def caps(self) -> dict[str, Any]:
-        return {"periodic": True, "stress": False}
+        return {"periodic": True, "stress": callable(self._stress)}
 
     def evaluate(self, positions: Any, numbers: Any, box: Any) -> dict[str, Any]:
         energy, forces, _variance = self.potential(positions, numbers, box)
-        return {"energy": float(energy), "forces": forces, "stress": None}
+        stress = self._stress() if callable(self._stress) else None
+        return {"energy": float(energy), "forces": forces, "stress": stress}
 
     def evaluate_batch(
         self, positions: Any, numbers: Any, boxes: Any, threads: int = 0
