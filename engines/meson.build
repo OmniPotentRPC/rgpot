@@ -12,6 +12,17 @@ project_root = meson.project_source_root()
 engines_here = meson.current_source_dir()
 dl_dep = cppc.find_library('dl', required: false)
 thread_dep = dependency('threads')
+# A Windows DLL exports only what is marked dllexport, and librgpot marks
+# nothing but its version. On Windows the engines link the objects the
+# umbrella is made of, as the CppCore tests do.
+if host_system == 'windows'
+    engines_rgpot = declare_dependency(
+        link_with: _linkto,
+        dependencies: _deps + [vesin_dep, fastnlist_dep] + fortran_rt_deps,
+    )
+else
+    engines_rgpot = declare_dependency(link_with: rgpot)
+endif
 lj_lib = static_library(
     'rgpot_lj_eval',
     files('lj_eval.cpp'),
@@ -28,8 +39,7 @@ lj_dep = declare_dependency(
 rgpot_lj = executable(
     'rgpot-lj',
     files('rgpot_lj.cpp'),
-    dependencies: lj_dep,
-    link_with: rgpot,
+    dependencies: [lj_dep, engines_rgpot],
     include_directories: rgpot_inc,
     cpp_args: _args,
     install: true,
@@ -39,8 +49,7 @@ test(
     executable(
         'test_lj_eval',
         files('test_lj_eval.cpp'),
-        dependencies: lj_dep,
-        link_with: rgpot,
+        dependencies: [lj_dep, engines_rgpot],
         cpp_args: _args,
     ),
     timeout: 60,
@@ -49,8 +58,7 @@ test(
 lj_engine = shared_library(
     'lj_engine',
     files('lj_engine.cpp'),
-    dependencies: lj_dep,
-    link_with: rgpot,
+    dependencies: [lj_dep, engines_rgpot],
     include_directories: rgpot_inc,
     cpp_args: _args + ['-DRGPOT_ENGINE_BUILD'],
     install: true,
@@ -60,8 +68,7 @@ test(
     executable(
         'test_engine',
         files('test_engine.cpp'),
-        dependencies: lj_dep,
-        link_with: rgpot,
+        dependencies: [lj_dep, engines_rgpot],
         cpp_args: _args,
     ),
     args: [lj_engine.full_path()],
@@ -71,24 +78,26 @@ test(
 capi_threads = executable(
     'capi_threads',
     files('capi_threads.c'),
-    link_with: rgpot,
     include_directories: rgpot_inc,
-    dependencies: thread_dep,
+    dependencies: [thread_dep, engines_rgpot],
     link_language: 'cpp',
 )
 test('capi_threads', capi_threads, timeout: 60)
 # A second binary built only with the thread sanitizer. b_sanitize is
 # already on every compile line, and -fsanitize=thread cannot be combined
-# with address or undefined.
-if cppc.has_argument('-fsanitize=thread') and get_option('b_sanitize') == 'none'
+# with address or undefined. ThreadSanitizer has no Windows runtime.
+if (
+    host_system != 'windows'
+    and cppc.has_argument('-fsanitize=thread')
+    and get_option('b_sanitize') == 'none'
+)
     capi_tsan = executable(
         'capi_threads_tsan',
         files('capi_threads.c'),
-        link_with: rgpot,
         include_directories: rgpot_inc,
         c_args: ['-fsanitize=thread'],
         link_args: ['-fsanitize=thread'],
-        dependencies: thread_dep,
+        dependencies: [thread_dep, engines_rgpot],
         link_language: 'cpp',
     )
     test('capi_threads_tsan', capi_tsan, timeout: 120)
@@ -122,10 +131,9 @@ if lammps_opt.allowed() and python3_engines.found()
             pair_plugin = shared_library(
                 'pair_rgpot',
                 files('lammps/pair_rgpot.cpp'),
-                dependencies: [lj_dep] + (
+                dependencies: [lj_dep, engines_rgpot] + (
                     lammps_dep.found() ? [lammps_dep] : []
                 ),
-                link_with: rgpot,
                 include_directories: include_directories(
                     lammps_src.startswith(project_root + '/') ? fs.relative_to(
                         lammps_src,
@@ -171,8 +179,7 @@ if plumed_opt.allowed()
         plumed_lib = shared_library(
             'RgpotPlumed',
             files('plumed/RgpotColvar.cpp'),
-            dependencies: plumed_link + [lj_dep],
-            link_with: rgpot,
+            dependencies: plumed_link + [lj_dep, engines_rgpot],
             include_directories: [engines_inc, rgpot_inc],
             cpp_args: _args,
             name_prefix: 'lib',
@@ -221,24 +228,28 @@ if python3_engines.found()
     )
 endif
 
-abi_script = find_program('../scripts/abi_symbols.sh')
-abi_baselines = files('../scripts/abi_baseline.txt')
-if has_fast_nlist
-    abi_baselines += files('../scripts/abi_baseline_fast.txt')
+# librgpot.dll exports only rgpot_library_version, so on Windows there is
+# no C ABI in the export table to compare against the baseline.
+if host_system != 'windows'
+    abi_script = find_program('../scripts/abi_symbols.sh')
+    abi_baselines = files('../scripts/abi_baseline.txt')
+    if has_fast_nlist
+        abi_baselines += files('../scripts/abi_baseline_fast.txt')
+    endif
+    test(
+        'abi_symbols',
+        abi_script,
+        args: [rgpot.full_path(), abi_baselines],
+        timeout: 30,
+    )
+    test(
+        'abi_symbols_selftest',
+        abi_script,
+        args: [rgpot.full_path(), files('abi_selftest_baseline.txt')],
+        should_fail: true,
+        timeout: 30,
+    )
 endif
-test(
-    'abi_symbols',
-    abi_script,
-    args: [rgpot.full_path(), abi_baselines],
-    timeout: 30,
-)
-test(
-    'abi_symbols_selftest',
-    abi_script,
-    args: [rgpot.full_path(), files('abi_selftest_baseline.txt')],
-    should_fail: true,
-    timeout: 30,
-)
 
 openmm_opt = get_option('with_openmm')
 if openmm_opt.allowed() and python3_engines.found()
@@ -268,8 +279,7 @@ endif
 native_lj_engine = shared_library(
     'native_lj_engine',
     files('native_lj_engine.cpp'),
-    dependencies: lj_dep,
-    link_with: rgpot,
+    dependencies: [lj_dep, engines_rgpot],
     include_directories: rgpot_inc,
     cpp_args: _args + ['-DRGPOT_ENGINE_BUILD'],
     install: true,
@@ -277,8 +287,7 @@ native_lj_engine = shared_library(
 external_pot_test = executable(
     'test_external_potentials',
     files('test_external_potentials.cpp'),
-    dependencies: lj_dep,
-    link_with: rgpot,
+    dependencies: [lj_dep, engines_rgpot],
     include_directories: rgpot_inc,
     cpp_args: _args,
 )
