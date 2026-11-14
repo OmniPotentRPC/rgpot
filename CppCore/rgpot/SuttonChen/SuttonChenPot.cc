@@ -99,6 +99,17 @@ SuttonChenPot::SuttonChenPot(const SuttonChenConfig &c)
 }
 
 void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  evaluate<false>(in, out, nullptr);
+}
+
+void SuttonChenPot::forceEnergiesImpl(const ForceInput &in, ForceOut *out,
+                                      double *energies) const {
+  evaluate<true>(in, out, energies);
+}
+
+template <bool PerAtom>
+void SuttonChenPot::evaluate(const ForceInput &in, ForceOut *out,
+                             double *energies) const {
   const auto n_atoms = static_cast<long>(in.nAtoms);
   const double *R = in.pos;
   double *F = out->F;
@@ -163,6 +174,10 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       rho[static_cast<std::size_t>(i)] += phi;
       rho[static_cast<std::size_t>(j)] += phi;
       epair += epsilon * rep;
+      if constexpr (PerAtom) {
+        energies[i] += 0.5 * epsilon * rep;
+        energies[j] += 0.5 * epsilon * rep;
+      }
     };
     if (stream) {
       nlist::visitHalf(neighbours_, 0, n_atoms, density);
@@ -193,6 +208,10 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
           } else if (j == i) {
             partial[static_cast<std::size_t>(t)] += 0.5 * epsilon * rep;
           }
+          // The thread that owns atom i sees both directions of each pair.
+          if constexpr (PerAtom) {
+            energies[i] += 0.5 * epsilon * rep;
+          }
         });
     for (double part : partial) {
       epair += part;
@@ -207,6 +226,9 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     }
     const double root = std::sqrt(rho[i]);
     eemb -= epsilon * c_coef * root;
+    if constexpr (PerAtom) {
+      energies[i] -= epsilon * c_coef * root;
+    }
     weight[i] = epsilon * c_coef / (2.0 * root);
   }
 
