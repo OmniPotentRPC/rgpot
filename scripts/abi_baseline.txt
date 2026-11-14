@@ -1,3 +1,18 @@
+rgpot_binary_lj_gradient
+rgpot_external_potential_energy_forces
+rgpot_external_potential_free
+rgpot_gromacs_potential
+rgpot_lammps_potential
+rgpot_lj_arithmetic_gradient
+rgpot_lj_atom_energies
+rgpot_lj_curvature_pairs
+rgpot_lj_gradient
+rgpot_lj_pair
+rgpot_lj_partial_gradient
+rgpot_md_kj_per_ev
+rgpot_md_nm_per_angstrom
+rgpot_morse_gradient
+rgpot_morse_pair
 rgpot_nlist_abi_version
 rgpot_nlist_build
 rgpot_nlist_builder_close
@@ -12,3 +27,7 @@ rgpot_nlist_strerror
 rgpot_nlist_walk_close
 rgpot_nlist_walk_open
 rgpot_nlist_walk_pull
+rgpot_openmm_potential
+rgpot_sutton_chen_energy_forces
+rgpot_sutton_chen_scales
+rgpot_tip4p_sites
