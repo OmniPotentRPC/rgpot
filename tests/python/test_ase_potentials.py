@@ -292,7 +292,8 @@ class Case:
     other valid atomic numbers for the cache check. ``small`` is a cell
     thinner than twice the cutoff, which the kernel must sum over every
     image; it is None for WaterH, which has no cutoff, and for the i-PI
-    driver, which owns its images.
+    driver, which owns its images. ``energies`` is True for a kernel
+    that reports per-atom energies.
     """
 
     name: str
@@ -307,6 +308,7 @@ class Case:
     ipi: bool = False
     force_atol: float = 1e-5
     small: Callable[[], Atoms] | None = None
+    energies: bool = False
 
 
 def _needs(attr: str) -> Callable[[], str | None]:
@@ -346,7 +348,7 @@ SMOOTH = {"cutoff": 6.0, "switch_width": 1.0}
 CASES = [
     Case(
         "lj", "lj", lj7, lj_fcc, lambda: None, LJ_PARAMS, {"u0": 1.5},
-        _all_to(2), small=AR_SMALL,
+        _all_to(2), small=AR_SMALL, energies=True,
     ),
     Case(
         "lj_cluster", "lj_cluster", lj7, None, lambda: None, LJ_PARAMS,
@@ -355,12 +357,16 @@ CASES = [
     Case(
         "morse", "morse", pt_cluster, pt_fcc, lambda: None,
         {"cutoff": 6.0, "switch_width": 1.0}, {"De": 0.8}, small=PT_SMALL,
+        energies=True,
     ),
-    Case("eam_al", "eam_al", al_cluster, al_fcc, _needs_fortran, small=AL_SMALL),
+    Case(
+        "eam_al", "eam_al", al_cluster, al_fcc, _needs_fortran, small=AL_SMALL,
+        energies=True,
+    ),
     Case("sw", "sw", si_cluster, si_diamond, _needs_fortran, small=SI_SMALL),
     Case(
         "stillinger_weber_si", "stillinger_weber_si", si_cluster, si_diamond,
-        _needs("StillingerWeberSi"), small=SI_SMALL,
+        _needs("StillingerWeberSi"), small=SI_SMALL, energies=True,
     ),
     Case("edip", "edip", si_cluster, si_diamond, _needs_fortran, small=SI_SMALL),
     Case(
@@ -374,13 +380,16 @@ CASES = [
     Case(
         "tersoff_sic", "tersoff_sic", sic_cluster, sic_zincblende,
         _needs("TersoffSiC"), new_numbers=_swap_first(14, 6),
-        small=SIC_SMALL,
+        small=SIC_SMALL, energies=True,
     ),
     Case(
         "fehe", "fehe", fehe_cluster, fehe_bcc, _needs_fortran,
         new_numbers=_swap_first(26, 2), small=lambda: _distort(_fe_he(1), 17),
     ),
-    Case("cuh2", "cuh2", cuh2_cluster, cuh2_fcc, _needs_fortran, small=CU_SMALL),
+    Case(
+        "cuh2", "cuh2", cuh2_cluster, cuh2_fcc, _needs_fortran, small=CU_SMALL,
+        energies=True,
+    ),
     Case("water_h", "water_h", water_h_cluster, water_h_box, _needs_fortran),
     # D3Pot and D4Pot build a molecular structure: free boundaries only.
     Case(
@@ -492,8 +501,7 @@ def test_declared_properties(case: Case, make_calc) -> None:
     props = calc.implemented_properties
     assert props[:3] == ["energy", "free_energy", "forces"]
     assert set(props) <= {"energy", "free_energy", "forces", "stress", "energies"}
-    # No kernel reports per-atom energies, so none may claim them.
-    assert "energies" not in props
+    assert ("energies" in props) == case.energies
     atoms = case.cluster()
     atoms.calc = calc
     energy = atoms.get_potential_energy()
@@ -505,11 +513,16 @@ def test_declared_properties(case: Case, make_calc) -> None:
     # A pair-additive or many-body kernel without external field has no
     # net force on an isolated cluster.
     np.testing.assert_allclose(forces.sum(axis=0), 0.0, atol=1e-8)
-    for name in ("magmom", "magmoms", "dipole", "charges", "energies"):
+    for name in ("magmom", "magmoms", "dipole", "charges"):
         with pytest.raises(PropertyNotImplementedError):
             calc.get_property(name, atoms)
-    with pytest.raises(PropertyNotImplementedError):
-        atoms.get_potential_energies()
+    if case.energies:
+        assert atoms.get_potential_energies().shape == (len(atoms),)
+    else:
+        with pytest.raises(PropertyNotImplementedError):
+            calc.get_property("energies", atoms)
+        with pytest.raises(PropertyNotImplementedError):
+            atoms.get_potential_energies()
     with pytest.raises(PropertyNotImplementedError):
         calc.get_hessian(atoms)
 
@@ -621,6 +634,167 @@ def test_small_cell_matches_its_supercell(case: Case, make_calc) -> None:
     np.testing.assert_allclose(small.get_forces(), big.get_forces()[:n], atol=1e-8)
     if "stress" in small.calc.implemented_properties:
         np.testing.assert_allclose(small.get_stress(), big.get_stress(), atol=1e-8)
+
+
+ENERGY_CASES = [case for case in CASES if case.energies]
+
+
+def _energy_systems(case: Case) -> list[Atoms]:
+    """Cluster, bulk and thin triclinic cell of one case."""
+    out = _systems(case)
+    if case.small is not None:
+        out.append(case.small())
+    return out
+
+
+@pytest.mark.parametrize(
+    "case", ENERGY_CASES, ids=[case.name for case in ENERGY_CASES], indirect=True
+)
+def test_per_atom_energies_sum_to_the_energy(case: Case, make_calc) -> None:
+    for atoms in _energy_systems(case):
+        atoms.calc = make_calc()
+        energies = atoms.get_potential_energies()
+        assert energies.shape == (len(atoms),)
+        assert energies.dtype == np.float64
+        energy = atoms.get_potential_energy()
+        assert float(np.sum(energies)) == pytest.approx(energy, rel=1e-10, abs=1e-12)
+        # The per-atom call leaves energy and forces as a plain call gives them.
+        plain = atoms.copy()
+        plain.calc = make_calc()
+        assert plain.get_potential_energy() == energy
+        np.testing.assert_array_equal(plain.get_forces(), atoms.get_forces())
+
+
+@pytest.mark.parametrize(
+    "case", ENERGY_CASES, ids=[case.name for case in ENERGY_CASES], indirect=True
+)
+def test_per_atom_energies_follow_translation_and_permutation(
+    case: Case, make_calc
+) -> None:
+    for atoms in _energy_systems(case):
+        atoms.calc = make_calc()
+        ref = atoms.get_potential_energies()
+        scale = max(1.0, float(np.abs(ref).max()))
+
+        moved = atoms.copy()
+        moved.translate([0.37, -1.21, 2.05])
+        if moved.pbc.any():
+            moved.wrap()
+        moved.calc = make_calc()
+        np.testing.assert_allclose(
+            moved.get_potential_energies(), ref, atol=1e-10 * scale, rtol=0.0
+        )
+
+        order = np.random.default_rng(7).permutation(len(atoms))
+        swapped = atoms[order]
+        swapped.calc = make_calc()
+        np.testing.assert_allclose(
+            swapped.get_potential_energies(), ref[order], atol=1e-10 * scale, rtol=0.0
+        )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [case for case in ENERGY_CASES if case.small is not None],
+    ids=[case.name for case in ENERGY_CASES if case.small is not None],
+    indirect=True,
+)
+def test_thin_cell_per_atom_energies_match_its_supercell(
+    case: Case, make_calc
+) -> None:
+    """Every copy of an atom in the 8x8x8 repeat carries that atom's share."""
+    assert case.small is not None
+    small = case.small()
+    big = small.repeat(8)
+    small.calc = make_calc()
+    big.calc = make_calc()
+    n = len(small)
+    copies = big.get_potential_energies().reshape(-1, n)
+    np.testing.assert_allclose(
+        copies, np.broadcast_to(small.get_potential_energies(), copies.shape),
+        atol=1e-9, rtol=0.0,
+    )
+
+
+@pytest.mark.parametrize(
+    "case", ENERGY_CASES, ids=[case.name for case in ENERGY_CASES], indirect=True
+)
+def test_per_atom_energies_are_cached_and_asked_for_only_when_wanted(
+    case: Case, make_calc
+) -> None:
+    calc = make_calc()
+    calls = _counter(calc)
+    asked: list[bool] = []
+    kernel = calc._kernel
+    original = kernel.evaluate
+
+    class Spy:
+        def __getattr__(self, name: str) -> Any:
+            return getattr(kernel, name)
+
+        def evaluate(self, *args: Any, **kwargs: Any) -> Any:
+            asked.append(bool(kwargs.get("energies", False)))
+            return original(*args, **kwargs)
+
+    calc._kernel = Spy()
+    atoms = case.periodic() if case.periodic is not None else case.cluster()
+    atoms.calc = calc
+
+    atoms.get_potential_energy()
+    atoms.get_forces()
+    assert asked == [False]
+
+    energies = atoms.get_potential_energies()
+    assert asked == [False, True]
+    atoms.get_potential_energies()
+    atoms.get_potential_energy()
+    atoms.get_forces()
+    assert len(calls) == 2
+    np.testing.assert_array_equal(calc.results["energies"], energies)
+
+    atoms.positions[0, 0] += 0.01
+    assert calc.get_property("energies", atoms, allow_calculation=False) is None
+    moved = atoms.get_potential_energies()
+    assert asked == [False, True, True]
+    assert len(calls) == 3
+    assert not np.array_equal(moved, energies)
+    assert float(np.sum(moved)) == pytest.approx(
+        atoms.get_potential_energy(), rel=1e-10, abs=1e-12
+    )
+    assert len(calls) == 3
+
+    rows = calc.calculate_many(
+        [atoms.copy(), atoms.copy()], properties=("energy", "energies")
+    )
+    for row in rows:
+        np.testing.assert_array_equal(row["energies"], moved)
+
+
+def test_per_atom_energies_are_refused_without_the_capability() -> None:
+    calc = RgpotCalculator("lj_cluster", **LJ_PARAMS)
+    atoms = lj7()
+    with pytest.raises(PropertyNotImplementedError):
+        calc.__rg_evaluate__(
+            atoms.positions, atoms.numbers, atoms.cell.array, atoms.pbc,
+            energies=True,
+        )
+    pot = rgpot.LJClusterPot()
+    assert pot.caps()["energies"] is False
+    box = np.eye(3) * 40.0
+    with pytest.raises(ValueError, match="per-atom"):
+        pot.evaluate(np.ascontiguousarray(atoms.positions), atoms.numbers, box,
+                     energies=True)
+    lj = rgpot.LJPot()
+    assert lj.caps()["energies"] is True
+    result = lj.evaluate(np.ascontiguousarray(atoms.positions), atoms.numbers, box)
+    assert result["energies"] is None
+    result = lj.evaluate(
+        np.ascontiguousarray(atoms.positions), atoms.numbers, box, energies=True
+    )
+    assert result["energies"].shape == (len(atoms),)
+    assert float(result["energies"].sum()) == pytest.approx(
+        result["energy"], rel=1e-12
+    )
 
 
 def test_lj_small_cell_matches_ase_lennard_jones() -> None:

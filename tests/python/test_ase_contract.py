@@ -58,13 +58,20 @@ def test_implemented_properties_follow_caps() -> None:
         "free_energy",
         "forces",
         "stress",
+        "energies",
     ]
-    assert "energies" not in lj.implemented_properties
+    assert "energies" not in RgpotCalculator("lj_cluster").implemented_properties
     if not rgpot.has_fortran_pots:
         pytest.skip("this build has no Fortran potentials")
     eam = RgpotCalculator("eam_al")
-    assert eam.implemented_properties == ["energy", "free_energy", "forces"]
+    assert eam.implemented_properties == [
+        "energy",
+        "free_energy",
+        "forces",
+        "energies",
+    ]
     assert eam.protocol_reentrant is True
+    assert "energies" not in RgpotCalculator("sw").implemented_properties
 
 
 def test_free_energy_equals_energy() -> None:
