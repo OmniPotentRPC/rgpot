@@ -5,8 +5,6 @@
 #include "StreamSpline.hpp"
 
 #include <algorithm>
-#include <cmath>
-#include <limits>
 #include <vector>
 
 #if defined(_OPENMP)
@@ -18,6 +16,12 @@ namespace {
 int clampThreads(int nt) {
   return nt < 1 ? 1 : nt;
 }
+
+struct ForceAdd {
+  int at;
+  double v;
+  bool sub;
+};
 
 } // namespace
 
@@ -33,20 +37,73 @@ void EAM::evaluateFixed(long N, const int *atomicNrs, double *F, double *U) {
   } else if (!reuse_ok_.empty()) {
     std::fill(reuse_ok_.begin(), reuse_ok_.end(), 0);
   }
-  std::vector<double> partial(static_cast<std::size_t>(k), 0.0);
-  const std::size_t stride = static_cast<std::size_t>(N) * 3;
-  std::vector<double> slab(static_cast<std::size_t>(k) * stride, 0.0);
-  double *base = slab.data();
-  double *part = partial.data();
-  auto run = [&](int c) {
-    double *local = base + static_cast<std::size_t>(c) * stride;
-    const auto range = rgpot::nlist::partition(N, c, k);
-    double chunk_e = 0.0;
+  // One thread writes the force array in walk order. Several threads
+  // record that same order in private buffers, one contiguous atom range
+  // each, and the replay walks those buffers from the first range.
+  // The buffers stay allocated for the process. They are not
+  // thread-local, because the OpenMP workers write the caller's copy.
+  static std::vector<std::vector<ForceAdd>> thread_force;
+  static std::vector<std::vector<double>> thread_energy;
+  static std::vector<int> force_n;
+  static std::vector<int> energy_n;
+  double energy_direct = 0.0;
+  if (nt != 1) {
+    if (static_cast<int>(thread_force.size()) < nt) {
+      thread_force.resize(static_cast<std::size_t>(nt));
+      thread_energy.resize(static_cast<std::size_t>(nt));
+    }
+    if (static_cast<int>(force_n.size()) < nt) {
+      force_n.resize(static_cast<std::size_t>(nt));
+      energy_n.resize(static_cast<std::size_t>(nt));
+    }
+    const auto &list_off = neighbours_.offsets();
+    for (int t = 0; t < nt; ++t) {
+      const long begin = (N * t) / nt;
+      const long end = (N * (t + 1)) / nt;
+      int force_cap = 0;
+      int energy_cap = 0;
+      for (long i = begin; i < end; ++i) {
+        const int span = static_cast<int>(list_off[static_cast<std::size_t>(i) + 1] -
+                                           list_off[static_cast<std::size_t>(i)]);
+        force_cap += span * 9 + 3;
+        energy_cap += span + 1;
+      }
+      auto &fops = thread_force[static_cast<std::size_t>(t)];
+      auto &eops = thread_energy[static_cast<std::size_t>(t)];
+      if (static_cast<int>(fops.size()) < force_cap) {
+        fops.resize(static_cast<std::size_t>(force_cap));
+      }
+      if (static_cast<int>(eops.size()) < energy_cap) {
+        eops.resize(static_cast<std::size_t>(energy_cap));
+      }
+      force_n[static_cast<std::size_t>(t)] = 0;
+      energy_n[static_cast<std::size_t>(t)] = 0;
+    }
+  }
+  auto emitF = [&](ForceAdd *dst, int &n, int at, double v, bool sub) {
+    if (dst == nullptr) {
+      if (sub) {
+        F[at] -= v;
+      } else {
+        F[at] += v;
+      }
+    } else {
+      dst[n++] = ForceAdd{at, v, sub};
+    }
+  };
+  auto emitE = [&](double *dst, int &n, double term) {
+    if (dst == nullptr) {
+      energy_direct += term;
+    } else {
+      dst[n++] = term;
+    }
+  };
+  auto run = [&](long begin, long end, ForceAdd *fops, int &nf, double *eops, int &ne) {
     std::vector<Delta> deltas;
     deltas.reserve(128);
     const auto &off = neighbours_.offsets();
     const auto &nbr = neighbours_.neighbours();
-    for (long i = range.begin; i < range.end; ++i) {
+    for (long i = begin; i < end; ++i) {
       const element_parameters epar = get_element_parameters(atomicNrs[i]);
       const double cutoff2 = epar.r_cut * epar.r_cut;
       const double half0 = box_len_[0] * 0.5;
@@ -95,7 +152,7 @@ void EAM::evaluateFixed(long N, const int *atomicNrs, double *F, double *U) {
         // stored this pair. Several threads only trust a store from the
         // same chunk. The stored value is the lower atom's evaluation,
         // which matches a fresh one when both atoms share coefficients.
-        const bool ready = nt == 1 ? j < i : (j >= range.begin && j < i);
+        const bool ready = nt == 1 ? j < i : (j >= begin && j < i);
         double rho_term = 0.0;
         double fscale = 0.0;
         double r = 0.0;
@@ -119,7 +176,7 @@ void EAM::evaluateFixed(long N, const int *atomicNrs, double *F, double *U) {
               r6 * (-epar.beta1 * exp_b1 - 1024.0 * epar.beta2 * exp_b2);
           invR = 1.0 / r;
           fscale = -mag_force_den * invR;
-          if (pure && j > i && (nt == 1 || j < range.end)) {
+          if (pure && j > i && (nt == 1 || j < end)) {
             const auto rev = rev_[slotp];
             if (rev >= 0) {
               const auto rs = static_cast<std::size_t>(rev);
@@ -144,68 +201,79 @@ void EAM::evaluateFixed(long N, const int *atomicNrs, double *F, double *U) {
           const double fx = fcomp * dx;
           const double fy = fcomp * dy;
           const double fz = fcomp * dz;
-          local[3 * i] += fx;
-          local[3 * i + 1] += fy;
-          local[3 * i + 2] += fz;
-          local[3 * j] -= fx;
-          local[3 * j + 1] -= fy;
-          local[3 * j + 2] -= fz;
-          chunk_e += phi_r;
+          emitF(fops, nf, static_cast<int>(3 * i), fx, false);
+          emitF(fops, nf, static_cast<int>(3 * i + 1), fy, false);
+          emitF(fops, nf, static_cast<int>(3 * i + 2), fz, false);
+          emitF(fops, nf, static_cast<int>(3 * j), fx, true);
+          emitF(fops, nf, static_cast<int>(3 * j + 1), fy, true);
+          emitF(fops, nf, static_cast<int>(3 * j + 2), fz, true);
+          emitE(eops, ne, phi_r);
         }
       }
-      chunk_e += embedding_function(epar.func_coeff, dens);
+      emitE(eops, ne, embedding_function(epar.func_coeff, dens));
       const double dF = embedding_force(epar.func_coeff, dens);
       std::size_t slot = 0;
       for (; slot < deltas.size() && deltas[slot].atom < i; ++slot) {
         const Delta &d = deltas[slot];
-        local[3 * d.atom] -= dF * d.x;
-        local[3 * d.atom + 1] -= dF * d.y;
-        local[3 * d.atom + 2] -= dF * d.z;
+        emitF(fops, nf, static_cast<int>(3 * d.atom), dF * d.x, true);
+        emitF(fops, nf, static_cast<int>(3 * d.atom + 1), dF * d.y, true);
+        emitF(fops, nf, static_cast<int>(3 * d.atom + 2), dF * d.z, true);
       }
-      local[3 * i] -= dF * dix;
-      local[3 * i + 1] -= dF * diy;
-      local[3 * i + 2] -= dF * diz;
+      emitF(fops, nf, static_cast<int>(3 * i), dF * dix, true);
+      emitF(fops, nf, static_cast<int>(3 * i + 1), dF * diy, true);
+      emitF(fops, nf, static_cast<int>(3 * i + 2), dF * diz, true);
       for (; slot < deltas.size(); ++slot) {
         const Delta &d = deltas[slot];
-        local[3 * d.atom] -= dF * d.x;
-        local[3 * d.atom + 1] -= dF * d.y;
-        local[3 * d.atom + 2] -= dF * d.z;
+        emitF(fops, nf, static_cast<int>(3 * d.atom), dF * d.x, true);
+        emitF(fops, nf, static_cast<int>(3 * d.atom + 1), dF * d.y, true);
+        emitF(fops, nf, static_cast<int>(3 * d.atom + 2), dF * d.z, true);
       }
     }
-    part[c] = chunk_e;
   };
   if (nt == 1) {
     for (int c = 0; c < k; ++c) {
-      run(c);
+      const auto range = rgpot::nlist::partition(N, c, k);
+      int ignored = 0;
+      int ignored_e = 0;
+      run(range.begin, range.end, nullptr, ignored, nullptr, ignored_e);
     }
-  } else {
+    *U = energy_direct;
+    return;
+  }
 #if defined(_OPENMP)
 #pragma omp parallel num_threads(nt)
 #endif
-    {
+  {
 #if defined(_OPENMP)
-      const int thread = omp_get_thread_num();
+    const int thread = omp_get_thread_num();
 #else
-      const int thread = 0;
+    const int thread = 0;
 #endif
-      for (int c = thread; c < k; c += nt) {
-        run(c);
-      }
-    }
+    const long begin = (N * thread) / nt;
+    const long end = (N * (thread + 1)) / nt;
+    auto &fops = thread_force[static_cast<std::size_t>(thread)];
+    auto &eops = thread_energy[static_cast<std::size_t>(thread)];
+    int nf = 0;
+    int ne = 0;
+    run(begin, end, fops.data(), nf, eops.data(), ne);
+    force_n[static_cast<std::size_t>(thread)] = nf;
+    energy_n[static_cast<std::size_t>(thread)] = ne;
   }
   double energy = 0.0;
-  for (int c = 0; c < k; ++c) {
-    energy += part[c];
-    const double *local = base + static_cast<std::size_t>(c) * stride;
-    for (long a = 0; a < 3 * N; ++a) {
-      F[a] += local[a];
+  for (int t = 0; t < nt; ++t) {
+    const double *eterms = thread_energy[static_cast<std::size_t>(t)].data();
+    const int nterm = energy_n[static_cast<std::size_t>(t)];
+    for (int s = 0; s < nterm; ++s) {
+      energy += eterms[s];
     }
-  }
-  // A pair at r = 0 produces 0 * inf. One accumulation yields a negative
-  // NaN. Summing the chunk rows flips that sign, so restore it.
-  for (long a = 0; a < 3 * N; ++a) {
-    if (std::isnan(F[a])) {
-      F[a] = std::copysign(std::numeric_limits<double>::quiet_NaN(), -1.0);
+    const ForceAdd *adds = thread_force[static_cast<std::size_t>(t)].data();
+    const int nadd = force_n[static_cast<std::size_t>(t)];
+    for (int s = 0; s < nadd; ++s) {
+      if (adds[s].sub) {
+        F[adds[s].at] -= adds[s].v;
+      } else {
+        F[adds[s].at] += adds[s].v;
+      }
     }
   }
   *U = energy;
