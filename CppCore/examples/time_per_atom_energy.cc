@@ -13,6 +13,10 @@
 //            a = 3.61 A), the Fortran CuH2 EAM kernel, Cu only.
 //   ar-bulk  periodic Ar fcc, 5 x 5 x 5 cubic cells (500 atoms, a = 5.26 A),
 //            LJPot with u0 = 0.0104 eV, psi = 3.40 A, cutoff = 8.5 A.
+//   cu-wide  periodic Cu fcc, 10 x 10 x 10 cubic cells (4000 atoms), the
+//            Fortran CuH2 EAM kernel, Cu only.
+//   sw-diamond  periodic Si diamond, 6 x 6 x 6 lower-triangular primitive
+//            cells (432 atoms, a = 5.431 A), StillingerWeberSi.
 //
 // Each block times `calls` back-to-back calls of one variant; block pairs
 // alternate which variant goes first. Prints one line per variant with the
@@ -29,6 +33,7 @@
 #include "bench_systems.hpp"
 #include "rgpot/ForceStructs.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
+#include "rgpot/StillingerWeber/SWSi.hpp"
 #ifdef RGPOT_HAS_FORTRAN_POTS
 #include "rgpot/fortran/FortranPots.hpp"
 #endif
@@ -111,7 +116,7 @@ int run(const char *name, const Pot &pot, const rgpot_bench::System &s, int bloc
 
 int main(int argc, char **argv) {
   if (argc < 2) {
-    std::fprintf(stderr, "usage: %s cu-bulk|ar-bulk [blocks] [calls]\n", argv[0]);
+    std::fprintf(stderr, "usage: %s cu-bulk|cu-wide|ar-bulk|sw-diamond [blocks] [calls]\n", argv[0]);
     return 2;
   }
   const std::string system = argv[1];
@@ -121,11 +126,22 @@ int main(int argc, char **argv) {
     const rgpot::LJPot pot(rgpot::LJConfig{.u0 = 0.0104, .cutoff = 8.5, .psi = 3.40});
     return run("ar-bulk", pot, rgpot_bench::bulk(5, 5.26, 18), blocks, calls);
   }
+  if (system == "sw-diamond") {
+    const int calls = argc > 3 ? std::atoi(argv[3]) : 200;
+    const rgpot::StillingerWeberSi pot;
+    return run("sw-diamond", pot, rgpot_bench::diamondLowerTriangular(6, 5.431, 14),
+               blocks, calls);
+  }
 #ifdef RGPOT_HAS_FORTRAN_POTS
   if (system == "cu-bulk") {
     const int calls = argc > 3 ? std::atoi(argv[3]) : 5;
     const rgpot::fortranpots::CuH2Pot pot;
     return run("cu-bulk", pot, rgpot_bench::bulk(13, 3.61, 29), blocks, calls);
+  }
+  if (system == "cu-wide") {
+    const int calls = argc > 3 ? std::atoi(argv[3]) : 10;
+    const rgpot::fortranpots::CuH2Pot pot;
+    return run("cu-wide", pot, rgpot_bench::bulk(10, 3.61, 29), blocks, calls);
   }
 #endif
   std::fprintf(stderr, "unknown system %s\n", system.c_str());

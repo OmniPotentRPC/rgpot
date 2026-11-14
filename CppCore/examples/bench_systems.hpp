@@ -3,10 +3,12 @@
 // Copyright 2023--present rgpot developers
 //
 // Physical test systems shared by the timing examples: fcc nanoparticles of
-// an exact atom count in vacuum and periodic fcc bulk.
+// an exact atom count in vacuum, periodic fcc bulk and lower-triangular
+// diamond supercells.
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <random>
 #include <utility>
@@ -82,6 +84,32 @@ inline System bulk(int m, double a, int z) {
   s.types.assign(s.pos.size() / 3, z);
   const double side = m * a;
   s.box = {side, 0.0, 0.0, 0.0, side, 0.0, 0.0, 0.0, side};
+  return s;
+}
+
+/// An m x m x m supercell of the two-atom diamond primitive cell in
+/// lower-triangular form (ASE's `standard_form`, the 60 degree rows LAMMPS
+/// writes), with the same noise as `bulk`.
+inline System diamondLowerTriangular(int m, double a, int z) {
+  const double l = a / std::sqrt(2.0);
+  const double rows[3][3] = {{l, 0.0, 0.0},
+                             {0.5 * l, 0.5 * std::sqrt(3.0) * l, 0.0},
+                             {0.5 * l, l / (2.0 * std::sqrt(3.0)),
+                              std::sqrt(2.0 / 3.0) * l}};
+  System s;
+  std::mt19937_64 rng(7);
+  std::uniform_real_distribution<double> u(-0.03, 0.03);
+  for (int i = 0; i < m; ++i)
+    for (int j = 0; j < m; ++j)
+      for (int k = 0; k < m; ++k)
+        for (double b : {0.0, 0.25})
+          for (int q = 0; q < 3; ++q)
+            s.pos.push_back((i + b) * rows[0][q] + (j + b) * rows[1][q] +
+                            (k + b) * rows[2][q] + u(rng));
+  s.types.assign(s.pos.size() / 3, z);
+  for (int r = 0; r < 3; ++r)
+    for (int q = 0; q < 3; ++q)
+      s.box[static_cast<std::size_t>(3 * r + q)] = m * rows[r][q];
   return s;
 }
 
