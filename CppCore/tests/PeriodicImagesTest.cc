@@ -733,6 +733,45 @@ TEST_CASE("three-body potentials on wide supercells of the diamond primitive cel
   }
 }
 
+TEST_CASE("a skewed triclinic basis of one lattice gives the same answer",
+          "[images][triclinic]") {
+  setThreads("1");
+  // Wide, but the rows are long combinations of the cubic rows. Once the
+  // atoms are wrapped into that cell, bins cut along the diagonal lengths
+  // no longer hold every partner in the adjacent bins.
+  auto cubic = fccCubic(kLjFcc, 11, 6, 6, 18);
+  jitter(cubic, 0.05, 21u);
+  const int m[3][3] = {{1, 0, 0}, {2, 1, 0}, {1, 1, 1}};
+  const auto skew = rebased(cubic, m);
+  const auto lj = reducedLj();
+  const auto a = evaluate(lj, cubic);
+  const auto b = evaluate(lj, skew);
+  CHECK_THAT(b.energy, WithinAbs(a.energy, 1e-10 * static_cast<double>(cubic.size())));
+  for (std::size_t k = 0; k < cubic.pos.size(); ++k) {
+    CHECK_THAT(b.forces[k], WithinAbs(a.forces[k], 1e-9));
+  }
+  for (std::size_t k = 0; k < 9; ++k) {
+    CHECK_THAT(b.stress[k], WithinAbs(a.stress[k], 1e-10));
+  }
+  const auto inside = wrapped(skew);
+  const auto c = evaluate(lj, inside);
+  CHECK_THAT(c.energy, WithinAbs(a.energy, 1e-10 * static_cast<double>(cubic.size())));
+  for (std::size_t k = 0; k < cubic.pos.size(); ++k) {
+    CHECK_THAT(c.forces[k], WithinAbs(a.forces[k], 1e-9));
+  }
+
+  // Thin and skewed: the primitive fcc cell on a sheared basis.
+  const int n[3][3] = {{1, 0, 0}, {1, 1, 0}, {-1, 2, 1}};
+  const auto thin = rebased(fccPrimitive(kLjFcc, 18), n);
+  CHECK_THAT(evaluate(lj, thin).energy,
+             WithinAbs(ljFccLatticeSum(kLjFcc, 1.0, 1.0, 3.0), 1e-10));
+
+  const auto cfg = copperSc();
+  const rgpot::SuttonChenPot sc(cfg);
+  const auto sc_prim = rebased(fccPrimitive(cfg.a, 29), n);
+  CHECK_THAT(evaluate(sc, sc_prim).energy, WithinAbs(scFccLatticeSum(cfg.a, cfg), 1e-10));
+}
+
 TEST_CASE("forces and stress on thin cells match finite differences", "[images][fd]") {
   setThreads("1");
   const rgpot::LJPot lj{
@@ -817,6 +856,137 @@ TEST_CASE("wide orthorhombic cells keep the minimum-image walk", "[images][fast]
   CHECK_THAT(lj, WithinAbs(kWideLj, 1e-12 * std::abs(kWideLj)));
   CHECK_THAT(sc, WithinAbs(kWideSc, 1e-12 * std::abs(kWideSc)));
   CHECK_THAT(eam, WithinAbs(kWideEam, 1e-12 * std::abs(kWideEam)));
+}
+
+TEST_CASE("the neighbour layer honours (T, T, F) on a thin cell", "[images][slab][nlist]") {
+  setThreads("1");
+  // Rows not aligned with the axes, an open third row shorter than the
+  // atoms' extent, and atoms outside the cell.
+  Cell s;
+  s.box = {1.3, 0.2, 0.0, 0.4, 1.1, 0.1, 0.3, 0.2, 1.0};
+  for (int i = 0; i < 5; ++i) {
+    s.pos.push_back(0.9 * i - 1.0);
+    s.pos.push_back(0.37 * i * i - 0.4);
+    s.pos.push_back(0.83 * i);
+    s.types.push_back(1);
+  }
+  const std::array<bool, 3> periodic{{true, true, false}};
+  const double cutoff = 3.2;
+  struct Hit {
+    std::int32_t i, j;
+    double r2;
+  };
+  std::vector<Hit> brute;
+  for (std::int32_t i = 0; i < 5; ++i) {
+    for (std::int32_t j = 0; j < 5; ++j) {
+      for (int sa = -20; sa <= 20; ++sa) {
+        for (int sb = -20; sb <= 20; ++sb) {
+          if (i == j && sa == 0 && sb == 0) {
+            continue;
+          }
+          double d[3];
+          for (std::size_t c = 0; c < 3; ++c) {
+            d[c] = s.pos[3 * static_cast<std::size_t>(i) + c] -
+                   s.pos[3 * static_cast<std::size_t>(j) + c] - sa * s.box[c] -
+                   sb * s.box[3 + c];
+          }
+          const double r2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+          if (r2 <= cutoff * cutoff) {
+            brute.push_back({i, j, r2});
+          }
+        }
+      }
+    }
+  }
+  REQUIRE(brute.size() > 100);
+  double brute_sum = 0.0;
+  for (const auto &h : brute) {
+    brute_sum += 1.0 / h.r2;
+  }
+  for (auto mode : {rgpot::nlist::Mode::Stream, rgpot::nlist::Mode::Stored}) {
+    rgpot::nlist::Neighbours cells;
+    rgpot::nlist::updateCells(cells, s.pos.data(), s.size(), s.box.data(), cutoff, 0.0,
+                              rgpot::nlist::Image::Round, mode, periodic);
+    std::size_t full = 0;
+    cells.forDirected(0, 5, [&](std::int32_t, std::int32_t, double, double, double, double r2) {
+      full += r2 <= cutoff * cutoff ? 1 : 0;
+    });
+    std::size_t half = 0;
+    double half_sum = 0.0;
+    cells.forHalf(0, 5, [&](std::int32_t i, std::int32_t j, double, double, double, double r2) {
+      CHECK(j >= i);
+      if (r2 <= cutoff * cutoff) {
+        ++half;
+        half_sum += 1.0 / r2;
+      }
+    });
+    CHECK(full == brute.size());
+    CHECK(2 * half == brute.size());
+    CHECK_THAT(2.0 * half_sum, WithinAbs(brute_sum, 1e-12 * brute_sum));
+  }
+}
+
+TEST_CASE("atoms several cells outside a thin cell see the same images",
+          "[images][unwrapped]") {
+  setThreads("1");
+  // An MD step does not wrap, so a thin cell meets atoms far outside it.
+  // Moving an atom by a lattice vector changes nothing.
+  const int n[3][3] = {{1, 0, 0}, {1, 1, 0}, {-1, 2, 1}};
+  auto inside = wrapped(rebased(repeat(fccPrimitive(kLjFcc, 18), 2, 1, 2), n));
+  jitter(inside, 0.05, 59u);
+  Cell outside = inside;
+  for (std::size_t p = 0; p < outside.size(); ++p) {
+    const int s[3] = {static_cast<int>(p % 3) * 3 - 3, 5 - static_cast<int>(p) * 2,
+                      static_cast<int>(p % 2) * 7 - 2};
+    for (std::size_t c = 0; c < 3; ++c) {
+      outside.pos[3 * p + c] += s[0] * inside.box[c] + s[1] * inside.box[3 + c] +
+                                s[2] * inside.box[6 + c];
+    }
+  }
+  const auto lj = reducedLj();
+  const auto a = evaluate(lj, inside);
+  const auto b = evaluate(lj, outside);
+  CHECK_THAT(b.energy, WithinAbs(a.energy, 1e-10));
+  for (std::size_t k = 0; k < a.forces.size(); ++k) {
+    CHECK_THAT(b.forces[k], WithinAbs(a.forces[k], 1e-9));
+  }
+  for (std::size_t k = 0; k < 9; ++k) {
+    CHECK_THAT(b.stress[k], WithinAbs(a.stress[k], 1e-9));
+  }
+  requirePublicListMatchesBrute(outside, 3.0, 16);
+  const rgpot::SuttonChenPot sc(copperSc());
+  auto cu = wrapped(rebased(repeat(fccPrimitive(3.61, 29), 2, 1, 2), n));
+  jitter(cu, 0.05, 63u);
+  Cell cu_out = cu;
+  for (std::size_t p = 0; p < cu_out.size(); ++p) {
+    for (std::size_t c = 0; c < 3; ++c) {
+      cu_out.pos[3 * p + c] += (static_cast<double>(p) - 1.5) * 2.0 * cu.box[3 + c];
+    }
+  }
+  const auto e = evaluate(sc, cu);
+  const auto g = evaluate(sc, cu_out);
+  CHECK_THAT(g.energy, WithinAbs(e.energy, 1e-10));
+  for (std::size_t k = 0; k < e.forces.size(); ++k) {
+    CHECK_THAT(g.forces[k], WithinAbs(e.forces[k], 1e-9));
+  }
+
+  // Past the direct loop: a thin cell of 512 atoms, each a cell or two
+  // outside.
+  auto many = wrapped(repeat(fccPrimitive(kLjFcc, 18), 16, 8, 4));
+  jitter(many, 0.05, 61u);
+  Cell stale = many;
+  for (std::size_t p = 0; p < stale.size(); ++p) {
+    const int s[3] = {static_cast<int>(p % 3) - 1, static_cast<int>(p % 5) - 2,
+                      static_cast<int>(p % 2)};
+    for (std::size_t c = 0; c < 3; ++c) {
+      stale.pos[3 * p + c] +=
+          s[0] * many.box[c] + s[1] * many.box[3 + c] + s[2] * many.box[6 + c];
+    }
+  }
+  REQUIRE(stale.size() >= 512);
+  requirePublicListMatchesBrute(stale, 3.0, 6);
+  CHECK_THAT(evaluate(lj, stale).energy,
+             WithinAbs(evaluate(lj, many).energy, 1e-10 * static_cast<double>(many.size())));
 }
 
 TEST_CASE("a pair view keeps its list across calls", "[images][simd]") {

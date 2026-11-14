@@ -652,6 +652,14 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
     mode_ = Mode::Stored;
     off_.assign(n + 1, 0);
     nbr_.clear();
+    // One bin, so forShifts still finds a lone atom's own images.
+    nx_ = ny_ = nz_ = 1;
+    cell_of_.assign(n, 0);
+    cell_start_ = {0, static_cast<std::int32_t>(n)};
+    cell_atoms_.resize(n);
+    for (std::size_t a = 0; a < n; ++a) {
+      cell_atoms_[a] = static_cast<std::int32_t>(a);
+    }
     built_ = true;
     ref_.assign(xyz, xyz + 3 * n);
     return;

@@ -267,6 +267,75 @@ public:
                        search_ * search_);
   }
 
+  /// Every image `r_j + s H` of a partner that may lie inside the search,
+  /// as `fn(i, j, s)` with `s` an `int[3]`: `j == i` with a nonzero `s` is
+  /// an atom's own image, and `s` is zero on an open axis. The caller
+  /// measures each vector. The bins must come from Image::General with
+  /// `images` false, as the public list builds them. An atom outside the
+  /// cell is found at its own position.
+  template <typename Fn>
+  void forShifts(std::int64_t begin, std::int64_t end, Fn &&fn) const {
+    const CellFrame frame = cellFrame(box_, key_.periodic);
+    const int nb[3] = {nx_, ny_, nz_};
+    int reach[3];
+    for (int k = 0; k < 3; ++k) {
+      // A bin is width / nb across, so the search spans this many bins
+      // either side. An open axis is binned at least a search thick.
+      reach[k] = frame.periodic[k]
+                     ? static_cast<int>(std::ceil(search_ * nb[k] / frame.width[k]))
+                     : 1;
+    }
+    auto target = [&](int k, int raw, int &bin, int &shift) {
+      if (frame.periodic[k]) {
+        shift = raw >= 0 ? raw / nb[k] : -((-raw + nb[k] - 1) / nb[k]);
+        bin = raw - shift * nb[k];
+        return true;
+      }
+      shift = 0;
+      bin = raw;
+      return raw >= 0 && raw < nb[k];
+    };
+    double f[3];
+    for (std::int64_t i = begin; i < end; ++i) {
+      const auto a = static_cast<std::size_t>(i);
+      std::int32_t oi[3];
+      cellFraction(frame, xyz_ + 3 * a, f, oi);
+      const int cell = cell_of_[a];
+      const int home[3] = {cell / (nz_ * ny_), (cell / nz_) % ny_, cell % nz_};
+      int t[3];
+      int w[3];
+      for (int d0 = -reach[0]; d0 <= reach[0]; ++d0) {
+        if (!target(0, home[0] + d0, t[0], w[0])) {
+          continue;
+        }
+        for (int d1 = -reach[1]; d1 <= reach[1]; ++d1) {
+          if (!target(1, home[1] + d1, t[1], w[1])) {
+            continue;
+          }
+          for (int d2 = -reach[2]; d2 <= reach[2]; ++d2) {
+            if (!target(2, home[2] + d2, t[2], w[2])) {
+              continue;
+            }
+            const auto c = static_cast<std::size_t>((t[0] * ny_ + t[1]) * nz_ + t[2]);
+            for (std::int32_t q = cell_start_[c]; q < cell_start_[c + 1]; ++q) {
+              const auto j = cell_atoms_[static_cast<std::size_t>(q)];
+              std::int32_t oj[3];
+              cellFraction(frame, xyz_ + 3 * static_cast<std::size_t>(j), f, oj);
+              // The bins hold wrapped atoms: r = w + o H. The image of w_j
+              // at bin shift `w` is r_j + (w + o_i - o_j) H seen from r_i.
+              const int s[3] = {w[0] + oi[0] - oj[0], w[1] + oi[1] - oj[1],
+                                w[2] + oi[2] - oj[2]};
+              if (j == static_cast<std::int32_t>(i) && s[0] == 0 && s[1] == 0 && s[2] == 0) {
+                continue;
+              }
+              fn(static_cast<std::int32_t>(i), j, s);
+            }
+          }
+        }
+      }
+    }
+  }
+
 private:
   struct SpecKey {
     double cutoff = 0;
