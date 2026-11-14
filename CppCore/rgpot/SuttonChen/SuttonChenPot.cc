@@ -162,7 +162,12 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const double skin = mode_ == nlist::Mode::Stream ? 0.0 : cutoff / 5.0;
   nlist::updateCells(neighbours_, R, n_size, box_use, cutoff, skin, nlist::Image::Round,
                      mode_, periodic);
-  const int nt = nlist::threadsRequested();
+  int nt = nlist::threadsRequested();
+  // One thread is faster through 128 atoms. The serial half walk beats
+  // the gathered parallel walk there, and both return the same bits.
+  if (n_atoms <= 128) {
+    nt = 1;
+  }
   auto pair_term = [&](double r2, double &phi, double &rep) {
     const double ar2 = (lattice * lattice) / r2;
     pow_ar_both(ar2, n_exp, m_exp, rep, phi);

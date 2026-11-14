@@ -77,7 +77,12 @@ void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const double cutoff2 = cuttOffR * cuttOffR;
   const double twoDeA = 2.0 * De * a;
   const bool switched = m_config.switch_width != 0.0;
-  const int nt = nlist::threadsRequested();
+  int nt = nlist::threadsRequested();
+  // One thread is faster through 256 atoms. The batched walk beats the
+  // gathered parallel walk there, and both return the same bits.
+  if (N <= 256) {
+    nt = 1;
+  }
   // One exp per pair, in the order visitHalf walks them. A short run of
   // arguments goes through exp_fixed_n, whose lanes are the scalar exp, so
   // each pair still contributes the same energy and the same force.
