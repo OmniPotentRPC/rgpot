@@ -24,7 +24,63 @@ struct ChunkScratch {
   std::vector<int> origin;
   std::vector<double> slab;
   std::vector<double> partial;
+  std::vector<std::size_t> cursor;
+  std::uint64_t built = 0;
+  std::int64_t atoms = -1;
+  bool listed = false;
+  bool ready = false;
 };
+
+// Equal atom slices leave the low indices with almost every partner when
+// the cutoff spans the box. Contiguous slices with the same number of
+// higher partners keep the chunk order, and one thread still walks them
+// in that order.
+void balanceChunks(const std::int32_t *off, const std::int32_t *nbr, std::int64_t n, int k,
+                   int *begin, int *end) {
+  std::vector<int> run(static_cast<std::size_t>(n) + 1, 0);
+  for (std::int64_t i = 0; i < n; ++i) {
+    int higher = 0;
+    const auto row = static_cast<std::size_t>(i);
+    for (std::int32_t p = off[row]; p < off[row + 1]; ++p) {
+      if (nbr[static_cast<std::size_t>(p)] > static_cast<std::int32_t>(i)) {
+        ++higher;
+      }
+    }
+    run[static_cast<std::size_t>(i) + 1] = run[static_cast<std::size_t>(i)] + higher;
+  }
+  const int total = run[static_cast<std::size_t>(n)];
+  if (total == 0) {
+    for (int c = 0; c < k; ++c) {
+      const auto range = nlist::partition(n, c, k);
+      begin[c] = static_cast<int>(range.begin);
+      end[c] = static_cast<int>(range.end);
+    }
+    return;
+  }
+  int prev = 0;
+  for (int c = 0; c < k; ++c) {
+    int edge = static_cast<int>(n);
+    if (c + 1 < k) {
+      const int goal =
+          static_cast<int>((static_cast<long long>(c + 1) * static_cast<long long>(total)) / k);
+      int i = prev;
+      while (i < static_cast<int>(n) && run[static_cast<std::size_t>(i)] < goal) {
+        ++i;
+      }
+      const int remain = k - c - 1;
+      if (static_cast<int>(n) - i < remain) {
+        i = static_cast<int>(n) - remain;
+      }
+      if (i <= prev) {
+        i = std::min(static_cast<int>(n), prev + 1);
+      }
+      edge = i;
+    }
+    begin[c] = prev;
+    end[c] = edge;
+    prev = edge;
+  }
+}
 
 void pairTerm(const simd::LjParams &params, double r2, double &pair_e, double &fscale) {
   const double inv_r2 = 1.0 / r2;
@@ -89,15 +145,34 @@ void ljClusterChunks(nlist::Neighbours &cells, const simd::LjParams &params, dou
   scratch.end.resize(static_cast<std::size_t>(k));
   scratch.origin.resize(static_cast<std::size_t>(k));
   scratch.partial.assign(static_cast<std::size_t>(k), 0.0);
+  const bool listed =
+      !cells.streaming() && cells.offsets().size() == static_cast<std::size_t>(n) + 1;
+  if (!scratch.ready || scratch.built != cells.builds() || scratch.atoms != n ||
+      scratch.listed != listed) {
+    if (listed) {
+      balanceChunks(off, nbr, n, k, scratch.begin.data(), scratch.end.data());
+    } else {
+      for (int c = 0; c < k; ++c) {
+        const auto range = nlist::partition(n, c, k);
+        scratch.begin[static_cast<std::size_t>(c)] = static_cast<int>(range.begin);
+        scratch.end[static_cast<std::size_t>(c)] = static_cast<int>(range.end);
+      }
+    }
+    scratch.built = cells.builds();
+    scratch.atoms = n;
+    scratch.listed = listed;
+    scratch.ready = true;
+  }
   std::size_t words = 0;
   for (int c = 0; c < k; ++c) {
-    const auto range = nlist::partition(n, c, k);
-    scratch.begin[static_cast<std::size_t>(c)] = static_cast<int>(range.begin);
-    scratch.end[static_cast<std::size_t>(c)] = static_cast<int>(range.end);
+    const int edge = scratch.begin[static_cast<std::size_t>(c)];
     // A half pair i < j writes +f at i and -f at j, so the buffer starts
     // at the first i of the chunk and runs to the last atom.
-    scratch.origin[static_cast<std::size_t>(c)] = static_cast<int>(range.begin);
-    const std::size_t span = static_cast<std::size_t>(n - range.begin);
+    scratch.origin[static_cast<std::size_t>(c)] = edge;
+    const std::size_t span = scratch.begin[static_cast<std::size_t>(c)] ==
+                                     scratch.end[static_cast<std::size_t>(c)]
+                                 ? 0
+                                 : static_cast<std::size_t>(n - edge);
     words += span * 3;
   }
   scratch.slab.assign(words, 0.0);
@@ -106,19 +181,24 @@ void ljClusterChunks(nlist::Neighbours &cells, const simd::LjParams &params, dou
   int *origin = scratch.origin.data();
   double *slab = scratch.slab.data();
   double *partial = scratch.partial.data();
-  std::vector<std::size_t> cursor(static_cast<std::size_t>(k) + 1, 0);
+  scratch.cursor.assign(static_cast<std::size_t>(k) + 1, 0);
+  std::vector<std::size_t> &cursor = scratch.cursor;
   for (int c = 0; c < k; ++c) {
+    const std::size_t span =
+        begin[c] == end[c] ? 0 : static_cast<std::size_t>(n - origin[c]);
     cursor[static_cast<std::size_t>(c) + 1] =
-        cursor[static_cast<std::size_t>(c)] +
-        static_cast<std::size_t>(n - origin[c]) * 3;
+        cursor[static_cast<std::size_t>(c)] + span * 3;
   }
   std::size_t *base = cursor.data();
   auto run_chunk = [&](int c) {
+      const std::int64_t i0 = begin[c];
+      const std::int64_t i1 = end[c];
+      if (i0 == i1) {
+        return;
+      }
       double *local = slab + base[c];
       const int org = origin[c];
       double local_e = 0.0;
-      const std::int64_t i0 = begin[c];
-      const std::int64_t i1 = end[c];
       if (plain) {
         for (std::int64_t i = i0; i < i1; ++i) {
           const auto ui = static_cast<std::size_t>(i) * 3;
@@ -141,15 +221,16 @@ void ljClusterChunks(nlist::Neighbours &cells, const simd::LjParams &params, dou
           }
         }
       } else {
-        for (std::int64_t i = i0; i < i1; ++i) {
-          cells.forDirected(i, i + 1, [&](std::int32_t, std::int32_t j, double dx, double dy,
-                                          double dz, double r2) {
-            if (static_cast<std::int64_t>(j) <= i) {
-              return;
-            }
-            applyPair(local, org, i, j, dx, dy, dz, r2, cutoff2, params, local_e);
-          });
-        }
+        // One walk for the chunk. The image tables are built once here;
+        // a call per atom rebuilt them. j > i is the same suffix as before.
+        cells.forDirected(i0, i1, [&](std::int32_t i, std::int32_t j, double dx, double dy,
+                                      double dz, double r2) {
+          if (static_cast<std::int64_t>(j) <= static_cast<std::int64_t>(i)) {
+            return;
+          }
+          applyPair(local, org, static_cast<std::int64_t>(i), static_cast<std::int64_t>(j), dx,
+                    dy, dz, r2, cutoff2, params, local_e);
+        });
       }
       partial[c] = local_e;
   };
@@ -174,6 +255,9 @@ void ljClusterChunks(nlist::Neighbours &cells, const simd::LjParams &params, dou
   }
   double total = 0.0;
   for (int c = 0; c < k; ++c) {
+    if (begin[c] == end[c]) {
+      continue;
+    }
     total += partial[c];
     const double *local = slab + base[c];
     const int org = origin[c];
