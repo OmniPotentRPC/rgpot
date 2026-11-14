@@ -945,11 +945,9 @@ TEST_CASE("Per-atom LJ and EAM shares of atoms outside a wide cell",
   // spacings, through the Fortran EAM kernels.
   const int shear[3][3] = {{1, 0, 0}, {1, 1, 0}, {0, 0, 1}};
   const rgpot::fortranpots::EAMAlPot eamAl;
-  Cell alSmall = lattice(4.05, 6, kFcc, {13});
-  rattle(alSmall, 0.04);
-  const Result alRef = summed(eamAl, alSmall);
-  requireSameShares(alRef, summed(eamAl, unwrapped(alSmall)), 1e-10);
-  requireSameShares(alRef, requireFormInvariant(eamAl, rebased(alSmall, shear), 1e-10), 1e-10);
+  const Result alRef = summed(eamAl, al);
+  requireSameShares(alRef, summed(eamAl, unwrapped(al)), 1e-10);
+  requireSameShares(alRef, requireFormInvariant(eamAl, rebased(al, shear), 1e-10), 1e-10);
   const rgpot::fortranpots::CuH2Pot cuh2;
   Cell cu = lattice(3.61, 6, kFcc, {29});
   rattle(cu, 0.04);
