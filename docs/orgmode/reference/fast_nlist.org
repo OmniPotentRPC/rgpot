@@ -12,6 +12,8 @@ That is the default, =-Dwith_fast_nlist=auto=.
 The build then defines =RGPOT_HAS_FAST_NLIST=.
 A shared =librgpot= then exports the four functions, whether or not a potential inside it calls them.
 =scripts/abi_baseline_fast.txt= lists them.
+rustc writes no export directive into a static library, so on Windows the DLL
+exports them through a module definition file generated from that list.
 CMake does not build it.
 
 ** Callers
