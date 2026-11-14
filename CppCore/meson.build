@@ -746,6 +746,12 @@ if get_option('with_tests')
     if not get_option('with_rpc_client_only') and has_fortran
         test_array += [
             ['FortranPotsTest', 'fortran_pots_test', 'FortranPotsTest.cc', ''],
+            [
+                'PeriodicImagesTest',
+                'periodic_images_test',
+                'PeriodicImagesTest.cc',
+                '',
+            ],
         ]
     endif
     if not get_option('with_rpc_client_only')
