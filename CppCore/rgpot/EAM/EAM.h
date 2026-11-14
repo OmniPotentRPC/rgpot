@@ -30,12 +30,11 @@ struct ElementSpline;
 /// of that distance. One fraction for every geometry.
 inline constexpr double kEamSkinOverCutoff = 1.0 / 5.0;
 
-/// One OpenMP thread matches the direct pair loop bit for bit. Several
-/// threads each write the forces of their own atoms and add partial
-/// energies in thread-id order, so a fixed thread count repeats bit for
-/// bit. Energy and every force component stay within this relative
-/// tolerance of the one-thread value. A component whose one-thread
-/// magnitude is below 1 is compared on an absolute scale of the same size.
+/// One OpenMP thread matches the direct pair loop bit for bit, and more
+/// threads repeat that result. Energy and every force component stay
+/// within this relative tolerance of the one-thread value. A component
+/// whose one-thread magnitude is below 1 is compared on an absolute
+/// scale of the same size.
 inline constexpr double kEamThreadedTolerance = 1e-9;
 
 /// Embedded-atom aluminium, palladium and gold.
@@ -142,12 +141,11 @@ private:
   // Density term of a pure-metal pair, stored from the lower atom index
   // into the higher atom's slot. The higher atom reuses it when its own
   // squared distance has the same bits, so the sum is the one it would
-  // have computed. Only the one-thread evaluation writes these slots:
-  // it walks atoms in index order, so the store happens before the read.
-  // The OpenMP evaluation uses fscale_ and morse_ and does not touch them.
-  // A force call is not invoked on one object from two external threads.
-  // The batch builds one instance per worker, and the RPC server does not
-  // serve this kernel.
+  // have computed. One thread writes the slot while it walks atoms in
+  // index order, so the store happens before the read. Several threads
+  // fill every pure slot before that walk. A force call is not invoked
+  // on one object from two external threads. The batch builds one
+  // instance per worker, and the RPC server does not serve this kernel.
   std::vector<double> reuse_r2_;
   std::vector<double> reuse_rho_;
   std::vector<double> reuse_fs_;
@@ -180,6 +178,10 @@ private:
   void accumulate(long i, const int *atomicNrs, double *F, double &U,
                   std::vector<Delta> &deltas, const std::int32_t *stream_ids,
                   long stream_n);
+  void accumulateFilled(long i, const int *atomicNrs, double *F, double &U,
+                        std::vector<Delta> &deltas);
+  void prefillPure(long N, const int *atomicNrs);
+  void evaluateThreaded(long N, const int *atomicNrs, double *F, double *U);
   void geometry(long i, long j, double &dx, double &dy, double &dz,
                 double &r2) const;
   [[nodiscard]] int threadsRequested() const;

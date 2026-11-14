@@ -1,0 +1,1 @@
+A threaded Lennard-Jones cluster sums each atom's own force, and a threaded stored embedded-atom metal fills the pure-metal exponentials before the same atom-order walk. Both still match the one-thread energy and forces bit for bit.

@@ -573,6 +573,14 @@ void EAM::force(long N, const double *R, const int *atomicNrs, double *F,
   }
   prepare(N, R, box);
   buildList(N);
+  // The fill pays for itself from 8 threads, and from 4 threads once the
+  // cell holds at least 1024 atoms. Every other call keeps evaluate().
+  const int nt = threadsRequested();
+  if (!neighbours_.streaming() && nt > 1 && (nt >= 8 || N >= 1024)) {
+    threads_used_ = nt;
+    evaluateThreaded(N, atomicNrs, F, U);
+    return;
+  }
   evaluate(N, atomicNrs, F, U);
 }
 

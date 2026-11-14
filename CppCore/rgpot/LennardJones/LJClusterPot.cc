@@ -28,6 +28,111 @@
 #endif
 
 namespace rgpot {
+namespace {
+
+struct ClusterScratch {
+  std::vector<double> terms;
+  std::vector<int> slot;
+  std::vector<int> kept;
+};
+
+// Kept out of the one-thread walk so that walk's code stays the serial one.
+[[gnu::noinline]] void clusterOwner(nlist::Neighbours &cells, const simd::LjParams &params,
+                                    double cutoff2, double *F, double *U, std::int64_t N,
+                                    int nt) {
+  const auto &off = cells.offsets();
+  const auto &nbr = cells.neighbours();
+  thread_local ClusterScratch scratch;
+  auto &slot = scratch.slot;
+  auto &terms = scratch.terms;
+  auto &kept = scratch.kept;
+  slot.assign(static_cast<std::size_t>(N) + 1, 0);
+  for (std::int64_t i = 0; i < N; ++i) {
+    int count = 0;
+    const auto row = static_cast<std::size_t>(i);
+    for (std::int32_t p = off[row]; p < off[row + 1]; ++p) {
+      if (nbr[static_cast<std::size_t>(p)] > i) {
+        ++count;
+      }
+    }
+    slot[row + 1] = slot[row] + count;
+  }
+  const int nterm_all = slot[static_cast<std::size_t>(N)];
+  if (static_cast<int>(terms.size()) < nterm_all) {
+    terms.resize(static_cast<std::size_t>(nterm_all));
+  }
+  kept.assign(static_cast<std::size_t>(N), 0);
+  auto eval = [&](double r2, double &pair_e, double &fscale) {
+    const double inv_r2 = 1.0 / r2;
+    const double sr2 = params.psi2 * inv_r2;
+    const double a = (sr2 * sr2) * sr2;
+    const double b = params.four_u0 * a;
+    if (params.use_switch == 0) {
+      pair_e = b * (a - 1.0) - params.shift;
+      fscale = ((6.0 * b) * inv_r2) * ((2.0 * a) - 1.0);
+      return;
+    }
+    const double r = std::sqrt(r2);
+    const double t_raw = (r - params.r_on) * params.inv_width;
+    const double t = t_raw < 0.0 ? 0.0 : (t_raw > 1.0 ? 1.0 : t_raw);
+    const double t2 = t * t;
+    const double t3 = t2 * t;
+    const double poly = simd::fma_quick(t, 15.0 - 6.0 * t, -10.0);
+    const double s = simd::fma_quick(t3, poly, 1.0);
+    const double dsdr = ((-30.0 * t2) * (1.0 - t) * (1.0 - t)) * params.inv_width;
+    const double v = b * (a - 1.0);
+    const double f_un = ((6.0 * b) * inv_r2) * ((2.0 * a) - 1.0);
+    pair_e = v * s;
+    fscale = f_un * s - (v * dsdr) / r;
+  };
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+  {
+#if defined(_OPENMP)
+    const int thread = omp_get_thread_num();
+#else
+    const int thread = 0;
+#endif
+    const auto range = nlist::partition(N, thread, nt);
+    for (std::int64_t i = range.begin; i < range.end; ++i) {
+      double *write = terms.data() + slot[static_cast<std::size_t>(i)];
+      int nterm = 0;
+      double fx = 0.0;
+      double fy = 0.0;
+      double fz = 0.0;
+      cells.forDirected(i, i + 1, [&](std::int32_t, std::int32_t j, double dx, double dy, double dz,
+                                      double r2) {
+        if (!(r2 > 0.0) || r2 > cutoff2) {
+          return;
+        }
+        double pair_e = 0.0;
+        double fscale = 0.0;
+        eval(r2, pair_e, fscale);
+        if (i < j) {
+          write[nterm] = pair_e;
+          ++nterm;
+        }
+        fx += fscale * dx;
+        fy += fscale * dy;
+        fz += fscale * dz;
+      });
+      kept[static_cast<std::size_t>(i)] = nterm;
+      F[3 * i] = fx;
+      F[3 * i + 1] = fy;
+      F[3 * i + 2] = fz;
+    }
+  }
+  for (std::int64_t i = 0; i < N; ++i) {
+    const double *term = terms.data() + slot[static_cast<std::size_t>(i)];
+    const int nterm = kept[static_cast<std::size_t>(i)];
+    for (int k = 0; k < nterm; ++k) {
+      *U += term[k];
+    }
+  }
+}
+
+} // namespace
 
 /**
  * @class LJClusterPot
@@ -157,11 +262,20 @@ void LJClusterPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     force[3 * j + 1] -= fy;
     force[3 * j + 2] -= fz;
   };
-  // Same order at every thread count. The cluster pair is short enough
-  // that a stored-term replay is slower than this walk.
-  nlist::visitHalf(neighbours_, 0, N,
-                   [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                       double r2) { accept(i, j, dx, dy, dz, r2, F, *U); });
+  const int nt = nlist::threadsRequested();
+  // A stream walks cells, not the stored partner order, so the owner
+  // sums would not match the half walk. One thread stays on that walk.
+  if (nt <= 1 || neighbours_.streaming() ||
+      neighbours_.offsets().size() != static_cast<std::size_t>(N) + 1) {
+    nlist::visitHalf(neighbours_, 0, N,
+                     [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                         double r2) { accept(i, j, dx, dy, dz, r2, F, *U); });
+    return;
+  }
+  // Each atom owns its force. Stored partners are sorted, so the additions
+  // to one atom are the same sequence the half walk uses. Pair energies are
+  // replayed in that order, one term at a time.
+  clusterOwner(neighbours_, params, cutoff2, F, U, N, nt);
 }
 
 } // namespace rgpot
