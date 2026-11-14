@@ -321,4 +321,5 @@ The coverage check fails when one of them disappears from this book.
   =rgpot_fast_wrap_axes=, =rgpot_fast_last_error= :: the orthorhombic candidate
   list and the minimum-image wrap.
   A negative code leaves a thread-local sentence.
+  They exist only when the fast list is built.
 - =rgpot_plugin_init= :: the one symbol a plugin shared library exports.
