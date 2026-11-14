@@ -35,6 +35,12 @@ void EMTPot::reset() const {
 
 void EMTPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const long n = static_cast<long>(in.nAtoms);
+  out->variance = 0.0;
+  out->has_stress = 0;
+  if (n == 0) {
+    out->energy = 0.0;
+    return;
+  }
   std::vector<double> pos(in.pos, in.pos + 3 * n);
   Vec basis[3] = {
       Vec(in.box[0], in.box[1], in.box[2]),
@@ -70,8 +76,6 @@ void EMTPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   out->energy = emt->GetPotentialEnergy();
   const Vec *forces = emt->GetCartesianForces();
   std::memcpy(out->F, forces, static_cast<size_t>(n) * sizeof(Vec));
-  out->variance = 0.0;
-  out->has_stress = 0;
 }
 
 } // namespace rgpot
