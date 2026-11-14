@@ -81,6 +81,39 @@ def test_arrays_view_the_table_after_the_wrapper_is_deleted():
     assert int(i[0]) == 4
 
 
+_ZERO_PAIR_SYSTEMS = {
+    "empty": np.zeros((0, 3), dtype=np.float64),
+    "one atom": np.array([[2.0, 2.0, 2.0]], dtype=np.float64),
+    "apart": np.array([[2.0, 2.0, 2.0], [6.0, 2.0, 2.0], [2.0, 6.0, 2.0]], dtype=np.float64),
+}
+
+
+def _require_zero_pairs(positions, cell, full):
+    natoms = positions.shape[0]
+    i, j, d, D, S, offsets = rgpot.neighbor_list(positions, cell, 2.0, quantities="ijdDS", full=full, offsets=True)
+    assert i.shape == (0,)
+    assert j.shape == (0,)
+    assert d.shape == (0,)
+    assert D.shape == (0, 3)
+    assert S.shape == (0, 3)
+    assert list(offsets) == [0] * (natoms + 1)
+
+
+@pytest.mark.parametrize("name", list(_ZERO_PAIR_SYSTEMS))
+@pytest.mark.parametrize("full", [False, True])
+def test_zero_pairs_between_calls_with_pairs(name, full):
+    positions = _ZERO_PAIR_SYSTEMS[name]
+    cell = np.diag([8.0, 8.0, 8.0])
+    bonded = np.array([[0.0, 0.0, 0.0], [1.2, 0.0, 0.0]], dtype=np.float64)
+    _require_zero_pairs(positions, cell, full)
+    i, j, d = rgpot.neighbor_list(bonded, cell, 2.0, full=full)
+    assert len(i) == (2 if full else 1)
+    assert d[0] == pytest.approx(1.2)
+    _require_zero_pairs(positions, cell, full)
+    i, j, d = rgpot.neighbor_list(bonded, cell, 2.0, full=full)
+    assert len(i) == (2 if full else 1)
+
+
 def _keyed(i, j, d):
     order = np.lexsort((d, j, i))
     return i[order].astype(np.int64), j[order].astype(np.int64), d[order]
