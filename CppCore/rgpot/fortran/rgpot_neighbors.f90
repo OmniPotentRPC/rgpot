@@ -58,6 +58,14 @@ module rgpot_neighbors
       real(c_double), allocatable, private :: scratch_v(:, :), scratch_d(:)
       !> Partner-order scratch. Kept across calls.
       integer(ip), allocatable, private :: ord_fill(:), ord_by(:), ord_j0(:)
+      !> Where each filled pair landed in the partner-ordered table.
+      !! Zero when that pair is an atom with itself. Kept while the
+      !! filled (i, j) sequence is unchanged, so a later step only
+      !! writes new vectors.
+      integer(ip), allocatable, private :: slot_of(:)
+      integer(c_int), allocatable, private :: prev_i(:), prev_j(:)
+      integer, private :: n_order = 0
+      logical, private :: have_order = .false.
       !> Geometry of the table now stored. A later call with the same bits
       !! does not walk or copy again.
       real(wp), allocatable, private :: ref_pos(:, :)
@@ -229,61 +237,78 @@ contains
          np = int(needed)
       end if
 
-      if (allocated(self%row)) then
-         if (size(self%row) /= natoms + 1) deallocate (self%row)
-      end if
-      if (.not. allocated(self%row)) allocate (self%row(natoms + 1))
-      call grow_index(self%ord_fill, natoms)
-      self%ord_fill(1:natoms) = 0_ip
-
-      ! Rows ordered by partner index, so a reused candidate list and a
-      ! fresh build sum forces in one order.
-      call grow_index(self%ord_by, max(np, 1))
-      call grow_index(self%ord_j0, natoms + 1)
-      self%ord_j0(1:natoms + 1) = 0_ip
-      self%row = 0_ip
-      do p = 1, np
-         i = int(self%scratch_i(p), ip) + 1_ip
-         j = int(self%scratch_j(p), ip) + 1_ip
-         if (i == j) cycle
-         self%row(i) = self%row(i) + 1_ip
-         self%ord_j0(j) = self%ord_j0(j) + 1_ip
-      end do
-
-      call prefix_sum(self%row)
-      call prefix_sum(self%ord_j0(1:natoms + 1))
-
-      nkept = int(self%row(natoms + 1) - 1_ip)
-      do p = 1, np
-         i = int(self%scratch_i(p), ip) + 1_ip
-         j = int(self%scratch_j(p), ip) + 1_ip
-         if (i == j) cycle
-         self%ord_by(self%ord_j0(j)) = p
-         self%ord_j0(j) = self%ord_j0(j) + 1_ip
-      end do
-
-      if (allocated(self%idx)) then
-         if (size(self%idx) < self%row(natoms + 1) - 1_ip) then
-            deallocate (self%idx, self%vec, self%dist)
+      ! The builder reuses its candidate order inside the skin. The
+      ! partner permutation then stays put, and only the vectors change.
+      if (reused == 1_c_int32_t .and. self%have_order .and. np == self%n_order .and. &
+          same_pairs(self%prev_i, self%prev_j, self%scratch_i, self%scratch_j, np)) then
+         do p = 1, np
+            if (self%slot_of(p) == 0_ip) cycle
+            self%vec(:, self%slot_of(p)) = self%scratch_v(:, p)
+            self%dist(self%slot_of(p)) = self%scratch_d(p)
+         end do
+      else
+         if (allocated(self%row)) then
+            if (size(self%row) /= natoms + 1) deallocate (self%row)
          end if
-      end if
-      if (.not. allocated(self%idx)) then
-         allocate (self%idx(max(int(self%row(natoms + 1)) - 1, 1)))
-         allocate (self%vec(3, max(int(self%row(natoms + 1)) - 1, 1)))
-         allocate (self%dist(max(int(self%row(natoms + 1)) - 1, 1)))
-      end if
+         if (.not. allocated(self%row)) allocate (self%row(natoms + 1))
+         call grow_index(self%ord_fill, natoms)
+         self%ord_fill(1:natoms) = 0_ip
 
-      do q = 1, nkept
-         p = int(self%ord_by(q))
-         i = int(self%scratch_i(p), ip) + 1_ip
-         j = int(self%scratch_j(p), ip) + 1_ip
-         associate (slot => self%row(i) + self%ord_fill(i))
-            self%idx(slot) = j
-            self%vec(:, slot) = self%scratch_v(:, p)
-            self%dist(slot) = self%scratch_d(p)
-         end associate
-         self%ord_fill(i) = self%ord_fill(i) + 1_ip
-      end do
+         ! Rows ordered by partner index, so a reused candidate list and a
+         ! fresh build sum forces in one order.
+         call grow_index(self%ord_by, max(np, 1))
+         call grow_index(self%ord_j0, natoms + 1)
+         call grow_slots(self%slot_of, np)
+         self%slot_of(1:max(np, 1)) = 0_ip
+         self%ord_j0(1:natoms + 1) = 0_ip
+         self%row = 0_ip
+         do p = 1, np
+            i = int(self%scratch_i(p), ip) + 1_ip
+            j = int(self%scratch_j(p), ip) + 1_ip
+            if (i == j) cycle
+            self%row(i) = self%row(i) + 1_ip
+            self%ord_j0(j) = self%ord_j0(j) + 1_ip
+         end do
+
+         call prefix_sum(self%row)
+         call prefix_sum(self%ord_j0(1:natoms + 1))
+
+         nkept = int(self%row(natoms + 1) - 1_ip)
+         do p = 1, np
+            i = int(self%scratch_i(p), ip) + 1_ip
+            j = int(self%scratch_j(p), ip) + 1_ip
+            if (i == j) cycle
+            self%ord_by(self%ord_j0(j)) = p
+            self%ord_j0(j) = self%ord_j0(j) + 1_ip
+         end do
+
+         if (allocated(self%idx)) then
+            if (size(self%idx) < self%row(natoms + 1) - 1_ip) then
+               deallocate (self%idx, self%vec, self%dist)
+            end if
+         end if
+         if (.not. allocated(self%idx)) then
+            allocate (self%idx(max(int(self%row(natoms + 1)) - 1, 1)))
+            allocate (self%vec(3, max(int(self%row(natoms + 1)) - 1, 1)))
+            allocate (self%dist(max(int(self%row(natoms + 1)) - 1, 1)))
+         end if
+
+         do q = 1, nkept
+            p = int(self%ord_by(q))
+            i = int(self%scratch_i(p), ip) + 1_ip
+            j = int(self%scratch_j(p), ip) + 1_ip
+            associate (slot => self%row(i) + self%ord_fill(i))
+               self%idx(slot) = j
+               self%vec(:, slot) = self%scratch_v(:, p)
+               self%dist(slot) = self%scratch_d(p)
+               self%slot_of(p) = slot
+            end associate
+            self%ord_fill(i) = self%ord_fill(i) + 1_ip
+         end do
+         call keep_pairs(self%prev_i, self%prev_j, self%scratch_i, self%scratch_j, np)
+         self%n_order = np
+         self%have_order = .true.
+      end if
 
       if (.not. allocated(self%ref_pos) .or. size(self%ref_pos, 2) /= natoms) then
          if (allocated(self%ref_pos)) deallocate (self%ref_pos)
@@ -304,6 +329,8 @@ contains
       self%cutoff = -1.0_wp
       self%skin = -1.0_wp
       self%have_geom = .false.
+      self%have_order = .false.
+      self%n_order = 0
    end subroutine neighbor_table_release
 
    !> Number of neighbours atom `i` owns.
@@ -314,6 +341,53 @@ contains
 
       n = self%row(i + 1_ip) - self%row(i)
    end function neighbor_table_count_for
+
+   !> True when the filled pair sequence is the one already ordered.
+   pure function same_pairs(ai, aj, bi, bj, n) result(eq)
+      integer(c_int), intent(in) :: ai(:), aj(:), bi(:), bj(:)
+      integer, intent(in) :: n
+      logical :: eq
+      integer :: p
+
+      eq = n >= 0
+      if (.not. eq) return
+      if (n == 0) return
+      if (size(ai) < n .or. size(aj) < n .or. size(bi) < n .or. size(bj) < n) then
+         eq = .false.
+         return
+      end if
+      do p = 1, n
+         if (ai(p) /= bi(p) .or. aj(p) /= bj(p)) then
+            eq = .false.
+            return
+         end if
+      end do
+   end function same_pairs
+
+   subroutine keep_pairs(ai, aj, bi, bj, n)
+      integer(c_int), allocatable, intent(inout) :: ai(:), aj(:)
+      integer(c_int), intent(in) :: bi(:), bj(:)
+      integer, intent(in) :: n
+
+      if (n <= 0) return
+      if (.not. allocated(ai) .or. size(ai) < n) then
+         if (allocated(ai)) deallocate (ai, aj)
+         allocate (ai(n), aj(n))
+      end if
+      ai(1:n) = bi(1:n)
+      aj(1:n) = bj(1:n)
+   end subroutine keep_pairs
+
+   subroutine grow_slots(buf, n)
+      integer(ip), allocatable, intent(inout) :: buf(:)
+      integer, intent(in) :: n
+
+      if (allocated(buf)) then
+         if (size(buf) >= max(n, 1)) return
+         deallocate (buf)
+      end if
+      allocate (buf(max(n, 1)))
+   end subroutine grow_slots
 
    !> Grow an index buffer without discarding one that is already long enough.
    subroutine grow_index(buf, n)
