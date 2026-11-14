@@ -53,6 +53,12 @@ def _assert_expr_potspec(schema_path: Path, lines: list[str]) -> None:
     cfg = "\n".join(_struct_body(lines, "PotentialConfig", rel))
     if re.search(r"^\s+(expr|sum|list)\s+@", cfg, re.MULTILINE):
         raise AssertionError(f"{rel} PotentialConfig must not grow expr/sum/list arms")
+    if not re.search(r"^\s+morse\s+@10\s*:\s*MorseParams", cfg, re.MULTILINE):
+        raise AssertionError(f"{rel} PotentialConfig.morse must be MorseParams at ordinal 10")
+    morse = "\n".join(_struct_body(lines, "MorseParams", rel))
+    for field, ordinal in (("de", 0), ("a", 1), ("re", 2), ("cutoff", 3)):
+        if not re.search(rf"^\s+{field}\s+@{ordinal}\s*:", morse, re.MULTILINE):
+            raise AssertionError(f"{rel} MorseParams.{field} must stay at ordinal {ordinal}")
 
 
 def _regenerate(root: Path, capnp: str, schema: Path, out: Path) -> dict[str, bytes]:

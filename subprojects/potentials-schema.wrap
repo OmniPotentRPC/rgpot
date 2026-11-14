@@ -3,4 +3,5 @@ directory = potentials-schema-2a1d127c2dd0
 url = https://github.com/OmniPotentRPC/potentials-schema.git
 revision = 2a1d127c2dd0172fc4ea3412f267faebc942b46f
 # Same ExprParams/PotSpec tree as the vendored copies, on top of the UMA pin.
-diff_files = expr-potspec.diff
+# morse-potential-config.diff puts PotentialConfig.morse @10 back on that pin.
+diff_files = expr-potspec.diff, morse-potential-config.diff

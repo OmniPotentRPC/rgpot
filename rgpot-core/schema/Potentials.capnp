@@ -2539,6 +2539,13 @@ struct PotSpec {
   }
 }
 
+struct MorseParams {
+  de @0 :Float64 = 0.7102;
+  a @1 :Float64 = 1.6047;
+  re @2 :Float64 = 2.897;
+  cutoff @3 :Float64 = 9.5;
+}
+
 # @struct PotentialConfig
 # @brief **rgpot user parameters (extensible, in/out via Cap'n Proto only).**
 #
@@ -2559,6 +2566,7 @@ struct PotentialConfig {
     lammps    @5 :LammpsParams;    # lammpc dynlib shim (LAMMPS library API)
     # xtb       @6 :XTBParams;
     # tblite    @7 :TBLiteParams;
+    morse     @10 :MorseParams;
   }
   # Normalized overlay applied BEFORE the native arm; native settings win.
   common @3 :CommonMethodSpec;
