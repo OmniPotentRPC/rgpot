@@ -150,6 +150,9 @@ void TersoffSiC::runWide(const int *kind, int n, int nt, double cut2, double sca
   bond_at.resize(static_cast<std::size_t>(n) + 1);
   bond_n.assign(static_cast<std::size_t>(n), 0);
   bond_at[0] = 0;
+  if (static_cast<int>(local_n.size()) < nt * n) {
+    local_n.resize(static_cast<std::size_t>(nt) * static_cast<std::size_t>(n));
+  }
 #if defined(_OPENMP)
 #pragma omp parallel num_threads(nt)
 #endif
@@ -164,24 +167,21 @@ void TersoffSiC::runWide(const int *kind, int n, int nt, double cut2, double sca
       bond_n[static_cast<std::size_t>(i)] =
           row[static_cast<std::size_t>(i) + 1] - row[static_cast<std::size_t>(i)];
     }
-  }
-  for (int i = 0; i < n; ++i) {
-    bond_at[static_cast<std::size_t>(i) + 1] =
-        bond_at[static_cast<std::size_t>(i)] + bond_n[static_cast<std::size_t>(i)];
-  }
-  if (static_cast<int>(bonds.size()) < bond_at[static_cast<std::size_t>(n)]) {
-    bonds.resize(static_cast<std::size_t>(bond_at[static_cast<std::size_t>(n)]));
-  }
 #if defined(_OPENMP)
-#pragma omp parallel num_threads(nt)
+#pragma omp barrier
 #endif
-  {
+    if (t == 0) {
+      for (int i = 0; i < n; ++i) {
+        bond_at[static_cast<std::size_t>(i) + 1] =
+            bond_at[static_cast<std::size_t>(i)] + bond_n[static_cast<std::size_t>(i)];
+      }
+      if (static_cast<int>(bonds.size()) < bond_at[static_cast<std::size_t>(n)]) {
+        bonds.resize(static_cast<std::size_t>(bond_at[static_cast<std::size_t>(n)]));
+      }
+    }
 #if defined(_OPENMP)
-    const int t = omp_get_thread_num();
-#else
-    const int t = 0;
+#pragma omp barrier
 #endif
-    const auto range = nlist::partition(n, t, nt);
     for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
       const int room =
           bond_at[static_cast<std::size_t>(i) + 1] - bond_at[static_cast<std::size_t>(i)];
@@ -189,28 +189,17 @@ void TersoffSiC::runWide(const int *kind, int n, int nt, double cut2, double sca
       bond_n[static_cast<std::size_t>(i)] =
           storeBonds(neighbours_, m_pair, kind, i, cut2, dest, room);
     }
-  }
-  // Every bond emits two force hits. Every ordered angle emits three, and a
-  // zero update stands in when the bond-order derivative vanishes so the
-  // row stays the scatter left fold.
-  if (static_cast<int>(local_n.size()) < nt * n) {
-    local_n.resize(static_cast<std::size_t>(nt) * static_cast<std::size_t>(n));
-  }
-  std::fill(local_n.begin(),
-            local_n.begin() + static_cast<std::size_t>(nt) * static_cast<std::size_t>(n), 0);
-  energy_at.resize(static_cast<std::size_t>(n) + 1);
-  energy_at[0] = 0;
 #if defined(_OPENMP)
-#pragma omp parallel num_threads(nt)
+#pragma omp barrier
 #endif
-  {
+    if (t == 0) {
+      std::fill(local_n.begin(),
+                local_n.begin() + static_cast<std::size_t>(nt) * static_cast<std::size_t>(n), 0);
+    }
 #if defined(_OPENMP)
-    const int t = omp_get_thread_num();
-#else
-    const int t = 0;
+#pragma omp barrier
 #endif
     int *mine = local_n.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(n);
-    const auto range = nlist::partition(n, t, nt);
     for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
       const Bond *nb = bonds.data() + bond_at[static_cast<std::size_t>(i)];
       const int m = bond_n[static_cast<std::size_t>(i)];
@@ -227,52 +216,52 @@ void TersoffSiC::runWide(const int *kind, int n, int nt, double cut2, double sca
         }
       }
     }
-  }
-  touch.resize(static_cast<std::size_t>(n) + 1);
-  touch[0] = 0;
-  for (int i = 0; i < n; ++i) {
-    const int m = bond_n[static_cast<std::size_t>(i)];
-    energy_at[static_cast<std::size_t>(i) + 1] = energy_at[static_cast<std::size_t>(i)] + m;
-    int hits = 0;
-    for (int t = 0; t < nt; ++t) {
-      hits += local_n[static_cast<std::size_t>(t) * static_cast<std::size_t>(n) +
-                      static_cast<std::size_t>(i)];
-    }
-    touch[static_cast<std::size_t>(i) + 1] = touch[static_cast<std::size_t>(i)] + hits;
-  }
-  const int nenergy = energy_at[static_cast<std::size_t>(n)];
-  const int ntouch = touch[static_cast<std::size_t>(n)];
-  if (static_cast<int>(eterm.size()) < nenergy) {
-    eterm.resize(static_cast<std::size_t>(nenergy));
-  }
-  if (static_cast<int>(csr.size()) < ntouch) {
-    csr.resize(static_cast<std::size_t>(ntouch));
-  }
-  if (static_cast<int>(cursor.size()) < nt * n) {
-    cursor.resize(static_cast<std::size_t>(nt) * static_cast<std::size_t>(n));
-  }
-  const int strain_on = strain != nullptr ? 1 : 0;
-  strain_at.resize(static_cast<std::size_t>(n) + 1);
-  strain_n.assign(static_cast<std::size_t>(n), 0);
-  strain_used.assign(static_cast<std::size_t>(n), 0);
-  strain_at[0] = 0;
-  for (int i = 0; i < n; ++i) {
-    const int m = bond_n[static_cast<std::size_t>(i)];
-    strain_n[static_cast<std::size_t>(i)] = strain_on * (m + 2 * m * (m - 1));
-    strain_at[static_cast<std::size_t>(i) + 1] =
-        strain_at[static_cast<std::size_t>(i)] + strain_n[static_cast<std::size_t>(i)];
-  }
-  if (static_cast<int>(strain_hit.size()) < strain_at[static_cast<std::size_t>(n)]) {
-    strain_hit.resize(static_cast<std::size_t>(strain_at[static_cast<std::size_t>(n)]));
-  }
 #if defined(_OPENMP)
-#pragma omp parallel num_threads(nt)
+#pragma omp barrier
 #endif
-  {
+    if (t == 0) {
+      touch.resize(static_cast<std::size_t>(n) + 1);
+      touch[0] = 0;
+      energy_at.resize(static_cast<std::size_t>(n) + 1);
+      energy_at[0] = 0;
+      for (int i = 0; i < n; ++i) {
+        const int m = bond_n[static_cast<std::size_t>(i)];
+        energy_at[static_cast<std::size_t>(i) + 1] = energy_at[static_cast<std::size_t>(i)] + m;
+        int hits = 0;
+        for (int u = 0; u < nt; ++u) {
+          hits += local_n[static_cast<std::size_t>(u) * static_cast<std::size_t>(n) +
+                          static_cast<std::size_t>(i)];
+        }
+        touch[static_cast<std::size_t>(i) + 1] = touch[static_cast<std::size_t>(i)] + hits;
+      }
+      const int nenergy = energy_at[static_cast<std::size_t>(n)];
+      const int ntouch = touch[static_cast<std::size_t>(n)];
+      if (static_cast<int>(eterm.size()) < nenergy) {
+        eterm.resize(static_cast<std::size_t>(nenergy));
+      }
+      if (static_cast<int>(csr.size()) < ntouch) {
+        csr.resize(static_cast<std::size_t>(ntouch));
+      }
+      if (static_cast<int>(cursor.size()) < nt * n) {
+        cursor.resize(static_cast<std::size_t>(nt) * static_cast<std::size_t>(n));
+      }
+      const int strain_on = strain != nullptr ? 1 : 0;
+      strain_at.resize(static_cast<std::size_t>(n) + 1);
+      strain_n.assign(static_cast<std::size_t>(n), 0);
+      strain_used.assign(static_cast<std::size_t>(n), 0);
+      strain_at[0] = 0;
+      for (int i = 0; i < n; ++i) {
+        const int m = bond_n[static_cast<std::size_t>(i)];
+        strain_n[static_cast<std::size_t>(i)] = strain_on * (m + 2 * m * (m - 1));
+        strain_at[static_cast<std::size_t>(i) + 1] =
+            strain_at[static_cast<std::size_t>(i)] + strain_n[static_cast<std::size_t>(i)];
+      }
+      if (static_cast<int>(strain_hit.size()) < strain_at[static_cast<std::size_t>(n)]) {
+        strain_hit.resize(static_cast<std::size_t>(strain_at[static_cast<std::size_t>(n)]));
+      }
+    }
 #if defined(_OPENMP)
-    const int t = omp_get_thread_num();
-#else
-    const int t = 0;
+#pragma omp barrier
 #endif
     int *place = cursor.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(n);
     for (int atom = 0; atom < n; ++atom) {
@@ -284,7 +273,6 @@ void TersoffSiC::runWide(const int *kind, int n, int nt, double cut2, double sca
       place[atom] = off;
     }
     std::vector<Angle> ang;
-    const auto range = nlist::partition(n, t, nt);
     for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
       const Bond *nb = bonds.data() + bond_at[static_cast<std::size_t>(i)];
       const TersoffSiC::Species &sp = m_species[kind[i]];
@@ -369,26 +357,9 @@ void TersoffSiC::runWide(const int *kind, int n, int nt, double cut2, double sca
       }
       strain_used[static_cast<std::size_t>(i)] = ns;
     }
-  }
-  double total = 0.0;
-  for (int i = 0; i < n; ++i) {
-    const double *steps = eterm.data() + energy_at[static_cast<std::size_t>(i)];
-    const int ne = bond_n[static_cast<std::size_t>(i)];
-    for (int k = 0; k < ne; ++k) {
-      total += steps[k];
-    }
-  }
-  *energy = total;
 #if defined(_OPENMP)
-#pragma omp parallel num_threads(nt)
+#pragma omp barrier
 #endif
-  {
-#if defined(_OPENMP)
-    const int t = omp_get_thread_num();
-#else
-    const int t = 0;
-#endif
-    const auto range = nlist::partition(n, t, nt);
     for (int atom = static_cast<int>(range.begin); atom < static_cast<int>(range.end); ++atom) {
       double x = 0.0;
       double y = 0.0;
@@ -405,6 +376,15 @@ void TersoffSiC::runWide(const int *kind, int n, int nt, double cut2, double sca
       acc[3 * atom + 2] += z;
     }
   }
+  double total = 0.0;
+  for (int i = 0; i < n; ++i) {
+    const double *steps = eterm.data() + energy_at[static_cast<std::size_t>(i)];
+    const int ne = bond_n[static_cast<std::size_t>(i)];
+    for (int k = 0; k < ne; ++k) {
+      total += steps[k];
+    }
+  }
+  *energy = total;
   if (strain != nullptr) {
     for (int i = 0; i < n; ++i) {
       const StrainHit *hit = strain_hit.data() + strain_at[static_cast<std::size_t>(i)];

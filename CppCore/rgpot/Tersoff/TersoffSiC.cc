@@ -409,7 +409,9 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
       }
     }
   }
-  } else if (stored && n >= 256) {
+  } else if (stored) {
+    // One team fills the rows. Hits stay in thread order, which is the
+    // one-thread order for a contiguous partition.
     runWide(kind, n, nt, cut2, scale, energy, acc, strain);
   } else {
     // Slots are indexed by the one-thread scatter position and summed
