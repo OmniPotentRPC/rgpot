@@ -290,8 +290,9 @@ class Case:
     which gets a bounded number of optimizer steps instead.
     ``tweak`` is a parameter change for set(). ``new_numbers`` gives
     other valid atomic numbers for the cache check. ``small`` is a cell
-    thinner than twice the cutoff; it is None where the calculator does
-    not know the range (WaterH has none, the i-PI driver owns its images).
+    thinner than twice the cutoff, which the kernel must sum over every
+    image; it is None for WaterH, which has no cutoff, and for the i-PI
+    driver, which owns its images.
     """
 
     name: str
@@ -336,8 +337,8 @@ def _needs_ipi() -> str | None:
     return None
 
 
-# A 2.2 cutoff is under half of lj_fcc's 4.76 Angstrom cell, which then
-# needs no supercell, and it is the cutoff of the i-PI test driver.
+# A 2.2 cutoff is under half of lj_fcc's 4.76 Angstrom cell, so the i-PI
+# driver's minimum image is exact there, and it is that driver's cutoff.
 LJ_PARAMS = {"u0": 1.0, "psi": 1.0, "cutoff": 2.2, "switch_width": 0.5}
 MD_LJ = {"u0": 1.0, "psi": 1.0, "cutoff": 2.2}
 SMOOTH = {"cutoff": 6.0, "switch_width": 1.0}
@@ -604,8 +605,9 @@ SMALL_CASES = [case for case in CASES if case.small is not None]
 def test_small_cell_matches_its_supercell(case: Case, make_calc) -> None:
     """A cell thinner than twice the cutoff sees every periodic image.
 
-    The 8x8x8 repeat is at least twice the cutoff thick, so it is the
-    reference. ASE's own calculators give the same per-atom results.
+    The kernels sum the images themselves. The 8x8x8 repeat is at least
+    twice the cutoff thick, so it is the reference. ASE's own calculators
+    give the same per-atom results.
     """
     assert case.small is not None
     small = case.small()
@@ -875,7 +877,7 @@ def _ar_gas() -> Atoms:
     return Atoms("Ar4", positions=positions, cell=[12.0] * 3, pbc=True)
 
 
-def test_rpc_calculator_tiles_a_small_cell(potserv_lj) -> None:
+def test_rpc_calculator_small_cell_sums_images_on_the_server(potserv_lj) -> None:
     atoms = _ar_gas()
     atoms.calc = potserv_lj
     local = _ar_gas()

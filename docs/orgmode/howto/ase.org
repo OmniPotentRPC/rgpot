@@ -117,14 +117,13 @@ negative stress and =atoms.get_stress()= agrees with
 ** Boundaries
 
 A structure with every =pbc= flag true is periodic in its cell.
-The potentials count each neighbour at its nearest periodic image, which is
-right only when every cell height is at least twice the cutoff.
-A thinner cell, such as a one-atom fcc cell, is evaluated as a supercell that
-is thick enough, and the energy, forces and stress of the original cell are
-taken from it, so the results match ASE's own calculators for any cell.
-=water_h= has no cutoff and is not tiled.
-For an =IPIPot= or a potential object without =config()=, the calculator does
-not know the cutoff, so the cell must be thick enough already.
+The kernels count each neighbour at every periodic image inside the cutoff,
+so a cell thinner than twice the cutoff, such as a one-atom fcc cell, gives
+the same energy, forces and stress as ASE's own calculators.
+=water_h= has no cutoff and takes each site at its nearest image.
+The water models (=tip4p=, =spce=, =tip4p_pt=) need an orthorhombic cell.
+=emt= and the EAM table refuse a cell thinner than twice their cutoff.
+An =IPIPot= leaves images to the i-PI driver.
 
 A structure with every flag false is a cluster.
 For a cluster, the potential sees a cube whose side is at least 100 Angstrom
@@ -174,10 +173,8 @@ The inputs are not modified.
 Its =implemented_properties= is =energy=, =free_energy= and =forces=.
 Periodic atoms go to the server in their cell; a cluster goes in the same
 padded cube as above.
-The calculator cannot ask the server for its cutoff.
-Pass =cutoff= (Angstrom) and a cell thinner than twice it is sent as a
-supercell, as above.
-=RgpotRpcCalculator.spawn= sets it for =LJ=, =Morse=, =CuH2= and =EAMAl=.
+The server's kernels sum the periodic images, so a thin cell needs nothing
+extra.
 One connection belongs to one calculator, so it cannot be copied or pickled.
 A second thread that enters =calculate= while the first still holds the
 connection gets =RuntimeError=.

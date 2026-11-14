@@ -10,12 +10,6 @@ which are ASE's units.
 The server kernels are fully periodic. A structure with ``pbc`` false
 is sent in a cube of at least 100 Angstrom, whatever its cell, and a
 mixed ``pbc`` raises ``ValueError``, as for :class:`RgpotCalculator`.
-
-The server kernels fold pairs to the minimum image. The calculator
-cannot ask the server for its cutoff, so ``cutoff`` says it: a periodic
-cell thinner than twice the cutoff is then sent as a supercell, as
-:class:`RgpotCalculator` does. :meth:`RgpotRpcCalculator.spawn` fills it
-in for the classical potentials it launches.
 """
 
 from __future__ import annotations
@@ -30,11 +24,8 @@ from typing import Any
 import numpy as np
 from ase.calculators.calculator import Calculator, all_changes
 
-from rgpot.ase.calculator import _box, _replicas, _supercell
+from rgpot.ase.calculator import _box
 from rgpot.ase.claim import ConnectionClaim
-
-# Cutoffs of the potserv kernels with default parameters, in Angstrom.
-_SERVER_CUTOFFS = {"CuH2": 6.1, "EAMAl": 7.1, "LJ": 15.0, "Morse": 9.5}
 
 def _capnp() -> Any:
     """Import capnp on first use so the module imports without the package."""
@@ -75,10 +66,6 @@ class RgpotRpcCalculator(Calculator):
     server_proc:
         Optional managed process this calculator stops on :meth:`close`.
         Prefer :meth:`spawn`.
-    cutoff:
-        Interaction range of the server's potential in Angstrom. 0, the
-        default, sends every periodic cell as it is, so the cell must be
-        at least twice the cutoff thick.
     """
 
     implemented_properties = ["energy", "free_energy", "forces"]
@@ -91,13 +78,11 @@ class RgpotRpcCalculator(Calculator):
         port: int = 12345,
         *,
         server_proc: subprocess.Popen[bytes] | None = None,
-        cutoff: float = 0.0,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self._host = host
         self._port = int(port)
-        self._cutoff = float(cutoff)
         self._server_proc = server_proc
         self._claim = ConnectionClaim("RgpotRpcCalculator")
 
@@ -133,7 +118,6 @@ class RgpotRpcCalculator(Calculator):
                 f"potserv binary not found: {server_bin!r} "
                 "(set the path or RGPOT_POTSERV_BIN)"
             )
-        kwargs.setdefault("cutoff", _SERVER_CUTOFFS.get(potential, 0.0))
         chosen = port or _free_port()
         proc: subprocess.Popen[bytes] = subprocess.Popen(
             [str(server_bin), str(chosen), potential],
@@ -213,17 +197,12 @@ class RgpotRpcCalculator(Calculator):
             super().calculate(atoms, properties, system_changes)
             frame = self.atoms
             assert frame is not None
-            positions = frame.get_positions()
-            numbers = frame.get_atomic_numbers()
-            box = _box(positions, frame.cell.array, frame.pbc, self._cutoff)
-            reps = _replicas(box, frame.pbc, self._cutoff)
-            copies = int(np.prod(reps))
-            if copies > 1:
-                positions, numbers, box = _supercell(positions, numbers, box, reps)
+            box = _box(frame.positions, frame.cell.array, frame.pbc, 0.0)
             energy, forces = self._loop.run_until_complete(
-                self._calculate_async(positions, numbers, box)
+                self._calculate_async(
+                    frame.get_positions(), frame.get_atomic_numbers(), box
+                )
             )
-            energy /= copies
             self.results["energy"] = energy
             self.results["free_energy"] = energy
-            self.results["forces"] = np.ascontiguousarray(forces[: len(frame)])
+            self.results["forces"] = forces

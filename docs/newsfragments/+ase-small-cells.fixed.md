@@ -1,1 +1,0 @@
-`RgpotCalculator` evaluates a periodic cell thinner than twice the potential cutoff as a supercell, so a one-atom or primitive cell gives the same energy, forces and stress as ASE's own calculators. `RgpotRpcCalculator` takes a `cutoff` for the same purpose, and `spawn` sets it for LJ, Morse, CuH2 and EAMAl.

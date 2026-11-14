@@ -16,11 +16,10 @@ only (F5). :meth:`calculate` and ``get_property`` mutate ``self.atoms``
 and ``self.results`` and must not run on two threads at once. The
 potential object underneath keeps one workspace per calling thread (F2).
 
-The bound kernels are fully periodic and fold each pair to its minimum
-image. A periodic cell with a height under twice the kernel cutoff is
-evaluated as a supercell that clears it, and the results are mapped
-back onto the caller's atoms. A structure with every periodic flag
-false is a cluster: the kernel receives a cubic box whose side is
+The bound kernels are fully periodic and sum every periodic image inside
+the cutoff, so a cell thinner than twice the cutoff, a one-atom
+primitive cell included, is evaluated as it is. A structure with every
+periodic flag false is a cluster: the kernel receives a cubic box whose side is
 at least 100 Angstrom and at least the cluster extent plus twice the
 kernel cutoff, so a periodic image cannot enter the cutoff. Energy and
 forces do not depend on the caller's cell. Stress does: it is the
@@ -333,45 +332,6 @@ def _box(positions: Any, cell: Any, pbc: Any, cutoff: float) -> np.ndarray:
     return np.ascontiguousarray(np.asarray(cell, dtype=np.float64).reshape(3, 3))
 
 
-def _replicas(cell: Any, pbc: Any, cutoff: float) -> np.ndarray:
-    """Repeats per cell vector that make every cell height at least 2*cutoff.
-
-    The kernels fold each pair to its minimum image, which counts every
-    neighbour once only when the cutoff is under half of each height.
-    """
-    ones = np.ones(3, dtype=np.int64)
-    if not cutoff > 0.0 or not bool(_pbc_flags(pbc).all()):
-        return ones
-    matrix = np.asarray(cell, dtype=np.float64).reshape(3, 3)
-    volume = _cell_volume(matrix)
-    if not volume > 0.0:
-        return ones
-    heights = np.array(
-        [
-            volume / np.linalg.norm(np.cross(matrix[(i + 1) % 3], matrix[(i + 2) % 3]))
-            for i in range(3)
-        ]
-    )
-    return np.maximum(ones, np.ceil(2.0 * cutoff / heights - 1e-9).astype(np.int64))
-
-
-def _supercell(
-    positions: np.ndarray, numbers: np.ndarray, box: np.ndarray, reps: np.ndarray
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Tile the cell ``reps`` times. The original atoms come first."""
-    grid = np.stack(
-        np.meshgrid(*(np.arange(n) for n in reps), indexing="ij"), axis=-1
-    ).reshape(-1, 3)
-    shifts = grid.astype(np.float64) @ box
-    pos = (positions[None, :, :] + shifts[:, None, :]).reshape(-1, 3)
-    num = np.tile(numbers, len(grid))
-    return (
-        np.ascontiguousarray(pos),
-        np.ascontiguousarray(num, dtype=np.int32),
-        np.ascontiguousarray(box * reps[:, None].astype(np.float64)),
-    )
-
-
 def _cell_volume(cell: Any) -> float:
     """Absolute volume of a 3x3 cell. A singular cell has volume 0."""
     matrix = np.asarray(cell, dtype=np.float64).reshape(3, 3)
@@ -558,17 +518,9 @@ class RgpotCalculator(Calculator):
     def _kernel_input(
         self, pos: np.ndarray, num: np.ndarray, user_cell: np.ndarray, pbc: Any
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Positions, numbers and box the kernel sees for one structure.
-
-        A periodic cell thinner than twice the cutoff is tiled into a
-        supercell first, so the minimum-image kernels see every neighbour.
-        """
+        """Positions, numbers and box the kernel sees for one structure."""
         self._check_periodic(pbc)
-        box = _box(pos, user_cell, pbc, self._cutoff)
-        reps = _replicas(box, pbc, self._cutoff)
-        if int(np.prod(reps)) == 1:
-            return pos, num, box
-        return _supercell(pos, num, box, reps)
+        return pos, num, _box(pos, user_cell, pbc, self._cutoff)
 
     @staticmethod
     def _from_kernel(
@@ -578,19 +530,13 @@ class RgpotCalculator(Calculator):
         user_cell: np.ndarray,
         pbc: Any,
     ) -> dict[str, Any]:
-        """Results for the caller's atoms from a kernel result on ``box``.
-
-        A supercell holds whole copies of the cell, so the energy is
-        divided by the copy count, forces are those of the first copy, and
-        the stress of the tiled cell is already the stress of one cell.
-        """
-        forces = np.asarray(raw["forces"], dtype=np.float64).reshape(-1, 3)
-        copies = forces.shape[0] // n_atoms if n_atoms else 1
-        energy = float(raw["energy"]) / copies
+        """Results for the caller's atoms from a kernel result on ``box``."""
+        forces = np.asarray(raw["forces"], dtype=np.float64).reshape(n_atoms, 3)
+        energy = float(raw["energy"])
         out: dict[str, Any] = {
             "energy": energy,
             "free_energy": energy,
-            "forces": np.ascontiguousarray(forces[:n_atoms]),
+            "forces": np.ascontiguousarray(forces),
         }
         stress = raw.get("stress")
         if stress is not None:
@@ -599,9 +545,7 @@ class RgpotCalculator(Calculator):
                 out["stress"] = voigt
         energies = raw.get("energies")
         if energies is not None:
-            out["energies"] = np.ascontiguousarray(
-                np.asarray(energies, dtype=np.float64)[:n_atoms]
-            )
+            out["energies"] = np.ascontiguousarray(energies, dtype=np.float64)
         return out
 
     def get_hessian(self, atoms: Atoms) -> np.ndarray:
