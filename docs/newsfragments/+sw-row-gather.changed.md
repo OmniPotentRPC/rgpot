@@ -1,0 +1,1 @@
+From 1024 atoms, threaded Stillinger-Weber counts force updates from the bond slices and writes each one into that atom's row, in scatter order. Smaller cells keep the previous replay. One thread is unchanged, and the energies and forces still match it bit for bit.

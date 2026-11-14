@@ -12,13 +12,11 @@ struct Bond {
   double x, y, z, r, gexp, dgdr;
 };
 
-// Counted slices and slot prefixes for a stored cell of at least 1024 atoms.
+// Stored cells of at least 1024 atoms. Bonds are written into counted slices,
+// and each force update is stored in the scatter-order row of its atom.
 // Kept out of StillingerWeberSi::evaluate so the one-thread walk stays put.
-void prepareWide(nlist::Neighbours &cells, int n, int nt, double cut2, std::vector<Bond> &bonds,
-                 std::vector<int> &bond_at, std::vector<int> &bond_n, std::vector<int> &energy_at,
-                 std::vector<int> &energy_n, std::vector<int> &energy_used,
-                 std::vector<int> &force_at, std::vector<int> &force_n,
-                 std::vector<int> &force_used);
+void runWide(nlist::Neighbours &cells, int n, int nt, double cut2, double scale, double *energy,
+             double *acc);
 
 } // namespace swi
 } // namespace rgpot

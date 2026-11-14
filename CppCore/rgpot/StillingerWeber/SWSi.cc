@@ -422,10 +422,9 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
     const bool stored = !neighbours_.streaming() &&
                         row.size() == static_cast<std::size_t>(n) + 1;
     // Below 1024 atoms the copy and the serial slot scan stay as they are.
-    // At 1024 and above each thread writes its bonds into a counted slice.
+    // At 1024 and above the wide kernel writes each force into its atom's row.
     if (stored && n >= 1024) {
-      swi::prepareWide(neighbours_, n, nt, cut2, bonds, bond_at, bond_n, energy_at, energy_n,
-                       energy_used, force_at, force_n, force_used);
+      swi::runWide(neighbours_, n, nt, cut2, scale, energy, acc);
     } else {
     bond_at.resize(static_cast<std::size_t>(n) + 1);
     bond_n.assign(static_cast<std::size_t>(n), 0);
@@ -528,7 +527,6 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
           energy_at[static_cast<std::size_t>(i)] + pairs + trips;
       force_at[static_cast<std::size_t>(i) + 1] =
           force_at[static_cast<std::size_t>(i)] + 2 * pairs + 3 * trips;
-    }
     }
     const int nenergy = energy_at[static_cast<std::size_t>(n)];
     const int nforce = force_at[static_cast<std::size_t>(n)];
@@ -642,6 +640,7 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
       }
     } else {
       gatherByAtom(force_at.data(), force_used.data(), force.data(), acc, n, nt);
+    }
     }
   }
 }
