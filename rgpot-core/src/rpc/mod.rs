@@ -15,12 +15,12 @@
 //!
 //! - `ForceInput` — positions, atomic numbers, simulation cell.
 //! - `PotentialResult` — energy and forces.
-//! - `Potential` interface — a single `calculate` RPC method.
+//! - `Potential` interface — `calculate` and `calculateBatch`.
 //!
 //! ## Client
 //!
 //! [`client::RpcClient`] connects to a remote rgpot server and provides a
-//! synchronous `calculate()` method. Internally it owns a tokio runtime so
+//! synchronous `calculate()` and `calculate_batch()` methods. Internally it owns a tokio runtime so
 //! that the blocking C API can drive async I/O. Exposed to C via
 //! `rgpot_rpc_client_new` / `rgpot_rpc_calculate` / `rgpot_rpc_client_free`.
 //!

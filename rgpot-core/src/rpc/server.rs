@@ -17,7 +17,7 @@ use futures::AsyncReadExt;
 use std::os::raw::c_void;
 use tokio::runtime::Runtime;
 
-use crate::potential::{PotentialCallback, rgpot_potential_t};
+use crate::potential::{rgpot_potential_t, PotentialCallback};
 use crate::rpc::schema::potential;
 use crate::status::rgpot_status_t;
 use crate::tensor::{
@@ -53,23 +53,43 @@ impl potential::Server for PotentialServer {
         mut results: potential::CalculateResults,
     ) -> capnp::capability::Promise<(), CapnpError> {
         let fip = pry!(pry!(params.get()).get_fip());
+        pry!(self.write_result(fip, results.get().init_result()));
+        capnp::capability::Promise::ok(())
+    }
 
-        let positions = pry!(fip.get_pos());
-        let atmnrs = pry!(fip.get_atmnrs());
-        let box_data = pry!(fip.get_box());
+    fn calculate_batch(
+        &mut self,
+        params: potential::CalculateBatchParams,
+        mut results: potential::CalculateBatchResults,
+    ) -> capnp::capability::Promise<(), CapnpError> {
+        let items = pry!(pry!(params.get()).get_items());
+        let mut out = results.get().init_results(items.len());
+        for i in 0..items.len() {
+            let fip = items.get(i);
+            pry!(self.write_result(fip, out.reborrow().get(i)));
+        }
+        capnp::capability::Promise::ok(())
+    }
+}
 
+impl PotentialServer {
+    fn write_result(
+        &self,
+        fip: crate::Potentials_capnp::force_input::Reader<'_>,
+        mut result_builder: crate::Potentials_capnp::potential_result::Builder<'_>,
+    ) -> Result<(), CapnpError> {
+        let positions = fip.get_pos()?;
+        let atmnrs = fip.get_atmnrs()?;
+        let box_data = fip.get_box()?;
         let n_atoms = atmnrs.len() as usize;
 
-        // Copy capnp data into owned buffers
         let mut pos_vec: Vec<f64> = (0..positions.len()).map(|i| positions.get(i)).collect();
         let mut atm_vec: Vec<i32> = (0..atmnrs.len()).map(|i| atmnrs.get(i)).collect();
         let mut box_vec: Vec<f64> = (0..box_data.len()).map(|i| box_data.get(i)).collect();
 
-        // Create non-owning DLPack tensors wrapping the owned buffers
         let pos_tensor =
             unsafe { rgpot_tensor_cpu_f64_2d(pos_vec.as_mut_ptr(), n_atoms as i64, 3) };
-        let atm_tensor =
-            unsafe { rgpot_tensor_cpu_i32_1d(atm_vec.as_mut_ptr(), n_atoms as i64) };
+        let atm_tensor = unsafe { rgpot_tensor_cpu_i32_1d(atm_vec.as_mut_ptr(), n_atoms as i64) };
         let box_tensor = unsafe { rgpot_tensor_cpu_f64_matrix3(box_vec.as_mut_ptr()) };
 
         let input = rgpot_force_input_t {
@@ -85,7 +105,6 @@ impl potential::Server for PotentialServer {
 
         let status = unsafe { (self.callback)(self.user_data, &input, &mut output) };
 
-        // Read forces from the output DLPack tensor before freeing
         let forces_data = if !output.forces.is_null() {
             let ft = unsafe { &(*output.forces).dl_tensor };
             let len = n_atoms * 3;
@@ -93,8 +112,6 @@ impl potential::Server for PotentialServer {
         } else {
             &[] as &[f64]
         };
-
-        // Free all tensors
         let forces_copy: Vec<f64> = forces_data.to_vec();
         unsafe {
             rgpot_tensor_free(output.forces);
@@ -104,20 +121,17 @@ impl potential::Server for PotentialServer {
         }
 
         if status != rgpot_status_t::RGPOT_SUCCESS {
-            return capnp::capability::Promise::err(CapnpError::failed(
+            return Err(CapnpError::failed(
                 "potential callback returned an error".to_string(),
             ));
         }
 
-        let mut result_builder = results.get().init_result();
         result_builder.set_energy(output.energy);
-
         let mut forces_builder = result_builder.init_forces(forces_copy.len() as u32);
         for (i, &f) in forces_copy.iter().enumerate() {
             forces_builder.set(i as u32, f);
         }
-
-        capnp::capability::Promise::ok(())
+        Ok(())
     }
 }
 
@@ -132,8 +146,7 @@ fn claim_socket_path(path: &str) -> Result<(), String> {
     match std::fs::symlink_metadata(path) {
         Ok(meta) => {
             if meta.file_type().is_socket() {
-                std::fs::remove_file(path)
-                    .map_err(|e| format!("cannot remove socket {path}: {e}"))
+                std::fs::remove_file(path).map_err(|e| format!("cannot remove socket {path}: {e}"))
             } else {
                 Err(format!("{path} exists and is not a socket"))
             }
@@ -153,8 +166,7 @@ where
         user_data: pot_ref.pot_user_data,
     };
     let potential_client = capnp_rpc::new_client::<potential::Client, _>(server_impl);
-    let (reader, writer) =
-        tokio_util::compat::TokioAsyncReadCompatExt::compat(stream).split();
+    let (reader, writer) = tokio_util::compat::TokioAsyncReadCompatExt::compat(stream).split();
     let network = twoparty::VatNetwork::new(
         futures::io::BufReader::new(reader),
         futures::io::BufWriter::new(writer),
@@ -281,10 +293,7 @@ mod tests {
 
     #[test]
     fn a_regular_file_is_not_removed() {
-        let path = std::env::temp_dir().join(format!(
-            "rgpot-unix-file-{}",
-            std::process::id()
-        ));
+        let path = std::env::temp_dir().join(format!("rgpot-unix-file-{}", std::process::id()));
         std::fs::write(&path, b"keep").unwrap();
         let err = claim_socket_path(path.to_str().unwrap()).unwrap_err();
         assert!(err.contains("not a socket"), "{err}");
