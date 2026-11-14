@@ -189,17 +189,8 @@ void TersoffSiC::runWide(const int *kind, int n, int nt, double cut2, double sca
       bond_n[static_cast<std::size_t>(i)] =
           storeBonds(neighbours_, m_pair, kind, i, cut2, dest, room);
     }
-#if defined(_OPENMP)
-#pragma omp barrier
-#endif
-    if (t == 0) {
-      std::fill(local_n.begin(),
-                local_n.begin() + static_cast<std::size_t>(nt) * static_cast<std::size_t>(n), 0);
-    }
-#if defined(_OPENMP)
-#pragma omp barrier
-#endif
     int *mine = local_n.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(n);
+    std::fill(mine, mine + n, 0);
     for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
       const Bond *nb = bonds.data() + bond_at[static_cast<std::size_t>(i)];
       const int m = bond_n[static_cast<std::size_t>(i)];
