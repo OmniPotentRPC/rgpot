@@ -1964,7 +1964,12 @@ void cpu::VerletList::rebuild(
     cpu::cell_list_neighbors(points, n_points, std::move(candidate_box), build_options, candidates_, candidate_capacity);
 
     ref_points_.resize(n_points);
-    std::memcpy(ref_points_.data(), points, n_points * sizeof(Vector));
+    // eOn local patch (upstream candidate): an empty system leaves
+    // ref_points_ without storage, and memcpy needs non-NULL pointers even
+    // for zero bytes.
+    if (n_points > 0) {
+        std::memcpy(ref_points_.data(), points, n_points * sizeof(Vector));
+    }
     ref_matrix_ = box.matrix();
     for (size_t d = 0; d < 3; d++) {
         ref_periodic_[d] = box.periodic(d);
