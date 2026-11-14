@@ -728,24 +728,26 @@ NB_MODULE(_core, m) {
           "Forces are -dE/dx.")
       .def("caps",
            [](const rgpot::StillingerWeberSi &self) {
-             return rgpot::pybind::caps_dict(self.caps());
+             return rgpot::pybind::caps_dict(self.caps(), self.perAtomEnergies());
            })
       .def(
           "evaluate",
           [](rgpot::StillingerWeberSi &self, const F64 &positions,
-             nb::handle atom_types, const F64 &box) {
+             nb::handle atom_types, const F64 &box, bool energies) {
             auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
             rgpot::pybind::FullResult result;
             {
               nb::gil_scoped_release release;
-              result = rgpot::pybind::run_force(self, geom);
+              result = rgpot::pybind::run_force(self, geom, energies);
             }
             return rgpot::pybind::result_dict(result);
           },
           nb::arg("positions").noconvert(), nb::arg("atom_types"),
-          nb::arg("box").noconvert(),
+          nb::arg("box").noconvert(), nb::arg("energies") = false,
           "Energy, forces, variance, and the Cauchy stress, shape (3, 3), "
-          "in eV/Angstrom^3. The kernel runs detached.")
+          "in eV/Angstrom^3. With energies=True, also the energy of each "
+          "atom, shape (n_atoms,), three-body terms on the centre atom. The "
+          "kernel runs detached.")
       .def("energy_gradient", &stillinger_weber_energy_gradient,
            nb::arg("positions").noconvert(), nb::arg("atom_types"),
            nb::arg("box").noconvert(),
@@ -776,6 +778,28 @@ NB_MODULE(_core, m) {
           nb::arg("box").noconvert(),
           "Return (energy, forces, variance) for one configuration. "
           "Forces are -dE/dx.")
+      .def("caps",
+           [](const rgpot::TersoffSiC &self) {
+             return rgpot::pybind::caps_dict(self.caps(), self.perAtomEnergies());
+           })
+      .def(
+          "evaluate",
+          [](rgpot::TersoffSiC &self, const F64 &positions,
+             nb::handle atom_types, const F64 &box, bool energies) {
+            auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
+            rgpot::pybind::FullResult result;
+            {
+              nb::gil_scoped_release release;
+              result = rgpot::pybind::run_force(self, geom, energies);
+            }
+            return rgpot::pybind::result_dict(result);
+          },
+          nb::arg("positions").noconvert(), nb::arg("atom_types"),
+          nb::arg("box").noconvert(), nb::arg("energies") = false,
+          "Energy, forces, variance, and the Cauchy stress, shape (3, 3), "
+          "in eV/Angstrom^3. With energies=True, also the energy of each "
+          "atom, shape (n_atoms,), each bond term on its centre atom. The "
+          "kernel runs detached.")
       .def("energy_gradient", &tersoff_sic_energy_gradient,
            nb::arg("positions").noconvert(), nb::arg("atom_types"),
            nb::arg("box").noconvert(),

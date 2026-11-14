@@ -182,7 +182,16 @@ stress_to_numpy(const double stress[9]) {
   return nb::ndarray<nb::numpy, double, nb::c_contig>(buf, {3, 3}, owner);
 }
 
-inline nb::dict caps_dict(const PotCaps &caps) {
+/// True when `pot` can split its energy over the atoms.
+template <typename Pot> bool per_atom_energies(const Pot &pot) {
+  if constexpr (requires { pot.perAtomEnergies(); }) {
+    return pot.perAtomEnergies();
+  } else {
+    return false;
+  }
+}
+
+inline nb::dict caps_dict(const PotCaps &caps, bool energies = false) {
   nb::dict out;
   const char *reentrancy = "shared";
   if (caps.reentrancy == Reentrancy::PerInstance) {
@@ -196,7 +205,7 @@ inline nb::dict caps_dict(const PotCaps &caps) {
   out["periodic"] = caps.periodic;
   out["group_collective"] = caps.groupCollective;
   out["stress"] = caps.stress;
-  // PotCaps does not report per-atom energies. Do not invent the flag.
+  out["energies"] = energies;
   return out;
 }
 
@@ -206,11 +215,14 @@ struct FullResult {
   double variance = 0.0;
   bool has_stress = false;
   double stress[9]{};
+  /// Per-atom energies, empty unless they were asked for.
+  std::vector<double> energies;
 };
 
-/// forceImpl while the caller is already detached (F4).
+/// forceImpl, or forceEnergies when `energies` is set, while the caller is
+/// already detached (F4).
 template <typename Pot>
-FullResult run_force(Pot &pot, const Geom &g) {
+FullResult run_force(Pot &pot, const Geom &g, bool energies = false) {
   AtomMatrix forces = AtomMatrix::Zero(g.pos.rows(), 3);
   double flat[9];
   for (int i = 0; i < 3; ++i) {
@@ -227,11 +239,21 @@ FullResult run_force(Pot &pot, const Geom &g) {
                 .pos = g.pos.data(),
                 .atmnrs = g.types.data(),
                 .box = flat};
-  pot.forceImpl(in, &fo);
+  FullResult result;
+  if (energies) {
+    if (!per_atom_energies(pot)) {
+      throw std::invalid_argument("this potential has no per-atom energies");
+    }
+    if constexpr (requires { pot.perAtomEnergies(); }) {
+      result.energies.assign(g.pos.rows(), 0.0);
+      pot.forceEnergies(in, &fo, result.energies.data());
+    }
+  } else {
+    pot.forceImpl(in, &fo);
+  }
   if (!std::isfinite(fo.energy)) {
     throw rgbind::NumericalError("energy is not finite");
   }
-  FullResult result;
   result.energy = fo.energy;
   result.forces = std::move(forces);
   result.variance = fo.variance;
@@ -250,7 +272,15 @@ inline nb::dict result_dict(const FullResult &result) {
   } else {
     out["stress"] = nb::none();
   }
-  out["energies"] = nb::none();
+  if (result.energies.empty()) {
+    out["energies"] = nb::none();
+  } else {
+    const size_t n = result.energies.size();
+    double *buf = new double[n];
+    std::memcpy(buf, result.energies.data(), n * sizeof(double));
+    nb::capsule owner(buf, [](void *p) noexcept { delete[] static_cast<double *>(p); });
+    out["energies"] = nb::ndarray<nb::numpy, double, nb::c_contig>(buf, {n}, owner);
+  }
   return out;
 }
 
@@ -343,7 +373,7 @@ private:
 template <typename Pot>
 void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
   cls.def("caps", [](const PotHolder<Pot> &self) {
-    return caps_dict(self.primary().caps());
+    return caps_dict(self.primary().caps(), per_atom_energies(self.primary()));
   });
   cls.def(
       "__call__",
@@ -369,18 +399,20 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
   cls.def(
       "evaluate",
       [](PotHolder<Pot> &self, const F64 &positions, nb::handle atom_types,
-         const F64 &box) {
+         const F64 &box, bool energies) {
         Geom geom = read_geom(positions, atom_types, box);
         FullResult result;
         {
           nb::gil_scoped_release release;
-          result = run_force(self.slot(), geom);
+          result = run_force(self.slot(), geom, energies);
         }
         return result_dict(result);
       },
       nb::arg("positions").noconvert(), nb::arg("atom_types"),
-      nb::arg("box").noconvert(),
+      nb::arg("box").noconvert(), nb::arg("energies") = false,
       "Energy, forces, variance, and stress when the kernel writes it. "
+      "With energies=True, also the energy of each atom, shape (n_atoms,), "
+      "when caps()['energies'] is true; ValueError otherwise. "
       "F4: the kernel runs detached.");
   cls.def(
       "evaluate_batch",
