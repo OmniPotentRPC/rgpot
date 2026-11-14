@@ -2285,7 +2285,7 @@ if get_option('with_tests')
                     rgpot_cxx_soversion,
                     rgpot.full_path(),
                     cxx_layout_stamp.full_path(),
-                ],
+                ] + exe_wrapper_args,
                 depends: [rgpot, cxx_layout_stamp],
             )
         endif

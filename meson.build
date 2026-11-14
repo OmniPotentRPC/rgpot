@@ -11,6 +11,16 @@ project(
 
 host_system = host_machine.system()
 
+# A test whose command is python3 gets no exe_wrapper from meson, so a
+# script that runs a cross-built program puts this in front of it.
+exe_wrapper_args = []
+if meson.is_cross_build()
+    _exe_wrapper = find_program('exe_wrapper', required: false)
+    if _exe_wrapper.found()
+        exe_wrapper_args = [_exe_wrapper]
+    endif
+endif
+
 # Add C++ compiler options
 _cppc_early = meson.get_compiler('cpp')
 if _cppc_early.get_id() == 'msvc' or _cppc_early.get_id() == 'clang-cl'
