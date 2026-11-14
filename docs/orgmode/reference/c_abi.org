@@ -252,6 +252,23 @@ The pair-potential types whose layouts changed are static objects inside
 CMake's =libptlrpc= is the same: the schema it carries is the 3.5.0 schema, and
 Meson does not install it as a separate shared library.
 
+** Per-atom energies
+
+=Potential<Derived>::perAtomEnergies()= and
+=Potential<Derived>::forceEnergies(in, out, energies)= are inline and
+non-virtual.
+They add no data member and no virtual function, so the covered sizes, offsets
+and virtual counts are unchanged and =kCxxSoversion= stays 7.
+=forceImpl=, =force= and =forceBatch= do not compute per-atom energies; a caller
+pays for them only through =forceEnergies=, which throws =std::runtime_error=
+when =perAtomEnergies()= is false.
+
+The C surface of =rgpot-core= evaluates caller callbacks and has no per-atom
+energies.
+A C caller gets them from an engine library: =rgpot_engine_force_energies= and
+=RgpotEngineCaps::per_atom_energy=, engine ABI minor 3 (see the engine ABI
+page).
+
 ** Scope
 
 The first stamp covers the C surface of =rgpot-core=.

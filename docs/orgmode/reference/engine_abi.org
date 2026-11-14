@@ -58,10 +58,11 @@ Optional, probed with =dlsym=:
 | symbol | purpose |
 |--------+---------|
 | =rgpot_engine_force_batch= | one composition, system stride =3*nAtoms= and 9 |
+| =rgpot_engine_force_energies= | energy, forces and the energy of each atom (minor 3) |
 | =rgpot_engine_abi_stamp=, =rgpot_engine_abi_compatible= | major, minor and layout revision |
 | =rgpot_engine_name=, =rgpot_engine_version= | backend name and =<name>/<rgpot version>= |
 | =rgpot_engine_model_digest= | SHA-256 of the loaded model file as 64 hexadecimal digits; 0 when the backend has no model file |
-| =rgpot_engine_caps= | the engine-side =PotCaps=: reentrancy, per-image instances, batching, periodicity, stress |
+| =rgpot_engine_caps= | the engine-side =PotCaps=: reentrancy, per-image instances, batching, periodicity, stress, per-atom energies |
 | =rgpot_engine_last_error= | message of the last failed call on an instance |
 | =rgpot_engine_set_num_threads= | intra-op and inter-op threads of the tensor runtime |
 | =rgpot_engine_set_charge_spin= | charge and spin multiplicity of the next calls |
@@ -73,6 +74,45 @@ Every engine built on the table exports all of them down to
 =rgpot_engine_set_num_threads= returns 3 for a backend without a tensor runtime,
 and =rgpot_engine_set_charge_spin= returns 3 for a backend without a charge or
 spin.
+=rgpot_engine_force_energies= returns 3 for a backend that cannot split its
+energy over the atoms.
+
+** Per-atom energies
+
+#+begin_src c
+int rgpot_engine_force_energies(RgpotEnginePot *pot, long nAtoms,
+                                const double *positions, const int *atomicNrs,
+                                double *forces, double *energy,
+                                double *energies, const double *box,
+                                rgpot_engine_coord_transform transform,
+                                void *transform_user);
+#+end_src
+
+The arguments are those of =rgpot_engine_force= without the variance, plus
+=energies=, which receives =nAtoms= doubles that sum to =*energy= to rounding.
+Energy and forces are the values =rgpot_engine_force= returns for the same
+input, bit for bit.
+=rgpot_engine_force= itself is unchanged and never computes per-atom energies,
+so a host that does not ask for them pays nothing.
+
+Presence of the symbol does not mean support: every engine built on the table
+exports it.
+The host reads =RgpotEngineCaps::per_atom_energy=, the field minor 3 appended to
+the size-prefixed structure, and calls the symbol only when it is 1.
+A host built before minor 3 passes the shorter =size= and gets the old fields
+only.
+A null =energies= returns 1.
+
+In the classical engine =lj=, =morse=, =eamal=, =cuh2=, =tip4p=, =spce= and
+=tip4p_pt= report 1.
+=ljcluster=, =zbl=, =sw=, =edip=, =lenosky=, =tersoff=, =fehe= and =waterh=
+report 0, as do the quantum and learned backends.
+The split follows the C++ =Potential::forceEnergies=: a pair term half and half
+between its atoms, an EAM embedding term on the embedded atom, a three-body term
+on its centre atom.
+The water models put the intramolecular energy on the oxygen, fold the TIP4P M
+site onto its molecule with the M-site weights, and split each platinum term
+between the water atom and the platinum atom.
 
 ** Tensor runtime parameters
 
@@ -128,7 +168,8 @@ revision whose minor is at least N. An engine without =rgpot_engine_abi_stamp=
 is minor 0, layout 1.
 Minor 1 added the stamp, =caps=,
 =last_error=, =set_num_threads= and =set_charge_spin=; minor 2 added =name=, =version= and =model_digest=
-and the generic table for every backend.
+and the generic table for every backend; minor 3 added =force_energies= and
+=RgpotEngineCaps::per_atom_energy=.
 Structures that grow (=RgpotEngineCaps=) begin with a =size= field, so an older
 host receives the bytes it announced room for.
 The version covers the table and its conventions; it does not cover the Cap'n
