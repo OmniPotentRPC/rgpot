@@ -5,8 +5,12 @@
 // with no pair inside the cutoff: an empty system, a single atom, and atoms
 // farther apart than the cutoff. Each is met as the first call, after a
 // call with pairs, and before one, on open and periodic cells. A system
-// with no pair has exactly zero energy and forces, and a system with pairs
-// gives the same numbers as a fresh instance.
+// with no pair has exactly zero forces, and exactly zero energy unless the
+// potential gives a free atom an energy of its own (EMT counts from the
+// bulk crystal, and an embedding function can be nonzero at zero density);
+// then the energy is that of as many free atoms, the value the bonded
+// energy reaches at the cutoff. A system with pairs gives the same numbers
+// as a fresh instance.
 
 #include <array>
 #include <cstddef>
@@ -90,10 +94,14 @@ Result evaluate(rgpot::PotentialBase &pot, const Geometry &g, int z) {
   return {energy, std::move(forces)};
 }
 
-void requireZero(const Result &r, const Geometry &g) {
+void requireZero(const Result &r, const Geometry &g, double freeAtom) {
   INFO("zero-pair geometry " << g.name);
   REQUIRE(r.forces.rows() == g.xyz.size() / 3);
-  REQUIRE(r.energy == 0.0);
+  double energy = 0.0;
+  for (std::size_t a = 0; a < r.forces.rows(); ++a) {
+    energy += freeAtom;
+  }
+  REQUIRE(r.energy == energy);
   for (std::size_t a = 0; a < r.forces.rows(); ++a) {
     for (std::size_t d = 0; d < 3; ++d) {
       REQUIRE(r.forces(a, d) == 0.0);
@@ -117,12 +125,18 @@ struct Case {
   std::function<std::unique_ptr<rgpot::PotentialBase>()> make;
   int z;
   double bond;
+  bool freeAtomEnergy = false;
 };
 
 template <typename Pot, typename... Args> Case potCase(const char *name, int z, double bond,
                                                        Args... args) {
   return {name, [=] { return std::unique_ptr<rgpot::PotentialBase>(new Pot(args...)); }, z,
           bond};
+}
+
+Case withFreeAtomEnergy(Case c) {
+  c.freeAtomEnergy = true;
+  return c;
 }
 
 std::vector<Case> cases() {
@@ -134,8 +148,8 @@ std::vector<Case> cases() {
       potCase<rgpot::SuttonChenPot>("SuttonChen open", 78, 1.0, rgpot::SuttonChenConfig{}),
       potCase<rgpot::SuttonChenPot>("SuttonChen periodic", 78, 1.0,
                                     rgpot::SuttonChenConfig{.periodic = true}),
-      potCase<rgpot::EMTPot>("EMT", 29, 2.55),
-      potCase<rgpot::EAMPot>("EAMCell", 13, 2.86),
+      withFreeAtomEnergy(potCase<rgpot::EMTPot>("EMT", 29, 2.55)),
+      withFreeAtomEnergy(potCase<rgpot::EAMPot>("EAMCell", 13, 2.86)),
       potCase<rgpot::StillingerWeberSi>("SWSi1985", 14, 2.35),
       potCase<rgpot::TersoffSiC>("TersoffSiC", 14, 2.35),
   };
@@ -143,7 +157,8 @@ std::vector<Case> cases() {
   all.push_back(potCase<rgpot::fortranpots::SWPot>("Fortran SW", 14, 2.35));
   all.push_back(potCase<rgpot::fortranpots::TersoffPot>("Fortran Tersoff", 14, 2.35));
   all.push_back(potCase<rgpot::fortranpots::EDIPPot>("Fortran EDIP", 14, 2.35));
-  all.push_back(potCase<rgpot::fortranpots::LenoskyPot>("Fortran Lenosky", 14, 2.35));
+  all.push_back(
+      withFreeAtomEnergy(potCase<rgpot::fortranpots::LenoskyPot>("Fortran Lenosky", 14, 2.35)));
   all.push_back(potCase<rgpot::fortranpots::EAMAlPot>("Fortran EAM Al", 13, 2.86));
   all.push_back(potCase<rgpot::fortranpots::FeHePot>("Fortran FeHe", 26, 2.48));
   all.push_back(potCase<rgpot::fortranpots::CuH2Pot>("Fortran CuH2", 29, 2.55));
@@ -161,28 +176,34 @@ TEST_CASE("potentials rebuilt between zero pairs and pairs", "[nlist][zero-pairs
       auto fresh = c.make();
       const Result want = evaluate(*fresh, pairs, c.z);
       REQUIRE(want.energy != 0.0);
+      double freeAtom = 0.0;
+      if (c.freeAtomEnergy) {
+        auto single = c.make();
+        freeAtom = evaluate(*single, zeroPairGeometries()[1], c.z).energy;
+        REQUIRE(freeAtom != 0.0);
+      }
 
       SECTION("first call with zero pairs") {
         for (const auto &g : zero) {
           auto pot = c.make();
-          requireZero(evaluate(*pot, g, c.z), g);
-          requireZero(evaluate(*pot, g, c.z), g);
+          requireZero(evaluate(*pot, g, c.z), g, freeAtom);
+          requireZero(evaluate(*pot, g, c.z), g, freeAtom);
         }
       }
       SECTION("pairs, then reset to zero pairs") {
         for (const auto &g : zero) {
           auto pot = c.make();
           requireSame(evaluate(*pot, pairs, c.z), want);
-          requireZero(evaluate(*pot, g, c.z), g);
-          requireZero(evaluate(*pot, g, c.z), g);
+          requireZero(evaluate(*pot, g, c.z), g, freeAtom);
+          requireZero(evaluate(*pot, g, c.z), g, freeAtom);
         }
       }
       SECTION("zero pairs, then pairs again") {
         for (const auto &g : zero) {
           auto pot = c.make();
-          requireZero(evaluate(*pot, g, c.z), g);
+          requireZero(evaluate(*pot, g, c.z), g, freeAtom);
           requireSame(evaluate(*pot, pairs, c.z), want);
-          requireZero(evaluate(*pot, g, c.z), g);
+          requireZero(evaluate(*pot, g, c.z), g, freeAtom);
           requireSame(evaluate(*pot, pairs, c.z), want);
         }
       }
