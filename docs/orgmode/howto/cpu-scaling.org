@@ -63,7 +63,7 @@ That is the throughput ratio.
   Nothing is tuned for this system.
 - A batch cell is 5 x 5 x 5 conventional cells, 500 atoms.
   Its edge of 19.6 Angstrom is more than twice the 9.5 Angstrom cutoff.
-  Minimum image needs that, and four repeats would be too small.
+  That keeps the minimum-image path; four repeats would take the image table.
 - The one-cell table uses 14 x 14 x 14 cells, 10976 atoms.
   Fourteen is the smallest repeat with at least 10^4 atoms.
   That is the size of the bulk cell in =tests/python/test_scaling.py=.

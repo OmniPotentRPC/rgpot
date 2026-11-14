@@ -37,7 +37,7 @@ The reduced 10-8 well is 295.4645 epsilon, which is 5.860 eV for platinum and
 The default cutoff is 40 in the coordinate unit, with no energy shift.
 =cutoff = 0= keeps every pair.
 Cluster evaluation does not fold the cell.
-Periodic evaluation uses the minimum image and needs a positive cutoff.
+Periodic evaluation counts every image inside the cutoff and needs a positive cutoff.
 The neighbor list is =PairListCache::evaluate=: one pass builds the densities
 and a second pass writes the forces.
 
