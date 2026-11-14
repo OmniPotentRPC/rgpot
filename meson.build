@@ -11,6 +11,16 @@ project(
 
 host_system = host_machine.system()
 
+# A test whose command is python3 gets no exe_wrapper from meson, so a
+# script that runs a cross-built program puts this in front of it.
+exe_wrapper_args = []
+if meson.is_cross_build()
+    _exe_wrapper = find_program('exe_wrapper', required: false)
+    if _exe_wrapper.found()
+        exe_wrapper_args = [_exe_wrapper]
+    endif
+endif
+
 # Add C++ compiler options
 _cppc_early = meson.get_compiler('cpp')
 if _cppc_early.get_id() == 'msvc' or _cppc_early.get_id() == 'clang-cl'
@@ -304,7 +314,7 @@ if get_option('with_eigen') or (
     if not eigen_dep.found()
         eigen_dep = dependency(
             'eigen3',
-            subproject: subproject('eigen'),
+            fallback: ['eigen', 'eigen_dep'],
             required: get_option('with_eigen'),
         )
     endif
@@ -721,6 +731,31 @@ endif
 # MSVC cargo writes rgpot_fastnlist.lib; Unix and MinGW write
 # librgpot_fastnlist.a. Link arguments are the system libraries rustc
 # printed for this toolchain, not a fixed -pthread -ldl -lm list.
+# Rust target for a GNU-toolchain Windows build: the cross file's
+# rust_target property, else the MinGW triple. Empty keeps rustc's
+# default. The linker is the C++ compiler from the native or cross file.
+rust_target = meson.get_external_property('rust_target', '')
+if (
+    rust_target == ''
+    and host_system == 'windows'
+    and host_machine.cpu_family() == 'x86_64'
+    and cppc.get_argument_syntax() != 'msvc'
+)
+    rust_target = 'x86_64-pc-windows-gnu'
+endif
+rust_linker = ''
+if rust_target != ''
+    foreach _word : cppc.cmd_array()
+        if rust_linker == '' and not _word.endswith('ccache')
+            rust_linker = _word
+        endif
+    endforeach
+endif
+_fast_target_args = []
+if rust_target != ''
+    _fast_target_args = ['--target', rust_target, '--linker', rust_linker]
+endif
+
 _fast_opt = get_option('with_fast_nlist')
 _fast_cargo = find_program('cargo', required: _fast_opt.enabled())
 _fast_rustc = find_program('rustc', required: false)
@@ -782,6 +817,15 @@ if has_fast_nlist
         get_option('default_library') == 'static'
         and host_system != 'windows'
     )
+    # A partial link is not safe for PE objects, so a static MinGW build
+    # keeps the rust archive beside librgpot and installs it with it.
+    # Meson then propagates it to the final link instead of handing it
+    # to ar.
+    _fast_beside = (
+        get_option('default_library') == 'static'
+        and host_system == 'windows'
+        and cppc.get_argument_syntax() != 'msvc'
+    )
     _fast_lib_name = 'librgpot_fastnlist.a'
     if _fast_as_object
         _fast_lib_name = 'rgpot_fastnlist.o'
@@ -797,6 +841,7 @@ if has_fast_nlist
     _fast_probe = run_command(
         _fast_py,
         files('scripts/build_fastnlist.py'),
+        _fast_target_args,
         '--native-libs',
         _fast_cargo.full_path(),
         _fastnlist_src / 'Cargo.toml',
@@ -822,6 +867,7 @@ if has_fast_nlist
         command: [
             _fast_py,
             files('scripts/build_fastnlist.py'),
+            _fast_target_args,
             '--copy',
             _fast_cargo.full_path(),
             _fastnlist_src / 'Cargo.toml',
@@ -836,8 +882,12 @@ if has_fast_nlist
         output: _fast_lib_name,
         build_by_default: true,
         console: true,
+        install: _fast_beside and not meson.is_subproject(),
+        install_dir: get_option('libdir'),
     )
     _args += ['-DRGPOT_HAS_FAST_NLIST']
+    fastnlist_pc_libs = []
+    fastnlist_beside_lib = []
     # Archive first, then the system libraries rustc named. The generated
     # source is what ninja builds; repeating its path here keeps that
     # order on a single-pass link. A response file is not used: gcc leaves
@@ -854,6 +904,16 @@ if has_fast_nlist
         fastnlist_native_dep = declare_dependency(
             link_args: _fast_native,
         )
+    elif _fast_beside
+        fastnlist_dep = declare_dependency(
+            link_with: _fastnlist_tgt,
+            link_args: _fast_native,
+        )
+        fastnlist_native_dep = fastnlist_dep
+        # Meson would list the archive after the system libraries it needs;
+        # naming it first keeps the order a single-pass link wants.
+        fastnlist_pc_libs = [_fastnlist_tgt] + _fast_native
+        fastnlist_beside_lib = [_fastnlist_tgt]
     else
         fastnlist_dep = declare_dependency(
             sources: [_fastnlist_tgt],
@@ -861,12 +921,51 @@ if has_fast_nlist
         )
         fastnlist_native_dep = fastnlist_dep
     endif
+    # The umbrella links the archive normally, so the linker takes its
+    # object only for a symbol something inside librgpot calls. The
+    # Fortran water-H kernel calls rgpot_fast_wrap; a build without
+    # Fortran calls nothing, and the C ABI was not exported. Naming the
+    # entry points as undefined pulls that object in every build. The
+    # names are the fast-list ABI baseline the abi_symbols test checks.
+    _fast_names = []
+    foreach _name : import('fs').read(
+        'scripts/abi_baseline_fast.txt',
+    ).strip().split('\n')
+        _fast_names += [_name.strip()]
+    endforeach
+    fastnlist_export_args = []
+    if not _fast_as_object and get_option('default_library') != 'static'
+        _fast_prefix = host_system == 'darwin' ? '_' : ''
+        foreach _name : _fast_names
+            if cppc.get_argument_syntax() == 'msvc'
+                fastnlist_export_args += ['/INCLUDE:' + _name]
+            else
+                fastnlist_export_args += ['-Wl,-u,' + _fast_prefix + _name]
+            endif
+        endforeach
+    endif
+    # rustc writes no export directive into a staticlib, so a DLL exports
+    # the fast names only when a module definition file lists them.
+    fastnlist_umbrella_kwargs = {}
+    if host_system == 'windows' and get_option('default_library') != 'static'
+        fastnlist_umbrella_kwargs = {
+            'vs_module_defs': configure_file(
+                input: 'CppCore/rgpot/nlist/fastnlist/rgpot_fastnlist.def.in',
+                output: 'rgpot_fastnlist.def',
+                configuration: {'FAST_EXPORTS': '\n'.join(_fast_names)},
+            ),
+        }
+    endif
     message(
         'fast pair list: enabled (rustc minor ' + _fast_minor.to_string() + ')',
     )
 else
     fastnlist_dep = declare_dependency()
     fastnlist_native_dep = fastnlist_dep
+    fastnlist_export_args = []
+    fastnlist_umbrella_kwargs = {}
+    fastnlist_pc_libs = []
+    fastnlist_beside_lib = []
     message('fast pair list: disabled, classical pots use the C++ scan')
 endif
 
@@ -914,7 +1013,7 @@ if get_option('with_rpc_client_only')
     rgpot_dep = declare_dependency(
         include_directories: _incdirs,
         link_with: _linkto,
-        compile_args: _args,
+        compile_args: rgpot_consumer_args + ['-DRGPOT_STATIC'],
         dependencies: _deps + [ptlrpc_dep, fastnlist_dep],
     )
 endif

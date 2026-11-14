@@ -18,7 +18,10 @@ librgpot_mpi stays at soversion 3 (RGPOT_MPI_ABI_VERSION 1).
 
 Usage:
   check_cxx_soversion.py [soversion-from-meson] [path-to-librgpot|-]
-                         [print_cxx_layout_stamp]
+                         [print_cxx_layout_stamp [exe-wrapper ...]]
+
+A cross build passes its exe_wrapper after the printer, which then runs
+under it.
 """
 from __future__ import annotations
 
@@ -446,11 +449,13 @@ STAMP_RE = re.compile(
 )
 
 
-def check_stamp(binary: Path, table: list[tuple[str, int]]) -> None:
+def check_stamp(
+    binary: Path, table: list[tuple[str, int]], wrapper: list[str]
+) -> None:
     if not binary.is_file():
         fail(f"layout stamp printer not found: {binary}")
     run = subprocess.run(
-        [str(binary)],
+        [*wrapper, str(binary)],
         capture_output=True,
         text=True,
         check=False,
@@ -513,7 +518,7 @@ def main() -> None:
     if len(sys.argv) > 2 and sys.argv[2] != "-":
         check_soname(Path(sys.argv[2]), soversion)
     if len(sys.argv) > 3:
-        check_stamp(Path(sys.argv[3]), table)
+        check_stamp(Path(sys.argv[3]), table, sys.argv[4:])
     tags = ", ".join(tag for tag, _ in table) or "none yet"
     print(f"cxx soversion {soversion} platforms [{tags}]")
 

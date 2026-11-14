@@ -2,9 +2,15 @@
 # MIT License
 # Copyright 2023--present rgpot developers
 # Compile the hand-written Rust caller against the neighbour archives.
+# Usage: nlist_rust_test.sh ROOT BUILD [WRAPPER...]
+# RGPOT_RUST_TARGET set to a windows-gnu triple builds a MinGW DLL with
+# $CXX, links the Rust caller with $CXX as well, and runs it under
+# WRAPPER (a cross build's exe_wrapper).
 set -eu
 root=$1
 build=$2
+shift 2
+target=${RGPOT_RUST_TARGET:-}
 rustc_bin=rustc
 if ! "$rustc_bin" --version >/dev/null 2>&1; then
   rustc_bin=$(find /usr/local/rustup/toolchains "${RUSTUP_HOME:-/usr/local/rustup}/toolchains" \
@@ -26,6 +32,9 @@ if [ -z "$half" ] || [ -z "$mini" ] || [ -z "$fma" ]; then
 fi
 cxx=${CXX:-c++}
 os=$(uname -s)
+case "$target" in
+  *-windows-gnu*) os=windows-gnu ;;
+esac
 omp_flag=
 if "$cxx" -fopenmp -x c++ -E - >/dev/null 2>&1 <<'EOF'
 int main() { return 0; }
@@ -41,6 +50,20 @@ if nm "$half" 2>/dev/null | grep -q __gcov_init; then
 fi
 dir=$(mktemp -d)
 case "$os" in
+  windows-gnu)
+    # -static keeps libgomp, libstdc++ and winpthread inside nlist.dll,
+    # so the loader needs only the DLL beside the executable.
+    "$cxx" -shared -static -o "$dir/nlist.dll" -Wl,--out-implib,"$dir/libnlist.dll.a" \
+      -Wl,--whole-archive "$half" "$mini" "$fma" -Wl,--no-whole-archive \
+      $omp_flag $gcov_flag
+    if command -v cygpath >/dev/null 2>&1; then
+      wdir=$(cygpath -w "$dir")
+      TMP="$wdir"
+      TEMP="$wdir"
+      TMPDIR="$wdir"
+      export TMP TEMP TMPDIR
+    fi
+    ;;
   Darwin)
     "$cxx" -shared -o "$dir/libnlist.dylib" \
       -Wl,-force_load,"$half" -Wl,-force_load,"$mini" -Wl,-force_load,"$fma" \
@@ -79,6 +102,21 @@ case "$os" in
 esac
 out=$(mktemp)
 case "$os" in
+  windows-gnu)
+    rm -f "$out"
+    out="$dir/nlist_rust.exe"
+    # Under MSYS2, rustc is a Windows binary and takes Windows paths.
+    rmain="$root/CppCore/examples/nlist_rust/main.rs"
+    rdir=$dir
+    rout=$out
+    if command -v cygpath >/dev/null 2>&1; then
+      rmain=$(cygpath -m "$rmain")
+      rdir=$(cygpath -m "$dir")
+      rout=$(cygpath -m "$out")
+    fi
+    "$rustc_bin" --edition 2021 --target "$target" -C "linker=$cxx" \
+      "$rmain" -o "$rout" -L "native=$rdir" -lnlist
+    ;;
   MINGW*|MSYS*|CYGWIN*)
     # rustc's MSVC linker looks for nlist.lib on a native search path.
     # An MSYS -L directory is not one it opens.
@@ -92,6 +130,9 @@ case "$os" in
     ;;
 esac
 case "$os" in
+  windows-gnu)
+    "$@" "$out"
+    ;;
   Darwin)
     DYLD_LIBRARY_PATH="$dir${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}" "$out"
     ;;

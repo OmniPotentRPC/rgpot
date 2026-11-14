@@ -36,6 +36,7 @@ Auto skips the test when =gmx= or the PLUMED headers are absent.
 =rgpot_md_kj_per_ev= is
 kJ/mol in one eV, 96.48533212331002, and =rgpot_md_nm_per_angstrom= is 0.1. A 1 eV well, an 8 Angstrom cutoff and a 1 Angstrom zero crossing are stored as =U0= from =rgpot_md_kj_per_ev=, cutoff 0.8 nm and psi 0.1 nm. An empty engine path evaluates the shifted potential in process. A path is a library whose =rgpot_md_native_force= already speaks nanometres and kJ/mol;
 the constructor converts the geometry and the result with the stored factors.
+On Windows the DLL must export =rgpot_md_native_force=, for instance with =RGPOT_ENGINE_API= from =rgpot/engine_c_abi.h=.
 =rgpot_external_potential_energy_forces= and =rgpot_external_potential_free= are
 the same calls as for LAMMPS.
 The dimer is -0.3203213355 eV.

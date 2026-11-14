@@ -15,7 +15,6 @@ cosmo_potctl.ncl|.github/workflows/cosmo-potctl.yml
 ci_doc_commenter.ncl|.github/workflows/ci_doc_commenter.yml
 EOF
 
-NICKEL=(nickel)
 if ! command -v nickel >/dev/null 2>&1; then
   echo "nickel not on PATH; run via: pixi r -e cigen gen-gha" >&2
   exit 1

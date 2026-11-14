@@ -1,10 +1,10 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 //
-// exact_fma and mul_add against std::fma, including subnormals, signed
-// zero, overflow and ties. On a CPU with FMA every case is also checked
+// exact_fma and mul_add against a reference fma (ref_fma), including
+// subnormals, signed zero, overflow and ties. On a CPU with FMA every case is also checked
 // against the hardware instruction (exact_fma_hw), so the software path and
-// the hardware path are shown to return the same bits.
+// the hardware path are shown to return the same bits, and so is fma_soft.
 
 #include "rgpot/simd/exact_fma.hpp"
 
@@ -33,6 +33,19 @@ int g_checked = 0;
 const bool g_hw = rgpot::simd::detail::cpuid_fma_usable();
 #endif
 
+// mingw-w64's fma is not fused (see fma_fallback), so it is no reference
+// there: the instruction is, or fma_soft on a CPU without one.
+double ref_fma(double a, double b, double c) {
+#if defined(__MINGW32__) && defined(__x86_64__)
+  if (g_hw) {
+    return rgpot::simd::exact_fma_hw(a, b, c);
+  }
+  return rgpot::simd::detail::fma_soft(a, b, c);
+#else
+  return std::fma(a, b, c);
+#endif
+}
+
 // nan_any: any NaN matches any NaN. Only the uniform bit patterns use it,
 // since their NaN inputs carry payloads that fma implementations propagate
 // differently; every other bit stays part of the comparison.
@@ -42,7 +55,7 @@ void check_one(double a, double b, double c, const char *where,
     return bits_of(x) == bits_of(y) ||
            (nan_any && std::isnan(x) && std::isnan(y));
   };
-  const double ref = std::fma(a, b, c);
+  const double ref = ref_fma(a, b, c);
   const double got = rgpot::simd::exact_fma(a, b, c);
   const double via = rgpot::simd::mul_add(a, b, c);
   const double quick = rgpot::simd::fma_quick(a, b, c);
@@ -56,27 +69,30 @@ void check_one(double a, double b, double c, const char *where,
   const rgpot::simd::f64x2 qx = rgpot::simd::exact_fma_x2(
       rgpot::simd::f64x2{a, a}, rgpot::simd::f64x2{b, b}, rgpot::simd::f64x2{c, c});
   const bool pair_ok = same(px[0], ref) &&
-                       bits_of(px[1]) == bits_of(std::fma(1.5, -3.25, 0.125)) &&
+                       bits_of(px[1]) == bits_of(ref_fma(1.5, -3.25, 0.125)) &&
                        same(qx[0], ref) && same(qx[1], ref);
 #else
   const bool pair_ok = true;
 #endif
   double hw = ref;
+  bool soft_ok = true;
 #if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
   if (g_hw) {
     hw = rgpot::simd::exact_fma_hw(a, b, c);
+    soft_ok = same(rgpot::simd::detail::fma_soft(a, b, c), hw);
   }
 #endif
   ++g_checked;
   if (pair_ok && same(got, ref) && same(via, ref) && same(quick, ref) &&
-      same(hw, got)) {
+      same(hw, got) && soft_ok) {
     return;
   }
   if (g_fail < 8) {
     std::cerr << where << " a=" << bits_of(a) << " b=" << bits_of(b)
               << " c=" << bits_of(c) << " ref=" << bits_of(ref)
               << " exact=" << bits_of(got) << " mul_add=" << bits_of(via)
-              << " quick=" << bits_of(quick) << " hw=" << bits_of(hw) << '\n';
+              << " quick=" << bits_of(quick) << " hw=" << bits_of(hw)
+              << " soft=" << bits_of(rgpot::simd::detail::fma_soft(a, b, c)) << '\n';
   }
   ++g_fail;
 }
@@ -225,9 +241,9 @@ int main() {
   const double tie_c = 0x1.921fb54442d18p1;
   check_one(tie_a, tie_a, tie_c, "classic-tie");
   const double trunc = rgpot::simd::fma_trunc(tie_a, tie_a, tie_c);
-  const double ref = std::fma(tie_a, tie_a, tie_c);
+  const double ref = ref_fma(tie_a, tie_a, tie_c);
   if (bits_of(trunc) == bits_of(ref)) {
-    std::cerr << "classic-tie trunc matched std::fma\n";
+    std::cerr << "classic-tie trunc matched the reference fma\n";
     ++g_fail;
   }
 

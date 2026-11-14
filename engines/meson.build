@@ -12,12 +12,26 @@ project_root = meson.project_source_root()
 engines_here = meson.current_source_dir()
 dl_dep = cppc.find_library('dl', required: false)
 thread_dep = dependency('threads')
+engines_rgpot = declare_dependency(link_with: rgpot)
+# lj_eval evaluates the in-tree LJPot, a C++ class. A Windows DLL exports
+# the C ABI (RGPOT_API) and no C++ class, so there lj_eval links the
+# archives that hold LJPot and its neighbour list.
+lj_cxx = []
+if host_system == 'windows'
+    lj_cxx = [
+        declare_dependency(
+            link_with: [lennard_jones, rgpot_halfshell],
+            dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+        ),
+    ]
+endif
 lj_lib = static_library(
     'rgpot_lj_eval',
     files('lj_eval.cpp'),
     include_directories: [engines_inc, rgpot_inc],
-    dependencies: dl_dep,
-    cpp_args: _args,
+    # LJPot.hpp reaches fmt through base_types.hpp unless pure_lib.
+    dependencies: [dl_dep] + (has_fmt ? [fmt_dep] : []) + lj_cxx,
+    cpp_args: rgpot_consumer_args,
     pic: true,
 )
 lj_dep = declare_dependency(
@@ -28,10 +42,9 @@ lj_dep = declare_dependency(
 rgpot_lj = executable(
     'rgpot-lj',
     files('rgpot_lj.cpp'),
-    dependencies: lj_dep,
-    link_with: rgpot,
+    dependencies: [lj_dep, engines_rgpot],
     include_directories: rgpot_inc,
-    cpp_args: _args,
+    cpp_args: rgpot_consumer_args,
     install: true,
 )
 test(
@@ -39,9 +52,8 @@ test(
     executable(
         'test_lj_eval',
         files('test_lj_eval.cpp'),
-        dependencies: lj_dep,
-        link_with: rgpot,
-        cpp_args: _args,
+        dependencies: [lj_dep, engines_rgpot],
+        cpp_args: rgpot_consumer_args,
     ),
     timeout: 60,
 )
@@ -49,10 +61,9 @@ test(
 lj_engine = shared_library(
     'lj_engine',
     files('lj_engine.cpp'),
-    dependencies: lj_dep,
-    link_with: rgpot,
+    dependencies: [lj_dep, engines_rgpot],
     include_directories: rgpot_inc,
-    cpp_args: _args + ['-DRGPOT_ENGINE_BUILD'],
+    cpp_args: rgpot_consumer_args + ['-DRGPOT_ENGINE_BUILD'],
     install: true,
 )
 test(
@@ -60,9 +71,8 @@ test(
     executable(
         'test_engine',
         files('test_engine.cpp'),
-        dependencies: lj_dep,
-        link_with: rgpot,
-        cpp_args: _args,
+        dependencies: [lj_dep, engines_rgpot],
+        cpp_args: rgpot_consumer_args,
     ),
     args: [lj_engine.full_path()],
     timeout: 60,
@@ -71,24 +81,27 @@ test(
 capi_threads = executable(
     'capi_threads',
     files('capi_threads.c'),
-    link_with: rgpot,
     include_directories: rgpot_inc,
-    dependencies: thread_dep,
+    c_args: rgpot_api_args,
+    dependencies: [thread_dep, engines_rgpot],
     link_language: 'cpp',
 )
 test('capi_threads', capi_threads, timeout: 60)
 # A second binary built only with the thread sanitizer. b_sanitize is
 # already on every compile line, and -fsanitize=thread cannot be combined
-# with address or undefined.
-if cppc.has_argument('-fsanitize=thread') and get_option('b_sanitize') == 'none'
+# with address or undefined. ThreadSanitizer has no Windows runtime.
+if (
+    host_system != 'windows'
+    and cppc.has_argument('-fsanitize=thread')
+    and get_option('b_sanitize') == 'none'
+)
     capi_tsan = executable(
         'capi_threads_tsan',
         files('capi_threads.c'),
-        link_with: rgpot,
         include_directories: rgpot_inc,
-        c_args: ['-fsanitize=thread'],
+        c_args: rgpot_api_args + ['-fsanitize=thread'],
         link_args: ['-fsanitize=thread'],
-        dependencies: thread_dep,
+        dependencies: [thread_dep, engines_rgpot],
         link_language: 'cpp',
     )
     test('capi_threads_tsan', capi_tsan, timeout: 120)
@@ -122,17 +135,16 @@ if lammps_opt.allowed() and python3_engines.found()
             pair_plugin = shared_library(
                 'pair_rgpot',
                 files('lammps/pair_rgpot.cpp'),
-                dependencies: [lj_dep] + (
+                dependencies: [lj_dep, engines_rgpot] + (
                     lammps_dep.found() ? [lammps_dep] : []
                 ),
-                link_with: rgpot,
                 include_directories: include_directories(
                     lammps_src.startswith(project_root + '/') ? fs.relative_to(
                         lammps_src,
                         engines_here,
                     ) : lammps_src,
                 ),
-                cpp_args: _args + ['-DLAMMPS_SMALLBIG'],
+                cpp_args: rgpot_consumer_args + ['-DLAMMPS_SMALLBIG'],
                 override_options: ['b_lundef=false'],
             )
             lammps_exe = get_option('lammps_exe')
@@ -171,10 +183,9 @@ if plumed_opt.allowed()
         plumed_lib = shared_library(
             'RgpotPlumed',
             files('plumed/RgpotColvar.cpp'),
-            dependencies: plumed_link + [lj_dep],
-            link_with: rgpot,
+            dependencies: plumed_link + [lj_dep, engines_rgpot],
             include_directories: [engines_inc, rgpot_inc],
-            cpp_args: _args,
+            cpp_args: rgpot_consumer_args,
             name_prefix: 'lib',
             install: true,
         )
@@ -221,11 +232,36 @@ if python3_engines.found()
     )
 endif
 
-abi_script = find_program('../scripts/abi_symbols.sh')
+abi_python = find_program('python3', 'python')
+abi_script = files('../scripts/abi_symbols.py')
+abi_baselines = files('../scripts/abi_baseline.txt')
+if has_fast_nlist and fastnlist_beside_lib.length() == 0
+    abi_baselines += files('../scripts/abi_baseline_fast.txt')
+endif
+# A static MinGW librgpot keeps the fast list in its own archive.
+if fastnlist_beside_lib.length() > 0
+    test(
+        'abi_symbols_fast',
+        abi_python,
+        args: [
+            abi_script,
+            fastnlist_beside_lib[0],
+            files('../scripts/abi_baseline_fast.txt'),
+        ],
+        timeout: 30,
+    )
+endif
 test(
     'abi_symbols',
-    abi_script,
-    args: [rgpot.full_path(), files('../scripts/abi_baseline.txt')],
+    abi_python,
+    args: [abi_script, rgpot.full_path(), abi_baselines],
+    timeout: 30,
+)
+test(
+    'abi_symbols_selftest',
+    abi_python,
+    args: [abi_script, rgpot.full_path(), files('abi_selftest_baseline.txt')],
+    should_fail: true,
     timeout: 30,
 )
 
@@ -257,19 +293,17 @@ endif
 native_lj_engine = shared_library(
     'native_lj_engine',
     files('native_lj_engine.cpp'),
-    dependencies: lj_dep,
-    link_with: rgpot,
+    dependencies: [lj_dep, engines_rgpot],
     include_directories: rgpot_inc,
-    cpp_args: _args + ['-DRGPOT_ENGINE_BUILD'],
+    cpp_args: rgpot_consumer_args + ['-DRGPOT_ENGINE_BUILD'],
     install: true,
 )
 external_pot_test = executable(
     'test_external_potentials',
     files('test_external_potentials.cpp'),
-    dependencies: lj_dep,
-    link_with: rgpot,
+    dependencies: [lj_dep, engines_rgpot],
     include_directories: rgpot_inc,
-    cpp_args: _args,
+    cpp_args: rgpot_consumer_args,
 )
 external_env = environment()
 if openmm_opt.allowed() and python3_engines.found()
@@ -302,7 +336,7 @@ if openmm_opt.allowed() and python3_engines.found()
                 files('openmm/openmm_engine.cpp'),
                 dependencies: [openmm_lib],
                 include_directories: [rgpot_inc, openmm_inc],
-                cpp_args: _args + ['-DRGPOT_ENGINE_BUILD'],
+                cpp_args: rgpot_consumer_args + ['-DRGPOT_ENGINE_BUILD'],
                 build_rpath: openmm_libdir,
                 install_rpath: openmm_libdir,
                 install: true,
@@ -349,7 +383,7 @@ if gromacs_inc != ''
                 'test_gromacs_units',
                 files('test_gromacs_units.cpp'),
                 include_directories: [engines_inc, rgpot_inc, gromacs_headers],
-                cpp_args: _args,
+                cpp_args: rgpot_consumer_args,
             ),
             timeout: 30,
         )

@@ -77,6 +77,14 @@ exported symbol leaves them where they are.
 They are also not the ELF soversion of =librgpot=.
 The C API is exported from that library and has no shared library of its own, so
 a C caller relinks when the C++ SONAME moves even if these numbers stay.
+Every public C function is declared with =RGPOT_API= from =rgpot/rgpot_api.h=.
+On Linux and macOS it means default visibility.
+On Windows it is =dllexport= while =librgpot= is built (=RGPOT_BUILDING=),
+=dllimport= for a caller of the DLL, and empty for a caller of the static
+library (=RGPOT_STATIC=, set by the Meson dependency and the pkg-config file).
+=scripts/abi_baseline.txt= lists the C names every build exports, and
+=scripts/abi_symbols.py= checks them against the ELF, Mach-O or archive symbol
+table, or the export table of a DLL, which it reads from the PE file.
 3.5.0 left them at 1, 0 and 1.
 3.6.0 carries 1, 1 and 1.
 =rgpot_eindir_abi_compatible= is the new exported function.
@@ -321,4 +329,5 @@ The coverage check fails when one of them disappears from this book.
   =rgpot_fast_wrap_axes=, =rgpot_fast_last_error= :: the orthorhombic candidate
   list and the minimum-image wrap.
   A negative code leaves a thread-local sentence.
+  They exist only when the fast list is built.
 - =rgpot_plugin_init= :: the one symbol a plugin shared library exports.
