@@ -38,6 +38,9 @@ int rgpot_tersoff_force_ws(void *ws, int32_t natoms, const double *positions,
                            double *energy);
 int rgpot_eam_al_force_ws(void *ws, int32_t natoms, const double *positions,
                           const double *cell, double *forces, double *energy);
+int rgpot_eam_al_energies_ws(void *ws, int32_t natoms, const double *positions,
+                             const double *cell, double *forces, double *energy,
+                             double *energies);
 
 /// Kernels dispatching on atomic number.
 int rgpot_fehe_force_ws(void *ws, int32_t natoms, const double *positions,
@@ -46,6 +49,9 @@ int rgpot_fehe_force_ws(void *ws, int32_t natoms, const double *positions,
 int rgpot_cuh2_force_ws(void *ws, int32_t natoms, const double *positions,
                         const int32_t *atomic_numbers, const double *cell,
                         double *forces, double *energy);
+int rgpot_cuh2_energies_ws(void *ws, int32_t natoms, const double *positions,
+                           const int32_t *atomic_numbers, const double *cell,
+                           double *forces, double *energy, double *energies);
 int rgpot_water_h_force_ws(void *ws, int32_t natoms, const double *positions,
                            const int32_t *atomic_numbers, const double *cell,
                            double *forces, double *energy);
@@ -212,6 +218,28 @@ RGPOT_FORTRAN_SPECIES_POT_IMPL(CuH2Pot, rgpot_cuh2_force_ws, "CuH2")
 RGPOT_FORTRAN_SPECIES_POT_IMPL(WaterHPot, rgpot_water_h_force_ws, "Water-H")
 
 #undef RGPOT_FORTRAN_SPECIES_POT_IMPL
+
+void EAMAlPot::forceEnergiesImpl(const ForceInput &in, ForceOut *out,
+                                 double *energies) const {
+  ensure_fortran_params();
+  const int status =
+      rgpot_eam_al_energies_ws(m_ws.get(), static_cast<int32_t>(in.nAtoms), in.pos,
+                               in.box, out->F, &out->energy, energies);
+  if (status != 0) {
+    raise("EAM-Al", status, m_ws.get());
+  }
+}
+
+void CuH2Pot::forceEnergiesImpl(const ForceInput &in, ForceOut *out,
+                                double *energies) const {
+  ensure_fortran_params();
+  const int status =
+      rgpot_cuh2_energies_ws(m_ws.get(), static_cast<int32_t>(in.nAtoms), in.pos,
+                             in.atmnrs, in.box, out->F, &out->energy, energies);
+  if (status != 0) {
+    raise("CuH2", status, m_ws.get());
+  }
+}
 
 } // namespace fortranpots
 } // namespace rgpot

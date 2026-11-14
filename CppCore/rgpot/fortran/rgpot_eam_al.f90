@@ -171,8 +171,11 @@ contains
    !! evaluated once per call. scripts/validation/eam_al.py checks these
    !! forms, the Horner embedding and the gather force against the closed
    !! form in the module header.
+   !!
+   !! `energies`, when present, receives each atom's share: half of every
+   !! pair term and its own embedding term. They sum to `energy`.
    subroutine eam_al_energy_forces(positions, cell, par, table, energy, &
-                                   forces, status, errmsg)
+                                   forces, status, errmsg, energies)
       real(wp), intent(in), contiguous :: positions(:, :)
       real(wp), intent(in) :: cell(3, 3)
       type(eam_al_params_t), intent(in) :: par
@@ -181,6 +184,7 @@ contains
       real(wp), intent(out), contiguous :: forces(:, :)
       integer, intent(out) :: status
       character(len=:), allocatable, intent(out) :: errmsg
+      real(wp), intent(out), contiguous, optional :: energies(:)
 
       integer(ip) :: natoms, i, nent
       real(wp), allocatable :: rho(:), dembed(:), e_pair(:), e_embed(:)
@@ -190,6 +194,7 @@ contains
       natoms = int(size(positions, 2), ip)
       energy = 0.0_wp
       forces = 0.0_wp
+      if (present(energies)) energies = 0.0_wp
 
       call table%build(positions, cell, par%cutoff(), status, errmsg)
       if (status /= 0) return
@@ -223,6 +228,7 @@ contains
       end do
 
       energy = sum(e_pair) + sum(e_embed)
+      if (present(energies)) energies = e_pair + e_embed
    end subroutine eam_al_energy_forces
 
    !> Total electron density at atom `i`; stores `rho(r)` and `rho'(r)` of

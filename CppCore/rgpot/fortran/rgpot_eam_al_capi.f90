@@ -110,6 +110,46 @@ contains
       end if
    end function rgpot_eam_al_force_ws
 
+   !> `rgpot_eam_al_force_ws` plus each atom's share of `energy` in
+   !! `energies` (`natoms` doubles): half of every pair term and the
+   !! atom's embedding term.
+   function rgpot_eam_al_energies_ws(handle, natoms, positions, cell, forces, energy, &
+                                     energies) result(status) &
+      bind(c, name="rgpot_eam_al_energies_ws")
+      type(c_ptr), value :: handle
+      integer(c_int), value, intent(in) :: natoms
+      real(c_double), intent(in) :: positions(3, natoms)
+      real(c_double), intent(in) :: cell(3, 3)
+      real(c_double), intent(out) :: forces(3, natoms)
+      real(c_double), intent(out) :: energy
+      real(c_double), intent(out) :: energies(natoms)
+      integer(c_int) :: status
+
+      integer :: build_status
+      character(len=:), allocatable :: errmsg
+      type(rgpot_workspace_t), pointer :: ws
+
+      ws => workspace_from_c(handle)
+      if (.not. associated(ws)) then
+         status = -1_c_int
+         return
+      end if
+      call ws_clear_error(ws)
+      status = 0_c_int
+      energy = 0.0_c_double
+      forces = 0.0_c_double
+      energies = 0.0_c_double
+
+      if (natoms < 1_c_int) return
+
+      call eam_al_energy_forces(positions, cell, params, ws%table, energy, &
+                                forces, build_status, errmsg, energies)
+      if (build_status /= 0) then
+         call ws_set_error(ws, errmsg)
+         status = int(build_status, c_int)
+      end if
+   end function rgpot_eam_al_energies_ws
+
 
    !> F2: default-initialise the saved parameter block once.
    !! The C++ face calls this under std::call_once before any _ws
